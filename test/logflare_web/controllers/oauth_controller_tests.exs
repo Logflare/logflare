@@ -1,6 +1,7 @@
 defmodule LogflareWeb.OAuthControllerTests do
   @moduledoc false
   use LogflareWeb.ConnCase
+  alias LogflareWeb.Auth.OauthController
 
   test "unrecognized provider handling", %{conn: conn} do
     for path <- ["/auth/something", "/auth/something/callback"] do
@@ -51,5 +52,38 @@ defmodule LogflareWeb.OAuthControllerTests do
     assert html_response(conn, 302)
     assert conn.assigns.flash["error"] == nil
     assert redirected_to(conn) =~ "www.cloudflare.com"
+  end
+
+  test "slack oauth2 for adding alert slack hooks", %{conn: conn} do
+    insert(:plan)
+    user = insert(:user)
+    alert_query = insert(:alert, user: user)
+
+    conn =
+      conn
+      |> login_user(user)
+      |> bypass_through(LogflareWeb.Router, [:browser])
+      |> assign(:ueberauth_auth, %{
+        extra: %{
+          raw_info: %{
+            token: %{other_params: %{"incoming_webhook" => %{"url" => "https://some-url.com"}}}
+          }
+        }
+      })
+      |> get(~p"/auth/slack/callback")
+      |> OauthController.callback(%{
+        "code" =>
+          "893134481777.5938142341456.c62b0cecf9de9bc062290c92267dd94ac6cd99f81f53bf8b0da7ef6d31994077",
+        "provider" => "slack",
+        "state" =>
+          Jason.encode!(%{
+            action: "save_hook_url",
+            alert_query_id: alert_query.id
+          })
+      })
+
+    assert html_response(conn, 302)
+    assert conn.assigns.flash["info"] =~ "Alert connected to Slack!"
+    assert redirected_to(conn) == ~p"/alerts/#{alert_query.id}"
   end
 end

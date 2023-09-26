@@ -1,0 +1,15 @@
+<.subheader {assigns}>
+  <:path>
+    ~/<.subheader_path_link live_patch to={~p"/alerts"}>alerts</.subheader_path_link>/<.subheader_path_link
+      live_patch
+      to={~p"/alerts/#{@alert.id}"}
+    >
+      <%= @alert.name %>
+    </.subheader_path_link>/edit
+  </:path>
+  <.subheader_link to="https://docs.logflare.app/concepts/alerts" text="docs" fa_icon="book" />
+</.subheader>
+
+<section class="mx-auto container">
+  <.alert_form {assigns} />
+</section>

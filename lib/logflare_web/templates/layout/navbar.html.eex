@@ -30,6 +30,11 @@
             <li class="nav-item">
                 <%= link "Endpoints", to: Routes.endpoints_path(@conn, :index), class: "nav-link" %>
             </li>
+            <%= if LogflareWeb.Utils.flag("alerts", @user) do %>
+                <li class="nav-item">
+                    <%= link "Alerts", to: Routes.alerts_path(@conn, :index), class: "nav-link" %>
+                </li>
+            <% end %>
             <li class="nav-item">
                 <%= link "Docs", to: "https://docs.logflare.app", class: "nav-link" %>
             </li>

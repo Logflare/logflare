@@ -1,0 +1,66 @@
+<.subheader>
+  <:path>
+    ~/<.subheader_path_link live_patch to={~p"/alerts"}>alerts</.subheader_path_link>/<%= @alert.name %>
+  </:path>
+  <.subheader_link to={~p"/access-tokens"} text="access tokens" fa_icon="key" />
+  <.subheader_link live_patch to={~p"/alerts/#{@alert.id}/edit"} text="edit" fa_icon="edit" />
+</.subheader>
+<section class="mx-auto container pt-3 tw-flex tw-flex-col tw-gap-4">
+  <h2>
+    <%= @alert.name %>
+  </h2>
+  <div>
+    id: <%= @alert.token %>
+  </div>
+
+  <p class="text-muted tw-whitespace-pre-wrap tw-text-sm"><%= @alert.description %></p>
+
+  <div class="tw-w-full tw-bg-zinc-800 tw-p-4 tw-rounded-lg tw-min-h-[100px]">
+    <span class="tw-block">
+      <%= case @alert.language do
+        :bq_sql -> "BigQuery SQL"
+        :pg_sql -> "Postgres SQL"
+        :lql -> "Logflare Query Language"
+      end %>
+    </span>
+    <code class="tw-whitespace-pre-wrap tw-text-sm tw-text-white">
+      <%= @alert.query %>
+    </code>
+  </div>
+
+  <div>
+    <ul class="list-group tw-text-sm">
+      <li class="list-group-item">
+        <span><strong>cron:</strong> <%= @alert.cron %></span>
+      </li>
+      <li class="list-group-item">
+        <span>
+          <strong>slack:</strong>
+          <%= if @alert.slack_hook_url do %>
+            <div class="tw-flex tw-gap-3 tw-align-items-center">
+              <span>Connected</span>
+              <button phx-click="remove-slack" class="btn btn-outline-danger btn-sm">
+                Remove Slack
+              </button>
+            </div>
+          <% else %>
+            <a href={"https://slack.com/oauth/v2/authorize?client_id=#{Application.get_env(:ueberauth, Ueberauth.Strategy.SlackV2.OAuth)[:client_id]}&scope=incoming-webhook&install_redirect=update-to-granular-scopes&redirect_uri=#{url(~p"/auth/slack/callback")}&state=#{Jason.encode!(%{"action" => "save_hook_url", "alert_query" => @alert})}"}>
+              <img
+                alt="Add to Slack"
+                height="40"
+                width="139"
+                src="https://platform.slack-edge.com/img/add_to_slack.png"
+                srcset="https://platform.slack-edge.com/img/add_to_slack.png 1x, https://platform.slack-edge.com/img/add_to_slack@2x.png 2x"
+              />
+            </a>
+          <% end %>
+        </span>
+      </li>
+      <li class="list-group-item">
+        <span><strong>webhook:</strong> <%= @alert.webhook_notification_url %></span>
+      </li>
+    </ul>
+  </div>
+
+  <.run_query_result {assigns} />
+</section>

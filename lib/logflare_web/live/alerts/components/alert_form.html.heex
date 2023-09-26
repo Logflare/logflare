@@ -1,0 +1,81 @@
+<div class="tw-flex tw-w-full tw-my-10 tw-gap-2">
+  <.form :let={f} for={@changeset} as={:alert} id="alert" phx-submit="save" class="tw-w-full">
+    <%= hidden_input(f, :language) %>
+    <div class="tw-sticky tw-flex tw-justify-between tw-gap-4">
+      <button
+        :if={@alert}
+        data-confirm="Are you sure? This cannot be undone"
+        phx-click="delete"
+        phx-value-alert_id={@alert.id}
+        class="btn btn-outline-danger"
+      >
+        <i class="fas fa-trash"></i> Delete
+      </button>
+      <%= submit("Save changes", class: "btn btn-primary") %>
+    </div>
+
+    <.header_with_anchor text="Alert Name" />
+    <div class="form-group">
+      <%= text_input(f, :name,
+        placeholder: "YourApp.AlertName",
+        class: "form-control form-control-margin",
+        "phx-update": "ignore"
+      ) %>
+      <%= error_tag(f, :name) %>
+    </div>
+
+    <.header_with_anchor text="Description" />
+    <div class="form-group">
+      <p>What is this alert used for?</p>
+      <div class="input-group">
+        <%= textarea(f, :description, class: "form-control", "phx-update": "ignore") %>
+      </div>
+      <%= error_tag(f, :description) %>
+    </div>
+
+    <.header_with_anchor text="Query" />
+    <section class="tw-flex tw-flex-col">
+      <div class="form-group">
+        <p>
+          This alert will execute this query periodically. If a non-zero number of rows are returned from this query, the notification will be triggered.
+        </p>
+        <%= textarea(f, :query,
+          placeholder:
+            "select timestamp, event_message from `YourApp.SourceName` \nwhere regexp_contains(event_message, 'error')",
+          class: "form-control form-control-margin",
+          id: "alert-query",
+          value: Map.get(@params_form.params, "query"),
+          style: "height: 20rem"
+        ) %>
+        <%= error_tag(f, :query) %>
+        <.alert :if={@parse_error_message} variant="warning"><%= @parse_error_message %></.alert>
+      </div>
+
+      <.header_with_anchor text="Query Schedule" />
+      <div class="form-group">
+        <p>
+          The schedule must be a valid cron expression. A minimum inteval of 15 minutes is required. Extended seconds syntax is not supported.
+        </p>
+        <%= label(f, :cron, "Cron Expression") %>
+        <%= text_input(f, :cron,
+          placeholder: "0 0 * * *",
+          class: "form-control"
+        ) %>
+        <%= error_tag(f, :cron) %>
+      </div>
+    </section>
+
+    <.header_with_anchor text="Webhook Notifications" />
+    <section class="tw-flex tw-flex-col tw-gap-2 tw-w-full">
+      <p>
+        Query results will be sent together with the notification.<br />
+      </p>
+
+      <div class="form-group">
+        <%= label(f, :webhook_notification_url, "Webhook URL") %>
+        <%= text_input(f, :webhook_notification_url, class: "form-control") %>
+        <%= error_tag(f, :webhook_notification_url) %>
+      </div>
+    </section>
+  </.form>
+</div>
