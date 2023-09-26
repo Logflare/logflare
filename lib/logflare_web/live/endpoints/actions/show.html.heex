@@ -71,25 +71,21 @@
   <.run_query_result {assigns} />
 
   <h3>Call your endpoint</h3>
-  <div class="tw-bg-zinc-800 tw-rounded tw-p-2 tw-flex tw-flex-col tw-gap-8">
-    <code>
-      # By UUID<br /> curl "<%= url(~p"/api/endpoints/query/#{@show_endpoint.token}") %>"<br />
-      \ -H 'X-API-KEY: YOUR-ACCESS-TOKEN'<br />
-      \ -H 'Content-Type: application/json; charset=utf-8'<br />
-      <span :if={length(@declared_params) > 0}>
-        \ -G <%= Enum.map(@declared_params, fn p -> "-d \"#{p}=VALUE\"" end) |> Enum.join(" ") %>
-      </span>
-      <br />
-    </code>
+  <div class="tw-bg-zinc-800 tw-rounded tw-p-2 tw-flex tw-flex-col tw-gap-2">
+    <code class="tw-whitespace-pre-wrap">
+# By UUID
+curl "<%= url(~p"/api/endpoints/query/#{@show_endpoint.token}") %>" \
+-H 'X-API-KEY: YOUR-ACCESS-TOKEN' \
+-H 'Content-Type: application/json; charset=utf-8' <span :if={length(@declared_params) > 0}>\</span>
+<span :if={length(@declared_params) > 0}>
+-G <%= Enum.map(@declared_params, fn p -> "-d \"#{p}=VALUE\"" end) |> Enum.join(" ") %></span></code>
 
-    <code :if={@show_endpoint.enable_auth}>
-      # By name<br /> curl "<%= url(~p"/api/endpoints/query/#{@show_endpoint.name}") %>"<br />
-      \ -H 'X-API-KEY: YOUR-ACCESS-TOKEN'<br />
-      \ -H 'Content-Type: application/json; charset=utf-8'<br />
-      <span :if={length(@declared_params) > 0}>
-        \ -G <%= Enum.map(@declared_params, fn p -> "-d \"#{p}=VALUE\"" end) |> Enum.join(" ") %>
-      </span>
-      <br />
-    </code>
+    <code :if={@show_endpoint.enable_auth} class="tw-whitespace-pre-wrap">
+# By name
+curl "<%= url(~p"/api/endpoints/query/#{@show_endpoint.name}") %>" \
+-H 'X-API-KEY: YOUR-ACCESS-TOKEN' \
+-H 'Content-Type: application/json; charset=utf-8'  <span :if={length(@declared_params) > 0}>\</span>
+<span :if={length(@declared_params) > 0}>
+-G <%= Enum.map(@declared_params, fn p -> "-d \"#{p}=VALUE\"" end) |> Enum.join(" ") %></span></code>
   </div>
 </section>
