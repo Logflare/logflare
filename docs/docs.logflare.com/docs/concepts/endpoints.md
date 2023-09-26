@@ -23,6 +23,8 @@ GET  https://api.logflare.app/api/endpoints/query/my.custom.endpoint
 
 Querying by name requires authentication to be enabled and for a valid access token to be provided.
 
+OpenAPI documentation for querying Logflare Endpoints can be found [here](https://logflare.app/swaggerui#/Public).
+
 ## Crafting a Query
 
 Queries will be passed to the underlying backend to perform the querying.

@@ -1,9 +1,15 @@
 defmodule LogflareWeb.EndpointsController do
   use LogflareWeb, :controller
+  use OpenApiSpex.ControllerSpecs
+
   require Logger
   alias Logflare.Endpoints
 
+  alias LogflareWeb.OpenApi.ServerError
+  alias LogflareWeb.OpenApiSchemas.EndpointQuery
+
   action_fallback(LogflareWeb.Api.FallbackController)
+  tags(["Public"])
 
   plug CORSPlug,
     origin: "*",
@@ -17,6 +23,25 @@ defmodule LogflareWeb.EndpointsController do
     ],
     methods: ["GET", "POST", "OPTIONS"],
     send_preflight_response?: true
+
+  operation(:query,
+    summary: "Query a Logflare Endpoint",
+    description:
+      "Full details are available in the [Logflare Endpoints documentation](https://docs.logflare.app/concepts/endpoints/)",
+    parameters: [
+      token_or_name: [
+        in: :path,
+        description: "Endpoint UUID or name",
+        type: :string,
+        example: "a040ae88-3e27-448b-9ee6-622278b23193",
+        required: true
+      ]
+    ],
+    responses: %{
+      200 => EndpointQuery.response(),
+      500 => ServerError.response()
+    }
+  )
 
   def query(%{assigns: %{endpoint: endpoint}} = conn, _params) do
     endpoint_query = Endpoints.map_query_sources(endpoint)

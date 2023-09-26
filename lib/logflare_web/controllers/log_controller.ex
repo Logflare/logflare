@@ -1,8 +1,17 @@
 defmodule LogflareWeb.LogController do
   use LogflareWeb, :controller
+  use OpenApiSpex.ControllerSpecs
 
   alias Logflare.Logs.IngestTypecasting
   alias Logflare.Backends
+
+  alias LogflareWeb.OpenApi.Created
+  alias LogflareWeb.OpenApi.ServerError
+  alias LogflareWeb.OpenApiSchemas.LogsCreated
+
+  action_fallback(LogflareWeb.Api.FallbackController)
+
+  tags(["Public"])
 
   plug(
     CORSPlug,
@@ -24,6 +33,32 @@ defmodule LogflareWeb.LogController do
   alias Logflare.Logs
 
   @message "Logged!"
+
+  operation(:create,
+    summary: "Create log event",
+    description:
+      "Full details are available in the [ingestion documentation](https://docs.logflare.app/concepts/ingestion/)",
+    parameters: [
+      source: [
+        in: :query,
+        description: "Source UUID",
+        type: :string,
+        example: "a040ae88-3e27-448b-9ee6-622278b23193",
+        required: false
+      ],
+      source_name: [
+        in: :query,
+        description: "Source name",
+        type: :string,
+        example: "MyApp.MySource",
+        required: false
+      ]
+    ],
+    responses: %{
+      201 => Created.response(LogsCreated),
+      500 => ServerError.response()
+    }
+  )
 
   def create(%{assigns: %{source: source}} = conn, %{"batch" => batch}) when is_list(batch) do
     ingest_and_render(conn, batch, source)
