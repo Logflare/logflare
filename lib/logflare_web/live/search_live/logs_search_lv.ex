@@ -106,7 +106,7 @@ defmodule LogflareWeb.Source.SearchLV do
           socket
           |> assign(:loading, true)
           |> assign(:chart_loading, true)
-          |> assign(:tailing_initial?, true)
+          |> assign(:tailing_initial?, false)
           |> assign(:lql_rules, lql_rules)
           |> assign(:querystring, qs)
           |> assign(:search_op_log_events, search_op_log_events)
@@ -133,7 +133,7 @@ defmodule LogflareWeb.Source.SearchLV do
   end
 
   def handle_params(%{"source_id" => source}, uri, socket) do
-    params = %{"source_id" => source, "querystring" => "", "tailing?" => "true"}
+    params = %{"source_id" => source, "querystring" => ""}
     handle_params(params, uri, socket)
   end
 
@@ -156,14 +156,14 @@ defmodule LogflareWeb.Source.SearchLV do
     source = Sources.get_source_for_lv_param(source_id)
     user = Users.get_by_and_preload(id: user_id)
 
-    %{querystring: querystring, tailing?: tailing?} = prepare_params(params)
+    %{querystring: querystring} = prepare_params(params)
 
     socket =
       socket
       |> assign(@default_assigns)
       |> assign(
         source: source,
-        tailing?: tailing?,
+        tailing?: false,
         user: user,
         loading: true,
         search_tip: gen_search_tip(),
@@ -215,14 +215,14 @@ defmodule LogflareWeb.Source.SearchLV do
 
     socket = assign_new_user_timezone(socket, team_user, user)
 
-    %{querystring: querystring, tailing?: tailing?} = prepare_params(params)
+    %{querystring: querystring} = prepare_params(params)
 
     socket =
       socket
       |> assign(@default_assigns)
       |> assign(
-        tailing?: tailing?,
-        tailing_initial?: true,
+        tailing?: false,
+        tailing_initial?: false,
         loading: true,
         user: user,
         search_tip: gen_search_tip(),
@@ -263,7 +263,7 @@ defmodule LogflareWeb.Source.SearchLV do
     socket =
       assign_new_search_with_qs(
         socket,
-        %{querystring: qs, tailing?: prev_assigns.tailing?},
+        %{querystring: qs},
         bq_table_schema
       )
 
@@ -319,7 +319,7 @@ defmodule LogflareWeb.Source.SearchLV do
       socket =
         socket
         |> assign(:lql_rules, new_rules)
-        |> push_patch_with_params(%{tailing?: false, querystring: qs})
+        |> push_patch_with_params(%{querystring: qs})
 
       {:noreply, socket}
     end
@@ -392,7 +392,7 @@ defmodule LogflareWeb.Source.SearchLV do
         |> assign(:loading, true)
         |> assign(:chart_loading, true)
         |> clear_flash()
-        |> push_patch_with_params(%{querystring: qs, tailing?: prev_assigns.tailing?})
+        |> push_patch_with_params(%{querystring: qs})
       else
         assign(socket, :search_history, search_history)
       end
@@ -427,7 +427,7 @@ defmodule LogflareWeb.Source.SearchLV do
       |> assign(:tailing?, false)
       |> assign(:lql_rules, lql_list)
       |> assign(:querystring, qs)
-      |> push_patch_with_params(%{querystring: qs, tailing?: assigns.tailing?})
+      |> push_patch_with_params(%{querystring: qs})
 
     {:noreply, socket}
   end
@@ -441,7 +441,7 @@ defmodule LogflareWeb.Source.SearchLV do
       socket
       |> assign(:use_local_time, not socket.assigns.use_local_time)
       |> assign_new_search_with_qs(
-        %{querystring: socket.assigns.querystring, tailing?: socket.assigns.tailing?},
+        %{querystring: socket.assigns.querystring},
         socket.assigns.source.bq_table_schema
       )
 
@@ -641,18 +641,18 @@ defmodule LogflareWeb.Source.SearchLV do
   end
 
   defp assign_new_search_with_qs(socket, params, bq_table_schema) do
-    %{querystring: qs, tailing?: tailing?} = params
+    %{querystring: qs} = params
 
     with {:ok, lql_rules} <- Lql.decode(qs, bq_table_schema),
          lql_rules <- Lql.Utils.put_new_chart_rule(lql_rules, Lql.Utils.default_chart_rule()),
          qs <- Lql.encode!(lql_rules) do
       socket
       |> assign(:loading, true)
-      |> assign(:tailing_initial?, true)
+      |> assign(:tailing_initial?, false)
       |> clear_flash()
       |> assign(:lql_rules, lql_rules)
       |> assign(:querystring, qs)
-      |> push_patch_with_params(%{querystring: qs, tailing?: tailing?})
+      |> push_patch_with_params(%{querystring: qs})
     else
       {:error, error} ->
         error_socket(socket, error)
@@ -705,12 +705,8 @@ defmodule LogflareWeb.Source.SearchLV do
     end
   end
 
-  defp push_patch_with_params(socket, %{querystring: querystring, tailing?: tailing?}) do
-    path =
-      Routes.live_path(socket, __MODULE__, socket.assigns.source.id, %{
-        querystring: querystring,
-        tailing?: tailing?
-      })
+  defp push_patch_with_params(socket, %{querystring: qs}) do
+    path = Routes.live_path(socket, __MODULE__, socket.assigns.source.id, %{querystring: qs})
 
     push_patch(socket, to: path, replace: false)
   end
@@ -760,8 +756,7 @@ defmodule LogflareWeb.Source.SearchLV do
         socket,
         LogflareWeb.Source.SearchLV,
         socket.assigns.source,
-        querystring: suggested_querystring,
-        tailing?: socket.assigns.tailing?
+        querystring: suggested_querystring
       )
 
     replace = link(replace, to: path)
@@ -777,7 +772,6 @@ defmodule LogflareWeb.Source.SearchLV do
     path =
       Routes.live_path(socket, LogflareWeb.Source.SearchLV, socket.assigns.source,
         force: true,
-        tailing?: true,
         loading: true,
         chart_loading: true,
         querystring: socket.assigns.querystring
@@ -812,13 +806,6 @@ defmodule LogflareWeb.Source.SearchLV do
        else: search_history
   end
 
-  defp soft_play(
-         _ev,
-         %{assigns: %{uri_params: %{"tailing?" => "false"}}} = socket
-       ) do
-    {:noreply, socket}
-  end
-
   defp soft_play(ev, %{assigns: prev_assigns} = socket) do
     %{source: %{token: stoken} = source} = prev_assigns
     log_lv_received_event(ev, source)
@@ -832,13 +819,6 @@ defmodule LogflareWeb.Source.SearchLV do
     {:noreply, socket}
   end
 
-  defp soft_pause(
-         _ev,
-         %{assigns: %{uri_params: %{"tailing?" => "false"}}} = socket
-       ) do
-    {:noreply, socket}
-  end
-
   defp soft_pause(ev, %{assigns: prev_assigns} = socket) do
     %{source: %{token: stoken} = source} = prev_assigns
     log_lv_received_event(ev, source)
@@ -849,6 +829,9 @@ defmodule LogflareWeb.Source.SearchLV do
     socket =
       socket
       |> assign(:tailing?, false)
+      |> push_patch_with_params(%{
+        querystring: prev_assigns.querystring
+      })
 
     {:noreply, socket}
   end
@@ -863,8 +846,7 @@ defmodule LogflareWeb.Source.SearchLV do
       socket
       |> assign(:tailing?, true)
       |> push_patch_with_params(%{
-        querystring: prev_assigns.querystring,
-        tailing?: true
+        querystring: prev_assigns.querystring
       })
 
     {:noreply, socket}

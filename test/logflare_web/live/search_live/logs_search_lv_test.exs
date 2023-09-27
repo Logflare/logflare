@@ -149,7 +149,6 @@ defmodule LogflareWeb.Source.SearchLVTest do
       assert html =~ "some event message"
 
       html = render(view)
-      assert html =~ "Elapsed since last query"
 
       # default input values
       assert find_selected_chart_period(html) == "minute"
@@ -346,13 +345,13 @@ defmodule LogflareWeb.Source.SearchLVTest do
       {:ok, view, _html} = live(conn, Routes.live_path(conn, SearchLV, source))
       # post-init fetching
       :timer.sleep(500)
+      html = render(view)
+      refute html =~ "Elapsed since last query"
+      html = render_click(view, "soft_play", %{})
+      assert html =~ "Elapsed since last query"
 
-      assert get_view_assigns(view).tailing?
-      render_click(view, "soft_pause", %{})
-      refute get_view_assigns(view).tailing?
-
-      render_click(view, "soft_play", %{})
-      assert get_view_assigns(view).tailing?
+      html = render_click(view, "soft_pause", %{})
+      refute html =~ "Elapsed since last query"
     end
 
     test "datetime_update", %{conn: conn, source: source} do
