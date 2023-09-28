@@ -66,7 +66,10 @@ defmodule Logflare.Application do
        strategy: :one_for_one, name: Logflare.Backends.Adaptor.PostgresAdaptor.Supervisor},
       {DynamicSupervisor,
        strategy: :one_for_one, name: Logflare.Backends.Adaptor.PostgresAdaptor.PgRepoSupervisor},
-      {Registry, name: Logflare.Backends.SourceRegistry, keys: :unique, partitions: System.schedulers_online()},
+      {Registry,
+       name: Logflare.Backends.SourceRegistry,
+       keys: :unique,
+       partitions: System.schedulers_online()},
       {Registry, name: Logflare.Backends.SourceDispatcher, keys: :duplicate}
     ] ++ common_children()
   end
@@ -154,7 +157,10 @@ defmodule Logflare.Application do
        strategy: :one_for_one, name: Logflare.Backends.Adaptor.PostgresAdaptor.Supervisor},
       {DynamicSupervisor,
        strategy: :one_for_one, name: Logflare.Backends.Adaptor.PostgresAdaptor.PgRepoSupervisor},
-      {Registry, name: Logflare.Backends.SourceRegistry, keys: :unique, partitions: System.schedulers_online()},
+      {Registry,
+       name: Logflare.Backends.SourceRegistry,
+       keys: :unique,
+       partitions: System.schedulers_online()},
       {Registry, name: Logflare.Backends.SourceDispatcher, keys: :duplicate},
 
       # citrine scheduler for alerts
