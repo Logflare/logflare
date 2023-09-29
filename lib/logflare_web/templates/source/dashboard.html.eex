@@ -68,7 +68,7 @@
       <%= link("Invite more team members.", to: Routes.user_path(@conn, :edit) <> "#team-members") %>
 
     </div>
-    <div id="source-list" class="col-lg-9 mb-4">
+    <div id="source-list" class="col-lg-7 mb-4">
       <div>
         <ul class="list-group">
           <%= if @sources == [] do %>
@@ -114,7 +114,57 @@
         <%= link "New source", to: Routes.source_path(@conn, :new), class: "btn btn-primary", id: "new-source-button" %>
       </div>
     </div>
-  </div>
+
+    <div class="col-lg-2 mb-4">
+      <h5 class="header-margin">Integrations</h5>
+      <ul class="list-group list-group-flush">
+        <li class="list-group-item tw-text-sm">
+          <%= link "Cloudflare", to: "https://cloudflareapps.com/apps/logflare" %>
+        </li>
+
+        <li class="list-group-item tw-text-sm">
+          <%= link "Vercel", to: "https://docs.logflare.app/integrations/vercel/" %>
+        </li>
+        <li class="list-group-item tw-text-sm">
+          <%= link "Fly", to: "https://github.com/Logflare/fly-log-shipper" %>
+        </li>
+        <li class="list-group-item tw-text-sm">
+          <%= link "Postgres  FDW", to: "https://docs.logflare.app/integrations/postgres-fdw" %>
+          <span class="tw-text-xs tw-block">Javascript</span>
+        </li>
+          <li class="list-group-item tw-text-sm">
+            <%= link "pino-logflare", to: "https://docs.logflare.app/integrations/postgres-fdw" %>
+            <span class="tw-text-xs tw-block">Javascript</span>
+          </li>
+
+          <li class="list-group-item tw-text-sm">
+            <%= link "LoggerBackend", to: "https://github.com/Logflare/logflare_logger_backend" %>
+            <span class="tw-text-xs tw-block">Elixir</span>
+          </li>
+
+          <li class="list-group-item tw-text-sm">
+            <%= link "logflare_erl ", to: "https://github.com/Logflare/logflare_erl" %>
+            <span class="tw-text-xs tw-block">Erlang</span>
+          </li>
+      </ul>
+      <%# TODO: change this to the docs site https://docs.logflare.app/category/integrations %>
+      <%= link "View all integrations", class: "tw-text-sm",  to: "https://github.com/Logflare/logflare#integrations" %>
+
+      <h5 class="header-margin">Documentation</h5>
+      <ul class="list-group list-group-flush">
+
+        <li class="list-group-item tw-text-sm">
+          <%= link "docs.logflare.app", to: "https://docs.logflare.app" %>
+        </li>
+
+        <li class="list-group-item tw-text-sm">
+          <%= link "OpenAPI", to: ~p"/swaggerui" %>
+        </li>
+      </ul>
+
+    </div>
+
+  </div >
 </div>
 <div id="__phx-assigns__" data-user-api-key="<%= @user.api_key %>"
   data-source-tokens="<%= Jason.encode!(Enum.map(@sources, &Atom.to_string(&1.token))) %>"
