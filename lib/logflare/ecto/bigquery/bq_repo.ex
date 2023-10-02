@@ -75,8 +75,6 @@ defmodule Logflare.BqRepo do
         |> Map.new()
 
       {:ok, response}
-    else
-      errtup -> errtup
     end
   end
 

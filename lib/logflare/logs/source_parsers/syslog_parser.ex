@@ -74,41 +74,43 @@ defmodule Logflare.Logs.SyslogParser do
         nil -> &do_parse/1
       end
 
-    with {:ok, tokens, "", _, _, _} <- parser.(messagestr) do
-      map =
-        tokens
-        |> List.flatten()
-        |> merge_syslog_sd()
-        |> merge_json()
-        |> Map.new()
-        |> Map.merge(%{message_raw: messagestr})
-        |> rename_fields()
+    case parser.(messagestr) do
+      {:ok, tokens, "", _, _, _} ->
+        map =
+          tokens
+          |> List.flatten()
+          |> merge_syslog_sd()
+          |> merge_json()
+          |> Map.new()
+          |> Map.merge(%{message_raw: messagestr})
+          |> rename_fields()
 
-      syslog_message = struct(SyslogMessage, map)
+        syslog_message = struct(SyslogMessage, map)
 
-      logfmt =
-        case syslog_message.process_id do
-          "router" ->
-            parse_logfmt(syslog_message.message_text)
+        logfmt =
+          case syslog_message.process_id do
+            "router" ->
+              parse_logfmt(syslog_message.message_text)
 
-          "heroku-postgres" ->
-            parse_logfmt(syslog_message.message_text)
+            "heroku-postgres" ->
+              parse_logfmt(syslog_message.message_text)
 
-          "heroku-redis" ->
-            parse_logfmt(syslog_message.message_text)
+            "heroku-redis" ->
+              parse_logfmt(syslog_message.message_text)
 
-          "heroku" <> _rest ->
-            parse_logfmt(syslog_message.message_text)
+            "heroku" <> _rest ->
+              parse_logfmt(syslog_message.message_text)
 
-          _ ->
-            nil
-        end
+            _ ->
+              nil
+          end
 
-      syslog_message = Map.put(syslog_message, :logfmt, logfmt)
+        syslog_message = Map.put(syslog_message, :logfmt, logfmt)
 
-      {:ok, syslog_message}
-    else
-      {:error, error, _, _, _, _} -> {:error, error}
+        {:ok, syslog_message}
+
+      {:error, error, _, _, _, _} ->
+        {:error, error}
     end
   end
 

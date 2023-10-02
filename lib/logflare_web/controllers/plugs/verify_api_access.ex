@@ -19,14 +19,19 @@ defmodule LogflareWeb.Plugs.VerifyApiAccess do
     opts = Enum.into(opts, %{scopes: []})
     resource_type = Map.get(conn.assigns, :resource_type)
     # generic access
-    with {:ok, owner} <- identify_requestor(conn, opts.scopes) do
-      case "partner" in opts.scopes do
-        true -> assign(conn, :partner, owner)
-        false -> assign(conn, :user, owner)
-      end
-    else
-      {:error, :no_token} when resource_type != nil -> conn
-      _ -> FallbackController.call(conn, {:error, :unauthorized})
+    case identify_requestor(conn, opts.scopes) do
+      {:ok, owner} ->
+        if "partner" in opts.scopes do
+          assign(conn, :partner, owner)
+        else
+          assign(conn, :user, owner)
+        end
+
+      {:error, :no_token} when resource_type != nil ->
+        conn
+
+      _ ->
+        FallbackController.call(conn, {:error, :unauthorized})
     end
   end
 

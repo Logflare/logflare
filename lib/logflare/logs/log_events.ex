@@ -39,8 +39,6 @@ defmodule Logflare.Logs.LogEvents do
           le = LogEvent.make_from_db(row, %{source: source})
           {:ok, le}
       end
-    else
-      errtup -> errtup
     end
   end
 

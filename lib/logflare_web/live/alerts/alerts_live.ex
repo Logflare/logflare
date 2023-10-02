@@ -78,17 +78,17 @@ defmodule LogflareWeb.AlertsLive do
       ) do
     Logger.debug("Saving alert", params: params)
 
-    with {:ok, updated_alert} <- upsert_alert(alert, user, params) do
-      verb = if(alert, do: "updated", else: "created")
+    verb = if alert, do: "updated", else: "created"
 
-      {:noreply,
-       socket
-       |> assign(:alert, updated_alert)
-       |> put_flash(:info, "Successfully #{verb} alert #{updated_alert.name}")
-       |> push_patch(to: ~p"/alerts/#{updated_alert.id}")}
-    else
+    case upsert_alert(alert, user, params) do
+      {:ok, updated_alert} ->
+        {:noreply,
+         socket
+         |> assign(:alert, updated_alert)
+         |> put_flash(:info, "Successfully #{verb} alert #{updated_alert.name}")
+         |> push_patch(to: ~p"/alerts/#{updated_alert.id}")}
+
       {:error, %Ecto.Changeset{} = changeset} ->
-        verb = if(alert, do: "update", else: "create")
         message = "Could not #{verb} alert. Please fix the errors before trying again."
 
         socket =

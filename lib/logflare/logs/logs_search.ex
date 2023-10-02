@@ -29,9 +29,10 @@ defmodule Logflare.Logs.Search do
 
     [event_result] = results
 
-    with {:ok, {:ok, events_so}} <- event_result do
-      {:ok, %{events: events_so}}
-    else
+    case event_result do
+      {:ok, {:ok, events_so}} ->
+        {:ok, %{events: events_so}}
+
       {:ok, {:error, result_so}} ->
         {:error, result_so}
 
@@ -60,10 +61,10 @@ defmodule Logflare.Logs.Search do
 
     [agg_result] = results
 
-    with {:ok, {:ok, agg_so}} <-
-           agg_result do
-      {:ok, %{aggregates: agg_so}}
-    else
+    case agg_result do
+      {:ok, {:ok, agg_so}} ->
+        {:ok, %{aggregates: agg_so}}
+
       {:ok, {:error, result_so}} ->
         {:error, result_so}
 

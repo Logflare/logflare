@@ -364,9 +364,8 @@ defmodule Logflare.Sources do
   @spec put_bq_table_schema(Source.t()) :: Source.t()
   def put_bq_table_schema(%Source{} = source) do
     bq_table_schema =
-      with {:ok, bq_table_schema} <- get_bq_schema(source) do
-        bq_table_schema
-      else
+      case get_bq_schema(source) do
+        {:ok, bq_table_schema} -> bq_table_schema
         {:error, error} -> raise(error)
       end
 
