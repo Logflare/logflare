@@ -26,6 +26,7 @@ defmodule LogflareWeb.EndpointsLiveTest do
 
       # description
       assert has_element?(view, "ul li p", endpoint.description)
+      assert has_element?(view, "ul li *[title='Auth enabled']")
 
       # link to show
       view
