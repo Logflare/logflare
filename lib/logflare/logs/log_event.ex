@@ -220,9 +220,8 @@ defmodule Logflare.LogEvent do
     if keys = source.custom_event_message_keys do
       keys
       |> String.split(",", trim: true)
-      |> Enum.map(&String.trim/1)
-      |> Enum.map(fn x ->
-        case x do
+      |> Enum.map_join(" | ", fn x ->
+        case String.trim(x) do
           "id" ->
             le.id
 
@@ -242,7 +241,6 @@ defmodule Logflare.LogEvent do
             ["Invalid custom message keys. Are your keys comma separated? Got: #{inspect(keys)}"]
         end
       end)
-      |> Enum.join(" | ")
     else
       message
     end

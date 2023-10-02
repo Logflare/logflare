@@ -88,18 +88,14 @@ defmodule Logflare.Source.SlackHookServer.Client do
         slack_no_events_message()
 
       rate in 1..3 ->
-        Enum.take(recent_events, -rate)
-        |> Enum.map(fn x ->
-          slack_event_message(x)
-        end)
-        |> Enum.join("\r")
+        recent_events
+        |> Enum.take(-rate)
+        |> Enum.map_join("\r", &slack_event_message/1)
 
       true ->
-        Enum.take(recent_events, -3)
-        |> Enum.map(fn x ->
-          slack_event_message(x)
-        end)
-        |> Enum.join("\r")
+        recent_events
+        |> Enum.take(-3)
+        |> Enum.map_join("\r", &slack_event_message/1)
     end
   end
 
