@@ -435,7 +435,30 @@ defmodule LogflareWeb.SourceControllerTest do
   describe "delete" do
     setup [:old_setup]
 
-    test "deletes a source", %{conn: conn, sources: [s1 | _], users: [u1 | _]} do
+    test "deletes a source", %{conn: init_conn, sources: [s1 | _], users: [u1 | _]} do
+      conn =
+        init_conn
+        |> login_user(u1)
+        |> delete(source_path(init_conn, :del_source_and_redirect, s1.id))
+
+      assert redirected_to(conn, 302) =~ "/dashboard"
+
+      conn =
+        init_conn
+        |> login_user(u1)
+        |> get(Routes.source_path(init_conn, :dashboard))
+
+      assert html = html_response(conn, 200)
+      refute html =~ s1.name
+
+      assert is_nil(Sources.get(s1.id))
+    end
+
+    test "deletes saved saerches on source delete", %{
+      conn: init_conn,
+      sources: [s1 | _],
+      users: [u1 | _]
+    } do
       {:ok, saved_search} =
         SavedSearches.insert(
           %{
@@ -456,18 +479,17 @@ defmodule LogflareWeb.SourceControllerTest do
       {:ok, _counter} = SavedSearches.inc(saved_search.id, tailing: true)
 
       conn =
-        conn
+        init_conn
         |> login_user(u1)
-        |> delete(source_path(conn, :del_source_and_redirect, s1.id))
+        |> delete(source_path(init_conn, :del_source_and_redirect, s1.id))
 
       assert redirected_to(conn, 302) =~ "/dashboard"
-      assert is_nil(Sources.get(s1.id))
       assert is_nil(SavedSearches.get(saved_search.id))
     end
   end
 
   defp old_setup(_) do
-    Sources.Counters.start_link()
+    start_supervised!(Sources.Counters)
 
     insert(:plan, name: "Free")
     u1 = insert(:user)
@@ -479,8 +501,8 @@ defmodule LogflareWeb.SourceControllerTest do
     s2 = insert(:source, user_id: u1.id)
     s3 = insert(:source, user_id: u2.id)
 
-    users = Repo.preload([u1, u2], :sources)
-
+    # users = Repo.preload([u1, u2], :sources)
+    users = [u1, u2]
     sources = [s1, s2, s3]
 
     {:ok, users: users, sources: sources}

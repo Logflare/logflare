@@ -18,9 +18,8 @@ defmodule LogflareWeb.SourceController do
   alias Logflare.SourceSchemas
   alias Logflare.Teams
   alias Logflare.TeamUsers
+  alias Logflare.Users
   alias LogflareWeb.AuthController
-
-  plug LogflareWeb.Plugs.CheckSourceCount when action in [:create, :delete]
 
   defp env_project_id, do: Application.get_env(:logflare, Logflare.Google)[:project_id]
 
@@ -46,6 +45,7 @@ defmodule LogflareWeb.SourceController do
   end
 
   def dashboard(%{assigns: %{user: user, team: team}} = conn, _params) do
+    user = Users.preload_sources(user)
     sources = Sources.preload_for_dashboard(user.sources)
 
     home_team = team
