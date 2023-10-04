@@ -5,10 +5,10 @@ defmodule LogflareWeb.AlertsLive do
 
   require Logger
 
-  alias Logflare.Endpoints
   alias Logflare.Users
   alias LogflareWeb.Utils
   alias Logflare.Alerting
+  alias Logflare.Alerting.AlertQuery
 
   embed_templates("actions/*", suffix: "_action")
   embed_templates("components/*")
@@ -34,7 +34,6 @@ defmodule LogflareWeb.AlertsLive do
   def mount(%{}, %{"user_id" => user_id}, socket) do
     user = Users.get(user_id)
 
-    allow_access = Enum.any?([Utils.flag("endpointsOpenBeta"), user.endpoints_beta])
 
     socket =
       socket
@@ -44,8 +43,7 @@ defmodule LogflareWeb.AlertsLive do
       |> refresh()
       |> assign(:query_result_rows, nil)
       |> assign(:alert, nil)
-      |> assign(:endpoint_changeset, Endpoints.change_query(%Endpoints.Query{}))
-      |> assign(:allow_access, allow_access)
+      |> assign(:endpoint_changeset, Alerting.change_alert_query(%AlertQuery{}))
       |> assign(:base_url, LogflareWeb.Endpoint.url())
       |> assign(:parse_error_message, nil)
       |> assign(:query_string, nil)
@@ -63,10 +61,14 @@ defmodule LogflareWeb.AlertsLive do
         Alerting.get_alert_query_by(id: alert_id, user_id: socket.assigns.user_id)
       end
 
+    socket = assign(socket, :alert, alert)
+
     socket =
-      socket
-      |> assign(:alert, alert)
-      |> assign(:changeset, nil)
+      if socket.assigns.live_action == :edit do
+        assign(socket, :changeset, Alerting.change_alert_query(alert))
+      else
+        assign(socket, :changeset, nil)
+      end
 
     {:noreply, socket}
   end

@@ -44,7 +44,6 @@
             "select timestamp, event_message from `YourApp.SourceName` \nwhere regexp_contains(event_message, 'error')",
           class: "form-control form-control-margin",
           id: "alert-query",
-          value: Map.get(@params_form.params, "query"),
           style: "height: 20rem"
         ) %>
         <%= error_tag(f, :query) %>
