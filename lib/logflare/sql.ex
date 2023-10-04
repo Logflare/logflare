@@ -460,12 +460,12 @@ defmodule Logflare.Sql do
         {source.name, source}
       end
 
-    sources =
-      with {:ok, ast} <- Parser.parse(opts.dialect, query),
-           names <-
-             ast
-             |> find_all_source_names()
-             |> Enum.filter(fn name -> name in source_names end) do
+    with {:ok, ast} <- Parser.parse(opts.dialect, query),
+         names <-
+           ast
+           |> find_all_source_names()
+           |> Enum.filter(fn name -> name in source_names end) do
+      sources =
         names
         |> Enum.map(fn name ->
           token =
@@ -480,9 +480,9 @@ defmodule Logflare.Sql do
           {name, token}
         end)
         |> Map.new()
-      end
 
-    {:ok, sources}
+      {:ok, sources}
+    end
   end
 
   defp find_all_source_names(ast),
