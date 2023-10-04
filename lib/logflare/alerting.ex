@@ -184,7 +184,7 @@ defmodule Logflare.Alerting do
       :ok
     else
       {:ok, []} ->
-        :ok
+        {:error, :no_results}
 
       other ->
         other

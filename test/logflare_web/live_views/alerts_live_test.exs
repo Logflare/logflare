@@ -130,25 +130,39 @@ defmodule LogflareWeb.AlertsLiveTest do
       |> stub(:fetch, fn _mod -> {:ok, %Goth.Token{token: "auth-token"}} end)
 
       WebhookAdaptor.Client
-      |> expect(:send, fn _, _ -> %Tesla.Env{} end)
+      |> stub(:send, fn _, _ -> %Tesla.Env{} end)
 
       SlackAdaptor.Client
-      |> expect(:send, fn _, _ -> %Tesla.Env{} end)
+      |> stub(:send, fn _, _ -> %Tesla.Env{} end)
 
+      :ok
+    end
+
+    test "manual alert trigger - notification sent", %{conn: conn, alert_query: alert_query} do
       GoogleApi.BigQuery.V2.Api.Jobs
       |> expect(:bigquery_jobs_query, 1, fn _conn, _proj_id, _opts ->
         {:ok, TestUtils.gen_bq_response([%{"testing" => "results-123"}])}
       end)
 
-      :ok
-    end
-
-    test "manual alert trigger", %{conn: conn, alert_query: alert_query} do
       {:ok, view, _html} = live(conn, Routes.alerts_path(conn, :show, alert_query))
 
       assert view
              |> element("button", "Manual trigger")
-             |> render_click() =~ "Alert has been triggered!"
+             |> render_click() =~ "Alert has been triggered. Notifications sent!"
+    end
+
+    test "manual alert trigger - notification not sent", %{conn: conn, alert_query: alert_query} do
+      GoogleApi.BigQuery.V2.Api.Jobs
+      |> expect(:bigquery_jobs_query, 1, fn _conn, _proj_id, _opts ->
+        {:ok, TestUtils.gen_bq_response([])}
+      end)
+
+      {:ok, view, _html} = live(conn, Routes.alerts_path(conn, :show, alert_query))
+
+      assert view
+             |> element("button", "Manual trigger")
+             |> render_click() =~
+               "Alert has been triggered. No results from query, notifications not sent!"
     end
   end
 end

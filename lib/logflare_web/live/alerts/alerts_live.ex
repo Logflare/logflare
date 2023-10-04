@@ -136,10 +136,18 @@ defmodule LogflareWeb.AlertsLive do
         _params,
         %{assigns: %{alert: %_{} = alert}} = socket
       ) do
-    with :ok <- Alerting.run_alert(alert) |> IO.inspect() do
+    with :ok <- Alerting.run_alert(alert) do
       {:noreply,
        socket
-       |> put_flash(:info, "Alert has been triggered!")}
+       |> put_flash(:info, "Alert has been triggered. Notifications sent!")}
+    else
+      {:error, :no_results} ->
+        {:noreply,
+         socket
+         |> put_flash(
+           :error,
+           "Alert has been triggered. No results from query, notifications not sent!"
+         )}
     end
   end
 
