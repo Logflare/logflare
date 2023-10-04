@@ -284,5 +284,5 @@ defmodule Logflare.Mixfile do
     ]
   end
 
-  defp version, do: File.read!("./VERSION")
+  defp version, do: File.read!(Path.join(__DIR__, "VERSION"))
 end
