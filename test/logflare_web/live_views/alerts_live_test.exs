@@ -1,6 +1,8 @@
 defmodule LogflareWeb.AlertsLiveTest do
   use LogflareWeb.ConnCase
   import Phoenix.LiveViewTest
+  alias Logflare.Backends.Adaptor.WebhookAdaptor
+  alias Logflare.Backends.Adaptor.SlackAdaptor
 
   @update_attrs %{
     name: "some updated name",
@@ -116,6 +118,37 @@ defmodule LogflareWeb.AlertsLiveTest do
       assert view
              |> element("img[alt='Add to Slack']")
              |> has_element?()
+    end
+  end
+
+  describe "running alerts" do
+    setup [:create_alert_query]
+
+    setup do
+      # mock goth behaviour
+      Goth
+      |> stub(:fetch, fn _mod -> {:ok, %Goth.Token{token: "auth-token"}} end)
+
+      WebhookAdaptor.Client
+      |> expect(:send, fn _, _ -> %Tesla.Env{} end)
+
+      SlackAdaptor.Client
+      |> expect(:send, fn _, _ -> %Tesla.Env{} end)
+
+      GoogleApi.BigQuery.V2.Api.Jobs
+      |> expect(:bigquery_jobs_query, 1, fn _conn, _proj_id, _opts ->
+        {:ok, TestUtils.gen_bq_response([%{"testing" => "results-123"}])}
+      end)
+
+      :ok
+    end
+
+    test "manual alert trigger", %{conn: conn, alert_query: alert_query} do
+      {:ok, view, _html} = live(conn, Routes.alerts_path(conn, :show, alert_query))
+
+      assert view
+             |> element("button", "Manual trigger")
+             |> render_click() =~ "Alert has been triggered!"
     end
   end
 end

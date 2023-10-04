@@ -131,6 +131,18 @@ defmodule LogflareWeb.AlertsLive do
     end
   end
 
+  def handle_event(
+        "manual-trigger",
+        _params,
+        %{assigns: %{alert: %_{} = alert}} = socket
+      ) do
+    with :ok <- Alerting.run_alert(alert) |> IO.inspect() do
+      {:noreply,
+       socket
+       |> put_flash(:info, "Alert has been triggered!")}
+    end
+  end
+
   defp refresh(%{assigns: assigns} = socket) do
     alerts = Alerting.list_alert_queries(assigns.user)
 
