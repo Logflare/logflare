@@ -85,8 +85,6 @@ defmodule Logflare.Billing do
       attrs = %{stripe_invoices: invoices}
 
       update_billing_account(billing_account, attrs)
-    else
-      err -> err
     end
   end
 

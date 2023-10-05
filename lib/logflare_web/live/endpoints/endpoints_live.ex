@@ -100,15 +100,16 @@ defmodule LogflareWeb.EndpointsLive do
       ) do
     Logger.debug("Saving endpoint", params: params)
 
-    with {:ok, endpoint} <- upsert_query(show_endpoint, user, params) do
-      verb = if(show_endpoint, do: "updated", else: "created")
+    case upsert_query(show_endpoint, user, params) do
+      {:ok, endpoint} ->
+        verb = if show_endpoint, do: "updated", else: "created"
 
-      {:noreply,
-       socket
-       |> put_flash(:info, "Successfully #{verb} endpoint #{endpoint.name}")
-       |> push_patch(to: ~p"/endpoints/#{endpoint.id}")
-       |> assign(:show_endpoint, endpoint)}
-    else
+        {:noreply,
+         socket
+         |> put_flash(:info, "Successfully #{verb} endpoint #{endpoint.name}")
+         |> push_patch(to: ~p"/endpoints/#{endpoint.id}")
+         |> assign(:show_endpoint, endpoint)}
+
       {:error, %Ecto.Changeset{} = changeset} ->
         verb = if(show_endpoint, do: "update", else: "create")
         message = "Could not #{verb} endpoint. Please fix the errors before trying again."

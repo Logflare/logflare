@@ -20,8 +20,7 @@ defmodule Logflare.Lql.Encoder do
           case grouped_rules do
             {:chart, chart_rules} ->
               chart_rules
-              |> Enum.map(&to_fragment/1)
-              |> Enum.join(" ")
+              |> Enum.map_join(" ", &to_fragment/1)
               |> String.replace("chart:timestamp", "")
 
             {"m.level", filter_rules} when length(filter_rules) >= 2 ->
@@ -31,7 +30,7 @@ defmodule Logflare.Lql.Encoder do
               "m.level:#{min_level.value}..#{max_level.value}"
 
             {_path, filter_rules} ->
-              filter_rules |> Enum.map(&to_fragment/1) |> Enum.join(" ")
+              filter_rules |> Enum.map_join(" ", &to_fragment/1)
           end
 
         qs <> " " <> append
@@ -140,7 +139,7 @@ defmodule Logflare.Lql.Encoder do
     date_periods = [:year, :month, :day]
 
     mapper = fn period -> timestamp_mapper(ldt, rdt, period) end
-    date_periods |> Enum.map(mapper) |> Enum.join("-")
+    date_periods |> Enum.map_join("-", mapper)
   end
 
   def to_datetime_with_range(ldt, rdt) do
@@ -150,8 +149,8 @@ defmodule Logflare.Lql.Encoder do
 
     mapper = fn period -> timestamp_mapper(ldt, rdt, period) end
 
-    date_string = date_periods |> Enum.map(mapper) |> Enum.join("-")
-    time_string = time_periods |> Enum.map(mapper) |> Enum.join(":")
+    date_string = date_periods |> Enum.map_join("-", mapper)
+    time_string = time_periods |> Enum.map_join(":", mapper)
     maybe_us_string = us |> Enum.map(mapper) |> hd
     datetime_string = date_string <> "T" <> time_string
 

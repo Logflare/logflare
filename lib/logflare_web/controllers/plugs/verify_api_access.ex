@@ -19,14 +19,19 @@ defmodule LogflareWeb.Plugs.VerifyApiAccess do
     opts = Enum.into(opts, %{scopes: []})
     resource_type = Map.get(conn.assigns, :resource_type)
     # generic access
-    with {:ok, owner} <- identify_requestor(conn, opts.scopes) do
-      case "partner" in opts.scopes do
-        true -> assign(conn, :partner, owner)
-        false -> assign(conn, :user, owner)
-      end
-    else
-      {:error, :no_token} when resource_type != nil -> conn
-      _ -> FallbackController.call(conn, {:error, :unauthorized})
+    case identify_requestor(conn, opts.scopes) do
+      {:ok, owner} ->
+        if "partner" in opts.scopes do
+          assign(conn, :partner, owner)
+        else
+          assign(conn, :user, owner)
+        end
+
+      {:error, :no_token} when resource_type != nil ->
+        conn
+
+      _ ->
+        FallbackController.call(conn, {:error, :unauthorized})
     end
   end
 
@@ -54,20 +59,20 @@ defmodule LogflareWeb.Plugs.VerifyApiAccess do
 
   defp extract_token(conn) do
     auth_header =
-      conn.req_headers
-      |> Enum.into(%{})
-      |> Map.get("authorization")
+      conn
+      |> Plug.Conn.get_req_header("authorization")
+      |> List.first()
 
     bearer =
-      if auth_header && String.contains?(auth_header, "Bearer ") do
-        String.split(auth_header, " ")
-        |> Enum.at(1)
+      case auth_header do
+        "Bearer " <> token -> token
+        _ -> nil
       end
 
     api_key =
-      conn.req_headers
-      |> Enum.into(%{})
-      |> Map.get("x-api-key", conn.params["api_key"])
+      conn
+      |> Plug.Conn.get_req_header("x-api-key")
+      |> List.first(conn.params["api_key"])
 
     cond do
       bearer != nil -> {:ok, bearer}

@@ -117,7 +117,7 @@ defmodule Logflare.SystemMetrics.Wobserver.Processes do
   def pid(pid) when is_list(pid), do: :erlang.list_to_pid(pid)
   def pid({a, b, c}), do: pid("<#{a}.#{b}.#{c}>")
   def pid("#PID" <> pid), do: pid |> String.to_charlist() |> pid()
-  def pid(pid = "<" <> _), do: pid |> String.to_charlist() |> pid()
+  def pid("<" <> _ = pid), do: pid |> String.to_charlist() |> pid()
   def pid(pid) when is_binary(pid), do: pid |> string_to_module() |> pid()
   def pid(_), do: nil
 

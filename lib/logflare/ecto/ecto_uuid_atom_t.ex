@@ -16,8 +16,6 @@ defmodule Ecto.UUID.Atom do
   def load(value) do
     with {:ok, value} <- Ecto.UUID.load(value) do
       {:ok, String.to_atom(value)}
-    else
-      err -> err
     end
   end
 

@@ -34,46 +34,48 @@ defmodule Logflare.Lql.Parser do
   end
 
   def parse(querystring, %TS{} = schema) do
-    with {:ok, rules, "", _, {_, _}, _} <-
-           querystring
-           |> String.trim()
-           |> do_parse() do
-      {chart_rule_tokens, other_rules} =
-        rules
-        |> List.flatten()
-        |> Enum.split_with(fn
-          {:chart, _} -> true
-          _ -> false
-        end)
+    parsed =
+      querystring
+      |> String.trim()
+      |> do_parse()
 
-      typemap = SchemaUtils.bq_schema_to_flat_typemap(schema)
+    case parsed do
+      {:ok, rules, "", _, {_, _}, _} ->
+        {chart_rule_tokens, other_rules} =
+          rules
+          |> List.flatten()
+          |> Enum.split_with(fn
+            {:chart, _} -> true
+            _ -> false
+          end)
 
-      chart_rule =
-        if not Enum.empty?(chart_rule_tokens) do
-          chart_rule =
-            chart_rule_tokens
-            |> Enum.reduce(%{}, fn {:chart, fields}, acc -> Map.merge(acc, Map.new(fields)) end)
-            |> then(&Map.put(&1, :value_type, get_path_type(typemap, &1.path, querystring)))
+        typemap = SchemaUtils.bq_schema_to_flat_typemap(schema)
 
-          struct!(ChartRule, chart_rule)
-        end
+        chart_rule =
+          if not Enum.empty?(chart_rule_tokens) do
+            chart_rule =
+              chart_rule_tokens
+              |> Enum.reduce(%{}, fn {:chart, fields}, acc -> Map.merge(acc, Map.new(fields)) end)
+              |> then(&Map.put(&1, :value_type, get_path_type(typemap, &1.path, querystring)))
 
-      rules =
-        Enum.map(other_rules, fn
-          %FilterRule{path: path} = rule ->
-            type = get_path_type(typemap, path, querystring)
-            maybe_cast_value(rule, type)
-        end)
+            struct!(ChartRule, chart_rule)
+          end
 
-      rules =
-        [chart_rule | rules]
-        |> List.flatten()
-        |> Enum.reject(&is_nil/1)
+        rules =
+          Enum.map(other_rules, fn
+            %FilterRule{path: path} = rule ->
+              type = get_path_type(typemap, path, querystring)
+              maybe_cast_value(rule, type)
+          end)
 
-      {:ok, rules}
-    else
-      {:ok, rules, rest, _, {_, _}, _} ->
-        dbg(rules)
+        rules =
+          [chart_rule | rules]
+          |> List.flatten()
+          |> Enum.reject(&is_nil/1)
+
+        {:ok, rules}
+
+      {:ok, _rules, rest, _, {_, _}, _} ->
         {:error, "LQL parser doesn't know how to handle this part: #{rest}"}
 
       {:error, err} ->
