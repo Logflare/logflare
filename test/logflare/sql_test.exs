@@ -305,6 +305,13 @@ defmodule Logflare.SqlTest do
     assert {:ok, ^expected} = Sql.sources(input, user)
   end
 
+  test "sources/2 raises error on invalid query" do
+    user = insert(:user)
+
+    input = "select a from my_table, `other"
+    assert {:error, "sql parser error" <> _} = Sql.sources(input, user)
+  end
+
   test "source_mapping/3 updates an SQL string with renamed sources" do
     user = insert(:user)
     source = insert(:source, user: user, name: "my_table")
