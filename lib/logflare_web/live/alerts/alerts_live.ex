@@ -6,7 +6,6 @@ defmodule LogflareWeb.AlertsLive do
   require Logger
 
   alias Logflare.Users
-  alias LogflareWeb.Utils
   alias Logflare.Alerting
   alias Logflare.Alerting.AlertQuery
 
