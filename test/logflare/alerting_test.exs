@@ -147,6 +147,23 @@ defmodule Logflare.AlertingTest do
 
       assert :ok = Alerting.run_alert(alert_query)
     end
+
+    test "run_alert_query/1 does not send notifications if no results", %{user: user} do
+      alert_query = insert(:alert, user: user)
+
+      GoogleApi.BigQuery.V2.Api.Jobs
+      |> expect(:bigquery_jobs_query, 1, fn _conn, _proj_id, _opts ->
+        {:ok, TestUtils.gen_bq_response([])}
+      end)
+
+      Logflare.Backends.Adaptor.WebhookAdaptor.Client
+      |> reject(:send, 2)
+
+      Logflare.Backends.Adaptor.SlackAdaptor.Client
+      |> reject(:send, 2)
+
+      assert {:error, :no_results} = Alerting.run_alert(alert_query)
+    end
   end
 
   describe "citrine integration" do

@@ -131,6 +131,26 @@ defmodule LogflareWeb.AlertsLive do
     end
   end
 
+  def handle_event(
+        "manual-trigger",
+        _params,
+        %{assigns: %{alert: %_{} = alert}} = socket
+      ) do
+    with :ok <- Alerting.run_alert(alert) do
+      {:noreply,
+       socket
+       |> put_flash(:info, "Alert has been triggered. Notifications sent!")}
+    else
+      {:error, :no_results} ->
+        {:noreply,
+         socket
+         |> put_flash(
+           :error,
+           "Alert has been triggered. No results from query, notifications not sent!"
+         )}
+    end
+  end
+
   defp refresh(%{assigns: assigns} = socket) do
     alerts = Alerting.list_alert_queries(assigns.user)
 
