@@ -11,7 +11,7 @@ defmodule Logflare.Admin do
   def shutdown(node \\ Node.self(), delay \\ 5000) when is_atom(node) do
     task =
       Task.async(fn ->
-        Logger.warn("Node shutdown initialized, shutting down in #{delay}ms. node=#{node}")
+        Logger.warning("Node shutdown initialized, shutting down in #{delay}ms. node=#{node}")
         Process.sleep(delay)
 
         :rpc.eval_everywhere([node], System, :stop, [])

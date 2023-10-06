@@ -39,7 +39,7 @@ defmodule Logflare.Endpoints.Cache do
     GenServer.call(cache, :query, 30_000)
   catch
     :exit, {:timeout, _call} ->
-      Logger.warn("Endpoint query timeout")
+      Logger.warning("Endpoint query timeout")
 
       message = """
       Backend query timeout! Optimizing your query will help. Some tips:

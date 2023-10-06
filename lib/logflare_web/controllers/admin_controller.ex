@@ -103,7 +103,7 @@ defmodule LogflareWeb.AdminController do
       |> put_status(:ok)
       |> json(%{"message" => "Success, shutting down node: #{node}"})
     else
-      Logger.warn("Node shutdown requested!")
+      Logger.warning("Node shutdown requested!")
 
       conn
       |> put_status(:unauthorized)
@@ -124,7 +124,7 @@ defmodule LogflareWeb.AdminController do
   end
 
   defp do_unauthorized_code_shutdown(conn, _params) do
-    Logger.warn("Node shutdown requested!")
+    Logger.warning("Node shutdown requested!")
 
     conn
     |> put_status(:unauthorized)

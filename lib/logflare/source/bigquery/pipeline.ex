@@ -91,7 +91,7 @@ defmodule Logflare.Source.BigQuery.Pipeline do
         messages
 
       {:ok, %GoogleApi.BigQuery.V2.Model.TableDataInsertAllResponse{insertErrors: errors}} ->
-        Logger.warn("BigQuery insert errors.", error_string: inspect(errors))
+        Logger.warning("BigQuery insert errors.", error_string: inspect(errors))
 
         messages
 
@@ -114,7 +114,7 @@ defmodule Logflare.Source.BigQuery.Pipeline do
           #   messages
 
           _message ->
-            Logger.warn("Stream batch response error!",
+            Logger.warning("Stream batch response error!",
               tesla_response: GenUtils.get_tesla_error_message(response)
             )
 
@@ -126,15 +126,15 @@ defmodule Logflare.Source.BigQuery.Pipeline do
         messages
 
       {:error, :timeout = response} ->
-        Logger.warn("Stream batch timeout error!", tesla_response: response)
+        Logger.warning("Stream batch timeout error!", tesla_response: response)
         messages
 
       {:error, :checkout_timeout = response} ->
-        Logger.warn("Stream batch checkout_timeout error!", tesla_response: response)
+        Logger.warning("Stream batch checkout_timeout error!", tesla_response: response)
         messages
 
       {:error, response} ->
-        Logger.warn("Stream batch unknown error!", tesla_response: inspect(response))
+        Logger.warning("Stream batch unknown error!", tesla_response: inspect(response))
         messages
     end
   end
@@ -176,7 +176,7 @@ defmodule Logflare.Source.BigQuery.Pipeline do
         |> AccountEmail.backend_disconnected(message)
         |> Mailer.deliver()
 
-        Logger.warn("Backend disconnected for: #{user.email}", tesla_response: message)
+        Logger.warning("Backend disconnected for: #{user.email}", tesla_response: message)
 
       {:error, changeset} ->
         Logger.error("Failed to reset backend for user: #{user.email}",

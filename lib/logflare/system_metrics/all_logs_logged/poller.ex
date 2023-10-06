@@ -53,7 +53,7 @@ defmodule Logflare.SystemMetrics.AllLogsLogged.Poller do
     # Getting messages from tracker here for some reason.
     # Logflare.SystemMetrics.AllLogsLogged.Poller.handle_info({#Reference<0.2515045418.1638137859.219426>, {:ok, "Fl6TQMxzPJKX90GH"}}, %{init_total: 1384387391, inserts_since_init: 93034149, last_second: 472, last_total: 1480439241})
 
-    Logger.warn("Handle Tracker message.")
+    Logger.warning("Handle Tracker message.")
 
     {:noreply, state}
   end

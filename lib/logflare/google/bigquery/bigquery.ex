@@ -341,7 +341,10 @@ defmodule Logflare.Google.BigQuery do
         {:error, :not_patched}
 
       {:error, response} ->
-        Logger.warn("Dataset labels NOT patched: #{dataset_id}", error_string: inspect(response))
+        Logger.warning("Dataset labels NOT patched: #{dataset_id}",
+          error_string: inspect(response)
+        )
+
         {:error, :not_patched}
     end
   end

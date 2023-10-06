@@ -106,7 +106,7 @@ defmodule Logflare.LogEvent do
               DateTime.to_unix(udt, :microsecond)
 
             {:error, _} ->
-              # Logger.warn(
+              # Logger.warning(
               #   "Malformed timesetamp. Using DateTime.utc_now/0. Expected iso8601. Got: #{inspect(x)}"
               # )
 

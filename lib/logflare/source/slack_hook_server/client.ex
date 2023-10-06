@@ -39,7 +39,7 @@ defmodule Logflare.Source.SlackHookServer.Client do
       {:ok, %Tesla.Env{body: "invalid_blocks"} = response} ->
         resp = prep_tesla_resp_for_log(response)
 
-        Logger.warn("Slack hook response: invalid_blocks",
+        Logger.warning("Slack hook response: invalid_blocks",
           slackhook_response: resp,
           slackhook_request: %{url: url, body: inspect(body)}
         )
@@ -49,11 +49,11 @@ defmodule Logflare.Source.SlackHookServer.Client do
       {:ok, %Tesla.Env{body: "no_service"} = response} ->
         resp = prep_tesla_resp_for_log(response)
 
-        Logger.warn("Slack hook response: no_service", slackhook_response: resp)
+        Logger.warning("Slack hook response: no_service", slackhook_response: resp)
 
         case Sources.delete_slack_hook_url(source) do
           {:ok, _source} ->
-            Logger.warn("Slack hook url deleted.")
+            Logger.warning("Slack hook url deleted.")
 
           {:error, _changeset} ->
             Logger.error("Error deleting Slack hook url.")
@@ -64,14 +64,14 @@ defmodule Logflare.Source.SlackHookServer.Client do
       {:ok, %Tesla.Env{} = response} ->
         resp = prep_tesla_resp_for_log(response)
 
-        Logger.warn("Slack hook error!", slackhook_response: resp)
+        Logger.warning("Slack hook error!", slackhook_response: resp)
 
         {:error, response}
 
       {:error, response} ->
         resp = prep_tesla_resp_for_log(response)
 
-        Logger.warn("Slack hook error!", slackhook_response: resp)
+        Logger.warning("Slack hook error!", slackhook_response: resp)
         {:error, response}
     end
   end
