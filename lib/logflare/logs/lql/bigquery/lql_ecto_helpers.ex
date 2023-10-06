@@ -54,7 +54,9 @@ defmodule Logflare.Lql.EctoHelpers do
           if level === 1 do
             join(q, join_type, [top], n in fragment("UNNEST(?)", field(top, ^column)), on: true)
           else
-            join(q, join_type, [..., n1], n in fragment("UNNEST(?)", field(n1, ^column)), on: true)
+            join(q, join_type, [..., n1], n in fragment("UNNEST(?)", field(n1, ^column)),
+              on: true
+            )
           end
         end)
     end

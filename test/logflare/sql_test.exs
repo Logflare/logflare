@@ -226,7 +226,10 @@ defmodule Logflare.SqlTest do
   describe "Bigquery fully qualified" do
     test "able to use fully qualified names in queries" do
       user =
-        insert(:user, bigquery_project_id: @user_project_id, bigquery_dataset_id: @user_dataset_id)
+        insert(:user,
+          bigquery_project_id: @user_project_id,
+          bigquery_dataset_id: @user_dataset_id
+        )
 
       source_abc = insert(:source, user: user, name: "a.b.c")
       source_cxy = insert(:source, user: user, name: "c.x.y")

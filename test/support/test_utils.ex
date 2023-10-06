@@ -415,7 +415,7 @@ defmodule Logflare.TestUtils do
   Fetches data until the asserts is able to run its asserts a certain amount of times (default 10 times).
   """
   @spec retry_fetch(
-          (() -> :retry | any()),
+          (-> :retry | any()),
           (any() -> :retry | any()),
           pos_integer(),
           pos_integer()

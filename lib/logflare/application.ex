@@ -76,7 +76,7 @@ defmodule Logflare.Application do
 
   defp get_children(_) do
     # Database options for Postgres notifications
-    hostname = '#{Application.get_env(:logflare, Logflare.Repo)[:hostname]}'
+    hostname = ~c"#{Application.get_env(:logflare, Logflare.Repo)[:hostname]}"
     username = Application.get_env(:logflare, Logflare.Repo)[:username]
     password = Application.get_env(:logflare, Logflare.Repo)[:password]
     database = Application.get_env(:logflare, Logflare.Repo)[:database]
