@@ -60,7 +60,7 @@ defmodule Logflare.Source.BigQuery.BufferCounter do
   Takes a `batch` of `Broadway.Message`s, pushes them into a Broadway pipeline and increments the `BufferCounter` count.
   """
 
-  @spec push_batch(%{source: %Source{}, batch: [%Broadway.Message{}, ...], count: integer()}) ::
+  @spec push_batch(%{source: Source.t(), batch: [Broadway.Message.t(), ...], count: integer()}) ::
           {:ok, map()} | {:error, :buffer_full}
   def push_batch(%{source: %Source{token: source_uuid}, batch: batch, count: count})
       when is_list(batch) and is_atom(source_uuid) do
@@ -87,7 +87,7 @@ defmodule Logflare.Source.BigQuery.BufferCounter do
     ack_by(ref, 1)
   end
 
-  @spec ack_batch(atom(), [%Broadway.Message{}]) :: {:ok, map()}
+  @spec ack_batch(atom(), [Broadway.Message.t()]) :: {:ok, map()}
   def ack_batch(source_uuid, log_events) when is_list(log_events) do
     count = Enum.count(log_events)
 

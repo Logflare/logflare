@@ -178,7 +178,7 @@ defmodule LogflareWeb.EndpointsControllerTest do
       assert conn.halted == false
     end
 
-    test "GET a basic sandboxed query with fromt able", %{conn: initial_conn, user: user} do
+    test "GET a basic sandboxed query with from table", %{conn: initial_conn, user: user} do
       for source <- Logflare.Repo.all(Source) do
         Backends.ingest_logs(
           [%{"event_message" => "some message", "project" => "default"}],

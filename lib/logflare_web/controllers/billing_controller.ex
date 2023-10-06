@@ -258,10 +258,11 @@ defmodule LogflareWeb.BillingController do
         %{assigns: %{user: %User{billing_account: billing_account}} = _user} = conn,
         _params
       ) do
-    with {:ok, %{url: portal_url}} <- Stripe.create_billing_portal_session(billing_account) do
-      conn
-      |> redirect(external: portal_url)
-    else
+    case Stripe.create_billing_portal_session(billing_account) do
+      {:ok, %{url: portal_url}} ->
+        conn
+        |> redirect(external: portal_url)
+
       err ->
         Logger.error("Billing error: #{inspect(err)}", %{billing: %{error_string: inspect(err)}})
 
@@ -361,9 +362,10 @@ defmodule LogflareWeb.BillingController do
   end
 
   def sync(%{assigns: %{user: %User{billing_account: billing_account}} = _user} = conn, _params) do
-    with {:ok, _billing_account} <- Billing.sync_billing_account(billing_account) do
-      success_and_redirect(conn, "Billing account synced!")
-    else
+    case Billing.sync_billing_account(billing_account) do
+      {:ok, _billing_account} ->
+        success_and_redirect(conn, "Billing account synced!")
+
       err ->
         Logger.error("Billing error: #{inspect(err)}", %{billing: %{error_string: inspect(err)}})
 

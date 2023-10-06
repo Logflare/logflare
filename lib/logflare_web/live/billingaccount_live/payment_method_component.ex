@@ -270,11 +270,9 @@ defmodule LogflareWeb.BillingAccountLive.PaymentMethodComponent do
 
   defp update_all_subscription(subs, params) do
     updated =
-      for s <- subs["data"] do
-        Billing.Stripe.update_subscription(s["id"], params)
-      end
-      |> Enum.filter(fn {:ok, _} -> true end)
-      |> Enum.count()
+      Enum.count(subs["data"], fn s ->
+        match?({:ok, _}, Billing.Stripe.update_subscription(s["id"], params))
+      end)
 
     message = "Default payment method set for #{updated} subscription(s)!"
 

@@ -79,13 +79,13 @@ defmodule Logflare.Source.BillingWriter do
   end
 
   defp record_to_db(rls, count) do
-    with {:ok, _resp} <-
-           BillingCounts.insert(rls.user, rls.source, %{
-             node: Atom.to_string(Node.self()),
-             count: count
-           }) do
-      :noop
-    else
+    case BillingCounts.insert(rls.user, rls.source, %{
+           node: Atom.to_string(Node.self()),
+           count: count
+         }) do
+      {:ok, _resp} ->
+        :noop
+
       {:error, _resp} ->
         Logger.error("Error inserting billing count!",
           source_id: rls.source.token

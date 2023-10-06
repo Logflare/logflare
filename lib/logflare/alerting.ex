@@ -170,21 +170,22 @@ defmodule Logflare.Alerting do
   def run_alert(%AlertQuery{} = alert_query) do
     alert_query = alert_query |> Repo.preload([:user])
 
-    with {:ok, [_ | _] = results} <- execute_alert_query(alert_query) do
-      if alert_query.webhook_notification_url do
-        WebhookAdaptor.Client.send(alert_query.webhook_notification_url, %{
-          "result" => results
-        })
-      end
+    case execute_alert_query(alert_query) do
+      {:ok, [_ | _] = results} ->
+        if alert_query.webhook_notification_url do
+          WebhookAdaptor.Client.send(alert_query.webhook_notification_url, %{
+            "result" => results
+          })
+        end
 
-      if alert_query.slack_hook_url do
-        SlackAdaptor.send_message(alert_query.slack_hook_url, results)
-      end
+        if alert_query.slack_hook_url do
+          SlackAdaptor.send_message(alert_query.slack_hook_url, results)
+        end
 
-      :ok
-    else
-      {:ok, []} ->
         :ok
+
+      {:ok, []} ->
+        {:error, :no_results}
 
       other ->
         other
@@ -196,10 +197,13 @@ defmodule Logflare.Alerting do
   noop if already deleted.
 
   ### Examples
-    iex> delete_alert_job(%AlertQuery{})
-    :ok
-    iex> delete_alert_job(alert_query.id)
-    :ok
+
+  ```elixir
+  iex> delete_alert_job(%AlertQuery{})
+  :ok
+  iex> delete_alert_job(alert_query.id)
+  :ok
+  ```
   """
   @spec delete_alert_job(AlertQuery.t() | number()) :: :ok
   def delete_alert_job(%AlertQuery{id: id}), do: delete_alert_job(id)
@@ -214,8 +218,11 @@ defmodule Logflare.Alerting do
   Requires `:user` key to be preloaded.
 
   ### Examples
-    iex> execute_alert_query(alert_query)
-    {:ok, [{"user_id" => "my-user-id"}]}
+
+  ```elixir
+  iex> execute_alert_query(alert_query)
+  {:ok, [%{"user_id" => "my-user-id"}]}
+  ```
   """
   @spec execute_alert_query(AlertQuery.t()) :: {:ok, [map()]}
   def execute_alert_query(%AlertQuery{user: %User{}} = alert_query) do

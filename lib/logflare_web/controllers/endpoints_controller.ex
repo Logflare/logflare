@@ -46,10 +46,11 @@ defmodule LogflareWeb.EndpointsController do
   def query(%{assigns: %{endpoint: endpoint}} = conn, _params) do
     endpoint_query = Endpoints.map_query_sources(endpoint)
 
-    with {:ok, result} <- Endpoints.run_cached_query(endpoint_query, conn.query_params) do
-      Logger.debug("Endpoint cache result, #{inspect(result, pretty: true)}")
-      render(conn, "query.json", result: result.rows)
-    else
+    case Endpoints.run_cached_query(endpoint_query, conn.query_params) do
+      {:ok, result} ->
+        Logger.debug("Endpoint cache result, #{inspect(result, pretty: true)}")
+        render(conn, "query.json", result: result.rows)
+
       {:error, err} ->
         render(conn, "query.json", error: err)
     end

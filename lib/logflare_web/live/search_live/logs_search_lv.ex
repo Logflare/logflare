@@ -90,9 +90,10 @@ defmodule LogflareWeb.Source.SearchLV do
 
     socket =
       with {:ok, lql_rules} <- Lql.decode(qs, source.bq_table_schema),
-           lql_rules <- Lql.Utils.put_new_chart_rule(lql_rules, Lql.Utils.default_chart_rule()),
-           {:ok, socket} <- check_suggested_keys(lql_rules, source, socket),
-           qs <- Lql.encode!(lql_rules) do
+           lql_rules = Lql.Utils.put_new_chart_rule(lql_rules, Lql.Utils.default_chart_rule()),
+           {:ok, socket} <- check_suggested_keys(lql_rules, source, socket) do
+        qs = Lql.encode!(lql_rules)
+
         search_op_log_events =
           if socket.assigns.search_op_log_events do
             rows = socket.assigns.search_op_log_events.rows
@@ -172,15 +173,16 @@ defmodule LogflareWeb.Source.SearchLV do
       )
 
     socket =
-      with {:ok, lql_rules} <- Lql.decode(querystring, source.bq_table_schema) do
-        lql_rules = Lql.Utils.put_new_chart_rule(lql_rules, Lql.Utils.default_chart_rule())
+      case Lql.decode(querystring, source.bq_table_schema) do
+        {:ok, lql_rules} ->
+          lql_rules = Lql.Utils.put_new_chart_rule(lql_rules, Lql.Utils.default_chart_rule())
 
-        optimizedqs = Lql.encode!(lql_rules)
+          optimizedqs = Lql.encode!(lql_rules)
 
-        socket
-        |> assign(:lql_rules, lql_rules)
-        |> assign(:querystring, optimizedqs)
-      else
+          socket
+          |> assign(:lql_rules, lql_rules)
+          |> assign(:querystring, optimizedqs)
+
         {:error, error} ->
           maybe_cancel_tailing_timer(socket)
 
@@ -230,13 +232,15 @@ defmodule LogflareWeb.Source.SearchLV do
         team_user: team_user
       )
 
-    with {:ok, lql_rules} <- Lql.decode(querystring, source.bq_table_schema),
-         lql_rules <- Lql.Utils.put_new_chart_rule(lql_rules, Lql.Utils.default_chart_rule()),
-         optimizedqs <- Lql.encode!(lql_rules) do
-      socket
-      |> assign(:lql_rules, lql_rules)
-      |> assign(:querystring, optimizedqs)
-    else
+    case Lql.decode(querystring, source.bq_table_schema) do
+      {:ok, lql_rules} ->
+        lql_rules = Lql.Utils.put_new_chart_rule(lql_rules, Lql.Utils.default_chart_rule())
+        optimizedqs = Lql.encode!(lql_rules)
+
+        socket
+        |> assign(:lql_rules, lql_rules)
+        |> assign(:querystring, optimizedqs)
+
       {:error, error} ->
         maybe_cancel_tailing_timer(socket)
         SearchQueryExecutor.maybe_cancel_query(source.token)
@@ -643,17 +647,19 @@ defmodule LogflareWeb.Source.SearchLV do
   defp assign_new_search_with_qs(socket, params, bq_table_schema) do
     %{querystring: qs, tailing?: tailing?} = params
 
-    with {:ok, lql_rules} <- Lql.decode(qs, bq_table_schema),
-         lql_rules <- Lql.Utils.put_new_chart_rule(lql_rules, Lql.Utils.default_chart_rule()),
-         qs <- Lql.encode!(lql_rules) do
-      socket
-      |> assign(:loading, true)
-      |> assign(:tailing_initial?, true)
-      |> clear_flash()
-      |> assign(:lql_rules, lql_rules)
-      |> assign(:querystring, qs)
-      |> push_patch_with_params(%{querystring: qs, tailing?: tailing?})
-    else
+    case Lql.decode(qs, bq_table_schema) do
+      {:ok, lql_rules} ->
+        lql_rules = Lql.Utils.put_new_chart_rule(lql_rules, Lql.Utils.default_chart_rule())
+        qs = Lql.encode!(lql_rules)
+
+        socket
+        |> assign(:loading, true)
+        |> assign(:tailing_initial?, true)
+        |> clear_flash()
+        |> assign(:lql_rules, lql_rules)
+        |> assign(:querystring, qs)
+        |> push_patch_with_params(%{querystring: qs, tailing?: tailing?})
+
       {:error, error} ->
         error_socket(socket, error)
 

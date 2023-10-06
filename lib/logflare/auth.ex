@@ -71,7 +71,7 @@ defmodule Logflare.Auth do
   end
 
   def create_access_token(%User{} = user, attrs) do
-    with {:ok, token} = ExOauth2Provider.AccessTokens.create_token(user, %{}, env_oauth_config()) do
+    with {:ok, token} <- ExOauth2Provider.AccessTokens.create_token(user, %{}, env_oauth_config()) do
       token
       |> Changeset.cast(attrs, [:scopes, :description])
       |> Repo.update()
@@ -79,7 +79,7 @@ defmodule Logflare.Auth do
   end
 
   def create_access_token(%Partner{} = partner, attrs) do
-    with {:ok, token} =
+    with {:ok, token} <-
            ExOauth2Provider.AccessTokens.create_token(partner, %{}, env_partner_oauth_config()) do
       token
       |> Changeset.cast(attrs, [:scopes, :description])
@@ -157,7 +157,7 @@ defmodule Logflare.Auth do
   end
 
   def revoke_access_token(%OauthAccessToken{} = token) do
-    with {:ok, _token} = ExOauth2Provider.AccessTokens.revoke(token, env_oauth_config()) do
+    with {:ok, _token} <- ExOauth2Provider.AccessTokens.revoke(token, env_oauth_config()) do
       :ok
     end
   end

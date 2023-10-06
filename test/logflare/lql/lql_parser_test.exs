@@ -180,8 +180,7 @@ defmodule Logflare.LqlParserTest do
 
       assert Lql.encode!(result) ==
                String.split(qs, "\n")
-               |> Enum.map(&String.trim/1)
-               |> Enum.join(" ")
+               |> Enum.map_join(" ", &String.trim/1)
                |> String.trim()
     end
 

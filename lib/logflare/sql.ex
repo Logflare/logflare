@@ -226,10 +226,10 @@ defmodule Logflare.Sql do
 
     restricted = for statement <- ast, res = check.(statement), res, do: res
 
-    if length(restricted) > 0 do
-      {:error, "Only SELECT queries allowed"}
-    else
+    if Enum.empty?(restricted) do
       :ok
+    else
+      {:error, "Only SELECT queries allowed"}
     end
   end
 
@@ -243,10 +243,10 @@ defmodule Logflare.Sql do
         normalized
       end
 
-    if length(restricted) > 0 do
-      {:error, "Restricted function #{Enum.join(restricted, ", ")}"}
-    else
+    if Enum.empty?(restricted) do
       :ok
+    else
+      {:error, "Restricted function #{Enum.join(restricted, ", ")}"}
     end
   end
 
@@ -276,7 +276,7 @@ defmodule Logflare.Sql do
         table_name
       end
 
-    if length(unknown_table_names) == 0 do
+    if Enum.empty?(unknown_table_names) do
       :ok
     else
       {:error, "Table not found in CTE: (#{Enum.join(unknown_table_names, ", ")})"}
@@ -460,12 +460,12 @@ defmodule Logflare.Sql do
         {source.name, source}
       end
 
-    sources =
-      with {:ok, ast} <- Parser.parse(opts.dialect, query),
-           names <-
-             ast
-             |> find_all_source_names()
-             |> Enum.filter(fn name -> name in source_names end) do
+    with {:ok, ast} <- Parser.parse(opts.dialect, query),
+         names <-
+           ast
+           |> find_all_source_names()
+           |> Enum.filter(fn name -> name in source_names end) do
+      sources =
         names
         |> Enum.map(fn name ->
           token =
@@ -480,9 +480,9 @@ defmodule Logflare.Sql do
           {name, token}
         end)
         |> Map.new()
-      end
 
-    {:ok, sources}
+      {:ok, sources}
+    end
   end
 
   defp find_all_source_names(ast),
@@ -626,7 +626,7 @@ defmodule Logflare.Sql do
     do: extract_all_parameters(ast, [])
 
   defp extract_all_parameters({"Placeholder", "@" <> value}, acc) do
-    if value not in acc, do: [value | acc], else: acc
+    if value in acc, do: acc, else: [value | acc]
   end
 
   defp extract_all_parameters(kv, acc) when is_list(kv) or is_map(kv) do
@@ -1286,8 +1286,11 @@ defmodule Logflare.Sql do
        ) do
     # dbg({v, data})
     cond do
+      # Use match?/2 there to check if list has at least 2 values in it. It is
+      # faster than `langth(list) > 2` as it do not need to traverse whole list
+      # during check
       is_map_key(data.alias_path_mappings, head_val) and
-          length(data.alias_path_mappings[head_val || []]) > 1 ->
+          match?([_, _ | _], data.alias_path_mappings[head_val || []]) ->
         # referencing a cross join unnest
         # pop first path part and use it as the base
         # with a cross join unnest(metadata) as m

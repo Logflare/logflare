@@ -1,6 +1,8 @@
 defmodule LogflareWeb.AlertsLiveTest do
   use LogflareWeb.ConnCase
   import Phoenix.LiveViewTest
+  alias Logflare.Backends.Adaptor.WebhookAdaptor
+  alias Logflare.Backends.Adaptor.SlackAdaptor
 
   @update_attrs %{
     name: "some updated name",
@@ -51,17 +53,17 @@ defmodule LogflareWeb.AlertsLiveTest do
 
       new_query = "select current_timestamp() as my_time"
 
-      view
-      |> element("form#alert")
-      |> render_submit(%{
-        alert: %{
-          description: "some description",
-          name: "some alert query",
-          query: new_query,
-          cron: "0 0 * * * *",
-          language: "bq_sql"
-        }
-      }) =~ "created successfully"
+      assert view
+             |> element("form#alert")
+             |> render_submit(%{
+               alert: %{
+                 description: "some description",
+                 name: "some alert query",
+                 query: new_query,
+                 cron: "0 0 * * * *",
+                 language: "bq_sql"
+               }
+             }) =~ "Successfully created alert"
 
       # redirected to :show
       assert assert_patch(view) =~ ~r/\/alerts\/\S+/
@@ -69,6 +71,30 @@ defmodule LogflareWeb.AlertsLiveTest do
       assert html =~ "some description"
       assert html =~ "some alert query"
       assert html =~ new_query
+    end
+
+    test "saves new alert_query with errors, shows flash message", %{conn: conn} do
+      {:ok, view, _html} = live(conn, Routes.alerts_path(conn, :index))
+
+      assert view
+             |> element("a", "New alert")
+             |> render_click() =~ ~r/\~\/.+alerts.+\/new/
+
+      assert_patch(view, "/alerts/new")
+
+      assert view
+             |> element("form#alert")
+             |> render_submit(%{
+               alert: %{
+                 description: "some description",
+                 name: "some alert query",
+                 query: "select current_timestamp() from `error query",
+                 cron: "0 0 * * * *",
+                 language: "bq_sql"
+               }
+             }) =~ "Could not create alert"
+
+      assert view |> has_element?("form#alert")
     end
 
     test "update alert_query", %{conn: conn, alert_query: alert_query} do
@@ -116,6 +142,51 @@ defmodule LogflareWeb.AlertsLiveTest do
       assert view
              |> element("img[alt='Add to Slack']")
              |> has_element?()
+    end
+  end
+
+  describe "running alerts" do
+    setup [:create_alert_query]
+
+    setup do
+      # mock goth behaviour
+      Goth
+      |> stub(:fetch, fn _mod -> {:ok, %Goth.Token{token: "auth-token"}} end)
+
+      WebhookAdaptor.Client
+      |> stub(:send, fn _, _ -> %Tesla.Env{} end)
+
+      SlackAdaptor.Client
+      |> stub(:send, fn _, _ -> %Tesla.Env{} end)
+
+      :ok
+    end
+
+    test "manual alert trigger - notification sent", %{conn: conn, alert_query: alert_query} do
+      GoogleApi.BigQuery.V2.Api.Jobs
+      |> expect(:bigquery_jobs_query, 1, fn _conn, _proj_id, _opts ->
+        {:ok, TestUtils.gen_bq_response([%{"testing" => "results-123"}])}
+      end)
+
+      {:ok, view, _html} = live(conn, Routes.alerts_path(conn, :show, alert_query))
+
+      assert view
+             |> element("button", "Manual trigger")
+             |> render_click() =~ "Alert has been triggered. Notifications sent!"
+    end
+
+    test "manual alert trigger - notification not sent", %{conn: conn, alert_query: alert_query} do
+      GoogleApi.BigQuery.V2.Api.Jobs
+      |> expect(:bigquery_jobs_query, 1, fn _conn, _proj_id, _opts ->
+        {:ok, TestUtils.gen_bq_response([])}
+      end)
+
+      {:ok, view, _html} = live(conn, Routes.alerts_path(conn, :show, alert_query))
+
+      assert view
+             |> element("button", "Manual trigger")
+             |> render_click() =~
+               "Alert has been triggered. No results from query, notifications not sent!"
     end
   end
 end

@@ -87,11 +87,12 @@ defmodule LogflareWeb.UserController do
   end
 
   def delete(%{assigns: %{user: user}} = conn, _params) do
-    with {:ok, _user} <- Users.delete_user(user) do
-      conn
-      |> configure_session(drop: true)
-      |> redirect(to: Routes.auth_path(conn, :login, user_deleted: true))
-    else
+    case Users.delete_user(user) do
+      {:ok, _user} ->
+        conn
+        |> configure_session(drop: true)
+        |> redirect(to: Routes.auth_path(conn, :login, user_deleted: true))
+
       _err ->
         conn
         |> put_flash(
@@ -142,8 +143,9 @@ defmodule LogflareWeb.UserController do
   end
 
   def change_owner(%{assigns: %{user: user}} = conn, %{"user" => %{"team_user_id" => id}}) do
-    with team_user <- TeamUsers.get_team_user(id),
-         {:ok, new_owner} <- Users.change_owner(team_user, user),
+    team_user = TeamUsers.get_team_user(id)
+
+    with {:ok, new_owner} <- Users.change_owner(team_user, user),
          {:ok, _resp} <- TeamUsers.delete_team_user(team_user) do
       if user.billing_account do
         Stripe.update_customer(user.billing_account.stripe_customer, %{email: new_owner.email})

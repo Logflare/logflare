@@ -79,17 +79,19 @@ defmodule LogflareWeb.AlertsLive do
       ) do
     Logger.debug("Saving alert", params: params)
 
-    with {:ok, updated_alert} <- upsert_alert(alert, user, params) do
-      verb = if(alert, do: "updated", else: "created")
+    case upsert_alert(alert, user, params) do
+      {:ok, updated_alert} ->
+        verb = if alert, do: "updated", else: "created"
 
-      {:noreply,
-       socket
-       |> assign(:alert, updated_alert)
-       |> put_flash(:info, "Successfully #{verb} alert #{updated_alert.name}")
-       |> push_patch(to: ~p"/alerts/#{updated_alert.id}")}
-    else
+        {:noreply,
+         socket
+         |> assign(:alert, updated_alert)
+         |> put_flash(:info, "Successfully #{verb} alert #{updated_alert.name}")
+         |> push_patch(to: ~p"/alerts/#{updated_alert.id}")}
+
       {:error, %Ecto.Changeset{} = changeset} ->
-        verb = if(alert, do: "update", else: "create")
+        verb = if alert, do: "update", else: "create"
+
         message = "Could not #{verb} alert. Please fix the errors before trying again."
 
         socket =
@@ -129,6 +131,26 @@ defmodule LogflareWeb.AlertsLive do
        socket
        |> assign(:alert, alert)
        |> put_flash(:info, "Slack notifications have been removed.")}
+    end
+  end
+
+  def handle_event(
+        "manual-trigger",
+        _params,
+        %{assigns: %{alert: %_{} = alert}} = socket
+      ) do
+    with :ok <- Alerting.run_alert(alert) do
+      {:noreply,
+       socket
+       |> put_flash(:info, "Alert has been triggered. Notifications sent!")}
+    else
+      {:error, :no_results} ->
+        {:noreply,
+         socket
+         |> put_flash(
+           :error,
+           "Alert has been triggered. No results from query, notifications not sent!"
+         )}
     end
   end
 
