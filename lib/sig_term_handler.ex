@@ -16,7 +16,7 @@ defmodule Logflare.SigtermHandler do
 
   @impl true
   def handle_info(:proceed_with_sigterm, state) do
-    Logger.warn("#{__MODULE__}: shutdown grace period reached, stopping the app...")
+    Logger.warning("#{__MODULE__}: shutdown grace period reached, stopping the app...")
 
     System.stop()
 
@@ -25,7 +25,7 @@ defmodule Logflare.SigtermHandler do
 
   @impl true
   def handle_event(:sigterm, state) do
-    Logger.warn(
+    Logger.warning(
       "#{__MODULE__}: SIGTERM received: waiting for #{env_grace_period() / 1_000} seconds"
     )
 
@@ -38,7 +38,7 @@ defmodule Logflare.SigtermHandler do
   end
 
   def handle_event(:sigquit, state) do
-    Logger.warn(
+    Logger.warning(
       "#{__MODULE__}: SIGQUIT received: waiting for #{env_grace_period() / 1_000} seconds"
     )
 
@@ -49,14 +49,14 @@ defmodule Logflare.SigtermHandler do
 
   @impl true
   def handle_event(ev, state) do
-    Logger.warn("#{__MODULE__}: has received a system signal: #{ev} and is ignoring it")
+    Logger.warning("#{__MODULE__}: has received a system signal: #{ev} and is ignoring it")
 
     {:ok, state}
   end
 
   @impl true
   def handle_call(msg, state) do
-    Logger.warn("#{__MODULE__} has received an unexpected call: #{inspect(msg)}")
+    Logger.warning("#{__MODULE__} has received an unexpected call: #{inspect(msg)}")
     {:ok, :ok, state}
   end
 end

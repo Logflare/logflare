@@ -85,15 +85,15 @@ defmodule Logflare.ContextCache do
         value.id
 
       true ->
-        # Logger.warn("Cached unknown value from context.", error_string: inspect(value))
+        # Logger.warning("Cached unknown value from context.", error_string: inspect(value))
         "true"
 
       nil ->
-        # Logger.warn("Cached unknown value from context.", error_string: inspect(value))
+        # Logger.warning("Cached unknown value from context.", error_string: inspect(value))
         :not_found
 
       _value ->
-        # Logger.warn("Unhandled cache key for value.", error_string: inspect(value))
+        # Logger.warning("Unhandled cache key for value.", error_string: inspect(value))
         :uknown
     end
   end

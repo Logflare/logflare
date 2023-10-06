@@ -160,7 +160,7 @@ defmodule LogflareWeb.Search.LogEventViewerComponent do
                 [from, to] = params.partitions_range
 
                 err = "Log event with id #{params[:id]} between #{from} and #{to} was not found"
-                Logger.warn(err)
+                Logger.warning(err)
                 err
 
               e ->

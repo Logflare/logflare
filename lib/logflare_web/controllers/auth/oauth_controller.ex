@@ -10,7 +10,7 @@ defmodule LogflareWeb.Auth.OauthController do
   alias Logflare.Alerting
 
   def request(conn, params) do
-    Logger.warn("Received unrecognized Oauth provider request", error_string: inspect(params))
+    Logger.warning("Received unrecognized Oauth provider request", error_string: inspect(params))
     auth_error_redirect(conn)
   end
 
@@ -106,7 +106,7 @@ defmodule LogflareWeb.Auth.OauthController do
         %{assigns: %{ueberauth_failure: failure}} = conn,
         %{"provider" => provider} = params
       ) do
-    Logger.warn("Oauth failure for #{provider}. #{inspect(failure)}",
+    Logger.warning("Oauth failure for #{provider}. #{inspect(failure)}",
       error_string: inspect(params)
     )
 
@@ -114,7 +114,7 @@ defmodule LogflareWeb.Auth.OauthController do
   end
 
   def callback(conn, params) do
-    Logger.warn("Received unrecognized Oauth provider callback request",
+    Logger.warning("Received unrecognized Oauth provider callback request",
       error_string: inspect(params)
     )
 

@@ -40,8 +40,8 @@ jobs:
       - name: Set up Elixir
         uses: erlef/setup-beam@v1
         with:
-          elixir-version: "1.14.4" # Define the elixir version [required]
-          otp-version: "25" # Define the OTP version [required]
+          version-file: .tool-versions
+          version-type: strict
       - name: Set up Rust
         uses: ATiltedTree/setup-rust@v1
         with:

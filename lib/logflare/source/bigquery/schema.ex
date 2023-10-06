@@ -191,7 +191,7 @@ defmodule Logflare.Source.BigQuery.Schema do
                        }}
 
                     {:error, response} ->
-                      Logger.warn("Source schema update error!",
+                      Logger.warning("Source schema update error!",
                         tesla_response: BigQuery.GenUtils.get_tesla_error_message(response)
                       )
 
@@ -199,7 +199,7 @@ defmodule Logflare.Source.BigQuery.Schema do
                   end
 
                 {:error, response} ->
-                  Logger.warn("Source schema update error!",
+                  Logger.warning("Source schema update error!",
                     tesla_response: BigQuery.GenUtils.get_tesla_error_message(response)
                   )
 
@@ -207,7 +207,7 @@ defmodule Logflare.Source.BigQuery.Schema do
               end
 
             message ->
-              Logger.warn("Source schema update error!",
+              Logger.warning("Source schema update error!",
                 tesla_response: message
               )
 
@@ -307,7 +307,7 @@ defmodule Logflare.Source.BigQuery.Schema do
           pipeline_process_data_stacktrace: LogflareLogger.Stacktrace.format(__STACKTRACE__)
         })
 
-        Logger.warn("Field schema type change error!", error_string: inspect(e))
+        Logger.warning("Field schema type change error!", error_string: inspect(e))
 
         schema
     end

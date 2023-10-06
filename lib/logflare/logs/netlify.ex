@@ -86,7 +86,7 @@ defmodule Logflare.Logs.Netlify do
   defp custom_message(event) do
     case Jason.encode(event) do
       {:ok, json} ->
-        Logger.warn("Unhandled Netlify log event!", error_string: inspect(event))
+        Logger.warning("Unhandled Netlify log event!", error_string: inspect(event))
         json
 
       {:error, reason} ->

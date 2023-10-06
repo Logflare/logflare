@@ -18,7 +18,7 @@ defmodule LogflareWeb.Admin.ClusterLive do
 
   def handle_event("shutdown", %{"node" => node}, socket) do
     msg = "Node shutdown initiated for #{node}"
-    Logger.warn(msg)
+    Logger.warning(msg)
 
     String.to_atom(node) |> Admin.shutdown()
 

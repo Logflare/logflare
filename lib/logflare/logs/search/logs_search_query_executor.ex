@@ -355,7 +355,7 @@ defmodule Logflare.Logs.SearchQueryExecutor do
           :ok
 
         {:error, _result} ->
-          Logger.warn("Streaming buffer not found for source #{source.token}")
+          Logger.warning("Streaming buffer not found for source #{source.token}")
       end
     end)
   end

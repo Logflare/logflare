@@ -1,4 +1,4 @@
-FROM elixir:1.14.4-alpine as builder
+FROM elixir:1.15-alpine as builder
 
 ENV MIX_ENV prod
 # Due to some Rust caveats with SSL on Alpine images, we need to use GIT to fecth cargo registry index

@@ -215,7 +215,7 @@ defmodule LogflareWeb.StripeController do
     type = LogflareLogger.context().billing.webhook_type
     message = "customer not found: #{customer}"
 
-    Logger.warn("Stripe webhook: #{type}")
+    Logger.warning("Stripe webhook: #{type}")
 
     ok(conn, message)
   end

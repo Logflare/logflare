@@ -169,7 +169,7 @@ defmodule Logflare.Google.BigQuery.SchemaUtils do
               %{t: bq_type_to_ex(t)}
 
             true ->
-              Logger.warn("Unexpected value of TFS mode: #{mode}")
+              Logger.warning("Unexpected value of TFS mode: #{mode}")
               %{t: bq_type_to_ex(t)}
           end
 

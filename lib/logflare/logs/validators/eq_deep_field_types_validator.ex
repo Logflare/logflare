@@ -15,7 +15,7 @@ defmodule Logflare.Logs.Validators.EqDeepFieldTypes do
     end
   rescue
     e ->
-      Logger.warn("Unexpected error at #{__MODULE__}: #{Exception.message(e)}")
+      Logger.warning("Unexpected error at #{__MODULE__}: #{Exception.message(e)}")
       {:error, "Log event payload validation error"}
   catch
     :type_error ->

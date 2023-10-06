@@ -60,7 +60,7 @@ defmodule Logflare.Source.WebhookNotificationServer.DiscordClient do
         {:ok, response}
 
       {:ok, %Tesla.Env{} = response} ->
-        Logger.warn("Webhook error!",
+        Logger.warning("Webhook error!",
           webhook_request: %{url: url, body: inspect(payload)},
           webhook_response: %{
             body: inspect(response.body),
@@ -73,7 +73,7 @@ defmodule Logflare.Source.WebhookNotificationServer.DiscordClient do
         {:error, response}
 
       {:error, response} ->
-        Logger.warn("Webhook error!", webhook_response: %{error: inspect(response)})
+        Logger.warning("Webhook error!", webhook_response: %{error: inspect(response)})
         {:error, response}
     end
   end

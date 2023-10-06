@@ -15,7 +15,10 @@
   </p>
 
   <div class="tw-flex tw-gap-4 tw-items-center">
-    <%= link("Documentation", to: "https://docs.logflare.app/concepts/endpoints", target: "_blank") %>
+    <%= link("Documentation",
+      to: "https://docs.logflare.app/concepts/endpoints",
+      target: "_blank"
+    ) %>
     <%= live_patch to: ~p"/endpoints/new" do %>
       <.button variant="primary">
         New endpoint
