@@ -5,8 +5,11 @@ defmodule Logflare.Backends.Adaptor do
   It should be the **only** point of entry for the backend.
   """
 
-  alias Logflare.{LogEvent, Endpoints.Query, Backends.Adaptor}
+  alias Logflare.LogEvent
+  alias Logflare.Endpoints.Query
+
   @type t :: module()
+
   @doc """
   Ingest many log events.
   """
@@ -30,7 +33,7 @@ defmodule Logflare.Backends.Adaptor do
 
   defmacro __using__(_opts) do
     quote do
-      @behaviour Logflare.Backends.Adaptor
+      @behaviour unquote(__MODULE__)
 
       @impl true
       def ingest(_pid, _log_events), do: raise("Ingest callback not implemented!")
@@ -41,6 +44,7 @@ defmodule Logflare.Backends.Adaptor do
 
       @impl true
       def execute_query(_identifier, _query), do: {:error, :not_implemented}
+
       @impl true
       def cast_config(_config), do: raise("Config casting callback not implemented!")
 
@@ -50,7 +54,7 @@ defmodule Logflare.Backends.Adaptor do
         |> validate_config()
       end
 
-      defoverridable Adaptor
+      defoverridable unquote(__MODULE__)
     end
   end
 end
