@@ -33,7 +33,6 @@ defmodule LogflareWeb.AlertsLive do
   def mount(%{}, %{"user_id" => user_id}, socket) do
     user = Users.get(user_id)
 
-
     socket =
       socket
       |> assign(:user_id, user_id)
