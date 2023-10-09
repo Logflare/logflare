@@ -223,12 +223,8 @@ if(File.exists?("cacert.pem") && File.exists?("cert.pem") && File.exists?("cert.
     ]
   ]
 
-  config :logflare,
-    ssl: ssl_opts
-
-  config :logflare,
-    Logflare.Repo,
-    ssl_opts: ssl_opts
+  config :logflare, ssl: ssl_opts
+  config :logflare, Logflare.Repo, ssl_opts: ssl_opts
 end
 
 case System.get_env("LOGFLARE_FEATURE_FLAG_OVERRIDE") do
