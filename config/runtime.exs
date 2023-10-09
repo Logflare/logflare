@@ -47,6 +47,21 @@ config :logflare,
              else: nil
            ),
          ssl: System.get_env("DB_SSL") == "true",
+         ssl_opts:
+           if(System.get_env("DB_SSL") == "true",
+             do: [
+               verify: :verify_peer,
+               cacerts: :public_key.cacerts_get(),
+               # allow unknown CA
+               depth: 3,
+               versions: [:"tlsv1.2"],
+               # support wildcard
+               customize_hostname_check: [
+                 match_fun: :public_key.pkix_verify_hostname_match_fun(:https)
+               ]
+             ],
+             else: nil
+           ),
          database: System.get_env("DB_DATABASE"),
          hostname: System.get_env("DB_HOSTNAME"),
          password: System.get_env("DB_PASSWORD"),
@@ -215,18 +230,10 @@ if(File.exists?("cacert.pem") && File.exists?("cert.pem") && File.exists?("cert.
     cacertfile: "cacert.pem",
     certfile: "cert.pem",
     keyfile: "cert.key",
-    verify: :verify_peer,
-    # allow unknown CA
-    depth: 3,
-    versions: [:"tlsv1.2"],
-    # support wildcard
-    customize_hostname_check: [
-      match_fun: :public_key.pkix_verify_hostname_match_fun(:https)
-    ]
+    verify: :verify_peer
   ]
 
   config :logflare, ssl: ssl_opts
-  config :logflare, Logflare.Repo, ssl_opts: ssl_opts
 end
 
 case System.get_env("LOGFLARE_FEATURE_FLAG_OVERRIDE") do
