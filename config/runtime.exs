@@ -47,22 +47,22 @@ config :logflare,
              else: nil
            ),
          ssl: System.get_env("DB_SSL") == "true",
-         ssl_opts:
-           if(System.get_env("DB_SSL") == "true",
-             do: [
-               #  ssl opts follow recs here: https://erlef.github.io/security-wg/secure_coding_and_deployment_hardening/ssl
-               verify: :verify_peer,
-               cacerts: :public_key.cacerts_get(),
-               # allow intermediate CA
-               depth: 3,
-               versions: [:"tlsv1.2"],
-               # support wildcard
-               customize_hostname_check: [
-                 match_fun: :public_key.pkix_verify_hostname_match_fun(:https)
-               ]
-             ],
-             else: nil
-           ),
+         #  ssl_opts:
+         #    if(System.get_env("DB_SSL") == "true",
+         #      do: [
+         #        #  ssl opts follow recs here: https://erlef.github.io/security-wg/secure_coding_and_deployment_hardening/ssl
+         #        verify: :verify_peer,
+         #        cacerts: :public_key.cacerts_get(),
+         #        # allow intermediate CA
+         #        depth: 3,
+         #        versions: [:"tlsv1.2"],
+         #        # support wildcard
+         #        customize_hostname_check: [
+         #          match_fun: :public_key.pkix_verify_hostname_match_fun(:https)
+         #        ]
+         #      ],
+         #      else: nil
+         #    ),
          database: System.get_env("DB_DATABASE"),
          hostname: System.get_env("DB_HOSTNAME"),
          password: System.get_env("DB_PASSWORD"),
