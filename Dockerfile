@@ -21,9 +21,9 @@ RUN mix release  && \
     mix phx.digest
 
 # alpine version must match the base erlang image version used
-# https://github.com/erlef/docker-elixir/blob/master/1.14/alpine/Dockerfile
-# https://github.com/erlang/docker-erlang-otp/blob/master/25/alpine/Dockerfile
-FROM alpine:3.17.0 as app
+# https://github.com/erlef/docker-elixir/blob/master/1.15/alpine/Dockerfile
+# https://github.com/erlang/docker-erlang-otp/blob/master/26/alpine/Dockerfile
+FROM alpine:3.18.0 as app
 
 # Required for the BeamVM to run
 RUN apk update && apk add -f openssl libgcc libstdc++ ncurses-libs curl
