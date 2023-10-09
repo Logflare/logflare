@@ -216,6 +216,8 @@ if(File.exists?("cacert.pem") && File.exists?("cert.pem") && File.exists?("cert.
     certfile: "cert.pem",
     keyfile: "cert.key",
     verify: :verify_peer,
+    # allow unknown CA
+    depth: 3,
     versions: [:"tlsv1.2"],
     # support wildcard
     customize_hostname_check: [
