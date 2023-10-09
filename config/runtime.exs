@@ -211,18 +211,20 @@ cond do
 end
 
 if(File.exists?("cacert.pem") && File.exists?("cert.pem") && File.exists?("cert.key")) do
-  config :logflare,
-    ssl: [
-      cacertfile: "cacert.pem",
-      certfile: "cert.pem",
-      keyfile: "cert.key",
-      verify: :verify_peer,
-      versions: [:"tlsv1.2"],
-      # support wildcard
-      customize_hostname_check: [
-        match_fun: :public_key.pkix_verify_hostname_match_fun(:https)
-      ]
+  ssl_opts = [
+    cacertfile: "cacert.pem",
+    certfile: "cert.pem",
+    keyfile: "cert.key",
+    verify: :verify_peer,
+    versions: [:"tlsv1.2"],
+    # support wildcard
+    customize_hostname_check: [
+      match_fun: :public_key.pkix_verify_hostname_match_fun(:https)
     ]
+  ]
+
+  config :logflare, ssl: ssl_opts
+  config :logflare, Logflare.Repo, ssl_opts: ssl_opts
 end
 
 case System.get_env("LOGFLARE_FEATURE_FLAG_OVERRIDE") do
