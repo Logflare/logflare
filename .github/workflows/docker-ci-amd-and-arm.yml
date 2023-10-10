@@ -82,7 +82,7 @@ jobs:
         run: |
           docker buildx imagetools create -t supabase/logflare:dev-${{ env.short_sha }}  \
           ${{ env.tag_amd64 }} ${{ env.tag_arm64 }}
-    # only produce a versioned image if created from a release
+      # only produce a versioned image if created from a release
       - name: Versioned - Merge multi-arch manifests and push (release only)
         if: github.event_name == 'release'
         run: |
@@ -91,8 +91,8 @@ jobs:
 
   trigger_cloudbuild:
     runs-on: ubuntu-latest
+    uses: ./.github/workflows/trigger-cloudbuild.yml@main
     needs:
       - settings
       - build
       - merge_publish
-    uses: Logflare/logflare/.github/workflows/trigger-cloudbuild.yml@main
