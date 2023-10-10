@@ -3,7 +3,9 @@ name: Docker CI Multi-Platform
 on:
   workflow_dispatch:
   push:
-    branches: [staging, master]
+    branches: [main]
+  release:
+    types: [published]
 
 permissions:
   contents: read
@@ -74,13 +76,22 @@ jobs:
           echo "tag_amd64=supabase/logflare:${{ needs.settings.outputs.version }}-amd64" >> "$GITHUB_ENV"
           echo "tag_arm64=supabase/logflare:${{ needs.settings.outputs.version }}-arm64" >> "$GITHUB_ENV"
           echo "tag_ver=supabase/logflare:${{ needs.settings.outputs.version }}" >> "$GITHUB_ENV"
-      - name: Staging - Merge multi-arch manifests and push
-        if: github.ref == 'refs/heads/staging'
+          echo "short_sha=$(git rev-parse --short HEAD)" >> "$GITHUB_ENV"
+      - name: Staging - Merge multi-arch manifests and push the dev image
+        if: github.ref == 'refs/heads/main' && github.event_name == 'pull_request'
         run: |
-          docker buildx imagetools create -t supabase/logflare:staging  \
+          docker buildx imagetools create -t supabase/logflare:dev-${{ env.short_sha }}  \
           ${{ env.tag_amd64 }} ${{ env.tag_arm64 }}
-      - name: Master - Merge multi-arch manifests and push
-        if: github.ref == 'refs/heads/master'
+    # only produce a versioned image if created from a release
+      - name: Versioned - Merge multi-arch manifests and push (release only)
+        if: github.event_name == 'release'
         run: |
           docker buildx imagetools create -t supabase/logflare:latest -t ${{ env.tag_ver }}  \
           ${{ env.tag_amd64 }} ${{ env.tag_arm64 }}
+
+  trigger_cloudbuild:
+    needs:
+      - settings
+      - build
+      - merge_publish
+    uses: Logflare/logflare/.github/workflows/trigger-cloudbuild.yml@main

@@ -29,44 +29,16 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor do
     field(:repository_module, tuple())
   end
 
-  def start_link(%SourceBackend{} = source_backend) do
-    GenServer.start_link(__MODULE__, source_backend,
-      name: Backends.via_source_backend(source_backend, __MODULE__)
-    )
-  end
-
-  @impl true
-  def init(source_backend) do
-    with source_id <- source_backend.source_id,
-         {:ok, _} <- Registry.register(SourceDispatcher, source_id, {__MODULE__, :ingest}),
-         {:ok, buffer_pid} <- MemoryBuffer.start_link([]),
-         repository_module <- create_repo(source_backend),
-         :ok <- connected?(source_backend),
-         :ok <- create_log_events_table(source_backend) do
-      state = %__MODULE__{
-        buffer_module: MemoryBuffer,
-        buffer_pid: buffer_pid,
-        config: source_backend.config,
-        source_backend: source_backend,
-        pipeline_name: Backends.via_source_backend(source_backend, Pipeline),
-        repository_module: repository_module
-      }
-
-      {:ok, _pipeline_pid} = Pipeline.start_link(state)
-      {:ok, state}
-    end
-  end
-
-  @impl true
+  @impl Logflare.Backends.Adaptor
   def ingest(pid, log_events), do: GenServer.call(pid, {:ingest, log_events})
 
-  @impl true
+  @impl Logflare.Backends.Adaptor
   def cast_config(params) do
     {%{}, %{url: :string, schema: :string}}
     |> cast(params, [:url, :schema])
   end
 
-  @impl true
+  @impl Logflare.Backends.Adaptor
   def validate_config(changeset) do
     changeset
     |> validate_required([:url])
@@ -87,7 +59,7 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor do
     iex> execute_query(source_backend, {"select $1 as c from log_event_table", ["value]})
     {:ok, [%{...}]}
   """
-  @impl true
+  @impl Logflare.Backends.Adaptor
   def execute_query(%SourceBackend{} = source_backend, %Ecto.Query{} = query) do
     mod = create_repo(source_backend)
     :ok = connected?(source_backend)
@@ -157,7 +129,35 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor do
   defdelegate insert_log_event(source_backend, log_event), to: PgRepo
 
   # GenServer
-  @impl true
+  def start_link(%SourceBackend{} = source_backend) do
+    GenServer.start_link(__MODULE__, source_backend,
+      name: Backends.via_source_backend(source_backend, __MODULE__)
+    )
+  end
+
+  @impl GenServer
+  def init(source_backend) do
+    with source_id <- source_backend.source_id,
+         {:ok, _} <- Registry.register(SourceDispatcher, source_id, {__MODULE__, :ingest}),
+         {:ok, buffer_pid} <- MemoryBuffer.start_link([]),
+         repository_module <- create_repo(source_backend),
+         :ok <- connected?(source_backend),
+         :ok <- create_log_events_table(source_backend) do
+      state = %__MODULE__{
+        buffer_module: MemoryBuffer,
+        buffer_pid: buffer_pid,
+        config: source_backend.config,
+        source_backend: source_backend,
+        pipeline_name: Backends.via_source_backend(source_backend, Pipeline),
+        repository_module: repository_module
+      }
+
+      {:ok, _pipeline_pid} = Pipeline.start_link(state)
+      {:ok, state}
+    end
+  end
+
+  @impl GenServer
   def handle_call({:ingest, log_events}, _from, %{config: _config} = state) do
     MemoryBuffer.add_many(state.buffer_pid, log_events)
     {:reply, :ok, state}

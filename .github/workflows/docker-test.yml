@@ -3,7 +3,7 @@ name: Docker Build Check
 on:
   workflow_dispatch:
   pull_request:
-    branches: [staging]
+    branches: [main]
 
 permissions:
   contents: read
