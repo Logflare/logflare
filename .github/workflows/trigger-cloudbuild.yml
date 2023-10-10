@@ -1,35 +1,31 @@
-name: Trigger Cloudbuild
+name: Cloudbuild Build & Deploy
 
 on:
-  workflow_dispatch:
-  workflow_run:
-    workflows: [Docker CI Multi-Platform]
-    types: [completed]
-    branches: [master, staging]
+  workflow_call:
 
 permissions:
   contents: read
 
 jobs:
-  trigger_cloudbuild:
+  build_image:
     name: Trigger Cloud Build
-    if: github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
+      - name: Set common env vars
+        run: |
+          echo "short_sha=$(git rev-parse --short HEAD)" >> "$GITHUB_ENV"
+          echo "version=$(cat ./VERSION)" >> "$GITHUB_ENV"
+
       # GCP credentials is a multi-line string, and will result in error when trying to set it to github env.
       # directly use it in the auth step instead.
       - name: Set prod envs
         if: github.ref == 'refs/heads/master'
         run: |
-          echo "LF_BRANCH=master" >> "$GITHUB_ENV"
-          echo "LF_CLOUDBUILD_TRIGGER=logflare-master" >> "$GITHUB_ENV"
           echo "LF_PROJECT_ID=logflare-232118" >> "$GITHUB_ENV"
       - name: Set staging envs
         if: ${{ github.ref == 'refs/heads/staging' }}
         run: |
-          echo "LF_BRANCH=staging" >> "$GITHUB_ENV"
-          echo "LF_CLOUDBUILD_TRIGGER=logflare-app-staging-trigger" >> "$GITHUB_ENV"
           echo "LF_PROJECT_ID=logflare-staging" >> "$GITHUB_ENV"
       - uses: actions/setup-python@v4
         with:
@@ -53,6 +49,23 @@ jobs:
         with:
           version: '418.0.0'
           project_id: ${{ env.LF_PROJECT_ID}}
-      - name: 'Trigger Cloud Build'
+      - name: Bake image for non-versioned
+        if: github.ref == 'refs/heads/main' && github.event_name == 'pull_request'
         run: |
-          gcloud builds triggers run ${{ env.LF_CLOUDBUILD_TRIGGER }} --branch=${{ env.LF_BRANCH }} --format "value(name)"
+          gcloud builds submit ./cloudbuild --config=cloudbuild/staging/build-image.yaml --substitutions=_IMAGE_TAG=dev-${{ env.short_sha }}
+      - name: Bake image for versioned
+        if: github.event_name == 'release'
+        run: |
+          gcloud builds submit ./cloudbuild --config=cloudbuild/staging/build-image.yaml --substitutions=_IMAGE_TAG=${{ env.version }}
+  
+  # only do auto-deploy for staging non-versioned
+  deploy:
+    if: github.ref == 'refs/heads/main' && github.event_name == 'pull_request'
+    name: Deploy to Staging
+    steps:
+      - name: Env vars
+        run: |
+          echo "short_sha=$(git rev-parse --short HEAD)" >> "$GITHUB_ENV"
+      - name: Deploy
+        run: |
+          gcloud builds submit --no-source --config=cloudbuild/staging/deploy.yaml --substitutions=_IMAGE_TAG=${{ env.short_sha }}
