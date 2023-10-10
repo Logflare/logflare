@@ -130,6 +130,7 @@ defmodule Logflare.Mixfile do
       # Test
       {:mix_test_watch, "~> 1.0", only: [:dev, :test], runtime: false},
       {:mimic, "~> 1.0", only: :test},
+      {:stream_data, "~> 0.6.0", only: [:test]},
 
       # Pagination
       {:scrivener_ecto, "~> 2.2"},

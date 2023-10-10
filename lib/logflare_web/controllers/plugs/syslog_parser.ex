@@ -5,17 +5,18 @@ defmodule Plug.Parsers.SYSLOG do
   require Logger
 
   @behaviour Plug.Parsers
-  import Plug.Conn
-  @gzip_header {"content-encoding", "gzip"}
+
   alias Logflare.Logs.SyslogParser
   alias Logflare.Logs.SyslogMessage
 
-  def init(_params) do
+  def init(opts) do
+    {body_reader, opts} = Keyword.pop(opts, :body_reader, {Plug.Conn, :read_body, []})
+    {body_reader, opts}
   end
 
-  def parse(conn, "application", "logplex-1", _headers, _opts) do
+  def parse(conn, "application", "logplex-1", _headers, {{mod, fun, args}, _opts}) do
     conn
-    |> read_body()
+    |> then(&apply(mod, fun, [&1 | args]))
     |> decode()
   end
 
@@ -29,12 +30,7 @@ defmodule Plug.Parsers.SYSLOG do
   end
 
   def decode({:ok, body, conn}) do
-    body =
-      if @gzip_header in conn.req_headers do
-        body |> :zlib.gunzip() |> String.split("\n", trim: true)
-      else
-        body |> String.split("\n", trim: true)
-      end
+    body = body |> String.split("\n", trim: true)
 
     opts =
       case conn.request_path do

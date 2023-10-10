@@ -4,15 +4,15 @@ defmodule Plug.Parsers.BERT do
   """
 
   @behaviour Plug.Parsers
-  import Plug.Conn
-  @gzip_header {"content-encoding", "gzip"}
 
-  def init(_params) do
+  def init(opts) do
+    {body_reader, opts} = Keyword.pop(opts, :body_reader, {Plug.Conn, :read_body, []})
+    {body_reader, opts}
   end
 
-  def parse(conn, "application", "bert", _headers, _opts) do
+  def parse(conn, "application", "bert", _headers, {{mod, fun, args}, _opts}) do
     conn
-    |> read_body()
+    |> then(&apply(mod, fun, [&1 | args]))
     |> decode()
   end
 
@@ -26,14 +26,7 @@ defmodule Plug.Parsers.BERT do
   end
 
   def decode({:ok, body, conn}) do
-    body =
-      if @gzip_header in conn.req_headers do
-        body |> :zlib.gunzip() |> Bertex.safe_decode()
-      else
-        body |> Bertex.safe_decode()
-      end
-
-    {:ok, body, conn}
+    {:ok, Bertex.safe_decode(body), conn}
   rescue
     e ->
       reraise Plug.Parsers.ParseError, [exception: e], __STACKTRACE__
