@@ -1,0 +1,58 @@
+steps:
+  # create instance template
+  - name: gcr.io/cloud-builders/gcloud
+    allowExitCodes: [1]
+    args:
+      - compute
+      - instance-templates
+      - create-with-container
+      - $_TEMPLATE_NAME
+      - --machine-type=e2-standard-2
+      - --project=logflare-staging
+      - --network-interface=network=default,network-tier=PREMIUM
+      - --maintenance-policy=MIGRATE
+      - --service-account=compute-engine-2022@logflare-staging.iam.gserviceaccount.com
+      - --scopes=https://www.googleapis.com/auth/cloud-platform
+      - --tags=phoenix-http,https-server
+      - --container-image=${_CONTAINER_IMAGE}
+      - --container-privileged
+      - --container-restart-policy=always 
+      - --container-env=LOGFLARE_GRPC_PORT=4001,LOGFLARE_MIN_CLUSTER_SIZE=1,OVERRIDE_MAGIC_COOKIE=${_COOKIE} 
+      - --create-disk=auto-delete=yes,device-name=logflare-staging-cluster-privileged-e2-cos-89-shutdown-12,image=projects/cos-cloud/global/images/cos-stable-105-17412-156-59,mode=rw,size=100,type=pd-ssd 
+      - --no-shielded-secure-boot 
+      - --shielded-vtpm 
+      - --shielded-integrity-monitoring 
+      - --labels=container-vm=cos-stable-105-17412-156-59
+  # update instance group to the new template
+  - name: gcr.io/cloud-builders/gcloud
+    args:
+      - beta
+      - compute
+      - instance-groups
+      - managed
+      - rolling-action
+      - start-update
+      - ${_INSTANCE_GROUP}
+      - --project=logflare-staging
+      - --zone=us-central1-a
+      - --type=proactive
+      - --max-surge=1
+      - --max-unavailable=0
+      - --min-ready=60
+      - --minimal-action=replace
+      - --most-disruptive-allowed-action=replace
+      - --replacement-method=substitute
+      - --version=template=projects/logflare-staging/global/instanceTemplates/${_TEMPLATE_NAME}
+
+
+substitutions:
+    _COOKIE: default
+    _CLUSTER: main # default value
+    _INSTANCE_GROUP: instance-group-staging-${_CLUSTER}
+    _IMAGE_TAG: $SHORT_SHA
+    _TEMPLATE_NAME: logflare-staging-${_CLUSTER}-cluster-${_IMAGE_TAG}
+    _CONTAINER_IMAGE: gcr.io/logflare-staging/logflare_origin:${_IMAGE_TAG}
+timeout: 1800s
+options:
+    dynamicSubstitutions: true
+    substitutionOption: 'ALLOW_LOOSE'

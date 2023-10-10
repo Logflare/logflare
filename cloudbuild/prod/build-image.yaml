@@ -44,23 +44,35 @@ steps:
       - "--location=us-central1"
       - "--keyring=logflare-prod-keyring-us-central1"
       - "--key=logflare-prod-secrets-key"
-  - name: gcr.io/cloud-builders/docker
+  - name: "gcr.io/cloud-builders/docker"
     args:
-      - "-c"
-      - >-
-        docker build --build-arg TAG_VERSION=$(cat ./VERSION) -t
-        gcr.io/$PROJECT_ID/logflare_app:$COMMIT_SHA -t
-        gcr.io/$PROJECT_ID/logflare_app:latest -f
-        cloudbuild/secret_setup.Dockerfile .
-    entrypoint: sh
-  - name: gcr.io/cloud-builders/docker
-    args:
-      - push
-      - "gcr.io/$PROJECT_ID/logflare_app:$COMMIT_SHA"
-  - name: gcr.io/cloud-builders/docker
-    args:
-      - push
-      - "gcr.io/$PROJECT_ID/logflare_app:latest"
+      [
+        "build",
+        "--build-arg",
+        "TAG_VERSION=${_IMAGE_TAG}",
+        "-f",
+        "secret_setup.Dockerfile",
+        "-t",
+        "gcr.io/$PROJECT_ID/logflare_app:${_IMAGE_TAG}",
+        "-t",
+        "gcr.io/$PROJECT_ID/logflare_app:latest",
+        ".",
+      ]
+
 timeout: 1800s
+
+substitutions:
+  # override this manually with cli as we aren't using cloud trigger anymore
+  _IMAGE_TAG: $SHORT_SHA
+  _CONTAINER_IMAGE: gcr.io/$PROJECT_ID/logflare_app:${_IMAGE_TAG}
+
+images:
+  - "gcr.io/$PROJECT_ID/logflare_app:${_IMAGE_TAG}"
+  - "gcr.io/$PROJECT_ID/logflare_app:latest"
+
+timeout: 1800s
+
 options:
+  dynamicSubstitutions: true
+  substitutionOption: 'ALLOW_LOOSE'
   machineType: N1_HIGHCPU_32

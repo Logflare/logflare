@@ -2,7 +2,9 @@ name: Deploy to Pages
 
 on:
   push:
-    branches: ["staging"]
+    branches: ["main"]
+    paths:
+      - "docs/**"
   workflow_dispatch:
 
 # Sets permissions of the GITHUB_TOKEN to allow deployment to GitHub Pages
