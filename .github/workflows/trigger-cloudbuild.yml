@@ -8,58 +8,48 @@ permissions:
 
 jobs:
   build_image:
-    name: Trigger Cloud Build
+    name: Build Prod Versioned GCP Image
+    strategy:
+      matrix:
+        env: [prod, staging]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
       - name: Set common env vars
+        # GCP credentials is a multi-line string, and will result in error when trying to set it to github env.
+        # directly use it in the auth step instead.
         run: |
-          echo "short_sha=$(git rev-parse --short HEAD)" >> "$GITHUB_ENV"
           echo "version=$(cat ./VERSION)" >> "$GITHUB_ENV"
-
-      # GCP credentials is a multi-line string, and will result in error when trying to set it to github env.
-      # directly use it in the auth step instead.
-      - name: Set prod envs
-        if: github.ref == 'refs/heads/master'
-        run: |
-          echo "LF_PROJECT_ID=logflare-232118" >> "$GITHUB_ENV"
-      - name: Set staging envs
-        if: ${{ github.ref == 'refs/heads/staging' }}
-        run: |
-          echo "LF_PROJECT_ID=logflare-staging" >> "$GITHUB_ENV"
+          echo "short_sha=$(git rev-parse --short HEAD)" >> "$GITHUB_ENV"
+          echo "PROD_PROJECT_ID=logflare-232118" >> "$GITHUB_ENV"
+          echo "STAGING_PROJECT_ID=logflare-staging" >> "$GITHUB_ENV"
       - uses: actions/setup-python@v4
         with:
           python-version: '3.10'
-      - if: github.ref == 'refs/heads/master'
-        uses: 'google-github-actions/auth@v1'
+      - uses: 'google-github-actions/auth@v1'
         with:
-          credentials_json: ${{ secrets.GCP_PROD_CREDENTIALS }}
+          credentials_json: ${{ matrix.env == 'prod' && secrets.GCP_PROD_CREDENTIALS || secrets.GCP_STAGING_CREDENTIALS }}
           create_credentials_file: true
           export_environment_variables: true
           cleanup_credentials: false
-      - if: github.ref == 'refs/heads/staging'
-        uses: 'google-github-actions/auth@v1'
-        with:
-          credentials_json: ${{ secrets.GCP_STAGING_CREDENTIALS }}
-          create_credentials_file: true
-          export_environment_variables: true
-          cleanup_credentials: false
-      - name: 'Set up Cloud SDK'
-        uses: 'google-github-actions/setup-gcloud@v1'
+      - uses: 'google-github-actions/setup-gcloud@v1'
         with:
           version: '418.0.0'
-          project_id: ${{ env.LF_PROJECT_ID}}
-      - name: Bake image for non-versioned
-        if: github.ref == 'refs/heads/main' && github.event_name == 'pull_request'
+          project_id: ${{ matrix.env == 'prod' && env.PROD_PROJECT_ID || env.STAGING_PROJECT_ID }}
+      - name: Bake image for non-versioned (staging only)
+        if: github.event_name != 'release' && matrix.env == 'staging'
         run: |
           gcloud builds submit ./cloudbuild --config=cloudbuild/staging/build-image.yaml --substitutions=_IMAGE_TAG=dev-${{ env.short_sha }}
-      - name: Bake image for versioned
+      - name: Bake image for versioned (prod and staging)
         if: github.event_name == 'release'
         run: |
-          gcloud builds submit ./cloudbuild --config=cloudbuild/staging/build-image.yaml --substitutions=_IMAGE_TAG=${{ env.version }}
+          gcloud builds submit ./cloudbuild --config=cloudbuild/${{ matrix.env }}/build-image.yaml --substitutions=_IMAGE_TAG=${{ env.version }}
   
+
   # only do auto-deploy for staging non-versioned
   deploy:
+    needs:
+      - build_image
     if: github.ref == 'refs/heads/main' && github.event_name == 'pull_request'
     name: Deploy to Staging
     steps:

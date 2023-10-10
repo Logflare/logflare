@@ -3,12 +3,12 @@ name: Elixir CI
 on:
   workflow_dispatch:
   push:
-    branches: [staging, master]
+    branches: [main]
     paths:
       - '!.github/**'
       - '!cloudbuild/**'
   pull_request:
-    branches: [staging]
+    branches: [main]
 
 permissions:
   contents: read
