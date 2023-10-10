@@ -58,7 +58,6 @@ steps:
         "gcr.io/$PROJECT_ID/logflare_app:latest",
         ".",
       ]
-    entrypoint: sh
 
 timeout: 1800s
 
