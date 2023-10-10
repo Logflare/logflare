@@ -49,16 +49,28 @@ steps:
       [
         "build",
         "--build-arg",
-        "TAG_VERSION=staging",
+        "TAG_VERSION=${_IMAGE_TAG}",
         "-f",
-        "cloudbuild/secret_setup.Dockerfile",
+        "secret_setup.Dockerfile",
         "-t",
-        "gcr.io/logflare-staging/logflare_origin:$COMMIT_SHA",
+        "${_CONTAINER_IMAGE}",
         "-t",
-        "gcr.io/logflare-staging/logflare_origin:latest",
+        "gcr.io/$PROJECT_ID/logflare_app:latest",
         ".",
       ]
+
+substitutions:
+    # override this manually with cli as we aren't using cloud trigger anymore
+    _ENV: staging
+    _IMAGE_TAG: $SHORT_SHA
+    _CONTAINER_IMAGE: gcr.io/$PROJECT_ID/logflare_app:${_IMAGE_TAG}
+
 images:
-  - "gcr.io/logflare-staging/logflare_origin:$COMMIT_SHA"
-  - "gcr.io/logflare-staging/logflare_origin:latest"
+  - "gcr.io/$PROJECT_ID/logflare_app:${_IMAGE_TAG}"
+  - "gcr.io/$PROJECT_ID/logflare_app:latest"
+
 timeout: 1800s
+
+options:
+    dynamicSubstitutions: true
+    substitutionOption: 'ALLOW_LOOSE'
