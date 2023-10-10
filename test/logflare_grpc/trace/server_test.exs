@@ -6,16 +6,14 @@ defmodule LogflareGrpc.Trace.ServerTest do
   alias Opentelemetry.Proto.Collector.Trace.V1.ExportTraceServiceResponse
   alias Opentelemetry.Proto.Collector.Trace.V1.TraceService.Stub
 
-  @port 50051
-
   describe "export/2" do
     setup do
       user = insert(:user)
       source = insert(:source, user: user)
 
-      {:ok, _pid, _port} = GRPC.Server.start([Server], @port)
+      {:ok, _pid, port} = GRPC.Server.start([Server], 0)
       on_exit(fn -> GRPC.Server.stop([Server]) end)
-      {:ok, %{source: source, user: user}}
+      {:ok, %{source: source, user: user, port: port}}
     end
 
     defp emulate_request(channel, request) do
@@ -27,12 +25,13 @@ defmodule LogflareGrpc.Trace.ServerTest do
 
     test "returns a success response and starts log event ingestion", %{
       source: source,
-      user: user
+      user: user,
+      port: port
     } do
       headers = [{"x-api-key", user.api_key}, {"x-source-id", source.token}]
 
       {:ok, channel} =
-        GRPC.Stub.connect("localhost:#{@port}",
+        GRPC.Stub.connect("localhost:#{port}",
           headers: headers,
           accepted_compressors: [GRPC.Compressor.Gzip]
         )
@@ -54,11 +53,11 @@ defmodule LogflareGrpc.Trace.ServerTest do
              ] = result
     end
 
-    test "returns an error if invalid api key", %{source: source} do
+    test "returns an error if invalid api key", %{source: source, port: port} do
       headers = [{"x-api-key", "potato"}, {"x-source-id", source.token}]
 
       {:ok, channel} =
-        GRPC.Stub.connect("localhost:#{@port}",
+        GRPC.Stub.connect("localhost:#{port}",
           headers: headers,
           accepted_compressors: [GRPC.Compressor.Gzip]
         )
@@ -76,12 +75,13 @@ defmodule LogflareGrpc.Trace.ServerTest do
     end
 
     test "returns an error if invalid source ID", %{
-      user: user
+      user: user,
+      port: port
     } do
       headers = [{"x-api-key", user.api_key}, {"x-source-id", "potato"}]
 
       {:ok, channel} =
-        GRPC.Stub.connect("localhost:#{@port}",
+        GRPC.Stub.connect("localhost:#{port}",
           headers: headers,
           accepted_compressors: [GRPC.Compressor.Gzip]
         )
@@ -98,11 +98,11 @@ defmodule LogflareGrpc.Trace.ServerTest do
       assert %GRPC.RPCError{message: "Invalid API Key or Source ID"} = result
     end
 
-    test "returns an error if missing x-api-key header", %{source: source} do
+    test "returns an error if missing x-api-key header", %{source: source, port: port} do
       headers = [{"x-source-id", source.token}]
 
       {:ok, channel} =
-        GRPC.Stub.connect("localhost:#{@port}",
+        GRPC.Stub.connect("localhost:#{port}",
           headers: headers,
           accepted_compressors: [GRPC.Compressor.Gzip]
         )
@@ -120,12 +120,13 @@ defmodule LogflareGrpc.Trace.ServerTest do
     end
 
     test "returns an error if missing x-source-id header", %{
-      user: user
+      user: user,
+      port: port
     } do
       headers = [{"x-api-key", user.api_key}]
 
       {:ok, channel} =
-        GRPC.Stub.connect("localhost:#{@port}",
+        GRPC.Stub.connect("localhost:#{port}",
           headers: headers,
           accepted_compressors: [GRPC.Compressor.Gzip]
         )
