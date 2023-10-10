@@ -90,6 +90,7 @@ jobs:
           ${{ env.tag_amd64 }} ${{ env.tag_arm64 }}
 
   trigger_cloudbuild:
+    runs-on: ubuntu-latest
     needs:
       - settings
       - build
