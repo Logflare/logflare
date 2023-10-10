@@ -17,6 +17,7 @@ config :logflare, Logflare.Google, dataset_id_append: "_default"
 
 # Configures the endpoint
 config :logflare, LogflareWeb.Endpoint,
+  adapter: Bandit.PhoenixAdapter,
   url: [host: "localhost", scheme: "http", port: 4000],
   secret_key_base: "DSzZYeAgGaXlfRXPQqMOPiA8hJOYSImhnR2lO8lREOE2vWDmkGn1XWHxoCZoASlP",
   render_errors: [view: LogflareWeb.ErrorView, accepts: ~w(html json)],
