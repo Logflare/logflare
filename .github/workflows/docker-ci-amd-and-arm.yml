@@ -91,7 +91,7 @@ jobs:
 
   trigger_cloudbuild:
     runs-on: ubuntu-latest
-    uses: ./.github/workflows/trigger-cloudbuild.yml@main
+    uses: ./.github/workflows/trigger-cloudbuild.yml
     needs:
       - settings
       - build
