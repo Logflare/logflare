@@ -204,30 +204,10 @@ defmodule Logflare.Mixfile do
 
   defp aliases do
     [
-      setup: [
-        "cmd env $(cat .dev.env|xargs) elixir --sname orange --cookie monster -S mix do deps.get, ecto.setup, ecto.seed"
-      ],
-      start: [
-        "cmd env $(cat .dev.env|xargs) PORT=4000 iex --sname orange --cookie monster -S mix phx.server"
-      ],
-      "start.docker": [
-        "cmd env $(cat .docker.env|xargs) iex --sname blue --cookie monster -S mix phx.server"
-      ],
-      "start.orange": [
-        "cmd env $(cat .dev.env | xargs) PORT=4000 iex --name orange@127.0.0.1 --cookie monster -S mix phx.server"
-      ],
-      "start.pink": [
-        "cmd env $(cat .dev.env|xargs) PORT=4001 LOGFLARE_GRPC_PORT=50052 iex --name pink@127.0.0.1 --cookie monster -S mix phx.server"
-      ],
-      "grpc.protoc": [
-        "cmd rm -rf opentelemetry-proto",
-        "cmd git clone https://github.com/open-telemetry/opentelemetry-proto.git",
-        "cmd protoc -I=./opentelemetry-proto --elixir_out=plugins=grpc:./lib/logflare_grpc $(find ./opentelemetry-proto -iname \"*.proto\")",
-        "cmd rm -rf opentelemetry-proto"
-      ],
+      setup: ["deps.get", "ecto.setup", "ecto.seed"],
       # coveralls will trigger unit tests as well
-      test: ["cmd epmd -daemon", "ecto.create --quiet", "ecto.migrate", "test --no-start"],
-      "test.watch": ["cmd epmd -daemon", "test.watch --no-start"],
+      test: ["ecto.create --quiet", "ecto.migrate", "test --no-start"],
+      "test.watch": ["test.watch --no-start"],
       "test.compile": ["compile --warnings-as-errors"],
       "test.format": ["format --check-formatted"],
       "test.security": ["sobelow --threshold high --ignore Config.HTTPS"],
@@ -238,45 +218,7 @@ defmodule Logflare.Mixfile do
       "lint.all": ["credo --strict"],
       "ecto.seed": ["run priv/repo/seeds.exs"],
       "ecto.setup": ["ecto.create", "ecto.migrate"],
-      "ecto.reset": [
-        "cmd elixir --sname orange --cookie monster -S mix do ecto.drop, ecto.setup"
-      ],
-      "decrypt.dev":
-        "cmd gcloud kms decrypt --ciphertext-file='./.dev.env.enc' --plaintext-file=./.dev.env --location=us-central1 --keyring=logflare-keyring-us-central1 --key=logflare-secrets-key --project=logflare-staging",
-      "encrypt.dev":
-        "cmd gcloud kms encrypt --ciphertext-file='./.dev.env.enc' --plaintext-file=./.dev.env --location=us-central1 --keyring=logflare-keyring-us-central1 --key=logflare-secrets-key --project=logflare-staging",
-      "decrypt.staging": [
-        "cmd gcloud kms decrypt --ciphertext-file='./cloudbuild/.staging.env.enc' --plaintext-file=./.staging.env --location=us-central1 --keyring=logflare-keyring-us-central1 --key=logflare-secrets-key --project=logflare-staging",
-        "cmd gcloud kms decrypt --ciphertext-file='./cloudbuild/gcloud_staging.json.enc' --plaintext-file=./gcloud_staging.json --location=us-central1 --keyring=logflare-keyring-us-central1 --key=logflare-secrets-key --project=logflare-staging",
-        "cmd gcloud kms decrypt --ciphertext-file='./cloudbuild/.staging.cacert.key.enc' --plaintext-file=./.staging.cacert.key --location=us-central1 --keyring=logflare-keyring-us-central1 --key=logflare-secrets-key --project=logflare-staging",
-        "cmd gcloud kms decrypt --ciphertext-file='./cloudbuild/.staging.cacert.pem.enc' --plaintext-file=./.staging.cacert.pem --location=us-central1 --keyring=logflare-keyring-us-central1 --key=logflare-secrets-key --project=logflare-staging",
-        "cmd gcloud kms decrypt --ciphertext-file='./cloudbuild/.staging.cert.key.enc' --plaintext-file=./.staging.cert.key --location=us-central1 --keyring=logflare-keyring-us-central1 --key=logflare-secrets-key --project=logflare-staging",
-        "cmd gcloud kms decrypt --ciphertext-file='./cloudbuild/.staging.cert.pem.enc' --plaintext-file=./.staging.cert.pem --location=us-central1 --keyring=logflare-keyring-us-central1 --key=logflare-secrets-key --project=logflare-staging"
-      ],
-      "encrypt.staging": [
-        "cmd gcloud kms encrypt --ciphertext-file='./cloudbuild/.staging.env.enc' --plaintext-file=./.staging.env --location=us-central1 --keyring=logflare-keyring-us-central1 --key=logflare-secrets-key --project=logflare-staging",
-        "cmd gcloud kms encrypt --ciphertext-file='./cloudbuild/gcloud_staging.json.enc' --plaintext-file=./gcloud_staging.json --location=us-central1 --keyring=logflare-keyring-us-central1 --key=logflare-secrets-key --project=logflare-staging",
-        "cmd gcloud kms encrypt --ciphertext-file='./cloudbuild/.staging.cacert.key.enc' --plaintext-file=./.staging.cacert.key --location=us-central1 --keyring=logflare-keyring-us-central1 --key=logflare-secrets-key --project=logflare-staging",
-        "cmd gcloud kms encrypt --ciphertext-file='./cloudbuild/.staging.cacert.pem.enc' --plaintext-file=./.staging.cacert.pem --location=us-central1 --keyring=logflare-keyring-us-central1 --key=logflare-secrets-key --project=logflare-staging",
-        "cmd gcloud kms encrypt --ciphertext-file='./cloudbuild/.staging.cert.key.enc' --plaintext-file=./.staging.cert.key --location=us-central1 --keyring=logflare-keyring-us-central1 --key=logflare-secrets-key --project=logflare-staging",
-        "cmd gcloud kms encrypt --ciphertext-file='./cloudbuild/.staging.cert.pem.enc' --plaintext-file=./.staging.cert.pem --location=us-central1 --keyring=logflare-keyring-us-central1 --key=logflare-secrets-key --project=logflare-staging"
-      ],
-      "decrypt.prod": [
-        "cmd gcloud kms decrypt --ciphertext-file='./cloudbuild/.prod.env.enc' --plaintext-file=./.prod.env --location=us-central1 --keyring=logflare-prod-keyring-us-central1 --key=logflare-prod-secrets-key --project=logflare-232118",
-        "cmd gcloud kms decrypt --ciphertext-file='./cloudbuild/gcloud_prod.json.enc' --plaintext-file=./gcloud_prod.json --location=us-central1 --keyring=logflare-prod-keyring-us-central1 --key=logflare-prod-secrets-key --project=logflare-232118",
-        "cmd gcloud kms decrypt --ciphertext-file='./cloudbuild/.prod.cacert.key.enc' --plaintext-file=./.prod.cacert.key --location=us-central1 --keyring=logflare-prod-keyring-us-central1 --key=logflare-prod-secrets-key --project=logflare-232118",
-        "cmd gcloud kms decrypt --ciphertext-file='./cloudbuild/.prod.cacert.pem.enc' --plaintext-file=./.prod.cacert.pem --location=us-central1 --keyring=logflare-prod-keyring-us-central1 --key=logflare-prod-secrets-key --project=logflare-232118",
-        "cmd gcloud kms decrypt --ciphertext-file='./cloudbuild/.prod.cert.key.enc' --plaintext-file=./.prod.cert.key --location=us-central1 --keyring=logflare-prod-keyring-us-central1 --key=logflare-prod-secrets-key --project=logflare-232118",
-        "cmd gcloud kms decrypt --ciphertext-file='./cloudbuild/.prod.cert.pem.enc' --plaintext-file=./.prod.cert.pem --location=us-central1 --keyring=logflare-prod-keyring-us-central1 --key=logflare-prod-secrets-key --project=logflare-232118"
-      ],
-      "encrypt.prod": [
-        "cmd gcloud kms encrypt --ciphertext-file='./cloudbuild/.prod.env.enc' --plaintext-file=./.prod.env --location=us-central1 --keyring=logflare-prod-keyring-us-central1 --key=logflare-prod-secrets-key --project=logflare-232118",
-        "cmd gcloud kms encrypt --ciphertext-file='./cloudbuild/gcloud_prod.json.enc' --plaintext-file=./gcloud_prod.json --location=us-central1 --keyring=logflare-prod-keyring-us-central1 --key=logflare-prod-secrets-key --project=logflare-232118",
-        "cmd gcloud kms encrypt --ciphertext-file='./cloudbuild/.prod.cacert.key.enc' --plaintext-file=./.prod.cacert.key --location=us-central1 --keyring=logflare-prod-keyring-us-central1 --key=logflare-prod-secrets-key --project=logflare-232118",
-        "cmd gcloud kms encrypt --ciphertext-file='./cloudbuild/.prod.cacert.pem.enc' --plaintext-file=./.prod.cacert.pem --location=us-central1 --keyring=logflare-prod-keyring-us-central1 --key=logflare-prod-secrets-key --project=logflare-232118",
-        "cmd gcloud kms encrypt --ciphertext-file='./cloudbuild/.prod.cert.key.enc' --plaintext-file=./.prod.cert.key --location=us-central1 --keyring=logflare-prod-keyring-us-central1 --key=logflare-prod-secrets-key --project=logflare-232118",
-        "cmd gcloud kms encrypt --ciphertext-file='./cloudbuild/.prod.cert.pem.enc' --plaintext-file=./.prod.cert.pem --location=us-central1 --keyring=logflare-prod-keyring-us-central1 --key=logflare-prod-secrets-key --project=logflare-232118"
-      ]
+      "ecto.reset": ["ecto.drop", "ecto.setup"]
     ]
   end
 
