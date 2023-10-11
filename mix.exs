@@ -62,14 +62,12 @@ defmodule Logflare.Mixfile do
     [
       # Phoenix stuff
       {:phoenix, "~> 1.7"},
-      # {:phoenix_html, "~> 3.2"},
       {:phoenix_live_view, "~> 0.18"},
       {:phoenix_view, "~> 2.0"},
       {:phoenix_pubsub, "~> 2.1"},
       {:phoenix_ecto, "~> 4.4"},
       {:phoenix_live_reload, "~> 1.4", only: :dev},
-      # {:plug, "~> 1.8"},
-      {:plug_cowboy, "~> 2.6"},
+      {:bandit, ">= 0.7.7"},
       {:plug_crypto, "~> 1.2.2"},
       {:cors_plug, "~> 2.0"},
 
@@ -116,12 +114,12 @@ defmodule Logflare.Mixfile do
       {:castore, "~> 0.1.0"},
       {:finch, "~> 0.16.0"},
       {:mint, "~> 1.0"},
-      # {:hackney, github: "benoitc/hackney", override: true},
       {:httpoison, "~> 1.4"},
       {:poison, "~> 5.0.0", override: true},
       {:swoosh, "~> 0.23"},
       {:ex_twilio, "~> 0.8.1"},
       {:tesla, "~> 1.6"},
+
       # Concurrency and pipelines
       {:broadway, "~> 1.0.6"},
       {:flow, "~> 1.0"},
@@ -185,9 +183,6 @@ defmodule Logflare.Mixfile do
       {:credo, "~> 1.6", only: [:dev, :test], runtime: false},
       {:sobelow, "~> 0.11", only: [:dev, :test], runtime: false},
       {:excoveralls, "~> 0.10", only: :test},
-
-      # Telemetry
-      # {:logflare_telemetry, github: "Logflare/logflare_telemetry_ex", only: :dev}
 
       # Charting
       {:contex, "~> 0.3.0"},
