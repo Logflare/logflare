@@ -95,3 +95,4 @@ jobs:
       - settings
       - build
       - merge_publish
+    secrets: inherit
