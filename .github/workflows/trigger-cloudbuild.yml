@@ -37,16 +37,16 @@ jobs:
           echo "region=us-central1" >> "$GITHUB_ENV"
       - uses: actions/setup-python@v4
         with:
-          python-version: '3.10'
-      - uses: 'google-github-actions/auth@v1'
+          python-version: "3.10"
+      - uses: "google-github-actions/auth@v1"
         with:
           credentials_json: ${{ matrix.env == 'prod' && secrets.GCP_PROD_CREDENTIALS || secrets.GCP_STAGING_CREDENTIALS }}
           create_credentials_file: true
           export_environment_variables: true
           cleanup_credentials: false
-      - uses: 'google-github-actions/setup-gcloud@v1'
+      - uses: "google-github-actions/setup-gcloud@v1"
         with:
-          version: '418.0.0'
+          version: "449.0.0"
           project_id: ${{ env.project_id }}
       - name: Build & deploy for staging (main branch)
         if: github.event_name != 'release' && matrix.env == 'staging'
@@ -60,7 +60,6 @@ jobs:
       #         --config=cloudbuild/${{ matrix.env }}/build-image.yaml \
       #         --substitutions=_IMAGE_TAG=${{ env.version }} \
       #         --region=${{ env.region }}
-  
 
   # only do auto-deploy for staging non-versioned
   # deploy:
