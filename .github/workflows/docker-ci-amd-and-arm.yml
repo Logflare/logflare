@@ -19,12 +19,14 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       version: ${{steps.env.outputs.version}}
+      short_sha: ${{steps.env.outputs.short_sha}}
     steps:
       - uses: actions/checkout@v3
       - name: Setup outputs
         id: env
         run: |
           echo "version=$(cat ./VERSION)" >> "$GITHUB_OUTPUT"
+          echo "short_sha=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
   build:
     needs: settings
     strategy:
@@ -76,11 +78,11 @@ jobs:
           echo "tag_amd64=supabase/logflare:${{ needs.settings.outputs.version }}-amd64" >> "$GITHUB_ENV"
           echo "tag_arm64=supabase/logflare:${{ needs.settings.outputs.version }}-arm64" >> "$GITHUB_ENV"
           echo "tag_ver=supabase/logflare:${{ needs.settings.outputs.version }}" >> "$GITHUB_ENV"
-          echo "short_sha=$(git rev-parse --short HEAD)" >> "$GITHUB_ENV"
+          echo "tag_sha=supabase/logflare:${{ needs.settings.outputs.short_sha }}" >> "$GITHUB_ENV"
       - name: Staging - Merge multi-arch manifests and push the dev image
         if: github.ref == 'refs/heads/main' && github.event_name == 'push'
         run: |
-          docker buildx imagetools create -t supabase/logflare:dev-${{ env.short_sha }}  \
+          docker buildx imagetools create -t ${{ env.tag_sha }}  \
           ${{ env.tag_amd64 }} ${{ env.tag_arm64 }}
       # only produce a versioned image if created from a release
       - name: Versioned - Merge multi-arch manifests and push (release only)
