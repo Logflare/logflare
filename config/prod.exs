@@ -6,23 +6,10 @@ config :logflare, env: :prod
 config :logflare, LogflareWeb.Endpoint,
   http: [
     port: 4000,
-    transport_options: [
+    thousand_island_options: [
       max_connections: 64_000,
-      num_acceptors: 1_000,
-      # for so_reuseport
-      socket_opts: [{:raw, 1, 15, <<1::32-native>>}]
-    ],
-    # https://blog.percy.io/tuning-nginx-behind-google-cloud-platform-http-s-load-balancer-305982ddb340
-    # https://github.com/ninenines/cowboy/issues/1286#issuecomment-699643478
-    protocol_options: [
-      # https://ninenines.eu/docs/en/cowboy/2.8/manual/cowboy_http/
-      request_timeout: 30_000,
-      # https://cloud.google.com/load-balancing/docs/https/#timeouts_and_retries
-      # must be greater than 600s
-      idle_timeout: 650_000,
-      max_keepalive: :infinity
-    ],
-    compress: true
+      num_acceptors: 1_000
+    ]
   ],
   cache_static_manifest: "priv/static/cache_manifest.json",
   server: true,
