@@ -3,7 +3,7 @@ steps:
     args:
       - kms
       - decrypt
-      - "--ciphertext-file=gcloud_prod.json.enc"
+      - "--ciphertext-file=cloudbuild/gcloud_prod.json.enc"
       - "--plaintext-file=gcloud.json"
       - "--location=us-central1"
       - "--keyring=logflare-prod-keyring-us-central1"
@@ -12,7 +12,7 @@ steps:
     args:
       - kms
       - decrypt
-      - "--ciphertext-file=./.prod.env.enc"
+      - "--ciphertext-file=./cloudbuild/.prod.env.enc"
       - "--plaintext-file=./.secrets.env"
       - "--location=us-central1"
       - "--keyring=logflare-prod-keyring-us-central1"
@@ -21,7 +21,7 @@ steps:
     args:
       - kms
       - decrypt
-      - "--ciphertext-file=./.prod.cert.pem.enc"
+      - "--ciphertext-file=./cloudbuild/.prod.cert.pem.enc"
       - "--plaintext-file=./cert.pem"
       - "--location=us-central1"
       - "--keyring=logflare-prod-keyring-us-central1"
@@ -30,7 +30,7 @@ steps:
     args:
       - kms
       - decrypt
-      - "--ciphertext-file=./.prod.cert.key.enc"
+      - "--ciphertext-file=./cloudbuild/.prod.cert.key.enc"
       - "--plaintext-file=./cert.key"
       - "--location=us-central1"
       - "--keyring=logflare-prod-keyring-us-central1"
@@ -39,7 +39,7 @@ steps:
     args:
       - kms
       - decrypt
-      - "--ciphertext-file=./.prod.cacert.pem.enc"
+      - "--ciphertext-file=./cloudbuild/.prod.cacert.pem.enc"
       - "--plaintext-file=./cacert.pem"
       - "--location=us-central1"
       - "--keyring=logflare-prod-keyring-us-central1"

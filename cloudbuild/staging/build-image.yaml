@@ -3,7 +3,7 @@ steps:
     args:
       - kms
       - decrypt
-      - --ciphertext-file=gcloud_staging.json.enc
+      - --ciphertext-file=cloudbuild/gcloud_staging.json.enc
       - --plaintext-file=gcloud.json
       - --location=us-central1
       - --keyring=logflare-keyring-us-central1
@@ -12,7 +12,7 @@ steps:
     args:
       - kms
       - decrypt
-      - --ciphertext-file=./.staging.env.enc
+      - --ciphertext-file=./cloudbuild/.staging.env.enc
       - --plaintext-file=./.secrets.env
       - --location=us-central1
       - --keyring=logflare-keyring-us-central1
@@ -21,7 +21,7 @@ steps:
     args:
       - kms
       - decrypt
-      - --ciphertext-file=./.staging.cert.pem.enc
+      - --ciphertext-file=./cloudbuild/.staging.cert.pem.enc
       - --plaintext-file=./cert.pem
       - --location=us-central1
       - --keyring=logflare-keyring-us-central1
@@ -30,7 +30,7 @@ steps:
     args:
       - kms
       - decrypt
-      - --ciphertext-file=./.staging.cert.key.enc
+      - --ciphertext-file=./cloudbuild/.staging.cert.key.enc
       - --plaintext-file=./cert.key
       - --location=us-central1
       - --keyring=logflare-keyring-us-central1
@@ -39,7 +39,7 @@ steps:
     args:
       - kms
       - decrypt
-      - --ciphertext-file=./.staging.cacert.pem.enc
+      - --ciphertext-file=./cloudbuild/.staging.cacert.pem.enc
       - --plaintext-file=./cacert.pem
       - --location=us-central1
       - --keyring=logflare-keyring-us-central1
