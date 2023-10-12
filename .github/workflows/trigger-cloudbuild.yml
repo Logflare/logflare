@@ -21,8 +21,19 @@ jobs:
         run: |
           echo "version=$(cat ./VERSION)" >> "$GITHUB_ENV"
           echo "short_sha=$(git rev-parse --short HEAD)" >> "$GITHUB_ENV"
-          echo "PROD_PROJECT_ID=logflare-232118" >> "$GITHUB_ENV"
-          echo "STAGING_PROJECT_ID=logflare-staging" >> "$GITHUB_ENV"
+          echo "host_connection=github-logflare" >> "$GITHUB_ENV"
+          echo "repository_name=Logflare-logflare" >> "$GITHUB_ENV"
+      - uses: actions/setup-python@v4
+      - name: Set ${{ matrix.env }} env vars
+        if: matrix.env == 'prod'
+        run: |
+          echo "project_id=logflare-232118" >> "$GITHUB_ENV"
+          echo "region=europe-west3" >> "$GITHUB_ENV"
+      - name: Set ${{ matrix.env }} env vars
+        if: matrix.env == 'staging'
+        run: |
+          echo "project_id=logflare-staging" >> "$GITHUB_ENV"
+          echo "region=us-central1" >> "$GITHUB_ENV"
       - uses: actions/setup-python@v4
         with:
           python-version: '3.10'
@@ -35,15 +46,15 @@ jobs:
       - uses: 'google-github-actions/setup-gcloud@v1'
         with:
           version: '418.0.0'
-          project_id: ${{ matrix.env == 'prod' && env.PROD_PROJECT_ID || env.STAGING_PROJECT_ID }}
+          project_id: ${{ env.project_id }}
       - name: Bake image for non-versioned (staging only)
         if: github.event_name != 'release' && matrix.env == 'staging'
         run: |
-          gcloud builds submit ./cloudbuild --config=cloudbuild/staging/build-image.yaml --substitutions=_IMAGE_TAG=dev-${{ env.short_sha }}
+          gcloud builds submit projects/${{ env.project_id }}/locations/${{ env.region }}/connections/${{ env.host_connection}}/repositories/${{ env.repository_name }} --config=cloudbuild/staging/build-image.yaml --substitutions=_IMAGE_TAG=dev-${{ env.short_sha }}
       - name: Bake image for versioned (prod and staging)
         if: github.event_name == 'release'
         run: |
-          gcloud builds submit ./cloudbuild --config=cloudbuild/${{ matrix.env }}/build-image.yaml --substitutions=_IMAGE_TAG=${{ env.version }}
+          gcloud builds submit projects/${{ env.project_id }}/locations/${{ env.region }}/connections/${{ env.host_connection}}/repositories/${{ env.repository_name }} --config=cloudbuild/${{ matrix.env }}/build-image.yaml --substitutions=_IMAGE_TAG=${{ env.version }}
   
 
   # only do auto-deploy for staging non-versioned
