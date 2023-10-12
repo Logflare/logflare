@@ -98,3 +98,36 @@ grpc.protoc:
 	trap 'rm -rf "$$dir"' EXIT; \
 	git clone https://github.com/open-telemetry/opentelemetry-proto.git $$dir; \
 	protoc -I=$$dir --elixir_out=plugins=grpc:$(PWD)/lib/logflare_grpc $$(find $$dir -iname '*.proto')
+
+
+# manual deployment scripts
+
+deploy.staging.main:
+	$(eval IMAGE_TAG := dev-$(git rev-parse --short HEAD))
+	gcloud builds submit \
+		projects/logflare-staging/locations/us-central1/connections/github-logflare/repositories/Logflare-logflare \
+		--revision=main  \
+		--config=cloudbuild/staging/build-image.yaml \
+		--substitutions=_IMAGE_TAG=$(IMAGE_TAG) \
+		--region=us-central1
+	
+	gcloud builds submit \
+		--no-source \
+		--config=./cloudbuild/staging/deploy.yaml \
+		--substitutions=_IMAGE_TAG=$(IMAGE_TAG)
+
+deploy.staging.versioned:
+	$(eval IMAGE_TAG := $(cat ./VERSION))
+	gcloud builds submit \
+		projects/logflare-staging/locations/us-central1/connections/github-logflare/repositories/Logflare-logflare \
+		--revision=main  \
+		--config=cloudbuild/staging/build-image.yaml \
+		--substitutions=_IMAGE_TAG=$(IMAGE_TAG) \
+		--region=us-central1
+	
+	gcloud builds submit \
+		--no-source \
+		--config=./cloudbuild/staging/deploy.yaml \
+		--substitutions=_IMAGE_TAG=$(IMAGE_TAG),_INSTANCE_TYPE=c2d-standard-8,_CLUSTER=versioned
+
+.PHONY: deploy.staging.main
