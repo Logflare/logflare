@@ -109,12 +109,15 @@ deploy.staging.main:
 		--revision=main  \
 		--config=cloudbuild/staging/build-image.yaml \
 		--substitutions=_IMAGE_TAG=$(SHA_IMAGE_TAG) \
-		--region=us-central1
+		--region=us-central1 \
+		--gcs-log-dir="gs://logflare-staging_cloudbuild-logs/logs"
 	
 	gcloud builds submit \
 		--no-source \
 		--config=./cloudbuild/staging/deploy.yaml \
-		--substitutions=_IMAGE_TAG=$(SHA_IMAGE_TAG)
+		--substitutions=_IMAGE_TAG=$(SHA_IMAGE_TAG) \
+		--region=us-central1 \
+		--gcs-log-dir="gs://logflare-staging_cloudbuild-logs/logs"
 
 deploy.staging.versioned:
 	gcloud builds submit \
@@ -122,11 +125,14 @@ deploy.staging.versioned:
 		--revision=main  \
 		--config=cloudbuild/staging/build-image.yaml \
 		--substitutions=_IMAGE_TAG=$(VERSION) \
-		--region=us-central1
+		--region=us-central1 \
+		--gcs-log-dir="gs://logflare-staging_cloudbuild-logs/logs"
 	
 	gcloud builds submit \
 		--no-source \
 		--config=./cloudbuild/staging/deploy.yaml \
-		--substitutions=_IMAGE_TAG=$(VERSION),_INSTANCE_TYPE=c2d-standard-8,_CLUSTER=versioned
+		--substitutions=_IMAGE_TAG=$(VERSION),_INSTANCE_TYPE=c2d-standard-8,_CLUSTER=versioned \
+		--region=us-central1 \
+		--gcs-log-dir="gs://logflare-staging_cloudbuild-logs/logs"
 
 .PHONY: deploy.staging.main
