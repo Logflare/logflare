@@ -51,7 +51,7 @@ steps:
         "--build-arg",
         "TAG_VERSION=${_IMAGE_TAG}",
         "-f",
-        "secret_setup.Dockerfile",
+        "cloudbuild/secret_setup.Dockerfile",
         "-t",
         "${_CONTAINER_IMAGE}",
         "-t",
