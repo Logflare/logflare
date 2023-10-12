@@ -9,7 +9,6 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor do
   """
   use GenServer
   use TypedStruct
-  use Logflare.Backends.Adaptor
 
   alias Logflare.Backends.Adaptor.PostgresAdaptor.Pipeline
   alias Logflare.Backends.Adaptor.PostgresAdaptor.PgRepo
@@ -17,6 +16,8 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor do
   alias Logflare.Backends.SourceBackend
   alias Logflare.Backends.SourceDispatcher
   alias Logflare.Buffers.MemoryBuffer
+
+  @behaviour Logflare.Backends.Adaptor
 
   import Ecto.Changeset
 

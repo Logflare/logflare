@@ -31,30 +31,13 @@ defmodule Logflare.Backends.Adaptor do
   """
   @callback validate_config(changeset :: Ecto.Changeset.t()) :: Ecto.Changeset.t()
 
-  defmacro __using__(_opts) do
-    quote do
-      @behaviour unquote(__MODULE__)
-
-      @impl true
-      def ingest(_pid, _log_events), do: raise("Ingest callback not implemented!")
-
-      @impl true
-      def validate_config(_config_changeset),
-        do: raise("Config validation callback not implemented!")
-
-      @impl true
-      def execute_query(_identifier, _query), do: {:error, :not_implemented}
-
-      @impl true
-      def cast_config(_config), do: raise("Config casting callback not implemented!")
-
-      def cast_and_validate_config(params) do
-        params
-        |> cast_config()
-        |> validate_config()
-      end
-
-      defoverridable unquote(__MODULE__)
-    end
+  @doc """
+  Validate configuration for given adaptor implementation
+  """
+  @spec cast_and_validate_config(module(), map()) :: Ecto.Changeset.t()
+  def cast_and_validate_config(mod, params) do
+    params
+    |> mod.cast_config()
+    |> mod.validate_config()
   end
 end

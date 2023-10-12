@@ -1,5 +1,7 @@
 defmodule Logflare.Backends do
   @moduledoc false
+
+  alias Logflare.Backends.Adaptor
   alias Logflare.Backends.Adaptor.WebhookAdaptor
   alias Logflare.Backends.Adaptor.PostgresAdaptor
   alias Logflare.Backends.RecentLogs
@@ -84,7 +86,7 @@ defmodule Logflare.Backends do
     mod = @adaptor_mapping[type]
 
     Ecto.Changeset.validate_change(changeset, :config, fn :config, config ->
-      case mod.cast_and_validate_config(config) do
+      case Adaptor.cast_and_validate_config(mod, config) do
         %{valid?: true} -> []
         %{valid?: false, errors: errors} -> for {key, err} <- errors, do: {:"config.#{key}", err}
       end
