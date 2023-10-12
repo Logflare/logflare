@@ -1,6 +1,7 @@
 name: Cloudbuild Build & Deploy
 
 on:
+  workflow_dispatch:
   workflow_call:
 
 permissions:
