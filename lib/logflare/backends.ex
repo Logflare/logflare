@@ -52,13 +52,9 @@ defmodule Logflare.Backends do
       |> validate_config()
       |> Repo.insert()
 
-    case source_backend do
-      {:ok, updated} ->
-        restart_source_sup(source)
-        {:ok, typecast_config_string_map_to_atom_map(updated)}
-
-      other ->
-        other
+    with {:ok, updated} <- source_backend do
+      restart_source_sup(source)
+      {:ok, typecast_config_string_map_to_atom_map(updated)}
     end
   end
 
@@ -76,22 +72,19 @@ defmodule Logflare.Backends do
       |> validate_config()
       |> Repo.update()
 
-    case source_backend_config do
-      {:ok, updated} ->
-        restart_source_sup(source_backend.source)
-        {:ok, typecast_config_string_map_to_atom_map(updated)}
-
-      other ->
-        other
+    with {:ok, updated} <- source_backend_config do
+      restart_source_sup(source_backend.source)
+      {:ok, typecast_config_string_map_to_atom_map(updated)}
     end
   end
 
   # common config validation function
   defp validate_config(changeset) do
     type = Ecto.Changeset.get_field(changeset, :type)
+    mod = @adaptor_mapping[type]
 
     Ecto.Changeset.validate_change(changeset, :config, fn :config, config ->
-      case @adaptor_mapping[type].cast_and_validate_config(config) do
+      case mod.cast_and_validate_config(config) do
         %{valid?: true} -> []
         %{valid?: false, errors: errors} -> for {key, err} <- errors, do: {:"config.#{key}", err}
       end
@@ -102,16 +95,12 @@ defmodule Logflare.Backends do
   defp typecast_config_string_map_to_atom_map(nil), do: nil
 
   defp typecast_config_string_map_to_atom_map(%SourceBackend{type: type} = source_backend) do
+    mod = @adaptor_mapping[type]
+
     Map.update!(source_backend, :config, fn config ->
-      mod = @adaptor_mapping[type]
-
-      typecasted =
-        config
-        |> mod.cast_config()
-        |> Ecto.Changeset.apply_changes()
-
-      mod_struct = struct(mod, %{config: typecasted})
-      mod_struct.config
+      config
+      |> mod.cast_config()
+      |> Ecto.Changeset.apply_changes()
     end)
   end
 
@@ -154,7 +143,7 @@ defmodule Logflare.Backends do
     Registry.dispatch(SourceDispatcher, source.id, fn entries ->
       for {pid, {adaptor_module, :ingest}} <- entries do
         # TODO: spawn tasks to do this concurrently
-        apply(adaptor_module, :ingest, [pid, log_events])
+        adaptor_module.ingest(pid, log_events)
       end
     end)
 
