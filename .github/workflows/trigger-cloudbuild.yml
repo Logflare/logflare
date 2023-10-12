@@ -51,11 +51,20 @@ jobs:
       - name: Bake image for non-versioned (staging only)
         if: github.event_name != 'release' && matrix.env == 'staging'
         run: |
-          gcloud builds submit projects/${{ env.project_id }}/locations/${{ env.region }}/connections/${{ env.host_connection}}/repositories/${{ env.repository_name }} --config=cloudbuild/staging/build-image.yaml --substitutions=_IMAGE_TAG=dev-${{ env.short_sha }}
+          gcloud builds submit \
+              projects/${{ env.project_id }}/locations/${{ env.region }}/connections/${{ env.host_connection}}/repositories/${{ env.repository_name }} \
+              --config=cloudbuild/staging/build-image.yaml \
+              --substitutions=_IMAGE_TAG=dev-${{ env.short_sha }} \
+              --region=${{ env.region }}
+
       - name: Bake image for versioned (prod and staging)
         if: github.event_name == 'release'
         run: |
-          gcloud builds submit projects/${{ env.project_id }}/locations/${{ env.region }}/connections/${{ env.host_connection}}/repositories/${{ env.repository_name }} --config=cloudbuild/${{ matrix.env }}/build-image.yaml --substitutions=_IMAGE_TAG=${{ env.version }}
+          gcloud builds submit \
+              projects/${{ env.project_id }}/locations/${{ env.region }}/connections/${{ env.host_connection}}/repositories/${{ env.repository_name }} \
+              --config=cloudbuild/${{ matrix.env }}/build-image.yaml \
+              --substitutions=_IMAGE_TAG=${{ env.version }} \
+              --region=${{ env.region }}
   
 
   # only do auto-deploy for staging non-versioned
