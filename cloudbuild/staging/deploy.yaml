@@ -7,7 +7,7 @@ steps:
       - instance-templates
       - create-with-container
       - $_TEMPLATE_NAME
-      - --machine-type=e2-standard-2
+      - --machine-type=${_INSTANCE_TYPE}
       - --project=logflare-staging
       - --network-interface=network=default,network-tier=PREMIUM
       - --maintenance-policy=MIGRATE
@@ -47,7 +47,8 @@ steps:
 
 substitutions:
     _COOKIE: default
-    _CLUSTER: main # default value
+    _CLUSTER: main
+    _INSTANCE_TYPE: e2-standard-2
     _INSTANCE_GROUP: instance-group-staging-${_CLUSTER}
     _IMAGE_TAG: $SHORT_SHA
     _TEMPLATE_NAME: logflare-staging-${_CLUSTER}-cluster-${_IMAGE_TAG}

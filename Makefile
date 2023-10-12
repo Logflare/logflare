@@ -2,10 +2,11 @@ GCLOUD_LOCATION ?= us-central1
 GCLOUD_KEYRING ?= logflare-keyring-us-central1
 GCLOUD_KEY ?= logflare-secrets-key
 GCLOUD_PROJECT ?= logflare-staging
-
 ERL_COOKIE ?= monster
 
 ENV ?= dev
+SHA_IMAGE_TAG ?= dev-$(shell git rev-parse --short HEAD)
+VERSION ?= $(shell cat ./VERSION)
 
 help:
 	@cat DEVELOPMENT.md
@@ -98,3 +99,34 @@ grpc.protoc:
 	trap 'rm -rf "$$dir"' EXIT; \
 	git clone https://github.com/open-telemetry/opentelemetry-proto.git $$dir; \
 	protoc -I=$$dir --elixir_out=plugins=grpc:$(PWD)/lib/logflare_grpc $$(find $$dir -iname '*.proto')
+
+
+# manual deployment scripts
+
+deploy.staging.main:
+	gcloud builds submit \
+		projects/logflare-staging/locations/us-central1/connections/github-logflare/repositories/Logflare-logflare \
+		--revision=main  \
+		--config=cloudbuild/staging/build-image.yaml \
+		--substitutions=_IMAGE_TAG=$(SHA_IMAGE_TAG) \
+		--region=us-central1
+	
+	gcloud builds submit \
+		--no-source \
+		--config=./cloudbuild/staging/deploy.yaml \
+		--substitutions=_IMAGE_TAG=$(SHA_IMAGE_TAG)
+
+deploy.staging.versioned:
+	gcloud builds submit \
+		projects/logflare-staging/locations/us-central1/connections/github-logflare/repositories/Logflare-logflare \
+		--revision=main  \
+		--config=cloudbuild/staging/build-image.yaml \
+		--substitutions=_IMAGE_TAG=$(VERSION) \
+		--region=us-central1
+	
+	gcloud builds submit \
+		--no-source \
+		--config=./cloudbuild/staging/deploy.yaml \
+		--substitutions=_IMAGE_TAG=$(VERSION),_INSTANCE_TYPE=c2d-standard-8,_CLUSTER=versioned
+
+.PHONY: deploy.staging.main
