@@ -3,13 +3,14 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
 
   use GenServer
   use TypedStruct
-  use Logflare.Backends.Adaptor
 
   alias Logflare.Backends
   alias Logflare.Backends.Adaptor.WebhookAdaptor
   alias Logflare.Backends.SourceBackend
   alias Logflare.Backends.SourceDispatcher
   alias Logflare.Buffers.MemoryBuffer
+
+  @behaviour Logflare.Backends.Adaptor
 
   typedstruct enforce: true do
     field(:buffer_module, Adaptor.t())
@@ -19,13 +20,36 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
     field(:pipeline_name, tuple())
   end
 
+  # API
+
+  @impl Logflare.Backends.Adaptor
+  def ingest(pid, log_events), do: GenServer.call(pid, {:ingest, log_events})
+
+  @impl Logflare.Backends.Adaptor
+  def cast_config(params) do
+    {%{}, %{url: :string}}
+    |> Ecto.Changeset.cast(params, [:url])
+  end
+
+  @impl Logflare.Backends.Adaptor
+  def execute_query(_ident, _query),
+    do: {:error, :not_implemented}
+
+  @impl Logflare.Backends.Adaptor
+  def validate_config(changeset) do
+    changeset
+    |> Ecto.Changeset.validate_required([:url])
+    |> Ecto.Changeset.validate_format(:url, ~r/https?\:\/\/.+/)
+  end
+
+  # GenServer
   def start_link(%SourceBackend{} = source_backend) do
     GenServer.start_link(__MODULE__, source_backend,
       name: Backends.via_source_backend(source_backend, __MODULE__)
     )
   end
 
-  @impl true
+  @impl GenServer
   def init(source_backend) do
     {:ok, _} =
       Registry.register(SourceDispatcher, source_backend.source_id, {__MODULE__, :ingest})
@@ -44,26 +68,7 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
     {:ok, state}
   end
 
-  # API
-
-  @impl true
-  def ingest(pid, log_events), do: GenServer.call(pid, {:ingest, log_events})
-
-  @impl true
-  def cast_config(params) do
-    {%{}, %{url: :string}}
-    |> Ecto.Changeset.cast(params, [:url])
-  end
-
-  @impl true
-  def validate_config(changeset) do
-    changeset
-    |> Ecto.Changeset.validate_required([:url])
-    |> Ecto.Changeset.validate_format(:url, ~r/https?\:\/\/.+/)
-  end
-
-  # GenServer
-  @impl true
+  @impl GenServer
   def handle_call({:ingest, log_events}, _from, %{config: _config} = state) do
     # TODO: queue, send concurrently
     MemoryBuffer.add_many(state.buffer_pid, log_events)
@@ -75,7 +80,7 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
     @moduledoc false
     use Tesla, docs: false
 
-    # plug Tesla.Middleware.Headers, [{"authorization", "token xyz"}]
+    plug(Tesla.Middleware.Telemetry)
     plug(Tesla.Middleware.JSON)
 
     def send(url, body, opts \\ %{}) do
