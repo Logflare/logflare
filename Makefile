@@ -48,7 +48,7 @@ __start__: decrypt.${ENV}
 #     make decrypt.{dev,staging,prod} # Decrypt secrets for given environment
 #     make encrypt.{dev,staging,prod} # Encrypt secrets for given environment
 
-$(addprefix .%, .json .key .pem  .env): FORCE
+.%.env .%.json %.pem .%.key: FORCE
 	@gcloud kms decrypt --ciphertext-file=cloudbuild/$@.enc --plaintext-file=$@ \
 		--location=${GCLOUD_LOCATION} \
 		--keyring=${GCLOUD_KEYRING} \
@@ -74,6 +74,10 @@ encrypt.dev: .dev.env.enc
 .PHONY: decrypt.dev encrypt.dev
 
 envs = staging prod
+
+%crypt.prod: GCLOUD_KEYRING = logflare-prod-keyring-us-central1
+%crypt.prod: GCLOUD_KEY = logflare-prod-secrets-key
+%crypt.prod: GCLOUD_PROJECT = logflare-232118
 
 .SECONDEXPANSION:
 $(addprefix decrypt.,${envs}): decrypt.%: \
