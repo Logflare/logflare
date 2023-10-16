@@ -46,7 +46,7 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor.PgRepo do
   @spec get_repo_module(SourceBackend.t()) :: Ecto.Repo.t()
   def get_repo_module(%SourceBackend{config: config, source: %Source{}}) do
     data = inspect(config)
-    sha256 = :crypto.hash(:sha256, data) |> Base.encode16() |> String.downcase()
+    sha256 = :crypto.hash(:sha256, data) |> Base.encode16(case: :lower)
     Module.concat([Logflare.Repo.Postgres, "Adaptor#{sha256}"])
   end
 
