@@ -105,7 +105,7 @@ $(addprefix encrypt.,${envs}): encrypt.%: \
 .PHONY: $(addprefix encrypt.,${envs})
 .PHONY: $(addprefix decrypt.,${envs})
 
-# OpenTelemetry Protobufse
+# OpenTelemetry Protobufs
 
 grpc.protoc:
 	dir=$$(mktemp -d); \
