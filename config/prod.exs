@@ -6,8 +6,9 @@ config :logflare, env: :prod
 config :logflare, LogflareWeb.Endpoint,
   http: [
     port: 4000,
+    # https://hexdocs.pm/thousand_island/ThousandIsland.html#t:options/0
     thousand_island_options: [
-      max_connections: 64_000,
+      num_connections: 64_000,
       num_acceptors: 1_000
     ]
   ],
