@@ -67,3 +67,9 @@ gcloud_prod.json
 .*.req.*
 !.*.cacert.*.enc
 !.*.cert.*.enc
+
+# DB ssl certs
+.*.*.pem
+
+# google keys
+.*.gcloud.json

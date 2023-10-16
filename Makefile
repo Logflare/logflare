@@ -48,19 +48,21 @@ __start__: decrypt.${ENV}
 #     make decrypt.{dev,staging,prod} # Decrypt secrets for given environment
 #     make encrypt.{dev,staging,prod} # Encrypt secrets for given environment
 
-%: %.enc
+%: cloudbuild/%.enc
 	@gcloud kms decrypt --ciphertext-file=$< --plaintext-file=$@ \
 		--location=${GCLOUD_LOCATION} \
 		--keyring=${GCLOUD_KEYRING} \
 		--key=${GCLOUD_KEY} \
 		--project=${GCLOUD_PROJECT}
+	@echo "$@ has been decrypted"
 
 %.enc:
-	@gcloud kms encrypt --ciphertext-file=$@ --plaintext-file=$(@:.enc=) \
+	@gcloud kms encrypt --ciphertext-file=cloudbuild/$@ --plaintext-file=$(@:.enc=) \
 		--location=${GCLOUD_LOCATION} \
 		--keyring=${GCLOUD_KEYRING} \
 		--key=${GCLOUD_KEY} \
 		--project=${GCLOUD_PROJECT}
+	@echo "$@ has been encrypted"
 
 .PRECIOUS: %.enc
 
@@ -71,26 +73,35 @@ encrypt.dev: .dev.env.enc
 
 envs = staging prod
 
+%crypt.prod: GCLOUD_KEYRING = logflare-prod-keyring-us-central1
+%crypt.prod: GCLOUD_KEY = logflare-prod-secrets-key
+%crypt.prod: GCLOUD_PROJECT = logflare-232118
+
 .SECONDEXPANSION:
 $(addprefix decrypt.,${envs}): decrypt.%: \
- 	@gcloud_$$*.json \
+	.$$*.gcloud.json \
  	.$$*.env \
  	.$$*.cacert.key \
  	.$$*.cacert.pem \
  	.$$*.cert.key \
- 	.$$*.cert.pem
-
-.PHONY: $(addprefix decrypt.,${envs})
+ 	.$$*.cert.pem \
+ 	.$$*.db-client-cert.pem \
+ 	.$$*.db-client-key.pem \
+ 	.$$*.db-server-ca.pem
 
 $(addprefix encrypt.,${envs}): encrypt.%: \
-	@gcloud_$$*.json.enc \
+	.$$*.gcloud.json.enc \
 	.$$*.env.enc \
 	.$$*.cacert.key.enc \
 	.$$*.cacert.pem.enc \
 	.$$*.cert.key.enc \
-	.$$*.cert.pem.enc
+	.$$*.cert.pem.enc \
+ 	.$$*.db-client-cert.pem.enc \
+ 	.$$*.db-client-key.pem.enc \
+ 	.$$*.db-server-ca.pem.enc
 
 .PHONY: $(addprefix encrypt.,${envs})
+.PHONY: $(addprefix decrypt.,${envs})
 
 # OpenTelemetry Protobufs
 

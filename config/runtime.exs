@@ -46,23 +46,6 @@ config :logflare,
              do: String.to_integer(System.get_env("DB_POOL_SIZE")),
              else: nil
            ),
-         ssl: System.get_env("DB_SSL") == "true",
-         #  ssl_opts:
-         #    if(System.get_env("DB_SSL") == "true",
-         #      do: [
-         #        #  ssl opts follow recs here: https://erlef.github.io/security-wg/secure_coding_and_deployment_hardening/ssl
-         #        verify: :verify_peer,
-         #        cacerts: :public_key.cacerts_get(),
-         #        # allow intermediate CA
-         #        depth: 3,
-         #        versions: [:"tlsv1.2"],
-         #        # support wildcard
-         #        customize_hostname_check: [
-         #          match_fun: :public_key.pkix_verify_hostname_match_fun(:https)
-         #        ]
-         #      ],
-         #      else: nil
-         #    ),
          database: System.get_env("DB_DATABASE"),
          hostname: System.get_env("DB_HOSTNAME"),
          password: System.get_env("DB_PASSWORD"),
@@ -227,14 +210,33 @@ cond do
 end
 
 if(File.exists?("cacert.pem") && File.exists?("cert.pem") && File.exists?("cert.key")) do
-  ssl_opts = [
-    cacertfile: "cacert.pem",
-    certfile: "cert.pem",
-    keyfile: "cert.key",
-    verify: :verify_peer
-  ]
+  config :logflare,
+    ssl: [
+      cacertfile: "cacert.pem",
+      certfile: "cert.pem",
+      keyfile: "cert.key",
+      verify: :verify_peer
+    ]
+end
 
-  config :logflare, ssl: ssl_opts
+if(
+  System.get_env("DB_SSL") == "true" && File.exists?("db-server-ca.pem") &&
+    File.exists?("db-client-ca.pem") && File.exists?("db-client-key.pem")
+) do
+  config :logflare, Logflare.Repo,
+    ssl: true,
+    ssl_opts: [
+      #  ssl opts follow recs here: https://erlef.github.io/security-wg/secure_coding_and_deployment_hardening/ssl
+      verify: :verify_peer,
+      cacertfile: "db-server-ca.pem",
+      certfile: "db-client-cert.pem",
+      keyfile: "db-client-key.pem",
+      versions: [:"tlsv1.2"],
+      # support wildcard
+      customize_hostname_check: [
+        match_fun: :public_key.pkix_verify_hostname_match_fun(:https)
+      ]
+    ]
 end
 
 case System.get_env("LOGFLARE_FEATURE_FLAG_OVERRIDE") do
