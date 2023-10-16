@@ -1,66 +1,65 @@
 defmodule Logflare.Buffers.MemoryBuffer do
   @moduledoc """
   This is an implementation of an in-memory buffer, using `:queue`.any()
-  All operations are syncronous.
+  All operations are synchronous.
   """
-  alias Logflare.{Buffers.Buffer, Buffers.MemoryBuffer}
+
+  @behaviour Logflare.Buffers.Buffer
+
   use GenServer
-  @behaviour Buffer
-
-  # GenServer state and init callbacks
-  defstruct queue: nil
-
-  def start_link(opts \\ []) do
-    GenServer.start_link(__MODULE__, [], opts)
-  end
-
-  @impl true
-  def init(_) do
-    {:ok, %MemoryBuffer{queue: :queue.new()}}
-  end
+  use TypedStruct
 
   # API
 
-  @impl Buffer
-  def add(identifier, payload) do
-    GenServer.call(identifier, {:add, [payload]})
-  end
-
-  @impl Buffer
+  @impl Logflare.Buffers.Buffer
   def add_many(identifier, payloads) do
     GenServer.call(identifier, {:add, payloads})
   end
 
-  @impl Buffer
-  def pop(identifier) do
-    GenServer.call(identifier, {:pop, 1})
-  end
-
-  @impl Buffer
+  @impl Logflare.Buffers.Buffer
   def pop_many(identifier, number) do
     GenServer.call(identifier, {:pop, number})
   end
 
-  @impl Buffer
+  @impl Logflare.Buffers.Buffer
   def clear(identifier) do
     GenServer.call(identifier, :clear)
   end
 
-  @impl Buffer
+  @impl Logflare.Buffers.Buffer
   def length(identifier) do
     GenServer.call(identifier, :length)
   end
 
+  # GenServer state and init callbacks
+  typedstruct module: State do
+    @moduledoc false
+
+    field :queue, :queue.queue() | nil, default: :queue.new()
+    field :proc_name, atom() | binary() | pid(), enforce: true
+    field :size, non_neg_integer(), default: 0
+  end
+
+  def start_link(opts \\ []) do
+    proc_name = opts[:proc_name] || opts[:name]
+
+    GenServer.start_link(__MODULE__, %{proc_name: proc_name}, opts)
+  end
+
+  @impl GenServer
+  def init(%{proc_name: proc_name}) do
+    {:ok, %State{proc_name: proc_name || self()}}
+  end
+
   # GenServer callbacks
 
-  @impl true
+  @impl GenServer
   def handle_call({:add, payloads}, _from, state) do
     to_join = :queue.from_list(payloads)
     new_queue = :queue.join(state.queue, to_join)
-    {:reply, :ok, %{state | queue: new_queue}}
+    {:reply, :ok, %State{state | queue: new_queue}}
   end
 
-  @impl true
   def handle_call({:pop, number}, _from, state) do
     {items, new_queue} =
       case :queue.len(state.queue) do
@@ -75,15 +74,13 @@ defmodule Logflare.Buffers.MemoryBuffer do
           {:queue.to_list(popped_queue), queue}
       end
 
-    {:reply, {:ok, items}, %{state | queue: new_queue}}
+    {:reply, {:ok, items}, %State{state | queue: new_queue}}
   end
 
-  @impl true
   def handle_call(:clear, _from, state) do
-    {:reply, :ok, %{state | queue: :queue.new()}}
+    {:reply, :ok, %State{state | queue: :queue.new()}}
   end
 
-  @impl true
   def handle_call(:length, _from, state) do
     {:reply, :queue.len(state.queue), state}
   end

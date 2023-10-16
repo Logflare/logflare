@@ -12,6 +12,7 @@ defmodule Logflare.Backends do
   alias Logflare.Backends.SourcesSup
   alias Logflare.Backends.SourceSup
 
+  alias Logflare.Buffers.Buffer
   alias Logflare.Buffers.MemoryBuffer
   alias Logflare.LogEvent
   alias Logflare.Repo
@@ -129,10 +130,10 @@ defmodule Logflare.Backends do
   The ingestion pipeline then pulls from the buffer and dispatches log events to the correct backends.
   """
   @type log_param :: map()
-  @spec ingest_logs(list(log_param()), Source.t()) :: :ok
+  @spec ingest_logs([log_param()], Source.t()) :: :ok
   def ingest_logs(log_events, source) do
     via = via_source(source, :buffer)
-    MemoryBuffer.add_many(via, log_events)
+    Buffer.add_many(MemoryBuffer, via, log_events)
     :ok
   end
 
