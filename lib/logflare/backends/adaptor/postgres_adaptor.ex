@@ -15,6 +15,7 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor do
   alias Logflare.Backends
   alias Logflare.Backends.SourceBackend
   alias Logflare.Backends.SourceDispatcher
+  alias Logflare.Buffers.Buffer
   alias Logflare.Buffers.MemoryBuffer
 
   @behaviour Logflare.Backends.Adaptor
@@ -160,7 +161,7 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor do
 
   @impl GenServer
   def handle_call({:ingest, log_events}, _from, %{config: _config} = state) do
-    MemoryBuffer.add_many(state.buffer_pid, log_events)
+    Buffer.add_many(state.buffer_module, state.buffer_pid, log_events)
     {:reply, :ok, state}
   end
 end

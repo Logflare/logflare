@@ -8,6 +8,7 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
   alias Logflare.Backends.Adaptor.WebhookAdaptor
   alias Logflare.Backends.SourceBackend
   alias Logflare.Backends.SourceDispatcher
+  alias Logflare.Buffers.Buffer
   alias Logflare.Buffers.MemoryBuffer
 
   @behaviour Logflare.Backends.Adaptor
@@ -71,7 +72,7 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
   @impl GenServer
   def handle_call({:ingest, log_events}, _from, %{config: _config} = state) do
     # TODO: queue, send concurrently
-    MemoryBuffer.add_many(state.buffer_pid, log_events)
+    Buffer.add_many(state.buffer_module, state.buffer_pid, log_events)
     {:reply, :ok, state}
   end
 

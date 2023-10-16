@@ -4,6 +4,8 @@ defmodule Logflare.Buffers.BufferProducer do
   """
   use GenStage
 
+  alias Logflare.Buffers.Buffer
+
   def start_link(opts) do
     GenStage.start_link(__MODULE__, opts)
   end
@@ -33,11 +35,11 @@ defmodule Logflare.Buffers.BufferProducer do
   end
 
   defp resolve_demand(
-         %{buffer_module: module, buffer_pid: pid, demand: prev_demand} = state,
+         %{demand: prev_demand} = state,
          new_demand \\ 0
        ) do
     total_demand = prev_demand + new_demand
-    {:ok, items} = module.pop_many(pid, total_demand)
+    {:ok, items} = Buffer.pop_many(state.buffer_module, state.buffer_pid, total_demand)
 
     {items, %{state | demand: total_demand - length(items)}}
   end
