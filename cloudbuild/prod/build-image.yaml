@@ -3,7 +3,7 @@ steps:
     args:
       - kms
       - decrypt
-      - "--ciphertext-file=cloudbuild/gcloud_prod.json.enc"
+      - "--ciphertext-file=cloudbuild/.prod.gcloud.json.enc"
       - "--plaintext-file=gcloud.json"
       - "--location=us-central1"
       - "--keyring=logflare-prod-keyring-us-central1"
