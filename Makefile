@@ -48,23 +48,21 @@ __start__: decrypt.${ENV}
 #     make decrypt.{dev,staging,prod} # Decrypt secrets for given environment
 #     make encrypt.{dev,staging,prod} # Encrypt secrets for given environment
 
-.%.env .%.json %.pem .%.key: FORCE
-	@gcloud kms decrypt --ciphertext-file=cloudbuild/$@.enc --plaintext-file=$@ \
+%: cloudbuild/%.enc
+	@gcloud kms decrypt --ciphertext-file=$< --plaintext-file=$@ \
 		--location=${GCLOUD_LOCATION} \
 		--keyring=${GCLOUD_KEYRING} \
 		--key=${GCLOUD_KEY} \
 		--project=${GCLOUD_PROJECT}
 	@echo "$@ has been decrypted"
 
-%.enc: FORCE
+%.enc:
 	@gcloud kms encrypt --ciphertext-file=cloudbuild/$@ --plaintext-file=$(@:.enc=) \
 		--location=${GCLOUD_LOCATION} \
 		--keyring=${GCLOUD_KEYRING} \
 		--key=${GCLOUD_KEY} \
 		--project=${GCLOUD_PROJECT}
 	@echo "$@ has been encrypted"
-
-FORCE:
 
 .PRECIOUS: %.enc
 
