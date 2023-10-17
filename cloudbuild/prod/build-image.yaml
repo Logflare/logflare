@@ -97,9 +97,6 @@ images:
   - "gcr.io/$PROJECT_ID/logflare_app:${_IMAGE_TAG}"
   - "gcr.io/$PROJECT_ID/logflare_app:latest"
 
-timeout: 1800s
-
 options:
   dynamicSubstitutions: true
-  substitutionOption: 'ALLOW_LOOSE'
-  machineType: N1_HIGHCPU_32
+  substitutionOption: "ALLOW_LOOSE"
