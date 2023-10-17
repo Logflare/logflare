@@ -49,32 +49,9 @@ jobs:
           version: "449.0.0"
           project_id: ${{ env.project_id }}
       - name: Build & deploy for staging (main branch)
-        if: github.event_name != 'release' && matrix.env == 'staging'
+        if: github.event_name == 'push' && matrix.env == 'staging'
         run: make deploy.staging.main
 
-      # - name: Bake image for versioned (prod and staging)
-      #   if: github.event_name == 'release'
-      #   run: |
-      #     gcloud builds submit \
-      #         projects/${{ env.project_id }}/locations/${{ env.region }}/connections/${{ env.host_connection}}/repositories/${{ env.repository_name }} \
-      #         --config=cloudbuild/${{ matrix.env }}/build-image.yaml \
-      #         --substitutions=_IMAGE_TAG=${{ env.version }} \
-      #         --region=${{ env.region }}
-
-  # only do auto-deploy for staging non-versioned
-  # deploy:
-  #   runs-on: ubuntu-latest
-  #   needs:
-  #     - build_image
-  #   if: github.ref == 'refs/heads/main' && github.event_name == 'pull_request'
-  #   name: Deploy to Staging
-  #   steps:
-  #     - name: Env vars
-  #       run: |
-  #         echo "short_sha=$(git rev-parse --short HEAD)" >> "$GITHUB_ENV"
-  #     - name: Deploy
-  #       run: |
-  #         gcloud builds submit \
-  #             --no-source \
-  #             --config=cloudbuild/staging/deploy.yaml \
-  #             --substitutions=_IMAGE_TAG=dev-${{ env.short_sha }}
+      - name: Build & ${{ matrix.env == 'prod' && 'pre-deploy' || 'deploy'}} for ${{ matrix.env }} (versioned)
+        if: (github.event_name == 'release' || github.event_name == 'workflow_dispatch'
+        run: make deploy.${{ matrix.env }}.versioned

@@ -7,6 +7,7 @@ ERL_COOKIE ?= monster
 ENV ?= dev
 SHA_IMAGE_TAG ?= dev-$(shell git rev-parse --short HEAD)
 VERSION ?= $(shell cat ./VERSION)
+NORMALIZED_VERSION ?= $(shell cat ./VERSION | tr '.' '-')
 
 help:
 	@cat DEVELOPMENT.md
@@ -142,8 +143,19 @@ deploy.staging.versioned:
 	gcloud builds submit \
 		--no-source \
 		--config=./cloudbuild/staging/deploy.yaml \
-		--substitutions=_IMAGE_TAG=$(VERSION),_INSTANCE_TYPE=c2d-standard-8,_CLUSTER=versioned \
+		--substitutions=_IMAGE_TAG=$(VERSION),_NORMALIZED_IMAGE_TAG=$(NORMALIZED_VERSION),_INSTANCE_TYPE=c2d-standard-2,_CLUSTER=versioned \
 		--region=us-central1 \
 		--gcs-log-dir="gs://logflare-staging_cloudbuild-logs/logs"
+
+
+deploy.prod.versioned:
+	gcloud builds submit \
+		projects/logflare-staging/locations/us-central1/connections/github-logflare/repositories/Logflare-logflare \
+		--revision=main  \
+		--config=cloudbuild/staging/build-image.yaml \
+		--substitutions=_IMAGE_TAG=$(VERSION) \
+		--region=us-central1 \
+		--gcs-log-dir="gs://logflare-staging_cloudbuild-logs/logs"
+	
 
 .PHONY: deploy.staging.main

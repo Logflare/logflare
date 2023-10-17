@@ -16,12 +16,12 @@ steps:
       - --tags=phoenix-http,https-server
       - --container-image=${_CONTAINER_IMAGE}
       - --container-privileged
-      - --container-restart-policy=always 
-      - --container-env=LOGFLARE_GRPC_PORT=4001,LOGFLARE_MIN_CLUSTER_SIZE=1,OVERRIDE_MAGIC_COOKIE=${_COOKIE} 
-      - --create-disk=auto-delete=yes,device-name=logflare-staging-cluster-privileged-e2-cos-89-shutdown-12,image=projects/cos-cloud/global/images/cos-stable-105-17412-156-59,mode=rw,size=100,type=pd-ssd 
-      - --no-shielded-secure-boot 
-      - --shielded-vtpm 
-      - --shielded-integrity-monitoring 
+      - --container-restart-policy=always
+      - --container-env=LOGFLARE_GRPC_PORT=4001,LOGFLARE_MIN_CLUSTER_SIZE=1,OVERRIDE_MAGIC_COOKIE=${_COOKIE}
+      - --create-disk=auto-delete=yes,device-name=logflare-staging-cluster-privileged-e2-cos-89-shutdown-12,image=projects/cos-cloud/global/images/cos-stable-105-17412-156-59,mode=rw,size=100,type=pd-ssd
+      - --no-shielded-secure-boot
+      - --shielded-vtpm
+      - --shielded-integrity-monitoring
       - --labels=container-vm=cos-stable-105-17412-156-59
   # update instance group to the new template
   - name: gcr.io/cloud-builders/gcloud
@@ -44,16 +44,16 @@ steps:
       - --replacement-method=substitute
       - --version=template=projects/logflare-staging/global/instanceTemplates/${_TEMPLATE_NAME}
 
-
 substitutions:
-    _COOKIE: default
-    _CLUSTER: main
-    _INSTANCE_TYPE: e2-standard-2
-    _INSTANCE_GROUP: instance-group-staging-${_CLUSTER}
-    _IMAGE_TAG: $SHORT_SHA
-    _TEMPLATE_NAME: logflare-staging-${_CLUSTER}-cluster-${_IMAGE_TAG}
-    _CONTAINER_IMAGE: gcr.io/logflare-staging/logflare_app:${_IMAGE_TAG}
+  _COOKIE: default
+  _CLUSTER: main
+  _NORMALIZED_IMAGE_TAG: ${_IMAGE_TAG}
+  _INSTANCE_TYPE: e2-standard-2
+  _INSTANCE_GROUP: instance-group-staging-${_CLUSTER}
+  _IMAGE_TAG: $SHORT_SHA
+  _TEMPLATE_NAME: logflare-staging-${_CLUSTER}-cluster-${_NORMALIZED_IMAGE_TAG}
+  _CONTAINER_IMAGE: gcr.io/logflare-staging/logflare_app:${_IMAGE_TAG}
 timeout: 1800s
 options:
-    dynamicSubstitutions: true
-    substitutionOption: 'ALLOW_LOOSE'
+  dynamicSubstitutions: true
+  substitutionOption: "ALLOW_LOOSE"
