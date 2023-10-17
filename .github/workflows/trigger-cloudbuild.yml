@@ -53,5 +53,5 @@ jobs:
         run: make deploy.staging.main
 
       - name: Build & ${{ matrix.env == 'prod' && 'pre-deploy' || 'deploy'}} for ${{ matrix.env }} (versioned)
-        if: (github.event_name == 'release' || github.event_name == 'workflow_dispatch'
+        if: (github.event_name == 'release' || github.event_name) == 'workflow_dispatch'
         run: make deploy.${{ matrix.env }}.versioned
