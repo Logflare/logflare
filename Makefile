@@ -132,6 +132,7 @@ deploy.staging.main:
 		--gcs-log-dir="gs://logflare-staging_cloudbuild-logs/logs"
 
 deploy.staging.versioned:
+	@echo "If running locally, remember to switch project using `gcloud config set project [project id]` !"
 	gcloud builds submit \
 		projects/logflare-staging/locations/us-central1/connections/github-logflare/repositories/Logflare-logflare \
 		--revision=main  \
@@ -149,13 +150,20 @@ deploy.staging.versioned:
 
 
 deploy.prod.versioned:
+	@echo "If running locally, remember to switch project using `gcloud config set project [project id]` !"
 	gcloud builds submit \
-		projects/logflare-staging/locations/us-central1/connections/github-logflare/repositories/Logflare-logflare \
+		projects/logflare-232118/locations/europe-west3/connections/github-logflare/repositories/Logflare-logflare \
 		--revision=main  \
-		--config=cloudbuild/staging/build-image.yaml \
+		--config=./cloudbuild/prod/build-image.yaml \
 		--substitutions=_IMAGE_TAG=$(VERSION) \
-		--region=us-central1 \
-		--gcs-log-dir="gs://logflare-staging_cloudbuild-logs/logs"
+		--region=europe-west3 \
+		--gcs-log-dir="gs://logflare-prod_cloudbuild-logs/logs"
 	
+	gcloud builds submit \
+		--no-source \
+		--config=./cloudbuild/prod/pre-deploy.yaml \
+		--substitutions=_IMAGE_TAG=$(VERSION),_NORMALIZED_IMAGE_TAG=$(NORMALIZED_VERSION) \
+		--region=europe-west3 \
+		--gcs-log-dir="gs://logflare-prod_cloudbuild-logs/logs"
 
 .PHONY: deploy.staging.main
