@@ -52,7 +52,7 @@ substitutions:
     # _INSTANCE_GROUP: instance-group-staging-${_CLUSTER}
     # _IMAGE_TAG: $SHORT_SHA
     _TEMPLATE_NAME: logflare-prod-${_NORMALIZED_IMAGE_TAG}
-    _CONTAINER_IMAGE: gcr.io/logflare-staging/logflare_app:${_IMAGE_TAG}
+    _CONTAINER_IMAGE: gcr.io/$PROJECT_ID/logflare_app:${_IMAGE_TAG}
 timeout: 1800s
 options:
     dynamicSubstitutions: true
