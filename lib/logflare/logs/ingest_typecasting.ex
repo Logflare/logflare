@@ -2,6 +2,9 @@ defmodule Logflare.Logs.IngestTypecasting do
   @moduledoc """
    Casts log event metadata values according to the type casting rules
   """
+
+  @behaviour Logflare.Logs.Processor
+
   import Logflare.EnumDeepUpdate, only: [update_all_values_deep: 2, update_in_enum: 3]
   @transform_directives_key "@logflareTransformDirectives"
 
@@ -31,7 +34,7 @@ defmodule Logflare.Logs.IngestTypecasting do
 
   def maybe_apply_transform_directives(log_params), do: log_params
 
-  def maybe_cast_batch(batch) do
+  def handle_batch(batch, _source) do
     Enum.map(batch, &maybe_cast_log_params/1)
   end
 

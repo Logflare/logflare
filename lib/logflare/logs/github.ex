@@ -4,6 +4,8 @@ defmodule Logflare.Logs.Github do
   """
   require Logger
 
+  @behaviour Logflare.Logs.Processor
+
   def handle_batch(batch, _source) when is_list(batch) do
     for msg <- batch do
       %{"message" => custom_message(msg), "metadata" => drop_url_keys(msg)}

@@ -131,7 +131,7 @@ defmodule Logflare.Logs.IngestTypecastingTest do
         }
       ]
 
-      result = maybe_cast_batch(batch)
+      result = handle_batch(batch, %{})
 
       assert result == [
                %{

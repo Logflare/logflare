@@ -4,6 +4,8 @@ defmodule Logflare.Logs.Vercel do
   """
   require Logger
 
+  @behaviour Logflare.Logs.Processor
+
   alias Logflare.Logs.Vercel.NimbleLambdaMessageParser
 
   def handle_batch(batch, source) when is_list(batch) do

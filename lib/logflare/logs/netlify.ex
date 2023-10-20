@@ -4,6 +4,8 @@ defmodule Logflare.Logs.Netlify do
   """
   require Logger
 
+  @behaviour Logflare.Logs.Processor
+
   def handle_batch(batch, _source) when is_list(batch) do
     Enum.map(batch, &handle_event/1)
   end

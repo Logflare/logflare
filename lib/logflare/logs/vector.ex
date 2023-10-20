@@ -3,9 +3,11 @@ defmodule Logflare.Logs.Vector do
   Takes payloadds from Vector and puts the whole payload in the `metadata` key.
   """
 
+  @behaviour Logflare.Logs.Processor
+
   require Logger
 
-  def handle_batch(batch) when is_list(batch) do
+  def handle_batch(batch, _source) when is_list(batch) do
     Enum.map(batch, fn x -> handle_event(x) end)
   end
 
