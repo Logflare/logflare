@@ -69,7 +69,22 @@ defmodule Logflare.Telemetry do
       summary("broadway.processor.stop", unit: {:native, :millisecond})
     ]
 
-    phoenix_metrics ++ database_metrics ++ vm_metrics ++ cache_metrics ++ broadway_metrics
+    application_metrics = [
+      summary("logflare.logs.processor.ingest.stop.duration",
+        tags: [:processor],
+        unit: {:native, :millisecond}
+      ),
+      counter("logflare.logs.processor.ingest.stop", tags: [:processor])
+    ]
+
+    Enum.concat([
+      phoenix_metrics,
+      database_metrics,
+      vm_metrics,
+      cache_metrics,
+      broadway_metrics,
+      application_metrics
+    ])
   end
 
   defp periodic_measurements() do

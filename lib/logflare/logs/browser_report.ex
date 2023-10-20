@@ -2,8 +2,10 @@ defmodule Logflare.Logs.BrowserReport do
   @moduledoc false
   require Logger
 
-  def handle_batch(batch) when is_list(batch) do
-    Enum.map(batch, fn x -> handle_event(x) end)
+  @behaviour Logflare.Logs.Processor
+
+  def handle_batch(batch, _source) when is_list(batch) do
+    Enum.map(batch, &handle_event/1)
   end
 
   def handle_event(params) when is_map(params) do
