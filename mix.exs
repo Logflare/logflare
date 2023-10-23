@@ -89,7 +89,7 @@ defmodule Logflare.Mixfile do
       {:deep_merge, "~> 1.0"},
       {:number, "~> 1.0.0"},
       {:timex, "~> 3.1"},
-      {:typed_struct, "~> 0.1"},
+      {:typed_struct, "~> 0.1", runtime: false},
       {:lqueue, "~> 1.1"},
       {:cachex, "~> 3.1"},
       {:ex_machina, "~> 2.3", only: [:test]},
