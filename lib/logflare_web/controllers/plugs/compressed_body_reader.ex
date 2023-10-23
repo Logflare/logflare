@@ -1,4 +1,11 @@
 defmodule LogflareWeb.Plugs.CompressedBodyReader do
+  @moduledoc """
+
+
+  Gzip chunking is manually handled using inspiration from [sneako/plug_compressed_body_reader](https://github.com/sneako/plug_compressed_body_reader/blob/main/lib/plug_compressed_body_reader/gzip.ex)
+  """
+
+  @max_chunk_count 10
   def read_body(conn, opts \\ []) do
     content_encoding = Plug.Conn.get_req_header(conn, "content-encoding")
 
@@ -19,7 +26,7 @@ defmodule LogflareWeb.Plugs.CompressedBodyReader do
 
     try do
       :zlib.inflateInit(z, 31)
-      result = :zlib.safeInflate(z, data)
+      result = chunked_inflate(z, data)
       :zlib.inflateEnd(z)
 
       result
@@ -30,5 +37,26 @@ defmodule LogflareWeb.Plugs.CompressedBodyReader do
       {:continue, data} -> {:more, IO.iodata_to_binary(data)}
       {:need_dictionary, _, _} -> {:error, :not_supported}
     end
+  end
+
+  defp chunked_inflate(_res, _z, curr_chunk, _acc) when curr_chunk == @max_chunk_count do
+    raise RuntimeError, "max chunks reached"
+  end
+
+  defp chunked_inflate({:finished, output}, _z, _curr_chunk, acc) do
+    {:finished, Enum.reverse([output | acc])}
+  end
+
+  defp chunked_inflate({:continue, output}, z, curr_chunk, acc) do
+    z
+    |> :zlib.safeInflate([])
+    |> chunked_inflate(z, curr_chunk + 1, [output | acc])
+  end
+
+  # initial
+  defp chunked_inflate(z, data) do
+    z
+    |> :zlib.safeInflate(data)
+    |> chunked_inflate(z, 0, [])
   end
 end
