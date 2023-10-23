@@ -141,7 +141,7 @@ defmodule Logflare.Mixfile do
       # Ecto
       {:ecto, "~> 3.9", override: true},
       {:ecto_sql, "~> 3.9"},
-      {:typed_ecto_schema, "~> 0.1.0"},
+      {:typed_ecto_schema, "~> 0.1.0", runtime: false},
 
       # Telemetry & logging
       {:telemetry, "~> 0.4.0"},
@@ -151,7 +151,6 @@ defmodule Logflare.Mixfile do
 
       # ETS
       {:ets, "~> 0.8.0"},
-      {:ex2ms, "~> 1.0"},
 
       # Statistics
       {:statistex, "~> 1.0.0"},
