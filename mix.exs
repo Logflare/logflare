@@ -153,7 +153,7 @@ defmodule Logflare.Mixfile do
       {:ets, "~> 0.8.0"},
 
       # HTML
-      {:floki, "~> 0.29.0"},
+      {:floki, "~> 0.29.0", only: [:test]},
 
       # Rust NIFs
       {:rustler, "~> 0.29.0"},
