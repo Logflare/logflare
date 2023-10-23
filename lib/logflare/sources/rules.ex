@@ -73,7 +73,6 @@ defmodule Logflare.Rules do
     rules =
       Rule
       |> where([r], is_nil(r.lql_filters) and not is_nil(r.regex))
-      |> select([r], r)
       |> Repo.all()
 
     for rule <- rules do
@@ -98,7 +97,6 @@ defmodule Logflare.Rules do
     rules =
       Rule
       |> where([r], not is_nil(r.lql_filters) and not is_nil(r.lql_string))
-      |> select([r], r)
       |> Repo.all()
 
     for rule <- rules do
