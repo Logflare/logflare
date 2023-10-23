@@ -29,7 +29,9 @@ defmodule LogflareWeb.Plugs.CompressedBodyReaderTest do
       assert {:ok, read, _} = @subject.read_body(conn)
       assert read == data
     end
+  end
 
+  property "gzipped data with overly large size raises RuntimeError" do
     check all(data <- gen_max_chunk_payloads()) do
       compressed = :zlib.gzip(data)
       conn = conn(compressed, [{"content-encoding", "gzip"}])
