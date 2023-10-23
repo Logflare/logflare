@@ -122,7 +122,6 @@ defmodule Logflare.Mixfile do
 
       # Concurrency and pipelines
       {:broadway, "~> 1.0.6"},
-      {:flow, "~> 1.0"},
       {:nimble_options, "~>0.4.0"},
 
       # Test
