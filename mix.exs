@@ -152,9 +152,6 @@ defmodule Logflare.Mixfile do
       # ETS
       {:ets, "~> 0.8.0"},
 
-      # Statistics
-      {:statistex, "~> 1.0.0"},
-
       # HTML
       {:floki, "~> 0.29.0"},
 
