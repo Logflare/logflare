@@ -1,5 +1,7 @@
 defmodule LogflareWeb.Plugs.SetVerifySource do
-  @moduledoc false
+  @moduledoc """
+  Verifies user ownership of a source for browser only
+  """
   use Plug.Builder
 
   import Plug.Conn
@@ -14,68 +16,14 @@ defmodule LogflareWeb.Plugs.SetVerifySource do
 
   def call(%{assigns: %{user: user}, params: params} = conn, _opts) do
     id = params["source_id"] || params["id"]
-    token = params["source"] || params["source_id"]
-    name = params["source_name"]
-
-    is_api_path = conn.request_path =~ "/logs" or conn.request_path =~ "/api"
-    is_browser_path = not is_api_path
-
-    token =
-      if is_browser_path || Sources.valid_source_token_param?(token) do
-        token
-      else
-        nil
-      end
-
-    source =
-      cond do
-        token && is_api_path ->
-          Sources.Cache.get_by_and_preload_rules(token: token)
-          |> Sources.refresh_source_metrics_for_ingest()
-
-        name && is_api_path ->
-          Sources.Cache.get_by_and_preload_rules(name: name, user_id: user.id)
-          |> Sources.refresh_source_metrics_for_ingest()
-
-        id && is_browser_path ->
-          Sources.get_by_and_preload(id: id)
-
-        name && is_browser_path ->
-          Sources.get_by_and_preload(name: name)
-
-        true ->
-          nil
-      end
-
+    source = Sources.get_by_and_preload(id: id)
     user_authorized? = &(&1.user_id === user.id || user.admin)
 
-    case {source && user_authorized?.(source), is_api_path} do
-      {true, true} ->
+    case source && user_authorized?.(source) do
+      true ->
         assign(conn, :source, source)
 
-      {nil, true} ->
-        message =
-          "Your `source_id` is nil, empty or not found. The `source_id` is a UUID you can copy from your dashboard (https://logflare.app/dashboard)."
-
-        conn
-        |> put_status(406)
-        |> put_view(LogflareWeb.LogView)
-        |> render("index.json", message: message)
-        |> halt()
-
-      {false, true} ->
-        message = "Source is not owned by this user."
-
-        conn
-        |> put_status(403)
-        |> put_view(LogflareWeb.LogView)
-        |> render("index.json", message: message)
-        |> halt()
-
-      {true, false} ->
-        assign(conn, :source, source)
-
-      {false, false} ->
+      false ->
         conn
         |> put_status(403)
         |> put_layout(false)
@@ -83,7 +31,7 @@ defmodule LogflareWeb.Plugs.SetVerifySource do
         |> render("403_page.html")
         |> halt()
 
-      {nil, false} ->
+      _ ->
         conn
         |> put_status(404)
         |> put_layout(false)
@@ -104,8 +52,7 @@ defmodule LogflareWeb.Plugs.SetVerifySource do
         |> halt()
 
       source ->
-        conn
-        |> assign(:source, source)
+        assign(conn, :source, source)
     end
   end
 end
