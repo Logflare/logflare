@@ -71,8 +71,9 @@ defmodule LogflareWeb.Router do
   end
 
   pipeline :require_ingest_api_auth do
-    plug(LogflareWeb.Plugs.SetVerifyUser)
-    plug(LogflareWeb.Plugs.SetVerifySource)
+    plug(LogflareWeb.Plugs.VerifyApiAccess, scopes: ~w(public))
+    plug(LogflareWeb.Plugs.FetchResource)
+    plug(LogflareWeb.Plugs.VerifyResourceOwnership)
     # We are ensuring source start in Logs.ingest
     # plug LogflareWeb.Plugs.EnsureSourceStarted
     plug(LogflareWeb.Plugs.SetPlanFromCache)
@@ -408,7 +409,7 @@ defmodule LogflareWeb.Router do
   end
 
   # Old log ingest endpoint. Deprecate.
-  scope "/api/logs", LogflareWeb do
+  scope "/api/logs", LogflareWeb, assigns: %{resource_type: :source} do
     pipe_through([:api, :require_ingest_api_auth])
     post("/", LogController, :create)
   end
@@ -428,7 +429,7 @@ defmodule LogflareWeb.Router do
   end
 
   # Log ingest goes through https://api.logflare.app/logs
-  scope "/logs", LogflareWeb do
+  scope "/logs", LogflareWeb, assigns: %{resource_type: :source} do
     pipe_through([:api, :require_ingest_api_auth])
     post("/", LogController, :create)
     options("/", LogController, :create)
@@ -453,7 +454,7 @@ defmodule LogflareWeb.Router do
     post("/syslog", LogController, :syslog)
   end
 
-  scope "/logs/cloudflare", LogflareWeb do
+  scope "/logs/cloudflare", LogflareWeb, assigns: %{resource_type: :source} do
     pipe_through([:logpush, :api, :require_ingest_api_auth])
     post("/", LogController, :cloudflare)
   end
