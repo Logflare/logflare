@@ -1,6 +1,7 @@
 defmodule Logflare.SqlTest do
   @moduledoc false
   use Logflare.DataCase, async: false
+  use ExUnitProperties
   alias Logflare.SingleTenant
   alias Logflare.Sql
   alias Logflare.Backends.Adaptor.PostgresAdaptor
@@ -371,6 +372,42 @@ defmodule Logflare.SqlTest do
     dataset_id = override_dataset_id || user.bigquery_dataset_id || "#{user.id}_#{@env}"
 
     "`#{project_id}.#{dataset_id}.#{token}`"
+  end
+
+  test "expand_subqueries/2 for :bq_sql will expand an alert/endpoint query into a subquery" do
+    alert = build(:alert, name: "my.alert", query: "select 'id' as id", language: :bq_sql)
+
+    endpoint =
+      build(:endpoint, name: "my.endpoint", query: "select 'val' as val", language: :bq_sql)
+
+    assert {:ok, result} =
+             Sql.expand_subqueries(:bq_sql, "select test from `my.alert` as tester", [alert])
+
+    assert String.downcase(result) =~ "from (select 'id' as id) as tester"
+
+    assert {:ok, result} =
+             Sql.expand_subqueries(:bq_sql, "select test from `my.endpoint` as tester", [endpoint])
+
+    assert String.downcase(result) =~ "from (select 'val' as val) as tester"
+  end
+
+  test "expand_subqueries/2 for :pg_sql will expand an alert/endpoint query into a subquery" do
+    alert = build(:alert, name: "my.alert", query: "select 'id' as id", language: :pg_sql)
+
+    endpoint =
+      build(:endpoint, name: "my.endpoint", query: "select 'val' as val", language: :pg_sql)
+
+    assert {:ok, result} =
+             Sql.expand_subqueries(:pg_sql, ~s(select test from "my.alert" as tester), [alert])
+
+    assert String.downcase(result) =~ "from (select 'id' as id) as tester"
+
+    assert {:ok, result} =
+             Sql.expand_subqueries(:pg_sql, ~s(select test from "my.endpoint" as tester), [
+               endpoint
+             ])
+
+    assert String.downcase(result) =~ "from (select 'val' as val) as tester"
   end
 
   describe "transform/3 for :postgres backends" do

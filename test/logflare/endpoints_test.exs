@@ -138,6 +138,25 @@ defmodule Logflare.EndpointsTest do
       assert {:ok, %{rows: [%{"testing" => _}]}} = Endpoints.run_query(endpoint)
     end
 
+    test "run an endpoint query with query composition" do
+      expect(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, 1, fn _conn, _proj_id, opts ->
+        assert opts[:body].query =~ "current_datetime"
+        {:ok, TestUtils.gen_bq_response([%{"testing" => "123"}])}
+      end)
+
+      insert(:plan)
+      user = insert(:user)
+
+      insert(:endpoint,
+        user: user,
+        name: "my.date",
+        query: "select current_datetime() as testing"
+      )
+
+      endpoint2 = insert(:endpoint, user: user, query: "select testing from `my.date`")
+      assert {:ok, %{rows: [%{"testing" => _}]}} = Endpoints.run_query(endpoint2)
+    end
+
     test "run_query_string/3" do
       expect(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, 1, fn _conn, _proj_id, _opts ->
         {:ok, TestUtils.gen_bq_response([%{"testing" => "123"}])}

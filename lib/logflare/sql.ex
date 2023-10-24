@@ -9,6 +9,81 @@ defmodule Logflare.Sql do
   alias Logflare.SingleTenant
   alias Logflare.Sql.Parser
   alias Logflare.Backends.Adaptor.PostgresAdaptor
+  alias Logflare.Endpoints
+  alias Logflare.Alerts.Alert
+
+  @type language :: :pg_sql | :bq_sql
+
+  @doc """
+  Expands entity names that match query names into a subquery
+  """
+  @spec expand_subqueries(language(), String.t(), [Alert.t() | Endpoints.Query.t()]) ::
+          {:ok, String.t()}
+  def expand_subqueries(_language, input, []), do: {:ok, input}
+
+  def expand_subqueries(language, input, queries)
+      when is_atom(language) and is_list(queries) and is_binary(input) do
+    parser_dialect =
+      case language do
+        :bq_sql -> "bigquery"
+        :pg_sql -> "postgres"
+      end
+
+    with {:ok, statements} <- Parser.parse(parser_dialect, input),
+         eligible_queries <- Enum.filter(queries, &(&1.language == language)) do
+      statements
+      |> replace_names_with_subqueries(%{
+        language: language,
+        queries: eligible_queries
+      })
+      |> Parser.to_string()
+    end
+  end
+
+  defp replace_names_with_subqueries(
+         {"relation" = k,
+          %{"Table" => %{"alias" => table_alias, "name" => [%{"value" => table_name}]}} = v},
+         data
+       ) do
+    query = Enum.find(data.queries, &(&1.name == table_name))
+
+    if query do
+      parser_language =
+        case data.language do
+          :pg_sql -> "postgres"
+          :bq_sql -> "bigquery"
+        end
+
+      {:ok, [%{"Query" => body}]} = Parser.parse(parser_language, query.query)
+
+      {k,
+       %{
+         "Derived" => %{
+           "alias" => table_alias,
+           "lateral" => false,
+           "subquery" => body
+         }
+       }}
+    else
+      {k, v}
+    end
+  end
+
+  defp replace_names_with_subqueries({k, v}, data) when is_list(v) or is_map(v) do
+    {k, replace_names_with_subqueries(v, data)}
+  end
+
+  defp replace_names_with_subqueries(kv, data) when is_list(kv) do
+    Enum.map(kv, fn kv -> replace_names_with_subqueries(kv, data) end)
+  end
+
+  defp replace_names_with_subqueries(kv, data) when is_map(kv) do
+    Enum.map(kv, fn kv -> replace_names_with_subqueries(kv, data) end) |> Map.new()
+  end
+
+  defp replace_names_with_subqueries(kv, _data), do: kv
+
+  # replaces all table names with subqueries
 
   @doc """
   Transforms and validates an SQL query for querying with bigquery.any()
@@ -29,7 +104,6 @@ defmodule Logflare.Sql do
     {:ok, "..."}
   """
   @typep input :: String.t() | {String.t(), String.t()}
-  @typep language :: :pg_sql | :bq_sql
   @spec transform(language(), input(), User.t() | pos_integer()) :: {:ok, String.t()}
   def transform(lang, input, user_id) when is_integer(user_id) do
     user = Logflare.Users.get(user_id)
