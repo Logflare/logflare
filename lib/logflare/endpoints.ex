@@ -81,26 +81,6 @@ defmodule Logflare.Endpoints do
     |> Query.update_by_user_changeset(attrs)
   end
 
-  @doc """
-  Creates a sandboxed endpoint. A sandboxed endpoint is an endpoint with a "parent" endpoint containing a CTE.
-
-  This will allow us to query the parent sandbox using a fixed SQL query, without allowing unrestricted sql queries to be made.
-  """
-  @spec create_sandboxed_query(User.t(), Query.t(), map()) :: {:ok, Query.t()} | {:error, :no_cte}
-  def create_sandboxed_query(user, sandbox, attrs) do
-    case Logflare.Sql.contains_cte?(sandbox.query) do
-      true ->
-        user
-        |> Ecto.build_assoc(:endpoint_queries, sandbox_query: sandbox)
-        |> Repo.preload(:user)
-        |> Query.sandboxed_endpoint_changeset(attrs, sandbox)
-        |> Repo.insert()
-
-      false ->
-        {:error, :no_cte}
-    end
-  end
-
   @spec update_query(Query.t(), map()) :: {:ok, Query.t()} | {:error, any()}
   def update_query(query, params) do
     with endpoint <- Repo.preload(query, :user),

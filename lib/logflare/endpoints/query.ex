@@ -36,8 +36,6 @@ defmodule Logflare.Endpoints.Query do
     field(:metrics, :map, virtual: true)
 
     belongs_to(:user, Logflare.User)
-    has_many(:sandboxed_queries, Query, foreign_key: :sandbox_query_id)
-    belongs_to(:sandbox_query, Query)
 
     timestamps()
   end
@@ -86,25 +84,6 @@ defmodule Logflare.Endpoints.Query do
     |> validate_query(:query)
     |> default_validations()
     |> update_source_mapping()
-  end
-
-  def sandboxed_endpoint_changeset(query, attrs, sandbox) do
-    query
-    |> cast(attrs, [
-      :name,
-      :token,
-      :query,
-      :cache_duration_seconds,
-      :proactive_requerying_seconds,
-      :max_limit,
-      :enable_auth,
-      :language,
-      :description
-    ])
-    |> put_change(:sandboxable, false)
-    |> Ecto.Changeset.put_change(:language, sandbox.language)
-    |> validate_required([:sandbox_query])
-    |> default_validations()
   end
 
   def default_validations(changeset) do
