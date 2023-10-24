@@ -39,13 +39,16 @@
         <p>
           This alert will execute this query periodically. If a non-zero number of rows are returned from this query, the notification will be triggered.
         </p>
-        <%= textarea(f, :query,
-          placeholder:
-            "select timestamp, event_message from `YourApp.SourceName` \nwhere regexp_contains(event_message, 'error')",
-          class: "form-control form-control-margin",
+
+        <%= hidden_input(f, :query, value: Map.get(f.params, "query")) %>
+        <%= live_react_component("Interfaces.Editor", [
           id: "alert-query",
-          style: "height: 20rem"
-        ) %>
+          value: Map.get(@params_form.params, "query"),
+          onInputChange: "update-query",
+          className: "form-control form-control-margin h-[20rem]",
+        ], id: "editor") %>
+
+
         <%= error_tag(f, :query) %>
         <.alert :if={@parse_error_message} variant="warning"><%= @parse_error_message %></.alert>
       </div>

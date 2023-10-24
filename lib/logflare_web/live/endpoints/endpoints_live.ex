@@ -163,7 +163,7 @@ defmodule LogflareWeb.EndpointsLive do
 
   def handle_event(
         "parse-query",
-        %{"endpoint" => %{"query" => query_string}},
+        %{"value"=> query_string},
         socket
       ) do
     socket =

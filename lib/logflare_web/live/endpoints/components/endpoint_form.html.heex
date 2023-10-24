@@ -55,14 +55,13 @@
           Declare parameters using <code>@parameter_name</code>
           and pass it to the endpoint via query parameters <code>?parameter_name=some-value</code>
         </p>
-        <%= textarea(f, :query,
-          placeholder: "select timestamp, event_message from `YourApp.SourceName`",
-          class: "form-control form-control-margin",
-          "phx-change": "parse-query",
+        <%= hidden_input(f, :query, value: Map.get(@params_form.params, "query")) %>
+        <%= live_react_component("Interfaces.Editor", [
           id: "endpoint-query",
           value: Map.get(@params_form.params, "query"),
-          style: "height: 20rem"
-        ) %>
+          onInputChange: "parse-query",
+        ], id: "editor") %>
+
         <%= error_tag(f, :query) %>
         <.alert :if={@parse_error_message} variant="warning"><%= @parse_error_message %></.alert>
       </div>
