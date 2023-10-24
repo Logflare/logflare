@@ -41,13 +41,16 @@
         </p>
 
         <%= hidden_input(f, :query, value: Map.get(f.params, "query")) %>
-        <%= live_react_component("Interfaces.Editor", [
-          id: "alert-query",
-          value: Map.get(@params_form.params, "query"),
-          onInputChange: "update-query",
-          className: "form-control form-control-margin h-[20rem]",
-        ], id: "editor") %>
-
+        <%= live_react_component(
+          "Interfaces.Editor",
+          [
+            id: "alert-query",
+            value: Map.get(@params_form.params, "query"),
+            onInputChange: "update-query",
+            className: "form-control form-control-margin h-[20rem]"
+          ],
+          id: "editor"
+        ) %>
 
         <%= error_tag(f, :query) %>
         <.alert :if={@parse_error_message} variant="warning"><%= @parse_error_message %></.alert>

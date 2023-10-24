@@ -56,11 +56,15 @@
           and pass it to the endpoint via query parameters <code>?parameter_name=some-value</code>
         </p>
         <%= hidden_input(f, :query, value: Map.get(@params_form.params, "query")) %>
-        <%= live_react_component("Interfaces.Editor", [
-          id: "endpoint-query",
-          value: Map.get(@params_form.params, "query"),
-          onInputChange: "parse-query",
-        ], id: "editor") %>
+        <%= live_react_component(
+          "Interfaces.Editor",
+          [
+            id: "endpoint-query",
+            value: Map.get(@params_form.params, "query"),
+            onInputChange: "parse-query"
+          ],
+          id: "editor"
+        ) %>
 
         <%= error_tag(f, :query) %>
         <.alert :if={@parse_error_message} variant="warning"><%= @parse_error_message %></.alert>

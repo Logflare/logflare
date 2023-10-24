@@ -124,16 +124,17 @@ defmodule Logflare.Endpoints.Query do
 
     # TODO abstract out to separate Query context
 
-    queries = if user do
-      endpoints =
-        Endpoints.list_endpoints_by(user_id: user.id)
-        |> Enum.filter(&(&1.id != endpoint_name))
+    queries =
+      if user do
+        endpoints =
+          Endpoints.list_endpoints_by(user_id: user.id)
+          |> Enum.filter(&(&1.id != endpoint_name))
 
-      alerts = Alerting.list_alert_queries_by_user_id(user.id)
-      endpoints ++ alerts
-    else
-      []
-    end
+        alerts = Alerting.list_alert_queries_by_user_id(user.id)
+        endpoints ++ alerts
+      else
+        []
+      end
 
     validate_change(changeset, field, fn field, value ->
       {:ok, expanded_query} =
