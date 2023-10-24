@@ -5,6 +5,8 @@ defmodule Logflare.Endpoints.Query do
   require Logger
 
   alias Logflare.Endpoints.Query
+  alias Logflare.Endpoints
+  alias Logflare.Alerting
 
   @derive {Jason.Encoder,
            only: [
@@ -117,9 +119,31 @@ defmodule Logflare.Endpoints.Query do
 
   def validate_query(changeset, field) when is_atom(field) do
     language = Ecto.Changeset.get_field(changeset, :language, :bq_sql)
+    user = get_field(changeset, :user)
+    endpoint_name = get_field(changeset, :name)
+
+    # TODO abstract out to separate Query context
+
+    queries = if user do
+      endpoints =
+        Endpoints.list_endpoints_by(user_id: user.id)
+        |> Enum.filter(&(&1.id != endpoint_name))
+
+      alerts = Alerting.list_alert_queries_by_user_id(user.id)
+      endpoints ++ alerts
+    else
+      []
+    end
 
     validate_change(changeset, field, fn field, value ->
-      case Logflare.Sql.transform(language, value, get_field(changeset, :user)) do
+      {:ok, expanded_query} =
+        Logflare.Sql.expand_subqueries(
+          language,
+          value,
+          queries
+        )
+
+      case Logflare.Sql.transform(language, expanded_query, user) do
         {:ok, _} -> []
         {:error, error} -> [{field, error}]
       end

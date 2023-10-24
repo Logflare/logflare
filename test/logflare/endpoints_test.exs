@@ -119,6 +119,27 @@ defmodule Logflare.EndpointsTest do
     assert stored_sql =~ "myproject"
   end
 
+  test "create an endpoint query with query composition" do
+    insert(:plan)
+    user = insert(:user)
+
+    insert(:endpoint,
+      user: user,
+      name: "my.date",
+      query: "select current_datetime() as testing"
+    )
+
+    assert {:ok, %_{query: stored_sql, source_mapping: mapping}} =
+             Endpoints.create_query(user, %{
+               name: "fully-qualified.name",
+               query: "select testing from `my.date`",
+               language: :bq_sql
+             })
+
+    assert mapping == %{}
+    assert stored_sql =~ "my.date"
+  end
+
   describe "running queries in bigquery backends" do
     setup do
       # mock goth behaviour
