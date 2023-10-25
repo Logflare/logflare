@@ -19,6 +19,10 @@ defmodule LogflareWeb.Auth.OauthController do
       Application.get_env(:logflare, LogflareWeb.Endpoint)
       |> Keyword.get(:url, [])
       |> Keyword.get(:port, conn.port)
+      |> case do
+        port when is_binary(port) -> String.to_integer(port)
+        port -> port
+      end
 
     %{conn | port: port}
   end
@@ -29,7 +33,7 @@ defmodule LogflareWeb.Auth.OauthController do
   def request(conn, params) do
     Logger.warning("Received unrecognized Oauth provider request", error_string: inspect(params))
     auth_error_redirect(conn)
-  end
+  endc
 
   def callback(
         %{assigns: %{ueberauth_auth: _auth}} = conn,
