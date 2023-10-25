@@ -33,7 +33,7 @@ defmodule LogflareWeb.Auth.OauthController do
   def request(conn, params) do
     Logger.warning("Received unrecognized Oauth provider request", error_string: inspect(params))
     auth_error_redirect(conn)
-  endc
+  end
 
   def callback(
         %{assigns: %{ueberauth_auth: _auth}} = conn,
