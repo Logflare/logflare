@@ -29,7 +29,7 @@ setup.node:
 start: start.orange
 
 start.orange: ERL_NAME = orange
-start.orange: PORT = 4000
+start.orange: PORT ?= 4000
 start.orange: LOGFLARE_GRPC_PORT = 50051
 start.orange: __start__
 
