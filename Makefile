@@ -117,14 +117,11 @@ grpc.protoc:
 
 deploy.staging.main:
 	@gcloud config set project logflare-staging
-	gcloud builds submit \
-		projects/logflare-staging/locations/us-central1/connections/github-logflare/repositories/Logflare-logflare \
-		--revision=main  \
-		--config=cloudbuild/staging/build-image.yaml \
-		--substitutions=_IMAGE_TAG=$(SHA_IMAGE_TAG) \
-		--region=us-central1 \
-		--gcs-log-dir="gs://logflare-staging_cloudbuild-logs/logs"
-	
+	gcloud beta builds triggers run build-image-staging \
+		--substitutions=_IMAGE_TAG=$(SHA_IMAGE_TAG)
+	sleep 100
+	@echo "Build has been started, check the build status here: https://console.cloud.google.com/cloud-build/builds?project=logflare-staging"
+
 	gcloud builds submit \
 		--no-source \
 		--config=./cloudbuild/staging/deploy.yaml \
@@ -134,14 +131,11 @@ deploy.staging.main:
 
 deploy.staging.versioned:
 	@gcloud config set project logflare-staging
-	gcloud builds submit \
-		projects/logflare-staging/locations/us-central1/connections/github-logflare/repositories/Logflare-logflare \
-		--revision=main  \
-		--config=cloudbuild/staging/build-image.yaml \
-		--substitutions=_IMAGE_TAG=$(VERSION) \
-		--region=us-central1 \
-		--gcs-log-dir="gs://logflare-staging_cloudbuild-logs/logs"
+	@gcloud beta builds triggers run build-image-staging \
+		--substitutions=_IMAGE_TAG=$(VERSION)
+	@echo "Build has been started, check the build status here: https://console.cloud.google.com/cloud-build/builds?project=logflare-staging"
 	
+	sleep 100
 	gcloud builds submit \
 		--no-source \
 		--config=./cloudbuild/staging/deploy.yaml \
@@ -152,14 +146,11 @@ deploy.staging.versioned:
 
 deploy.prod.versioned:
 	@gcloud config set project logflare-232118
-	gcloud builds submit \
-		projects/logflare-232118/locations/europe-west3/connections/github-logflare/repositories/Logflare-logflare \
-		--revision=main  \
-		--config=./cloudbuild/prod/build-image.yaml \
-		--substitutions=_IMAGE_TAG=$(VERSION) \
-		--region=europe-west3 \
-		--gcs-log-dir="gs://logflare-prod_cloudbuild-logs/logs"
-	
+	@gcloud beta builds triggers run build-image-prod \
+		--substitutions=_IMAGE_TAG=$(VERSION)
+	@echo "Build has been started, check the build status here: https://console.cloud.google.com/cloud-build/builds?project=logflare-232118"	
+	sleep 100
+
 	gcloud builds submit \
 		--no-source \
 		--config=./cloudbuild/prod/pre-deploy.yaml \
@@ -168,3 +159,9 @@ deploy.prod.versioned:
 		--gcs-log-dir="gs://logflare-prod_cloudbuild-logs/logs"
 	@echo "Instance template has been created successfully. Complete the deployment by navigating to https://console.cloud.google.com/compute/instanceGroups/list?hl=en&project=logflare-232118"
 .PHONY: deploy.staging.main
+
+# for retriving the dev image tag
+image-tag:
+	@echo "${SHA_IMAGE_TAG}"
+
+.PHONY: image-tag
