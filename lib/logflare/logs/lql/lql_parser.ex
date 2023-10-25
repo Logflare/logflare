@@ -123,14 +123,16 @@ defmodule Logflare.Lql.Parser do
 
   defp maybe_cast_value(c, {:list, type}), do: maybe_cast_value(c, type)
 
-  defp maybe_cast_value(%{values: values, value: nil} = c, type) when length(values) >= 1 do
+  defp maybe_cast_value(%{values: values, value: nil} = c, type) when values != [] do
     %{
       c
       | values:
           values
-          |> Enum.map(&%{value: &1, path: c.path})
-          |> Enum.map(&maybe_cast_value(&1, type))
-          |> Enum.map(& &1.value)
+          |> Enum.map(fn data ->
+            %{value: data, path: c.path}
+            |> maybe_cast_value(type)
+            |> Map.fetch!(:value)
+          end)
     }
   end
 

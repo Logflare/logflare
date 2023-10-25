@@ -724,7 +724,7 @@ defmodule LogflareWeb.Source.SearchLV do
   defp warning_message(assigns, search_op) do
     tailing? = assigns.tailing?
     querystring = assigns.querystring
-    log_events_empty? = search_op.events.rows == []
+    log_events_empty? = Enum.empty?(search_op.events.rows)
 
     cond do
       log_events_empty? and not tailing? ->

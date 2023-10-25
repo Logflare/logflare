@@ -143,7 +143,7 @@ defmodule Logflare.Auth do
   defp check_scopes(token_scopes, required) do
     cond do
       "private" in token_scopes -> :ok
-      required == [] -> :ok
+      Enum.empty?(required) -> :ok
       Enum.any?(token_scopes, fn scope -> scope in required end) -> :ok
       true -> {:error, :unauthorized}
     end

@@ -34,7 +34,7 @@ defmodule Logflare.Logs.LogEvents do
           le = LogEvent.make_from_db(row, %{source: source})
           {:ok, le}
 
-        %{rows: rows} when length(rows) >= 1 ->
+        %{rows: rows} ->
           row = Enum.find(rows, &(&1.id == id))
           le = LogEvent.make_from_db(row, %{source: source})
           {:ok, le}
@@ -150,14 +150,14 @@ defmodule Logflare.Logs.LogEvents do
 
   defp process(result) do
     case result do
-      {:ok, %{rows: rows}} when length(rows) > 1 ->
-        {:error, "Multiple rows returned, expected one"}
+      {:ok, %{rows: []}} ->
+        nil
 
       {:ok, %{rows: [row]}} ->
         row
 
-      {:ok, %{rows: []}} ->
-        nil
+      {:ok, %{rows: _rows}} ->
+        {:error, "Multiple rows returned, expected one"}
 
       {:error, error} ->
         {:error, error}

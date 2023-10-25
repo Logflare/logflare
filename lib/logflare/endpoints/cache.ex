@@ -173,7 +173,7 @@ defmodule Logflare.Endpoints.Cache do
         refresh(proactive_querying_ms(state))
         {:noreply, %{state | query_tasks: tasks}}
 
-      tasks == [] ->
+      Enum.empty?(tasks) ->
         {:stop, :normal, state}
 
       true ->

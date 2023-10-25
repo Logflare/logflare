@@ -68,7 +68,8 @@ defmodule Logflare.Logs do
       )
       when is_binary(drop_lql_string) do
     cond do
-      length(filters) >= 1 && SourceRouting.route_with_lql_rules?(le, %Rule{lql_filters: filters}) ->
+      not Enum.empty?(filters) and
+          SourceRouting.route_with_lql_rules?(le, %Rule{lql_filters: filters}) ->
         Map.put(le, :drop, true)
 
       true ->

@@ -30,7 +30,7 @@ defmodule Logflare.Logs.SearchOperations.Helpers do
     %{min: min, max: max, message: message}
   end
 
-  def get_min_max_filter_timestamps(ts_filters, _chart_period) when length(ts_filters) > 1 do
+  def get_min_max_filter_timestamps(ts_filters, _chart_period) when is_list(ts_filters) do
     {min, max} =
       ts_filters
       |> Enum.map(& &1.value)
