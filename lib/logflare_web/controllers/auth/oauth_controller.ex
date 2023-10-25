@@ -14,10 +14,14 @@ defmodule LogflareWeb.Auth.OauthController do
   # Ueberauth does not respect phoenix url configurations
   # https://github.com/ueberauth/ueberauth/blob/f5118071e2f1343e383ea97d89c69ff62b6a8629/lib/ueberauth/strategies/helpers.ex#L71
   # Furthermore, we cannot set the option at runtime
-  defp fix_port_callback_url(conn, _opts) do
-    port = Application.get_env(:logflare, LogflareWeb.Endpoint)[:port]
-    %{conn | port: port || conn.port}
+  defp fix_port_callback_url(%Plug.Conn{request_path: "/auth/" <> _} = conn, _opts) do
+    port = Application.get_env(:logflare, LogflareWeb.Endpoint)
+    |> Keyword.get(:url, [])
+    |> Keyword.get(:port, conn.port)
+    %{conn | port: port}
   end
+  # don't adjust other paths
+  defp fix_port_callback_url(conn, _opts), do: conn
 
   def request(conn, params) do
     Logger.warning("Received unrecognized Oauth provider request", error_string: inspect(params))
