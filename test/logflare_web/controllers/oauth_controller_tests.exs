@@ -91,8 +91,8 @@ defmodule LogflareWeb.OAuthControllerTests do
     setup do
       start_supervised!(Logflare.SystemMetricsSup)
       config = Application.get_env(:logflare, LogflareWeb.Endpoint)
-      updated = Keyword.put(config, :url, [host: "www.something.com", port: 3232])
-      Application.put_env(:logflare, LogflareWeb.Endpoint, updated )
+      updated = Keyword.put(config, :url, host: "www.something.com", port: 3232)
+      Application.put_env(:logflare, LogflareWeb.Endpoint, updated)
 
       on_exit(fn ->
         Application.put_env(:logflare, LogflareWeb.Endpoint, config)
