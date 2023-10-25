@@ -21,7 +21,7 @@ jobs:
         # directly use it in the auth step instead.
         run: |
           echo "version=$(cat ./VERSION)" >> "$GITHUB_ENV"
-          echo "short_sha=$(git rev-parse --short HEAD)" >> "$GITHUB_ENV"
+          echo "short_sha=$(git rev-parse --short=7 HEAD)" >> "$GITHUB_ENV"
           echo "host_connection=github-logflare" >> "$GITHUB_ENV"
           echo "repository_name=Logflare-logflare" >> "$GITHUB_ENV"
       - uses: actions/setup-python@v4

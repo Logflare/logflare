@@ -5,7 +5,7 @@ GCLOUD_PROJECT ?= logflare-staging
 ERL_COOKIE ?= monster
 
 ENV ?= dev
-SHA_IMAGE_TAG ?= dev-$(shell git rev-parse --short HEAD)
+SHA_IMAGE_TAG ?= dev-$(shell git rev-parse --short=7 HEAD)
 VERSION ?= $(shell cat ./VERSION)
 NORMALIZED_VERSION ?= $(shell cat ./VERSION | tr '.' '-')
 
