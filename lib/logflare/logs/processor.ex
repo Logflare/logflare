@@ -27,17 +27,35 @@ defmodule Logflare.Logs.Processor do
     }
 
     :telemetry.span([:logflare, :logs, :processor, :ingest], metadata, fn ->
-      batch = processor.handle_batch(data, source)
+      batch =
+        :telemetry.span([:logflare, :logs, :processor, :ingest, :handle_batch], metadata, fn ->
+          {processor.handle_batch(data, source), metadata}
+        end)
 
-      result =
-        if source.v2_pipeline do
-          Backends.start_source_sup(source)
-          Backends.ingest_logs(batch, source)
-        else
-          Logs.ingest_logs(batch, source)
-        end
+      :telemetry.execute(
+        [:logflare, :logs, :processor, :ingest, :logs],
+        %{
+          count: length(batch)
+        },
+        metadata
+      )
 
-      {result, Map.merge(metadata, %{success: result == :ok})}
+      :telemetry.span([:logflare, :logs, :processor, :ingest, :store], metadata, fn ->
+        result = store(source, batch)
+
+        new_meta = Map.merge(metadata, %{success: result == :ok})
+
+        {{result, new_meta}, new_meta}
+      end)
     end)
   end
+
+  defp store(%Logflare.Source{v2_pipeline: true} = source, batch) do
+    Backends.start_source_sup(source)
+
+    Backends.ingest_logs(batch, source)
+  end
+
+  defp store(%Logflare.Source{v2_pipeline: false} = source, batch),
+    do: Logs.ingest_logs(batch, source)
 end
