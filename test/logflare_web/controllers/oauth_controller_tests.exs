@@ -90,11 +90,12 @@ defmodule LogflareWeb.OAuthControllerTests do
   describe "bug: ueberauth port does not match url config" do
     setup do
       start_supervised!(Logflare.SystemMetricsSup)
-      url = Application.get_env(:logflare, Logflare.Endpoint)[:url]
-      Application.put_env(:logflare, LogflareWeb.Endpoint, host: "test.com", port: 3232)
+      config = Application.get_env(:logflare, LogflareWeb.Endpoint)
+      updated = Keyword.put(config, :url, host: "www.something.com", port: 3232)
+      Application.put_env(:logflare, LogflareWeb.Endpoint, updated)
 
       on_exit(fn ->
-        Application.put_env(:logflare, LogflareWeb.Endpoint, url)
+        Application.put_env(:logflare, LogflareWeb.Endpoint, config)
       end)
 
       :ok
