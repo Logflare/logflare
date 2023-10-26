@@ -140,18 +140,12 @@ defmodule Logflare.Source.RateCounterServer do
         # TODO: optimize by not recalculating total sum and average
         new_queue = LQueue.push(bucket.queue, state.last_rate)
 
-        average =
+        stats =
           new_queue
           |> Enum.to_list()
-          |> average()
-          |> round()
+          |> stats()
 
-        sum =
-          new_queue
-          |> Enum.to_list()
-          |> Enum.sum()
-
-        {length, %{bucket | queue: new_queue, average: average, sum: sum}}
+        {length, %{bucket | queue: new_queue, average: stats.avg, sum: stats.sum}}
       end
     end)
   end
@@ -274,8 +268,16 @@ defmodule Logflare.Source.RateCounterServer do
     Sources.Counters.get_inserts(source_id)
   end
 
-  def average(xs) when is_list(xs) do
-    Enum.sum(xs) / length(xs)
+  def stats(xs) when is_list(xs) do
+    {total, count} =
+      Enum.reduce(xs, {0, 0}, fn v, {total, count} ->
+        {total + v, count + 1}
+      end)
+
+    %{
+      avg: total / count,
+      sum: total
+    }
   end
 
   defp init_counters(source_id, bigquery_project_id) when is_atom(source_id) do

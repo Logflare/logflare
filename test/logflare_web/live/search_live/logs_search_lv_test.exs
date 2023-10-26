@@ -498,7 +498,8 @@ defmodule LogflareWeb.Source.SearchLVTest do
                }
              })
              |> Floki.parse_document!()
-             |> Floki.find("div[role=alert]>span") == []
+             |> Floki.find("div[role=alert]>span")
+             |> Enum.empty?()
     end
   end
 

@@ -23,7 +23,8 @@ defmodule Logflare.Lql.Encoder do
               |> Enum.map_join(" ", &to_fragment/1)
               |> String.replace("chart:timestamp", "")
 
-            {"m.level", filter_rules} when length(filter_rules) >= 2 ->
+            # `filter_rules` has at least 2 entries
+            {"m.level", [_, _ | _] = filter_rules} ->
               {min_level, max_level} =
                 Enum.min_max_by(filter_rules, &Parser.Helpers.get_level_order(&1.value))
 

@@ -25,7 +25,7 @@
     <div id="saved-searches" class="col-lg-3">
       <h5 class="header-margin">Saved Searches</h5>
       <ul class="list-unstyled">
-        <%= if Enum.map(@sources, &Map.get(&1, :saved_searches)) |> Enum.concat == [], do: "Your saved searches will show up here. Save some searches!" %>
+        <%= if Enum.all?(@sources, &Map.get(&1, :saved_searches) == []), do: "Your saved searches will show up here. Save some searches!" %>
         <%= for source <- @sources do %>
         <%= for saved_search <- source.saved_searches do %>
         <li>
@@ -52,7 +52,7 @@
           <%= link "Create your own Logflare account.", to: Routes.auth_path(@conn, :create_and_sign_in), method: "POST", class: "" %>
         </li>
         <% end %>
-        <%= if @team_users == [], do: "Other teams you are a member of will be listed here." %>
+        <%= if Enum.empty?(@team_users), do: "Other teams you are a member of will be listed here." %>
         <%= for team_user <- @team_users do %>
         <%= if @team.id == team_user.team_id do %>
         <li><strong><%= team_user.team.name %></strong></li>
@@ -71,7 +71,7 @@
     <div id="source-list" class="col-lg-7 mb-4">
       <div>
         <ul class="list-group">
-          <%= if @sources == [] do %>
+          <%= if Enum.empty?(@sources) do %>
           <li class="list-group-item">You don't have any sources!</li>
           <li class="list-group-item">Sources are where your log events go.</li>
           <li class="list-group-item">Create one now!</li>
