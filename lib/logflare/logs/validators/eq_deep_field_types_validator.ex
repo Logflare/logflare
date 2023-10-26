@@ -107,7 +107,7 @@ defmodule Logflare.Logs.Validators.EqDeepFieldTypes do
           is_list_of_enums(merged) ->
             deep_merge_enums(merged)
 
-          merged == [] ->
+          Enum.empty?(merged) ->
             {:list, :empty}
 
           is_homogenous_list(merged) ->

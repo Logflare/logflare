@@ -74,10 +74,12 @@
       curl "<%= url(~p"/api/endpoints/query/#{@show_endpoint.token}") %>" \
       -H 'X-API-KEY: YOUR-ACCESS-TOKEN' \
       -H 'Content-Type: application/json; charset=utf-8'
-      <span :if={length(@declared_params) > 0}>\</span>
-      <span :if={length(@declared_params) > 0}>
-        -G <%= Enum.map(@declared_params, fn p -> "-d \"#{p}=VALUE\"" end) |> Enum.join(" ") %>
-      </span>
+      <%= if not Enum.empty?(@declared_params) do %>
+        <span>\</span>
+        <span>
+          -G <%= Enum.map_join(@declared_params, " ", fn p -> "-d \"#{p}=VALUE\"" end) %>
+        </span>
+      <% end %>
     </code>
 
     <code :if={@show_endpoint.enable_auth} class="tw-whitespace-pre-wrap">
@@ -85,10 +87,12 @@
       curl "<%= url(~p"/api/endpoints/query/#{@show_endpoint.name}") %>" \
       -H 'X-API-KEY: YOUR-ACCESS-TOKEN' \
       -H 'Content-Type: application/json; charset=utf-8'
-      <span :if={length(@declared_params) > 0}>\</span>
-      <span :if={length(@declared_params) > 0}>
-        -G <%= Enum.map(@declared_params, fn p -> "-d \"#{p}=VALUE\"" end) |> Enum.join(" ") %>
-      </span>
+      <%= if not Enum.empty?(@declared_params) do %>
+        <span>\</span>
+        <span>
+          -G <%= Enum.map_join(@declared_params, " ", fn p -> "-d \"#{p}=VALUE\"" end) %>
+        </span>
+      <% end %>
     </code>
   </div>
 </section>

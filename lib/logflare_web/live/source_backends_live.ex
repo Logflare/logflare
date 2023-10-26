@@ -9,8 +9,7 @@ defmodule LogflareWeb.SourceBackendsLive do
     <div class="my-4">
       <%= if !@show_create_form do %>
         <button class="btn btn-primary" phx-click="toggle-create-form">Add a backend</button>
-      <% end %>
-      <%= if @show_create_form do %>
+      <% else %>
         <.form
           :let={f}
           for={%{}}
@@ -60,7 +59,7 @@ defmodule LogflareWeb.SourceBackendsLive do
           <%= submit("Add", class: "btn btn-primary") %>
         </.form>
       <% end %>
-      <div :if={@source_backends != []}>
+      <div :if={not Enum.empty?(@source_backends)}>
         Backends:
         <ul>
           <li :for={sb <- @source_backends}>

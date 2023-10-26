@@ -263,7 +263,7 @@ defmodule Logflare.Sources do
     rules =
       for rule <- rules do
         case rule do
-          %Rule{lql_filters: lql_filters} when length(lql_filters) >= 1 ->
+          %Rule{lql_filters: lql_filters} when lql_filters != [] ->
             rule
 
           %Rule{regex_struct: rs} when not is_nil(rs) ->
@@ -341,14 +341,9 @@ defmodule Logflare.Sources do
     %{source | metrics: new_metrics}
   end
 
-  def valid_source_token_param?(string) when is_binary(string) do
-    case String.length(string) === 36 && Ecto.UUID.cast(string) do
-      {:ok, _} -> true
-      _ -> false
-    end
+  def valid_source_token_param?(string) do
+    match?({:ok, _}, Ecto.UUID.dump(string))
   end
-
-  def valid_source_token_param?(_), do: false
 
   def delete_slack_hook_url(source) do
     source

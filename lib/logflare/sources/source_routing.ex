@@ -24,7 +24,7 @@ defmodule Logflare.Logs.SourceRouting do
         rule.regex_struct || if(rule.regex != nil, do: Regex.compile!(rule.regex), else: nil)
 
       cond do
-        length(rule.lql_filters) >= 1 and route_with_lql_rules?(le, rule) ->
+        not Enum.empty?(rule.lql_filters) and route_with_lql_rules?(le, rule) ->
           do_route(le, rule)
 
         regex_struct != nil and Regex.match?(regex_struct, body["event_message"]) ->
@@ -53,7 +53,7 @@ defmodule Logflare.Logs.SourceRouting do
 
   @spec route_with_lql_rules?(LE.t(), Rule.t()) :: boolean()
   def route_with_lql_rules?(%LE{body: le_body}, %Rule{lql_filters: lql_filters})
-      when length(lql_filters) >= 1 do
+      when lql_filters != [] do
     lql_rules_match? =
       Enum.reduce_while(lql_filters, true, fn lql_filter, _acc ->
         %Lql.FilterRule{path: path, value: value, operator: operator, modifiers: mds} = lql_filter

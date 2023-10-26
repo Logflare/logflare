@@ -85,7 +85,7 @@ defmodule Logflare.Logs.SearchOperations do
       so.tailing? and not Enum.empty?(so.lql_ts_filters) ->
         Utils.halt(so, @timestamp_filter_with_tailing)
 
-      length(so.chart_rules) > 1 ->
+      Logflare.Utils.List.at_least?(so.chart_rules, 2) ->
         Utils.halt(so, "Only one chart rule can be used in a query")
 
       match?([_], so.chart_rules) and
