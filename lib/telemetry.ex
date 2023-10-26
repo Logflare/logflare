@@ -74,7 +74,16 @@ defmodule Logflare.Telemetry do
         tags: [:processor],
         unit: {:native, :millisecond}
       ),
-      counter("logflare.logs.processor.ingest.stop", tags: [:processor])
+      counter("logflare.logs.processor.ingest.stop.duration", tags: [:processor]),
+      sum("logflare.logs.processor.ingest.logs.count", tags: [:processor]),
+      summary("logflare.logs.processor.ingest.store.stop.duration",
+        tags: [:processor],
+        unit: {:native, :millisecond}
+      ),
+      summary("logflare.logs.processor.ingest.handle_batch.stop.duration",
+        tags: [:processor],
+        unit: {:native, :millisecond}
+      )
     ]
 
     Enum.concat([
