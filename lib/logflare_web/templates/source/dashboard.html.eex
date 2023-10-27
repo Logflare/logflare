@@ -26,41 +26,47 @@
       <h5 class="header-margin">Saved Searches</h5>
       <ul class="list-unstyled">
         <%= if Enum.all?(@sources, &Map.get(&1, :saved_searches) == []), do: "Your saved searches will show up here. Save some searches!" %>
-        <%= for source <- @sources do %>
-        <%= for saved_search <- source.saved_searches do %>
-        <li>
-          <%= link "#{source.name}:#{saved_search.querystring}", to: Routes.live_path(@conn, LogflareWeb.Source.SearchLV, source.id, %{querystring: saved_search.querystring, tailing: saved_search.tailing}), class: "" %>
-          <%= link to: Routes.source_saved_searches_path(@conn, :delete, source.id, saved_search), class: "dashboard-links", method: :delete do %>
-          <i class="fa fa-trash"></i>
+          <%= for source <- @sources do %>
+            <%= for saved_search <- source.saved_searches do %>
+              <li>
+                <%= link "#{source.name}:#{saved_search.querystring}", to: Routes.live_path(@conn, LogflareWeb.Source.SearchLV, source.id, %{querystring: saved_search.querystring, tailing: saved_search.tailing}), class: "" %>
+                <%= link to: Routes.source_saved_searches_path(@conn, :delete, source.id, saved_search), class: "dashboard-links", method: :delete do %>
+                <i class="fa fa-trash"></i>
+              </li>
+            <% end %>
           <% end %>
-        </li>
-        <% end %>
         <% end %>
       </ul>
       <h5 class="header-margin">Teams</h5>
       <ul class="list-unstyled">
         <%= if @home_team do %>
-        <%= if @team.id == @home_team.id do %>
-        <li><strong><%= @home_team.name %> </strong><small>home team</small></li>
+          <%# not a team user %>
+          <%= if @team.id == @home_team.id do %>
+            <li><strong><%= @home_team.name %> </strong><small>home team</small></li>
+          <% else %>
+          <li>
+            <%= link @home_team.name, to: Routes.team_user_path(@conn, :change_team, %{"user_id" => @home_team.user_id}) %><small>
+              home team</small></li>
+          <% end %>
         <% else %>
-        <li>
-          <%= link @home_team.name, to: Routes.team_user_path(@conn, :change_team, %{"user_id" => @home_team.user_id}) %><small>
-            home team</small></li>
+          <%# is a team_user, has no home team yet %>
+          <li>
+            <%= link "Create your own Logflare account.", to: Routes.auth_path(@conn, :create_and_sign_in), method: "POST", class: "" %>
+          </li>
         <% end %>
-        <% else %>
-        <li>
-          <%= link "Create your own Logflare account.", to: Routes.auth_path(@conn, :create_and_sign_in), method: "POST", class: "" %>
-        </li>
-        <% end %>
+
+        <%# Helper text %>
         <%= if Enum.empty?(@team_users), do: "Other teams you are a member of will be listed here." %>
+
+        <%# List team users %>
         <%= for team_user <- @team_users do %>
-        <%= if @team.id == team_user.team_id do %>
-        <li><strong><%= team_user.team.name %></strong></li>
-        <% else %>
-        <li>
-          <%= link team_user.team.name, to: Routes.team_user_path(@conn, :change_team, %{"user_id" => team_user.team.user_id, "team_user_id" => team_user.id}) %>
-        </li>
-        <% end %>
+          <%= if @team.id == team_user.team_id do %>
+            <li><strong><%= team_user.team.name %></strong></li>
+            <% else %>
+            <li>
+              <%= link team_user.team.name, to: Routes.team_user_path(@conn, :change_team, %{"user_id" => team_user.team.user_id, "team_user_id" => team_user.id}) %>
+            </li>
+          <% end %>
         <% end %>
       </ul>
       <h5 class="header-margin">Members</h5>

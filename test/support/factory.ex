@@ -28,7 +28,7 @@ defmodule Logflare.Factory do
     email = "#{TestUtils.random_string(8)}@#{TestUtils.random_string()}.com"
 
     %User{
-      name: "JaneJohn Jones",
+      name: "JaneJohn Jones #{TestUtils.random_string()}",
       email: email,
       email_preferred: email,
       provider: "google",
