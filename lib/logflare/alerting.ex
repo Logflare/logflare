@@ -138,7 +138,7 @@ defmodule Logflare.Alerting do
       id: alert_query.id,
       schedule: alert_query.cron,
       extended_syntax: false,
-      task: {:run_alert, [alert_query]}
+      task: {__MODULE__, :run_alert, [alert_query]}
     })
 
     {:ok, get_alert_job(alert_query)}
