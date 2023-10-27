@@ -52,6 +52,13 @@ defmodule LogflareWeb.AdminController do
       provider_uid: user.provider_uid
     }
 
+    # clear the user session and cookies
+    conn =
+      conn
+      |> delete_session(:team_user_id)
+      |> delete_resp_cookie("_logflare_user_id")
+      |> delete_resp_cookie("_logflare_team_user_id")
+
     AuthController.check_invite_token_and_signin(conn, auth_params)
   end
 

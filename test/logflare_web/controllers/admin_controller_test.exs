@@ -2,31 +2,19 @@ defmodule LogflareWeb.AdminControllerTest do
   @moduledoc false
   import Logflare.Factory
   use LogflareWeb.ConnCase
-  @moduletag :failing
 
   describe "Admin controller" do
     setup do
-      s1u1 = build(:source, rules: [])
-      u1 = insert(:user, sources: [s1u1])
-      s1u2 = build(:source, rules: [])
-      u2 = insert(:user, sources: [s1u2])
+      stub(Goth, :fetch, fn _mod -> {:ok, %Goth.Token{token: "auth-token"}} end)
 
-      a1 = insert(:user, admin: true)
-
-      sources = [s1u1, s1u2]
-      users = [u1, u2]
-
-      {:ok, users: users, sources: sources, admins: [a1]}
+      insert(:plan)
+      {:ok, admin: insert(:user, admin: true), user: insert(:user)}
     end
 
-    test "halts and returns 401 for non-admin user", %{
-      conn: conn,
-      users: [u1 | _],
-      sources: _sources
-    } do
+    test "halts and returns 401 for non-admin user", %{conn: conn, user: user} do
       conn =
         conn
-        |> assign(:user, u1)
+        |> login_user(user)
         |> get("/admin/dashboard")
 
       assert conn.halted == true
@@ -35,17 +23,75 @@ defmodule LogflareWeb.AdminControllerTest do
 
     test "renders dashboard for admin", %{
       conn: conn,
-      admins: [a1],
-      sources: _sources
+      admin: admin
     } do
       conn =
         conn
-        |> assign(:user, a1)
+        |> login_user(admin)
         |> get("/admin/dashboard")
 
       assert conn.halted == false
       assert html_response(conn, 200) =~ "~/admin"
       assert html_response(conn, 200) =~ "source"
+    end
+
+    test "become functionality lets an admin turn into a google user", %{conn: conn, admin: admin} do
+      user = insert(:user, provider_uid: "google")
+
+      conn =
+        conn
+        |> login_user(admin)
+        |> get(~p"/admin/accounts/#{user.id}/become")
+
+      assert redir_path = redirected_to(conn)
+      assert ~p"/dashboard" == redir_path
+      conn = get(recycle(conn), redir_path)
+      assert html = html_response(conn, 200)
+      assert html =~ user.email
+      assert html =~ user.name
+    end
+
+    test "bug: become account when cookies are set due to being team_user of a team", %{
+      conn: conn,
+      admin: admin
+    } do
+      user = insert(:user, provider_uid: "google-123")
+      user_team = insert(:team, user: user)
+
+      # admin has home team and is  team user
+      admin_team = insert(:team, user: admin)
+
+      attrs =
+        Map.take(admin, [
+          :email,
+          :email_preferred,
+          :name,
+          :phone,
+          :image,
+          :provider,
+          :provider_uid,
+          :token
+        ])
+        |> Map.to_list()
+
+      insert(:team_user, attrs ++ [team: admin_team, valid_google_account: true])
+
+      conn =
+        conn
+        |> login_user(admin)
+        |> put_resp_cookie("_logflare_user_id", inspect(admin.id), max_age: 2_592_000)
+        |> put_resp_cookie("_logflare_team_user_id", inspect(user_team.id), max_age: 2_592_000)
+        |> get(~p"/admin/accounts/#{user.id}/become")
+
+      assert redir_path = redirected_to(conn)
+      assert ~p"/dashboard" == redir_path
+      conn = get(recycle(conn), redir_path)
+      assert html = html_response(conn, 200)
+      assert html =~ user.email
+      assert html =~ user.name
+      assert html =~ user_team.name
+      refute html =~ admin.name
+      refute html =~ admin_team.name
     end
   end
 end
