@@ -27,6 +27,13 @@ defmodule LogflareWeb.AlertsLiveTest do
   describe "Index" do
     setup [:create_alert_query]
 
+    setup do
+      Logflare.AlertsScheduler
+      |> stub(:put_job, fn _ -> :ok end)
+
+      :ok
+    end
+
     test "lists all alert_queries", %{conn: conn, alert_query: alert_query} do
       {:ok, view, html} = live(conn, Routes.alerts_path(conn, :index))
       assert html =~ alert_query.name
