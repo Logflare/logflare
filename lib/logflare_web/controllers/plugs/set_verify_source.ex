@@ -17,9 +17,8 @@ defmodule LogflareWeb.Plugs.SetVerifySource do
   def call(%{assigns: %{user: user}, params: params} = conn, _opts) do
     id = params["source_id"] || params["id"]
     source = Sources.get_by_and_preload(id: id)
-    user_authorized? = &(&1.user_id === user.id || user.admin)
 
-    case source && user_authorized?.(source) do
+    case (source && source.user_id == user.id) || user.admin do
       true ->
         assign(conn, :source, source)
 
