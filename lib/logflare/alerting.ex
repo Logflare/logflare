@@ -226,7 +226,7 @@ defmodule Logflare.Alerting do
   """
   @spec execute_alert_query(AlertQuery.t()) :: {:ok, [map()]}
   def execute_alert_query(%AlertQuery{user: %User{}} = alert_query) do
-    Logger.info("Executing AlertQuery | #{alert_query.name} | #{alert_query.id}")
+    Logger.debug("Executing AlertQuery | #{alert_query.name} | #{alert_query.id}")
 
     with {:ok, transformed_query} <-
            Logflare.Sql.transform(:bq_sql, alert_query.query, alert_query.user_id),
