@@ -18,24 +18,24 @@ defmodule LogflareWeb.Plugs.SetVerifySource do
     id = params["source_id"] || params["id"]
     source = Sources.get_by_and_preload(id: id)
 
-    case (source && source.user_id == user.id) || user.admin do
-      true ->
-        assign(conn, :source, source)
-
-      false ->
-        conn
-        |> put_status(403)
-        |> put_layout(false)
-        |> put_view(LogflareWeb.ErrorView)
-        |> render("403_page.html")
-        |> halt()
-
-      _ ->
+    cond do
+      is_nil(source) ->
         conn
         |> put_status(404)
         |> put_layout(false)
         |> put_view(LogflareWeb.ErrorView)
         |> render("404_page.html")
+        |> halt()
+
+      source.user_id == user.id || user.admin ->
+        assign(conn, :source, source)
+
+      true ->
+        conn
+        |> put_status(403)
+        |> put_layout(false)
+        |> put_view(LogflareWeb.ErrorView)
+        |> render("403_page.html")
         |> halt()
     end
   end
