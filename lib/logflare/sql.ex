@@ -78,7 +78,7 @@ defmodule Logflare.Sql do
   end
 
   defp replace_names_with_subqueries(kv, data) when is_map(kv) do
-    Enum.map(kv, fn kv -> replace_names_with_subqueries(kv, data) end) |> Map.new()
+    Map.new(kv, &replace_names_with_subqueries(&1, data))
   end
 
   defp replace_names_with_subqueries(kv, _data), do: kv
