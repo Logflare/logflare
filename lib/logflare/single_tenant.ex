@@ -261,13 +261,13 @@ defmodule Logflare.SingleTenant do
     seed_plan = if default_plan, do: :ok
 
     seed_sources =
-      if default_user do
-        if Sources.list_sources_by_user(default_user) |> length() > 0, do: :ok
+      if default_user && not Enum.empty?(Sources.list_sources_by_user(default_user)) do
+        :ok
       end
 
     seed_endpoints =
-      if default_user do
-        if Endpoints.list_endpoints_by(user_id: default_user.id) |> length() > 0, do: :ok
+      if default_user && not Enum.empty?(Endpoints.list_endpoints_by(user_id: default_user.id)) do
+        :ok
       end
 
     source_schemas_updated =
@@ -310,7 +310,7 @@ defmodule Logflare.SingleTenant do
           state.field_count > 3
         end
 
-      Enum.all?(checks) and length(sources) > 0
+      Enum.all?(checks) and not Enum.empty?(sources)
     else
       false
     end

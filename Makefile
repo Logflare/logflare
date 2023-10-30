@@ -5,7 +5,7 @@ GCLOUD_PROJECT ?= logflare-staging
 ERL_COOKIE ?= monster
 
 ENV ?= dev
-SHA_IMAGE_TAG ?= dev-$(shell git rev-parse --short HEAD)
+SHA_IMAGE_TAG ?= dev-$(shell git rev-parse --short=7 HEAD)
 VERSION ?= $(shell cat ./VERSION)
 NORMALIZED_VERSION ?= $(shell cat ./VERSION | tr '.' '-')
 
@@ -29,7 +29,7 @@ setup.node:
 start: start.orange
 
 start.orange: ERL_NAME = orange
-start.orange: PORT = 4000
+start.orange: PORT ?= 4000
 start.orange: LOGFLARE_GRPC_PORT = 50051
 start.orange: __start__
 
@@ -116,12 +116,13 @@ grpc.protoc:
 # manual deployment scripts
 
 deploy.staging.main:
+	@gcloud config set project logflare-staging
 	gcloud builds submit \
-		projects/logflare-staging/locations/us-central1/connections/github-logflare/repositories/Logflare-logflare \
+		projects/logflare-staging/locations/europe-west1/connections/github-logflare/repositories/Logflare-logflare \
 		--revision=main  \
 		--config=cloudbuild/staging/build-image.yaml \
 		--substitutions=_IMAGE_TAG=$(SHA_IMAGE_TAG) \
-		--region=us-central1 \
+		--region=europe-west1 \
 		--gcs-log-dir="gs://logflare-staging_cloudbuild-logs/logs"
 	
 	gcloud builds submit \
@@ -132,13 +133,13 @@ deploy.staging.main:
 		--gcs-log-dir="gs://logflare-staging_cloudbuild-logs/logs"
 
 deploy.staging.versioned:
-	@echo "If running locally, remember to switch project using `gcloud config set project [project id]` !"
+	@gcloud config set project logflare-staging
 	gcloud builds submit \
-		projects/logflare-staging/locations/us-central1/connections/github-logflare/repositories/Logflare-logflare \
+		projects/logflare-staging/locations/europe-west1/connections/github-logflare/repositories/Logflare-logflare \
 		--revision=main  \
 		--config=cloudbuild/staging/build-image.yaml \
 		--substitutions=_IMAGE_TAG=$(VERSION) \
-		--region=us-central1 \
+		--region=europe-west1 \
 		--gcs-log-dir="gs://logflare-staging_cloudbuild-logs/logs"
 	
 	gcloud builds submit \
@@ -150,7 +151,7 @@ deploy.staging.versioned:
 
 
 deploy.prod.versioned:
-	@echo "If running locally, remember to switch project using `gcloud config set project [project id]` !"
+	@gcloud config set project logflare-232118
 	gcloud builds submit \
 		projects/logflare-232118/locations/europe-west3/connections/github-logflare/repositories/Logflare-logflare \
 		--revision=main  \

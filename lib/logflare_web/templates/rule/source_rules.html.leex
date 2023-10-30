@@ -39,7 +39,7 @@
     </div>
   <% end %>
   <ul class="list-group">
-    <%= if @rules == [] do %>
+    <%= if Enum.empty?(@rules) do %>
       <li class="list-group-item">
         <div> No rules yet... </div>
       </li>

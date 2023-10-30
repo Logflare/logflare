@@ -86,4 +86,37 @@ defmodule LogflareWeb.OAuthControllerTests do
     assert conn.assigns.flash["info"] =~ "Alert connected to Slack!"
     assert redirected_to(conn) == ~p"/alerts/#{alert_query.id}"
   end
+
+  describe "bug: ueberauth port does not match url config" do
+    setup do
+      start_supervised!(Logflare.SystemMetricsSup)
+      config = Application.get_env(:logflare, LogflareWeb.Endpoint)
+
+      on_exit(fn ->
+        Application.put_env(:logflare, LogflareWeb.Endpoint, config)
+      end)
+
+      {:ok, config: config}
+    end
+
+    test "navbar OAuth2 link should exclude port if host is provided", %{
+      conn: conn,
+      config: config
+    } do
+      updated = Keyword.put(config, :url, host: "www.something.com", port: 3232)
+      Application.put_env(:logflare, LogflareWeb.Endpoint, updated)
+      conn = conn |> get(Routes.oauth_path(conn, :request, "google"))
+      assert redirected_to(conn, 302) =~ "3232"
+    end
+
+    test "navbar OAuth2 link should exclude port if host is provided with string port", %{
+      conn: conn,
+      config: config
+    } do
+      updated = Keyword.put(config, :url, host: "www.something.com", port: "3232")
+      Application.put_env(:logflare, LogflareWeb.Endpoint, updated)
+      conn = conn |> get(Routes.oauth_path(conn, :request, "google"))
+      assert redirected_to(conn, 302) =~ "3232"
+    end
+  end
 end

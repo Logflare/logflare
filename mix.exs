@@ -89,7 +89,7 @@ defmodule Logflare.Mixfile do
       {:deep_merge, "~> 1.0"},
       {:number, "~> 1.0.0"},
       {:timex, "~> 3.1"},
-      {:typed_struct, "~> 0.1"},
+      {:typed_struct, "~> 0.1", runtime: false},
       {:lqueue, "~> 1.1"},
       {:cachex, "~> 3.1"},
       {:ex_machina, "~> 2.3", only: [:test]},
@@ -122,8 +122,6 @@ defmodule Logflare.Mixfile do
 
       # Concurrency and pipelines
       {:broadway, "~> 1.0.6"},
-      {:flow, "~> 1.0"},
-      {:nimble_options, "~>0.4.0"},
 
       # Test
       {:mix_test_watch, "~> 1.0", only: [:dev, :test], runtime: false},
@@ -143,7 +141,7 @@ defmodule Logflare.Mixfile do
       # Ecto
       {:ecto, "~> 3.9", override: true},
       {:ecto_sql, "~> 3.9"},
-      {:typed_ecto_schema, "~> 0.1.0"},
+      {:typed_ecto_schema, "~> 0.1.0", runtime: false},
 
       # Telemetry & logging
       {:telemetry, "~> 0.4.0"},
@@ -153,13 +151,9 @@ defmodule Logflare.Mixfile do
 
       # ETS
       {:ets, "~> 0.8.0"},
-      {:ex2ms, "~> 1.0"},
-
-      # Statistics
-      {:statistex, "~> 1.0.0"},
 
       # HTML
-      {:floki, "~> 0.29.0"},
+      {:floki, "~> 0.29.0", only: [:test]},
 
       # Rust NIFs
       {:rustler, "~> 0.29.0"},

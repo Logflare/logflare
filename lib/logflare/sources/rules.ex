@@ -37,11 +37,11 @@ defmodule Logflare.Rules do
       %Rule{regex_struct: rs}, _ when is_nil(rs) ->
         {:cont, false}
 
-      %Rule{regex_struct: rs, lql_filters: lf}, _ when is_map(rs) and length(lf) >= 1 ->
-        {:cont, false}
-
       %Rule{regex_struct: rs, lql_filters: []}, _ when is_map(rs) ->
         {:halt, true}
+
+      %Rule{regex_struct: rs}, _ when is_map(rs) ->
+        {:cont, false}
     end)
   end
 
