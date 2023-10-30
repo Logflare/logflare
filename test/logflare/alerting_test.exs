@@ -131,6 +131,27 @@ defmodule Logflare.AlertingTest do
       assert {:ok, [%{"testing" => "123"}]} = Alerting.execute_alert_query(alert_query)
     end
 
+    test "execute_alert_query with query composition" do
+      expect(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, 1, fn _conn, _proj_id, opts ->
+        assert opts[:body].query =~ "current_datetime"
+        {:ok, TestUtils.gen_bq_response([%{"testing" => "123"}])}
+      end)
+
+      user = insert(:user)
+
+      insert(:endpoint,
+        user: user,
+        name: "my.date",
+        query: "select current_datetime() as testing"
+      )
+
+      alert_query =
+        insert(:alert, user: user, query: "select testing from `my.date`")
+        |> Logflare.Repo.preload([:user])
+
+      assert {:ok, [%{"testing" => "123"}]} = Alerting.execute_alert_query(alert_query)
+    end
+
     test "run_alert_query/1 runs the entire alert", %{user: user} do
       alert_query = insert(:alert, user: user)
 

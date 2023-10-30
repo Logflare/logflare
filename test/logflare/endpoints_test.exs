@@ -92,6 +92,27 @@ defmodule Logflare.EndpointsTest do
     assert stored_sql =~ "myproject"
   end
 
+  test "create an endpoint query with query composition" do
+    insert(:plan)
+    user = insert(:user)
+
+    insert(:endpoint,
+      user: user,
+      name: "my.date",
+      query: "select current_datetime() as testing"
+    )
+
+    assert {:ok, %_{query: stored_sql, source_mapping: mapping}} =
+             Endpoints.create_query(user, %{
+               name: "fully-qualified.name",
+               query: "select testing from `my.date`",
+               language: :bq_sql
+             })
+
+    assert mapping == %{}
+    assert stored_sql =~ "my.date"
+  end
+
   describe "running queries in bigquery backends" do
     setup do
       # mock goth behaviour
@@ -109,6 +130,25 @@ defmodule Logflare.EndpointsTest do
       insert(:source, user: user, name: "c")
       endpoint = insert(:endpoint, user: user, query: "select current_datetime() as testing")
       assert {:ok, %{rows: [%{"testing" => _}]}} = Endpoints.run_query(endpoint)
+    end
+
+    test "run an endpoint query with query composition" do
+      expect(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, 1, fn _conn, _proj_id, opts ->
+        assert opts[:body].query =~ "current_datetime"
+        {:ok, TestUtils.gen_bq_response([%{"testing" => "123"}])}
+      end)
+
+      insert(:plan)
+      user = insert(:user)
+
+      insert(:endpoint,
+        user: user,
+        name: "my.date",
+        query: "select current_datetime() as testing"
+      )
+
+      endpoint2 = insert(:endpoint, user: user, query: "select testing from `my.date`")
+      assert {:ok, %{rows: [%{"testing" => _}]}} = Endpoints.run_query(endpoint2)
     end
 
     test "run_query_string/3" do

@@ -7,6 +7,7 @@
   },
   "dependencies": {
     "@fortawesome/fontawesome-free": "^5.8.2",
+    "@monaco-editor/react": "^4.6.0",
     "@nivo/bar": "^0.81.0",
     "@nivo/core": "^0.81.0",
     "bootstrap": "^4.3.1",
