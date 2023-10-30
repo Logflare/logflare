@@ -173,7 +173,7 @@ defmodule Logflare.Endpoints do
              query_string,
              endpoints ++ alerts
            ),
-         transform_input <-
+         transform_input =
            if(sandboxable && sql_param, do: {expanded_query, sql_param}, else: expanded_query),
          {:ok, transformed_query} <-
            Logflare.Sql.transform(endpoint_query.language, transform_input, user_id) do
