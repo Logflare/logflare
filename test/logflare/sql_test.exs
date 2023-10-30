@@ -1,7 +1,6 @@
 defmodule Logflare.SqlTest do
   @moduledoc false
   use Logflare.DataCase, async: false
-  use ExUnitProperties
   alias Logflare.SingleTenant
   alias Logflare.Sql
   alias Logflare.Backends.Adaptor.PostgresAdaptor
