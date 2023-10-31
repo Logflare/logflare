@@ -58,37 +58,12 @@ defmodule LogflareWeb.LogControllerTest do
     end
   end
 
-  describe "v1 pipeline" do
-    setup %{conn: conn} do
-      insert(:plan, name: "Free")
-      user = insert(:user)
-      source = insert(:source, user: user)
+  describe "v1 pipeline with legacy user.api_key" do
+    setup [:v1_pipeline_setup]
 
-      rls = %RecentLogsServer{source: source, source_id: source.token}
-      start_supervised!(Counters)
-      start_supervised!(RateCounters)
-      start_supervised!({RecentLogsServer, rls})
-      :timer.sleep(1000)
-
-      # stub out rate limiting logic for now
-      # TODO: remove once rate limiting logic is refactored
-      LogflareWeb.Plugs.RateLimiter
-      |> stub(:call, fn x, _ -> x end)
-
-      Logflare.Logs
-      |> expect(:broadcast, 1, fn le ->
-        assert match?(@valid, le.body)
-        assert le.body["event_message"] != nil
-        assert Map.keys(le.body) |> length() == 4, inspect(Map.keys(le.body))
-
-        le
-      end)
-
-      conn =
-        conn
-        |> put_req_header("x-api-key", user.api_key)
-
-      {:ok, source: source, user: user, conn: conn}
+    setup %{user: user, conn: conn} do
+      conn = put_req_header(conn, "x-api-key", user.api_key)
+      {:ok, user: user, conn: conn}
     end
 
     test ":create ingestion by source_name", %{conn: conn, source: source} do
@@ -148,6 +123,26 @@ defmodule LogflareWeb.LogControllerTest do
     end
   end
 
+  describe "v1 pipeline with access tokens" do
+    setup [:v1_pipeline_setup]
+
+    setup %{user: user, conn: conn} do
+      {:ok, access_token} = Logflare.Auth.create_access_token(user)
+      conn = put_req_header(conn, "x-api-key", access_token.token)
+      {:ok, user: user, conn: conn}
+    end
+
+    test ":create ingestion by source_name", %{conn: conn, source: source} do
+      conn =
+        conn
+        |> post(Routes.log_path(conn, :create, source_name: source.name), @valid)
+
+      assert json_response(conn, 200) == %{"message" => "Logged!"}
+      # wait for all logs to be ingested before removing all stubs
+      :timer.sleep(1500)
+    end
+  end
+
   describe "single tenant" do
     TestUtils.setup_single_tenant(seed_user: true)
 
@@ -192,5 +187,33 @@ defmodule LogflareWeb.LogControllerTest do
       # wait for all logs to be ingested before removing all stubs
       :timer.sleep(1500)
     end
+  end
+
+  defp v1_pipeline_setup(%{conn: conn}) do
+    insert(:plan, name: "Free")
+    user = insert(:user)
+    source = insert(:source, user: user)
+
+    rls = %RecentLogsServer{source: source, source_id: source.token}
+    start_supervised!(Counters)
+    start_supervised!(RateCounters)
+    start_supervised!({RecentLogsServer, rls})
+    :timer.sleep(1000)
+
+    # stub out rate limiting logic for now
+    # TODO: remove once rate limiting logic is refactored
+    LogflareWeb.Plugs.RateLimiter
+    |> stub(:call, fn x, _ -> x end)
+
+    Logflare.Logs
+    |> expect(:broadcast, 1, fn le ->
+      assert match?(@valid, le.body)
+      assert le.body["event_message"] != nil
+      assert Map.keys(le.body) |> length() == 4, inspect(Map.keys(le.body))
+
+      le
+    end)
+
+    {:ok, source: source, user: user, conn: conn}
   end
 end

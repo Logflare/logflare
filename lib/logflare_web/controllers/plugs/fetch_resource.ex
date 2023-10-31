@@ -14,8 +14,25 @@ defmodule LogflareWeb.Plugs.FetchResource do
   alias Logflare.Endpoints
   def init(_opts), do: nil
 
+  # ingest by source token
   def call(%{assigns: %{resource_type: :source}, params: %{"source" => token}} = conn, _opts) do
-    source = Sources.get_source_by_token(token)
+    source =
+      Sources.Cache.get_by_and_preload_rules(token: token)
+      |> Sources.refresh_source_metrics_for_ingest()
+
+    assign(conn, :source, source)
+  end
+
+  # ingest by source name
+  def call(
+        %{assigns: %{user: user, resource_type: :source}, params: %{"source_name" => name}} =
+          conn,
+        _opts
+      ) do
+    source =
+      Sources.Cache.get_by_and_preload_rules(name: name, user_id: user.id)
+      |> Sources.refresh_source_metrics_for_ingest()
+
     assign(conn, :source, source)
   end
 
