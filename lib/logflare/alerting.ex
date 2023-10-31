@@ -138,7 +138,7 @@ defmodule Logflare.Alerting do
       id: alert_query.id,
       schedule: alert_query.cron,
       extended_syntax: false,
-      task: {:run_alert, [alert_query]}
+      task: {__MODULE__, :run_alert, [alert_query]}
     })
 
     {:ok, get_alert_job(alert_query)}
@@ -226,7 +226,7 @@ defmodule Logflare.Alerting do
   """
   @spec execute_alert_query(AlertQuery.t()) :: {:ok, [map()]}
   def execute_alert_query(%AlertQuery{user: %User{}} = alert_query) do
-    Logger.info("Executing AlertQuery | #{alert_query.name} | #{alert_query.id}")
+    Logger.debug("Executing AlertQuery | #{alert_query.name} | #{alert_query.id}")
 
     with {:ok, transformed_query} <-
            Logflare.Sql.transform(:bq_sql, alert_query.query, alert_query.user_id),

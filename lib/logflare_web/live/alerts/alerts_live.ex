@@ -160,9 +160,13 @@ defmodule LogflareWeb.AlertsLive do
   end
 
   defp upsert_alert(alert, user, params) do
-    case alert do
-      nil -> Alerting.create_alert_query(user, params)
-      %_{} -> Alerting.update_alert_query(alert, params)
+    with {:ok, alert} <-
+           (case alert do
+              nil -> Alerting.create_alert_query(user, params)
+              %_{} -> Alerting.update_alert_query(alert, params)
+            end),
+         {:ok, _citrine_job} <- Alerting.upsert_alert_job(alert) do
+      {:ok, alert}
     end
   end
 end
