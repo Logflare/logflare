@@ -117,9 +117,7 @@ grpc.protoc:
 
 deploy.staging.main:
 	@gcloud config set project logflare-staging
-	gcloud builds submit \
-		projects/logflare-staging/locations/europe-west1/connections/github-logflare/repositories/Logflare-logflare \
-		--revision=main  \
+	gcloud builds submit . \
 		--config=cloudbuild/staging/build-image.yaml \
 		--substitutions=_IMAGE_TAG=$(SHA_IMAGE_TAG) \
 		--region=europe-west1 \
@@ -134,9 +132,7 @@ deploy.staging.main:
 
 deploy.staging.versioned:
 	@gcloud config set project logflare-staging
-	gcloud builds submit \
-		projects/logflare-staging/locations/europe-west1/connections/github-logflare/repositories/Logflare-logflare \
-		--revision=main  \
+	gcloud builds submit . \
 		--config=cloudbuild/staging/build-image.yaml \
 		--substitutions=_IMAGE_TAG=$(VERSION) \
 		--region=europe-west1 \
@@ -152,9 +148,7 @@ deploy.staging.versioned:
 
 deploy.prod.versioned:
 	@gcloud config set project logflare-232118
-	gcloud builds submit \
-		projects/logflare-232118/locations/europe-west3/connections/github-logflare/repositories/Logflare-logflare \
-		--revision=main  \
+	gcloud builds submit . \
 		--config=./cloudbuild/prod/build-image.yaml \
 		--substitutions=_IMAGE_TAG=$(VERSION) \
 		--region=europe-west3 \
