@@ -69,7 +69,7 @@
       curl "<%= "https://api.logflare.app" <> ~p"/api/endpoints/query/#{@show_endpoint.token}" %>" \
       -H 'X-API-KEY: YOUR-ACCESS-TOKEN' \
       -H 'Content-Type: application/json; charset=utf-8' <span :if={length(@declared_params) > 0}>\</span>
-      <span :if={length(@declared_params) > 0}> -G <%= Enum.map(@declared_params, fn p -> "-d \"#{p}=VALUE\"" end) |> Enum.join(" ") %></span>
+      <span :if={length(@declared_params) > 0}>-G <%= Enum.map(@declared_params, fn p -> "-d \"#{p}=VALUE\"" end) |> Enum.join(" ") %></span>
     </code>
 
     <code :if={@show_endpoint.enable_auth} class="tw-whitespace-pre-wrap">
