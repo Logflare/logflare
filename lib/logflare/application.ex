@@ -30,14 +30,6 @@ defmodule Logflare.Application do
     Supervisor.start_link(children, opts)
   end
 
-  defp get_goth_child_spec() do
-    # Setup Goth for GCP connections
-    credentials = Jason.decode!(Application.get_env(:goth, :json))
-    scopes = ["https://www.googleapis.com/auth/cloud-platform"]
-    source = {:service_account, credentials, scopes: scopes}
-    {Goth, name: Logflare.Goth, source: source}
-  end
-
   defp get_children(:test) do
     [
       ContextCache,
@@ -54,7 +46,6 @@ defmodule Logflare.Application do
        name: Logflare.V1SourceRegistry, keys: :unique, partitions: System.schedulers_online()},
       {Registry,
        name: Logflare.CounterRegistry, keys: :unique, partitions: System.schedulers_online()},
-      # get_goth_child_spec(),
       LogflareWeb.Endpoint,
       {Task.Supervisor, name: Logflare.TaskSupervisor},
       {DynamicSupervisor, strategy: :one_for_one, name: Logflare.Endpoints.Cache},
@@ -90,89 +81,136 @@ defmodule Logflare.Application do
     grpc_creds = if ssl, do: GRPC.Credential.new(ssl: ssl)
     pool_size = Application.get_env(:logflare, Logflare.PubSub)[:pool_size]
 
-    [
-      Logflare.ErlSysMon,
-      {Task.Supervisor, name: Logflare.TaskSupervisor},
-      {Cluster.Supervisor, [topologies, [name: Logflare.ClusterSupervisor]]},
-      Logflare.Repo,
-      {Phoenix.PubSub, name: Logflare.PubSub, pool_size: pool_size},
-      # supervisor(LogflareTelemetry.Supervisor, []),
-      # Context Caches
-      ContextCache,
-      Users.Cache,
-      Sources.Cache,
-      Billing.Cache,
-      SourceSchemas.Cache,
-      PubSubRates.Cache,
-      Logs.LogEvents.Cache,
+    # set goth early in the supervision tree
+    conditional_children() ++
+      [
+        Logflare.ErlSysMon,
+        {Task.Supervisor, name: Logflare.TaskSupervisor},
+        {Cluster.Supervisor, [topologies, [name: Logflare.ClusterSupervisor]]},
+        Logflare.Repo,
+        {Phoenix.PubSub, name: Logflare.PubSub, pool_size: pool_size},
+        # supervisor(LogflareTelemetry.Supervisor, []),
+        # Context Caches
+        ContextCache,
+        Users.Cache,
+        Sources.Cache,
+        Billing.Cache,
+        SourceSchemas.Cache,
+        PubSubRates.Cache,
+        Logs.LogEvents.Cache,
 
-      # Follow Postgresql replication log and bust all our context caches
-      {
-        Cainophile.Adapters.Postgres,
-        register: Logflare.PgPublisher,
-        epgsql: %{
-          host: hostname,
-          port: port,
-          username: username,
-          database: database,
-          password: password
+        # Follow Postgresql replication log and bust all our context caches
+        {
+          Cainophile.Adapters.Postgres,
+          register: Logflare.PgPublisher,
+          epgsql: %{
+            host: hostname,
+            port: port,
+            username: username,
+            database: database,
+            password: password
+          },
+          slot: slot,
+          wal_position: {"0", "0"},
+          publications: publications
         },
-        slot: slot,
-        wal_position: {"0", "0"},
-        publications: publications
-      },
-      Logflare.CacheBuster,
+        Logflare.CacheBuster,
 
-      # Sources
-      # v1 ingest pipline
-      {Registry,
-       name: Logflare.V1SourceRegistry, keys: :unique, partitions: System.schedulers_online()},
-      {Registry,
-       name: Logflare.CounterRegistry, keys: :unique, partitions: System.schedulers_online()},
-      Logs.RejectedLogEvents,
-      # init Counters before Supervisof as Supervisor calls Counters through table create
-      Sources.Counters,
-      Sources.RateCounters,
-      PubSubRates.Rates,
-      PubSubRates.Buffers,
-      PubSubRates.Inserts,
-      Logflare.Source.Supervisor,
+        # Sources
+        # v1 ingest pipline
+        {Registry,
+         name: Logflare.V1SourceRegistry, keys: :unique, partitions: System.schedulers_online()},
+        {Registry,
+         name: Logflare.CounterRegistry, keys: :unique, partitions: System.schedulers_online()},
+        Logs.RejectedLogEvents,
+        # init Counters before Supervisof as Supervisor calls Counters through table create
+        Sources.Counters,
+        Sources.RateCounters,
+        PubSubRates.Rates,
+        PubSubRates.Buffers,
+        PubSubRates.Inserts,
+        Logflare.Source.Supervisor,
 
-      # If we get a log event and the Source.Supervisor is not up it will 500
-      LogflareWeb.Endpoint,
-      {GRPC.Server.Supervisor, {LogflareGrpc.Endpoint, grpc_port, cred: grpc_creds}},
-      # Monitor system level metrics
-      Logflare.SystemMetricsSup,
+        # If we get a log event and the Source.Supervisor is not up it will 500
+        LogflareWeb.Endpoint,
+        {GRPC.Server.Supervisor, {LogflareGrpc.Endpoint, grpc_port, cred: grpc_creds}},
+        # Monitor system level metrics
+        Logflare.SystemMetricsSup,
 
-      # For Logflare Endpoints
-      {DynamicSupervisor, strategy: :one_for_one, name: Logflare.Endpoints.Cache},
+        # For Logflare Endpoints
+        {DynamicSupervisor, strategy: :one_for_one, name: Logflare.Endpoints.Cache},
 
-      # Startup tasks
-      {Task, fn -> startup_tasks() end},
+        # Startup tasks
+        {Task, fn -> startup_tasks() end},
 
-      # v2 ingestion pipelines
-      {DynamicSupervisor, strategy: :one_for_one, name: Logflare.Backends.SourcesSup},
-      {DynamicSupervisor, strategy: :one_for_one, name: Logflare.Backends.RecentLogsSup},
-      {DynamicSupervisor,
-       strategy: :one_for_one, name: Logflare.Backends.Adaptor.PostgresAdaptor.Supervisor},
-      {DynamicSupervisor,
-       strategy: :one_for_one, name: Logflare.Backends.Adaptor.PostgresAdaptor.PgRepoSupervisor},
-      {Registry,
-       name: Logflare.Backends.SourceRegistry,
-       keys: :unique,
-       partitions: System.schedulers_online()},
-      {Registry, name: Logflare.Backends.SourceDispatcher, keys: :duplicate},
+        # v2 ingestion pipelines
+        {DynamicSupervisor, strategy: :one_for_one, name: Logflare.Backends.SourcesSup},
+        {DynamicSupervisor, strategy: :one_for_one, name: Logflare.Backends.RecentLogsSup},
+        {DynamicSupervisor,
+         strategy: :one_for_one, name: Logflare.Backends.Adaptor.PostgresAdaptor.Supervisor},
+        {DynamicSupervisor,
+         strategy: :one_for_one, name: Logflare.Backends.Adaptor.PostgresAdaptor.PgRepoSupervisor},
+        {Registry,
+         name: Logflare.Backends.SourceRegistry,
+         keys: :unique,
+         partitions: System.schedulers_online()},
+        {Registry, name: Logflare.Backends.SourceDispatcher, keys: :duplicate},
 
-      # citrine scheduler for alerts
-      Logflare.AlertsScheduler
-    ] ++ conditional_children() ++ common_children()
+        # citrine scheduler for alerts
+        Logflare.AlertsScheduler
+      ] ++ common_children()
   end
 
   def conditional_children do
     goth =
       case Application.get_env(:goth, :json) do
-        nil -> []
-        _ -> [get_goth_child_spec()]
+        nil ->
+          []
+
+        json ->
+          # Setup Goth for GCP connections
+          credentials = Jason.decode!(json)
+          scopes = ["https://www.googleapis.com/auth/cloud-platform"]
+          source = {:service_account, credentials, scopes: scopes}
+
+          spec =
+            {
+              Goth,
+              # https://hexdocs.pm/goth/Goth.html#fetch/2
+              #  refresh 15 min before
+              #  don't start server until fetch is made
+              #  cap retries at 10s, warn when >5
+              name: Logflare.Goth,
+              source: source,
+              refresh_before: 60 * 15,
+              prefetch: :sync,
+              retry_delay: fn
+                n when n < 3 ->
+                  1000
+
+                n when n < 5 ->
+                  Logger.warning("Goth refresh retry count is #{n}")
+                  1000 * 3
+
+                n when n < 10 ->
+                  Logger.warning("Goth refresh retry count is #{n}")
+                  1000 * 5
+
+                n ->
+                  Logger.warning("Goth refresh retry count is #{n}")
+                  1000 * 10
+              end
+            }
+
+          # Partition Goth
+          [
+            {PartitionSupervisor,
+             child_spec: spec,
+             name: Logflare.GothPartitionSup,
+             with_arguments: fn [opts], partition ->
+               [Keyword.put(opts, :name, {Logflare.Goth, partition})]
+             end}
+          ]
       end
 
     # only add in config cat to multi-tenant prod
@@ -195,7 +233,7 @@ defmodule Logflare.Application do
       # Finch connection pools, using http2
       {Finch, name: Logflare.FinchIngest, pools: %{:default => [protocol: :http2, count: 200]}},
       {Finch, name: Logflare.FinchQuery, pools: %{:default => [protocol: :http2, count: 100]}},
-      {Finch, name: Logflare.FinchDefault, pools: %{:default => [protocol: :http2, count: 50]}}
+      {Finch, name: Logflare.FinchDefault, pools: %{:default => [protocol: :http2, count: 150]}}
     ]
   end
 

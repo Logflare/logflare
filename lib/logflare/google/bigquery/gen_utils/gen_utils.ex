@@ -72,7 +72,15 @@ defmodule Logflare.Google.BigQuery.GenUtils do
   @typep conn_type :: :ingest | :query | :default
   @spec get_conn(conn_type()) :: Tesla.Env.client()
   def get_conn(conn_type \\ :default) do
-    Goth.fetch(Logflare.Goth)
+    # use pid as the partition hash
+    partition_count = System.schedulers_online()
+    partition = :erlang.phash2(self(), partition_count)
+
+    metadata = %{partition_count: partition_count}
+
+    :telemetry.span([:logflare, :goth, :fetch], metadata, fn ->
+      {Goth.fetch({Logflare.Goth, partition}), metadata}
+    end)
     |> case do
       {:ok, %Goth.Token{} = goth} ->
         Connection.new(goth.token)
