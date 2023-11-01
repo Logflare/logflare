@@ -6,7 +6,10 @@ config :logflare, LogflareWeb.Endpoint,
   http: [port: 4001],
   server: false
 
-config :logflare, env: :test
+config :logflare,
+  env: :test
+
+config :logflare, Logflare.Cluster.Utils, min_cluster_size: 1
 
 config :logger, :console, metadata: :all, level: :error
 
