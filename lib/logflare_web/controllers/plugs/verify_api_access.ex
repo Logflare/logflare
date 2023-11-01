@@ -24,6 +24,12 @@ defmodule LogflareWeb.Plugs.VerifyApiAccess do
         if "partner" in opts.scopes do
           assign(conn, :partner, owner)
         else
+          owner =
+            owner
+            |> Users.preload_team()
+            |> Users.preload_billing_account()
+            |> Users.preload_sources()
+
           assign(conn, :user, owner)
         end
 

@@ -33,13 +33,11 @@ defmodule LogflareWeb.LogControllerTest do
       source = insert(:source, user_id: user.id, v2_pipeline: true)
       _plan = insert(:plan, name: "Free")
 
+      start_supervised!(Counters)
+      start_supervised!(RateCounters)
+
       source_backend =
         insert(:source_backend, source_id: source.id, type: :webhook, config: %{url: "some url"})
-
-      # stub out rate limiting logic for now
-      # TODO: remove once rate limiting logic is refactored
-      LogflareWeb.Plugs.RateLimiter
-      |> stub(:call, fn x, _ -> x end)
 
       {:ok, source: source, user: user, source_backend: source_backend}
     end
@@ -54,7 +52,7 @@ defmodule LogflareWeb.LogControllerTest do
         |> post(Routes.log_path(conn, :create, source: source.token), @valid)
 
       assert json_response(conn, 200) == %{"message" => "Logged!"}
-      :timer.sleep(1500)
+      :timer.sleep(2000)
     end
   end
 
@@ -73,7 +71,7 @@ defmodule LogflareWeb.LogControllerTest do
 
       assert json_response(conn, 200) == %{"message" => "Logged!"}
       # wait for all logs to be ingested before removing all stubs
-      :timer.sleep(1500)
+      :timer.sleep(2000)
     end
 
     test ":create ingestion", %{conn: conn, source: source} do
@@ -83,7 +81,7 @@ defmodule LogflareWeb.LogControllerTest do
 
       assert json_response(conn, 200) == %{"message" => "Logged!"}
       # wait for all logs to be ingested before removing all stubs
-      :timer.sleep(1500)
+      :timer.sleep(2000)
     end
 
     test ":create ingestion batch with `batch` key", %{conn: conn, source: source} do
@@ -93,7 +91,7 @@ defmodule LogflareWeb.LogControllerTest do
 
       assert json_response(conn, 200) == %{"message" => "Logged!"}
       # wait for all logs to be ingested before removing all stubs
-      :timer.sleep(1500)
+      :timer.sleep(2000)
     end
 
     test ":create ingestion batch with array body", %{conn: conn, source: source} do
@@ -104,7 +102,7 @@ defmodule LogflareWeb.LogControllerTest do
 
       assert json_response(conn, 200) == %{"message" => "Logged!"}
       # wait for all logs to be ingested before removing all stubs
-      :timer.sleep(1500)
+      :timer.sleep(2000)
     end
 
     test ":cloudflare ingestion", %{conn: new_conn, source: source} do
@@ -119,7 +117,7 @@ defmodule LogflareWeb.LogControllerTest do
              }
 
       # wait for all logs to be ingested before removing all stubs
-      :timer.sleep(1500)
+      :timer.sleep(2000)
     end
   end
 
@@ -139,7 +137,7 @@ defmodule LogflareWeb.LogControllerTest do
 
       assert json_response(conn, 200) == %{"message" => "Logged!"}
       # wait for all logs to be ingested before removing all stubs
-      :timer.sleep(1500)
+      :timer.sleep(2000)
     end
   end
 
@@ -158,12 +156,7 @@ defmodule LogflareWeb.LogControllerTest do
       start_supervised!(Counters)
       start_supervised!(RateCounters)
       start_supervised!({RecentLogsServer, rls})
-      :timer.sleep(1000)
-
-      # stub out rate limiting logic for now
-      # TODO: remove once rate limiting logic is refactored
-      LogflareWeb.Plugs.RateLimiter
-      |> stub(:call, fn x, _ -> x end)
+      :timer.sleep(500)
 
       Logflare.Logs
       |> expect(:broadcast, 1, fn le ->
@@ -185,7 +178,7 @@ defmodule LogflareWeb.LogControllerTest do
       assert json_response(conn, 200) == %{"message" => "Logged!"}
 
       # wait for all logs to be ingested before removing all stubs
-      :timer.sleep(1500)
+      :timer.sleep(2000)
     end
   end
 
@@ -198,12 +191,7 @@ defmodule LogflareWeb.LogControllerTest do
     start_supervised!(Counters)
     start_supervised!(RateCounters)
     start_supervised!({RecentLogsServer, rls})
-    :timer.sleep(1000)
-
-    # stub out rate limiting logic for now
-    # TODO: remove once rate limiting logic is refactored
-    LogflareWeb.Plugs.RateLimiter
-    |> stub(:call, fn x, _ -> x end)
+    :timer.sleep(500)
 
     Logflare.Logs
     |> expect(:broadcast, 1, fn le ->
