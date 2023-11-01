@@ -10,6 +10,7 @@ defmodule Logflare.Endpoints do
   alias Logflare.Backends
   alias Logflare.Backends.Adaptor.PostgresAdaptor
   alias Logflare.SingleTenant
+  alias Logflare.Alerting
 
   import Ecto.Query
   @typep run_query_return :: {:ok, %{rows: [map()]}} | {:error, String.t()}
@@ -139,10 +140,21 @@ defmodule Logflare.Endpoints do
     %Query{query: query_string, user_id: user_id, sandboxable: sandboxable} = endpoint_query
     sql_param = Map.get(params, "sql")
 
-    transform_input =
-      if(sandboxable && sql_param, do: {query_string, sql_param}, else: query_string)
+    endpoints =
+      list_endpoints_by(user_id: endpoint_query.user_id)
+      |> Enum.filter(&(&1.id != endpoint_query.id))
+
+    alerts = Alerting.list_alert_queries_by_user_id(endpoint_query.user_id)
 
     with {:ok, declared_params} <- Logflare.Sql.parameters(query_string),
+         {:ok, expanded_query} <-
+           Logflare.Sql.expand_subqueries(
+             endpoint_query.language,
+             query_string,
+             endpoints ++ alerts
+           ),
+         transform_input =
+           if(sandboxable && sql_param, do: {expanded_query, sql_param}, else: expanded_query),
          {:ok, transformed_query} <-
            Logflare.Sql.transform(endpoint_query.language, transform_input, user_id) do
       {endpoint, query_string} =

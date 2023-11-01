@@ -11,6 +11,7 @@ defmodule Logflare.Alerting do
   alias Logflare.Backends.Adaptor.SlackAdaptor
   alias Logflare.Alerting.AlertQuery
   alias Logflare.User
+  alias Logflare.Endpoints
 
   @doc """
   Returns the list of alert_queries.
@@ -21,7 +22,12 @@ defmodule Logflare.Alerting do
       [%AlertQuery{}, ...]
 
   """
+
   def list_alert_queries(%User{id: user_id}) do
+    list_alert_queries_by_user_id(user_id)
+  end
+
+  def list_alert_queries_by_user_id(user_id) do
     from(q in AlertQuery, where: q.user_id == ^user_id)
     |> Repo.all()
   end
@@ -228,8 +234,20 @@ defmodule Logflare.Alerting do
   def execute_alert_query(%AlertQuery{user: %User{}} = alert_query) do
     Logger.debug("Executing AlertQuery | #{alert_query.name} | #{alert_query.id}")
 
-    with {:ok, transformed_query} <-
-           Logflare.Sql.transform(:bq_sql, alert_query.query, alert_query.user_id),
+    endpoints = Endpoints.list_endpoints_by(user_id: alert_query.user_id)
+
+    alerts =
+      list_alert_queries_by_user_id(alert_query.user_id)
+      |> Enum.filter(&(&1.id != alert_query.id))
+
+    with {:ok, expanded_query} <-
+           Logflare.Sql.expand_subqueries(
+             alert_query.language,
+             alert_query.query,
+             endpoints ++ alerts
+           ),
+         {:ok, transformed_query} <-
+           Logflare.Sql.transform(alert_query.language, expanded_query, alert_query.user_id),
          {:ok, %{rows: rows}} <-
            Logflare.BqRepo.query_with_sql_and_params(
              alert_query.user,
