@@ -408,12 +408,6 @@ defmodule LogflareWeb.Router do
     get("/", OpenApiSpex.Plug.SwaggerUI, path: "/api/openapi")
   end
 
-  # Old log ingest endpoint. Deprecate.
-  scope "/api/logs", LogflareWeb, assigns: %{resource_type: :source} do
-    pipe_through([:api, :require_ingest_api_auth])
-    post("/", LogController, :create)
-  end
-
   scope "/api/endpoints", LogflareWeb, assigns: %{resource_type: :endpoint} do
     pipe_through([:api, :require_endpoint_auth])
     get("/query/:token_or_name", EndpointsController, :query)
@@ -428,35 +422,37 @@ defmodule LogflareWeb.Router do
     get("/:token_or_name", EndpointsController, :query)
   end
 
-  # Log ingest goes through https://api.logflare.app/logs
-  scope "/logs", LogflareWeb, assigns: %{resource_type: :source} do
-    pipe_through([:api, :require_ingest_api_auth])
-    post("/", LogController, :create)
-    options("/", LogController, :create)
-    post("/browser/reports", LogController, :browser_reports)
-    options("/browser/reports", LogController, :browser_reports)
-    post("/json", LogController, :generic_json)
-    options("/json", LogController, :generic_json)
-    post("/zeit", LogController, :vercel_ingest)
-    post("/vercel", LogController, :vercel_ingest)
-    post("/netlify", LogController, :netlify)
-    post("/elixir/logger", LogController, :elixir_logger)
-    post("/erlang", LogController, :elixir_logger)
-    post("/erlang/logger", LogController, :elixir_logger)
-    post("/erlang/lager", LogController, :elixir_logger)
-    post("/typecasts", LogController, :create_with_typecasts)
-    post("/logplex", LogController, :syslog)
-    post("/syslogs", LogController, :syslog)
-    post("/github", LogController, :github)
-    post("/vector", LogController, :vector)
+  for path <- ["/logs", "/api/logs", "/api/events"] do
+    scope path, LogflareWeb, assigns: %{resource_type: :source} do
+      pipe_through([:api, :require_ingest_api_auth])
+      post("/", LogController, :create)
+      options("/", LogController, :create)
+      post("/browser/reports", LogController, :browser_reports)
+      options("/browser/reports", LogController, :browser_reports)
+      post("/json", LogController, :generic_json)
+      options("/json", LogController, :generic_json)
+      post("/zeit", LogController, :vercel_ingest)
+      post("/vercel", LogController, :vercel_ingest)
+      post("/netlify", LogController, :netlify)
+      post("/elixir/logger", LogController, :elixir_logger)
+      post("/erlang", LogController, :elixir_logger)
+      post("/erlang/logger", LogController, :elixir_logger)
+      post("/erlang/lager", LogController, :elixir_logger)
+      post("/typecasts", LogController, :create_with_typecasts)
+      post("/logplex", LogController, :syslog)
+      post("/syslogs", LogController, :syslog)
+      post("/github", LogController, :github)
+      post("/vector", LogController, :vector)
 
-    # Deprecate after September 1, 2020
-    post("/syslog", LogController, :syslog)
-  end
+      # Deprecate after September 1, 2020
+      post("/syslog", LogController, :syslog)
+    end
 
-  scope "/logs/cloudflare", LogflareWeb, assigns: %{resource_type: :source} do
-    pipe_through([:logpush, :api, :require_ingest_api_auth])
-    post("/", LogController, :cloudflare)
+    # logpush
+    scope "#{path}/cloudflare", LogflareWeb, assigns: %{resource_type: :source} do
+      pipe_through([:logpush, :api, :require_ingest_api_auth])
+      post("/", LogController, :cloudflare)
+    end
   end
 
   if Mix.env() == :dev do
