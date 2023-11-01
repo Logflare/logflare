@@ -119,14 +119,7 @@ defmodule LogflareWeb.BillingAccountLive.CustomFieldComponent do
           <% end %>
         </ul>
       <% end %>
-      <.form
-        :let={f}
-        for={@custom_fields_form}
-        action="#"
-        phx-change="validate"
-        phx-submit="add"
-        phx-target={@myself}
-      >
+      <.form :let={f} for={@custom_fields_form} action="#" phx-change="validate" phx-submit="add" phx-target={@myself}>
         <div class="row">
           <div class="col-sm">
             <%= label(f, :name, class: "label-padding") %>
@@ -153,14 +146,7 @@ defmodule LogflareWeb.BillingAccountLive.CustomFieldComponent do
     }
 
     ~H"""
-    <a
-      href="#"
-      phx-click="delete"
-      phx-disable-with="deleting..."
-      phx-value-key={@key}
-      phx-target={@myself}
-      class="small"
-    >
+    <a href="#" phx-click="delete" phx-disable-with="deleting..." phx-value-key={@key} phx-target={@myself} class="small">
       delete
     </a>
     """

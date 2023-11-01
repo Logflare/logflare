@@ -5,14 +5,7 @@
   <%= if @user_type == :user do %>
     <div>Set your local timezone for your account <%= @user.email %></div>
   <% end %>
-  <.form
-    :let={f}
-    for={@user_preferences}
-    action="#"
-    id="user-tz-form"
-    phx-submit="update-preferences"
-    phx-target={@myself}
-  >
+  <.form :let={f} for={@user_preferences} action="#" id="user-tz-form" phx-submit="update-preferences" phx-target={@myself}>
     <div class="form-group">
       <%= hidden_input(f, :id) %>
       <%= label(f, :timezone, "Timezone", class: "col-form-label") %>

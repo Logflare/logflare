@@ -2,13 +2,7 @@
   <.form :let={f} for={@changeset} as={:alert} id="alert" phx-submit="save" class="tw-w-full">
     <%= hidden_input(f, :language) %>
     <div class="tw-sticky tw-flex tw-justify-between tw-gap-4">
-      <button
-        :if={@alert}
-        data-confirm="Are you sure? This cannot be undone"
-        phx-click="delete"
-        phx-value-alert_id={@alert.id}
-        class="btn btn-outline-danger"
-      >
+      <button :if={@alert} data-confirm="Are you sure? This cannot be undone" phx-click="delete" phx-value-alert_id={@alert.id} class="btn btn-outline-danger">
         <i class="fas fa-trash"></i> Delete
       </button>
       <%= submit("Save changes", class: "btn btn-primary") %>
@@ -40,8 +34,7 @@
           This alert will execute this query periodically. If a non-zero number of rows are returned from this query, the notification will be triggered.
         </p>
         <%= textarea(f, :query,
-          placeholder:
-            "select timestamp, event_message from `YourApp.SourceName` \nwhere regexp_contains(event_message, 'error')",
+          placeholder: "select timestamp, event_message from `YourApp.SourceName` \nwhere regexp_contains(event_message, 'error')",
           class: "form-control form-control-margin",
           id: "alert-query",
           style: "height: 20rem"

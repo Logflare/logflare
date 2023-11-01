@@ -18,8 +18,7 @@
     Manage your subscription, update credit card info and download your Logflare invoices all in one place.
   </p>
   <p>
-    <i class="fas fa-exclamation-circle"></i>
-    All team members can now access the billing account. You can invite someone in accounting as a team member to subscribe to Logflare if needed.
+    <i class="fas fa-exclamation-circle"></i> All team members can now access the billing account. You can invite someone in accounting as a team member to subscribe to Logflare if needed.
   </p>
   <div class="sub-form">
     <%= section_header("Summary") %>
@@ -34,8 +33,7 @@
             </p>
           <% @plan.name != "Free" -> %>
             <p>
-              You're currently on the <u><%= @plan.name %> plan</u>. You have
-              <u><%= count_for_billing(@user.sources) %> source(s)</u><sup>1</sup>
+              You're currently on the <u><%= @plan.name %> plan</u>. You have <u><%= count_for_billing(@user.sources) %> source(s)</u><sup>1</sup>
               added to your account. Each source is costing you <u><%= @plan.price |> Money.new(:USD) |> Money.to_string(fractional_unit: false) %> per <%= @plan.period %></u>.
               Your total estimated total cost is <u><%= count_for_billing(@user.sources) * @plan.price |> Money.new(:USD) |> Money.to_string(fractional_unit: false) %>
         per <%= @plan.period %></u>.
