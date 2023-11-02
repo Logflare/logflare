@@ -185,6 +185,8 @@ defmodule Logflare.Application do
               source: source,
               refresh_before: 60 * 15,
               prefetch: :sync,
+              http_client: &goth_finch_http_client/1,
+
               retry_delay: fn
                 n when n < 3 ->
                   1000
@@ -227,6 +229,18 @@ defmodule Logflare.Application do
   def config_change(changed, _new, removed) do
     LogflareWeb.Endpoint.config_change(changed, removed)
     :ok
+  end
+
+  # tell goth to use our finch pool
+  # https://github.com/peburrows/goth/blob/master/lib/goth/token.ex#L144
+  defp goth_finch_http_client(options) do
+    {method, options} = Keyword.pop!(options, :method)
+    {url, options} = Keyword.pop!(options, :url)
+    {headers, options} = Keyword.pop!(options, :headers)
+    {body, options} = Keyword.pop!(options, :body)
+
+    Finch.build(method, url, headers, body)
+    |> Finch.request(Logflare.FinchDefault, options)
   end
 
   defp finch_pools do
