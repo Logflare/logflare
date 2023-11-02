@@ -79,7 +79,13 @@ defmodule Logflare.Google.BigQuery.GenUtils do
     metadata = %{partition_count: partition_count}
 
     :telemetry.span([:logflare, :goth, :fetch], metadata, fn ->
-      {Goth.fetch({Logflare.Goth, partition}), metadata}
+      result =
+        Goth.fetch({Logflare.Goth, partition},
+          http_client: &goth_finch_http_client/1,
+          receive_timeout: 15_000
+        )
+
+      {result, metadata}
     end)
     |> case do
       {:ok, %Goth.Token{} = goth} ->
@@ -92,6 +98,18 @@ defmodule Logflare.Google.BigQuery.GenUtils do
     end
     # dynamically set tesla adapter
     |> Map.update!(:adapter, fn _value -> build_tesla_adapter_call(conn_type) end)
+  end
+
+  # tell goth to use our finch pool
+  # https://github.com/peburrows/goth/blob/master/lib/goth/token.ex#L144
+  defp goth_finch_http_client(options) do
+    {method, options} = Keyword.pop!(options, :method)
+    {url, options} = Keyword.pop!(options, :url)
+    {headers, options} = Keyword.pop!(options, :headers)
+    {body, options} = Keyword.pop!(options, :body)
+
+    Finch.build(method, url, headers, body)
+    |> Finch.request(Logflare.FinchDefault, options)
   end
 
   # copy over runtime adapter building from Tesla.client/2
