@@ -24,11 +24,7 @@
       </p>
       <pre class="p-2" id="created_token"><%= @created_token.token %></pre>
       <pre class="p-2" id="description"><%= @created_token.description %></pre>
-      <button
-        id="dismiss-created-token"
-        phx-click="dismiss-created-token"
-        class="btn btn-sm btn-secondary form-button"
-      >
+      <button id="dismiss-created-token" phx-click="dismiss-created-token" class="btn btn-sm btn-secondary form-button">
         Dismiss
       </button>
     </div>
@@ -41,12 +37,7 @@
         <div>
           <div class="pr-2">Name: <%= name %></div>
           <div class="pr-2">Token: <%= token %></div>
-          <button
-            id={"delete-#{token}"}
-            phx-click="delete"
-            phx-value-token={token}
-            class="btn btn-sm btn-secondary form-button"
-          >
+          <button id={"delete-#{token}"} phx-click="delete" phx-value-token={token} class="btn btn-sm btn-secondary form-button">
             Delete
           </button>
           <form phx-submit="create-token" class="py-4 flex items-center" id={"generate-#{token}"}>

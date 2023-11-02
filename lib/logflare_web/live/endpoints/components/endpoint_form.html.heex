@@ -1,21 +1,8 @@
 <div class="tw-flex tw-my-10 tw-gap-2">
-  <.form
-    :let={f}
-    for={@endpoint_changeset}
-    as={:endpoint}
-    id="endpoint"
-    phx-submit="save-endpoint"
-    class="tw-w-1/2 tw-border-r-1 pr-2 tw-border-l-0 tw-border-t-0 tw-border-b-0 tw-border-solid tw-border-gray-600"
-  >
+  <.form :let={f} for={@endpoint_changeset} as={:endpoint} id="endpoint" phx-submit="save-endpoint" class="tw-w-1/2 tw-border-r-1 pr-2 tw-border-l-0 tw-border-t-0 tw-border-b-0 tw-border-solid tw-border-gray-600">
     <%= hidden_input(f, :language) %>
     <div class="tw-sticky tw-flex tw-justify-between tw-gap-4">
-      <button
-        :if={@show_endpoint}
-        data-confirm="Are you sure? This cannot be undone"
-        phx-click="delete-endpoint"
-        phx-value-endpoint_id={@show_endpoint.id}
-        class="btn btn-outline-danger"
-      >
+      <button :if={@show_endpoint} data-confirm="Are you sure? This cannot be undone" phx-click="delete-endpoint" phx-value-endpoint_id={@show_endpoint.id} class="btn btn-outline-danger">
         <i class="fas fa-trash"></i> Delete
       </button>
       <%= submit("Save changes", class: "btn btn-primary") %>
@@ -50,10 +37,8 @@
     <section class="tw-flex tw-flex-col">
       <div class="form-group">
         <p>
-          This endpoint will execute this query on each <code>GET</code>
-          request.
-          Declare parameters using <code>@parameter_name</code>
-          and pass it to the endpoint via query parameters <code>?parameter_name=some-value</code>
+          This endpoint will execute this query on each <code>GET</code> request.
+          Declare parameters using <code>@parameter_name</code> and pass it to the endpoint via query parameters <code>?parameter_name=some-value</code>
         </p>
         <%= textarea(f, :query,
           placeholder: "select timestamp, event_message from `YourApp.SourceName`",
@@ -104,8 +89,7 @@
         ) %>
         <%= error_tag(f, :sandboxable) %>
         <small class="form-text text-muted">
-          Endpoints with sandboxing enabled will accept an <code>?sql=</code>
-          query parameter that will be inserted as the outer query of the defined CTE.
+          Endpoints with sandboxing enabled will accept an <code>?sql=</code> query parameter that will be inserted as the outer query of the defined CTE.
           This restricts users of the endpoint to only query within the defined CTE result sets.
         </small>
       </div>
@@ -126,8 +110,7 @@
         </div>
         <%= error_tag(f, :cache_duration_seconds) %>
         <small class="form-text text-muted">
-          Endpoint results are cached on a per-request basis. Set Cache TTL to <code>0</code>
-          to disable caching completely.
+          Endpoint results are cached on a per-request basis. Set Cache TTL to <code>0</code> to disable caching completely.
         </small>
       </div>
       <div>

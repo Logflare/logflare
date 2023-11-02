@@ -196,15 +196,7 @@ defmodule LogflareWeb.BillingAccountLive.PaymentMethodComponent do
         <% end %>
       </ul>
       <div id="stripe-elements-form" class="mt-4">
-        <form
-          id="payment-form"
-          action="#"
-          phx-submit="submit"
-          phx-hook="PaymentMethodForm"
-          data-stripe-key={@stripe_key}
-          data-stripe-customer={@user.billing_account.stripe_customer}
-          phx-target={@myself}
-        >
+        <form id="payment-form" action="#" phx-submit="submit" phx-hook="PaymentMethodForm" data-stripe-key={@stripe_key} data-stripe-customer={@user.billing_account.stripe_customer} phx-target={@myself}>
           <div id="card-element">
             <!-- Elements will create input elements here -->
           </div>
@@ -214,12 +206,7 @@ defmodule LogflareWeb.BillingAccountLive.PaymentMethodComponent do
             Add payment method
           </button>
         </form>
-        <button
-          phx-click="sync"
-          phx-disable-with="Syncing..."
-          phx-target={@myself}
-          class="btn btn-dark btn-sm"
-        >
+        <button phx-click="sync" phx-disable-with="Syncing..." phx-target={@myself} class="btn btn-dark btn-sm">
           Sync payment methods
         </button>
       </div>
@@ -234,13 +221,7 @@ defmodule LogflareWeb.BillingAccountLive.PaymentMethodComponent do
     }
 
     ~H"""
-    <button
-      phx-click="delete"
-      phx-disable-with="Deleting..."
-      phx-value-id={@stripe_id}
-      phx-target={@myself}
-      class="btn btn-danger btn-sm m-3"
-    >
+    <button phx-click="delete" phx-disable-with="Deleting..." phx-value-id={@stripe_id} phx-target={@myself} class="btn btn-danger btn-sm m-3">
       Delete
     </button>
     """
@@ -253,13 +234,7 @@ defmodule LogflareWeb.BillingAccountLive.PaymentMethodComponent do
     }
 
     ~H"""
-    <button
-      phx-click="make-default"
-      phx-disable-with="Updating..."
-      phx-value-stripe-id={@stripe_id}
-      phx-target={@myself}
-      class="btn btn-dark btn-sm"
-    >
+    <button phx-click="make-default" phx-disable-with="Updating..." phx-value-stripe-id={@stripe_id} phx-target={@myself} class="btn btn-dark btn-sm">
       Make default
     </button>
     """

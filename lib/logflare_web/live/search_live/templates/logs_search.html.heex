@@ -13,12 +13,7 @@
     return_to: @modal.body.return_to
   ) %>
 <% end %>
-<div
-  id="user-preferences"
-  data-user-local-timezone={@user_local_timezone}
-  data-use-local-time={@use_local_time}
->
-</div>
+<div id="user-preferences" data-user-local-timezone={@user_local_timezone} data-use-local-time={@use_local_time}></div>
 <div id="source-logs-search-control" class="subhead " phx-hook="SourceLogsSearch">
   <div class="container mx-auto">
     <h5>
@@ -43,12 +38,7 @@
           <%= LqlHelpers.bq_source_schema_modal_link() %>
         </li>
         <li>
-          <a
-            href="#"
-            phx-click="toggle_local_time"
-            id="toggle_local_time"
-            phx-value-use_local_time={@use_local_time}
-          >
+          <a href="#" phx-click="toggle_local_time" id="toggle_local_time" phx-value-use_local_time={@use_local_time}>
             <span>
               <%= if @use_local_time do %>
                 <i class="fa fa-toggle-on pointer-cursor" aria-hidden="true"></i>
@@ -65,24 +55,13 @@
             <span class="hide-on-mobile">
               timezone
               <%= if @user_local_timezone do %>
-                <%= DateTimeUtils.humanize_timezone_offset(
-                  Timex.Timezone.get(@user_local_timezone).offset_utc
-                ) %>
+                <%= DateTimeUtils.humanize_timezone_offset(Timex.Timezone.get(@user_local_timezone).offset_utc) %>
               <% end %>
             </span>
           <% end %>
         </li>
         <li>
-          <span
-            id="search-uri-query"
-            class="pointer-cursor"
-            data-trigger="hover focus"
-            data-delay="0"
-            data-toggle="tooltip"
-            data-html="true"
-            data-placement="top"
-            data-title="<span id=&quot;copy-tooltip&quot;>Copy uri</span>"
-          >
+          <span id="search-uri-query" class="pointer-cursor" data-trigger="hover focus" data-delay="0" data-toggle="tooltip" data-html="true" data-placement="top" data-title="<span id=&quot;copy-tooltip&quot;>Copy uri</span>">
             <span>
               <i class="fas fa-copy"></i>
             </span>
@@ -142,14 +121,7 @@
     ) %>
   </div>
   <div class="search-control">
-    <.form
-      :let={f}
-      for={@search_form}
-      action="#"
-      phx-submit="start_search"
-      phx-change="form_update"
-      class="form-group"
-    >
+    <.form :let={f} for={@search_form} action="#" phx-submit="start_search" phx-change="form_update" class="form-group">
       <div class="form-group form-text">
         <%= text_input(f, :querystring,
           phx_focus: :form_focus,
@@ -246,14 +218,7 @@
               class: "form-control form-control-sm"
             ) %>
           <% else %>
-            <span
-              class="d-inline-block"
-              tabindex="0"
-              data-toggle="tooltip"
-              title="Chart aggregate setting requires usage of chart: operator"
-              trigger="hover click"
-              delay="0"
-            >
+            <span class="d-inline-block" tabindex="0" data-toggle="tooltip" title="Chart aggregate setting requires usage of chart: operator" trigger="hover click" delay="0">
               <%= select(
                 f,
                 :chart_aggregate,
@@ -269,11 +234,7 @@
       <div id="observer-target"></div>
     </.form>
     <%= if @last_query_completed_at do %>
-      <small
-        class="form-text text-muted"
-        id="last-query-completed-at"
-        data-timestamp={Timex.to_unix(@last_query_completed_at)}
-      >
+      <small class="form-text text-muted" id="last-query-completed-at" data-timestamp={Timex.to_unix(@last_query_completed_at)}>
         Elapsed since last query: <span id="elapsed" phx-update="ignore"> 0.0 </span> seconds
       </small>
     <% else %>
@@ -282,11 +243,5 @@
       </small>
     <% end %>
   </div>
-  <div
-    id="user-idle"
-    phx-click="user_idle"
-    class="d-none"
-    data-user-idle-interval={@user_idle_interval}
-  >
-  </div>
+  <div id="user-idle" phx-click="user_idle" class="d-none" data-user-idle-interval={@user_idle_interval}></div>
 </div>

@@ -10,14 +10,7 @@ defmodule LogflareWeb.SourceBackendsLive do
       <%= if !@show_create_form do %>
         <button class="btn btn-primary" phx-click="toggle-create-form">Add a backend</button>
       <% else %>
-        <.form
-          :let={f}
-          for={%{}}
-          as={:backend_form}
-          action="#"
-          phx-submit="save_source_backend"
-          class="mt-4"
-        >
+        <.form :let={f} for={%{}} as={:backend_form} action="#" phx-submit="save_source_backend" class="mt-4">
           <p>Add backend</p>
           <%= select(f, :type, ["", Webhook: :webhook, Postgres: :postgres],
             phx_change: :change_create_form_type,
@@ -38,8 +31,7 @@ defmodule LogflareWeb.SourceBackendsLive do
 
                 <%= text_input(f, :url, class: "form-control form-control-margin") %>
                 <small class="form-text text-muted">
-                  Postgres URL with the following format, for example:
-                  <code>postgresql://user:password@host:port/database</code>
+                  Postgres URL with the following format, for example: <code>postgresql://user:password@host:port/database</code>
                 </small>
                 <%= label f, :schema do %>
                   Schema where data should be store, if blank the database defaults will be used
