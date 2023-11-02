@@ -31,6 +31,7 @@ defmodule Logflare.Application do
   end
 
   defp get_children(:test) do
+    finch_pools() ++
     [
       ContextCache,
       Users.Cache,

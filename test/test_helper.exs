@@ -32,12 +32,13 @@ Mimic.copy(ConfigCat)
 Mimic.copy(Finch)
 Mimic.copy(ExTwilio.Message)
 
-# stub all outgoing requests
-Mimic.stub(Goth)
-Mimic.stub(Finch)
 
 {:ok, _} = Application.ensure_all_started(:ex_machina)
 {:ok, _} = Application.ensure_all_started(:mimic)
+
+# stub all outgoing requests
+Mimic.stub(Goth)
+Mimic.stub(Finch)
 
 ExUnit.configure(exclude: [integration: true, failing: true])
 
