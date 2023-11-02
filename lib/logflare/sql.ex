@@ -1571,7 +1571,6 @@ defmodule Logflare.Sql do
     arrow =
       cond do
         data.in_binaryop or data.in_between or data.in_function_or_cast -> "LongArrow"
-        data.in_inlist -> "Arrow"
         true -> "Arrow"
       end
 
