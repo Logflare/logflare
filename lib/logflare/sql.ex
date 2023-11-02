@@ -877,7 +877,7 @@ defmodule Logflare.Sql do
           |> String.downcase()
 
         field_arg =
-          if is_timestamp_identifier?(to_trunc) do
+          if timestamp_identifier?(to_trunc) do
             at_time_zone(to_trunc)
           else
             to_trunc
@@ -932,7 +932,7 @@ defmodule Logflare.Sql do
           } = v}
        ) do
     # handle left/right numberic value comparisons
-    is_numeric_comparison = is_numeric_value?(left) or is_numeric_value?(right)
+    is_numeric_comparison = numeric_value?(left) or numeric_value?(right)
 
     [left, right] =
       for expr <- [left, right] do
@@ -942,16 +942,16 @@ defmodule Logflare.Sql do
             expr
 
           # convert the identifier side to number
-          is_numeric_comparison and (is_identifier?(expr) or is_json_access?(expr)) ->
+          is_numeric_comparison and (identifier?(expr) or json_access?(expr)) ->
             expr
             |> cast_to_jsonb()
             |> jsonb_to_text()
             |> cast_to_numeric()
 
-          is_timestamp_identifier?(expr) ->
+          timestamp_identifier?(expr) ->
             at_time_zone(expr)
 
-          is_identifier?(expr) and operator == "Eq" ->
+          identifier?(expr) and operator == "Eq" ->
             # wrap with a cast to convert possible jsonb fields
             expr
             |> cast_to_jsonb()
@@ -1485,21 +1485,21 @@ defmodule Logflare.Sql do
     |> List.first()
   end
 
-  defp is_identifier?(identifier),
+  defp identifier?(identifier),
     do: is_map_key(identifier, "CompoundIdentifier") or is_map_key(identifier, "Identifier")
 
-  defp is_numeric_value?(%{"Value" => %{"Number" => _}}), do: true
-  defp is_numeric_value?(_), do: false
-  defp is_json_access?(%{"Nested" => %{"JsonAccess" => _}}), do: true
-  defp is_json_access?(%{"JsonAccess" => _}), do: true
-  defp is_json_access?(_), do: false
+  defp numeric_value?(%{"Value" => %{"Number" => _}}), do: true
+  defp numeric_value?(_), do: false
+  defp json_access?(%{"Nested" => %{"JsonAccess" => _}}), do: true
+  defp json_access?(%{"JsonAccess" => _}), do: true
+  defp json_access?(_), do: false
 
-  defp is_timestamp_identifier?(%{"Identifier" => %{"value" => "timestamp"}}), do: true
+  defp timestamp_identifier?(%{"Identifier" => %{"value" => "timestamp"}}), do: true
 
-  defp is_timestamp_identifier?(%{"CompoundIdentifier" => [_head, %{"value" => "timestamp"}]}),
+  defp timestamp_identifier?(%{"CompoundIdentifier" => [_head, %{"value" => "timestamp"}]}),
     do: true
 
-  defp is_timestamp_identifier?(_), do: false
+  defp timestamp_identifier?(_), do: false
 
   defp at_time_zone(identifier) do
     %{
