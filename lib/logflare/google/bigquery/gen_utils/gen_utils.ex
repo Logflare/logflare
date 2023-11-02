@@ -76,7 +76,7 @@ defmodule Logflare.Google.BigQuery.GenUtils do
     partition_count = System.schedulers_online()
     partition = :erlang.phash2(self(), partition_count)
 
-    metadata = %{partition_count: partition_count}
+    metadata = %{partition: partition}
 
     :telemetry.span([:logflare, :goth, :fetch], metadata, fn ->
       result =
