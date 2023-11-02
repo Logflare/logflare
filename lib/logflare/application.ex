@@ -62,7 +62,7 @@ defmodule Logflare.Application do
        keys: :unique,
        partitions: System.schedulers_online()},
       {Registry, name: Logflare.Backends.SourceDispatcher, keys: :duplicate}
-    ] ++ common_children()
+    ]
   end
 
   defp get_children(_) do
@@ -82,7 +82,8 @@ defmodule Logflare.Application do
     pool_size = Application.get_env(:logflare, Logflare.PubSub)[:pool_size]
 
     # set goth early in the supervision tree
-    conditional_children() ++
+    finch_pools() ++
+      conditional_children() ++
       [
         Logflare.ErlSysMon,
         {Task.Supervisor, name: Logflare.TaskSupervisor},
@@ -158,7 +159,7 @@ defmodule Logflare.Application do
 
         # citrine scheduler for alerts
         Logflare.AlertsScheduler
-      ] ++ common_children()
+      ]
   end
 
   def conditional_children do
@@ -228,7 +229,7 @@ defmodule Logflare.Application do
     :ok
   end
 
-  defp common_children do
+  defp finch_pools do
     [
       # Finch connection pools, using http2
       {Finch, name: Logflare.FinchIngest, pools: %{:default => [protocol: :http2, count: 200]}},
