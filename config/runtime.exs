@@ -75,10 +75,17 @@ config :logflare_logger_backend,
          api_key: System.get_env("LOGFLARE_LOGGER_BACKEND_API_KEY")
        )
 
-if System.get_env("LOGFLARE_LOGGER_BACKEND_URL") != nil do
-  config :logger,
-    backends: [:console, LogflareLogger.HttpBackend]
-end
+config :logger,
+  backends:
+    [
+      :console,
+      if(System.get_env("LOGFLARE_LOGGER_BACKEND_URL") != nil,
+        do: LogflareLogger.HttpBackend,
+        else: nil
+      ),
+      if(System.get_env("LOGFLARE_LOGGER_JSON") == "true", do: LoggerJSON, else: nil)
+    ]
+    |> Enum.filter(&(&1 != nil))
 
 log_level =
   case String.downcase(System.get_env("LOGFLARE_LOG_LEVEL") || "") do
