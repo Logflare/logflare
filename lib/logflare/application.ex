@@ -32,38 +32,38 @@ defmodule Logflare.Application do
 
   defp get_children(:test) do
     finch_pools() ++
-    [
-      ContextCache,
-      Users.Cache,
-      Sources.Cache,
-      Billing.Cache,
-      SourceSchemas.Cache,
-      PubSubRates.Cache,
-      Logs.LogEvents.Cache,
-      Logs.RejectedLogEvents,
-      {Phoenix.PubSub, name: Logflare.PubSub},
-      Logflare.Repo,
-      {Registry,
-       name: Logflare.V1SourceRegistry, keys: :unique, partitions: System.schedulers_online()},
-      {Registry,
-       name: Logflare.CounterRegistry, keys: :unique, partitions: System.schedulers_online()},
-      LogflareWeb.Endpoint,
-      {Task.Supervisor, name: Logflare.TaskSupervisor},
-      {DynamicSupervisor, strategy: :one_for_one, name: Logflare.Endpoints.Cache},
+      [
+        ContextCache,
+        Users.Cache,
+        Sources.Cache,
+        Billing.Cache,
+        SourceSchemas.Cache,
+        PubSubRates.Cache,
+        Logs.LogEvents.Cache,
+        Logs.RejectedLogEvents,
+        {Phoenix.PubSub, name: Logflare.PubSub},
+        Logflare.Repo,
+        {Registry,
+         name: Logflare.V1SourceRegistry, keys: :unique, partitions: System.schedulers_online()},
+        {Registry,
+         name: Logflare.CounterRegistry, keys: :unique, partitions: System.schedulers_online()},
+        LogflareWeb.Endpoint,
+        {Task.Supervisor, name: Logflare.TaskSupervisor},
+        {DynamicSupervisor, strategy: :one_for_one, name: Logflare.Endpoints.Cache},
 
-      # v2 ingestion pipelines
-      {DynamicSupervisor, strategy: :one_for_one, name: Logflare.Backends.SourcesSup},
-      {DynamicSupervisor, strategy: :one_for_one, name: Logflare.Backends.RecentLogsSup},
-      {DynamicSupervisor,
-       strategy: :one_for_one, name: Logflare.Backends.Adaptor.PostgresAdaptor.Supervisor},
-      {DynamicSupervisor,
-       strategy: :one_for_one, name: Logflare.Backends.Adaptor.PostgresAdaptor.PgRepoSupervisor},
-      {Registry,
-       name: Logflare.Backends.SourceRegistry,
-       keys: :unique,
-       partitions: System.schedulers_online()},
-      {Registry, name: Logflare.Backends.SourceDispatcher, keys: :duplicate}
-    ]
+        # v2 ingestion pipelines
+        {DynamicSupervisor, strategy: :one_for_one, name: Logflare.Backends.SourcesSup},
+        {DynamicSupervisor, strategy: :one_for_one, name: Logflare.Backends.RecentLogsSup},
+        {DynamicSupervisor,
+         strategy: :one_for_one, name: Logflare.Backends.Adaptor.PostgresAdaptor.Supervisor},
+        {DynamicSupervisor,
+         strategy: :one_for_one, name: Logflare.Backends.Adaptor.PostgresAdaptor.PgRepoSupervisor},
+        {Registry,
+         name: Logflare.Backends.SourceRegistry,
+         keys: :unique,
+         partitions: System.schedulers_online()},
+        {Registry, name: Logflare.Backends.SourceDispatcher, keys: :duplicate}
+      ]
   end
 
   defp get_children(_) do
@@ -187,7 +187,6 @@ defmodule Logflare.Application do
               refresh_before: 60 * 15,
               prefetch: :sync,
               http_client: &goth_finch_http_client/1,
-
               retry_delay: fn
                 n when n < 3 ->
                   1000
