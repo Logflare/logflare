@@ -110,10 +110,10 @@ defmodule Logflare.Telemetry do
     Enum.each(@caches, fn {cache, metric} ->
       {:ok, stats} = Cachex.stats(cache)
 
-      process_info =
+      {:total_heap_size, total_heap_size} =
         cache
         |> Process.whereis()
-        |> Process.info()
+        |> Process.info(:total_heap_size)
 
       metrics = %{
         purge: Map.get(stats, :purge),
@@ -121,7 +121,7 @@ defmodule Logflare.Telemetry do
         evictions: Map.get(stats, :evictions),
         expirations: Map.get(stats, :expirations),
         operations: Map.get(stats, :operations),
-        total_heap_size: Keyword.get(process_info, :total_heap_size)
+        total_heap_size: total_heap_size
       }
 
       :telemetry.execute([:cachex, metric], metrics)
