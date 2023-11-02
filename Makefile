@@ -16,7 +16,11 @@ test:
 	-epmd -daemon
 	mix test.coverage
 
-.PHONY: test
+test.only:
+	-epmd -daemon
+	mix test.only
+
+.PHONY: test test.only
 
 setup: setup.node
 	mix setup

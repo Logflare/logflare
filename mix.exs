@@ -14,6 +14,7 @@ defmodule Logflare.Mixfile do
       preferred_cli_env: [
         lint: :test,
         "lint.diff": :test,
+        "test.only": :test,
         "test.format": :test,
         "test.compile": :test,
         "test.security": :test,
@@ -202,6 +203,7 @@ defmodule Logflare.Mixfile do
       setup: ["deps.get", "ecto.setup", "ecto.seed"],
       # coveralls will trigger unit tests as well
       test: ["ecto.create --quiet", "ecto.migrate", "test --no-start"],
+      "test.only": ["test --no-start"],
       "test.watch": ["test.watch --no-start"],
       "test.compile": ["compile --warnings-as-errors"],
       "test.format": ["format --check-formatted"],
