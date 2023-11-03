@@ -4,6 +4,7 @@ defmodule Logflare.Sql do
 
   This module provides the main interface with the rest of the app.
   """
+  require Logger
   alias Logflare.Sources
   alias Logflare.User
   alias Logflare.SingleTenant
@@ -792,6 +793,10 @@ defmodule Logflare.Sql do
         |> String.replace(~r/current\_timestamp\(\)/im, "current_timestamp")
         |> String.replace(~r/\"([\w\_\-]*\.[\w\_\-]+)\.([\w_]{36})"/im, replacement_pattern)
 
+      Logger.debug(
+        "Postgres translation is complete: #{query} | \n output: #{inspect(converted)}"
+      )
+
       {:ok, converted}
     end)
   end
@@ -872,7 +877,7 @@ defmodule Logflare.Sql do
           |> String.downcase()
 
         field_arg =
-          if is_timestamp_identifier?(to_trunc) do
+          if timestamp_identifier?(to_trunc) do
             at_time_zone(to_trunc)
           else
             to_trunc
@@ -911,7 +916,13 @@ defmodule Logflare.Sql do
 
   defp bq_to_pg_convert_functions(kv), do: kv
 
-  # handle timestamp references in binary operations
+  # between operator should have balues cast to numeric
+  defp pg_traverse_final_pass({"Between" = k, %{"expr" => expr} = v}) do
+    new_expr = expr |> pg_traverse_final_pass() |> cast_to_numeric()
+    {k, %{v | "expr" => new_expr}}
+  end
+
+  # handle binary operations comparison casting
   defp pg_traverse_final_pass(
          {"BinaryOp" = k,
           %{
@@ -920,14 +931,28 @@ defmodule Logflare.Sql do
             "op" => operator
           } = v}
        ) do
+    # handle left/right numberic value comparisons
+    is_numeric_comparison = numeric_value?(left) or numeric_value?(right)
+
     [left, right] =
       for expr <- [left, right] do
         cond do
-          is_timestamp_identifier?(expr) ->
+          # skip if it is a value
+          match?(%{"Value" => _}, expr) ->
+            expr
+
+          # convert the identifier side to number
+          is_numeric_comparison and (identifier?(expr) or json_access?(expr)) ->
+            expr
+            |> cast_to_jsonb()
+            |> jsonb_to_text()
+            |> cast_to_numeric()
+
+          timestamp_identifier?(expr) ->
             at_time_zone(expr)
 
-          is_identifier?(expr) and operator == "Eq" ->
-            # wrap with a cast
+          identifier?(expr) and operator == "Eq" ->
+            # wrap with a cast to convert possible jsonb fields
             expr
             |> cast_to_jsonb()
             |> jsonb_to_text()
@@ -1032,7 +1057,9 @@ defmodule Logflare.Sql do
       in_projection_tree: false,
       from_table_aliases: [],
       from_table_values: [],
-      in_binaryop: false
+      in_binaryop: false,
+      in_between: false,
+      in_inlist: false
     })
     |> then(fn
       ast when joins != [] ->
@@ -1103,8 +1130,7 @@ defmodule Logflare.Sql do
               %{"quote_style" => nil, "value" => field}
             ]
           },
-          "operator" =>
-            if(data.in_function_or_cast or data.in_binaryop, do: "LongArrow", else: "Arrow"),
+          "operator" => json_access_arrow(data, false),
           "right" => %{"Value" => %{"SingleQuotedString" => key}}
         }
       }
@@ -1120,8 +1146,7 @@ defmodule Logflare.Sql do
       "Nested" => %{
         "JsonAccess" => %{
           "left" => %{"Identifier" => %{"quote_style" => nil, "value" => base}},
-          "operator" =>
-            if(data.in_function_or_cast or data.in_binaryop, do: "LongArrow", else: "Arrow"),
+          "operator" => json_access_arrow(data, false),
           "right" => %{"Value" => %{"SingleQuotedString" => key}}
         }
       }
@@ -1141,11 +1166,7 @@ defmodule Logflare.Sql do
       "Nested" => %{
         "JsonAccess" => %{
           "left" => %{"Identifier" => %{"quote_style" => nil, "value" => base}},
-          "operator" =>
-            if(data.in_function_or_cast or data.in_binaryop,
-              do: "HashLongArrow",
-              else: "HashArrow"
-            ),
+          "operator" => json_access_arrow(data, true),
           "right" => %{"Value" => %{"SingleQuotedString" => path}}
         }
       }
@@ -1164,11 +1185,7 @@ defmodule Logflare.Sql do
       "Nested" => %{
         "JsonAccess" => %{
           "left" => %{"Identifier" => %{"quote_style" => nil, "value" => base}},
-          "operator" =>
-            if(data.in_function_or_cast or data.in_binaryop,
-              do: "HashLongArrow",
-              else: "HashArrow"
-            ),
+          "operator" => json_access_arrow(data, true),
           "right" => %{"Value" => %{"SingleQuotedString" => path}}
         }
       }
@@ -1184,8 +1201,7 @@ defmodule Logflare.Sql do
       "Nested" => %{
         "JsonAccess" => %{
           "left" => %{"Identifier" => %{"quote_style" => nil, "value" => base}},
-          "operator" =>
-            if(data.in_function_or_cast or data.in_binaryop, do: "LongArrow", else: "Arrow"),
+          "operator" => json_access_arrow(data, false),
           "right" => %{"Value" => %{"SingleQuotedString" => name}}
         }
       }
@@ -1252,8 +1268,16 @@ defmodule Logflare.Sql do
     |> Enum.reduce(%{}, fn mappings, acc -> Map.merge(acc, mappings) end)
   end
 
+  defp traverse_convert_identifiers({"InList" = k, v}, data) do
+    {k, traverse_convert_identifiers(v, Map.put(data, :in_inlist, true))}
+  end
+
   defp traverse_convert_identifiers({"BinaryOp" = k, v}, data) do
     {k, traverse_convert_identifiers(v, Map.put(data, :in_binaryop, true))}
+  end
+
+  defp traverse_convert_identifiers({"Between" = k, v}, data) do
+    {k, traverse_convert_identifiers(v, Map.put(data, :in_between, true))}
   end
 
   defp traverse_convert_identifiers({"cte_tables" = k, v}, data) do
@@ -1461,15 +1485,21 @@ defmodule Logflare.Sql do
     |> List.first()
   end
 
-  defp is_identifier?(identifier),
+  defp identifier?(identifier),
     do: is_map_key(identifier, "CompoundIdentifier") or is_map_key(identifier, "Identifier")
 
-  defp is_timestamp_identifier?(%{"Identifier" => %{"value" => "timestamp"}}), do: true
+  defp numeric_value?(%{"Value" => %{"Number" => _}}), do: true
+  defp numeric_value?(_), do: false
+  defp json_access?(%{"Nested" => %{"JsonAccess" => _}}), do: true
+  defp json_access?(%{"JsonAccess" => _}), do: true
+  defp json_access?(_), do: false
 
-  defp is_timestamp_identifier?(%{"CompoundIdentifier" => [_head, %{"value" => "timestamp"}]}),
+  defp timestamp_identifier?(%{"Identifier" => %{"value" => "timestamp"}}), do: true
+
+  defp timestamp_identifier?(%{"CompoundIdentifier" => [_head, %{"value" => "timestamp"}]}),
     do: true
 
-  defp is_timestamp_identifier?(_), do: false
+  defp timestamp_identifier?(_), do: false
 
   defp at_time_zone(identifier) do
     %{
@@ -1507,24 +1537,47 @@ defmodule Logflare.Sql do
     }
   end
 
-  defp cast_to_jsonb(identifier) do
+  defp cast_to_numeric(expr) do
     %{
       "Cast" => %{
-        "data_type" => %{"Custom" => [[%{"quote_style" => nil, "value" => "jsonb"}], []]},
-        "expr" => identifier
+        "data_type" => %{"Numeric" => "None"},
+        "expr" => expr
       }
     }
   end
 
-  defp jsonb_to_text(jsonb) do
+  defp cast_to_jsonb(expr) do
+    %{
+      "Cast" => %{
+        "data_type" => %{"Custom" => [[%{"quote_style" => nil, "value" => "jsonb"}], []]},
+        "expr" => expr
+      }
+    }
+  end
+
+  defp jsonb_to_text(expr) do
     %{
       "Nested" => %{
         "JsonAccess" => %{
-          "left" => jsonb,
+          "left" => expr,
           "operator" => "HashLongArrow",
           "right" => %{"Value" => %{"SingleQuotedString" => "{}"}}
         }
       }
     }
+  end
+
+  defp json_access_arrow(data, hash) do
+    arrow =
+      cond do
+        data.in_binaryop or data.in_between or data.in_function_or_cast -> "LongArrow"
+        true -> "Arrow"
+      end
+
+    if hash do
+      "Hash" <> arrow
+    else
+      arrow
+    end
   end
 end

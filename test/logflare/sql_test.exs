@@ -496,8 +496,8 @@ defmodule Logflare.SqlTest do
     end
 
     test "countif into count-filter" do
-      bq_query = "select countif(test = 1) from my_table"
-      pg_query = ~s|select count(*) filter (where (body ->> 'test') = 1) from my_table|
+      bq_query = "select countif(test = '1') from my_table"
+      pg_query = ~s|select count(*) filter (where (body ->> 'test') = '1') from my_table|
       {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
       assert Sql.Parser.parse("postgres", translated) == Sql.Parser.parse("postgres", pg_query)
     end
@@ -856,17 +856,82 @@ defmodule Logflare.SqlTest do
       assert Sql.Parser.parse("postgres", translated) == Sql.Parser.parse("postgres", pg_query)
     end
 
-    test "fields in binary op are cast to text only when equal" do
+    test "CTE fields in binary op are cast to text only when equal" do
       bq_query = ~s"""
       with edge_logs as (select t.id from  `cloudflare.logs.prod` t)
       select t.id as id from edge_logs t
-      where t.id = '123' and t.id > 123
+      where t.id = '123'
       """
 
       pg_query = ~s"""
       with edge_logs as ( select (t.body -> 'id') as id from  "cloudflare.logs.prod" t )
       SELECT t.id AS id FROM edge_logs t
-      where (cast(t.id as jsonb) #>> '{}') = '123' and t.id > 123
+      where (cast(t.id as jsonb) #>> '{}') = '123'
+      """
+
+      {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
+      assert Sql.Parser.parse("postgres", translated) == Sql.Parser.parse("postgres", pg_query)
+    end
+
+    test "translate in operator arguments to text" do
+      bq_query = ~s"""
+      select t.col as col from `my.source` t
+      where t.col in ('val') and t.col not in ('other')
+      """
+
+      pg_query = ~s"""
+      select (t.body -> 'col') as col from "my.source" t
+      where (t.body ->> 'col') in ('val') and (t.body ->> 'col') not in ('other')
+      """
+
+      {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
+      assert Sql.Parser.parse("postgres", translated) == Sql.Parser.parse("postgres", pg_query)
+    end
+
+    test "translate between operator sides to numeric" do
+      bq_query = ~s"""
+      select t.col as col from `my.source` t
+      where t.col between 200 and 299
+      """
+
+      pg_query = ~s"""
+      select (t.body -> 'col') as col from "my.source" t
+      where (t.body ->> 'col')::numeric  between 200 and 299
+      """
+
+      {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
+      assert Sql.Parser.parse("postgres", translated) == Sql.Parser.parse("postgres", pg_query)
+    end
+
+    test "translate >, >=, =, <, <=  operator to numeric if comparison side is a number" do
+      bq_query = ~s"""
+      with mytable as (select f.col as col from `my.source` f)
+      select t.col as col from mytable t
+      where t.col >= 123
+        and t.col <= 123
+        and t.col = 123
+        and t.col > 123
+        and t.col < 123
+        and 123 >= t.col
+        and 123 <= t.col
+        and 123 = t.col
+        and 123 > t.col
+        and 123 < t.col
+      """
+
+      pg_query = ~s"""
+      with mytable as (select (f.body -> 'col') as col from "my.source" f)
+      select t.col as col from mytable t
+      where (t.col::jsonb #>> '{}')::numeric  >= 123
+        and (t.col::jsonb #>> '{}')::numeric  <= 123
+        and (t.col::jsonb #>> '{}')::numeric  = 123
+        and (t.col::jsonb #>> '{}')::numeric  > 123
+        and (t.col::jsonb #>> '{}')::numeric  < 123
+        and 123 >= (t.col::jsonb #>> '{}')::numeric
+        and 123 <= (t.col::jsonb #>> '{}')::numeric
+        and 123 = (t.col::jsonb #>> '{}')::numeric
+        and 123 > (t.col::jsonb #>> '{}')::numeric
+        and 123 < (t.col::jsonb #>> '{}')::numeric
       """
 
       {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
