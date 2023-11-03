@@ -36,8 +36,4 @@ config :logflare_logger_backend,
   flush_interval: 2_000,
   max_batch_size: 250
 
-config :logger_json, :backend,
-  json_encoder: Jason,
-  formatter: LoggerJSON.Formatters.GoogleCloudLogger
-
 import_config "telemetry.exs"

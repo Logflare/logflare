@@ -39,6 +39,11 @@ config :logger,
   handle_sasl_reports: false,
   level: :info
 
+config :logger_json, :backend,
+  metadata: :all,
+  json_encoder: Jason,
+  formatter: LoggerJSON.Formatters.GoogleCloudLogger
+
 config :ueberauth, Ueberauth,
   providers: [
     github: {Ueberauth.Strategy.Github, [default_scope: "user:email"]},
