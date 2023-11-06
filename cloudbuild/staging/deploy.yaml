@@ -48,7 +48,7 @@ substitutions:
   _COOKIE: default
   _CLUSTER: main
   _NORMALIZED_IMAGE_TAG: ${_IMAGE_TAG}
-  _INSTANCE_TYPE: e2-standard-2
+  _INSTANCE_TYPE: e2-standard-4
   _INSTANCE_GROUP: instance-group-staging-${_CLUSTER}
   _IMAGE_TAG: $SHORT_SHA
   _TEMPLATE_NAME: logflare-staging-${_CLUSTER}-cluster-${_NORMALIZED_IMAGE_TAG}
