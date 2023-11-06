@@ -4,6 +4,16 @@ on:
   workflow_dispatch:
   pull_request:
     branches: [main]
+    paths:
+      - 'native/**'
+      - 'priv/**'
+      - 'rel/**'
+      - 'config/**'
+      - 'assets/**'
+      - 'Dockerfile'
+      - '!assets/**'
+      - '*.sh'
+      - '.tool-versions'
 
 permissions:
   contents: read
