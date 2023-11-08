@@ -37,28 +37,22 @@ defmodule Logflare.ContextCache do
     end
   end
 
-  def bust_keys(context, id) do
-    context_cache = cache_name(context)
-
+  def bust_keys(values) do
     {:ok, keys} = Cachex.keys(@cache)
 
-    Stream.each(keys, fn
-      {{^context, ^id}, cache_key} = key ->
-        case Cachex.del(context_cache, cache_key) do
-          {:ok, true} ->
-            Cachex.del(@cache, key)
-
-          {:ok, nil} ->
-            :noop
-        end
-
-      _key ->
-        :noop
+    Enum.each(keys, fn {token, cache_key} = key ->
+      with true <- token in values,
+           {context, _} = token,
+           context_cache = cache_name(context),
+           {:ok, true} <- Cachex.del(context_cache, cache_key) do
+        Cachex.del(@cache, key)
+      end
     end)
-    |> Stream.run()
 
     {:ok, :busted}
   end
+
+  def bust_keys(context, id), do: bust_keys([{context, id}])
 
   defp index_keys(context, cache_key, value) do
     keys_key = {{context, select_key(value)}, cache_key}
