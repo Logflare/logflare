@@ -5,7 +5,7 @@ defmodule LogflareWeb.GlobalLogMetricsLV do
   use Phoenix.LiveView, layout: {LogflareWeb.SharedView, :live_widget}
 
   def render(assigns) do
-    ~L"""
+    ~H"""
     <h3>That's <span><%= @log_count %></span> events logged to date</h3>
     <h3>Counting <span><%= @per_second %></span> events per second</h3>
     """

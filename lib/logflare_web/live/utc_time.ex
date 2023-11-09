@@ -3,7 +3,7 @@ defmodule LogflareWeb.UtcTimeLive do
   use Phoenix.LiveView, layout: {LogflareWeb.SharedView, :live_widget}
 
   def render(assigns) do
-    ~L"""
+    ~H"""
     <span><%= @date %> UTC</span>
     """
   end

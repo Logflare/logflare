@@ -9,40 +9,57 @@ defmodule LogflareWeb.PlansLive do
   alias LogflareWeb.Router.Helpers, as: Routes
 
   def render(assigns) do
-    ~L"""
+    ~H"""
     <div class="scrolling-wrapper">
       <div class="min-pricing-width">
         <div class="d-flex my-5 justify-content-center">
           <div class="card py-3 mx-2 bg-transparent">
-            <div class="card-header-min-height p-4 border-0">
-            </div>
+            <div class="card-header-min-height p-4 border-0"></div>
             <div class="card-body p-0">
               <ul class="list-unstyled">
-                <li class="p-2">Team members </li>
-                <li class="p-2">Sources
-                  <%= link to: Routes.marketing_path(@socket, :pricing) <> "#sources", class: "position-absolute absolute-right" do %><i
-                    class="fas fa-info-circle"></i><% end %></li>
+                <li class="p-2">Team members</li>
+                <li class="p-2">
+                  Sources
+                  <%= link to: Routes.marketing_path(@socket, :pricing) <> "#sources", class: "position-absolute absolute-right" do %>
+                    <i class="fas fa-info-circle"></i>
+                  <% end %>
+                </li>
                 <hr />
                 <li class="p-2">Alert frequency</li>
-                <li class="p-2">Dashboards
-                  <%= link to: Routes.marketing_path(@socket, :pricing) <> "#dashboards", class: "position-absolute absolute-right" do %><i
-                    class="fas fa-info-circle"></i><% end %></li>
+                <li class="p-2">
+                  Dashboards
+                  <%= link to: Routes.marketing_path(@socket, :pricing) <> "#dashboards", class: "position-absolute absolute-right" do %>
+                    <i class="fas fa-info-circle"></i>
+                  <% end %>
+                </li>
                 <hr />
-                <li class="p-2">Backend
-                  <%= link to: Routes.marketing_path(@socket, :pricing) <> "#backend", class: "position-absolute absolute-right" do %><i
-                    class="fas fa-info-circle"></i><% end %></li>
-                <li class="p-2">Fields
-                  <%= link to: Routes.marketing_path(@socket, :pricing) <> "#fields", class: "position-absolute absolute-right" do %><i
-                    class="fas fa-info-circle"></i><% end %></li>
+                <li class="p-2">
+                  Backend
+                  <%= link to: Routes.marketing_path(@socket, :pricing) <> "#backend", class: "position-absolute absolute-right" do %>
+                    <i class="fas fa-info-circle"></i>
+                  <% end %>
+                </li>
+                <li class="p-2">
+                  Fields
+                  <%= link to: Routes.marketing_path(@socket, :pricing) <> "#fields", class: "position-absolute absolute-right" do %>
+                    <i class="fas fa-info-circle"></i>
+                  <% end %>
+                </li>
                 <hr />
-                <li class="p-2">Event Retention
-                  <%= link to: Routes.marketing_path(@socket, :pricing) <> "#retention", class: "position-absolute absolute-right" do %><i
-                    class="fas fa-info-circle"></i><% end %></li>
+                <li class="p-2">
+                  Event Retention
+                  <%= link to: Routes.marketing_path(@socket, :pricing) <> "#retention", class: "position-absolute absolute-right" do %>
+                    <i class="fas fa-info-circle"></i>
+                  <% end %>
+                </li>
                 <li class="p-2">Events per month</li>
                 <hr />
-                <li class="p-2">Rate limit
-                  <%= link to: Routes.marketing_path(@socket, :pricing) <> "#rate-limit", class: "position-absolute absolute-right" do %><i
-                    class="fas fa-info-circle"></i><% end %></li>
+                <li class="p-2">
+                  Rate limit
+                  <%= link to: Routes.marketing_path(@socket, :pricing) <> "#rate-limit", class: "position-absolute absolute-right" do %>
+                    <i class="fas fa-info-circle"></i>
+                  <% end %>
+                </li>
                 <li class="p-2">Rate burst</li>
               </ul>
             </div>
@@ -73,7 +90,7 @@ defmodule LogflareWeb.PlansLive do
                 <small class="text-muted">per <%= @period %></small>
               </div>
               <div class="py-4">
-                <%= link "Continue", to: Routes.auth_path(@socket, :login), class: "btn btn-dark text-white w-75 mr-0" %>
+                <%= link("Continue", to: Routes.auth_path(@socket, :login), class: "btn btn-dark text-white w-75 mr-0") %>
               </div>
             </div>
           </div>
@@ -102,9 +119,12 @@ defmodule LogflareWeb.PlansLive do
                 <h2 class="text-white">
                   <%= Billing.find_plan(@plans, @period, "Metered").price |> Money.new(:USD) |> Money.to_string(fractional_unit: false) %>
                 </h2>
-                <small class="text-muted">starts at</small><br />
-                <small class="text-muted">per million log events</small><br />
-                <small class="text-muted">after one million</small><br />
+                <small class="text-muted">starts at</small>
+                <br />
+                <small class="text-muted">per million log events</small>
+                <br />
+                <small class="text-muted">after one million</small>
+                <br />
                 <small class="text-muted">paid <%= @period %>ly</small>
               </div>
               <div class="py-4">
@@ -142,9 +162,12 @@ defmodule LogflareWeb.PlansLive do
                 <h2 class="text-white">
                   <%= Billing.find_plan(@plans, @period, "Metered BYOB").price |> Money.new(:USD) |> Money.to_string(fractional_unit: false) %>
                 </h2>
-                <small class="text-muted">starts at</small><br />
-                <small class="text-muted">per million log events</small><br />
-                <small class="text-muted">after one million</small><br />
+                <small class="text-muted">starts at</small>
+                <br />
+                <small class="text-muted">per million log events</small>
+                <br />
+                <small class="text-muted">after one million</small>
+                <br />
                 <small class="text-muted">paid <%= @period %>ly</small>
               </div>
               <div class="py-4">

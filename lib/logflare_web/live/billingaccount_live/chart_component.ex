@@ -11,8 +11,6 @@ defmodule LogflareWeb.BillingAccountLive.ChartComponent do
 
   require Logger
 
-  def preload(assigns) when is_list(assigns), do: assigns
-
   def mount(socket), do: {:ok, socket}
 
   def update(%{user: user, days: days} = _assigns, socket) do

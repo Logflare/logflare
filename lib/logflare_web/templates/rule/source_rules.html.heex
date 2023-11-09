@@ -1,15 +1,15 @@
 <%= if @show_modal do %>
-  <%= live_modal @modal.body.module_or_template,
-  source: @source,
-  title: @modal.body.title,
-  view: @modal.body[:view],
-  id: @modal.body.id,
-  return_to: false
-  %>
+  <%= live_modal(@modal.body.module_or_template,
+    source: @source,
+    title: @modal.body.title,
+    view: @modal.body[:view],
+    id: @modal.body.id,
+    return_to: false
+  ) %>
 <% end %>
 <div class="subhead ">
   <div class="container mx-auto">
-    <h5>~/logs/<%= link @source.name, to: Routes.source_path(@socket, :show, @source), class: "text-primary" %>/rules</h5>
+    <h5>~/logs/<%= link(@source.name, to: Routes.source_path(@socket, :show, @source), class: "text-primary") %>/rules</h5>
     <div class="log-settings">
       <ul>
         <li>
@@ -34,42 +34,44 @@
       LQL rules are disabled until the upgrade.
       <div class="my-2">
         <span>
-          <a href="#" phx-click="upgrade_rules"> Upgrade <%= @source.name %> source rules </a> to LQL-based rules. </span>
+          <a href="#" phx-click="upgrade_rules">Upgrade <%= @source.name %> source rules</a> to LQL-based rules.
+        </span>
       </div>
     </div>
   <% end %>
   <ul class="list-group">
     <%= if Enum.empty?(@rules) do %>
       <li class="list-group-item">
-        <div> No rules yet... </div>
+        <div>No rules yet...</div>
       </li>
     <% end %>
     <%= for rule <- @rules do %>
       <li class="list-group-item">
-        <% source = Enum.find(@sources, & &1.token === rule.sink) %>
+        <% source = Enum.find(@sources, &(&1.token === rule.sink)) %>
         <%= if not has_regex_rules?(@rules) do %>
-          <a href="#" phx-click="delete_rule" phx-value-rule_id="<%= rule.id %>" >
+          <a href="#" phx-click="delete_rule" phx-value-rule_id={rule.id}>
             <i class="fa fa-trash"></i>
           </a>
-          Matching LQL <code><%= rule.lql_string %></code> routing to <code><%= source.name %></code>
+          Matching LQL <code><%= rule.lql_string %></code>
+          routing to <code><%= source.name %></code>
         <% else %>
           Matching regex <code><%= rule.regex %></code> routing to <code><%= source.name %></code>
         <% end %>
       </li>
     <% end %>
   </ul>
-  <%= f = form_for :rule, "#", phx_submit: "fsubmit" %>
-  <%= live_component Lql.LqlFormLVC, f: f, lql_string: @lql_string, loading: has_regex_rules?(@rules) %>
-  <div class="form-group">
-    <%= label f, :sink, "Sink source", class: "control-label" %>
-    <% sink_form_options =  for s <- @sources, do: [key: s.name, value: s.token, disabled: s.disabled] %>
-    <%= select f, :sink, sink_form_options, prompt: "Choose a sink", class: "form-control rules-input", disabled: has_regex_rules?(@rules) %>
-    <%= error_tag f, :sink %>
-  </div>
-  <div class="form-group">
-    <%= submit id: :rule, class: "btn btn-primary", disabled: has_regex_rules?(@rules) do %>
-      Add Rule
-    <% end %>
-  </div>
-</form>
+  <.form :let={f} for={:rule} action="#" phx-submit="fsubmit">
+    <%= live_component(Lql.LqlFormLVC, f: f, lql_string: @lql_string, loading: has_regex_rules?(@rules)) %>
+    <div class="form-group">
+      <%= label(f, :sink, "Sink source", class: "control-label") %>
+      <% sink_form_options = for s <- @sources, do: [key: s.name, value: s.token, disabled: s.disabled] %>
+      <%= select(f, :sink, sink_form_options, prompt: "Choose a sink", class: "form-control rules-input", disabled: has_regex_rules?(@rules)) %>
+      <%= error_tag(f, :sink) %>
+    </div>
+    <div class="form-group">
+      <%= submit id: :rule, class: "btn btn-primary", disabled: has_regex_rules?(@rules) do %>
+        Add Rule
+      <% end %>
+    </div>
+  </.form>
 </div>

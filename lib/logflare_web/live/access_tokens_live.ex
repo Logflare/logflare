@@ -5,11 +5,11 @@ defmodule LogflareWeb.AccessTokensLive do
   alias Logflare.Auth
 
   def render(assigns) do
-    ~L"""
+    ~H"""
     <div class="subhead">
-    <div class="container mx-auto">
-    <h5>~/account/access tokens</h5>
-    </div>
+      <div class="container mx-auto">
+        <h5>~/account/access tokens</h5>
+      </div>
     </div>
 
     <section class="content container mx-auto flex flex-col w-full">
@@ -19,24 +19,23 @@ defmodule LogflareWeb.AccessTokensLive do
         </p>
         <p style="white-space: pre-wrap">Theree 3 ways of authenticating with the API: in the <code>Authorization</code> header, the <code>X-API-KEY</code> header, or the <code>api_key</code> query parameter.
 
-    The <code>Authorization</code> header method expects the header format <code>Authorization: Bearer your-access-token</code>.
-    The <code>X-API-KEY</code> header method expects the header format <code>X-API-KEY: your-access-token</code>.
-    The <code>api_key</code> query parameter method expects the search format <code>?api_key=your-access-token</code>.
-    </p>
+          The <code>Authorization</code> header method expects the header format <code>Authorization: Bearer your-access-token</code>.
+          The <code>X-API-KEY</code> header method expects the header format <code>X-API-KEY: your-access-token</code>.
+          The <code>api_key</code> query parameter method expects the search format <code>?api_key=your-access-token</code>.</p>
         <button class="btn btn-primary" phx-click="toggle-create-form" phx-value-show="true">
           Create access token
         </button>
 
-        <form phx-submit="create-token" class="mt-4 <%= if @show_create_form == false, do: "hidden"%>">
+        <form phx-submit="create-token" class={["mt-4", if(@show_create_form == false, do: "hidden")]}>
           <label>Description</label>
-          <input name="description" autofocus/>
-          <%= submit "Create" %>
-          <button type="button"  phx-click="toggle-create-form" phx-value-show="false"->Cancel</button>
+          <input name="description" autofocus />
+          <%= submit("Create") %>
+          <button type="button" phx-click="toggle-create-form" phx-value-show="false" ->Cancel</button>
         </form>
 
         <%= if @created_token do %>
           <div class="mt-4">
-            <p>Access token created successfully, copy this token to a safe location. For security purposes, this token will not be shown again.<p>
+            <p>Access token created successfully, copy this token to a safe location. For security purposes, this token will not be shown again.</p>
 
             <pre class="p-2"><%= @created_token.token %></pre>
             <button phx-click="dismiss-created-token">
@@ -46,12 +45,11 @@ defmodule LogflareWeb.AccessTokensLive do
         <% end %>
       </div>
 
-
-      <%= if length(@access_tokens) == 0 do %>
+      <%= if @access_tokens == [] do %>
         <p>You do not have any access tokens yet.</p>
       <% end %>
 
-      <table class="table-dark table-auto mt-4 w-full flex-grow <%= if length(@access_tokens) == 0, do: "hidden"%>">
+      <table class={["table-dark", "table-auto", "mt-4", "w-full", "flex-grow", if(@access_tokens == [], do: "hidden")]}>
         <thead>
           <tr>
             <th class="p-2">Description</th>
@@ -66,18 +64,13 @@ defmodule LogflareWeb.AccessTokensLive do
                 <%= token.description %>
               </td>
               <td class="p-2">
-                <%=  token.inserted_at |> Calendar.strftime("%d %b %Y, %I:%M:%S %p") %>
+                <%= Calendar.strftime(token.inserted_at, "%d %b %Y, %I:%M:%S %p") %>
               </td>
               <td class="p-2">
-                <button
-                    class="btn text-danger text-bold"
-                    data-confirm="Are you sure? This cannot be undone."
-                    phx-click="revoke-token"
-                    phx-value-token-id="<%= token.id %>">
+                <button class="btn text-danger text-bold" data-confirm="Are you sure? This cannot be undone." phx-click="revoke-token" phx-value-token-id={token.id}>
                   Revoke
                 </button>
               </td>
-
             </tr>
           <% end %>
         </tbody>

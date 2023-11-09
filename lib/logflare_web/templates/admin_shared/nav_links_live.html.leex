@@ -1,9 +1,0 @@
-<div class="log-settings float-right">
-  <ul>
-    <li><%= link to: Routes.admin_path(@socket, :sources) do %><i class="fas fa-list"></i><span class="hide-on-mobile"> sources</span><% end %></li>
-    <li><%= link to: Routes.admin_path(@socket, :accounts) do %><i class="fas fa-users"></i><span class="hide-on-mobile"> accounts</span><% end %></li>
-    <li><%= link to: Routes.cluster_path(@socket, :index) do %><i class="fas fa-server"></i><span class="hide-on-mobile"> cluster</span><% end %></li>
-    <li><%= link to: Routes.live_path(@socket, LogflareWeb.AdminSearchDashboardLive) do %><i class="fas fa-search"></i><span class="hide-on-mobile"> search</span><% end %></li>
-    <li><%= link to: Routes.admin_plan_path(@socket, :index) do %><i class="fas fa-dollar-sign"></i><span class="hide-on-mobile"> plans</span><% end %></li>
-  </ul>
-</div>

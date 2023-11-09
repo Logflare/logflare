@@ -13,7 +13,7 @@ defmodule LogflareWeb.LqlHelpers do
     ) do
       assigns = %{}
 
-      ~L"""
+      ~H"""
       <i class="fas fa-code"></i><span class="hide-on-mobile"> LQL </span>
       """
     end
@@ -27,7 +27,7 @@ defmodule LogflareWeb.LqlHelpers do
     ) do
       assigns = %{}
 
-      ~L"""
+      ~H"""
       <i class="fas fa-database"></i><span class="hide-on-mobile"> schema </span>
       """
     end

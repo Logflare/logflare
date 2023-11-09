@@ -1,0 +1,106 @@
+<div class="subhead ">
+  <div class="container mx-auto">
+    <h5>~/integrations/vercel/edit</h5>
+    <div class="log-settings">
+      <ul>
+        <li>
+          <%= link to: Routes.vercel_log_drains_path(@socket, :edit) do %>
+            <i>▲</i><span class="hide-on-mobile">
+            vercel integration</span>
+          <% end %>
+        </li>
+      </ul>
+    </div>
+  </div>
+</div>
+<div class="content container mx-auto">
+  <h4 class="header-margin">Vercel Integration</h4>
+  <div class="sub-form">
+    <%= section_header("Install Vercel Integration") %>
+    <p>Vercel log drains send your project logs from Vercel to a Logflare source.</p>
+    <p>Install the Vercel integration to setup a log drain.</p>
+    <%= link("Install integration", to: Application.get_env(:logflare, Logflare.Vercel.Client)[:install_vercel_uri], class: "btn btn-primary") %>
+  </div>
+
+  <%= if @selected_auth.installation_id do %>
+    <div class="sub-form">
+      <%= section_header("Manage Installation") %>
+      <.form :let={a} for={:fields} action="#" phx-change="select_auth">
+        <%= label(a, :select_an_installation, class: "label-padding") %>
+        <%= select(a, :installation, Enum.map(@auths, &{"Installed on #{&1.inserted_at}", &1.id}), selected: @selected_auth.id, class: "form-control form-control-margin") %>
+        <%= link("Delete installation", to: "#", class: "btn btn-danger form-button mt-4", phx_click: "delete_auth", phx_value_id: @selected_auth.id, phx_disable_with: "Deleting...") %><br />
+      </.form>
+    </div>
+
+    <div class="sub-form">
+      <%= section_header("Log Drains") %>
+      <p>Log drains for this installation.</p>
+      <ul class="list-unstyled">
+        <%= for d <- @mapped_drains_sources do %>
+          <li>
+            <%= if d.source do %>
+              <p>
+                <strong><%= d.drain["name"] %></strong> for project <strong><%= if d.project, do: d.project["name"], else: "all_projects" %></strong> is sending logs to <code><%= link(d.source.name, to: Routes.source_path(@socket, :show, d.source.id)) %></code>
+              </p>
+              <div class="mt-2 mb-3">
+                <%= link("5xx Status Codes", to: Routes.source_path(@socket, :show, d.source.id) <> "/search?tailing=true&querystring=m.proxy.statusCode%3A%3E499+c%3Acount%28*%29+c%3Agroup_by%28t%3A%3Ahour%29", class: "btn btn-primary btn-sm") %>
+                <%= link("Lambdas", to: Routes.source_path(@socket, :show, d.source.id) <> "/search?tailing=true&querystring=m.source%3A%22lambda%22+c%3Acount%28*%29+c%3Agroup_by%28t%3A%3Ahour%29", class: "btn btn-primary btn-sm") %>
+                <%= link("Slow Requests", to: Routes.source_path(@socket, :show, d.source.id) <> "/search?tailing=true&querystring=m.parsedLambdaMessage.report.duration_ms%3A%3E2500+c%3Acount%28*%29+c%3Agroup_by%28t%3A%3Ahour%29", class: "btn btn-primary btn-sm") %>
+                <%= link("Statics", to: Routes.source_path(@socket, :show, d.source.id) <> "/search?tailing=true&querystring=m.source%3A%22static%22+c%3Acount%28*%29+c%3Agroup_by%28t%3A%3Ahour%29", class: "btn btn-primary btn-sm") %>
+                <%= link("All Console Logs", to: Routes.source_path(@socket, :show, d.source.id) <> "/search?tailing=true&querystring=-m.parsedLambdaMessage.lines.level%3ANULL+c%3Acount%28*%29+c%3Agroup_by%28t%3A%3Ahour%29", class: "btn btn-primary btn-sm") %>
+                <%= link("Googlebots", to: Routes.source_path(@socket, :show, d.source.id) <> "/search?tailing=true&querystring=m.proxy.userAgent%3A%7E%22Google%22+c%3Acount%28*%29+c%3Agroup_by%28t%3A%3Ahour%29", class: "btn btn-primary btn-sm") %>
+                <%= link("Delete drain", to: "#", class: "btn btn-danger btn-sm", phx_click: "delete_drain", phx_value_id: d.drain["id"], phx_disable_with: "Deleting...") %>
+              </div>
+            <% else %>
+              <p>The Logflare source for the drain <code><%= d.drain["name"] %></code> no longer exists. You can safely delete
+                it.</p>
+              <%= link("Delete drain", to: "#", class: "btn btn-danger btn-sm", phx_click: "delete_drain", phx_value_id: d.drain["id"], phx_disable_with: "Deleting...") %>
+            <% end %>
+          </li>
+        <% end %>
+      </ul>
+    </div>
+
+    <div class="sub-form">
+      <%= section_header("Create a Log Drain") %>
+      <.form :let={f} for={:fields} action="#" phx-change="validate" phx-submit="create_drain">
+        <%= label(f, :name, class: "label-padding") %>
+        <%= text_input(f, :name, class: "form-control form-control-margin", value: "My log drain") %>
+        <%= error_tag(f, :name) %>
+
+        <%= label(f, :vercel_project, class: "label-padding") %>
+        <%= select(f, :project, [{"All projects", "all_projects"} | Enum.map(@projects, &{&1["name"], &1["id"]})], class: "form-control form-control-margin") %>
+        <%= error_tag(f, :project) %>
+
+        <%= label(f, :logflare_source, class: "label-padding") %>
+        <%= select(f, :source, Enum.map(@user.sources, &{&1.name, &1.token}), class: "form-control form-control-margin") %>
+        <%= error_tag(f, :project) %>
+
+        <%= submit("Create drain", phx_disable_with: "Creating...", class: "btn btn-primary form-button mt-4") %>
+      </.form>
+    </div>
+
+    <div class="sub-form">
+      <%= section_header("Installations") %>
+      <ul class="list-unstyled">
+        <%= for a <- @auths_teams do %>
+          <li>
+            <span class={[if(@selected_auth.installation_id == a.auth.installation_id, do: "font-weight-bold")]}>
+              <%= a.auth.installation_id %>
+            </span>
+            <%= if a.team do %>
+              for team <%= a.team["name"] %>
+              <%= link to: "https://vercel.com/dashboard/#{a.team["slug"]}/integrations/#{a.auth.installation_id}", style: "text-decoration: none", target: "_blank" do %>
+                <i class="fas fa-external-link-alt"></i>
+              <% end %>
+            <% else %>
+              <%= link to: "https://vercel.com/dashboard/integrations/#{a.auth.installation_id}", style: "text-decoration: none", target: "_blank" do %>
+                <i class="fas fa-external-link-alt"></i>
+              <% end %>
+            <% end %>
+          </li>
+        <% end %>
+      </ul>
+    </div>
+  <% end %>
+</div>
