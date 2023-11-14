@@ -51,21 +51,6 @@ defmodule Logflare.Source.RecentLogsServer do
   @broadcast_every 500
   @pool_size Application.compile_env(:logflare, Logflare.PubSub)[:pool_size]
 
-  def start_link(%__MODULE__{source_id: source_id} = rls) when is_atom(source_id) do
-    GenServer.start_link(__MODULE__, rls, name: Source.Supervisor.via(__MODULE__, source_id))
-  end
-
-  ## Client
-  @spec init(RLS.t()) :: {:ok, RLS.t(), {:continue, :boot}}
-  def init(rls) do
-    Process.flag(:trap_exit, true)
-
-    touch()
-    broadcast()
-
-    {:ok, rls, {:continue, :boot}}
-  end
-
   @spec push(LE.t()) :: :ok
   def push(%LE{source: %Source{token: source_id}} = log_event) do
     case Source.Supervisor.lookup(__MODULE__, source_id) do
@@ -134,8 +119,13 @@ defmodule Logflare.Source.RecentLogsServer do
 
   ## Server
 
-  def handle_continue(:boot, %__MODULE__{source_id: source_id, source: source} = rls)
-      when is_atom(source_id) do
+  def start_link(%__MODULE__{source_id: source_id} = rls) when is_atom(source_id) do
+    GenServer.start_link(__MODULE__, rls, name: Source.Supervisor.via(__MODULE__, source_id))
+  end
+
+  ## Client
+  @spec init(RLS.t()) :: {:ok, RLS.t(), {:continue, :boot}}
+  def init(%__MODULE__{source_id: _source_id, source: source} = rls) do
     user =
       source.user_id
       |> Users.get()
@@ -153,24 +143,37 @@ defmodule Logflare.Source.RecentLogsServer do
         notifications_every: source.notifications_every
     }
 
+    # these go into separate supervisor that blocks
+    children = [
+      {BufferCounter, rls},
+      {Schema, rls},
+      {Pipeline, rls}
+    ]
+
+    Supervisor.start_link(children, strategy: :one_for_one)
+
+    touch()
+    broadcast()
+
+    {:ok, rls, {:continue, :boot}}
+  end
+
+  def handle_continue(:boot, rls) do
     children = [
       {RCS, rls},
       {EmailNotificationServer, rls},
       {TextNotificationServer, rls},
       {WebhookNotificationServer, rls},
       {SlackHookServer, rls},
-      {BufferCounter, rls},
-      {Schema, rls},
-      {Pipeline, rls},
       {SearchQueryExecutor, rls},
       {BillingWriter, rls}
     ]
 
     Supervisor.start_link(children, strategy: :one_for_one)
 
-    load_init_log_message(source_id)
+    load_init_log_message(rls.source_id)
 
-    Logger.info("RecentLogsServer started: #{source_id}")
+    Logger.info("RecentLogsServer started", source_id: rls.source_id)
     {:noreply, rls}
   end
 
@@ -237,7 +240,7 @@ defmodule Logflare.Source.RecentLogsServer do
 
   def terminate(reason, state) do
     # Do Shutdown Stuff
-    Logger.info("Going Down - #{inspect(reason)} - #{state.source_id}", %{
+    Logger.error("Going Down - #{inspect(reason)} - #{state.source_id}", %{
       source_id: state.source_id
     })
 
