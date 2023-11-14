@@ -175,9 +175,7 @@ tag-versioned:
 	@echo "OK"
 
 	@echo "Retagging dev image to supabase/logflare:$(VERSION) ..."
-	docker pull supabase/logflare:$(SHA_IMAGE_TAG)
-	docker image tag supabase/logflare:$(SHA_IMAGE_TAG) supabase/logflare:$(VERSION)
-	docker image tag supabase/logflare:$(SHA_IMAGE_TAG) supabase/logflare:latest
+	docker buildx imagetools create -t supabase/logflare:$(VERSION) -t supabase/logflare:latest supabase/logflare:$(SHA_IMAGE_TAG) 
 	docker push supabase/logflare:$(VERSION)
 	docker push supabase/logflare:latest
 	@echo "OK"

@@ -1,0 +1,24 @@
+name: Docker Retag Dev Image to Versioned Image
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  retag:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - name: Versioned - Merge multi-arch manifests and push (release only)
+        run: |
+          make tag-versioned
+
+  trigger_cloudbuild:
+    uses: ./.github/workflows/trigger-cloudbuild.yml
+    needs:
+      - retag
+    secrets: inherit
