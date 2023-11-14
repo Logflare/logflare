@@ -5,6 +5,14 @@ on:
   pull_request:
     branches: [main]
     paths:
+      - 'lib/**'
+      - 'config/**'
+      - '*.exs'
+      - '*.lock'
+      - 'docs/docs.logflare.com/docs/**'
+      - 'native/**'
+      - 'priv/**'
+      - 'test/**'
       - '!.github/**'
       - '!cloudbuild/**'
       - '!assets/**'
