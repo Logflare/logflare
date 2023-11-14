@@ -276,6 +276,8 @@ defmodule Logflare.Source.RateCounterServer do
 
       iex> Logflare.Source.RateCounterServer.stats([12,5,30,5,1000])
       %{avg: 211, sum: 1052}
+      iex> Logflare.Source.RateCounterServer.stats([])
+      %{avg: 0, sum: 0}
 
   """
 
@@ -286,7 +288,11 @@ defmodule Logflare.Source.RateCounterServer do
         {total + v, count + 1}
       end)
 
-    avg = Kernel.ceil(total / count)
+    avg =
+      case {total, count} do
+        {0, 0} -> 0
+        _ -> Kernel.ceil(total / count)
+      end
 
     %{
       avg: avg,
