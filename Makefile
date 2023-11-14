@@ -168,12 +168,14 @@ deploy.prod.versioned:
 .PHONY: deploy.staging.main
 
 tag-versioned:
+
 	@echo "Checking dockerhub registry for dev image supabase/logflare:$(SHA_IMAGE_TAG) ..."
 	@trap 'echo "No dev image on registry. Did docker build ci pass? Check https://github.com/Logflare/logflare/actions"' ERR; \
 		docker manifest inspect supabase/logflare:$(SHA_IMAGE_TAG) >/dev/null
 	@echo "OK"
 
 	@echo "Retagging dev image to supabase/logflare:$(VERSION) ..."
+	docker pull supabase/logflare:$(SHA_IMAGE_TAG)
 	docker image tag supabase/logflare:$(SHA_IMAGE_TAG) supabase/logflare:$(VERSION)
 	docker image tag supabase/logflare:$(SHA_IMAGE_TAG) supabase/logflare:latest
 	docker push supabase/logflare:$(VERSION)
