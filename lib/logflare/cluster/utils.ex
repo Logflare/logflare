@@ -14,7 +14,7 @@ defmodule Logflare.Cluster.Utils do
     if lib_cluster_size >= env_min_cluster_size() do
       lib_cluster_size
     else
-      Logger.error("Cluster size is #{lib_cluster_size} but expected #{env_min_cluster_size()}",
+      Logger.warning("Cluster size is #{lib_cluster_size} but expected #{env_min_cluster_size()}",
         cluster_size: lib_cluster_size
       )
 
