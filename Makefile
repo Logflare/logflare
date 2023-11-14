@@ -166,3 +166,10 @@ deploy.prod.versioned:
 		--gcs-log-dir="gs://logflare-prod_cloudbuild-logs/logs"
 	@echo "Instance template has been created successfully. Complete the deployment by navigating to https://console.cloud.google.com/compute/instanceGroups/list?hl=en&project=logflare-232118"
 .PHONY: deploy.staging.main
+
+tag-versioned:
+	@echo "Checking dockerhub registry..."
+	@trap 'echo "No dev image on registry. Did docker build ci pass? Check https://github.com/Logflare/logflare/actions"' ERR; \
+		docker manifest inspect supabase/logflare:$(SHA_IMAGE_TAG) >/dev/null
+	@echo "OK"
+.PHONY: tag-versioned
