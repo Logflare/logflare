@@ -15,15 +15,8 @@ jobs:
         env: [prod, staging]
     runs-on: ubuntu-latest
     steps:
+      # setup deps and env vars
       - uses: actions/checkout@v3
-      - name: Set common env vars
-        # GCP credentials is a multi-line string, and will result in error when trying to set it to github env.
-        # directly use it in the auth step instead.
-        run: |
-          echo "version=$(cat ./VERSION)" >> "$GITHUB_ENV"
-          echo "short_sha=$(git rev-parse --short=7 HEAD)" >> "$GITHUB_ENV"
-          echo "host_connection=github-logflare" >> "$GITHUB_ENV"
-          echo "repository_name=Logflare-logflare" >> "$GITHUB_ENV"
       - uses: actions/setup-python@v4
       - name: Set ${{ matrix.env }} env vars
         if: matrix.env == 'prod'
@@ -48,10 +41,9 @@ jobs:
         with:
           version: "449.0.0"
           project_id: ${{ env.project_id }}
-      - name: Build & deploy for staging (main branch)
-        if: github.event_name == 'push' && matrix.env == 'staging'
-        run: make deploy.staging.main
 
-      - name: Build & ${{ matrix.env == 'prod' && 'pre-deploy' || 'deploy'}} for ${{ matrix.env }} (versioned)
-        if: (github.event_name == 'release') || (github.event_name == 'workflow_dispatch')
+      # run scripts
+      - if: github.event_name == 'push' && matrix.env == 'staging'
+        run: make deploy.staging.main
+      - if: github.event_name == 'workflow_dispatch'
         run: make deploy.${{ matrix.env }}.versioned
