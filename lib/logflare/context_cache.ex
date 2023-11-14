@@ -43,9 +43,9 @@ defmodule Logflare.ContextCache do
     total =
       Enum.count(keys, fn {token, cache_key} = key ->
         with true <- token in values,
-          {context, _} = token,
-          context_cache = cache_name(context),
-          {:ok, true} <- Cachex.del(context_cache, cache_key) do
+             {context, _} = token,
+             context_cache = cache_name(context),
+             {:ok, true} <- Cachex.del(context_cache, cache_key) do
           Cachex.del(@cache, key)
         end
 

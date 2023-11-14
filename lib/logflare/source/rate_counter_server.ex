@@ -268,14 +268,34 @@ defmodule Logflare.Source.RateCounterServer do
     Sources.Counters.get_inserts(source_id)
   end
 
+  @doc """
+  Takes a list of integers representing per second counts of events
+  of a source and returns the `avg` and `sum` of those counts.
+
+  ## Examples
+
+      iex> Logflare.Source.RateCounterServer.stats([12,5,30,5,1000])
+      %{avg: 211, sum: 1052}
+      iex> Logflare.Source.RateCounterServer.stats([])
+      %{avg: 0, sum: 0}
+
+  """
+
+  @spec stats([integer()]) :: %{avg: integer(), sum: integer()}
   def stats(xs) when is_list(xs) do
     {total, count} =
       Enum.reduce(xs, {0, 0}, fn v, {total, count} ->
         {total + v, count + 1}
       end)
 
+    avg =
+      case {total, count} do
+        {0, 0} -> 0
+        _ -> Kernel.ceil(total / count)
+      end
+
     %{
-      avg: total / count,
+      avg: avg,
       sum: total
     }
   end
