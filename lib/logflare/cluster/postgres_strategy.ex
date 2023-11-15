@@ -34,7 +34,7 @@ defmodule Logflare.Cluster.PostgresStrategy do
     new_config =
       state.config
       |> Keyword.put_new(:heartbeat_interval, 5_000)
-      |> Keyword.put(:channel_name, Atom.to_string(Node.get_cookie()))
+      |> Keyword.put(:channel_name, clean_cookie(Node.get_cookie()))
       |> Keyword.put(:url, url)
 
     meta = %{
@@ -113,5 +113,10 @@ defmodule Logflare.Cluster.PostgresStrategy do
     hostname = Application.get_env(:logflare, Logflare.Repo)[:hostname]
     database = Application.get_env(:logflare, Logflare.Repo)[:database]
     ~s|postgresql://#{username}:#{password}@#{hostname}:#{port}/#{database}|
+  end
+
+defp clean_cookie(cookie) when is_atom(cookie), do: cookie |> Atom.to_string() |> clean_cookie()
+  defp clean_cookie(str) when is_binary(str) do
+    String.replace(str, ~r/\W/, "_") |> dbg()
   end
 end
