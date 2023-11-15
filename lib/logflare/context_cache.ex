@@ -63,6 +63,10 @@ defmodule Logflare.ContextCache do
 
   def bust_keys(context, id), do: bust_keys([{context, id}])
 
+  def cache_name(context) do
+    Module.concat(context, Cache)
+  end
+
   defp index_keys(context, cache_key, value) do
     keys_key = {{context, select_key(value)}, cache_key}
 
@@ -99,9 +103,5 @@ defmodule Logflare.ContextCache do
         # Logger.warning("Unhandled cache key for value.", error_string: inspect(value))
         :uknown
     end
-  end
-
-  defp cache_name(context) do
-    Module.concat(context, Cache)
   end
 end
