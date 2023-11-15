@@ -32,7 +32,7 @@ defmodule Logflare.ContextCache do
         value
 
       {:ok, {:cached, value}} ->
-        index_keys(context, cache_key, value)
+        # already cached don't re-index
         value
     end
   end
