@@ -55,7 +55,7 @@ defmodule LogflareWeb.LogControllerTest do
       :timer.sleep(2000)
     end
 
-    test "invaild source token uuid checks", %{conn: conn, source: source, user: user} do
+    test "invaild source token uuid checks", %{conn: conn, user: user} do
       conn =
         conn
         |> put_req_header("x-api-key", user.api_key)
