@@ -54,6 +54,15 @@ defmodule LogflareWeb.LogControllerTest do
       assert json_response(conn, 200) == %{"message" => "Logged!"}
       :timer.sleep(2000)
     end
+
+    test "invaild source token uuid checks", %{conn: conn, user: user} do
+      conn =
+        conn
+        |> put_req_header("x-api-key", user.api_key)
+        |> post(Routes.log_path(conn, :create, source: ":signin"), @valid)
+
+      assert json_response(conn, 401)
+    end
   end
 
   describe "v1 pipeline with legacy user.api_key" do
@@ -140,6 +149,7 @@ defmodule LogflareWeb.LogControllerTest do
       :timer.sleep(2000)
     end
   end
+
 
   describe "single tenant" do
     TestUtils.setup_single_tenant(seed_user: true)

@@ -17,8 +17,14 @@ defmodule LogflareWeb.Plugs.FetchResource do
   # ingest by source token
   def call(%{assigns: %{resource_type: :source}, params: %{"source" => token}} = conn, _opts) do
     source =
-      Sources.Cache.get_by_and_preload_rules(token: token)
-      |> Sources.refresh_source_metrics_for_ingest()
+      case is_uuid?(token) do
+        true ->
+          Sources.Cache.get_by_and_preload_rules(token: token)
+          |> Sources.refresh_source_metrics_for_ingest()
+
+        _ ->
+          nil
+      end
 
     assign(conn, :source, source)
   end
