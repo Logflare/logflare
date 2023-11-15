@@ -1,13 +1,6 @@
 defmodule Logflare.ContextCache do
   @moduledoc """
     Read through cache for hot database paths.
-
-    Stats are reported to Logflare via Logflare.SystemMetrics.Cachex.Poller.
-
-    TODO
-     - Limit this cache like the others
-     - Cachex hook when other cache keys are evicted the keys key here gets deletedf
-     - Cachex hook on this one when it's limited, where if it gets evicted it invalidates the others
   """
 
   require Logger
