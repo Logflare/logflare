@@ -70,9 +70,7 @@ defmodule Logflare.ContextCache do
   defp index_keys(context, cache_key, value) do
     keys_key = {{context, select_key(value)}, cache_key}
 
-    {:ok, key} = Cachex.get(@cache, keys_key)
-
-    if is_nil(key), do: Cachex.put(@cache, keys_key, cache_key)
+    Cachex.put(@cache, keys_key, cache_key)
 
     {:ok, :indexed}
   end
