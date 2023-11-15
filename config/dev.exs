@@ -91,5 +91,3 @@ config :open_api_spex, :cache_adapter, OpenApiSpex.Plug.NoneCache
 config :stripity_stripe,
   api_key: "sk_test_thisisaboguskey",
   api_base_url: "http://localhost:12111/v1/"
-
-import_config("telemetry.exs")

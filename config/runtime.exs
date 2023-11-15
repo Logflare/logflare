@@ -261,3 +261,9 @@ case System.get_env("LOGFLARE_FEATURE_FLAG_OVERRIDE") do
         |> Enum.map(&Map.new/1)
         |> Enum.reduce(&Map.merge/2)
 end
+
+if config_env() != :test do
+  config :telemetry_poller, :default,
+    vm_measurements: [:memory, :total_run_queue_lengths],
+    period: 1_000
+end
