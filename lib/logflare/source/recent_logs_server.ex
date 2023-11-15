@@ -242,7 +242,7 @@ defmodule Logflare.Source.RecentLogsServer do
 
   def terminate(reason, state) do
     # Do Shutdown Stuff
-    Logger.error("Going Down - #{inspect(reason)} - #{state.source_id}", %{
+    Logger.info("[#{__MODULE__}] Going Down - #{inspect(reason)} - #{state.source_id}", %{
       source_id: state.source_id
     })
 
