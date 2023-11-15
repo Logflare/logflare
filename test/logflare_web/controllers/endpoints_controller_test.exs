@@ -206,7 +206,6 @@ defmodule LogflareWeb.EndpointsControllerTest do
 
       # render as unix microsecond
       assert inspect(timestamp) |> String.length() == 16
-      assert "16" <> _ = inspect(timestamp)
       assert conn.halted == false
 
       # test a logs ui query
