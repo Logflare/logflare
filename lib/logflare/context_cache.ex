@@ -1,6 +1,22 @@
 defmodule Logflare.ContextCache do
   @moduledoc """
-    Read through cache for hot database paths.
+  Read-through cache for hot database paths. This module functions as the entry point for
+  contexts to have a cache of function calls.
+
+  e.g. `Logflare.Users.Cache` functions are ran through `apply_fun/3` and restuls of those
+  functions are returned to the caller and cached in the respective cache.
+
+  The actual cache that is the `Logflare.ContextCache` is a reverse index where values
+  returned by functions are used as the cache key.
+
+  We must keep a reverse index because function are called by their arguments. So in the
+  `Logflare.Users.Cache` we can keep a key of the MFA and a value of the results.
+
+  But when a record from the write-ahead log comes in the `CacheBuster` calls `bust_keys/1`
+  and we must know what the key is in the `Logflare.Users.Cache` to bust.
+
+  So we keep the value of the `Logflare.Users.Cache` as the key in the `Logflare.ContextCache`
+  and the value of our `Logflare.ContextCache` key is the key for our `Logflare.Users.Cache`.
   """
 
   require Logger
@@ -30,6 +46,19 @@ defmodule Logflare.ContextCache do
     end
   end
 
+  @doc """
+  This function is called from the CacheBuster process when a new record comes in from the Postgres
+  write-ahead log. The WAL contains records. From those records the CacheBuster picks out
+  primary keys.
+
+  The records ARE the keys in the reverse cache (the ContextCache).
+
+  We must:
+   - Find the key by the record primary key
+   - Delete the reverse cache entry
+   - Delete the cache entry for that context cache e.g. `Logflare.Users.Cache`
+  """
+
   def bust_keys(values) do
     {:ok, keys} = Cachex.keys(@cache)
 
@@ -56,6 +85,7 @@ defmodule Logflare.ContextCache do
 
   def bust_keys(context, id), do: bust_keys([{context, id}])
 
+  @spec cache_name(atom()) :: atom()
   def cache_name(context) do
     Module.concat(context, Cache)
   end
