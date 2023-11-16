@@ -62,17 +62,7 @@ config :logflare, Logflare.Google,
   cloud_build_sa: "1023172132421@cloudbuild.gserviceaccount.com",
   cloud_build_trigger_sa: "cloud-build@logflare-dev-238720.iam.gserviceaccount.com"
 
-config :libcluster,
-  topologies: [
-    dev: [
-      strategy: Cluster.Strategy.Epmd,
-      config: [
-        hosts: [:"orange@127.0.0.1", :"pink@127.0.0.1"]
-      ],
-      connect: {:net_kernel, :connect_node, []},
-      disconnect: {:net_kernel, :disconnect_node, []}
-    ]
-  ]
+config :libcluster, debug: true
 
 config :logflare, LogflareWeb.Auth.VercelAuth,
   vercel_app_host: "https://phx.chasegranberry.net",

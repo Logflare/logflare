@@ -98,31 +98,6 @@ log_level =
 
 config :logger, filter_nil_kv_pairs.(level: log_level)
 
-# Set libcluster topologies
-gce_topology = [
-  gce: [
-    strategy: Logflare.Cluster.Strategy.GoogleComputeEngine,
-    config: [release_name: :logflare]
-  ]
-]
-
-config :libcluster,
-  topologies: if(System.get_env("LIBCLUSTER_TOPOLOGY") == "gce", do: gce_topology, else: [])
-
-config :logflare, Logflare.Cluster.Strategy.GoogleComputeEngine,
-  regions:
-    System.get_env("LIBCLUSTER_TOPOLOGY_GCE_REGIONS", "")
-    |> String.split(",")
-    |> Enum.reject(&(&1 == ""))
-    |> Enum.map(&String.split(&1, "|"))
-    |> Enum.map(&List.to_tuple/1),
-  zones:
-    System.get_env("LIBCLUSTER_TOPOLOGY_GCE_ZONES", "")
-    |> String.split(",")
-    |> Enum.reject(&(&1 == ""))
-    |> Enum.map(&String.split(&1, "|"))
-    |> Enum.map(&List.to_tuple/1)
-
 config :logflare,
        LogflareWeb.Auth.VercelAuth,
        filter_nil_kv_pairs.(
@@ -267,3 +242,16 @@ if config_env() != :test do
     vm_measurements: [:memory, :total_run_queue_lengths],
     period: 1_000
 end
+
+postgres_topology = [
+  postgres: [
+    strategy: Logflare.Cluster.PostgresStrategy,
+    config: [
+      release_name: :logflare
+    ]
+  ]
+]
+
+config :libcluster,
+  topologies:
+    if(System.get_env("LIBCLUSTER_TOPOLOGY") == "postgres", do: postgres_topology, else: [])
