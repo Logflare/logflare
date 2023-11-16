@@ -7,7 +7,7 @@ then
     export $(grep -v '^#' /tmp/.secrets.env | xargs);
 fi
 
-if [[ "$LIBCLUSTER_TOPOLOGY" == "gce" ]]
+if [[ "$LIBCLUSTER_TOPOLOGY" == "postgres" ]]
 then
     # run gce specific stuff
 
