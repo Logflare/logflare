@@ -118,6 +118,6 @@ defmodule Logflare.Cluster.PostgresStrategy do
   defp clean_cookie(cookie) when is_atom(cookie), do: cookie |> Atom.to_string() |> clean_cookie()
 
   defp clean_cookie(str) when is_binary(str) do
-    String.replace(str, ~r/\W/, "_") |> dbg()
+    String.replace(str, ~r/\W/, "_")
   end
 end
