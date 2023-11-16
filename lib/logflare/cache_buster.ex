@@ -21,6 +21,7 @@ defmodule Logflare.CacheBuster do
 
   def handle_info(%Transaction{changes: changes}, state) do
     for record <- changes,
+        :ok = :telemetry.execute([:logflare, :context_cache, :handle_record], %{count: 1}),
         record = handle_record(record),
         record != :noop do
       record
