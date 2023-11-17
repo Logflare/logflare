@@ -1,9 +1,6 @@
 <.subheader>
   <:path>
-    ~/<%= live_patch("endpoints",
-      to: ~p"/endpoints",
-      "data-confirm": "Confirm navigate away? All unsaved changes will be lost"
-    ) %>/new
+    ~/<.link patch={~p"/endpoints"} data-confirm="Confirm navigate away? All unsaved changes will be lost">endpoints</.link>/new
   </:path>
 </.subheader>
 

@@ -61,16 +61,8 @@
         id: "dropdownMenuButton"
       ) %>
     </.form>
-    <%= live_component(LogflareWeb.BillingAccountLive.ChartComponent,
-      id: :chart,
-      user: @user,
-      days: 30
-    ) %>
-    <%= live_component(LogflareWeb.BillingAccountLive.EstimateUsageComponent,
-      id: :table,
-      user: @user,
-      plan: @plan
-    ) %>
+    <.live_component module={LogflareWeb.BillingAccountLive.ChartComponent} id="chart" user={@user} days={30} />
+    <.live_component module={LogflareWeb.BillingAccountLive.EstimateUsageComponent} id="table" user={@user} plan={@plan} />
   </div>
   <div class="sub-form">
     <%= section_header("Pricing") %>
@@ -117,20 +109,14 @@
   <div class="sub-form">
     <%= section_header("Payment Method") %>
     <p>Manage your payment methods.</p>
-    <%= live_component(LogflareWeb.BillingAccountLive.PaymentMethodComponent,
-      id: :payment_method,
-      user: @user
-    ) %>
+    <.live_component module={LogflareWeb.BillingAccountLive.PaymentMethodComponent} id="payment_method" user={@user} />
   </div>
   <div class="sub-form">
     <%= section_header("Custom Invoice Fields") %>
     <p>
       Add custom fields to your invoices. These changes will take effect when your next invoice gets created.
     </p>
-    <%= live_component(LogflareWeb.BillingAccountLive.CustomFieldComponent,
-      id: :custom_fields,
-      billing_account: @user.billing_account
-    ) %>
+    <.live_component module={LogflareWeb.BillingAccountLive.CustomFieldComponent} id="custom_fields" billing_account={@user.billing_account} />
   </div>
   <div class="sub-form">
     <%= section_header("Subscriptions") %>

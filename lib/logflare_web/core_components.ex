@@ -59,15 +59,9 @@ defmodule LogflareWeb.CoreComponents do
 
   def subheader_path_link(assigns) do
     ~H"""
-    <%= if @live_patch do %>
-      <%= live_patch to: @to, class: "tw-text-gray-600 tw-hover:text-black" do %>
-        <%= render_slot(@inner_block) %>
-      <% end %>
-    <% else %>
-      <%= Phoenix.HTML.Link.link to: @to, class: "tw-text-gray-600 tw-hover:text-black" do %>
-        <%= render_slot(@inner_block) %>
-      <% end %>
-    <% end %>
+    <.dynamic_link to={@to} patch={@live_patch} class="tw-text-gray-600 tw-hover:text-black">
+      <%= render_slot(@inner_block) %>
+    </.dynamic_link>
     """
   end
 
@@ -82,21 +76,9 @@ defmodule LogflareWeb.CoreComponents do
 
   def subheader_link(assigns) do
     ~H"""
-    <% attrs = [
-      to: @to,
-      class: "tw-text-black tw-p-1 tw-flex tw-gap-1 tw-items-center tw-justify-center"
-    ]
-
-    icon_class = "inline-block h-3 w-3 fas fa-#{@fa_icon}" %>
-    <%= if @live_patch do %>
-      <%= live_patch attrs do %>
-        <i :if={@fa_icon} class={icon_class}></i><span> <%= @text %></span>
-      <% end %>
-    <% else %>
-      <%= Phoenix.HTML.Link.link attrs do %>
-        <i :if={@fa_icon} class={icon_class}></i><span> <%= @text %></span>
-      <% end %>
-    <% end %>
+    <.dynamic_link to={@to} patch={@live_patch} class="tw-text-black tw-p-1 tw-flex tw-gap-1 tw-items-center tw-justify-center">
+      <i :if={@fa_icon} class={"inline-block h-3 w-3 fas fa-#{@fa_icon}"}></i><span> <%= @text %></span>
+    </.dynamic_link>
     """
   end
 
@@ -116,6 +98,26 @@ defmodule LogflareWeb.CoreComponents do
     <h5 id={@anchor} class="tw-mb-2 tw-mt-4 tw-text-white scroll-margin">
       <%= @text %> <%= Phoenix.HTML.Link.link("#", to: "#" <> @anchor) %>
     </h5>
+    """
+  end
+
+  attr :to, :string
+  attr :patch, :boolean
+  attr :attrs, :global
+  slot :inner_block, required: true
+
+  defp dynamic_link(assigns) do
+    link_type =
+      if assigns.patch do
+        :patch
+      else
+        :navigate
+      end
+
+    assigns = assign(assigns, :to, %{link_type => assigns.to})
+
+    ~H"""
+    <.link {@to} {@attrs}><%= render_slot(@inner_block) %></.link>
     """
   end
 end

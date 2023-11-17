@@ -30,7 +30,7 @@ defmodule LogflareWeb.AccessTokensLive do
           <label>Description</label>
           <input name="description" autofocus />
           <%= submit("Create") %>
-          <button type="button" phx-click="toggle-create-form" phx-value-show="false" ->Cancel</button>
+          <button type="button" phx-click="toggle-create-form" phx-value-show="false">Cancel</button>
         </form>
 
         <%= if @created_token do %>

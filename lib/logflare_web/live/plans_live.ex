@@ -1,12 +1,9 @@
 defmodule LogflareWeb.PlansLive do
   @moduledoc false
-  use Phoenix.LiveView, layout: {LogflareWeb.SharedView, :live_widget}
-  use Phoenix.HTML
+  use LogflareWeb, {:live_view, layout: {LogflareWeb.SharedView, :live_widget}}
 
   alias Logflare.Billing
   alias Logflare.Users
-
-  alias LogflareWeb.Router.Helpers, as: Routes
 
   def render(assigns) do
     ~H"""
@@ -20,45 +17,45 @@ defmodule LogflareWeb.PlansLive do
                 <li class="p-2">Team members</li>
                 <li class="p-2">
                   Sources
-                  <%= link to: Routes.marketing_path(@socket, :pricing) <> "#sources", class: "position-absolute absolute-right" do %>
+                  <.link navigate={~p"/pricing#sources"} class="position-absolute absolute-right">
                     <i class="fas fa-info-circle"></i>
-                  <% end %>
+                  </.link>
                 </li>
                 <hr />
                 <li class="p-2">Alert frequency</li>
                 <li class="p-2">
                   Dashboards
-                  <%= link to: Routes.marketing_path(@socket, :pricing) <> "#dashboards", class: "position-absolute absolute-right" do %>
+                  <.link navigate={~p"/pricing#dashboards"} class="position-absolute absolute-right">
                     <i class="fas fa-info-circle"></i>
-                  <% end %>
+                  </.link>
                 </li>
                 <hr />
                 <li class="p-2">
                   Backend
-                  <%= link to: Routes.marketing_path(@socket, :pricing) <> "#backend", class: "position-absolute absolute-right" do %>
+                  <.link navigate={~p"/pricing#backend"} class="position-absolute absolute-right">
                     <i class="fas fa-info-circle"></i>
-                  <% end %>
+                  </.link>
                 </li>
                 <li class="p-2">
                   Fields
-                  <%= link to: Routes.marketing_path(@socket, :pricing) <> "#fields", class: "position-absolute absolute-right" do %>
+                  <.link navigate={~p"/pricing#fields"} class="position-absolute absolute-right">
                     <i class="fas fa-info-circle"></i>
-                  <% end %>
+                  </.link>
                 </li>
                 <hr />
                 <li class="p-2">
                   Event Retention
-                  <%= link to: Routes.marketing_path(@socket, :pricing) <> "#retention", class: "position-absolute absolute-right" do %>
+                  <.link navigate={~p"/pricing#retention"} class="position-absolute absolute-right">
                     <i class="fas fa-info-circle"></i>
-                  <% end %>
+                  </.link>
                 </li>
                 <li class="p-2">Events per month</li>
                 <hr />
                 <li class="p-2">
                   Rate limit
-                  <%= link to: Routes.marketing_path(@socket, :pricing) <> "#rate-limit", class: "position-absolute absolute-right" do %>
+                  <.link navigate={~p"/pricing#rate-limit"} class="position-absolute absolute-right">
                     <i class="fas fa-info-circle"></i>
-                  <% end %>
+                  </.link>
                 </li>
                 <li class="p-2">Rate burst</li>
               </ul>
@@ -90,7 +87,7 @@ defmodule LogflareWeb.PlansLive do
                 <small class="text-muted">per <%= @period %></small>
               </div>
               <div class="py-4">
-                <%= link("Continue", to: Routes.auth_path(@socket, :login), class: "btn btn-dark text-white w-75 mr-0") %>
+                <.link navigate={~p"/auth/login"} class="btn btn-dark text-white w-75 mr-0">Continue</.link>
               </div>
             </div>
           </div>
