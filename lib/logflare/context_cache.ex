@@ -30,7 +30,7 @@ defmodule Logflare.ContextCache do
 
   def apply_fun(context, {fun, _arity}, args) do
     cache = cache_name(context)
-    cache_key = {fun, args} |> IO.inspect(label: "fetch key")
+    cache_key = {fun, args}
 
     case Cachex.fetch(cache, cache_key, fn {fun, args} ->
            # Use a `:cached` tuple here otherwise when an fn returns nil Cachex will miss the cache because it thinks ETS returned nil
