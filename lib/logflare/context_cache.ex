@@ -30,7 +30,7 @@ defmodule Logflare.ContextCache do
 
   def apply_fun(context, {fun, _arity}, args) do
     cache = cache_name(context)
-    cache_key = {fun, args}
+    cache_key = {fun, args} |> IO.inspect(label: "fetch key")
 
     case Cachex.fetch(cache, cache_key, fn {fun, args} ->
            # Use a `:cached` tuple here otherwise when an fn returns nil Cachex will miss the cache because it thinks ETS returned nil
@@ -60,17 +60,17 @@ defmodule Logflare.ContextCache do
   """
 
   def bust_keys(values) do
-    {:ok, keys} = Cachex.keys(@cache)
+    for {context, primary_key} <- values do
+      match_spec =
+        {:entry, {{context, primary_key}, :_}, :_, :_, :"$1"}
 
-    Enum.each(keys, fn {token, phash_key} = key ->
-      with true <- token in values,
-           {context, _} = token,
-           context_cache = cache_name(context),
-           {:ok, cache_key} = Cachex.get(@cache, key),
-           {:ok, true} <- Cachex.del(context_cache, cache_key) do
-        Cachex.del(@cache, key)
-      end
-    end)
+      keys = :ets.match(@cache, match_spec)
+      context_cache = cache_name(context)
+
+      for [k] <- keys, do: Cachex.del(context_cache, k)
+
+      :ets.match_delete(@cache, match_spec)
+    end
 
     {:ok, :busted}
   end
@@ -114,7 +114,7 @@ defmodule Logflare.ContextCache do
 
       _value ->
         # Logger.warning("Unhandled cache key for value.", error_string: inspect(value))
-        :uknown
+        :unknown
     end
   end
 end
