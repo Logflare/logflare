@@ -62,23 +62,14 @@ defmodule Logflare.ContextCache do
   def bust_keys(values) do
     {:ok, keys} = Cachex.keys(@cache)
 
-    total =
-      Enum.count(keys, fn {token, cache_key} = key ->
-        with true <- token in values,
-             {context, _} = token,
-             context_cache = cache_name(context),
-             {:ok, true} <- Cachex.del(context_cache, cache_key) do
-          Cachex.del(@cache, key)
-        end
-
-        true
-      end)
-
-    :telemetry.execute(
-      [:logflare, :context_cache, :busted],
-      %{count: total},
-      %{}
-    )
+    Enum.each(keys, fn {token, cache_key} = key ->
+      with true <- token in values,
+           {context, _} = token,
+           context_cache = cache_name(context),
+           {:ok, true} <- Cachex.del(context_cache, cache_key) do
+        Cachex.del(@cache, key)
+      end
+    end)
 
     {:ok, :busted}
   end
