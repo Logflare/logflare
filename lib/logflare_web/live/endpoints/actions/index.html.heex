@@ -15,22 +15,21 @@
   </p>
 
   <div class="tw-flex tw-gap-4 tw-items-center">
-    <%= link("Documentation",
-      to: "https://docs.logflare.app/concepts/endpoints",
-      target: "_blank"
-    ) %>
-    <%= live_patch to: ~p"/endpoints/new" do %>
+    <a href="https://docs.logflare.app/concepts/endpoints" target="_blank">Documentation</a>
+    <.link patch={~p"/endpoints/new"}>
       <.button variant="primary">
         New endpoint
       </.button>
-    <% end %>
+    </.link>
   </div>
 </div>
 
 <section class="mx-auto container">
   <ul :for={endpoint <- Enum.sort_by(@endpoints, & &1.name)} class="list-group">
     <li class="list-group-item">
-      <%= live_patch(endpoint.name, to: ~p"/endpoints/#{endpoint.id}", class: "tw-text-white") %>
+      <.link patch={~p"/endpoints/#{endpoint.id}"} class="tw-text-white">
+        <%= endpoint.name %>
+      </.link>
       <span class="tw-block tw-text-sm">uuid: <%= endpoint.token %></span>
       <p :if={endpoint.description} class="tw-pb-0 tw-mb-0 tw-text-sm text-muted">
         <%= endpoint.description %>

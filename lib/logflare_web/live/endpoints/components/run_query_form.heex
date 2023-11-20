@@ -1,11 +1,11 @@
 <.form :let={f} for={@params_form} phx-submit="run-query" class="tw-min-h-[80px]">
   <%= hidden_input(f, :query) %>
 
-  <%= for params_f <- inputs_for(f, :params) do %>
+  <.inputs_for :let={params_f} field={f[:params]}>
     <div :for={key <- @declared_params}>
       <%= label(params_f, key, key) %>
       <%= text_input(params_f, key) %>
     </div>
-  <% end %>
+  </.inputs_for>
   <%= submit("Test query", class: "btn btn-secondary") %>
 </.form>

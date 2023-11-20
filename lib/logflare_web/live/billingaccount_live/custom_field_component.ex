@@ -11,10 +11,6 @@ defmodule LogflareWeb.BillingAccountLive.CustomFieldComponent do
 
   require Logger
 
-  def preload(assigns) when is_list(assigns) do
-    assigns
-  end
-
   def mount(socket) do
     socket =
       socket

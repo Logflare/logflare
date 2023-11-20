@@ -78,10 +78,17 @@ defmodule LogflareWeb do
     end
   end
 
-  def live_view do
+  def live_view(opts \\ []) do
     quote do
-      use Phoenix.LiveView,
-        layout: {LogflareWeb.LayoutView, :live}
+      opts =
+        Keyword.merge(
+          [
+            layout: {LogflareWeb.LayoutView, :live}
+          ],
+          unquote(opts)
+        )
+
+      use Phoenix.LiveView, opts
 
       # declare endpoint and router for Phoenix.VerifiedRoutes
       @endpoint LogflareWeb.Endpoint
@@ -179,5 +186,9 @@ defmodule LogflareWeb do
 
   defmacro __using__(which) when is_atom(which) do
     apply(__MODULE__, which, [])
+  end
+
+  defmacro __using__({which, opts}) when is_atom(which) do
+    apply(__MODULE__, which, [opts])
   end
 end

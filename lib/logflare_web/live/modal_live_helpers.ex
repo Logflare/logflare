@@ -2,7 +2,6 @@ defmodule LogflareWeb.ModalLiveHelpers do
   @moduledoc """
   Modal helpers to be imported where modals may be called
   """
-  import Phoenix.LiveView.Helpers
   import Phoenix.Component, only: [assign: 3]
   import Phoenix.HTML.Link, only: [link: 2]
 
@@ -96,7 +95,8 @@ defmodule LogflareWeb.ModalLiveHelpers do
     path = Keyword.fetch!(opts, :return_to)
     title = Keyword.fetch!(opts, :title)
 
-    modal_opts = [
+    modal_opts = %{
+      module: LogflareWeb.ModalComponent,
       id: :modal,
       return_to: path,
       template: template,
@@ -104,24 +104,25 @@ defmodule LogflareWeb.ModalLiveHelpers do
       title: title,
       view: Keyword.fetch!(opts, :view),
       is_template?: true
-    ]
+    }
 
-    live_component(LogflareWeb.ModalComponent, modal_opts)
+    Phoenix.Component.live_component(modal_opts)
   end
 
   def live_modal(component, opts) when is_atom(component) do
     path = Keyword.fetch!(opts, :return_to)
     title = Keyword.fetch!(opts, :title)
 
-    modal_opts = [
+    modal_opts = %{
+      module: LogflareWeb.ModalComponent,
       id: :"logflare-modal",
       return_to: path,
       component: component,
       opts: opts,
       title: title,
       is_template?: false
-    ]
+    }
 
-    live_component(LogflareWeb.ModalComponent, modal_opts)
+    Phoenix.Component.live_component(modal_opts)
   end
 end

@@ -4,6 +4,6 @@
       Use <%= LqlHelpers.lql_help_modal_link() %> and source <%= LqlHelpers.bq_source_schema_modal_link() %> to configure log event routing to sinks.
     </div>
   <% end %>
-  <%= text_input @f, :lql_string, value: @lql_string, class: "form-control", disabled: @loading %>
-  <%= error_tag @f, :lql_string %>
+  <%= text_input(@f, :lql_string, value: @lql_string, class: "form-control", disabled: @loading) %>
+  <%= error_tag(@f, :lql_string) %>
 </div>

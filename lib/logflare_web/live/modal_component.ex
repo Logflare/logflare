@@ -27,7 +27,7 @@ defmodule LogflareWeb.ModalComponent do
                 <%= if assigns[:live_view] do %>
                   <%= live_render(@socket, @live_view, @opts) %>
                 <% else %>
-                  <%= live_component(@component, @opts) %>
+                  <.live_component module={@component} {@opts} />
                 <% end %>
               <% end %>
             </div>

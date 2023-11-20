@@ -194,7 +194,13 @@ defmodule Logflare.Mixfile do
 
       # alerts feature
       {:citrine, "~> 0.1.0"},
-      {:crontab, "~> 1.1"}
+      {:crontab, "~> 1.1"},
+
+      # Filesystem fix to respect `CFLAGS` and `LDFLAGS`
+      # https://github.com/falood/file_system/pull/87
+      #
+      # Credo is currently holding us back
+      {:file_system, "~> 1.0", override: true, only: [:dev, :test]}
     ]
   end
 

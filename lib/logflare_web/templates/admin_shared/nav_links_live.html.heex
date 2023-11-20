@@ -1,0 +1,29 @@
+<div class="log-settings float-right">
+  <ul>
+    <li>
+      <.link navigate={~p"/admin/sources"}>
+        <i class="fas fa-list"></i><span class="hide-on-mobile"> sources</span>
+      </.link>
+    </li>
+    <li>
+      <.link navigate={~p"/admin/accounts"}>
+        <i class="fas fa-users"></i><span class="hide-on-mobile"> accounts</span>
+      </.link>
+    </li>
+    <li>
+      <.link navigate={~p"/admin/cluster"}>
+        <i class="fas fa-server"></i><span class="hide-on-mobile"> cluster</span>
+      </.link>
+    </li>
+    <li>
+      <%= link to: Routes.live_path(@socket, LogflareWeb.AdminSearchDashboardLive) do %>
+        <i class="fas fa-search"></i><span class="hide-on-mobile"> search</span>
+      <% end %>
+    </li>
+    <li>
+      <.link navigate={~p"/admin/plans"}>
+        <i class="fas fa-dollar-sign"></i><span class="hide-on-mobile"> plans</span>
+      </.link>
+    </li>
+  </ul>
+</div>

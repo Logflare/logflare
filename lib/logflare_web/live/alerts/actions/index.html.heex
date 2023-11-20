@@ -14,19 +14,19 @@
   </p>
 
   <div class="tw-flex tw-gap-4 tw-items-center">
-    <%= link("Documentation", to: "https://docs.logflare.app/concepts/alerts", target: "_blank") %>
-    <%= live_patch to: ~p"/alerts/new" do %>
+    <a href="https://docs.logflare.app/concepts/alerts" target="_blank">Documentation</a>
+    <.link patch={~p"/alerts/new"}>
       <.button variant="primary">
         New alert
       </.button>
-    <% end %>
+    </.link>
   </div>
 </div>
 
 <section class="mx-auto container">
   <ul :for={alert <- Enum.sort_by(@alerts, & &1.name)} class="list-group">
     <li class="list-group-item">
-      <%= live_patch(alert.name, to: ~p"/alerts/#{alert.id}", class: "tw-text-white") %>
+      <.link patch={~p"/alerts/#{alert.id}"} class="tw-text-white"><%= alert.name %></.link>
       <span class="tw-block tw-text-sm">uuid: <%= alert.token %></span>
       <p :if={alert.description} class="tw-pb-0 tw-mb-0 tw-text-sm text-muted">
         <%= alert.description %>
