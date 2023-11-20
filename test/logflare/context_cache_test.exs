@@ -15,13 +15,14 @@ defmodule Logflare.ContextCacheTest do
 
   test "ContextCache works", %{source: source} do
     context = Sources
-    fun_arity = {:get_by, 1}
+    fun = :get_by
+    fun_arity = {fun, 1}
     args = [[token: source.token]]
 
     # Cache our function call results
     cached_source = ContextCache.apply_fun(context, fun_arity, args)
 
-    cache_key = {fun_arity, args}
+    cache_key = {fun, args}
     cache_name = ContextCache.cache_name(context)
     assert cache_name == Sources.Cache
 

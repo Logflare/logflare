@@ -28,11 +28,10 @@ defmodule Logflare.ContextCache do
     %{id: __MODULE__, start: {Cachex, :start_link, [@cache, [stats: stats]]}}
   end
 
-  def apply_fun(context, {fun, arity}, args) do
+  def apply_fun(context, {fun, _arity}, args) do
     cache = cache_name(context)
-    cache_key = {{fun, arity}, args}
 
-    case Cachex.fetch(cache, cache_key, fn {{_fun, _arity}, args} ->
+    case Cachex.fetch(cache, cache_key, fn {fun, args} ->
            # Use a `:cached` tuple here otherwise when an fn returns nil Cachex will miss the cache because it thinks ETS returned nil
            {:commit, {:cached, apply(context, fun, args)}}
          end) do
