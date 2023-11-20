@@ -30,6 +30,7 @@ defmodule Logflare.ContextCache do
 
   def apply_fun(context, {fun, _arity}, args) do
     cache = cache_name(context)
+    cache_key = {fun, args}
 
     case Cachex.fetch(cache, cache_key, fn {fun, args} ->
            # Use a `:cached` tuple here otherwise when an fn returns nil Cachex will miss the cache because it thinks ETS returned nil
@@ -61,10 +62,11 @@ defmodule Logflare.ContextCache do
   def bust_keys(values) do
     {:ok, keys} = Cachex.keys(@cache)
 
-    Enum.each(keys, fn {token, cache_key} = key ->
+    Enum.each(keys, fn {token, phash_key} = key ->
       with true <- token in values,
            {context, _} = token,
            context_cache = cache_name(context),
+           {:ok, cache_key} = Cachex.get(@cache, key),
            {:ok, true} <- Cachex.del(context_cache, cache_key) do
         Cachex.del(@cache, key)
       end
@@ -81,7 +83,7 @@ defmodule Logflare.ContextCache do
   end
 
   defp index_keys(context, cache_key, value) do
-    keys_key = {{context, select_key(value)}, cache_key}
+    keys_key = {{context, select_key(value)}, :erlang.phash2(cache_key)}
 
     Cachex.put(@cache, keys_key, cache_key)
 
