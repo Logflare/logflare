@@ -6,7 +6,7 @@ defmodule Logflare.ContextCache do
   e.g. `Logflare.Users.Cache` functions are ran through `apply_fun/3` and restuls of those
   functions are returned to the caller and cached in the respective cache.
 
-  The actual cache that is the `Logflare.ContextCache` is a reverse index where values
+  The cache implementation of `Logflare.ContextCache` is a reverse index where values
   returned by functions are used as the cache key.
 
   We must keep a reverse index because function are called by their arguments. So in the
