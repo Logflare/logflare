@@ -23,6 +23,7 @@ defmodule Logflare.ContextCacheTest do
 
     cache_key = {fun_arity, args}
     cache_name = ContextCache.cache_name(context)
+    assert cache_name == Sources.Cache
 
     assert %Logflare.Source{} = cached_source
 
