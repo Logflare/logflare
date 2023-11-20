@@ -3,7 +3,7 @@ defmodule Logflare.ContextCache do
   Read-through cache for hot database paths. This module functions as the entry point for
   contexts to have a cache of function calls.
 
-  e.g. `Logflare.Users.Cache` functions are ran through `apply_fun/3` and restuls of those
+  e.g. `Logflare.Users.Cache` functions go through `apply_fun/3` and results of those
   functions are returned to the caller and cached in the respective cache.
 
   The cache implementation of `Logflare.ContextCache` is a reverse index where values
