@@ -42,8 +42,8 @@ start.pink: PORT = 4001
 start.pink: LOGFLARE_GRPC_PORT = 50052
 start.pink: __start__
 
-__start__: decrypt.${ENV}
-	@env $$(cat .${ENV}.env | xargs) PORT=${PORT} LOGFLARE_GRPC_PORT=${LOGFLARE_GRPC_PORT} iex --sname ${ERL_NAME} --cookie ${ERL_COOKIE} -S mix phx.server
+__start__:
+	@env $$(cat .dev.env | xargs) PORT=${PORT} LOGFLARE_GRPC_PORT=${LOGFLARE_GRPC_PORT} iex --sname ${ERL_NAME} --cookie ${ERL_COOKIE} -S mix phx.server
 
 .PHONY: __start__
 
@@ -170,7 +170,7 @@ deploy.prod.versioned:
 tag-versioned:
 
 	@echo "Checking dockerhub registry for dev image supabase/logflare:$(SHA_IMAGE_TAG) ..."
-	@trap 'echo "No dev image on registry. Did docker build ci pass? Check https://github.com/Logflare/logflare/actions"' ERR; \
+	@echo "Dev image must be built on CI: https://github.com/Logflare/logflare/actions"' \
 		docker manifest inspect supabase/logflare:$(SHA_IMAGE_TAG) >/dev/null
 	@echo "OK"
 
