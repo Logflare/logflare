@@ -1,13 +1,22 @@
 defmodule Logflare.ContextCache do
   @moduledoc """
-    Read through cache for hot database paths.
+  Read-through cache for hot database paths. This module functions as the entry point for
+  contexts to have a cache of function calls.
 
-    Stats are reported to Logflare via Logflare.SystemMetrics.Cachex.Poller.
+  e.g. `Logflare.Users.Cache` functions go through `apply_fun/3` and results of those
+  functions are returned to the caller and cached in the respective cache.
 
-    TODO
-     - Limit this cache like the others
-     - Cachex hook when other cache keys are evicted the keys key here gets deletedf
-     - Cachex hook on this one when it's limited, where if it gets evicted it invalidates the others
+  The cache implementation of `Logflare.ContextCache` is a reverse index where values
+  returned by functions are used as the cache key.
+
+  We must keep a reverse index because function are called by their arguments. So in the
+  `Logflare.Users.Cache` we can keep a key of the MFA and a value of the results.
+
+  But when a record from the write-ahead log comes in the `CacheBuster` calls `bust_keys/1`
+  and we must know what the key is in the `Logflare.Users.Cache` to bust.
+
+  So we keep the value of the `Logflare.Users.Cache` as the key in the `Logflare.ContextCache`
+  and the value of our `Logflare.ContextCache` key is the key for our `Logflare.Users.Cache`.
   """
 
   require Logger
@@ -19,12 +28,14 @@ defmodule Logflare.ContextCache do
     %{id: __MODULE__, start: {Cachex, :start_link, [@cache, [stats: stats]]}}
   end
 
-  def apply_fun(context, {fun, arity}, args) do
+  @spec apply_fun(atom(), tuple(), [list()]) :: any()
+  def apply_fun(context, {fun, _arity}, args) do
     cache = cache_name(context)
-    cache_key = {{fun, arity}, args}
+    cache_key = {fun, args}
 
-    case Cachex.fetch(cache, cache_key, fn {{_fun, _arity}, args} ->
-           # Use a `:cached` tuple here otherwise when an fn returns nil Cachex will miss the cache because it thinks ETS returned nil
+    case Cachex.fetch(cache, cache_key, fn {fun, args} ->
+           # Use a `:cached` tuple here otherwise when an fn returns nil Cachex will miss
+           # the cache because it thinks ETS returned nil
            {:commit, {:cached, apply(context, fun, args)}}
          end) do
       {:commit, {:cached, value}} ->
@@ -32,43 +43,50 @@ defmodule Logflare.ContextCache do
         value
 
       {:ok, {:cached, value}} ->
-        index_keys(context, cache_key, value)
         value
     end
   end
 
-  def bust_keys(values) do
-    {:ok, keys} = Cachex.keys(@cache)
+  @doc """
+  This function is called from the CacheBuster process when a new record comes in from the Postgres
+  write-ahead log. The WAL contains records. From those records the CacheBuster picks out
+  primary keys.
 
-    total =
-      Enum.count(keys, fn {token, cache_key} = key ->
-        with true <- token in values,
-             {context, _} = token,
-             context_cache = cache_name(context),
-             {:ok, true} <- Cachex.del(context_cache, cache_key) do
-          Cachex.del(@cache, key)
-        end
+  The records ARE the keys in the reverse cache (the ContextCache).
 
-        true
+  We must:
+   - Find the key by the record primary key
+   - Delete the reverse cache entry
+   - Delete the cache entry for that context cache e.g. `Logflare.Users.Cache`
+  """
+
+  @spec cache_name(list()) :: {:ok, :busted}
+  def bust_keys(values) when is_list(values) do
+    for {context, primary_key} <- values do
+      filter = {:==, {:element, 1, :key}, {{context, primary_key}}}
+      query = Cachex.Query.create(filter, {:key, :value})
+      context_cache = cache_name(context)
+
+      Logflare.ContextCache
+      |> Cachex.stream!(query)
+      |> Enum.each(fn {k, v} ->
+        Cachex.del(context_cache, v)
+        Cachex.del(@cache, k)
       end)
-
-    :telemetry.execute(
-      [:logflare, :context_cache, :busted],
-      %{count: total},
-      %{}
-    )
+    end
 
     {:ok, :busted}
   end
 
-  def bust_keys(context, id), do: bust_keys([{context, id}])
+  @spec cache_name(atom()) :: atom()
+  def cache_name(context) do
+    Module.concat(context, Cache)
+  end
 
   defp index_keys(context, cache_key, value) do
-    keys_key = {{context, select_key(value)}, cache_key}
+    keys_key = {{context, select_key(value)}, :erlang.phash2(cache_key)}
 
-    {:ok, key} = Cachex.get(@cache, keys_key)
-
-    if is_nil(key), do: Cachex.put(@cache, keys_key, cache_key)
+    Cachex.put(@cache, keys_key, cache_key)
 
     {:ok, :indexed}
   end
@@ -97,11 +115,7 @@ defmodule Logflare.ContextCache do
 
       _value ->
         # Logger.warning("Unhandled cache key for value.", error_string: inspect(value))
-        :uknown
+        :unknown
     end
-  end
-
-  defp cache_name(context) do
-    Module.concat(context, Cache)
   end
 end
