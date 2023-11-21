@@ -17,11 +17,13 @@ defmodule Logflare.ContextCacheTest do
     %{source: source, cache_key: cache_key}
   end
 
-  test "cache_name/1", %{source: source} do
+  test "cache_name/1" do
     assert Sources.Cache == ContextCache.cache_name(Sources)
   end
 
-  test "apply_fun/3", %{source: source, cache_key: cache_key} do
+  test "apply_fun/3", %{cache_key: cache_key} do
+    # apply_fun was called in the setup when we called `Sources.Cache.get_by/1`
+    # here's we're making sure it did get cached correctly
     assert {:cached, %Logflare.Source{}} = Cachex.get!(Sources.Cache, cache_key)
   end
 
