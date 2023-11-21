@@ -36,6 +36,9 @@ defmodule Logflare.ContextCacheTest do
 
     # Make sure we don't have it after it's busted
     assert is_nil(Cachex.get!(cache_name, cache_key))
-    assert [] = :ets.tab2list(ContextCache)
+
+    # Make sure we don't have it in our reverse index either
+    match = {:entry, {{context, cached_source.id}, :_}, :_, :_, :"$1"}
+    assert [] = :ets.match(ContextCache, match)
   end
 end
