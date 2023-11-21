@@ -61,15 +61,16 @@ defmodule Logflare.ContextCache do
 
   def bust_keys(values) do
     for {context, primary_key} <- values do
-      match_spec =
-        {:entry, {{context, primary_key}, :_}, :_, :_, :"$1"}
-
-      keys = :ets.match(@cache, match_spec)
+      filter = {:==, {:element, 1, :key}, {{context, primary_key}}}
+      query = Cachex.Query.create(filter, {:key, :value})
       context_cache = cache_name(context)
 
-      for [k] <- keys, do: Cachex.del(context_cache, k)
-
-      :ets.match_delete(@cache, match_spec)
+      Logflare.ContextCache
+      |> Cachex.stream!(query)
+      |> Enum.each(fn {k, v} ->
+        Cachex.del(context_cache, v)
+        Cachex.del(@cache, k)
+      end)
     end
 
     {:ok, :busted}
