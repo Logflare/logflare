@@ -36,5 +36,6 @@ defmodule Logflare.ContextCacheTest do
 
     # Make sure we don't have it after it's busted
     assert is_nil(Cachex.get!(cache_name, cache_key))
+    assert [] = :ets.tab2list(ContextCache)
   end
 end
