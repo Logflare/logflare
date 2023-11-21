@@ -10,35 +10,25 @@ defmodule Logflare.ContextCacheTest do
     user = insert(:user)
     insert(:plan, name: "Free")
     source = insert(:source, user: user)
-    %{source: source}
+    args = [token: source.token]
+    source = Sources.Cache.get_by(args)
+    fun = :get_by
+    cache_key = {fun, [args]}
+    %{source: source, cache_key: cache_key}
   end
 
-  test "ContextCache works", %{source: source} do
-    context = Sources
-    fun = :get_by
-    fun_arity = {fun, 1}
-    args = [[token: source.token]]
+  test "cache_name/1", %{source: source} do
+    assert Sources.Cache == ContextCache.cache_name(Sources)
+  end
 
-    # Cache our function call results
-    cached_source = ContextCache.apply_fun(context, fun_arity, args)
+  test "apply_fun/3", %{source: source, cache_key: cache_key} do
+    assert {:cached, %Logflare.Source{}} = Cachex.get!(Sources.Cache, cache_key)
+  end
 
-    cache_key = {fun, args}
-    cache_name = ContextCache.cache_name(context)
-    assert cache_name == Sources.Cache
-
-    assert %Logflare.Source{} = cached_source
-
-    # Make sure we have it in our context cache
-    assert {:cached, %Logflare.Source{}} = Cachex.get!(cache_name, cache_key)
-
-    # Should do this with the wal instead at some point
-    assert {:ok, :busted} = ContextCache.bust_keys([{context, cached_source.id}])
-
-    # Make sure we don't have it after it's busted
-    assert is_nil(Cachex.get!(cache_name, cache_key))
-
-    # Make sure we don't have it in our reverse index either
-    match = {:entry, {{context, cached_source.id}, :_}, :_, :_, :"$1"}
+  test "bust_keys/1", %{source: source, cache_key: cache_key} do
+    assert {:ok, :busted} = ContextCache.bust_keys([{Sources, source.id}])
+    assert is_nil(Cachex.get!(Sources.Cache, cache_key))
+    match = {:entry, {{Sources, source.id}, :_}, :_, :_, :"$1"}
     assert [] = :ets.match(ContextCache, match)
   end
 end

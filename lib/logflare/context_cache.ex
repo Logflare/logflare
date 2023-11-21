@@ -28,12 +28,14 @@ defmodule Logflare.ContextCache do
     %{id: __MODULE__, start: {Cachex, :start_link, [@cache, [stats: stats]]}}
   end
 
+  @spec apply_fun(atom(), tuple(), [list()]) :: any()
   def apply_fun(context, {fun, _arity}, args) do
     cache = cache_name(context)
     cache_key = {fun, args}
 
     case Cachex.fetch(cache, cache_key, fn {fun, args} ->
-           # Use a `:cached` tuple here otherwise when an fn returns nil Cachex will miss the cache because it thinks ETS returned nil
+           # Use a `:cached` tuple here otherwise when an fn returns nil Cachex will miss
+           # the cache because it thinks ETS returned nil
            {:commit, {:cached, apply(context, fun, args)}}
          end) do
       {:commit, {:cached, value}} ->
@@ -41,7 +43,6 @@ defmodule Logflare.ContextCache do
         value
 
       {:ok, {:cached, value}} ->
-        # already cached don't re-index
         value
     end
   end
@@ -59,7 +60,8 @@ defmodule Logflare.ContextCache do
    - Delete the cache entry for that context cache e.g. `Logflare.Users.Cache`
   """
 
-  def bust_keys(values) do
+  @spec cache_name(list()) :: {:ok, :busted}
+  def bust_keys(values) when is_list(values) do
     for {context, primary_key} <- values do
       filter = {:==, {:element, 1, :key}, {{context, primary_key}}}
       query = Cachex.Query.create(filter, {:key, :value})
@@ -75,8 +77,6 @@ defmodule Logflare.ContextCache do
 
     {:ok, :busted}
   end
-
-  def bust_keys(context, id), do: bust_keys([{context, id}])
 
   @spec cache_name(atom()) :: atom()
   def cache_name(context) do
