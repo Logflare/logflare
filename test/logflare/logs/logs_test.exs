@@ -124,7 +124,8 @@ defmodule Logflare.LogsTest do
       ]
 
       assert :ok = Logs.ingest_logs(batch, source)
-      :timer.sleep(1_500)
+      # batcher timneout is 1_500
+      :timer.sleep(2_000)
     end
   end
 
