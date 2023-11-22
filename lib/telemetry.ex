@@ -85,7 +85,10 @@ defmodule Logflare.Telemetry do
         unit: {:native, :millisecond}
       ),
       counter("logflare.context_cache.busted.count", tags: [:schema, :table]),
-      counter("logflare.context_cache.handle_record.count", tags: [:schema, :table])
+      counter("logflare.context_cache.handle_record.count", tags: [:schema, :table]),
+      counter("logflare.logs.ingest_logs.drop"),
+      counter("logflare.logs.ingest_logs.rejected"),
+      counter("logflare.logs.ingest_logs.buffer_full")
     ]
 
     Enum.concat([
