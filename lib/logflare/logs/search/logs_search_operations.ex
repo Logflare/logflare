@@ -24,7 +24,8 @@ defmodule Logflare.Logs.SearchOperations do
   @type chart_period :: :day | :hour | :minute | :second
   @type dt_or_ndt :: DateTime.t() | NaiveDateTime.t()
 
-  @default_limit 100
+  # BigQuery max row return
+  @default_limit 1_000
   @default_max_n_chart_ticks 1_000
   @tailing_timestamp_filter_minutes 10
   # Note that this is only a timeout for the request, not the query.
