@@ -1,6 +1,6 @@
 defmodule Logflare.SystemMetrics.Cluster do
   @modueldoc false
-
+  require Logger
   alias Logflare.Cluster.Utils
 
   def dispatch_cluster_size() do
