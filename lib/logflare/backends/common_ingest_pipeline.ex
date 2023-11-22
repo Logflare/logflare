@@ -51,6 +51,14 @@ defmodule Logflare.Backends.CommonIngestPipeline do
   end
 
   def handle_batch(:backends, messages, _batch_info, source) do
+    :telemetry.execute(
+      [:logflare, :ingest, :common_pipeline, :handle_batch],
+      %{count: length(messages)},
+      %{
+        source_token: source.token
+      }
+    )
+
     # dispatch messages to backends
     log_events = for %{data: msg} <- messages, do: msg
     Backends.dispatch_ingest(log_events, source)
