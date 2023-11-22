@@ -1,5 +1,5 @@
 defmodule Logflare.SystemMetrics.Cluster do
-  @modueldoc false
+  @moduledoc false
   require Logger
   alias Logflare.Cluster.Utils
 
