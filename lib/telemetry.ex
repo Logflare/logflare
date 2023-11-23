@@ -91,7 +91,8 @@ defmodule Logflare.Telemetry do
       counter("logflare.logs.ingest_logs.drop"),
       counter("logflare.logs.ingest_logs.rejected"),
       counter("logflare.logs.ingest_logs.buffer_full"),
-      summary("logflare.logs.ingest_logs.batch_size")
+      summary("logflare.logs.ingest_logs.batch_size"),
+      counter("logflare.rate_limiter.rejected", tags: [:user_id, :source_token])
     ]
 
     Enum.concat([
