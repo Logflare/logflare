@@ -75,20 +75,12 @@ defmodule Logflare.Telemetry do
         unit: {:native, :millisecond}
       ),
       counter("logflare.logs.processor.ingest.stop.duration",
-        tags: [:processor],
-        description: "Ingestion counts by processor"
-      ),
-      counter("logflare.logs.processor.ingest.stop.duration",
-        tags: [:source_token],
-        description: "Ingestion counts by source"
+        tags: [:processor, :source_token],
+        description: "Ingestion execution counts"
       ),
       summary("logflare.logs.processor.ingest.logs.count",
-        tags: [:processor],
-        description: "Ingestion batch size by processor"
-      ),
-      summary("logflare.logs.processor.ingest.logs.count",
-        tags: [:source_token],
-        description: "Ingestion batch size by source"
+        tags: [:processor, :source_token],
+        description: "Ingestion batch size"
       ),
       summary("logflare.logs.processor.ingest.store.stop.duration",
         tags: [:processor],
