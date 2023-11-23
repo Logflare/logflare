@@ -23,7 +23,8 @@ defmodule Logflare.Logs.Processor do
       when is_list(data) and is_atom(processor) do
     metadata = %{
       processor: processor,
-      source: source
+      source_token: source.token,
+      source_id: source.id
     }
 
     :telemetry.span([:logflare, :logs, :processor, :ingest], metadata, fn ->
