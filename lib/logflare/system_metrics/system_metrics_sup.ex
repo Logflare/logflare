@@ -1,6 +1,7 @@
 defmodule Logflare.SystemMetricsSup do
   @moduledoc false
   alias Logflare.SystemMetrics
+  alias Logflare.SystemMetrics.Cluster
 
   use Supervisor
 
@@ -17,7 +18,20 @@ defmodule Logflare.SystemMetricsSup do
       SystemMetrics.AllLogsLogged,
       SystemMetrics.AllLogsLogged.Poller,
       SystemMetrics.Schedulers.Poller,
-      SystemMetrics.Cachex.Poller
+      SystemMetrics.Cachex.Poller,
+      # telemetry poller
+      {
+        :telemetry_poller,
+        # include custom measurement as an MFA tuple
+        # configure sampling period - default is :timer.seconds(5)
+        # configure sampling initial delay - default is 0
+        measurements: [
+          {Cluster, :dispatch_cluster_size, []}
+        ],
+        period: :timer.seconds(10),
+        init_delay: :timer.seconds(30),
+        name: Logflare.TelemetryPoller.Perodic
+      }
     ]
 
     Supervisor.init(children, strategy: :one_for_one)
