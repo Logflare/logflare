@@ -84,6 +84,8 @@ defmodule Logflare.Telemetry do
         tags: [:processor],
         unit: {:native, :millisecond}
       ),
+      summary("logflare.ingest.pipeline.handle_batch.batch_size", tags: [:pipeline]),
+      summary("logflare.ingest.common_pipeline.handle_batch.batch_size", tags: [:pipeline]),
       counter("logflare.context_cache.busted.count", tags: [:schema, :table]),
       counter("logflare.context_cache.handle_record.count", tags: [:schema, :table]),
       counter("logflare.logs.ingest_logs.drop"),
