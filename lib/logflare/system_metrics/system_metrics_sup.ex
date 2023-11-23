@@ -13,7 +13,6 @@ defmodule Logflare.SystemMetricsSup do
   @impl true
   def init(_init_arg) do
     children = [
-      SystemMetrics.Observer.Poller,
       # This calls :erlang.process_info which may not be good to call for all proces frequently
       # SystemMetrics.Procs.Poller,
       SystemMetrics.AllLogsLogged,
