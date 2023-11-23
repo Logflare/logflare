@@ -74,8 +74,22 @@ defmodule Logflare.Telemetry do
         tags: [:processor],
         unit: {:native, :millisecond}
       ),
-      counter("logflare.logs.processor.ingest.stop.duration", tags: [:processor]),
-      sum("logflare.logs.processor.ingest.logs.count", tags: [:processor]),
+      counter("logflare.logs.processor.ingest.stop.duration",
+        tags: [:processor],
+        description: "Ingestion counts by processor"
+      ),
+      counter("logflare.logs.processor.ingest.stop.duration",
+        tags: [:source_token],
+        description: "Ingestion counts by source"
+      ),
+      summary("logflare.logs.processor.ingest.logs.count",
+        tags: [:processor],
+        description: "Ingestion batch size by processor"
+      ),
+      summary("logflare.logs.processor.ingest.logs.count",
+        tags: [:source_token],
+        description: "Ingestion batch size by source"
+      ),
       summary("logflare.logs.processor.ingest.store.stop.duration",
         tags: [:processor],
         unit: {:native, :millisecond}
@@ -88,10 +102,22 @@ defmodule Logflare.Telemetry do
       summary("logflare.ingest.common_pipeline.handle_batch.batch_size", tags: [:pipeline]),
       counter("logflare.context_cache.busted.count", tags: [:schema, :table]),
       counter("logflare.context_cache.handle_record.count", tags: [:schema, :table]),
-      counter("logflare.logs.ingest_logs.drop"),
-      counter("logflare.logs.ingest_logs.rejected"),
-      counter("logflare.logs.ingest_logs.buffer_full"),
-      counter("logflare.rate_limiter.rejected", tags: [:user_id, :source_token])
+      counter("logflare.logs.ingest_logs.drop",
+        tags: [:source_token],
+        description: "Ingest drops by source"
+      ),
+      counter("logflare.logs.ingest_logs.rejected",
+        tags: [:source_token],
+        description: "Ingest rejects by source"
+      ),
+      counter("logflare.logs.ingest_logs.buffer_full",
+        tags: [:source_token],
+        description: "Ingest buffer fulls by source"
+      ),
+      counter("logflare.rate_limiter.rejected",
+        tags: [:user_id, :source_token],
+        description: "Rate limited API hits"
+      )
     ]
 
     Enum.concat([
