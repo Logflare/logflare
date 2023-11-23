@@ -184,3 +184,16 @@ The directory structure will now be as follows:
 |- .env
 |- docker-compose.yml
 ```
+
+## Protecting the User Interface
+
+When self-hosting, it is advised to protect the user interface with minimally basic HTTP authentication. How this is achieved is left to the self-hoster.
+
+When applying such authentication rules, we recommend requiring all routes to be authenticated except for the following paths, as illustrated using glob patterns:
+
+```text
+/api/**/*
+/logs/**/*
+```
+
+the `/logs` path is for legacy reasons and is mostly for compatibility with older Logflare libraries.
