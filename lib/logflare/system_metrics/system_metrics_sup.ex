@@ -27,7 +27,7 @@ defmodule Logflare.SystemMetricsSup do
         # configure sampling period - default is :timer.seconds(5)
         # configure sampling initial delay - default is 0
         measurements: [
-          {Observer, :dispatch_stats, []}
+          {Observer, :dispatch_stats, []},
           {Cluster, :dispatch_stats, []}
         ],
         period: :timer.seconds(30),
