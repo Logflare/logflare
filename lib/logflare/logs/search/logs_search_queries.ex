@@ -191,7 +191,7 @@ defmodule Logflare.Logs.SearchQueries do
     |> select_merge([..., t], %{
       other:
         fragment(
-          "COUNTIF(? NOT IN UNNEST(?) OR ? IS NULL) as other",
+          "COUNTIF(LOWER(?) NOT IN UNNEST(?) OR ? IS NULL) as other",
           t.level,
           [
             "debug",
@@ -206,16 +206,22 @@ defmodule Logflare.Logs.SearchQueries do
           ],
           t.level
         ),
-      level_notice: fragment("COUNTIF(? = ?) as level_notice", t.level, "notice"),
-      level_critical: fragment("COUNTIF(? = ?) as level_critical", t.level, "critical"),
-      level_alert: fragment("COUNTIF(? = ?) as level_alert", t.level, "alert"),
-      level_emergency: fragment("COUNTIF(? = ?) as level_emergency", t.level, "emergency"),
-      level_debug: fragment("COUNTIF(? = ?) as level_debug", t.level, "debug"),
-      level_info: fragment("COUNTIF(? = ?) as level_info", t.level, "info"),
+      level_notice: fragment("COUNTIF(lower(?) = ?) as level_notice", t.level, "notice"),
+      level_critical: fragment("COUNTIF(lower(?) = ?) as level_critical", t.level, "critical"),
+      level_alert: fragment("COUNTIF(lower(?) = ?) as level_alert", t.level, "alert"),
+      level_emergency: fragment("COUNTIF(lower(?) = ?) as level_emergency", t.level, "emergency"),
+      level_debug: fragment("COUNTIF(lower(?) = ?) as level_debug", t.level, "debug"),
+      level_info: fragment("COUNTIF(lower(?) = ?) as level_info", t.level, "info"),
       # FIXME
       level_warn:
-        fragment("COUNTIF(? = ? OR ? = ?) as level_warn", t.level, "warn", t.level, "warning"),
-      level_error: fragment("COUNTIF(? = ?) as level_error", t.level, "error")
+        fragment(
+          "COUNTIF(lower(?) = ? OR lower(?) = ?) as level_warn",
+          t.level,
+          "warn",
+          t.level,
+          "warning"
+        ),
+      level_error: fragment("COUNTIF(lower(?) = ?) as level_error", t.level, "error")
     })
     |> select_merge_total()
   end
