@@ -3,7 +3,7 @@ defmodule Logflare.SystemMetrics.Cluster do
   require Logger
   alias Logflare.Cluster.Utils
 
-  def dispatch_cluster_size() do
+  def dispatch_stats() do
     # emit a telemetry event when called
     min = Utils.min_cluster_size()
     actual = Utils.actual_cluster_size()
@@ -14,6 +14,6 @@ defmodule Logflare.SystemMetrics.Cluster do
       )
     end
 
-    :telemetry.execute([:logflare, :cluster_size], %{count: actual}, %{min: min})
+    :telemetry.execute([:logflare, :system, :cluster_size], %{count: actual}, %{min: min})
   end
 end

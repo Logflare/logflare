@@ -1,15 +1,24 @@
 defmodule Logflare.SystemMetrics.Observer do
   @moduledoc false
-  # def observer_metrics() do
-  #   :observer_backend.sys_info()
-  #   |> Keyword.drop([:alloc_info])
-  # end
 
-  def get_memory() do
+  def dispatch_stats do
+    observer_metrics = get_metrics()
+    mem_metrics = get_memory()
+
+    Logger.info("Observer metrics!",
+      observer_metrics: observer_metrics,
+      observer_memory: mem_metrics
+    )
+
+    :telemetry.execute([:logflare, :system, :observer, :metrics], observer_metrics)
+    :telemetry.execute([:logflare, :system, :observer, :memory], mem_metrics)
+  end
+
+  defp get_memory() do
     :erlang.memory() |> Enum.map(fn {k, v} -> {k, div(v, 1024 * 1024)} end) |> Enum.into(%{})
   end
 
-  def get_metrics() do
+  defp get_metrics() do
     {{:input, input}, {:output, output}} = :erlang.statistics(:io)
 
     [
@@ -25,13 +34,6 @@ defmodule Logflare.SystemMetrics.Observer do
       schedulers_available: :erlang.system_info(:schedulers_online),
       otp_release: :erlang.system_info(:otp_release),
       version: :erlang.system_info(:version),
-      system_architecture: nil,
-      kernel_poll: nil,
-      smp_support: nil,
-      threads: nil,
-      thread_pool_size: nil,
-      wordsize_internal: nil,
-      wordsize_external: nil,
       atom_limit: :erlang.system_info(:atom_limit),
       atom_count: :erlang.system_info(:atom_count),
       process_limit: :erlang.system_info(:process_limit),
@@ -39,18 +41,8 @@ defmodule Logflare.SystemMetrics.Observer do
       port_limit: :erlang.system_info(:port_limit),
       port_count: :erlang.system_info(:port_count),
       ets_limit: :erlang.system_info(:ets_limit),
-      ets_count: :erlang.system_info(:ets_count),
-      dist_buf_busy_limit: nil,
-      # Memory metrics are in the memory poller
-      total: nil,
-      processes: nil,
-      processes_used: nil,
-      system: nil,
-      atom: nil,
-      atom_used: nil,
-      binary: nil,
-      code: nil,
-      ets: nil
+      ets_count: :erlang.system_info(:ets_count)
     ]
+    |> Map.new()
   end
 end
