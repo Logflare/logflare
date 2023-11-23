@@ -88,12 +88,30 @@ defmodule Logflare.Logs do
       le
     else
       {:drop, true} ->
+        :telemetry.execute(
+          [:logflare, :logs, :ingest_logs],
+          %{drop: true},
+          %{source_id: le.source.id, source_token: le.source.token}
+        )
+
         le
 
       {:valid, false} ->
+        :telemetry.execute(
+          [:logflare, :logs, :ingest_logs],
+          %{rejected: true},
+          %{source_id: le.source.id, source_token: le.source.token}
+        )
+
         tap(le, &RejectedLogEvents.ingest/1)
 
       {:error, :buffer_full} ->
+        :telemetry.execute(
+          [:logflare, :logs, :ingest_logs],
+          %{buffer_full: true},
+          %{source_id: le.source.id, source_token: le.source.token}
+        )
+
         le
         |> Map.put(:valid, false)
         |> Map.put(:pipeline_error, %LE.PipelineError{
