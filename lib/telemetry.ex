@@ -90,7 +90,8 @@ defmodule Logflare.Telemetry do
       counter("logflare.context_cache.handle_record.count", tags: [:schema, :table]),
       counter("logflare.logs.ingest_logs.drop"),
       counter("logflare.logs.ingest_logs.rejected"),
-      counter("logflare.logs.ingest_logs.buffer_full")
+      counter("logflare.logs.ingest_logs.buffer_full"),
+      summary("logflare.logs.ingest_logs.batch_size")
     ]
 
     Enum.concat([

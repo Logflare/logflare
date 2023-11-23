@@ -14,6 +14,12 @@ defmodule Logflare.Logs do
 
   @spec ingest_logs(list(map), Source.t()) :: :ok | {:error, term}
   def ingest_logs(log_params_batch, %Source{rules: rules} = source) when is_list(rules) do
+    :telemetry.execute(
+      [:logflare, :logs, :ingest_logs],
+      %{batch_size: length(log_params_batch)},
+      %{source_id: source.id, source_token: source.token}
+    )
+
     log_params_batch
     |> Enum.map(fn log ->
       log

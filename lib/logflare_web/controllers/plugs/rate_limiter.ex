@@ -21,6 +21,7 @@ defmodule LogflareWeb.Plugs.RateLimiter do
         |> put_x_rate_limit_headers(metrics)
 
       {:error, %{message: message, metrics: metrics}} ->
+
         conn
         |> put_x_rate_limit_headers(metrics)
         |> send_resp(429, message)
