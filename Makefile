@@ -142,11 +142,10 @@ deploy.staging.versioned:
 		--region=europe-west1 \
 		--gcs-log-dir="gs://logflare-staging_cloudbuild-logs/logs"
 	
-	gcloud builds submit \
-		--no-source \
+	gcloud builds submit . \
 		--config=./cloudbuild/staging/deploy.yaml \
 		--substitutions=_IMAGE_TAG=$(VERSION),_NORMALIZED_IMAGE_TAG=$(NORMALIZED_VERSION),_INSTANCE_TYPE=c2d-standard-2,_CLUSTER=versioned \
-		--region=us-central1 \
+		--region=us-west1 \
 		--gcs-log-dir="gs://logflare-staging_cloudbuild-logs/logs"
 
 
@@ -158,8 +157,7 @@ deploy.prod.versioned:
 		--region=europe-west3 \
 		--gcs-log-dir="gs://logflare-prod_cloudbuild-logs/logs"
 	
-	gcloud builds submit \
-		--no-source \
+	gcloud builds submit . \
 		--config=./cloudbuild/prod/pre-deploy.yaml \
 		--substitutions=_IMAGE_TAG=$(VERSION),_NORMALIZED_IMAGE_TAG=$(NORMALIZED_VERSION) \
 		--region=europe-west3 \
