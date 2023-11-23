@@ -1,5 +1,6 @@
 defmodule Logflare.SystemMetrics.Observer do
   @moduledoc false
+  require Logger
 
   def dispatch_stats do
     observer_metrics = get_metrics()
