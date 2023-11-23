@@ -51,7 +51,7 @@ jobs:
         uses: docker/build-push-action@v3
         with:
           push: true
-          tags: supabase/logflare:${{ needs.settings.outputs.version }}-${{ matrix.arch }}
+          tags: supabase/logflare:dev-${{ needs.settings.outputs.short_sha }}-${{ matrix.arch }}
           platforms: linux/${{ matrix.arch }}
           # caching
           cache-from: type=gha
