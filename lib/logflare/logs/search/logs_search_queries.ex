@@ -214,7 +214,13 @@ defmodule Logflare.Logs.SearchQueries do
       level_info: fragment("COUNTIF(lower(?) = ?) as level_info", t.level, "info"),
       # FIXME
       level_warn:
-        fragment("COUNTIF(lower(?) = ? OR lower(?) = ?) as level_warn", t.level, "warn", t.level, "warning"),
+        fragment(
+          "COUNTIF(lower(?) = ? OR lower(?) = ?) as level_warn",
+          t.level,
+          "warn",
+          t.level,
+          "warning"
+        ),
       level_error: fragment("COUNTIF(lower(?) = ?) as level_error", t.level, "error")
     })
     |> select_merge_total()
