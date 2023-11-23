@@ -4,7 +4,7 @@
   <.inputs_for :let={params_f} field={f[:params]}>
     <div :for={key <- @declared_params}>
       <%= label(params_f, key, key) %>
-      <%= text_input(params_f, key) %>
+      <%= text_input(params_f, key, value: Map.get(@prev_params, key, "")) %>
     </div>
   </.inputs_for>
   <%= submit("Test query", class: "btn btn-secondary") %>

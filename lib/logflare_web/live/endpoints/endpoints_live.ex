@@ -49,6 +49,7 @@ defmodule LogflareWeb.EndpointsLive do
       |> assign(:base_url, LogflareWeb.Endpoint.url())
       |> assign(:parse_error_message, nil)
       |> assign(:query_string, nil)
+      |> assign(:prev_params, %{})
       |> assign(:params_form, to_form(%{"query" => "", "params" => %{}}, as: "run"))
       |> assign(:declared_params, %{})
 
@@ -152,6 +153,7 @@ defmodule LogflareWeb.EndpointsLive do
         {:noreply,
          socket
          |> put_flash(:info, "Ran query successfully")
+         |> assign(:prev_params, query_params)
          |> assign(:query_result_rows, rows)}
 
       {:error, err} ->
