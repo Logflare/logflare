@@ -17,5 +17,4 @@ tmp/
 .*.key
 .*.pem
 .*.env
-!cloudbuild/.*.*.enc
-!cloudbuild/*.yaml
+!cloudbuild/*
