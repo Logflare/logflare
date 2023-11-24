@@ -155,11 +155,11 @@ defmodule Logflare.Mixfile do
       # Ecto
       {:ecto, "~> 3.9", override: true},
       {:ecto_sql, "~> 3.9"},
-      {:typed_ecto_schema, "~> 0.1.0", runtime: false},
+      {:typed_ecto_schema, "~> 0.4.0", runtime: false},
 
       # Telemetry & logging
       {:telemetry, "~> 1.0"},
-      {:telemetry_metrics, "~> 1.0"},
+      {:telemetry_metrics, "~> 1.0", override: true},
       {:telemetry_poller, "~> 1.1"},
       {:logflare_logger_backend, "~> 0.11.4"},
       {:logger_json, "~> 5.1"},
@@ -225,7 +225,9 @@ defmodule Logflare.Mixfile do
       {:opentelemetry_api, "~> 1.2"},
       {:opentelemetry_exporter, "~> 1.6"},
       {:opentelemetry_phoenix, "~> 1.1"},
-      {:opentelemetry_cowboy, "~> 0.2"}
+      {:opentelemetry_cowboy, "~> 0.2"},
+
+      {:logflare_ex, "~> 0.2.0-dev.b339a6b8"}
     ]
   end
 
