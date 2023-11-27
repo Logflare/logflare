@@ -227,7 +227,7 @@ defmodule Logflare.Mixfile do
       {:opentelemetry_phoenix, "~> 1.1"},
       {:opentelemetry_cowboy, "~> 0.2"},
 
-      {:logflare_ex, "~> 0.2.0-dev.b339a6b8"}
+      {:logflare_ex, "~> 0.2.0-dev.082a725d"}
     ]
   end
 
