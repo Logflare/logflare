@@ -127,8 +127,7 @@ deploy.staging.main:
 		--region=europe-west1 \
 		--gcs-log-dir="gs://logflare-staging_cloudbuild-logs/logs"
 	
-	gcloud builds submit \
-		--no-source \
+	gcloud builds submit . \
 		--config=./cloudbuild/staging/deploy.yaml \
 		--substitutions=_IMAGE_TAG=$(SHA_IMAGE_TAG) \
 		--region=us-central1 \
