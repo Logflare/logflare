@@ -39,15 +39,15 @@ steps:
       - --type=proactive
       - --max-surge=1
       - --max-unavailable=0
-      - --min-ready=60
+      - --min-ready=300
       - --minimal-action=replace
       - --most-disruptive-allowed-action=replace
       - --replacement-method=substitute
       - --version=template=projects/logflare-staging/global/instanceTemplates/${_TEMPLATE_NAME}
 
 substitutions:
-  _COOKIE: default
   _CLUSTER: main
+  _COOKIE: default-${_CLUSTER}
   _NORMALIZED_IMAGE_TAG: ${_IMAGE_TAG}
   _INSTANCE_TYPE: e2-standard-4
   _INSTANCE_GROUP: instance-group-staging-${_CLUSTER}
