@@ -105,16 +105,19 @@ config :logflare_logger_backend,
 config :logflare_ex,
        filter_nil_kv_pairs.(
          api_url: System.get_env("LOGFLARE_LOGGER_BACKEND_URL"),
-         api_key: System.get_env("LOGFLARE_LOGGER_BACKEND_API_KEY"),
-         source_token: System.get_env("LOGFLARE_LOGGER_BACKEND_SOURCE_ID"),
-         flush_interval: 1_500
+         api_key: System.get_env("LOGFLARE_LOGGER_BACKEND_API_KEY")
        )
+
+config :logflare_ex,
+       LogflareEx.LoggerBackend,
+       filter_nil_kv_pairs.(source_token: System.get_env("LOGFLARE_LOGGER_BACKEND_SOURCE_ID"))
 
 config :logflare_ex,
        LogflareEx.TelemetryReporter,
        filter_nil_kv_pairs.(
          source_token: System.get_env("LOGFLARE_EX_TELEMETRY_SOURCE_TOKEN"),
-         flush_interval: 1_000
+         flush_interval: 1_000,
+         batch_size: 100
        )
 
 config :logger,
@@ -125,10 +128,10 @@ config :logger,
         do: LogflareLogger.HttpBackend,
         else: nil
       ),
-      if(System.get_env("LOGFLARE_LOGGER_BACKEND_URL") != nil,
-        do: LogflareEx.LoggerBackend,
-        else: nil
-      ),
+      # if(System.get_env("LOGFLARE_LOGGER_BACKEND_URL") != nil,
+      #   do: LogflareEx.LoggerBackend,
+      #   else: nil
+      # ),
       if(System.get_env("LOGFLARE_LOGGER_JSON") == "true", do: LoggerJSON, else: nil)
     ]
     |> Enum.filter(&(&1 != nil))

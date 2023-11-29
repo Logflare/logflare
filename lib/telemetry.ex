@@ -17,8 +17,7 @@ defmodule Logflare.Telemetry do
   @impl true
   def init(_arg) do
     children = [
-      {:telemetry_poller, measurements: periodic_measurements(), period: 10_000},
-      {LogflareEx.TelemetryReporter, metrics: metrics(), batch_size: 500, flush_interval: 750}
+      {:telemetry_poller, measurements: periodic_measurements(), period: 10_000}
     ]
 
     Supervisor.init(children, strategy: :one_for_one)
