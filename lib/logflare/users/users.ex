@@ -44,6 +44,12 @@ defmodule Logflare.Users do
     end
   end
 
+  def preload_defaults(user) do
+    user
+    |> Repo.preload([:sources, :billing_account, :team])
+    |> maybe_put_bigquery_defaults()
+  end
+
   def preload_team(user) do
     Repo.preload(user, :team)
   end
@@ -56,12 +62,6 @@ defmodule Logflare.Users do
     Repo.preload(user, :vercel_auths)
   end
 
-  def preload_defaults(user) do
-    user
-    |> preload_sources
-    |> maybe_preload_bigquery_defaults()
-  end
-
   def preload_sources(user) do
     Repo.preload(user, :sources)
   end
@@ -70,7 +70,7 @@ defmodule Logflare.Users do
     Repo.preload(user, :endpoint_queries)
   end
 
-  def maybe_preload_bigquery_defaults(user) do
+  def maybe_put_bigquery_defaults(user) do
     user =
       case user.bigquery_dataset_id do
         nil -> %{user | bigquery_dataset_id: User.generate_bq_dataset_id(user)}

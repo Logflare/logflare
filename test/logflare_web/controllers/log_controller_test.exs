@@ -6,6 +6,8 @@ defmodule LogflareWeb.LogControllerTest do
   alias Logflare.Sources.Counters
   alias Logflare.Sources.RateCounters
   alias Logflare.SingleTenant
+  alias Logflare.Users
+  alias Logflare.Sources
 
   @valid %{"some" => "valid log entry", "event_message" => "hi!"}
   @valid_batch [
@@ -41,6 +43,7 @@ defmodule LogflareWeb.LogControllerTest do
 
       {:ok, source: source, user: user, source_backend: source_backend}
     end
+    setup [:warm_caches, :reject_context_functions]
 
     test "valid ingestion", %{conn: conn, source: source, user: user} do
       WebhookAdaptor
@@ -66,10 +69,11 @@ defmodule LogflareWeb.LogControllerTest do
   end
 
   describe "v1 pipeline with legacy user.api_key" do
-    setup [:v1_pipeline_setup]
+    setup [:v1_pipeline_setup, :warm_caches, :reject_context_functions]
 
     setup %{user: user, conn: conn} do
       conn = put_req_header(conn, "x-api-key", user.api_key)
+
       {:ok, user: user, conn: conn}
     end
 
@@ -138,6 +142,8 @@ defmodule LogflareWeb.LogControllerTest do
       conn = put_req_header(conn, "x-api-key", access_token.token)
       {:ok, user: user, conn: conn}
     end
+    setup [:warm_caches, :reject_context_functions]
+
 
     test ":create ingestion by source_name", %{conn: conn, source: source} do
       conn =
@@ -190,12 +196,14 @@ defmodule LogflareWeb.LogControllerTest do
       # wait for all logs to be ingested before removing all stubs
       :timer.sleep(2000)
     end
+
   end
 
   defp v1_pipeline_setup(%{conn: conn}) do
     insert(:plan, name: "Free")
     user = insert(:user)
     source = insert(:source, user: user)
+
 
     rls = %RecentLogsServer{source: source, source_id: source.token}
     start_supervised!(Counters)
@@ -213,5 +221,31 @@ defmodule LogflareWeb.LogControllerTest do
     end)
 
     {:ok, source: source, user: user, conn: conn}
+  end
+
+  defp warm_caches(%{user: user, source: source}) do
+
+    # hit the caches
+    Sources.Cache.get_by_and_preload_rules(token: Atom.to_string(source.token))
+    Sources.Cache.get_by_and_preload_rules(name: source.name, user_id: user.id)
+    Users.Cache.get_by_and_preload(api_key: user.api_key)
+    Users.Cache.preload_defaults(user)
+    on_exit(fn ->
+      Cachex.clear(Users.Cache)
+      Cachex.clear(Sources.Cache)
+    end)
+    :ok
+  end
+  defp reject_context_functions(_) do
+    reject(&Sources.get_source_by_token/1)
+    reject(&Sources.get/1)
+    reject(&Sources.get_by/1)
+    reject(&Sources.get_by_and_preload_rules/1)
+    reject(&Sources.preload_defaults/1)
+    reject(&Users.get_by/1)
+    reject(&Users.get_by_and_preload/1)
+    reject(&Users.preload_team/1)
+    reject(&Users.preload_billing_account/1)
+    :ok
   end
 end
