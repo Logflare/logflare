@@ -230,6 +230,7 @@ defmodule LogflareWeb.LogControllerTest do
     Sources.Cache.get_by_and_preload_rules(name: source.name, user_id: user.id)
     Users.Cache.get_by_and_preload(api_key: user.api_key)
     Users.Cache.preload_defaults(user)
+    Users.Cache.get(user.id)
     on_exit(fn ->
       Cachex.clear(Users.Cache)
       Cachex.clear(Sources.Cache)
@@ -242,6 +243,7 @@ defmodule LogflareWeb.LogControllerTest do
     reject(&Sources.get_by/1)
     reject(&Sources.get_by_and_preload_rules/1)
     reject(&Sources.preload_defaults/1)
+    reject(&Users.get/1)
     reject(&Users.get_by/1)
     reject(&Users.get_by_and_preload/1)
     reject(&Users.preload_team/1)

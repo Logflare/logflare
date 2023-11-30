@@ -137,8 +137,8 @@ defmodule Logflare.Auth do
     end
   end
 
-  defp get_resource_owner_by_id(User, id), do: Users.get(id)
-  defp get_resource_owner_by_id(Partner, id), do: Partners.get_partner(id)
+  defp get_resource_owner_by_id(User, id), do: Users.Cache.get(id)
+  defp get_resource_owner_by_id(Partner, id), do: Partners.Cache.get_partner(id)
 
   defp check_scopes(token_scopes, required) do
     cond do
