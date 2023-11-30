@@ -12,6 +12,7 @@ test/
 _build/
 .elixir_ls/
 tmp/
+deps/
 
 
 .*.key
