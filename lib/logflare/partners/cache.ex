@@ -10,8 +10,7 @@ defmodule Logflare.Partners.Cache do
     %{id: __MODULE__, start: {Cachex, :start_link, [__MODULE__, [stats: stats, limit: 100_000]]}}
   end
 
-  def get(id), do: apply_repo_fun(__ENV__.function, [id])
-  def get_by(keyword), do: apply_repo_fun(__ENV__.function, [keyword])
+  def get_partner(id), do: apply_repo_fun(__ENV__.function, [id])
 
   defp apply_repo_fun(arg1, arg2) do
     Logflare.ContextCache.apply_fun(Partners, arg1, arg2)
