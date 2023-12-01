@@ -131,7 +131,7 @@ defmodule Logflare.Source.RecentLogsServer do
     user =
       source.user_id
       |> Users.get()
-      |> Users.maybe_preload_bigquery_defaults()
+      |> Users.maybe_put_bigquery_defaults()
       |> Users.preload_billing_account()
 
     plan = Billing.get_plan_by_user(user)

@@ -11,6 +11,8 @@ defmodule LogflareWeb.Plugs.VerifyApiAccess do
   import Plug.Conn
   alias Logflare.Auth
   alias Logflare.Users
+  alias Logflare.User
+  alias Logflare.Partners.Partner
   alias LogflareWeb.Api.FallbackController
 
   def init(args), do: args |> Enum.into(%{})
@@ -18,20 +20,14 @@ defmodule LogflareWeb.Plugs.VerifyApiAccess do
   def call(conn, opts) do
     opts = Enum.into(opts, %{scopes: []})
     resource_type = Map.get(conn.assigns, :resource_type)
+    partner_scope = "partner" in opts.scopes
     # generic access
     case identify_requestor(conn, opts.scopes) do
-      {:ok, owner} ->
-        if "partner" in opts.scopes do
-          assign(conn, :partner, owner)
-        else
-          owner =
-            owner
-            |> Users.preload_team()
-            |> Users.preload_billing_account()
-            |> Users.preload_sources()
+      {:ok, %Partner{} = partner} when partner_scope == true ->
+        assign(conn, :partner, partner)
 
-          assign(conn, :user, owner)
-        end
+      {:ok, %User{} = user} ->
+        assign(conn, :user, user)
 
       {:error, :no_token} when resource_type != nil ->
         conn
@@ -46,16 +42,18 @@ defmodule LogflareWeb.Plugs.VerifyApiAccess do
     is_private_route? = "private" in scopes
 
     with {:ok, access_token_or_api_key} <- extracted,
-         {:ok, owner} <- Auth.verify_access_token(access_token_or_api_key, scopes) do
-      {:ok, owner}
+         {:ok, %User{} = owner} <- Auth.verify_access_token(access_token_or_api_key, scopes) do
+      {:ok, Users.Cache.preload_defaults(owner)}
     else
+      # don't preload for partners
+      {:ok, %Partner{}} = res -> res
       {:error, :no_token} = err -> err
       {:error, _} = err -> handle_legacy_api_key(extracted, err, is_private_route?)
     end
   end
 
   defp handle_legacy_api_key({:ok, api_key}, err, is_private_route?) do
-    case Users.get_by(api_key: api_key) do
+    case Users.Cache.get_by_and_preload(api_key: api_key) do
       %_{} = user when is_private_route? == false -> {:ok, user}
       _ when is_private_route? == false -> {:error, :no_token}
       _ when is_private_route? == true -> {:error, :unauthorized}
