@@ -21,6 +21,14 @@ defmodule LogflareWeb.Plugs.RateLimiter do
         |> put_x_rate_limit_headers(metrics)
 
       {:error, %{message: message, metrics: metrics}} ->
+        :telemetry.execute(
+          [:logflare, :rate_limiter],
+          %{
+            rejected: true
+          },
+          %{user_id: user.id, source_id: source.id, source_token: source.token}
+        )
+
         conn
         |> put_x_rate_limit_headers(metrics)
         |> send_resp(429, message)
