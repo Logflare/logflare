@@ -101,7 +101,6 @@ defmodule Logflare.Source.BigQuery.Pipeline do
 
       {:ok, %GoogleApi.BigQuery.V2.Model.TableDataInsertAllResponse{insertErrors: errors}} ->
         Logger.warning("BigQuery insert errors.", error_string: inspect(errors))
-
         messages
 
       {:error, %Tesla.Env{} = response} ->

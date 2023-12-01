@@ -1,6 +1,7 @@
 defmodule Logflare.SystemMetricsSup do
   @moduledoc false
   alias Logflare.SystemMetrics
+  alias Logflare.SystemMetrics.Observer
   alias Logflare.SystemMetrics.Cluster
 
   use Supervisor
@@ -12,7 +13,6 @@ defmodule Logflare.SystemMetricsSup do
   @impl true
   def init(_init_arg) do
     children = [
-      SystemMetrics.Observer.Poller,
       # This calls :erlang.process_info which may not be good to call for all proces frequently
       # SystemMetrics.Procs.Poller,
       SystemMetrics.AllLogsLogged,
@@ -26,9 +26,10 @@ defmodule Logflare.SystemMetricsSup do
         # configure sampling period - default is :timer.seconds(5)
         # configure sampling initial delay - default is 0
         measurements: [
-          {Cluster, :dispatch_cluster_size, []}
+          {Observer, :dispatch_stats, []},
+          {Cluster, :dispatch_stats, []}
         ],
-        period: :timer.seconds(10),
+        period: :timer.seconds(30),
         init_delay: :timer.seconds(30),
         name: Logflare.TelemetryPoller.Perodic
       }
