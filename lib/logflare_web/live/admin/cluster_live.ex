@@ -12,7 +12,10 @@ defmodule LogflareWeb.Admin.ClusterLive do
       assign_cluster_status(socket)
       |> assign(:node_self, Node.self())
 
-    :timer.send_interval(1_000, self(), :update_cluster_status)
+    if connected?(socket) do
+      :timer.send_interval(2_000, self(), :update_cluster_status)
+    end
+
     {:ok, socket}
   end
 
