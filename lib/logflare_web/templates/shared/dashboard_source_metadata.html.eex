@@ -13,7 +13,7 @@
     <% end %>
   </small>
   <small class="source-details">
-    events/sec: <span id="<%= @source.token %>-rate"><%= @source.metrics.rate %></span>
+    rate: <span id="<%= @source.token %>-rate"><%= @source.metrics.rate %>/s</span>
   </small>
   <small class="source-details">
     <%= if @source.metrics.avg >= (0.80 * @conn.assigns.plan.limit_source_rate_limit) do %>
@@ -41,9 +41,6 @@
     <% else %>
       rejected: <span id="<%= @source.token %>-buffer"><%= @source.metrics.rejected %></span>
     <% end %>
-  </small>
-  <small class="source-details">
-    cached: <%= @source.metrics.recent %></span>
   </small>
   <small class="source-details tw-inline-block">
     ttl: <%= @source_ttl_days %> day</span>
