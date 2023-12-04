@@ -180,12 +180,20 @@ defmodule Logflare.Source.Supervisor do
     |> Enum.each(fn s -> reset_source(s.token) end)
   end
 
-  def via(module, source_id) when is_atom(source_id) do
-    {:via, Registry, {Logflare.V1SourceRegistry, {module, source_id}, :registered}}
+  @doc """
+  Returns the `:via` tuple for a given module for a source.
+  """
+  @spec via(module(), atom()) :: identifier()
+  def via(module, source_token) when is_atom(source_token) do
+    {:via, Registry, {Logflare.V1SourceRegistry, {module, source_token}, :registered}}
   end
 
-  def lookup(module, source_id) when is_atom(source_id) do
-    case Registry.lookup(Logflare.V1SourceRegistry, {module, source_id}) do
+  @doc """
+  Looks up V1SourceRegistry for the provided module and source token.
+  """
+  @spec lookup(module(), atom()) :: {:ok, pid()} | {:error, :no_proc}
+  def lookup(module, source_token) when is_atom(source_token) do
+    case Registry.lookup(Logflare.V1SourceRegistry, {module, source_token}) do
       [{pid, :registered}] -> {:ok, pid}
       [] -> {:error, :no_proc}
     end

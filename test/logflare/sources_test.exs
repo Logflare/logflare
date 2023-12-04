@@ -169,4 +169,23 @@ defmodule Logflare.SourcesTest do
       assert Enum.map(sources, & &1.name) == Enum.map([source_2, source_3, source_1], & &1.name)
     end
   end
+
+  describe "Source.Supervisor" do
+    alias Logflare.Source.RecentLogsServer, as: RLS
+    setup do
+      stub(Goth, :fetch, fn _mod -> {:ok, %Goth.Token{token: "auth-token"}} end)
+      :ok
+    end
+    test "bootup starts RLS for each recently logged source" do
+      user = insert(:user)
+      insert(:plan)
+      source_stale = insert(:source, user: user)
+      source = insert(:source, user: user, log_events_updated_at: NaiveDateTime.utc_now())
+      start_supervised!(Source.Supervisor)
+      :timer.sleep(500)
+      assert {:ok, pid} = Source.Supervisor.lookup(RLS, source.token)
+      assert is_pid(pid)
+      assert  {:error, :no_proc} = Source.Supervisor.lookup(RLS, source_stale.token)
+    end
+  end
 end
