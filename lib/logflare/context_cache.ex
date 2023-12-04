@@ -20,12 +20,26 @@ defmodule Logflare.ContextCache do
   """
 
   require Logger
-
+  alias Logflare.Cluster.CacheWarmer
   @cache __MODULE__
 
   def child_spec(_) do
     stats = Application.get_env(:logflare, :cache_stats, false)
-    %{id: __MODULE__, start: {Cachex, :start_link, [@cache, [stats: stats]]}}
+
+    %{
+      id: __MODULE__,
+      start:
+        {Cachex, :start_link,
+         [
+           @cache,
+           [
+             stats: stats,
+             warmers: [
+               CacheWarmer.warmer_spec(__MODULE__)
+             ]
+           ]
+         ]}
+    }
   end
 
   @spec apply_fun(atom(), tuple(), [list()]) :: any()
