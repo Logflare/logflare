@@ -48,33 +48,29 @@ defmodule Logflare.Source.Supervisor do
       from(s in Source,
         order_by: s.log_events_updated_at,
         where: s.log_events_updated_at > ^from_datetime,
-        select: s
+        select: s,
+        limit: 10_000
       )
 
-    stream = Repo.stream(query, max_rows: 10_000)
+    Repo.all(query)
+    |> Enum.chunk_every(25)
+    |> Enum.each(fn chunk ->
+      children =
+        for source <- chunk do
+          rls = %RLS{source_id: source.token, source: source}
+          Supervisor.child_spec({RLS, rls}, id: source.token, restart: :transient)
+        end
 
-    Repo.transaction(fn ->
-      stream
-      |> Stream.map(fn source ->
-        rls = %RLS{source_id: source.token, source: source}
-        Supervisor.child_spec({RLS, rls}, id: source.token, restart: :transient)
-      end)
-      |> Stream.chunk_every(25)
-      |> Stream.each(fn children ->
-        # BigQuery Rate limit is 100/second
-        # Also gives the database a break on boot
-        Process.sleep(250)
-        Supervisor.start_link(children, strategy: :one_for_one, max_restarts: 10, max_seconds: 60)
-      end)
-      |> Enum.to_list()
+      # BigQuery Rate limit is 100/second
+      # Also gives the database a break on boot
+      Process.sleep(250)
+
+      Supervisor.start_link(children, strategy: :one_for_one, max_restarts: 10, max_seconds: 60)
     end)
 
     Agent.update(@agent, &%{&1 | status: :ok})
     {:noreply, state}
   end
-
-  # returns the state of the genserver
-  def handle_call(:state, _caller, state), do: {:reply, state, state}
 
   def handle_cast({:create, source_token}, state) do
     case lookup(RLS, source_token) do

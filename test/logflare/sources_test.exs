@@ -180,13 +180,14 @@ defmodule Logflare.SourcesTest do
     end
     test "bootup starts RLS for each recently logged source", %{user: user} do
       source_stale = insert(:source, user: user)
-      for _ <- 1..1000 do
-        insert(:source, user: user, log_events_updated_at: NaiveDateTime.utc_now())
+      [source| _ ] = for _ <- 1..24 do
+        insert(:source, user: user, log_events_updated_at: DateTime.utc_now())
       end
-      source = insert(:source, user: user, log_events_updated_at: NaiveDateTime.utc_now())
+      :timer.sleep(500)
       start_supervised!(Source.Supervisor)
       assert Source.Supervisor.booting?()
-      :timer.sleep(500)
+      :timer.sleep(1000)
+      refute Source.Supervisor.booting?()
       assert {:ok, pid} = Source.Supervisor.lookup(RLS, source.token)
       assert is_pid(pid)
       assert  {:error, :no_proc} = Source.Supervisor.lookup(RLS, source_stale.token)
