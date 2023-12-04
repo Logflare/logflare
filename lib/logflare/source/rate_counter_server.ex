@@ -302,8 +302,16 @@ defmodule Logflare.Source.RateCounterServer do
 
   defp init_counters(source_id, bigquery_project_id) when is_atom(source_id) do
     log_count = Data.get_log_count(source_id, bigquery_project_id)
-    Counters.delete(source_id)
-    Counters.create(source_id)
+
+    try do
+      Counters.delete(source_id)
+    rescue
+      _e in ArgumentError ->
+        :noop
+    after
+      Counters.create(source_id)
+    end
+
     Counters.increment_ets_count(source_id, 0)
     Counters.increment_bq_count(source_id, log_count)
   end

@@ -146,17 +146,17 @@ defmodule Logflare.Source.Supervisor do
 
   ## Public Functions
 
-  def start_source(source_id) when is_atom(source_id) do
+  def start_source(source_token) when is_atom(source_token) do
     # Calling this server doing boot times out due to dealing with bigquery in init_table()
-    unless Application.get_env(:logflare, :postgres_backend_adapter) do
-      GenServer.abcast(__MODULE__, {:create, source_id})
+    unless do_pg_ops?() do
+      GenServer.abcast(__MODULE__, {:create, source_token})
     end
 
-    {:ok, source_id}
+    {:ok, source_token}
   end
 
   def delete_source(source_id) do
-    unless Application.get_env(:logflare, :postgres_backend_adapter) do
+    unless do_pg_ops?() do
       GenServer.abcast(__MODULE__, {:delete, source_id})
       BigQuery.delete_table(source_id)
     end
@@ -165,7 +165,7 @@ defmodule Logflare.Source.Supervisor do
   end
 
   def reset_source(source_id) do
-    unless Application.get_env(:logflare, :postgres_backend_adapter) do
+    unless do_pg_ops?() do
       GenServer.abcast(__MODULE__, {:restart, source_id})
     end
 
@@ -199,6 +199,11 @@ defmodule Logflare.Source.Supervisor do
       [{pid, :registered}] -> {:ok, pid}
       [] -> {:error, :no_proc}
     end
+  end
+
+  defp do_pg_ops?() do
+    !!Application.get_env(:logflare, :single_tenant) &&
+      !!Application.get_env(:logflare, :postgres_backend_adapter)
   end
 
   defp create_source(source_id) do
