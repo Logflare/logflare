@@ -5,29 +5,29 @@ defmodule Logflare.ContextCacheTest do
 
   alias Logflare.ContextCache
   alias Logflare.Sources
-  alias Logflare.Cluster.CacheWarmer
 
   describe "warming" do
     setup do
+      Cachex.clear(Users.Cache)
       :ok
     end
     test "retrieve cache data from different node" do
       user = insert(:user)
-      [node1] = LocalCluster.start_nodes(:initial, 1,[ files: [ __ENV__.file ] ])
+      [node1] = LocalCluster.start_nodes(:initial, 1, [ files: [ __ENV__.file ] ])
 
       # fetch from cache
       Node.spawn(node1, fn ->
+        Cachex.clear(Logflare.Users.Cache)
         Logflare.Users.Cache.get(user.id)
       end)
-      :timer.sleep(250)
+      :timer.sleep(500)
 
       reject(&Logflare.Repo.get/2)
-      [node2] = LocalCluster.start_nodes(:new, 1,[ files: [ __ENV__.file ] ])
-      # manually trigger cache warming
+      [node2] = LocalCluster.start_nodes(:new, 1, [ files: [ __ENV__.file ] ])
+      # cache warming should happen automatically on cache startup
       pid = self()
       :timer.sleep(500)
       Node.spawn(node2, fn ->
-        # dbg(Cachex)
         {:ok, count} = Cachex.count(Logflare.Users.Cache)
         send(pid, {:count, count})
       end)
