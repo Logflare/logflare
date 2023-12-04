@@ -34,12 +34,12 @@ defmodule Logflare.Source.Supervisor do
 
   ## Server
 
-  def handle_continue(:boot, _source_ids) do
+  def handle_continue(:boot, source_ids) do
     # Starting sources by latest events first
-    # Starting sources only when we've seen an event in the last 24 hours
+    # Starting sources only when we've seen an event in the last 6 hours
     # Plugs.EnsureSourceStarted makes sure if a source isn't started, it gets started for ingest and the UI
 
-    milli = :timer.hours(24)
+    milli = :timer.hours(6)
     from_datetime = DateTime.utc_now() |> DateTime.add(-milli, :millisecond)
 
     query =
@@ -49,23 +49,25 @@ defmodule Logflare.Source.Supervisor do
         select: s
       )
 
-    sources = Repo.all(query)
+    stream = Repo.stream(query, max_rows: 10_000)
 
-    sources
-    |> Enum.map(fn source ->
-      rls = %RLS{source_id: source.token, source: source}
-      Supervisor.child_spec({RLS, rls}, id: source.token, restart: :transient)
-    end)
-    |> Enum.chunk_every(25)
-    |> Enum.each(fn children ->
-      # BigQuery Rate limit is 100/second
-      # Also gives the database a break on boot
-      # Logger.info("Sleeping for startup Logflare.Source.Supervisor")
-      Process.sleep(250)
-      Supervisor.start_link(children, strategy: :one_for_one, max_restarts: 10, max_seconds: 60)
+    Repo.transaction(fn ->
+      stream
+      |> Stream.map(fn source ->
+        rls = %RLS{source_id: source.token, source: source}
+        Supervisor.child_spec({RLS, rls}, id: source.token, restart: :transient)
+      end)
+      |> Stream.chunk_every(25)
+      |> Stream.each(fn children ->
+        # BigQuery Rate limit is 100/second
+        # Also gives the database a break on boot
+        Process.sleep(250)
+        Supervisor.start_link(children, strategy: :one_for_one, max_restarts: 10, max_seconds: 60)
+      end)
+      |> Enum.to_list()
     end)
 
-    {:noreply, sources}
+    {:noreply, source_ids}
   end
 
   def handle_cast({:create, source_id}, state) do
