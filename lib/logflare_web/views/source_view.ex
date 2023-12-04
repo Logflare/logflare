@@ -28,7 +28,7 @@ defmodule LogflareWeb.SourceView do
     source_ttl_to_days(%{source | bigquery_table_ttl: plan.limit_source_ttl}, :day)
   end
 
-  def source_ttl_to_days(%Source{bigquery_table_ttl: ttl} = source, _plan) do
+  def source_ttl_to_days(%Source{bigquery_table_ttl: ttl}, _plan) do
     round(ttl / :timer.hours(24))
   end
 end
