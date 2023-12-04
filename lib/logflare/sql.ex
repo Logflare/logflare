@@ -1382,7 +1382,6 @@ defmodule Logflare.Sql do
          {"CompoundIdentifier" = k, [%{"value" => head_val}, tail] = v},
          data
        ) do
-    # dbg({v, data})
     cond do
       # Use match?/2 there to check if list has at least 2 values in it. It is
       # faster than `langth(list) > 2` as it do not need to traverse whole list

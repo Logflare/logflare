@@ -5,13 +5,41 @@ defmodule LogflareWeb.HealthCheckControllerTest do
   use LogflareWeb.ConnCase
   alias Logflare.Source.BigQuery.Schema
   alias Logflare.SingleTenant
+  alias Logflare.Source
 
   test "normal node health check", %{conn: conn} do
-    conn =
+      start_supervised!(Source.Supervisor)
+      :timer.sleep(500)
+      conn =
       conn
       |> get("/health")
 
     assert %{"nodes" => [_], "nodes_count" => 1, "status" => "ok"} = json_response(conn, 200)
+  end
+
+  test "coming_up while RLS boot warming" , %{conn: conn} do
+    stub(Goth, :fetch, fn _mod -> {:ok, %Goth.Token{token: "auth-token"}} end)
+
+    user = insert(:user)
+    insert(:plan)
+    for _ <- 1..25 do
+      insert(:source, user: user, log_events_updated_at: NaiveDateTime.utc_now())
+    end
+    start_supervised!(Source.Supervisor)
+
+    conn =
+      conn
+      |> get("/health")
+
+    assert %{"status" => "coming_up"} = json_response(conn, 503)
+      :timer.sleep(1200)
+
+    conn =
+      conn
+      |> recycle()
+      |> get("/health")
+
+      assert %{"status" => "ok"} = json_response(conn, 200)
   end
 
   describe "Supabase mode - without seed" do

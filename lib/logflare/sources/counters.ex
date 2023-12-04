@@ -14,9 +14,16 @@ defmodule Logflare.Sources.Counters do
   end
 
   def init(state) do
+    Process.flag(:trap_exit, true)
+
     Logger.info("Table counters started!")
     :ets.new(@ets_table_name, [:public, :named_table])
     {:ok, state}
+  end
+
+  def terminate(reason, _state) do
+    Logger.warning("[#{__MODULE__}] terminating - #{reason} ")
+    reason
   end
 
   @spec create(atom) :: success_tuple
