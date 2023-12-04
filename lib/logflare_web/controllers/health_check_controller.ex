@@ -4,20 +4,26 @@ defmodule LogflareWeb.HealthCheckController do
   alias Logflare.JSON
   alias Logflare.Cluster
   alias Logflare.SingleTenant
+  alias Logflare.Source
 
   def check(conn, _params) do
     {status, code} =
-      if SingleTenant.supabase_mode?() do
-        status = SingleTenant.supabase_mode_status()
-        values = Map.values(status)
+      cond do
+        SingleTenant.supabase_mode?() ->
+          status = SingleTenant.supabase_mode_status()
+          values = Map.values(status)
 
-        if Enum.any?(values, &is_nil/1) do
+          if Enum.any?(values, &is_nil/1) do
+            {:coming_up, 503}
+          else
+            {:ok, 200}
+          end
+
+        Source.Supervisor.booting?() ->
           {:coming_up, 503}
-        else
+
+        true ->
           {:ok, 200}
-        end
-      else
-        {:ok, 200}
       end
 
     response =
