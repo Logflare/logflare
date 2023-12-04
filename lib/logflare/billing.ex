@@ -304,7 +304,7 @@ defmodule Logflare.Billing do
         raise "No Free Plan created yet in database."
 
       is_nil(plan) ->
-        Logger.error(
+        Logger.warning(
           "Customer is on a Stripe plan which doesn't exist in our plan list, defaulting to Free"
         )
 

@@ -41,6 +41,9 @@ defmodule LogflareWeb.SourceControllerTest do
       assert html =~ "Saved Searches"
       assert html =~ "Dashboard"
       assert html =~ source.name
+
+      # default ttl
+      assert html =~ "ttl: 3 day"
     end
 
     test "show source", %{conn: conn, source: source} do

@@ -44,5 +44,8 @@
   </small>
   <small class="source-details">
     cached: <%= @source.metrics.recent %></span>
+  </small>
+  <small class="source-details tw-inline-block">
+    ttl: <%= @source_ttl_days %> day</span>
 </small>
 </div>
