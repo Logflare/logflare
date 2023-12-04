@@ -175,6 +175,13 @@ defmodule Logflare.SourcesTest do
     alias Logflare.Source.RecentLogsServer, as: RLS
     setup do
       stub(Goth, :fetch, fn _mod -> {:ok, %Goth.Token{token: "auth-token"}} end)
+
+      start_supervised!(Sources.Counters)
+
+      RateCounterServer
+      |> stub(:get_data_from_ets, fn _ -> %RateCounterServer{} end)
+      |> stub(:broadcast, fn _ -> :ok end)
+
       insert(:plan)
       {:ok, user: insert(:user)}
     end
@@ -183,10 +190,9 @@ defmodule Logflare.SourcesTest do
       [source| _ ] = for _ <- 1..24 do
         insert(:source, user: user, log_events_updated_at: DateTime.utc_now())
       end
-      :timer.sleep(500)
       start_supervised!(Source.Supervisor)
       assert Source.Supervisor.booting?()
-      :timer.sleep(1000)
+      :timer.sleep(1500)
       refute Source.Supervisor.booting?()
       assert {:ok, pid} = Source.Supervisor.lookup(RLS, source.token)
       assert is_pid(pid)
@@ -200,10 +206,6 @@ defmodule Logflare.SourcesTest do
       |> stub(:get_bq_inserts, fn _ -> {:ok, 0} end)
       |> stub(:create, fn _ -> {:ok, :some_table} end)
 
-      start_supervised!(Sources.Counters)
-
-      RateCounterServer
-      |> stub(:get_data_from_ets, fn _ -> {:ok, 0} end)
 
       Logflare.Google.BigQuery
       |> expect(:delete_table, fn _token -> :ok end)
@@ -229,10 +231,7 @@ defmodule Logflare.SourcesTest do
       |> stub(:get_bq_inserts, fn _ -> {:ok, 0} end)
       |> stub(:create, fn _ -> {:ok, :some_table} end)
 
-      start_supervised!(Sources.Counters)
 
-      RateCounterServer
-      |> stub(:get_data_from_ets, fn _ -> {:ok, 0} end)
 
       Logflare.Google.BigQuery
       |> stub(:init_table!, fn _, _ , _, _, _, _ -> :ok end)
