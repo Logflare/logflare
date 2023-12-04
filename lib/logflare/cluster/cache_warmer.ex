@@ -6,15 +6,7 @@ defmodule Logflare.Cluster.CacheWarmer do
   """
   use Cachex.Warmer
   import Cachex.Spec
-
-  def start_link(opts) do
-    GenServer.start_link(__MODULE__, opts, name: __MODULE__)
-  end
-
-  def init(args) do
-    opts = Enum.into(args, %{cache: nil})
-    {:ok, opts}
-  end
+  @agent __MODULE__.State
 
   def handle_info({:batch, cache, pairs}, state) do
     Cachex.import(cache, pairs)
@@ -26,17 +18,27 @@ defmodule Logflare.Cluster.CacheWarmer do
   def interval, do: :timer.hours(24 * 365)
   @impl Cachex.Warmer
   def execute(cache) do
-    # stream all data from the cache
+    # starts the agent if not yet started
+    # if already started, will return error tuple, but does not affect subsequent Agent.get
+    # use agent to store state as GenServer state is managed by Cachex.
+    Agent.start_link(fn -> %{node: nil} end, name: @agent)
+    prev_node = Agent.get(@agent, & &1.node)
+
     target =
-      Node.list()
-      |> Enum.map(fn node ->
-        case :rpc.call(node, Cachex, :count, [cache]) do
-          {:ok, count} when count > 0 -> node
-          _ -> nil
-        end
-      end)
-      |> Enum.filter(&(&1 != nil))
-      |> List.first()
+      if prev_node != nil do
+        prev_node
+      else
+        Node.list()
+        |> Enum.map(fn node ->
+          case :rpc.call(node, Cachex, :count, [cache]) do
+            {:ok, count} when count > 0 -> node
+            _ -> nil
+          end
+        end)
+        |> Enum.filter(&(&1 != nil))
+        |> Enum.sort_by(&Atom.to_string/1)
+        |> List.first()
+      end
 
     if target do
       pid = self()

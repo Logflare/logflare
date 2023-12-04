@@ -9,7 +9,6 @@ defmodule Logflare.ContextCacheTest do
 
   describe "warming" do
     setup do
-      start_supervised!(CacheWarmer)
       :ok
     end
     test "retrieve cache data from different node" do
