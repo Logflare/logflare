@@ -1,4 +1,4 @@
-defmodule LogflareWeb.Api.Partner.AccountController do
+defmodule LogflareWeb.Api.Partner.UserController do
   use LogflareWeb, :controller
 
   alias Logflare.Partners

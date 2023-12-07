@@ -1,11 +1,12 @@
-defmodule LogflareWeb.Api.Partner.AccountControllerTest do
+defmodule LogflareWeb.Api.Partner.UserControllerTest do
   use LogflareWeb.ConnCase
   alias Logflare.Partners
   alias Logflare.Auth
   alias Logflare.Users
 
   setup do
-    {:ok, %{partner: insert(:partner)}}
+      stub(Goth, :fetch, fn _mod -> {:ok, %Goth.Token{token: "auth-token"}} end)
+      {:ok, %{partner: insert(:partner)}}
   end
 
   @allowed_fields MapSet.new(~w(api_quota company email name phone token))
@@ -20,7 +21,7 @@ defmodule LogflareWeb.Api.Partner.AccountControllerTest do
       assert [user_response] =
                conn
                |> add_access_token(partner, ~w(partner))
-               |> get("/api/partner/accounts")
+               |> get("/api/partner/users")
                |> json_response(200)
 
       assert user_response["token"] == user.token
@@ -36,7 +37,7 @@ defmodule LogflareWeb.Api.Partner.AccountControllerTest do
 
       assert conn
              |> put_req_header("authorization", "Bearer potato")
-             |> get("/api/partner/accounts", %{email: email})
+             |> get("/api/partner/users", %{email: email})
              |> json_response(401) == %{"error" => "Unauthorized"}
     end
   end
@@ -52,7 +53,7 @@ defmodule LogflareWeb.Api.Partner.AccountControllerTest do
       assert response =
                conn
                |> add_access_token(partner, ~w(partner))
-               |> post("/api/partner/accounts", %{email: email})
+               |> post("/api/partner/users", %{email: email})
                |> json_response(201)
 
       assert response["user"]["email"] == String.downcase(email)
@@ -78,7 +79,7 @@ defmodule LogflareWeb.Api.Partner.AccountControllerTest do
 
       assert conn
              |> put_req_header("authorization", "Bearer potato")
-             |> post("/api/partner/accounts", %{email: email})
+             |> post("/api/partner/users", %{email: email})
              |> json_response(401) == %{"error" => "Unauthorized"}
     end
   end
@@ -90,7 +91,7 @@ defmodule LogflareWeb.Api.Partner.AccountControllerTest do
       assert response =
                conn
                |> add_access_token(partner, ~w(partner))
-               |> get("/api/partner/accounts/#{user.token}")
+               |> get("/api/partner/users/#{user.token}")
                |> json_response(200)
 
       assert response["token"] == user.token
@@ -106,7 +107,7 @@ defmodule LogflareWeb.Api.Partner.AccountControllerTest do
 
       assert conn
              |> put_req_header("authorization", "Bearer potato")
-             |> get("/api/partner/accounts/#{user.token}")
+             |> get("/api/partner/users/#{user.token}")
              |> json_response(401) == %{"error" => "Unauthorized"}
     end
 
@@ -121,7 +122,7 @@ defmodule LogflareWeb.Api.Partner.AccountControllerTest do
 
       assert conn
              |> add_access_token(partner, ~w(partner))
-             |> get("/api/partner/accounts/#{user.token}")
+             |> get("/api/partner/users/#{user.token}")
              |> response(404)
     end
   end
@@ -137,7 +138,7 @@ defmodule LogflareWeb.Api.Partner.AccountControllerTest do
 
       assert conn
              |> add_access_token(partner, ~w(partner))
-             |> get("/api/partner/accounts/#{user.token}/usage")
+             |> get("/api/partner/users/#{user.token}/usage")
              |> json_response(200) == %{"usage" => count}
     end
 
@@ -147,7 +148,7 @@ defmodule LogflareWeb.Api.Partner.AccountControllerTest do
 
       assert conn
              |> put_req_header("authorization", "Bearer potato")
-             |> get("/api/partner/accounts/#{user.token}/usage")
+             |> get("/api/partner/users/#{user.token}/usage")
              |> json_response(401) == %{"error" => "Unauthorized"}
     end
 
@@ -160,21 +161,20 @@ defmodule LogflareWeb.Api.Partner.AccountControllerTest do
 
       assert conn
              |> add_access_token(partner, ~w(partner))
-             |> get("/api/partner/accounts/#{user.token}/usage")
+             |> get("/api/partner/users/#{user.token}/usage")
              |> response(404)
     end
   end
 
   describe "delete_user/2" do
     test "returns 204 and deletes the user", %{conn: conn, partner: partner} do
-      stub(Goth, :fetch, fn _ -> {:error, ""} end)
 
       {:ok, user} = Partners.create_user(partner, %{"email" => TestUtils.gen_email()})
 
       assert response =
                conn
                |> add_access_token(partner, ~w(partner))
-               |> delete("/api/partner/accounts/#{user.token}")
+               |> delete("/api/partner/users/#{user.token}")
                |> json_response(204)
 
       assert response["token"] == user.token
@@ -196,7 +196,7 @@ defmodule LogflareWeb.Api.Partner.AccountControllerTest do
 
       assert conn
              |> put_req_header("authorization", "Bearer potato")
-             |> delete("/api/partner/accounts/#{user.token}")
+             |> delete("/api/partner/users/#{user.token}")
              |> json_response(401) == %{"error" => "Unauthorized"}
     end
 
@@ -209,7 +209,7 @@ defmodule LogflareWeb.Api.Partner.AccountControllerTest do
 
       assert conn
              |> add_access_token(partner, ~w(partner))
-             |> get("/api/partner/accounts/#{user.token}")
+             |> get("/api/partner/users/#{user.token}")
              |> response(404)
     end
   end
