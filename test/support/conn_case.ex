@@ -79,6 +79,10 @@ defmodule LogflareWeb.ConnCase do
   end
 
   # for api use
+  def add_partner_access_token(conn, partner) do
+    add_access_token(conn, partner, ~w(partner))
+  end
+
   def add_access_token(conn, user, scopes \\ ~w(public))
 
   def add_access_token(conn, %Logflare.User{} = user, scopes) do
