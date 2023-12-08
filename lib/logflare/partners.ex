@@ -32,17 +32,6 @@ defmodule Logflare.Partners do
   """
   def list_partners(), do: Repo.all(Partner)
 
-  @spec list_users_by_partner(Partner.t()) :: [User.t()]
-  @doc """
-  Lists all users created by a partner
-  """
-  def list_users_by_partner(%Partner{id: id}) do
-    query =
-      from(u in User, join: pu in PartnerUser, on: pu.user_id == u.id and pu.partner_id == ^id)
-
-    Repo.all(query)
-  end
-
   @spec get_partner_by_token(binary()) :: Partner.t() | nil
   @doc """
   Fetch single entry by given token
