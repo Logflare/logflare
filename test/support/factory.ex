@@ -209,6 +209,29 @@ defmodule Logflare.Factory do
     }
   end
 
+  def public_access_token_factory do
+    %OauthAccessToken{
+      token: TestUtils.random_string(20),
+      resource_owner: build(:user),
+      scopes: ~w(public)
+    }
+  end
+  def private_access_token_factory do
+    %OauthAccessToken{
+      token: TestUtils.random_string(20),
+      resource_owner: build(:user),
+      scopes: ~w(private)
+    }
+  end
+  def partner_access_token_factory do
+    %OauthAccessToken{
+      token: TestUtils.random_string(20),
+      resource_owner: build(:partner),
+      scopes: ~w(partner)
+    }
+  end
+
+
   def user_without_billing_account_factory() do
     build(:user,
       valid_google_account: true,

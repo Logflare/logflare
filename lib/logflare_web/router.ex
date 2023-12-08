@@ -375,6 +375,11 @@ defmodule LogflareWeb.Router do
     get("/account", UserController, :api_show)
     get("/query", Api.QueryController, :query)
 
+    resources("/access-tokens", Api.AccessTokenController,
+      param: "token",
+      only: [:index, :create, :delete]
+    )
+
     resources("/sources", Api.SourceController,
       param: "token",
       only: [:index, :show, :create, :update, :delete]
