@@ -5,7 +5,7 @@
     <p>You may need to switch teams to access this resource</p>
     <ul class="list-group">
       <li
-        :for={t <- @teams}
+        :for={t <- assigns[:teams] || []}
         class={[
           "list-group-item d-flex justify-content-between align-items-center",
           if(t.id == @team.id, do: "active"),
