@@ -15,9 +15,9 @@
         <%= link(t.name,
           to:
             ~p"/profile/switch?#{cond do
-              t.user_id == @user.id -> %{user_id: t.user_id}
+              t.user_id == @user.id -> %{user_id: t.user_id, redirect_to: @conn.request_path}
               true -> tu = Enum.find(t.team_users, &(&1.provider_uid == @user.provider_uid))
-                %{user_id: t.user_id, team_user_id: tu.id}
+                %{user_id: t.user_id, team_user_id: tu.id, redirect_to: @conn.request_path}
             end}"
         ) %>
         <small :if={t.id == @team.id} class="badge badge-secondary badge-pill">
