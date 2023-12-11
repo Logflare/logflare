@@ -98,7 +98,23 @@
   background-color: #1d1d1d;
   border: 0;
   overflow: hidden;
+  &.active {
+    background-color: $brand-black;
+
+  }
 }
+
+.badge {
+  &.badge-primary {
+    background-color: $brand-fuscia;
+    color: $brand-black;
+  }
+  &.badge-secondary {
+    background-color: $brand-light-gray;
+    color: $brand-black;
+  }
+}
+
 /* Fixes artifacts in Chrome */
 .list-group-item:focus,
 .list-group-item:hover {

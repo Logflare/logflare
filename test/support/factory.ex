@@ -35,7 +35,7 @@ defmodule Logflare.Factory do
       bigquery_processed_bytes_limit: 10_000_000_000,
       token: TestUtils.random_string(64),
       api_key: TestUtils.random_string(10),
-      provider_uid: "provider_uid",
+      provider_uid: "provider_uid_#{TestUtils.random_string()}",
       bigquery_udfs_hash: ""
     }
   end

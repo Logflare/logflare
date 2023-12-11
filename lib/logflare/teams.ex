@@ -99,12 +99,13 @@ defmodule Logflare.Teams do
     |> Repo.one()
   end
 
-  defp query_teams_by_user_access(%User{email: email, id: id}) do
+  defp query_teams_by_user_access(%User{id: id, provider_uid: uid}) do
     from t in Team,
-      join: tu in TeamUser,
-      on: tu.email == ^email,
-      where: t.user_id == ^id or tu.email == ^email,
+      left_join: tu in TeamUser,
+      on: t.id == tu.team_id,
+      where: t.user_id == ^id or tu.provider_uid == ^uid,
       distinct: true,
-      preload: [:user, :team_users]
+      preload: [:user, :team_users],
+      select: t
   end
 end

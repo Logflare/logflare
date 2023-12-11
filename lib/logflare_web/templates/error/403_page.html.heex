@@ -1,0 +1,29 @@
+<%= render_in "error_container.html", assigns do %>
+  <div class="col-lg-7">
+    <h1>403</h1>
+    <h2 class="text-white mb-3">Forbidden</h2>
+    <p>You may need to switch teams to access this resource</p>
+    <ul class="list-group">
+      <li
+        :for={t <- @teams}
+        class={[
+          "list-group-item d-flex justify-content-between align-items-center",
+          if(t.id == @team.id, do: "active"),
+          "tw-mx-auto tw-w-96"
+        ]}
+      >
+        <%= link(t.name,
+          to:
+            ~p"/profile/switch?#{cond do
+              t.user_id == @user.id -> %{user_id: t.user_id}
+              true -> tu = Enum.find(t.team_users, &(&1.provider_uid == @user.provider_uid))
+                %{user_id: t.user_id, team_user_id: tu.id}
+            end}"
+        ) %>
+        <small :if={t.id == @team.id} class="badge badge-secondary badge-pill">
+          Current
+        </small>
+      </li>
+    </ul>
+  </div>
+<% end %>
