@@ -18,7 +18,7 @@ steps:
       - --container-image=${_CONTAINER_IMAGE}
       - --container-privileged
       - --container-restart-policy=always
-      - --container-env=LOGFLARE_GRPC_PORT=4001,LOGFLARE_MIN_CLUSTER_SIZE=2
+      - --container-env=LOGFLARE_GRPC_PORT=4001,LOGFLARE_MIN_CLUSTER_SIZE=2,OVERRIDE_MAGIC_COOKIE=${_COOKIE},RELEASE_COOKIE=${_COOKIE}
       - --create-disk=auto-delete=yes,device-name=logflare-c2-16cpu-docker-global-cos89-13,image=projects/cos-cloud/global/images/cos-stable-101-17162-40-52,mode=rw,size=25,type=pd-ssd
       - --no-shielded-secure-boot
       - --shielded-vtpm
@@ -47,6 +47,8 @@ steps:
       - --version=template=projects/logflare-232118/global/instanceTemplates/${_TEMPLATE_NAME}
 
 substitutions:
+    _CLUSTER: canary
+    _COOKIE: default-${_CLUSTER}
     _INSTANCE_GROUP: instance-group-prod-canary
     _IMAGE_TAG: $SHORT_SHA
     _TEMPLATE_NAME: logflare-prod-${_NORMALIZED_IMAGE_TAG}
