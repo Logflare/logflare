@@ -27,20 +27,6 @@ defmodule Logflare.PartnerTest do
     end
   end
 
-  describe "list_users/1" do
-    test "lists all users created by a partner" do
-      partner = insert(:partner)
-      {:ok, user} = Partners.create_user(partner, %{"email" => TestUtils.random_string()})
-
-      {:ok, _user_from_another_partner} =
-        Partners.create_user(insert(:partner), %{"email" => TestUtils.random_string()})
-
-      _other_users = insert_list(3, :user)
-
-      assert [user_result] = Partners.list_users_by_partner(partner)
-      assert user_result.id == user.id
-    end
-  end
 
   describe "create_user/2" do
     test "creates new user and associates with given partner" do

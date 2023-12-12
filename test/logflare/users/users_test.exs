@@ -14,6 +14,25 @@ defmodule Logflare.UsersTest do
     {:ok, user: user, source: source}
   end
 
+
+  describe "Users.list_users/1" do
+    test "lists all users created by a partner" do
+      [user | others] = insert_list(3, :user)
+      insert(:partner, users: others)
+      partner = insert(:partner, users: [user])
+
+      assert [user_result] = Users.list_users(partner_id: partner.id)
+      assert user_result.id == user.id
+    end
+
+    test "list_users/1" do
+      insert(:user)
+      insert(:user, metadata: %{"a"=> "123"})
+      assert [_] = Users.list_users(metadata: %{"a"=> "123"})
+    end
+
+  end
+
   test "users_count/0 returns user count" do
     assert Users.count_users() == 1
     insert(:user)
@@ -81,6 +100,13 @@ defmodule Logflare.UsersTest do
       assert {:ok, user} = Users.insert_user(params)
       assert user.provider_uid
       assert user.token
+    end
+    test "insert_user/1 with metadata" do
+      assert {:ok, user} = Users.insert_user(%{
+        "email"=> TestUtils.random_string(),
+        "provider"=> "email",
+        "metadata"=> %{"some"=> "value"}})
+      assert user.metadata["some"] == "value"
     end
   end
 

@@ -1,17 +1,19 @@
 defmodule Logflare.Users do
   require Logger
 
+  import Ecto.Query
   alias Logflare.Google.BigQuery
   alias Logflare.Google.CloudResourceManager
   alias Logflare.Repo
-  alias Logflare.Repo
   alias Logflare.Source.Supervisor
-  alias Logflare.Sources
   alias Logflare.Sources
   alias Logflare.TeamUsers.TeamUser
   alias Logflare.User
   alias Logflare.Users
+  alias Logflare.Partners.PartnerUser
   alias Logflare.Users.UserPreferences
+
+  @max_limit 100
 
   @moduledoc false
   def user_changeset(user, attrs) do
@@ -21,6 +23,44 @@ defmodule Logflare.Users do
   @spec count_users() :: integer()
   def count_users do
     Repo.aggregate(User, :count)
+  end
+
+  @doc """
+  Lists users and performs filtering based on filter keywords.
+
+  Filters:
+  - `metadata`: filter on each key-value pair provided, each additional is considered an AND.
+  - `partner_id`: filters down to users of that partner.
+
+  Options:
+  - `limit`: max returned users. Defaults to #{@max_limit}
+
+  """
+  @spec list_users(keyword()) :: [User.t()]
+  def list_users(kw) do
+    {opts, filters} =
+      Enum.into(kw, %{
+        limit: @max_limit
+      })
+      |> Map.split([:limit])
+
+    filters
+    |> Enum.reduce(from(u in User), fn
+      {:partner_id, id}, q when is_integer(id) ->
+        q
+        |> join(:inner, [u], pu in PartnerUser, on: pu.user_id == u.id and pu.partner_id == ^id)
+
+      {:metadata, %{} = filters}, q ->
+        Enum.reduce(filters, q, fn {filter_k, v}, acc ->
+          normalized_k = if is_atom(filter_k), do: Atom.to_string(filter_k), else: filter_k
+          where(acc, [u], fragment("? -> ?", u.metadata, ^normalized_k) == ^v)
+        end)
+
+      _, q ->
+        q
+    end)
+    |> limit(^min(opts.limit, @max_limit))
+    |> Repo.all()
   end
 
   def list() do

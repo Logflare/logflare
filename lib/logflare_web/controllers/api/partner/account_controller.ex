@@ -4,10 +4,12 @@ defmodule LogflareWeb.Api.Partner.AccountController do
   alias Logflare.Partners
   alias Logflare.Billing.BillingCounts
   alias Logflare.Auth
+  alias Logflare.Users
+
   action_fallback(LogflareWeb.Api.FallbackController)
   @allowed_fields [:api_quota, :company, :email, :name, :phone, :token]
   def index(%{assigns: %{partner: partner}} = conn, _params) do
-    with users <- Partners.list_users_by_partner(partner) do
+    with users <- Users.list_users(partner_id: partner.id) do
       allowed_response = Enum.map(users, &sanitize_response/1)
       json(conn, allowed_response)
     end

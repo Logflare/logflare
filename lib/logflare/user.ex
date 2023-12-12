@@ -29,7 +29,8 @@ defmodule Logflare.User do
              :bigquery_dataset_id,
              :api_quota,
              :company,
-             :token
+             :token,
+             :metadata
            ]}
 
   @default_user_api_quota 150
@@ -81,6 +82,7 @@ defmodule Logflare.User do
     field :company, :string
     field :billing_enabled, :boolean, default: true
     field :endpoints_beta, :boolean, default: false
+    field :metadata, :map
     embeds_one :preferences, UserPreferences
 
     has_many :billing_counts, Logflare.Billing.BillingCount, on_delete: :delete_all
@@ -114,6 +116,7 @@ defmodule Logflare.User do
 
   @fields @user_allowed_fields ++
             [
+              :metadata,
               :token,
               :api_key,
               :old_api_key,
