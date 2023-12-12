@@ -21,10 +21,25 @@ defmodule LogflareWeb.Plugs.VerifyApiAccess do
     opts = Enum.into(opts, %{scopes: []})
     resource_type = Map.get(conn.assigns, :resource_type)
     partner_scope = "partner" in opts.scopes
+
+    impersonate_user_token = get_req_header(conn, "x-lf-partner-user") |> List.first() |> dbg()
     # generic access
-    case identify_requestor(conn, opts.scopes) do
-      {:ok, %Partner{} = partner} when partner_scope == true ->
-        assign(conn, :partner, partner)
+    scopes_to_check = if impersonate_user_token != nil do
+      ~w(partner)
+    else
+      opts.scopes
+    end
+
+    case identify_requestor(conn, scopes_to_check) |> dbg() do
+      {:ok, %Partner{} = partner} ->
+        # maybe get the user target
+
+        user = if impersonate_user_token do
+          Users.Cache.get_by(token: impersonate_user_token)
+        end
+        conn
+        |> assign(:partner, partner)
+        |> assign(:user, user)
 
       {:ok, %User{} = user} ->
         assign(conn, :user, user)
