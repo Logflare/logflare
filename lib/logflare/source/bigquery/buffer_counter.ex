@@ -71,8 +71,6 @@ defmodule Logflare.Source.BigQuery.BufferCounter do
       |> Broadway.push_messages(batch)
 
       {:ok, resp}
-    else
-      {:error, reason} -> {:error, reason}
     end
   end
 
@@ -167,7 +165,7 @@ defmodule Logflare.Source.BigQuery.BufferCounter do
   Looks up the counter reference from the Registry.
   """
 
-  @spec lookup_counter(atom) :: {:error, :buffer_counter_not_found} | {:ok, any}
+  @spec lookup_counter(atom) :: {:ok, any} | {:error, :buffer_counter_not_found}
   def lookup_counter(source_uuid) when is_atom(source_uuid) do
     case Registry.lookup(Logflare.CounterRegistry, {__MODULE__, source_uuid}) do
       [{_pid, counter_ref}] -> {:ok, counter_ref}

@@ -4,8 +4,7 @@ defmodule Logflare.Backends.SourceBackend do
 
   import Ecto.Changeset
 
-  alias Logflare.Backends.Adaptor.WebhookAdaptor
-  alias Logflare.Backends.Adaptor.PostgresAdaptor
+  alias Logflare.Backends.Adaptor
   alias Logflare.Backends.SourceBackend
   alias Logflare.Source
 
@@ -23,18 +22,5 @@ defmodule Logflare.Backends.SourceBackend do
   end
 
   @spec child_spec(SourceBackend.t()) :: map()
-  def child_spec(%__MODULE__{type: type} = source_backend) do
-    adaptor_module =
-      case type do
-        :webhook -> WebhookAdaptor
-        :postgres -> PostgresAdaptor
-      end
-
-    %{
-      id: child_spec_id(source_backend),
-      start: {adaptor_module, :start_link, [source_backend]}
-    }
-  end
-
-  defp child_spec_id(source_backend), do: "source-backend-#{source_backend.id}"
+  defdelegate child_spec(source_backend), to: Adaptor
 end
