@@ -71,21 +71,21 @@ defmodule Logflare.TeamsTest do
   end
 
   test "list_teams_by_user_access/1 lists all teams of a given user" do
+    insert(:team, user: build(:user))
     user = insert(:user)
-    teams = insert_list(2, :team_user, email: user.email)
+    insert_list(2, :team_user, provider_uid: user.provider_uid)
 
-    expected = Enum.map(teams, & &1.team.id) |> Enum.sort()
-    result = Enum.map(Teams.list_teams_by_user_access(user), & &1.id) |> Enum.sort()
-
-    assert expected == result
+    # 2 items, :team_users preloaded
+    assert [%{team_users: [_|_]}, _] = Teams.list_teams_by_user_access(user)
   end
 
   test "get_team_by_user_access/2 gets a team for a given user and token" do
     user = insert(:user)
     team = insert(:team)
-    _team_user = insert(:team_user, email: user.email, team: team)
+    _team_user = insert(:team_user, provider_uid: user.provider_uid, team: team)
     insert_list(2, :team_user)
 
     assert team.id == Teams.get_team_by_user_access(user, team.token).id
+
   end
 end

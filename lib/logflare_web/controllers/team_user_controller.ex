@@ -65,35 +65,44 @@ defmodule LogflareWeb.TeamUserController do
     end
   end
 
-  def change_team(%{assigns: %{team_user: _team_user, user: _user}} = conn, %{
-        "user_id" => user_id,
-        "team_user_id" => team_user_id
-      }) do
+  def change_team(
+        %{assigns: %{team_user: _team_user, user: _user}} = conn,
+        %{
+          "user_id" => user_id,
+          "team_user_id" => team_user_id
+        } = params
+      ) do
     conn
     |> put_session(:user_id, user_id)
     |> put_session(:team_user_id, team_user_id)
     |> put_resp_cookie("_logflare_user_id", user_id, max_age: 2_592_000)
     |> put_resp_cookie("_logflare_team_user_id", team_user_id, max_age: 2_592_000)
     |> put_flash(:info, "Welcome to this Logflare team!")
-    |> redirect(to: Routes.source_path(conn, :dashboard))
+    |> redirect(to: Map.get(params, "redirect_to", ~p"/dashboard"))
   end
 
-  def change_team(%{assigns: %{team_user: _team_user, user: _user}} = conn, %{
-        "user_id" => user_id
-      }) do
+  def change_team(
+        %{assigns: %{team_user: _team_user, user: _user}} = conn,
+        %{
+          "user_id" => user_id
+        } = params
+      ) do
     conn
     |> put_session(:user_id, user_id)
     |> delete_session(:team_user_id)
     |> delete_resp_cookie("_logflare_user_id")
     |> delete_resp_cookie("_logflare_team_user_id")
     |> put_flash(:info, "Welcome to this Logflare team!")
-    |> redirect(to: Routes.source_path(conn, :dashboard))
+    |> redirect(to: Map.get(params, "redirect_to", ~p"/dashboard"))
   end
 
-  def change_team(%{assigns: %{user: user}} = conn, %{
-        "user_id" => user_id,
-        "team_user_id" => team_user_id
-      }) do
+  def change_team(
+        %{assigns: %{user: user}} = conn,
+        %{
+          "user_id" => user_id,
+          "team_user_id" => team_user_id
+        } = params
+      ) do
     {:ok, _team_user} = TeamUsers.update_team_user_on_change_team(user, team_user_id)
 
     conn
@@ -102,6 +111,6 @@ defmodule LogflareWeb.TeamUserController do
     |> put_resp_cookie("_logflare_user_id", user_id, max_age: 2_592_000)
     |> put_resp_cookie("_logflare_team_user_id", team_user_id, max_age: 2_592_000)
     |> put_flash(:info, "Welcome to this Logflare team!")
-    |> redirect(to: Routes.source_path(conn, :dashboard))
+    |> redirect(to: Map.get(params, "redirect_to", ~p"/dashboard"))
   end
 end

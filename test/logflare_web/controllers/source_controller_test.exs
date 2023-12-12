@@ -15,6 +15,13 @@ defmodule LogflareWeb.SourceControllerTest do
   alias Logflare.Logs.RejectedLogEvents
   alias Logflare.SingleTenant
 
+  setup do
+
+    Logflare.Sources.Counters
+    |> stub(:get_inserts, fn _token -> {:ok, 123} end)
+    |> stub(:get_bq_inserts, fn _token -> {:ok, 456} end)
+    :ok
+  end
   describe "list" do
     setup %{conn: conn} do
       Logflare.Sources.Counters
@@ -91,6 +98,32 @@ defmodule LogflareWeb.SourceControllerTest do
       assert html =~ "403"
       assert html =~ "Forbidden"
     end
+
+  end
+
+  test "prompt to switch team if not found and part of many teams", %{conn: conn} do
+    hidden_team = insert(:team, user: build(:user))
+
+    insert(:plan)
+    user = insert(:user)
+    source = insert(:source, user: user)
+    main_team = insert(:team, user: user)
+
+    other_user = insert(:user)
+    other_team = insert(:team, user: other_user)
+    insert(:team_user, team: main_team, provider_uid: other_user.provider_uid)
+
+    # main team has 2 users now
+    html = conn
+    |> login_user(other_user)
+    |> get(~p"/sources/#{source.id}")
+    |> html_response(403)
+
+    assert html =~ other_team.name
+    assert html =~ main_team.name
+    refute html =~ hidden_team.name
+    assert html =~ "You may need to switch teams"
+
   end
 
   describe "Premium only features" do

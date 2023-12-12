@@ -18,7 +18,10 @@ defmodule LogflareWeb.Plugs.SetTeam do
       Teams.get_team_by(user_id: user.id)
       |> Teams.preload_team_users()
 
+    teams = Teams.list_teams_by_user_access(user)
+
     conn
     |> assign(:team, team)
+    |> assign(:teams, teams)
   end
 end
