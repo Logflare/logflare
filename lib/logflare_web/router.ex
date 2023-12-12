@@ -388,13 +388,13 @@ defmodule LogflareWeb.Router do
   scope "/api/partner", LogflareWeb do
     pipe_through([:api, :partner_api])
 
-    get("/accounts", Api.Partner.AccountController, :index)
-    post("/accounts", Api.Partner.AccountController, :create)
+    get("/users", Api.Partner.UserController, :index)
+    post("/users", Api.Partner.UserController, :create)
 
-    get("/accounts/:user_token", Api.Partner.AccountController, :get_user)
-    get("/accounts/:user_token/usage", Api.Partner.AccountController, :get_user_usage)
+    get("/users/:user_token", Api.Partner.UserController, :get_user)
+    get("/users/:user_token/usage", Api.Partner.UserController, :get_user_usage)
 
-    delete("/accounts/:user_token", Api.Partner.AccountController, :delete_user)
+    delete("/users/:user_token", Api.Partner.UserController, :delete_user)
   end
 
   scope "/api" do
