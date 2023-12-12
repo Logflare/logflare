@@ -7,8 +7,26 @@ defmodule Logflare.Backends.Adaptor do
 
   alias Logflare.LogEvent
   alias Logflare.Endpoints.Query
+  alias Logflare.Backends.SourceBackend
 
   @type t :: module()
+
+  def child_spec(%SourceBackend{} = source_backend) do
+    adaptor_module =
+      case source_backend.type do
+        :webhook -> __MODULE__.WebhookAdaptor
+        :postgres -> __MODULE__.PostgresAdaptor
+        :bigquery -> __MODULE__.BigQueryAdaptor
+      end
+
+    %{
+      id: {adaptor_module, source_backend.id},
+      start: {adaptor_module, :start_link, [source_backend]}
+    }
+  end
+
+  @callback start_link(SourceBackend.t()) ::
+              {:ok, pid()} | :ignore | {:error, term()}
 
   @doc """
   Ingest many log events.

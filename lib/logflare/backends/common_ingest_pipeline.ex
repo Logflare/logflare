@@ -34,10 +34,12 @@ defmodule Logflare.Backends.CommonIngestPipeline do
   end
 
   # see the implementation for Backends.via_source/2 for how tuples are used to identify child processes
+  @impl Broadway
   def process_name({:via, module, {registry, {id, pipeline}}}, base_name) do
     {:via, module, {registry, {id, pipeline, base_name}}}
   end
 
+  @impl Broadway
   def handle_message(_processor_name, message, source) do
     message
     |> Message.update_data(&maybe_convert_to_log_event(&1, source))
@@ -50,6 +52,7 @@ defmodule Logflare.Backends.CommonIngestPipeline do
     LogEvent.make(params, %{source: source})
   end
 
+  @impl Broadway
   def handle_batch(:backends, messages, batch_info, source) do
     :telemetry.execute(
       [:logflare, :ingest, :common_pipeline, :handle_batch],

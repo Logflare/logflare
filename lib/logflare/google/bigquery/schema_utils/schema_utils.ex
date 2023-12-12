@@ -30,16 +30,15 @@ defmodule Logflare.Google.BigQuery.SchemaUtils do
   def merge_rows_with_schema(%TS{} = _schema, nil), do: []
 
   def merge_rows_with_schema(%TS{} = schema, rows) do
-    rows |> struct_to_map |> Enum.map(&merge_rows_with_schema_(schema.fields, &1["f"]))
+    rows |> struct_to_map() |> Enum.map(&merge_rows_with_schema_(schema.fields, &1["f"]))
   end
 
   defp merge_rows_with_schema_(_schema, fields) when fields in @empty, do: []
 
   defp merge_rows_with_schema_(schema, fields) do
-    fields
-    |> Stream.with_index()
-    |> Enum.reduce([], fn {field, i}, acc -> [merge_row(Enum.at(schema, i), field)] ++ acc end)
-    |> Enum.into(%{})
+    schema
+    |> Enum.zip_with(fields, &merge_row/2)
+    |> Map.new()
   end
 
   def merge_row(schema_field, field) do
@@ -67,8 +66,7 @@ defmodule Logflare.Google.BigQuery.SchemaUtils do
   def convert_primitive("DATETIME", value), do: value
 
   def convert_primitive("TIMESTAMP", value) do
-    (String.to_float(value) * 1_000_000)
-    |> trunc
+    trunc(String.to_float(value) * 1_000_000)
   end
 
   def struct_to_map(struct), do: struct |> Poison.encode!() |> Poison.decode!()
@@ -149,8 +147,7 @@ defmodule Logflare.Google.BigQuery.SchemaUtils do
   end
 
   def to_typemap(fields, from: :bigquery_schema) when is_list(fields) do
-    fields
-    |> Enum.map(fn
+    Map.new(fields, fn
       %TFS{fields: fields, name: n, type: t, mode: mode} ->
         k = String.to_atom(n)
 
@@ -182,7 +179,6 @@ defmodule Logflare.Google.BigQuery.SchemaUtils do
 
         {k, v}
     end)
-    |> Map.new()
   end
 
   @spec bq_schema_to_flat_typemap(TS.t() | nil) :: map
@@ -197,15 +193,9 @@ defmodule Logflare.Google.BigQuery.SchemaUtils do
   def flatten_typemap(nil), do: %{}
 
   def flatten_typemap(%{} = typemap) do
-    t =
-      typemap
-      |> Iteraptor.to_flatmap()
-
-    for {k, v} <- t do
+    for {k, v} <- Iteraptor.to_flatmap(typemap), into: %{} do
       {format_flatmap_field_names(k), v}
     end
-    |> Enum.uniq()
-    |> Map.new()
   end
 
   defp format_flatmap_field_names(k) do

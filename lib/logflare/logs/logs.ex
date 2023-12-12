@@ -103,7 +103,7 @@ defmodule Logflare.Logs do
           %{source_id: le.source.id, source_token: le.source.token}
         )
 
-        tap(le, &RejectedLogEvents.ingest/1)
+        RejectedLogEvents.ingest(le)
 
       {:error, :buffer_full} ->
         :telemetry.execute(

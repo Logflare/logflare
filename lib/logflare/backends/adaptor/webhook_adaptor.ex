@@ -24,6 +24,13 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
   # API
 
   @impl Logflare.Backends.Adaptor
+  def start_link(%SourceBackend{} = source_backend) do
+    GenServer.start_link(__MODULE__, source_backend,
+      name: Backends.via_source_backend(source_backend, __MODULE__)
+    )
+  end
+
+  @impl Logflare.Backends.Adaptor
   def ingest(pid, log_events), do: GenServer.call(pid, {:ingest, log_events})
 
   @impl Logflare.Backends.Adaptor
@@ -44,12 +51,6 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
   end
 
   # GenServer
-  def start_link(%SourceBackend{} = source_backend) do
-    GenServer.start_link(__MODULE__, source_backend,
-      name: Backends.via_source_backend(source_backend, __MODULE__)
-    )
-  end
-
   @impl GenServer
   def init(source_backend) do
     {:ok, _} =

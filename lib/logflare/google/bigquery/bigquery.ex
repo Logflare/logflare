@@ -275,13 +275,15 @@ defmodule Logflare.Google.BigQuery do
           bigquery_project_id: project_id
         } = user
       ) do
-    user = Users.preload_sources(user) |> Users.preload_team()
+    user =
+      user
+      |> Users.preload_sources()
+      |> Users.preload_team()
 
     team_users = if user.team, do: TeamUsers.list_team_users_by(team_id: user.team.id), else: []
 
     emails =
-      Enum.map([user | team_users], fn x -> if x.provider == "google", do: x.email end)
-      |> Enum.reject(&is_nil(&1))
+      for x <- [user | team_users], x.provider == "google", do: x.email
 
     if Enum.count(user.sources) > 0 do
       Task.Supervisor.start_child(Logflare.TaskSupervisor, fn ->
