@@ -5,7 +5,6 @@ defmodule LogflareWeb.Plugs.CompressedBodyReader do
   Gzip chunking is manually handled using inspiration from [sneako/plug_compressed_body_reader](https://github.com/sneako/plug_compressed_body_reader/blob/main/lib/plug_compressed_body_reader/gzip.ex)
   """
 
-  @max_chunk_count 10
   def read_body(conn, opts \\ []) do
     content_encoding = Plug.Conn.get_req_header(conn, "content-encoding")
 
@@ -19,13 +18,20 @@ defmodule LogflareWeb.Plugs.CompressedBodyReader do
   end
 
   defp try_decompress(data, []), do: {:ok, data}
-  defp try_decompress(data, ["gzip"]), do: safe_gunzip(data)
+  defp try_decompress(data, ["gzip"]), do: gunzip(data)
+  defp try_decompress(data, ["deflate"]), do: inflate(data)
 
-  defp safe_gunzip(data) do
+  @max_wbits 15
+  @max_chunk_count 10
+
+  defp gunzip(data), do: safe_gunzip(data, @max_wbits + 16)
+  defp inflate(data), do: safe_gunzip(data, @max_wbits)
+
+  defp safe_gunzip(data, window_bits) do
     z = :zlib.open()
 
     try do
-      :zlib.inflateInit(z, 31)
+      :zlib.inflateInit(z, window_bits)
       result = chunked_inflate(z, data)
       :zlib.inflateEnd(z)
 
@@ -54,7 +60,7 @@ defmodule LogflareWeb.Plugs.CompressedBodyReader do
   end
 
   # initial
-  defp chunked_inflate(z, data) do
+  defp chunked_inflate(z, data) when is_binary(data) do
     z
     |> :zlib.safeInflate(data)
     |> chunked_inflate(z, 0, [])
