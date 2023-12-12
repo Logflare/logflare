@@ -10,7 +10,7 @@ steps:
       - --machine-type=c2d-standard-56
       - --project=logflare-232118
       - --network-interface=network=global,network-tier=PREMIUM
-      - --maintenance-policy=MIGRATE
+      - --maintenance-policy=TERMINATE
       - --service-account=compute-engine-2022@logflare-232118.iam.gserviceaccount.com
       - --scopes=https://www.googleapis.com/auth/cloud-platform
       - --tags=phoenix-http,https-server
@@ -18,40 +18,39 @@ steps:
       - --container-image=${_CONTAINER_IMAGE}
       - --container-privileged
       - --container-restart-policy=always
-      - --container-env=LOGFLARE_GRPC_PORT=4001,LOGFLARE_MIN_CLUSTER_SIZE=2
+      - --container-env=LOGFLARE_GRPC_PORT=4001,LOGFLARE_MIN_CLUSTER_SIZE=2,OVERRIDE_MAGIC_COOKIE=${_COOKIE},RELEASE_COOKIE=${_COOKIE}
       - --create-disk=auto-delete=yes,device-name=logflare-c2-16cpu-docker-global-cos89-13,image=projects/cos-cloud/global/images/cos-stable-101-17162-40-52,mode=rw,size=25,type=pd-ssd
       - --no-shielded-secure-boot
       - --shielded-vtpm
       - --shielded-integrity-monitoring
       - --labels=container-vm=cos-stable-101-17162-40-52
 
-  # # update instance group to the new template
-  # - name: gcr.io/cloud-builders/gcloud
-  #   args:
-  #     - beta
-  #     - compute
-  #     - instance-groups
-  #     - managed
-  #     - rolling-action
-  #     - start-update
-  #     - ${_INSTANCE_GROUP}
-  #     - --project=logflare-staging
-  #     - --zone=us-central1-a
-  #     - --type=proactive
-  #     - --max-surge=1
-  #     - --max-unavailable=0
-  #     - --min-ready=60
-  #     - --minimal-action=replace
-  #     - --most-disruptive-allowed-action=replace
-  #     - --replacement-method=substitute
-  #     - --version=template=projects/logflare-staging/global/instanceTemplates/${_TEMPLATE_NAME}
+  # deploy canaries
+  - name: gcr.io/cloud-builders/gcloud
+    args:
+      - beta
+      - compute
+      - instance-groups
+      - managed
+      - rolling-action
+      - start-update
+      - ${_INSTANCE_GROUP}
+      - --project=logflare-232118
+      - --zone=europe-west3-c
+      - --type=proactive
+      - --max-surge=1
+      - --max-unavailable=0
+      - --min-ready=300
+      - --minimal-action=replace
+      - --most-disruptive-allowed-action=replace
+      - --replacement-method=substitute
+      - --version=template=projects/logflare-232118/global/instanceTemplates/${_TEMPLATE_NAME}
 
 substitutions:
-    # _COOKIE: default
-    # _CLUSTER: main
-    # _INSTANCE_TYPE: c2d-standard-56
-    # _INSTANCE_GROUP: instance-group-staging-${_CLUSTER}
-    # _IMAGE_TAG: $SHORT_SHA
+    _CLUSTER: canary
+    _COOKIE: default-${_CLUSTER}
+    _INSTANCE_GROUP: instance-group-prod-canary
+    _IMAGE_TAG: $SHORT_SHA
     _TEMPLATE_NAME: logflare-prod-${_NORMALIZED_IMAGE_TAG}
     _CONTAINER_IMAGE: gcr.io/logflare-232118/logflare_app:${_IMAGE_TAG}
 timeout: 1800s
