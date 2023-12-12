@@ -48,7 +48,7 @@ defmodule Logflare.Source.BigQuery.SchemaTest do
     Logflare.Mailer
     |> expect(:deliver, 1, fn _ -> :ok end)
 
-    Logflare.Sources.Cache
+    Logflare.Sources
     |> expect(:get_by_and_preload, fn _ -> source end)
     |> expect(:get_by, fn _ -> source end)
 
