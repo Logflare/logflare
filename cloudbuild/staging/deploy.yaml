@@ -10,7 +10,7 @@ steps:
       - --machine-type=${_INSTANCE_TYPE}
       - --project=logflare-staging
       - --network-interface=network=default,network-tier=PREMIUM
-      - --maintenance-policy=MIGRATE
+      - --maintenance-policy=TERMINATE
       - --service-account=compute-engine-2022@logflare-staging.iam.gserviceaccount.com
       - --scopes=https://www.googleapis.com/auth/cloud-platform
       - --tags=phoenix-http,https-server
