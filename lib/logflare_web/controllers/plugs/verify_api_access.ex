@@ -42,7 +42,7 @@ defmodule LogflareWeb.Plugs.VerifyApiAccess do
     is_private_route? = "private" in scopes
 
     with {:ok, access_token_or_api_key} <- extracted,
-         {:ok, %User{} = owner} <- Auth.verify_access_token(access_token_or_api_key, scopes) do
+         {:ok, %User{} = owner} <- Auth.Cache.verify_access_token(access_token_or_api_key, scopes) do
       {:ok, Users.Cache.preload_defaults(owner)}
     else
       # don't preload for partners
