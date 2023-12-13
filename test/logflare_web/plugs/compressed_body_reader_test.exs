@@ -49,7 +49,7 @@ defmodule LogflareWeb.Plugs.CompressedBodyReaderTest do
   end
 
   defp gen_max_chunk_payloads do
-    gen all(res <- binary(max_length: 110_000, min_length: 100_000)) do
+    gen all(res <- binary(max_length: 500_000, min_length: 400_000)) do
       res
     end
   end
