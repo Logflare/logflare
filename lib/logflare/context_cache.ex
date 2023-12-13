@@ -1,6 +1,6 @@
 defmodule Logflare.ContextCache do
   @moduledoc """
-  Read-through cache for hot database paths. This module functions as the entry point for
+  Read-through cache for hot database paths and/or functions. This module functions as the entry point for
   contexts to have a cache of function calls.
 
   e.g. `Logflare.Users.Cache` functions go through `apply_fun/3` and results of those
@@ -17,6 +17,15 @@ defmodule Logflare.ContextCache do
 
   So we keep the value of the `Logflare.Users.Cache` as the key in the `Logflare.ContextCache`
   and the value of our `Logflare.ContextCache` key is the key for our `Logflare.Users.Cache`.
+
+  ## Memoization
+
+  This module can also be used to cache heavy functions or db calls hidden behind a 3rd party
+  library. See `Logflare.Auth.Cache` for an example. In this example, the `expiration` set in that
+  Cachex child_spec is handling the cache expiration.
+
+  In the case functions don't return a response with a primary key, or something else we can
+  bust the cache on, it will get reverse indexed with `select_key/1` as `:unknown`.
   """
 
   require Logger

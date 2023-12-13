@@ -12,6 +12,7 @@ defmodule Logflare.Application do
   alias Logflare.SourceSchemas
   alias Logflare.Users
   alias Logflare.Partners
+  alias Logflare.Auth
 
   def start(_type, _args) do
     env = Application.get_env(:logflare, :env)
@@ -40,6 +41,7 @@ defmodule Logflare.Application do
         Partners.Cache,
         Billing.Cache,
         SourceSchemas.Cache,
+        Auth.Cache,
         PubSubRates.Cache,
         Logs.LogEvents.Cache,
         Logs.RejectedLogEvents,
@@ -101,6 +103,7 @@ defmodule Logflare.Application do
         Sources.Cache,
         Billing.Cache,
         SourceSchemas.Cache,
+        Auth.Cache,
         PubSubRates.Cache,
         Logs.LogEvents.Cache,
 
