@@ -22,7 +22,7 @@ defmodule LogflareWeb.Plugs.CompressedBodyReader do
   defp try_decompress(data, ["deflate"]), do: inflate(data)
 
   @max_wbits 15
-  @max_chunk_count 10
+  @max_chunk_count 25
 
   defp gunzip(data), do: safe_gunzip(data, @max_wbits + 16)
   defp inflate(data), do: safe_gunzip(data, @max_wbits)
