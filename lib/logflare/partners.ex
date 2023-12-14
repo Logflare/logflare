@@ -80,8 +80,7 @@ defmodule Logflare.Partners do
     query =
       from(p in Partner,
         join: u in assoc(p, :users),
-        where: p.token == ^token,
-        where: u.token == ^user_token,
+        where: p.token == ^token and u.token == ^user_token,
         select: u
       )
 
