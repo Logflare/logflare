@@ -2,6 +2,8 @@ defmodule Logflare.BillingTest do
   use Logflare.DataCase
   alias Logflare.{User, Billing, Billing.BillingAccount, Billing.PaymentMethod, Billing.Plan}
 
+  alias Logflare.Partners
+
   describe "billing accounts" do
     @valid_attrs %{stripe_customer: "some stripe id"}
     @update_attrs %{stripe_customer: "some stripe other id"}
@@ -214,6 +216,19 @@ defmodule Logflare.BillingTest do
         |> Repo.preload(:user)
 
       assert %Plan{name: "Custom"} = Billing.get_plan_by_user(ba.user)
+    end
+
+    test "get_plan_by_user/1 with partner upgrade/downgrade" do
+      insert(:plan, name: "Free")
+      insert(:plan, name: "Enterprise")
+      user = insert(:user)
+      partner = insert(:partner, users: [user])
+      assert %Plan{name: "Free"} = Billing.get_plan_by_user(user)
+      # upgrade user
+      Partners.upgrade_user(partner,user )
+      assert %Plan{name: "Enterprise"} = Billing.get_plan_by_user(user)
+
+
     end
 
     test "change_plan/1 returns changeset" do

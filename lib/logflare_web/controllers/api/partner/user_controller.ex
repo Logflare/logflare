@@ -61,6 +61,20 @@ defmodule LogflareWeb.Api.Partner.UserController do
     end
   end
 
+  def upgrade(%{assigns: %{partner: partner}} = conn, %{"user_token" => user_token}) do
+    with user when not is_nil(user) <- Partners.get_user_by_token(partner, user_token),
+         {:ok, %_{}} <- Partners.upgrade_user(partner, user) do
+      json(conn, %{tier: "metered"})
+    end
+  end
+
+  def downgrade(%{assigns: %{partner: partner}} = conn, %{"user_token" => user_token}) do
+    with user when not is_nil(user) <- Partners.get_user_by_token(partner, user_token),
+         {:ok, %_{}} <- Partners.downgrade_user(partner, user) do
+      json(conn, %{tier: "free"})
+    end
+  end
+
   defp sanitize_response(user) do
     Enum.reduce(@allowed_fields, %{}, fn key, acc -> Map.put(acc, key, Map.get(user, key)) end)
   end

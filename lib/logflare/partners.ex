@@ -117,4 +117,27 @@ defmodule Logflare.Partners do
     |> Multi.delete_all(:delete, query)
     |> Repo.transaction()
   end
+
+  def user_upgraded?(%User{id: id}) do
+    query =
+      from(pu in PartnerUser, where: pu.user_id == ^id, select: pu.upgraded)
+
+    Repo.one(query)
+    |> case do
+      nil -> false
+      value -> value
+    end
+  end
+
+  def upgrade_user(p, u), do: do_upgrade_downgrade(p, u, true)
+  def downgrade_user(p, u), do: do_upgrade_downgrade(p, u, false)
+
+  def do_upgrade_downgrade(%Partner{id: partner_id}, %User{id: user_id}, value) do
+    query =
+      from(pu in PartnerUser, where: pu.partner_id == ^partner_id and pu.user_id == ^user_id)
+
+    Repo.update_all(query, set: [upgraded: value])
+
+    {:ok, Repo.one(query)}
+  end
 end
