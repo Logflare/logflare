@@ -15,27 +15,25 @@ defmodule LogflareWeb.Api.QueryController do
     responses: %{200 => List.response(QueryResult)}
   )
 
-  def query(%{assigns: %{user: user}} = conn, %{"pg_sql"=> sql}) do
-    with {:ok, %{rows: rows} } <- Endpoints.run_query_string(user, {:pg_sql, sql}) do
-      json(conn, %{ result: rows})
-
-      else
-        {:error , err} ->
-          json(conn, %{ errors: err })
+  def query(%{assigns: %{user: user}} = conn, %{"pg_sql" => sql}) do
+    with {:ok, %{rows: rows}} <- Endpoints.run_query_string(user, {:pg_sql, sql}) do
+      json(conn, %{result: rows})
+    else
+      {:error, err} ->
+        json(conn, %{errors: err})
     end
   end
 
-  def query(conn, %{"sql"=> sql}) do
-    query(conn, %{"bq_sql"=> sql})
+  def query(conn, %{"sql" => sql}) do
+    query(conn, %{"bq_sql" => sql})
   end
-    def query(%{assigns: %{user: user}} = conn, %{"bq_sql"=> sql}) do
-    with {:ok, %{rows: rows} } <- Endpoints.run_query_string(user, {:bq_sql, sql}) do
-      json(conn, %{ result: rows})
-      else
-        {:error , err} ->
-          json(conn, %{ errors: err})
+
+  def query(%{assigns: %{user: user}} = conn, %{"bq_sql" => sql}) do
+    with {:ok, %{rows: rows}} <- Endpoints.run_query_string(user, {:bq_sql, sql}) do
+      json(conn, %{result: rows})
+    else
+      {:error, err} ->
+        json(conn, %{errors: err})
     end
   end
-
-
 end
