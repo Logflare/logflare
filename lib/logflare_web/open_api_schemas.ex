@@ -22,6 +22,20 @@ defmodule LogflareWeb.OpenApiSchemas do
     use LogflareWeb.OpenApi, properties: @properties, required: []
   end
 
+  defmodule QueryResult do
+    @properties %{
+      result: %Schema{type: :object},
+      errors: %Schema{
+        required: false,
+        oneOf: [
+          %Schema{type: :object},
+          %Schema{type: :string}
+        ]
+      }
+    }
+    use LogflareWeb.OpenApi, properties: @properties, required: [:result, :errors]
+  end
+
   defmodule Endpoint do
     @properties %{
       token: %Schema{type: :string},
