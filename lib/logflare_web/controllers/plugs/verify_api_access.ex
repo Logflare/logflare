@@ -13,6 +13,7 @@ defmodule LogflareWeb.Plugs.VerifyApiAccess do
   alias Logflare.Users
   alias Logflare.User
   alias Logflare.Partners.Partner
+  alias Logflare.Partners
   alias LogflareWeb.Api.FallbackController
 
   def init(args), do: args |> Enum.into(%{})
@@ -20,11 +21,34 @@ defmodule LogflareWeb.Plugs.VerifyApiAccess do
   def call(conn, opts) do
     opts = Enum.into(opts, %{scopes: []})
     resource_type = Map.get(conn.assigns, :resource_type)
-    partner_scope = "partner" in opts.scopes
+
+    impersonate_user_token = get_req_header(conn, "x-lf-partner-user") |> List.first()
     # generic access
-    case identify_requestor(conn, opts.scopes) do
-      {:ok, %Partner{} = partner} when partner_scope == true ->
-        assign(conn, :partner, partner)
+    scopes_to_check =
+      if impersonate_user_token != nil do
+        ~w(partner)
+      else
+        opts.scopes
+      end
+
+    case identify_requestor(conn, scopes_to_check) do
+      {:ok, %Partner{} = partner} when impersonate_user_token == nil ->
+        conn
+        |> assign(:partner, partner)
+
+      {:ok, %Partner{} = partner} when impersonate_user_token != nil ->
+        # maybe get the user target
+
+        Partners.Cache.get_user_by_token(partner, impersonate_user_token)
+        |> then(fn
+          %User{} = u ->
+            conn
+            |> assign(:partner, partner)
+            |> assign(:user, Users.Cache.preload_defaults(u))
+
+          _ ->
+            FallbackController.call(conn, {:error, :unauthorized})
+        end)
 
       {:ok, %User{} = user} ->
         assign(conn, :user, user)
