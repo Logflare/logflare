@@ -24,11 +24,11 @@ defmodule LogflareWeb.SourceView do
   Formats a source TTL to the specified unit
   """
   @spec source_ttl_to_days(Source.t(), Plan.t()) :: integer()
-  def source_ttl_to_days(%Source{bigquery_table_ttl: nil} = source, %Plan{} = plan) do
-    source_ttl_to_days(%{source | bigquery_table_ttl: plan.limit_source_ttl}, :day)
+  def source_ttl_to_days(%Source{bigquery_table_ttl: ttl} = source, _plan) when ttl >= 0 and ttl != nil do
+    ttl
   end
-
-  def source_ttl_to_days(%Source{bigquery_table_ttl: ttl}, _plan) do
+  # fallback to plan value
+  def source_ttl_to_days(_source, %Plan{limit_source_ttl: ttl}) do
     round(ttl / :timer.hours(24))
   end
 end
