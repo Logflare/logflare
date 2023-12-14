@@ -11,6 +11,14 @@ defmodule Logflare.Google.BigQuery.GenUtils do
 
   @table_ttl 604_800_000
   @default_dataset_location "US"
+
+  @doc """
+  Returns the default TTL used (in days) for initializing the table.
+  """
+  def default_table_ttl_days() do
+    @table_ttl / :timer.hours(24)
+  end
+
   defp env_project_id, do: Application.get_env(:logflare, Logflare.Google)[:project_id]
 
   defp env_default_table_name_append,
