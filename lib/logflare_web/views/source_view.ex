@@ -3,6 +3,7 @@ defmodule LogflareWeb.SourceView do
   alias LogflareWeb.Router.Helpers, as: Routes
   alias Logflare.Billing.Plan
   alias Logflare.Source
+  alias Logflare.Google.BigQuery.GenUtils
   use LogflareWeb, :view
 
   def log_url(route) do
@@ -24,11 +25,17 @@ defmodule LogflareWeb.SourceView do
   Formats a source TTL to the specified unit
   """
   @spec source_ttl_to_days(Source.t(), Plan.t()) :: integer()
-  def source_ttl_to_days(%Source{bigquery_table_ttl: nil} = source, %Plan{} = plan) do
-    source_ttl_to_days(%{source | bigquery_table_ttl: plan.limit_source_ttl}, :day)
+  def source_ttl_to_days(%Source{bigquery_table_ttl: ttl}, _plan)
+      when ttl >= 0 and ttl != nil do
+    round(ttl)
   end
 
-  def source_ttl_to_days(%Source{bigquery_table_ttl: ttl}, _plan) do
-    round(ttl / :timer.hours(24))
+  # fallback to plan value or default init value
+  # use min to avoid misrepresenting what user should see, in cases where actual is more than plan.
+  def source_ttl_to_days(_source, %Plan{limit_source_ttl: ttl}) do
+    min(
+      round(GenUtils.default_table_ttl_days()),
+      round(ttl / :timer.hours(24))
+    )
   end
 end

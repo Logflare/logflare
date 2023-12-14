@@ -53,6 +53,19 @@ defmodule LogflareWeb.SourceControllerTest do
       assert html =~ "ttl: 3 day"
     end
 
+    test "renders default plan ttl correctly", %{conn: conn, source: source} do
+        conn
+        |> get(Routes.source_path(conn, :dashboard))
+        |> html_response(200) =~ "ttl: 3 day"
+    end
+
+    test "renders default bigquery ttl correctly", %{conn: conn, source: source} do
+      conn
+      |> get(Routes.source_path(conn, :dashboard))
+      |> html_response(200) =~ "ttl: 3 day"
+    end
+
+
     test "show source", %{conn: conn, source: source} do
       html =
         conn
