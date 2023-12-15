@@ -45,13 +45,20 @@ defmodule Logflare.ContextCache do
     case Cachex.fetch(cache, cache_key, fn {fun, args} ->
            # Use a `:cached` tuple here otherwise when an fn returns nil Cachex will miss
            # the cache because it thinks ETS returned nil
-           {:commit, {:cached, apply(context, fun, args)}}
+
+           case try_apply(context, fun, args) do
+             {:ok, response} -> {:commit, {:cached, response}}
+             {:error, e} -> {:ignore, e}
+           end
          end) do
       {:commit, {:cached, value}} ->
         index_keys(context, cache_key, value)
         value
 
       {:ok, {:cached, value}} ->
+        value
+
+      {:ignore, value} ->
         value
     end
   end
@@ -125,6 +132,15 @@ defmodule Logflare.ContextCache do
       _value ->
         # Logger.warning("Unhandled cache key for value.", error_string: inspect(value))
         :unknown
+    end
+  end
+
+  defp try_apply(context, fun, args) do
+    try do
+      {:ok, apply(context, fun, args)}
+    rescue
+      e ->
+        {:error, e}
     end
   end
 end
