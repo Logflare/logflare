@@ -6,11 +6,12 @@ defmodule LogflareWeb.AccessTokensLive do
 
   def render(assigns) do
     ~H"""
-    <div class="subhead">
-      <div class="container mx-auto">
-        <h5>~/account/access tokens</h5>
-      </div>
-    </div>
+    <.subheader>
+      <:path>
+        ~/accounts/<.subheader_path_link live_patch to={~p"/access-tokens"}>access-tokens</.subheader_path_link>
+      </:path>
+      <.subheader_link to="https://docs.logflare.app/concepts/access-tokens/" text="docs" fa_icon="book" />
+    </.subheader>
 
     <section class="content container mx-auto flex flex-col w-full">
       <div class="mb-4">
