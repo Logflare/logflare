@@ -122,11 +122,7 @@ defmodule Logflare.Partners do
     query =
       from(pu in PartnerUser, where: pu.user_id == ^id, select: pu.upgraded)
 
-    Repo.one(query)
-    |> case do
-      nil -> false
-      value -> value
-    end
+    Repo.one(query) || false
   end
 
   def upgrade_user(p, u), do: do_upgrade_downgrade(p, u, true)
