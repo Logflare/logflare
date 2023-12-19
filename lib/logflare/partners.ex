@@ -130,10 +130,14 @@ defmodule Logflare.Partners do
 
   def do_upgrade_downgrade(%Partner{id: partner_id}, %User{id: user_id}, value) do
     query =
-      from(pu in PartnerUser, where: pu.partner_id == ^partner_id and pu.user_id == ^user_id)
+      from(pu in PartnerUser,
+        where: pu.partner_id == ^partner_id and pu.user_id == ^user_id,
+        select: pu
+      )
 
-    Repo.update_all(query, set: [upgraded: value])
-
-    {:ok, Repo.one(query)}
+    case Repo.update_all(query, set: [upgraded: value]) do
+      {1, [partner_user]} -> {:ok, partner_user}
+      _ -> {:error, :not_found}
+    end
   end
 end

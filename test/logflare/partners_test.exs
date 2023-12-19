@@ -107,13 +107,15 @@ defmodule Logflare.PartnerTest do
   test "upgrade_user/2, downgrade_user/2, user_upgraded?/1" do
     user = insert(:user)
     partner = insert(:partner, users: [user])
-assert Partners.user_upgraded?(user) == false
-   assert {:ok, %PartnerUser{upgraded: true}} = Partners.upgrade_user(partner, user)
-   assert Partners.user_upgraded?(user)
-   assert {:ok, %PartnerUser{upgraded: false}} = Partners.downgrade_user(partner, user)
-   assert Partners.user_upgraded?(user) == false
+    assert Partners.user_upgraded?(user) == false
+    assert {:ok, %PartnerUser{upgraded: true}} = Partners.upgrade_user(partner, user)
+    assert Partners.user_upgraded?(user)
+    assert {:ok, %PartnerUser{upgraded: false}} = Partners.downgrade_user(partner, user)
+    assert Partners.user_upgraded?(user) == false
 
     assert Partners.user_upgraded?(insert(:user)) == false
+
+    assert {:error, :not_found} = Partners.upgrade_user(partner, insert(:user))
   end
 
 end
