@@ -28,4 +28,8 @@ defmodule LogflareWeb.Api.QueryController do
       json(conn, %{result: rows})
     end
   end
+
+  def query(_conn, _params) do
+    {:error, "No query params provided. Supported query params are sql=, bq_sql=, and pg_sql="}
+  end
 end

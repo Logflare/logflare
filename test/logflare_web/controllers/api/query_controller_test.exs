@@ -9,6 +9,14 @@ defmodule LogflareWeb.Api.QueryControllerTest do
     {:ok, user: user}
   end
 
+
+  test "no query param provided", %{conn: conn, user: user} do
+    conn
+    |> add_access_token(user, ~w(private))
+    |> get(~p"/api/query")
+    |> json_response(400)
+  end
+
   describe "query with bq" do
     setup do
       stub(Goth, :fetch, fn _mod -> {:ok, %Goth.Token{token: "auth-token"}} end)
