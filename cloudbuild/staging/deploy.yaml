@@ -19,7 +19,7 @@ steps:
       - --container-privileged
       - --container-restart-policy=always
       - --container-env=LOGFLARE_GRPC_PORT=4001,LOGFLARE_MIN_CLUSTER_SIZE=1,OVERRIDE_MAGIC_COOKIE=${_COOKIE}
-      - --create-disk=auto-delete=yes,device-name=logflare-staging-cluster-privileged-e2-cos-89-shutdown-12,image=projects/cos-cloud/global/images/cos-stable-105-17412-156-59,mode=rw,size=100,type=pd-ssd
+      - --create-disk=auto-delete=yes,device-name=logflare-staging-cluster-privileged-e2-cos-89-shutdown-12,image=projects/cos-cloud/global/images/cos-stable-105-17412-156-59,mode=rw,size=25,type=pd-ssd
       - --no-shielded-secure-boot
       - --shielded-vtpm
       - --shielded-integrity-monitoring
@@ -49,7 +49,7 @@ substitutions:
   _CLUSTER: main
   _COOKIE: default-${_CLUSTER}
   _NORMALIZED_IMAGE_TAG: ${_IMAGE_TAG}
-  _INSTANCE_TYPE: e2-standard-4
+  _INSTANCE_TYPE: c2d-standard-2
   _INSTANCE_GROUP: instance-group-staging-${_CLUSTER}
   _IMAGE_TAG: $SHORT_SHA
   _TEMPLATE_NAME: logflare-staging-${_CLUSTER}-cluster-${_NORMALIZED_IMAGE_TAG}

@@ -143,7 +143,7 @@ deploy.staging.versioned:
 	
 	gcloud builds submit . \
 		--config=./cloudbuild/staging/deploy.yaml \
-		--substitutions=_IMAGE_TAG=$(VERSION),_NORMALIZED_IMAGE_TAG=$(NORMALIZED_VERSION),_INSTANCE_TYPE=c2d-standard-2,_CLUSTER=versioned \
+		--substitutions=_IMAGE_TAG=$(VERSION),_NORMALIZED_IMAGE_TAG=$(NORMALIZED_VERSION),_CLUSTER=versioned \
 		--region=us-west1 \
 		--gcs-log-dir="gs://logflare-staging_cloudbuild-logs/logs"
 
