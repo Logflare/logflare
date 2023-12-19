@@ -17,8 +17,9 @@ import LiveReact, { initLiveReact } from "phoenix_live_react";
 
 import sourceLiveViewHooks from "./source_lv_hooks";
 import logsLiveViewHooks from "./log_event_live_hooks";
-
+import $ from "jquery"
 import moment from "moment";
+
 // set moment globally before daterangepicker
 window.moment = moment;
 
@@ -100,4 +101,24 @@ window.liveSocket = liveSocket;
 
 document.addEventListener("DOMContentLoaded", (e) => {
   initLiveReact();
+
 });
+
+// Use `:text` on the `:detail` optoin to pass values to event listener
+window.addEventListener("logflare:copy-to-clipboard", (event) => {
+  if ("clipboard" in navigator) {
+    const text = event.detail?.text || event.target.textContent;
+    navigator.clipboard.writeText(text);
+  } else {
+    console.error("Your browser does not support clipboard copy.");
+  }
+});
+
+
+window.addEventListener("phx:page-loading-stop", _info => {
+  // enable all tooltips
+  $(function () {
+    $('[data-toggle="tooltip"]').tooltip({delay: {show: 100, hide: 200}})
+  });
+
+})

@@ -197,7 +197,8 @@ defmodule Logflare.Factory do
   def access_token_factory do
     %OauthAccessToken{
       token: TestUtils.random_string(20),
-      resource_owner: build(:user)
+      resource_owner: build(:user),
+      scopes: "public"
     }
   end
 

@@ -8,16 +8,13 @@ defmodule LogflareWeb.AccessTokensLive do
     ~H"""
     <.subheader>
       <:path>
-        ~/accounts/<.subheader_path_link live_patch to={~p"/access-tokens"}>access-tokens</.subheader_path_link>
+        ~/accounts/<.subheader_path_link live_patch to={~p"/access-tokens"}>access tokens</.subheader_path_link>
       </:path>
       <.subheader_link to="https://docs.logflare.app/concepts/access-tokens/" text="docs" fa_icon="book" />
     </.subheader>
 
     <section class="content container mx-auto flex flex-col w-full">
       <div class="mb-4">
-        <p>
-          <strong>Accesss tokens are only supported for Logflare Endpoints for now.</strong>
-        </p>
         <p style="white-space: pre-wrap">Theree 3 ways of authenticating with the API: in the <code>Authorization</code> header, the <code>X-API-KEY</code> header, or the <code>api_key</code> query parameter.
 
           The <code>Authorization</code> header method expects the header format <code>Authorization: Bearer your-access-token</code>.
@@ -47,7 +44,13 @@ defmodule LogflareWeb.AccessTokensLive do
       </div>
 
       <%= if @access_tokens == [] do %>
-        <p>You do not have any access tokens yet.</p>
+        <div class="alert alert-dark tw-max-w-md">
+          <h5>Legacy Ingest API Key</h5>
+          <p><strong>Deprecated</strong>, use access tokens instead.</p>
+          <button class="btn btn-secondary btn-sm" phx-click={JS.dispatch("logflare:copy-to-clipboard", detail: %{text: @user.api_key})} data-toggle="tooltip" data-placement="top" title="Copy to clipboard">
+            <i class="fa fa-clone" aria-hidden="true"></i> Copy
+          </button>
+        </div>
       <% end %>
 
       <table class={["table-dark", "table-auto", "mt-4", "w-full", "flex-grow", if(@access_tokens == [], do: "hidden")]}>
@@ -63,11 +66,16 @@ defmodule LogflareWeb.AccessTokensLive do
             <tr>
               <td class="p-2">
                 <%= token.description %>
+                <span :for={scope <- String.split(token.scopes || "")}><%= scope %></span>
               </td>
               <td class="p-2">
                 <%= Calendar.strftime(token.inserted_at, "%d %b %Y, %I:%M:%S %p") %>
               </td>
+
               <td class="p-2">
+                <button :if={token.scopes =~ "public"} class="btn btn-secondary" phx-click={JS.dispatch("logflare:copy-to-clipboard", detail: %{text: token.token})} data-toggle="tooltip" data-placement="top" title="Copy to clipboard">
+                  <i class="fa fa-clone" aria-hidden="true"></i> Copy
+                </button>
                 <button class="btn text-danger text-bold" data-confirm="Are you sure? This cannot be undone." phx-click="revoke-token" phx-value-token-id={token.id}>
                   Revoke
                 </button>

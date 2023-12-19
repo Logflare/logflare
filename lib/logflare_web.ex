@@ -123,6 +123,7 @@ defmodule LogflareWeb do
     quote do
       use LogflareWeb.LiveCommons
       use LogflareWeb.ModalLiveHelpers
+      alias Phoenix.LiveView.JS
     end
   end
 
