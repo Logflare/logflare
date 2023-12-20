@@ -13,18 +13,21 @@ defmodule LogflareWeb.AccessTokensLive do
       <.subheader_link to="https://docs.logflare.app/concepts/access-tokens/" text="docs" fa_icon="book" />
     </.subheader>
 
-    <section class="content container mx-auto flex flex-col w-full">
-      <div class="mb-4">
-        <p style="white-space: pre-wrap">Theree 3 ways of authenticating with the API: in the <code>Authorization</code> header, the <code>X-API-KEY</code> header, or the <code>api_key</code> query parameter.
+    <section class="content container mx-auto tw-flex tw-flex-col w-full tw-gap-4">
+      <div>
+        <button class="btn btn-primary" phx-click="toggle-create-form" phx-value-show="true">
+          Create access token
+        </button>
+      </div>
+      <div>
+        <p style="white-space: pre-wrap">There are 3 ways of authenticating with the API: in the <code>Authorization</code> header, the <code>X-API-KEY</code> header, or the <code>api_key</code> query parameter.
 
           The <code>Authorization</code> header method expects the header format <code>Authorization: Bearer your-access-token</code>.
           The <code>X-API-KEY</code> header method expects the header format <code>X-API-KEY: your-access-token</code>.
           The <code>api_key</code> query parameter method expects the search format <code>?api_key=your-access-token</code>.</p>
-        <button class="btn btn-primary" phx-click="toggle-create-form" phx-value-show="true">
-          Create access token
-        </button>
 
-        <.form for={%{}} action="#" phx-submit="create-token" class={["mt-4", if(@show_create_form == false, do: "hidden")]}>
+        <.form for={%{}} action="#" phx-submit="create-token" class={["mt-4", "jumbotron jumbotron-fluid tw-p-4", if(@show_create_form == false, do: "hidden")]}>
+          <h5>New Access Token</h5>
           <div class="form-group">
             <label name="description">Description</label>
             <input name="description" autofocus class="form-control" />
@@ -47,39 +50,42 @@ defmodule LogflareWeb.AccessTokensLive do
               </div>
             <% end %>
           </div>
-          <button type="button" phx-click="toggle-create-form" phx-value-show="false">Cancel</button>
-          <%= submit("Create") %>
+          <button type="button" class="btn btn-secondary" phx-click="toggle-create-form" phx-value-show="false">Cancel</button>
+          <%= submit("Create", class: "btn btn-primary") %>
         </.form>
 
         <%= if @created_token do %>
-          <div class="mt-4">
+          <.alert variant="success">
             <p>Access token created successfully, copy this token to a safe location. For security purposes, this token will not be shown again.</p>
 
             <pre class="p-2"><%= @created_token.token %></pre>
-            <button phx-click="dismiss-created-token">
+            <button class="btn btn-secondary" phx-click={JS.dispatch("logflare:copy-to-clipboard", detail: %{text: @created_token.token})} data-toggle="tooltip" data-placement="top" title="Copy to clipboard">
+              <i class="fa fa-clone" aria-hidden="true"></i> Copy
+            </button>
+            <button class="btn btn-secondary" phx-click="dismiss-created-token">
               Dismiss
             </button>
-          </div>
+          </.alert>
         <% end %>
       </div>
 
       <%= if @access_tokens == [] do %>
-        <div class="alert alert-dark tw-max-w-md">
+        <.alert variant="dark" class="tw-max-w-md">
           <h5>Legacy Ingest API Key</h5>
           <p><strong>Deprecated</strong>, use access tokens instead.</p>
           <button class="btn btn-secondary btn-sm" phx-click={JS.dispatch("logflare:copy-to-clipboard", detail: %{text: @user.api_key})} data-toggle="tooltip" data-placement="top" title="Copy to clipboard">
             <i class="fa fa-clone" aria-hidden="true"></i> Copy
           </button>
-        </div>
+        </.alert>
       <% end %>
 
-      <table class={["table-dark", "table-auto", "mt-4", "w-full", "flex-grow", if(@access_tokens == [], do: "hidden")]}>
+      <table class={["table-dark", "table-auto", "w-full", "flex-grow", if(@access_tokens == [], do: "hidden")]}>
         <thead>
           <tr>
             <th class="p-2">Description</th>
             <th class="p-2">Scope</th>
             <th class="p-2">Created on</th>
-            <th class="p-2"></th>
+            <th class="p-2">Actions</th>
           </tr>
         </thead>
         <tbody>
@@ -177,5 +183,6 @@ defmodule LogflareWeb.AccessTokensLive do
 
     socket
     |> assign(access_tokens: tokens)
+    |> assign(created_token: nil)
   end
 end
