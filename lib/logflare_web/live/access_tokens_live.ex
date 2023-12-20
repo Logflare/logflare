@@ -24,12 +24,32 @@ defmodule LogflareWeb.AccessTokensLive do
           Create access token
         </button>
 
-        <form phx-submit="create-token" class={["mt-4", if(@show_create_form == false, do: "hidden")]}>
-          <label>Description</label>
-          <input name="description" autofocus />
-          <%= submit("Create") %>
+        <.form for={%{}} action="#" phx-submit="create-token" class={["mt-4", if(@show_create_form == false, do: "hidden")]}>
+          <div class="form-group">
+            <label name="description">Description</label>
+            <input name="description" autofocus class="form-control" />
+            <small class="form-text text-muted">A short description for identifying what this access token is to be used for.</small>
+          </div>
+
+          <div class="form-group ">
+            <label name="scopes" class="tw-mr-3">Scope</label>
+            <%= for %{value: value, description: description} <- [%{
+              value: "public",
+              description: "For ingestion and endpoints"
+            }, %{
+              value: "private",
+              description: "For account management"
+            }] do %>
+              <div class="form-check  form-check-inline tw-mr-2">
+                <input class="form-check-input" type="radio" name="scopes" id={["scopes", value]} value={value} checked={value == "public"} />
+                <label class="form-check-label tw-px-1" for={["scopes", value]}><%= String.capitalize(value) %></label>
+                <small class="form-text text-muted"><%= description %></small>
+              </div>
+            <% end %>
+          </div>
           <button type="button" phx-click="toggle-create-form" phx-value-show="false">Cancel</button>
-        </form>
+          <%= submit("Create") %>
+        </.form>
 
         <%= if @created_token do %>
           <div class="mt-4">
@@ -116,14 +136,16 @@ defmodule LogflareWeb.AccessTokensLive do
 
   def handle_event(
         "create-token",
-        %{"description" => description} = params,
+        params,
         %{assigns: %{user: user}} = socket
       ) do
     Logger.debug(
       "Creating access token for user, user_id=#{inspect(user.id)}, params: #{inspect(params)}"
     )
 
-    {:ok, token} = Auth.create_access_token(user, %{description: description})
+    attrs = Map.take(params, ["description", "scopes"])
+
+    {:ok, token} = Auth.create_access_token(user, attrs)
 
     socket =
       socket

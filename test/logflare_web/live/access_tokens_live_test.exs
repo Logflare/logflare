@@ -45,7 +45,29 @@ defmodule LogflareWeb.AccessTokensLiveTest do
     refute html =~ "Deprecated"
   end
 
-  test "private token", %{conn: conn, user: user} do
+  test "create private token", %{conn: conn} do
+    {:ok, view, _html} = live(conn, ~p"/access-tokens")
+
+    assert view
+           |> element("button", "Create access token")
+           |> render_click()
+
+    assert view |> element("button", "Create") |> has_element?()
+    assert view |> element("label", "Scope") |> has_element?()
+
+    assert view
+           |> element("form")
+           |> render_submit(%{
+             description: "some description",
+             scopes: "private"
+           }) =~ "created successfully"
+
+    html = view |> element("table") |> render()
+    assert html =~ "some description"
+    assert html =~ "private"
+  end
+
+  test "show private token", %{conn: conn, user: user} do
     token = insert(:access_token, scopes: "private", resource_owner: user)
     {:ok, view, _html} = live(conn, ~p"/access-tokens")
 
