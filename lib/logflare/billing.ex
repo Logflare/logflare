@@ -14,6 +14,7 @@ defmodule Logflare.Billing do
     Billing.PaymentMethod
   }
 
+  alias Logflare.Partners
   alias Logflare.SingleTenant
 
   require Protocol
@@ -327,6 +328,9 @@ defmodule Logflare.Billing do
   def get_plan_by_user(%User{} = user) do
     cond do
       SingleTenant.single_tenant?() ->
+        get_plan_by(name: "Enterprise")
+
+      Partners.user_upgraded?(user) ->
         get_plan_by(name: "Enterprise")
 
       user.billing_enabled == false ->

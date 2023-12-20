@@ -8,6 +8,7 @@ defmodule Logflare.Partners.PartnerUser do
   schema "partner_users" do
     belongs_to :partner, Logflare.Partners.Partner
     belongs_to :user, Logflare.User
+    field :upgraded, :boolean, default: false
   end
 
   def changeset(partner_user, params) do

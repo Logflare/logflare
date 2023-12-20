@@ -134,6 +134,29 @@ defmodule LogflareWeb.Api.Partner.UserControllerTest do
     end
   end
 
+  describe "PUT user tiers" do
+    test "upgrade/downgrade", %{conn: conn} do
+      user = insert(:user)
+      partner = insert(:partner, users: [user])
+
+        # upgrade
+      assert %{"tier"=> "metered"} =
+        conn
+          |> add_partner_access_token(partner)
+        |> put(~p"/api/partner/users/#{user.token}/upgrade")
+        |> json_response(200)
+
+      # downgrade
+      assert %{"tier"=> "free"} =
+          conn
+          |> recycle()
+          |> add_partner_access_token(partner)
+          |> put(~p"/api/partner/users/#{user.token}/downgrade")
+          |> json_response(200)
+
+    end
+  end
+
   describe "GET user usage" do
     test "returns 200 and the usage for a given user", %{
       conn: conn,

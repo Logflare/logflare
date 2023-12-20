@@ -391,6 +391,8 @@ defmodule LogflareWeb.Router do
 
     get("/users", Api.Partner.UserController, :index)
     post("/users", Api.Partner.UserController, :create)
+    put("/users/:user_token/upgrade", Api.Partner.UserController, :upgrade)
+    put("/users/:user_token/downgrade", Api.Partner.UserController, :downgrade)
 
     get("/users/:user_token", Api.Partner.UserController, :get_user)
     get("/users/:user_token/usage", Api.Partner.UserController, :get_user_usage)
