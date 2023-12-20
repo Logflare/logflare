@@ -330,7 +330,7 @@ defmodule Logflare.Billing do
       SingleTenant.single_tenant?() ->
         get_plan_by(name: "Enterprise")
 
-      Partners.user_upgraded?(user) == true ->
+      Partners.user_upgraded?(user) ->
         get_plan_by(name: "Enterprise")
 
       user.billing_enabled == false ->
