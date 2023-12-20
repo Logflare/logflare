@@ -22,4 +22,14 @@ defmodule LogflareWeb.Api.FallbackController do
     |> put_status(:not_found)
     |> json(%{error: "Not Found"})
   end
+
+  def call(conn, {:error, msg}) when is_atom(msg) do
+    call(conn, {:error, Atom.to_string(msg)})
+  end
+
+  def call(conn, {:error, msg}) when is_binary(msg) do
+    conn
+    |> put_status(400)
+    |> json(%{error: msg})
+  end
 end

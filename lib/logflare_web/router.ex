@@ -368,6 +368,7 @@ defmodule LogflareWeb.Router do
     pipe_through([:api, :require_mgmt_api_auth])
 
     get("/account", UserController, :api_show)
+    get("/query", Api.QueryController, :query)
 
     resources("/sources", Api.SourceController,
       param: "token",
