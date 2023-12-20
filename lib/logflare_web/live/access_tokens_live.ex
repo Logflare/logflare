@@ -93,7 +93,11 @@ defmodule LogflareWeb.AccessTokensLive do
             <tr>
               <td class="p-2">
                 <span class="tw-text-sm">
-                  <%= token.description %>
+                  <%= if token.description do %>
+                    <%= token.description %>
+                  <% else %>
+                    <span class="tw-italic">No description</span>
+                  <% end %>
                 </span>
               </td>
               <td>

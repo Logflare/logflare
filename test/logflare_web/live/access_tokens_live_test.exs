@@ -43,6 +43,7 @@ defmodule LogflareWeb.AccessTokensLiveTest do
     assert html =~ token.token
     assert html =~ "public"
     refute html =~ "Deprecated"
+    assert html =~ "No description"
   end
 
   test "create private token", %{conn: conn} do
