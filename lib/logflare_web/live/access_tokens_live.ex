@@ -6,69 +6,113 @@ defmodule LogflareWeb.AccessTokensLive do
 
   def render(assigns) do
     ~H"""
-    <div class="subhead">
-      <div class="container mx-auto">
-        <h5>~/account/access tokens</h5>
-      </div>
-    </div>
+    <.subheader>
+      <:path>
+        ~/accounts/<.subheader_path_link live_patch to={~p"/access-tokens"}>access tokens</.subheader_path_link>
+      </:path>
+      <.subheader_link to="https://docs.logflare.app/concepts/access-tokens/" text="docs" fa_icon="book" />
+    </.subheader>
 
-    <section class="content container mx-auto flex flex-col w-full">
-      <div class="mb-4">
-        <p>
-          <strong>Accesss tokens are only supported for Logflare Endpoints for now.</strong>
-        </p>
-        <p style="white-space: pre-wrap">Theree 3 ways of authenticating with the API: in the <code>Authorization</code> header, the <code>X-API-KEY</code> header, or the <code>api_key</code> query parameter.
+    <section class="content container mx-auto tw-flex tw-flex-col w-full tw-gap-4">
+      <div>
+        <button class="btn btn-primary" phx-click="toggle-create-form" phx-value-show="true">
+          Create access token
+        </button>
+      </div>
+      <div>
+        <p style="white-space: pre-wrap">There are 3 ways of authenticating with the API: in the <code>Authorization</code> header, the <code>X-API-KEY</code> header, or the <code>api_key</code> query parameter.
 
           The <code>Authorization</code> header method expects the header format <code>Authorization: Bearer your-access-token</code>.
           The <code>X-API-KEY</code> header method expects the header format <code>X-API-KEY: your-access-token</code>.
           The <code>api_key</code> query parameter method expects the search format <code>?api_key=your-access-token</code>.</p>
-        <button class="btn btn-primary" phx-click="toggle-create-form" phx-value-show="true">
-          Create access token
-        </button>
 
-        <form phx-submit="create-token" class={["mt-4", if(@show_create_form == false, do: "hidden")]}>
-          <label>Description</label>
-          <input name="description" autofocus />
-          <%= submit("Create") %>
-          <button type="button" phx-click="toggle-create-form" phx-value-show="false">Cancel</button>
-        </form>
+        <.form for={%{}} action="#" phx-submit="create-token" class={["mt-4", "jumbotron jumbotron-fluid tw-p-4", if(@show_create_form == false, do: "hidden")]}>
+          <h5>New Access Token</h5>
+          <div class="form-group">
+            <label name="description">Description</label>
+            <input name="description" autofocus class="form-control" />
+            <small class="form-text text-muted">A short description for identifying what this access token is to be used for.</small>
+          </div>
+
+          <div class="form-group ">
+            <label name="scopes" class="tw-mr-3">Scope</label>
+            <%= for %{value: value, description: description} <- [%{
+              value: "public",
+              description: "For ingestion and endpoints"
+            }, %{
+              value: "private",
+              description: "For account management"
+            }] do %>
+              <div class="form-check  form-check-inline tw-mr-2">
+                <input class="form-check-input" type="radio" name="scopes" id={["scopes", value]} value={value} checked={value == "public"} />
+                <label class="form-check-label tw-px-1" for={["scopes", value]}><%= String.capitalize(value) %></label>
+                <small class="form-text text-muted"><%= description %></small>
+              </div>
+            <% end %>
+          </div>
+          <button type="button" class="btn btn-secondary" phx-click="toggle-create-form" phx-value-show="false">Cancel</button>
+          <%= submit("Create", class: "btn btn-primary") %>
+        </.form>
 
         <%= if @created_token do %>
-          <div class="mt-4">
+          <.alert variant="success">
             <p>Access token created successfully, copy this token to a safe location. For security purposes, this token will not be shown again.</p>
 
             <pre class="p-2"><%= @created_token.token %></pre>
-            <button phx-click="dismiss-created-token">
+            <button class="btn btn-secondary" phx-click={JS.dispatch("logflare:copy-to-clipboard", detail: %{text: @created_token.token})} data-toggle="tooltip" data-placement="top" title="Copy to clipboard">
+              <i class="fa fa-clone" aria-hidden="true"></i> Copy
+            </button>
+            <button class="btn btn-secondary" phx-click="dismiss-created-token">
               Dismiss
             </button>
-          </div>
+          </.alert>
         <% end %>
       </div>
 
       <%= if @access_tokens == [] do %>
-        <p>You do not have any access tokens yet.</p>
+        <.alert variant="dark" class="tw-max-w-md">
+          <h5>Legacy Ingest API Key</h5>
+          <p><strong>Deprecated</strong>, use access tokens instead.</p>
+          <button class="btn btn-secondary btn-sm" phx-click={JS.dispatch("logflare:copy-to-clipboard", detail: %{text: @user.api_key})} data-toggle="tooltip" data-placement="top" title="Copy to clipboard">
+            <i class="fa fa-clone" aria-hidden="true"></i> Copy
+          </button>
+        </.alert>
       <% end %>
 
-      <table class={["table-dark", "table-auto", "mt-4", "w-full", "flex-grow", if(@access_tokens == [], do: "hidden")]}>
+      <table class={["table-dark", "table-auto", "w-full", "flex-grow", if(@access_tokens == [], do: "hidden")]}>
         <thead>
           <tr>
             <th class="p-2">Description</th>
+            <th class="p-2">Scope</th>
             <th class="p-2">Created on</th>
-            <th class="p-2"></th>
+            <th class="p-2">Actions</th>
           </tr>
         </thead>
         <tbody>
           <%= for token <- @access_tokens do %>
             <tr>
               <td class="p-2">
-                <%= token.description %>
+                <span class="tw-text-sm">
+                  <%= if token.description do %>
+                    <%= token.description %>
+                  <% else %>
+                    <span class="tw-italic">No description</span>
+                  <% end %>
+                </span>
               </td>
-              <td class="p-2">
+              <td>
+                <span :for={scope <- String.split(token.scopes || "")} class="badge badge-secondary"><%= scope %></span>
+              </td>
+              <td class="p-2 tw-text-sm">
                 <%= Calendar.strftime(token.inserted_at, "%d %b %Y, %I:%M:%S %p") %>
               </td>
+
               <td class="p-2">
-                <button class="btn text-danger text-bold" data-confirm="Are you sure? This cannot be undone." phx-click="revoke-token" phx-value-token-id={token.id}>
-                  Revoke
+                <button :if={token.scopes =~ "public"} class="btn btn-secondary btn-sm" phx-click={JS.dispatch("logflare:copy-to-clipboard", detail: %{text: token.token})} data-toggle="tooltip" data-placement="top" title="Copy to clipboard">
+                  <i class="fa fa-clone" aria-hidden="true"></i> Copy
+                </button>
+                <button class="btn text-danger btn-sm" data-confirm="Are you sure? This cannot be undone." phx-click="revoke-token" phx-value-token-id={token.id} data-toggle="tooltip" data-placement="top" title="Revoke access token forever">
+                  <i class="fa fa-trash" aria-hidden="true"></i> Revoke
                 </button>
               </td>
             </tr>
@@ -102,14 +146,16 @@ defmodule LogflareWeb.AccessTokensLive do
 
   def handle_event(
         "create-token",
-        %{"description" => description} = params,
+        params,
         %{assigns: %{user: user}} = socket
       ) do
     Logger.debug(
       "Creating access token for user, user_id=#{inspect(user.id)}, params: #{inspect(params)}"
     )
 
-    {:ok, token} = Auth.create_access_token(user, %{description: description})
+    attrs = Map.take(params, ["description", "scopes"])
+
+    {:ok, token} = Auth.create_access_token(user, attrs)
 
     socket =
       socket
@@ -141,5 +187,6 @@ defmodule LogflareWeb.AccessTokensLive do
 
     socket
     |> assign(access_tokens: tokens)
+    |> assign(created_token: nil)
   end
 end

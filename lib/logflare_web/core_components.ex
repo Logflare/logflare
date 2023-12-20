@@ -8,11 +8,12 @@ defmodule LogflareWeb.CoreComponents do
   attr :variant, :string,
     values: ["primary", "secondary", "success", "danger", "warning", "info", "light", "dark"]
 
+  attr :class, :string, required: false, default: ""
   slot :inner_block, required: true
 
   def alert(assigns) do
     ~H"""
-    <div class={"alert alert-#{@variant}"} role="alert">
+    <div class={["alert alert-#{@variant}", @class]} role="alert">
       <%= render_slot(@inner_block) %>
     </div>
     """
