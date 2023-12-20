@@ -252,9 +252,9 @@ defmodule Logflare.Application do
   defp finch_pools do
     [
       # Finch connection pools, using http2
-      {Finch, name: Logflare.FinchIngest, pools: %{:default => [protocol: :http2, count: 10]}},
-      {Finch, name: Logflare.FinchQuery, pools: %{:default => [protocol: :http2, count: 10]}},
-      {Finch, name: Logflare.FinchDefault, pools: %{:default => [protocol: :http2, count: 10]}}
+      {Finch, name: Logflare.FinchIngest, pools: %{:default => [protocol: :http2, count: 200]}},
+      {Finch, name: Logflare.FinchQuery, pools: %{:default => [protocol: :http2, count: 100]}},
+      {Finch, name: Logflare.FinchDefault, pools: %{:default => [protocol: :http2, count: 150]}}
     ]
   end
 
