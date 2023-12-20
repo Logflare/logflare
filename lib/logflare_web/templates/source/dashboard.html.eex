@@ -5,10 +5,15 @@
       <ul>
         <li>
           <i class="fa fa-info-circle" aria-hidden="true"></i>
-          <span>Ingest API key is
+          <span>ingest API key
             <code class="pointer-cursor logflare-tooltip" id="api-key" data-showing-api-key="false"
               data-clipboard-text="<%= @user.api_key %>" data-toggle="tooltip" data-html=true data-placement="top"
               title="<span id=&quot;copy-tooltip&quot;>Copy this</span>">CLICK ME</code></span></li>
+        <li>
+          <%= link to: ~p"/access-tokens" do %>
+          <i class="fas fa-key"></i><span class="hide-on-mobile"> access tokens</span>
+          <% end %>
+        </li>
         <li><%= link to: Routes.vercel_log_drains_path(@conn, :edit) do %>▲</i><span class="hide-on-mobile"> vercel
             integration</span><% end %></li>
         <li><%= link to: Routes.billing_account_path(@conn, :edit) do %><i class="fas fa-money-bill"></i><span
