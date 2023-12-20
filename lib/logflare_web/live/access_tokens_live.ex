@@ -57,6 +57,7 @@ defmodule LogflareWeb.AccessTokensLive do
         <thead>
           <tr>
             <th class="p-2">Description</th>
+            <th class="p-2">Scope</th>
             <th class="p-2">Created on</th>
             <th class="p-2"></th>
           </tr>
@@ -65,19 +66,23 @@ defmodule LogflareWeb.AccessTokensLive do
           <%= for token <- @access_tokens do %>
             <tr>
               <td class="p-2">
-                <%= token.description %>
-                <span :for={scope <- String.split(token.scopes || "")}><%= scope %></span>
+                <span class="tw-text-sm">
+                  <%= token.description %>
+                </span>
               </td>
-              <td class="p-2">
+              <td>
+                <span :for={scope <- String.split(token.scopes || "")} class="badge badge-secondary"><%= scope %></span>
+              </td>
+              <td class="p-2 tw-text-sm">
                 <%= Calendar.strftime(token.inserted_at, "%d %b %Y, %I:%M:%S %p") %>
               </td>
 
               <td class="p-2">
-                <button :if={token.scopes =~ "public"} class="btn btn-secondary" phx-click={JS.dispatch("logflare:copy-to-clipboard", detail: %{text: token.token})} data-toggle="tooltip" data-placement="top" title="Copy to clipboard">
+                <button :if={token.scopes =~ "public"} class="btn btn-secondary btn-sm" phx-click={JS.dispatch("logflare:copy-to-clipboard", detail: %{text: token.token})} data-toggle="tooltip" data-placement="top" title="Copy to clipboard">
                   <i class="fa fa-clone" aria-hidden="true"></i> Copy
                 </button>
-                <button class="btn text-danger text-bold" data-confirm="Are you sure? This cannot be undone." phx-click="revoke-token" phx-value-token-id={token.id}>
-                  Revoke
+                <button class="btn text-danger btn-sm" data-confirm="Are you sure? This cannot be undone." phx-click="revoke-token" phx-value-token-id={token.id} data-toggle="tooltip" data-placement="top" title="Revoke access token forever">
+                  <i class="fa fa-trash" aria-hidden="true"></i> Revoke
                 </button>
               </td>
             </tr>
