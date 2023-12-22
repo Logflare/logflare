@@ -148,6 +148,10 @@ defmodule Logflare.Google.CloudResourceManagerTest do
       %Binding{
         members: ["serviceAccount:#{google_configs.cloud_build_trigger_sa}"],
         role: "roles/iam.serviceAccountUser"
+      },
+      %Binding{
+        members: ["serviceAccount:#{google_configs.cloud_build_trigger_sa}"],
+        role: "roles/cloudbuild.serviceAgent"
       }
     ]
   end
