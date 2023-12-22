@@ -152,6 +152,10 @@ defmodule Logflare.Google.CloudResourceManager do
       %Model.Binding{
         members: ["serviceAccount:#{env_cloud_build_trigger_sa()}"],
         role: "roles/iam.serviceAccountUser"
+      },
+      %Model.Binding{
+        members: ["serviceAccount:#{env_cloud_build_trigger_sa()}"],
+        role: "roles/cloudbuild.serviceAgent"
       }
     ]
   end
