@@ -71,7 +71,6 @@ defmodule Logflare.Mixfile do
       {:bandit, ">= 0.7.7"},
       {:plug_crypto, "~> 1.2.2"},
       {:cors_plug, "~> 2.0"},
-      {:plug_caisson, "~> 0.1"},
 
       # Oauth
       {:ueberauth_google, "~> 0.8"},
