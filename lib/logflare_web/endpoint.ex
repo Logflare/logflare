@@ -36,7 +36,7 @@ defmodule LogflareWeb.Endpoint do
     parsers: [:urlencoded, :multipart, :json],
     pass: ["*/*"],
     json_decoder: Jason,
-    body_reader: {PlugCaisson, :read_body, []}
+    body_reader: {LogflareWeb.Plugs.CompressedBodyReader, :read_body, []}
   )
 
   plug(Plug.MethodOverride)
