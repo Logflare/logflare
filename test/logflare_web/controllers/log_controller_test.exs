@@ -98,7 +98,9 @@ defmodule LogflareWeb.LogControllerTest do
     end
 
     test ":create ingestion with gzip", %{conn: conn, source: source} do
-      payload = :zlib.gzip(Jason.encode!(%{"batch" => @valid_batch}))
+      batch = for _i <- 1..500, do: @valid
+      payload = :zlib.gzip(Jason.encode!(%{"batch" => batch}))
+      payload  |> :erlang.term_to_binary() |> :erlang.external_size() |> dbg() # 178 bytes
       conn =
         conn
         |> Plug.Conn.put_req_header("content-encoding", "gzip" )
