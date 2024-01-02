@@ -105,6 +105,8 @@ defmodule Logflare.Logs do
 
         RejectedLogEvents.ingest(le)
 
+        le
+
       {:error, :buffer_full} ->
         :telemetry.execute(
           [:logflare, :logs, :ingest_logs],
