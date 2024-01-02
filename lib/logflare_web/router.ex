@@ -56,7 +56,8 @@ defmodule LogflareWeb.Router do
     plug(Plug.Parsers,
       parsers: [:json, :bert, :syslog, :ndjson],
       json_decoder: Jason,
-      body_reader: {LogflareWeb.Plugs.CompressedBodyReader, :read_body, []}
+      body_reader: {PlugCaisson, :read_body, []},
+      length: 100_000_000
     )
 
     plug(:accepts, ["json", "bert"])

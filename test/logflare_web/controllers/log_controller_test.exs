@@ -97,6 +97,18 @@ defmodule LogflareWeb.LogControllerTest do
       :timer.sleep(2000)
     end
 
+    test ":create ingestion with gzip", %{conn: conn, source: source} do
+      payload = :zlib.gzip(Jason.encode!(%{"batch" => @valid_batch}))
+      conn =
+        conn
+        |> Plug.Conn.put_req_header("content-encoding", "gzip" )
+        |> Plug.Conn.put_req_header("content-type", "application/json" )
+        |> post(~p"/logs?#{[source: source.token]}", payload)
+
+      assert json_response(conn, 200) == %{"message" => "Logged!"}
+      # wait for all logs to be ingested before removing all stubs
+      :timer.sleep(2000)
+    end
     test ":create ingestion batch with `batch` key", %{conn: conn, source: source} do
       conn =
         conn
