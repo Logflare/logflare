@@ -98,7 +98,7 @@ defmodule LogflareWeb.LogControllerTest do
     end
 
     test ":create ingestion with gzip", %{conn: conn, source: source} do
-      batch = for _i <- 1..500, do: @valid
+      batch = for _i <- 1..1500, do: @valid
       payload = :zlib.gzip(Jason.encode!(%{"batch" => batch}))
       conn =
         conn
