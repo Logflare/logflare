@@ -10,6 +10,7 @@ defmodule LogflareWeb.LogControllerTest do
   alias Logflare.Sources
 
   @valid %{"some" => "valid log entry", "event_message" => "hi!"}
+  @invalid %{"some" => {123, "invalid"}, 123 => "hi!", 1 => :invalid}
   @valid_batch [
     %{"some" => "valid log entry", "event_message" => "hi!"},
     %{"some" => "valid log entry 2", "event_message" => "hi again!"}
@@ -68,8 +69,28 @@ defmodule LogflareWeb.LogControllerTest do
     end
   end
 
-  describe "v1 pipeline with legacy user.api_key" do
+
+  describe "v1 pipeline invalid" do
     setup [:v1_pipeline_setup, :warm_caches, :reject_context_functions]
+
+    setup %{user: user, conn: conn} do
+      conn = put_req_header(conn, "x-api-key", user.api_key)
+
+      {:ok, user: user, conn: conn}
+    end
+
+    test ":create rejected logs ingestion", %{conn: conn, source: source} do
+      conn =
+        conn
+        |> post(Routes.log_path(conn, :create, source: source.token), @invalid)
+
+      assert %{"message"=> [msg]}  =  json_response(conn, 406)
+      assert msg =~ "not supported by"
+    end
+  end
+
+  describe "v1 pipeline with legacy user.api_key" do
+    setup [:v1_pipeline_setup, :warm_caches, :reject_context_functions, :expect_broadcast]
 
     setup %{user: user, conn: conn} do
       conn = put_req_header(conn, "x-api-key", user.api_key)
@@ -96,6 +117,9 @@ defmodule LogflareWeb.LogControllerTest do
       # wait for all logs to be ingested before removing all stubs
       :timer.sleep(2000)
     end
+
+
+
 
     test ":create ingestion with gzip", %{conn: conn, source: source} do
       batch = for _i <- 1..1500, do: @valid
@@ -148,7 +172,7 @@ defmodule LogflareWeb.LogControllerTest do
   end
 
   describe "v1 pipeline with access tokens" do
-    setup [:v1_pipeline_setup]
+    setup [:v1_pipeline_setup, :expect_broadcast]
 
     setup %{user: user, conn: conn} do
       {:ok, access_token} = Logflare.Auth.create_access_token(user)
@@ -225,6 +249,13 @@ defmodule LogflareWeb.LogControllerTest do
     :timer.sleep(500)
 
     Logflare.Logs
+    |> stub(:broadcast, fn le -> le end)
+
+    {:ok, source: source, user: user, conn: conn}
+  end
+
+  defp expect_broadcast(_) do
+    Logflare.Logs
     |> expect(:broadcast, 1, fn le ->
       assert match?(@valid, le.body)
       assert le.body["event_message"] != nil
@@ -232,8 +263,7 @@ defmodule LogflareWeb.LogControllerTest do
 
       le
     end)
-
-    {:ok, source: source, user: user, conn: conn}
+    :ok
   end
 
   defp warm_caches(%{user: user, source: source}) do
