@@ -53,7 +53,7 @@ defmodule Logflare.Logs.SyslogParser.Helpers do
     ascii_string(c, @ascii_printable_chars, min: 1, max: 32)
     |> unwrap_and_tag(:msg_id)
     |> label("msg_id")
-  endf
+  end
 
   def maybe(c1 \\ empty(), c) do
     choice(c1, [ignore(nilvalue()), c])
