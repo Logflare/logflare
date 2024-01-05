@@ -4,13 +4,14 @@ defmodule Logflare.Logs.SyslogParserTest do
   import Logflare.Logs.SyslogParser
   alias Logflare.Logs.SyslogMessage
 
+
   describe "Syslog parser for heroku payloads" do
     test "example message 1" do
       message =
         """
         182 <190>1 2020-08-09T13:30:36.316601+00:00 host phx-limit phx-limit-5885669966-287kp - \e[36mweb.1  | \e[0m13:30:36.314 request_id=b4f92e4a104759b02593c34c41d2f0ce [info] Sent 200 in 1ms
         """
-        |> String.trim()
+
 
       assert {
                :ok,
@@ -39,7 +40,7 @@ defmodule Logflare.Logs.SyslogParserTest do
         """
         169 <190>1 2020-08-09T13:30:36.576402+00:00 host phx-limit phx-limit-5885669966-287kp - \e[36mweb.1  | \e[0m13:30:36.575 [info] CONNECTED TO Phoenix.LiveView.Socket in 202µs
         """
-        |> String.trim()
+
 
       assert {
                :ok,
@@ -68,7 +69,7 @@ defmodule Logflare.Logs.SyslogParserTest do
         """
         126 <190>1 2020-08-09T13:30:36.576423+00:00 host phx-limit phx-limit-5885669966-287kp - \e[36mweb.1  | \e[0m  Transport: :websocket
         """
-        |> String.trim()
+
 
       assert {
                :ok,
@@ -95,7 +96,7 @@ defmodule Logflare.Logs.SyslogParserTest do
         """
         149 <190>1 2020-08-09T13:30:36.576424+00:00 host phx-limit phx-limit-5885669966-287kp - \e[36mweb.1  | \e[0m  Serializer: Phoenix.Socket.V2.JSONSerializer
         """
-        |> String.trim()
+
 
       assert {
                :ok,
@@ -123,7 +124,7 @@ defmodule Logflare.Logs.SyslogParserTest do
         """
         443 <190>1 2020-08-09T13:30:36.576426+00:00 host phx-limit phx-limit-5885669966-287kp - \e[36mweb.1  | \e[0m  Parameters: %{\"_csrf_token\" => \"Rg1gVgJWUjkVCjISGmQKew0kZRYpYBwwpe00D78ZtsQqqUI9gK6zQReD\", \"_mounts\" => \"0\", \"_track_static\" => %{\"0\" => \"https://phx-limit.gigalixirapp.com/css/app-5e472e0beb5f275dce8c669b8ba7c47e.css?vsn=d\", \"1\" => \"https://phx-limit.gigalixirapp.com/js/app-13b608e49f856a3afa3085d9ce96d5fe.js?vsn=d\"}, \"vsn\" => \"2.0.0\"}
         """
-        |> String.trim()
+
 
       assert {
                :ok,
@@ -152,7 +153,7 @@ defmodule Logflare.Logs.SyslogParserTest do
         """
         119 <40>1 2012-11-30T06:45:26+00:00 host app web.3 - Starting process with command `bundle exec rackup config.ru -p 24405`
         """
-        |> String.trim()
+
 
       assert {
                :ok,
@@ -180,7 +181,7 @@ defmodule Logflare.Logs.SyslogParserTest do
         """
         84 <85>1 2018-10-11T22:14:15.003Z leodido - 31932 - [ex@31932 iut="3"] An auth token...
         """
-        |> String.trim()
+
 
       assert {
                :ok,
@@ -205,7 +206,7 @@ defmodule Logflare.Logs.SyslogParserTest do
         """
         84 <85>1 2018-10-11T22:14:15.003Z leodido - 31932 - [ex@31932 iut="3"] JSON payload: {"user": {"id": 4, "name": "John Doe"}, "request_id": 1000}
         """
-        |> String.trim()
+
 
       assert {
                :ok,
@@ -239,7 +240,7 @@ defmodule Logflare.Logs.SyslogParserTest do
         """
         84 <85>1 2018-10-11T22:14:15.003Z leodido - 31932 - [ex@31932 iut="3"] {"user": {"id": 4, "name": "John Doe"}, "request_id": 1000}
         """
-        |> String.trim()
+
 
       assert {
                :ok,
@@ -272,7 +273,7 @@ defmodule Logflare.Logs.SyslogParserTest do
         """
         84 <85>1 2018-10-11T22:14:15.003Z leodido - 31932 - [ex@31932 iut="3"] {"user": {"id": 4, "name": "John Doe"}, "request_id": 1000} trailing message log text
         """
-        |> String.trim()
+
 
       assert {
                :ok,
@@ -306,7 +307,6 @@ defmodule Logflare.Logs.SyslogParserTest do
         """
         84 <85>1 2018-10-11T22:14:15.003Z leodido - 31932 - [ex@31932 iut="3"] \e[36mweb.1  | \e[0m{"user": {"id": 4, "name": "John Doe"}, "request_id": 1000} trailing message log text
         """
-        |> String.trim()
 
       assert {
                :ok,
@@ -342,7 +342,6 @@ defmodule Logflare.Logs.SyslogParserTest do
         """
         84 <85>1 2018-10-11T22:14:15.003Z leodido - 31932 ID0001 {"user": {"id": 4, "name": "John Doe"}, "request_id": 1000}
         """
-        |> String.trim()
 
       assert {
                :ok,
@@ -378,7 +377,6 @@ defmodule Logflare.Logs.SyslogParserTest do
         """
         <34>1 2003-10-11T22:14:15.003Z mymachine.example.com su - ID47 - BOM'su root' failed for lonvick on /dev/pts/8
         """
-        |> String.trim()
 
       assert {
                :ok,
@@ -399,13 +397,17 @@ defmodule Logflare.Logs.SyslogParserTest do
                }
              } == parse(message)
     end
+    test "trailing spaces" do
+      message = ~S(<34>1 2003-10-11T22:14:15.003Z host app web.1 - - )
+      assert { :ok, %SyslogMessage{}} = parse(message)
+    end
+
 
     test "example 2" do
       message =
         """
         <165>1 2003-08-24T05:14:15.000003-07:00 192.0.2.1 myproc 8710 - - %% It's time to make the do-nuts.
         """
-        |> String.trim()
 
       assert {
                :ok,
@@ -432,7 +434,6 @@ defmodule Logflare.Logs.SyslogParserTest do
         """
         <165>1 2003-10-11T22:14:15.003Z mymachine.example.com evntslog - ID47 [exampleSDID@32473 iut="3" eventSource="Application" eventID="1011"] BOMAn application event log entry...
         """
-        |> String.trim()
 
       assert {
                :ok,
@@ -466,7 +467,7 @@ defmodule Logflare.Logs.SyslogParserTest do
         """
         <165>1 2003-10-11T22:14:15.003Z mymachine.example.com evntslog - ID47 [exampleSDID@32473 iut="3" eventSource="Application" eventID="1011"][examplePriority@32473 class="high"]
         """
-        |> String.trim()
+
 
       assert {
                :ok,
@@ -503,7 +504,7 @@ defmodule Logflare.Logs.SyslogParserTest do
         ~S"""
         <165>1 2003-10-11T22:14:15.003Z mymachine.example.com evntslog - ID47 [exampleSDID@32473 iut="3" eventSource="Application" eventID="1011"][examplePriority@32473 class="\"high\""]
         """
-        |> String.trim()
+
 
       assert {
                :ok,

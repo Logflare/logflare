@@ -74,6 +74,8 @@ defmodule Logflare.Logs.SyslogParser do
         nil -> &do_parse/1
       end
 
+    messagestr = String.trim(messagestr)
+
     case parser.(messagestr) do
       {:ok, tokens, "", _, _, _} ->
         map =
