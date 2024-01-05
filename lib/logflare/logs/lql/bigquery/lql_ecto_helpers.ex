@@ -40,7 +40,7 @@ defmodule Logflare.Lql.EctoHelpers do
   def unnest_and_join_nested_columns(q, join_type, path) do
     path
     |> split_by_dots()
-    |> Enum.slice(0..-2)
+    |> Enum.slice(0..-2//1)
     |> case do
       [] ->
         q
