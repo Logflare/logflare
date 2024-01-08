@@ -1,4 +1,4 @@
-elixir 1.15.5-otp-26
+elixir 1.16.0-otp-26
 nodejs 18.13.0
 rust 1.64.0
-erlang 26.0.2
+erlang 26.2.1

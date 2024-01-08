@@ -1,37 +1,68 @@
-FROM elixir:1.15-alpine as builder
+ARG ELIXIR_VERSION=1.16.0
+ARG OTP_VERSION=26.2.1
+ARG DEBIAN_VERSION=bullseye-20231009-slim
+
+ARG BUILDER_IMAGE="hexpm/elixir:${ELIXIR_VERSION}-erlang-${OTP_VERSION}-debian-${DEBIAN_VERSION}"
+ARG RUNNER_IMAGE="debian:${DEBIAN_VERSION}"
+
+
+FROM ${BUILDER_IMAGE} as builder
 
 ENV MIX_ENV prod
-# Due to some Rust caveats with SSL on Alpine images, we need to use GIT to fecth cargo registry index
-ENV CARGO_NET_GIT_FETCH_WITH_CLI=true
 
-# cache intermediate layers for deps compilation
-COPY ./VERSION mix.exs mix.lock /logflare/
-COPY assets/package.json assets/package-lock.json /logflare/assets/
-WORKDIR /logflare
-RUN apk update && \
-    # all the base dependencies
-    apk add -f curl git build-base nodejs npm rust cargo python3 && \
-    # all the app dependencies
+
+WORKDIR /app
+
+COPY config/config.exs config/
+COPY config/prod.exs config/
+COPY config/runtime.exs config/
+COPY . ./
+COPY ./VERSION mix.exs mix.lock ./
+COPY assets/package.json assets/package-lock.json assets/
+
+
+# install build dependencies
+RUN apt-get update -y && apt-get install -y curl bash build-essential git gcc make && \
+    # install nodejs
+    curl -fsSL https://deb.nodesource.com/setup_18.x | bash - && \
+    apt-get install -y nodejs && \
+    # install rust
+    curl https://sh.rustup.rs -sSf | bash -s -- -y && \
+    # cleanup
+    apt-get clean && rm -f /var/lib/apt/lists/*_* && \
+    # app dependencies
     mix do local.rebar --force, local.hex --force, deps.get, deps.compile && \
     npm --prefix assets ci
 
-COPY . /logflare
+
+# rust bin path
+ENV PATH="/root/.cargo/bin:${PATH}"
+
+# check installed correctly
+RUN cargo version
+
+# release
 RUN mix release  && \
     npm run --prefix assets deploy && \
     mix phx.digest
 
-# alpine version must match the base erlang image version used
-# https://github.com/erlef/docker-elixir/blob/master/1.15/alpine/Dockerfile
-# https://github.com/erlang/docker-erlang-otp/blob/master/26/alpine/Dockerfile
-FROM alpine:3.18.0 as app
+FROM ${RUNNER_IMAGE}
 
 # Required for the BeamVM to run
-RUN apk update && apk add -f openssl libgcc libstdc++ ncurses-libs curl
+RUN apt-get update -y && apt-get install -y curl libstdc++6 openssl libncurses5 locales \
+    && apt-get clean && rm -f /var/lib/apt/lists/*_*
+
+# Set the locale
+RUN sed -i '/en_US.UTF-8/s/^# //g' /etc/locale.gen && locale-gen
+
+ENV LANG en_US.UTF-8
+ENV LANGUAGE en_US:en
+ENV LC_ALL en_US.UTF-8
 
 # Copy required files from builder step
-COPY --from=builder logflare/_build/prod /opt/app
-COPY --from=builder logflare/VERSION /opt/app/VERSION
-COPY --from=builder logflare/priv/static /opt/app/rel/logflare/bin/priv/static
+COPY --from=builder app/_build/prod /opt/app
+COPY --from=builder app/VERSION /opt/app/VERSION
+COPY --from=builder app/priv/static /opt/app/rel/logflare/bin/priv/static
 
 # Move files to the correct folder taking into consideration the VERSION
 RUN cp -r /opt/app/rel/logflare/bin/priv/static /opt/app/rel/logflare/lib/logflare-$(cat /opt/app/VERSION)/priv/static
