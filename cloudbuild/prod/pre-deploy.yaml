@@ -15,6 +15,7 @@ steps:
       - --scopes=https://www.googleapis.com/auth/cloud-platform
       - --tags=phoenix-http,https-server
       - --metadata-from-file=shutdown-script=./cloudbuild/shutdown.sh
+      - --metadata-from-file=startup-script=./cloudbuild/startup.sh
       - --container-image=${_CONTAINER_IMAGE}
       - --container-privileged
       - --container-restart-policy=always

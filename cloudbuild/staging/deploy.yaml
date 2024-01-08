@@ -16,6 +16,7 @@ steps:
       - --tags=phoenix-http,https-server
       - --container-image=${_CONTAINER_IMAGE}
       - --metadata-from-file=shutdown-script=./cloudbuild/shutdown.sh
+      - --metadata-from-file=startup-script=./cloudbuild/startup.sh
       - --container-privileged
       - --container-restart-policy=always
       - --container-env=LOGFLARE_GRPC_PORT=4001,LOGFLARE_MIN_CLUSTER_SIZE=1,OVERRIDE_MAGIC_COOKIE=${_COOKIE}
