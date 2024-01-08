@@ -13,7 +13,6 @@ steps:
       - --project=logflare-232118
       - --network-interface=network=global,network-tier=PREMIUM
       - --maintenance-policy=TERMINATE
-      - --provisioning-model=STANDARD
       - --service-account=compute-engine-2022@logflare-232118.iam.gserviceaccount.com
       - --scopes=https://www.googleapis.com/auth/cloud-platform
       - --tags=phoenix-http,https-server

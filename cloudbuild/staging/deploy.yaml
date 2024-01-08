@@ -13,7 +13,6 @@ steps:
       - --project=logflare-staging
       - --network-interface=network=default,network-tier=PREMIUM
       - --maintenance-policy=TERMINATE
-      - --provisioning-model=STANDARD
       - --service-account=compute-engine-2022@logflare-staging.iam.gserviceaccount.com
       - --scopes=https://www.googleapis.com/auth/cloud-platform
       - --tags=phoenix-http,https-server
