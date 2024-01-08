@@ -11,21 +11,22 @@ steps:
       - --project=logflare-staging
       - --network-interface=network=default,network-tier=PREMIUM
       - --maintenance-policy=TERMINATE
+      - --provisioning-model=STANDARD
       - --service-account=compute-engine-2022@logflare-staging.iam.gserviceaccount.com
       - --scopes=https://www.googleapis.com/auth/cloud-platform
       - --tags=phoenix-http,https-server
       - --container-image=${_CONTAINER_IMAGE}
       - --metadata-from-file=shutdown-script=./cloudbuild/shutdown.sh
-      # needed for enabling node-problem-detector
-      - --metadata=google-monitoring-enabled=true
+      # needed for enabling node-problem-detector, explicitly enable logging
+      - --metadata=google-monitoring-enabled=true,google-logging-enabled=true
       - --container-privileged
       - --container-restart-policy=always
       - --container-env=LOGFLARE_GRPC_PORT=4001,LOGFLARE_MIN_CLUSTER_SIZE=1,OVERRIDE_MAGIC_COOKIE=${_COOKIE}
-      - --create-disk=auto-delete=yes,device-name=logflare-staging-cluster-privileged-e2-cos-89-shutdown-12,image=projects/cos-cloud/global/images/cos-stable-105-17412-156-59,mode=rw,size=25,type=pd-ssd
+      - --create-disk=auto-delete=yes,boot=yes,device-name=logflare-staging-cos109,image=projects/cos-cloud/global/images/cos-stable-109-17800-66-54,mode=rw,size=25,type=pd-ssd
       - --no-shielded-secure-boot
       - --shielded-vtpm
       - --shielded-integrity-monitoring
-      - --labels=container-vm=cos-stable-105-17412-156-59
+      - --labels=container-vm=cos-stable-109-17800-66-54
   # update instance group to the new template
   - name: gcr.io/cloud-builders/gcloud
     args:

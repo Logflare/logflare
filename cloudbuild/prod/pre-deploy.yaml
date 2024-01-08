@@ -11,21 +11,22 @@ steps:
       - --project=logflare-232118
       - --network-interface=network=global,network-tier=PREMIUM
       - --maintenance-policy=TERMINATE
+      - --provisioning-model=STANDARD
       - --service-account=compute-engine-2022@logflare-232118.iam.gserviceaccount.com
       - --scopes=https://www.googleapis.com/auth/cloud-platform
       - --tags=phoenix-http,https-server
       - --metadata-from-file=shutdown-script=./cloudbuild/shutdown.sh
-      # needed for enabling node-problem-detector
-      - --metadata=google-monitoring-enabled=true
+      # needed for enabling node-problem-detector, explicitly enable logging
+      - --metadata=google-monitoring-enabled=true,google-logging-enabled=true
       - --container-image=${_CONTAINER_IMAGE}
       - --container-privileged
       - --container-restart-policy=always
       - --container-env=LOGFLARE_GRPC_PORT=4001,LOGFLARE_MIN_CLUSTER_SIZE=2,OVERRIDE_MAGIC_COOKIE=${_COOKIE},RELEASE_COOKIE=${_COOKIE}
-      - --create-disk=auto-delete=yes,device-name=logflare-c2-16cpu-docker-global-cos89-13,image=projects/cos-cloud/global/images/cos-stable-101-17162-40-52,mode=rw,size=25,type=pd-ssd
+      - --create-disk=auto-delete=yes,boot=yes,device-name=logflare-prod-cos109,image=projects/cos-cloud/global/images/cos-stable-109-17800-66-54,mode=rw,size=25,type=pd-ssd 
       - --no-shielded-secure-boot
       - --shielded-vtpm
       - --shielded-integrity-monitoring
-      - --labels=container-vm=cos-stable-101-17162-40-52
+      - --labels=container-vm=cos-stable-109-17800-66-54
 
   # deploy canaries
   - name: gcr.io/cloud-builders/gcloud
