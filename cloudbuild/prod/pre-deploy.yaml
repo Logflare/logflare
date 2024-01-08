@@ -7,6 +7,8 @@ steps:
       - instance-templates
       - create-with-container
       - $_TEMPLATE_NAME
+      - --boot-disk-size=10GB
+      - --boot-disk-type=local-ssd
       - --machine-type=c2d-standard-56
       - --project=logflare-232118
       - --network-interface=network=global,network-tier=PREMIUM
@@ -22,7 +24,6 @@ steps:
       - --container-privileged
       - --container-restart-policy=always
       - --container-env=LOGFLARE_GRPC_PORT=4001,LOGFLARE_MIN_CLUSTER_SIZE=2,OVERRIDE_MAGIC_COOKIE=${_COOKIE},RELEASE_COOKIE=${_COOKIE}
-      - --create-disk=auto-delete=yes,boot=yes,device-name=logflare-prod-cos109,image=projects/cos-cloud/global/images/cos-stable-109-17800-66-54,mode=rw,size=25,type=pd-ssd 
       - --no-shielded-secure-boot
       - --shielded-vtpm
       - --shielded-integrity-monitoring
