@@ -16,6 +16,7 @@ steps:
       - --tags=phoenix-http,https-server
       - --container-image=${_CONTAINER_IMAGE}
       - --metadata-from-file=shutdown-script=./cloudbuild/shutdown.sh
+      # needed for enabling node-problem-detector
       - --metadata=google-monitoring-enabled=true
       - --container-privileged
       - --container-restart-policy=always
