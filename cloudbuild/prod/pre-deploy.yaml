@@ -17,12 +17,13 @@ steps:
       - --scopes=https://www.googleapis.com/auth/cloud-platform
       - --tags=phoenix-http,https-server
       - --metadata-from-file=shutdown-script=./cloudbuild/shutdown.sh
+      - --metadata-from-file=startup-script=./cloudbuild/startup.sh
       # needed for enabling node-problem-detector, explicitly enable logging
       - --metadata=google-monitoring-enabled=true,google-logging-enabled=true
       - --container-image=${_CONTAINER_IMAGE}
       - --container-privileged
       - --container-restart-policy=always
-      - --container-env=LOGFLARE_GRPC_PORT=4001,LOGFLARE_MIN_CLUSTER_SIZE=2,OVERRIDE_MAGIC_COOKIE=${_COOKIE},RELEASE_COOKIE=${_COOKIE}
+      - --container-env=LOGFLARE_GRPC_PORT=4001,LOGFLARE_MIN_CLUSTER_SIZE=2,RELEASE_COOKIE=${_COOKIE}
       - --no-shielded-secure-boot
       - --shielded-vtpm
       - --shielded-integrity-monitoring
