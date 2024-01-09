@@ -17,8 +17,7 @@ steps:
       - --scopes=https://www.googleapis.com/auth/cloud-platform
       - --tags=phoenix-http,https-server
       - --container-image=${_CONTAINER_IMAGE}
-      - --metadata-from-file=shutdown-script=./cloudbuild/shutdown.sh
-      - --metadata-from-file=startup-script=./cloudbuild/startup.sh
+      - --metadata-from-file=shutdown-script=./cloudbuild/shutdown.sh,startup-script=./cloudbuild/startup.sh
       # needed for enabling node-problem-detector, explicitly enable logging
       - --metadata=google-monitoring-enabled=true,google-logging-enabled=true
       - --container-privileged
