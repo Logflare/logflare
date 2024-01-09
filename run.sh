@@ -1,5 +1,12 @@
 #! /bin/sh
 
+# maybe run a startup script
+if [ -f ./startup.sh ]
+then
+    echo 'startup.sh file present, sourcing...';
+    . ./startup.sh;
+fi
+
 # load secrets conditionally
 if [ -f /tmp/.secrets.env ]
 then

@@ -33,6 +33,11 @@ services:
         source: ${PWD}/gcloud.json
         target: /opt/app/rel/logflare/bin/gcloud.json
         read_only: true
+      # uncomment if you want to add a startup script
+      # - type: bind
+      #   source: ${PWD}/cloudbuild/startup.sh
+      #   target: /opt/app/rel/logflare/bin/startup.sh
+      #   read_only: true
     depends_on:
       - db
 

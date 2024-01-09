@@ -16,7 +16,7 @@ steps:
       - --service-account=compute-engine-2022@logflare-232118.iam.gserviceaccount.com
       - --scopes=https://www.googleapis.com/auth/cloud-platform
       - --tags=phoenix-http,https-server
-      - --metadata-from-file=shutdown-script=./cloudbuild/shutdown.sh,startup-script=./cloudbuild/startup.sh
+      - --metadata-from-file=shutdown-script=./cloudbuild/shutdown.sh
       # needed for enabling node-problem-detector, explicitly enable logging
       - --metadata=google-monitoring-enabled=true,google-logging-enabled=true
       - --container-image=${_CONTAINER_IMAGE}
@@ -50,13 +50,13 @@ steps:
       - --version=template=projects/logflare-232118/global/instanceTemplates/${_TEMPLATE_NAME}
 
 substitutions:
-    _CLUSTER: canary
-    _COOKIE: default-${_CLUSTER}
-    _INSTANCE_GROUP: instance-group-prod-canary
-    _IMAGE_TAG: $SHORT_SHA
-    _TEMPLATE_NAME: logflare-prod-${_NORMALIZED_IMAGE_TAG}
-    _CONTAINER_IMAGE: gcr.io/logflare-232118/logflare_app:${_IMAGE_TAG}
+  _CLUSTER: canary
+  _COOKIE: default-${_CLUSTER}
+  _INSTANCE_GROUP: instance-group-prod-canary
+  _IMAGE_TAG: $SHORT_SHA
+  _TEMPLATE_NAME: logflare-prod-${_NORMALIZED_IMAGE_TAG}
+  _CONTAINER_IMAGE: gcr.io/logflare-232118/logflare_app:${_IMAGE_TAG}
 timeout: 1800s
 options:
-    dynamicSubstitutions: true
-    substitutionOption: "ALLOW_LOOSE"
+  dynamicSubstitutions: true
+  substitutionOption: "ALLOW_LOOSE"
