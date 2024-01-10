@@ -11,6 +11,8 @@ COPY db-client-cert.pem db-client-cert.pem
 COPY db-client-key.pem db-client-key.pem
 COPY db-server-ca.pem db-server-ca.pem
 
+COPY ./cloudbuild/startup.sh /opt/app/rel/logflare/bin/startup.sh
+
 ENTRYPOINT ["tini", "--"]
 
 CMD ["sh", "run.sh"]
