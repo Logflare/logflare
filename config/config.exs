@@ -30,8 +30,8 @@ config :logflare, LogflareWeb.Endpoint,
       transport_options: [
         # https://www.erlang.org/doc/man/inet
         # both reuseport and reuseport_lb should be provided for linux
-        {:reuseport, true},
-        {:reuseport_lb, true}
+        reuseport: true,
+        reuseport_lb: true
         #
       ]
     ]
