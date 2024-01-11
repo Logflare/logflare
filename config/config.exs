@@ -20,8 +20,22 @@ config :logflare, LogflareWeb.Endpoint,
   adapter: Bandit.PhoenixAdapter,
   http: [
     thousand_island_options: [
+      # https://cloud.google.com/load-balancing/docs/https/#timeouts_and_retries
+      # preserves idle keepalive connections up to load balancer max of 600s
+      # equivalent to cowboy's protocol_options.idle_timeout
+      # https://github.com/Logflare/logflare/blob/33da08d8f7f6c2b7b85205c04c46656eb1f1aac0/config/prod.exs#L22
+      read_timeout: 650_000,
+      # transport options are passed wholly to :gen_tcp
+      # https://github.com/mtrudel/thousand_island/blob/ae733332892b1bb2482a9cf4e97de03411fba2ad/lib/thousand_island/transports/tcp.ex#L61
       transport_options: [
-        reuseport: true
+        # https://www.erlang.org/doc/man/inet
+        # both reuseport and reuseport_lb should be provided for linux
+        {:reuseport, true},
+        {:reuseport_lb, true},
+        # for so_reuseport flag for unix linux
+        # https://www.erlang.org/doc/man/gen_tcp.html#type-option
+        {:raw, 1, 15, <<1::32-native>>}
+        #
       ]
     ]
   ],
