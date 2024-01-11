@@ -31,10 +31,7 @@ config :logflare, LogflareWeb.Endpoint,
         # https://www.erlang.org/doc/man/inet
         # both reuseport and reuseport_lb should be provided for linux
         {:reuseport, true},
-        {:reuseport_lb, true},
-        # for so_reuseport flag for unix linux
-        # https://www.erlang.org/doc/man/gen_tcp.html#type-option
-        {:raw, 1, 15, <<1::32-native>>}
+        {:reuseport_lb, true}
         #
       ]
     ]
