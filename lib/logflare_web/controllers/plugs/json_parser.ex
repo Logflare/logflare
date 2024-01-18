@@ -1,5 +1,9 @@
 defmodule LogflareWeb.JsonParser do
-  @moduledoc false
+  @moduledoc """
+  Implementation is taken from https://github.com/elixir-plug/plug/blob/v1.15.3/lib/plug/parsers/json.ex#L1
+
+  Only changes are related to the error handling for BadRequestError.
+  """
   require Logger
   @behaviour Plug.Parsers
 
