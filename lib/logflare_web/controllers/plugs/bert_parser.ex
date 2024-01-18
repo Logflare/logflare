@@ -1,4 +1,4 @@
-defmodule Plug.Parsers.BERT do
+defmodule LogflareWeb.BertParser do
   @moduledoc """
   Parses BERT (http://bert-rpc.org) request body
   """

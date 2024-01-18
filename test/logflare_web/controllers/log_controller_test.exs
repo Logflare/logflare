@@ -87,6 +87,21 @@ defmodule LogflareWeb.LogControllerTest do
       assert %{"message"=> [msg]}  =  json_response(conn, 406)
       assert msg =~ "not supported by"
     end
+
+    test ":create ingestion error handling for BadRequestError in Plug.Parsers", %{
+      conn: conn,
+      source: source
+    } do
+      assert_raise LogflareWeb.JsonParser.BadRequestError, fn ->
+        conn
+        |> put_req_header("content-type", "application/json")
+        |> put_req_header("content-encoding", "br")
+        |> post(
+          Routes.log_path(conn, :create, source: source.token),
+          Jason.encode!(%{"batch" => @valid_batch})
+        )
+      end
+    end
   end
 
   describe "v1 pipeline with legacy user.api_key" do
