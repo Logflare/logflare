@@ -43,6 +43,6 @@ Mimic.copy(ExTwilio.Message)
 Mimic.stub(Goth)
 Mimic.stub(Finch)
 
-ExUnit.configure(exclude: [integration: true, failing: true])
+ExUnit.configure(exclude: [integration: true, failing: true, benchmark: true])
 
 Ecto.Adapters.SQL.Sandbox.mode(Logflare.Repo, :manual)
