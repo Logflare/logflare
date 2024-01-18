@@ -302,18 +302,13 @@ defmodule LogflareWeb.LogControllerTest do
 
     setup %{user: user, conn: conn} do
       conn = put_req_header(conn, "x-api-key", user.api_key)
-
-
-      :timer.sleep(1500)
       {:ok, user: user, conn: conn}
     end
 
     @tag :benchmark
     test "v1 ingestion", %{conn: conn, source: source} do
       Logflare.Logs
-      |> stub(:ingest, fn _ ->
-        :ok
-      end)
+      |> stub(:ingest, fn _ -> :ok end)
 
       batch = Jason.encode!(%{"batch" => for(_ <- 1..250, do: @valid)})
 
