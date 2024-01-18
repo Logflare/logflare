@@ -246,7 +246,7 @@ defmodule Logflare.Application do
     {body, options} = Keyword.pop!(options, :body)
 
     Finch.build(method, url, headers, body)
-    |> Finch.request(Logflare.FinchDefault, options)
+    |> Finch.request(Logflare.FinchGoth, options)
   end
 
   defp finch_pools do
@@ -254,7 +254,8 @@ defmodule Logflare.Application do
       # Finch connection pools, using http2
       {Finch, name: Logflare.FinchIngest, pools: %{:default => [protocol: :http2, count: 200]}},
       {Finch, name: Logflare.FinchQuery, pools: %{:default => [protocol: :http2, count: 100]}},
-      {Finch, name: Logflare.FinchDefault, pools: %{:default => [protocol: :http2, count: 150]}}
+      {Finch, name: Logflare.FinchGoth, pools: %{:default => [protocol: :http2, count: 1]}}
+      {Finch, name: Logflare.FinchDefault, pools: %{:default => [protocol: :http2, count: 50]}}
     ]
   end
 
