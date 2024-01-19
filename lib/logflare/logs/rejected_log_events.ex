@@ -66,20 +66,11 @@ defmodule Logflare.Logs.RejectedLogEvents do
   def query(source_id) when is_atom(source_id) do
     @cache
     |> Cachex.stream!()
-    |> Enum.filter(fn x ->
-      case x do
-        {:entry, {^source_id, _le_id}, _ts, _, _le} ->
-          true
-
-        _ ->
-          false
-      end
+    |> Stream.filter(fn x ->
+      match?({:entry, {^source_id, _le_id}, _ts, _, _le}, x)
     end)
-    |> Enum.map(fn x ->
-      case x do
-        {:entry, {^source_id, _le_id}, _ts, _, le} ->
-          le
-      end
+    |> Stream.map(fn {:entry, {^source_id, _le_id}, _ts, _, le} ->
+      le
     end)
     |> Enum.reverse()
     |> Enum.take(100)
