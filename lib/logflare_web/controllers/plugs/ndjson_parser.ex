@@ -1,4 +1,4 @@
-defmodule Plug.Parsers.NDJSON do
+defmodule LogflareWeb.NdjsonParser do
   @moduledoc """
   Parse Cloudflare Log Push request bodies.
   """

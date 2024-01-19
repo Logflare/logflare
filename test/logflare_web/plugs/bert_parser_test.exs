@@ -1,9 +1,9 @@
-defmodule Plugs.Parsers.BERTTest do
+defmodule LogflareWeb.BertParserTest do
   @moduledoc false
   use LogflareWeb.ConnCase
-  alias Plug.Parsers.BERT
+  alias LogflareWeb.BertParser
 
-  describe "Plugs.Parsers.BERT" do
+  describe "LogflareWeb.BertParser" do
     test "decodes a typical log batch post request", %{conn: conn} do
       data = %{
         "batch" => [
@@ -90,7 +90,7 @@ defmodule Plugs.Parsers.BERTTest do
           111, 117, 114, 99, 101, 95, 110, 97, 109, 101, 109, 0, 0, 0, 10, 100, 97, 115, 104, 98,
           111, 97, 114, 100, 49, 106>>
 
-      assert BERT.decode({:ok, body, conn}) == {:ok, data, conn}
+      assert BertParser.decode({:ok, body, conn}) == {:ok, data, conn}
     end
   end
 end

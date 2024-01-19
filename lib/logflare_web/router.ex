@@ -7,6 +7,10 @@ defmodule LogflareWeb.Router do
   import Phoenix.LiveView.Router
 
   alias LogflareWeb.LayoutView
+  alias LogflareWeb.BertParser
+  alias LogflareWeb.JsonParser
+  alias LogflareWeb.SyslogParser
+  alias LogflareWeb.NdjsonParser
 
   # TODO: move plug calls in SourceController and RuleController into here
 
@@ -54,7 +58,7 @@ defmodule LogflareWeb.Router do
     plug(LogflareWeb.Plugs.MaybeContentTypeToJson)
 
     plug(Plug.Parsers,
-      parsers: [:json, :bert, :syslog, :ndjson],
+      parsers: [JsonParser, BertParser, SyslogParser, NdjsonParser],
       json_decoder: Jason,
       body_reader: {PlugCaisson, :read_body, []},
       length: 12_000_000

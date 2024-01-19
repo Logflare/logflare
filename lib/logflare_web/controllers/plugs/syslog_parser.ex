@@ -1,4 +1,4 @@
-defmodule Plug.Parsers.SYSLOG do
+defmodule LogflareWeb.SyslogParser do
   @moduledoc """
   Parse syslog request bodies.
   """
