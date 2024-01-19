@@ -70,6 +70,10 @@ defmodule Logflare.Telemetry do
     ]
 
     application_metrics = [
+      summary("logflare.goth.fetch.stop.duration",
+        tags: [:partition],
+        unit: {:native, :millisecond}
+      ),
       summary("logflare.logs.processor.ingest.stop.duration",
         tags: [:processor],
         unit: {:native, :millisecond}
