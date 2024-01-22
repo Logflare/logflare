@@ -87,6 +87,11 @@ config :logger,
     ]
     |> Enum.filter(&(&1 != nil))
 
+config :logger,
+  metadata:
+    [cluster: System.get_env("LOGFLARE_LOGGER_METADATA_CLUSTER")]
+    |> filter_nil_kv_pairs.()
+
 log_level =
   case String.downcase(System.get_env("LOGFLARE_LOG_LEVEL") || "") do
     "warn" -> :warn
