@@ -27,13 +27,12 @@ defmodule Logflare.Source.BigQuery.Pipeline do
 
     Broadway.start_link(__MODULE__,
       name: name(source.token),
-      max_restarts: 10,
       producer: [
         module: {BufferProducer, rls},
         hibernate_after: 30_000
       ],
       processors: [
-        default: [concurrency: max_batchers]
+        default: [concurrency: 1]
       ],
       batchers: [
         bq: [concurrency: max_batchers, batch_size: 250, batch_timeout: 1_500]
