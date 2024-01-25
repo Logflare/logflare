@@ -8,8 +8,10 @@ defmodule LogflareWeb.Plugs.CompressedBodyReader do
   def read_body(conn, opts \\ []) do
     content_encoding = Plug.Conn.get_req_header(conn, "content-encoding")
 
+    opts = Keyword.merge([length: 8_000_000], opts)
+
     with {:ok, body, conn} <- Plug.Conn.read_body(conn, opts) do
-      case try_decompress(body, content_encoding) do
+      case try_decompress(body, content_encoding, opts) do
         {:ok, data} -> {:ok, data, conn}
         {:more, data} -> {:more, data, conn}
         {:error, _} = error -> error
@@ -17,52 +19,19 @@ defmodule LogflareWeb.Plugs.CompressedBodyReader do
     end
   end
 
-  defp try_decompress(data, []), do: {:ok, data}
-  defp try_decompress(data, ["gzip"]), do: gunzip(data)
-  defp try_decompress(data, ["deflate"]), do: inflate(data)
+  defp try_decompress(body, [], _opts), do: {:ok, body}
+  defp try_decompress(body, ["gzip"], opts), do: safe_gunzip(body, [type: :gzip] ++ opts)
+  defp try_decompress(body, ["deflate"], opts), do: safe_gunzip(body, [type: :deflate] ++ opts)
+  defp try_decompress(_body, [_], _opts), do: {:error, :not_supported}
 
-  @max_wbits 15
-  @max_chunk_count 25
-
-  defp gunzip(data), do: safe_gunzip(data, @max_wbits + 16)
-  defp inflate(data), do: safe_gunzip(data, @max_wbits)
-
-  defp safe_gunzip(data, window_bits) do
-    z = :zlib.open()
+  defp safe_gunzip(body, opts) do
+    {:ok, z} = PlugCaisson.Zlib.init(opts)
 
     try do
-      :zlib.inflateInit(z, window_bits)
-      result = chunked_inflate(z, data)
-      :zlib.inflateEnd(z)
-
-      result
+      {return, data, _z} = PlugCaisson.Zlib.process(z, body, opts)
+      {return, data}
     after
-      :zlib.close(z)
-    else
-      {:finished, data} -> {:ok, IO.iodata_to_binary(data)}
-      {:continue, data} -> {:more, IO.iodata_to_binary(data)}
-      {:need_dictionary, _, _} -> {:error, :not_supported}
+      PlugCaisson.Zlib.deinit(z)
     end
-  end
-
-  defp chunked_inflate(_res, _z, curr_chunk, _acc) when curr_chunk == @max_chunk_count do
-    raise RuntimeError, "max chunks reached"
-  end
-
-  defp chunked_inflate({:finished, output}, _z, _curr_chunk, acc) do
-    {:finished, Enum.reverse([output | acc])}
-  end
-
-  defp chunked_inflate({:continue, output}, z, curr_chunk, acc) do
-    z
-    |> :zlib.safeInflate([])
-    |> chunked_inflate(z, curr_chunk + 1, [output | acc])
-  end
-
-  # initial
-  defp chunked_inflate(z, data) when is_binary(data) do
-    z
-    |> :zlib.safeInflate(data)
-    |> chunked_inflate(z, 0, [])
   end
 end

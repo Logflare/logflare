@@ -21,7 +21,7 @@ defmodule LogflareWeb.Plugs.CompressedBodyReaderTest do
     end
   end
 
-  property "with `content-encoding: gzip` header data is passed through as is" do
+  property "with `content-encoding: gzip` header data is decompressed" do
     check all(data <- gen_payloads()) do
       compressed = :zlib.gzip(data)
       conn = conn(compressed, [{"content-encoding", "gzip"}])
@@ -32,14 +32,11 @@ defmodule LogflareWeb.Plugs.CompressedBodyReaderTest do
   end
 
   property "gzipped data with overly large size raises RuntimeError" do
-    check all(data <- gen_max_chunk_payloads()) do
-      compressed = :zlib.gzip(data)
-      conn = conn(compressed, [{"content-encoding", "gzip"}])
+    data = pick(gen_max_chunk_payloads())
+    compressed = :zlib.gzip(data)
+    conn = conn(compressed, [{"content-encoding", "gzip"}])
 
-      assert_raise RuntimeError, "max chunks reached", fn ->
-        @subject.read_body(conn)
-      end
-    end
+    assert {:more, _, _} =  @subject.read_body(conn)
   end
 
   defp gen_payloads do
@@ -49,7 +46,7 @@ defmodule LogflareWeb.Plugs.CompressedBodyReaderTest do
   end
 
   defp gen_max_chunk_payloads do
-    gen all(res <- binary(max_length: 500_000, min_length: 400_000)) do
+    gen all(res <- binary(max_length: 15_000_000, min_length: 14_000_000)) do
       res
     end
   end
