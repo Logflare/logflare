@@ -9,6 +9,8 @@ defmodule LogflareWeb.HealthCheckControllerTest do
 
   test "normal node health check", %{conn: conn} do
       start_supervised!(Source.Supervisor)
+      start_supervised!(Logflare.Sources.RateCounters)
+      start_supervised!(Logflare.Sources.Counters)
       :timer.sleep(500)
       conn =
       conn
@@ -17,7 +19,20 @@ defmodule LogflareWeb.HealthCheckControllerTest do
     assert %{"nodes" => [_], "nodes_count" => 1, "status" => "ok"} = json_response(conn, 200)
   end
 
+  test "coming_up while ets tables not up yet", %{conn: conn} do
+    start_supervised!(Source.Supervisor)
+
+    conn =
+      conn
+      |> get("/health")
+    assert %{"status" => "coming_up"} = json_response(conn, 503)
+
+  end
+
   test "coming_up while RLS boot warming" , %{conn: conn} do
+
+    start_supervised!(Logflare.Sources.RateCounters)
+    start_supervised!(Logflare.Sources.Counters)
     stub(Goth, :fetch, fn _mod -> {:ok, %Goth.Token{token: "auth-token"}} end)
 
     user = insert(:user)
@@ -45,6 +60,14 @@ defmodule LogflareWeb.HealthCheckControllerTest do
   describe "Supabase mode - without seed" do
     TestUtils.setup_single_tenant(seed_user: false, supabase_mode: true)
 
+    setup do
+
+      start_supervised!(Source.Supervisor)
+
+    start_supervised!(Logflare.Sources.RateCounters)
+    start_supervised!(Logflare.Sources.Counters)
+:ok
+    end
     test "not ok", %{conn: conn} do
       assert %{"status" => "coming_up"} = conn |> get("/health") |> json_response(503)
     end
@@ -54,6 +77,9 @@ defmodule LogflareWeb.HealthCheckControllerTest do
     TestUtils.setup_single_tenant(seed_user: true, supabase_mode: true)
 
     setup do
+    start_supervised!(Source.Supervisor)
+    start_supervised!(Logflare.Sources.RateCounters)
+      start_supervised!(Logflare.Sources.Counters)
       stub(Schema, :get_state, fn _ -> %{field_count: 5} end)
       :ok
     end
