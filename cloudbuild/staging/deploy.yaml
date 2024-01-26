@@ -40,9 +40,9 @@ steps:
       - --project=logflare-staging
       - --zone=us-central1-a
       - --type=proactive
-      - --max-surge=1
+      - --max-surge=2
       - --max-unavailable=0
-      - --min-ready=300
+      - --min-ready=15
       - --minimal-action=replace
       - --most-disruptive-allowed-action=replace
       - --replacement-method=substitute
