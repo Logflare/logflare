@@ -17,20 +17,6 @@ config :logflare, Logflare.Google, dataset_id_append: "_default"
 
 # Configures the endpoint
 config :logflare, LogflareWeb.Endpoint,
-  adapter: Bandit.PhoenixAdapter,
-  http: [
-    thousand_island_options: [
-      # transport options are passed wholly to :gen_tcp
-      # https://github.com/mtrudel/thousand_island/blob/ae733332892b1bb2482a9cf4e97de03411fba2ad/lib/thousand_island/transports/tcp.ex#L61
-      transport_options: [
-        # https://www.erlang.org/doc/man/inet
-        # both reuseport and reuseport_lb should be provided for linux
-        reuseport: true,
-        reuseport_lb: true
-        #
-      ]
-    ]
-  ],
   url: [host: "localhost", scheme: "http", port: 4000],
   secret_key_base: "DSzZYeAgGaXlfRXPQqMOPiA8hJOYSImhnR2lO8lREOE2vWDmkGn1XWHxoCZoASlP",
   render_errors: [view: LogflareWeb.ErrorView, accepts: ~w(html json)],
