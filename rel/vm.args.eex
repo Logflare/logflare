@@ -17,7 +17,9 @@
 
 ## Reduce scheduler wake up threshold
 +swt low
++swtdcpu low
 +swtdio low
+
 
 ## Set distribution buffer limit - default is 1024
 +zdbbl 1028000
