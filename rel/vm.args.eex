@@ -11,9 +11,15 @@
 ##-env ERL_FULLSWEEP_AFTER 10
 
 ## Set busy-wait. Options are: none|very_short|short|medium|long|very_long
-+sbwt medium
-+sbwtdcpu medium
-+sbwtdio medium
++sbwt none
++sbwtdcpu none
++sbwtdio none
+
+## Reduce scheduler wake up threshold
++swt low
++swtdcpu low
++swtdio low
+
 
 ## Set distribution buffer limit - default is 1024
 +zdbbl 1028000
