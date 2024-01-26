@@ -5,11 +5,19 @@ defmodule LogflareWeb.HealthCheckController do
   alias Logflare.Cluster
   alias Logflare.SingleTenant
   alias Logflare.Source
+  alias Logflare.Sources
 
   def check(conn, _params) do
+    common_checks_ok? =
+      [
+        Sources.ingest_ets_tables_started?(),
+        Source.Supervisor.booting?() == false
+      ]
+      |> Enum.all?()
+
     {status, code} =
       cond do
-        SingleTenant.supabase_mode?() ->
+        SingleTenant.supabase_mode?() and common_checks_ok? ->
           status = SingleTenant.supabase_mode_status()
           values = Map.values(status)
 
@@ -19,7 +27,7 @@ defmodule LogflareWeb.HealthCheckController do
             {:ok, 200}
           end
 
-        Source.Supervisor.booting?() ->
+        common_checks_ok? == false ->
           {:coming_up, 503}
 
         true ->

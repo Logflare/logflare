@@ -248,4 +248,27 @@ defmodule Logflare.SourcesTest do
       assert new_pid != pid
     end
   end
+
+  describe "Ingestion ETS tables" do
+    setup do
+      on_exit(fn ->
+        try do
+          :ets.delete(:rate_counters)
+        rescue
+          _e -> :ok
+        end
+        try do
+          :ets.delete(:table_counters)
+        rescue
+          _e -> :ok
+        end
+      end)
+    end
+    test "ingest_ets_tables_started?/0" do
+      assert false == Sources.ingest_ets_tables_started?()
+      start_supervised!(Logflare.Sources.RateCounters)
+      start_supervised!(Logflare.Sources.Counters)
+      assert true == Sources.ingest_ets_tables_started?()
+    end
+  end
 end
