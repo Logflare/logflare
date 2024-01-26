@@ -192,6 +192,7 @@ defmodule Logflare.Mixfile do
       {:gun, "~> 2.0", override: true},
       {:cowlib, ">=2.12.0", override: true},
       {:phoenix_live_dashboard, "~> 0.8"},
+      {:plug_cowboy, "~> 2.0"},
 
       # alerts feature
       {:citrine, "~> 0.1.0"},
