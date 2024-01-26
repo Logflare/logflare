@@ -5,7 +5,7 @@ config :logflare, env: :prod
 
 config :logflare, LogflareWeb.Endpoint,
   http: [
-    port: 4000,
+    port: 4000
   ],
   cache_static_manifest: "priv/static/cache_manifest.json",
   server: true,
