@@ -26,11 +26,10 @@ defmodule Logflare.TeamUsers do
     query =
       from t in TeamUser,
         where: ^kv,
-        select: t
+        select: t,
+        preload: [:team]
 
-    for team_user <- Repo.all(query) do
-      Repo.preload(team_user, :team)
-    end
+    Repo.all(query)
   end
 
   def list_team_users_by(kv) do
