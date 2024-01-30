@@ -78,7 +78,6 @@ defmodule LogflareWeb.Sources.RulesLV do
         case Rules.create_rule(rule_params, source) do
           {:ok, rule} ->
             socket
-            |> assign(:has_regex_rules, Rules.has_regex_rules?(source.rules))
             |> assign(:rules, [rule | rules])
             |> put_flash(:info, "LQL source routing rule created successfully!")
 
@@ -113,26 +112,6 @@ defmodule LogflareWeb.Sources.RulesLV do
       socket
       |> assign(:source, source)
       |> assign(:rules, source.rules)
-
-    {:noreply, socket}
-  end
-
-  @deprecated "Delete when all source rules are upgraded to LQL"
-  def handle_event("upgrade_rules", _metadata, %{assigns: as} = socket) do
-    socket =
-      case Rules.upgrade_rules_to_lql(as.rules) do
-        :ok ->
-          source = Sources.get_by_and_preload(token: as.source.token)
-
-          socket
-          |> assign(:source, source)
-          |> assign(:rules, source.rules)
-          |> put_flash(:info, "Upgrade successfull!")
-
-        {:error, changeset} ->
-          error_message = Rule.changeset_error_to_string(changeset)
-          put_flash(socket, :error, error_message)
-      end
 
     {:noreply, socket}
   end
