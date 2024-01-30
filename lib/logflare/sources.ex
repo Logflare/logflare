@@ -11,7 +11,6 @@ defmodule Logflare.Sources do
   alias Logflare.Google.BigQuery.SchemaUtils
   alias Logflare.PubSubRates
   alias Logflare.Repo
-  alias Logflare.Rule
   alias Logflare.SavedSearch
   alias Logflare.SingleTenant
   alias Logflare.Source
@@ -230,7 +229,6 @@ defmodule Logflare.Sources do
     source
     |> Repo.preload([:user, :rules])
     |> refresh_source_metrics()
-    |> maybe_compile_rule_regexes()
     |> put_bq_table_id()
   end
 
@@ -253,41 +251,6 @@ defmodule Logflare.Sources do
 
   def preload_source_schema(source) do
     Repo.preload(source, :source_schema)
-  end
-
-  # """
-  # Compiles regex_struct if it's not present in the source rules.
-  # By setting regex_struct to nil if invalid, prevents malformed regex matching during log ingest.
-  # """
-  defp maybe_compile_rule_regexes(%{rules: rules} = source) do
-    rules =
-      for rule <- rules do
-        case rule do
-          %Rule{lql_filters: lql_filters} when lql_filters != [] ->
-            rule
-
-          %Rule{regex_struct: rs} when not is_nil(rs) ->
-            rule
-
-          %Rule{regex: regex} when not is_nil(regex) ->
-            regex_struct =
-              case Regex.compile(rule.regex) do
-                {:ok, regex} ->
-                  regex
-
-                {:error, _} ->
-                  Logger.error(
-                    "Rule #{rule.id} for #{source.token} is invalid. Regex string:#{rule.regex}"
-                  )
-
-                  nil
-              end
-
-            %{rule | regex_struct: regex_struct}
-        end
-      end
-
-    %{source | rules: rules}
   end
 
   def refresh_source_metrics_for_ingest(nil), do: nil
