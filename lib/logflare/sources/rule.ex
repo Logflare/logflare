@@ -5,10 +5,6 @@ defmodule Logflare.Rule do
   import Ecto.Changeset
 
   typed_schema "rules" do
-    # deprecated, to be removed
-    field :regex, :string
-    # deprecated, to be removed
-    field :regex_struct, Ecto.Regex
 
     field :sink, Ecto.UUID.Atom
     field :lql_filters, Ecto.Term, default: []
