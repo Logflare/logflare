@@ -13,7 +13,6 @@ defmodule Logflare.Logs.SourceRoutingTest do
   alias Logflare.Source.RecentLogsServer, as: RLS
   alias Logflare.Sources
   alias Logflare.Users
-
   describe "Source Routing LQL operator rules" do
     test "list_includes operator" do
       source = build(:source, token: TestUtils.gen_uuid(), rules: [])
