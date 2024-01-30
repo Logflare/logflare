@@ -127,6 +127,7 @@ defmodule Logflare.Source.RecentLogsServer do
   @spec init(RLS.t()) :: {:ok, RLS.t(), {:continue, :boot}}
   def init(%__MODULE__{source_id: _source_id, source: source} = rls) do
     Process.flag(:trap_exit, true)
+    Logger.metadata(source_id: rls.source_id)
 
     user =
       source.user_id
@@ -175,7 +176,7 @@ defmodule Logflare.Source.RecentLogsServer do
 
     load_init_log_message(rls.source_id)
 
-    Logger.info("RecentLogsServer started", source_id: rls.source_id)
+    Logger.info("RecentLogsServer started")
     {:noreply, rls}
   end
 
@@ -240,11 +241,18 @@ defmodule Logflare.Source.RecentLogsServer do
     end
   end
 
+  def handle_info({:EXIT, _from, _reason}, state) do
+    {:noreply, state}
+  end
+
+  def handle_info(message, state) do
+    Logger.warning("Unhandled message: #{inspect(message)}")
+
+    {:noreply, state}
+  end
+
   def terminate(reason, state) do
-    # Do Shutdown Stuff
-    Logger.info("[#{__MODULE__}] Going Down - #{inspect(reason)} - #{state.source_id}", %{
-      source_id: state.source_id
-    })
+    Logger.info("[#{__MODULE__}] Going Down: #{inspect(reason)}")
 
     reason
   end
