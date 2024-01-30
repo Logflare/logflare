@@ -127,7 +127,7 @@ defmodule Logflare.Source.RecentLogsServer do
   @spec init(RLS.t()) :: {:ok, RLS.t(), {:continue, :boot}}
   def init(%__MODULE__{source_id: _source_id, source: source} = rls) do
     Process.flag(:trap_exit, true)
-    Logger.metadata(source_id: rls.source_id)
+    Logger.metadata(source_id: rls.source_id, source_token: rls.source_id)
 
     user =
       source.user_id
