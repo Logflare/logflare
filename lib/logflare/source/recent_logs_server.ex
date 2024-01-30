@@ -251,7 +251,7 @@ defmodule Logflare.Source.RecentLogsServer do
     {:noreply, state}
   end
 
-  def terminate(reason, state) do
+  def terminate(reason, _state) do
     Logger.info("[#{__MODULE__}] Going Down: #{inspect(reason)}")
 
     reason
