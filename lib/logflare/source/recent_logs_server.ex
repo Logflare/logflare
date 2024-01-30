@@ -176,7 +176,7 @@ defmodule Logflare.Source.RecentLogsServer do
 
     load_init_log_message(rls.source_id)
 
-    Logger.info("RecentLogsServer started")
+    Logger.info("[#{__MODULE__}] Started")
     {:noreply, rls}
   end
 
@@ -246,7 +246,7 @@ defmodule Logflare.Source.RecentLogsServer do
   end
 
   def handle_info(message, state) do
-    Logger.warning("Unhandled message: #{inspect(message)}")
+    Logger.warning("[#{__MODULE__}] Unhandled message: #{inspect(message)}")
 
     {:noreply, state}
   end
