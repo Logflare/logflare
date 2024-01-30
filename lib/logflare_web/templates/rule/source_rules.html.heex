@@ -60,8 +60,8 @@
       </li>
     <% end %>
   </ul>
-  <.form :let={f} for={:rule} action="#" phx-submit="fsubmit">
-    <.live_component module={Lql.LqlFormLVC} f={f} lql_string={@lql_string} loading={has_regex_rules?(@rules)} />
+  <.form :let={f} for={%{}} as={:rule} action="#" phx-submit="fsubmit">
+    <.live_component id="rules-form" module={Lql.LqlFormLVC} f={f} lql_string={@lql_string} loading={has_regex_rules?(@rules)} />
     <div class="form-group">
       <%= label(f, :sink, "Sink source", class: "control-label") %>
       <% sink_form_options = for s <- @sources, do: [key: s.name, value: s.token, disabled: s.disabled] %>
