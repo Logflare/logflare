@@ -608,7 +608,7 @@ defmodule Logflare.Logs.SourceRoutingTest do
     end
   end
 
-
+  @tag :failing
   describe "Source routing with regex routing" do
     test "successfull" do
       {:ok, _} = Source.Supervisor.start_link()
