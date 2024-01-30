@@ -157,6 +157,24 @@ defmodule Logflare.Logs.SourceRoutingTest do
 
       refute SourceRouting.route_with_lql_rules?(le, rule)
     end
+  test "regex match on integer/float fields" do
+    rule = %Rule{
+      lql_string: "",
+      lql_filters: [
+        %FR{
+          value: "123",
+          operator: :"~",
+          modifiers: %{},
+          path: "metadata.num"
+        }
+      ]
+    }
+    le = build(:log_event, metadata: %{"num" => 123})
+
+      assert SourceRouting.route_with_lql_rules?(le, rule)
+
+  end
+
 
     test "gt,lt,gte,lte operators" do
       source = build(:source, token: TestUtils.gen_uuid(), rules: [])
@@ -591,8 +609,8 @@ defmodule Logflare.Logs.SourceRoutingTest do
     end
   end
 
+
   describe "Source routing with regex routing" do
-    @tag :failing
     test "successfull" do
       {:ok, _} = Source.Supervisor.start_link()
       u = Users.get_by_and_preload(email: System.get_env("LOGFLARE_TEST_USER_WITH_SET_IAM"))
