@@ -10,6 +10,7 @@ defmodule LogflareWeb.LogControllerTest do
   alias Logflare.Sources
 
   @valid %{"some" => "valid log entry", "event_message" => "hi!"}
+  @valid_json Jason.encode!(@valid)
   @invalid %{"some" => {123, "invalid"}, 123 => "hi!", 1 => :invalid}
   @valid_batch [
     %{"some" => "valid log entry", "event_message" => "hi!"},
@@ -17,6 +18,9 @@ defmodule LogflareWeb.LogControllerTest do
   ]
 
   setup do
+    Logflare.Sources.Counters
+    |> stub(:increment, fn v -> v end)
+
     Logflare.Sources.Counters
     |> stub(:increment, fn v -> v end)
 
@@ -44,6 +48,7 @@ defmodule LogflareWeb.LogControllerTest do
 
       {:ok, source: source, user: user, source_backend: source_backend}
     end
+
     setup [:warm_caches, :reject_context_functions]
 
     test "valid ingestion", %{conn: conn, source: source, user: user} do
@@ -69,7 +74,6 @@ defmodule LogflareWeb.LogControllerTest do
     end
   end
 
-
   describe "v1 pipeline invalid" do
     setup [:v1_pipeline_setup, :warm_caches, :reject_context_functions]
 
@@ -84,7 +88,7 @@ defmodule LogflareWeb.LogControllerTest do
         conn
         |> post(Routes.log_path(conn, :create, source: source.token), @invalid)
 
-      assert %{"message"=> [msg]}  =  json_response(conn, 406)
+      assert %{"message" => [msg]} = json_response(conn, 406)
       assert msg =~ "not supported by"
     end
 
@@ -133,22 +137,21 @@ defmodule LogflareWeb.LogControllerTest do
       :timer.sleep(2000)
     end
 
-
-
-
     test ":create ingestion with gzip", %{conn: conn, source: source} do
       batch = for _i <- 1..1500, do: @valid
       payload = :zlib.gzip(Jason.encode!(%{"batch" => batch}))
+
       conn =
         conn
-        |> Plug.Conn.put_req_header("content-encoding", "gzip" )
-        |> Plug.Conn.put_req_header("content-type", "application/json" )
+        |> Plug.Conn.put_req_header("content-encoding", "gzip")
+        |> Plug.Conn.put_req_header("content-type", "application/json")
         |> post(~p"/logs?#{[source: source.token]}", payload)
 
       assert json_response(conn, 200) == %{"message" => "Logged!"}
       # wait for all logs to be ingested before removing all stubs
       :timer.sleep(2000)
     end
+
     test ":create ingestion batch with `batch` key", %{conn: conn, source: source} do
       conn =
         conn
@@ -194,8 +197,8 @@ defmodule LogflareWeb.LogControllerTest do
       conn = put_req_header(conn, "x-api-key", access_token.token)
       {:ok, user: user, conn: conn}
     end
-    setup [:warm_caches, :reject_context_functions]
 
+    setup [:warm_caches, :reject_context_functions]
 
     test ":create ingestion by source_name", %{conn: conn, source: source} do
       conn =
@@ -207,7 +210,6 @@ defmodule LogflareWeb.LogControllerTest do
       :timer.sleep(2000)
     end
   end
-
 
   describe "single tenant" do
     TestUtils.setup_single_tenant(seed_user: true)
@@ -248,14 +250,12 @@ defmodule LogflareWeb.LogControllerTest do
       # wait for all logs to be ingested before removing all stubs
       :timer.sleep(2000)
     end
-
   end
 
   defp v1_pipeline_setup(%{conn: conn}) do
     insert(:plan, name: "Free")
     user = insert(:user)
     source = insert(:source, user: user)
-
 
     rls = %RecentLogsServer{source: source, source_id: source.token}
     start_supervised!(Counters)
@@ -278,23 +278,26 @@ defmodule LogflareWeb.LogControllerTest do
 
       le
     end)
+
     :ok
   end
 
   defp warm_caches(%{user: user, source: source}) do
-
     # hit the caches
     Sources.Cache.get_by_and_preload_rules(token: Atom.to_string(source.token))
     Sources.Cache.get_by_and_preload_rules(name: source.name, user_id: user.id)
     Users.Cache.get_by_and_preload(api_key: user.api_key)
     Users.Cache.preload_defaults(user)
     Users.Cache.get(user.id)
+
     on_exit(fn ->
       Cachex.clear(Users.Cache)
       Cachex.clear(Sources.Cache)
     end)
+
     :ok
   end
+
   defp reject_context_functions(_) do
     reject(&Sources.get_source_by_token/1)
     reject(&Sources.get/1)
@@ -307,5 +310,45 @@ defmodule LogflareWeb.LogControllerTest do
     reject(&Users.preload_team/1)
     reject(&Users.preload_billing_account/1)
     :ok
+  end
+
+  describe "benchmarks" do
+    setup [:v1_pipeline_setup, :warm_caches, :reject_context_functions]
+
+    setup %{user: user, conn: conn} do
+      conn = put_req_header(conn, "x-api-key", user.api_key)
+      {:ok, user: user, conn: conn}
+    end
+
+    @tag :benchmark
+    test "v1 ingestion", %{conn: conn, source: source} do
+      Logflare.Logs
+      |> stub(:ingest, fn _ -> :ok end)
+
+      batch = Jason.encode!(%{"batch" => for(_ <- 1..250, do: @valid)})
+
+      big_single =
+        for i <- 1..250, into: %{} do
+          {"key_#{i}", TestUtils.random_string()}
+        end
+
+      Benchee.run(
+        %{
+          "single" => fn -> do_ingest_post(conn, source, @valid_json) end,
+          "big_single" => fn -> do_ingest_post(conn, source, big_single) end,
+          "batched" => fn -> do_ingest_post(conn, source, batch) end
+        },
+        time: 2,
+        warmup: 1,
+        memory_time: 1,
+        reduction_time: 1
+      )
+    end
+  end
+
+  defp do_ingest_post(conn, source, input) do
+    conn
+    |> put_req_header("content-type", "application/json")
+    |> post(Routes.log_path(conn, :create, source_name: source.name), input)
   end
 end

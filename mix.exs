@@ -198,6 +198,8 @@ defmodule Logflare.Mixfile do
       {:citrine, "~> 0.1.0"},
       {:crontab, "~> 1.1"},
 
+      # benchmarking
+      {:benchee, "~> 1.0", only: [:dev, :test]},
       # Filesystem fix to respect `CFLAGS` and `LDFLAGS`
       # https://github.com/falood/file_system/pull/87
       #
