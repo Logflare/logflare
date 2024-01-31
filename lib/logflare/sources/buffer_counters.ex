@@ -20,6 +20,7 @@ defmodule Logflare.Sources.BufferCounters do
       :ordered_set,
       :public,
       :named_table,
+      decentralized_counters: true,
       read_concurrency: true,
       write_concurrency: true
     ])
