@@ -42,7 +42,9 @@ defmodule Logflare.Source.BigQuery.Pipeline do
   end
 
   @spec handle_message(any, Broadway.Message.t(), any) :: Broadway.Message.t()
-  def handle_message(_processor_name, message, _context) do
+  def handle_message(_processor_name, message, rls) do
+    Logger.metadata(source_id: rls.source_id, source_token: rls.source_id)
+
     message
     |> Message.update_data(&process_data/1)
     |> Message.put_batcher(:bq)
