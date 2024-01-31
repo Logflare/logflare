@@ -7,7 +7,11 @@ end
 config :logflare,
        Logflare.PubSub,
        [
-         pool_size: System.get_env("LOGFLARE_PUBSUB_POOL_SIZE")
+         pool_size:
+           if(System.get_env("LOGFLARE_PUBSUB_POOL_SIZE") != nil,
+             do: String.to_integer(System.get_env("LOGFLARE_PUBSUB_POOL_SIZE")),
+             else: nil
+           )
        ]
        |> filter_nil_kv_pairs.()
 
