@@ -165,7 +165,10 @@ defmodule Logflare.Application do
         {Registry, name: Logflare.Backends.SourceDispatcher, keys: :duplicate},
 
         # citrine scheduler for alerts
-        Logflare.AlertsScheduler
+        Logflare.AlertsScheduler,
+
+        # telemetry reporter
+        {LogflareEx.TelemetryReporter, metrics: Logflare.Telemetry.metrics()}
       ]
   end
 
