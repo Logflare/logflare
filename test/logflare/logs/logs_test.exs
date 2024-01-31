@@ -7,12 +7,14 @@ defmodule Logflare.LogsTest do
   alias Logflare.Source.RecentLogsServer
   alias Logflare.Sources.Counters
   alias Logflare.Sources.RateCounters
+  alias Logflare.Sources.BufferCounters
   alias Logflare.SystemMetrics.AllLogsLogged
 
   def source_and_user(_context) do
     start_supervised!(AllLogsLogged)
     start_supervised!(Counters)
     start_supervised!(RateCounters)
+    start_supervised!(BufferCounters)
 
     insert(:plan)
     user = insert(:user)

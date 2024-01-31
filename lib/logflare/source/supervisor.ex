@@ -255,7 +255,10 @@ defmodule Logflare.Source.Supervisor do
   def ensure_started(source_token) do
     case lookup(RLS, source_token) do
       {:error, _} ->
-        Logger.info("Source process not found, starting...", source_id: source_token)
+        Logger.info("Source process not found, starting...",
+          source_id: source_token,
+          source_token: source_token
+        )
 
         start_source(source_token)
 

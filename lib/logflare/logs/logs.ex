@@ -35,7 +35,7 @@ defmodule Logflare.Logs do
   @spec ingest(Logflare.LogEvent.t()) :: Logflare.LogEvent.t() | {:error, term}
   def ingest(%LE{source: %Source{} = source} = le) do
     with {:ok, _} <- Supervisor.ensure_started(source.token),
-         {:ok, _} <- BufferCounter.push(le),
+         :ok <- BufferCounter.push(le),
          :ok <- RecentLogsServer.push(le),
          # tests fail when we match on these for some reason
          _ok <- Sources.Counters.increment(source.token),

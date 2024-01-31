@@ -1,112 +1,135 @@
-defmodule Logflare.Source.BigQuery.BufferTest do
+defmodule Logflare.Source.BufferCounterTest do
   @moduledoc false
   use Logflare.DataCase
   alias Logflare.Source.BigQuery
+  alias Logflare.Source.BigQuery.BufferCounter
   alias Logflare.Source.RecentLogsServer
   alias Logflare.Sources.Counters
   alias Logflare.Sources.RateCounters
+  alias Logflare.Sources.BufferCounters
   alias Logflare.SystemMetrics.AllLogsLogged
   alias Logflare.LogEvent
-
+  alias Logflare.Source.BigQuery.Pipeline
+  alias Logflare.Source.BigQuery.Schema
+  # stubs
   setup do
     Goth
     |> stub(:fetch, fn _mod -> {:ok, %Goth.Token{token: "auth-token"}} end)
 
+    Schema
+    |> stub(:update, fn _token, _le -> :ok end)
+
+    GoogleApi.BigQuery.V2.Api.Tabledata
+    |> stub(:bigquery_tabledata_insert_all, fn _conn,
+                                               _project_id,
+                                               _dataset_id,
+                                               _table_name,
+                                               _opts ->
+      {:ok, %GoogleApi.BigQuery.V2.Model.TableDataInsertAllResponse{insertErrors: nil}}
+    end)
+
+    Logflare.Google.BigQuery
+    |> stub(:init_table!, fn _, _, _, _, _, _ -> :ok end)
+
     start_supervised!(AllLogsLogged)
     start_supervised!(Counters)
     start_supervised!(RateCounters)
+    start_supervised!(BufferCounters)
+
     insert(:plan)
-    user = insert(:user)
 
-    source = insert(:source, user: user)
-    rls = %RecentLogsServer{source: source, source_id: source.token}
-    start_supervised!({RecentLogsServer, rls}, id: :source)
-
-    [source: source]
+    :ok
   end
 
-  test "push a log event", %{source: source} do
-    le = LogEvent.make(%{"event_message" => "any", "metadata" => "some_value"}, %{source: source})
+  describe "with expected processes" do
+    setup do
+      user = insert(:user)
 
-    BigQuery.BufferCounter.push(le)
+      source = insert(:source, user: user)
+      rls = %RecentLogsServer{source: source, source_id: source.token}
 
-    assert 1 = BigQuery.BufferCounter.len(source)
-    :timer.sleep(2000)
-  end
+      start_supervised!({Pipeline, rls})
+      start_supervised!({BufferCounter, rls})
 
-  test "ack a log event", %{source: source} do
-    le = LogEvent.make(%{"event_message" => "any", "metadata" => "some_value"}, %{source: source})
+      [source: source]
+    end
 
-    BigQuery.BufferCounter.push(le)
+    test "push a log event", %{source: source} do
+      le =
+        LogEvent.make(%{"event_message" => "any", "metadata" => "some_value"}, %{source: source})
 
-    BigQuery.BufferCounter.ack(source.token, "some-uuid")
+      BufferCounter.push(le)
 
-    assert 0 = BigQuery.BufferCounter.len(source)
-    :timer.sleep(2000)
-  end
+      assert 1 = BufferCounter.len(source)
+    end
 
-  test "ack a batch of log events", %{source: source} do
-    le = LogEvent.make(%{"event_message" => "any", "metadata" => "some_value"}, %{source: source})
+    test "ack a log event", %{source: source} do
+      le =
+        LogEvent.make(%{"event_message" => "any", "metadata" => "some_value"}, %{source: source})
 
-    BigQuery.BufferCounter.push(le)
+      BufferCounter.push(le)
 
-    message = %Broadway.Message{
-      data: le,
-      acknowledger: {BigQuery.BufferProducer, source.token, nil}
-    }
-
-    BigQuery.BufferCounter.ack_batch(source.token, [message])
-
-    assert 0 = BigQuery.BufferCounter.len(source)
-    :timer.sleep(2000)
-  end
-
-  test "push a batch of log events", %{source: source} do
-    le = LogEvent.make(%{"event_message" => "any", "metadata" => "some_value"}, %{source: source})
-
-    batch = [
-      %Broadway.Message{
-        data: le,
-        acknowledger: {BigQuery.BufferProducer, source.token, nil}
-      },
-      %Broadway.Message{
+      message = %Broadway.Message{
         data: le,
         acknowledger: {BigQuery.BufferProducer, source.token, nil}
       }
-    ]
 
-    BigQuery.BufferCounter.push_batch(%{source: source, batch: batch, count: 2})
+      BufferCounter.ack_batch(source.token, [message])
 
-    assert 2 = BigQuery.BufferCounter.len(source)
-    :timer.sleep(2000)
-  end
+      assert 0 = BufferCounter.len(source)
+    end
 
-  test "errors when buffer is full", %{source: source} do
-    le = LogEvent.make(%{"event_message" => "any", "metadata" => "some_value"}, %{source: source})
+    test "ack a batch of log events", %{source: source} do
+      le =
+        LogEvent.make(%{"event_message" => "any", "metadata" => "some_value"}, %{source: source})
 
-    batch = [
-      %Broadway.Message{
-        data: le,
-        acknowledger: {BigQuery.BufferProducer, source.token, nil}
-      },
-      %Broadway.Message{
+      BufferCounter.push(le)
+
+      message = %Broadway.Message{
         data: le,
         acknowledger: {BigQuery.BufferProducer, source.token, nil}
       }
-    ]
 
-    {:ok, %{len_max: 3}} = BigQuery.BufferCounter.set_len_max(source.token, 3)
+      BufferCounter.ack_batch(source.token, [message])
 
-    {:ok, %{len: 2}} =
-      BigQuery.BufferCounter.push_batch(%{source: source, batch: batch, count: 2})
+      assert 0 = BufferCounter.len(source)
+    end
 
-    {:ok, %{len: 4}} =
-      BigQuery.BufferCounter.push_batch(%{source: source, batch: batch, count: 2})
+    test "push a batch of log events", %{source: source} do
+      le =
+        LogEvent.make(%{"event_message" => "any", "metadata" => "some_value"}, %{source: source})
 
-    {:error, :buffer_full} =
-      BigQuery.BufferCounter.push_batch(%{source: source, batch: batch, count: 2})
+      batch = [
+        %Broadway.Message{
+          data: le,
+          acknowledger: {BigQuery.BufferProducer, source.token, nil}
+        },
+        %Broadway.Message{
+          data: le,
+          acknowledger: {BigQuery.BufferProducer, source.token, nil}
+        }
+      ]
 
-    assert %{len: 4, discarded: 2} = BigQuery.BufferCounter.get_counts(source.token)
-    :timer.sleep(2000)
+      BufferCounter.push_batch(source, batch)
+
+      assert 2 = BufferCounter.len(source)
+    end
+
+    test "errors when buffer is full", %{source: source} do
+      le =
+        LogEvent.make(%{"event_message" => "any", "metadata" => "some_value"}, %{source: source})
+
+      BufferCounter.set_len(source.token, 4999)
+
+      big_batch =
+        for _ <- 1..20 do
+          %Broadway.Message{
+            data: le,
+            acknowledger: {BigQuery.BufferProducer, source.token, nil}
+          }
+        end
+
+      assert {:error, :buffer_full} = BufferCounter.push_batch(source, big_batch)
+    end
   end
 end

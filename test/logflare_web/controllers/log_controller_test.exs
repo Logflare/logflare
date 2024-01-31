@@ -5,6 +5,7 @@ defmodule LogflareWeb.LogControllerTest do
   alias Logflare.Source.RecentLogsServer
   alias Logflare.Sources.Counters
   alias Logflare.Sources.RateCounters
+  alias Logflare.Sources.BufferCounters
   alias Logflare.SingleTenant
   alias Logflare.Users
   alias Logflare.Sources
@@ -18,6 +19,7 @@ defmodule LogflareWeb.LogControllerTest do
   ]
 
   setup do
+
     Logflare.Sources.Counters
     |> stub(:increment, fn v -> v end)
 
@@ -42,6 +44,7 @@ defmodule LogflareWeb.LogControllerTest do
 
       start_supervised!(Counters)
       start_supervised!(RateCounters)
+      start_supervised!(BufferCounters)
 
       source_backend =
         insert(:source_backend, source_id: source.id, type: :webhook, config: %{url: "some url"})
@@ -225,6 +228,7 @@ defmodule LogflareWeb.LogControllerTest do
       rls = %RecentLogsServer{source: source, source_id: source.token}
       start_supervised!(Counters)
       start_supervised!(RateCounters)
+      start_supervised!(BufferCounters)
       start_supervised!({RecentLogsServer, rls})
       :timer.sleep(500)
 
@@ -260,6 +264,7 @@ defmodule LogflareWeb.LogControllerTest do
     rls = %RecentLogsServer{source: source, source_id: source.token}
     start_supervised!(Counters)
     start_supervised!(RateCounters)
+    start_supervised!(BufferCounters)
     start_supervised!({RecentLogsServer, rls})
     :timer.sleep(500)
 
