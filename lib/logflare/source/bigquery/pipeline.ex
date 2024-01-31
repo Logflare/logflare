@@ -25,20 +25,27 @@ defmodule Logflare.Source.BigQuery.Pipeline do
   def start_link(%RLS{source: source, plan: _plan} = rls) do
     max_batchers = (System.schedulers_online() * @batcher_multiple) |> Kernel.ceil()
 
-    Broadway.start_link(__MODULE__,
-      name: name(source.token),
-      producer: [
-        module: {BufferProducer, rls},
-        hibernate_after: 30_000
-      ],
-      processors: [
-        default: [concurrency: 1]
-      ],
-      batchers: [
-        bq: [concurrency: max_batchers, batch_size: 250, batch_timeout: 1_500]
-      ],
-      context: rls
-    )
+    res =
+      Broadway.start_link(__MODULE__,
+        name: name(source.token),
+        producer: [
+          module: {BufferProducer, rls},
+          hibernate_after: 30_000
+        ],
+        processors: [
+          default: [concurrency: 1]
+        ],
+        batchers: [
+          bq: [concurrency: max_batchers, batch_size: 250, batch_timeout: 1_500]
+        ],
+        context: rls
+      )
+
+    producer = name(source.token) |> Broadway.producer_names() |> List.first()
+
+    send(producer, :boot_queue)
+
+    res
   end
 
   @spec handle_message(any, Broadway.Message.t(), any) :: Broadway.Message.t()

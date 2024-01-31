@@ -1,6 +1,10 @@
 defmodule Logflare.Source.BigQuery.BufferCounter do
   @moduledoc """
   Maintains a count of log events inside the Source.BigQuery.Pipeline Broadway pipeline.
+
+  Performs the push directly into the Broadway buffer.
+
+  If the pipeline is not up, it will insert into the GenServer state as a temporary boot queue.
   """
 
   use GenServer
@@ -15,6 +19,7 @@ defmodule Logflare.Source.BigQuery.BufferCounter do
   @table :buffer_counters
   @broadcast_every 5_000
   @max_buffer_len 5_000
+  @max_boot_queue 1_000
   @pool_size Application.compile_env(:logflare, Logflare.PubSub)[:pool_size]
 
   def start_link(%RLS{} = rls) do
@@ -31,12 +36,18 @@ defmodule Logflare.Source.BigQuery.BufferCounter do
     )
   end
 
+  @impl GenServer
   def init([source_token: source_token] = opts) do
     ensure_ets_key(source_token)
     Process.flag(:trap_exit, true)
     loop()
     check_buffer()
-    state = Enum.into(opts, %{})
+
+    state =
+      Enum.into(opts, %{
+        boot_queue: []
+      })
+
     {:ok, state}
   end
 
@@ -69,8 +80,14 @@ defmodule Logflare.Source.BigQuery.BufferCounter do
 
     with {:ok, _new_len} <- push_by(source_token, count),
          _ <- :ets.update_counter(@table, source_token, {2, count}) do
-      Pipeline.name(source_token)
-      |> Broadway.push_messages(batch)
+      case Process.whereis(Pipeline.name(source_token)) do
+        nil ->
+          __MODULE__.add_to_boot_queue(source_token, batch)
+
+        _ ->
+          Pipeline.name(source_token)
+          |> Broadway.push_messages(batch)
+      end
 
       :ok
     end
@@ -123,6 +140,75 @@ defmodule Logflare.Source.BigQuery.BufferCounter do
     :ets.lookup_element(@table, source_token, 2, 0)
   end
 
+  @typep identifier :: atom() | tuple() | pid()
+
+  @doc """
+  Retrieves the length of the boot queue in GenServer state.
+  """
+  @spec boot_queue_len(identifier()) :: non_neg_integer()
+  def boot_queue_len(source_token) when is_atom(source_token) do
+    Source.Supervisor.via(__MODULE__, source_token)
+    |> boot_queue_len()
+  end
+
+  def boot_queue_len(identifier) do
+    GenServer.call(identifier, :boot_queue_len)
+  end
+
+  @doc """
+  Adds events to the boot queue.
+  """
+  @spec add_to_boot_queue(identifier(), [Broadway.Message.t()]) :: :ok
+  def add_to_boot_queue(source_token, batch) when is_atom(source_token) do
+    Source.Supervisor.via(__MODULE__, source_token)
+    |> add_to_boot_queue(batch)
+  end
+
+  def add_to_boot_queue(identifier, %{} = item), do: add_to_boot_queue(identifier, [item])
+
+  def add_to_boot_queue(identifier, batch) when is_list(batch) do
+    GenServer.cast(identifier, {:add_to_boot_queue, batch})
+  end
+
+  @doc """
+  Retrieves the entire boot queue from GenServer state.
+  """
+  @spec pop_boot_queue(identifier()) :: {:ok, [Broadway.Message.t()]}
+  def pop_boot_queue(source_token) when is_atom(source_token) do
+    Source.Supervisor.via(__MODULE__, source_token)
+    |> pop_boot_queue()
+  end
+
+  def pop_boot_queue(identfier) do
+    GenServer.call(identfier, :pop_boot_queue)
+  end
+
+  ### GenServer
+  @impl GenServer
+  def handle_call(:boot_queue_len, _caller, state) do
+    {:reply, Enum.count(state.boot_queue), state}
+  end
+
+  @impl GenServer
+  def handle_call(:pop_boot_queue, _caller, state) do
+    {:reply, {:ok, state.boot_queue}, %{state | boot_queue: []}}
+  end
+
+  @impl GenServer
+  def handle_cast({:add_to_boot_queue, batch}, state) when is_list(batch) do
+    sliced = Enum.slice(batch ++ state.boot_queue, 0..(@max_boot_queue - 1))
+
+    if Enum.count(sliced) > 0.95 * @max_boot_queue do
+      Logger.warning("[#{__MODULE__}] Boot queue nearing maximum, events may be discarded",
+        source_id: state.source_token,
+        source_token: state.source_token
+      )
+    end
+
+    {:noreply, %{state | boot_queue: sliced}}
+  end
+
+  @impl GenServer
   def handle_info(:loop, state) do
     pipeline_name = Pipeline.name(state.source_token)
 
@@ -134,6 +220,7 @@ defmodule Logflare.Source.BigQuery.BufferCounter do
     {:noreply, state}
   end
 
+  @impl GenServer
   def handle_info(:check_buffer, state) do
     if Source.RateCounterServer.should_broadcast?(state.source_token) do
       broadcast_buffer(state.source_token)
@@ -144,6 +231,7 @@ defmodule Logflare.Source.BigQuery.BufferCounter do
     {:noreply, state}
   end
 
+  @impl GenServer
   def terminate(reason, state) do
     Logger.info("Going Down - #{inspect(reason)} - #{__MODULE__}", %{
       source_id: state.source_token,
