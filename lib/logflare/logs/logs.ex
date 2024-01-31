@@ -14,7 +14,7 @@ defmodule Logflare.Logs do
 
   @spec ingest_logs(list(map), Source.t()) :: :ok | {:error, term}
   def ingest_logs(log_params_batch, %Source{rules: rules} = source) when is_list(rules) do
-    Logger.metadata(source_id: rls.source_id, source_token: rls.source_id)
+    Logger.metadata(source_id: source.token, source_token: source.token)
 
     log_params_batch
     |> Enum.map(fn log ->
