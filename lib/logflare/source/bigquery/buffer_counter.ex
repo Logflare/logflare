@@ -99,7 +99,8 @@ defmodule Logflare.Source.BigQuery.BufferCounter do
   def push_by(source_token, count) do
     len = len(source_token)
 
-    if len + count <= @max_buffer_len do
+    # allow bursting
+    if len <= @max_buffer_len do
       {:ok, len + count}
     else
       {:error, :buffer_full}

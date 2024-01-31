@@ -129,6 +129,7 @@ defmodule Logflare.Source.BufferCounterTest do
           }
         end
 
+      assert :ok = BufferCounter.push_batch(source, big_batch)
       assert {:error, :buffer_full} = BufferCounter.push_batch(source, big_batch)
     end
   end
