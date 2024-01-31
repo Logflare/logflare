@@ -16,23 +16,9 @@ defmodule Logflare.Logs.SourceRouting do
     le
   end
 
-  def route_to_sinks_and_ingest(%LE{body: body, source: source, via_rule: nil} = le) do
-    %Source{rules: rules} = source
-
-    for rule <- rules do
-      regex_struct =
-        rule.regex_struct || if(rule.regex != nil, do: Regex.compile!(rule.regex), else: nil)
-
-      cond do
-        not Enum.empty?(rule.lql_filters) and route_with_lql_rules?(le, rule) ->
-          do_route(le, rule)
-
-        regex_struct != nil and Regex.match?(regex_struct, body["event_message"]) ->
-          do_route(le, rule)
-
-        true ->
-          le
-      end
+  def route_to_sinks_and_ingest(%LE{source: %Source{rules: rules}, via_rule: nil} = le) do
+    for %Rule{lql_filters: [_ | _]} = rule <- rules, route_with_lql_rules?(le, rule) do
+      do_route(le, rule)
     end
 
     le

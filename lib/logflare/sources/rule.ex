@@ -5,7 +5,6 @@ defmodule Logflare.Rule do
   import Ecto.Changeset
 
   typed_schema "rules" do
-
     field :sink, Ecto.UUID.Atom
     field :lql_filters, Ecto.Term, default: []
     field :lql_string, :string
