@@ -140,12 +140,12 @@ defmodule Logflare.Source.BigQuery.BufferCounter do
     :ets.lookup_element(@table, source_token, 2, 0)
   end
 
-  @typep identifier :: atom() | tuple() | pid()
+  @typep proc_name :: atom() | tuple() | pid()
 
   @doc """
   Retrieves the length of the boot queue in GenServer state.
   """
-  @spec boot_queue_len(identifier()) :: non_neg_integer()
+  @spec boot_queue_len(proc_name()) :: non_neg_integer()
   def boot_queue_len(source_token) when is_atom(source_token) do
     Source.Supervisor.via(__MODULE__, source_token)
     |> boot_queue_len()
@@ -158,7 +158,7 @@ defmodule Logflare.Source.BigQuery.BufferCounter do
   @doc """
   Adds events to the boot queue.
   """
-  @spec add_to_boot_queue(identifier(), [Broadway.Message.t()]) :: :ok
+  @spec add_to_boot_queue(proc_name(), [Broadway.Message.t()]) :: :ok
   def add_to_boot_queue(source_token, batch) when is_atom(source_token) do
     Source.Supervisor.via(__MODULE__, source_token)
     |> add_to_boot_queue(batch)
@@ -173,7 +173,7 @@ defmodule Logflare.Source.BigQuery.BufferCounter do
   @doc """
   Retrieves the entire boot queue from GenServer state.
   """
-  @spec pop_boot_queue(identifier()) :: {:ok, [Broadway.Message.t()]}
+  @spec pop_boot_queue(proc_name()) :: {:ok, [Broadway.Message.t()]}
   def pop_boot_queue(source_token) when is_atom(source_token) do
     Source.Supervisor.via(__MODULE__, source_token)
     |> pop_boot_queue()
