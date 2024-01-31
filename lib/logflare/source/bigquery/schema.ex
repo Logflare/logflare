@@ -43,6 +43,7 @@ defmodule Logflare.Source.BigQuery.Schema do
   end
 
   def init(state) do
+    Logger.metadata(source_id: state.source_token, source_token: state.source_token,)
     Process.flag(:trap_exit, true)
 
     persist(0)
