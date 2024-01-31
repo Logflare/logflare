@@ -5,19 +5,38 @@ defmodule Logflare.Source.BigQuery.BufferProducer do
   require Logger
 
   alias Logflare.Source.BigQuery.BufferCounter
+  alias Logflare.Source
 
   @impl true
-  def init(%{source_id: source_id}) when is_atom(source_id) do
+  def init(%{source_id: source_token}) when is_atom(source_token) do
     {:producer,
      %{
        demand: 0,
-       source_id: source_id
+       source_token: source_token
      }, buffer_size: 50_000}
   end
 
   @impl true
   def handle_demand(incoming_demand, %{demand: demand} = state) do
     handle_receive_messages(%{state | demand: demand + incoming_demand})
+  end
+
+  @impl true
+  def handle_info(:boot_queue, state) do
+    queue =
+      with {:ok, _pid} <- Source.Supervisor.lookup(BufferCounter, state.source_token),
+           {:ok, [_ | _] = queue} <- BufferCounter.pop_boot_queue(state.source_token) do
+        Logger.info("[#{__MODULE__}] Non-empty boot queue retrieved",
+          source_id: state.source_token,
+          source_token: state.source_token
+        )
+
+        queue
+      else
+        _ -> []
+      end
+
+    {:noreply, queue, state}
   end
 
   @impl true
@@ -31,14 +50,14 @@ defmodule Logflare.Source.BigQuery.BufferProducer do
   end
 
   @spec ack(atom(), [Broadway.Message.t()], [Broadway.Message.t()]) :: :ok
-  def ack(source_id, successful, unsuccessful) when is_atom(source_id) do
-    BufferCounter.ack_batch(source_id, successful ++ unsuccessful)
+  def ack(source_token, successful, unsuccessful) when is_atom(source_token) do
+    BufferCounter.ack_batch(source_token, successful ++ unsuccessful)
 
     :ok
   end
 
   defp handle_receive_messages(
-         %{source_id: _source_id, receive_timer: nil, demand: demand} = state
+         %{source_token: _source_token, receive_timer: nil, demand: demand} = state
        )
        when demand > 0 do
     # would normall pop log events from a buffer here

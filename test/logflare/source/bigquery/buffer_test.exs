@@ -133,4 +133,66 @@ defmodule Logflare.Source.BufferCounterTest do
       assert {:error, :buffer_full} = BufferCounter.push_batch(source, big_batch)
     end
   end
+
+  describe "boot queue" do
+    setup do
+      user = insert(:user)
+      source = insert(:source, user: user)
+      rls = %RecentLogsServer{source: source, source_id: source.token}
+      le = build(:log_event, source: source)
+
+      {:ok, source: source, rls: rls, le: le}
+    end
+
+    test "add_to_boot_queue/2, boot_queue_len/1, pop_boot_queue/1", %{
+      source: source,
+      rls: rls,
+      le: le
+    } do
+      pid = start_supervised!({BufferCounter, rls})
+      assert :ok = BufferCounter.add_to_boot_queue(pid, le)
+      assert :ok = BufferCounter.add_to_boot_queue(pid, [le])
+      assert BufferCounter.boot_queue_len(source.token) == 2
+      assert {:ok, [_, _]} = BufferCounter.pop_boot_queue(pid)
+      assert BufferCounter.boot_queue_len(source.token) == 0
+    end
+
+    test "pipeline not started yet, events go to boot queue", %{rls: rls, source: source, le: le} do
+      start_supervised!({BufferCounter, rls})
+      assert :ok = BufferCounter.push(le)
+      assert BufferCounter.boot_queue_len(source.token) == 1
+    end
+
+    test "boot queue auto-clears when pipeline is up", %{rls: rls, source: source, le: le} do
+      start_supervised!({BufferCounter, rls})
+      assert :ok = BufferCounter.push(le)
+      assert BufferCounter.boot_queue_len(source.token) == 1
+      start_supervised!({Pipeline, rls})
+      :timer.sleep(1000)
+      assert BufferCounter.boot_queue_len(source.token) == 0
+      assert :ok = BufferCounter.push(le)
+      assert BufferCounter.boot_queue_len(source.token) == 0
+    end
+
+    test "boot queue max length", %{rls: rls, source: source, le: le} do
+      start_supervised!({BufferCounter, rls})
+
+      for _ <- 1..1000 do
+        assert :ok = BufferCounter.push(le)
+      end
+
+      # insert even more, but newer stuff
+      le = build(:log_event, source: source, message: "new")
+
+      for _ <- 1..1000 do
+        assert :ok = BufferCounter.push(le)
+      end
+
+      assert BufferCounter.boot_queue_len(source.token) == 1000
+      # only newer items are kept, older ones are discarded
+      assert {:ok,
+              [%Broadway.Message{data: %Logflare.LogEvent{body: %{"event_message" => "new"}}} | _]} =
+               BufferCounter.pop_boot_queue(source.token)
+    end
+  end
 end
