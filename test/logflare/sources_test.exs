@@ -196,7 +196,10 @@ defmodule Logflare.SourcesTest do
       insert(:plan)
 
       on_exit(fn ->
-        DynamicSupervisor.stop(Logflare.Source.V1SourceDynSup)
+
+        for {_id, child, _, _} <- DynamicSupervisor.which_children(Logflare.Source.V1SourceDynSup) do
+          DynamicSupervisor.terminate_child(Logflare.Source.V1SourceDynSup, child)
+        end
       end)
 
       {:ok, user: insert(:user)}
