@@ -89,7 +89,7 @@ defmodule Logflare.Source.BigQuery.Schema do
   end
 
   def get_state(source_token) when is_atom(source_token) do
-    with  {:ok, pid} <- Source.Supervisor.lookup(__MODULE__, source_token) do
+    with {:ok, pid} <- Source.Supervisor.lookup(__MODULE__, source_token) do
       GenServer.call(pid, :get)
     end
   end
