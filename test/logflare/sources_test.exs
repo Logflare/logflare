@@ -13,7 +13,12 @@ defmodule Logflare.SourcesTest do
   alias Logflare.Sources.Counters
   alias Logflare.SourceSchemas
   alias Logflare.Source.RateCounterServer
-      alias Logflare.Users
+  alias Logflare.Sources.Counters
+  alias Logflare.Sources.RateCounters
+  alias Logflare.SystemMetrics.AllLogsLogged
+  alias Logflare.Source.BigQuery.BufferCounter
+  alias Logflare.Source.V1SourceSup
+  alias Logflare.Users
 
   describe "create_source/2" do
     setup do
@@ -173,30 +178,45 @@ defmodule Logflare.SourcesTest do
 
   describe "Source.Supervisor" do
     alias Logflare.Source.RecentLogsServer, as: RLS
+
     setup do
       stub(Goth, :fetch, fn _mod -> {:ok, %Goth.Token{token: "auth-token"}} end)
 
-      start_supervised!(Sources.Counters)
+      Logflare.Google.BigQuery
+      |> stub(:init_table!, fn _, _, _, _, _, _ -> :ok end)
+
+      start_supervised!(AllLogsLogged)
+      start_supervised!(Counters)
+      start_supervised!(RateCounters)
 
       RateCounterServer
       |> stub(:get_data_from_ets, fn _ -> %RateCounterServer{} end)
       |> stub(:broadcast, fn _ -> :ok end)
 
       insert(:plan)
+
+      on_exit(fn ->
+        DynamicSupervisor.stop(Logflare.Source.V1SourceDynSup)
+      end)
+
       {:ok, user: insert(:user)}
     end
+
     test "bootup starts RLS for each recently logged source", %{user: user} do
       source_stale = insert(:source, user: user)
-      [source| _ ] = for _ <- 1..24 do
-        insert(:source, user: user, log_events_updated_at: DateTime.utc_now())
-      end
+
+      [source | _] =
+        for _ <- 1..24 do
+          insert(:source, user: user, log_events_updated_at: DateTime.utc_now())
+        end
+
       start_supervised!(Source.Supervisor)
       assert Source.Supervisor.booting?()
       :timer.sleep(1500)
       refute Source.Supervisor.booting?()
-      assert {:ok, pid} = Source.Supervisor.lookup(RLS, source.token)
+      assert {:ok, pid} = Source.Supervisor.lookup(V1SourceSup, source.token)
       assert is_pid(pid)
-      assert  {:error, :no_proc} = Source.Supervisor.lookup(RLS, source_stale.token)
+      assert {:error, :no_proc} = Source.Supervisor.lookup(V1SourceSup, source_stale.token)
     end
 
     test "start_source/1, lookup/2, delete_source/1", %{user: user} do
@@ -206,46 +226,87 @@ defmodule Logflare.SourcesTest do
       |> stub(:get_bq_inserts, fn _ -> {:ok, 0} end)
       |> stub(:create, fn _ -> {:ok, :some_table} end)
 
-
       Logflare.Google.BigQuery
       |> expect(:delete_table, fn _token -> :ok end)
-      |> expect(:init_table!, fn _, _ , _, _, _, _ -> :ok end)
+      |> expect(:init_table!, fn _, _, _, _, _, _ -> :ok end)
 
       %{token: token} = insert(:source, user: user)
       start_supervised!(Source.Supervisor)
       # TODO: cast should return :ok
       assert {:ok, ^token} = Source.Supervisor.start_source(token)
       :timer.sleep(500)
-      assert {:ok, _pid} = Source.Supervisor.lookup(RLS, token)
+      assert {:ok, _pid} = Source.Supervisor.lookup(V1SourceSup, token)
       :timer.sleep(1_000)
       assert {:ok, ^token} = Source.Supervisor.delete_source(token)
-      :timer.sleep(500)
-      assert {:error, :no_proc} = Source.Supervisor.lookup(RLS, token)
+      :timer.sleep(1000)
+      assert {:error, :no_proc} = Source.Supervisor.lookup(V1SourceSup, token)
     end
 
-
     test "reset_source/1", %{user: user} do
-      Counters
-      |> stub(:delete, fn _token -> :ok end)
-      |> stub(:get_inserts, fn _ -> {:ok, 0} end)
-      |> stub(:get_bq_inserts, fn _ -> {:ok, 0} end)
-      |> stub(:create, fn _ -> {:ok, :some_table} end)
-
-
-
-      Logflare.Google.BigQuery
-      |> stub(:init_table!, fn _, _ , _, _, _, _ -> :ok end)
-
       %{token: token} = insert(:source, user: user)
       start_supervised!(Source.Supervisor)
       # TODO: cast should return :ok
       assert {:ok, ^token} = Source.Supervisor.start_source(token)
       :timer.sleep(500)
-      assert {:ok, pid} = Source.Supervisor.lookup(RLS, token)
+      assert {:ok, pid} = Source.Supervisor.lookup(V1SourceSup, token)
       assert {:ok, ^token} = Source.Supervisor.reset_source(token)
       :timer.sleep(1500)
-      assert {:ok, new_pid} = Source.Supervisor.lookup(RLS, token)
+      assert {:ok, new_pid} = Source.Supervisor.lookup(V1SourceSup, token)
       assert new_pid != pid
+    end
+
+    test "able to start supervision tree" do
+      user = insert(:user)
+      source = insert(:source, user_id: user.id)
+
+      start_supervised!(Source.Supervisor)
+      assert {:ok, :started} = Source.Supervisor.ensure_started(source.token)
+      :timer.sleep(1000)
+      assert {:ok, _pid} = Source.Supervisor.lookup(V1SourceSup, source.token)
+      assert BufferCounter.len(source) == 0
+    end
+
+    test "able to reset supervision tree" do
+      user = insert(:user)
+      source = insert(:source, user_id: user.id)
+
+      start_supervised!(Source.Supervisor)
+      assert {:ok, :started} = Source.Supervisor.ensure_started(source.token)
+      :timer.sleep(1000)
+      assert {:ok, pid} = Source.Supervisor.lookup(V1SourceSup, source.token)
+      assert {:ok, _} = Source.Supervisor.reset_source(source.token)
+      assert {:ok, _} = Source.Supervisor.reset_source(source.token)
+      :timer.sleep(3000)
+      assert {:ok, new_pid} = Source.Supervisor.lookup(RLS, source.token)
+      assert pid != new_pid
+      assert BufferCounter.len(source) == 0
+    end
+
+    test "concurrent start attempts" do
+      user = insert(:user)
+      source = insert(:source, user_id: user.id)
+      start_supervised!(Source.Supervisor)
+      assert {:ok, :started} = Source.Supervisor.ensure_started(source.token)
+
+      assert {:ok, :started} = Source.Supervisor.ensure_started(source.token)
+      assert {:ok, :started} = Source.Supervisor.ensure_started(source.token)
+      assert {:ok, :started} = Source.Supervisor.ensure_started(source.token)
+      assert {:ok, :started} = Source.Supervisor.ensure_started(source.token)
+      :timer.sleep(3000)
+      assert {:ok, _pid} = Source.Supervisor.lookup(V1SourceSup, source.token)
+      assert BufferCounter.len(source) == 0
+    end
+
+    test "terminating Source.Supervisor does not bring everything down" do
+      user = insert(:user)
+      source = insert(:source, user_id: user.id)
+      pid = start_supervised!(Source.Supervisor)
+      assert {:ok, :started} = Source.Supervisor.ensure_started(source.token)
+      :timer.sleep(3000)
+      assert {:ok, prev_pid} = Source.Supervisor.lookup(V1SourceSup, source.token)
+      Process.exit(pid, :kill)
+      assert {:ok, pid} = Source.Supervisor.lookup(V1SourceSup, source.token)
+      assert prev_pid == pid
     end
   end
 
@@ -257,6 +318,7 @@ defmodule Logflare.SourcesTest do
         rescue
           _e -> :ok
         end
+
         try do
           :ets.delete(:table_counters)
         rescue
@@ -264,6 +326,7 @@ defmodule Logflare.SourcesTest do
         end
       end)
     end
+
     test "ingest_ets_tables_started?/0" do
       assert false == Sources.ingest_ets_tables_started?()
       start_supervised!(Logflare.Sources.RateCounters)

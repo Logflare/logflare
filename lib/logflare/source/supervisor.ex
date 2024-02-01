@@ -15,6 +15,8 @@ defmodule Logflare.Source.Supervisor do
   alias Logflare.Source.BigQuery.SchemaBuilder
   alias Logflare.Google.BigQuery.SchemaUtils
   alias Logflare.Utils.Tasks
+  alias Logflare.Source.V1SourceDynSup
+  alias Logflare.Source.V1SourceSup
 
   import Ecto.Query, only: [from: 2]
 
@@ -55,17 +57,14 @@ defmodule Logflare.Source.Supervisor do
     Repo.all(query)
     |> Enum.chunk_every(25)
     |> Enum.each(fn chunk ->
-      children =
-        for source <- chunk do
-          rls = %RLS{source_id: source.token, source: source}
-          Supervisor.child_spec({RLS, rls}, id: source.token, restart: :transient)
-        end
+      for source <- chunk do
+        rls = %RLS{source_id: source.token, source: source}
+        DynamicSupervisor.start_child(V1SourceDynSup, {V1SourceSup, rls})
+      end
 
       # BigQuery Rate limit is 100/second
       # Also gives the database a break on boot
       Process.sleep(250)
-
-      Supervisor.start_link(children, strategy: :one_for_one, max_restarts: 10, max_seconds: 60)
     end)
 
     Agent.update(@agent, &%{&1 | status: :ok})
@@ -73,64 +72,70 @@ defmodule Logflare.Source.Supervisor do
   end
 
   def handle_cast({:create, source_token}, state) do
-    case lookup(RLS, source_token) do
-      {:error, _} ->
-        case create_source(source_token) do
-          {:ok, _pid} ->
-            {:noreply, state}
+    with {:error, :no_proc} <- lookup(V1SourceSup, source_token),
+         {:ok, _pid} <- create_source(source_token) do
+      {:noreply, state}
+    else
+      {:ok, pid} when is_pid(pid) ->
+        {:noreply, state}
 
-          {:error, _reason} ->
-            Logger.error("Failed to start RecentLogsServer: #{source_token}")
-            {:noreply, state}
-        end
+      {:error, _reason} = err ->
+        Logger.error(
+          "Source.Supervisor -  Failed to start V1SourceSup: #{source_token}, #{inspect(err)}"
+        )
 
-      {:ok, _pid} ->
         {:noreply, state}
     end
   end
 
   def handle_cast({:delete, source_token}, state) do
-    case lookup(RLS, source_token) do
+    case lookup(V1SourceSup, source_token) do
       {:error, _} ->
         {:noreply, state}
 
       {:ok, pid} ->
-        send(pid, {:stop_please, :shutdown})
+        DynamicSupervisor.terminate_child(V1SourceDynSup, pid)
         Counters.delete(source_token)
         {:noreply, state}
     end
   end
 
   def handle_cast({:restart, source_token}, state) do
-    case lookup(RLS, source_token) do
-      {:error, _} ->
-        case create_source(source_token) do
-          {:ok, _pid} ->
-            {:noreply, state}
+    case lookup(V1SourceSup, source_token) do
+      {:ok, pid} ->
+        Logger.info(
+          "Source.Supervisor - Performing V1SourceSup shutdown actions: #{source_token}"
+        )
 
-          {:error, _reason} ->
-            Logger.error("Failed to start RecentLogsServer: #{source_token}")
-            {:noreply, state}
-        end
+        DynamicSupervisor.terminate_child(V1SourceDynSup, pid)
+        reset_persisted_schema(source_token)
+        :timer.sleep(1000)
+
+      {:error, :no_proc} ->
+        Logger.warning(
+          "Source.Supervisor - V1SourceSup is not up. Attempting to start: #{source_token}"
+        )
+
+        :noop
+    end
+
+    case create_source(source_token) do
+      {:ok, _pid} ->
+        {:noreply, state}
+
+      {:error, :already_started} ->
+        Logger.info(
+          "V1SourceSup already started by another concurrent action, will not attempt further start: #{source_token}"
+        )
 
         {:noreply, state}
 
-      {:ok, pid} ->
-        send(pid, {:stop_please, :shutdown})
+      {:error, _reason} = err ->
+        Logger.error(
+          "Failed to start V1SourceSup when attempting restart: #{source_token} , #{inspect(err)} "
+        )
 
-        reset_persisted_schema(source_token)
-
-        Process.sleep(1_000)
-
-        case create_source(source_token) do
-          {:ok, _pid} ->
-            {:noreply, state}
-
-          {:error, _reason} ->
-            Logger.error("Failed to start RecentLogsServer: #{source_token}")
-
-            {:noreply, state}
-        end
+        {:noreply, state}
     end
   end
 
@@ -218,12 +223,15 @@ defmodule Logflare.Source.Supervisor do
     if source do
       rls = %RLS{source_id: source_token, source: source}
 
-      children = [Supervisor.child_spec({RLS, rls}, id: source_token, restart: :transient)]
+      case DynamicSupervisor.start_child(V1SourceDynSup, {V1SourceSup, rls}) do
+        {:ok, _pid} = res ->
+          Tasks.start_child(fn -> init_table(source_token) end)
 
-      # fire off async init in async task, so that bq call does not block.
-      Tasks.start_child(fn -> init_table(source_token) end)
+          res
 
-      Supervisor.start_link(children, strategy: :one_for_one, max_restarts: 10, max_seconds: 60)
+        {:error, {:already_started = reason, _pid}} ->
+          {:error, reason}
+      end
     else
       {:error, :not_found_in_db}
     end
@@ -253,9 +261,12 @@ defmodule Logflare.Source.Supervisor do
 
   @spec ensure_started(atom) :: {:ok, :already_started | :started}
   def ensure_started(source_token) do
-    case lookup(RLS, source_token) do
+    case lookup(V1SourceSup, source_token) do
       {:error, _} ->
-        Logger.info("Source process not found, starting...", source_id: source_token)
+        Logger.info("Source.Supervisor - V1SourceSup not found, starting...",
+          source_id: source_token,
+          source_token: source_token
+        )
 
         start_source(source_token)
 

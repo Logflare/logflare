@@ -7,6 +7,7 @@ defmodule Logflare.Source.BigQuery.BufferTest do
   alias Logflare.Sources.RateCounters
   alias Logflare.SystemMetrics.AllLogsLogged
   alias Logflare.LogEvent
+  alias Logflare.Source.V1SourceSup
 
   setup do
     Goth
@@ -20,7 +21,7 @@ defmodule Logflare.Source.BigQuery.BufferTest do
 
     source = insert(:source, user: user)
     rls = %RecentLogsServer{source: source, source_id: source.token}
-    start_supervised!({RecentLogsServer, rls}, id: :source)
+    start_supervised!({V1SourceSup, rls}, id: :source)
 
     [source: source]
   end

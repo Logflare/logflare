@@ -8,24 +8,9 @@ defmodule Logflare.Source.RecentLogsServer do
 
   alias Logflare.Billing.Plan
   alias Logflare.TaskSupervisor
-
-  alias Logflare.Source.BigQuery.Schema
-  alias Logflare.Source.BigQuery.Pipeline
-  alias Logflare.Source.BigQuery.BufferCounter
-
-  alias Logflare.Source.EmailNotificationServer
-  alias Logflare.Source.TextNotificationServer
-  alias Logflare.Source.WebhookNotificationServer
-  alias Logflare.Source.SlackHookServer
-  alias Logflare.Source.BillingWriter
-
-  alias Logflare.Source.RateCounterServer, as: RCS
   alias Logflare.LogEvent, as: LE
   alias Logflare.Source
-  alias Logflare.Users
-  alias Logflare.Billing
   alias Logflare.Sources
-  alias Logflare.Logs.SearchQueryExecutor
   alias Logflare.PubSubRates
   alias Logflare.Cluster
   alias __MODULE__, as: RLS
@@ -125,59 +110,16 @@ defmodule Logflare.Source.RecentLogsServer do
 
   ## Client
   @spec init(RLS.t()) :: {:ok, RLS.t(), {:continue, :boot}}
-  def init(%__MODULE__{source_id: _source_id, source: source} = rls) do
+  def init(%__MODULE__{source_id: _source_id} = rls) do
     Process.flag(:trap_exit, true)
     Logger.metadata(source_id: rls.source_id, source_token: rls.source_id)
 
-    user =
-      source.user_id
-      |> Users.get()
-      |> Users.maybe_put_bigquery_defaults()
-      |> Users.preload_billing_account()
-
-    plan = Billing.get_plan_by_user(user)
-
-    rls = %{
-      rls
-      | bigquery_project_id: user.bigquery_project_id,
-        bigquery_dataset_id: user.bigquery_dataset_id,
-        user: user,
-        plan: plan,
-        notifications_every: source.notifications_every
-    }
-
-    # these go into separate supervisor that blocks
-    children = [
-      {BufferCounter, rls},
-      {Schema, rls},
-      {Pipeline, rls}
-    ]
-
-    Supervisor.start_link(children, strategy: :one_for_one)
-
     touch()
     broadcast()
-
-    {:ok, rls, {:continue, :boot}}
-  end
-
-  def handle_continue(:boot, rls) do
-    children = [
-      {RCS, rls},
-      {EmailNotificationServer, rls},
-      {TextNotificationServer, rls},
-      {WebhookNotificationServer, rls},
-      {SlackHookServer, rls},
-      {SearchQueryExecutor, rls},
-      {BillingWriter, rls}
-    ]
-
-    Supervisor.start_link(children, strategy: :one_for_one)
-
     load_init_log_message(rls.source_id)
 
     Logger.info("[#{__MODULE__}] Started")
-    {:noreply, rls}
+    {:ok, rls}
   end
 
   def handle_call(:list, _from, state) do
@@ -253,7 +195,6 @@ defmodule Logflare.Source.RecentLogsServer do
 
   def terminate(reason, _state) do
     Logger.info("[#{__MODULE__}] Going Down: #{inspect(reason)}")
-
     reason
   end
 
