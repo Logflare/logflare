@@ -7,6 +7,7 @@ defmodule LogflareWeb.LogControllerTest do
   alias Logflare.Sources.RateCounters
   alias Logflare.SingleTenant
   alias Logflare.Users
+  alias Logflare.Source.V1SourceSup
   alias Logflare.Sources
 
   @valid %{"some" => "valid log entry", "event_message" => "hi!"}
@@ -225,7 +226,7 @@ defmodule LogflareWeb.LogControllerTest do
       rls = %RecentLogsServer{source: source, source_id: source.token}
       start_supervised!(Counters)
       start_supervised!(RateCounters)
-      start_supervised!({RecentLogsServer, rls})
+      start_supervised!({V1SourceSup, rls})
       :timer.sleep(500)
 
       Logflare.Logs
@@ -260,7 +261,7 @@ defmodule LogflareWeb.LogControllerTest do
     rls = %RecentLogsServer{source: source, source_id: source.token}
     start_supervised!(Counters)
     start_supervised!(RateCounters)
-    start_supervised!({RecentLogsServer, rls})
+    start_supervised!({V1SourceSup, rls})
     :timer.sleep(500)
 
     Logflare.Logs

@@ -54,6 +54,12 @@ defmodule Logflare.Application do
         LogflareWeb.Endpoint,
         {Task.Supervisor, name: Logflare.TaskSupervisor},
         {DynamicSupervisor, strategy: :one_for_one, name: Logflare.Endpoints.Cache},
+        {DynamicSupervisor,
+         strategy: :one_for_one,
+         restart: :transient,
+         max_restarts: 10,
+         max_seconds: 60,
+         name: Logflare.Source.V1SourceDynSup},
 
         # v2 ingestion pipelines
         {DynamicSupervisor, strategy: :one_for_one, name: Logflare.Backends.SourcesSup},
@@ -138,6 +144,12 @@ defmodule Logflare.Application do
         PubSubRates.Buffers,
         PubSubRates.Inserts,
         Logflare.Source.Supervisor,
+        {DynamicSupervisor,
+         strategy: :one_for_one,
+         restart: :transient,
+         max_restarts: 10,
+         max_seconds: 60,
+         name: Logflare.Source.V1SourceDynSup},
 
         # If we get a log event and the Source.Supervisor is not up it will 500
         LogflareWeb.Endpoint,
