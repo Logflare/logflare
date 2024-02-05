@@ -7,7 +7,7 @@ toc_max_heading_level: 3
 Logflare has experimental support for storing and querying log events to a PostgreSQL server. Ingested logs are directly inserted into tables, and each source maps to a Postgres table within a given schema.
 
 :::warning
-PsotgreSQL as a backend is only available for the **V2 ingestion** and currently has limited functionality.
+PostgreSQL as a backend is only available for the **V2 ingestion** and currently has limited functionality.
 :::
 
 ## Behavior and Configuration
