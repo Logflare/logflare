@@ -31,7 +31,7 @@ defmodule Logflare.Source.BigQuery.Pipeline do
         default: [concurrency: 1]
       ],
       batchers: [
-        bq: [concurrency: System.schedulers_online(), batch_size: 350, batch_timeout: 1_500]
+        bq: [concurrency: System.schedulers_online(), batch_size: 250, batch_timeout: 1_500]
       ],
       context: rls
     )
