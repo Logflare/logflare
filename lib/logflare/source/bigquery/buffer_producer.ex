@@ -12,7 +12,7 @@ defmodule Logflare.Source.BigQuery.BufferProducer do
      %{
        demand: 0,
        source_id: source_id
-     }, buffer_size: 50_000}
+     }, buffer_size: 10_000}
   end
 
   @impl true
