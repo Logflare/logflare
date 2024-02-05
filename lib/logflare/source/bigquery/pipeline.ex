@@ -20,11 +20,7 @@ defmodule Logflare.Source.BigQuery.Pipeline do
   alias Logflare.Sources
   alias Logflare.Users
 
-  @batcher_multiple 0.5
-
   def start_link(%RLS{source: source, plan: _plan} = rls) do
-    max_batchers = (System.schedulers_online() * @batcher_multiple) |> Kernel.ceil()
-
     Broadway.start_link(__MODULE__,
       name: name(source.token),
       producer: [
@@ -35,7 +31,7 @@ defmodule Logflare.Source.BigQuery.Pipeline do
         default: [concurrency: 1]
       ],
       batchers: [
-        bq: [concurrency: max_batchers, batch_size: 250, batch_timeout: 1_500]
+        bq: [concurrency: System.schedulers_online(), batch_size: 250, batch_timeout: 1_500]
       ],
       context: rls
     )
