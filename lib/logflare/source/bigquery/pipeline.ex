@@ -20,8 +20,6 @@ defmodule Logflare.Source.BigQuery.Pipeline do
   alias Logflare.Sources
   alias Logflare.Users
 
-  @batcher_multiple 0.5
-
   def start_link(%RLS{source: source, plan: _plan} = rls) do
     Broadway.start_link(__MODULE__,
       name: name(source.token),
