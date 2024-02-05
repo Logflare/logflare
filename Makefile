@@ -150,17 +150,45 @@ deploy.staging.versioned:
 
 deploy.prod.versioned:
 	@gcloud config set project logflare-232118
+	@echo "Creating staging instance template and deploying..."
 	gcloud builds submit . \
 		--config=./cloudbuild/prod/build-image.yaml \
 		--substitutions=_IMAGE_TAG=$(VERSION) \
 		--region=europe-west3 \
 		--gcs-log-dir="gs://logflare-prod_cloudbuild-logs/logs"
 	
+	@echo "Creating canary instance template..."
 	gcloud builds submit . \
 		--config=./cloudbuild/prod/pre-deploy.yaml \
 		--substitutions=_IMAGE_TAG=$(VERSION),_NORMALIZED_IMAGE_TAG=$(NORMALIZED_VERSION) \
 		--region=europe-west3 \
 		--gcs-log-dir="gs://logflare-prod_cloudbuild-logs/logs"
+
+	@echo "Deploying to canary instances"
+	gcloud builds submit . \
+		--config=./cloudbuild/prod/deploy.yaml \
+		--substitutions=_IMAGE_TAG=$(VERSION),_NORMALIZED_IMAGE_TAG=$(NORMALIZED_VERSION) \
+		--region=europe-west3 \
+		--gcs-log-dir="gs://logflare-prod_cloudbuild-logs/logs"
+
+
+	@echo "Creating prod instance templates..."
+	gcloud builds submit . \
+		--config=./cloudbuild/prod/pre-deploy.yaml \
+		--substitutions=_IMAGE_TAG=$(VERSION),_NORMALIZED_IMAGE_TAG=$(NORMALIZED_VERSION),_CLUSTER=prod-a \
+		--region=europe-west3 \
+		--gcs-log-dir="gs://logflare-prod_cloudbuild-logs/logs"
+	gcloud builds submit . \
+		--config=./cloudbuild/prod/pre-deploy.yaml \
+		--substitutions=_IMAGE_TAG=$(VERSION),_NORMALIZED_IMAGE_TAG=$(NORMALIZED_VERSION),_CLUSTER=prod-b \
+		--region=europe-west3 \
+		--gcs-log-dir="gs://logflare-prod_cloudbuild-logs/logs"
+	gcloud builds submit . \
+		--config=./cloudbuild/prod/pre-deploy.yaml \
+		--substitutions=_IMAGE_TAG=$(VERSION),_NORMALIZED_IMAGE_TAG=$(NORMALIZED_VERSION),_CLUSTER=prod-c \
+		--region=europe-west3 \
+		--gcs-log-dir="gs://logflare-prod_cloudbuild-logs/logs"
+
 	@echo "Instance template has been created successfully. Complete the deployment by navigating to https://console.cloud.google.com/compute/instanceGroups/list?hl=en&project=logflare-232118"
 .PHONY: deploy.staging.main
 
