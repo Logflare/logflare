@@ -5,6 +5,17 @@ filter_nil_kv_pairs = fn pairs when is_list(pairs) ->
 end
 
 config :logflare,
+       Logflare.PubSub,
+       [
+         pool_size:
+           if(System.get_env("LOGFLARE_PUBSUB_POOL_SIZE") != nil,
+             do: String.to_integer(System.get_env("LOGFLARE_PUBSUB_POOL_SIZE")),
+             else: nil
+           )
+       ]
+       |> filter_nil_kv_pairs.()
+
+config :logflare,
        [
          node_shutdown_code: System.get_env("LOGFLARE_NODE_SHUTDOWN_CODE"),
          recaptcha_secret: System.get_env("LOGFLARE_RECAPTCHA_SECRET"),
