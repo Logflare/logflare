@@ -80,10 +80,10 @@ defmodule Logflare.Logs.SourceRouting do
                   String.contains?(le_str_value, value)
 
                 operator == := ->
-                  apply(Kernel, :==, [le_value, value])
+                  le_value == value
 
                 operator == :"~" ->
-                  apply(Kernel, :=~, [le_str_value, ~r/#{value}/u])
+                  le_str_value =~ ~r/#{value}/u
 
                 operator in [:<=, :<, :>=, :>] ->
                   apply(Kernel, operator, [le_value, value])
