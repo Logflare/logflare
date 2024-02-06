@@ -93,7 +93,7 @@ defmodule Logflare.Factory do
   end
 
   def log_event_factory(attrs) do
-    {source, params} = Map.pop(attrs, :source)
+    {source, params} = Map.pop(attrs, :source, build(:source))
 
     params =
       Map.merge(

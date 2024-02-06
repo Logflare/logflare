@@ -558,7 +558,6 @@ defmodule LogflareWeb.SourceController do
     for le <- log_events, le do
       le =
         le
-        |> Map.from_struct()
         |> Map.take([:body, :via_rule, :origin_source_id])
 
       if le.via_rule do

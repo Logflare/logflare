@@ -62,6 +62,8 @@ defmodule Logflare.Logs.SourceRouting do
 
         lql_filter_matches_any_of_nested_values? =
           Enum.reduce_while(le_values, false, fn le_value, _acc ->
+            le_str_value = if is_binary(le_value), do: le_value, else: inspect(le_value)
+
             lql_filter_matches? =
               cond do
                 is_nil(le_value) ->
@@ -75,13 +77,13 @@ defmodule Logflare.Logs.SourceRouting do
                   apply(Kernel, :==, [le_value, value])
 
                 operator == :string_contains ->
-                  String.contains?(le_value, value)
+                  String.contains?(le_str_value, value)
 
                 operator == := ->
-                  apply(Kernel, :==, [le_value, value])
+                  le_value == value
 
                 operator == :"~" ->
-                  apply(Kernel, :=~, [le_value, ~r/#{value}/u])
+                  le_str_value =~ ~r/#{value}/u
 
                 operator in [:<=, :<, :>=, :>] ->
                   apply(Kernel, operator, [le_value, value])

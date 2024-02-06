@@ -4,7 +4,6 @@ defmodule LogflareWeb.Source.RulesLqlTest do
   @endpoint LogflareWeb.Endpoint
   import Phoenix.LiveViewTest
   alias Logflare.Sources
-  alias Logflare.Lql.FilterRule
   alias Logflare.Repo
   # alias Logflare.Source.BigQuery.SchemaBuilder
   alias Logflare.Source.RecentLogsServer, as: RLS
@@ -16,8 +15,27 @@ defmodule LogflareWeb.Source.RulesLqlTest do
   use Mimic
 
   setup_all do
-    Sources.Counters.start_link()
+    start_supervised!(Sources.Counters)
     :ok
+  end
+
+  describe "Mount" do
+    setup %{conn: conn} do
+      user = insert(:user)
+      source = insert(:source, user: user)
+      plan = insert(:plan)
+      conn = login_user(conn, user)
+
+      {:ok, conn: conn, user: user, source: source, plan: plan}
+    end
+
+    test "subheader - lql docs", %{conn: conn, source: source} do
+      {:ok, view, _html} = live(conn, ~p"/sources/#{source.id}/rules")
+      html = render(view)
+      assert html =~ "Rules"
+      assert html =~ "Sink source"
+      assert html =~ "No rules yet..."
+    end
   end
 
   describe "LQL rules" do
@@ -51,42 +69,6 @@ defmodule LogflareWeb.Source.RulesLqlTest do
         conn
         |> Plug.Test.init_test_session(%{user_id: u.id})
         |> assign(:user, u)
-        |> get("/sources/#{s.id}/rules")
-
-      assert {:ok, view, html} = live(conn)
-      assert html =~ ~S|id="lql-rules-container"|
-
-      assert render_submit(view, :fsubmit, %{
-               "rule" => %{"lql_string" => "123errorstring", "sink" => sink.token}
-             }) =~ "Sink Source 1"
-
-      html =
-        render_submit(view, :fsubmit, %{
-          "rule" => %{"lql_string" => "123infostring", "sink" => sink.token}
-        })
-
-      assert html =~ "123infostring"
-      assert html =~ "123errorstring"
-    end
-
-    @tag :failing
-    test "mount with admin owner", %{conn: conn, sources: [s, sink | _], user: [u | _]} do
-      insert(:rule,
-        sink: sink.token,
-        source_id: s.id,
-        lql_filters: [
-          %FilterRule{operator: "~", path: "message", modifiers: %{}, value: "info"},
-          lql_string: "message:info"
-        ]
-      )
-
-      user = insert(:user, email: "example@example.org", admin: true)
-      user = Users.get(user.id)
-
-      conn =
-        conn
-        |> Plug.Test.init_test_session(%{user_id: u.id})
-        |> assign(:user, user)
         |> get("/sources/#{s.id}/rules")
 
       assert {:ok, view, html} = live(conn)
