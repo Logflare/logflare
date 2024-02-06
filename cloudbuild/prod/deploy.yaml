@@ -1,0 +1,34 @@
+steps:
+
+  # deploy canaries
+  - name: gcr.io/cloud-builders/gcloud
+    args:
+      - beta
+      - compute
+      - instance-groups
+      - managed
+      - rolling-action
+      - start-update
+      - ${_INSTANCE_GROUP}
+      - --project=logflare-232118
+      - --zone=europe-west3-c
+      - --type=proactive
+      - --max-surge=1
+      - --max-unavailable=0
+      - --min-ready=300
+      - --minimal-action=replace
+      - --most-disruptive-allowed-action=replace
+      - --replacement-method=substitute
+      - --version=template=projects/logflare-232118/global/instanceTemplates/${_TEMPLATE_NAME}
+
+substitutions:
+  _CLUSTER: canary
+  _COOKIE: default-${_CLUSTER}
+  _INSTANCE_GROUP: instance-group-prod-${_CLUSTER}
+  _IMAGE_TAG: $SHORT_SHA
+  _TEMPLATE_NAME: logflare-prod-${_NORMALIZED_IMAGE_TAG}-${_CLUSTER}
+  _CONTAINER_IMAGE: gcr.io/logflare-232118/logflare_app:${_IMAGE_TAG}
+timeout: 1800s
+options:
+  dynamicSubstitutions: true
+  substitutionOption: "ALLOW_LOOSE"
