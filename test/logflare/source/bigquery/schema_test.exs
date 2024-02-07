@@ -64,12 +64,12 @@ defmodule Logflare.Source.BigQuery.SchemaTest do
 
     # trigger an update
     le = build(:log_event, source: source, metadata: %{"test" => 123})
-    assert {:ok, :updated} = Schema.update(source.token, le)
+    assert :ok = Schema.update(source.token, le)
     %{next_update: updated_ts} = Schema.get_state(source.token)
     assert updated_ts != initial_ts
     # try to update again with different le
     le = build(:log_event, source: source, metadata: %{"change" => 123})
-    assert {:ok, :noop} = Schema.update(source.token, le)
+    assert :ok = Schema.update(source.token, le)
     %{next_update: unchanged_ts} = Schema.get_state(source.token)
     assert unchanged_ts == updated_ts
   end
