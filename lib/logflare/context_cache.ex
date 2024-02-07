@@ -70,6 +70,8 @@ defmodule Logflare.ContextCache do
   """
 
   @spec cache_name(list()) :: {:ok, :busted}
+  def bust_keys([]), do: {:ok, :busted}
+
   def bust_keys(values) when is_list(values) do
     for {context, primary_key} <- values do
       filter = {:==, {:element, 1, :key}, {{context, primary_key}}}
