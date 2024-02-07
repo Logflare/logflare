@@ -35,7 +35,6 @@ Mimic.copy(Goth)
 Mimic.copy(ConfigCat)
 Mimic.copy(Finch)
 Mimic.copy(ExTwilio.Message)
-Mimic.copy(Cachex)
 
 {:ok, _} = Application.ensure_all_started(:ex_machina)
 {:ok, _} = Application.ensure_all_started(:mimic)
