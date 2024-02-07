@@ -196,6 +196,7 @@ defmodule Logflare.Source.BigQuery.Schema do
 
                     {:error, response} ->
                       Logger.warning("Source schema update error!",
+                        error_string: "Sample event: #{inspect(body)}",
                         tesla_response: BigQuery.GenUtils.get_tesla_error_message(response)
                       )
 
@@ -204,6 +205,7 @@ defmodule Logflare.Source.BigQuery.Schema do
 
                 {:error, response} ->
                   Logger.warning("Source schema update error!",
+                    error_string: "Sample event: #{inspect(body)}",
                     tesla_response: BigQuery.GenUtils.get_tesla_error_message(response)
                   )
 
@@ -212,6 +214,7 @@ defmodule Logflare.Source.BigQuery.Schema do
 
             message ->
               Logger.warning("Source schema update error!",
+                error_string: "Sample event: #{inspect(body)}",
                 tesla_response: message
               )
 
