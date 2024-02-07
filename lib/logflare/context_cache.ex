@@ -48,7 +48,9 @@ defmodule Logflare.ContextCache do
            {:commit, {:cached, apply(context, fun, args)}}
          end) do
       {:commit, {:cached, value}} ->
-        index_keys(context, cache_key, value)
+        keys_key = {{context, select_key(value)}, :erlang.phash2(cache_key)}
+        Cachex.put(@cache, keys_key, cache_key)
+
         value
 
       {:ok, {:cached, value}} ->
@@ -92,39 +94,8 @@ defmodule Logflare.ContextCache do
     Module.concat(context, Cache)
   end
 
-  defp index_keys(context, cache_key, value) do
-    keys_key = {{context, select_key(value)}, :erlang.phash2(cache_key)}
-
-    Cachex.put(@cache, keys_key, cache_key)
-
-    {:ok, :indexed}
-  end
-
-  defp select_key(value) do
-    case value do
-      %Logflare.Source{} ->
-        value.id
-
-      %Logflare.Billing.BillingAccount{} ->
-        value.id
-
-      %Logflare.User{} ->
-        value.id
-
-      %Logflare.Billing.Plan{} ->
-        value.id
-
-      true ->
-        # Logger.warning("Cached unknown value from context.", error_string: inspect(value))
-        "true"
-
-      nil ->
-        # Logger.warning("Cached unknown value from context.", error_string: inspect(value))
-        :not_found
-
-      _value ->
-        # Logger.warning("Unhandled cache key for value.", error_string: inspect(value))
-        :unknown
-    end
-  end
+  defp select_key(%_{id: id}), do: id
+  defp select_key(true), do: "true"
+  defp select_key(nil), do: :not_found
+  defp select_key(_), do: :unknown
 end
