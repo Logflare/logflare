@@ -15,7 +15,6 @@ defmodule Logflare.Source.Supervisor do
   alias Logflare.Utils.Tasks
   alias Logflare.Source.V1SourceDynSup
   alias Logflare.Source.V1SourceSup
-  alias Logflare.ContextCache
 
   import Ecto.Query, only: [from: 2]
 
