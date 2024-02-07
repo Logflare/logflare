@@ -202,13 +202,16 @@ defmodule LogflareWeb.Source.SearchLVTest do
 
     test "bug: top-level key with nested key filters", %{conn: conn, source: source} do
       # ref https://www.notion.so/supabase/Backend-Search-Error-187112eabd094dcc8042c6952f4f5fac
-      schema =
-        TestUtils.build_bq_schema(%{"metadata" => %{"nested" => "something"}, "top" => "level"})
 
-      Schema.update(source.token, schema)
-      # wait for schema to update
+      GoogleApi.BigQuery.V2.Api.Tables
+      |> stub(:bigquery_tables_patch, fn _conn, _proj, _dataset, _table, _opts ->
+        {:ok, %GoogleApi.BigQuery.V2.Model.Table{}}
+      end)
+
+      le = build(:log_event, metadata: %{"nested" => "something"}, top: "level", source: source)
+      :timer.sleep(100)
+      Schema.update(source.token, le)
       # TODO: find a better way to test a source schema structure
-      :timer.sleep(600)
 
       stub(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, fn _conn, _proj_id, opts ->
         query = opts[:body].query |> String.downcase()

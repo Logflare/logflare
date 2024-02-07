@@ -96,6 +96,14 @@ defmodule Logflare.Factory do
     {source, params} = Map.pop(attrs, :source, build(:source))
 
     params =
+      for {k, v} <- params, into: %{} do
+        case k do
+          k when is_atom(k) -> {Atom.to_string(k), v}
+          _ -> {k, v}
+        end
+      end
+
+    params =
       Map.merge(
         params,
         %{
