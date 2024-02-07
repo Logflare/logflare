@@ -246,9 +246,6 @@ defmodule Logflare.SourcesTest do
     end
 
     test "reset_source/1", %{user: user} do
-      Cachex
-      |> expect(:del, 2, fn _k, _v -> :ok end)
-
       %{token: token} = insert(:source, user: user)
       start_supervised!(Source.Supervisor)
       # TODO: cast should return :ok

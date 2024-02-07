@@ -108,15 +108,6 @@ defmodule Logflare.Source.Supervisor do
 
         DynamicSupervisor.terminate_child(V1SourceDynSup, pid)
 
-        # bust keys
-        source = Sources.get_by(token: source_token)
-        source_schema = SourceSchemas.get_source_schema_by(source_id: source.id)
-
-        ContextCache.bust_keys([
-          {Sources, source.id},
-          {SourceSchemas, source_schema.id}
-        ])
-
       {:error, :no_proc} ->
         Logger.warning(
           "Source.Supervisor - V1SourceSup is not up. Attempting to start: #{source_token}"
