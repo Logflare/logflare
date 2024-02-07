@@ -28,7 +28,7 @@ defmodule Logflare.Logs.RejectedLogEvents do
 
   def child_spec(_) do
     stats = Application.get_env(:logflare, :cache_stats, false)
-    %{id: @cache, start: {Cachex, :start_link, [@cache, [limit: 10_000, stats: stats]]}}
+    %{id: @cache, start: {Cachex, :start_link, [@cache, [limit: 500, stats: stats]]}}
   end
 
   @spec get_by_source(Source.t()) :: list(LE.t())
@@ -63,6 +63,7 @@ defmodule Logflare.Logs.RejectedLogEvents do
     :ok
   end
 
+  # dump the whole cache, limited to 500 per source only
   def query(source_id) when is_atom(source_id) do
     @cache
     |> Cachex.stream!()
@@ -73,7 +74,6 @@ defmodule Logflare.Logs.RejectedLogEvents do
       le
     end)
     |> Enum.reverse()
-    |> Enum.take(100)
   end
 
   @spec get!(atom) :: %{log_events: list(LE.t()), count: non_neg_integer}

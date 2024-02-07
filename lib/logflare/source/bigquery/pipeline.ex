@@ -17,6 +17,7 @@ defmodule Logflare.Source.BigQuery.Pipeline do
   alias Logflare.Source.BigQuery.Schema
   alias Logflare.Source.RecentLogsServer, as: RLS
   alias Logflare.Source.Supervisor
+  alias Logflare.Logs.RejectedLogEvents
   alias Logflare.Sources
   alias Logflare.Users
 
@@ -98,6 +99,8 @@ defmodule Logflare.Source.BigQuery.Pipeline do
 
       {:ok, %GoogleApi.BigQuery.V2.Model.TableDataInsertAllResponse{insertErrors: errors}} ->
         Logger.warning("BigQuery insert errors.", error_string: inspect(errors))
+
+        add_to_rejected_logs(messages, inspect(errors))
         messages
 
       {:error, %Tesla.Env{} = response} ->
@@ -105,22 +108,23 @@ defmodule Logflare.Source.BigQuery.Pipeline do
           "Access Denied: BigQuery BigQuery: Streaming insert is not allowed in the free tier" =
               message ->
             disconnect_backend_and_email(source_id, message)
+            add_to_rejected_logs(messages, message)
             messages
 
           "The project" <> _tail = message ->
             # "The project web-wtc-1537199112807 has not enabled BigQuery."
             disconnect_backend_and_email(source_id, message)
+            add_to_rejected_logs(messages, message)
             messages
-
-          # Don't disconnect here because sometimes the GCP API doesn't find projects
-          #
-          # "Not found:" <> _tail = message ->
-          #   disconnect_backend_and_email(source_id, message)
-          #   messages
 
           _message ->
             Logger.warning("Stream batch response error!",
               tesla_response: GenUtils.get_tesla_error_message(response)
+            )
+
+            add_to_rejected_logs(
+              messages,
+              "Stream batch response error: #{GenUtils.get_tesla_error_message(response)}"
             )
 
             messages
@@ -128,20 +132,44 @@ defmodule Logflare.Source.BigQuery.Pipeline do
 
       {:error, :emfile = response} ->
         Logger.error("Stream batch emfile error!", tesla_response: response)
+        add_to_rejected_logs(messages, "Stream batch emfile error")
         messages
 
       {:error, :timeout = response} ->
         Logger.warning("Stream batch timeout error!", tesla_response: response)
+        add_to_rejected_logs(messages, "Stream batch timeout error")
         messages
 
       {:error, :checkout_timeout = response} ->
         Logger.warning("Stream batch checkout_timeout error!", tesla_response: response)
+        add_to_rejected_logs(messages, "Stream batch checkout_timeout error")
         messages
 
       {:error, response} ->
         Logger.warning("Stream batch unknown error!", tesla_response: inspect(response))
+
+        add_to_rejected_logs(
+          messages,
+          "Stream batch unknown error: #{GenUtils.get_tesla_error_message(response)}"
+        )
+
         messages
     end
+  end
+
+  defp add_to_rejected_logs(messages, err_msg) do
+    for %{data: le} <- messages do
+      le
+      |> Map.put(:valid, false)
+      |> Map.put(:pipeline_error, %LE.PipelineError{
+        stage: "stream",
+        type: "bq_error",
+        message: err_msg
+      })
+      |> tap(&RejectedLogEvents.ingest/1)
+    end
+
+    :ok
   end
 
   defp process_data(%LE{source: %Source{lock_schema: true}} = log_event) do
