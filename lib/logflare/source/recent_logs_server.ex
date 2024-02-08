@@ -34,7 +34,6 @@ defmodule Logflare.Source.RecentLogsServer do
 
   @touch_timer :timer.minutes(45)
   @broadcast_every 500
-  @pool_size Application.compile_env(:logflare, Logflare.PubSub)[:pool_size]
 
   @spec push(LE.t()) :: :ok
   def push(%LE{source: %Source{token: source_id}} = log_event) do
@@ -200,6 +199,7 @@ defmodule Logflare.Source.RecentLogsServer do
 
   ## Private Functions
   defp broadcast_count(state) do
+    pool_size = Application.get_env(:logflare, Logflare.PubSub)[:pool_size]
     current_inserts = Source.Data.get_node_inserts(state.source_id)
     last_inserts = state.inserts_since_boot
 
@@ -208,7 +208,7 @@ defmodule Logflare.Source.RecentLogsServer do
 
       inserts_payload = %{Node.self() => %{node_inserts: current_inserts, bq_inserts: bq_inserts}}
 
-      shard = :erlang.phash2(state.source_id, @pool_size)
+      shard = :erlang.phash2(state.source_id, pool_size)
 
       Phoenix.PubSub.broadcast(
         Logflare.PubSub,
