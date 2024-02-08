@@ -11,7 +11,7 @@ config :logflare,
 
 config :logflare, Logflare.Cluster.Utils, min_cluster_size: 1
 
-config :logger, :console, metadata: :all, level: :error
+config :logger, :console, metadata: :all, level: :none
 
 config :logflare, Logflare.Google,
   dataset_id_append: "_test",

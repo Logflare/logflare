@@ -94,23 +94,20 @@ defmodule Logflare.Source.BigQuery.Pipeline do
     # See todo in `process_data` also.
     case BigQuery.stream_batch!(context, rows) do
       {:ok, %GoogleApi.BigQuery.V2.Model.TableDataInsertAllResponse{insertErrors: nil}} ->
-        messages
+        :ok
 
       {:ok, %GoogleApi.BigQuery.V2.Model.TableDataInsertAllResponse{insertErrors: errors}} ->
         Logger.warning("BigQuery insert errors.", error_string: inspect(errors))
-        messages
 
       {:error, %Tesla.Env{} = response} ->
         case GenUtils.get_tesla_error_message(response) do
           "Access Denied: BigQuery BigQuery: Streaming insert is not allowed in the free tier" =
               message ->
             disconnect_backend_and_email(source_id, message)
-            messages
 
           "The project" <> _tail = message ->
             # "The project web-wtc-1537199112807 has not enabled BigQuery."
             disconnect_backend_and_email(source_id, message)
-            messages
 
           # Don't disconnect here because sometimes the GCP API doesn't find projects
           #
@@ -122,33 +119,29 @@ defmodule Logflare.Source.BigQuery.Pipeline do
             Logger.warning("Stream batch response error!",
               tesla_response: GenUtils.get_tesla_error_message(response)
             )
-
-            messages
         end
 
       {:error, :emfile = response} ->
         Logger.error("Stream batch emfile error!", tesla_response: response)
-        messages
 
       {:error, :timeout = response} ->
         Logger.warning("Stream batch timeout error!", tesla_response: response)
-        messages
 
       {:error, :checkout_timeout = response} ->
         Logger.warning("Stream batch checkout_timeout error!", tesla_response: response)
-        messages
 
       {:error, response} ->
         Logger.warning("Stream batch unknown error!", tesla_response: inspect(response))
-        messages
     end
+
+    messages
   end
 
-  defp process_data(%LE{source: %Source{lock_schema: true}} = log_event) do
+  def process_data(%LE{source: %Source{lock_schema: true}} = log_event) do
     log_event
   end
 
-  defp process_data(%LE{body: _body, source: %Source{token: source_id}} = log_event) do
+  def process_data(%LE{body: _body, source: %Source{token: source_id}} = log_event) do
     # TODO ... We use `ignoreUnknownValues: true` when we do `stream_batch!`. If we set that to `true`
     # then this makes BigQuery check the payloads for new fields. In the response we'll get a list of events that didn't validate.
     # Send those events through the pipeline again, but run them through our schema process this time. Do all
