@@ -40,7 +40,7 @@
       <% end %>
       <%= if log.via_rule do %>
         <span
-            data-toggle="tooltip" data-placement="top" title="Matching <%= log.via_rule.regex %> routing from <%= log.origin_source_id %>" style="color: ##5eeb8f;">
+            data-toggle="tooltip" data-placement="top" title="Matching <%= log.via_rule.lql_string %> routing from <%= log.origin_source_id %>" style="color: ##5eeb8f;">
           <i class="fa fa-code-branch" style="font-size: 1em;"></i>
         </span>
       <% end %>
