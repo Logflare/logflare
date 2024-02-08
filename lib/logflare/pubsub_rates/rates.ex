@@ -17,6 +17,7 @@ defmodule Logflare.PubSubRates.Rates do
 
   def init(state) do
     pool_size = Application.get_env(:logflare, Logflare.PubSub)[:pool_size]
+
     for shard <- 1..pool_size do
       PubSub.subscribe(Logflare.PubSub, "rates:shard-#{shard}")
     end

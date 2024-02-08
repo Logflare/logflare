@@ -17,6 +17,7 @@ defmodule Logflare.PubSubRates.Buffers do
 
   def init(state) do
     pool_size = Application.get_env(:logflare, Logflare.PubSub)[:pool_size]
+
     for shard <- 1..@pool_size do
       PubSub.subscribe(Logflare.PubSub, "buffers:shard-#{shard}")
     end
