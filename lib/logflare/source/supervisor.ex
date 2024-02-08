@@ -10,10 +10,7 @@ defmodule Logflare.Source.Supervisor do
   alias Logflare.Sources
   alias Logflare.Sources.Counters
   alias Logflare.Source.RecentLogsServer, as: RLS
-  alias Logflare.SourceSchemas
   alias Logflare.Google.BigQuery
-  alias Logflare.Source.BigQuery.SchemaBuilder
-  alias Logflare.Google.BigQuery.SchemaUtils
   alias Logflare.Utils.Tasks
   alias Logflare.Source.V1SourceDynSup
   alias Logflare.Source.V1SourceSup
@@ -108,8 +105,6 @@ defmodule Logflare.Source.Supervisor do
         )
 
         DynamicSupervisor.terminate_child(V1SourceDynSup, pid)
-        reset_persisted_schema(source_token)
-        :timer.sleep(1000)
 
       {:error, :no_proc} ->
         Logger.warning(
@@ -234,28 +229,6 @@ defmodule Logflare.Source.Supervisor do
       end
     else
       {:error, :not_found_in_db}
-    end
-  end
-
-  defp reset_persisted_schema(source_token) do
-    # Resets our schema so then it'll get merged with BigQuery's when the next log event comes in for a source
-    case Sources.get_by(token: source_token) do
-      nil ->
-        :noop
-
-      source ->
-        case SourceSchemas.get_source_schema_by(source_id: source.id) do
-          nil ->
-            :noop
-
-          schema ->
-            init_schema = SchemaBuilder.initial_table_schema()
-
-            SourceSchemas.update_source_schema(schema, %{
-              bigquery_schema: init_schema,
-              schema_flat_map: SchemaUtils.bq_schema_to_flat_typemap(init_schema)
-            })
-        end
     end
   end
 

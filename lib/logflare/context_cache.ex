@@ -71,7 +71,9 @@ defmodule Logflare.ContextCache do
    - Delete the cache entry for that context cache e.g. `Logflare.Users.Cache`
   """
 
-  @spec cache_name(list()) :: {:ok, :busted}
+  @spec bust_keys(list()) :: {:ok, :busted}
+  def bust_keys([]), do: {:ok, :busted}
+
   def bust_keys(values) when is_list(values) do
     for {context, primary_key} <- values do
       filter = {:==, {:element, 1, :key}, {{context, primary_key}}}

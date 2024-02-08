@@ -19,16 +19,20 @@ defmodule Logflare.CacheBuster do
     {:ok, state}
   end
 
-  def handle_info(%Transaction{changes: changes}, state) do
-    :telemetry.execute([:logflare, :context_cache, :handle_record], %{count: length(changes)})
+  def handle_info(%Transaction{changes: []}, state), do: {:noreply, state}
 
+  def handle_info(%Transaction{changes: changes}, state) do
     for record <- changes,
         record = handle_record(record),
         record != :noop do
       record
     end
-    |> tap(fn records ->
-      :telemetry.execute([:logflare, :context_cache, :busted], %{count: length(records)})
+    |> tap(fn
+      [] ->
+        nil
+
+      records ->
+        :telemetry.execute([:logflare, :cache_buster, :to_bust], %{count: length(records)})
     end)
     |> ContextCache.bust_keys()
 
