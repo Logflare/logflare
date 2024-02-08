@@ -105,11 +105,17 @@ defmodule Logflare.Source.BigQuery.Schema do
   def handle_call(:get, _from, state), do: {:reply, state, state}
 
   def handle_cast(
+        {:update, %LogEvent{source: %Source{lock_schema: true}}},
+        state
+      ),
+      do: {:noreply, state}
+
+  def handle_cast(
         {:update, %LogEvent{}},
         %{field_count: fc, field_count_limit: limit} = state
       )
       when fc > limit,
-      do: {:reply, :ok, state}
+      do: {:noreply, state}
 
   def handle_cast({:update, %LogEvent{body: body, id: event_id}}, state) do
     LogflareLogger.context(source_id: state.source_token, log_event_id: event_id)
