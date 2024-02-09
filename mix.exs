@@ -200,6 +200,7 @@ defmodule Logflare.Mixfile do
 
       # benchmarking
       {:benchee, "~> 1.0", only: [:dev, :test]},
+      {:benchee_async, "~> 0.1.0", only: [:dev, :test]},
       # Filesystem fix to respect `CFLAGS` and `LDFLAGS`
       # https://github.com/falood/file_system/pull/87
       #

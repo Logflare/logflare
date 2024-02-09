@@ -20,20 +20,32 @@ defmodule Logflare.Source.BigQuery.Pipeline do
   alias Logflare.Sources
   alias Logflare.Users
 
-  def start_link(%RLS{source: source, plan: _plan} = rls) do
-    Broadway.start_link(__MODULE__,
-      name: name(source.token),
-      producer: [
-        module: {BufferProducer, rls},
-        hibernate_after: 30_000
-      ],
-      processors: [
-        default: [concurrency: 1]
-      ],
-      batchers: [
-        bq: [concurrency: System.schedulers_online(), batch_size: 250, batch_timeout: 1_500]
-      ],
-      context: rls
+  def start_link([%RLS{} = rls | opts]), do: start_link(rls, opts)
+  def start_link(%RLS{} = rls), do: start_link(rls, [])
+
+  def start_link(%RLS{source: source, plan: _plan} = rls, opts) do
+    opts =
+      Keyword.merge(
+        [
+          name: name(source.token),
+          producer: [
+            module: {BufferProducer, rls},
+            hibernate_after: 30_000
+          ],
+          processors: [
+            default: [concurrency: System.schedulers_online() * 2]
+          ],
+          batchers: [
+            bq: [concurrency: System.schedulers_online() * 2, batch_size: 250, batch_timeout: 1_500]
+          ],
+          context: rls
+        ],
+        opts
+      )
+
+    Broadway.start_link(
+      __MODULE__,
+      opts
     )
   end
 
