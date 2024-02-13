@@ -59,12 +59,15 @@ defmodule LogflareWeb.Api.AccessTokenController do
   )
 
   def delete(%{assigns: %{user: user}} = conn, %{"token" => token}) do
-    with %_{resource_owner_id: resource_owner_id} <- Auth.get_access_token(user, token),
-         true <- resource_owner_id == user.id,
+    with {:get, %_{resource_owner_id: resource_owner_id}} <-
+           {:get, Auth.get_access_token(user, token)},
+         {:owner, true} <- {:owner, resource_owner_id == user.id},
          :ok <- Auth.revoke_access_token(user, token) do
       Plug.Conn.send_resp(conn, 204, [])
     else
-      _ -> {:error, :not_found}
+      {:get, nil} -> {:error, :not_found}
+      # don't reveal that the token exists
+      {:owner, false} -> {:error, :not_found}
     end
   end
 
