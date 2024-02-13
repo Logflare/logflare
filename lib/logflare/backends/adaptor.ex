@@ -10,6 +10,7 @@ defmodule Logflare.Backends.Adaptor do
   alias Logflare.Backends.SourceBackend
 
   @type t :: module()
+  @type query :: Query.t() | Ecto.Query.t() | String.t() | {String.t(), [term()]}
 
   def child_spec(%SourceBackend{} = source_backend) do
     adaptor_module =
@@ -36,7 +37,6 @@ defmodule Logflare.Backends.Adaptor do
   @doc """
   Queries the backend using an endpoint query.
   """
-  @typep query :: Query.t() | Ecto.Query.t() | String.t() | {String.t(), [term()]}
   @callback execute_query(identifier(), query()) :: {:ok, [term()]} | {:error, :not_implemented}
 
   @doc """
