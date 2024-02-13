@@ -38,13 +38,14 @@ defmodule LogflareWeb.Api.AccessTokenController do
   def create(%{assigns: %{user: user}} = conn, params) do
     scopes_input = Map.get(params, "scopes", "")
 
-    with {:scopes, true} <- {:scopes, not (scopes_input =~ "partner")},
+    with {:scopes, true} <- {:scopes, "partner" not in String.split(scopes_input)},
          {:ok, access_token} <- Auth.create_access_token(user, params) do
       conn
       |> put_status(201)
       |> json(access_token)
     else
       {:scopes, false} -> {:error, :unauthorized}
+      {:error, _} = err -> err
     end
   end
 
@@ -58,12 +59,12 @@ defmodule LogflareWeb.Api.AccessTokenController do
   )
 
   def delete(%{assigns: %{user: user}} = conn, %{"token" => token}) do
-    with access_token <- Auth.get_access_token(user, token),
-         {:owner, true} <- {:owner, access_token.resource_owner_id == user.id},
+    with %_{resource_owner_id: resource_owner_id} <- Auth.get_access_token(user, token),
+         true <- resource_owner_id == user.id,
          :ok <- Auth.revoke_access_token(user, token) do
       Plug.Conn.send_resp(conn, 204, [])
     else
-      {:owner, false} -> {:error, :not_found}
+      _ -> {:error, :not_found}
     end
   end
 
