@@ -9,6 +9,7 @@ defmodule Logflare.LogsTest do
   alias Logflare.Sources.Counters
   alias Logflare.Sources.RateCounters
   alias Logflare.SystemMetrics.AllLogsLogged
+  alias Logflare.Logs.RejectedLogEvents
 
   def source_and_user(_context) do
     start_supervised!(AllLogsLogged)
@@ -127,6 +128,38 @@ defmodule Logflare.LogsTest do
       assert :ok = Logs.ingest_logs(batch, source)
       # batcher timneout is 1_500
       :timer.sleep(2_000)
+    end
+
+    test "errors will add to RejectedLogEvents", %{ source: source} do
+      GoogleApi.BigQuery.V2.Api.Tabledata
+      |> expect(:bigquery_tabledata_insert_all, fn _conn,
+                                                   _project_id,
+                                                   _dataset_id,
+                                                   _table_name,
+                                                   _opts ->
+        {:ok, %GoogleApi.BigQuery.V2.Model.TableDataInsertAllResponse{insertErrors: [%{"some"=> "error"}]}}
+      end)
+
+      GoogleApi.BigQuery.V2.Api.Tables
+      |> stub(:bigquery_tables_patch, fn _conn,
+                                           _project_id,
+                                           _dataset_id,
+                                           _table_name,
+                                           [body: _body] ->
+        {:ok, %{}}
+      end)
+
+      Logflare.Mailer
+      |> stub(:deliver, fn _ -> :ok end)
+
+      batch = [
+        %{"event_message" => "testing 123", "key" => "value"}
+      ]
+
+      assert :ok = Logs.ingest_logs(batch, source)
+      # batcher timneout is 1_500
+      :timer.sleep(2_000)
+      assert RejectedLogEvents.count(source) == 1
     end
   end
 

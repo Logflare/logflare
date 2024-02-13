@@ -1,0 +1,24 @@
+<.subheader>
+  <:path>
+    ~/sources/<.subheader_path_link live_patch to={~p"/sources/#{@source.id}"}><%= @source.name %></.subheader_path_link>/rejected
+  </:path>
+</.subheader>
+
+<div class="container mx-auto console-text tw-mt-10">
+  <ul class="list-unstyled console-text-list">
+    <li :for={{log_event, inx} <- Enum.with_index(@logs)} :if={@logs}>
+      <mark class="log-datestamp"><%= DateTime.from_naive!(log_event.ingested_at, "Etc/UTC") |> DateTime.to_string() %> UTC</mark>
+      <%= Map.get(log_event.body, "event_message") %>
+
+      <a class="metadata-link" data-toggle="collapse" href={"#metadata-#{inx}"} aria-expanded="false"> log payload</a>
+      <div class="collapse metadata" id={"metadata-#{inx}"}>
+        <pre class="pre-metadata"><code><%= JSON.encode!(log_event.params, pretty: true) %></code></pre>
+      </div>
+      <div class="">
+        <pre class="tw-bg-red-900 tw-whitespace-pre-line tw-overflow-auto tw-max-h-32">
+          <%= log_event.pipeline_error.message %>
+        </pre>
+      </div>
+    </li>
+  </ul>
+</div>

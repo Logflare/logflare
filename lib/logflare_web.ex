@@ -52,6 +52,8 @@ defmodule LogflareWeb do
       import Phoenix.Controller,
         only: [get_flash: 1, get_flash: 2, view_module: 1, view_template: 1]
 
+      import LogflareWeb.CoreComponents
+
       # Use all HTML functionality (forms, tags, etc)
       unquote(view_helpers())
       unquote(path_helpers())

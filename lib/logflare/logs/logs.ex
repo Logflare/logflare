@@ -123,6 +123,7 @@ defmodule Logflare.Logs do
           type: "buffer_full",
           message: "Source buffer full, please try again in a minute."
         })
+        |> tap(&RejectedLogEvents.ingest/1)
 
       e ->
         Logger.error("Unknown ingest error: " <> inspect(e))
