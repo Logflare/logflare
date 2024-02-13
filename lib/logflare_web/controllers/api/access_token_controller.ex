@@ -44,8 +44,7 @@ defmodule LogflareWeb.Api.AccessTokenController do
       |> put_status(201)
       |> json(access_token)
     else
-      {:scopes, false} ->
-        FallbackController.call(conn, {:error, :unauthorized})
+      {:scopes, false} -> {:error, :unauthorized}
     end
   end
 
@@ -62,21 +61,13 @@ defmodule LogflareWeb.Api.AccessTokenController do
     with access_token <- Auth.get_access_token(user, token),
          {:owner, true} <- {:owner, access_token.resource_owner_id == user.id},
          :ok <- Auth.revoke_access_token(user, token) do
-      conn
-      |> Plug.Conn.send_resp(204, [])
-      |> Plug.Conn.halt()
+      Plug.Conn.send_resp(conn, 204, [])
     else
-      {:owner, false} ->
-        conn
-        |> Plug.Conn.send_resp(404, [])
-        |> Plug.Conn.halt()
+      {:owner, false} -> {:error, :not_found}
     end
   end
 
   defp maybe_redact_token(%{scopes: scopes} = t) do
-    cond do
-      "public" not in String.split(scopes) -> %{t | token: nil}
-      true -> t
-    end
+    if "public" not in String.split(scopes), do: %{t | token: nil}, else: t
   end
 end
