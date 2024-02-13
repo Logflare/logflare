@@ -60,7 +60,7 @@ defmodule LogflareWeb.Router do
     plug(Plug.Parsers,
       parsers: [JsonParser, BertParser, SyslogParser, NdjsonParser],
       json_decoder: Jason,
-      body_reader: {LogflareWeb.Plugs.CompressedBodyReader, :read_body, []},
+      body_reader: {PlugCaisson, :read_body, []},
       length: 12_000_000
     )
 
