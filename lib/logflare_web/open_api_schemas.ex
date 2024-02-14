@@ -53,6 +53,17 @@ defmodule LogflareWeb.OpenApiSchemas do
     use LogflareWeb.OpenApi, properties: @properties, required: [:name, :query]
   end
 
+  defmodule AccessToken do
+    @properties %{
+      id: %Schema{type: :integer},
+      token: %Schema{type: :string},
+      description: %Schema{type: :string},
+      scopes: %Schema{type: :string},
+      inserted_at: %Schema{type: :string, format: :"date-time"}
+    }
+    use LogflareWeb.OpenApi, properties: @properties, required: []
+  end
+
   defmodule Notification do
     @properties %{
       team_user_ids_for_email: %Schema{type: :array, allOf: %Schema{type: :string}},

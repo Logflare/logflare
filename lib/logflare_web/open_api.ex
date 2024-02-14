@@ -53,6 +53,13 @@ defmodule LogflareWeb.OpenApi do
     def response(), do: {"Not found", "text/plain", __MODULE__}
   end
 
+  defmodule Unauthorized do
+    require OpenApiSpex
+    OpenApiSpex.schema(%{})
+
+    def response(), do: {"Unauthorized", "text/plain", __MODULE__}
+  end
+
   defmodule ServerError do
     require OpenApiSpex
     OpenApiSpex.schema(%{})

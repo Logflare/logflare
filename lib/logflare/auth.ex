@@ -58,6 +58,19 @@ defmodule Logflare.Auth do
     )
   end
 
+  @doc """
+  Retrieves access token struct by token value.
+  Requires resource owner to be provided.
+
+  """
+  def get_access_token(%User{}, token) when is_binary(token) do
+    ExOauth2Provider.AccessTokens.get_by_token(token, env_oauth_config())
+  end
+
+  def get_access_token(%Partner{}, token) when is_binary(token) do
+    ExOauth2Provider.AccessTokens.get_by_token(token, env_partner_oauth_config())
+  end
+
   @doc "Creates an Oauth access token with no expiry, linked to the given user or team's user."
   @typep create_attrs :: %{description: String.t()} | map()
   @spec create_access_token(Team.t() | User.t() | Partner.t(), create_attrs()) ::
@@ -150,9 +163,15 @@ defmodule Logflare.Auth do
   end
 
   @doc "Revokes a given access token."
-  @spec revoke_access_token(OauthAccessToken.t() | binary()) :: :ok | {:error, term()}
-  def revoke_access_token(token) when is_binary(token) do
-    ExOauth2Provider.AccessTokens.get_by_token(token)
+  @spec revoke_access_token(User.t() | Partner.t(), OauthAccessToken.t() | binary()) ::
+          :ok | {:error, term()}
+  def revoke_access_token(user, token) when is_binary(token) do
+    get_access_token(user, token)
+    |> revoke_access_token()
+  end
+
+  def revoke_access_token(partner, token) when is_binary(token) do
+    get_access_token(partner, token)
     |> revoke_access_token()
   end
 
