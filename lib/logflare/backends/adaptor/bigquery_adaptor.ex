@@ -2,7 +2,6 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
   @moduledoc false
 
   alias Logflare.Source.BigQuery.Pipeline
-  alias Logflare.Source.RecentLogsServer, as: RLS
 
   @behaviour Logflare.Backends.Adaptor
 
@@ -15,16 +14,15 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
   def ingest(pid, events) do
     source_backend = Agent.get(pid, fn state -> state end)
 
-    rls = %RLS{
-      source_id: source_backend.source.token,
+    context = %{
+      source_token: source_backend.source.token,
       bigquery_project_id: source_backend.source.user.bigquery_project_id,
       bigquery_dataset_id: source_backend.source.user.bigquery_dataset_id,
-      source: source_backend.source
     }
 
     _ = Enum.map(events, &Pipeline.process_data(&1.data))
 
-    Pipeline.stream_batch(rls, events)
+    Pipeline.stream_batch(context, events)
   end
 
   @impl Logflare.Backends.Adaptor
