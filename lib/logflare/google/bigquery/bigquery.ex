@@ -181,17 +181,25 @@ defmodule Logflare.Google.BigQuery do
     |> GenUtils.maybe_parse_google_api_result()
   end
 
+  # TODO: kept for backward compat with RLS, to remove once all rls.source_id references are removed
+  def stream_batch!(%{source_id: token} = config, batch) do
+    config
+    |> Map.take([:bigquery_project_id, :bigquery_dataset_id])
+    |> Map.put(:source_token, token)
+    |> stream_batch!(batch)
+  end
+
   def stream_batch!(
-        %RLS{
+        %{
           bigquery_project_id: project_id,
           bigquery_dataset_id: dataset_id,
-          source_id: source_id
+          source_token: source_token
         },
         batch
       )
-      when is_atom(source_id) do
+      when is_atom(source_token) do
     conn = GenUtils.get_conn(:ingest)
-    table_name = GenUtils.format_table_name(source_id)
+    table_name = GenUtils.format_table_name(source_token)
 
     body = %Model.TableDataInsertAllRequest{
       ignoreUnknownValues: true,
