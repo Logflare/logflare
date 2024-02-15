@@ -30,9 +30,11 @@ defmodule Logflare.Source.BigQuery.Pipeline do
           name: name(source.token),
           # top-level will apply to all children
           hibernate_after: 5_000,
+          spawn_opt: [
+            fullsweep_after: 0
+          ],
           producer: [
-            module: {BufferProducer, rls},
-            hibernate_after: 30_000
+            module: {BufferProducer, rls}
           ],
           processors: [
             default: [concurrency: System.schedulers_online() * 2]
