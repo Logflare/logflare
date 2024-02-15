@@ -262,12 +262,14 @@ defmodule Logflare.Application do
   end
 
   defp finch_pools do
+    # scales per core
+    base = System.schedulers_online()
     [
       # Finch connection pools, using http2
-      {Finch, name: Logflare.FinchIngest, pools: %{default: [protocol: :http2, count: 200]}},
-      {Finch, name: Logflare.FinchQuery, pools: %{default: [protocol: :http2, count: 100]}},
+      {Finch, name: Logflare.FinchIngest, pools: %{default: [protocol: :http2, count: max(base * 4, 20)]}},
+      {Finch, name: Logflare.FinchQuery, pools: %{default: [protocol: :http2, count: max(base * 2, 10)]}},
       {Finch, name: Logflare.FinchGoth, pools: %{default: [protocol: :http2, count: 1]}},
-      {Finch, name: Logflare.FinchDefault, pools: %{default: [protocol: :http2, count: 50]}}
+      {Finch, name: Logflare.FinchDefault, pools: %{default: [protocol: :http2, count: max(base, 5)]}}
     ]
   end
 
