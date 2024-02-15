@@ -17,7 +17,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
     context = %{
       source_token: source_backend.source.token,
       bigquery_project_id: source_backend.source.user.bigquery_project_id,
-      bigquery_dataset_id: source_backend.source.user.bigquery_dataset_id,
+      bigquery_dataset_id: source_backend.source.user.bigquery_dataset_id
     }
 
     _ = Enum.map(events, &Pipeline.process_data(&1.data))
