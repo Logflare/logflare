@@ -29,7 +29,7 @@ defmodule Logflare.Source.BigQuery.BufferProducer do
 
   @impl true
   def handle_info(_, state) do
-    {:noreply, [], state}
+    {:noreply, [], state, :hibernate}
   end
 
   @spec ack(atom(), [Broadway.Message.t()], [Broadway.Message.t()]) :: :ok
@@ -45,11 +45,11 @@ defmodule Logflare.Source.BigQuery.BufferProducer do
        when demand > 0 do
     # would normall pop log events from a buffer here
 
-    {:noreply, [], %{state | demand: 0}}
+    {:noreply, [], %{state | demand: 0}, :hibernate}
   end
 
   defp handle_receive_messages(state) do
-    {:noreply, [], state}
+    {:noreply, [], state, :hibernate}
   end
 
   @impl true

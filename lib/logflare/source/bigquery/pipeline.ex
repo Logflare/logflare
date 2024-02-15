@@ -28,9 +28,13 @@ defmodule Logflare.Source.BigQuery.Pipeline do
       Keyword.merge(
         [
           name: name(source.token),
+          # top-level will apply to all children
+          hibernate_after: 5_000,
+          spawn_opt: [
+            fullsweep_after: 0
+          ],
           producer: [
-            module: {BufferProducer, %{source_token: rls.source_id}},
-            hibernate_after: 30_000
+            module: {BufferProducer, %{source_token: rls.source_id}}
           ],
           processors: [
             default: [concurrency: System.schedulers_online() * 2]
