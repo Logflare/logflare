@@ -24,7 +24,6 @@ defmodule Logflare.Google.BigQuery do
   alias Logflare.Billing.Plan
   alias Logflare.TeamUsers
   alias Logflare.Source.BigQuery.SchemaBuilder
-  alias Logflare.Source.RecentLogsServer, as: RLS
 
   @type ok_err_tup :: {:ok, term} | {:error, term}
 
