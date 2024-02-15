@@ -29,7 +29,7 @@ defmodule Logflare.Source.BigQuery.Pipeline do
         [
           name: name(source.token),
           producer: [
-            module: {BufferProducer, rls},
+            module: {BufferProducer, %{source_token: rls.source_id}},
             hibernate_after: 30_000
           ],
           processors: [
