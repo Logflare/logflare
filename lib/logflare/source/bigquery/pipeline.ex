@@ -34,7 +34,7 @@ defmodule Logflare.Source.BigQuery.Pipeline do
             fullsweep_after: 0
           ],
           producer: [
-            module: {BufferProducer, rls}
+            module: {BufferProducer, %{source_token: rls.source_id}}
           ],
           processors: [
             default: [concurrency: System.schedulers_online() * 2]
@@ -46,7 +46,11 @@ defmodule Logflare.Source.BigQuery.Pipeline do
               batch_timeout: 1_500
             ]
           ],
-          context: rls
+          context: %{
+            bigquery_project_id: rls.bigquery_project_id,
+            bigquery_dataset_id: rls.bigquery_dataset_id,
+            source_token: rls.source_id
+          }
         ],
         opts
       )
@@ -58,20 +62,20 @@ defmodule Logflare.Source.BigQuery.Pipeline do
   end
 
   @spec handle_message(any, Broadway.Message.t(), any) :: Broadway.Message.t()
-  def handle_message(_processor_name, message, rls) do
-    Logger.metadata(source_id: rls.source_id, source_token: rls.source_id)
+  def handle_message(_processor_name, message, context) do
+    Logger.metadata(source_id: context.source_token, source_token: context.source_token)
 
     message
     |> Message.update_data(&process_data/1)
     |> Message.put_batcher(:bq)
   end
 
-  def handle_batch(:bq, messages, batch_info, %RLS{source: source} = context) do
+  def handle_batch(:bq, messages, batch_info, %{source_token: token} = context) do
     :telemetry.execute(
       [:logflare, :ingest, :pipeline, :handle_batch],
       %{batch_size: batch_info.size, batch_trigger: batch_info.trigger},
       %{
-        source_token: source.token
+        source_token: token
       }
     )
 
@@ -104,8 +108,8 @@ defmodule Logflare.Source.BigQuery.Pipeline do
     }
   end
 
-  def stream_batch(%RLS{source_id: source_id} = context, messages) do
-    Logger.metadata(source_id: source_id)
+  def stream_batch(%{source_token: source_token} = context, messages) do
+    Logger.metadata(source_id: source_token, source_token: source_token)
 
     rows = le_messages_to_bq_rows(messages)
 
@@ -123,11 +127,11 @@ defmodule Logflare.Source.BigQuery.Pipeline do
         case GenUtils.get_tesla_error_message(response) do
           "Access Denied: BigQuery BigQuery: Streaming insert is not allowed in the free tier" =
               message ->
-            disconnect_backend_and_email(source_id, message)
+            disconnect_backend_and_email(source_token, message)
 
           "The project" <> _tail = message ->
             # "The project web-wtc-1537199112807 has not enabled BigQuery."
-            disconnect_backend_and_email(source_id, message)
+            disconnect_backend_and_email(source_token, message)
 
           # Don't disconnect here because sometimes the GCP API doesn't find projects
           #
