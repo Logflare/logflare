@@ -161,10 +161,10 @@ defmodule LogflareWeb.AlertsLiveTest do
       |> stub(:fetch, fn _mod -> {:ok, %Goth.Token{token: "auth-token"}} end)
 
       WebhookAdaptor.Client
-      |> stub(:send, fn _, _ -> %Tesla.Env{} end)
+      |> stub(:send, fn _, _ -> {:ok, %Tesla.Env{}} end)
 
       SlackAdaptor.Client
-      |> stub(:send, fn _, _ -> %Tesla.Env{} end)
+      |> stub(:send, fn _, _ -> {:ok, %Tesla.Env{}} end)
 
       :ok
     end

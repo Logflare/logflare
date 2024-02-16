@@ -185,7 +185,14 @@ defmodule Logflare.Alerting do
         end
 
         if alert_query.slack_hook_url do
-          SlackAdaptor.send_message(alert_query.slack_hook_url, results)
+          {:ok, res} = SlackAdaptor.send_message(alert_query, results)
+
+          if res.status != 200 do
+            Logger.warning(
+              "SlackAdaptor send_message failed with #{res.status} : #{inspect(res.body)}",
+              error_string: inspect(res)
+            )
+          end
         end
 
         :ok

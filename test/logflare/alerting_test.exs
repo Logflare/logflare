@@ -161,10 +161,10 @@ defmodule Logflare.AlertingTest do
       end)
 
       Logflare.Backends.Adaptor.WebhookAdaptor.Client
-      |> expect(:send, fn _url, %{"result" => _} = _body -> :ok end)
+      |> expect(:send, fn _url, %{"result" => _} = _body -> {:ok, %Tesla.Env{}} end)
 
       Logflare.Backends.Adaptor.SlackAdaptor.Client
-      |> expect(:send, fn _url, %{blocks: _} = _records -> :ok end)
+      |> expect(:send, fn _url, %{blocks: _} = _records -> {:ok, %Tesla.Env{}} end)
 
       assert :ok = Alerting.run_alert(alert_query)
     end
