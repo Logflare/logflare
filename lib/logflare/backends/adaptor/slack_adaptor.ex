@@ -2,14 +2,36 @@ defmodule Logflare.Backends.Adaptor.SlackAdaptor do
   @moduledoc false
   alias __MODULE__.Client
 
+  alias Logflare.Alerting.AlertQuery
+
   @doc """
   Sends a given payload to slack.
 
   Returns Tesla response.
   """
-  @spec send_message(String.t(), [map()]) :: Tesla.Env.result()
-  def send_message(url, payload) do
-    body = to_body(payload)
+  @spec send_message(String.t() | AlertQuery.t(), [map()]) :: Tesla.Env.result()
+  def send_message(%AlertQuery{name: name, slack_hook_url: url}, payload) do
+    body =
+      payload
+      |> to_body()
+      |> Map.update!(:blocks, fn blocks ->
+        count = Enum.count(payload)
+
+        rows_text =
+          case count do
+            0 -> ""
+            1 -> ", 1 row"
+            n -> ", #{n} rows"
+          end
+
+        [%{type: "section", text: %{type: "mrkdwn", text: "🔊 *#{name}*#{rows_text}"}} | blocks]
+      end)
+
+    Client.send(url, body)
+  end
+
+  def send_message(url, payload) when is_binary(url) do
+    body = payload |> to_body()
     Client.send(url, body)
   end
 
@@ -55,10 +77,10 @@ defmodule Logflare.Backends.Adaptor.SlackAdaptor do
 
   """
   @spec to_markdown([map()] | map()) :: [String.t()] | String.t()
-  def to_markdown(rows) when is_list(rows), do: Enum.map(rows, &to_markdown/1)
+  def to_markdown(rows) when is_list(rows), do: Enum.map(rows, &to_markdown/1) |> Enum.join("\n")
 
   def to_markdown(%{} = row) do
-    bullet = "•"
+    bullet = "• "
     indent = "    "
 
     text =
