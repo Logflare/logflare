@@ -15,10 +15,8 @@ defmodule Logflare.Backends.Adaptor.SlackAdaptor do
       payload
       |> to_body()
       |> Map.update!(:blocks, fn blocks ->
-        count = Enum.count(payload)
-
         rows_text =
-          case count do
+          case Enum.count(payload) do
             0 -> ""
             1 -> ", 1 row"
             n -> ", #{n} rows"
