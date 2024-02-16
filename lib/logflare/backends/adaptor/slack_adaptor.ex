@@ -41,7 +41,7 @@ defmodule Logflare.Backends.Adaptor.SlackAdaptor do
 
     iex> %{blocks: [block]} = to_body([%{"some" => "key"}])
     iex> get_in(block, [:text, :text])
-    ["•some: key"]
+    "• some: key"
 
   """
   @spec to_body([map()]) :: map()
@@ -62,20 +62,20 @@ defmodule Logflare.Backends.Adaptor.SlackAdaptor do
   ### Example
   The text will be prefixed with a bullet point, with a colon separating the key-value pair.
     iex> to_markdown(%{"test"=> "test"})
-    "•test: test"
+    "• test: test"
 
   Keys within the map will be placed in an indentedrow below, sorted by key alphabetically.
   Indentation uses 4 spaces.
     iex> to_markdown(%{a: "test", b: "test"})
-    "•a: test\r    b: test"
+    "• a: test\r    b: test"
 
-  Muliple objects will be converted into lists of strings
+  Muliple objects will be converted into multi-line strings
     iex> to_markdown([%{one: "test"}, %{two: "test"}])
-    ["•one: test", "•two: test"]
+    "• one: test\r• two: test"
 
   """
   @spec to_markdown([map()] | map()) :: [String.t()] | String.t()
-  def to_markdown(rows) when is_list(rows), do: Enum.map(rows, &to_markdown/1) |> Enum.join("\n")
+  def to_markdown(rows) when is_list(rows), do: Enum.map(rows, &to_markdown/1) |> Enum.join("\r")
 
   def to_markdown(%{} = row) do
     bullet = "• "
