@@ -25,5 +25,5 @@
 +zdbbl 1028000
 
 ## Set process limit
-+P 1000000
++P 8000000
 +t 32000000
