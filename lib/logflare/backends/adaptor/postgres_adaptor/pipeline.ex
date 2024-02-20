@@ -28,7 +28,7 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor.Pipeline do
     )
   end
 
-  # see the implementation for Backends.via_source_backend/2 for how tuples are used to identify child processes
+  # see the implementation for Backends.via_source/2 for how tuples are used to identify child processes
   def process_name({:via, module, {registry, identifier}}, base_name) do
     new_identifier = Tuple.append(identifier, base_name)
     {:via, module, {registry, new_identifier}}
@@ -38,8 +38,8 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor.Pipeline do
     Message.update_data(message, &process_data(&1, adaptor_state))
   end
 
-  defp process_data(log_event, %{source_backend: source_backend}) do
-    PostgresAdaptor.insert_log_event(source_backend, log_event)
+  defp process_data(log_event, %{backend: backend}) do
+    PostgresAdaptor.insert_log_event(backend, log_event)
   end
 
   def transform(event, _opts) do

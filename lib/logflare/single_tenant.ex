@@ -13,6 +13,7 @@ defmodule Logflare.SingleTenant do
   alias Logflare.Source.Supervisor
   alias Logflare.Source.BigQuery.Schema
   alias Logflare.LogEvent
+  alias Logflare.SingleTenant
   alias Logflare.Backends
   require Logger
 
@@ -109,6 +110,33 @@ defmodule Logflare.SingleTenant do
   end
 
   @doc """
+  Retrieves the default backend
+
+  TODO: add support for bigquery v2 adaptor
+  """
+  def get_default_backend do
+    user = get_default_user()
+
+    Backends.list_backends_by_user_id(user.id)
+    |> Enum.filter(fn backend -> backend.type == :postgres end)
+    |> List.first()
+  end
+
+  def create_default_backend do
+    user = get_default_user()
+
+    if postgres_backend?() do
+      opts = postgres_backend_adapter_opts()
+
+      Backends.create_backend(%{
+        type: :postgres,
+        config: Map.new(opts),
+        user_id: user.id
+      })
+    end
+  end
+
+  @doc """
   Creates an enterprise user
   """
   def create_default_user do
@@ -147,11 +175,33 @@ defmodule Logflare.SingleTenant do
     user = get_default_user()
     count = Sources.count_sources_by_user(user)
 
+    # ensure that backend adaptor is created
+    backend =
+      if postgres_backend?() do
+        opts = SingleTenant.postgres_backend_adapter_opts()
+        url = Keyword.get(opts, :url)
+        schema = Keyword.get(opts, :schema)
+
+        {:ok, backend} =
+          Backends.create_backend(%{
+            user_id: user.id,
+            config: %{url: url, schema: schema},
+            type: :postgres
+          })
+
+        backend
+      end
+
     if count == 0 do
       sources =
         for name <- @source_names do
           # creating a source will automatically start the source's RLS process
           {:ok, source} = Sources.create_source(%{name: name}, user)
+
+          if backend do
+            {:ok, _backend} = Backends.attach_to_backend(backend, source)
+          end
+
           source
         end
 

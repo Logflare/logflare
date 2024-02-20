@@ -3,8 +3,7 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor.Repo.Migrations.AddLogEvents
   Migration to generate a log_events table for a given source_id
   """
   use Ecto.Migration
-
-  alias Logflare.Backends.SourceBackend
+  alias Logflare.Source
   alias Logflare.Backends.Adaptor.PostgresAdaptor.PgRepo
 
   @doc """
@@ -12,10 +11,11 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor.Repo.Migrations.AddLogEvents
 
   The table name is generated from the source token associated with the source backend.
   """
-  def generate_migration(%SourceBackend{source: %{token: token}} = source_backend) do
+  @spec generate_migration(Source.t()) :: atom()
+  def generate_migration(%Source{token: token} = source) do
     token = token |> Atom.to_string() |> String.replace("-", "")
     name = Module.concat([__MODULE__, "AddLogEventsForSource#{token}"])
-    table_name = PgRepo.table_name(source_backend)
+    table_name = PgRepo.table_name(source)
 
     ast =
       quote do

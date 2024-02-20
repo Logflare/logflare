@@ -186,7 +186,7 @@ defmodule LogflareWeb.EndpointsControllerTest do
         )
       end
 
-      :timer.sleep(2000)
+      :timer.sleep(2_000)
 
       params = %{
         iso_timestamp_start:

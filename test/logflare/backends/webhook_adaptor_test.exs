@@ -10,10 +10,12 @@ defmodule Logflare.Backends.WebhookAdaptorTest do
   setup :set_mimic_global
 
   setup do
-    source_backend =
-      insert(:source_backend, type: :webhook, config: %{url: "https://example.com"})
+    user = insert(:user)
+    source = insert(:source, user: user)
+    backend =
+      insert(:backend, type: :webhook, sources: [source], config: %{url: "https://example.com"})
 
-    pid = start_supervised!({@subject, source_backend})
+    pid = start_supervised!({@subject, {source, backend}})
     {:ok, pid: pid}
   end
 

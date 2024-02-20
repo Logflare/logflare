@@ -1,4 +1,4 @@
-defmodule LogflareWeb.SourceBackendsLive do
+defmodule LogflareWeb.BackendsLive do
   @moduledoc false
   use LogflareWeb, :live_view
   require Logger
@@ -10,7 +10,7 @@ defmodule LogflareWeb.SourceBackendsLive do
       <%= if !@show_create_form do %>
         <button class="btn btn-primary" phx-click="toggle-create-form">Add a backend</button>
       <% else %>
-        <.form :let={f} for={%{}} as={:backend_form} action="#" phx-submit="save_source_backend" class="mt-4">
+        <.form :let={f} for={%{}} as={:backend_form} action="#" phx-submit="save_backend" class="mt-4">
           <p>Add backend</p>
           <%= select(f, :type, ["", Webhook: :webhook, Postgres: :postgres],
             phx_change: :change_create_form_type,
@@ -51,12 +51,12 @@ defmodule LogflareWeb.SourceBackendsLive do
           <%= submit("Add", class: "btn btn-primary") %>
         </.form>
       <% end %>
-      <div :if={not Enum.empty?(@source_backends)}>
+      <div :if={not Enum.empty?(@backends)}>
         Backends:
         <ul>
-          <li :for={sb <- @source_backends}>
+          <li :for={sb <- @backends}>
             <%= sb.type %>
-            <button class="ml-2 btn btn-danger" phx-click="remove_source_backend" phx-value-id={sb.id}>
+            <button class="ml-2 btn btn-danger" phx-click="remove_backend" phx-value-id={sb.id}>
               Remove
             </button>
             <%= case sb.type do %>
@@ -78,12 +78,12 @@ defmodule LogflareWeb.SourceBackendsLive do
 
   def mount(_params, %{"source_id" => source_id}, socket) do
     source = Logflare.Sources.get(source_id)
-    source_backends = Logflare.Backends.list_source_backends(source)
+    backends = Logflare.Backends.list_backends(source)
 
     socket =
       socket
       |> assign(:source, source)
-      |> assign(:source_backends, source_backends)
+      |> assign(:backends, backends)
       |> assign(:show_create_form, false)
       |> assign(:create_form_type, nil)
 
@@ -95,12 +95,17 @@ defmodule LogflareWeb.SourceBackendsLive do
     {:noreply, assign(socket, show_create_form: !show_create_form)}
   end
 
-  def handle_event("save_source_backend", %{"backend_form" => params}, socket) do
+  def handle_event("save_backend", %{"backend_form" => params}, socket) do
     %{assigns: %{source: source}} = socket
 
     socket =
-      case Logflare.Backends.create_source_backend(source, params["type"], params) do
-        {:ok, _} ->
+      case Logflare.Backends.create_backend(%{
+             "config" => params,
+             "type" => params["type"],
+             "user_id" => source.user_id
+           }) do
+        {:ok, backend} ->
+          {:ok, _} = Logflare.Backends.attach_to_backend(backend, source)
           assign(socket, :show_create_form, false)
 
         {:error, changeset} ->
@@ -119,7 +124,7 @@ defmodule LogflareWeb.SourceBackendsLive do
           put_flash(socket, :error, "Encountered error when adding backend:\n#{message}")
       end
 
-    socket = assign(socket, :source_backends, Logflare.Backends.list_source_backends(source))
+    socket = assign(socket, :backends, Logflare.Backends.list_backends(source))
 
     {:noreply, socket}
   end
@@ -128,15 +133,15 @@ defmodule LogflareWeb.SourceBackendsLive do
     {:noreply, assign(socket, create_form_type: type)}
   end
 
-  def handle_event("remove_source_backend", %{"id" => id}, %{assigns: %{source: source}} = socket) do
-    Logger.debug("Removing source backend id: #{id}")
-    source_backend = Backends.get_source_backend(id)
-    Backends.delete_source_backend(source_backend)
+  def handle_event("remove_backend", %{"id" => id}, %{assigns: %{source: source}} = socket) do
+    Logger.debug("Removing backend id: #{id}")
+    backend = Backends.get_backend(id)
+    Backends.delete_backend(backend)
 
     socket =
       socket
-      |> put_flash(:info, "Successfully deleted backend of type #{source_backend.type}")
-      |> assign(:source_backends, Backends.list_source_backends(source))
+      |> put_flash(:info, "Successfully deleted backend of type #{backend.type}")
+      |> assign(:backends, Backends.list_backends(source))
 
     {:noreply, socket}
   end

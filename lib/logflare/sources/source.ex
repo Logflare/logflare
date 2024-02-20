@@ -132,7 +132,7 @@ defmodule Logflare.Source do
     belongs_to(:user, Logflare.User)
 
     has_many(:rules, Logflare.Rule)
-    has_many(:source_backends, Logflare.Backends.SourceBackend)
+    many_to_many(:backends, Logflare.Backends.Backend, join_through: "sources_backends")
     has_many(:saved_searches, Logflare.SavedSearch)
     has_many(:billing_counts, Logflare.Billing.BillingCount, on_delete: :nothing)
 

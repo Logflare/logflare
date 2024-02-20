@@ -7,26 +7,28 @@ defmodule Logflare.Backends.Adaptor do
 
   alias Logflare.LogEvent
   alias Logflare.Endpoints.Query
-  alias Logflare.Backends.SourceBackend
+  alias Logflare.Backends.Backend
+  alias Logflare.Source
 
   @type t :: module()
   @type query :: Query.t() | Ecto.Query.t() | String.t() | {String.t(), [term()]}
+  @type source_backend :: {Source.t(), Backend.t()}
 
-  def child_spec(%SourceBackend{} = source_backend) do
+  def child_spec(%Source{} = source, %Backend{} = backend) do
     adaptor_module =
-      case source_backend.type do
+      case backend.type do
         :webhook -> __MODULE__.WebhookAdaptor
         :postgres -> __MODULE__.PostgresAdaptor
         :bigquery -> __MODULE__.BigQueryAdaptor
       end
 
     %{
-      id: {adaptor_module, source_backend.id},
-      start: {adaptor_module, :start_link, [source_backend]}
+      id: {adaptor_module, backend.id},
+      start: {adaptor_module, :start_link, [{source, backend}]}
     }
   end
 
-  @callback start_link(SourceBackend.t()) ::
+  @callback start_link(source_backend()) ::
               {:ok, pid()} | :ignore | {:error, term()}
 
   @doc """

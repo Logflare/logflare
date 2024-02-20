@@ -12,7 +12,7 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor.PgRepo do
   alias Logflare.Backends.Adaptor.PostgresAdaptor.Repo.Migrations.AddLogEvents
   alias Logflare.Backends.Adaptor.PostgresAdaptor.PgRepoSupervisor
   alias Logflare.Backends.Adaptor.PostgresAdaptor.Supervisor
-  alias Logflare.Backends.SourceBackend
+  alias Logflare.Backends.Backend
   alias Logflare.LogEvent
   alias Logflare.Source
   require Logger
@@ -27,9 +27,9 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor.PgRepo do
   Dynamically compiles a new Ecto.Repo module for a given source.
   Requires `:source` to be preloaded.
   """
-  @spec create_repo(SourceBackend.t()) :: atom()
-  def create_repo(%SourceBackend{source: %Source{}, config: config} = source_backend) do
-    name = get_repo_module(source_backend)
+  @spec create_repo(Backend.t()) :: atom()
+  def create_repo(%Backend{config: config} = backend) do
+    name = get_repo_module(backend)
 
     unless Process.whereis(name) do
       child_spec = {__MODULE__, %{repo_module_name: name, config: config}}
@@ -43,8 +43,8 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor.PgRepo do
   @doc """
   Retrieves the repo module. Requires `:source` to be preloaded.
   """
-  @spec get_repo_module(SourceBackend.t()) :: Ecto.Repo.t()
-  def get_repo_module(%SourceBackend{config: config, source: %Source{}}) do
+  @spec get_repo_module(Backend.t()) :: Ecto.Repo.t()
+  def get_repo_module(%Backend{config: config}) do
     data = inspect(config)
     sha256 = :crypto.hash(:sha256, data) |> Base.encode16(case: :lower)
     Module.concat([Logflare.Repo.Postgres, "Adaptor#{sha256}"])
@@ -53,9 +53,9 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor.PgRepo do
   @doc """
   Connects to a given postgres. Requires `:source` to be preloaded.
   """
-  @spec connected?(SourceBackend.t()) :: :ok | {:error, :not_connected}
-  def connected?(%SourceBackend{} = source_backend) do
-    repo_module_name = get_repo_module(source_backend)
+  @spec connected?(Backend.t()) :: :ok | {:error, :not_connected}
+  def connected?(%Backend{} = backend) do
+    repo_module_name = get_repo_module(backend)
     connected?(repo_module_name, 5)
   end
 
@@ -76,24 +76,21 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor.PgRepo do
   @doc """
   Creates the Log Events table for the given source.
   """
-  @spec create_log_events_table(SourceBackend.t(), list() | nil) ::
+  @spec create_log_events_table(Adaptor.source_backend(), list() | nil) ::
           :ok | {:error, :failed_migration}
-  def create_log_events_table(source_backend, override_migrations \\ nil) do
-    repo_module_name = get_repo_module(source_backend)
-    migrations = if override_migrations, do: override_migrations, else: migrations(source_backend)
-    schema = Map.get(source_backend.config, "schema") || Map.get(source_backend.config, :schema)
+  def create_log_events_table({source, backend}, override_migrations \\ nil) do
+    repo_module_name = get_repo_module(backend)
+    migrations = if override_migrations, do: override_migrations, else: migrations(source)
+    schema = Map.get(backend.config, "schema") || Map.get(backend.config, :schema)
     opts = [all: true, prefix: schema, migrations: migrations]
 
-    GenServer.call(via(repo_module_name), {:run_migrations, source_backend, opts})
+    GenServer.call(via(repo_module_name), {:run_migrations, {source, backend}, opts})
   end
 
   @doc """
-  Returns the table name for a given Source or SourceBackend.
-  If SourceBackend, :source must be preloaded.
+  Returns the table name for a given Source.
   """
-  @spec table_name(SourceBackend.t() | Source.t()) :: binary()
-  def table_name(%SourceBackend{source: %_{} = source}), do: table_name(source)
-
+  @spec table_name(Source.t()) :: binary()
   def table_name(%Source{token: token}) do
     token
     |> Atom.to_string()
@@ -104,32 +101,32 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor.PgRepo do
   @doc """
   Retunrns a list of migrations to run.
   """
-  @spec migrations(SourceBackend.t()) :: list({pos_integer(), atom()})
-  def migrations(source_backend), do: [{1, AddLogEvents.generate_migration(source_backend)}]
+  @spec migrations(Source.t()) :: list({pos_integer(), atom()})
+  def migrations(%Source{} = source), do: [{1, AddLogEvents.generate_migration(source)}]
 
   @doc """
   Rolls back all migrations
   """
-  @spec rollback_migrations(SourceBackend.t()) :: :ok
-  def rollback_migrations(source_backend) do
-    repo_module_name = get_repo_module(source_backend)
-    GenServer.call(via(repo_module_name), {:rollback_migrations_table, source_backend})
+  @spec rollback_migrations(Adaptor.source_backend()) :: :ok
+  def rollback_migrations({source, backend}) do
+    repo_module_name = get_repo_module(backend)
+    GenServer.call(via(repo_module_name), {:rollback_migrations_table, {source, backend}})
   end
 
   @doc """
   Drops the migration table
   """
-  @spec drop_migrations_table(SourceBackend.t()) :: :ok
-  def drop_migrations_table(source_backend) do
-    repo_module_name = get_repo_module(source_backend)
-    GenServer.call(via(repo_module_name), {:drop_migrations_table, source_backend})
+  @spec drop_migrations_table(Adaptor.source_backend()) :: :ok
+  def drop_migrations_table({source, backend}) do
+    repo_module_name = get_repo_module(backend)
+    GenServer.call(via(repo_module_name), {:drop_migrations_table, source})
   end
 
   @doc """
   Returns the migrations table name used for a given source
   """
-  @spec migrations_table_name(SourceBackend.t()) :: String.t()
-  def migrations_table_name(%SourceBackend{source: %Source{token: token}}) do
+  @spec migrations_table_name(Source.t()) :: String.t()
+  def migrations_table_name(%Source{token: token}) do
     token =
       token
       |> Atom.to_string()
@@ -141,10 +138,10 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor.PgRepo do
   @doc """
   Inserts a LogEvent into the given source backend table
   """
-  @spec insert_log_event(SourceBackend.t(), LogEvent.t()) :: {:ok, PgLogEvent.t()}
-  def insert_log_event(source_backend, %LogEvent{} = log_event) do
-    repo = get_repo_module(source_backend)
-    table = PostgresAdaptor.table_name(source_backend)
+  @spec insert_log_event(Backend.t(), LogEvent.t()) :: {:ok, PgLogEvent.t()}
+  def insert_log_event(backend, %LogEvent{} = log_event) do
+    repo = get_repo_module(backend)
+    table = PostgresAdaptor.table_name(log_event.source)
 
     timestamp =
       log_event.body["timestamp"]
@@ -158,7 +155,7 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor.PgRepo do
       body: log_event.body
     }
 
-    schema = Map.get(source_backend.config, "schema") || Map.get(source_backend.config, :schema)
+    schema = Map.get(backend.config, "schema") || Map.get(backend.config, :schema)
 
     changeset =
       %PgLogEvent{}
@@ -219,10 +216,10 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor.PgRepo do
     _ -> {:reply, :error, state}
   end
 
-  def handle_call({:run_migrations, %SourceBackend{} = source_backend, opts}, _, state) do
+  def handle_call({:run_migrations, {%Source{} = source, %Backend{}}, opts}, _, state) do
     %{repo_module_name: repo_module_name} = state
 
-    migrations_table_name = migrations_table_name(source_backend)
+    migrations_table_name = migrations_table_name(source)
     {migrations, opts} = Keyword.pop!(opts, :migrations)
 
     Application.put_env(:logflare, repo_module_name,
@@ -239,9 +236,9 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor.PgRepo do
       {:reply, {:error, :failed_migration}, state}
   end
 
-  def handle_call({:drop_migrations_table, %SourceBackend{} = source_backend}, _, state) do
+  def handle_call({:drop_migrations_table, %Source{} = source}, _, state) do
     %{repo_module_name: repo_module_name} = state
-    migrations_table = migrations_table_name(source_backend)
+    migrations_table = migrations_table_name(source)
     Ecto.Adapters.SQL.query!(repo_module_name, "DROP TABLE IF EXISTS #{migrations_table}")
 
     {:reply, :ok, state}
@@ -251,9 +248,13 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor.PgRepo do
       {:reply, {:error, :failed_migration}, state}
   end
 
-  def handle_call({:rollback_migrations_table, %SourceBackend{} = source_backend}, _, state) do
-    repository_module = create_repo(source_backend)
-    Ecto.Migrator.run(repository_module, migrations(source_backend), :down, all: true)
+  def handle_call(
+        {:rollback_migrations_table, {%Source{} = source, %Backend{} = backend}},
+        _,
+        state
+      ) do
+    repository_module = create_repo(backend)
+    Ecto.Migrator.run(repository_module, migrations(source), :down, all: true)
 
     {:reply, :ok, state}
   rescue

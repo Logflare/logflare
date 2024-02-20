@@ -13,7 +13,7 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor do
   alias Logflare.Backends.Adaptor.PostgresAdaptor.Pipeline
   alias Logflare.Backends.Adaptor.PostgresAdaptor.PgRepo
   alias Logflare.Backends
-  alias Logflare.Backends.SourceBackend
+  alias Logflare.Backends.Backend
   alias Logflare.Backends.SourceDispatcher
   alias Logflare.Buffers.Buffer
   alias Logflare.Buffers.MemoryBuffer
@@ -26,15 +26,15 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor do
     field(:buffer_module, Adaptor.t())
     field(:buffer_pid, pid())
     field(:config, %{url: String.t(), schema: String.t()})
-    field(:source_backend, SourceBackend.t())
+    field(:backend, Backend.t())
     field(:pipeline_name, tuple())
     field(:repository_module, tuple())
   end
 
   @impl Logflare.Backends.Adaptor
-  def start_link(%SourceBackend{} = source_backend) do
-    GenServer.start_link(__MODULE__, source_backend,
-      name: Backends.via_source_backend(source_backend, __MODULE__)
+  def start_link({source, backend}) do
+    GenServer.start_link(__MODULE__, {source, backend},
+      name: Backends.via_source(source, __MODULE__, backend.id)
     )
   end
 
@@ -63,15 +63,15 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor do
   ### Examples
     iex> execute_query(souce_backend, from(s in "log_event_..."))
     {:ok, [%{...}]}
-    iex> execute_query(source_backend, "select body from log_event_table")
+    iex> execute_query(backend, "select body from log_event_table")
     {:ok, [%{...}]}
-    iex> execute_query(source_backend, {"select $1 as c from log_event_table", ["value]})
+    iex> execute_query(backend, {"select $1 as c from log_event_table", ["value]})
     {:ok, [%{...}]}
   """
   @impl Logflare.Backends.Adaptor
-  def execute_query(%SourceBackend{} = source_backend, %Ecto.Query{} = query) do
-    mod = create_repo(source_backend)
-    :ok = connected?(source_backend)
+  def execute_query(%Backend{} = backend, %Ecto.Query{} = query) do
+    mod = create_repo(backend)
+    :ok = connected?(backend)
 
     result =
       query
@@ -81,13 +81,13 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor do
     {:ok, result}
   end
 
-  def execute_query(%SourceBackend{} = source_backend, query_string) when is_binary(query_string),
-    do: execute_query(source_backend, {query_string, []})
+  def execute_query(%Backend{} = backend, query_string) when is_binary(query_string),
+    do: execute_query(backend, {query_string, []})
 
-  def execute_query(%SourceBackend{config: config} = source_backend, {query_string, params})
+  def execute_query(%Backend{config: config} = backend, {query_string, params})
       when is_binary(query_string) and is_list(params) do
-    mod = create_repo(source_backend)
-    :ok = connected?(source_backend)
+    mod = create_repo(backend)
+    :ok = connected?(backend)
 
     # explicitly set search path
     schema = Map.get(config, "schema") || Map.get(config, :schema)
@@ -127,31 +127,30 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor do
   end
 
   # expose PgRepo functions
-  defdelegate connected?(source_backend), to: PgRepo
-  defdelegate create_repo(source_backend), to: PgRepo
-  defdelegate table_name(source_or_source_backend), to: PgRepo
+  defdelegate connected?(backend), to: PgRepo
+  defdelegate create_repo(backend), to: PgRepo
+  defdelegate table_name(source), to: PgRepo
   defdelegate create_log_events_table(source_backend), to: PgRepo
   defdelegate create_log_events_table(source_backend, override_migrations), to: PgRepo
   defdelegate rollback_migrations(source_backend), to: PgRepo
-  defdelegate drop_migrations_table(source_backend), to: PgRepo
-  defdelegate migrations_table_name(source_backend), to: PgRepo
-  defdelegate insert_log_event(source_backend, log_event), to: PgRepo
+  defdelegate drop_migrations_table(backend), to: PgRepo
+  defdelegate migrations_table_name(source), to: PgRepo
+  defdelegate insert_log_event(backend, log_event), to: PgRepo
 
   # GenServer
   @impl GenServer
-  def init(source_backend) do
-    with source_id = source_backend.source_id,
-         {:ok, _} <- Registry.register(SourceDispatcher, source_id, {__MODULE__, :ingest}),
+  def init({source, backend}) do
+    with {:ok, _} <- Registry.register(SourceDispatcher, source.id, {__MODULE__, :ingest}),
          {:ok, buffer_pid} <- MemoryBuffer.start_link([]),
-         repository_module = create_repo(source_backend),
-         :ok <- connected?(source_backend),
-         :ok <- create_log_events_table(source_backend) do
+         repository_module = create_repo(backend),
+         :ok <- connected?(backend),
+         :ok <- create_log_events_table({source, backend}) do
       state = %__MODULE__{
         buffer_module: MemoryBuffer,
         buffer_pid: buffer_pid,
-        config: source_backend.config,
-        source_backend: source_backend,
-        pipeline_name: Backends.via_source_backend(source_backend, Pipeline),
+        config: backend.config,
+        backend: backend,
+        pipeline_name: Backends.via_source(source, Pipeline, backend.id),
         repository_module: repository_module
       }
 

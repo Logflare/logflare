@@ -1,78 +1,73 @@
 defmodule Logflare.BackendsTest do
   @moduledoc false
   use Logflare.DataCase
-  alias Logflare.{Backends, Backends.SourceBackend, Backends.SourceSup}
+  alias Logflare.Backends
+  alias Logflare.Backends.Backend
+  alias Logflare.Backends.SourceSup
 
   @valid_event %{some: "event"}
   describe "backend management" do
     setup do
       user = insert(:user)
-      [source: insert(:source, user_id: user.id)]
+      [source: insert(:source, user_id: user.id), user: user]
     end
 
-    test "delete backend", %{source: source} do
-      assert {:ok, sb} =
-               Backends.create_source_backend(source, :webhook, %{url: "http://some.url"})
+    test "create backend", %{user: user} do
+      assert {:ok, %Backend{}} =
+               Backends.create_backend(%{
+                 type: :webhook,
+                 user_id: user.id,
+                 config: %{url: "http://some.url"}
+               })
 
-      assert {:ok, %SourceBackend{}} = Backends.delete_source_backend(sb)
-      assert Backends.get_source_backend(sb.id) == nil
+      assert {:error, %Ecto.Changeset{}} = Backends.create_backend(%{type: :other, config: %{}})
+      assert {:error, %Ecto.Changeset{}} = Backends.create_backend(%{type: :webhook, config: nil})
+
+      # config validations
+      assert {:error, %Ecto.Changeset{}} =
+               Backends.create_backend(%{type: :postgres, config: %{url: nil}})
+    end
+
+    test "delete backend" do
+      backend = insert(:backend)
+      assert {:ok, %Backend{}} = Backends.delete_backend(backend)
+      assert Backends.get_backend(backend.id) == nil
     end
 
     test "can attach multiple backends to a source", %{source: source} do
-      assert {:ok, %SourceBackend{}} =
-               Backends.create_source_backend(source, :webhook, %{url: "http://some.url"})
-
-      assert {:ok, %SourceBackend{}} =
-               Backends.create_source_backend(source, :webhook, %{url: "http://some.url"})
-
-      assert [%{config: %{url: "http" <> _}}, _] = Backends.list_source_backends(source)
+      [backend1, backend2] = insert_pair(:backend)
+      assert [] = Backends.list_backends(source)
+      assert {:ok, %Backend{}} = Backends.attach_to_backend(backend1, source)
+      assert {:ok, %Backend{}} = Backends.attach_to_backend(backend2, source)
+      assert [_, _] = Backends.list_backends(source)
     end
 
-    test "validates config correctly for websocket backends", %{source: source} do
-      assert {:ok, source_backend} =
-               Backends.create_source_backend(source, :webhook, %{url: "http://example.com"})
-
-      assert %SourceBackend{config: %{url: "http://example.com"}} = source_backend
-
-      assert {:error, %Ecto.Changeset{}} =
-               Backends.create_source_backend(source, :webhook, %{url: nil})
-
-      assert {:ok,
-              %SourceBackend{
-                config: %{
-                  url: "http://changed.com"
-                }
-              }} =
-               Backends.update_source_backend_config(source_backend, %{url: "http://changed.com"})
-
-      assert {:error, %Ecto.Changeset{}} =
-               Backends.update_source_backend_config(source_backend, %{url: nil})
-
-      # unchanged
-      assert %SourceBackend{config: %{url: "http" <> _}} =
-               Backends.get_source_backend(source_backend.id)
-    end
-
-    test "validates config correctly for postgres backends", %{source: source} do
-      assert {:ok, source_backend} =
-               Backends.create_source_backend(source, :postgres, %{url: "postgresql://host"})
-
-      assert %SourceBackend{config: %{url: "postgresql://host"}, type: :postgres} = source_backend
-
-      assert {:error, %Ecto.Changeset{}} =
-               Backends.create_source_backend(source, :postgres, %{url: nil})
-
-      assert {:ok, %SourceBackend{config: %{url: "postgresql://changed"}, type: :postgres}} =
-               Backends.update_source_backend_config(source_backend, %{
-                 url: "postgresql://changed"
+    test "update backend config correctly", %{user: user} do
+      assert {:ok, backend} =
+               Backends.create_backend(%{
+                 type: :webhook,
+                 config: %{url: "http://example.com"},
+                 user_id: user.id
                })
 
       assert {:error, %Ecto.Changeset{}} =
-               Backends.update_source_backend_config(source_backend, %{url: nil})
+               Backends.create_backend(%{
+                 type: :webhook,
+                 config: nil
+               })
+
+      assert {:ok,
+              %Backend{
+                config: %{
+                  url: "http://changed.com"
+                }
+              }} = Backends.update_backend(backend, %{config: %{url: "http://changed.com"}})
+
+      assert {:error, %Ecto.Changeset{}} =
+               Backends.update_backend(backend, %{config: %{url: nil}})
 
       # unchanged
-      assert %SourceBackend{config: %{url: "postgresql" <> _}} =
-               Backends.get_source_backend(source_backend.id)
+      assert %Backend{config: %{url: "http" <> _}} = Backends.get_backend(backend.id)
     end
   end
 
@@ -127,9 +122,9 @@ defmodule Logflare.BackendsTest do
       user = insert(:user)
       source = insert(:source, user_id: user.id)
 
-      insert(:source_backend,
+      insert(:backend,
         type: :webhook,
-        source_id: source.id,
+        sources: [source],
         config: %{url: "https://some-url.com"}
       )
 

@@ -273,7 +273,7 @@
       <%= submit "Save", class: "btn btn-primary form-button" %>
     <% end %>
     <%= if @conn.assigns.source.v2_pipeline do %>
-      <%= live_render(@conn, LogflareWeb.SourceBackendsLive, session: %{"source_id"=> @conn.assigns.source.id})%>
+      <%= live_render(@conn, LogflareWeb.BackendsLive, session: %{"source_id"=> @conn.assigns.source.id})%>
     <% end %>
 
   <% end %>

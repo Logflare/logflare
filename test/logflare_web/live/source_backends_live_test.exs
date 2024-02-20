@@ -1,8 +1,8 @@
-defmodule LogflareWeb.SourceBackendsLiveTest do
+defmodule LogflareWeb.BackendsLiveTest do
   @moduledoc false
   use LogflareWeb.ConnCase
   import Phoenix.LiveViewTest
-  alias LogflareWeb.SourceBackendsLive
+  alias LogflareWeb.BackendsLive
 
   setup do
     user = insert(:user)
@@ -12,7 +12,7 @@ defmodule LogflareWeb.SourceBackendsLiveTest do
 
   test "create/delete", %{conn: conn, source: source} do
     {:ok, view, _html} =
-      live_isolated(conn, SourceBackendsLive, session: %{"source_id" => source.id})
+      live_isolated(conn, BackendsLive, session: %{"source_id" => source.id})
 
     # create
     assert view

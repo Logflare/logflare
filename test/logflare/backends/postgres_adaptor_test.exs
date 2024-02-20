@@ -20,18 +20,18 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptorTest do
 
     source = insert(:source, user: insert(:user))
 
-    source_backend = insert(:source_backend, type: :postgres, source: source, config: config)
+    backend = insert(:backend, type: :postgres, sources: [source], config: config)
 
-    %{source_backend: source_backend, source: source, postgres_url: url}
+    %{backend: backend, source: source, postgres_url: url}
   end
 
   describe "with postgres repo" do
-    setup %{source_backend: source_backend} do
-      pid = start_supervised!({PostgresAdaptor, source_backend})
+    setup %{backend: backend, source: source} do
+      pid = start_supervised!({PostgresAdaptor, {source, backend}})
 
       on_exit(fn ->
-        PostgresAdaptor.rollback_migrations(source_backend)
-        PostgresAdaptor.drop_migrations_table(source_backend)
+        PostgresAdaptor.rollback_migrations({source, backend})
+        PostgresAdaptor.drop_migrations_table({source, backend})
       end)
 
       %{pid: pid}
@@ -39,9 +39,10 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptorTest do
 
     test "ingest/2 and execute_query/2 dispatched message", %{
       pid: pid,
-      source_backend: source_backend
+      backend: backend,
+      source: source
     } do
-      log_event = build(:log_event, source: source_backend.source, test: "data")
+      log_event = build(:log_event, source: source, test: "data")
 
       assert :ok = PostgresAdaptor.ingest(pid, [log_event])
 
@@ -49,22 +50,22 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptorTest do
       :timer.sleep(1_500)
 
       # query by Ecto.Query
-      query = from(l in PostgresAdaptor.table_name(source_backend), select: l.body)
+      query = from(l in PostgresAdaptor.table_name(source), select: l.body)
 
-      assert {:ok, [%{"test" => "data"}]} = PostgresAdaptor.execute_query(source_backend, query)
+      assert {:ok, [%{"test" => "data"}]} = PostgresAdaptor.execute_query(backend, query)
 
       # query by string
       assert {:ok, [%{"body" => [%{"test" => "data"}]}]} =
                PostgresAdaptor.execute_query(
-                 source_backend,
-                 "select body from #{PostgresAdaptor.table_name(source_backend)}"
+                 backend,
+                 "select body from #{PostgresAdaptor.table_name(source)}"
                )
 
       # query by string with parameter
       assert {:ok, [%{"value" => "data"}]} =
                PostgresAdaptor.execute_query(
-                 source_backend,
-                 {"select body ->> $1 as value from #{PostgresAdaptor.table_name(source_backend)}",
+                 backend,
+                 {"select body ->> $1 as value from #{PostgresAdaptor.table_name(source)}",
                   ["test"]}
                )
     end
@@ -72,11 +73,12 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptorTest do
     test "ingest/2 and execute_query/2 dispatched message with metadata transformation into list",
          %{
            pid: pid,
-           source_backend: source_backend
+           backend: backend,
+           source: source
          } do
       log_event =
         build(:log_event,
-          source: source_backend.source,
+          source: source,
           message: "some msg",
           nested: %{
             "host" => "db-default",
@@ -113,32 +115,32 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptorTest do
                 }
               ]} =
                PostgresAdaptor.execute_query(
-                 source_backend,
-                 "select body from #{PostgresAdaptor.table_name(source_backend)}"
+                 backend,
+                 "select body from #{PostgresAdaptor.table_name(source)}"
                )
 
       # non map results are not impacted by metadata transformations
-      query = from(l in PostgresAdaptor.table_name(source_backend), select: count(l.id))
-      assert {:ok, [1]} = PostgresAdaptor.execute_query(source_backend, query)
+      query = from(l in PostgresAdaptor.table_name(source), select: count(l.id))
+      assert {:ok, [1]} = PostgresAdaptor.execute_query(backend, query)
 
       # struct results are not impacted by metadata transformations
-      query = from(l in PostgresAdaptor.table_name(source_backend), select: l.timestamp)
+      query = from(l in PostgresAdaptor.table_name(source), select: l.timestamp)
 
-      assert {:ok, [%NaiveDateTime{}]} = PostgresAdaptor.execute_query(source_backend, query)
+      assert {:ok, [%NaiveDateTime{}]} = PostgresAdaptor.execute_query(backend, query)
     end
   end
 
   describe "repo module" do
-    test "connected?/1 true when repo is connected", %{source_backend: source_backend} do
-      PostgresAdaptor.create_repo(source_backend)
-      assert :ok = PostgresAdaptor.connected?(source_backend)
+    test "connected?/1 true when repo is connected", %{backend: backend} do
+      PostgresAdaptor.create_repo(backend)
+      assert :ok = PostgresAdaptor.connected?(backend)
     end
 
-    test "create_repo/1 creates a new Ecto.Repo for given source_backend and connects", %{
-      source_backend: source_backend
+    test "create_repo/1 creates a new Ecto.Repo for given backend and connects", %{
+      backend: backend
     } do
-      repo = PostgresAdaptor.create_repo(source_backend)
-      assert :ok = PostgresAdaptor.connected?(source_backend)
+      repo = PostgresAdaptor.create_repo(backend)
+      assert :ok = PostgresAdaptor.connected?(backend)
       assert Keyword.get(repo.__info__(:attributes), :behaviour) == [Ecto.Repo]
 
       # module name should have a prefix
@@ -151,42 +153,43 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptorTest do
         "schema" => "my_schema"
       }
 
-      source_backend = insert(:source_backend, type: :postgres, source: source, config: config)
-      PostgresAdaptor.create_repo(source_backend)
+      backend = insert(:backend, type: :postgres, sources: [source], config: config)
+      PostgresAdaptor.create_repo(backend)
 
-      assert :ok = PostgresAdaptor.connected?(source_backend)
+      assert :ok = PostgresAdaptor.connected?(backend)
 
       assert {:ok, [%{"schema_name" => "my_schema"}]} =
                PostgresAdaptor.execute_query(
-                 source_backend,
+                 backend,
                  "select schema_name from information_schema.schemata where schema_name = 'my_schema'"
                )
 
-      assert :ok = PostgresAdaptor.create_log_events_table(source_backend)
+      assert :ok = PostgresAdaptor.create_log_events_table({source, backend})
 
-      log_event = build(:log_event, source: source_backend.source, test: "data")
-      assert {:ok, %_{}} = PostgresAdaptor.insert_log_event(source_backend, log_event)
+      log_event = build(:log_event, source: source, test: "data")
+      assert {:ok, %_{}} = PostgresAdaptor.insert_log_event(backend, log_event)
     end
 
     test "create_log_events_table/3 creates the table for a given source", %{
-      source_backend: source_backend
+      backend: backend,
+      source: source
     } do
-      repo = PostgresAdaptor.create_repo(source_backend)
-      assert :ok = PostgresAdaptor.connected?(source_backend)
-      assert :ok = PostgresAdaptor.create_log_events_table(source_backend)
-      query = from(l in PostgresAdaptor.table_name(source_backend), select: l.body)
+      repo = PostgresAdaptor.create_repo(backend)
+      assert :ok = PostgresAdaptor.connected?(backend)
+      assert :ok = PostgresAdaptor.create_log_events_table({source, backend})
+      query = from(l in PostgresAdaptor.table_name(source), select: l.body)
       assert repo.all(query) == []
     end
 
-    test "handle migration errors", %{source_backend: source_backend} do
-      PostgresAdaptor.create_repo(source_backend)
-      assert :ok = PostgresAdaptor.connected?(source_backend)
+    test "handle migration errors", %{source: source, backend: backend} do
+      PostgresAdaptor.create_repo(backend)
+      assert :ok = PostgresAdaptor.connected?(backend)
       bad_migrations = [{0, BadMigration}]
 
       assert capture_log(fn ->
                assert {:error, :failed_migration} =
                         PostgresAdaptor.create_log_events_table(
-                          source_backend,
+                          {source, backend},
                           bad_migrations
                         )
              end) =~ "[error]"

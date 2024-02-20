@@ -223,9 +223,8 @@ defmodule Logflare.Endpoints do
        ) do
     # find compatible source backend
     # TODO: move this to Backends module
-    source_backend =
-      Backends.list_source_backends_by_user_id(endpoint_query.user_id)
-      |> Repo.preload([:source])
+    backend =
+      Backends.list_backends_by_user_id(endpoint_query.user_id)
       |> Enum.filter(fn sb -> sb.type == :postgres end)
       |> List.first()
       |> then(fn
@@ -250,7 +249,7 @@ defmodule Logflare.Endpoints do
       end
 
     with {:ok, rows} <-
-           PostgresAdaptor.execute_query(source_backend, {transformed_query, args}) do
+           PostgresAdaptor.execute_query(backend, {transformed_query, args}) do
       {:ok, %{rows: rows}}
     end
   end

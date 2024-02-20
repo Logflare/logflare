@@ -2,7 +2,7 @@ defmodule Logflare.Backends.SourceSup do
   @moduledoc false
   use Supervisor
 
-  alias Logflare.Backends.SourceBackend
+  alias Logflare.Backends.Backend
   alias Logflare.Backends.CommonIngestPipeline
   alias Logflare.Backends
   alias Logflare.Source
@@ -13,16 +13,16 @@ defmodule Logflare.Backends.SourceSup do
   end
 
   def init(source) do
-    source_backend_specs =
+    specs =
       source
-      |> Backends.list_source_backends()
-      |> Enum.map(&SourceBackend.child_spec/1)
+      |> Backends.list_backends()
+      |> Enum.map(&Backend.child_spec(source, &1))
 
     children =
       [
         {MemoryBuffer, name: Backends.via_source(source, :buffer)},
         {CommonIngestPipeline, source}
-      ] ++ source_backend_specs
+      ] ++ specs
 
     Supervisor.init(children, strategy: :one_for_one)
   end
