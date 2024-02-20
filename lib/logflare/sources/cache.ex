@@ -2,10 +2,26 @@ defmodule Logflare.Sources.Cache do
   @moduledoc false
 
   alias Logflare.Sources
+  alias Logflare.Cluster.CacheWarmer
 
   def child_spec(_) do
     stats = Application.get_env(:logflare, :cache_stats, false)
-    %{id: __MODULE__, start: {Cachex, :start_link, [__MODULE__, [stats: stats, limit: 100_000]]}}
+
+    %{
+      id: __MODULE__,
+      start:
+        {Cachex, :start_link,
+         [
+           __MODULE__,
+           [
+             stats: stats,
+             limit: 100_000,
+             warmers: [
+               CacheWarmer.warmer_spec(__MODULE__)
+             ]
+           ]
+         ]}
+    }
   end
 
   # For ingest

@@ -4,13 +4,28 @@ defmodule Logflare.PubSubRates.Cache do
 
   alias Logflare.Source
   alias Logflare.Cluster
+  alias Logflare.Cluster.CacheWarmer
 
   @cache __MODULE__
   @default_bucket_width 60
 
   def child_spec(_) do
     stats = Application.get_env(:logflare, :cache_stats, false)
-    %{id: __MODULE__, start: {Cachex, :start_link, [@cache, [stats: stats]]}}
+
+    %{
+      id: __MODULE__,
+      start:
+        {Cachex, :start_link,
+         [
+           @cache,
+           [
+             stats: stats,
+             warmers: [
+               CacheWarmer.warmer_spec(__MODULE__)
+             ]
+           ]
+         ]}
+    }
   end
 
   def cache_rates(source_id, rates) when is_atom(source_id) do
