@@ -13,6 +13,7 @@ defmodule Logflare.SingleTenant do
   alias Logflare.Source.Supervisor
   alias Logflare.Source.BigQuery.Schema
   alias Logflare.LogEvent
+  alias Logflare.SingleTenant
   alias Logflare.Backends
   require Logger
 
@@ -175,7 +176,6 @@ defmodule Logflare.SingleTenant do
     user = get_default_user()
     count = Sources.count_sources_by_user(user)
 
-    # ensure that backend adaptor is created
     backend = get_default_backend()
 
     if count == 0 do

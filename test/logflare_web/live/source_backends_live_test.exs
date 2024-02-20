@@ -1,8 +1,8 @@
-defmodule LogflareWeb.SourceBackendsLiveTest do
+defmodule LogflareWeb.BackendsLiveTest do
   @moduledoc false
   use LogflareWeb.ConnCase
   import Phoenix.LiveViewTest
-  alias LogflareWeb.SourceBackendsLive
+  alias LogflareWeb.BackendsLive
 
   setup do
     insert(:plan)
