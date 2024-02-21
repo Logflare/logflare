@@ -13,7 +13,6 @@ defmodule Logflare.SingleTenant do
   alias Logflare.Source.Supervisor
   alias Logflare.Source.BigQuery.Schema
   alias Logflare.LogEvent
-  alias Logflare.SingleTenant
   alias Logflare.Backends
   require Logger
 

@@ -1,4 +1,4 @@
-defmodule LogflareWeb.BackendsLive do
+defmodule LogflareWeb.SourceBackendsLive do
   @moduledoc false
   use LogflareWeb, :live_view
   require Logger
