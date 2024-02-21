@@ -22,6 +22,7 @@ defmodule Logflare.TestUtils do
     opts =
       Enum.into(opts, %{
         seed_user: false,
+        seed_backend: false,
         supabase_mode: false,
         bigquery_project_id: random_string(),
         backend_type: :bigquery,
@@ -32,9 +33,16 @@ defmodule Logflare.TestUtils do
       unquote(setup_single_tenant_backend(opts))
 
       setup do
+        initial_single_tenant = Application.get_env(:logflare, :single_tenant)
+        Application.put_env(:logflare, :single_tenant, true)
+
         if unquote(opts.seed_user) do
           {:ok, _} = SingleTenant.create_default_plan()
           {:ok, _user} = SingleTenant.create_default_user()
+        end
+
+        if unquote(opts.seed_backend) do
+          {:ok, _backend} = SingleTenant.create_default_backend()
         end
 
         if unquote(opts.supabase_mode) do
@@ -43,8 +51,6 @@ defmodule Logflare.TestUtils do
           on_exit(fn -> Application.put_env(:logflare, :supabase_mode, initial_supabase_mode) end)
         end
 
-        initial_single_tenant = Application.get_env(:logflare, :single_tenant)
-        Application.put_env(:logflare, :single_tenant, true)
 
         initial_api_key = Application.get_env(:logflare, :api_key)
         Application.put_env(:logflare, :api_key, Logflare.TestUtils.random_string(12))
@@ -72,6 +78,7 @@ defmodule Logflare.TestUtils do
           url: url,
           schema: unquote(schema)
         )
+
 
         on_exit(fn -> Application.put_env(:logflare, :postgres_backend_adapter, previous) end)
         :ok

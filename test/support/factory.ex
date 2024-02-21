@@ -74,7 +74,14 @@ defmodule Logflare.Factory do
   end
 
   def backend_factory do
-    %Backend{type: :bigquery}
+    %Backend{
+      name: TestUtils.random_string(),
+      type: :bigquery,
+      config: %{
+        project_id: TestUtils.random_string(),
+        dataset_id: TestUtils.random_string()
+      }
+    }
   end
 
   def rule_factory(attrs) do

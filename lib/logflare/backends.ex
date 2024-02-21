@@ -139,8 +139,14 @@ defmodule Logflare.Backends do
   Deletes a Backend
   """
   @spec delete_backend(Backend.t()) :: {:ok, Backend.t()}
-  def delete_backend(%Backend{} = sb) do
-    Repo.delete(sb)
+  def delete_backend(%Backend{} = backend) do
+    backend
+    |> Ecto.Changeset.change()
+    |> Ecto.Changeset.foreign_key_constraint(:sources,
+      name: "sources_backends_backend_id_fkey",
+      message: "There are still sources connected to this backend"
+    )
+    |> Repo.delete()
   end
 
   @doc """

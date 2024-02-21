@@ -15,13 +15,14 @@ defmodule Logflare.BackendsTest do
     test "create backend", %{user: user} do
       assert {:ok, %Backend{}} =
                Backends.create_backend(%{
+                 name: "some name",
                  type: :webhook,
                  user_id: user.id,
                  config: %{url: "http://some.url"}
                })
 
-      assert {:error, %Ecto.Changeset{}} = Backends.create_backend(%{type: :other, config: %{}})
-      assert {:error, %Ecto.Changeset{}} = Backends.create_backend(%{type: :webhook, config: nil})
+      assert {:error, %Ecto.Changeset{}} = Backends.create_backend(%{name: "123", type: :other, config: %{}})
+      assert {:error, %Ecto.Changeset{}} = Backends.create_backend(%{name: "123", type: :webhook, config: nil})
 
       # config validations
       assert {:error, %Ecto.Changeset{}} =
@@ -45,6 +46,7 @@ defmodule Logflare.BackendsTest do
     test "update backend config correctly", %{user: user} do
       assert {:ok, backend} =
                Backends.create_backend(%{
+                 name: "some name",
                  type: :webhook,
                  config: %{url: "http://example.com"},
                  user_id: user.id

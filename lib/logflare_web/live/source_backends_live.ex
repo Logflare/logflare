@@ -1,4 +1,4 @@
-defmodule LogflareWeb.BackendsLive do
+defmodule LogflareWeb.SourceBackendsLive do
   @moduledoc false
   use LogflareWeb, :live_view
   require Logger
@@ -16,6 +16,14 @@ defmodule LogflareWeb.BackendsLive do
             phx_change: :change_create_form_type,
             class: "form-control form-control-margin"
           ) %>
+
+          <div class="form-group mt-2">
+            <%= label(f, :name) %>
+            <%= text_input(f, :name, class: "form-control form-control-margin") %>
+            <%= label(f, :description) %>
+            <%= text_input(f, :description, class: "form-control form-control-margin") %>
+          </div>
+
           <div class="form-group mt-2">
             <%= case @create_form_type do %>
               <% "webhook" -> %>

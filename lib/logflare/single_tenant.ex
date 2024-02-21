@@ -13,7 +13,6 @@ defmodule Logflare.SingleTenant do
   alias Logflare.Source.Supervisor
   alias Logflare.Source.BigQuery.Schema
   alias Logflare.LogEvent
-  alias Logflare.SingleTenant
   alias Logflare.Backends
   require Logger
 
@@ -129,6 +128,7 @@ defmodule Logflare.SingleTenant do
       opts = postgres_backend_adapter_opts()
 
       Backends.create_backend(%{
+        name: "Default postgres backend",
         type: :postgres,
         config: Map.new(opts),
         user_id: user.id
@@ -176,21 +176,7 @@ defmodule Logflare.SingleTenant do
     count = Sources.count_sources_by_user(user)
 
     # ensure that backend adaptor is created
-    backend =
-      if postgres_backend?() do
-        opts = SingleTenant.postgres_backend_adapter_opts()
-        url = Keyword.get(opts, :url)
-        schema = Keyword.get(opts, :schema)
-
-        {:ok, backend} =
-          Backends.create_backend(%{
-            user_id: user.id,
-            config: %{url: url, schema: schema},
-            type: :postgres
-          })
-
-        backend
-      end
+    backend = get_default_backend()
 
     if count == 0 do
       sources =

@@ -11,8 +11,8 @@ defmodule Logflare.Backends.BigQueryAdaptorTest do
 
   setup do
     config = %{
-      bigquery_project_id: "some-project",
-      bigquery_dataset_id: "some-dataset"
+      project_id: "some-project",
+      dataset_id: "some-dataset"
     }
 
     source = insert(:source, user: insert(:user))

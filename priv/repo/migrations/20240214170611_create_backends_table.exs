@@ -4,6 +4,8 @@ defmodule Logflare.Repo.Migrations.CreateBackendsTable do
   def change do
 
     create table("backends") do
+      add :name, :string
+      add :description, :text
       add :user_id, references("users")
       add :type, :string
       add :config, :map

@@ -12,6 +12,8 @@ defmodule Logflare.Backends.Backend do
   @adaptor_types [:bigquery, :webhook, :postgres]
 
   typed_schema "backends" do
+    field(:name, :string)
+    field(:description, :string)
     field(:type, Ecto.Enum, values: @adaptor_types)
     field(:config, :map)
     many_to_many(:sources, Source, join_through: "sources_backends")
@@ -21,8 +23,8 @@ defmodule Logflare.Backends.Backend do
 
   def changeset(backend, attrs) do
     backend
-    |> cast(attrs, [:type, :config, :user_id])
-    |> validate_required([:user_id, :type, :config])
+    |> cast(attrs, [:type, :config, :user_id, :name, :description])
+    |> validate_required([:user_id, :type, :config, :name])
     |> validate_inclusion(:type, @adaptor_types)
   end
 

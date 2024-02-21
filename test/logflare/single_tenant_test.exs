@@ -184,7 +184,7 @@ defmodule Logflare.SingleTenantTest do
   end
 
   describe "supabase_mode=true using Postgres" do
-    TestUtils.setup_single_tenant(backend_type: :postgres, seed_user: true, supabase_mode: true)
+    TestUtils.setup_single_tenant(backend_type: :postgres, seed_user: true, supabase_mode: true, seed_backend: true)
 
     setup do
       stub(Schema, :update, fn _token, _le -> :ok end)
