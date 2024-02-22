@@ -93,6 +93,7 @@ defmodule Logflare.Backends do
     |> Repo.update()
   end
 
+
   # common config validation function
   defp validate_config(%{valid?: true} = changeset) do
     type = Ecto.Changeset.get_field(changeset, :type)
