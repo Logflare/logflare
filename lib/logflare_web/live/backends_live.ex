@@ -12,7 +12,7 @@ defmodule LogflareWeb.BackendsLive do
       <% else %>
         <.form :let={f} for={%{}} as={:backend} action="#" phx-submit="save_backend" class="mt-4">
           <p>Add backend</p>
-          <%= select(f, :type, ["Select a backend type...", Webhook: :webhook, Postgres: :postgres, Bigquery: :bigquery],
+          <%= select(f, :type, ["Select a backend type...", Webhook: :webhook, Postgres: :postgres, BigQuery: :bigquery],
             phx_change: :change_create_form_type,
             class: "form-control form-control-margin",
             id: "type"
