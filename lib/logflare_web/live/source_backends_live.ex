@@ -8,45 +8,43 @@ defmodule LogflareWeb.SourceBackendsLive do
     ~H"""
     <div class="my-4">
       <div :if={not Enum.empty?(@backends)}>
-        <strong>Backends</strong>
-        <span>connected: <%= Enum.count(@attached_backend_ids) %></span>
+        <h5>Backends</h5>
+        <small class="badge badge-pill badge-success">connected: <%= Enum.count(@attached_backend_ids) %></small>
         <.form :let={f} as={:source} for={%{}} action="#" phx-submit="save">
-            <% grouped = Enum.group_by(@backends, &(&1.type)) %>
-            <%= for type <- [:bigquery, :postgres, :webhook],
+          <% grouped = Enum.group_by(@backends, & &1.type) %>
+          <%= for type <- [:bigquery, :postgres, :webhook],
              backends = Map.get(grouped, type, []) do %>
-              <div class="form-row">
-                <strong>
-                  <%=
-                    case type do
-                      :bigquery-> "BigQuery"
-                      :postgres-> "PostgreSQL"
-                      :webhook-> "Webhook"
-                    end
-                  %>
-                  </strong>
+            <div class="form-group">
+              <strong>
+                <%= case type do
+                  :bigquery -> "BigQuery"
+                  :postgres -> "PostgreSQL"
+                  :webhook -> "Webhook"
+                end %>
+              </strong>
 
-                <div :if={type == :bigquery} class="custom-control custom-switch">
-                  <input type="checkbox" class="custom-control-input" disabled id="customSwitch2">
-                  <%= text_input f, :backends, type: "checkbox", class: "custom-control-input", id: "backends-default", disabled: true, checked: true %>
-                  <%= label f, :backends, "Logflare-managed BigQuery", class: "custom-control-label", for: "backends-default" %>
-                </div>
-                <div :for={backend <- backends} class="custom-control custom-switch">
-                  <input type="checkbox" class="custom-control-input" disabled id="customSwitch2">
-                  <%= text_input f, :backends, type: "checkbox", class: "custom-control-input", id: "backends-#{backend.id}",  name: "source[backends][]", checked: backend.id in @attached_backend_ids %>
-                  <%= label f, :backends, backend.name, class: "custom-control-label", for: "backends-#{backend.id}" %>
-                </div>
+              <div :if={type == :bigquery} class="form-row custom-control custom-switch">
+                <%= text_input(f, :backends, type: "checkbox", class: "custom-control-input", id: "backends-default", disabled: true, checked: true) %>
+                <%= label(f, :backends, "Logflare-managed BigQuery", class: "custom-control-label", for: "backends-default") %>
               </div>
-            <% end %>
+              <div :for={backend <- backends} class="form-row custom-control custom-switch">
+                <%= text_input(f, :backends, type: "checkbox", class: "custom-control-input", id: "backends-#{backend.id}", name: "source[backends][]", checked: backend.id in @attached_backend_ids, value: backend.id) %>
+                <%= label(f, :backends, backend.name, class: "custom-control-label", for: "backends-#{backend.id}") %>
+              </div>
+              <div :if={Enum.empty?(backends) and type !== :bigquery}>
+                <small class="text-muted">No backend created yet!</small>
+              </div>
+            </div>
+          <% end %>
 
-        <%= submit "Save", class: "btn btn-primary form-button" %>
-      </.form>
+          <%= submit("Save", class: "btn btn-primary form-button") %>
+        </.form>
       </div>
     </div>
     """
   end
 
   def mount(_params, %{"source_id" => source_id}, socket) do
-
     socket =
       socket
       |> assign(:source_id, source_id)
@@ -55,15 +53,19 @@ defmodule LogflareWeb.SourceBackendsLive do
     {:ok, socket, layout: {LogflareWeb.LayoutView, :inline_live}}
   end
 
-  def handle_event("save", %{"source"=> %{"backends" => ids}}, %{assigns: %{backends: backends, source: source}} = socket) do
+  def handle_event(
+        "save",
+        %{"source" => %{"backends" => ids}},
+        %{assigns: %{backends: backends, source: source}} = socket
+      ) do
+    dbg(ids)
     backend_ids = for id <- ids, {val, _rem} = Integer.parse(id), do: val
 
-    backends = for backend <- backends, backend.id in backend_ids, do:  backend
+    backends = for backend <- backends, backend.id in backend_ids, do: backend
 
     socket =
       case Backends.update_source_backends(source, backends) do
         {:ok, _source} ->
-
           socket
           |> refresh_data()
           |> put_flash(:info, "Successfully updated attached backends!")
@@ -87,7 +89,6 @@ defmodule LogflareWeb.SourceBackendsLive do
     {:noreply, socket}
   end
 
-
   defp _to_string(val) when is_list(val) do
     Enum.join(val, ", ")
   end
@@ -95,12 +96,13 @@ defmodule LogflareWeb.SourceBackendsLive do
   defp _to_string(val), do: to_string(val)
 
   defp refresh_data(%{assigns: %{source_id: source_id}} = socket) do
-
-    source = Logflare.Sources.get(source_id)
-    |> Logflare.Sources.preload_backends()
+    source =
+      Logflare.Sources.get(source_id)
+      |> Logflare.Sources.preload_backends()
 
     backends = Logflare.Backends.list_backends_by_user_id(source.user_id)
     attached_backend_ids = for b <- source.backends, do: b.id
+
     socket
     |> assign(:source, source)
     |> assign(:backends, backends)

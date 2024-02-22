@@ -248,7 +248,6 @@ defmodule Logflare.Sources do
     Repo.preload(source, :backends)
   end
 
-
   def refresh_source_metrics_for_ingest(nil), do: nil
 
   def refresh_source_metrics_for_ingest(%Source{token: token} = source) do

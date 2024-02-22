@@ -83,16 +83,15 @@ defmodule Logflare.Backends do
     end
   end
 
-  @spec update_source_backends(Source.t(), [Backend.t()]) :: {:ok, Source.t()} | {:error, Ecto.Changeset.t()}
+  @spec update_source_backends(Source.t(), [Backend.t()]) ::
+          {:ok, Source.t()} | {:error, Ecto.Changeset.t()}
   def update_source_backends(%Source{} = source, backends) do
     source
     |> Repo.preload(:backends)
     |> Ecto.Changeset.change()
     |> Ecto.Changeset.put_assoc(:backends, backends)
     |> Repo.update()
-
   end
-
 
   # common config validation function
   defp validate_config(%{valid?: true} = changeset) do

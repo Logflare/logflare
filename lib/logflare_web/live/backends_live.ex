@@ -6,13 +6,13 @@ defmodule LogflareWeb.BackendsLive do
 
   def render(assigns) do
     ~H"""
-    <div class="my-4">
+    <div class="my-4 container">
       <%= if !@show_create_form do %>
         <button class="btn btn-primary" phx-click="toggle-create-form">Add a backend</button>
       <% else %>
         <.form :let={f} for={%{}} as={:backend} action="#" phx-submit="save_backend" class="mt-4">
           <p>Add backend</p>
-          <%= select(f, :type, ["", Webhook: :webhook, Postgres: :postgres],
+          <%= select(f, :type, ["Select a backend type...", Webhook: :webhook, Postgres: :postgres, Bigquery: :bigquery],
             phx_change: :change_create_form_type,
             class: "form-control form-control-margin",
             id: "type"
@@ -21,55 +21,58 @@ defmodule LogflareWeb.BackendsLive do
           <div class="form-group mt-2">
             <%= hidden_input(f, :user_id, value: @user.id) %>
             <%= label(f, :name) %>
-            <%= text_input(f, :name, class: "form-control form-control-margin") %>
+            <%= text_input(f, :name, class: "form-control") %>
             <%= label(f, :description) %>
-            <%= text_input(f, :description, class: "form-control form-control-margin") %>
+            <%= text_input(f, :description, class: "form-control") %>
           </div>
 
           <.inputs_for :let={f_config} field={f[:config]}>
             <div class="form-group mt-2">
               <%= case @create_form_type do %>
                 <% "webhook" -> %>
-                  <%= label f_config, :url do %>
-                    Websocket URL to send the ingested data
-                  <% end %>
-
-                  <%= text_input(f_config, :url, class: "form-control form-control-margin") %>
+                  <div class="form-group">
+                    <%= label f_config, :url do %>
+                      Websocket URL to send the ingested data
+                    <% end %>
+                    <%= text_input(f_config, :url, class: "form-control") %>
+                  </div>
                 <% "postgres" -> %>
-                  <%= label f_config, :url do %>
-                    Postgres URL for the ingestion database
-                  <% end %>
-
-                  <%= text_input(f_config, :url, class: "form-control form-control-margin") %>
-                  <small class="form-text text-muted">
-                    Postgres URL with the following format, for example: <code>postgresql://user:password@host:port/database</code>
-                  </small>
-                  <%= label f_config, :schema do %>
-                    Schema where data should be store, if blank the database defaults will be used
-                  <% end %>
-
-                  <%= text_input(f_config, :schema, class: "form-control form-control-margin") %>
-                  <small class="form-text text-muted">
-                    Schema name, for example: <code>analytics</code>
-                  </small>
+                  <div class="form-group">
+                    <%= label f_config, :url do %>
+                      Postgres URL for the ingestion database
+                    <% end %>
+                    <%= text_input(f_config, :url, class: "form-control") %>
+                    <small class="form-text text-muted">
+                      Postgres URL with the following format, for example: <code>postgresql://user:password@host:port/database</code>
+                    </small>
+                  </div>
+                  <div class="form-group">
+                    <%= label f_config, :schema do %>
+                      Schema where data should be store, if blank the database defaults will be used
+                    <% end %>
+                    <%= text_input(f_config, :schema, class: "form-control") %>
+                    <small class="form-text text-muted">
+                      Schema name, for example: <code>analytics</code>
+                    </small>
+                  </div>
                 <% "bigquery" -> %>
-                  <%= label f_config, :bigquery_project_id do %>
-                    Google Cloud Project ID
-                  <% end %>
+                  <div class="form-group">
+                    <%= label(f_config, :project_id, "Google Cloud Project ID") %>
+                    <%= text_input(f_config, :project_id, class: "form-control") %>
+                    <small class="form-text text-muted">
+                      The Google Cloud project ID where the data is to be inserted into via BigQuery.
+                    </small>
+                  </div>
 
-                  <%= text_input(f_config, :bigquery_project_id, class: "form-control form-control-margin") %>
-                  <small class="form-text text-muted">
-                    The Google Cloud project ID where the data is to be inserted into via BigQuery.
-                  </small>
-
-                  <%= label f_config, :bigquery_dataset_id do %>
-                    Dataset ID
-                  <% end %>
-
-                  <%= text_input(f_config, :schema, class: "form-control form-control-margin") %>
-                  <small class="form-text text-muted">
-                    A BigQuery Dataset ID where data will be stored.
-                  </small>
+                  <div class="form-group">
+                    <%= label f_config, :dataset_id do %>
+                      Dataset ID
+                    <% end %>
+                    <%= text_input(f_config, :dataset_id, class: "form-control") %>
+                    <small class="form-text text-muted">
+                      A BigQuery Dataset ID where data will be stored.
+                    </small>
+                  </div>
                 <% _ -> %>
                   <div>Select a Backend Type</div>
               <% end %>
@@ -81,7 +84,7 @@ defmodule LogflareWeb.BackendsLive do
           <%= submit("Add", class: "btn btn-primary") %>
         </.form>
       <% end %>
-      <div :if={not Enum.empty?(@backends)}>
+      <div :if={not Enum.empty?(@backends)} class="tw-mt-10">
         Backends:
         <ul>
           <li :for={sb <- @backends}>
