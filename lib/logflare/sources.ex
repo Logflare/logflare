@@ -54,7 +54,7 @@ defmodule Logflare.Sources do
       if SingleTenant.postgres_backend?() do
         # attach the source to the postgres backend
         backend = SingleTenant.get_default_backend()
-        Backends.attach_to_backend(backend, source)
+        Backends.update_source_backends(source, [backend])
       else
         create_big_query_schema_and_start_source(source)
       end
@@ -243,6 +243,11 @@ defmodule Logflare.Sources do
   def preload_source_schema(source) do
     Repo.preload(source, :source_schema)
   end
+
+  def preload_backends(source) do
+    Repo.preload(source, :backends)
+  end
+
 
   def refresh_source_metrics_for_ingest(nil), do: nil
 

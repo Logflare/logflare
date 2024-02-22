@@ -4,6 +4,7 @@ defmodule Logflare.BackendsTest do
   alias Logflare.Backends
   alias Logflare.Backends.Backend
   alias Logflare.Backends.SourceSup
+  alias Logflare.Source
 
   @valid_event %{some: "event"}
   describe "backend management" do
@@ -38,9 +39,12 @@ defmodule Logflare.BackendsTest do
     test "can attach multiple backends to a source", %{source: source} do
       [backend1, backend2] = insert_pair(:backend)
       assert [] = Backends.list_backends(source)
-      assert {:ok, %Backend{}} = Backends.attach_to_backend(backend1, source)
-      assert {:ok, %Backend{}} = Backends.attach_to_backend(backend2, source)
+      assert {:ok, %Source{}} = Backends.update_source_backends(source, [backend1, backend2])
       assert [_, _] = Backends.list_backends(source)
+
+      # removal
+      assert {:ok, %Source{}} = Backends.update_source_backends(source, [])
+      assert [] = Backends.list_backends(source)
     end
 
     test "update backend config correctly", %{user: user} do

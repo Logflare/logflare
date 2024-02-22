@@ -185,7 +185,7 @@ defmodule Logflare.SingleTenant do
           {:ok, source} = Sources.create_source(%{name: name}, user)
 
           if backend do
-            {:ok, _backend} = Backends.attach_to_backend(backend, source)
+            {:ok, _backend} = Backends.update_source_backends(source, [backend])
           end
 
           source

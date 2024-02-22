@@ -83,6 +83,15 @@ defmodule Logflare.Factory do
       }
     }
   end
+  def postgres_backend_factory do
+    %Backend{
+      name: TestUtils.random_string(),
+      type: :postgres,
+      config: %{
+        url: "postgresql://#{TestUtils.random_string()}",
+      }
+    }
+  end
 
   def rule_factory(attrs) do
     lql = Map.get(attrs, "lql_string", "testing")
