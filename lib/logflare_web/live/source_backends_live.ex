@@ -32,7 +32,7 @@ defmodule LogflareWeb.SourceBackendsLive do
                 </div>
                 <div :for={backend <- backends} class="custom-control custom-switch">
                   <input type="checkbox" class="custom-control-input" disabled id="customSwitch2">
-                  <%= text_input f, :backends, type: "checkbox", class: "custom-control-input", id: "backends-#{backend.id}", disabled: backend.name == "Logflare Managed BigQuery"  %>
+                  <%= text_input f, :backends, type: "checkbox", class: "custom-control-input", id: "backends-#{backend.id}",  name: "source[backends][]", checked: backend.id in @attached_backend_ids %>
                   <%= label f, :backends, backend.name, class: "custom-control-label", for: "backends-#{backend.id}" %>
                 </div>
               </div>
