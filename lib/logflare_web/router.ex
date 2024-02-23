@@ -395,6 +395,11 @@ defmodule LogflareWeb.Router do
       param: "token",
       only: [:index, :show, :create, :update, :delete]
     )
+
+    resources("/backends", Api.BackendController,
+      param: "token",
+      only: [:index, :show, :create, :update, :delete]
+    )
   end
 
   scope "/api/partner", LogflareWeb do

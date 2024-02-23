@@ -132,6 +132,22 @@ defmodule Logflare.Backends do
   end
 
   @doc """
+  Retrieves a Backend by id.
+  """
+  @spec fetch_backend_by(keyword()) :: {:ok, Backend.t()} | {:error, :not_found}
+  def fetch_backend_by(kw) do
+    backend =
+      Repo.get_by(Backend, kw)
+      |> typecast_config_string_map_to_atom_map()
+
+    if backend do
+      {:ok, backend}
+    else
+      {:error, :not_found}
+    end
+  end
+
+  @doc """
   Deletes a Backend
   """
   @spec delete_backend(Backend.t()) :: {:ok, Backend.t()}

@@ -11,10 +11,22 @@ defmodule Logflare.Backends.Backend do
 
   @adaptor_types [:bigquery, :webhook, :postgres]
 
+  @derive {Jason.Encoder,
+           only: [
+             :name,
+             :token,
+             :description,
+             :type,
+             :id,
+             :config
+           ]}
+
   typed_schema "backends" do
     field(:name, :string)
     field(:description, :string)
+    field(:token, Ecto.UUID, autogenerate: true)
     field(:type, Ecto.Enum, values: @adaptor_types)
+    # TODO: maybe use polymorphic embeds
     field(:config, :map)
     many_to_many(:sources, Source, join_through: "sources_backends")
     belongs_to(:user, User)
