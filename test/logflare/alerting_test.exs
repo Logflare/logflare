@@ -71,6 +71,23 @@ defmodule Logflare.AlertingTest do
       assert alert_query.token
     end
 
+    test "bug: create_alert_query/1 with very long query", %{user: user} do
+      assert {:ok, %AlertQuery{}} =
+               Alerting.create_alert_query(user, %{
+                 @valid_attrs
+                 | query: """
+                   with pg as (
+                    select round(count(t.id) / 360 ) as rate from `postgres.logs` t
+                    where   t.timestamp > timestamp_sub(current_timestamp(), interval 5 minute)
+                   ), cf as (
+                    select round(count(t.id) / 360 ) as rate from `cloudflare.logs.prod` t
+                    where   t.timestamp > timestamp_sub(current_timestamp(), interval 5 minute)
+                   )
+                   select pg.rate as pg_per_sec, cf.rate as cf_per_sec from pg, cf
+                   """
+               })
+    end
+
     test "create_alert_query/1 with invalid data returns error changeset", %{user: user} do
       assert {:error, %Ecto.Changeset{}} = Alerting.create_alert_query(user, @invalid_attrs)
       # invalid cron
