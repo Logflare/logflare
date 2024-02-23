@@ -33,7 +33,7 @@ defmodule Logflare.Factory do
       email_preferred: email,
       provider: "google",
       bigquery_processed_bytes_limit: 10_000_000_000,
-      token: TestUtils.random_string(64),
+      token: TestUtils.gen_uuid(),
       api_key: TestUtils.random_string(10),
       provider_uid: "provider_uid_#{TestUtils.random_string()}",
       bigquery_udfs_hash: ""
