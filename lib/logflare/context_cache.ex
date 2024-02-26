@@ -34,7 +34,27 @@ defmodule Logflare.ContextCache do
 
   def child_spec(_) do
     stats = Application.get_env(:logflare, :cache_stats, false)
-    %{id: __MODULE__, start: {Cachex, :start_link, [@cache, [stats: stats]]}}
+
+    %{
+      id: __MODULE__,
+      start:
+        {Cachex, :start_link,
+         [
+           @cache,
+           [
+             stats: stats,
+             expiration:
+               Cachex.Spec.expiration(
+                 # default record expiration of 20 mins
+                 default: :timer.minutes(20),
+                 # how often cleanup should occur, 5 mins
+                 interval: :timer.minutes(5),
+                 # whether to enable lazy checking
+                 lazy: true
+               )
+           ]
+         ]}
+    }
   end
 
   @spec apply_fun(atom(), tuple(), [list()]) :: any()
