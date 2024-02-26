@@ -14,6 +14,7 @@ defmodule Logflare.Source.Supervisor do
   alias Logflare.Utils.Tasks
   alias Logflare.Source.V1SourceDynSup
   alias Logflare.Source.V1SourceSup
+  alias Logflare.ContextCache
 
   import Ecto.Query, only: [from: 2]
 
@@ -105,6 +106,13 @@ defmodule Logflare.Source.Supervisor do
         )
 
         DynamicSupervisor.terminate_child(V1SourceDynSup, pid)
+
+        # perform context cache clearing
+        source = Source.get_source_by_token(source_token)
+
+        ContextCache.bust_keys([
+          {Sources, source.id}
+        ])
 
       {:error, :no_proc} ->
         Logger.warning(
