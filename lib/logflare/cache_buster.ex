@@ -15,13 +15,47 @@ defmodule Logflare.CacheBuster do
   end
 
   def init(state) do
+    Logger.put_process_level(self(), :error)
+
     Cainophile.Adapters.Postgres.subscribe(Logflare.PgPublisher, self())
     {:ok, state}
   end
 
+  @doc """
+  Sets the Logger level for this process. It's started with level :error.
+
+  To devug wal records set process to level :info and each transaction will be logged.
+  """
+
+  @spec set_log_level(
+          :alert
+          | :all
+          | :critical
+          | :debug
+          | :emergency
+          | :error
+          | :info
+          | :none
+          | :notice
+          | :warn
+          | :warning
+        ) :: :ok
+  def set_log_level(level) when is_atom(level) do
+    Process.whereis(__MODULE__)
+    |> GenServer.call({:put_level, level})
+  end
+
+  def handle_call({:put_level, level}, _from, state) do
+    :ok = Logger.put_process_level(self(), level)
+
+    {:reply, :ok, state}
+  end
+
   def handle_info(%Transaction{changes: []}, state), do: {:noreply, state}
 
-  def handle_info(%Transaction{changes: changes}, state) do
+  def handle_info(%Transaction{changes: changes} = transaction, state) do
+    Logger.info("WAL record received: #{inspect(transaction)}")
+
     for record <- changes,
         record = handle_record(record),
         record != :noop do
