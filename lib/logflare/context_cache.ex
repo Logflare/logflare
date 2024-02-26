@@ -30,6 +30,8 @@ defmodule Logflare.ContextCache do
 
   require Logger
 
+  import Cachex.Spec
+
   @cache __MODULE__
 
   def child_spec(_) do
@@ -44,7 +46,7 @@ defmodule Logflare.ContextCache do
            [
              stats: stats,
              expiration:
-               Cachex.Spec.expiration(
+               expiration(
                  # default record expiration of 20 mins
                  default: :timer.minutes(20),
                  # how often cleanup should occur, 5 mins
