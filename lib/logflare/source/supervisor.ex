@@ -108,7 +108,7 @@ defmodule Logflare.Source.Supervisor do
         DynamicSupervisor.terminate_child(V1SourceDynSup, pid)
 
         # perform context cache clearing
-        source = Source.get_source_by_token(source_token)
+        source = Sources.get_source_by_token(source_token)
 
         ContextCache.bust_keys([
           {Sources, source.id}
