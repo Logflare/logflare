@@ -79,11 +79,11 @@ defmodule Logflare.Telemetry do
         unit: {:native, :millisecond}
       ),
       counter("logflare.logs.processor.ingest.stop.duration",
-        tags: [:processor, :source_token],
+        tags: [:processor],
         description: "Ingestion execution counts"
       ),
       summary("logflare.logs.processor.ingest.logs.count",
-        tags: [:processor, :source_token],
+        tags: [:processor],
         description: "Ingestion batch size"
       ),
       summary("logflare.logs.processor.ingest.store.stop.duration",
@@ -99,19 +99,19 @@ defmodule Logflare.Telemetry do
       counter("logflare.context_cache.busted.count", tags: [:schema, :table]),
       counter("logflare.context_cache.handle_record.count", tags: [:schema, :table]),
       counter("logflare.logs.ingest_logs.drop",
-        tags: [:source_token],
-        description: "Ingest drops by source"
+        tags: [],
+        description: "Ingest drops"
       ),
       counter("logflare.logs.ingest_logs.rejected",
-        tags: [:source_token],
-        description: "Ingest rejects by source"
+        tags: [],
+        description: "Ingest rejects"
       ),
       counter("logflare.logs.ingest_logs.buffer_full",
-        tags: [:source_token],
-        description: "Ingest buffer fulls by source"
+        tags: [],
+        description: "Ingest buffer fulls"
       ),
       counter("logflare.rate_limiter.rejected",
-        tags: [:user_id, :source_token],
+        tags: [],
         description: "Rate limited API hits"
       )
     ]
