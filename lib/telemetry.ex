@@ -63,10 +63,10 @@ defmodule Logflare.Telemetry do
     ]
 
     broadway_metrics = [
-      summary("broadway.batcher.stop", unit: {:native, :millisecond}),
-      summary("broadway.batch_processor.stop", unit: {:native, :millisecond}),
-      summary("broadway.processor.message.stop", unit: {:native, :millisecond}),
-      summary("broadway.processor.stop", unit: {:native, :millisecond})
+      summary("broadway.batcher.stop.duration", unit: {:native, :millisecond}),
+      summary("broadway.batch_processor.stop.duration", unit: {:native, :millisecond}),
+      summary("broadway.processor.message.stop.duration", unit: {:native, :millisecond}),
+      summary("broadway.processor.stop.duration", unit: {:native, :millisecond})
     ]
 
     application_metrics = [
