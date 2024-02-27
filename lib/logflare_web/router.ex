@@ -445,6 +445,7 @@ defmodule LogflareWeb.Router do
       options("/browser/reports", LogController, :browser_reports)
       post("/json", LogController, :generic_json)
       options("/json", LogController, :generic_json)
+      post("/cloud-event", LogController, :cloud_event)
       post("/zeit", LogController, :vercel_ingest)
       post("/vercel", LogController, :vercel_ingest)
       post("/netlify", LogController, :netlify)

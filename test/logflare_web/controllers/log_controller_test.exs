@@ -65,6 +65,24 @@ defmodule LogflareWeb.LogControllerTest do
       :timer.sleep(2000)
     end
 
+    test ":cloud_event ingestion", %{conn: conn, source: source, user: user} do
+      this = self()
+
+      WebhookAdaptor
+      |> expect(:ingest, fn _, logs -> send(this, {:logs, logs}) end)
+
+      conn =
+        conn
+        |> put_req_header("x-api-key", user.api_key)
+        |> put_req_header("ce-foo", "bar")
+        |> post(Routes.log_path(conn, :cloud_event, source: source.token), @valid)
+
+      assert json_response(conn, 200) == %{"message" => "Logged!"}
+      assert_receive {:logs, [log]}, 3000
+      assert %{"metadata" => %{"cloud_event" => ce}} = log.params
+      assert ce["foo"] == "bar"
+    end
+
     test "invaild source token uuid checks", %{conn: conn, user: user} do
       conn =
         conn
