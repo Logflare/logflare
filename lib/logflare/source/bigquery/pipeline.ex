@@ -20,6 +20,9 @@ defmodule Logflare.Source.BigQuery.Pipeline do
   alias Logflare.Sources
   alias Logflare.Users
 
+  # each batch should at most be 5MB
+  @max_batch_length 5_000_000
+  @max_batch_size 250
   def start_link([%RLS{} = rls | opts]), do: start_link(rls, opts)
   def start_link(%RLS{} = rls), do: start_link(rls, [])
 
@@ -42,8 +45,10 @@ defmodule Logflare.Source.BigQuery.Pipeline do
           batchers: [
             bq: [
               concurrency: System.schedulers_online() * 2,
-              batch_size: 250,
-              batch_timeout: 1_500
+              batch_size: bq_batch_size_splitter(),
+              batch_timeout: 1_500,
+              # must be set when using custom batch_size splitter
+              max_demand: @max_batch_size
             ]
           ],
           context: %{
@@ -205,5 +210,32 @@ defmodule Logflare.Source.BigQuery.Pipeline do
           changeset: inspect(changeset)
         )
     end
+  end
+
+  # https://hexdocs.pm/broadway/Broadway.html#start_link/2
+  # split batch sizes based on json size
+  # ensure that we are well below the 10MB limit
+  defp bq_batch_size_splitter() do
+    {
+      {@max_batch_size, @max_batch_length},
+      fn
+        # reach max count, emit
+        _message, {1, _len} ->
+          {:emit, {@max_batch_size, @max_batch_length}}
+
+        # check content length
+        message, {count, len} ->
+          payload = Jason.encode!(message.data.body)
+          length = IO.iodata_length(payload)
+
+          if len - length <= 0 do
+            # below max batch count, but reach max batch length
+            {:emit, {@max_batch_size, @max_batch_length}}
+          else
+            # below max batch count, below max batch length
+            {:cont, {count - 1, len - length}}
+          end
+      end
+    }
   end
 end
