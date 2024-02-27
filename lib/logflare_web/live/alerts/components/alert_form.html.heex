@@ -2,7 +2,7 @@
   <.form :let={f} for={@changeset} as={:alert} id="alert" phx-submit="save" class="tw-w-full">
     <%= hidden_input(f, :language) %>
     <div class="tw-sticky tw-flex tw-justify-between tw-gap-4">
-      <button :if={@alert} data-confirm="Are you sure? This cannot be undone" phx-click="delete" phx-value-alert_id={@alert.id} class="btn btn-outline-danger">
+      <button :if={@alert} data-confirm="Are you sure? This cannot be undone" phx-click="delete" phx-value-alert_id={@alert.id} class="btn btn-outline-danger" type="button">
         <i class="fas fa-trash"></i> Delete
       </button>
       <%= submit("Save changes", class: "btn btn-primary") %>
