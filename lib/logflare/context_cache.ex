@@ -30,7 +30,7 @@ defmodule Logflare.ContextCache do
 
   require Logger
 
-  import Cachex.Spec
+  alias Logflare.Utils
 
   @cache __MODULE__
 
@@ -45,15 +45,7 @@ defmodule Logflare.ContextCache do
            @cache,
            [
              stats: stats,
-             expiration:
-               expiration(
-                 # default record expiration of 20 mins
-                 default: :timer.minutes(20),
-                 # how often cleanup should occur, 5 mins
-                 interval: :timer.minutes(5),
-                 # whether to enable lazy checking
-                 lazy: true
-               )
+             expiration: Utils.cache_expiration_min()
            ]
          ]}
     }

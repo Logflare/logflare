@@ -4,10 +4,17 @@ defmodule Logflare.Users.Cache do
   """
 
   alias Logflare.Users
+  alias Logflare.Utils
 
   def child_spec(_) do
     stats = Application.get_env(:logflare, :cache_stats, false)
-    %{id: __MODULE__, start: {Cachex, :start_link, [__MODULE__, [stats: stats, limit: 100_000]]}}
+
+    %{
+      id: __MODULE__,
+      start:
+        {Cachex, :start_link,
+         [__MODULE__, [stats: stats, expiration: Utils.cache_expiration_min(), limit: 100_000]]}
+    }
   end
 
   def get(id), do: apply_repo_fun(__ENV__.function, [id])
