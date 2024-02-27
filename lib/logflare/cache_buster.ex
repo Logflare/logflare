@@ -24,7 +24,7 @@ defmodule Logflare.CacheBuster do
   @doc """
   Sets the Logger level for this process. It's started with level :error.
 
-  To devug wal records set process to level :info and each transaction will be logged.
+  To debug wal records set process to level :info and each transaction will be logged.
   """
 
   @spec set_log_level(
@@ -41,8 +41,7 @@ defmodule Logflare.CacheBuster do
           | :warning
         ) :: :ok
   def set_log_level(level) when is_atom(level) do
-    Process.whereis(__MODULE__)
-    |> GenServer.call({:put_level, level})
+    GenServer.call(__MODULE__, {:put_level, level})
   end
 
   def handle_call({:put_level, level}, _from, state) do
