@@ -5,29 +5,34 @@ defmodule LogflareWeb.SourceBackendsLiveTest do
   alias LogflareWeb.SourceBackendsLive
 
   setup do
+    insert(:plan)
     user = insert(:user)
     source = insert(:source, user_id: user.id)
-    {:ok, source: source}
+
+    [ source: source, user: user]
   end
 
-  test "create/delete", %{conn: conn, source: source} do
-    {:ok, view, _html} =
-      live_isolated(conn, SourceBackendsLive, session: %{"source_id" => source.id})
+  test "able to add/remove additional backends", %{conn: conn, user: user,  source: source} do
+    backend = insert(:postgres_backend, user: user )
+    {:ok, view, _html} = live_isolated(conn, SourceBackendsLive, session: %{"source_id"=> source.id })
 
     # create
-    assert view
-           |> element("button", "Add a backend")
-           |> render_click() =~ "Add backend"
+    assert render(view) =~ "PostgreSQL"
+    assert render(view) =~ "BigQuery"
+    assert render(view) =~ backend.name
+    assert render(view) =~ "Save"
 
     assert view
            |> element("form")
-           |> render_submit(%{backend_form: %{type: "webhook", url: "http://localhost:1234"}}) =~
-             "localhost"
+           |> render_submit(%{source: %{
+            backends: [backend.id]
+           }}) =~ "connected: 1"
 
-    refute render(view) =~ "URL"
-
+    #  remove
     refute view
-           |> element("button", "Remove")
-           |> render_click() =~ "localhost"
+    |> element("form")
+    |> render_submit(%{source: %{
+      backends: [backend.id]
+     }}) =~ "connected: 0"
   end
 end

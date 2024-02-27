@@ -6,7 +6,7 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
 
   alias Logflare.Backends
   alias Logflare.Backends.Adaptor.WebhookAdaptor
-  alias Logflare.Backends.SourceBackend
+  alias Logflare.Backends.Backend
   alias Logflare.Backends.SourceDispatcher
   alias Logflare.Buffers.Buffer
   alias Logflare.Buffers.MemoryBuffer
@@ -17,16 +17,16 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
     field(:buffer_module, Adaptor.t())
     field(:buffer_pid, pid())
     field(:config, %{url: String.t()})
-    field(:source_backend, SourceBackend.t())
+    field(:backend, Backend.t())
     field(:pipeline_name, tuple())
   end
 
   # API
 
   @impl Logflare.Backends.Adaptor
-  def start_link(%SourceBackend{} = source_backend) do
-    GenServer.start_link(__MODULE__, source_backend,
-      name: Backends.via_source_backend(source_backend, __MODULE__)
+  def start_link({source, backend} = args) do
+    GenServer.start_link(__MODULE__, args,
+      name: Backends.via_source(source, __MODULE__, backend.id)
     )
   end
 
@@ -52,18 +52,18 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
 
   # GenServer
   @impl GenServer
-  def init(source_backend) do
+  def init({source, backend}) do
     {:ok, _} =
-      Registry.register(SourceDispatcher, source_backend.source_id, {__MODULE__, :ingest})
+      Registry.register(SourceDispatcher, source.id, {__MODULE__, :ingest})
 
     {:ok, buffer_pid} = MemoryBuffer.start_link([])
 
     state = %__MODULE__{
       buffer_module: MemoryBuffer,
       buffer_pid: buffer_pid,
-      config: source_backend.config,
-      source_backend: source_backend,
-      pipeline_name: Backends.via_source_backend(source_backend, __MODULE__.Pipeline)
+      config: backend.config,
+      backend: backend,
+      pipeline_name: Backends.via_source(source, __MODULE__.Pipeline, backend.id)
     }
 
     {:ok, _pipeline_pid} = __MODULE__.Pipeline.start_link(state)
@@ -118,7 +118,7 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
       )
     end
 
-    # see the implementation for Backends.via_source_backend/2 for how tuples are used to identify child processes
+    # see the implementation for Backends.via_source/2 for how tuples are used to identify child processes
     def process_name({:via, module, {registry, identifier}}, base_name) do
       new_identifier = Tuple.append(identifier, base_name)
       {:via, module, {registry, new_identifier}}

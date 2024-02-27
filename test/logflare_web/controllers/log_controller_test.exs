@@ -44,10 +44,10 @@ defmodule LogflareWeb.LogControllerTest do
       start_supervised!(Counters)
       start_supervised!(RateCounters)
 
-      source_backend =
-        insert(:source_backend, source_id: source.id, type: :webhook, config: %{url: "some url"})
+      backend =
+        insert(:backend, sources: [source], type: :webhook, config: %{url: "some url"})
 
-      {:ok, source: source, user: user, source_backend: source_backend}
+      {:ok, source: source, user: user, backend: backend}
     end
 
     setup [:warm_caches, :reject_context_functions]

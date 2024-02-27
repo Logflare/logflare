@@ -158,7 +158,8 @@ defmodule LogflareWeb.EndpointsControllerTest do
       seed_user: true,
       supabase_mode: true,
       backend_type: :postgres,
-      pg_schema: "my_schema"
+      pg_schema: "my_schema",
+      seed_backend: true
     )
 
     setup do
@@ -186,7 +187,7 @@ defmodule LogflareWeb.EndpointsControllerTest do
         )
       end
 
-      :timer.sleep(2000)
+      :timer.sleep(2_000)
 
       params = %{
         iso_timestamp_start:

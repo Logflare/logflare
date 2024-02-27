@@ -132,7 +132,12 @@ defmodule Logflare.Source do
     belongs_to(:user, Logflare.User)
 
     has_many(:rules, Logflare.Rule)
-    has_many(:source_backends, Logflare.Backends.SourceBackend)
+
+    many_to_many(:backends, Logflare.Backends.Backend,
+      join_through: "sources_backends",
+      on_replace: :delete
+    )
+
     has_many(:saved_searches, Logflare.SavedSearch)
     has_many(:billing_counts, Logflare.Billing.BillingCount, on_delete: :nothing)
 
@@ -253,6 +258,10 @@ defmodule Logflare.Source do
   end
 
   defp put_single_tenant_postgres_changes(changeset) do
-    put_change(changeset, :v2_pipeline, !!SingleTenant.postgres_backend_adapter_opts())
+    if SingleTenant.single_tenant?() do
+      put_change(changeset, :v2_pipeline, !!SingleTenant.postgres_backend_adapter_opts())
+    else
+      changeset
+    end
   end
 end

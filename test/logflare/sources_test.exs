@@ -2,9 +2,6 @@ defmodule Logflare.SourcesTest do
   @moduledoc false
   use Logflare.DataCase
 
-  import Logflare.Factory
-
-  alias Logflare.Backends.SourceBackend
   alias Logflare.Google.BigQuery
   alias Logflare.Google.BigQuery.GenUtils
   alias Logflare.Source
@@ -35,37 +32,6 @@ defmodule Logflare.SourcesTest do
       assert SourceSchemas.get_source_schema_by(source_id: source.id)
     end
 
-    test "if :postgres_backend_url is set and single tenant, creates a source with a postgres backend",
-         %{
-           user: %{id: user_id} = user
-         } do
-      %{username: username, password: password, database: database, hostname: hostname} =
-        Application.get_env(:logflare, Logflare.Repo) |> Map.new()
-
-      url = "postgresql://#{username}:#{password}@#{hostname}/#{database}"
-
-      previous_postgres_backend_adapter =
-        Application.get_env(:logflare, :postgres_backend_adapter)
-
-      previous_single_tenant = Application.get_env(:logflare, :single_tenant)
-
-      Application.put_env(:logflare, :postgres_backend_adapter, url: url)
-      Application.put_env(:logflare, :single_tenant, true)
-
-      on_exit(fn ->
-        Application.put_env(
-          :logflare,
-          :postgres_backend_adapter,
-          previous_postgres_backend_adapter
-        )
-
-        Application.put_env(:logflare, :single_tenant, previous_single_tenant)
-      end)
-
-      assert {:ok, source} = Sources.create_source(%{name: TestUtils.random_string()}, user)
-      assert %Source{user_id: ^user_id, v2_pipeline: true} = source
-      assert [%SourceBackend{type: :postgres}] = Logflare.Backends.list_source_backends(source)
-    end
   end
 
   describe "list_sources_by_user/1" do

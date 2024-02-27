@@ -4,9 +4,10 @@ defmodule Logflare.Backends do
   alias Logflare.Backends.Adaptor
   alias Logflare.Backends.Adaptor.WebhookAdaptor
   alias Logflare.Backends.Adaptor.PostgresAdaptor
+  alias Logflare.Backends.Adaptor.BigQueryAdaptor
   alias Logflare.Backends.RecentLogs
   alias Logflare.Backends.RecentLogsSup
-  alias Logflare.Backends.SourceBackend
+  alias Logflare.Backends.Backend
   alias Logflare.Backends.SourceDispatcher
   alias Logflare.Backends.SourceRegistry
   alias Logflare.Backends.SourcesSup
@@ -20,69 +21,80 @@ defmodule Logflare.Backends do
 
   import Ecto.Query
 
-  @adaptor_mapping %{webhook: WebhookAdaptor, postgres: PostgresAdaptor}
+  @adaptor_mapping %{
+    webhook: WebhookAdaptor,
+    postgres: PostgresAdaptor,
+    bigquery: BigQueryAdaptor
+  }
 
   @doc """
-  Lists `SourceBackend`s for a given source.
+  Lists `Backend`s for a given source.
   """
-  @spec list_source_backends(Source.t()) :: list(SourceBackend.t())
-  def list_source_backends(%Source{id: id}) do
-    from(sb in SourceBackend, where: sb.source_id == ^id, preload: :source)
+  @spec list_backends(Source.t()) :: list(Backend.t())
+  def list_backends(%Source{id: id}) do
+    from(b in Backend, join: s in assoc(b, :sources), where: s.id == ^id)
+    |> Repo.all()
+    |> Enum.map(fn b -> typecast_config_string_map_to_atom_map(b) end)
+  end
+
+  @doc """
+  Lists `Backend`s by user
+  """
+  @spec list_backends_by_user_id(integer()) :: [Backend.t()]
+  def list_backends_by_user_id(id) when is_integer(id) do
+    from(b in Backend, where: b.user_id == ^id)
     |> Repo.all()
     |> Enum.map(fn sb -> typecast_config_string_map_to_atom_map(sb) end)
   end
 
   @doc """
-  Lists `SourceBackend`s by user
+  Creates a Backend for a given source.
   """
-  @spec list_source_backends_by_user_id(integer()) :: [SourceBackend.t()]
-  def list_source_backends_by_user_id(id) when is_integer(id) do
-    from(sb in SourceBackend, join: s in Source, on: true, where: s.user_id == ^id)
-    |> Repo.all()
-    |> Enum.map(fn sb -> typecast_config_string_map_to_atom_map(sb) end)
-  end
-
-  @doc """
-  Creates a SourceBackend for a given source.
-  """
-  @spec create_source_backend(Source.t(), atom(), map()) ::
-          {:ok, SourceBackend.t()} | {:error, Ecto.Changeset.t()}
-  def create_source_backend(%Source{} = source, type, config \\ %{}) do
-    source_backend =
-      source
-      |> Ecto.build_assoc(:source_backends)
-      |> SourceBackend.changeset(%{config: config, type: type})
+  @spec create_backend(map()) :: {:ok, Backend.t()} | {:error, Ecto.Changeset.t()}
+  def create_backend(attrs) do
+    backend =
+      %Backend{}
+      |> Backend.changeset(attrs)
       |> validate_config()
       |> Repo.insert()
 
-    with {:ok, updated} <- source_backend do
-      restart_source_sup(source)
+    with {:ok, updated} <- backend do
+      backend = Repo.preload(updated, :sources)
+      Enum.each(backend.sources, &restart_source_sup(&1))
       {:ok, typecast_config_string_map_to_atom_map(updated)}
     end
   end
 
   @doc """
-  Updates the config of a SourceBackend.
+  Updates the config of a Backend.
   """
-  @spec update_source_backend_config(SourceBackend.t(), map()) ::
-          {:ok, SourceBackend.t()} | {:error, Ecto.Changeset.t()}
-  def update_source_backend_config(%SourceBackend{} = source_backend, %{} = config) do
-    source_backend = Repo.preload(source_backend, :source)
-
-    source_backend_config =
-      source_backend
-      |> SourceBackend.changeset(%{config: config})
+  @spec update_backend(Backend.t(), map()) :: {:ok, Backend.t()} | {:error, Ecto.Changeset.t()}
+  def update_backend(%Backend{} = backend, attrs) do
+    backend_config =
+      backend
+      |> Backend.changeset(attrs)
       |> validate_config()
       |> Repo.update()
 
-    with {:ok, updated} <- source_backend_config do
-      restart_source_sup(source_backend.source)
+    with {:ok, updated} <- backend_config do
+      backend = Repo.preload(backend, :sources)
+      Enum.each(backend.sources, &restart_source_sup(&1))
       {:ok, typecast_config_string_map_to_atom_map(updated)}
     end
   end
 
+  @spec update_source_backends(Source.t(), [Backend.t()]) ::
+          {:ok, Source.t()} | {:error, Ecto.Changeset.t()}
+  def update_source_backends(%Source{} = source, backends) do
+    source
+    |> Repo.preload(:backends)
+    |> Ecto.Changeset.change()
+    |> Ecto.Changeset.put_assoc(:backends, backends)
+    |> Repo.update()
+  end
+
   # common config validation function
-  defp validate_config(changeset) do
+  defp validate_config(%{valid?: true} = changeset) do
     type = Ecto.Changeset.get_field(changeset, :type)
     mod = @adaptor_mapping[type]
 
@@ -94,35 +106,43 @@ defmodule Logflare.Backends do
     end)
   end
 
+  defp validate_config(changeset), do: changeset
+
   # common typecasting from string map to attom for config
   defp typecast_config_string_map_to_atom_map(nil), do: nil
 
-  defp typecast_config_string_map_to_atom_map(%SourceBackend{type: type} = source_backend) do
+  defp typecast_config_string_map_to_atom_map(%Backend{type: type} = backend) do
     mod = @adaptor_mapping[type]
 
-    Map.update!(source_backend, :config, fn config ->
-      config
+    Map.update!(backend, :config, fn config ->
+      (config || %{})
       |> mod.cast_config()
       |> Ecto.Changeset.apply_changes()
     end)
   end
 
   @doc """
-  Retrieves a SourceBackend by id.
+  Retrieves a Backend by id.
   """
-  @spec get_source_backend(integer()) :: SourceBackend.t() | nil
-  def get_source_backend(id) do
-    source_backend = Repo.get(SourceBackend, id)
+  @spec get_backend(integer()) :: Backend.t() | nil
+  def get_backend(id) do
+    backend = Repo.get(Backend, id)
 
-    typecast_config_string_map_to_atom_map(source_backend)
+    typecast_config_string_map_to_atom_map(backend)
   end
 
   @doc """
-  Deletes a Sourcebackend
+  Deletes a Backend
   """
-  @spec delete_source_backend(SourceBackend.t()) :: {:ok, SourceBackend.t()}
-  def delete_source_backend(%SourceBackend{} = sb) do
-    Repo.delete(sb)
+  @spec delete_backend(Backend.t()) :: {:ok, Backend.t()}
+  def delete_backend(%Backend{} = backend) do
+    backend
+    |> Ecto.Changeset.change()
+    |> Ecto.Changeset.foreign_key_constraint(:sources,
+      name: "sources_backends_backend_id_fkey",
+      message: "There are still sources connected to this backend"
+    )
+    |> Repo.delete()
   end
 
   @doc """
@@ -156,20 +176,17 @@ defmodule Logflare.Backends do
   @doc """
   Registers a unique source-related process on the source registry. Unique.
   For internal use only, should not be called outside of the `Logflare` namespace.
+
+  ### Example
+  iex> Backends.via_source(source,  __MODULE__, backend.id)
+  iex> Backends.via_source(source, :buffer)
   """
   @spec via_source(Source.t(), term()) :: tuple()
+  @spec via_source(Source.t(), term(), term()) :: tuple()
+  def via_source(source, mod, id), do: via_source(source, {mod, id})
+
   def via_source(%Source{id: id}, process_id) do
     {:via, Registry, {SourceRegistry, {id, process_id}}}
-  end
-
-  @doc """
-  Registers a unique source-related process on the source registry. Unique.
-  For internal use only by adaptors, should not be called outside of the `Logflare` namespace.
-  """
-  @spec via_source_backend(SourceBackend.t(), term()) :: tuple()
-  def via_source_backend(%SourceBackend{id: id, source_id: source_id}, process_id \\ nil) do
-    identifier = {source_id, SourceBackend, id, process_id}
-    {:via, Registry, {SourceRegistry, identifier}}
   end
 
   @doc """

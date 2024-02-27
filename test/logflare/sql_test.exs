@@ -438,9 +438,9 @@ defmodule Logflare.SqlTest do
 
       user = insert(:user)
       source = insert(:source, user: user, name: "c.d.e")
-      source_backend = insert(:source_backend, type: :postgres, source: source, config: config)
+      backend = insert(:backend, type: :postgres, sources: [source], config: config)
 
-      pid = start_supervised!({PostgresAdaptor, source_backend})
+      pid = start_supervised!({PostgresAdaptor, {source, backend}})
 
       log_event =
         Logflare.LogEvent.make(
@@ -452,17 +452,17 @@ defmodule Logflare.SqlTest do
           %{source: source}
         )
 
-      PostgresAdaptor.insert_log_event(source_backend, log_event)
+      PostgresAdaptor.insert_log_event(backend, log_event)
 
       on_exit(fn ->
-        PostgresAdaptor.rollback_migrations(source_backend)
-        PostgresAdaptor.drop_migrations_table(source_backend)
+        PostgresAdaptor.rollback_migrations({source, backend})
+        PostgresAdaptor.drop_migrations_table({source, backend})
       end)
 
-      %{source: source, source_backend: source_backend, pid: pid, user: user}
+      %{source: source, backend: backend, pid: pid, user: user}
     end
 
-    test "UNNESTs into JSON-Query", %{source_backend: source_backend, user: user} do
+    test "UNNESTs into JSON-Query", %{backend: backend, user: user} do
       bq_query = """
       select test, m.nested from `c.d.e` t
       cross join unnest(t.metadata) as m
@@ -483,7 +483,7 @@ defmodule Logflare.SqlTest do
       assert {:ok, transformed} = Sql.transform(:pg_sql, translated, user)
       # execute it on PG
       assert {:ok, [%{"test" => "data", "nested" => "value"}]} =
-               PostgresAdaptor.execute_query(source_backend, transformed)
+               PostgresAdaptor.execute_query(backend, transformed)
     end
 
     test "entities backtick to double quote" do

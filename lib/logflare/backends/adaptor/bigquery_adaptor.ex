@@ -11,18 +11,18 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
   end
 
   @impl Logflare.Backends.Adaptor
-  def ingest(pid, events) do
-    source_backend = Agent.get(pid, fn state -> state end)
+  def ingest(pid, messages) do
+    {source, backend} = Agent.get(pid, fn state -> state end)
 
     context = %{
-      source_token: source_backend.source.token,
-      bigquery_project_id: source_backend.source.user.bigquery_project_id,
-      bigquery_dataset_id: source_backend.source.user.bigquery_dataset_id
+      source_token: source.token,
+      bigquery_project_id: backend.config.project_id,
+      bigquery_dataset_id: backend.config.dataset_id
     }
 
-    _ = Enum.map(events, &Pipeline.process_data(&1.data))
+    _ = Enum.map(messages, &Pipeline.process_data(&1.data))
 
-    Pipeline.stream_batch(context, events)
+    Pipeline.stream_batch(context, messages)
   end
 
   @impl Logflare.Backends.Adaptor
@@ -31,8 +31,8 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
 
   @impl Logflare.Backends.Adaptor
   def cast_config(params) do
-    {%{}, %{}}
-    |> Ecto.Changeset.cast(params, [])
+    {%{}, %{project_id: :string, dataset_id: :string}}
+    |> Ecto.Changeset.cast(params, [:project_id, :dataset_id])
   end
 
   @impl Logflare.Backends.Adaptor

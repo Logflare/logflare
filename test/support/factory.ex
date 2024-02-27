@@ -4,7 +4,7 @@ defmodule Logflare.Factory do
   """
   use ExMachina.Ecto, repo: Logflare.Repo
 
-  alias Logflare.Backends.SourceBackend
+  alias Logflare.Backends.Backend
   alias Logflare.Billing.BillingAccount
   alias Logflare.Billing.BillingCount
   alias Logflare.Billing.PaymentMethod
@@ -73,9 +73,23 @@ defmodule Logflare.Factory do
     %SourceSchema{}
   end
 
-  def source_backend_factory do
-    %SourceBackend{
-      type: :bigquery
+  def backend_factory do
+    %Backend{
+      name: TestUtils.random_string(),
+      type: :bigquery,
+      config: %{
+        project_id: TestUtils.random_string(),
+        dataset_id: TestUtils.random_string()
+      }
+    }
+  end
+  def postgres_backend_factory do
+    %Backend{
+      name: TestUtils.random_string(),
+      type: :postgres,
+      config: %{
+        url: "postgresql://#{TestUtils.random_string()}",
+      }
     }
   end
 
@@ -216,6 +230,7 @@ defmodule Logflare.Factory do
       scopes: ~w(public)
     }
   end
+
   def private_access_token_factory do
     %OauthAccessToken{
       token: TestUtils.random_string(20),
@@ -223,6 +238,7 @@ defmodule Logflare.Factory do
       scopes: ~w(private)
     }
   end
+
   def partner_access_token_factory do
     %OauthAccessToken{
       token: TestUtils.random_string(20),
@@ -230,7 +246,6 @@ defmodule Logflare.Factory do
       scopes: ~w(partner)
     }
   end
-
 
   def user_without_billing_account_factory() do
     build(:user,

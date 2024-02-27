@@ -63,20 +63,21 @@ defmodule LogflareWeb.Api.QueryControllerTest do
       user = insert(:user)
       source = insert(:source, user: user, name: "c")
 
-      source_backend =
-        insert(:source_backend,
+      backend =
+        insert(:backend,
           type: :postgres,
           config: %{"url" => url},
-          source: source
+          sources: [source],
+          user: user
         )
 
-      PostgresAdaptor.create_repo(source_backend)
-      assert :ok = PostgresAdaptor.connected?(source_backend)
-      PostgresAdaptor.create_log_events_table(source_backend)
+      PostgresAdaptor.create_repo(backend)
+      assert :ok = PostgresAdaptor.connected?(backend)
+      PostgresAdaptor.create_log_events_table({source, backend})
 
       on_exit(fn ->
-        PostgresAdaptor.rollback_migrations(source_backend)
-        PostgresAdaptor.drop_migrations_table(source_backend)
+        PostgresAdaptor.rollback_migrations({source, backend})
+        PostgresAdaptor.drop_migrations_table({source, backend})
       end)
 
       %{source: source, user: user}

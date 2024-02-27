@@ -263,17 +263,18 @@
     <%= section_header("Multi Backends") %>
     <%= form_for @changeset, Routes.source_path(@conn, :update, @source),fn f -> %>
       <div class="form-group">
+        <%= @source.v2_pipeline %>
         <%= label f, :v2_pipeline do %>
           Toggle v2 pipeline for this source
         <% end %>
-        <%= checkbox f, :v2_pipeline %>
+        <%= checkbox f, :v2_pipeline, checked: @source.v2_pipeline, value: @source.v2_pipeline  %>
         <%= error_tag f, :v2_pipeline %>
       </div>
 
       <%= submit "Save", class: "btn btn-primary form-button" %>
     <% end %>
-    <%= if @conn.assigns.source.v2_pipeline do %>
-      <%= live_render(@conn, LogflareWeb.SourceBackendsLive, session: %{"source_id"=> @conn.assigns.source.id})%>
+    <%= if LogflareWeb.Utils.flag("multibackend", @user) do %>
+      <%= live_render(@conn, LogflareWeb.SourceBackendsLive, session: %{"source_id"=> @source.id})%>
     <% end %>
 
   <% end %>

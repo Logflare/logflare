@@ -5,7 +5,6 @@ defmodule Logflare.Sources do
 
   import Ecto.Query, only: [from: 2]
 
-  alias Logflare.Backends
   alias Logflare.Cluster
   alias Logflare.Google.BigQuery.GenUtils
   alias Logflare.Google.BigQuery.SchemaUtils
@@ -18,6 +17,7 @@ defmodule Logflare.Sources do
   alias Logflare.Source.BigQuery.SchemaBuilder
   alias Logflare.SourceSchemas
   alias Logflare.User
+  alias Logflare.Backends
 
   require Logger
 
@@ -46,22 +46,27 @@ defmodule Logflare.Sources do
       |> Enum.map(fn {k, v} -> {to_string(k), v} end)
       |> Map.new()
 
-    source =
-      user
-      |> Ecto.build_assoc(:sources)
-      |> Source.update_by_user_changeset(source_params)
-      |> Repo.insert()
+    with {:ok, source} = res <-
+           user
+           |> Ecto.build_assoc(:sources)
+           |> Source.update_by_user_changeset(source_params)
+           |> Repo.insert() do
+      if SingleTenant.postgres_backend?() do
+        # attach the source to the postgres backend
+        backend = SingleTenant.get_default_backend()
+        Backends.update_source_backends(source, [backend])
+      else
+        create_big_query_schema_and_start_source(source)
+      end
 
-    opts = SingleTenant.postgres_backend_adapter_opts()
-
-    if opts && Keyword.get(opts, :url) do
-      create_backend_adaptor(source, opts)
-    else
-      create_big_query_schema_and_start_source(source)
+      res
     end
   end
 
-  defp create_big_query_schema_and_start_source({:ok, source}) do
+  @doc """
+  To be replaced by BigQuery v2 adaptor
+  """
+  def create_big_query_schema_and_start_source(source) do
     init_schema = SchemaBuilder.initial_table_schema()
 
     {:ok, _source_schema} =
@@ -74,20 +79,6 @@ defmodule Logflare.Sources do
 
     {:ok, source}
   end
-
-  defp create_big_query_schema_and_start_source({:error, changeset}), do: {:error, changeset}
-
-  defp create_backend_adaptor({:ok, source}, opts) do
-    url = Keyword.get(opts, :url)
-    schema = Keyword.get(opts, :schema)
-
-    {:ok, _source_backend} =
-      Backends.create_source_backend(source, :postgres, %{url: url, schema: schema})
-
-    {:ok, source}
-  end
-
-  def create_backend_adaptor({:error, changeset}), do: {:error, changeset}
 
   @doc """
   Retrieves a source by its uuid token
@@ -251,6 +242,10 @@ defmodule Logflare.Sources do
 
   def preload_source_schema(source) do
     Repo.preload(source, :source_schema)
+  end
+
+  def preload_backends(source) do
+    Repo.preload(source, :backends)
   end
 
   def refresh_source_metrics_for_ingest(nil), do: nil

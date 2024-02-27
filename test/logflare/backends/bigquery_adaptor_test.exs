@@ -10,14 +10,17 @@ defmodule Logflare.Backends.BigQueryAdaptorTest do
   doctest @subject
 
   setup do
-    config = %{}
+    config = %{
+      project_id: "some-project",
+      dataset_id: "some-dataset"
+    }
 
     source = insert(:source, user: insert(:user))
 
-    source_backend =
-      insert(:source_backend,
+    backend =
+      insert(:backend,
         type: :bigquery,
-        source: source,
+        sources: [source],
         config: config
       )
 
@@ -25,13 +28,13 @@ defmodule Logflare.Backends.BigQueryAdaptorTest do
       start: {RLS, :start_link, %RLS{source_id: source.token}}
     }
 
-    adaptor = start_supervised! Adaptor.child_spec(source_backend)
+    adaptor = start_supervised!(Adaptor.child_spec(source, backend))
 
-    {:ok, source: source, source_backend: source_backend, adaptor: adaptor}
+    {:ok, source: source, backend: backend, adaptor: adaptor}
   end
 
-  test "plain ingest", %{adaptor: adaptor, source_backend: source_backend} do
-    log_event = build(:log_event, source: source_backend.source, test: "data")
+  test "plain ingest", %{adaptor: adaptor, source: source} do
+    log_event = build(:log_event, source: source, test: "data")
 
     Logflare.Google.BigQuery
     |> expect(:stream_batch!, fn _, _ ->
@@ -41,8 +44,8 @@ defmodule Logflare.Backends.BigQueryAdaptorTest do
     assert [%{data: log_event}] == @subject.ingest(adaptor, [%{data: log_event}])
   end
 
-  test "update table", %{adaptor: adaptor, source_backend: source_backend} do
-    log_event = build(:log_event, lock_schema: false, source: source_backend.source, test: "data")
+  test "update table", %{adaptor: adaptor, source: source} do
+    log_event = build(:log_event, lock_schema: false, source: source, test: "data")
 
     Logflare.Google.BigQuery
     |> stub(:stream_batch!, fn _, _ ->
