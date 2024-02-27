@@ -4,6 +4,7 @@ defmodule Logflare.Partners.Cache do
   """
 
   alias Logflare.Partners
+  alias Logflare.Utils
 
   def child_spec(_) do
     stats = Application.get_env(:logflare, :cache_stats, false)
