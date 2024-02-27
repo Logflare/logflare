@@ -33,3 +33,47 @@ Query Alerts allows for cron-based scheduling, with a minimum interval of 15 min
 ### Testing
 
 To test if your Query Alert is working, you can use the **Manual Trigger** button, which will execute the query and dispatch the results to the connected integrations.
+
+### Example Usage
+
+For example, if we are sending the following events to a source called `my.source`:
+
+```json
+{
+  "event_message": "Hello from Logflare!",
+  "stats": { "counter": 1 },
+  "metadata": { "from": "docs" }
+}
+```
+
+We can then create an alert with the following query with BigQuery SQL:
+
+```sql
+select sum(s.counter) as docs_total_hits
+from `my.source` t
+cross join unnest(t.stats) as s
+cross join unnest(t.metadata) as m
+where t.timestamp >= '2024-05-05'
+    and m.from = 'docs'
+```
+
+Queries follow the same structure as needed when [querying a BigQuery Backend](https://docs.logflare.app/backends/bigquery/#querying-in-bigquery), thus we will need to `unnest` the repeated records.
+
+We will also need to include a filter over the `timestamp` field, as BigQuery tables will be [partitioned by Logflare](https://docs.logflare.app/backends/bigquery/#partitioning-and-retention).
+
+If we were to add a webhook integration to this backend, the provided url will receive a `POST` request with the following payload in the body:
+
+```json
+{
+  "result": [
+        { "docs_total_hits": 1 },
+        ...
+    ]
+}
+```
+
+### Best Practices
+
+1. Always ensure that your query's `timestamp` range is minimal. This will help to ensure that your queries run fast. For rolling metrics, use the [BigQuery timestamp functions](https://cloud.google.com/bigquery/docs/reference/standard-sql/timestamp_functions) to avoid having to hardcode dates.
+
+2. Always add in a `LIMIT` to your query for it to be human readable. All rows returned from the query will be sent to the integrations as is, with a hard maximum limit of 1000 rows. However, to ensure readability and usability, we advise returning the minimum number of rows to achieve your goals.
