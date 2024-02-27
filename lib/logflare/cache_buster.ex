@@ -27,19 +27,7 @@ defmodule Logflare.CacheBuster do
   To debug wal records set process to level :info and each transaction will be logged.
   """
 
-  @spec set_log_level(
-          :alert
-          | :all
-          | :critical
-          | :debug
-          | :emergency
-          | :error
-          | :info
-          | :none
-          | :notice
-          | :warn
-          | :warning
-        ) :: :ok
+  @spec set_log_level(Logger.levels()) :: :ok
   def set_log_level(level) when is_atom(level) do
     GenServer.call(__MODULE__, {:put_level, level})
   end
