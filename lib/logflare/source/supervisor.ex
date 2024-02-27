@@ -15,6 +15,7 @@ defmodule Logflare.Source.Supervisor do
   alias Logflare.Source.V1SourceDynSup
   alias Logflare.Source.V1SourceSup
   alias Logflare.ContextCache
+  alias Logflare.SourceSchemas
 
   import Ecto.Query, only: [from: 2]
 
@@ -109,9 +110,11 @@ defmodule Logflare.Source.Supervisor do
 
         # perform context cache clearing
         source = Sources.get_source_by_token(source_token)
+        source_schema = SourceSchemas.get_source_schema_by(source_id: source.id)
 
         ContextCache.bust_keys([
-          {Sources, source.id}
+          {Sources, source.id},
+          {SourceSchemas, source_schema.id}
         ])
 
       {:error, :no_proc} ->
