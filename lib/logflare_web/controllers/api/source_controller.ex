@@ -3,8 +3,6 @@ defmodule LogflareWeb.Api.SourceController do
   use OpenApiSpex.ControllerSpecs
 
   alias Logflare.Sources
-  alias Logflare.Users
-
   alias LogflareWeb.OpenApi.Accepted
   alias LogflareWeb.OpenApi.Created
   alias LogflareWeb.OpenApi.List
@@ -22,8 +20,7 @@ defmodule LogflareWeb.Api.SourceController do
   )
 
   def index(%{assigns: %{user: user}} = conn, _) do
-    user = Users.preload_sources(user)
-    sources = Sources.preload_for_dashboard(user.sources)
+    sources = Sources.list_sources_by_user(user.id) |> Sources.preload_for_dashboard()
     json(conn, sources)
   end
 
