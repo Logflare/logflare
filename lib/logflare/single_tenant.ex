@@ -175,7 +175,6 @@ defmodule Logflare.SingleTenant do
     user = get_default_user()
     count = Sources.count_sources_by_user(user)
 
-    # ensure that backend adaptor is created
     backend = get_default_backend()
 
     if count == 0 do

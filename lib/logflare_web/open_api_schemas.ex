@@ -101,6 +101,19 @@ defmodule LogflareWeb.OpenApiSchemas do
     use LogflareWeb.OpenApi, properties: @properties, required: [:name]
   end
 
+  defmodule BackendApiSchema do
+    @properties %{
+      name: %Schema{type: :string},
+      id: %Schema{type: :integer},
+      token: %Schema{type: :string},
+      config: %Schema{type: :object},
+      inserted_at: %Schema{type: :string, format: :"date-time"},
+      updated_at: %Schema{type: :string, format: :"date-time"}
+    }
+
+    use LogflareWeb.OpenApi, properties: @properties, required: [:name]
+  end
+
   defmodule User do
     @properties %{
       email: %Schema{type: :string},
