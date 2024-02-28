@@ -58,7 +58,6 @@ defmodule LogflareWeb.SourceBackendsLive do
         %{"source" => %{"backends" => ids}},
         %{assigns: %{backends: backends, source: source}} = socket
       ) do
-    dbg(ids)
     backend_ids = for id <- ids, {val, _rem} = Integer.parse(id), do: val
 
     backends = for backend <- backends, backend.id in backend_ids, do: backend
