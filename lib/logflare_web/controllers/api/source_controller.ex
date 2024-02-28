@@ -3,8 +3,6 @@ defmodule LogflareWeb.Api.SourceController do
   use OpenApiSpex.ControllerSpecs
 
   alias Logflare.Sources
-  alias Logflare.Users
-
   alias LogflareWeb.OpenApi.Accepted
   alias LogflareWeb.OpenApi.Created
   alias LogflareWeb.OpenApi.List
