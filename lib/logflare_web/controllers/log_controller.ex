@@ -182,6 +182,25 @@ defmodule LogflareWeb.LogController do
     |> handle(conn)
   end
 
+  def cloud_event(%Plug.Conn{} = conn, %{"_json" => batch})
+      when is_list(batch) do
+    do_cloud_event(conn, batch)
+  end
+
+  def cloud_event(%Plug.Conn{body_params: event} = conn, _log_params) do
+    do_cloud_event(conn, event)
+  end
+
+  defp do_cloud_event(%Plug.Conn{assigns: %{source: source}} = conn, data) do
+    cloud_event = extract_cloud_events(conn)
+
+    data
+    |> List.wrap()
+    |> Enum.map(&Map.put(&1, "cloud_event", cloud_event))
+    |> Processor.ingest(Logs.Raw, source)
+    |> handle(conn)
+  end
+
   defp handle(:ok, conn), do: render(conn, "index.json", message: @message)
 
   defp handle({:error, errors}, conn) do
@@ -189,5 +208,12 @@ defmodule LogflareWeb.LogController do
     |> put_status(406)
     |> put_view(LogflareWeb.LogView)
     |> render("index.json", message: errors)
+  end
+
+  defp extract_cloud_events(%Plug.Conn{} = conn) do
+    # XXX: What should happen in case of duplicated header?
+    for {"ce-" <> header, data} <- conn.req_headers, into: %{} do
+      {String.replace(header, "-", "_"), data}
+    end
   end
 end
