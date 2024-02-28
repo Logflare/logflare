@@ -49,7 +49,7 @@ defmodule LogflareWeb.PlansLive do
                     <i class="fas fa-info-circle"></i>
                   </.link>
                 </li>
-                <li class="p-2">Events per month</li>
+                <li class="p-2">Max events per month</li>
                 <hr />
                 <li class="p-2">
                   Rate limit
