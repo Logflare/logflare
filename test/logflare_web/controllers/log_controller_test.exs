@@ -74,13 +74,12 @@ defmodule LogflareWeb.LogControllerTest do
       conn =
         conn
         |> put_req_header("x-api-key", user.api_key)
-        |> put_req_header("ce-foo", "bar")
+        |> put_req_header("ce-foo-foo", "bar")
         |> post(Routes.log_path(conn, :cloud_event, source: source.token), @valid)
 
       assert json_response(conn, 200) == %{"message" => "Logged!"}
       assert_receive {:logs, [log]}, 3000
-      assert %{"metadata" => %{"cloud_event" => ce}} = log.params
-      assert ce["foo"] == "bar"
+      assert %{"some"=> _, "event_message"=> _, "cloud_event" => %{"foo_foo" => "bar"}} = log.body
     end
 
     test "invaild source token uuid checks", %{conn: conn, user: user} do
@@ -229,6 +228,39 @@ defmodule LogflareWeb.LogControllerTest do
       :timer.sleep(2000)
     end
   end
+
+  describe "v1 pipeline no broadcast expectation" do
+    setup [:v1_pipeline_setup]
+
+    setup %{user: user, conn: conn} do
+      {:ok, access_token} = Logflare.Auth.create_access_token(user)
+      conn = put_req_header(conn, "x-api-key", access_token.token)
+      {:ok, user: user, conn: conn}
+    end
+
+    setup [:warm_caches, :reject_context_functions]
+
+    test ":cloud_event ingestion", %{conn: conn, source: source, user: user} do
+      this = self()
+
+      Logflare.Logs
+      |> expect(:broadcast, 1, fn le ->
+        send(this, {:le, le})
+        le
+      end)
+
+      conn =
+        conn
+        |> put_req_header("x-api-key", user.api_key)
+        |> put_req_header("ce-foo-foo", "bar")
+        |> post(Routes.log_path(conn, :cloud_event, source: source.token), @valid)
+
+      assert json_response(conn, 200) == %{"message" => "Logged!"}
+      assert_receive {:le, log}, 3000
+      assert %{"some"=> _, "event_message"=> _, "id"=> _, "cloud_event" => %{"foo_foo" => "bar"}} = log.body
+    end
+  end
+
 
   describe "single tenant" do
     TestUtils.setup_single_tenant(seed_user: true)

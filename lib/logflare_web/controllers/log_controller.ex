@@ -197,7 +197,7 @@ defmodule LogflareWeb.LogController do
     data
     |> List.wrap()
     |> Enum.map(&Map.put(&1, "cloud_event", cloud_event))
-    |> Processor.ingest(Logs.GenericJson, source)
+    |> Processor.ingest(Logs.Raw, source)
     |> handle(conn)
   end
 
@@ -213,7 +213,7 @@ defmodule LogflareWeb.LogController do
   defp extract_cloud_events(%Plug.Conn{} = conn) do
     # XXX: What should happen in case of duplicated header?
     for {"ce-" <> header, data} <- conn.req_headers, into: %{} do
-      {header, data}
+      {String.replace(header, "-", "_"), data}
     end
   end
 end
