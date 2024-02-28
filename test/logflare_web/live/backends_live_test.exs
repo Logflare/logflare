@@ -12,7 +12,7 @@ defmodule LogflareWeb.BackendsLiveTest do
     [conn: conn, source: source, user: user]
   end
 
-  test "bug: string user_id on session", %{conn: conn, user: user} do
+  test "bug: string user_id on session for team users", %{conn: conn, user: user} do
     conn = put_session(conn, :user_id, inspect(user.id))
     assert {:ok, _view, _html} = live(conn, ~p"/backends")
 
