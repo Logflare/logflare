@@ -30,6 +30,8 @@ All browser authentication will be disabled when in single-tenant mode.
 | `LOGFLARE_NODE_HOST`               | string, defaults to `127.0.0.1`                                  | Sets node host on startup, which affects the node name `logflare@<host>`                                                                                         |
 | `LOGFLARE_LOGGER_METADATA_CLUSTER` | string, defaults to `nil`                                        | Sets global logging metadata for the cluster name. Useful for filtering logs by cluster name.                                                                    |
 | `LOGFLARE_PUBSUB_POOL_SIZE`        | Integer, defaults to `10`                                        | Sets the number of `Phoenix.PubSub.PG2` partitions to be created. Should be configured to the number of cores of your server for optimal multi-node performance. |
+| `LOGFLARE_ALERTS_ENABLED`          | Boolean, defaults to `true`                                      | Flag for enabling and disabling query alerts.                                                                                                                    |
+| `LOGFLARE_ALERTS_MIN_CLUSTER_SIZE` | Integer, defaults to `1`                                         | Sets the required cluster size for Query Alerts to be run. If cluster size is below the provided value, query alerts will not run.                               |
 
 ### BigQuery Backend Configuration
 

@@ -13,6 +13,8 @@ config :logflare,
   # normal instances can be more than 90 seconds
   sigterm_shutdown_grace_period_ms: 15_000
 
+config :logflare, Logflare.Alerting, min_cluster_size: 1, enabled: true
+
 config :logflare, Logflare.Google, dataset_id_append: "_default"
 
 # Configures the endpoint
