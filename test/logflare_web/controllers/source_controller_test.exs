@@ -14,6 +14,7 @@ defmodule LogflareWeb.SourceControllerTest do
   alias Logflare.SavedSearches
   alias Logflare.Logs.RejectedLogEvents
   alias Logflare.SingleTenant
+  alias Logflare.Source.RecentLogsServer
 
   setup do
 
@@ -79,6 +80,19 @@ defmodule LogflareWeb.SourceControllerTest do
       assert html =~ "scroll down"
       # search
       assert html =~ "Search"
+    end
+
+    test "show source's recent logs", %{conn: conn, source: source} do
+      start_supervised!({RecentLogsServer, %RecentLogsServer{source_id: source.token}})
+      le = build(:log_event, source: source)
+      :ok = RecentLogsServer.push(source.token, le)
+      html =
+        conn
+        |> get(Routes.source_path(conn, :show, source))
+        |> html_response(200)
+
+      assert html =~ le.body["event_message"]
+      assert html =~ "event body"
     end
 
     test "invalid source", %{conn: conn, source: source} do
