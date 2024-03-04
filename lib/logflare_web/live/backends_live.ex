@@ -117,7 +117,7 @@ defmodule LogflareWeb.BackendsLive do
     """
   end
 
-  def mount(_params, %{"user_id" => user_id} = session, socket) do
+  def mount(_params, %{"user_id" => user_id}, socket) do
     {user_id, _} =
       case user_id do
         v when is_binary(v) -> Integer.parse(v)
