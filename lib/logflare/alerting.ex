@@ -178,17 +178,20 @@ defmodule Logflare.Alerting do
   def run_alert(%AlertQuery{} = alert_query, :scheduled) do
     # perform pre-run checks
     cfg = Application.get_env(:logflare, Logflare.Alerting)
+
     cond do
       cfg[:enabled] == false ->
         {:error, :not_enabled}
+
       cfg[:min_cluster_size] > Cluster.Utils.actual_cluster_size() ->
         {:error, :below_min_cluster_size}
+
       true ->
         run_alert(alert_query)
-      end
-
+    end
   end
-    def run_alert(%AlertQuery{} = alert_query) do
+
+  def run_alert(%AlertQuery{} = alert_query) do
     alert_query = alert_query |> Repo.preload([:user])
 
     case execute_alert_query(alert_query) do
