@@ -22,7 +22,7 @@ steps:
       - --container-image=${_CONTAINER_IMAGE}
       - --container-privileged
       - --container-restart-policy=always
-      - --container-env=LOGFLARE_GRPC_PORT=4001,LOGFLARE_MIN_CLUSTER_SIZE=2,RELEASE_COOKIE=${_COOKIE},LOGFLARE_PUBSUB_POOL_SIZE=56,LOGFLARE_LOGGER_METADATA_CLUSTER=${_CLUSTER},LOGFLARE_ALERTS_MIN_CLUSTER_SIZE=5
+      - --container-env=LOGFLARE_GRPC_PORT=4001,LOGFLARE_MIN_CLUSTER_SIZE=2,RELEASE_COOKIE=${_COOKIE},LOGFLARE_PUBSUB_POOL_SIZE=56,LOGFLARE_LOGGER_METADATA_CLUSTER=${_CLUSTER},LOGFLARE_ALERTS_MIN_CLUSTER_SIZE=4
       - --no-shielded-secure-boot
       - --shielded-vtpm
       - --shielded-integrity-monitoring
