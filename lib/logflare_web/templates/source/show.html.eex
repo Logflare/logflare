@@ -30,14 +30,12 @@
         <%= log.body["timestamp"] %>
       </mark>
       <%= log.body["event_message"] %>
-      <%= if not is_nil(log.body["metadata"]) and map_size(log.body["metadata"]) > 0 do %>
-        <a class="metadata-link" data-toggle="collapse" href="#metadata-<%= inx %>" aria-expanded="false">
-          event body
-        </a>
-        <div class="collapse metadata" id="metadata-<%= inx %>">
-          <pre class="pre-metadata"><code><%= JSON.encode!(log.body, pretty: true) %></code></pre>
-        </div>
-      <% end %>
+      <a class="metadata-link" data-toggle="collapse" href="#metadata-<%= inx %>" aria-expanded="false">
+        event body
+      </a>
+      <div class="collapse metadata" id="metadata-<%= inx %>">
+        <pre class="pre-metadata"><code><%= JSON.encode!(log.body, pretty: true) %></code></pre>
+      </div>
       <%= if log.via_rule do %>
         <span
             data-toggle="tooltip" data-placement="top" title="Matching <%= log.via_rule.lql_string %> routing from <%= log.origin_source_id %>" style="color: ##5eeb8f;">
