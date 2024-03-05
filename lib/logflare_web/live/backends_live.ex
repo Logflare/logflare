@@ -3,6 +3,7 @@ defmodule LogflareWeb.BackendsLive do
   use LogflareWeb, :live_view
   require Logger
   alias Logflare.Backends
+  alias Logflare.Users
 
   def render(assigns) do
     ~H"""
@@ -117,8 +118,14 @@ defmodule LogflareWeb.BackendsLive do
   end
 
   def mount(_params, %{"user_id" => user_id}, socket) do
-    backends = Logflare.Backends.list_backends_by_user_id(user_id)
-    user = Logflare.Users.get(user_id)
+    {user_id, _} =
+      case user_id do
+        v when is_binary(v) -> Integer.parse(v)
+        _ -> {user_id, nil}
+      end
+
+    backends = Backends.list_backends_by_user_id(user_id)
+    user = Users.get(user_id)
 
     socket =
       socket
