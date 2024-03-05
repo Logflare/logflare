@@ -62,6 +62,7 @@ defmodule Logflare.User do
   typed_schema "users" do
     field :email, :string
     field :provider, :string
+    # TODO: change type to Ecto.UUID and autogenerate
     field :token, :string
     field :api_key, :string
     field :old_api_key, :string
