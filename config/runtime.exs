@@ -28,6 +28,18 @@ config :logflare,
        |> filter_nil_kv_pairs.()
 
 config :logflare,
+       Logflare.Alerting,
+       [
+         min_cluster_size:
+           if(System.get_env("LOGFLARE_ALERTS_MIN_CLUSTER_SIZE") != nil,
+             do: String.to_integer(System.get_env("LOGFLARE_ALERTS_MIN_CLUSTER_SIZE")),
+             else: nil
+           ),
+         enabled: System.get_env("LOGFLARE_ALERTS_ENABLED", "true") == "true"
+       ]
+       |> filter_nil_kv_pairs.()
+
+config :logflare,
        LogflareWeb.Endpoint,
        filter_nil_kv_pairs.(
          http: filter_nil_kv_pairs.(port: System.get_env("PHX_HTTP_PORT")),

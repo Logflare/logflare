@@ -12,6 +12,7 @@ defmodule Logflare.Alerting do
   alias Logflare.Alerting.AlertQuery
   alias Logflare.User
   alias Logflare.Endpoints
+  alias Logflare.Cluster
 
   @doc """
   Returns the list of alert_queries.
@@ -144,7 +145,7 @@ defmodule Logflare.Alerting do
       id: alert_query.id,
       schedule: alert_query.cron,
       extended_syntax: false,
-      task: {__MODULE__, :run_alert, [alert_query]}
+      task: {__MODULE__, :run_alert, [alert_query, :scheduled]}
     })
 
     {:ok, get_alert_job(alert_query)}
@@ -172,7 +173,24 @@ defmodule Logflare.Alerting do
 
   Send notifications if necessary configurations are set. If no results are returned from the query execution, no alert is sent.
   """
+  @spec run_alert(AlertQuery.t(), :scheduled) :: :ok
   @spec run_alert(AlertQuery.t()) :: :ok
+  def run_alert(%AlertQuery{} = alert_query, :scheduled) do
+    # perform pre-run checks
+    cfg = Application.get_env(:logflare, Logflare.Alerting)
+
+    cond do
+      cfg[:enabled] == false ->
+        {:error, :not_enabled}
+
+      cfg[:min_cluster_size] > Cluster.Utils.actual_cluster_size() ->
+        {:error, :below_min_cluster_size}
+
+      true ->
+        run_alert(alert_query)
+    end
+  end
+
   def run_alert(%AlertQuery{} = alert_query) do
     alert_query = alert_query |> Repo.preload([:user])
 
