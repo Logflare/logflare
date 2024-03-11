@@ -51,7 +51,7 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor do
   def validate_config(changeset) do
     changeset
     |> validate_required([:url])
-    |> validate_format(:url, ~r/postgresql?\:\/\/.+/)
+    |> validate_format(:url, ~r/(?:postgres|postgresql)\:\/\/.+/)
   end
 
   @doc """
