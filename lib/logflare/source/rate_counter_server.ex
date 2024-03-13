@@ -42,11 +42,18 @@ defmodule Logflare.Source.RateCounterServer do
 
   @rate_period 1_000
 
-  def start_link(%RLS{source_id: source_id}) when is_atom(source_id) do
+  def start_link(%RLS{source_id: source_token}) do
+    start_link(%{
+      source_token: source_token,
+      name: Source.Supervisor.via(__MODULE__, source_token)
+    })
+  end
+
+  def start_link(%{source_token: source_token, name: name}) when is_atom(source_token) do
     GenServer.start_link(
       __MODULE__,
-      source_id,
-      name: Source.Supervisor.via(__MODULE__, source_id)
+      source_token,
+      name: name
     )
   end
 

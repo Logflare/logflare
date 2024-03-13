@@ -34,7 +34,11 @@ defmodule Logflare.Backends.Adaptor do
   @doc """
   Ingest many log events.
   """
-  @callback ingest(identifier(), [LogEvent.t()]) :: :ok
+  @typep ingest_options :: [
+           {:source_id, integer()},
+           {:backend_id, integer()}
+         ]
+  @callback ingest(identifier(), [LogEvent.t()], ingest_options()) :: :ok
 
   @doc """
   Queries the backend using an endpoint query.

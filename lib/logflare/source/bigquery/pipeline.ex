@@ -7,6 +7,7 @@ defmodule Logflare.Source.BigQuery.Pipeline do
   alias Broadway.Message
   alias GoogleApi.BigQuery.V2.Model
   alias Logflare.AccountEmail
+  alias Logflare.Backends
   alias Logflare.Google.BigQuery
   alias Logflare.Google.BigQuery.EventUtils
   alias Logflare.Google.BigQuery.GenUtils
@@ -26,7 +27,22 @@ defmodule Logflare.Source.BigQuery.Pipeline do
   def start_link([%RLS{} = rls | opts]), do: start_link(rls, opts)
   def start_link(%RLS{} = rls), do: start_link(rls, [])
 
-  def start_link(%RLS{source: source, plan: _plan} = rls, opts) do
+  def start_link(%{name: name} = args) do
+    start_link(args, name: name)
+  end
+
+  def start_link(%RLS{source: source, plan: _plan} = rls, opts),
+    do:
+      start_link(
+        %{
+          source: source,
+          bigquery_project_id: rls.bigquery_project_id,
+          bigquery_dataset_id: rls.bigquery_dataset_id
+        },
+        opts
+      )
+
+  def start_link(%{source: source, bigquery_project_id: _, bigquery_dataset_id: _} = rls, opts) do
     opts =
       Keyword.merge(
         [
@@ -37,7 +53,7 @@ defmodule Logflare.Source.BigQuery.Pipeline do
             fullsweep_after: 0
           ],
           producer: [
-            module: {BufferProducer, %{source_token: rls.source_id}}
+            module: {BufferProducer, %{source_token: source.token}}
           ],
           processors: [
             default: [concurrency: System.schedulers_online() * 2]
@@ -54,7 +70,7 @@ defmodule Logflare.Source.BigQuery.Pipeline do
           context: %{
             bigquery_project_id: rls.bigquery_project_id,
             bigquery_dataset_id: rls.bigquery_dataset_id,
-            source_token: rls.source_id
+            source_token: source.token
           }
         ],
         opts
@@ -64,6 +80,10 @@ defmodule Logflare.Source.BigQuery.Pipeline do
       __MODULE__,
       opts
     )
+  end
+
+  def process_name({:via, _module, {_registry, {source_id, {mod, backend_id}}}}, base_name) do
+    Backends.via_source(source_id, {mod, backend_id, base_name})
   end
 
   @spec handle_message(any, Broadway.Message.t(), any) :: Broadway.Message.t()
@@ -170,12 +190,12 @@ defmodule Logflare.Source.BigQuery.Pipeline do
     log_event
   end
 
-  def process_data(%LE{body: _body, source: %Source{token: source_id}} = log_event) do
+  def process_data(%LE{body: _body, source: %Source{token: source_token}} = log_event) do
     # TODO ... We use `ignoreUnknownValues: true` when we do `stream_batch!`. If we set that to `true`
     # then this makes BigQuery check the payloads for new fields. In the response we'll get a list of events that didn't validate.
     # Send those events through the pipeline again, but run them through our schema process this time. Do all
     # these things a max of like 5 times and after that send them to the rejected pile.
-    Schema.update(source_id, log_event)
+    Schema.update(source_token, log_event)
 
     log_event
   end

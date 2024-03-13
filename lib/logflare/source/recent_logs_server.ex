@@ -103,13 +103,17 @@ defmodule Logflare.Source.RecentLogsServer do
 
   ## Server
 
-  def start_link(%__MODULE__{source_id: source_id} = rls) when is_atom(source_id) do
+  def start_link(%__MODULE__{source_id: source_id}) do
+    start_link(%{source_id: source_id})
+  end
+
+  def start_link(%{source_id: source_id} = rls) when is_atom(source_id) do
     GenServer.start_link(__MODULE__, rls, name: Source.Supervisor.via(__MODULE__, source_id))
   end
 
   ## Client
   @spec init(RLS.t()) :: {:ok, RLS.t(), {:continue, :boot}}
-  def init(%__MODULE__{source_id: _source_id} = rls) do
+  def init(%{source_id: _source_id} = rls) do
     Process.flag(:trap_exit, true)
     Logger.metadata(source_id: rls.source_id, source_token: rls.source_id)
 

@@ -36,7 +36,7 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
   end
 
   @impl Logflare.Backends.Adaptor
-  def ingest(pid, log_events), do: GenServer.call(pid, {:ingest, log_events})
+  def ingest(pid, log_events, _opts \\ []), do: GenServer.call(pid, {:ingest, log_events})
 
   @impl Logflare.Backends.Adaptor
   def cast_config(params) do

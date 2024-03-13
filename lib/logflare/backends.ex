@@ -12,9 +12,6 @@ defmodule Logflare.Backends do
   alias Logflare.Backends.SourceRegistry
   alias Logflare.Backends.SourcesSup
   alias Logflare.Backends.SourceSup
-
-  alias Logflare.Buffers.Buffer
-  alias Logflare.Buffers.MemoryBuffer
   alias Logflare.LogEvent
   alias Logflare.Repo
   alias Logflare.Source
@@ -152,6 +149,18 @@ defmodule Logflare.Backends do
     end
   end
 
+  @spec get_backend_by(keyword()) :: Backend.t() | nil
+  def get_backend_by(kw) do
+    Repo.get_by(Backend, kw)
+    |> case do
+      nil ->
+        nil
+
+      backend ->
+        typecast_config_string_map_to_atom_map(backend)
+    end
+  end
+
   @doc """
   Deletes a Backend
   """
@@ -169,25 +178,24 @@ defmodule Logflare.Backends do
   @doc """
   Adds log events to the source event buffer.
   The ingestion pipeline then pulls from the buffer and dispatches log events to the correct backends.
+
+  TODO: Perform syncronous parsing and validation of log event params.
+
+  Once this function returns `:ok`, the events get dispatched to respective backend adaptor portions of the pipeline to be further processed.
   """
   @type log_param :: map()
   @spec ingest_logs([log_param()], Source.t()) :: :ok
   def ingest_logs(log_events, source) do
-    via = via_source(source, :buffer)
-    Buffer.add_many(MemoryBuffer, via, log_events)
-    :ok
-  end
-
-  @doc """
-  Dispatch log events to a given source backend.
-  It requires the source supervisor and registry to be running.
-  For internal use only, should not be called outside of the `Logflare` namespace.
-  """
-  def dispatch_ingest(log_events, source) do
     Registry.dispatch(SourceDispatcher, source.id, fn entries ->
-      for {pid, {adaptor_module, :ingest}} <- entries do
+      for {pid, mfa} <- entries do
         # TODO: spawn tasks to do this concurrently
-        adaptor_module.ingest(pid, log_events)
+        case mfa do
+          {adaptor_module, :ingest, [_ | _] = opts} ->
+            adaptor_module.ingest(pid, log_events, opts)
+
+          {adaptor_module, :ingest} ->
+            adaptor_module.ingest(pid, log_events)
+        end
       end
     end)
 
@@ -206,7 +214,9 @@ defmodule Logflare.Backends do
   @spec via_source(Source.t(), term(), term()) :: tuple()
   def via_source(source, mod, id), do: via_source(source, {mod, id})
 
-  def via_source(%Source{id: id}, process_id) do
+  def via_source(%Source{id: id}, process_id), do: via_source(id, process_id)
+
+  def via_source(id, process_id) when is_number(id) do
     {:via, Registry, {SourceRegistry, {id, process_id}}}
   end
 
