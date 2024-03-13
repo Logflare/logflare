@@ -46,6 +46,8 @@ defmodule Logflare.Source.BigQuery.BufferCounter do
 
     state = %{
       source_uuid: args.source_uuid,
+      source_token: args.source_uuid,
+      backend_token: args.backend_token,
       len_max: :counters.put(ref, len_max_idx(), @max_buffer_len),
       counter_ref: ref
     }

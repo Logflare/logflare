@@ -18,6 +18,7 @@ defmodule Logflare.Source.BigQuery.Schema do
   alias Logflare.AccountEmail
   alias Logflare.Mailer
   alias Logflare.Google.BigQuery.SchemaUtils
+  alias Logflare.Backends
 
   @timeout 60_000
 
@@ -26,7 +27,8 @@ defmodule Logflare.Source.BigQuery.Schema do
       source_id: rls.source_id,
       plan: rls.plan,
       bigquery_project_id: rls.bigquery_project_id,
-      bigquery_dataset_id: rls.bigquery_dataset_id
+      bigquery_dataset_id: rls.bigquery_dataset_id,
+      name: Source.Supervisor.via(__MODULE__, rls.source.token)
     })
   end
 
@@ -34,7 +36,8 @@ defmodule Logflare.Source.BigQuery.Schema do
         source_id: source_token,
         plan: plan,
         bigquery_project_id: bigquery_project_id,
-        bigquery_dataset_id: bigquery_dataset_id
+        bigquery_dataset_id: bigquery_dataset_id,
+        name: name
       }) do
     GenServer.start_link(
       __MODULE__,
@@ -52,7 +55,7 @@ defmodule Logflare.Source.BigQuery.Schema do
         field_count_limit: plan.limit_source_fields_limit,
         next_update: System.system_time(:millisecond)
       },
-      name: Source.Supervisor.via(__MODULE__, source_token)
+      name: name
     )
   end
 
@@ -99,19 +102,23 @@ defmodule Logflare.Source.BigQuery.Schema do
   end
 
   def get_state(source_token) when is_atom(source_token) do
-    Source.Supervisor.via(__MODULE__, source_token)
-    |> GenServer.call(:get)
+    # TODO: should be split by backend_id
+    with {:ok, pid} <- Backends.lookup(__MODULE__, source_token) do
+     GenServer.call(pid, :get)
+    end
   end
 
   @spec update(atom(), LogEvent.t()) :: :ok
   def update(source_token, %LogEvent{} = log_event) when is_atom(source_token) do
-    Source.Supervisor.via(__MODULE__, source_token)
-    |> GenServer.cast({:update, log_event})
+    # TODO: should be split by backend_id
+    with {:ok, pid} <- Backends.lookup(__MODULE__, source_token) do
+    GenServer.cast(pid, {:update, log_event})
+    end
   end
 
   # For tests
   def update(source_token, schema) when is_atom(source_token) do
-    with {:ok, pid} <- Source.Supervisor.lookup(__MODULE__, source_token) do
+    with {:ok, pid} <- Backends.lookup(__MODULE__, source_token) do
       GenServer.call(pid, {:update, schema}, @timeout)
     end
   end
@@ -129,6 +136,7 @@ defmodule Logflare.Source.BigQuery.Schema do
         %{field_count: fc, field_count_limit: limit} = state
       )
       when fc > limit,
+
       do: {:noreply, state}
 
   def handle_cast({:update, %LogEvent{body: body, id: event_id}}, state) do
@@ -288,7 +296,7 @@ defmodule Logflare.Source.BigQuery.Schema do
   end
 
   defp notify_maybe(source_token, new_schema, old_schema) do
-    %Source{user: user} = source = Sources.get_by_and_preload(token: source_token)
+    %Source{user: user} = source = Sources.Cache.get_by_and_preload(token: source_token)
 
     if source.notifications.user_schema_update_notifications do
       AccountEmail.schema_updated(user, source, new_schema, old_schema)

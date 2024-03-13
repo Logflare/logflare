@@ -92,6 +92,7 @@ defmodule Logflare.LogsTest do
         {:ok, %GoogleApi.BigQuery.V2.Model.TableDataInsertAllResponse{insertErrors: nil}}
       end)
 
+      pid = self()
       GoogleApi.BigQuery.V2.Api.Tables
       |> expect(:bigquery_tables_patch, fn conn,
                                            _project_id,
@@ -102,6 +103,7 @@ defmodule Logflare.LogsTest do
         assert conn.adapter == nil
         schema = body.schema
         assert %_{name: "key", type: "STRING"} = TestUtils.get_bq_field_schema(schema, "key")
+        send(pid, :ok)
         {:ok, %{}}
       end)
 
@@ -115,6 +117,7 @@ defmodule Logflare.LogsTest do
       assert :ok = Logs.ingest_logs(batch, source)
       # batcher timneout is 1_500
       :timer.sleep(2_000)
+      assert_received :ok
     end
   end
 

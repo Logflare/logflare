@@ -15,6 +15,8 @@ defmodule Logflare.Backends do
   alias Logflare.LogEvent
   alias Logflare.Repo
   alias Logflare.Source
+  alias Logflare.Sources
+  alias Logflare.Source.RecentLogsServer
 
   import Ecto.Query
 
@@ -186,6 +188,9 @@ defmodule Logflare.Backends do
   @type log_param :: map()
   @spec ingest_logs([log_param()], Source.t()) :: :ok
   def ingest_logs(log_events, source) do
+    # store in recent logs
+    RecentLogsServer.push_many(source, log_events)
+
     Registry.dispatch(SourceDispatcher, source.id, fn entries ->
       for {pid, mfa} <- entries do
         # TODO: spawn tasks to do this concurrently
@@ -218,6 +223,19 @@ defmodule Logflare.Backends do
 
   def via_source(id, process_id) when is_number(id) do
     {:via, Registry, {SourceRegistry, {id, process_id}}}
+  end
+
+  @doc """
+  drop in replacement for Source.Supervisor.lookup
+  """
+  def lookup(module, source_token) do
+    source = Sources.Cache.get_source_by_token(source_token)
+    {:via, _registry, {registry, via_id}} = via_source(source, module)
+    Registry.lookup(registry, via_id)
+    |> case do
+      [{pid, _}] -> {:ok, pid}
+      _ -> {:error, :not_started}
+    end
   end
 
   @doc """
@@ -282,9 +300,12 @@ defmodule Logflare.Backends do
   """
   @spec list_recent_logs(Source.t()) :: [LogEvent.t()]
   def list_recent_logs(%Source{} = source) do
-    source
-    |> ensure_recent_logs_started()
-    |> RecentLogs.list()
+    RecentLogsServer.list_for_cluster(source.token)
+  end
+
+  @spec list_recent_logs_local(Source.t()) :: [LogEvent.t()]
+  def list_recent_logs_local(%Source{} = source) do
+    RecentLogsServer.list(source.token)
   end
 
   @doc """
