@@ -19,7 +19,11 @@ defmodule Logflare.Backends.Supervisor do
       {DynamicSupervisor, strategy: :one_for_one, name: Backends.RecentLogsSup},
       {Registry,
        name: Backends.SourceRegistry, keys: :unique, partitions: System.schedulers_online()},
-      {Registry, name: Backends.SourceDispatcher, keys: :duplicate}
+      {Registry, name: Backends.SourceDispatcher, keys: :duplicate},
+      {Registry,
+       name: Logflare.Backends.BackendRegistry,
+       keys: :unique,
+       partitions: System.schedulers_online()}
     ]
 
     opts = [strategy: :one_for_one]

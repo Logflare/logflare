@@ -8,25 +8,41 @@ defmodule Logflare.Source.BigQuery.BufferCounter do
   alias Logflare.Source.RecentLogsServer, as: RLS
   alias Logflare.Source
   alias Logflare.PubSubRates
+  alias Logflare.Backends
+  alias Logflare.Backends.Backend
+  alias Logflare.Source.BigQuery.Pipeline
 
   require Logger
 
   @broadcast_every 5_000
   @max_buffer_len 5_000
 
-  def start_link(%RLS{source_id: source_uuid}) when is_atom(source_uuid) do
+  def start_link(%RLS{source_id: token}),
+    do:
+      start_link(%{
+        source_uuid: token,
+        backend_token: nil,
+        name: Source.Supervisor.via(__MODULE__, token)
+      })
+
+  def start_link(%{source_uuid: source_uuid, backend_token: _, name: name} = state)
+      when is_atom(source_uuid) do
     GenServer.start_link(
       __MODULE__,
-      %{
-        source_uuid: source_uuid
-      },
-      name: Source.Supervisor.via(__MODULE__, source_uuid)
+      state,
+      name: name
     )
   end
 
   def init(args) do
     ref = :counters.new(5, [:write_concurrency])
-    {:ok, _} = Registry.register(Logflare.CounterRegistry, {__MODULE__, args.source_uuid}, ref)
+
+    {:ok, _} =
+      Registry.register(
+        Logflare.CounterRegistry,
+        {__MODULE__, args.source_uuid, args.backend_token},
+        ref
+      )
 
     state = %{
       source_uuid: args.source_uuid,
@@ -48,7 +64,7 @@ defmodule Logflare.Source.BigQuery.BufferCounter do
     batch = [
       %Broadway.Message{
         data: le,
-        acknowledger: {Source.BigQuery.BufferProducer, source_uuid, nil}
+        acknowledger: {Source.BigQuery.BufferProducer, {source_uuid, nil}, nil}
       }
     ]
 
@@ -59,15 +75,40 @@ defmodule Logflare.Source.BigQuery.BufferCounter do
   Takes a `batch` of `Broadway.Message`s, pushes them into a Broadway pipeline and increments the `BufferCounter` count.
   """
 
+  @spec push_batch(Source.t(), Backend.t(), [Broadway.Message.t(), ...]) ::
+          {:ok, map()} | {:error, :buffer_full}
   @spec push_batch(%{source: Source.t(), batch: [Broadway.Message.t(), ...], count: integer()}) ::
           {:ok, map()} | {:error, :buffer_full}
   def push_batch(%{source: %Source{token: source_uuid}, batch: batch, count: count})
       when is_list(batch) and is_atom(source_uuid) do
-    with {:ok, ref} <- lookup_counter(source_uuid),
+    with {:ok, ref} <- lookup_counter(source_uuid, nil),
          {:ok, resp} <- push_by(ref, count) do
+      # v1 pipeline naming
       source_uuid
       |> Source.BigQuery.Pipeline.name()
       |> Broadway.push_messages(batch)
+
+      {:ok, resp}
+    end
+  end
+
+  # v2 pipeline ingestion
+  def push_batch(%Source{} = source, %Backend{} = backend, messages) when is_list(messages) do
+    with {:ok, ref} <- lookup_counter(source.token, backend.token),
+         {:ok, resp} <- push_by(ref, Enum.count(messages)) do
+      Backends.via_source(source, {Pipeline, backend.id})
+      |> Broadway.push_messages(messages)
+
+      {:ok, resp}
+    end
+  end
+
+  # default backend with no backend record
+  def push_batch(%Source{} = source, nil, messages) when is_list(messages) do
+    with {:ok, ref} <- lookup_counter(source.token, nil),
+         {:ok, resp} <- push_by(ref, Enum.count(messages)) do
+      Backends.via_source(source, {Pipeline, nil})
+      |> Broadway.push_messages(messages)
 
       {:ok, resp}
     end
@@ -77,18 +118,17 @@ defmodule Logflare.Source.BigQuery.BufferCounter do
   Decrements the actual buffer count. If we've got a successfull `ack` from Broadway it means
   we don't have the log event anymore.
   """
-  @spec ack(atom(), binary()) :: {:ok, %{len: integer}}
-  def ack(source_uuid, log_event_id) when is_binary(log_event_id) do
-    {:ok, ref} = lookup_counter(source_uuid)
-
+  @spec ack(atom(), atom() | nil, binary()) :: {:ok, %{len: integer}}
+  def ack(source_token, backend_token, log_event_id) when is_binary(log_event_id) do
+    {:ok, ref} = lookup_counter(source_token, backend_token)
     ack_by(ref, 1)
   end
 
-  @spec ack_batch(atom(), [Broadway.Message.t()]) :: {:ok, map()}
-  def ack_batch(source_uuid, log_events) when is_list(log_events) do
+  @spec ack_batch(atom(), atom() | nil, [Broadway.Message.t()]) :: {:ok, map()}
+  def ack_batch(source_token, backend_token, log_events) when is_list(log_events) do
     count = Enum.count(log_events)
 
-    {:ok, ref} = lookup_counter(source_uuid)
+    {:ok, ref} = lookup_counter(source_token, backend_token)
 
     ack_by(ref, count)
   end
@@ -123,8 +163,10 @@ defmodule Logflare.Source.BigQuery.BufferCounter do
   """
 
   @spec len(Source.t()) :: integer
-  def len(%Source{token: source_uuid}) when is_atom(source_uuid) do
-    {:ok, ref} = lookup_counter(source_uuid)
+  def len(%Source{token: token}), do: len(token)
+
+  def len(source_token, backend_token \\ nil) when is_atom(source_token) do
+    {:ok, ref} = lookup_counter(source_token, backend_token)
 
     :counters.get(ref, len_idx())
   end
@@ -132,13 +174,14 @@ defmodule Logflare.Source.BigQuery.BufferCounter do
   @doc """
   Gets all the buffer counters for a source.
   """
-
-  @spec get_counts(atom) :: map()
-  def get_counts(source_uuid) do
-    {:ok, ref} = lookup_counter(source_uuid)
+  @spec get_counts(atom, atom | nil) :: map()
+  def get_counts(source_token, backend_token \\ nil) do
+    {:ok, ref} = lookup_counter(source_token, backend_token)
 
     %{
-      source_id: source_uuid,
+      # TODO: remove source_id to reduce confusion
+      source_id: source_token,
+      source_token: source_token,
       pushed: :counters.get(ref, pushed_idx()),
       acknowledged: :counters.get(ref, ackd_idx()),
       len: :counters.get(ref, len_idx()),
@@ -152,8 +195,10 @@ defmodule Logflare.Source.BigQuery.BufferCounter do
   """
 
   @spec set_len_max(atom(), integer()) :: {:ok, map()}
-  def set_len_max(source_uuid, max) when is_atom(source_uuid) do
-    {:ok, ref} = lookup_counter(source_uuid)
+  def set_len_max(source_token, max), do: set_len_max(source_token, nil, max)
+
+  def set_len_max(source_token, backend_token, max) when is_atom(source_token) do
+    {:ok, ref} = lookup_counter(source_token, backend_token)
     :ok = :counters.put(ref, len_max_idx(), max)
     max = :counters.get(ref, len_max_idx())
 
@@ -165,8 +210,8 @@ defmodule Logflare.Source.BigQuery.BufferCounter do
   """
 
   @spec lookup_counter(atom) :: {:ok, any} | {:error, :buffer_counter_not_found}
-  def lookup_counter(source_uuid) when is_atom(source_uuid) do
-    case Registry.lookup(Logflare.CounterRegistry, {__MODULE__, source_uuid}) do
+  def lookup_counter(source_token, backend_token \\ nil) when is_atom(source_token) do
+    case Registry.lookup(Logflare.CounterRegistry, {__MODULE__, source_token, backend_token}) do
       [{_pid, counter_ref}] -> {:ok, counter_ref}
       _error -> {:error, :buffer_counter_not_found}
     end
@@ -174,7 +219,7 @@ defmodule Logflare.Source.BigQuery.BufferCounter do
 
   def handle_info(:check_buffer, state) do
     if Source.RateCounterServer.should_broadcast?(state.source_uuid) do
-      broadcast_buffer(state.source_uuid)
+      broadcast_buffer(state.source_uuid, state.backend_token)
     end
 
     check_buffer()
@@ -184,30 +229,36 @@ defmodule Logflare.Source.BigQuery.BufferCounter do
 
   def terminate(reason, state) do
     # Do Shutdown Stuff
-    Logger.info("Going Down - #{inspect(reason)} - #{__MODULE__}", %{source_id: state.source_uuid})
+    # TODO: remove source_id metadata to reduce confusion
+    Logger.info("Going Down - #{inspect(reason)} - #{__MODULE__}", %{
+      source_id: state.source_uuid,
+      source_token: state.source_uuid,
+      backend_token: state.backend_token
+    })
 
     reason
   end
 
-  defp broadcast_buffer(source_uuid) when is_atom(source_uuid) do
+  defp broadcast_buffer(source_token, backend_token) do
     pool_size = Application.get_env(:logflare, Logflare.PubSub)[:pool_size]
-    {:ok, ref} = lookup_counter(source_uuid)
+    {:ok, ref} = lookup_counter(source_token, backend_token)
     len = :counters.get(ref, len_idx())
     local_buffer = %{Node.self() => %{len: len}}
 
-    shard = :erlang.phash2(source_uuid, pool_size)
+    shard = :erlang.phash2(source_token, pool_size)
 
     Phoenix.PubSub.broadcast(
       Logflare.PubSub,
       "buffers:shard-#{shard}",
-      {:buffers, source_uuid, local_buffer}
+      {:buffers, source_token, local_buffer}
     )
 
-    cluster_buffer = PubSubRates.Cache.get_cluster_buffers(source_uuid)
+    cluster_buffer = PubSubRates.Cache.get_cluster_buffers(source_token)
 
     payload = %{
       buffer: cluster_buffer,
-      source_token: source_uuid
+      source_token: source_token,
+      backend_token: backend_token
     }
 
     Source.ChannelTopics.broadcast_buffer(payload)

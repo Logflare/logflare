@@ -5,6 +5,7 @@ defmodule Logflare.Application do
 
   alias Logflare.Billing
   alias Logflare.ContextCache
+  alias Logflare.Backends
   alias Logflare.Logs
   alias Logflare.PubSubRates
   alias Logflare.SingleTenant
@@ -43,6 +44,7 @@ defmodule Logflare.Application do
         Users.Cache,
         Sources.Cache,
         Partners.Cache,
+        Backends.Cache,
         Billing.Cache,
         SourceSchemas.Cache,
         Auth.Cache,

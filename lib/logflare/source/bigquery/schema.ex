@@ -22,12 +22,26 @@ defmodule Logflare.Source.BigQuery.Schema do
   @timeout 60_000
 
   def start_link(%RLS{} = rls) do
+    start_link(%{
+      source_id: rls.source_id,
+      plan: rls.plan,
+      bigquery_project_id: rls.bigquery_project_id,
+      bigquery_dataset_id: rls.bigquery_dataset_id
+    })
+  end
+
+  def start_link(%{
+        source_id: source_token,
+        plan: plan,
+        bigquery_project_id: bigquery_project_id,
+        bigquery_dataset_id: bigquery_dataset_id
+      }) do
     GenServer.start_link(
       __MODULE__,
       %{
-        source_token: rls.source_id,
-        bigquery_project_id: rls.bigquery_project_id,
-        bigquery_dataset_id: rls.bigquery_dataset_id,
+        source_token: source_token,
+        bigquery_project_id: bigquery_project_id,
+        bigquery_dataset_id: bigquery_dataset_id,
         schema: SchemaBuilder.initial_table_schema(),
         type_map: %{
           event_message: %{t: :string},
@@ -35,10 +49,10 @@ defmodule Logflare.Source.BigQuery.Schema do
           id: %{t: :string}
         },
         field_count: 3,
-        field_count_limit: rls.plan.limit_source_fields_limit,
+        field_count_limit: plan.limit_source_fields_limit,
         next_update: System.system_time(:millisecond)
       },
-      name: Source.Supervisor.via(__MODULE__, rls.source_id)
+      name: Source.Supervisor.via(__MODULE__, source_token)
     )
   end
 

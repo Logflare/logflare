@@ -49,7 +49,7 @@ defmodule Logflare.Source.BigQuery.BufferTest do
       acknowledger: {BigQuery.BufferProducer, source.token, nil}
     }
 
-    BigQuery.BufferCounter.ack_batch(source.token, [message])
+    BigQuery.BufferCounter.ack_batch(source.token, nil [message])
 
     assert 0 = BigQuery.BufferCounter.len(source)
     :timer.sleep(2000)
