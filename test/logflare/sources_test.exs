@@ -172,9 +172,9 @@ defmodule Logflare.SourcesTest do
       assert Source.Supervisor.booting?()
       :timer.sleep(1500)
       refute Source.Supervisor.booting?()
-      assert {:ok, pid} = Source.Supervisor.lookup(V1SourceSup, source.token)
+      assert {:ok, pid} = Backends.lookup(V1SourceSup, source.token)
       assert is_pid(pid)
-      assert {:error, :no_proc} = Source.Supervisor.lookup(V1SourceSup, source_stale.token)
+      assert {:error, :no_proc} = Backends.lookup(V1SourceSup, source_stale.token)
     end
 
     test "start_source/1, lookup/2, delete_source/1", %{user: user} do
@@ -187,11 +187,11 @@ defmodule Logflare.SourcesTest do
       # TODO: cast should return :ok
       assert {:ok, ^token} = Source.Supervisor.start_source(token)
       :timer.sleep(500)
-      assert {:ok, _pid} = Source.Supervisor.lookup(V1SourceSup, token)
+      assert {:ok, _pid} = Backends.lookup(V1SourceSup, token)
       :timer.sleep(1_000)
       assert {:ok, ^token} = Source.Supervisor.delete_source(token)
       :timer.sleep(1000)
-      assert {:error, :no_proc} = Source.Supervisor.lookup(V1SourceSup, token)
+      assert {:error, :no_proc} = Backends.lookup(V1SourceSup, token)
     end
 
     test "reset_source/1", %{user: user} do
@@ -200,10 +200,10 @@ defmodule Logflare.SourcesTest do
       # TODO: cast should return :ok
       assert {:ok, ^token} = Source.Supervisor.start_source(token)
       :timer.sleep(500)
-      assert {:ok, pid} = Source.Supervisor.lookup(V1SourceSup, token)
+      assert {:ok, pid} = Backends.lookup(V1SourceSup, token)
       assert {:ok, ^token} = Source.Supervisor.reset_source(token)
       :timer.sleep(1500)
-      assert {:ok, new_pid} = Source.Supervisor.lookup(V1SourceSup, token)
+      assert {:ok, new_pid} = Backends.lookup(V1SourceSup, token)
       assert new_pid != pid
     end
 
@@ -214,7 +214,7 @@ defmodule Logflare.SourcesTest do
       start_supervised!(Source.Supervisor)
       assert {:ok, :started} = Source.Supervisor.ensure_started(source.token)
       :timer.sleep(1000)
-      assert {:ok, _pid} = Source.Supervisor.lookup(V1SourceSup, source.token)
+      assert {:ok, _pid} = Backends.lookup(V1SourceSup, source.token)
       assert BufferCounter.len(source) == 0
     end
 
@@ -225,11 +225,11 @@ defmodule Logflare.SourcesTest do
       start_supervised!(Source.Supervisor)
       assert {:ok, :started} = Source.Supervisor.ensure_started(source.token)
       :timer.sleep(1000)
-      assert {:ok, pid} = Source.Supervisor.lookup(V1SourceSup, source.token)
+      assert {:ok, pid} = Backends.lookup(V1SourceSup, source.token)
       assert {:ok, _} = Source.Supervisor.reset_source(source.token)
       assert {:ok, _} = Source.Supervisor.reset_source(source.token)
       :timer.sleep(3000)
-      assert {:ok, new_pid} = Source.Supervisor.lookup(RLS, source.token)
+      assert {:ok, new_pid} = Backends.lookup(RLS, source.token)
       assert pid != new_pid
       assert BufferCounter.len(source) == 0
     end
@@ -245,7 +245,7 @@ defmodule Logflare.SourcesTest do
       assert {:ok, :started} = Source.Supervisor.ensure_started(source.token)
       assert {:ok, :started} = Source.Supervisor.ensure_started(source.token)
       :timer.sleep(3000)
-      assert {:ok, _pid} = Source.Supervisor.lookup(V1SourceSup, source.token)
+      assert {:ok, _pid} = Backends.lookup(V1SourceSup, source.token)
       assert BufferCounter.len(source) == 0
     end
 
@@ -255,9 +255,9 @@ defmodule Logflare.SourcesTest do
       pid = start_supervised!(Source.Supervisor)
       assert {:ok, :started} = Source.Supervisor.ensure_started(source.token)
       :timer.sleep(3000)
-      assert {:ok, prev_pid} = Source.Supervisor.lookup(V1SourceSup, source.token)
+      assert {:ok, prev_pid} = Backends.lookup(V1SourceSup, source.token)
       Process.exit(pid, :kill)
-      assert {:ok, pid} = Source.Supervisor.lookup(V1SourceSup, source.token)
+      assert {:ok, pid} = Backends.lookup(V1SourceSup, source.token)
       assert prev_pid == pid
     end
   end

@@ -23,7 +23,7 @@ defmodule Logflare.Backends.Adaptor do
       end
 
     %{
-      id: {adaptor_module, backend.id},
+      id: {adaptor_module, source.id, backend.id},
       start: {adaptor_module, :start_link, [{source, backend}]}
     }
   end

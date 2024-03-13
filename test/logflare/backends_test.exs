@@ -5,6 +5,7 @@ defmodule Logflare.BackendsTest do
   alias Logflare.Backends.Backend
   alias Logflare.Backends.SourceSup
   alias Logflare.Source
+  alias Logflare.Source.RecentLogsServer
 
   @valid_event %{some: "event"}
   describe "backend management" do
@@ -82,6 +83,7 @@ defmodule Logflare.BackendsTest do
 
   describe "SourceSup management" do
     setup do
+      insert(:plan)
       user = insert(:user)
       source = insert(:source, user_id: user.id)
       {:ok, source: source}
@@ -92,6 +94,11 @@ defmodule Logflare.BackendsTest do
       start_supervised!({SourceSup, source})
       :timer.sleep(400)
       assert true == Backends.source_sup_started?(source)
+    end
+
+    test "lookup/2", %{source: source} do
+      start_supervised!({SourceSup, source})
+      assert {:ok, _pid} = Backends.lookup(RecentLogsServer, source.token)
     end
 
     test "start_source_sup/1, stop_source_sup/1, restart_source_sup/1", %{source: source} do
@@ -109,6 +116,13 @@ defmodule Logflare.BackendsTest do
 
   describe "ingestion" do
     setup do
+
+
+    start_supervised!(AllLogsLogged)
+    start_supervised!(Counters)
+    start_supervised!(RateCounters)
+
+      insert(:plan)
       user = insert(:user)
       source = insert(:source, user_id: user.id)
       start_supervised!({SourceSup, source})
@@ -116,10 +130,12 @@ defmodule Logflare.BackendsTest do
     end
 
     test "correctly retains the 100 items", %{source: source} do
-      events = for n <- 1..105, do: %{n: n}
+      events = for n <- 1..105, do: build(:log_event, source: source, some: "event")
       assert :ok = Backends.ingest_logs(events, source)
       :timer.sleep(1500)
       cached = Backends.list_recent_logs(source)
+      assert length(cached) == 100
+      cached = Backends.list_local_recent_logs(source)
       assert length(cached) == 100
     end
   end
@@ -127,7 +143,8 @@ defmodule Logflare.BackendsTest do
   describe "ingestion with backend" do
     setup :set_mimic_global
 
-    setup do
+  setup do
+      insert(:plan)
       user = insert(:user)
       source = insert(:source, user_id: user.id)
 
@@ -138,6 +155,7 @@ defmodule Logflare.BackendsTest do
       )
 
       start_supervised!({SourceSup, source})
+      :timer.sleep(500)
       {:ok, source: source}
     end
 
@@ -151,8 +169,9 @@ defmodule Logflare.BackendsTest do
         end
       end)
 
-      assert :ok = Backends.ingest_logs([@valid_event, @valid_event], source)
-      :timer.sleep(1500)
+      event = build(:log_event, source: source, message: "some event")
+      assert :ok = Backends.ingest_logs([event], source)
+      :timer.sleep(2000)
     end
   end
 end

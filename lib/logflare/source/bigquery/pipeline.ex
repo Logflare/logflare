@@ -37,7 +37,7 @@ defmodule Logflare.Source.BigQuery.Pipeline do
         %{
           source: source,
           bigquery_project_id: rls.bigquery_project_id,
-          bigquery_dataset_id: rls.bigquery_dataset_id
+          bigquery_dataset_id: rls.bigquery_dataset_id,
         },
         opts
       )
@@ -70,7 +70,8 @@ defmodule Logflare.Source.BigQuery.Pipeline do
           context: %{
             bigquery_project_id: rls.bigquery_project_id,
             bigquery_dataset_id: rls.bigquery_dataset_id,
-            source_token: source.token
+            source_token: source.token,
+            source_id: source.id
           }
         ],
         opts
@@ -84,6 +85,9 @@ defmodule Logflare.Source.BigQuery.Pipeline do
 
   def process_name({:via, _module, {_registry, {source_id, {mod, backend_id}}}}, base_name) do
     Backends.via_source(source_id, {mod, backend_id, base_name})
+  end
+  def process_name(proc_name, base_name) do
+    String.to_atom("#{proc_name}-#{base_name}")
   end
 
   @spec handle_message(any, Broadway.Message.t(), any) :: Broadway.Message.t()
@@ -195,7 +199,8 @@ defmodule Logflare.Source.BigQuery.Pipeline do
     # then this makes BigQuery check the payloads for new fields. In the response we'll get a list of events that didn't validate.
     # Send those events through the pipeline again, but run them through our schema process this time. Do all
     # these things a max of like 5 times and after that send them to the rejected pile.
-    Schema.update(source_token, log_event)
+    # TODO: use source_id and backend_id
+    :ok = Schema.update(source_token, log_event)
 
     log_event
   end

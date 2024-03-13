@@ -41,7 +41,7 @@ defmodule Logflare.Backends.SourceSup do
 
     children =
       [
-        {RecentLogsServer, %{source_id: source.token}},
+        {RecentLogsServer, %{source: source}},
         default_backend
       ] ++ specs
 

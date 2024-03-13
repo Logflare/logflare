@@ -1,9 +1,10 @@
 defmodule Logflare.Source.Data do
   @moduledoc false
-  alias Logflare.Source
   alias Logflare.Sources.Counters
   alias Logflare.Google.BigQuery
-  alias Logflare.Source.{RateCounterServer, BigQuery.Schema}
+  alias Logflare.Source.RateCounterServer
+  alias Logflare.Source.BigQuery.Schema
+  alias Logflare.Backends
 
   def get_logs(source_id) when is_atom(source_id) do
     Logflare.Source.RecentLogsServer.list(source_id)
@@ -83,7 +84,7 @@ defmodule Logflare.Source.Data do
 
   @spec get_schema_field_count(struct()) :: non_neg_integer
   def get_schema_field_count(source) do
-    case Source.Supervisor.lookup(Schema, source.token) do
+    case Backends.lookup(Schema, source.token) do
       {:ok, _pid} -> Schema.get_state(source.token).field_count
       {:error, _} -> 0
     end

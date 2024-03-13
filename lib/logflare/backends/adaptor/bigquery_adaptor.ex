@@ -3,7 +3,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
 
   alias Logflare.Backends
   alias Logflare.Sources
-  alias Logflare.Sources.Source
+  alias Logflare.Source
   alias Logflare.Backends.SourceDispatcher
   alias Logflare.Backends.Backend
   alias Logflare.Source.BigQuery.Pipeline
@@ -70,7 +70,10 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
            plan: plan,
            source_id: source.token,
            bigquery_project_id: project_id,
-           bigquery_dataset_id: dataset_id
+           bigquery_dataset_id: dataset_id,
+          #  TODO: separate by backend
+           name: Backends.via_source(source, Schema)
+
          }},
         {RateCounterServer,
          %{
