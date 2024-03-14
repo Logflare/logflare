@@ -64,7 +64,7 @@ defmodule Logflare.Source.BigQuery.SchemaTest do
       start_supervised!(
         {Schema,
          [
-           source_token: source.token,
+           source: source,
            plan: %{limit_source_fields_limit: 500},
            bigquery_project_id: "some-id",
            bigquery_dataset_id: "some-id"

@@ -13,6 +13,7 @@ defmodule Logflare.Logs do
   alias Logflare.Rule
   alias Logflare.Backends
   alias Logflare.Backends.Adaptor.BigQueryAdaptor
+  alias Logflare.Source.BigQuery.Pipeline
 
   @spec ingest_logs(list(map), Source.t()) :: :ok | {:error, term}
   def ingest_logs(log_params_batch, %Source{rules: rules} = source) when is_list(rules) do
@@ -50,7 +51,7 @@ defmodule Logflare.Logs do
         acknowledger: {BigQueryAdaptor, buffer_counter_via, nil}
       }
 
-      Backends.via_source(source, {Pipeline, nil})
+      Backends.via_source(source, Pipeline, nil)
       |> Broadway.push_messages([message])
 
       le

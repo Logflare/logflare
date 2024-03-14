@@ -17,7 +17,8 @@ defmodule Logflare.Backends do
   alias Logflare.Source
   alias Logflare.Sources
   alias Logflare.Source.RecentLogsServer
-
+  alias Logflare.Logs
+  alias Logflare.Logs.SourceRouting
   import Ecto.Query
 
   @adaptor_mapping %{
@@ -187,7 +188,57 @@ defmodule Logflare.Backends do
   """
   @type log_param :: map()
   @spec ingest_logs([log_param()], Source.t()) :: :ok
-  def ingest_logs(log_events, source) do
+  def ingest_logs(event_params, source) do
+    {log_events, errors} =
+      event_params
+      |> Enum.reduce({[], []}, fn param, {events, errors} ->
+        le =
+          param
+          |> case do
+            %LogEvent{} = le ->
+              le
+
+            param ->
+              LogEvent.make(param, %{source: source})
+          end
+          |> Logs.maybe_mark_le_dropped_by_lql()
+          |> LogEvent.apply_custom_event_message()
+
+        cond do
+          le.drop ->
+            do_telemetry(:drop, le)
+            {events, errors}
+
+          le.valid == false ->
+            do_telemetry(:invalid, le)
+            {events, errors}
+
+          le.pipeline_error ->
+            {events, [le.pipeline_error.message | errors]}
+
+          le.valid ->
+            {[le | events], errors}
+        end
+      end)
+
+    Logflare.Utils.Tasks.start_child(fn ->
+      source =
+        source
+        |> Sources.refresh_source_metrics_for_ingest()
+        |> Sources.preload_rules()
+
+      # maybe broadcast
+      if source.metrics.avg < 5 do
+        for le <- log_events, do: Source.ChannelTopics.broadcast_new(le)
+      end
+
+      # maybe reroute
+      # TODO: shift this to dispatching logic
+      Enum.each(log_events, fn le ->
+        SourceRouting.route_to_sinks_and_ingest(%{le | source: source})
+      end)
+    end)
+
     # store in recent logs
     RecentLogsServer.push(source, log_events)
 
@@ -204,7 +255,7 @@ defmodule Logflare.Backends do
       end
     end)
 
-    :ok
+    if Enum.empty?(errors), do: :ok, else: {:error, errors}
   end
 
   @doc """
@@ -342,5 +393,37 @@ defmodule Logflare.Backends do
 
     :global.del_lock({RecentLogs, source.id})
     pid
+  end
+
+  defp do_telemetry(:drop, le) do
+    :telemetry.execute(
+      [:logflare, :logs, :ingest_logs],
+      %{drop: true},
+      %{source_id: le.source.id, source_token: le.source.token}
+    )
+  end
+
+  defp do_telemetry(:invalid, le) do
+    :telemetry.execute(
+      [:logflare, :logs, :ingest_logs],
+      %{rejected: true},
+      %{source_id: le.source.id, source_token: le.source.token}
+    )
+  end
+
+  defp do_telemetry(:buffer_full, le) do
+    :telemetry.execute(
+      [:logflare, :logs, :ingest_logs],
+      %{buffer_full: true},
+      %{source_id: le.source.id, source_token: le.source.token}
+    )
+  end
+
+  defp do_telemetry(:unknown_error, le) do
+    :telemetry.execute(
+      [:logflare, :logs, :ingest_logs],
+      %{unknown_error: true},
+      %{source_id: le.source.id, source_token: le.source.token}
+    )
   end
 end

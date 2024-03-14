@@ -15,6 +15,7 @@ defmodule Logflare.Source.Supervisor do
   alias Logflare.Source.V1SourceSup
   alias Logflare.ContextCache
   alias Logflare.SourceSchemas
+  alias Logflare.Backends
 
   import Ecto.Query, only: [from: 2]
 
@@ -56,8 +57,7 @@ defmodule Logflare.Source.Supervisor do
     |> Enum.chunk_every(25)
     |> Enum.each(fn chunk ->
       for source <- chunk do
-        rls = %{source_id: source.token, source: source}
-        DynamicSupervisor.start_child(V1SourceDynSup, {V1SourceSup, rls})
+        DynamicSupervisor.start_child(V1SourceDynSup, {V1SourceSup, source: source})
       end
 
       # BigQuery Rate limit is 100/second
@@ -70,7 +70,7 @@ defmodule Logflare.Source.Supervisor do
   end
 
   def handle_cast({:create, source_token}, state) do
-    with {:error, :no_proc} <- lookup(V1SourceSup, source_token),
+    with {:error, :not_started} <- Backends.lookup(V1SourceSup, source_token),
          {:ok, _pid} <- create_source(source_token) do
       {:noreply, state}
     else
@@ -87,7 +87,7 @@ defmodule Logflare.Source.Supervisor do
   end
 
   def handle_cast({:delete, source_token}, state) do
-    case lookup(V1SourceSup, source_token) do
+    case Backends.lookup(V1SourceSup, source_token) do
       {:error, _} ->
         {:noreply, state}
 
@@ -99,7 +99,7 @@ defmodule Logflare.Source.Supervisor do
   end
 
   def handle_cast({:restart, source_token}, state) do
-    case lookup(V1SourceSup, source_token) do
+    case Backends.lookup(V1SourceSup, source_token) do
       {:ok, pid} ->
         Logger.info(
           "Source.Supervisor - Performing V1SourceSup shutdown actions: #{source_token}"
@@ -196,24 +196,24 @@ defmodule Logflare.Source.Supervisor do
     |> Enum.each(fn s -> reset_source(s.token) end)
   end
 
-  @doc """
-  Returns the `:via` tuple for a given module for a source.
-  """
-  @spec via(module(), atom()) :: identifier()
-  def via(module, source_token) when is_atom(source_token) do
-    {:via, Registry, {Logflare.V1SourceRegistry, {module, source_token}, :registered}}
-  end
+  # @doc """
+  # Returns the `:via` tuple for a given module for a source.
+  # """
+  # @spec via(module(), atom()) :: identifier()
+  # def via(module, source_token) when is_atom(source_token) do
+  #   {:via, Registry, {Logflare.V1SourceRegistry, {module, source_token}, :registered}}
+  # end
 
-  @doc """
-  Looks up V1SourceRegistry for the provided module and source token.
-  """
-  @spec lookup(module(), atom()) :: {:ok, pid()} | {:error, :no_proc}
-  def lookup(module, source_token) when is_atom(source_token) do
-    case Registry.lookup(Logflare.V1SourceRegistry, {module, source_token}) do
-      [{pid, :registered}] -> {:ok, pid}
-      [] -> {:error, :no_proc}
-    end
-  end
+  # @doc """
+  # Looks up V1SourceRegistry for the provided module and source token.
+  # """
+  # @spec lookup(module(), atom()) :: {:ok, pid()} | {:error, :no_proc}
+  # def lookup(module, source_token) when is_atom(source_token) do
+  #   case Registry.lookup(Logflare.V1SourceRegistry, {module, source_token}) do
+  #     [{pid, :registered}] -> {:ok, pid}
+  #     [] -> {:error, :no_proc}
+  #   end
+  # end
 
   defp do_pg_ops?() do
     !!Application.get_env(:logflare, :single_tenant) &&
@@ -226,9 +226,7 @@ defmodule Logflare.Source.Supervisor do
     source = Sources.get_by(token: source_token)
 
     if source do
-      rls = %{source_id: source_token, source: source}
-
-      case DynamicSupervisor.start_child(V1SourceDynSup, {V1SourceSup, rls}) do
+      case DynamicSupervisor.start_child(V1SourceDynSup, {V1SourceSup, source: source}) do
         {:ok, _pid} = res ->
           Tasks.start_child(fn -> init_table(source_token) end)
 
@@ -244,7 +242,7 @@ defmodule Logflare.Source.Supervisor do
 
   @spec ensure_started(atom) :: {:ok, :already_started | :started}
   def ensure_started(source_token) do
-    case lookup(V1SourceSup, source_token) do
+    case Backends.lookup(V1SourceSup, source_token) do
       {:error, _} ->
         Logger.info("Source.Supervisor - V1SourceSup not found, starting...",
           source_id: source_token,

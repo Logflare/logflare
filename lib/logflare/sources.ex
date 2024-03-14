@@ -237,6 +237,11 @@ defmodule Logflare.Sources do
     |> put_bq_table_id()
   end
 
+  def preload_rules(source) do
+    source
+    |> Repo.preload([:rules])
+  end
+
   def put_bq_table_data(source) do
     source
     |> put_bq_table_id()

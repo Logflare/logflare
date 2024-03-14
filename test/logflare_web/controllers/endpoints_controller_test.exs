@@ -3,7 +3,18 @@ defmodule LogflareWeb.EndpointsControllerTest do
   alias Logflare.SingleTenant
   alias Logflare.Backends
   alias Logflare.Source
+  alias Logflare.Sources.Counters
+  alias Logflare.Sources.RateCounters
+  alias Logflare.SystemMetrics.AllLogsLogged
 
+  setup do
+    stub(Goth, :fetch, fn _mod -> {:ok, %Goth.Token{token: "auth-token"}} end)
+
+    start_supervised!(AllLogsLogged)
+    start_supervised!(Counters)
+    start_supervised!(RateCounters)
+    :ok
+  end
   describe "query" do
     setup :set_mimic_global
 
