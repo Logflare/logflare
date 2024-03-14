@@ -16,11 +16,8 @@ defmodule Logflare.LogsTest do
     source = insert(:source, user: user)
     source_b = insert(:source, user: user)
 
-    rls = %{source: source, source_id: source.token}
-    rls_b = %{source: source_b, source_id: source_b.token}
-
-    start_supervised!({V1SourceSup, rls}, id: :source)
-    start_supervised!({V1SourceSup, rls_b}, id: :source_b)
+    start_supervised!({V1SourceSup, source: source}, id: :source)
+    start_supervised!({V1SourceSup, source: source_b}, id: :source_b)
 
     :timer.sleep(250)
     [source: source, source_b: source_b, user: user]

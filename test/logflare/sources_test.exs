@@ -146,6 +146,10 @@ defmodule Logflare.SourcesTest do
 
       start_supervised!(AllLogsLogged)
 
+      Logflare.Google.BigQuery
+      |> stub(:init_table!, fn _, _, _, _, _, _ -> :ok end)
+
+
       RateCounterServer
       |> stub(:get_data_from_ets, fn _ -> %RateCounterServer{} end)
       |> stub(:broadcast, fn _ -> :ok end)
@@ -175,7 +179,8 @@ defmodule Logflare.SourcesTest do
       refute Source.Supervisor.booting?()
       assert {:ok, pid} = Backends.lookup(V1SourceSup, source.token)
       assert is_pid(pid)
-      assert {:error, :no_proc} = Backends.lookup(V1SourceSup, source_stale.token)
+      assert {:error, :not_started} = Backends.lookup(V1SourceSup, source_stale.token)
+      :timer.sleep(1000)
     end
 
     test "start_source/1, lookup/2, delete_source/1", %{user: user} do
@@ -192,7 +197,7 @@ defmodule Logflare.SourcesTest do
       :timer.sleep(1_000)
       assert {:ok, ^token} = Source.Supervisor.delete_source(token)
       :timer.sleep(1000)
-      assert {:error, :no_proc} = Backends.lookup(V1SourceSup, token)
+      assert {:error, :not_started} = Backends.lookup(V1SourceSup, token)
     end
 
     test "reset_source/1", %{user: user} do
@@ -216,7 +221,8 @@ defmodule Logflare.SourcesTest do
       assert {:ok, :started} = Source.Supervisor.ensure_started(source.token)
       :timer.sleep(1000)
       assert {:ok, _pid} = Backends.lookup(V1SourceSup, source.token)
-      assert BufferCounter.len(source) == 0
+      name = Backends.via_source(source, BufferCounter, nil)
+      assert BufferCounter.len(name) == 0
     end
 
     test "able to reset supervision tree" do
@@ -232,7 +238,8 @@ defmodule Logflare.SourcesTest do
       :timer.sleep(3000)
       assert {:ok, new_pid} = Backends.lookup(RLS, source.token)
       assert pid != new_pid
-      assert BufferCounter.len(source) == 0
+      name = Backends.via_source(source, BufferCounter, nil)
+      assert BufferCounter.len(name) == 0
     end
 
     test "concurrent start attempts" do
@@ -247,7 +254,8 @@ defmodule Logflare.SourcesTest do
       assert {:ok, :started} = Source.Supervisor.ensure_started(source.token)
       :timer.sleep(3000)
       assert {:ok, _pid} = Backends.lookup(V1SourceSup, source.token)
-      assert BufferCounter.len(source) == 0
+      name = Backends.via_source(source, BufferCounter, nil)
+      assert BufferCounter.len(name) == 0
     end
 
     test "terminating Source.Supervisor does not bring everything down" do

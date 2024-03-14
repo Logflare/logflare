@@ -132,6 +132,7 @@ defmodule Logflare.Backends.BigQueryAdaptorTest do
                @subject.ingest(adaptor, [log_event], source_id: source.id, backend_id: backend.id)
 
       :timer.sleep(2500)
+
     end
   end
 end

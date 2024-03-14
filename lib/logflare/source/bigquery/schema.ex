@@ -27,6 +27,11 @@ defmodule Logflare.Source.BigQuery.Schema do
 
   def init(args) do
     source = Keyword.get(args, :source)
+
+    if source == nil do
+      throw(":source must be provided on startup for Schema module")
+    end
+
     # TODO: remove source_id from metadata to reduce confusion
     Logger.metadata(source_id: args[:source_token], source_token: args[:source_token])
     Process.flag(:trap_exit, true)
@@ -35,6 +40,7 @@ defmodule Logflare.Source.BigQuery.Schema do
 
     {:ok,
      %{
+       source_id: source.id,
        source_token: source.token,
        bigquery_project_id: args[:bigquery_project_id],
        bigquery_dataset_id: args[:bigquery_dataset_id],
@@ -51,9 +57,7 @@ defmodule Logflare.Source.BigQuery.Schema do
   end
 
   def handle_continue(:boot, state) do
-    source = Sources.Cache.get_by(token: state.source_token)
-
-    case SourceSchemas.Cache.get_source_schema_by(source_id: source.id) do
+    case SourceSchemas.Cache.get_source_schema_by(source_id: state.source_id) do
       nil ->
         Logger.info("Nil schema: #{state.source_token}")
 

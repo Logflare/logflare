@@ -35,8 +35,8 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
   def init({source, backend}) do
     Process.flag(:trap_exit, true)
 
-    user = Users.get(source.user_id)
-    plan = Billing.get_plan_by_user(user)
+    user = Users.Cache.get(source.user_id)
+    plan = Billing.Cache.get_plan_by_user(user)
 
     project_id = backend.config.project_id
     dataset_id = backend.config.dataset_id
@@ -70,8 +70,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
            source: source,
            bigquery_project_id: project_id,
            bigquery_dataset_id: dataset_id,
-           #  TODO: separate by backend
-           name: Backends.via_source(source, Schema)
+           name: Backends.via_source(source, Schema, backend.id)
          ]}
       ]
 

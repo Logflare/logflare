@@ -4,7 +4,6 @@ defmodule LogflareWeb.Plugs.RateLimiterTest do
   alias Logflare.{Users, Sources}
   alias LogflareWeb.Plugs.RateLimiter
   alias Logflare.Source.RateCounterServer
-  alias Logflare.Source.RecentLogsServer, as: RLS
 
   @moduletag :skip
 

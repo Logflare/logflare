@@ -6,7 +6,6 @@ defmodule LogflareWeb.Source.SearchLVTest do
   alias Logflare.Logs.SearchQueryExecutor
   alias Logflare.SingleTenant
   alias Logflare.Source.BigQuery.Schema
-  alias Logflare.Source.RecentLogsServer
   alias LogflareWeb.Source.SearchLV
   alias Logflare.Backends
 
@@ -39,10 +38,9 @@ defmodule LogflareWeb.Source.SearchLVTest do
     plan = context.plan
 
     Enum.each(context, fn
-      {_, %Source{token: token}} ->
-        rls = %RecentLogsServer{source_id: token, plan: plan}
-        start_supervised!({Schema, rls}, id: token)
-        start_supervised!({SearchQueryExecutor, rls})
+      {_, %Source{token: token} = source} ->
+        start_supervised!({Schema, [source: source, plan: plan]}, id: token)
+        start_supervised!({SearchQueryExecutor, [source: source]})
 
       _ ->
         nil
@@ -208,7 +206,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
       :timer.sleep(100)
 
 
-      Backends.via_source(sources, Schema)
+      Backends.via_source(source, Schema, nil)
       |> Schema.update(le)
       # TODO: find a better way to test a source schema structure
 

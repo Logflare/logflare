@@ -196,6 +196,8 @@ defmodule Logflare.LogEvent do
 
   Configuration should be comma separated, and it accepts json query syntax.
   """
+  def apply_custom_event_message(%LE{drop: true} = le), do: le
+
   def apply_custom_event_message(%LE{source: %Source{} = source} = le) do
     message = make_message(le, source)
 

@@ -4,93 +4,103 @@ defmodule Logflare.Source.WebhookNotificationServer do
 
   require Logger
 
-  alias Logflare.Source
   alias Logflare.Sources
   alias Logflare.Sources.Counters
-  alias Logflare.Source.RecentLogsServer, as: RLS
-  alias __MODULE__, as: WNS
+  alias Logflare.Source.RecentLogsServer
+  alias Logflare.Backends
 
-  def start_link(%{source_id: source_id} = rls) when is_atom(source_id) do
-    GenServer.start_link(__MODULE__, rls, name: Source.Supervisor.via(__MODULE__, source_id))
+  def start_link(args) do
+    source = Keyword.get(args, :source)
+    GenServer.start_link(__MODULE__, args, name: Backends.via_source(source, __MODULE__))
   end
 
   def test_post(source) do
-    recent_events = RLS.list(source.token)
+    recent_events = RecentLogsServer.list(source.token)
     uri = source.webhook_notification_url
 
     post(uri, source, 0, recent_events)
   end
 
-  def init(rls) do
-    check_rate(rls.notifications_every)
+  def init(args) do
+    source = Keyword.get(args, :source)
+    check_rate(source.notifications_every)
     Process.flag(:trap_exit, true)
 
-    {:ok, current_inserts} = Counters.get_inserts(rls.source_id)
+    {:ok, current_inserts} = Counters.get_inserts(source.token)
 
-    {:ok, %{rls | inserts_since_boot: current_inserts}}
+    {:ok,
+     %{
+       inserts_since_boot: current_inserts,
+       notifications_every: source.notifications_every,
+       source_token: source.token
+     }}
   end
 
-  def handle_info(:check_rate, rls) do
-    {:ok, current_inserts} = Counters.get_inserts(rls.source_id)
-    rate = current_inserts - rls.inserts_since_boot
-    source = Sources.Cache.get_by_id(rls.source_id)
+  def handle_info(:check_rate, state) do
+    {:ok, current_inserts} = Counters.get_inserts(state.source_token)
+    rate = current_inserts - state.inserts_since_boot
+    source = Sources.Cache.get_source_by_token(state.source_token)
 
     case rate > 0 do
       true ->
         if uri = source.webhook_notification_url do
-          recent_events = RLS.list(rls.source_id)
+          recent_events = RecentLogsServer.list(state.source_token)
 
           post(uri, source, rate, recent_events)
         end
 
-        check_rate(rls.notifications_every)
-        {:noreply, %{rls | inserts_since_boot: current_inserts}, :hibernate}
+        check_rate(state.notifications_every)
+        {:noreply, %{state | inserts_since_boot: current_inserts}, :hibernate}
 
       false ->
-        check_rate(rls.notifications_every)
-        {:noreply, rls, :hibernate}
+        check_rate(state.notifications_every)
+        {:noreply, state, :hibernate}
     end
   end
 
-  def handle_info({:ssl_closed, _details}, rls) do
+  def handle_info({:ssl_closed, _details}, state) do
     # See https://github.com/benoitc/hackney/issues/464
     :noop
 
-    {:noreply, rls}
+    {:noreply, state}
   end
 
-  def handle_info({:EXIT, _pid, :normal}, rls) do
+  def handle_info({:EXIT, _pid, :normal}, state) do
     :noop
 
-    {:noreply, rls}
+    {:noreply, state}
   end
 
   def terminate(reason, state) do
     # Do Shutdown Stuff
-    Logger.info("Going Down - #{inspect(reason)} - #{__MODULE__}", %{source_id: state.source_id})
+    Logger.info("Going Down - #{inspect(reason)} - #{__MODULE__}", %{
+      source_id: state.source_token,
+      source_token: state.source_token
+    })
+
     reason
   end
 
   defp post(uri, source, rate, recent_events) do
     case URI.parse(uri) do
       %URI{host: "discordapp.com"} ->
-        WNS.DiscordClient.new()
-        |> WNS.DiscordClient.post(source, rate, recent_events)
+        __MODULE__.DiscordClient.new()
+        |> __MODULE__.DiscordClient.post(source, rate, recent_events)
 
       %URI{host: "ptb.discord.com"} = _uri ->
-        WNS.DiscordClient.new()
-        |> WNS.DiscordClient.post(source, rate, recent_events)
+        __MODULE__.DiscordClient.new()
+        |> __MODULE__.DiscordClient.post(source, rate, recent_events)
 
       %URI{host: "discord.com"} = _uri ->
-        WNS.DiscordClient.new()
-        |> WNS.DiscordClient.post(source, rate, recent_events)
+        __MODULE__.DiscordClient.new()
+        |> __MODULE__.DiscordClient.post(source, rate, recent_events)
 
       %URI{host: nil} ->
         {:error, :bad_uri}
 
       %URI{} ->
-        WNS.Client.new()
-        |> WNS.Client.post(source, rate, recent_events)
+        __MODULE__.Client.new()
+        |> __MODULE__.Client.post(source, rate, recent_events)
     end
   end
 
