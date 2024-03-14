@@ -10,17 +10,18 @@ defmodule Logflare.Source.BillingWriterTest do
   setup :set_mimic_global
 
   setup do
+
+    start_supervised!(AllLogsLogged)
+    start_supervised!(Counters)
+    start_supervised!(RateCounters)
+
     user = insert(:user)
     source = insert(:source, user: user)
     _billing_account = insert(:billing_account, user: user)
     user = user |> Logflare.Repo.preload(:billing_account)
     plan = insert(:plan, type: "metered")
 
-    {:ok, pid} =
-      start_supervised(
-        {BillingWriter,
-         %RecentLogsServer{source_id: source.token, source: source, user: user, plan: plan}}
-      )
+    pid = start_supervised!( {BillingWriter, source: source, user: user, plan: plan} )
 
     # increase log count
     Counters.increment(source.token)
@@ -35,10 +36,12 @@ defmodule Logflare.Source.BillingWriterTest do
       {:ok, %{}}
     end)
 
-    {:ok, pid: pid}
+    {:ok, pid: pid, source: source}
   end
 
-  test ":write_count", %{pid: pid} do
+  test ":write_count", %{pid: pid, source: source} do
+    # increase log count
+    Counters.increment(source.token)
     send(pid, :write_count)
     :timer.sleep(200)
     assert Repo.aggregate(BillingCount, :count) == 1

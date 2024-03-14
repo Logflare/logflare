@@ -10,7 +10,6 @@ defmodule Logflare.Source.BigQuery.Schema do
 
   alias Logflare.Google.BigQuery
   alias Logflare.Source.BigQuery.SchemaBuilder
-  alias Logflare.Source.RecentLogsServer, as: RLS
   alias Logflare.Sources
   alias Logflare.SourceSchemas
   alias Logflare.Source
@@ -19,59 +18,42 @@ defmodule Logflare.Source.BigQuery.Schema do
   alias Logflare.Mailer
   alias Logflare.Google.BigQuery.SchemaUtils
   alias Logflare.Backends
+  alias Logflare.TeamUsers
 
-  @timeout 60_000
-
-  def start_link(%RLS{} = rls) do
-    start_link(%{
-      source_id: rls.source_id,
-      plan: rls.plan,
-      bigquery_project_id: rls.bigquery_project_id,
-      bigquery_dataset_id: rls.bigquery_dataset_id,
-      name: Source.Supervisor.via(__MODULE__, rls.source.token)
-    })
+  def start_link(args) when is_list(args) do
+    {name, args} = Keyword.pop(args, :name)
+    GenServer.start_link(__MODULE__, args, name: name)
   end
 
-  def start_link(%{
-        source_id: source_token,
-        plan: plan,
-        bigquery_project_id: bigquery_project_id,
-        bigquery_dataset_id: bigquery_dataset_id,
-        name: name
-      }) do
-    GenServer.start_link(
-      __MODULE__,
-      %{
-        source_token: source_token,
-        bigquery_project_id: bigquery_project_id,
-        bigquery_dataset_id: bigquery_dataset_id,
-        schema: SchemaBuilder.initial_table_schema(),
-        type_map: %{
-          event_message: %{t: :string},
-          timestamp: %{t: :datetime},
-          id: %{t: :string}
-        },
-        field_count: 3,
-        field_count_limit: plan.limit_source_fields_limit,
-        next_update: System.system_time(:millisecond)
-      },
-      name: name
-    )
-  end
-
-  def init(state) do
-    Logger.metadata(source_id: state.source_token, source_token: state.source_token)
+  def init(args) do
+    source = Keyword.get(args, :source)
+    # TODO: remove source_id from metadata to reduce confusion
+    Logger.metadata(source_id: args[:source_token], source_token: args[:source_token])
     Process.flag(:trap_exit, true)
 
     persist(0)
 
-    {:ok, state, {:continue, :boot}}
+    {:ok,
+     %{
+       source_token: source.token,
+       bigquery_project_id: args[:bigquery_project_id],
+       bigquery_dataset_id: args[:bigquery_dataset_id],
+       schema: SchemaBuilder.initial_table_schema(),
+       type_map: %{
+         event_message: %{t: :string},
+         timestamp: %{t: :datetime},
+         id: %{t: :string}
+       },
+       field_count: 3,
+       field_count_limit: args[:plan].limit_source_fields_limit,
+       next_update: System.system_time(:millisecond)
+     }, {:continue, :boot}}
   end
 
   def handle_continue(:boot, state) do
-    source = Sources.get_by(token: state.source_token)
+    source = Sources.Cache.get_by(token: state.source_token)
 
-    case SourceSchemas.get_source_schema_by(source_id: source.id) do
+    case SourceSchemas.Cache.get_source_schema_by(source_id: source.id) do
       nil ->
         Logger.info("Nil schema: #{state.source_token}")
 
@@ -101,28 +83,22 @@ defmodule Logflare.Source.BigQuery.Schema do
     reason
   end
 
+  # TODO: remove, external procs should not have access to internal state
   def get_state(source_token) when is_atom(source_token) do
-    # TODO: should be split by backend_id
     with {:ok, pid} <- Backends.lookup(__MODULE__, source_token) do
-     GenServer.call(pid, :get)
+      GenServer.call(pid, :get)
     end
   end
+
+  # TODO: remove, external procs should not have access to internal state
+  def get_state(name), do: GenServer.call(name, :get)
 
   @spec update(atom(), LogEvent.t()) :: :ok
-  def update(source_token, %LogEvent{} = log_event) when is_atom(source_token) do
-    # TODO: should be split by backend_id
-    with {:ok, pid} <- Backends.lookup(__MODULE__, source_token) do
+  def update(pid, %LogEvent{} = log_event) when is_pid(pid) or is_tuple(pid) do
     GenServer.cast(pid, {:update, log_event})
-    end
   end
 
-  # For tests
-  def update(source_token, schema) when is_atom(source_token) do
-    with {:ok, pid} <- Backends.lookup(__MODULE__, source_token) do
-      GenServer.call(pid, {:update, schema}, @timeout)
-    end
-  end
-
+  # TODO: remove, external procs should not have access to internal state
   def handle_call(:get, _from, state), do: {:reply, state, state}
 
   def handle_cast(
@@ -136,7 +112,6 @@ defmodule Logflare.Source.BigQuery.Schema do
         %{field_count: fc, field_count_limit: limit} = state
       )
       when fc > limit,
-
       do: {:noreply, state}
 
   def handle_cast({:update, %LogEvent{body: body, id: event_id}}, state) do
@@ -279,16 +254,6 @@ defmodule Logflare.Source.BigQuery.Schema do
       SchemaBuilder.build_table_schema(body, schema)
     rescue
       e ->
-        # TODO: Put the original log event string JSON into a top level error column with id, timestamp, and metadata
-        # This may be a great way to handle type mismatches in general because you get all the other fields anyways.
-        # TODO: Render error column somewhere on log event popup
-
-        # And/or put these log events directly into the rejected events list w/ a link to the log event popup.
-
-        LogflareLogger.context(%{
-          pipeline_process_data_stacktrace: LogflareLogger.Stacktrace.format(__STACKTRACE__)
-        })
-
         Logger.warning("Field schema type change error!", error_string: inspect(e))
 
         schema
@@ -304,7 +269,8 @@ defmodule Logflare.Source.BigQuery.Schema do
     end
 
     for id <- source.notifications.team_user_ids_for_schema_updates do
-      team_user = Logflare.TeamUsers.get_team_user(id)
+      # TODO: use cahce for this
+      team_user = TeamUsers.get_team_user(id)
 
       AccountEmail.schema_updated(team_user, source, new_schema, old_schema)
       |> Mailer.deliver()

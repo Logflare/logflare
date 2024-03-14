@@ -45,7 +45,7 @@ defmodule LogflareWeb.Source.RulesLqlTest do
         |> params_for(name: "Sink Source 1")
         |> Sources.create_source(user)
 
-      rls = %RLS{source_id: source.token, source: source}
+      rls = %{source_id: source.token, source: source}
 
       {:ok, _pid} = RLS.start_link(rls)
 

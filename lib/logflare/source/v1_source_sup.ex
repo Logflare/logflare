@@ -18,18 +18,19 @@ defmodule Logflare.Source.V1SourceSup do
   alias Logflare.Source.RateCounterServer, as: RCS
   alias Logflare.Source
   alias Logflare.Users
+  alias Logflare.Backends
   alias Logflare.Billing
   alias Logflare.Logs.SearchQueryExecutor
 
   require Logger
   use Supervisor
 
-  def start_link(%RecentLogsServer{source_id: source_token} = rls) do
+  def start_link(%{source_id: source_token} = rls) do
     Supervisor.start_link(__MODULE__, rls, name: Source.Supervisor.via(__MODULE__, source_token))
   end
 
   @impl true
-  def init(%RecentLogsServer{source: source} = rls) do
+  def init(%{source: source} = rls) do
     Process.flag(:trap_exit, true)
     Logger.metadata(source_id: rls.source_id, source_token: rls.source_id)
 
@@ -41,24 +42,41 @@ defmodule Logflare.Source.V1SourceSup do
 
     plan = Billing.get_plan_by_user(user)
 
-    rls = %RecentLogsServer{
-      rls
-      | bigquery_project_id: user.bigquery_project_id,
+    rls =
+      Map.merge(rls, %{
+        bigquery_project_id: user.bigquery_project_id,
         bigquery_dataset_id: user.bigquery_dataset_id,
         user: user,
         plan: plan,
         notifications_every: source.notifications_every
-    }
+      })
 
     children = [
-      {BufferCounter, rls},
-      {Pipeline, rls},
-      {RecentLogsServer, rls},
-      {Schema, rls},
+      {BufferCounter,
+       [
+         source_id: source.id,
+         source_token: source.token,
+         name: Backends.via_source(source, Pipeline, nil)
+       ]},
+      {Pipeline,
+       [
+         bigquery_project_id: user.bigquery_project_id,
+         bigquery_dataset_id: user.bigquery_dataset_id,
+         source_id: source.id,
+         source_token: source.token
+       ]},
+      {RecentLogsServer, [source: source]},
+      {Schema,
+       [
+         source: source,
+         bigquery_project_id: user.bigquery_project_id,
+         bigquery_dataset_id: user.bigquery_dataset_id,
+         plan: plan
+       ]},
       {RCS, rls},
-      {EmailNotificationServer, rls},
-      {TextNotificationServer, rls},
-      {WebhookNotificationServer, rls},
+      {EmailNotificationServer, [source: source]},
+      {TextNotificationServer, [source: source, plan: plan]},
+      {WebhookNotificationServer, [source: source, plan: plan]},
       {SlackHookServer, rls},
       {SearchQueryExecutor, rls},
       {BillingWriter, rls}

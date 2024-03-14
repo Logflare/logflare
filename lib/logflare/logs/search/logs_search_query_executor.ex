@@ -5,7 +5,6 @@ defmodule Logflare.Logs.SearchQueryExecutor do
   alias Logflare.Logs.SearchOperation, as: SO
   import LogflareWeb.SearchLV.Utils
   alias Logflare.LogEvent
-  alias Logflare.Source.RecentLogsServer, as: RLS
   alias Logflare.User.BigQueryUDFs
   alias Logflare.{Users, User}
   alias Logflare.Logs
@@ -30,13 +29,13 @@ defmodule Logflare.Logs.SearchQueryExecutor do
   end
 
   # API
-  def start_link(%RLS{source_id: source_id}, _opts \\ %{}) do
+  def start_link(%{source_id: source_id}, _opts \\ %{}) do
     GenServer.start_link(__MODULE__, %{source_id: source_id},
       name: Source.Supervisor.via(__MODULE__, source_id)
     )
   end
 
-  def child_spec(%RLS{source_id: source_id} = rls) do
+  def child_spec(%{source_id: source_id} = rls) do
     %{
       id: name(source_id),
       start: {__MODULE__, :start_link, [rls]}

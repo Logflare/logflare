@@ -14,6 +14,7 @@ defmodule Logflare.SingleTenant do
   alias Logflare.Source.BigQuery.Schema
   alias Logflare.LogEvent
   alias Logflare.Backends
+  alias Logflare.SourceSchemas
   require Logger
 
   @user_attrs %{
@@ -276,7 +277,9 @@ defmodule Logflare.SingleTenant do
             Logger.info("Updating schemas for for #{source.name}")
             event = read_ingest_sample_json(source.name)
             log_event = LogEvent.make(event, %{source: source})
-            Schema.update(source.token, log_event)
+
+            Backends.via_source(source, Schema)
+            |> Schema.update(log_event)
           end)
         end
 
@@ -341,8 +344,8 @@ defmodule Logflare.SingleTenant do
       checks =
         for source <- sources,
             source.name in @source_names,
-            state = Schema.get_state(source.token) do
-          state.field_count > 3
+            source_schema = SourceSchemas.get_source_schema_by(source_id: source.id) do
+          source_schema != nil
         end
 
       Enum.all?(checks) and not Enum.empty?(sources)

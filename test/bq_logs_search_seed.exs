@@ -90,7 +90,7 @@ project_id = GenUtils.get_project_id(source.token)
 
 {:ok, _} =
   BigQuery.stream_batch!(
-    %RLS{
+    %{
       bigquery_project_id: project_id,
       bigquery_dataset_id: bq_dataset_id,
       source_id: source.token

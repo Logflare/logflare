@@ -2,7 +2,7 @@ defmodule Logflare.Backends.WebhookAdaptorTest do
   @moduledoc false
   use Logflare.DataCase
 
-  alias Logflare.LogEvent
+  alias Logflare.Backends
   alias Logflare.Backends.Adaptor
 
   @subject Logflare.Backends.Adaptor.WebhookAdaptor
@@ -17,7 +17,7 @@ defmodule Logflare.Backends.WebhookAdaptorTest do
       insert(:backend, type: :webhook, sources: [source], config: %{url: "https://example.com"})
 
     pid = start_supervised!({@subject, {source, backend}})
-    {:ok, pid: pid}
+    [pid: pid, backend: backend, source: source]
   end
 
   test "ingest/2", %{pid: pid} do

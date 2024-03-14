@@ -8,8 +8,6 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
   alias Logflare.Backends.Adaptor.WebhookAdaptor
   alias Logflare.Backends.Backend
   alias Logflare.Backends.SourceDispatcher
-  alias Logflare.Buffers.Buffer
-  alias Logflare.Buffers.MemoryBuffer
 
   @behaviour Logflare.Backends.Adaptor
 
@@ -36,7 +34,14 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
   end
 
   @impl Logflare.Backends.Adaptor
-  def ingest(pid, log_events, _opts \\ []), do: GenServer.call(pid, {:ingest, log_events})
+  def ingest(_pid, log_events, opts \\ []) do
+    source_id = Keyword.get(opts, :source_id)
+    backend_id = Keyword.get(opts, :backend_id)
+    messages = Enum.map(log_events, &__MODULE__.Pipeline.transform(&1, []))
+
+    Backends.via_source(source_id, {__MODULE__.Pipeline, backend_id})
+    |> Broadway.push_messages(messages)
+  end
 
   @impl Logflare.Backends.Adaptor
   def cast_config(params) do
@@ -59,13 +64,13 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
   @impl GenServer
   def init({source, backend}) do
     {:ok, _} =
-      Registry.register(SourceDispatcher, source.id, {__MODULE__, :ingest})
-
-    {:ok, buffer_pid} = MemoryBuffer.start_link([])
+      Registry.register(
+        SourceDispatcher,
+        source.id,
+        {__MODULE__, :ingest, [source_id: source.id, backend_id: backend.id]}
+      )
 
     state = %__MODULE__{
-      buffer_module: MemoryBuffer,
-      buffer_pid: buffer_pid,
       config: backend.config,
       backend: backend,
       pipeline_name: Backends.via_source(source, __MODULE__.Pipeline, backend.id)
@@ -73,13 +78,6 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
 
     {:ok, _pipeline_pid} = __MODULE__.Pipeline.start_link(state)
     {:ok, state}
-  end
-
-  @impl GenServer
-  def handle_call({:ingest, log_events}, _from, %{config: _config} = state) do
-    # TODO: queue, send concurrently
-    Buffer.add_many(state.buffer_module, state.buffer_pid, log_events)
-    {:reply, :ok, state}
   end
 
   # HTTP Client
@@ -112,9 +110,7 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
       Broadway.start_link(__MODULE__,
         name: adaptor_state.pipeline_name,
         producer: [
-          module:
-            {BufferProducer,
-             buffer_module: adaptor_state.buffer_module, buffer_pid: adaptor_state.buffer_pid},
+          module: {BufferProducer, []},
           transformer: {__MODULE__, :transform, []},
           concurrency: 1
         ],

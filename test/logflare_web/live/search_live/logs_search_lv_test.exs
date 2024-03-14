@@ -8,6 +8,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
   alias Logflare.Source.BigQuery.Schema
   alias Logflare.Source.RecentLogsServer
   alias LogflareWeb.Source.SearchLV
+  alias Logflare.Backends
 
   import Phoenix.LiveViewTest
 
@@ -205,7 +206,10 @@ defmodule LogflareWeb.Source.SearchLVTest do
 
       le = build(:log_event, metadata: %{"nested" => "something"}, top: "level", source: source)
       :timer.sleep(100)
-      Schema.update(source.token, le)
+
+
+      Backends.via_source(sources, Schema)
+      |> Schema.update(le)
       # TODO: find a better way to test a source schema structure
 
       stub(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, fn _conn, _proj_id, opts ->

@@ -8,6 +8,7 @@ defmodule Logflare.Backends.SourceSup do
   alias Logflare.User
   alias Logflare.Users
   alias Logflare.Source.RecentLogsServer
+  alias Logflare.Source.RateCounterServer
 
   def start_link(%Source{} = source) do
     Supervisor.start_link(__MODULE__, source, name: Backends.via_source(source, __MODULE__))
@@ -41,7 +42,8 @@ defmodule Logflare.Backends.SourceSup do
 
     children =
       [
-        {RecentLogsServer, %{source: source}},
+        {RecentLogsServer, [source: source]},
+        {RateCounterServer, [source: source]},
         default_backend
       ] ++ specs
 

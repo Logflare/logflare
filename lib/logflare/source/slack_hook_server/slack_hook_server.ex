@@ -10,7 +10,7 @@ defmodule Logflare.Source.SlackHookServer do
   alias Logflare.Source.RecentLogsServer, as: RLS
   alias __MODULE__, as: SHS
 
-  def start_link(%RLS{source_id: source_id} = rls) when is_atom(source_id) do
+  def start_link(%{source_id: source_id} = rls) when is_atom(source_id) do
     GenServer.start_link(__MODULE__, rls, name: Source.Supervisor.via(__MODULE__, source_id))
   end
 

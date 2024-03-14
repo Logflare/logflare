@@ -11,10 +11,10 @@ defmodule Logflare.Source.RateCounterServer do
   alias Logflare.Google.BigQuery.GenUtils
   alias Logflare.Source
   alias Logflare.Source.Data
-  alias Logflare.Source.RecentLogsServer, as: RLS
   alias Logflare.Sources
   alias Logflare.Sources.Counters
   alias Logflare.PubSubRates
+  alias Logflare.Backends
 
   @default_bucket_width 60
   @ets_table_name :rate_counters
@@ -42,25 +42,21 @@ defmodule Logflare.Source.RateCounterServer do
 
   @rate_period 1_000
 
-  def start_link(%RLS{source_id: source_token}) do
-    start_link(%{
-      source_token: source_token,
-      name: Source.Supervisor.via(__MODULE__, source_token)
-    })
-  end
+  def start_link(args) do
+    source = Keyword.get(args, :source)
 
-  def start_link(%{source_token: source_token, name: name}) when is_atom(source_token) do
     GenServer.start_link(
       __MODULE__,
-      source_token,
-      name: name
+      args,
+      name: Backends.via_source(source, __MODULE__)
     )
   end
 
-  def init(source_id) when is_atom(source_id) do
+  def init(args) do
     Process.flag(:trap_exit, true)
+    source = Keyword.get(args, :source)
 
-    {:ok, source_id, {:continue, :boot}}
+    {:ok, source.token, {:continue, :boot}}
   end
 
   def handle_continue(:boot, source_id) do
