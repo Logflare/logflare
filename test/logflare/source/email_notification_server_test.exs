@@ -13,17 +13,16 @@ defmodule Logflare.Source.EmailNotificationServerTest do
 
   describe "GenServer" do
     test "start_link/1", %{source: source} do
-      start_supervised!({EmailNotificationServer,
-        [
-          source: source,
-        ]
-      })
+      start_supervised!(
+        {EmailNotificationServer,
+         [
+           source: source
+         ]}
+      )
     end
 
     test "init/1", %{source: source} do
-      EmailNotificationServer.init([
-        source: source,
-      ])
+      EmailNotificationServer.init(source: source)
       assert_receive :check_rate, 1_100
     end
   end

@@ -2,12 +2,13 @@ defmodule LogflareWeb.LogControllerTest do
   @moduledoc false
   use LogflareWeb.ConnCase
   alias Logflare.Backends.Adaptor.WebhookAdaptor
-  alias Logflare.SystemMetrics.AllLogsLogged
-  alias Logflare.Source.RecentLogsServer
   alias Logflare.SingleTenant
   alias Logflare.Users
   alias Logflare.Source.V1SourceSup
   alias Logflare.Sources
+  alias Logflare.Sources.Counters
+  alias Logflare.Sources.RateCounters
+  alias Logflare.SystemMetrics.AllLogsLogged
 
   @valid %{"some" => "valid log entry", "event_message" => "hi!"}
   @valid_json Jason.encode!(@valid)
@@ -37,7 +38,7 @@ defmodule LogflareWeb.LogControllerTest do
 
     test "valid ingestion", %{conn: conn, source: source, user: user} do
       WebhookAdaptor
-      |> expect(:ingest, fn _, _ , _-> :ok end)
+      |> expect(:ingest, fn _, _, _ -> :ok end)
 
       conn =
         conn
@@ -286,7 +287,7 @@ defmodule LogflareWeb.LogControllerTest do
       assert json_response(conn, 200) == %{"message" => "Logged!"}
 
       # wait for all logs to be ingested before removing all stubs
-      :timer.sleep(2000)
+      :timer.sleep(3000)
     end
   end
 
@@ -294,7 +295,6 @@ defmodule LogflareWeb.LogControllerTest do
     insert(:plan, name: "Free")
     user = insert(:user)
     source = insert(:source, user: user)
-
     start_supervised!({V1SourceSup, source: source})
     :timer.sleep(500)
 

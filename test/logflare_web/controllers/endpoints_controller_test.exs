@@ -15,6 +15,7 @@ defmodule LogflareWeb.EndpointsControllerTest do
     start_supervised!(RateCounters)
     :ok
   end
+
   describe "query" do
     setup :set_mimic_global
 

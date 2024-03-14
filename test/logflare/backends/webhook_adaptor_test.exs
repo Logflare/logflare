@@ -21,7 +21,7 @@ defmodule Logflare.Backends.WebhookAdaptorTest do
     [pid: pid, backend: backend, source: source]
   end
 
-  test "ingest/2", %{ source: source} do
+  test "ingest/2", %{source: source} do
     @subject.Client
     |> expect(:send, fn _, _ -> %Tesla.Env{} end)
 

@@ -10,7 +10,6 @@ defmodule Logflare.Source.BillingWriterTest do
   setup :set_mimic_global
 
   setup do
-
     start_supervised!(AllLogsLogged)
     start_supervised!(Counters)
     start_supervised!(RateCounters)
@@ -21,7 +20,7 @@ defmodule Logflare.Source.BillingWriterTest do
     user = user |> Logflare.Repo.preload(:billing_account)
     plan = insert(:plan, type: "metered")
 
-    pid = start_supervised!( {BillingWriter, source: source, user: user, plan: plan} )
+    pid = start_supervised!({BillingWriter, source: source, user: user, plan: plan})
 
     # increase log count
     Counters.increment(source.token)

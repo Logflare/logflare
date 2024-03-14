@@ -17,7 +17,7 @@ defmodule Logflare.Source.TextNotificationServerTest do
     end
 
     test "init/1", %{source: source, plan: plan} do
-      TextNotificationServer.init([ source: source, plan: plan])
+      TextNotificationServer.init(source: source, plan: plan)
       assert_receive :check_rate, 1_100
     end
   end
@@ -28,12 +28,22 @@ defmodule Logflare.Source.TextNotificationServerTest do
 
     user = insert(:user)
     plan = insert(:plan, name: "Free")
-    source = insert(:source, user: user, notifications_every: 1_000, notifications: %{user_text_notifications: true})
 
-    pid = start_supervised!({TextNotificationServer, [
-      plan: plan,
-      source: source
-    ]})
+    source =
+      insert(:source,
+        user: user,
+        notifications_every: 1_000,
+        notifications: %{user_text_notifications: true}
+      )
+
+    pid =
+      start_supervised!(
+        {TextNotificationServer,
+         [
+           plan: plan,
+           source: source
+         ]}
+      )
 
     send(pid, :check_rate)
   end

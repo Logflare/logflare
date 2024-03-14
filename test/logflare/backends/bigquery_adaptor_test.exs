@@ -12,12 +12,11 @@ defmodule Logflare.Backends.BigQueryAdaptorTest do
   @subject Logflare.Backends.Adaptor.BigQueryAdaptor
 
   doctest @subject
-  setup do
 
+  setup do
     start_supervised!(AllLogsLogged)
     start_supervised!(Counters)
     start_supervised!(RateCounters)
-
 
     Goth
     |> stub(:fetch, fn _mod -> {:ok, %Goth.Token{token: "auth-token"}} end)
@@ -125,14 +124,14 @@ defmodule Logflare.Backends.BigQueryAdaptorTest do
       end)
 
       :timer.sleep(500)
+
       Logflare.Mailer
-      |>stub(:deliver, fn _ -> :ok end)
+      |> stub(:deliver, fn _ -> :ok end)
 
       assert :ok =
                @subject.ingest(adaptor, [log_event], source_id: source.id, backend_id: backend.id)
 
       :timer.sleep(2500)
-
     end
   end
 end

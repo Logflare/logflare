@@ -1,8 +1,12 @@
 defmodule LogflareWeb.Api.Partner.UserControllerTest do
   use LogflareWeb.ConnCase
   alias Logflare.Partners
+  alias Logflare.Sources.Counters
+  alias Logflare.Sources.RateCounters
+  alias Logflare.SystemMetrics.AllLogsLogged
 
   setup do
+    start_supervised!(AllLogsLogged)
     {:ok, %{partner: insert(:partner)}}
   end
 
