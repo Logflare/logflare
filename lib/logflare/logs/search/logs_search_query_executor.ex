@@ -130,13 +130,9 @@ defmodule Logflare.Logs.SearchQueryExecutor do
       "Starting search query from #{pid_to_string(lv_pid)} for #{params.source.token} source..."
     )
 
-    user = Users.Cache.get(state.user_id)
+    user = Users.Cache.get(state.user_id) |> Users.Cache.preload_defaults()
 
-    state =
-      case BigQueryUDFs.create_if_not_exists_udfs_for_user_dataset(user) do
-        {:ok, user} -> %{state | user: user}
-        _ -> state
-      end
+    BigQueryUDFs.create_if_not_exists_udfs_for_user_dataset(user)
 
     current_lv_task_params = state.event_tasks[lv_pid]
 

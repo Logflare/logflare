@@ -217,7 +217,9 @@ defmodule Logflare.Sources do
   end
 
   def get_bq_schema(%Source{} = source) do
-    with %{schema: schema} <- Schema.get_state(source.token) do
+    name = Backends.via_source(source, Schema, nil)
+
+    with %{schema: schema} <- Schema.get_state(name) do
       schema = SchemaUtils.deep_sort_by_fields_name(schema)
       {:ok, schema}
     end
