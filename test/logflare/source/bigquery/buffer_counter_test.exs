@@ -16,11 +16,16 @@ defmodule Logflare.Source.BigQuery.BufferCounterTest do
 
     source = insert(:source, user: user)
     name = Backends.via_source(source, {BufferCounter, nil})
-    start_supervised!({BufferCounter, [
-      source_id: source.id,
-      backend_id: nil,
-      name: name
-    ]})
+
+    start_supervised!(
+      {BufferCounter,
+       [
+         source_id: source.id,
+         backend_id: nil,
+         name: name
+       ]}
+    )
+
     [name: name, source: source]
   end
 

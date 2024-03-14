@@ -21,6 +21,12 @@ defmodule LogflareWeb.Source.SearchLVTest do
     "chart_aggregate" => "count",
     "tailing?" => "false"
   }
+  setup do
+    start_supervised!(AllLogsLogged)
+    start_supervised!(Counters)
+    start_supervised!(RateCounters)
+    :ok
+  end
 
   defp setup_mocks(_ctx) do
     stub(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, fn _conn, _proj_id, _opts ->
@@ -39,6 +45,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
   # requires a source, and plan set
   defp setup_source_processes(context) do
     start_supervised!(AllLogsLogged)
+
     Enum.each(context, fn
       {_, %Source{} = source} ->
         start_supervised!({V1SourceSup, source: source}, id: source.token)
@@ -46,6 +53,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
       _ ->
         nil
     end)
+
     :ok
   end
 
@@ -205,9 +213,9 @@ defmodule LogflareWeb.Source.SearchLVTest do
       le = build(:log_event, metadata: %{"nested" => "something"}, top: "level", source: source)
       :timer.sleep(100)
 
-
       Backends.via_source(source, Schema, nil)
       |> Schema.update(le)
+
       # TODO: find a better way to test a source schema structure
 
       stub(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, fn _conn, _proj_id, opts ->

@@ -4,6 +4,12 @@ defmodule LogflareWeb.BillingAccountLive.EstimateUsageComponentTest do
   import Phoenix.LiveViewTest
   @endpoint LogflareWeb.Endpoint
 
+  setup do
+    stub(Goth, :fetch, fn _mod -> {:ok, %Goth.Token{token: "auth-token"}} end)
+
+    :ok
+  end
+
   describe "EstimateUsageComponent" do
     setup do
       user = insert(:user, billing_enabled: true)

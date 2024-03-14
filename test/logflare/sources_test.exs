@@ -149,7 +149,6 @@ defmodule Logflare.SourcesTest do
       Logflare.Google.BigQuery
       |> stub(:init_table!, fn _, _, _, _, _, _ -> :ok end)
 
-
       RateCounterServer
       |> stub(:get_data_from_ets, fn _ -> %RateCounterServer{} end)
       |> stub(:broadcast, fn _ -> :ok end)

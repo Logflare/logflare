@@ -20,6 +20,7 @@ defmodule Logflare.BackendsTest do
 
     :ok
   end
+
   describe "backend management" do
     setup do
       user = insert(:user)
@@ -148,7 +149,7 @@ defmodule Logflare.BackendsTest do
   describe "ingestion with backend" do
     setup :set_mimic_global
 
-  setup do
+    setup do
       insert(:plan)
       user = insert(:user)
       source = insert(:source, user_id: user.id)
@@ -166,7 +167,7 @@ defmodule Logflare.BackendsTest do
 
     test "backends receive dispatched log events", %{source: source} do
       Backends.Adaptor.WebhookAdaptor
-      |> expect(:ingest, fn _pid, [event | _] , _->
+      |> expect(:ingest, fn _pid, [event | _], _ ->
         if match?(%_{}, event) do
           :ok
         else

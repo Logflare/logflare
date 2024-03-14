@@ -16,6 +16,13 @@ defmodule LogflareWeb.SourceControllerTest do
   alias Logflare.SingleTenant
   alias Logflare.Source.RecentLogsServer
 
+  alias Logflare.SystemMetrics.AllLogsLogged
+
+  setup do
+    start_supervised!(AllLogsLogged)
+    :ok
+  end
+
   describe "list" do
     setup %{conn: conn} do
       user = insert(:user)
@@ -73,6 +80,7 @@ defmodule LogflareWeb.SourceControllerTest do
       start_supervised!({RecentLogsServer, source: source})
       le = build(:log_event, source: source)
       :ok = RecentLogsServer.push(source, le)
+
       html =
         conn
         |> get(Routes.source_path(conn, :show, source))

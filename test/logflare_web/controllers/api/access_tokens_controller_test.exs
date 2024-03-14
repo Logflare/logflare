@@ -2,6 +2,7 @@ defmodule LogflareWeb.Api.AccessTokensTest do
   use LogflareWeb.ConnCase
 
   setup do
+    stub(Goth, :fetch, fn _mod -> {:ok, %Goth.Token{token: "auth-token"}} end)
     insert(:plan, name: "Free")
     user = insert(:user)
     {:ok, user: user}

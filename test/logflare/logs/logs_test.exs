@@ -89,6 +89,7 @@ defmodule Logflare.LogsTest do
       end)
 
       pid = self()
+
       GoogleApi.BigQuery.V2.Api.Tables
       |> expect(:bigquery_tables_patch, fn conn,
                                            _project_id,
