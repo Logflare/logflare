@@ -8,31 +8,37 @@ defmodule Logflare.Source.EmailNotificationServer do
   alias Logflare.Sources.Counters
   alias Logflare.AccountEmail
   alias Logflare.Mailer
-  alias Logflare.Source.RecentLogsServer, as: RLS
-  alias Logflare.Source
+  alias Logflare.Backends
 
-  def start_link(%RLS{source_id: source_id} = rls) when is_atom(source_id) do
-    GenServer.start_link(__MODULE__, rls, name: Source.Supervisor.via(__MODULE__, source_id))
+  def start_link(args) do
+    source = Keyword.get(args, :source)
+    GenServer.start_link(__MODULE__, args, name: Backends.via_source(source, __MODULE__))
   end
 
-  def init(rls) do
-    check_rate(rls.notifications_every)
+  def init(args) do
+    source = Keyword.get(args, :source)
+    check_rate(source.notifications_every)
     Process.flag(:trap_exit, true)
 
-    {:ok, current_inserts} = Counters.get_inserts(rls.source_id)
+    {:ok, current_inserts} = Counters.get_inserts(source.token)
 
-    {:ok, %{rls | inserts_since_boot: current_inserts}}
+    {:ok,
+     %{
+       notifications_every: source.notifications_every,
+       source_token: source.token,
+       inserts_since_boot: current_inserts
+     }}
   end
 
-  def handle_info(:check_rate, rls) do
-    {:ok, current_inserts} = Counters.get_inserts(rls.source_id)
-    rate = current_inserts - rls.inserts_since_boot
+  def handle_info(:check_rate, state) do
+    {:ok, current_inserts} = Counters.get_inserts(state.source_token)
+    rate = current_inserts - state.inserts_since_boot
 
     case rate > 0 do
       true ->
-        check_rate(rls.notifications_every)
+        check_rate(state.notifications_every)
 
-        source = Sources.Cache.get_by_id(rls.source_id)
+        source = Sources.Cache.get_by_id(state.source_token)
         user = Users.Cache.get_by(id: source.user_id)
 
         if source.notifications.user_email_notifications == true do
@@ -66,17 +72,20 @@ defmodule Logflare.Source.EmailNotificationServer do
           end)
         end
 
-        {:noreply, %{rls | inserts_since_boot: current_inserts}}
+        {:noreply, %{state | inserts_since_boot: current_inserts}}
 
       false ->
-        check_rate(rls.notifications_every)
-        {:noreply, rls}
+        check_rate(state.notifications_every)
+        {:noreply, state}
     end
   end
 
   def terminate(reason, state) do
     # Do Shutdown Stuff
-    Logger.info("Going Down - #{inspect(reason)} - #{__MODULE__}", %{source_id: state.source_id})
+    Logger.info("Going Down - #{inspect(reason)} - #{__MODULE__}", %{
+      source_id: state.source_token
+    })
+
     reason
   end
 

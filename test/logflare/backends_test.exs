@@ -7,7 +7,19 @@ defmodule Logflare.BackendsTest do
   alias Logflare.Source
   alias Logflare.Source.RecentLogsServer
 
-  @valid_event %{some: "event"}
+  alias Logflare.Sources.Counters
+  alias Logflare.Sources.RateCounters
+  alias Logflare.SystemMetrics.AllLogsLogged
+
+  setup do
+    stub(Goth, :fetch, fn _mod -> {:ok, %Goth.Token{token: "auth-token"}} end)
+
+    start_supervised!(AllLogsLogged)
+    start_supervised!(Counters)
+    start_supervised!(RateCounters)
+
+    :ok
+  end
   describe "backend management" do
     setup do
       user = insert(:user)
@@ -78,6 +90,8 @@ defmodule Logflare.BackendsTest do
 
       # unchanged
       assert %Backend{config: %{url: "http" <> _}} = Backends.get_backend(backend.id)
+
+      :timer.sleep(1000)
     end
   end
 
@@ -89,15 +103,11 @@ defmodule Logflare.BackendsTest do
       {:ok, source: source}
     end
 
-    test "source_sup_started?/1", %{source: source} do
+    test "source_sup_started?/1, lookup/2", %{source: source} do
       assert false == Backends.source_sup_started?(source)
       start_supervised!({SourceSup, source})
-      :timer.sleep(400)
+      :timer.sleep(1000)
       assert true == Backends.source_sup_started?(source)
-    end
-
-    test "lookup/2", %{source: source} do
-      start_supervised!({SourceSup, source})
       assert {:ok, _pid} = Backends.lookup(RecentLogsServer, source.token)
     end
 
@@ -116,26 +126,21 @@ defmodule Logflare.BackendsTest do
 
   describe "ingestion" do
     setup do
-
-
-    start_supervised!(AllLogsLogged)
-    start_supervised!(Counters)
-    start_supervised!(RateCounters)
-
       insert(:plan)
       user = insert(:user)
       source = insert(:source, user_id: user.id)
       start_supervised!({SourceSup, source})
+      :timer.sleep(500)
       {:ok, source: source}
     end
 
     test "correctly retains the 100 items", %{source: source} do
-      events = for n <- 1..105, do: build(:log_event, source: source, some: "event")
+      events = for _n <- 1..105, do: build(:log_event, source: source, some: "event")
       assert :ok = Backends.ingest_logs(events, source)
       :timer.sleep(1500)
       cached = Backends.list_recent_logs(source)
       assert length(cached) == 100
-      cached = Backends.list_local_recent_logs(source)
+      cached = Backends.list_recent_logs_local(source)
       assert length(cached) == 100
     end
   end
@@ -161,7 +166,7 @@ defmodule Logflare.BackendsTest do
 
     test "backends receive dispatched log events", %{source: source} do
       Backends.Adaptor.WebhookAdaptor
-      |> expect(:ingest, fn _pid, [event | _] ->
+      |> expect(:ingest, fn _pid, [event | _] , _->
         if match?(%_{}, event) do
           :ok
         else

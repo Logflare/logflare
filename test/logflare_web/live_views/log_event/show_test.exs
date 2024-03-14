@@ -24,7 +24,8 @@ defmodule LogflareWeb.LogEventLive.ShowTest do
       |> Repo.one()
 
     source = Sources.get_by(token: source_token)
-    {:ok, _} = RLS.start_link(%RLS{source_id: String.to_atom(source_token), source: source})
+    Logflare.Sources.Counters.start_link()
+    {:ok, _} = RLS.start_link(%{source_id: String.to_atom(source_token), source: source})
 
     %{user: user, source: [source]}
   end

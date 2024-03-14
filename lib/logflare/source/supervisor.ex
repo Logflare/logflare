@@ -9,7 +9,6 @@ defmodule Logflare.Source.Supervisor do
   alias Logflare.Source
   alias Logflare.Sources
   alias Logflare.Sources.Counters
-  alias Logflare.Source.RecentLogsServer, as: RLS
   alias Logflare.Google.BigQuery
   alias Logflare.Utils.Tasks
   alias Logflare.Source.V1SourceDynSup
@@ -57,7 +56,7 @@ defmodule Logflare.Source.Supervisor do
     |> Enum.chunk_every(25)
     |> Enum.each(fn chunk ->
       for source <- chunk do
-        rls = %RLS{source_id: source.token, source: source}
+        rls = %{source_id: source.token, source: source}
         DynamicSupervisor.start_child(V1SourceDynSup, {V1SourceSup, rls})
       end
 
@@ -227,7 +226,7 @@ defmodule Logflare.Source.Supervisor do
     source = Sources.get_by(token: source_token)
 
     if source do
-      rls = %RLS{source_id: source_token, source: source}
+      rls = %{source_id: source_token, source: source}
 
       case DynamicSupervisor.start_child(V1SourceDynSup, {V1SourceSup, rls}) do
         {:ok, _pid} = res ->

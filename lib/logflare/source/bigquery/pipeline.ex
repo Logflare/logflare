@@ -14,9 +14,8 @@ defmodule Logflare.Source.BigQuery.Pipeline do
   alias Logflare.LogEvent, as: LE
   alias Logflare.Mailer
   alias Logflare.Source
-  alias Logflare.Source.BigQuery.BufferProducer
+  alias Logflare.Buffers.BufferProducer
   alias Logflare.Source.BigQuery.Schema
-  alias Logflare.Source.RecentLogsServer, as: RLS
   alias Logflare.Source.Supervisor
   alias Logflare.Sources
   alias Logflare.Users
@@ -24,36 +23,22 @@ defmodule Logflare.Source.BigQuery.Pipeline do
   # each batch should at most be 5MB
   @max_batch_length 5_000_000
   @max_batch_size 250
-  def start_link([%RLS{} = rls | opts]), do: start_link(rls, opts)
-  def start_link(%RLS{} = rls), do: start_link(rls, [])
 
-  def start_link(%{name: name} = args) do
-    start_link(args, name: name)
-  end
+  def start_link(args, opts \\ []) do
+    {name, args} = Keyword.pop(args, :name)
+    source = Keyword.get(args, :source)
 
-  def start_link(%RLS{source: source, plan: _plan} = rls, opts),
-    do:
-      start_link(
-        %{
-          source: source,
-          bigquery_project_id: rls.bigquery_project_id,
-          bigquery_dataset_id: rls.bigquery_dataset_id,
-        },
-        opts
-      )
-
-  def start_link(%{source: source, bigquery_project_id: _, bigquery_dataset_id: _} = rls, opts) do
     opts =
       Keyword.merge(
         [
-          name: name(source.token),
+          name: name,
           # top-level will apply to all children
           hibernate_after: 5_000,
           spawn_opt: [
             fullsweep_after: 0
           ],
           producer: [
-            module: {BufferProducer, %{source_token: source.token}}
+            module: {BufferProducer, []}
           ],
           processors: [
             default: [concurrency: System.schedulers_online() * 2]
@@ -68,10 +53,11 @@ defmodule Logflare.Source.BigQuery.Pipeline do
             ]
           ],
           context: %{
-            bigquery_project_id: rls.bigquery_project_id,
-            bigquery_dataset_id: rls.bigquery_dataset_id,
+            bigquery_project_id: args[:bigquery_project_id],
+            bigquery_dataset_id: args[:bigquery_dataset_id],
             source_token: source.token,
-            source_id: source.id
+            source_id: source.id,
+            backend_id: args[:backend_id]
           }
         ],
         opts
@@ -86,6 +72,7 @@ defmodule Logflare.Source.BigQuery.Pipeline do
   def process_name({:via, _module, {_registry, {source_id, {mod, backend_id}}}}, base_name) do
     Backends.via_source(source_id, {mod, backend_id, base_name})
   end
+
   def process_name(proc_name, base_name) do
     String.to_atom("#{proc_name}-#{base_name}")
   end
@@ -95,7 +82,7 @@ defmodule Logflare.Source.BigQuery.Pipeline do
     Logger.metadata(source_id: context.source_token, source_token: context.source_token)
 
     message
-    |> Message.update_data(&process_data/1)
+    |> Message.update_data(&process_data(&1, context))
     |> Message.put_batcher(:bq)
   end
 
@@ -190,17 +177,18 @@ defmodule Logflare.Source.BigQuery.Pipeline do
     messages
   end
 
-  def process_data(%LE{source: %Source{lock_schema: true}} = log_event) do
+  def process_data(%LE{source: %Source{lock_schema: true}} = log_event, _context) do
     log_event
   end
 
-  def process_data(%LE{body: _body, source: %Source{token: source_token}} = log_event) do
+  def process_data(%LE{body: _body, source: source} = log_event, context) do
     # TODO ... We use `ignoreUnknownValues: true` when we do `stream_batch!`. If we set that to `true`
     # then this makes BigQuery check the payloads for new fields. In the response we'll get a list of events that didn't validate.
     # Send those events through the pipeline again, but run them through our schema process this time. Do all
     # these things a max of like 5 times and after that send them to the rejected pile.
-    # TODO: use source_id and backend_id
-    :ok = Schema.update(source_token, log_event)
+    :ok =
+      Backends.via_source(source, {Schema, Map.get(context, :backend_id)})
+      |> Schema.update(log_event)
 
     log_event
   end

@@ -189,7 +189,7 @@ defmodule Logflare.Backends do
   @spec ingest_logs([log_param()], Source.t()) :: :ok
   def ingest_logs(log_events, source) do
     # store in recent logs
-    RecentLogsServer.push_many(source, log_events)
+    RecentLogsServer.push(source, log_events)
 
     Registry.dispatch(SourceDispatcher, source.id, fn entries ->
       for {pid, mfa} <- entries do
@@ -231,6 +231,7 @@ defmodule Logflare.Backends do
   def lookup(module, source_token) do
     source = Sources.Cache.get_source_by_token(source_token)
     {:via, _registry, {registry, via_id}} = via_source(source, module)
+
     Registry.lookup(registry, via_id)
     |> case do
       [{pid, _}] -> {:ok, pid}

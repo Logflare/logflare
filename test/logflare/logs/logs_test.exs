@@ -4,7 +4,6 @@ defmodule Logflare.LogsTest do
   alias Logflare.Logs
   alias Logflare.Lql
   # v1 pipeline
-  alias Logflare.Source.RecentLogsServer
   alias Logflare.Source.V1SourceSup
   alias Logflare.SystemMetrics.AllLogsLogged
 
@@ -17,8 +16,8 @@ defmodule Logflare.LogsTest do
     source = insert(:source, user: user)
     source_b = insert(:source, user: user)
 
-    rls = %RecentLogsServer{source: source, source_id: source.token}
-    rls_b = %RecentLogsServer{source: source_b, source_id: source_b.token}
+    rls = %{source: source, source_id: source.token}
+    rls_b = %{source: source_b, source_id: source_b.token}
 
     start_supervised!({V1SourceSup, rls}, id: :source)
     start_supervised!({V1SourceSup, rls_b}, id: :source_b)

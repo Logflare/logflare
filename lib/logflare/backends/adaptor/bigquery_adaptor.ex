@@ -3,14 +3,12 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
 
   alias Logflare.Backends
   alias Logflare.Sources
-  alias Logflare.Source
   alias Logflare.Backends.SourceDispatcher
   alias Logflare.Backends.Backend
   alias Logflare.Source.BigQuery.Pipeline
   alias Logflare.Source.BigQuery.Schema
   alias Logflare.Source.BigQuery.Pipeline
   alias Logflare.Source.BigQuery.BufferCounter
-  alias Logflare.Source.RateCounterServer
   alias Logflare.Users
   alias Logflare.Billing
   use Supervisor
@@ -53,33 +51,28 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
            ) do
       children = [
         {BufferCounter,
-         %{
+         [
            source_uuid: source.token,
            backend_token: backend.token,
            name: Backends.via_source(source, BufferCounter, backend.id)
-         }},
+         ]},
         {Pipeline,
-         %{
+         [
            source: source,
+           backend_id: backend.id,
            bigquery_project_id: project_id,
            bigquery_dataset_id: dataset_id,
            name: Backends.via_source(source, Pipeline, backend.id)
-         }},
+         ]},
         {Schema,
-         %{
+         [
            plan: plan,
-           source_id: source.token,
+           source: source,
            bigquery_project_id: project_id,
            bigquery_dataset_id: dataset_id,
-          #  TODO: separate by backend
+           #  TODO: separate by backend
            name: Backends.via_source(source, Schema)
-
-         }},
-        {RateCounterServer,
-         %{
-           source_token: source.token,
-           name: Backends.via_source(source, RateCounterServer, backend.id)
-         }}
+         ]}
       ]
 
       Supervisor.init(children, strategy: :one_for_one, max_restarts: 10)
@@ -92,21 +85,25 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
     backend_id = Keyword.get(opts, :backend_id)
     source = Sources.Cache.get_by_id(source_id)
 
-    backend =
-      if backend_id do
-        Backends.Cache.get_backend(backend_id)
-      end
-
-    backend_token = if backend, do: backend.token, else: nil
+    buffer_counter_via = Backends.via_source(source, {BufferCounter, backend_id})
 
     messages =
       for le <- log_events,
           do: %Broadway.Message{
             data: le,
-            acknowledger: {Source.BigQuery.BufferProducer, {source.token, backend_token}, nil}
+            acknowledger: {__MODULE__, buffer_counter_via, nil}
           }
 
-    BufferCounter.push_batch(source, backend, messages)
+    with {:ok, _count} = BufferCounter.inc(buffer_counter_via, Enum.count(messages)) do
+      Backends.via_source(source, {Pipeline, backend_id})
+      |> Broadway.push_messages(messages)
+    end
+
+    :ok
+  end
+
+  def ack(via, successful, failed) do
+    BufferCounter.decr(via, Enum.count(successful) + Enum.count(failed))
     :ok
   end
 
