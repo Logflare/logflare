@@ -3,11 +3,14 @@ defmodule LogflareWeb.Source.SearchLVTest do
   use LogflareWeb.ConnCase
 
   alias Logflare.Source
-  alias Logflare.Logs.SearchQueryExecutor
   alias Logflare.SingleTenant
   alias Logflare.Source.BigQuery.Schema
   alias LogflareWeb.Source.SearchLV
   alias Logflare.Backends
+  alias Logflare.Source.V1SourceSup
+  alias Logflare.Sources.Counters
+  alias Logflare.Sources.RateCounters
+  alias Logflare.SystemMetrics.AllLogsLogged
 
   import Phoenix.LiveViewTest
 
@@ -35,17 +38,14 @@ defmodule LogflareWeb.Source.SearchLVTest do
 
   # requires a source, and plan set
   defp setup_source_processes(context) do
-    plan = context.plan
-
+    start_supervised!(AllLogsLogged)
     Enum.each(context, fn
-      {_, %Source{token: token} = source} ->
-        start_supervised!({Schema, [source: source, plan: plan]}, id: token)
-        start_supervised!({SearchQueryExecutor, [source: source]})
+      {_, %Source{} = source} ->
+        start_supervised!({V1SourceSup, source: source}, id: source.token)
 
       _ ->
         nil
     end)
-
     :ok
   end
 
