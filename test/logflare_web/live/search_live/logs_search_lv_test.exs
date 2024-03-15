@@ -8,9 +8,6 @@ defmodule LogflareWeb.Source.SearchLVTest do
   alias LogflareWeb.Source.SearchLV
   alias Logflare.Backends
   alias Logflare.Source.V1SourceSup
-  alias Logflare.Sources.Counters
-  alias Logflare.Sources.RateCounters
-  alias Logflare.SystemMetrics.AllLogsLogged
 
   import Phoenix.LiveViewTest
 
@@ -21,12 +18,6 @@ defmodule LogflareWeb.Source.SearchLVTest do
     "chart_aggregate" => "count",
     "tailing?" => "false"
   }
-  setup do
-    start_supervised!(AllLogsLogged)
-    start_supervised!(Counters)
-    start_supervised!(RateCounters)
-    :ok
-  end
 
   defp setup_mocks(_ctx) do
     stub(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, fn _conn, _proj_id, _opts ->

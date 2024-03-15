@@ -6,8 +6,6 @@ defmodule LogflareWeb.LogControllerTest do
   alias Logflare.Users
   alias Logflare.Source.V1SourceSup
   alias Logflare.Sources
-  alias Logflare.Sources.Counters
-  alias Logflare.Sources.RateCounters
   alias Logflare.SystemMetrics.AllLogsLogged
 
   @valid %{"some" => "valid log entry", "event_message" => "hi!"}

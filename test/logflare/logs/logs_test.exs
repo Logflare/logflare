@@ -1,15 +1,14 @@
 defmodule Logflare.LogsTest do
   @moduledoc false
   use Logflare.DataCase
+
   alias Logflare.Logs
   alias Logflare.Lql
-  # v1 pipeline
   alias Logflare.Source.V1SourceSup
   alias Logflare.SystemMetrics.AllLogsLogged
 
   def source_and_user(_context) do
     start_supervised!(AllLogsLogged)
-
     insert(:plan)
     user = insert(:user)
 

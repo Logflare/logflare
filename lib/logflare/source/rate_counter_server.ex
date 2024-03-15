@@ -56,19 +56,19 @@ defmodule Logflare.Source.RateCounterServer do
     Process.flag(:trap_exit, true)
     source = Keyword.get(args, :source)
 
+    setup_ets_table(source.token)
     {:ok, source.token, {:continue, :boot}}
   end
 
-  def handle_continue(:boot, source_id) do
-    setup_ets_table(source_id)
+  def handle_continue(:boot, source_token) do
     put_current_rate()
-    bigquery_project_id = GenUtils.get_project_id(source_id)
-    init_counters(source_id, bigquery_project_id)
+    bigquery_project_id = GenUtils.get_project_id(source_token)
+    init_counters(source_token, bigquery_project_id)
 
-    RateCounterServer.get_data_from_ets(source_id)
+    RateCounterServer.get_data_from_ets(source_token)
     |> RateCounterServer.broadcast()
 
-    {:noreply, source_id}
+    {:noreply, source_token}
   end
 
   def handle_info(:put_rate, source_id) when is_atom(source_id) do

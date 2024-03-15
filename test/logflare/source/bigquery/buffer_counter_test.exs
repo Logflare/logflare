@@ -2,15 +2,9 @@ defmodule Logflare.Source.BigQuery.BufferCounterTest do
   @moduledoc false
   use Logflare.DataCase
   alias Logflare.Source.BigQuery.BufferCounter
-  alias Logflare.Sources.Counters
-  alias Logflare.Sources.RateCounters
-  alias Logflare.SystemMetrics.AllLogsLogged
   alias Logflare.Backends
 
   setup do
-    start_supervised!(AllLogsLogged)
-    start_supervised!(Counters)
-    start_supervised!(RateCounters)
     insert(:plan)
     user = insert(:user)
 

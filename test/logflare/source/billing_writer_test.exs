@@ -6,13 +6,10 @@ defmodule Logflare.Source.BillingWriterTest do
   alias Logflare.Source.BillingWriter
   alias Logflare.Source.RecentLogsServer
   alias Logflare.Sources.Counters
-
-  setup :set_mimic_global
+  alias Logflare.SystemMetrics.AllLogsLogged
 
   setup do
     start_supervised!(AllLogsLogged)
-    start_supervised!(Counters)
-    start_supervised!(RateCounters)
 
     user = insert(:user)
     source = insert(:source, user: user)
@@ -21,9 +18,6 @@ defmodule Logflare.Source.BillingWriterTest do
     plan = insert(:plan, type: "metered")
 
     pid = start_supervised!({BillingWriter, source: source, user: user, plan: plan})
-
-    # increase log count
-    Counters.increment(source.token)
 
     # Stripe mocks
     Stripe.SubscriptionItem.Usage

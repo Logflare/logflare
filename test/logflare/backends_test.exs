@@ -6,18 +6,10 @@ defmodule Logflare.BackendsTest do
   alias Logflare.Backends.SourceSup
   alias Logflare.Source
   alias Logflare.Source.RecentLogsServer
-
-  alias Logflare.Sources.Counters
-  alias Logflare.Sources.RateCounters
   alias Logflare.SystemMetrics.AllLogsLogged
 
   setup do
-    stub(Goth, :fetch, fn _mod -> {:ok, %Goth.Token{token: "auth-token"}} end)
-
     start_supervised!(AllLogsLogged)
-    start_supervised!(Counters)
-    start_supervised!(RateCounters)
-
     :ok
   end
 
