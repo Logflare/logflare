@@ -68,6 +68,8 @@ jobs:
           restore-keys: ${{ runner.os }}-mix-
       - name: Install dependencies
         run: mix deps.get
+      - name: Run DB migrations
+        run: MIX_ENV=test mix do ecto.create, ecto.migrate
       - name: Run compilation warnings check
         run: mix test.compile
       - name: Run unit tests with code coverage check
