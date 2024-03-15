@@ -1,13 +1,9 @@
 defmodule LogflareWeb.Api.TeamControllerTest do
+  @moduledoc false
   use LogflareWeb.ConnCase
 
   setup do
-    stub(Goth, :fetch, fn _mod -> {:ok, %Goth.Token{token: "auth-token"}} end)
-    start_supervised!(AllLogsLogged)
-    start_supervised!(Counters)
-    start_supervised!(RateCounters)
-
-    insert(:plan, name: "Free")
+    insert(:plan)
     user = insert(:user)
     main_team = insert(:team, user: user)
 

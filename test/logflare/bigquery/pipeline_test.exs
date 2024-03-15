@@ -1,9 +1,9 @@
 defmodule Logflare.BigQuery.PipelineTest do
   @moduledoc false
-  alias Logflare.Source.BigQuery.Pipeline
-  alias Logflare.{LogEvent}
-  alias GoogleApi.BigQuery.V2.Model.TableDataInsertAllRequestRows
   use Logflare.DataCase
+  alias Logflare.Source.BigQuery.Pipeline
+  alias Logflare.LogEvent
+  alias GoogleApi.BigQuery.V2.Model.TableDataInsertAllRequestRows
 
   @pipeline_name :test_pipeline
   describe "pipeline" do

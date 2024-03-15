@@ -1,14 +1,9 @@
 defmodule LogflareWeb.BillingAccountLive.EstimateUsageComponentTest do
+  @moduledoc false
   use Logflare.DataCase
   alias LogflareWeb.BillingAccountLive.EstimateUsageComponent
   import Phoenix.LiveViewTest
   @endpoint LogflareWeb.Endpoint
-
-  setup do
-    stub(Goth, :fetch, fn _mod -> {:ok, %Goth.Token{token: "auth-token"}} end)
-
-    :ok
-  end
 
   describe "EstimateUsageComponent" do
     setup do

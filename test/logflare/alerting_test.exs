@@ -1,4 +1,5 @@
 defmodule Logflare.AlertingTest do
+  @moduledoc false
   use Logflare.DataCase
 
   alias Logflare.Alerting

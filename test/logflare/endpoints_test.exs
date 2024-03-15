@@ -1,5 +1,6 @@
 defmodule Logflare.EndpointsTest do
-  use Logflare.DataCase, async: false
+  @moduledoc false
+  use Logflare.DataCase
 
   alias Logflare.Endpoints
   alias Logflare.Endpoints.Query

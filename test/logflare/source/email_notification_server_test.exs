@@ -3,7 +3,6 @@ defmodule Logflare.Source.EmailNotificationServerTest do
   use Logflare.DataCase
 
   alias Logflare.Source.EmailNotificationServer
-  alias Logflare.Sources
 
   setup do
     u1 = insert(:user)
@@ -13,12 +12,7 @@ defmodule Logflare.Source.EmailNotificationServerTest do
 
   describe "GenServer" do
     test "start_link/1", %{source: source} do
-      start_supervised!(
-        {EmailNotificationServer,
-         [
-           source: source
-         ]}
-      )
+      start_supervised!({EmailNotificationServer, [source: source]})
     end
 
     test "init/1", %{source: source} do

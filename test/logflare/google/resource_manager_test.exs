@@ -1,10 +1,10 @@
 defmodule Logflare.Google.CloudResourceManagerTest do
-  use Logflare.DataCase, async: false
+  @moduledoc false
+  use Logflare.DataCase
   alias Logflare.Google.CloudResourceManager
   alias GoogleApi.CloudResourceManager.V1.Model.Binding
 
   setup do
-    stub(Goth, :fetch, fn _mod -> {:ok, %Goth.Token{token: "auth-token"}} end)
     google_configs = Map.new(Application.get_env(:logflare, Logflare.Google))
     expected_members = setup_test_state()
 

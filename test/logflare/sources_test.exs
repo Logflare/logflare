@@ -14,6 +14,7 @@ defmodule Logflare.SourcesTest do
   alias Logflare.Source.V1SourceSup
   alias Logflare.Backends
   alias Logflare.Users
+  alias Logflare.Source.BigQuery.Schema
 
   describe "create_source/2" do
     setup do
@@ -44,11 +45,14 @@ defmodule Logflare.SourcesTest do
     setup do
       user = Users.get_by(email: System.get_env("LOGFLARE_TEST_USER_WITH_SET_IAM"))
       source = insert(:source, token: TestUtils.gen_uuid(), rules: [], user_id: user.id)
+      plan = insert(:plan, limit_source_fields_limit: 500)
 
-      Source.BigQuery.Schema.start_link(%{
-        source_id: source.token,
-        plan: %{limit_source_fields_limit: 500}
-      })
+      start_supervised!(Schema,
+        source: source,
+        plan: plan,
+        bigquery_project_id: "some-id",
+        bigquery_dataset_id: "some-id"
+      )
 
       %{source: source}
     end

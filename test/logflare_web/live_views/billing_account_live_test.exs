@@ -2,15 +2,7 @@ defmodule LogflareWeb.BillingAccountLiveTest do
   @moduledoc false
   use LogflareWeb.ConnCase
 
-  alias Logflare.Sources.Counters
-  alias Logflare.Sources.RateCounters
-  alias Logflare.SystemMetrics.AllLogsLogged
-
   setup %{conn: conn} do
-    start_supervised!(AllLogsLogged)
-    start_supervised!(Counters)
-    start_supervised!(RateCounters)
-
     insert(:plan, name: "Free")
     insert(:plan, name: "Metered")
     insert(:plan, name: "Metered BYOB")

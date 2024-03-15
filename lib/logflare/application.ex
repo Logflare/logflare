@@ -66,6 +66,8 @@ defmodule Logflare.Application do
          max_restarts: 10,
          max_seconds: 60,
          name: Logflare.Source.V1SourceDynSup},
+        Sources.Counters,
+        Sources.RateCounters,
 
         # v2 ingestion pipelines
         Logflare.Backends
@@ -148,7 +150,7 @@ defmodule Logflare.Application do
         LogflareWeb.Endpoint,
         {GRPC.Server.Supervisor, {LogflareGrpc.Endpoint, grpc_port, cred: grpc_creds}},
         # Monitor system level metrics
-        Logflare.SystemMetricsSup,
+        SystemMetricsSup,
 
         # For Logflare Endpoints
         {DynamicSupervisor, strategy: :one_for_one, name: Logflare.Endpoints.Cache},

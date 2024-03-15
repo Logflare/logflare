@@ -4,9 +4,6 @@ defmodule Logflare.Backends.BigQueryAdaptorTest do
   alias Logflare.Backends
   alias Logflare.Backends.Adaptor
   alias Logflare.Backends.SourceSup
-
-  alias Logflare.Sources.Counters
-  alias Logflare.Sources.RateCounters
   alias Logflare.SystemMetrics.AllLogsLogged
 
   @subject Logflare.Backends.Adaptor.BigQueryAdaptor
@@ -15,12 +12,6 @@ defmodule Logflare.Backends.BigQueryAdaptorTest do
 
   setup do
     start_supervised!(AllLogsLogged)
-    start_supervised!(Counters)
-    start_supervised!(RateCounters)
-
-    Goth
-    |> stub(:fetch, fn _mod -> {:ok, %Goth.Token{token: "auth-token"}} end)
-
     :ok
   end
 

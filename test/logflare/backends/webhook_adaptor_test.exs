@@ -7,10 +7,7 @@ defmodule Logflare.Backends.WebhookAdaptorTest do
 
   @subject Logflare.Backends.Adaptor.WebhookAdaptor
 
-  setup :set_mimic_global
-
   setup do
-    stub(Goth, :fetch, fn _mod -> {:ok, %Goth.Token{token: "auth-token"}} end)
     user = insert(:user)
     source = insert(:source, user: user)
 

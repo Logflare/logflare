@@ -616,6 +616,8 @@ defmodule Logflare.Logs.SourceRoutingTest do
         params_for(:source, token: TestUtils.gen_uuid(), rules: [], user_id: u.id)
         |> Sources.create_source(u)
 
+      start_supervised!(Schema, [])
+
       Schema.start_link(%{
         source_id: s1.token,
         plan: %{limit_source_fields_limit: 500}

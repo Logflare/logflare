@@ -4,21 +4,6 @@ defmodule Logflare.Source.BigQuery.SchemaTest do
   alias Logflare.Source.BigQuery.Schema
   alias Logflare.Google.BigQuery.SchemaUtils
 
-  alias Logflare.Sources.Counters
-  alias Logflare.Sources.RateCounters
-  alias Logflare.SystemMetrics.AllLogsLogged
-
-  setup do
-    start_supervised!(AllLogsLogged)
-    start_supervised!(Counters)
-    start_supervised!(RateCounters)
-    # mock goth behaviour
-    Goth
-    |> stub(:fetch, fn _mod -> {:ok, %Goth.Token{token: "auth-token"}} end)
-
-    :ok
-  end
-
   test "next_update_ts/1" do
     next_update = Schema.next_update_ts(6) |> trunc()
     assert String.length("#{next_update}") == String.length("#{System.system_time(:millisecond)}")

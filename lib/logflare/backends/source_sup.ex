@@ -50,8 +50,8 @@ defmodule Logflare.Backends.SourceSup do
 
     children =
       [
-        {RecentLogsServer, [source: source]},
         {RateCounterServer, [source: source]},
+        {RecentLogsServer, [source: source]},
         {EmailNotificationServer, [source: source]},
         {TextNotificationServer, [source: source, plan: plan]},
         {WebhookNotificationServer, [source: source]},

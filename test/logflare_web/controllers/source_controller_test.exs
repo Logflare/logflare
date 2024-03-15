@@ -15,7 +15,6 @@ defmodule LogflareWeb.SourceControllerTest do
   alias Logflare.Logs.RejectedLogEvents
   alias Logflare.SingleTenant
   alias Logflare.Source.RecentLogsServer
-
   alias Logflare.SystemMetrics.AllLogsLogged
 
   setup do

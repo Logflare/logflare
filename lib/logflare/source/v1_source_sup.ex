@@ -53,6 +53,7 @@ defmodule Logflare.Source.V1SourceSup do
     #   })
 
     children = [
+      {RCS, [source: source]},
       {BufferCounter,
        [
          source_id: source.id,
@@ -75,7 +76,6 @@ defmodule Logflare.Source.V1SourceSup do
          bigquery_dataset_id: user.bigquery_dataset_id,
          plan: plan
        ]},
-      {RCS, [source: source]},
       {EmailNotificationServer, [source: source]},
       {TextNotificationServer, [source: source, plan: plan]},
       {WebhookNotificationServer, [source: source]},
