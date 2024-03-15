@@ -1,6 +1,7 @@
 defmodule LogflareWeb.Source.SearchLVTest do
   @moduledoc false
   use LogflareWeb.ConnCase
+
   alias Logflare.Source
   alias Logflare.Logs.SearchQueryExecutor
   alias Logflare.SingleTenant
@@ -266,17 +267,8 @@ defmodule LogflareWeb.Source.SearchLVTest do
       # wait for async search task to complete
       :timer.sleep(500)
 
-      TestUtils.retry_fetch(
-        fn -> view |> element("#logs-list-container") |> render() end,
-        fn html ->
-          case html =~ "some event message" do
-            true -> assert html =~ "some event message"
-            false -> :retry
-          end
-        end
-      )
-
-      assert_receive(:done)
+      html = view |> element("#logs-list-container") |> render()
+      assert html =~ "some event message"
     end
 
     test "log event modal", %{conn: conn, source: source} do
@@ -290,30 +282,18 @@ defmodule LogflareWeb.Source.SearchLVTest do
 
       {:ok, view, _html} = live(conn, Routes.live_path(conn, SearchLV, source.id))
 
-      TestUtils.retry_fetch(
-        fn ->
-          try do
-            view |> element("li a", "event body") |> render_click()
-            view
-          rescue
-            _ -> :retry
-          end
-        end,
-        fn view ->
-          case view |> element("#log-event-viewer") |> has_element?() do
-            true ->
-              html = render(view)
-              assert html =~ "Raw JSON"
-              assert html =~ "modal123"
-              assert html =~ "some modal message"
+      # wait for async search task to complete
+      :timer.sleep(500)
 
-            false ->
-              :retry
-          end
-        end
-      )
+      view |> element("li a", "event body") |> render_click()
 
-      assert_receive(:done)
+      TestUtils.retry_assert(fn ->
+        html = render(view)
+
+        assert html =~ "Raw JSON"
+        assert html =~ "modal123"
+        assert html =~ "some modal message"
+      end)
     end
 
     test "shows flash error for malformed query", %{conn: conn, source: source} do

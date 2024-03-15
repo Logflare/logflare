@@ -51,7 +51,6 @@ defmodule Logflare.TestUtils do
           on_exit(fn -> Application.put_env(:logflare, :supabase_mode, initial_supabase_mode) end)
         end
 
-
         initial_api_key = Application.get_env(:logflare, :api_key)
         Application.put_env(:logflare, :api_key, Logflare.TestUtils.random_string(12))
 
@@ -78,7 +77,6 @@ defmodule Logflare.TestUtils do
           url: url,
           schema: unquote(schema)
         )
-
 
         on_exit(fn -> Application.put_env(:logflare, :postgres_backend_adapter, previous) end)
         :ok
@@ -419,26 +417,27 @@ defmodule Logflare.TestUtils do
   def random_pos_integer(limit \\ 1000), do: :rand.uniform(limit)
 
   @doc """
-  Fetches data until the asserts is able to run its asserts a certain amount of times (default 10 times).
+  Run function `times` times and will retry failed assertions
   """
-  @spec retry_fetch(
-          (-> :retry | any()),
-          (any() -> :retry | any()),
-          pos_integer(),
-          pos_integer()
-        ) ::
-          :ok | {:error, :max_retries_reached}
-  def retry_fetch(fetcher, asserts, times \\ 10, sleep \\ 50)
-  def retry_fetch(_, _, 0, _), do: {:error, :max_retries_reached}
+  @spec retry_assert(opts :: keyword(), func :: (-> any())) :: any()
+  def retry_assert(opts \\ [], func) do
+    sleep = opts[:sleep] || 50
+    total = opts[:duration] || 5_000
 
-  def retry_fetch(fetcher, asserts, times, sleep) do
-    with fetcher_result when fetcher_result != :retry <- fetcher.(),
-         assert_result when assert_result != :retry <- asserts.(fetcher_result) do
-      send(self(), :done)
-    else
-      :retry ->
+    do_retry_assert(sleep, total, func)
+  end
+
+  defp do_retry_assert(sleep, total, func) do
+    func.()
+  rescue
+    error in ExUnit.AssertionError ->
+      left = total - sleep
+
+      if left > 0 do
         :timer.sleep(sleep)
-        retry_fetch(fetcher, asserts, times - 1)
-    end
+        do_retry_assert(sleep, left, func)
+      else
+        reraise error, __STACKTRACE__
+      end
   end
 end
