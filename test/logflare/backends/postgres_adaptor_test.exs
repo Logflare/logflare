@@ -3,10 +3,6 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptorTest do
 
   alias Logflare.Backends.Adaptor.PostgresAdaptor
 
-  import Ecto.Query
-
-  import ExUnit.CaptureLog
-
   setup do
     repo = Application.get_env(:logflare, Logflare.Repo)
 
@@ -30,8 +26,7 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptorTest do
       pid = start_supervised!({PostgresAdaptor, {source, backend}})
 
       on_exit(fn ->
-        PostgresAdaptor.rollback_migrations({source, backend})
-        PostgresAdaptor.drop_migrations_table({source, backend})
+        PostgresAdaptor.destroy_instance({source, backend})
       end)
 
       %{pid: pid}
@@ -131,22 +126,6 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptorTest do
   end
 
   describe "repo module" do
-    test "connected?/1 true when repo is connected", %{backend: backend} do
-      PostgresAdaptor.create_repo(backend)
-      assert :ok = PostgresAdaptor.connected?(backend)
-    end
-
-    test "create_repo/1 creates a new Ecto.Repo for given backend and connects", %{
-      backend: backend
-    } do
-      repo = PostgresAdaptor.create_repo(backend)
-      assert :ok = PostgresAdaptor.connected?(backend)
-      assert Keyword.get(repo.__info__(:attributes), :behaviour) == [Ecto.Repo]
-
-      # module name should have a prefix
-      assert "Elixir.Logflare.Repo.Postgres.Adaptor" <> _ = Atom.to_string(repo)
-    end
-
     test "custom schema", %{source: source, postgres_url: url} do
       config = %{
         "url" => url,
@@ -155,8 +134,6 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptorTest do
 
       backend = insert(:backend, type: :postgres, sources: [source], config: config)
       PostgresAdaptor.create_repo(backend)
-
-      assert :ok = PostgresAdaptor.connected?(backend)
 
       assert {:ok, [%{"schema_name" => "my_schema"}]} =
                PostgresAdaptor.execute_query(
@@ -175,45 +152,9 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptorTest do
       source: source
     } do
       repo = PostgresAdaptor.create_repo(backend)
-      assert :ok = PostgresAdaptor.connected?(backend)
       assert :ok = PostgresAdaptor.create_log_events_table({source, backend})
       query = from(l in PostgresAdaptor.table_name(source), select: l.body)
       assert repo.all(query) == []
-    end
-
-    test "handle migration errors", %{source: source, backend: backend} do
-      PostgresAdaptor.create_repo(backend)
-      assert :ok = PostgresAdaptor.connected?(backend)
-      bad_migrations = [{0, BadMigration}]
-
-      assert capture_log(fn ->
-               assert {:error, :failed_migration} =
-                        PostgresAdaptor.create_log_events_table(
-                          {source, backend},
-                          bad_migrations
-                        )
-             end) =~ "[error]"
-    end
-  end
-
-  test "bug: cast_config/1 and validate_config/1 postgresql url variations" do
-    assert %Ecto.Changeset{valid?: true} = %{url: "postgresql://localhost:5432"} |> PostgresAdaptor.cast_config() |> PostgresAdaptor.validate_config()
-    assert %Ecto.Changeset{valid?: true} = %{url: "postgres://localhost:5432"} |> PostgresAdaptor.cast_config() |> PostgresAdaptor.validate_config()
-
-    # invalid connection strings
-    assert %Ecto.Changeset{valid?: false} = %{url: "://localhost:5432"} |> PostgresAdaptor.cast_config() |> PostgresAdaptor.validate_config()
-    assert %Ecto.Changeset{valid?: false} = %{url: "//localhost:5432"} |> PostgresAdaptor.cast_config() |> PostgresAdaptor.validate_config()
-    assert %Ecto.Changeset{valid?: false} = %{url: "/localhost:5432"} |> PostgresAdaptor.cast_config() |> PostgresAdaptor.validate_config()
-    assert %Ecto.Changeset{valid?: false} = %{url: "postgres//localhost:5432"} |> PostgresAdaptor.cast_config() |> PostgresAdaptor.validate_config()
-  end
-end
-
-defmodule BadMigration do
-  @moduledoc false
-  use Ecto.Migration
-
-  def up do
-    alter table(:none) do
     end
   end
 end

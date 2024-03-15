@@ -62,10 +62,9 @@ defmodule Logflare.Application do
          name: Logflare.Source.V1SourceDynSup},
 
         # v2 ingestion pipelines
+        Logflare.Backends.Adaptor.PostgresAdaptor.Supervisor,
         {DynamicSupervisor, strategy: :one_for_one, name: Logflare.Backends.SourcesSup},
         {DynamicSupervisor, strategy: :one_for_one, name: Logflare.Backends.RecentLogsSup},
-        {DynamicSupervisor,
-         strategy: :one_for_one, name: Logflare.Backends.Adaptor.PostgresAdaptor.Supervisor},
         {DynamicSupervisor,
          strategy: :one_for_one, name: Logflare.Backends.Adaptor.PostgresAdaptor.PgRepoSupervisor},
         {Registry,
@@ -164,10 +163,9 @@ defmodule Logflare.Application do
         {Task, fn -> startup_tasks() end},
 
         # v2 ingestion pipelines
+        Logflare.Backends.Adaptor.PostgresAdaptor.Supervisor,
         {DynamicSupervisor, strategy: :one_for_one, name: Logflare.Backends.SourcesSup},
         {DynamicSupervisor, strategy: :one_for_one, name: Logflare.Backends.RecentLogsSup},
-        {DynamicSupervisor,
-         strategy: :one_for_one, name: Logflare.Backends.Adaptor.PostgresAdaptor.Supervisor},
         {DynamicSupervisor,
          strategy: :one_for_one, name: Logflare.Backends.Adaptor.PostgresAdaptor.PgRepoSupervisor},
         {Registry,

@@ -455,8 +455,7 @@ defmodule Logflare.SqlTest do
       PostgresAdaptor.insert_log_event(backend, log_event)
 
       on_exit(fn ->
-        PostgresAdaptor.rollback_migrations({source, backend})
-        PostgresAdaptor.drop_migrations_table({source, backend})
+        PostgresAdaptor.destroy_instance({source, backend})
       end)
 
       %{source: source, backend: backend, pid: pid, user: user}
