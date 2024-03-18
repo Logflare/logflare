@@ -231,14 +231,11 @@ defmodule Logflare.LogEvent do
           "event_message" ->
             message
 
-          "metadata." <> rest ->
-            query_json(le.body["metadata"], "$.#{rest}")
-
           "m." <> rest ->
-            query_json(le.body["metadata"], "$.#{rest}")
+            query_json(le.body, "$.metadata.#{rest}")
 
           keys ->
-            ["Invalid custom message keys. Are your keys comma separated? Got: #{inspect(keys)}"]
+            query_json(le.body, "$.#{keys}")
         end
       end)
     else
