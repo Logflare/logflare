@@ -93,7 +93,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
             acknowledger: {__MODULE__, buffer_counter_via, nil}
           }
 
-    with {:ok, _count} = BufferCounter.inc(buffer_counter_via, Enum.count(messages)) do
+    with {:ok, _count} <- BufferCounter.inc(buffer_counter_via, Enum.count(messages)) do
       Backends.via_source(source, {Pipeline, backend_id})
       |> Broadway.push_messages(messages)
     end
