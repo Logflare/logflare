@@ -194,9 +194,16 @@ defmodule LogflareWeb.LogController do
   defp do_cloud_event(%Plug.Conn{assigns: %{source: source}} = conn, data) do
     cloud_event = extract_cloud_events(conn)
 
+    timestamp = cloud_event["time"]
+
     data
     |> List.wrap()
-    |> Enum.map(&Map.put(&1, "cloud_event", cloud_event))
+    |> Enum.map(
+      &Map.merge(&1, %{
+        "timestamp" => timestamp,
+        "cloud_event" => cloud_event
+      })
+    )
     |> Processor.ingest(Logs.Raw, source)
     |> handle(conn)
   end
