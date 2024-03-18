@@ -234,8 +234,12 @@ defmodule Logflare.Backends do
 
       # maybe reroute
       # TODO: shift this to dispatching logic
-      Enum.each(log_events, fn le ->
-        SourceRouting.route_to_sinks_and_ingest(%{le | source: source})
+      Enum.each(log_events, fn
+        %{via_rule: nil} = le ->
+          SourceRouting.route_to_sinks_and_ingest(%{le | source: source})
+
+        _ ->
+          :noop
       end)
     end)
 
@@ -303,6 +307,7 @@ defmodule Logflare.Backends do
   """
   @spec start_source_sup(Source.t()) :: :ok | {:error, :already_started}
   def start_source_sup(%Source{} = source) do
+    # ensure that v1 pipeline source is already down
     case DynamicSupervisor.start_child(SourcesSup, {SourceSup, source}) do
       {:ok, _pid} -> :ok
       {:error, {:already_started = reason, _pid}} -> {:error, reason}
