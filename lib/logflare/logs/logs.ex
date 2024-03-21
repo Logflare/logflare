@@ -39,7 +39,7 @@ defmodule Logflare.Logs do
   def ingest(%LE{source: %Source{} = source} = le) do
     buffer_counter_via = Backends.via_source(source, {BufferCounter, nil})
 
-    with {:ok, _} <- Supervisor.ensure_started(source),
+    with :ok <- Supervisor.ensure_started(source),
          {:ok, _} <- BufferCounter.inc(buffer_counter_via, 1),
          :ok <- RecentLogsServer.push(source, le),
          # tests fail when we match on these for some reason
