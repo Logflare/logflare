@@ -313,8 +313,14 @@ defmodule Logflare.Backends do
   def start_source_sup(%Source{} = source) do
     # ensure that v1 pipeline source is already down
     case DynamicSupervisor.start_child(SourcesSup, {SourceSup, source}) do
-      {:ok, _pid} -> :ok
-      {:error, {:already_started = reason, _pid}} -> {:error, reason}
+      {:ok, _pid} ->
+        :ok
+
+      {:error, {:already_started = reason, _pid}} ->
+        {:error, reason}
+
+      {:error, {:shutdown, {:failed_to_start_child, _mod, {:already_started = reason, _pid}}}} ->
+        {:error, reason}
     end
   end
 

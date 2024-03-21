@@ -70,26 +70,26 @@ defmodule Logflare.Source.Supervisor do
   end
 
   def handle_cast({:create, source_token}, state) do
-    source = Sources.get_by(token: source_token)
+    source = Sources.Cache.get_by(token: source_token)
 
-    with {:error, :not_started} <- do_lookup(source),
-         {:ok, _pid} <- create_source(source) do
-      {:noreply, state}
-    else
-      {:ok, pid} when is_pid(pid) ->
-        {:noreply, state}
+    case create_source(source) do
+      {:error, :already_started} ->
+        :noop
 
-      {:error, _reason} = err ->
+      {:error, _} = err ->
         Logger.error(
           "Source.Supervisor -  Failed to start SourceSup: #{source_token}, #{inspect(err)}"
         )
 
-        {:noreply, state}
+      _ ->
+        :noop
     end
+
+    {:noreply, state}
   end
 
   def handle_cast({:stop, source_token}, state) do
-    source = Sources.get_by(token: source_token)
+    source = Sources.Cache.get_by(token: source_token)
     do_terminate_source_sup(source)
     Counters.delete(source_token)
     {:noreply, state}
@@ -98,22 +98,13 @@ defmodule Logflare.Source.Supervisor do
   def handle_cast({:restart, source_token}, state) do
     source = Sources.get_source_by_token(source_token)
 
-    case do_lookup(source) do
-      {:ok, _pid} ->
-        Logger.info("Source.Supervisor - Performing shutdown actions: #{source_token}")
-        do_terminate_source_sup(source)
+    do_terminate_source_sup(source)
+    source_schema = SourceSchemas.get_source_schema_by(source_id: source.id)
 
-        # perform context cache clearing
-        source_schema = SourceSchemas.get_source_schema_by(source_id: source.id)
-
-        ContextCache.bust_keys([
-          {Sources, source.id},
-          {SourceSchemas, source_schema.id}
-        ])
-
-      {:error, :no_proc} ->
-        :noop
-    end
+    ContextCache.bust_keys([
+      {Sources, source.id},
+      {SourceSchemas, source_schema.id}
+    ])
 
     case create_source(source) do
       {:ok, _pid} ->
@@ -205,19 +196,29 @@ defmodule Logflare.Source.Supervisor do
          :ok <- init_table(source.token) do
       res
     else
+      {:error, :already_started} = err ->
+        err
+
       {:error, {:already_started = reason, _pid}} ->
         {:error, reason}
     end
   end
 
   @spec ensure_started(atom) :: {:ok, :already_started | :started}
-  def ensure_started(%Source{token: source_token} = source) do
-    started? =
-      [do_v1_lookup(source), do_v2_lookup(source)]
-      |> Enum.any?(fn {res, _} -> res == :ok end)
+  def ensure_started(%Source{token: source_token, v2_pipeline: v2_pipeline} = source) do
+    # maybe restart
+    [{:v1, do_v1_lookup(source)}, {:v2, do_v2_lookup(source)}]
+    |> Enum.each(fn
+      {:v1, {:ok, _}} when v2_pipeline == true ->
+        # v2->v1, restart the source
+        reset_source(source_token)
 
-    case started? do
-      false ->
+      {:v2, {:ok, _}} when v2_pipeline == false ->
+        # v1->v2 , restart the source
+        reset_source(source_token)
+
+      {ver, {:error, _}}
+      when (ver == :v1 and v2_pipeline == false) or (ver == :v2 and v2_pipeline == true) ->
         Logger.info("Source.Supervisor - SourceSup not found, starting...",
           source_id: source_token,
           source_token: source_token
@@ -225,11 +226,11 @@ defmodule Logflare.Source.Supervisor do
 
         start_source(source_token)
 
-        {:ok, :started}
+      _ ->
+        :noop
+    end)
 
-      true ->
-        {:ok, :already_started}
-    end
+    :ok
   end
 
   def init_table(source_token) do
@@ -272,16 +273,12 @@ defmodule Logflare.Source.Supervisor do
   defp do_v2_lookup(source), do: Backends.lookup(Backends.SourceSup, source)
   defp do_v1_lookup(source), do: Backends.lookup(V1SourceSup, source)
 
-  defp do_terminate_source_sup(%{v2_pipeline: true} = source) do
-    with {:ok, pid} <- do_lookup(source) do
+  defp do_terminate_source_sup(source) do
+    with {:ok, pid} <- do_v2_lookup(source) do
       DynamicSupervisor.terminate_child(Backends.SourcesSup, pid)
     end
 
-    :ok
-  end
-
-  defp do_terminate_source_sup(source) do
-    with {:ok, pid} <- do_lookup(source) do
+    with {:ok, pid} <- do_v1_lookup(source) do
       DynamicSupervisor.terminate_child(V1SourceDynSup, pid)
     end
 
