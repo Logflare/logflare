@@ -211,7 +211,7 @@ defmodule Logflare.SingleTenant do
         if postgres_backend?() do
           Backends.start_source_sup(source)
         else
-          Supervisor.ensure_started(source.token)
+          Supervisor.ensure_started(source)
         end
       end
     end

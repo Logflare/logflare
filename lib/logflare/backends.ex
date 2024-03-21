@@ -283,8 +283,12 @@ defmodule Logflare.Backends do
   @doc """
   drop in replacement for Source.Supervisor.lookup
   """
-  def lookup(module, source_token) do
+  def lookup(module, source_token) when is_atom(source_token) do
     source = Sources.Cache.get_source_by_token(source_token)
+    lookup(module, source)
+  end
+
+  def lookup(module, %Source{} = source) do
     {:via, _registry, {registry, via_id}} = via_source(source, module)
 
     Registry.lookup(registry, via_id)
