@@ -14,8 +14,7 @@ defmodule Logflare.Application do
   alias Logflare.Users
   alias Logflare.Partners
   alias Logflare.Auth
-  alias Logflare.Sources.Counters
-  alias Logflare.Sources.RateCounters
+  alias Logflare.SystemMetricsSup
 
   def start(_type, _args) do
     env = Application.get_env(:logflare, :env)

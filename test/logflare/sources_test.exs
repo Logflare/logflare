@@ -210,7 +210,7 @@ defmodule Logflare.SourcesTest do
       end
 
       test "reset_source/1", %{user: user, mod: mod, flag: flag} do
-        %{token: token} = source = insert(:source, user: user, v2_pipeline: flag)
+        %{token: token} = insert(:source, user: user, v2_pipeline: flag)
         start_supervised!(Source.Supervisor)
         # TODO: cast should return :ok
         assert {:ok, ^token} = Source.Supervisor.start_source(token)
@@ -226,7 +226,7 @@ defmodule Logflare.SourcesTest do
         source = insert(:source, user_id: user.id, v2_pipeline: flag)
 
         start_supervised!(Source.Supervisor)
-        assert {:ok, :started} = Source.Supervisor.ensure_started(source.token)
+        assert {:ok, :started} = Source.Supervisor.ensure_started(source)
         :timer.sleep(1000)
         assert {:ok, _pid} = Backends.lookup(mod, source.token)
         name = Backends.via_source(source, BufferCounter, nil)
@@ -237,7 +237,7 @@ defmodule Logflare.SourcesTest do
         source = insert(:source, user_id: user.id, v2_pipeline: flag)
 
         start_supervised!(Source.Supervisor)
-        assert {:ok, :started} = Source.Supervisor.ensure_started(source.token)
+        assert {:ok, :started} = Source.Supervisor.ensure_started(source)
         :timer.sleep(1000)
         assert {:ok, pid} = Backends.lookup(mod, source.token)
         assert {:ok, _} = Source.Supervisor.reset_source(source.token)
@@ -252,12 +252,12 @@ defmodule Logflare.SourcesTest do
       test "concurrent start attempts", %{user: user, mod: mod, flag: flag} do
         source = insert(:source, user_id: user.id, v2_pipeline: flag)
         start_supervised!(Source.Supervisor)
-        assert {:ok, :started} = Source.Supervisor.ensure_started(source.token)
+        assert {:ok, :started} = Source.Supervisor.ensure_started(source)
 
-        assert {:ok, :started} = Source.Supervisor.ensure_started(source.token)
-        assert {:ok, :started} = Source.Supervisor.ensure_started(source.token)
-        assert {:ok, :started} = Source.Supervisor.ensure_started(source.token)
-        assert {:ok, :started} = Source.Supervisor.ensure_started(source.token)
+        assert {:ok, :started} = Source.Supervisor.ensure_started(source)
+        assert {:ok, :started} = Source.Supervisor.ensure_started(source)
+        assert {:ok, :started} = Source.Supervisor.ensure_started(source)
+        assert {:ok, :started} = Source.Supervisor.ensure_started(source)
         :timer.sleep(3000)
         assert {:ok, _pid} = Backends.lookup(mod, source.token)
         name = Backends.via_source(source, BufferCounter, nil)
@@ -271,7 +271,7 @@ defmodule Logflare.SourcesTest do
       } do
         source = insert(:source, user_id: user.id, v2_pipeline: flag)
         pid = start_supervised!(Source.Supervisor)
-        assert {:ok, :started} = Source.Supervisor.ensure_started(source.token)
+        assert {:ok, :started} = Source.Supervisor.ensure_started(source)
         :timer.sleep(3000)
         assert {:ok, prev_pid} = Backends.lookup(mod, source.token)
         Process.exit(pid, :kill)

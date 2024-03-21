@@ -70,10 +70,10 @@ defmodule Logflare.Source.Supervisor do
   end
 
   def handle_cast({:create, source_token}, state) do
-    source = Sources.Cache.get_by(token: source_token)
+    source = Sources.get_by(token: source_token)
 
     with {:error, :not_started} <- do_lookup(source),
-         {:ok, _pid} <- create_source(source_token) do
+         {:ok, _pid} <- create_source(source) do
       {:noreply, state}
     else
       {:ok, pid} when is_pid(pid) ->
@@ -89,7 +89,7 @@ defmodule Logflare.Source.Supervisor do
   end
 
   def handle_cast({:stop, source_token}, state) do
-    source = Sources.Cache.get_by(token: source_token)
+    source = Sources.get_by(token: source_token)
     do_terminate_source_sup(source)
     Counters.delete(source_token)
     {:noreply, state}
@@ -104,7 +104,6 @@ defmodule Logflare.Source.Supervisor do
         do_terminate_source_sup(source)
 
         # perform context cache clearing
-        source = Sources.get_source_by_token(source_token)
         source_schema = SourceSchemas.get_source_schema_by(source_id: source.id)
 
         ContextCache.bust_keys([
@@ -116,7 +115,7 @@ defmodule Logflare.Source.Supervisor do
         :noop
     end
 
-    case create_source(source_token) do
+    case create_source(source) do
       {:ok, _pid} ->
         :noop
 
@@ -201,26 +200,24 @@ defmodule Logflare.Source.Supervisor do
       !!Application.get_env(:logflare, :postgres_backend_adapter)
   end
 
-  defp create_source(source_token) do
-    with {:source, %Source{} = source} <- {:source, Sources.Cache.get_by(token: source_token)},
-         {:ok, _pid} = res <- do_start_source_sup(source),
-         :ok <- init_table(source_token) do
+  defp create_source(%Source{} = source) do
+    with {:ok, _pid} = res <- do_start_source_sup(source),
+         :ok <- init_table(source.token) do
       res
     else
-      {:source, nil} ->
-        {:error, :not_found_in_db}
-
       {:error, {:already_started = reason, _pid}} ->
         {:error, reason}
     end
   end
 
   @spec ensure_started(atom) :: {:ok, :already_started | :started}
-  def ensure_started(source_token) do
-    source = Sources.Cache.get_by(token: source_token)
+  def ensure_started(%Source{token: source_token} = source) do
+    started? =
+      [do_v1_lookup(source), do_v2_lookup(source)]
+      |> Enum.any?(fn {res, _} -> res == :ok end)
 
-    case do_lookup(source) do
-      {:error, _} ->
+    case started? do
+      false ->
         Logger.info("Source.Supervisor - SourceSup not found, starting...",
           source_id: source_token,
           source_token: source_token
@@ -230,7 +227,7 @@ defmodule Logflare.Source.Supervisor do
 
         {:ok, :started}
 
-      {:ok, _pid} ->
+      true ->
         {:ok, :already_started}
     end
   end
@@ -269,9 +266,11 @@ defmodule Logflare.Source.Supervisor do
   end
 
   defp do_lookup(%{v2_pipeline: true} = source),
-    do: Backends.lookup(Backends.SourceSup, source.token)
+    do: do_v2_lookup(source)
 
-  defp do_lookup(source), do: Backends.lookup(V1SourceSup, source.token)
+  defp do_lookup(source), do: do_v1_lookup(source)
+  defp do_v2_lookup(source), do: Backends.lookup(Backends.SourceSup, source)
+  defp do_v1_lookup(source), do: Backends.lookup(V1SourceSup, source)
 
   defp do_terminate_source_sup(%{v2_pipeline: true} = source) do
     with {:ok, pid} <- do_lookup(source) do

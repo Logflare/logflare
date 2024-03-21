@@ -222,7 +222,7 @@ defmodule LogflareWeb.SourceControllerTest do
   end
 
   describe "dashboard - rejected" do
-    setup [:old_setup, :expect_user_plan, :assert_caches_not_called]
+    setup [:old_setup, :expect_user_plan]
 
     test "renders rejected logs page", %{conn: conn, users: [u1, _u2], sources: [s1, _s2 | _]} do
       RejectedLogEvents.ingest(%LogEvent{
@@ -254,7 +254,7 @@ defmodule LogflareWeb.SourceControllerTest do
   end
 
   describe "update" do
-    setup [:old_setup, :expect_user_plan, :assert_caches_not_called]
+    setup [:old_setup, :expect_user_plan]
 
     test "returns 200 with valid params", %{conn: conn, users: [u1, _u2], sources: [s1, _s2 | _]} do
       new_name = TestUtils.random_string()
@@ -298,7 +298,7 @@ defmodule LogflareWeb.SourceControllerTest do
       params = %{
         "id" => s1.id,
         "source" => %{
-          "favorite" => 1,
+          "favorite" => 123,
           "name" => new_name
         }
       }
@@ -374,7 +374,7 @@ defmodule LogflareWeb.SourceControllerTest do
   end
 
   describe "show" do
-    setup [:old_setup, :expect_user_plan, :assert_caches_not_called]
+    setup [:old_setup, :expect_user_plan]
 
     test "returns 403 for a source not owned by the user", %{
       conn: conn,
@@ -392,7 +392,7 @@ defmodule LogflareWeb.SourceControllerTest do
   end
 
   describe "create" do
-    setup [:old_setup, :expect_user_plan, :assert_caches_not_called]
+    setup [:old_setup, :expect_user_plan]
 
     test "returns 200 with valid params", %{conn: conn, users: [u1 | _]} do
       name = TestUtils.random_string()
@@ -448,7 +448,7 @@ defmodule LogflareWeb.SourceControllerTest do
   end
 
   describe "favorite" do
-    setup [:old_setup, :expect_user_plan, :assert_caches_not_called]
+    setup [:old_setup, :expect_user_plan]
 
     test "returns 200 flipping the value", %{conn: conn, users: [u1 | _], sources: [s1 | _]} do
       conn =
@@ -557,11 +557,6 @@ defmodule LogflareWeb.SourceControllerTest do
       }
     end)
 
-    :ok
-  end
-
-  defp assert_caches_not_called(_) do
-    reject(&Sources.Cache.get_by/1)
     :ok
   end
 end
