@@ -15,4 +15,14 @@ defmodule Logflare.Source.RecentLogsServerTest do
     assert [_] = RecentLogsServer.list_for_cluster(source)
     assert [_] = RecentLogsServer.list_for_cluster(source.token)
   end
+
+  test "send :push" do
+    user = insert(:user)
+    source = insert(:source, user: user)
+    pid = start_supervised!({RecentLogsServer, source: source})
+
+    le = build(:log_event, source: source)
+    send(pid, {:push, source.token, [le]})
+    assert [_] = RecentLogsServer.list(source)
+  end
 end

@@ -19,6 +19,7 @@ defmodule Logflare.Backends do
   alias Logflare.Source.RecentLogsServer
   alias Logflare.Logs
   alias Logflare.Logs.SourceRouting
+  alias Logflare.SystemMetrics
   import Ecto.Query
 
   @adaptor_mapping %{
@@ -222,6 +223,13 @@ defmodule Logflare.Backends do
       end)
 
     Logflare.Utils.Tasks.start_child(fn ->
+      # increment counters
+      # TODO: increment by sum
+      for _le <- log_events do
+        Sources.Counters.increment(source.token)
+        SystemMetrics.AllLogsLogged.increment(:total_logs_logged)
+      end
+
       source =
         source
         |> Sources.refresh_source_metrics_for_ingest()
