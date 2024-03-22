@@ -128,13 +128,16 @@ defmodule Logflare.Source.RecentLogsServer do
     {:reply, {:ok, state.latest_log_event}, state}
   end
 
-  def handle_cast({:push, _source_id, [le | _] = log_events}, state) do
-    new_queue = (Enum.to_list(state.recent) ++ log_events) |> LQueue.from_list(100)
-    {:noreply, %{state | recent: new_queue, latest_log_event: le}}
+  def handle_cast({:push, _source_id, [_le | _]} = msg, state) do
+    {:noreply, do_push(msg, state)}
   end
 
   def handle_info({:stop_please, reason}, state) do
     {:stop, reason, state}
+  end
+
+  def handle_info({:push, _source_id, [_le | _]} = msg, state) do
+    {:noreply, do_push(msg, state)}
   end
 
   def handle_info(:broadcast, state) do
@@ -187,22 +190,28 @@ defmodule Logflare.Source.RecentLogsServer do
   end
 
   ## Private Functions
-  defp broadcast_count(state) do
-    pool_size = Application.get_env(:logflare, Logflare.PubSub)[:pool_size]
-    current_inserts = Source.Data.get_node_inserts(state.source_token)
-    last_inserts = state.inserts_since_boot
+  defp do_push({:push, _source_token, [le | _] = log_events}, state) do
+    new_queue = (Enum.to_list(state.recent) ++ log_events) |> LQueue.from_list(100)
+    %{state | recent: new_queue, latest_log_event: le}
+  end
 
-    if current_inserts > last_inserts do
-      bq_inserts = Source.Data.get_bq_inserts(state.source_token)
+  defp broadcast_count(
+         %{source_token: source_token, inserts_since_boot: inserts_since_boot} = state
+       ) do
+    pool_size = Application.get_env(:logflare, Logflare.PubSub)[:pool_size]
+    current_inserts = Source.Data.get_node_inserts(source_token)
+
+    if current_inserts > inserts_since_boot do
+      bq_inserts = Source.Data.get_bq_inserts(source_token)
 
       inserts_payload = %{Node.self() => %{node_inserts: current_inserts, bq_inserts: bq_inserts}}
 
-      shard = :erlang.phash2(state.source_token, pool_size)
+      shard = :erlang.phash2(source_token, pool_size)
 
       Phoenix.PubSub.broadcast(
         Logflare.PubSub,
         "inserts:shard-#{shard}",
-        {:inserts, state.source_token, inserts_payload}
+        {:inserts, source_token, inserts_payload}
       )
     end
 
@@ -232,7 +241,7 @@ defmodule Logflare.Source.RecentLogsServer do
         }
       )
 
-    Process.send_after(self(), {:push, source_token, log_event}, 1_000)
+    Process.send_after(self(), {:push, source_token, [log_event]}, 1_000)
 
     Source.ChannelTopics.broadcast_new(log_event)
   end

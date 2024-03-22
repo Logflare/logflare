@@ -278,6 +278,16 @@ defmodule Logflare.SourcesTest do
         assert {:ok, pid} = Backends.lookup(mod, source.token)
         assert prev_pid == pid
       end
+      test "should start broadcasting metrics on ingest", %{user: user, mod: mod, flag: flag} do
+        source = insert(:source, user_id: user.id, v2_pipeline: flag)
+        pid = start_supervised!(Source.Supervisor)
+        assert :ok = Source.Supervisor.ensure_started(source)
+        :timer.sleep(3000)
+        assert {:ok, prev_pid} = Backends.lookup(mod, source.token)
+        Process.exit(pid, :kill)
+        assert {:ok, pid} = Backends.lookup(mod, source.token)
+        assert prev_pid == pid
+      end
     end
   end
 

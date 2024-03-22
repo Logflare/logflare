@@ -7,6 +7,8 @@ defmodule Logflare.BackendsTest do
   alias Logflare.Source
   alias Logflare.Source.RecentLogsServer
   alias Logflare.SystemMetrics.AllLogsLogged
+  alias Logflare.Source.ChannelTopics
+  alias Logflare.PubSubRates
 
   setup do
     start_supervised!(AllLogsLogged)
@@ -123,6 +125,7 @@ defmodule Logflare.BackendsTest do
       user = insert(:user)
       source = insert(:source, user_id: user.id)
       start_supervised!({SourceSup, source})
+      start_supervised!(AllLogsLogged)
       :timer.sleep(500)
       {:ok, source: source}
     end
@@ -135,6 +138,24 @@ defmodule Logflare.BackendsTest do
       assert length(cached) == 100
       cached = Backends.list_recent_logs_local(source)
       assert length(cached) == 100
+    end
+
+    test "performs broadcasts for global cache rates and dashboard rates", %{
+      source: %{token: source_token} = source
+    } do
+      PubSubRates.subscribe(:all)
+      ChannelTopics.subscribe_dashboard(source.token)
+      ChannelTopics.subscribe_source(source.token)
+      le = build(:log_event, source: source)
+      assert :ok = Backends.ingest_logs([le], source)
+      :timer.sleep(500)
+      {:ok, pid} = Backends.lookup(RecentLogsServer, source.token)
+      send(pid, :broadcast)
+      :timer.sleep(2000)
+      assert_received %_{event: "rate", payload: %{rate: _}}
+      # broadcast for recent logs page
+      assert_received %_{event: _, payload: %{body: %{}}}
+      assert_received {:inserts, ^source_token, _}
     end
   end
 
