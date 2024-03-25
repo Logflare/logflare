@@ -9,7 +9,6 @@ defmodule Logflare.Logs do
   alias Logflare.Logs.SourceRouting
   alias Logflare.Logs.IngestTypecasting
   alias Logflare.Logs.IngestTransformers
-  alias Logflare.Source.Supervisor
   alias Logflare.Rule
   alias Logflare.Backends
   alias Logflare.Backends.Adaptor.BigQueryAdaptor
