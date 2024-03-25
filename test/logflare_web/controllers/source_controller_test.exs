@@ -15,12 +15,8 @@ defmodule LogflareWeb.SourceControllerTest do
   alias Logflare.Logs.RejectedLogEvents
   alias Logflare.SingleTenant
   alias Logflare.Source.RecentLogsServer
-  alias Logflare.SystemMetrics.AllLogsLogged
-
-  setup do
-    start_supervised!(AllLogsLogged)
-    :ok
-  end
+  alias Logflare.Source.V1SourceDynSup
+  alias Logflare.Backends
 
   describe "list" do
     setup %{conn: conn} do
@@ -529,6 +525,46 @@ defmodule LogflareWeb.SourceControllerTest do
 
       assert redirected_to(conn, 302) =~ "/dashboard"
       assert is_nil(SavedSearches.get(saved_search.id))
+    end
+  end
+
+  describe "update v1-v2 pipeline" do
+    setup do
+      insert(:plan)
+
+      Logflare.Google.BigQuery
+      |> stub(:init_table!, fn _, _, _, _, _, _ -> :ok end)
+
+      on_exit(fn ->
+        for dynsup <- [V1SourceDynSup, Backends.SourcesSup],
+            {_id, child, _, _} <- DynamicSupervisor.which_children(dynsup) do
+          DynamicSupervisor.terminate_child(dynsup, child)
+        end
+      end)
+
+      [user: insert(:user)]
+    end
+
+    test "toggling from v1 to v2", %{conn: conn, user: user} do
+      source = insert(:source, user: user)
+
+      conn =
+        conn
+        |> login_user(user)
+        |> put(~p"/sources/#{source.id}", %{"source" => %{"v2_pipeline" => true}})
+
+      assert redirected_to(conn) == ~p"/sources/#{source.id}/edit"
+    end
+
+    test "toggle from v2 to v1", %{conn: conn, user: user} do
+      source = insert(:source, user: user, v2_pipeline: true)
+
+      conn =
+        conn
+        |> login_user(user)
+        |> put(~p"/sources/#{source.id}", %{"source" => %{"v2_pipeline" => false}})
+
+      assert redirected_to(conn) == ~p"/sources/#{source.id}/edit"
     end
   end
 
