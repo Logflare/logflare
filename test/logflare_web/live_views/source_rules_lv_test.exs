@@ -6,15 +6,8 @@ defmodule LogflareWeb.Source.RulesLqlTest do
   alias Logflare.Sources
   alias Logflare.Source.RecentLogsServer, as: RLS
   alias Logflare.Users
-  import Logflare.Factory
   alias Logflare.Billing
   alias Logflare.Billing.Plan
-  use Mimic
-
-  setup_all do
-    start_supervised!(Sources.Counters)
-    :ok
-  end
 
   describe "Mount" do
     setup %{conn: conn} do

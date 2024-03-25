@@ -14,7 +14,7 @@ defmodule LogflareWeb.Api.BackendControllerTest do
       insert(:backend)
       backend = insert(:backend, user: user)
 
-      [result] =
+      assert [result] =
         conn
         |> add_access_token(user, "private")
         |> get(~p"/api/backends")
@@ -49,7 +49,7 @@ defmodule LogflareWeb.Api.BackendControllerTest do
   end
 
   describe "create/2" do
-    test "creates a new backend for an authenticated user", %{conn: conn, user: user} do
+    test "creates a webhook backend for an authenticated user", %{conn: conn, user: user} do
       name = TestUtils.random_string()
 
       response =
@@ -64,6 +64,28 @@ defmodule LogflareWeb.Api.BackendControllerTest do
 
       assert response["name"] == name
       assert response["config"]["url"] =~ "example.com"
+    end
+
+    test "creates a postgres backend for an authenticated user", %{conn: conn, user: user} do
+      name = TestUtils.random_string()
+
+        conn = conn
+        |> add_access_token(user, "private")
+        |> post("/api/backends", %{
+          name: name,
+          type: "postgres",
+          config: %{url: "postgresql://test:my-password@localhost:5432", schema: "_my_schema"}
+        })
+
+      assert %{
+        "id"=> _,
+        "token"=> _,
+        "name"=> ^name,
+        "config" => %{
+          "url"=>  "postgresql://test:REDACTED@"<> _,
+          "schema"=>  "_my_schema",
+        }
+      } = json_response(conn, 201)
     end
 
     test "returns 422 on missing arguments", %{conn: conn, user: user} do

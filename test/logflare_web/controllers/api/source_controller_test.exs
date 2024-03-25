@@ -1,16 +1,10 @@
 defmodule LogflareWeb.Api.SourceControllerTest do
   use LogflareWeb.ConnCase
 
-  import Logflare.Factory
-
-  alias Logflare.Sources.Counters
-
   setup do
     insert(:plan, name: "Free")
     user = insert(:user)
     sources = insert_list(2, :source, user_id: user.id)
-
-    Counters.start_link()
 
     {:ok, user: user, sources: sources}
   end
@@ -39,6 +33,17 @@ defmodule LogflareWeb.Api.SourceControllerTest do
         |> json_response(200)
 
       assert response["id"] == source.id
+    end
+    test "backend postgres secrets are redacted", %{conn: conn, user: user, sources: [source | _]} do
+      insert(:backend, sources: [source], user: user, type: :postgres, config: %{url: "postgresql://user:secret@localhost"})
+      assert %{"backends"=> [backend]} =
+        conn
+        |> add_access_token(user, "private")
+        |> get("/api/sources/#{source.token}")
+        |> json_response(200)
+
+      config = backend["config"]
+      assert config["url"] =~ "postgresql://user:REDACTED@localhost"
     end
 
     test "returns not found if doesn't own the source", %{conn: conn, sources: [source | _]} do
@@ -119,6 +124,27 @@ defmodule LogflareWeb.Api.SourceControllerTest do
         |> json_response(422)
 
       assert resp == %{"errors" => %{"name" => ["is invalid"]}}
+    end
+  end
+
+  describe "add_backend/2" do
+    test "attaches a backend", %{conn: conn, user: user, sources: [source | _]} do
+      backend = insert(:backend, user: user)
+      conn = conn
+      |> add_access_token(user, "private")
+      |> post("/api/sources/#{source.token}/backends/#{backend.token}")
+
+      # returns the source
+      assert %{"token"=> _, "backends"=> [_]} = json_response(conn, 201)
+    end
+    test "removes a backend", %{conn: conn, user: user, sources: [source | _]} do
+      backend = insert(:backend, user: user, sources: [source])
+      conn = conn
+      |> add_access_token(user, "private")
+      |> delete("/api/sources/#{source.token}/backends/#{backend.token}")
+
+      # returns the source
+      assert %{"token"=> _, "backends"=> []} = json_response(conn, 200)
     end
   end
 

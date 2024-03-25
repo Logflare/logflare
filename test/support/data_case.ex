@@ -31,6 +31,7 @@ defmodule Logflare.DataCase do
       setup context do
         Mimic.verify_on_exit!(context)
         stub(Logflare.Mailer)
+        stub(Goth, :fetch, fn _mod -> {:ok, %Goth.Token{token: "auth-token"}} end)
         :ok
       end
     end

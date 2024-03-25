@@ -7,7 +7,6 @@ defmodule LogflareWeb.Source.SearchLVTest do
   alias Logflare.SingleTenant
   alias Logflare.Source.BigQuery.Schema
   alias Logflare.Source.RecentLogsServer
-  alias Logflare.Sources.Counters
   alias LogflareWeb.Source.SearchLV
 
   import Phoenix.LiveViewTest
@@ -21,9 +20,6 @@ defmodule LogflareWeb.Source.SearchLVTest do
   }
 
   defp setup_mocks(_ctx) do
-    # mocks
-    stub(Goth, :fetch, fn _mod -> {:ok, %Goth.Token{token: "auth-token"}} end)
-
     stub(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, fn _conn, _proj_id, _opts ->
       {:ok, TestUtils.gen_bq_response()}
     end)
@@ -40,8 +36,6 @@ defmodule LogflareWeb.Source.SearchLVTest do
   # requires a source, and plan set
   defp setup_source_processes(context) do
     plan = context.plan
-
-    start_supervised!(Counters)
 
     Enum.each(context, fn
       {_, %Source{token: token}} ->

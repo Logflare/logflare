@@ -1,9 +1,8 @@
 defmodule Logflare.Logs.RejectedLogEventsTest do
   @moduledoc false
+  use Logflare.DataCase
   alias Logflare.Logs.RejectedLogEvents
   alias Logflare.{Sources, Users, LogEvent}
-  import Logflare.Factory
-  use Logflare.DataCase
 
   setup do
     s1 = build(:source)

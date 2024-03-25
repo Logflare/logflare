@@ -2,9 +2,8 @@ defmodule LogflareWeb.LogControllerTest do
   @moduledoc false
   use LogflareWeb.ConnCase
   alias Logflare.Backends.Adaptor.WebhookAdaptor
+  alias Logflare.SystemMetrics.AllLogsLogged
   alias Logflare.Source.RecentLogsServer
-  alias Logflare.Sources.Counters
-  alias Logflare.Sources.RateCounters
   alias Logflare.SingleTenant
   alias Logflare.Users
   alias Logflare.Source.V1SourceSup
@@ -17,21 +16,8 @@ defmodule LogflareWeb.LogControllerTest do
     %{"some" => "valid log entry", "event_message" => "hi!"},
     %{"some" => "valid log entry 2", "event_message" => "hi again!"}
   ]
-
   setup do
-    Logflare.Sources.Counters
-    |> stub(:increment, fn v -> v end)
-
-    Logflare.Sources.Counters
-    |> stub(:increment, fn v -> v end)
-
-    Logflare.SystemMetrics.AllLogsLogged
-    |> stub(:increment, fn v -> v end)
-
-    # mock goth behaviour
-    Goth
-    |> stub(:fetch, fn _mod -> {:ok, %Goth.Token{token: "auth-token"}} end)
-
+    start_supervised!(AllLogsLogged)
     :ok
   end
 
@@ -40,9 +26,6 @@ defmodule LogflareWeb.LogControllerTest do
       user = insert(:user)
       source = insert(:source, user_id: user.id, v2_pipeline: true)
       _plan = insert(:plan, name: "Free")
-
-      start_supervised!(Counters)
-      start_supervised!(RateCounters)
 
       backend =
         insert(:backend, sources: [source], type: :webhook, config: %{url: "some url"})
@@ -274,8 +257,6 @@ defmodule LogflareWeb.LogControllerTest do
 
       # ingestion setup
       rls = %RecentLogsServer{source: source, source_id: source.token}
-      start_supervised!(Counters)
-      start_supervised!(RateCounters)
       start_supervised!({V1SourceSup, rls})
       :timer.sleep(500)
 
@@ -309,8 +290,6 @@ defmodule LogflareWeb.LogControllerTest do
     source = insert(:source, user: user)
 
     rls = %RecentLogsServer{source: source, source_id: source.token}
-    start_supervised!(Counters)
-    start_supervised!(RateCounters)
     start_supervised!({V1SourceSup, rls})
     :timer.sleep(500)
 

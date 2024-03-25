@@ -1,8 +1,6 @@
 defmodule LogflareWeb.Api.AccessTokensTest do
   use LogflareWeb.ConnCase
 
-  import Logflare.Factory
-
   setup do
     insert(:plan, name: "Free")
     user = insert(:user)

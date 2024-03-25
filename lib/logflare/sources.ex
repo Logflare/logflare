@@ -89,6 +89,20 @@ defmodule Logflare.Sources do
   end
 
   @doc """
+  Retrieves a source by keyword, with `{:error, :not_found}` if not found.
+  """
+  @spec fetch_source_by(keyword()) :: {:ok, Source.t()} | {:error, :not_found}
+  def fetch_source_by(kw) do
+    source = get_by(kw)
+
+    if source do
+      {:ok, source}
+    else
+      {:error, :not_found}
+    end
+  end
+
+  @doc """
   deprecated, use get_source_by_token/1 instead
   """
   @spec get(atom | integer) :: Source.t() | nil
@@ -218,7 +232,7 @@ defmodule Logflare.Sources do
 
   def preload_defaults(source) do
     source
-    |> Repo.preload([:user, :rules])
+    |> Repo.preload([:user, :rules, :backends])
     |> refresh_source_metrics()
     |> put_bq_table_id()
   end

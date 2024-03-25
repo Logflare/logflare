@@ -3,7 +3,6 @@ defmodule Logflare.Source.BigQuery.SchemaTest do
   use Logflare.DataCase
   alias Logflare.Source.BigQuery.Schema
   alias Logflare.Source.RecentLogsServer, as: RLS
-  import Logflare.Factory
   alias Logflare.Google.BigQuery.SchemaUtils
 
   test "next_update_ts/1" do
@@ -40,10 +39,6 @@ defmodule Logflare.Source.BigQuery.SchemaTest do
 
       {:ok, %{}}
     end)
-
-    # mock goth behaviour
-    Goth
-    |> stub(:fetch, fn _mod -> {:ok, %Goth.Token{token: "auth-token"}} end)
 
     Logflare.Mailer
     |> expect(:deliver, 1, fn _ -> :ok end)

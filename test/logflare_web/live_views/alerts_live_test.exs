@@ -156,10 +156,6 @@ defmodule LogflareWeb.AlertsLiveTest do
     setup [:create_alert_query]
 
     setup do
-      # mock goth behaviour
-      Goth
-      |> stub(:fetch, fn _mod -> {:ok, %Goth.Token{token: "auth-token"}} end)
-
       WebhookAdaptor.Client
       |> stub(:send, fn _, _ -> {:ok, %Tesla.Env{}} end)
 

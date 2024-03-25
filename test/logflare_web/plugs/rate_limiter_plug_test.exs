@@ -5,13 +5,10 @@ defmodule LogflareWeb.Plugs.RateLimiterTest do
   alias LogflareWeb.Plugs.RateLimiter
   alias Logflare.Source.RateCounterServer
   alias Logflare.Source.RecentLogsServer, as: RLS
-  import Logflare.Factory
 
   @moduletag :skip
 
   setup do
-    Sources.Counters.start_link()
-
     u1 = insert(:user, api_key: "dummy_key", api_quota: 5)
     u2 = insert(:user, api_key: "other_dummy_key", api_quota: 0)
     s1 = insert(:source, user_id: u1.id)

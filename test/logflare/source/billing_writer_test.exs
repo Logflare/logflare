@@ -5,6 +5,7 @@ defmodule Logflare.Source.BillingWriterTest do
   alias Logflare.Repo
   alias Logflare.Source.BillingWriter
   alias Logflare.Source.RecentLogsServer
+  alias Logflare.Sources.Counters
 
   setup :set_mimic_global
 
@@ -22,8 +23,7 @@ defmodule Logflare.Source.BillingWriterTest do
       )
 
     # increase log count
-    start_supervised(Logflare.Sources.Counters)
-    Logflare.Sources.Counters.increment(source.token)
+    Counters.increment(source.token)
 
     # Stripe mocks
     Stripe.SubscriptionItem.Usage

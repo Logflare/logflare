@@ -114,12 +114,6 @@ defmodule Logflare.EndpointsTest do
   end
 
   describe "running queries in bigquery backends" do
-    setup do
-      # mock goth behaviour
-      stub(Goth, :fetch, fn _mod -> {:ok, %Goth.Token{token: "auth-token"}} end)
-      :ok
-    end
-
     test "run an endpoint query without caching" do
       expect(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, 1, fn _conn, _proj_id, _opts ->
         {:ok, TestUtils.gen_bq_response([%{"testing" => "123"}])}

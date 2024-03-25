@@ -85,6 +85,9 @@ defmodule Logflare.Backends do
     end
   end
 
+  @doc """
+  Updates the backends of a source wholly. Does not work on partial data, all backends must be provided.
+  """
   @spec update_source_backends(Source.t(), [Backend.t()]) ::
           {:ok, Source.t()} | {:error, Ecto.Changeset.t()}
   def update_source_backends(%Source{} = source, backends) do

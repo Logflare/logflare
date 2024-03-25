@@ -5,7 +5,6 @@ defmodule Logflare.AlertingTest do
   alias Logflare.AlertsScheduler
 
   setup do
-    stub(Goth, :fetch, fn _mod -> {:ok, %Goth.Token{token: "auth-token"}} end)
     insert(:plan, name: "Free")
     start_supervised!(AlertsScheduler)
     {:ok, user: insert(:user)}

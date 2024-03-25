@@ -7,11 +7,8 @@ defmodule Logflare.SourcesTest do
   alias Logflare.Source
   alias Logflare.Source.RecentLogsServer, as: RLS
   alias Logflare.Sources
-  alias Logflare.Sources.Counters
   alias Logflare.SourceSchemas
   alias Logflare.Source.RateCounterServer
-  alias Logflare.Sources.Counters
-  alias Logflare.Sources.RateCounters
   alias Logflare.SystemMetrics.AllLogsLogged
   alias Logflare.Source.BigQuery.BufferCounter
   alias Logflare.Source.V1SourceSup
@@ -118,9 +115,7 @@ defmodule Logflare.SourcesTest do
 
   describe "preload_for_dashboard/1" do
     setup do
-      Counters.start_link()
-
-      %{user: insert(:user)}
+      [user: insert(:user)]
     end
 
     test "preloads required fields", %{user: user} do
@@ -146,14 +141,10 @@ defmodule Logflare.SourcesTest do
     alias Logflare.Source.RecentLogsServer, as: RLS
 
     setup do
-      stub(Goth, :fetch, fn _mod -> {:ok, %Goth.Token{token: "auth-token"}} end)
-
       Logflare.Google.BigQuery
       |> stub(:init_table!, fn _, _, _, _, _, _ -> :ok end)
 
       start_supervised!(AllLogsLogged)
-      start_supervised!(Counters)
-      start_supervised!(RateCounters)
 
       RateCounterServer
       |> stub(:get_data_from_ets, fn _ -> %RateCounterServer{} end)
@@ -189,11 +180,6 @@ defmodule Logflare.SourcesTest do
     end
 
     test "start_source/1, lookup/2, delete_source/1", %{user: user} do
-      Counters
-      |> expect(:delete, fn _token -> :ok end)
-      |> stub(:get_inserts, fn _ -> {:ok, 0} end)
-      |> stub(:get_bq_inserts, fn _ -> {:ok, 0} end)
-      |> stub(:create, fn _ -> {:ok, :some_table} end)
 
       Logflare.Google.BigQuery
       |> expect(:delete_table, fn _token -> :ok end)
@@ -279,28 +265,7 @@ defmodule Logflare.SourcesTest do
     end
   end
 
-  describe "Ingestion ETS tables" do
-    setup do
-      on_exit(fn ->
-        try do
-          :ets.delete(:rate_counters)
-        rescue
-          _e -> :ok
-        end
-
-        try do
-          :ets.delete(:table_counters)
-        rescue
-          _e -> :ok
-        end
-      end)
-    end
-
-    test "ingest_ets_tables_started?/0" do
-      assert false == Sources.ingest_ets_tables_started?()
-      start_supervised!(Logflare.Sources.RateCounters)
-      start_supervised!(Logflare.Sources.Counters)
-      assert true == Sources.ingest_ets_tables_started?()
-    end
+  test "ingest_ets_tables_started?/0" do
+    assert Sources.ingest_ets_tables_started?()
   end
 end

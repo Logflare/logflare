@@ -6,14 +6,10 @@ defmodule Logflare.LogsTest do
   # v1 pipeline
   alias Logflare.Source.RecentLogsServer
   alias Logflare.Source.V1SourceSup
-  alias Logflare.Sources.Counters
-  alias Logflare.Sources.RateCounters
   alias Logflare.SystemMetrics.AllLogsLogged
 
   def source_and_user(_context) do
     start_supervised!(AllLogsLogged)
-    start_supervised!(Counters)
-    start_supervised!(RateCounters)
 
     insert(:plan)
     user = insert(:user)
@@ -29,14 +25,6 @@ defmodule Logflare.LogsTest do
 
     :timer.sleep(250)
     [source: source, source_b: source_b, user: user]
-  end
-
-  setup do
-    # mock goth behaviour
-    Goth
-    |> stub(:fetch, fn _mod -> {:ok, %Goth.Token{token: "auth-token"}} end)
-
-    :ok
   end
 
   setup :source_and_user

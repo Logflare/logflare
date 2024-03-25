@@ -11,16 +11,6 @@ defmodule Logflare.Backends.Backend do
 
   @adaptor_types [:bigquery, :webhook, :postgres]
 
-  @derive {Jason.Encoder,
-           only: [
-             :name,
-             :token,
-             :description,
-             :type,
-             :id,
-             :config
-           ]}
-
   typed_schema "backends" do
     field(:name, :string)
     field(:description, :string)
@@ -42,4 +32,32 @@ defmodule Logflare.Backends.Backend do
 
   @spec child_spec(Source.t(), Backend.t()) :: map()
   defdelegate child_spec(source, backend), to: Adaptor
+
+  # secrets redacting for json encoding
+  defimpl Jason.Encoder, for: __MODULE__ do
+    def encode(value, opts) do
+      type = value.type
+
+      values =
+        Map.take(value, [
+          :name,
+          :token,
+          :description,
+          :type,
+          :id,
+          :config
+        ])
+        |> Map.update(:config, %{}, fn
+          config when type == :postgres ->
+            url = Map.get(config, :url) || Map.get(config, "url")
+            updated = String.replace(url, ~r/(.+):.+\@/, "\\g{1}:REDACTED@")
+            Map.put(config, :url, updated)
+
+          cfg ->
+            cfg
+        end)
+
+      Jason.Encode.map(values, opts)
+    end
+  end
 end
