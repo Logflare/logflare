@@ -28,7 +28,6 @@ defmodule LogflareWeb.HealthCheckControllerTest do
   end
 
   test "coming_up while RLS boot warming" , %{conn: conn} do
-
     user = insert(:user)
     insert(:plan)
     for _ <- 1..25 do
