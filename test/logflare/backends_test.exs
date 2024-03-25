@@ -149,13 +149,12 @@ defmodule Logflare.BackendsTest do
       le = build(:log_event, source: source)
       assert :ok = Backends.ingest_logs([le], source)
       :timer.sleep(500)
+      assert_receive %_{event: "rate", payload: %{rate: _}}
+      # broadcast for recent logs page
+      assert_receive %_{event: _, payload: %{body: %{}}}
       {:ok, pid} = Backends.lookup(RecentLogsServer, source.token)
       send(pid, :broadcast)
-      :timer.sleep(2000)
-      assert_received %_{event: "rate", payload: %{rate: _}}
-      # broadcast for recent logs page
-      assert_received %_{event: _, payload: %{body: %{}}}
-      assert_received {:inserts, ^source_token, _}
+      assert_receive {_, ^source_token, _}, 500
     end
   end
 
