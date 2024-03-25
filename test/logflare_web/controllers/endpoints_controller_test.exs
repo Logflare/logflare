@@ -12,10 +12,6 @@ defmodule LogflareWeb.EndpointsControllerTest do
       user = insert(:user, sources: [source])
       _plan = insert(:plan, name: "Free")
 
-      # mock goth behaviour
-      Goth
-      |> stub(:fetch, fn _mod -> {:ok, %Goth.Token{token: "auth-token"}} end)
-
       GoogleApi.BigQuery.V2.Api.Jobs
       |> stub(:bigquery_jobs_query, fn conn, _proj_id, _opts ->
         assert {Tesla.Adapter.Finch, :call, [[name: Logflare.FinchQuery, receive_timeout: _]]} =
@@ -114,10 +110,6 @@ defmodule LogflareWeb.EndpointsControllerTest do
 
     setup do
       user = SingleTenant.get_default_user()
-      # mock goth behaviour
-      Goth
-      |> stub(:fetch, fn _mod -> {:ok, %Goth.Token{token: "auth-token"}} end)
-
       {:ok, user: user}
     end
 

@@ -18,11 +18,6 @@ defmodule LogflareWeb.Api.QueryControllerTest do
   end
 
   describe "query with bq" do
-    setup do
-      stub(Goth, :fetch, fn _mod -> {:ok, %Goth.Token{token: "auth-token"}} end)
-
-      :ok
-    end
     test "?sql= query param", %{
       conn: conn,
       user: user,

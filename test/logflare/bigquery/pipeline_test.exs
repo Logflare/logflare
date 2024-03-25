@@ -63,8 +63,6 @@ defmodule Logflare.BigQuery.PipelineTest do
         {:ok, %GoogleApi.BigQuery.V2.Model.TableDataInsertAllResponse{insertErrors: nil}}
       end)
 
-      stub(Goth, :fetch, fn _mod -> {:ok, %Goth.Token{token: "auth-token"}} end)
-
       user = insert(:user)
       source = insert(:source, user_id: user.id)
       rls = %RLS{source_id: source.token, source: source}

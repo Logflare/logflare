@@ -41,10 +41,6 @@ defmodule Logflare.Source.BigQuery.SchemaTest do
       {:ok, %{}}
     end)
 
-    # mock goth behaviour
-    Goth
-    |> stub(:fetch, fn _mod -> {:ok, %Goth.Token{token: "auth-token"}} end)
-
     Logflare.Mailer
     |> expect(:deliver, 1, fn _ -> :ok end)
 

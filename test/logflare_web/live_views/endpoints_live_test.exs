@@ -218,10 +218,6 @@ defmodule LogflareWeb.EndpointsLiveTest do
 
   describe "run queries" do
     setup do
-      # mock goth behaviour
-      Goth
-      |> stub(:fetch, fn _mod -> {:ok, %Goth.Token{token: "auth-token"}} end)
-
       GoogleApi.BigQuery.V2.Api.Jobs
       |> expect(:bigquery_jobs_query, 1, fn _conn, _proj_id, _opts ->
         {:ok, TestUtils.gen_bq_response([%{"testing" => "results-123"}])}

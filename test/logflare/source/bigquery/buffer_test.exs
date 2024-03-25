@@ -10,9 +10,6 @@ defmodule Logflare.Source.BigQuery.BufferTest do
   alias Logflare.Source.V1SourceSup
 
   setup do
-    Goth
-    |> stub(:fetch, fn _mod -> {:ok, %Goth.Token{token: "auth-token"}} end)
-
     start_supervised!(AllLogsLogged)
     start_supervised!(Counters)
     start_supervised!(RateCounters)

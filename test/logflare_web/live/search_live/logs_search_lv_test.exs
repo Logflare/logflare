@@ -21,9 +21,6 @@ defmodule LogflareWeb.Source.SearchLVTest do
   }
 
   defp setup_mocks(_ctx) do
-    # mocks
-    stub(Goth, :fetch, fn _mod -> {:ok, %Goth.Token{token: "auth-token"}} end)
-
     stub(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, fn _conn, _proj_id, _opts ->
       {:ok, TestUtils.gen_bq_response()}
     end)

@@ -146,8 +146,6 @@ defmodule Logflare.SourcesTest do
     alias Logflare.Source.RecentLogsServer, as: RLS
 
     setup do
-      stub(Goth, :fetch, fn _mod -> {:ok, %Goth.Token{token: "auth-token"}} end)
-
       Logflare.Google.BigQuery
       |> stub(:init_table!, fn _, _, _, _, _, _ -> :ok end)
 

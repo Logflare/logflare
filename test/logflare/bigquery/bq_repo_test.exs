@@ -8,9 +8,6 @@ defmodule Logflare.BigQuery.BqRepoTest do
     user = insert(:user)
     source = insert(:source, user_id: user.id)
 
-    Goth
-    |> stub(:fetch, fn _mod -> {:ok, %Goth.Token{token: "auth-token"}} end)
-
     stub(GoogleApi.BigQuery.V2.Api.Jobs)
 
     {:ok, source: source, user: user}
