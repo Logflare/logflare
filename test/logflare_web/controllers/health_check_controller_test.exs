@@ -9,8 +9,6 @@ defmodule LogflareWeb.HealthCheckControllerTest do
 
   test "normal node health check", %{conn: conn} do
       start_supervised!(Source.Supervisor)
-      start_supervised!(Logflare.Sources.RateCounters)
-      start_supervised!(Logflare.Sources.Counters)
       :timer.sleep(500)
       conn =
       conn
@@ -30,8 +28,6 @@ defmodule LogflareWeb.HealthCheckControllerTest do
   end
 
   test "coming_up while RLS boot warming" , %{conn: conn} do
-    start_supervised!(Logflare.Sources.RateCounters)
-    start_supervised!(Logflare.Sources.Counters)
 
     user = insert(:user)
     insert(:plan)
@@ -62,8 +58,6 @@ defmodule LogflareWeb.HealthCheckControllerTest do
 
       start_supervised!(Source.Supervisor)
 
-    start_supervised!(Logflare.Sources.RateCounters)
-    start_supervised!(Logflare.Sources.Counters)
 :ok
     end
     test "not ok", %{conn: conn} do
@@ -76,8 +70,6 @@ defmodule LogflareWeb.HealthCheckControllerTest do
 
     setup do
     start_supervised!(Source.Supervisor)
-    start_supervised!(Logflare.Sources.RateCounters)
-      start_supervised!(Logflare.Sources.Counters)
       stub(Schema, :get_state, fn _ -> %{field_count: 5} end)
       :ok
     end

@@ -8,16 +8,9 @@ defmodule LogflareWeb.LogControllerTestOld do
   alias Logflare.SystemMetricsSup
   alias Logflare.Billing
   alias Logflare.Billing.Plan
-  use Mimic
   @moduletag :failing
 
-  setup_all do
-    {:ok, _} = Sources.Counters.start_link()
-    :ok
-  end
-
   setup do
-    import Logflare.Factory
 
     [u1, u2] = insert_list(2, :user)
 
@@ -29,7 +22,6 @@ defmodule LogflareWeb.LogControllerTestOld do
     s = Sources.get_by_and_preload(id: s.id)
 
     SystemMetricsSup.start_link()
-    Sources.RateCounters.start_link()
 
     Source.RateCounterServer.start_link(%RLS{source_id: s.token})
     SourceBuffer.start_link(%RLS{source_id: s.token})

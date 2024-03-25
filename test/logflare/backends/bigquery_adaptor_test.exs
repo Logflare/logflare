@@ -1,6 +1,5 @@
 defmodule Logflare.Backends.BigQueryAdaptorTest do
   use Logflare.DataCase, async: false
-  use Mimic
 
   alias Logflare.Backends.Adaptor
   alias Logflare.Source.RecentLogsServer, as: RLS

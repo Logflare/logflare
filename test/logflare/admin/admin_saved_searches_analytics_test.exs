@@ -1,7 +1,6 @@
 defmodule Logflare.SavedSearches.AnalyticsTest do
   @moduledoc false
   use Logflare.DataCase
-  import Logflare.Factory
   alias Logflare.Lql.{ChartRule, FilterRule}
   alias Logflare.Users
   alias Logflare.SavedSearches

@@ -2,7 +2,6 @@ defmodule LogflareWeb.Plugs.VerifyApiAccessTest do
   @moduledoc false
   use LogflareWeb.ConnCase
   alias LogflareWeb.Plugs.VerifyApiAccess
-  use Mimic
 
   setup do
     user = insert(:user)

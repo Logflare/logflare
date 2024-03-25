@@ -1,8 +1,6 @@
 defmodule Logflare.Logs.SourceRoutingTest do
   @moduledoc false
   use Logflare.DataCase
-  import Logflare.Factory
-
   alias Logflare.LogEvent, as: LE
   alias Logflare.Logs.SourceRouting
   alias Logflare.Lql.FilterRule, as: FR

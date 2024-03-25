@@ -3,16 +3,12 @@ defmodule Logflare.Source.BigQuery.BufferTest do
   use Logflare.DataCase
   alias Logflare.Source.BigQuery
   alias Logflare.Source.RecentLogsServer
-  alias Logflare.Sources.Counters
-  alias Logflare.Sources.RateCounters
   alias Logflare.SystemMetrics.AllLogsLogged
   alias Logflare.LogEvent
   alias Logflare.Source.V1SourceSup
 
   setup do
     start_supervised!(AllLogsLogged)
-    start_supervised!(Counters)
-    start_supervised!(RateCounters)
     insert(:plan)
     user = insert(:user)
 

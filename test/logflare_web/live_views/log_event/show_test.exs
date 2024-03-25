@@ -12,7 +12,6 @@ defmodule LogflareWeb.LogEventLive.ShowTest do
   alias Logflare.Source.RecentLogsServer, as: RLS
   alias Logflare.Logs.LogEvents
   import Ecto.Query
-  use Mimic
 
   setup_all do
     :ok = Ecto.Adapters.SQL.Sandbox.checkout(Logflare.Repo)
@@ -25,7 +24,6 @@ defmodule LogflareWeb.LogEventLive.ShowTest do
       |> Repo.one()
 
     source = Sources.get_by(token: source_token)
-    Logflare.Sources.Counters.start_link()
     {:ok, _} = RLS.start_link(%RLS{source_id: String.to_atom(source_token), source: source})
 
     %{user: user, source: [source]}

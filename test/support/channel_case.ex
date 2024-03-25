@@ -21,6 +21,7 @@ defmodule LogflareWeb.ChannelCase do
     quote do
       # Import conveniences for testing with channels
       import Phoenix.ChannelTest
+      import Logflare.Factory
 
       # The default endpoint for testing
       @endpoint LogflareWeb.Endpoint
