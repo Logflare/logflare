@@ -156,5 +156,62 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptorTest do
       query = from(l in PostgresAdaptor.table_name(source), select: l.body)
       assert repo.all(query) == []
     end
+
+    test "handle migration errors", %{source: source, backend: backend} do
+      PostgresAdaptor.create_repo(backend)
+      assert :ok = PostgresAdaptor.connected?(backend)
+      bad_migrations = [{0, BadMigration}]
+
+      assert capture_log(fn ->
+               assert {:error, :failed_migration} =
+                        PostgresAdaptor.create_log_events_table(
+                          {source, backend},
+                          bad_migrations
+                        )
+             end) =~ "[error]"
+    end
+  end
+
+  test "bug: cast_config/1 and validate_config/1 postgresql url variations" do
+    assert %Ecto.Changeset{valid?: true} =
+             %{url: "postgresql://localhost:5432"}
+             |> PostgresAdaptor.cast_config()
+             |> PostgresAdaptor.validate_config()
+
+    assert %Ecto.Changeset{valid?: true} =
+             %{url: "postgres://localhost:5432"}
+             |> PostgresAdaptor.cast_config()
+             |> PostgresAdaptor.validate_config()
+
+    # invalid connection strings
+    assert %Ecto.Changeset{valid?: false} =
+             %{url: "://localhost:5432"}
+             |> PostgresAdaptor.cast_config()
+             |> PostgresAdaptor.validate_config()
+
+    assert %Ecto.Changeset{valid?: false} =
+             %{url: "//localhost:5432"}
+             |> PostgresAdaptor.cast_config()
+             |> PostgresAdaptor.validate_config()
+
+    assert %Ecto.Changeset{valid?: false} =
+             %{url: "/localhost:5432"}
+             |> PostgresAdaptor.cast_config()
+             |> PostgresAdaptor.validate_config()
+
+    assert %Ecto.Changeset{valid?: false} =
+             %{url: "postgres//localhost:5432"}
+             |> PostgresAdaptor.cast_config()
+             |> PostgresAdaptor.validate_config()
+  end
+end
+
+defmodule BadMigration do
+  @moduledoc false
+  use Ecto.Migration
+
+  def up do
+    alter table(:none) do
+    end
   end
 end
