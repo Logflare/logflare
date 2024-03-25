@@ -25,7 +25,8 @@ defmodule Logflare.Source do
              :has_rejected_events,
              :metrics,
              :notifications,
-             :custom_event_message_keys
+             :custom_event_message_keys,
+             :backends
            ]}
   defp env_dataset_id_append,
     do: Application.get_env(:logflare, Logflare.Google)[:dataset_id_append]
