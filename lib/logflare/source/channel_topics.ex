@@ -19,6 +19,14 @@ defmodule Logflare.Source.ChannelTopics do
     field :max_rate, integer(), default: 0
   end
 
+  def subscribe_dashboard(source_token) do
+    LogflareWeb.Endpoint.subscribe("dashboard:#{source_token}")
+  end
+
+  def subscribe_source(source_token) do
+    LogflareWeb.Endpoint.subscribe("source:#{source_token}")
+  end
+
   def broadcast_log_count(%{log_count: log_count, source_token: source_token} = payload) do
     payload = %{payload | log_count: Delimit.number_to_delimited(log_count)}
     topic = "dashboard:#{source_token}"

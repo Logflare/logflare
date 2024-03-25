@@ -85,7 +85,9 @@ defmodule Logflare.PubSubRates.Cache do
       {:ok, rates} ->
         Map.get(rates, :cluster)
 
-      {:error, _} ->
+      {:error, _} = err ->
+        Logger.error("Error when getting pubsub clustr rates: #{inspect(err)}")
+
         %{
           average_rate: -1,
           last_rate: -1,

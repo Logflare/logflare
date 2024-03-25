@@ -1,6 +1,6 @@
 defmodule Logflare.PubSubRates.Inserts do
   @moduledoc false
-  alias Phoenix.PubSub
+  alias Logflare.PubSubRates
   alias Logflare.PubSubRates.Cache
 
   require Logger
@@ -16,17 +16,12 @@ defmodule Logflare.PubSubRates.Inserts do
   end
 
   def init(state) do
-    pool_size = Application.get_env(:logflare, Logflare.PubSub)[:pool_size]
-
-    for shard <- 1..pool_size do
-      PubSub.subscribe(Logflare.PubSub, "inserts:shard-#{shard}")
-    end
-
+    PubSubRates.subscribe(:inserts)
     {:ok, state}
   end
 
-  def handle_info({:inserts, source_id, inserts}, state) do
-    Cache.cache_inserts(source_id, inserts)
+  def handle_info({:inserts, source_token, inserts}, state) do
+    Cache.cache_inserts(source_token, inserts)
     {:noreply, state}
   end
 end
