@@ -3,7 +3,6 @@ defmodule Logflare.Source.BigQuery.SchemaTest do
   use Logflare.DataCase
   alias Logflare.Source.BigQuery.Schema
   alias Logflare.Source.RecentLogsServer, as: RLS
-  import Logflare.Factory
   alias Logflare.Google.BigQuery.SchemaUtils
 
   test "next_update_ts/1" do

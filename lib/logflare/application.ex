@@ -13,6 +13,8 @@ defmodule Logflare.Application do
   alias Logflare.Users
   alias Logflare.Partners
   alias Logflare.Auth
+  alias Logflare.Sources.Counters
+  alias Logflare.Sources.RateCounters
 
   def start(_type, _args) do
     env = Application.get_env(:logflare, :env)
@@ -35,6 +37,8 @@ defmodule Logflare.Application do
   defp get_children(:test) do
     finch_pools() ++
       [
+        Counters,
+        RateCounters,
         ContextCache,
         Users.Cache,
         Sources.Cache,
@@ -128,8 +132,8 @@ defmodule Logflare.Application do
          name: Logflare.CounterRegistry, keys: :unique, partitions: System.schedulers_online()},
         Logs.RejectedLogEvents,
         # init Counters before Supervisof as Supervisor calls Counters through table create
-        Sources.Counters,
-        Sources.RateCounters,
+        Counters,
+        RateCounters,
         PubSubRates.Rates,
         PubSubRates.Buffers,
         PubSubRates.Inserts,

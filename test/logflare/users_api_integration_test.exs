@@ -1,12 +1,10 @@
 defmodule Logflare.Users.APIIntegrationTest do
   @moduledoc false
+  use Logflare.DataCase
   import Logflare.Users.API
   alias Logflare.Source.RateCounterServer, as: SRC
   alias Logflare.Sources
-  import Logflare.Factory
   alias Logflare.Billing.Plan
-
-  use Logflare.DataCase
 
   @moduletag :skip
 

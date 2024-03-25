@@ -1,16 +1,10 @@
 defmodule LogflareWeb.Api.SourceControllerTest do
   use LogflareWeb.ConnCase
 
-  import Logflare.Factory
-
-  alias Logflare.Sources.Counters
-
   setup do
     insert(:plan, name: "Free")
     user = insert(:user)
     sources = insert_list(2, :source, user_id: user.id)
-
-    Counters.start_link()
 
     {:ok, user: user, sources: sources}
   end

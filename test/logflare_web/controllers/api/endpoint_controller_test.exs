@@ -1,6 +1,5 @@
 defmodule LogflareWeb.Api.EndpointControllerTest do
   use LogflareWeb.ConnCase
-  import Logflare.Factory
 
   setup do
     endpoints = insert_list(2, :endpoint)

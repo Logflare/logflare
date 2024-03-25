@@ -1,6 +1,5 @@
 defmodule LogflareWeb.AdminControllerTest do
   @moduledoc false
-  import Logflare.Factory
   use LogflareWeb.ConnCase
 
   describe "Admin controller" do

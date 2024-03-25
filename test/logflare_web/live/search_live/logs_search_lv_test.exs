@@ -7,7 +7,6 @@ defmodule LogflareWeb.Source.SearchLVTest do
   alias Logflare.SingleTenant
   alias Logflare.Source.BigQuery.Schema
   alias Logflare.Source.RecentLogsServer
-  alias Logflare.Sources.Counters
   alias LogflareWeb.Source.SearchLV
 
   import Phoenix.LiveViewTest
@@ -37,8 +36,6 @@ defmodule LogflareWeb.Source.SearchLVTest do
   # requires a source, and plan set
   defp setup_source_processes(context) do
     plan = context.plan
-
-    start_supervised!(Counters)
 
     Enum.each(context, fn
       {_, %Source{token: token}} ->

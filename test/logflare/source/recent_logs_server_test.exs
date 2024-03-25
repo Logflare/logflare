@@ -1,16 +1,12 @@
 defmodule Logflare.Source.RecentLogsServerTest do
   @moduledoc false
-  alias Logflare.Source.RecentLogsServer, as: RLS
-  alias Logflare.Sources
   use LogflareWeb.ChannelCase
+  alias Logflare.Source.RecentLogsServer, as: RLS
   import Phoenix.ChannelTest
-  import Logflare.Factory
   @moduletag :failing
   setup do
     u1 = insert(:user)
     s1 = insert(:source, user_id: u1.id)
-    Sources.Counters.start_link()
-
     {:ok, sources: [s1]}
   end
 
