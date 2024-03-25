@@ -128,6 +128,30 @@ defmodule Logflare.Source.Supervisor do
     {:noreply, state}
   end
 
+  def handle_cast({:maybe_restart_mismatched_source_pipelines, source_token}, state) do
+    source = Sources.Cache.get_source_by_token(source_token)
+
+    %{
+      v1: do_v1_lookup(source),
+      v2: do_v2_lookup(source),
+      v2_pipeline: source.v2_pipeline
+    }
+    |> case do
+      %{v1: {:ok, _}, v2_pipeline: true} ->
+        # v2->v1, restart the source pipelines
+        reset_source(source_token)
+
+      %{v2: {:ok, _}, v2_pipeline: false} ->
+        # v1->v2 , restart the source pipelines
+        reset_source(source_token)
+
+      _ ->
+        :noop
+    end
+
+    {:noreply, state}
+  end
+
   def terminate(reason, state) do
     Logger.warning("Going Down - #{inspect(reason)} - #{__MODULE__} - last state: #{state}")
     reason
@@ -174,6 +198,14 @@ defmodule Logflare.Source.Supervisor do
     {:ok, source_token}
   end
 
+  def maybe_restart_mismatched_source_pipelines(source_token) do
+    unless do_pg_ops?() do
+      GenServer.abcast(__MODULE__, {:maybe_restart_mismatched_source_pipelines, source_token})
+    end
+
+    {:ok, source_token}
+  end
+
   def delete_all_user_sources(user) do
     # TODO: use context func
     Repo.all(Ecto.assoc(user, :sources))
@@ -212,16 +244,17 @@ defmodule Logflare.Source.Supervisor do
     # maybe restart
     %{
       v1: do_v1_lookup(source),
-      v2: do_v2_lookup(source)
+      v2: do_v2_lookup(source),
+      v2_pipeline: v2_pipeline
     }
     |> case do
       %{v1: {:ok, _}} when v2_pipeline == true ->
-        # v2->v1, restart the source
-        reset_source(source_token)
+        # v2->v1, restart the source pipelines
+        maybe_restart_mismatched_source_pipelines(source_token)
 
       %{v2: {:ok, _}} when v2_pipeline == false ->
-        # v1->v2 , restart the source
-        reset_source(source_token)
+        # v1->v2 , restart the source pipelines
+        maybe_restart_mismatched_source_pipelines(source_token)
 
       %{v1: {:error, _}, v2: {:error, _}} ->
         Logger.info("Source.Supervisor - SourceSup not found, starting...",
