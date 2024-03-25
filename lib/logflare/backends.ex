@@ -15,6 +15,7 @@ defmodule Logflare.Backends do
   alias Logflare.LogEvent
   alias Logflare.Repo
   alias Logflare.Source
+  alias Logflare.Source
   alias Logflare.Sources
   alias Logflare.Source.RecentLogsServer
   alias Logflare.Logs
@@ -190,6 +191,8 @@ defmodule Logflare.Backends do
   @type log_param :: map()
   @spec ingest_logs([log_param()], Source.t()) :: :ok
   def ingest_logs(event_params, source) do
+    :ok = Source.Supervisor.ensure_started(source)
+
     {log_events, errors} =
       event_params
       |> Enum.reduce({[], []}, fn param, {events, errors} ->
