@@ -101,7 +101,6 @@ defmodule Logflare.Mixfile do
       {:libcluster, "~> 3.2"},
       {:map_keys, "~> 0.1.0"},
       {:observer_cli, "~> 1.5"},
-      {:local_cluster, "~> 1.2", only: [:test]},
 
       # Parsing
       {:bertex, ">= 0.0.0"},

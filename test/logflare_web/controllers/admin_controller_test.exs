@@ -1,12 +1,9 @@
 defmodule LogflareWeb.AdminControllerTest do
   @moduledoc false
-  import Logflare.Factory
   use LogflareWeb.ConnCase
 
   describe "Admin controller" do
     setup do
-      stub(Goth, :fetch, fn _mod -> {:ok, %Goth.Token{token: "auth-token"}} end)
-
       insert(:plan)
       {:ok, admin: insert(:user, admin: true), user: insert(:user)}
     end

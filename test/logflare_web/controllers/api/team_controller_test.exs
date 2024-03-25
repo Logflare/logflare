@@ -1,10 +1,6 @@
 defmodule LogflareWeb.Api.TeamControllerTest do
   use LogflareWeb.ConnCase
 
-  import Logflare.Factory
-
-  alias Logflare.Sources.Counters
-
   setup do
     insert(:plan, name: "Free")
     user = insert(:user)
@@ -14,8 +10,6 @@ defmodule LogflareWeb.Api.TeamControllerTest do
     insert(:team_user, team: another_user_team_with_main_user, provider_uid: user.provider_uid)
 
     _non_relevant_to_main_user = insert(:team_user, team: main_team, provider_uid: insert(:user).provider_uid)
-
-    Counters.start_link()
 
     {:ok, user: user, main_team: main_team, non_owner_team: another_user_team_with_main_user}
   end

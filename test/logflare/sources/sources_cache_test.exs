@@ -2,7 +2,6 @@ defmodule Logflare.SourcesCacheTest do
   @moduledoc false
   import Logflare.Sources.Cache
   use Logflare.DataCase
-  import Logflare.Factory
 
   setup do
     u1 = insert(:user)

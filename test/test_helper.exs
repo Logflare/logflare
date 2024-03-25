@@ -1,4 +1,3 @@
-:ok = LocalCluster.start()
 Mix.Task.run("app.start")
 
 ExUnit.start()
@@ -14,7 +13,6 @@ Mimic.copy(Logflare.Sources)
 Mimic.copy(Logflare.Billing)
 Mimic.copy(Logflare.Google.BigQuery)
 Mimic.copy(Logflare.Source.RateCounterServer)
-Mimic.copy(Logflare.Sources.Counters)
 Mimic.copy(Logflare.Source.BigQuery.Schema)
 Mimic.copy(Logflare.SystemMetrics.AllLogsLogged)
 Mimic.copy(Logflare.Sources.Cache)

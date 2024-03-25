@@ -2,11 +2,7 @@ defmodule LogflareWeb.UserControllerTest do
   @moduledoc false
   import LogflareWeb.Router.Helpers
   use LogflareWeb.ConnCase
-
-  alias Logflare.{Users}
-  # alias Logflare.Source
-  # alias Logflare.Google.BigQuery
-  import Logflare.Factory
+  alias Logflare.Users
   @moduletag :failing
 
   setup do

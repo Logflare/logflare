@@ -16,19 +16,8 @@ defmodule LogflareWeb.SourceControllerTest do
   alias Logflare.SingleTenant
   alias Logflare.Source.RecentLogsServer
 
-  setup do
-
-    Logflare.Sources.Counters
-    |> stub(:get_inserts, fn _token -> {:ok, 123} end)
-    |> stub(:get_bq_inserts, fn _token -> {:ok, 456} end)
-    :ok
-  end
   describe "list" do
     setup %{conn: conn} do
-      Logflare.Sources.Counters
-      |> stub()
-      |> stub(:get_inserts, fn _token -> {:ok, 123} end)
-      |> stub(:get_bq_inserts, fn _token -> {:ok, 456} end)
 
       user = insert(:user)
       insert(:plan, name: "Free")
@@ -155,13 +144,6 @@ defmodule LogflareWeb.SourceControllerTest do
 
   describe "Premium only features" do
     setup %{conn: conn} do
-      # mocks
-      Logflare.Sources.Counters
-      |> stub()
-      |> stub(:get_inserts, fn _token -> {:ok, 123} end)
-      |> stub(:get_bq_inserts, fn _token -> {:ok, 456} end)
-
-      # setup paid plan
       insert(:plan, name: "Free")
       paid_user = insert(:user, billing_enabled: true)
       plan = insert(:plan, name: "Paid", stripe_id: "stripe-id")
@@ -209,11 +191,6 @@ defmodule LogflareWeb.SourceControllerTest do
     TestUtils.setup_single_tenant(seed_user: true)
 
     setup do
-      Logflare.Sources.Counters
-      |> stub()
-      |> stub(:get_inserts, fn _token -> {:ok, 123} end)
-      |> stub(:get_bq_inserts, fn _token -> {:ok, 456} end)
-
       [user: SingleTenant.get_default_user()]
     end
 
@@ -552,9 +529,6 @@ defmodule LogflareWeb.SourceControllerTest do
   end
 
   defp old_setup(_) do
-      stub(Goth, :fetch, fn _mod -> {:ok, %Goth.Token{token: "auth-token"}} end)
-      start_supervised!(Sources.Counters)
-
     insert(:plan, name: "Free")
     u1 = insert(:user)
     u2 = insert(:user)
