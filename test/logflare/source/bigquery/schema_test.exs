@@ -62,6 +62,9 @@ defmodule Logflare.Source.BigQuery.SchemaTest do
     assert String.length("#{state.next_update}") ==
              String.length("#{System.system_time(:millisecond)}")
 
+    # Be sure that some time have passed
+    :timer.sleep(10)
+
     # trigger an update
     le = build(:log_event, source: source, metadata: %{"test" => 123})
     assert :ok = Schema.update(source.token, le)

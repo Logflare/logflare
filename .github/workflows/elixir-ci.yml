@@ -13,15 +13,8 @@ on:
       - 'native/**'
       - 'priv/**'
       - 'test/**'
-      - '!.github/**'
-      - '!cloudbuild/**'
-      - '!assets/**'
-      - '!Dockerfile'
-      - '!*.yml'
-      - '!*.md'
-      - '!*.sh'
-      - '!*.env'
-      - '!Makefile'
+      # Run suite when this file is changed
+      - '.github/workflows/elixir-ci.yml'
 
 permissions:
   contents: read
@@ -72,6 +65,8 @@ jobs:
         run: MIX_ENV=test mix do ecto.create, ecto.migrate
       - name: Run compilation warnings check
         run: mix test.compile
+      - name: Run migrations for test environment
+        run: MIX_ENV=test mix do ecto.drop, ecto.create, ecto.migrate
       - name: Run unit tests with code coverage check
         run: make test
     # - name: Test - security
