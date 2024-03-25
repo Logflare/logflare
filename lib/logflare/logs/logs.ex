@@ -9,7 +9,6 @@ defmodule Logflare.Logs do
   alias Logflare.Logs.SourceRouting
   alias Logflare.Logs.IngestTypecasting
   alias Logflare.Logs.IngestTransformers
-  alias Logflare.Source.Supervisor
   alias Logflare.Rule
   alias Logflare.Backends
   alias Logflare.Backends.Adaptor.BigQueryAdaptor
@@ -39,8 +38,7 @@ defmodule Logflare.Logs do
   def ingest(%LE{source: %Source{} = source} = le) do
     buffer_counter_via = Backends.via_source(source, {BufferCounter, nil})
 
-    with :ok <- Supervisor.ensure_started(source),
-         {:ok, _} <- BufferCounter.inc(buffer_counter_via, 1),
+    with {:ok, _} <- BufferCounter.inc(buffer_counter_via, 1),
          :ok <- RecentLogsServer.push(source, le),
          # tests fail when we match on these for some reason
          _ok <- Sources.Counters.increment(source.token),

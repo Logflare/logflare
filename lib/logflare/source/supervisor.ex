@@ -201,24 +201,29 @@ defmodule Logflare.Source.Supervisor do
 
       {:error, {:already_started = reason, _pid}} ->
         {:error, reason}
+
+      {:error} = err ->
+        err
     end
   end
 
   @spec ensure_started(atom) :: {:ok, :already_started | :started}
   def ensure_started(%Source{token: source_token, v2_pipeline: v2_pipeline} = source) do
     # maybe restart
-    [{:v1, do_v1_lookup(source)}, {:v2, do_v2_lookup(source)}]
-    |> Enum.each(fn
-      {:v1, {:ok, _}} when v2_pipeline == true ->
+    %{
+      v1: do_v1_lookup(source),
+      v2: do_v2_lookup(source)
+    }
+    |> case do
+      %{v1: {:ok, _}} when v2_pipeline == true ->
         # v2->v1, restart the source
         reset_source(source_token)
 
-      {:v2, {:ok, _}} when v2_pipeline == false ->
+      %{v2: {:ok, _}} when v2_pipeline == false ->
         # v1->v2 , restart the source
         reset_source(source_token)
 
-      {ver, {:error, _}}
-      when (ver == :v1 and v2_pipeline == false) or (ver == :v2 and v2_pipeline == true) ->
+      %{v1: {:error, _}, v2: {:error, _}} ->
         Logger.info("Source.Supervisor - SourceSup not found, starting...",
           source_id: source_token,
           source_token: source_token
@@ -228,7 +233,7 @@ defmodule Logflare.Source.Supervisor do
 
       _ ->
         :noop
-    end)
+    end
 
     :ok
   end

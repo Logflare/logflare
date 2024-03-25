@@ -278,6 +278,7 @@ defmodule Logflare.SourcesTest do
         assert {:ok, pid} = Backends.lookup(mod, source.token)
         assert prev_pid == pid
       end
+
       test "should start broadcasting metrics on ingest", %{user: user, mod: mod, flag: flag} do
         source = insert(:source, user_id: user.id, v2_pipeline: flag)
         pid = start_supervised!(Source.Supervisor)
@@ -297,6 +298,7 @@ defmodule Logflare.SourcesTest do
       |> stub(:init_table!, fn _, _, _, _, _, _ -> :ok end)
 
       insert(:plan)
+      start_supervised!(Source.Supervisor)
 
       on_exit(fn ->
         for dynsup <- [V1SourceDynSup, Backends.SourcesSup],
@@ -312,24 +314,43 @@ defmodule Logflare.SourcesTest do
       user: user
     } do
       source = insert(:source, user: user)
-      start_supervised!(Source.Supervisor)
       assert :ok = Source.Supervisor.ensure_started(source)
-      :timer.sleep(1000)
+      :timer.sleep(500)
       assert {:ok, v1_pid} = Backends.lookup(V1SourceSup, source.token)
       # v2 not started yet
       assert {:error, _} = Backends.lookup(Backends.SourceSup, source.token)
 
-      :timer.sleep(500)
-
       # update to v2
       assert {:ok, source} = Sources.update_source_by_user(source, %{v2_pipeline: true})
-      :timer.sleep(500)
-      assert :ok = Source.Supervisor.ensure_started(source)
+      assert {:ok, _} = Source.Supervisor.reset_source(source.token)
 
-      :timer.sleep(500)
+      :timer.sleep(600)
       assert {:ok, v2_pid} = Backends.lookup(Backends.SourceSup, source.token)
       # v1 not started
       assert {:error, _} = Backends.lookup(V1SourceSup, source.token)
+      assert v1_pid != v2_pid
+    end
+
+    test "if initially v2 sup running, should seamlessly transition to v1 source sup", %{
+      user: user
+    } do
+      source = insert(:source, user: user, v2_pipeline: true)
+      assert :ok = Source.Supervisor.ensure_started(source)
+      :timer.sleep(500)
+      assert {:ok, v2_pid} = Backends.lookup(Backends.SourceSup, source.token)
+      # v1 not started yet
+      assert {:error, _} = Backends.lookup(V1SourceSup, source.token)
+
+      :timer.sleep(100)
+
+      # update to v1
+      assert {:ok, source} = Sources.update_source_by_user(source, %{v2_pipeline: false})
+      assert {:ok, _} = Source.Supervisor.reset_source(source.token)
+
+      :timer.sleep(600)
+      assert {:ok, v1_pid} = Backends.lookup(V1SourceSup, source.token)
+      # v2 should be killed
+      assert {:error, _} = Backends.lookup(Backends.SourceSup, source.token)
       assert v1_pid != v2_pid
     end
   end
