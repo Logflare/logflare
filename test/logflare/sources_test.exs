@@ -266,6 +266,6 @@ defmodule Logflare.SourcesTest do
   end
 
   test "ingest_ets_tables_started?/0" do
-    assert true == Sources.ingest_ets_tables_started?()
+    assert Sources.ingest_ets_tables_started?()
   end
 end
