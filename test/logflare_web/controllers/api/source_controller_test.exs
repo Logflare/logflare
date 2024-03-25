@@ -35,7 +35,7 @@ defmodule LogflareWeb.Api.SourceControllerTest do
       assert response["id"] == source.id
     end
     test "backend postgres secrets are redacted", %{conn: conn, user: user, sources: [source | _]} do
-      insert(:backend, sources: [source], user: user, type: :postgres, config: %{url: "some url"})
+      insert(:backend, sources: [source], user: user, type: :postgres, config: %{url: "postgresql://user:secret@localhost"})
       assert %{"backends"=> [backend]} =
         conn
         |> add_access_token(user, "private")
@@ -43,7 +43,7 @@ defmodule LogflareWeb.Api.SourceControllerTest do
         |> json_response(200)
 
       config = backend["config"]
-      assert config["url"] == "redacted"
+      assert config["url"] =~ "postgresql://user:REDACTED@localhost"
     end
 
     test "returns not found if doesn't own the source", %{conn: conn, sources: [source | _]} do

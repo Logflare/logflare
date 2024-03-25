@@ -49,7 +49,9 @@ defmodule Logflare.Backends.Backend do
         ])
         |> Map.update(:config, %{}, fn
           config when type == :postgres ->
-            Map.put(config, :url, "redacted")
+            url = Map.get(config, :url) || Map.get(config, "url")
+            updated = String.replace(url, ~r/(.+):.+\@/, "\\g{1}:REDACTED@")
+            Map.put(config, :url, updated)
 
           cfg ->
             cfg
