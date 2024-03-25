@@ -45,6 +45,7 @@ defmodule Logflare.Application do
         Logs.LogEvents.Cache,
         Logs.RejectedLogEvents,
         {Phoenix.PubSub, name: Logflare.PubSub},
+        Logflare.PubSubRates,
         Logflare.Repo,
         {Registry,
          name: Logflare.V1SourceRegistry, keys: :unique, partitions: System.schedulers_online()},
