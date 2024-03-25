@@ -83,12 +83,13 @@ defmodule Logflare.Factory do
       }
     }
   end
+
   def postgres_backend_factory do
     %Backend{
       name: TestUtils.random_string(),
       type: :postgres,
       config: %{
-        url: "postgresql://#{TestUtils.random_string()}",
+        url: "postgresql://#{TestUtils.random_string()}"
       }
     }
   end

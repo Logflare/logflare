@@ -11,7 +11,6 @@ defmodule LogflareWeb.LogControllerTestOld do
   @moduletag :failing
 
   setup do
-
     [u1, u2] = insert_list(2, :user)
 
     u1 = Users.preload_defaults(u1)

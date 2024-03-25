@@ -28,7 +28,6 @@ defmodule Logflare.PartnerTest do
     end
   end
 
-
   describe "create_user/2" do
     test "creates new user and associates with given partner" do
       partner = insert(:partner)
@@ -115,5 +114,4 @@ defmodule Logflare.PartnerTest do
 
     assert {:error, :not_found} = Partners.upgrade_user(partner, insert(:user))
   end
-
 end

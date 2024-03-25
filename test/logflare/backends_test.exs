@@ -22,8 +22,11 @@ defmodule Logflare.BackendsTest do
                  config: %{url: "http://some.url"}
                })
 
-      assert {:error, %Ecto.Changeset{}} = Backends.create_backend(%{name: "123", type: :other, config: %{}})
-      assert {:error, %Ecto.Changeset{}} = Backends.create_backend(%{name: "123", type: :webhook, config: nil})
+      assert {:error, %Ecto.Changeset{}} =
+               Backends.create_backend(%{name: "123", type: :other, config: %{}})
+
+      assert {:error, %Ecto.Changeset{}} =
+               Backends.create_backend(%{name: "123", type: :webhook, config: nil})
 
       # config validations
       assert {:error, %Ecto.Changeset{}} =

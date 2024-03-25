@@ -51,5 +51,4 @@ defmodule Logflare.Auth.CacheTest do
     {:ok, key} = Auth.create_access_token(user_or_team_or_partner)
     key
   end
-
 end

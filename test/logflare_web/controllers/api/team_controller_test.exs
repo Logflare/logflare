@@ -9,7 +9,8 @@ defmodule LogflareWeb.Api.TeamControllerTest do
     another_user_team_with_main_user = insert(:team, user: insert(:user))
     insert(:team_user, team: another_user_team_with_main_user, provider_uid: user.provider_uid)
 
-    _non_relevant_to_main_user = insert(:team_user, team: main_team, provider_uid: insert(:user).provider_uid)
+    _non_relevant_to_main_user =
+      insert(:team_user, team: main_team, provider_uid: insert(:user).provider_uid)
 
     {:ok, user: user, main_team: main_team, non_owner_team: another_user_team_with_main_user}
   end

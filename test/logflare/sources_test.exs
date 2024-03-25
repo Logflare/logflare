@@ -28,7 +28,6 @@ defmodule Logflare.SourcesTest do
       assert %Source{user_id: ^user_id, v2_pipeline: false} = source
       assert SourceSchemas.get_source_schema_by(source_id: source.id)
     end
-
   end
 
   describe "list_sources_by_user/1" do
@@ -153,7 +152,6 @@ defmodule Logflare.SourcesTest do
       insert(:plan)
 
       on_exit(fn ->
-
         for {_id, child, _, _} <- DynamicSupervisor.which_children(Logflare.Source.V1SourceDynSup) do
           DynamicSupervisor.terminate_child(Logflare.Source.V1SourceDynSup, child)
         end
@@ -180,7 +178,6 @@ defmodule Logflare.SourcesTest do
     end
 
     test "start_source/1, lookup/2, delete_source/1", %{user: user} do
-
       Logflare.Google.BigQuery
       |> expect(:delete_table, fn _token -> :ok end)
       |> expect(:init_table!, fn _, _, _, _, _, _ -> :ok end)

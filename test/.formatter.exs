@@ -1,5 +1,5 @@
 [
-  inputs: ["test/../*.{ex,exs}"],
+  inputs: ["./**/*.{ex,exs}"],
   import_deps: [
     :ecto_sql,
     :ecto,

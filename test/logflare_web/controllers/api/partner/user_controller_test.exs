@@ -3,7 +3,7 @@ defmodule LogflareWeb.Api.Partner.UserControllerTest do
   alias Logflare.Partners
 
   setup do
-      {:ok, %{partner: insert(:partner)}}
+    {:ok, %{partner: insert(:partner)}}
   end
 
   @allowed_fields MapSet.new(~w(api_quota company email name phone token metadata))
@@ -49,40 +49,42 @@ defmodule LogflareWeb.Api.Partner.UserControllerTest do
                conn
                |> add_partner_access_token(partner)
                |> post(~p"/api/partner/users", %{
-      "email" => TestUtils.gen_email(),
-      "provider"=> "email",
-
-                "metadata"=> %{"my"=> "value"}})
+                 "email" => TestUtils.gen_email(),
+                 "provider" => "email",
+                 "metadata" => %{"my" => "value"}
+               })
                |> json_response(201)
 
       assert response["user"]["metadata"]["my"] == "value"
       assert response["api_key"]
     end
 
-
     test "get by metadata search", %{conn: conn} do
-      insert(:user, metadata: %{
-        my_value: "other_val"
-      })
+      insert(:user,
+        metadata: %{
+          my_value: "other_val"
+        }
+      )
 
-      user = insert(:user, metadata: %{
-        my_value: "test"
-      })
-      partner = insert(:partner, users: [user])
-      assert [user] = conn
-        |> add_partner_access_token(partner)
-        |> get(~p"/api/partner/users?#{%{
+      user =
+        insert(:user,
           metadata: %{
             my_value: "test"
           }
-        }}")
-        |> json_response(200)
+        )
+
+      partner = insert(:partner, users: [user])
+
+      assert [user] =
+               conn
+               |> add_partner_access_token(partner)
+               |> get(~p"/api/partner/users?#{%{metadata: %{my_value: "test"}}}")
+               |> json_response(200)
 
       assert assert user["metadata"]["my_value"] == "test"
     end
 
     test "return 401 with the wrong authentication token", %{conn: conn} do
-
       assert conn
              |> put_req_header("authorization", "Bearer potato")
              |> post(~p"/api/partner/users", %{})
@@ -127,7 +129,7 @@ defmodule LogflareWeb.Api.Partner.UserControllerTest do
         })
 
       assert conn
-               |> add_partner_access_token(partner)
+             |> add_partner_access_token(partner)
              |> get(~p"/api/partner/users/#{user.token}")
              |> response(404)
     end
@@ -138,21 +140,20 @@ defmodule LogflareWeb.Api.Partner.UserControllerTest do
       user = insert(:user)
       partner = insert(:partner, users: [user])
 
-        # upgrade
-      assert %{"tier"=> "metered"} =
-        conn
-          |> add_partner_access_token(partner)
-        |> put(~p"/api/partner/users/#{user.token}/upgrade")
-        |> json_response(200)
+      # upgrade
+      assert %{"tier" => "metered"} =
+               conn
+               |> add_partner_access_token(partner)
+               |> put(~p"/api/partner/users/#{user.token}/upgrade")
+               |> json_response(200)
 
       # downgrade
-      assert %{"tier"=> "free"} =
-          conn
-          |> recycle()
-          |> add_partner_access_token(partner)
-          |> put(~p"/api/partner/users/#{user.token}/downgrade")
-          |> json_response(200)
-
+      assert %{"tier" => "free"} =
+               conn
+               |> recycle()
+               |> add_partner_access_token(partner)
+               |> put(~p"/api/partner/users/#{user.token}/downgrade")
+               |> json_response(200)
     end
   end
 
@@ -166,8 +167,8 @@ defmodule LogflareWeb.Api.Partner.UserControllerTest do
       %{count: count} = insert(:billing_counts, user: user)
 
       assert conn
-               |> add_partner_access_token(partner)
-               |> get(~p"/api/partner/users/#{user.token}/usage")
+             |> add_partner_access_token(partner)
+             |> get(~p"/api/partner/users/#{user.token}/usage")
              |> json_response(200) == %{"usage" => count}
     end
 
@@ -189,7 +190,7 @@ defmodule LogflareWeb.Api.Partner.UserControllerTest do
       {:ok, user} = Partners.create_user(insert(:partner), params)
 
       assert conn
-               |> add_partner_access_token(partner)
+             |> add_partner_access_token(partner)
              |> get(~p"/api/partner/users/#{user.token}/usage")
              |> response(404)
     end
@@ -197,7 +198,6 @@ defmodule LogflareWeb.Api.Partner.UserControllerTest do
 
   describe "DELETE user" do
     test "returns 204 and deletes the user", %{conn: conn, partner: partner} do
-
       {:ok, user} = Partners.create_user(partner, %{"email" => TestUtils.gen_email()})
 
       assert response =

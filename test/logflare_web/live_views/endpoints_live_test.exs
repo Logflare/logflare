@@ -294,7 +294,9 @@ defmodule LogflareWeb.EndpointsLiveTest do
     end
 
     test "show endpoint, with params", %{conn: conn, user: user} do
-      endpoint = insert(:endpoint, user: user, query: "select 'id' as id, @test_param as param;\n\n")
+      endpoint =
+        insert(:endpoint, user: user, query: "select 'id' as id, @test_param as param;\n\n")
+
       {:ok, view, _html} = live(conn, "/endpoints/#{endpoint.id}")
       refute render(view) =~ "results-123"
       # sow declared params
@@ -315,6 +317,7 @@ defmodule LogflareWeb.EndpointsLiveTest do
                  params: %{"test_param" => "my_param_value"}
                }
              }) =~ "results-123"
+
       assert has_element?(view, "input[value='my_param_value']")
     end
   end

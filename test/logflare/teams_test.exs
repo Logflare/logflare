@@ -76,7 +76,7 @@ defmodule Logflare.TeamsTest do
     insert_list(2, :team_user, provider_uid: user.provider_uid)
 
     # 2 items, :team_users preloaded
-    assert [%{team_users: [_|_]}, _] = Teams.list_teams_by_user_access(user)
+    assert [%{team_users: [_ | _]}, _] = Teams.list_teams_by_user_access(user)
   end
 
   test "get_team_by_user_access/2 gets a team for a given user and token" do
@@ -86,6 +86,5 @@ defmodule Logflare.TeamsTest do
     insert_list(2, :team_user)
 
     assert team.id == Teams.get_team_by_user_access(user, team.token).id
-
   end
 end
