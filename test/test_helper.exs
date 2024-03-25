@@ -1,4 +1,3 @@
-:ok = LocalCluster.start()
 Mix.Task.run("app.start")
 
 ExUnit.start()
