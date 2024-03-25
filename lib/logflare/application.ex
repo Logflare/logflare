@@ -62,17 +62,7 @@ defmodule Logflare.Application do
          name: Logflare.Source.V1SourceDynSup},
 
         # v2 ingestion pipelines
-        {DynamicSupervisor, strategy: :one_for_one, name: Logflare.Backends.SourcesSup},
-        {DynamicSupervisor, strategy: :one_for_one, name: Logflare.Backends.RecentLogsSup},
-        {DynamicSupervisor,
-         strategy: :one_for_one, name: Logflare.Backends.Adaptor.PostgresAdaptor.Supervisor},
-        {DynamicSupervisor,
-         strategy: :one_for_one, name: Logflare.Backends.Adaptor.PostgresAdaptor.PgRepoSupervisor},
-        {Registry,
-         name: Logflare.Backends.SourceRegistry,
-         keys: :unique,
-         partitions: System.schedulers_online()},
-        {Registry, name: Logflare.Backends.SourceDispatcher, keys: :duplicate}
+        Logflare.Backends
       ]
   end
 
@@ -164,17 +154,7 @@ defmodule Logflare.Application do
         {Task, fn -> startup_tasks() end},
 
         # v2 ingestion pipelines
-        {DynamicSupervisor, strategy: :one_for_one, name: Logflare.Backends.SourcesSup},
-        {DynamicSupervisor, strategy: :one_for_one, name: Logflare.Backends.RecentLogsSup},
-        {DynamicSupervisor,
-         strategy: :one_for_one, name: Logflare.Backends.Adaptor.PostgresAdaptor.Supervisor},
-        {DynamicSupervisor,
-         strategy: :one_for_one, name: Logflare.Backends.Adaptor.PostgresAdaptor.PgRepoSupervisor},
-        {Registry,
-         name: Logflare.Backends.SourceRegistry,
-         keys: :unique,
-         partitions: System.schedulers_online()},
-        {Registry, name: Logflare.Backends.SourceDispatcher, keys: :duplicate},
+        Logflare.Backends,
 
         # citrine scheduler for alerts
         Logflare.AlertsScheduler

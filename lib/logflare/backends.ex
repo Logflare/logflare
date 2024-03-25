@@ -27,6 +27,8 @@ defmodule Logflare.Backends do
     bigquery: BigQueryAdaptor
   }
 
+  defdelegate child_spec(arg), to: __MODULE__.Supervisor
+
   @doc """
   Lists `Backend`s for a given source.
   """

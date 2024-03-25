@@ -28,7 +28,6 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor do
     field(:config, %{url: String.t(), schema: String.t()})
     field(:backend, Backend.t())
     field(:pipeline_name, tuple())
-    field(:repository_module, tuple())
   end
 
   @impl Logflare.Backends.Adaptor
@@ -39,7 +38,8 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor do
   end
 
   @impl Logflare.Backends.Adaptor
-  def ingest(pid, log_events), do: GenServer.call(pid, {:ingest, log_events})
+  def ingest(pid, log_events),
+    do: GenServer.call(pid, {:ingest, log_events})
 
   @impl Logflare.Backends.Adaptor
   def cast_config(params) do
@@ -61,17 +61,19 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor do
   Parameter placeholders should correspond to Postgres format, i.e. `$#`
 
   ### Examples
-    iex> execute_query(souce_backend, from(s in "log_event_..."))
-    {:ok, [%{...}]}
-    iex> execute_query(backend, "select body from log_event_table")
-    {:ok, [%{...}]}
-    iex> execute_query(backend, {"select $1 as c from log_event_table", ["value]})
-    {:ok, [%{...}]}
+
+  ```elixir
+  iex> execute_query(souce_backend, from(s in "log_event_..."))
+  {:ok, [%{...}]}
+  iex> execute_query(backend, "select body from log_event_table")
+  {:ok, [%{...}]}
+  iex> execute_query(backend, {"select $1 as c from log_event_table", ["value"]})
+  {:ok, [%{...}]}
+  ```
   """
   @impl Logflare.Backends.Adaptor
   def execute_query(%Backend{} = backend, %Ecto.Query{} = query) do
-    mod = create_repo(backend)
-    :ok = connected?(backend)
+    mod = PgRepo.create_repo(backend)
 
     result =
       query
@@ -84,19 +86,11 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor do
   def execute_query(%Backend{} = backend, query_string) when is_binary(query_string),
     do: execute_query(backend, {query_string, []})
 
-  def execute_query(%Backend{config: config} = backend, {query_string, params})
+  def execute_query(%Backend{} = backend, {query_string, params})
       when is_binary(query_string) and is_list(params) do
-    mod = create_repo(backend)
-    :ok = connected?(backend)
+    mod = PgRepo.create_repo(backend)
 
-    # explicitly set search path
-    schema = Map.get(config, "schema") || Map.get(config, :schema)
-
-    if schema do
-      Ecto.Adapters.SQL.query!(mod, "SET search_path=#{schema}")
-    end
-
-    result = Ecto.Adapters.SQL.query!(mod, query_string, params)
+    result = mod.query!(query_string, params)
 
     rows =
       for row <- result.rows do
@@ -127,14 +121,10 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor do
   end
 
   # expose PgRepo functions
-  defdelegate connected?(backend), to: PgRepo
   defdelegate create_repo(backend), to: PgRepo
   defdelegate table_name(source), to: PgRepo
   defdelegate create_log_events_table(source_backend), to: PgRepo
-  defdelegate create_log_events_table(source_backend, override_migrations), to: PgRepo
-  defdelegate rollback_migrations(source_backend), to: PgRepo
-  defdelegate drop_migrations_table(backend), to: PgRepo
-  defdelegate migrations_table_name(source), to: PgRepo
+  defdelegate destroy_instance(backend, timeout \\ 5000), to: PgRepo
   defdelegate insert_log_event(backend, log_event), to: PgRepo
 
   # GenServer
@@ -142,16 +132,13 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor do
   def init({source, backend}) do
     with {:ok, _} <- Registry.register(SourceDispatcher, source.id, {__MODULE__, :ingest}),
          {:ok, buffer_pid} <- MemoryBuffer.start_link([]),
-         repository_module = create_repo(backend),
-         :ok <- connected?(backend),
          :ok <- create_log_events_table({source, backend}) do
       state = %__MODULE__{
         buffer_module: MemoryBuffer,
         buffer_pid: buffer_pid,
         config: backend.config,
         backend: backend,
-        pipeline_name: Backends.via_source(source, Pipeline, backend.id),
-        repository_module: repository_module
+        pipeline_name: Backends.via_source(source, Pipeline, backend.id)
       }
 
       {:ok, _pipeline_pid} = Pipeline.start_link(state)

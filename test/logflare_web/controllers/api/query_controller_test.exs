@@ -72,12 +72,10 @@ defmodule LogflareWeb.Api.QueryControllerTest do
         )
 
       PostgresAdaptor.create_repo(backend)
-      assert :ok = PostgresAdaptor.connected?(backend)
       PostgresAdaptor.create_log_events_table({source, backend})
 
       on_exit(fn ->
-        PostgresAdaptor.rollback_migrations({source, backend})
-        PostgresAdaptor.drop_migrations_table({source, backend})
+        PostgresAdaptor.destroy_instance({source, backend})
       end)
 
       %{source: source, user: user}

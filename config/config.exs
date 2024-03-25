@@ -17,6 +17,8 @@ config :logflare, Logflare.Alerting, min_cluster_size: 1, enabled: true
 
 config :logflare, Logflare.Google, dataset_id_append: "_default"
 
+config :logflare, :postgres_backend_adapter, pool_size: 10
+
 # Configures the endpoint
 config :logflare, LogflareWeb.Endpoint,
   url: [host: "localhost", scheme: "http", port: 4000],
