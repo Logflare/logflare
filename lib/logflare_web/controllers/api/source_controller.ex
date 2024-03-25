@@ -36,7 +36,7 @@ defmodule LogflareWeb.Api.SourceController do
 
   def show(%{assigns: %{user: user}} = conn, %{"token" => token}) do
     with source when not is_nil(source) <- Sources.get_by(token: token, user_id: user.id),
-         source <- Sources.preload_defaults(source) do
+         source = Sources.preload_defaults(source) do
       json(conn, source)
     end
   end
@@ -115,7 +115,7 @@ defmodule LogflareWeb.Api.SourceController do
   def add_backend(conn, %{"source_token" => token, "backend_token" => backend_token}) do
     with {:ok, backend} <- Backends.fetch_backend_by(token: backend_token),
          {:ok, source} <- Sources.fetch_source_by(token: token),
-         source <- Sources.preload_backends(source),
+         source = Sources.preload_backends(source),
          {:ok, source} <- Backends.update_source_backends(source, [backend | source.backends]) do
       conn
       |> put_status(201)
@@ -137,8 +137,8 @@ defmodule LogflareWeb.Api.SourceController do
 
   def remove_backend(conn, %{"source_token" => token, "backend_token" => backend_token}) do
     with {:ok, source} <- Sources.fetch_source_by(token: token),
-         source <- Sources.preload_backends(source),
-         filtered <- Enum.filter(source.backends, &(&1.token != backend_token)),
+         source = Sources.preload_backends(source),
+         filtered = Enum.filter(source.backends, &(&1.token != backend_token)),
          {:ok, source} <- Backends.update_source_backends(source, filtered) do
       conn
       |> put_status(200)
