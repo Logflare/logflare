@@ -3,7 +3,6 @@ defmodule LogflareWeb.Api.Partner.UserControllerTest do
   alias Logflare.Partners
 
   setup do
-      stub(Goth, :fetch, fn _mod -> {:ok, %Goth.Token{token: "auth-token"}} end)
       {:ok, %{partner: insert(:partner)}}
   end
 

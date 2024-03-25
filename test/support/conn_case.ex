@@ -49,7 +49,7 @@ defmodule LogflareWeb.ConnCase do
         Mimic.verify_on_exit!(context)
 
         stub(ConfigCat, :get_value, fn _, _ -> true end)
-
+        stub(Goth, :fetch, fn _mod -> {:ok, %Goth.Token{token: "auth-token"}} end)
         :ok
       end
     end

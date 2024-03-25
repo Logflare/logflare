@@ -28,10 +28,6 @@ defmodule LogflareWeb.LogControllerTest do
     Logflare.SystemMetrics.AllLogsLogged
     |> stub(:increment, fn v -> v end)
 
-    # mock goth behaviour
-    Goth
-    |> stub(:fetch, fn _mod -> {:ok, %Goth.Token{token: "auth-token"}} end)
-
     :ok
   end
 

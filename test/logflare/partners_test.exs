@@ -82,8 +82,6 @@ defmodule Logflare.PartnerTest do
 
   describe "delete_user/2" do
     test "deletes user and removes association with partner" do
-      stub(Goth, :fetch, fn _ -> {:error, ""} end)
-
       partner = insert(:partner)
 
       {:ok, %{id: id} = user} = Partners.create_user(partner, %{"email" => TestUtils.gen_email()})

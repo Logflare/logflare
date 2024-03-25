@@ -5,8 +5,6 @@ defmodule LogflareWeb.AdminControllerTest do
 
   describe "Admin controller" do
     setup do
-      stub(Goth, :fetch, fn _mod -> {:ok, %Goth.Token{token: "auth-token"}} end)
-
       insert(:plan)
       {:ok, admin: insert(:user, admin: true), user: insert(:user)}
     end

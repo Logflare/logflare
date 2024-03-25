@@ -552,8 +552,7 @@ defmodule LogflareWeb.SourceControllerTest do
   end
 
   defp old_setup(_) do
-      stub(Goth, :fetch, fn _mod -> {:ok, %Goth.Token{token: "auth-token"}} end)
-      start_supervised!(Sources.Counters)
+    start_supervised!(Sources.Counters)
 
     insert(:plan, name: "Free")
     u1 = insert(:user)

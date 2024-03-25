@@ -31,14 +31,6 @@ defmodule Logflare.LogsTest do
     [source: source, source_b: source_b, user: user]
   end
 
-  setup do
-    # mock goth behaviour
-    Goth
-    |> stub(:fetch, fn _mod -> {:ok, %Goth.Token{token: "auth-token"}} end)
-
-    :ok
-  end
-
   setup :source_and_user
 
   describe "ingest input" do

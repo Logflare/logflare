@@ -30,10 +30,8 @@ defmodule LogflareWeb.HealthCheckControllerTest do
   end
 
   test "coming_up while RLS boot warming" , %{conn: conn} do
-
     start_supervised!(Logflare.Sources.RateCounters)
     start_supervised!(Logflare.Sources.Counters)
-    stub(Goth, :fetch, fn _mod -> {:ok, %Goth.Token{token: "auth-token"}} end)
 
     user = insert(:user)
     insert(:plan)

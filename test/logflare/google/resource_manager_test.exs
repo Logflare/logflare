@@ -19,7 +19,6 @@ defmodule Logflare.Google.CloudResourceManagerTest do
            google_configs: google_configs,
            expected_members: expected_members
          } do
-      stub(Goth, :fetch, fn _ -> {:error, ""} end)
 
       stub(
         GoogleApi.CloudResourceManager.V1.Api.Projects,
