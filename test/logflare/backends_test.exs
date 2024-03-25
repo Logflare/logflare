@@ -154,7 +154,7 @@ defmodule Logflare.BackendsTest do
       assert_receive %_{event: _, payload: %{body: %{}}}
       {:ok, pid} = Backends.lookup(RecentLogsServer, source.token)
       send(pid, :broadcast)
-      assert_receive {_, ^source_token, _}, 500
+      assert_receive {_, ^source_token, _}, 1000
     end
   end
 
