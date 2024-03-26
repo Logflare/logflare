@@ -64,7 +64,7 @@ defmodule Logflare.Backends.CommonIngestPipeline do
 
     # dispatch messages to backends
     log_events = for %{data: msg} <- messages, do: msg
-    Backends.dispatch_ingest(log_events, source)
+    Backends.ingest_logs(log_events, source)
     Backends.push_recent_logs(source, log_events)
 
     messages

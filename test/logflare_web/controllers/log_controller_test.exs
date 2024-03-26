@@ -2,12 +2,11 @@ defmodule LogflareWeb.LogControllerTest do
   @moduledoc false
   use LogflareWeb.ConnCase
   alias Logflare.Backends.Adaptor.WebhookAdaptor
-  alias Logflare.SystemMetrics.AllLogsLogged
-  alias Logflare.Source.RecentLogsServer
   alias Logflare.SingleTenant
   alias Logflare.Users
   alias Logflare.Source.V1SourceSup
   alias Logflare.Sources
+  alias Logflare.SystemMetrics.AllLogsLogged
 
   @valid %{"some" => "valid log entry", "event_message" => "hi!"}
   @valid_json Jason.encode!(@valid)
@@ -37,7 +36,7 @@ defmodule LogflareWeb.LogControllerTest do
 
     test "valid ingestion", %{conn: conn, source: source, user: user} do
       WebhookAdaptor
-      |> expect(:ingest, fn _, _ -> :ok end)
+      |> expect(:ingest, fn _, _, _ -> :ok end)
 
       conn =
         conn
@@ -52,7 +51,7 @@ defmodule LogflareWeb.LogControllerTest do
       this = self()
 
       WebhookAdaptor
-      |> expect(:ingest, fn _, logs -> send(this, {:logs, logs}) end)
+      |> expect(:ingest, fn _, logs, _ -> send(this, {:logs, logs}) end)
 
       conn =
         conn
@@ -263,8 +262,7 @@ defmodule LogflareWeb.LogControllerTest do
       source = insert(:source, user: user)
 
       # ingestion setup
-      rls = %RecentLogsServer{source: source, source_id: source.token}
-      start_supervised!({V1SourceSup, rls})
+      start_supervised!({V1SourceSup, source: source})
       :timer.sleep(500)
 
       Logflare.Logs
@@ -287,7 +285,7 @@ defmodule LogflareWeb.LogControllerTest do
       assert json_response(conn, 200) == %{"message" => "Logged!"}
 
       # wait for all logs to be ingested before removing all stubs
-      :timer.sleep(2000)
+      :timer.sleep(3000)
     end
   end
 
@@ -295,9 +293,7 @@ defmodule LogflareWeb.LogControllerTest do
     insert(:plan, name: "Free")
     user = insert(:user)
     source = insert(:source, user: user)
-
-    rls = %RecentLogsServer{source: source, source_id: source.token}
-    start_supervised!({V1SourceSup, rls})
+    start_supervised!({V1SourceSup, source: source})
     :timer.sleep(500)
 
     Logflare.Logs
@@ -323,6 +319,10 @@ defmodule LogflareWeb.LogControllerTest do
     # hit the caches
     Sources.Cache.get_by_and_preload_rules(token: Atom.to_string(source.token))
     Sources.Cache.get_by_and_preload_rules(name: source.name, user_id: user.id)
+    Sources.Cache.get_source_by_token(source.token)
+    Sources.Cache.get_by_id(source.id)
+    Users.Cache.get(user.id)
+    Users.Cache.get_by(id: user.id)
     Users.Cache.get_by_and_preload(api_key: user.api_key)
     Users.Cache.preload_defaults(user)
     Users.Cache.get(user.id)

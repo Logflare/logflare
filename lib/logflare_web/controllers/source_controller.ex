@@ -425,6 +425,8 @@ defmodule LogflareWeb.SourceController do
           )
         end
 
+        :ok = Supervisor.ensure_started(source)
+
         conn
         |> put_flash(:info, "Source updated!")
         |> redirect(to: Routes.source_path(conn, :edit, source.id))

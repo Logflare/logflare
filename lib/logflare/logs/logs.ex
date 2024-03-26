@@ -9,8 +9,10 @@ defmodule Logflare.Logs do
   alias Logflare.Logs.SourceRouting
   alias Logflare.Logs.IngestTypecasting
   alias Logflare.Logs.IngestTransformers
-  alias Logflare.Source.Supervisor
   alias Logflare.Rule
+  alias Logflare.Backends
+  alias Logflare.Backends.Adaptor.BigQueryAdaptor
+  alias Logflare.Source.BigQuery.Pipeline
 
   @spec ingest_logs(list(map), Source.t()) :: :ok | {:error, term}
   def ingest_logs(log_params_batch, %Source{rules: rules} = source) when is_list(rules) do
@@ -34,12 +36,23 @@ defmodule Logflare.Logs do
 
   @spec ingest(Logflare.LogEvent.t()) :: Logflare.LogEvent.t() | {:error, term}
   def ingest(%LE{source: %Source{} = source} = le) do
-    with {:ok, _} <- Supervisor.ensure_started(source.token),
-         {:ok, _} <- BufferCounter.push(le),
-         :ok <- RecentLogsServer.push(le),
+    buffer_counter_via = Backends.via_source(source, {BufferCounter, nil})
+
+    with :ok <- Source.Supervisor.ensure_started(source),
+         {:ok, _} <- BufferCounter.inc(buffer_counter_via, 1),
+         :ok <- RecentLogsServer.push(source, le),
          # tests fail when we match on these for some reason
          _ok <- Sources.Counters.increment(source.token),
          _ok <- SystemMetrics.AllLogsLogged.increment(:total_logs_logged) do
+      # push into the pipeline
+      message = %Broadway.Message{
+        data: le,
+        acknowledger: {BigQueryAdaptor, buffer_counter_via, nil}
+      }
+
+      Backends.via_source(source, Pipeline, nil)
+      |> Broadway.push_messages([message])
+
       le
     else
       {:error, _reason} = e ->

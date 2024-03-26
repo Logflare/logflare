@@ -1,12 +1,17 @@
 defmodule LogflareWeb.EndpointsControllerTest do
+  @moduledoc false
   use LogflareWeb.ConnCase
   alias Logflare.SingleTenant
   alias Logflare.Backends
   alias Logflare.Source
+  alias Logflare.SystemMetrics.AllLogsLogged
+
+  setup do
+    start_supervised!(AllLogsLogged)
+    :ok
+  end
 
   describe "query" do
-    setup :set_mimic_global
-
     setup do
       source = build(:source, rules: [])
       user = insert(:user, sources: [source])

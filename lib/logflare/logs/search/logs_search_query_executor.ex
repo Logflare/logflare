@@ -1,16 +1,15 @@
 defmodule Logflare.Logs.SearchQueryExecutor do
   use GenServer
-  alias __MODULE__, as: State
   alias Logflare.Logs.Search
   alias Logflare.Logs.SearchOperation, as: SO
   import LogflareWeb.SearchLV.Utils
   alias Logflare.LogEvent
-  alias Logflare.Source.RecentLogsServer, as: RLS
   alias Logflare.User.BigQueryUDFs
   alias Logflare.{Users, User}
   alias Logflare.Logs
   alias Logflare.Source
   alias Logflare.SavedSearches
+  alias Logflare.Backends
   alias Logflare.Lql
   alias Logflare.Utils.Tasks
   use TypedStruct
@@ -29,21 +28,28 @@ defmodule Logflare.Logs.SearchQueryExecutor do
   end
 
   # API
-  def start_link(%RLS{source_id: source_id}, _opts \\ %{}) do
-    GenServer.start_link(__MODULE__, %{source_id: source_id},
-      name: Source.Supervisor.via(__MODULE__, source_id)
-    )
+  def start_link(args) do
+    source = Keyword.get(args, :source)
+    GenServer.start_link(__MODULE__, args, name: Backends.via_source(source, __MODULE__))
   end
 
-  def child_spec(%RLS{source_id: source_id} = rls) do
-    %{
-      id: name(source_id),
-      start: {__MODULE__, :start_link, [rls]}
-    }
+  @impl true
+  def init(args) do
+    source = Keyword.get(args, :source)
+    Logger.debug("SearchQueryExecutor #{source.token} is being initialized...")
+
+    {:ok,
+     %{
+       source_token: source.token,
+       user_id: source.user_id,
+       source_id: source.id,
+       agg_tasks: %{},
+       event_tasks: %{}
+     }}
   end
 
   def maybe_cancel_query(source_token) when is_atom(source_token) do
-    case Source.Supervisor.lookup(__MODULE__, source_token) do
+    case Backends.lookup(__MODULE__, source_token) do
       {:ok, _} ->
         :ok = cancel_query(source_token)
         :ok = cancel_agg(source_token)
@@ -58,7 +64,7 @@ defmodule Logflare.Logs.SearchQueryExecutor do
       update_saved_search_counters(params.lql_rules, params.tailing?, params.source)
     end)
 
-    case Source.Supervisor.lookup(__MODULE__, source_token) do
+    case Backends.lookup(__MODULE__, source_token) do
       {:ok, _} ->
         :ok = query(params)
 
@@ -70,7 +76,7 @@ defmodule Logflare.Logs.SearchQueryExecutor do
   end
 
   def maybe_execute_agg_query(source_token, params) when is_atom(source_token) do
-    case Source.Supervisor.lookup(__MODULE__, source_token) do
+    case Backends.lookup(__MODULE__, source_token) do
       {:ok, _} ->
         :ok = query_agg(params)
 
@@ -97,56 +103,36 @@ defmodule Logflare.Logs.SearchQueryExecutor do
   end
 
   def query(params) do
-    {:ok, pid} = Source.Supervisor.lookup(__MODULE__, params.source.token)
+    {:ok, pid} = Backends.lookup(__MODULE__, params.source.token)
     GenServer.call(pid, {:query, params}, @query_timeout)
   end
 
   def query_agg(params) do
-    {:ok, pid} = Source.Supervisor.lookup(__MODULE__, params.source.token)
+    {:ok, pid} = Backends.lookup(__MODULE__, params.source.token)
     GenServer.call(pid, {:query_agg, params}, @query_timeout)
   end
 
   def cancel_agg(source_token) when is_atom(source_token) do
-    {:ok, pid} = Source.Supervisor.lookup(__MODULE__, source_token)
+    {:ok, pid} = Backends.lookup(__MODULE__, source_token)
     GenServer.call(pid, :cancel_agg, @query_timeout)
   end
 
   def cancel_query(source_token) when is_atom(source_token) do
-    {:ok, pid} = Source.Supervisor.lookup(__MODULE__, source_token)
+    {:ok, pid} = Backends.lookup(__MODULE__, source_token)
     GenServer.call(pid, :cancel_query, @query_timeout)
-  end
-
-  def name(source_id) do
-    String.to_atom("#{source_id}" <> "-search-query-server")
   end
 
   # Callbacks
 
   @impl true
-  def init(%{source_id: source_id}) do
-    Logger.debug("SearchQueryExecutor #{name(source_id)} is being initialized...")
-
-    state = %__MODULE__{
-      user: Users.get_by_source(source_id),
-      agg_tasks: %{},
-      event_tasks: %{},
-      source_id: source_id
-    }
-
-    {:ok, state}
-  end
-
-  @impl true
-  def handle_call({:query, params}, {lv_pid, _ref}, %State{} = state) do
+  def handle_call({:query, params}, {lv_pid, _ref}, state) do
     Logger.info(
       "Starting search query from #{pid_to_string(lv_pid)} for #{params.source.token} source..."
     )
 
-    state =
-      case BigQueryUDFs.create_if_not_exists_udfs_for_user_dataset(state.user) do
-        {:ok, user} -> %{state | user: user}
-        _ -> state
-      end
+    user = Users.Cache.get(state.user_id) |> Users.Cache.preload_defaults()
+
+    BigQueryUDFs.create_if_not_exists_udfs_for_user_dataset(user)
 
     current_lv_task_params = state.event_tasks[lv_pid]
 
@@ -167,7 +153,7 @@ defmodule Logflare.Logs.SearchQueryExecutor do
     {:reply, :ok, %{state | event_tasks: event_tasks}}
   end
 
-  def handle_call({:query_agg, params}, {lv_pid, _ref}, %State{} = state) do
+  def handle_call({:query_agg, params}, {lv_pid, _ref}, state) do
     current_lv_task_params = state.agg_tasks[lv_pid]
 
     if current_lv_task_params && current_lv_task_params[:task] do

@@ -54,7 +54,6 @@ defmodule Logflare.User do
     "asia-southeast1",
     "australia-southeast1"
   ]
-  defp env_project_id, do: Application.get_env(:logflare, Logflare.Google)[:project_id]
 
   defp env_dataset_id_append,
     do: Application.get_env(:logflare, Logflare.Google)[:dataset_id_append]
@@ -196,7 +195,7 @@ defmodule Logflare.User do
   end
 
   def hide_bigquery_defaults(user) do
-    if user.bigquery_project_id == env_project_id() do
+    if user.bigquery_project_id == bq_project_id() do
       %{
         user
         | bigquery_project_id: nil,
@@ -228,7 +227,7 @@ defmodule Logflare.User do
 
       location = changeset.changes[:bigquery_dataset_location] || @default_dataset_location
 
-      project_id = bigquery_project_id || env_project_id()
+      project_id = bigquery_project_id || bq_project_id()
 
       case BigQuery.create_dataset(
              user_id,
@@ -265,7 +264,13 @@ defmodule Logflare.User do
     @valid_bq_dataset_locations
   end
 
-  def generate_bq_dataset_id(%__MODULE__{id: id} = _user) do
+  def bq_project_id do
+    Application.get_env(:logflare, Logflare.Google)[:project_id]
+  end
+
+  def generate_bq_dataset_id(%__MODULE__{id: id}), do: generate_bq_dataset_id(id)
+
+  def generate_bq_dataset_id(id) do
     "#{id}" <> env_dataset_id_append()
   end
 end

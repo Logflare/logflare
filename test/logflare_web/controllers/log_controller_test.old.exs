@@ -22,8 +22,8 @@ defmodule LogflareWeb.LogControllerTestOld do
 
     SystemMetricsSup.start_link()
 
-    Source.RateCounterServer.start_link(%RLS{source_id: s.token})
-    SourceBuffer.start_link(%RLS{source_id: s.token})
+    Source.RateCounterServer.start_link(%{source_id: s.token})
+    SourceBuffer.start_link(%{source_id: s.token})
 
     {:ok, users: [u1, u2], sources: [s]}
   end

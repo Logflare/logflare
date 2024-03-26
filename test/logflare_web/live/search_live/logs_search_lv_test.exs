@@ -3,11 +3,12 @@ defmodule LogflareWeb.Source.SearchLVTest do
   use LogflareWeb.ConnCase
 
   alias Logflare.Source
-  alias Logflare.Logs.SearchQueryExecutor
   alias Logflare.SingleTenant
   alias Logflare.Source.BigQuery.Schema
-  alias Logflare.Source.RecentLogsServer
   alias LogflareWeb.Source.SearchLV
+  alias Logflare.Backends
+  alias Logflare.Source.V1SourceSup
+  alias Logflare.SystemMetrics.AllLogsLogged
 
   import Phoenix.LiveViewTest
 
@@ -35,13 +36,11 @@ defmodule LogflareWeb.Source.SearchLVTest do
 
   # requires a source, and plan set
   defp setup_source_processes(context) do
-    plan = context.plan
+    start_supervised!(AllLogsLogged)
 
     Enum.each(context, fn
-      {_, %Source{token: token}} ->
-        rls = %RecentLogsServer{source_id: token, plan: plan}
-        start_supervised!({Schema, rls}, id: token)
-        start_supervised!({SearchQueryExecutor, rls})
+      {_, %Source{} = source} ->
+        start_supervised!({V1SourceSup, source: source}, id: source.token)
 
       _ ->
         nil
@@ -205,7 +204,10 @@ defmodule LogflareWeb.Source.SearchLVTest do
 
       le = build(:log_event, metadata: %{"nested" => "something"}, top: "level", source: source)
       :timer.sleep(100)
-      Schema.update(source.token, le)
+
+      Backends.via_source(source, Schema, nil)
+      |> Schema.update(le)
+
       # TODO: find a better way to test a source schema structure
 
       stub(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, fn _conn, _proj_id, opts ->

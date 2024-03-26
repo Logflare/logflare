@@ -1,27 +1,22 @@
 defmodule Logflare.LogsTest do
   @moduledoc false
   use Logflare.DataCase
+
   alias Logflare.Logs
   alias Logflare.Lql
-  # v1 pipeline
-  alias Logflare.Source.RecentLogsServer
   alias Logflare.Source.V1SourceSup
   alias Logflare.SystemMetrics.AllLogsLogged
 
   def source_and_user(_context) do
     start_supervised!(AllLogsLogged)
-
     insert(:plan)
     user = insert(:user)
 
     source = insert(:source, user: user)
     source_b = insert(:source, user: user)
 
-    rls = %RecentLogsServer{source: source, source_id: source.token}
-    rls_b = %RecentLogsServer{source: source_b, source_id: source_b.token}
-
-    start_supervised!({V1SourceSup, rls}, id: :source)
-    start_supervised!({V1SourceSup, rls_b}, id: :source_b)
+    start_supervised!({V1SourceSup, source: source}, id: :source)
+    start_supervised!({V1SourceSup, source: source_b}, id: :source_b)
 
     :timer.sleep(250)
     [source: source, source_b: source_b, user: user]
@@ -92,6 +87,8 @@ defmodule Logflare.LogsTest do
         {:ok, %GoogleApi.BigQuery.V2.Model.TableDataInsertAllResponse{insertErrors: nil}}
       end)
 
+      pid = self()
+
       GoogleApi.BigQuery.V2.Api.Tables
       |> expect(:bigquery_tables_patch, fn conn,
                                            _project_id,
@@ -102,6 +99,8 @@ defmodule Logflare.LogsTest do
         assert conn.adapter == nil
         schema = body.schema
         assert %_{name: "key", type: "STRING"} = TestUtils.get_bq_field_schema(schema, "key")
+        # send msg to main test proc that mock was correctly called.
+        send(pid, :ok)
         {:ok, %{}}
       end)
 
@@ -113,8 +112,7 @@ defmodule Logflare.LogsTest do
       ]
 
       assert :ok = Logs.ingest_logs(batch, source)
-      # batcher timneout is 1_500
-      :timer.sleep(2_000)
+      assert_receive :ok, 1000
     end
   end
 

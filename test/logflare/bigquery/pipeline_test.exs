@@ -1,10 +1,9 @@
 defmodule Logflare.BigQuery.PipelineTest do
   @moduledoc false
-  alias Logflare.Source.BigQuery.Pipeline
-  alias Logflare.{LogEvent}
-  alias GoogleApi.BigQuery.V2.Model.TableDataInsertAllRequestRows
-  alias Logflare.Source.RecentLogsServer, as: RLS
   use Logflare.DataCase
+  alias Logflare.Source.BigQuery.Pipeline
+  alias Logflare.LogEvent
+  alias GoogleApi.BigQuery.V2.Model.TableDataInsertAllRequestRows
 
   @pipeline_name :test_pipeline
   describe "pipeline" do
@@ -65,7 +64,7 @@ defmodule Logflare.BigQuery.PipelineTest do
 
       user = insert(:user)
       source = insert(:source, user_id: user.id)
-      rls = %RLS{source_id: source.token, source: source}
+      rls = %{source_id: source.token, source: source}
       le = build(:log_event, source: source)
 
       batch =

@@ -1,4 +1,5 @@
 defmodule LogflareWeb.Api.AccessTokensTest do
+  @moduledoc false
   use LogflareWeb.ConnCase
 
   setup do
