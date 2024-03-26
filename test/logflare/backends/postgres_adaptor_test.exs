@@ -1,6 +1,5 @@
 defmodule Logflare.Backends.Adaptor.PostgresAdaptorTest do
   use Logflare.DataCase, async: false
-  import ExUnit.CaptureLog
   alias Logflare.Backends.Adaptor.PostgresAdaptor
 
   setup do
@@ -147,7 +146,7 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptorTest do
       assert {:ok, %_{}} = PostgresAdaptor.insert_log_event(backend, log_event)
     end
 
-    test "create_log_events_table/3 creates the table for a given source", %{
+    test "create_log_events_table/1 creates the table for a given source", %{
       backend: backend,
       source: source
     } do
@@ -155,20 +154,6 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptorTest do
       assert :ok = PostgresAdaptor.create_log_events_table({source, backend})
       query = from(l in PostgresAdaptor.table_name(source), select: l.body)
       assert repo.all(query) == []
-    end
-
-    test "handle migration errors", %{source: source, backend: backend} do
-      PostgresAdaptor.create_repo(backend)
-      assert :ok = PostgresAdaptor.connected?(backend)
-      bad_migrations = [{0, BadMigration}]
-
-      assert capture_log(fn ->
-               assert {:error, :failed_migration} =
-                        PostgresAdaptor.create_log_events_table(
-                          {source, backend},
-                          bad_migrations
-                        )
-             end) =~ "[error]"
     end
   end
 

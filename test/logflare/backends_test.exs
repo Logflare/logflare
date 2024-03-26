@@ -125,7 +125,6 @@ defmodule Logflare.BackendsTest do
       user = insert(:user)
       source = insert(:source, user_id: user.id)
       start_supervised!({SourceSup, source})
-      start_supervised!(AllLogsLogged)
       :timer.sleep(500)
       {:ok, source: source}
     end
