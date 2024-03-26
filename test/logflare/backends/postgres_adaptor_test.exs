@@ -1,6 +1,6 @@
 defmodule Logflare.Backends.Adaptor.PostgresAdaptorTest do
   use Logflare.DataCase, async: false
-
+  import ExUnit.CaptureLog
   alias Logflare.Backends.Adaptor.PostgresAdaptor
 
   setup do

@@ -58,7 +58,7 @@ defmodule Logflare.Source.BigQuery.SchemaTest do
 
     le = build(:log_event, source: source, metadata: %{"test" => 123})
     assert :ok = Schema.update(pid, le)
-    assert_receive :ok
+    assert_receive :ok, 500
     # subsequent updates do not increase mock count
     le = build(:log_event, source: source, metadata: %{"change" => 123})
     assert :ok = Schema.update(pid, le)

@@ -8,6 +8,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
   alias LogflareWeb.Source.SearchLV
   alias Logflare.Backends
   alias Logflare.Source.V1SourceSup
+  alias Logflare.SystemMetrics.AllLogsLogged
 
   import Phoenix.LiveViewTest
 

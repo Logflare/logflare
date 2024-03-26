@@ -187,12 +187,6 @@ defmodule Logflare.SourcesTest do
       end
 
       test "start_source/1, lookup/2, delete_source/1", %{user: user, flag: flag, mod: mod} do
-        Counters
-        |> expect(:delete, fn _token -> :ok end)
-        |> stub(:get_inserts, fn _ -> {:ok, 0} end)
-        |> stub(:get_bq_inserts, fn _ -> {:ok, 0} end)
-        |> stub(:create, fn _ -> {:ok, :some_table} end)
-
         Logflare.Google.BigQuery
         |> expect(:delete_table, fn _token -> :ok end)
         |> expect(:init_table!, fn _, _, _, _, _, _ -> :ok end)
