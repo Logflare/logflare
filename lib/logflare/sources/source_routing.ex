@@ -25,10 +25,7 @@ defmodule Logflare.Logs.SourceRouting do
       sink_source =
         Sources.Cache.get_by(token: rule.sink) |> Sources.refresh_source_metrics_for_ingest()
 
-      le =
-        le
-        |> Map.put(:source, sink_source)
-        |> Map.put(:via_rule, rule)
+      le = %{le | source: sink_source, via_rule: rule}
 
       if v2_pipeline do
         Backends.ingest_logs([le], sink_source)

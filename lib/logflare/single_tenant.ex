@@ -350,7 +350,7 @@ defmodule Logflare.SingleTenant do
           length(source_schema.bigquery_schema.fields) > 3
         end
 
-      Enum.all?(checks) and not Enum.empty?(sources) and not Enum.empty?(checks)
+      !!Enum.empty?(checks) and !!Enum.empty?(sources) and Enum.all?(checks)
     else
       false
     end

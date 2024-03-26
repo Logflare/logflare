@@ -15,8 +15,8 @@ defmodule Logflare.Backends.Cache do
     }
   end
 
-  def get_backend_by(kv), do: apply_repo_fun(__ENV__.function, [kv])
-  def get_backend(arg), do: apply_repo_fun(__ENV__.function, [arg])
+  def get_backend_by(kv), do: apply_repo_fun(:get_backend_by, [kv])
+  def get_backend(arg), do: apply_repo_fun(:get_backend, [arg])
 
   defp apply_repo_fun(arg1, arg2) do
     Logflare.ContextCache.apply_fun(Backends, arg1, arg2)

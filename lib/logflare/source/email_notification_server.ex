@@ -34,49 +34,47 @@ defmodule Logflare.Source.EmailNotificationServer do
     {:ok, current_inserts} = Counters.get_inserts(state.source_token)
     rate = current_inserts - state.inserts_since_boot
 
-    case rate > 0 do
-      true ->
-        check_rate(state.notifications_every)
+    if rate > 0 do
+      check_rate(state.notifications_every)
 
-        source = Sources.Cache.get_by_id(state.source_token)
-        user = Users.Cache.get_by(id: source.user_id)
+      source = Sources.Cache.get_by_id(state.source_token)
+      user = Users.Cache.get_by(id: source.user_id)
 
-        if source.notifications.user_email_notifications == true do
+      if source.notifications.user_email_notifications do
+        Task.Supervisor.start_child(Logflare.TaskSupervisor, fn ->
+          AccountEmail.source_notification(user, rate, source) |> Mailer.deliver()
+        end)
+      end
+
+      stranger_emails = source.notifications.other_email_notifications
+
+      if stranger_emails do
+        other_emails = String.split(stranger_emails, ",")
+
+        for email <- other_emails do
           Task.Supervisor.start_child(Logflare.TaskSupervisor, fn ->
-            AccountEmail.source_notification(user, rate, source) |> Mailer.deliver()
+            AccountEmail.source_notification_for_others(String.trim(email), rate, source)
+            |> Mailer.deliver()
           end)
         end
+      end
 
-        stranger_emails = source.notifications.other_email_notifications
+      if source.notifications.team_user_ids_for_email do
+        Enum.each(source.notifications.team_user_ids_for_email, fn x ->
+          team_user = TeamUsers.get_team_user(x)
 
-        if stranger_emails do
-          other_emails = String.split(stranger_emails, ",")
-
-          for email <- other_emails do
+          if team_user do
             Task.Supervisor.start_child(Logflare.TaskSupervisor, fn ->
-              AccountEmail.source_notification_for_others(String.trim(email), rate, source)
-              |> Mailer.deliver()
+              AccountEmail.source_notification(team_user, rate, source) |> Mailer.deliver()
             end)
           end
-        end
+        end)
+      end
 
-        if source.notifications.team_user_ids_for_email do
-          Enum.each(source.notifications.team_user_ids_for_email, fn x ->
-            team_user = TeamUsers.get_team_user(x)
-
-            if team_user do
-              Task.Supervisor.start_child(Logflare.TaskSupervisor, fn ->
-                AccountEmail.source_notification(team_user, rate, source) |> Mailer.deliver()
-              end)
-            end
-          end)
-        end
-
-        {:noreply, %{state | inserts_since_boot: current_inserts}}
-
-      false ->
-        check_rate(state.notifications_every)
-        {:noreply, state}
+      {:noreply, %{state | inserts_since_boot: current_inserts}}
+    else
+      check_rate(state.notifications_every)
+      {:noreply, state}
     end
   end
 

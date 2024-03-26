@@ -158,45 +158,19 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptorTest do
   end
 
   test "bug: cast_config/1 and validate_config/1 postgresql url variations" do
-    assert %Ecto.Changeset{valid?: true} =
-             %{url: "postgresql://localhost:5432"}
-             |> PostgresAdaptor.cast_config()
-             |> PostgresAdaptor.validate_config()
+    assert cast_config(url: "postgresql://localhost:5432").valid?
+    assert cast_config(url: "postgres://localhost:5432").valid?
 
-    assert %Ecto.Changeset{valid?: true} =
-             %{url: "postgres://localhost:5432"}
-             |> PostgresAdaptor.cast_config()
-             |> PostgresAdaptor.validate_config()
-
-    # invalid connection strings
-    assert %Ecto.Changeset{valid?: false} =
-             %{url: "://localhost:5432"}
-             |> PostgresAdaptor.cast_config()
-             |> PostgresAdaptor.validate_config()
-
-    assert %Ecto.Changeset{valid?: false} =
-             %{url: "//localhost:5432"}
-             |> PostgresAdaptor.cast_config()
-             |> PostgresAdaptor.validate_config()
-
-    assert %Ecto.Changeset{valid?: false} =
-             %{url: "/localhost:5432"}
-             |> PostgresAdaptor.cast_config()
-             |> PostgresAdaptor.validate_config()
-
-    assert %Ecto.Changeset{valid?: false} =
-             %{url: "postgres//localhost:5432"}
-             |> PostgresAdaptor.cast_config()
-             |> PostgresAdaptor.validate_config()
+    refute cast_config(url: "://localhost:5432").valid?
+    refute cast_config(url: "//localhost:5432").valid?
+    refute cast_config(url: "/localhost:5432").valid?
+    refute cast_config(url: "postgres//localhost:5432").valid?
   end
-end
 
-defmodule BadMigration do
-  @moduledoc false
-  use Ecto.Migration
-
-  def up do
-    alter table(:none) do
-    end
+  defp cast_config(attrs) do
+    attrs
+    |> Map.new()
+    |> PostgresAdaptor.cast_config()
+    |> PostgresAdaptor.validate_config()
   end
 end

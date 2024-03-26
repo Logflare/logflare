@@ -23,7 +23,7 @@ defmodule Logflare.Source.RecentLogsServer do
   @spec push(Source.t(), LE.t() | [LE.t()]) :: :ok
   def push(source, %LE{} = le), do: push(source, [le])
 
-  def push(%Source{token: source_token}, [%LE{} | _] = log_events) do
+  def push(%Source{token: source_token}, log_events) when is_list(log_events) do
     case Backends.lookup(__MODULE__, source_token) do
       {:ok, pid} -> GenServer.cast(pid, {:push, source_token, log_events})
       {:error, _} -> :ok
@@ -116,7 +116,7 @@ defmodule Logflare.Source.RecentLogsServer do
   end
 
   def handle_call(:list, _from, state) do
-    recent = state.recent |> Enum.to_list()
+    recent = Enum.to_list(state.recent)
     {:reply, {:ok, recent}, state}
   end
 

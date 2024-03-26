@@ -99,6 +99,7 @@ defmodule Logflare.LogsTest do
         assert conn.adapter == nil
         schema = body.schema
         assert %_{name: "key", type: "STRING"} = TestUtils.get_bq_field_schema(schema, "key")
+        # send msg to main test proc that mock was correctly called.
         send(pid, :ok)
         {:ok, %{}}
       end)
@@ -111,9 +112,7 @@ defmodule Logflare.LogsTest do
       ]
 
       assert :ok = Logs.ingest_logs(batch, source)
-      # batcher timneout is 1_500
-      :timer.sleep(2_000)
-      assert_received :ok
+      assert_receive :ok, 1000
     end
   end
 

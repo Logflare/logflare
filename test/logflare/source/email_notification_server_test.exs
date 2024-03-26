@@ -12,7 +12,7 @@ defmodule Logflare.Source.EmailNotificationServerTest do
 
   describe "GenServer" do
     test "start_link/1", %{source: source} do
-      start_supervised!({EmailNotificationServer, [source: source]})
+      {:ok, _pid} = EmailNotificationServer.start_link(source: source)
     end
 
     test "init/1", %{source: source} do
