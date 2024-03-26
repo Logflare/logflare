@@ -117,7 +117,9 @@ config :logger,
 
 log_level =
   case String.downcase(System.get_env("LOGFLARE_LOG_LEVEL") || "") do
-    "warn" -> :warn
+    # TODO: remove at v2
+    "warn" -> :warning
+    "warning" -> :warning
     "info" -> :info
     "error" -> :error
     _ -> nil
