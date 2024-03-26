@@ -23,17 +23,9 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
   end
 
   @impl true
-  def init({source, nil}) do
-    # init for when there is no backend
-
-    # maybe use user's bq info
-
-    backend = %Backend{}
-    init({source, backend})
-  end
-
   def init({source, backend}) do
     Process.flag(:trap_exit, true)
+    backend = backend || %Backend{}
 
     user = Users.Cache.get(source.user_id)
     plan = Billing.Cache.get_plan_by_user(user)

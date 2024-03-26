@@ -29,7 +29,7 @@ defmodule Logflare.Source.BigQuery.Schema do
     source = Keyword.get(args, :source)
 
     if source == nil do
-      throw(":source must be provided on startup for Schema module")
+      raise ":source must be provided on startup for Schema module"
     end
 
     # TODO: remove source_id from metadata to reduce confusion

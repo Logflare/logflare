@@ -53,64 +53,6 @@ defmodule Logflare.Source.BigQuery.BufferCounter do
     end
   end
 
-  # @doc """
-  # Wraps `LogEvent`s in a `Broadway.Message`, pushes log events into the Broadway pipeline and increments the `BufferCounter` count.
-  # """
-
-  # @spec push(LE.t()) :: {:ok, map()} | {:error, :buffer_full}
-  # def push(%LE{source: %Source{token: source_uuid} = source} = le) do
-  #   batch = [
-  #     %Broadway.Message{
-  #       data: le,
-  #       acknowledger: {Source.BigQuery.BufferProducer, {source_uuid, nil}, nil}
-  #     }
-  #   ]
-
-  #   push_batch(source, nil, batch)
-  # end
-
-  # @doc """
-  # Takes a `batch` of `Broadway.Message`s, pushes them into a Broadway pipeline and increments the `BufferCounter` count.
-  # """
-  # @spec push_batch(Source.t(), Backend.t() | nil, [Broadway.Message.t(), ...]) :: {:ok, map()} | {:error, :buffer_full}
-  # def push_batch(%Source{} = source, %Backend{} = backend, messages) when is_list(messages) do
-  #   do_push_batch(source.id, backend.id, messages)
-  # end
-
-  # # default backend with no backend record
-  # def push_batch(%Source{} = source, nil, messages) when is_list(messages) do
-  #   do_push_batch(source.id, nil, messages)
-  # end
-
-  # defp do_push_batch(source_id, maybe_backend_id, messages) do
-  #   with {:ok, ref} <- lookup_counter(source_id, maybe_backend_id),
-  #        {:ok, resp} <- push_by(ref, Enum.count(messages)) do
-  #     Backends.via_source(source_id, {Pipeline, maybe_backend_id})
-  #     |> Broadway.push_messages(messages)
-
-  #     {:ok, resp}
-  #   end
-  # end
-
-  # @doc """
-  # Decrements the actual buffer count. If we've got a successfull `ack` from Broadway it means
-  # we don't have the log event anymore.
-  # """
-  # @spec ack(atom(), atom() | nil, binary()) :: {:ok, %{len: integer}}
-  # def ack(source_token, backend_token, log_event_id) when is_binary(log_event_id) do
-  #   {:ok, ref} = lookup_counter(source_token, backend_token)
-  #   ack_by(ref, 1)
-  # end
-
-  # @spec ack_batch(atom(), atom() | nil, [Broadway.Message.t()]) :: {:ok, map()}
-  # def ack_batch(source_token, backend_token, log_events) when is_list(log_events) do
-  #   count = Enum.count(log_events)
-
-  #   {:ok, ref} = lookup_counter(source_token, backend_token)
-
-  #   ack_by(ref, count)
-  # end
-
   @spec push_by(:counters.counters_ref(), integer) ::
           {:error, :buffer_full} | {:ok, %{len: integer}}
   def push_by(ref, count) do

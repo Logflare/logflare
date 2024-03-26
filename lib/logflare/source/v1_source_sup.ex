@@ -43,15 +43,6 @@ defmodule Logflare.Source.V1SourceSup do
 
     plan = Billing.Cache.get_plan_by_user(user)
 
-    # rls =
-    #   Map.merge(rls, %{
-    #     bigquery_project_id: user.bigquery_project_id,
-    #     bigquery_dataset_id: user.bigquery_dataset_id,
-    #     user: user,
-    #     plan: plan,
-    #     notifications_every: source.notifications_every
-    #   })
-
     children = [
       {RCS, [source: source]},
       {BufferCounter,

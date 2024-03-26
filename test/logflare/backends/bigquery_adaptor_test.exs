@@ -12,29 +12,26 @@ defmodule Logflare.Backends.BigQueryAdaptorTest do
 
   setup do
     start_supervised!(AllLogsLogged)
+    insert(:plan)
     :ok
   end
 
   describe "default bigquery backend" do
-    setup do
-      insert(:plan)
-      :ok
-    end
-
     test "can ingest into source without creating a BQ backend" do
       user = insert(:user)
       source = insert(:source, user: user)
       start_supervised!({SourceSup, source})
       log_event = build(:log_event, source: source)
+      pid = self()
 
       Logflare.Google.BigQuery
       |> expect(:stream_batch!, fn _, _ ->
+        send(pid, :streamed)
         {:ok, %GoogleApi.BigQuery.V2.Model.TableDataInsertAllResponse{insertErrors: nil}}
       end)
 
       assert :ok = Backends.ingest_logs([log_event], source)
-
-      :timer.sleep(2000)
+      assert_received :streamed, 1000
     end
 
     test "does not use LF managed BQ if legacy user BQ config is set" do
@@ -55,8 +52,7 @@ defmodule Logflare.Backends.BigQueryAdaptorTest do
 
       assert :ok = Backends.ingest_logs([log_event], source)
 
-      :timer.sleep(2500)
-      assert_received :ok
+      assert_received :ok, 1000
     end
   end
 
@@ -85,23 +81,27 @@ defmodule Logflare.Backends.BigQueryAdaptorTest do
 
     test "plain ingest", %{adaptor: adaptor, source: source, backend: backend} do
       log_event = build(:log_event, source: source)
+      pid = self()
 
       Logflare.Google.BigQuery
       |> expect(:stream_batch!, fn _, _ ->
+        send(pid, :streamed)
         {:ok, %GoogleApi.BigQuery.V2.Model.TableDataInsertAllResponse{insertErrors: nil}}
       end)
 
       assert :ok =
                @subject.ingest(adaptor, [log_event], source_id: source.id, backend_id: backend.id)
 
-      :timer.sleep(2500)
+      assert_receive :streamed, 1000
     end
 
     test "update table", %{adaptor: adaptor, source: source, backend: backend} do
       log_event = build(:log_event, source: source, test: "data")
+      pid = self()
 
       Logflare.Google.BigQuery
       |> stub(:stream_batch!, fn _, _ ->
+        send(pid, :streamed)
         {:ok, %GoogleApi.BigQuery.V2.Model.TableDataInsertAllResponse{insertErrors: nil}}
       end)
 
@@ -111,10 +111,9 @@ defmodule Logflare.Backends.BigQueryAdaptorTest do
                                            _dataset_id,
                                            _table_name,
                                            [body: _body] ->
+        send(pid, :patched)
         {:ok, %{}}
       end)
-
-      :timer.sleep(500)
 
       Logflare.Mailer
       |> stub(:deliver, fn _ -> :ok end)
@@ -122,7 +121,8 @@ defmodule Logflare.Backends.BigQueryAdaptorTest do
       assert :ok =
                @subject.ingest(adaptor, [log_event], source_id: source.id, backend_id: backend.id)
 
-      :timer.sleep(2500)
+      assert_receive :patched, 1000
+      assert_receive :streamed, 1000
     end
   end
 end

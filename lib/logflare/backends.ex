@@ -154,15 +154,13 @@ defmodule Logflare.Backends do
     end
   end
 
+  @doc """
+  Retrieves a backend by keyword filter.
+  """
   @spec get_backend_by(keyword()) :: Backend.t() | nil
   def get_backend_by(kw) do
-    Repo.get_by(Backend, kw)
-    |> case do
-      nil ->
-        nil
-
-      backend ->
-        typecast_config_string_map_to_atom_map(backend)
+    if backend = Repo.get_by(Backend, kw) do
+      typecast_config_string_map_to_atom_map(backend)
     end
   end
 
@@ -226,32 +224,27 @@ defmodule Logflare.Backends do
       end)
 
     Logflare.Utils.Tasks.start_child(fn ->
-      # increment counters
-      # TODO: increment by sum
-      for _le <- log_events do
-        Sources.Counters.increment(source.token)
-        SystemMetrics.AllLogsLogged.increment(:total_logs_logged)
-      end
-
       source =
         source
         |> Sources.refresh_source_metrics_for_ingest()
         |> Sources.preload_rules()
 
-      # maybe broadcast
-      if source.metrics.avg < 5 do
-        for le <- log_events, do: Source.ChannelTopics.broadcast_new(le)
-      end
+      broadcast? = source.metrics.avg < 5
 
-      # maybe reroute
-      # TODO: shift this to dispatching logic
-      Enum.each(log_events, fn
-        %{via_rule: nil} = le ->
+      for le <- log_events do
+        # TODO: increment by sum
+        Sources.Counters.increment(source.token)
+        SystemMetrics.AllLogsLogged.increment(:total_logs_logged)
+
+        if broadcast? do
+          Source.ChannelTopics.broadcast_new(le)
+        end
+
+        # TODO: shift this to dispatching logic
+        if le.via_rule == nil do
           SourceRouting.route_to_sinks_and_ingest(%{le | source: source})
-
-        _ ->
-          :noop
-      end)
+        end
+      end
     end)
 
     # store in recent logs
@@ -302,8 +295,7 @@ defmodule Logflare.Backends do
   def lookup(module, %Source{} = source) do
     {:via, _registry, {registry, via_id}} = via_source(source, module)
 
-    Registry.lookup(registry, via_id)
-    |> case do
+    case Registry.lookup(registry, via_id) do
       [{pid, _}] -> {:ok, pid}
       _ -> {:error, :not_started}
     end
