@@ -14,6 +14,9 @@ defmodule Logflare.Application do
   alias Logflare.Partners
   alias Logflare.Auth
   alias Logflare.SystemMetricsSup
+  alias Logflare.Sources.Counters
+  alias Logflare.Sources.RateCounters
+  alias Logflare.PubSubRates
 
   def start(_type, _args) do
     env = Application.get_env(:logflare, :env)
@@ -64,8 +67,6 @@ defmodule Logflare.Application do
          max_restarts: 10,
          max_seconds: 60,
          name: Logflare.Source.V1SourceDynSup},
-        Sources.Counters,
-        Sources.RateCounters,
 
         # v2 ingestion pipelines
         Logflare.Backends

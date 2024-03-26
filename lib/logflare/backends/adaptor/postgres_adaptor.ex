@@ -127,11 +127,11 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor do
   @impl GenServer
   def init({source, backend}) do
     with {:ok, _} <- Registry.register(SourceDispatcher, source.id, {__MODULE__, :ingest}),
-         :ok <- connected?(backend),
          :ok <- create_log_events_table({source, backend}) do
       state = %__MODULE__{
         config: backend.config,
         backend: backend,
+        source: source,
         pipeline_name: Backends.via_source(source, Pipeline, backend.id)
       }
 
