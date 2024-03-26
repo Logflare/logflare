@@ -4,7 +4,6 @@ defmodule Logflare.Source.BillingWriterTest do
   alias Logflare.Billing.BillingCount
   alias Logflare.Repo
   alias Logflare.Source.BillingWriter
-  alias Logflare.Source.RecentLogsServer
   alias Logflare.Sources.Counters
   alias Logflare.SystemMetrics.AllLogsLogged
 
