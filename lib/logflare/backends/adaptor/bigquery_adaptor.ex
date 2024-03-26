@@ -44,7 +44,8 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
       children = [
         {BufferCounter,
          [
-           source_uuid: source.token,
+           source_id: source.id,
+           source_token: source.token,
            backend_token: backend.token,
            name: Backends.via_source(source, BufferCounter, backend.id)
          ]},
