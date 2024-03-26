@@ -7,11 +7,12 @@ defmodule LogflareWeb.ClusterLiveTest do
     insert(:plan)
     {:ok, user: insert(:user, admin: true)}
   end
+
   test "successfully for admin", %{conn: conn, user: user} do
     assert {:ok, view, html} =
-      conn
-      |> assign(:user, user)
-      |> live(~p"/admin/cluster")
+             conn
+             |> assign(:user, user)
+             |> live(~p"/admin/cluster")
 
     assert html =~ "#{Node.self()}"
     html = render(view)

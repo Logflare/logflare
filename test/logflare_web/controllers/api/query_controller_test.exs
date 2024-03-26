@@ -2,13 +2,13 @@ defmodule LogflareWeb.Api.QueryControllerTest do
   use LogflareWeb.ConnCase
 
   alias Logflare.Backends.Adaptor.PostgresAdaptor
+
   setup do
     insert(:plan)
     user = insert(:user)
 
     {:ok, user: user}
   end
-
 
   test "no query param provided", %{conn: conn, user: user} do
     conn
@@ -20,12 +20,11 @@ defmodule LogflareWeb.Api.QueryControllerTest do
   describe "query with bq" do
     test "?sql= query param", %{
       conn: conn,
-      user: user,
+      user: user
     } do
       expect(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, 2, fn _conn, _proj_id, _opts ->
         {:ok, TestUtils.gen_bq_response([%{"my_time" => "123"}])}
       end)
-
 
       response =
         conn
@@ -33,7 +32,7 @@ defmodule LogflareWeb.Api.QueryControllerTest do
         |> get(~p"/api/query?#{[bq_sql: ~s|select current_datetime() as 'my_time'|]}")
         |> json_response(200)
 
-      assert %{"result"=> [%{"my_time"=> "123"}]} = response
+      assert %{"result" => [%{"my_time" => "123"}]} = response
 
       response =
         conn
@@ -42,8 +41,7 @@ defmodule LogflareWeb.Api.QueryControllerTest do
         |> get(~p"/api/query?#{[sql: ~s|select current_datetime() as 'my_time'|]}")
         |> json_response(200)
 
-      assert %{"result"=> [%{"my_time"=> "123"}]} = response
-
+      assert %{"result" => [%{"my_time" => "123"}]} = response
     end
   end
 
@@ -76,20 +74,19 @@ defmodule LogflareWeb.Api.QueryControllerTest do
       %{source: source, user: user}
     end
 
-
     test "?pg_sql= query param", %{
       conn: conn,
-      user: user,
+      user: user
     } do
-
       query = ~S|select now() as "my_time"|
+
       response =
         conn
         |> add_access_token(user, ~w(private))
         |> get(~p"/api/query?#{[pg_sql: query]}")
         |> json_response(200)
 
-      assert %{"result"=> [%{"my_time"=> _}]} = response
+      assert %{"result" => [%{"my_time" => _}]} = response
     end
   end
 end

@@ -202,7 +202,6 @@ defmodule Logflare.AlertingTest do
       assert {:error, :no_results} = Alerting.run_alert(alert_query)
     end
 
-
     test "run_alert/2, performs pre-run configuration checks", %{user: user} do
       alert_query = insert(:alert, user: user)
 
@@ -211,6 +210,7 @@ defmodule Logflare.AlertingTest do
       reject(&Logflare.Backends.Adaptor.SlackAdaptor.Client.send/2)
       Application.get_env(:logflare, Logflare.Alerting)
       cfg = Application.get_env(:logflare, Logflare.Alerting)
+
       on_exit(fn ->
         Application.put_env(:logflare, Logflare.Alerting, cfg)
       end)
@@ -246,5 +246,4 @@ defmodule Logflare.AlertingTest do
       assert %Citrine.Job{} = Alerting.get_alert_job(alert.id)
     end
   end
-
 end

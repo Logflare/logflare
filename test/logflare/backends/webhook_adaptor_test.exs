@@ -12,6 +12,7 @@ defmodule Logflare.Backends.WebhookAdaptorTest do
   setup do
     user = insert(:user)
     source = insert(:source, user: user)
+
     backend =
       insert(:backend, type: :webhook, sources: [source], config: %{url: "https://example.com"})
 

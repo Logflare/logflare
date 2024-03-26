@@ -225,10 +225,8 @@ defmodule Logflare.BillingTest do
       partner = insert(:partner, users: [user])
       assert %Plan{name: "Free"} = Billing.get_plan_by_user(user)
       # upgrade user
-      Partners.upgrade_user(partner,user )
+      Partners.upgrade_user(partner, user)
       assert %Plan{name: "Enterprise"} = Billing.get_plan_by_user(user)
-
-
     end
 
     test "change_plan/1 returns changeset" do

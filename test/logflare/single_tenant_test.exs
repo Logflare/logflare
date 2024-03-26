@@ -59,7 +59,6 @@ defmodule Logflare.SingleTenantTest do
     end
 
     test "if :postgres_backend_url is set and single tenant, creates a source with a postgres backend" do
-
       %{username: username, password: password, database: database, hostname: hostname} =
         Application.get_env(:logflare, Logflare.Repo) |> Map.new()
 
@@ -72,7 +71,7 @@ defmodule Logflare.SingleTenantTest do
       %{id: user_id} = user
 
       on_exit(fn ->
-        Application.put_env( :logflare, :postgres_backend_adapter, prev )
+        Application.put_env(:logflare, :postgres_backend_adapter, prev)
       end)
 
       assert {:ok, source} = Sources.create_source(%{name: TestUtils.random_string()}, user)
@@ -80,7 +79,6 @@ defmodule Logflare.SingleTenantTest do
       assert [%Backend{type: :postgres}] = Logflare.Backends.list_backends(source)
       assert %Backend{type: :postgres} = SingleTenant.get_default_backend()
     end
-
   end
 
   test "single_tenant? returns false when not in single tenant mode" do
@@ -184,7 +182,12 @@ defmodule Logflare.SingleTenantTest do
   end
 
   describe "supabase_mode=true using Postgres" do
-    TestUtils.setup_single_tenant(backend_type: :postgres, seed_user: true, supabase_mode: true, seed_backend: true)
+    TestUtils.setup_single_tenant(
+      backend_type: :postgres,
+      seed_user: true,
+      supabase_mode: true,
+      seed_backend: true
+    )
 
     setup do
       stub(Schema, :update, fn _token, _le -> :ok end)

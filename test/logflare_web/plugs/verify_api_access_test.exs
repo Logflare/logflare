@@ -25,6 +25,7 @@ defmodule LogflareWeb.Plugs.VerifyApiAccessTest do
 
       {:ok, conn: conn}
     end
+
     test "can impersonate partner-provisioned user", %{conn: conn, user: user} do
       partner = insert(:partner, users: [user])
 
@@ -34,20 +35,18 @@ defmodule LogflareWeb.Plugs.VerifyApiAccessTest do
       |> VerifyApiAccess.call(%{})
       |> assert_authorized(user)
 
-
       partner = insert(:partner)
+
       conn
       |> put_req_header("x-lf-partner-user", user.token)
       |> add_partner_access_token(partner)
       |> VerifyApiAccess.call(%{})
       |> assert_unauthorized()
-
     end
-
   end
 
   describe "source ingestion auth" do
-  setup %{source: source} do
+    setup %{source: source} do
       conn =
         build_conn(:post, "/logs", %{"source" => Atom.to_string(source.token)})
         |> assign(:source, source)

@@ -18,7 +18,6 @@ defmodule LogflareWeb.SourceControllerTest do
 
   describe "list" do
     setup %{conn: conn} do
-
       user = insert(:user)
       insert(:plan, name: "Free")
       insert(:team, user: user)
@@ -44,9 +43,9 @@ defmodule LogflareWeb.SourceControllerTest do
     end
 
     test "renders default plan ttl correctly", %{conn: conn} do
-        conn
-        |> get(Routes.source_path(conn, :dashboard))
-        |> html_response(200) =~ "ttl: 3 day"
+      conn
+      |> get(Routes.source_path(conn, :dashboard))
+      |> html_response(200) =~ "ttl: 3 day"
     end
 
     test "renders default bigquery ttl correctly", %{conn: conn} do
@@ -54,7 +53,6 @@ defmodule LogflareWeb.SourceControllerTest do
       |> get(Routes.source_path(conn, :dashboard))
       |> html_response(200) =~ "ttl: 3 day"
     end
-
 
     test "show source", %{conn: conn, source: source} do
       html =
@@ -75,6 +73,7 @@ defmodule LogflareWeb.SourceControllerTest do
       start_supervised!({RecentLogsServer, %RecentLogsServer{source_id: source.token}})
       le = build(:log_event, source: source)
       :ok = RecentLogsServer.push(source.token, le)
+
       html =
         conn
         |> get(Routes.source_path(conn, :show, source))
@@ -114,7 +113,6 @@ defmodule LogflareWeb.SourceControllerTest do
       assert html =~ "403"
       assert html =~ "Forbidden"
     end
-
   end
 
   test "prompt to switch team if not found and part of many teams", %{conn: conn} do
@@ -130,16 +128,16 @@ defmodule LogflareWeb.SourceControllerTest do
     insert(:team_user, team: main_team, provider_uid: other_user.provider_uid)
 
     # main team has 2 users now
-    html = conn
-    |> login_user(other_user)
-    |> get(~p"/sources/#{source.id}")
-    |> html_response(403)
+    html =
+      conn
+      |> login_user(other_user)
+      |> get(~p"/sources/#{source.id}")
+      |> html_response(403)
 
     assert html =~ other_team.name
     assert html =~ main_team.name
     refute html =~ hidden_team.name
     assert html =~ "You may need to switch teams"
-
   end
 
   describe "Premium only features" do

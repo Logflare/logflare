@@ -24,14 +24,16 @@ defmodule Logflare.Source.RecentLogsServerTest do
       msg =
         "Initialized on node #{Node.self()}. Waiting for new events. Send some logs, then try to explore & search!"
 
-      assert_broadcast ^event,
-                       %{
-                         body: %{
-                           timestamp: _,
-                           message: ^msg
-                         }
-                       },
-                       2_000
+      assert_broadcast(
+        ^event,
+        %{
+          body: %{
+            timestamp: _,
+            message: ^msg
+          }
+        },
+        2_000
+      )
     end
   end
 end

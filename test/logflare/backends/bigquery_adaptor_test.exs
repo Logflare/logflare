@@ -23,9 +23,10 @@ defmodule Logflare.Backends.BigQueryAdaptorTest do
         config: config
       )
 
-    _rls = start_supervised %{
-      start: {RLS, :start_link, %RLS{source_id: source.token}}
-    }
+    _rls =
+      start_supervised(%{
+        start: {RLS, :start_link, %RLS{source_id: source.token}}
+      })
 
     adaptor = start_supervised!(Adaptor.child_spec(source, backend))
 

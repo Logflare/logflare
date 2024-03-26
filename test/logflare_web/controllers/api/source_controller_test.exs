@@ -34,13 +34,20 @@ defmodule LogflareWeb.Api.SourceControllerTest do
 
       assert response["id"] == source.id
     end
+
     test "backend postgres secrets are redacted", %{conn: conn, user: user, sources: [source | _]} do
-      insert(:backend, sources: [source], user: user, type: :postgres, config: %{url: "postgresql://user:secret@localhost"})
-      assert %{"backends"=> [backend]} =
-        conn
-        |> add_access_token(user, "private")
-        |> get("/api/sources/#{source.token}")
-        |> json_response(200)
+      insert(:backend,
+        sources: [source],
+        user: user,
+        type: :postgres,
+        config: %{url: "postgresql://user:secret@localhost"}
+      )
+
+      assert %{"backends" => [backend]} =
+               conn
+               |> add_access_token(user, "private")
+               |> get("/api/sources/#{source.token}")
+               |> json_response(200)
 
       config = backend["config"]
       assert config["url"] =~ "postgresql://user:REDACTED@localhost"
@@ -130,21 +137,26 @@ defmodule LogflareWeb.Api.SourceControllerTest do
   describe "add_backend/2" do
     test "attaches a backend", %{conn: conn, user: user, sources: [source | _]} do
       backend = insert(:backend, user: user)
-      conn = conn
-      |> add_access_token(user, "private")
-      |> post("/api/sources/#{source.token}/backends/#{backend.token}")
+
+      conn =
+        conn
+        |> add_access_token(user, "private")
+        |> post("/api/sources/#{source.token}/backends/#{backend.token}")
 
       # returns the source
-      assert %{"token"=> _, "backends"=> [_]} = json_response(conn, 201)
+      assert %{"token" => _, "backends" => [_]} = json_response(conn, 201)
     end
+
     test "removes a backend", %{conn: conn, user: user, sources: [source | _]} do
       backend = insert(:backend, user: user, sources: [source])
-      conn = conn
-      |> add_access_token(user, "private")
-      |> delete("/api/sources/#{source.token}/backends/#{backend.token}")
+
+      conn =
+        conn
+        |> add_access_token(user, "private")
+        |> delete("/api/sources/#{source.token}/backends/#{backend.token}")
 
       # returns the source
-      assert %{"token"=> _, "backends"=> []} = json_response(conn, 200)
+      assert %{"token" => _, "backends" => []} = json_response(conn, 200)
     end
   end
 

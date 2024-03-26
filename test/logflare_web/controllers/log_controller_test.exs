@@ -62,7 +62,9 @@ defmodule LogflareWeb.LogControllerTest do
 
       assert json_response(conn, 200) == %{"message" => "Logged!"}
       assert_receive {:logs, [log]}, 3000
-      assert %{"some"=> _, "event_message"=> _, "cloud_event" => %{"foo_foo" => "bar"}} = log.body
+
+      assert %{"some" => _, "event_message" => _, "cloud_event" => %{"foo_foo" => "bar"}} =
+               log.body
     end
 
     test "invaild source token uuid checks", %{conn: conn, user: user} do
@@ -240,10 +242,15 @@ defmodule LogflareWeb.LogControllerTest do
 
       assert json_response(conn, 200) == %{"message" => "Logged!"}
       assert_receive {:le, log}, 3000
-      assert %{"some"=> _, "event_message"=> _, "id"=> _, "cloud_event" => %{"foo_foo" => "bar"}} = log.body
+
+      assert %{
+               "some" => _,
+               "event_message" => _,
+               "id" => _,
+               "cloud_event" => %{"foo_foo" => "bar"}
+             } = log.body
     end
   end
-
 
   describe "single tenant" do
     TestUtils.setup_single_tenant(seed_user: true)
