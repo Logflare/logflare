@@ -49,7 +49,7 @@ defmodule Logflare.Application do
         Logs.LogEvents.Cache,
         Logs.RejectedLogEvents,
         {Phoenix.PubSub, name: Logflare.PubSub},
-        Logflare.PubSubRates,
+        PubSubRates,
         Logflare.Repo,
         {Registry,
          name: Logflare.V1SourceRegistry, keys: :unique, partitions: System.schedulers_online()},
@@ -104,7 +104,6 @@ defmodule Logflare.Application do
         Billing.Cache,
         SourceSchemas.Cache,
         Auth.Cache,
-        PubSubRates.Cache,
         Logs.LogEvents.Cache,
 
         # Follow Postgresql replication log and bust all our context caches
@@ -134,11 +133,8 @@ defmodule Logflare.Application do
         # init Counters before Supervisof as Supervisor calls Counters through table create
         Counters,
         RateCounters,
-        PubSubRates.Rates,
-        PubSubRates.Buffers,
-        PubSubRates.Inserts,
         Logflare.Source.Supervisor,
-        Logflare.PubSubRates,
+        PubSubRates,
         {DynamicSupervisor,
          strategy: :one_for_one,
          restart: :transient,
