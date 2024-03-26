@@ -109,19 +109,6 @@ defmodule Logflare.Application do
         Auth.Cache,
         Logs.LogEvents.Cache,
 
-        # v2 ingestion pipelines
-        {DynamicSupervisor, strategy: :one_for_one, name: Logflare.Backends.SourcesSup},
-        {DynamicSupervisor, strategy: :one_for_one, name: Logflare.Backends.RecentLogsSup},
-        {DynamicSupervisor,
-         strategy: :one_for_one, name: Logflare.Backends.Adaptor.PostgresAdaptor.Supervisor},
-        {DynamicSupervisor,
-         strategy: :one_for_one, name: Logflare.Backends.Adaptor.PostgresAdaptor.PgRepoSupervisor},
-        {Registry,
-         name: Logflare.Backends.SourceRegistry,
-         keys: :unique,
-         partitions: System.schedulers_online()},
-        {Registry, name: Logflare.Backends.SourceDispatcher, keys: :duplicate},
-
         # Follow Postgresql replication log and bust all our context caches
         {
           Cainophile.Adapters.Postgres,
