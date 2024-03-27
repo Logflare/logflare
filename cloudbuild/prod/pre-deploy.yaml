@@ -9,7 +9,7 @@ steps:
       - $_TEMPLATE_NAME
       - --boot-disk-size=25GB
       - --boot-disk-type=pd-balanced
-      - --machine-type=c2d-standard-56
+      - --machine-type=c2d-highcpu-56
       - --project=logflare-232118
       - --network-interface=network=global,network-tier=PREMIUM
       - --maintenance-policy=TERMINATE
