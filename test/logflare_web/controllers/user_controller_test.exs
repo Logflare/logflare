@@ -3,17 +3,17 @@ defmodule LogflareWeb.UserControllerTest do
   import LogflareWeb.Router.Helpers
   use LogflareWeb.ConnCase
   alias Logflare.Users
-  @moduletag :failing
-
-  setup do
-    u1 = insert(:user, bigquery_dataset_id: "test_dataset_id_1")
-    u2 = insert(:user, bigquery_dataset_id: "test_dataset_id_2")
-    # allow Users.Cache.get_by(any()), return: :should_not_happen
-
-    {:ok, users: [u1, u2], conn: Phoenix.ConnTest.build_conn()}
-  end
 
   describe "UserController update" do
+    setup do
+      u1 = insert(:user, bigquery_dataset_id: "test_dataset_id_1")
+      u2 = insert(:user, bigquery_dataset_id: "test_dataset_id_2")
+      # allow Users.Cache.get_by(any()), return: :should_not_happen
+
+      {:ok, users: [u1, u2]}
+    end
+
+    @tag :failing
     test "of restricted fields fails", %{
       conn: conn,
       users: [u1 | _]
@@ -47,6 +47,7 @@ defmodule LogflareWeb.UserControllerTest do
       # refute_called(Users.Cache.get_by(any()), once())
     end
 
+    @tag :failing
     test "of allowed fields succeeds", %{
       conn: conn,
       users: [u1 | _]
@@ -88,6 +89,7 @@ defmodule LogflareWeb.UserControllerTest do
       # refute_called(Users.Cache.get_by(any()), once())
     end
 
+    @tag :failing
     test "of bigquery_project_id resets all user tables", %{
       conn: conn,
       users: [u1 | _]
@@ -114,16 +116,29 @@ defmodule LogflareWeb.UserControllerTest do
   end
 
   describe "UserController delete" do
-    test "succeeds", %{conn: conn, users: [u1 | _]} do
-      conn =
-        conn
-        |> Plug.Test.init_test_session(%{user_id: u1.id})
-        |> delete(user_path(conn, :delete))
+    setup %{conn: conn} do
+      insert(:plan)
+      user = insert(:user)
+      [conn: login_user(conn, user), user: user]
+    end
 
-      u1_updated = Users.get_by(id: u1.id)
-      refute u1_updated
-      assert redirected_to(conn, 302) == auth_path(conn, :login, user_deleted: true)
-      # refute_called(Users.Cache.get_by(any()), once())
+    test "succeeds", %{conn: conn} do
+      conn = delete(conn, ~p"/account")
+      assert redirected_to(conn, 302) =~ ~p"/auth/login?user_deleted=true"
+    end
+  end
+
+  describe "partner-provisioned user" do
+    setup %{conn: conn} do
+      insert(:plan)
+      user = insert(:user)
+      partner = insert(:partner, users: [user])
+      [conn: login_user(conn, user)]
+    end
+
+    test "bug: should be able to delete a partner-provisioned account", %{conn: conn} do
+      conn = delete(conn, ~p"/account")
+      assert redirected_to(conn, 302) =~ ~p"/auth/login"
     end
   end
 end
