@@ -8,20 +8,17 @@ defmodule LogflareWeb.HealthCheckControllerTest do
 
   test "normal node health check", %{conn: conn} do
     start_supervised!(Source.Supervisor)
+
+    assert %{"status" => "coming_up"} =
+             conn
+             |> get("/health")
+             |> json_response(503)
+
     :timer.sleep(1000)
+
     conn = get(conn, "/health")
 
     assert %{"nodes" => [_], "nodes_count" => 1, "status" => "ok"} = json_response(conn, 200)
-  end
-
-  test "coming_up while ets tables not up yet", %{conn: conn} do
-    start_supervised!(Source.Supervisor)
-
-    conn =
-      conn
-      |> get("/health")
-
-    assert %{"status" => "coming_up"} = json_response(conn, 503)
   end
 
   test "coming_up while RLS boot warming", %{conn: conn} do
