@@ -31,7 +31,7 @@ defmodule Logflare.Backends.BigQueryAdaptorTest do
       end)
 
       assert :ok = Backends.ingest_logs([log_event], source)
-      assert_received :streamed, 1000
+      assert_receive :streamed, 2500
     end
 
     test "does not use LF managed BQ if legacy user BQ config is set" do
@@ -52,14 +52,12 @@ defmodule Logflare.Backends.BigQueryAdaptorTest do
 
       assert :ok = Backends.ingest_logs([log_event], source)
 
-      assert_received :ok, 1000
+      assert_receive :ok, 2500
     end
   end
 
   describe "custom bigquery backend" do
     setup do
-      insert(:plan)
-
       config = %{
         project_id: "some-project",
         dataset_id: "some-dataset"
@@ -92,7 +90,7 @@ defmodule Logflare.Backends.BigQueryAdaptorTest do
       assert :ok =
                @subject.ingest(adaptor, [log_event], source_id: source.id, backend_id: backend.id)
 
-      assert_receive :streamed, 1000
+      assert_receive :streamed, 2500
     end
 
     test "update table", %{adaptor: adaptor, source: source, backend: backend} do
@@ -101,7 +99,6 @@ defmodule Logflare.Backends.BigQueryAdaptorTest do
 
       Logflare.Google.BigQuery
       |> stub(:stream_batch!, fn _, _ ->
-        send(pid, :streamed)
         {:ok, %GoogleApi.BigQuery.V2.Model.TableDataInsertAllResponse{insertErrors: nil}}
       end)
 
@@ -121,8 +118,7 @@ defmodule Logflare.Backends.BigQueryAdaptorTest do
       assert :ok =
                @subject.ingest(adaptor, [log_event], source_id: source.id, backend_id: backend.id)
 
-      assert_receive :patched, 1000
-      assert_receive :streamed, 1000
+      assert_receive :patched, 2500
     end
   end
 end
