@@ -35,8 +35,9 @@ defmodule Logflare.Sources.Counters do
   end
 
   @spec increment(atom) :: success_tuple
-  def increment(table) do
-    :ets.update_counter(@ets_table_name, table, {2, 1}, {table, 0, 0, 0})
+  @spec increment(atom, non_neg_integer()) :: success_tuple
+  def increment(table, n \\ 1) do
+    :ets.update_counter(@ets_table_name, table, {2, n}, {table, 0, 0, 0})
     {:ok, table}
   end
 

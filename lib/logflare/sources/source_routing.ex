@@ -10,13 +10,10 @@ defmodule Logflare.Logs.SourceRouting do
   require Logger
 
   @spec route_to_sinks_and_ingest(LE.t()) :: LE.t()
-  def route_to_sinks_and_ingest(%LE{via_rule: %Rule{} = rule} = le) do
-    Logger.error(
-      "LogEvent #{le.id} has already been routed using the rule #{rule.id}, can't proceed!"
-    )
+  def route_to_sinks_and_ingest(events) when is_list(events),
+    do: Enum.map(events, &route_to_sinks_and_ingest/1)
 
-    le
-  end
+  def route_to_sinks_and_ingest(%LE{via_rule: %Rule{}} = le), do: le
 
   def route_to_sinks_and_ingest(
         %LE{source: %Source{rules: rules, v2_pipeline: v2_pipeline}, via_rule: nil} = le
@@ -28,6 +25,7 @@ defmodule Logflare.Logs.SourceRouting do
       le = %{le | source: sink_source, via_rule: rule}
 
       if v2_pipeline do
+        # TODO: ensure source started
         Backends.ingest_logs([le], sink_source)
       else
         le

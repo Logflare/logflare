@@ -8,6 +8,7 @@ defmodule Logflare.BackendsTest do
   alias Logflare.Source.RecentLogsServer
   alias Logflare.SystemMetrics.AllLogsLogged
   alias Logflare.Source.ChannelTopics
+  alias Logflare.Lql
   alias Logflare.PubSubRates
 
   setup do
@@ -131,7 +132,7 @@ defmodule Logflare.BackendsTest do
 
     test "correctly retains the 100 items", %{source: source} do
       events = for _n <- 1..105, do: build(:log_event, source: source, some: "event")
-      assert :ok = Backends.ingest_logs(events, source)
+      assert {:ok, 105} = Backends.ingest_logs(events, source)
       :timer.sleep(1500)
       cached = Backends.list_recent_logs(source)
       assert length(cached) == 100
@@ -146,7 +147,7 @@ defmodule Logflare.BackendsTest do
       ChannelTopics.subscribe_dashboard(source.token)
       ChannelTopics.subscribe_source(source.token)
       le = build(:log_event, source: source)
-      assert :ok = Backends.ingest_logs([le], source)
+      assert {:ok, 1} = Backends.ingest_logs([le], source)
       :timer.sleep(500)
       assert_receive %_{event: "rate", payload: %{rate: _}}
       # broadcast for recent logs page
@@ -154,6 +155,73 @@ defmodule Logflare.BackendsTest do
       {:ok, pid} = Backends.lookup(RecentLogsServer, source.token)
       send(pid, :broadcast)
       assert_receive {_, ^source_token, _}, 1000
+    end
+  end
+
+  describe "ingest filters" do
+    setup do
+      insert(:plan)
+      [user: insert(:user)]
+    end
+
+    test "drop filter", %{user: user} do
+      {:ok, lql_filters} = Lql.Parser.parse("testing", TestUtils.default_bq_schema())
+
+      source =
+        insert(:source, user: user, drop_lql_string: "testing", drop_lql_filters: lql_filters)
+
+      start_supervised!({SourceSup, source})
+      :timer.sleep(1000)
+
+      le = build(:log_event, message: "testing 123", source: source)
+
+      assert {:ok, 0} = Backends.ingest_logs([le], source)
+      # only the init message in RLS
+      assert [_] = Backends.list_recent_logs_local(source)
+    end
+
+    test "lql", %{user: user} do
+      [source, target] = insert_pair(:source, user: user)
+      insert(:rule, lql_string: "testing", sink: target.token, source_id: source.id)
+      source = Logflare.Repo.preload(source, :rules, force: true)
+      start_supervised!({SourceSup, source}, id: :source)
+      start_supervised!({SourceSup, target}, id: :target)
+      :timer.sleep(1000)
+
+      assert {:ok, 2} =
+               Backends.ingest_logs(
+                 [
+                   %{"message" => "some another"},
+                   %{"message" => "some testing 123"}
+                 ],
+                 source
+               )
+
+      :timer.sleep(500)
+      # init message + 2 events
+      assert Backends.list_recent_logs_local(source) |> length() == 3
+      # init message + 1 events
+      assert Backends.list_recent_logs_local(target) |> length() == 2
+    end
+
+    test "routing depth is max 1 level", %{user: user} do
+      [source, target] = insert_pair(:source, user: user)
+      other_target = insert(:source, user: user)
+      insert(:rule, lql_string: "testing", sink: target.token, source_id: source.id)
+      insert(:rule, lql_string: "testing", sink: other_target.token, source_id: target.id)
+      source = source |> Repo.preload(:rules, force: true)
+      start_supervised!({SourceSup, source}, id: :source)
+      start_supervised!({SourceSup, target}, id: :target)
+      start_supervised!({SourceSup, other_target}, id: :other_target)
+      :timer.sleep(1000)
+
+      assert {:ok, 1} = Backends.ingest_logs([%{"event_message" => "testing 123"}], source)
+      # init message + 1 events
+      assert Backends.list_recent_logs_local(source) |> length() == 2
+      # init message + 1 events
+      assert Backends.list_recent_logs_local(target) |> length() == 2
+      # init message + 0 events
+      assert Backends.list_recent_logs_local(other_target) |> length() == 1
     end
   end
 
@@ -187,7 +255,7 @@ defmodule Logflare.BackendsTest do
       end)
 
       event = build(:log_event, source: source, message: "some event")
-      assert :ok = Backends.ingest_logs([event], source)
+      assert {:ok, 1} = Backends.ingest_logs([event], source)
       :timer.sleep(2000)
     end
   end

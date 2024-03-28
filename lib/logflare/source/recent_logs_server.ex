@@ -22,6 +22,7 @@ defmodule Logflare.Source.RecentLogsServer do
 
   @spec push(Source.t(), LE.t() | [LE.t()]) :: :ok
   def push(source, %LE{} = le), do: push(source, [le])
+  def push(_source, []), do: :ok
 
   def push(%Source{token: source_token}, log_events) when is_list(log_events) do
     case Backends.lookup(__MODULE__, source_token) do

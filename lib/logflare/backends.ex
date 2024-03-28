@@ -190,66 +190,67 @@ defmodule Logflare.Backends do
   @spec ingest_logs([log_param()], Source.t()) :: :ok
   def ingest_logs(event_params, source) do
     :ok = Source.Supervisor.ensure_started(source)
+    {log_events, errors} = split_valid_events(source, event_params)
+    count = Enum.count(log_events)
+    increment_counters(source, count)
+    maybe_broadcast_and_route(source, log_events)
+    RecentLogsServer.push(source, log_events)
+    dispatch_to_backends(source, log_events)
+    if Enum.empty?(errors), do: {:ok, count}, else: {:error, errors}
+  end
 
-    {log_events, errors} =
-      event_params
-      |> Enum.reduce({[], []}, fn param, {events, errors} ->
-        le =
-          param
-          |> case do
-            %LogEvent{} = le ->
-              le
+  defp split_valid_events(source, event_params) do
+    event_params
+    |> Enum.reduce({[], []}, fn param, {events, errors} ->
+      le =
+        param
+        |> case do
+          %LogEvent{} = le ->
+            le
 
-            param ->
-              LogEvent.make(param, %{source: source})
-          end
-          |> Logs.maybe_mark_le_dropped_by_lql()
-          |> LogEvent.apply_custom_event_message()
-
-        cond do
-          le.drop ->
-            do_telemetry(:drop, le)
-            {events, errors}
-
-          le.valid == false ->
-            do_telemetry(:invalid, le)
-            {events, errors}
-
-          le.pipeline_error ->
-            {events, [le.pipeline_error.message | errors]}
-
-          le.valid ->
-            {[le | events], errors}
+          param ->
+            LogEvent.make(param, %{source: source})
         end
-      end)
+        |> Logs.maybe_mark_le_dropped_by_lql()
+        |> LogEvent.apply_custom_event_message()
 
-    Logflare.Utils.Tasks.start_child(fn ->
-      source =
-        source
-        |> Sources.refresh_source_metrics_for_ingest()
-        |> Sources.preload_rules()
+      cond do
+        le.drop ->
+          do_telemetry(:drop, le)
+          {events, errors}
 
-      broadcast? = source.metrics.avg < 5
+        le.valid == false ->
+          do_telemetry(:invalid, le)
+          {events, errors}
 
-      for le <- log_events do
-        # TODO: increment by sum
-        Sources.Counters.increment(source.token)
-        SystemMetrics.AllLogsLogged.increment(:total_logs_logged)
+        le.pipeline_error ->
+          {events, [le.pipeline_error.message | errors]}
 
-        if broadcast? do
-          Source.ChannelTopics.broadcast_new(le)
-        end
-
-        # TODO: shift this to dispatching logic
-        if le.via_rule == nil do
-          SourceRouting.route_to_sinks_and_ingest(%{le | source: source})
-        end
+        le.valid ->
+          {[le | events], errors}
       end
     end)
+  end
 
-    # store in recent logs
-    RecentLogsServer.push(source, log_events)
+  defp increment_counters(source, count) do
+    Sources.Counters.increment(source.token, count)
+    SystemMetrics.AllLogsLogged.increment(:total_logs_logged, count)
+    :ok
+  end
 
+  defp maybe_broadcast_and_route(source, log_events) do
+    Logflare.Utils.Tasks.start_child(fn ->
+      if source.metrics.avg < 5 do
+        Source.ChannelTopics.broadcast_new(log_events)
+      end
+
+      SourceRouting.route_to_sinks_and_ingest(log_events)
+    end)
+
+    :ok
+  end
+
+  defp dispatch_to_backends(source, log_events) do
     Registry.dispatch(SourceDispatcher, source.id, fn entries ->
       for {pid, mfa} <- entries do
         # TODO: spawn tasks to do this concurrently
@@ -263,7 +264,7 @@ defmodule Logflare.Backends do
       end
     end)
 
-    if Enum.empty?(errors), do: :ok, else: {:error, errors}
+    :ok
   end
 
   @doc """
