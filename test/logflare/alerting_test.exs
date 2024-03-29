@@ -177,10 +177,16 @@ defmodule Logflare.AlertingTest do
       end)
 
       Logflare.Backends.Adaptor.WebhookAdaptor.Client
-      |> expect(:send, fn _url, %{"result" => _} = _body -> {:ok, %Tesla.Env{}} end)
+      |> expect(:send, fn opts ->
+        assert Map.has_key?(opts[:body], "result")
+        {:ok, %Tesla.Env{}}
+      end)
 
       Logflare.Backends.Adaptor.SlackAdaptor.Client
-      |> expect(:send, fn _url, %{blocks: _} = _records -> {:ok, %Tesla.Env{}} end)
+      |> expect(:send, fn _url, body ->
+        assert Map.has_key?(body, :blocks)
+        {:ok, %Tesla.Env{}}
+      end)
 
       assert :ok = Alerting.run_alert(alert_query)
     end
@@ -194,7 +200,7 @@ defmodule Logflare.AlertingTest do
       end)
 
       Logflare.Backends.Adaptor.WebhookAdaptor.Client
-      |> reject(:send, 2)
+      |> reject(:send, 1)
 
       Logflare.Backends.Adaptor.SlackAdaptor.Client
       |> reject(:send, 2)
@@ -206,7 +212,7 @@ defmodule Logflare.AlertingTest do
       alert_query = insert(:alert, user: user)
 
       reject(&GoogleApi.BigQuery.V2.Api.Jobs.bigquery_jobs_query/3)
-      reject(&Logflare.Backends.Adaptor.WebhookAdaptor.Client.send/2)
+      reject(&Logflare.Backends.Adaptor.WebhookAdaptor.Client.send/1)
       reject(&Logflare.Backends.Adaptor.SlackAdaptor.Client.send/2)
       Application.get_env(:logflare, Logflare.Alerting)
       cfg = Application.get_env(:logflare, Logflare.Alerting)

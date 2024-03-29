@@ -157,7 +157,7 @@ defmodule LogflareWeb.AlertsLiveTest do
 
     setup do
       WebhookAdaptor.Client
-      |> stub(:send, fn _, _ -> {:ok, %Tesla.Env{}} end)
+      |> stub(:send, fn _ -> {:ok, %Tesla.Env{}} end)
 
       SlackAdaptor.Client
       |> stub(:send, fn _, _ -> {:ok, %Tesla.Env{}} end)

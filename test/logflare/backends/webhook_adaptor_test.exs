@@ -21,11 +21,17 @@ defmodule Logflare.Backends.WebhookAdaptorTest do
   end
 
   test "ingest/2", %{pid: pid} do
-    @subject.Client
-    |> expect(:send, fn _, _ -> %Tesla.Env{} end)
+    this = self()
+    ref = make_ref()
 
-    assert :ok = @subject.ingest(pid, [%LogEvent{}])
-    :timer.sleep(1_500)
+    @subject.Client
+    |> expect(:send, fn _ ->
+      send(this, ref)
+      %Tesla.Env{}
+    end)
+
+    assert :ok == @subject.ingest(pid, [%LogEvent{}])
+    assert_receive ^ref, 2000
   end
 
   test "cast_and_validate_config/1" do

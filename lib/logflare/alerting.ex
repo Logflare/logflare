@@ -197,9 +197,12 @@ defmodule Logflare.Alerting do
     case execute_alert_query(alert_query) do
       {:ok, [_ | _] = results} ->
         if alert_query.webhook_notification_url do
-          WebhookAdaptor.Client.send(alert_query.webhook_notification_url, %{
-            "result" => results
-          })
+          WebhookAdaptor.Client.send(
+            url: alert_query.webhook_notification_url,
+            body: %{
+              "result" => results
+            }
+          )
         end
 
         if alert_query.slack_hook_url do

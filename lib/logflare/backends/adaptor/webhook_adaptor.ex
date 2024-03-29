@@ -16,7 +16,12 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
   typedstruct enforce: true do
     field(:buffer_module, Adaptor.t())
     field(:buffer_pid, pid())
-    field(:config, %{url: String.t()})
+
+    field(:config, %{
+      url: String.t(),
+      headers: map()
+    })
+
     field(:backend, Backend.t())
     field(:pipeline_name, tuple())
   end
@@ -35,8 +40,8 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
 
   @impl Logflare.Backends.Adaptor
   def cast_config(params) do
-    {%{}, %{url: :string}}
-    |> Ecto.Changeset.cast(params, [:url])
+    {%{}, %{url: :string, headers: :map}}
+    |> Ecto.Changeset.cast(params, [:url, :headers])
   end
 
   @impl Logflare.Backends.Adaptor
@@ -85,9 +90,11 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
     plug(Tesla.Middleware.Telemetry)
     plug(Tesla.Middleware.JSON)
 
-    def send(url, body, opts \\ %{}) do
-      opts = Enum.into(opts, %{method: :post})
-      request(method: opts.method, url: url, body: body)
+    def send(opts) do
+      opts
+      |> Keyword.put_new(:method, :post)
+      |> Keyword.update(:headers, [], &Map.to_list/1)
+      |> request()
     end
   end
 
@@ -128,8 +135,8 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
       Message.update_data(message, &process_data(&1, adaptor_state))
     end
 
-    defp process_data(log_event, %{config: %{url: url}}) do
-      Client.send(url, log_event.body)
+    defp process_data(log_event, %{config: %{} = config}) do
+      Client.send(url: config.url, body: log_event.body, headers: config[:headers] || %{})
     end
 
     # Broadway transformer for custom producer
