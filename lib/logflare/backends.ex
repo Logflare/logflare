@@ -268,9 +268,11 @@ defmodule Logflare.Backends do
   - `:backend_id`
   - `:source_id`
   """
-  @spec register_backend_for_ingest_dispatch(module(), {Source.t(), Backend.t()}, keyword()) ::
+  @spec register_backend_for_ingest_dispatch(Source.t(), Backend.t(), keyword()) ::
           :ok
-  def register_backend_for_ingest_dispatch(mod, {source, backend}, opts \\ []) do
+  def register_backend_for_ingest_dispatch(source, backend, opts \\ []) do
+    mod = Adaptor.get_adaptor(backend)
+
     {:ok, _pid} =
       Registry.register(
         SourceDispatcher,

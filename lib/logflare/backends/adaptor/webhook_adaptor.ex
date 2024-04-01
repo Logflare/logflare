@@ -63,7 +63,7 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
   # GenServer
   @impl GenServer
   def init({source, backend}) do
-    :ok = Backends.register_backend_for_ingest_dispatch(__MODULE__, {source, backend})
+    :ok = Backends.register_backend_for_ingest_dispatch(source, backend)
 
     state = %__MODULE__{
       config: backend.config,

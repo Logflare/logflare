@@ -34,7 +34,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
     # TODO: remove source_id metadata to reduce confusion
     Logger.metadata(source_id: source.token, source_token: source.token)
 
-    with :ok <- Backends.register_backend_for_ingest_dispatch(__MODULE__, {source, backend}) do
+    with :ok <- Backends.register_backend_for_ingest_dispatch(source, backend) do
       children = [
         {BufferCounter,
          [

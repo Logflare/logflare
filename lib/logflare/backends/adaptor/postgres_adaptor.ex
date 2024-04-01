@@ -126,7 +126,7 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor do
   # GenServer
   @impl GenServer
   def init({source, backend}) do
-    with :ok <- Backends.register_backend_for_ingest_dispatch(__MODULE__, {source, backend}),
+    with :ok <- Backends.register_backend_for_ingest_dispatch(source, backend),
          :ok <- create_log_events_table({source, backend}) do
       state = %__MODULE__{
         config: backend.config,
