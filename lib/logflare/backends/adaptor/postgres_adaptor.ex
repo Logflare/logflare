@@ -14,7 +14,6 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor do
   alias Logflare.Backends.Adaptor.PostgresAdaptor.PgRepo
   alias Logflare.Backends
   alias Logflare.Backends.Backend
-  alias Logflare.Backends.SourceDispatcher
 
   @behaviour Logflare.Backends.Adaptor
 

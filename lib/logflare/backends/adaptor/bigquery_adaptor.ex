@@ -3,7 +3,6 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
 
   alias Logflare.Backends
   alias Logflare.Sources
-  alias Logflare.Backends.SourceDispatcher
   alias Logflare.Backends.Backend
   alias Logflare.Source.BigQuery.Pipeline
   alias Logflare.Source.BigQuery.Schema

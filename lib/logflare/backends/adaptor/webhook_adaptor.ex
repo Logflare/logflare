@@ -7,14 +7,10 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
   alias Logflare.Backends
   alias Logflare.Backends.Adaptor.WebhookAdaptor
   alias Logflare.Backends.Backend
-  alias Logflare.Backends.SourceDispatcher
 
   @behaviour Logflare.Backends.Adaptor
 
   typedstruct enforce: true do
-    field(:buffer_module, Adaptor.t())
-    field(:buffer_pid, pid())
-
     field(:config, %{
       url: String.t(),
       headers: map()
