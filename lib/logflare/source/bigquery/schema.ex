@@ -240,12 +240,7 @@ defmodule Logflare.Source.BigQuery.Schema do
   end
 
   defp next_update() do
-    updates_per_minute =
-      case Application.get_env(:logflare, :env) do
-        :test -> 60000
-        _ -> 6
-      end
-
+    updates_per_minute = Application.get_env(:logflare, __MODULE__)
     next_update_ts(updates_per_minute)
   end
 

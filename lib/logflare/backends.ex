@@ -219,14 +219,14 @@ defmodule Logflare.Backends do
           do_telemetry(:drop, le)
           {events, errors}
 
-        le.valid == false ->
+        not le.valid ->
           do_telemetry(:invalid, le)
           {events, errors}
 
         le.pipeline_error ->
           {events, [le.pipeline_error.message | errors]}
 
-        le.valid ->
+        true ->
           {[le | events], errors}
       end
     end)
@@ -252,17 +252,31 @@ defmodule Logflare.Backends do
 
   defp dispatch_to_backends(source, log_events) do
     Registry.dispatch(SourceDispatcher, source.id, fn entries ->
-      for {pid, mfa} <- entries do
+      for {pid, {adaptor_module, :ingest, opts}} <- entries do
         # TODO: spawn tasks to do this concurrently
-        case mfa do
-          {adaptor_module, :ingest, [_ | _] = opts} ->
-            adaptor_module.ingest(pid, log_events, opts)
-
-          {adaptor_module, :ingest} ->
-            adaptor_module.ingest(pid, log_events)
-        end
+        adaptor_module.ingest(pid, log_events, opts)
       end
     end)
+
+    :ok
+  end
+
+  @doc """
+  Registers a backend for ingestion dispatching. Any opts that are provided are stored in the registry.
+
+  Auto-populated options:
+  - `:backend_id`
+  - `:source_id`
+  """
+  @spec register_backend_for_ingest_dispatch(module(), {Source.t(), Backend.t()}, keyword()) ::
+          :ok
+  def register_backend_for_ingest_dispatch(mod, {source, backend}, opts \\ []) do
+    {:ok, _pid} =
+      Registry.register(
+        SourceDispatcher,
+        source.id,
+        {mod, :ingest, [backend_id: backend.id, source_id: source.id] ++ opts}
+      )
 
     :ok
   end

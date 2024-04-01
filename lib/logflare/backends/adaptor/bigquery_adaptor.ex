@@ -24,7 +24,6 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
 
   @impl true
   def init({source, backend}) do
-    Process.flag(:trap_exit, true)
     backend = backend || %Backend{}
 
     user = Users.Cache.get(source.user_id)
@@ -35,12 +34,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
     # TODO: remove source_id metadata to reduce confusion
     Logger.metadata(source_id: source.token, source_token: source.token)
 
-    with {:ok, _} <-
-           Registry.register(
-             SourceDispatcher,
-             source.id,
-             {__MODULE__, :ingest, backend_id: backend.id, source_id: source.id}
-           ) do
+    with :ok <- Backends.register_backend_for_ingest_dispatch(__MODULE__, {source, backend}) do
       children = [
         {BufferCounter,
          [

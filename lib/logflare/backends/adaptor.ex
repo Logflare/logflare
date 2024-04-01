@@ -33,10 +33,13 @@ defmodule Logflare.Backends.Adaptor do
 
   @doc """
   Ingest many log events.
+
+  Options passed are dependent on `Backends.register_backend_for_ingest_dispatch/3`.
   """
   @typep ingest_options :: [
            {:source_id, integer()},
-           {:backend_id, integer()}
+           {:backend_id, integer()},
+           {atom(), term()}
          ]
   @callback ingest(identifier(), [LogEvent.t()], ingest_options()) :: :ok
 
