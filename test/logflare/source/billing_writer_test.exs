@@ -12,11 +12,10 @@ defmodule Logflare.Source.BillingWriterTest do
 
     user = insert(:user)
     source = insert(:source, user: user)
-    _billing_account = insert(:billing_account, user: user)
-    user = user |> Logflare.Repo.preload(:billing_account)
-    plan = insert(:plan, type: "metered")
+    plan = insert(:plan, type: "metered", name: "Metered")
+    insert(:billing_account, user: user, stripe_plan_id: plan.stripe_id)
 
-    pid = start_supervised!({BillingWriter, source: source, user: user, plan: plan})
+    pid = start_supervised!({BillingWriter, source: source})
 
     # Stripe mocks
     Stripe.SubscriptionItem.Usage
