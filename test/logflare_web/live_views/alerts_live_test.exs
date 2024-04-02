@@ -191,5 +191,61 @@ defmodule LogflareWeb.AlertsLiveTest do
              |> render_click() =~
                "Alert has been triggered. No results from query, notifications not sent!"
     end
+
+    test "errors from BQ are dispalyed", %{conn: conn, alert_query: alert_query} do
+      GoogleApi.BigQuery.V2.Api.Jobs
+      |> expect(:bigquery_jobs_query, 1, fn _conn, _proj_id, _opts ->
+        {:error, TestUtils.gen_bq_error("some error")}
+      end)
+
+      {:ok, view, _html} = live(conn, Routes.alerts_path(conn, :show, alert_query))
+
+      assert view
+             |> element("button", "Manual trigger")
+             |> render_click() =~ "some error"
+    end
+  end
+
+  describe "run query" do
+    setup [:create_alert_query]
+
+    test "rows are displayed", %{conn: conn, alert_query: alert_query} do
+      GoogleApi.BigQuery.V2.Api.Jobs
+      |> expect(:bigquery_jobs_query, 1, fn _conn, _proj_id, _opts ->
+        {:ok, TestUtils.gen_bq_response([%{"testing" => "results-123"}])}
+      end)
+
+      {:ok, view, _html} = live(conn, Routes.alerts_path(conn, :show, alert_query))
+
+      assert view
+             |> element("button", "Run query")
+             |> render_click() =~ "results-123"
+    end
+
+    test "errors from BQ are dispalyed", %{conn: conn, alert_query: alert_query} do
+      GoogleApi.BigQuery.V2.Api.Jobs
+      |> expect(:bigquery_jobs_query, 1, fn _conn, _proj_id, _opts ->
+        {:error, TestUtils.gen_bq_error("some error")}
+      end)
+
+      {:ok, view, _html} = live(conn, Routes.alerts_path(conn, :show, alert_query))
+
+      assert view
+             |> element("button", "Run query")
+             |> render_click() =~ "some error"
+    end
+
+    test "No rows returned", %{conn: conn, alert_query: alert_query} do
+      GoogleApi.BigQuery.V2.Api.Jobs
+      |> expect(:bigquery_jobs_query, 1, fn _conn, _proj_id, _opts ->
+        {:ok, TestUtils.gen_bq_response([])}
+      end)
+
+      {:ok, view, _html} = live(conn, Routes.alerts_path(conn, :show, alert_query))
+
+      assert view
+             |> element("button", "Run query")
+             |> render_click() =~ "No rows returned"
+    end
   end
 end
