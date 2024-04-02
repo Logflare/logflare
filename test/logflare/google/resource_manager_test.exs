@@ -1,5 +1,6 @@
 defmodule Logflare.Google.CloudResourceManagerTest do
-  use Logflare.DataCase, async: false
+  @moduledoc false
+  use Logflare.DataCase
   alias Logflare.Google.CloudResourceManager
   alias GoogleApi.CloudResourceManager.V1.Model.Binding
 

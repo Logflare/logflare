@@ -100,6 +100,14 @@ defmodule Logflare.CacheBuster do
     {Logflare.SourceSchemas, String.to_integer(id)}
   end
 
+  defp handle_record(%UpdatedRecord{
+         relation: {_schema, "backends"},
+         record: %{"id" => id}
+       })
+       when is_binary(id) do
+    {Logflare.Backends, String.to_integer(id)}
+  end
+
   defp handle_record(%NewRecord{
          relation: {_schema, "billing_accounts"},
          record: %{"id" => _id}
@@ -143,6 +151,14 @@ defmodule Logflare.CacheBuster do
     {Logflare.Users, :not_found}
   end
 
+  defp handle_record(%NewRecord{
+         relation: {_schema, "backends"},
+         record: %{"id" => _id}
+       }) do
+    # When new records are created they were previously cached as `nil` so we need to bust the :not_found keys
+    {Logflare.Backends, :not_found}
+  end
+
   defp handle_record(%DeletedRecord{
          relation: {_schema, "billing_accounts"},
          old_record: %{"id" => id}
@@ -173,6 +189,14 @@ defmodule Logflare.CacheBuster do
        })
        when is_binary(id) do
     {Logflare.Users, String.to_integer(id)}
+  end
+
+  defp handle_record(%DeletedRecord{
+         relation: {_schema, "backends"},
+         old_record: %{"id" => id}
+       })
+       when is_binary(id) do
+    {Logflare.Backends, String.to_integer(id)}
   end
 
   defp handle_record(%DeletedRecord{

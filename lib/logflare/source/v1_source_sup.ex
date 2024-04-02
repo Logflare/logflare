@@ -16,52 +16,63 @@ defmodule Logflare.Source.V1SourceSup do
   alias Logflare.Source.BillingWriter
 
   alias Logflare.Source.RateCounterServer, as: RCS
-  alias Logflare.Source
   alias Logflare.Users
+  alias Logflare.Backends
   alias Logflare.Billing
   alias Logflare.Logs.SearchQueryExecutor
 
   require Logger
   use Supervisor
 
-  def start_link(%RecentLogsServer{source_id: source_token} = rls) do
-    Supervisor.start_link(__MODULE__, rls, name: Source.Supervisor.via(__MODULE__, source_token))
+  def start_link(args) do
+    source = Keyword.get(args, :source)
+    Supervisor.start_link(__MODULE__, args, name: Backends.via_source(source, __MODULE__))
   end
 
   @impl true
-  def init(%RecentLogsServer{source: source} = rls) do
+  def init(args) do
+    source = Keyword.get(args, :source)
     Process.flag(:trap_exit, true)
-    Logger.metadata(source_id: rls.source_id, source_token: rls.source_id)
+    Logger.metadata(source_id: source.token, source_token: source.token)
 
     user =
       source.user_id
-      |> Users.get()
+      |> Users.Cache.get()
       |> Users.maybe_put_bigquery_defaults()
       |> Users.preload_billing_account()
 
-    plan = Billing.get_plan_by_user(user)
-
-    rls = %RecentLogsServer{
-      rls
-      | bigquery_project_id: user.bigquery_project_id,
-        bigquery_dataset_id: user.bigquery_dataset_id,
-        user: user,
-        plan: plan,
-        notifications_every: source.notifications_every
-    }
+    plan = Billing.Cache.get_plan_by_user(user)
 
     children = [
-      {BufferCounter, rls},
-      {Pipeline, rls},
-      {RecentLogsServer, rls},
-      {Schema, rls},
-      {RCS, rls},
-      {EmailNotificationServer, rls},
-      {TextNotificationServer, rls},
-      {WebhookNotificationServer, rls},
-      {SlackHookServer, rls},
-      {SearchQueryExecutor, rls},
-      {BillingWriter, rls}
+      {RCS, [source: source]},
+      {BufferCounter,
+       [
+         source_id: source.id,
+         source_token: source.token,
+         name: Backends.via_source(source, BufferCounter, nil)
+       ]},
+      {Pipeline,
+       [
+         bigquery_project_id: user.bigquery_project_id,
+         bigquery_dataset_id: user.bigquery_dataset_id,
+         source: source,
+         name: Backends.via_source(source, Pipeline, nil)
+       ]},
+      {RecentLogsServer, [source: source]},
+      {Schema,
+       [
+         name: Backends.via_source(source, Schema, nil),
+         source: source,
+         bigquery_project_id: user.bigquery_project_id,
+         bigquery_dataset_id: user.bigquery_dataset_id,
+         plan: plan
+       ]},
+      {EmailNotificationServer, [source: source]},
+      {TextNotificationServer, [source: source, plan: plan]},
+      {WebhookNotificationServer, [source: source]},
+      {SlackHookServer, [source: source]},
+      {SearchQueryExecutor, [source: source]},
+      {BillingWriter, [source: source]}
     ]
 
     Supervisor.init(children, strategy: :one_for_one, max_restarts: 10)

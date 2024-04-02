@@ -5,16 +5,18 @@ defmodule Logflare.Application do
 
   alias Logflare.Billing
   alias Logflare.ContextCache
+  alias Logflare.Backends
   alias Logflare.Logs
-  alias Logflare.PubSubRates
   alias Logflare.SingleTenant
   alias Logflare.Sources
   alias Logflare.SourceSchemas
   alias Logflare.Users
   alias Logflare.Partners
   alias Logflare.Auth
+  alias Logflare.SystemMetricsSup
   alias Logflare.Sources.Counters
   alias Logflare.Sources.RateCounters
+  alias Logflare.PubSubRates
 
   def start(_type, _args) do
     env = Application.get_env(:logflare, :env)
@@ -43,6 +45,7 @@ defmodule Logflare.Application do
         Users.Cache,
         Sources.Cache,
         Partners.Cache,
+        Backends.Cache,
         Billing.Cache,
         SourceSchemas.Cache,
         Auth.Cache,
@@ -146,7 +149,7 @@ defmodule Logflare.Application do
         LogflareWeb.Endpoint,
         {GRPC.Server.Supervisor, {LogflareGrpc.Endpoint, grpc_port, cred: grpc_creds}},
         # Monitor system level metrics
-        Logflare.SystemMetricsSup,
+        SystemMetricsSup,
 
         # For Logflare Endpoints
         {DynamicSupervisor, strategy: :one_for_one, name: Logflare.Endpoints.Cache},

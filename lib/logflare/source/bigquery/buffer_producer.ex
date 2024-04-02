@@ -4,8 +4,6 @@ defmodule Logflare.Source.BigQuery.BufferProducer do
 
   require Logger
 
-  alias Logflare.Source.BigQuery.BufferCounter
-
   @impl true
   def init(%{source_id: token}), do: init(%{source_token: token})
 
@@ -30,13 +28,6 @@ defmodule Logflare.Source.BigQuery.BufferProducer do
   @impl true
   def handle_info(_, state) do
     {:noreply, [], state, :hibernate}
-  end
-
-  @spec ack(atom(), [Broadway.Message.t()], [Broadway.Message.t()]) :: :ok
-  def ack(source_token, successful, unsuccessful) when is_atom(source_token) do
-    BufferCounter.ack_batch(source_token, successful ++ unsuccessful)
-
-    :ok
   end
 
   defp handle_receive_messages(

@@ -19,6 +19,8 @@ config :logflare, Logflare.Google, dataset_id_append: "_default"
 
 config :logflare, :postgres_backend_adapter, pool_size: 10
 
+config :logflare, Logflare.Source.BigQuery.Schema, updates_per_minute: 6
+
 # Configures the endpoint
 config :logflare, LogflareWeb.Endpoint,
   url: [host: "localhost", scheme: "http", port: 4000],

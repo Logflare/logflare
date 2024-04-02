@@ -3,29 +3,22 @@ defmodule LogflareWeb.HealthCheckControllerTest do
   For node-level health check only.
   """
   use LogflareWeb.ConnCase
-  alias Logflare.Source.BigQuery.Schema
   alias Logflare.SingleTenant
   alias Logflare.Source
 
   test "normal node health check", %{conn: conn} do
     start_supervised!(Source.Supervisor)
-    :timer.sleep(500)
 
-    conn =
-      conn
-      |> get("/health")
+    assert %{"status" => "coming_up"} =
+             conn
+             |> get("/health")
+             |> json_response(503)
+
+    :timer.sleep(1000)
+
+    conn = get(conn, "/health")
 
     assert %{"nodes" => [_], "nodes_count" => 1, "status" => "ok"} = json_response(conn, 200)
-  end
-
-  test "coming_up while ets tables not up yet", %{conn: conn} do
-    start_supervised!(Source.Supervisor)
-
-    conn =
-      conn
-      |> get("/health")
-
-    assert %{"status" => "coming_up"} = json_response(conn, 503)
   end
 
   test "coming_up while RLS boot warming", %{conn: conn} do
@@ -59,6 +52,9 @@ defmodule LogflareWeb.HealthCheckControllerTest do
     setup do
       start_supervised!(Source.Supervisor)
 
+      SingleTenant
+      |> stub(:supabase_mode_source_schemas_updated?, fn -> true end)
+
       :ok
     end
 
@@ -72,13 +68,17 @@ defmodule LogflareWeb.HealthCheckControllerTest do
 
     setup do
       start_supervised!(Source.Supervisor)
-      stub(Schema, :get_state, fn _ -> %{field_count: 5} end)
+
+      SingleTenant
+      |> stub(:supabase_mode_source_schemas_updated?, fn -> true end)
+
       :ok
     end
 
     test "ok", %{conn: conn} do
       SingleTenant.create_supabase_sources()
       SingleTenant.create_supabase_endpoints()
+
       assert %{"status" => "ok"} = conn |> get("/health") |> json_response(200)
     end
   end

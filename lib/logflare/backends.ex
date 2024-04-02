@@ -12,13 +12,15 @@ defmodule Logflare.Backends do
   alias Logflare.Backends.SourceRegistry
   alias Logflare.Backends.SourcesSup
   alias Logflare.Backends.SourceSup
-
-  alias Logflare.Buffers.Buffer
-  alias Logflare.Buffers.MemoryBuffer
   alias Logflare.LogEvent
   alias Logflare.Repo
   alias Logflare.Source
-
+  alias Logflare.Source
+  alias Logflare.Sources
+  alias Logflare.Source.RecentLogsServer
+  alias Logflare.Logs
+  alias Logflare.Logs.SourceRouting
+  alias Logflare.SystemMetrics
   import Ecto.Query
 
   @adaptor_mapping %{
@@ -153,6 +155,16 @@ defmodule Logflare.Backends do
   end
 
   @doc """
+  Retrieves a backend by keyword filter.
+  """
+  @spec get_backend_by(keyword()) :: Backend.t() | nil
+  def get_backend_by(kw) do
+    if backend = Repo.get_by(Backend, kw) do
+      typecast_config_string_map_to_atom_map(backend)
+    end
+  end
+
+  @doc """
   Deletes a Backend
   """
   @spec delete_backend(Backend.t()) :: {:ok, Backend.t()}
@@ -169,27 +181,104 @@ defmodule Logflare.Backends do
   @doc """
   Adds log events to the source event buffer.
   The ingestion pipeline then pulls from the buffer and dispatches log events to the correct backends.
+
+  TODO: Perform syncronous parsing and validation of log event params.
+
+  Once this function returns `:ok`, the events get dispatched to respective backend adaptor portions of the pipeline to be further processed.
   """
   @type log_param :: map()
   @spec ingest_logs([log_param()], Source.t()) :: :ok
-  def ingest_logs(log_events, source) do
-    via = via_source(source, :buffer)
-    Buffer.add_many(MemoryBuffer, via, log_events)
+  def ingest_logs(event_params, source) do
+    :ok = Source.Supervisor.ensure_started(source)
+    {log_events, errors} = split_valid_events(source, event_params)
+    count = Enum.count(log_events)
+    increment_counters(source, count)
+    maybe_broadcast_and_route(source, log_events)
+    RecentLogsServer.push(source, log_events)
+    dispatch_to_backends(source, log_events)
+    if Enum.empty?(errors), do: {:ok, count}, else: {:error, errors}
+  end
+
+  defp split_valid_events(source, event_params) do
+    event_params
+    |> Enum.reduce({[], []}, fn param, {events, errors} ->
+      le =
+        param
+        |> case do
+          %LogEvent{} = le ->
+            le
+
+          param ->
+            LogEvent.make(param, %{source: source})
+        end
+        |> Logs.maybe_mark_le_dropped_by_lql()
+        |> LogEvent.apply_custom_event_message()
+
+      cond do
+        le.drop ->
+          do_telemetry(:drop, le)
+          {events, errors}
+
+        not le.valid ->
+          do_telemetry(:invalid, le)
+          {events, errors}
+
+        le.pipeline_error ->
+          {events, [le.pipeline_error.message | errors]}
+
+        true ->
+          {[le | events], errors}
+      end
+    end)
+  end
+
+  defp increment_counters(source, count) do
+    Sources.Counters.increment(source.token, count)
+    SystemMetrics.AllLogsLogged.increment(:total_logs_logged, count)
+    :ok
+  end
+
+  defp maybe_broadcast_and_route(source, log_events) do
+    Logflare.Utils.Tasks.start_child(fn ->
+      if source.metrics.avg < 5 do
+        Source.ChannelTopics.broadcast_new(log_events)
+      end
+
+      SourceRouting.route_to_sinks_and_ingest(log_events)
+    end)
+
+    :ok
+  end
+
+  defp dispatch_to_backends(source, log_events) do
+    Registry.dispatch(SourceDispatcher, source.id, fn entries ->
+      for {pid, {adaptor_module, :ingest, opts}} <- entries do
+        # TODO: spawn tasks to do this concurrently
+        adaptor_module.ingest(pid, log_events, opts)
+      end
+    end)
+
     :ok
   end
 
   @doc """
-  Dispatch log events to a given source backend.
-  It requires the source supervisor and registry to be running.
-  For internal use only, should not be called outside of the `Logflare` namespace.
+  Registers a backend for ingestion dispatching. Any opts that are provided are stored in the registry.
+
+  Auto-populated options:
+  - `:backend_id`
+  - `:source_id`
   """
-  def dispatch_ingest(log_events, source) do
-    Registry.dispatch(SourceDispatcher, source.id, fn entries ->
-      for {pid, {adaptor_module, :ingest}} <- entries do
-        # TODO: spawn tasks to do this concurrently
-        adaptor_module.ingest(pid, log_events)
-      end
-    end)
+  @spec register_backend_for_ingest_dispatch(Source.t(), Backend.t(), keyword()) ::
+          :ok
+  def register_backend_for_ingest_dispatch(source, backend, opts \\ []) do
+    mod = Adaptor.get_adaptor(backend)
+
+    {:ok, _pid} =
+      Registry.register(
+        SourceDispatcher,
+        source.id,
+        {mod, :ingest, [backend_id: backend.id, source_id: source.id] ++ opts}
+      )
 
     :ok
   end
@@ -206,8 +295,27 @@ defmodule Logflare.Backends do
   @spec via_source(Source.t(), term(), term()) :: tuple()
   def via_source(source, mod, id), do: via_source(source, {mod, id})
 
-  def via_source(%Source{id: id}, process_id) do
+  def via_source(%Source{id: id}, process_id), do: via_source(id, process_id)
+
+  def via_source(id, process_id) when is_number(id) do
     {:via, Registry, {SourceRegistry, {id, process_id}}}
+  end
+
+  @doc """
+  drop in replacement for Source.Supervisor.lookup
+  """
+  def lookup(module, source_token) when is_atom(source_token) do
+    source = Sources.Cache.get_source_by_token(source_token)
+    lookup(module, source)
+  end
+
+  def lookup(module, %Source{} = source) do
+    {:via, _registry, {registry, via_id}} = via_source(source, module)
+
+    case Registry.lookup(registry, via_id) do
+      [{pid, _}] -> {:ok, pid}
+      _ -> {:error, :not_started}
+    end
   end
 
   @doc """
@@ -223,9 +331,16 @@ defmodule Logflare.Backends do
   """
   @spec start_source_sup(Source.t()) :: :ok | {:error, :already_started}
   def start_source_sup(%Source{} = source) do
+    # ensure that v1 pipeline source is already down
     case DynamicSupervisor.start_child(SourcesSup, {SourceSup, source}) do
-      {:ok, _pid} -> :ok
-      {:error, {:already_started = reason, _pid}} -> {:error, reason}
+      {:ok, _pid} ->
+        :ok
+
+      {:error, {:already_started = reason, _pid}} ->
+        {:error, reason}
+
+      {:error, {:shutdown, {:failed_to_start_child, _mod, {:already_started = reason, _pid}}}} ->
+        {:error, reason}
     end
   end
 
@@ -272,9 +387,12 @@ defmodule Logflare.Backends do
   """
   @spec list_recent_logs(Source.t()) :: [LogEvent.t()]
   def list_recent_logs(%Source{} = source) do
-    source
-    |> ensure_recent_logs_started()
-    |> RecentLogs.list()
+    RecentLogsServer.list_for_cluster(source.token)
+  end
+
+  @spec list_recent_logs_local(Source.t()) :: [LogEvent.t()]
+  def list_recent_logs_local(%Source{} = source) do
+    RecentLogsServer.list(source.token)
   end
 
   @doc """
@@ -310,5 +428,37 @@ defmodule Logflare.Backends do
 
     :global.del_lock({RecentLogs, source.id})
     pid
+  end
+
+  defp do_telemetry(:drop, le) do
+    :telemetry.execute(
+      [:logflare, :logs, :ingest_logs],
+      %{drop: true},
+      %{source_id: le.source.id, source_token: le.source.token}
+    )
+  end
+
+  defp do_telemetry(:invalid, le) do
+    :telemetry.execute(
+      [:logflare, :logs, :ingest_logs],
+      %{rejected: true},
+      %{source_id: le.source.id, source_token: le.source.token}
+    )
+  end
+
+  defp do_telemetry(:buffer_full, le) do
+    :telemetry.execute(
+      [:logflare, :logs, :ingest_logs],
+      %{buffer_full: true},
+      %{source_id: le.source.id, source_token: le.source.token}
+    )
+  end
+
+  defp do_telemetry(:unknown_error, le) do
+    :telemetry.execute(
+      [:logflare, :logs, :ingest_logs],
+      %{unknown_error: true},
+      %{source_id: le.source.id, source_token: le.source.token}
+    )
   end
 end

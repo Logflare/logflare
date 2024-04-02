@@ -208,6 +208,7 @@ defmodule LogflareWeb.LogController do
     |> handle(conn)
   end
 
+  defp handle({:ok, _}, conn), do: render(conn, "index.json", message: @message)
   defp handle(:ok, conn), do: render(conn, "index.json", message: @message)
 
   defp handle({:error, errors}, conn) do

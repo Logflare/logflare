@@ -3,7 +3,7 @@ defmodule LogflareWeb.Api.Partner.UserControllerTest do
   alias Logflare.Partners
 
   setup do
-    {:ok, %{partner: insert(:partner)}}
+    [partner: insert(:partner)]
   end
 
   @allowed_fields MapSet.new(~w(api_quota company email name phone token metadata))

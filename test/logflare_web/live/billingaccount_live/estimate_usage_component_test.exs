@@ -1,4 +1,5 @@
 defmodule LogflareWeb.BillingAccountLive.EstimateUsageComponentTest do
+  @moduledoc false
   use Logflare.DataCase
   alias LogflareWeb.BillingAccountLive.EstimateUsageComponent
   import Phoenix.LiveViewTest

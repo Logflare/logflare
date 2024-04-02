@@ -53,6 +53,8 @@ defmodule Logflare.Source.ChannelTopics do
     logflare_local_broadcast(topic, event, payload)
   end
 
+  def broadcast_new(events) when is_list(events), do: Enum.map(events, &broadcast_new/1)
+
   def broadcast_new(%LE{source: %Source{token: token}, body: body} = le) do
     maybe_broadcast("source:#{token}", "source:#{token}:new", %{
       body: body,

@@ -14,7 +14,7 @@ defmodule LogflareWeb.AdminSearchDashboardLiveTest do
     :ok = Ecto.Adapters.SQL.Sandbox.checkout(Logflare.Repo)
 
     {:ok, _} =
-      RLS.start_link(%RLS{source_id: @test_token, source: Sources.get_by(token: @test_token)})
+      RLS.start_link(%{source_id: @test_token, source: Sources.get_by(token: @test_token)})
 
     :ok
   end

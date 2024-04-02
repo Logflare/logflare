@@ -15,17 +15,24 @@ defmodule Logflare.Backends.Adaptor do
   @type source_backend :: {Source.t(), Backend.t()}
 
   def child_spec(%Source{} = source, %Backend{} = backend) do
-    adaptor_module =
-      case backend.type do
-        :webhook -> __MODULE__.WebhookAdaptor
-        :postgres -> __MODULE__.PostgresAdaptor
-        :bigquery -> __MODULE__.BigQueryAdaptor
-      end
+    adaptor_module = get_adaptor(backend)
 
     %{
-      id: {adaptor_module, backend.id},
+      id: {adaptor_module, source.id, backend.id},
       start: {adaptor_module, :start_link, [{source, backend}]}
     }
+  end
+
+  @doc """
+  Retrieves the module for a given backend
+  """
+  @spec get_adaptor(Backend.t()) :: module()
+  def get_adaptor(%Backend{type: type}) do
+    case type do
+      :webhook -> __MODULE__.WebhookAdaptor
+      :postgres -> __MODULE__.PostgresAdaptor
+      :bigquery -> __MODULE__.BigQueryAdaptor
+    end
   end
 
   @callback start_link(source_backend()) ::
@@ -33,8 +40,15 @@ defmodule Logflare.Backends.Adaptor do
 
   @doc """
   Ingest many log events.
+
+  Options passed are dependent on `Backends.register_backend_for_ingest_dispatch/3`.
   """
-  @callback ingest(identifier(), [LogEvent.t()]) :: :ok
+  @typep ingest_options :: [
+           {:source_id, integer()}
+           | {:backend_id, integer()}
+           | {atom(), term()}
+         ]
+  @callback ingest(identifier(), [LogEvent.t()], ingest_options()) :: :ok
 
   @doc """
   Queries the backend using an endpoint query.

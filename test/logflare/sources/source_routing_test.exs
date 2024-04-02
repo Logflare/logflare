@@ -8,7 +8,6 @@ defmodule Logflare.Logs.SourceRoutingTest do
   alias Logflare.Source
   alias Logflare.Source.BigQuery.Schema
   alias Logflare.Source.BigQuery.SchemaBuilder
-  alias Logflare.Source.RecentLogsServer, as: RLS
   alias Logflare.Sources
   alias Logflare.Users
 
@@ -617,7 +616,9 @@ defmodule Logflare.Logs.SourceRoutingTest do
         params_for(:source, token: TestUtils.gen_uuid(), rules: [], user_id: u.id)
         |> Sources.create_source(u)
 
-      Schema.start_link(%RLS{
+      start_supervised!(Schema, [])
+
+      Schema.start_link(%{
         source_id: s1.token,
         plan: %{limit_source_fields_limit: 500}
       })

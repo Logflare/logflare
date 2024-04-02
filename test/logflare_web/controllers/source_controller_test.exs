@@ -15,6 +15,8 @@ defmodule LogflareWeb.SourceControllerTest do
   alias Logflare.Logs.RejectedLogEvents
   alias Logflare.SingleTenant
   alias Logflare.Source.RecentLogsServer
+  alias Logflare.Source.V1SourceDynSup
+  alias Logflare.Backends
 
   describe "list" do
     setup %{conn: conn} do
@@ -70,9 +72,9 @@ defmodule LogflareWeb.SourceControllerTest do
     end
 
     test "show source's recent logs", %{conn: conn, source: source} do
-      start_supervised!({RecentLogsServer, %RecentLogsServer{source_id: source.token}})
+      start_supervised!({RecentLogsServer, source: source})
       le = build(:log_event, source: source)
-      :ok = RecentLogsServer.push(source.token, le)
+      :ok = RecentLogsServer.push(source, le)
 
       html =
         conn
@@ -216,7 +218,7 @@ defmodule LogflareWeb.SourceControllerTest do
   end
 
   describe "dashboard - rejected" do
-    setup [:old_setup, :expect_user_plan, :assert_caches_not_called]
+    setup [:old_setup, :expect_user_plan]
 
     test "renders rejected logs page", %{conn: conn, users: [u1, _u2], sources: [s1, _s2 | _]} do
       RejectedLogEvents.ingest(%LogEvent{
@@ -248,7 +250,7 @@ defmodule LogflareWeb.SourceControllerTest do
   end
 
   describe "update" do
-    setup [:old_setup, :expect_user_plan, :assert_caches_not_called]
+    setup [:old_setup, :expect_user_plan]
 
     test "returns 200 with valid params", %{conn: conn, users: [u1, _u2], sources: [s1, _s2 | _]} do
       new_name = TestUtils.random_string()
@@ -292,7 +294,7 @@ defmodule LogflareWeb.SourceControllerTest do
       params = %{
         "id" => s1.id,
         "source" => %{
-          "favorite" => 1,
+          "favorite" => 123,
           "name" => new_name
         }
       }
@@ -368,7 +370,7 @@ defmodule LogflareWeb.SourceControllerTest do
   end
 
   describe "show" do
-    setup [:old_setup, :expect_user_plan, :assert_caches_not_called]
+    setup [:old_setup, :expect_user_plan]
 
     test "returns 403 for a source not owned by the user", %{
       conn: conn,
@@ -386,7 +388,7 @@ defmodule LogflareWeb.SourceControllerTest do
   end
 
   describe "create" do
-    setup [:old_setup, :expect_user_plan, :assert_caches_not_called]
+    setup [:old_setup, :expect_user_plan]
 
     test "returns 200 with valid params", %{conn: conn, users: [u1 | _]} do
       name = TestUtils.random_string()
@@ -442,7 +444,7 @@ defmodule LogflareWeb.SourceControllerTest do
   end
 
   describe "favorite" do
-    setup [:old_setup, :expect_user_plan, :assert_caches_not_called]
+    setup [:old_setup, :expect_user_plan]
 
     test "returns 200 flipping the value", %{conn: conn, users: [u1 | _], sources: [s1 | _]} do
       conn =
@@ -526,6 +528,46 @@ defmodule LogflareWeb.SourceControllerTest do
     end
   end
 
+  describe "update v1-v2 pipeline" do
+    setup do
+      insert(:plan)
+
+      Logflare.Google.BigQuery
+      |> stub(:init_table!, fn _, _, _, _, _, _ -> :ok end)
+
+      on_exit(fn ->
+        for dynsup <- [V1SourceDynSup, Backends.SourcesSup],
+            {_id, child, _, _} <- DynamicSupervisor.which_children(dynsup) do
+          DynamicSupervisor.terminate_child(dynsup, child)
+        end
+      end)
+
+      [user: insert(:user)]
+    end
+
+    test "toggling from v1 to v2", %{conn: conn, user: user} do
+      source = insert(:source, user: user)
+
+      conn =
+        conn
+        |> login_user(user)
+        |> put(~p"/sources/#{source.id}", %{"source" => %{"v2_pipeline" => true}})
+
+      assert redirected_to(conn) == ~p"/sources/#{source.id}/edit"
+    end
+
+    test "toggle from v2 to v1", %{conn: conn, user: user} do
+      source = insert(:source, user: user, v2_pipeline: true)
+
+      conn =
+        conn
+        |> login_user(user)
+        |> put(~p"/sources/#{source.id}", %{"source" => %{"v2_pipeline" => false}})
+
+      assert redirected_to(conn) == ~p"/sources/#{source.id}/edit"
+    end
+  end
+
   defp old_setup(_) do
     insert(:plan, name: "Free")
     u1 = insert(:user)
@@ -551,11 +593,6 @@ defmodule LogflareWeb.SourceControllerTest do
       }
     end)
 
-    :ok
-  end
-
-  defp assert_caches_not_called(_) do
-    reject(&Sources.Cache.get_by/1)
     :ok
   end
 end

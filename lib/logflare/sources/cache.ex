@@ -25,6 +25,7 @@ defmodule Logflare.Sources.Cache do
   def get_by(kv), do: apply_repo_fun(__ENV__.function, [kv])
   def get_by_id(arg) when is_integer(arg), do: get_by(id: arg)
   def get_by_id(arg) when is_atom(arg), do: get_by(token: arg)
+  def get_source_by_token(arg) when is_atom(arg), do: get_by(token: arg)
 
   defp apply_repo_fun(arg1, arg2) do
     Logflare.ContextCache.apply_fun(Sources, arg1, arg2)

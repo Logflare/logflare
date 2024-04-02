@@ -1,6 +1,5 @@
 defmodule Logflare.Backends.Adaptor.PostgresAdaptorTest do
   use Logflare.DataCase, async: false
-
   alias Logflare.Backends.Adaptor.PostgresAdaptor
 
   setup do
@@ -147,7 +146,7 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptorTest do
       assert {:ok, %_{}} = PostgresAdaptor.insert_log_event(backend, log_event)
     end
 
-    test "create_log_events_table/3 creates the table for a given source", %{
+    test "create_log_events_table/1 creates the table for a given source", %{
       backend: backend,
       source: source
     } do
@@ -156,5 +155,22 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptorTest do
       query = from(l in PostgresAdaptor.table_name(source), select: l.body)
       assert repo.all(query) == []
     end
+  end
+
+  test "bug: cast_config/1 and validate_config/1 postgresql url variations" do
+    assert cast_config(url: "postgresql://localhost:5432").valid?
+    assert cast_config(url: "postgres://localhost:5432").valid?
+
+    refute cast_config(url: "://localhost:5432").valid?
+    refute cast_config(url: "//localhost:5432").valid?
+    refute cast_config(url: "/localhost:5432").valid?
+    refute cast_config(url: "postgres//localhost:5432").valid?
+  end
+
+  defp cast_config(attrs) do
+    attrs
+    |> Map.new()
+    |> PostgresAdaptor.cast_config()
+    |> PostgresAdaptor.validate_config()
   end
 end

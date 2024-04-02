@@ -14,18 +14,14 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor do
   alias Logflare.Backends.Adaptor.PostgresAdaptor.PgRepo
   alias Logflare.Backends
   alias Logflare.Backends.Backend
-  alias Logflare.Backends.SourceDispatcher
-  alias Logflare.Buffers.Buffer
-  alias Logflare.Buffers.MemoryBuffer
 
   @behaviour Logflare.Backends.Adaptor
 
   import Ecto.Changeset
 
   typedstruct enforce: true do
-    field(:buffer_module, Adaptor.t())
-    field(:buffer_pid, pid())
     field(:config, %{url: String.t(), schema: String.t()})
+    field(:source, Source.t())
     field(:backend, Backend.t())
     field(:pipeline_name, tuple())
   end
@@ -38,8 +34,7 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor do
   end
 
   @impl Logflare.Backends.Adaptor
-  def ingest(pid, log_events),
-    do: GenServer.call(pid, {:ingest, log_events})
+  def ingest(pid, log_events, _opts \\ []), do: GenServer.call(pid, {:ingest, log_events})
 
   @impl Logflare.Backends.Adaptor
   def cast_config(params) do
@@ -130,14 +125,12 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor do
   # GenServer
   @impl GenServer
   def init({source, backend}) do
-    with {:ok, _} <- Registry.register(SourceDispatcher, source.id, {__MODULE__, :ingest}),
-         {:ok, buffer_pid} <- MemoryBuffer.start_link([]),
+    with :ok <- Backends.register_backend_for_ingest_dispatch(source, backend),
          :ok <- create_log_events_table({source, backend}) do
       state = %__MODULE__{
-        buffer_module: MemoryBuffer,
-        buffer_pid: buffer_pid,
         config: backend.config,
         backend: backend,
+        source: source,
         pipeline_name: Backends.via_source(source, Pipeline, backend.id)
       }
 
@@ -147,8 +140,12 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor do
   end
 
   @impl GenServer
-  def handle_call({:ingest, log_events}, _from, %{config: _config} = state) do
-    Buffer.add_many(state.buffer_module, state.buffer_pid, log_events)
+  def handle_call({:ingest, log_events}, _from, state) do
+    messages = Enum.map(log_events, &__MODULE__.Pipeline.transform(&1, []))
+
+    Backends.via_source(state.source, Pipeline, state.backend.id)
+    |> Broadway.push_messages(messages)
+
     {:reply, :ok, state}
   end
 end

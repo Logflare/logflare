@@ -217,7 +217,9 @@ defmodule Logflare.Sources do
   end
 
   def get_bq_schema(%Source{} = source) do
-    with %{schema: schema} <- Schema.get_state(source.token) do
+    name = Backends.via_source(source, Schema, nil)
+
+    with %{schema: schema} <- Schema.get_state(name) do
       schema = SchemaUtils.deep_sort_by_fields_name(schema)
       {:ok, schema}
     end
@@ -235,6 +237,11 @@ defmodule Logflare.Sources do
     |> Repo.preload([:user, :rules, :backends])
     |> refresh_source_metrics()
     |> put_bq_table_id()
+  end
+
+  def preload_rules(source) do
+    source
+    |> Repo.preload([:rules])
   end
 
   def put_bq_table_data(source) do

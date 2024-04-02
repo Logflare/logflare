@@ -1,8 +1,9 @@
 defmodule LogflareWeb.Api.TeamControllerTest do
+  @moduledoc false
   use LogflareWeb.ConnCase
 
   setup do
-    insert(:plan, name: "Free")
+    insert(:plan)
     user = insert(:user)
     main_team = insert(:team, user: user)
 
