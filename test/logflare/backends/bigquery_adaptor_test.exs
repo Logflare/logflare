@@ -30,7 +30,7 @@ defmodule Logflare.Backends.BigQueryAdaptorTest do
         {:ok, %GoogleApi.BigQuery.V2.Model.TableDataInsertAllResponse{insertErrors: nil}}
       end)
 
-      assert :ok = Backends.ingest_logs([log_event], source)
+      assert {:ok, 1} = Backends.ingest_logs([log_event], source)
       assert_receive :streamed, 2500
     end
 
@@ -50,7 +50,7 @@ defmodule Logflare.Backends.BigQueryAdaptorTest do
         {:ok, %GoogleApi.BigQuery.V2.Model.TableDataInsertAllResponse{insertErrors: nil}}
       end)
 
-      assert :ok = Backends.ingest_logs([log_event], source)
+      assert {:ok, 1} = Backends.ingest_logs([log_event], source)
 
       assert_receive :ok, 2500
     end

@@ -2,7 +2,6 @@ defmodule Logflare.Backends.WebhookAdaptorTest do
   @moduledoc false
   use Logflare.DataCase
 
-  alias Logflare.Backends
   alias Logflare.Backends.Adaptor
 
   @subject Logflare.Backends.Adaptor.WebhookAdaptor
@@ -15,10 +14,11 @@ defmodule Logflare.Backends.WebhookAdaptorTest do
       insert(:backend, type: :webhook, sources: [source], config: %{url: "https://example.com"})
 
     pid = start_supervised!({@subject, {source, backend}})
+    :timer.sleep(500)
     [pid: pid, backend: backend, source: source]
   end
 
-  test "ingest/2", %{pid: pid} do
+  test "ingest/2", %{pid: pid, source: source, backend: backend} do
     this = self()
     ref = make_ref()
 
@@ -28,7 +28,9 @@ defmodule Logflare.Backends.WebhookAdaptorTest do
       %Tesla.Env{}
     end)
 
-    assert :ok == @subject.ingest(pid, [%LogEvent{}])
+    le = build(:log_event, source: source)
+
+    assert :ok == @subject.ingest(pid, [le], source_id: source.id, backend_id: backend.id)
     assert_receive ^ref, 2000
   end
 

@@ -240,7 +240,7 @@ defmodule Logflare.Source.BigQuery.Schema do
   end
 
   defp next_update() do
-    updates_per_minute = Application.get_env(:logflare, __MODULE__)
+    updates_per_minute = Application.get_env(:logflare, __MODULE__)[:updates_per_minute]
     next_update_ts(updates_per_minute)
   end
 

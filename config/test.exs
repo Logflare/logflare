@@ -11,7 +11,7 @@ config :logflare,
 
 config :logflare, Logflare.Cluster.Utils, min_cluster_size: 1
 
-config :logflare, Logflare.Source.BigQuery.Schema, updates_per_minute: 6000
+config :logflare, Logflare.Source.BigQuery.Schema, updates_per_minute: 60000
 
 config :logger, :console, metadata: :all, level: :error
 

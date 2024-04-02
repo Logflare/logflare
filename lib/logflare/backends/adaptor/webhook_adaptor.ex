@@ -35,7 +35,7 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
     backend_id = Keyword.get(opts, :backend_id)
     messages = Enum.map(log_events, &__MODULE__.Pipeline.transform(&1, []))
 
-    Backends.via_source(source_id, {__MODULE__.Pipeline, backend_id})
+    Backends.via_source(source_id, __MODULE__.Pipeline, backend_id)
     |> Broadway.push_messages(messages)
   end
 
