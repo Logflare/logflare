@@ -144,13 +144,16 @@ defmodule Logflare.LogEventTest do
       end
     end
 
-    @tag slow_property: true
     property "nested keys are reachable" do
       check all metadata <-
                   map_of(
                     string(@alphas, min_length: 1),
-                    map_of(string(@alphas, min_length: 1), string(:printable), min_length: 1),
-                    min_length: 1
+                    map_of(string(@alphas, min_length: 1), string(:printable),
+                      min_length: 1,
+                      max_length: 20
+                    ),
+                    min_length: 1,
+                    max_length: 50
                   ) do
         first = Enum.random(Map.keys(metadata))
         second = Enum.random(Map.keys(metadata[first]))
