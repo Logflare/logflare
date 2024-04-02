@@ -6,6 +6,7 @@ defmodule Logflare.Source.BillingWriter do
   alias Logflare.Billing
   alias Logflare.Source.Data
   alias Logflare.Backends
+  alias Logflare.Users
 
   require Logger
 
@@ -18,14 +19,16 @@ defmodule Logflare.Source.BillingWriter do
     source = Keyword.get(args, :source)
     write()
     Process.flag(:trap_exit, true)
+    user = Users.Cache.get(source.user_id)
+    plan = Billing.Cache.get_plan_by_user(user)
 
     {:ok,
      %{
        billing_last_node_count: 0,
        source: args[:source],
        source_token: source.token,
-       plan: args[:plan],
-       user: args[:user]
+       plan_type: plan.type,
+       user_id: source.user_id
      }}
   end
 
@@ -37,7 +40,7 @@ defmodule Logflare.Source.BillingWriter do
     if count > 0 do
       record_to_db(state, count)
 
-      if state.plan.type == "metered" do
+      if state.plan_type == "metered" do
         record_to_stripe(state, count)
       end
     end
@@ -61,14 +64,14 @@ defmodule Logflare.Source.BillingWriter do
   end
 
   defp record_to_stripe(state, count) do
-    billing_account = state.user.billing_account
+    billing_account = Billing.Cache.get_billing_account_by(user_id: state.user_id)
 
     with %{"id" => si_id} <-
            Billing.get_billing_account_stripe_subscription_item(billing_account),
          {:ok, _response} <-
            Billing.Stripe.record_usage(si_id, count) do
       Logger.info("Successfully recorded usage counts (#{inspect(count)}) to Stripe",
-        user_id: state.user.id,
+        user_id: state.user_id,
         count: count
       )
 
@@ -77,7 +80,7 @@ defmodule Logflare.Source.BillingWriter do
       nil ->
         Logger.warning(
           "User's billing account does not have a stripe subscription item, ignoring usage record",
-          user_id: state.user.id,
+          user_id: state.user_id,
           count: count
         )
 
@@ -90,7 +93,9 @@ defmodule Logflare.Source.BillingWriter do
   end
 
   defp record_to_db(state, count) do
-    case BillingCounts.insert(state.user, state.source, %{
+    user = Users.Cache.get(state.user_id)
+
+    case BillingCounts.insert(user, state.source, %{
            node: Atom.to_string(Node.self()),
            count: count
          }) do
