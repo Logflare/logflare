@@ -43,6 +43,24 @@ defmodule LogflareWeb.Api.QueryControllerTest do
 
       assert %{"result" => [%{"my_time" => "123"}]} = response
     end
+
+    test "BQ errors are propagated", %{
+      conn: conn,
+      user: user
+    } do
+      GoogleApi.BigQuery.V2.Api.Jobs
+      |> expect(:bigquery_jobs_query, 1, fn _conn, _proj_id, _opts ->
+        {:error, TestUtils.gen_bq_error("some error")}
+      end)
+
+      response =
+        conn
+        |> add_access_token(user, ~w(private))
+        |> get(~p"/api/query?#{[bq_sql: ~s|select current_datetime() as 'my_time'|]}")
+        |> json_response(400)
+
+      assert %{"error" => %{"message" => "some error"}} = response
+    end
   end
 
   describe "pg_sql" do

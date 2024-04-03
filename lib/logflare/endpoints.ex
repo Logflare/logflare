@@ -299,11 +299,16 @@ defmodule Logflare.Endpoints do
   defp env_project_id, do: Application.get_env(:logflare, Logflare.Google)[:project_id]
   defp env, do: Application.get_env(:logflare, :env)
 
-  defp process_bq_error(error, user_id) when is_atom(error) do
+  @doc """
+  Formats a bigquery json decoded error.
+  User id should be provided for handling BQ table name replacements to source names.
+  """
+  @spec process_bq_error(map(), integer()) :: map()
+  def process_bq_error(error, user_id) when is_atom(error) do
     %{"message" => process_bq_message(error, user_id)}
   end
 
-  defp process_bq_error(error, user_id) when is_map(error) do
+  def process_bq_error(error, user_id) when is_map(error) do
     error = %{error | "message" => process_bq_message(error["message"], user_id)}
 
     if is_list(error["errors"]) do
@@ -316,9 +321,9 @@ defmodule Logflare.Endpoints do
     end
   end
 
-  defp process_bq_message(message, _user_id) when is_atom(message), do: message
+  def process_bq_message(message, _user_id) when is_atom(message), do: message
 
-  defp process_bq_message(message, user_id) when is_binary(message) do
+  def process_bq_message(message, user_id) when is_binary(message) do
     regex =
       ~r/#{env_project_id()}\.#{user_id}_#{env()}\.(?<uuid>[0-9a-fA-F]{8}_[0-9a-fA-F]{4}_[0-9a-fA-F]{4}_[0-9a-fA-F]{4}_[0-9a-fA-F]{12})/
 

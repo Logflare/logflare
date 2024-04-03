@@ -53,6 +53,10 @@ defmodule Logflare.Alerting do
     Repo.get_by(AlertQuery, kw)
   end
 
+  def preload_alert_query(alert) do
+    Repo.preload(alert, [:user])
+  end
+
   @doc """
   Creates a alert_query.
 
@@ -287,6 +291,20 @@ defmodule Logflare.Alerting do
              location: alert_query.user.bigquery_dataset_location
            ) do
       {:ok, rows}
+    else
+      {:error, %Tesla.Env{body: body}} ->
+        error =
+          Jason.decode!(body)["error"]
+          |> Endpoints.process_bq_error(alert_query.user_id)
+          |> case do
+            %{"message" => msg} -> msg
+            other -> other
+          end
+
+        {:error, error}
+
+      err ->
+        err
     end
   end
 

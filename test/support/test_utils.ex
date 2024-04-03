@@ -125,6 +125,22 @@ defmodule Logflare.TestUtils do
   def gen_email, do: "#{random_string()}@#{random_string()}.com"
 
   @doc """
+  Generates a mock BigQuery error
+  ```elixir
+  GoogleApi.BigQuery.V2.Api.Jobs
+  |> expect(:bigquery_jobs_query, 1, fn _conn, _proj_id, _opts ->
+    {:ok, TestUtils.gen_bq_error("some-error")}
+  end)
+  ```
+  """
+  def gen_bq_error(err) do
+    %Tesla.Env{
+      status: 400,
+      body: Jason.encode!(%{error: %{message: err}})
+    }
+  end
+
+  @doc """
   Generates a mock BigQuery response.
   This is a successful bq response retrieved manually
   """

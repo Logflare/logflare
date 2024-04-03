@@ -57,6 +57,7 @@ defmodule LogflareWeb.AlertsLive do
     alert =
       if alert_id do
         Alerting.get_alert_query_by(id: alert_id, user_id: socket.assigns.user_id)
+        |> Alerting.preload_alert_query()
       end
 
     socket = assign(socket, :alert, alert)
@@ -133,6 +134,42 @@ defmodule LogflareWeb.AlertsLive do
     end
   end
 
+  def handle_event("clear-results", _params, socket) do
+    {:noreply,
+     socket
+     |> assign(:query_result_rows, nil)
+     |> put_flash(:info, "Query run results has been cleared")}
+  end
+
+  def handle_event(
+        "run-query",
+        _params,
+        %{assigns: %{alert: %_{} = alert}} = socket
+      ) do
+    with {:ok, result} <- Alerting.execute_alert_query(alert) do
+      {:noreply,
+       socket
+       |> assign(:query_result_rows, result)
+       |> put_flash(:info, "Alert has been triggered. Notifications sent!")}
+    else
+      {:error, :no_results} ->
+        {:noreply,
+         socket
+         |> put_flash(
+           :error,
+           "Alert has been triggered. No results from query, notifications not sent!"
+         )}
+
+      {:error, err} ->
+        {:noreply,
+         socket
+         |> put_flash(
+           :error,
+           "Error when running query: #{inspect(err)}"
+         )}
+    end
+  end
+
   def handle_event(
         "manual-trigger",
         _params,
@@ -149,6 +186,14 @@ defmodule LogflareWeb.AlertsLive do
          |> put_flash(
            :error,
            "Alert has been triggered. No results from query, notifications not sent!"
+         )}
+
+      {:error, err} ->
+        {:noreply,
+         socket
+         |> put_flash(
+           :error,
+           "Error when running query: #{inspect(err)}"
          )}
     end
   end
