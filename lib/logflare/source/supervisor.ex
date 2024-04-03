@@ -42,7 +42,7 @@ defmodule Logflare.Source.Supervisor do
     # Starting sources only when we've seen an event in the last 6 hours
     # Plugs.EnsureSourceStarted makes sure if a source isn't started, it gets started for ingest and the UI
 
-    milli = :timer.hours(6)
+    milli = :timer.hours(1)
     from_datetime = DateTime.utc_now() |> DateTime.add(-milli, :millisecond)
 
     query =
@@ -50,7 +50,7 @@ defmodule Logflare.Source.Supervisor do
         order_by: s.log_events_updated_at,
         where: s.log_events_updated_at > ^from_datetime,
         select: s,
-        limit: 10_000
+        limit: 5_000
       )
 
     Repo.all(query)
