@@ -187,7 +187,7 @@ defmodule Logflare.Alerting do
       cfg[:enabled] == false ->
         {:error, :not_enabled}
 
-      cfg[:min_cluster_size] > Cluster.Utils.actual_cluster_size() ->
+      cfg[:min_cluster_size] >= Cluster.Utils.actual_cluster_size() ->
         {:error, :below_min_cluster_size}
 
       true ->
