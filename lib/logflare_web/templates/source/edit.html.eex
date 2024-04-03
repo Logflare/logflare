@@ -259,7 +259,7 @@
     </div>
     <%= submit "Save", class: "btn btn-primary form-button" %>
   <% end %>
-  <%= if LogflareWeb.Utils.flag("multibackend") == true do %>
+  <%= if LogflareWeb.Utils.flag("multibackend", @user) == true do %>
     <%= section_header("Multi Backends") %>
     <%= form_for @changeset, Routes.source_path(@conn, :update, @source),fn f -> %>
       <div class="form-group">
