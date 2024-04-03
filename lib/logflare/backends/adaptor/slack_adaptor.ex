@@ -11,19 +11,18 @@ defmodule Logflare.Backends.Adaptor.SlackAdaptor do
   """
   @spec send_message(String.t() | AlertQuery.t(), [map()]) :: Tesla.Env.result()
   def send_message(%AlertQuery{name: name, slack_hook_url: url}, payload) do
+    rows_text =
+      case Enum.count(payload) do
+        0 -> ""
+        1 -> ", 1 row"
+        n -> ", #{n} rows"
+      end
+
+    context = "🔊 *#{name}*#{rows_text}"
+
     body =
       payload
-      |> to_body()
-      |> Map.update!(:blocks, fn blocks ->
-        rows_text =
-          case Enum.count(payload) do
-            0 -> ""
-            1 -> ", 1 row"
-            n -> ", #{n} rows"
-          end
-
-        [%{type: "section", text: %{type: "mrkdwn", text: "🔊 *#{name}*#{rows_text}"}} | blocks]
-      end)
+      |> to_body(context: context)
 
     Client.send(url, body)
   end
@@ -39,17 +38,36 @@ defmodule Logflare.Backends.Adaptor.SlackAdaptor do
 
   ### Example
 
-    iex> %{blocks: [block]} = to_body([%{"some" => "key"}])
-    iex> get_in(block, [:text, :text])
-    "• some: key"
+    iex> %{blocks: [_]} = to_body([%{"some" => "key"}])
+    iex> %{blocks: [_, _]} = to_body([%{"some" => "key"}], context: "some context")
 
   """
   @spec to_body([map()]) :: map()
-  def to_body(results) when is_list(results) do
+  def to_body(results, opts \\ []) when is_list(results) do
+    context = Keyword.get(opts, :context)
+
     %{
-      blocks: [
-        %{type: "section", text: %{type: "mrkdwn", text: to_markdown(results)}}
-      ]
+      blocks:
+        ([
+           if(context != nil,
+             do: %{
+               type: "context",
+               elements: [%{type: "mrkdwn", text: context}]
+             }
+           )
+         ] ++
+           Enum.map(results, fn row ->
+             %{
+               type: "rich_text",
+               elements: [
+                 %{
+                   type: "rich_text_preformatted",
+                   elements: to_rich_text_preformatted(row)
+                 }
+               ]
+             }
+           end))
+        |> Enum.filter(&(&1 != nil))
     }
   end
 
@@ -59,33 +77,45 @@ defmodule Logflare.Backends.Adaptor.SlackAdaptor do
   - list of maps
   - map
 
-  ### Example
-  The text will be prefixed with a bullet point, with a colon separating the key-value pair.
-    iex> to_markdown(%{"test"=> "test"})
-    "• test: test"
-
-  Keys within the map will be placed in an indentedrow below, sorted by key alphabetically.
-  Indentation uses 4 spaces.
-    iex> to_markdown(%{a: "test", b: "test"})
-    "• a: test\r    b: test"
-
-  Muliple objects will be converted into multi-line strings
-    iex> to_markdown([%{one: "test"}, %{two: "test"}])
-    "• one: test\r• two: test"
-
+  Text will have a colon separating the key-value pair.
+  Multi-line strings will be separated with a line break
+  Keys will be sorted alphabetically with a line break in between each key
+  If link is present in the results, it will be conveted into a url
   """
-  @spec to_markdown([map()] | map()) :: [String.t()] | String.t()
-  def to_markdown(rows) when is_list(rows), do: Enum.map(rows, &to_markdown/1) |> Enum.join("\r")
+  @spec to_rich_text_preformatted([map()] | map()) :: [map()]
 
-  def to_markdown(%{} = row) do
-    bullet = "• "
-    indent = "    "
+  def to_rich_text_preformatted(%{} = row) do
+    row
+    |> Enum.sort_by(fn {k, _} -> k end)
+    |> Enum.map(fn {k, v} ->
+      cond do
+        String.starts_with?(v, ["http://", "https://"]) ->
+          [text("#{k}:"), space(), link(v)]
 
-    text =
-      row
-      |> Enum.sort_by(fn {k, _} -> k end)
-      |> Enum.map_join("\r" <> indent, fn {k, v} -> "#{k}: #{v}" end)
+        v =~ "\n" ->
+          [text("#{k}:"), line_break(), text(v)]
 
-    bullet <> text
+        true ->
+          [text("#{k}:"), space(), text(v)]
+      end
+    end)
+    |> Enum.intersperse([line_break()])
+    |> List.flatten()
+  end
+
+  defp link(v) do
+    %{type: "link", url: v}
+  end
+
+  defp space do
+    %{type: "text", text: " "}
+  end
+
+  defp line_break do
+    %{type: "text", text: "\n"}
+  end
+
+  defp text(v) do
+    %{type: "text", text: v}
   end
 end
