@@ -27,7 +27,7 @@ defmodule LogflareWeb.Utils do
 
           %User{} ->
             user_obj = ConfigCat.User.new(user.email)
-            ConfigCat.get_value("alerts", false, user_obj)
+            ConfigCat.get_value(feature, false, user_obj)
         end
 
       true ->
