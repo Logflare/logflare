@@ -61,7 +61,7 @@ defmodule Logflare.Source.EmailNotificationServer do
 
       if source.notifications.team_user_ids_for_email do
         Enum.each(source.notifications.team_user_ids_for_email, fn x ->
-          team_user = TeamUsers.get_team_user(x)
+          team_user = TeamUsers.Cache.get_team_user(x)
 
           if team_user do
             Task.Supervisor.start_child(Logflare.TaskSupervisor, fn ->

@@ -58,7 +58,7 @@ defmodule Logflare.Source.TextNotificationServer do
 
         if source.notifications.team_user_ids_for_sms do
           Enum.each(source.notifications.team_user_ids_for_sms, fn x ->
-            team_user = TeamUsers.get_team_user(x)
+            team_user = TeamUsers.Cache.get_team_user(x)
             body = "#{source.name} has #{rate} new event(s). See: #{source_link} "
 
             if team_user do
