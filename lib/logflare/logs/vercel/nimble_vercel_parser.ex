@@ -18,8 +18,11 @@ defmodule Logflare.Logs.Vercel.NimbleLambdaMessageParser do
 
     {:ok, result}
   rescue
-    e ->
-      Logger.warning("Vercel parser failed: #{inspect(e)}")
+    _e ->
+      :telemetry.execute(
+        [:logflare, :parsers, :vercel],
+        %{failed: true}
+      )
 
       {:error,
        %{
