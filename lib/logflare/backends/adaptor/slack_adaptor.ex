@@ -1,5 +1,9 @@
 defmodule Logflare.Backends.Adaptor.SlackAdaptor do
   @moduledoc false
+  use Phoenix.VerifiedRoutes,
+    router: LogflareWeb.Router,
+    endpoint: LogflareWb.Endpoint
+
   alias __MODULE__.Client
 
   alias Logflare.Alerting.AlertQuery
@@ -10,7 +14,7 @@ defmodule Logflare.Backends.Adaptor.SlackAdaptor do
   Returns Tesla response.
   """
   @spec send_message(String.t() | AlertQuery.t(), [map()]) :: Tesla.Env.result()
-  def send_message(%AlertQuery{name: name, slack_hook_url: url}, payload) do
+  def send_message(%AlertQuery{id: id, name: name, slack_hook_url: hook_url}, payload) do
     rows_text =
       case Enum.count(payload) do
         0 -> ""
@@ -18,13 +22,14 @@ defmodule Logflare.Backends.Adaptor.SlackAdaptor do
         n -> ", #{n} rows"
       end
 
-    context = "🔊 *#{name}*#{rows_text}"
+    view_url = url(~p"/alerts/#{id}")
+    context = "🔊 *#{name}*#{rows_text} | [View alert](#{view_url})"
 
     body =
       payload
       |> to_body(context: context)
 
-    Client.send(url, body)
+    Client.send(hook_url, body)
   end
 
   def send_message(url, payload) when is_binary(url) do
@@ -45,6 +50,7 @@ defmodule Logflare.Backends.Adaptor.SlackAdaptor do
   @spec to_body([map()]) :: map()
   def to_body(results, opts \\ []) when is_list(results) do
     context = Keyword.get(opts, :context)
+    button_link = Keyword.get(opts, :button_link)
 
     %{
       blocks:
@@ -66,7 +72,20 @@ defmodule Logflare.Backends.Adaptor.SlackAdaptor do
                  }
                ]
              }
-           end))
+           end) ++
+           [
+             if(button_link != nil,
+               do: %{
+                 type: "section",
+                 accessory: %{
+                   type: "button",
+                   text: %{type: "plain_text", text: button_link.text},
+                   url: button_link.url,
+                   style: "primary"
+                 }
+               }
+             )
+           ])
         |> Enum.filter(&(&1 != nil))
     }
   end
@@ -88,15 +107,23 @@ defmodule Logflare.Backends.Adaptor.SlackAdaptor do
     row
     |> Enum.sort_by(fn {k, _} -> k end)
     |> Enum.map(fn {k, v} ->
-      cond do
-        String.starts_with?(v, ["http://", "https://"]) ->
-          [text("#{k}:"), space(), link(v)]
+      v_str = stringify(v)
 
-        v =~ "\n" ->
-          [text("#{k}:"), line_break(), text(v)]
+      cond do
+        is_number(v) and String.length(v_str) == 16 ->
+          # convert to timestamp
+          {:ok, dt} = DateTime.from_unix(v, :microsecond)
+
+          [text("#{k}:"), space(), text(DateTime.to_string(dt))]
+
+        String.starts_with?(v_str, ["http://", "https://"]) ->
+          [text("#{k}:"), space(), link(v_str)]
+
+        v_str =~ "\n" ->
+          [text("#{k}:"), line_break(), text(v_str)]
 
         true ->
-          [text("#{k}:"), space(), text(v)]
+          [text("#{k}:"), space(), text(v_str)]
       end
     end)
     |> Enum.intersperse([line_break()])
@@ -118,4 +145,15 @@ defmodule Logflare.Backends.Adaptor.SlackAdaptor do
   defp text(v) do
     %{type: "text", text: v}
   end
+
+  defp stringify(v) when is_integer(v) do
+    Integer.to_string(v)
+  end
+
+  defp stringify(v) when is_float(v) do
+    Float.to_string(v)
+  end
+
+  defp stringify(%{} = v), do: Jason.encode!(v)
+  defp stringify(v), do: v
 end
