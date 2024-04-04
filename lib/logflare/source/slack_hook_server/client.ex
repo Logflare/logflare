@@ -86,7 +86,7 @@ defmodule Logflare.Source.SlackHookServer.Client do
   defp take_events(recent_events, rate) do
     cond do
       0 == rate ->
-        slack_no_events_message()
+        []
 
       rate in 1..3 ->
         recent_events
@@ -118,16 +118,5 @@ defmodule Logflare.Source.SlackHookServer.Client do
         url: source_link
       }
     )
-  end
-
-  defp slack_event_message(event) do
-    time = Kernel.floor(event.body["timestamp"] / 1_000_000)
-
-    "<!date^#{time}^{date_pretty} at {time_secs}|#{event.ingested_at}>\r>#{event.body["event_message"]}"
-  end
-
-  defp slack_no_events_message() do
-    time = DateTime.to_unix(DateTime.utc_now())
-    "<!date^#{time}^{date_pretty} at {time_secs}|blah>\r>Your events will show up here!"
   end
 end
