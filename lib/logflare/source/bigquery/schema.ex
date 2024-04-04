@@ -19,7 +19,6 @@ defmodule Logflare.Source.BigQuery.Schema do
   alias Logflare.Google.BigQuery.SchemaUtils
   alias Logflare.Backends
   alias Logflare.TeamUsers
-  alias Logflare.TeamUsers.TeamUser
 
   def start_link(args) when is_list(args) do
     {name, args} = Keyword.pop(args, :name)
