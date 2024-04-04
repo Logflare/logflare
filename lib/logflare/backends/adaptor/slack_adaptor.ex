@@ -7,7 +7,7 @@ defmodule Logflare.Backends.Adaptor.SlackAdaptor do
   alias __MODULE__.Client
 
   alias Logflare.Alerting.AlertQuery
-
+  @endpoint LogflareWeb.Endpoint
   @doc """
   Sends a given payload to slack.
 
