@@ -228,7 +228,7 @@ defmodule Logflare.CacheBuster do
          relation: {_schema, "team_users"},
          old_record: %{"id" => id}
        })
-       when is_binary(source_id) do
+       when is_binary(id) do
     # Must do `alter table rules replica identity full` to get full records on deletes otherwise all fields are null
     {Logflare.TeamUsers, String.to_integer(id)}
   end
