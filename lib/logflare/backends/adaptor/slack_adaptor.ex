@@ -23,7 +23,7 @@ defmodule Logflare.Backends.Adaptor.SlackAdaptor do
       end
 
     view_url = url(~p"/alerts/#{id}")
-    context = "🔊 *#{name}*#{rows_text} | [View alert](#{view_url})"
+    context = "🔊 *#{name}*#{rows_text} | #{view_url}"
 
     body =
       payload
