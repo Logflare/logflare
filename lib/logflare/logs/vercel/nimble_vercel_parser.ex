@@ -4,6 +4,7 @@ defmodule Logflare.Logs.Vercel.NimbleLambdaMessageParser do
   """
   import NimbleParsec
   alias Logflare.JSON
+  require Logger
 
   def parse(input) do
     {:ok, [result], _, _, _, _} = do_parse(input)
@@ -18,6 +19,11 @@ defmodule Logflare.Logs.Vercel.NimbleLambdaMessageParser do
     {:ok, result}
   rescue
     _e ->
+      :telemetry.execute(
+        [:logflare, :parsers, :vercel],
+        %{failed: true}
+      )
+
       {:error,
        %{
          "parse_status" => "failed",
@@ -30,6 +36,13 @@ defmodule Logflare.Logs.Vercel.NimbleLambdaMessageParser do
   uuid = ascii_string([?0..?9, ?a..?f, ?-], 36) |> label("UUID")
 
   tab = string("\t")
+
+  whitespace =
+    choice([
+      string(" "),
+      string("\n"),
+      string("\t")
+    ])
 
   newline = string("\n")
   not_newline_char = {:not, ?\n}
@@ -57,13 +70,35 @@ defmodule Logflare.Logs.Vercel.NimbleLambdaMessageParser do
     |> reduce({:erlang, :iolist_to_binary, []})
     |> label("timestamp")
 
+  method =
+    ignore(string("["))
+    |> choice([
+      string("GET"),
+      string("POST"),
+      string("PUT"),
+      string("PATCH"),
+      string("OPTION"),
+      string("DELETE")
+    ])
+    |> ignore(string("] "))
+    |> unwrap_and_tag("method")
+
+  path =
+    ascii_string([?0..?9, ?a..?z, ?A..?Z, ?%, ?#, ?@, ?-, ?_, ?~, ?/], min: 1)
+    |> unwrap_and_tag("path")
+
+  status =
+    ignore(string(" status="))
+    |> concat(integer(3))
+    |> unwrap_and_tag("status")
+
   # Example: START RequestId: 4d0ff57e-4022-4bfd-8689-a69e39f80f69 Version: $LATEST\n
 
   start =
     optional(
       string("START RequestId: ")
       |> concat(uuid)
-      |> string(" Version: $LATEST")
+      |> optional(string(" Version: $LATEST"))
       |> optional(newline)
       |> replace(true)
       |> unwrap_and_tag("start")
@@ -76,6 +111,16 @@ defmodule Logflare.Logs.Vercel.NimbleLambdaMessageParser do
     |> label("end_token")
     |> concat(uuid)
     |> ignore(optional(newline))
+
+  request_line =
+    method
+    |> concat(path)
+    |> concat(status)
+    |> ignore(optional(newline))
+
+  request_lines =
+    lookahead_not(choice([timestamp, end_]))
+    |> concat(repeat(request_line))
 
   # Example: INFO
   severity =
@@ -191,9 +236,14 @@ defmodule Logflare.Logs.Vercel.NimbleLambdaMessageParser do
       json_payload |> reduce(:parse_json_body) |> unwrap_and_tag(:json_body),
       utf8_string_with_json
       |> reduce(:parse_validate_maybe_json)
-      |> unwrap_and_tag(:maybe_string_with_json)
+      |> unwrap_and_tag(:maybe_string_with_json),
+      request_lines |> tag(:request_lines)
     ])
     |> reduce(:put_parse_status)
+
+  def put_parse_status(request_lines: lines) do
+    [lines, {"parse_status", "full"}]
+  end
 
   def put_parse_status(loglines: lines) do
     [lines, {"parse_status", "full"}]
@@ -261,29 +311,34 @@ defmodule Logflare.Logs.Vercel.NimbleLambdaMessageParser do
   report =
     ignore(string("REPORT RequestId: "))
     |> ignore(uuid)
-    |> ignore(tab)
+    |> ignore(choice([tab, string(" ")]))
     |> concat(
       ignore(string("Duration: "))
       |> concat(number_string)
-      |> ignore(string(" ms\t"))
+      |> ignore(whitespace)
+      |> ignore(string("ms"))
+      |> ignore(optional(whitespace))
       |> unwrap_and_tag("duration_ms")
     )
     |> concat(
       ignore(string("Billed Duration: "))
       |> concat(number_string)
-      |> ignore(string(" ms\t"))
+      |> ignore(string(" ms"))
+      |> ignore(optional(whitespace))
       |> unwrap_and_tag("billed_duration_ms")
     )
     |> concat(
       ignore(string("Memory Size: "))
       |> concat(number_string)
-      |> ignore(string(" MB\t"))
+      |> ignore(string(" MB"))
+      |> ignore(optional(whitespace))
       |> unwrap_and_tag("memory_size_mb")
     )
     |> concat(
       ignore(string("Max Memory Used: "))
       |> concat(number_string)
-      |> ignore(string(" MB\t"))
+      |> ignore(string(" MB"))
+      |> ignore(optional(whitespace))
       |> unwrap_and_tag("max_memory_used_mb")
     )
     |> ignore(optional(ascii_char([?\n])))

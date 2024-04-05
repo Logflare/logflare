@@ -1195,4 +1195,83 @@ defmodule Logflare.Logs.Vercel.NimbleLambdaMessageParserTest do
               }} == parse(string)
     end
   end
+
+  test "example message 8: JSON" do
+    message = """
+    START RequestId: 30167b78-67c9-4d00-8b88-62d11b157d3c Version: $LATEST
+    2020-02-27T15:13:40.133Z\t30167b78-67c9-4d00-8b88-62d11b157d3c\tERROR\tUnhandled Promise Rejection \t{\"errorType\":\"Runtime.UnhandledPromiseRejection\",\"errorMessage\":\"SyntaxError: Unexpected end of JSON input\",\"reason\":{\"errorType\":\"SyntaxError\",\"errorMessage\":\"Unexpected end of JSON input\",\"stack\":[\"SyntaxError: Unexpected end of JSON input\",\"    at JSON.parse (<anonymous>)\",\"    at module.exports (/var/task/packages/graphql/src/api/session.js:13:24)\",\"    at processTicksAndRejections (internal/process/task_queues.js:94:5)\",\"    at async Server.<anonymous> (/var/task/___now_helpers.js:875:13)\"]},\"promise\":{},\"stack\":[\"Runtime.UnhandledPromiseRejection: SyntaxError: Unexpected end of JSON input\",\"    at process.<anonymous> (/var/runtime/index.js:35:15)\",\"    at process.emit (events.js:228:7)\",\"    at processPromiseRejections (internal/process/promises.js:201:33)\",\"    at processTicksAndRejections (internal/process/task_queues.js:95:32)\"]}
+    END RequestId: 30167b78-67c9-4d00-8b88-62d11b157d3c
+    REPORT RequestId: 30167b78-67c9-4d00-8b88-62d11b157d3c\tDuration: 48.35 ms\tBilled Duration: 100 ms\tMemory Size: 3008 MB\tMax Memory Used: 53 MB\t\nUnknown application error occurred\n\n
+    """
+
+    assert {
+             :ok,
+             %{
+               "report" => %{
+                 "billed_duration_ms" => 100,
+                 "duration_ms" => 48,
+                 "max_memory_used_mb" => 53,
+                 "memory_size_mb" => 3008
+               },
+               "request_id" => "30167b78-67c9-4d00-8b88-62d11b157d3c",
+               "lines" => [line],
+               "parse_status" => "full"
+             }
+           } = parse(message)
+
+    assert %{
+             "level" => "error",
+             "message" => "Unhandled Promise Rejection \t",
+             "data" => %{
+               "errorMessage" => "SyntaxError: Unexpected end of JSON input",
+               "errorType" => "Runtime.UnhandledPromiseRejection",
+               "promise" => %{},
+               "reason" => %{
+                 "errorMessage" => "Unexpected end of JSON input",
+                 "errorType" => "SyntaxError",
+                 "stack" => [
+                   "SyntaxError: Unexpected end of JSON input",
+                   "    at JSON.parse (<anonymous>)",
+                   "    at module.exports (/var/task/packages/graphql/src/api/session.js:13:24)",
+                   "    at processTicksAndRejections (internal/process/task_queues.js:94:5)",
+                   "    at async Server.<anonymous> (/var/task/___now_helpers.js:875:13)"
+                 ]
+               },
+               "stack" => [
+                 "Runtime.UnhandledPromiseRejection: SyntaxError: Unexpected end of JSON input",
+                 "    at process.<anonymous> (/var/runtime/index.js:35:15)",
+                 "    at process.emit (events.js:228:7)",
+                 "    at processPromiseRejections (internal/process/promises.js:201:33)",
+                 "    at processTicksAndRejections (internal/process/task_queues.js:95:32)"
+               ]
+             },
+             "timestamp" => "2020-02-27T15:13:40.133Z"
+           } = line
+  end
+
+  test "GET requests" do
+    message = """
+    START RequestId: 105ebfa1-b4a2-49a8-87eb-053396eb7f94
+    [GET] /workspaces/64a7125e5724b20008b24e7f status=303
+    END RequestId: 105ebfa1-b4a2-49a8-87eb-053396eb7f94
+    REPORT RequestId: 105ebfa1-b4a2-49a8-87eb-053396eb7f94 Duration: 33 ms Billed Duration: 34 ms Memory Size: 3008 MB Max Memory Used: 460 MB
+    """
+
+    assert {
+             :ok,
+             %{
+               "report" => %{
+                 "billed_duration_ms" => 34,
+                 "duration_ms" => 33,
+                 "max_memory_used_mb" => 460,
+                 "memory_size_mb" => 3008
+               },
+               "method" => "GET",
+               "path" => "/workspaces/64a7125e5724b20008b24e7f",
+               "status" => 303,
+               "request_id" => "105ebfa1-b4a2-49a8-87eb-053396eb7f94",
+               "parse_status" => "full"
+             }
+           } = parse(message)
+  end
 end
