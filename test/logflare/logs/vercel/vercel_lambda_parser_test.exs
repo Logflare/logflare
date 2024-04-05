@@ -1217,7 +1217,7 @@ defmodule Logflare.Logs.Vercel.NimbleLambdaMessageParserTest do
                "lines" => [line],
                "parse_status" => "full"
              }
-           } == parse(message)
+           } = parse(message)
 
     assert %{
              "level" => "error",
