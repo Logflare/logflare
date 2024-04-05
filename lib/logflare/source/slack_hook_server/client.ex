@@ -5,6 +5,7 @@ defmodule Logflare.Source.SlackHookServer.Client do
   alias Logflare.Sources
   alias LogflareWeb.Router.Helpers, as: Routes
   alias LogflareWeb.Endpoint
+  alias Logflare.Backends.Adaptor.SlackAdaptor
 
   @middleware [Tesla.Middleware.JSON]
 
@@ -82,69 +83,40 @@ defmodule Logflare.Source.SlackHookServer.Client do
     |> Map.put(:body, inspect(req_or_resp.body))
   end
 
-  defp prep_recent_events(recent_events, rate) do
+  defp take_events(recent_events, rate) do
     cond do
       0 == rate ->
-        slack_no_events_message()
+        []
 
       rate in 1..3 ->
         recent_events
         |> Enum.take(-rate)
-        |> Enum.map_join("\r", &slack_event_message/1)
 
       true ->
         recent_events
         |> Enum.take(-3)
-        |> Enum.map_join("\r", &slack_event_message/1)
     end
   end
 
-  defp slack_post_body(source, rate, recent_events) do
-    prepped_recent_events = prep_recent_events(recent_events, rate)
+  def slack_post_body(source, rate, recent_events) do
+    event_bodies =
+      take_events(recent_events, rate)
+      |> Enum.map(fn le ->
+        {:ok, dt} = DateTime.from_unix(le.body["timestamp"], :microsecond)
+        %{DateTime.to_string(dt) => le.body["event_message"]}
+      end)
 
     source_link =
       LogflareWeb.Endpoint.static_url() <> Routes.source_path(Endpoint, :show, source.id)
 
-    main_message = "#{rate} new event(s) for your source `#{source.name}`"
+    main_message = "*Recent Events* - #{rate} new event(s) for your source `#{source.name}`"
 
-    %{
-      text: main_message,
-      blocks: [
-        %{
-          type: "section",
-          text: %{
-            type: "mrkdwn",
-            text: main_message
-          }
-        },
-        %{
-          type: "section",
-          text: %{
-            type: "mrkdwn",
-            text: "*Recent Events*\r#{prepped_recent_events}"
-          },
-          accessory: %{
-            type: "button",
-            text: %{
-              type: "plain_text",
-              text: "See all events"
-            },
-            url: source_link,
-            style: "primary"
-          }
-        }
-      ]
-    }
-  end
-
-  defp slack_event_message(event) do
-    time = Kernel.floor(event.body["timestamp"] / 1_000_000)
-
-    "<!date^#{time}^{date_pretty} at {time_secs}|#{event.ingested_at}>\r>#{event.body["event_message"]}"
-  end
-
-  defp slack_no_events_message() do
-    time = DateTime.to_unix(DateTime.utc_now())
-    "<!date^#{time}^{date_pretty} at {time_secs}|blah>\r>Your events will show up here!"
+    SlackAdaptor.to_body(event_bodies,
+      context: main_message,
+      button_link: %{
+        text: "See all events",
+        url: source_link
+      }
+    )
   end
 end

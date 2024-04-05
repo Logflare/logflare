@@ -1,31 +1,35 @@
 defmodule Logflare.Backends.Adaptor.SlackAdaptor do
   @moduledoc false
+  use Phoenix.VerifiedRoutes,
+    router: LogflareWeb.Router,
+    endpoint: LogflareWb.Endpoint
+
   alias __MODULE__.Client
 
   alias Logflare.Alerting.AlertQuery
-
+  @endpoint LogflareWeb.Endpoint
   @doc """
   Sends a given payload to slack.
 
   Returns Tesla response.
   """
   @spec send_message(String.t() | AlertQuery.t(), [map()]) :: Tesla.Env.result()
-  def send_message(%AlertQuery{name: name, slack_hook_url: url}, payload) do
+  def send_message(%AlertQuery{id: id, name: name, slack_hook_url: hook_url}, payload) do
+    rows_text =
+      case Enum.count(payload) do
+        0 -> ""
+        1 -> ", 1 row"
+        n -> ", #{n} rows"
+      end
+
+    view_url = url(~p"/alerts/#{id}")
+    context = "🔊 *#{name}*#{rows_text} | #{view_url}"
+
     body =
       payload
-      |> to_body()
-      |> Map.update!(:blocks, fn blocks ->
-        rows_text =
-          case Enum.count(payload) do
-            0 -> ""
-            1 -> ", 1 row"
-            n -> ", #{n} rows"
-          end
+      |> to_body(context: context)
 
-        [%{type: "section", text: %{type: "mrkdwn", text: "🔊 *#{name}*#{rows_text}"}} | blocks]
-      end)
-
-    Client.send(url, body)
+    Client.send(hook_url, body)
   end
 
   def send_message(url, payload) when is_binary(url) do
@@ -39,18 +43,62 @@ defmodule Logflare.Backends.Adaptor.SlackAdaptor do
 
   ### Example
 
-    iex> %{blocks: [block]} = to_body([%{"some" => "key"}])
-    iex> get_in(block, [:text, :text])
-    "• some: key"
+    iex> %{blocks: [_]} = to_body([%{"some" => "key"}])
+    iex> %{blocks: [_, _]} = to_body([%{"some" => "key"}], context: "some context")
 
   """
   @spec to_body([map()]) :: map()
-  def to_body(results) when is_list(results) do
+  def to_body(results, opts \\ []) when is_list(results) do
+    context = Keyword.get(opts, :context)
+    button_link = Keyword.get(opts, :button_link)
+
     %{
-      blocks: [
-        %{type: "section", text: %{type: "mrkdwn", text: to_markdown(results)}}
-      ]
+      blocks:
+        build_context_blocks(context) ++
+          build_rich_text_blocks(results) ++
+          build_button_link_blocks(button_link)
     }
+  end
+
+  defp build_button_link_blocks(nil), do: []
+
+  defp build_button_link_blocks(button_link) do
+    [
+      %{
+        type: "section",
+        accessory: %{
+          type: "button",
+          text: %{type: "plain_text", text: button_link.text},
+          url: button_link.url,
+          style: "primary"
+        }
+      }
+    ]
+  end
+
+  defp build_context_blocks(nil), do: []
+
+  defp build_context_blocks(context) do
+    [
+      %{
+        type: "context",
+        elements: [%{type: "mrkdwn", text: context}]
+      }
+    ]
+  end
+
+  defp build_rich_text_blocks(results) do
+    Enum.map(results, fn row ->
+      %{
+        type: "rich_text",
+        elements: [
+          %{
+            type: "rich_text_preformatted",
+            elements: to_rich_text_preformatted(row)
+          }
+        ]
+      }
+    end)
   end
 
   @doc """
@@ -59,33 +107,63 @@ defmodule Logflare.Backends.Adaptor.SlackAdaptor do
   - list of maps
   - map
 
-  ### Example
-  The text will be prefixed with a bullet point, with a colon separating the key-value pair.
-    iex> to_markdown(%{"test"=> "test"})
-    "• test: test"
-
-  Keys within the map will be placed in an indentedrow below, sorted by key alphabetically.
-  Indentation uses 4 spaces.
-    iex> to_markdown(%{a: "test", b: "test"})
-    "• a: test\r    b: test"
-
-  Muliple objects will be converted into multi-line strings
-    iex> to_markdown([%{one: "test"}, %{two: "test"}])
-    "• one: test\r• two: test"
-
+  Text will have a colon separating the key-value pair.
+  Multi-line strings will be separated with a line break
+  Keys will be sorted alphabetically with a line break in between each key
+  If link is present in the results, it will be conveted into a url
   """
-  @spec to_markdown([map()] | map()) :: [String.t()] | String.t()
-  def to_markdown(rows) when is_list(rows), do: Enum.map(rows, &to_markdown/1) |> Enum.join("\r")
+  @spec to_rich_text_preformatted([map()] | map()) :: [map()]
 
-  def to_markdown(%{} = row) do
-    bullet = "• "
-    indent = "    "
+  def to_rich_text_preformatted(%{} = row) do
+    row
+    |> Enum.sort_by(fn {k, _} -> k end)
+    |> Enum.map_intersperse([line_break()], fn {k, v} ->
+      v_str = stringify(v)
 
-    text =
-      row
-      |> Enum.sort_by(fn {k, _} -> k end)
-      |> Enum.map_join("\r" <> indent, fn {k, v} -> "#{k}: #{v}" end)
+      cond do
+        is_number(v) and String.length(v_str) == 16 ->
+          # convert to timestamp
+          {:ok, dt} = DateTime.from_unix(v, :microsecond)
 
-    bullet <> text
+          [text("#{k}:"), space(), text(DateTime.to_string(dt))]
+
+        String.starts_with?(v_str, ["http://", "https://"]) ->
+          [text("#{k}:"), space(), link(v_str)]
+
+        v_str =~ "\n" ->
+          [text("#{k}:"), line_break(), text(v_str)]
+
+        true ->
+          [text("#{k}:"), space(), text(v_str)]
+      end
+    end)
+    |> List.flatten()
   end
+
+  defp link(v) do
+    %{type: "link", url: v}
+  end
+
+  defp space do
+    %{type: "text", text: " "}
+  end
+
+  defp line_break do
+    %{type: "text", text: "\n"}
+  end
+
+  defp text(v) do
+    %{type: "text", text: v}
+  end
+
+  defp stringify(v) when is_integer(v) do
+    Integer.to_string(v)
+  end
+
+  defp stringify(v) when is_float(v) do
+    Float.to_string(v)
+  end
+
+  defp stringify(%{} = v), do: Jason.encode!(v)
+  defp stringify(v), do: v
 end
