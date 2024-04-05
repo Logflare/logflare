@@ -26,7 +26,6 @@ defmodule Logflare.Source.BigQuery.SchemaTest do
 
     test_pid = self()
 
-    # mock
     GoogleApi.BigQuery.V2.Api.Tables
     |> expect(:bigquery_tables_patch, 1, fn _conn,
                                             _project_id,
@@ -62,5 +61,46 @@ defmodule Logflare.Source.BigQuery.SchemaTest do
     # subsequent updates do not increase mock count
     le = build(:log_event, source: source, metadata: %{"change" => 123})
     assert :ok = Schema.update(pid, le)
+  end
+
+  test "default notifications config" do
+    Logflare.Mailer
+    |> expect(:deliver, 1, fn _ -> :ok end)
+
+    user = insert(:user)
+    source = insert(:source, user: user)
+    old_schema = TestUtils.default_bq_schema()
+    new_schema = TestUtils.build_bq_schema(%{"test" => "value"})
+    Schema.notify_maybe(source.token, new_schema, old_schema)
+  end
+
+  test "disabled schema notifications" do
+    reject(&Logflare.Mailer.deliver/1)
+    user = insert(:user)
+
+    source =
+      insert(:source, user: user, notifications: %{user_schema_update_notifications: false})
+
+    old_schema = TestUtils.default_bq_schema()
+    new_schema = TestUtils.build_bq_schema(%{"test" => "value"})
+    Schema.notify_maybe(source.token, new_schema, old_schema)
+  end
+
+  test "no team user - invalid or deleted id" do
+    reject(&Logflare.Mailer.deliver/1)
+    user = insert(:user)
+
+    source =
+      insert(:source,
+        user: user,
+        notifications: %{
+          user_schema_update_notifications: false,
+          team_user_ids_for_schema_updates: ["123"]
+        }
+      )
+
+    old_schema = TestUtils.default_bq_schema()
+    new_schema = TestUtils.build_bq_schema(%{"test" => "value"})
+    Schema.notify_maybe(source.token, new_schema, old_schema)
   end
 end

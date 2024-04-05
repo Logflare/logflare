@@ -259,7 +259,8 @@ defmodule Logflare.Source.BigQuery.Schema do
     end
   end
 
-  defp notify_maybe(source_token, new_schema, old_schema) do
+  # public function for testing
+  def notify_maybe(source_token, new_schema, old_schema) do
     %Source{user: user} = source = Sources.Cache.get_by_and_preload(token: source_token)
 
     if source.notifications.user_schema_update_notifications do
@@ -267,10 +268,9 @@ defmodule Logflare.Source.BigQuery.Schema do
       |> Mailer.deliver()
     end
 
-    for id <- source.notifications.team_user_ids_for_schema_updates do
-      # TODO: use cahce for this
-      team_user = TeamUsers.get_team_user(id)
-
+    for id <- source.notifications.team_user_ids_for_schema_updates,
+        team_user = TeamUsers.get_team_user(id),
+        team_user != nil do
       AccountEmail.schema_updated(team_user, source, new_schema, old_schema)
       |> Mailer.deliver()
     end
