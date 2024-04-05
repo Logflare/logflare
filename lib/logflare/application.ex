@@ -11,6 +11,7 @@ defmodule Logflare.Application do
   alias Logflare.Sources
   alias Logflare.SourceSchemas
   alias Logflare.Users
+  alias Logflare.TeamUsers
   alias Logflare.Partners
   alias Logflare.Auth
   alias Logflare.SystemMetricsSup
@@ -42,6 +43,7 @@ defmodule Logflare.Application do
         Counters,
         RateCounters,
         ContextCache,
+        TeamUsers.Cache,
         Users.Cache,
         Sources.Cache,
         Partners.Cache,
@@ -100,6 +102,7 @@ defmodule Logflare.Application do
         {Phoenix.PubSub, name: Logflare.PubSub, pool_size: pool_size},
         # supervisor(LogflareTelemetry.Supervisor, []),
         # Context Caches
+        TeamUsers.Cache,
         ContextCache,
         Partners.Cache,
         Users.Cache,

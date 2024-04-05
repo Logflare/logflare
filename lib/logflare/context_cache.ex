@@ -51,8 +51,10 @@ defmodule Logflare.ContextCache do
     }
   end
 
-  @spec apply_fun(atom(), tuple(), [list()]) :: any()
-  def apply_fun(context, {fun, _arity}, args) do
+  @spec apply_fun(atom(), tuple() | atom(), [list()]) :: any()
+  def apply_fun(context, {fun, _arity}, args), do: apply_fun(context, fun, args)
+
+  def apply_fun(context, fun, args) when is_atom(fun) do
     cache = cache_name(context)
     cache_key = {fun, args}
 

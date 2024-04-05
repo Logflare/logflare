@@ -269,7 +269,7 @@ defmodule Logflare.Source.BigQuery.Schema do
     end
 
     for id <- source.notifications.team_user_ids_for_schema_updates,
-        team_user = TeamUsers.get_team_user(id),
+        team_user = TeamUsers.Cache.get_team_user(id),
         team_user != nil do
       AccountEmail.schema_updated(team_user, source, new_schema, old_schema)
       |> Mailer.deliver()
