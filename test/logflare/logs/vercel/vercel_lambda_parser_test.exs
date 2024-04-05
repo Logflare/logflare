@@ -1214,39 +1214,39 @@ defmodule Logflare.Logs.Vercel.NimbleLambdaMessageParserTest do
                  "memory_size_mb" => 3008
                },
                "request_id" => "30167b78-67c9-4d00-8b88-62d11b157d3c",
-               "lines" => [
-                 %{
-                   "level" => "error",
-                   "message" => "Unhandled Promise Rejection \t",
-                   "data" => %{
-                     "errorMessage" => "SyntaxError: Unexpected end of JSON input",
-                     "errorType" => "Runtime.UnhandledPromiseRejection",
-                     "promise" => %{},
-                     "reason" => %{
-                       "errorMessage" => "Unexpected end of JSON input",
-                       "errorType" => "SyntaxError",
-                       "stack" => [
-                         "SyntaxError: Unexpected end of JSON input",
-                         "    at JSON.parse (<anonymous>)",
-                         "    at module.exports (/var/task/packages/graphql/src/api/session.js:13:24)",
-                         "    at processTicksAndRejections (internal/process/task_queues.js:94:5)",
-                         "    at async Server.<anonymous> (/var/task/___now_helpers.js:875:13)"
-                       ]
-                     },
-                     "stack" => [
-                       "Runtime.UnhandledPromiseRejection: SyntaxError: Unexpected end of JSON input",
-                       "    at process.<anonymous> (/var/runtime/index.js:35:15)",
-                       "    at process.emit (events.js:228:7)",
-                       "    at processPromiseRejections (internal/process/promises.js:201:33)",
-                       "    at processTicksAndRejections (internal/process/task_queues.js:95:32)"
-                     ]
-                   },
-                   "timestamp" => "2020-02-27T15:13:40.133Z"
-                 }
-               ],
+               "lines" => [line],
                "parse_status" => "full"
              }
            } == parse(message)
+
+    assert %{
+             "level" => "error",
+             "message" => "Unhandled Promise Rejection \t",
+             "data" => %{
+               "errorMessage" => "SyntaxError: Unexpected end of JSON input",
+               "errorType" => "Runtime.UnhandledPromiseRejection",
+               "promise" => %{},
+               "reason" => %{
+                 "errorMessage" => "Unexpected end of JSON input",
+                 "errorType" => "SyntaxError",
+                 "stack" => [
+                   "SyntaxError: Unexpected end of JSON input",
+                   "    at JSON.parse (<anonymous>)",
+                   "    at module.exports (/var/task/packages/graphql/src/api/session.js:13:24)",
+                   "    at processTicksAndRejections (internal/process/task_queues.js:94:5)",
+                   "    at async Server.<anonymous> (/var/task/___now_helpers.js:875:13)"
+                 ]
+               },
+               "stack" => [
+                 "Runtime.UnhandledPromiseRejection: SyntaxError: Unexpected end of JSON input",
+                 "    at process.<anonymous> (/var/runtime/index.js:35:15)",
+                 "    at process.emit (events.js:228:7)",
+                 "    at processPromiseRejections (internal/process/promises.js:201:33)",
+                 "    at processTicksAndRejections (internal/process/task_queues.js:95:32)"
+               ]
+             },
+             "timestamp" => "2020-02-27T15:13:40.133Z"
+           } = line
   end
 
   test "GET requests" do

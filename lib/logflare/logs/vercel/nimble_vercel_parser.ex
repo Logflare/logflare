@@ -315,7 +315,8 @@ defmodule Logflare.Logs.Vercel.NimbleLambdaMessageParser do
     |> concat(
       ignore(string("Duration: "))
       |> concat(number_string)
-      |> ignore(string(" ms"))
+      |> ignore(whitespace)
+      |> ignore(string("ms"))
       |> ignore(optional(whitespace))
       |> unwrap_and_tag("duration_ms")
     )
