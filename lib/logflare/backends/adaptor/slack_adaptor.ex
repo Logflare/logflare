@@ -54,40 +54,51 @@ defmodule Logflare.Backends.Adaptor.SlackAdaptor do
 
     %{
       blocks:
-        ([
-           if(context != nil,
-             do: %{
-               type: "context",
-               elements: [%{type: "mrkdwn", text: context}]
-             }
-           )
-         ] ++
-           Enum.map(results, fn row ->
-             %{
-               type: "rich_text",
-               elements: [
-                 %{
-                   type: "rich_text_preformatted",
-                   elements: to_rich_text_preformatted(row)
-                 }
-               ]
-             }
-           end) ++
-           [
-             if(button_link != nil,
-               do: %{
-                 type: "section",
-                 accessory: %{
-                   type: "button",
-                   text: %{type: "plain_text", text: button_link.text},
-                   url: button_link.url,
-                   style: "primary"
-                 }
-               }
-             )
-           ])
-        |> Enum.filter(&(&1 != nil))
+        build_context_blocks(context) ++
+          build_rich_text_blocks(results) ++
+          build_button_link_blocks(button_link)
     }
+  end
+
+  defp build_button_link_blocks(nil), do: []
+
+  defp build_button_link_blocks(button_link) do
+    [
+      %{
+        type: "section",
+        accessory: %{
+          type: "button",
+          text: %{type: "plain_text", text: button_link.text},
+          url: button_link.url,
+          style: "primary"
+        }
+      }
+    ]
+  end
+
+  defp build_context_blocks(nil), do: []
+
+  defp build_context_blocks(context) do
+    [
+      %{
+        type: "context",
+        elements: [%{type: "mrkdwn", text: context}]
+      }
+    ]
+  end
+
+  defp build_rich_text_blocks(results) do
+    Enum.map(results, fn row ->
+      %{
+        type: "rich_text",
+        elements: [
+          %{
+            type: "rich_text_preformatted",
+            elements: to_rich_text_preformatted(row)
+          }
+        ]
+      }
+    end)
   end
 
   @doc """
@@ -106,7 +117,7 @@ defmodule Logflare.Backends.Adaptor.SlackAdaptor do
   def to_rich_text_preformatted(%{} = row) do
     row
     |> Enum.sort_by(fn {k, _} -> k end)
-    |> Enum.map(fn {k, v} ->
+    |> Enum.map_intersperse([line_break()], fn {k, v} ->
       v_str = stringify(v)
 
       cond do
@@ -126,7 +137,6 @@ defmodule Logflare.Backends.Adaptor.SlackAdaptor do
           [text("#{k}:"), space(), text(v_str)]
       end
     end)
-    |> Enum.intersperse([line_break()])
     |> List.flatten()
   end
 
