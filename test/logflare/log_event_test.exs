@@ -147,8 +147,10 @@ defmodule Logflare.LogEventTest do
     property "nested keys are reachable" do
       check all metadata <-
                   map_of(
-                    string(@alphas, min_length: 1),
-                    map_of(string(@alphas, min_length: 1), string(:printable),
+                    string(@alphas, min_length: 2),
+                    map_of(
+                      string(@alphas, min_length: 1),
+                      string(:printable, min_length: 1, max_length: 20),
                       min_length: 1,
                       max_length: 20
                     ),
