@@ -153,7 +153,6 @@ defmodule Logflare.Application do
         # For Logflare Endpoints
         {DynamicSupervisor, strategy: :one_for_one, name: Logflare.Endpoints.Cache},
 
-
         # v2 ingestion pipelines
         Logflare.Backends,
 
