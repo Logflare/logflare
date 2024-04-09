@@ -79,8 +79,9 @@ defmodule Logflare.Source.BigQuery.Pipeline do
     )
   end
 
-  def process_name({:via, _module, {_registry, {source_id, {mod, backend_id}}}}, base_name) do
-    Backends.via_source(source_id, {mod, backend_id, base_name})
+  # pipeline name is sharded
+  def process_name({:via, _module, {_registry, {source_id, {mod, backend_id, shard}}}}, base_name) do
+    Backends.via_source(source_id, {mod, backend_id, base_name, shard})
   end
 
   def process_name(proc_name, base_name) do

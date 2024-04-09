@@ -51,7 +51,7 @@ defmodule Logflare.Source.V1SourceSup do
          bigquery_dataset_id: user.bigquery_dataset_id,
          source: source,
          source_token: source.token,
-         name: Backends.via_source(source, Pipeline, nil)
+         name: Backends.via_source(source.id, {Pipeline, nil, 0})
        ]},
       {RecentLogsServer, [source: source]},
       {Schema,
