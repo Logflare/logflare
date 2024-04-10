@@ -60,7 +60,6 @@ defmodule Logflare.Application do
          name: Logflare.V1SourceRegistry, keys: :unique, partitions: System.schedulers_online()},
         {Registry,
          name: Logflare.CounterRegistry, keys: :unique, partitions: System.schedulers_online()},
-        LogflareWeb.Endpoint,
         {Task.Supervisor, name: Logflare.TaskSupervisor},
         {DynamicSupervisor, strategy: :one_for_one, name: Logflare.Endpoints.Cache},
         {DynamicSupervisor,
@@ -71,7 +70,8 @@ defmodule Logflare.Application do
          name: Logflare.Source.V1SourceDynSup},
 
         # v2 ingestion pipelines
-        Logflare.Backends
+        Logflare.Backends,
+        LogflareWeb.Endpoint
       ]
   end
 
@@ -149,7 +149,6 @@ defmodule Logflare.Application do
          name: Logflare.Source.V1SourceDynSup},
 
         # If we get a log event and the Source.Supervisor is not up it will 500
-        LogflareWeb.Endpoint,
         {GRPC.Server.Supervisor, {LogflareGrpc.Endpoint, grpc_port, cred: grpc_creds}},
         # Monitor system level metrics
         SystemMetricsSup,
@@ -157,11 +156,14 @@ defmodule Logflare.Application do
         # For Logflare Endpoints
         {DynamicSupervisor, strategy: :one_for_one, name: Logflare.Endpoints.Cache},
 
-        # Startup tasks
-        {Task, fn -> startup_tasks() end},
-
         # v2 ingestion pipelines
         Logflare.Backends,
+
+        # start endpoint only after Backends supervision tree started
+        LogflareWeb.Endpoint,
+
+        # Startup tasks after v2 pipeline started
+        {Task, fn -> startup_tasks() end},
 
         # citrine scheduler for alerts
         Logflare.AlertsScheduler
