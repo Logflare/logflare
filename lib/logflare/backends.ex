@@ -5,8 +5,6 @@ defmodule Logflare.Backends do
   alias Logflare.Backends.Adaptor.WebhookAdaptor
   alias Logflare.Backends.Adaptor.PostgresAdaptor
   alias Logflare.Backends.Adaptor.BigQueryAdaptor
-  alias Logflare.Backends.RecentLogs
-  alias Logflare.Backends.RecentLogsSup
   alias Logflare.Backends.Backend
   alias Logflare.Backends.SourceDispatcher
   alias Logflare.Backends.SourceRegistry

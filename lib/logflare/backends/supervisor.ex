@@ -16,7 +16,6 @@ defmodule Logflare.Backends.Supervisor do
     children = [
       Backends.Adaptor.PostgresAdaptor.Supervisor,
       {DynamicSupervisor, strategy: :one_for_one, name: Backends.SourcesSup},
-      {DynamicSupervisor, strategy: :one_for_one, name: Backends.RecentLogsSup},
       {Registry,
        name: Backends.SourceRegistry, keys: :unique, partitions: System.schedulers_online()},
       {Registry, name: Backends.SourceDispatcher, keys: :duplicate},
