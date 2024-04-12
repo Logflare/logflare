@@ -80,10 +80,24 @@ defmodule Logflare.Backends.SlackAdaptorTest do
 
     assert %{
              blocks: [
-               _,
-               %{type: "section", accessory: %{type: "button", text: %{text: "some text"}}}
+               %{
+                 type: "section",
+                 text: %{
+                   type: "text",
+                   text: "some markdown text"
+                 },
+                 accessory: %{type: "button", text: %{text: "some text"}}
+               },
+               _
              ]
-           } = to_body([%{}], button_link: %{text: "some text", url: "some url"})
+           } =
+             to_body([%{}],
+               button_link: %{
+                 markdown_text: "some markdown text",
+                 text: "some text",
+                 url: "some url"
+               }
+             )
   end
 
   test "SlackHookServer compat" do

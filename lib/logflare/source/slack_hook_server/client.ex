@@ -109,12 +109,10 @@ defmodule Logflare.Source.SlackHookServer.Client do
     source_link =
       LogflareWeb.Endpoint.static_url() <> Routes.source_path(Endpoint, :show, source.id)
 
-    main_message = "*Recent Events* - #{rate} new event(s) for your source `#{source.name}`"
-
     SlackAdaptor.to_body(event_bodies,
-      context: main_message,
       button_link: %{
-        text: "See all events",
+        markdown_text: "*#{rate} new event(s)* for `#{source.name}`",
+        text: "View events",
         url: source_link
       }
     )
