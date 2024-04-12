@@ -100,6 +100,10 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
     def start_link(adaptor_state) do
       Broadway.start_link(__MODULE__,
         name: adaptor_state.pipeline_name,
+        hibernate_after: 5_000,
+        spawn_opt: [
+          fullsweep_after: 100
+        ],
         producer: [
           module: {BufferProducer, []},
           transformer: {__MODULE__, :transform, []},
@@ -107,6 +111,9 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
         ],
         processors: [
           default: [concurrency: 3, min_demand: 1]
+        ],
+        batchers: [
+          http: [concurrency: 10, batch_size: 250]
         ],
         context: adaptor_state
       )
@@ -118,12 +125,19 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
       {:via, module, {registry, new_identifier}}
     end
 
-    def handle_message(_processor_name, message, adaptor_state) do
-      Message.update_data(message, &process_data(&1, adaptor_state))
+    def handle_message(_processor_name, message, _adaptor_state) do
+      message
+      |> Message.put_batcher(:http)
     end
 
-    defp process_data(log_event, %{config: %{} = config}) do
-      Client.send(url: config.url, body: log_event.body, headers: config[:headers] || %{})
+    def handle_batch(:http, messages, _batch_info, context) do
+      payload = for %{data: le} <- messages, do: le.body
+      process_data(payload, context)
+      messages
+    end
+
+    defp process_data(log_event_bodies, %{config: %{} = config}) do
+      Client.send(url: config.url, body: log_event_bodies, headers: config[:headers] || %{})
     end
 
     # Broadway transformer for custom producer
