@@ -83,7 +83,7 @@ defmodule Logflare.Backends.SlackAdaptorTest do
                %{
                  type: "section",
                  text: %{
-                   type: "text",
+                   type: "mrkdwn",
                    text: "some markdown text"
                  },
                  accessory: %{type: "button", text: %{text: "some text"}}
@@ -106,7 +106,11 @@ defmodule Logflare.Backends.SlackAdaptorTest do
 
     assert %{
              blocks: [
-               %{type: "context", elements: [%{text: "*Recent Events*" <> _}]},
+               %{
+                 type: "section",
+                 text: %{text: "*5 new event(s)*" <> _},
+                 accessory: %{type: "button", text: %{text: "View events"}}
+               },
                %{
                  type: "rich_text",
                  elements: [
@@ -114,8 +118,7 @@ defmodule Logflare.Backends.SlackAdaptorTest do
                      elements: [%{text: text}, %{text: " "}, %{text: msg}]
                    }
                  ]
-               },
-               %{type: "section", accessory: %{type: "button", text: %{text: "See all events"}}}
+               }
              ]
            } = SlackHookServer.Client.slack_post_body(source, 5, [le])
 
