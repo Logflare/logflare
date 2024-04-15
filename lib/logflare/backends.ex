@@ -5,8 +5,6 @@ defmodule Logflare.Backends do
   alias Logflare.Backends.Adaptor.WebhookAdaptor
   alias Logflare.Backends.Adaptor.PostgresAdaptor
   alias Logflare.Backends.Adaptor.BigQueryAdaptor
-  alias Logflare.Backends.RecentLogs
-  alias Logflare.Backends.RecentLogsSup
   alias Logflare.Backends.Backend
   alias Logflare.Backends.SourceDispatcher
   alias Logflare.Backends.SourceRegistry
@@ -382,7 +380,7 @@ defmodule Logflare.Backends do
   end
 
   @doc """
-  Lists the latest recent logs of a cache.
+  Lists the latest recent logs of all caches across the cluster.
   Performs a check to ensure that the cache is started. If not started yet globally, it will start the cache locally.
   """
   @spec list_recent_logs(Source.t()) :: [LogEvent.t()]
@@ -390,44 +388,12 @@ defmodule Logflare.Backends do
     RecentLogsServer.list_for_cluster(source.token)
   end
 
+  @doc """
+  Lists latest recent logs of only the local cache.
+  """
   @spec list_recent_logs_local(Source.t()) :: [LogEvent.t()]
   def list_recent_logs_local(%Source{} = source) do
     RecentLogsServer.list(source.token)
-  end
-
-  @doc """
-  Pushes events into the global RecentLogs cache for a given source.any()
-  Performs a check to ensure that the cache is started. If not started yet globally, it will start the cache locally.
-  """
-  @spec push_recent_logs(Source.t(), [LogEvent.t()]) :: :ok
-  def push_recent_logs(%Source{} = source, log_events) do
-    pid = ensure_recent_logs_started(source)
-    RecentLogs.push(pid, log_events)
-  end
-
-  # checks if a recent logs cache is started. If not, starts the process.
-  # returns the pid of the cache process if found
-  defp ensure_recent_logs_started(%Source{} = source) do
-    pid = RecentLogs.get_pid(source)
-
-    case pid do
-      nil -> start_recent_logs_cache(source)
-      pid -> pid
-    end
-  end
-
-  # starts the recent logs cache process locally for a given source
-  defp start_recent_logs_cache(%Source{} = source) do
-    :global.set_lock({RecentLogs, source.id})
-
-    pid =
-      case DynamicSupervisor.start_child(RecentLogsSup, {RecentLogs, source}) do
-        {:ok, pid} -> pid
-        {:error, {:already_started, pid}} -> pid
-      end
-
-    :global.del_lock({RecentLogs, source.id})
-    pid
   end
 
   defp do_telemetry(:drop, le) do
