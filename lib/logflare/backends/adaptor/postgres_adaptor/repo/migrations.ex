@@ -17,7 +17,7 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor.Repo.Migrations do
           apply(__MODULE__, name, [table_name])
         end)
       end,
-      timeout: :infinity
+      timeout: 30_000
     )
   end
 

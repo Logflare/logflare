@@ -20,7 +20,10 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor.Pipeline do
         concurrency: 1
       ],
       processors: [
-        default: [concurrency: 3, min_demand: 1]
+        default: [concurrency: 5, min_demand: 1]
+      ],
+      batchers: [
+        pg: [concurrency: 5, batch_size: 350]
       ],
       context: adaptor_state
     )
@@ -32,12 +35,14 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor.Pipeline do
     {:via, module, {registry, new_identifier}}
   end
 
-  def handle_message(_processor_name, message, adaptor_state) do
-    Message.update_data(message, &process_data(&1, adaptor_state))
+  def handle_message(_processor_name, message, _adaptor_state) do
+    Message.put_batcher(message, :pg)
   end
 
-  defp process_data(log_event, %{backend: backend}) do
-    PostgresAdaptor.insert_log_event(backend, log_event)
+  def handle_batch(:pg, messages, _batch_info, %{source: source, backend: backend}) do
+    events = for %{data: le} <- messages, do: le
+    PostgresAdaptor.insert_log_events(source, backend, events)
+    messages
   end
 
   def transform(event, _opts) do

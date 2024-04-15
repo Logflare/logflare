@@ -452,7 +452,7 @@ defmodule Logflare.SqlTest do
           %{source: source}
         )
 
-      PostgresAdaptor.insert_log_event(backend, log_event)
+      PostgresAdaptor.insert_log_event(source, backend, log_event)
 
       on_exit(fn ->
         PostgresAdaptor.destroy_instance({source, backend})

@@ -20,7 +20,15 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor do
   import Ecto.Changeset
 
   typedstruct enforce: true do
-    field(:config, %{url: String.t(), schema: String.t()})
+    field(:config, %{
+      url: String.t(),
+      schema: String.t(),
+      username: String.t(),
+      password: String.t(),
+      hostname: String.t(),
+      port: non_neg_integer()
+    })
+
     field(:source, Source.t())
     field(:backend, Backend.t())
     field(:pipeline_name, tuple())
@@ -34,19 +42,47 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor do
   end
 
   @impl Logflare.Backends.Adaptor
-  def ingest(pid, log_events, _opts \\ []), do: GenServer.call(pid, {:ingest, log_events})
+  def ingest(_pid, log_events, opts) do
+    source_id = Keyword.get(opts, :source_id)
+    backend_id = Keyword.get(opts, :backend_id)
+    messages = Enum.map(log_events, &__MODULE__.Pipeline.transform(&1, []))
+    pipeline_name = Backends.via_source(source_id, {Pipeline, backend_id})
+    Broadway.push_messages(pipeline_name, messages)
+  end
 
   @impl Logflare.Backends.Adaptor
   def cast_config(params) do
-    {%{}, %{url: :string, schema: :string}}
-    |> cast(params, [:url, :schema])
+    {%{},
+     %{
+       url: :string,
+       username: :string,
+       password: :string,
+       hostname: :string,
+       database: :string,
+       schema: :string,
+       port: :integer
+     }}
+    |> cast(params, [:url, :schema, :username, :password, :hostname, :database, :port])
   end
 
   @impl Logflare.Backends.Adaptor
   def validate_config(changeset) do
     changeset
-    |> validate_required([:url])
     |> validate_format(:url, ~r/(?:postgres|postgresql)\:\/\/.+/)
+    |> then(fn changeset ->
+      url = get_change(changeset, :url)
+      hostname = get_change(changeset, :hostname)
+
+      if url == nil and hostname == nil do
+        msg = "either connection url or separate connection credentials must be provided"
+
+        changeset
+        |> add_error(:url, msg)
+        |> add_error(:hostname, msg)
+      else
+        changeset
+      end
+    end)
   end
 
   @doc """
@@ -120,13 +156,16 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor do
   defdelegate table_name(source), to: PgRepo
   defdelegate create_log_events_table(source_backend), to: PgRepo
   defdelegate destroy_instance(backend, timeout \\ 5000), to: PgRepo
-  defdelegate insert_log_event(backend, log_event), to: PgRepo
+  defdelegate insert_log_event(source, backend, log_event), to: PgRepo
+  defdelegate insert_log_events(source, backend, log_events), to: PgRepo
 
   # GenServer
   @impl GenServer
   def init({source, backend}) do
-    with :ok <- Backends.register_backend_for_ingest_dispatch(source, backend),
-         :ok <- create_log_events_table({source, backend}) do
+    with :ok <- Backends.register_backend_for_ingest_dispatch(source, backend) do
+      # try create migration table, might fail
+      create_log_events_table({source, backend})
+
       state = %__MODULE__{
         config: backend.config,
         backend: backend,
@@ -137,15 +176,5 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor do
       {:ok, _pipeline_pid} = Pipeline.start_link(state)
       {:ok, state}
     end
-  end
-
-  @impl GenServer
-  def handle_call({:ingest, log_events}, _from, state) do
-    messages = Enum.map(log_events, &__MODULE__.Pipeline.transform(&1, []))
-
-    Backends.via_source(state.source, Pipeline, state.backend.id)
-    |> Broadway.push_messages(messages)
-
-    {:reply, :ok, state}
   end
 end

@@ -22,16 +22,28 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor.SharedRepo do
   def start(%Backend{} = backend) do
     config = backend.config
     pool_size = Application.fetch_env!(:logflare, :postgres_backend_adapter)[:pool_size]
-    schema = config["schema"] || config[:schema]
+    schema = Map.get(config, :schema)
+
+    url = Map.get(config, :url)
 
     opts = [
-      url: config["url"] || config.url,
       name: Supervisor.via(backend),
       pool_size: pool_size,
       # Wait until repo is fully up and running
       sync_connect: true,
       after_connect: {__MODULE__, :__after_connect__, [schema]}
     ]
+
+    opts =
+      if url do
+        Keyword.put(opts, :url, url)
+      else
+        fields =
+          Map.take(config, [:username, :password, :hostname, :database, :port, :ssl])
+          |> Map.to_list()
+
+        opts ++ fields
+      end
 
     with {:error, {:already_started, pid}} <- Supervisor.start_child({__MODULE__, opts}) do
       {:ok, pid}
@@ -62,6 +74,12 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor.SharedRepo do
 
     try do
       func.()
+    rescue
+      _e in DBConnection.ConnectionError ->
+        {:error, :cannot_connect}
+    catch
+      :exit, {:killed, _} -> {:error, :cannot_connect}
+      :exit, {:noproc, _} -> {:error, :cannot_connect}
     after
       put_dynamic_repo(old_repo)
     end
@@ -76,9 +94,15 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor.SharedRepo do
   """
   @spec migrate!(Source.t()) :: :ok | {:error, term()}
   def migrate!(%Source{} = source) do
-    Migrations.migrate(source)
-
-    :ok
+    try do
+      Migrations.migrate(source)
+    rescue
+      _e in DBConnection.ConnectionError ->
+        {:error, :cannot_connect}
+    catch
+      :exit, {:killed, _} -> {:error, :cannot_connect}
+      :exit, {:noproc, _} -> {:error, :cannot_connect}
+    end
   rescue
     e in Postgrex.Error ->
       Logger.error(%{error: e})

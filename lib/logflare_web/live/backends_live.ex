@@ -48,6 +48,36 @@ defmodule LogflareWeb.BackendsLive do
                     </small>
                   </div>
                   <div class="form-group">
+                    <%= label f_config, :username do %>
+                      Username
+                    <% end %>
+                    <%= text_input(f_config, :username, class: "form-control") %>
+                  </div>
+                  <div class="form-group">
+                    <%= label f_config, :password do %>
+                      Password
+                    <% end %>
+                    <%= text_input(f_config, :password, class: "form-control") %>
+                  </div>
+                  <div class="form-group">
+                    <%= label f_config, :hostname do %>
+                      Hostname
+                    <% end %>
+                    <%= text_input(f_config, :hostname, class: "form-control") %>
+                  </div>
+                  <div class="form-group">
+                    <%= label f_config, :port do %>
+                      Port
+                    <% end %>
+                    <%= text_input(f_config, :port, class: "form-control") %>
+                  </div>
+                  <div class="form-group">
+                    <%= label f_config, :database do %>
+                      Database
+                    <% end %>
+                    <%= text_input(f_config, :database, class: "form-control") %>
+                  </div>
+                  <div class="form-group">
                     <%= label f_config, :schema do %>
                       Schema where data should be store, if blank the database defaults will be used
                     <% end %>
@@ -102,7 +132,12 @@ defmodule LogflareWeb.BackendsLive do
                 </ul>
               <% :postgres -> %>
                 <ul>
-                  <li>url: <%= sb.config.url %> - schema: <%= Map.get(sb.config, :schema, "") %></li>
+                  <li>url: <%= sb.config[:url] %></li>
+                  <li>schema: <%= Map.get(sb.config, :schema, "") %></li>
+                  <li>username: <%= Map.get(sb.config, :username, "") %></li>
+                  <li>hostname: <%= Map.get(sb.config, :hostname, "") %></li>
+                  <li>port: <%= Map.get(sb.config, :port, "") %></li>
+                  <li>database: <%= Map.get(sb.config, :database, "") %></li>
                 </ul>
               <% :bigquery -> %>
                 <ul>
