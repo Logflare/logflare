@@ -80,10 +80,24 @@ defmodule Logflare.Backends.SlackAdaptorTest do
 
     assert %{
              blocks: [
-               _,
-               %{type: "section", accessory: %{type: "button", text: %{text: "some text"}}}
+               %{
+                 type: "section",
+                 text: %{
+                   type: "mrkdwn",
+                   text: "some markdown text"
+                 },
+                 accessory: %{type: "button", text: %{text: "some text"}}
+               },
+               _
              ]
-           } = to_body([%{}], button_link: %{text: "some text", url: "some url"})
+           } =
+             to_body([%{}],
+               button_link: %{
+                 markdown_text: "some markdown text",
+                 text: "some text",
+                 url: "some url"
+               }
+             )
   end
 
   test "SlackHookServer compat" do
@@ -92,7 +106,11 @@ defmodule Logflare.Backends.SlackAdaptorTest do
 
     assert %{
              blocks: [
-               %{type: "context", elements: [%{text: "*Recent Events*" <> _}]},
+               %{
+                 type: "section",
+                 text: %{text: "*5 new event(s)*" <> _},
+                 accessory: %{type: "button", text: %{text: "View events"}}
+               },
                %{
                  type: "rich_text",
                  elements: [
@@ -100,8 +118,7 @@ defmodule Logflare.Backends.SlackAdaptorTest do
                      elements: [%{text: text}, %{text: " "}, %{text: msg}]
                    }
                  ]
-               },
-               %{type: "section", accessory: %{type: "button", text: %{text: "See all events"}}}
+               }
              ]
            } = SlackHookServer.Client.slack_post_body(source, 5, [le])
 

@@ -27,7 +27,13 @@ defmodule Logflare.Backends.Adaptor.SlackAdaptor do
 
     body =
       payload
-      |> to_body(context: context)
+      |> to_body(
+        button_link: %{
+          markdown_text: context,
+          url: view_url,
+          text: "Manage"
+        }
+      )
 
     Client.send(hook_url, body)
   end
@@ -55,8 +61,8 @@ defmodule Logflare.Backends.Adaptor.SlackAdaptor do
     %{
       blocks:
         build_context_blocks(context) ++
-          build_rich_text_blocks(results) ++
-          build_button_link_blocks(button_link)
+          build_button_link_blocks(button_link) ++
+          build_rich_text_blocks(results)
     }
   end
 
@@ -66,6 +72,10 @@ defmodule Logflare.Backends.Adaptor.SlackAdaptor do
     [
       %{
         type: "section",
+        text: %{
+          type: "mrkdwn",
+          text: button_link.markdown_text
+        },
         accessory: %{
           type: "button",
           text: %{type: "plain_text", text: button_link.text},
