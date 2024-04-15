@@ -432,7 +432,7 @@ defmodule Logflare.SqlTest do
       repo = Application.get_env(:logflare, Logflare.Repo)
 
       config = %{
-        "url" =>
+        url:
           "postgresql://#{repo[:username]}:#{repo[:password]}@#{repo[:hostname]}/#{repo[:database]}"
       }
 

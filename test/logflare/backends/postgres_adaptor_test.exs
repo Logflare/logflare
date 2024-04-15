@@ -183,18 +183,18 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptorTest do
                  "select schema_name from information_schema.schemata where schema_name = 'my_schema'"
                )
 
-      assert :ok = PostgresAdaptor.create_log_events_table({source, backend})
+      assert :ok = PostgresAdaptor.create_events_table({source, backend})
 
       log_event = build(:log_event, source: source, test: "data")
       assert {:ok, 1} = PostgresAdaptor.insert_log_event(source, backend, log_event)
     end
 
-    test "create_log_events_table/1 creates the table for a given source", %{
+    test "create_events_table/1 creates the table for a given source", %{
       backend: backend,
       source: source
     } do
       repo = PostgresAdaptor.create_repo(backend)
-      assert :ok = PostgresAdaptor.create_log_events_table({source, backend})
+      assert :ok = PostgresAdaptor.create_events_table({source, backend})
       query = from(l in PostgresAdaptor.table_name(source), select: l.body)
       assert repo.all(query) == []
     end

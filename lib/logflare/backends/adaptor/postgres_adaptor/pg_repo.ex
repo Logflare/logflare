@@ -26,24 +26,16 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor.PgRepo do
   end
 
   @doc """
-  Retrieves the repo module. Requires `:source` to be preloaded.
+  Creates the Events table for the given source.
   """
-  @spec get_repo_module(Backend.t()) :: Ecto.Repo.t()
-  def get_repo_module(%Backend{config: config}) do
-    data = inspect(config)
-    sha256 = :crypto.hash(:sha256, data) |> Base.encode16(case: :lower)
-    Module.concat([Logflare.Repo.Postgres, "Adaptor#{sha256}"])
-  end
-
-  @doc """
-  Creates the Log Events table for the given source.
-  """
-  @spec create_log_events_table(Adaptor.source_backend()) ::
+  @spec create_events_table(Adaptor.source_backend()) ::
           :ok | {:error, :failed_migration}
-  def create_log_events_table({source, backend}) do
-    mod = create_repo(backend)
+  def create_events_table({source, backend}) do
+    create_repo(backend)
 
-    mod.migrate!(source)
+    SharedRepo.with_repo(backend, fn ->
+      SharedRepo.migrate!(source)
+    end)
   end
 
   @doc """

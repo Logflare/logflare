@@ -83,7 +83,7 @@ defmodule LogflareWeb.Api.QueryControllerTest do
         )
 
       PostgresAdaptor.create_repo(backend)
-      PostgresAdaptor.create_log_events_table({source, backend})
+      PostgresAdaptor.create_events_table({source, backend})
 
       on_exit(fn ->
         PostgresAdaptor.destroy_instance({source, backend})

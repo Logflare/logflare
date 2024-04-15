@@ -9,9 +9,11 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor do
   """
   use GenServer
   use TypedStruct
+  require Logger
 
   alias Logflare.Backends.Adaptor.PostgresAdaptor.Pipeline
   alias Logflare.Backends.Adaptor.PostgresAdaptor.PgRepo
+  alias Logflare.Backends.Adaptor.PostgresAdaptor.SharedRepo
   alias Logflare.Backends
   alias Logflare.Backends.Backend
 
@@ -119,9 +121,10 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor do
 
   def execute_query(%Backend{} = backend, {query_string, params})
       when is_binary(query_string) and is_list(params) do
-    mod = PgRepo.create_repo(backend)
-
-    result = mod.query!(query_string, params)
+    {:ok, result} =
+      SharedRepo.with_repo(backend, fn ->
+        SharedRepo.query(query_string, params)
+      end)
 
     rows =
       for row <- result.rows do
@@ -154,7 +157,7 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor do
   # expose PgRepo functions
   defdelegate create_repo(backend), to: PgRepo
   defdelegate table_name(source), to: PgRepo
-  defdelegate create_log_events_table(source_backend), to: PgRepo
+  defdelegate create_events_table(source_backend), to: PgRepo
   defdelegate destroy_instance(backend, timeout \\ 5000), to: PgRepo
   defdelegate insert_log_event(source, backend, log_event), to: PgRepo
   defdelegate insert_log_events(source, backend, log_events), to: PgRepo
@@ -164,7 +167,14 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor do
   def init({source, backend}) do
     with :ok <- Backends.register_backend_for_ingest_dispatch(source, backend) do
       # try create migration table, might fail
-      create_log_events_table({source, backend})
+      res = create_events_table({source, backend})
+
+      if :ok != res do
+        Logger.warning("Failed to create events table: #{inspect(res)} ",
+          source_token: source.token,
+          backend_id: backend.id
+        )
+      end
 
       state = %__MODULE__{
         config: backend.config,
