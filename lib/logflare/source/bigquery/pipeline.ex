@@ -238,7 +238,11 @@ defmodule Logflare.Source.BigQuery.Pipeline do
 
         # check content length
         message, {count, len} ->
-          payload = Jason.encode!(message.data.body)
+          {:ok, payload} =
+            with {:error, %Jason.EncodeError{}} <- Jason.encode(message.data.body) do
+              {:ok, inspect(message.data.body)}
+            end
+
           length = IO.iodata_length(payload)
 
           if len - length <= 0 do

@@ -5,7 +5,7 @@ defmodule Logflare.Backends.BigQueryAdaptorTest do
   alias Logflare.Backends.Adaptor
   alias Logflare.Backends.SourceSup
   alias Logflare.SystemMetrics.AllLogsLogged
-
+  alias Logflare.Source.BigQuery.BufferCounter
   @subject Logflare.Backends.Adaptor.BigQueryAdaptor
 
   doctest @subject
@@ -119,6 +119,43 @@ defmodule Logflare.Backends.BigQueryAdaptorTest do
                @subject.ingest(adaptor, [log_event], source_id: source.id, backend_id: backend.id)
 
       assert_receive :patched, 2500
+    end
+
+    test "bug: invalid json encode update table", %{
+      adaptor: adaptor,
+      source: source,
+      backend: backend
+    } do
+      log_event = build(:log_event, source: source, test: <<97, 98, 99, 222, 126, 199, 31, 89>>)
+      pid = self()
+      ref = make_ref()
+
+      Logflare.Google.BigQuery
+      |> expect(:stream_batch!, fn _, _ ->
+        send(pid, ref)
+        {:ok, %GoogleApi.BigQuery.V2.Model.TableDataInsertAllResponse{insertErrors: nil}}
+      end)
+
+      GoogleApi.BigQuery.V2.Api.Tables
+      |> stub(:bigquery_tables_patch, fn _conn,
+                                         _project_id,
+                                         _dataset_id,
+                                         _table_name,
+                                         [body: _body] ->
+        {:ok, %{}}
+      end)
+
+      Logflare.Mailer
+      |> stub(:deliver, fn _ -> :ok end)
+
+      assert :ok =
+               @subject.ingest(adaptor, [log_event], source_id: source.id, backend_id: backend.id)
+
+      name = Backends.via_source(source, BufferCounter, backend.id)
+      # should get acked
+      :timer.sleep(2000)
+      assert BufferCounter.len(name) == 0
+      assert_receive ^ref
     end
   end
 end
