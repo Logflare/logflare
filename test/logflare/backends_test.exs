@@ -9,6 +9,8 @@ defmodule Logflare.BackendsTest do
   alias Logflare.SystemMetrics.AllLogsLogged
   alias Logflare.Source.ChannelTopics
   alias Logflare.Lql
+  alias Logflare.Logs
+  alias Logflare.Source.V1SourceSup
   alias Logflare.PubSubRates
 
   setup do
@@ -257,6 +259,61 @@ defmodule Logflare.BackendsTest do
       event = build(:log_event, source: source, message: "some event")
       assert {:ok, 1} = Backends.ingest_logs([event], source)
       :timer.sleep(2000)
+    end
+  end
+
+  describe "benchmarks" do
+    setup do
+      insert(:plan)
+      start_supervised!(BencheeAsync.Reporter)
+
+      GoogleApi.BigQuery.V2.Api.Tabledata
+      |> stub(:bigquery_tabledata_insert_all, fn _conn,
+                                                 _project_id,
+                                                 _dataset_id,
+                                                 _table_name,
+                                                 _opts ->
+        BencheeAsync.Reporter.record()
+        {:ok, %GoogleApi.BigQuery.V2.Model.TableDataInsertAllResponse{insertErrors: nil}}
+      end)
+
+      user = insert(:user)
+      [user: user]
+    end
+
+    # This benchmarks two areas:
+    # - transformation of params to log events
+    # - BQ max insertion rate
+    @tag :benchmark
+    test "BQ - v1 Logs vs v2 Logs vs v2 Backend", %{user: user} do
+      [source1, source2] = insert_pair(:source, user: user, rules: [])
+      # start_supervised!({Pipeline, [rls, name: @pipeline_name]})
+      start_supervised!({V1SourceSup, source: source1})
+      start_supervised!({SourceSup, source2})
+
+      batch =
+        for _i <- 1..150 do
+          %{"message" => "some message"}
+        end
+
+      BencheeAsync.run(
+        %{
+          "v1SourceSup BQ with Logs.ingest_logs/2" => fn ->
+            Logs.ingest_logs(batch, source1)
+          end,
+          "SourceSup v2 BQ with Logs.ingest_logs/2" => fn ->
+            Logs.ingest_logs(batch, source2)
+          end,
+          "SourceSup v2 BQ with Backends.ingest_logs/2" => fn ->
+            Backends.ingest_logs(batch, source2)
+          end
+        },
+        time: 3,
+        warmup: 1,
+        print: [configuration: false],
+        # use extended_statistics to view units of work done
+        formatters: [{Benchee.Formatters.Console, extended_statistics: true}]
+      )
     end
   end
 end
