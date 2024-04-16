@@ -139,6 +139,7 @@ defmodule Logflare.Application do
         # init Counters before Supervisof as Supervisor calls Counters through table create
         Counters,
         RateCounters,
+        # Backends needs to be before Source.Supervisor
         Logflare.Backends,
         Logflare.Source.Supervisor,
         PubSubRates,
