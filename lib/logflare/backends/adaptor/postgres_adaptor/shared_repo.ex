@@ -96,7 +96,7 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor.SharedRepo do
   def migrate!(%Source{} = source) do
     Migrations.migrate(source)
   rescue
-    _e in DBConnection.ConnectionError ->
+    DBConnection.ConnectionError ->
       {:error, :cannot_connect}
 
     e in Postgrex.Error ->
