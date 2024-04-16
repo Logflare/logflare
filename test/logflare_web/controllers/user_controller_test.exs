@@ -132,7 +132,7 @@ defmodule LogflareWeb.UserControllerTest do
     setup %{conn: conn} do
       insert(:plan)
       user = insert(:user)
-      partner = insert(:partner, users: [user])
+      insert(:partner, users: [user])
       [conn: login_user(conn, user)]
     end
 

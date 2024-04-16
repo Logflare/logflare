@@ -26,24 +26,16 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor.PgRepo do
   end
 
   @doc """
-  Retrieves the repo module. Requires `:source` to be preloaded.
+  Creates the Events table for the given source.
   """
-  @spec get_repo_module(Backend.t()) :: Ecto.Repo.t()
-  def get_repo_module(%Backend{config: config}) do
-    data = inspect(config)
-    sha256 = :crypto.hash(:sha256, data) |> Base.encode16(case: :lower)
-    Module.concat([Logflare.Repo.Postgres, "Adaptor#{sha256}"])
-  end
-
-  @doc """
-  Creates the Log Events table for the given source.
-  """
-  @spec create_log_events_table(Adaptor.source_backend()) ::
+  @spec create_events_table(Adaptor.source_backend()) ::
           :ok | {:error, :failed_migration}
-  def create_log_events_table({source, backend}) do
-    mod = create_repo(backend)
+  def create_events_table({source, backend}) do
+    create_repo(backend)
 
-    mod.migrate!(source)
+    SharedRepo.with_repo(backend, fn ->
+      SharedRepo.migrate!(source)
+    end)
   end
 
   @doc """
@@ -63,39 +55,48 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor.PgRepo do
   @spec destroy_instance(Adaptor.source_backend(), timeout()) :: :ok
   def destroy_instance({source, backend}, timeout \\ 5000) do
     SharedRepo.with_repo(backend, fn ->
-      SharedRepo.down!(source)
-      SharedRepo.stop(timeout)
+      if Process.whereis(SharedRepo) != nil do
+        if Ecto.Adapters.SQL.table_exists?(SharedRepo, table_name(source)) do
+          SharedRepo.down!(source)
+        end
+
+        SharedRepo.stop(timeout)
+      end
     end)
   end
 
   @doc """
   Inserts a LogEvent into the given source backend table
   """
-  @spec insert_log_event(Backend.t(), LogEvent.t()) :: {:ok, PgLogEvent.t()}
-  def insert_log_event(backend, %LogEvent{} = log_event) do
-    table = PostgresAdaptor.table_name(log_event.source)
+  @spec insert_log_event(Source.t(), Backend.t(), LogEvent.t()) :: {:ok, PgLogEvent.t()}
+  def insert_log_event(source, backend, %LogEvent{} = le),
+    do: insert_log_events(source, backend, [le])
 
-    timestamp =
-      log_event.body["timestamp"]
-      |> DateTime.from_unix!(:microsecond)
-      |> DateTime.to_naive()
-
-    params = %{
-      id: log_event.body["id"],
-      event_message: log_event.body["event_message"],
-      timestamp: timestamp,
-      body: log_event.body
-    }
+  def insert_log_events(source, backend, events) when is_list(events) do
+    table = PostgresAdaptor.table_name(source)
 
     schema = backend.config["schema"] || backend.config[:schema]
 
-    changeset =
-      %PgLogEvent{}
-      |> Ecto.put_meta(source: table, prefix: schema)
-      |> PgLogEvent.changeset(params)
+    event_params =
+      Enum.map(events, fn log_event ->
+        timestamp =
+          log_event.body["timestamp"]
+          |> DateTime.from_unix!(:microsecond)
+          |> DateTime.to_naive()
+
+        params = %{
+          id: log_event.body["id"],
+          event_message: log_event.body["event_message"],
+          timestamp: timestamp,
+          body: log_event.body
+        }
+
+        params
+      end)
 
     SharedRepo.with_repo(backend, fn ->
-      SharedRepo.insert(changeset)
+      {count, _} = SharedRepo.insert_all(table, event_params, prefix: schema)
+      {:ok, count}
     end)
   end
 end

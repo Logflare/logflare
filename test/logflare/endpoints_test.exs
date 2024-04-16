@@ -224,13 +224,13 @@ defmodule Logflare.EndpointsTest do
       backend =
         insert(:backend,
           type: :postgres,
-          config: %{"url" => url},
+          config: %{url: url},
           sources: [source],
           user: user
         )
 
       PostgresAdaptor.create_repo(backend)
-      PostgresAdaptor.create_log_events_table({source, backend})
+      PostgresAdaptor.create_events_table({source, backend})
 
       on_exit(fn ->
         PostgresAdaptor.destroy_instance({source, backend})

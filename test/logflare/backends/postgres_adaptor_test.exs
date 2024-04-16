@@ -1,5 +1,6 @@
 defmodule Logflare.Backends.Adaptor.PostgresAdaptorTest do
   use Logflare.DataCase, async: false
+  import ExUnit.CaptureLog
   alias Logflare.Backends.Adaptor.PostgresAdaptor
 
   setup do
@@ -9,8 +10,8 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptorTest do
       "postgresql://#{repo[:username]}:#{repo[:password]}@#{repo[:hostname]}/#{repo[:database]}"
 
     config = %{
-      "url" => url,
-      "schema" => nil
+      url: url,
+      schema: nil
     }
 
     source = insert(:source, user: insert(:user))
@@ -38,7 +39,11 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptorTest do
     } do
       log_event = build(:log_event, source: source, test: "data")
 
-      assert :ok = PostgresAdaptor.ingest(pid, [log_event])
+      assert :ok =
+               PostgresAdaptor.ingest(pid, [log_event],
+                 source_id: source.id,
+                 backend_id: backend.id
+               )
 
       # TODO: replace with a timeout retry func
       :timer.sleep(1_500)
@@ -82,7 +87,11 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptorTest do
           }
         )
 
-      assert :ok = PostgresAdaptor.ingest(pid, [log_event])
+      assert :ok =
+               PostgresAdaptor.ingest(pid, [log_event],
+                 backend_id: backend.id,
+                 source_id: source.id
+               )
 
       # TODO: replace with a timeout retry func
       :timer.sleep(1_500)
@@ -124,11 +133,54 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptorTest do
     end
   end
 
+  describe "separate config fields" do
+    test "special characters as password", %{source: source} do
+      config = %{
+        schema: nil,
+        username: "some-invalid",
+        password: "!@#$",
+        hostname: "localhost",
+        port: 5555
+      }
+
+      backend = insert(:backend, type: :postgres, sources: [source], config: config)
+      assert {:ok, _pid} = start_supervised({PostgresAdaptor, {source, backend}})
+
+      on_exit(fn ->
+        PostgresAdaptor.destroy_instance({source, backend})
+      end)
+    end
+
+    test "cannot connect to invalid ", %{source: source} do
+      config = %{
+        username: "some-invalid",
+        password: "!@#$",
+        hostname: "localhost",
+        database: "other_db",
+        port: 1234
+      }
+
+      backend = insert(:backend, type: :postgres, sources: [source], config: config)
+      log_event = build(:log_event, source: source, test: "data")
+
+      capture_log(fn ->
+        assert {:ok, _pid} = start_supervised({PostgresAdaptor, {source, backend}})
+
+        assert {:error, :cannot_connect} =
+                 PostgresAdaptor.insert_log_event(source, backend, log_event)
+      end)
+
+      on_exit(fn ->
+        PostgresAdaptor.destroy_instance({source, backend})
+      end)
+    end
+  end
+
   describe "repo module" do
     test "custom schema", %{source: source, postgres_url: url} do
       config = %{
-        "url" => url,
-        "schema" => "my_schema"
+        url: url,
+        schema: "my_schema"
       }
 
       backend = insert(:backend, type: :postgres, sources: [source], config: config)
@@ -140,18 +192,18 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptorTest do
                  "select schema_name from information_schema.schemata where schema_name = 'my_schema'"
                )
 
-      assert :ok = PostgresAdaptor.create_log_events_table({source, backend})
+      assert :ok = PostgresAdaptor.create_events_table({source, backend})
 
       log_event = build(:log_event, source: source, test: "data")
-      assert {:ok, %_{}} = PostgresAdaptor.insert_log_event(backend, log_event)
+      assert {:ok, 1} = PostgresAdaptor.insert_log_event(source, backend, log_event)
     end
 
-    test "create_log_events_table/1 creates the table for a given source", %{
+    test "create_events_table/1 creates the table for a given source", %{
       backend: backend,
       source: source
     } do
       repo = PostgresAdaptor.create_repo(backend)
-      assert :ok = PostgresAdaptor.create_log_events_table({source, backend})
+      assert :ok = PostgresAdaptor.create_events_table({source, backend})
       query = from(l in PostgresAdaptor.table_name(source), select: l.body)
       assert repo.all(query) == []
     end

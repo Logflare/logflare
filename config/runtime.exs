@@ -206,8 +206,7 @@ cond do
            :postgres_backend_adapter,
            filter_nil_kv_pairs.(
              url: System.get_env("POSTGRES_BACKEND_URL"),
-             schema: System.get_env("POSTGRES_BACKEND_SCHEMA"),
-             pool_size: 3
+             schema: System.get_env("POSTGRES_BACKEND_SCHEMA")
            )
 
   config_env() != :test ->
