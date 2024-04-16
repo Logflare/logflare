@@ -166,6 +166,23 @@ defmodule Logflare.LogEventTest do
       end
     end
 
+    property "timestamp unix conversions" do
+      source = build(:source, user: build(:user))
+
+      check all ts <-
+                  one_of([
+                    integer(1_713_268_565_764_892..1_713_268_565_764_999),
+                    integer(1_713_268_565_764..1_713_268_565_999),
+                    integer(1_713_268_565..1_713_268_999),
+                    float(min: 1_713_268_565.1, max: 1_713_268_999.9),
+                    float(min: 1_713_268_000_000.1, max: 1_713_268_000_999.9),
+                    float(min: 1_713_268_565_000_000.1, max: 1_713_268_565_000_999.9)
+                  ]) do
+        params = Map.put(@valid_params, "timestamp", ts)
+        LogEvent.make(params, %{source: source})
+      end
+    end
+
     defp event_with_message(pattern, %LogEvent{} = le) do
       @subject.apply_custom_event_message(%LogEvent{
         le

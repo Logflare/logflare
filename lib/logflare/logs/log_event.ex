@@ -123,6 +123,19 @@ defmodule Logflare.LogEvent do
             _ -> x
           end
 
+        x when is_float(x) ->
+          rounded = round(x)
+          length = rounded |> Integer.digits() |> Enum.count()
+
+          case length do
+            19 -> round(rounded / 1_000)
+            16 -> rounded
+            13 -> x * 1_000
+            10 -> x * 1_000_000
+            7 -> x * 1_000_000_000
+            _ -> rounded
+          end
+
         nil ->
           System.system_time(:microsecond)
       end
