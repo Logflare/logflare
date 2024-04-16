@@ -13,8 +13,6 @@ config :logflare, Logflare.Cluster.Utils, min_cluster_size: 1
 
 config :logflare, Logflare.Source.BigQuery.Schema, updates_per_minute: 900_000
 
-config :logger, :console, metadata: :all, level: :error
-
 config :logflare, Logflare.Google,
   dataset_id_append: "_test",
   project_number: "1023172132421",
@@ -35,3 +33,19 @@ config :logflare, Logflare.Repo,
 
 config :logflare, :postgres_backend_adapter, pool_size: 1
 config :grpc, start_server: false
+
+defmodule LogflareTest.LogFilters do
+  def ignore_finch_disconnections(%{meta: %{mfa: {Finch.HTTP2.Pool, :disconnected, _}}}, _opts) do
+    :stop
+  end
+
+  def ignore_finch_disconnections(le, _opts), do: le
+end
+
+config :logger,
+  default_handler: [
+    filters: [
+      {:finch_silencer, {&LogflareTest.LogFilters.ignore_finch_disconnections/2, []}}
+    ],
+    level: :error
+  ]
