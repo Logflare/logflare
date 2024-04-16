@@ -147,7 +147,7 @@ defmodule Logflare.Application do
          max_restarts: 10,
          max_seconds: 60,
          name: Logflare.Source.V1SourceDynSup},
-
+        LogflareWeb.Endpoint,
         # If we get a log event and the Source.Supervisor is not up it will 500
         {GRPC.Server.Supervisor, {LogflareGrpc.Endpoint, grpc_port, cred: grpc_creds}},
         # Monitor system level metrics
@@ -158,9 +158,6 @@ defmodule Logflare.Application do
 
         # v2 ingestion pipelines
         Logflare.Backends,
-
-        # start endpoint only after Backends supervision tree started
-        LogflareWeb.Endpoint,
 
         # Startup tasks after v2 pipeline started
         {Task, fn -> startup_tasks() end},
