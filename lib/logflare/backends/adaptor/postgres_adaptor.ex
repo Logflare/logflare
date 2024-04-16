@@ -28,7 +28,8 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor do
       username: String.t(),
       password: String.t(),
       hostname: String.t(),
-      port: non_neg_integer()
+      port: non_neg_integer(),
+      pool_size: non_neg_integer()
     })
 
     field(:source, Source.t())
