@@ -21,14 +21,14 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor.SharedRepo do
   @spec start(Backend.t()) :: {:ok, pid()} | {:error, term()}
   def start(%Backend{} = backend) do
     config = backend.config
-    pool_size = Application.fetch_env!(:logflare, :postgres_backend_adapter)[:pool_size]
+    default_pool_size = Application.fetch_env!(:logflare, :postgres_backend_adapter)[:pool_size]
     schema = Map.get(config, :schema)
 
     url = Map.get(config, :url)
 
     opts = [
       name: Supervisor.via(backend),
-      pool_size: pool_size,
+      pool_size: Map.get(config, :pool_size, default_pool_size),
       # Wait until repo is fully up and running
       sync_connect: true,
       after_connect: {__MODULE__, :__after_connect__, [schema]}

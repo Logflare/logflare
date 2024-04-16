@@ -62,9 +62,10 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor do
        hostname: :string,
        database: :string,
        schema: :string,
-       port: :integer
+       port: :integer,
+       pool_size: :integer,
      }}
-    |> cast(params, [:url, :schema, :username, :password, :hostname, :database, :port])
+    |> cast(params, [:url, :schema, :username, :password, :hostname, :database, :port, :pool_size])
   end
 
   @impl Logflare.Backends.Adaptor

@@ -78,6 +78,12 @@ defmodule LogflareWeb.BackendsLive do
                     <%= text_input(f_config, :database, class: "form-control") %>
                   </div>
                   <div class="form-group">
+                    <%= label f_config, :pool_size do %>
+                      Connection pool size
+                    <% end %>
+                    <%= text_input(f_config, :pool_size, class: "form-control", default: 1) %>
+                  </div>
+                  <div class="form-group">
                     <%= label f_config, :schema do %>
                       Schema where data should be store, if blank the database defaults will be used
                     <% end %>
@@ -138,6 +144,7 @@ defmodule LogflareWeb.BackendsLive do
                   <li>hostname: <%= Map.get(sb.config, :hostname, "") %></li>
                   <li>port: <%= Map.get(sb.config, :port, "") %></li>
                   <li>database: <%= Map.get(sb.config, :database, "") %></li>
+                  <li>pool_size: <%= Map.get(sb.config, :pool_size, "") %></li>
                 </ul>
               <% :bigquery -> %>
                 <ul>
