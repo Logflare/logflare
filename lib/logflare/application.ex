@@ -158,7 +158,6 @@ defmodule Logflare.Application do
         # For Logflare Endpoints
         {DynamicSupervisor, strategy: :one_for_one, name: Logflare.Endpoints.Cache},
 
-
         # Startup tasks after v2 pipeline started
         {Task, fn -> startup_tasks() end},
 
