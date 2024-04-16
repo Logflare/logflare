@@ -139,6 +139,7 @@ defmodule Logflare.Application do
         # init Counters before Supervisof as Supervisor calls Counters through table create
         Counters,
         RateCounters,
+        Logflare.Backends,
         Logflare.Source.Supervisor,
         PubSubRates,
         {DynamicSupervisor,
@@ -156,8 +157,6 @@ defmodule Logflare.Application do
         # For Logflare Endpoints
         {DynamicSupervisor, strategy: :one_for_one, name: Logflare.Endpoints.Cache},
 
-        # v2 ingestion pipelines
-        Logflare.Backends,
 
         # Startup tasks after v2 pipeline started
         {Task, fn -> startup_tasks() end},
