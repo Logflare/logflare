@@ -94,20 +94,18 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor.SharedRepo do
   """
   @spec migrate!(Source.t()) :: :ok | {:error, term()}
   def migrate!(%Source{} = source) do
-    try do
-      Migrations.migrate(source)
-    rescue
-      _e in DBConnection.ConnectionError ->
-        {:error, :cannot_connect}
-    catch
-      :exit, {:killed, _} -> {:error, :cannot_connect}
-      :exit, {:noproc, _} -> {:error, :cannot_connect}
-    end
+    Migrations.migrate(source)
   rescue
+    _e in DBConnection.ConnectionError ->
+      {:error, :cannot_connect}
+
     e in Postgrex.Error ->
       Logger.error(%{error: e})
 
       {:error, {:failed_migration, e}}
+  catch
+    :exit, {:killed, _} -> {:error, :cannot_connect}
+    :exit, {:noproc, _} -> {:error, :cannot_connect}
   end
 
   @spec down!(Source.t()) :: :ok | {:error, term()}
