@@ -113,7 +113,7 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
           default: [concurrency: 3, min_demand: 1]
         ],
         batchers: [
-          http: [concurrency: 10, batch_size: 250]
+          http: [concurrency: 6, batch_size: 250]
         ],
         context: adaptor_state
       )
