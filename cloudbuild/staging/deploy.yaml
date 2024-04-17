@@ -27,6 +27,7 @@ steps:
       - --shielded-vtpm
       - --shielded-integrity-monitoring
       - --image-family=cos-arm64-109-lts
+      - --image-project=cos-cloud
   # update instance group to the new template
   - name: gcr.io/cloud-builders/gcloud
     args:

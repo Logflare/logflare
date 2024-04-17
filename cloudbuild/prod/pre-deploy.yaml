@@ -27,6 +27,7 @@ steps:
       - --shielded-vtpm
       - --shielded-integrity-monitoring
       - --image-family=cos-arm64-109-lts
+      - --image-project=cos-cloud
 
 
 substitutions:
