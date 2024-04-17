@@ -26,7 +26,7 @@ steps:
       - --no-shielded-secure-boot
       - --shielded-vtpm
       - --shielded-integrity-monitoring
-      - --image=cos-arm64-109-17800-147-60
+      - --image=cos-stable-109-17800-147-54
       - --image-project=cos-cloud
 
 
