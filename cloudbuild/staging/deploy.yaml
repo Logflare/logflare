@@ -26,7 +26,7 @@ steps:
       - --no-shielded-secure-boot
       - --shielded-vtpm
       - --shielded-integrity-monitoring
-      - --labels=container-vm=cos-stable-109-17800-66-54
+      - --image-family=cos-arm64-109-lts
   # update instance group to the new template
   - name: gcr.io/cloud-builders/gcloud
     args:
