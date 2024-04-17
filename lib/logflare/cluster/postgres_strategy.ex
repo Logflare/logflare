@@ -94,8 +94,8 @@ defmodule Logflare.Cluster.PostgresStrategy do
         :ok ->
           Logger.debug(topology, "Connected to node: #{node}")
 
-        {:error, _} ->
-          Logger.error(topology, "Failed to connect to node: #{node}")
+        {:error, _} = err ->
+          Logger.error(topology, "Failed to connect to node: #{node}, #{inspect(err)}")
       end
     end
 
