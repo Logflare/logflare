@@ -49,3 +49,5 @@ config :logger,
     ],
     level: :error
   ]
+
+config :tesla, Logflare.Backends.Adaptor.WebhookAdaptor.Client, adapter: Tesla.Mock
