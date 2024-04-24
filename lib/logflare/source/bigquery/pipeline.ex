@@ -21,6 +21,8 @@ defmodule Logflare.Source.BigQuery.Pipeline do
   alias Logflare.Users
 
   # each batch should at most be 5MB
+  # BQ max is 10MB
+  # https://cloud.google.com/bigquery/quotas#streaming_inserts
   @max_batch_length 5_000_000
   @max_batch_size 250
 
