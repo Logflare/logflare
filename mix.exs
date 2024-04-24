@@ -142,12 +142,12 @@ defmodule Logflare.Mixfile do
       # Ecto
       {:ecto, "~> 3.9", override: true},
       {:ecto_sql, "~> 3.9"},
-      {:typed_ecto_schema, "~> 0.1.0", runtime: false},
+      {:typed_ecto_schema, "~> 0.4.0", runtime: false},
 
       # Telemetry & logging
-      {:telemetry, "~> 0.4.0"},
+      {:telemetry, "~> 1.2"},
       {:telemetry_metrics, "~> 0.6"},
-      {:telemetry_poller, "~> 0.5"},
+      {:telemetry_poller, "~> 1.0"},
       {:logflare_logger_backend, "~> 0.11.4"},
       {:logger_json, "~> 5.1"},
 
@@ -204,7 +204,8 @@ defmodule Logflare.Mixfile do
       # https://github.com/falood/file_system/pull/87
       #
       # Credo is currently holding us back
-      {:file_system, "~> 1.0", override: true, only: [:dev, :test]}
+      {:file_system, "~> 1.0", override: true, only: [:dev, :test]},
+      {:logflare_ex, "~> 0.2.0-dev.082a725d"}
     ]
   end
 
