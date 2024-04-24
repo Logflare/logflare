@@ -4,6 +4,7 @@ defmodule Logflare.BigQuery.PipelineTest do
   alias Logflare.Source.BigQuery.Pipeline
   alias Logflare.LogEvent
   alias GoogleApi.BigQuery.V2.Model.TableDataInsertAllRequestRows
+  use ExUnitProperties
 
   @pipeline_name :test_pipeline
   describe "pipeline" do
@@ -43,6 +44,21 @@ defmodule Logflare.BigQuery.PipelineTest do
                  "project" => "my-project"
                }
              } = Pipeline.le_to_bq_row(le)
+    end
+  end
+
+  describe "bq_batch_size_splitter/2" do
+    property "fallback inspect_payload/1 usage always overstates json encoded length" do
+      check all payload <-
+                  map_of(
+                    string(:alphanumeric, min_length: 1),
+                    string(:ascii, max_length: 1_000_000),
+                    min_length: 20,
+                    max_length: 500
+                  ) do
+        assert IO.iodata_length(Jason.encode!(payload)) <
+                 IO.iodata_length(Pipeline.inspect_payload(payload))
+      end
     end
   end
 

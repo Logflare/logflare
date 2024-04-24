@@ -57,7 +57,7 @@ defmodule LogflareWeb.Source.SearchLV do
         else: mount_disconnected(params, session, socket)
 
     socket = assign(socket, :force_query, Map.get(params, "force", "false") == "true")
-    Logger.info("Runninc query: #{Map.get(socket.assigns, :qs)}")
+    Logger.debug("Running query: #{Map.get(socket.assigns, :qs)}")
 
     {:ok, socket}
   end

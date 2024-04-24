@@ -272,7 +272,8 @@ defmodule LogflareWeb.Source.SearchLVTest do
         {:ok,
          TestUtils.gen_bq_response(%{
            "event_message" => "some modal message",
-           "testing" => "modal123"
+           "testing" => "modal123",
+           "id" => "some-uuid"
          })}
       end)
 
@@ -281,7 +282,11 @@ defmodule LogflareWeb.Source.SearchLVTest do
       # wait for async search task to complete
       :timer.sleep(500)
 
-      view |> element("li a", "event body") |> render_click()
+      TestUtils.retry_assert(fn ->
+        view
+        |> element("li a[phx-value-log-event-id='some-uuid']", "event body")
+        |> render_click()
+      end)
 
       TestUtils.retry_assert(fn ->
         html = render(view)

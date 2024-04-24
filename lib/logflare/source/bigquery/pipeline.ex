@@ -21,6 +21,8 @@ defmodule Logflare.Source.BigQuery.Pipeline do
   alias Logflare.Users
 
   # each batch should at most be 5MB
+  # BQ max is 10MB
+  # https://cloud.google.com/bigquery/quotas#streaming_inserts
   @max_batch_length 5_000_000
   @max_batch_size 250
 
@@ -228,7 +230,7 @@ defmodule Logflare.Source.BigQuery.Pipeline do
   # https://hexdocs.pm/broadway/Broadway.html#start_link/2
   # split batch sizes based on json size
   # ensure that we are well below the 10MB limit
-  defp bq_batch_size_splitter() do
+  def bq_batch_size_splitter() do
     {
       {@max_batch_size, @max_batch_length},
       fn
@@ -240,7 +242,7 @@ defmodule Logflare.Source.BigQuery.Pipeline do
         message, {count, len} ->
           {:ok, payload} =
             with {:error, %Jason.EncodeError{}} <- Jason.encode(message.data.body) do
-              {:ok, inspect(message.data.body)}
+              {:ok, inspect_payload(message.data.body)}
             end
 
           length = IO.iodata_length(payload)
@@ -254,5 +256,14 @@ defmodule Logflare.Source.BigQuery.Pipeline do
           end
       end
     }
+  end
+
+  def inspect_payload(%{} = payload) do
+    inspect(payload,
+      binaries: :as_strings,
+      charlists: :as_lists,
+      limit: :infinity,
+      printable_limit: :infinity
+    )
   end
 end
