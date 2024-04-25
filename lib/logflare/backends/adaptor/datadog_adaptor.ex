@@ -8,6 +8,9 @@ defmodule Logflare.Backends.Adaptor.DatadogAdaptor do
 
   alias Logflare.Backends.Adaptor.WebhookAdaptor
 
+  # https://docs.datadoghq.com/api/latest/logs/#send-logs
+  @api_url "https://http-intake.logs.datadoghq.com/api/v2/logs"
+
   typedstruct enforce: true do
     field(:api_key, String.t())
   end
@@ -26,10 +29,8 @@ defmodule Logflare.Backends.Adaptor.DatadogAdaptor do
     backend = %{
       backend
       | config: %{
-          url: "https://http-intake.logs.datadoghq.com/api/v2/logs",
-          headers: %{
-            "dd-api-key" => backend.config.api_key
-          }
+          url: @api_url,
+          headers: %{"dd-api-key" => backend.config.api_key}
         }
     }
 
@@ -55,10 +56,8 @@ defmodule Logflare.Backends.Adaptor.DatadogAdaptor do
 
   @impl Logflare.Backends.Adaptor
   def validate_config(changeset) do
-    import Ecto.Changeset
-
     changeset
-    |> validate_required([:api_key])
+    |> Ecto.Changeset.validate_required([:api_key])
   end
 
   defp translate_event(%Logflare.LogEvent{} = le) do
