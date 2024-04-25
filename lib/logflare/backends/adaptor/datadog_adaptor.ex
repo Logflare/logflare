@@ -9,7 +9,7 @@ defmodule Logflare.Backends.Adaptor.DatadogAdaptor do
   alias Logflare.Backends.Adaptor.WebhookAdaptor
 
   # https://docs.datadoghq.com/api/latest/logs/#send-logs
-  @api_url "https://http-intake.logs.datadoghq.com/api/v2/logs"
+  @api_url "https://http-intake.logs.us5.datadoghq.com/api/v2/logs"
 
   typedstruct enforce: true do
     field(:api_key, String.t())
@@ -61,11 +61,15 @@ defmodule Logflare.Backends.Adaptor.DatadogAdaptor do
   end
 
   defp translate_event(%Logflare.LogEvent{} = le) do
+    formatted_ts =
+      DateTime.from_unix!(le.body["timestamp"], :microsecond) |> DateTime.to_iso8601()
+
     %Logflare.LogEvent{
       le
       | body: %{
-          message: Jason.encode!(le.body),
+          message: formatted_ts <> " " <> Jason.encode!(le.body),
           ddsource: "logflare",
+          hostname: "logflare",
           service: le.source.name
         }
     }
