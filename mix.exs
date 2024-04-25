@@ -136,8 +136,9 @@ defmodule Logflare.Mixfile do
 
       # GCP
       {:google_api_cloud_resource_manager, "~> 0.34.0"},
-      {:google_api_big_query, "~> 0.52.0"},
+      {:google_api_big_query, "~> 0.79.0"},
       {:goth, "~> 1.4.0"},
+      {:google_gax, github: "Logflare/elixir-google-gax", override: true},
 
       # Ecto
       {:ecto, "~> 3.9", override: true},

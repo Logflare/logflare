@@ -13,7 +13,7 @@ defmodule Logflare.Source.BigQuery.BufferCounter do
 
   require Logger
 
-  @broadcast_every 5_000
+  @broadcast_every 2_000
   @max_buffer_len 5_000
 
   def start_link(args) when is_list(args) do
