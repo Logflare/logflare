@@ -18,6 +18,7 @@
               <%= live_modal_show_link(component: LogflareWeb.Search.LogEventViewerComponent, modal_id: :log_event_viewer, title: "Log Event", phx_value_log_event_id: log.id, phx_value_log_event_timestamp: log.body["timestamp"]) do %>
                 <span>event body</span>
               <% end %>
+              <.link class="ml-2" target="_blank" href={~p"/sources/#{@source.id}/event?uuid=#{log.id}"}>permalink</.link>
             </li>
           <% end %>
         <% end %>

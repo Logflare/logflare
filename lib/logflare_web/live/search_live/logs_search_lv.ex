@@ -42,6 +42,7 @@ defmodule LogflareWeb.Source.SearchLV do
 
     socket
     |> assign(
+      source: source,
       user: user,
       team_user: team_user,
       search_tip: gen_search_tip(),

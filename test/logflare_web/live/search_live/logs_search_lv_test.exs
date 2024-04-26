@@ -145,6 +145,10 @@ defmodule LogflareWeb.Source.SearchLVTest do
       html = render(view)
       assert html =~ "Elapsed since last query"
 
+      assert view
+             |> element("#logs-list-container a", "permalink")
+             |> has_element?()
+
       # default input values
       assert find_selected_chart_period(html) == "minute"
       assert find_chart_aggregate(html) == "count"
