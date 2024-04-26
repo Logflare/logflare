@@ -13,7 +13,6 @@ defmodule LogflareWeb.Source.SearchLV do
   alias Logflare.TeamUsers
   alias Logflare.User
   alias Logflare.Users
-
   alias LogflareWeb.Helpers.BqSchema, as: BqSchemaHelpers
   alias LogflareWeb.Router.Helpers, as: Routes
   alias LogflareWeb.SearchView
@@ -26,40 +25,67 @@ defmodule LogflareWeb.Source.SearchLV do
   @tail_search_interval 500
   @user_idle_interval :timer.minutes(5)
   @default_qs "c:count(*) c:group_by(t::minute)"
-  @default_assigns [
-    loading: false,
-    chart_loading: true,
-    tailing_paused?: nil,
-    tailing_timer: nil,
-    search_op: nil,
-    search_op_error: nil,
-    search_op_log_events: nil,
-    search_op_log_aggregates: nil,
-    chart_aggregate_enabled?: nil,
-    tailing_timer: nil,
-    user_idle_interval: @user_idle_interval,
-    user_local_timezone: nil,
-    use_local_time: true,
-    show_modal: nil,
-    last_query_completed_at: nil,
-    lql_rules: [],
-    querystring: "",
-    search_history: [],
-    search_form: to_form(%{}, as: :search)
-  ]
 
-  def mount(params, session, socket) do
-    Logger.info("#{pid_to_string(self())} is being mounted... Connected: #{connected?(socket)}")
+  def mount(
+        %{"source_id" => source_id} = params,
+        %{"user_id" => user_id} = session,
+        socket
+      ) do
+    source = Sources.get_source_for_lv_param(source_id)
+    socket = assign(socket, :source, source)
+    user = Users.get_by_and_preload(id: user_id)
 
-    socket =
-      if connected?(socket),
-        do: mount_connected(params, session, socket),
-        else: mount_disconnected(params, session, socket)
+    team_user =
+      if team_user_id = session["team_user_id"] do
+        TeamUsers.get_team_user_and_preload(team_user_id)
+      end
 
-    socket = assign(socket, :force_query, Map.get(params, "force", "false") == "true")
-    Logger.debug("Running query: #{Map.get(socket.assigns, :qs)}")
-
-    {:ok, socket}
+    socket
+    |> assign(
+      user: user,
+      team_user: team_user,
+      search_tip: gen_search_tip(),
+      user_local_timezone: nil,
+      user_timezone_from_connect_params: nil,
+      use_local_time: true,
+      # loading states
+      loading: true,
+      chart_loading: true,
+      # tailing states
+      tailing_initial?: true,
+      tailing_timer: nil,
+      tailing?: Map.get(params, "tailing?", "true") == "true",
+      # search states
+      search_op: nil,
+      search_op_error: nil,
+      search_op_log_events: nil,
+      search_op_log_aggregates: nil,
+      chart_aggregate_enabled?: nil,
+      user_idle_interval: @user_idle_interval,
+      show_modal: nil,
+      last_query_completed_at: nil,
+      lql_rules: [],
+      querystring: Map.get(params, "querystring", @default_qs),
+      force_query: Map.get(params, "force", "false") == "true",
+      search_history: [],
+      search_form: to_form(%{}, as: :search)
+    )
+    |> then(fn socket ->
+      if connected?(socket) do
+        user_tz = Map.get(get_connect_params(socket), "user_timezone")
+        socket = assign(socket, :user_timezone_from_connect_params, user_tz)
+        assign_new_user_timezone(socket, team_user, user)
+      else
+        socket
+      end
+    end)
+    |> then(fn socket ->
+      if user && (user.admin or source.user_id == user.id) do
+        {:ok, socket}
+      else
+        {:ok, redirect(socket, to: "/")}
+      end
+    end)
   end
 
   def handle_params(%{"querystring" => qs} = params, uri, socket) do
@@ -67,13 +93,6 @@ defmodule LogflareWeb.Source.SearchLV do
 
     socket =
       socket
-      |> then(fn
-        %{assigns: %{user: %{sources: %Ecto.Association.NotLoaded{}}}} = socket ->
-          assign(socket, :user, Users.get_by_and_preload(id: socket.assigns.user.id))
-
-        socket ->
-          socket
-      end)
       |> assign(:show_modal, false)
       |> assign(uri: URI.parse(uri))
       |> assign(uri_params: params)
@@ -147,109 +166,6 @@ defmodule LogflareWeb.Source.SearchLV do
       assigns
       | chart_aggregate_enabled?: search_agg_controls_enabled?(assigns.lql_rules)
     })
-  end
-
-  def mount_disconnected(
-        %{"source_id" => source_id} = params,
-        %{"user_id" => user_id} = _session,
-        socket
-      ) do
-    source = Sources.get_source_for_lv_param(source_id)
-    user = Users.get_by_and_preload(id: user_id)
-
-    %{querystring: querystring, tailing?: tailing?} = prepare_params(params)
-
-    socket =
-      socket
-      |> assign(@default_assigns)
-      |> assign(
-        source: source,
-        tailing?: tailing?,
-        user: user,
-        loading: true,
-        search_tip: gen_search_tip(),
-        use_local_time: true,
-        querystring: querystring
-      )
-
-    socket =
-      case Lql.decode(querystring, source.bq_table_schema) do
-        {:ok, lql_rules} ->
-          lql_rules = Lql.Utils.put_new_chart_rule(lql_rules, Lql.Utils.default_chart_rule())
-
-          optimizedqs = Lql.encode!(lql_rules)
-
-          socket
-          |> assign(:lql_rules, lql_rules)
-          |> assign(:querystring, optimizedqs)
-
-        {:error, error} ->
-          maybe_cancel_tailing_timer(socket)
-
-          error_socket(socket, error)
-
-        {:error, :field_not_found = type, suggested_querystring, error} ->
-          error_socket(socket, type, suggested_querystring, error)
-      end
-
-    if user && (user.admin or source.user_id == user.id) do
-      socket
-    else
-      redirect(socket, to: "/")
-    end
-  end
-
-  def mount_connected(
-        %{"source_id" => source_id} = params,
-        %{"user_id" => user_id} = session,
-        socket
-      ) do
-    source = Sources.get_source_for_lv_param(source_id)
-    socket = assign(socket, :source, source)
-    user = Users.get_by_and_preload(id: user_id)
-    user_tz = Map.get(get_connect_params(socket), "user_timezone")
-    socket = assign(socket, :user_timezone_from_connect_params, user_tz)
-
-    team_user =
-      if team_user_id = session["team_user_id"] do
-        TeamUsers.get_team_user_and_preload(team_user_id)
-      end
-
-    socket = assign_new_user_timezone(socket, team_user, user)
-
-    %{querystring: querystring, tailing?: tailing?} = prepare_params(params)
-
-    socket =
-      socket
-      |> assign(@default_assigns)
-      |> assign(
-        tailing?: tailing?,
-        tailing_initial?: true,
-        loading: true,
-        user: user,
-        search_tip: gen_search_tip(),
-        use_local_time: true,
-        team_user: team_user
-      )
-
-    case Lql.decode(querystring, source.bq_table_schema) do
-      {:ok, lql_rules} ->
-        lql_rules = Lql.Utils.put_new_chart_rule(lql_rules, Lql.Utils.default_chart_rule())
-        optimizedqs = Lql.encode!(lql_rules)
-
-        socket
-        |> assign(:lql_rules, lql_rules)
-        |> assign(:querystring, optimizedqs)
-
-      {:error, error} ->
-        maybe_cancel_tailing_timer(socket)
-        SearchQueryExecutor.maybe_cancel_query(source.token)
-
-        error_socket(socket, error)
-
-      {:error, :field_not_found = type, suggested_querystring, error} ->
-        error_socket(socket, type, suggested_querystring, error)
-    end
   end
 
   def handle_event(
@@ -874,25 +790,6 @@ defmodule LogflareWeb.Source.SearchLV do
       })
 
     {:noreply, socket}
-  end
-
-  defp prepare_params(params) do
-    params
-    |> case do
-      %{"querystring" => ""} = p ->
-        %{p | "querystring" => @default_qs}
-
-      %{"q" => q} = p ->
-        Map.put(p, "querystring", q)
-
-      p ->
-        p
-    end
-    |> Map.put_new("querystring", @default_qs)
-    |> Map.put_new("tailing?", "true")
-    |> Map.update!("tailing?", &String.to_existing_atom/1)
-    |> MapKeys.to_atoms_unsafe!()
-    |> Map.take([:querystring, :tailing?])
   end
 
   defp reset_search(%{assigns: assigns} = socket) do
