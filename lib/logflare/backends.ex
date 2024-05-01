@@ -17,6 +17,7 @@ defmodule Logflare.Backends do
   alias Logflare.Sources
   alias Logflare.Source.RecentLogsServer
   alias Logflare.Logs
+  alias Logflare.Rule
   alias Logflare.Logs.SourceRouting
   alias Logflare.SystemMetrics
   alias Logflare.PubSubRates
@@ -48,6 +49,16 @@ defmodule Logflare.Backends do
     from(b in Backend, where: b.user_id == ^id)
     |> Repo.all()
     |> Enum.map(fn sb -> typecast_config_string_map_to_atom_map(sb) end)
+  end
+
+  def list_backends_with_rules(%Source{id: source_id} = source) do
+    from(b in Backend, join: r in assoc(b, :rules), where: r.source_id == ^source_id)
+    |> Repo.all()
+    |> Enum.map(fn sb -> typecast_config_string_map_to_atom_map(sb) end)
+  end
+
+  def preload_rules(backends) do
+    Repo.preload(backends, rules: [:source])
   end
 
   @doc """
@@ -187,14 +198,14 @@ defmodule Logflare.Backends do
   """
   @type log_param :: map()
   @spec ingest_logs([log_param()], Source.t()) :: :ok
-  def ingest_logs(event_params, source) do
+  def ingest_logs(event_params, source, backend \\ nil) do
     :ok = Source.Supervisor.ensure_started(source)
     {log_events, errors} = split_valid_events(source, event_params)
     count = Enum.count(log_events)
     increment_counters(source, count)
     maybe_broadcast_and_route(source, log_events)
     RecentLogsServer.push(source, log_events)
-    dispatch_to_backends(source, log_events)
+    dispatch_to_backends(source, backend, log_events)
     if Enum.empty?(errors), do: {:ok, count}, else: {:error, errors}
   end
 
@@ -249,7 +260,13 @@ defmodule Logflare.Backends do
     :ok
   end
 
-  defp dispatch_to_backends(source, log_events) do
+  defp dispatch_to_backends(source, %Backend{} = backend, log_events) do
+    adaptor_module = Adaptor.get_adaptor(backend)
+    adaptor_module.ingest(nil, log_events, default_ingest_opts(source, backend)) |> dbg
+    :ok
+  end
+
+  defp dispatch_to_backends(source, nil, log_events) do
     Registry.dispatch(SourceDispatcher, source.id, fn entries ->
       for {pid, {adaptor_module, :ingest, opts}} <- entries do
         # TODO: spawn tasks to do this concurrently
@@ -269,17 +286,29 @@ defmodule Logflare.Backends do
   """
   @spec register_backend_for_ingest_dispatch(Source.t(), Backend.t(), keyword()) ::
           :ok
-  def register_backend_for_ingest_dispatch(source, backend, opts \\ []) do
+  def register_backend_for_ingest_dispatch(source, backend, opts \\ [])
+
+  def register_backend_for_ingest_dispatch(
+        source,
+        %Backend{register_for_ingest: true} = backend,
+        opts
+      ) do
     mod = Adaptor.get_adaptor(backend)
 
     {:ok, _pid} =
       Registry.register(
         SourceDispatcher,
         source.id,
-        {mod, :ingest, [backend_id: backend.id, source_id: source.id] ++ opts}
+        {mod, :ingest, default_ingest_opts(source, backend) ++ opts}
       )
 
     :ok
+  end
+
+  def register_backend_for_ingest_dispatch(_source, _backend, _opts), do: :ok
+
+  defp default_ingest_opts(source, backend) do
+    [backend_id: backend.id, source_id: source.id]
   end
 
   @doc """

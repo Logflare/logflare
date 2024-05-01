@@ -1,0 +1,116 @@
+<.form :let={f} for={%{}} as={:backend} action="#" phx-submit="save_backend" class="mt-4">
+  <div class="tw-sticky tw-flex tw-justify-between tw-gap-4">
+    <button :if={@backend} data-confirm="Are you sure? This cannot be undone" phx-click="delete" phx-value-backend_id={@backend.id} class="btn btn-outline-danger" type="button">
+      <i class="fas fa-trash"></i> Delete
+    </button>
+    <%= submit("Save changes", class: "btn btn-primary") %>
+  </div>
+
+  <p>Add backend</p>
+  <%= select(f, :type, ["Select a backend type...", Webhook: :webhook, Postgres: :postgres, BigQuery: :bigquery],
+    phx_change: :change_create_form_type,
+    class: "form-control form-control-margin",
+    id: "type"
+  ) %>
+
+  <div class="form-group mt-2">
+    <%= hidden_input(f, :user_id, value: @user.id) %>
+    <%= label(f, :name) %>
+    <%= text_input(f, :name, class: "form-control") %>
+    <%= label(f, :description) %>
+    <%= text_input(f, :description, class: "form-control") %>
+  </div>
+
+  <.inputs_for :let={f_config} field={f[:config]}>
+    <div class="form-group mt-2">
+      <%= case @create_form_type do %>
+        <% "webhook" -> %>
+          <div class="form-group">
+            <%= label f_config, :url do %>
+              Websocket URL to send the ingested data
+            <% end %>
+            <%= text_input(f_config, :url, class: "form-control") %>
+          </div>
+        <% "postgres" -> %>
+          <div class="form-group">
+            <%= label f_config, :url do %>
+              Postgres URL for the ingestion database
+            <% end %>
+            <%= text_input(f_config, :url, class: "form-control") %>
+            <small class="form-text text-muted">
+              Postgres URL with the following format, for example: <code>postgresql://user:password@host:port/database</code>
+            </small>
+          </div>
+          <div class="form-group">
+            <%= label f_config, :username do %>
+              Username
+            <% end %>
+            <%= text_input(f_config, :username, class: "form-control") %>
+          </div>
+          <div class="form-group">
+            <%= label f_config, :password do %>
+              Password
+            <% end %>
+            <%= text_input(f_config, :password, class: "form-control") %>
+          </div>
+          <div class="form-group">
+            <%= label f_config, :hostname do %>
+              Hostname
+            <% end %>
+            <%= text_input(f_config, :hostname, class: "form-control") %>
+          </div>
+          <div class="form-group">
+            <%= label f_config, :port do %>
+              Port
+            <% end %>
+            <%= text_input(f_config, :port, class: "form-control") %>
+          </div>
+          <div class="form-group">
+            <%= label f_config, :database do %>
+              Database
+            <% end %>
+            <%= text_input(f_config, :database, class: "form-control") %>
+          </div>
+          <div class="form-group">
+            <%= label f_config, :pool_size do %>
+              Connection pool size
+            <% end %>
+            <%= text_input(f_config, :pool_size, class: "form-control", default: 1) %>
+          </div>
+          <div class="form-group">
+            <%= label f_config, :schema do %>
+              Schema where data should be store, if blank the database defaults will be used
+            <% end %>
+            <%= text_input(f_config, :schema, class: "form-control") %>
+            <small class="form-text text-muted">
+              Schema name, for example: <code>analytics</code>
+            </small>
+          </div>
+        <% "bigquery" -> %>
+          <div class="form-group">
+            <%= label(f_config, :project_id, "Google Cloud Project ID") %>
+            <%= text_input(f_config, :project_id, class: "form-control") %>
+            <small class="form-text text-muted">
+              The Google Cloud project ID where the data is to be inserted into via BigQuery.
+            </small>
+          </div>
+
+          <div class="form-group">
+            <%= label f_config, :dataset_id do %>
+              Dataset ID
+            <% end %>
+            <%= text_input(f_config, :dataset_id, class: "form-control") %>
+            <small class="form-text text-muted">
+              A BigQuery Dataset ID where data will be stored.
+            </small>
+          </div>
+        <% _ -> %>
+          <div>Select a Backend Type</div>
+      <% end %>
+    </div>
+  </.inputs_for>
+  <button type="button" class="btn btn-secondary" phx-click="toggle-create-form">
+    Cancel
+  </button>
+  <%= submit("Add", class: "btn btn-primary") %>
+</.form>

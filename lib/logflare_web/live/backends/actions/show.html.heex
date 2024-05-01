@@ -1,0 +1,61 @@
+<.subheader>
+  <:path>
+    ~/<.subheader_path_link live_patch to={~p"/backends"}>backends</.subheader_path_link>/<%= @backend.name %>
+  </:path>
+  <.subheader_link live_patch to={~p"/backends/#{@backend.id}/edit"} text="edit" fa_icon="edit" />
+</.subheader>
+<section class="mx-auto container pt-3 tw-flex tw-flex-col tw-gap-4">
+  <h2>
+    <%= @backend.name %>
+  </h2>
+  <div>
+    uuid: <%= @backend.token %>
+  </div>
+
+  <button class="ml-2 btn btn-danger" phx-click="remove_backend" phx-value-id={@backend.id}>
+    Remove
+  </button>
+
+  <p class="text-muted tw-whitespace-pre-wrap tw-text-sm"><%= @backend.description %></p>
+  <div>
+    <ul class="list-group tw-text-sm">
+      <li>type: <%= @backend.type %></li>
+      <%= case @backend.type do %>
+        <% :webhook -> %>
+          <ul>
+            <li>url: <%= @backend.config.url %></li>
+          </ul>
+        <% :postgres -> %>
+          <ul>
+            <li>url: <%= @backend.config[:url] %></li>
+            <li>schema: <%= Map.get(@backend.config, :schema, "") %></li>
+            <li>username: <%= Map.get(@backend.config, :username, "") %></li>
+            <li>hostname: <%= Map.get(@backend.config, :hostname, "") %></li>
+            <li>port: <%= Map.get(@backend.config, :port, "") %></li>
+            <li>database: <%= Map.get(@backend.config, :database, "") %></li>
+            <li>pool_size: <%= Map.get(@backend.config, :pool_size, "") %></li>
+          </ul>
+        <% :bigquery -> %>
+          <ul>
+            <li>Project ID: <%= @backend.config.project_id %></li>
+            <li>Dataset ID: <%= @backend.config.dataset_id %></li>
+          </ul>
+      <% end %>
+    </ul>
+  </div>
+</section>
+
+<section>
+  <h3>Rules</h3>
+  <p :if={Enum.empty?(@backend.rules)}>No rules yet</p>
+
+  <.button phx-click="toggle_rule_form" variant="secondary">
+    Add a rule
+  </.button>
+
+  <ul :for={rule <- @backend.rules} class="tw-flex tw-flex-row tw-gap-4">
+    <li>
+      Events from <code><%= rule.source.name %></code> matching <%= rule.lql_string %> will route to <strong>this backend</strong>
+    </li>
+  </ul>
+</section>

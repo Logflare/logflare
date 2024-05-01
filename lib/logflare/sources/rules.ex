@@ -9,6 +9,31 @@ defmodule Logflare.Rules do
   alias Logflare.Source
   alias Logflare.Sources
   alias Logflare.SourceSchemas
+  alias Logflare.Backends.Backend
+
+  def list_rules(%Source{id: source_id}) do
+    from(r in Rule, where: r.source_id == ^source_id)
+    |> Repo.all()
+  end
+
+  def list_rules(%Backend{id: backend_id}) do
+    from(r in Rule, where: r.backend_id == ^backend_id)
+    |> Repo.all()
+  end
+
+  def create_rule(attrs \\ %{}) do
+    %Rule{}
+    |> Rule.changeset(attrs)
+    |> Repo.insert()
+  end
+
+  def update_rule(%Rule{} = rule, attrs) do
+    rule
+    |> Rule.changeset(attrs)
+    |> Repo.update()
+  end
+
+  def get_rule(id), do: Repo.get(Rule, id)
 
   @spec create_rule(map(), Source.t()) :: {:ok, Rule.t()} | {:error, Ecto.Changeset.t() | binary}
   def create_rule(params, %Source{} = source) when is_map(params) do
@@ -25,6 +50,10 @@ defmodule Logflare.Rules do
       {:error, %Ecto.Changeset{} = changeset} -> {:error, changeset}
       errtup -> errtup
     end
+  end
+
+  def delete_rule(rule) do
+    Repo.delete(rule)
   end
 
   def delete_rule!(rule_id) do

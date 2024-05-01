@@ -29,6 +29,42 @@ defmodule Logflare.Lql.Parser do
     |> times(min: 1, max: 100)
   )
 
+  def parse(querystring) do
+    {:ok, rules, _, _, _, _} =
+      querystring
+      |> String.trim()
+      |> do_parse()
+
+    {chart_rule_tokens, other_rules} =
+      rules
+      |> List.flatten()
+      |> Enum.split_with(fn
+        {:chart, _} -> true
+        _ -> false
+      end)
+
+    chart_rule =
+      if not Enum.empty?(chart_rule_tokens) do
+        chart_rule =
+          chart_rule_tokens
+          |> Enum.reduce(%{}, fn {:chart, fields}, acc -> Map.merge(acc, Map.new(fields)) end)
+
+        struct!(ChartRule, chart_rule)
+      end
+
+    filter_rules =
+      Enum.map(other_rules, fn rule ->
+        maybe_cast_value(rule)
+      end)
+
+    rules =
+      [chart_rule | filter_rules]
+      |> List.flatten()
+      |> Enum.reject(&is_nil/1)
+
+    {:ok, rules}
+  end
+
   def parse("", _schema) do
     {:ok, []}
   end
@@ -119,6 +155,29 @@ defmodule Logflare.Lql.Parser do
       _type ->
         type
     end
+  end
+
+  # cast without typing, best effort
+  defp maybe_cast_value(%{value: "true"} = c), do: %{c | value: true}
+  defp maybe_cast_value(%{value: "false"} = c), do: %{c | value: false}
+
+  defp maybe_cast_value(%{value: v} = c) do
+    int = Integer.parse(v)
+    flt = Float.parse(v)
+
+    parsed =
+      cond do
+        match?({_val, ""}, int) ->
+          elem(int, 0)
+
+        match?({_val, ""}, flt) ->
+          elem(flt, 0)
+
+        true ->
+          v
+      end
+
+    %{c | value: parsed}
   end
 
   defp maybe_cast_value(c, {:list, type}), do: maybe_cast_value(c, type)

@@ -8,6 +8,7 @@ defmodule Logflare.Backends.Backend do
   alias Logflare.Backends.Backend
   alias Logflare.Source
   alias Logflare.User
+  alias Logflare.Rule
 
   @adaptor_types [:bigquery, :webhook, :postgres]
 
@@ -20,6 +21,8 @@ defmodule Logflare.Backends.Backend do
     field(:config, :map)
     many_to_many(:sources, Source, join_through: "sources_backends")
     belongs_to(:user, User)
+    has_many(:rules, Rule)
+    field(:register_for_ingest, :boolean, virtual: true, default: true)
     timestamps()
   end
 

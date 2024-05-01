@@ -16,18 +16,25 @@ defmodule Logflare.Backends.SourceSup do
   alias Logflare.Source.SlackHookServer
   alias Logflare.Source.BillingWriter
   alias Logflare.Logs.SearchQueryExecutor
+  alias Logflare.Rules
 
   def start_link(%Source{} = source) do
     Supervisor.start_link(__MODULE__, source, name: Backends.via_source(source, __MODULE__))
   end
 
   def init(source) do
-    specs =
+    ingest_backends =
       source
-      |> Backends.list_backends()
-      |> Enum.map(&Backend.child_spec(source, &1))
+      |> Backends.Cache.list_backends()
+
+    rules_backends =
+      source
+      |> Backends.list_backends_with_rules()
+      |> Enum.map(&%{&1 | register_for_ingest: false})
+      |> dbg()
 
     user = Users.Cache.get(source.user_id)
+
     plan = Billing.Cache.get_plan_by_user(user)
 
     {project_id, dataset_id} =
@@ -39,14 +46,18 @@ defmodule Logflare.Backends.SourceSup do
         {project_id, dataset_id}
       end
 
-    default_backend =
-      Backend.child_spec(source, %Backend{
-        type: :bigquery,
-        config: %{
-          project_id: project_id,
-          dataset_id: dataset_id
-        }
-      })
+    specs =
+      ([
+         %Backend{
+           type: :bigquery,
+           config: %{
+             project_id: project_id,
+             dataset_id: dataset_id
+           }
+         }
+         | ingest_backends
+       ] ++ rules_backends)
+      |> Enum.map(&Backend.child_spec(source, &1))
 
     children =
       [
@@ -57,8 +68,7 @@ defmodule Logflare.Backends.SourceSup do
         {WebhookNotificationServer, [source: source]},
         {SlackHookServer, [source: source]},
         {SearchQueryExecutor, [source: source]},
-        {BillingWriter, [source: source]},
-        default_backend
+        {BillingWriter, [source: source]}
       ] ++ specs
 
     Supervisor.init(children, strategy: :one_for_one)

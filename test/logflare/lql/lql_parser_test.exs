@@ -7,6 +7,54 @@ defmodule Logflare.LqlParserTest do
   alias Logflare.Source.BigQuery.SchemaBuilder
   @default_schema SchemaBuilder.initial_table_schema()
 
+  describe "parse/1" do
+    test "parse string value" do
+      qs = ~S|a:testing|
+
+      assert {:ok,
+              [
+                %FilterRule{operator: :=, path: "a", value: "testing"}
+              ]} == Parser.parse(qs)
+    end
+
+    test "parse boolean" do
+      qs = ~S|a:true|
+
+      assert {:ok,
+              [
+                %FilterRule{operator: :=, path: "a", value: true}
+              ]} == Parser.parse(qs)
+    end
+
+    test "parse numeric" do
+      qs = ~S|a:1 b:1.1|
+
+      assert {:ok,
+              [
+                %FilterRule{operator: :=, path: "a", value: 1},
+                %FilterRule{operator: :=, path: "b", value: 1.1}
+              ]} == Parser.parse(qs)
+    end
+
+    test "chart period, chart aggregate" do
+      qs = "c:sum(m.metric) c:group_by(t::minute)"
+
+      result = [
+        %ChartRule{
+          path: "metadata.metric",
+          aggregate: :sum,
+          period: :minute,
+          # don't validate the typing downstream
+          value_type: nil
+        }
+      ]
+
+      assert {:ok, result} == Parser.parse(qs)
+
+      assert Lql.encode!(result) == qs
+    end
+  end
+
   describe "LQL parsing" do
     test "other top-level fields" do
       schema = build_schema(%{"a" => "t", "b" => %{"c" => %{"d" => "test"}}})

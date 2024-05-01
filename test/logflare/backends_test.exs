@@ -182,7 +182,7 @@ defmodule Logflare.BackendsTest do
       assert [_] = Backends.list_recent_logs_local(source)
     end
 
-    test "lql", %{user: user} do
+    test "route to source with lql", %{user: user} do
       [source, target] = insert_pair(:source, user: user)
       insert(:rule, lql_string: "testing", sink: target.token, source_id: source.id)
       source = Logflare.Repo.preload(source, :rules, force: true)
@@ -224,6 +224,43 @@ defmodule Logflare.BackendsTest do
       assert Backends.list_recent_logs_local(target) |> length() == 2
       # init message + 0 events
       assert Backends.list_recent_logs_local(other_target) |> length() == 1
+    end
+
+    test "route to backend", %{user: user} do
+      pid = self()
+      ref = make_ref()
+
+      Backends.Adaptor.WebhookAdaptor.Client
+      |> expect(:send, 1, fn opts ->
+        if length(opts[:body]) == 1 do
+          send(pid, ref)
+        else
+          raise "ingesting more than 1 event"
+        end
+
+        {:ok, %Tesla.Env{}}
+      end)
+
+      source = insert(:source, user: user)
+
+      backend =
+        insert(:backend,
+          type: :webhook,
+          config: %{url: "https://some-url.com"},
+          user: user
+        )
+
+      insert(:rule, lql_string: "testing", backend: backend, source_id: source.id)
+      source = source |> Repo.preload(:rules, force: true)
+      start_supervised!({SourceSup, source}, id: :source)
+
+      assert {:ok, 2} =
+               Backends.ingest_logs(
+                 [%{"event_message" => "testing 123"}, %{"event_message" => "not rounted"}],
+                 source
+               )
+
+      assert_receive ^ref, 2_000
     end
   end
 

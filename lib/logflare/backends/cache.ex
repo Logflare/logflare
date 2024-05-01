@@ -15,6 +15,7 @@ defmodule Logflare.Backends.Cache do
     }
   end
 
+  def list_backends(source), do: apply_repo_fun(:list_backends, [source])
   def get_backend_by(kv), do: apply_repo_fun(:get_backend_by, [kv])
   def get_backend(arg), do: apply_repo_fun(:get_backend, [arg])
 

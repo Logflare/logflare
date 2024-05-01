@@ -19,23 +19,36 @@ defmodule Logflare.Logs.SourceRouting do
         %LE{source: %Source{rules: rules, v2_pipeline: v2_pipeline}, via_rule: nil} = le
       ) do
     for %Rule{lql_filters: [_ | _]} = rule <- rules, route_with_lql_rules?(le, rule) do
-      sink_source =
-        Sources.Cache.get_by(token: rule.sink) |> Sources.refresh_source_metrics_for_ingest()
-
-      le = %{le | source: sink_source, via_rule: rule}
-
-      if v2_pipeline do
-        # TODO: ensure source started
-        Backends.ingest_logs([le], sink_source)
-      else
-        le
-        |> LE.apply_custom_event_message()
-        |> tap(&Logs.ingest/1)
-        |> tap(&Logs.broadcast/1)
-      end
+      do_routing(rule, le)
     end
 
     le
+  end
+
+  defp do_routing(%Rule{backend_id: backend_id} = rule, %LE{source: %Source{} = source} = le)
+       when backend_id != nil do
+    # route to a backend
+    backend = Backends.Cache.get_backend(backend_id)
+    le = %{le | via_rule: rule}
+    # ingest to a specific backend
+    Backends.ingest_logs([le], source, backend)
+  end
+
+  defp do_routing(%Rule{sink: sink} = rule, %LE{source: source} = le) when sink != nil do
+    sink_source =
+      Sources.Cache.get_by(token: rule.sink) |> Sources.refresh_source_metrics_for_ingest()
+
+    le = %{le | source: sink_source, via_rule: rule}
+
+    if source.v2_pipeline do
+      # TODO: ensure source started
+      Backends.ingest_logs([le], sink_source)
+    else
+      le
+      |> LE.apply_custom_event_message()
+      |> tap(&Logs.ingest/1)
+      |> tap(&Logs.broadcast/1)
+    end
   end
 
   @spec route_with_lql_rules?(LE.t(), Rule.t()) :: boolean()

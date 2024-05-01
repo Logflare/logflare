@@ -2,6 +2,8 @@ defmodule Logflare.Rule do
   @moduledoc false
   use TypedEctoSchema
   alias Logflare.Source
+  alias Logflare.Backends.Backend
+  alias Logflare.Lql.Parser
   import Ecto.Changeset
 
   typed_schema "rules" do
@@ -9,6 +11,7 @@ defmodule Logflare.Rule do
     field :lql_filters, Ecto.Term, default: []
     field :lql_string, :string
     belongs_to :source, Source
+    belongs_to :backend, Backend
 
     timestamps()
   end
@@ -16,10 +19,20 @@ defmodule Logflare.Rule do
   @doc false
   def changeset(rule, attrs \\ %{}) do
     rule
-    |> cast(attrs, [:sink, :lql_string, :lql_filters])
-    |> validate_required([:sink, :lql_filters, :lql_string])
+    |> cast(attrs, [:sink, :lql_string, :lql_filters, :backend_id, :source_id])
+    |> validate_required([:lql_string])
+    |> maybe_parse_lql()
     |> validate_length(:lql_filters, min: 1)
     |> foreign_key_constraint(:source_id)
+  end
+
+  defp maybe_parse_lql(changeset) do
+    qs = get_field(changeset, :lql_string)
+
+    case Parser.parse(qs) do
+      {:ok, rules} -> put_change(changeset, :lql_filters, rules)
+      _ -> changeset
+    end
   end
 
   def changeset_error_to_string(changeset) do
