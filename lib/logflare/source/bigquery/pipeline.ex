@@ -14,7 +14,7 @@ defmodule Logflare.Source.BigQuery.Pipeline do
   alias Logflare.LogEvent, as: LE
   alias Logflare.Mailer
   alias Logflare.Source
-  alias Logflare.Backends.BufferProducer
+  alias Logflare.Buffers.BufferProducer
   alias Logflare.Source.BigQuery.Schema
   alias Logflare.Source.Supervisor
   alias Logflare.Sources
@@ -40,8 +40,7 @@ defmodule Logflare.Source.BigQuery.Pipeline do
             fullsweep_after: 0
           ],
           producer: [
-            module:
-              {BufferProducer, [source_token: source.token, backend_token: args[:backend_token]]}
+            module: {BufferProducer, []}
           ],
           processors: [
             default: [concurrency: System.schedulers_online() * 2]

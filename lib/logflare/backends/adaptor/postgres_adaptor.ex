@@ -21,7 +21,7 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor do
 
   import Ecto.Changeset
 
-  typedstruct do
+  typedstruct enforce: true do
     field(:config, %{
       url: String.t(),
       schema: String.t(),
@@ -34,8 +34,6 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor do
 
     field(:source, Source.t())
     field(:backend, Backend.t())
-    field(:backend_token, String.t())
-    field(:source_token, atom())
     field(:pipeline_name, tuple())
   end
 
@@ -183,8 +181,6 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor do
       state = %__MODULE__{
         config: backend.config,
         backend: backend,
-        backend_token: if(backend, do: backend.token, else: nil),
-        source_token: source.token,
         source: source,
         pipeline_name: Backends.via_source(source, Pipeline, backend.id)
       }

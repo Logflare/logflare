@@ -5,7 +5,7 @@ defmodule Logflare.Logs do
   alias Logflare.LogEvent, as: LE
   alias Logflare.Logs.{RejectedLogEvents}
   alias Logflare.{SystemMetrics, Source, Sources}
-  alias Logflare.Source.RecentLogsServer
+  alias Logflare.Source.{BigQuery.BufferCounter, RecentLogsServer}
   alias Logflare.Logs.SourceRouting
   alias Logflare.Logs.IngestTypecasting
   alias Logflare.Logs.IngestTransformers
@@ -36,7 +36,10 @@ defmodule Logflare.Logs do
 
   @spec ingest(Logflare.LogEvent.t()) :: Logflare.LogEvent.t() | {:error, term}
   def ingest(%LE{source: %Source{} = source} = le) do
+    buffer_counter_via = Backends.via_source(source, {BufferCounter, nil})
+
     with :ok <- Source.Supervisor.ensure_started(source),
+         {:ok, _} <- BufferCounter.inc(buffer_counter_via, 1),
          :ok <- RecentLogsServer.push(source, le),
          # tests fail when we match on these for some reason
          _ok <- Sources.Counters.increment(source.token),
@@ -44,7 +47,7 @@ defmodule Logflare.Logs do
       # push into the pipeline
       message = %Broadway.Message{
         data: le,
-        acknowledger: {BigQueryAdaptor, nil, nil}
+        acknowledger: {BigQueryAdaptor, buffer_counter_via, nil}
       }
 
       Backends.via_source(source, Pipeline, nil)

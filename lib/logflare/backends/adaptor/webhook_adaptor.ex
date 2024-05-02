@@ -10,7 +10,7 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
 
   @behaviour Logflare.Backends.Adaptor
 
-  typedstruct do
+  typedstruct enforce: true do
     field(:config, %{
       url: String.t(),
       headers: map()
@@ -18,8 +18,6 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
 
     field(:backend, Backend.t())
     field(:pipeline_name, tuple())
-    field(:backend_token, String.t())
-    field(:source_token, atom())
   end
 
   # API
@@ -66,8 +64,6 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
     state = %__MODULE__{
       config: backend.config,
       backend: backend,
-      backend_token: if(backend, do: backend.token, else: nil),
-      source_token: source.token,
       pipeline_name: Backends.via_source(source, __MODULE__.Pipeline, backend.id)
     }
 
@@ -96,7 +92,7 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
     @moduledoc false
     use Broadway
     alias Broadway.Message
-    alias Logflare.Backends.BufferProducer
+    alias Logflare.Buffers.BufferProducer
     alias Logflare.Backends.Adaptor.WebhookAdaptor
     alias Logflare.Backends.Adaptor.WebhookAdaptor.Client
 
@@ -109,12 +105,7 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
           fullsweep_after: 100
         ],
         producer: [
-          module:
-            {BufferProducer,
-             [
-               source_token: adaptor_state.source_token,
-               backend_token: adaptor_state.backend_token
-             ]},
+          module: {BufferProducer, []},
           transformer: {__MODULE__, :transform, []},
           concurrency: 1
         ],

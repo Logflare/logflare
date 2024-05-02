@@ -7,6 +7,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
   alias Logflare.Source.BigQuery.Pipeline
   alias Logflare.Source.BigQuery.Schema
   alias Logflare.Source.BigQuery.Pipeline
+  alias Logflare.Source.BigQuery.BufferCounter
   alias Logflare.Users
   alias Logflare.Billing
   use Supervisor
@@ -34,11 +35,17 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
 
     with :ok <- Backends.register_backend_for_ingest_dispatch(source, backend) do
       children = [
+        {BufferCounter,
+         [
+           source_id: source.id,
+           source_token: source.token,
+           backend_token: backend.token,
+           name: Backends.via_source(source, BufferCounter, backend.id)
+         ]},
         {Pipeline,
          [
            source: source,
            backend_id: backend.id,
-           backend_token: backend.token,
            bigquery_project_id: project_id,
            bigquery_dataset_id: dataset_id,
            name: Backends.via_source(source, Pipeline, backend.id)
@@ -63,20 +70,25 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
     backend_id = Keyword.get(opts, :backend_id)
     source = Sources.Cache.get_by_id(source_id)
 
+    buffer_counter_via = Backends.via_source(source, {BufferCounter, backend_id})
+
     messages =
       for le <- log_events,
           do: %Broadway.Message{
             data: le,
-            acknowledger: {__MODULE__, nil, nil}
+            acknowledger: {__MODULE__, buffer_counter_via, nil}
           }
 
-    Backends.via_source(source, {Pipeline, backend_id})
-    |> Broadway.push_messages(messages)
+    with {:ok, _count} <- BufferCounter.inc(buffer_counter_via, Enum.count(messages)) do
+      Backends.via_source(source, {Pipeline, backend_id})
+      |> Broadway.push_messages(messages)
+    end
 
     :ok
   end
 
-  def ack(_via, _successful, _failed) do
+  def ack(via, successful, failed) do
+    BufferCounter.decr(via, Enum.count(successful) + Enum.count(failed))
     :ok
   end
 
