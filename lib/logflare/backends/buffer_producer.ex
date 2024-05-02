@@ -23,8 +23,7 @@ defmodule Logflare.Backends.BufferProducer do
         # TODO: broadcast by id instead.
         source_token: nil,
         backend_token: nil,
-        broadcast_interval: @default_broadcast_interval,
-        last_broadcast: DateTime.utc_now()
+        broadcast_interval: @default_broadcast_interval
       })
 
     loop(state.broadcast_interval)
@@ -58,7 +57,6 @@ defmodule Logflare.Backends.BufferProducer do
       len = GenStage.estimate_buffered_count(pid)
       local_buffer = %{Node.self() => %{len: len}}
 
-      last_broadcast = state.last_broadcast
       shard = :erlang.phash2(state.source_token, pool_size)
 
       cluster_buffer = PubSubRates.Cache.get_cluster_buffers(state.source_token)
@@ -70,29 +68,22 @@ defmodule Logflare.Backends.BufferProducer do
         backend_token: state.backend_token
       }
 
-      if len != 0 or
-           DateTime.diff(DateTime.utc_now(), last_broadcast, :millisecond) >
-             state.broadcast_interval * 2 do
-        # cluster broadcast
-        cluster_broadcast_payload =
-          if state.backend_token do
-            {:buffers, state.source_token, state.backend_token, local_buffer}
-          else
-            {:buffers, state.source_token, local_buffer}
-          end
+      # cluster broadcast
+      cluster_broadcast_payload =
+        if state.backend_token do
+          {:buffers, state.source_token, state.backend_token, local_buffer}
+        else
+          {:buffers, state.source_token, local_buffer}
+        end
 
-        Phoenix.PubSub.broadcast(
-          Logflare.PubSub,
-          "buffers:shard-#{shard}",
-          cluster_broadcast_payload
-        )
+      Phoenix.PubSub.broadcast(
+        Logflare.PubSub,
+        "buffers:shard-#{shard}",
+        cluster_broadcast_payload
+      )
 
-        # channel broadcast
-        Source.ChannelTopics.broadcast_buffer(payload)
-
-        state = %{state | last_broadcast: DateTime.utc_now()}
-        send(pid, {:update_state, state})
-      end
+      # channel broadcast
+      Source.ChannelTopics.broadcast_buffer(payload)
     end)
   end
 

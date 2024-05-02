@@ -17,24 +17,6 @@ defmodule Logflare.Backends.BufferProducerTest do
     assert PubSubRates.Cache.get_cluster_buffers(:"some-token") == 1
   end
 
-  test "BufferProducer does not broadcast if prolonged zero" do
-    PubSubRates.subscribe(:buffers)
-
-    pid =
-      start_supervised!({BufferProducer, broadcast_interval: 100, source_token: :"some-token"})
-
-    :timer.sleep(1_000)
-    {:messages, messages} = :erlang.process_info(self(), :messages)
-    len = length(messages)
-    assert len < 5
-    send(pid, {:add_to_buffer, [:something]})
-    :timer.sleep(300)
-    {:messages, messages} = :erlang.process_info(self(), :messages)
-    new_len = length(messages)
-    assert new_len != len
-    assert PubSubRates.Cache.get_cluster_buffers(:"some-token") == 1
-  end
-
   test "BufferProducer broadcasts every n seconds with backend differentiation" do
     PubSubRates.subscribe(:buffers)
 
