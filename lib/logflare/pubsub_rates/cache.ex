@@ -36,34 +36,39 @@ defmodule Logflare.PubSubRates.Cache do
         do: Map.merge(val, inserts),
         else: inserts
 
-    Cachex.put(__MODULE__, {source_id, "inserts"}, inserts)
+    Cachex.put(__MODULE__, {source_id, "inserts"}, inserts, ttl: :timer.seconds(5))
   end
 
-  def cache_buffers(source_id, buffers) when is_atom(source_id) do
-    {:ok, val} = Cachex.get(__MODULE__, {source_id, "buffers"})
+  @doc """
+  Stores a node map of buffer counts on the local cache
+  """
+  @typep node_buffers :: %{atom() => non_neg_integer()}
+  @spec cache_buffers(atom(), String.t(), node_buffers()) :: {:ok, true}
+  def cache_buffers(source_token, backend_token, buffers) when is_atom(source_token) do
+    resolved =
+      case get_buffer(source_token, backend_token) do
+        {:ok, val} when val != nil -> Map.merge(val, buffers)
+        _ -> buffers
+      end
 
-    buffers =
-      if val,
-        do: Map.merge(val, buffers),
-        else: buffers
-
-    Cachex.put(__MODULE__, {source_id, "buffers"}, buffers)
+    Cachex.put(__MODULE__, {source_token, backend_token, "buffers"}, resolved,
+      ttl: :timer.seconds(5)
+    )
   end
 
-  def get_buffers(source_id) when is_atom(source_id) do
-    Cachex.get(__MODULE__, {source_id, "buffers"})
+  defp get_buffer(source_token, backend_token) do
+    Cachex.get(__MODULE__, {source_token, backend_token, "buffers"})
   end
 
-  def get_cluster_buffers(source_id) when is_atom(source_id) do
-    case get_buffers(source_id) do
-      {:ok, nil} ->
-        0
-
-      {:ok, node_buffers} ->
-        merge_buffers(node_buffers)
-
-      {:error, _} ->
-        0
+  @doc """
+  Returns the sum of all buffers across the cluster for a given source and backend combination.
+  """
+  @spec get_cluster_buffers(atom(), String.t()) :: non_neg_integer()
+  @spec get_cluster_buffers(atom()) :: non_neg_integer()
+  def get_cluster_buffers(source_token, backend_token \\ nil) when is_atom(source_token) do
+    case get_buffer(source_token, backend_token) do
+      {:ok, node_buffers} when node_buffers != nil -> merge_buffers(node_buffers)
+      _ -> 0
     end
   end
 

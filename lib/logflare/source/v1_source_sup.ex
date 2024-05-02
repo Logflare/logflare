@@ -6,8 +6,6 @@ defmodule Logflare.Source.V1SourceSup do
 
   alias Logflare.Source.BigQuery.Schema
   alias Logflare.Source.BigQuery.Pipeline
-  alias Logflare.Source.BigQuery.BufferCounter
-
   alias Logflare.Source.RecentLogsServer
   alias Logflare.Source.EmailNotificationServer
   alias Logflare.Source.TextNotificationServer
@@ -45,17 +43,12 @@ defmodule Logflare.Source.V1SourceSup do
 
     children = [
       {RCS, [source: source]},
-      {BufferCounter,
-       [
-         source_id: source.id,
-         source_token: source.token,
-         name: Backends.via_source(source, BufferCounter, nil)
-       ]},
       {Pipeline,
        [
          bigquery_project_id: user.bigquery_project_id,
          bigquery_dataset_id: user.bigquery_dataset_id,
          source: source,
+         source_token: source.token,
          name: Backends.via_source(source, Pipeline, nil)
        ]},
       {RecentLogsServer, [source: source]},

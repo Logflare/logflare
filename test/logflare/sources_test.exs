@@ -8,7 +8,6 @@ defmodule Logflare.SourcesTest do
   alias Logflare.Source.RecentLogsServer
   alias Logflare.Sources
   alias Logflare.SourceSchemas
-  alias Logflare.Source.BigQuery.BufferCounter
   alias Logflare.Source.V1SourceSup
   alias Logflare.Backends
   alias Logflare.Users
@@ -223,8 +222,7 @@ defmodule Logflare.SourcesTest do
         assert :ok = Source.Supervisor.ensure_started(source)
         :timer.sleep(1000)
         assert {:ok, _pid} = Backends.lookup(mod, source.token)
-        name = Backends.via_source(source, BufferCounter, nil)
-        assert BufferCounter.len(name) == 0
+        assert Backends.buffer_len(source) == 0
       end
 
       test "able to reset supervision tree", %{user: user, mod: mod, flag: flag} do
@@ -239,8 +237,7 @@ defmodule Logflare.SourcesTest do
         :timer.sleep(3000)
         assert {:ok, new_pid} = Backends.lookup(RecentLogsServer, source.token)
         assert pid != new_pid
-        name = Backends.via_source(source, BufferCounter, nil)
-        assert BufferCounter.len(name) == 0
+        assert Backends.buffer_len(source) == 0
       end
 
       test "concurrent start attempts", %{user: user, mod: mod, flag: flag} do
@@ -254,8 +251,7 @@ defmodule Logflare.SourcesTest do
         assert :ok = Source.Supervisor.ensure_started(source)
         :timer.sleep(3000)
         assert {:ok, _pid} = Backends.lookup(mod, source.token)
-        name = Backends.via_source(source, BufferCounter, nil)
-        assert BufferCounter.len(name) == 0
+        assert Backends.buffer_len(source) == 0
       end
 
       test "terminating Source.Supervisor does not bring everything down", %{
