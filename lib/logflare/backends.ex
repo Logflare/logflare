@@ -19,6 +19,7 @@ defmodule Logflare.Backends do
   alias Logflare.Logs
   alias Logflare.Logs.SourceRouting
   alias Logflare.SystemMetrics
+  alias Logflare.PubSubRates
   import Ecto.Query
 
   @adaptor_mapping %{
@@ -376,6 +377,17 @@ defmodule Logflare.Backends do
     with :ok <- stop_source_sup(source),
          :ok <- start_source_sup(source) do
       :ok
+    end
+  end
+
+  @doc """
+  Retrieves cluster-wide buffer size stored in cache for a given backend/source combination.
+  """
+  def buffer_len(%Source{} = source, backend \\ nil) do
+    if backend do
+      PubSubRates.Cache.get_cluster_buffers(source.token, backend.token)
+    else
+      PubSubRates.Cache.get_cluster_buffers(source.token)
     end
   end
 
