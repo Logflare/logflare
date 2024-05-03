@@ -17,10 +17,17 @@ defmodule LogflareWeb.Source.SearchLV do
   alias LogflareWeb.Router.Helpers, as: Routes
   alias LogflareWeb.SearchView
 
+  import LogflareWeb.Helpers.BqSchema
+  import LogflareWeb.ModalLiveHelpers
+  import Logflare.Lql.Utils
+  alias Logflare.DateTimeUtils
+  alias LogflareWeb.Search
+
   import Logflare.Logs.Search.Utils
   import LogflareWeb.SearchLV.Utils
 
   require Logger
+  embed_templates "templates/*"
 
   @tail_search_interval 500
   @user_idle_interval :timer.minutes(5)
@@ -46,7 +53,7 @@ defmodule LogflareWeb.Source.SearchLV do
       user: user,
       team_user: team_user,
       search_tip: gen_search_tip(),
-      user_local_timezone: nil,
+      user_local_timezone: Map.get(params, "tz", "Etc/UTCs"),
       user_timezone_from_connect_params: nil,
       use_local_time: true,
       # loading states
@@ -65,6 +72,8 @@ defmodule LogflareWeb.Source.SearchLV do
       user_idle_interval: @user_idle_interval,
       show_modal: nil,
       last_query_completed_at: nil,
+      uri_params: nil,
+      uri: nil,
       lql_rules: [],
       querystring: Map.get(params, "querystring", @default_qs),
       force_query: Map.get(params, "force", "false") == "true",
@@ -76,6 +85,7 @@ defmodule LogflareWeb.Source.SearchLV do
         user_tz = Map.get(get_connect_params(socket), "user_timezone")
         socket = assign(socket, :user_timezone_from_connect_params, user_tz)
         assign_new_user_timezone(socket, team_user, user)
+        |> dbg()
       else
         socket
       end
@@ -103,10 +113,7 @@ defmodule LogflareWeb.Source.SearchLV do
         do: assign(socket, :team_user, TeamUsers.get_team_user_and_preload(team_user.id)),
         else: socket
 
-    socket =
-      if connected?(socket),
-        do: assign_new_user_timezone(socket, socket.assigns[:team_user], socket.assigns.user),
-        else: socket
+    socket = assign_new_user_timezone(socket, socket.assigns[:team_user], socket.assigns.user)
 
     socket =
       with {:ok, lql_rules} <- Lql.decode(qs, source.bq_table_schema),
@@ -131,6 +138,7 @@ defmodule LogflareWeb.Source.SearchLV do
           |> assign(:lql_rules, lql_rules)
           |> assign(:querystring, qs)
           |> assign(:search_op_log_events, search_op_log_events)
+          |> assign(chart_aggregate_enabled?: search_agg_controls_enabled?(lql_rules))
 
         kickoff_queries(source.token, socket.assigns)
 
@@ -163,10 +171,7 @@ defmodule LogflareWeb.Source.SearchLV do
   end
 
   def render(assigns) do
-    SearchView.render("logs_search.html", %{
-      assigns
-      | chart_aggregate_enabled?: search_agg_controls_enabled?(assigns.lql_rules)
-    })
+    logs_search(assigns)
   end
 
   def handle_event(
@@ -626,14 +631,25 @@ defmodule LogflareWeb.Source.SearchLV do
           "Your timezone was set to #{tz_connect}. You can change it using the 'timezone' link in the top menu."
         )
     end
+    |> then(fn socket ->
+      dbg(socket.assigns.uri_params)
+      dbg(socket.assigns.user_local_timezone)
+      socket
+    end)
+    |> then(fn
+        %{assigns: %{uri_params: %{"tz" => tz}, user_local_timezone: local_tz}} = socket when tz != local_tz ->
+      dbg(socket.assigns.user_local_timezone)
+          push_patch_with_params(socket, %{"tz"=> local_tz})
+    %{assigns: %{uri_params: params, user_local_timezone: local_tz}} = socket when not is_map_key(params, "tz") ->
+    push_patch_with_params(socket, %{"tz"=> local_tz})
+    _ -> socket
+    end)
   end
 
-  defp push_patch_with_params(socket, %{querystring: querystring, tailing?: tailing?}) do
+  defp push_patch_with_params(socket, new_params) do
+    params = Map.merge(socket.assigns.uri_params || %{}, new_params)
     path =
-      Routes.live_path(socket, __MODULE__, socket.assigns.source.id, %{
-        querystring: querystring,
-        tailing?: tailing?
-      })
+      Routes.live_path(socket, __MODULE__, socket.assigns.source.id, params)
 
     push_patch(socket, to: path, replace: false)
   end
