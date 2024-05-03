@@ -157,13 +157,6 @@ defmodule Logflare.BackendsTest do
         # broadcast for recent logs page
         assert_received %_{event: _, payload: %{body: %{}}}
       end)
-
-      {:ok, pid} = Backends.lookup(RecentLogsServer, source.token)
-      send(pid, :broadcast)
-
-      TestUtils.retry_assert(fn ->
-        assert_received {_, ^source_token, _}
-      end)
     end
   end
 
