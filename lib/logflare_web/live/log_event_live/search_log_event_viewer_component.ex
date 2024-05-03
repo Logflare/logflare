@@ -97,7 +97,7 @@ defmodule LogflareWeb.Search.LogEventViewerComponent do
   end
 
   @impl true
-  def render(assigns) do
+  def render(_assigns) do
     SharedView.render("loader.html")
   end
 
