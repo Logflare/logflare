@@ -85,7 +85,6 @@ defmodule LogflareWeb.Source.SearchLV do
         user_tz = Map.get(get_connect_params(socket), "user_timezone")
         socket = assign(socket, :user_timezone_from_connect_params, user_tz)
         assign_new_user_timezone(socket, team_user, user)
-        |> dbg()
       else
         socket
       end
@@ -600,7 +599,13 @@ defmodule LogflareWeb.Source.SearchLV do
         "Etc/UTC"
       end
 
+    tz_param = Map.get(socket.assigns.uri_params || %{}, "tz")
+
     cond do
+      tz_param != nil ->
+        socket
+        |> assign(:user_local_timezone, tz_param)
+
       team_user && team_user.preferences ->
         assign(socket, :user_local_timezone, team_user.preferences.timezone)
 
@@ -631,23 +636,23 @@ defmodule LogflareWeb.Source.SearchLV do
           "Your timezone was set to #{tz_connect}. You can change it using the 'timezone' link in the top menu."
         )
     end
-    |> then(fn socket ->
-      dbg(socket.assigns.uri_params)
-      dbg(socket.assigns.user_local_timezone)
-      socket
-    end)
     |> then(fn
-        %{assigns: %{uri_params: %{"tz" => tz}, user_local_timezone: local_tz}} = socket when tz != local_tz ->
-      dbg(socket.assigns.user_local_timezone)
-          push_patch_with_params(socket, %{"tz"=> local_tz})
-    %{assigns: %{uri_params: params, user_local_timezone: local_tz}} = socket when not is_map_key(params, "tz") ->
-    push_patch_with_params(socket, %{"tz"=> local_tz})
-    _ -> socket
+      %{assigns: %{uri_params: %{"tz" => tz}, user_local_timezone: local_tz}} = socket
+      when tz != local_tz ->
+        push_patch_with_params(socket, %{"tz" => local_tz})
+
+      %{assigns: %{uri_params: params, user_local_timezone: local_tz}} = socket
+      when not is_map_key(params, "tz") ->
+        push_patch_with_params(socket, %{"tz" => local_tz})
+
+      _ ->
+        socket
     end)
   end
 
   defp push_patch_with_params(socket, new_params) do
     params = Map.merge(socket.assigns.uri_params || %{}, new_params)
+
     path =
       Routes.live_path(socket, __MODULE__, socket.assigns.source.id, params)
 

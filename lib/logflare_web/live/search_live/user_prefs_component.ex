@@ -72,8 +72,9 @@ defmodule LogflareWeb.Search.UserPreferencesComponent do
         %{"user_preferences" => user_preferences},
         socket
       ) do
-        dbg(user_preferences)
+    dbg(user_preferences)
     tz = Map.get(user_preferences, "timezone")
+
     socket =
       socket.assigns.user_or_team_user
       |> Users.update_user_with_preferences(%{"preferences" => user_preferences})
@@ -88,7 +89,7 @@ defmodule LogflareWeb.Search.UserPreferencesComponent do
           socket
           |> put_flash(:error, "Something went wrong")
       end
-      |> push_patch(to: socket.assigns.return_to <> "&tz=#{tz}")
+      |> push_navigate(to: socket.assigns.return_to <> "&tz=#{tz}")
 
     {:noreply, socket}
   end
