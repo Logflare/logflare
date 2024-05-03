@@ -72,7 +72,6 @@ defmodule LogflareWeb.Search.UserPreferencesComponent do
         %{"user_preferences" => user_preferences},
         socket
       ) do
-    dbg(user_preferences)
     tz = Map.get(user_preferences, "timezone")
 
     socket =
