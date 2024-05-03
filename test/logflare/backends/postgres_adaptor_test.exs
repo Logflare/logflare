@@ -140,7 +140,7 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptorTest do
         username: "some-invalid",
         password: "!@#$",
         hostname: "localhost",
-        port: 5555
+        port: 5432
       }
 
       backend = insert(:backend, type: :postgres, sources: [source], config: config)

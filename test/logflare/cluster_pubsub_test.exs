@@ -10,15 +10,31 @@ defmodule Logflare.ClusterPubSubTest do
       [source: insert(:source, user: insert(:user))]
     end
 
-    test "subscribe/1", %{source: %{token: source_token}} do
-      PubSubRates.subscribe(:all)
+    test "subscribe/1 inserts", %{source: %{token: source_token}} do
+      PubSubRates.subscribe(:inserts)
       PubSubRates.global_broadcast_rate({:inserts, source_token, %{data: "some val"}})
+
+      TestUtils.retry_assert(fn ->
+        assert_received {:inserts, ^source_token, %{data: "some val"}}
+      end)
+    end
+
+    test "subscribe/1 rates", %{source: %{token: source_token}} do
+      PubSubRates.subscribe(:rates)
       PubSubRates.global_broadcast_rate({:rates, source_token, %{data: "some val"}})
+
+      TestUtils.retry_assert(fn ->
+        assert_received {:rates, ^source_token, %{data: "some val"}}
+      end)
+    end
+
+    test "subscribe/1 buffers", %{source: %{token: source_token}} do
+      PubSubRates.subscribe(:buffers)
       PubSubRates.global_broadcast_rate({:buffers, source_token, %{data: "some val"}})
-      :timer.sleep(500)
-      assert_receive {:inserts, ^source_token, %{data: "some val"}}
-      assert_receive {:rates, ^source_token, %{data: "some val"}}
-      assert_receive {:buffers, ^source_token, %{data: "some val"}}
+
+      TestUtils.retry_assert(fn ->
+        assert_received {:buffers, ^source_token, %{data: "some val"}}
+      end)
     end
   end
 

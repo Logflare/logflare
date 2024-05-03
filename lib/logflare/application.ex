@@ -52,14 +52,13 @@ defmodule Logflare.Application do
         SourceSchemas.Cache,
         Auth.Cache,
         Logs.LogEvents.Cache,
-        Logs.RejectedLogEvents,
         {Phoenix.PubSub, name: Logflare.PubSub},
         PubSubRates,
+        Logs.RejectedLogEvents,
         Logflare.Repo,
+        Logflare.Backends,
         {Registry,
          name: Logflare.V1SourceRegistry, keys: :unique, partitions: System.schedulers_online()},
-        {Registry,
-         name: Logflare.CounterRegistry, keys: :unique, partitions: System.schedulers_online()},
         {Task.Supervisor, name: Logflare.TaskSupervisor},
         {DynamicSupervisor, strategy: :one_for_one, name: Logflare.Endpoints.Cache},
         {DynamicSupervisor,
@@ -68,9 +67,6 @@ defmodule Logflare.Application do
          max_restarts: 10,
          max_seconds: 60,
          name: Logflare.Source.V1SourceDynSup},
-
-        # v2 ingestion pipelines
-        Logflare.Backends,
         LogflareWeb.Endpoint
       ]
   end
@@ -133,8 +129,6 @@ defmodule Logflare.Application do
         # v1 ingest pipline
         {Registry,
          name: Logflare.V1SourceRegistry, keys: :unique, partitions: System.schedulers_online()},
-        {Registry,
-         name: Logflare.CounterRegistry, keys: :unique, partitions: System.schedulers_online()},
         Logs.RejectedLogEvents,
         # init Counters before Supervisof as Supervisor calls Counters through table create
         Counters,
