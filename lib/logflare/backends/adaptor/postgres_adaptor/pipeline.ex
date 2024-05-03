@@ -8,14 +8,16 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor.Pipeline do
 
   alias Broadway.Message
   alias Logflare.Backends.Adaptor.PostgresAdaptor
-  alias Logflare.Buffers.BufferProducer
+  alias Logflare.Backends.BufferProducer
 
   @spec start_link(PostgresAdaptor.t()) :: {:ok, pid()}
   def start_link(adaptor_state) do
     Broadway.start_link(__MODULE__,
       name: adaptor_state.pipeline_name,
       producer: [
-        module: {BufferProducer, []},
+        module:
+          {BufferProducer,
+           [source_token: adaptor_state.source_token, backend_token: adaptor_state.backend_token]},
         transformer: {__MODULE__, :transform, []},
         concurrency: 1
       ],

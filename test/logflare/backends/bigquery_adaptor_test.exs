@@ -5,7 +5,6 @@ defmodule Logflare.Backends.BigQueryAdaptorTest do
   alias Logflare.Backends.Adaptor
   alias Logflare.Backends.SourceSup
   alias Logflare.SystemMetrics.AllLogsLogged
-  alias Logflare.Source.BigQuery.BufferCounter
   @subject Logflare.Backends.Adaptor.BigQueryAdaptor
 
   doctest @subject
@@ -151,10 +150,9 @@ defmodule Logflare.Backends.BigQueryAdaptorTest do
       assert :ok =
                @subject.ingest(adaptor, [log_event], source_id: source.id, backend_id: backend.id)
 
-      name = Backends.via_source(source, BufferCounter, backend.id)
       # should get acked
       :timer.sleep(2000)
-      assert BufferCounter.len(name) == 0
+      assert Backends.buffer_len(source, backend) == 0
       assert_receive ^ref
     end
   end

@@ -17,7 +17,12 @@ defmodule Logflare.PubSubRates.Buffers do
   end
 
   def handle_info({:buffers, source_token, buffers}, state) do
-    Cache.cache_buffers(source_token, buffers)
+    Cache.cache_buffers(source_token, nil, buffers)
+    {:noreply, state}
+  end
+
+  def handle_info({:buffers, source_token, backend_token, buffers}, state) do
+    Cache.cache_buffers(source_token, backend_token, buffers)
     {:noreply, state}
   end
 end
