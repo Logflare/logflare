@@ -1,12 +1,21 @@
 defmodule Logflare.ClusterPubSubTest do
   @moduledoc false
-  use Logflare.DataCase
+  use Logflare.DataCase, async: false
 
   alias Logflare.Source.ChannelTopics
   alias Logflare.PubSubRates
 
+  defp flush_mailbox do
+    receive do
+      _ -> flush_mailbox()
+    after
+      0 -> :ok
+    end
+  end
+
   describe "PubSubRates" do
     setup do
+      on_exit(&flush_mailbox/0)
       [source: insert(:source, user: insert(:user))]
     end
 
