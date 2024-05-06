@@ -53,9 +53,23 @@
     Add a rule
   </.button>
 
+  <.form :let={f} :if={@show_rule_form?} id="rule" for={%{}} as={:rule} action="#" phx-submit="save_rule">
+    <%= hidden_input(f, :backend_id, value: @backend.id) %>
+    <%= label(f, :source_id, "Source") %>
+    <%= select(f, :source_id, do: options_for_select(Enum.map(@sources, fn s -> {s.name, s.id} end), nil)) %>
+    <%= label(f, :lql_string, "LQL") %>
+    <%= text_input(f, :lql_string) %>
+    <%= submit("Save", class: "btn btn-primary") %>
+  </.form>
+
   <ul :for={rule <- @backend.rules} class="tw-flex tw-flex-row tw-gap-4">
     <li>
-      Events from <code><%= rule.source.name %></code> matching <%= rule.lql_string %> will route to <strong>this backend</strong>
+      Events from <code><%= rule.source.name %></code>
+      matching <%= rule.lql_string %> will route to <strong>this backend</strong>
+
+      <.button phx-click="delete_rule" phx-value-rule_id={rule.id} variant="danger">
+        Delete rule
+      </.button>
     </li>
   </ul>
 </section>

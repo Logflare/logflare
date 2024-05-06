@@ -4,6 +4,8 @@ defmodule LogflareWeb.BackendsLive do
   require Logger
   alias Logflare.Backends
   alias Logflare.Users
+  alias Logflare.Rules
+  alias Logflare.Sources
 
   embed_templates("actions/*", suffix: "_action")
   embed_templates("components/*")
@@ -27,6 +29,8 @@ defmodule LogflareWeb.BackendsLive do
       |> assign(:user, user)
       |> assign(:backends, [])
       |> assign(:backend, nil)
+      |> assign(:sources, Sources.list_sources_by_user(user.id))
+      |> assign(:show_rule_form?, false)
       |> refresh_backends()
       |> refresh_backend(params["id"])
       |> assign(:create_form_type, nil)
@@ -34,7 +38,7 @@ defmodule LogflareWeb.BackendsLive do
     {:ok, socket, layout: {LogflareWeb.LayoutView, :inline_live}}
   end
 
-  def handle_params(params, uri, socket) do
+  def handle_params(params, _uri, socket) do
     socket =
       socket
       |> refresh_backends()
@@ -43,17 +47,12 @@ defmodule LogflareWeb.BackendsLive do
     {:noreply, socket}
   end
 
-  def handle_event("toggle-create-form", _, socket) do
-    %{assigns: %{toggle_rule_form: toggle_rule_form}} = socket
-    {:noreply, assign(socket, toggle_rule_form: !toggle_rule_form)}
-  end
-
   def handle_event("save_backend", %{"backend" => params}, socket) do
     socket =
       case Logflare.Backends.create_backend(params) do
         {:ok, backend} ->
           socket
-          |> assign(:toggle_rule_form, false)
+          |> assign(:show_rule_form?, false)
           |> assign(:backends, [backend | socket.assigns.backends])
           |> put_flash(:info, "Successfully created backend")
           |> push_patch(to: ~p"/backends/#{backend.id}")
@@ -70,11 +69,47 @@ defmodule LogflareWeb.BackendsLive do
     {:noreply, socket}
   end
 
+  def handle_event("save_rule", %{"rule" => params}, socket) do
+    socket =
+      case Rules.create_rule(params) do
+        {:ok, _rule} ->
+          socket
+          |> refresh_backend(socket.assigns.backend.id)
+          |> assign(:show_rule_form?, false)
+          |> put_flash(:info, "Successfully created rule for #{socket.assigns.backend.name}")
+
+        {:error, changeset} ->
+          # TODO: move this to a helper function
+          message = changeset_to_flash_message(changeset)
+
+          put_flash(socket, :error, "Encountered error when adding rule:\n#{message}")
+      end
+
+    socket = refresh_backends(socket)
+
+    {:noreply, socket}
+  end
+
   def handle_event("change_create_form_type", %{"backend" => %{"type" => type}}, socket) do
     {:noreply, assign(socket, create_form_type: type)}
   end
 
-  def handle_event("delete", %{"backend_id" => id}, %{assigns: assigns} = socket) do
+  def handle_event("toggle_rule_form", _params, socket) do
+    {:noreply, socket |> assign(:show_rule_form?, !socket.assigns.show_rule_form?)}
+  end
+
+  def handle_event("delete_rule", %{"rule_id" => rule_id}, socket) do
+    rule = Rules.get_rule(rule_id)
+    Rules.delete_rule(rule)
+
+    {:noreply,
+     socket
+     |> assign(:show_rule_form?, false)
+     |> refresh_backend(socket.assigns.backend.id)
+     |> put_flash(:info, "Rule has been deleted successfully")}
+  end
+
+  def handle_event("delete", %{"backend_id" => id}, socket) do
     Logger.debug("Removing backend id: #{id}")
     backend = Backends.get_backend(id)
 

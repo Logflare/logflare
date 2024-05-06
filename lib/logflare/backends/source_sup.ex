@@ -16,7 +16,6 @@ defmodule Logflare.Backends.SourceSup do
   alias Logflare.Source.SlackHookServer
   alias Logflare.Source.BillingWriter
   alias Logflare.Logs.SearchQueryExecutor
-  alias Logflare.Rules
 
   def start_link(%Source{} = source) do
     Supervisor.start_link(__MODULE__, source, name: Backends.via_source(source, __MODULE__))

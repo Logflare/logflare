@@ -17,7 +17,6 @@ defmodule Logflare.Backends do
   alias Logflare.Sources
   alias Logflare.Source.RecentLogsServer
   alias Logflare.Logs
-  alias Logflare.Rule
   alias Logflare.Logs.SourceRouting
   alias Logflare.SystemMetrics
   alias Logflare.PubSubRates
@@ -51,7 +50,7 @@ defmodule Logflare.Backends do
     |> Enum.map(fn sb -> typecast_config_string_map_to_atom_map(sb) end)
   end
 
-  def list_backends_with_rules(%Source{id: source_id} = source) do
+  def list_backends_with_rules(%Source{id: source_id}) do
     from(b in Backend, join: r in assoc(b, :rules), where: r.source_id == ^source_id)
     |> Repo.all()
     |> Enum.map(fn sb -> typecast_config_string_map_to_atom_map(sb) end)
@@ -262,7 +261,7 @@ defmodule Logflare.Backends do
 
   defp dispatch_to_backends(source, %Backend{} = backend, log_events) do
     adaptor_module = Adaptor.get_adaptor(backend)
-    adaptor_module.ingest(nil, log_events, default_ingest_opts(source, backend)) |> dbg
+    adaptor_module.ingest(nil, log_events, default_ingest_opts(source, backend))
     :ok
   end
 

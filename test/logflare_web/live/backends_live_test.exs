@@ -71,8 +71,7 @@ defmodule LogflareWeb.BackendsLiveTest do
 
   test "delete", %{
     conn: conn,
-    user: user,
-    source: source
+    user: user
   } do
     backend =
       insert(:backend,
@@ -160,17 +159,18 @@ defmodule LogflareWeb.BackendsLiveTest do
       |> render_submit(%{
         rule: %{
           lql_string: "my:value",
-          source_id: source.id
+          source_id: source.id,
+          backend_id: backend.id
         }
       })
 
-    assert html =~ "Successfully created rule for #{source.name}"
+    assert html =~ "Successfully created rule for #{backend.name}"
     assert html =~ "my:value"
     assert html =~ source.name
 
     html =
       view
-      |> element("ul li button", "Delete")
+      |> element("ul li button", "Delete rule")
       |> render_click()
 
     refute html =~ "my:value"
