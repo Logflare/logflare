@@ -148,7 +148,6 @@ defmodule Logflare.Logs.SourceRouting do
     List.wrap(values)
   end
 
-
   defp stringify(v) when is_integer(v) do
     Integer.to_string(v)
   end
@@ -156,7 +155,7 @@ defmodule Logflare.Logs.SourceRouting do
   defp stringify(v) when is_float(v) do
     Float.to_string(v)
   end
+
   defp stringify(v) when is_binary(v), do: v
   defp stringify(v), do: inspect(v)
-
 end

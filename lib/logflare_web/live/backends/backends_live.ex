@@ -29,6 +29,7 @@ defmodule LogflareWeb.BackendsLive do
       |> assign(:user, user)
       |> assign(:backends, [])
       |> assign(:backend, nil)
+      |> assign(:backend_changeset, nil)
       |> assign(:sources, Sources.list_sources_by_user(user.id))
       |> assign(:show_rule_form?, false)
       |> refresh_backends()
@@ -47,7 +48,36 @@ defmodule LogflareWeb.BackendsLive do
     {:noreply, socket}
   end
 
-  def handle_event("save_backend", %{"backend" => params}, socket) do
+  def handle_event(
+        "save_backend",
+        %{"backend" => params},
+        %{assigns: %{live_action: :edit}} = socket
+      ) do
+    socket =
+      case Logflare.Backends.update_backend(socket.assigns.backend, params) do
+        {:ok, backend} ->
+          socket
+          |> assign(:show_rule_form?, false)
+          |> refresh_backend(backend.id)
+          |> refresh_backends()
+          |> put_flash(:info, "Successfully updated backend")
+          |> push_patch(to: ~p"/backends/#{backend.id}")
+
+        {:error, changeset} ->
+          # TODO: move this to a helper function
+          message = changeset_to_flash_message(changeset)
+
+          put_flash(socket, :error, "Encountered error when adding backend:\n#{message}")
+      end
+
+    {:noreply, socket}
+  end
+
+  def handle_event(
+        "save_backend",
+        %{"backend" => params},
+        %{assigns: %{live_action: :new}} = socket
+      ) do
     socket =
       case Logflare.Backends.create_backend(params) do
         {:ok, backend} ->

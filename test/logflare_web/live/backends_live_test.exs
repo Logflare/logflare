@@ -31,10 +31,28 @@ defmodule LogflareWeb.BackendsLiveTest do
   end
 
   test "edit", %{conn: conn, user: user, source: source} do
-    backend = insert(:backend, sources: [source], user: user)
+    backend = insert(:backend, sources: [source], user: user, type: :webhook)
     {:ok, view, _html} = live(conn, ~p"/backends/#{backend.id}/edit")
 
     assert view |> element("label", "Name") |> has_element?()
+
+    html =
+      view
+      |> element("form")
+      |> render_submit(%{
+        backend: %{
+          type: :webhook,
+          description: "some description",
+          name: "some other name",
+          config: %{
+            url: "https://some-other-url.com"
+          }
+        }
+      })
+
+    assert html =~ "some-other-url.com"
+    assert html =~ "some other name"
+    assert html =~ "some description"
   end
 
   test "bug: string user_id on session for team users", %{conn: conn, user: user} do

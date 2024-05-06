@@ -1,4 +1,21 @@
-<.form :let={f} for={%{}} as={:backend} action="#" phx-submit="save_backend" class="mt-4">
+<.form
+  :let={f}
+  for={
+    if(@backend != nil,
+      do: %{
+        "name" => @backend.name,
+        "type" => @backend.type,
+        "description" => @backend.description,
+        "config" => @backend.config
+      },
+      else: %{}
+    )
+  }
+  as={:backend}
+  action="#"
+  phx-submit="save_backend"
+  class="mt-4"
+>
   <div class="tw-sticky tw-flex tw-justify-between tw-gap-4">
     <button :if={@backend} data-confirm="Are you sure? This cannot be undone" phx-click="delete" phx-value-backend_id={@backend.id} class="btn btn-outline-danger" type="button">
       <i class="fas fa-trash"></i> Delete
@@ -6,12 +23,13 @@
     <%= submit("Save changes", class: "btn btn-primary") %>
   </div>
 
-  <p>Add backend</p>
-  <%= select(f, :type, ["Select a backend type...", Webhook: :webhook, Postgres: :postgres, BigQuery: :bigquery],
-    phx_change: :change_create_form_type,
-    class: "form-control form-control-margin",
-    id: "type"
-  ) %>
+  <div :if={@live_action == :new}>
+    <%= select(f, :type, ["Select a backend type...", Webhook: :webhook, Postgres: :postgres, BigQuery: :bigquery],
+      phx_change: :change_create_form_type,
+      class: "form-control form-control-margin",
+      id: "type"
+    ) %>
+  </div>
 
   <div class="form-group mt-2">
     <%= hidden_input(f, :user_id, value: @user.id) %>
