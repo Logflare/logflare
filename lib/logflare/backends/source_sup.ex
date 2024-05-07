@@ -30,7 +30,6 @@ defmodule Logflare.Backends.SourceSup do
       source
       |> Backends.list_backends_with_rules()
       |> Enum.map(&%{&1 | register_for_ingest: false})
-      |> dbg()
 
     user = Users.Cache.get(source.user_id)
 
