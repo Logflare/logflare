@@ -49,6 +49,14 @@ defmodule Logflare.BackendsTest do
       assert {:ok, %Backend{}} = Backends.delete_backend(backend)
       assert Backends.get_backend(backend.id) == nil
     end
+    test "delete backend with rules" do
+      user = insert(:user)
+      source = insert(:source, user: user)
+      insert(:rule, source: source)
+      backend = insert(:backend, user: user)
+      assert {:ok, %Backend{}} = Backends.delete_backend(backend)
+      assert Backends.get_backend(backend.id) == nil
+    end
 
     test "delete backend with rules" do
       user = insert(:user)
