@@ -5,63 +5,56 @@
   <.subheader_link live_patch to={~p"/backends/#{@backend.id}/edit"} text="edit" fa_icon="edit" />
 </.subheader>
 <section class="mx-auto container pt-3 tw-flex tw-flex-col tw-gap-4">
-  <h2>
-    <%= @backend.name %>
-  </h2>
+  <h2><%= @backend.name %></h2>
   <div>
     uuid: <%= @backend.token %>
   </div>
 
-  <p class="text-muted tw-whitespace-pre-wrap tw-text-sm"><%= @backend.description %></p>
+  <p :if={@backend.description} class="text-muted tw-whitespace-pre-wrap tw-text-sm"><%= @backend.description %></p>
   <div>
     <ul class="list-group tw-text-sm">
-      <li>type: <%= @backend.type %></li>
-      <%= case @backend.type do %>
-        <% :webhook -> %>
-          <ul>
-            <li>url: <%= @backend.config.url %></li>
-          </ul>
-        <% :postgres -> %>
-          <ul>
-            <li>url: <%= @backend.config[:url] %></li>
-            <li>schema: <%= Map.get(@backend.config, :schema, "") %></li>
-            <li>username: <%= Map.get(@backend.config, :username, "") %></li>
-            <li>hostname: <%= Map.get(@backend.config, :hostname, "") %></li>
-            <li>port: <%= Map.get(@backend.config, :port, "") %></li>
-            <li>database: <%= Map.get(@backend.config, :database, "") %></li>
-            <li>pool_size: <%= Map.get(@backend.config, :pool_size, "") %></li>
-          </ul>
-        <% :bigquery -> %>
-          <ul>
-            <li>Project ID: <%= @backend.config.project_id %></li>
-            <li>Dataset ID: <%= @backend.config.dataset_id %></li>
-          </ul>
-      <% end %>
+      <li class="list-group-item"><strong>type:</strong> <%= @backend.type %></li>
+      <li class="list-group-item">
+        <strong>config:</strong>
+        <pre>
+          <%= Jason.encode!(@backend.config, pretty: true) %>
+        </pre>
+      </li>
     </ul>
   </div>
 </section>
 
-<section>
-  <h3>Rules</h3>
-  <p :if={Enum.empty?(@backend.rules)}>No rules yet</p>
-
-  <.button phx-click="toggle_rule_form" variant="secondary">
-    Add a rule
-  </.button>
+<section class="mx-auto container pt-3 tw-flex tw-flex-col tw-gap-4">
+  <h4>Rules</h4>
+  <div>
+    <.button phx-click="toggle_rule_form" variant="secondary">
+      Add a rule
+    </.button>
+  </div>
 
   <.form :let={f} :if={@show_rule_form?} id="rule" for={%{}} as={:rule} action="#" phx-submit="save_rule">
+    <div class="form-group">
+      <%= label(f, :source_id, "Source") %>
+      <%= select(f, :source_id, Enum.map(@sources, fn s -> {s.name, s.id} end), class: "form-control", prompt: [key: "Choose a source"]) %>
+      <small id="source_id" class="form-text text-muted">Events that are ingested into this source will get forwarded</small>
+    </div>
+
+    <div class="form-group">
+      <%= label(f, :lql_string, "LQL") %>
+      <%= text_input(f, :lql_string, class: "form-control") %>
+      <small id="lql_string" class="form-text text-muted">Only events that match this LQL filter will get forwarded.</small>
+    </div>
+
     <%= hidden_input(f, :backend_id, value: @backend.id) %>
-    <%= label(f, :source_id, "Source") %>
-    <%= select(f, :source_id, do: options_for_select(Enum.map(@sources, fn s -> {s.name, s.id} end), nil)) %>
-    <%= label(f, :lql_string, "LQL") %>
-    <%= text_input(f, :lql_string) %>
     <%= submit("Save", class: "btn btn-primary") %>
   </.form>
 
+  <p :if={Enum.empty?(@backend.rules)}>No rules yet</p>
   <ul :for={rule <- @backend.rules} class="tw-flex tw-flex-row tw-gap-4">
-    <li>
-      Events from <code><%= rule.source.name %></code>
-      matching <%= rule.lql_string %> will route to <strong>this backend</strong>
+    <li class="list-group-item tw-pointer-none tw-w-full tw-flex tw-flex-row tw-justify-between">
+      <span>
+        Events from <code><%= rule.source.name %></code> matching <code><%= rule.lql_string %></code> will route to <code>this backend</code>
+      </span>
 
       <.button phx-click="delete_rule" phx-value-rule_id={rule.id} variant="danger">
         Delete rule
