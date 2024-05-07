@@ -12,10 +12,6 @@
     uuid: <%= @backend.token %>
   </div>
 
-  <button class="ml-2 btn btn-danger" phx-click="remove_backend" phx-value-id={@backend.id}>
-    Remove
-  </button>
-
   <p class="text-muted tw-whitespace-pre-wrap tw-text-sm"><%= @backend.description %></p>
   <div>
     <ul class="list-group tw-text-sm">
