@@ -32,9 +32,9 @@ defmodule LogflareWeb.BackendsLive do
       |> assign(:backend_changeset, nil)
       |> assign(:sources, Sources.list_sources_by_user(user.id))
       |> assign(:show_rule_form?, false)
+      |> assign(:form_type, nil)
       |> refresh_backends()
       |> refresh_backend(params["id"])
-      |> assign(:create_form_type, nil)
 
     {:ok, socket, layout: {LogflareWeb.LayoutView, :inline_live}}
   end
@@ -99,6 +99,10 @@ defmodule LogflareWeb.BackendsLive do
     {:noreply, socket}
   end
 
+  def handle_event("cancel-form", _, socket) do
+    {:noreply, socket |> push_patch(to: ~p"/backends")}
+  end
+
   def handle_event("save_rule", %{"rule" => params}, socket) do
     socket =
       case Rules.create_rule(params) do
@@ -120,8 +124,8 @@ defmodule LogflareWeb.BackendsLive do
     {:noreply, socket}
   end
 
-  def handle_event("change_create_form_type", %{"backend" => %{"type" => type}}, socket) do
-    {:noreply, assign(socket, create_form_type: type)}
+  def handle_event("change_form_type", %{"backend" => %{"type" => type}}, socket) do
+    {:noreply, assign(socket, form_type: type)}
   end
 
   def handle_event("toggle_rule_form", _params, socket) do
@@ -190,6 +194,10 @@ defmodule LogflareWeb.BackendsLive do
   defp refresh_backend(socket, nil), do: socket
 
   defp refresh_backend(socket, id) do
-    assign(socket, :backend, Backends.get_backend(id) |> Backends.preload_rules())
+    backend = Backends.get_backend(id) |> Backends.preload_rules()
+
+    socket
+    |> assign(:backend, backend)
+    |> assign(:form_type, Atom.to_string(backend.type))
   end
 end

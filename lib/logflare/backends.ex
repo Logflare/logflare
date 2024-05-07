@@ -214,8 +214,11 @@ defmodule Logflare.Backends do
       le =
         param
         |> case do
-          %LogEvent{} = le ->
+          %LogEvent{source: %Source{}} = le ->
             le
+
+          %LogEvent{} = le ->
+            %{le | source: source}
 
           param ->
             LogEvent.make(param, %{source: source})

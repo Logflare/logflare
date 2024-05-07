@@ -6,7 +6,7 @@
         "name" => @backend.name,
         "type" => @backend.type,
         "description" => @backend.description,
-        "config" => @backend.config
+        "config" => if(@backend.config, do: Logflare.Utils.stringify_keys(@backend.config), else: nil)
       },
       else: %{}
     )
@@ -20,12 +20,19 @@
     <button :if={@backend} data-confirm="Are you sure? This cannot be undone" phx-click="delete" phx-value-backend_id={@backend.id} class="btn btn-outline-danger" type="button">
       <i class="fas fa-trash"></i> Delete
     </button>
-    <%= submit("Save changes", class: "btn btn-primary") %>
+    <div>
+      <.link href={~p"/backends"}>
+        <button data-confirm="Are you sure? All unsaved changes will be lost" class="btn btn-outline-secondary" type="button">
+          Cancel
+        </button>
+      </.link>
+      <%= submit("Save changes", class: "btn btn-primary") %>
+    </div>
   </div>
 
   <div :if={@live_action == :new}>
     <%= select(f, :type, ["Select a backend type...", Webhook: :webhook, Postgres: :postgres, BigQuery: :bigquery],
-      phx_change: :change_create_form_type,
+      phx_change: :change_form_type,
       class: "form-control form-control-margin",
       id: "type"
     ) %>
@@ -41,7 +48,7 @@
 
   <.inputs_for :let={f_config} field={f[:config]}>
     <div class="form-group mt-2">
-      <%= case @create_form_type do %>
+      <%= case @form_type do %>
         <% "webhook" -> %>
           <div class="form-group">
             <%= label f_config, :url do %>
@@ -127,8 +134,4 @@
       <% end %>
     </div>
   </.inputs_for>
-  <button type="button" class="btn btn-secondary" phx-click="toggle-create-form">
-    Cancel
-  </button>
-  <%= submit("Add", class: "btn btn-primary") %>
 </.form>

@@ -194,4 +194,50 @@ defmodule LogflareWeb.BackendsLiveTest do
     refute html =~ "my:value"
     refute html =~ source.name
   end
+
+  test "new: change type will change inputs", %{conn: conn} do
+    assert {:ok, view, _html} = live(conn, ~p"/backends/new")
+
+    assert view
+           |> element("select#type")
+           |> render_change(%{backend: %{type: :postgres}}) =~ "Username"
+
+    refute render(view) =~ "Project ID"
+
+    assert view
+           |> element("select#type")
+           |> render_change(%{backend: %{type: :bigquery}}) =~ "Project ID"
+
+    refute render(view) =~ "Username"
+  end
+
+  test "edit: will show correct config inputs", %{conn: conn} do
+    backend = insert(:backend, type: :webhook)
+    assert {:ok, view, _html} = live(conn, ~p"/backends/#{backend.id}/edit")
+
+    assert render(view) =~ "URL"
+
+    refute view |> element("select#type") |> has_element?()
+  end
+
+  test "new: cancel will nav back to index", %{conn: conn} do
+    assert {:ok, view, _html} = live(conn, ~p"/backends/new")
+
+    view
+    |> element("a", "Cancel")
+    |> render_click()
+
+    assert_patched(view, ~p"/backends")
+  end
+
+  test "edit: cancel will nav back to show", %{conn: conn} do
+    backend = insert(:backend, type: :webhook)
+    assert {:ok, view, _html} = live(conn, ~p"/backends/#{backend.id}/edit")
+
+    view
+    |> element("a", "Cancel")
+    |> render_click()
+
+    assert_patched(view, ~p"/backends")
+  end
 end
