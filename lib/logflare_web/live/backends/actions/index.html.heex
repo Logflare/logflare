@@ -5,6 +5,7 @@
 </.subheader>
 
 <div class="tw-p-4 lg:tw-max-w-[50%] tw-mx-auto">
+  <h1>Backends</h1>
   <p>
     Configure one or more backends and attach them to sources. With backends, you are not limited to ingesting only into BigQuery, with multiple data storage platforms and providers being supported. ingesting concurrently.
   </p>
@@ -27,7 +28,8 @@
       <p :if={backend.description} class="tw-pb-0 tw-mb-0 tw-text-sm text-muted">
         <%= backend.description %>
       </p>
-      <div>
+      <div class="tw-flex tw-gap-2 tw-mt-1">
+        <span class="badge badge-pill badge-secondary tw-leading-normal"><%= backend.type %></span>
         <span>drain rules: <%= Enum.count(backend.rules) %></span>
       </div>
     </li>

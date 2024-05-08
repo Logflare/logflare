@@ -19,6 +19,7 @@ defmodule LogflareWeb.BackendsLiveTest do
     html = render(view)
     assert html =~ "rules: 0"
     assert html =~ backend.name
+    assert html =~ Atom.to_string(backend.type)
   end
 
   test "show", %{conn: conn, user: user, source: source} do
@@ -168,7 +169,7 @@ defmodule LogflareWeb.BackendsLiveTest do
     {:ok, view, _html} = live(conn, ~p"/backends/#{backend.id}")
 
     assert view
-           |> element("button", "Add a rule")
+           |> element("button", "Add a drain rule")
            |> render_click() =~ "Source"
 
     html =
@@ -227,7 +228,7 @@ defmodule LogflareWeb.BackendsLiveTest do
     |> element("a", "Cancel")
     |> render_click()
 
-    assert_patched(view, ~p"/backends")
+    assert_redirect(view, ~p"/backends")
   end
 
   test "edit: cancel will nav back to show", %{conn: conn} do
@@ -238,6 +239,6 @@ defmodule LogflareWeb.BackendsLiveTest do
     |> element("a", "Cancel")
     |> render_click()
 
-    assert_patched(view, ~p"/backends")
+    assert_redirect(view, ~p"/backends")
   end
 end
