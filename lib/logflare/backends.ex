@@ -122,6 +122,7 @@ defmodule Logflare.Backends do
           end
         end
       end
+
       result
     end
   end
