@@ -10,7 +10,7 @@ Source rules allow for source-to-source filtering, where a source will send data
 
 ## Drain Rules
 
-Drain rules allow for source-to-backend filtering, where a source will send data to a given destination [backend](../backend). The backend could be ingest-only, such as 3rd party services.
+Drain rules allow for source-to-backend filtering, where a source will send data to a given destination [backend](../backends). The backend could be ingest-only, such as 3rd party services.
 
 :::info Private Alpha Only
 Drain rules and multi-backends are a private alpha only feature for the Logflare service. Please contact us if this interests you.
