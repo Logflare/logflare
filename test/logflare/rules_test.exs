@@ -95,13 +95,23 @@ defmodule Logflare.RulesTest do
       user: user
     } do
       backend = insert(:backend, user: user)
-      rule = insert(:rule, backend: backend, source: source)
+      [rule1, rule2] = insert_pair(:rule, backend: backend, source: source)
       start_supervised!({SourceSup, source})
       # create the rule
       via = Backends.via_source(source, SourceSup)
       prev_length = Supervisor.which_children(via) |> length()
-      assert {:ok, _} = Rules.delete_rule(rule)
+      assert {:ok, _} = Rules.delete_rule(rule1)
+      assert {:ok, _} = Rules.delete_rule(rule2)
       assert Supervisor.which_children(via) |> length() < prev_length
+    end
+
+    test "multuple rules on same source, same backend, does not crash SourceSup", %{
+      source: source,
+      user: user
+    } do
+      backend = insert(:backend, user: user)
+      insert_pair(:rule, source: source, backend: backend)
+      start_supervised!({SourceSup, source})
     end
   end
 end

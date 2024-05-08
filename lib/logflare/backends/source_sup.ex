@@ -58,6 +58,7 @@ defmodule Logflare.Backends.SourceSup do
          | ingest_backends
        ] ++ rules_backends)
       |> Enum.map(&Backend.child_spec(source, &1))
+      |> Enum.uniq()
 
     children =
       [
