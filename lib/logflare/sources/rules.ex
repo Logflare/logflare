@@ -49,7 +49,7 @@ defmodule Logflare.Rules do
   @doc """
   Updates a given rule.
   """
-  @spec update_rule(Rule.t(), map())
+  @spec update_rule(Rule.t(), map()) :: {:ok, Rule.t()} | {:error, Ecto.Changeset.t()}
   def update_rule(%Rule{} = rule, attrs) do
     rule
     |> Rule.changeset(attrs)
