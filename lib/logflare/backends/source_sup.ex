@@ -75,12 +75,25 @@ defmodule Logflare.Backends.SourceSup do
     Supervisor.init(children, strategy: :one_for_one)
   end
 
+
+  @doc """
+  Starts a given backend child spec for the backend associated with a rule.
+  This backend will not be registered for ingest dispatching.
+
+  This allows for zero-downtime ingestion, as we don't restart the SourceSup supervision tree.
+  """
+  @spec start_rule_child(Rule.t()) :: Supervisor.on_start_child()
   def start_rule_child(%Rule{backend_id: backend_id} = rule) do
     backend = Backends.Cache.get_backend(backend_id) |> Map.put(:register_for_ingest, false)
     source = Sources.Cache.get_by_id(rule.source_id)
     start_backend_child(source, backend)
   end
 
+  @doc """
+  Starts a given backend-souce combination when SourceSup is already running.
+  This allows for zero-downtime ingestion, as we don't restart the SourceSup supervision tree.
+  """
+  @spec start_backend_child(Source.t(), Backend.t()) :: Supervisor.on_start_child()
   def start_backend_child(%Source{} = source, %Backend{} = backend) do
     via = Backends.via_source(source, __MODULE__)
     source = Sources.Cache.get_by_id(source.id)
@@ -88,12 +101,21 @@ defmodule Logflare.Backends.SourceSup do
     Supervisor.start_child(via, spec)
   end
 
+
+  @doc """
+  Stops a given backend child on SourceSup that is associated with the given Rule.
+  """
+  @spec stop_rule_child(Rule.t()) :: :ok | {:error, :not_found}
   def stop_rule_child(%Rule{backend_id: backend_id} = rule) do
     backend = Backends.Cache.get_backend(backend_id) |> Map.put(:register_for_ingest, false)
     source = Sources.Cache.get_by_id(rule.source_id)
     stop_backend_child(source, backend)
   end
 
+  @doc """
+  Stops a backend child based on a provide source-backend combination.
+  """
+  @spec stop_backend_child(Source.t(), Backend.t()) :: :ok | {:error, :not_found}
   def stop_backend_child(%Source{} = source, %Backend{} = backend) do
     via = Backends.via_source(source, __MODULE__)
     spec = Backend.child_spec(source, backend)

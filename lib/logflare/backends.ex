@@ -50,6 +50,15 @@ defmodule Logflare.Backends do
     |> Enum.map(fn sb -> typecast_config_string_map_to_atom_map(sb) end)
   end
 
+
+  @doc """
+  Returns all backends set as a rule destination for a given source.
+
+  ### Example
+    iex>  list_backends_with_rules(source)
+    [%Backend{...}, ...]
+  """
+  @spec list_backends_with_rules(Source.t()):: [Backend.t()]
   def list_backends_with_rules(%Source{id: source_id}) do
     from(b in Backend, join: r in assoc(b, :rules), where: r.source_id == ^source_id)
     |> Repo.all()
@@ -209,12 +218,13 @@ defmodule Logflare.Backends do
   Adds log events to the source event buffer.
   The ingestion pipeline then pulls from the buffer and dispatches log events to the correct backends.
 
-  TODO: Perform syncronous parsing and validation of log event params.
+  Events are conditionally dispatched to backends based on whether they are registered. If they register for ingestion dispatching, events will get sent to the registered backend.
 
   Once this function returns `:ok`, the events get dispatched to respective backend adaptor portions of the pipeline to be further processed.
   """
   @type log_param :: map()
   @spec ingest_logs([log_param()], Source.t()) :: :ok
+  @spec ingest_logs([log_param()], Source.t(), Backend.t() | nil) :: :ok
   def ingest_logs(event_params, source, backend \\ nil) do
     :ok = Source.Supervisor.ensure_started(source)
     {log_events, errors} = split_valid_events(source, event_params)
@@ -300,6 +310,11 @@ defmodule Logflare.Backends do
   @doc """
   Registers a backend for ingestion dispatching. Any opts that are provided are stored in the registry.
 
+  If the `:register_for_ingest` field is `true`, the backend will be registered for ingest dispatching.
+
+  The backend will not receive any dispatched events if it is set to false, and this function will be a `:noop`.
+
+
   Auto-populated options:
   - `:backend_id`
   - `:source_id`
@@ -369,7 +384,7 @@ defmodule Logflare.Backends do
   @doc """
   checks if the SourceSup for a given source has been started.
   """
-  @spec source_sup_started?(Source.t() | integer()) :: boolean()
+  @spec source_sup_started?(Source.t() | non_neg_integer()) :: boolean()
   def source_sup_started?(%Source{id: id}), do: source_sup_started?(id)
 
   def source_sup_started?(id) when is_number(id) do
