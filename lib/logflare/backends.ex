@@ -121,9 +121,8 @@ defmodule Logflare.Backends do
               SourceSup.stop_backend_child(source, backend)
           end
         end
-
-        result
       end
+      result
     end
   end
 
