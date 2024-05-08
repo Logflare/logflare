@@ -29,6 +29,13 @@ defmodule Logflare.Utils do
     )
   end
 
+  @doc """
+  Stringifies an atom map to a string map.
+
+  ### Example
+    iex> stringify_keys(%{test: "data"})
+    %{"test" => "data}
+  """
   @spec stringify_keys(map()) :: map()
   def stringify_keys(map = %{}) do
     map

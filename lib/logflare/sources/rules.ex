@@ -13,7 +13,6 @@ defmodule Logflare.Rules do
   alias Logflare.Backends.SourceSup
   alias Logflare.Backends
 
-
   @doc """
   Lists rules for a given Source or Backend
   """
@@ -32,7 +31,7 @@ defmodule Logflare.Rules do
   Creates a rule based on a given attr map.
   If it is a drain rule with an associated backend, it will attempt to start the backend child on SourceSup if it is running.
   """
-  @spec create_rule(map()) ::{:ok, Rule.t()} | {:error, Ecto.Changeset.t()}
+  @spec create_rule(map()) :: {:ok, Rule.t()} | {:error, Ecto.Changeset.t()}
   def create_rule(attrs \\ %{}) do
     %Rule{}
     |> Rule.changeset(attrs)
