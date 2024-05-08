@@ -13,6 +13,11 @@ defmodule Logflare.Rules do
   alias Logflare.Backends.SourceSup
   alias Logflare.Backends
 
+
+  @doc """
+  Lists rules for a given Source or Backend
+  """
+  @spec list_rules(Source.t() | Backend.t()) :: [Backend.t()]
   def list_rules(%Source{id: source_id}) do
     from(r in Rule, where: r.source_id == ^source_id)
     |> Repo.all()
@@ -23,6 +28,11 @@ defmodule Logflare.Rules do
     |> Repo.all()
   end
 
+  @doc """
+  Creates a rule based on a given attr map.
+  If it is a drain rule with an associated backend, it will attempt to start the backend child on SourceSup if it is running.
+  """
+  @spec create_rule(map()) ::{:ok, Rule.t()} | {:error, Ecto.Changeset.t()}
   def create_rule(attrs \\ %{}) do
     %Rule{}
     |> Rule.changeset(attrs)
@@ -37,12 +47,18 @@ defmodule Logflare.Rules do
     end
   end
 
+  @doc """
+  Updates a given rule.
+  """
+  @spec update_rule(Rule.t(), map())
   def update_rule(%Rule{} = rule, attrs) do
     rule
     |> Rule.changeset(attrs)
     |> Repo.update()
   end
 
+  @doc "Retrieves a given Rule by id. Returns nil if not present."
+  @spec get_rule(non_neg_integer()) :: Rule.t() | nil
   def get_rule(id), do: Repo.get(Rule, id)
 
   @spec create_rule(map(), Source.t()) :: {:ok, Rule.t()} | {:error, Ecto.Changeset.t() | binary}
@@ -62,6 +78,11 @@ defmodule Logflare.Rules do
     end
   end
 
+  @doc """
+  Deletes a given rule.
+  Atempts to stop the rules associated backend child if SourceSup is started.
+  """
+  @spec delete_rule(Rule.t()) :: {:ok, Rule.t()}
   def delete_rule(rule) do
     res = Repo.delete(rule)
     if Backends.source_sup_started?(rule.source_id), do: SourceSup.stop_rule_child(rule)

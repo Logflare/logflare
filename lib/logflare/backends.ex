@@ -50,7 +50,6 @@ defmodule Logflare.Backends do
     |> Enum.map(fn sb -> typecast_config_string_map_to_atom_map(sb) end)
   end
 
-
   @doc """
   Returns all backends set as a rule destination for a given source.
 
@@ -58,7 +57,7 @@ defmodule Logflare.Backends do
     iex>  list_backends_with_rules(source)
     [%Backend{...}, ...]
   """
-  @spec list_backends_with_rules(Source.t()):: [Backend.t()]
+  @spec list_backends_with_rules(Source.t()) :: [Backend.t()]
   def list_backends_with_rules(%Source{id: source_id}) do
     from(b in Backend, join: r in assoc(b, :rules), where: r.source_id == ^source_id)
     |> Repo.all()

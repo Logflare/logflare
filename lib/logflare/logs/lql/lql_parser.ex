@@ -29,6 +29,11 @@ defmodule Logflare.Lql.Parser do
     |> times(min: 1, max: 100)
   )
 
+  @doc """
+  `parse/1` allows for parsing of an LQL statement without validating against a provided BQ schema.
+  This allows for parse-only workflows, as coupling validations with the parsing makes things more complex.
+  """
+  @spec parse(String.t()) :: {:ok, [FilterRule.t() | ChartRule.t()]}
   def parse(nil), do: {:ok, []}
   def parse(""), do: {:ok, []}
 

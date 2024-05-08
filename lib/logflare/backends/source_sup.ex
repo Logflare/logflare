@@ -75,7 +75,6 @@ defmodule Logflare.Backends.SourceSup do
     Supervisor.init(children, strategy: :one_for_one)
   end
 
-
   @doc """
   Starts a given backend child spec for the backend associated with a rule.
   This backend will not be registered for ingest dispatching.
@@ -100,7 +99,6 @@ defmodule Logflare.Backends.SourceSup do
     spec = Backend.child_spec(source, backend)
     Supervisor.start_child(via, spec)
   end
-
 
   @doc """
   Stops a given backend child on SourceSup that is associated with the given Rule.
