@@ -20,7 +20,8 @@ defmodule LogflareWeb.Api.Partner.UserController do
 
   def create(%{assigns: %{partner: partner}} = conn, params) do
     with {:ok, user} <- Partners.create_user(partner, params) do
-      {:ok, %{token: token}} = Auth.create_access_token(user)
+      {:ok, %{token: token}} =
+        Auth.create_access_token(user, %{description: "Default auto-generated"})
 
       conn
       |> put_status(201)
