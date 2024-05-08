@@ -2,6 +2,8 @@ defmodule Logflare.RulesTest do
   use Logflare.DataCase
   alias Logflare.Rules
   alias Logflare.Rule
+  alias Logflare.Backends
+  alias Logflare.Backends.SourceSup
 
   test "list_rules" do
     user = insert(:user)
@@ -60,5 +62,46 @@ defmodule Logflare.RulesTest do
 
     assert {:ok, %Rule{lql_string: "a:1 b:2 c:3", lql_filters: [_, _, _]}} =
              Rules.update_rule(rule, %{lql_string: "a:1 b:2 c:3"})
+  end
+
+  describe "SourceSup management" do
+    setup do
+      insert(:plan)
+      user = insert(:user)
+      source = insert(:source, user_id: user.id)
+      {:ok, source: source, user: user}
+    end
+
+    test "on rule creation with a backend, update SourceSup of the related source if SourceSup is started",
+         %{source: source, user: user} do
+      backend = insert(:backend, user: user)
+      start_supervised!({SourceSup, source})
+      # create the rule
+      via = Backends.via_source(source, SourceSup)
+      prev_length = Supervisor.which_children(via) |> length()
+
+      assert {:ok, _} =
+               Rules.create_rule(%{
+                 source_id: source.id,
+                 backend_id: backend.id,
+                 lql_string: "a:testing"
+               })
+
+      assert Supervisor.which_children(via) |> length() > prev_length
+    end
+
+    test "on rule deletion with a backend, update SourceSup of the related source", %{
+      source: source,
+      user: user
+    } do
+      backend = insert(:backend, user: user)
+      rule = insert(:rule, backend: backend, source: source)
+      start_supervised!({SourceSup, source})
+      # create the rule
+      via = Backends.via_source(source, SourceSup)
+      prev_length = Supervisor.which_children(via) |> length()
+      assert {:ok, _} = Rules.delete_rule(rule)
+      assert Supervisor.which_children(via) |> length() < prev_length
+    end
   end
 end

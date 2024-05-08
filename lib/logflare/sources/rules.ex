@@ -10,6 +10,8 @@ defmodule Logflare.Rules do
   alias Logflare.Sources
   alias Logflare.SourceSchemas
   alias Logflare.Backends.Backend
+  alias Logflare.Backends.SourceSup
+  alias Logflare.Backends
 
   def list_rules(%Source{id: source_id}) do
     from(r in Rule, where: r.source_id == ^source_id)
@@ -25,6 +27,14 @@ defmodule Logflare.Rules do
     %Rule{}
     |> Rule.changeset(attrs)
     |> Repo.insert()
+    |> case do
+      {:ok, %Rule{backend_id: backend_id} = rule} = result when backend_id != nil ->
+        if Backends.source_sup_started?(rule.source_id), do: SourceSup.start_rule_child(rule)
+        result
+
+      other ->
+        other
+    end
   end
 
   def update_rule(%Rule{} = rule, attrs) do
@@ -53,7 +63,9 @@ defmodule Logflare.Rules do
   end
 
   def delete_rule(rule) do
-    Repo.delete(rule)
+    res = Repo.delete(rule)
+    if Backends.source_sup_started?(rule.source_id), do: SourceSup.stop_rule_child(rule)
+    res
   end
 
   def delete_rule!(rule_id) do

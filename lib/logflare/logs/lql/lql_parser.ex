@@ -29,6 +29,9 @@ defmodule Logflare.Lql.Parser do
     |> times(min: 1, max: 100)
   )
 
+  def parse(nil), do: {:ok, []}
+  def parse(""), do: {:ok, []}
+
   def parse(querystring) do
     {:ok, rules, _, _, _, _} =
       querystring

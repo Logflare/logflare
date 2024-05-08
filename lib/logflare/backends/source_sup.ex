@@ -16,6 +16,8 @@ defmodule Logflare.Backends.SourceSup do
   alias Logflare.Source.SlackHookServer
   alias Logflare.Source.BillingWriter
   alias Logflare.Logs.SearchQueryExecutor
+  alias Logflare.Rule
+  alias Logflare.Sources
 
   def start_link(%Source{} = source) do
     Supervisor.start_link(__MODULE__, source, name: Backends.via_source(source, __MODULE__))
@@ -70,5 +72,46 @@ defmodule Logflare.Backends.SourceSup do
       ] ++ specs
 
     Supervisor.init(children, strategy: :one_for_one)
+  end
+
+  def start_rule_child(%Rule{backend_id: backend_id} = rule) do
+    backend = Backends.Cache.get_backend(backend_id) |> Map.put(:register_for_ingest, false)
+    source = Sources.Cache.get_by_id(rule.source_id)
+    start_backend_child(source, backend)
+  end
+
+  def start_backend_child(%Source{} = source, %Backend{} = backend) do
+    via = Backends.via_source(source, __MODULE__)
+    source = Sources.Cache.get_by_id(source.id)
+    spec = Backend.child_spec(source, backend)
+    Supervisor.start_child(via, spec)
+  end
+
+  def stop_rule_child(%Rule{backend_id: backend_id} = rule) do
+    backend = Backends.Cache.get_backend(backend_id) |> Map.put(:register_for_ingest, false)
+    source = Sources.Cache.get_by_id(rule.source_id)
+    stop_backend_child(source, backend)
+  end
+
+  def stop_backend_child(%Source{} = source, %Backend{} = backend) do
+    via = Backends.via_source(source, __MODULE__)
+    spec = Backend.child_spec(source, backend)
+
+    found_id =
+      Supervisor.which_children(via)
+      |> Enum.find_value(
+        fn {id, _pid, _type, _mod} ->
+          id == spec.id
+        end,
+        &elem(&1, 0)
+      )
+
+    if found_id do
+      Supervisor.terminate_child(via, found_id)
+      Supervisor.delete_child(via, found_id)
+      :ok
+    else
+      {:error, :not_found}
+    end
   end
 end

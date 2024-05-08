@@ -107,7 +107,22 @@ defmodule Logflare.BackendsTest do
       insert(:plan)
       user = insert(:user)
       source = insert(:source, user_id: user.id)
-      {:ok, source: source}
+      {:ok, source: source, user: user}
+    end
+
+    test "on attach to source, update SourceSup", %{source: source} do
+      [backend1, backend2] = insert_pair(:backend)
+      start_supervised!({SourceSup, source})
+      via = Backends.via_source(source, SourceSup)
+      prev_length = Supervisor.which_children(via) |> length()
+      assert {:ok, _} = Backends.update_source_backends(source, [backend1, backend2])
+
+      new_length = Supervisor.which_children(via) |> length()
+      assert new_length > prev_length
+
+      # removal
+      assert {:ok, _} = Backends.update_source_backends(source, [])
+      assert Supervisor.which_children(via) |> length() < new_length
     end
 
     test "source_sup_started?/1, lookup/2", %{source: source} do
@@ -155,8 +170,8 @@ defmodule Logflare.BackendsTest do
       source: %{token: source_token} = source
     } do
       PubSubRates.subscribe(:all)
-      ChannelTopics.subscribe_dashboard(source.token)
-      ChannelTopics.subscribe_source(source.token)
+      ChannelTopics.subscribe_dashboard(source_token)
+      ChannelTopics.subscribe_source(source_token)
       le = build(:log_event, source: source)
       assert {:ok, 1} = Backends.ingest_logs([le], source)
       :timer.sleep(500)

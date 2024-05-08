@@ -102,11 +102,29 @@ defmodule Logflare.Backends do
   @spec update_source_backends(Source.t(), [Backend.t()]) ::
           {:ok, Source.t()} | {:error, Ecto.Changeset.t()}
   def update_source_backends(%Source{} = source, backends) do
-    source
-    |> Repo.preload(:backends)
-    |> Ecto.Changeset.change()
-    |> Ecto.Changeset.put_assoc(:backends, backends)
-    |> Repo.update()
+    changeset =
+      source
+      |> Repo.preload(:backends)
+      |> Ecto.Changeset.change()
+      |> Ecto.Changeset.put_assoc(:backends, backends)
+
+    with {:ok, _} = result <- Repo.update(changeset) do
+      changes = Ecto.Changeset.get_change(changeset, :backends)
+
+      if source_sup_started?(source) do
+        for %Ecto.Changeset{action: action, data: backend} <- changes do
+          case action do
+            :update ->
+              SourceSup.start_backend_child(source, backend)
+
+            :replace ->
+              SourceSup.stop_backend_child(source, backend)
+          end
+        end
+
+        result
+      end
+    end
   end
 
   # common config validation function
@@ -351,8 +369,10 @@ defmodule Logflare.Backends do
   @doc """
   checks if the SourceSup for a given source has been started.
   """
-  @spec source_sup_started?(Source.t()) :: boolean()
-  def source_sup_started?(%Source{id: id}) do
+  @spec source_sup_started?(Source.t() | integer()) :: boolean()
+  def source_sup_started?(%Source{id: id}), do: source_sup_started?(id)
+
+  def source_sup_started?(id) when is_number(id) do
     Registry.lookup(SourceRegistry, {id, SourceSup}) != []
   end
 
