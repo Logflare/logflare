@@ -99,10 +99,6 @@ defmodule LogflareWeb.BackendsLive do
     {:noreply, socket}
   end
 
-  def handle_event("cancel-form", _, socket) do
-    {:noreply, socket |> push_patch(to: ~p"/backends")}
-  end
-
   def handle_event("save_rule", %{"rule" => params}, socket) do
     socket =
       case Rules.create_rule(params) do
