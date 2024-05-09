@@ -53,11 +53,8 @@ defmodule Logflare.Backends.BufferProducer do
     pid = self()
 
     Task.start_link(fn ->
-      pool_size = Application.get_env(:logflare, Logflare.PubSub)[:pool_size]
       len = GenStage.estimate_buffered_count(pid)
       local_buffer = %{Node.self() => %{len: len}}
-
-      shard = :erlang.phash2(state.source_token, pool_size)
 
       cluster_buffer = PubSubRates.Cache.get_cluster_buffers(state.source_token)
 
@@ -78,7 +75,7 @@ defmodule Logflare.Backends.BufferProducer do
 
       Phoenix.PubSub.broadcast(
         Logflare.PubSub,
-        "buffers:shard-#{shard}",
+        "buffers",
         cluster_broadcast_payload
       )
 

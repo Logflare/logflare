@@ -37,13 +37,7 @@ defmodule Logflare.PubSubRates do
   def subscribe(topics) when is_list(topics), do: Enum.map(topics, &subscribe/1)
 
   def subscribe(topic) when topic in @topics do
-    pool_size = Application.get_env(:logflare, Logflare.PubSub)[:pool_size]
-
-    for shard <- 1..pool_size do
-      PubSub.subscribe(Logflare.PubSub, "#{topic}:shard-#{shard}")
-    end
-
-    :ok
+    PubSub.subscribe(Logflare.PubSub, "#{topic}")
   end
 
   @doc """
@@ -51,14 +45,7 @@ defmodule Logflare.PubSubRates do
 
   """
   @spec global_broadcast_rate({atom(), atom(), term()}) :: :ok
-  def global_broadcast_rate({msg, source_token, _payload} = data) when msg in @topics do
-    pool_size = Application.get_env(:logflare, Logflare.PubSub)[:pool_size]
-    shard = :erlang.phash2(source_token, pool_size)
-
-    Phoenix.PubSub.broadcast(
-      Logflare.PubSub,
-      "#{msg}:shard-#{shard}",
-      data
-    )
+  def global_broadcast_rate({msg, _source_token, _payload} = data) when msg in @topics do
+    Phoenix.PubSub.broadcast(Logflare.PubSub, "#{msg}", data)
   end
 end
