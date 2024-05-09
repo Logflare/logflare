@@ -40,6 +40,26 @@ services:
       #   read_only: true
     depends_on:
       - db
-
+  filebeat:
+    image: docker.elastic.co/beats/filebeat:8.13.3-arm64
+    # https://github.com/docker/swarmkit/issues/1951
+    # Need to override user so we can access the log files, and docker.sock
+    # user: root
+    ports:
+      - "8000:8000"
+    # networks:
+    #   - elastic
+    volumes:
+      - ./test/filebeat.yml:/usr/share/filebeat/filebeat.yml
+      # - filebeat:/usr/share/filebeat/data
+      # - /var/log/audit/:/var/log/audit/:ro
+    # environment:
+      # - ELASTICSEARCH_HOST=${ELASTICSEARCH_HOST:-node1}
+      # - KIBANA_HOST=${KIBANA_HOST:-node1}
+      # - ELASTICSEARCH_USERNAME=${ELASTICSEARCH_USERNAME:-elastic}
+      # - ELASTICSEARCH_PASSWORD=${ELASTICSEARCH_PASSWORD:-changeme}
+    # disable strict permission checks
+    command: ["--strict.perms=false"]
 volumes:
   pg-data:
+

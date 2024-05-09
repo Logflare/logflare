@@ -38,6 +38,7 @@ defmodule Logflare.Backends.Adaptor.ElasticAdaptor do
       backend
       | config: %{
           url: backend.config.url,
+          http: "http1",
           headers:
             if basic_auth do
               %{"Authorization" => "Basic #{basic_auth}"}
