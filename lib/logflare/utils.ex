@@ -38,12 +38,10 @@ defmodule Logflare.Utils do
   """
   @spec stringify_keys(map()) :: map()
   def stringify_keys(map = %{}) do
-    map
-    |> Enum.map(fn
+    Map.new(map, fn
       {k, v} when is_atom(k) -> {Atom.to_string(k), stringify_keys(v)}
       {k, v} when is_binary(k) -> {k, stringify_keys(v)}
     end)
-    |> Enum.into(%{})
   end
 
   def stringify_keys([head | rest]) do

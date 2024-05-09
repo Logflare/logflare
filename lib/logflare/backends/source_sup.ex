@@ -47,16 +47,17 @@ defmodule Logflare.Backends.SourceSup do
       end
 
     specs =
-      ([
-         %Backend{
-           type: :bigquery,
-           config: %{
-             project_id: project_id,
-             dataset_id: dataset_id
-           }
-         }
-         | ingest_backends
-       ] ++ rules_backends)
+      [
+        %Backend{
+          type: :bigquery,
+          config: %{
+            project_id: project_id,
+            dataset_id: dataset_id
+          }
+        }
+        | ingest_backends
+      ]
+      |> Enum.concat(rules_backends)
       |> Enum.map(&Backend.child_spec(source, &1))
       |> Enum.uniq()
 

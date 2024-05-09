@@ -170,19 +170,16 @@ defmodule Logflare.Lql.Parser do
   defp maybe_cast_value(%{value: "false"} = c), do: %{c | value: false}
 
   defp maybe_cast_value(%{value: v} = c) do
-    int = Integer.parse(v)
-    flt = Float.parse(v)
-
     parsed =
-      cond do
-        match?({_val, ""}, int) ->
-          elem(int, 0)
+      case Integer.parse(v) do
+        {num, ""} ->
+          num
 
-        match?({_val, ""}, flt) ->
-          elem(flt, 0)
-
-        true ->
-          v
+        _ ->
+          case Float.parse(v) do
+            {num, ""} -> num
+            _ -> v
+          end
       end
 
     %{c | value: parsed}
