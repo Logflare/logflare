@@ -72,7 +72,7 @@ defmodule Logflare.Logs.SourceRouting do
                   le_value >= lvalue and le_value <= rvalue
 
                 operator == :list_includes ->
-                  apply(Kernel, :==, [le_value, value])
+                  le_value == value
 
                 operator == :string_contains ->
                   String.contains?(le_str_value, stringify(value))
