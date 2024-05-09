@@ -249,13 +249,11 @@ defmodule Logflare.Source.RateCounterServer do
   end
 
   def broadcast(%RateCounterServer{} = state) do
-    pool_size = Application.get_env(:logflare, Logflare.PubSub)[:pool_size]
-    shard = :erlang.phash2(state.source_id, pool_size)
     local_rates = %{Node.self() => state_to_external(state)}
 
     Phoenix.PubSub.broadcast(
       Logflare.PubSub,
-      "rates:shard-#{shard}",
+      "rates",
       {:rates, state.source_id, local_rates}
     )
 

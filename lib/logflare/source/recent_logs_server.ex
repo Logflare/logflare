@@ -199,19 +199,15 @@ defmodule Logflare.Source.RecentLogsServer do
   defp broadcast_count(
          %{source_token: source_token, inserts_since_boot: inserts_since_boot} = state
        ) do
-    pool_size = Application.get_env(:logflare, Logflare.PubSub)[:pool_size]
     current_inserts = Source.Data.get_node_inserts(source_token)
 
     if current_inserts > inserts_since_boot do
       bq_inserts = Source.Data.get_bq_inserts(source_token)
-
       inserts_payload = %{Node.self() => %{node_inserts: current_inserts, bq_inserts: bq_inserts}}
-
-      shard = :erlang.phash2(source_token, pool_size)
 
       Phoenix.PubSub.broadcast(
         Logflare.PubSub,
-        "inserts:shard-#{shard}",
+        "inserts",
         {:inserts, source_token, inserts_payload}
       )
     end

@@ -21,27 +21,27 @@ defmodule Logflare.ClusterPubSubTest do
 
     test "subscribe/1 inserts", %{source: %{token: source_token}} do
       PubSubRates.subscribe(:inserts)
-      PubSubRates.global_broadcast_rate({:inserts, source_token, %{data: "some val"}})
 
       TestUtils.retry_assert(fn ->
+        PubSubRates.global_broadcast_rate({:inserts, source_token, %{data: "some val"}})
         assert_received {:inserts, ^source_token, %{data: "some val"}}
       end)
     end
 
     test "subscribe/1 rates", %{source: %{token: source_token}} do
       PubSubRates.subscribe(:rates)
-      PubSubRates.global_broadcast_rate({:rates, source_token, %{data: "some val"}})
 
       TestUtils.retry_assert(fn ->
+        PubSubRates.global_broadcast_rate({:rates, source_token, %{data: "some val"}})
         assert_received {:rates, ^source_token, %{data: "some val"}}
       end)
     end
 
     test "subscribe/1 buffers", %{source: %{token: source_token}} do
       PubSubRates.subscribe(:buffers)
-      PubSubRates.global_broadcast_rate({:buffers, source_token, %{data: "some val"}})
 
       TestUtils.retry_assert(fn ->
+        PubSubRates.global_broadcast_rate({:buffers, source_token, %{data: "some val"}})
         assert_received {:buffers, ^source_token, %{data: "some val"}}
       end)
     end
