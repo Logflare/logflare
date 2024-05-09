@@ -28,12 +28,8 @@ defmodule Logflare.Backends.Adaptor do
   """
   @spec get_adaptor(Backend.t()) :: module()
   def get_adaptor(%Backend{type: type}) do
-    case type do
-      :datadog -> __MODULE__.DatadogAdaptor
-      :webhook -> __MODULE__.WebhookAdaptor
-      :postgres -> __MODULE__.PostgresAdaptor
-      :bigquery -> __MODULE__.BigQueryAdaptor
-    end
+    mapping = Backend.adaptor_mapping()
+    mapping[type]
   end
 
   @callback start_link(source_backend()) ::
