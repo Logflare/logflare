@@ -1,0 +1,16 @@
+# Elastic
+
+The Elastic backend is **ingest-only** to a Filebeat HTTP server endpoint.
+
+## Behaviour and configurations
+### Configuration
+
+The following values are required when creating a webhook backend:
+
+- `url`: (`string`, required) a valid HTTP(S) endpoint.
+- `username`: (`string`, optional) used for basic auth.
+- `password`: (`string`, optional) used for basic auth.
+
+### Implementation Details
+
+Implementation is based on the [webhook backend](../webhook).
