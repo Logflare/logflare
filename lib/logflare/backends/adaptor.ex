@@ -66,7 +66,7 @@ defmodule Logflare.Backends.Adaptor do
   Validate configuration for given adaptor implementation
   """
   @spec cast_and_validate_config(module(), map()) :: Ecto.Changeset.t()
-  def cast_and_validate_config(mod, params) do
+  def cast_and_validate_config(mod, params) when is_atom(mod) do
     params
     |> mod.cast_config()
     |> mod.validate_config()

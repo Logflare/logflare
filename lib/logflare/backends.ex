@@ -2,10 +2,6 @@ defmodule Logflare.Backends do
   @moduledoc false
 
   alias Logflare.Backends.Adaptor
-  alias Logflare.Backends.Adaptor.WebhookAdaptor
-  alias Logflare.Backends.Adaptor.PostgresAdaptor
-  alias Logflare.Backends.Adaptor.BigQueryAdaptor
-  alias Logflare.Backends.Adaptor.DatadogAdaptor
   alias Logflare.Backends.Backend
   alias Logflare.Backends.SourceDispatcher
   alias Logflare.Backends.SourceRegistry
@@ -22,13 +18,6 @@ defmodule Logflare.Backends do
   alias Logflare.SystemMetrics
   alias Logflare.PubSubRates
   import Ecto.Query
-
-  @adaptor_mapping %{
-    webhook: WebhookAdaptor,
-    postgres: PostgresAdaptor,
-    bigquery: BigQueryAdaptor,
-    datadog: DatadogAdaptor
-  }
 
   defdelegate child_spec(arg), to: __MODULE__.Supervisor
 
@@ -140,7 +129,7 @@ defmodule Logflare.Backends do
   # common config validation function
   defp validate_config(%{valid?: true} = changeset) do
     type = Ecto.Changeset.get_field(changeset, :type)
-    mod = @adaptor_mapping[type]
+    mod = Backend.adaptor_mapping()[type]
 
     Ecto.Changeset.validate_change(changeset, :config, fn :config, config ->
       case Adaptor.cast_and_validate_config(mod, config) do
@@ -156,7 +145,7 @@ defmodule Logflare.Backends do
   defp typecast_config_string_map_to_atom_map(nil), do: nil
 
   defp typecast_config_string_map_to_atom_map(%Backend{type: type} = backend) do
-    mod = @adaptor_mapping[type]
+    mod = Backend.adaptor_mapping()[type]
 
     Map.update!(backend, :config, fn config ->
       (config || %{})
