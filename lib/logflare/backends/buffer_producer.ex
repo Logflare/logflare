@@ -75,7 +75,7 @@ defmodule Logflare.Backends.BufferProducer do
 
       Phoenix.PubSub.broadcast(
         Logflare.PubSub,
-        "buffer",
+        "buffers",
         cluster_broadcast_payload
       )
 
