@@ -1,0 +1,67 @@
+<.subheader>
+  <:path>
+    ~/<.subheader_path_link live_patch to={~p"/backends"}>backends</.subheader_path_link>/<%= @backend.name %>
+  </:path>
+  <.subheader_link live_patch to={~p"/backends/#{@backend.id}/edit"} text="edit" fa_icon="edit" />
+</.subheader>
+<section class="mx-auto container pt-3 tw-flex tw-flex-col tw-gap-4">
+  <h2><%= @backend.name %></h2>
+  <div>
+    uuid: <%= @backend.token %>
+  </div>
+
+  <p :if={@backend.description} class="text-muted tw-whitespace-pre-wrap tw-text-sm"><%= @backend.description %></p>
+  <div>
+    <ul class="list-group tw-text-sm">
+      <li class="list-group-item"><strong>type:</strong> <%= @backend.type %></li>
+      <li class="list-group-item">
+        <strong>config:</strong>
+        <pre>
+          <%= Jason.encode!(@backend.config, pretty: true) %>
+        </pre>
+      </li>
+    </ul>
+  </div>
+</section>
+
+<section class="mx-auto container pt-3 tw-flex tw-flex-col tw-gap-4">
+  <h4>Drain Rules</h4>
+  <p>
+    Drain rules will forward events from a given source to this backend destination.
+  </p>
+  <div>
+    <.button phx-click="toggle_rule_form" variant="secondary">
+      Add a drain rule
+    </.button>
+  </div>
+
+  <.form :let={f} :if={@show_rule_form?} id="rule" for={%{}} as={:rule} action="#" phx-submit="save_rule">
+    <div class="form-group">
+      <%= label(f, :source_id, "Source") %>
+      <%= select(f, :source_id, Enum.map(@sources, fn s -> {s.name, s.id} end), class: "form-control", prompt: [key: "Choose a source"]) %>
+      <small id="source_id" class="form-text text-muted">Events that are ingested into this source will get forwarded</small>
+    </div>
+
+    <div class="form-group">
+      <%= label(f, :lql_string, "LQL") %>
+      <%= text_input(f, :lql_string, class: "form-control") %>
+      <small id="lql_string" class="form-text text-muted">Only events that match this LQL filter will get forwarded.</small>
+    </div>
+
+    <%= hidden_input(f, :backend_id, value: @backend.id) %>
+    <%= submit("Save", class: "btn btn-primary") %>
+  </.form>
+
+  <p :if={Enum.empty?(@backend.rules)}>No rules yet</p>
+  <ul :for={rule <- @backend.rules} class="tw-flex tw-flex-row tw-gap-4">
+    <li class="list-group-item tw-pointer-none tw-w-full tw-flex tw-flex-row tw-justify-between">
+      <span>
+        Events from <code><%= rule.source.name %></code> matching <code><%= rule.lql_string %></code> will route to <code>this backend</code>
+      </span>
+
+      <.button phx-click="delete_rule" phx-value-rule_id={rule.id} variant="danger">
+        Delete rule
+      </.button>
+    </li>
+  </ul>
+</section>

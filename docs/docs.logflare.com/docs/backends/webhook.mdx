@@ -1,0 +1,17 @@
+# Webhook
+
+The Webhook backend will send batched events to a desired HTTP(S) destination. 
+
+## Behaviour and configurations
+### Configuration
+
+The following values are required when creating a webhook backend:
+
+- `url`: (`string`, required) a valid HTTP(S) endpoint.
+
+### Request 
+The request made will be a `POST`.
+
+### Batching
+
+Events will be sent in batches of up to 250, with intervals of up to 1 second.

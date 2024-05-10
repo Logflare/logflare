@@ -1,0 +1,37 @@
+<.subheader>
+  <:path>
+    ~/<.subheader_path_link live_patch to={~p"/backends"}>backends</.subheader_path_link>
+  </:path>
+</.subheader>
+
+<div class="tw-p-4 lg:tw-max-w-[50%] tw-mx-auto">
+  <h1>Backends</h1>
+  <p>
+    Configure one or more backends and attach them to sources. With backends, you are not limited to ingesting only into BigQuery, with multiple data storage platforms and providers being supported. ingesting concurrently.
+  </p>
+
+  <div class="tw-flex tw-gap-4 tw-items-center">
+    <a href="https://docs.logflare.app/concepts/backends" target="_blank">Documentation</a>
+    <.link patch={~p"/backends/new"}>
+      <.button variant="primary">
+        New backend
+      </.button>
+    </.link>
+  </div>
+</div>
+
+<section class="mx-auto container">
+  <ul :for={backend <- Enum.sort_by(@backends, & &1.name)} class="list-group">
+    <li class="list-group-item">
+      <.link patch={~p"/backends/#{backend.id}"} class="tw-text-white"><%= backend.name %></.link>
+      <span class="tw-block tw-text-sm">uuid: <%= backend.token %></span>
+      <p :if={backend.description} class="tw-pb-0 tw-mb-0 tw-text-sm text-muted">
+        <%= backend.description %>
+      </p>
+      <div class="tw-flex tw-gap-2 tw-mt-1">
+        <span class="badge badge-pill badge-secondary tw-leading-normal"><%= backend.type %></span>
+        <span>drain rules: <%= Enum.count(backend.rules) %></span>
+      </div>
+    </li>
+  </ul>
+</section>

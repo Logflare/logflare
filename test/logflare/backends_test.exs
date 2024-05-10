@@ -50,6 +50,15 @@ defmodule Logflare.BackendsTest do
       assert Backends.get_backend(backend.id) == nil
     end
 
+    test "delete backend with rules" do
+      user = insert(:user)
+      source = insert(:source, user: user)
+      insert(:rule, source: source)
+      backend = insert(:backend, user: user)
+      assert {:ok, %Backend{}} = Backends.delete_backend(backend)
+      assert Backends.get_backend(backend.id) == nil
+    end
+
     test "can attach multiple backends to a source", %{source: source} do
       [backend1, backend2] = insert_pair(:backend)
       assert [] = Backends.list_backends(source)
@@ -98,7 +107,22 @@ defmodule Logflare.BackendsTest do
       insert(:plan)
       user = insert(:user)
       source = insert(:source, user_id: user.id)
-      {:ok, source: source}
+      {:ok, source: source, user: user}
+    end
+
+    test "on attach to source, update SourceSup", %{source: source} do
+      [backend1, backend2] = insert_pair(:backend)
+      start_supervised!({SourceSup, source})
+      via = Backends.via_source(source, SourceSup)
+      prev_length = Supervisor.which_children(via) |> length()
+      assert {:ok, _} = Backends.update_source_backends(source, [backend1, backend2])
+
+      new_length = Supervisor.which_children(via) |> length()
+      assert new_length > prev_length
+
+      # removal
+      assert {:ok, _} = Backends.update_source_backends(source, [])
+      assert Supervisor.which_children(via) |> length() < new_length
     end
 
     test "source_sup_started?/1, lookup/2", %{source: source} do
@@ -146,8 +170,8 @@ defmodule Logflare.BackendsTest do
       source: %{token: source_token} = source
     } do
       PubSubRates.subscribe(:all)
-      ChannelTopics.subscribe_dashboard(source.token)
-      ChannelTopics.subscribe_source(source.token)
+      ChannelTopics.subscribe_dashboard(source_token)
+      ChannelTopics.subscribe_source(source_token)
       le = build(:log_event, source: source)
       assert {:ok, 1} = Backends.ingest_logs([le], source)
       :timer.sleep(500)
@@ -182,7 +206,7 @@ defmodule Logflare.BackendsTest do
       assert [_] = Backends.list_recent_logs_local(source)
     end
 
-    test "lql", %{user: user} do
+    test "route to source with lql", %{user: user} do
       [source, target] = insert_pair(:source, user: user)
       insert(:rule, lql_string: "testing", sink: target.token, source_id: source.id)
       source = Logflare.Repo.preload(source, :rules, force: true)
@@ -224,6 +248,43 @@ defmodule Logflare.BackendsTest do
       assert Backends.list_recent_logs_local(target) |> length() == 2
       # init message + 0 events
       assert Backends.list_recent_logs_local(other_target) |> length() == 1
+    end
+
+    test "route to backend", %{user: user} do
+      pid = self()
+      ref = make_ref()
+
+      Backends.Adaptor.WebhookAdaptor.Client
+      |> expect(:send, 1, fn opts ->
+        if length(opts[:body]) == 1 do
+          send(pid, ref)
+        else
+          raise "ingesting more than 1 event"
+        end
+
+        {:ok, %Tesla.Env{}}
+      end)
+
+      source = insert(:source, user: user)
+
+      backend =
+        insert(:backend,
+          type: :webhook,
+          config: %{url: "https://some-url.com"},
+          user: user
+        )
+
+      insert(:rule, lql_string: "testing", backend: backend, source_id: source.id)
+      source = source |> Repo.preload(:rules, force: true)
+      start_supervised!({SourceSup, source}, id: :source)
+
+      assert {:ok, 2} =
+               Backends.ingest_logs(
+                 [%{"event_message" => "testing 123"}, %{"event_message" => "not rounted"}],
+                 source
+               )
+
+      assert_receive ^ref, 2_000
     end
   end
 

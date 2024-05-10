@@ -29,6 +29,50 @@ defmodule Logflare.Lql.Parser do
     |> times(min: 1, max: 100)
   )
 
+  @doc """
+  `parse/1` allows for parsing of an LQL statement without validating against a provided BQ schema.
+  This allows for parse-only workflows, as coupling validations with the parsing makes things more complex.
+  """
+  @spec parse(String.t()) :: {:ok, [FilterRule.t() | ChartRule.t()]}
+  def parse(nil), do: {:ok, []}
+  def parse(""), do: {:ok, []}
+
+  def parse(querystring) do
+    {:ok, rules, _, _, _, _} =
+      querystring
+      |> String.trim()
+      |> do_parse()
+
+    {chart_rule_tokens, other_rules} =
+      rules
+      |> List.flatten()
+      |> Enum.split_with(fn
+        {:chart, _} -> true
+        _ -> false
+      end)
+
+    chart_rule =
+      if not Enum.empty?(chart_rule_tokens) do
+        chart_rule =
+          chart_rule_tokens
+          |> Enum.reduce(%{}, fn {:chart, fields}, acc -> Map.merge(acc, Map.new(fields)) end)
+
+        struct!(ChartRule, chart_rule)
+      end
+
+    filter_rules =
+      Enum.map(other_rules, fn rule ->
+        maybe_cast_value(rule)
+      end)
+
+    rules =
+      [chart_rule | filter_rules]
+      |> List.flatten()
+      |> Enum.reject(&is_nil/1)
+
+    {:ok, rules}
+  end
+
   def parse("", _schema) do
     {:ok, []}
   end
@@ -119,6 +163,26 @@ defmodule Logflare.Lql.Parser do
       _type ->
         type
     end
+  end
+
+  # cast without typing, best effort
+  defp maybe_cast_value(%{value: "true"} = c), do: %{c | value: true}
+  defp maybe_cast_value(%{value: "false"} = c), do: %{c | value: false}
+
+  defp maybe_cast_value(%{value: v} = c) do
+    parsed =
+      case Integer.parse(v) do
+        {num, ""} ->
+          num
+
+        _ ->
+          case Float.parse(v) do
+            {num, ""} -> num
+            _ -> v
+          end
+      end
+
+    %{c | value: parsed}
   end
 
   defp maybe_cast_value(c, {:list, type}), do: maybe_cast_value(c, type)

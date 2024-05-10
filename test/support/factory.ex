@@ -102,7 +102,9 @@ defmodule Logflare.Factory do
       lql_string: lql,
       lql_filters: lql_filters,
       sink: attrs[:sink],
-      source_id: attrs[:source_id]
+      source_id: attrs[:source_id],
+      source: attrs[:source],
+      backend: attrs[:backend]
     }
   end
 

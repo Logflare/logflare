@@ -51,6 +51,24 @@ defmodule Logflare.Backends do
   end
 
   @doc """
+  Returns all backends set as a rule destination for a given source.
+
+  ### Example
+    iex>  list_backends_with_rules(source)
+    [%Backend{...}, ...]
+  """
+  @spec list_backends_with_rules(Source.t()) :: [Backend.t()]
+  def list_backends_with_rules(%Source{id: source_id}) do
+    from(b in Backend, join: r in assoc(b, :rules), where: r.source_id == ^source_id)
+    |> Repo.all()
+    |> Enum.map(fn sb -> typecast_config_string_map_to_atom_map(sb) end)
+  end
+
+  def preload_rules(backends) do
+    Repo.preload(backends, rules: [:source])
+  end
+
+  @doc """
   Creates a Backend for a given source.
   """
   @spec create_backend(map()) :: {:ok, Backend.t()} | {:error, Ecto.Changeset.t()}
@@ -92,11 +110,29 @@ defmodule Logflare.Backends do
   @spec update_source_backends(Source.t(), [Backend.t()]) ::
           {:ok, Source.t()} | {:error, Ecto.Changeset.t()}
   def update_source_backends(%Source{} = source, backends) do
-    source
-    |> Repo.preload(:backends)
-    |> Ecto.Changeset.change()
-    |> Ecto.Changeset.put_assoc(:backends, backends)
-    |> Repo.update()
+    changeset =
+      source
+      |> Repo.preload(:backends)
+      |> Ecto.Changeset.change()
+      |> Ecto.Changeset.put_assoc(:backends, backends)
+
+    with {:ok, _} = result <- Repo.update(changeset) do
+      changes = Ecto.Changeset.get_change(changeset, :backends)
+
+      if source_sup_started?(source) do
+        for %Ecto.Changeset{action: action, data: backend} <- changes do
+          case action do
+            :update ->
+              SourceSup.start_backend_child(source, backend)
+
+            :replace ->
+              SourceSup.stop_backend_child(source, backend)
+          end
+        end
+      end
+
+      result
+    end
   end
 
   # common config validation function
@@ -181,20 +217,21 @@ defmodule Logflare.Backends do
   Adds log events to the source event buffer.
   The ingestion pipeline then pulls from the buffer and dispatches log events to the correct backends.
 
-  TODO: Perform syncronous parsing and validation of log event params.
+  Events are conditionally dispatched to backends based on whether they are registered. If they register for ingestion dispatching, events will get sent to the registered backend.
 
   Once this function returns `:ok`, the events get dispatched to respective backend adaptor portions of the pipeline to be further processed.
   """
   @type log_param :: map()
   @spec ingest_logs([log_param()], Source.t()) :: :ok
-  def ingest_logs(event_params, source) do
+  @spec ingest_logs([log_param()], Source.t(), Backend.t() | nil) :: :ok
+  def ingest_logs(event_params, source, backend \\ nil) do
     :ok = Source.Supervisor.ensure_started(source)
     {log_events, errors} = split_valid_events(source, event_params)
     count = Enum.count(log_events)
     increment_counters(source, count)
     maybe_broadcast_and_route(source, log_events)
     RecentLogsServer.push(source, log_events)
-    dispatch_to_backends(source, log_events)
+    dispatch_to_backends(source, backend, log_events)
     if Enum.empty?(errors), do: {:ok, count}, else: {:error, errors}
   end
 
@@ -204,8 +241,11 @@ defmodule Logflare.Backends do
       le =
         param
         |> case do
-          %LogEvent{} = le ->
+          %LogEvent{source: %Source{}} = le ->
             le
+
+          %LogEvent{} = le ->
+            %{le | source: source}
 
           param ->
             LogEvent.make(param, %{source: source})
@@ -249,7 +289,13 @@ defmodule Logflare.Backends do
     :ok
   end
 
-  defp dispatch_to_backends(source, log_events) do
+  defp dispatch_to_backends(source, %Backend{} = backend, log_events) do
+    adaptor_module = Adaptor.get_adaptor(backend)
+    adaptor_module.ingest(nil, log_events, default_ingest_opts(source, backend))
+    :ok
+  end
+
+  defp dispatch_to_backends(source, nil, log_events) do
     Registry.dispatch(SourceDispatcher, source.id, fn entries ->
       for {pid, {adaptor_module, :ingest, opts}} <- entries do
         # TODO: spawn tasks to do this concurrently
@@ -263,23 +309,40 @@ defmodule Logflare.Backends do
   @doc """
   Registers a backend for ingestion dispatching. Any opts that are provided are stored in the registry.
 
+  If the `:register_for_ingest` field is `true`, the backend will be registered for ingest dispatching.
+
+  The backend will not receive any dispatched events if it is set to false, and this function will be a `:noop`.
+
+
   Auto-populated options:
   - `:backend_id`
   - `:source_id`
   """
   @spec register_backend_for_ingest_dispatch(Source.t(), Backend.t(), keyword()) ::
           :ok
-  def register_backend_for_ingest_dispatch(source, backend, opts \\ []) do
+  def register_backend_for_ingest_dispatch(source, backend, opts \\ [])
+
+  def register_backend_for_ingest_dispatch(
+        source,
+        %Backend{register_for_ingest: true} = backend,
+        opts
+      ) do
     mod = Adaptor.get_adaptor(backend)
 
     {:ok, _pid} =
       Registry.register(
         SourceDispatcher,
         source.id,
-        {mod, :ingest, [backend_id: backend.id, source_id: source.id] ++ opts}
+        {mod, :ingest, default_ingest_opts(source, backend) ++ opts}
       )
 
     :ok
+  end
+
+  def register_backend_for_ingest_dispatch(_source, _backend, _opts), do: :ok
+
+  defp default_ingest_opts(source, backend) do
+    [backend_id: backend.id, source_id: source.id]
   end
 
   @doc """
@@ -320,8 +383,10 @@ defmodule Logflare.Backends do
   @doc """
   checks if the SourceSup for a given source has been started.
   """
-  @spec source_sup_started?(Source.t()) :: boolean()
-  def source_sup_started?(%Source{id: id}) do
+  @spec source_sup_started?(Source.t() | non_neg_integer()) :: boolean()
+  def source_sup_started?(%Source{id: id}), do: source_sup_started?(id)
+
+  def source_sup_started?(id) when is_number(id) do
     Registry.lookup(SourceRegistry, {id, SourceSup}) != []
   end
 

@@ -15,27 +15,38 @@ defmodule Logflare.Logs.SourceRouting do
 
   def route_to_sinks_and_ingest(%LE{via_rule: %Rule{}} = le), do: le
 
-  def route_to_sinks_and_ingest(
-        %LE{source: %Source{rules: rules, v2_pipeline: v2_pipeline}, via_rule: nil} = le
-      ) do
+  def route_to_sinks_and_ingest(%LE{source: %Source{rules: rules}, via_rule: nil} = le) do
     for %Rule{lql_filters: [_ | _]} = rule <- rules, route_with_lql_rules?(le, rule) do
-      sink_source =
-        Sources.Cache.get_by(token: rule.sink) |> Sources.refresh_source_metrics_for_ingest()
-
-      le = %{le | source: sink_source, via_rule: rule}
-
-      if v2_pipeline do
-        # TODO: ensure source started
-        Backends.ingest_logs([le], sink_source)
-      else
-        le
-        |> LE.apply_custom_event_message()
-        |> tap(&Logs.ingest/1)
-        |> tap(&Logs.broadcast/1)
-      end
+      do_routing(rule, le)
     end
 
     le
+  end
+
+  defp do_routing(%Rule{backend_id: backend_id} = rule, %LE{source: %Source{} = source} = le)
+       when backend_id != nil do
+    # route to a backend
+    backend = Backends.Cache.get_backend(backend_id)
+    le = %{le | via_rule: rule}
+    # ingest to a specific backend
+    Backends.ingest_logs([le], source, backend)
+  end
+
+  defp do_routing(%Rule{sink: sink} = rule, %LE{source: source} = le) when sink != nil do
+    sink_source =
+      Sources.Cache.get_by(token: rule.sink) |> Sources.refresh_source_metrics_for_ingest()
+
+    le = %{le | source: sink_source, via_rule: rule}
+
+    if source.v2_pipeline do
+      # TODO: ensure source started
+      Backends.ingest_logs([le], sink_source)
+    else
+      le
+      |> LE.apply_custom_event_message()
+      |> tap(&Logs.ingest/1)
+      |> tap(&Logs.broadcast/1)
+    end
   end
 
   @spec route_with_lql_rules?(LE.t(), Rule.t()) :: boolean()
@@ -49,7 +60,7 @@ defmodule Logflare.Logs.SourceRouting do
 
         lql_filter_matches_any_of_nested_values? =
           Enum.reduce_while(le_values, false, fn le_value, _acc ->
-            le_str_value = if is_binary(le_value), do: le_value, else: inspect(le_value)
+            le_str_value = stringify(le_value)
 
             lql_filter_matches? =
               cond do
@@ -61,10 +72,10 @@ defmodule Logflare.Logs.SourceRouting do
                   le_value >= lvalue and le_value <= rvalue
 
                 operator == :list_includes ->
-                  apply(Kernel, :==, [le_value, value])
+                  le_value == value
 
                 operator == :string_contains ->
-                  String.contains?(le_str_value, value)
+                  String.contains?(le_str_value, stringify(value))
 
                 operator == := ->
                   le_value == value
@@ -136,4 +147,15 @@ defmodule Logflare.Logs.SourceRouting do
 
     List.wrap(values)
   end
+
+  defp stringify(v) when is_integer(v) do
+    Integer.to_string(v)
+  end
+
+  defp stringify(v) when is_float(v) do
+    Float.to_string(v)
+  end
+
+  defp stringify(v) when is_binary(v), do: v
+  defp stringify(v), do: inspect(v)
 end

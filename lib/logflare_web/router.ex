@@ -169,7 +169,10 @@ defmodule LogflareWeb.Router do
     pipe_through([:browser, :require_auth])
     get("/dashboard", SourceController, :dashboard)
     live("/access-tokens", AccessTokensLive, :index)
-    live("/backends", BackendsLive)
+    live("/backends", BackendsLive, :index)
+    live("/backends/new", BackendsLive, :new)
+    live("/backends/:id", BackendsLive, :show)
+    live("/backends/:id/edit", BackendsLive, :edit)
   end
 
   scope "/endpoints", LogflareWeb do

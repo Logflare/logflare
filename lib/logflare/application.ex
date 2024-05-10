@@ -102,6 +102,7 @@ defmodule Logflare.Application do
         ContextCache,
         Partners.Cache,
         Users.Cache,
+        Backends.Cache,
         Sources.Cache,
         Billing.Cache,
         SourceSchemas.Cache,

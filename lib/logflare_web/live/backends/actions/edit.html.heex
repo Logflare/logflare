@@ -1,0 +1,12 @@
+<.subheader {assigns}>
+  <:path>
+    ~/<.subheader_path_link live_patch to={~p"/backends"}>backends</.subheader_path_link>/<.subheader_path_link live_patch to={~p"/backends/#{@backend.id}"}>
+      <%= @backend.name %>
+    </.subheader_path_link>/edit
+  </:path>
+  <.subheader_link to="https://docs.logflare.app/concepts/backends" text="docs" fa_icon="book" />
+</.subheader>
+
+<section class="mx-auto container">
+  <.backend_form {assigns} />
+</section>
