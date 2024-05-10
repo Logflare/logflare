@@ -23,11 +23,13 @@ defmodule LogflareWeb.CoreComponents do
   attr :variant, :string,
     values: ["primary", "secondary", "success", "danger", "warning", "info", "light", "dark"]
 
+  attr :class, :string, default: ""
+  attr :rest, :global
   slot :inner_block, required: true
 
   def button(assigns) do
     ~H"""
-    <button class={"btn btn-#{@variant}"} type="button">
+    <button class={"btn btn-#{@variant} #{@class}"} type="button" {@rest}>
       <%= render_slot(@inner_block) %>
     </button>
     """

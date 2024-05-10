@@ -108,6 +108,12 @@ document.addEventListener("DOMContentLoaded", (e) => {
 window.addEventListener("logflare:copy-to-clipboard", (event) => {
   if ("clipboard" in navigator) {
     const text = event.detail?.text || event.target.textContent;
+    if (event.target.textContent.trim() === "copy") {
+      event.target.textContent = "copied"
+      setTimeout(()=>{
+        event.target.textContent = "copy"
+      }, 6000)
+    }
     navigator.clipboard.writeText(text);
   } else {
     console.error("Your browser does not support clipboard copy.");
