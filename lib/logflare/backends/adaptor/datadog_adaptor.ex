@@ -9,7 +9,14 @@ defmodule Logflare.Backends.Adaptor.DatadogAdaptor do
   alias Logflare.Backends.Adaptor.WebhookAdaptor
 
   # https://docs.datadoghq.com/api/latest/logs/#send-logs
-  @api_url "https://http-intake.logs.us5.datadoghq.com/api/v2/logs"
+  @api_url_mapping %{
+    "US1" => "https://http-intake.logs.datadoghq.com/api/v2/logs",
+    "US3" => "https://http-intake.logs.us3.datadoghq.com/api/v2/logs",
+    "US5" => "https://http-intake.logs.us5.datadoghq.com/api/v2/logs",
+    "EU" => "https://http-intake.logs.datadoghq.eu/api/v2/logs",
+    "AP1"=> "https://http-intake.logs.ap1.datadoghq.com/api/v2/logs",
+    "US1-FED"=> "https://http-intake.logs.ddog-gov.com/api/v2/logs"
+  }
 
   typedstruct enforce: true do
     field(:api_key, String.t())
@@ -29,7 +36,7 @@ defmodule Logflare.Backends.Adaptor.DatadogAdaptor do
     backend = %{
       backend
       | config: %{
-          url: @api_url,
+          url: Map.get(@api_url_mapping, backend.config.region),
           headers: %{"dd-api-key" => backend.config.api_key}
         }
     }
@@ -50,14 +57,15 @@ defmodule Logflare.Backends.Adaptor.DatadogAdaptor do
 
   @impl Logflare.Backends.Adaptor
   def cast_config(params) do
-    {%{}, %{api_key: :string}}
-    |> Ecto.Changeset.cast(params, [:api_key])
+    {%{}, %{api_key: :string, region: :string}}
+    |> Ecto.Changeset.cast(params, [:api_key, :region])
   end
 
   @impl Logflare.Backends.Adaptor
   def validate_config(changeset) do
     changeset
-    |> Ecto.Changeset.validate_required([:api_key])
+    |> Ecto.Changeset.validate_required([:api_key, :region])
+    |> Ecto.Changeset.validate_inclusion(:region, Map.keys(@api_url_mapping))
   end
 
   defp translate_event(%Logflare.LogEvent{} = le) do
