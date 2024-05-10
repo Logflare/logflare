@@ -27,7 +27,7 @@
     <%= @logs |> Enum.with_index |> Enum.map(fn {log, inx} -> %>
     <li>
       <span class="tw-whitespace-pre-wrap"><mark class="log-datestamp" data-timestamp="<%= log.body["timestamp"] %>"><%= log.body["timestamp"] %></mark> <%= log.body["event_message"] %></span>
-      <a class="metadata-link" data-toggle="collapse" href="#metadata-<%= inx %>" aria-expanded="false">
+      <a class="metadata-link" data-toggle="collapse" href="#metadata-<%= inx %>" aria-expanded="false" class=" tw-text-[0.65rem]"">
         event body
       </a>
       <div class="collapse metadata" id="metadata-<%= inx %>">
