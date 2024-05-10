@@ -10,7 +10,7 @@ defmodule Logflare.Backends.Backend do
   alias Logflare.User
   alias Logflare.Rule
 
-  @adaptor_types [:bigquery, :webhook, :postgres, :datadog]
+  @adaptor_types [:bigquery, :webhook, :postgres, :datadog, :elastic]
 
   typed_schema "backends" do
     field(:name, :string)

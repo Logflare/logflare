@@ -13,14 +13,14 @@ defmodule Logflare.Backends.Adaptor.DatadogAdaptorTest do
 
       refute changeset.valid?
 
-      assert  Adaptor.cast_and_validate_config(@subject, %{
-          "api_key" => "foobarbaz",
-          "region" => "US1"
-        }).valid?
+      assert Adaptor.cast_and_validate_config(@subject, %{
+               "api_key" => "foobarbaz",
+               "region" => "US1"
+             }).valid?
 
-        refute  Adaptor.cast_and_validate_config(@subject, %{
-          "api_key" => "foobarbaz",
-        }).valid?
+      refute Adaptor.cast_and_validate_config(@subject, %{
+               "api_key" => "foobarbaz"
+             }).valid?
     end
   end
 
@@ -30,7 +30,11 @@ defmodule Logflare.Backends.Adaptor.DatadogAdaptorTest do
       source = insert(:source, user: user)
 
       backend =
-        insert(:backend, type: :datadog, sources: [source], config: %{api_key: "foo-bar", region: "US1"})
+        insert(:backend,
+          type: :datadog,
+          sources: [source],
+          config: %{api_key: "foo-bar", region: "US1"}
+        )
 
       pid = start_supervised!({@subject, {source, backend}})
       :timer.sleep(500)

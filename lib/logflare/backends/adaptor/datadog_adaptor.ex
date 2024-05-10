@@ -14,9 +14,11 @@ defmodule Logflare.Backends.Adaptor.DatadogAdaptor do
     "US3" => "https://http-intake.logs.us3.datadoghq.com/api/v2/logs",
     "US5" => "https://http-intake.logs.us5.datadoghq.com/api/v2/logs",
     "EU" => "https://http-intake.logs.datadoghq.eu/api/v2/logs",
-    "AP1"=> "https://http-intake.logs.ap1.datadoghq.com/api/v2/logs",
-    "US1-FED"=> "https://http-intake.logs.ddog-gov.com/api/v2/logs"
+    "AP1" => "https://http-intake.logs.ap1.datadoghq.com/api/v2/logs",
+    "US1-FED" => "https://http-intake.logs.ddog-gov.com/api/v2/logs"
   }
+
+  def api_url_mapping, do: @api_url_mapping
 
   typedstruct enforce: true do
     field(:api_key, String.t())
@@ -77,7 +79,6 @@ defmodule Logflare.Backends.Adaptor.DatadogAdaptor do
       | body: %{
           message: formatted_ts <> " " <> Jason.encode!(le.body),
           ddsource: "logflare",
-          hostname: "logflare",
           service: le.source.name
         }
     }
