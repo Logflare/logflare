@@ -130,6 +130,19 @@ defmodule LogflareWeb.Source.SearchLVTest do
       assert element(view, ".subhead a .toggle-on")
     end
 
+    test "subheader - load with timezone in url even if it differs from preference", %{
+      conn: conn,
+      source: source,
+      user: user
+    } do
+      assert user.preferences.timezone != "Singapore"
+
+      {:ok, view, _html} =
+        live(conn, ~p"/sources/#{source.id}/search?querystring=&tailing%3F=&tz=Singapore")
+
+      assert render(view) =~ "+08:00"
+    end
+
     test "load page", %{conn: conn, source: source} do
       {:ok, view, html} = live(conn, Routes.live_path(conn, SearchLV, source.id))
 

@@ -36,7 +36,8 @@ defmodule Logflare.Factory do
       token: TestUtils.gen_uuid(),
       api_key: TestUtils.random_string(10),
       provider_uid: "provider_uid_#{TestUtils.random_string()}",
-      bigquery_udfs_hash: ""
+      bigquery_udfs_hash: "",
+      preferences: build(:user_preferences)
     }
   end
 
