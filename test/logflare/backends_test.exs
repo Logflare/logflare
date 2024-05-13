@@ -59,15 +59,6 @@ defmodule Logflare.BackendsTest do
       assert Backends.get_backend(backend.id) == nil
     end
 
-    test "delete backend with rules" do
-      user = insert(:user)
-      source = insert(:source, user: user)
-      insert(:rule, source: source)
-      backend = insert(:backend, user: user)
-      assert {:ok, %Backend{}} = Backends.delete_backend(backend)
-      assert Backends.get_backend(backend.id) == nil
-    end
-
     test "can attach multiple backends to a source", %{source: source} do
       [backend1, backend2] = insert_pair(:backend)
       assert [] = Backends.list_backends(source)

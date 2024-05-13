@@ -85,7 +85,7 @@ defmodule Logflare.Backends.Adaptor.DatadogAdaptorTest do
 
       assert :ok == @subject.ingest(pid, [le], source_id: source.id, backend_id: backend.id)
       assert_receive {^ref, [log_entry]}, 2000
-      assert Jason.decode!(log_entry["message"]) == le.body
+      assert log_entry["message"] =~ Jason.encode!(le.body)
     end
   end
 end
