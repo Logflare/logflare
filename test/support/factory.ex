@@ -193,9 +193,7 @@ defmodule Logflare.Factory do
 
   @spec user_preferences_factory :: Logflare.Users.UserPreferences.t()
   def user_preferences_factory() do
-    %UserPreferences{
-      timezone: "Phoenix/Arizona"
-    }
+    %UserPreferences{}
   end
 
   def endpoint_factory do
