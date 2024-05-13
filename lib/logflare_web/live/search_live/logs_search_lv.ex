@@ -53,7 +53,7 @@ defmodule LogflareWeb.Source.SearchLV do
       user: user,
       team_user: team_user,
       search_tip: gen_search_tip(),
-      user_local_timezone: Map.get(params, "tz", "Etc/UTCs"),
+      user_local_timezone: Map.get(params, "tz", "Etc/UTC"),
       user_timezone_from_connect_params: nil,
       use_local_time: true,
       # loading states
@@ -642,7 +642,7 @@ defmodule LogflareWeb.Source.SearchLV do
         push_patch_with_params(socket, %{"tz" => local_tz})
 
       %{assigns: %{uri_params: params, user_local_timezone: local_tz}} = socket
-      when not is_map_key(params, "tz") ->
+      when not is_map_key(params, "tz") and local_tz != "Etc/UTC" ->
         push_patch_with_params(socket, %{"tz" => local_tz})
 
       _ ->

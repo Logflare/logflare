@@ -36,8 +36,7 @@ defmodule Logflare.Factory do
       token: TestUtils.gen_uuid(),
       api_key: TestUtils.random_string(10),
       provider_uid: "provider_uid_#{TestUtils.random_string()}",
-      bigquery_udfs_hash: "",
-      preferences: build(:user_preferences)
+      bigquery_udfs_hash: ""
     }
   end
 
@@ -194,9 +193,7 @@ defmodule Logflare.Factory do
 
   @spec user_preferences_factory :: Logflare.Users.UserPreferences.t()
   def user_preferences_factory() do
-    %UserPreferences{
-      timezone: "Phoenix/Arizona"
-    }
+    %UserPreferences{}
   end
 
   def endpoint_factory do

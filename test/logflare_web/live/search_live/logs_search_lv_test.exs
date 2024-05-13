@@ -60,6 +60,84 @@ defmodule LogflareWeb.Source.SearchLVTest do
   # do this for all tests
   setup [:setup_mocks, :on_exit_kill_tasks]
 
+  describe "no timezone" do
+    setup do
+      user = insert(:user)
+      source = insert(:source, user: user)
+      plan = insert(:plan)
+      [user: user, source: source, plan: plan]
+    end
+
+    setup [:setup_user_session, :setup_source_processes]
+
+    test "subheader - default timezone is Etc/UTC", %{conn: conn, source: source} do
+      {:ok, view, _html} = live(conn, ~p"/sources/#{source.id}/search")
+
+      assert view
+             |> element(".subhead a", "timezone")
+             |> render_click()
+
+      :timer.sleep(300)
+      assert render(view) =~ "local timezone for your"
+      # default to Etc/UTC
+      assert render(view) =~ "+00:00"
+    end
+
+    test "subheader - local time toggle", %{conn: conn, source: source} do
+      {:ok, view, _html} = live(conn, ~p"/sources/#{source.id}/search")
+
+      assert view
+             |> element(".subhead a", "local time")
+             |> render_click()
+
+      :timer.sleep(200)
+      assert element(view, ".subhead a .toggle-on")
+    end
+
+    test "subheader - load with timezone in url even if it differs from preference", %{
+      conn: conn,
+      source: source
+    } do
+      {:ok, view, _html} =
+        live(conn, ~p"/sources/#{source.id}/search?querystring=&tailing%3F=&tz=Singapore")
+
+      assert render(view) =~ "+08:00"
+    end
+  end
+
+  describe "preference timezone" do
+    setup do
+      user = insert(:user, preferences: build(:user_preferences, timezone: "US/Arizona"))
+      source = insert(:source, user: user)
+      plan = insert(:plan)
+      [user: user, source: source, plan: plan]
+    end
+
+    setup [:setup_user_session, :setup_source_processes]
+
+    test "subheader - if no tz, will redirect to preference tz", %{conn: conn, source: source} do
+      {:error, {:live_redirect, _}} =
+        live(conn, ~p"/sources/#{source.id}/search?querystring=&tailing%3F=")
+
+      {:ok, view, _html} =
+        live(conn, ~p"/sources/#{source.id}/search?querystring=&tailing%3F=&tz=US%2FArizona")
+
+      :timer.sleep(300)
+      # default to Etc/UTC
+      assert render(view) =~ "-07:00"
+    end
+
+    test "subheader - load with timezone in url even if it differs from preference", %{
+      conn: conn,
+      source: source
+    } do
+      {:ok, view, _html} =
+        live(conn, ~p"/sources/#{source.id}/search?querystring=&tailing%3F=&tz=Singapore")
+
+      assert render(view) =~ "+08:00"
+    end
+  end
+
   describe "search tasks" do
     setup do
       user = insert(:user)
@@ -106,41 +184,6 @@ defmodule LogflareWeb.Source.SearchLVTest do
 
       :timer.sleep(300)
       assert render(view) =~ "Actual SQL query used when querying for results"
-    end
-
-    test "subheader - timezone", %{conn: conn, source: source} do
-      {:ok, view, _html} = live(conn, ~p"/sources/#{source.id}/search")
-
-      assert view
-             |> element(".subhead a", "timezone")
-             |> render_click()
-
-      :timer.sleep(300)
-      assert render(view) =~ "local timezone for your"
-    end
-
-    test "subheader - local time toggle", %{conn: conn, source: source} do
-      {:ok, view, _html} = live(conn, ~p"/sources/#{source.id}/search")
-
-      assert view
-             |> element(".subhead a", "local time")
-             |> render_click()
-
-      :timer.sleep(200)
-      assert element(view, ".subhead a .toggle-on")
-    end
-
-    test "subheader - load with timezone in url even if it differs from preference", %{
-      conn: conn,
-      source: source,
-      user: user
-    } do
-      assert user.preferences.timezone != "Singapore"
-
-      {:ok, view, _html} =
-        live(conn, ~p"/sources/#{source.id}/search?querystring=&tailing%3F=&tz=Singapore")
-
-      assert render(view) =~ "+08:00"
     end
 
     test "load page", %{conn: conn, source: source} do
