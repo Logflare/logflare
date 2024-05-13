@@ -5,6 +5,7 @@ defmodule Logflare.Backends do
   alias Logflare.Backends.Adaptor.WebhookAdaptor
   alias Logflare.Backends.Adaptor.PostgresAdaptor
   alias Logflare.Backends.Adaptor.BigQueryAdaptor
+  alias Logflare.Backends.Adaptor.DatadogAdaptor
   alias Logflare.Backends.Backend
   alias Logflare.Backends.SourceDispatcher
   alias Logflare.Backends.SourceRegistry
@@ -25,7 +26,8 @@ defmodule Logflare.Backends do
   @adaptor_mapping %{
     webhook: WebhookAdaptor,
     postgres: PostgresAdaptor,
-    bigquery: BigQueryAdaptor
+    bigquery: BigQueryAdaptor,
+    datadog: DatadogAdaptor
   }
 
   defdelegate child_spec(arg), to: __MODULE__.Supervisor

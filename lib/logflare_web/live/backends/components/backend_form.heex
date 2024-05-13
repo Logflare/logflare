@@ -31,7 +31,7 @@
   </div>
 
   <div :if={@live_action == :new}>
-    <%= select(f, :type, ["Select a backend type...", Webhook: :webhook, Postgres: :postgres, BigQuery: :bigquery],
+    <%= select(f, :type, ["Select a backend type...", Webhook: :webhook, Postgres: :postgres, BigQuery: :bigquery, Datadog: :datadog],
       phx_change: :change_form_type,
       class: "form-control form-control-margin",
       id: "type"
@@ -127,6 +127,26 @@
             <%= text_input(f_config, :dataset_id, class: "form-control") %>
             <small class="form-text text-muted">
               A BigQuery Dataset ID where data will be stored.
+            </small>
+          </div>
+        <% "datadog" -> %>
+          <div class="form-group">
+            <%= label(f_config, :api_key, "API Key") %>
+            <%= text_input(f_config, :api_key, class: "form-control", type: "password") %>
+            <small class="form-text text-muted">
+              The API Key obtained from the Datadog dashboard.
+              https://us1.datadoghq.com/organization-settings/api-keys
+            </small>
+          </div>
+
+          <div class="form-group">
+            <%= label(f_config, :region, "Region") %>
+            <%= select(f_config, :region, ["Select a region..." | Map.keys(Logflare.Backends.Adaptor.DatadogAdaptor.api_url_mapping())],
+              class: "form-control form-control-margin",
+              id: "datadog-region"
+            ) %>
+            <small class="form-text text-muted">
+              Region that the Datadog account is in.
             </small>
           </div>
         <% _ -> %>
