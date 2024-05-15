@@ -103,7 +103,7 @@ defmodule Logflare.Endpoints do
 
       if should_kill_caches? do
         # kill all caches
-        for pid <- Resolver.resolve(endpoint) do
+        for pid <- Resolver.list_caches(endpoint) do
           Utils.Tasks.async(fn ->
             Cache.invalidate(pid)
           end)
@@ -356,7 +356,7 @@ defmodule Logflare.Endpoints do
   end
 
   def calculate_endpoint_metrics(%Query{} = endpoint) do
-    cache_count = endpoint |> Resolver.resolve() |> length()
+    cache_count = endpoint |> Resolver.list_caches() |> length()
 
     %{
       endpoint

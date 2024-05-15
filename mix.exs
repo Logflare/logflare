@@ -123,6 +123,7 @@ defmodule Logflare.Mixfile do
 
       # Concurrency and pipelines
       {:broadway, "~> 1.0.6"},
+      {:syn, "~> 3.3"},
 
       # Test
       {:mix_test_watch, "~> 1.0", only: [:dev, :test], runtime: false},

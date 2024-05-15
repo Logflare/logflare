@@ -57,6 +57,7 @@ config :ueberauth, Ueberauth,
 
 config :phoenix, :json_library, Jason
 config :postgrex, :json_library, Jason
+config :syn, scopes: [:endpoints]
 
 oauth_common = [
   repo: Logflare.Repo,
