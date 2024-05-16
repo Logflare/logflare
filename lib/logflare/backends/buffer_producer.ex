@@ -7,6 +7,7 @@ defmodule Logflare.Backends.BufferProducer do
   use GenStage
   alias Logflare.Source
   alias Logflare.PubSubRates
+  alias Logflare.Backends
 
   @default_broadcast_interval 5_000
 
@@ -27,7 +28,7 @@ defmodule Logflare.Backends.BufferProducer do
       })
 
     loop(state.broadcast_interval)
-    {:producer, state, buffer_size: 10_000}
+    {:producer, state, buffer_size: Backends.max_buffer_len()}
   end
 
   def handle_info(:resolve, state) do
