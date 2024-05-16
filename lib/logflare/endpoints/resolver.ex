@@ -4,35 +4,35 @@ defmodule Logflare.Endpoints.Resolver do
   """
   alias Logflare.Endpoints.Cache
 
-  def resolve(%Logflare.Endpoints.Query{id: id}) do
-    :global.registered_names()
-    |> Enum.filter(fn
-      {Cache, ^id, _} -> true
-      _ -> false
-    end)
-    |> Enum.map(&:global.whereis_name/1)
+  require Logger
+
+  @doc """
+  Lists all caches for an endpoint
+  """
+  def list_caches(%Logflare.Endpoints.Query{id: id}) do
+    :syn.members(:endpoints, id)
+    |> Enum.map(fn {pid, _} -> pid end)
   end
 
+  @doc """
+  Starts up or performs a lookup for an Endpoint.Cache process.
+  Returns the resolved pid.
+  """
   def resolve(%Logflare.Endpoints.Query{id: id} = query, params) do
-    :global.set_lock({Cache, {id, params}})
+    :syn.lookup(:endpoints, {id, params})
+    |> case do
+      {pid, _} when is_pid(pid) ->
+        Cache.touch(pid)
+        pid
 
-    result =
-      case :global.whereis_name({Cache, id, params}) do
-        :undefined ->
-          spec = {Cache, {query, params}}
+      _ ->
+        spec = {Cache, {query, params}}
+        Logger.debug("Starting up Endpoint.Cache for Endpoint.Query id=#{id}", endpoint_id: id)
 
-          case DynamicSupervisor.start_child(Cache, spec) do
-            {:ok, pid} -> pid
-            {:error, {:already_started, pid}} -> pid
-          end
-
-        pid ->
-          Cache.touch(pid)
-          pid
-      end
-
-    :global.del_lock({Cache, {id, params}})
-
-    result
+        case DynamicSupervisor.start_child(Cache, spec) do
+          {:ok, pid} -> pid
+          {:error, {:already_started, pid}} -> pid
+        end
+    end
   end
 end

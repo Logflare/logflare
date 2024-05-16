@@ -26,9 +26,7 @@ defmodule Logflare.Endpoints.Cache do
         }
 
   def start_link({query, params}) do
-    GenServer.start_link(__MODULE__, {query, params},
-      name: {:global, {__MODULE__, query.id, params}}
-    )
+    GenServer.start_link(__MODULE__, {query, params})
   end
 
   @doc """
@@ -101,6 +99,11 @@ defmodule Logflare.Endpoints.Cache do
       |> put_disable_cache()
 
     unless state.disable_cache, do: refresh(proactive_querying_ms(state))
+
+    # register on syn
+    pid = self()
+    :syn.register(:endpoints, {query.id, params}, pid)
+    :syn.join(:endpoints, query.id, pid)
 
     {:ok, state}
   end
