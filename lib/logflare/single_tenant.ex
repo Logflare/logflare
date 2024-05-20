@@ -122,18 +122,33 @@ defmodule Logflare.SingleTenant do
     |> List.first()
   end
 
-  def create_default_backend do
+  @doc """
+  Updates or inserts the default backend based on env var.
+  """
+  def upsert_default_backend do
     user = get_default_user()
+    existing_backend = get_default_backend()
 
-    if postgres_backend?() do
-      opts = postgres_backend_adapter_opts()
+    cond do
+      postgres_backend?() and !!existing_backend ->
+        opts = postgres_backend_adapter_opts()
 
-      Backends.create_backend(%{
-        name: "Default postgres backend",
-        type: :postgres,
-        config: Map.new(opts),
-        user_id: user.id
-      })
+        Backends.update_backend(existing_backend, %{
+          config: Map.new(opts)
+        })
+
+      postgres_backend?() ->
+        opts = postgres_backend_adapter_opts()
+
+        Backends.create_backend(%{
+          name: "Default postgres backend",
+          type: :postgres,
+          config: Map.new(opts),
+          user_id: user.id
+        })
+
+      true ->
+        :noop
     end
   end
 

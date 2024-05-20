@@ -42,7 +42,7 @@ defmodule Logflare.TestUtils do
         end
 
         if unquote(opts.seed_backend) do
-          {:ok, _backend} = SingleTenant.create_default_backend()
+          {:ok, _backend} = SingleTenant.upsert_default_backend()
         end
 
         if unquote(opts.supabase_mode) do
