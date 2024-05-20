@@ -125,6 +125,7 @@ defmodule Logflare.Mixfile do
       {:swoosh, "~> 0.23"},
       {:ex_twilio, "~> 0.8.1"},
       {:tesla, "~> 1.6"},
+      {:nimble_pool, "~> 1.1"},
 
       # Concurrency and pipelines
       {:broadway, "~> 1.0.6"},

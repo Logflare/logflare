@@ -42,6 +42,15 @@ Mimic.copy(ExTwilio.Message)
 Mimic.stub(Goth)
 Mimic.stub(Finch)
 
-ExUnit.configure(exclude: [integration: true, failing: true, benchmark: true])
+has_telegraf? = not is_nil(System.find_executable("telegraf"))
+
+ExUnit.configure(
+  exclude: [
+    integration: true,
+    failing: true,
+    benchmark: true,
+    telegraf: not has_telegraf?
+  ]
+)
 
 Ecto.Adapters.SQL.Sandbox.mode(Logflare.Repo, :manual)
