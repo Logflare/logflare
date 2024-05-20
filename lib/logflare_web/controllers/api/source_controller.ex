@@ -76,7 +76,7 @@ defmodule LogflareWeb.Api.SourceController do
       source = Sources.preload_defaults(source)
 
       conn
-      |> put_status(204)
+      |> put_status(201)
       |> json(source)
     end
   end
