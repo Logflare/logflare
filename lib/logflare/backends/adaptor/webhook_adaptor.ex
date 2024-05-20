@@ -55,8 +55,10 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
   @impl Logflare.Backends.Adaptor
   def validate_config(changeset) do
     changeset
-    |> Ecto.Changeset.validate_required([:url, :http])
+    |> Ecto.Changeset.validate_required([:url])
     |> Ecto.Changeset.validate_format(:url, ~r/https?\:\/\/.+/)
+    |> Logflare.Utils.default_field_value(:http, "http2")
+    |> Ecto.Changeset.validate_inclusion(:http, ["http1", "http2"])
   end
 
   # GenServer
