@@ -1,5 +1,6 @@
 ---
 toc_max_heading_level: 3
+sidebar_position: 1
 ---
 
 # BigQuery
