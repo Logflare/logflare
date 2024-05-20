@@ -62,6 +62,7 @@ defmodule LogflareWeb.Api.BackendController do
     parameters: [token: [in: :path, description: "Backend Token", type: :string]],
     request_body: BackendApiSchema.params(),
     responses: %{
+      204 => Accepted.response(),
       201 => Created.response(BackendApiSchema),
       404 => NotFound.response()
     }
@@ -71,7 +72,10 @@ defmodule LogflareWeb.Api.BackendController do
     with {:ok, backend} <- Backends.fetch_backend_by(token: token, user_id: user.id),
          {:ok, updated} <- Backends.update_backend(backend, params) do
       conn
-      |> put_status(204)
+      |> case do
+        %{method: "PATCH"} -> put_status(conn, 204)
+        %{method: "PUT"} -> put_status(conn, 201)
+      end
       |> json(updated)
     end
   end
