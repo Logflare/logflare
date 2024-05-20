@@ -105,7 +105,7 @@ defmodule Logflare.Backends.Adaptor.ElasticAdaptorTest do
       ref = make_ref()
 
       Tesla.Mock.mock_global(fn req ->
-        assert {_k, "Basic" <> _} = Enum.find(req.headers, fn {k, _v} -> k == "Authorization" end)
+        assert {_k, "Basic" <> _} = List.keyfind(req.headers, "Authorization")
         send(this, {ref, Jason.decode!(req.body)})
         %Tesla.Env{status: 200, body: ""}
       end)
