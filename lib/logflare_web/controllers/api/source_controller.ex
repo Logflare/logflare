@@ -65,6 +65,7 @@ defmodule LogflareWeb.Api.SourceController do
     parameters: [token: [in: :path, description: "Source Token", type: :string]],
     request_body: Source.params(),
     responses: %{
+      204 => Accepted.response(),
       201 => Created.response(Source),
       404 => NotFound.response()
     }
@@ -76,7 +77,10 @@ defmodule LogflareWeb.Api.SourceController do
       source = Sources.preload_defaults(source)
 
       conn
-      |> put_status(201)
+      |> case do
+        %{method: "PATCH"} -> put_status(conn, 204)
+        %{method: "PUT"} -> put_status(conn, 201)
+      end
       |> json(source)
     end
   end
