@@ -4,6 +4,7 @@ defmodule Logflare.Backends.Adaptor.DatadogAdaptorTest do
   alias Logflare.Backends.Adaptor
 
   @subject Logflare.Backends.Adaptor.DatadogAdaptor
+  @client Logflare.Backends.Adaptor.WebhookAdaptor.Client
 
   doctest @subject
 
@@ -45,7 +46,8 @@ defmodule Logflare.Backends.Adaptor.DatadogAdaptorTest do
       this = self()
       ref = make_ref()
 
-      Tesla.Mock.mock_global(fn _req ->
+      @client
+      |> expect(:send, fn _req ->
         send(this, ref)
         %Tesla.Env{status: 200, body: ""}
       end)
@@ -60,24 +62,28 @@ defmodule Logflare.Backends.Adaptor.DatadogAdaptorTest do
       this = self()
       ref = make_ref()
 
-      Tesla.Mock.mock_global(fn req ->
-        send(this, {ref, Jason.decode!(req.body)})
+
+      @client
+      |> expect(:send, fn req ->
+        send(this, {ref, req[:body]})
         %Tesla.Env{status: 200, body: ""}
       end)
+
 
       le = build(:log_event, source: source)
 
       assert :ok == @subject.ingest(pid, [le], source_id: source.id, backend_id: backend.id)
       assert_receive {^ref, [log_entry]}, 2000
-      assert log_entry["service"] == source.name
+      assert log_entry.service == source.name
     end
 
     test "message is JSON encoded log event", %{pid: pid, source: source, backend: backend} do
       this = self()
       ref = make_ref()
 
-      Tesla.Mock.mock_global(fn req ->
-        send(this, {ref, Jason.decode!(req.body)})
+      @client
+      |> expect(:send, fn req ->
+        send(this, {ref, req[:body]})
         %Tesla.Env{status: 200, body: ""}
       end)
 
@@ -85,7 +91,7 @@ defmodule Logflare.Backends.Adaptor.DatadogAdaptorTest do
 
       assert :ok == @subject.ingest(pid, [le], source_id: source.id, backend_id: backend.id)
       assert_receive {^ref, [log_entry]}, 2000
-      assert log_entry["message"] =~ Jason.encode!(le.body)
+      assert log_entry.message =~ Jason.encode!(le.body)
     end
   end
 end
