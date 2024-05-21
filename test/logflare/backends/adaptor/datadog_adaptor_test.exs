@@ -62,13 +62,11 @@ defmodule Logflare.Backends.Adaptor.DatadogAdaptorTest do
       this = self()
       ref = make_ref()
 
-
       @client
       |> expect(:send, fn req ->
         send(this, {ref, req[:body]})
         %Tesla.Env{status: 200, body: ""}
       end)
-
 
       le = build(:log_event, source: source)
 
