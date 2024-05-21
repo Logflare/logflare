@@ -4,6 +4,7 @@ defmodule Logflare.Backends.Adaptor.ElasticAdaptorTest do
   alias Logflare.Backends.Adaptor
 
   @subject Logflare.Backends.Adaptor.ElasticAdaptor
+  @client Logflare.Backends.Adaptor.WebhookAdaptor.Client
 
   doctest @subject
 
@@ -51,7 +52,8 @@ defmodule Logflare.Backends.Adaptor.ElasticAdaptorTest do
       this = self()
       ref = make_ref()
 
-      Tesla.Mock.mock_global(fn _req ->
+      @client
+      |> expect(:send, fn _req ->
         send(this, ref)
         %Tesla.Env{status: 200, body: ""}
       end)
@@ -66,8 +68,9 @@ defmodule Logflare.Backends.Adaptor.ElasticAdaptorTest do
       this = self()
       ref = make_ref()
 
-      Tesla.Mock.mock_global(fn req ->
-        send(this, {ref, Jason.decode!(req.body)})
+      @client
+      |> expect(:send, fn req ->
+        send(this, {ref, req[:body]})
         %Tesla.Env{status: 200, body: ""}
       end)
 
@@ -104,9 +107,10 @@ defmodule Logflare.Backends.Adaptor.ElasticAdaptorTest do
       this = self()
       ref = make_ref()
 
-      Tesla.Mock.mock_global(fn req ->
-        assert {_k, "Basic" <> _} = List.keyfind(req.headers, "Authorization")
-        send(this, {ref, Jason.decode!(req.body)})
+      @client
+      |> expect(:send, fn req ->
+        assert "Basic" <> _ = req[:headers]["Authorization"]
+        send(this, {ref, req[:body]})
         %Tesla.Env{status: 200, body: ""}
       end)
 
