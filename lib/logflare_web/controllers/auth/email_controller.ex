@@ -16,7 +16,7 @@ defmodule LogflareWeb.Auth.EmailController do
     render(conn, "verify_token.html")
   end
 
-  def send_link(conn, %{"email" => email}) do
+  def send_link(conn, %{"email" => email}) when is_binary(email) and email != "" do
     email = email |> String.downcase() |> String.trim()
 
     if get_session(conn, :vercel_setup) do
@@ -29,6 +29,12 @@ defmodule LogflareWeb.Auth.EmailController do
     conn
     |> put_flash(:info, "Check your email for a sign in link!")
     |> redirect(to: Routes.email_path(conn, :verify_token))
+  end
+
+  def send_link(conn, _params) do
+    conn
+    |> put_flash(:error, "Email cannot be empty")
+    |> render("email_login.html")
   end
 
   def verify_token_form(conn, %{"token" => _token} = params) do
