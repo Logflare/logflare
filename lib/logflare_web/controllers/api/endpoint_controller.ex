@@ -63,6 +63,7 @@ defmodule LogflareWeb.Api.EndpointController do
     parameters: [token: [in: :path, description: "Endpoint Token", type: :string]],
     request_body: Endpoint.params(),
     responses: %{
+      204 => Accepted.response(),
       201 => Created.response(Endpoint),
       404 => NotFound.response()
     }
@@ -72,7 +73,10 @@ defmodule LogflareWeb.Api.EndpointController do
     with query when not is_nil(query) <- Endpoints.get_by(token: token, user_id: user.id),
          {:ok, query} <- Endpoints.update_query(query, params) do
       conn
-      |> put_status(204)
+      |> case do
+        %{method: "PUT"} -> put_status(conn, 201)
+        %{method: "PATCH"} -> put_status(conn, 204)
+      end
       |> json(query)
     end
   end

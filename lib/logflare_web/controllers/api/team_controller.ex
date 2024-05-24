@@ -64,6 +64,7 @@ defmodule LogflareWeb.Api.TeamController do
     parameters: [token: [in: :path, description: "Team Token", type: :string]],
     request_body: Team.params(),
     responses: %{
+      204 => Accepted.response(),
       201 => Created.response(Team),
       404 => NotFound.response()
     }
@@ -74,7 +75,10 @@ defmodule LogflareWeb.Api.TeamController do
          {:ok, team} <- Teams.update_team(team, params),
          team <- Teams.preload_fields(team, [:user, :team_users]) do
       conn
-      |> put_status(204)
+      |> case do
+        %{method: "PUT"} -> put_status(conn, 201)
+        %{method: "PATCH"} -> put_status(conn, 204)
+      end
       |> json(team)
     end
   end
