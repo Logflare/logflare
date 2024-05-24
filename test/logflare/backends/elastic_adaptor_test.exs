@@ -1,9 +1,9 @@
-defmodule Logflare.Backends.Adaptor.DatadogAdaptorTest do
+defmodule Logflare.Backends.Adaptor.ElasticAdaptorTest do
   use Logflare.DataCase, async: false
 
   alias Logflare.Backends.Adaptor
 
-  @subject Logflare.Backends.Adaptor.DatadogAdaptor
+  @subject Logflare.Backends.Adaptor.ElasticAdaptor
   @client Logflare.Backends.Adaptor.WebhookAdaptor.Client
 
   doctest @subject
@@ -15,26 +15,32 @@ defmodule Logflare.Backends.Adaptor.DatadogAdaptorTest do
       refute changeset.valid?
 
       assert Adaptor.cast_and_validate_config(@subject, %{
-               "api_key" => "foobarbaz",
-               "region" => "US1"
+               "url" => "http://foobarbaz.com"
+             }).valid?
+
+      assert Adaptor.cast_and_validate_config(@subject, %{
+               "url" => "http://foobarbaz.com",
+               "username" => "foobarbaz",
+               "password" => "foobarbaz"
              }).valid?
 
       refute Adaptor.cast_and_validate_config(@subject, %{
-               "api_key" => "foobarbaz"
+               "url" => "http://foobarbaz.com",
+               "username" => "foobarbaz"
              }).valid?
     end
   end
 
-  describe "logs ingestion" do
+  describe "only url" do
     setup do
       user = insert(:user)
       source = insert(:source, user: user)
 
       backend =
         insert(:backend,
-          type: :datadog,
+          type: :elastic,
           sources: [source],
-          config: %{api_key: "foo-bar", region: "US1"}
+          config: %{url: "http://localhost:1234"}
         )
 
       pid = start_supervised!({@subject, {source, backend}})
@@ -58,7 +64,7 @@ defmodule Logflare.Backends.Adaptor.DatadogAdaptorTest do
       assert_receive ^ref, 2000
     end
 
-    test "service field is set to source name", %{pid: pid, source: source, backend: backend} do
+    test "sends events as-is", %{pid: pid, source: source, backend: backend} do
       this = self()
       ref = make_ref()
 
@@ -68,28 +74,51 @@ defmodule Logflare.Backends.Adaptor.DatadogAdaptorTest do
         %Tesla.Env{status: 200, body: ""}
       end)
 
-      le = build(:log_event, source: source)
+      le = build(:log_event, source: source, some: "key")
 
       assert :ok == @subject.ingest(pid, [le], source_id: source.id, backend_id: backend.id)
-      assert_receive {^ref, [log_entry]}, 2000
-      assert log_entry.service == source.name
+      assert_receive {^ref, [event]}, 2000
+      assert event["some"] == "key"
+    end
+  end
+
+  describe "basic auth" do
+    setup do
+      user = insert(:user)
+      source = insert(:source, user: user)
+
+      backend =
+        insert(:backend,
+          type: :elastic,
+          sources: [source],
+          config: %{
+            url: "http://localhost:1234",
+            username: "some user",
+            password: "some password"
+          }
+        )
+
+      pid = start_supervised!({@subject, {source, backend}})
+      :timer.sleep(500)
+      [pid: pid, backend: backend, source: source]
     end
 
-    test "message is JSON encoded log event", %{pid: pid, source: source, backend: backend} do
+    test "adds authorization header", %{pid: pid, source: source, backend: backend} do
       this = self()
       ref = make_ref()
 
       @client
       |> expect(:send, fn req ->
+        assert "Basic" <> _ = req[:headers]["Authorization"]
         send(this, {ref, req[:body]})
         %Tesla.Env{status: 200, body: ""}
       end)
 
-      le = build(:log_event, source: source)
+      le = build(:log_event, source: source, some: "key")
 
       assert :ok == @subject.ingest(pid, [le], source_id: source.id, backend_id: backend.id)
-      assert_receive {^ref, [log_entry]}, 2000
-      assert log_entry.message =~ Jason.encode!(le.body)
+      assert_receive {^ref, [event]}, 2000
+      assert event["some"] == "key"
     end
   end
 end

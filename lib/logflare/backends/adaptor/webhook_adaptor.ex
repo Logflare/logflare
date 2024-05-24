@@ -13,7 +13,8 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
   typedstruct do
     field(:config, %{
       url: String.t(),
-      headers: map()
+      headers: map(),
+      http: String.t()
     })
 
     field(:backend, Backend.t())
@@ -43,8 +44,9 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
 
   @impl Logflare.Backends.Adaptor
   def cast_config(params) do
-    {%{}, %{url: :string, headers: :map}}
-    |> Ecto.Changeset.cast(params, [:url, :headers])
+    {%{}, %{url: :string, headers: :map, http: :string}}
+    |> Ecto.Changeset.cast(params, [:url, :headers, :http])
+    |> Logflare.Utils.default_field_value(:http, "http2")
   end
 
   @impl Logflare.Backends.Adaptor
@@ -56,6 +58,7 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
     changeset
     |> Ecto.Changeset.validate_required([:url])
     |> Ecto.Changeset.validate_format(:url, ~r/https?\:\/\/.+/)
+    |> Ecto.Changeset.validate_inclusion(:http, ["http1", "http2"])
   end
 
   # GenServer
@@ -80,14 +83,27 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
     @moduledoc false
     use Tesla, docs: false
 
-    plug(Tesla.Middleware.Telemetry)
-    plug(Tesla.Middleware.JSON)
-
     def send(opts) do
-      opts
-      |> Keyword.put_new(:method, :post)
-      |> Keyword.update(:headers, [], &Map.to_list/1)
-      |> request()
+      adaptor =
+        if Keyword.get(opts, :http) == "http1" do
+          {Tesla.Adapter.Finch, name: Logflare.FinchDefaultHttp1, receive_timeout: 5_000}
+        else
+          {Tesla.Adapter.Finch, name: Logflare.FinchDefault, receive_timeout: 5_000}
+        end
+
+      opts =
+        opts
+        |> Keyword.put_new(:method, :post)
+        |> Keyword.update(:headers, [], &Map.to_list/1)
+
+      Tesla.client(
+        [
+          Tesla.Middleware.Telemetry,
+          Tesla.Middleware.JSON
+        ],
+        adaptor
+      )
+      |> request(opts)
     end
   end
 
@@ -146,7 +162,12 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
     end
 
     defp process_data(log_event_bodies, %{config: %{} = config}) do
-      Client.send(url: config.url, body: log_event_bodies, headers: config[:headers] || %{})
+      Client.send(
+        url: config.url,
+        body: log_event_bodies,
+        headers: config[:headers] || %{},
+        http: config.http
+      )
     end
 
     # Broadway transformer for custom producer

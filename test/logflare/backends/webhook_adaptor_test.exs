@@ -12,7 +12,11 @@ defmodule Logflare.Backends.WebhookAdaptorTest do
       source = insert(:source, user: user)
 
       backend =
-        insert(:backend, type: :webhook, sources: [source], config: %{url: "https://example.com"})
+        insert(:backend,
+          type: :webhook,
+          sources: [source],
+          config: %{http: "http1", url: "https://example.com"}
+        )
 
       pid = start_supervised!({@subject, {source, backend}})
       :timer.sleep(500)

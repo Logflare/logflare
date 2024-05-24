@@ -34,7 +34,7 @@ defmodule Logflare.Utils do
 
   ### Example
     iex> stringify_keys(%{test: "data"})
-    %{"test" => "data}
+    %{"test" => "data"}
   """
   @spec stringify_keys(map()) :: map()
   def stringify_keys(map = %{}) do
@@ -49,4 +49,21 @@ defmodule Logflare.Utils do
   end
 
   def stringify_keys(not_a_map), do: not_a_map
+
+  @doc """
+  Sets the default ecto changeset field value if not set
+
+  ###  Example
+    iex> data = %{title: "hello"}
+    iex> types = %{title: :string}
+    iex> changeset = Ecto.Changeset.cast({data, types}, %{title: nil}, [:title])
+    iex> %Ecto.Changeset{changes: %{title: "123"}} =  default_field_value(changeset, :title, "123")
+  """
+  def default_field_value(%Ecto.Changeset{} = changeset, field, value) do
+    if Ecto.Changeset.get_field(changeset, field) do
+      changeset
+    else
+      Ecto.Changeset.put_change(changeset, field, value)
+    end
+  end
 end

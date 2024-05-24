@@ -31,7 +31,7 @@
   </div>
 
   <div :if={@live_action == :new}>
-    <%= select(f, :type, ["Select a backend type...", Webhook: :webhook, Postgres: :postgres, BigQuery: :bigquery, Datadog: :datadog],
+    <%= select(f, :type, ["Select a backend type...", Webhook: :webhook, Postgres: :postgres, BigQuery: :bigquery, Datadog: :datadog, Elastic: :elastic],
       phx_change: :change_form_type,
       class: "form-control form-control-margin",
       id: "type"
@@ -147,6 +147,24 @@
             ) %>
             <small class="form-text text-muted">
               Region that the Datadog account is in.
+            </small>
+          </div>
+        <% "elastic" -> %>
+          <div class="form-group">
+            <%= label(f_config, :url, "Filebeat URL") %>
+            <%= text_input(f_config, :url, class: "form-control") %>
+            <small class="form-text text-muted">
+              The Filebeat HTTP(S) endpoint to send events.
+            </small>
+          </div>
+
+          <div class="form-group">
+            <%= label(f_config, :username, "Basic Auth Username") %>
+            <%= text_input(f_config, :username, class: "form-control") %>
+            <%= label(f_config, :password, "Basic Auth Password") %>
+            <%= text_input(f_config, :password, class: "form-control", type: "password") %>
+            <small class="form-text text-muted">
+              For basic auth, both username and password must be provided.
             </small>
           </div>
         <% _ -> %>

@@ -10,13 +10,19 @@ defmodule Logflare.Backends.Backend do
   alias Logflare.User
   alias Logflare.Rule
 
-  @adaptor_types [:bigquery, :webhook, :postgres, :datadog, :elastic]
+  @adaptor_mapping %{
+    webhook: Adaptor.WebhookAdaptor,
+    elastic: Adaptor.ElasticAdaptor,
+    datadog: Adaptor.DatadogAdaptor,
+    postgres: Adaptor.PostgresAdaptor,
+    bigquery: Adaptor.BigQueryAdaptor
+  }
 
   typed_schema "backends" do
     field(:name, :string)
     field(:description, :string)
     field(:token, Ecto.UUID, autogenerate: true)
-    field(:type, Ecto.Enum, values: @adaptor_types)
+    field(:type, Ecto.Enum, values: Map.keys(@adaptor_mapping))
     # TODO: maybe use polymorphic embeds
     field(:config, :map)
     many_to_many(:sources, Source, join_through: "sources_backends")
@@ -26,11 +32,13 @@ defmodule Logflare.Backends.Backend do
     timestamps()
   end
 
+  def adaptor_mapping(), do: @adaptor_mapping
+
   def changeset(backend, attrs) do
     backend
     |> cast(attrs, [:type, :config, :user_id, :name, :description])
     |> validate_required([:user_id, :type, :config, :name])
-    |> validate_inclusion(:type, @adaptor_types)
+    |> validate_inclusion(:type, Map.keys(@adaptor_mapping))
   end
 
   @spec child_spec(Source.t(), Backend.t()) :: map()

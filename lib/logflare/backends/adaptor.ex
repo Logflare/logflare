@@ -28,12 +28,8 @@ defmodule Logflare.Backends.Adaptor do
   """
   @spec get_adaptor(Backend.t()) :: module()
   def get_adaptor(%Backend{type: type}) do
-    case type do
-      :datadog -> __MODULE__.DatadogAdaptor
-      :webhook -> __MODULE__.WebhookAdaptor
-      :postgres -> __MODULE__.PostgresAdaptor
-      :bigquery -> __MODULE__.BigQueryAdaptor
-    end
+    mapping = Backend.adaptor_mapping()
+    mapping[type]
   end
 
   @callback start_link(source_backend()) ::
@@ -70,7 +66,7 @@ defmodule Logflare.Backends.Adaptor do
   Validate configuration for given adaptor implementation
   """
   @spec cast_and_validate_config(module(), map()) :: Ecto.Changeset.t()
-  def cast_and_validate_config(mod, params) do
+  def cast_and_validate_config(mod, params) when is_atom(mod) do
     params
     |> mod.cast_config()
     |> mod.validate_config()

@@ -1,0 +1,10 @@
+
+filebeat.inputs:
+- type: http_endpoint
+  enabled: true
+  listen_address: 0.0.0.0
+  content_type: ""
+
+output.console:
+  pretty: true
+
