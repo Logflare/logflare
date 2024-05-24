@@ -4,6 +4,7 @@ defmodule Logflare.DynamicPipelineTest do
   alias Logflare.Backends.DynamicPipeline
   alias Logflare.Backends
   alias Logflare.Source.BigQuery.Pipeline
+  alias Logflare.PipelinesTest.StubPipeline
 
   setup do
     user = insert(:user)
@@ -12,31 +13,51 @@ defmodule Logflare.DynamicPipelineTest do
     [
       name: Backends.via_source(source.id, :some_mod, nil),
       pipeline_args: [
-        source: source
+        source: source,
+        backend_id: nil,
+        backend_token: nil
       ]
     ]
   end
 
-  test "can scale a given pipeline", %{name: name, pipeline_args: pipeline_args} do
-    pid =
-      start_supervised!(
-        {DynamicPipeline, name: name, pipeline: Pipeline, pipeline_args: pipeline_args}
-      )
+  test "add_pipeline/1 can scale up pipelines", %{name: name, pipeline_args: pipeline_args} do
+    start_supervised!(
+      {DynamicPipeline,
+       name: name, pipeline: Pipeline, pipeline_args: pipeline_args, max_pipelines: 1}
+    )
 
-    assert DynamicPipeline.shard_count(name) == 1
-    assert {:ok, 2} = DynamicPipeline.add_shard(name)
+    assert DynamicPipeline.pipeline_count(name) == 0
+    assert {:ok, 1, new_name} = DynamicPipeline.add_pipeline(name)
+    assert DynamicPipeline.pipeline_count(name) == 1
+    assert is_tuple(new_name)
+    # upper limit
+    assert {:error, :max_pipelines} = DynamicPipeline.add_pipeline(name)
+  end
+
+  test "remove_pipeline/1 can scake down pipelines", %{name: name, pipeline_args: pipeline_args} do
+    start_supervised!(
+      {DynamicPipeline,
+       name: name, pipeline: Pipeline, pipeline_args: pipeline_args, min_pipelines: 1}
+    )
+
+    assert DynamicPipeline.pipeline_count(name) == 1
+    assert {:ok, 2, _} = DynamicPipeline.add_pipeline(name)
+    assert {:ok, 1, removed_id} = DynamicPipeline.remove_pipeline(name)
+    # lower limit
+    assert {:error, :min_pipelines} = DynamicPipeline.remove_pipeline(name)
+    assert DynamicPipeline.pipeline_count(name) == 1
+    assert DynamicPipeline.whereis(removed_id) == nil
   end
 
   test "buffer_len/1", %{name: name, pipeline_args: pipeline_args} do
-    pid =
-      start_supervised!(
-        {DynamicPipeline, name: name, pipeline: Pipeline, pipeline_args: pipeline_args}
-      )
+    start_supervised!(
+      {DynamicPipeline, name: name, pipeline: Pipeline, pipeline_args: pipeline_args}
+    )
 
     assert DynamicPipeline.buffer_len(name) == 0
   end
 
-  test "push/2", %{name: name} do
+  test "push_messages/2 with bigquery pipeline", %{name: name, pipeline_args: pipeline_args} do
     pid = self()
     ref = make_ref()
 
@@ -46,8 +67,70 @@ defmodule Logflare.DynamicPipelineTest do
       {:ok, %GoogleApi.BigQuery.V2.Model.TableDataInsertAllResponse{insertErrors: nil}}
     end)
 
-    le = build(:log_event)
-    assert :ok = DynamicPipeline.push(name, [le])
-    assert_receive ^ref
+    start_supervised!(
+      {DynamicPipeline, name: name, pipeline: Pipeline, pipeline_args: pipeline_args}
+    )
+
+    message = %Broadway.Message{
+      data: build(:log_event),
+      acknowledger: {DynamicPipeline, nil, nil}
+    }
+
+    assert :ok = DynamicPipeline.push_messages(name, [message])
+    assert_receive ^ref, 2_000
   end
+
+  test "push_messages/2 will scale up to max_shards and then push back if completely full", %{
+    name: name,
+    pipeline_args: pipeline_args
+  } do
+    start_supervised!(
+      {DynamicPipeline,
+       name: name,
+       pipeline: StubPipeline,
+       pipeline_args: pipeline_args,
+       max_buffer_len: 100,
+       max_pipelines: 2}
+    )
+
+    message = %Broadway.Message{
+      data: build(:log_event),
+      acknowledger: {DynamicPipeline, nil, nil}
+    }
+
+    DynamicPipeline.push_messages(name, List.duplicate(message, 500))
+    DynamicPipeline.push_messages(name, List.duplicate(message, 500))
+    assert DynamicPipeline.healthy?(name) == false
+    # insert all into pipeline
+    # allows for overshoot of the max_buffer_len if the configured producer's buffer is larger
+    assert DynamicPipeline.buffer_len(name) >= 100
+
+    assert {:error, :buffer_full} =
+             DynamicPipeline.push_messages(name, List.duplicate(message, 1000))
+  end
+
+  test "healthy?/1 on startup", %{name: name, pipeline_args: pipeline_args} do
+    refute DynamicPipeline.healthy?(name)
+
+    start_link_supervised!(
+      {DynamicPipeline, name: name, pipeline: StubPipeline, pipeline_args: pipeline_args}
+    )
+
+    :timer.sleep(200)
+    assert DynamicPipeline.healthy?(name)
+  end
+
+  test "whereis/1", %{name: name, pipeline_args: pipeline_args} do
+    refute DynamicPipeline.healthy?(name)
+
+    pid =
+      start_link_supervised!(
+        {DynamicPipeline, name: name, pipeline: StubPipeline, pipeline_args: pipeline_args}
+      )
+
+    assert DynamicPipeline.whereis(name) == pid
+  end
+
+  test "auto-terminate pipelines after idle_shutdown_after"
+  test "auto-terminate min pipelines after min_idle_shutdown_after"
 end

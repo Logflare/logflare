@@ -75,7 +75,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
     if buffer_capacity(source_id, backend_id) > 0.8 and backend_id != nil do
       Task.start(fn ->
         backend = Backends.Cache.get_backend(backend_id)
-        add_shard({source, backend})
+        add_pipeline({source, backend})
       end)
     end
 
@@ -137,9 +137,9 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
   @doc """
   Adds an additional Pipeline shard for a given source-backend pair.
   """
-  @spec add_shard({Source.t(), Backend.t()}) ::
+  @spec add_pipeline({Source.t(), Backend.t()}) ::
           :ok | {:error, :max_children} | {:error, {:already_started, pid()}}
-  def add_shard({source, backend}) do
+  def add_pipeline({source, backend}) do
     sup_via = Backends.via_source(source, __MODULE__.PipelinesSup, backend.id)
 
     project_id = backend.config.project_id
