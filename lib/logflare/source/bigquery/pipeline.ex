@@ -80,8 +80,8 @@ defmodule Logflare.Source.BigQuery.Pipeline do
   end
 
   # pipeline name is sharded
-  def process_name({:via, _module, {_registry, {source_id, {mod, backend_id, shard}}}}, base_name) do
-    Backends.via_source(source_id, {mod, backend_id, base_name, shard})
+  def process_name({:via, module, {registry, identifier}}, base_name) do
+    {:via, module, {registry, {identifier, base_name}}}
   end
 
   def process_name(proc_name, base_name) do
@@ -204,7 +204,7 @@ defmodule Logflare.Source.BigQuery.Pipeline do
     log_event
   end
 
-  def process_data(%LE{body: _body, source: source} = log_event, context) do
+  def process_data(%LE{} = log_event, context) do
     # TODO ... We use `ignoreUnknownValues: true` when we do `stream_batch!`. If we set that to `true`
     # then this makes BigQuery check the payloads for new fields. In the response we'll get a list of events that didn't validate.
     # Send those events through the pipeline again, but run them through our schema process this time. Do all

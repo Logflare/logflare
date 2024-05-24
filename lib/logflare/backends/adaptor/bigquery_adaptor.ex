@@ -83,9 +83,9 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
   @doc """
   Adds an additional Pipeline shard for a given source-backend pair.
   """
-  @spec add_shard({Source.t(), Backend.t()}) ::
+  @spec add_pipeline({Source.t(), Backend.t()}) ::
           :ok | {:error, :max_children} | {:error, {:already_started, pid()}}
-  def add_shard({source, backend}) do
+  def add_pipeline({source, backend}) do
     sup_via = Backends.via_source(source, __MODULE__.PipelinesSup, backend.id)
 
     project_id = backend.config.project_id
