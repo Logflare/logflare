@@ -268,7 +268,7 @@ defmodule Logflare.Application do
       Logger.info("Ensuring single tenant user is seeded...")
       SingleTenant.create_default_plan()
       SingleTenant.create_default_user()
-      SingleTenant.create_default_backend()
+      SingleTenant.upsert_default_backend()
     end
 
     if SingleTenant.supabase_mode?() do

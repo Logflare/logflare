@@ -57,8 +57,12 @@ defmodule Logflare.SingleTenantTest do
       assert [_] = Billing.list_plans()
       assert 1 = Users.count_users()
     end
+  end
 
-    test "if :postgres_backend_url is set and single tenant, creates a source with a postgres backend" do
+  describe ":postgres_backend_url" do
+    TestUtils.setup_single_tenant()
+
+    setup do
       %{username: username, password: password, database: database, hostname: hostname} =
         Application.get_env(:logflare, Logflare.Repo) |> Map.new()
 
@@ -66,18 +70,32 @@ defmodule Logflare.SingleTenantTest do
 
       prev = Application.get_env(:logflare, :postgres_backend_adapter)
       Application.put_env(:logflare, :postgres_backend_adapter, url: url)
-      Logflare.Application.startup_tasks()
-      user = SingleTenant.get_default_user()
-      %{id: user_id} = user
 
       on_exit(fn ->
         Application.put_env(:logflare, :postgres_backend_adapter, prev)
       end)
 
+      [url: url, password: password]
+    end
+
+    test "if  is set and single tenant, creates a source with a postgres backend", %{url: url} do
+      Logflare.Application.startup_tasks()
+      %{id: user_id} = user = SingleTenant.get_default_user()
       assert {:ok, source} = Sources.create_source(%{name: TestUtils.random_string()}, user)
       assert %Source{user_id: ^user_id, v2_pipeline: true} = source
       assert [%Backend{type: :postgres}] = Logflare.Backends.list_backends(source)
-      assert %Backend{type: :postgres} = SingleTenant.get_default_backend()
+      assert %Backend{type: :postgres, config: %{url: ^url}} = SingleTenant.get_default_backend()
+    end
+
+    test "if :postgres_backend_url is set and single tenant, updates an existing postgres backend",
+         %{url: url, password: password} do
+      Logflare.Application.startup_tasks()
+      new_url = String.replace(url, ":" <> password <> "@", ":new_password@")
+      Application.put_env(:logflare, :postgres_backend_adapter, url: new_url)
+      Logflare.Application.startup_tasks()
+
+      assert %Backend{type: :postgres, config: %{url: ^new_url}} =
+               SingleTenant.get_default_backend()
     end
   end
 
