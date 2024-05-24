@@ -17,7 +17,7 @@ import LiveReact, { initLiveReact } from "phoenix_live_react";
 
 import sourceLiveViewHooks from "./source_lv_hooks";
 import logsLiveViewHooks from "./log_event_live_hooks";
-import $ from "jquery"
+import $ from "jquery";
 import moment from "moment";
 
 // set moment globally before daterangepicker
@@ -101,18 +101,21 @@ window.liveSocket = liveSocket;
 
 document.addEventListener("DOMContentLoaded", (e) => {
   initLiveReact();
-
 });
 
 // Use `:text` on the `:detail` optoin to pass values to event listener
 window.addEventListener("logflare:copy-to-clipboard", (event) => {
   if ("clipboard" in navigator) {
     const text = event.detail?.text || event.target.textContent;
+    const tooltip = document.getElementById("copy-tooltip");
+    if (tooltip) {
+      tooltip.innerHTML = "Copied!";
+    }
     if (event.target.textContent.trim() === "copy") {
-      event.target.textContent = "copied"
-      setTimeout(()=>{
-        event.target.textContent = "copy"
-      }, 6000)
+      event.target.textContent = "copied";
+      setTimeout(() => {
+        event.target.textContent = "copy";
+      }, 6000);
     }
     navigator.clipboard.writeText(text);
   } else {
@@ -120,11 +123,9 @@ window.addEventListener("logflare:copy-to-clipboard", (event) => {
   }
 });
 
-
-window.addEventListener("phx:page-loading-stop", _info => {
+window.addEventListener("phx:page-loading-stop", (_info) => {
   // enable all tooltips
   $(function () {
-    $('[data-toggle="tooltip"]').tooltip({delay: {show: 100, hide: 200}})
+    $('[data-toggle="tooltip"]').tooltip({ delay: { show: 100, hide: 200 } });
   });
-
-})
+});

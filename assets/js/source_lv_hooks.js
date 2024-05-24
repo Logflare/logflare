@@ -70,14 +70,6 @@ hooks.ModalHook = {
     const $modal = $(this.el)
 
     if ($modal.data("modal-type") === "metadata-modal") {
-
-      activateClipboardForSelector("#copy-metadata-raw", {
-        container: document.getElementById("logflare-modal"),
-        text: () => {
-          return $("#metadata-raw-json-code").text()
-        },
-      })
-
       this.pushEvent("soft_pause", {})
     }
 
