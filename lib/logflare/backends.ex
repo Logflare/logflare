@@ -1,6 +1,7 @@
 defmodule Logflare.Backends do
   @moduledoc false
 
+  alias __MODULE__
   alias Logflare.Backends.Adaptor
   alias Logflare.Backends.Backend
   alias Logflare.Backends.SourceRegistry
@@ -26,10 +27,7 @@ defmodule Logflare.Backends do
     datadog: DatadogAdaptor
   }
 
-  @max_buffer_len 10_000
-  @max_buffer_shard_len 10
-
-  def max_buffer_shard_len, do: @max_buffer_shard_len
+  @max_buffer_len 15_000
   def max_buffer_len, do: @max_buffer_len
 
   defdelegate child_spec(arg), to: __MODULE__.Supervisor
@@ -496,5 +494,50 @@ defmodule Logflare.Backends do
       %{unknown_error: true},
       %{source_id: le.source.id, source_token: le.source.token}
     )
+  end
+
+  def broadcast_buffer_lens(source_id, backend_id, buffer_lens) do
+    source = Sources.Cache.get_by_id(source_id)
+
+    if source do
+      backend =
+        if backend_id do
+          Backends.Cache.get_backend(backend_id)
+        end
+
+      len =
+        Map.values(buffer_lens)
+        |> Enum.filter(& &1)
+        |> Enum.sum()
+
+      local_buffer = %{Node.self() => %{len: len}}
+      cluster_buffer = PubSubRates.Cache.get_cluster_buffers(source.token)
+
+      # maybe broadcast
+      payload = %{
+        buffer: cluster_buffer,
+        source_token: source.token,
+        backend_token: if(backend, do: backend.token, else: nil)
+      }
+
+      # cluster broadcast
+      cluster_broadcast_payload =
+        if backend do
+          {:buffers, source.token, backend.token, local_buffer}
+        else
+          {:buffers, source.token, local_buffer}
+        end
+
+      Phoenix.PubSub.broadcast(
+        Logflare.PubSub,
+        "buffers",
+        cluster_broadcast_payload
+      )
+
+      # channel broadcast
+      Source.ChannelTopics.broadcast_buffer(payload)
+    end
+
+    :ok
   end
 end

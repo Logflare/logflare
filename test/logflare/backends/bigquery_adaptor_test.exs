@@ -153,44 +153,4 @@ defmodule Logflare.Backends.BigQueryAdaptorTest do
       assert Backends.local_pending_buffer_len(source, backend) == 0
     end
   end
-
-  describe "dynamic sharding of pipeline" do
-    setup do
-      config = %{
-        project_id: "some-project",
-        dataset_id: "some-dataset"
-      }
-
-      backend =
-        insert(:backend,
-          type: :bigquery,
-          config: config
-        )
-
-      source = insert(:source, user: insert(:user), backends: [backend])
-
-      start_supervised!({SourceSup, source})
-
-      Broadway
-      |> stub(:push_messages, fn _, _ -> :ok end)
-
-      [source: source, backend: backend]
-    end
-
-    test "when buffer at >80% capacity, pipeline gets sharded automatically", %{
-      source: source,
-      backend: backend
-    } do
-      le = build(:log_event, source: source)
-      batch = for _i <- 1..1100, do: le
-      assert {:ok, 1100} = Backends.ingest_logs(batch, source)
-      assert {:ok, 1100} = Backends.ingest_logs(batch, source)
-      assert {:ok, 1100} = Backends.ingest_logs(batch, source)
-      assert @subject.buffer_capacity(source.id, backend.id) > 0.6
-      assert {:ok, 1100} = Backends.ingest_logs(batch, source)
-      assert {:ok, 1100} = Backends.ingest_logs(batch, source)
-      :timer.sleep(500)
-      assert @subject.buffer_capacity(source.id, backend.id) < 0.6
-    end
-  end
 end

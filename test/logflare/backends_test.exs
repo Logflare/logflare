@@ -344,6 +344,30 @@ defmodule Logflare.BackendsTest do
     end
   end
 
+  test "broadcast_buffer_lens broadcasts every n ms" do
+    PubSubRates.subscribe(:buffers)
+    user = insert(:user)
+    %{token: token} = source = insert(:source, user: user)
+    assert :ok = Backends.broadcast_buffer_lens(source.id, nil, %{"some-token": 2})
+    :timer.sleep(300)
+
+    assert_receive {:buffers, ^token, _payload}
+    assert PubSubRates.Cache.get_cluster_buffers(token) == 2
+  end
+
+  test "BufferProducer broadcasts every n seconds with backend differentiation" do
+    PubSubRates.subscribe(:buffers)
+    user = insert(:user)
+    %{token: source_token} = source = insert(:source, user: user)
+    %{token: backend_token} = backend = insert(:backend, user: user)
+
+    assert :ok = Backends.broadcast_buffer_lens(source.id, backend.id, %{"some-token": 55})
+    :timer.sleep(200)
+    assert_receive {:buffers, ^source_token, ^backend_token, _payload}
+
+    assert PubSubRates.Cache.get_cluster_buffers(source_token, backend_token) == 55
+  end
+
   describe "benchmarks" do
     setup do
       insert(:plan)
