@@ -37,7 +37,10 @@ defmodule Logflare.Backends.DynamicPipeline do
       end
 
     touch_record = for spec <- pipeline_specs, into: %{}, do: {spec.id, NaiveDateTime.utc_now()}
-    state = Map.put(state, :touch, touch_record)
+
+    state =
+      state
+      |> Map.put(:touch, touch_record)
 
     children =
       [
@@ -46,7 +49,7 @@ defmodule Logflare.Backends.DynamicPipeline do
         {Coordinator, state}
       ] ++ pipeline_specs
 
-    Logger.debug("Started up DynamicPipeline")
+    Logger.info("Started up DynamicPipeline")
     Supervisor.init(children, strategy: :one_for_one)
   end
 
@@ -92,11 +95,8 @@ defmodule Logflare.Backends.DynamicPipeline do
   end
 
   def push_messages(name, messages) do
-    %{pipeline: _pipeline} = state = get_state(name)
+    state = get_state(name)
 
-    # if buffers_full?(name) do
-    #   add_pipeline(name)
-    # end
     buffer_lens = BufferMonitor.buffers(name)
 
     eligible =
@@ -108,32 +108,17 @@ defmodule Logflare.Backends.DynamicPipeline do
     if Enum.empty?(eligible) and length(pipelines) >= state.max_pipelines do
       {:error, :buffer_full}
     else
-      for {id, num} <- Enum.sort_by(buffer_lens, fn {_, num} -> num end), reduce: messages do
-        [] ->
-          []
-
-        acc ->
-          to_take = state.max_buffer_len - num
-          {taken, rem} = Enum.split(acc, to_take)
-          Broadway.push_messages(id, taken)
-          touch_pipeline(id)
-          rem
-      end
-    end
-    |> case do
-      {:error, _} = err ->
-        err
-
-      [] ->
-        :ok
-
-      rem ->
+      if not Enum.empty?(eligible) do
+        {id, _} = Enum.random(eligible)
+        Broadway.push_messages(id, messages)
+      else
         # add a new pipeline
         with {:ok, _count, pipeline_id} <- Coordinator.sync_add_pipeline(name) do
-          Broadway.push_messages(pipeline_id, rem)
+          Broadway.push_messages(pipeline_id, messages)
           touch_pipeline(pipeline_id)
           :ok
         end
+      end
     end
   end
 
@@ -160,9 +145,7 @@ defmodule Logflare.Backends.DynamicPipeline do
         touch_pipeline(spec.id)
         count = pipeline_count(name)
 
-        Logger.debug(
-          "DynamicPipeline - Added pipeline #{inspect(spec.id)}, count is now #{count}"
-        )
+        Logger.info("DynamicPipeline - Added pipeline #{inspect(spec.id)}, count is now #{count}")
 
         {:ok, count, spec.id}
 
@@ -197,7 +180,7 @@ defmodule Logflare.Backends.DynamicPipeline do
     with :ok <- Supervisor.terminate_child(name, id),
          :ok <- Supervisor.delete_child(name, id) do
       count = pipeline_count(name)
-      Logger.debug("DynamicPipeline - Removed pipeline #{inspect(id)}, count is now #{count}")
+      Logger.info("DynamicPipeline - Removed pipeline #{inspect(id)}, count is now #{count}")
       {:ok, count, id}
     end
   end

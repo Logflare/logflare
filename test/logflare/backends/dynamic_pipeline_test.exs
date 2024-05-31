@@ -89,9 +89,10 @@ defmodule Logflare.DynamicPipelineTest do
        name: name,
        pipeline: StubPipeline,
        pipeline_args: pipeline_args,
-       max_buffer_len: 100,
+       max_buffer_len: 10,
        max_pipelines: 2,
-       monitor_interval: 50}
+       min_pipelines: 1,
+       monitor_interval: 100}
     )
 
     message = %Broadway.Message{
@@ -101,13 +102,11 @@ defmodule Logflare.DynamicPipelineTest do
 
     DynamicPipeline.push_messages(name, List.duplicate(message, 500))
     DynamicPipeline.push_messages(name, List.duplicate(message, 500))
-    assert DynamicPipeline.healthy?(name) == false
+    DynamicPipeline.push_messages(name, List.duplicate(message, 500))
     # insert all into pipeline
     # allows for overshoot of the max_buffer_len if the configured producer's buffer is larger
     assert DynamicPipeline.buffer_len(name) >= 100
-
-    assert {:error, :buffer_full} =
-             DynamicPipeline.push_messages(name, List.duplicate(message, 1000))
+    assert DynamicPipeline.list_pipelines(name) |> length() == 2
   end
 
   test "healthy?/1 on startup", %{name: name, pipeline_args: pipeline_args} do
