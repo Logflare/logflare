@@ -38,20 +38,22 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
 
     with :ok <- Backends.register_backend_for_ingest_dispatch(source, backend) do
       children = [
-        {DynamicPipeline,
-         name: Backends.via_source(source, Pipeline, backend.id),
-         pipeline: Pipeline,
-        # soft limit before a new pipeline is created
-         max_buffer_len: 6_000,
-         pipeline_args: [
-           source: source,
-           backend_id: backend.id,
-           backend_token: backend.token,
-           bigquery_project_id: project_id,
-           bigquery_dataset_id: dataset_id
-         ],
-         monitor_callback: &Backends.broadcast_buffer_lens(source.id, backend.id, &1),
-         min_pipelines: 1},
+        {
+          DynamicPipeline,
+          # soft limit before a new pipeline is created
+          name: Backends.via_source(source, Pipeline, backend.id),
+          pipeline: Pipeline,
+          max_buffer_len: 6_000,
+          pipeline_args: [
+            source: source,
+            backend_id: backend.id,
+            backend_token: backend.token,
+            bigquery_project_id: project_id,
+            bigquery_dataset_id: dataset_id
+          ],
+          monitor_callback: &Backends.broadcast_buffer_lens(source.id, backend.id, &1),
+          min_pipelines: 1
+        },
         {Schema,
          [
            plan: plan,
