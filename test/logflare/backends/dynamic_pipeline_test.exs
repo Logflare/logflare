@@ -131,6 +131,40 @@ defmodule Logflare.DynamicPipelineTest do
     assert DynamicPipeline.whereis(name) == pid
   end
 
-  test "auto-terminate pipelines after idle_shutdown_after"
-  test "auto-terminate min pipelines after min_idle_shutdown_after"
+  test "auto-terminate pipelines after idle_shutdown_after", %{
+    name: name,
+    pipeline_args: pipeline_args
+  } do
+    start_supervised!(
+      {DynamicPipeline,
+       name: name,
+       pipeline: StubPipeline,
+       pipeline_args: pipeline_args,
+       idle_shutdown_after: 150,
+       min_pipelines: 1}
+    )
+
+    assert {:ok, 2, _} = DynamicPipeline.add_pipeline(name)
+    :timer.sleep(400)
+    assert DynamicPipeline.pipeline_count(name) == 1
+  end
+
+  test "auto-terminate min pipelines after min_idle_shutdown_after", %{
+    name: name,
+    pipeline_args: pipeline_args
+  } do
+    start_supervised!(
+      {DynamicPipeline,
+       name: name,
+       pipeline: StubPipeline,
+       pipeline_args: pipeline_args,
+       idle_shutdown_after: 150,
+       min_idle_shutdown_after: 300,
+       min_pipelines: 1}
+    )
+
+    assert DynamicPipeline.pipeline_count(name) == 1
+    :timer.sleep(1_000)
+    assert DynamicPipeline.pipeline_count(name) == 0
+  end
 end
