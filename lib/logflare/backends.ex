@@ -20,13 +20,6 @@ defmodule Logflare.Backends do
   alias Logflare.PubSubRates
   import Ecto.Query
 
-  @adaptor_mapping %{
-    webhook: WebhookAdaptor,
-    postgres: PostgresAdaptor,
-    bigquery: BigQueryAdaptor,
-    datadog: DatadogAdaptor
-  }
-
   @max_buffer_len 15_000
   def max_buffer_len, do: @max_buffer_len
 
