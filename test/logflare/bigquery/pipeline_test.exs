@@ -71,8 +71,9 @@ defmodule Logflare.BigQuery.PipelineTest do
                                                  _project_id,
                                                  _dataset_id,
                                                  _table_name,
-                                                 _opts ->
-        BencheeAsync.Reporter.record()
+                                                 opts ->
+        rows = Map.get(opts[:body], :rows)
+        BencheeAsync.Reporter.record(length(rows))
         # simulate some latency
         # :timer.sleep(100)
         {:ok, %GoogleApi.BigQuery.V2.Model.TableDataInsertAllResponse{insertErrors: nil}}
@@ -80,7 +81,7 @@ defmodule Logflare.BigQuery.PipelineTest do
 
       user = insert(:user)
       source = insert(:source, user_id: user.id)
-      rls = %{source_id: source.token, source: source}
+      args = [source: source, name: @pipeline_name]
       le = build(:log_event, source: source)
 
       batch =
@@ -91,138 +92,221 @@ defmodule Logflare.BigQuery.PipelineTest do
           }
         end
 
-      [batch: batch, rls: rls]
+      [batch: batch, args: args]
     end
 
     @tag :benchmark
-    test "defaults", %{test: name, rls: rls, batch: batch} do
-      start_supervised!({Pipeline, [rls, name: @pipeline_name]})
-      run_pipeline_benchmark(name, batch)
-    end
-
-    @tag :benchmark
-    test "schedulers_online", %{test: name, rls: rls, batch: batch} do
-      start_supervised!(
-        {Pipeline,
-         [
-           rls,
-           name: @pipeline_name,
-           processors: [default: [concurrency: System.schedulers_online()]]
-         ]}
-      )
-
-      run_pipeline_benchmark(name, batch)
-    end
-
-    @tag :benchmark
-    @tag :skip
-    test "schedulers_online, max_demand=250", %{rls: rls, batch: batch, test: name} do
-      start_supervised!(
-        {Pipeline,
-         [
-           rls,
-           name: @pipeline_name,
-           processors: [default: [concurrency: System.schedulers_online(), max_demand: 250]]
-         ]}
-      )
-
-      run_pipeline_benchmark(name, batch)
-    end
-
-    @tag :benchmark
-    test "schedulers_online x2", %{rls: rls, batch: batch, test: name} do
-      start_supervised!(
-        {Pipeline,
-         [
-           rls,
-           name: @pipeline_name,
-           processors: [default: [concurrency: System.schedulers_online() * 2]]
-         ]}
-      )
-
-      run_pipeline_benchmark(name, batch)
-    end
-
-    @tag :benchmark
-    test "schedulers_online, batchers schedulers x2", %{rls: rls, batch: batch, test: name} do
-      start_supervised!(
-        {Pipeline,
-         [
-           rls,
-           name: @pipeline_name,
-           processors: [default: [concurrency: System.schedulers_online()]],
-           batchers: [
-             bq: [
-               concurrency: System.schedulers_online() * 2,
-               batch_size: 250,
-               batch_timeout: 1_500
+    test "2-3", %{args: args, batch: batch, test: name} do
+      start_supervised!(%{
+        id: :something,
+        start:
+          {Pipeline, :start_link,
+           [
+             args,
+             [
+               processors: [default: [concurrency: 2]],
+               batchers: [
+                 bq: [
+                   concurrency: 3,
+                   batch_size: 250,
+                   batch_timeout: 1_500
+                 ]
+               ]
              ]
-           ]
-         ]}
-      )
+           ]}
+      })
 
       run_pipeline_benchmark(name, batch)
     end
 
     @tag :benchmark
-    test "schedulers_online x2, batchers schedulers x2", %{rls: rls, batch: batch, test: name} do
-      start_supervised!(
-        {Pipeline,
-         [
-           rls,
-           name: @pipeline_name,
-           processors: [default: [concurrency: System.schedulers_online() * 2]],
-           batchers: [
-             bq: [
-               concurrency: System.schedulers_online() * 2,
-               batch_size: 250,
-               batch_timeout: 1_500
+    test "4-4", %{args: args, batch: batch, test: name} do
+      start_supervised!(%{
+        id: :something,
+        start:
+          {Pipeline, :start_link,
+           [
+             args,
+             [
+               processors: [default: [concurrency: 4]],
+               batchers: [
+                 bq: [
+                   concurrency: 4,
+                   batch_size: 250,
+                   batch_timeout: 1_500
+                 ]
+               ]
              ]
-           ]
-         ]}
-      )
+           ]}
+      })
 
       run_pipeline_benchmark(name, batch)
     end
 
     @tag :benchmark
-    test "schedulers_online x2, batchers schedulers x3", %{rls: rls, batch: batch, test: name} do
-      start_supervised!(
-        {Pipeline,
-         [
-           rls,
-           name: @pipeline_name,
-           processors: [default: [concurrency: System.schedulers_online() * 2]],
-           batchers: [
-             bq: [
-               concurrency: System.schedulers_online() * 3,
-               batch_size: 250,
-               batch_timeout: 1_500
+    test "4-5", %{args: args, batch: batch, test: name} do
+      start_supervised!(%{
+        id: :something,
+        start:
+          {Pipeline, :start_link,
+           [
+             args,
+             [
+               processors: [default: [concurrency: 4]],
+               batchers: [
+                 bq: [
+                   concurrency: 5,
+                   batch_size: 250,
+                   batch_timeout: 1_500
+                 ]
+               ]
              ]
-           ]
-         ]}
-      )
+           ]}
+      })
 
       run_pipeline_benchmark(name, batch)
     end
 
     @tag :benchmark
-    test "schedulers_online x3, batchers schedulers x3", %{rls: rls, batch: batch, test: name} do
-      start_supervised!(
-        {Pipeline,
-         [
-           rls,
-           name: @pipeline_name,
-           processors: [default: [concurrency: System.schedulers_online() * 3]],
-           batchers: [
-             bq: [
-               concurrency: System.schedulers_online() * 3,
-               batch_size: 250,
-               batch_timeout: 1_500
+    test "6-4", %{args: args, batch: batch, test: name} do
+      start_supervised!(%{
+        id: :something,
+        start:
+          {Pipeline, :start_link,
+           [
+             args,
+             [
+               processors: [default: [concurrency: 6]],
+               batchers: [
+                 bq: [
+                   concurrency: 4,
+                   batch_size: 250,
+                   batch_timeout: 1_500
+                 ]
+               ]
              ]
-           ]
-         ]}
-      )
+           ]}
+      })
+
+      run_pipeline_benchmark(name, batch)
+    end
+
+    @tag :benchmark
+    test "6-5", %{args: args, batch: batch, test: name} do
+      start_supervised!(%{
+        id: :something,
+        start:
+          {Pipeline, :start_link,
+           [
+             args,
+             [
+               processors: [default: [concurrency: 6]],
+               batchers: [
+                 bq: [
+                   concurrency: 5,
+                   batch_size: 250,
+                   batch_timeout: 1_500
+                 ]
+               ]
+             ]
+           ]}
+      })
+
+      run_pipeline_benchmark(name, batch)
+    end
+
+    @tag :benchmark
+    test "6-6", %{args: args, batch: batch, test: name} do
+      start_supervised!(%{
+        id: :something,
+        start:
+          {Pipeline, :start_link,
+           [
+             args,
+             [
+               processors: [default: [concurrency: 6]],
+               batchers: [
+                 bq: [
+                   concurrency: 5,
+                   batch_size: 250,
+                   batch_timeout: 1_500
+                 ]
+               ]
+             ]
+           ]}
+      })
+
+      run_pipeline_benchmark(name, batch)
+    end
+
+    @tag :benchmark
+    test "8-4 - best", %{args: args, batch: batch, test: name} do
+      start_supervised!(%{
+        id: :something,
+        start:
+          {Pipeline, :start_link,
+           [
+             args,
+             [
+               processors: [default: [concurrency: 8]],
+               batchers: [
+                 bq: [
+                   concurrency: 4,
+                   batch_size: 250,
+                   batch_timeout: 1_500
+                 ]
+               ]
+             ]
+           ]}
+      })
+
+      run_pipeline_benchmark(name, batch)
+    end
+
+    @tag :benchmark
+    test "10-5", %{args: args, batch: batch, test: name} do
+      start_supervised!(%{
+        id: :something,
+        start:
+          {Pipeline, :start_link,
+           [
+             args,
+             [
+               processors: [default: [concurrency: 6]],
+               batchers: [
+                 bq: [
+                   concurrency: 5,
+                   batch_size: 250,
+                   batch_timeout: 1_500
+                 ]
+               ]
+             ]
+           ]}
+      })
+
+      run_pipeline_benchmark(name, batch)
+    end
+
+    @tag :benchmark
+    test "10-8", %{args: args, batch: batch, test: name} do
+      start_supervised!(%{
+        id: :something,
+        start:
+          {Pipeline, :start_link,
+           [
+             args,
+             [
+               processors: [default: [concurrency: 6]],
+               batchers: [
+                 bq: [
+                   concurrency: 8,
+                   batch_size: 250,
+                   batch_timeout: 1_500
+                 ]
+               ]
+             ]
+           ]}
+      })
 
       run_pipeline_benchmark(name, batch)
     end

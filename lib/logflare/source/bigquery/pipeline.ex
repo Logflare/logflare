@@ -44,11 +44,11 @@ defmodule Logflare.Source.BigQuery.Pipeline do
               {BufferProducer, [source_token: source.token, backend_token: args[:backend_token]]}
           ],
           processors: [
-            default: [concurrency: System.schedulers_online() * 2]
+            default: [concurrency: 8]
           ],
           batchers: [
             bq: [
-              concurrency: System.schedulers_online() * 2,
+              concurrency: 12,
               batch_size: bq_batch_size_splitter(),
               batch_timeout: 1_500,
               # must be set when using custom batch_size splitter
