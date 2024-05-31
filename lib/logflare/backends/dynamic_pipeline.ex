@@ -49,7 +49,7 @@ defmodule Logflare.Backends.DynamicPipeline do
         {Coordinator, state}
       ] ++ pipeline_specs
 
-    Logger.info("Started up DynamicPipeline")
+    Logger.debug("Started up DynamicPipeline")
     Supervisor.init(children, strategy: :one_for_one)
   end
 
@@ -145,7 +145,7 @@ defmodule Logflare.Backends.DynamicPipeline do
         touch_pipeline(spec.id)
         count = pipeline_count(name)
 
-        Logger.info("DynamicPipeline - Added pipeline #{inspect(spec.id)}, count is now #{count}")
+        Logger.debug("DynamicPipeline - Added pipeline #{inspect(spec.id)}, count is now #{count}")
 
         {:ok, count, spec.id}
 
@@ -180,7 +180,7 @@ defmodule Logflare.Backends.DynamicPipeline do
     with :ok <- Supervisor.terminate_child(name, id),
          :ok <- Supervisor.delete_child(name, id) do
       count = pipeline_count(name)
-      Logger.info("DynamicPipeline - Removed pipeline #{inspect(id)}, count is now #{count}")
+      Logger.debug("DynamicPipeline - Removed pipeline #{inspect(id)}, count is now #{count}")
       {:ok, count, id}
     end
   end

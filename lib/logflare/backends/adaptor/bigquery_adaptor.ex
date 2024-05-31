@@ -38,7 +38,8 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
       {DynamicPipeline,
          name: Backends.via_source(source, Pipeline, backend.id),
          pipeline: Pipeline,
-         max_buffer_len: 10_000,
+        # soft limit before a new pipeline is created
+         max_buffer_len: 6_000,
          pipeline_args: [
           source: source,
           backend: backend,
