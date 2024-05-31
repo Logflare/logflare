@@ -57,7 +57,7 @@ defmodule Logflare.Backends.DynamicPipeline do
     Agent.get(pid, fn v -> v end)
   end
 
-  defp touch_pipeline(pipeline_name) do
+  def touch_pipeline(pipeline_name) do
     sup_name = pipeline_name_to_sup_name(pipeline_name)
 
     pid =
