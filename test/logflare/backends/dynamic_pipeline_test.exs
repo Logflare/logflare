@@ -149,6 +149,32 @@ defmodule Logflare.DynamicPipelineTest do
     assert DynamicPipeline.pipeline_count(name) == 1
   end
 
+  test "do not auto-terminate pipeline if touched", %{
+    name: name,
+    pipeline_args: pipeline_args
+  } do
+    start_supervised!(
+      {DynamicPipeline,
+       name: name,
+       pipeline: StubPipeline,
+       pipeline_args: pipeline_args,
+       idle_shutdown_after: 400,
+       min_pipelines: 1}
+    )
+
+    assert {:ok, 2, _} = DynamicPipeline.add_pipeline(name)
+
+    for _i <- 0..3 do
+      :timer.sleep(300)
+
+      for pipeline_name <- DynamicPipeline.list_pipelines(name) do
+        DynamicPipeline.touch_pipeline(pipeline_name)
+      end
+    end
+
+    assert DynamicPipeline.pipeline_count(name) == 2
+  end
+
   test "auto-terminate min pipelines after min_idle_shutdown_after", %{
     name: name,
     pipeline_args: pipeline_args
@@ -166,5 +192,33 @@ defmodule Logflare.DynamicPipelineTest do
     assert DynamicPipeline.pipeline_count(name) == 1
     :timer.sleep(1_000)
     assert DynamicPipeline.pipeline_count(name) == 0
+  end
+
+  test "does not auto-terminate min pipelines if touched", %{
+    name: name,
+    pipeline_args: pipeline_args
+  } do
+    start_supervised!(
+      {DynamicPipeline,
+       name: name,
+       pipeline: StubPipeline,
+       pipeline_args: pipeline_args,
+       idle_shutdown_after: 150,
+       min_idle_shutdown_after: 500,
+       min_pipelines: 1}
+    )
+
+    assert DynamicPipeline.pipeline_count(name) == 1
+
+    for _i <- 0..3 do
+      :timer.sleep(300)
+
+      for pipeline_name <- DynamicPipeline.list_pipelines(name) do
+        DynamicPipeline.touch_pipeline(pipeline_name)
+      end
+    end
+
+    :timer.sleep(200)
+    assert DynamicPipeline.pipeline_count(name) == 1
   end
 end
