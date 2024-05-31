@@ -18,6 +18,7 @@ defmodule Logflare.PipelinesTest do
   defmodule StubPipeline do
     @moduledoc "Stub pipeline used for testing DynamicPipeline"
     use Broadway
+
     def start_link(opts) do
       Broadway.start_link(__MODULE__,
         name: opts[:name],
