@@ -2,7 +2,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
   @moduledoc false
 
   alias Logflare.Backends
-  alias Logflare.Backends.DynamicPipeline
+  alias Logflare.Bazckends.DynamicPipeline
   alias Logflare.Sources
   alias Logflare.Backends.Backend
   alias Logflare.Source.BigQuery.Pipeline

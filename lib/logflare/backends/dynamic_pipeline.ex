@@ -1,6 +1,19 @@
 defmodule Logflare.Backends.DynamicPipeline do
   @moduledoc """
   Dynamically scales a Broadway pipeline transparently such that it does not need to care about scaling.
+
+
+  Options:
+  - `:name` - name of the pipeline, required.
+  - `:pipeline` - module of the pipeline, required.
+  - `:pipeline_args` - args of the pipeline, optional.
+  - `:max_buffer_len` - soft limit that each pipeline buffer grows to before a new pipeline is added. Optional.
+  - `:max_pipelines` - max pipelines that can be scaled to.
+  - `:min_pipelines` - max pipelines that can be scaled to, defaults to 0.
+  - `:idle_shutdown_after` - the required time that must pass that a pipeline has not received any activity for it to be shut down.
+  - `:min_idle_shutdown_after` - the required time that must pass that pipelines below the min number has not received any activity for it to be shut down.
+  - `:monitor_interval` -  the refresh interval that the buffers are stored and cached internally that are used during ingest.
+  - `:monitor_callback` -  a 1-arity anonymous function that receives the buffer lengths mappings. Used for purposes such as broadcasting to other procs.
   """
   use Supervisor
   alias __MODULE__.Coordinator
@@ -53,6 +66,10 @@ defmodule Logflare.Backends.DynamicPipeline do
     Supervisor.init(children, strategy: :one_for_one)
   end
 
+  @doc """
+  Retrieves the state of a pipeline, which is merged from the args of the pipeline.
+  """
+  @spec get_state(tuple()) :: map()
   def get_state(name) do
     pid =
       Supervisor.which_children(name)
@@ -65,6 +82,10 @@ defmodule Logflare.Backends.DynamicPipeline do
     Agent.get(pid, fn v -> v end)
   end
 
+  @doc """
+  Updates the last ingestion value of a pipeline stored on state.
+  """
+  @spec touch_pipeline(tuple()) :: :ok
   def touch_pipeline(pipeline_name) do
     sup_name = pipeline_name_to_sup_name(pipeline_name)
 
@@ -94,9 +115,12 @@ defmodule Logflare.Backends.DynamicPipeline do
     end)
   end
 
+  @doc """
+  Inserts broadway messages into a dynamic pipeline, choosing one from a list of eligible pipelines at random.
+  """
+  @spec push_messages(tuple(), [Broadway.Message.t()]) :: :ok | {:error, :buffer_full}
   def push_messages(name, messages) do
     state = get_state(name)
-
     buffer_lens = BufferMonitor.buffers(name)
 
     eligible =
@@ -123,10 +147,9 @@ defmodule Logflare.Backends.DynamicPipeline do
   end
 
   @doc """
-  Adds a shard to a given DynamicPipeline
-
+  Adds a shard to a given DynamicPipeline.
   """
-  @spec add_pipeline(tuple()) :: {:ok, non_neg_integer(), tuple()}
+  @spec add_pipeline(tuple()) :: {:ok, non_neg_integer(), tuple()} | {:error, :max_pipelines}
   def add_pipeline(name) do
     count = pipeline_count(name)
     state = get_state(name)
@@ -145,7 +168,9 @@ defmodule Logflare.Backends.DynamicPipeline do
         touch_pipeline(spec.id)
         count = pipeline_count(name)
 
-        Logger.debug("DynamicPipeline - Added pipeline #{inspect(spec.id)}, count is now #{count}")
+        Logger.debug(
+          "DynamicPipeline - Added pipeline #{inspect(spec.id)}, count is now #{count}"
+        )
 
         {:ok, count, spec.id}
 
@@ -154,12 +179,19 @@ defmodule Logflare.Backends.DynamicPipeline do
     end
   end
 
+  @doc """
+  Removes a pipeline from a DynamicPipeline tree.
+  """
+  @spec remove_pipeline(tuple()) :: {:ok, integer(), tuple()} | {:error, :min_pipelines}
   def remove_pipeline(name) do
     count = pipeline_count(name)
     state = get_state(name)
     maybe_remove_pipeline(name, count, state)
   end
 
+  @doc """
+  Forces the removal of a pipeline from a DynamicPipeline tree. Applies to min pipelines.
+  """
   def force_remove_pipeline(name) do
     count = pipeline_count(name)
     maybe_remove_pipeline(name, count, %{})
@@ -195,14 +227,26 @@ defmodule Logflare.Backends.DynamicPipeline do
     :ok
   end
 
+  @doc """
+  Convert a DynamicPipeline name to a pipeline name
+  """
+  @spec sup_name_to_pipeline_name(tuple()) :: tuple()
   def sup_name_to_pipeline_name({:via, module, {registry, identifier}}, shard) do
     {:via, module, {registry, {__MODULE__, identifier, shard}}}
   end
 
+  @doc """
+  Convert a pipeline name to a DynamicPipeline sup name
+  """
+  @spec pipeline_name_to_sup_name(tuple()) :: tuple()
   def pipeline_name_to_sup_name({:via, module, {registry, {__MODULE__, identifier, _shard}}}) do
     {:via, module, {registry, identifier}}
   end
 
+  @doc """
+  Counts the number of pipelines in use.
+  """
+  @spec pipeline_count(tuple()) :: non_neg_integer()
   def pipeline_count(name) do
     Supervisor.which_children(name)
     |> Enum.filter(fn
@@ -217,12 +261,17 @@ defmodule Logflare.Backends.DynamicPipeline do
   @doc """
   Total buffer length of all sharded pipelines
   """
+  @spec buffer_len(tuple()) :: non_neg_integer()
   def buffer_len(name) do
     buffer_len_by_pipeline(name)
     |> Map.values()
     |> Enum.sum()
   end
 
+  @doc """
+  Lists the proc names of the DynamicPipeline sup tree.
+  """
+  @spec list_pipelines(tuple()) :: [tuple()]
   def list_pipelines(name) do
     for {id, _child, _type, _mod} <- Supervisor.which_children(name),
         id != Agent and id != Coordinator and id != BufferMonitor do
@@ -233,6 +282,7 @@ defmodule Logflare.Backends.DynamicPipeline do
   @doc """
   Get buffer lengths of each sharded pipeline
   """
+  @spec buffer_len_by_pipeline(tuple()) :: %{tuple() => non_neg_integer()}
   def buffer_len_by_pipeline(name) do
     for {id, _child, _type, _mod} <- Supervisor.which_children(name),
         id != Agent and id != Coordinator and id != BufferMonitor,
@@ -248,6 +298,10 @@ defmodule Logflare.Backends.DynamicPipeline do
     |> Enum.into(%{})
   end
 
+  @doc """
+  Checks if a DynamicPipeline is healthy. If all buffers are full or is not alive, it is not considered healthy.
+  """
+  @spec healthy?(tuple()) :: boolean()
   def healthy?(name) do
     with pid when is_pid(pid) <- whereis(name) do
       state = get_state(name)
@@ -266,8 +320,16 @@ defmodule Logflare.Backends.DynamicPipeline do
     end
   end
 
+  @doc """
+  Returns the pid of a given DynamicPipeline name or pipeline name.
+  """
+  @spec whereis(term()) :: pid() | nil
   def whereis(name), do: GenServer.whereis(name)
 
+  @doc """
+  Returns the pid of a DynamicPipeline tree coordinator
+  """
+  @spec find_coordinator_name(tuple()) :: pid()
   def find_coordinator_name(sup_name) do
     Supervisor.which_children(sup_name)
     |> Enum.find(fn
@@ -277,6 +339,10 @@ defmodule Logflare.Backends.DynamicPipeline do
     |> elem(1)
   end
 
+  @doc """
+  Returns the pid of a DynamicPipeline tree buffer monitor
+  """
+  @spec find_buffer_monitor_name(tuple()) :: pid()
   def find_buffer_monitor_name(sup_name) do
     Supervisor.which_children(sup_name)
     |> Enum.find(fn
@@ -297,20 +363,27 @@ defmodule Logflare.Backends.DynamicPipeline do
       GenServer.start_link(__MODULE__, args)
     end
 
+    @impl GenServer
     def init(%{} = args) do
       loop(args)
       {:ok, args}
     end
 
+    @doc """
+    Retrieves a cache of buffers
+    """
+    @spec buffers(tuple()) :: %{tuple() => non_neg_integer()}
     def buffers(sup_name) do
       DynamicPipeline.find_buffer_monitor_name(sup_name)
       |> GenServer.call(:buffers)
     end
 
+    @impl GenServer
     def handle_call(:buffers, _caller, state) do
       {:reply, state.buffers, state}
     end
 
+    @impl GenServer
     def handle_info(:check, state) do
       # get the buffers
       buffers = DynamicPipeline.buffer_len_by_pipeline(state.name)
@@ -339,21 +412,29 @@ defmodule Logflare.Backends.DynamicPipeline do
       GenServer.start_link(__MODULE__, args)
     end
 
+    @impl GenServer
     def init(%{} = args) do
       loop(args)
       {:ok, args}
     end
 
+    @doc """
+    Syncronously adds a pipeline. Blocks.
+    """
+    @spec sync_add_pipeline(tuple()) ::
+            {:ok, non_neg_integer(), tuple()} | {:error, :max_pipelines}
     def sync_add_pipeline(sup_name) do
       DynamicPipeline.find_coordinator_name(sup_name)
       |> GenServer.call(:add_pipeline)
     end
 
+    @impl GenServer
     def handle_call(:add_pipeline, _caller, state) do
       res = DynamicPipeline.add_pipeline(state.name)
       {:reply, res, state}
     end
 
+    @impl GenServer
     def handle_info(:check, state) do
       agent_state = DynamicPipeline.get_state(state.name)
       pipelines = DynamicPipeline.list_pipelines(state.name)

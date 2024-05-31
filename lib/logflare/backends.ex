@@ -496,6 +496,10 @@ defmodule Logflare.Backends do
     )
   end
 
+  @doc """
+  Broadcasts buffer lenths globally for a given source-backend.
+  """
+  @spec broadcast_buffer_lens(integer(), integer() | nil, %{tuple() => non_neg_integer()}) :: :ok
   def broadcast_buffer_lens(source_id, backend_id, buffer_lens) do
     source = Sources.Cache.get_by_id(source_id)
 
