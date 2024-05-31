@@ -5,8 +5,6 @@ defmodule Logflare.Backends.BufferProducer do
   Meant for push through Broadway.push_messages/2
   """
   use GenStage
-  alias Logflare.Source
-  alias Logflare.PubSubRates
   alias Logflare.Backends
 
   @default_broadcast_interval 5_000
@@ -27,7 +25,7 @@ defmodule Logflare.Backends.BufferProducer do
         broadcast_interval: @default_broadcast_interval
       })
 
-    loop(state.broadcast_interval)
+    # loop(state.broadcast_interval)
     {:producer, state, buffer_size: Backends.max_buffer_len()}
   end
 
@@ -36,11 +34,11 @@ defmodule Logflare.Backends.BufferProducer do
     {:noreply, items, state}
   end
 
-  def handle_info(:broadcast, state) do
-    do_async_broadcast(state)
-    loop(state.broadcast_interval)
-    {:noreply, [], state}
-  end
+  # def handle_info(:broadcast, state) do
+  #   do_async_broadcast(state)
+  #   loop(state.broadcast_interval)
+  #   {:noreply, [], state}
+  # end
 
   def handle_info({:update_state, new_state}, _state) do
     {:noreply, [], new_state}
@@ -50,40 +48,40 @@ defmodule Logflare.Backends.BufferProducer do
     {:noreply, items, state}
   end
 
-  defp do_async_broadcast(state) do
-    pid = self()
+  # defp do_async_broadcast(state) do
+  #   pid = self()
 
-    Task.start_link(fn ->
-      len = GenStage.estimate_buffered_count(pid)
-      local_buffer = %{Node.self() => %{len: len}}
+  #   Task.start_link(fn ->
+  #     len = GenStage.estimate_buffered_count(pid)
+  #     local_buffer = %{Node.self() => %{len: len}}
 
-      cluster_buffer = PubSubRates.Cache.get_cluster_buffers(state.source_token)
+  #     cluster_buffer = PubSubRates.Cache.get_cluster_buffers(state.source_token)
 
-      # maybe broadcast
-      payload = %{
-        buffer: cluster_buffer,
-        source_token: state.source_token,
-        backend_token: state.backend_token
-      }
+  #     # maybe broadcast
+  #     payload = %{
+  #       buffer: cluster_buffer,
+  #       source_token: state.source_token,
+  #       backend_token: state.backend_token
+  #     }
 
-      # cluster broadcast
-      cluster_broadcast_payload =
-        if state.backend_token do
-          {:buffers, state.source_token, state.backend_token, local_buffer}
-        else
-          {:buffers, state.source_token, local_buffer}
-        end
+  #     # cluster broadcast
+  #     cluster_broadcast_payload =
+  #       if state.backend_token do
+  #         {:buffers, state.source_token, state.backend_token, local_buffer}
+  #       else
+  #         {:buffers, state.source_token, local_buffer}
+  #       end
 
-      Phoenix.PubSub.broadcast(
-        Logflare.PubSub,
-        "buffers",
-        cluster_broadcast_payload
-      )
+  #     Phoenix.PubSub.broadcast(
+  #       Logflare.PubSub,
+  #       "buffers",
+  #       cluster_broadcast_payload
+  #     )
 
-      # channel broadcast
-      Source.ChannelTopics.broadcast_buffer(payload)
-    end)
-  end
+  #     # channel broadcast
+  #     Source.ChannelTopics.broadcast_buffer(payload)
+  #   end)
+  # end
 
   def handle_demand(demand, state) do
     {items, state} = resolve_demand(state, demand)
@@ -96,9 +94,5 @@ defmodule Logflare.Backends.BufferProducer do
        ) do
     total_demand = prev_demand + new_demand
     {[], %{state | demand: total_demand}}
-  end
-
-  defp loop(interval) do
-    Process.send_after(self(), :broadcast, interval)
   end
 end

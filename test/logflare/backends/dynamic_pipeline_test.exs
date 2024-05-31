@@ -90,7 +90,8 @@ defmodule Logflare.DynamicPipelineTest do
        pipeline: StubPipeline,
        pipeline_args: pipeline_args,
        max_buffer_len: 100,
-       max_pipelines: 2}
+       max_pipelines: 2,
+       monitor_interval: 50}
     )
 
     message = %Broadway.Message{

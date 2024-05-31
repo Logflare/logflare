@@ -2,6 +2,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
   @moduledoc false
 
   alias Logflare.Backends
+  alias Logflare.Backends.DynamicPipeline
   alias Logflare.Sources
   alias Logflare.Backends.Backend
   alias Logflare.Source.BigQuery.Pipeline
@@ -33,23 +34,23 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
     # TODO: remove source_id metadata to reduce confusion
     Logger.metadata(source_id: source.token, source_token: source.token)
 
-    Logger.info("STarting up BigQuery Adaptor")
+    Logger.debug("Starting up BigQuery Adaptor")
 
     with :ok <- Backends.register_backend_for_ingest_dispatch(source, backend) do
       children = [
-        {DynamicSupervisor,
-         strategy: :one_for_one,
-         max_children: 9,
-         name: Backends.via_source(source, __MODULE__.PipelinesSup, backend.id)},
-        {Pipeline,
-         [
+        {DynamicPipeline,
+         name: Backends.via_source(source, Pipeline, backend.id),
+         pipeline: Pipeline,
+         max_buffer_len: 10_000,
+         pipeline_args: [
            source: source,
            backend_id: backend.id,
            backend_token: backend.token,
            bigquery_project_id: project_id,
-           bigquery_dataset_id: dataset_id,
-           name: Backends.via_source(source, {Pipeline, backend.id, 0})
-         ]},
+           bigquery_dataset_id: dataset_id
+         ],
+         monitor_callback: &Backends.broadcast_buffer_lens(source.id, backend.id, &1),
+         min_pipelines: 1},
         {Schema,
          [
            plan: plan,
@@ -69,15 +70,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
     source_id = Keyword.get(opts, :source_id)
     backend_id = Keyword.get(opts, :backend_id)
     source = Sources.Cache.get_by_id(source_id)
-
-    buffer_counter_via = Backends.via_source(source, {BufferCounter, backend_id})
-
-    if buffer_capacity(source_id, backend_id) > 0.8 and backend_id != nil do
-      Task.start(fn ->
-        backend = Backends.Cache.get_backend(backend_id)
-        add_pipeline({source, backend})
-      end)
-    end
+    sup_name = Backends.via_source(source, Pipeline, backend_id)
 
     messages =
       for le <- log_events,
@@ -86,20 +79,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
             acknowledger: {__MODULE__, nil, nil}
           }
 
-    sup_via = Backends.via_source(source, __MODULE__.PipelinesSup, backend_id)
-    shard_count = DynamicSupervisor.which_children(sup_via) |> Enum.count()
-    len = Enum.count(messages)
-    chunk_size = round(len / (shard_count + 1))
-
-    with true <- len > 0,
-         {:ok, _count} <- BufferCounter.inc(buffer_counter_via, len) do
-      Enum.chunk_every(messages, chunk_size)
-      |> Enum.with_index()
-      |> Enum.each(fn {chunk, shard_index} ->
-        Backends.via_source(source, {Pipeline, backend_id, shard_index})
-        |> Broadway.push_messages(chunk)
-      end)
-    end
+    DynamicPipeline.push_messages(sup_name, messages)
 
     :ok
   end
@@ -121,51 +101,4 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
   @impl Logflare.Backends.Adaptor
   def validate_config(changeset),
     do: changeset
-
-  @doc """
-  Returns a ratio representing how full the buffer is. 1.0 for completely full, 0 for completely empty.
-  """
-  @spec buffer_capacity(integer(), integer()) :: number()
-  def buffer_capacity(source_id, backend_id) do
-    via = Backends.via_source(source_id, {BufferCounter, backend_id})
-
-    len = BufferCounter.len(via)
-    max_len = BufferCounter.get_max_len(via)
-    if len == 0, do: 0, else: len / max_len
-  end
-
-  @doc """
-  Adds an additional Pipeline shard for a given source-backend pair.
-  """
-  @spec add_pipeline({Source.t(), Backend.t()}) ::
-          :ok | {:error, :max_children} | {:error, {:already_started, pid()}}
-  def add_pipeline({source, backend}) do
-    sup_via = Backends.via_source(source, __MODULE__.PipelinesSup, backend.id)
-
-    project_id = backend.config.project_id
-    dataset_id = backend.config.dataset_id
-    shard_count = DynamicSupervisor.which_children(sup_via) |> Enum.count()
-
-    sup_via
-    |> DynamicSupervisor.start_child(
-      {Pipeline,
-       [
-         source: source,
-         backend_id: backend.id,
-         bigquery_project_id: project_id,
-         bigquery_dataset_id: dataset_id,
-         name: Backends.via_source(source.id, {Pipeline, backend.id, shard_count + 1})
-       ]}
-    )
-    |> then(fn
-      {:ok, _pid} ->
-        new_max = (1 + shard_count + 1) * BufferCounter.max_buffer_shard_len()
-
-        Backends.via_source(source.id, {BufferCounter, backend.id})
-        |> BufferCounter.set_max_len(new_max)
-
-      err ->
-        err
-    end)
-  end
 end

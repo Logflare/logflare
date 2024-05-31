@@ -4,6 +4,7 @@ defmodule Logflare.Backends.DynamicPipeline do
   """
   use Supervisor
   alias __MODULE__.Coordinator
+  alias __MODULE__.BufferMonitor
 
   require Logger
 
@@ -24,7 +25,10 @@ defmodule Logflare.Backends.DynamicPipeline do
         min_pipelines: 0,
         min_idle_shutdown_after: 150_000,
         idle_shutdown_after: 30_000,
-        touch: %{}
+        touch: %{},
+        buffers: %{},
+        monitor_interval: 1_500,
+        monitor_callback: nil
       })
 
     pipeline_specs =
@@ -38,9 +42,11 @@ defmodule Logflare.Backends.DynamicPipeline do
     children =
       [
         {Agent, fn -> state end},
+        {BufferMonitor, state},
         {Coordinator, state}
       ] ++ pipeline_specs
 
+    Logger.debug("Started up DynamicPipeline")
     Supervisor.init(children, strategy: :one_for_one)
   end
 
@@ -49,7 +55,6 @@ defmodule Logflare.Backends.DynamicPipeline do
       Supervisor.which_children(name)
       |> Enum.find(fn
         {_id, _child, _type, [Agent]} -> true
-        {Coordinator, _child, _type, _} -> false
         _ -> false
       end)
       |> elem(1)
@@ -92,13 +97,15 @@ defmodule Logflare.Backends.DynamicPipeline do
     # if buffers_full?(name) do
     #   add_pipeline(name)
     # end
-    buffer_lens = buffer_len_by_pipeline(name)
+    buffer_lens = BufferMonitor.buffers(name)
 
     eligible =
       buffer_lens
       |> Enum.filter(fn {_id, num} -> num < state.max_buffer_len end)
 
-    if Enum.empty?(eligible) and length(Map.keys(buffer_lens)) >= state.max_pipelines do
+    pipelines = list_pipelines(name)
+
+    if Enum.empty?(eligible) and length(pipelines) >= state.max_pipelines do
       {:error, :buffer_full}
     else
       for {id, num} <- Enum.sort_by(buffer_lens, fn {_, num} -> num end), reduce: messages do
@@ -218,6 +225,7 @@ defmodule Logflare.Backends.DynamicPipeline do
     |> Enum.filter(fn
       {_, _, _, [Agent]} -> false
       {Coordinator, _, _, _} -> false
+      {BufferMonitor, _, _, _} -> false
       _ -> true
     end)
     |> length()
@@ -234,7 +242,7 @@ defmodule Logflare.Backends.DynamicPipeline do
 
   def list_pipelines(name) do
     for {id, _child, _type, _mod} <- Supervisor.which_children(name),
-        id != Agent and id != Coordinator do
+        id != Agent and id != Coordinator and id != BufferMonitor do
       id
     end
   end
@@ -244,7 +252,7 @@ defmodule Logflare.Backends.DynamicPipeline do
   """
   def buffer_len_by_pipeline(name) do
     for {id, _child, _type, _mod} <- Supervisor.which_children(name),
-        id != Agent and id != Coordinator,
+        id != Agent and id != Coordinator and id != BufferMonitor,
         producer_name <- Broadway.producer_names(id) do
       Task.async(fn ->
         {
@@ -284,6 +292,57 @@ defmodule Logflare.Backends.DynamicPipeline do
       _ -> false
     end)
     |> elem(1)
+  end
+
+  def find_buffer_monitor_name(sup_name) do
+    Supervisor.which_children(sup_name)
+    |> Enum.find(fn
+      {BufferMonitor, _, _, _} -> true
+      _ -> false
+    end)
+    |> elem(1)
+  end
+
+  defmodule BufferMonitor do
+    @moduledoc """
+    Monitors the buffers for all started pipelines and caches it in state for fast lookups.
+    """
+    use GenServer
+    alias Logflare.Backends.DynamicPipeline
+
+    def start_link(args) do
+      GenServer.start_link(__MODULE__, args)
+    end
+
+    def init(%{} = args) do
+      loop(args)
+      {:ok, args}
+    end
+
+    def buffers(sup_name) do
+      DynamicPipeline.find_buffer_monitor_name(sup_name)
+      |> GenServer.call(:buffers)
+    end
+
+    def handle_call(:buffers, _caller, state) do
+      {:reply, state.buffers, state}
+    end
+
+    def handle_info(:check, state) do
+      # get the buffers
+      buffers = DynamicPipeline.buffer_len_by_pipeline(state.name)
+
+      if callback = state.monitor_callback do
+        callback.(buffers)
+      end
+
+      loop(state)
+      {:noreply, Map.put(state, :buffers, buffers)}
+    end
+
+    defp loop(args) do
+      Process.send_after(self(), :check, args.monitor_interval)
+    end
   end
 
   defmodule Coordinator do
@@ -330,7 +389,7 @@ defmodule Logflare.Backends.DynamicPipeline do
         # has excess, close the excess
         diff = length(to_close) - state.min_pipelines
 
-        for d <- 1..diff do
+        for _d <- 1..diff do
           DynamicPipeline.remove_pipeline(state.name)
         end
       end
