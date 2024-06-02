@@ -29,7 +29,12 @@ defmodule Logflare.Mixfile do
         logflare: [
           version: version(),
           include_executables_for: [:unix],
-          applications: [runtime_tools: :permanent, ssl: :permanent]
+          applications: [
+            runtime_tools: :permanent,
+            ssl: :permanent,
+            opentelemetry_exporter: :permanent,
+            opentelemetry: :temporary
+          ]
         ]
       ]
     ]
@@ -147,9 +152,9 @@ defmodule Logflare.Mixfile do
       {:typed_ecto_schema, "~> 0.1.0", runtime: false},
 
       # Telemetry & logging
-      {:telemetry, "~> 0.4.0"},
-      {:telemetry_metrics, "~> 0.6"},
-      {:telemetry_poller, "~> 0.5"},
+      {:telemetry, "~> 1.0"},
+      {:telemetry_metrics, "~> 1.0"},
+      {:telemetry_poller, "~> 1.1"},
       {:logflare_logger_backend, "~> 0.11.4"},
       {:logger_json, "~> 5.1"},
 
@@ -206,7 +211,14 @@ defmodule Logflare.Mixfile do
       # https://github.com/falood/file_system/pull/87
       #
       # Credo is currently holding us back
-      {:file_system, "~> 1.0", override: true, only: [:dev, :test]}
+      {:file_system, "~> 1.0", override: true, only: [:dev, :test]},
+
+      # otel
+      {:opentelemetry, "~> 1.3"},
+      {:opentelemetry_api, "~> 1.2"},
+      {:opentelemetry_exporter, "~> 1.6"},
+      {:opentelemetry_phoenix, "~> 1.1"},
+      {:opentelemetry_cowboy, "~> 0.2"}
     ]
   end
 
