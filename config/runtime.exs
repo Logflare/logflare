@@ -283,3 +283,14 @@ postgres_topology = [
 config :libcluster,
   topologies:
     if(System.get_env("LIBCLUSTER_TOPOLOGY") == "postgres", do: postgres_topology, else: [])
+
+if System.get_env("LOGFLARE_OTEL_ENDPOINT") do
+  config :opentelemetry_exporter,
+    otlp_protocol: :grpc,
+    otlp_endpoint: System.get_env("LOGFLARE_OTEL_ENDPOINT"),
+    otlp_compression: :gzip,
+    otlp_headers: [
+      {"x-source-id", System.get_env("LOGFLARE_OTEL_SOURCE_UUID")},
+      {"x-api-key", System.get_env("LOGFLARE_OTEL_ACCESS_TOKEN")}
+    ]
+end

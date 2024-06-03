@@ -134,13 +134,5 @@ config :opentelemetry,
   span_processor: :batch,
   traces_exporter: :otlp
 
-config :opentelemetry_exporter,
-  otlp_protocol: :grpc,
-  otlp_endpoint: "https://grpc.logflare.app:443",
-  otlp_compression: :gzip,
-  otlp_headers: [
-    {"x-source-id", "2cebf53f-c797-48b6-a6ca-826f2179b798"},
-    {"x-api-key", "xxxx"}
-  ]
 
 import_config "#{Mix.env()}.exs"
