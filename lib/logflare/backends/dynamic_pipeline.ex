@@ -230,7 +230,7 @@ defmodule Logflare.Backends.DynamicPipeline do
   @doc """
   Convert a DynamicPipeline name to a pipeline name
   """
-  @spec sup_name_to_pipeline_name(tuple()) :: tuple()
+  @spec sup_name_to_pipeline_name(tuple(), term()) :: tuple()
   def sup_name_to_pipeline_name({:via, module, {registry, identifier}}, shard) do
     {:via, module, {registry, {__MODULE__, identifier, shard}}}
   end
