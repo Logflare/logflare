@@ -134,7 +134,6 @@ config :opentelemetry,
   span_processor: :batch,
   traces_exporter: :otlp
 
-
 config :opentelemetry_exporter,
   otlp_protocol: :grpc,
   otlp_endpoint: "https://grpc.logflare.app:443",
