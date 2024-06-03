@@ -37,6 +37,8 @@ All browser authentication will be disabled when in single-tenant mode.
 | `LOGFLARE_OTEL_SOURCE_UUID`        | String, defaults to `nil`, optionally required for OpenTelemetry.   | Sets the appropriate header for ingesting OpenTelemetry events into a Logflare source.                                                                           |
 | `LOGFLARE_OTEL_ACCESS_TOKEN`       | String, defaults to `nil`, optionally required for OpenTelemetry.   | Sets the appropriate authentication header for ingesting OpenTelemetry events into a Logflare source.                                                            |
 
+Additional environment variable configurations for the OpenTelemetry libraries used can be found [here](https://hexdocs.pm/opentelemetry_exporter/readme.html).
+
 ### BigQuery Backend Configuration
 
 | Env Var                    | Type                        | Description                                                   |
