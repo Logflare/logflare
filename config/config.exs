@@ -134,5 +134,4 @@ config :opentelemetry,
   span_processor: :batch,
   traces_exporter: :otlp
 
-
 import_config "#{Mix.env()}.exs"
