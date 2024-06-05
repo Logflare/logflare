@@ -132,6 +132,6 @@ config :logflare, Logflare.AlertsScheduler, init_task: {Logflare.Alerting, :init
 
 config :opentelemetry,
   span_processor: :batch,
-  traces_exporter: :otlp
+  traces_exporter: :none
 
 import_config "#{Mix.env()}.exs"

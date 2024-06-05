@@ -285,6 +285,9 @@ config :libcluster,
     if(System.get_env("LIBCLUSTER_TOPOLOGY") == "postgres", do: postgres_topology, else: [])
 
 if System.get_env("LOGFLARE_OTEL_ENDPOINT") do
+  config :opentelemetry,
+    traces_exporter: :otlp
+
   config :opentelemetry_exporter,
     otlp_protocol: :grpc,
     otlp_endpoint: System.get_env("LOGFLARE_OTEL_ENDPOINT"),
