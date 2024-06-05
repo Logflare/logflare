@@ -219,10 +219,10 @@ cond do
     raise "Missing Google or Backend credentials"
 end
 
-if(File.exists?("cacert.pem") && File.exists?("cert.pem") && File.exists?("cert.key")) do
+if(File.exists?("cert.pem") && File.exists?("cert.key")) do
   config :logflare,
     ssl: [
-      cacertfile: "cacert.pem",
+      cacerts: :public_key.cacerts_get(),
       certfile: "cert.pem",
       keyfile: "cert.key",
       verify: :verify_peer
