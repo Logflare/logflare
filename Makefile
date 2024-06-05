@@ -86,7 +86,6 @@ envs = staging prod
 $(addprefix decrypt.,${envs}): decrypt.%: \
 	.$$*.gcloud.json \
  	.$$*.env \
- 	.$$*.cacert.key \
  	.$$*.cacert.pem \
  	.$$*.cert.key \
  	.$$*.cert.pem \
@@ -97,7 +96,6 @@ $(addprefix decrypt.,${envs}): decrypt.%: \
 $(addprefix encrypt.,${envs}): encrypt.%: \
 	.$$*.gcloud.json.enc \
 	.$$*.env.enc \
-	.$$*.cacert.key.enc \
 	.$$*.cacert.pem.enc \
 	.$$*.cert.key.enc \
 	.$$*.cert.pem.enc \
