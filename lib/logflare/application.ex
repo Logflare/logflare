@@ -83,8 +83,6 @@ defmodule Logflare.Application do
     publications = Application.get_env(:logflare, Logflare.CacheBuster)[:publications]
     topologies = Application.get_env(:libcluster, :topologies, [])
     grpc_port = Application.get_env(:grpc, :port)
-    ssl = Application.get_env(:logflare, :ssl)
-    grpc_creds = if ssl, do: GRPC.Credential.new(ssl: ssl)
     pool_size = Application.get_env(:logflare, Logflare.PubSub)[:pool_size]
 
     # set goth early in the supervision tree
@@ -146,7 +144,7 @@ defmodule Logflare.Application do
          name: Logflare.Source.V1SourceDynSup},
         LogflareWeb.Endpoint,
         # If we get a log event and the Source.Supervisor is not up it will 500
-        {GRPC.Server.Supervisor, {LogflareGrpc.Endpoint, grpc_port, cred: grpc_creds}},
+        {GRPC.Server.Supervisor, {LogflareGrpc.Endpoint, grpc_port}},
         # Monitor system level metrics
         SystemMetricsSup,
 
