@@ -12,6 +12,15 @@ steps:
     args:
       - kms
       - decrypt
+      - "--ciphertext-file=./cloudbuild/.prod.env.enc"
+      - "--plaintext-file=./.secrets.env"
+      - "--location=us-central1"
+      - "--keyring=logflare-prod-keyring-us-central1"
+      - "--key=logflare-prod-secrets-key"
+  - name: gcr.io/cloud-builders/gcloud
+    args:
+      - kms
+      - decrypt
       - --ciphertext-file=./cloudbuild/.prod.db-client-cert.pem.enc
       - --plaintext-file=./db-client-cert.pem
       - "--location=us-central1"
