@@ -130,4 +130,8 @@ config :grpc, start_server: true
 
 config :logflare, Logflare.AlertsScheduler, init_task: {Logflare.Alerting, :init_alert_jobs, []}
 
+config :opentelemetry,
+  span_processor: :batch,
+  traces_exporter: :otlp
+
 import_config "#{Mix.env()}.exs"
