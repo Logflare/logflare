@@ -17,6 +17,27 @@ defmodule LogflareWeb.Api.QueryControllerTest do
     |> json_response(400)
   end
 
+  describe "validate/2" do
+    test "valid sql query returns 200 ok", %{conn: conn, user: user} do
+      conn =
+        conn
+        |> add_access_token(user, ~w(private))
+        |> get(~p"/api/query/parse?#{[sql: ~s|select current_datetime() as 'my_time'|]}")
+
+      assert %{"result" => %{"parameters" => []}} = json_response(conn, 200)
+    end
+
+    test "invalid valid sql query returns 200 ok", %{conn: conn, user: user} do
+      conn =
+        conn
+        |> add_access_token(user, ~w(private))
+        |> get(~p"/api/query/parse?#{[bq_sql: ~s|update something SET test = 'something'|]}")
+
+      assert %{"error" => err} = json_response(conn, 400)
+      assert err =~ "SELECT"
+    end
+  end
+
   describe "query with bq" do
     test "?sql= query param", %{
       conn: conn,
