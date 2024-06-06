@@ -388,6 +388,7 @@ defmodule LogflareWeb.Router do
       param: "token",
       only: [:index, :show, :create, :update, :delete]
     ) do
+      get "/recent", Api.SourceController, :recent
       post "/backends/:backend_token", Api.SourceController, :add_backend
       delete "/backends/:backend_token", Api.SourceController, :remove_backend
     end
