@@ -15,6 +15,22 @@ defmodule LogflareWeb.Api.QueryController do
 
   operation(:parse,
     summary: "Parses a query",
+    parameters: [
+      sql: [
+        in: :query,
+        description: "BigQuery SQL string, alias for bq_sql",
+        type: :string,
+        allowEmptyValue: true,
+        required: false
+      ],
+      bq_sql: [
+        in: :query,
+        description: "BigQuery SQL string",
+        type: :string,
+        required: false,
+        example: "select current_timestamp() as 'test'"
+      ]
+    ],
     responses: %{
       200 => One.response(QueryParseResult),
       400 => BadRequest.response()
@@ -32,6 +48,28 @@ defmodule LogflareWeb.Api.QueryController do
 
   operation(:query,
     summary: "Execute a query",
+    parameters: [
+      sql: [
+        in: :query,
+        description: "BigQuery SQL string, alias for bq_sql",
+        type: :string,
+        required: false
+      ],
+      bq_sql: [
+        in: :query,
+        description: "BigQuery SQL string",
+        type: :string,
+        required: false,
+        example: "select current_timestamp() as 'test'"
+      ],
+      pg_sql: [
+        in: :query,
+        description: "PostgresSQL string",
+        type: :string,
+        required: false,
+        example: "select current_date() as 'test'"
+      ]
+    ],
     responses: %{200 => List.response(QueryResult)}
   )
 
