@@ -204,3 +204,16 @@ tag-versioned:
 	@echo "OK"
 
 .PHONY: tag-versioned
+
+
+ssl.prod: CERT_DOMAIN = logflare.app
+ssl.staging: CERT_DOMAIN = logflarestaging.com
+
+$(addprefix ssl.,${envs}): ssl.%:
+	openssl req -newkey rsa:2048 -nodes -days 365000 -keyout .$*.cert.key -out .$*.req.pem \
+		-subj  "/C=US/ST=DE/O=Supabase/OU=Logflare/CN=$(CERT_DOMAIN)"
+	openssl x509 -req -days 12783 -set_serial 1 \
+		-in .$*.req.pem -out .$*.cert.pem \
+		-CA .$*.cacert.pem -CAkey .$*.cacert.key
+
+.PHONY: $(addprefix ssl.,${envs})
