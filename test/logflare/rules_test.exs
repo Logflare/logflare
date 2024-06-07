@@ -2,8 +2,11 @@ defmodule Logflare.RulesTest do
   use Logflare.DataCase
   alias Logflare.Rules
   alias Logflare.Rule
+  alias Logflare.Sources
   alias Logflare.Backends
   alias Logflare.Backends.SourceSup
+  alias Logflare.Logs.SourceRouting
+  alias Logflare.SystemMetrics.AllLogsLogged
 
   test "list_rules" do
     user = insert(:user)
@@ -105,13 +108,37 @@ defmodule Logflare.RulesTest do
       assert Supervisor.which_children(via) |> length() < prev_length
     end
 
-    test "multuple rules on same source, same backend, does not crash SourceSup", %{
+    test "multiple rules on same source, same backend, does not crash SourceSup", %{
       source: source,
       user: user
     } do
       backend = insert(:backend, user: user)
       insert_pair(:rule, source: source, backend: backend)
       start_supervised!({SourceSup, source})
+    end
+
+    test "v2_pipeline=true when source is routed, should ensure that backend is started on the SourceSup",
+         %{source: source, user: user} do
+      start_supervised!(AllLogsLogged)
+
+      backend = insert(:backend, user: user)
+      start_supervised!({SourceSup, source})
+      # create the rule
+      via = Backends.via_source(source, SourceSup)
+      prev_length = Supervisor.which_children(via) |> length()
+
+      insert(:rule, source: source, backend: backend, lql_string: "testing")
+
+      source = Sources.get_by_and_preload(id: source.id)
+      # should not be started yet
+      assert Supervisor.which_children(via) |> length() == prev_length
+
+      # route the source
+      le = build(:log_event, source: source, message: "testing123")
+      SourceRouting.route_to_sinks_and_ingest(le)
+
+      :timer.sleep(200)
+      assert Supervisor.which_children(via) |> length() > prev_length
     end
   end
 end

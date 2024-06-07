@@ -77,6 +77,30 @@ defmodule Logflare.Backends.SourceSup do
   end
 
   @doc """
+  Checks if a rule child is started for a given source/rule.
+  Must be a backend rule.
+  """
+  @spec rule_child_started?(Rule.t()) :: boolean()
+  def rule_child_started?(%Rule{backend_id: backend_id, source_id: source_id}) do
+    backend = Backends.Cache.get_backend(backend_id) |> Map.put(:register_for_ingest, false)
+    source = Sources.Cache.get_by_id(source_id)
+    via = Backends.via_source(source, __MODULE__)
+    spec = Backend.child_spec(source, backend)
+
+    found_id =
+      Supervisor.which_children(via)
+      |> Enum.find(fn {id, _pid, _type, _mod} ->
+        id == spec.id
+      end)
+
+    if found_id do
+      true
+    else
+      false
+    end
+  end
+
+  @doc """
   Starts a given backend child spec for the backend associated with a rule.
   This backend will not be registered for ingest dispatching.
 

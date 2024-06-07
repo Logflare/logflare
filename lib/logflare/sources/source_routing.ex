@@ -6,6 +6,7 @@ defmodule Logflare.Logs.SourceRouting do
   alias Logflare.LogEvent, as: LE
   alias Logflare.Logs
   alias Logflare.Backends
+  alias Logflare.Backends.SourceSup
 
   require Logger
 
@@ -28,6 +29,8 @@ defmodule Logflare.Logs.SourceRouting do
     # route to a backend
     backend = Backends.Cache.get_backend(backend_id)
     le = %{le | via_rule: rule}
+    if SourceSup.rule_child_started?(rule) == false, do: SourceSup.start_rule_child(rule)
+
     # ingest to a specific backend
     Backends.ingest_logs([le], source, backend)
   end
