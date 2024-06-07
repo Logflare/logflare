@@ -87,6 +87,7 @@ $(addprefix decrypt.,${envs}): decrypt.%: \
 	.$$*.gcloud.json \
  	.$$*.env \
  	.$$*.cacert.pem \
+ 	.$$*.cacert.key \
  	.$$*.cert.key \
  	.$$*.cert.pem \
  	.$$*.db-client-cert.pem \
@@ -97,6 +98,7 @@ $(addprefix encrypt.,${envs}): encrypt.%: \
 	.$$*.gcloud.json.enc \
 	.$$*.env.enc \
 	.$$*.cacert.pem.enc \
+	.$$*.cacert.key.enc \
 	.$$*.cert.key.enc \
 	.$$*.cert.pem.enc \
  	.$$*.db-client-cert.pem.enc \
