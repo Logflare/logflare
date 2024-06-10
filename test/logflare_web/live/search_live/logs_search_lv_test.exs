@@ -57,10 +57,23 @@ defmodule LogflareWeb.Source.SearchLVTest do
     [conn: conn]
   end
 
+  defp setup_team_user_session(%{conn: conn, user: user, plan: plan, team_user: team_user}) do
+    _billing_account = insert(:billing_account, user: user, stripe_plan_id: plan.stripe_id)
+    user = user |> Logflare.Repo.preload(:billing_account)
+
+    conn =
+      conn
+      |> put_session(:team_user_id, team_user.id)
+      |> put_session(:user_id, user.id)
+      |> assign(:team_user, team_user)
+
+    [conn: conn]
+  end
+
   # do this for all tests
   setup [:setup_mocks, :on_exit_kill_tasks]
 
-  describe "no timezone" do
+  describe "no timezone preference for user" do
     setup do
       user = insert(:user)
       source = insert(:source, user: user)
@@ -80,7 +93,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
       :timer.sleep(300)
       assert render(view) =~ "local timezone for your"
       # default to Etc/UTC
-      assert render(view) =~ "+00:00"
+      assert view |> element(".subhead") |> render() =~ "(+00:00)"
     end
 
     test "subheader - local time toggle", %{conn: conn, source: source} do
@@ -101,11 +114,11 @@ defmodule LogflareWeb.Source.SearchLVTest do
       {:ok, view, _html} =
         live(conn, ~p"/sources/#{source.id}/search?querystring=&tailing%3F=&tz=Singapore")
 
-      assert render(view) =~ "+08:00"
+      assert view |> element(".subhead") |> render() =~ "(+08:00)"
     end
   end
 
-  describe "preference timezone" do
+  describe "preference timezone for user" do
     setup do
       user = insert(:user, preferences: build(:user_preferences, timezone: "US/Arizona"))
       source = insert(:source, user: user)
@@ -116,25 +129,58 @@ defmodule LogflareWeb.Source.SearchLVTest do
     setup [:setup_user_session, :setup_source_processes]
 
     test "subheader - if no tz, will redirect to preference tz", %{conn: conn, source: source} do
-      {:error, {:live_redirect, _}} =
-        live(conn, ~p"/sources/#{source.id}/search?querystring=&tailing%3F=")
+      {:error, {:live_redirect, %{to: to}}} =
+        live(conn, ~p"/sources/#{source.id}/search?querystring=something123&tailing%3F=")
 
-      {:ok, view, _html} =
-        live(conn, ~p"/sources/#{source.id}/search?querystring=&tailing%3F=&tz=US%2FArizona")
-
-      :timer.sleep(300)
-      # default to Etc/UTC
-      assert render(view) =~ "-07:00"
+      assert to =~ "US%2FArizona"
+      assert to =~ "something123"
     end
 
-    test "subheader - load with timezone in url even if it differs from preference", %{
+    test "subheader - if ?tz=, will use param tz", %{
       conn: conn,
       source: source
     } do
       {:ok, view, _html} =
-        live(conn, ~p"/sources/#{source.id}/search?querystring=&tailing%3F=&tz=Singapore")
+        live(
+          conn,
+          ~p"/sources/#{source.id}/search?querystring=something123&tailing%3F=&tz=Singapore"
+        )
 
-      assert render(view) =~ "+08:00"
+      assert view |> element(".subhead") |> render() =~ "(+08:00)"
+      assert render(view) =~ "something123"
+    end
+  end
+
+  describe "preference timezone for team_user" do
+    setup do
+      user = insert(:user)
+      team_user = insert(:team_user, preferences: build(:user_preferences, timezone: "NZ"))
+      source = insert(:source, user: user)
+      plan = insert(:plan)
+      [user: user, source: source, plan: plan, team_user: team_user]
+    end
+
+    setup [:setup_team_user_session, :setup_source_processes]
+
+    test "subheader - if no tz, will redirect to preference tz", %{conn: conn, source: source} do
+      {:error, {:live_redirect, %{to: to}}} =
+        live(conn, ~p"/sources/#{source.id}/search?querystring=something123&tailing%3F=")
+
+      assert to =~ "tz=NZ"
+      assert to =~ "something123"
+    end
+
+    test "subheader - if ?tz=, will use param tz", %{conn: conn, source: source} do
+      {:ok, view, _html} =
+        live(
+          conn,
+          ~p"/sources/#{source.id}/search?querystring=something123&tailing%3F=&tz=Singapore"
+        )
+
+      :timer.sleep(300)
+
+      assert view |> element(".subhead") |> render() =~ "(+08:00)"
+      assert render(view) =~ "something123"
     end
   end
 

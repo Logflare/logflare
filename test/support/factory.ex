@@ -50,7 +50,8 @@ defmodule Logflare.Factory do
   def team_user_factory do
     %TeamUser{
       name: "some name #{TestUtils.random_string()}",
-      team: build(:team)
+      team: build(:team),
+      provider: "google"
     }
   end
 
