@@ -122,6 +122,7 @@ log_level =
     "warning" -> :warning
     "info" -> :info
     "error" -> :error
+    "debug" -> :debug
     _ -> nil
   end
 
