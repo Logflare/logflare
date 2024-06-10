@@ -53,9 +53,9 @@ defmodule LogflareWeb.Source.SearchLV do
       user: user,
       team_user: team_user,
       search_tip: gen_search_tip(),
-      user_local_timezone: Map.get(params, "tz", "Etc/UTC"),
       user_timezone_from_connect_params: nil,
-      use_local_time: true,
+      display_timezone: Map.get(params, "tz", "Etc/UTC"),
+      search_timezone: Map.get(params, "tz", "Etc/UTC"),
       # loading states
       loading: true,
       chart_loading: true,
@@ -173,6 +173,10 @@ defmodule LogflareWeb.Source.SearchLV do
     logs_search(assigns)
   end
 
+  def handle_event("results-action-change", %{"display_timezone" => tz}, socket) do
+    {:noreply, socket |> assign(:display_timezone, tz)}
+  end
+
   def handle_event(
         "start_search" = ev,
         %{"search" => %{"querystring" => qs}},
@@ -214,28 +218,23 @@ defmodule LogflareWeb.Source.SearchLV do
 
       {:noreply, socket}
     else
-      timestamp_rules =
-        if socket.assigns.use_local_time do
-          user_local_timezone = socket.assigns.user_local_timezone
-          tz = Timex.Timezone.get(user_local_timezone)
+      tz = Timex.Timezone.get(socket.assigns.search_timezone)
 
-          Enum.map(timestamp_rules, fn
-            lql_rule ->
-              if Lql.Utils.timestamp_filter_rule_is_shorthand?(lql_rule) do
-                Map.replace!(
-                  lql_rule,
-                  :values,
-                  for value <- lql_rule.values do
-                    Timex.shift(value, seconds: Timex.diff(value, tz))
-                  end
-                )
-              else
-                lql_rule
-              end
-          end)
-        else
-          timestamp_rules
-        end
+      timestamp_rules =
+        Enum.map(timestamp_rules, fn
+          lql_rule ->
+            if Lql.Utils.timestamp_filter_rule_is_shorthand?(lql_rule) do
+              Map.replace!(
+                lql_rule,
+                :values,
+                for value <- lql_rule.values do
+                  Timex.shift(value, seconds: Timex.diff(value, tz))
+                end
+              )
+            else
+              lql_rule
+            end
+        end)
 
       rules = Lql.Utils.update_timestamp_rules(rules, timestamp_rules)
       new_rules = Lql.Utils.jump_timestamp(rules, String.to_atom(direction))
@@ -357,22 +356,6 @@ defmodule LogflareWeb.Source.SearchLV do
     {:noreply, socket}
   end
 
-  def handle_event("toggle_local_time", _metadata, socket) do
-    source = socket.assigns.source
-    maybe_cancel_tailing_timer(socket)
-    SearchQueryExecutor.maybe_cancel_query(source.token)
-
-    socket =
-      socket
-      |> assign(:use_local_time, not socket.assigns.use_local_time)
-      |> assign_new_search_with_qs(
-        %{querystring: socket.assigns.querystring, tailing?: socket.assigns.tailing?},
-        socket.assigns.source.bq_table_schema
-      )
-
-    {:noreply, socket}
-  end
-
   def handle_event("save_search" = ev, _, socket) do
     %{
       source: source,
@@ -429,18 +412,15 @@ defmodule LogflareWeb.Source.SearchLV do
   def handle_info({:search_result, %{aggregates: _aggs} = search_result}, socket) do
     log_lv_received_event("search_result", socket.assigns.source)
 
-    timezone =
-      if socket.assigns.use_local_time do
-        socket.assigns.user_local_timezone
-      else
-        "Etc/UTC"
-      end
-
     log_aggregates =
       search_result.aggregates.rows
       |> Enum.reverse()
       |> Enum.map(fn la ->
-        Map.update!(la, "timestamp", &BqSchemaHelpers.format_timestamp(&1, timezone))
+        Map.update!(
+          la,
+          "timestamp",
+          &BqSchemaHelpers.format_timestamp(&1, socket.assigns.display_timezone)
+        )
       end)
 
     aggs =
@@ -604,10 +584,13 @@ defmodule LogflareWeb.Source.SearchLV do
     cond do
       tz_param != nil ->
         socket
-        |> assign(:user_local_timezone, tz_param)
+        |> assign(:search_timezone, tz_param)
+        |> assign(:display_timezone, tz_param)
 
       team_user && team_user.preferences ->
-        assign(socket, :user_local_timezone, team_user.preferences.timezone)
+        socket
+        |> assign(:search_timezone, team_user.preferences.timezone)
+        |> assign(:display_timezone, team_user.preferences.timezone)
 
       team_user && is_nil(team_user.preferences) ->
         {:ok, team_user} =
@@ -615,21 +598,25 @@ defmodule LogflareWeb.Source.SearchLV do
 
         socket
         |> assign(:team_user, team_user)
-        |> assign(:user_local_timezone, tz_connect)
+        |> assign(:search_timezone, tz_connect)
+        |> assign(:display_timezone, tz_connect)
         |> put_flash(
           :info,
           "Your timezone setting for team #{team_user.team.name} sources was set to #{tz_connect}. You can change it using the 'timezone' link in the top menu."
         )
 
       user.preferences ->
-        assign(socket, :user_local_timezone, user.preferences.timezone)
+        socket
+        |> assign(:search_timezone, user.preferences.timezone)
+        |> assign(:display_timezone, user.preferences.timezone)
 
       is_nil(user.preferences) ->
         {:ok, user} =
           Users.update_user_with_preferences(user, %{preferences: %{timezone: tz_connect}})
 
         socket
-        |> assign(:user_local_timezone, tz_connect)
+        |> assign(:search_timezone, tz_connect)
+        |> assign(:display_timezone, tz_connect)
         |> assign(:user, user)
         |> put_flash(
           :info,
@@ -637,11 +624,11 @@ defmodule LogflareWeb.Source.SearchLV do
         )
     end
     |> then(fn
-      %{assigns: %{uri_params: %{"tz" => tz}, user_local_timezone: local_tz}} = socket
+      %{assigns: %{uri_params: %{"tz" => tz}, search_timezone: local_tz}} = socket
       when tz != local_tz ->
         push_patch_with_params(socket, %{"tz" => local_tz})
 
-      %{assigns: %{uri_params: params, user_local_timezone: local_tz}} = socket
+      %{assigns: %{uri_params: params, search_timezone: local_tz}} = socket
       when not is_map_key(params, "tz") and local_tz != "Etc/UTC" ->
         push_patch_with_params(socket, %{"tz" => local_tz})
 

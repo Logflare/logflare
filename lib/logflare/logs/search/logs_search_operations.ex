@@ -334,30 +334,26 @@ defmodule Logflare.Logs.SearchOperations do
   @spec apply_local_timestamp_correction(SO.t()) :: SO.t()
   def apply_local_timestamp_correction(%SO{} = so) do
     lql_ts_filters =
-      if so.use_local_time do
-        so.lql_ts_filters
-        |> Enum.map(fn
-          %{path: "timestamp", values: values, operator: :range} = pvo ->
-            values =
-              for value <- values do
-                value
-                |> Timex.to_datetime(so.user_local_timezone || "Etc/UTC")
-                |> Timex.Timezone.convert("Etc/UTC")
-              end
-
-            %{pvo | values: values}
-
-          %{path: "timestamp", value: value} = pvo ->
-            value =
+      so.lql_ts_filters
+      |> Enum.map(fn
+        %{path: "timestamp", values: values, operator: :range} = pvo ->
+          values =
+            for value <- values do
               value
-              |> Timex.to_datetime(so.user_local_timezone || "Etc/UTC")
+              |> Timex.to_datetime(so.search_timezone || "Etc/UTC")
               |> Timex.Timezone.convert("Etc/UTC")
+            end
 
-            %{pvo | value: value}
-        end)
-      else
-        so.lql_ts_filters
-      end
+          %{pvo | values: values}
+
+        %{path: "timestamp", value: value} = pvo ->
+          value =
+            value
+            |> Timex.to_datetime(so.search_timezone || "Etc/UTC")
+            |> Timex.Timezone.convert("Etc/UTC")
+
+          %{pvo | value: value}
+      end)
 
     %{so | lql_ts_filters: lql_ts_filters}
   end
@@ -372,12 +368,7 @@ defmodule Logflare.Logs.SearchOperations do
       |> Lql.EctoHelpers.apply_filter_rules_to_query(so.lql_meta_and_msg_filters)
       |> order_by([t, ...], desc: 1)
 
-    query =
-      if chart_period == :day and so.use_local_time and so.user_local_timezone do
-        select_timestamp(query, chart_period, so.user_local_timezone)
-      else
-        select_timestamp(query, chart_period)
-      end
+    query = select_timestamp(query, chart_period)
 
     query =
       case chart_rules do

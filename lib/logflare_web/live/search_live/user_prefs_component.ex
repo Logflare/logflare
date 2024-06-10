@@ -91,7 +91,7 @@ defmodule LogflareWeb.Search.UserPreferencesComponent do
       |> then(fn socket ->
         uri = URI.parse(socket.assigns.return_to)
         query = URI.decode_query(uri.query) |> Map.merge(%{"tz" => tz})
-        updated_uri = %{uri | query: URI.encode_query(query)} |> URI.to_string() |> dbg()
+        updated_uri = %{uri | query: URI.encode_query(query)} |> URI.to_string()
 
         socket
         |> push_navigate(to: updated_uri)
@@ -112,7 +112,7 @@ defmodule LogflareWeb.Search.UserPreferencesComponent do
     |> Enum.map(fn [offset: offset, t: t] ->
       hoursstring = DateTimeUtils.humanize_timezone_offset(offset)
 
-      {String.to_atom("#{t} #{hoursstring}"), t}
+      {String.to_atom("#{t} (#{hoursstring})"), t}
     end)
   end
 end

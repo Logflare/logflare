@@ -96,15 +96,16 @@ defmodule LogflareWeb.Source.SearchLVTest do
       assert view |> element(".subhead") |> render() =~ "(+00:00)"
     end
 
-    test "subheader - local time toggle", %{conn: conn, source: source} do
+    test "subheader - viewing timezone switcher", %{conn: conn, source: source} do
       {:ok, view, _html} = live(conn, ~p"/sources/#{source.id}/search")
 
       assert view
-             |> element(".subhead a", "local time")
-             |> render_click()
+             |> element(".subhead form#results-actions")
+             |> render_change(%{display_timezone: "Asia/Singapore"})
 
-      :timer.sleep(200)
-      assert element(view, ".subhead a .toggle-on")
+      html = view |> element("#logs-list-container") |> render()
+
+      assert html =~ "+08:00"
     end
 
     test "subheader - load with timezone in url even if it differs from preference", %{
