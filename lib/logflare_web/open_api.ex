@@ -35,6 +35,10 @@ defmodule LogflareWeb.OpenApi do
     end
   end
 
+  defmodule One do
+    def response(module), do: {"#{module.schema.title} One Response", "application/json", module}
+  end
+
   defmodule Created do
     def response(module), do: {"Created Response", "application/json", module}
   end
@@ -51,6 +55,13 @@ defmodule LogflareWeb.OpenApi do
     OpenApiSpex.schema(%{})
 
     def response(), do: {"Not found", "text/plain", __MODULE__}
+  end
+
+  defmodule BadRequest do
+    require OpenApiSpex
+    OpenApiSpex.schema(%{})
+
+    def response(), do: {"Bad request", "text/plain", __MODULE__}
   end
 
   defmodule Unauthorized do

@@ -4,14 +4,72 @@ defmodule LogflareWeb.Api.QueryController do
 
   alias Logflare.Endpoints
   alias LogflareWeb.OpenApi.List
+  alias LogflareWeb.OpenApi.BadRequest
+  alias LogflareWeb.OpenApi.One
+  alias LogflareWeb.OpenApiSchemas.QueryParseResult
   alias LogflareWeb.OpenApiSchemas.QueryResult
 
   action_fallback(LogflareWeb.Api.FallbackController)
 
   tags(["management"])
 
+  operation(:parse,
+    summary: "Parses a query",
+    parameters: [
+      sql: [
+        in: :query,
+        description: "BigQuery SQL string, alias for bq_sql",
+        type: :string,
+        allowEmptyValue: true,
+        required: false
+      ],
+      bq_sql: [
+        in: :query,
+        description: "BigQuery SQL string",
+        type: :string,
+        required: false,
+        example: "select current_timestamp() as 'test'"
+      ]
+    ],
+    responses: %{
+      200 => One.response(QueryParseResult),
+      400 => BadRequest.response()
+    }
+  )
+
+  def parse(conn, %{"sql" => sql}), do: parse(conn, %{"bq_sql" => sql})
+
+  def parse(%{assigns: %{user: user}} = conn, %{"bq_sql" => sql}) do
+    with {:ok, result} <- Endpoints.parse_query_string(sql),
+         {:ok, _transformed_query} <- Logflare.Sql.transform(:bq_sql, sql, user.id) do
+      json(conn, %{result: result})
+    end
+  end
+
   operation(:query,
     summary: "Execute a query",
+    parameters: [
+      sql: [
+        in: :query,
+        description: "BigQuery SQL string, alias for bq_sql",
+        type: :string,
+        required: false
+      ],
+      bq_sql: [
+        in: :query,
+        description: "BigQuery SQL string",
+        type: :string,
+        required: false,
+        example: "select current_timestamp() as 'test'"
+      ],
+      pg_sql: [
+        in: :query,
+        description: "PostgresSQL string",
+        type: :string,
+        required: false,
+        example: "select current_date() as 'test'"
+      ]
+    ],
     responses: %{200 => List.response(QueryResult)}
   )
 
