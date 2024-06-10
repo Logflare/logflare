@@ -84,6 +84,7 @@
                 <div class="input-group-text  tw-bg-transparent tw-text-black tw-text-xs">display timezone</div>
               </div>
               <%= select(f, :display_timezone, LogflareWeb.Search.UserPreferencesComponent.build_timezones_select_form_options(), selected: @display_timezone, class: "form-control form-control-sm tw-w-64 tw-text-xs") %>
+              <button type="button" class="btn btn-link tw-text-xs" phx-click="results-action-change" phx-value-display_timezone="Etc/UTC">UTC</button>
             </div>
           </.form>
         </li>
