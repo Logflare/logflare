@@ -58,6 +58,6 @@ defmodule Logflare.DateTimeUtils do
 
     minutes = "#{minutes_prefix}#{minutes}"
 
-    "(#{hours}:#{minutes})"
+    "#{hours}:#{minutes}"
   end
 end
