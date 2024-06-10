@@ -112,7 +112,7 @@ defmodule LogflareWeb.Search.UserPreferencesComponent do
     |> Enum.map(fn [offset: offset, t: t] ->
       hoursstring = DateTimeUtils.humanize_timezone_offset(offset)
 
-      {String.to_atom("#{t} #{hoursstring}"), t}
+      {String.to_atom("#{t} (#{hoursstring})"), t}
     end)
   end
 end
