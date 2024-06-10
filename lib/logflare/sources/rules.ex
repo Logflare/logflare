@@ -11,7 +11,7 @@ defmodule Logflare.Rules do
   alias Logflare.SourceSchemas
   alias Logflare.Backends.Backend
   alias Logflare.Backends.SourceSup
-  alias Logflare.Backends
+  alias Logflare.Cluster
 
   @doc """
   Lists rules for a given Source or Backend
@@ -38,7 +38,9 @@ defmodule Logflare.Rules do
     |> Repo.insert()
     |> case do
       {:ok, %Rule{backend_id: backend_id} = rule} = result when backend_id != nil ->
-        if Backends.source_sup_started?(rule.source_id), do: SourceSup.start_rule_child(rule)
+        # expected to fail on nodes where SourceSup is not started
+        Cluster.Utils.rpc_multicall(SourceSup, :start_rule_child, [rule])
+
         result
 
       other ->
@@ -84,7 +86,8 @@ defmodule Logflare.Rules do
   @spec delete_rule(Rule.t()) :: {:ok, Rule.t()}
   def delete_rule(rule) do
     res = Repo.delete(rule)
-    if Backends.source_sup_started?(rule.source_id), do: SourceSup.stop_rule_child(rule)
+    Cluster.Utils.rpc_multicall(SourceSup, :stop_rule_child, [rule])
+
     res
   end
 
