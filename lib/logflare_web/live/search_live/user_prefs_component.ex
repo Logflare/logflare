@@ -88,7 +88,14 @@ defmodule LogflareWeb.Search.UserPreferencesComponent do
           socket
           |> put_flash(:error, "Something went wrong")
       end
-      |> push_navigate(to: socket.assigns.return_to <> "&tz=#{tz}")
+      |> then(fn socket ->
+        uri = URI.parse(socket.assigns.return_to)
+        query = URI.decode_query(uri.query) |> Map.merge(%{"tz" => tz})
+        updated_uri = %{uri | query: URI.encode_query(query)} |> URI.to_string() |> dbg()
+
+        socket
+        |> push_navigate(to: updated_uri)
+      end)
 
     {:noreply, socket}
   end

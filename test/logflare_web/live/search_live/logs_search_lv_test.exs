@@ -149,6 +149,35 @@ defmodule LogflareWeb.Source.SearchLVTest do
       assert view |> element(".subhead") |> render() =~ "(+08:00)"
       assert render(view) =~ "something123"
     end
+
+    test "bug: switching tz should not result in query getting cleared", %{
+      conn: conn,
+      source: source
+    } do
+      {:ok, view, _html} =
+        live(
+          conn,
+          ~p"/sources/#{source.id}/search?querystring=something123&tailing%3F=&tz=Singapore"
+        )
+
+      assert view |> element(".subhead a", "timezone") |> render_click() =~ "Preferences"
+
+      # switch to arizona
+      {:error, {:live_redirect, %{to: to}}} =
+        redirect =
+        view
+        |> element("form#user-tz-form")
+        |> render_submit(%{user_preferences: %{timezone: "US/Arizona"}})
+
+      assert to =~ "something123"
+      assert to =~ "US%2FArizona"
+
+      # don't follow_redirect because we alter cookies (for team users), load the redireted url directly
+      {:ok, view, _html} = live(conn, to)
+
+      assert render(view) =~ "something123"
+      assert view |> element(".subhead") |> render() =~ "(-07:00)"
+    end
   end
 
   describe "preference timezone for team_user" do
