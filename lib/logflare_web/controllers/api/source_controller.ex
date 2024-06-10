@@ -8,6 +8,7 @@ defmodule LogflareWeb.Api.SourceController do
   alias LogflareWeb.OpenApi.Created
   alias LogflareWeb.OpenApi.List
   alias LogflareWeb.OpenApi.NotFound
+  alias LogflareWeb.OpenApiSchemas.Event
 
   alias LogflareWeb.OpenApiSchemas.Source
 
@@ -100,6 +101,25 @@ defmodule LogflareWeb.Api.SourceController do
       conn
       |> Plug.Conn.send_resp(204, [])
       |> Plug.Conn.halt()
+    end
+  end
+
+  operation(:recent,
+    summary: "Recent events in a source",
+    parameters: [token: [in: :path, description: "Source Token", type: :string]],
+    responses: %{
+      200 => List.response(Event),
+      404 => NotFound.response()
+    }
+  )
+
+  def recent(%{assigns: %{user: user}} = conn, %{"source_token" => token}) do
+    with source when not is_nil(source) <- Sources.get_by(token: token, user_id: user.id) do
+      recent = for event <- Backends.list_recent_logs(source), do: event.body
+
+      conn
+      |> put_status(200)
+      |> json(recent)
     end
   end
 

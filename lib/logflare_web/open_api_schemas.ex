@@ -15,6 +15,14 @@ defmodule LogflareWeb.OpenApiSchemas do
     use LogflareWeb.OpenApi, properties: @properties, required: []
   end
 
+  defmodule Event do
+    @properties %{
+      timestamp: %Schema{type: :integer},
+      event_message: %Schema{type: :string}
+    }
+    use LogflareWeb.OpenApi, properties: @properties, required: []
+  end
+
   defmodule LogsCreated do
     @properties %{
       message: %Schema{type: :string, example: "Logged!"}
