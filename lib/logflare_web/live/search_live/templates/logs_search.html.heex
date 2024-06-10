@@ -13,7 +13,6 @@
     return_to: @modal.body.return_to
   ) %>
 <% end %>
-<div id="user-preferences" data-user-local-timezone={@user_local_timezone} data-use-local-time={@use_local_time}></div>
 <div id="source-logs-search-control" class="subhead " phx-hook="SourceLogsSearch">
   <div class="container mx-auto">
     <h5>
@@ -38,25 +37,10 @@
           <%= LqlHelpers.bq_source_schema_modal_link() %>
         </li>
         <li>
-          <a href="#" phx-click="toggle_local_time" id="toggle_local_time" phx-value-use_local_time={@use_local_time}>
-            <span>
-              <%= if @use_local_time do %>
-                <i class="fa fa-toggle-on pointer-cursor" aria-hidden="true"></i>
-              <% else %>
-                <i class="fa fa-toggle-off pointer-cursor" aria-hidden="true"></i>
-              <% end %>
-            </span>
-            <span class="hide-on-mobile">local time</span>
-          </a>
-        </li>
-        <li>
           <%= live_modal_show_link(component: Search.UserPreferencesComponent, modal_id: :user_preferences, title: "Preferences", return_to: @uri.path <> "?" <> (@uri.query || ""))  do %>
             <i class="fas fa-globe"></i>
             <span class="hide-on-mobile">
-              timezone
-              <%= if @user_local_timezone do %>
-                <%= DateTimeUtils.humanize_timezone_offset(Timex.Timezone.get(@user_local_timezone).offset_utc) %>
-              <% end %>
+              timezone <%= DateTimeUtils.humanize_timezone_offset(Timex.Timezone.get(@search_timezone).offset_utc) %>
             </span>
           <% end %>
         </li>
@@ -90,6 +74,21 @@
         <% end %>
       </ul>
     </div>
+    <div>
+      <ul>
+        <li>
+          <.form :let={f} for={%{}} phx-change="results-action-change" id="results-actions">
+            <label class="sr-only" for="display_timezone">Display Timezone</label>
+            <div class="input-group input-group-sm">
+              <div class="input-group-prepend">
+                <div class="input-group-text  tw-bg-transparent tw-text-black tw-text-xs">display timezone</div>
+              </div>
+              <%= select(f, :display_timezone, LogflareWeb.Search.UserPreferencesComponent.build_timezones_select_form_options(), selected: @display_timezone, class: "form-control form-control-sm tw-w-64 tw-text-xs") %>
+            </div>
+          </.form>
+        </li>
+      </ul>
+    </div>
   </div>
 </div>
 <div class="container source-logs-search-container console-text">
@@ -97,8 +96,8 @@
     <%= Phoenix.View.render(SearchView, "logs_list.html",
       search_op_log_events: @search_op_log_events,
       last_query_completed_at: @last_query_completed_at,
-      user_local_timezone: @user_local_timezone,
-      use_local_time: @use_local_time,
+      search_timezone: @search_timezone,
+      display_timezone: @display_timezone,
       loading: @loading,
       source: @source
     ) %>
@@ -110,8 +109,7 @@
         data: if(@search_op_log_aggregates, do: @search_op_log_aggregates.rows, else: []),
         loading: @chart_loading,
         chart_period: get_chart_period(@lql_rules, "minute"),
-        user_local_timezone: @user_local_timezone,
-        use_local_time: @use_local_time,
+        display_timezone: @display_timezone,
         chart_data_shape_id:
           if(@search_op_log_aggregates,
             do: @search_op_log_aggregates.chart_data_shape_id,
@@ -131,10 +129,10 @@
           class: "form-control form-control-margin",
           list: "matches"
         ) %>
-        <%= text_input(f, :user_local_timezone,
+        <%= text_input(f, :search_timezone,
           class: "d-none",
-          value: @user_local_timezone,
-          id: "user-local-timezone"
+          value: @search_timezone,
+          id: "search-timezone"
         ) %>
         <datalist id="matches">
           <%= for s <- @search_history do %>
