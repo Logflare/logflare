@@ -50,7 +50,7 @@
           </a>
         </li>
         <li>
-          <%= live_modal_show_link(component: Search.UserPreferencesComponent, modal_id: :user_preferences, title: "Preferences", return_to: @uri.path <> "?querystring=c:count(*) c:group_by(t::minute)")  do %>
+          <%= live_modal_show_link(component: Search.UserPreferencesComponent, modal_id: :user_preferences, title: "Preferences", return_to: @uri.path <> "?" <> (@uri.query || ""))  do %>
             <i class="fas fa-globe"></i>
             <span class="hide-on-mobile">
               timezone
