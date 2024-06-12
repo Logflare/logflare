@@ -219,7 +219,10 @@ cond do
     raise "Missing Google or Backend credentials"
 end
 
-if(File.exists?("cacert.pem") && File.exists?("cert.pem") && File.exists?("cert.key")) do
+if(
+  System.get_env("LOGFLARE_ENABLE_GRPC_SSL") == "true" && File.exists?("cacert.pem") &&
+    File.exists?("cert.pem") && File.exists?("cert.key")
+) do
   config :logflare,
     ssl: [
       cacertfile: "cacert.pem",
