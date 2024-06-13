@@ -40,15 +40,17 @@ defmodule LogflareWeb.OpenTelemetrySampler do
       ) do
     tracestate = Tracer.current_span_ctx(ctx) |> OpenTelemetry.Span.tracestate()
 
-    ingest_route? =
+    exclude_route? =
       case Map.get(attributes, "http.target") do
         "/logs" <> _ -> true
         "/api/logs" <> _ -> true
         "/api/events" <> _ -> true
+        "/endpoints/query" <> _ -> true
+        "/api/endpoints/query" <> _ -> true
         _ -> false
       end
 
-    if ingest_route? do
+    if exclude_route? do
       {:drop, [], tracestate}
     else
       :otel_sampler_trace_id_ratio_based.should_sample(
