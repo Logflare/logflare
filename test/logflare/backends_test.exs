@@ -5,6 +5,7 @@ defmodule Logflare.BackendsTest do
   alias Logflare.Backends.Backend
   alias Logflare.Backends.SourceSup
   alias Logflare.Source
+  alias Logflare.Sources
   alias Logflare.Source.RecentLogsServer
   alias Logflare.SystemMetrics.AllLogsLogged
   alias Logflare.Source.ChannelTopics
@@ -12,6 +13,7 @@ defmodule Logflare.BackendsTest do
   alias Logflare.Logs
   alias Logflare.Source.V1SourceSup
   alias Logflare.PubSubRates
+  alias Logflare.Logs.SourceRouting
 
   setup do
     start_supervised!(AllLogsLogged)
@@ -367,6 +369,51 @@ defmodule Logflare.BackendsTest do
           end,
           "SourceSup v2 BQ with Backends.ingest_logs/2" => fn ->
             Backends.ingest_logs(batch, source2)
+          end
+        },
+        time: 3,
+        warmup: 1,
+        print: [configuration: false],
+        # use extended_statistics to view units of work done
+        formatters: [{Benchee.Formatters.Console, extended_statistics: true}]
+      )
+    end
+
+    # This benchmarks two areas:
+    # - rules dispatching, with and without any rules
+    @tag :benchmark
+    test "backend rules routing benchmarking", %{user: user} do
+      backend = insert(:backend, user: user)
+      [source1, source2] = insert_pair(:source, user: user, rules: [])
+
+      rules =
+        for _ <- 1..250 do
+          insert(:rule, source: source2, backend: backend, lql_string: "message")
+        end
+
+      source2 = Sources.preload_defaults(source2)
+
+      # start_supervised!({Pipeline, [rls, name: @pipeline_name]})
+      start_supervised!({SourceSup, source1}, id: :no_rules)
+      start_supervised!({SourceSup, source2}, id: :with_rules)
+
+      batch1 =
+        for _i <- 1..250 do
+          build(:log_event, source: source1, message: "some message")
+        end
+
+      batch2 =
+        for _i <- 1..250 do
+          build(:log_event, source: source2, message: "some message")
+        end
+
+      Benchee.run(
+        %{
+          "with rules" => fn ->
+            SourceRouting.route_to_sinks_and_ingest(batch1)
+          end,
+          "100 rules" => fn ->
+            SourceRouting.route_to_sinks_and_ingest(batch2)
           end
         },
         time: 3,
