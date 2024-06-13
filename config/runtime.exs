@@ -121,6 +121,7 @@ log_level =
     "warn" -> :warning
     "warning" -> :warning
     "info" -> :info
+    "debug" -> :debug
     "error" -> :error
     _ -> nil
   end
@@ -288,8 +289,21 @@ config :libcluster,
     if(System.get_env("LIBCLUSTER_TOPOLOGY") == "postgres", do: postgres_topology, else: [])
 
 if System.get_env("LOGFLARE_OTEL_ENDPOINT") do
+  config :logflare, opentelemetry_enabled?: true
+
   config :opentelemetry,
-    traces_exporter: :otlp
+    traces_exporter: :otlp,
+    sampler:
+      {:parent_based,
+       %{
+         root:
+           {LogflareWeb.OpenTelemetrySampler,
+            %{
+              probability:
+                System.get_env("LOGFLARE_OPEN_TELEMETRY_SAMPLE_RATIO", "0.001")
+                |> String.to_float()
+            }}
+       }}
 
   config :opentelemetry_exporter,
     otlp_protocol: :grpc,
