@@ -6,6 +6,7 @@ defmodule Logflare.Backends.BufferProducer do
   """
   use GenStage
   alias Logflare.Source
+  alias Logflare.Sources
   alias Logflare.PubSubRates
 
   @default_broadcast_interval 5_000
@@ -27,7 +28,20 @@ defmodule Logflare.Backends.BufferProducer do
       })
 
     loop(state.broadcast_interval)
-    {:producer, state, buffer_size: 10_000}
+    {:producer, state, buffer_size: Keyword.get(opts, :buffer_size, 10_000)}
+  end
+
+  def format_discarded(discarded, state) do
+    source = Sources.Cache.get_by_id(state.source_token)
+
+    Logger.warning(
+      "GenStage producer for #{source.name} (#{source.token}) has discarded #{discarded} events from buffer",
+      source_token: source.token,
+      source_id: source.token,
+      backend_token: state.backend_token
+    )
+
+    false
   end
 
   def handle_info(:resolve, state) do
