@@ -91,7 +91,7 @@ defmodule LogflareWeb.Search.UserPreferencesComponent do
       |> then(fn socket ->
         uri = URI.parse(socket.assigns.return_to)
         query = URI.decode_query(uri.query) |> Map.merge(%{"tz" => tz})
-        updated_uri = %{uri | query: URI.encode_query(query)} |> URI.to_string() |> dbg()
+        updated_uri = %{uri | query: URI.encode_query(query)} |> URI.to_string()
 
         socket
         |> push_navigate(to: updated_uri)

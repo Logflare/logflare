@@ -83,6 +83,7 @@ defmodule LogflareWeb.Router do
     # plug LogflareWeb.Plugs.EnsureSourceStarted
     plug(LogflareWeb.Plugs.SetPlanFromCache)
     plug(LogflareWeb.Plugs.RateLimiter)
+    plug(LogflareWeb.Plugs.BufferLimiter)
   end
 
   pipeline :require_mgmt_api_auth do
