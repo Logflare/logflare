@@ -2,6 +2,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
   @moduledoc false
 
   alias Logflare.Backends
+  alias Logflare.Backends.DynamicPipeline
   alias Logflare.Sources
   alias Logflare.Backends.Backend
   alias Logflare.Source.BigQuery.Pipeline
@@ -10,6 +11,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
   alias Logflare.Users
   alias Logflare.Billing
   use Supervisor
+  require Logger
 
   @behaviour Logflare.Backends.Adaptor
 
@@ -32,17 +34,26 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
     # TODO: remove source_id metadata to reduce confusion
     Logger.metadata(source_id: source.token, source_token: source.token)
 
+    Logger.debug("Starting up BigQuery Adaptor")
+
     with :ok <- Backends.register_backend_for_ingest_dispatch(source, backend) do
       children = [
-        {Pipeline,
-         [
-           source: source,
-           backend_id: backend.id,
-           backend_token: backend.token,
-           bigquery_project_id: project_id,
-           bigquery_dataset_id: dataset_id,
-           name: Backends.via_source(source, Pipeline, backend.id)
-         ]},
+        {
+          DynamicPipeline,
+          # soft limit before a new pipeline is created
+          name: Backends.via_source(source, Pipeline, backend.id),
+          pipeline: Pipeline,
+          max_buffer_len: 6_000,
+          pipeline_args: [
+            source: source,
+            backend_id: backend.id,
+            backend_token: backend.token,
+            bigquery_project_id: project_id,
+            bigquery_dataset_id: dataset_id
+          ],
+          monitor_callback: &Backends.broadcast_buffer_lens(source.id, backend.id, &1),
+          min_pipelines: 1
+        },
         {Schema,
          [
            plan: plan,
@@ -62,6 +73,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
     source_id = Keyword.get(opts, :source_id)
     backend_id = Keyword.get(opts, :backend_id)
     source = Sources.Cache.get_by_id(source_id)
+    sup_name = Backends.via_source(source, Pipeline, backend_id)
 
     messages =
       for le <- log_events,
@@ -70,8 +82,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
             acknowledger: {__MODULE__, nil, nil}
           }
 
-    Backends.via_source(source, {Pipeline, backend_id})
-    |> Broadway.push_messages(messages)
+    DynamicPipeline.push_messages(sup_name, messages)
 
     :ok
   end

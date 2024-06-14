@@ -44,11 +44,11 @@ defmodule Logflare.Source.BigQuery.Pipeline do
               {BufferProducer, [source_token: source.token, backend_token: args[:backend_token]]}
           ],
           processors: [
-            default: [concurrency: System.schedulers_online() * 2]
+            default: [concurrency: 8]
           ],
           batchers: [
             bq: [
-              concurrency: System.schedulers_online() * 2,
+              concurrency: 12,
               batch_size: bq_batch_size_splitter(),
               batch_timeout: 1_500,
               # must be set when using custom batch_size splitter
@@ -72,8 +72,9 @@ defmodule Logflare.Source.BigQuery.Pipeline do
     )
   end
 
-  def process_name({:via, _module, {_registry, {source_id, {mod, backend_id}}}}, base_name) do
-    Backends.via_source(source_id, {mod, backend_id, base_name})
+  # pipeline name is sharded
+  def process_name({:via, module, {registry, identifier}}, base_name) do
+    {:via, module, {registry, {identifier, base_name}}}
   end
 
   def process_name(proc_name, base_name) do
@@ -184,13 +185,13 @@ defmodule Logflare.Source.BigQuery.Pipeline do
     log_event
   end
 
-  def process_data(%LE{body: _body, source: source} = log_event, context) do
+  def process_data(%LE{} = log_event, context) do
     # TODO ... We use `ignoreUnknownValues: true` when we do `stream_batch!`. If we set that to `true`
     # then this makes BigQuery check the payloads for new fields. In the response we'll get a list of events that didn't validate.
     # Send those events through the pipeline again, but run them through our schema process this time. Do all
     # these things a max of like 5 times and after that send them to the rejected pile.
     :ok =
-      Backends.via_source(source, {Schema, Map.get(context, :backend_id)})
+      Backends.via_source(context.source_id, {Schema, Map.get(context, :backend_id)})
       |> Schema.update(log_event)
 
     log_event

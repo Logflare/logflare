@@ -47,7 +47,8 @@ defmodule Logflare.Logs do
         acknowledger: {BigQueryAdaptor, nil, nil}
       }
 
-      Backends.via_source(source, Pipeline, nil)
+      # v1 uses the default managed BQ pipeline only, with no sharding
+      Backends.via_source(source, {Pipeline, nil, 0})
       |> Broadway.push_messages([message])
 
       le
