@@ -21,6 +21,7 @@ defmodule Logflare.Backends do
 
   defdelegate child_spec(arg), to: __MODULE__.Supervisor
 
+  @max_buffer_len 5_000
   @doc """
   Lists `Backend`s for a given source.
   """
@@ -433,6 +434,20 @@ defmodule Logflare.Backends do
     with :ok <- stop_source_sup(source),
          :ok <- start_source_sup(source) do
       :ok
+    end
+  end
+
+  @doc """
+  Checks if a local buffer is full.
+  """
+  def local_buffer_full?(%Source{} = source) do
+    case PubSubRates.Cache.get_buffers(source.token, nil) do
+      {:ok, buffers} ->
+        buffer = Map.get(buffers, Node.self(), 0)
+        buffer >= @max_buffer_len
+
+      _ ->
+        false
     end
   end
 
