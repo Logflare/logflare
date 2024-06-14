@@ -8,6 +8,7 @@ defmodule Logflare.Backends.BufferProducer do
   alias Logflare.Source
   alias Logflare.Sources
   alias Logflare.PubSubRates
+  require Logger
 
   @default_broadcast_interval 5_000
 
