@@ -164,6 +164,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
 
       # switch to arizona
       {:error, {:live_redirect, %{to: to}}} =
+        redirect =
         view
         |> element("form#user-tz-form")
         |> render_submit(%{user_preferences: %{timezone: "US/Arizona"}})
