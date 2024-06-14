@@ -24,6 +24,10 @@ defmodule Logflare.Mixfile do
         "coveralls.post": :test,
         "coveralls.html": :test
       ],
+      dialyzer: [
+        plt_local_path: "dialyzer",
+        plt_core_path: "dialyzer"
+      ],
       test_coverage: [tool: ExCoveralls],
       releases: [
         logflare: [
@@ -232,7 +236,7 @@ defmodule Logflare.Mixfile do
       "test.compile": ["compile --warnings-as-errors"],
       "test.format": ["format --check-formatted"],
       "test.security": ["sobelow --threshold high --ignore Config.HTTPS"],
-      "test.typings": ["dialyzer --format short"],
+      "test.typings": ["cmd mkdir -p dialyzer", "dialyzer"],
       "test.coverage": ["coveralls"],
       lint: ["credo"],
       "lint.diff": ["credo diff master"],

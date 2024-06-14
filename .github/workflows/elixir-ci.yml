@@ -23,6 +23,21 @@ jobs:
   build:
     name: Build and test
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        commands:
+          - name: Code Quality - Linting
+            run: mix lint --only warnings
+          - name: Code Quality - Formatting
+            run: mix test.format
+          - name: Compilation Warnings
+            run: mix test.compile
+          - name: Tests
+            run: make test
+          - name: Security - Sobelow Code Scan
+            run: mix test.security
+          - name: Typing check
+            run: mix test.typings
     services:
       postgres:
         image: postgres:13
@@ -57,8 +72,10 @@ jobs:
         with:
           path: |
             deps
+            _build
+            dialyzer
           key: ${{ runner.os }}-mix-${{ hashFiles('**/mix.lock') }}
-          restore-keys: ${{ runner.os }}-mix-
+          restore-keys: ${{ runner.os }}-mix--dialyzer
       - name: Install dependencies
         run: mix deps.get
       - name: Run DB migrations
@@ -67,13 +84,5 @@ jobs:
         run: mix test.compile
       - name: Run migrations for test environment
         run: MIX_ENV=test mix do ecto.drop, ecto.create, ecto.migrate
-      - name: Run unit tests with code coverage check
-        run: make test
-    # - name: Test - security
-    #   run: mix test.security
-      - name: Code quality - formatting
-        run: mix test.format
-    # - name: Code quality - typings
-    #   run: mix test.typings
-      - name: Code quality - linting
-        run: mix lint --only warnings
+      - name: Run ${{ matrix.commands.name }}
+        run: ${{ matrix.commands.cmd }}
