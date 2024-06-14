@@ -442,7 +442,7 @@ defmodule Logflare.Backends do
   """
   def local_buffer_full?(%Source{} = source) do
     case PubSubRates.Cache.get_buffers(source.token, nil) do
-      {:ok, buffers} ->
+      {:ok, buffers} when buffers != nil ->
         buffer = Map.get(buffers, Node.self(), 0)
         buffer >= @max_buffer_len
 
