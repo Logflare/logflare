@@ -442,13 +442,37 @@ defmodule Logflare.Backends do
   """
   def local_buffer_full?(%Source{} = source) do
     case PubSubRates.Cache.get_buffers(source.token, nil) do
-      {:ok, buffers} when buffers != nil ->
-        buffer = Map.get(buffers, Node.self(), 0)
+      {:ok, %{} = buffers} ->
+        buffer = get_in(buffers, [Node.self(), :len]) || 0
         buffer >= @max_buffer_len
 
       _ ->
         false
     end
+  end
+
+  @doc """
+  Syncronously set the local buffer cache on the PubSub rates cache.
+  Does not set the buffer len globally.
+  Does not perform clustter broadcasting.
+  Does not perform local broadcasting.
+
+  if len arg is set to an integer, it will default setting the buffer len in the local node cache only
+  """
+  def set_buffer_len(%Source{} = source, %Backend{} = backend, len) when is_integer(len) do
+    PubSubRates.Cache.cache_buffers(source.token, backend.token, %{Node.self() => %{len: len}})
+  end
+
+  def set_buffer_len(%Source{} = source, %Backend{} = backend, %{} = lens) do
+    PubSubRates.Cache.cache_buffers(source.token, backend.token, lens)
+  end
+
+  def set_buffer_len(%Source{} = source, nil, len) when is_integer(len) do
+    PubSubRates.Cache.cache_buffers(source.token, nil, %{Node.self() => %{len: len}})
+  end
+
+  def set_buffer_len(%Source{} = source, nil, %{} = lens) do
+    PubSubRates.Cache.cache_buffers(source.token, nil, lens)
   end
 
   @doc """

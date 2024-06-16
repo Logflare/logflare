@@ -10,7 +10,7 @@ defmodule Logflare.Backends.BufferProducer do
   alias Logflare.PubSubRates
   require Logger
 
-  @default_broadcast_interval 5_000
+  @default_broadcast_interval 2_000
 
   def start_link(opts) when is_list(opts) do
     GenStage.start_link(__MODULE__, opts)

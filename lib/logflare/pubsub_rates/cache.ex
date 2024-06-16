@@ -40,7 +40,8 @@ defmodule Logflare.PubSubRates.Cache do
   end
 
   @doc """
-  Stores a node map of buffer counts on the local cache
+  Stores a node map of buffer counts on the local cache.
+  Merges a node map into the local cache.
   """
   @typep node_buffers :: %{atom() => non_neg_integer()}
   @spec cache_buffers(atom(), String.t(), node_buffers()) :: {:ok, true}

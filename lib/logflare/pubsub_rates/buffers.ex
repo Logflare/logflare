@@ -1,7 +1,8 @@
 defmodule Logflare.PubSubRates.Buffers do
   @moduledoc false
-  alias Logflare.PubSubRates.Cache
   alias Logflare.PubSubRates
+  alias Logflare.Sources
+  alias Logflare.Backends
 
   require Logger
 
@@ -17,12 +18,23 @@ defmodule Logflare.PubSubRates.Buffers do
   end
 
   def handle_info({:buffers, source_token, buffers}, state) do
-    Cache.cache_buffers(source_token, nil, buffers)
+    source = Sources.Cache.get_by_id(source_token)
+
+    if source do
+      Backends.set_buffer_len(source, nil, buffers)
+    end
+
     {:noreply, state}
   end
 
   def handle_info({:buffers, source_token, backend_token, buffers}, state) do
-    Cache.cache_buffers(source_token, backend_token, buffers)
+    source = Sources.Cache.get_by_id(source_token)
+    backend = Backends.Cache.get_backend_by(token: backend_token)
+
+    if source do
+      Backends.set_buffer_len(source, backend, buffers)
+    end
+
     {:noreply, state}
   end
 end
