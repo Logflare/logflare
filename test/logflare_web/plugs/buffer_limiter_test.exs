@@ -19,7 +19,7 @@ defmodule LogflareWeb.Plugs.BufferLimiterTest do
 
     test "if buffer is full, return 429", %{conn: conn} do
       source = insert(:source, user: insert(:user))
-      Backends.set_buffer_len(source, nil, 20_000)
+      Backends.set_local_buffer_len(source, nil, 20_000)
 
       conn =
         conn
@@ -43,7 +43,7 @@ defmodule LogflareWeb.Plugs.BufferLimiterTest do
 
     test "if buffer not full, passthrough", %{conn: conn} do
       source = insert(:source, user: insert(:user))
-      Backends.set_buffer_len(source, nil, 1)
+      Backends.set_local_buffer_len(source, nil, 1)
 
       conn =
         conn

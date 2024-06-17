@@ -454,25 +454,20 @@ defmodule Logflare.Backends do
   @doc """
   Syncronously set the local buffer cache on the PubSub rates cache.
   Does not set the buffer len globally.
-  Does not perform clustter broadcasting.
+  Does not perform cluster broadcasting.
   Does not perform local broadcasting.
 
   if len arg is set to an integer, it will default setting the buffer len in the local node cache only
   """
-  def set_buffer_len(%Source{} = source, %Backend{} = backend, len) when is_integer(len) do
-    PubSubRates.Cache.cache_buffers(source.token, backend.token, %{Node.self() => %{len: len}})
+  def set_local_buffer_len(source, backend, node \\ Node.self(), len)
+
+  def set_local_buffer_len(%Source{} = source, %Backend{} = backend, node, len)
+      when is_integer(len) do
+    PubSubRates.Cache.cache_buffers(source.token, backend.token, %{node => %{len: len}})
   end
 
-  def set_buffer_len(%Source{} = source, %Backend{} = backend, %{} = lens) do
-    PubSubRates.Cache.cache_buffers(source.token, backend.token, lens)
-  end
-
-  def set_buffer_len(%Source{} = source, nil, len) when is_integer(len) do
-    PubSubRates.Cache.cache_buffers(source.token, nil, %{Node.self() => %{len: len}})
-  end
-
-  def set_buffer_len(%Source{} = source, nil, %{} = lens) do
-    PubSubRates.Cache.cache_buffers(source.token, nil, lens)
+  def set_local_buffer_len(%Source{} = source, nil, node, len) when is_integer(len) do
+    PubSubRates.Cache.cache_buffers(source.token, nil, %{node => %{len: len}})
   end
 
   @doc """
