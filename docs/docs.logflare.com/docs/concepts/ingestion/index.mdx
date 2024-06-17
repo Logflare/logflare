@@ -101,6 +101,12 @@ metadata: {
 }
 ```
 
+:::note
+On high ingestion volume, Logflare will sample incoming events instead of checking each event. The sample rate decreases as the ingestion rate increases. Ingestion rates are compared only on an individual local server that is performing the ingestion.
+
+From 1000-5000 events per second, sample rate is 0.1. Above 5000 events per second, sample rate is 0.01.
+:::
+
 ### Key Transformation
 
 When logging object, your object keys will be transformed automatically to comply with the respective backend in use. For example, BigQuery column requirements require that names only contain letters (a-z, A-Z), numbers (0-9), or underscores (\_), and it must start with a letter or underscore. This will be automatically handled for you when ingesting data.
