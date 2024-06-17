@@ -127,7 +127,7 @@ defmodule Logflare.Mixfile do
       {:tesla, "~> 1.6"},
 
       # Concurrency and pipelines
-      {:broadway, "~> 1.0.6"},
+      {:broadway, github: "Logflare/broadway", ref: "092f4ab"},
       {:syn, "~> 3.3"},
 
       # Test
