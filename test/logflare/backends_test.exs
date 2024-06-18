@@ -386,10 +386,9 @@ defmodule Logflare.BackendsTest do
       backend = insert(:backend, user: user)
       [source1, source2] = insert_pair(:source, user: user, rules: [])
 
-      rules =
-        for _ <- 1..250 do
-          insert(:rule, source: source2, backend: backend, lql_string: "message")
-        end
+      for _ <- 1..250 do
+        insert(:rule, source: source2, backend: backend, lql_string: "message")
+      end
 
       source2 = Sources.preload_defaults(source2)
 

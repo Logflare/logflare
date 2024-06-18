@@ -223,7 +223,7 @@ defmodule Logflare.Source.RecentLogsServer do
 
     if current_cluster_inserts > last_cluster_inserts do
       payload = %{log_count: current_cluster_inserts, source_token: state.source_token}
-      Source.ChannelTopics.broadcast_log_count(payload)
+      Source.ChannelTopics.local_broadcast_log_count(payload)
     end
 
     {:ok, current_cluster_inserts, current_inserts}

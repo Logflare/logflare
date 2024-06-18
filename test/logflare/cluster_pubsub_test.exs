@@ -54,9 +54,9 @@ defmodule Logflare.ClusterPubSubTest do
 
     test "broadcast to dashboard", %{source: %{token: source_token}} do
       ChannelTopics.subscribe_dashboard(source_token)
-      ChannelTopics.broadcast_log_count(%{log_count: 1111, source_token: source_token})
-      ChannelTopics.broadcast_rates(%{last_rate: 2222, source_token: source_token})
-      ChannelTopics.broadcast_buffer(%{buffer: 3333, source_token: source_token})
+      ChannelTopics.local_broadcast_log_count(%{log_count: 1111, source_token: source_token})
+      ChannelTopics.local_broadcast_rates(%{last_rate: 2222, source_token: source_token})
+      ChannelTopics.local_broadcast_buffer(%{buffer: 3333, source_token: source_token})
 
       :timer.sleep(500)
       assert_received %_{event: "log_count", payload: %{log_count: "1,111"}}
