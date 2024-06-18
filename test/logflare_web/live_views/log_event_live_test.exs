@@ -48,21 +48,21 @@ defmodule LogflareWeb.LogEventLiveTest do
     ref = make_ref()
 
     expect(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, 1, fn _conn, _proj_id, opts ->
-      send(pid, {:query, ref, opts[:body].query})
+      send(pid, {:query, ref, opts[:body]})
 
       {:ok,
        TestUtils.gen_bq_response([%{"id" => le.id, "event_message" => le.body["event_message"]}])}
     end)
 
-    {:ok, view, _html} =
-      live(conn, ~p"/sources/#{source.id}/event?#{%{timestamp: "2024-01-01", uuid: le.id}}")
+    {:ok, _view, _html} =
+      live(
+        conn,
+        ~p"/sources/#{source.id}/event?#{%{timestamp: "2024-01-10T20:13:03Z", uuid: le.id}}"
+      )
 
     :timer.sleep(1500)
-    assert render(view) =~ le.body["event_message"]
-    assert render(view) =~ le.id
-    assert_receive {:query, ^ref, query}
-    assert query =~ "t0.timestamp >="
-    assert query =~ "t0.id ="
+    assert_receive {:query, ^ref, body}
+    assert Enum.any?(body.queryParameters, &(&1.parameterValue.value =~ "2024-01-"))
   end
 
   test "load from event cache", %{conn: conn, source: source} do

@@ -122,11 +122,13 @@ defmodule LogflareWeb.Search.LogEventViewerComponent do
     user = socket.assigns[:user] || assigns[:user]
     team_user = socket.assigns[:team_user] || assigns[:team_user]
     source = socket.assigns[:source] || assigns[:source]
+    timestamp = socket.assigns[:timestamp] || assigns[:timestamp]
 
     socket
     |> assign(:user, user)
     |> assign(:team_user, team_user)
     |> assign(:source, source)
+    |> assign(:timestamp, timestamp)
   end
 
   defp get_partitions_range(%{source: source, user: user} = assigns) do
@@ -135,10 +137,9 @@ defmodule LogflareWeb.Search.LogEventViewerComponent do
     ttl = Sources.source_ttl_to_days(source, plan)
 
     cond do
-      iso_timestamp = Map.get(assigns, :timestamp) ->
+      ts = Map.get(assigns, :timestamp) ->
         # timestamp is explicitly set, query around the range
-        {:ok, ts} = DateTime.from_iso8601(iso_timestamp)
-        [ts, Timex.shift(d, days: 1)]
+        [Timex.shift(ts, days: -1), Timex.shift(ts, days: 1)]
 
       # no timestamp is set, fallback to ttl
       # to avoid this clause, parent should set the timestamp
