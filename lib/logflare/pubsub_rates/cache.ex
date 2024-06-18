@@ -81,6 +81,35 @@ defmodule Logflare.PubSubRates.Cache do
     Cachex.get(__MODULE__, {source_id, "rates"})
   end
 
+  def get_local_rates(source_id) when is_atom(source_id) do
+    node = Node.self()
+
+    default = %{
+      average_rate: 0,
+      last_rate: 0,
+      max_rate: 0,
+      limiter_metrics: %{average: 0, duration: @default_bucket_width, sum: 0}
+    }
+
+    case get_rates(source_id) do
+      {:ok, nil} ->
+        default
+
+      {:ok, rates} ->
+        Map.get(rates, node, default)
+
+      {:error, _} = err ->
+        Logger.error("Error when getting pubsub clustr rates: #{inspect(err)}")
+
+        %{
+          average_rate: -1,
+          last_rate: -1,
+          max_rate: -1,
+          limiter_metrics: %{average: 100_000, duration: @default_bucket_width, sum: 6_000_000}
+        }
+    end
+  end
+
   def get_cluster_rates(source_id) when is_atom(source_id) do
     case get_rates(source_id) do
       {:ok, nil} ->

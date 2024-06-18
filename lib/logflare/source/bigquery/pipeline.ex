@@ -19,6 +19,7 @@ defmodule Logflare.Source.BigQuery.Pipeline do
   alias Logflare.Source.Supervisor
   alias Logflare.Sources
   alias Logflare.Users
+  alias Logflare.PubSubRates
 
   # each batch should at most be 5MB
   # BQ max is 10MB
@@ -189,9 +190,20 @@ defmodule Logflare.Source.BigQuery.Pipeline do
     # then this makes BigQuery check the payloads for new fields. In the response we'll get a list of events that didn't validate.
     # Send those events through the pipeline again, but run them through our schema process this time. Do all
     # these things a max of like 5 times and after that send them to the rejected pile.
-    :ok =
-      Backends.via_source(source, {Schema, Map.get(context, :backend_id)})
-      |> Schema.update(log_event)
+
+    # random sample if local ingest rate is above a certain level
+    probability =
+      case PubSubRates.Cache.get_local_rates(source.token) do
+        %{average_rate: avg} when avg > 5000 -> 0.01
+        %{average_rate: avg} when avg > 1000 -> 0.1
+        _ -> 1
+      end
+
+    if :rand.uniform() <= probability do
+      :ok =
+        Backends.via_source(source, {Schema, Map.get(context, :backend_id)})
+        |> Schema.update(log_event)
+    end
 
     log_event
   end
