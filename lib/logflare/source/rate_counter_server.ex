@@ -261,7 +261,7 @@ defmodule Logflare.Source.RateCounterServer do
       PubSubRates.Cache.get_cluster_rates(state.source_id)
       |> Map.put(:source_token, state.source_id)
 
-    Source.ChannelTopics.broadcast_rates(cluster_rates)
+    Source.ChannelTopics.local_broadcast_rates(cluster_rates)
   end
 
   @spec get_insert_count(atom) :: {:ok, non_neg_integer()}

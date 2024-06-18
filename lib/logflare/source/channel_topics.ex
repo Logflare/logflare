@@ -27,22 +27,25 @@ defmodule Logflare.Source.ChannelTopics do
     LogflareWeb.Endpoint.subscribe("source:#{source_token}")
   end
 
-  def broadcast_log_count(%{log_count: log_count, source_token: source_token} = payload) do
+  def local_broadcast_log_count(%{log_count: log_count, source_token: source_token} = payload) do
     payload = %{payload | log_count: Delimit.number_to_delimited(log_count)}
     topic = "dashboard:#{source_token}"
     event = "log_count"
 
-    logflare_local_broadcast(topic, event, payload)
+    maybe_local_broadcast(topic, event, payload)
   end
 
-  def broadcast_buffer(%{buffer: _buffer, source_token: source_token} = payload) do
+  @doc """
+  Broadcasts the channel buffer locally
+  """
+  def local_broadcast_buffer(%{buffer: _buffer, source_token: source_token} = payload) do
     topic = "dashboard:#{source_token}"
     event = "buffer"
 
-    logflare_local_broadcast(topic, event, payload)
+    maybe_local_broadcast(topic, event, payload)
   end
 
-  def broadcast_rates(payload) do
+  def local_broadcast_rates(payload) do
     payload =
       payload
       |> Map.put(:rate, payload[:last_rate])
@@ -50,9 +53,12 @@ defmodule Logflare.Source.ChannelTopics do
     topic = "dashboard:#{payload.source_token}"
     event = "rate"
 
-    logflare_local_broadcast(topic, event, payload)
+    maybe_local_broadcast(topic, event, payload)
   end
 
+  @doc """
+  Broadcasts events to all nodes
+  """
   def broadcast_new(events) when is_list(events), do: Enum.map(events, &broadcast_new/1)
 
   def broadcast_new(%LE{source: %Source{token: token}, body: body} = le) do
@@ -63,10 +69,12 @@ defmodule Logflare.Source.ChannelTopics do
     })
   end
 
+  # performs a global broadcast
+  @spec maybe_broadcast(String.t(), String.t(), map()) :: :ok | {:error, :endpoint_not_up}
   def maybe_broadcast(topic, event, payload) do
     case :ets.whereis(LogflareWeb.Endpoint) do
       :undefined ->
-        Logger.error("Endpoint not up yet!")
+        {:error, :endpoint_not_up}
 
       _ ->
         LogflareWeb.Endpoint.broadcast(
@@ -77,10 +85,12 @@ defmodule Logflare.Source.ChannelTopics do
     end
   end
 
-  def logflare_local_broadcast(topic, event, payload) do
+  # performs a local broadcast
+  @spec maybe_local_broadcast(String.t(), String.t(), map()) :: :ok | {:error, :endpoint_not_up}
+  def maybe_local_broadcast(topic, event, payload) do
     case :ets.whereis(LogflareWeb.Endpoint) do
       :undefined ->
-        Logger.error("Endpoint not up yet!")
+        {:error, :endpoint_not_up}
 
       _ ->
         LogflareWeb.Endpoint.local_broadcast(topic, event, payload)

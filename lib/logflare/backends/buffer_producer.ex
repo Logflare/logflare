@@ -77,7 +77,7 @@ defmodule Logflare.Backends.BufferProducer do
         backend_token: state.backend_token
       }
 
-      Source.ChannelTopics.broadcast_buffer(payload)
+      Source.ChannelTopics.local_broadcast_buffer(payload)
 
       # broadcasts local buffer map to entire cluster, local included
       len = GenStage.estimate_buffered_count(pid)
