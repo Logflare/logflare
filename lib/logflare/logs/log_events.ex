@@ -46,7 +46,7 @@ defmodule Logflare.Logs.LogEvents do
   def fetch_event_by_id(source_token, id, opts)
       when is_list(opts) and is_atom(source_token) and is_binary(id) do
     partitions_range = Keyword.get(opts, :partitions_range, [])
-    source = Sources.get_by_and_preload(token: source_token)
+    source = Sources.Cache.get_by_and_preload(token: source_token)
     bq_table_id = source.bq_table_id
     bq_project_id = source.user.bigquery_project_id || GCPConfig.default_project_id()
     %{bigquery_dataset_id: dataset_id} = GenUtils.get_bq_user_info(source.token)
