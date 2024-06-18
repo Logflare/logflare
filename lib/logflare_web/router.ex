@@ -237,7 +237,7 @@ defmodule LogflareWeb.Router do
     get("/:id/delete-slack-hook", SourceController, :delete_slack_hook)
     get("/:id/rejected", SourceController, :rejected_logs)
     live("/:source_id/search", Source.SearchLV)
-    live("/:source_id/event", LogEventLive.Show, :show)
+    live("/:source_id/event", LogEventLive, :show)
     get("/:id/favorite", SourceController, :favorite)
     get("/:id/clear", SourceController, :clear_logs)
     get("/:id/explore", SourceController, :explore)

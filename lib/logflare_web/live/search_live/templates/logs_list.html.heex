@@ -14,7 +14,10 @@
                 format_timestamp(timestamp, @user_local_timezone)
               else
                 format_timestamp(timestamp) <> " UTC"
-              end %>
+              end
+
+            {:ok, dt} = DateTime.from_unix(timestamp, :microsecond)
+            iso_timestamp = DateTime.to_iso8601(dt) %>
             <li id={"log-event_#{log.id || log.body["timestamp"]}"} class="tw-group">
               <span class="tw-whitespace-pre-wrap"><mark class="log-datestamp" data-timestamp={timestamp}><%= formatted_timestamp %></mark>&nbsp;<%= message %></span>
               <span class="tw-inline-block tw-text-[0.65rem] tw-align-text-bottom tw-inline-flex tw-flex-row tw-gap-2">
@@ -24,7 +27,7 @@
                 <.link class="tw-text-[0.65rem]  group-hover:tw-visible tw-invisible" phx-click={JS.dispatch("logflare:copy-to-clipboard", detail: %{text: "#{formatted_timestamp}    #{message}"})} data-toggle="tooltip" data-placement="top" title="Copy to clipboard">
                   copy
                 </.link>
-                <.link class="group-hover:tw-visible tw-invisible" target="_blank" href={~p"/sources/#{@source.id}/event?uuid=#{log.id}"}>permalink</.link>
+                <.link class="group-hover:tw-visible tw-invisible" target="_blank" href={~p"/sources/#{@source.id}/event?#{%{uuid: log.id, timestamp: iso_timestamp}}"}>permalink</.link>
               </span>
             </li>
           <% end %>

@@ -14,9 +14,9 @@ defmodule Logflare.LogEventTest do
     [source: source, user: user]
   end
 
-  @valid_params %{"event_message" => "something", "metadata" => %{"my" => "key"}}
+  @vallog_event_ids %{"event_message" => "something", "metadata" => %{"my" => "key"}}
   test "make/2 from valid params", %{source: source} do
-    params = @valid_params
+    params = @vallog_event_ids
 
     assert %LogEvent{
              body: body,
@@ -30,7 +30,7 @@ defmodule Logflare.LogEventTest do
              valid: true,
              pipeline_error: nil,
              via_rule: nil
-           } = LogEvent.make(@valid_params, %{source: source})
+           } = LogEvent.make(@vallog_event_ids, %{source: source})
 
     assert id == body["id"]
     assert body["metadata"]["my"] == "key"
@@ -38,7 +38,7 @@ defmodule Logflare.LogEventTest do
 
   test "make/2 cast custom param values", %{source: source} do
     params =
-      Map.merge(@valid_params, %{
+      Map.merge(@vallog_event_ids, %{
         "valid" => false,
         "pipeline_error" => "some error"
       })
@@ -178,7 +178,7 @@ defmodule Logflare.LogEventTest do
                     float(min: 1_713_268_000_000.1, max: 1_713_268_000_999.9),
                     float(min: 1_713_268_565_000_000.1, max: 1_713_268_565_000_999.9)
                   ]) do
-        params = Map.put(@valid_params, "timestamp", ts)
+        params = Map.put(@vallog_event_ids, "timestamp", ts)
         LogEvent.make(params, %{source: source})
       end
     end

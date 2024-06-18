@@ -51,6 +51,29 @@ defmodule Logflare.Utils do
   def stringify_keys(not_a_map), do: not_a_map
 
   @doc """
+  Stringifies a term.
+
+  ### Example
+    iex> stringify(:my_atom)
+    "my_atom"
+    iex> stringify(1.1)
+    "1.1"
+    iex> stringify(122)
+    "122"
+    iex> stringify("something")
+    "something"
+    iex> stringify(%{})
+    "%{}"
+    iex> stringify([])
+    "[]"
+  """
+  def stringify(v) when is_atom(v), do: Atom.to_string(v)
+  def stringify(v) when is_binary(v), do: v
+  def stringify(v) when is_float(v), do: Float.to_string(v)
+  def stringify(v) when is_integer(v), do: Integer.to_string(v)
+  def stringify(v), do: inspect(v)
+
+  @doc """
   Sets the default ecto changeset field value if not set
 
   ###  Example
