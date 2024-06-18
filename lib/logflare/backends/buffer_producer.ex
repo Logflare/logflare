@@ -10,7 +10,7 @@ defmodule Logflare.Backends.BufferProducer do
   alias Logflare.PubSubRates
   require Logger
 
-  @default_broadcast_interval 5_000
+  @default_broadcast_interval 500
 
   def start_link(opts) when is_list(opts) do
     GenStage.start_link(__MODULE__, opts)
@@ -29,7 +29,7 @@ defmodule Logflare.Backends.BufferProducer do
       })
 
     loop(state.broadcast_interval)
-    {:producer, state, buffer_size: Keyword.get(opts, :buffer_size, 10_000)}
+    {:producer, state, buffer_size: Keyword.get(opts, :buffer_size, 50_000)}
   end
 
   def format_discarded(discarded, state) do
@@ -68,19 +68,21 @@ defmodule Logflare.Backends.BufferProducer do
     pid = self()
 
     Task.start_link(fn ->
-      len = GenStage.estimate_buffered_count(pid)
-      local_buffer = %{Node.self() => %{len: len}}
+      # broadcasts cluster buffer length to local channels
+      cluster_buffer_len = PubSubRates.Cache.get_cluster_buffers(state.source_token)
 
-      cluster_buffer = PubSubRates.Cache.get_cluster_buffers(state.source_token)
-
-      # maybe broadcast
       payload = %{
-        buffer: cluster_buffer,
+        buffer: cluster_buffer_len,
         source_token: state.source_token,
         backend_token: state.backend_token
       }
 
-      # cluster broadcast
+      Source.ChannelTopics.broadcast_buffer(payload)
+
+      # broadcasts local buffer map to entire cluster, local included
+      len = GenStage.estimate_buffered_count(pid)
+      local_buffer = %{Node.self() => %{len: len}}
+
       cluster_broadcast_payload =
         if state.backend_token do
           {:buffers, state.source_token, state.backend_token, local_buffer}
@@ -93,9 +95,6 @@ defmodule Logflare.Backends.BufferProducer do
         "buffers",
         cluster_broadcast_payload
       )
-
-      # channel broadcast
-      Source.ChannelTopics.broadcast_buffer(payload)
     end)
   end
 

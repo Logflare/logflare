@@ -8,29 +8,34 @@ defmodule Logflare.Backends.BufferProducerTest do
 
   test "BufferProducer broadcasts every n ms" do
     PubSubRates.subscribe(:buffers)
+    user = insert(:user)
+    %{token: source_token} = source = insert(:source, user: user)
 
     pid =
-      start_supervised!({BufferProducer, broadcast_interval: 100, source_token: :"some-token"})
+      start_supervised!({BufferProducer, broadcast_interval: 100, source_token: source.token})
 
     :timer.sleep(300)
-    assert_receive {:buffers, :"some-token", _payload}
+    assert_receive {:buffers, ^source_token, _payload}
     send(pid, {:add_to_buffer, [:something]})
     :timer.sleep(300)
-    assert PubSubRates.Cache.get_cluster_buffers(:"some-token") == 1
+    assert PubSubRates.Cache.get_cluster_buffers(source_token) == 1
   end
 
   test "BufferProducer broadcasts every n seconds with backend differentiation" do
     PubSubRates.subscribe(:buffers)
+    user = insert(:user)
+    %{token: source_token} = source = insert(:source, user: user)
+    %{token: backend_token} = backend = insert(:backend, user: user)
 
     start_supervised!(
       {BufferProducer,
-       broadcast_interval: 100, backend_token: "some-backend", source_token: :"some-token"}
+       broadcast_interval: 100, backend_token: backend.token, source_token: source.token}
     )
 
     :timer.sleep(200)
-    assert_receive {:buffers, :"some-token", "some-backend", _payload}
+    assert_receive {:buffers, ^source_token, ^backend_token, _payload}
 
-    assert PubSubRates.Cache.get_cluster_buffers(:"some-token", "some-backend") == 0
+    assert PubSubRates.Cache.get_cluster_buffers(source.token, backend.token) == 0
   end
 
   test "BufferProducer when discarding will display source name" do

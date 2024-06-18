@@ -1,5 +1,7 @@
 defmodule Logflare.PubSubRates.Buffers do
-  @moduledoc false
+  @moduledoc """
+  Subscribes to all incoming cluster messages of each node's buffer.
+  """
   alias Logflare.PubSubRates.Cache
   alias Logflare.PubSubRates
 
@@ -16,12 +18,12 @@ defmodule Logflare.PubSubRates.Buffers do
     {:ok, state}
   end
 
-  def handle_info({:buffers, source_token, buffers}, state) do
+  def handle_info({:buffers, source_token, buffers}, state) when is_map(buffers) do
     Cache.cache_buffers(source_token, nil, buffers)
     {:noreply, state}
   end
 
-  def handle_info({:buffers, source_token, backend_token, buffers}, state) do
+  def handle_info({:buffers, source_token, backend_token, buffers}, state) when is_map(buffers) do
     Cache.cache_buffers(source_token, backend_token, buffers)
     {:noreply, state}
   end

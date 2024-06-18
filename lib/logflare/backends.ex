@@ -21,6 +21,7 @@ defmodule Logflare.Backends do
 
   defdelegate child_spec(arg), to: __MODULE__.Supervisor
 
+  @max_buffer_len 5_000
   @doc """
   Lists `Backend`s for a given source.
   """
@@ -434,6 +435,39 @@ defmodule Logflare.Backends do
          :ok <- start_source_sup(source) do
       :ok
     end
+  end
+
+  @doc """
+  Checks if a local buffer is full.
+  """
+  def local_buffer_full?(%Source{} = source) do
+    case PubSubRates.Cache.get_buffers(source.token, nil) do
+      {:ok, %{} = buffers} ->
+        buffer = get_in(buffers, [Node.self(), :len]) || 0
+        buffer >= @max_buffer_len
+
+      _ ->
+        false
+    end
+  end
+
+  @doc """
+  Syncronously set the local buffer cache on the PubSub rates cache.
+  Does not set the buffer len globally.
+  Does not perform cluster broadcasting.
+  Does not perform local broadcasting.
+
+  if len arg is set to an integer, it will default setting the buffer len in the local node cache only
+  """
+  def set_local_buffer_len(source, backend, node \\ Node.self(), len)
+
+  def set_local_buffer_len(%Source{} = source, %Backend{} = backend, node, len)
+      when is_integer(len) do
+    PubSubRates.Cache.cache_buffers(source.token, backend.token, %{node => %{len: len}})
+  end
+
+  def set_local_buffer_len(%Source{} = source, nil, node, len) when is_integer(len) do
+    PubSubRates.Cache.cache_buffers(source.token, nil, %{node => %{len: len}})
   end
 
   @doc """
