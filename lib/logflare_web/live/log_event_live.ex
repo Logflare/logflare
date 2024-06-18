@@ -1,4 +1,4 @@
-defmodule LogflareWeb.LogEventLive.Show do
+defmodule LogflareWeb.LogEventLive do
   @moduledoc """
   Handles all user interactions with the source logs search
   """
@@ -13,7 +13,8 @@ defmodule LogflareWeb.LogEventLive.Show do
   require Logger
 
   def mount(%{"source_id" => source_id} = params, session, socket) do
-    source = Sources.get_source_for_lv_param(source_id)
+    source_id = String.to_integer(source_id)
+    source = Sources.get(source_id)
     token = source.token
 
     team_user =
@@ -38,13 +39,12 @@ defmodule LogflareWeb.LogEventLive.Show do
       |> assign(:user, user)
       |> assign(:team_user, team_user)
       |> assign(:path, path)
+      |> assign(:log_event, nil)
       |> assign(:origin, params["origin"])
-      |> assign(:id_param, log_id)
-
-    le = LogEvents.Cache.get!(token, cache_key)
+      |> assign(:log_event_id, log_id)
 
     socket =
-      if le do
+      if le = LogEvents.Cache.get!(token, cache_key) do
         assign(socket, :log_event, le)
       else
         socket
@@ -55,6 +55,10 @@ defmodule LogflareWeb.LogEventLive.Show do
 
   def render(assigns) do
     LogflareWeb.LogView.render("log_event.html", assigns)
+  end
+
+  def handle_info({:put_flash, type, msg}, socket) do
+    {:noreply, socket |> put_flash(type, msg)}
   end
 
   @spec params_to_cache_key(map()) :: {String.t(), String.t()}
