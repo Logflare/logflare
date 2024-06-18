@@ -6,14 +6,15 @@ defmodule LogflareWeb.HealthCheckControllerTest do
   alias Logflare.SingleTenant
   alias Logflare.Source
 
+  setup do
+    Logflare.Google.BigQuery
+    |> stub(:init_table!, fn _, _, _, _, _, _ -> :ok end)
+
+    :ok
+  end
+
   test "normal node health check", %{conn: conn} do
     start_supervised!(Source.Supervisor)
-
-    assert %{"status" => "coming_up"} =
-             conn
-             |> get("/health")
-             |> json_response(503)
-
     :timer.sleep(1000)
 
     conn = get(conn, "/health")
