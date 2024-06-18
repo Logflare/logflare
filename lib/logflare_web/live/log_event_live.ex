@@ -14,6 +14,7 @@ defmodule LogflareWeb.LogEventLive do
 
   def mount(%{"source_id" => source_id} = params, session, socket) do
     source_id = String.to_integer(source_id)
+    ts = Map.get(params, "timestamp")
     source = Sources.get(source_id)
     token = source.token
 
@@ -31,24 +32,23 @@ defmodule LogflareWeb.LogEventLive do
         nil
       end
 
-    {path, log_id} = cache_key = params_to_cache_key(params)
-
     socket =
       socket
       |> assign(:source, source)
       |> assign(:user, user)
       |> assign(:team_user, team_user)
-      |> assign(:path, path)
       |> assign(:log_event, nil)
       |> assign(:origin, params["origin"])
-      |> assign(:log_event_id, log_id)
+      |> assign(:log_event_id, params["uuid"])
+      |> case do
+        socket when ts != nil ->
+          {:ok, dt, _} = DateTime.from_iso8601(ts)
+          assign(socket, :timestamp, dt)
 
-    socket =
-      if le = LogEvents.Cache.get!(token, cache_key) do
-        assign(socket, :log_event, le)
-      else
-        socket
+        socket ->
+          socket
       end
+      |> assign(:log_event, LogEvents.Cache.get!(token, {"uuid", params["uuid"]}))
 
     {:ok, socket}
   end
@@ -59,14 +59,5 @@ defmodule LogflareWeb.LogEventLive do
 
   def handle_info({:put_flash, type, msg}, socket) do
     {:noreply, socket |> put_flash(type, msg)}
-  end
-
-  @spec params_to_cache_key(map()) :: {String.t(), String.t()}
-  defp params_to_cache_key(%{"uuid" => id}) do
-    {"uuid", id}
-  end
-
-  defp params_to_cache_key(%{"path" => path, "value" => value}) do
-    {path, value}
   end
 end
