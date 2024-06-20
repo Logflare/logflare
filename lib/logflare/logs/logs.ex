@@ -69,23 +69,15 @@ defmodule Logflare.Logs do
     le
   end
 
-  def maybe_mark_le_dropped_by_lql(%LE{source: %{drop_lql_string: drop_lql_string}} = le)
-      when is_nil(drop_lql_string) do
-    le
-  end
+  def maybe_mark_le_dropped_by_lql(%LE{source: %{drop_lql_string: nil}} = le), do: le
+  def maybe_mark_le_dropped_by_lql(%LE{source: %{drop_lql_string: ""}} = le), do: le
+  def maybe_mark_le_dropped_by_lql(%LE{source: %{drop_lql_filters: []}} = le), do: le
 
-  def maybe_mark_le_dropped_by_lql(
-        %LE{body: _body, source: %{drop_lql_string: drop_lql_string, drop_lql_filters: filters}} =
-          le
-      )
-      when is_binary(drop_lql_string) do
-    cond do
-      not Enum.empty?(filters) and
-          SourceRouting.route_with_lql_rules?(le, %Rule{lql_filters: filters}) ->
-        Map.put(le, :drop, true)
-
-      true ->
-        le
+  def maybe_mark_le_dropped_by_lql(%LE{source: %{drop_lql_filters: filters}} = le) do
+    if SourceRouting.route_with_lql_rules?(le, %Rule{lql_filters: filters}) do
+      %{le | drop: true}
+    else
+      le
     end
   end
 
