@@ -211,11 +211,6 @@ defmodule Logflare.LogEvent do
   """
   def apply_custom_event_message(%LE{drop: true} = le), do: le
 
-  def apply_custom_event_message(%LE{source: %Source{custom_event_message_keys: nil}} = le),
-    do: le
-
-  def apply_custom_event_message(%LE{source: %Source{custom_event_message_keys: ""}} = le), do: le
-
   def apply_custom_event_message(%LE{source: %Source{} = source} = le) do
     message = make_message(le, source)
 
