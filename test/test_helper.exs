@@ -3,6 +3,7 @@ Mix.Task.run("app.start")
 ExUnit.start()
 
 # Mimick mocks setup
+Mimic.copy(Broadway)
 Mimic.copy(Logflare.Mailer)
 Mimic.copy(Logflare.Logs)
 Mimic.copy(Logflare.Logs.LogEvents)

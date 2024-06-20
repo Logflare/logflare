@@ -417,6 +417,8 @@ defmodule Logflare.BackendsTest do
         },
         time: 3,
         warmup: 1,
+        reduction_time: 2,
+        memory_time: 2,
         print: [configuration: false],
         # use extended_statistics to view units of work done
         formatters: [{Benchee.Formatters.Console, extended_statistics: true}]

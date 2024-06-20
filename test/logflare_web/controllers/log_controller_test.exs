@@ -359,8 +359,9 @@ defmodule LogflareWeb.LogControllerTest do
 
     @tag :benchmark
     test "v1 ingestion", %{conn: conn, source: source} do
-      Logflare.Logs
-      |> stub(:ingest, fn _ -> :ok end)
+
+      Broadway
+      |> stub(:push_messages, fn _, _ -> :ok end)
 
       batch = Jason.encode!(%{"batch" => for(_ <- 1..250, do: @valid)})
 
@@ -368,17 +369,65 @@ defmodule LogflareWeb.LogControllerTest do
         for i <- 1..250, into: %{} do
           {"key_#{i}", TestUtils.random_string()}
         end
+      big_batch = Jason.encode!(%{"batch" => for(_ <- 1..250, do: big_single)})
 
       Benchee.run(
         %{
           "single" => fn -> do_ingest_post(conn, source, @valid_json) end,
           "big_single" => fn -> do_ingest_post(conn, source, big_single) end,
-          "batched" => fn -> do_ingest_post(conn, source, batch) end
+          "batched" => fn -> do_ingest_post(conn, source, batch) end,
+          "big_batch" => fn -> do_ingest_post(conn, source, big_batch) end
         },
         time: 2,
         warmup: 1,
-        memory_time: 1,
-        reduction_time: 1
+        memory_time: 2,
+        reduction_time: 2
+      )
+    end
+  end
+
+  describe "v2 benchmarks" do
+
+    setup do
+      user = insert(:user)
+      source = insert(:source, user_id: user.id, v2_pipeline: true)
+      _plan = insert(:plan, name: "Free")
+
+      backend =
+        insert(:backend, sources: [source], type: :webhook, config: %{url: "some url"})
+
+      Broadway
+      |> stub(:push_messages, fn _, _ -> :ok end)
+
+      {:ok, source: source, user: user, backend: backend}
+    end
+
+    setup [:warm_caches, :reject_context_functions]
+
+
+    @tag :benchmark
+    test "v2 ingestion", %{conn: conn, source: source} do
+      Broadway
+      |> stub(:push_messages, fn _, _ -> :ok end)
+      batch = Jason.encode!(%{"batch" => for(_ <- 1..250, do: @valid)})
+
+      big_single =
+        for i <- 1..250, into: %{} do
+          {"key_#{i}", TestUtils.random_string()}
+        end
+      big_batch = Jason.encode!(%{"batch" => for(_ <- 1..250, do: big_single)})
+
+      Benchee.run(
+        %{
+          "single" => fn -> do_ingest_post(conn, source, @valid_json) end,
+          "big_single" => fn -> do_ingest_post(conn, source, big_single) end,
+          "batched" => fn -> do_ingest_post(conn, source, batch) end,
+          "big_batch" => fn -> do_ingest_post(conn, source, big_batch) end
+        },
+        time: 2,
+        warmup: 1,
+        memory_time: 2,
+        reduction_time: 2
       )
     end
   end
