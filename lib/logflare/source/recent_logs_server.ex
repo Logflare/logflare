@@ -18,7 +18,7 @@ defmodule Logflare.Source.RecentLogsServer do
   require Logger
 
   @touch_timer :timer.minutes(45)
-  @broadcast_every 500
+  @broadcast_every 1_500
 
   @spec push(Source.t(), LE.t() | [LE.t()]) :: :ok
   def push(source, %LE{} = le), do: push(source, [le])
