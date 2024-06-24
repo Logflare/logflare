@@ -14,6 +14,7 @@ defmodule Logflare.BackendsTest do
   alias Logflare.Source.V1SourceSup
   alias Logflare.PubSubRates
   alias Logflare.Logs.SourceRouting
+  alias Logflare.LogEvent
 
   setup do
     start_supervised!(AllLogsLogged)
@@ -162,10 +163,22 @@ defmodule Logflare.BackendsTest do
       events = for _n <- 1..105, do: build(:log_event, source: source, some: "event")
       assert {:ok, 105} = Backends.ingest_logs(events, source)
       :timer.sleep(1500)
-      cached = Backends.list_recent_logs(source)
+      cached = Backends.list_recent_events(source)
       assert length(cached) == 100
-      cached = Backends.list_recent_logs_local(source)
+      cached = Backends.list_recent_events_local(source)
       assert length(cached) == 100
+    end
+
+    test "get_latest_event_timestamp/1, push_recent_events/2" do
+      user = insert(:user)
+      source = insert(:source, user: user)
+
+      assert [] = Backends.list_recent_events_local(source)
+      le = build(:log_event, source: source)
+      assert :ok = Backends.push_recent_events(source, [le])
+      assert [%LogEvent{}] = Backends.list_recent_events_local(source)
+      assert [%LogEvent{}] = Backends.list_recent_events(source)
+      assert Backends.get_latest_event_timestamp(source) |> is_integer()
     end
 
     test "performs broadcasts for global cache rates and dashboard rates", %{
@@ -204,8 +217,7 @@ defmodule Logflare.BackendsTest do
       le = build(:log_event, message: "testing 123", source: source)
 
       assert {:ok, 0} = Backends.ingest_logs([le], source)
-      # only the init message in RLS
-      assert [_] = Backends.list_recent_logs_local(source)
+      assert [] = Backends.list_recent_events_local(source)
     end
 
     test "route to source with lql", %{user: user} do
@@ -226,10 +238,10 @@ defmodule Logflare.BackendsTest do
                )
 
       :timer.sleep(500)
-      # init message + 2 events
-      assert Backends.list_recent_logs_local(source) |> length() == 3
-      # init message + 1 events
-      assert Backends.list_recent_logs_local(target) |> length() == 2
+      # 2 events
+      assert Backends.list_recent_events_local(source) |> length() == 2
+      # 1 events
+      assert Backends.list_recent_events_local(target) |> length() == 1
     end
 
     test "routing depth is max 1 level", %{user: user} do
@@ -244,12 +256,13 @@ defmodule Logflare.BackendsTest do
       :timer.sleep(1000)
 
       assert {:ok, 1} = Backends.ingest_logs([%{"event_message" => "testing 123"}], source)
-      # init message + 1 events
-      assert Backends.list_recent_logs_local(source) |> length() == 2
-      # init message + 1 events
-      assert Backends.list_recent_logs_local(target) |> length() == 2
-      # init message + 0 events
-      assert Backends.list_recent_logs_local(other_target) |> length() == 1
+      :timer.sleep(200)
+      #  1 events
+      assert Backends.list_recent_events_local(source) |> length() == 1
+      #  1 events
+      assert Backends.list_recent_events_local(target) |> length() == 1
+      #  0 events
+      assert Backends.list_recent_events_local(other_target) |> length() == 0
     end
 
     test "route to backend", %{user: user} do

@@ -18,6 +18,7 @@ defmodule Logflare.Application do
   alias Logflare.Sources.Counters
   alias Logflare.Sources.RateCounters
   alias Logflare.PubSubRates
+  alias Logflare.Backends.RecentEvents
 
   def start(_type, _args) do
     env = Application.get_env(:logflare, :env)
@@ -46,6 +47,7 @@ defmodule Logflare.Application do
     finch_pools() ++
       [
         Counters,
+        RecentEvents,
         RateCounters,
         ContextCache,
         TeamUsers.Cache,
@@ -96,6 +98,7 @@ defmodule Logflare.Application do
     finch_pools() ++
       conditional_children() ++
       [
+        RecentEvents,
         Logflare.ErlSysMon,
         {Task.Supervisor, name: Logflare.TaskSupervisor},
         {Cluster.Supervisor, [topologies, [name: Logflare.ClusterSupervisor]]},

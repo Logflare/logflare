@@ -74,7 +74,7 @@ defmodule LogflareWeb.SourceControllerTest do
     test "show source's recent logs", %{conn: conn, source: source} do
       start_supervised!({RecentLogsServer, source: source})
       le = build(:log_event, source: source)
-      :ok = RecentLogsServer.push(source, le)
+      :ok = Backends.push_recent_events(source, [le])
 
       html =
         conn

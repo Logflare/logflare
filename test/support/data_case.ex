@@ -32,6 +32,11 @@ defmodule Logflare.DataCase do
         Mimic.verify_on_exit!(context)
         stub(Logflare.Mailer)
         stub(Goth, :fetch, fn _mod -> {:ok, %Goth.Token{token: "auth-token"}} end)
+
+        on_exit(fn ->
+          :ets.delete_all_objects(:recent_events)
+        end)
+
         :ok
       end
     end

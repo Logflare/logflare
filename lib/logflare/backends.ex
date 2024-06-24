@@ -12,12 +12,13 @@ defmodule Logflare.Backends do
   alias Logflare.Source
   alias Logflare.Source
   alias Logflare.Sources
-  alias Logflare.Source.RecentLogsServer
   alias Logflare.Logs
   alias Logflare.Logs.SourceRouting
   alias Logflare.SystemMetrics
   alias Logflare.PubSubRates
+  alias Logflare.Cluster
   import Ecto.Query
+  require Ex2ms
 
   defdelegate child_spec(arg), to: __MODULE__.Supervisor
 
@@ -221,7 +222,7 @@ defmodule Logflare.Backends do
     count = Enum.count(log_events)
     increment_counters(source, count)
     maybe_broadcast_and_route(source, log_events)
-    RecentLogsServer.push(source, log_events)
+    push_recent_events(source, log_events)
     dispatch_to_backends(source, backend, log_events)
     if Enum.empty?(errors), do: {:ok, count}, else: {:error, errors}
   end
@@ -478,21 +479,75 @@ defmodule Logflare.Backends do
     end
   end
 
+  def push_recent_events(%Source{}, []), do: :ok
+
+  def push_recent_events(%Source{id: source_id} = source, log_events) do
+    existing = list_recent_events_local(source)
+
+    [%{body: %{"timestamp" => oldest_ts}} | _] =
+      sorted_events =
+      (existing ++ log_events)
+      |> Enum.sort_by(& &1.body["timestamp"], &<=/2)
+      |> Enum.take(-100)
+
+    # delete all older
+    ms =
+      Ex2ms.fun do
+        {id, %{body: %{"timestamp" => ts}}} when id == ^source_id and ts < ^oldest_ts -> true
+      end
+
+    :ets.select_delete(:recent_events, ms)
+
+    objects =
+      for event <- log_events, event in sorted_events do
+        # don't cache source information
+        event = Map.drop(event, [:source])
+        {source_id, event}
+      end
+
+    :ets.insert(:recent_events, objects)
+    :ok
+  end
+
   @doc """
   Lists the latest recent logs of all caches across the cluster.
   Performs a check to ensure that the cache is started. If not started yet globally, it will start the cache locally.
   """
-  @spec list_recent_logs(Source.t()) :: [LogEvent.t()]
-  def list_recent_logs(%Source{} = source) do
-    RecentLogsServer.list_for_cluster(source.token)
+  @spec list_recent_events(Source.t()) :: [LogEvent.t()]
+  def list_recent_events(%Source{} = source) do
+    {results, _} = Cluster.Utils.rpc_multicall(__MODULE__, :list_recent_events_local, [source])
+
+    List.flatten(results)
+    |> Enum.sort_by(& &1.body["timestamp"], &<=/2)
+    |> Enum.take(-100)
   end
 
   @doc """
   Lists latest recent logs of only the local cache.
   """
-  @spec list_recent_logs_local(Source.t()) :: [LogEvent.t()]
-  def list_recent_logs_local(%Source{} = source) do
-    RecentLogsServer.list(source.token)
+  @spec list_recent_events_local(Source.t()) :: [LogEvent.t()]
+  def list_recent_events_local(%Source{id: source_id}) do
+    ms =
+      Ex2ms.fun do
+        {id, event} when id == ^source_id -> event
+      end
+
+    :ets.select(:recent_events, ms)
+    |> Enum.sort_by(& &1.body["timestamp"], &<=/2)
+    |> Enum.take(-100)
+  end
+
+  @doc """
+  Retrieves the most recent event timestamp stored in recent_events cache locally
+  """
+  def get_latest_event_timestamp(%Source{} = source) do
+    list_recent_events_local(source)
+    |> Enum.reverse()
+    |> hd()
+    |> case do
+      %{body: %{"timestamp" => ts}} -> ts
+      _ -> 0
+    end
   end
 
   defp do_telemetry(:drop, le) do

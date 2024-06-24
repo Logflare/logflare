@@ -181,6 +181,7 @@ defmodule Logflare.Mixfile do
       {:recase, "~> 0.7.0"},
       {:ex_unicode, "~> 1.0"},
       {:configcat, "~> 2.0.0"},
+      {:ex2ms, "~> 1.7"},
 
       # Code quality
       {:credo, "~> 1.6", only: [:dev, :test], runtime: false},

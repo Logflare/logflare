@@ -6,7 +6,6 @@ defmodule Logflare.Source.SlackHookServer do
 
   alias Logflare.Sources
   alias Logflare.Sources.Counters
-  alias Logflare.Source.RecentLogsServer
   alias Logflare.Backends
 
   def start_link(args) do
@@ -15,7 +14,7 @@ defmodule Logflare.Source.SlackHookServer do
   end
 
   def test_post(source) do
-    recent_events = RecentLogsServer.list(source.token)
+    recent_events = Backends.list_recent_events(source)
 
     __MODULE__.Client.new()
     |> __MODULE__.Client.post(source, source.metrics.rate, recent_events)
@@ -45,7 +44,7 @@ defmodule Logflare.Source.SlackHookServer do
     case rate > 0 do
       true ->
         if source.slack_hook_url do
-          recent_events = RecentLogsServer.list(state.source_token)
+          recent_events = Backends.list_recent_events(source)
 
           __MODULE__.Client.new()
           |> __MODULE__.Client.post(source, rate, recent_events)

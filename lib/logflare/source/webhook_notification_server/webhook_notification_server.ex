@@ -6,7 +6,6 @@ defmodule Logflare.Source.WebhookNotificationServer do
 
   alias Logflare.Sources
   alias Logflare.Sources.Counters
-  alias Logflare.Source.RecentLogsServer
   alias Logflare.Backends
 
   def start_link(args) do
@@ -15,7 +14,7 @@ defmodule Logflare.Source.WebhookNotificationServer do
   end
 
   def test_post(source) do
-    recent_events = RecentLogsServer.list(source.token)
+    recent_events = Backends.list_recent_events(source)
     uri = source.webhook_notification_url
 
     post(uri, source, 0, recent_events)
@@ -44,7 +43,7 @@ defmodule Logflare.Source.WebhookNotificationServer do
     case rate > 0 do
       true ->
         if uri = source.webhook_notification_url do
-          recent_events = RecentLogsServer.list(state.source_token)
+          recent_events = Backends.list_recent_events(source)
 
           post(uri, source, rate, recent_events)
         end

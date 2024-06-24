@@ -115,7 +115,7 @@ defmodule LogflareWeb.Api.SourceController do
 
   def recent(%{assigns: %{user: user}} = conn, %{"source_token" => token}) do
     with source when not is_nil(source) <- Sources.get_by(token: token, user_id: user.id) do
-      recent = for event <- Backends.list_recent_logs(source), do: event.body
+      recent = for event <- Backends.list_recent_events(source), do: event.body
 
       conn
       |> put_status(200)

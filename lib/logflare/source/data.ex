@@ -6,10 +6,6 @@ defmodule Logflare.Source.Data do
   alias Logflare.Source.BigQuery.Schema
   alias Logflare.Backends
 
-  def get_logs(source_id) when is_atom(source_id) do
-    Logflare.Source.RecentLogsServer.list(source_id)
-  end
-
   @spec get_log_count(atom, String.t()) :: non_neg_integer()
   def get_log_count(token, _bigquery_project_id) do
     case BigQuery.get_table(token) do

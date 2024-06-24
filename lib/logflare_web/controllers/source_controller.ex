@@ -12,13 +12,13 @@ defmodule LogflareWeb.SourceController do
   alias Logflare.Source
   alias Logflare.Source.SlackHookServer
   alias Logflare.Source.WebhookNotificationServer
-  alias Logflare.Source.RecentLogsServer, as: RLS
   alias Logflare.Source.Supervisor
   alias Logflare.Sources
   alias Logflare.SourceSchemas
   alias Logflare.Teams
   alias Logflare.TeamUsers
   alias Logflare.Users
+  alias Logflare.Backends
   alias LogflareWeb.AuthController
 
   defp env_project_id, do: Application.get_env(:logflare, Logflare.Google)[:project_id]
@@ -447,7 +447,8 @@ defmodule LogflareWeb.SourceController do
   def delete(%{assigns: %{source: source}} = conn, params) do
     now = DateTime.utc_now()
 
-    {:ok, timestamp} = RLS.get_latest_date(source.token) |> DateTime.from_unix(:microsecond)
+    {:ok, timestamp} =
+      Backends.get_latest_event_timestamp(source) |> DateTime.from_unix(:microsecond)
 
     if DateTime.diff(now, timestamp, :millisecond) > :timer.hours(24) do
       del_source_and_redirect(conn, params)
@@ -555,9 +556,7 @@ defmodule LogflareWeb.SourceController do
   end
 
   defp get_and_encode_logs(%Source{} = source) do
-    log_events = RLS.list_for_cluster(source.token)
-
-    for le <- log_events, le do
+    for le <- Backends.list_recent_events(source) do
       le
       |> Map.take([:body, :via_rule, :origin_source_id])
     end
