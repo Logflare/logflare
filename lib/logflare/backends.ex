@@ -511,14 +511,13 @@ defmodule Logflare.Backends do
 
   @doc """
   Lists the latest recent logs of all caches across the cluster.
-  Performs a check to ensure that the cache is started. If not started yet globally, it will start the cache locally.
   """
   @spec list_recent_events(Source.t()) :: [LogEvent.t()]
   def list_recent_events(%Source{} = source) do
     {results, _} = Cluster.Utils.rpc_multicall(__MODULE__, :list_recent_events_local, [source])
 
     List.flatten(results)
-    |> Enum.sort_by(& &1.body["timestamp"], &<=/2)
+    |> Enum.sort_by(fn %{body: %{"timestamp"=> ts}} -> ts end, &<=/2)
     |> Enum.take(-100)
   end
 
@@ -533,8 +532,7 @@ defmodule Logflare.Backends do
       end
 
     :ets.select(:recent_events, ms)
-    |> Enum.sort_by(& &1.body["timestamp"], &<=/2)
-    |> Enum.take(-100)
+    |> Enum.sort_by(fn %{body: %{"timestamp"=> ts}} -> ts end, &<=/2)
   end
 
   @doc """
