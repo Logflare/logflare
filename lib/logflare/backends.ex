@@ -543,7 +543,7 @@ defmodule Logflare.Backends do
   def get_latest_event_timestamp(%Source{} = source) do
     list_recent_events_local(source)
     |> Enum.reverse()
-    |> hd()
+    |> List.first()
     |> case do
       %{body: %{"timestamp" => ts}} -> ts
       _ -> 0
