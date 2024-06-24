@@ -16,10 +16,7 @@ defmodule Logflare.PubSubRates.Buffers do
   def init(_state) do
     PubSubRates.subscribe(:buffers)
 
-    {:ok,
-     %{
-       current_node: Node.self()
-     }}
+    {:ok, %{}}
   end
 
   def handle_info({:buffers, source_token, buffers}, state) when is_map(buffers) do
