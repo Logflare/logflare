@@ -217,7 +217,6 @@ defmodule Logflare.Backends do
   @spec ingest_logs([log_param()], Source.t()) :: :ok
   @spec ingest_logs([log_param()], Source.t(), Backend.t() | nil) :: :ok
   def ingest_logs(event_params, source, backend \\ nil) do
-    :ok = Source.Supervisor.ensure_started(source)
     {log_events, errors} = split_valid_events(source, event_params)
     count = Enum.count(log_events)
     increment_counters(source, count)
@@ -230,34 +229,32 @@ defmodule Logflare.Backends do
   defp split_valid_events(source, event_params) do
     event_params
     |> Enum.reduce({[], []}, fn param, {events, errors} ->
-      le =
-        param
-        |> case do
-          %LogEvent{source: %Source{}} = le ->
-            le
+      param
+      |> case do
+        %LogEvent{source: %Source{}} = le ->
+          le
 
-          %LogEvent{} = le ->
-            %{le | source: source}
+        %LogEvent{} = le ->
+          %{le | source: source}
 
-          param ->
-            LogEvent.make(param, %{source: source})
-        end
-        |> Logs.maybe_mark_le_dropped_by_lql()
-        |> LogEvent.apply_custom_event_message()
-
-      cond do
-        le.drop ->
+        param ->
+          LogEvent.make(param, %{source: source})
+      end
+      |> Logs.maybe_mark_le_dropped_by_lql()
+      |> LogEvent.apply_custom_event_message()
+      |> case do
+        %{drop: true} = le ->
           do_telemetry(:drop, le)
           {events, errors}
 
-        not le.valid ->
+        %{valid: false} = le ->
           do_telemetry(:invalid, le)
           {events, errors}
 
-        le.pipeline_error ->
+        %{pipeline_error: err} = le when err != nil ->
           {events, [le.pipeline_error.message | errors]}
 
-        true ->
+        le ->
           {[le | events], errors}
       end
     end)
