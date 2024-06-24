@@ -17,17 +17,16 @@ defmodule Logflare.Backends.BufferProducerTest do
          active_broadcast_interval: 100, idle_broadcast_interval: 100, source_token: source.token}
       )
 
-    :timer.sleep(300)
     send(pid, {:add_to_buffer, [:something]})
-    assert_receive {:buffers, ^source_token, _payload}
+    :timer.sleep(300)
     assert PubSubRates.Cache.get_cluster_buffers(source_token) == 1
   end
 
   test "BufferProducer broadcasts every n seconds with backend differentiation" do
     PubSubRates.subscribe(:buffers)
     user = insert(:user)
-    %{token: source_token} = source = insert(:source, user: user)
-    %{token: backend_token} = backend = insert(:backend, user: user)
+    source = insert(:source, user: user)
+    backend = insert(:backend, user: user)
 
     pid =
       start_supervised!(
@@ -40,8 +39,6 @@ defmodule Logflare.Backends.BufferProducerTest do
 
     send(pid, {:add_to_buffer, [:something]})
     :timer.sleep(200)
-    assert_receive {:buffers, ^source_token, ^backend_token, _payload}
-
     assert PubSubRates.Cache.get_cluster_buffers(source.token, backend.token) == 1
   end
 
@@ -84,7 +81,7 @@ defmodule Logflare.Backends.BufferProducerTest do
   test "BufferProducer idle broadcast interval" do
     PubSubRates.subscribe(:buffers)
     user = insert(:user)
-    %{token: source_token} = source = insert(:source, user: user)
+    source = insert(:source, user: user)
 
     pid =
       start_supervised!(
@@ -99,23 +96,13 @@ defmodule Logflare.Backends.BufferProducerTest do
     items = for _ <- 1..100, do: "test"
 
     send(pid, {:add_to_buffer, items})
-    :timer.sleep(600)
-    assert_receive {:buffers, ^source_token, _payload}
+    :timer.sleep(400)
     assert PubSubRates.Cache.get_cluster_buffers(source.token, nil) != 0
-    {:message_queue_len, msg_queue_len} = Process.info(self(), :message_queue_len)
 
     GenStage.stream([{pid, max_demand: 100}])
     |> Enum.take(5)
 
     :timer.sleep(400)
-    test_pid = self()
-
-    TestUtils.retry_assert(fn ->
-      {:message_queue_len, new_msg_queue_len} = Process.info(test_pid, :message_queue_len)
-      assert new_msg_queue_len <= msg_queue_len + 3
-    end)
-
-    node = Node.self()
-    assert_receive {:buffers, ^source_token, %{^node => %{len: 0}}}
+    assert PubSubRates.Cache.get_cluster_buffers(source.token, nil) == 0
   end
 end

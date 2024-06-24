@@ -69,7 +69,9 @@ defmodule Logflare.Backends.BufferProducer.Worker do
 
           {:buffers, state.source_token, state.backend_token, local_buffer}
         else
+          # cache local length
           PubSubRates.Cache.cache_buffers(state.source_token, nil, local_buffer)
+
           {:buffers, state.source_token, local_buffer}
         end
 
@@ -77,11 +79,15 @@ defmodule Logflare.Backends.BufferProducer.Worker do
         "BufferProducer.Worker - #{state.source_token} - Broadcasting buffer len globally"
       )
 
-      Phoenix.PubSub.broadcast(
-        Logflare.PubSub,
-        "buffers",
-        cluster_broadcast_payload
-      )
+      # broadcast to every node except local
+      for node_name <- Node.list() do
+        Phoenix.PubSub.direct_broadcast(
+          node_name,
+          Logflare.PubSub,
+          "buffers",
+          cluster_broadcast_payload
+        )
+      end
     end
 
     state
