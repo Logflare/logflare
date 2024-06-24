@@ -195,6 +195,7 @@ defmodule Logflare.Source.BigQuery.Pipeline do
     probability =
       case PubSubRates.Cache.get_local_rates(source.token) do
         %{average_rate: avg} when avg > 1000 -> 0.01
+        %{average_rate: avg} when avg > 500 -> 0.05
         %{average_rate: avg} when avg > 100 -> 0.1
         %{average_rate: avg} when avg > 10 -> 0.2
         _ -> 1
