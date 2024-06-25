@@ -482,30 +482,27 @@ defmodule Logflare.Backends do
   def push_recent_events(%Source{}, []), do: :ok
 
   def push_recent_events(%Source{id: source_id} = source, log_events) do
-    existing = list_recent_events_local(source)
+    existing = :ets.lookup(:recent_events, source_id)
 
-    [%{body: %{"timestamp" => oldest_ts}} | _] =
-      sorted_events =
-      (existing ++ log_events)
-      |> Enum.sort_by(& &1.body["timestamp"], &<=/2)
-      |> Enum.take(-100)
+    rem = 100 - Enum.count(log_events)
 
-    # delete all older
-    ms =
-      Ex2ms.fun do
-        {id, %{body: %{"timestamp" => ts}}} when id == ^source_id and ts < ^oldest_ts -> true
+    to_keep =
+      if rem > 0 do
+        Enum.take(existing, -rem)
+      else
+        []
       end
 
-    :ets.select_delete(:recent_events, ms)
+    :ets.delete(:recent_events, source_id)
 
     objects =
-      for event <- log_events, event in sorted_events do
+      for event <- log_events do
         # don't cache source information
-        event = Map.drop(event, [:source])
-        {source_id, event}
+        {source_id, %{event | source: nil}}
       end
 
-    :ets.insert(:recent_events, objects)
+    :ets.insert(:recent_events, objects ++ to_keep)
+
     :ok
   end
 
@@ -517,7 +514,7 @@ defmodule Logflare.Backends do
     {results, _} = Cluster.Utils.rpc_multicall(__MODULE__, :list_recent_events_local, [source])
 
     List.flatten(results)
-    |> Enum.sort_by(fn %{body: %{"timestamp"=> ts}} -> ts end, &<=/2)
+    |> Enum.sort_by(fn %{body: %{"timestamp" => ts}} -> ts end, &<=/2)
     |> Enum.take(-100)
   end
 
@@ -532,7 +529,7 @@ defmodule Logflare.Backends do
       end
 
     :ets.select(:recent_events, ms)
-    |> Enum.sort_by(fn %{body: %{"timestamp"=> ts}} -> ts end, &<=/2)
+    |> Enum.sort_by(fn %{body: %{"timestamp" => ts}} -> ts end, &<=/2)
   end
 
   @doc """

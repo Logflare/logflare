@@ -175,10 +175,11 @@ defmodule Logflare.BackendsTest do
 
       assert [] = Backends.list_recent_events_local(source)
       le = build(:log_event, source: source)
-      assert :ok = Backends.push_recent_events(source, [le])
-      assert [%LogEvent{}] = Backends.list_recent_events_local(source)
-      assert [%LogEvent{}] = Backends.list_recent_events(source)
-      assert Backends.get_latest_event_timestamp(source) |> is_integer()
+      le2 = build(:log_event, source: source)
+      assert :ok = Backends.push_recent_events(source, [le, le2])
+      assert [%LogEvent{}, _] = Backends.list_recent_events_local(source)
+      assert [%LogEvent{}, _] = Backends.list_recent_events(source)
+      assert Backends.get_latest_event_timestamp(source) == le2.body["timestamp"]
     end
 
     test "performs broadcasts for global cache rates and dashboard rates", %{
