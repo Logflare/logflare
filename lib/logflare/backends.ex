@@ -501,7 +501,7 @@ defmodule Logflare.Backends do
         {source_id, %{event | source: nil}}
       end
 
-    :ets.insert(:recent_events, objects ++ to_keep)
+    :ets.insert(:recent_events, to_keep ++ objects)
 
     :ok
   end
