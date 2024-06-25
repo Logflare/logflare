@@ -24,11 +24,10 @@ for _ <- 1..50 do
   Logflare.Backends.push_recent_events(source, batch)
 end
 
-:timer.sleep(500)
 # Current: 2024-06-24 v1
 # CNT    ACC (ms)    OWN (ms)
 # 226,540     376.652     370.102
 
 # Current: 2024-06-24 v2
 # CNT        ACC (ms)    OWN (ms)
-# 233,266     740.665     384.948
+# 233,266     394.510     384.937
