@@ -24,7 +24,7 @@ for _ <- 1..50 do
   Logflare.Backends.push_recent_events(source, batch)
 end
 
-# Current: 2024-06-24 v1
+# 2024-06-24 v1
 # CNT    ACC (ms)    OWN (ms)
 # 226,540     376.652     370.102
 
