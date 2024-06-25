@@ -481,27 +481,19 @@ defmodule Logflare.Backends do
 
   def push_recent_events(%Source{}, []), do: :ok
 
-  def push_recent_events(%Source{id: source_id} = source, log_events) do
+  def push_recent_events(%Source{id: source_id}, log_events) do
     existing = :ets.lookup(:recent_events, source_id)
-
-    rem = 100 - Enum.count(log_events)
-
-    to_keep =
-      if rem > 0 do
-        Enum.take(existing, -rem)
-      else
-        []
-      end
 
     :ets.delete(:recent_events, source_id)
 
+    # sort newest to oldest
     objects =
-      for event <- log_events do
+      for event <- Enum.sort_by(log_events, fn %{body: %{"timestamp" => ts}} -> ts end, &<=/2) do
         # don't cache source information
         {source_id, %{event | source: nil}}
       end
 
-    :ets.insert(:recent_events, to_keep ++ objects)
+    :ets.insert(:recent_events, Enum.take(objects ++ existing, 100))
 
     :ok
   end
