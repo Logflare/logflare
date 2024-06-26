@@ -7,6 +7,7 @@ defmodule Logflare.Backends.BufferProducer do
   use GenStage
   alias Logflare.Sources
   alias Logflare.Backends.BufferProducer
+  alias Logflare.Backends.IngestEvents
   require Logger
 
   def start_link(opts) when is_list(opts) do
@@ -14,18 +15,22 @@ defmodule Logflare.Backends.BufferProducer do
   end
 
   def init(opts) do
+    IngestEvents.upsert_tid(opts[:source])
+
+    {:ok, worker_pid} = __MODULE__.DemandWorker.start_link(opts[:source])
     state =
       Enum.into(opts, %{
         demand: 0,
         # TODO: broadcast by id instead.
+        source_id: opts[:source].id,
         source_token: nil,
         backend_token: nil,
-        producer_pid: self(),
+        worker_pid: worker_pid,
         # discard logging backoff
         last_discard_log_dt: nil
       })
 
-    {:ok, _pid} = BufferProducer.Worker.start_link(state)
+    # {:ok, _pid} = BufferProducer.Worker.start_link(state)
 
     # loop(state.active_broadcast_interval)
     {:producer, state, buffer_size: Keyword.get(opts, :buffer_size, 50_000)}
@@ -81,6 +86,25 @@ defmodule Logflare.Backends.BufferProducer do
          new_demand \\ 0
        ) do
     total_demand = prev_demand + new_demand
-    {[], %{state | demand: total_demand}}
+    popped = GenServer.call(state.worker_pid, {:pop, total_demand})
+    {popped, %{state | demand: total_demand - Enum.count(popped)}}
+  end
+
+  defmodule DemandWorker do
+    use GenServer
+  alias Logflare.Backends.IngestEvents
+
+    def start_link(source) do
+      GenServer.start_link(__MODULE__, source)
+    end
+
+    def init(source) do
+      {:ok, source}
+    end
+
+    def handle_call({:pop, n}, _caller, state) do
+      {:ok, popped} = IngestEvents.dirty_pop(state, n)
+      {:reply, popped, state}
+    end
   end
 end

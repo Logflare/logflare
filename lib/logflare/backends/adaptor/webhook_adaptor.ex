@@ -17,6 +17,7 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
       http: String.t()
     })
 
+    field(:source, Source.t())
     field(:backend, Backend.t())
     field(:pipeline_name, tuple())
     field(:backend_token, String.t())
@@ -68,6 +69,7 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
 
     state = %__MODULE__{
       config: backend.config,
+      source: source,
       backend: backend,
       backend_token: if(backend, do: backend.token, else: nil),
       source_token: source.token,
@@ -128,6 +130,7 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
           module:
             {BufferProducer,
              [
+               source: adaptor_state.source,
                source_token: adaptor_state.source_token,
                backend_token: adaptor_state.backend_token
              ]},
