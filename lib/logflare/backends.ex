@@ -439,13 +439,10 @@ defmodule Logflare.Backends do
   Checks if a local buffer is full.
   """
   def local_buffer_full?(%Source{} = source) do
-    case PubSubRates.Cache.get_buffers(source.token, nil) do
-      {:ok, %{} = buffers} ->
-        buffer = get_in(buffers, [Node.self(), :len]) || 0
-        buffer >= @max_buffer_len
-
-      _ ->
-        false
+    if Logflare.Backends.IngestEvents.get_table_size(source) > @max_buffer_len do
+      true
+    else
+      false
     end
   end
 

@@ -42,7 +42,7 @@ defmodule Logflare.Source.BigQuery.Pipeline do
           ],
           producer: [
             module:
-              {BufferProducer, [source_token: source.token, backend_token: args[:backend_token]]}
+              {BufferProducer, [source: source, source_token: source.token, backend_token: args[:backend_token]]}
           ],
           processors: [
             default: [concurrency: System.schedulers_online() * 2]

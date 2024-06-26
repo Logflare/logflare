@@ -20,6 +20,7 @@ defmodule Logflare.Backends.BufferProducer.Worker do
     state =
       Map.merge(
         %{
+          source: nil,
           last_len: 0,
           active_broadcast_interval: @active_broadcast_interval,
           idle_broadcast_interval: @idle_broadcast_interval
@@ -27,7 +28,7 @@ defmodule Logflare.Backends.BufferProducer.Worker do
         state
       )
 
-    Process.send_after(self(), :check_len, state.active_broadcast_interval)
+    Process.send_after(self(), :check_len, 1_000)
     Process.send_after(self(), :periodic_broadcast, state.idle_broadcast_interval)
     {:ok, state}
   end
@@ -44,51 +45,47 @@ defmodule Logflare.Backends.BufferProducer.Worker do
   end
 
   defp maybe_global_broadcast_producer_buffer_len(state) do
-    len = GenStage.estimate_buffered_count(state.producer_pid)
+    # len = GenStage.estimate_buffered_count(state.producer_pid)
+    len = Logflare.Backends.IngestEvents.get_table_size(state.source)
     Logger.debug("BufferProducer.Worker - #{state.source_token} - #{len} buffer len")
+    Process.send_after(self(), :check_len, 1_000)
 
-    {should_broadcast?, state} =
-      if state.last_len == 0 and len == 0 do
-        Logger.debug("BufferProducer.Worker - #{state.source_token} - Idle buffer len checking")
-        Process.send_after(self(), :check_len, state.idle_broadcast_interval)
-        {false, state}
-      else
-        Logger.debug("BufferProducer.Worker - #{state.source_token} - Active buffer len checking")
-        Process.send_after(self(), :check_len, state.active_broadcast_interval)
-        {true, %{state | last_len: len}}
-      end
+    # {should_broadcast?, state} =
+    #   if state.last_len == 0 and len == 0 do
+    #     Logger.debug("BufferProducer.Worker - #{state.source_token} - Idle buffer len checking")
+    #     {false, state}
+    #   else
+    #     Logger.debug("BufferProducer.Worker - #{state.source_token} - Active buffer len checking")
+    #     Process.send_after(self(), :check_len, state.active_broadcast_interval)
+    #     {true, %{state | last_len: len}}
+    #   end
 
     # broadcast length
-    if should_broadcast? do
-      local_buffer = %{Node.self() => %{len: len}}
+    local_buffer = %{Node.self() => %{len: len}}
 
-      cluster_broadcast_payload =
-        if state.backend_token do
-          # cache local length
-          PubSubRates.Cache.cache_buffers(state.source_token, state.backend_token, local_buffer)
+    cluster_broadcast_payload =
+      if state.backend_token do
+        # cache local length
+        PubSubRates.Cache.cache_buffers(state.source_token, state.backend_token, local_buffer)
 
-          {:buffers, state.source_token, state.backend_token, local_buffer}
-        else
-          # cache local length
-          PubSubRates.Cache.cache_buffers(state.source_token, nil, local_buffer)
+        {:buffers, state.source_token, state.backend_token, local_buffer}
+      else
+        # cache local length
+        PubSubRates.Cache.cache_buffers(state.source_token, nil, local_buffer)
 
-          {:buffers, state.source_token, local_buffer}
-        end
-
-      Logger.debug(
-        "BufferProducer.Worker - #{state.source_token} - Broadcasting buffer len globally"
-      )
-
-      # broadcast to every node except local
-      for node_name <- Node.list() do
-        Phoenix.PubSub.direct_broadcast(
-          node_name,
-          Logflare.PubSub,
-          "buffers",
-          cluster_broadcast_payload
-        )
+        {:buffers, state.source_token, local_buffer}
       end
-    end
+
+    Logger.debug(
+      "BufferProducer.Worker - #{state.source_token} - Broadcasting buffer len globally"
+    )
+
+    # broadcast to every node except local
+    Phoenix.PubSub.broadcast(
+      Logflare.PubSub,
+      "buffers",
+      cluster_broadcast_payload
+    )
 
     state
   end

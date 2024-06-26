@@ -14,6 +14,7 @@ defmodule Logflare.Backends.Supervisor do
   @impl Supervisor
   def init(_) do
     children = [
+      Logflare.Backends.IngestEvents,
       Backends.Adaptor.PostgresAdaptor.Supervisor,
       {DynamicSupervisor, strategy: :one_for_one, name: Backends.SourcesSup},
       {Registry,
