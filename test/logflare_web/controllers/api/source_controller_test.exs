@@ -3,6 +3,7 @@ defmodule LogflareWeb.Api.SourceControllerTest do
   use LogflareWeb.ConnCase
 
   alias Logflare.Backends
+  alias Logflare.Source.RecentLogsServer
 
   setup do
     insert(:plan, name: "Free")
