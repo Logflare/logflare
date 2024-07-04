@@ -174,7 +174,7 @@ defmodule Logflare.Backends.IngestEventQueue do
   def take_pending({%Source{} = source, nil}, n), do: take_pending({source.id, nil}, n)
   def take_pending({%Source{id: sid}, %Backend{id: bid}}, n), do: take_pending({sid, bid}, n)
 
-  def take_pending({sid, _bid} = sid_bid, 0) when is_integer(sid), do: {:ok, []}
+  def take_pending({sid, _bid}, 0) when is_integer(sid), do: {:ok, []}
 
   def take_pending({sid, _bid} = sid_bid, n) when is_integer(sid) and is_integer(n) do
     ms =

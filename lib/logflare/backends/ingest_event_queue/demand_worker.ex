@@ -29,7 +29,7 @@ defmodule Logflare.Backends.IngestEventQueue.DemandWorker do
   def fetch({%Source{id: sid}, %Backend{id: bid}}, n), do: fetch({sid, bid}, n)
   def fetch({%Source{id: sid}, nil}, n), do: fetch({sid, nil}, n)
 
-  def fetch({sid, bid}, 0), do: {:ok, []}
+  def fetch({_sid, _bid}, 0), do: {:ok, []}
 
   def fetch({sid, bid}, n) do
     Backends.via_source(sid, __MODULE__, bid)

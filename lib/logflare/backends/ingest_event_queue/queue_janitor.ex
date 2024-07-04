@@ -4,7 +4,6 @@ defmodule Logflare.Backends.IngestEventQueue.QueueJanitor do
   """
   use GenServer
   alias Logflare.Backends.IngestEventQueue
-  alias Logflare.Backends
   require Logger
   @default_interval 1_000
   @default_remainder 100
