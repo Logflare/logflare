@@ -21,7 +21,10 @@ defmodule Logflare.Backends do
 
   defdelegate child_spec(arg), to: __MODULE__.Supervisor
 
-  @max_buffer_len 5_000
+  @max_buffer_len 7_500
+
+  def max_buffer_len(), do: @max_buffer_len
+
   @doc """
   Lists `Backend`s for a given source.
   """
