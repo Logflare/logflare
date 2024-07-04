@@ -136,7 +136,7 @@ defmodule Logflare.Backends.IngestEventQueue do
     with tid when tid != nil <- get_tid(sid_bid) do
       updated =
         for event <- events do
-          {event.id, :ingested, DateTime.utc_now(), event}
+          {event.id, :ingested, event}
         end
 
       :ets.insert(tid, updated)
@@ -173,6 +173,8 @@ defmodule Logflare.Backends.IngestEventQueue do
   """
   def take_pending({%Source{} = source, nil}, n), do: take_pending({source.id, nil}, n)
   def take_pending({%Source{id: sid}, %Backend{id: bid}}, n), do: take_pending({sid, bid}, n)
+
+  def take_pending({sid, _bid} = sid_bid, 0) when is_integer(sid), do: {:ok, []}
 
   def take_pending({sid, _bid} = sid_bid, n) when is_integer(sid) and is_integer(n) do
     ms =
@@ -213,13 +215,13 @@ defmodule Logflare.Backends.IngestEventQueue do
     # chunk over table and drop
     ms =
       Ex2ms.fun do
-        {_event_id, _status, event} = obj when ^filter == :all -> obj
-        {_event_id, status, event} = obj when status == ^filter -> obj
+        {_event_id, _status, _event} = obj when ^filter == :all -> obj
+        {_event_id, status, _event} = obj when status == ^filter -> obj
       end
 
     with tid when tid != nil <- get_tid(sid_bid) do
       :ets.safe_fixtable(tid, true)
-      res = truncate_traverse(tid, :ets.select(tid, ms, 100), 0, n)
+      res = truncate_traverse(tid, :ets.select(tid, ms, 1000), 0, n)
       :ets.safe_fixtable(tid, false)
       res
     else
@@ -239,7 +241,7 @@ defmodule Logflare.Backends.IngestEventQueue do
       if rem > 0 do
         # satisfy all, drop up to required
         for {key, _status, _event} <- Enum.take(taken, diff) do
-          :ets.delete_object(tid, key)
+          :ets.delete(tid, key)
         end
 
         diff

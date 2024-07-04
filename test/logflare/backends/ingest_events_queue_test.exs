@@ -62,19 +62,46 @@ defmodule Logflare.Backends.IngestEventQueueTest do
     end
 
     test "truncate all events in a queue", %{source_backend: sb} do
-      le = build(:log_event)
+      batch =
+        for _ <- 1..500 do
+          build(:log_event)
+        end
+
       # add as pending
-      assert :ok = IngestEventQueue.add_to_table(sb, [le])
+      assert :ok = IngestEventQueue.add_to_table(sb, batch)
+      assert :ok = IngestEventQueue.truncate(sb, :all, 50)
+      assert IngestEventQueue.get_table_size(sb) == 50
       assert :ok = IngestEventQueue.truncate(sb, :all, 0)
-      assert IngestEventQueue.count_pending(sb) == 0
+      assert IngestEventQueue.get_table_size(sb) == 0
     end
 
     test "truncate ingested events in a queue", %{source_backend: sb} do
-      le = build(:log_event)
+      batch =
+        for _ <- 1..500 do
+          build(:log_event)
+        end
+
       # add as pending
-      assert :ok = IngestEventQueue.add_to_table(sb, [le])
-      assert {:ok, 1} = IngestEventQueue.mark_ingested(sb, [le])
+      assert :ok = IngestEventQueue.add_to_table(sb, batch)
+      assert {:ok, _} = IngestEventQueue.mark_ingested(sb, batch)
+      assert :ok = IngestEventQueue.truncate(sb, :ingested, 50)
+      assert IngestEventQueue.get_table_size(sb) == 50
+      assert IngestEventQueue.count_pending(sb) == 0
       assert :ok = IngestEventQueue.truncate(sb, :ingested, 0)
+      assert IngestEventQueue.get_table_size(sb) == 0
+    end
+
+    test "truncate pending events in a queue", %{source_backend: sb} do
+      batch =
+        for _ <- 1..500 do
+          build(:log_event)
+        end
+
+      # add as pending
+      assert :ok = IngestEventQueue.add_to_table(sb, batch)
+      assert :ok = IngestEventQueue.truncate(sb, :pending, 50)
+      assert IngestEventQueue.count_pending(sb) == 50
+      assert :ok = IngestEventQueue.truncate(sb, :pending, 0)
       assert IngestEventQueue.count_pending(sb) == 0
     end
   end
