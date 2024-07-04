@@ -1,39 +1,37 @@
 defmodule Logflare.Backends.BufferProducer do
   @moduledoc """
-  A generic broadway producer that doesn't actually produce anything.
+  A GenStage producer that pulls from the given source-backend's IngestEventQueue ets table.
 
-  Meant for push through Broadway.push_messages/2
+  Each source-backend combination has its own ets table.
+
+  Length determination of the buffer is determined by using `:ets.info/2`, which is O(1)
   """
   use GenStage
   alias Logflare.Sources
-  alias Logflare.Backends.BufferProducer
-  alias Logflare.Backends.IngestEvents
+  alias Logflare.Backends.IngestEventQueue.DemandWorker
+  alias Logflare.Backends
   require Logger
+  @default_interval 500
 
   def start_link(opts) when is_list(opts) do
     GenStage.start_link(__MODULE__, opts)
   end
 
   def init(opts) do
-    IngestEvents.upsert_tid(opts[:source])
+    state = %{
+      demand: 0,
+      # TODO: broadcast by id instead.
+      source_id: opts[:source].id,
+      source_token: opts[:source].token,
+      backend_id: Map.get(opts[:backend] || %{}, :id),
+      backend_token: Map.get(opts[:backend] || %{}, :token),
+      # discard logging backoff
+      last_discard_log_dt: nil,
+      interval: Keyword.get(opts, :interval, @default_interval)
+    }
 
-    {:ok, worker_pid} = __MODULE__.DemandWorker.start_link(opts[:source])
-    state =
-      Enum.into(opts, %{
-        demand: 0,
-        # TODO: broadcast by id instead.
-        source_id: opts[:source].id,
-        source_token: nil,
-        backend_token: nil,
-        worker_pid: worker_pid,
-        # discard logging backoff
-        last_discard_log_dt: nil
-      })
-
-    # {:ok, _pid} = BufferProducer.Worker.start_link(state)
-
-    # loop(state.active_broadcast_interval)
-    {:producer, state, buffer_size: Keyword.get(opts, :buffer_size, 50_000)}
+    schedule(state.interval)
+    {:producer, state, buffer_size: Keyword.get(opts, :buffer_size, 10_000)}
   end
 
   def format_discarded(discarded, state) do
@@ -63,8 +61,9 @@ defmodule Logflare.Backends.BufferProducer do
     false
   end
 
-  def handle_info(:resolve, state) do
+  def handle_info(:scheduled_resolve, state) do
     {items, state} = resolve_demand(state)
+    schedule(state.interval)
     {:noreply, items, state}
   end
 
@@ -81,30 +80,20 @@ defmodule Logflare.Backends.BufferProducer do
     {:noreply, items, state}
   end
 
+  defp schedule(interval) do
+    Process.send_after(self(), :scheduled_resolve, interval)
+  end
+
   defp resolve_demand(
          %{demand: prev_demand} = state,
          new_demand \\ 0
        ) do
     total_demand = prev_demand + new_demand
-    popped = GenServer.call(state.worker_pid, {:pop, total_demand})
-    {popped, %{state | demand: total_demand - Enum.count(popped)}}
-  end
 
-  defmodule DemandWorker do
-    use GenServer
-  alias Logflare.Backends.IngestEvents
+    {:ok, events} =
+      Backends.via_source(state.source_id, DemandWorker, state.backend_id)
+      |> GenServer.call({:fetch, total_demand})
 
-    def start_link(source) do
-      GenServer.start_link(__MODULE__, source)
-    end
-
-    def init(source) do
-      {:ok, source}
-    end
-
-    def handle_call({:pop, n}, _caller, state) do
-      {:ok, popped} = IngestEvents.dirty_pop(state, n)
-      {:reply, popped, state}
-    end
+    {events, %{state | demand: total_demand - Enum.count(events)}}
   end
 end

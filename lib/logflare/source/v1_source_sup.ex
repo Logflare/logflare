@@ -12,6 +12,7 @@ defmodule Logflare.Source.V1SourceSup do
   alias Logflare.Source.WebhookNotificationServer
   alias Logflare.Source.SlackHookServer
   alias Logflare.Source.BillingWriter
+  alias Logflare.Backends.IngestEventQueue
 
   alias Logflare.Source.RateCounterServer, as: RCS
   alias Logflare.Users
@@ -43,6 +44,8 @@ defmodule Logflare.Source.V1SourceSup do
 
     children = [
       {RCS, [source: source]},
+      {IngestEventQueue.DemandWorker, source: source, backend: nil},
+      {IngestEventQueue.QueueJanitor, source: source, backend: nil},
       {Pipeline,
        [
          bigquery_project_id: user.bigquery_project_id,

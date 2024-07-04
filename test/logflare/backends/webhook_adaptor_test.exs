@@ -3,27 +3,34 @@ defmodule Logflare.Backends.WebhookAdaptorTest do
   use Logflare.DataCase
 
   alias Logflare.Backends.Adaptor
-
+  alias Logflare.Backends
+  alias Logflare.SystemMetrics.AllLogsLogged
+  alias Logflare.Backends.SourceSup
   @subject Logflare.Backends.Adaptor.WebhookAdaptor
+
+  setup do
+    start_supervised!(AllLogsLogged)
+    :ok
+  end
 
   describe "ingestion tests" do
     setup do
+      insert(:plan)
       user = insert(:user)
       source = insert(:source, user: user)
 
-      backend =
-        insert(:backend,
-          type: :webhook,
-          sources: [source],
-          config: %{http: "http1", url: "https://example.com"}
-        )
+      insert(:backend,
+        type: :webhook,
+        sources: [source],
+        config: %{http: "http1", url: "https://example.com"}
+      )
 
-      pid = start_supervised!({@subject, {source, backend}})
+      start_supervised!({SourceSup, source})
       :timer.sleep(500)
-      [pid: pid, backend: backend, source: source]
+      [source: source]
     end
 
-    test "ingest/2", %{pid: pid, source: source, backend: backend} do
+    test "ingest", %{source: source} do
       this = self()
       ref = make_ref()
 
@@ -37,7 +44,7 @@ defmodule Logflare.Backends.WebhookAdaptorTest do
 
       le = build(:log_event, source: source)
 
-      assert :ok == @subject.ingest(pid, [le], source_id: source.id, backend_id: backend.id)
+      assert {:ok, _} = Backends.ingest_logs([le], source)
       assert_receive ^ref, 2000
     end
   end
@@ -82,12 +89,12 @@ defmodule Logflare.Backends.WebhookAdaptorTest do
       backend =
         insert(:backend, type: :webhook, sources: [source], config: %{url: "https://example.com"})
 
-      pid = start_supervised!({@subject, {source, backend}})
+      start_supervised!({SourceSup, source})
 
-      [backend: backend, pid: pid, source: source]
+      [backend: backend, source: source]
     end
 
-    test "defaults", %{pid: pid, backend: backend, source: source} do
+    test "defaults", %{backend: backend, source: source} do
       le = build(:log_event, source: source)
       batch_1 = [le]
 
@@ -114,19 +121,19 @@ defmodule Logflare.Backends.WebhookAdaptorTest do
       BencheeAsync.run(
         %{
           "batch-1" => fn ->
-            @subject.ingest(pid, batch_1, source_id: source.id, backend_id: backend.id)
+            Backends.ingest_logs(batch_1, source, backend)
           end,
           "batch-10" => fn ->
-            @subject.ingest(pid, batch_10, source_id: source.id, backend_id: backend.id)
+            Backends.ingest_logs(batch_10, source, backend)
           end,
           "batch-100" => fn ->
-            @subject.ingest(pid, batch_100, source_id: source.id, backend_id: backend.id)
+            Backends.ingest_logs(batch_100, source, backend)
           end,
           "batch-250" => fn ->
-            @subject.ingest(pid, batch_250, source_id: source.id, backend_id: backend.id)
+            Backends.ingest_logs(batch_250, source, backend)
           end,
           "batch-500" => fn ->
-            @subject.ingest(pid, batch_500, source_id: source.id, backend_id: backend.id)
+            Backends.ingest_logs(batch_500, source, backend)
           end
         },
         time: 3,

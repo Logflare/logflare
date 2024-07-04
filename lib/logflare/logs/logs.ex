@@ -10,9 +10,7 @@ defmodule Logflare.Logs do
   alias Logflare.Logs.IngestTypecasting
   alias Logflare.Logs.IngestTransformers
   alias Logflare.Rule
-  alias Logflare.Backends
-  alias Logflare.Backends.Adaptor.BigQueryAdaptor
-  alias Logflare.Source.BigQuery.Pipeline
+  alias Logflare.Backends.IngestEventQueue
 
   @spec ingest_logs(list(map), Source.t()) :: :ok | {:error, term}
   def ingest_logs(log_params_batch, %Source{rules: rules} = source) when is_list(rules) do
@@ -41,14 +39,8 @@ defmodule Logflare.Logs do
          # tests fail when we match on these for some reason
          _ok <- Sources.Counters.increment(source.token),
          _ok <- SystemMetrics.AllLogsLogged.increment(:total_logs_logged) do
-      # push into the pipeline
-      message = %Broadway.Message{
-        data: le,
-        acknowledger: {BigQueryAdaptor, nil, nil}
-      }
-
-      Backends.via_source(source, Pipeline, nil)
-      |> Broadway.push_messages([message])
+      # v1 only
+      IngestEventQueue.add_to_table({source, nil}, [le])
 
       le
     else

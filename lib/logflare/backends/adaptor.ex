@@ -8,6 +8,7 @@ defmodule Logflare.Backends.Adaptor do
   alias Logflare.LogEvent
   alias Logflare.Endpoints.Query
   alias Logflare.Backends.Backend
+  alias Logflare.Backends.AdaptorSupervisor
   alias Logflare.Source
 
   @type t :: module()
@@ -19,7 +20,7 @@ defmodule Logflare.Backends.Adaptor do
 
     %{
       id: {adaptor_module, source.id, backend.id},
-      start: {adaptor_module, :start_link, [{source, backend}]}
+      start: {AdaptorSupervisor, :start_link, [{source, backend}]}
     }
   end
 
@@ -36,16 +37,9 @@ defmodule Logflare.Backends.Adaptor do
               {:ok, pid()} | :ignore | {:error, term()}
 
   @doc """
-  Ingest many log events.
-
-  Options passed are dependent on `Backends.register_backend_for_ingest_dispatch/3`.
+  Optional callback to manipulate log events before queueing.
   """
-  @typep ingest_options :: [
-           {:source_id, integer()}
-           | {:backend_id, integer()}
-           | {atom(), term()}
-         ]
-  @callback ingest(identifier(), [LogEvent.t()], ingest_options()) :: :ok
+  @callback pre_ingest(Source.t(), Backend.t(), [LogEvent.t()]) :: [LogEvent.t()]
 
   @doc """
   Queries the backend using an endpoint query.
@@ -71,4 +65,6 @@ defmodule Logflare.Backends.Adaptor do
     |> mod.cast_config()
     |> mod.validate_config()
   end
+
+  @optional_callbacks pre_ingest: 3
 end

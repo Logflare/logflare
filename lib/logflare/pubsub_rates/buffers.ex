@@ -15,23 +15,12 @@ defmodule Logflare.PubSubRates.Buffers do
 
   def init(_state) do
     PubSubRates.subscribe(:buffers)
-
     {:ok, %{}}
   end
 
-  def handle_info({:buffers, source_token, buffers}, state) when is_map(buffers) do
-    if not is_map_key(buffers, Node.self()) do
-      Cache.cache_buffers(source_token, nil, buffers)
-    end
-
-    {:noreply, state}
-  end
-
-  def handle_info({:buffers, source_token, backend_token, buffers}, state) when is_map(buffers) do
-    if not is_map_key(buffers, Node.self()) do
-      Cache.cache_buffers(source_token, backend_token, buffers)
-    end
-
+  def handle_info({:buffers, source_id, backend_id, buffers}, state)
+      when is_integer(source_id) and is_map(buffers) do
+    Cache.cache_buffers(source_id, backend_id, buffers)
     {:noreply, state}
   end
 end

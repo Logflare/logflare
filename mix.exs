@@ -61,6 +61,7 @@ defmodule Logflare.Mixfile do
   end
 
   # Specifies which paths to compile per environment.
+  defp elixirc_paths(:dev), do: ["lib", "priv/tasks", "test/support"]
   defp elixirc_paths(:test), do: ["lib", "test/support"]
   defp elixirc_paths(_), do: ["lib", "priv/tasks"]
 
@@ -99,7 +100,7 @@ defmodule Logflare.Mixfile do
       {:typed_struct, "~> 0.1", runtime: false},
       {:lqueue, "~> 1.1"},
       {:cachex, "~> 3.1"},
-      {:ex_machina, "~> 2.3", only: [:test]},
+      {:ex_machina, "~> 2.3", only: [:dev, :test]},
       {:iteraptor, "~> 1.10"},
       {:decorator, "~> 1.3"},
       {:atomic_map, "~> 0.9.3"},
@@ -181,6 +182,7 @@ defmodule Logflare.Mixfile do
       {:recase, "~> 0.7.0"},
       {:ex_unicode, "~> 1.0"},
       {:configcat, "~> 2.0.0"},
+      {:ex2ms, "~> 1.7"},
 
       # Code quality
       {:credo, "~> 1.6", only: [:dev, :test], runtime: false},

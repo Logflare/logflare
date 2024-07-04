@@ -6,6 +6,7 @@ defmodule Logflare.Source.ChannelTopics do
 
   alias Logflare.LogEvent, as: LE
   alias Logflare.Source
+  alias Logflare.Sources
   alias Number.Delimit
 
   use TypedStruct
@@ -38,12 +39,18 @@ defmodule Logflare.Source.ChannelTopics do
   @doc """
   Broadcasts the channel buffer locally
   """
-  def local_broadcast_buffer(%{buffer: _buffer, source_token: source_token} = payload) do
-    topic = "dashboard:#{source_token}"
-    event = "buffer"
+  def local_broadcast_buffer(%{buffer: _buffer, source_id: source_id, backend_id: nil} = payload) do
+    if source = Sources.Cache.get_by_id(source_id) do
+      topic = "dashboard:#{source.token}"
+      event = "buffer"
 
-    maybe_local_broadcast(topic, event, payload)
+      maybe_local_broadcast(topic, event, payload)
+    else
+      :noop
+    end
   end
+
+  def local_broadcast_buffer(_), do: :noop
 
   def local_broadcast_rates(payload) do
     payload =

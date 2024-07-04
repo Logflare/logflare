@@ -42,9 +42,14 @@ defmodule Logflare.PubSubRates do
 
   @doc """
   Global sharded broadcast for a rate-specific message.
-
   """
+  @spec global_broadcast_rate({atom(), non_neg_integer(), nil | non_neg_integer(), term()}) :: :ok
   @spec global_broadcast_rate({atom(), atom(), term()}) :: :ok
+  def global_broadcast_rate({msg, source_id, _backend_id, _payload} = data)
+      when msg in @topics and is_integer(source_id) do
+    Phoenix.PubSub.broadcast(Logflare.PubSub, "#{msg}", data)
+  end
+
   def global_broadcast_rate({msg, _source_token, _payload} = data) when msg in @topics do
     Phoenix.PubSub.broadcast(Logflare.PubSub, "#{msg}", data)
   end

@@ -47,15 +47,6 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor do
   end
 
   @impl Logflare.Backends.Adaptor
-  def ingest(_pid, log_events, opts) do
-    source_id = Keyword.get(opts, :source_id)
-    backend_id = Keyword.get(opts, :backend_id)
-    messages = Enum.map(log_events, &__MODULE__.Pipeline.transform(&1, []))
-    pipeline_name = Backends.via_source(source_id, {Pipeline, backend_id})
-    Broadway.push_messages(pipeline_name, messages)
-  end
-
-  @impl Logflare.Backends.Adaptor
   def cast_config(params) do
     {%{},
      %{
@@ -169,28 +160,26 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor do
   # GenServer
   @impl GenServer
   def init({source, backend}) do
-    with :ok <- Backends.register_backend_for_ingest_dispatch(source, backend) do
-      # try create migration table, might fail
-      res = create_events_table({source, backend})
+    # try create migration table, might fail
+    res = create_events_table({source, backend})
 
-      if :ok != res do
-        Logger.warning("Failed to create events table: #{inspect(res)} ",
-          source_token: source.token,
-          backend_id: backend.id
-        )
-      end
-
-      state = %__MODULE__{
-        config: backend.config,
-        backend: backend,
-        backend_token: if(backend, do: backend.token, else: nil),
+    if :ok != res do
+      Logger.warning("Failed to create events table: #{inspect(res)} ",
         source_token: source.token,
-        source: source,
-        pipeline_name: Backends.via_source(source, Pipeline, backend.id)
-      }
-
-      {:ok, _pipeline_pid} = Pipeline.start_link(state)
-      {:ok, state}
+        backend_id: backend.id
+      )
     end
+
+    state = %__MODULE__{
+      config: backend.config,
+      backend: backend,
+      backend_token: if(backend, do: backend.token, else: nil),
+      source_token: source.token,
+      source: source,
+      pipeline_name: Backends.via_source(source, Pipeline, backend.id)
+    }
+
+    {:ok, _pipeline_pid} = Pipeline.start_link(state)
+    {:ok, state}
   end
 end

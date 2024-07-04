@@ -59,11 +59,6 @@ defmodule Logflare.Backends.Adaptor.ElasticAdaptor do
   defp get_basic_auth(_), do: nil
 
   @impl Logflare.Backends.Adaptor
-  def ingest(pid, log_events, opts) do
-    WebhookAdaptor.ingest(pid, log_events, opts)
-  end
-
-  @impl Logflare.Backends.Adaptor
   def execute_query(_ident, _query), do: {:error, :not_implemented}
 
   @impl Logflare.Backends.Adaptor

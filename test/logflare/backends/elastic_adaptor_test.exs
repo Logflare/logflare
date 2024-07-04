@@ -2,11 +2,19 @@ defmodule Logflare.Backends.Adaptor.ElasticAdaptorTest do
   use Logflare.DataCase, async: false
 
   alias Logflare.Backends.Adaptor
+  alias Logflare.SystemMetrics.AllLogsLogged
+  alias Logflare.Backends
+  alias Logflare.Backends.AdaptorSupervisor
 
   @subject Logflare.Backends.Adaptor.ElasticAdaptor
   @client Logflare.Backends.Adaptor.WebhookAdaptor.Client
 
   doctest @subject
+
+  setup do
+    start_supervised!(AllLogsLogged)
+    :ok
+  end
 
   describe "cast and validate" do
     test "API key is required" do
@@ -43,12 +51,12 @@ defmodule Logflare.Backends.Adaptor.ElasticAdaptorTest do
           config: %{url: "http://localhost:1234"}
         )
 
-      pid = start_supervised!({@subject, {source, backend}})
+      start_supervised!({AdaptorSupervisor, {source, backend}})
       :timer.sleep(500)
-      [pid: pid, backend: backend, source: source]
+      [backend: backend, source: source]
     end
 
-    test "sent logs are delivered", %{pid: pid, source: source, backend: backend} do
+    test "sent logs are delivered", %{source: source} do
       this = self()
       ref = make_ref()
 
@@ -60,11 +68,11 @@ defmodule Logflare.Backends.Adaptor.ElasticAdaptorTest do
 
       le = build(:log_event, source: source)
 
-      assert :ok == @subject.ingest(pid, [le], source_id: source.id, backend_id: backend.id)
+      assert {:ok, _} = Backends.ingest_logs([le], source)
       assert_receive ^ref, 2000
     end
 
-    test "sends events as-is", %{pid: pid, source: source, backend: backend} do
+    test "sends events as-is", %{source: source} do
       this = self()
       ref = make_ref()
 
@@ -76,7 +84,7 @@ defmodule Logflare.Backends.Adaptor.ElasticAdaptorTest do
 
       le = build(:log_event, source: source, some: "key")
 
-      assert :ok == @subject.ingest(pid, [le], source_id: source.id, backend_id: backend.id)
+      assert {:ok, _} = Backends.ingest_logs([le], source)
       assert_receive {^ref, [event]}, 2000
       assert event["some"] == "key"
     end
@@ -98,12 +106,12 @@ defmodule Logflare.Backends.Adaptor.ElasticAdaptorTest do
           }
         )
 
-      pid = start_supervised!({@subject, {source, backend}})
+      pid = start_supervised!({AdaptorSupervisor, {source, backend}})
       :timer.sleep(500)
       [pid: pid, backend: backend, source: source]
     end
 
-    test "adds authorization header", %{pid: pid, source: source, backend: backend} do
+    test "adds authorization header", %{source: source} do
       this = self()
       ref = make_ref()
 
@@ -116,7 +124,7 @@ defmodule Logflare.Backends.Adaptor.ElasticAdaptorTest do
 
       le = build(:log_event, source: source, some: "key")
 
-      assert :ok == @subject.ingest(pid, [le], source_id: source.id, backend_id: backend.id)
+      assert {:ok, _} = Backends.ingest_logs([le], source)
       assert_receive {^ref, [event]}, 2000
       assert event["some"] == "key"
     end

@@ -2,7 +2,6 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
   @moduledoc false
 
   alias Logflare.Backends
-  alias Logflare.Sources
   alias Logflare.Backends.Backend
   alias Logflare.Source.BigQuery.Pipeline
   alias Logflare.Source.BigQuery.Schema
@@ -32,52 +31,26 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
     # TODO: remove source_id metadata to reduce confusion
     Logger.metadata(source_id: source.token, source_token: source.token)
 
-    with :ok <- Backends.register_backend_for_ingest_dispatch(source, backend) do
-      children = [
-        {Pipeline,
-         [
-           source: source,
-           backend_id: backend.id,
-           backend_token: backend.token,
-           bigquery_project_id: project_id,
-           bigquery_dataset_id: dataset_id,
-           name: Backends.via_source(source, Pipeline, backend.id)
-         ]},
-        {Schema,
-         [
-           plan: plan,
-           source: source,
-           bigquery_project_id: project_id,
-           bigquery_dataset_id: dataset_id,
-           name: Backends.via_source(source, Schema, backend.id)
-         ]}
-      ]
+    children = [
+      {Pipeline,
+       [
+         source: source,
+         backend: backend,
+         bigquery_project_id: project_id,
+         bigquery_dataset_id: dataset_id,
+         name: Backends.via_source(source, Pipeline, backend.id)
+       ]},
+      {Schema,
+       [
+         plan: plan,
+         source: source,
+         bigquery_project_id: project_id,
+         bigquery_dataset_id: dataset_id,
+         name: Backends.via_source(source, Schema, backend.id)
+       ]}
+    ]
 
-      Supervisor.init(children, strategy: :one_for_one, max_restarts: 10)
-    end
-  end
-
-  @impl Logflare.Backends.Adaptor
-  def ingest(_pid, log_events, opts) do
-    source_id = Keyword.get(opts, :source_id)
-    backend_id = Keyword.get(opts, :backend_id)
-    source = Sources.Cache.get_by_id(source_id)
-
-    messages =
-      for le <- log_events,
-          do: %Broadway.Message{
-            data: le,
-            acknowledger: {__MODULE__, nil, nil}
-          }
-
-    Backends.via_source(source, {Pipeline, backend_id})
-    |> Broadway.push_messages(messages)
-
-    :ok
-  end
-
-  def ack(_via, _successful, _failed) do
-    :ok
+    Supervisor.init(children, strategy: :one_for_one, max_restarts: 10)
   end
 
   @impl Logflare.Backends.Adaptor

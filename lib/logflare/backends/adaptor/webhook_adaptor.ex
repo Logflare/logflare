@@ -34,16 +34,6 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
   end
 
   @impl Logflare.Backends.Adaptor
-  def ingest(_pid, log_events, opts \\ []) do
-    source_id = Keyword.get(opts, :source_id)
-    backend_id = Keyword.get(opts, :backend_id)
-    messages = Enum.map(log_events, &__MODULE__.Pipeline.transform(&1, []))
-
-    Backends.via_source(source_id, __MODULE__.Pipeline, backend_id)
-    |> Broadway.push_messages(messages)
-  end
-
-  @impl Logflare.Backends.Adaptor
   def cast_config(params) do
     {%{}, %{url: :string, headers: :map, http: :string}}
     |> Ecto.Changeset.cast(params, [:url, :headers, :http])
@@ -65,8 +55,6 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
   # GenServer
   @impl GenServer
   def init({source, backend}) do
-    :ok = Backends.register_backend_for_ingest_dispatch(source, backend)
-
     state = %__MODULE__{
       config: backend.config,
       source: source,
@@ -130,9 +118,8 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
           module:
             {BufferProducer,
              [
-               source: adaptor_state.source,
-               source_token: adaptor_state.source_token,
-               backend_token: adaptor_state.backend_token
+               backend: adaptor_state.backend,
+               source: adaptor_state.source
              ]},
           transformer: {__MODULE__, :transform, []},
           concurrency: 1

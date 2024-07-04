@@ -1,8 +1,7 @@
 defmodule Logflare.Backends.BigQueryAdaptorTest do
-  use Logflare.DataCase, async: false
+  use Logflare.DataCase
 
   alias Logflare.Backends
-  alias Logflare.Backends.Adaptor
   alias Logflare.Backends.SourceSup
   alias Logflare.SystemMetrics.AllLogsLogged
   @subject Logflare.Backends.Adaptor.BigQueryAdaptor
@@ -71,12 +70,12 @@ defmodule Logflare.Backends.BigQueryAdaptorTest do
           config: config
         )
 
-      adaptor = start_supervised!(Adaptor.child_spec(source, backend))
+      start_supervised!({SourceSup, source})
 
-      {:ok, source: source, backend: backend, adaptor: adaptor}
+      {:ok, source: source, backend: backend}
     end
 
-    test "plain ingest", %{adaptor: adaptor, source: source, backend: backend} do
+    test "plain ingest", %{source: source} do
       log_event = build(:log_event, source: source)
       pid = self()
 
@@ -86,13 +85,12 @@ defmodule Logflare.Backends.BigQueryAdaptorTest do
         {:ok, %GoogleApi.BigQuery.V2.Model.TableDataInsertAllResponse{insertErrors: nil}}
       end)
 
-      assert :ok =
-               @subject.ingest(adaptor, [log_event], source_id: source.id, backend_id: backend.id)
+      assert {:ok, _} = Backends.ingest_logs([log_event], source)
 
       assert_receive :streamed, 2500
     end
 
-    test "update table", %{adaptor: adaptor, source: source, backend: backend} do
+    test "update table", %{source: source} do
       log_event = build(:log_event, source: source, test: "data")
       pid = self()
 
@@ -114,14 +112,12 @@ defmodule Logflare.Backends.BigQueryAdaptorTest do
       Logflare.Mailer
       |> stub(:deliver, fn _ -> :ok end)
 
-      assert :ok =
-               @subject.ingest(adaptor, [log_event], source_id: source.id, backend_id: backend.id)
+      assert {:ok, _} = Backends.ingest_logs([log_event], source)
 
       assert_receive :patched, 2500
     end
 
     test "bug: invalid json encode update table", %{
-      adaptor: adaptor,
       source: source,
       backend: backend
     } do
@@ -130,7 +126,7 @@ defmodule Logflare.Backends.BigQueryAdaptorTest do
       ref = make_ref()
 
       Logflare.Google.BigQuery
-      |> expect(:stream_batch!, fn _, _ ->
+      |> stub(:stream_batch!, fn _, _ ->
         send(pid, ref)
         {:ok, %GoogleApi.BigQuery.V2.Model.TableDataInsertAllResponse{insertErrors: nil}}
       end)
@@ -147,13 +143,14 @@ defmodule Logflare.Backends.BigQueryAdaptorTest do
       Logflare.Mailer
       |> stub(:deliver, fn _ -> :ok end)
 
-      assert :ok =
-               @subject.ingest(adaptor, [log_event], source_id: source.id, backend_id: backend.id)
+      assert {:ok, _} = Backends.ingest_logs([log_event], source)
 
-      # should get acked
+      assert Backends.local_buffer_pending_len(source, nil) == 1
+      assert Backends.local_buffer_pending_len(source, backend) == 1
       :timer.sleep(2000)
-      assert Backends.buffer_len(source, backend) == 0
       assert_receive ^ref
+      assert Backends.local_buffer_pending_len(source, nil) == 0
+      assert Backends.local_buffer_pending_len(source, backend) == 0
     end
   end
 end

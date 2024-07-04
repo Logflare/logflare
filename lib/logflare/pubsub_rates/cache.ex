@@ -44,17 +44,15 @@ defmodule Logflare.PubSubRates.Cache do
   Merges a node map into the local cache.
   """
   @typep node_buffers :: %{atom() => non_neg_integer()}
-  @spec cache_buffers(atom(), String.t(), node_buffers()) :: {:ok, true}
-  def cache_buffers(source_token, backend_token, buffers) when is_atom(source_token) do
+  @spec cache_buffers(non_neg_integer(), non_neg_integer(), node_buffers()) :: {:ok, true}
+  def cache_buffers(source_id, backend_id, buffers) when is_integer(source_id) do
     resolved =
-      case get_buffers(source_token, backend_token) do
+      case get_buffers(source_id, backend_id) do
         {:ok, val} when val != nil -> Map.merge(val, buffers)
         _ -> buffers
       end
 
-    Cachex.put(__MODULE__, {source_token, backend_token, "buffers"}, resolved,
-      ttl: :timer.seconds(5)
-    )
+    Cachex.put(__MODULE__, {source_id, backend_id, "buffers"}, resolved, ttl: :timer.seconds(5))
   end
 
   @doc """
@@ -68,10 +66,10 @@ defmodule Logflare.PubSubRates.Cache do
   @doc """
   Returns the sum of all buffers across the cluster for a given source and backend combination.
   """
-  @spec get_cluster_buffers(atom(), String.t()) :: non_neg_integer()
-  @spec get_cluster_buffers(atom()) :: non_neg_integer()
-  def get_cluster_buffers(source_token, backend_token \\ nil) when is_atom(source_token) do
-    case get_buffers(source_token, backend_token) do
+  @spec get_cluster_buffers(non_neg_integer()) :: non_neg_integer()
+  @spec get_cluster_buffers(non_neg_integer(), non_neg_integer()) :: non_neg_integer()
+  def get_cluster_buffers(source_id, backend_id \\ nil) when is_integer(source_id) do
+    case get_buffers(source_id, backend_id) do
       {:ok, node_buffers} when node_buffers != nil -> merge_buffers(node_buffers)
       _ -> 0
     end

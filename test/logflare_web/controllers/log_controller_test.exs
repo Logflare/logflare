@@ -35,8 +35,10 @@ defmodule LogflareWeb.LogControllerTest do
     setup [:warm_caches, :reject_context_functions]
 
     test "valid ingestion", %{conn: conn, source: source, user: user} do
-      WebhookAdaptor
-      |> expect(:ingest, fn _, _, _ -> :ok end)
+      WebhookAdaptor.Client
+      |> expect(:send, fn _req ->
+        %Tesla.Env{status: 200, body: ""}
+      end)
 
       conn =
         conn
@@ -49,9 +51,13 @@ defmodule LogflareWeb.LogControllerTest do
 
     test ":cloud_event ingestion", %{conn: conn, source: source, user: user} do
       this = self()
+      ref = make_ref()
 
-      WebhookAdaptor
-      |> expect(:ingest, fn _, logs, _ -> send(this, {:logs, logs}) end)
+      WebhookAdaptor.Client
+      |> expect(:send, fn req ->
+        send(this, {ref, req[:body]})
+        %Tesla.Env{status: 200, body: ""}
+      end)
 
       conn =
         conn
@@ -60,10 +66,10 @@ defmodule LogflareWeb.LogControllerTest do
         |> post(Routes.log_path(conn, :cloud_event, source: source.token), @valid)
 
       assert json_response(conn, 200) == %{"message" => "Logged!"}
-      assert_receive {:logs, [log]}, 3000
+      assert_receive {^ref, [log]}, 3000
 
       assert %{"some" => _, "event_message" => _, "cloud_event" => %{"foo_foo" => "bar"}} =
-               log.body
+               log
     end
 
     test "invaild source token uuid checks", %{conn: conn, user: user} do
@@ -226,11 +232,13 @@ defmodule LogflareWeb.LogControllerTest do
 
     test ":cloud_event ingestion", %{conn: conn, source: source, user: user} do
       this = self()
+      ref = make_ref()
 
-      Logflare.Logs
-      |> expect(:broadcast, 1, fn le ->
-        send(this, {:le, le})
-        le
+      Logflare.Google.BigQuery
+      |> expect(:stream_batch!, fn _, batch ->
+        [%{json: json}] = batch
+        send(this, {ref, json})
+        {:ok, %GoogleApi.BigQuery.V2.Model.TableDataInsertAllResponse{insertErrors: nil}}
       end)
 
       conn =
@@ -240,14 +248,14 @@ defmodule LogflareWeb.LogControllerTest do
         |> post(Routes.log_path(conn, :cloud_event, source: source.token), @valid)
 
       assert json_response(conn, 200) == %{"message" => "Logged!"}
-      assert_receive {:le, log}, 3000
+      assert_receive {^ref, log}, 3000
 
       assert %{
                "some" => _,
                "event_message" => _,
                "id" => _,
-               "cloud_event" => %{"foo_foo" => "bar"}
-             } = log.body
+               "cloud_event" => [%{"foo_foo" => "bar"}]
+             } = log
     end
   end
 
