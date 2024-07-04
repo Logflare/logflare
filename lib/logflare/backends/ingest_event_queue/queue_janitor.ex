@@ -1,6 +1,12 @@
 defmodule Logflare.Backends.IngestEventQueue.QueueJanitor do
   @moduledoc """
   Performs cleanup actions for a private :ets queue
+
+  Periodically purges the queue of `:ingested` events.
+
+  If total events exceeds a max threshold, it will purge all events from the queue.
+  This is in the case of sudden bursts of events that do not get cleared fast enough.
+  It also acts as a failsafe for any potential runaway queue buildup from bugs.
   """
   use GenServer
   alias Logflare.Backends.IngestEventQueue

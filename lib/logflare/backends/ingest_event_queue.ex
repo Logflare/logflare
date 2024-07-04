@@ -1,5 +1,11 @@
 defmodule Logflare.Backends.IngestEventQueue do
-  @moduledoc false
+  @moduledoc """
+  GenServer will manage the ETS buffer mapping and own that table.
+
+  :ets-backed buffer uses an :ets mapping pattern to fan out multiple :ets tables.
+
+  :ets tables are created in the AdaptorSupervisor, and that supervisor will own the table.
+  """
   use GenServer
   alias Logflare.Source
   alias Logflare.Backends.Backend
@@ -13,6 +19,7 @@ defmodule Logflare.Backends.IngestEventQueue do
     GenServer.start_link(__MODULE__, [], name: __MODULE__, hibernate_after: 1_000)
   end
 
+  @impl GenServer
   def init(_args) do
     :ets.new(@ets_table_mapper, [
       :public,
@@ -29,6 +36,7 @@ defmodule Logflare.Backends.IngestEventQueue do
   @doc """
   Retrieves a private tid of a given source-backend combination.
   """
+  @get_tid
   def get_tid({%Source{id: sid}, nil}), do: get_tid({sid, nil})
   def get_tid({%Source{id: sid}, %Backend{id: bid}}), do: get_tid({sid, bid})
 

@@ -1,5 +1,9 @@
 defmodule Logflare.Backends.AdaptorSupervisor do
-  @moduledoc false
+  @moduledoc """
+  This module acts as a adaptor-level supervisor, where under a SourceSup there may be many Adaptors running from many different backends.
+
+  This essentailly is a supervision tree for a source-backend combination.
+  """
   use Supervisor
 
   alias Logflare.Backends

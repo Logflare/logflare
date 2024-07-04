@@ -2,13 +2,16 @@ defmodule Logflare.Backends.IngestEventQueue.DemandWorker do
   @moduledoc """
   Fetches :pending events from the :ets queue and marks them as :ingested. for a given source-backend combination.
 
-  Should be started under a SourceSup
+  DemandWorker is called by BufferProducer, so as to achieve "transaction"-like behaviour, where events to the queue happen in sequence instead of async.
+  This prevents race conditions from occuring, such two BufferProducers taking the same events from the queue.
   """
   use GenServer
+
   alias Logflare.Backends.IngestEventQueue
   alias Logflare.Source
   alias Logflare.Backends.Backend
   alias Logflare.Backends
+
   require Logger
 
   def start_link(opts) do
@@ -22,10 +25,14 @@ defmodule Logflare.Backends.IngestEventQueue.DemandWorker do
     )
   end
 
+  @impl GenServer
   def init(sid_bid) do
     {:ok, sid_bid}
   end
 
+  @doc """
+  Fetches events from a source-backend combination.
+  """
   def fetch({%Source{id: sid}, %Backend{id: bid}}, n), do: fetch({sid, bid}, n)
   def fetch({%Source{id: sid}, nil}, n), do: fetch({sid, nil}, n)
 
@@ -36,6 +43,7 @@ defmodule Logflare.Backends.IngestEventQueue.DemandWorker do
     |> GenServer.call({:fetch, n})
   end
 
+  @impl GenServer
   def handle_call({:fetch, n}, _caller, {source_id, backend_id} = sid_bid) do
     # get the events
 

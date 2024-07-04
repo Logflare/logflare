@@ -3,6 +3,7 @@ defmodule Logflare.Backends.Adaptor do
   An adaptor represents the module responsible for implementing the interface between the backend and the outside world.
 
   It should be the **only** point of entry for the backend.
+  The Adaptor should consume events from the IngestedEventQueue.
   """
 
   alias Logflare.LogEvent

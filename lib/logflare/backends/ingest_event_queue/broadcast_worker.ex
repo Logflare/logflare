@@ -1,6 +1,9 @@
 defmodule Logflare.Backends.IngestEventQueue.BroadcastWorker do
   @moduledoc """
-  A worker that broadcasts all soruce-backend buffer statistics periodically for the entire node.
+  A worker that broadcasts all source-backend buffer statistics periodically for the entire node.
+
+  Broadcasts cluster buffer length of a given queue (an integer) locally.
+  Broadcasts local buffer length of a given queue globally
   """
   use GenServer
   alias Logflare.Source

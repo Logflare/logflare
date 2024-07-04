@@ -1,15 +1,11 @@
 defmodule Logflare.Backends.BufferProducer do
   @moduledoc """
-  A GenStage producer that pulls from the given source-backend's IngestEventQueue ets table.
-
-  Each source-backend combination has its own ets table.
-
-  Length determination of the buffer is determined by using `:ets.info/2`, which is O(1)
+  A GenStage producer that pulls events from the IngestEventQueue through the DemandWorker.
+  In event that there are no events for the producer, it will periodically pull events from the queue.
   """
   use GenStage
   alias Logflare.Sources
   alias Logflare.Backends.IngestEventQueue.DemandWorker
-  alias Logflare.Backends
   require Logger
   @default_interval 500
 
@@ -17,6 +13,7 @@ defmodule Logflare.Backends.BufferProducer do
     GenStage.start_link(__MODULE__, opts)
   end
 
+  @impl GenStage
   def init(opts) do
     state = %{
       demand: 0,
@@ -34,6 +31,7 @@ defmodule Logflare.Backends.BufferProducer do
     {:producer, state, buffer_size: Keyword.get(opts, :buffer_size, 10_000)}
   end
 
+  @impl GenStage
   def format_discarded(discarded, state) do
     source = Sources.Cache.get_by_id(state.source_token)
 
@@ -61,20 +59,24 @@ defmodule Logflare.Backends.BufferProducer do
     false
   end
 
+  @impl GenStage
   def handle_info(:scheduled_resolve, state) do
     {items, state} = resolve_demand(state)
     schedule(state.interval)
     {:noreply, items, state}
   end
 
+  @impl GenStage
   def handle_info({:update_state, new_state}, _state) do
     {:noreply, [], new_state}
   end
 
+  @impl GenStage
   def handle_info({:add_to_buffer, items}, state) do
     {:noreply, items, state}
   end
 
+  @impl GenStage
   def handle_demand(demand, state) do
     {items, state} = resolve_demand(state, demand)
     {:noreply, items, state}
@@ -90,9 +92,7 @@ defmodule Logflare.Backends.BufferProducer do
        ) do
     total_demand = prev_demand + new_demand
 
-    {:ok, events} =
-      Backends.via_source(state.source_id, DemandWorker, state.backend_id)
-      |> GenServer.call({:fetch, total_demand})
+    {:ok, events} = DemandWorker.fetch({state.source_id, state.backend_id}, total_demand)
 
     {events, %{state | demand: total_demand - Enum.count(events)}}
   end
