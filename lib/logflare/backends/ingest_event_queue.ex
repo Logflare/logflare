@@ -220,10 +220,7 @@ defmodule Logflare.Backends.IngestEventQueue do
       end
 
     with tid when tid != nil <- get_tid(sid_bid) do
-      :ets.safe_fixtable(tid, true)
-      res = truncate_traverse(tid, :ets.select(tid, ms, 1000), 0, n)
-      :ets.safe_fixtable(tid, false)
-      res
+      truncate_traverse(tid, :ets.select(tid, ms, 100), 0, n)
     else
       nil -> {:error, :not_initialized}
       :"$end_of_table" -> {:ok, []}

@@ -156,7 +156,7 @@ defmodule Logflare.Backends.IngestEventQueueTest do
     )
 
     :timer.sleep(500)
-    assert IngestEventQueue.get_table_size({source, backend}) == 1
+    assert IngestEventQueue.get_table_size({source, backend}) == 0
     assert IngestEventQueue.count_pending({source, backend}) == 0
   end
 
