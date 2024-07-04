@@ -18,6 +18,7 @@ defmodule Logflare.Backends.AdaptorSupervisor do
     )
   end
 
+  @impl Supervisor
   def init({source, backend}) do
     adaptor_module = Adaptor.get_adaptor(backend)
 

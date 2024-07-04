@@ -9,10 +9,12 @@ defmodule Logflare.Backends.IngestEventQueue do
   use GenServer
   alias Logflare.Source
   alias Logflare.Backends.Backend
+  alias Logflare.LogEvent
   require Ex2ms
 
   @ets_table_mapper :ingest_event_queue_mapping
   @ets_table :source_ingest_events
+  @typep source_backend :: {Source.t()| non_neg_integer(), Backend.t() | nil | non_neg_integer()}
 
   ## Server
   def start_link(_args) do
@@ -36,7 +38,7 @@ defmodule Logflare.Backends.IngestEventQueue do
   @doc """
   Retrieves a private tid of a given source-backend combination.
   """
-  @get_tid
+  @spec get_tid(source_backend()) :: reference() | nil
   def get_tid({%Source{id: sid}, nil}), do: get_tid({sid, nil})
   def get_tid({%Source{id: sid}, %Backend{id: bid}}), do: get_tid({sid, bid})
 
@@ -55,6 +57,7 @@ defmodule Logflare.Backends.IngestEventQueue do
   @doc """
   Creates or updates a private :ets table. The :ets table mapper is stored in #{@ets_table_mapper} .
   """
+  @spec upsert_tid(source_backend()) :: {:ok, reference()} | {:error, :already_exists, reference()}
   def upsert_tid({%Source{id: sid}, nil}), do: upsert_tid({sid, nil})
   def upsert_tid({%Source{id: sid}, %Backend{id: bid}}), do: upsert_tid({sid, bid})
 
@@ -82,6 +85,7 @@ defmodule Logflare.Backends.IngestEventQueue do
   @doc """
   Retrieves the table size of a given tid
   """
+  @spec get_table_size(source_backend()) :: integer() | nil
   def get_table_size({%Source{id: sid}, nil}), do: get_table_size({sid, nil})
   def get_table_size({%Source{id: sid}, %Backend{id: bid}}), do: get_table_size({sid, bid})
 
@@ -97,6 +101,7 @@ defmodule Logflare.Backends.IngestEventQueue do
   @doc """
   Retrieves the :ets.info/1 of a table
   """
+  @spec get_table_info(source_backend()) :: list()
   def get_table_info({_source, _backend} = sb) do
     get_tid(sb)
     |> case do
@@ -110,6 +115,7 @@ defmodule Logflare.Backends.IngestEventQueue do
 
   The record will be marked as :pending.
   """
+  @spec add_to_table(source_backend(), [LogEvent.t()]) :: :ok | {:error, :not_initialized}
   def add_to_table({%Source{id: sid}, nil}, batch), do: add_to_table({sid, nil}, batch)
 
   def add_to_table({%Source{id: sid}, %Backend{id: bid}}, batch),
@@ -135,6 +141,7 @@ defmodule Logflare.Backends.IngestEventQueue do
   @doc """
   Marks records as ingested
   """
+  @spec mark_ingested(source_backend(), [LogEvent.t()]) :: :ok | {:error, :not_initialized}
   def mark_ingested({%Source{id: sid}, nil}, events), do: mark_ingested({sid, nil}, events)
 
   def mark_ingested({%Source{id: sid}, %Backend{id: bid}}, events),
@@ -158,6 +165,7 @@ defmodule Logflare.Backends.IngestEventQueue do
   @doc """
   Counts pending items from a given table
   """
+  @spec count_pending(source_backend()) :: integer() | {:error, :not_initialized}
   def count_pending({%Source{} = source, nil}), do: count_pending({source.id, nil})
   def count_pending({%Source{id: sid}, %Backend{id: bid}}), do: count_pending({sid, bid})
 
@@ -179,6 +187,7 @@ defmodule Logflare.Backends.IngestEventQueue do
   @doc """
   Takes pending items from a given table
   """
+  @spec take_pending(source_backend(), integer()) :: {:ok, [LogEvent.t()]} | {:error, :not_initialized}
   def take_pending({%Source{} = source, nil}, n), do: take_pending({source.id, nil}, n)
   def take_pending({%Source{id: sid}, %Backend{id: bid}}, n), do: take_pending({sid, bid}, n)
 
@@ -203,6 +212,7 @@ defmodule Logflare.Backends.IngestEventQueue do
   @doc """
   Truncates a given table
   """
+  @spec truncate(source_backend(), :all | :pending | :ingested, integer()) :: :ok
   def truncate({%Source{} = source, nil}, filter, n), do: truncate({source.id, nil}, filter, n)
 
   def truncate({%Source{id: sid}, %Backend{id: bid}}, filter, n),
@@ -267,10 +277,19 @@ defmodule Logflare.Backends.IngestEventQueue do
     truncate_traverse(tid, :ets.select(cont), acc, limit)
   end
 
+  @doc """
+  Deletes all mappings int he IngestEventQueue mapping table.
+  """
+  @spec delete_all_mappings() :: :ok
   def delete_all_mappings do
     :ets.delete_all_objects(@ets_table_mapper)
+    :ok
   end
 
+  @doc """
+  Deletes all stale mappings in the IngestEventQueue table mapping
+  """
+  @spec delete_stale_mappings() :: :ok
   def delete_stale_mappings do
     ms =
       Ex2ms.fun do
