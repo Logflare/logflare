@@ -14,7 +14,7 @@ defmodule Logflare.Backends.IngestEventQueue do
 
   @ets_table_mapper :ingest_event_queue_mapping
   @ets_table :source_ingest_events
-  @typep source_backend :: {Source.t()| non_neg_integer(), Backend.t() | nil | non_neg_integer()}
+  @typep source_backend :: {Source.t() | non_neg_integer(), Backend.t() | nil | non_neg_integer()}
 
   ## Server
   def start_link(_args) do
@@ -57,7 +57,8 @@ defmodule Logflare.Backends.IngestEventQueue do
   @doc """
   Creates or updates a private :ets table. The :ets table mapper is stored in #{@ets_table_mapper} .
   """
-  @spec upsert_tid(source_backend()) :: {:ok, reference()} | {:error, :already_exists, reference()}
+  @spec upsert_tid(source_backend()) ::
+          {:ok, reference()} | {:error, :already_exists, reference()}
   def upsert_tid({%Source{id: sid}, nil}), do: upsert_tid({sid, nil})
   def upsert_tid({%Source{id: sid}, %Backend{id: bid}}), do: upsert_tid({sid, bid})
 
@@ -173,7 +174,6 @@ defmodule Logflare.Backends.IngestEventQueue do
     ms =
       Ex2ms.fun do
         {_event_id, :pending, _event} -> true
-        {_event_id, :pending, _event} -> true
       end
 
     with tid when tid != nil <- get_tid(sid_bid),
@@ -187,7 +187,8 @@ defmodule Logflare.Backends.IngestEventQueue do
   @doc """
   Takes pending items from a given table
   """
-  @spec take_pending(source_backend(), integer()) :: {:ok, [LogEvent.t()]} | {:error, :not_initialized}
+  @spec take_pending(source_backend(), integer()) ::
+          {:ok, [LogEvent.t()]} | {:error, :not_initialized}
   def take_pending({%Source{} = source, nil}, n), do: take_pending({source.id, nil}, n)
   def take_pending({%Source{id: sid}, %Backend{id: bid}}, n), do: take_pending({sid, bid}, n)
 
@@ -291,12 +292,7 @@ defmodule Logflare.Backends.IngestEventQueue do
   """
   @spec delete_stale_mappings() :: :ok
   def delete_stale_mappings do
-    ms =
-      Ex2ms.fun do
-        obj -> obj
-      end
-
-    :ets.select(@ets_table_mapper, ms, 100)
+    :ets.match(@ets_table_mapper, :"$1", 100)
     |> next_and_cleanup()
   end
 

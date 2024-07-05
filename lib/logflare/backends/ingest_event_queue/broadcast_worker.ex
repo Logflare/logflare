@@ -25,31 +25,17 @@ defmodule Logflare.Backends.IngestEventQueue.BroadcastWorker do
   end
 
   def handle_info(:broadcast, state) do
-    traverse_and_broadcast()
+    :ets.foldl(
+      fn {sid_bid, _tid}, _ ->
+        do_broadcast(sid_bid)
+        nil
+      end,
+      nil,
+      @ets_table_mapper
+    )
+
     Process.send_after(self(), :broadcast, state.interval)
     {:noreply, state}
-  end
-
-  defp traverse_and_broadcast do
-    case :ets.first(@ets_table_mapper) do
-      :"$end_of_table" ->
-        :ok
-
-      sid_bid ->
-        do_broadcast(sid_bid)
-        next_and_broadcast(sid_bid)
-    end
-  end
-
-  defp next_and_broadcast(prev_key) do
-    case :ets.next(@ets_table_mapper, prev_key) do
-      :"$end_of_table" ->
-        :ok
-
-      sid_bid ->
-        do_broadcast(sid_bid)
-        next_and_broadcast(sid_bid)
-    end
   end
 
   defp do_broadcast(sid_bid) do
