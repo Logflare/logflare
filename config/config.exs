@@ -131,6 +131,7 @@ config :grpc, start_server: true
 config :logflare, Logflare.AlertsScheduler, init_task: {Logflare.Alerting, :init_alert_jobs, []}
 
 config :opentelemetry,
+  sdk_disabled: true,
   span_processor: :batch,
   traces_exporter: :none
 
