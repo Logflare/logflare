@@ -10,7 +10,6 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
   alias Logflare.Users
   alias Logflare.Sources
   alias Logflare.Billing
-  alias Logflare.Backends.IngestEventQueue
   use Supervisor
   require Logger
 
