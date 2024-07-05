@@ -90,13 +90,7 @@ defmodule Logflare.Source.RecentLogsServer do
 
   ## Server
   def start_link(args) do
-    GenServer.start_link(__MODULE__, args,
-      name: Backends.via_source(args[:source], __MODULE__),
-      spawn_opt: [
-        fullsweep_after: 20
-      ],
-      hibernate_after: 5_000
-    )
+    GenServer.start_link(__MODULE__, args, name: Backends.via_source(args[:source], __MODULE__))
   end
 
   ## Client
