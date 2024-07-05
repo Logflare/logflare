@@ -21,7 +21,7 @@ defmodule Logflare.Backends do
 
   defdelegate child_spec(arg), to: __MODULE__.Supervisor
 
-  @max_pending_buffer_len 7_500
+  @max_pending_buffer_len 15_000
 
   @doc """
   Retrieves the hardcoded max pending buffer length.
