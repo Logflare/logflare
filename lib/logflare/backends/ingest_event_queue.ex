@@ -3,8 +3,6 @@ defmodule Logflare.Backends.IngestEventQueue do
   GenServer will manage the ETS buffer mapping and own that table.
 
   :ets-backed buffer uses an :ets mapping pattern to fan out multiple :ets tables.
-
-  :ets tables are created in the AdaptorSupervisor, and that supervisor will own the table.
   """
   use GenServer
   alias Logflare.Source

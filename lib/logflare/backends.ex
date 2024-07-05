@@ -21,9 +21,13 @@ defmodule Logflare.Backends do
 
   defdelegate child_spec(arg), to: __MODULE__.Supervisor
 
-  @max_buffer_len 7_500
+  @max_pending_buffer_len 7_500
 
-  def max_buffer_len(), do: @max_buffer_len
+  @doc """
+  Retrieves the hardcoded max pending buffer length.
+  """
+  @spec max_buffer_len() :: non_neg_integer()
+  def max_buffer_len(), do: @max_pending_buffer_len
 
   @doc """
   Lists `Backend`s for a given source.
@@ -315,8 +319,9 @@ defmodule Logflare.Backends do
   iex> Backends.via_source(source, :buffer)
   """
   @spec via_source(Source.t(), term()) :: tuple()
-  @spec via_source(Source.t(), term(), term()) :: tuple()
-  def via_source(%Source{} = source, mod, id), do: via_source(source, {mod, id})
+  @spec via_source(Source.t() | non_neg_integer(), module(), non_neg_integer()) :: tuple()
+  def via_source(%Source{id: sid}, mod, %Backend{id: bid}), do: via_source(sid, mod, bid)
+  def via_source(%Source{id: sid}, mod, id), do: via_source(sid, {mod, id})
   def via_source(source_id, mod, id), do: via_source(source_id, {mod, id})
 
   def via_source(%Source{id: id}, process_id), do: via_source(id, process_id)
@@ -410,14 +415,14 @@ defmodule Logflare.Backends do
   @doc """
   Checks if a local buffer is full.
   """
-  def local_buffer_full?(%Source{} = source) do
-    local_buffer_len(source) > @max_buffer_len
+  def local_pending_buffer_full?(%Source{} = source) do
+    local_pending_buffer_len(source) > @max_pending_buffer_len
   end
 
   @doc """
-  Get local buffer len of a source/backend combination
+  Get local pending buffer len of a source/backend combination
   """
-  def local_buffer_len(source, backend \\ nil) do
+  def local_pending_buffer_len(source, backend \\ nil) do
     case IngestEventQueue.count_pending({source, backend}) do
       len when is_integer(len) -> len
       _ -> 0
@@ -425,21 +430,10 @@ defmodule Logflare.Backends do
   end
 
   @doc """
-  Get local buffer len of a source/backend combination
+  Retrieves cluster-wide pending buffer size stored in cache for a given backend/source combination.
   """
-  def local_buffer_pending_len(source, backend \\ nil) do
-    IngestEventQueue.count_pending({source, backend})
-  end
-
-  @doc """
-  Retrieves cluster-wide buffer size stored in cache for a given backend/source combination.
-  """
-  def buffer_len(%Source{} = source, backend \\ nil) do
-    if backend do
-      PubSubRates.Cache.get_cluster_buffers(source.id, backend.id)
-    else
-      PubSubRates.Cache.get_cluster_buffers(source.id)
-    end
+  def cached_pending_buffer_len(%Source{} = source, backend \\ nil) do
+    PubSubRates.Cache.get_cluster_buffers(source.id, Map.get(backend || %{}, :id))
   end
 
   @doc """

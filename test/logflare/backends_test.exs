@@ -186,14 +186,14 @@ defmodule Logflare.BackendsTest do
     end
 
     test "can get length of queue", %{source: source} do
-      assert Backends.local_buffer_len(source, nil) == 0
-      assert Backends.local_buffer_len(source) == 0
+      assert Backends.local_pending_buffer_len(source, nil) == 0
+      assert Backends.local_pending_buffer_len(source) == 0
       events = for _n <- 1..5, do: build(:log_event, source: source, some: "event")
       assert {:ok, 5} = Backends.ingest_logs(events, source)
-      assert Backends.local_buffer_len(source) > 0
+      assert Backends.local_pending_buffer_len(source) > 0
       # Producer will pop from the queue
       :timer.sleep(1_500)
-      assert Backends.local_buffer_len(source) == 0
+      assert Backends.local_pending_buffer_len(source) == 0
     end
   end
 

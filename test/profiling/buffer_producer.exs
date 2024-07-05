@@ -17,6 +17,7 @@ batch =
   end
 
 Logflare.Backends.IngestEventQueue.upsert_tid({source, nil})
+
 for _ <- 1..1000 do
   # send(pid, {:add_to_buffer, batch})
   :ok = Logflare.Backends.IngestEventQueue.add_to_table({source, nil}, batch)

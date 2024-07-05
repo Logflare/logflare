@@ -11,10 +11,8 @@ defmodule Logflare.Backends.AdaptorSupervisor do
   alias Logflare.Backends.IngestEventQueue
 
   def start_link({source, backend} = opts) do
-    backend_id = if backend, do: backend.id
-
     Supervisor.start_link(__MODULE__, opts,
-      name: Backends.via_source(source.id, __MODULE__, backend_id)
+      name: Backends.via_source(source, __MODULE__, backend)
     )
   end
 

@@ -21,7 +21,6 @@ defmodule Logflare.Backends.BufferProducer do
       source_id: opts[:source].id,
       source_token: opts[:source].token,
       backend_id: Map.get(opts[:backend] || %{}, :id),
-      backend_token: Map.get(opts[:backend] || %{}, :token),
       # discard logging backoff
       last_discard_log_dt: nil,
       interval: Keyword.get(opts, :interval, @default_interval)
@@ -49,7 +48,7 @@ defmodule Logflare.Backends.BufferProducer do
         "GenStage producer for #{source.name} (#{source.token}) has discarded #{discarded} events from buffer",
         source_token: source.token,
         source_id: source.token,
-        backend_token: state.backend_token
+        backend_id: state.backend_id
       )
 
       send(self(), {:update_state, %{state | last_discard_log_dt: DateTime.utc_now()}})
