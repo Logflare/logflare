@@ -258,7 +258,7 @@ defmodule Logflare.Application do
        name: Logflare.FinchQuery, pools: %{default: [protocol: :http2, count: max(base * 2, 10)]}},
       {Finch, name: Logflare.FinchGoth, pools: %{default: [protocol: :http2, count: 1]}},
       {Finch,
-       name: Logflare.FinchDefault, pools: %{default: [protocol: :http1, count: max(base, 5)]}},
+       name: Logflare.FinchDefault, pools: %{default: [protocol: :http2, count: max(base, 5)]}},
       {Finch,
        name: Logflare.FinchDefaultHttp1,
        pools: %{default: [protocol: :http1, count: max(base, 5) * 3]}}
