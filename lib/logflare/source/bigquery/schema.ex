@@ -26,7 +26,7 @@ defmodule Logflare.Source.BigQuery.Schema do
     GenServer.start_link(__MODULE__, args,
       name: name,
       spawn_opt: [
-        fullsweep_after: 500
+        fullsweep_after: 1_000
       ],
       hibernate_after: 5_000
     )
