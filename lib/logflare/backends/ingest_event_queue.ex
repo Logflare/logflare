@@ -290,7 +290,7 @@ defmodule Logflare.Backends.IngestEventQueue do
   """
   @spec delete_stale_mappings() :: :ok
   def delete_stale_mappings do
-    :ets.match(@ets_table_mapper, :"$1", 100)
+    :ets.match_object(@ets_table_mapper, :"$1", 100)
     |> next_and_cleanup()
   end
 
