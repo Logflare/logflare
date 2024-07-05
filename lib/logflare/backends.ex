@@ -1,7 +1,6 @@
 defmodule Logflare.Backends do
   @moduledoc false
 
-  alias __MODULE__
   alias Logflare.Backends.Adaptor
   alias Logflare.Backends.Backend
   alias Logflare.Backends.SourceRegistry
@@ -20,12 +19,9 @@ defmodule Logflare.Backends do
   alias Logflare.PubSubRates
   import Ecto.Query
 
-  @max_buffer_len 15_000
-  def max_buffer_len, do: @max_buffer_len
-
   defdelegate child_spec(arg), to: __MODULE__.Supervisor
 
-  @max_pending_buffer_len 15_000
+  @max_pending_buffer_len 50_000
 
   @doc """
   Retrieves the hardcoded max pending buffer length.
@@ -487,54 +483,5 @@ defmodule Logflare.Backends do
       %{unknown_error: true},
       %{source_id: le.source.id, source_token: le.source.token}
     )
-  end
-
-  @doc """
-  Broadcasts buffer lenths globally for a given source-backend.
-  """
-  @spec broadcast_buffer_lens(integer(), integer() | nil, %{tuple() => non_neg_integer()}) :: :ok
-  def broadcast_buffer_lens(source_id, backend_id, buffer_lens) do
-    source = Sources.Cache.get_by_id(source_id)
-
-    if source do
-      backend =
-        if backend_id do
-          Backends.Cache.get_backend(backend_id)
-        end
-
-      len =
-        Map.values(buffer_lens)
-        |> Enum.filter(& &1)
-        |> Enum.sum()
-
-      local_buffer = %{Node.self() => %{len: len}}
-      cluster_buffer = PubSubRates.Cache.get_cluster_buffers(source.token)
-
-      # maybe broadcast
-      payload = %{
-        buffer: cluster_buffer,
-        source_token: source.token,
-        backend_token: if(backend, do: backend.token, else: nil)
-      }
-
-      # cluster broadcast
-      cluster_broadcast_payload =
-        if backend do
-          {:buffers, source.token, backend.token, local_buffer}
-        else
-          {:buffers, source.token, local_buffer}
-        end
-
-      Phoenix.PubSub.broadcast(
-        Logflare.PubSub,
-        "buffers",
-        cluster_broadcast_payload
-      )
-
-      # channel broadcast
-      Source.ChannelTopics.broadcast_buffer(payload)
-    end
-
-    :ok
   end
 end

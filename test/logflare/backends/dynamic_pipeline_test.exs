@@ -5,17 +5,22 @@ defmodule Logflare.DynamicPipelineTest do
   alias Logflare.Backends
   alias Logflare.Source.BigQuery.Pipeline
   alias Logflare.PipelinesTest.StubPipeline
+  alias Logflare.Backends.IngestEventQueue
+  alias Logflare.Backends.IngestEventQueue
 
   setup do
     user = insert(:user)
     source = insert(:source, user: user)
 
+    backend = insert(:backend, type: :bigquery)
+    IngestEventQueue.upsert_tid({source, backend})
+    start_supervised!({IngestEventQueue.DemandWorker, source: source, backend: backend})
+
     [
-      name: Backends.via_source(source.id, :some_mod, nil),
+      name: Backends.via_source(source, :some_mod, backend),
       pipeline_args: [
         source: source,
-        backend_id: nil,
-        backend_token: nil
+        backend: backend
       ]
     ]
   end
@@ -34,7 +39,7 @@ defmodule Logflare.DynamicPipelineTest do
     assert {:error, :max_pipelines} = DynamicPipeline.add_pipeline(name)
   end
 
-  test "remove_pipeline/1 can scake down pipelines", %{name: name, pipeline_args: pipeline_args} do
+  test "remove_pipeline/1 can scale down pipelines", %{name: name, pipeline_args: pipeline_args} do
     start_supervised!(
       {DynamicPipeline,
        name: name, pipeline: Pipeline, pipeline_args: pipeline_args, min_pipelines: 1}
@@ -49,15 +54,37 @@ defmodule Logflare.DynamicPipelineTest do
     assert DynamicPipeline.whereis(removed_id) == nil
   end
 
-  test "buffer_len/1", %{name: name, pipeline_args: pipeline_args} do
+  test ":resolve_count and :resolve_interval option will determine number of pipelines to start periodically",
+       %{name: name, pipeline_args: pipeline_args} do
+    pid =
+      spawn(fn ->
+        :timer.sleep(300)
+      end)
+
     start_supervised!(
-      {DynamicPipeline, name: name, pipeline: Pipeline, pipeline_args: pipeline_args}
+      {DynamicPipeline,
+       name: name,
+       pipeline: Pipeline,
+       pipeline_args: pipeline_args,
+       resolve_count: fn ->
+         if Process.alive?(pid) do
+           5
+         else
+           10
+         end
+       end,
+       resolve_interval: 100}
     )
 
-    assert DynamicPipeline.buffer_len(name) == 0
+    assert DynamicPipeline.pipeline_count(name) == 5
+    :timer.sleep(600)
+    assert DynamicPipeline.pipeline_count(name) == 10
   end
 
-  test "push_messages/2 with bigquery pipeline", %{name: name, pipeline_args: pipeline_args} do
+  test "pulls events from queue with  bigquery pipeline", %{
+    name: name,
+    pipeline_args: pipeline_args
+  } do
     pid = self()
     ref = make_ref()
 
@@ -67,158 +94,26 @@ defmodule Logflare.DynamicPipelineTest do
       {:ok, %GoogleApi.BigQuery.V2.Model.TableDataInsertAllResponse{insertErrors: nil}}
     end)
 
+    source = pipeline_args[:source]
+    backend = pipeline_args[:backend]
+
+    le = build(:log_event, source: source)
+    IngestEventQueue.add_to_table({source, backend}, [le])
+
     start_supervised!(
-      {DynamicPipeline, name: name, pipeline: Pipeline, pipeline_args: pipeline_args}
+      {DynamicPipeline,
+       name: name, pipeline: Pipeline, pipeline_args: pipeline_args, min_pipelines: 1}
     )
 
-    message = %Broadway.Message{
-      data: build(:log_event),
-      acknowledger: {DynamicPipeline, nil, nil}
-    }
-
-    assert :ok = DynamicPipeline.push_messages(name, [message])
     assert_receive ^ref, 2_000
   end
 
-  test "push_messages/2 will scale up to max_shards and then push back if completely full", %{
-    name: name,
-    pipeline_args: pipeline_args
-  } do
-    start_supervised!(
-      {DynamicPipeline,
-       name: name,
-       pipeline: StubPipeline,
-       pipeline_args: pipeline_args,
-       max_buffer_len: 10,
-       max_pipelines: 2,
-       min_pipelines: 1,
-       monitor_interval: 100}
-    )
-
-    message = %Broadway.Message{
-      data: build(:log_event),
-      acknowledger: {DynamicPipeline, nil, nil}
-    }
-
-    DynamicPipeline.push_messages(name, List.duplicate(message, 500))
-    DynamicPipeline.push_messages(name, List.duplicate(message, 500))
-    DynamicPipeline.push_messages(name, List.duplicate(message, 500))
-    # insert all into pipeline
-    # allows for overshoot of the max_buffer_len if the configured producer's buffer is larger
-    assert DynamicPipeline.buffer_len(name) >= 100
-    assert DynamicPipeline.list_pipelines(name) |> length() == 2
-  end
-
-  test "healthy?/1 on startup", %{name: name, pipeline_args: pipeline_args} do
-    refute DynamicPipeline.healthy?(name)
-
-    start_link_supervised!(
-      {DynamicPipeline, name: name, pipeline: StubPipeline, pipeline_args: pipeline_args}
-    )
-
-    :timer.sleep(200)
-    assert DynamicPipeline.healthy?(name)
-  end
-
   test "whereis/1", %{name: name, pipeline_args: pipeline_args} do
-    refute DynamicPipeline.healthy?(name)
-
     pid =
       start_link_supervised!(
         {DynamicPipeline, name: name, pipeline: StubPipeline, pipeline_args: pipeline_args}
       )
 
     assert DynamicPipeline.whereis(name) == pid
-  end
-
-  test "auto-terminate pipelines after idle_shutdown_after", %{
-    name: name,
-    pipeline_args: pipeline_args
-  } do
-    start_supervised!(
-      {DynamicPipeline,
-       name: name,
-       pipeline: StubPipeline,
-       pipeline_args: pipeline_args,
-       idle_shutdown_after: 150,
-       min_pipelines: 1}
-    )
-
-    assert {:ok, 2, _} = DynamicPipeline.add_pipeline(name)
-    :timer.sleep(400)
-    assert DynamicPipeline.pipeline_count(name) == 1
-  end
-
-  test "do not auto-terminate pipeline if touched", %{
-    name: name,
-    pipeline_args: pipeline_args
-  } do
-    start_supervised!(
-      {DynamicPipeline,
-       name: name,
-       pipeline: StubPipeline,
-       pipeline_args: pipeline_args,
-       idle_shutdown_after: 400,
-       min_pipelines: 1}
-    )
-
-    assert {:ok, 2, _} = DynamicPipeline.add_pipeline(name)
-
-    for _i <- 0..3 do
-      :timer.sleep(300)
-
-      for pipeline_name <- DynamicPipeline.list_pipelines(name) do
-        DynamicPipeline.touch_pipeline(pipeline_name)
-      end
-    end
-
-    assert DynamicPipeline.pipeline_count(name) == 2
-  end
-
-  test "auto-terminate min pipelines after min_idle_shutdown_after", %{
-    name: name,
-    pipeline_args: pipeline_args
-  } do
-    start_supervised!(
-      {DynamicPipeline,
-       name: name,
-       pipeline: StubPipeline,
-       pipeline_args: pipeline_args,
-       idle_shutdown_after: 150,
-       min_idle_shutdown_after: 300,
-       min_pipelines: 1}
-    )
-
-    assert DynamicPipeline.pipeline_count(name) == 1
-    :timer.sleep(1_000)
-    assert DynamicPipeline.pipeline_count(name) == 0
-  end
-
-  test "does not auto-terminate min pipelines if touched", %{
-    name: name,
-    pipeline_args: pipeline_args
-  } do
-    start_supervised!(
-      {DynamicPipeline,
-       name: name,
-       pipeline: StubPipeline,
-       pipeline_args: pipeline_args,
-       idle_shutdown_after: 150,
-       min_idle_shutdown_after: 500,
-       min_pipelines: 1}
-    )
-
-    assert DynamicPipeline.pipeline_count(name) == 1
-
-    for _i <- 0..3 do
-      :timer.sleep(300)
-
-      for pipeline_name <- DynamicPipeline.list_pipelines(name) do
-        DynamicPipeline.touch_pipeline(pipeline_name)
-      end
-    end
-
-    :timer.sleep(200)
-    assert DynamicPipeline.pipeline_count(name) == 1
   end
 end

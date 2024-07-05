@@ -2,14 +2,15 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
   @moduledoc false
 
   alias Logflare.Backends
-  alias Logflare.Bazckends.DynamicPipeline
-  alias Logflare.Sources
+  alias Logflare.Backends.DynamicPipeline
   alias Logflare.Backends.Backend
   alias Logflare.Source.BigQuery.Pipeline
   alias Logflare.Source.BigQuery.Schema
   alias Logflare.Source.BigQuery.Pipeline
   alias Logflare.Users
+  alias Logflare.Sources
   alias Logflare.Billing
+  alias Logflare.Backends.IngestEventQueue
   use Supervisor
   require Logger
 
@@ -35,20 +36,29 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
     Logger.metadata(source_id: source.token, source_token: source.token)
 
     children = [
-      {DynamicPipeline,
-         name: Backends.via_source(source, Pipeline, backend.id),
-         pipeline: Pipeline,
+      {
+        DynamicPipeline,
         # soft limit before a new pipeline is created
-         max_buffer_len: 6_000,
-         pipeline_args: [
+        name: Backends.via_source(source, Pipeline, backend.id),
+        pipeline: Pipeline,
+        pipeline_args: [
           source: source,
           backend: backend,
           bigquery_project_id: project_id,
-          bigquery_dataset_id: dataset_id,
-         ],
-         monitor_callback: &Backends.broadcast_buffer_lens(source.id, backend.id, &1),
-         min_pipelines: 1},
+          bigquery_dataset_id: dataset_id
+        ],
+        min_pipelines: 1,
+        resolve_count: fn ->
+          source = Sources.refresh_source_metrics_for_ingest(source)
+          len = Backends.local_pending_buffer_len(source, backend)
+          # take a factor of the rate * 2
+          # if buffer filling up fast, use it instead
+          buffer_min = round(len / 1000 * 1.5)
 
+          round(source.metrics.avg / 1000 * 2)
+          |> max(buffer_min)
+        end
+      },
       {Schema,
        [
          plan: plan,

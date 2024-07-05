@@ -10,14 +10,11 @@ defmodule Logflare.Backends.DynamicPipeline do
   - `:max_buffer_len` - soft limit that each pipeline buffer grows to before a new pipeline is added. Optional.
   - `:max_pipelines` - max pipelines that can be scaled to.
   - `:min_pipelines` - max pipelines that can be scaled to, defaults to 0.
-  - `:idle_shutdown_after` - the required time that must pass that a pipeline has not received any activity for it to be shut down.
-  - `:min_idle_shutdown_after` - the required time that must pass that pipelines below the min number has not received any activity for it to be shut down.
-  - `:monitor_interval` -  the refresh interval that the buffers are stored and cached internally that are used during ingest.
-  - `:monitor_callback` -  a 1-arity anonymous function that receives the buffer lengths mappings. Used for purposes such as broadcasting to other procs.
+  - `:resolve_count` - anonymous 1-arity function to determine what number of pipelines to scale to.
+  - `:resolve_interval` - interval that the resolve_count will be checked.
   """
   use Supervisor
   alias __MODULE__.Coordinator
-  alias __MODULE__.BufferMonitor
 
   require Logger
 
@@ -36,29 +33,21 @@ defmodule Logflare.Backends.DynamicPipeline do
         max_buffer_len: 10_000,
         max_pipelines: System.schedulers_online(),
         min_pipelines: 0,
-        min_idle_shutdown_after: 150_000,
-        idle_shutdown_after: 30_000,
-        touch: %{},
-        buffers: %{},
-        monitor_interval: 1_500,
-        monitor_callback: nil
+        resolve_count: fn -> 0 end,
+        resolve_interval: 5_000,
+        buffers: %{}
       })
 
+    num_to_start = max(state.resolve_count.(), state.min_pipelines)
+
     pipeline_specs =
-      for i <- 0..state.min_pipelines, i != 0 do
+      for i <- 0..num_to_start, i != 0 do
         child_spec(state, make_ref())
       end
-
-    touch_record = for spec <- pipeline_specs, into: %{}, do: {spec.id, NaiveDateTime.utc_now()}
-
-    state =
-      state
-      |> Map.put(:touch, touch_record)
 
     children =
       [
         {Agent, fn -> state end},
-        {BufferMonitor, state},
         {Coordinator, state}
       ] ++ pipeline_specs
 
@@ -83,70 +72,6 @@ defmodule Logflare.Backends.DynamicPipeline do
   end
 
   @doc """
-  Updates the last ingestion value of a pipeline stored on state.
-  """
-  @spec touch_pipeline(tuple()) :: :ok
-  def touch_pipeline(pipeline_name) do
-    sup_name = pipeline_name_to_sup_name(pipeline_name)
-
-    pid =
-      sup_name
-      |> Supervisor.which_children()
-      |> Enum.find(fn
-        {_id, _child, _type, [Agent]} -> true
-        _ -> false
-      end)
-      |> elem(1)
-
-    pipelines = list_pipelines(sup_name)
-
-    Agent.cast(pid, fn %{touch: touch_records} = v ->
-      new_touch =
-        for {k, v} <- Map.put(touch_records, pipeline_name, NaiveDateTime.utc_now()),
-            k in pipelines,
-            into: %{} do
-          {k, v}
-        end
-
-      %{
-        v
-        | touch: new_touch
-      }
-    end)
-  end
-
-  @doc """
-  Inserts broadway messages into a dynamic pipeline, choosing one from a list of eligible pipelines at random.
-  """
-  @spec push_messages(tuple(), [Broadway.Message.t()]) :: :ok | {:error, :buffer_full}
-  def push_messages(name, messages) do
-    state = get_state(name)
-    buffer_lens = BufferMonitor.buffers(name)
-
-    eligible =
-      buffer_lens
-      |> Enum.filter(fn {_id, num} -> num < state.max_buffer_len end)
-
-    pipelines = list_pipelines(name)
-
-    if Enum.empty?(eligible) and length(pipelines) >= state.max_pipelines do
-      {:error, :buffer_full}
-    else
-      if not Enum.empty?(eligible) do
-        {id, _} = Enum.random(eligible)
-        Broadway.push_messages(id, messages)
-      else
-        # add a new pipeline
-        with {:ok, _count, pipeline_id} <- Coordinator.sync_add_pipeline(name) do
-          Broadway.push_messages(pipeline_id, messages)
-          touch_pipeline(pipeline_id)
-          :ok
-        end
-      end
-    end
-  end
-
-  @doc """
   Adds a shard to a given DynamicPipeline.
   """
   @spec add_pipeline(tuple()) :: {:ok, non_neg_integer(), tuple()} | {:error, :max_pipelines}
@@ -165,7 +90,6 @@ defmodule Logflare.Backends.DynamicPipeline do
 
     case Supervisor.start_child(name, spec) do
       {:ok, _pid} ->
-        touch_pipeline(spec.id)
         count = pipeline_count(name)
 
         Logger.debug(
@@ -204,10 +128,9 @@ defmodule Logflare.Backends.DynamicPipeline do
     do: {:error, :min_pipelines}
 
   defp maybe_remove_pipeline(name, _count, _state) do
-    {id, _} =
-      buffer_len_by_pipeline(name)
-      |> Enum.sort_by(fn {_id, len} -> len end)
-      |> List.first()
+    id =
+      list_pipelines(name)
+      |> Enum.random()
 
     with :ok <- Supervisor.terminate_child(name, id),
          :ok <- Supervisor.delete_child(name, id) do
@@ -252,20 +175,9 @@ defmodule Logflare.Backends.DynamicPipeline do
     |> Enum.filter(fn
       {_, _, _, [Agent]} -> false
       {Coordinator, _, _, _} -> false
-      {BufferMonitor, _, _, _} -> false
       _ -> true
     end)
     |> length()
-  end
-
-  @doc """
-  Total buffer length of all sharded pipelines
-  """
-  @spec buffer_len(tuple()) :: non_neg_integer()
-  def buffer_len(name) do
-    buffer_len_by_pipeline(name)
-    |> Map.values()
-    |> Enum.sum()
   end
 
   @doc """
@@ -274,49 +186,8 @@ defmodule Logflare.Backends.DynamicPipeline do
   @spec list_pipelines(tuple()) :: [tuple()]
   def list_pipelines(name) do
     for {id, _child, _type, _mod} <- Supervisor.which_children(name),
-        id != Agent and id != Coordinator and id != BufferMonitor do
+        id != Agent and id != Coordinator do
       id
-    end
-  end
-
-  @doc """
-  Get buffer lengths of each sharded pipeline
-  """
-  @spec buffer_len_by_pipeline(tuple()) :: %{tuple() => non_neg_integer()}
-  def buffer_len_by_pipeline(name) do
-    for {id, _child, _type, _mod} <- Supervisor.which_children(name),
-        id != Agent and id != Coordinator and id != BufferMonitor,
-        producer_name <- Broadway.producer_names(id) do
-      Task.async(fn ->
-        {
-          id,
-          GenStage.estimate_buffered_count(producer_name)
-        }
-      end)
-    end
-    |> Task.await_many()
-    |> Enum.into(%{})
-  end
-
-  @doc """
-  Checks if a DynamicPipeline is healthy. If all buffers are full or is not alive, it is not considered healthy.
-  """
-  @spec healthy?(tuple()) :: boolean()
-  def healthy?(name) do
-    with pid when is_pid(pid) <- whereis(name) do
-      state = get_state(name)
-
-      buffer_len_by_pipeline(name)
-      |> Map.values()
-      |> case do
-        [] ->
-          true
-
-        lens ->
-          Enum.any?(lens, fn v -> state.max_buffer_len > v end)
-      end
-    else
-      _ -> false
     end
   end
 
@@ -337,68 +208,6 @@ defmodule Logflare.Backends.DynamicPipeline do
       _ -> false
     end)
     |> elem(1)
-  end
-
-  @doc """
-  Returns the pid of a DynamicPipeline tree buffer monitor
-  """
-  @spec find_buffer_monitor_name(tuple()) :: pid()
-  def find_buffer_monitor_name(sup_name) do
-    Supervisor.which_children(sup_name)
-    |> Enum.find(fn
-      {BufferMonitor, _, _, _} -> true
-      _ -> false
-    end)
-    |> elem(1)
-  end
-
-  defmodule BufferMonitor do
-    @moduledoc """
-    Monitors the buffers for all started pipelines and caches it in state for fast lookups.
-    """
-    use GenServer
-    alias Logflare.Backends.DynamicPipeline
-
-    def start_link(args) do
-      GenServer.start_link(__MODULE__, args)
-    end
-
-    @impl GenServer
-    def init(%{} = args) do
-      loop(args)
-      {:ok, args}
-    end
-
-    @doc """
-    Retrieves a cache of buffers
-    """
-    @spec buffers(tuple()) :: %{tuple() => non_neg_integer()}
-    def buffers(sup_name) do
-      DynamicPipeline.find_buffer_monitor_name(sup_name)
-      |> GenServer.call(:buffers)
-    end
-
-    @impl GenServer
-    def handle_call(:buffers, _caller, state) do
-      {:reply, state.buffers, state}
-    end
-
-    @impl GenServer
-    def handle_info(:check, state) do
-      # get the buffers
-      buffers = DynamicPipeline.buffer_len_by_pipeline(state.name)
-
-      if callback = state.monitor_callback do
-        callback.(buffers)
-      end
-
-      loop(state)
-      {:noreply, Map.put(state, :buffers, buffers)}
-    end
-
-    defp loop(args) do
-      Process.send_after(self(), :check, args.monitor_interval)
-    end
   end
 
   defmodule Coordinator do
@@ -436,45 +245,31 @@ defmodule Logflare.Backends.DynamicPipeline do
 
     @impl GenServer
     def handle_info(:check, state) do
-      agent_state = DynamicPipeline.get_state(state.name)
       pipelines = DynamicPipeline.list_pipelines(state.name)
-      touch_record = Map.get(agent_state, :touch)
+      pipeline_count = Enum.count(pipelines)
 
-      to_close =
-        for {k, last_touched} <- touch_record,
-            k in pipelines,
-            NaiveDateTime.diff(NaiveDateTime.utc_now(), last_touched, :millisecond) >
-              state.idle_shutdown_after do
-          # should shutdown
-          k
-        end
+      desired_count =
+        max(state.resolve_count.(), state.min_pipelines)
+        |> max(System.schedulers_online())
 
-      if length(to_close) > 0 and pipelines > state.min_pipelines do
-        # has excess, close the excess
-        diff = length(to_close) - state.min_pipelines
+      cond do
+        desired_count > pipeline_count ->
+          # start up more pipelines
+          diff = desired_count - pipeline_count
 
-        for _d <- 1..diff do
-          DynamicPipeline.remove_pipeline(state.name)
-        end
-      end
+          for _ <- 1..diff do
+            DynamicPipeline.add_pipeline(state.name)
+          end
 
-      # refresh the list of pipelines
-      pipelines = DynamicPipeline.list_pipelines(state.name)
+        desired_count < pipeline_count ->
+          diff = pipeline_count - desired_count
 
-      # find inactive pipelines
-      min_to_close =
-        for {k, last_touched} <- touch_record,
-            k in pipelines,
-            NaiveDateTime.diff(NaiveDateTime.utc_now(), last_touched, :millisecond) >
-              state.min_idle_shutdown_after do
-          # should shutdown
-          k
-        end
+          for _pipeline <- 1..diff do
+            DynamicPipeline.remove_pipeline(state.name)
+          end
 
-      if length(min_to_close) > 0 and length(pipelines) <= state.min_pipelines do
-        for _d <- 1..length(min_to_close) do
-          DynamicPipeline.force_remove_pipeline(state.name)
-        end
+        true ->
+          :noop
       end
 
       loop(state)
@@ -482,11 +277,7 @@ defmodule Logflare.Backends.DynamicPipeline do
     end
 
     defp loop(args) do
-      next_interval =
-        min(args.min_idle_shutdown_after, args.idle_shutdown_after)
-        |> min(5_000)
-
-      Process.send_after(self(), :check, next_interval)
+      Process.send_after(self(), :check, args.resolve_interval)
     end
   end
 end
