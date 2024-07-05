@@ -19,12 +19,8 @@ defmodule Logflare.Backends.Supervisor do
       Backends.IngestEventQueue.MapperJanitor,
       Backends.Adaptor.PostgresAdaptor.Supervisor,
       {DynamicSupervisor, strategy: :one_for_one, name: Backends.SourcesSup},
-      {Registry,
-       name: Backends.SourceRegistry, keys: :unique, partitions: System.schedulers_online()},
-      {Registry,
-       name: Logflare.Backends.BackendRegistry,
-       keys: :unique,
-       partitions: System.schedulers_online()}
+      {Registry, name: Backends.SourceRegistry, keys: :unique},
+      {Registry, name: Backends.BackendRegistry, keys: :unique}
     ]
 
     opts = [strategy: :one_for_one]
