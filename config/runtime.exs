@@ -292,6 +292,7 @@ if System.get_env("LOGFLARE_OTEL_ENDPOINT") do
   config :logflare, opentelemetry_enabled?: true
 
   config :opentelemetry,
+    sdk_disabled: false,
     traces_exporter: :otlp,
     sampler:
       {:parent_based,
