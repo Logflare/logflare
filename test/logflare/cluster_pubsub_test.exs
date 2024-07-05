@@ -37,12 +37,12 @@ defmodule Logflare.ClusterPubSubTest do
       end)
     end
 
-    test "subscribe/1 buffers", %{source: %{token: source_token}} do
+    test "subscribe/1 buffers", %{source: %{id: source_id}} do
       PubSubRates.subscribe(:buffers)
 
       TestUtils.retry_assert(fn ->
-        PubSubRates.global_broadcast_rate({:buffers, source_token, %{data: "some val"}})
-        assert_received {:buffers, ^source_token, %{data: "some val"}}
+        PubSubRates.global_broadcast_rate({:buffers, source_id, nil, %{data: "some val"}})
+        assert_received {:buffers, ^source_id, nil, %{data: "some val"}}
       end)
     end
   end
@@ -52,11 +52,11 @@ defmodule Logflare.ClusterPubSubTest do
       [source: insert(:source, user: insert(:user))]
     end
 
-    test "broadcast to dashboard", %{source: %{token: source_token}} do
+    test "broadcast to dashboard", %{source: %{id: source_id, token: source_token}} do
       ChannelTopics.subscribe_dashboard(source_token)
       ChannelTopics.local_broadcast_log_count(%{log_count: 1111, source_token: source_token})
       ChannelTopics.local_broadcast_rates(%{last_rate: 2222, source_token: source_token})
-      ChannelTopics.local_broadcast_buffer(%{buffer: 3333, source_token: source_token})
+      ChannelTopics.local_broadcast_buffer(%{buffer: 3333, source_id: source_id, backend_id: nil})
 
       :timer.sleep(500)
       assert_received %_{event: "log_count", payload: %{log_count: "1,111"}}

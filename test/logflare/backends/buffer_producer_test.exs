@@ -1,45 +1,29 @@
 defmodule Logflare.Backends.BufferProducerTest do
-  use Logflare.DataCase, async: false
+  use Logflare.DataCase
 
-  alias Logflare.PubSubRates
   alias Logflare.Backends.BufferProducer
+  alias Logflare.Backends.IngestEventQueue
 
   import ExUnit.CaptureLog
 
-  test "BufferProducer broadcasts every n ms" do
-    PubSubRates.subscribe(:buffers)
-    user = insert(:user)
-    %{token: source_token} = source = insert(:source, user: user)
-
-    pid =
-      start_supervised!(
-        {BufferProducer,
-         active_broadcast_interval: 100, idle_broadcast_interval: 100, source_token: source.token}
-      )
-
-    send(pid, {:add_to_buffer, [:something]})
-    :timer.sleep(300)
-    assert PubSubRates.Cache.get_cluster_buffers(source_token) == 1
-  end
-
-  test "BufferProducer broadcasts every n seconds with backend differentiation" do
-    PubSubRates.subscribe(:buffers)
+  test "pulls events from IngestEventQueue via IngestEventQueueDemandWorker" do
     user = insert(:user)
     source = insert(:source, user: user)
-    backend = insert(:backend, user: user)
 
-    pid =
-      start_supervised!(
-        {BufferProducer,
-         idle_broadcast_interval: 100,
-         active_broadcast_interval: 100,
-         backend_token: backend.token,
-         source_token: source.token}
-      )
+    IngestEventQueue.upsert_tid({source, nil})
+    le = build(:log_event, source: source)
+    IngestEventQueue.add_to_table({source, nil}, [le])
 
-    send(pid, {:add_to_buffer, [:something]})
-    :timer.sleep(200)
-    assert PubSubRates.Cache.get_cluster_buffers(source.token, backend.token) == 1
+    start_supervised!({IngestEventQueue.DemandWorker, source: source})
+    pid = start_supervised!({BufferProducer, backend: nil, source: source})
+    :timer.sleep(100)
+
+    GenStage.stream([{pid, max_demand: 1}])
+    |> Enum.take(1)
+
+    assert IngestEventQueue.count_pending({source, nil}) == 0
+    # marked as :ingested
+    assert IngestEventQueue.get_table_size({source, nil}) == 1
   end
 
   test "BufferProducer when discarding will display source name" do
@@ -47,15 +31,10 @@ defmodule Logflare.Backends.BufferProducerTest do
     source = insert(:source, user: user)
 
     pid =
-      start_supervised!(
-        {BufferProducer,
-         active_broadcast_interval: 100,
-         backend_token: nil,
-         source_token: source.token,
-         buffer_size: 10}
-      )
+      start_supervised!({BufferProducer, backend: nil, source: source, buffer_size: 10})
 
-    items = for _ <- 1..100, do: "test"
+    le = build(:log_event)
+    items = for _ <- 1..100, do: le
 
     captured =
       capture_log(fn ->
@@ -76,33 +55,5 @@ defmodule Logflare.Backends.BufferProducerTest do
 
     Regex.scan(regex, string)
     |> length()
-  end
-
-  test "BufferProducer idle broadcast interval" do
-    PubSubRates.subscribe(:buffers)
-    user = insert(:user)
-    source = insert(:source, user: user)
-
-    pid =
-      start_supervised!(
-        {BufferProducer,
-         idle_broadcast_interval: 500,
-         active_broadcast_interval: 100,
-         backend_token: nil,
-         source_token: source.token,
-         buffer_size: 1000}
-      )
-
-    items = for _ <- 1..100, do: "test"
-
-    send(pid, {:add_to_buffer, items})
-    :timer.sleep(400)
-    assert PubSubRates.Cache.get_cluster_buffers(source.token, nil) != 0
-
-    GenStage.stream([{pid, max_demand: 100}])
-    |> Enum.take(5)
-
-    :timer.sleep(400)
-    assert PubSubRates.Cache.get_cluster_buffers(source.token, nil) == 0
   end
 end

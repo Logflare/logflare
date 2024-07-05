@@ -30,6 +30,7 @@ defmodule Logflare.Source.BigQuery.Pipeline do
   def start_link(args, opts \\ []) do
     {name, args} = Keyword.pop(args, :name)
     source = Keyword.get(args, :source)
+    backend = Keyword.get(args, :backend)
 
     opts =
       Keyword.merge(
@@ -42,7 +43,12 @@ defmodule Logflare.Source.BigQuery.Pipeline do
           ],
           producer: [
             module:
-              {BufferProducer, [source_token: source.token, backend_token: args[:backend_token]]}
+              {BufferProducer,
+               [
+                 source: source,
+                 backend: backend
+               ]},
+            transformer: {__MODULE__, :transform, []}
           ],
           processors: [
             default: [concurrency: System.schedulers_online() * 2]
@@ -61,7 +67,7 @@ defmodule Logflare.Source.BigQuery.Pipeline do
             bigquery_dataset_id: args[:bigquery_dataset_id],
             source_token: source.token,
             source_id: source.id,
-            backend_id: args[:backend_id]
+            backend_id: Map.get(backend || %{}, :id)
           }
         ],
         opts
@@ -79,6 +85,18 @@ defmodule Logflare.Source.BigQuery.Pipeline do
 
   def process_name(proc_name, base_name) do
     String.to_atom("#{proc_name}-#{base_name}")
+  end
+
+  # Broadway transformer for custom producer
+  def transform(event, _opts) do
+    %Message{
+      data: event,
+      acknowledger: {__MODULE__, :ack_id, :ack_data}
+    }
+  end
+
+  def ack(_ack_ref, _successful, _failed) do
+    # TODO: re-queue failed
   end
 
   @spec handle_message(any, Broadway.Message.t(), any) :: Broadway.Message.t()

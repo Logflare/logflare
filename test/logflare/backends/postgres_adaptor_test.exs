@@ -1,9 +1,18 @@
 defmodule Logflare.Backends.Adaptor.PostgresAdaptorTest do
-  use Logflare.DataCase, async: false
+  use Logflare.DataCase
   import ExUnit.CaptureLog
   alias Logflare.Backends.Adaptor.PostgresAdaptor
+  alias Logflare.SystemMetrics.AllLogsLogged
+  alias Logflare.Backends
+  alias Logflare.Backends.AdaptorSupervisor
 
   setup do
+    start_supervised!(AllLogsLogged)
+    :ok
+  end
+
+  setup do
+    insert(:plan)
     repo = Application.get_env(:logflare, Logflare.Repo)
 
     url =
@@ -23,30 +32,25 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptorTest do
 
   describe "with postgres repo" do
     setup %{backend: backend, source: source} do
-      pid = start_supervised!({PostgresAdaptor, {source, backend}})
+      start_supervised!({AdaptorSupervisor, {source, backend}})
 
       on_exit(fn ->
         PostgresAdaptor.destroy_instance({source, backend})
       end)
 
-      %{pid: pid}
+      :ok
     end
 
     test "ingest/2 and execute_query/2 dispatched message", %{
-      pid: pid,
       backend: backend,
       source: source
     } do
       log_event = build(:log_event, source: source, test: "data")
 
-      assert :ok =
-               PostgresAdaptor.ingest(pid, [log_event],
-                 source_id: source.id,
-                 backend_id: backend.id
-               )
+      assert {:ok, _} = Backends.ingest_logs([log_event], source)
 
       # TODO: replace with a timeout retry func
-      :timer.sleep(1_500)
+      :timer.sleep(2_500)
 
       # query by Ecto.Query
       query = from(l in PostgresAdaptor.table_name(source), select: l.body)
@@ -71,7 +75,6 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptorTest do
 
     test "ingest/2 and execute_query/2 dispatched message with metadata transformation into list",
          %{
-           pid: pid,
            backend: backend,
            source: source
          } do
@@ -87,14 +90,10 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptorTest do
           }
         )
 
-      assert :ok =
-               PostgresAdaptor.ingest(pid, [log_event],
-                 backend_id: backend.id,
-                 source_id: source.id
-               )
+      assert {:ok, _} = Backends.ingest_logs([log_event], source)
 
       # TODO: replace with a timeout retry func
-      :timer.sleep(1_500)
+      :timer.sleep(2_500)
 
       # query by string
       assert {:ok,
@@ -144,7 +143,7 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptorTest do
       }
 
       backend = insert(:backend, type: :postgres, sources: [source], config: config)
-      assert {:ok, _pid} = start_supervised({PostgresAdaptor, {source, backend}})
+      assert {:ok, _pid} = start_supervised({AdaptorSupervisor, {source, backend}})
     end
 
     test "cannot connect to invalid ", %{source: source} do
@@ -160,7 +159,7 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptorTest do
       log_event = build(:log_event, source: source, test: "data")
 
       capture_log(fn ->
-        assert {:ok, _pid} = start_supervised({PostgresAdaptor, {source, backend}})
+        assert {:ok, _pid} = start_supervised({AdaptorSupervisor, {source, backend}})
 
         assert {:error, :cannot_connect} =
                  PostgresAdaptor.insert_log_event(source, backend, log_event)

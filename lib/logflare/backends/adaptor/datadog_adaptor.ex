@@ -48,11 +48,8 @@ defmodule Logflare.Backends.Adaptor.DatadogAdaptor do
   end
 
   @impl Logflare.Backends.Adaptor
-  def ingest(pid, log_events, opts) do
-    new_events =
-      Enum.map(log_events, &translate_event/1)
-
-    WebhookAdaptor.ingest(pid, new_events, opts)
+  def pre_ingest(_source, _backend, log_events) do
+    Enum.map(log_events, &translate_event/1)
   end
 
   @impl Logflare.Backends.Adaptor

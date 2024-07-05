@@ -14,11 +14,13 @@ defmodule Logflare.Backends.Supervisor do
   @impl Supervisor
   def init(_) do
     children = [
+      Backends.IngestEventQueue,
+      Backends.IngestEventQueue.BroadcastWorker,
+      Backends.IngestEventQueue.MapperJanitor,
       Backends.Adaptor.PostgresAdaptor.Supervisor,
       {DynamicSupervisor, strategy: :one_for_one, name: Backends.SourcesSup},
       {Registry,
        name: Backends.SourceRegistry, keys: :unique, partitions: System.schedulers_online()},
-      {Registry, name: Backends.SourceDispatcher, keys: :duplicate},
       {Registry,
        name: Logflare.Backends.BackendRegistry,
        keys: :unique,

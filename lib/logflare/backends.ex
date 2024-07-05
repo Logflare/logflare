@@ -3,10 +3,10 @@ defmodule Logflare.Backends do
 
   alias Logflare.Backends.Adaptor
   alias Logflare.Backends.Backend
-  alias Logflare.Backends.SourceDispatcher
   alias Logflare.Backends.SourceRegistry
   alias Logflare.Backends.SourcesSup
   alias Logflare.Backends.SourceSup
+  alias Logflare.Backends.IngestEventQueue
   alias Logflare.LogEvent
   alias Logflare.Repo
   alias Logflare.Source
@@ -21,7 +21,14 @@ defmodule Logflare.Backends do
 
   defdelegate child_spec(arg), to: __MODULE__.Supervisor
 
-  @max_buffer_len 5_000
+  @max_pending_buffer_len 7_500
+
+  @doc """
+  Retrieves the hardcoded max pending buffer length.
+  """
+  @spec max_buffer_len() :: non_neg_integer()
+  def max_buffer_len(), do: @max_pending_buffer_len
+
   @doc """
   Lists `Backend`s for a given source.
   """
@@ -278,60 +285,29 @@ defmodule Logflare.Backends do
     :ok
   end
 
+  # send to a specific backend
   defp dispatch_to_backends(source, %Backend{} = backend, log_events) do
-    adaptor_module = Adaptor.get_adaptor(backend)
-    adaptor_module.ingest(nil, log_events, default_ingest_opts(source, backend))
-    :ok
+    log_events = maybe_pre_ingest(source, backend, log_events)
+    IngestEventQueue.add_to_table({source, backend}, log_events)
   end
 
   defp dispatch_to_backends(source, nil, log_events) do
-    Registry.dispatch(SourceDispatcher, source.id, fn entries ->
-      for {pid, {adaptor_module, :ingest, opts}} <- entries do
-        # TODO: spawn tasks to do this concurrently
-        adaptor_module.ingest(pid, log_events, opts)
-      end
-    end)
+    for backend <- [nil | __MODULE__.Cache.list_backends(source)] do
+      log_events =
+        if(backend, do: maybe_pre_ingest(source, backend, log_events), else: log_events)
 
-    :ok
+      IngestEventQueue.add_to_table({source, backend}, log_events)
+    end
   end
 
-  @doc """
-  Registers a backend for ingestion dispatching. Any opts that are provided are stored in the registry.
-
-  If the `:register_for_ingest` field is `true`, the backend will be registered for ingest dispatching.
-
-  The backend will not receive any dispatched events if it is set to false, and this function will be a `:noop`.
-
-
-  Auto-populated options:
-  - `:backend_id`
-  - `:source_id`
-  """
-  @spec register_backend_for_ingest_dispatch(Source.t(), Backend.t(), keyword()) ::
-          :ok
-  def register_backend_for_ingest_dispatch(source, backend, opts \\ [])
-
-  def register_backend_for_ingest_dispatch(
-        source,
-        %Backend{register_for_ingest: true} = backend,
-        opts
-      ) do
+  defp maybe_pre_ingest(source, backend, events) do
     mod = Adaptor.get_adaptor(backend)
 
-    {:ok, _pid} =
-      Registry.register(
-        SourceDispatcher,
-        source.id,
-        {mod, :ingest, default_ingest_opts(source, backend) ++ opts}
-      )
-
-    :ok
-  end
-
-  def register_backend_for_ingest_dispatch(_source, _backend, _opts), do: :ok
-
-  defp default_ingest_opts(source, backend) do
-    [backend_id: backend.id, source_id: source.id]
+    if function_exported?(mod, :pre_ingest, 3) do
+      mod.pre_ingest(source, backend, events)
+    else
+      events
+    end
   end
 
   @doc """
@@ -343,8 +319,10 @@ defmodule Logflare.Backends do
   iex> Backends.via_source(source, :buffer)
   """
   @spec via_source(Source.t(), term()) :: tuple()
-  @spec via_source(Source.t(), term(), term()) :: tuple()
-  def via_source(source, mod, id), do: via_source(source, {mod, id})
+  @spec via_source(Source.t() | non_neg_integer(), module(), non_neg_integer()) :: tuple()
+  def via_source(%Source{id: sid}, mod, %Backend{id: bid}), do: via_source(sid, mod, bid)
+  def via_source(%Source{id: sid}, mod, id), do: via_source(sid, {mod, id})
+  def via_source(source_id, mod, id), do: via_source(source_id, {mod, id})
 
   def via_source(%Source{id: id}, process_id), do: via_source(id, process_id)
 
@@ -437,45 +415,25 @@ defmodule Logflare.Backends do
   @doc """
   Checks if a local buffer is full.
   """
-  def local_buffer_full?(%Source{} = source) do
-    case PubSubRates.Cache.get_buffers(source.token, nil) do
-      {:ok, %{} = buffers} ->
-        buffer = get_in(buffers, [Node.self(), :len]) || 0
-        buffer >= @max_buffer_len
+  def local_pending_buffer_full?(%Source{} = source) do
+    local_pending_buffer_len(source) > @max_pending_buffer_len
+  end
 
-      _ ->
-        false
+  @doc """
+  Get local pending buffer len of a source/backend combination
+  """
+  def local_pending_buffer_len(source, backend \\ nil) do
+    case IngestEventQueue.count_pending({source, backend}) do
+      len when is_integer(len) -> len
+      _ -> 0
     end
   end
 
   @doc """
-  Syncronously set the local buffer cache on the PubSub rates cache.
-  Does not set the buffer len globally.
-  Does not perform cluster broadcasting.
-  Does not perform local broadcasting.
-
-  if len arg is set to an integer, it will default setting the buffer len in the local node cache only
+  Retrieves cluster-wide pending buffer size stored in cache for a given backend/source combination.
   """
-  def set_local_buffer_len(source, backend, node \\ Node.self(), len)
-
-  def set_local_buffer_len(%Source{} = source, %Backend{} = backend, node, len)
-      when is_integer(len) do
-    PubSubRates.Cache.cache_buffers(source.token, backend.token, %{node => %{len: len}})
-  end
-
-  def set_local_buffer_len(%Source{} = source, nil, node, len) when is_integer(len) do
-    PubSubRates.Cache.cache_buffers(source.token, nil, %{node => %{len: len}})
-  end
-
-  @doc """
-  Retrieves cluster-wide buffer size stored in cache for a given backend/source combination.
-  """
-  def buffer_len(%Source{} = source, backend \\ nil) do
-    if backend do
-      PubSubRates.Cache.get_cluster_buffers(source.token, backend.token)
-    else
-      PubSubRates.Cache.get_cluster_buffers(source.token)
-    end
+  def cached_pending_buffer_len(%Source{} = source, backend \\ nil) do
+    PubSubRates.Cache.get_cluster_buffers(source.id, Map.get(backend || %{}, :id))
   end
 
   @doc """

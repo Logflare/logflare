@@ -15,9 +15,7 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor.Pipeline do
     Broadway.start_link(__MODULE__,
       name: adaptor_state.pipeline_name,
       producer: [
-        module:
-          {BufferProducer,
-           [source_token: adaptor_state.source_token, backend_token: adaptor_state.backend_token]},
+        module: {BufferProducer, [source: adaptor_state.source, backend: adaptor_state.backend]},
         transformer: {__MODULE__, :transform, []},
         concurrency: 1
       ],

@@ -12,7 +12,7 @@ source =
   |> Sources.preload_defaults()
   |> case do
     s when ver == "v1" -> %{s | v2_pipeline: false}
-    s when ver == "v2" -> %{s | v2_pipeline: true}
+    s -> %{s | v2_pipeline: true}
   end
 
 :ok = Logflare.Source.Supervisor.ensure_started(source)
@@ -32,3 +32,7 @@ end
 # Current: 2024-06-02 v2
 # CNT        ACC (ms)    OWN (ms)
 # 1,706,387    2816.090    2810.488
+
+# Current: 2024-07-05 v2
+# CNT        ACC (ms)    OWN (ms)
+# 1,717,432    2831.382    2827.665

@@ -50,6 +50,11 @@ defmodule LogflareWeb.ConnCase do
 
         stub(ConfigCat, :get_value, fn _, _ -> true end)
         stub(Goth, :fetch, fn _mod -> {:ok, %Goth.Token{token: "auth-token"}} end)
+
+        on_exit(fn ->
+          Logflare.Backends.IngestEventQueue.delete_all_mappings()
+        end)
+
         :ok
       end
     end

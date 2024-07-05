@@ -289,7 +289,7 @@ defmodule Logflare.Sources do
     alias Logflare.Source.RecentLogsServer, as: RLS
 
     rates = PubSubRates.Cache.get_cluster_rates(token)
-    buffer = PubSubRates.Cache.get_cluster_buffers(token)
+    buffer = PubSubRates.Cache.get_cluster_buffers(source.id)
     inserts = PubSubRates.Cache.get_cluster_inserts(token)
     inserts_string = Delimit.number_to_delimited(inserts)
 

@@ -2,11 +2,19 @@ defmodule Logflare.Backends.Adaptor.DatadogAdaptorTest do
   use Logflare.DataCase, async: false
 
   alias Logflare.Backends.Adaptor
+  alias Logflare.Backends
+  alias Logflare.Backends.AdaptorSupervisor
+  alias Logflare.SystemMetrics.AllLogsLogged
 
   @subject Logflare.Backends.Adaptor.DatadogAdaptor
   @client Logflare.Backends.Adaptor.WebhookAdaptor.Client
 
   doctest @subject
+
+  setup do
+    start_supervised!(AllLogsLogged)
+    :ok
+  end
 
   describe "cast and validate" do
     test "API key is required" do
@@ -37,12 +45,12 @@ defmodule Logflare.Backends.Adaptor.DatadogAdaptorTest do
           config: %{api_key: "foo-bar", region: "US1"}
         )
 
-      pid = start_supervised!({@subject, {source, backend}})
+      start_supervised!({AdaptorSupervisor, {source, backend}})
       :timer.sleep(500)
-      [pid: pid, backend: backend, source: source]
+      [backend: backend, source: source]
     end
 
-    test "sent logs are delivered", %{pid: pid, source: source, backend: backend} do
+    test "sent logs are delivered", %{source: source} do
       this = self()
       ref = make_ref()
 
@@ -54,11 +62,11 @@ defmodule Logflare.Backends.Adaptor.DatadogAdaptorTest do
 
       le = build(:log_event, source: source)
 
-      assert :ok == @subject.ingest(pid, [le], source_id: source.id, backend_id: backend.id)
+      assert {:ok, _} = Backends.ingest_logs([le], source)
       assert_receive ^ref, 2000
     end
 
-    test "service field is set to source name", %{pid: pid, source: source, backend: backend} do
+    test "service field is set to source name", %{source: source} do
       this = self()
       ref = make_ref()
 
@@ -70,12 +78,12 @@ defmodule Logflare.Backends.Adaptor.DatadogAdaptorTest do
 
       le = build(:log_event, source: source)
 
-      assert :ok == @subject.ingest(pid, [le], source_id: source.id, backend_id: backend.id)
+      assert {:ok, _} = Backends.ingest_logs([le], source)
       assert_receive {^ref, [log_entry]}, 2000
       assert log_entry.service == source.name
     end
 
-    test "message is JSON encoded log event", %{pid: pid, source: source, backend: backend} do
+    test "message is JSON encoded log event", %{source: source} do
       this = self()
       ref = make_ref()
 
@@ -87,7 +95,7 @@ defmodule Logflare.Backends.Adaptor.DatadogAdaptorTest do
 
       le = build(:log_event, source: source)
 
-      assert :ok == @subject.ingest(pid, [le], source_id: source.id, backend_id: backend.id)
+      assert {:ok, _} = Backends.ingest_logs([le], source)
       assert_receive {^ref, [log_entry]}, 2000
       assert log_entry.message =~ Jason.encode!(le.body)
     end

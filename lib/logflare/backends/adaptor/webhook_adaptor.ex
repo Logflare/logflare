@@ -1,12 +1,9 @@
 defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
   @moduledoc false
-
   use GenServer
   use TypedStruct
 
   alias Logflare.Backends
-  alias Logflare.Backends.Adaptor.WebhookAdaptor
-  alias Logflare.Backends.Backend
 
   @behaviour Logflare.Backends.Adaptor
 
@@ -16,30 +13,23 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
       headers: map(),
       http: String.t()
     })
-
-    field(:backend, Backend.t())
-    field(:pipeline_name, tuple())
-    field(:backend_token, String.t())
-    field(:source_token, atom())
   end
-
-  # API
 
   @impl Logflare.Backends.Adaptor
   def start_link({source, backend} = args) do
-    GenServer.start_link(__MODULE__, args,
-      name: Backends.via_source(source, __MODULE__, backend.id)
-    )
+    GenServer.start_link(__MODULE__, args, name: Backends.via_source(source, __MODULE__, backend))
   end
 
-  @impl Logflare.Backends.Adaptor
-  def ingest(_pid, log_events, opts \\ []) do
-    source_id = Keyword.get(opts, :source_id)
-    backend_id = Keyword.get(opts, :backend_id)
-    messages = Enum.map(log_events, &__MODULE__.Pipeline.transform(&1, []))
+  @impl GenServer
+  def init({source, backend}) do
+    args = %{
+      config: backend.config,
+      source: source,
+      backend: backend
+    }
 
-    Backends.via_source(source_id, __MODULE__.Pipeline, backend_id)
-    |> Broadway.push_messages(messages)
+    {:ok, _pipeline_pid} = __MODULE__.Pipeline.start_link(args)
+    {:ok, %{}}
   end
 
   @impl Logflare.Backends.Adaptor
@@ -59,23 +49,6 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
     |> Ecto.Changeset.validate_required([:url])
     |> Ecto.Changeset.validate_format(:url, ~r/https?\:\/\/.+/)
     |> Ecto.Changeset.validate_inclusion(:http, ["http1", "http2"])
-  end
-
-  # GenServer
-  @impl GenServer
-  def init({source, backend}) do
-    :ok = Backends.register_backend_for_ingest_dispatch(source, backend)
-
-    state = %__MODULE__{
-      config: backend.config,
-      backend: backend,
-      backend_token: if(backend, do: backend.token, else: nil),
-      source_token: source.token,
-      pipeline_name: Backends.via_source(source, __MODULE__.Pipeline, backend.id)
-    }
-
-    {:ok, _pipeline_pid} = __MODULE__.Pipeline.start_link(state)
-    {:ok, state}
   end
 
   # HTTP Client
@@ -113,13 +86,11 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
     use Broadway
     alias Broadway.Message
     alias Logflare.Backends.BufferProducer
-    alias Logflare.Backends.Adaptor.WebhookAdaptor
     alias Logflare.Backends.Adaptor.WebhookAdaptor.Client
 
-    @spec start_link(WebhookAdaptor.t()) :: {:ok, pid()}
-    def start_link(adaptor_state) do
+    def start_link(args) do
       Broadway.start_link(__MODULE__,
-        name: adaptor_state.pipeline_name,
+        name: Backends.via_source(args.source, __MODULE__, args.backend),
         hibernate_after: 5_000,
         spawn_opt: [
           fullsweep_after: 100
@@ -128,8 +99,8 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
           module:
             {BufferProducer,
              [
-               source_token: adaptor_state.source_token,
-               backend_token: adaptor_state.backend_token
+               backend: args.backend,
+               source: args.source
              ]},
           transformer: {__MODULE__, :transform, []},
           concurrency: 1
@@ -140,7 +111,7 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
         batchers: [
           http: [concurrency: 6, batch_size: 250]
         ],
-        context: adaptor_state
+        context: Map.take(args, [:config])
       )
     end
 
@@ -150,7 +121,7 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
       {:via, module, {registry, new_identifier}}
     end
 
-    def handle_message(_processor_name, message, _adaptor_state) do
+    def handle_message(_processor_name, message, _context) do
       message
       |> Message.put_batcher(:http)
     end

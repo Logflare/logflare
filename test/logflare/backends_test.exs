@@ -184,6 +184,17 @@ defmodule Logflare.BackendsTest do
         assert_received %_{event: _, payload: %{body: %{}}}
       end)
     end
+
+    test "can get length of queue", %{source: source} do
+      assert Backends.local_pending_buffer_len(source, nil) == 0
+      assert Backends.local_pending_buffer_len(source) == 0
+      events = for _n <- 1..5, do: build(:log_event, source: source, some: "event")
+      assert {:ok, 5} = Backends.ingest_logs(events, source)
+      assert Backends.local_pending_buffer_len(source) > 0
+      # Producer will pop from the queue
+      :timer.sleep(1_500)
+      assert Backends.local_pending_buffer_len(source) == 0
+    end
   end
 
   describe "ingest filters" do
@@ -244,6 +255,7 @@ defmodule Logflare.BackendsTest do
       :timer.sleep(1000)
 
       assert {:ok, 1} = Backends.ingest_logs([%{"event_message" => "testing 123"}], source)
+      :timer.sleep(500)
       # init message + 1 events
       assert Backends.list_recent_logs_local(source) |> length() == 2
       # init message + 1 events
@@ -310,18 +322,21 @@ defmodule Logflare.BackendsTest do
     end
 
     test "backends receive dispatched log events", %{source: source} do
-      Backends.Adaptor.WebhookAdaptor
-      |> expect(:ingest, fn _pid, [event | _], _ ->
-        if match?(%_{}, event) do
-          :ok
-        else
-          raise "Not a log event struct!"
-        end
+      pid = self()
+      ref = make_ref()
+
+      Backends.Adaptor.WebhookAdaptor.Client
+      |> expect(:send, fn opts ->
+        [event] = opts[:body]
+        send(pid, {ref, event})
       end)
 
       event = build(:log_event, source: source, message: "some event")
       assert {:ok, 1} = Backends.ingest_logs([event], source)
-      :timer.sleep(2000)
+
+      TestUtils.retry_assert(fn ->
+        assert_received {^ref, %{"event_message" => "some event"}}
+      end)
     end
   end
 
