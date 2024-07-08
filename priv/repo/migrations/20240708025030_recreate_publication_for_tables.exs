@@ -12,9 +12,8 @@ defmodule Logflare.Repo.Migrations.RecreatePublicationForTables do
       execute("CREATE PUBLICATION #{p} FOR TABLE #{tables};")
     end
   end
+
   def down do
     :noop
   end
-
-
 end
