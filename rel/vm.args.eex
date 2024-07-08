@@ -15,10 +15,13 @@
 +sbwtdcpu none
 +sbwtdio none
 
+## load balance on scheduler utilization
++sub true
+
 ## Reduce scheduler wake up threshold
-+swt low
-+swtdcpu low
-+swtdio low
++swt very_low
++swtdcpu very_low
++swtdio very_low
 
 
 ## Set distribution buffer limit - default is 1024
