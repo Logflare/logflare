@@ -237,7 +237,10 @@ defmodule Logflare.Backends.IngestEventQueue do
       end
 
     with tid when tid != nil <- get_tid(sid_bid) do
-      truncate_traverse(tid, :ets.select(tid, ms, 100), 0, n)
+      :ets.safe_fixtable(tid, true)
+      res = truncate_traverse(tid, :ets.select(tid, ms, 100), 0, n)
+      :ets.safe_fixtable(tid, false)
+      res
     else
       nil -> {:error, :not_initialized}
       :"$end_of_table" -> {:ok, []}
@@ -290,8 +293,14 @@ defmodule Logflare.Backends.IngestEventQueue do
   """
   @spec delete_stale_mappings() :: :ok
   def delete_stale_mappings do
-    :ets.match_object(@ets_table_mapper, :"$1", 100)
-    |> next_and_cleanup()
+    :ets.safe_fixtable(@ets_table_mapper, true)
+
+    res =
+      :ets.match_object(@ets_table_mapper, :"$1", 100)
+      |> next_and_cleanup()
+
+    :ets.safe_fixtable(@ets_table_mapper, false)
+    res
   end
 
   defp next_and_cleanup(:"$end_of_table"), do: :ok
