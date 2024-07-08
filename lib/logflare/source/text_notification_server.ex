@@ -22,6 +22,7 @@ defmodule Logflare.Source.TextNotificationServer do
   def init(args) do
     source = Keyword.get(args, :source)
     check_rate(source.notifications_every)
+    Process.flag(:trap_exit, true)
 
     {:ok, current_inserts} = Counters.get_inserts(source.token)
 
@@ -74,6 +75,16 @@ defmodule Logflare.Source.TextNotificationServer do
         check_rate(state.notifications_every)
         {:noreply, state}
     end
+  end
+
+  def terminate(reason, state) do
+    # Do Shutdown Stuff
+    Logger.info("Going Down - #{inspect(reason)} - #{__MODULE__}", %{
+      source_id: state.source_token,
+      source_token: state.source_token
+    })
+
+    reason
   end
 
   defp check_rate(notifications_every) do
