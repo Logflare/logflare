@@ -96,8 +96,11 @@ defmodule Logflare.PubSubRates.Cache do
       {:ok, rates} ->
         Map.get(rates, node, default)
 
-      {:error, _} = err ->
-        Logger.error("Error when getting pubsub clustr rates: #{inspect(err)}")
+      {:error, :no_cache} ->
+        default
+
+        {:error, _} = err ->
+        Logger.error("Error when getting pubsub cluster rates: #{inspect(err)}")
 
         %{
           average_rate: -1,
