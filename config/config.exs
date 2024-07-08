@@ -122,7 +122,9 @@ config :logflare, Logflare.ContextCache.CacheBuster,
     "rules",
     "source_schemas",
     "sources",
-    "users"
+    "users",
+    "backends",
+    "team_users"
   ]
 
 config :open_api_spex, :cache_adapter, OpenApiSpex.Plug.PersistentTermCache
