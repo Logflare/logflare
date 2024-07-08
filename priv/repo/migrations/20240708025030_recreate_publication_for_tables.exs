@@ -13,7 +13,7 @@ defmodule Logflare.Repo.Migrations.RecreatePublicationForTables do
     end
   end
   def down do
-    for p <- @publications, do: execute("DROP PUBLICATION #{p};")
+    :noop
   end
 
 
