@@ -18,7 +18,6 @@ defmodule Logflare.Source.BillingWriter do
   def init(args) do
     source = Keyword.get(args, :source)
     write()
-    Process.flag(:trap_exit, true)
     user = Users.Cache.get(source.user_id)
     plan = Billing.Cache.get_plan_by_user(user)
 
@@ -47,15 +46,6 @@ defmodule Logflare.Source.BillingWriter do
 
     write()
     {:noreply, %{state | billing_last_node_count: node_count}}
-  end
-
-  def terminate(reason, state) do
-    # Do Shutdown Stuff
-    Logger.info("Going Down - #{inspect(reason)} - #{__MODULE__}", %{
-      source_id: state.source_token
-    })
-
-    reason
   end
 
   defp write() do

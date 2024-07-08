@@ -97,6 +97,8 @@ defmodule Logflare.Source.RecentLogsServer do
   def init(args) do
     source = Keyword.get(args, :source)
 
+    # keep for legacy notifications on whether source tree dies.
+    # TODO: use process monitoring outside of supervision tree.
     Process.flag(:trap_exit, true)
     Logger.metadata(source_id: source.token, source_token: source.token)
 
