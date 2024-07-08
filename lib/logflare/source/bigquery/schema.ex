@@ -41,6 +41,7 @@ defmodule Logflare.Source.BigQuery.Schema do
 
     # TODO: remove source_id from metadata to reduce confusion
     Logger.metadata(source_id: args[:source_token], source_token: args[:source_token])
+    Process.flag(:trap_exit, true)
 
     persist(0)
 

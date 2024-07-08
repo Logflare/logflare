@@ -24,6 +24,7 @@ defmodule Logflare.Source.WebhookNotificationServer do
   def init(args) do
     source = Keyword.get(args, :source)
     check_rate(source.notifications_every)
+    Process.flag(:trap_exit, true)
 
     {:ok, current_inserts} = Counters.get_inserts(source.token)
 
@@ -68,6 +69,16 @@ defmodule Logflare.Source.WebhookNotificationServer do
     :noop
 
     {:noreply, state}
+  end
+
+  def terminate(reason, state) do
+    # Do Shutdown Stuff
+    Logger.info("Going Down - #{inspect(reason)} - #{__MODULE__}", %{
+      source_id: state.source_token,
+      source_token: state.source_token
+    })
+
+    reason
   end
 
   defp post(uri, source, rate, recent_events) do
