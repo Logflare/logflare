@@ -3,7 +3,16 @@ defmodule Logflare.Repo.Migrations.RecreatePublicationForTables do
   use Ecto.Migration
 
   @publications Application.get_env(:logflare, Logflare.CacheBuster)[:publications]
-  @publication_tables Application.get_env(:logflare, Logflare.CacheBuster)[:publication_tables]
+  @publication_tables [
+    "billing_accounts",
+    "plans",
+    "rules",
+    "source_schemas",
+    "sources",
+    "users",
+    "backends",
+    "team_users"
+  ]
 
   def up do
     for p <- @publications, do: execute("DROP PUBLICATION #{p};")
