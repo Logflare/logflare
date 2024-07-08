@@ -15,6 +15,9 @@
 +sbwtdcpu none
 +sbwtdio none
 
+## load balance on scheduler utilization
++sub true
+
 ## Reduce scheduler wake up threshold
 +swt low
 +swtdcpu low
