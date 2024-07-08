@@ -101,7 +101,6 @@ defmodule Logflare.Application do
         {Cluster.Supervisor, [topologies, [name: Logflare.ClusterSupervisor]]},
         Logflare.Repo,
         {Phoenix.PubSub, name: Logflare.PubSub, pool_size: pool_size},
-        # supervisor(LogflareTelemetry.Supervisor, []),
         # Context Caches
         TeamUsers.Cache,
         ContextCache,
@@ -113,6 +112,7 @@ defmodule Logflare.Application do
         SourceSchemas.Cache,
         Auth.Cache,
         Logs.LogEvents.Cache,
+        PubSubRates,
 
         # Follow Postgresql replication log and bust all our context caches
         {
@@ -130,7 +130,6 @@ defmodule Logflare.Application do
           publications: publications
         },
         Logflare.CacheBuster,
-
         # Sources
         # v1 ingest pipline
         {Registry,
@@ -142,7 +141,6 @@ defmodule Logflare.Application do
         # Backends needs to be before Source.Supervisor
         Logflare.Backends,
         Logflare.Source.Supervisor,
-        PubSubRates,
         {DynamicSupervisor,
          strategy: :one_for_one,
          restart: :transient,
