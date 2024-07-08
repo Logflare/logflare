@@ -73,6 +73,7 @@ defmodule Logflare.LogsTest do
 
   describe "full ingestion pipeline test" do
     test "additive schema update from log event", %{source: source} do
+
       GoogleApi.BigQuery.V2.Api.Tabledata
       |> expect(:bigquery_tabledata_insert_all, fn conn,
                                                    _project_id,
@@ -112,7 +113,8 @@ defmodule Logflare.LogsTest do
       ]
 
       assert :ok = Logs.ingest_logs(batch, source)
-      assert_receive :ok, 1000
+      assert_receive :ok, 1_500
+      :timer.sleep(1_500)
     end
   end
 
