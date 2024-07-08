@@ -99,7 +99,7 @@ defmodule Logflare.PubSubRates.Cache do
       {:error, :no_cache} ->
         default
 
-        {:error, _} = err ->
+      {:error, _} = err ->
         Logger.error("Error when getting pubsub cluster rates: #{inspect(err)}")
 
         %{

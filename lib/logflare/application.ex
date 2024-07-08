@@ -114,7 +114,6 @@ defmodule Logflare.Application do
         Logs.LogEvents.Cache,
         PubSubRates,
 
-
         # Follow Postgresql replication log and bust all our context caches
         {
           Cainophile.Adapters.Postgres,
