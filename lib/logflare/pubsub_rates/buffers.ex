@@ -13,14 +13,22 @@ defmodule Logflare.PubSubRates.Buffers do
     GenServer.start_link(__MODULE__, args, name: __MODULE__)
   end
 
+  @impl GenServer
   def init(_state) do
     PubSubRates.subscribe(:buffers)
     {:ok, %{}}
   end
 
+  @impl GenServer
   def handle_info({:buffers, source_id, backend_id, buffers}, state)
       when is_integer(source_id) and is_map(buffers) do
     Cache.cache_buffers(source_id, backend_id, buffers)
+    {:noreply, state}
+  end
+
+  @impl GenServer
+  def handle_info({:buffers, _, _}, state) do
+    # don't handle old format of 3-elem tuple.
     {:noreply, state}
   end
 end

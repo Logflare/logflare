@@ -45,6 +45,20 @@ defmodule Logflare.ClusterPubSubTest do
         assert_received {:buffers, ^source_id, nil, %{data: "some val"}}
       end)
     end
+
+    test "buffers 3-elem tuple is no op", %{source: source} do
+      Phoenix.PubSub.broadcast(
+        Logflare.PubSub,
+        "buffers",
+        {:buffers, source.token, %{Node.self() => %{len: 5}}}
+      )
+
+      :timer.sleep(100)
+      assert PubSubRates.Cache.get_cluster_buffers(source.id, nil) == 0
+      PubSubRates.global_broadcast_rate({:buffers, source.id, nil, %{Node.self() => %{len: 5}}})
+      :timer.sleep(100)
+      assert PubSubRates.Cache.get_cluster_buffers(source.id, nil) == 5
+    end
   end
 
   describe "ChannelTopics" do

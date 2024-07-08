@@ -58,9 +58,9 @@ defmodule Logflare.PubSubRates.Cache do
   @doc """
   Returns a node mapping of buffer lengths across the cluster.
   """
-  @spec get_buffers(atom(), String.t() | nil) :: map()
-  def get_buffers(source_token, backend_token) do
-    Cachex.get(__MODULE__, {source_token, backend_token, "buffers"})
+  @spec get_buffers(non_neg_integer(), non_neg_integer() | nil) :: map()
+  def get_buffers(source_id, backend_id) do
+    Cachex.get(__MODULE__, {source_id, backend_id, "buffers"})
   end
 
   @doc """
