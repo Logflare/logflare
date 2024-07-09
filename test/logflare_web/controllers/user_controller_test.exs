@@ -3,6 +3,7 @@ defmodule LogflareWeb.UserControllerTest do
   import LogflareWeb.Router.Helpers
   use LogflareWeb.ConnCase
   alias Logflare.Users
+  alias Logflare.Google.CloudResourceManager
 
   describe "UserController update" do
     setup do
@@ -123,6 +124,9 @@ defmodule LogflareWeb.UserControllerTest do
     end
 
     test "succeeds", %{conn: conn} do
+      CloudResourceManager
+      |> expect(:set_iam_policy, fn -> nil end)
+
       conn = delete(conn, ~p"/account")
       assert redirected_to(conn, 302) =~ ~p"/auth/login?user_deleted=true"
     end
@@ -137,6 +141,9 @@ defmodule LogflareWeb.UserControllerTest do
     end
 
     test "bug: should be able to delete a partner-provisioned account", %{conn: conn} do
+      CloudResourceManager
+      |> expect(:set_iam_policy, fn -> nil end)
+
       conn = delete(conn, ~p"/account")
       assert redirected_to(conn, 302) =~ ~p"/auth/login"
     end

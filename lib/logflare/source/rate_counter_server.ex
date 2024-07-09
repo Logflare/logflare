@@ -53,7 +53,6 @@ defmodule Logflare.Source.RateCounterServer do
   end
 
   def init(args) do
-    Process.flag(:trap_exit, true)
     source = Keyword.get(args, :source)
 
     setup_ets_table(source.token)
@@ -84,15 +83,6 @@ defmodule Logflare.Source.RateCounterServer do
 
     put_current_rate()
     {:noreply, source_id}
-  end
-
-  def terminate(reason, state) do
-    # Do Shutdown Stuff
-    Logger.info("Going Down - #{inspect(reason)} - #{__MODULE__}", %{
-      source_id: Atom.to_string(state)
-    })
-
-    reason
   end
 
   @spec new(atom) :: __MODULE__.t()

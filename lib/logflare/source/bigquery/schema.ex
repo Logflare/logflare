@@ -85,15 +85,6 @@ defmodule Logflare.Source.BigQuery.Schema do
     end
   end
 
-  def terminate(reason, state) do
-    # Do Shutdown Stuff
-    Logger.info("Going Down - #{inspect(reason)} - #{__MODULE__}", %{
-      source_id: state.source_token
-    })
-
-    reason
-  end
-
   # TODO: remove, external procs should not have access to internal state
   def get_state(source_token) when is_atom(source_token) do
     with {:ok, pid} <- Backends.lookup(__MODULE__, source_token) do

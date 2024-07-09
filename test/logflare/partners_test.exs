@@ -5,6 +5,7 @@ defmodule Logflare.PartnerTest do
   alias Logflare.Partners.PartnerUser
   alias Logflare.Repo
   alias Logflare.User
+  alias Logflare.Google.CloudResourceManager
 
   describe "get/1" do
     test "returns the partner with given id" do
@@ -81,6 +82,9 @@ defmodule Logflare.PartnerTest do
 
   describe "delete_user/2" do
     test "deletes user and removes association with partner" do
+      CloudResourceManager
+      |> expect(:set_iam_policy, fn -> nil end)
+
       partner = insert(:partner)
 
       {:ok, %{id: id} = user} = Partners.create_user(partner, %{"email" => TestUtils.gen_email()})

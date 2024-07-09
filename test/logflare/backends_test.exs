@@ -176,7 +176,7 @@ defmodule Logflare.BackendsTest do
       ChannelTopics.subscribe_source(source_token)
       le = build(:log_event, source: source)
       assert {:ok, 1} = Backends.ingest_logs([le], source)
-      :timer.sleep(500)
+      :timer.sleep(1000)
 
       TestUtils.retry_assert(fn ->
         assert_received %_{event: "rate", payload: %{rate: _}}
@@ -217,6 +217,7 @@ defmodule Logflare.BackendsTest do
       assert {:ok, 0} = Backends.ingest_logs([le], source)
       # only the init message in RLS
       assert [_] = Backends.list_recent_logs_local(source)
+      :timer.sleep(1000)
     end
 
     test "route to source with lql", %{user: user} do
@@ -225,7 +226,7 @@ defmodule Logflare.BackendsTest do
       source = Logflare.Repo.preload(source, :rules, force: true)
       start_supervised!({SourceSup, source}, id: :source)
       start_supervised!({SourceSup, target}, id: :target)
-      :timer.sleep(1000)
+      :timer.sleep(500)
 
       assert {:ok, 2} =
                Backends.ingest_logs(
@@ -236,7 +237,7 @@ defmodule Logflare.BackendsTest do
                  source
                )
 
-      :timer.sleep(500)
+      :timer.sleep(1000)
       # init message + 2 events
       assert Backends.list_recent_logs_local(source) |> length() == 3
       # init message + 1 events
@@ -252,10 +253,10 @@ defmodule Logflare.BackendsTest do
       start_supervised!({SourceSup, source}, id: :source)
       start_supervised!({SourceSup, target}, id: :target)
       start_supervised!({SourceSup, other_target}, id: :other_target)
-      :timer.sleep(1000)
+      :timer.sleep(500)
 
       assert {:ok, 1} = Backends.ingest_logs([%{"event_message" => "testing 123"}], source)
-      :timer.sleep(500)
+      :timer.sleep(1000)
       # init message + 1 events
       assert Backends.list_recent_logs_local(source) |> length() == 2
       # init message + 1 events
@@ -299,6 +300,7 @@ defmodule Logflare.BackendsTest do
                )
 
       assert_receive ^ref, 2_000
+      :timer.sleep(1000)
     end
   end
 
@@ -337,6 +339,8 @@ defmodule Logflare.BackendsTest do
       TestUtils.retry_assert(fn ->
         assert_received {^ref, %{"event_message" => "some event"}}
       end)
+
+      :timer.sleep(1000)
     end
   end
 

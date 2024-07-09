@@ -4,6 +4,7 @@ defmodule LogflareWeb.EndpointsControllerTest do
   alias Logflare.SingleTenant
   alias Logflare.Backends
   alias Logflare.Source
+  alias Logflare.Sources
   alias Logflare.SystemMetrics.AllLogsLogged
 
   setup do
@@ -178,6 +179,8 @@ defmodule LogflareWeb.EndpointsControllerTest do
 
     test "GET a basic sandboxed query with from table", %{conn: initial_conn, user: user} do
       for source <- Logflare.Repo.all(Source) do
+        source = Sources.preload_defaults(source)
+
         Backends.ingest_logs(
           [%{"event_message" => "some message", "project" => "default"}],
           source
