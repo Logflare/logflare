@@ -20,6 +20,7 @@ defmodule LogflareWeb.SourceController do
   alias Logflare.TeamUsers
   alias Logflare.Users
   alias LogflareWeb.AuthController
+  alias Logflare.Backends
 
   defp env_project_id, do: Application.get_env(:logflare, Logflare.Google)[:project_id]
 
@@ -36,8 +37,23 @@ defmodule LogflareWeb.SourceController do
     team_users_with_teams =
       TeamUsers.list_team_users_by_and_preload(provider_uid: team_user.provider_uid)
 
+    pipeline_counts =
+      for source <- sources, into: %{} do
+        name = Backends.via_source(source, Logflare.Source.BigQuery.Pipeline, nil)
+
+        count =
+          if GenServer.whereis(name) do
+            Backends.DynamicPipeline.pipeline_count(name)
+          else
+            0
+          end
+
+        {source.id, count}
+      end
+
     render(conn, "dashboard.html",
       sources: sources,
+      pipeline_counts: pipeline_counts,
       home_team: home_team,
       team_users: team_users_with_teams,
       current_node: Node.self()
@@ -52,8 +68,23 @@ defmodule LogflareWeb.SourceController do
 
     team_users_with_teams = TeamUsers.list_team_users_by_and_preload(email: user.email)
 
+    pipeline_counts =
+      for source <- sources, into: %{} do
+        name = Backends.via_source(source.id, Logflare.Source.BigQuery.Pipeline, nil)
+
+        count =
+          if GenServer.whereis(name) do
+            Backends.DynamicPipeline.pipeline_count(name)
+          else
+            0
+          end
+
+        {source.id, count}
+      end
+
     render(conn, "dashboard.html",
       sources: sources,
+      pipeline_counts: pipeline_counts,
       home_team: home_team,
       team_users: team_users_with_teams,
       current_node: Node.self()

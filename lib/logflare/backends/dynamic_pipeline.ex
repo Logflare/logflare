@@ -33,12 +33,14 @@ defmodule Logflare.Backends.DynamicPipeline do
         max_buffer_len: 10_000,
         max_pipelines: System.schedulers_online(),
         min_pipelines: 0,
-        resolve_count: fn -> 0 end,
+        resolve_count: fn _state -> 0 end,
         resolve_interval: 5_000,
-        buffers: %{}
+        buffers: %{},
+        last_count_increase: nil,
+        last_count_decrease: nil
       })
 
-    num_to_start = max(state.resolve_count.(), state.min_pipelines)
+    {_type, num_to_start, coordinator_state} = resolve_pipeline_count(state, 0)
 
     pipeline_specs =
       for i <- 0..num_to_start, i != 0 do
@@ -48,11 +50,35 @@ defmodule Logflare.Backends.DynamicPipeline do
     children =
       [
         {Agent, fn -> state end},
-        {Coordinator, state}
+        {Coordinator, coordinator_state}
       ] ++ pipeline_specs
 
     Logger.debug("Started up DynamicPipeline")
     Supervisor.init(children, strategy: :one_for_one)
+  end
+
+  @doc """
+  Resolves desired number of pipelines from state
+  """
+  def resolve_pipeline_count(state, current) do
+    args =
+      Map.take(state, [:last_count_increase, :last_count_decrease])
+      |> Map.put(:pipeline_count, current)
+
+    desired = max(state.resolve_count.(args), state.min_pipelines)
+
+    cond do
+      desired > current ->
+        new_state = %{state | last_count_increase: NaiveDateTime.utc_now()}
+        {:incr, desired, new_state}
+
+      desired < current ->
+        new_state = %{state | last_count_decrease: NaiveDateTime.utc_now()}
+        {:decr, desired, new_state}
+
+      desired == current ->
+        {:noop, desired, state}
+    end
   end
 
   @doc """
@@ -248,29 +274,29 @@ defmodule Logflare.Backends.DynamicPipeline do
       pipelines = DynamicPipeline.list_pipelines(state.name)
       pipeline_count = Enum.count(pipelines)
 
-      desired_count =
-        max(state.resolve_count.(), state.min_pipelines)
-        |> max(System.schedulers_online())
+      state =
+        case DynamicPipeline.resolve_pipeline_count(state, pipeline_count) do
+          {:incr, desired_count, new_state} ->
+            diff = desired_count - pipeline_count
 
-      cond do
-        desired_count > pipeline_count ->
-          # start up more pipelines
-          diff = desired_count - pipeline_count
+            for _ <- 1..diff do
+              DynamicPipeline.add_pipeline(state.name)
+            end
 
-          for _ <- 1..diff do
-            DynamicPipeline.add_pipeline(state.name)
-          end
+            new_state
 
-        desired_count < pipeline_count ->
-          diff = pipeline_count - desired_count
+          {:decr, desired_count, new_state} ->
+            diff = pipeline_count - desired_count
 
-          for _pipeline <- 1..diff do
-            DynamicPipeline.remove_pipeline(state.name)
-          end
+            for _pipeline <- 1..diff do
+              DynamicPipeline.remove_pipeline(state.name)
+            end
 
-        true ->
-          :noop
-      end
+            new_state
+
+          {:noop, _desired, new_state} ->
+            new_state
+        end
 
       loop(state)
       {:noreply, state}

@@ -47,15 +47,49 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
           bigquery_dataset_id: dataset_id
         ],
         min_pipelines: 1,
-        resolve_count: fn ->
+        max_pipelines: System.schedulers_online(),
+        resolve_count: fn state ->
           source = Sources.refresh_source_metrics_for_ingest(source)
           len = Backends.local_pending_buffer_len(source, backend)
-          # take a factor of the rate * 2
-          # if buffer filling up fast, use it instead
-          buffer_min = round(len / 1000 * 1.5)
+          max_len = Backends.max_buffer_len()
+          last_decr = state.last_count_decrease || NaiveDateTime.utc_now()
+          sec_since_last_decr = NaiveDateTime.diff(last_decr, NaiveDateTime.utc_now())
 
-          round(source.metrics.avg / 1000 * 2)
-          |> max(buffer_min)
+          cond do
+            # max out pipelines, overflow risk
+            len > max_len / 2 ->
+              state.max_pipelines
+
+            # increase based on hardcoded thresholds
+            len > 5_000 ->
+              state.pipeline_count + 5
+
+            len > 2_500 ->
+              state.pipeline_count + 3
+
+            len > 1_000 ->
+              state.pipeline_count + 2
+
+            len > 500 ->
+              state.pipeline_count + 1
+
+            # new items incoming
+            len > 0 and state.pipeline_count == 0 ->
+              1
+
+            # gradual decrease
+            len < 1_000 and state.pipeline_count > 1 and
+                (sec_since_last_decr > 30 or state.last_count_decrease == nil) ->
+              state.pipeline_count - 1
+
+            len == 0 and source.metrics.avg == 0 and state.pipeline_count == 1 and
+                sec_since_last_decr > 60 ->
+              # scale to zero only if no items for > 30s and incoming rate is 0
+              0
+
+            true ->
+              state.pipeline_count
+          end
         end
       },
       {Schema,

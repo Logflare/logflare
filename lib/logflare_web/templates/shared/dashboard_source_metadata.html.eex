@@ -26,7 +26,7 @@
     max: <span id="<%= @source.token %>-max-rate"><%= @source.metrics.max %></span>
   </small>
   <small class="source-details">
-    buffer: <span id="<%= @source.token %>-buffer"><%= @source.metrics.buffer %></span>
+    buffer: <span class="logflare-tooltip" data-placement="top" title="Pipelines <%= Map.get(@pipeline_counts, @source.id) %>"  id="<%= @source.token %>-buffer"><%= @source.metrics.buffer %></span>
   </small>
   <small class="source-details">
     <%= if @source.metrics.fields > @conn.assigns.plan.limit_source_fields_limit do %>

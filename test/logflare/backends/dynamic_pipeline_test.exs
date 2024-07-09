@@ -66,7 +66,10 @@ defmodule Logflare.DynamicPipelineTest do
        name: name,
        pipeline: Pipeline,
        pipeline_args: pipeline_args,
-       resolve_count: fn ->
+       resolve_count: fn state ->
+         assert is_map_key(state, :last_count_increase)
+         assert is_map_key(state, :last_count_decrease)
+
          if Process.alive?(pid) do
            5
          else
