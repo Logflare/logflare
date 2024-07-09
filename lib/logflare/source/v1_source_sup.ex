@@ -29,7 +29,6 @@ defmodule Logflare.Source.V1SourceSup do
   @impl true
   def init(args) do
     source = Keyword.get(args, :source)
-    Process.flag(:trap_exit, true)
     Logger.metadata(source_id: source.token, source_token: source.token)
 
     user =
