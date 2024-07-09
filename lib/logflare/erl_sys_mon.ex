@@ -22,15 +22,20 @@ defmodule Logflare.ErlSysMon do
     {:ok, []}
   end
 
-  def handle_info(msg, state) do
+  def handle_info({:monitor, pid, _type, _meta} = msg, state) do
     pid_info =
-      case msg do
-        {:monitor, pid, _type, _meta} ->
-          Process.info(pid, [:dictionary])
+      pid
+      |> Process.info(:dictionary)
+      |> case do
+        {:dictionary, dict} when is_list(dict) ->
+          Keyword.take(dict, [:"$ancestors", :"$initial_call"])
+
+        other ->
+          other
       end
 
     Logger.warning(
-      "#{__MODULE__} message: " <> inspect(msg) <> " | process info: #{inspect(pid_info)}"
+      "#{__MODULE__} message: " <> inspect(msg) <> "|\n process info: #{inspect(pid_info)}"
     )
 
     {:noreply, state}
