@@ -13,14 +13,18 @@ defmodule Logflare.Backends.Supervisor do
 
   @impl Supervisor
   def init(_) do
+    base = System.schedulers_online()
+
     children = [
       Backends.IngestEventQueue,
       Backends.IngestEventQueue.BroadcastWorker,
       Backends.IngestEventQueue.MapperJanitor,
       Backends.Adaptor.PostgresAdaptor.Supervisor,
       {DynamicSupervisor, strategy: :one_for_one, name: Backends.SourcesSup},
-      {Registry, name: Backends.SourceRegistry, keys: :unique},
-      {Registry, name: Backends.BackendRegistry, keys: :unique}
+      {Registry,
+       name: Backends.SourceRegistry, keys: :unique, partitions: max(round(base / 8), 1)},
+      {Registry,
+       name: Backends.BackendRegistry, keys: :unique, partitions: max(round(base / 8), 1)}
     ]
 
     opts = [strategy: :one_for_one]

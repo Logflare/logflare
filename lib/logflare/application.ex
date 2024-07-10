@@ -63,7 +63,9 @@ defmodule Logflare.Application do
         Logflare.Repo,
         Logflare.Backends,
         {Registry,
-         name: Logflare.V1SourceRegistry, keys: :unique, partitions: System.schedulers_online()},
+         name: Logflare.V1SourceRegistry,
+         keys: :unique,
+         partitions: max(round(System.schedulers_online() / 8), 1)},
         {Task.Supervisor, name: Logflare.TaskSupervisor},
         {DynamicSupervisor, strategy: :one_for_one, name: Logflare.Endpoints.Cache},
         {DynamicSupervisor,
@@ -133,7 +135,9 @@ defmodule Logflare.Application do
         # Sources
         # v1 ingest pipline
         {Registry,
-         name: Logflare.V1SourceRegistry, keys: :unique, partitions: System.schedulers_online()},
+         name: Logflare.V1SourceRegistry,
+         keys: :unique,
+         partitions: max(round(System.schedulers_online() / 8), 1)},
         Logs.RejectedLogEvents,
         # init Counters before Supervisof as Supervisor calls Counters through table create
         Counters,
