@@ -14,6 +14,7 @@ defmodule Logflare.Backends.IngestEventQueue.QueueJanitor do
   @default_interval 1_000
   @default_remainder 100
   @default_max 50_000
+  @default_purge_ratio 0.1
 
   def start_link(opts) do
     GenServer.start_link(__MODULE__, opts)
@@ -28,7 +29,8 @@ defmodule Logflare.Backends.IngestEventQueue.QueueJanitor do
       backend_id: bid,
       interval: Keyword.get(opts, :interval, @default_interval),
       remainder: Keyword.get(opts, :remainder, @default_remainder),
-      max: Keyword.get(opts, :max, @default_max)
+      max: Keyword.get(opts, :max, @default_max),
+      purge_ratio: Keyword.get(opts, :purge_ratio, @default_purge_ratio)
     }
 
     schedule(state.interval)
@@ -44,7 +46,8 @@ defmodule Logflare.Backends.IngestEventQueue.QueueJanitor do
     all_size = IngestEventQueue.get_table_size(sid_bid)
 
     if all_size > state.max do
-      IngestEventQueue.truncate(sid_bid, :all, 0)
+      remainder = round((1 - state.purge_ratio) * all_size)
+      IngestEventQueue.truncate(sid_bid, :all, remainder)
 
       Logger.warning(
         "IngestEventQueue private :ets buffer exceeded max for source id=#{state.source_id}, dropping #{all_size} events",
