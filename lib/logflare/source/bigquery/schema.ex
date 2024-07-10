@@ -41,6 +41,7 @@ defmodule Logflare.Source.BigQuery.Schema do
 
     # TODO: remove source_id from metadata to reduce confusion
     Logger.metadata(source_id: args[:source_token], source_token: args[:source_token])
+    Process.flag(:trap_exit, true)
 
     persist(0)
 
@@ -82,15 +83,6 @@ defmodule Logflare.Source.BigQuery.Schema do
              field_count: field_count
          }}
     end
-  end
-
-  def terminate(reason, state) do
-    # Do Shutdown Stuff
-    Logger.info("Going Down - #{inspect(reason)} - #{__MODULE__}", %{
-      source_id: state.source_token
-    })
-
-    reason
   end
 
   # TODO: remove, external procs should not have access to internal state

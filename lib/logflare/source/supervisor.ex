@@ -253,7 +253,7 @@ defmodule Logflare.Source.Supervisor do
         maybe_restart_mismatched_source_pipelines(source_token)
 
       %{v1: {:error, _}, v2: {:error, _}} ->
-        Logger.debug("Source.Supervisor - SourceSup not found, starting...",
+        Logger.info("Source.Supervisor - SourceSup not found, starting...",
           source_id: source_token,
           source_token: source_token
         )

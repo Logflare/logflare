@@ -1,9 +1,10 @@
 defmodule Logflare.SqlTest do
   @moduledoc false
-  use Logflare.DataCase, async: false
+  use Logflare.DataCase
   alias Logflare.SingleTenant
   alias Logflare.Sql
   alias Logflare.Backends.Adaptor.PostgresAdaptor
+  alias Logflare.Backends.AdaptorSupervisor
   @logflare_project_id "logflare-project-id"
   @user_project_id "user-project-id"
   @user_dataset_id "user-dataset-id"
@@ -440,7 +441,7 @@ defmodule Logflare.SqlTest do
       source = insert(:source, user: user, name: "c.d.e")
       backend = insert(:backend, type: :postgres, sources: [source], config: config)
 
-      pid = start_supervised!({PostgresAdaptor, {source, backend}})
+      pid = start_supervised!({AdaptorSupervisor, {source, backend}})
 
       log_event =
         Logflare.LogEvent.make(

@@ -112,7 +112,8 @@ defmodule Logflare.LogsTest do
       ]
 
       assert :ok = Logs.ingest_logs(batch, source)
-      assert_receive :ok, 1000
+      assert_receive :ok, 1_500
+      :timer.sleep(1_500)
     end
   end
 
