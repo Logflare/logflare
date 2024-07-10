@@ -47,7 +47,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
           bigquery_dataset_id: dataset_id
         ],
         min_pipelines: 0,
-        max_pipelines: System.schedulers_online() * 2,
+        max_pipelines: System.schedulers_online(),
         resolve_count: fn state ->
           source = Sources.refresh_source_metrics_for_ingest(source)
           len = Backends.local_pending_buffer_len(source, backend)
