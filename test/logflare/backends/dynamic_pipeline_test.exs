@@ -8,6 +8,8 @@ defmodule Logflare.DynamicPipelineTest do
   alias Logflare.Backends.IngestEventQueue
   alias Logflare.Backends.IngestEventQueue
 
+  import ExUnit.CaptureLog
+
   setup do
     user = insert(:user)
     source = insert(:source, user: user)
@@ -82,6 +84,26 @@ defmodule Logflare.DynamicPipelineTest do
     assert DynamicPipeline.pipeline_count(name) == 5
     :timer.sleep(600)
     assert DynamicPipeline.pipeline_count(name) == 10
+  end
+
+  test "error in resolve_count does not crash everything",
+       %{name: name, pipeline_args: pipeline_args} do
+    assert capture_log(fn ->
+             pid =
+               start_supervised!(
+                 {DynamicPipeline,
+                  name: name,
+                  pipeline: Pipeline,
+                  pipeline_args: pipeline_args,
+                  resolve_count: fn _state ->
+                    raise "some error"
+                  end,
+                  resolve_interval: 100}
+               )
+
+             :timer.sleep(300)
+             assert Process.alive?(pid)
+           end) =~ "some error"
   end
 
   test "pulls events from queue with  bigquery pipeline", %{

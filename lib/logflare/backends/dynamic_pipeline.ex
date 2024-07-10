@@ -65,7 +65,21 @@ defmodule Logflare.Backends.DynamicPipeline do
       Map.take(state, [:last_count_increase, :last_count_decrease])
       |> Map.put(:pipeline_count, current)
 
-    desired = max(state.resolve_count.(args), state.min_pipelines)
+    desired =
+      try do
+        max(state.resolve_count.(args), state.min_pipelines)
+      rescue
+        err ->
+          fallback = max(current, state.min_pipelines)
+
+          Logger.error(
+            "Error when resolving DynamicPipeline counts, falling back to #{fallback} | err: #{inspect(err)}"
+          )
+
+          fallback
+      end
+
+    Logger.warning("DynamicPipeline desired pipeline count: #{desired}")
 
     cond do
       desired > current ->
