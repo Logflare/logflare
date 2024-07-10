@@ -51,11 +51,11 @@ defmodule Logflare.Source.BigQuery.Pipeline do
             transformer: {__MODULE__, :transform, []}
           ],
           processors: [
-            default: [concurrency: 8]
+            default: [concurrency: 4]
           ],
           batchers: [
             bq: [
-              concurrency: 12,
+              concurrency: 8,
               batch_size: bq_batch_size_splitter(),
               batch_timeout: 1_500,
               # must be set when using custom batch_size splitter
