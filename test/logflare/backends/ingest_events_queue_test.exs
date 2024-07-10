@@ -160,7 +160,7 @@ defmodule Logflare.Backends.IngestEventQueueTest do
     assert IngestEventQueue.count_pending({source, backend}) == 0
   end
 
-  test "QueueJanitor drops all if exceeds max" do
+  test "QueueJanitor purges if exceeds max" do
     user = insert(:user)
     source = insert(:source, user: user)
     backend = insert(:backend, user: user)
@@ -168,9 +168,30 @@ defmodule Logflare.Backends.IngestEventQueueTest do
     batch = for _ <- 1..105, do: build(:log_event, source: source)
     IngestEventQueue.add_to_table({source, backend}, batch)
     assert IngestEventQueue.get_table_size({source, backend}) == 105
-    start_supervised!({QueueJanitor, source: source, backend: backend, interval: 100, max: 100})
+
+    start_supervised!(
+      {QueueJanitor, source: source, backend: backend, interval: 100, max: 100, purge_ratio: 1.0}
+    )
+
     :timer.sleep(500)
     assert IngestEventQueue.get_table_size({source, backend}) == 0
+  end
+
+  test "QueueJanitor purges based on purge ratio" do
+    user = insert(:user)
+    source = insert(:source, user: user)
+    backend = insert(:backend, user: user)
+    IngestEventQueue.upsert_tid({source, backend})
+    batch = for _ <- 1..100, do: build(:log_event, source: source)
+    IngestEventQueue.add_to_table({source, backend}, batch)
+    assert IngestEventQueue.get_table_size({source, backend}) == 100
+
+    start_supervised!(
+      {QueueJanitor, source: source, backend: backend, interval: 100, max: 90, purge_ratio: 0.5}
+    )
+
+    :timer.sleep(500)
+    assert IngestEventQueue.get_table_size({source, backend}) == 50
   end
 
   test "MapperJanitor cleans up stale tids" do
