@@ -148,12 +148,9 @@ defmodule Logflare.Backends.IngestEventQueue do
 
   def mark_ingested({sid, _bid} = sid_bid, events) when is_integer(sid) do
     with tid when tid != nil <- get_tid(sid_bid) do
-      updated =
-        for event <- events do
-          {event.id, :ingested, event}
-        end
-
-      :ets.insert(tid, updated)
+      for event <- events do
+        :ets.update_element(tid, event.id, {2, :ingested})
+      end
 
       {:ok, Enum.count(events)}
     else
@@ -221,6 +218,16 @@ defmodule Logflare.Backends.IngestEventQueue do
     # drop all objects
     with tid when tid != nil <- get_tid(sid_bid) do
       :ets.delete_all_objects(tid)
+      :ok
+    else
+      nil -> {:error, :not_initialized}
+    end
+  end
+
+  def truncate({sid, _bid} = sid_bid, :ingested, 0) when is_integer(sid) do
+    # drop all objects
+    with tid when tid != nil <- get_tid(sid_bid) do
+      :ets.match_delete(tid, {:_, :ingested, :_})
       :ok
     else
       nil -> {:error, :not_initialized}
