@@ -26,7 +26,7 @@ defmodule Logflare.Backends.BufferProducer do
       interval: Keyword.get(opts, :interval, @default_interval)
     }
 
-    schedule(state)
+    schedule(state, false)
     {:producer, state, buffer_size: Keyword.get(opts, :buffer_size, 10_000)}
   end
 
@@ -81,11 +81,14 @@ defmodule Logflare.Backends.BufferProducer do
     {:noreply, items, state}
   end
 
-  defp schedule(state) do
+  defp schedule(state, scale? \\ true) do
     metrics = Sources.get_source_metrics_for_ingest(state.source_token)
     # dynamically schedule based on metrics interval
     interval =
       cond do
+        scale? == false ->
+          state.interval
+
         metrics.avg < 100 ->
           state.interval * 5
 

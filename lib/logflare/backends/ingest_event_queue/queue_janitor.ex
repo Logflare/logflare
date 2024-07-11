@@ -35,7 +35,7 @@ defmodule Logflare.Backends.IngestEventQueue.QueueJanitor do
       purge_ratio: Keyword.get(opts, :purge_ratio, @default_purge_ratio)
     }
 
-    schedule(state)
+    schedule(state, false)
     {:ok, state}
   end
 
@@ -77,11 +77,14 @@ defmodule Logflare.Backends.IngestEventQueue.QueueJanitor do
   end
 
   # schedule work based on rps
-  defp schedule(state) do
+  defp schedule(state, scale? \\ true) do
     metrics = Sources.get_source_metrics_for_ingest(state.source_token)
     # dynamically schedule based on metrics interval
     interval =
       cond do
+        scale? == false ->
+          state.interval
+
         metrics.avg < 100 ->
           state.interval * 10
 
