@@ -45,7 +45,7 @@ defmodule Logflare.Backends.IngestEventQueue.QueueJanitor do
     # safety measure, drop all if still exceed
     all_size = IngestEventQueue.get_table_size(sid_bid)
 
-    if all_size > state.max do
+    if all_size != nil and all_size > state.max do
       remainder = round((1 - state.purge_ratio) * all_size)
       IngestEventQueue.truncate(sid_bid, :all, remainder)
 
