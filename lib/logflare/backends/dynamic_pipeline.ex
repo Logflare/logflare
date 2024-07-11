@@ -10,6 +10,7 @@ defmodule Logflare.Backends.DynamicPipeline do
   - `:max_buffer_len` - soft limit that each pipeline buffer grows to before a new pipeline is added. Optional.
   - `:max_pipelines` - max pipelines that can be scaled to.
   - `:min_pipelines` - max pipelines that can be scaled to, defaults to 0.
+  - `:initial_count` - the initial number of pipelines to start. Defaults to :min_pipelines value.
   - `:resolve_count` - anonymous 1-arity function to determine what number of pipelines to scale to.
   - `:resolve_interval` - interval that the resolve_count will be checked.
   """
@@ -33,6 +34,7 @@ defmodule Logflare.Backends.DynamicPipeline do
         max_buffer_len: 10_000,
         max_pipelines: System.schedulers_online(),
         min_pipelines: 0,
+        initial_count: args[:min_pipelines] || 0,
         resolve_count: fn _state -> 0 end,
         resolve_interval: 5_000,
         buffers: %{},
@@ -40,17 +42,15 @@ defmodule Logflare.Backends.DynamicPipeline do
         last_count_decrease: nil
       })
 
-    {_type, num_to_start, coordinator_state} = resolve_pipeline_count(state, 0)
-
     pipeline_specs =
-      for i <- 0..num_to_start, i != 0 do
+      for i <- 0..state.initial_count, i != 0 do
         child_spec(state, make_ref())
       end
 
     children =
       [
         {Agent, fn -> state end},
-        {Coordinator, coordinator_state}
+        {Coordinator, state}
       ] ++ pipeline_specs
 
     Logger.debug("Started up DynamicPipeline")

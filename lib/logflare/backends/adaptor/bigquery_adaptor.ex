@@ -48,6 +48,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
         ],
         min_pipelines: 0,
         max_pipelines: System.schedulers_online(),
+        initial_count: 1,
         resolve_count: fn state ->
           source = Sources.refresh_source_metrics_for_ingest(source)
           len = Backends.local_pending_buffer_len(source, backend)
@@ -105,7 +106,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
 
       len == 0 and avg_rate == 0 and
         state.pipeline_count == 1 and
-          (sec_since_last_decr > 300 or state.last_count_decrease == nil) ->
+          (sec_since_last_decr > 150 or state.last_count_decrease == nil) ->
         # scale to zero only if no items for > 5m and incoming rate is 0
         0
 

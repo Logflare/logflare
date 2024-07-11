@@ -12,7 +12,7 @@ defmodule LogflareWeb.Plugs.BufferLimiterTest do
   end
 
   test "if buffer is full of pending, return 429", %{conn: conn, source: source} do
-    for _ <- 1..20_000 do
+    for _ <- 1..55_000 do
       le = build(:log_event)
       IngestEventQueue.add_to_table({source, nil}, [le])
     end
