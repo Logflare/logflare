@@ -2,13 +2,16 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
   @moduledoc false
 
   alias Logflare.Backends
+  alias Logflare.Backends.DynamicPipeline
   alias Logflare.Backends.Backend
   alias Logflare.Source.BigQuery.Pipeline
   alias Logflare.Source.BigQuery.Schema
   alias Logflare.Source.BigQuery.Pipeline
   alias Logflare.Users
+  alias Logflare.Sources
   alias Logflare.Billing
   use Supervisor
+  require Logger
 
   @behaviour Logflare.Backends.Adaptor
 
@@ -32,14 +35,26 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
     Logger.metadata(source_id: source.token, source_token: source.token)
 
     children = [
-      {Pipeline,
-       [
-         source: source,
-         backend: backend,
-         bigquery_project_id: project_id,
-         bigquery_dataset_id: dataset_id,
-         name: Backends.via_source(source, Pipeline, backend.id)
-       ]},
+      {
+        DynamicPipeline,
+        # soft limit before a new pipeline is created
+        name: Backends.via_source(source, Pipeline, backend.id),
+        pipeline: Pipeline,
+        pipeline_args: [
+          source: source,
+          backend: backend,
+          bigquery_project_id: project_id,
+          bigquery_dataset_id: dataset_id
+        ],
+        min_pipelines: 0,
+        max_pipelines: System.schedulers_online(),
+        initial_count: 1,
+        resolve_count: fn state ->
+          source = Sources.refresh_source_metrics_for_ingest(source)
+          len = Backends.local_pending_buffer_len(source, backend)
+          handle_resolve_count(state, len, source.metrics.avg)
+        end
+      },
       {Schema,
        [
          plan: plan,
@@ -51,6 +66,53 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
     ]
 
     Supervisor.init(children, strategy: :one_for_one, max_restarts: 10)
+  end
+
+  @doc """
+  Pipeline count resolution logic, separate to a different functino for easier testing.
+
+  """
+  def handle_resolve_count(state, len, avg_rate) do
+    max_len = Backends.max_buffer_len()
+    last_decr = state.last_count_decrease || NaiveDateTime.utc_now()
+    sec_since_last_decr = NaiveDateTime.diff(NaiveDateTime.utc_now(), last_decr)
+
+    cond do
+      # max out pipelines, overflow risk
+      len > max_len / 2 ->
+        state.max_pipelines
+
+      # increase based on hardcoded thresholds
+      len > max_len / 10 ->
+        state.pipeline_count + 5
+
+      len > max_len / 20 ->
+        state.pipeline_count + 3
+
+      len > max_len / 50 ->
+        state.pipeline_count + 2
+
+      len > max_len / 100 ->
+        state.pipeline_count + 1
+
+      # new items incoming
+      len > 0 and state.pipeline_count == 0 ->
+        if(len > 500, do: 3, else: 1)
+
+      # gradual decrease
+      len < max_len / 100 and state.pipeline_count > 1 and
+          (sec_since_last_decr > 30 or state.last_count_decrease == nil) ->
+        state.pipeline_count - 1
+
+      len == 0 and avg_rate == 0 and
+        state.pipeline_count == 1 and
+          (sec_since_last_decr > 150 or state.last_count_decrease == nil) ->
+        # scale to zero only if no items for > 5m and incoming rate is 0
+        0
+
+      true ->
+        state.pipeline_count
+    end
   end
 
   @impl Logflare.Backends.Adaptor
