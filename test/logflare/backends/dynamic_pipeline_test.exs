@@ -65,21 +65,21 @@ defmodule Logflare.DynamicPipelineTest do
        pipeline_args: pipeline_args,
        initial_count: 5,
        resolve_count: fn _state ->
-         10
+         6
        end,
        resolve_interval: 100}
     )
 
     assert DynamicPipeline.pipeline_count(name) == 5
-    :timer.sleep(600)
-    assert DynamicPipeline.pipeline_count(name) == 10
+    :timer.sleep(800)
+    assert DynamicPipeline.pipeline_count(name) == 6
   end
 
   test ":resolve_count and :resolve_interval option will determine number of pipelines to start periodically",
        %{name: name, pipeline_args: pipeline_args} do
     pid =
       spawn(fn ->
-        :timer.sleep(400)
+        :timer.sleep(500)
       end)
 
     start_supervised!(
@@ -101,7 +101,7 @@ defmodule Logflare.DynamicPipelineTest do
     )
 
     assert DynamicPipeline.pipeline_count(name) == 0
-    :timer.sleep(200)
+    :timer.sleep(400)
 
     assert DynamicPipeline.pipeline_count(name) == 5
     :timer.sleep(400)
