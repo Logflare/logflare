@@ -35,28 +35,14 @@ defmodule Logflare.Backends.IngestEventQueue.QueueJanitor do
       purge_ratio: Keyword.get(opts, :purge_ratio, @default_purge_ratio)
     }
 
-    schedule(state.interval)
+    schedule(state)
     {:ok, state}
   end
 
   def handle_info(:work, state) do
     do_drop(state)
 
-    metrics = Sources.get_source_metrics_for_ingest(state.source_token)
-    # dynamically schedule based on metrics interval
-    cond do
-      metrics.avg < 100 ->
-        schedule(state.interval * 10)
-
-      metrics.avg < 1000 ->
-        schedule(state.interval * 5)
-
-      metrics.avg < 2000 ->
-        schedule(state.interval * 2.5)
-
-      true ->
-        schedule(state.interval)
-    end
+    schedule(state)
 
     {:noreply, state}
   end
@@ -87,7 +73,25 @@ defmodule Logflare.Backends.IngestEventQueue.QueueJanitor do
   end
 
   # schedule work based on rps
-  defp schedule(interval) do
+  defp schedule(state) do
+    metrics = Sources.get_source_metrics_for_ingest(state.source_token)
+    # dynamically schedule based on metrics interval
+    interval =
+      cond do
+        metrics.avg < 100 ->
+          state.interval * 10
+
+        metrics.avg < 1000 ->
+          state.interval * 5
+
+        metrics.avg < 2000 ->
+          state.interval * 2.5
+
+        true ->
+          state.interval
+      end
+      |> round()
+
     Process.send_after(self(), :work, interval)
   end
 end

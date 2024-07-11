@@ -87,23 +87,24 @@ defmodule Logflare.Backends.BufferProducer do
     interval =
       cond do
         metrics.avg < 100 ->
-          round(state.interval * 5)
+          state.interval * 5
 
         metrics.avg < 1000 ->
-          round(state.interval * 4)
+          state.interval * 4
 
         metrics.avg < 2000 ->
-          round(state.interval * 3)
+          state.interval * 3
 
         metrics.avg < 3000 ->
-          round(state.interval * 2)
+          state.interval * 2
 
         metrics.avg < 4000 ->
-          round(state.interval * 1.5)
+          state.interval * 1.5
 
         true ->
           state.interval
       end
+      |> round()
 
     Process.send_after(self(), :scheduled_resolve, interval)
   end
