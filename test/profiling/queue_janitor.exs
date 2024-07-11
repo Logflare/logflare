@@ -17,6 +17,6 @@ QueueJanitor.start_link(source: source, backend: nil)
 #   :timer.sleep(5)
 # end
 
-# 2024-07-05 after
+# 2024-07-11 current
 # CNT    ACC (ms)    OWN (ms)
-# 214,375     434.933     325.246
+# 7727    5022.971      13.010
