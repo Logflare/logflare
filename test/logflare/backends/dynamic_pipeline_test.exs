@@ -113,7 +113,7 @@ defmodule Logflare.DynamicPipelineTest do
     end)
 
     TestUtils.retry_assert(fn ->
-      assert DynamicPipeline.pipeline_count(name) == 6
+      assert DynamicPipeline.pipeline_count(name) == 10
     end)
   end
 
