@@ -215,9 +215,8 @@ defmodule Logflare.Backends.IngestEventQueueTest do
     assert IngestEventQueue.get_table_size({source, backend}) == nil
     assert :ets.info(:ingest_event_queue_mapping, :size) == 0
   end
+
   describe "IngestEventQueue" do
-
-
     @tag :benchmark
     @tag timeout: :infinity
     @tag :skip
@@ -277,7 +276,6 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       )
     end
 
-
     @tag :benchmark
     @tag timeout: :infinity
     @tag :skip
@@ -327,6 +325,49 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       )
     end
 
+    @tag :benchmark
+    @tag timeout: :infinity
+    @tag :skip
+    # benchmark results
+    # truncation traversal is around ~8x faster
+    # memory usage for traversal is ~38x less for large queues
+    # reductions  for traversals is 2x less
+    test "truncate" do
+      user = insert(:user)
+      source = insert(:source, user: user)
+      backend = insert(:backend, user: user)
+      {:ok, tid} = IngestEventQueue.upsert_tid({source, backend})
+      sb = {source.id, backend.id}
+
+      Benchee.run(
+        %{
+          # "truncate/3 with match_object/3, insert/2, and match_delete/3" => fn {input, _} ->
+          #   IngestEventQueue.truncate_no_traversal(sb, :all, 100)
+          # end,
+          "mark with :ets.select/3 and traversal" => fn {input, to_drop} ->
+            IngestEventQueue.truncate(sb, :all, 100)
+          end
+        },
+        inputs: %{
+          "50k" => for(_ <- 1..50_000, do: build(:log_event)),
+          "10k" => for(_ <- 1..10_000, do: build(:log_event)),
+          "1k" => for(_ <- 1..1_000, do: build(:log_event))
+        },
+        # insert the batch
+        before_scenario: fn input ->
+          :ets.delete_all_objects(tid)
+          IngestEventQueue.add_to_table(sb, input)
+          {input, nil}
+        end,
+        time: 3,
+        warmup: 1,
+        memory_time: 3,
+        reduction_time: 3,
+        print: [configuration: false],
+        # use extended_statistics to view units of work done
+        formatters: [{Benchee.Formatters.Console, extended_statistics: true}]
+      )
+    end
   end
 
   @tag :benchmark
@@ -383,7 +424,6 @@ defmodule Logflare.Backends.IngestEventQueueTest do
     end
   end
 
-
   # @tag :benchmark
   # @tag timeout: :infinity
   # # @tag :skip
@@ -436,6 +476,4 @@ defmodule Logflare.Backends.IngestEventQueueTest do
   #     )
   #   end
   # end
-
-
 end

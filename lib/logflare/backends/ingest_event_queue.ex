@@ -158,7 +158,6 @@ defmodule Logflare.Backends.IngestEventQueue do
     end
   end
 
-
   @doc """
   Counts pending items from a given table
   """
@@ -219,6 +218,16 @@ defmodule Logflare.Backends.IngestEventQueue do
     # drop all objects
     with tid when tid != nil <- get_tid(sid_bid) do
       :ets.delete_all_objects(tid)
+      :ok
+    else
+      nil -> {:error, :not_initialized}
+    end
+  end
+
+  def truncate({sid, _bid} = sid_bid, :ingested, 0) when is_integer(sid) do
+    # drop all objects
+    with tid when tid != nil <- get_tid(sid_bid) do
+      :ets.match_delete(tid, {:_, :ingested, :_})
       :ok
     else
       nil -> {:error, :not_initialized}
