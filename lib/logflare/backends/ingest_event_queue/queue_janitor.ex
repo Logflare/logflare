@@ -10,6 +10,7 @@ defmodule Logflare.Backends.IngestEventQueue.QueueJanitor do
   """
   use GenServer
   alias Logflare.Backends.IngestEventQueue
+  alias Logflare.Sources
   require Logger
   @default_interval 1_000
   @default_remainder 100
@@ -26,6 +27,7 @@ defmodule Logflare.Backends.IngestEventQueue.QueueJanitor do
 
     state = %{
       source_id: source.id,
+      source_token: source.token,
       backend_id: bid,
       interval: Keyword.get(opts, :interval, @default_interval),
       remainder: Keyword.get(opts, :remainder, @default_remainder),
@@ -39,7 +41,23 @@ defmodule Logflare.Backends.IngestEventQueue.QueueJanitor do
 
   def handle_info(:work, state) do
     do_drop(state)
-    schedule(state.interval)
+
+    metrics = Sources.get_source_metrics_for_ingest(state.source_token)
+    # dynamically schedule based on metrics interval
+    cond do
+      metrics.avg < 100 ->
+        schedule(state.interval * 10)
+
+      metrics.avg < 1000 ->
+        schedule(state.interval * 5)
+
+      metrics.avg < 2000 ->
+        schedule(state.interval * 2.5)
+
+      true ->
+        schedule(state.interval)
+    end
+
     {:noreply, state}
   end
 
@@ -63,6 +81,7 @@ defmodule Logflare.Backends.IngestEventQueue.QueueJanitor do
     end
   end
 
+  # schedule work based on rps
   defp schedule(interval) do
     Process.send_after(self(), :work, interval)
   end

@@ -301,9 +301,9 @@ defmodule Logflare.Backends.IngestEventQueueTest do
 
       Benchee.run(
         %{
-          "work - truncate" => fn {_input, _resource} ->
-            QueueJanitor.do_work(state)
-          end,
+          # "work - truncate" => fn {_input, _resource} ->
+          #   QueueJanitor.do_work(state)
+          # end,
           "work - drop" => fn {_input, _resource} ->
             QueueJanitor.do_drop(state)
           end

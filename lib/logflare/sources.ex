@@ -269,6 +269,19 @@ defmodule Logflare.Sources do
     Repo.preload(source, :backends)
   end
 
+  def get_source_metrics_for_ingest(%Source{token: token}),
+    do: get_source_metrics_for_ingest(token)
+
+  def get_source_metrics_for_ingest(source_token) when is_atom(source_token) do
+    rates = PubSubRates.Cache.get_cluster_rates(source_token)
+
+    metrics = %Source.Metrics{
+      avg: rates.average_rate
+    }
+
+    metrics
+  end
+
   def refresh_source_metrics_for_ingest(nil), do: nil
 
   def refresh_source_metrics_for_ingest(%Source{token: token} = source) do
