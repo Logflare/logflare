@@ -49,14 +49,14 @@ defmodule Logflare.Source.V1SourceSup do
       end
 
     backend = %Backend{
-        type: :bigquery,
-        config: %{
-          project_id: project_id,
-          dataset_id: dataset_id
-        }
+      type: :bigquery,
+      config: %{
+        project_id: project_id,
+        dataset_id: dataset_id
       }
-    default_bigquery_spec = Backend.child_spec(source, backend)
+    }
 
+    default_bigquery_spec = Backend.child_spec(source, backend)
 
     children = [
       {RCS, [source: source]},
