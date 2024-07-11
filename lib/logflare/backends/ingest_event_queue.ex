@@ -148,18 +148,16 @@ defmodule Logflare.Backends.IngestEventQueue do
 
   def mark_ingested({sid, _bid} = sid_bid, events) when is_integer(sid) do
     with tid when tid != nil <- get_tid(sid_bid) do
-      updated =
-        for event <- events do
-          {event.id, :ingested, event}
-        end
-
-      :ets.insert(tid, updated)
+      for event <- events do
+        :ets.update_element(tid, event.id, {2, :ingested})
+      end
 
       {:ok, Enum.count(events)}
     else
       nil -> {:error, :not_initialized}
     end
   end
+
 
   @doc """
   Counts pending items from a given table

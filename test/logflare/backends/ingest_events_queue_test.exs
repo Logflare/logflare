@@ -215,20 +215,22 @@ defmodule Logflare.Backends.IngestEventQueueTest do
     assert IngestEventQueue.get_table_size({source, backend}) == nil
     assert :ets.info(:ingest_event_queue_mapping, :size) == 0
   end
-
-  @tag :benchmark
-  @tag timeout: :infinity
-  @tag :skip
-  # Benchmark results
-  # drop_with_chunking is ~15.65x slower (100 chunk)
-  # select and drop is far superior.
-  # There is no significant difference in ips between different chunk sizes
-  # reductions for drop_with_chunking is 1.5x higher
-  # memory usage for both approaches are identical
-  #
-  # comparison against drop using a select-key matchspec vs select-object
-  # selecting the key results in a very tiny ips improvement, not significant at high table sizes.
   describe "IngestEventQueue" do
+
+
+    @tag :benchmark
+    @tag timeout: :infinity
+    @tag :skip
+
+    # Benchmark results
+    # drop_with_chunking is ~15.65x slower (100 chunk)
+    # select and drop is far superior.
+    # There is no significant difference in ips between different chunk sizes
+    # reductions for drop_with_chunking is 1.5x higher
+    # memory usage for both approaches are identical
+    #
+    # comparison against drop using a select-key matchspec vs select-object
+    # selecting the key results in a very tiny ips improvement, not significant at high table sizes.
     test "drop" do
       user = insert(:user)
       source = insert(:source, user: user)
@@ -274,6 +276,57 @@ defmodule Logflare.Backends.IngestEventQueueTest do
         formatters: [{Benchee.Formatters.Console, extended_statistics: true}]
       )
     end
+
+
+    @tag :benchmark
+    @tag timeout: :infinity
+    @tag :skip
+    # benchmark results:
+    # using update_element to update the element inplace is hands down superior
+    # uses >30-60x less memory, effect increases as with higher batch sizes
+    # >8-10.5x more ips, consistent across all batch sizes
+    # reductions are the same across all 3.
+    test "mark_ingested" do
+      user = insert(:user)
+      source = insert(:source, user: user)
+      backend = insert(:backend, user: user)
+      {:ok, tid} = IngestEventQueue.upsert_tid({source, backend})
+      sb = {source.id, backend.id}
+
+      Benchee.run(
+        %{
+          # "mark with :ets.insert/2 batched" => fn {input, _} ->
+          #   IngestEventQueue.mark_ingested(sb, input)
+          # end,
+          # "mark with :ets.insert/2 individually" => fn {input, to_drop} ->
+          #   IngestEventQueue.mark_ingested_insert_individually(sb, input)
+          # end,
+          # "mark with :ets.update_element/2" => fn {input, to_drop} ->
+          #   IngestEventQueue.mark_ingested_update_element(sb, input)
+          # end,
+        },
+        inputs: %{
+          "1k" => for(_ <- 1..1_000, do: build(:log_event)),
+          "500" => for(_ <- 1..500, do: build(:log_event)),
+          "100" => for(_ <- 1..100, do: build(:log_event)),
+          "10" => for(_ <- 1..10, do: build(:log_event))
+        },
+        # insert the batch
+        before_scenario: fn input ->
+          :ets.delete_all_objects(tid)
+          IngestEventQueue.add_to_table(sb, input)
+          {input, nil}
+        end,
+        time: 3,
+        warmup: 1,
+        memory_time: 3,
+        reduction_time: 3,
+        print: [configuration: false],
+        # use extended_statistics to view units of work done
+        formatters: [{Benchee.Formatters.Console, extended_statistics: true}]
+      )
+    end
+
   end
 
   @tag :benchmark
@@ -329,4 +382,60 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       )
     end
   end
+
+
+  # @tag :benchmark
+  # @tag timeout: :infinity
+  # # @tag :skip
+  # # Benchmark results
+  # describe "DemandWorker" do
+  #   test "fetch" do
+  #     user = insert(:user)
+  #     source = insert(:source, user: user)
+  #     backend = insert(:backend, user: user)
+  #     {:ok, tid} = IngestEventQueue.upsert_tid({source, backend})
+  #     sb = {source.id, backend.id}
+
+  #     Benchee.run(
+  #       %{
+
+  #         # "drop with chunking, 100 chunks" => fn {_input, to_drop} ->
+  #         #   IngestEventQueue.drop_with_chunking(sb, :all, to_drop, 100)
+  #         # end,
+  #         # "drop with chunking, 500 chunks" => fn {_input, to_drop} ->
+  #         #   IngestEventQueue.drop_with_chunking(sb, :all, to_drop, 500)
+  #         # end,
+  #         # "drop with chunking, 1k chunks" => fn {_input, to_drop} ->
+  #         #   IngestEventQueue.drop_with_chunking(sb, :all, to_drop, 1000)
+  #         # end,
+  #         # "select and drop" => fn {_input, to_drop} ->
+  #         #   IngestEventQueue.drop(sb, :all, to_drop, nil)
+  #         # end,
+  #         # "select and drop with select-key" => fn {_input, to_drop} ->
+  #         #   IngestEventQueue.drop(sb, :all, to_drop, :select_key)
+  #         # end
+  #       },
+  #       inputs: %{
+  #         "50k" => for(_ <- 1..50_000, do: build(:log_event)),
+  #         "10k" => for(_ <- 1..10_000, do: build(:log_event)),
+  #         "1k" => for(_ <- 1..1_000, do: build(:log_event))
+  #       },
+  #       # insert the batch
+  #       before_scenario: fn input ->
+  #         :ets.delete_all_objects(tid)
+  #         IngestEventQueue.add_to_table(sb, input)
+  #         {input, 500}
+  #       end,
+  #       time: 3,
+  #       warmup: 1,
+  #       memory_time: 3,
+  #       reduction_time: 3,
+  #       print: [configuration: false],
+  #       # use extended_statistics to view units of work done
+  #       formatters: [{Benchee.Formatters.Console, extended_statistics: true}]
+  #     )
+  #   end
+  # end
+
+
 end
