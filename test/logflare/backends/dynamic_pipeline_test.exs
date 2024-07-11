@@ -64,6 +64,7 @@ defmodule Logflare.DynamicPipelineTest do
        pipeline: Pipeline,
        pipeline_args: pipeline_args,
        initial_count: 5,
+       max_pipelines: 11,
        resolve_count: fn _state ->
          6
        end,
@@ -91,6 +92,7 @@ defmodule Logflare.DynamicPipelineTest do
        name: name,
        pipeline: Pipeline,
        pipeline_args: pipeline_args,
+       max_pipelines: 11,
        resolve_count: fn state ->
          assert is_map_key(state, :last_count_increase)
          assert is_map_key(state, :last_count_decrease)
