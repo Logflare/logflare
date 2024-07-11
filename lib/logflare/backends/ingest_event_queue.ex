@@ -232,8 +232,8 @@ defmodule Logflare.Backends.IngestEventQueue do
     # chunk over table and drop
     ms =
       Ex2ms.fun do
-        {_event_id, _status, _event} = obj when ^filter == :all -> obj
-        {_event_id, status, _event} = obj when status == ^filter -> obj
+        {event_id, _status, _event} when ^filter == :all -> event_id
+        {event_id, status, _event} when status == ^filter -> event_id
       end
 
     with tid when tid != nil <- get_tid(sid_bid) do
@@ -257,7 +257,7 @@ defmodule Logflare.Backends.IngestEventQueue do
     to_add =
       if rem > 0 do
         # satisfy all, drop up to required
-        for {key, _status, _event} <- Enum.take(taken, diff) do
+        for key <- Enum.take(taken, diff) do
           :ets.delete(tid, key)
         end
 
@@ -272,11 +272,40 @@ defmodule Logflare.Backends.IngestEventQueue do
 
   defp truncate_traverse(tid, {taken, cont}, acc, limit) when acc >= limit do
     # delete the rest
-    for {key, _status, _event} <- taken do
-      :ets.delete(tid, key)
-    end
+    for key <- taken, do: :ets.delete(tid, key)
 
     truncate_traverse(tid, :ets.select(cont), acc, limit)
+  end
+
+  @doc """
+  Drop events from the ingest event queue.
+  """
+  @spec drop(source_backend(), :all | :pending | :ingested, non_neg_integer()) :: :ok
+  def drop({%Source{} = source, nil}, filter, n), do: drop({source.id, nil}, filter, n)
+
+  def drop({%Source{id: sid}, %Backend{id: bid}}, filter, n),
+    do: drop({sid, bid}, filter, n)
+
+  def drop({sid, _bid} = sid_bid, filter, n)
+      when is_integer(sid) and is_integer(n) and filter in [:pending, :all, :ingested] do
+    # chunk over table and drop
+    ms =
+      Ex2ms.fun do
+        {event_id, _status, _event} = obj when ^filter == :all -> event_id
+        {event_id, status, _event} = obj when status == ^filter -> event_id
+      end
+
+    with tid when tid != nil <- get_tid(sid_bid),
+         {taken, _cont} <- :ets.select(tid, ms, n) do
+      for key <- taken do
+        :ets.delete(tid, key)
+      end
+
+      :ok
+    else
+      nil -> {:error, :not_initialized}
+      :"$end_of_table" -> :ok
+    end
   end
 
   @doc """

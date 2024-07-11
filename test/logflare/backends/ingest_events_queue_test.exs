@@ -61,6 +61,15 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       assert IngestEventQueue.count_pending(sb) == 0
     end
 
+    test "drop n items from a queue", %{source_backend: sb} do
+      batch = for _ <- 1..500, do: build(:log_event)
+      assert :ok = IngestEventQueue.add_to_table(sb, batch)
+      assert :ok = IngestEventQueue.drop(sb, :all, 2)
+      assert IngestEventQueue.get_table_size(sb) == 498
+      assert :ok = IngestEventQueue.drop(sb, :ingested, 2)
+      assert IngestEventQueue.get_table_size(sb) == 498
+    end
+
     test "truncate all events in a queue", %{source_backend: sb} do
       batch =
         for _ <- 1..500 do
@@ -205,5 +214,119 @@ defmodule Logflare.Backends.IngestEventQueueTest do
     :timer.sleep(500)
     assert IngestEventQueue.get_table_size({source, backend}) == nil
     assert :ets.info(:ingest_event_queue_mapping, :size) == 0
+  end
+
+  @tag :benchmark
+  @tag timeout: :infinity
+  @tag :skip
+  # Benchmark results
+  # drop_with_chunking is ~15.65x slower (100 chunk)
+  # select and drop is far superior.
+  # There is no significant difference in ips between different chunk sizes
+  # reductions for drop_with_chunking is 1.5x higher
+  # memory usage for both approaches are identical
+  #
+  # comparison against drop using a select-key matchspec vs select-object
+  # selecting the key results in a very tiny ips improvement, not significant at high table sizes.
+  describe "IngestEventQueue" do
+    test "drop" do
+      user = insert(:user)
+      source = insert(:source, user: user)
+      backend = insert(:backend, user: user)
+      {:ok, tid} = IngestEventQueue.upsert_tid({source, backend})
+      sb = {source.id, backend.id}
+
+      Benchee.run(
+        %{
+          # "drop with chunking, 100 chunks" => fn {_input, to_drop} ->
+          #   IngestEventQueue.drop_with_chunking(sb, :all, to_drop, 100)
+          # end,
+          # "drop with chunking, 500 chunks" => fn {_input, to_drop} ->
+          #   IngestEventQueue.drop_with_chunking(sb, :all, to_drop, 500)
+          # end,
+          # "drop with chunking, 1k chunks" => fn {_input, to_drop} ->
+          #   IngestEventQueue.drop_with_chunking(sb, :all, to_drop, 1000)
+          # end,
+          # "select and drop" => fn {_input, to_drop} ->
+          #   IngestEventQueue.drop(sb, :all, to_drop, nil)
+          # end,
+          # "select and drop with select-key" => fn {_input, to_drop} ->
+          #   IngestEventQueue.drop(sb, :all, to_drop, :select_key)
+          # end
+        },
+        inputs: %{
+          "50k" => for(_ <- 1..50_000, do: build(:log_event)),
+          "10k" => for(_ <- 1..10_000, do: build(:log_event)),
+          "1k" => for(_ <- 1..1_000, do: build(:log_event))
+        },
+        # insert the batch
+        before_scenario: fn input ->
+          :ets.delete_all_objects(tid)
+          IngestEventQueue.add_to_table(sb, input)
+          {input, 500}
+        end,
+        time: 3,
+        warmup: 1,
+        memory_time: 3,
+        reduction_time: 3,
+        print: [configuration: false],
+        # use extended_statistics to view units of work done
+        formatters: [{Benchee.Formatters.Console, extended_statistics: true}]
+      )
+    end
+  end
+
+  @tag :benchmark
+  @tag timeout: :infinity
+  @tag :skip
+  # Post-benchmark results:
+  # truncate is way slower at large queue sizes, ~x5 slower for 50k. 10k and 1k are comparably close for both.
+  # slightly less reductions for drop
+  # memeory consumption is identical.
+  describe "QueueJanitor" do
+    test "truncate vs drop" do
+      user = insert(:user)
+      source = insert(:source, user: user)
+      backend = insert(:backend, user: user)
+      {:ok, tid} = IngestEventQueue.upsert_tid({source, backend})
+      sb = {source, backend}
+
+      state = %{
+        source_id: source.id,
+        backend_id: backend.id,
+        remainder: 100,
+        max: 500,
+        purge_ratio: 0.1
+      }
+
+      Benchee.run(
+        %{
+          # "work - truncate" => fn {_input, _resource} ->
+          #   QueueJanitor.do_work(state)
+          # end,
+          "work - drop" => fn {_input, _resource} ->
+            QueueJanitor.do_drop(state)
+          end
+        },
+        inputs: %{
+          "50k" => for(_ <- 1..50_000, do: build(:log_event)),
+          "10k" => for(_ <- 1..10_000, do: build(:log_event)),
+          "1k" => for(_ <- 1..1_000, do: build(:log_event))
+        },
+        # insert the batch
+        before_scenario: fn input ->
+          :ets.delete_all_objects(tid)
+          IngestEventQueue.add_to_table(sb, input)
+          {input, nil}
+        end,
+        time: 3,
+        warmup: 1,
+        # memory_time: 3,
+        reduction_time: 3,
+        print: [configuration: false],
+        # use extended_statistics to view units of work done
+        formatters: [{Benchee.Formatters.Console, extended_statistics: true}]
+      )
+    end
   end
 end

@@ -10,6 +10,7 @@ defmodule Logflare.Backends.IngestEventQueue.QueueJanitor do
   """
   use GenServer
   alias Logflare.Backends.IngestEventQueue
+  alias Logflare.Sources
   require Logger
   @default_interval 1_000
   @default_remainder 100
@@ -26,6 +27,7 @@ defmodule Logflare.Backends.IngestEventQueue.QueueJanitor do
 
     state = %{
       source_id: source.id,
+      source_token: source.token,
       backend_id: bid,
       interval: Keyword.get(opts, :interval, @default_interval),
       remainder: Keyword.get(opts, :remainder, @default_remainder),
@@ -38,6 +40,29 @@ defmodule Logflare.Backends.IngestEventQueue.QueueJanitor do
   end
 
   def handle_info(:work, state) do
+    do_drop(state)
+
+    metrics = Sources.get_source_metrics_for_ingest(state.source_token)
+    # dynamically schedule based on metrics interval
+    cond do
+      metrics.avg < 100 ->
+        schedule(state.interval * 10)
+
+      metrics.avg < 1000 ->
+        schedule(state.interval * 5)
+
+      metrics.avg < 2000 ->
+        schedule(state.interval * 2.5)
+
+      true ->
+        schedule(state.interval)
+    end
+
+    {:noreply, state}
+  end
+
+  # expose for benchmarking
+  def do_drop(state) do
     sid_bid = {state.source_id, state.backend_id}
     # clear out all ingested events
     IngestEventQueue.truncate(sid_bid, :ingested, state.remainder)
@@ -45,20 +70,18 @@ defmodule Logflare.Backends.IngestEventQueue.QueueJanitor do
     # safety measure, drop all if still exceed
     all_size = IngestEventQueue.get_table_size(sid_bid)
 
-    if all_size > state.max do
-      remainder = round((1 - state.purge_ratio) * all_size)
-      IngestEventQueue.truncate(sid_bid, :all, remainder)
+    if all_size != nil and all_size > state.max do
+      to_drop = round(state.purge_ratio * all_size)
+      IngestEventQueue.drop(sid_bid, :all, to_drop)
 
       Logger.warning(
         "IngestEventQueue private :ets buffer exceeded max for source id=#{state.source_id}, dropping #{all_size} events",
         backend_id: state.backend_id
       )
     end
-
-    schedule(state.interval)
-    {:noreply, state}
   end
 
+  # schedule work based on rps
   defp schedule(interval) do
     Process.send_after(self(), :work, interval)
   end
