@@ -114,7 +114,13 @@ defmodule Logflare.Backends.BufferProducer do
          new_demand \\ 0
        ) do
     total_demand = prev_demand + new_demand
-    to_fetch = max(total_demand, 500)
+
+    to_fetch =
+      if new_demand == 0 do
+        max(total_demand, 500)
+      else
+        total_demand
+      end
 
     {:ok, events} = DemandWorker.fetch({state.source_id, state.backend_id}, to_fetch)
     event_count = Enum.count(events)
