@@ -3,20 +3,18 @@ defmodule Logflare.Source.V1SourceSup do
   Manages the individual table for the source. Limits things in the table to 1000. Manages TTL for
   things in the table. Handles loading the table from the disk if found on startup.
   """
-
-  alias Logflare.Source.BigQuery.Schema
-  alias Logflare.Source.BigQuery.Pipeline
   alias Logflare.Source.RecentLogsServer
   alias Logflare.Source.EmailNotificationServer
   alias Logflare.Source.TextNotificationServer
   alias Logflare.Source.WebhookNotificationServer
   alias Logflare.Source.SlackHookServer
   alias Logflare.Source.BillingWriter
-  alias Logflare.Backends.IngestEventQueue
 
   alias Logflare.Source.RateCounterServer, as: RCS
   alias Logflare.Users
+  alias Logflare.User
   alias Logflare.Backends
+  alias Logflare.Backends.Backend
   alias Logflare.Billing
   alias Logflare.Logs.SearchQueryExecutor
 
@@ -41,27 +39,29 @@ defmodule Logflare.Source.V1SourceSup do
 
     plan = Billing.Cache.get_plan_by_user(user)
 
+    {project_id, dataset_id} =
+      if user.bigquery_project_id do
+        {user.bigquery_project_id, user.bigquery_dataset_id}
+      else
+        project_id = User.bq_project_id()
+        dataset_id = User.generate_bq_dataset_id(source.user_id)
+        {project_id, dataset_id}
+      end
+
+    backend = %Backend{
+        type: :bigquery,
+        config: %{
+          project_id: project_id,
+          dataset_id: dataset_id
+        }
+      }
+    default_bigquery_spec = Backend.child_spec(source, backend)
+
+
     children = [
       {RCS, [source: source]},
-      {IngestEventQueue.DemandWorker, source: source, backend: nil},
-      {IngestEventQueue.QueueJanitor, source: source, backend: nil},
-      {Pipeline,
-       [
-         bigquery_project_id: user.bigquery_project_id,
-         bigquery_dataset_id: user.bigquery_dataset_id,
-         source: source,
-         source_token: source.token,
-         name: Backends.via_source(source.id, {Pipeline, nil, 0})
-       ]},
+      default_bigquery_spec,
       {RecentLogsServer, [source: source]},
-      {Schema,
-       [
-         name: Backends.via_source(source, Schema, nil),
-         source: source,
-         bigquery_project_id: user.bigquery_project_id,
-         bigquery_dataset_id: user.bigquery_dataset_id,
-         plan: plan
-       ]},
       {EmailNotificationServer, [source: source]},
       {TextNotificationServer, [source: source, plan: plan]},
       {WebhookNotificationServer, [source: source]},
