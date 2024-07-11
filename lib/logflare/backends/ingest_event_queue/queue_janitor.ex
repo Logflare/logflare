@@ -51,9 +51,13 @@ defmodule Logflare.Backends.IngestEventQueue.QueueJanitor do
   def do_drop(state) do
     sid_bid = {state.source_id, state.backend_id}
     # clear out ingested events
-    pending_size = IngestEventQueue.count_pending(sid_bid)
+    pending_size =
+      case IngestEventQueue.count_pending(sid_bid) do
+        value when is_integer(value) -> value
+        _ -> 0
+      end
 
-    if pending_size != nil and pending_size > state.remainder do
+    if pending_size > state.remainder do
       # drop all ingested
       IngestEventQueue.truncate(sid_bid, :ingested, 0)
     else
@@ -61,7 +65,7 @@ defmodule Logflare.Backends.IngestEventQueue.QueueJanitor do
     end
 
     # safety measure, drop all if still exceed
-    if pending_size != nil and pending_size > state.max do
+    if pending_size > state.max do
       to_drop = round(state.purge_ratio * pending_size)
       IngestEventQueue.drop(sid_bid, :all, to_drop)
 
