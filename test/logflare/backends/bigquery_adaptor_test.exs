@@ -33,9 +33,11 @@ defmodule Logflare.Backends.BigQueryAdaptorTest do
       end)
 
       assert {:ok, 1} = Backends.ingest_logs([log_event], source)
+
       TestUtils.retry_assert(fn ->
         assert_receive :streamed, 2500
       end)
+
       :timer.sleep(1000)
     end
 
@@ -60,6 +62,7 @@ defmodule Logflare.Backends.BigQueryAdaptorTest do
       TestUtils.retry_assert(fn ->
         assert_receive :ok, 2500
       end)
+
       :timer.sleep(1000)
     end
   end
@@ -160,9 +163,11 @@ defmodule Logflare.Backends.BigQueryAdaptorTest do
       assert Backends.local_pending_buffer_len(source, nil) == 1
       assert Backends.local_pending_buffer_len(source, backend) == 1
       :timer.sleep(2000)
+
       TestUtils.retry_assert(fn ->
         assert_receive ^ref
       end)
+
       assert Backends.local_pending_buffer_len(source, nil) == 0
       assert Backends.local_pending_buffer_len(source, backend) == 0
     end

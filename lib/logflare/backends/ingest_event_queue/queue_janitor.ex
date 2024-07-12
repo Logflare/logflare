@@ -41,8 +41,9 @@ defmodule Logflare.Backends.IngestEventQueue.QueueJanitor do
 
   def handle_info(:work, state) do
     do_drop(state)
+    scale? = if Application.get_env(:logflare, :env) == :test, do: false, else: true
 
-    schedule(state)
+    schedule(state, scale?)
 
     {:noreply, state}
   end

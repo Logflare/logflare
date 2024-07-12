@@ -61,7 +61,8 @@ defmodule Logflare.Backends.BufferProducer do
   @impl GenStage
   def handle_info(:scheduled_resolve, state) do
     {items, state} = resolve_demand(state)
-    schedule(state)
+    scale? = if Application.get_env(:logflare, :env) == :test, do: false, else: true
+    schedule(state, scale?)
     {:noreply, items, state}
   end
 
@@ -81,7 +82,7 @@ defmodule Logflare.Backends.BufferProducer do
     {:noreply, items, state}
   end
 
-  defp schedule(state, scale? \\ true) do
+  defp schedule(state, scale?) do
     metrics = Sources.get_source_metrics_for_ingest(state.source_token)
     # dynamically schedule based on metrics interval
     interval =
