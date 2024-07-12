@@ -416,7 +416,7 @@ defmodule Logflare.Backends do
   Checks if a local buffer is full.
   """
   def local_pending_buffer_full?(%Source{} = source) do
-    local_pending_buffer_len(source) > @max_pending_buffer_len
+    get_and_cache_local_pending_buffer_len(source) > @max_pending_buffer_len
   end
 
   @doc """
@@ -430,9 +430,12 @@ defmodule Logflare.Backends do
   @doc """
   Get local pending buffer len of a source/backend combination, and caches it at the same time.
   """
-  @spec local_pending_buffer_len(Source.t() | integer(), Backend.t() | nil | integer()) ::
+  @spec get_and_cache_local_pending_buffer_len(
+          Source.t() | integer(),
+          Backend.t() | nil | integer()
+        ) ::
           integer()
-  def local_pending_buffer_len(source, backend \\ nil) do
+  def get_and_cache_local_pending_buffer_len(source, backend \\ nil) do
     len =
       case IngestEventQueue.count_pending({source, backend}) do
         len when is_integer(len) -> len
