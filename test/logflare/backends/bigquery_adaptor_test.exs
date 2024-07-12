@@ -160,16 +160,16 @@ defmodule Logflare.Backends.BigQueryAdaptorTest do
 
       assert {:ok, _} = Backends.ingest_logs([log_event], source)
 
-      assert Backends.local_pending_buffer_len(source, nil) == 1
-      assert Backends.local_pending_buffer_len(source, backend) == 1
+      assert Backends.get_and_cache_local_pending_buffer_len(source, nil) == 1
+      assert Backends.get_and_cache_local_pending_buffer_len(source, backend) == 1
       :timer.sleep(2000)
 
       TestUtils.retry_assert(fn ->
         assert_receive ^ref
       end)
 
-      assert Backends.local_pending_buffer_len(source, nil) == 0
-      assert Backends.local_pending_buffer_len(source, backend) == 0
+      assert Backends.get_and_cache_local_pending_buffer_len(source, nil) == 0
+      assert Backends.get_and_cache_local_pending_buffer_len(source, backend) == 0
     end
   end
 

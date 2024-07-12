@@ -13,6 +13,10 @@ defmodule Logflare.PubSubRates.Cache do
     %{id: __MODULE__, start: {Cachex, :start_link, [@cache, [stats: stats]]}}
   end
 
+  def clear() do
+    Cachex.clear(__MODULE__)
+  end
+
   def cache_rates(source_id, rates) when is_atom(source_id) do
     {:ok, val} = Cachex.get(__MODULE__, {source_id, "rates"})
 
@@ -61,6 +65,15 @@ defmodule Logflare.PubSubRates.Cache do
   @spec get_buffers(non_neg_integer(), non_neg_integer() | nil) :: map()
   def get_buffers(source_id, backend_id) do
     Cachex.get(__MODULE__, {source_id, backend_id, "buffers"})
+  end
+
+  @spec get_local_buffer(non_neg_integer(), non_neg_integer() | nil) :: map()
+  def get_local_buffer(source_id, backend_id) do
+    Cachex.get(__MODULE__, {source_id, backend_id, "buffers"})
+    |> case do
+      {:ok, val} when val != nil -> Map.get(val, Node.self(), 0)
+      _ -> 0
+    end
   end
 
   @doc """

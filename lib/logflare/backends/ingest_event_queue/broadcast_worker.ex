@@ -3,12 +3,12 @@ defmodule Logflare.Backends.IngestEventQueue.BroadcastWorker do
   A worker that broadcasts all source-backend buffer statistics periodically for the entire node.
 
   Broadcasts cluster buffer length of a given queue (an integer) locally.
-  Broadcasts local buffer length of a given queue globally
+  Broadcasts local buffer length of a given queue globally.
   """
   use GenServer
   alias Logflare.Source
-  alias Logflare.Backends.IngestEventQueue
   alias Logflare.PubSubRates
+  alias Logflare.Backends
   require Logger
   @ets_table_mapper :ingest_event_queue_mapping
 
@@ -20,7 +20,7 @@ defmodule Logflare.Backends.IngestEventQueue.BroadcastWorker do
 
   def init(opts) do
     state = %{interval: Keyword.get(opts, :interval, @default_interval)}
-    Process.send_after(self(), :global_broadcast, state.interval * 2)
+    Process.send_after(self(), :global_broadcast, state.interval)
     Process.send_after(self(), :local_broadcast, state.interval)
     {:ok, state}
   end
@@ -53,12 +53,8 @@ defmodule Logflare.Backends.IngestEventQueue.BroadcastWorker do
     {:noreply, state}
   end
 
-  defp global_broadcast_producer_buffer_len({source_id, backend_id} = sid_bid) do
-    len =
-      case IngestEventQueue.count_pending(sid_bid) do
-        v when is_integer(v) -> v
-        _ -> 0
-      end
+  defp global_broadcast_producer_buffer_len({source_id, backend_id}) do
+    len = Backends.get_and_cache_local_pending_buffer_len(source_id, backend_id)
 
     local_buffer = %{Node.self() => %{len: len}}
     PubSubRates.global_broadcast_rate({:buffers, source_id, backend_id, local_buffer})

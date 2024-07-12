@@ -35,6 +35,7 @@ defmodule Logflare.DataCase do
 
         on_exit(fn ->
           Logflare.Backends.IngestEventQueue.delete_all_mappings()
+          Logflare.PubSubRates.Cache.clear()
         end)
 
         :ok

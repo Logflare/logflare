@@ -3,6 +3,7 @@ defmodule LogflareWeb.Plugs.BufferLimiterTest do
   use LogflareWeb.ConnCase
   alias LogflareWeb.Plugs.BufferLimiter
   alias Logflare.Backends.IngestEventQueue
+  alias Logflare.Backends
 
   setup do
     conn = build_conn(:post, "/api/logs", %{"message" => "some text"})
@@ -16,6 +17,9 @@ defmodule LogflareWeb.Plugs.BufferLimiterTest do
       le = build(:log_event)
       IngestEventQueue.add_to_table({source, nil}, [le])
     end
+
+    # get and cache the value
+    Backends.get_and_cache_local_pending_buffer_len(source, nil)
 
     conn =
       conn
@@ -32,6 +36,9 @@ defmodule LogflareWeb.Plugs.BufferLimiterTest do
       IngestEventQueue.add_to_table({source, nil}, [le])
       IngestEventQueue.mark_ingested({source, nil}, [le])
     end
+
+    # get and cache the value
+    Backends.get_and_cache_local_pending_buffer_len(source, nil)
 
     conn =
       conn
