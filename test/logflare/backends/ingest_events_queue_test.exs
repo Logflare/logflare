@@ -344,7 +344,7 @@ defmodule Logflare.Backends.IngestEventQueueTest do
           # "truncate/3 with match_object/3, insert/2, and match_delete/3" => fn {input, _} ->
           #   IngestEventQueue.truncate_no_traversal(sb, :all, 100)
           # end,
-          "mark with :ets.select/3 and traversal" => fn {input, to_drop} ->
+          "mark with :ets.select/3 and traversal" => fn {_input, _to_drop} ->
             IngestEventQueue.truncate(sb, :all, 100)
           end
         },
