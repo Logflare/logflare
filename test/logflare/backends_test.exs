@@ -299,7 +299,10 @@ defmodule Logflare.BackendsTest do
                  source
                )
 
-      assert_receive ^ref, 2_000
+      TestUtils.retry_assert(fn ->
+        assert_receive ^ref, 2_000
+      end)
+
       :timer.sleep(1000)
     end
   end

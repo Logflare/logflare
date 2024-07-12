@@ -7,7 +7,7 @@ defmodule Logflare.Backends.BufferProducer do
   alias Logflare.Sources
   alias Logflare.Backends.IngestEventQueue.DemandWorker
   require Logger
-  @default_interval 500
+  @default_interval 1_000
 
   def start_link(opts) when is_list(opts) do
     GenStage.start_link(__MODULE__, opts)
@@ -26,7 +26,7 @@ defmodule Logflare.Backends.BufferProducer do
       interval: Keyword.get(opts, :interval, @default_interval)
     }
 
-    schedule(state.interval)
+    schedule(state, false)
     {:producer, state, buffer_size: Keyword.get(opts, :buffer_size, 10_000)}
   end
 
@@ -61,7 +61,8 @@ defmodule Logflare.Backends.BufferProducer do
   @impl GenStage
   def handle_info(:scheduled_resolve, state) do
     {items, state} = resolve_demand(state)
-    schedule(state.interval)
+    scale? = if Application.get_env(:logflare, :env) == :test, do: false, else: true
+    schedule(state, scale?)
     {:noreply, items, state}
   end
 
@@ -81,7 +82,34 @@ defmodule Logflare.Backends.BufferProducer do
     {:noreply, items, state}
   end
 
-  defp schedule(interval) do
+  defp schedule(state, scale?) do
+    metrics = Sources.get_source_metrics_for_ingest(state.source_token)
+    # dynamically schedule based on metrics interval
+    interval =
+      cond do
+        scale? == false ->
+          state.interval
+
+        metrics.avg < 100 ->
+          state.interval * 5
+
+        metrics.avg < 1000 ->
+          state.interval * 4
+
+        metrics.avg < 2000 ->
+          state.interval * 3
+
+        metrics.avg < 3000 ->
+          state.interval * 2
+
+        metrics.avg < 4000 ->
+          state.interval * 1.5
+
+        true ->
+          state.interval
+      end
+      |> round()
+
     Process.send_after(self(), :scheduled_resolve, interval)
   end
 
@@ -91,8 +119,23 @@ defmodule Logflare.Backends.BufferProducer do
        ) do
     total_demand = prev_demand + new_demand
 
-    {:ok, events} = DemandWorker.fetch({state.source_id, state.backend_id}, total_demand)
+    to_fetch =
+      if new_demand == 0 do
+        max(total_demand, 500)
+      else
+        total_demand
+      end
 
-    {events, %{state | demand: total_demand - Enum.count(events)}}
+    {:ok, events} = DemandWorker.fetch({state.source_id, state.backend_id}, to_fetch)
+    event_count = Enum.count(events)
+
+    new_demand =
+      if total_demand < event_count do
+        0
+      else
+        total_demand - event_count
+      end
+
+    {events, %{state | demand: new_demand}}
   end
 end

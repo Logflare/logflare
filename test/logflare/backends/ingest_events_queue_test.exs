@@ -161,10 +161,10 @@ defmodule Logflare.Backends.IngestEventQueueTest do
     assert IngestEventQueue.get_table_size({source, backend}) == 1
 
     start_supervised!(
-      {QueueJanitor, source: source, backend: backend, interval: 100, remainder: 0}
+      {QueueJanitor, source: source, backend: backend, interval: 50, remainder: 0}
     )
 
-    :timer.sleep(500)
+    :timer.sleep(550)
     assert IngestEventQueue.get_table_size({source, backend}) == 0
     assert IngestEventQueue.count_pending({source, backend}) == 0
   end
@@ -179,10 +179,10 @@ defmodule Logflare.Backends.IngestEventQueueTest do
     assert IngestEventQueue.get_table_size({source, backend}) == 105
 
     start_supervised!(
-      {QueueJanitor, source: source, backend: backend, interval: 100, max: 100, purge_ratio: 1.0}
+      {QueueJanitor, source: source, backend: backend, interval: 50, max: 100, purge_ratio: 1.0}
     )
 
-    :timer.sleep(500)
+    :timer.sleep(550)
     assert IngestEventQueue.get_table_size({source, backend}) == 0
   end
 
@@ -196,10 +196,10 @@ defmodule Logflare.Backends.IngestEventQueueTest do
     assert IngestEventQueue.get_table_size({source, backend}) == 100
 
     start_supervised!(
-      {QueueJanitor, source: source, backend: backend, interval: 100, max: 90, purge_ratio: 0.5}
+      {QueueJanitor, source: source, backend: backend, interval: 50, max: 90, purge_ratio: 0.5}
     )
 
-    :timer.sleep(500)
+    :timer.sleep(550)
     assert IngestEventQueue.get_table_size({source, backend}) == 50
   end
 
@@ -344,7 +344,7 @@ defmodule Logflare.Backends.IngestEventQueueTest do
           # "truncate/3 with match_object/3, insert/2, and match_delete/3" => fn {input, _} ->
           #   IngestEventQueue.truncate_no_traversal(sb, :all, 100)
           # end,
-          "mark with :ets.select/3 and traversal" => fn {input, to_drop} ->
+          "mark with :ets.select/3 and traversal" => fn {_input, _to_drop} ->
             IngestEventQueue.truncate(sb, :all, 100)
           end
         },

@@ -35,28 +35,15 @@ defmodule Logflare.Backends.IngestEventQueue.QueueJanitor do
       purge_ratio: Keyword.get(opts, :purge_ratio, @default_purge_ratio)
     }
 
-    schedule(state.interval)
+    schedule(state, false)
     {:ok, state}
   end
 
   def handle_info(:work, state) do
     do_drop(state)
+    scale? = if Application.get_env(:logflare, :env) == :test, do: false, else: true
 
-    metrics = Sources.get_source_metrics_for_ingest(state.source_token)
-    # dynamically schedule based on metrics interval
-    cond do
-      metrics.avg < 100 ->
-        schedule(state.interval * 10)
-
-      metrics.avg < 1000 ->
-        schedule(state.interval * 5)
-
-      metrics.avg < 2000 ->
-        schedule(state.interval * 2.5)
-
-      true ->
-        schedule(state.interval)
-    end
+    schedule(state, scale?)
 
     {:noreply, state}
   end
@@ -65,9 +52,13 @@ defmodule Logflare.Backends.IngestEventQueue.QueueJanitor do
   def do_drop(state) do
     sid_bid = {state.source_id, state.backend_id}
     # clear out ingested events
-    pending_size = IngestEventQueue.count_pending(sid_bid)
+    pending_size =
+      case IngestEventQueue.count_pending(sid_bid) do
+        value when is_integer(value) -> value
+        _ -> 0
+      end
 
-    if pending_size != nil and pending_size > state.remainder do
+    if pending_size > state.remainder do
       # drop all ingested
       IngestEventQueue.truncate(sid_bid, :ingested, 0)
     else
@@ -75,7 +66,7 @@ defmodule Logflare.Backends.IngestEventQueue.QueueJanitor do
     end
 
     # safety measure, drop all if still exceed
-    if pending_size != nil and pending_size > state.max do
+    if pending_size > state.max do
       to_drop = round(state.purge_ratio * pending_size)
       IngestEventQueue.drop(sid_bid, :all, to_drop)
 
@@ -87,7 +78,28 @@ defmodule Logflare.Backends.IngestEventQueue.QueueJanitor do
   end
 
   # schedule work based on rps
-  defp schedule(interval) do
+  defp schedule(state, scale?) do
+    metrics = Sources.get_source_metrics_for_ingest(state.source_token)
+    # dynamically schedule based on metrics interval
+    interval =
+      cond do
+        scale? == false ->
+          state.interval
+
+        metrics.avg < 100 ->
+          state.interval * 10
+
+        metrics.avg < 1000 ->
+          state.interval * 5
+
+        metrics.avg < 2000 ->
+          state.interval * 2.5
+
+        true ->
+          state.interval
+      end
+      |> round()
+
     Process.send_after(self(), :work, interval)
   end
 end

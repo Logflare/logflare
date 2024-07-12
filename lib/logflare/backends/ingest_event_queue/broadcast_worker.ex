@@ -12,35 +12,45 @@ defmodule Logflare.Backends.IngestEventQueue.BroadcastWorker do
   require Logger
   @ets_table_mapper :ingest_event_queue_mapping
 
-  @interval 1_500
+  @default_interval 2_500
 
   def start_link(opts) do
     GenServer.start_link(__MODULE__, opts)
   end
 
   def init(opts) do
-    state = %{interval: Keyword.get(opts, :interval, @interval)}
-    Process.send_after(self(), :broadcast, state.interval)
+    state = %{interval: Keyword.get(opts, :interval, @default_interval)}
+    Process.send_after(self(), :global_broadcast, state.interval * 2)
+    Process.send_after(self(), :local_broadcast, state.interval)
     {:ok, state}
   end
 
-  def handle_info(:broadcast, state) do
+  def handle_info(:global_broadcast, state) do
     :ets.foldl(
       fn {sid_bid, _tid}, _ ->
-        do_broadcast(sid_bid)
+        global_broadcast_producer_buffer_len(sid_bid)
         nil
       end,
       nil,
       @ets_table_mapper
     )
 
-    Process.send_after(self(), :broadcast, state.interval)
+    Process.send_after(self(), :global_broadcast, state.interval * 2)
     {:noreply, state}
   end
 
-  defp do_broadcast(sid_bid) do
-    local_broadcast_cluster_length(sid_bid)
-    global_broadcast_producer_buffer_len(sid_bid)
+  def handle_info(:local_broadcast, state) do
+    :ets.foldl(
+      fn {sid_bid, _tid}, _ ->
+        local_broadcast_cluster_length(sid_bid)
+        nil
+      end,
+      nil,
+      @ets_table_mapper
+    )
+
+    Process.send_after(self(), :local_broadcast, state.interval)
+    {:noreply, state}
   end
 
   defp global_broadcast_producer_buffer_len({source_id, backend_id} = sid_bid) do
