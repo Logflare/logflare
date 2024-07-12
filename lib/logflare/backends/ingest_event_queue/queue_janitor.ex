@@ -78,7 +78,7 @@ defmodule Logflare.Backends.IngestEventQueue.QueueJanitor do
   end
 
   # schedule work based on rps
-  defp schedule(state, scale? \\ true) do
+  defp schedule(state, scale?) do
     metrics = Sources.get_source_metrics_for_ingest(state.source_token)
     # dynamically schedule based on metrics interval
     interval =
