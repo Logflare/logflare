@@ -11,6 +11,7 @@ defmodule Logflare.Backends.IngestEventQueue.QueueJanitor do
   use GenServer
   alias Logflare.Backends.IngestEventQueue
   alias Logflare.Sources
+  alias Logflare.Backends
   require Logger
   @default_interval 1_000
   @default_remainder 100
@@ -53,10 +54,7 @@ defmodule Logflare.Backends.IngestEventQueue.QueueJanitor do
     sid_bid = {state.source_id, state.backend_id}
     # clear out ingested events
     pending_size =
-      case IngestEventQueue.count_pending(sid_bid) do
-        value when is_integer(value) -> value
-        _ -> 0
-      end
+      Backends.get_and_cache_local_pending_buffer_len(state.source_id, state.backend_id)
 
     if pending_size > state.remainder do
       # drop all ingested

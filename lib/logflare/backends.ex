@@ -416,22 +416,59 @@ defmodule Logflare.Backends do
   Checks if a local buffer is full.
   """
   def local_pending_buffer_full?(%Source{} = source) do
-    local_pending_buffer_len(source) > @max_pending_buffer_len
+    get_and_cache_local_pending_buffer_len(source) > @max_pending_buffer_len
+  end
+
+  @doc """
+  Uses the buffers cache in PubSubRates.Cache to determine if pending buffer is full.
+  Much more performant than not using the cache.
+  """
+  def cached_local_pending_buffer_full?(%Source{} = source) do
+    cached_local_pending_buffer_len(source) > @max_pending_buffer_len
+  end
+
+  @doc """
+  Get local pending buffer len of a source/backend combination, and caches it at the same time.
+  """
+  @spec get_and_cache_local_pending_buffer_len(
+          Source.t() | integer(),
+          Backend.t() | nil | integer()
+        ) ::
+          integer()
+  def get_and_cache_local_pending_buffer_len(source, backend \\ nil) do
+    len =
+      case IngestEventQueue.count_pending({source, backend}) do
+        len when is_integer(len) -> len
+        _ -> 0
+      end
+
+    payload = %{Node.self() => %{len: len}}
+
+    if is_map(source) do
+      PubSubRates.Cache.cache_buffers(source.id, Map.get(backend || %{}, :id), payload)
+    else
+      PubSubRates.Cache.cache_buffers(source, backend, payload)
+    end
+
+    len
   end
 
   @doc """
   Get local pending buffer len of a source/backend combination
   """
-  def local_pending_buffer_len(source, backend \\ nil) do
-    case IngestEventQueue.count_pending({source, backend}) do
-      len when is_integer(len) -> len
-      _ -> 0
+  @spec cached_local_pending_buffer_len(Source.t(), Backend.t() | nil) :: non_neg_integer()
+  def cached_local_pending_buffer_len(source, backend \\ nil) do
+    PubSubRates.Cache.get_local_buffer(source.id, Map.get(backend || %{}, :id))
+    |> case do
+      %{len: len} -> len
+      other -> other
     end
   end
 
   @doc """
   Retrieves cluster-wide pending buffer size stored in cache for a given backend/source combination.
   """
+  @spec cached_pending_buffer_len(Source.t(), Backend.t() | nil) :: non_neg_integer()
   def cached_pending_buffer_len(%Source{} = source, backend \\ nil) do
     PubSubRates.Cache.get_cluster_buffers(source.id, Map.get(backend || %{}, :id))
   end

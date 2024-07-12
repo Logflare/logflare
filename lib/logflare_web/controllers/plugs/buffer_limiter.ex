@@ -8,7 +8,7 @@ defmodule LogflareWeb.Plugs.BufferLimiter do
   def init(_opts), do: nil
 
   def call(%{assigns: %{source: source}} = conn, _opts \\ []) do
-    if Backends.local_pending_buffer_full?(source) do
+    if Backends.cached_local_pending_buffer_full?(source) do
       conn
       |> send_resp(429, "Buffer full: Too many requests")
       |> halt()

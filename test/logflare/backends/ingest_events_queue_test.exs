@@ -129,8 +129,8 @@ defmodule Logflare.Backends.IngestEventQueueTest do
     IngestEventQueue.add_to_table({source, backend}, [le])
     IngestEventQueue.add_to_table({source, nil}, [le])
     :timer.sleep(300)
-    assert Backends.local_pending_buffer_len(source) == 1
-    assert Backends.local_pending_buffer_len(source, backend) == 1
+    assert Backends.get_and_cache_local_pending_buffer_len(source) == 1
+    assert Backends.get_and_cache_local_pending_buffer_len(source, backend) == 1
     assert PubSubRates.Cache.get_cluster_buffers(source.id, backend.id) == 1
     assert PubSubRates.Cache.get_cluster_buffers(source.id, nil) == 1
   end
@@ -147,7 +147,7 @@ defmodule Logflare.Backends.IngestEventQueueTest do
     assert {:ok, [_]} = DemandWorker.fetch({source, backend}, 5)
     assert IngestEventQueue.get_table_size({source, backend}) == 1
     assert IngestEventQueue.count_pending({source, backend}) == 0
-    assert Backends.local_pending_buffer_len(source, backend) == 0
+    assert Backends.get_and_cache_local_pending_buffer_len(source, backend) == 0
   end
 
   test "QueueJanitor cleans up :ingested events" do

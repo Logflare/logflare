@@ -14,6 +14,8 @@ defmodule Logflare.BackendsTest do
   alias Logflare.Source.V1SourceSup
   alias Logflare.PubSubRates
   alias Logflare.Logs.SourceRouting
+  alias Logflare.PubSubRates
+  alias Logflare.Backends.IngestEventQueue
 
   setup do
     start_supervised!(AllLogsLogged)
@@ -186,14 +188,14 @@ defmodule Logflare.BackendsTest do
     end
 
     test "can get length of queue", %{source: source} do
-      assert Backends.local_pending_buffer_len(source, nil) == 0
-      assert Backends.local_pending_buffer_len(source) == 0
+      assert Backends.get_and_cache_local_pending_buffer_len(source, nil) == 0
+      assert Backends.get_and_cache_local_pending_buffer_len(source) == 0
       events = for _n <- 1..5, do: build(:log_event, source: source, some: "event")
       assert {:ok, 5} = Backends.ingest_logs(events, source)
-      assert Backends.local_pending_buffer_len(source) > 0
+      assert Backends.get_and_cache_local_pending_buffer_len(source) > 0
       # Producer will pop from the queue
       :timer.sleep(1_500)
-      assert Backends.local_pending_buffer_len(source) == 0
+      assert Backends.get_and_cache_local_pending_buffer_len(source) == 0
     end
   end
 
@@ -370,6 +372,7 @@ defmodule Logflare.BackendsTest do
     # - transformation of params to log events
     # - BQ max insertion rate
     @tag :benchmark
+    @tag :skip
     test "BQ - v1 Logs vs v2 Logs vs v2 Backend", %{user: user} do
       [source1, source2] = insert_pair(:source, user: user, rules: [])
       # start_supervised!({Pipeline, [rls, name: @pipeline_name]})
@@ -404,6 +407,7 @@ defmodule Logflare.BackendsTest do
     # This benchmarks two areas:
     # - rules dispatching, with and without any rules
     @tag :benchmark
+    @tag :skip
     test "backend rules routing benchmarking", %{user: user} do
       backend = insert(:backend, user: user)
       [source1, source2] = insert_pair(:source, user: user, rules: [])
@@ -444,5 +448,52 @@ defmodule Logflare.BackendsTest do
         formatters: [{Benchee.Formatters.Console, extended_statistics: true}]
       )
     end
+  end
+
+  @tag :benchmark
+  @tag timeout: :infinity
+  @tag :skip
+  # benchmark results:
+  # using the buffers cache results in >5899.70x higher ips for 50k inputs
+  # memory usage is 3.4x higher without cache
+  # reductions is 3455x higher without cache
+  test "local_pending_buffer_len" do
+    user = insert(:user)
+    source = insert(:source, user: user)
+    backend = insert(:backend, user: user)
+    {:ok, tid} = IngestEventQueue.upsert_tid({source, backend})
+    sb = {source.id, backend.id}
+
+    Benchee.run(
+      %{
+        "with cache" => fn {_input, _resource} ->
+          Backends.cached_local_pending_buffer_len(source, backend)
+        end,
+        "without caching" => fn {_input, _resource} ->
+          Backends.get_and_cache_local_pending_buffer_len(source, backend)
+        end
+      },
+      inputs: %{
+        "50k" => for(_ <- 1..50_000, do: build(:log_event)),
+        "10k" => for(_ <- 1..10_000, do: build(:log_event)),
+        "1k" => for(_ <- 1..1_000, do: build(:log_event))
+      },
+      # insert the batch
+      before_scenario: fn input ->
+        :ets.delete_all_objects(tid)
+        IngestEventQueue.add_to_table(sb, input)
+
+        PubSubRates.Cache.cache_buffers(source.id, backend.id, %{
+          Node.self() => %{len: length(input)}
+        })
+
+        {input, nil}
+      end,
+      time: 3,
+      warmup: 1,
+      memory_time: 3,
+      reduction_time: 3,
+      print: [configuration: false]
+    )
   end
 end

@@ -10,6 +10,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
   alias Logflare.Users
   alias Logflare.Sources
   alias Logflare.Billing
+  alias Logflare.Backends
   use Supervisor
   require Logger
 
@@ -51,7 +52,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
         initial_count: 1,
         resolve_count: fn state ->
           source = Sources.refresh_source_metrics_for_ingest(source)
-          len = Backends.local_pending_buffer_len(source, backend)
+          len = Backends.get_and_cache_local_pending_buffer_len(source, backend)
           handle_resolve_count(state, len, source.metrics.avg)
         end
       },
