@@ -11,7 +11,6 @@ defmodule Logflare.Backends.IngestEventQueue.QueueJanitor do
   use GenServer
   alias Logflare.Backends.IngestEventQueue
   alias Logflare.Sources
-  alias Logflare.Backends
   require Logger
   @default_interval 1_000
   @default_remainder 100
@@ -53,20 +52,12 @@ defmodule Logflare.Backends.IngestEventQueue.QueueJanitor do
   def do_drop(state) do
     sid_bid = {state.source_id, state.backend_id}
     # clear out ingested events
-    pending_size =
-      Backends.get_and_cache_local_pending_buffer_len(state.source_id, state.backend_id)
-
-    if pending_size > state.remainder do
-      # drop all ingested
-      IngestEventQueue.truncate(sid_bid, :ingested, 0)
-    else
-      IngestEventQueue.truncate(sid_bid, :ingested, state.remainder)
-    end
-
+    IngestEventQueue.truncate_queues(sid_bid, :ingested, state.remainder)
     # safety measure, drop all if still exceed
-    if pending_size > state.max do
+    for {sid_bid_pid, pending_size} <- IngestEventQueue.list_pending_counts(sid_bid),
+        pending_size > state.max do
       to_drop = round(state.purge_ratio * pending_size)
-      IngestEventQueue.drop(sid_bid, :all, to_drop)
+      IngestEventQueue.drop(sid_bid_pid, :pending, to_drop)
 
       Logger.warning(
         "IngestEventQueue private :ets buffer exceeded max for source id=#{state.source_id}, dropping #{pending_size} events",

@@ -4,7 +4,6 @@ defmodule Logflare.Backends.BigQueryAdaptorTest do
 
   alias Logflare.Backends
   alias Logflare.Backends.SourceSup
-  alias Logflare.Backends.IngestEventQueue
   alias Logflare.Backends.Adaptor.BigQueryAdaptor
   alias Logflare.SystemMetrics.AllLogsLogged
 
@@ -160,27 +159,23 @@ defmodule Logflare.Backends.BigQueryAdaptorTest do
 
       assert {:ok, _} = Backends.ingest_logs([log_event], source)
 
-      assert Backends.get_and_cache_local_pending_buffer_len(source, nil) == 1
-      assert Backends.get_and_cache_local_pending_buffer_len(source, backend) == 1
+      assert Backends.get_and_cache_local_pending_buffer_len(source.id, nil) == 1
+      assert Backends.get_and_cache_local_pending_buffer_len(source.id, backend.id) == 1
       :timer.sleep(2000)
 
       TestUtils.retry_assert(fn ->
         assert_receive ^ref
       end)
 
-      assert Backends.get_and_cache_local_pending_buffer_len(source, nil) == 0
-      assert Backends.get_and_cache_local_pending_buffer_len(source, backend) == 0
+      assert Backends.get_and_cache_local_pending_buffer_len(source.id, nil) == 0
+      assert Backends.get_and_cache_local_pending_buffer_len(source.id, backend.id) == 0
     end
   end
 
   test "resolve_count will increase counts" do
-    user = insert(:user)
-    source = insert(:source, user: user)
-    backend = insert(:backend, user: user)
-    IngestEventQueue.upsert_tid({source, backend})
-
     check all pipeline_count <- integer(0..100),
               queue_size <- integer(501..1000),
+              startup_queue_size <- integer(0..100),
               avg_rate <- integer(0..10_000),
               last <- member_of([nil, NaiveDateTime.utc_now()]) do
       state = %{
@@ -190,7 +185,9 @@ defmodule Logflare.Backends.BigQueryAdaptorTest do
         last_count_decrease: last
       }
 
-      desired = BigQueryAdaptor.handle_resolve_count(state, queue_size, avg_rate)
+      desired =
+        BigQueryAdaptor.handle_resolve_count(state, startup_queue_size, queue_size, avg_rate)
+
       assert desired > pipeline_count
     end
   end
@@ -198,6 +195,7 @@ defmodule Logflare.Backends.BigQueryAdaptorTest do
   test "resolve_count will decrease counts" do
     check all pipeline_count <- integer(2..100),
               queue_size <- integer(0..499),
+              startup_queue_size <- constant(0),
               avg_rate <- integer(0..10_000),
               since <- integer(31..100) do
       state = %{
@@ -207,7 +205,9 @@ defmodule Logflare.Backends.BigQueryAdaptorTest do
         last_count_decrease: NaiveDateTime.utc_now() |> NaiveDateTime.add(-since)
       }
 
-      desired = BigQueryAdaptor.handle_resolve_count(state, queue_size, avg_rate)
+      desired =
+        BigQueryAdaptor.handle_resolve_count(state, startup_queue_size, queue_size, avg_rate)
+
       assert desired < pipeline_count
       assert desired != 0
     end
@@ -216,6 +216,7 @@ defmodule Logflare.Backends.BigQueryAdaptorTest do
   test "resolve_count scale to zero" do
     check all pipeline_count <- constant(1),
               queue_size <- constant(0),
+              startup_queue_size <- constant(0),
               avg_rate <- constant(0),
               since <- integer(360..1000) do
       state = %{
@@ -225,7 +226,9 @@ defmodule Logflare.Backends.BigQueryAdaptorTest do
         last_count_decrease: NaiveDateTime.utc_now() |> NaiveDateTime.add(-since)
       }
 
-      desired = BigQueryAdaptor.handle_resolve_count(state, queue_size, avg_rate)
+      desired =
+        BigQueryAdaptor.handle_resolve_count(state, startup_queue_size, queue_size, avg_rate)
+
       assert desired < pipeline_count
       assert desired == 0
     end
@@ -234,6 +237,7 @@ defmodule Logflare.Backends.BigQueryAdaptorTest do
   test "resolve_count initial incoming" do
     check all pipeline_count <- constant(0),
               queue_size <- integer(1..500),
+              startup_queue_size <- integer(1..500),
               avg_rate <- integer(1..500),
               since <- integer(0..100) do
       state = %{
@@ -243,7 +247,9 @@ defmodule Logflare.Backends.BigQueryAdaptorTest do
         last_count_decrease: NaiveDateTime.utc_now() |> NaiveDateTime.add(-since)
       }
 
-      desired = BigQueryAdaptor.handle_resolve_count(state, queue_size, avg_rate)
+      desired =
+        BigQueryAdaptor.handle_resolve_count(state, startup_queue_size, queue_size, avg_rate)
+
       assert desired > pipeline_count
       assert desired != 0
     end

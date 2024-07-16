@@ -1,11 +1,11 @@
 defmodule Logflare.Backends.BufferProducer do
   @moduledoc """
-  A GenStage producer that pulls events from the IngestEventQueue through the DemandWorker.
+  A GenStage producer that pulls events from its own IngestEventQueue.
   In event that there are no events for the producer, it will periodically pull events from the queue.
   """
   use GenStage
   alias Logflare.Sources
-  alias Logflare.Backends.IngestEventQueue.DemandWorker
+  alias Logflare.Backends.IngestEventQueue
   require Logger
   @default_interval 1_000
 
@@ -26,6 +26,11 @@ defmodule Logflare.Backends.BufferProducer do
       interval: Keyword.get(opts, :interval, @default_interval)
     }
 
+    table_key = {state.source_id, state.backend_id, self()}
+    startup_table_key = {state.source_id, state.backend_id, nil}
+    IngestEventQueue.upsert_tid(table_key)
+    # take over the startup queue
+    IngestEventQueue.move(startup_table_key, table_key)
     schedule(state, false)
     {:producer, state, buffer_size: Keyword.get(opts, :buffer_size, 10_000)}
   end
@@ -119,14 +124,7 @@ defmodule Logflare.Backends.BufferProducer do
        ) do
     total_demand = prev_demand + new_demand
 
-    to_fetch =
-      if new_demand == 0 do
-        max(total_demand, 500)
-      else
-        total_demand
-      end
-
-    {:ok, events} = DemandWorker.fetch({state.source_id, state.backend_id}, to_fetch)
+    events = do_fetch({state.source_id, state.backend_id, self()}, total_demand)
     event_count = Enum.count(events)
 
     new_demand =
@@ -137,5 +135,24 @@ defmodule Logflare.Backends.BufferProducer do
       end
 
     {events, %{state | demand: new_demand}}
+  end
+
+  defp do_fetch({sid, bid, _pid} = sid_bid_pid, n) do
+    case IngestEventQueue.take_pending(sid_bid_pid, n) do
+      {:error, :not_initialized} ->
+        Logger.warning(
+          "IngestEventQueue not initialized, could not fetch events. source_id: #{sid}",
+          backend_id: bid
+        )
+
+        []
+
+      {:ok, []} ->
+        []
+
+      {:ok, events} ->
+        {:ok, _} = IngestEventQueue.mark_ingested(sid_bid_pid, events)
+        events
+    end
   end
 end

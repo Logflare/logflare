@@ -4,6 +4,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
   alias Logflare.Backends
   alias Logflare.Backends.DynamicPipeline
   alias Logflare.Backends.Backend
+  alias Logflare.Backends.IngestEventQueue
   alias Logflare.Source.BigQuery.Pipeline
   alias Logflare.Source.BigQuery.Schema
   alias Logflare.Source.BigQuery.Pipeline
@@ -48,12 +49,13 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
           bigquery_dataset_id: dataset_id
         ],
         min_pipelines: 0,
-        max_pipelines: System.schedulers_online(),
+        max_pipelines: System.schedulers_online() * 2,
         initial_count: 1,
         resolve_count: fn state ->
           source = Sources.refresh_source_metrics_for_ingest(source)
-          len = Backends.get_and_cache_local_pending_buffer_len(source, backend)
-          handle_resolve_count(state, len, source.metrics.avg)
+          len = Backends.get_and_cache_local_pending_buffer_len(source.id, backend.id)
+          startup_size = IngestEventQueue.get_table_size({source.id, backend.id, nil}) || 0
+          handle_resolve_count(state, startup_size, len, source.metrics.avg)
         end
       },
       {Schema,
@@ -73,7 +75,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
   Pipeline count resolution logic, separate to a different functino for easier testing.
 
   """
-  def handle_resolve_count(state, len, avg_rate) do
+  def handle_resolve_count(state, startup_size, len, avg_rate) do
     max_len = Backends.max_buffer_len()
     last_decr = state.last_count_decrease || NaiveDateTime.utc_now()
     sec_since_last_decr = NaiveDateTime.diff(NaiveDateTime.utc_now(), last_decr)
@@ -94,6 +96,9 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
         state.pipeline_count + 2
 
       len > max_len / 100 ->
+        state.pipeline_count + 1
+
+      startup_size > 0 ->
         state.pipeline_count + 1
 
       # new items incoming

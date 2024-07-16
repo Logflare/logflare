@@ -6,24 +6,41 @@ defmodule Logflare.Backends.BufferProducerTest do
 
   import ExUnit.CaptureLog
 
-  test "pulls events from IngestEventQueue via IngestEventQueueDemandWorker" do
+  test "pulls events from IngestEventQueue" do
     user = insert(:user)
     source = insert(:source, user: user)
 
-    IngestEventQueue.upsert_tid({source, nil})
     le = build(:log_event, source: source)
-    IngestEventQueue.add_to_table({source, nil}, [le])
-
-    start_supervised!({IngestEventQueue.DemandWorker, source: source})
-    pid = start_supervised!({BufferProducer, backend: nil, source: source})
+    buffer_producer_pid = start_supervised!({BufferProducer, backend: nil, source: source})
+    sid_bid_pid = {source.id, nil, buffer_producer_pid}
     :timer.sleep(100)
+    :ok = IngestEventQueue.add_to_table(sid_bid_pid, [le])
 
-    GenStage.stream([{pid, max_demand: 1}])
+    GenStage.stream([{buffer_producer_pid, max_demand: 1}])
     |> Enum.take(1)
 
-    assert IngestEventQueue.count_pending({source, nil}) == 0
+    assert IngestEventQueue.count_pending(sid_bid_pid) == 0
     # marked as :ingested
-    assert IngestEventQueue.get_table_size({source, nil}) == 1
+    assert IngestEventQueue.get_table_size(sid_bid_pid) == 1
+  end
+
+  test "pulls events from startup queue" do
+    user = insert(:user)
+    source = insert(:source, user: user)
+
+    le = build(:log_event, source: source)
+    startup_key = {source.id, nil, nil}
+    IngestEventQueue.upsert_tid(startup_key)
+    :ok = IngestEventQueue.add_to_table(startup_key, [le])
+    buffer_producer_pid = start_supervised!({BufferProducer, backend: nil, source: source})
+    sid_bid_pid = {source.id, nil, buffer_producer_pid}
+
+    GenStage.stream([{buffer_producer_pid, max_demand: 1}])
+    |> Enum.take(1)
+
+    assert IngestEventQueue.count_pending(sid_bid_pid) == 0
+    # marked as :ingested
+    assert IngestEventQueue.get_table_size(sid_bid_pid) == 1
   end
 
   test "BufferProducer when discarding will display source name" do

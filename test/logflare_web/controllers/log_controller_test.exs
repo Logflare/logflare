@@ -35,8 +35,12 @@ defmodule LogflareWeb.LogControllerTest do
     setup [:warm_caches, :reject_context_functions]
 
     test "valid ingestion", %{conn: conn, source: source, user: user} do
+      pid = self()
+      ref = make_ref()
+
       WebhookAdaptor.Client
       |> expect(:send, fn _req ->
+        send(pid, ref)
         %Tesla.Env{status: 200, body: ""}
       end)
 
@@ -46,7 +50,10 @@ defmodule LogflareWeb.LogControllerTest do
         |> post(Routes.log_path(conn, :create, source: source.token), @valid)
 
       assert json_response(conn, 200) == %{"message" => "Logged!"}
-      :timer.sleep(2000)
+
+      TestUtils.retry_assert(fn ->
+        assert_received ^ref
+      end)
     end
 
     test ":cloud_event ingestion", %{conn: conn, source: source, user: user} do
