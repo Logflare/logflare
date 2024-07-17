@@ -18,14 +18,15 @@ defmodule Logflare.ContextCache.Supervisor do
   alias Logflare.Repo
 
   def start_link(_) do
-    Supervisor.start_link(__MODULE__, [])
+    Supervisor.start_link(__MODULE__, [], name: __MODULE__)
   end
 
   @env Application.compile_env(:logflare, :env)
 
   @impl Supervisor
   def init(_) do
-    Supervisor.init(get_children(@env), strategy: :one_for_one)
+    res = Supervisor.init(get_children(@env), strategy: :one_for_one)
+    res
   end
 
   defp get_children(:test) do
@@ -43,6 +44,27 @@ defmodule Logflare.ContextCache.Supervisor do
   end
 
   defp get_children(_) do
+    get_children(:test) ++
+      [
+        ContextCache.TransactionBroadcaster,
+        ContextCache.CacheBuster
+      ]
+  end
+
+  @doc """
+  Returns the publisher :via name used for syn registry.
+  """
+  def publisher_name do
+    {:via, :syn, {:context_cache, Logflare.PgPublisher}}
+    # {:global, Logflare.PgPublisher}
+  end
+
+  def maybe_start_cainophile do
+    spec = cainophile_child_spec()
+    Supervisor.start_child(__MODULE__, spec)
+  end
+
+  def cainophile_child_spec do
     hostname = ~c"#{Application.get_env(:logflare, Repo)[:hostname]}"
     username = Application.get_env(:logflare, Repo)[:username]
     password = Application.get_env(:logflare, Repo)[:password]
@@ -52,24 +74,19 @@ defmodule Logflare.ContextCache.Supervisor do
     slot = Application.get_env(:logflare, CacheBuster)[:replication_slot]
     publications = Application.get_env(:logflare, CacheBuster)[:publications]
 
-    get_children(:test) ++
-      [
-        # Follow Postgresql replication log and bust all our context caches
-        {
-          Cainophile.Adapters.Postgres,
-          register: Logflare.PgPublisher,
-          epgsql: %{
-            host: hostname,
-            port: port,
-            username: username,
-            database: database,
-            password: password
-          },
-          slot: slot,
-          wal_position: {"0", "0"},
-          publications: publications
-        },
-        ContextCache.CacheBuster
-      ]
+    {
+      Cainophile.Adapters.Postgres,
+      register: publisher_name(),
+      epgsql: %{
+        host: hostname,
+        port: port,
+        username: username,
+        database: database,
+        password: password
+      },
+      slot: slot,
+      wal_position: {"0", "0"},
+      publications: publications
+    }
   end
 end

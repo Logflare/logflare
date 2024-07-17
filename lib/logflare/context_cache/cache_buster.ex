@@ -16,8 +16,7 @@ defmodule Logflare.ContextCache.CacheBuster do
 
   def init(state) do
     Logger.put_process_level(self(), :error)
-
-    Cainophile.Adapters.Postgres.subscribe(Logflare.PgPublisher, self())
+    Phoenix.PubSub.subscribe(Logflare.PubSub, "wal")
     {:ok, state}
   end
 
@@ -36,6 +35,21 @@ defmodule Logflare.ContextCache.CacheBuster do
     :ok = Logger.put_process_level(self(), level)
 
     {:reply, :ok, state}
+  end
+
+  def handle_info(:try_subscribe, state) do
+    try do
+      ContextCache.Supervisor.maybe_start_cainophile()
+
+      ContextCache.Supervisor.publisher_name()
+      |> Cainophile.Adapters.Postgres.subscribe(self())
+    catch
+      e ->
+        Logger.error("Error when trying to create cainophile subscription #{inspect(e)}")
+    end
+
+    Process.send_after(self(), :try_subscribe, 5_000)
+    {:noreply, state}
   end
 
   def handle_info(%Transaction{changes: []}, state), do: {:noreply, state}

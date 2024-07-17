@@ -193,7 +193,7 @@ defmodule Logflare.Mixfile do
       {:contex, "~> 0.3.0"},
 
       # Postgres Subscribe
-      {:cainophile, github: "Logflare/cainophile"},
+      {:cainophile, github: "Logflare/cainophile", ref: "cfe99f9"},
       {:open_api_spex, "~> 3.16"},
       {:grpc, "~> 0.5.0"},
       {:protobuf, "~> 0.10"},
