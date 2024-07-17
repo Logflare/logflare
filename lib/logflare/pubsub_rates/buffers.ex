@@ -26,9 +26,10 @@ defmodule Logflare.PubSubRates.Buffers do
     {:noreply, state}
   end
 
+  # TODO: remove in >v1.8.x
   @impl GenServer
-  def handle_info({:buffers, _, _}, state) do
-    # don't handle old format of 3-elem tuple.
+  def handle_info(_, state) do
+    # don't handle old format of 3-elem or 4-elem tuples.
     {:noreply, state}
   end
 end
