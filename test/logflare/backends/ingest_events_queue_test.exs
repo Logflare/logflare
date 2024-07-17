@@ -40,6 +40,13 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       [source: insert(:source, user: user), backend: insert(:backend, user: user)]
     end
 
+    test "list_queues/1 returns list of table keys", %{source: source, backend: backend} do
+      IngestEventQueue.upsert_tid({source.id, backend.id, 1})
+      IngestEventQueue.upsert_tid({source.id, backend.id, 12})
+      IngestEventQueue.upsert_tid({source.id, backend.id, 123})
+      assert IngestEventQueue.list_queues({source.id, backend.id}) |> length() == 3
+    end
+
     test "list_pending_counts/1 returns list of counts", %{source: source, backend: backend} do
       key = {source.id, backend.id, self()}
       IngestEventQueue.upsert_tid(key)

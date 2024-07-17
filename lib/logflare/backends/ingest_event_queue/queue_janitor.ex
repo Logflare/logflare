@@ -51,18 +51,25 @@ defmodule Logflare.Backends.IngestEventQueue.QueueJanitor do
   # expose for benchmarking
   def do_drop(state) do
     sid_bid = {state.source_id, state.backend_id}
-    # clear out ingested events
-    IngestEventQueue.truncate_queues(sid_bid, :ingested, state.remainder)
     # safety measure, drop all if still exceed
-    for {sid_bid_pid, pending_size} <- IngestEventQueue.list_pending_counts(sid_bid),
-        pending_size > state.max do
-      to_drop = round(state.purge_ratio * pending_size)
-      IngestEventQueue.drop(sid_bid_pid, :pending, to_drop)
+    for sid_bid_pid <- IngestEventQueue.list_queues(sid_bid),
+        pending_size = IngestEventQueue.count_pending(sid_bid_pid),
+        is_integer(pending_size) do
+      if pending_size > state.remainder do
+        IngestEventQueue.truncate_table(sid_bid_pid, :ingested, 0)
+      else
+        IngestEventQueue.truncate_table(sid_bid_pid, :ingested, state.remainder)
+      end
 
-      Logger.warning(
-        "IngestEventQueue private :ets buffer exceeded max for source id=#{state.source_id}, dropping #{pending_size} events",
-        backend_id: state.backend_id
-      )
+      if pending_size > state.max do
+        to_drop = round(state.purge_ratio * pending_size)
+        IngestEventQueue.drop(sid_bid_pid, :pending, to_drop)
+
+        Logger.warning(
+          "IngestEventQueue private :ets buffer exceeded max for source id=#{state.source_id}, dropping #{pending_size} events",
+          backend_id: state.backend_id
+        )
+      end
     end
   end
 

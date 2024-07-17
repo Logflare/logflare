@@ -207,6 +207,23 @@ defmodule Logflare.Backends.IngestEventQueue do
   end
 
   @doc """
+  Returns a list of table keys for a source-backend combination.
+  Startup queue is included.
+  """
+  @spec list_queues(queues_key()) :: [table_key()]
+  def list_queues(sid_bid) do
+    traverse_queues(
+      sid_bid,
+      fn objs, acc ->
+        for {key, _tid} <- objs, reduce: acc do
+          acc -> [key | acc]
+        end
+      end,
+      []
+    )
+  end
+
+  @doc """
   Returns a list of two-element tuples.
   First element is the table key.
   Second element is the pending count.
@@ -296,24 +313,6 @@ defmodule Logflare.Backends.IngestEventQueue do
       nil -> {:error, :not_initialized}
       :"$end_of_table" -> {:ok, []}
     end
-  end
-
-  @doc """
-  Truncates queues
-  """
-  @spec truncate_table(source_backend_pid(), :all | :pending | :ingested, integer()) :: :ok
-
-  def truncate_queues(sid_bid, filter, n) do
-    # drop all objects
-    traverse_queues(sid_bid, fn queue_objs, _acc ->
-      for {sid_bid_pid, _tid} <- queue_objs do
-        if get_table_size(sid_bid_pid) >= n do
-          truncate_table(sid_bid_pid, filter, n)
-        else
-          truncate_table(sid_bid_pid, filter, 0)
-        end
-      end
-    end)
   end
 
   @doc """
@@ -465,7 +464,12 @@ defmodule Logflare.Backends.IngestEventQueue do
     |> next_and_cleanup()
   end
 
-  defp traverse_queues({sid, bid}, func, acc \\ nil) do
+  @doc """
+  Performs a reduce across all queues of a source-backend combination.
+
+  Startup queue is included.
+  """
+  def traverse_queues({sid, bid}, func, acc \\ nil) do
     :ets.safe_fixtable(@ets_table_mapper, true)
 
     mapper_ms =
