@@ -66,4 +66,48 @@ defmodule Logflare.Utils do
       Ecto.Changeset.put_change(changeset, field, value)
     end
   end
+
+  @doc """
+  Performs chunked round robin of a batch of items to a group of targets.
+  Repeats the group of targets until the batch is completely empty.
+
+  ###  Example
+    iex> batch = [1, 2, 4]
+    iex> targets = [:x, :y]
+    iex> chunk_size = 2
+    iex> chunked_round_robin(batch, targets, chunk_size, fn chunk, target -> {target, Enum.sum(chunk)} end )
+    [x: 3, y: 4]
+  """
+  def chunked_round_robin(batch, targets, chunk_size, func) do
+    next_chunk_rr(batch, chunk_size, targets, targets, func, [])
+  end
+
+  defp next_chunk_rr([], _chunk_size, _remaining, _initial_targets, _func, results) do
+    Enum.reverse(results)
+  end
+
+  defp next_chunk_rr(batch, chunk_size, [], initial_targets, func, results) do
+    next_chunk_rr(batch, chunk_size, initial_targets, initial_targets, func, results)
+  end
+
+  defp next_chunk_rr(
+         batch,
+         chunk_size,
+         [target | remaining_targets],
+         initial_targets,
+         func,
+         results
+       ) do
+    {chunk, remainder} = Enum.split(batch, chunk_size)
+    result = func.(chunk, target)
+
+    next_chunk_rr(
+      remainder,
+      chunk_size,
+      remaining_targets,
+      initial_targets,
+      func,
+      [result | results]
+    )
+  end
 end

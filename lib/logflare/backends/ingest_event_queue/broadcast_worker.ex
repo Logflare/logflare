@@ -27,11 +27,15 @@ defmodule Logflare.Backends.IngestEventQueue.BroadcastWorker do
 
   def handle_info(:global_broadcast, state) do
     :ets.foldl(
-      fn {sid_bid, _tid}, _ ->
-        global_broadcast_producer_buffer_len(sid_bid)
-        nil
+      fn {{sid, bid, _pid}, _tid}, acc ->
+        if is_map_key(acc, {sid, bid}) do
+          acc
+        else
+          global_broadcast_producer_buffer_len({sid, bid})
+          Map.put(acc, {sid, bid}, true)
+        end
       end,
-      nil,
+      %{},
       @ets_table_mapper
     )
 
@@ -41,11 +45,15 @@ defmodule Logflare.Backends.IngestEventQueue.BroadcastWorker do
 
   def handle_info(:local_broadcast, state) do
     :ets.foldl(
-      fn {sid_bid, _tid}, _ ->
-        local_broadcast_cluster_length(sid_bid)
-        nil
+      fn {{sid, bid, _pid}, _tid}, acc ->
+        if is_map_key(acc, {sid, bid}) do
+          acc
+        else
+          local_broadcast_cluster_length({sid, bid})
+          Map.put(acc, {sid, bid}, true)
+        end
       end,
-      nil,
+      %{},
       @ets_table_mapper
     )
 

@@ -40,7 +40,7 @@ defmodule Logflare.Logs do
          _ok <- Sources.Counters.increment(source.token),
          _ok <- SystemMetrics.AllLogsLogged.increment(:total_logs_logged) do
       # v1 only
-      IngestEventQueue.add_to_table({source, nil}, [le])
+      IngestEventQueue.add_to_table({source.id, nil}, [le])
 
       le
     else

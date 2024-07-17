@@ -19,10 +19,11 @@ defmodule Logflare.Backends.AdaptorSupervisor do
   @impl Supervisor
   def init({source, backend}) do
     adaptor_module = Adaptor.get_adaptor(backend)
+    # create the startup queue
+    IngestEventQueue.upsert_tid({source.id, backend.id, nil})
 
     children =
       [
-        {IngestEventQueue.DemandWorker, source: source, backend: backend},
         {IngestEventQueue.QueueJanitor, source: source, backend: backend},
         {adaptor_module, {source, backend}}
       ]

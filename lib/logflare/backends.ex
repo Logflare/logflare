@@ -288,7 +288,7 @@ defmodule Logflare.Backends do
   # send to a specific backend
   defp dispatch_to_backends(source, %Backend{} = backend, log_events) do
     log_events = maybe_pre_ingest(source, backend, log_events)
-    IngestEventQueue.add_to_table({source, backend}, log_events)
+    IngestEventQueue.add_to_table({source.id, backend.id}, log_events)
   end
 
   defp dispatch_to_backends(source, nil, log_events) do
@@ -296,7 +296,8 @@ defmodule Logflare.Backends do
       log_events =
         if(backend, do: maybe_pre_ingest(source, backend, log_events), else: log_events)
 
-      IngestEventQueue.add_to_table({source, backend}, log_events)
+      backend_id = Map.get(backend || %{}, :id)
+      IngestEventQueue.add_to_table({source.id, backend_id}, log_events)
     end
   end
 
@@ -413,43 +414,29 @@ defmodule Logflare.Backends do
   end
 
   @doc """
-  Checks if a local buffer is full.
-  """
-  def local_pending_buffer_full?(%Source{} = source) do
-    get_and_cache_local_pending_buffer_len(source) > @max_pending_buffer_len
-  end
-
-  @doc """
   Uses the buffers cache in PubSubRates.Cache to determine if pending buffer is full.
   Much more performant than not using the cache.
   """
-  def cached_local_pending_buffer_full?(%Source{} = source) do
-    cached_local_pending_buffer_len(source) > @max_pending_buffer_len
+  def cached_local_pending_buffer_full?(%Source{id: id}),
+    do: cached_local_pending_buffer_full?(id)
+
+  def cached_local_pending_buffer_full?(source_id) when is_integer(source_id) do
+    cached_local_pending_buffer_len(source_id) > @max_pending_buffer_len
   end
 
   @doc """
   Get local pending buffer len of a source/backend combination, and caches it at the same time.
   """
   @spec get_and_cache_local_pending_buffer_len(
-          Source.t() | integer(),
-          Backend.t() | nil | integer()
+          integer(),
+          nil | integer()
         ) ::
           integer()
-  def get_and_cache_local_pending_buffer_len(source, backend \\ nil) do
-    len =
-      case IngestEventQueue.count_pending({source, backend}) do
-        len when is_integer(len) -> len
-        _ -> 0
-      end
-
+  def get_and_cache_local_pending_buffer_len(source_id, backend_id \\ nil)
+      when is_integer(source_id) do
+    len = IngestEventQueue.count_pending({source_id, backend_id})
     payload = %{Node.self() => %{len: len}}
-
-    if is_map(source) do
-      PubSubRates.Cache.cache_buffers(source.id, Map.get(backend || %{}, :id), payload)
-    else
-      PubSubRates.Cache.cache_buffers(source, backend, payload)
-    end
-
+    PubSubRates.Cache.cache_buffers(source_id, backend_id, payload)
     len
   end
 
@@ -457,8 +444,8 @@ defmodule Logflare.Backends do
   Get local pending buffer len of a source/backend combination
   """
   @spec cached_local_pending_buffer_len(Source.t(), Backend.t() | nil) :: non_neg_integer()
-  def cached_local_pending_buffer_len(source, backend \\ nil) do
-    PubSubRates.Cache.get_local_buffer(source.id, Map.get(backend || %{}, :id))
+  def cached_local_pending_buffer_len(source_id, backend_id \\ nil) when is_integer(source_id) do
+    PubSubRates.Cache.get_local_buffer(source_id, backend_id)
     |> case do
       %{len: len} -> len
       other -> other

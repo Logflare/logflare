@@ -15,8 +15,9 @@ defmodule Logflare.DynamicPipelineTest do
     source = insert(:source, user: user)
 
     backend = insert(:backend, type: :bigquery)
-    IngestEventQueue.upsert_tid({source, backend})
-    start_supervised!({IngestEventQueue.DemandWorker, source: source, backend: backend})
+
+    # create the startup queue
+    IngestEventQueue.upsert_tid({source, backend, nil})
 
     [
       name: Backends.via_source(source, :some_mod, backend),
@@ -139,7 +140,7 @@ defmodule Logflare.DynamicPipelineTest do
            end) =~ "some error"
   end
 
-  test "pulls events from queue with  bigquery pipeline", %{
+  test "pulls events from startup queue with bigquery pipeline", %{
     name: name,
     pipeline_args: pipeline_args
   } do
@@ -156,7 +157,8 @@ defmodule Logflare.DynamicPipelineTest do
     backend = pipeline_args[:backend]
 
     le = build(:log_event, source: source)
-    IngestEventQueue.add_to_table({source, backend}, [le])
+    IngestEventQueue.upsert_tid({source.id, backend.id, nil})
+    IngestEventQueue.add_to_table({source.id, backend.id, nil}, [le])
 
     start_supervised!(
       {DynamicPipeline,

@@ -19,6 +19,7 @@ defmodule Logflare.Backends.DynamicPipeline do
 
   require Logger
 
+  @resolve_interval if Application.compile_env(:logflare, :env) == :test, do: 500, else: 5_000
   def start_link(args) do
     name = Keyword.get(args, :name)
     Supervisor.start_link(__MODULE__, args, name: name)
@@ -36,7 +37,7 @@ defmodule Logflare.Backends.DynamicPipeline do
         min_pipelines: 0,
         initial_count: args[:min_pipelines] || 0,
         resolve_count: fn _state -> 0 end,
-        resolve_interval: 5_000,
+        resolve_interval: @resolve_interval,
         buffers: %{},
         last_count_increase: nil,
         last_count_decrease: nil
