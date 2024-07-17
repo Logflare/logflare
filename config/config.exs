@@ -109,7 +109,7 @@ config :scrivener_html,
   # If you use a single view style everywhere, you can configure it here. See View Styles below for more info.
   view_style: :bootstrap_v4
 
-config :logflare, Logflare.CacheBuster,
+config :logflare, Logflare.ContextCache.CacheBuster,
   replication_slot: :temporary,
   publications: ["logflare_pub"],
   # remember to add an ALTER PUBLICATION ... migration when changing published tables!

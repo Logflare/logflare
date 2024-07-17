@@ -17,10 +17,10 @@ defmodule Logflare.Repo.Migrations.SubscribeToPostgres do
   @disable_ddl_transaction true
   @disable_migration_lock true
   @username Application.get_env(:logflare, Logflare.Repo)[:username]
-  @slot Application.get_env(:logflare, Logflare.CacheBuster)[:replication_slot]
+  @slot Application.get_env(:logflare, Logflare.ContextCache.CacheBuster)[:replication_slot]
   @env Application.get_env(:logflare, :env)
-  @publications Application.get_env(:logflare, Logflare.CacheBuster)[:publications]
-  @publication_tables Application.get_env(:logflare, Logflare.CacheBuster)[:publication_tables]
+  @publications Application.get_env(:logflare, Logflare.ContextCache.CacheBuster)[:publications]
+  @publication_tables Application.get_env(:logflare, Logflare.ContextCache.CacheBuster)[:publication_tables]
 
   def up do
     if @env in [:dev, :test] do
