@@ -44,6 +44,7 @@ Mimic.copy(Broadway)
 Mimic.stub(Goth)
 Mimic.stub(Finch)
 
+# needed for CI
 Ecto.Adapters.SQL.query!(Logflare.Repo, """
 ALTER SYSTEM SET wal_level = 'logical';
 """)
