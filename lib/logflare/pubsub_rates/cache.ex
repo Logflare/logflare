@@ -4,13 +4,20 @@ defmodule Logflare.PubSubRates.Cache do
 
   alias Logflare.Source
   alias Logflare.Cluster
+  alias Logflare.Utils
 
   @cache __MODULE__
   @default_bucket_width 60
 
   def child_spec(_) do
     stats = Application.get_env(:logflare, :cache_stats, false)
-    %{id: __MODULE__, start: {Cachex, :start_link, [@cache, [stats: stats]]}}
+
+    %{
+      id: __MODULE__,
+      start:
+        {Cachex, :start_link,
+         [@cache, [stats: stats, expiration: Utils.cache_expiration_sec(60)]]}
+    }
   end
 
   def clear() do
@@ -29,7 +36,7 @@ defmodule Logflare.PubSubRates.Cache do
 
     rates = Map.put(rates, :cluster, cluster_rate)
 
-    Cachex.put(__MODULE__, {source_id, "rates"}, rates, ttl: :timer.seconds(5))
+    Cachex.put(__MODULE__, {source_id, "rates"}, rates)
   end
 
   def cache_inserts(source_id, inserts) when is_atom(source_id) do
@@ -40,7 +47,7 @@ defmodule Logflare.PubSubRates.Cache do
         do: Map.merge(val, inserts),
         else: inserts
 
-    Cachex.put(__MODULE__, {source_id, "inserts"}, inserts, ttl: :timer.seconds(5))
+    Cachex.put(__MODULE__, {source_id, "inserts"}, inserts)
   end
 
   @doc """
@@ -56,7 +63,7 @@ defmodule Logflare.PubSubRates.Cache do
         _ -> buffers
       end
 
-    Cachex.put(__MODULE__, {source_id, backend_id, "buffers"}, resolved, ttl: :timer.seconds(5))
+    Cachex.put(__MODULE__, {source_id, backend_id, "buffers"}, resolved)
   end
 
   @doc """
