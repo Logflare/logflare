@@ -20,8 +20,8 @@ permissions:
   contents: read
 
 jobs:
-  build:
-    name: Build and test
+  check:
+    name: Checks
     runs-on: ubuntu-latest
     strategy:
       matrix:
