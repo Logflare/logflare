@@ -44,7 +44,7 @@ jobs:
           #   run: mix test.typings
     services:
       postgres:
-        image: bitnami/postgresql:13
+        image: bitnami/postgresql:13.15.0
         ports:
           - 5432:5432
         env:
