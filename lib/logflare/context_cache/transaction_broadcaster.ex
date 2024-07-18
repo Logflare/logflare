@@ -16,8 +16,7 @@ defmodule Logflare.ContextCache.TransactionBroadcaster do
   def init(args) do
     state = %{interval: Keyword.get(args, :interval, 5_000)}
     Logger.put_process_level(self(), :error)
-    attempt_subscribe(self())
-    Process.send_after(self(), :try_subscribe, min(state.interval, 5_000))
+    Process.send_after(self(), :try_subscribe, min(state.interval, 1_000))
     {:ok, state}
   end
 
@@ -39,7 +38,8 @@ defmodule Logflare.ContextCache.TransactionBroadcaster do
   end
 
   def handle_info(:try_subscribe, state) do
-    attempt_subscribe(self())
+    pid = self()
+    attempt_subscribe(pid)
 
     Process.send_after(self(), :try_subscribe, state.interval)
     {:noreply, state}
