@@ -28,6 +28,7 @@ config :logflare, Logflare.Repo,
   password: "postgres",
   database: "logflare_test",
   hostname: "localhost",
+  port: 5432,
   pool_size: 10,
   pool: Ecto.Adapters.SQL.Sandbox
 

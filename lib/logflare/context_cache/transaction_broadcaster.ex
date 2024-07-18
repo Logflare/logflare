@@ -7,15 +7,17 @@ defmodule Logflare.ContextCache.TransactionBroadcaster do
   require Logger
 
   alias Logflare.ContextCache
-  alias Cainophile.Changes.{NewRecord, UpdatedRecord, DeletedRecord, Transaction}
+  alias Cainophile.Changes.Transaction
 
   def start_link(init_args) do
     GenServer.start_link(__MODULE__, init_args, name: __MODULE__)
   end
 
-  def init(state) do
+  def init(args) do
+    state = %{interval: Keyword.get(args, :interval, 5_000)}
     Logger.put_process_level(self(), :error)
-    Process.send_after(self(), :try_subscribe, 1_000)
+    attempt_subscribe(self())
+    Process.send_after(self(), :try_subscribe, min(state.interval, 5_000))
     {:ok, state}
   end
 
@@ -37,26 +39,30 @@ defmodule Logflare.ContextCache.TransactionBroadcaster do
   end
 
   def handle_info(:try_subscribe, state) do
+    attempt_subscribe(self())
+
+    Process.send_after(self(), :try_subscribe, state.interval)
+    {:noreply, state}
+  end
+
+  def handle_info(%Transaction{changes: []}, state), do: {:noreply, state |> dbg()}
+
+  def handle_info(%Transaction{changes: _changes} = transaction, state) do
+    Logger.info("WAL record received: #{inspect(transaction)}")
+    # broadcast it
+    Phoenix.PubSub.broadcast(Logflare.PubSub, "wal_transactions", transaction)
+    {:noreply, state}
+  end
+
+  defp attempt_subscribe(pid) do
     try do
       ContextCache.Supervisor.maybe_start_cainophile()
 
       ContextCache.Supervisor.publisher_name()
-      |> Cainophile.Adapters.Postgres.subscribe(self())
-    catch
+      |> Cainophile.Adapters.Postgres.subscribe(pid)
+    rescue
       e ->
-        Logger.error("Error when trying to create cainophile subscription #{inspect(e)}")
+        Logger.warning("Could not subscribe to Cainophile, #{inspect(e)}")
     end
-
-    Process.send_after(self(), :try_subscribe, 5_000)
-    {:noreply, state}
-  end
-
-  def handle_info(%Transaction{changes: []}, state), do: {:noreply, state}
-
-  def handle_info(%Transaction{changes: changes} = transaction, state) do
-    Logger.debug("WAL record received: #{inspect(transaction)}")
-    # broadcast it
-    Phoenix.PubSub.broadcast(Logflare.PubSub, "wal", transaction)
-    {:noreply, state}
   end
 end

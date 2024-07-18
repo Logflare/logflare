@@ -16,8 +16,12 @@ defmodule Logflare.ContextCache.CacheBuster do
 
   def init(state) do
     Logger.put_process_level(self(), :error)
-    Phoenix.PubSub.subscribe(Logflare.PubSub, "wal")
+    subscribe_to_transactions()
     {:ok, state}
+  end
+
+  def subscribe_to_transactions do
+    Phoenix.PubSub.subscribe(Logflare.PubSub, "wal_transactions")
   end
 
   @doc """

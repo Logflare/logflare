@@ -59,12 +59,23 @@ defmodule Logflare.ContextCache.Supervisor do
     # {:global, Logflare.PgPublisher}
   end
 
+  @doc """
+  Attempts to start a cainophile child in the ContextCache.Supervisor.
+  If it already exists, it will return with an error tuple.
+  """
   def maybe_start_cainophile do
     spec = cainophile_child_spec()
+    Supervisor.which_children(__MODULE__)
     Supervisor.start_child(__MODULE__, spec)
   end
 
-  def cainophile_child_spec do
+  def remove_cainophile do
+    Supervisor.terminate_child(__MODULE__, Cainophile.Adapters.Postgres)
+    Supervisor.delete_child(__MODULE__, Cainophile.Adapters.Postgres)
+    :ok
+  end
+
+  defp cainophile_child_spec do
     hostname = ~c"#{Application.get_env(:logflare, Repo)[:hostname]}"
     username = Application.get_env(:logflare, Repo)[:username]
     password = Application.get_env(:logflare, Repo)[:password]
@@ -74,19 +85,27 @@ defmodule Logflare.ContextCache.Supervisor do
     slot = Application.get_env(:logflare, CacheBuster)[:replication_slot]
     publications = Application.get_env(:logflare, CacheBuster)[:publications]
 
-    {
-      Cainophile.Adapters.Postgres,
-      register: publisher_name(),
-      epgsql: %{
-        host: hostname,
-        port: port,
-        username: username,
-        database: database,
-        password: password
-      },
-      slot: slot,
-      wal_position: {"0", "0"},
-      publications: publications
+    %{
+      id: Cainophile.Adapters.Postgres,
+      restart: :permanent,
+      type: :worker,
+      start:
+        {Cainophile.Adapters.Postgres, :start_link,
+         [
+           [
+             register: publisher_name(),
+             epgsql: %{
+               host: hostname,
+               port: port,
+               username: username,
+               database: database,
+               password: password
+             },
+             slot: slot,
+             wal_position: {"0", "0"},
+             publications: publications
+           ]
+         ]}
     }
   end
 end
