@@ -140,7 +140,7 @@ defmodule Logflare.Backends.IngestEventQueue do
       Logflare.Utils.chunked_round_robin(
         batch,
         procs,
-        100,
+        10,
         fn chunk, target ->
           add_to_table(target, chunk)
         end
