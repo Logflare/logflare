@@ -33,7 +33,7 @@ jobs:
           - name: Compilation Warnings
             run: mix test.compile
           - name: Tests
-            run: make test
+            run: mix test
           # - name: Security - Sobelow Code Scan
           #   run: mix test.security
           # - name: Typing check
