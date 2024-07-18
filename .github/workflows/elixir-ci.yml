@@ -33,7 +33,7 @@ jobs:
           - name: Compilation Warnings
             run: mix test.compile
           - name: Tests
-            run: mix test
+            run: MIX_ENV=test mix do ecto.create, ecto.migrate, test
           # - name: Security - Sobelow Code Scan
           #   run: mix test.security
           # - name: Typing check
@@ -78,11 +78,5 @@ jobs:
           restore-keys: ${{ runner.os }}-mix--dialyzer
       - name: Install dependencies
         run: mix deps.get
-      - name: Run DB migrations
-        run: MIX_ENV=test mix do ecto.create, ecto.migrate
-      - name: Run compilation warnings check
-        run: mix test.compile
-      - name: Run migrations for test environment
-        run: MIX_ENV=test mix do ecto.drop, ecto.create, ecto.migrate
       - name: Run ${{ matrix.commands.name }}
         run: ${{ matrix.commands.run }}
