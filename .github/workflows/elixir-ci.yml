@@ -51,6 +51,8 @@ jobs:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
           POSTGRES_DB: logflare_test
+        volumes:
+          - priv/setup.sql:/docker-entrypoint-initdb.d/setup.sql
         # Set health checks to wait until postgres has started
         options: >-
           --health-cmd pg_isready
