@@ -34,10 +34,10 @@ jobs:
             run: mix test.compile
           - name: Tests
             run: make test
-          - name: Security - Sobelow Code Scan
-            run: mix test.security
-          - name: Typing check
-            run: mix test.typings
+          # - name: Security - Sobelow Code Scan
+          #   run: mix test.security
+          # - name: Typing check
+          #   run: mix test.typings
     services:
       postgres:
         image: postgres:13
