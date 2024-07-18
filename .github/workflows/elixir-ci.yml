@@ -78,7 +78,7 @@ jobs:
             deps
             _build
             dialyzer
-          key: ${{ runner.os }}-mix-${{ hashFiles('**/mix.lock') }}
+          key: ${{ runner.os }}-mix-${{  hashFiles('**/mix.lock', '**/Cargo.lock' ) }}
           restore-keys: ${{ runner.os }}-mix--dialyzer
       - name: Install dependencies
         run: mix do deps.get, deps.compile
