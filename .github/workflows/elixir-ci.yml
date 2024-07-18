@@ -77,6 +77,6 @@ jobs:
           key: ${{ runner.os }}-mix-${{ hashFiles('**/mix.lock') }}
           restore-keys: ${{ runner.os }}-mix--dialyzer
       - name: Install dependencies
-        run: mix deps.get
+        run: mix do deps.get, deps.compile
       - name: Run ${{ matrix.commands.name }}
         run: ${{ matrix.commands.run }}
