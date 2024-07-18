@@ -19,6 +19,10 @@ on:
 permissions:
   contents: read
 
+env:
+  MIX_ENV: test
+
+
 jobs:
   check:
     name: Checks
@@ -33,7 +37,7 @@ jobs:
           - name: Compilation Warnings
             run: mix test.compile
           - name: Tests
-            run: MIX_ENV=test mix do ecto.create, ecto.migrate, test
+            run: mix do ecto.create, ecto.migrate, test
           # - name: Security - Sobelow Code Scan
           #   run: mix test.security
           # - name: Typing check
