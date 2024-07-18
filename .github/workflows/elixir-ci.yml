@@ -57,6 +57,9 @@ jobs:
       MIX_ENV: test
       SHELL: /bin/bash
     steps:
+      - name: Enable pg wal_level=logical
+        run: |
+          PGPASSWORD=postgres psql -U postgres -tc "ALTER SYSTEM SET wal_level = 'logical';"
       - uses: actions/checkout@v3
       - name: Set up Elixir
         uses: erlef/setup-beam@v1
