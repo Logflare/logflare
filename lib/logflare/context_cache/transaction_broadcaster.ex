@@ -15,7 +15,6 @@ defmodule Logflare.ContextCache.TransactionBroadcaster do
 
   def init(args) do
     state = %{interval: Keyword.get(args, :interval, 5_000)}
-    Logger.put_process_level(self(), :error)
     Process.send_after(self(), :try_subscribe, min(state.interval, 1_000))
     {:ok, state}
   end
@@ -23,7 +22,7 @@ defmodule Logflare.ContextCache.TransactionBroadcaster do
   @doc """
   Sets the Logger level for this process. It's started with level :error.
 
-  To debug wal records set process to level :info and each transaction will be logged.
+  To debug wal records set process to level :debug and each transaction will be logged.
   """
 
   @spec set_log_level(Logger.levels()) :: :ok
@@ -48,7 +47,7 @@ defmodule Logflare.ContextCache.TransactionBroadcaster do
   def handle_info(%Transaction{changes: []}, state), do: {:noreply, state |> dbg()}
 
   def handle_info(%Transaction{changes: _changes} = transaction, state) do
-    Logger.info("WAL record received: #{inspect(transaction)}")
+    Logger.debug("WAL record received from cainophile: #{inspect(transaction)}")
     # broadcast it
     Phoenix.PubSub.broadcast(Logflare.PubSub, "wal_transactions", transaction)
     {:noreply, state}
@@ -57,6 +56,15 @@ defmodule Logflare.ContextCache.TransactionBroadcaster do
   defp attempt_subscribe(pid) do
     try do
       ContextCache.Supervisor.maybe_start_cainophile()
+      |> case do
+        {:ok, pid} ->
+          Logger.info(
+            "Successfully started cainophile on #{inspect(Node.self())}, pid: #{inspect(pid)}"
+          )
+
+        {:error, _} ->
+          :noop
+      end
 
       ContextCache.Supervisor.publisher_name()
       |> Cainophile.Adapters.Postgres.subscribe(pid)

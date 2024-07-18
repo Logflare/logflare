@@ -15,7 +15,6 @@ defmodule Logflare.ContextCache.CacheBuster do
   end
 
   def init(state) do
-    Logger.put_process_level(self(), :error)
     subscribe_to_transactions()
     {:ok, state}
   end
@@ -27,7 +26,7 @@ defmodule Logflare.ContextCache.CacheBuster do
   @doc """
   Sets the Logger level for this process. It's started with level :error.
 
-  To debug wal records set process to level :info and each transaction will be logged.
+  To debug wal records set process to level :debug and each transaction will be logged.
   """
 
   @spec set_log_level(Logger.levels()) :: :ok
@@ -41,25 +40,8 @@ defmodule Logflare.ContextCache.CacheBuster do
     {:reply, :ok, state}
   end
 
-  def handle_info(:try_subscribe, state) do
-    try do
-      ContextCache.Supervisor.maybe_start_cainophile()
-
-      ContextCache.Supervisor.publisher_name()
-      |> Cainophile.Adapters.Postgres.subscribe(self())
-    catch
-      e ->
-        Logger.error("Error when trying to create cainophile subscription #{inspect(e)}")
-    end
-
-    Process.send_after(self(), :try_subscribe, 5_000)
-    {:noreply, state}
-  end
-
-  def handle_info(%Transaction{changes: []}, state), do: {:noreply, state}
-
   def handle_info(%Transaction{changes: changes} = transaction, state) do
-    Logger.info("WAL record received: #{inspect(transaction)}")
+    Logger.debug("WAL record received from pubsub: #{inspect(transaction)}")
 
     for record <- changes,
         record = handle_record(record),
