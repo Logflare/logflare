@@ -14,7 +14,7 @@ help:
 
 test:
 	-epmd -daemon
-	mix test.coverage
+	mix test
 
 test.only:
 	-epmd -daemon
