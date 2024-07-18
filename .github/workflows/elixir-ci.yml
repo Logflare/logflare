@@ -88,4 +88,4 @@ jobs:
       - name: Run migrations for test environment
         run: MIX_ENV=test mix do ecto.drop, ecto.create, ecto.migrate
       - name: Run ${{ matrix.commands.name }}
-        run: ${{ matrix.commands.cmd }}
+        run: ${{ matrix.commands.run }}
