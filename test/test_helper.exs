@@ -48,6 +48,7 @@ Mimic.stub(Finch)
 Ecto.Adapters.SQL.query!(Logflare.Repo, """
 ALTER SYSTEM SET wal_level = 'logical';
 """)
+
 ExUnit.configure(exclude: [integration: true, failing: true, benchmark: true])
 
 Ecto.Adapters.SQL.Sandbox.mode(Logflare.Repo, :manual)
