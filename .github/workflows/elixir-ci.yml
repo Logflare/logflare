@@ -44,15 +44,13 @@ jobs:
           #   run: mix test.typings
     services:
       postgres:
-        image: postgres:13
+        image: supabase/postgres:15
         ports:
           - 5432:5432
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
           POSTGRES_DB: logflare_test
-        volumes:
-          - priv/setup.sql:/docker-entrypoint-initdb.d/setup.sql
         # Set health checks to wait until postgres has started
         options: >-
           --health-cmd pg_isready
