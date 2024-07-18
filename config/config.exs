@@ -57,7 +57,10 @@ config :ueberauth, Ueberauth,
 
 config :phoenix, :json_library, Jason
 config :postgrex, :json_library, Jason
-config :syn, scopes: [:endpoints]
+
+config :syn,
+  scopes: [:endpoints, :context_cache],
+  event_handler: Logflare.SynEventHandler
 
 oauth_common = [
   repo: Logflare.Repo,
@@ -109,7 +112,7 @@ config :scrivener_html,
   # If you use a single view style everywhere, you can configure it here. See View Styles below for more info.
   view_style: :bootstrap_v4
 
-config :logflare, Logflare.CacheBuster,
+config :logflare, Logflare.ContextCache.CacheBuster,
   replication_slot: :temporary,
   publications: ["logflare_pub"],
   # remember to add an ALTER PUBLICATION ... migration when changing published tables!

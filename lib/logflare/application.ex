@@ -3,17 +3,9 @@ defmodule Logflare.Application do
   use Application
   require Logger
 
-  alias Logflare.Billing
   alias Logflare.ContextCache
-  alias Logflare.Backends
   alias Logflare.Logs
   alias Logflare.SingleTenant
-  alias Logflare.Sources
-  alias Logflare.SourceSchemas
-  alias Logflare.Users
-  alias Logflare.TeamUsers
-  alias Logflare.Partners
-  alias Logflare.Auth
   alias Logflare.SystemMetricsSup
   alias Logflare.Sources.Counters
   alias Logflare.Sources.RateCounters
@@ -47,16 +39,8 @@ defmodule Logflare.Application do
       [
         Counters,
         RateCounters,
-        ContextCache,
-        TeamUsers.Cache,
-        Users.Cache,
-        Sources.Cache,
-        Partners.Cache,
-        Backends.Cache,
-        Billing.Cache,
-        SourceSchemas.Cache,
-        Auth.Cache,
         Logs.LogEvents.Cache,
+        ContextCache.Supervisor,
         {Phoenix.PubSub, name: Logflare.PubSub},
         PubSubRates,
         Logs.RejectedLogEvents,
@@ -79,15 +63,6 @@ defmodule Logflare.Application do
   end
 
   defp get_children(_) do
-    # Database options for Postgres notifications
-    hostname = ~c"#{Application.get_env(:logflare, Logflare.Repo)[:hostname]}"
-    username = Application.get_env(:logflare, Logflare.Repo)[:username]
-    password = Application.get_env(:logflare, Logflare.Repo)[:password]
-    database = Application.get_env(:logflare, Logflare.Repo)[:database]
-
-    port = Application.get_env(:logflare, Logflare.Repo)[:port]
-    slot = Application.get_env(:logflare, Logflare.CacheBuster)[:replication_slot]
-    publications = Application.get_env(:logflare, Logflare.CacheBuster)[:publications]
     topologies = Application.get_env(:libcluster, :topologies, [])
     grpc_port = Application.get_env(:grpc, :port)
     ssl = Application.get_env(:logflare, :ssl)
@@ -103,36 +78,10 @@ defmodule Logflare.Application do
         {Cluster.Supervisor, [topologies, [name: Logflare.ClusterSupervisor]]},
         Logflare.Repo,
         {Phoenix.PubSub, name: Logflare.PubSub, pool_size: pool_size},
-        # Context Caches
-        TeamUsers.Cache,
-        ContextCache,
-        Partners.Cache,
-        Users.Cache,
-        Backends.Cache,
-        Sources.Cache,
-        Billing.Cache,
-        SourceSchemas.Cache,
-        Auth.Cache,
         Logs.LogEvents.Cache,
         PubSubRates,
+        ContextCache.Supervisor,
 
-        # Follow Postgresql replication log and bust all our context caches
-        {
-          Cainophile.Adapters.Postgres,
-          register: Logflare.PgPublisher,
-          epgsql: %{
-            host: hostname,
-            port: port,
-            username: username,
-            database: database,
-            password: password
-          },
-          slot: slot,
-          wal_position: {"0", "0"},
-          publications: publications
-        },
-        Logflare.CacheBuster,
-        # Sources
         # v1 ingest pipline
         {Registry,
          name: Logflare.V1SourceRegistry,
