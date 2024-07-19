@@ -65,7 +65,6 @@ defmodule Logflare.ContextCache.Supervisor do
   """
   def maybe_start_cainophile do
     spec = cainophile_child_spec()
-    Supervisor.which_children(__MODULE__)
     Supervisor.start_child(__MODULE__, spec)
   end
 
