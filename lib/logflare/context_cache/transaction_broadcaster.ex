@@ -39,7 +39,7 @@ defmodule Logflare.ContextCache.TransactionBroadcaster do
   def handle_info(:try_subscribe, state) do
     cainophile_pid = attempt_subscribe(state)
     Process.send_after(self(), :try_subscribe, state.interval)
-    {:noreply, Map.put(state, :cainophile_pid, cainophile_pid)}
+    {:noreply, Map.put(state, :subscribed_pid, cainophile_pid)}
   end
 
   def handle_info(%Transaction{changes: []}, state), do: {:noreply, state |> dbg()}
@@ -67,7 +67,7 @@ defmodule Logflare.ContextCache.TransactionBroadcaster do
             pid
         end
 
-      if cainophile_pid != state.cainophile_pid do
+      if cainophile_pid != state.subscribed_pid do
         ContextCache.Supervisor.publisher_name()
         |> Cainophile.Adapters.Postgres.subscribe(self(), 15_000)
       end
