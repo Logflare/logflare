@@ -14,7 +14,7 @@ defmodule Logflare.ContextCache.TransactionBroadcaster do
   end
 
   def init(args) do
-    state = %{interval: Keyword.get(args, :interval, 5_000)}
+    state = %{interval: Keyword.get(args, :interval, 5_000), subscribed_pid: nil}
     Process.send_after(self(), :try_subscribe, min(state.interval, 1_000))
     {:ok, state}
   end
@@ -37,11 +37,9 @@ defmodule Logflare.ContextCache.TransactionBroadcaster do
   end
 
   def handle_info(:try_subscribe, state) do
-    pid = self()
-    attempt_subscribe(pid)
-
+    cainophile_pid = attempt_subscribe(state)
     Process.send_after(self(), :try_subscribe, state.interval)
-    {:noreply, state}
+    {:noreply, Map.put(state, :cainophile_pid, cainophile_pid)}
   end
 
   def handle_info(%Transaction{changes: []}, state), do: {:noreply, state |> dbg()}
@@ -53,24 +51,32 @@ defmodule Logflare.ContextCache.TransactionBroadcaster do
     {:noreply, state}
   end
 
-  defp attempt_subscribe(pid) do
+  defp attempt_subscribe(state) do
     try do
-      ContextCache.Supervisor.maybe_start_cainophile()
-      |> case do
-        {:ok, pid} ->
-          Logger.info(
-            "Successfully started cainophile on #{inspect(Node.self())}, pid: #{inspect(pid)}"
-          )
+      cainophile_pid =
+        ContextCache.Supervisor.maybe_start_cainophile()
+        |> case do
+          {:ok, pid} ->
+            Logger.info(
+              "Successfully started cainophile on #{inspect(Node.self())}, pid: #{inspect(pid)}"
+            )
 
-        {:error, _} ->
-          :noop
+            pid
+
+          {:error, {:already_started, pid}} ->
+            pid
+        end
+
+      if cainophile_pid != state.cainophile_pid do
+        ContextCache.Supervisor.publisher_name()
+        |> Cainophile.Adapters.Postgres.subscribe(self(), 15_000)
       end
 
-      ContextCache.Supervisor.publisher_name()
-      |> Cainophile.Adapters.Postgres.subscribe(pid)
-    rescue
-      e ->
+      cainophile_pid
+    catch
+      :exit, e ->
         Logger.warning("Could not subscribe to Cainophile, #{inspect(e)}")
+        nil
     end
   end
 end
