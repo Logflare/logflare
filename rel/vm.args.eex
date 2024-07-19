@@ -30,3 +30,7 @@
 ## Set process limit
 +P 8000000
 +t 32000000
+
+## Set amount of dirty allocator instances used
+## https://www.erlang.org/doc/apps/erts/erts_alloc.html
++Mdai max
