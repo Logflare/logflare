@@ -113,7 +113,8 @@ defmodule Logflare.Telemetry do
       counter("logflare.rate_limiter.rejected",
         tags: [],
         description: "Rate limited API hits"
-      )
+      ),
+      sum("logflare.backends.egress.request_length", tags: [:backend_id])
     ]
 
     Enum.concat([
