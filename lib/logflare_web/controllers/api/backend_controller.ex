@@ -19,8 +19,7 @@ defmodule LogflareWeb.Api.BackendController do
   )
 
   def index(%{assigns: %{user: user}} = conn, params) do
-    metadata = Map.get(params, "metadata")
-    backends = Backends.list_backends(user_id: user.id, metadata: metadata)
+    backends = Backends.list_backends(user_id: user.id, metadata: params["metadata"])
     json(conn, backends)
   end
 

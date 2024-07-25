@@ -48,13 +48,9 @@ defmodule Logflare.Backends do
 
       {:metadata, %{} = metadata}, q ->
         normalized =
-          for {k, v} <- metadata, into: %{} do
-            if v in ["true", "false"] do
-              {k, String.to_existing_atom(v)}
-            else
-              {k, v}
-            end
-          end
+          Enum.into(metadata, %{}, fn {k, v} ->
+            {k, if(v in ["true", "false"], do: String.to_existing_atom(v), else: v)}
+          end)
 
         where(q, [b], b.metadata == ^normalized)
 
