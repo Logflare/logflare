@@ -395,6 +395,11 @@ defmodule LogflareWeb.Router do
       delete "/backends/:backend_token", Api.SourceController, :remove_backend
     end
 
+    resources("/rules", Api.RuleController,
+      param: "token",
+      only: [:index, :show, :create, :update, :delete]
+    )
+
     resources("/endpoints", Api.EndpointController,
       param: "token",
       only: [:index, :show, :create, :update, :delete]

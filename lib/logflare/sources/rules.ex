@@ -62,6 +62,18 @@ defmodule Logflare.Rules do
   @spec get_rule(non_neg_integer()) :: Rule.t() | nil
   def get_rule(id), do: Repo.get(Rule, id)
 
+  def fetch_rule_by(kw) do
+    {user_id, kw} = Keyword.pop(kw, :user_id)
+
+    from(r in Rule, join: s in Source, on: s.user_id == ^user_id)
+    |> where([r], ^kw)
+    |> Repo.one()
+    |> case do
+      nil -> {:error, :not_found}
+      rule -> {:ok, rule}
+    end
+  end
+
   @spec create_rule(map(), Source.t()) :: {:ok, Rule.t()} | {:error, Ecto.Changeset.t() | binary}
   def create_rule(params, %Source{} = source) when is_map(params) do
     bq_schema =

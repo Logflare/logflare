@@ -6,8 +6,18 @@ defmodule Logflare.Rule do
   alias Logflare.Lql.Parser
   import Ecto.Changeset
 
+  @derive {Jason.Encoder,
+           only: [
+             :token,
+             :id,
+             :source_id,
+             :lql_string,
+             :backend_id
+           ]}
+
   typed_schema "rules" do
     field :sink, Ecto.UUID.Atom
+    field(:token, Ecto.UUID, autogenerate: true)
     field :lql_filters, Ecto.Term, default: []
     field :lql_string, :string
     belongs_to :source, Source
