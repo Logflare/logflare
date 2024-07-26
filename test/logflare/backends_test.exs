@@ -28,6 +28,15 @@ defmodule Logflare.BackendsTest do
       [source: insert(:source, user_id: user.id), user: user]
     end
 
+    test "list_backends/1 with metadata" do
+      backend = insert(:backend, metadata: %{some: "data", value: true, other: false})
+
+      assert [result] =
+               Backends.list_backends(metadata: %{some: "data", value: "true", other: false})
+
+      assert result.id == backend.id
+    end
+
     test "create backend", %{user: user} do
       assert {:ok, %Backend{}} =
                Backends.create_backend(%{

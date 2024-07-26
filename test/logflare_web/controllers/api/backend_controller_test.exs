@@ -22,6 +22,19 @@ defmodule LogflareWeb.Api.BackendControllerTest do
 
       assert result["id"] == backend.id
     end
+
+    test "can filter on metadata column", %{conn: conn, user: user} do
+      insert(:backend, user: user)
+      backend = insert(:backend, user: user, metadata: %{my: "field", data: true})
+
+      assert [result] =
+               conn
+               |> add_access_token(user, "private")
+               |> get(~p"/api/backends?#{%{metadata: %{my: "field", data: true}}}")
+               |> json_response(200)
+
+      assert result["id"] == backend.id
+    end
   end
 
   describe "show/2" do
@@ -75,7 +88,10 @@ defmodule LogflareWeb.Api.BackendControllerTest do
         |> post("/api/backends", %{
           name: name,
           type: "postgres",
-          config: %{url: "postgresql://test:my-password@localhost:5432", schema: "_my_schema"}
+          config: %{url: "postgresql://test:my-password@localhost:5432", schema: "_my_schema"},
+          metadata: %{
+            some: "data"
+          }
         })
 
       assert %{
@@ -85,6 +101,9 @@ defmodule LogflareWeb.Api.BackendControllerTest do
                "config" => %{
                  "url" => "postgresql://test:REDACTED@" <> _,
                  "schema" => "_my_schema"
+               },
+               "metadata" => %{
+                 "some" => "data"
                }
              } = json_response(conn, 201)
     end

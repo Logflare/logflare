@@ -96,7 +96,7 @@ defmodule Logflare.Factory do
   end
 
   def rule_factory(attrs) do
-    lql = Map.get(attrs, "lql_string", "testing")
+    lql = Map.get(attrs, :lql_string) || Map.get(attrs, "lql_string", "testing")
     {:ok, lql_filters} = Lql.Parser.parse(lql, TestUtils.default_bq_schema())
 
     %Rule{
@@ -105,7 +105,8 @@ defmodule Logflare.Factory do
       sink: attrs[:sink],
       source_id: attrs[:source_id],
       source: attrs[:source],
-      backend: attrs[:backend]
+      backend: attrs[:backend],
+      backend_id: attrs[:backend_id]
     }
   end
 

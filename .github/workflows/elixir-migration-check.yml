@@ -5,7 +5,7 @@ on:
   pull_request:
     branches: [main]
     paths:
-      - 'priv/repo/migrations/**'
+      - "priv/repo/migrations/**"
 
 permissions:
   contents: read
@@ -16,19 +16,20 @@ jobs:
     runs-on: ubuntu-latest
     services:
       postgres:
-        image: postgres:13
+        image: bitnami/postgresql:13.15.0
         ports:
           - 5432:5432
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
           POSTGRES_DB: logflare_test
+          POSTGRESQL_WAL_LEVEL: logical
         # Set health checks to wait until postgres has started
         options: >-
-          --health-cmd pg_isready
+          --health-cmd "pg_isready -d logflare_test -U postgres -p 5432"
           --health-interval 10s
           --health-timeout 5s
-          --health-retries 5
+          --health-retries 10
     env:
       MIX_ENV: test
       SHELL: /bin/bash

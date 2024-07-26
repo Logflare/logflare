@@ -39,6 +39,28 @@ defmodule Logflare.Backends do
     |> Enum.map(fn b -> typecast_config_string_map_to_atom_map(b) end)
   end
 
+  @spec list_backends(keyword()) :: [Backend.t()]
+  def list_backends(filters) when is_list(filters) do
+    filters
+    |> Enum.reduce(from(b in Backend), fn
+      {:user_id, id}, q ->
+        where(q, [b], b.user_id == ^id)
+
+      {:metadata, %{} = metadata}, q ->
+        normalized =
+          Enum.into(metadata, %{}, fn {k, v} ->
+            {k, if(v in ["true", "false"], do: String.to_existing_atom(v), else: v)}
+          end)
+
+        where(q, [b], b.metadata == ^normalized)
+
+      _, q ->
+        q
+    end)
+    |> Repo.all()
+    |> Enum.map(fn sb -> typecast_config_string_map_to_atom_map(sb) end)
+  end
+
   @doc """
   Lists `Backend`s by user
   """

@@ -18,8 +18,8 @@ defmodule LogflareWeb.Api.BackendController do
     responses: %{200 => List.response(BackendApiSchema)}
   )
 
-  def index(%{assigns: %{user: user}} = conn, _) do
-    backends = Backends.list_backends_by_user_id(user.id)
+  def index(%{assigns: %{user: user}} = conn, params) do
+    backends = Backends.list_backends(user_id: user.id, metadata: params["metadata"])
     json(conn, backends)
   end
 

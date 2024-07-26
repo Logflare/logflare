@@ -29,6 +29,7 @@ defmodule Logflare.Backends.Backend do
     belongs_to(:user, User)
     has_many(:rules, Rule)
     field(:register_for_ingest, :boolean, virtual: true, default: true)
+    field :metadata, :map
     timestamps()
   end
 
@@ -36,7 +37,7 @@ defmodule Logflare.Backends.Backend do
 
   def changeset(backend, attrs) do
     backend
-    |> cast(attrs, [:type, :config, :user_id, :name, :description])
+    |> cast(attrs, [:type, :config, :user_id, :name, :description, :metadata])
     |> validate_required([:user_id, :type, :config, :name])
     |> validate_inclusion(:type, Map.keys(@adaptor_mapping))
   end
@@ -56,7 +57,8 @@ defmodule Logflare.Backends.Backend do
           :description,
           :type,
           :id,
-          :config
+          :config,
+          :metadata
         ])
         |> Map.update(:config, %{}, fn
           config when type == :postgres ->
