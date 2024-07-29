@@ -153,23 +153,7 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
       messages
     end
 
-    defp get_config(%{startup_config: startup_config, backend_id: backend_id})
-         when backend_id != nil do
-      Backends.Cache.get_backend(backend_id)
-      |> then(fn
-        %_{} = backend ->
-          Adaptor.get_backend_config(backend)
-
-        _ ->
-          startup_config
-      end)
-    end
-
-    defp get_config(%{startup_config: cfg}), do: cfg
-
-    defp process_data(log_event_bodies, context) do
-      config = get_config(context)
-
+    defp process_data(payload, %{config: %{} = config} = context) do
       Client.send(
         url: config.url,
         body: payload,
