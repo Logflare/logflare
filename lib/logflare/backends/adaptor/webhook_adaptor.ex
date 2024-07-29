@@ -4,6 +4,7 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
   use TypedStruct
 
   alias Logflare.Backends
+  alias Logflare.Backends.Adaptor.WebhookAdaptor.EgressMiddleware
 
   @behaviour Logflare.Backends.Adaptor
 
@@ -11,7 +12,8 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
     field(:config, %{
       url: String.t(),
       headers: map(),
-      http: String.t()
+      http: String.t(),
+      gzip: boolean()
     })
   end
 
@@ -34,9 +36,10 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
 
   @impl Logflare.Backends.Adaptor
   def cast_config(params) do
-    {%{}, %{url: :string, headers: :map, http: :string}}
-    |> Ecto.Changeset.cast(params, [:url, :headers, :http])
+    {%{}, %{url: :string, headers: :map, http: :string, gzip: :boolean}}
+    |> Ecto.Changeset.cast(params, [:url, :headers, :http, :gzip])
     |> Logflare.Utils.default_field_value(:http, "http2")
+    |> Logflare.Utils.default_field_value(:gzip, true)
   end
 
   @impl Logflare.Backends.Adaptor
@@ -72,8 +75,11 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
       Tesla.client(
         [
           Tesla.Middleware.Telemetry,
-          Tesla.Middleware.JSON
-        ],
+          Tesla.Middleware.JSON,
+          if(opts[:gzip], do: {Tesla.Middleware.CompressRequest, format: "gzip"}),
+          {EgressMiddleware, metadata: opts[:metadata]}
+        ]
+        |> Enum.filter(& &1),
         adaptor
       )
       |> request(opts)
@@ -111,7 +117,13 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
         batchers: [
           http: [concurrency: 6, batch_size: 250]
         ],
-        context: Map.take(args, [:config])
+        context: %{
+          config: args.config,
+          source_id: args.source.id,
+          backend_id: Map.get(args.backend || %{}, :id),
+          source_token: args.source.token,
+          backend_token: Map.get(args.backend || %{}, :token)
+        }
       )
     end
 
@@ -132,12 +144,14 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
       messages
     end
 
-    defp process_data(log_event_bodies, %{config: %{} = config}) do
+    defp process_data(log_event_bodies, %{config: %{} = config} = context) do
       Client.send(
         url: config.url,
         body: log_event_bodies,
         headers: config[:headers] || %{},
-        http: config.http
+        http: config.http,
+        gzip: Map.get(config, :gzip, true),
+        metadata: Map.take(context, [:source_id, :source_token, :backend_id, :backend_token])
       )
     end
 
