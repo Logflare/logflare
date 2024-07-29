@@ -152,7 +152,7 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
       messages
     end
 
-    defp process_data(log_event_bodies, %{config: %{} = config} = context) do
+    defp process_data(payload, %{config: %{} = config} = context) do
       Client.send(
         url: config.url,
         body: payload,
