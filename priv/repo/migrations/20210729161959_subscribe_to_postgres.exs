@@ -19,7 +19,7 @@ defmodule Logflare.Repo.Migrations.SubscribeToPostgres do
   @username Application.get_env(:logflare, Logflare.Repo)[:username]
   @slot Application.get_env(:logflare, Logflare.ContextCache.CacheBuster)[:replication_slot]
   @env Application.get_env(:logflare, :env)
-  @publications Application.get_env(:logflare, Logflare.CacheBuster)[:publications]
+  @publications Application.get_env(:logflare, Logflare.ContextCache.CacheBuster)[:publications]
   @publication_tables [
     "billing_accounts",
     "plans",
