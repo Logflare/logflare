@@ -175,7 +175,7 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
         body: payload,
         headers: config[:headers] || %{},
         gzip: Map.get(config, :gzip, true),
-        metadata: Map.take(context, [:source_id, :source_token, :backend_id, :backend_token])
+        metadata: Map.take(context, [:source_id, :source_token, :backend_id, :backend_token]),
         http: config[:http]
       )
     end
