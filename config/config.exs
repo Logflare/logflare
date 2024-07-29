@@ -114,16 +114,7 @@ config :scrivener_html,
 
 config :logflare, Logflare.ContextCache.CacheBuster,
   replication_slot: :temporary,
-  publications: ["logflare_pub"],
-  # remember to add an ALTER PUBLICATION ... migration when changing published tables!
-  publication_tables: [
-    "billing_accounts",
-    "plans",
-    "rules",
-    "source_schemas",
-    "sources",
-    "users"
-  ]
+  publications: ["logflare_pub"]
 
 config :open_api_spex, :cache_adapter, OpenApiSpex.Plug.PersistentTermCache
 
