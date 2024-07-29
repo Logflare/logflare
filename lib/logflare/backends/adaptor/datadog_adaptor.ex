@@ -40,7 +40,8 @@ defmodule Logflare.Backends.Adaptor.DatadogAdaptor do
       | config: %{
           url: Map.get(@api_url_mapping, backend.config.region),
           headers: %{"dd-api-key" => backend.config.api_key},
-          http: "http2"
+          http: "http2",
+          gzip: true
         }
     }
 
