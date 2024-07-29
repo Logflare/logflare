@@ -142,9 +142,9 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
     def handle_batch(:http, messages, _batch_info, %{config: %{} = config} = context) do
       # convert this to a custom format if needed
       payload =
-        if config.format_batch do
+        if format_batch = Map.get(config, :format_batch) do
           events = for %{data: le} <- messages, do: le
-          config.format_batch.(events)
+          format_batch.(events)
         else
           for %{data: le} <- messages, do: le.body
         end

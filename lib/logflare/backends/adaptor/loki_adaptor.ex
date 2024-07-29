@@ -78,7 +78,7 @@ defmodule Logflare.Backends.Adaptor.LokiAdaptor do
     import Ecto.Changeset
 
     changeset
-    |> validate_required([:url, :headers])
+    |> validate_required([:url])
     |> Ecto.Changeset.validate_format(:url, ~r/https?\:\/\/.+/)
   end
 end
