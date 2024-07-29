@@ -35,7 +35,8 @@ defmodule Logflare.Backends.Adaptor.LokiAdaptor do
       | config: %{
           url: backend.config.url,
           headers: Map.get(backend.config, :headers, %{}),
-          format_batch: &format_batch/1
+          format_batch: &format_batch/1,
+          gzip: true
         }
     }
 
