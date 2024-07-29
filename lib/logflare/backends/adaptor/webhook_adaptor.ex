@@ -139,8 +139,16 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
       |> Message.put_batcher(:http)
     end
 
-    def handle_batch(:http, messages, _batch_info, context) do
-      payload = for %{data: le} <- messages, do: le.body
+    def handle_batch(:http, messages, _batch_info, %{config: %{} = config} = context) do
+      # convert this to a custom format if needed
+      payload =
+        if config.format_batch do
+          events = for %{data: le} <- messages, do: le
+          config.format_batch.(events)
+        else
+          for %{data: le} <- messages, do: le.body
+        end
+
       process_data(payload, context)
       messages
     end
@@ -164,11 +172,11 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
 
       Client.send(
         url: config.url,
-        body: log_event_bodies,
+        body: payload,
         headers: config[:headers] || %{},
-        http: config.http,
         gzip: Map.get(config, :gzip, true),
         metadata: Map.take(context, [:source_id, :source_token, :backend_id, :backend_token])
+        http: config[:http]
       )
     end
 

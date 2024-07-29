@@ -31,7 +31,7 @@
   </div>
 
   <div :if={@live_action == :new}>
-    <%= select(f, :type, ["Select a backend type...", Webhook: :webhook, Postgres: :postgres, BigQuery: :bigquery, Datadog: :datadog, Elastic: :elastic],
+    <%= select(f, :type, ["Select a backend type...", Webhook: :webhook, Postgres: :postgres, BigQuery: :bigquery, Datadog: :datadog, Elastic: :elastic, Loki: :loki],
       phx_change: :change_form_type,
       class: "form-control form-control-margin",
       id: "type"
@@ -157,7 +157,6 @@
               The Filebeat HTTP(S) endpoint to send events.
             </small>
           </div>
-
           <div class="form-group">
             <%= label(f_config, :username, "Basic Auth Username") %>
             <%= text_input(f_config, :username, class: "form-control") %>
@@ -166,6 +165,21 @@
             <small class="form-text text-muted">
               For basic auth, both username and password must be provided.
             </small>
+          </div>
+        <% "loki" -> %>
+          <div class="form-group">
+            <%= label(f_config, :url, "Loki URL") %>
+            <%= text_input(f_config, :url, class: "form-control") %>
+            <small class="form-text text-muted">
+              The Loki HTTP(S) endpoint to send events.
+            </small>
+          </div>
+
+          <div class="form-group">
+            <%= label(f_config, :header1_key, "Header 1 Key") %>
+            <%= text_input(f_config, :header1_key, class: "form-control") %>
+            <%= label(f_config, :header1_value, "Header 1 Value") %>
+            <%= text_input(f_config, :header1_value, class: "form-control") %>
           </div>
         <% _ -> %>
           <div>Select a Backend Type</div>
