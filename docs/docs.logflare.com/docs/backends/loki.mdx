@@ -1,0 +1,26 @@
+---
+sidebar_position: 6
+---
+
+# Loki
+
+The Loki backend is **ingest-only**, and sends events to a Loki HTTP API.
+
+See the Loki HTTP API [documentation](https://grafana.com/docs/loki/latest/reference/loki-http-api/#ingest-logs) for details on how the API handles events.
+
+## Behaviour and configurations
+
+### Configuration
+
+The following values are required when creating a webhook backend:
+
+- `url`: (`string`, required) the HTTP url to send the events to.
+- `headers`: (`map`, optional) the headers to be attached to the HTTP request, for authentication purposes.
+
+### Implementation Details
+
+Implementation is based on the [webhook backend](/backends/webhook).
+
+Events will be gzipped as a JSON payload, and will be batched with a maximum of 250 events per request.
+
+The source name will be used as the stream label.
