@@ -1,0 +1,24 @@
+---
+sidebar_position: 5
+---
+
+# Datadog
+
+The Datadog backend is **ingest-only**, and sends events to the Datadog HTTP API.
+
+See the Datadog HTTP API [documentation](https://docs.datadoghq.com/api/latest/logs/#send-logs) for details on how the API handles events.
+
+## Behaviour and configurations
+
+### Configuration
+
+The following values are required when creating a webhook backend:
+
+- `api_key`: (`string`, required) a API Key generated from the Datadog dashboard, specific for that region.
+- `region`: (`string`, required) specific region API to send the events to. Corresponds to the [Datadog sites](https://docs.datadoghq.com/getting_started/site/) (for example `US5`)
+
+### Implementation Details
+
+Implementation is based on the [webhook backend](/backends/webhook).
+
+Events will be gzipped and batch with a maximum of 250 events per request. The source name will be set as the service name.
