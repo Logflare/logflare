@@ -5,6 +5,7 @@ defmodule Logflare.EndpointsTest do
   alias Logflare.Endpoints
   alias Logflare.Endpoints.Query
   alias Logflare.Backends.Adaptor.PostgresAdaptor
+  alias Logflare.SingleTenant
 
   test "list_endpoints_by" do
     %{id: id, name: name} = insert(:endpoint)
@@ -284,5 +285,29 @@ defmodule Logflare.EndpointsTest do
                }
              }
            ] = Endpoints.calculate_endpoint_metrics([endpoint])
+  end
+
+  describe "single tenant mode using bigquery" do
+    TestUtils.setup_single_tenant(supabase_mode: true)
+
+    test "run_query/1 will exec a bq query" do
+      expect(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, 1, fn _conn, _proj_id, opts ->
+        assert opts[:body].query =~ "current_datetime"
+        {:ok, TestUtils.gen_bq_response([%{"testing" => "123"}])}
+      end)
+
+      insert(:plan)
+      user = insert(:user)
+
+      endpoint =
+        insert(:endpoint,
+          user: user,
+          name: "my.date",
+          language: :bq_sql,
+          query: "select current_datetime() as testing"
+        )
+
+      assert {:ok, %{rows: [%{"testing" => _}]}} = Endpoints.run_query(endpoint)
+    end
   end
 end
