@@ -66,6 +66,12 @@ defmodule Logflare.Backends.Backend do
             updated = String.replace(url, ~r/(.+):.+\@/, "\\g{1}:REDACTED@")
             Map.put(config, :url, updated)
 
+          config when type == :datadog ->
+            Map.put(config, :api_key, "REDACTED")
+
+          %{password: pass} = config when pass != nil and type == :elastic ->
+            Map.put(config, :password, "REDACTED")
+
           cfg ->
             cfg
         end)

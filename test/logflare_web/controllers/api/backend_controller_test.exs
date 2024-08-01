@@ -108,6 +108,65 @@ defmodule LogflareWeb.Api.BackendControllerTest do
              } = json_response(conn, 201)
     end
 
+    test "creates a datadog backend for an authenticated user", %{conn: conn, user: user} do
+      name = TestUtils.random_string()
+
+      conn =
+        conn
+        |> add_access_token(user, "private")
+        |> post("/api/backends", %{
+          name: name,
+          type: "datadog",
+          config: %{api_key: "1234", region: "US1"},
+          metadata: %{
+            some: "data"
+          }
+        })
+
+      assert %{
+               "id" => _,
+               "token" => _,
+               "name" => ^name,
+               "config" => %{
+                 "api_key" => "REDACTED",
+                 "region" => "US1"
+               },
+               "metadata" => %{
+                 "some" => "data"
+               }
+             } = json_response(conn, 201)
+    end
+
+    test "creates a elastic backend for an authenticated user", %{conn: conn, user: user} do
+      name = TestUtils.random_string()
+
+      conn =
+        conn
+        |> add_access_token(user, "private")
+        |> post("/api/backends", %{
+          name: name,
+          type: "elastic",
+          config: %{url: "https://example.com", username: "someuser", password: "12345"},
+          metadata: %{
+            some: "data"
+          }
+        })
+
+      assert %{
+               "id" => _,
+               "token" => _,
+               "name" => ^name,
+               "config" => %{
+                 "url" => "https://" <> _,
+                 "password" => "REDACTED",
+                 "username" => "someuser"
+               },
+               "metadata" => %{
+                 "some" => "data"
+               }
+             } = json_response(conn, 201)
+    end
+
     test "returns 422 on missing arguments", %{conn: conn, user: user} do
       resp =
         conn
