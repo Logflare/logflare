@@ -56,6 +56,7 @@ defmodule Logflare.Vault do
     {:ok, config}
   end
 
+  # helper, exposed for testing
   def do_migrate() do
     for schema <- @schemas do
       Migrator.migrate(Logflare.Repo, schema)
