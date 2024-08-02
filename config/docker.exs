@@ -7,12 +7,11 @@ config :logflare, LogflareWeb.Endpoint,
   debug_errors: true,
   code_reloader: false,
   watchers: [
-    node: [
-      "node_modules/webpack/bin/webpack.js",
-      "--mode",
-      "development",
-      "--watch",
-      cd: Path.expand("../assets", __DIR__)
+    npm: [
+      "run",
+      "watch",
+      cd: Path.expand("../assets", __DIR__),
+      env: [{"NODE_ENV", "development"}]
     ]
   ],
   live_reload: [

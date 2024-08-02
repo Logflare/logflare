@@ -158,7 +158,7 @@ defmodule Logflare.Endpoints do
          {:ok, transformed_query} <-
            Logflare.Sql.transform(endpoint_query.language, transform_input, user_id) do
       {endpoint, query_string} =
-        if SingleTenant.supabase_mode?() and SingleTenant.postgres_backend_adapter_opts() != nil do
+        if SingleTenant.supabase_mode?() and SingleTenant.postgres_backend?() do
           # translate the query
           schema_prefix = Keyword.get(SingleTenant.postgres_backend_adapter_opts(), :schema)
 
