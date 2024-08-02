@@ -5,7 +5,7 @@ defmodule Logflare.Vault do
 
   To run the migration at runtime, use the following:
   ```elixir
-  iex> Logflare.Vault.do_migration()
+  iex> Logflare.Vault.do_migrate()
   ```
   An old encryption key should be present for the migration.
 
