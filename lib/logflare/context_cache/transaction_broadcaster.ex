@@ -42,7 +42,7 @@ defmodule Logflare.ContextCache.TransactionBroadcaster do
     {:noreply, Map.put(state, :subscribed_pid, cainophile_pid)}
   end
 
-  def handle_info(%Transaction{changes: []}, state), do: {:noreply, state |> dbg()}
+  def handle_info(%Transaction{changes: []}, state), do: {:noreply, state}
 
   def handle_info(%Transaction{changes: _changes} = transaction, state) do
     Logger.debug("WAL record received from cainophile: #{inspect(transaction)}")
