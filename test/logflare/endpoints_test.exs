@@ -5,7 +5,6 @@ defmodule Logflare.EndpointsTest do
   alias Logflare.Endpoints
   alias Logflare.Endpoints.Query
   alias Logflare.Backends.Adaptor.PostgresAdaptor
-  alias Logflare.SingleTenant
 
   test "list_endpoints_by" do
     %{id: id, name: name} = insert(:endpoint)
