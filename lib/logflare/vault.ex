@@ -21,15 +21,21 @@ defmodule Logflare.Vault do
 
   @impl GenServer
   def init(config) do
+    if Application.get_env(:logflare, :env) == :test do
+      # make ets table public
+      :ets.new(@table_name, [:named_table, :public])
+    end
+
     default_key = Application.get_env(:logflare, :encryption_key_default) |> maybe_decode!()
-    old_key = Application.get_env(:logflare, :encryption_key_old) |> maybe_decode!()
+    retired_key = Application.get_env(:logflare, :encryption_key_retired) |> maybe_decode!()
 
     ciphers =
       [
-        default: {Cloak.Ciphers.AES.GCM, tag: "AES.GCM.V1", key: default_key},
-        old:
-          if(is_nil(old_key),
-            do: {Cloak.Ciphers.AES.GCM, tag: "AES.GCM.V1", key: old_key},
+        default:
+          {Cloak.Ciphers.AES.GCM, tag: "AES.GCM.V1." <> hash(default_key), key: default_key},
+        retired:
+          if(retired_key != nil,
+            do: {Cloak.Ciphers.AES.GCM, tag: "AES.GCM.V1" <> hash(retired_key), key: retired_key},
             else: nil
           )
       ]
@@ -44,8 +50,8 @@ defmodule Logflare.Vault do
   def handle_continue(:migrate, config) do
     ciphers = Keyword.get(config, :ciphers)
 
-    if Keyword.has_key?(ciphers, :old) do
-      Logger.info("Encryption key marked as 'old' found, migrating schemas to new key.")
+    if Keyword.has_key?(ciphers, :retired) do
+      Logger.info("Encryption key marked as 'retired' found, migrating schemas to new key.")
       do_migrate()
     end
 
@@ -58,6 +64,28 @@ defmodule Logflare.Vault do
     end
   end
 
+  # helper for loading keys
   defp maybe_decode!(nil), do: nil
   defp maybe_decode!(str), do: Base.decode64!(str)
+
+  # used to hash the tag based on the key, as cloak uses the tag to determine cipher to use.
+  defp hash(key) do
+    :sha256 |> :crypto.hash(key) |> Base.encode64()
+  end
+
+  # helper for tests
+  def get_config() do
+    Cloak.Vault.read_config(@table_name)
+  end
+
+  # helper for tests
+  def save_config(config) do
+    Cloak.Vault.save_config(@table_name, config)
+  end
+
+  # helper for tests
+  def get_cipher(key) do
+    key = key |> maybe_decode!()
+    {Cloak.Ciphers.AES.GCM, tag: "AES.GCM.V1" <> hash(key), key: key}
+  end
 end

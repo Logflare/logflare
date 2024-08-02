@@ -22,7 +22,7 @@ All browser authentication will be disabled when in single-tenant mode.
 | Env Var                                | Type                                                                | Description                                                                                                                                                                             |
 | -------------------------------------- | ------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `LOGFLARE_DB_ENCRYPTION_KEY`           | Base64 encryption key, **required**                                 | Encryption key used for encrypting sensitive data.                                                                                                                                      |
-| `LOGFLARE_DB_ENCRYPTION_KEY_OLD`       | Base64 encryption key, defaults to `nil`                            | The deprecated encryption key to migrate existing database secrets from. Data will be migrated to the key set under `LOGFLARE_DB_ENCRYPTION_KEY`. Used for encryption key rolling only. |
+| `LOGFLARE_DB_ENCRYPTION_KEY_RETIRED`       | Base64 encryption key, defaults to `nil`                            | The deprecated encryption key to migrate existing database secrets from. Data will be migrated to the key set under `LOGFLARE_DB_ENCRYPTION_KEY`. Used for encryption key rolling only. |
 | `LOGFLARE_SINGLE_TENANT`               | Boolean, defaults to `false`                                        | If enabled, a singular user will be seeded. All browser usage will default to the user.                                                                                                 |
 | `LOGFLARE_API_KEY`                     | string, defaults to `nil`                                           | If set, this API Key can be used for interacting with the Logflare API. API key will be automatically generated if not set.                                                             |
 | `LOGFLARE_SUPABASE_MODE`               | Boolean, defaults to `false`                                        | A special mode for Logflare, where Supabase-specific resources will be seeded. Intended for Suapbase self-hosted usage.                                                                 |
@@ -67,15 +67,15 @@ Cipher used is AES with a 256-bit key in GCM mode.
 
 ### Rolling Encryption Keys
 
-In order to roll encryption keys and migrate existing encrypted data, use the `LOGFLARE_DB_ENCRYPTION_KEY_OLD` environment variable.
+In order to roll encryption keys and migrate existing encrypted data, use the `LOGFLARE_DB_ENCRYPTION_KEY_RETIRED` environment variable.
 
 Steps to perform the migration are:
 
-1. Move the old encryption key from `LOGFLARE_DB_ENCRYPTION_KEY` to `LOGFLARE_DB_ENCRYPTION_KEY_OLD`.
+1. Move the retired encryption key from `LOGFLARE_DB_ENCRYPTION_KEY` to `LOGFLARE_DB_ENCRYPTION_KEY_RETIRED`.
 2. Generate a new encryption key and set it to `LOGFLARE_DB_ENCRYPTION_KEY`.
 3. Restart or deploy the server with the new environment variables.
-4. Upon successful server startup, an `info` log will be emitted that says that an old encryption key is detected, and the migration will be initiated to transition all data encrypted with the old key to be encrypted with the new key.
-5. Once the migration is complete, the old encryption key can be safely removed.
+4. Upon successful server startup, an `info` log will be emitted that says that an retired encryption key is detected, and the migration will be initiated to transition all data encrypted with the retired key to be encrypted with the new key.
+5. Once the migration is complete, the retired encryption key can be safely removed.
 
 ## BigQuery Setup
 
