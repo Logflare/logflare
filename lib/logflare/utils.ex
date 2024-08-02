@@ -60,7 +60,7 @@ defmodule Logflare.Utils do
     iex> %Ecto.Changeset{changes: %{title: "123"}} =  default_field_value(changeset, :title, "123")
   """
   def default_field_value(%Ecto.Changeset{} = changeset, field, value) do
-    if Ecto.Changeset.get_field(changeset, field) do
+    if Ecto.Changeset.get_field(changeset, field) !== nil do
       changeset
     else
       Ecto.Changeset.put_change(changeset, field, value)

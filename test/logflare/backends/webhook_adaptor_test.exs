@@ -68,6 +68,50 @@ defmodule Logflare.Backends.WebhookAdaptorTest do
     end
   end
 
+  test "cast_and_validate_config/1 for gzip" do
+    assert %Ecto.Changeset{
+             valid?: true,
+             changes: %{
+               gzip: true
+             }
+           } =
+             Adaptor.cast_and_validate_config(@subject, %{url: "http://example.com", gzip: true})
+
+    assert %Ecto.Changeset{
+             valid?: true,
+             changes: %{
+               gzip: false
+             }
+           } =
+             Adaptor.cast_and_validate_config(@subject, %{url: "http://example.com", gzip: false})
+  end
+
+  test "cast_and_validate_config/1 for http" do
+    assert %Ecto.Changeset{
+             valid?: true,
+             changes: %{
+               gzip: true,
+               http: "http1"
+             }
+           } =
+             Adaptor.cast_and_validate_config(@subject, %{
+               url: "http://example.com",
+               http: "http1"
+             })
+
+    assert %Ecto.Changeset{
+             valid?: true,
+             changes: %{
+               gzip: true,
+               http: "http2"
+             }
+           } =
+             Adaptor.cast_and_validate_config(@subject, %{
+               url: "http://example.com",
+               http: "http2"
+             })
+  end
+
   @tag :benchmark
   describe "benchmark" do
     setup do
