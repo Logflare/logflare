@@ -43,19 +43,17 @@ defmodule Logflare.Vault do
 
     config = Keyword.put(config, :ciphers, ciphers)
 
-    {:ok, config, {:continue, :migrate}}
-  end
+    Task.start_link(fn ->
+      # wait for genserver config to be saved, see https://github.com/danielberkompas/cloak/blob/v1.1.4/lib/cloak/vault.ex#L186
+      :timer.sleep(1_000)
 
-  @impl GenServer
-  def handle_continue(:migrate, config) do
-    ciphers = Keyword.get(config, :ciphers)
+      if Keyword.has_key?(ciphers, :retired) do
+        Logger.info("Encryption key marked as 'retired' found, migrating schemas to new key.")
+        do_migrate()
+      end
+    end)
 
-    if Keyword.has_key?(ciphers, :retired) do
-      Logger.info("Encryption key marked as 'retired' found, migrating schemas to new key.")
-      do_migrate()
-    end
-
-    {:noreply, config}
+    {:ok, config}
   end
 
   def do_migrate() do
