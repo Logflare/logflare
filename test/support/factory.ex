@@ -74,14 +74,24 @@ defmodule Logflare.Factory do
     %SourceSchema{}
   end
 
-  def backend_factory do
+  def backend_factory(attrs) do
+    config =
+      attrs[:config] ||
+        %{
+          project_id: TestUtils.random_string(),
+          dataset_id: TestUtils.random_string()
+        }
+
     %Backend{
       name: TestUtils.random_string(),
-      type: :bigquery,
-      config: %{
-        project_id: TestUtils.random_string(),
-        dataset_id: TestUtils.random_string()
-      }
+      description: attrs[:description],
+      type: attrs[:type] || :bigquery,
+      config_encrypted: config,
+      config: config,
+      sources: attrs[:sources] || [],
+      user_id: attrs[:user_id],
+      user: attrs[:user],
+      metadata: attrs[:metadata] || nil
     }
   end
 

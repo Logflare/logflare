@@ -129,4 +129,6 @@ config :opentelemetry,
   span_processor: :batch,
   traces_exporter: :none
 
+config :logflare, Logflare.Vault, json_library: Jason
+
 import_config "#{Mix.env()}.exs"

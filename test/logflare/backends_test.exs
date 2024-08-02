@@ -15,11 +15,27 @@ defmodule Logflare.BackendsTest do
   alias Logflare.PubSubRates
   alias Logflare.Logs.SourceRouting
   alias Logflare.PubSubRates
+  alias Logflare.Repo
   alias Logflare.Backends.IngestEventQueue
 
   setup do
     start_supervised!(AllLogsLogged)
     :ok
+  end
+
+  describe "encryption" do
+    test "backend config is encrypted to the :config_encrypted field" do
+      insert(:backend, config_encrypted: %{some_value: "testing"})
+
+      assert [
+               %{
+                 config: nil,
+                 config_encrypted: encrypted
+               }
+             ] = Repo.all(from b in "backends", select: [:config, :config_encrypted])
+
+      assert is_binary(encrypted)
+    end
   end
 
   describe "backend management" do

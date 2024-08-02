@@ -7,7 +7,8 @@ config :logflare, LogflareWeb.Endpoint,
   server: false
 
 config :logflare,
-  env: :test
+  env: :test,
+  encryption_key_default: "Q+IS7ogkzRxsj+zAIB1u6jNFquxkFzSrBZXItN27K/Q="
 
 config :logflare, Logflare.Cluster.Utils, min_cluster_size: 1
 

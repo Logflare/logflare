@@ -24,7 +24,8 @@ defmodule Logflare.Backends.Backend do
     field(:token, Ecto.UUID, autogenerate: true)
     field(:type, Ecto.Enum, values: Map.keys(@adaptor_mapping))
     # TODO: maybe use polymorphic embeds
-    field(:config, :map)
+    field(:config, :map, virtual: true)
+    field(:config_encrypted, Logflare.Ecto.EncryptedMap)
     many_to_many(:sources, Source, join_through: "sources_backends")
     belongs_to(:user, User)
     has_many(:rules, Rule)
@@ -40,7 +41,31 @@ defmodule Logflare.Backends.Backend do
     |> cast(attrs, [:type, :config, :user_id, :name, :description, :metadata])
     |> validate_required([:user_id, :type, :config, :name])
     |> validate_inclusion(:type, Map.keys(@adaptor_mapping))
+    |> put_config_change()
+    |> validate_config()
+    |> delete_change(:config)
   end
+
+  defp put_config_change(%Ecto.Changeset{changes: %{config: config}} = changeset) do
+    put_change(changeset, :config_encrypted, config)
+  end
+
+  defp put_config_change(changeset), do: changeset
+
+  # common config validation function
+  defp validate_config(%{valid?: true} = changeset) do
+    type = Ecto.Changeset.get_field(changeset, :type)
+    mod = adaptor_mapping()[type]
+
+    Ecto.Changeset.validate_change(changeset, :config, fn :config, config ->
+      case Adaptor.cast_and_validate_config(mod, config) do
+        %{valid?: true} -> []
+        %{valid?: false, errors: errors} -> for {key, err} <- errors, do: {:"config.#{key}", err}
+      end
+    end)
+  end
+
+  defp validate_config(changeset), do: changeset
 
   @spec child_spec(Source.t(), Backend.t()) :: map()
   defdelegate child_spec(source, backend), to: Adaptor
