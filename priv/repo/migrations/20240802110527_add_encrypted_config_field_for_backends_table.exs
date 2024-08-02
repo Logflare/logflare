@@ -18,7 +18,7 @@ defmodule Logflare.Repo.Migrations.AddEncryptedConfigFieldForBackendsTable do
 
       from(b in "backends",
         where: b.id == ^id,
-        update: [set: [config_encrypted: config_encrypted]]
+        update: [set: [config_encrypted: ^config_encrypted]]
       )
       |> Logflare.Repo.update_all([])
     end)
