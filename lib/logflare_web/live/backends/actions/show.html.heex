@@ -20,6 +20,10 @@
           <%= Jason.encode!(@backend.config, pretty: true) %>
         </pre>
       </li>
+      <li :if={@backend.metadata} class="list-group-item tw-flex-col tw-gap-2 ">
+        <strong>metadata:</strong>
+        <span :for={{k, v} when is_binary(v) <- @backend.metadata || %{}} :if={@backend.metadata} class="tw-block tw-ml-4"><%= k %>: <%= v %></span>
+      </li>
     </ul>
   </div>
 </section>
