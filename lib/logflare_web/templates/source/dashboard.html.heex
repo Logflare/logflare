@@ -97,8 +97,12 @@
           <li class="list-group-item">Sources are where your log events go.</li>
           <li class="list-group-item">Create one now!</li>
         <% end %>
-        <%= for source <- @sources do %>
-          <li class="list-group-item">
+        <%= for {service_name, sources} <- Enum.group_by(@sources, fn s -> s.service_name end) |> Enum.reverse() do %>
+          <li :if={service_name != nil} class="list-group-item !tw-pb-0"><%= section_header(service_name) %></li>
+          <li :if={service_name == nil} class="list-group-item">
+            <hr />
+          </li>
+          <li :for={source <- sources} class="list-group-item">
             <div class="favorite float-left">
               <%= link to: Routes.source_path(@conn, :favorite, source.id) do %>
                 <span id="">
@@ -128,7 +132,7 @@
                 </span>
               </div>
             </div>
-            <%= render(LogflareWeb.SharedView, "dashboard_source_metadata.html", conn: @conn, source: source, source_ttl_days: source_ttl_to_days(source, @plan)) %>
+            <%= render(LogflareWeb.SharedView, "dashboard_source_metadata.html", conn: @conn, source: source, source_ttl_days: source_ttl_to_days(source, @plan), pipeline_counts: @pipeline_counts) %>
           </li>
         <% end %>
       </ul>

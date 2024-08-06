@@ -24,6 +24,17 @@
   </div>
   <%= submit "Update name", class: "btn btn-primary form-button" %>
   <% end %>
+
+  <%= section_header("Service Group") %>
+  <p>Organize your sources into a common business domain service group.</p>
+  <%= form_for @changeset, Routes.source_path(@conn, :update, @source), fn a -> %>
+  <div class="form-group">
+    <%= text_input a, :service_name, placeholder: "Payments", class: "form-control form-control-margin" %>
+    <%= error_tag a, :service_name %>
+  </div>
+  <%= submit "Update service group", class: "btn btn-primary form-button" %>
+  <% end %>
+
   <%= section_header("Alert Frequency") %>
   <p>How often do you want to receive alerts?</p>
   <div class="form-group">

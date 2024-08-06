@@ -77,8 +77,8 @@ defmodule Logflare.Backends.Adaptor.DatadogAdaptor do
       le
       | body: %{
           message: formatted_ts <> " " <> Jason.encode!(le.body),
-          ddsource: "Logflare by Supabase",
-          service: le.source.name
+          ddsource: "Supabase",
+          service: le.source.service_name || le.source.name
         }
     }
   end
