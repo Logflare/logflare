@@ -76,9 +76,10 @@ defmodule Logflare.Backends.Adaptor.DatadogAdaptor do
     %Logflare.LogEvent{
       le
       | body: %{
-          message: formatted_ts <> " " <> Jason.encode!(le.body),
-          ddsource: "Supabase",
-          service: le.source.service_name || le.source.name
+          "message" => formatted_ts <> " " <> (le.body["message"] || le.body["event_message"]),
+          "ddsource" => "Supabase",
+          "service" => le.source.service_name || le.source.name,
+          "data" => le.body
         }
     }
   end
