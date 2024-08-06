@@ -80,7 +80,7 @@ defmodule Logflare.Backends.Adaptor.DatadogAdaptorTest do
 
       assert {:ok, _} = Backends.ingest_logs([le], source)
       assert_receive {^ref, [log_entry]}, 2000
-      assert log_entry.service == "some name"
+      assert log_entry["service"] == "some name"
     end
 
     test "service field falls back to source name", %{source: source} do
@@ -97,10 +97,10 @@ defmodule Logflare.Backends.Adaptor.DatadogAdaptorTest do
 
       assert {:ok, _} = Backends.ingest_logs([le], source)
       assert_receive {^ref, [log_entry]}, 2000
-      assert log_entry.service == source.name
+      assert log_entry["service"] == source.name
     end
 
-    test "message is JSON encoded log event", %{source: source} do
+    test "message contains log event body", %{source: source} do
       this = self()
       ref = make_ref()
 
@@ -114,7 +114,7 @@ defmodule Logflare.Backends.Adaptor.DatadogAdaptorTest do
 
       assert {:ok, _} = Backends.ingest_logs([le], source)
       assert_receive {^ref, [log_entry]}, 2000
-      assert log_entry.message =~ Jason.encode!(le.body)
+      assert log_entry["data"] == le.body
     end
   end
 end
