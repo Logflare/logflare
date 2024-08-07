@@ -1,4 +1,9 @@
 #! /bin/sh
+if [ -z "$LOGFLARE_DB_ENCRYPTION_KEY" ]; then
+    echo "LOGFLARE_DB_ENCRYPTION_KEY is not set!" 1>&2
+    exit 1
+fi
+echo $?
 
 # wait for networking to be ready before starting Erlang
 echo 'Sleeping for 15 seconds for GCE networking to be ready...'

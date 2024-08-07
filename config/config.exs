@@ -6,12 +6,17 @@
 import Config
 
 # General application configuration
+
+hardcoded_encryption_key = "Q+IS7ogkzRxsj+zAIB1u6jNFquxkFzSrBZXItN27K/Q="
+
 config :logflare,
   ecto_repos: [Logflare.Repo],
   # https://cloud.google.com/compute/docs/instances/deleting-instance#delete_timeout
   # preemtible is 30 seconds from shutdown to sigterm
   # normal instances can be more than 90 seconds
-  sigterm_shutdown_grace_period_ms: 15_000
+  sigterm_shutdown_grace_period_ms: 15_000,
+  encryption_key_fallback: hardcoded_encryption_key,
+  encryption_key_default: hardcoded_encryption_key
 
 config :logflare, Logflare.Alerting, min_cluster_size: 1, enabled: true
 
@@ -128,5 +133,7 @@ config :opentelemetry,
   sdk_disabled: true,
   span_processor: :batch,
   traces_exporter: :none
+
+config :logflare, Logflare.Vault, json_library: Jason
 
 import_config "#{Mix.env()}.exs"

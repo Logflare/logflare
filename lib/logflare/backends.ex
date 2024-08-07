@@ -97,7 +97,6 @@ defmodule Logflare.Backends do
     backend =
       %Backend{}
       |> Backend.changeset(attrs)
-      |> validate_config()
       |> Repo.insert()
 
     with {:ok, updated} <- backend do
@@ -115,7 +114,6 @@ defmodule Logflare.Backends do
     backend_config =
       backend
       |> Backend.changeset(attrs)
-      |> validate_config()
       |> Repo.update()
 
     with {:ok, updated} <- backend_config do
@@ -156,32 +154,20 @@ defmodule Logflare.Backends do
     end
   end
 
-  # common config validation function
-  defp validate_config(%{valid?: true} = changeset) do
-    type = Ecto.Changeset.get_field(changeset, :type)
-    mod = Backend.adaptor_mapping()[type]
-
-    Ecto.Changeset.validate_change(changeset, :config, fn :config, config ->
-      case Adaptor.cast_and_validate_config(mod, config) do
-        %{valid?: true} -> []
-        %{valid?: false, errors: errors} -> for {key, err} <- errors, do: {:"config.#{key}", err}
-      end
-    end)
-  end
-
-  defp validate_config(changeset), do: changeset
-
   # common typecasting from string map to attom for config
   defp typecast_config_string_map_to_atom_map(nil), do: nil
 
   defp typecast_config_string_map_to_atom_map(%Backend{type: type} = backend) do
     mod = Backend.adaptor_mapping()[type]
 
-    Map.update!(backend, :config, fn config ->
-      (config || %{})
-      |> mod.cast_config()
-      |> Ecto.Changeset.apply_changes()
-    end)
+    updated =
+      Map.update!(backend, :config_encrypted, fn config ->
+        (config || %{})
+        |> mod.cast_config()
+        |> Ecto.Changeset.apply_changes()
+      end)
+
+    Map.put(updated, :config, updated.config_encrypted)
   end
 
   @doc """

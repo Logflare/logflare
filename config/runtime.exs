@@ -23,7 +23,9 @@ config :logflare,
          single_tenant: System.get_env("LOGFLARE_SINGLE_TENANT", "false") == "true",
          supabase_mode: System.get_env("LOGFLARE_SUPABASE_MODE", "false") == "true",
          api_key: System.get_env("LOGFLARE_API_KEY"),
-         cache_stats: System.get_env("LOGFLARE_CACHE_STATS", "false") == "true"
+         cache_stats: System.get_env("LOGFLARE_CACHE_STATS", "false") == "true",
+         encryption_key_default: System.get_env("LOGFLARE_DB_ENCRYPTION_KEY"),
+         encryption_key_retired: System.get_env("LOGFLARE_DB_ENCRYPTION_KEY_RETIRED")
        ]
        |> filter_nil_kv_pairs.()
 
