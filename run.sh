@@ -11,7 +11,7 @@ fi
 if [ -f ./startup.sh ]
 then
     echo 'startup.sh file present, sourcing...';
-    sleep(0.5)
+    sleep .5;
     . ./startup.sh;
 fi
 
