@@ -49,6 +49,7 @@ defmodule Logflare.Backends.Backend do
   defp do_config_change(%Ecto.Changeset{changes: %{config: config}} = changeset) do
     changeset
     |> put_change(:config_encrypted, config)
+
     # TODO(Ziinc): uncomment once cluster is using encrypted fields fully
     # |> delete_change(:config)
   end
