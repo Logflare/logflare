@@ -24,7 +24,9 @@ defmodule Logflare.Repo.Migrations.AddEncryptedConfigFieldForBackendsTable do
       |> Logflare.Repo.update_all([])
     end)
     # stop the vault
-    Process.exit(pid, :normal)
+    Process.unlink(pid)
+    Process.exit(pid, :kill)
+    :timer.sleep(250)
   end
 
   def down do
