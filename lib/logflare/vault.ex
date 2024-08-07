@@ -26,7 +26,11 @@ defmodule Logflare.Vault do
       :ets.new(@table_name, [:named_table, :public])
     end
 
-    default_key = Application.get_env(:logflare, :encryption_key_default) |> maybe_decode!()
+    fallback_key = Application.get_env(:logflare, :encryption_key_fallback) |> maybe_decode!()
+
+    default_key =
+      Application.get_env(:logflare, :encryption_key_default) |> maybe_decode!() || fallback_key
+
     retired_key = Application.get_env(:logflare, :encryption_key_retired) |> maybe_decode!()
 
     ciphers =
@@ -37,7 +41,9 @@ defmodule Logflare.Vault do
           if(retired_key != nil,
             do: {Cloak.Ciphers.AES.GCM, tag: "AES.GCM.V1" <> hash(retired_key), key: retired_key},
             else: nil
-          )
+          ),
+        fallback:
+          {Cloak.Ciphers.AES.GCM, tag: "AES.GCM.V1." <> hash(fallback_key), key: fallback_key}
       ]
       |> Enum.filter(fn {_k, v} -> v != nil end)
 
@@ -47,9 +53,26 @@ defmodule Logflare.Vault do
       # wait for genserver config to be saved, see https://github.com/danielberkompas/cloak/blob/v1.1.4/lib/cloak/vault.ex#L186
       :timer.sleep(1_000)
 
-      if Keyword.has_key?(ciphers, :retired) do
-        Logger.info("Encryption key marked as 'retired' found, migrating schemas to new key.")
-        do_migrate()
+      result =
+        cond do
+          Keyword.has_key?(ciphers, :retired) ->
+            Logger.info("Encryption key marked as 'retired' found, migrating schemas to new key.")
+
+            do_migrate()
+            true
+
+          fallback_key != default_key ->
+            Logger.info("Encryption key has been provided, migrating all schemas to key.")
+            do_migrate()
+
+            true
+
+          true ->
+            :noop
+        end
+
+      if result != :noop do
+        Logger.info("Encryption migration complete")
       end
     end)
 

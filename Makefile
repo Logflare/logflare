@@ -45,7 +45,12 @@ start.pink: __start__
 __start__:
 	@env $$(cat .dev.env | xargs) PORT=${PORT} LOGFLARE_GRPC_PORT=${LOGFLARE_GRPC_PORT} iex --sname ${ERL_NAME} --cookie ${ERL_COOKIE} -S mix phx.server
 
-.PHONY: __start__
+
+migrate:
+	@env $$(cat .dev.env | xargs) mix ecto.migrate
+
+
+.PHONY: __start__ migrate
 
 # Encryption and decryption of secrets
 # Usage:
@@ -87,7 +92,6 @@ $(addprefix decrypt.,${envs}): decrypt.%: \
 	.$$*.gcloud.json \
  	.$$*.env \
  	.$$*.cacert.pem \
- 	.$$*.cacert.key \
  	.$$*.cert.key \
  	.$$*.cert.pem \
  	.$$*.db-client-cert.pem \
