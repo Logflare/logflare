@@ -1,4 +1,4 @@
-defmodule Logflare.BackendsTest do
+defmodule Logflare.VaultTest do
   @moduledoc false
   use Logflare.DataCase
   alias Logflare.Repo
