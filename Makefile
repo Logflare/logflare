@@ -102,7 +102,6 @@ $(addprefix encrypt.,${envs}): encrypt.%: \
 	.$$*.gcloud.json.enc \
 	.$$*.env.enc \
 	.$$*.cacert.pem.enc \
-	.$$*.cacert.key.enc \
 	.$$*.cert.key.enc \
 	.$$*.cert.pem.enc \
  	.$$*.db-client-cert.pem.enc \
