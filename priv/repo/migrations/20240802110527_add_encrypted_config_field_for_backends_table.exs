@@ -15,7 +15,7 @@ defmodule Logflare.Repo.Migrations.AddEncryptedConfigFieldForBackendsTable do
     # copy configs over
     Repo.all(from b in "backends", select: [:id, :config])
     |> Enum.each(fn %{id: id} = backend ->
-      {:ok, config_encrypted} = EncryptedMap.dump(backend.config) |> dbg()
+      {:ok, config_encrypted} = EncryptedMap.dump(backend.config)
 
       from(b in "backends",
         where: b.id == ^id,
