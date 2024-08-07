@@ -66,7 +66,7 @@ defmodule Logflare.Backends.Adaptor.DatadogAdaptorTest do
       assert_receive ^ref, 2000
     end
 
-    test "service field is set to source name", %{source: source} do
+    test "service field is set to source.service_name", %{source: source} do
       this = self()
       ref = make_ref()
 
@@ -76,14 +76,14 @@ defmodule Logflare.Backends.Adaptor.DatadogAdaptorTest do
         %Tesla.Env{status: 200, body: ""}
       end)
 
-      le = build(:log_event, source: source)
+      le = build(:log_event, source: %{source | service_name: "some name"})
 
       assert {:ok, _} = Backends.ingest_logs([le], source)
       assert_receive {^ref, [log_entry]}, 2000
-      assert log_entry.service == source.name
+      assert log_entry["service"] == "some name"
     end
 
-    test "message is JSON encoded log event", %{source: source} do
+    test "service field falls back to source name", %{source: source} do
       this = self()
       ref = make_ref()
 
@@ -97,7 +97,24 @@ defmodule Logflare.Backends.Adaptor.DatadogAdaptorTest do
 
       assert {:ok, _} = Backends.ingest_logs([le], source)
       assert_receive {^ref, [log_entry]}, 2000
-      assert log_entry.message =~ Jason.encode!(le.body)
+      assert log_entry["service"] == source.name
+    end
+
+    test "message contains log event body", %{source: source} do
+      this = self()
+      ref = make_ref()
+
+      @client
+      |> expect(:send, fn req ->
+        send(this, {ref, req[:body]})
+        %Tesla.Env{status: 200, body: ""}
+      end)
+
+      le = build(:log_event, source: source)
+
+      assert {:ok, _} = Backends.ingest_logs([le], source)
+      assert_receive {^ref, [log_entry]}, 2000
+      assert log_entry["data"] == le.body
     end
   end
 end

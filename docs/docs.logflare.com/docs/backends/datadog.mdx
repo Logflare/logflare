@@ -21,4 +21,6 @@ The following values are required when creating a webhook backend:
 
 Implementation is based on the [webhook backend](/backends/webhook).
 
-Events will be gzipped and batch with a maximum of 250 events per request. The source name will be set as the service name.
+The entire event body will be set to the `data` key of the events sent to Datadog.
+
+Events will be gzipped and batch with a maximum of 250 events per request. The service name of the source will be used as the `ddservice`. If not set, it will default to the source name.

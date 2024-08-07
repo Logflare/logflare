@@ -12,6 +12,7 @@ defmodule Logflare.Source do
   @derive {Jason.Encoder,
            only: [
              :name,
+             :service_name,
              :token,
              :id,
              :favorite,
@@ -104,6 +105,7 @@ defmodule Logflare.Source do
 
   schema "sources" do
     field(:name, :string)
+    field(:service_name, :string)
     field(:token, Ecto.UUID.Atom, autogenerate: true)
     field(:public_token, :string)
     field(:favorite, :boolean, default: false)
@@ -159,6 +161,7 @@ defmodule Logflare.Source do
     source
     |> cast(attrs, [
       :name,
+      :service_name,
       :token,
       :public_token,
       :favorite,
@@ -186,6 +189,7 @@ defmodule Logflare.Source do
     source
     |> cast(attrs, [
       :name,
+      :service_name,
       :token,
       :public_token,
       :favorite,
