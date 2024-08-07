@@ -22,6 +22,14 @@ defmodule LogflareWeb.BackendsLiveTest do
     assert html =~ Atom.to_string(backend.type)
   end
 
+  test "index with backend metadata", %{conn: conn, user: user, source: source} do
+    insert(:backend, sources: [source], user: user, metadata: %{some: "custom-metadata"})
+    {:ok, view, _html} = live(conn, ~p"/backends")
+
+    html = render(view)
+    assert html =~ "some: custom-metadata"
+  end
+
   test "show", %{conn: conn, user: user, source: source} do
     backend = insert(:backend, sources: [source], user: user)
     {:ok, view, _html} = live(conn, ~p"/backends/#{backend.id}")
@@ -29,6 +37,16 @@ defmodule LogflareWeb.BackendsLiveTest do
     html = render(view)
     assert html =~ backend.name
     assert html =~ "#{backend.type}"
+  end
+
+  test "show with backend metadata", %{conn: conn, user: user, source: source} do
+    backend =
+      insert(:backend, sources: [source], user: user, metadata: %{some: "custom-metadata"})
+
+    {:ok, view, _html} = live(conn, ~p"/backends/#{backend.id}")
+
+    html = render(view)
+    assert html =~ "some: custom-metadata"
   end
 
   test "edit", %{conn: conn, user: user, source: source} do
