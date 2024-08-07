@@ -89,6 +89,7 @@ defmodule Logflare.Factory do
       config_encrypted: config,
       config: config,
       sources: attrs[:sources] || [],
+      rules: attrs[:rules] || [],
       user_id: attrs[:user_id],
       user: attrs[:user],
       metadata: attrs[:metadata] || nil
