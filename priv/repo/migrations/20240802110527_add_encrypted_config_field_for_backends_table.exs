@@ -10,7 +10,7 @@ defmodule Logflare.Repo.Migrations.AddEncryptedConfigFieldForBackendsTable do
     end
 
     flush()
-    Logflare.Vault.start_link()
+    {:ok, pid} = Logflare.Vault.start_link()
 
     # copy configs over
     Repo.all(from b in "backends", select: [:id, :config])
@@ -23,6 +23,8 @@ defmodule Logflare.Repo.Migrations.AddEncryptedConfigFieldForBackendsTable do
       )
       |> Logflare.Repo.update_all([])
     end)
+    # kill the vault
+    Process.exit(pid, :kill)
   end
 
   def down do
