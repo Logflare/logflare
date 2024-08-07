@@ -24,6 +24,8 @@ defmodule Logflare.BackendsTest do
   end
 
   describe "encryption" do
+    # TODO(Ziinc): unskip once cluster is using encrypted fields fully
+    @tag :skip
     test "backend config is encrypted to the :config_encrypted field" do
       insert(:backend, config_encrypted: %{some_value: "testing"})
 
