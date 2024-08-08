@@ -14,6 +14,7 @@ defmodule Logflare.SingleTenant do
   alias Logflare.Source.BigQuery.Schema
   alias Logflare.LogEvent
   alias Logflare.Backends
+  alias Logflare.Auth
   alias Logflare.SourceSchemas
   require Logger
 
@@ -156,7 +157,7 @@ defmodule Logflare.SingleTenant do
   Creates an enterprise user
   """
   def create_default_user do
-    attrs = Map.put(@user_attrs, :api_key, Application.get_env(:logflare, :api_key))
+    attrs = Map.put(@user_attrs, :api_key, Application.get_env(:logflare, :public_access_token))
 
     case Users.insert_user(attrs) do
       {:ok, _} = result ->
@@ -165,6 +166,35 @@ defmodule Logflare.SingleTenant do
       {:error, %Ecto.Changeset{errors: [email: {_, [{:constraint, :unique} | _]}]}} ->
         {:error, :already_created}
     end
+  end
+
+  @doc """
+  Create access tokens
+  """
+  def create_access_tokens do
+    user = get_default_user()
+    public = Application.get_env(:logflare, :public_access_token)
+    private = Application.get_env(:logflare, :private_access_token)
+
+    if public != nil && !Auth.get_access_token(user, public) do
+      {:ok, _res} =
+        Auth.create_access_token(user, %{
+          token: public,
+          scopes: "public",
+          description: "Single tenant public access token"
+        })
+    end
+
+    if private != nil && !Auth.get_access_token(user, private) do
+      {:ok, _res} =
+        Auth.create_access_token(user, %{
+          token: private,
+          scopes: "private",
+          description: "Single tenant private access token"
+        })
+    end
+
+    {:ok, Auth.list_valid_access_tokens(user)}
   end
 
   @doc """

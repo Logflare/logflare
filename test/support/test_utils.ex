@@ -51,12 +51,20 @@ defmodule Logflare.TestUtils do
           on_exit(fn -> Application.put_env(:logflare, :supabase_mode, initial_supabase_mode) end)
         end
 
-        initial_api_key = Application.get_env(:logflare, :api_key)
-        Application.put_env(:logflare, :api_key, Logflare.TestUtils.random_string(12))
+        initial_public_access_token = Application.get_env(:logflare, :public_access_token)
+        initial_private_access_token = Application.get_env(:logflare, :private_access_token)
+        Application.put_env(:logflare, :public_access_token, Logflare.TestUtils.random_string(12))
+
+        Application.put_env(
+          :logflare,
+          :private_access_token,
+          Logflare.TestUtils.random_string(12)
+        )
 
         on_exit(fn ->
           Application.put_env(:logflare, :single_tenant, initial_single_tenant)
-          Application.put_env(:logflare, :api_key, initial_api_key)
+          Application.put_env(:logflare, :public_access_token, initial_public_access_token)
+          Application.put_env(:logflare, :private_access_token, initial_private_access_token)
         end)
 
         :ok

@@ -10,6 +10,7 @@ defmodule Logflare.SingleTenantTest do
   alias Logflare.Endpoints
   alias Logflare.Source.BigQuery.Schema
   alias Logflare.Source
+  alias Logflare.Auth
   alias Logflare.Backends.Backend
 
   describe "single tenant mode using Big Query" do
@@ -35,14 +36,15 @@ defmodule Logflare.SingleTenantTest do
     test "create_default_user/0, get_default_user/0 :inserts a default enterprise user if not present" do
       assert {:ok, _plan} = SingleTenant.create_default_plan()
       assert {:ok, user} = SingleTenant.create_default_user()
+      assert {:ok, _user} = SingleTenant.create_access_tokens()
       assert user.email_preferred
       assert user.endpoints_beta
 
-      # api key should be based on env var
-      assert user.api_key == Application.get_env(:logflare, :api_key)
+      # create two access tokens
+      assert_access_tokens(user)
 
+      # create the default plan
       plan = Billing.get_plan_by_user(user)
-
       assert plan.name == "Enterprise"
       assert {:error, :already_created} = SingleTenant.create_default_user()
     end
@@ -170,14 +172,15 @@ defmodule Logflare.SingleTenantTest do
     test "create_default_user/0, get_default_user/0 :inserts a default enterprise user if not present" do
       assert {:ok, _plan} = SingleTenant.create_default_plan()
       assert {:ok, user} = SingleTenant.create_default_user()
+      assert {:ok, _user} = SingleTenant.create_access_tokens()
       assert user.email_preferred
       assert user.endpoints_beta
 
-      # api key should be based on env var
-      assert user.api_key == Application.get_env(:logflare, :api_key)
+      # provision access tokens
+      assert_access_tokens(user)
 
+      # create plans
       plan = Billing.get_plan_by_user(user)
-
       assert plan.name == "Enterprise"
       assert {:error, :already_created} = SingleTenant.create_default_user()
     end
@@ -246,5 +249,13 @@ defmodule Logflare.SingleTenantTest do
 
       assert %{source_schemas_updated: :ok} = SingleTenant.supabase_mode_status()
     end
+  end
+
+  defp assert_access_tokens(%_{id: user_id} = user) do
+    assert length(Auth.list_valid_access_tokens(user)) == 2
+    public = Application.get_env(:logflare, :public_access_token)
+    assert {:ok, %_{id: ^user_id}} = Auth.verify_access_token(public, "public")
+    private = Application.get_env(:logflare, :private_access_token)
+    assert {:ok, %_{id: ^user_id}} = Auth.verify_access_token(private, "private")
   end
 end
