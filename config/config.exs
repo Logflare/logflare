@@ -72,7 +72,7 @@ oauth_common = [
   grant_flows: ~w(authorization_code),
   use_refresh_token: true,
   default_scopes: ~w(public),
-  optional_scopes: ~w(read write),
+  optional_scopes: ~w(read write private),
   revoke_refresh_token_on_use: true,
   otp_app: :logflare,
   access_token_expires_in: nil

@@ -22,7 +22,9 @@ config :logflare,
          config_cat_sdk_key: System.get_env("LOGFLARE_CONFIG_CAT_SDK_KEY"),
          single_tenant: System.get_env("LOGFLARE_SINGLE_TENANT", "false") == "true",
          supabase_mode: System.get_env("LOGFLARE_SUPABASE_MODE", "false") == "true",
-         api_key: System.get_env("LOGFLARE_API_KEY"),
+         public_access_token:
+           System.get_env("LOGFLARE_PUBLIC_ACCESS_TOKEN") || System.get_env("LOGFLARE_API_KEY"),
+         private_access_token: System.get_env("LOGFLARE_PRIVATE_ACCESS_TOKEN"),
          cache_stats: System.get_env("LOGFLARE_CACHE_STATS", "false") == "true",
          encryption_key_default: System.get_env("LOGFLARE_DB_ENCRYPTION_KEY"),
          encryption_key_retired: System.get_env("LOGFLARE_DB_ENCRYPTION_KEY_RETIRED")
