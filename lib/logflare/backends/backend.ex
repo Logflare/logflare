@@ -23,8 +23,7 @@ defmodule Logflare.Backends.Backend do
     field(:description, :string)
     field(:token, Ecto.UUID, autogenerate: true)
     field(:type, Ecto.Enum, values: Map.keys(@adaptor_mapping))
-    # TODO(Ziinc): make virtual once cluster is using encrypted fields fully
-    field(:config, :map)
+    field(:config, :map, virtual: true)
     field(:config_encrypted, Logflare.Ecto.EncryptedMap)
     many_to_many(:sources, Source, join_through: "sources_backends")
     belongs_to(:user, User)
@@ -41,17 +40,15 @@ defmodule Logflare.Backends.Backend do
     |> cast(attrs, [:type, :config, :user_id, :name, :description, :metadata])
     |> validate_required([:user_id, :type, :config, :name])
     |> validate_inclusion(:type, Map.keys(@adaptor_mapping))
-    |> do_config_change()
     |> validate_config()
+    |> do_config_change()
   end
 
   # temp function
   defp do_config_change(%Ecto.Changeset{changes: %{config: config}} = changeset) do
     changeset
     |> put_change(:config_encrypted, config)
-
-    # TODO(Ziinc): uncomment once cluster is using encrypted fields fully
-    # |> delete_change(:config)
+    |> delete_change(:config)
   end
 
   defp do_config_change(changeset), do: changeset
@@ -80,7 +77,9 @@ defmodule Logflare.Backends.Backend do
       type = value.type
 
       values =
-        Map.take(value, [
+        value
+        |> Map.put(:config, value.config_encrypted)
+        |> Map.take([
           :name,
           :token,
           :description,

@@ -67,6 +67,8 @@ Encryption keys must be Base64 encoded.
 
 Cipher used is AES with a 256-bit key in GCM mode.
 
+If `LOGFLARE_DB_ENCRYPTION_KEY` environement variable is not provided, a default hardcoded encryption key will be used.
+
 ### Rolling Encryption Keys
 
 In order to roll encryption keys and migrate existing encrypted data, use the `LOGFLARE_DB_ENCRYPTION_KEY_RETIRED` environment variable.
@@ -77,7 +79,7 @@ Steps to perform the migration are:
 2. Generate a new encryption key and set it to `LOGFLARE_DB_ENCRYPTION_KEY`.
 3. Restart or deploy the server with the new environment variables.
 4. Upon successful server startup, an `info` log will be emitted that says that an retired encryption key is detected, and the migration will be initiated to transition all data encrypted with the retired key to be encrypted with the new key.
-5. Once the migration is complete, the retired encryption key can be safely removed.
+5. Once the migration is complete, the retired encryption key can be safely removed. There will be an `info` log that will be emitted once the migration is complete.
 
 ## BigQuery Setup
 
