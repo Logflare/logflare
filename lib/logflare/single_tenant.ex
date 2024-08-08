@@ -185,7 +185,7 @@ defmodule Logflare.SingleTenant do
         })
     end
 
-    if private != nil &&  !Auth.get_access_token(user, private) do
+    if private != nil && !Auth.get_access_token(user, private) do
       {:ok, _res} =
         Auth.create_access_token(user, %{
           token: private,
