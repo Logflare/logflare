@@ -75,8 +75,7 @@ defmodule Logflare.VaultTest do
   defp get_config_encrypted() do
     [
       %{
-        # TODO(Ziinc): to uncomment once fully migrated over
-        # config: nil,
+        config: nil,
         config_encrypted: encrypted_str
       }
     ] = Repo.all(from b in "backends", select: [:config, :config_encrypted])
