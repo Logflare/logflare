@@ -36,6 +36,24 @@ defmodule Logflare.LogEventTest do
     assert body["metadata"]["my"] == "key"
   end
 
+  test "make/2 with metadata string", %{source: source} do
+    assert %LogEvent{
+             body: body,
+             drop: false,
+             id: id,
+             ingested_at: _,
+             is_from_stale_query: nil,
+             source: %_{},
+             sys_uint: _,
+             valid: true,
+             pipeline_error: nil,
+             via_rule: nil
+           } = LogEvent.make(%{"metadata" => "some string"}, %{source: source})
+
+    assert id == body["id"]
+    assert body["metadata"] == "some string"
+  end
+
   test "make/2 cast custom param values", %{source: source} do
     params =
       Map.merge(@valid_params, %{
@@ -60,8 +78,14 @@ defmodule Logflare.LogEventTest do
 
     params = %{"metadata" => [%{"some" => "value"}]}
     le = LogEvent.make_from_db(params, %{source: source})
-    assert %{body: %{"metadata" => %{"some" => "value"}}, source: %_{}} = le
+    assert %{body: %{"metadata" => [%{"some" => "value"}]}, source: %_{}} = le
     assert le.body["event_message"] == nil
+  end
+
+  test "make_from_db/2 with string metadata", %{source: source} do
+    params = %{"metadata" => "some string"}
+    assert %{body: body} = LogEvent.make_from_db(params, %{source: source})
+    assert body["metadata"] == "some string"
   end
 
   test "apply_custom_event_message/1 generates custom event message from source setting", %{
