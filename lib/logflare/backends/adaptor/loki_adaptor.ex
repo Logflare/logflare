@@ -36,7 +36,8 @@ defmodule Logflare.Backends.Adaptor.LokiAdaptor do
           url: backend.config.url,
           headers: Map.get(backend.config, :headers, %{}),
           format_batch: &format_batch/1,
-          gzip: true
+          gzip: true,
+          http: "http1"
         }
     }
 
@@ -47,19 +48,25 @@ defmodule Logflare.Backends.Adaptor.LokiAdaptor do
   def format_batch(log_events) do
     # split events
     stream_map =
-      for %_{source: %_{name: name, id: source_id}} = event <- log_events, reduce: %{} do
+      for %_{source: %_{name: name, service_name: service_name, id: source_id}} = event <-
+            log_events,
+          reduce: %{} do
         acc ->
-          Map.update(acc, {source_id, name}, [event], fn prev -> [event | prev] end)
+          Map.update(acc, {source_id, service_name || name}, [event], fn prev ->
+            [event | prev]
+          end)
       end
 
     streams =
       for {{_source_id, name}, events} <- stream_map do
         formatted_events =
           Enum.map(events, fn event ->
-            ["#{event.body["timestamp"]}", Jason.encode!(event.body)]
+            formatted_ts = event.body["timestamp"] * 1000
+
+            ["#{formatted_ts}", Jason.encode!(event.body)]
           end)
 
-        %{stream: %{source: name}, values: formatted_events}
+        %{stream: %{source: "supabase", service: name}, values: formatted_events}
       end
 
     %{streams: streams}
