@@ -15,7 +15,8 @@ defmodule Logflare.Backends.Backend do
     elastic: Adaptor.ElasticAdaptor,
     datadog: Adaptor.DatadogAdaptor,
     postgres: Adaptor.PostgresAdaptor,
-    bigquery: Adaptor.BigQueryAdaptor
+    bigquery: Adaptor.BigQueryAdaptor,
+    loki: Adaptor.LokiAdaptor
   }
 
   typed_schema "backends" do
