@@ -23,7 +23,7 @@ defmodule Logflare.Backends.SourceSupWorker do
   end
 
   def handle_info(:check, state) do
-    source = Sources.get(state.source_id)
+    source = Sources.Cache.get_by_id(state.source_id)
     backends = Backends.list_backends(source)
     rules = Rules.list_rules(source)
 
