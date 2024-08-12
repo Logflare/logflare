@@ -3,6 +3,7 @@ defmodule Logflare.Backends.SourceSup do
   use Supervisor
 
   alias Logflare.Backends.Backend
+  alias Logflare.Backends.SourceSupWorker
   alias Logflare.Backends
   alias Logflare.Source
   alias Logflare.User
@@ -70,7 +71,8 @@ defmodule Logflare.Backends.SourceSup do
         {WebhookNotificationServer, [source: source]},
         {SlackHookServer, [source: source]},
         {SearchQueryExecutor, [source: source]},
-        {BillingWriter, [source: source]}
+        {BillingWriter, [source: source]},
+        {SourceSupWorker, [source: source]}
       ] ++ specs
 
     Supervisor.init(children, strategy: :one_for_one)
@@ -139,15 +141,17 @@ defmodule Logflare.Backends.SourceSup do
   Stops a backend child based on a provide source-backend combination.
   """
   @spec stop_backend_child(Source.t(), Backend.t()) :: :ok | {:error, :not_found}
-  def stop_backend_child(%Source{} = source, %Backend{} = backend) do
+  def stop_backend_child(%Source{} = source, %Backend{id: id}), do: stop_backend_child(source, id)
+
+  def stop_backend_child(%Source{} = source, backend_id) when backend_id != nil do
     via = Backends.via_source(source, __MODULE__)
-    spec = Backend.child_spec(source, backend)
+    # spec = Backend.child_spec(source, backend)
 
     found_id =
       Supervisor.which_children(via)
       |> Enum.find_value(
-        fn {id, _pid, _type, _mod} ->
-          id == spec.id
+        fn {{_mod, _source_id, bid}, _pid, _type, _mod} ->
+          bid == backend_id
         end,
         &elem(&1, 0)
       )

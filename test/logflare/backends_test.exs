@@ -17,6 +17,7 @@ defmodule Logflare.BackendsTest do
   alias Logflare.PubSubRates
   alias Logflare.Repo
   alias Logflare.Backends.IngestEventQueue
+  alias Logflare.Backends.SourceSupWorker
 
   setup do
     start_supervised!(AllLogsLogged)
@@ -152,6 +153,33 @@ defmodule Logflare.BackendsTest do
       # removal
       assert {:ok, _} = Backends.update_source_backends(source, [])
       assert Supervisor.which_children(via) |> length() < new_length
+    end
+
+    test "SourceSup source-backends get resolved by SourceSupWorker", %{source: source} do
+      rule_backend = insert(:backend)
+      start_supervised!({SourceSup, source})
+      via = Backends.via_source(source, SourceSup)
+      prev_length = Supervisor.which_children(via) |> length()
+      # two source-backends from attached
+      insert_pair(:backend, sources: [source])
+      # one source-backend from rules
+      insert_pair(:rule, source: source, backend: rule_backend)
+
+      # start an out-of-tree SourceSupWorker
+      start_supervised({SourceSupWorker, [source: source, interval: 100]})
+      :timer.sleep(200)
+      new_length = Supervisor.which_children(via) |> length()
+      assert new_length > prev_length
+      assert new_length - prev_length == 3
+
+      Logflare.Repo.delete_all(Logflare.Rule)
+      Logflare.Repo.delete_all(Logflare.Backends.SourcesBackend)
+      Logflare.Repo.delete_all(Logflare.Backends.Backend)
+
+      :timer.sleep(200)
+      # removal
+      new_length = Supervisor.which_children(via) |> length()
+      assert new_length == prev_length
     end
 
     test "source_sup_started?/1, lookup/2", %{source: source} do
