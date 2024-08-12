@@ -51,7 +51,6 @@ defmodule Logflare.Backends.SourceSupWorker do
     for {{_mod, _source_id, backend_id}, _, _, _} <- Supervisor.which_children(via),
         backend_id not in backend_ids,
         backend_id do
-
       SourceSup.stop_backend_child(source, backend_id)
     end
 
