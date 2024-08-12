@@ -34,8 +34,25 @@ defmodule Logflare.Backends.Adaptor do
     mapping[type]
   end
 
+  @spec get_backend_config(Backend.t()) :: map()
+  def get_backend_config(%Backend{config: config} = backend) do
+    adaptor = get_adaptor(backend)
+
+    if function_exported?(adaptor, :transform_config, 1) do
+      adaptor.transform_config(config)
+    else
+      config
+    end
+  end
+
   @callback start_link(source_backend()) ::
               {:ok, pid()} | :ignore | {:error, term()}
+
+  @doc """
+  Optional callback to transform a stored backend config before usage.
+  Example use cases: when an adaptor extends another adaptor by customizing the end configuration.
+  """
+  @callback transform_config(map()) :: map()
 
   @doc """
   Optional callback to manipulate log events before queueing.
@@ -67,5 +84,5 @@ defmodule Logflare.Backends.Adaptor do
     |> mod.validate_config()
   end
 
-  @optional_callbacks pre_ingest: 3
+  @optional_callbacks pre_ingest: 3, transform_config: 1
 end

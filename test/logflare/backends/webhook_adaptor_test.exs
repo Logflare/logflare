@@ -4,6 +4,7 @@ defmodule Logflare.Backends.WebhookAdaptorTest do
 
   alias Logflare.Backends.Adaptor
   alias Logflare.Backends
+  alias Logflare.Backends.Backend
   alias Logflare.SystemMetrics.AllLogsLogged
   alias Logflare.Backends.SourceSup
   @subject Logflare.Backends.Adaptor.WebhookAdaptor
@@ -19,15 +20,16 @@ defmodule Logflare.Backends.WebhookAdaptorTest do
       user = insert(:user)
       source = insert(:source, user: user)
 
-      insert(:backend,
-        type: :webhook,
-        sources: [source],
-        config: %{http: "http1", url: "https://example.com"}
-      )
+      backend =
+        insert(:backend,
+          type: :webhook,
+          sources: [source],
+          config: %{http: "http1", url: "https://example.com"}
+        )
 
       start_supervised!({SourceSup, source})
       :timer.sleep(500)
-      [source: source]
+      [source: source, backend: backend]
     end
 
     test "ingest", %{source: source} do
@@ -36,6 +38,29 @@ defmodule Logflare.Backends.WebhookAdaptorTest do
 
       @subject.Client
       |> expect(:send, fn req ->
+        body = req[:body]
+        assert is_list(body)
+        send(this, ref)
+        %Tesla.Env{}
+      end)
+
+      le = build(:log_event, source: source)
+
+      assert {:ok, _} = Backends.ingest_logs([le], source)
+      assert_receive ^ref, 2000
+    end
+
+    test "uses cache for config fetching", %{source: source} do
+      Logflare.Repo.update_all(Backend,
+        set: [config_encrypted: %{http: "http1", url: "https://other-email.com"}]
+      )
+
+      this = self()
+      ref = make_ref()
+
+      @subject.Client
+      |> expect(:send, fn req ->
+        assert req[:url] =~ "other-email"
         body = req[:body]
         assert is_list(body)
         send(this, ref)
