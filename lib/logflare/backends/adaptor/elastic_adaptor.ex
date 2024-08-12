@@ -32,23 +32,24 @@ defmodule Logflare.Backends.Adaptor.ElasticAdaptor do
 
   @impl Logflare.Backends.Adaptor
   def start_link({source, backend}) do
-    basic_auth = get_basic_auth(backend.config)
-
-    backend = %{
-      backend
-      | config: %{
-          url: backend.config.url,
-          http: "http1",
-          headers:
-            if basic_auth do
-              %{"Authorization" => "Basic #{basic_auth}"}
-            else
-              %{}
-            end
-        }
-    }
-
+    backend = %{backend | config: transform_config(backend.config)}
     WebhookAdaptor.start_link({source, backend})
+  end
+
+  @impl Logflare.Backends.Adaptor
+  def transform_config(config) do
+    basic_auth = get_basic_auth(config)
+
+    %{
+      url: config.url,
+      http: "http1",
+      headers:
+        if basic_auth do
+          %{"Authorization" => "Basic #{basic_auth}"}
+        else
+          %{}
+        end
+    }
   end
 
   defp get_basic_auth(%{username: username, password: password})

@@ -4,6 +4,7 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
   use TypedStruct
 
   alias Logflare.Backends
+  alias Logflare.Backends.Adaptor
   alias Logflare.Backends.Adaptor.WebhookAdaptor.EgressMiddleware
 
   @behaviour Logflare.Backends.Adaptor
@@ -148,8 +149,11 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
          when backend_id != nil do
       Backends.Cache.get_backend(backend_id)
       |> then(fn
-        %_{config: config} -> config
-        _ -> startup_config
+        %_{} = backend ->
+          Adaptor.get_backend_config(backend)
+
+        _ ->
+          startup_config
       end)
     end
 
