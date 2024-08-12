@@ -40,10 +40,6 @@ defmodule Logflare.LogEvent do
   def make_from_db(params, %{source: %Source{} = source}) do
     params =
       params
-      |> Map.update("metadata", %{}, fn
-        [] -> %{}
-        [metadata] -> metadata
-      end)
       |> mapper()
 
     %__MODULE__{}
@@ -95,7 +91,6 @@ defmodule Logflare.LogEvent do
   defp mapper(params) do
     # TODO: deprecate and remove `log_entry` and `message`
     event_message = params["log_entry"] || params["message"] || params["event_message"]
-    metadata = params["metadata"]
     id = id(params)
 
     timestamp =
@@ -144,7 +139,6 @@ defmodule Logflare.LogEvent do
       params
       |> Map.merge(%{
         "event_message" => event_message,
-        "metadata" => metadata,
         "timestamp" => timestamp,
         "id" => id
       })
