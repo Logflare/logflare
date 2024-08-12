@@ -118,7 +118,7 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
           http: [concurrency: 6, batch_size: 250]
         ],
         context: %{
-          config: args.config,
+          startup_config: args.config,
           source_id: args.source.id,
           backend_id: Map.get(args.backend || %{}, :id),
           source_token: args.source.token,
@@ -144,7 +144,20 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
       messages
     end
 
-    defp process_data(log_event_bodies, %{config: %{} = config} = context) do
+    defp get_config(%{startup_config: startup_config, backend_id: backend_id})
+         when backend_id != nil do
+      Backends.Cache.get_backend(backend_id)
+      |> then(fn
+        %_{config: config} -> config
+        _ -> startup_config
+      end)
+    end
+
+    defp get_config(%{startup_config: cfg}), do: cfg
+
+    defp process_data(log_event_bodies, context) do
+      config = get_config(context)
+
       Client.send(
         url: config.url,
         body: log_event_bodies,
