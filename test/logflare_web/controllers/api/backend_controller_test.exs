@@ -89,6 +89,7 @@ defmodule LogflareWeb.Api.BackendControllerTest do
           name: name,
           type: "postgres",
           config: %{url: "postgresql://test:my-password@localhost:5432", schema: "_my_schema"},
+          description: "some description",
           metadata: %{
             some: "data"
           }
@@ -98,6 +99,7 @@ defmodule LogflareWeb.Api.BackendControllerTest do
                "id" => _,
                "token" => _,
                "name" => ^name,
+               "description" => "some description",
                "config" => %{
                  "url" => "postgresql://test:REDACTED@" <> _,
                  "schema" => "_my_schema"
