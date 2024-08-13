@@ -24,6 +24,14 @@ defmodule Logflare.Backends.SourceSupWorker do
 
   def handle_info(:check, state) do
     source = Sources.Cache.get_by_id(state.source_id)
+    do_check(source)
+    Process.send_after(self(), :check, state.interval)
+    {:noreply, state}
+  end
+
+  defp do_check(nil), do: :noop
+
+  defp do_check(source) do
     backends = Backends.list_backends(source)
     rules = Rules.list_rules(source)
 
@@ -53,8 +61,5 @@ defmodule Logflare.Backends.SourceSupWorker do
         backend_id do
       SourceSup.stop_backend_child(source, backend_id)
     end
-
-    Process.send_after(self(), :check, state.interval)
-    {:noreply, state}
   end
 end
