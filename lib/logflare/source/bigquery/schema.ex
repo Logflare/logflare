@@ -19,6 +19,7 @@ defmodule Logflare.Source.BigQuery.Schema do
   alias Logflare.Google.BigQuery.SchemaUtils
   alias Logflare.Backends
   alias Logflare.TeamUsers
+  alias Logflare.SingleTenant
 
   def start_link(args) when is_list(args) do
     {name, args} = Keyword.pop(args, :name)
@@ -122,7 +123,8 @@ defmodule Logflare.Source.BigQuery.Schema do
     schema = try_schema_update(body, state.schema)
 
     if not same_schemas?(state.schema, schema) and
-         state.next_update < System.system_time(:millisecond) do
+         state.next_update < System.system_time(:millisecond) and
+         !SingleTenant.postgres_backend?() do
       case BigQuery.patch_table(
              state.source_token,
              schema,
