@@ -75,3 +75,5 @@ gcloud_prod.json
 
 # google keys
 .*.gcloud.json
+
+supabase
