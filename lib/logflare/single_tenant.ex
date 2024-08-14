@@ -171,26 +171,40 @@ defmodule Logflare.SingleTenant do
   @doc """
   Create access tokens
   """
+  @public_env_var "LOGFLARE_PUBLIC_ACCESS_TOKEN"
+  @private_env_var "LOGFLARE_PRIVATE_ACCESS_TOKEN"
   def create_access_tokens do
     user = get_default_user()
     public = Application.get_env(:logflare, :public_access_token)
     private = Application.get_env(:logflare, :private_access_token)
 
+    tokens = Auth.list_valid_access_tokens(user)
+
     if public != nil && !Auth.get_access_token(user, public) do
+      # revoke all keys having the same description
+      for token <- tokens, token.description == @public_env_var do
+        Auth.revoke_access_token(token)
+      end
+
       {:ok, _res} =
         Auth.create_access_token(user, %{
           token: public,
           scopes: "public",
-          description: "Single tenant public access token"
+          description: @public_env_var
         })
     end
 
     if private != nil && !Auth.get_access_token(user, private) do
+      # revoke all keys having the same description
+      for token <- tokens, token.description == @private_env_var do
+        Auth.revoke_access_token(token)
+      end
+
       {:ok, _res} =
         Auth.create_access_token(user, %{
           token: private,
           scopes: "private",
-          description: "Single tenant private access token"
+          description: @private_env_var
         })
     end
 
