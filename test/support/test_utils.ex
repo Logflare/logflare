@@ -75,6 +75,9 @@ defmodule Logflare.TestUtils do
   defp setup_single_tenant_backend(%{backend_type: :postgres, pg_schema: schema}) do
     quote do
       setup do
+        Goth
+        |> reject(:fetch, 1)
+
         %{username: username, password: password, database: database, hostname: hostname} =
           Application.get_env(:logflare, Logflare.Repo) |> Map.new()
 

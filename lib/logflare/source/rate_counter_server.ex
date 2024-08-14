@@ -15,6 +15,7 @@ defmodule Logflare.Source.RateCounterServer do
   alias Logflare.Sources.Counters
   alias Logflare.PubSubRates
   alias Logflare.Backends
+  alias Logflare.SingleTenant
 
   @default_bucket_width 60
   @ets_table_name :rate_counters
@@ -61,7 +62,12 @@ defmodule Logflare.Source.RateCounterServer do
 
   def handle_continue(:boot, source_token) do
     put_current_rate()
-    bigquery_project_id = GenUtils.get_project_id(source_token)
+
+    bigquery_project_id =
+      if !SingleTenant.postgres_backend?() do
+        GenUtils.get_project_id(source_token)
+      end
+
     init_counters(source_token, bigquery_project_id)
 
     RateCounterServer.get_data_from_ets(source_token)
@@ -292,7 +298,13 @@ defmodule Logflare.Source.RateCounterServer do
   end
 
   defp init_counters(source_id, bigquery_project_id) when is_atom(source_id) do
-    log_count = Data.get_log_count(source_id, bigquery_project_id)
+    log_count =
+      if bigquery_project_id do
+        Data.get_log_count(source_id, bigquery_project_id)
+      else
+        # TODO: pull total count from PG table
+        0
+      end
 
     try do
       Counters.delete(source_id)
