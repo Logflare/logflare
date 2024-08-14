@@ -58,6 +58,28 @@ defmodule Logflare.Auth do
     )
   end
 
+  @doc "Get valid Oauth access tokens by user or partner"
+  @spec get_valid_access_token(User.t() | Partner.t(), String.t()) :: OauthAccessToken.t() | nil
+  def get_valid_access_token(%User{id: user_id}, token_string) do
+    Repo.one(
+      from(t in OauthAccessToken,
+        where: t.resource_owner_id == ^user_id and is_nil(t.revoked_at),
+        where: not ilike(t.scopes, "%partner%"),
+        where: t.token == ^token_string
+      )
+    )
+  end
+
+  def get_valid_access_token(%Partner{id: partner_id}, token_string) do
+    Repo.one(
+      from(t in OauthAccessToken,
+        where: t.resource_owner_id == ^partner_id and is_nil(t.revoked_at),
+        where: ilike(t.scopes, "%partner%"),
+        where: t.token == ^token_string
+      )
+    )
+  end
+
   @doc """
   Retrieves access token struct by token value.
   Requires resource owner to be provided.

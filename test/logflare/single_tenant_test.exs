@@ -251,6 +251,39 @@ defmodule Logflare.SingleTenantTest do
     end
   end
 
+  describe "create_access_tokens/0 - changing of public/private access token envs" do
+    TestUtils.setup_single_tenant(
+      backend_type: :postgres,
+      seed_user: true
+    )
+
+    test "on change, should revoke only default provisioned access tokens" do
+      initial_public_access_token = Application.get_env(:logflare, :public_access_token)
+
+      initial_private_access_token =
+        Application.get_env(:logflare, :private_access_token)
+
+      SingleTenant.create_access_tokens()
+
+      new_public_access_token = Logflare.TestUtils.random_string(12)
+      new_private_access_token = Logflare.TestUtils.random_string(12)
+      Application.put_env(:logflare, :public_access_token, new_public_access_token)
+      Application.put_env(:logflare, :private_access_token, new_private_access_token)
+
+      SingleTenant.create_access_tokens()
+      user = SingleTenant.get_default_user()
+      # revokes initial access tokens
+      refute Auth.get_valid_access_token(user, initial_public_access_token)
+      refute Auth.get_valid_access_token(user, initial_private_access_token)
+      # provisions the new keys
+      assert Auth.get_valid_access_token(user, new_public_access_token)
+      assert Auth.get_valid_access_token(user, new_private_access_token)
+
+      # user.api_key field
+      user.api_key != initial_public_access_token
+    end
+  end
+
   defp assert_access_tokens(%_{id: user_id} = user) do
     assert length(Auth.list_valid_access_tokens(user)) == 2
     public = Application.get_env(:logflare, :public_access_token)
