@@ -16,6 +16,7 @@ defmodule Logflare.BackendsTest do
   alias Logflare.Logs.SourceRouting
   alias Logflare.PubSubRates
   alias Logflare.Repo
+  alias Logflare.Rules
   alias Logflare.Backends.IngestEventQueue
   alias Logflare.Backends.SourceSupWorker
 
@@ -359,6 +360,21 @@ defmodule Logflare.BackendsTest do
       end)
 
       :timer.sleep(1000)
+    end
+
+    test "cascade delete for rules on backend deletion", %{user: user} do
+      source = insert(:source, user: user)
+
+      backend =
+        insert(:backend,
+          type: :webhook,
+          config: %{url: "https://some-url.com"},
+          user: user
+        )
+
+      rule = insert(:rule, lql_string: "testing", backend: backend, source_id: source.id)
+      Repo.delete(backend)
+      refute Rules.get_rule(rule.id)
     end
   end
 
