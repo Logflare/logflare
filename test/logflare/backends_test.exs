@@ -380,7 +380,7 @@ defmodule Logflare.BackendsTest do
     test "cascade delete for rules on source deletion", %{user: user} do
       source = insert(:source, user: user)
 
-      insert(:backend,
+      backend = insert(:backend,
         type: :webhook,
         config: %{url: "https://some-url.com"},
         user: user

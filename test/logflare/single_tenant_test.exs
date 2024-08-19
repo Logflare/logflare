@@ -280,7 +280,7 @@ defmodule Logflare.SingleTenantTest do
       assert Auth.get_valid_access_token(user, new_private_access_token)
 
       # user.api_key field
-      user.api_key != initial_public_access_token
+      assert user.api_key != initial_public_access_token
     end
   end
 
