@@ -40,7 +40,11 @@ config :logflare, Logflare.PubSub, pool_size: 10
 config :logger,
   handle_otp_reports: true,
   handle_sasl_reports: false,
-  level: :info
+  level: :info,
+  compile_time_purge_matching: [
+    # to prevent pool connection attempts for bad user urls from flooding logs
+    [application: :finch, mfa: "Finch.HTTP2.Pool.disconnected/3", level_lower_than: :critical]
+  ]
 
 config :logger_json, :backend,
   metadata: :all,

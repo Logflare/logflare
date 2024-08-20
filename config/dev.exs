@@ -44,7 +44,7 @@ config :logflare, LogflareWeb.Endpoint,
 
 config :logger, :console,
   format: "\n[$level] [$metadata] $message\n",
-  metadata: [:request_id],
+  metadata: [:application, :mfa, :file, :line, :request_id],
   level: :debug
 
 config :phoenix, :stacktrace_depth, 20

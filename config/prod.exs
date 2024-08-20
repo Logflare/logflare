@@ -41,7 +41,9 @@ config :logger,
   sync_threshold: 10_000,
   discard_threshold: 10_000,
   compile_time_purge_matching: [
-    [level_lower_than: :info]
+    [level_lower_than: :info],
+    # to prevent pool connection attempts for bad user urls from flooding logs
+    [application: :finch, mfa: "Finch.HTTP2.Pool.disconnected/3", level_lower_than: :critical]
   ]
 
 config :logflare_logger_backend,
