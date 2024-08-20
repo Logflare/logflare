@@ -51,7 +51,7 @@ defmodule LogflareWeb.Api.RuleController do
   end
 
   operation(:create,
-    summary: "Create rule",
+    summary: "Create rule. Allows batch creation if as a list.",
     request_body: RuleApiSchema.params(),
     responses: %{
       201 => Created.response(RuleApiSchema),
