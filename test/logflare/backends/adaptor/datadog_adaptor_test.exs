@@ -66,6 +66,22 @@ defmodule Logflare.Backends.Adaptor.DatadogAdaptorTest do
       assert_receive ^ref, 2000
     end
 
+    test "bug: nil event_message is still handled correctly ", %{source: source} do
+      this = self()
+      ref = make_ref()
+
+      @client
+      |> expect(:send, fn _req ->
+        send(this, ref)
+        %Tesla.Env{status: 200, body: ""}
+      end)
+
+      le = build(:log_event, source: source, message: nil, event_message: nil)
+
+      assert {:ok, _} = Backends.ingest_logs([le], source)
+      assert_receive ^ref, 2000
+    end
+
     test "service field is set to source.service_name", %{source: source} do
       this = self()
       ref = make_ref()

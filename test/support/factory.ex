@@ -137,7 +137,8 @@ defmodule Logflare.Factory do
         params,
         %{
           "message" =>
-            params["message"] || params["event_message"] || params[:message] || "test-msg",
+            params["message"] || params["event_message"] ||
+              Map.get(params, "event_message", "test-msg"),
           "timestamp" =>
             params["timestamp"] || params[:timestamp] || DateTime.utc_now() |> to_string,
           "metadata" => params["metadata"] || params[:metadata] || %{}
