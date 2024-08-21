@@ -9,7 +9,6 @@ defmodule LogflareWeb.Api.RuleController do
   alias LogflareWeb.OpenApi.Created
   alias LogflareWeb.OpenApi.List
   alias LogflareWeb.OpenApi.NotFound
-  alias LogflareWeb.OpenApi.BadRequest
   alias LogflareWeb.OpenApiSchemas.RuleApiSchema
 
   action_fallback(LogflareWeb.Api.FallbackController)
