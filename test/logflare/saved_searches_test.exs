@@ -1,6 +1,6 @@
 defmodule Logflare.SavedSearchesTest do
   use Logflare.DataCase
-  alias Logflare.{SavedSearches, SavedSearch, SavedSearchCounter}
+  alias Logflare.{SavedSearches, SavedSearch}
 
   setup do
     user = insert(:user)
@@ -47,10 +47,5 @@ defmodule Logflare.SavedSearchesTest do
 
     assert [saved_search] == SavedSearches.suggest_saved_searches("test", source.id)
     assert [] == SavedSearches.suggest_saved_searches("other", source.id)
-  end
-
-  test "inc/2", %{source: source} do
-    assert {:ok, search} = SavedSearches.insert(@valid_attrs, source)
-    assert {:ok, %SavedSearchCounter{}} = SavedSearches.inc(search.id, tailing: true)
   end
 end
