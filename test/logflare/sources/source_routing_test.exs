@@ -52,6 +52,41 @@ defmodule Logflare.Logs.SourceRoutingTest do
       refute SourceRouting.route_with_lql_rules?(le, rule)
     end
 
+    test "list_includes_regexp operator" do
+      source = build(:source, token: TestUtils.gen_uuid(), rules: [])
+
+      build_filter = fn value ->
+        %Rule{
+          lql_string: "",
+          lql_filters: [
+            %FR{
+              value: value,
+              operator: :list_includes_regexp,
+              modifiers: %{},
+              path: "metadata.list"
+            }
+          ]
+        }
+      end
+
+      build_le = fn value ->
+        build(:log_event,
+          source: source,
+          metadata: %{"list" => value}
+        )
+      end
+
+      le = build_le.(["a", "b", "abc123"])
+      rule = build_filter.("23")
+
+      assert SourceRouting.route_with_lql_rules?(le, rule)
+
+      le = build_le.([])
+      rule = build_filter.("23")
+
+      refute SourceRouting.route_with_lql_rules?(le, rule)
+    end
+
     test "string_contains operator" do
       source = build(:source, token: TestUtils.gen_uuid(), rules: [])
 
