@@ -42,7 +42,7 @@ defmodule Logflare.ErlSysMon do
   end
 
   # fallback for ports etc
-  def handle_info(msg, state) do
+  def handle_info(msg, _state) do
     Logger.warning("#{__MODULE__} message: #{inspect(msg)}")
   end
 end
