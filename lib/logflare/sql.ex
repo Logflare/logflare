@@ -294,6 +294,9 @@ defmodule Logflare.Sql do
         %{"Drop" => _} ->
           true
 
+        %{"ShowVariable" => _} ->
+          true
+
         _ ->
           false
       end
