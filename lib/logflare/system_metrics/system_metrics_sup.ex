@@ -22,17 +22,22 @@ defmodule Logflare.SystemMetricsSup do
       # telemetry poller
       {
         :telemetry_poller,
-        # include custom measurement as an MFA tuple
-        # configure sampling period - default is :timer.seconds(5)
-        # configure sampling initial delay - default is 0
         measurements: [
           {Observer, :dispatch_stats, []},
-          {Cluster, :dispatch_stats, []},
+          {Cluster, :dispatch_stats, []}
+        ],
+        period: :timer.seconds(30),
+        init_delay: :timer.seconds(30),
+        name: Logflare.TelemetryPoller.Perodic
+      },
+      {
+        :telemetry_poller,
+        measurements: [
           {Logflare.SystemMetrics.Cluster, :finch, []}
         ],
-        period: :timer.seconds(3),
-        init_delay: :timer.seconds(3),
-        name: Logflare.TelemetryPoller.Perodic
+        period: :timer.seconds(5),
+        init_delay: :timer.seconds(5),
+        name: Logflare.TelemetryPoller.FastPerodic
       }
     ]
 
