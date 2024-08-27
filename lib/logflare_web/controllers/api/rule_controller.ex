@@ -50,13 +50,54 @@ defmodule LogflareWeb.Api.RuleController do
   end
 
   operation(:create,
-    summary: "Create rule",
+    summary: "Create rule. Allows batch creation if as a list.",
     request_body: RuleApiSchema.params(),
     responses: %{
       201 => Created.response(RuleApiSchema),
       404 => NotFound.response()
     }
   )
+
+  def create(%{assigns: %{user: user}} = conn, %{"_json" => batch}) when is_list(batch) do
+    rules =
+      for params <- batch do
+        with {:ok, _} <- verify_backend_owner(params, user),
+             {:ok, _} <- verify_source_owner(params, user),
+             {:ok, rule} <- Rules.create_rule(params) do
+          rule
+        end
+      end
+
+    {errors, results} =
+      Enum.split_with(rules, fn
+        {:error, _} -> true
+        _ -> false
+      end)
+
+    conn
+    |> case do
+      conn when errors == [] ->
+        put_status(conn, 201)
+
+      _ ->
+        put_status(conn, 400)
+    end
+    |> json(%{
+      errors:
+        Enum.flat_map(errors, fn
+          {:error, %Ecto.Changeset{} = changeset} ->
+            Ecto.Changeset.traverse_errors(changeset, fn _, _, {message, _} -> message end)
+            |> Enum.map(fn {field, errs} -> "#{field} #{Enum.join(errs, ", ")}" end)
+
+          {:error, :not_found} ->
+            "Unauthorized"
+
+          nil ->
+            "Unauthorized"
+        end),
+      results: results
+    })
+  end
 
   def create(%{assigns: %{user: user}} = conn, params) do
     with {:ok, _} <- verify_backend_owner(params, user),

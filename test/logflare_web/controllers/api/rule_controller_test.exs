@@ -56,6 +56,23 @@ defmodule LogflareWeb.Api.RuleControllerTest do
              |> json_response(200)
     end
 
+    test "create multiple rules", %{conn: conn, backend: backend, source: source} do
+      assert %{"results" => [_]} =
+               conn
+               |> Plug.Conn.put_req_header("content-type", "application/json")
+               |> post(
+                 ~p"/api/rules",
+                 Jason.encode!([
+                   %{
+                     source_id: source.id,
+                     backend_id: backend.id,
+                     lql_string: "test"
+                   }
+                 ])
+               )
+               |> json_response(201)
+    end
+
     test "create rule with bad user", %{conn: conn, backend: backend, source: source} do
       user = insert(:user)
 
@@ -68,6 +85,22 @@ defmodule LogflareWeb.Api.RuleControllerTest do
                  lql_string: "test"
                })
                |> json_response(404)
+    end
+
+    test "create multiple rules error", %{conn: conn, backend: backend, source: source} do
+      assert %{"errors" => _} =
+               conn
+               |> Plug.Conn.put_req_header("content-type", "application/json")
+               |> post(
+                 ~p"/api/rules",
+                 Jason.encode!([
+                   %{
+                     source_id: source.id,
+                     backend_id: backend.id
+                   }
+                 ])
+               )
+               |> json_response(400)
     end
 
     test "update rule", %{conn: conn, backend: backend, source: source} do
