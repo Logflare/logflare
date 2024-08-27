@@ -74,10 +74,12 @@ defmodule Logflare.Backends.Adaptor.DatadogAdaptor do
     formatted_ts =
       DateTime.from_unix!(le.body["timestamp"], :microsecond) |> DateTime.to_iso8601()
 
+    formatted_message = "#{formatted_ts} #{le.body["message"] || le.body["event_message"] || ""}"
+
     %Logflare.LogEvent{
       le
       | body: %{
-          "message" => formatted_ts <> " " <> (le.body["message"] || le.body["event_message"]),
+          "message" => formatted_message,
           "ddsource" => "Supabase",
           "service" => le.source.service_name || le.source.name,
           "data" => le.body
