@@ -22,7 +22,7 @@ defmodule Logflare.ErlSysMon do
     {:ok, []}
   end
 
-  def handle_info({:monitor, pid, _type, _meta} = msg, state) do
+  def handle_info({:monitor, pid, _type, _meta} = msg, state) when is_pid(pid) do
     pid_info =
       pid
       |> Process.info(:dictionary)
@@ -39,5 +39,10 @@ defmodule Logflare.ErlSysMon do
     )
 
     {:noreply, state}
+  end
+
+  # fallback for ports etc
+  def handle_info(msg, _state) do
+    Logger.warning("#{__MODULE__} message: #{inspect(msg)}")
   end
 end
