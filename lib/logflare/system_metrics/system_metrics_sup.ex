@@ -27,10 +27,11 @@ defmodule Logflare.SystemMetricsSup do
         # configure sampling initial delay - default is 0
         measurements: [
           {Observer, :dispatch_stats, []},
-          {Cluster, :dispatch_stats, []}
+          {Cluster, :dispatch_stats, []},
+          {Logflare.SystemMetrics.Cluster, :finch, []}
         ],
-        period: :timer.seconds(30),
-        init_delay: :timer.seconds(30),
+        period: :timer.seconds(3),
+        init_delay: :timer.seconds(3),
         name: Logflare.TelemetryPoller.Perodic
       }
     ]
