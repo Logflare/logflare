@@ -18,6 +18,7 @@ defmodule Logflare.SystemMetrics.Cluster do
   end
 
   def finch() do
+    # TODO(ziinc): add in datadog pools
     case Finch.get_pool_status(Logflare.FinchDefault, "https://bigquery.googleapis.com") do
       {:ok, bq_metrics} ->
         for metric <- bq_metrics do
