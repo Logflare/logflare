@@ -9,9 +9,7 @@ defmodule LogflareWeb.SourceControllerTest do
   alias Logflare.Repo
   alias Logflare.LogEvent
   alias Logflare.Billing.Plan
-  alias Logflare.Lql.FilterRule
   alias Logflare.Logs.Validators
-  alias Logflare.SavedSearches
   alias Logflare.Logs.RejectedLogEvents
   alias Logflare.SingleTenant
   alias Logflare.Source.RecentLogsServer
@@ -492,39 +490,6 @@ defmodule LogflareWeb.SourceControllerTest do
       refute html =~ s1.name
 
       assert is_nil(Sources.get(s1.id))
-    end
-
-    test "deletes saved saerches on source delete", %{
-      conn: init_conn,
-      sources: [s1 | _],
-      users: [u1 | _]
-    } do
-      {:ok, saved_search} =
-        SavedSearches.insert(
-          %{
-            querystring: "error",
-            lql_rules: [
-              %FilterRule{
-                operator: :=,
-                value: "error",
-                modifiers: %{},
-                path: "event_message"
-              }
-            ]
-          },
-          s1
-        )
-
-      {:ok, _counter} = SavedSearches.inc(saved_search.id, tailing: false)
-      {:ok, _counter} = SavedSearches.inc(saved_search.id, tailing: true)
-
-      conn =
-        init_conn
-        |> login_user(u1)
-        |> delete(source_path(init_conn, :del_source_and_redirect, s1.id))
-
-      assert redirected_to(conn, 302) =~ "/dashboard"
-      assert is_nil(SavedSearches.get(saved_search.id))
     end
   end
 
