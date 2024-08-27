@@ -124,7 +124,7 @@ defmodule Logflare.Mixfile do
 
       # Outbound Requests
       {:castore, "~> 0.1.0"},
-      {:finch, "~> 0.16.0"},
+      {:finch, "~> 0.18.0"},
       {:mint, "~> 1.0"},
       {:httpoison, "~> 1.4"},
       {:poison, "~> 5.0.0", override: true},

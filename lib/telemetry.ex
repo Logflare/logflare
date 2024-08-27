@@ -114,7 +114,8 @@ defmodule Logflare.Telemetry do
         tags: [],
         description: "Rate limited API hits"
       ),
-      sum("logflare.backends.egress.request_length", tags: [:backend_id])
+      last_value("logflare.backends.egress.request_length", tags: [:backend_id]),
+      last_value("logflare.system.finch.in_flight_requests", tags: [:pool_index, :url])
     ]
 
     Enum.concat([

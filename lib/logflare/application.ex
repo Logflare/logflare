@@ -202,19 +202,41 @@ defmodule Logflare.Application do
   defp finch_pools do
     # scales per core
     base = System.schedulers_online()
+    eighth_base = ceil(base / 8)
 
     [
       # Finch connection pools, using http2
-      {Finch,
-       name: Logflare.FinchIngest, pools: %{default: [protocol: :http2, count: max(base * 4, 20)]}},
-      {Finch,
-       name: Logflare.FinchQuery, pools: %{default: [protocol: :http2, count: max(base * 2, 10)]}},
       {Finch, name: Logflare.FinchGoth, pools: %{default: [protocol: :http2, count: 1]}},
       {Finch,
-       name: Logflare.FinchDefault, pools: %{default: [protocol: :http2, count: max(base, 5)]}},
+       name: Logflare.FinchDefault,
+       pools: %{
+         :default => [protocol: :http2, count: max(base, 20)],
+         "https://bigquery.googleapis.com" => [
+           protocol: :http2,
+           count: max(base, 20),
+           start_pool_metrics?: true
+         ],
+         "https://http-intake.logs.datadoghq.com" => [
+           protocol: :http2,
+           count: max(eighth_base, 3)
+         ],
+         "https://http-intake.logs.us3.datadoghq.com" => [
+           protocol: :http2,
+           count: max(eighth_base, 3)
+         ],
+         "https://http-intake.logs.us5.datadoghq.com" => [
+           protocol: :http2,
+           count: max(eighth_base, 3)
+         ],
+         "https://http-intake.logs.datadoghq.eu" => [protocol: :http2, count: max(eighth_base, 3)],
+         "https://http-intake.logs.ap1.datadoghq.com" => [
+           protocol: :http2,
+           count: max(eighth_base, 3)
+         ]
+       }},
       {Finch,
        name: Logflare.FinchDefaultHttp1,
-       pools: %{default: [protocol: :http1, count: max(base, 5) * 3]}}
+       pools: %{default: [protocol: :http1, size: max(base * 2, 50)]}}
     ]
   end
 
