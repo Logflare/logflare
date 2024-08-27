@@ -170,6 +170,10 @@ defmodule Logflare.SqlTest do
               "Only SELECT queries allowed"
             },
             {
+              "show policies on \"programs\"",
+              "Only SELECT queries allowed"
+            },
+            {
               "update a set x = 1",
               "Only SELECT queries allowed"
             },
