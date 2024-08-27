@@ -83,8 +83,17 @@ defmodule Logflare.Lql.EctoHelpers do
     end
   end
 
-  @type operators :: :< | :<= | := | :> | :>= | :"~" | :list_includes | :string_contains
   @spec dynamic_where_filter_rule(atom(), operators, any, map()) :: Ecto.Query.DynamicExpr.t()
+  @type operators ::
+          :<
+          | :<=
+          | :=
+          | :>
+          | :>=
+          | :"~"
+          | :list_includes
+          | :list_includes_regexp
+          | :string_contains
   def dynamic_where_filter_rule(c, op, v, modifiers) do
     clause =
       case op do
@@ -114,6 +123,16 @@ defmodule Logflare.Lql.EctoHelpers do
 
         :list_includes ->
           dynamic([..., n1], fragment(~s|? IN UNNEST(?)|, ^v, field(n1, ^c)))
+
+        :list_includes_regexp ->
+          dynamic(
+            [..., n1],
+            fragment(
+              ~s|EXISTS(SELECT * FROM UNNEST(?) AS x WHERE REGEXP_CONTAINS(x, ?))|,
+              field(n1, ^c),
+              ^v
+            )
+          )
       end
 
     if is_negated?(modifiers) do

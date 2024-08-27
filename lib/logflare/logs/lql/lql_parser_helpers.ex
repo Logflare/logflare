@@ -180,6 +180,7 @@ defmodule Logflare.Lql.Parser.Helpers do
   end
 
   @list_includes_op :list_includes
+  @list_includes_regex_op :list_includes_regexp
   def operator() do
     choice([
       string(":>=") |> replace(:>=),
@@ -187,6 +188,7 @@ defmodule Logflare.Lql.Parser.Helpers do
       string(":>") |> replace(:>),
       string(":<") |> replace(:<),
       string(":~") |> replace(:"~"),
+      string(":@>~") |> replace(@list_includes_regex_op),
       string(":@>") |> replace(@list_includes_op),
       # string(":") should always be the last choice
       string(":") |> replace(:=)

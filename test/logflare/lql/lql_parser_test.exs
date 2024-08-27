@@ -419,6 +419,31 @@ defmodule Logflare.LqlParserTest do
       end
     end
 
+    test "list contains regex operator" do
+      schema = build_schema(%{"metadata" => %{"arr" => ["abc123"]}})
+
+      for {qs, modifier} <- [
+            {~S(m.arr:@>~abc), %{}},
+            {~S(m.arr:@>~"a c"), %{quoted_string: true}},
+            {~S(m.arr:@>~"1.0"), %{quoted_string: true}},
+            {~S(m.arr:@>~1), %{}}
+          ] do
+        assert {:ok,
+                [
+                  %FilterRule{
+                    modifiers: parsed_modifier,
+                    operator: :list_includes_regexp,
+                    path: "metadata.arr",
+                    value: value
+                  } = filter_rule
+                ]} = Parser.parse(qs, schema)
+
+        assert Lql.encode!([filter_rule]) == qs
+        assert is_binary(value)
+        assert parsed_modifier == modifier
+      end
+    end
+
     test "lt, range for float values" do
       schema = build_schema(%{"metadata" => %{"metric" => 10.0, "user" => 1.0}})
       qs = "m.metric:<10.0 m.user:0.1..100.111"

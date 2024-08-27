@@ -77,6 +77,9 @@ defmodule Logflare.Logs.SourceRouting do
                 operator == :list_includes ->
                   le_value == value
 
+                operator == :list_includes_regexp ->
+                  le_str_value =~ ~r/#{value}/u
+
                 operator == :string_contains ->
                   String.contains?(le_str_value, stringify(value))
 

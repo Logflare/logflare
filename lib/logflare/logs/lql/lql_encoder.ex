@@ -118,6 +118,9 @@ defmodule Logflare.Lql.Encoder do
       :list_includes ->
         "#{path}:@>#{v}"
 
+      :list_includes_regexp ->
+        "#{path}:@>~#{v}"
+
       _ ->
         "#{path}:#{op}#{v}"
     end
