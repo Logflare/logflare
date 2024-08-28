@@ -215,7 +215,7 @@ defmodule Logflare.Application do
          #  explicitly set http2 for other pools for multiplexing
          "https://bigquery.googleapis.com" => [
            protocol: :http2,
-           count: 3,
+           count: 2,
            start_pool_metrics?: true
          ],
          "https://http-intake.logs.datadoghq.com" => [
