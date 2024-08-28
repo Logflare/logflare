@@ -118,7 +118,7 @@ defmodule Logflare.Application do
         Logflare.AlertsScheduler,
 
         # telemetry reporter
-        {LogflareEx.TelemetryReporter, metrics: Logflare.Telemetry.metrics()}
+        {WarehouseEx.TelemetryReporter, metrics: Logflare.Telemetry.metrics()}
       ]
   end
 
