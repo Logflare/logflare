@@ -210,28 +210,38 @@ defmodule Logflare.Application do
       {Finch,
        name: Logflare.FinchDefault,
        pools: %{
-         :default => [protocol: :http2, count: max(base, 20)],
+         # default pool uses finch defaults
+         :default => [protocols: [:http1, :http2], count: 1, size: 50],
+         #  explicitly set http2 for other pools for multiplexing
          "https://bigquery.googleapis.com" => [
            protocol: :http2,
-           count: max(base, 20),
+           count: 3,
            start_pool_metrics?: true
          ],
          "https://http-intake.logs.datadoghq.com" => [
            protocol: :http2,
-           count: max(eighth_base, 3)
+           count: 1,
+           start_pool_metrics?: true
          ],
          "https://http-intake.logs.us3.datadoghq.com" => [
            protocol: :http2,
-           count: max(eighth_base, 3)
+           count: 1,
+           start_pool_metrics?: true
          ],
          "https://http-intake.logs.us5.datadoghq.com" => [
            protocol: :http2,
-           count: max(eighth_base, 3)
+           count: 1,
+           start_pool_metrics?: true
          ],
-         "https://http-intake.logs.datadoghq.eu" => [protocol: :http2, count: max(eighth_base, 3)],
+         "https://http-intake.logs.datadoghq.eu" => [
+           protocol: :http2,
+           count: max(eighth_base, 3),
+           start_pool_metrics?: true
+         ],
          "https://http-intake.logs.ap1.datadoghq.com" => [
            protocol: :http2,
-           count: max(eighth_base, 3)
+           count: 1,
+           start_pool_metrics?: true
          ]
        }},
       {Finch,
