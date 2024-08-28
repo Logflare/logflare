@@ -19,18 +19,22 @@ defmodule Logflare.SystemMetrics.Cluster do
 
   def finch() do
     # TODO(ziinc): add in datadog pools
-    case Finch.get_pool_status(Logflare.FinchDefault, "https://bigquery.googleapis.com") do
-      {:ok, bq_metrics} ->
-        for metric <- bq_metrics do
-          :telemetry.execute(
-            [:logflare, :system, :finch],
-            %{in_flight_requests: metric.in_flight_requests},
-            %{pool_index: metric.pool_index, url: "https://bigquery.googleapis.com"}
-          )
-        end
+    for url <- [
+          "https://bigquery.googleapis.com",
+          "https://http-intake.logs.datadoghq.com",
+          "https://http-intake.logs.us3.datadoghq.com",
+          "https://http-intake.logs.us5.datadoghq.com",
+          "https://http-intake.logs.datadoghq.eu",
+          "https://http-intake.logs.ap1.datadoghq.com"
+        ],
+        {:ok, metrics} = Finch.get_pool_status(Logflare.FinchDefault, url) do
+      counts = for metric <- metrics, do: metric.in_flight_requests
 
-      _ ->
-        :noop
+      :telemetry.execute(
+        [:logflare, :system, :finch],
+        %{in_flight_requests: Enum.sum(counts)},
+        %{url: url}
+      )
     end
   end
 end
