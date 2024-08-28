@@ -200,10 +200,6 @@ defmodule Logflare.Application do
   end
 
   defp finch_pools do
-    # scales per core
-    base = System.schedulers_online()
-    eighth_base = ceil(base / 8)
-
     [
       # Finch connection pools, using http2
       {Finch, name: Logflare.FinchGoth, pools: %{default: [protocol: :http2, count: 1]}},
@@ -235,7 +231,7 @@ defmodule Logflare.Application do
          ],
          "https://http-intake.logs.datadoghq.eu" => [
            protocol: :http2,
-           count: max(eighth_base, 3),
+           count: 1,
            start_pool_metrics?: true
          ],
          "https://http-intake.logs.ap1.datadoghq.com" => [
@@ -246,7 +242,7 @@ defmodule Logflare.Application do
        }},
       {Finch,
        name: Logflare.FinchDefaultHttp1,
-       pools: %{default: [protocol: :http1, size: max(base * 2, 50)]}}
+       pools: %{default: [protocol: :http1, size: 50]}}
     ]
   end
 
