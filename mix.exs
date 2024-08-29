@@ -153,8 +153,8 @@ defmodule Logflare.Mixfile do
       {:google_gax, github: "Logflare/elixir-google-gax", override: true},
 
       # Ecto
-      {:ecto, "~> 3.9", override: true},
-      {:ecto_sql, "~> 3.9"},
+      {:ecto, "~> 3.9.0", override: true},
+      {:ecto_sql, "~> 3.9.0"},
       {:typed_ecto_schema, "~> 0.1.0", runtime: false},
 
       # Telemetry & logging
