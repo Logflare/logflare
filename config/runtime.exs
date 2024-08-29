@@ -102,12 +102,32 @@ config :logflare_logger_backend,
          api_key: System.get_env("LOGFLARE_LOGGER_BACKEND_API_KEY")
        )
 
+config :warehouse_ex,
+       filter_nil_kv_pairs.(
+         api_url: System.get_env("LOGFLARE_LOGGER_BACKEND_URL"),
+         api_key: System.get_env("LOGFLARE_LOGGER_BACKEND_API_KEY")
+       )
+
+config :warehouse_ex,
+      WarehouseEx.LoggerBackend,
+       filter_nil_kv_pairs.(source_token: System.get_env("LOGFLARE_LOGGER_BACKEND_SOURCE_ID"))
+
+config :warehouse_ex,
+       WarehouseEx.TelemetryReporter,
+       filter_nil_kv_pairs.(
+         source_token: System.get_env("LOGFLARE_TELEMETRY_REPORTER_SOURCE_TOKEN"),
+       )
+
 config :logger,
   backends:
     [
       :console,
+      # if(System.get_env("LOGFLARE_LOGGER_BACKEND_URL") != nil,
+      #   do: LogflareLogger.HttpBackend,
+      #   else: nil
+      # ),
       if(System.get_env("LOGFLARE_LOGGER_BACKEND_URL") != nil,
-        do: LogflareLogger.HttpBackend,
+        do: WarehouseEx.LoggerBackend,
         else: nil
       ),
       if(System.get_env("LOGFLARE_LOGGER_JSON") == "true", do: LoggerJSON, else: nil)
