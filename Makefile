@@ -136,6 +136,12 @@ deploy.staging.main:
 		--region=us-central1 \
 		--gcs-log-dir="gs://logflare-staging_cloudbuild-logs/logs"
 
+	gcloud builds submit . \
+		--config=./cloudbuild/staging/deploy.yaml \
+		--substitutions=_IMAGE_TAG=$(SHA_IMAGE_TAG),_INSTANCE_GROUP=instance-group-staging-main-saturated \
+		--region=us-central1 \
+		--gcs-log-dir="gs://logflare-staging_cloudbuild-logs/logs"
+
 deploy.staging.versioned:
 	@gcloud config set project logflare-staging
 	gcloud builds submit . \
