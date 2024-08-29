@@ -5,9 +5,11 @@ defmodule Logflare.Source.Data do
   alias Logflare.Source.RateCounterServer
   alias Logflare.Source.BigQuery.Schema
   alias Logflare.Backends
+  alias Logflare.Sources
 
   def get_logs(source_id) when is_atom(source_id) do
-    Logflare.Source.RecentLogsServer.list(source_id)
+    source = Sources.Cache.get_by_id(source_id)
+    Backends.list_recent_logs(source)
   end
 
   @spec get_log_count(atom, String.t()) :: non_neg_integer()

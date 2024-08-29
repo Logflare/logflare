@@ -5,7 +5,6 @@ defmodule Logflare.Logs do
   alias Logflare.LogEvent, as: LE
   alias Logflare.Logs.{RejectedLogEvents}
   alias Logflare.{SystemMetrics, Source, Sources}
-  alias Logflare.Source.RecentLogsServer
   alias Logflare.Logs.SourceRouting
   alias Logflare.Logs.IngestTypecasting
   alias Logflare.Logs.IngestTransformers
@@ -35,7 +34,6 @@ defmodule Logflare.Logs do
   @spec ingest(Logflare.LogEvent.t()) :: Logflare.LogEvent.t() | {:error, term}
   def ingest(%LE{source: %Source{} = source} = le) do
     with :ok <- Source.Supervisor.ensure_started(source),
-         :ok <- RecentLogsServer.push(source, le),
          # tests fail when we match on these for some reason
          _ok <- Sources.Counters.increment(source.token),
          _ok <- SystemMetrics.AllLogsLogged.increment(:total_logs_logged) do

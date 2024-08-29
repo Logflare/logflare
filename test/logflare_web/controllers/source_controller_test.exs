@@ -14,9 +14,15 @@ defmodule LogflareWeb.SourceControllerTest do
   alias Logflare.SavedSearches
   alias Logflare.Logs.RejectedLogEvents
   alias Logflare.SingleTenant
-  alias Logflare.Source.RecentLogsServer
   alias Logflare.Source.V1SourceDynSup
   alias Logflare.Backends
+  alias Logflare.Backends.SourceSup
+  alias Logflare.SystemMetrics.AllLogsLogged
+
+  setup do
+    start_supervised!(AllLogsLogged)
+    :ok
+  end
 
   describe "list" do
     setup %{conn: conn} do
@@ -72,9 +78,9 @@ defmodule LogflareWeb.SourceControllerTest do
     end
 
     test "show source's recent logs", %{conn: conn, source: source} do
-      start_supervised!({RecentLogsServer, source: source})
+      start_supervised!({SourceSup, source})
       le = build(:log_event, source: source)
-      :ok = RecentLogsServer.push(source, le)
+      Backends.ingest_logs([le], source)
 
       html =
         conn

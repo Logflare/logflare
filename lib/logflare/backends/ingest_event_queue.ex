@@ -315,6 +315,46 @@ defmodule Logflare.Backends.IngestEventQueue do
     end
   end
 
+  @spec fetch_events(source_backend_pid(), integer()) ::
+          {:ok, [LogEvent.t()]} | {:error, :not_initialized}
+  def fetch_events({_, _, _} = sid_bid_pid, n) do
+    ms =
+      Ex2ms.fun do
+        {_event_id, _, event} -> event
+      end
+
+    with tid when tid != nil <- get_tid(sid_bid_pid),
+         size when is_integer(size) <- :ets.info(tid, :size),
+         {selected, _cont} <- :ets.select(tid, ms, min(n, max(size, 1))) do
+      {:ok, selected}
+    else
+      nil -> {:error, :not_initialized}
+      :"$end_of_table" -> {:ok, []}
+    end
+  end
+
+  def fetch_events(sid_bid, n) when is_integer(n) do
+    events =
+      traverse_queues(
+        sid_bid,
+        fn objs, acc ->
+          items =
+            for {sid_bid_pid, _tid} <- objs do
+              case fetch_events(sid_bid_pid, n) do
+                {:ok, events} -> events
+                _ -> []
+              end
+            end
+            |> List.flatten()
+
+          items ++ acc
+        end,
+        []
+      )
+
+    {:ok, events}
+  end
+
   @doc """
   Truncates a given table
   """

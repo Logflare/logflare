@@ -12,11 +12,12 @@ defmodule Logflare.Backends do
   alias Logflare.Source
   alias Logflare.Source
   alias Logflare.Sources
-  alias Logflare.Source.RecentLogsServer
   alias Logflare.Logs
   alias Logflare.Logs.SourceRouting
   alias Logflare.SystemMetrics
   alias Logflare.PubSubRates
+  alias Logflare.Cluster
+  alias Logflare.TaskSupervisor
   import Ecto.Query
 
   defdelegate child_spec(arg), to: __MODULE__.Supervisor
@@ -236,7 +237,6 @@ defmodule Logflare.Backends do
     count = Enum.count(log_events)
     increment_counters(source, count)
     maybe_broadcast_and_route(source, log_events)
-    RecentLogsServer.push(source, log_events)
     dispatch_to_backends(source, backend, log_events)
     if Enum.empty?(errors), do: {:ok, count}, else: {:error, errors}
   end
@@ -474,7 +474,40 @@ defmodule Logflare.Backends do
   """
   @spec list_recent_logs(Source.t()) :: [LogEvent.t()]
   def list_recent_logs(%Source{} = source) do
-    RecentLogsServer.list_for_cluster(source.token)
+    nodes = Cluster.Utils.node_list_all()
+
+    task =
+      Task.async(fn ->
+        nodes
+        |> Enum.map(
+          &Task.Supervisor.async({TaskSupervisor, &1}, __MODULE__, :list_recent_logs_local, [
+            source
+          ])
+        )
+        |> Task.yield_many()
+        |> Enum.map(fn {%Task{pid: pid}, res} ->
+          res || Task.Supervisor.terminate_child(TaskSupervisor, pid)
+        end)
+      end)
+
+    case Task.yield(task, 5_000) || Task.shutdown(task) do
+      {:ok, results} ->
+        results
+        |> Enum.map(fn {:ok, events} -> events end)
+        |> List.flatten()
+        |> Enum.sort_by(& &1.body["timestamp"], &<=/2)
+        |> Enum.take(-100)
+
+      _else ->
+        list_recent_logs_local(source)
+    end
+  end
+
+  def fetch_latest_timestamp(%Source{} = source) do
+    case list_recent_logs(source) do
+      {:ok, [log_event | _]} -> log_event.body["timestamp"]
+      _ -> 0
+    end
   end
 
   @doc """
@@ -482,7 +515,8 @@ defmodule Logflare.Backends do
   """
   @spec list_recent_logs_local(Source.t()) :: [LogEvent.t()]
   def list_recent_logs_local(%Source{} = source) do
-    RecentLogsServer.list(source.token)
+    {:ok, events} = IngestEventQueue.fetch_events({source.id, nil}, 100)
+    events
   end
 
   defp do_telemetry(:drop, le) do
