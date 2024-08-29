@@ -17,7 +17,12 @@ defmodule LogflareWeb.SourceControllerTest do
   alias Logflare.Source.V1SourceDynSup
   alias Logflare.Backends
   alias Logflare.Backends.SourceSup
+  alias Logflare.SystemMetrics.AllLogsLogged
 
+  setup do
+    start_supervised!(AllLogsLogged)
+    :ok
+  end
   describe "list" do
     setup %{conn: conn} do
       user = insert(:user)
