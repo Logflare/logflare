@@ -2,9 +2,12 @@ defmodule LogflareWeb.Api.SourceControllerTest do
   @moduledoc false
   use LogflareWeb.ConnCase
 
-  alias Logflare.Source.RecentLogsServer
+  alias Logflare.Backends
+  alias Logflare.Backends.SourceSup
+  alias Logflare.SystemMetrics.AllLogsLogged
 
   setup do
+    start_supervised!(AllLogsLogged)
     insert(:plan, name: "Free")
     user = insert(:user)
     sources = insert_list(2, :source, user_id: user.id)
@@ -165,9 +168,10 @@ defmodule LogflareWeb.Api.SourceControllerTest do
 
   describe "recent/2" do
     test "able to view recent logs", %{conn: conn, user: user, sources: [source | _]} do
-      start_link_supervised!({RecentLogsServer, source: source})
+      start_supervised!({SourceSup, source})
+
       le = build(:log_event, source: source, message: "something")
-      RecentLogsServer.push(source, le)
+      Backends.ingest_logs([le], source)
 
       conn =
         conn

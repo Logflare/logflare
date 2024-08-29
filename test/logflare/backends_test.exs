@@ -271,8 +271,7 @@ defmodule Logflare.BackendsTest do
       le = build(:log_event, message: "testing 123", source: source)
 
       assert {:ok, 0} = Backends.ingest_logs([le], source)
-      # only the init message in RLS
-      assert [_] = Backends.list_recent_logs_local(source)
+      assert [] = Backends.list_recent_logs_local(source)
       :timer.sleep(1000)
     end
 
@@ -294,10 +293,10 @@ defmodule Logflare.BackendsTest do
                )
 
       :timer.sleep(1000)
-      # init message + 2 events
-      assert Backends.list_recent_logs_local(source) |> length() == 3
-      # init message + 1 events
-      assert Backends.list_recent_logs_local(target) |> length() == 2
+      # 2 events
+      assert Backends.list_recent_logs_local(source) |> length() == 2
+      # 1 events
+      assert Backends.list_recent_logs_local(target) |> length() == 1
     end
 
     test "routing depth is max 1 level", %{user: user} do
@@ -313,12 +312,12 @@ defmodule Logflare.BackendsTest do
 
       assert {:ok, 1} = Backends.ingest_logs([%{"event_message" => "testing 123"}], source)
       :timer.sleep(1000)
-      # init message + 1 events
-      assert Backends.list_recent_logs_local(source) |> length() == 2
-      # init message + 1 events
-      assert Backends.list_recent_logs_local(target) |> length() == 2
-      # init message + 0 events
-      assert Backends.list_recent_logs_local(other_target) |> length() == 1
+      # 1 events
+      assert Backends.list_recent_logs_local(source) |> length() == 1
+      # 1 events
+      assert Backends.list_recent_logs_local(target) |> length() == 1
+      # 0 events
+      assert Backends.list_recent_logs_local(other_target) |> length() == 0
     end
 
     test "route to backend", %{user: user} do

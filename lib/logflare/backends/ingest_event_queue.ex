@@ -339,10 +339,13 @@ defmodule Logflare.Backends.IngestEventQueue do
         sid_bid,
         fn objs, acc ->
           items =
-            for {sid_bid_pid, _tid} <- objs,
-                {:ok, events} = fetch_events(sid_bid_pid, n) do
-              events
+            for {sid_bid_pid, _tid} <- objs do
+              case fetch_events(sid_bid_pid, n) do
+                {:ok, events} -> events
+                _ -> []
+              end
             end
+            |> List.flatten()
 
           items ++ acc
         end,
