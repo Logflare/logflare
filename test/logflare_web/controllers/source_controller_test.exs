@@ -23,6 +23,7 @@ defmodule LogflareWeb.SourceControllerTest do
     start_supervised!(AllLogsLogged)
     :ok
   end
+
   describe "list" do
     setup %{conn: conn} do
       user = insert(:user)
