@@ -25,6 +25,7 @@ defmodule LogflareWeb.QueryLive do
           <li>Always have a filter over the <code>timestamp</code> column in your <code>WHERE</code> clause</li>
           <li>Use <code>CROSS JOIN UNNEST(my_table.my_column) as col</code> to use nested fields in your query</li>
           <li>Smaller time ranges load faster</li>
+          <li>Endpoint and alert queries can be referenced using <code>`MyEndpointName`</code> for query composition</li>
         </ul>
         <a href="https://docs.logflare.app/backends/bigquery#querying-in-bigquery">Read the docs</a>
         to find out more about querying Logflare with BigQuery SQL
