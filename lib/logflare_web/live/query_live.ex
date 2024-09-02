@@ -1,0 +1,242 @@
+defmodule LogflareWeb.QueryLive do
+  @moduledoc false
+  use LogflareWeb, :live_view
+  use Phoenix.Component
+
+  require Logger
+
+  alias Logflare.Endpoints
+  alias Logflare.Users
+
+  def render(assigns) do
+    ~H"""
+    <.subheader>
+      <:path>
+        ~/<.subheader_path_link live_patch to={~p"/query"}>query</.subheader_path_link>
+      </:path>
+    </.subheader>
+
+    <section class="pt-2 mx-auto container">
+      <p>
+        Query your data with BigQuery SQL directly. You can refer to source names directly in your SELECT queries, for example <br />
+        <code>SELECT datetime(timestamp) as timestamp, event_message, metadata from `MyApp.Logs`</code>
+        Some pointers:
+        <ul>
+          <li>Always have a filter over the <code>timestamp</code> column in your <code>WHERE</code> clause</li>
+          <li>Use <code>CROSS JOIN UNNEST(my_table.my_column) as col</code> to use nested fields in your query</li>
+          <li>Smaller time ranges load faster</li>
+        </ul>
+        <a href="https://docs.logflare.app/backends/bigquery#querying-in-bigquery">Read the docs</a>
+        to find out more about querying Logflare with BigQuery SQL
+      </p>
+    </section>
+    <section class="mx-auto container pt-3 tw-flex tw-flex-col tw-gap-4">
+      <.form for={%{}} phx-submit="run-query" class="tw-min-h-[80px] tw-flex tw-flex-col tw-gap-4">
+        <LiveMonacoEditor.code_editor
+          value={@query_string}
+          change="parse-query"
+          path="query"
+          id="query"
+          opts={
+            Map.merge(
+              LiveMonacoEditor.default_opts(),
+              %{
+                "wordWrap" => "on",
+                "language" => "sql",
+                "fontSize" => 12,
+                "padding" => %{
+                  "top" => 14
+                },
+                "fixedOverflowWidgets" => false,
+                "contextmenu" => false,
+                "hideCursorInOverviewRuler" => true,
+                "smoothScrolling" => true,
+                "scrollbar" => %{
+                  "vertical" => "auto",
+                  "horizontal" => "hidden",
+                  "verticalScrollbarSize" => 6
+                },
+                "lineNumbers" => "off",
+                "glyphMargin" => false,
+                "lineNumbersMinChars" => 0,
+                "folding" => false,
+                "roundedSelection" => true,
+                "editorClassName" => "",
+                "minimap" => %{
+                  "enabled" => false
+                },
+                "placeholder" => "SELECT timestamp, event_message from `MyApp.Source`"
+              }
+            )
+          }
+        />
+        <div class="tw-ml-auto">
+          <%= submit("Run query", class: "btn btn-secondary") %>
+        </div>
+      </.form>
+
+      <div :if={@parse_error_message}>
+        <.alert variant="warning">
+          <strong>SQL Parse error!</strong>
+          <br />
+          <span><%= @parse_error_message %></span>
+        </.alert>
+      </div>
+    </section>
+
+    <section :if={@query_result_rows} class="container mx-auto">
+      <h3>Query result</h3>
+      <p :if={@query_result_rows == []}>
+        No rows returned from query. Try adjusting your query and try again!
+      </p>
+      <div :if={@query_result_rows != []}>
+        <% keys = Map.keys(hd(@query_result_rows)) |> Enum.sort() %>
+        <table class="table table-bordered table-dark table-sm table-hover table-responsive tw-overflow-x-auto  tw-w-[95vw] tw-font-mono tw-text-[0.7rem]">
+          <thead>
+            <tr>
+              <th :for={k <- keys} scope="col" class="tw-w-max-[50vw]"><%= k %></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr :for={{row, row_idx} <- Enum.with_index(@query_result_rows)}>
+              <td :for={{k, col_idx} <- Enum.with_index(keys)}>
+                <%= case value = Map.get(row, k) do %>
+                  <% value when is_map(value) or is_list(value) -> %>
+                    <button type="button" class="btn btn-link tw-truncate tw-text-ellipsis tw-w-32 tw-text-[0.7rem]" data-toggle="modal" data-target={"#modal-#{row_idx}-#{col_idx}"}>
+                      <%= Jason.encode!(value) |> String.slice(0..150) %>
+                    </button>
+                  <% value -> %>
+                    <span class="tw-max-w-[50vw]  tw-block tw-text-wrap">
+                      <%= value %>
+                    </span>
+                <% end %>
+
+                <div class="modal fade" id={"modal-#{row_idx}-#{col_idx}"} data-backdrop="static" data-keyboard="false" tabindex="-1" aria-labelledby="staticBackdropLabel" aria-hidden="true">
+                  <div class="modal-dialog modal-xl">
+                    <div class="modal-content">
+                      <div class="modal-header">
+                        <h5 class="modal-title" id="staticBackdropLabel"><%= k %></h5>
+                        <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                          <span aria-hidden="true">&times;</span>
+                        </button>
+                      </div>
+                      <div class="modal-body">
+                        <pre class="tw-text-[0.7rem] tw-p-2"><%= Jason.encode!(value, pretty: true) %></pre>
+                      </div>
+                      <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
+                        <button type="button" class="btn btn-primary" phx-click={JS.dispatch("logflare:copy-to-clipboard", detail: %{text: Jason.encode!(value)})} data-toggle="tooltip" data-placement="top" title="Copy to clipboard"><i class="fa fa-clone" aria-hidden="true"></i> Copy</button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+    """
+  end
+
+  def mount(%{}, %{"user_id" => user_id} = params, socket) do
+    user = Users.get(user_id)
+
+    query_string =
+      Map.get(
+        params,
+        "q",
+        "SELECT id, timestamp, metadata, event_message \nFROM `YourSource` \nWHERE timestamp > '#{DateTime.utc_now() |> DateTime.to_iso8601()}'"
+      )
+
+    socket =
+      socket
+      |> assign(:user_id, user_id)
+      |> assign(:user, user)
+      |> assign(:query_result_rows, nil)
+      |> assign(:parse_error_message, nil)
+      |> assign(:query_string, query_string)
+
+    {:ok, socket}
+  end
+
+  def handle_params(params, _uri, socket) do
+    query_string = params["q"] || socket.assigns.query_string
+
+    socket =
+      socket
+      |> assign(:query_string, query_string)
+      |> then(fn
+        socket when query_string != "" ->
+          case Endpoints.parse_query_string(query_string) do
+            {:ok, _} ->
+              socket
+
+            {:error, err} ->
+              assign(
+                socket,
+                :parse_error_message,
+                if(is_binary(err), do: err, else: inspect(err))
+              )
+              |> assign(:query_result_rows, nil)
+          end
+
+        socket ->
+          socket
+      end)
+
+    {:noreply, socket}
+  end
+
+  def handle_event(
+        "run-query",
+        %{"live_monaco_editor" => %{"query" => query_string}},
+        %{assigns: %{user: user}} = socket
+      ) do
+    socket =
+      run_query(socket, user, query_string)
+      |> push_patch(to: ~p"/query?#{%{q: query_string}}")
+
+    {:noreply, socket}
+  end
+
+  def handle_event(
+        "parse-query",
+        %{"value" => query_string},
+        socket
+      ) do
+    socket =
+      case Endpoints.parse_query_string(query_string) do
+        {:ok, _} ->
+          socket
+          |> assign(:parse_error_message, nil)
+
+        {:error, err} ->
+          error = if(is_binary(err), do: err, else: inspect(err))
+
+          socket
+          |> assign(:parse_error_message, error)
+      end
+      |> assign(:query_string, query_string)
+
+    {:noreply, socket}
+  end
+
+  def handle_event("parse-query", %{"_target" => ["live_monaco_editor", _]}, socket) do
+    # ignore change events from the editor field
+    {:noreply, socket}
+  end
+
+  defp run_query(socket, user, query_string) do
+    case Endpoints.run_query_string(user, {:bq_sql, query_string}, params: %{}) do
+      {:ok, %{rows: rows}} ->
+        socket
+        |> put_flash(:info, "Ran query successfully")
+        |> assign(:query_result_rows, rows)
+
+      {:error, err} ->
+        socket
+        |> put_flash(:error, "Error occured when running query: #{inspect(err)}")
+    end
+  end
+end

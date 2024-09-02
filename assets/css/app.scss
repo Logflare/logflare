@@ -1,5 +1,7 @@
 /* This file is for your main application css. */
 @import "~bootstrap/scss/bootstrap";
+@import "../../deps/live_monaco_editor/priv/static/live_monaco_editor.min.css";
+
 @import "named_variables";
 @import "dashboard";
 @import "header";
