@@ -1,6 +1,7 @@
 import "../css/app.scss";
 import { Socket } from "phoenix";
 import "../css/tailwind.css";
+
 import "bootstrap";
 import ClipboardJS from "clipboard";
 import * as Dashboard from "./dashboard";
@@ -19,6 +20,8 @@ import sourceLiveViewHooks from "./source_lv_hooks";
 import logsLiveViewHooks from "./log_event_live_hooks";
 import $ from "jquery";
 import moment from "moment";
+import { CodeEditorHook } from "../../deps/live_monaco_editor/priv/static/live_monaco_editor.esm"
+
 
 // set moment globally before daterangepicker
 window.moment = moment;
@@ -50,6 +53,8 @@ const hooks = {
   ...logsLiveViewHooks,
   ...LiveModalHooks,
   ...BillingHooks,
+  CodeEditorHook
+  
 };
 
 let liveSocket = new LiveSocket("/live", Socket, {

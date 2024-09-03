@@ -176,6 +176,12 @@ defmodule LogflareWeb.Router do
     live("/backends/:id/edit", BackendsLive, :edit)
   end
 
+  scope "/query", LogflareWeb do
+    pipe_through([:browser, :require_auth])
+
+    live("/", QueryLive, :index)
+  end
+
   scope "/endpoints", LogflareWeb do
     pipe_through([:browser, :require_auth])
 

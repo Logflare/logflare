@@ -225,7 +225,8 @@ defmodule Logflare.Mixfile do
       {:opentelemetry_api, "~> 1.2"},
       {:opentelemetry_exporter, "~> 1.6"},
       {:opentelemetry_phoenix, "~> 1.1"},
-      {:opentelemetry_cowboy, "~> 0.2"}
+      {:opentelemetry_cowboy, "~> 0.2"},
+      {:live_monaco_editor, "~> 0.1"}
     ]
   end
 
