@@ -243,7 +243,8 @@ defmodule Logflare.Application do
            start_pool_metrics?: true
          ]
        }},
-      {Finch, name: Logflare.FinchDefaultHttp1, pools: %{default: [protocols: [:http1], size: 50]}}
+      {Finch,
+       name: Logflare.FinchDefaultHttp1, pools: %{default: [protocols: [:http1], size: 50]}}
     ]
   end
 
