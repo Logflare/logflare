@@ -4,8 +4,6 @@ defmodule Logflare.SavedSearches do
   alias Logflare.{SavedSearch, Repo}
   alias Logflare.{Source}
   alias Logflare.Lql
-  alias Logflare.SavedSearchCounter
-  alias Logflare.DateTimeUtils
   alias Logflare.Lql.{ChartRule, FilterRule}
   require Logger
 
@@ -89,34 +87,6 @@ defmodule Logflare.SavedSearches do
         source
       )
     end
-  end
-
-  @doc """
-  Used for tracking saved search usage.
-  """
-  @typep inc_opts :: [tailing: boolean(), timestamp: DateTime.t()]
-  @spec inc(number(), inc_opts()) :: SavedSearchCounter.t()
-  def inc(search_id, opts) do
-    tailing? = opts[:tailing]
-    timestamp = opts[:timestamp] || DateTime.utc_now() |> DateTimeUtils.truncate(:hour)
-
-    {tcount, ntcount} =
-      if tailing? do
-        {1, 0}
-      else
-        {0, 1}
-      end
-
-    %SavedSearchCounter{
-      saved_search_id: search_id,
-      timestamp: timestamp,
-      tailing_count: tcount,
-      non_tailing_count: ntcount
-    }
-    |> Repo.insert(
-      on_conflict: [inc: [tailing_count: tcount, non_tailing_count: ntcount]],
-      conflict_target: [:saved_search_id, :timestamp, :granularity]
-    )
   end
 
   @doc """

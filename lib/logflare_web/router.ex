@@ -6,7 +6,6 @@ defmodule LogflareWeb.Router do
   import Phoenix.LiveDashboard.Router
   import Phoenix.LiveView.Router
 
-  alias LogflareWeb.LayoutView
   alias LogflareWeb.BertParser
   alias LogflareWeb.JsonParser
   alias LogflareWeb.SyslogParser
@@ -317,10 +316,6 @@ defmodule LogflareWeb.Router do
 
   scope "/admin", LogflareWeb do
     pipe_through([:browser, :check_admin])
-
-    live_session(:admin, root_layout: {LayoutView, :root}) do
-      live("/search", AdminSearchDashboardLive)
-    end
 
     get("/dashboard", AdminController, :dashboard)
     get("/sources", AdminController, :sources)
