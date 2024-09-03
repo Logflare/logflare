@@ -10,7 +10,8 @@ defmodule Logflare.Backends do
   alias Logflare.LogEvent
   alias Logflare.Repo
   alias Logflare.Source
-  alias Logflare.Source
+  alias Logflare.SingleTenant
+  alias Logflare.User
   alias Logflare.Sources
   alias Logflare.Logs
   alias Logflare.Logs.SourceRouting
@@ -104,6 +105,38 @@ defmodule Logflare.Backends do
       backend = Repo.preload(updated, :sources)
       Enum.each(backend.sources, &restart_source_sup(&1))
       {:ok, typecast_config_string_map_to_atom_map(updated)}
+    end
+  end
+
+  def get_default_backend(%User{} = user) do
+    if SingleTenant.single_tenant?() and SingleTenant.postgres_backend?() do
+      opts = SingleTenant.postgres_backend_adapter_opts()
+
+      %Backend{
+        type: :postgres,
+        config: Map.new(opts),
+        user_id: user.id,
+        name: "Default postgres backend"
+      }
+    else
+      {project_id, dataset_id} =
+        if user.bigquery_project_id do
+          {user.bigquery_project_id, user.bigquery_dataset_id}
+        else
+          project_id = User.bq_project_id()
+          dataset_id = User.generate_bq_dataset_id(user.id)
+          {project_id, dataset_id}
+        end
+
+      %Backend{
+        type: :bigquery,
+        config: %{
+          project_id: project_id,
+          dataset_id: dataset_id
+        },
+        user_id: user.id,
+        name: "Default bigquery backend"
+      }
     end
   end
 

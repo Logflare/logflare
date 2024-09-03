@@ -12,6 +12,7 @@ defmodule Logflare.SingleTenantTest do
   alias Logflare.Source
   alias Logflare.Auth
   alias Logflare.Backends.Backend
+  alias Logflare.Backends
 
   describe "single tenant mode using Big Query" do
     TestUtils.setup_single_tenant()
@@ -49,6 +50,13 @@ defmodule Logflare.SingleTenantTest do
       assert {:error, :already_created} = SingleTenant.create_default_user()
     end
 
+    test "get_default_backend" do
+      assert {:ok, _plan} = SingleTenant.create_default_plan()
+      assert {:ok, user} = SingleTenant.create_default_user()
+      assert %Backend{type: :bigquery} = SingleTenant.get_default_backend()
+      assert %Backend{type: :bigquery} = Backends.get_default_backend(user)
+    end
+
     test "single_tenant? returns true when in single tenant mode" do
       assert SingleTenant.single_tenant?()
     end
@@ -80,13 +88,14 @@ defmodule Logflare.SingleTenantTest do
       [url: url, password: password]
     end
 
-    test "if  is set and single tenant, creates a source with a postgres backend", %{url: url} do
+    test "if is set and single tenant, default backend uses postgres backend", %{url: url} do
       Logflare.Application.startup_tasks()
       %{id: user_id} = user = SingleTenant.get_default_user()
       assert {:ok, source} = Sources.create_source(%{name: TestUtils.random_string()}, user)
       assert %Source{user_id: ^user_id, v2_pipeline: true} = source
-      assert [%Backend{type: :postgres}] = Logflare.Backends.list_backends(source)
+      assert [] == Logflare.Backends.list_backends(source)
       assert %Backend{type: :postgres, config: %{url: ^url}} = SingleTenant.get_default_backend()
+      assert %Backend{type: :postgres, config: %{url: ^url}} = Backends.get_default_backend(user)
     end
 
     test "if :postgres_backend_url is set and single tenant, updates an existing postgres backend",
