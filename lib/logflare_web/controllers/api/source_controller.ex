@@ -67,7 +67,7 @@ defmodule LogflareWeb.Api.SourceController do
     request_body: Source.params(),
     responses: %{
       204 => Accepted.response(),
-      201 => Created.response(Source),
+      200 => Accepted.response(),
       404 => NotFound.response()
     }
   )
@@ -80,7 +80,7 @@ defmodule LogflareWeb.Api.SourceController do
       conn
       |> case do
         %{method: "PATCH"} -> put_status(conn, 204)
-        %{method: "PUT"} -> put_status(conn, 201)
+        %{method: "PUT"} -> put_status(conn, 200)
       end
       |> json(source)
     end
