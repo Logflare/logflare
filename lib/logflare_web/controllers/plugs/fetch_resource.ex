@@ -15,7 +15,10 @@ defmodule LogflareWeb.Plugs.FetchResource do
   def init(_opts), do: nil
 
   # ingest by source token
-  def call(%{assigns: %{resource_type: :source}, params: %{"source" => token}} = conn, _opts) do
+  def call(%{assigns: %{resource_type: :source}, params: params} = conn, _opts)
+      when is_map_key(params, "source") or is_map_key(params, "collection") do
+    token = params["source"] || params["collection"]
+
     source =
       case is_uuid?(token) do
         true ->
@@ -31,10 +34,13 @@ defmodule LogflareWeb.Plugs.FetchResource do
 
   # ingest by source name
   def call(
-        %{assigns: %{user: user, resource_type: :source}, params: %{"source_name" => name}} =
+        %{assigns: %{user: user, resource_type: :source}, params: params} =
           conn,
         _opts
-      ) do
+      )
+      when is_map_key(params, "source_name") or is_map_key(params, "collection_name") do
+    name = params["source_name"] || params["collection_name"]
+
     source =
       Sources.Cache.get_by_and_preload_rules(name: name, user_id: user.id)
       |> Sources.refresh_source_metrics_for_ingest()
