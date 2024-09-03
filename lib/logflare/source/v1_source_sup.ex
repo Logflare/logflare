@@ -12,7 +12,6 @@ defmodule Logflare.Source.V1SourceSup do
 
   alias Logflare.Source.RateCounterServer, as: RCS
   alias Logflare.Users
-  alias Logflare.User
   alias Logflare.Backends
   alias Logflare.Backends.Backend
   alias Logflare.Billing

@@ -202,8 +202,6 @@ defmodule Logflare.SingleTenant do
     user = get_default_user()
     count = Sources.count_sources_by_user(user)
 
-    backend = get_default_backend()
-
     if count == 0 do
       sources =
         for name <- @source_names do

@@ -6,7 +6,6 @@ defmodule Logflare.Backends.SourceSup do
   alias Logflare.Backends.SourceSupWorker
   alias Logflare.Backends
   alias Logflare.Source
-  alias Logflare.User
   alias Logflare.Users
   alias Logflare.Billing
   alias Logflare.Source.RecentLogsServer
