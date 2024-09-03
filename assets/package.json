@@ -26,7 +26,6 @@
     "phoenix_live_view": "file:../deps/phoenix_live_view",
     "react": "^16.11.0",
     "react-bootstrap": "^1.6.6",
-    "react-data-grid": "^6.1.0",
     "react-dom": "^16.11.0",
     "react-spinners": "^0.9.0",
     "sql-formatter": "^2.3.3"
