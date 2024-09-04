@@ -11,6 +11,7 @@ defmodule Logflare.Endpoints do
   alias Logflare.Backends.Adaptor.PostgresAdaptor
   alias Logflare.SingleTenant
   alias Logflare.Alerting
+  alias Logflare.Backends
 
   import Ecto.Query
   @typep run_query_return :: {:ok, %{rows: [map()]}} | {:error, String.t()}
@@ -158,7 +159,8 @@ defmodule Logflare.Endpoints do
          {:ok, transformed_query} <-
            Logflare.Sql.transform(endpoint_query.language, transform_input, user_id) do
       {endpoint, query_string} =
-        if SingleTenant.supabase_mode?() and SingleTenant.postgres_backend?() do
+        if SingleTenant.supabase_mode?() and SingleTenant.postgres_backend?() and
+             endpoint_query.language != :pg_sql do
           # translate the query
           schema_prefix = Keyword.get(SingleTenant.postgres_backend_adapter_opts(), :schema)
 
@@ -223,17 +225,21 @@ defmodule Logflare.Endpoints do
        ) do
     # find compatible source backend
     # TODO: move this to Backends module
+    user = Users.Cache.get(endpoint_query.user_id)
+    # TODO (ziinc): backend should be passed as an arg, shouldn't be random
     backend =
-      Backends.list_backends_by_user_id(endpoint_query.user_id)
-      |> Enum.filter(fn sb -> sb.type == :postgres end)
-      |> List.first()
-      |> then(fn
-        nil ->
-          raise "No matching source backend found for Postgres query execution"
+      case Backends.get_default_backend(user) do
+        %_{type: :bigquery} ->
+          Backends.list_backends(user_id: user.id, type: :postgres)
+          |> Enum.random()
 
-        other ->
-          other
-      end)
+        backend ->
+          backend
+      end
+
+    if is_nil(backend) do
+      raise "No matching source backend found for Postgres query execution"
+    end
 
     # convert params to PG params style
     positions =

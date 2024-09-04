@@ -6,7 +6,6 @@ defmodule Logflare.Backends.SourceSup do
   alias Logflare.Backends.SourceSupWorker
   alias Logflare.Backends
   alias Logflare.Source
-  alias Logflare.User
   alias Logflare.Users
   alias Logflare.Billing
   alias Logflare.Source.RecentLogsServer
@@ -38,26 +37,10 @@ defmodule Logflare.Backends.SourceSup do
 
     plan = Billing.Cache.get_plan_by_user(user)
 
-    {project_id, dataset_id} =
-      if user.bigquery_project_id do
-        {user.bigquery_project_id, user.bigquery_dataset_id}
-      else
-        project_id = User.bq_project_id()
-        dataset_id = User.generate_bq_dataset_id(source.user_id)
-        {project_id, dataset_id}
-      end
+    default_backend = Backends.get_default_backend(user)
 
     specs =
-      [
-        %Backend{
-          type: :bigquery,
-          config: %{
-            project_id: project_id,
-            dataset_id: dataset_id
-          }
-        }
-        | ingest_backends
-      ]
+      [default_backend | ingest_backends]
       |> Enum.concat(rules_backends)
       |> Enum.map(&Backend.child_spec(source, &1))
       |> Enum.uniq()

@@ -22,7 +22,6 @@ defmodule Logflare.TestUtils do
     opts =
       Enum.into(opts, %{
         seed_user: false,
-        seed_backend: false,
         supabase_mode: false,
         bigquery_project_id: random_string(),
         backend_type: :bigquery,
@@ -39,10 +38,6 @@ defmodule Logflare.TestUtils do
         if unquote(opts.seed_user) do
           {:ok, _} = SingleTenant.create_default_plan()
           {:ok, _user} = SingleTenant.create_default_user()
-        end
-
-        if unquote(opts.seed_backend) do
-          {:ok, _backend} = SingleTenant.upsert_default_backend()
         end
 
         if unquote(opts.supabase_mode) do

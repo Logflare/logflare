@@ -7,6 +7,7 @@ defmodule LogflareWeb.QueryLive do
 
   alias Logflare.Endpoints
   alias Logflare.Users
+  alias Logflare.Backends
 
   def render(assigns) do
     ~H"""
@@ -229,7 +230,13 @@ defmodule LogflareWeb.QueryLive do
   end
 
   defp run_query(socket, user, query_string) do
-    case Endpoints.run_query_string(user, {:bq_sql, query_string}, params: %{}) do
+    type =
+      case Backends.get_default_backend(user) do
+        %_{type: :bigquery} -> :bq_sql
+        %_{type: :postgres} -> :pg_sql
+      end
+
+    case Endpoints.run_query_string(user, {type, query_string}, params: %{}) do
       {:ok, %{rows: rows}} ->
         socket
         |> put_flash(:info, "Ran query successfully")

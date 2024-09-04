@@ -12,7 +12,6 @@ defmodule Logflare.Source.V1SourceSup do
 
   alias Logflare.Source.RateCounterServer, as: RCS
   alias Logflare.Users
-  alias Logflare.User
   alias Logflare.Backends
   alias Logflare.Backends.Backend
   alias Logflare.Billing
@@ -39,22 +38,7 @@ defmodule Logflare.Source.V1SourceSup do
 
     plan = Billing.Cache.get_plan_by_user(user)
 
-    {project_id, dataset_id} =
-      if user.bigquery_project_id do
-        {user.bigquery_project_id, user.bigquery_dataset_id}
-      else
-        project_id = User.bq_project_id()
-        dataset_id = User.generate_bq_dataset_id(source.user_id)
-        {project_id, dataset_id}
-      end
-
-    backend = %Backend{
-      type: :bigquery,
-      config: %{
-        project_id: project_id,
-        dataset_id: dataset_id
-      }
-    }
+    backend = Backends.get_default_backend(user)
 
     default_bigquery_spec = Backend.child_spec(source, backend)
 

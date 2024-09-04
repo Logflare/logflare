@@ -31,10 +31,10 @@ defmodule Logflare.SingleTenant do
     name: "Enterprise",
     period: "year",
     price: 20_000,
-    limit_sources: 100,
-    limit_rate_limit: 5_000,
+    limit_sources: 500,
+    limit_rate_limit: 500_000,
     limit_alert_freq: 1_000,
-    limit_source_rate_limit: 100,
+    limit_source_rate_limit: 100_000,
     limit_saved_search_limit: 1,
     limit_team_users_limit: 2,
     limit_source_fields_limit: 500,
@@ -116,41 +116,8 @@ defmodule Logflare.SingleTenant do
   TODO: add support for bigquery v2 adaptor
   """
   def get_default_backend do
-    user = get_default_user()
-
-    Backends.list_backends_by_user_id(user.id)
-    |> Enum.filter(fn backend -> backend.type == :postgres end)
-    |> List.first()
-  end
-
-  @doc """
-  Updates or inserts the default backend based on env var.
-  """
-  def upsert_default_backend do
-    user = get_default_user()
-    existing_backend = get_default_backend()
-
-    cond do
-      postgres_backend?() and !!existing_backend ->
-        opts = postgres_backend_adapter_opts()
-
-        Backends.update_backend(existing_backend, %{
-          config: Map.new(opts)
-        })
-
-      postgres_backend?() ->
-        opts = postgres_backend_adapter_opts()
-
-        Backends.create_backend(%{
-          name: "Default postgres backend",
-          type: :postgres,
-          config: Map.new(opts),
-          user_id: user.id
-        })
-
-      true ->
-        :noop
-    end
+    get_default_user()
+    |> Backends.get_default_backend()
   end
 
   @doc """
@@ -235,17 +202,11 @@ defmodule Logflare.SingleTenant do
     user = get_default_user()
     count = Sources.count_sources_by_user(user)
 
-    backend = get_default_backend()
-
     if count == 0 do
       sources =
         for name <- @source_names do
           # creating a source will automatically start the source's RLS process
           {:ok, source} = Sources.create_source(%{name: name}, user)
-
-          if backend do
-            {:ok, _backend} = Backends.update_source_backends(source, [backend])
-          end
 
           source
         end

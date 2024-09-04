@@ -51,11 +51,7 @@ defmodule Logflare.Sources do
            |> Ecto.build_assoc(:sources)
            |> Source.update_by_user_changeset(source_params)
            |> Repo.insert() do
-      if SingleTenant.postgres_backend?() do
-        # attach the source to the postgres backend
-        backend = SingleTenant.get_default_backend()
-        Backends.update_source_backends(source, [backend])
-      else
+      if !SingleTenant.postgres_backend?() do
         create_big_query_schema_and_start_source(source)
       end
 
