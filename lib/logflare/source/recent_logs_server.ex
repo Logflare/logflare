@@ -61,15 +61,21 @@ defmodule Logflare.Source.RecentLogsServer do
   end
 
   def handle_info(:touch, %{source_id: source_id, source_token: source_token} = state) do
-    source = Sources.Cache.get_by_id(source_id)
-    log_events = Backends.list_recent_logs(source)
-    log_event = Enum.reverse(log_events) |> hd()
+    source_id
+    |> Sources.Cache.get_by_id()
+    |> Backends.list_recent_logs()
+    |> Enum.reverse()
+    |> case do
+      [] ->
+        :noop
 
-    now = NaiveDateTime.utc_now()
+      [log_event | _] ->
+        now = NaiveDateTime.utc_now()
 
-    if NaiveDateTime.diff(now, log_event.ingested_at, :millisecond) < @touch_timer do
-      Sources.Cache.get_by(token: source_token)
-      |> Sources.update_source(%{log_events_updated_at: DateTime.utc_now()})
+        if NaiveDateTime.diff(now, log_event.ingested_at, :millisecond) < @touch_timer do
+          Sources.Cache.get_by(token: source_token)
+          |> Sources.update_source(%{log_events_updated_at: DateTime.utc_now()})
+        end
     end
 
     touch()
