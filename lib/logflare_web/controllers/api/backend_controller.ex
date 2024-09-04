@@ -63,7 +63,7 @@ defmodule LogflareWeb.Api.BackendController do
     request_body: BackendApiSchema.params(),
     responses: %{
       204 => Accepted.response(),
-      201 => Created.response(BackendApiSchema),
+      200 => Accepted.response(BackendApiSchema),
       404 => NotFound.response()
     }
   )
@@ -74,7 +74,7 @@ defmodule LogflareWeb.Api.BackendController do
       conn
       |> case do
         %{method: "PATCH"} -> put_status(conn, 204)
-        %{method: "PUT"} -> put_status(conn, 201)
+        %{method: "PUT"} -> put_status(conn, 200)
       end
       |> json(updated)
     end

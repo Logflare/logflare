@@ -10,7 +10,7 @@ defmodule LogflareWeb.Api.EndpointController do
   alias LogflareWeb.OpenApi.List
   alias LogflareWeb.OpenApi.NotFound
 
-  alias LogflareWeb.OpenApiSchemas.Endpoint
+  alias LogflareWeb.OpenApiSchemas.EndpointApiSchema
 
   action_fallback(LogflareWeb.Api.FallbackController)
 
@@ -18,7 +18,7 @@ defmodule LogflareWeb.Api.EndpointController do
 
   operation(:index,
     summary: "List endpoints",
-    responses: %{200 => List.response(Endpoint)}
+    responses: %{200 => List.response(EndpointApiSchema)}
   )
 
   def index(%{assigns: %{user: user}} = conn, _) do
@@ -28,9 +28,9 @@ defmodule LogflareWeb.Api.EndpointController do
 
   operation(:show,
     summary: "Fetch endpoint",
-    parameters: [token: [in: :path, description: "Endpoint Token", type: :string]],
+    parameters: [token: [in: :path, description: "Endpoint UUID Token", type: :string]],
     responses: %{
-      200 => Endpoint.response(),
+      200 => EndpointApiSchema.response(),
       404 => NotFound.response()
     }
   )
@@ -43,9 +43,9 @@ defmodule LogflareWeb.Api.EndpointController do
 
   operation(:create,
     summary: "Create endpoint",
-    request_body: Endpoint.params(),
+    request_body: EndpointApiSchema.params(),
     responses: %{
-      201 => Created.response(Endpoint),
+      201 => Created.response(EndpointApiSchema),
       404 => NotFound.response()
     }
   )
@@ -60,11 +60,11 @@ defmodule LogflareWeb.Api.EndpointController do
 
   operation(:update,
     summary: "Update endpoint",
-    parameters: [token: [in: :path, description: "Endpoint Token", type: :string]],
-    request_body: Endpoint.params(),
+    parameters: [token: [in: :path, description: "Endpoint UUID Token", type: :string]],
+    request_body: EndpointApiSchema.params(),
     responses: %{
       204 => Accepted.response(),
-      201 => Created.response(Endpoint),
+      200 => Accepted.response(EndpointApiSchema),
       404 => NotFound.response()
     }
   )
@@ -74,7 +74,7 @@ defmodule LogflareWeb.Api.EndpointController do
          {:ok, query} <- Endpoints.update_query(query, params) do
       conn
       |> case do
-        %{method: "PUT"} -> put_status(conn, 201)
+        %{method: "PUT"} -> put_status(conn, 200)
         %{method: "PATCH"} -> put_status(conn, 204)
       end
       |> json(query)
@@ -85,7 +85,7 @@ defmodule LogflareWeb.Api.EndpointController do
 
   operation(:delete,
     summary: "Delete endpoint",
-    parameters: [token: [in: :path, description: "Endpoint Token", type: :string]],
+    parameters: [token: [in: :path, description: "Endpoint UUID Token", type: :string]],
     responses: %{
       204 => Accepted.response(),
       404 => NotFound.response()

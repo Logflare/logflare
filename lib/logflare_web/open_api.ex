@@ -48,6 +48,7 @@ defmodule LogflareWeb.OpenApi do
     OpenApiSpex.schema(%{})
 
     def response(), do: {"Accepted Response", "text/plain", __MODULE__}
+    def response(module), do: {"Accepted Response", "application/json", module}
   end
 
   defmodule NotFound do

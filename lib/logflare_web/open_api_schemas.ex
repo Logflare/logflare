@@ -58,7 +58,7 @@ defmodule LogflareWeb.OpenApiSchemas do
     use LogflareWeb.OpenApi, properties: @properties, required: [:result, :errors]
   end
 
-  defmodule Endpoint do
+  defmodule EndpointApiSchema do
     @properties %{
       token: %Schema{type: :string},
       name: %Schema{type: :string},

@@ -104,7 +104,24 @@ defmodule LogflareWeb.Api.SourceControllerTest do
   end
 
   describe "update/2" do
-    test "updates an existing source from a user", %{
+    test "PUT updates an existing source from a user", %{
+      conn: conn,
+      user: user,
+      sources: [source | _]
+    } do
+      name = TestUtils.random_string()
+
+      response =
+        conn
+        |> add_access_token(user, "private")
+        |> put("/api/sources/#{source.token}", %{name: name})
+        |> json_response(200)
+
+      assert response["id"] == source.id
+      assert response["name"] == name
+    end
+
+    test "PATCH updates an existing source from a user", %{
       conn: conn,
       user: user,
       sources: [source | _]

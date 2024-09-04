@@ -123,7 +123,7 @@ defmodule LogflareWeb.Api.RuleController do
     request_body: RuleApiSchema.params(),
     responses: %{
       204 => Accepted.response(),
-      201 => Created.response(RuleApiSchema),
+      200 => Accepted.response(RuleApiSchema),
       404 => NotFound.response()
     }
   )
