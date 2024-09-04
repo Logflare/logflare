@@ -235,7 +235,6 @@ defmodule LogflareWeb.QueryLive do
         %_{type: :bigquery} -> :bq_sql
         %_{type: :postgres} -> :pg_sql
       end
-      |> dbg()
 
     case Endpoints.run_query_string(user, {type, query_string}, params: %{}) do
       {:ok, %{rows: rows}} ->

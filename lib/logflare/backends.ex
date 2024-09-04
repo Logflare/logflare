@@ -48,6 +48,9 @@ defmodule Logflare.Backends do
       {:user_id, id}, q ->
         where(q, [b], b.user_id == ^id)
 
+      {:type, type}, q when is_atom(type) ->
+        where(q, [b], b.type == ^type)
+
       {:metadata, %{} = metadata}, q ->
         normalized =
           Enum.into(metadata, %{}, fn {k, v} ->

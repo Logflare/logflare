@@ -170,7 +170,6 @@ defmodule Logflare.Endpoints do
         else
           {endpoint_query, transformed_query}
         end
-        |> dbg()
 
       exec_query_on_backend(endpoint, query_string, declared_params, params)
     end
@@ -227,9 +226,18 @@ defmodule Logflare.Endpoints do
     # find compatible source backend
     # TODO: move this to Backends module
     user = Users.Cache.get(endpoint_query.user_id)
-    backend = Backends.get_default_backend(user)
+    # TODO (ziinc): backend should be passed as an arg, shouldn't be random
+    backend =
+      case Backends.get_default_backend(user) do
+        %_{type: :bigquery} ->
+          Backends.list_backends(user_id: user.id, type: :postgres)
+          |> Enum.random()
 
-    if backend.type != :postgres do
+        backend ->
+          backend
+      end
+
+    if is_nil(backend) do
       raise "No matching source backend found for Postgres query execution"
     end
 
