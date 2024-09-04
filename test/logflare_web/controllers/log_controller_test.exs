@@ -56,6 +56,50 @@ defmodule LogflareWeb.LogControllerTest do
       end)
     end
 
+    test "valid ingestion using ?collection=", %{conn: conn, source: source, user: user} do
+      pid = self()
+      ref = make_ref()
+
+      WebhookAdaptor.Client
+      |> expect(:send, fn _req ->
+        send(pid, ref)
+        %Tesla.Env{status: 200, body: ""}
+      end)
+
+      conn =
+        conn
+        |> put_req_header("x-api-key", user.api_key)
+        |> post(Routes.log_path(conn, :create, collection: source.token), @valid)
+
+      assert json_response(conn, 200) == %{"message" => "Logged!"}
+
+      TestUtils.retry_assert(fn ->
+        assert_received ^ref
+      end)
+    end
+
+    test "valid ingestion using ?collection_name=", %{conn: conn, source: source, user: user} do
+      pid = self()
+      ref = make_ref()
+
+      WebhookAdaptor.Client
+      |> expect(:send, fn _req ->
+        send(pid, ref)
+        %Tesla.Env{status: 200, body: ""}
+      end)
+
+      conn =
+        conn
+        |> put_req_header("x-api-key", user.api_key)
+        |> post(Routes.log_path(conn, :create, collection_name: source.name), @valid)
+
+      assert json_response(conn, 200) == %{"message" => "Logged!"}
+
+      TestUtils.retry_assert(fn ->
+        assert_received ^ref
+      end)
+    end
+
     test ":cloud_event ingestion", %{conn: conn, source: source, user: user} do
       this = self()
       ref = make_ref()
