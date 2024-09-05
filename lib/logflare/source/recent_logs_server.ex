@@ -15,11 +15,17 @@ defmodule Logflare.Source.RecentLogsServer do
   require Logger
 
   @touch_timer :timer.minutes(45)
-  @broadcast_every 1_500
+  @broadcast_every 1_800
 
   ## Server
   def start_link(args) do
-    GenServer.start_link(__MODULE__, args, name: Backends.via_source(args[:source], __MODULE__))
+    GenServer.start_link(__MODULE__, args,
+      name: Backends.via_source(args[:source], __MODULE__),
+      spawn_opt: [
+        fullsweep_after: 1_000
+      ],
+      hibernate_after: 5_000
+    )
   end
 
   ## Client
@@ -39,9 +45,24 @@ defmodule Logflare.Source.RecentLogsServer do
        inserts_since_boot: 0,
        total_cluster_inserts: 0,
        source_token: source.token,
-       source_id: source.id
+       source_id: source.id,
+       changed_at: 0
      }}
   end
+
+  def get_changed_at(source) do
+    Backends.via_source(source, __MODULE__)
+    |> GenServer.whereis()
+    |> case do
+      nil ->
+        0
+
+      pid ->
+        GenServer.call(pid, :get_changed_at)
+    end
+  end
+
+  def handle_call(:get_changed_at, _caller, state), do: {:reply, state.changed_at, state}
 
   def handle_info({:stop_please, reason}, state) do
     {:stop, reason, state}
@@ -50,13 +71,21 @@ defmodule Logflare.Source.RecentLogsServer do
   def handle_info(:broadcast, state) do
     {:ok, total_cluster_inserts, inserts_since_boot} = broadcast_count(state)
 
+    changed_at =
+      if state.inserts_since_boot < inserts_since_boot do
+        System.system_time(:microsecond)
+      else
+        state.changed_at
+      end
+
     broadcast()
 
     {:noreply,
      %{
        state
        | total_cluster_inserts: total_cluster_inserts,
-         inserts_since_boot: inserts_since_boot
+         inserts_since_boot: inserts_since_boot,
+         changed_at: changed_at
      }}
   end
 

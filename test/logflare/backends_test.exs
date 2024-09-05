@@ -55,6 +55,10 @@ defmodule Logflare.BackendsTest do
       assert result.id == backend.id
     end
 
+    test "fetch_latest_timestamp/1 without SourceSup returns 0", %{source: source} do
+      assert 0 == Backends.fetch_latest_timestamp(source)
+    end
+
     test "create backend", %{user: user} do
       assert {:ok, %Backend{}} =
                Backends.create_backend(%{
@@ -222,6 +226,15 @@ defmodule Logflare.BackendsTest do
       assert length(cached) == 100
       cached = Backends.list_recent_logs_local(source)
       assert length(cached) == 100
+    end
+
+    test "caches latest timestamp correctly", %{source: source} do
+      assert Backends.fetch_latest_timestamp(source) == 0
+      le = build(:log_event, source: source, some: "event")
+      assert {:ok, _} = Backends.ingest_logs([le], source)
+      # wait for the RLS broadcast interval
+      :timer.sleep(2000)
+      assert Backends.fetch_latest_timestamp(source) != 0
     end
 
     test "performs broadcasts for global cache rates and dashboard rates", %{
