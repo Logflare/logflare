@@ -14,7 +14,7 @@ defmodule Logflare.Backends.IngestEventQueue.QueueJanitor do
   require Logger
   @default_interval 1_000
   @default_remainder 100
-  @default_max 50_000
+  @default_max Logflare.Backends.max_buffer_len()
   @default_purge_ratio 0.1
 
   def start_link(opts) do
@@ -66,7 +66,7 @@ defmodule Logflare.Backends.IngestEventQueue.QueueJanitor do
         IngestEventQueue.drop(sid_bid_pid, :pending, to_drop)
 
         Logger.warning(
-          "IngestEventQueue private :ets buffer exceeded max for source id=#{state.source_id}, dropping #{pending_size} events",
+          "IngestEventQueue private :ets buffer exceeded max for source id=#{state.source_id}, dropping #{to_drop} events",
           backend_id: state.backend_id
         )
       end

@@ -49,13 +49,14 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
           bigquery_dataset_id: dataset_id
         ],
         min_pipelines: 0,
-        max_pipelines: System.schedulers_online() * 2,
+        max_pipelines: System.schedulers_online(),
         initial_count: 1,
         resolve_count: fn state ->
           source = Sources.refresh_source_metrics_for_ingest(source)
-          len = Backends.get_and_cache_local_pending_buffer_len(source.id, backend.id)
-          startup_size = IngestEventQueue.get_table_size({source.id, backend.id, nil}) || 0
-          handle_resolve_count(state, startup_size, len, source.metrics.avg)
+
+          lens = IngestEventQueue.list_counts({source.id, backend.id})
+
+          handle_resolve_count(state, lens, source.metrics.avg)
         end
       },
       {Schema,
@@ -75,45 +76,56 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
   Pipeline count resolution logic, separate to a different functino for easier testing.
 
   """
-  def handle_resolve_count(state, startup_size, len, avg_rate) do
-    max_len = Backends.max_buffer_len()
+  def handle_resolve_count(state, lens, avg_rate) do
+    max_len = Backends.max_ingest_queue_len()
+
+    startup_size =
+      Enum.find_value(lens, 0, fn
+        {{_sid, _bid, nil}, val} -> val
+        _ -> false
+      end)
+
+    lens_no_startup =
+      Enum.filter(lens, fn
+        {{_sid, _bid, nil}, _val} -> false
+        _ -> true
+      end)
+
+    lens_no_startup_values = Enum.map(lens_no_startup, fn {_, v} -> v end)
+    len = Enum.map(lens, fn {_, v} -> v end) |> Enum.sum()
+
     last_decr = state.last_count_decrease || NaiveDateTime.utc_now()
     sec_since_last_decr = NaiveDateTime.diff(NaiveDateTime.utc_now(), last_decr)
 
+    any_almost_full? = Enum.any?(lens_no_startup_values, &(&1 > 0.75 * max_len))
+
     cond do
       # max out pipelines, overflow risk
-      len > max_len / 2 ->
-        state.max_pipelines
+      startup_size > 0 ->
+        state.pipeline_count + ceil(startup_size / 5_000)
 
-      # increase based on hardcoded thresholds
-      len > max_len / 10 ->
-        state.pipeline_count + 5
-
-      len > max_len / 20 ->
+      any_almost_full? and avg_rate > 10_000 ->
         state.pipeline_count + 3
 
-      len > max_len / 50 ->
+      any_almost_full? and avg_rate > 5_000 ->
         state.pipeline_count + 2
 
-      len > max_len / 100 ->
-        state.pipeline_count + 1
-
-      startup_size > 0 ->
+      any_almost_full? ->
         state.pipeline_count + 1
 
       # new items incoming
       len > 0 and state.pipeline_count == 0 ->
-        if(len > 500, do: 3, else: 1)
+        1
 
       # gradual decrease
-      len < max_len / 100 and state.pipeline_count > 1 and
+      Enum.all?(lens_no_startup_values, &(&1 < 0.1 * max_len)) and state.pipeline_count > 1 and
           (sec_since_last_decr > 30 or state.last_count_decrease == nil) ->
         state.pipeline_count - 1
 
       len == 0 and avg_rate == 0 and
         state.pipeline_count == 1 and
           (sec_since_last_decr > 150 or state.last_count_decrease == nil) ->
-        # scale to zero only if no items for > 5m and incoming rate is 0
+        # scale to zero only if no items for > 5m
         0
 
       true ->

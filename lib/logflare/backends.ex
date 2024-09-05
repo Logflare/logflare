@@ -23,13 +23,16 @@ defmodule Logflare.Backends do
 
   defdelegate child_spec(arg), to: __MODULE__.Supervisor
 
-  @max_pending_buffer_len 50_000
+  @max_pending_buffer_len 500_000
 
   @doc """
   Retrieves the hardcoded max pending buffer length.
   """
   @spec max_buffer_len() :: non_neg_integer()
   def max_buffer_len(), do: @max_pending_buffer_len
+
+  @spec max_ingest_queue_len() :: non_neg_integer()
+  def max_ingest_queue_len(), do: 10_000
 
   @doc """
   Lists `Backend`s for a given source.

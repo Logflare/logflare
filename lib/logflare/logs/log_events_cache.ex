@@ -4,7 +4,7 @@ defmodule Logflare.Logs.LogEvents.Cache do
   alias Logflare.Logs.LogEvents
   alias Logflare.ContextCache
   alias Logflare.LogEvent, as: LE
-  @ttl :timer.hours(24)
+  @ttl :timer.hours(1)
 
   @cache __MODULE__
 
@@ -19,7 +19,7 @@ defmodule Logflare.Logs.LogEvents.Cache do
         :start_link,
         [
           @cache,
-          [expiration: expiration(default: @ttl), limit: limit(size: 10_000), stats: stats]
+          [expiration: expiration(default: @ttl), limit: limit(size: 5_000), stats: stats]
         ]
       }
     }
