@@ -51,7 +51,7 @@ defmodule Logflare.Source.BigQuery.Pipeline do
             transformer: {__MODULE__, :transform, []}
           ],
           processors: [
-            default: [concurrency: 4, max_demand: 100]
+            default: [concurrency: 4]
           ],
           batchers: [
             bq: [
