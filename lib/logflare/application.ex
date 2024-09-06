@@ -75,9 +75,11 @@ defmodule Logflare.Application do
       conditional_children() ++
       [
         Logflare.ErlSysMon,
-        {Task.Supervisor, name: Logflare.TaskSupervisor, spawn_opt: [
-          fullsweep_after: 1_000
-        ]},
+        {Task.Supervisor,
+         name: Logflare.TaskSupervisor,
+         spawn_opt: [
+           fullsweep_after: 1_000
+         ]},
         {Cluster.Supervisor, [topologies, [name: Logflare.ClusterSupervisor]]},
         Logflare.Repo,
         Logflare.Vault,
