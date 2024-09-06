@@ -305,7 +305,7 @@ defmodule Logflare.BackendsTest do
                  source
                )
 
-      :timer.sleep(1000)
+      :timer.sleep(200)
       # 2 events
       assert Backends.list_recent_logs_local(source) |> length() == 2
       # 1 events
