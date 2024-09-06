@@ -174,7 +174,7 @@ defmodule Logflare.Backends.BigQueryAdaptorTest do
 
   test "resolve_count will increase counts" do
     check all pipeline_count <- integer(0..100),
-              queue_size <- integer(501..1000),
+              queue_size <- integer(9001..10000),
               startup_queue_size <- integer(0..100),
               avg_rate <- integer(0..10_000),
               last <- member_of([nil, NaiveDateTime.utc_now()]) do
@@ -186,7 +186,14 @@ defmodule Logflare.Backends.BigQueryAdaptorTest do
       }
 
       desired =
-        BigQueryAdaptor.handle_resolve_count(state, startup_queue_size, queue_size, avg_rate)
+        BigQueryAdaptor.handle_resolve_count(
+          state,
+          %{
+            {1, 2, nil} => startup_queue_size,
+            {1, 2, make_ref()} => queue_size
+          },
+          avg_rate
+        )
 
       assert desired > pipeline_count
     end
@@ -206,7 +213,14 @@ defmodule Logflare.Backends.BigQueryAdaptorTest do
       }
 
       desired =
-        BigQueryAdaptor.handle_resolve_count(state, startup_queue_size, queue_size, avg_rate)
+        BigQueryAdaptor.handle_resolve_count(
+          state,
+          %{
+            {1, 2, nil} => startup_queue_size,
+            {1, 2, make_ref()} => queue_size
+          },
+          avg_rate
+        )
 
       assert desired < pipeline_count
       assert desired != 0
@@ -227,7 +241,14 @@ defmodule Logflare.Backends.BigQueryAdaptorTest do
       }
 
       desired =
-        BigQueryAdaptor.handle_resolve_count(state, startup_queue_size, queue_size, avg_rate)
+        BigQueryAdaptor.handle_resolve_count(
+          state,
+          %{
+            {1, 2, nil} => startup_queue_size,
+            {1, 2, make_ref()} => queue_size
+          },
+          avg_rate
+        )
 
       assert desired < pipeline_count
       assert desired == 0
@@ -236,7 +257,6 @@ defmodule Logflare.Backends.BigQueryAdaptorTest do
 
   test "resolve_count initial incoming" do
     check all pipeline_count <- constant(0),
-              queue_size <- integer(1..500),
               startup_queue_size <- integer(1..500),
               avg_rate <- integer(1..500),
               since <- integer(0..100) do
@@ -248,7 +268,13 @@ defmodule Logflare.Backends.BigQueryAdaptorTest do
       }
 
       desired =
-        BigQueryAdaptor.handle_resolve_count(state, startup_queue_size, queue_size, avg_rate)
+        BigQueryAdaptor.handle_resolve_count(
+          state,
+          %{
+            {1, 2, nil} => startup_queue_size
+          },
+          avg_rate
+        )
 
       assert desired > pipeline_count
       assert desired != 0

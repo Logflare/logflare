@@ -121,7 +121,7 @@ defmodule Logflare.Backends.IngestEventQueue do
   """
   @spec add_to_table(source_backend_pid(), [LogEvent.t()]) :: :ok | {:error, :not_initialized}
   def add_to_table({sid, bid} = sid_bid, batch) when is_integer(sid) do
-    procs =
+    proc_counts =
       list_counts(sid_bid)
       |> Enum.sort_by(fn {_key, count} -> count end, :asc)
       |> Enum.filter(fn
@@ -129,7 +129,8 @@ defmodule Logflare.Backends.IngestEventQueue do
         {{_, _, nil}, _} -> false
         {{_, _, _}, _} -> true
       end)
-      |> Enum.map(fn {key, _count} -> key end)
+
+    procs = Enum.map(proc_counts, fn {key, _count} -> key end)
 
     procs_length = Enum.count(procs)
 
@@ -140,7 +141,7 @@ defmodule Logflare.Backends.IngestEventQueue do
       Logflare.Utils.chunked_round_robin(
         batch,
         procs,
-        10,
+        250,
         fn chunk, target ->
           add_to_table(target, chunk)
         end

@@ -31,6 +31,9 @@ defmodule Logflare.Backends do
   @spec max_buffer_len() :: non_neg_integer()
   def max_buffer_len(), do: @max_pending_buffer_len
 
+  @spec max_ingest_queue_len() :: non_neg_integer()
+  def max_ingest_queue_len(), do: 10_000
+
   @doc """
   Lists `Backend`s for a given source.
   """

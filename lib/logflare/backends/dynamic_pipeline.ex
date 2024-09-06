@@ -7,7 +7,6 @@ defmodule Logflare.Backends.DynamicPipeline do
   - `:name` - name of the pipeline, required.
   - `:pipeline` - module of the pipeline, required.
   - `:pipeline_args` - args of the pipeline, optional.
-  - `:max_buffer_len` - soft limit that each pipeline buffer grows to before a new pipeline is added. Optional.
   - `:max_pipelines` - max pipelines that can be scaled to.
   - `:min_pipelines` - max pipelines that can be scaled to, defaults to 0.
   - `:initial_count` - the initial number of pipelines to start. Defaults to :min_pipelines value.
@@ -31,8 +30,6 @@ defmodule Logflare.Backends.DynamicPipeline do
         name: nil,
         pipeline: nil,
         pipeline_args: [],
-        # genstage default https://hexdocs.pm/gen_stage/GenStage.html#content
-        max_buffer_len: 10_000,
         max_pipelines: System.schedulers_online(),
         min_pipelines: 0,
         initial_count: args[:min_pipelines] || 0,
