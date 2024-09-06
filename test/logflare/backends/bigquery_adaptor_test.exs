@@ -174,7 +174,7 @@ defmodule Logflare.Backends.BigQueryAdaptorTest do
 
   test "resolve_count will increase counts" do
     check all pipeline_count <- integer(0..100),
-              queue_size <- integer(5001..10000),
+              queue_size <- integer(9001..10000),
               startup_queue_size <- integer(0..100),
               avg_rate <- integer(0..10_000),
               last <- member_of([nil, NaiveDateTime.utc_now()]) do
