@@ -60,7 +60,9 @@ defmodule Logflare.Backends.IngestEventQueue.QueueJanitor do
       else
         IngestEventQueue.truncate_table(sid_bid_pid, :ingested, state.remainder)
       end
+
       pending_size = IngestEventQueue.count_pending(sid_bid_pid)
+
       if pending_size > state.max and ref != nil do
         to_drop = round(state.purge_ratio * pending_size)
         IngestEventQueue.drop(sid_bid_pid, :pending, to_drop)
