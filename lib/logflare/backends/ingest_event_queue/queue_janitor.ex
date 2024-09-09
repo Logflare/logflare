@@ -52,7 +52,7 @@ defmodule Logflare.Backends.IngestEventQueue.QueueJanitor do
   def do_drop(state) do
     sid_bid = {state.source_id, state.backend_id}
     # safety measure, drop all if still exceed
-    for sid_bid_pid <- IngestEventQueue.list_queues(sid_bid),
+    for {_sid, _bid, ref} = sid_bid_pid <- IngestEventQueue.list_queues(sid_bid),
         pending_size = IngestEventQueue.count_pending(sid_bid_pid),
         is_integer(pending_size) do
       if pending_size > state.remainder do
@@ -60,8 +60,8 @@ defmodule Logflare.Backends.IngestEventQueue.QueueJanitor do
       else
         IngestEventQueue.truncate_table(sid_bid_pid, :ingested, state.remainder)
       end
-
-      if pending_size > state.max do
+      pending_size = IngestEventQueue.count_pending(sid_bid_pid)
+      if pending_size > state.max and ref != nil do
         to_drop = round(state.purge_ratio * pending_size)
         IngestEventQueue.drop(sid_bid_pid, :pending, to_drop)
 
