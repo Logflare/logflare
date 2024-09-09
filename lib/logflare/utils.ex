@@ -77,7 +77,27 @@ defmodule Logflare.Utils do
     iex> chunk_size = 2
     iex> chunked_round_robin(batch, targets, chunk_size, fn chunk, target -> {target, Enum.sum(chunk)} end )
     [x: 3, y: 4]
+
+
+    iex> batch = [1, 1, 2, 2, 3, 3, 4, 4]
+    iex> targets = [:x]
+    iex> chunk_size = 2
+    iex> chunked_round_robin(batch, targets, chunk_size, fn chunk, target -> {target, Enum.sum(chunk)} end )
+    [x: 20]
   """
+  def chunked_round_robin(batch, [target], chunk_size, func) do
+    result = func.(batch, target)
+
+    next_chunk_rr(
+      [],
+      chunk_size,
+      [],
+      [target],
+      func,
+      [result]
+    )
+  end
+
   def chunked_round_robin(batch, targets, chunk_size, func) do
     next_chunk_rr(batch, chunk_size, targets, targets, func, [])
   end
