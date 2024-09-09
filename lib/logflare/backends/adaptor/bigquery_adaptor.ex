@@ -97,7 +97,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
     last_decr = state.last_count_decrease || NaiveDateTime.utc_now()
     sec_since_last_decr = NaiveDateTime.diff(NaiveDateTime.utc_now(), last_decr)
 
-    any_almost_full? = Enum.any?(lens_no_startup_values, &(&1 > 0.75 * max_len))
+    any_almost_full? = Enum.any?(lens_no_startup_values, &(&1 > 0.5 * max_len))
 
     cond do
       # max out pipelines, overflow risk
