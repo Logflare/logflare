@@ -116,7 +116,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
         1
 
       # gradual decrease
-      Enum.all?(lens_no_startup_values, &(&1 < 0.1 * max_len)) and state.pipeline_count > 1 and
+      Enum.all?(lens_no_startup_values, &(&1 < 0.05 * max_len)) and state.pipeline_count > 1 and
           (sec_since_last_decr > 30 or state.last_count_decrease == nil) ->
         state.pipeline_count - 1
 
