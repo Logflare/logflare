@@ -104,9 +104,6 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
       startup_size > 0 ->
         state.pipeline_count + ceil(startup_size / 5_000)
 
-      any_almost_full? and avg_rate > 10_000 ->
-        state.pipeline_count + 3
-
       any_almost_full? and avg_rate > 5_000 ->
         state.pipeline_count + 2
 
