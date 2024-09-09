@@ -55,7 +55,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
         resolve_count: fn state ->
           source = Sources.refresh_source_metrics_for_ingest(source)
 
-          lens = IngestEventQueue.list_counts({source.id, backend.id})
+          lens = IngestEventQueue.list_pending_counts({source.id, backend.id})
 
           handle_resolve_count(state, lens, source.metrics.avg)
         end
