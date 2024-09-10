@@ -25,7 +25,7 @@ defmodule Logflare.Source.BigQuery.Pipeline do
   # BQ max is 10MB
   # https://cloud.google.com/bigquery/quotas#streaming_inserts
   @max_batch_length 5_000_000
-  @max_batch_size 250
+  @max_batch_size 300
 
   def start_link(args, opts \\ []) do
     {name, args} = Keyword.pop(args, :name)
@@ -51,7 +51,7 @@ defmodule Logflare.Source.BigQuery.Pipeline do
             transformer: {__MODULE__, :transform, []}
           ],
           processors: [
-            default: [concurrency: 4]
+            default: [concurrency: 4, max_demand: 100]
           ],
           batchers: [
             bq: [
