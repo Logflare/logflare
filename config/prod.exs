@@ -5,13 +5,7 @@ config :logflare, env: :prod
 
 config :logflare, LogflareWeb.Endpoint,
   http: [
-    port: 4000,
-    thousand_island_options: [
-      num_acceptors: 1_000,
-    ],
-    # force high throguhput connections to re-connect to diff node
-    http_1_options: [max_requests: 1_000_000],
-    http_2_options: [max_requests: 1_000_000]
+    port: 4000
   ],
   cache_static_manifest: "priv/static/cache_manifest.json",
   server: true,
