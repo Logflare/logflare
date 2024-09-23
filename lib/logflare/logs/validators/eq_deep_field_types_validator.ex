@@ -27,6 +27,9 @@ defmodule Logflare.Logs.Validators.EqDeepFieldTypes do
     {:type_error, [tup | _]} when is_tuple(tup) ->
       {:error, tuple_error_message(tup)}
 
+    {:type_error, [first | _]} when is_list(first) ->
+      {:error, "Nested lists of lists are not allowed"}
+
     {:type_error, _} ->
       {:error, message()}
   end
@@ -69,6 +72,9 @@ defmodule Logflare.Logs.Validators.EqDeepFieldTypes do
     |> Enum.each(fn
       v when is_map(v) ->
         deep_validate_lists_are_homogenous(v)
+
+      [first | _] = v when is_list(first) ->
+        throw({:type_error, v})
 
       v when is_list(v) ->
         cond do
@@ -145,7 +151,7 @@ defmodule Logflare.Logs.Validators.EqDeepFieldTypes do
   defp is_homogenous_list(xs) when is_list(xs) do
     list_type =
       Enum.reduce_while(xs, true, fn x, acc ->
-        if acc == true and acc == x do
+        if acc == true or acc == x do
           {:cont, x}
         else
           {:halt, false}
