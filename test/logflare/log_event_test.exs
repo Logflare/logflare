@@ -70,6 +70,38 @@ defmodule Logflare.LogEventTest do
            } = LogEvent.make(params, %{source: source})
   end
 
+  property "make/2 invalid events", %{source: source} do
+    check all params <-
+                map_of(
+                  string(:alphanumeric, min_length: 2),
+                  one_of([
+                    # lists must be homogeneous
+                    fixed_list([binary(), integer()]),
+                    fixed_list([binary(), float()]),
+                    # don't supported nested list of maps
+                    list_of(
+                      map_of(string(:alphanumeric, min_length: 2, max_length: 5), binary(),
+                        min_length: 1,
+                        max_length: 5
+                      ),
+                      min_length: 3,
+                      max_length: 5
+                    )
+                  ]),
+                  min_length: 1,
+                  max_length: 5
+                ) do
+      assert %LogEvent{
+               drop: false,
+               valid: false,
+               pipeline_error: err,
+               source: %_{}
+             } = LogEvent.make(params, %{source: source})
+
+      assert err != nil
+    end
+  end
+
   test "make_from_db/2", %{source: source} do
     params = %{"metadata" => []}
     assert %{body: body} = LogEvent.make_from_db(params, %{source: source})
