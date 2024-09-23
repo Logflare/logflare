@@ -117,7 +117,7 @@ defmodule Logflare.Logs.Validators.EqDeepFieldTypes do
             {:list, :empty}
 
           is_homogenous_list(merged) ->
-            {:list, hd(merged)}
+            {:list, merged}
 
           not is_homogenous_list(merged) ->
             throw(:type_error)
