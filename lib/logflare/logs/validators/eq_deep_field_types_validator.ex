@@ -27,6 +27,9 @@ defmodule Logflare.Logs.Validators.EqDeepFieldTypes do
     {:type_error, [tup | _]} when is_tuple(tup) ->
       {:error, tuple_error_message(tup)}
 
+    {:type_error, [first | _]} when is_list(first) ->
+      {:error, "Nested lists of lists are not allowed"}
+
     {:type_error, _} ->
       {:error, message()}
   end
@@ -70,6 +73,9 @@ defmodule Logflare.Logs.Validators.EqDeepFieldTypes do
       v when is_map(v) ->
         deep_validate_lists_are_homogenous(v)
 
+      [first | _] = v when is_list(first) ->
+        throw({:type_error, v})
+
       v when is_list(v) ->
         cond do
           is_list_of_enums(v) ->
@@ -92,7 +98,7 @@ defmodule Logflare.Logs.Validators.EqDeepFieldTypes do
   @spec deep_merge_enums(list(map) | map) :: map
   def deep_merge_enums(map) when is_map(map) do
     for {k, v} <- map, into: Map.new() do
-      v = if is_list(v) and is_list_of_enums(v), do: deep_merge_enums(v), else: v
+      v = if is_list(v) and is_list_of_maps(v), do: deep_merge_enums(v), else: v
 
       {k, v}
     end
@@ -137,6 +143,14 @@ defmodule Logflare.Logs.Validators.EqDeepFieldTypes do
   defp is_list_of_enums(xs) when is_list(xs) do
     Enum.reduce_while(xs, nil, fn
       x, _acc when is_map(x) when is_list(x) -> {:cont, true}
+      _x, _acc -> {:halt, false}
+    end)
+  end
+
+  @spec is_list_of_maps(list(any())) :: boolean()
+  defp is_list_of_maps(xs) when is_list(xs) do
+    Enum.reduce_while(xs, nil, fn
+      x, _acc when is_map(x) -> {:cont, true}
       _x, _acc -> {:halt, false}
     end)
   end

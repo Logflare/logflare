@@ -70,6 +70,28 @@ defmodule Logflare.LogEventTest do
            } = LogEvent.make(params, %{source: source})
   end
 
+  test "make/2 invalid events", %{source: source} do
+    for params <- [
+          ["some", 123],
+          ["some", 123.0],
+          [["some-value"]],
+          ["test", %{"test" => 123}],
+          [["test"], ["123"]],
+          [[], ["123"]],
+          [[1], [2, 3]],
+          [[1], []]
+        ] do
+      assert %LogEvent{
+               drop: false,
+               valid: false,
+               pipeline_error: err,
+               source: %_{}
+             } = LogEvent.make(%{"field" => params}, %{source: source})
+
+      assert err != nil
+    end
+  end
+
   test "make_from_db/2", %{source: source} do
     params = %{"metadata" => []}
     assert %{body: body} = LogEvent.make_from_db(params, %{source: source})

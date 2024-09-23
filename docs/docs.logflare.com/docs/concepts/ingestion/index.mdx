@@ -244,3 +244,10 @@ The corresponding event will be processed and ingested, where ellipsis represent
   "id": "..."
 }
 ```
+
+## Ingestion Validation
+
+Logflare will reject certain payloads containing values of certain shapes:
+
+1. Arrays of Arrays - `[["testing]]`
+2. Mixed Arrays - `["some", {"obj": 123}]`
