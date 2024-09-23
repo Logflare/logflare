@@ -45,7 +45,6 @@ defmodule Logflare.Logs.Validators.EqDeepFieldTypes do
       {k, v} ->
         {k, type_of(v)}
     end)
-    |> deep_validate_no_list_of_maps()
     |> deep_merge_enums()
     |> deep_validate_lists_are_homogenous()
     |> is_map
@@ -61,30 +60,6 @@ defmodule Logflare.Logs.Validators.EqDeepFieldTypes do
 
   # Private
 
-  def deep_validate_no_list_of_maps(enum) do
-    enum
-    |> Enum.map(fn
-      {_k, v} -> v
-      v -> v
-    end)
-    |> Enum.each(fn
-      v when is_map(v) ->
-        deep_validate_lists_are_homogenous(v)
-
-      v when is_list(v) ->
-        if is_list_of_maps(v) do
-          throw(:type_error)
-        else
-          :noop
-        end
-
-      _ ->
-        :noop
-    end)
-
-    enum
-  end
-
   def deep_validate_lists_are_homogenous(enum) do
     enum
     |> Enum.map(fn
@@ -97,9 +72,6 @@ defmodule Logflare.Logs.Validators.EqDeepFieldTypes do
 
       v when is_list(v) ->
         cond do
-          is_list_of_maps(v) ->
-            throw(:type_error)
-
           is_list_of_enums(v) ->
             deep_validate_lists_are_homogenous(v)
 
@@ -168,11 +140,6 @@ defmodule Logflare.Logs.Validators.EqDeepFieldTypes do
       _x, _acc -> {:halt, false}
     end)
   end
-
-  defp is_list_of_maps([first]) when is_map(first), do: true
-  defp is_list_of_maps([first, second]) when is_map(first) and is_map(second), do: true
-  defp is_list_of_maps([first, second | _rest]) when is_map(first) and is_map(second), do: true
-  defp is_list_of_maps(_), do: false
 
   @spec is_homogenous_list(list(any())) :: boolean()
   defp is_homogenous_list(xs) when is_list(xs) do
