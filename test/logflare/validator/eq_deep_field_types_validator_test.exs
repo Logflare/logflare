@@ -79,17 +79,22 @@ defmodule Logflare.Logs.Validators.EqDeepFieldTypesTest do
     end
 
     test "diverging list types in single map key" do
-      assert valid?(single_path(["string1", "string2"], ["string3", "string4", "string5"]))
-      assert valid?(single_path([], ["string3", "string4", "string5"]))
-      assert valid?(single_path([[1]], [[2, 3]]))
-      assert valid?(single_path([1], []))
+      assert {:type_error, _} =
+               catch_throw(
+                 valid?(single_path(["string1", "string2"], ["string3", "string4", "string5"]))
+               )
 
-      assert catch_throw(valid?(single_path(1, "1"))) == {:type_error, [:integer, :binary]}
-      assert catch_throw(valid?(single_path([1, []], []))) == {:type_error, [:integer, []]}
-      assert catch_throw(valid?(single_path([1], [1, "2"]))) == {:type_error, [:integer, :binary]}
+      assert {:type_error, _} =
+               catch_throw(valid?(single_path([], ["string3", "string4", "string5"])))
 
-      assert catch_throw(valid?(single_path("string", ["string"]))) ==
-               {:type_error, [:binary, [:binary]]}
+      assert {:type_error, _} = catch_throw(valid?(single_path([[1]], [[2, 3]])))
+      assert {:type_error, _} = catch_throw(valid?(single_path([1], [])))
+
+      assert {:type_error, _} = catch_throw(valid?(single_path(1, "1")))
+      assert {:type_error, _} = catch_throw(valid?(single_path([1, []], [])))
+      assert {:type_error, _} = catch_throw(valid?(single_path([1], [1, "2"])))
+
+      assert {:type_error, _} = catch_throw(valid?(single_path("string", ["string"])))
     end
 
     test "with tuples" do

@@ -75,7 +75,11 @@ defmodule Logflare.LogEventTest do
           ["some", 123],
           ["some", 123.0],
           [["some-value"]],
-          ["test", %{"test" => 123}]
+          ["test", %{"test" => 123}],
+          [["test"], ["123"]],
+          [[], ["123"]],
+          [[1], [2, 3]],
+          [[1], []]
         ] do
       assert %LogEvent{
                drop: false,
