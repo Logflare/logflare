@@ -79,10 +79,14 @@ defmodule LogflareWeb.Api.SourceController do
 
       conn
       |> case do
-        %{method: "PATCH"} -> put_status(conn, 204)
-        %{method: "PUT"} -> put_status(conn, 200)
+        %{method: "PATCH"} ->
+          conn |> send_resp(204, "")
+
+        %{method: "PUT"} ->
+          conn
+          |> put_status(200)
+          |> json(source)
       end
-      |> json(source)
     end
   end
 

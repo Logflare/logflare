@@ -133,10 +133,13 @@ defmodule LogflareWeb.Api.RuleController do
          {:ok, updated} <- Rules.update_rule(rule, params) do
       conn
       |> case do
-        %{method: "PATCH"} -> put_status(conn, 204)
-        %{method: "PUT"} -> put_status(conn, 200)
+        %{method: "PATCH"} ->
+          conn |> send_resp(204, "")
+
+        %{method: "PUT"} ->
+          put_status(conn, 200)
+          |> json(updated)
       end
-      |> json(updated)
     end
   end
 
