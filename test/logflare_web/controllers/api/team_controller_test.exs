@@ -129,9 +129,9 @@ defmodule LogflareWeb.Api.TeamControllerTest do
         conn
         |> add_access_token(user, "private")
         |> patch("/api/teams/#{main_team.token}", %{name: name})
-        |> json_response(204)
+        |> response(204)
 
-      assert response["name"] == name
+      assert response == ""
     end
 
     test "returns not found if doesn't own the team", %{conn: conn, main_team: main_team} do

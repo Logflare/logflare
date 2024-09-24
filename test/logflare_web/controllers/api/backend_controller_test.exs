@@ -202,9 +202,9 @@ defmodule LogflareWeb.Api.BackendControllerTest do
         conn
         |> add_access_token(user, "private")
         |> patch("/api/backends/#{backend.token}", %{name: name})
-        |> json_response(204)
+        |> response(204)
 
-      assert response["name"] == name
+      assert response == ""
     end
 
     test "returns not found if doesn't own the resource", %{conn: conn, user: user} do
