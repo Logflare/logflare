@@ -26,7 +26,7 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor.EgressMiddleware do
         headers_length: headers_len,
         request_length: body_len + headers_len
       },
-      Keyword.get(options, :metadata, %{})
+      Keyword.get(options, :metadata) || %{}
     )
 
     with {:ok, env} <- Tesla.run(env, next) do

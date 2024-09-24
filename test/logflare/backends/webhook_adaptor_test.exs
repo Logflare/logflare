@@ -7,6 +7,7 @@ defmodule Logflare.Backends.WebhookAdaptorTest do
   alias Logflare.Backends.Backend
   alias Logflare.SystemMetrics.AllLogsLogged
   alias Logflare.Backends.SourceSup
+  alias Logflare.Backends.Adaptor.WebhookAdaptor.EgressMiddleware
   @subject Logflare.Backends.Adaptor.WebhookAdaptor
 
   setup do
@@ -135,6 +136,11 @@ defmodule Logflare.Backends.WebhookAdaptorTest do
                url: "http://example.com",
                http: "http2"
              })
+  end
+
+  test "EgressMiddleware" do
+    assert {:ok, _} = EgressMiddleware.call(%Tesla.Env{}, [], [])
+    assert {:ok, _} = EgressMiddleware.call(%Tesla.Env{}, [], metadata: nil)
   end
 
   @tag :benchmark
