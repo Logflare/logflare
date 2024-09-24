@@ -76,10 +76,14 @@ defmodule LogflareWeb.Api.TeamController do
          team <- Teams.preload_fields(team, [:user, :team_users]) do
       conn
       |> case do
-        %{method: "PUT"} -> put_status(conn, 201)
-        %{method: "PATCH"} -> put_status(conn, 204)
+        %{method: "PUT"} ->
+          conn
+          |> put_status(201)
+          |> json(team)
+
+        %{method: "PATCH"} ->
+          conn |> send_resp(204, "")
       end
-      |> json(team)
     end
   end
 

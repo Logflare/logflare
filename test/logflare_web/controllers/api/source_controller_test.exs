@@ -132,9 +132,9 @@ defmodule LogflareWeb.Api.SourceControllerTest do
         conn
         |> add_access_token(user, "private")
         |> patch("/api/sources/#{source.token}", %{name: name})
-        |> json_response(204)
+        |> response(204)
 
-      assert response["name"] == name
+      assert response == ""
     end
 
     test "returns not found if doesn't own the source", %{conn: conn, sources: [source | _]} do

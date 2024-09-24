@@ -74,10 +74,14 @@ defmodule LogflareWeb.Api.EndpointController do
          {:ok, query} <- Endpoints.update_query(query, params) do
       conn
       |> case do
-        %{method: "PUT"} -> put_status(conn, 200)
-        %{method: "PATCH"} -> put_status(conn, 204)
+        %{method: "PUT"} ->
+          put_status(conn, 200)
+          |> json(query)
+
+        %{method: "PATCH"} ->
+          conn
+          |> send_resp(204, "")
       end
-      |> json(query)
     end
   end
 

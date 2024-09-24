@@ -105,9 +105,9 @@ defmodule LogflareWeb.Api.EndpointControllerTest do
         conn
         |> add_access_token(user, ~w(private))
         |> patch("/api/endpoints/#{endpoint.token}", %{name: name})
-        |> json_response(204)
+        |> response(204)
 
-      assert response["name"] == name
+      assert response == ""
     end
 
     test "returns not found if doesn't own the enpoint query", %{
