@@ -2,6 +2,7 @@ defmodule LogflareWeb.Api.EndpointControllerTest do
   use LogflareWeb.ConnCase
 
   setup do
+    insert(:plan)
     endpoints = insert_list(2, :endpoint)
     user = insert(:user, endpoint_queries: endpoints)
     insert(:source, name: "logs", user: user)

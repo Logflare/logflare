@@ -86,8 +86,6 @@ defmodule LogflareWeb.Api.QueryControllerTest do
 
   describe "pg_sql" do
     setup do
-      insert(:plan)
-
       cfg = Application.get_env(:logflare, Logflare.Repo)
 
       url = "postgresql://#{cfg[:username]}:#{cfg[:password]}@#{cfg[:hostname]}/#{cfg[:database]}"

@@ -8,6 +8,11 @@ defmodule Logflare.Backends.IngestEventQueueTest do
   alias Logflare.Backends
   alias Logflare.Backends.IngestEventQueue
 
+  setup do
+    insert(:plan)
+    :ok
+  end
+
   test "get_table_size/1 returns nil for non-existing tables" do
     assert nil == IngestEventQueue.get_table_size({1, 2, 4})
   end

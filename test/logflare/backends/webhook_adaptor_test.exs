@@ -11,13 +11,13 @@ defmodule Logflare.Backends.WebhookAdaptorTest do
   @subject Logflare.Backends.Adaptor.WebhookAdaptor
 
   setup do
+    insert(:plan)
     start_supervised!(AllLogsLogged)
     :ok
   end
 
   describe "ingestion tests" do
     setup do
-      insert(:plan)
       user = insert(:user)
       source = insert(:source, user: user)
 

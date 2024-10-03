@@ -18,6 +18,12 @@ defmodule Logflare.Sources do
   alias Logflare.SourceSchemas
   alias Logflare.User
   alias Logflare.Backends
+  alias Logflare.Billing.Plan
+  alias Logflare.Billing
+  alias Logflare.User
+  alias Logflare.Users
+  alias Logflare.SingleTenant
+  alias Logflare.Google.BigQuery
 
   require Logger
 
@@ -37,6 +43,7 @@ defmodule Logflare.Sources do
   def list_sources_by_user(user_id) do
     from(s in Source, where: s.user_id == ^user_id)
     |> Repo.all()
+    |> Enum.map(&put_retention_days/1)
   end
 
   @spec create_source(map(), User.t()) :: {:ok, Source.t()} | {:error, Ecto.Changeset.t()}
@@ -46,7 +53,7 @@ defmodule Logflare.Sources do
       |> Enum.map(fn {k, v} -> {to_string(k), v} end)
       |> Map.new()
 
-    with {:ok, source} = res <-
+    with {:ok, source} <-
            user
            |> Ecto.build_assoc(:sources)
            |> Source.update_by_user_changeset(source_params)
@@ -55,7 +62,11 @@ defmodule Logflare.Sources do
         create_big_query_schema_and_start_source(source)
       end
 
-      res
+      updated =
+        source
+        |> put_retention_days()
+
+      {:ok, updated}
     end
   end
 
@@ -108,6 +119,7 @@ defmodule Logflare.Sources do
 
   def get(source_id) when is_integer(source_id) do
     Repo.get(Source, source_id)
+    |> put_retention_days()
   end
 
   def update_source(source) do
@@ -118,12 +130,36 @@ defmodule Logflare.Sources do
     source
     |> Source.changeset(attrs)
     |> Repo.update()
+    |> post_update(source)
   end
+
+  defp post_update({:ok, updated}, source) do
+    # only update the default backend
+    source = put_retention_days(source)
+    updated = put_retention_days(updated)
+
+    if source.retention_days != updated.retention_days and not SingleTenant.postgres_backend?() do
+      user = Users.Cache.get(updated.user_id) |> Users.maybe_put_bigquery_defaults()
+
+      BigQuery.patch_table_ttl(
+        updated.token,
+        updated.retention_days * 86_400_000,
+        user.bigquery_dataset_id,
+        user.bigquery_project_id
+      )
+      |> dbg()
+    end
+
+    {:ok, updated}
+  end
+
+  defp post_update(res, _prev), do: res
 
   def update_source_by_user(source, attrs) do
     source
     |> Source.update_by_user_changeset(attrs)
     |> Repo.update()
+    |> post_update(source)
   end
 
   def update_source_by_user(_source, _plan, %{"notifications_every" => ""}) do
@@ -159,6 +195,7 @@ defmodule Logflare.Sources do
   @spec get_by(Keyword.t()) :: Source.t() | nil
   def get_by(kw) do
     Repo.get_by(Source, kw)
+    |> put_retention_days()
   end
 
   @spec get_by_and_preload(Keyword.t()) :: Source.t() | nil
@@ -169,6 +206,7 @@ defmodule Logflare.Sources do
       nil -> nil
       s -> preload_defaults(s)
     end)
+    |> put_retention_days()
   end
 
   @spec get_by_and_preload(Keyword.t(), Keyword.t()) :: Source.t() | nil
@@ -179,6 +217,7 @@ defmodule Logflare.Sources do
       nil -> nil
       s -> Repo.preload(s, preloads)
     end)
+    |> put_retention_days()
   end
 
   def get_rate_limiter_metrics(source, bucket: :default) do
@@ -401,5 +440,31 @@ defmodule Logflare.Sources do
       {a, b} when is_reference(a) and is_reference(b) -> true
       _ -> false
     end
+  end
+
+  def put_retention_days(%Source{} = source) do
+    user = Users.Cache.get(source.user_id)
+    plan = Billing.Cache.get_plan_by_user(user)
+    %{source | retention_days: source_ttl_to_days(source, plan)}
+  end
+
+  def put_retention_days(source), do: source
+
+  @doc """
+  Formats a source TTL to the specified unit
+  """
+  @spec source_ttl_to_days(Source.t(), Plan.t()) :: integer()
+  def source_ttl_to_days(%Source{bigquery_table_ttl: ttl}, _plan)
+      when ttl >= 0 and ttl != nil do
+    round(ttl)
+  end
+
+  # fallback to plan value or default init value
+  # use min to avoid misrepresenting what user should see, in cases where actual is more than plan.
+  def source_ttl_to_days(_source, %Plan{limit_source_ttl: ttl}) do
+    min(
+      round(GenUtils.default_table_ttl_days()),
+      round(ttl / :timer.hours(24))
+    )
   end
 end

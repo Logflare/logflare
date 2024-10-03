@@ -157,6 +157,46 @@ defmodule LogflareWeb.Api.SourceControllerTest do
     end
   end
 
+  describe "retention_days" do
+    setup do
+      Logflare.Google.BigQuery
+      |> expect(:patch_table_ttl, fn _source_id, _table_ttl, _dataset_id, _project_id ->
+        {:ok, %Tesla.Env{}}
+      end)
+
+      :ok
+    end
+
+    test "PUT updates retention_days", %{
+      conn: conn,
+      user: user,
+      sources: [source | _]
+    } do
+      assert %{"retention_days" => 3} =
+               conn
+               |> add_access_token(user, "private")
+               |> get("/api/sources/#{source.token}")
+               |> json_response(200)
+
+      assert %{"retention_days" => 1} =
+               conn
+               |> add_access_token(user, "private")
+               |> put("/api/sources/#{source.token}", %{name: "some name", retention_days: 1})
+               |> json_response(200)
+    end
+
+    test "PATCH updates retention_days", %{
+      conn: conn,
+      user: user,
+      sources: [source | _]
+    } do
+      conn
+      |> add_access_token(user, "private")
+      |> patch("/api/sources/#{source.token}", %{retention_days: 1})
+      |> response(204)
+    end
+  end
+
   describe "add_backend/2" do
     test "attaches a backend", %{conn: conn, user: user, sources: [source | _]} do
       backend = insert(:backend, user: user)

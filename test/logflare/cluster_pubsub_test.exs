@@ -63,6 +63,7 @@ defmodule Logflare.ClusterPubSubTest do
 
   describe "ChannelTopics" do
     setup do
+      insert(:plan)
       [source: insert(:source, user: insert(:user))]
     end
 

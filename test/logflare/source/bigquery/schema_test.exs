@@ -5,6 +5,11 @@ defmodule Logflare.Source.BigQuery.SchemaTest do
   alias Logflare.Source.BigQuery.Schema
   alias Logflare.Google.BigQuery.SchemaUtils
 
+  setup do
+    insert(:plan)
+    :ok
+  end
+
   test "next_update_ts/1" do
     next_update = Schema.next_update_ts(6) |> trunc()
     assert String.length("#{next_update}") == String.length("#{System.system_time(:millisecond)}")

@@ -439,22 +439,9 @@ defmodule LogflareWeb.SourceController do
     end
   end
 
-  def update(%{assigns: %{source: old_source, user: user}} = conn, %{"source" => source_params}) do
-    changeset = Source.update_by_user_changeset(old_source, source_params)
-
-    case Repo.update(changeset) do
+  def update(%{assigns: %{source: old_source}} = conn, %{"source" => source_params}) do
+    case Sources.update_source_by_user(old_source, source_params) do
       {:ok, source} ->
-        ttl = source.bigquery_table_ttl
-
-        if ttl do
-          BigQuery.patch_table_ttl(
-            source.token,
-            source.bigquery_table_ttl * 86_400_000,
-            user.bigquery_dataset_id,
-            user.bigquery_project_id
-          )
-        end
-
         :ok = Supervisor.ensure_started(source)
 
         conn

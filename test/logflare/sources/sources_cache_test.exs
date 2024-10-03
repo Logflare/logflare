@@ -4,6 +4,7 @@ defmodule Logflare.SourcesCacheTest do
   use Logflare.DataCase
 
   setup do
+    insert(:plan)
     u1 = insert(:user)
     s01 = insert(:source, user_id: u1.id)
     s02 = insert(:source, user_id: u1.id)

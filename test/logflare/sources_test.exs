@@ -17,20 +17,63 @@ defmodule Logflare.SourcesTest do
   describe "create_source/2" do
     setup do
       user = insert(:user)
-      insert(:plan, name: "Free")
       %{user: user}
     end
 
     test "creates a source for a given user and creates schema", %{
       user: %{id: user_id} = user
     } do
+      insert(:plan, name: "Free")
       assert {:ok, source} = Sources.create_source(%{name: TestUtils.random_string()}, user)
       assert %Source{user_id: ^user_id, v2_pipeline: false} = source
       assert SourceSchemas.get_source_schema_by(source_id: source.id)
     end
+
+    test "creates a source with different retention", %{
+      user: user
+    } do
+      insert(:plan, name: "Free", limit_source_ttl: :timer.hours(24) * 20)
+
+      assert {:ok, %Source{retention_days: 10}} =
+               Sources.create_source(%{name: "some name", retention_days: 10}, user)
+    end
+  end
+
+  describe "update_source/2 with different retention_days" do
+    setup do
+      user = insert(:user)
+
+      %{user: user}
+    end
+
+    test "valid retention days", %{
+      user: user
+    } do
+      Logflare.Google.BigQuery
+      |> expect(:patch_table_ttl, fn _source_id, _table_ttl, _dataset_id, _project_id ->
+        {:ok, %Tesla.Env{}}
+      end)
+
+      insert(:plan, name: "Free", limit_source_ttl: :timer.hours(24) * 20)
+      source = insert(:source, user: user)
+
+      assert {:ok, %Source{retention_days: 12, bigquery_table_ttl: 12}} =
+               Sources.update_source(source, %{retention_days: 12})
+    end
+
+    test "retention days exceeds", %{user: user} do
+      insert(:plan, name: "Free", limit_source_ttl: :timer.hours(24) * 1)
+      source = insert(:source, user: user)
+      assert {:error, %Ecto.Changeset{}} = Sources.update_source(source, %{retention_days: 12})
+    end
   end
 
   describe "list_sources_by_user/1" do
+    setup do
+      insert(:plan)
+      :ok
+    end
+
     test "lists sources for a given user" do
       user = insert(:user)
       insert(:source, user: user)
@@ -117,6 +160,7 @@ defmodule Logflare.SourcesTest do
 
   describe "preload_for_dashboard/1" do
     setup do
+      insert(:plan)
       [user: insert(:user)]
     end
 

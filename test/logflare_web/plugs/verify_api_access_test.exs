@@ -4,6 +4,7 @@ defmodule LogflareWeb.Plugs.VerifyApiAccessTest do
   alias LogflareWeb.Plugs.VerifyApiAccess
 
   setup do
+    insert(:plan)
     user = insert(:user)
     endpoint_auth = insert(:endpoint, user: user, enable_auth: true)
     endpoint_open = insert(:endpoint, user: user, enable_auth: false)

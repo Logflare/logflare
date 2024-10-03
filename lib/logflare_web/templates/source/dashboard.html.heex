@@ -135,7 +135,7 @@
                 </span>
               </div>
             </div>
-            <%= render(LogflareWeb.SharedView, "dashboard_source_metadata.html", conn: @conn, source: source, source_ttl_days: source_ttl_to_days(source, @plan), pipeline_counts: @pipeline_counts) %>
+            <%= render(LogflareWeb.SharedView, "dashboard_source_metadata.html", conn: @conn, source: source, source_ttl_days: source.retention_days, pipeline_counts: @pipeline_counts) %>
           </li>
         <% end %>
       </ul>

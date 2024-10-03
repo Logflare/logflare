@@ -5,6 +5,7 @@ defmodule Logflare.Users.CacheTest do
   use Logflare.DataCase
 
   setup do
+    insert(:plan)
     source = build(:source, notifications: %{})
 
     user =

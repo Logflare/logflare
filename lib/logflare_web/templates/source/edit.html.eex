@@ -246,8 +246,8 @@
   <p>Set how long to keep data in your backend.</p>
   <%= form_for @changeset, Routes.source_path(@conn, :update, @source), fn e -> %>
   <div class="form-group">
-    <%= text_input e, :bigquery_table_ttl, placeholder: "3", class: "form-control form-control-margin" %>
-    <%= error_tag e, :bigquery_table_ttl %>
+    <%= text_input e, :retention_days, placeholder: "3", class: "form-control form-control-margin" %>
+    <%= error_tag e, :retention_days %>
     <small class="form-text text-muted">
       Days to keep data.
     </small>
