@@ -147,7 +147,6 @@ defmodule Logflare.Sources do
         user.bigquery_dataset_id,
         user.bigquery_project_id
       )
-      |> dbg()
     end
 
     {:ok, updated}
