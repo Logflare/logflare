@@ -53,6 +53,13 @@ defmodule LogflareWeb.BackendsLive do
         %{"backend" => params},
         %{assigns: %{live_action: :edit}} = socket
       ) do
+    params =
+      Map.update(params, "config", nil, fn config ->
+        {key, config} = Map.pop(config, "header1_key")
+        {value, config} = Map.pop(config, "header1_value")
+        Map.put(config, "headers", %{key => value})
+      end)
+
     socket =
       case Logflare.Backends.update_backend(socket.assigns.backend, params) do
         {:ok, backend} ->

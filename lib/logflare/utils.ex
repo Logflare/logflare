@@ -50,6 +50,17 @@ defmodule Logflare.Utils do
 
   def stringify_keys(not_a_map), do: not_a_map
 
+  def stringify(v) when is_integer(v) do
+    Integer.to_string(v)
+  end
+
+  def stringify(v) when is_float(v) do
+    Float.to_string(v)
+  end
+
+  def stringify(v) when is_binary(v), do: v
+  def stringify(v), do: inspect(v)
+
   @doc """
   Sets the default ecto changeset field value if not set
 

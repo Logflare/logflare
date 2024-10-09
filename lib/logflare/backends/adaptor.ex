@@ -60,6 +60,11 @@ defmodule Logflare.Backends.Adaptor do
   @callback pre_ingest(Source.t(), Backend.t(), [LogEvent.t()]) :: [LogEvent.t()]
 
   @doc """
+  Optional callback to manipulate a batch before it is sent. This is pipeline specific, and must be handled by the underlying pipeline.
+  """
+  @callback format_batch([LogEvent.t()]) :: map() | list(map())
+
+  @doc """
   Queries the backend using an endpoint query.
   """
   @callback execute_query(identifier(), query()) :: {:ok, [term()]} | {:error, :not_implemented}
@@ -84,5 +89,5 @@ defmodule Logflare.Backends.Adaptor do
     |> mod.validate_config()
   end
 
-  @optional_callbacks pre_ingest: 3, transform_config: 1
+  @optional_callbacks pre_ingest: 3, transform_config: 1, format_batch: 1
 end

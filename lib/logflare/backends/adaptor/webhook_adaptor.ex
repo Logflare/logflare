@@ -4,7 +4,6 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
   use TypedStruct
 
   alias Logflare.Backends
-  alias Logflare.Backends.Adaptor
   alias Logflare.Backends.Adaptor.WebhookAdaptor.EgressMiddleware
 
   @behaviour Logflare.Backends.Adaptor
@@ -139,36 +138,32 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
       |> Message.put_batcher(:http)
     end
 
-    def handle_batch(:http, messages, _batch_info, context) do
-      payload = for %{data: le} <- messages, do: le.body
+    def handle_batch(:http, messages, _batch_info, %{startup_config: startup_config} = context) do
+      # convert this to a custom format if needed
+      payload =
+        if format_batch = Map.get(startup_config, :format_batch) do
+          events = for %{data: le} <- messages, do: le
+          format_batch.(events)
+        else
+          for %{data: le} <- messages, do: le.body
+        end
+
       process_data(payload, context)
       messages
     end
 
-    defp get_config(%{startup_config: startup_config, backend_id: backend_id})
-         when backend_id != nil do
-      Backends.Cache.get_backend(backend_id)
-      |> then(fn
-        %_{} = backend ->
-          Adaptor.get_backend_config(backend)
+    defp process_data(payload, %{startup_config: startup_config} = context) do
+      %{config: stored_config} = Backends.Cache.get_backend(context.backend_id)
 
-        _ ->
-          startup_config
-      end)
-    end
-
-    defp get_config(%{startup_config: cfg}), do: cfg
-
-    defp process_data(log_event_bodies, context) do
-      config = get_config(context)
+      config = Map.merge(startup_config, stored_config)
 
       Client.send(
         url: config.url,
-        body: log_event_bodies,
+        body: payload,
         headers: config[:headers] || %{},
-        http: config.http,
         gzip: Map.get(config, :gzip, true),
-        metadata: Map.take(context, [:source_id, :source_token, :backend_id, :backend_token])
+        metadata: Map.take(context, [:source_id, :source_token, :backend_id, :backend_token]),
+        http: config[:http]
       )
     end
 
