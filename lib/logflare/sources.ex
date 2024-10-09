@@ -341,7 +341,6 @@ defmodule Logflare.Sources do
 
     rejected_count = RejectedLogEvents.count(source)
     latest = Backends.fetch_latest_timestamp(source)
-    recent = Enum.count(Backends.list_recent_logs(source))
     fields = 0
 
     metrics = %Source.Metrics{
@@ -352,7 +351,6 @@ defmodule Logflare.Sources do
       buffer: buffer,
       inserts_string: inserts_string,
       inserts: inserts,
-      recent: recent,
       rejected: rejected_count,
       fields: fields
     }
