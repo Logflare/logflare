@@ -27,7 +27,8 @@ defmodule Logflare.Source do
              :metrics,
              :notifications,
              :custom_event_message_keys,
-             :backends
+             :backends,
+             :retention_days
            ]}
   defp env_dataset_id_append,
     do: Application.get_env(:logflare, Logflare.Google)[:dataset_id_append]
@@ -129,6 +130,7 @@ defmodule Logflare.Source do
     field(:drop_lql_string, :string)
     field(:v2_pipeline, :boolean, default: false)
     field(:suggested_keys, :string, default: "")
+    field(:retention_days, :integer, virtual: true)
     # Causes a shitstorm
     # field :bigquery_schema, Ecto.Term
 
@@ -178,7 +180,8 @@ defmodule Logflare.Source do
       :drop_lql_filters,
       :drop_lql_string,
       :v2_pipeline,
-      :suggested_keys
+      :suggested_keys,
+      :retention_days
     ])
     |> cast_embed(:notifications, with: &Notifications.changeset/2)
     |> put_single_tenant_postgres_changes()
@@ -203,7 +206,8 @@ defmodule Logflare.Source do
       :drop_lql_filters,
       :drop_lql_string,
       :v2_pipeline,
-      :suggested_keys
+      :suggested_keys,
+      :retention_days
     ])
     |> cast_embed(:notifications, with: &Notifications.changeset/2)
     |> put_single_tenant_postgres_changes()
@@ -216,7 +220,13 @@ defmodule Logflare.Source do
     |> unique_constraint(:name, name: :sources_name_index)
     |> unique_constraint(:token)
     |> unique_constraint(:public_token)
+    |> put_source_ttl_change()
     |> validate_source_ttl(source)
+  end
+
+  defp put_source_ttl_change(changeset) do
+    value = get_field(changeset, :retention_days)
+    put_change(changeset, :bigquery_table_ttl, value)
   end
 
   def validate_source_ttl(changeset, source) do

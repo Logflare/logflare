@@ -11,6 +11,7 @@ defmodule Logflare.DynamicPipelineTest do
   import ExUnit.CaptureLog
 
   setup do
+    insert(:plan)
     user = insert(:user)
     source = insert(:source, user: user)
 

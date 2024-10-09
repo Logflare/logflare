@@ -88,6 +88,9 @@ defmodule Logflare.Users do
     user
     |> Repo.preload([:sources, :billing_account, :team])
     |> maybe_put_bigquery_defaults()
+    |> Map.update!(:sources, fn sources ->
+      Enum.map(sources, &Sources.put_retention_days/1)
+    end)
   end
 
   def preload_team(user) do
@@ -104,6 +107,9 @@ defmodule Logflare.Users do
 
   def preload_sources(user) do
     Repo.preload(user, :sources)
+    |> Map.update!(:sources, fn sources ->
+      Enum.map(sources, &Sources.put_retention_days/1)
+    end)
   end
 
   def preload_endpoints(user) do

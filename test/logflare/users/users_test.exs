@@ -6,6 +6,7 @@ defmodule Logflare.UsersTest do
   alias Logflare.Users
 
   setup do
+    insert(:plan)
     user = insert(:user)
     source = insert(:source, user_id: user.id)
     source = Sources.get_by(token: source.token)

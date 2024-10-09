@@ -6,6 +6,11 @@ defmodule LogflareGrpc.Trace.ServerTest do
   alias Opentelemetry.Proto.Collector.Trace.V1.ExportTraceServiceResponse
   alias Opentelemetry.Proto.Collector.Trace.V1.TraceService.Stub
 
+  setup do
+    insert(:plan)
+    :ok
+  end
+
   describe "export/2" do
     setup do
       user = insert(:user)

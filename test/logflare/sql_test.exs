@@ -11,6 +11,7 @@ defmodule Logflare.SqlTest do
   @env "test"
 
   setup do
+    insert(:plan)
     values = Application.get_env(:logflare, Logflare.Google)
     to_put = Keyword.put(values, :project_id, @logflare_project_id)
     Application.put_env(:logflare, Logflare.Google, to_put)

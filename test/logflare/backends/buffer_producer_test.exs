@@ -6,6 +6,11 @@ defmodule Logflare.Backends.BufferProducerTest do
 
   import ExUnit.CaptureLog
 
+  setup do
+    insert(:plan)
+    :ok
+  end
+
   test "pulls events from IngestEventQueue" do
     user = insert(:user)
     source = insert(:source, user: user)

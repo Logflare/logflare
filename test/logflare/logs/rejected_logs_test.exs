@@ -5,6 +5,7 @@ defmodule Logflare.Logs.RejectedLogEventsTest do
   alias Logflare.{Sources, Users, LogEvent}
 
   setup do
+    insert(:plan)
     s1 = build(:source)
     s2 = build(:source)
     sources = [s1, s2]

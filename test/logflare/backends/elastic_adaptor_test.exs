@@ -12,6 +12,7 @@ defmodule Logflare.Backends.Adaptor.ElasticAdaptorTest do
   doctest @subject
 
   setup do
+    insert(:plan)
     start_supervised!(AllLogsLogged)
     :ok
   end

@@ -13,6 +13,7 @@ defmodule Logflare.Backends.Adaptor.DatadogAdaptorTest do
 
   setup do
     start_supervised!(AllLogsLogged)
+    insert(:plan)
     :ok
   end
 

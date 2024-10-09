@@ -6,6 +6,7 @@ defmodule LogflareWeb.Plugs.FetchResourceTest do
   alias Logflare.Endpoints.Query
 
   setup do
+    insert(:plan)
     user = insert(:user)
     endpoint = insert(:endpoint, user: user)
     source = insert(:source, user: user)

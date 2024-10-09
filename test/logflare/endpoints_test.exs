@@ -6,6 +6,11 @@ defmodule Logflare.EndpointsTest do
   alias Logflare.Endpoints.Query
   alias Logflare.Backends.Adaptor.PostgresAdaptor
 
+  setup do
+    insert(:plan)
+    :ok
+  end
+
   test "list_endpoints_by" do
     %{id: id, name: name} = insert(:endpoint)
     assert [%{id: ^id}] = Endpoints.list_endpoints_by(name: name)
@@ -120,7 +125,6 @@ defmodule Logflare.EndpointsTest do
         {:ok, TestUtils.gen_bq_response([%{"testing" => "123"}])}
       end)
 
-      insert(:plan)
       user = insert(:user)
       insert(:source, user: user, name: "c")
       endpoint = insert(:endpoint, user: user, query: "select current_datetime() as testing")
@@ -133,7 +137,6 @@ defmodule Logflare.EndpointsTest do
         {:ok, TestUtils.gen_bq_response([%{"testing" => "123"}])}
       end)
 
-      insert(:plan)
       user = insert(:user)
 
       insert(:endpoint,
@@ -151,7 +154,6 @@ defmodule Logflare.EndpointsTest do
         {:ok, TestUtils.gen_bq_response([%{"testing" => "123"}])}
       end)
 
-      insert(:plan)
       user = insert(:user)
       insert(:source, user: user, name: "c")
       query_string = "select current_datetime() as testing"
@@ -165,7 +167,6 @@ defmodule Logflare.EndpointsTest do
         {:ok, TestUtils.gen_bq_response([%{"testing" => "123"}])}
       end)
 
-      insert(:plan)
       user = insert(:user)
       endpoint = insert(:endpoint, user: user, query: "select current_datetime() as testing")
       _pid = start_supervised!({Logflare.Endpoints.Cache, {endpoint, %{}}})
@@ -186,7 +187,6 @@ defmodule Logflare.EndpointsTest do
           {:ok, TestUtils.gen_bq_response([%{"testing" => "123"}])}
         end)
 
-        insert(:plan)
         user = insert(:user)
         endpoint = insert(:endpoint, user: user, query: "select current_datetime() as testing")
         cache_pid = start_supervised!({Logflare.Endpoints.Cache, {endpoint, %{}}})
@@ -212,8 +212,6 @@ defmodule Logflare.EndpointsTest do
 
   describe "running queries in postgres backends" do
     setup do
-      insert(:plan)
-
       cfg = Application.get_env(:logflare, Logflare.Repo)
 
       url = "postgresql://#{cfg[:username]}:#{cfg[:password]}@#{cfg[:hostname]}/#{cfg[:database]}"
@@ -295,7 +293,6 @@ defmodule Logflare.EndpointsTest do
         {:ok, TestUtils.gen_bq_response([%{"testing" => "123"}])}
       end)
 
-      insert(:plan)
       user = insert(:user)
 
       endpoint =
