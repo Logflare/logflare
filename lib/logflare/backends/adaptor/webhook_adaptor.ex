@@ -152,8 +152,10 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
       messages
     end
 
-    defp process_data(payload, context) do
-      %{config: config} = Backends.Cache.get_backend(context.backend_id)
+    defp process_data(payload, %{startup_config: startup_config} = context) do
+      %{config: stored_config} = Backends.Cache.get_backend(context.backend_id)
+
+      config = Map.merge(startup_config, stored_config)
 
       Client.send(
         url: config.url,
