@@ -13,6 +13,7 @@ defmodule Logflare.Backends.Adaptor.LokiAdaptor do
   use TypedStruct
 
   alias Logflare.Backends.Adaptor.WebhookAdaptor
+  alias Logflare.Utils
 
   typedstruct enforce: true do
     field(:url, String.t())
@@ -63,10 +64,22 @@ defmodule Logflare.Backends.Adaptor.LokiAdaptor do
           Enum.map(events, fn event ->
             formatted_ts = event.body["timestamp"] * 1000
 
-            ["#{formatted_ts}", Jason.encode!(event.body)]
+            structured_metadata =
+              event.body
+              |> Iteraptor.to_flatmap(delimiter: "_")
+              |> Iteraptor.map(fn
+                {_, v} when is_binary(v) -> v
+                {_, v} -> Utils.stringify(v)
+              end)
+              |> Map.drop(["timestamp", "event_message"])
+
+            ["#{formatted_ts}", event.body["event_message"] || "", structured_metadata]
           end)
 
-        %{stream: %{source: "supabase", service: name}, values: formatted_events}
+        %{
+          stream: %{source: "supabase", service: name},
+          values: formatted_events
+        }
       end
 
     %{streams: streams}

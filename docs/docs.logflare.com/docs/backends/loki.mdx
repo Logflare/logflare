@@ -21,6 +21,12 @@ The following values are required when creating a webhook backend:
 
 Implementation is based on the [webhook backend](/backends/webhook).
 
-Events will be gzipped as a JSON payload, and will be batched with a maximum of 250 events per request.
+Events will have the log event message set, with all other keys set to structured metadata. Events will be batched with a maximum of 250 events per request.
 
-The source name will be used as the stream label.
+The source name and service name will be used as stream labels.
+
+
+
+### Loki Configuration
+
+Loki must be configured to allow structured metadata. It is recommended to increase the default maximum number of structured metadata fields to 500 to accomodate larger log structures of different products.

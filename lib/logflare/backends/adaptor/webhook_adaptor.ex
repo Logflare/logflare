@@ -4,7 +4,6 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
   use TypedStruct
 
   alias Logflare.Backends
-  alias Logflare.Backends.Adaptor
   alias Logflare.Backends.Adaptor.WebhookAdaptor.EgressMiddleware
 
   @behaviour Logflare.Backends.Adaptor
@@ -139,10 +138,10 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
       |> Message.put_batcher(:http)
     end
 
-    def handle_batch(:http, messages, _batch_info, %{config: %{} = config} = context) do
+    def handle_batch(:http, messages, _batch_info, %{startup_config: startup_config} = context) do
       # convert this to a custom format if needed
       payload =
-        if format_batch = Map.get(config, :format_batch) do
+        if format_batch = Map.get(startup_config, :format_batch) do
           events = for %{data: le} <- messages, do: le
           format_batch.(events)
         else
@@ -153,7 +152,9 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
       messages
     end
 
-    defp process_data(payload, %{config: %{} = config} = context) do
+    defp process_data(payload, context) do
+      %{config: config} = Backends.Cache.get_backend(context.backend_id)
+
       Client.send(
         url: config.url,
         body: payload,

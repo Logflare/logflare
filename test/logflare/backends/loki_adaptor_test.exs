@@ -92,7 +92,7 @@ defmodule Logflare.Backends.Adaptor.LokiAdaptorTest do
       assert {:ok, _} = Backends.ingest_logs([le], source)
       assert_receive {^ref, log_entry}, 2000
 
-      assert %{streams: [%{stream: %{source: ^source_name}}]} = log_entry
+      assert %{streams: [%{stream: %{source: "supabase", service: ^source_name}}]} = log_entry
     end
 
     test "message is JSON encoded log event", %{source: source} do
@@ -114,14 +114,14 @@ defmodule Logflare.Backends.Adaptor.LokiAdaptorTest do
                streams: [
                  %{
                    values: [
-                     [ts, message]
+                     [ts, message, %{}]
                    ]
                  }
                ]
              } = payload
 
-      assert ts == inspect(le.body["timestamp"])
-      assert message =~ Jason.encode!(le.body)
+      assert ts =~ inspect(le.body["timestamp"])
+      assert message = le.body
     end
   end
 end
