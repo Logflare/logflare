@@ -25,7 +25,7 @@ Events will have the log event message set, with all other keys set to structure
 
 The source name and service name will be used as stream labels.
 
-
+The `event_message` and `timestamp` fields will be dropped from the payload to avoid sending duplicate data.
 
 ### Loki Configuration
 
