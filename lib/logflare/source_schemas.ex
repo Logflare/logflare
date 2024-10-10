@@ -105,7 +105,7 @@ defmodule Logflare.SourceSchemas do
 
   def format_schema(bq_schema, variant, to_merge \\ %{})
 
-  def format_schema(%SourceSchema{bigquery_schema: bq_schema} = schema, :dot, to_merge) do
+  def format_schema(%SourceSchema{bigquery_schema: bq_schema}, :dot, to_merge) do
     bq_schema
     |> SchemaUtils.bq_schema_to_flat_typemap()
     |> Enum.filter(fn
