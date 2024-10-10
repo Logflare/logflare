@@ -197,6 +197,61 @@ defmodule LogflareWeb.Api.SourceControllerTest do
     end
   end
 
+  describe "show_schema/2" do
+    test "GET schema with dot syntax", %{conn: conn, user: user, sources: [source | _]} do
+      insert(:source_schema,
+        source: source,
+        bigquery_schema:
+          TestUtils.build_bq_schema(%{
+            "test" => %{"nested" => 123}
+          })
+      )
+
+      conn =
+        conn
+        |> add_access_token(user, "private")
+        |> get("/api/sources/#{source.token}/schema?variant=dot")
+
+      # returns the source
+      assert %{
+               "id" => "string",
+               "event_message" => "string",
+               "timestamp" => "datetime",
+               "test.nested" => "integer"
+             } = json_response(conn, 200)
+    end
+
+    test "GET schema with json schema", %{conn: conn, user: user, sources: [source | _]} do
+      insert(:source_schema,
+        source: source,
+        bigquery_schema:
+          TestUtils.build_bq_schema(%{
+            "test" => %{"nested" => 123, "listical" => ["testing", "123"]}
+          })
+      )
+
+      %{name: source_name} = source
+
+      conn =
+        conn
+        |> add_access_token(user, "private")
+        |> get("/api/sources/#{source.token}/schema")
+
+      # returns the source
+      assert %{
+               "$schema" => _,
+               "$id" => _,
+               "title" => ^source_name,
+               "type" => "object",
+               "properties" => %{
+                 "id" => %{"type" => "string"},
+                 "event_message" => %{"type" => "string"},
+                 "timestamp" => %{"type" => "number"}
+               }
+             } = json_response(conn, 200)
+    end
+  end
+
   describe "add_backend/2" do
     test "attaches a backend", %{conn: conn, user: user, sources: [source | _]} do
       backend = insert(:backend, user: user)

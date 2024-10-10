@@ -3,6 +3,7 @@ defmodule LogflareWeb.Api.SourceController do
   use OpenApiSpex.ControllerSpecs
 
   alias Logflare.Sources
+  alias Logflare.SourceSchemas
   alias Logflare.Backends
   alias LogflareWeb.OpenApi.Accepted
   alias LogflareWeb.OpenApi.Created
@@ -11,6 +12,7 @@ defmodule LogflareWeb.Api.SourceController do
   alias LogflareWeb.OpenApiSchemas.Event
 
   alias LogflareWeb.OpenApiSchemas.Source
+  alias LogflareWeb.OpenApiSchemas
 
   action_fallback(LogflareWeb.Api.FallbackController)
 
@@ -151,7 +153,7 @@ defmodule LogflareWeb.Api.SourceController do
     end
   end
 
-  operation(:removebackend,
+  operation(:remove_backend,
     summary: "Remove source backend",
     parameters: [
       source_token: [in: :path, description: "Source Token", type: :string],
@@ -171,6 +173,32 @@ defmodule LogflareWeb.Api.SourceController do
       conn
       |> put_status(200)
       |> json(source)
+    end
+  end
+
+  operation(:show_schema,
+    summary: "Show source schema",
+    parameters: [token: [in: :path, description: "Source Token", type: :string]],
+    responses: %{
+      200 => OpenApiSchemas.SourceSchema.response(),
+      404 => NotFound.response()
+    }
+  )
+
+  def show_schema(%{assigns: %{user: user}} = conn, %{"source_token" => token} = params) do
+    with source when not is_nil(source) <- Sources.get_by(token: token, user_id: user.id),
+         schema = SourceSchemas.get_source_schema_by(source_id: source.id) do
+      data =
+        if Map.get(params, "variant") == "dot" do
+          SourceSchemas.format_schema(schema, :dot)
+        else
+          SourceSchemas.format_schema(schema, :json_schema, %{
+            :title => source.name,
+            :"$id" => ~p"/sources/#{source.token}/schema"
+          })
+        end
+
+      json(conn, data)
     end
   end
 end
