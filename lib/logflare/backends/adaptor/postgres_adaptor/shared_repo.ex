@@ -44,6 +44,7 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor.SharedRepo do
 
         opts ++ fields
       end
+    opts = opts ++ (Map.take(config, [:socket_options]) |> Map.to_list())
 
     with {:error, {:already_started, pid}} <- Supervisor.start_child({__MODULE__, opts}) do
       {:ok, pid}

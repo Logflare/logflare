@@ -80,6 +80,7 @@ defmodule Logflare.ContextCache.Supervisor do
     password = Application.get_env(:logflare, Repo)[:password]
     database = Application.get_env(:logflare, Repo)[:database]
     port = Application.get_env(:logflare, Repo)[:port]
+    socket_options = Application.get_env(:logflare, Repo)[:socket_options]
 
     slot = Application.get_env(:logflare, CacheBuster)[:replication_slot]
     publications = Application.get_env(:logflare, CacheBuster)[:publications]
@@ -98,7 +99,8 @@ defmodule Logflare.ContextCache.Supervisor do
                port: port,
                username: username,
                database: database,
-               password: password
+               password: password,
+               tcp_opts: socket_options
              },
              slot: slot,
              wal_position: {"0", "0"},
