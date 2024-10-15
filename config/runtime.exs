@@ -46,7 +46,14 @@ config :logflare,
 config :logflare,
        LogflareWeb.Endpoint,
        filter_nil_kv_pairs.(
-         http: filter_nil_kv_pairs.(port: System.get_env("PHX_HTTP_PORT")),
+         http: filter_nil_kv_pairs.(
+             port: System.get_env("PHX_HTTP_PORT"),
+             ip:
+               case System.get_env("PHX_HTTP_IP") do
+                  nil -> nil
+                  value -> IP.from_string!(value)
+               end
+           ),
          url:
            filter_nil_kv_pairs.(
              host: System.get_env("PHX_URL_HOST"),
@@ -77,6 +84,7 @@ config :logflare,
          hostname: System.get_env("DB_HOSTNAME"),
          password: System.get_env("DB_PASSWORD"),
          username: System.get_env("DB_USERNAME"),
+         socket_options: [ :inet6 ],
          after_connect:
            if(System.get_env("DB_SCHEMA"),
              do: {Postgrex, :query!, ["set search_path=#{System.get_env("DB_SCHEMA")}", []]},
@@ -211,7 +219,8 @@ cond do
            :postgres_backend_adapter,
            filter_nil_kv_pairs.(
              url: System.get_env("POSTGRES_BACKEND_URL"),
-             schema: System.get_env("POSTGRES_BACKEND_SCHEMA")
+             schema: System.get_env("POSTGRES_BACKEND_SCHEMA"),
+             socket_options: [:inet6]
            )
 
   config_env() != :test ->
