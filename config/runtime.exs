@@ -4,6 +4,23 @@ filter_nil_kv_pairs = fn pairs when is_list(pairs) ->
   Enum.filter(pairs, fn {_k, v} -> v !== nil end)
 end
 
+detect_ip_version = fn host when is_binary(host) ->
+  host = String.to_charlist(host)
+
+  cond do
+    match?({:ok, _}, :inet6_tcp.getaddr(host)) -> {:ok, :inet6}
+    match?({:ok, _}, :inet.gethostbyname(host)) -> {:ok, :inet}
+    true -> {:error, :nxdomain}
+  end
+end
+
+socket_options_for_host = fn host when is_binary(host) ->
+  case detect_ip_version.(host) do
+    {:ok, ip_version} -> [ ip_version ]
+    {:error, reason} -> raise "Failed to detect IP version: #{reason}"
+  end
+end
+
 config :logflare,
        Logflare.PubSub,
        [
@@ -51,7 +68,10 @@ config :logflare,
              ip:
                case System.get_env("PHX_HTTP_IP") do
                   nil -> nil
-                  value -> IP.from_string!(value)
+                  value -> case :inet.parse_address(to_charlist(value)) do
+                    {:ok, ip} -> ip
+                    {:error, _} -> raise "Failed to parse IP address: #{value}"
+                  end
                end
            ),
          url:
@@ -84,7 +104,7 @@ config :logflare,
          hostname: System.get_env("DB_HOSTNAME"),
          password: System.get_env("DB_PASSWORD"),
          username: System.get_env("DB_USERNAME"),
-         socket_options: [ :inet6 ],
+         socket_options: socket_options_for_host.(System.get_env("DB_HOSTNAME")),
          after_connect:
            if(System.get_env("DB_SCHEMA"),
              do: {Postgrex, :query!, ["set search_path=#{System.get_env("DB_SCHEMA")}", []]},
@@ -212,6 +232,13 @@ if config_env() != :test do
   config :grpc, port: System.get_env("LOGFLARE_GRPC_PORT", "50051") |> String.to_integer()
 end
 
+socket_options_for_url = fn url when is_binary(url) ->
+  case URI.parse(url) do
+    %URI{host: host} -> socket_options_for_host.(host)
+    _ -> raise "Failed to parse URL: #{inspect(url)}"
+  end
+end
+
 cond do
   System.get_env("LOGFLARE_SINGLE_TENANT", "false") == "true" &&
       not is_nil(System.get_env("POSTGRES_BACKEND_URL")) ->
@@ -220,7 +247,7 @@ cond do
            filter_nil_kv_pairs.(
              url: System.get_env("POSTGRES_BACKEND_URL"),
              schema: System.get_env("POSTGRES_BACKEND_SCHEMA"),
-             socket_options: [:inet6]
+             socket_options: socket_options_for_url.(System.get_env("POSTGRES_BACKEND_URL"))
            )
 
   config_env() != :test ->
