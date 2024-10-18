@@ -72,13 +72,13 @@ defmodule Logflare.Mixfile do
   defp deps do
     [
       # Phoenix stuff
-      {:phoenix, "~> 1.7.14"},
+      {:phoenix, "~> 1.7"},
       {:phoenix_live_view, "~> 0.18"},
       {:phoenix_view, "~> 2.0"},
       {:phoenix_pubsub, "~> 2.1"},
       {:phoenix_ecto, "~> 4.4"},
       {:phoenix_live_reload, "~> 1.4", only: :dev},
-      {:bandit, "~> 1.5.7"},
+      {:bandit, ">= 0.7.7"},
       {:plug_crypto, "~> 1.2.2"},
       {:cors_plug, "~> 2.0"},
       {:plug_caisson, "~> 0.2.1"},
