@@ -117,7 +117,7 @@ defmodule Logflare.Sources do
     get_source_by_token(source_token)
   end
 
-  def get(source_id) when is_integer(source_id) do
+  def get(source_id) when is_integer(source_id) or is_binary(source_id) do
     Repo.get(Source, source_id)
     |> put_retention_days()
   end

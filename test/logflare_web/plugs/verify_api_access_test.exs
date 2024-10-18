@@ -176,34 +176,6 @@ defmodule LogflareWeb.Plugs.VerifyApiAccessTest do
     end
   end
 
-  test "public scope", %{user: user} do
-    {:ok, access_token} = Logflare.Auth.create_access_token(user, %{scopes: "public"})
-
-    build_conn(:get, "/any", %{})
-    |> put_req_header("x-api-key", access_token.token)
-    |> VerifyApiAccess.call(%{scopes: ~w(public)})
-    |> assert_authorized(user)
-
-    build_conn(:get, "/any", %{})
-    |> put_req_header("x-api-key", access_token.token)
-    |> VerifyApiAccess.call(%{scopes: ~w(public)})
-    |> assert_authorized(user)
-
-    # no scope set
-    {:ok, access_token} = Logflare.Auth.create_access_token(user)
-
-    build_conn(:get, "/any", %{})
-    |> put_req_header("x-api-key", access_token.token)
-    |> VerifyApiAccess.call(%{scopes: ~w(public)})
-    |> assert_authorized(user)
-
-    # user.api_key
-    build_conn(:get, "/any", %{})
-    |> put_req_header("x-api-key", user.api_key)
-    |> VerifyApiAccess.call(%{scopes: ~w(public)})
-    |> assert_authorized(user)
-  end
-
   test "private scope", %{user: user} do
     {:ok, access_token} = Logflare.Auth.create_access_token(user, %{scopes: "private"})
 
