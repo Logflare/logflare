@@ -16,7 +16,7 @@ end
 
 socket_options_for_host = fn host when is_binary(host) ->
   case detect_ip_version.(host) do
-    {:ok, ip_version} -> [ ip_version ]
+    {:ok, ip_version} -> [ip_version]
     {:error, reason} -> raise "Failed to detect IP version: #{reason}"
   end
 end
@@ -63,15 +63,16 @@ config :logflare,
 config :logflare,
        LogflareWeb.Endpoint,
        filter_nil_kv_pairs.(
-         http: filter_nil_kv_pairs.(
+         http:
+           filter_nil_kv_pairs.(
              port: System.get_env("PHX_HTTP_PORT"),
              ip:
                case System.get_env("PHX_HTTP_IP") do
-                  nil -> nil
-                  value -> case :inet.parse_address(to_charlist(value)) do
-                    {:ok, ip} -> ip
-                    {:error, _} -> raise "Failed to parse IP address: #{value}"
-                  end
+                 nil -> nil
+                 value -> case :inet.parse_address(to_charlist(value)) do
+                   {:ok, ip} -> ip
+                   {:error, _} -> raise "Failed to parse IP address: #{value}"
+                 end
                end
            ),
          url:
