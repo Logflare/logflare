@@ -322,13 +322,11 @@ defmodule Logflare.Backends do
   end
 
   defp maybe_broadcast_and_route(source, log_events) do
-    Logflare.Utils.Tasks.start_child(fn ->
-      if source.metrics.avg < 5 do
-        Source.ChannelTopics.broadcast_new(log_events)
-      end
+    if source.metrics.avg < 5 do
+      Source.ChannelTopics.broadcast_new(log_events)
+    end
 
-      SourceRouting.route_to_sinks_and_ingest(log_events)
-    end)
+    SourceRouting.route_to_sinks_and_ingest(log_events)
 
     :ok
   end
