@@ -123,6 +123,12 @@ defmodule LogflareWeb.OpenApiSchemas do
     use LogflareWeb.OpenApi, properties: @properties, required: [:name]
   end
 
+  defmodule SourceSchema do
+    @properties %{}
+
+    use LogflareWeb.OpenApi, properties: @properties, required: []
+  end
+
   defmodule RuleApiSchema do
     @properties %{
       id: %Schema{type: :integer},

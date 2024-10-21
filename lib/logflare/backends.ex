@@ -1,6 +1,7 @@
 defmodule Logflare.Backends do
   @moduledoc false
 
+  alias Logflare.Utils.Tasks
   alias Logflare.Backends.Adaptor
   alias Logflare.Backends.Backend
   alias Logflare.Backends.SourceRegistry
@@ -18,7 +19,6 @@ defmodule Logflare.Backends do
   alias Logflare.SystemMetrics
   alias Logflare.PubSubRates
   alias Logflare.Cluster
-  alias Logflare.TaskSupervisor
   alias Logflare.Source.RecentLogsServer
   import Ecto.Query
 
@@ -322,13 +322,11 @@ defmodule Logflare.Backends do
   end
 
   defp maybe_broadcast_and_route(source, log_events) do
-    Logflare.Utils.Tasks.start_child(fn ->
-      if source.metrics.avg < 5 do
-        Source.ChannelTopics.broadcast_new(log_events)
-      end
+    if source.metrics.avg < 5 do
+      Source.ChannelTopics.broadcast_new(log_events)
+    end
 
-      SourceRouting.route_to_sinks_and_ingest(log_events)
-    end)
+    SourceRouting.route_to_sinks_and_ingest(log_events)
 
     :ok
   end
@@ -517,16 +515,16 @@ defmodule Logflare.Backends do
     nodes = Cluster.Utils.node_list_all()
 
     task =
-      Task.async(fn ->
+      Tasks.async(fn ->
         nodes
         |> Enum.map(
-          &Task.Supervisor.async({TaskSupervisor, &1}, __MODULE__, :list_recent_logs_local, [
-            source
-          ])
+          &Tasks.async(fn ->
+            :erpc.call(&1, __MODULE__, :list_recent_logs_local, [source], 10_000)
+          end)
         )
         |> Task.yield_many()
         |> Enum.map(fn {%Task{pid: pid}, res} ->
-          res || Task.Supervisor.terminate_child(TaskSupervisor, pid)
+          res || Task.shutdown(pid)
         end)
       end)
 
