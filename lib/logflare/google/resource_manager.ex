@@ -11,6 +11,7 @@ defmodule Logflare.Google.CloudResourceManager do
   alias Logflare.User
   alias Logflare.TeamUsers
   alias Logflare.Billing
+  alias Logflare.Utils.Tasks
 
   def list_projects() do
     conn = GenUtils.get_conn()
@@ -32,7 +33,7 @@ defmodule Logflare.Google.CloudResourceManager do
   def set_iam_policy(opts \\ [async: true])
 
   def set_iam_policy(async: true) do
-    Task.Supervisor.start_child(Logflare.TaskSupervisor, fn -> set_iam_policy(async: false) end)
+    Tasks.start_child(fn -> set_iam_policy(async: false) end)
   end
 
   def set_iam_policy(async: false) do
