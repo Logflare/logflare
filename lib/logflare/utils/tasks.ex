@@ -10,14 +10,22 @@ defmodule Logflare.Utils.Tasks do
   Linked to caller, linked to supervisor
   """
   def async(func, opts \\ []) do
-    Task.Supervisor.async(Logflare.TaskSupervisor, func, opts)
+    Task.Supervisor.async(
+      {:via, PartitionSupervisor, {Logflare.TaskSupervisor, self()}},
+      func,
+      opts
+    )
   end
 
   @doc """
   Not linked to caller, only to supervisor.
   """
   def start_child(func, opts \\ []) do
-    Task.Supervisor.start_child(Logflare.TaskSupervisor, func, opts)
+    Task.Supervisor.start_child(
+      {:via, PartitionSupervisor, {Logflare.TaskSupervisor, self()}},
+      func,
+      opts
+    )
   end
 
   @doc """
@@ -26,7 +34,9 @@ defmodule Logflare.Utils.Tasks do
   """
   def kill_all_tasks do
     Logflare.TaskSupervisor
-    |> Task.Supervisor.children()
-    |> Enum.map(&Task.Supervisor.terminate_child(Logflare.TaskSupervisor, &1))
+    |> PartitionSupervisor.which_children()
+    |> IO.inspect()
+
+    # |> Enum.map(&Task.Supervisor.terminate_child(Logflare.TaskSupervisor, &1))
   end
 end
