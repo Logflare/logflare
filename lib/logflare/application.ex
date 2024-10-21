@@ -51,7 +51,7 @@ defmodule Logflare.Application do
          name: Logflare.V1SourceRegistry,
          keys: :unique,
          partitions: max(round(System.schedulers_online() / 8), 1)},
-        {Task.Supervisor, name: Logflare.TaskSupervisor},
+        {PartitionSupervisor, child_spec: Task.Supervisor, name: Logflare.TaskSupervisor},
         {DynamicSupervisor, strategy: :one_for_one, name: Logflare.Endpoints.Cache},
         {DynamicSupervisor,
          strategy: :one_for_one,

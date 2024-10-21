@@ -35,8 +35,8 @@ defmodule Logflare.Utils.Tasks do
   def kill_all_tasks do
     Logflare.TaskSupervisor
     |> PartitionSupervisor.which_children()
-    |> IO.inspect()
-
-    # |> Enum.map(&Task.Supervisor.terminate_child(Logflare.TaskSupervisor, &1))
+    |> Enum.map(fn {_, pid, _, _} ->
+      pid |> Task.Supervisor.children() |> Enum.map(&Task.Supervisor.terminate_child(pid, &1))
+    end)
   end
 end
