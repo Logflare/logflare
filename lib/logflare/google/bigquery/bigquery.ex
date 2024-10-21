@@ -24,6 +24,7 @@ defmodule Logflare.Google.BigQuery do
   alias Logflare.Billing.Plan
   alias Logflare.TeamUsers
   alias Logflare.Source.BigQuery.SchemaBuilder
+  alias Logflare.Utils.Tasks
 
   @type ok_err_tup :: {:ok, term} | {:error, term}
 
@@ -285,7 +286,7 @@ defmodule Logflare.Google.BigQuery do
       for x <- [user | team_users], x.provider == "google", do: x.email
 
     if Enum.count(user.sources) > 0 do
-      Task.Supervisor.start_child(Logflare.TaskSupervisor, fn ->
+      Tasks.start_child(fn ->
         patch(dataset_id, emails, project_id, user.id)
       end)
 
