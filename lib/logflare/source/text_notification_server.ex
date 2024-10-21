@@ -11,6 +11,7 @@ defmodule Logflare.Source.TextNotificationServer do
   alias LogflareWeb.Router.Helpers, as: Routes
   alias LogflareWeb.Endpoint
   alias Logflare.Backends
+  alias Logflare.Utils.Tasks
 
   @twilio_phone "+16026006731"
 
@@ -50,7 +51,7 @@ defmodule Logflare.Source.TextNotificationServer do
         body = "#{source.name} has #{rate} new event(s). See: #{source_link} "
 
         if source.notifications.user_text_notifications == true do
-          Task.Supervisor.start_child(Logflare.TaskSupervisor, fn ->
+          Tasks.start_child(fn ->
             ExTwilio.Message.create(to: user.phone, from: @twilio_phone, body: body)
           end)
         end
@@ -61,7 +62,7 @@ defmodule Logflare.Source.TextNotificationServer do
             body = "#{source.name} has #{rate} new event(s). See: #{source_link} "
 
             if team_user do
-              Task.Supervisor.start_child(Logflare.TaskSupervisor, fn ->
+              Tasks.start_child(fn ->
                 ExTwilio.Message.create(to: team_user.phone, from: @twilio_phone, body: body)
               end)
             end
