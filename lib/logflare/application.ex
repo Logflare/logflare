@@ -51,7 +51,9 @@ defmodule Logflare.Application do
          name: Logflare.V1SourceRegistry,
          keys: :unique,
          partitions: max(round(System.schedulers_online() / 8), 1)},
-        {PartitionSupervisor, child_spec: Task.Supervisor, name: Logflare.TaskSupervisor},
+        # temporary
+        {Task.Supervisor, name: Logflare.TaskSupervisor},
+        {PartitionSupervisor, child_spec: Task.Supervisor, name: Logflare.TaskSupervisors},
         {DynamicSupervisor, strategy: :one_for_one, name: Logflare.Endpoints.Cache},
         {DynamicSupervisor,
          strategy: :one_for_one,
@@ -75,7 +77,9 @@ defmodule Logflare.Application do
       conditional_children() ++
       [
         Logflare.ErlSysMon,
-        {PartitionSupervisor, child_spec: Task.Supervisor, name: Logflare.TaskSupervisor},
+        # temporary
+        {Task.Supervisor, name: Logflare.TaskSupervisor},
+        {PartitionSupervisor, child_spec: Task.Supervisor, name: Logflare.TaskSupervisors},
         {Cluster.Supervisor, [topologies, [name: Logflare.ClusterSupervisor]]},
         Logflare.Repo,
         Logflare.Vault,
