@@ -5,7 +5,7 @@ defmodule Logflare.PubSubRates do
   alias Logflare.PubSubRates
   alias Phoenix.PubSub
   @topics ["buffers", "rates", "inserts"]
-  @partitions 8
+  @partitions Application.get_env(:logflare, Logflare.PubSub)[:pool_size]
 
   def start_link(init_arg) do
     Supervisor.start_link(__MODULE__, init_arg, name: __MODULE__)
