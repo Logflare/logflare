@@ -7,6 +7,8 @@ defmodule Logflare.PubSubRates.Rates do
 
   use GenServer
 
+  @topic "rates"
+
   def child_spec(args) do
     %{
       id: __MODULE__,
@@ -18,21 +20,25 @@ defmodule Logflare.PubSubRates.Rates do
   end
 
   def start_link(args \\ []) do
-    partition = Keyword.get(args, :partition, 0)
+    partition = get_partition_opt(args)
     name = :"#{__MODULE__}#{partition}"
 
     GenServer.start_link(__MODULE__, args, name: name)
   end
 
-  def init(state) do
-    partition = Keyword.get(state, :partition, 0)
-    topic = "rates#{partition}"
+  def init(args) do
+    partition = get_partition_opt(args)
+    topic = @topic <> partition
     PubSubRates.subscribe(topic)
-    {:ok, state}
+    {:ok, args}
   end
 
-  def handle_info({"rates", source_token, rates}, state) do
+  def handle_info({@topic, source_token, rates}, state) do
     Cache.cache_rates(source_token, rates)
     {:noreply, state}
+  end
+
+  defp get_partition_opt(args) do
+    Keyword.get(args, :partition, "0")
   end
 end

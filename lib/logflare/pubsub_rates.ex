@@ -20,7 +20,7 @@ defmodule Logflare.PubSubRates do
        name: PubSubRates.Supervisors,
        partitions: partitions(),
        with_arguments: fn [opts], partition ->
-         [Keyword.put(opts, :partition, partition)]
+         [Keyword.put(opts, :partition, Integer.to_string(partition))]
        end},
       PubSubRates.Buffers,
       PubSubRates.Inserts
