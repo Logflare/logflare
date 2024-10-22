@@ -16,11 +16,11 @@ defmodule Logflare.PubSubRates.Inserts do
   end
 
   def init(state) do
-    PubSubRates.subscribe(:inserts)
+    PubSubRates.subscribe("inserts")
     {:ok, state}
   end
 
-  def handle_info({:inserts, source_token, inserts}, state) do
+  def handle_info({"inserts", source_token, inserts}, state) do
     Cache.cache_inserts(source_token, inserts)
     {:noreply, state}
   end

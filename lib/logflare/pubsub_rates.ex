@@ -4,7 +4,8 @@ defmodule Logflare.PubSubRates do
 
   alias Logflare.PubSubRates
   alias Phoenix.PubSub
-  @topics [:buffers, :rates, :inserts]
+  @topics ["buffers", "rates", "inserts"]
+  @partitions Application.compile_env(:logflare, Logflare.PubSub)[:pool_size]
 
   def start_link(init_arg) do
     Supervisor.start_link(__MODULE__, init_arg, name: __MODULE__)
@@ -14,7 +15,13 @@ defmodule Logflare.PubSubRates do
   def init(_init_arg) do
     children = [
       PubSubRates.Cache,
-      PubSubRates.Rates,
+      {PartitionSupervisor,
+       child_spec: PubSubRates.Rates,
+       name: PubSubRates.Supervisors,
+       partitions: partitions(),
+       with_arguments: fn [opts], partition ->
+         [Keyword.put(opts, :partition, Integer.to_string(partition))]
+       end},
       PubSubRates.Buffers,
       PubSubRates.Inserts
     ]
@@ -28,29 +35,58 @@ defmodule Logflare.PubSubRates do
   ### Examples
 
     iex> subscribe(:all)
-    iex> subscribe(:buffers)
-    iex> subscribe(:inserts)
-    iex> subscribe(:rates)
+    iex> subscribe("buffers")
+    iex> subscribe("inserts")
+    iex> subscribe("rates")
   """
-  @spec subscribe(atom()) :: :ok
+  @spec subscribe(:all | binary() | maybe_improper_list()) ::
+          :ok | list() | {:error, {:already_registered, pid()}}
+
   def subscribe(:all), do: subscribe(@topics)
+
+  def subscribe("rates" <> _partition = topic),
+    do: PubSub.subscribe(Logflare.PubSub, topic)
+
   def subscribe(topics) when is_list(topics), do: Enum.map(topics, &subscribe/1)
 
   def subscribe(topic) when topic in @topics do
-    PubSub.subscribe(Logflare.PubSub, "#{topic}")
+    PubSub.subscribe(Logflare.PubSub, topic)
   end
 
   @doc """
   Global sharded broadcast for a rate-specific message.
   """
-  @spec global_broadcast_rate({atom(), non_neg_integer(), nil | non_neg_integer(), term()}) :: :ok
-  @spec global_broadcast_rate({atom(), atom(), term()}) :: :ok
-  def global_broadcast_rate({msg, source_id, _backend_id, _payload} = data)
-      when msg in @topics and is_integer(source_id) do
-    Phoenix.PubSub.broadcast(Logflare.PubSub, "#{msg}", data)
+  @spec global_broadcast_rate(
+          {binary(), any(), any()}
+          | {binary(), integer(), any(), any()}
+        ) :: :ok | {:error, any()}
+
+  def global_broadcast_rate({topic, source_id, _backend_id, _payload} = data)
+      when topic in @topics and is_integer(source_id) do
+    Phoenix.PubSub.broadcast(Logflare.PubSub, topic, data)
   end
 
-  def global_broadcast_rate({msg, _source_token, _payload} = data) when msg in @topics do
-    Phoenix.PubSub.broadcast(Logflare.PubSub, "#{msg}", data)
+  def global_broadcast_rate({"rates" = topic, source_token, _payload} = data)
+      when topic in @topics do
+    partitioned_topic = partitioned_topic(topic, source_token)
+
+    Phoenix.PubSub.broadcast(Logflare.PubSub, partitioned_topic, data)
+  end
+
+  def global_broadcast_rate({topic, _source_token, _payload} = data) when topic in @topics do
+    Phoenix.PubSub.broadcast(Logflare.PubSub, topic, data)
+  end
+
+  @doc """
+  The number of partitions for a paritioned child.
+  """
+  @spec partitions() :: integer()
+  def partitions(), do: @partitions
+
+  @doc """
+  Partitions a topic for a source_token.
+  """
+  def partitioned_topic(topic, source_token) do
+    topic <> (:erlang.phash2(source_token, partitions()) |> Integer.to_string())
   end
 end

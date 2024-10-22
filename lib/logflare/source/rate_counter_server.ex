@@ -247,11 +247,7 @@ defmodule Logflare.Source.RateCounterServer do
   def broadcast(%RateCounterServer{} = state) do
     local_rates = %{Node.self() => state_to_external(state)}
 
-    Phoenix.PubSub.broadcast(
-      Logflare.PubSub,
-      "rates",
-      {:rates, state.source_id, local_rates}
-    )
+    PubSubRates.global_broadcast_rate({"rates", state.source_id, local_rates})
 
     cluster_rates =
       PubSubRates.Cache.get_cluster_rates(state.source_id)
