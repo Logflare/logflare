@@ -15,12 +15,12 @@ defmodule Logflare.PubSubRates.Buffers do
 
   @impl GenServer
   def init(_state) do
-    PubSubRates.subscribe(:buffers)
+    PubSubRates.subscribe("buffers")
     {:ok, %{}}
   end
 
   @impl GenServer
-  def handle_info({:buffers, source_id, backend_id, buffers}, state)
+  def handle_info({"buffers", source_id, backend_id, buffers}, state)
       when is_integer(source_id) and is_map(buffers) do
     Cache.cache_buffers(source_id, backend_id, buffers)
     {:noreply, state}

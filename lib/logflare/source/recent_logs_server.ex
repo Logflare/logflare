@@ -137,11 +137,7 @@ defmodule Logflare.Source.RecentLogsServer do
       bq_inserts = Source.Data.get_bq_inserts(source_token)
       inserts_payload = %{Node.self() => %{node_inserts: current_inserts, bq_inserts: bq_inserts}}
 
-      Phoenix.PubSub.broadcast(
-        Logflare.PubSub,
-        "inserts",
-        {:inserts, source_token, inserts_payload}
-      )
+      PubSubRates.global_broadcast_rate({"inserts", source_token, inserts_payload})
     end
 
     current_cluster_inserts = PubSubRates.Cache.get_cluster_inserts(state.source_token)

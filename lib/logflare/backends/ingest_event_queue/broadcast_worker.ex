@@ -65,7 +65,7 @@ defmodule Logflare.Backends.IngestEventQueue.BroadcastWorker do
     len = Backends.get_and_cache_local_pending_buffer_len(source_id, backend_id)
 
     local_buffer = %{Node.self() => %{len: len}}
-    PubSubRates.global_broadcast_rate({:buffers, source_id, backend_id, local_buffer})
+    PubSubRates.global_broadcast_rate({"buffers", source_id, backend_id, local_buffer})
   end
 
   defp local_broadcast_cluster_length({source_id, backend_id}) do

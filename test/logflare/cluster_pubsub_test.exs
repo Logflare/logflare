@@ -20,29 +20,30 @@ defmodule Logflare.ClusterPubSubTest do
     end
 
     test "subscribe/1 inserts", %{source: %{token: source_token}} do
-      PubSubRates.subscribe(:inserts)
+      PubSubRates.subscribe("inserts")
 
       TestUtils.retry_assert(fn ->
-        PubSubRates.global_broadcast_rate({:inserts, source_token, %{data: "some val"}})
-        assert_received {:inserts, ^source_token, %{data: "some val"}}
+        PubSubRates.global_broadcast_rate({"inserts", source_token, %{data: "some val"}})
+        assert_received {"inserts", ^source_token, %{data: "some val"}}
       end)
     end
 
     test "subscribe/1 rates", %{source: %{token: source_token}} do
-      PubSubRates.subscribe(:rates)
+      PubSubRates.partitioned_topic("rates", source_token)
+      |> PubSubRates.subscribe()
 
       TestUtils.retry_assert(fn ->
-        PubSubRates.global_broadcast_rate({:rates, source_token, %{data: "some val"}})
-        assert_received {:rates, ^source_token, %{data: "some val"}}
+        PubSubRates.global_broadcast_rate({"rates", source_token, %{data: "some val"}})
+        assert_received {"rates", ^source_token, %{data: "some val"}}
       end)
     end
 
     test "subscribe/1 buffers", %{source: %{id: source_id}} do
-      PubSubRates.subscribe(:buffers)
+      PubSubRates.subscribe("buffers")
 
       TestUtils.retry_assert(fn ->
-        PubSubRates.global_broadcast_rate({:buffers, source_id, nil, %{data: "some val"}})
-        assert_received {:buffers, ^source_id, nil, %{data: "some val"}}
+        PubSubRates.global_broadcast_rate({"buffers", source_id, nil, %{data: "some val"}})
+        assert_received {"buffers", ^source_id, nil, %{data: "some val"}}
       end)
     end
 
@@ -50,12 +51,12 @@ defmodule Logflare.ClusterPubSubTest do
       Phoenix.PubSub.broadcast(
         Logflare.PubSub,
         "buffers",
-        {:buffers, source.token, %{Node.self() => %{len: 5}}}
+        {"buffers", source.token, %{Node.self() => %{len: 5}}}
       )
 
       :timer.sleep(100)
       assert PubSubRates.Cache.get_cluster_buffers(source.id, nil) == 0
-      PubSubRates.global_broadcast_rate({:buffers, source.id, nil, %{Node.self() => %{len: 5}}})
+      PubSubRates.global_broadcast_rate({"buffers", source.id, nil, %{Node.self() => %{len: 5}}})
       :timer.sleep(100)
       assert PubSubRates.Cache.get_cluster_buffers(source.id, nil) == 5
     end
