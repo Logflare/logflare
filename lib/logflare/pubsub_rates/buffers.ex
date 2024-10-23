@@ -35,7 +35,7 @@ defmodule Logflare.PubSubRates.Buffers do
     {:ok, args}
   end
 
-  def handle_info({@topic, _source_token, _buffers} = msg, state) do
+  def handle_info({@topic, _source_token, _buffers}, state) do
     {:noreply, state}
   end
 
