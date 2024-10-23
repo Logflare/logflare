@@ -20,8 +20,7 @@ defmodule Logflare.ClusterPubSubTest do
     end
 
     test "subscribe/1 inserts", %{source: %{token: source_token}} do
-      PubSubRates.partitioned_topic("inserts", source_token)
-      |> PubSubRates.subscribe()
+      PubSubRates.subscribe("inserts", PubSubRates.make_partition(source_token))
 
       TestUtils.retry_assert(fn ->
         PubSubRates.global_broadcast_rate({"inserts", source_token, %{data: "some val"}})
@@ -30,8 +29,7 @@ defmodule Logflare.ClusterPubSubTest do
     end
 
     test "subscribe/1 rates", %{source: %{token: source_token}} do
-      PubSubRates.partitioned_topic("rates", source_token)
-      |> PubSubRates.subscribe()
+      PubSubRates.subscribe("rates", PubSubRates.make_partition(source_token))
 
       TestUtils.retry_assert(fn ->
         PubSubRates.global_broadcast_rate({"rates", source_token, %{data: "some val"}})
@@ -42,8 +40,7 @@ defmodule Logflare.ClusterPubSubTest do
     test "subscribe/1 buffers", %{source: %{id: source_id}} do
       backend_id = 1
 
-      PubSubRates.partitioned_topic("buffers", {source_id, backend_id})
-      |> PubSubRates.subscribe()
+      PubSubRates.subscribe("buffers", PubSubRates.make_partition({source_id, backend_id}))
 
       TestUtils.retry_assert(fn ->
         PubSubRates.global_broadcast_rate({"buffers", source_id, backend_id, %{data: "some val"}})

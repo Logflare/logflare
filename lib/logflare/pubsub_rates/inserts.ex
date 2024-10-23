@@ -28,8 +28,8 @@ defmodule Logflare.PubSubRates.Inserts do
 
   def init(args) do
     partition = get_partition_opt(args)
-    topic = @topic <> partition
-    PubSubRates.subscribe(topic)
+
+    PubSubRates.subscribe(@topic, partition)
     {:ok, args}
   end
 
