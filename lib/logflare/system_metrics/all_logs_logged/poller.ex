@@ -3,6 +3,7 @@ defmodule Logflare.SystemMetrics.AllLogsLogged.Poller do
   use GenServer
   alias Logflare.Repo
   alias Logflare.SystemMetric
+  alias Logflare.Cluster
 
   require Logger
 
@@ -15,7 +16,8 @@ defmodule Logflare.SystemMetrics.AllLogsLogged.Poller do
   end
 
   def get_logs_per_second_cluster() do
-    {success, _failed} = GenServer.multi_call(__MODULE__, :logs_last_second)
+    {success, _failed} =
+      GenServer.multi_call(Cluster.Utils.node_list_all(), __MODULE__, :logs_last_second, 5_000)
 
     for {_node, count} <- success do
       count

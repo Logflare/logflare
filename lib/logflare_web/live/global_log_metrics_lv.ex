@@ -14,7 +14,14 @@ defmodule LogflareWeb.GlobalLogMetricsLV do
   def mount(_params, _session, socket) do
     if connected?(socket), do: :timer.send_interval(1_000, self(), :tick)
 
-    {:ok, put_data(socket)}
+    # TODO should subscribe to these data with PubSub instead
+
+    socket =
+      socket
+      |> assign(:log_count, 0)
+      |> assign(:per_second, 0)
+
+    {:ok, socket}
   end
 
   def handle_info(:tick, socket) do
