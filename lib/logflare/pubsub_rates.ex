@@ -4,6 +4,7 @@ defmodule Logflare.PubSubRates do
 
   alias Logflare.PubSubRates
   alias Phoenix.PubSub
+
   @topics ["buffers", "rates", "inserts"]
   @partitions Application.compile_env(:logflare, Logflare.PubSub)[:pool_size]
 
@@ -47,28 +48,31 @@ defmodule Logflare.PubSubRates do
   ### Examples
 
     iex> subscribe(:all)
-    iex> subscribe("buffers")
-    iex> subscribe("inserts")
-    iex> subscribe("rates")
+    iex> subscribe(["buffers", "inserts", "rates])
   """
   @spec subscribe(:all | binary() | maybe_improper_list()) ::
           :ok | list() | {:error, {:already_registered, pid()}}
 
   def subscribe(:all), do: subscribe(@topics)
 
-  def subscribe("rates" <> _partition = topic),
-    do: PubSub.subscribe(Logflare.PubSub, topic)
+  def subscribe(topics) when is_list(topics) do
+    for topic <- topics, partition <- 0..partitions() do
+      part = Integer.to_string(partition)
+      subscribe(topic, part)
+    end
+  end
 
-  def subscribe("buffers" <> _partition = topic),
-    do: PubSub.subscribe(Logflare.PubSub, topic)
+  @doc """
+  Subscribes to a topic for a partition.
 
-  def subscribe("inserts" <> _partition = topic),
-    do: PubSub.subscribe(Logflare.PubSub, topic)
+  ### Examples
 
-  def subscribe(topics) when is_list(topics), do: Enum.map(topics, &subscribe/1)
-
-  def subscribe(topic) when topic in @topics do
-    PubSub.subscribe(Logflare.PubSub, topic)
+    iex> subscribe("buffers", "0")
+    iex> subscribe("inserts", "56")
+  """
+  @spec subscribe(binary(), binary()) :: :ok | {:error, {:already_registered, pid()}}
+  def subscribe(topic, partition) when topic in @topics and is_binary(partition) do
+    PubSub.subscribe(Logflare.PubSub, topic <> partition)
   end
 
   @doc """
@@ -79,41 +83,18 @@ defmodule Logflare.PubSubRates do
           | {binary(), integer(), any(), any()}
         ) :: :ok | {:error, any()}
 
-  def global_broadcast_rate({"buffers" = topic, source_id, backend_id, _payload} = data)
+  def global_broadcast_rate({topic, source_id, backend_id, _payload} = data)
       when topic in @topics do
     partitioned_topic = partitioned_topic(topic, {source_id, backend_id})
 
     Phoenix.PubSub.broadcast(Logflare.PubSub, partitioned_topic, data)
   end
 
-  def global_broadcast_rate({topic, source_id, _backend_id, _payload} = data)
-      when topic in @topics and is_integer(source_id) do
-    Phoenix.PubSub.broadcast(Logflare.PubSub, topic, data)
-  end
-
-  def global_broadcast_rate({"rates" = topic, source_token, _payload} = data)
+  def global_broadcast_rate({topic, source_token, _payload} = data)
       when topic in @topics do
     partitioned_topic = partitioned_topic(topic, source_token)
 
     Phoenix.PubSub.broadcast(Logflare.PubSub, partitioned_topic, data)
-  end
-
-  def global_broadcast_rate({"buffers" = topic, source_token, _payload} = data)
-      when topic in @topics do
-    partitioned_topic = partitioned_topic(topic, source_token)
-
-    Phoenix.PubSub.broadcast(Logflare.PubSub, partitioned_topic, data)
-  end
-
-  def global_broadcast_rate({"inserts" = topic, source_token, _payload} = data)
-      when topic in @topics do
-    partitioned_topic = partitioned_topic(topic, source_token)
-
-    Phoenix.PubSub.broadcast(Logflare.PubSub, partitioned_topic, data)
-  end
-
-  def global_broadcast_rate({topic, _source_token, _payload} = data) when topic in @topics do
-    Phoenix.PubSub.broadcast(Logflare.PubSub, topic, data)
   end
 
   @doc """
@@ -123,9 +104,18 @@ defmodule Logflare.PubSubRates do
   def partitions(), do: @partitions
 
   @doc """
-  Partitions a topic for a source_token.
+  Partitions a topic for a key.
   """
-  def partitioned_topic(topic, source_token) do
-    topic <> (:erlang.phash2(source_token, partitions()) |> Integer.to_string())
+  @spec partitioned_topic(binary(), any()) :: binary()
+  def partitioned_topic(topic, key) when is_binary(topic) do
+    topic <> make_partition(key)
+  end
+
+  @doc """
+  Makes a string of a partition integer from a key.
+  """
+  @spec make_partition(any()) :: binary()
+  def make_partition(key) do
+    :erlang.phash2(key, partitions()) |> Integer.to_string()
   end
 end
