@@ -47,9 +47,7 @@ defmodule Logflare.PubSubRates do
   ### Examples
 
     iex> subscribe(:all)
-    iex> subscribe("buffers")
-    iex> subscribe("inserts")
-    iex> subscribe("rates")
+    iex> subscribe(["buffers", "inserts", "rates])
   """
   @spec subscribe(:all | binary() | maybe_improper_list()) ::
           :ok | list() | {:error, {:already_registered, pid()}}
@@ -62,6 +60,15 @@ defmodule Logflare.PubSubRates do
     end
   end
 
+  @doc """
+  Subscribes to a topic for a partition.
+
+  ### Examples
+
+    iex> subscribe("buffers", "0")
+    iex> subscribe("inserts", "56")
+  """
+  @spec subscribe(binary(), binary()) :: :ok | {:error, {:already_registered, pid()}}
   def subscribe(topic, partition) when topic in @topics and is_binary(partition) do
     PubSub.subscribe(Logflare.PubSub, topic <> partition)
   end
