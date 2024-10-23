@@ -4,6 +4,7 @@ defmodule Logflare.PubSubRates do
 
   alias Logflare.PubSubRates
   alias Phoenix.PubSub
+
   @topics ["buffers", "rates", "inserts"]
   @partitions Application.compile_env(:logflare, Logflare.PubSub)[:pool_size]
 
