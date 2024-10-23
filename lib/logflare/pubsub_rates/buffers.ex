@@ -9,27 +9,42 @@ defmodule Logflare.PubSubRates.Buffers do
 
   use GenServer
 
+  @topic "buffers"
+
+  def child_spec(args) do
+    %{
+      id: __MODULE__,
+      start: {__MODULE__, :start_link, [args]},
+      type: :worker,
+      restart: :permanent,
+      shutdown: 500
+    }
+  end
+
   def start_link(args \\ []) do
-    GenServer.start_link(__MODULE__, args, name: __MODULE__)
+    partition = get_partition_opt(args)
+    name = :"#{__MODULE__}#{partition}"
+
+    GenServer.start_link(__MODULE__, args, name: name)
   end
 
-  @impl GenServer
-  def init(_state) do
-    PubSubRates.subscribe("buffers")
-    {:ok, %{}}
+  def init(args) do
+    partition = get_partition_opt(args)
+    topic = @topic <> partition
+    PubSubRates.subscribe(topic)
+    {:ok, args}
   end
 
-  @impl GenServer
-  def handle_info({"buffers", source_id, backend_id, buffers}, state)
-      when is_integer(source_id) and is_map(buffers) do
+  def handle_info({@topic, _source_token, _buffers} = msg, state) do
+    {:noreply, state}
+  end
+
+  def handle_info({@topic, source_id, backend_id, buffers}, state) do
     Cache.cache_buffers(source_id, backend_id, buffers)
     {:noreply, state}
   end
 
-  # TODO: remove in >v1.8.x
-  @impl GenServer
-  def handle_info(_, state) do
-    # don't handle old format of 3-elem or 4-elem tuples.
-    {:noreply, state}
+  defp get_partition_opt(args) do
+    Keyword.get(args, :partition, "0")
   end
 end

@@ -17,13 +17,25 @@ defmodule Logflare.PubSubRates do
       PubSubRates.Cache,
       {PartitionSupervisor,
        child_spec: PubSubRates.Rates,
-       name: PubSubRates.Supervisors,
+       name: PubSubRates.Rates.Supervisors,
        partitions: partitions(),
        with_arguments: fn [opts], partition ->
          [Keyword.put(opts, :partition, Integer.to_string(partition))]
        end},
-      PubSubRates.Buffers,
-      PubSubRates.Inserts
+      {PartitionSupervisor,
+       child_spec: PubSubRates.Buffers,
+       name: PubSubRates.Buffers.Supervisors,
+       partitions: partitions(),
+       with_arguments: fn [opts], partition ->
+         [Keyword.put(opts, :partition, Integer.to_string(partition))]
+       end},
+      {PartitionSupervisor,
+       child_spec: PubSubRates.Inserts,
+       name: PubSubRates.Inserts.Supervisors,
+       partitions: partitions(),
+       with_arguments: fn [opts], partition ->
+         [Keyword.put(opts, :partition, Integer.to_string(partition))]
+       end}
     ]
 
     Supervisor.init(children, strategy: :one_for_one)
@@ -47,6 +59,12 @@ defmodule Logflare.PubSubRates do
   def subscribe("rates" <> _partition = topic),
     do: PubSub.subscribe(Logflare.PubSub, topic)
 
+  def subscribe("buffers" <> _partition = topic),
+    do: PubSub.subscribe(Logflare.PubSub, topic)
+
+  def subscribe("inserts" <> _partition = topic),
+    do: PubSub.subscribe(Logflare.PubSub, topic)
+
   def subscribe(topics) when is_list(topics), do: Enum.map(topics, &subscribe/1)
 
   def subscribe(topic) when topic in @topics do
@@ -61,12 +79,33 @@ defmodule Logflare.PubSubRates do
           | {binary(), integer(), any(), any()}
         ) :: :ok | {:error, any()}
 
+  def global_broadcast_rate({"buffers" = topic, source_id, backend_id, _payload} = data)
+      when topic in @topics do
+    partitioned_topic = partitioned_topic(topic, {source_id, backend_id})
+
+    Phoenix.PubSub.broadcast(Logflare.PubSub, partitioned_topic, data)
+  end
+
   def global_broadcast_rate({topic, source_id, _backend_id, _payload} = data)
       when topic in @topics and is_integer(source_id) do
     Phoenix.PubSub.broadcast(Logflare.PubSub, topic, data)
   end
 
   def global_broadcast_rate({"rates" = topic, source_token, _payload} = data)
+      when topic in @topics do
+    partitioned_topic = partitioned_topic(topic, source_token)
+
+    Phoenix.PubSub.broadcast(Logflare.PubSub, partitioned_topic, data)
+  end
+
+  def global_broadcast_rate({"buffers" = topic, source_token, _payload} = data)
+      when topic in @topics do
+    partitioned_topic = partitioned_topic(topic, source_token)
+
+    Phoenix.PubSub.broadcast(Logflare.PubSub, partitioned_topic, data)
+  end
+
+  def global_broadcast_rate({"inserts" = topic, source_token, _payload} = data)
       when topic in @topics do
     partitioned_topic = partitioned_topic(topic, source_token)
 

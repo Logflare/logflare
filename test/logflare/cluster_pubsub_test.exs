@@ -20,7 +20,8 @@ defmodule Logflare.ClusterPubSubTest do
     end
 
     test "subscribe/1 inserts", %{source: %{token: source_token}} do
-      PubSubRates.subscribe("inserts")
+      PubSubRates.partitioned_topic("inserts", source_token)
+      |> PubSubRates.subscribe()
 
       TestUtils.retry_assert(fn ->
         PubSubRates.global_broadcast_rate({"inserts", source_token, %{data: "some val"}})
@@ -39,24 +40,25 @@ defmodule Logflare.ClusterPubSubTest do
     end
 
     test "subscribe/1 buffers", %{source: %{id: source_id}} do
-      PubSubRates.subscribe("buffers")
+      backend_id = 1
+
+      PubSubRates.partitioned_topic("buffers", {source_id, backend_id})
+      |> PubSubRates.subscribe()
 
       TestUtils.retry_assert(fn ->
-        PubSubRates.global_broadcast_rate({"buffers", source_id, nil, %{data: "some val"}})
-        assert_received {"buffers", ^source_id, nil, %{data: "some val"}}
+        PubSubRates.global_broadcast_rate({"buffers", source_id, backend_id, %{data: "some val"}})
+        assert_received {"buffers", ^source_id, backend_id, %{data: "some val"}}
       end)
     end
 
     test "buffers 3-elem tuple is no op", %{source: source} do
-      Phoenix.PubSub.broadcast(
-        Logflare.PubSub,
-        "buffers",
-        {"buffers", source.token, %{Node.self() => %{len: 5}}}
-      )
+      PubSubRates.global_broadcast_rate({"buffers", source.token, %{Node.self() => %{len: 5}}})
 
       :timer.sleep(100)
       assert PubSubRates.Cache.get_cluster_buffers(source.id, nil) == 0
+
       PubSubRates.global_broadcast_rate({"buffers", source.id, nil, %{Node.self() => %{len: 5}}})
+
       :timer.sleep(100)
       assert PubSubRates.Cache.get_cluster_buffers(source.id, nil) == 5
     end
