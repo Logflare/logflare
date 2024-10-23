@@ -56,7 +56,8 @@ defmodule Logflare.PubSubRates do
 
   def subscribe(topics) when is_list(topics) do
     for topic <- topics, partition <- 0..partitions() do
-      subscribe(topic, partition)
+      part = Integer.to_string(partition)
+      subscribe(topic, part)
     end
   end
 
