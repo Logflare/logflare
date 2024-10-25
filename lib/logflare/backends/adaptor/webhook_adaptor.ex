@@ -155,7 +155,8 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
     defp process_data(payload, %{startup_config: startup_config} = context) do
       %{config: stored_config} = Backends.Cache.get_backend(context.backend_id)
 
-      config = Map.merge(startup_config, stored_config)
+      # startup config should override stored_config because of transform_config possibly transforming the config of the stored_config on startup
+      config = Map.merge(stored_config, startup_config)
 
       Client.send(
         url: config.url,
