@@ -42,6 +42,9 @@ start.pink: PORT = 4001
 start.pink: LOGFLARE_GRPC_PORT = 50052
 start.pink: __start__
 
+observer: 
+	erl -sname observer -hidden -setcookie ${ERL_COOKIE} -run observer
+
 __start__:
 	@env $$(cat .dev.env | xargs) PORT=${PORT} LOGFLARE_GRPC_PORT=${LOGFLARE_GRPC_PORT} iex --sname ${ERL_NAME} --cookie ${ERL_COOKIE} -S mix phx.server
 
