@@ -179,16 +179,31 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
     @doc """
     Merges configs and handles headers.
 
+    Keys in maps in the second argument always overwrite the
+    keys in maps in the first argument, even when nested.
+
     ## Examples
 
       iex> Logflare.Backends.Adaptor.WebhookAdaptor.Pipeline.merge_configs(%{}, %{})
       %{}
 
-      iex> Logflare.Backends.Adaptor.WebhookAdaptor.Pipeline.merge_configs(%{"headers" => %{"one" => "one-value"}}, %{"headers" => %{"one" => "two-value"}})
-      %{"headers" => %{"one" => "two-value"}}
+      iex> Logflare.Backends.Adaptor.WebhookAdaptor.Pipeline.merge_configs(%{headers: %{"one" => "one-value"}}, %{headers: %{"one" => "two-value"}})
+      %{headers: %{"one" => "two-value"}}
 
-      iex> Logflare.Backends.Adaptor.WebhookAdaptor.Pipeline.merge_configs(%{"username" => "me", "password" => "god"}, %{"headers" => %{"one" => "two-value"}})
-      %{"username" => "me", "password" => "god", "headers" => %{"one" => "two-value"}}
+      iex> Logflare.Backends.Adaptor.WebhookAdaptor.Pipeline.merge_configs(%{"username" => "me", "password" => "god"}, %{headers: %{"one" => "two-value"}})
+      %{"username" => "me", "password" => "god", headers: %{"one" => "two-value"}}
+
+      iex> Logflare.Backends.Adaptor.WebhookAdaptor.Pipeline.merge_configs(%{username: "me", password: "god"}, %{headers: %{"one" => "two-value"}})
+      %{username: "me", password: "god", headers: %{"one" => "two-value"}}
+
+      iex> Logflare.Backends.Adaptor.WebhookAdaptor.Pipeline.merge_configs(%{username: "me", password: "god", headers: %{"one" => "one-value"}}, %{headers: %{"one" => "two-value"}})
+      %{username: "me", password: "god", headers: %{"one" => "two-value"}}
+
+      iex> Logflare.Backends.Adaptor.WebhookAdaptor.Pipeline.merge_configs(%{username: "me", password: "god", headers: %{"one" => "one-value"}}, %{headers: %{}})
+      %{username: "me", password: "god", headers: %{"one" => "one-value"}}
+
+      iex> Logflare.Backends.Adaptor.WebhookAdaptor.Pipeline.merge_configs(%{"username" => "me", "password" => "god"}, %{"username" => "me", "password" => "another-god"})
+      %{"username" => "me", "password" => "another-god"}
 
       iex> Logflare.Backends.Adaptor.WebhookAdaptor.Pipeline.merge_configs(%{"username" => "me", "password" => "god"}, %{"username" => "me", "password" => "another-god"})
       %{"username" => "me", "password" => "another-god"}
@@ -196,7 +211,7 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
     """
     def merge_configs(config_1, config_2) when is_map(config_1) and is_map(config_2) do
       Map.merge(config_1, config_2, fn
-        "headers", v1, v2 ->
+        :headers, v1, v2 ->
           Map.merge(v1, v2)
 
         _key, _v1, v2 ->
