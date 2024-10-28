@@ -11,7 +11,7 @@ defmodule Logflare.BqRepo do
   import Logflare.TypeCasts
   require Logger
 
-  @query_request_timeout 60_000
+  @query_request_timeout 25_000
   @use_query_cache true
   @type results :: %{
           :rows => nil | [term()],
