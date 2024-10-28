@@ -33,6 +33,12 @@ defmodule Logflare.Backends.Adaptor.LokiAdaptorTest do
                }
              }).valid?
 
+      assert Adaptor.cast_and_validate_config(@subject, %{
+               "url" => "http://foobarbaz.com",
+               "username" => "foobarbaz",
+               "password" => "foobarbaz"
+             }).valid?
+
       refute Adaptor.cast_and_validate_config(@subject, %{
                "url" => "foobarbaz"
              }).valid?

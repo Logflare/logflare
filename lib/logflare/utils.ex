@@ -113,6 +113,16 @@ defmodule Logflare.Utils do
     next_chunk_rr(batch, chunk_size, targets, targets, func, [])
   end
 
+  @doc """
+  Takes an adapter config and encodes basic auth.
+  """
+  def encode_basic_auth(%{username: username, password: password})
+      when is_binary(username) and is_binary(password) do
+    Base.encode64(username <> ":" <> password)
+  end
+
+  def encode_basic_auth(_adapter_config), do: nil
+
   defp next_chunk_rr([], _chunk_size, _remaining, _initial_targets, _func, results) do
     Enum.reverse(results)
   end
