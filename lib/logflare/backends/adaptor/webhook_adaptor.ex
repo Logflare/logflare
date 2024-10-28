@@ -155,8 +155,8 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
     defp process_data(payload, %{startup_config: startup_config} = context) do
       %{config: stored_config} = Backends.Cache.get_backend(context.backend_id)
 
-      # startup config should override stored_config because of transform_config possibly transforming the config of the stored_config on startup
-      config = Map.merge(stored_config, startup_config)
+      config =
+        merge_configs(stored_config, startup_config)
 
       Client.send(
         url: config.url,
@@ -174,6 +174,37 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
         data: event,
         acknowledger: {__MODULE__, :ack_id, :ack_data}
       }
+    end
+
+    @doc """
+    Merges configs and handles headers.
+
+    Startup config should override stored_config because of transform_config
+    possibly transforming the config of the stored_config on startup.
+
+    ## Examples
+
+      iex> Logflare.Backends.Adaptor.WebhookAdaptor.Pipeline.merge_configs(%{}, %{})
+      %{}
+
+      iex> Logflare.Backends.Adaptor.WebhookAdaptor.Pipeline.merge_configs(%{"headers" => %{"one" => "one-value"}}, %{"headers" => %{"one" => "two-value"}})
+      %{"headers" => %{"one" => "two-value"}}
+
+      iex> Logflare.Backends.Adaptor.WebhookAdaptor.Pipeline.merge_configs(%{"username" => "me", "password" => "god"}, %{"headers" => %{"one" => "two-value"}})
+      %{"username" => "me", "password" => "god", "headers" => %{"one" => "two-value"}}
+
+      iex> Logflare.Backends.Adaptor.WebhookAdaptor.Pipeline.merge_configs(%{"username" => "me", "password" => "god"}, %{"username" => "me", "password" => "another-god"})
+      %{"username" => "me", "password" => "another-god"}
+
+    """
+    def merge_configs(stored, startup) when is_map(stored) and is_map(startup) do
+      Map.merge(stored, startup, fn
+        "headers", v1, v2 ->
+          Map.merge(v1, v2)
+
+        _key, _v1, v2 ->
+          v2
+      end)
     end
 
     def ack(_ack_ref, _successful, _failed) do

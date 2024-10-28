@@ -2,6 +2,8 @@ defmodule Logflare.Backends.WebhookAdaptorTest do
   @moduledoc false
   use Logflare.DataCase
 
+  doctest Logflare.Backends.Adaptor.WebhookAdaptor.Pipeline
+
   alias Logflare.Backends.Adaptor
   alias Logflare.Backends
   alias Logflare.Backends.Backend
