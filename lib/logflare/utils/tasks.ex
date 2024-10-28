@@ -9,6 +9,20 @@ defmodule Logflare.Utils.Tasks do
   @doc """
   Linked to caller, linked to supervisor
   """
+  def async(mod, fun, args, opts \\ []) do
+    Task.Supervisor.async(
+      {:via, PartitionSupervisor, {Logflare.TaskSupervisors, self()}},
+      mod,
+      fun,
+      args,
+      opts
+    )
+  end
+
+  @doc """
+  Linked to caller, linked to supervisor
+  """
+  @spec async((-> any())) :: Task.t()
   def async(func, opts \\ []) do
     Task.Supervisor.async(
       {:via, PartitionSupervisor, {Logflare.TaskSupervisors, self()}},
