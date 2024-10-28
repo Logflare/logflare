@@ -4,7 +4,10 @@ defmodule Logflare.Endpoints.Cache do
   """
 
   require Logger
+
   alias Logflare.Endpoints
+  alias Logflare.Utils.Tasks
+
   use GenServer, restart: :temporary
 
   defstruct query: nil,
@@ -26,11 +29,13 @@ defmodule Logflare.Endpoints.Cache do
         }
 
   def start_link({query, params}) do
-    GenServer.start_link(__MODULE__, {query, params})
+    GenServer.start_link(__MODULE__, {query, params},
+      name: {:via, :syn, {:endpoints, {query.id, params}}}
+    )
   end
 
   @doc """
-  Initiate a query. Times out at 30 seconds. BigQuery should also timeout at 60 seconds.
+  Initiate a query. Times out at 30 seconds. BigQuery should also timeout at 25 seconds.
   We have a %GoogleApi.BigQuery.V2.Model.ErrorProto{} model but it's missing fields we see in error responses.
   """
   def query(cache) when is_pid(cache) do
@@ -88,6 +93,8 @@ defmodule Logflare.Endpoints.Cache do
   end
 
   def init({query, params}) do
+    :syn.join(:endpoints, query.id, self())
+
     state =
       %__MODULE__{
         query: query,
@@ -99,11 +106,6 @@ defmodule Logflare.Endpoints.Cache do
       |> put_disable_cache()
 
     unless state.disable_cache, do: refresh(proactive_querying_ms(state))
-
-    # register on syn
-    pid = self()
-    :syn.register(:endpoints, {query.id, params}, pid)
-    :syn.join(:endpoints, query.id, pid)
 
     {:ok, state}
   end
@@ -154,14 +156,20 @@ defmodule Logflare.Endpoints.Cache do
   end
 
   def handle_info(:refresh, state) do
-    task = Task.async(__MODULE__, :do_query, [state])
+    task = Tasks.async(__MODULE__, :do_query, [state])
     tasks = [task | state.query_tasks]
+
+    running = Enum.count(tasks)
+
+    if running > 1,
+      do: Logger.warning("CacheTaskError: #{running} Endpoints.Cache tasks are running")
 
     {:noreply, %{state | query_tasks: tasks}}
   end
 
-  def handle_info({_from_task, {:ok, results}}, state) do
-    {:noreply, %{state | cached_result: results}}
+  def handle_info({from_task, {:ok, results}}, state) do
+    tasks = Enum.reject(state.query_tasks, &(&1.pid == from_task))
+    {:noreply, %{state | cached_result: results, query_tasks: tasks}}
   end
 
   def handle_info({_from_task, {:error, _response}}, state) do
