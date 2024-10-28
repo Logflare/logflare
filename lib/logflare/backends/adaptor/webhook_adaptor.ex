@@ -156,7 +156,7 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
       %{config: stored_config} = Backends.Cache.get_backend(context.backend_id)
 
       config =
-        merge_configs(stored_config, startup_config)
+        merge_configs(startup_config, stored_config)
 
       Client.send(
         url: config.url,
@@ -179,9 +179,6 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
     @doc """
     Merges configs and handles headers.
 
-    Startup config should override stored_config because of transform_config
-    possibly transforming the config of the stored_config on startup.
-
     ## Examples
 
       iex> Logflare.Backends.Adaptor.WebhookAdaptor.Pipeline.merge_configs(%{}, %{})
@@ -197,8 +194,8 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
       %{"username" => "me", "password" => "another-god"}
 
     """
-    def merge_configs(stored, startup) when is_map(stored) and is_map(startup) do
-      Map.merge(stored, startup, fn
+    def merge_configs(config_1, config_2) when is_map(config_1) and is_map(config_2) do
+      Map.merge(config_1, config_2, fn
         "headers", v1, v2 ->
           Map.merge(v1, v2)
 
