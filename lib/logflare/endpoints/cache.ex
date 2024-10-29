@@ -124,7 +124,7 @@ defmodule Logflare.Endpoints.Cache do
         {:reply, response, state}
 
       {:error, _err} = response ->
-        {:reply, response, state}
+        {:stop, :normal, response, state}
     end
   end
 
