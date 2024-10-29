@@ -98,7 +98,7 @@ defmodule Logflare.Backends.Backend do
           config when type == :datadog ->
             Map.put(config, :api_key, "REDACTED")
 
-          %{password: pass} = config when pass != nil and type == :elastic ->
+          %{password: pass} = config when pass != nil ->
             Map.put(config, :password, "REDACTED")
 
           cfg ->
