@@ -28,7 +28,7 @@ defmodule LogflareWeb.OpenApi do
 
     def response(module) do
       {
-        "#{module.schema.title} List Response",
+        "#{module.schema().title} List Response",
         "application/json",
         %Schema{type: :array, items: module}
       }
