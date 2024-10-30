@@ -30,7 +30,7 @@ defmodule Logflare.Logs.Validators.BigQuerySchemaChange do
       :ok
     rescue
       e ->
-        {:error, e.message}
+        {:error, Exception.message(e)}
     end
   end
 

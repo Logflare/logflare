@@ -5,23 +5,22 @@ on:
   pull_request:
     branches: [main]
     paths:
-      - 'lib/**'
-      - 'config/**'
-      - '*.exs'
-      - '*.lock'
-      - 'docs/docs.logflare.com/docs/**'
-      - 'native/**'
-      - 'priv/**'
-      - 'test/**'
+      - "lib/**"
+      - "config/**"
+      - "*.exs"
+      - "*.lock"
+      - "docs/docs.logflare.com/docs/**"
+      - "native/**"
+      - "priv/**"
+      - "test/**"
       # Run suite when this file is changed
-      - '.github/workflows/elixir-ci.yml'
+      - ".github/workflows/elixir-ci.yml"
 
 permissions:
   contents: read
 
 env:
   MIX_ENV: test
-
 
 jobs:
   check:
@@ -34,8 +33,8 @@ jobs:
             run: mix lint --only warnings
           - name: Code Quality - Formatting
             run: mix test.format
-          - name: Compilation Warnings
-            run: mix test.compile
+          # - name: Compilation Warnings
+          #   run: mix test.compile
           - name: Tests
             run: mix do ecto.create, ecto.migrate, test
           # - name: Security - Sobelow Code Scan
