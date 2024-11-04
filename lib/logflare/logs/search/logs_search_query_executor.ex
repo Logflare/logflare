@@ -28,7 +28,11 @@ defmodule Logflare.Logs.SearchQueryExecutor do
   # API
   def start_link(args) do
     source = Keyword.get(args, :source)
-    GenServer.start_link(__MODULE__, args, name: Backends.via_source(source, __MODULE__))
+
+    GenServer.start_link(__MODULE__, args,
+      spawn_opt: [fullsweep_after: 1_000],
+      name: Backends.via_source(source, __MODULE__)
+    )
   end
 
   @impl true
