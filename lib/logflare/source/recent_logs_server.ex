@@ -15,14 +15,14 @@ defmodule Logflare.Source.RecentLogsServer do
   require Logger
 
   @touch_timer :timer.minutes(45)
-  @broadcast_every 1_800
+  @broadcast_every 2_500
 
   ## Server
   def start_link(args) do
     GenServer.start_link(__MODULE__, args,
       name: Backends.via_source(args[:source], __MODULE__),
       spawn_opt: [
-        fullsweep_after: 1_000
+        fullsweep_after: 100
       ],
       hibernate_after: 5_000
     )
