@@ -24,6 +24,8 @@ defmodule Logflare.Backends.SourceSup do
   end
 
   def init(source) do
+    Process.flag(:fullsweep_after, 5_000)
+
     ingest_backends =
       source
       |> Backends.Cache.list_backends()
