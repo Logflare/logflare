@@ -1,10 +1,10 @@
-defmodule Logflare.Logs.LogEvents.Cache do
+defmodule Logflare.Backends.SourceMetricsCache do
   @moduledoc false
   import Cachex.Spec
   alias Logflare.Logs.LogEvents
   alias Logflare.ContextCache
   alias Logflare.LogEvent, as: LE
-  alias Logflare.Utils
+  @ttl :timer.hours(1)
 
   @cache __MODULE__
 
@@ -37,7 +37,7 @@ defmodule Logflare.Logs.LogEvents.Cache do
   @spec put_event_with_id_and_timestamp(atom, keyword, LE.t()) :: term
   def put_event_with_id_and_timestamp(source_token, kw, %LE{} = log_event) do
     cache_key = {@fetch_event_by_id_and_timestamp_key, [source_token, kw]}
-    Cachex.put(@cache, cache_key, {:ok, log_event})
+    Cachex.put(@cache, cache_key, {:ok, log_event}, expire: @ttl)
   end
 
   @spec fetch_event_by_id_and_timestamp(atom, keyword) :: {:ok, map()} | {:error, map()}

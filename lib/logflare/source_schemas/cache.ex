@@ -13,10 +13,14 @@ defmodule Logflare.SourceSchemas.Cache do
          [
            __MODULE__,
            [
-             stats: stats,
+             hooks:
+               [
+                 if(stats, do: Utils.cache_stats()),
+                 Utils.cache_limit(100_000)
+               ]
+               |> Enum.filter(& &1),
              # shorter expiration for schemas
-             expiration: Utils.cache_expiration_min(10, 2),
-             limit: 100_000
+             expiration: Utils.cache_expiration_min(10, 2)
            ]
          ]}
     }

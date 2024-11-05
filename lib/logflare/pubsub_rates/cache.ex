@@ -15,7 +15,19 @@ defmodule Logflare.PubSubRates.Cache do
     %{
       id: __MODULE__,
       start:
-        {Cachex, :start_link, [@cache, [stats: stats, expiration: Utils.cache_expiration_min(5)]]}
+        {Cachex, :start_link,
+         [
+           @cache,
+           [
+             hooks:
+               [
+                 if(stats, do: Utils.cache_stats()),
+                 Utils.cache_limit(100_000)
+               ]
+               |> Enum.filter(& &1),
+             expiration: Utils.cache_expiration_min(5)
+           ]
+         ]}
     }
   end
 

@@ -4,6 +4,24 @@ defmodule Logflare.Utils do
   """
   import Cachex.Spec
 
+  def cache_stats() do
+    hook(module: Cachex.Stats)
+  end
+
+  def cache_limit(n) when is_integer(n) do
+    hook(
+      module: Cachex.Limit.Scheduled,
+      args: {
+        # setting cache max size
+        n,
+        # options for `Cachex.prune/3`
+        [],
+        # options for `Cachex.Limit.Scheduled`
+        []
+      }
+    )
+  end
+
   @doc """
   Builds a long Cachex expiration spec
   Defaults to 20 min with 5 min cleanup intervals

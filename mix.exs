@@ -103,7 +103,7 @@ defmodule Logflare.Mixfile do
       {:timex, "~> 3.1"},
       {:typed_struct, "~> 0.1", runtime: false},
       {:lqueue, "~> 1.1"},
-      {:cachex, "~> 3.1"},
+      {:cachex, "~> 4.0"},
       {:ex_machina, "~> 2.3", only: [:dev, :test]},
       {:iteraptor, "~> 1.10"},
       {:decorator, "~> 1.3"},
