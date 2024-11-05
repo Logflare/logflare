@@ -96,7 +96,7 @@ defmodule LogflareWeb.Api.QueryControllerTest do
       backend =
         insert(:backend,
           type: :postgres,
-          config: %{"url" => url},
+          config: %{url: url},
           sources: [source],
           user: user
         )
