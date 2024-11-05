@@ -98,7 +98,7 @@ defmodule Logflare.ContextCache do
   def bust_keys(values) when is_list(values) do
     for {context, primary_key} <- values do
       filter = {:==, {:element, 1, :key}, {{context, primary_key}}}
-      query = Cachex.Query.create(filter, {:key, :value})
+      query = Cachex.Query.build(where: filter, output: {:key, :value})
       context_cache = cache_name(context)
 
       Logflare.ContextCache

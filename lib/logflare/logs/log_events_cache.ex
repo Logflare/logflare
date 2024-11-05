@@ -1,6 +1,5 @@
 defmodule Logflare.Logs.LogEvents.Cache do
   @moduledoc false
-  import Cachex.Spec
   alias Logflare.Logs.LogEvents
   alias Logflare.ContextCache
   alias Logflare.LogEvent, as: LE

@@ -21,6 +21,7 @@ defmodule Logflare.Logs.RejectedLogEvents do
     }'
   ```
   """
+  require Ex2ms
   alias Logflare.Source
   alias Logflare.LogEvent, as: LE
   alias Logflare.Utils
@@ -37,6 +38,7 @@ defmodule Logflare.Logs.RejectedLogEvents do
          [
            @cache,
            [
+             expiration: Utils.cache_expiration_min(60),
              hooks:
                [
                  if(stats, do: Utils.cache_stats()),
@@ -50,7 +52,11 @@ defmodule Logflare.Logs.RejectedLogEvents do
 
   @spec get_by_source(Source.t()) :: list(LE.t())
   def get_by_source(%Source{token: token}) do
-    get!(token).log_events
+    get!(token)
+    |> case do
+      %{log_events: events} -> events
+      other -> other
+    end
   end
 
   def count(%Source{} = s) do
@@ -80,15 +86,12 @@ defmodule Logflare.Logs.RejectedLogEvents do
     :ok
   end
 
-  def query(source_id) when is_atom(source_id) do
+  def query(token) when is_atom(token) do
+    filter = {:==, {:element, 1, :key}, {:const, token}}
+    query = Cachex.Query.build(where: filter, output: :value)
+
     @cache
-    |> Cachex.stream!()
-    |> Stream.filter(fn x ->
-      match?({:entry, {^source_id, _le_id}, _ts, _, _le}, x)
-    end)
-    |> Stream.map(fn {:entry, {^source_id, _le_id}, _ts, _, le} ->
-      le
-    end)
+    |> Cachex.stream!(query)
     |> Enum.reverse()
     |> Enum.take(100)
   end
