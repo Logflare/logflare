@@ -22,7 +22,7 @@ defmodule Logflare.Source.RecentLogsServer do
     GenServer.start_link(__MODULE__, args,
       name: Backends.via_source(args[:source], __MODULE__),
       spawn_opt: [
-        fullsweep_after: 1_000
+        fullsweep_after: 100
       ],
       hibernate_after: 5_000
     )
