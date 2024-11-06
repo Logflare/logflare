@@ -57,7 +57,7 @@ defmodule Logflare.Logs.OtelTrace do
 
     [
       %{
-        "message" => span.name,
+        "event_message" => span.name,
         "metadata" => metadata,
         "span_id" => Base.encode16(span.span_id),
         "parent_span_id" => Base.encode16(span.parent_span_id),
@@ -77,7 +77,7 @@ defmodule Logflare.Logs.OtelTrace do
     metadata = Map.merge(metadata, resource)
 
     %{
-      "message" => event.name,
+      "event_message" => event.name,
       "metadata" => metadata,
       "parent_span_id" => Base.encode16(span_id),
       "trace_id" => Ecto.UUID.cast!(trace_id),
