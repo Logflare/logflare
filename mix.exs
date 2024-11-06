@@ -201,7 +201,7 @@ defmodule Logflare.Mixfile do
       {:cainophile, github: "Logflare/cainophile", ref: "267999b"},
       {:open_api_spex, "~> 3.16"},
       {:grpc, "~> 0.9.0"},
-      {:protobuf, "~> 0.10"},
+      {:protobuf, "~> 0.12"},
       {:gun, "~> 2.0", override: true},
       {:cowlib, ">=2.12.0", override: true},
       {:phoenix_live_dashboard, "~> 0.8"},
@@ -221,11 +221,11 @@ defmodule Logflare.Mixfile do
       {:file_system, "~> 1.0", override: true, only: [:dev, :test]},
 
       # otel
-      {:opentelemetry, "~> 1.5"},
-      {:opentelemetry_api, "~> 1.4"},
-      {:opentelemetry_exporter, "~> 1.8"},
-      {:opentelemetry_phoenix, "~> 1.2"},
-      {:opentelemetry_cowboy, "~> 0.3"},
+      {:opentelemetry, "~> 1.3"},
+      {:opentelemetry_api, "~> 1.2"},
+      {:opentelemetry_exporter, "~> 1.6"},
+      {:opentelemetry_phoenix, "~> 1.1"},
+      {:opentelemetry_cowboy, "~> 0.2"},
       {:live_monaco_editor, "~> 0.1"}
     ]
   end

@@ -28,6 +28,7 @@ setup: setup.node
 
 	# add protobuf install
 	mix escript.install hex protobuf
+	
 	asdf reshim
 	# run elixir setup
 	mix setup
