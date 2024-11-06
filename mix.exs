@@ -200,7 +200,7 @@ defmodule Logflare.Mixfile do
       # Postgres Subscribe
       {:cainophile, github: "Logflare/cainophile", ref: "267999b"},
       {:open_api_spex, "~> 3.16"},
-      {:grpc, "~> 0.5.0"},
+      {:grpc, "~> 0.9.0"},
       {:protobuf, "~> 0.10"},
       {:gun, "~> 2.0", override: true},
       {:cowlib, ">=2.12.0", override: true},
@@ -221,11 +221,11 @@ defmodule Logflare.Mixfile do
       {:file_system, "~> 1.0", override: true, only: [:dev, :test]},
 
       # otel
-      {:opentelemetry, "~> 1.3"},
-      {:opentelemetry_api, "~> 1.2"},
-      {:opentelemetry_exporter, "~> 1.6"},
-      {:opentelemetry_phoenix, "~> 1.1"},
-      {:opentelemetry_cowboy, "~> 0.2"},
+      {:opentelemetry, "~> 1.5"},
+      {:opentelemetry_api, "~> 1.4"},
+      {:opentelemetry_exporter, "~> 1.8"},
+      {:opentelemetry_phoenix, "~> 1.2"},
+      {:opentelemetry_cowboy, "~> 0.3"},
       {:live_monaco_editor, "~> 0.1"}
     ]
   end

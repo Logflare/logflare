@@ -23,6 +23,13 @@ test.only:
 .PHONY: test test.only
 
 setup: setup.node
+	# install dependencies
+	asdf install
+
+	# add protobuf install
+	mix escript.install hex protobuf
+	asdf reshim
+	# run elixir setup
 	mix setup
 
 setup.node:

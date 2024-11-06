@@ -33,8 +33,8 @@ jobs:
             run: mix lint --only warnings
           - name: Code Quality - Formatting
             run: mix test.format
-          # - name: Compilation Warnings
-          #   run: mix test.compile
+          - name: Compilation Warnings
+            run: mix test.compile
           - name: Tests
             run: mix do ecto.create, ecto.migrate, test
           # - name: Security - Sobelow Code Scan
