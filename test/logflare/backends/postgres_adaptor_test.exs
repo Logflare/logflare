@@ -138,12 +138,16 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptorTest do
         schema: nil,
         username: "some-invalid",
         password: "!@#$",
+        database: "logflare_test",
         hostname: "localhost",
         port: 5432
       }
 
       backend = insert(:backend, type: :postgres, sources: [source], config: config)
-      assert {:ok, _pid} = start_supervised({AdaptorSupervisor, {source, backend}})
+
+      capture_log(fn ->
+        assert {:ok, _pid} = start_supervised({AdaptorSupervisor, {source, backend}})
+      end) =~ "invalid_password"
     end
 
     test "cannot connect to invalid ", %{source: source} do
@@ -163,7 +167,7 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptorTest do
 
         assert {:error, :cannot_connect} =
                  PostgresAdaptor.insert_log_event(source, backend, log_event)
-      end)
+      end) =~ "invalid_password"
     end
   end
 
