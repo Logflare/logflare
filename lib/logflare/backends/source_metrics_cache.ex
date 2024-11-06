@@ -1,4 +1,4 @@
-defmodule Logflare.Logs.LogEvents.Cache do
+defmodule Logflare.Backends.SourceMetricsCache do
   @moduledoc false
   alias Logflare.Logs.LogEvents
   alias Logflare.ContextCache
