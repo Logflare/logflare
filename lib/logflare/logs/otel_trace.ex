@@ -1,35 +1,30 @@
-defmodule LogflareGrpc.Trace.Transform do
+defmodule Logflare.Logs.OtelTrace do
   @moduledoc """
-  Converts a GRPC Trace to a Logflare Event
-  """
+  Converts a GRPC Trace to event parameters
 
-  alias Opentelemetry.Proto.Trace.V1.ResourceSpans
-  alias Opentelemetry.Proto.Common.V1.KeyValue
-  alias Logflare.LogEvent
-  alias Logflare.Source
-
-  @doc """
   Converts a list of ResourceSpans to a list of Logflare Events
   Important details about the conversation:
   * One ResourceSpans can contain multiple ScopeSpans
   * One ScopeSpans can contain multiple Spans
   * One Span can contain multiple Events
   * A Log Event is created for each Span and each Event
+
   """
-  @spec to_log_events(list(ResourceSpans.t()), Source.t()) :: list(LogEvent.t())
-  def to_log_events(resource_spans, source) do
-    resource_spans
-    |> Enum.map(&to_log_event(&1, source))
+  require Logger
+
+  alias Opentelemetry.Proto.Trace.V1.ResourceSpans
+  alias Opentelemetry.Proto.Common.V1.KeyValue
+  alias Logflare.LogEvent
+  alias Logflare.Source
+
+  @behaviour Logflare.Logs.Processor
+
+  def handle_batch(resource_spans, _source) when is_list(resource_spans) do
+    Enum.map(resource_spans, &handle_event/1)
     |> List.flatten()
   end
 
-  defp to_log_event(%ResourceSpans{} = span, source) do
-    span
-    |> handle_resource_span()
-    |> Enum.map(&LogEvent.make(&1, %{source: source}))
-  end
-
-  defp handle_resource_span(%{resource: resource, scope_spans: scope_spans}) do
+  defp handle_event(%ResourceSpans{resource: resource, scope_spans: scope_spans} = span) do
     resource = handle_resource(resource)
 
     scope_spans

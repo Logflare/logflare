@@ -2,7 +2,8 @@ defmodule LogflareGrpc.Trace.Server do
   @moduledoc """
   GRPC Server for the Logflare Trace Service
   """
-  alias LogflareGrpc.Trace.Transform
+  alias Logflare.Logs.Processor
+  alias Logflare.Logs.OtelTrace
   alias Logflare.Sources
   alias Logflare.Source
   alias Logflare.Users
@@ -24,8 +25,8 @@ defmodule LogflareGrpc.Trace.Server do
          {:ok, source_token} <- get_source_token(stream),
          {:ok, user} <- verify_user(api_key),
          {:ok, source} <- get_source(user, source_token) do
-      events = Transform.to_log_events(spans, source)
-      Backends.ingest_logs(events, source)
+      Processor.ingest(spans, OtelTrace, source)
+
       GRPC.Server.set_trailers(stream, %{"grpc-status" => "0"})
       %ExportTraceServiceResponse{}
     else
