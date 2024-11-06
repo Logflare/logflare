@@ -10,7 +10,6 @@ defmodule LogflareGrpc.Trace.Server do
   alias Logflare.Auth
   alias Logflare.User
   alias Logflare.Sources
-  alias Logflare.Backends
   alias Opentelemetry.Proto.Collector.Trace.V1.ExportTraceServiceResponse
   alias Opentelemetry.Proto.Collector.Trace.V1.ExportTraceServiceRequest
 
@@ -20,7 +19,7 @@ defmodule LogflareGrpc.Trace.Server do
 
   require Logger
 
-  def export(%ExportTraceServiceRequest{resource_spans: spans} = request, stream) do
+  def export(%ExportTraceServiceRequest{resource_spans: spans}, stream) do
     with {:ok, api_key} <- get_access_token(stream),
          {:ok, source_token} <- get_source_token(stream),
          {:ok, user} <- verify_user(api_key),
@@ -62,7 +61,7 @@ defmodule LogflareGrpc.Trace.Server do
       {:error, :no_token} = err ->
         err
 
-      {:error, _} = err ->
+      {:error, _} ->
         if user = Users.Cache.get_by_and_preload(api_key: access_token_or_api_key) do
           {:ok, user}
         else

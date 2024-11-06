@@ -14,8 +14,6 @@ defmodule Logflare.Logs.OtelTrace do
 
   alias Opentelemetry.Proto.Trace.V1.ResourceSpans
   alias Opentelemetry.Proto.Common.V1.KeyValue
-  alias Logflare.LogEvent
-  alias Logflare.Source
 
   @behaviour Logflare.Logs.Processor
 
@@ -24,7 +22,7 @@ defmodule Logflare.Logs.OtelTrace do
     |> List.flatten()
   end
 
-  defp handle_event(%ResourceSpans{resource: resource, scope_spans: scope_spans} = span) do
+  defp handle_event(%ResourceSpans{resource: resource, scope_spans: scope_spans}) do
     resource = handle_resource(resource)
 
     scope_spans
