@@ -1,6 +1,7 @@
 defmodule Opentelemetry.Proto.Collector.Metrics.V1.ExportMetricsServiceRequest do
   @moduledoc false
-  use Protobuf, protoc_gen_elixir_version: "0.11.0", syntax: :proto3
+
+  use Protobuf, syntax: :proto3, protoc_gen_elixir_version: "0.13.0"
 
   field :resource_metrics, 1,
     repeated: true,
@@ -10,7 +11,8 @@ end
 
 defmodule Opentelemetry.Proto.Collector.Metrics.V1.ExportMetricsServiceResponse do
   @moduledoc false
-  use Protobuf, protoc_gen_elixir_version: "0.11.0", syntax: :proto3
+
+  use Protobuf, syntax: :proto3, protoc_gen_elixir_version: "0.13.0"
 
   field :partial_success, 1,
     type: Opentelemetry.Proto.Collector.Metrics.V1.ExportMetricsPartialSuccess,
@@ -19,7 +21,8 @@ end
 
 defmodule Opentelemetry.Proto.Collector.Metrics.V1.ExportMetricsPartialSuccess do
   @moduledoc false
-  use Protobuf, protoc_gen_elixir_version: "0.11.0", syntax: :proto3
+
+  use Protobuf, syntax: :proto3, protoc_gen_elixir_version: "0.13.0"
 
   field :rejected_data_points, 1, type: :int64, json_name: "rejectedDataPoints"
   field :error_message, 2, type: :string, json_name: "errorMessage"
@@ -27,9 +30,10 @@ end
 
 defmodule Opentelemetry.Proto.Collector.Metrics.V1.MetricsService.Service do
   @moduledoc false
+
   use GRPC.Service,
     name: "opentelemetry.proto.collector.metrics.v1.MetricsService",
-    protoc_gen_elixir_version: "0.11.0"
+    protoc_gen_elixir_version: "0.13.0"
 
   rpc(
     :Export,
@@ -40,5 +44,6 @@ end
 
 defmodule Opentelemetry.Proto.Collector.Metrics.V1.MetricsService.Stub do
   @moduledoc false
+
   use GRPC.Stub, service: Opentelemetry.Proto.Collector.Metrics.V1.MetricsService.Service
 end

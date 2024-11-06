@@ -1,6 +1,18 @@
+defmodule Opentelemetry.Proto.Trace.V1.SpanFlags do
+  @moduledoc false
+
+  use Protobuf, enum: true, syntax: :proto3, protoc_gen_elixir_version: "0.13.0"
+
+  field :SPAN_FLAGS_DO_NOT_USE, 0
+  field :SPAN_FLAGS_TRACE_FLAGS_MASK, 255
+  field :SPAN_FLAGS_CONTEXT_HAS_IS_REMOTE_MASK, 256
+  field :SPAN_FLAGS_CONTEXT_IS_REMOTE_MASK, 512
+end
+
 defmodule Opentelemetry.Proto.Trace.V1.Span.SpanKind do
   @moduledoc false
-  use Protobuf, enum: true, protoc_gen_elixir_version: "0.11.0", syntax: :proto3
+
+  use Protobuf, enum: true, syntax: :proto3, protoc_gen_elixir_version: "0.13.0"
 
   field :SPAN_KIND_UNSPECIFIED, 0
   field :SPAN_KIND_INTERNAL, 1
@@ -12,7 +24,8 @@ end
 
 defmodule Opentelemetry.Proto.Trace.V1.Status.StatusCode do
   @moduledoc false
-  use Protobuf, enum: true, protoc_gen_elixir_version: "0.11.0", syntax: :proto3
+
+  use Protobuf, enum: true, syntax: :proto3, protoc_gen_elixir_version: "0.13.0"
 
   field :STATUS_CODE_UNSET, 0
   field :STATUS_CODE_OK, 1
@@ -21,7 +34,8 @@ end
 
 defmodule Opentelemetry.Proto.Trace.V1.TracesData do
   @moduledoc false
-  use Protobuf, protoc_gen_elixir_version: "0.11.0", syntax: :proto3
+
+  use Protobuf, syntax: :proto3, protoc_gen_elixir_version: "0.13.0"
 
   field :resource_spans, 1,
     repeated: true,
@@ -31,7 +45,8 @@ end
 
 defmodule Opentelemetry.Proto.Trace.V1.ResourceSpans do
   @moduledoc false
-  use Protobuf, protoc_gen_elixir_version: "0.11.0", syntax: :proto3
+
+  use Protobuf, syntax: :proto3, protoc_gen_elixir_version: "0.13.0"
 
   field :resource, 1, type: Opentelemetry.Proto.Resource.V1.Resource
 
@@ -45,7 +60,8 @@ end
 
 defmodule Opentelemetry.Proto.Trace.V1.ScopeSpans do
   @moduledoc false
-  use Protobuf, protoc_gen_elixir_version: "0.11.0", syntax: :proto3
+
+  use Protobuf, syntax: :proto3, protoc_gen_elixir_version: "0.13.0"
 
   field :scope, 1, type: Opentelemetry.Proto.Common.V1.InstrumentationScope
   field :spans, 2, repeated: true, type: Opentelemetry.Proto.Trace.V1.Span
@@ -54,7 +70,8 @@ end
 
 defmodule Opentelemetry.Proto.Trace.V1.Span.Event do
   @moduledoc false
-  use Protobuf, protoc_gen_elixir_version: "0.11.0", syntax: :proto3
+
+  use Protobuf, syntax: :proto3, protoc_gen_elixir_version: "0.13.0"
 
   field :time_unix_nano, 1, type: :fixed64, json_name: "timeUnixNano"
   field :name, 2, type: :string
@@ -64,23 +81,27 @@ end
 
 defmodule Opentelemetry.Proto.Trace.V1.Span.Link do
   @moduledoc false
-  use Protobuf, protoc_gen_elixir_version: "0.11.0", syntax: :proto3
+
+  use Protobuf, syntax: :proto3, protoc_gen_elixir_version: "0.13.0"
 
   field :trace_id, 1, type: :bytes, json_name: "traceId"
   field :span_id, 2, type: :bytes, json_name: "spanId"
   field :trace_state, 3, type: :string, json_name: "traceState"
   field :attributes, 4, repeated: true, type: Opentelemetry.Proto.Common.V1.KeyValue
   field :dropped_attributes_count, 5, type: :uint32, json_name: "droppedAttributesCount"
+  field :flags, 6, type: :fixed32
 end
 
 defmodule Opentelemetry.Proto.Trace.V1.Span do
   @moduledoc false
-  use Protobuf, protoc_gen_elixir_version: "0.11.0", syntax: :proto3
+
+  use Protobuf, syntax: :proto3, protoc_gen_elixir_version: "0.13.0"
 
   field :trace_id, 1, type: :bytes, json_name: "traceId"
   field :span_id, 2, type: :bytes, json_name: "spanId"
   field :trace_state, 3, type: :string, json_name: "traceState"
   field :parent_span_id, 4, type: :bytes, json_name: "parentSpanId"
+  field :flags, 16, type: :fixed32
   field :name, 5, type: :string
   field :kind, 6, type: Opentelemetry.Proto.Trace.V1.Span.SpanKind, enum: true
   field :start_time_unix_nano, 7, type: :fixed64, json_name: "startTimeUnixNano"
@@ -96,7 +117,8 @@ end
 
 defmodule Opentelemetry.Proto.Trace.V1.Status do
   @moduledoc false
-  use Protobuf, protoc_gen_elixir_version: "0.11.0", syntax: :proto3
+
+  use Protobuf, syntax: :proto3, protoc_gen_elixir_version: "0.13.0"
 
   field :message, 2, type: :string
   field :code, 3, type: Opentelemetry.Proto.Trace.V1.Status.StatusCode, enum: true

@@ -34,7 +34,6 @@ config :logflare, Logflare.Repo,
   pool: Ecto.Adapters.SQL.Sandbox
 
 config :logflare, :postgres_backend_adapter, pool_size: 1
-config :grpc, start_server: false
 
 defmodule LogflareTest.LogFilters do
   def ignore_finch_disconnections(%{meta: %{mfa: {Finch.HTTP2.Pool, :disconnected, _}}}, _opts) do

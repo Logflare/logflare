@@ -2,7 +2,8 @@
 
 ## Dev Env Setup
 
-1. Install dependencies with `asdf` using `asdf install`
+1. Run `make setup`, which will:
+   1. Install dependencies with `asdf` using `asdf install`
 2. Decrypt secrets with `make decrypt.dev`. It will decrypt two files:
    1. Dev secrets - `.dev.env`
    2. Google JWT key - `.gcloud.json`

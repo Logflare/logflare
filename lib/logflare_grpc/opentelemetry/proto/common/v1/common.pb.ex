@@ -1,6 +1,7 @@
 defmodule Opentelemetry.Proto.Common.V1.AnyValue do
   @moduledoc false
-  use Protobuf, protoc_gen_elixir_version: "0.11.0", syntax: :proto3
+
+  use Protobuf, syntax: :proto3, protoc_gen_elixir_version: "0.13.0"
 
   oneof(:value, 0)
 
@@ -24,21 +25,24 @@ end
 
 defmodule Opentelemetry.Proto.Common.V1.ArrayValue do
   @moduledoc false
-  use Protobuf, protoc_gen_elixir_version: "0.11.0", syntax: :proto3
+
+  use Protobuf, syntax: :proto3, protoc_gen_elixir_version: "0.13.0"
 
   field :values, 1, repeated: true, type: Opentelemetry.Proto.Common.V1.AnyValue
 end
 
 defmodule Opentelemetry.Proto.Common.V1.KeyValueList do
   @moduledoc false
-  use Protobuf, protoc_gen_elixir_version: "0.11.0", syntax: :proto3
+
+  use Protobuf, syntax: :proto3, protoc_gen_elixir_version: "0.13.0"
 
   field :values, 1, repeated: true, type: Opentelemetry.Proto.Common.V1.KeyValue
 end
 
 defmodule Opentelemetry.Proto.Common.V1.KeyValue do
   @moduledoc false
-  use Protobuf, protoc_gen_elixir_version: "0.11.0", syntax: :proto3
+
+  use Protobuf, syntax: :proto3, protoc_gen_elixir_version: "0.13.0"
 
   field :key, 1, type: :string
   field :value, 2, type: Opentelemetry.Proto.Common.V1.AnyValue
@@ -46,7 +50,8 @@ end
 
 defmodule Opentelemetry.Proto.Common.V1.InstrumentationScope do
   @moduledoc false
-  use Protobuf, protoc_gen_elixir_version: "0.11.0", syntax: :proto3
+
+  use Protobuf, syntax: :proto3, protoc_gen_elixir_version: "0.13.0"
 
   field :name, 1, type: :string
   field :version, 2, type: :string
