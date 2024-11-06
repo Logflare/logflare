@@ -125,8 +125,6 @@ config :open_api_spex, :cache_adapter, OpenApiSpex.Plug.PersistentTermCache
 
 config :logflare, Logflare.Cluster.Utils, min_cluster_size: 1
 
-config :grpc, start_server: true
-
 config :logflare, Logflare.AlertsScheduler, init_task: {Logflare.Alerting, :init_alert_jobs, []}
 
 config :opentelemetry,

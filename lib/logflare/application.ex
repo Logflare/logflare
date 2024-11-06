@@ -104,7 +104,8 @@ defmodule Logflare.Application do
          name: Logflare.Source.V1SourceDynSup},
         LogflareWeb.Endpoint,
         # If we get a log event and the Source.Supervisor is not up it will 500
-        {GRPC.Server.Supervisor, {LogflareGrpc.Endpoint, grpc_port, cred: grpc_creds}},
+        {GRPC.Server.Supervisor,
+         endpoint: LogflareGrpc.Endpoint, port: grpc_port, cred: grpc_creds, start_server: true},
         # Monitor system level metrics
         SystemMetricsSup,
 
