@@ -40,22 +40,26 @@ defmodule LogflareWeb.AccessTokensLive do
             <label name="scopes" class="tw-mr-3">Scope</label>
             <%= for %{value: value, description: description} <- [%{
               value: "ingest",
-              description: "For ingestion into a source"
+              description: "For ingestion into a source. Allows ingest into all sources if no specific source is selected."
             }, %{
               value: "query",
-              description: "For querying an endpoint"
+              description: "For querying an endpoint. Allows querying of all endpoints if no specific endpoint is selected"
             },%{
               value: "private",
               description: "For account management, has all privileges"
             }] do %>
               <div class="form-check tw-mr-2">
-                <input class="form-check-input" type="checkbox" name="scopes[]" id={["scopes", value]} value={value} checked={value in @create_token_form["scopes"]} />
-                <label class="form-check-label tw-px-1" for={["scopes", value]}>
+                <input class="form-check-input" type="checkbox" name="scopes_main[]" id={["scopes", "main", value]} value={value} checked={value in @create_token_form["scopes_main"]} />
+                <label class="form-check-label tw-px-1" for={["scopes", "main", value]}>
                   <%= String.capitalize(value) %>
                   <small class="form-text text-muted"><%= description %></small>
-                  <select :for={input_n <- 0..5} :if={value == "ingest" and Enum.any?(@create_token_form["scopes"], &(&1 =~ "ingest"))} id={["scopes", "ingest", input_n]} name="scopes[]" class="form-control form-control-sm">
-                    <option selected={"ingest" in @create_token_form["scopes"]}>Ingest into a specific source...</option>
-                    <option :for={source <- @sources} value={"ingest:source:#{source.id}"} selected={"ingest:source:#{source.id}" in @create_token_form["scopes"]}>Ingest into <%= source.name %> only</option>
+                  <select :for={input_n <- 0..2} :if={value == "ingest" and value in @create_token_form["scopes_main"]} id={["scopes", "ingest", input_n]} name="scopes_ingest[]" class="mt-1 form-control form-control-sm">
+                    <option hidden value="">Ingest into a specific source...</option>
+                    <option :for={source <- @sources} selected={"ingest:source:#{source.id}" == Enum.at(@create_token_form["scopes_ingest"], input_n)} value={"ingest:source:#{source.id}"} }>Ingest into <%= source.name %> only</option>
+                  </select>
+                  <select :for={input_n <- 0..2} :if={value == "query" and value in @create_token_form["scopes_main"]} id={["scopes", "query", input_n]} name="scopes_query[]" class="mt-1 form-control form-control-sm">
+                    <option hidden value="">Query a specific endpoint...</option>
+                    <option :for={endpoint <- @endpoints} value={"query:endpoint:#{endpoint.id}"} selected={"query:endpoint:#{endpoint.id}" == Enum.at(@create_token_form["scopes_query"], input_n)}>Query <%= endpoint.name %> only</option>
                   </select>
                 </label>
               </div>
@@ -112,7 +116,7 @@ defmodule LogflareWeb.AccessTokensLive do
                 </span>
               </td>
               <td>
-                <span :for={scope <- String.split(token.scopes || "")} class="badge badge-secondary">
+                <span :for={scope <- String.split(token.scopes || "")} class="badge badge-secondary mr-1">
                   <%= case scope do
                     "ingest" <> _ -> get_ingest_label(assigns, scope)
                     "query" <> _ -> get_query_label(assigns, scope)
@@ -125,7 +129,7 @@ defmodule LogflareWeb.AccessTokensLive do
               </td>
 
               <td class="p-2">
-                <button :if={token.scopes =~ "public"} class="btn btn-secondary btn-sm" phx-click={JS.dispatch("logflare:copy-to-clipboard", detail: %{text: token.token})} data-toggle="tooltip" data-placement="top" title="Copy to clipboard">
+                <button :if={!(token.scopes =~ "private")} class="btn btn-secondary btn-sm" phx-click={JS.dispatch("logflare:copy-to-clipboard", detail: %{text: token.token})} data-toggle="tooltip" data-placement="top" title="Copy to clipboard">
                   <i class="fa fa-clone" aria-hidden="true"></i> Copy
                 </button>
                 <button class="btn text-danger btn-sm" data-confirm="Are you sure? This cannot be undone." phx-click="revoke-token" phx-value-token-id={token.id} data-toggle="tooltip" data-placement="top" title="Revoke access token forever">
@@ -140,7 +144,13 @@ defmodule LogflareWeb.AccessTokensLive do
     """
   end
 
-  @default_create_form %{"description" => "", "scopes" => ["ingest"]}
+  @default_create_form %{
+    "description" => "",
+    "scopes" => [],
+    "scopes_ingest" => [],
+    "scopes_query" => [],
+    "scopes_main" => ["ingest"]
+  }
   def mount(_params, %{"user_id" => user_id}, socket) do
     user = Logflare.Users.get(user_id)
     sources = Sources.list_sources_by_user(user)
@@ -178,7 +188,21 @@ defmodule LogflareWeb.AccessTokensLive do
       "Creating access token for user, user_id=#{inspect(user.id)}, params: #{inspect(params)}"
     )
 
-    attrs = Map.take(create_token_form, ["description", "scopes"])
+    scopes_main = Map.get(params, "scopes_main") || []
+    scopes_ingest = Map.get(params, "scopes_ingest") || []
+    scopes_query = Map.get(params, "scopes_query") || []
+
+    scopes_main =
+      if scopes_ingest != [], do: Enum.filter(scopes_main, &(&1 != "ingest")), else: scopes_main
+
+    scopes_main =
+      if scopes_query != [], do: Enum.filter(scopes_main, &(&1 != "query")), else: scopes_main
+
+    scopes = scopes_main ++ scopes_ingest ++ scopes_query
+
+    attrs =
+      Map.take(params, ["description"])
+      |> Map.put("scopes", Enum.join(scopes, " "))
 
     {:ok, token} = Auth.create_access_token(user, attrs)
 
@@ -197,19 +221,23 @@ defmodule LogflareWeb.AccessTokensLive do
         payload,
         socket
       ) do
+    data = Map.drop(payload, ["_csrf_token", "_target"])
+
     data =
-      Map.drop(payload, ["_csrf_token", "_target"])
-      |> Map.update!("scopes", fn scopes ->
-        if Enum.any?(scopes, &(&1 =~ "ingest:")) do
-          Enum.filter(scopes, &(&1 == "ingest"))
-        else
-          scopes
-        end
-      end)
+      if "ingest" not in Map.get(data, "scopes_main", []) do
+        Map.put(data, "scopes_ingest", [])
+      else
+        data
+      end
+
+    data =
+      if "query" not in Map.get(data, "scopes_main", []) do
+        Map.put(data, "scopes_query", [])
+      else
+        data
+      end
 
     merged = Map.merge(socket.assigns.create_token_form, data)
-
-    dbg(merged)
 
     {:noreply, assign(socket, :create_token_form, merged)}
   end
@@ -268,23 +296,23 @@ defmodule LogflareWeb.AccessTokensLive do
     |> List.flatten()
   end
 
-  defp get_query_label(_assigns, "query"), do: "query"
+  defp get_query_label(_assigns, "query"), do: "query (all)"
 
   defp get_query_label(%{scopes_query_endpoints: endpoint_map}, "query:endpoint:" <> str_id) do
     if endpoint = Map.get(endpoint_map, str_id) do
-      "query for #{endpoint.name}"
+      "query (#{endpoint.name})"
     else
-      "query for (deleted)"
+      "query (deleted)"
     end
   end
 
-  defp get_ingest_label(_assigns, "ingest"), do: "ingest"
+  defp get_ingest_label(_assigns, "ingest"), do: "ingest (all)"
 
   defp get_ingest_label(%{scopes_ingest_sources: source_map}, "ingest:source:" <> str_id) do
     if source = Map.get(source_map, str_id) do
-      "ingest for #{source.name}"
+      "ingest (#{source.name})"
     else
-      "ingest for (deleted)"
+      "ingest (deleted)"
     end
   end
 end
