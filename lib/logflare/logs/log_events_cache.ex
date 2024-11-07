@@ -22,10 +22,10 @@ defmodule Logflare.Logs.LogEvents.Cache do
             hooks:
               [
                 if(stats, do: Utils.cache_stats()),
-                Utils.cache_limit(5_000)
+                Utils.cache_limit(15_000)
               ]
               |> Enum.filter(& &1),
-            expiration: Utils.cache_expiration_min(60)
+            expiration: Utils.cache_expiration_min(15)
           ]
         ]
       }
