@@ -182,7 +182,7 @@ defmodule LogflareWeb.AccessTokensLive do
   def handle_event(
         "create-token",
         params,
-        %{assigns: %{user: user, create_token_form: create_token_form}} = socket
+        %{assigns: %{user: user}} = socket
       ) do
     Logger.debug(
       "Creating access token for user, user_id=#{inspect(user.id)}, params: #{inspect(params)}"
