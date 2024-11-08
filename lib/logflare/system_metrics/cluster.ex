@@ -27,14 +27,24 @@ defmodule Logflare.SystemMetrics.Cluster do
           "https://http-intake.logs.datadoghq.eu",
           "https://http-intake.logs.ap1.datadoghq.com"
         ],
-        {:ok, metrics} = Finch.get_pool_status(Logflare.FinchDefault, url) do
-      counts = for metric <- metrics, do: metric.in_flight_requests
+        pool <- [
+          Logflare.FinchDefault,
+          Logflare.FinchIngest,
+          Logflare.FinchQuery
+        ] do
+      case Finch.get_pool_status(pool, url) do
+        {:ok, metrics} ->
+          counts = for metric <- metrics, do: metric.in_flight_requests
 
-      :telemetry.execute(
-        [:logflare, :system, :finch],
-        %{in_flight_requests: Enum.sum(counts)},
-        %{url: url}
-      )
+          :telemetry.execute(
+            [:logflare, :system, :finch],
+            %{in_flight_requests: Enum.sum(counts)},
+            %{url: url, pool: Atom.to_string(pool)}
+          )
+
+        _ ->
+          nil
+      end
     end
   end
 end
