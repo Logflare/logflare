@@ -225,12 +225,12 @@ cond do
 end
 
 if(
-  System.get_env("LOGFLARE_ENABLE_GRPC_SSL") == "true" && File.exists?("cacert.pem") &&
+  System.get_env("LOGFLARE_ENABLE_GRPC_SSL") == "true" &&
     File.exists?("cert.pem") && File.exists?("cert.key")
 ) do
   config :logflare,
     ssl: [
-      cacertfile: "cacert.pem",
+      cacerts: :public_key.cacerts_get(),
       certfile: "cert.pem",
       keyfile: "cert.key",
       verify: :verify_peer

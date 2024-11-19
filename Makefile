@@ -102,19 +102,19 @@ envs = staging prod
 $(addprefix decrypt.,${envs}): decrypt.%: \
 	.$$*.gcloud.json \
  	.$$*.env \
- 	.$$*.cacert.pem \
  	.$$*.cert.key \
  	.$$*.cert.pem \
+ 	.$$*.req.pem \
  	.$$*.db-client-cert.pem \
  	.$$*.db-client-key.pem \
- 	.$$*.db-server-ca.pem
+ 	.$$*.db-server-ca.pem	
 
 $(addprefix encrypt.,${envs}): encrypt.%: \
 	.$$*.gcloud.json.enc \
 	.$$*.env.enc \
-	.$$*.cacert.pem.enc \
 	.$$*.cert.key.enc \
 	.$$*.cert.pem.enc \
+	.$$*.req.pem.enc \
  	.$$*.db-client-cert.pem.enc \
  	.$$*.db-client-key.pem.enc \
  	.$$*.db-server-ca.pem.enc
@@ -230,10 +230,14 @@ ssl.prod: CERT_DOMAIN = logflare.app
 ssl.staging: CERT_DOMAIN = logflarestaging.com
 
 $(addprefix ssl.,${envs}): ssl.%:
-	openssl req -newkey rsa:2048 -nodes -days 365000 -keyout .$*.cert.key -out .$*.req.pem \
+	@echo "Generating self-signed certificate..."
+	@echo "Generating server private key (cert.key) and certificate signing request (req.pem)"
+	@openssl req -newkey rsa:2048 -nodes -days 365000 -keyout .$*.cert.key -out .$*.req.pem \
 		-subj  "/C=US/ST=DE/O=Supabase/OU=Logflare/CN=$(CERT_DOMAIN)"
-	openssl x509 -req -days 12783 -set_serial 1 \
-		-in .$*.req.pem -out .$*.cert.pem \
+	@echo "Signing cert.pem using private key and CSR"
+	@openssl x509 -req -days 12783 -set_serial 1 \
+		-in .$*.req.pem -signkey .$*.cert.key -out .$*.cert.pem \
 		-CA .$*.cacert.pem -CAkey .$*.cacert.key
+		
 
 .PHONY: $(addprefix ssl.,${envs})
