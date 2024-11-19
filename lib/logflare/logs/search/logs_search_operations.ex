@@ -66,13 +66,21 @@ defmodule Logflare.Logs.SearchOperations do
   end
 
   @spec apply_query_defaults(SO.t()) :: SO.t()
-  def apply_query_defaults(%SO{type: :events} = so) do
+  def apply_query_defaults(%SO{chart_data_shape_id: chart_data_shape_id} = so) do
+    dbg(so)
     query =
       from(so.source.bq_table_id)
-      |> select_default_fields(:events)
-      |> order_by(desc: :timestamp)
+    |> select( [t], [t.timestamp, t.id, t.event_message])
+      |> case do
+        q when chart_data_shape_id == :elixir_logger_levels ->
+          q
+          |> Lql.EctoHelpers.unnest_and_join_nested_columns(:inner, "metadata")
+          |> select_merge([..., m], %{level: m.level})
+        q -> q
+      end
+      |> order_by([t], desc: t.timestamp)
       |> limit(@default_limit)
-
+      |> dbg()
     %{so | query: query}
   end
 
@@ -133,21 +141,20 @@ defmodule Logflare.Logs.SearchOperations do
       SourceSchemas.get_source_schema_by(source_id: so.source.id)
       |> Map.get(:schema_flat_map)
 
-    [%{path: path}] = so.chart_rules
-    path_is_timestamp? = path == "timestamp"
 
+    dbg({so.type, Map.has_key?(flat_type_map, "metadata.level")})
     chart_data_shape_id =
       cond do
-        path_is_timestamp? and Map.has_key?(flat_type_map, "metadata.status_code") ->
+        Map.has_key?(flat_type_map, "metadata.status_code") ->
           :netlify_status_codes
 
-        path_is_timestamp? and Map.has_key?(flat_type_map, "metadata.response.status_code") ->
+        Map.has_key?(flat_type_map, "metadata.response.status_code") ->
           :cloudflare_status_codes
 
-        path_is_timestamp? and Map.has_key?(flat_type_map, "metadata.proxy.statusCode") ->
+        Map.has_key?(flat_type_map, "metadata.proxy.statusCode") ->
           :vercel_status_codes
 
-        path_is_timestamp? and Map.has_key?(flat_type_map, "metadata.level") ->
+        Map.has_key?(flat_type_map, "metadata.level") ->
           :elixir_logger_levels
 
         true ->
