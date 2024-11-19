@@ -274,6 +274,9 @@ a:focus, button.btn-link:focus {
 
 mark {
   background-color: #5eeb8f;
+  & .log-error {
+    background-color: #f14216;
+  }
 }
 
 .example-log-code {
