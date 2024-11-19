@@ -39,15 +39,6 @@ steps:
     args:
       - kms
       - decrypt
-      - --ciphertext-file=./cloudbuild/.staging.cacert.pem.enc
-      - --plaintext-file=./cacert.pem
-      - --location=us-central1
-      - --keyring=logflare-keyring-us-central1
-      - --key=logflare-secrets-key
-  - name: gcr.io/cloud-builders/gcloud
-    args:
-      - kms
-      - decrypt
       - --ciphertext-file=./cloudbuild/.staging.db-client-cert.pem.enc
       - --plaintext-file=./db-client-cert.pem
       - --location=us-central1

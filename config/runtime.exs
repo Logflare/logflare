@@ -225,12 +225,12 @@ cond do
 end
 
 if(
-  System.get_env("LOGFLARE_ENABLE_GRPC_SSL") == "true" && File.exists?("cacert.pem") &&
+  System.get_env("LOGFLARE_ENABLE_GRPC_SSL") == "true" &&
     File.exists?("cert.pem") && File.exists?("cert.key")
 ) do
   config :logflare,
     ssl: [
-      cacertfile: "cacert.pem",
+      cacerts: :public_key.cacerts_get(),
       certfile: "cert.pem",
       keyfile: "cert.key",
       verify: :verify_peer
@@ -305,7 +305,7 @@ if System.get_env("LOGFLARE_OTEL_ENDPOINT") do
            {LogflareWeb.OpenTelemetrySampler,
             %{
               probability:
-                System.get_env("LOGFLARE_OPEN_TELEMETRY_SAMPLE_RATIO", "0.001")
+                System.get_env("LOGFLARE_OTEL_SAMPLE_RATIO", "0.001")
                 |> String.to_float()
             }}
        }}
