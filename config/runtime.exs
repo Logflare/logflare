@@ -230,10 +230,8 @@ if(
 ) do
   config :logflare,
     ssl: [
-      cacerts: :public_key.cacerts_get(),
       certfile: "cert.pem",
-      keyfile: "cert.key",
-      verify: :verify_peer
+      keyfile: "cert.key"
     ]
 end
 
