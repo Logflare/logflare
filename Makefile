@@ -231,13 +231,8 @@ ssl.staging: CERT_DOMAIN = logflarestaging.com
 
 $(addprefix ssl.,${envs}): ssl.%:
 	@echo "Generating self-signed certificate..."
-	@echo "Generating server private key (cert.key) and certificate signing request (req.pem)"
-	@openssl req -newkey rsa:2048 -nodes -days 365000 -keyout .$*.cert.key -out .$*.req.pem \
-		-subj  "/C=US/ST=DE/O=Supabase/OU=Logflare/CN=$(CERT_DOMAIN)"
-	@echo "Signing cert.pem using private key and CSR"
-	@openssl x509 -req -days 12783 -set_serial 1 \
-		-in .$*.req.pem -signkey .$*.cert.key -out .$*.cert.pem \
-		-CA .$*.cacert.pem -CAkey .$*.cacert.key
-		
+	@openssl req -x509 -newkey rsa:2048 -keyout .$*.cert.key -out .$*.cert.pem -days 3650 \
+		-nodes -subj "/C=US/ST=DE/O=Supabase/OU=Logflare/CN=$(CERT_DOMAIN)"
+
 
 .PHONY: $(addprefix ssl.,${envs})
