@@ -7,6 +7,7 @@ defmodule Logflare.LogEvent do
   alias Logflare.Source
   alias __MODULE__, as: LE
   alias Logflare.Logs.Validators.{EqDeepFieldTypes, BigQuerySchemaChange}
+  alias Logflare.Logs.IngestTransformers
 
   require Logger
 
@@ -187,7 +188,7 @@ defmodule Logflare.LogEvent do
   defp transform(%LE{valid: false} = le), do: le
 
   defp transform(%LE{valid: true} = le) do
-    with {:ok, le} <- dashes_to_underscore(le),
+    with {:ok, le} <- bigquery_spec(le),
          {:ok, le} <- copy_fields(le) do
       le
     else
@@ -204,18 +205,8 @@ defmodule Logflare.LogEvent do
     end
   end
 
-  defp dashes_to_underscore(le) do
-    new_body =
-      Iteraptor.reduce(le.body, %{}, fn {k, v}, acc ->
-        new_path =
-          Enum.map(k, fn
-            key when is_binary(key) -> String.replace(key, "-", "_")
-            key -> key
-          end)
-
-        put_in(acc, Enum.map(new_path, &Access.key(&1, %{})), v)
-      end)
-
+  defp bigquery_spec(le) do
+    new_body = IngestTransformers.transform(le.body, :to_bigquery_column_spec)
     {:ok, %{le | body: new_body}}
   end
 
