@@ -19,6 +19,7 @@ defmodule Logflare.BackendsTest do
   alias Logflare.Rules
   alias Logflare.Backends.IngestEventQueue
   alias Logflare.Backends.SourceSupWorker
+  alias Logflare.LogEvent
 
   setup do
     start_supervised!(AllLogsLogged)
