@@ -40,7 +40,7 @@ defmodule Logflare.LogEventTest do
     test "dashes to underscores", %{source: source} do
       assert %LogEvent{
                body: %{
-                 "test_field" => _
+                 "_test_field" => _
                }
              } = LogEvent.make(%{"test-field" => 123}, %{source: source})
     end
@@ -101,12 +101,12 @@ defmodule Logflare.LogEventTest do
       source = %{
         source
         | transform_copy_fields: """
-            my-food:field
+            _my_food:field
           """
       }
 
       assert %LogEvent{body: body} = LogEvent.make(%{"my-food" => 123}, %{source: source})
-      assert Map.drop(body, ["id", "timestamp"]) == %{"my_food" => 123}
+      assert Map.drop(body, ["id", "timestamp"]) == %{"_my_food" => 123, "field" => 123}
     end
 
     test "field copying - invalid instructions are ignored", %{source: source} do
