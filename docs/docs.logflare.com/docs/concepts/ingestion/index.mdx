@@ -55,6 +55,64 @@ To ingest by batch, send your request with the following JSON body:
 
 Note that if you have mutliple sources with the same name, it will result in an error on ingestion and the log event will be discarded.
 
+## Pipeline Transformations
+
+At ingestion, the pipeline will perform the following in sequence:
+
+1. Add in the `id`, `timestamp`, and `event_message` fields.
+
+- `event_message` will be populated from the special `message` field if missing.
+
+2. Ensure that all field names adhere to the BigQuery column requirements. See [key transformation](#key-transformation) for more details.
+
+- Any fields that are automatically adjusted will be prefixed with an underscore (`_`).
+
+3. If set, fields will be copied in sequence. See [field copying](#copy-fields) for more details.
+
+### Key Transformation
+
+When logging object, your object keys will be transformed automatically to comply with the respective backend in use. For example, BigQuery column requirements require that names only contain letters (a-z, A-Z), numbers (0-9), or underscores (\_), and it must start with a letter or underscore. This will be automatically handled for you when ingesting data.
+
+### Copy Fields
+
+A source can be configured to copy fields from one path to another. This allows for augmentation of the event at ingestion time before inserting into the underlying backend-ttl
+
+A `:` symbol is used as a delimiter between the source field and destination field. The pattern is `source:destination`. Dot syntax is used for specifying nested paths.
+
+For example, to copy a field from a nested field to the top-level (for performance reasons or otherwise)
+
+```text
+metadata.nested_field:top_field
+```
+
+Multiple rules can be specified and chained, as they are executed in sequence.
+
+```text
+metadata.my_nested.field:top
+top:top_level_copy
+top:backup_copy
+```
+
+In this example, 3 additional fields will be created: `top`, `top_level_copy`, and `backup_copy`.
+
+As field name transformations to BigQuery specification occur before this step, modified field names must be used.
+
+For example, if a payload with dashes is ingested:
+
+```json
+{ "top-level": 123, ...}
+```
+
+The field will be converted into `_top_level` in the field name transformation step. We will then have to refer to it as such in the Copy fields configuration:
+
+```text
+_top_level:my_copied_field
+```
+
+:::note
+Destination field names must match the BigQuery colummn name specification, or the event risks being rejected.
+:::
+
 ## Adaptive Schema
 
 As your logging needs changes, Logflare is capable of detecting and adjusting the database schema accordingly. This allows you to focus on analyzing your logs instead of having to manage your logging pipeline manually.
@@ -106,10 +164,6 @@ On high ingestion volume, Logflare will sample incoming events instead of checki
 
 From 10-100 events per second, sample rate is 0.1. From 100-1,000 events per second, sample rate is 0.01. From 1,000-10,000 events per second, sample rate is 0.001. Above 10,000 events per second, sample rate is 0.0001.
 :::
-
-### Key Transformation
-
-When logging object, your object keys will be transformed automatically to comply with the respective backend in use. For example, BigQuery column requirements require that names only contain letters (a-z, A-Z), numbers (0-9), or underscores (\_), and it must start with a letter or underscore. This will be automatically handled for you when ingesting data.
 
 ### Schema Changes
 

@@ -28,7 +28,8 @@ defmodule Logflare.Source do
              :notifications,
              :custom_event_message_keys,
              :backends,
-             :retention_days
+             :retention_days,
+             :transform_copy_fields
            ]}
   defp env_dataset_id_append,
     do: Application.get_env(:logflare, Logflare.Google)[:dataset_id_append]
@@ -131,6 +132,7 @@ defmodule Logflare.Source do
     field(:v2_pipeline, :boolean, default: false)
     field(:suggested_keys, :string, default: "")
     field(:retention_days, :integer, virtual: true)
+    field(:transform_copy_fields, :string)
     # Causes a shitstorm
     # field :bigquery_schema, Ecto.Term
 
@@ -181,7 +183,8 @@ defmodule Logflare.Source do
       :drop_lql_string,
       :v2_pipeline,
       :suggested_keys,
-      :retention_days
+      :retention_days,
+      :transform_copy_fields
     ])
     |> cast_embed(:notifications, with: &Notifications.changeset/2)
     |> put_single_tenant_postgres_changes()
@@ -207,7 +210,8 @@ defmodule Logflare.Source do
       :drop_lql_string,
       :v2_pipeline,
       :suggested_keys,
-      :retention_days
+      :retention_days,
+      :transform_copy_fields
     ])
     |> cast_embed(:notifications, with: &Notifications.changeset/2)
     |> put_single_tenant_postgres_changes()

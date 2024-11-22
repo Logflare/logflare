@@ -7,6 +7,7 @@ defmodule Logflare.LogEvent do
   alias Logflare.Source
   alias __MODULE__, as: LE
   alias Logflare.Logs.Validators.{EqDeepFieldTypes, BigQuerySchemaChange}
+  alias Logflare.Logs.IngestTransformers
 
   require Logger
 
@@ -84,6 +85,7 @@ defmodule Logflare.LogEvent do
 
     Logflare.LogEvent
     |> struct!(le_map)
+    |> transform()
     |> validate()
   end
 
@@ -180,6 +182,62 @@ defmodule Logflare.LogEvent do
            }}
       end
     end)
+  end
+
+  @spec transform(LE.t()) :: LE.t()
+  defp transform(%LE{valid: false} = le), do: le
+
+  defp transform(%LE{valid: true} = le) do
+    with {:ok, le} <- bigquery_spec(le),
+         {:ok, le} <- copy_fields(le) do
+      le
+    else
+      {:error, message} ->
+        %{
+          le
+          | valid: false,
+            pipeline_error: %LE.PipelineError{
+              stage: "transform",
+              type: "transform",
+              message: message
+            }
+        }
+    end
+  end
+
+  defp bigquery_spec(le) do
+    new_body = IngestTransformers.transform(le.body, :to_bigquery_column_spec)
+    {:ok, %{le | body: new_body}}
+  end
+
+  defp copy_fields(%LE{source: %Source{transform_copy_fields: nil}} = le), do: {:ok, le}
+
+  defp copy_fields(le) do
+    instructions = String.split(le.source.transform_copy_fields, ~r/\n/, trim: true)
+
+    new_body =
+      for instruction <- instructions, instruction = String.trim(instruction), reduce: le.body do
+        acc ->
+          case String.split(instruction, ":", parts: 2) do
+            [from, to] ->
+              from = String.replace_prefix(from, "m.", "metadata.")
+              from_path = String.split(from, ".")
+
+              to = String.replace_prefix(to, "m.", "metadata.")
+              to_path = String.split(to, ".")
+
+              if value = get_in(acc, from_path) do
+                put_in(acc, Enum.map(to_path, &Access.key(&1, %{})), value)
+              else
+                acc
+              end
+
+            _ ->
+              acc
+          end
+      end
+
+    {:ok, Map.put(le, :body, new_body)}
   end
 
   # used to stringify changeset errors

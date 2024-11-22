@@ -187,19 +187,6 @@
   <%= link "Test webhook", to: Routes.source_path(@conn, :test_alerts, @source), class: "btn btn-primary form-button", role: "button" %>
   <% end %>
 
-  <%= section_header("Custom Event Message") %>
-  <p>Comma separated list of metadata keys to customize the log event message. Use <code>message</code> to target the default log event message. Use JSONpath queries to target more complex nested data structures. The root (<code>$.</code>) is implied here.</p>
-  <%= form_for @changeset, Routes.source_path(@conn, :update, @source), fn aa -> %>
-  <div class="form-group">
-    <%= text_input aa, :custom_event_message_keys, placeholder: "metadata.field.key, metadata.field.another_key", class: "form-control form-control-margin" %>
-    <%= error_tag aa, :custom_event_message_keys %>
-    <small class="form-text text-muted">
-      Key values will be concatenated with a pipe ( | ).
-    </small>
-  </div>
-
-  <%= submit "Update keys", class: "btn btn-primary form-button" %>
-  <% end %>
   <%= section_header("Public Access") %>
   <p>Public paths let you share your logs with other people without having to give them a login. Generate a public token
     and this source will be accessible by anyone with this url. Regenerate a public path if needed.</p>
@@ -228,18 +215,50 @@
   </p>
   <%= button "#{if @source.validate_schema, do: "Disable", else: "Enable"} schema validation", to: Routes.source_path(@conn, :toggle_schema_validation, @source), class: "btn btn-primary form-button" %>
 
-   <%= section_header("Drop Log Events") %>
+
+  <hr/>
+  <h3>Pipeline Rules</h3>
+
+  <%= section_header("Drop Log Events") %>
   <p>Use an LQL statement to drop log events on ingest.</p>
   <%= form_for @changeset, Routes.source_path(@conn, :update, @source), fn drop -> %>
   <div class="form-group">
     <%= text_input drop, :drop_lql_string, placeholder: "", class: "form-control form-control-margin" %>
     <%= error_tag drop, :drop_lql_string %>
-    <small class="form-text text-muted">
-      Currently in beta.
-    </small>
   </div>
   <%= submit "Update LQL", class: "btn btn-primary form-button" %>
   <% end %>
+
+  <%= section_header("Custom Event Message") %>
+  <p>Comma separated list of metadata keys to customize the log event message. Use <code>message</code> to target the default log event message. Use JSONpath queries to target more complex nested data structures. The root (<code>$.</code>) is implied here.</p>
+  <%= form_for @changeset, Routes.source_path(@conn, :update, @source), fn aa -> %>
+  <div class="form-group">
+    <%= text_input aa, :custom_event_message_keys, placeholder: "metadata.field.key, metadata.field.another_key", class: "form-control form-control-margin" %>
+    <%= error_tag aa, :custom_event_message_keys %>
+    <small class="form-text text-muted">
+      Key values will be concatenated with a pipe ( | ).
+    </small>
+  </div>
+
+  <%= submit "Update keys", class: "btn btn-primary form-button" %>
+  <% end %>
+
+
+  <%= section_header("Copy fields") %>
+  <p>
+    Copy fields to different paths at ingestion.  Rules are executed sequentailly. Invalid rules are ignored.
+  </p>
+  <%= form_for @changeset, Routes.source_path(@conn, :update, @source), fn e -> %>
+    <div class="form-group">
+      <%= textarea e, :transform_copy_fields, placeholder: "metadata.my_field:my.destination.path", class: "form-control form-control-margin tw-h-[120px]" %>
+      <%= error_tag e, :transform_copy_fields %>
+      <small class="form-text text-muted">
+        Separate each rule with a new line. Use the pattern <code>from.field:to.other.field</code> to specify the path to copy a field.
+      </small>
+    </div>
+    <%= submit "Update field copying rules", class: "btn btn-primary form-button" %>
+  <% end %>
+  <hr/>
 
   <%= section_header("Backend TTL") %>
   <%= if @conn.assigns.user.billing_enabled do %>

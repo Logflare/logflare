@@ -191,6 +191,50 @@ defmodule LogflareWeb.SourceControllerTest do
     end
   end
 
+  describe "edit" do
+    setup %{conn: conn} do
+      insert(:plan, name: "Free")
+      free_user = insert(:user)
+      insert(:team, user: free_user)
+
+      [conn: conn, free_user: free_user]
+    end
+
+    test "pipeline", %{conn: conn, free_user: user} do
+      source = insert(:source, user: user)
+
+      html =
+        conn
+        |> login_user(user)
+        |> get(Routes.source_path(conn, :edit, source))
+        |> html_response(200)
+
+      assert html =~ "Pipeline Rules"
+      assert html =~ "Copy fields"
+      assert html =~ "Update field copying rules"
+
+      conn =
+        conn
+        |> recycle()
+        |> login_user(user)
+        |> patch("/sources/#{source.id}", %{
+          source: %{
+            transform_copy_fields: """
+            test:123
+            123:1234
+            """
+          }
+        })
+
+      assert html_response(conn, 302) =~ "redirected"
+      assert Phoenix.Flash.get(conn.assigns.flash, :info) == "Source updated!"
+
+      updated = Sources.get_by(id: source.id)
+
+      assert updated.transform_copy_fields != nil
+    end
+  end
+
   describe "dashboard single tenant" do
     TestUtils.setup_single_tenant(seed_user: true)
 
