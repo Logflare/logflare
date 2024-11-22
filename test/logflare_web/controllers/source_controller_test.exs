@@ -191,7 +191,6 @@ defmodule LogflareWeb.SourceControllerTest do
     end
   end
 
-
   describe "edit" do
     setup %{conn: conn} do
       insert(:plan, name: "Free")
@@ -203,6 +202,7 @@ defmodule LogflareWeb.SourceControllerTest do
 
     test "pipeline", %{conn: conn, free_user: user} do
       source = insert(:source, user: user)
+
       html =
         conn
         |> login_user(user)
@@ -213,16 +213,17 @@ defmodule LogflareWeb.SourceControllerTest do
       assert html =~ "Copy fields"
       assert html =~ "Update field copying rules"
 
-
       conn =
         conn
         |> recycle()
         |> login_user(user)
         |> patch("/sources/#{source.id}", %{
-          source: %{transform_copy_fields: """
-          test:123
-          123:1234
-          """}
+          source: %{
+            transform_copy_fields: """
+            test:123
+            123:1234
+            """
+          }
         })
 
       assert html_response(conn, 302) =~ "redirected"

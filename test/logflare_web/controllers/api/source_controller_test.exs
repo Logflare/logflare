@@ -158,7 +158,6 @@ defmodule LogflareWeb.Api.SourceControllerTest do
   end
 
   describe "transformations" do
-
   end
 
   describe "retention_days" do
