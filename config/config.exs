@@ -134,4 +134,6 @@ config :opentelemetry,
 
 config :logflare, Logflare.Vault, json_library: Jason
 
+config :broadway, config_storage: :ets
+
 import_config "#{Mix.env()}.exs"
