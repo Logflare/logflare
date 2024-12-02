@@ -1,0 +1,67 @@
+---
+title: Open Telemetry
+---
+
+import Tabs from "@theme/Tabs";
+import TabItem from "@theme/TabItem";
+
+Logflare features OpenTelemetry integration to ingest directly from OpenTelemtry SDKs.
+
+:::note
+This feature is under development and is considered alpha stage. It is not advisable to use it for mission critical production workloads.
+:::
+
+The ingestion url is `https://otel.logflare.app:443`.
+
+### Configuration Examples
+
+<Tabs>
+  <TabItem value="erlang" label="Erlang" default>
+
+```erlang
+%% config/sys.config.src
+[
+ {opentelemetry, [
+    {span_processor, batch},
+    {traces_exporter, otlp}
+  ]},
+
+ {opentelemetry_exporter, [
+    {otlp_protocol, grpc},
+    {otlp_compression, gzip},
+    {otlp_endpoint, "https://otel.logflare.app:443"},
+    {otlp_headers, [
+      {"x-source", "my-source-id"},
+      {"x-api-key", "my-access-token"}
+    ]}
+  ]}
+].
+```
+
+  </TabItem>
+  <TabItem value="elixir" label="Elixir">
+
+```elixir
+# config/config.exs
+config :opentelemetry,
+  span_processor: :batch,
+  traces_exporter: :otlp
+
+config :opentelemetry_exporter,
+  otlp_protocol: :grpc,
+  otlp_compression: :gzip,
+  otlp_endpoint: "https://otel.logflare.app:443",
+  otlp_headers: [
+    {"x-source", "my-source-uuid"},
+    {"x-api-key", "my-access-token"}
+  ]
+```
+
+  </TabItem>
+</Tabs>
+
+### Limitations
+
+- Only **traces** are currently supported.
+- Only GRPC as the transport protocol is currently supported. HTTP Protobuf is not yet supported.
+- Gzip compression is required.
