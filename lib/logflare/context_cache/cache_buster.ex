@@ -117,12 +117,12 @@ fdefmodule Logflare.ContextCache.CacheBuster do
   end
 
   defp handle_record(%UpdatedRecord{
-    relation: {_schema, "oauth_access_tokens"},
-    record: %{"id" => id}
-  })
-  when is_binary(id) do
-  {Logflare.Auth, String.to_integer(id)}
-end
+         relation: {_schema, "oauth_access_tokens"},
+         record: %{"id" => id}
+       })
+       when is_binary(id) do
+    {Logflare.Auth, String.to_integer(id)}
+  end
 
   defp handle_record(%NewRecord{
          relation: {_schema, "billing_accounts"},
