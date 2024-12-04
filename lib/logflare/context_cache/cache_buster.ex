@@ -1,4 +1,4 @@
-fdefmodule Logflare.ContextCache.CacheBuster do
+defmodule Logflare.ContextCache.CacheBuster do
   @moduledoc """
     Monitors our Postgres replication log and busts the cache accordingly.
   """
