@@ -106,13 +106,13 @@ defmodule Logflare.Google.BigQuery.GenUtils do
   # copy over runtime adapter building from Tesla.client/2
   # https://github.com/elixir-tesla/tesla/blob/v1.7.0/lib/tesla/builder.ex#L206
   defp build_tesla_adapter_call(:ingest) do
-    Tesla.client([], {Tesla.Adapter.Finch, name: Logflare.FinchDefault, receive_timeout: 5_000}).adapter
+    Tesla.client([], {Tesla.Adapter.Finch, name: Logflare.FinchIngest, receive_timeout: 5_000}).adapter
   end
 
   defp build_tesla_adapter_call(:query) do
     Tesla.client(
       [],
-      {Tesla.Adapter.Finch, name: Logflare.FinchDefault, receive_timeout: 60_000}
+      {Tesla.Adapter.Finch, name: Logflare.FinchQuery, receive_timeout: 60_000}
     ).adapter
   end
 

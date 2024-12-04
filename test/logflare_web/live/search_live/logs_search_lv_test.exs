@@ -511,7 +511,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
     test "run a query", %{conn: conn, source: source} do
       stub(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, fn conn, _proj_id, opts ->
         # use separate connection pool
-        assert {Tesla.Adapter.Finch, :call, [[name: Logflare.FinchDefault, receive_timeout: _]]} =
+        assert {Tesla.Adapter.Finch, :call, [[name: Logflare.FinchQuery, receive_timeout: _]]} =
                  conn.adapter
 
         query = opts[:body].query |> String.downcase()

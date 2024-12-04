@@ -208,6 +208,24 @@ defmodule Logflare.Application do
       # Finch connection pools, using http2
       {Finch, name: Logflare.FinchGoth, pools: %{default: [protocols: [:http2], count: 1]}},
       {Finch,
+       name: Logflare.FinchIngest,
+       pools: %{
+         "https://bigquery.googleapis.com" => [
+           protocols: [:http2],
+           count: max(ceil(base / 2), 10),
+           start_pool_metrics?: true
+         ]
+       }},
+      {Finch,
+       name: Logflare.FinchQuery,
+       pools: %{
+         "https://bigquery.googleapis.com" => [
+           protocols: [:http2],
+           count: max(base, 20),
+           start_pool_metrics?: true
+         ]
+       }},
+      {Finch,
        name: Logflare.FinchDefault,
        pools: %{
          # default pool uses finch defaults
@@ -215,7 +233,7 @@ defmodule Logflare.Application do
          #  explicitly set http2 for other pools for multiplexing
          "https://bigquery.googleapis.com" => [
            protocols: [:http2],
-           count: max(base * 2, 20),
+           count: max(base, 10),
            start_pool_metrics?: true
          ],
          "https://http-intake.logs.datadoghq.com" => [
