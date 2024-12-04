@@ -8,7 +8,10 @@ defmodule Logflare.Users.CacheWarmer do
 
     get_kv =
       for u <- users do
-        [{{:get, [u.id]}, u}, {{:get_by, [api_key: u.api_key]}, u}]
+        [
+          {{:get, [u.id]}, u},
+          {{:get_by, [api_key: u.api_key]}, u}
+        ]
       end
 
     preloaded_kv =
@@ -23,6 +26,6 @@ defmodule Logflare.Users.CacheWarmer do
         ]
       end
 
-    {:ok, get_kv ++ preloaded_kv}
+    {:ok, List.flatten(get_kv ++ preloaded_kv) |> Enum.map(&{:cached, &1})}
   end
 end

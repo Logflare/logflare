@@ -1,4 +1,4 @@
-defmodule Logflare.ContextCache.CacheBuster do
+fdefmodule Logflare.ContextCache.CacheBuster do
   @moduledoc """
     Monitors our Postgres replication log and busts the cache accordingly.
   """
@@ -115,6 +115,14 @@ defmodule Logflare.ContextCache.CacheBuster do
        when is_binary(id) do
     {Logflare.TeamUsers, String.to_integer(id)}
   end
+
+  defp handle_record(%UpdatedRecord{
+    relation: {_schema, "oauth_access_tokens"},
+    record: %{"id" => id}
+  })
+  when is_binary(id) do
+  {Logflare.Auth, String.to_integer(id)}
+end
 
   defp handle_record(%NewRecord{
          relation: {_schema, "billing_accounts"},
