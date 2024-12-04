@@ -25,6 +25,17 @@ defmodule Logflare.Users do
     Repo.aggregate(User, :count)
   end
 
+  def list_ingesting_users(limit: limit) do
+    from(u in User,
+      join: s in assoc(u, :sources),
+      where: s.log_events_updated_at >= ago(1, "day"),
+      order_by: {:desc, s.log_events_updated_at},
+      limit: ^limit,
+      select: u
+    )
+    |> Repo.all()
+  end
+
   @doc """
   Lists users and performs filtering based on filter keywords.
 
@@ -81,11 +92,23 @@ defmodule Logflare.Users do
 
   def preload_defaults(nil), do: nil
 
-  def preload_defaults(user) do
+  def preload_defaults(%User{} = user) do
     user
     |> Repo.preload([:sources, :billing_account, :team])
     |> Map.update!(:sources, fn sources ->
       Enum.map(sources, &Sources.put_retention_days/1)
+    end)
+  end
+
+  def preload_defaults(users) when is_list(users) do
+    users
+    |> Repo.preload([:sources, :billing_account, :team])
+    |> Enum.map(fn user ->
+      user
+      |> maybe_put_bigquery_defaults()
+      |> Map.update!(:sources, fn sources ->
+        Enum.map(sources, &Sources.put_retention_days/1)
+      end)
     end)
   end
 

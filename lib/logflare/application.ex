@@ -37,6 +37,8 @@ defmodule Logflare.Application do
   defp get_children(:test) do
     finch_pools() ++
       [
+        Logflare.Repo,
+        Logflare.Vault,
         Counters,
         RateCounters,
         Logs.LogEvents.Cache,
@@ -44,8 +46,6 @@ defmodule Logflare.Application do
         {Phoenix.PubSub, name: Logflare.PubSub},
         PubSubRates,
         Logs.RejectedLogEvents,
-        Logflare.Repo,
-        Logflare.Vault,
         Logflare.Backends,
         {Registry,
          name: Logflare.V1SourceRegistry,
