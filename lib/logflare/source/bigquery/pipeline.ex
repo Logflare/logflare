@@ -274,12 +274,7 @@ defmodule Logflare.Source.BigQuery.Pipeline do
 
         # check content length
         message, {count, len} ->
-          {:ok, payload} =
-            with {:error, %Jason.EncodeError{}} <- Jason.encode(message.data.body) do
-              {:ok, inspect_payload(message.data.body)}
-            end
-
-          length = IO.iodata_length(payload)
+          length = message_size(message.data.body)
 
           if len - length <= 0 do
             # below max batch count, but reach max batch length
@@ -292,12 +287,7 @@ defmodule Logflare.Source.BigQuery.Pipeline do
     }
   end
 
-  def inspect_payload(%{} = payload) do
-    inspect(payload,
-      binaries: :as_strings,
-      charlists: :as_lists,
-      limit: :infinity,
-      printable_limit: :infinity
-    )
+  def message_size(data) do
+    :erlang.external_size(data)
   end
 end

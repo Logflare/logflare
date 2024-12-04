@@ -59,7 +59,7 @@ defmodule Logflare.BigQuery.PipelineTest do
                     max_length: 500
                   ) do
         assert IO.iodata_length(Jason.encode!(payload)) <
-                 IO.iodata_length(Pipeline.inspect_payload(payload))
+                 Pipeline.message_size(payload)
       end
     end
   end
