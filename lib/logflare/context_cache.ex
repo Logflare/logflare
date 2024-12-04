@@ -118,6 +118,7 @@ defmodule Logflare.ContextCache do
   end
 
   defp select_key(%_{id: id}), do: id
+  defp select_key({:ok, %_{id: id}}), do: id
   defp select_key(true), do: "true"
   defp select_key(nil), do: :not_found
   defp select_key(_), do: :unknown

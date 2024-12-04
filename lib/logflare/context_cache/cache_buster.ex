@@ -116,6 +116,14 @@ defmodule Logflare.ContextCache.CacheBuster do
     {Logflare.TeamUsers, String.to_integer(id)}
   end
 
+  defp handle_record(%UpdatedRecord{
+         relation: {_schema, "oauth_access_tokens"},
+         record: %{"id" => id}
+       })
+       when is_binary(id) do
+    {Logflare.Auth, String.to_integer(id)}
+  end
+
   defp handle_record(%NewRecord{
          relation: {_schema, "billing_accounts"},
          record: %{"id" => _id}
@@ -175,6 +183,14 @@ defmodule Logflare.ContextCache.CacheBuster do
     {Logflare.TeamUsers, :not_found}
   end
 
+  defp handle_record(%NewRecord{
+         relation: {_schema, "oauth_access_tokens"},
+         record: %{"id" => _id}
+       }) do
+    # When new records are created they were previously cached as `nil` so we need to bust the :not_found keys
+    {Logflare.Auth, :not_found}
+  end
+
   defp handle_record(%DeletedRecord{
          relation: {_schema, "billing_accounts"},
          old_record: %{"id" => id}
@@ -231,6 +247,15 @@ defmodule Logflare.ContextCache.CacheBuster do
        when is_binary(id) do
     # Must do `alter table rules replica identity full` to get full records on deletes otherwise all fields are null
     {Logflare.TeamUsers, String.to_integer(id)}
+  end
+
+  defp handle_record(%DeletedRecord{
+         relation: {_schema, "oauth_access_tokens"},
+         old_record: %{"id" => id}
+       })
+       when is_binary(id) do
+    # Must do `alter table rules replica identity full` to get full records on deletes otherwise all fields are null
+    {Logflare.Auth, String.to_integer(id)}
   end
 
   defp handle_record(_record) do
