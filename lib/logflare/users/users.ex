@@ -25,6 +25,8 @@ defmodule Logflare.Users do
     Repo.aggregate(User, :count)
   end
 
+  @doc "Lists users with sources that are actively ingesting events"
+  @spec list_ingesting_users(keyword()) :: [User.t()]
   def list_ingesting_users(limit: limit) do
     from(u in User,
       join: s in assoc(u, :sources),
