@@ -388,7 +388,7 @@ defmodule Logflare.Google.BigQuery do
     access = access_emails ++ access_defaults
 
     %Plan{name: plan} =
-      Users.Cache.get_by(id: user_id)
+      Users.Cache.get(user_id)
       |> Billing.Cache.get_plan_by_user()
 
     body = %Model.Dataset{
