@@ -39,6 +39,12 @@ defmodule Logflare.Users.CacheTest do
       log_events_updated_at: NaiveDateTime.shift(NaiveDateTime.utc_now(), hour: -2)
     )
 
-    assert {:ok, [_ | _]} = CacheWarmer.execute(nil)
+    assert {:ok, pairs} = CacheWarmer.execute(nil)
+    assert {:ok, true} = Cachex.put_many(Users.Cache, pairs)
+
+    Logflare.Users
+    |> reject(:get, 1)
+
+    assert Users.Cache.get(user.id)
   end
 end
