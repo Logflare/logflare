@@ -77,6 +77,7 @@ defmodule LogflareWeb.HealthCheckControllerTest do
     end
 
     test "ok", %{conn: conn} do
+      # :timer.sleep(500)
       SingleTenant.create_supabase_sources()
       SingleTenant.create_supabase_endpoints()
 
