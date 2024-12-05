@@ -3,7 +3,7 @@ defmodule Logflare.Repo.Migrations.RecreateTablesPublication do
   use Ecto.Migration
 
   @publications Application.get_env(:logflare, Logflare.ContextCache.CacheBuster)[:publications]
-  @publication_tables [
+  @prev_publication_tables [
     "billing_accounts",
     "plans",
     "rules",
@@ -11,19 +11,21 @@ defmodule Logflare.Repo.Migrations.RecreateTablesPublication do
     "sources",
     "users",
     "backends",
-    "team_users",
-    "oauth_access_tokens"
+    "team_users"
   ]
+  @new_publication_tables @prev_publication_tables ++ ["oauth_access_tokens"]
 
   def up do
-    for p <- @publications, do: execute("DROP PUBLICATION #{p};")
     for p <- @publications do
-      tables = Enum.join(@publication_tables, ", ")
-      execute("CREATE PUBLICATION #{p} FOR TABLE #{tables};")
+      tables = Enum.join(@new_publication_tables, ", ")
+      execute("ALTER PUBLICATION #{p} FOR TABLE #{tables};")
     end
   end
 
   def down do
-    :noop
+    for p <- @publications do
+      tables = Enum.join(@prev_publication_tables, ", ")
+      execute("ALTER PUBLICATION #{p} FOR TABLE #{tables};")
+    end
   end
 end
