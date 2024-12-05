@@ -28,7 +28,17 @@ defmodule Logflare.ContextCache.Supervisor do
     Supervisor.init(get_children(@env), strategy: :one_for_one)
   end
 
-  defp get_children(:test) do
+  defp get_children(:test), do: list_caches()
+
+  defp get_children(_) do
+    list_caches() ++
+      [
+        ContextCache.TransactionBroadcaster,
+        ContextCache.CacheBuster
+      ]
+  end
+
+  def list_caches do
     [
       ContextCache,
       TeamUsers.Cache,
@@ -40,14 +50,6 @@ defmodule Logflare.ContextCache.Supervisor do
       SourceSchemas.Cache,
       Auth.Cache
     ]
-  end
-
-  defp get_children(_) do
-    get_children(:test) ++
-      [
-        ContextCache.TransactionBroadcaster,
-        ContextCache.CacheBuster
-      ]
   end
 
   @doc """

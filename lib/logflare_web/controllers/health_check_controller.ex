@@ -68,18 +68,11 @@ defmodule LogflareWeb.HealthCheckController do
   end
 
   defp check_caches() do
-    for cache <- [
-          Logflare.ContextCache,
-          Logflare.TeamUsers.Cache,
-          Logflare.Partners.Cache,
-          Logflare.Users.Cache,
-          Logflare.Backends.Cache,
-          Logflare.Sources.Cache,
-          Logflare.Billing.Cache,
-          Logflare.SourceSchemas.Cache,
-          Logflare.Auth.Cache,
-          Logflare.Logs.LogEvents.Cache
-        ],
+    for cache <-
+          Logflare.ContextCache.Supervisor.list_caches() ++
+            [
+              Logflare.Logs.LogEvents.Cache
+            ],
         into: %{} do
       # call is O(1)
       case Cachex.size(cache) do
