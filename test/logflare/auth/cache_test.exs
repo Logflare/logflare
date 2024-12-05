@@ -3,6 +3,7 @@ defmodule Logflare.Auth.CacheTest do
   alias Logflare.Auth
   alias Logflare.Factory
   alias Logflare.Partners.Partner
+  alias Logflare.ContextCache
 
   setup do
     user = Factory.insert(:user)
@@ -45,6 +46,17 @@ defmodule Logflare.Auth.CacheTest do
 
     # If scope is missing, should be unauthorized
     assert {:error, :unauthorized} = Auth.Cache.verify_access_token(key)
+  end
+
+  test "cache busting", %{user: user} do
+    {:ok, key} = Auth.create_access_token(user)
+
+    Auth
+    |> expect(:verify_access_token, 2, fn _ -> {:ok, key} end)
+
+    assert {:ok, _} = Auth.Cache.verify_access_token(key.token)
+    ContextCache.bust_keys([{Auth, key.id}])
+    assert {:ok, _} = Auth.Cache.verify_access_token(key.token)
   end
 
   defp access_token_fixture(user_or_team_or_partner) do

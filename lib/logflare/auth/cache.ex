@@ -25,7 +25,7 @@ defmodule Logflare.Auth.Cache do
                  Utils.cache_limit(100_000)
                ]
                |> Enum.filter(& &1),
-             expiration: Utils.cache_expiration_sec(30, 15)
+             expiration: Utils.cache_expiration_min(5, 2)
            ]
          ]}
     }
