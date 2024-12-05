@@ -18,7 +18,7 @@ defmodule Logflare.Repo do
          ]
        }}
       when is_number(uptime) ->
-        uptime
+        ceil(uptime)
 
       {:error, _err} = err ->
         Logger.warning("Could not get Postgres uptime, error: #{err}")
