@@ -25,8 +25,7 @@ defmodule Logflare.ContextCache.Supervisor do
 
   @impl Supervisor
   def init(_) do
-    res = Supervisor.init(get_children(@env), strategy: :one_for_one)
-    res
+    Supervisor.init(get_children(@env), strategy: :one_for_one)
   end
 
   defp get_children(:test) do
