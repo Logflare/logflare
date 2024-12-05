@@ -39,10 +39,10 @@ defmodule Logflare.Application do
       [
         Logflare.Repo,
         Logflare.Vault,
+        ContextCache.Supervisor,
         Counters,
         RateCounters,
         Logs.LogEvents.Cache,
-        ContextCache.Supervisor,
         {Phoenix.PubSub, name: Logflare.PubSub},
         PubSubRates,
         Logs.RejectedLogEvents,
