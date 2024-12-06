@@ -35,7 +35,6 @@ defmodule Logflare.Backends.DynamicPipeline do
         initial_count: args[:min_pipelines] || 0,
         resolve_count: fn _state -> 0 end,
         resolve_interval: @resolve_interval,
-        buffers: %{},
         last_count_increase: nil,
         last_count_decrease: nil
       })
@@ -170,11 +169,21 @@ defmodule Logflare.Backends.DynamicPipeline do
       list_pipelines(name)
       |> Enum.random()
 
-    with :ok <- Supervisor.terminate_child(name, id),
-         :ok <- Supervisor.delete_child(name, id) do
-      count = pipeline_count(name)
-      Logger.debug("DynamicPipeline - Removed pipeline #{inspect(id)}, count is now #{count}")
-      {:ok, count, id}
+    try do
+      with :ok <- Supervisor.terminate_child(name, id),
+           :ok <- Supervisor.delete_child(name, id) do
+        count = pipeline_count(name)
+        Logger.debug("DynamicPipeline - Removed pipeline #{inspect(id)}, count is now #{count}")
+        {:ok, count, id}
+      end
+    rescue
+      e ->
+        Logger.error(
+          "Error when attempting to terminate and remove pipeline. Error: #{Exception.format(:error, e, __STACKTRACE__)}"
+        )
+
+        {:error, :unknown_error}
+    rescue
     end
   end
 
