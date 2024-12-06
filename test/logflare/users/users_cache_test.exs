@@ -2,6 +2,7 @@ defmodule Logflare.Users.CacheTest do
   @moduledoc false
   alias Logflare.Users
   alias Logflare.User
+  alias Logflare.Users.CacheWarmer
   use Logflare.DataCase
 
   setup do
@@ -19,13 +20,31 @@ defmodule Logflare.Users.CacheTest do
   end
 
   describe "users cache" do
-    test "get_by_id/1", %{user: user} do
+    test "get/1", %{user: user} do
       %_{id: user_id} =
-        Users.Cache.get_by(id: user.id)
+        Users.Cache.get(user.id)
         |> Users.preload_defaults()
         |> Map.update!(:sources, &Enum.map(&1, fn s -> %{s | rules: []} end))
 
       assert %User{id: ^user_id} = user
     end
+  end
+
+  test "warmer" do
+    assert {:ok, []} = CacheWarmer.execute(nil)
+    user = insert(:user)
+
+    insert(:source,
+      user: user,
+      log_events_updated_at: NaiveDateTime.shift(NaiveDateTime.utc_now(), hour: -2)
+    )
+
+    assert {:ok, pairs} = CacheWarmer.execute(nil)
+    assert {:ok, true} = Cachex.put_many(Users.Cache, pairs)
+
+    Logflare.Users
+    |> reject(:get, 1)
+
+    assert Users.Cache.get(user.id)
   end
 end
