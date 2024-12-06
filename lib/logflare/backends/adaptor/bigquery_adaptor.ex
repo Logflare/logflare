@@ -122,7 +122,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
 
       len == 0 and avg_rate == 0 and
         state.pipeline_count == 1 and
-          (sec_since_last_decr > 150 or state.last_count_decrease == nil) ->
+          (sec_since_last_decr > 60 * 5 or state.last_count_decrease == nil) ->
         # scale to zero only if no items for > 5m
         0
 
