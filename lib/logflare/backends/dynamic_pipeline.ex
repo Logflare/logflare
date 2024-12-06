@@ -183,7 +183,6 @@ defmodule Logflare.Backends.DynamicPipeline do
         )
 
         {:error, :unknown_error}
-    rescue
     end
   end
 
