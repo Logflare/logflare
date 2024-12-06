@@ -410,7 +410,10 @@ defmodule Logflare.Backends do
   @spec start_source_sup(Source.t()) :: :ok | {:error, :already_started}
   def start_source_sup(%Source{} = source) do
     # ensure that v1 pipeline source is already down
-    case DynamicSupervisor.start_child(SourcesSup, {SourceSup, source}) do
+    case DynamicSupervisor.start_child(
+           {:via, PartitionSupervisor, {SourcesSup, source.id}},
+           {SourceSup, source}
+         ) do
       {:ok, _pid} ->
         :ok
 
@@ -440,7 +443,11 @@ defmodule Logflare.Backends do
   @spec stop_source_sup(Source.t()) :: :ok | {:error, :not_started}
   def stop_source_sup(%Source{} = source) do
     with [{pid, _}] <- Registry.lookup(SourceRegistry, {source.id, SourceSup}),
-         :ok <- DynamicSupervisor.terminate_child(SourcesSup, pid) do
+         :ok <-
+           DynamicSupervisor.terminate_child(
+             {:via, PartitionSupervisor, {SourcesSup, source.id}},
+             pid
+           ) do
       :ok
     else
       _ -> {:error, :not_started}
