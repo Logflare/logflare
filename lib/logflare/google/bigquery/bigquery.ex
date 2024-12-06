@@ -194,6 +194,7 @@ defmodule Logflare.Google.BigQuery do
     table_name = GenUtils.format_table_name(source_token)
 
     body = %Model.TableDataInsertAllRequest{
+      skipInvalidRows: true,
       ignoreUnknownValues: true,
       rows: batch
     }
