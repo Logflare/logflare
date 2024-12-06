@@ -300,16 +300,18 @@ defmodule Logflare.Source.Supervisor do
     DynamicSupervisor.start_child(V1SourceDynSup, {V1SourceSup, source: source})
   end
 
-  defp do_lookup(%{v2_pipeline: true} = source),
-    do: do_v2_lookup(source)
+  defp do_lookup(%Source{v2_pipeline: true} = source), do: do_v2_lookup(source)
+  defp do_lookup(%Source{v2_pipeline: false} = source), do: do_v1_lookup(source)
 
-  defp do_lookup(source), do: do_v1_lookup(source)
   defp do_v2_lookup(source), do: Backends.lookup(Backends.SourceSup, source)
   defp do_v1_lookup(source), do: Backends.lookup(V1SourceSup, source)
 
-  defp do_terminate_source_sup(source) do
+  defp do_terminate_source_sup(%Source{} = source) do
     with {:ok, pid} <- do_v2_lookup(source) do
-      DynamicSupervisor.terminate_child(Backends.SourcesSup, pid)
+      DynamicSupervisor.terminate_child(
+        {:via, PartitionSupervisor, {Backends.SourcesSup, source.id}},
+        pid
+      )
     end
 
     with {:ok, pid} <- do_v1_lookup(source) do
