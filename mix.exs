@@ -133,7 +133,7 @@ defmodule Logflare.Mixfile do
       {:tesla, "~> 1.6"},
 
       # Concurrency and pipelines
-      {:broadway, github: "Logflare/broadway", branch: "fix/ensure-ets-table-exists"},
+      {:broadway, github: "Logflare/broadway", branch: "fix/safe-crud"},
       {:syn, "~> 3.3"},
 
       # Test
