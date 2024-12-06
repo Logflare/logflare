@@ -52,7 +52,7 @@ defmodule Logflare.Logs.Processor do
   end
 
   defp store(%Logflare.Source{v2_pipeline: true} = source, batch) do
-    Backends.start_source_sup(source)
+    if not Backends.source_sup_started?(source), do: Backends.start_source_sup(source)
 
     Backends.ingest_logs(batch, source)
   end
