@@ -46,7 +46,7 @@ defmodule Logflare.Source.TextNotificationServer do
         check_rate(state.notifications_every)
 
         source = Sources.Cache.get_by_id(state.source_token)
-        user = Users.Cache.get_by(id: source.user_id)
+        user = Users.Cache.get(source.user_id)
         source_link = Routes.source_url(Endpoint, :show, source.id)
         body = "#{source.name} has #{rate} new event(s). See: #{source_link} "
 
