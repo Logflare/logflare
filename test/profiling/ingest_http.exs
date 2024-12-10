@@ -49,3 +49,12 @@ Benchee.run(
 # ##### With input v2 #####
 # Name               ips        average  deviation         median         99th %
 # pipeline         37.07       26.98 ms    ±21.35%       25.97 ms       55.37 ms
+
+# With bandit (2024-12-10):
+# ##### With input v1 #####
+# Name               ips        average  deviation         median         99th %
+# pipeline         44.25       22.60 ms    ±14.53%       21.89 ms       34.32 ms
+
+# ##### With input v2 #####
+# Name               ips        average  deviation         median         99th %
+# pipeline         45.08       22.18 ms    ±11.26%       22.16 ms       29.60 ms
