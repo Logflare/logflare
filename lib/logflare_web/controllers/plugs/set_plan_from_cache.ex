@@ -10,7 +10,7 @@ defmodule LogflareWeb.Plugs.SetPlanFromCache do
   def init(_), do: nil
 
   def call(%{assigns: %{user: %User{} = user}} = conn, _opts) do
-    %{conn | assigns: Map.put(conn.assigns, :plan, Billing.Cache.get_plan_by_user(user))}
+    assign(conn, :plan, Billing.Cache.get_plan_by_user(user))
   end
 
   def call(conn, _opts), do: conn
