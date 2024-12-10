@@ -17,6 +17,7 @@ v2_source = Sources.get(:"94d07aab-30f5-460e-8871-eb85f4674e35")
 
 user = Users.get(v1_source.user_id)
 str_key = inspect({:get, [user.id]})
+
 Benchee.run(
   %{
     "Cachex.get/3" => fn _ ->

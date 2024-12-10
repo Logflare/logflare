@@ -17,7 +17,6 @@ v2_source = Sources.get(:"94d07aab-30f5-460e-8871-eb85f4674e35")
 
 user = Users.get(v1_source.user_id)
 
-
 apply_args = {:get, [user.id]}
 
 Benchee.run(
@@ -25,6 +24,7 @@ Benchee.run(
     "Cachex.fetch/3" => fn ->
       Cachex.fetch(Logflare.Users.Cache, apply_args, fn {fun, args} ->
         value = apply(Logflare.Users, :get, [user.id])
+
         # keys_key = {{Logflare.Users, Logflare.ContextCache.select_key(value)}, :erlang.phash2(apply_args)}
         # Cachex.put(Logflare.ContextCache, keys_key, apply_args)
 
@@ -33,7 +33,7 @@ Benchee.run(
     end,
     "Users.Cache.get/1" => fn ->
       Logflare.Users.Cache.get(user.id)
-    end,
+    end
   },
   before_each: fn input ->
     Cachex.clear(Logflare.Users.Cache)
