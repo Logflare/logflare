@@ -47,10 +47,10 @@ defmodule Logflare.ContextCache do
              hooks:
                [
                  if(stats, do: Utils.cache_stats()),
-                 Utils.cache_limit(100_000)
+                 Utils.cache_limit(500_000)
                ]
                |> Enum.filter(& &1),
-             expiration: Utils.cache_expiration_min()
+             expiration: Utils.cache_expiration_min(600, 10)
            ]
          ]}
     }
