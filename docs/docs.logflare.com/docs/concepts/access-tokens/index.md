@@ -36,9 +36,9 @@ There are 3 supported methods to attach an accees token with an API request:
 
 ## Client-side is Public
 
-Access tokens are considered public for client-side usage. Public-only tokens will not be able to access the Logflare Management API, which provides capabilities to manage user resources on Logflare.
+Access tokens can be exposed for client-side usage. Consider restricting tokens to ingest into specific sources or to considered public for client-side usage. Public-only tokens will not be able to access the Logflare Management API beyond the ingest/query APIs.
 
-Please use a separate private access token for the Management API.
+Private access tokens should not be exposed to the client side, as private access tokens have complete access to all management APIs used for account control.
 
 ## Rotation
 
