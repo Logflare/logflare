@@ -41,10 +41,10 @@ defmodule LogflareWeb.Plugs.VerifyApiAccess do
 
         Partners.Cache.get_user_by_token(partner, impersonate_user_token)
         |> then(fn
-          %User{} = u ->
+          %User{id: user_id}  ->
             conn
             |> assign(:partner, partner)
-            |> assign(:user, Users.Cache.preload_for_ingest(u))
+            |> assign(:user, Users.Cache.get(user_id))
 
           _ ->
             FallbackController.call(conn, {:error, :unauthorized})
