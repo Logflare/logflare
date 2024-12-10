@@ -22,7 +22,7 @@ defmodule Logflare.Users.Cache do
                  Utils.cache_limit(100_000)
                ]
                |> Enum.filter(& &1),
-             expiration: Utils.cache_expiration_min()
+             expiration: Utils.cache_expiration_min(180, 10)
            ]
          ]}
     }
