@@ -61,33 +61,29 @@ defmodule Logflare.Users do
     end)
     |> limit(^min(opts.limit, @max_limit))
     |> Repo.all()
-  end
-
-  def list() do
-    Repo.all(User)
+    |> Enum.map(&maybe_put_bigquery_defaults/1)
   end
 
   def get(user_id) do
     Repo.get(User, user_id)
+    |> maybe_put_bigquery_defaults()
   end
 
-  def get_by(keyword) do
-    Repo.get_by(User, keyword)
+  def get_by(kw) do
+    Repo.get_by(User, kw)
+    |> maybe_put_bigquery_defaults()
   end
 
-  def get_by_and_preload(keyword) do
-    user = Repo.get_by(User, keyword)
-
-    case user do
-      %User{} = u -> preload_defaults(u)
-      nil -> nil
-    end
+  def get_by_and_preload(kw) do
+    get_by(kw)
+    |> preload_defaults()
   end
+
+  def preload_defaults(nil), do: nil
 
   def preload_defaults(user) do
     user
     |> Repo.preload([:sources, :billing_account, :team])
-    |> maybe_put_bigquery_defaults()
     |> Map.update!(:sources, fn sources ->
       Enum.map(sources, &Sources.put_retention_days/1)
     end)
@@ -116,7 +112,9 @@ defmodule Logflare.Users do
     Repo.preload(user, :endpoint_queries)
   end
 
-  def maybe_put_bigquery_defaults(user) do
+  defp maybe_put_bigquery_defaults(nil), do: nil
+
+  defp maybe_put_bigquery_defaults(user) do
     user =
       case user.bigquery_dataset_id do
         nil -> %{user | bigquery_dataset_id: User.generate_bq_dataset_id(user)}

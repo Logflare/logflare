@@ -79,8 +79,10 @@ defmodule Logflare.Users.API do
     {status, metrics_message}
   end
 
-  def get_total_user_api_rate(%User{sources: sources}) when is_list(sources) do
-    sources
+  def get_total_user_api_rate(%User{} = user) do
+    user = Users.Cache.preload_sources(user)
+
+    user.sources
     |> Enum.map(&Sources.get_rate_limiter_metrics(&1, bucket: :default))
     |> Enum.map(&Map.get(&1, :sum))
     |> Enum.sum()
