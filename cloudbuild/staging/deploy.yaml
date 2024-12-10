@@ -53,6 +53,7 @@ substitutions:
   _CLUSTER: main
   _COOKIE: default-${_CLUSTER}
   _NORMALIZED_IMAGE_TAG: ${_IMAGE_TAG}
+  # test clusters (main) override instance type in makefile 
   _INSTANCE_TYPE: c2d-highcpu-4
   _INSTANCE_GROUP: instance-group-staging-${_CLUSTER}
   _IMAGE_TAG: $SHORT_SHA
