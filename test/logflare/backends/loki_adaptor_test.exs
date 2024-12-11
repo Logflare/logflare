@@ -52,6 +52,7 @@ defmodule Logflare.Backends.Adaptor.LokiAdaptorTest do
 
   describe "logs ingestion" do
     setup do
+      insert(:plan)
       user = insert(:user)
       source = insert(:source, user: user)
 

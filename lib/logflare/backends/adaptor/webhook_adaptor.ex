@@ -105,7 +105,7 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
           module:
             {BufferProducer,
              [
-               backend_id: args.backend.id,
+               backend_id: Map.get(args.backend || %{}, :id),
                source_id: args.source.id
              ]},
           transformer: {__MODULE__, :transform, []},
