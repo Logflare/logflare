@@ -4,7 +4,7 @@ defmodule Logflare.Users.CacheWarmer do
   use Cachex.Warmer
   @impl true
   def execute(_state) do
-    users = Users.list_ingesting_users(limit: 500)
+    users = Users.list_ingesting_users(limit: 1_000)
 
     get_kv =
       for u <- users do
