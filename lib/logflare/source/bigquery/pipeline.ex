@@ -45,8 +45,8 @@ defmodule Logflare.Source.BigQuery.Pipeline do
             module:
               {BufferProducer,
                [
-                 source: source,
-                 backend: backend
+                 source_id: source.id,
+                 backend_id: backend.id
                ]},
             transformer: {__MODULE__, :transform, []}
           ],

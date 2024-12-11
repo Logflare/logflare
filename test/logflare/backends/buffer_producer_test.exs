@@ -16,7 +16,10 @@ defmodule Logflare.Backends.BufferProducerTest do
     source = insert(:source, user: user)
 
     le = build(:log_event, source: source)
-    buffer_producer_pid = start_supervised!({BufferProducer, backend: nil, source: source})
+
+    buffer_producer_pid =
+      start_supervised!({BufferProducer, backend_id: nil, source_id: source.id})
+
     sid_bid_pid = {source.id, nil, buffer_producer_pid}
     :timer.sleep(100)
     :ok = IngestEventQueue.add_to_table(sid_bid_pid, [le])
@@ -37,7 +40,10 @@ defmodule Logflare.Backends.BufferProducerTest do
     startup_key = {source.id, nil, nil}
     IngestEventQueue.upsert_tid(startup_key)
     :ok = IngestEventQueue.add_to_table(startup_key, [le])
-    buffer_producer_pid = start_supervised!({BufferProducer, backend: nil, source: source})
+
+    buffer_producer_pid =
+      start_supervised!({BufferProducer, backend_id: nil, source_id: source.id})
+
     sid_bid_pid = {source.id, nil, buffer_producer_pid}
 
     GenStage.stream([{buffer_producer_pid, max_demand: 1}])
@@ -53,7 +59,7 @@ defmodule Logflare.Backends.BufferProducerTest do
     source = insert(:source, user: user)
 
     pid =
-      start_supervised!({BufferProducer, backend: nil, source: source, buffer_size: 10})
+      start_supervised!({BufferProducer, backend_id: nil, source_id: source.id, buffer_size: 10})
 
     le = build(:log_event)
     items = for _ <- 1..100, do: le
