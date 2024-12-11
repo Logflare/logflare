@@ -15,12 +15,14 @@ defmodule Logflare.Backends.BufferProducer do
 
   @impl GenStage
   def init(opts) do
+    source = Sources.Cache.get_by_id(opts[:source_id])
+
     state = %{
       demand: 0,
       # TODO: broadcast by id instead.
-      source_id: opts[:source].id,
-      source_token: opts[:source].token,
-      backend_id: Map.get(opts[:backend] || %{}, :id),
+      source_id: opts[:source_id],
+      source_token: source.token,
+      backend_id: opts[:backend_id],
       # discard logging backoff
       last_discard_log_dt: nil,
       interval: Keyword.get(opts, :interval, @default_interval)

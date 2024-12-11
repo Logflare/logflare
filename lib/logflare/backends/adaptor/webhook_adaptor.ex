@@ -105,8 +105,8 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
           module:
             {BufferProducer,
              [
-               backend: args.backend,
-               source: args.source
+               backend_id: args.backend.id,
+               source_id: args.source.id
              ]},
           transformer: {__MODULE__, :transform, []},
           concurrency: 1
