@@ -18,7 +18,7 @@ defmodule LogflareWeb.Plugs.BufferLimiterTest do
     source: source,
     table_key: table_key
   } do
-    for _ <- 1..55_000 do
+    for _ <- 1..100_500 do
       le = build(:log_event)
       IngestEventQueue.add_to_table(table_key, [le])
     end
