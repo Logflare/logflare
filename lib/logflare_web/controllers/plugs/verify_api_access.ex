@@ -41,7 +41,7 @@ defmodule LogflareWeb.Plugs.VerifyApiAccess do
 
         Partners.Cache.get_user_by_token(partner, impersonate_user_token)
         |> then(fn
-          %User{id: user_id}  ->
+          %User{id: user_id} ->
             conn
             |> assign(:partner, partner)
             |> assign(:user, Users.Cache.get(user_id))
