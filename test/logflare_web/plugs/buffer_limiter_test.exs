@@ -6,6 +6,7 @@ defmodule LogflareWeb.Plugs.BufferLimiterTest do
   alias Logflare.Backends
 
   setup do
+    insert(:plan)
     conn = build_conn(:post, "/api/logs", %{"message" => "some text"})
     source = insert(:source, user: insert(:user))
     table_key = {source.id, nil, self()}
@@ -24,10 +25,53 @@ defmodule LogflareWeb.Plugs.BufferLimiterTest do
     end
 
     # get and cache the value
-    Backends.get_and_cache_local_pending_buffer_len(source.id, nil)
+    Backends.cache_local_buffer_lens(source.id, nil)
 
     conn =
       conn
+      |> assign(:source, source)
+      |> BufferLimiter.call(%{})
+
+    assert conn.halted == true
+    assert conn.status == 429
+  end
+
+  test "bug: buffer limiting is based on all queues", %{
+    conn: conn,
+    source: source,
+    table_key: table_key
+  } do
+    other_table_key = {source.id, nil, make_ref()}
+    IngestEventQueue.upsert_tid(other_table_key)
+
+    for _ <- 1..25_100 do
+      le = build(:log_event)
+      IngestEventQueue.add_to_table(table_key, [le])
+      IngestEventQueue.add_to_table(other_table_key, [le])
+    end
+
+    # get and cache the value
+    Backends.cache_local_buffer_lens(source.id, nil)
+
+    conn =
+      conn
+      |> assign(:source, source)
+      |> BufferLimiter.call(%{})
+
+    assert conn.halted == false
+
+    for _ <- 1..25_100 do
+      le = build(:log_event)
+      IngestEventQueue.add_to_table(table_key, [le])
+      IngestEventQueue.add_to_table(other_table_key, [le])
+    end
+
+    # get and cache the value
+    Backends.cache_local_buffer_lens(source.id, nil)
+
+    conn =
+      conn
+      |> recycle()
       |> assign(:source, source)
       |> BufferLimiter.call(%{})
 
@@ -43,7 +87,7 @@ defmodule LogflareWeb.Plugs.BufferLimiterTest do
     end
 
     # get and cache the value
-    Backends.get_and_cache_local_pending_buffer_len(source.id, nil)
+    Backends.cache_local_buffer_lens(source.id, nil)
 
     conn =
       conn

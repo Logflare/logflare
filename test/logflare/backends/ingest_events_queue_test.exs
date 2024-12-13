@@ -127,9 +127,9 @@ defmodule Logflare.Backends.IngestEventQueueTest do
     test "adding to startup queue", %{queue: {sid, bid, _} = queue} do
       le = build(:log_event, message: "123")
       assert :ok = IngestEventQueue.add_to_table(queue, [le])
-      assert IngestEventQueue.count_pending(queue) == 1
-      assert IngestEventQueue.count_pending({sid, bid}) == 1
-      assert IngestEventQueue.count_pending({sid, bid, nil}) == 1
+      assert IngestEventQueue.total_pending(queue) == 1
+      assert IngestEventQueue.total_pending({sid, bid}) == 1
+      assert IngestEventQueue.total_pending({sid, bid, nil}) == 1
     end
 
     test "move/1 moves all events from one queue to target queue", %{queue: {sid, bid, _} = queue} do
@@ -137,13 +137,13 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       le = build(:log_event, message: "123")
       IngestEventQueue.upsert_tid(target)
       assert :ok = IngestEventQueue.add_to_table(queue, [le])
-      assert IngestEventQueue.count_pending(queue) == 1
-      assert IngestEventQueue.count_pending(target) == 0
+      assert IngestEventQueue.total_pending(queue) == 1
+      assert IngestEventQueue.total_pending(target) == 0
       assert {:ok, 1} = IngestEventQueue.move(queue, target)
-      assert IngestEventQueue.count_pending(queue) == 0
-      assert IngestEventQueue.count_pending(target) == 1
-      assert IngestEventQueue.count_pending({sid, bid}) == 1
-      assert IngestEventQueue.count_pending({sid, bid, nil}) == 0
+      assert IngestEventQueue.total_pending(queue) == 0
+      assert IngestEventQueue.total_pending(target) == 1
+      assert IngestEventQueue.total_pending({sid, bid}) == 1
+      assert IngestEventQueue.total_pending({sid, bid, nil}) == 0
     end
   end
 
@@ -162,15 +162,15 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       assert IngestEventQueue.get_table_size(sbp) == 1
       # can take pending items
       assert {:ok, [_]} = IngestEventQueue.take_pending(sbp, 5)
-      assert IngestEventQueue.count_pending(sbp) == 1
+      assert IngestEventQueue.total_pending(sbp) == 1
       # set to ingested
       assert {:ok, 1} = IngestEventQueue.mark_ingested(sbp, [le])
-      assert IngestEventQueue.count_pending(sbp) == 0
+      assert IngestEventQueue.total_pending(sbp) == 0
       # truncate to n items
       assert :ok = IngestEventQueue.truncate_table(sbp, :ingested, 1)
       assert IngestEventQueue.get_table_size(sbp) == 1
       assert :ok = IngestEventQueue.truncate_table(sbp, :ingested, 0)
-      assert IngestEventQueue.count_pending(sbp) == 0
+      assert IngestEventQueue.total_pending(sbp) == 0
     end
 
     test "drop n items from a queue", %{source_backend_pid: sbp} do
@@ -207,7 +207,7 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       assert {:ok, _} = IngestEventQueue.mark_ingested(sbp, batch)
       assert :ok = IngestEventQueue.truncate_table(sbp, :ingested, 50)
       assert IngestEventQueue.get_table_size(sbp) == 50
-      assert IngestEventQueue.count_pending(sbp) == 0
+      assert IngestEventQueue.total_pending(sbp) == 0
       assert :ok = IngestEventQueue.truncate_table(sbp, :ingested, 0)
       assert IngestEventQueue.get_table_size(sbp) == 0
     end
@@ -221,9 +221,9 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       # add as pending
       assert :ok = IngestEventQueue.add_to_table(sbp, batch)
       assert :ok = IngestEventQueue.truncate_table(sbp, :pending, 50)
-      assert IngestEventQueue.count_pending(sbp) == 50
+      assert IngestEventQueue.total_pending(sbp) == 50
       assert :ok = IngestEventQueue.truncate_table(sbp, :pending, 0)
-      assert IngestEventQueue.count_pending(sbp) == 0
+      assert IngestEventQueue.total_pending(sbp) == 0
     end
   end
 
@@ -270,7 +270,7 @@ defmodule Logflare.Backends.IngestEventQueueTest do
 
     :timer.sleep(550)
     assert IngestEventQueue.get_table_size(table) == 0
-    assert IngestEventQueue.count_pending(table) == 0
+    assert IngestEventQueue.total_pending(table) == 0
   end
 
   test "QueueJanitor purges if exceeds max" do

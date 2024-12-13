@@ -236,7 +236,7 @@ defmodule Logflare.Backends.IngestEventQueue do
       fn objs, acc ->
         items =
           for {sid_bid_pid, _tid} <- objs,
-              count = count_pending(sid_bid_pid),
+              count = total_pending(sid_bid_pid),
               is_integer(count) do
             {sid_bid_pid, count}
           end
@@ -271,15 +271,15 @@ defmodule Logflare.Backends.IngestEventQueue do
   @doc """
   Counts pending items from a given table
   """
-  @spec count_pending(source_backend_pid()) :: integer() | {:error, :not_initialized}
-  def count_pending({_, _} = sid_bid) do
+  @spec total_pending(source_backend_pid()) :: integer() | {:error, :not_initialized}
+  def total_pending({_, _} = sid_bid) do
     # iterate over each matching source-backend queue and sum the totals
     for {_sid_bid_pid, count} <- list_pending_counts(sid_bid), reduce: 0 do
       acc -> acc + count
     end
   end
 
-  def count_pending({_sid, _bid, _pid} = sid_bid_pid) do
+  def total_pending({_sid, _bid, _pid} = sid_bid_pid) do
     ms =
       Ex2ms.fun do
         {_event_id, :pending, _event} -> true
