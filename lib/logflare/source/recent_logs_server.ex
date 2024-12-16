@@ -14,7 +14,7 @@ defmodule Logflare.Source.RecentLogsServer do
 
   require Logger
 
-  @touch_timer :timer.minutes(45)
+  @touch_timer :timer.minutes(15)
   @broadcast_every 1_800
 
   ## Server
@@ -90,19 +90,22 @@ defmodule Logflare.Source.RecentLogsServer do
   end
 
   def handle_info(:touch, %{source_id: source_id, source_token: source_token} = state) do
-    source_id
-    |> Sources.Cache.get_by_id()
-    |> Backends.list_recent_logs()
+    source =
+      source_id
+      |> Sources.Cache.get_by_id()
+
+    Backends.list_recent_logs_local(source)
     |> Enum.reverse()
     |> case do
       [] ->
         :noop
 
-      [log_event | _] ->
+      [_ | _] = events ->
         now = NaiveDateTime.utc_now()
+        latest_ts = Enum.map(events, & &1.ingested_at) |> Enum.max(NaiveDateTime)
 
-        if NaiveDateTime.diff(now, log_event.ingested_at, :millisecond) < @touch_timer do
-          Sources.Cache.get_by(token: source_token)
+        if NaiveDateTime.diff(now, latest_ts, :millisecond) < @touch_timer do
+          source
           |> Sources.update_source(%{log_events_updated_at: DateTime.utc_now()})
         end
     end
