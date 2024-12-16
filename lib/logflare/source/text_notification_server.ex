@@ -11,7 +11,6 @@ defmodule Logflare.Source.TextNotificationServer do
   alias LogflareWeb.Router.Helpers, as: Routes
   alias LogflareWeb.Endpoint
   alias Logflare.Backends
-  alias Logflare.Utils.Tasks
 
   @twilio_phone "+16026006731"
 
@@ -46,27 +45,23 @@ defmodule Logflare.Source.TextNotificationServer do
         check_rate(state.notifications_every)
 
         source = Sources.Cache.get_by_id(state.source_token)
-        user = Users.Cache.get_by(id: source.user_id)
-        source_link = Routes.source_url(Endpoint, :show, source.id)
-        body = "#{source.name} has #{rate} new event(s). See: #{source_link} "
 
         if source.notifications.user_text_notifications == true do
-          Tasks.start_child(fn ->
-            ExTwilio.Message.create(to: user.phone, from: @twilio_phone, body: body)
-          end)
-        end
+          user = Users.Cache.get_by(id: source.user_id)
+          source_link = Routes.source_url(Endpoint, :show, source.id)
+          body = "#{source.name} has #{rate} new event(s). See: #{source_link} "
 
-        if source.notifications.team_user_ids_for_sms do
-          Enum.each(source.notifications.team_user_ids_for_sms, fn x ->
-            team_user = TeamUsers.Cache.get_team_user(x)
-            body = "#{source.name} has #{rate} new event(s). See: #{source_link} "
+          ExTwilio.Message.create(to: user.phone, from: @twilio_phone, body: body)
 
-            if team_user do
-              Tasks.start_child(fn ->
+          if source.notifications.team_user_ids_for_sms do
+            Enum.each(source.notifications.team_user_ids_for_sms, fn x ->
+              team_user = TeamUsers.Cache.get_team_user(x)
+
+              if team_user do
                 ExTwilio.Message.create(to: team_user.phone, from: @twilio_phone, body: body)
-              end)
-            end
-          end)
+              end
+            end)
+          end
         end
 
         {:noreply, %{state | inserts_since_boot: current_inserts}}
