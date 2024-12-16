@@ -9,7 +9,6 @@ defmodule Logflare.Source.EmailNotificationServer do
   alias Logflare.AccountEmail
   alias Logflare.Mailer
   alias Logflare.Backends
-  alias Logflare.Utils.Tasks
 
   def start_link(args) do
     source = Keyword.get(args, :source)
@@ -41,9 +40,7 @@ defmodule Logflare.Source.EmailNotificationServer do
       user = Users.Cache.get_by(id: source.user_id)
 
       if source.notifications.user_email_notifications do
-        Tasks.start_child(fn ->
-          AccountEmail.source_notification(user, rate, source) |> Mailer.deliver()
-        end)
+        AccountEmail.source_notification(user, rate, source) |> Mailer.deliver()
       end
 
       stranger_emails = source.notifications.other_email_notifications
@@ -52,10 +49,8 @@ defmodule Logflare.Source.EmailNotificationServer do
         other_emails = String.split(stranger_emails, ",")
 
         for email <- other_emails do
-          Tasks.start_child(fn ->
-            AccountEmail.source_notification_for_others(String.trim(email), rate, source)
-            |> Mailer.deliver()
-          end)
+          AccountEmail.source_notification_for_others(String.trim(email), rate, source)
+          |> Mailer.deliver()
         end
       end
 
@@ -64,9 +59,7 @@ defmodule Logflare.Source.EmailNotificationServer do
           team_user = TeamUsers.Cache.get_team_user(x)
 
           if team_user do
-            Tasks.start_child(fn ->
-              AccountEmail.source_notification(team_user, rate, source) |> Mailer.deliver()
-            end)
+            AccountEmail.source_notification(team_user, rate, source) |> Mailer.deliver()
           end
         end)
       end

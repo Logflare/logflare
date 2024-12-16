@@ -14,7 +14,7 @@ defmodule Logflare.Source.SlackHookServer do
   end
 
   def test_post(source) do
-    recent_events = Backends.list_recent_logs(source)
+    recent_events = Backends.list_recent_logs_local(source)
 
     __MODULE__.Client.new()
     |> __MODULE__.Client.post(source, source.metrics.rate, recent_events)
@@ -43,10 +43,12 @@ defmodule Logflare.Source.SlackHookServer do
     case rate > 0 do
       true ->
         if source.slack_hook_url do
-          recent_events = Backends.list_recent_logs(source)
+          recent_events = Backends.list_recent_logs_local(source)
 
-          __MODULE__.Client.new()
-          |> __MODULE__.Client.post(source, rate, recent_events)
+          if length(recent_events) > 0 do
+            __MODULE__.Client.new()
+            |> __MODULE__.Client.post(source, rate, recent_events)
+          end
         end
 
         check_rate(state.notifications_every)
