@@ -10,6 +10,10 @@
 ## Tweak GC to run more often
 ##-env ERL_FULLSWEEP_AFTER 10
 
+## Increase max ets tables allocation
+## https://www.erlang.org/doc/apps/stdlib/ets.html#module-table-traversal
+-env ERL_MAX_ETS_TABLES 250000
+
 ## Set busy-wait. Options are: none|very_short|short|medium|long|very_long
 +sbwt none
 +sbwtdcpu none
