@@ -24,7 +24,7 @@ defmodule Logflare.Backends do
 
   defdelegate child_spec(arg), to: __MODULE__.Supervisor
 
-  @max_pending_buffer_len_per_queue 10_000
+  @max_pending_buffer_len_per_queue 5_000
 
   @doc """
   Retrieves the hardcoded max pending buffer length of an individual queue
