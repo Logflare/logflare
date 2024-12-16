@@ -14,7 +14,7 @@ defmodule Logflare.Source.RecentLogsServer do
 
   require Logger
 
-  @touch_timer :timer.minutes(15)
+  @touch_timer :timer.minutes(45)
   @broadcast_every 1_800
 
   ## Server
