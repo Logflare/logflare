@@ -371,64 +371,41 @@ defmodule Logflare.Backends.IngestEventQueue do
     end
   end
 
-  def truncate_table({sid, _bid, _pid} = sid_bid_pid, :ingested, 0) when is_integer(sid) do
+  def truncate_table({sid, _bid, _pid} = sid_bid_pid, status, n)
+      when is_integer(sid) and status in [:all, :pending, :ingested] do
     # drop all objects
-    with tid when tid != nil <- get_tid(sid_bid_pid) do
-      :ets.match_delete(tid, {:_, :ingested, :_})
+
+    ms =
+      Ex2ms.fun do
+        {_event_id, _event_status, event} = obj when ^status == :all -> obj
+        {_event_id, event_status, event} = obj when event_status == ^status -> obj
+      end
+
+    del_ms =
+      Ex2ms.fun do
+        {_event_id, _event_status, event} = obj when ^status == :all -> true
+        {_event_id, event_status, event} = obj when event_status == ^status -> true
+      end
+
+    with tid when tid != nil <- get_tid(sid_bid_pid),
+         size when is_integer(size) <- :ets.info(tid, :size) do
+      to_insert =
+        if n == 0 do
+          []
+        else
+          :ets.select(tid, ms, min(n, max(size, 1)))
+          |> case do
+            {taken, _} -> taken
+            :"$end_of_table" -> []
+          end
+        end
+
+      :ets.select_delete(tid, del_ms)
+      :ets.insert(tid, to_insert)
       :ok
     else
       nil -> {:error, :not_initialized}
     end
-  end
-
-  def truncate_table({sid, _bid, _pid} = sid_bid_pid, filter, n)
-      when is_integer(sid) and is_integer(n) and filter in [:pending, :all, :ingested] do
-    # chunk over table and drop
-    ms =
-      Ex2ms.fun do
-        {event_id, _status, _event} when ^filter == :all -> event_id
-        {event_id, status, _event} when status == ^filter -> event_id
-      end
-
-    with tid when tid != nil <- get_tid(sid_bid_pid) do
-      :ets.safe_fixtable(tid, true)
-      res = truncate_traverse(tid, :ets.select(tid, ms, 100), 0, n)
-      :ets.safe_fixtable(tid, false)
-      res
-    else
-      nil -> {:error, :not_initialized}
-      :"$end_of_table" -> {:ok, []}
-    end
-  end
-
-  defp truncate_traverse(_tid, :"$end_of_table", _acc, _limit), do: :ok
-
-  defp truncate_traverse(tid, {taken, cont}, acc, limit) when acc < limit do
-    # keep
-    diff = limit - acc
-    rem = Enum.count(taken) - diff
-
-    to_add =
-      if rem > 0 do
-        # satisfy all, drop up to required
-        for key <- Enum.take(taken, diff) do
-          :ets.delete(tid, key)
-        end
-
-        diff
-      else
-        # cannot satisfy all, keep all and continue
-        Enum.count(taken)
-      end
-
-    truncate_traverse(tid, :ets.select(cont), acc + to_add, limit)
-  end
-
-  defp truncate_traverse(tid, {taken, cont}, acc, limit) when acc >= limit do
-    # delete the rest
-    for key <- taken, do: :ets.delete(tid, key)
-
-    truncate_traverse(tid, :ets.select(cont), acc, limit)
   end
 
   @doc """

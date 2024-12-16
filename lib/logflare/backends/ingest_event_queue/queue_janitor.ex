@@ -35,33 +35,34 @@ defmodule Logflare.Backends.IngestEventQueue.QueueJanitor do
       purge_ratio: Keyword.get(opts, :purge_ratio, @default_purge_ratio)
     }
 
-    schedule(state, false)
+    handle_info(:work, state)
     {:ok, state}
   end
 
   def handle_info(:work, state) do
-    do_drop(state)
     scale? = if Application.get_env(:logflare, :env) == :test, do: false, else: true
+    metrics = Sources.get_source_metrics_for_ingest(state.source_token)
+    do_drop(state, metrics)
 
-    schedule(state, scale?)
+    schedule(state, scale?, metrics)
 
     {:noreply, state}
   end
 
   # expose for benchmarking
-  def do_drop(state) do
+  def do_drop(state, metrics) do
     sid_bid = {state.source_id, state.backend_id}
     # safety measure, drop all if still exceed
     for {_sid, _bid, ref} = sid_bid_pid <- IngestEventQueue.list_queues(sid_bid),
         size = IngestEventQueue.get_table_size(sid_bid_pid),
         is_integer(size) do
-      if size > state.remainder do
+      if metrics.avg > 100 do
         IngestEventQueue.truncate_table(sid_bid_pid, :ingested, 0)
       else
         IngestEventQueue.truncate_table(sid_bid_pid, :ingested, state.remainder)
       end
 
-      size = IngestEventQueue.total_pending(sid_bid_pid)
+      size = IngestEventQueue.get_table_size(sid_bid_pid)
 
       if size > state.max and ref != nil do
         to_drop = round(state.purge_ratio * size)
@@ -76,8 +77,7 @@ defmodule Logflare.Backends.IngestEventQueue.QueueJanitor do
   end
 
   # schedule work based on rps
-  defp schedule(state, scale?) do
-    metrics = Sources.get_source_metrics_for_ingest(state.source_token)
+  defp schedule(state, scale?, metrics) do
     # dynamically schedule based on metrics interval
     interval =
       cond do
