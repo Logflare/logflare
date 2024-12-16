@@ -19,7 +19,7 @@ defmodule LogflareWeb.Plugs.BufferLimiterTest do
     source: source,
     table_key: table_key
   } do
-    for _ <- 1..100_500 do
+    for _ <- 1..(Backends.max_buffer_queue_len() + 500) do
       le = build(:log_event)
       IngestEventQueue.add_to_table(table_key, [le])
     end
@@ -44,7 +44,7 @@ defmodule LogflareWeb.Plugs.BufferLimiterTest do
     other_table_key = {source.id, nil, make_ref()}
     IngestEventQueue.upsert_tid(other_table_key)
 
-    for _ <- 1..25_100 do
+    for _ <- 1..round(Backends.max_buffer_queue_len() / 2) do
       le = build(:log_event)
       IngestEventQueue.add_to_table(table_key, [le])
       IngestEventQueue.add_to_table(other_table_key, [le])
@@ -80,7 +80,7 @@ defmodule LogflareWeb.Plugs.BufferLimiterTest do
   end
 
   test "200 if most events are ingested", %{conn: conn, source: source, table_key: table_key} do
-    for _ <- 1..8_000 do
+    for _ <- 1..(Backends.max_buffer_queue_len() - 500) do
       le = build(:log_event)
       IngestEventQueue.add_to_table(table_key, [le])
       IngestEventQueue.mark_ingested(table_key, [le])
