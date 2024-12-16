@@ -89,7 +89,7 @@ defmodule Logflare.Source.RecentLogsServer do
      }}
   end
 
-  def handle_info(:touch, %{source_id: source_id, source_token: source_token} = state) do
+  def handle_info(:touch, %{source_id: source_id} = state) do
     source =
       source_id
       |> Sources.Cache.get_by_id()
