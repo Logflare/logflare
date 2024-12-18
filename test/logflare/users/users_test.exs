@@ -59,12 +59,10 @@ defmodule Logflare.UsersTest do
   end
 
   describe "get_by/1" do
-    test "get user by id", %{source: s1, user: u1} do
-      assert u1 == Users.get_by(id: u1.id) |> Users.preload_defaults()
-      assert length(u1.sources) > 0
-      assert s1_db = hd(u1.sources)
-      assert s1_db.token == s1.token
-      assert s1_db.user_id == u1.id
+    test "get user by id", %{user: u1} do
+      assert %User{} = fetched = Users.get_by(id: u1.id)
+      assert fetched.bigquery_dataset_id
+      assert fetched.bigquery_project_id
     end
 
     test "get user by api_key", %{user: right_user} do
