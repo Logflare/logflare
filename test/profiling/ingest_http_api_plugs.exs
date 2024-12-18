@@ -22,32 +22,32 @@ Benchee.run(
   %{
     "Plug.RequestId" =>
       {fn {source, conn} ->
-        Plug.RequestId.call(conn, {"x-request-id", nil})
+         Plug.RequestId.call(conn, {"x-request-id", nil})
        end,
        before_scenario: fn {source, conn} ->
          {source, conn}
        end},
     "LogflareWeb.Plugs.MaybeContentTypeToJson" =>
       {fn {source, conn} ->
-        LogflareWeb.Plugs.MaybeContentTypeToJson.call(conn, [])
+         LogflareWeb.Plugs.MaybeContentTypeToJson.call(conn, [])
        end,
        before_scenario: fn {source, conn} ->
          {source, conn}
        end},
     "OpenApiSpex.Plug.PutApiSpec" =>
       {fn {source, conn} ->
-        OpenApiSpex.Plug.PutApiSpec.call(conn, [module: LogflareWeb.ApiSpec])
+         OpenApiSpex.Plug.PutApiSpec.call(conn, module: LogflareWeb.ApiSpec)
        end,
        before_scenario: fn {source, conn} ->
          {source, conn}
        end},
-       "LogflareWeb.Plugs.SetHeaders" =>
-         {fn {source, conn} ->
-          LogflareWeb.Plugs.SetHeaders.call(conn, [])
-          end,
-          before_scenario: fn {source, conn} ->
-            {source, conn}
-          end},
+    "LogflareWeb.Plugs.SetHeaders" =>
+      {fn {source, conn} ->
+         LogflareWeb.Plugs.SetHeaders.call(conn, [])
+       end,
+       before_scenario: fn {source, conn} ->
+         {source, conn}
+       end}
   },
   inputs: %{
     "v1" => v1_source
