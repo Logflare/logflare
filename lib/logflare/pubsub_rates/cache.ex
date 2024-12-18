@@ -89,8 +89,8 @@ defmodule Logflare.PubSubRates.Cache do
   def get_local_buffer(source_id, backend_id) do
     Cachex.get(__MODULE__, {source_id, backend_id, "buffers"})
     |> case do
-      {:ok, val} when val != nil -> Map.get(val, Node.self(), %{len: 0, queues: []})
-      _ -> %{len: 0, queues: []}
+      {:ok, val} when val != nil -> Map.get(val, Node.self(), 0)
+      _ -> 0
     end
   end
 
