@@ -16,6 +16,6 @@ defmodule Logflare.Logs.BrowserReport do
   end
 
   def message(params) do
-    Jason.encode_to_iodata!(params)
+    Jason.encode!(params)
   end
 end

@@ -27,7 +27,7 @@ defmodule Logflare.Backends.BufferProducerTest do
     GenStage.stream([{buffer_producer_pid, max_demand: 1}])
     |> Enum.take(1)
 
-    assert IngestEventQueue.total_pending(sid_bid_pid) == 0
+    assert IngestEventQueue.count_pending(sid_bid_pid) == 0
     # marked as :ingested
     assert IngestEventQueue.get_table_size(sid_bid_pid) == 1
   end
@@ -49,7 +49,7 @@ defmodule Logflare.Backends.BufferProducerTest do
     GenStage.stream([{buffer_producer_pid, max_demand: 1}])
     |> Enum.take(1)
 
-    assert IngestEventQueue.total_pending(sid_bid_pid) == 0
+    assert IngestEventQueue.count_pending(sid_bid_pid) == 0
     # marked as :ingested
     assert IngestEventQueue.get_table_size(sid_bid_pid) == 1
   end
