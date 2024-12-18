@@ -33,6 +33,7 @@ defmodule Logflare.Users.Cache do
 
   def get_by_and_preload(keyword), do: apply_repo_fun(__ENV__.function, [keyword])
   def preload_defaults(user), do: apply_repo_fun(__ENV__.function, [user])
+  def preload_sources(user), do: apply_repo_fun(__ENV__.function, [user])
 
   defp apply_repo_fun(arg1, arg2) do
     Logflare.ContextCache.apply_fun(Users, arg1, arg2)

@@ -33,7 +33,6 @@ defmodule Logflare.Source.V1SourceSup do
     user =
       source.user_id
       |> Users.Cache.get()
-      |> Users.maybe_put_bigquery_defaults()
       |> Users.preload_billing_account()
 
     plan = Billing.Cache.get_plan_by_user(user)

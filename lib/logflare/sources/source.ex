@@ -242,7 +242,7 @@ defmodule Logflare.Source do
         days = round(plan.limit_source_ttl / :timer.hours(24))
 
         cond do
-          user.bigquery_project_id ->
+          user.bigquery_project_id != Application.get_env(:logflare, Logflare.Google)[:project_id] ->
             []
 
           ttl > days ->

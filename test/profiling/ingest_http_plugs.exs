@@ -1,6 +1,5 @@
 alias Logflare.Sources
 alias Logflare.Users
-alias Logflare.Partners
 require Phoenix.ConnTest
 Mimic.copy(Broadway)
 Mimic.copy(Logflare.Backends)
@@ -10,25 +9,25 @@ Mimic.copy(Logflare.Partners)
 Mimic.stub(Logflare.Backends, :ingest_logs, fn _, _ -> :ok end)
 Mimic.stub(Logflare.Logs, :ingest_logs, fn _, _ -> :ok end)
 # Mimic.stub(Broadway, :push_messages, fn _, _ -> :ok end)
-ver = System.argv() |> Enum.at(0)
+# ver = System.argv() |> Enum.at(0)
 
 v1_source = Sources.get(:"9f37d86e-e4fa-4ef2-a47e-e8d4ac1fceba")
 
-v2_source = Sources.get(:"94d07aab-30f5-460e-8871-eb85f4674e35")
+# v2_source = Sources.get(:"94d07aab-30f5-460e-8871-eb85f4674e35")
 
 user = Users.get(v1_source.user_id)
 
 Benchee.run(
   %{
     "VerifyApiAccess" =>
-      {fn {source, conn} ->
+      {fn {_source, conn} ->
          LogflareWeb.Plugs.VerifyApiAccess.call(conn, scopes: ~w(public))
        end,
        before_scenario: fn {source, conn} ->
          {source, conn}
        end},
     "FetchResource" =>
-      {fn {source, conn} ->
+      {fn {_source, conn} ->
          LogflareWeb.Plugs.FetchResource.call(conn, [])
        end,
        before_scenario: fn {source, conn} ->
@@ -39,7 +38,7 @@ Benchee.run(
          {source, conn}
        end},
     "VerifyResourceOwnership" =>
-      {fn {source, conn} ->
+      {fn {_source, conn} ->
          LogflareWeb.Plugs.VerifyResourceOwnership.call(conn, [])
        end,
        before_scenario: fn {source, conn} ->
@@ -51,7 +50,7 @@ Benchee.run(
          {source, conn}
        end},
     "SetPlanFromCache" =>
-      {fn {source, conn} ->
+      {fn {_source, conn} ->
          LogflareWeb.Plugs.SetPlanFromCache.call(conn, [])
        end,
        before_scenario: fn {source, conn} ->
@@ -64,7 +63,7 @@ Benchee.run(
          {source, conn}
        end},
     "RateLimiter" =>
-      {fn {source, conn} ->
+      {fn {_source, conn} ->
          LogflareWeb.Plugs.RateLimiter.call(conn, [])
        end,
        before_scenario: fn {source, conn} ->
@@ -78,7 +77,7 @@ Benchee.run(
          {source, conn}
        end},
     "BufferLimiter" =>
-      {fn {source, conn} ->
+      {fn {_source, conn} ->
          LogflareWeb.Plugs.BufferLimiter.call(conn, [])
        end,
        before_scenario: fn {source, conn} ->
@@ -110,6 +109,7 @@ Benchee.run(
       )
       |> Plug.Conn.assign(:resource_type, :source)
 
+    Cachex.clear(Logflare.Billing.Cache)
     {input, prepared_conn}
   end,
   time: 4,
@@ -133,3 +133,21 @@ Benchee.run(
 # VerifyApiAccess              111.55 K - 126.58x slower +8.89 μs
 # RateLimiter                   50.82 K - 277.83x slower +19.61 μs
 # SetPlanFromCache              36.09 K - 391.23x slower +27.64 μs
+
+# with Users preload refactoring
+# ##### With input v1 #####
+# Name                              ips        average  deviation         median         99th %
+# VerifyResourceOwnership    12337.28 K      0.0811 μs  ±2741.89%      0.0830 μs      0.0840 μs
+# FetchResource                674.96 K        1.48 μs   ±827.27%        1.33 μs        2.63 μs
+# VerifyApiAccess              495.56 K        2.02 μs   ±806.60%        1.67 μs        3.88 μs
+# SetPlanFromCache             418.94 K        2.39 μs   ±403.09%        2.17 μs        3.79 μs
+# BufferLimiter                324.20 K        3.08 μs   ±551.56%        2.79 μs        5.29 μs
+# RateLimiter                   32.73 K       30.55 μs    ±21.35%       28.25 μs       46.13 μs
+
+# Comparison:
+# VerifyResourceOwnership    12337.28 K
+# FetchResource                674.96 K - 18.28x slower +1.40 μs
+# VerifyApiAccess              495.56 K - 24.90x slower +1.94 μs
+# SetPlanFromCache             418.94 K - 29.45x slower +2.31 μs
+# BufferLimiter                324.20 K - 38.06x slower +3.00 μs
+# RateLimiter                   32.73 K - 376.96x slower +30.47 μs

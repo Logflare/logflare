@@ -41,10 +41,10 @@ defmodule LogflareWeb.Plugs.VerifyApiAccess do
 
         Partners.Cache.get_user_by_token(partner, impersonate_user_token)
         |> then(fn
-          %User{} = u ->
+          %User{id: user_id} ->
             conn
             |> assign(:partner, partner)
-            |> assign(:user, Users.Cache.preload_defaults(u))
+            |> assign(:user, Users.Cache.get(user_id))
 
           _ ->
             FallbackController.call(conn, {:error, :unauthorized})
@@ -66,8 +66,9 @@ defmodule LogflareWeb.Plugs.VerifyApiAccess do
     is_private_route? = "private" in scopes
 
     with {:ok, access_token_or_api_key} <- extracted,
-         {:ok, %User{} = owner} <- Auth.Cache.verify_access_token(access_token_or_api_key, scopes) do
-      {:ok, Users.Cache.preload_defaults(owner)}
+         {:ok, %User{id: user_id}} <-
+           Auth.Cache.verify_access_token(access_token_or_api_key, scopes) do
+      {:ok, Users.Cache.get(user_id)}
     else
       # don't preload for partners
       {:ok, %Partner{}} = res -> res
@@ -77,7 +78,7 @@ defmodule LogflareWeb.Plugs.VerifyApiAccess do
   end
 
   defp handle_legacy_api_key({:ok, api_key}, err, is_private_route?) do
-    case Users.Cache.get_by_and_preload(api_key: api_key) do
+    case Users.Cache.get_by(api_key: api_key) do
       %_{} = user when is_private_route? == false -> {:ok, user}
       _ when is_private_route? == false -> {:error, :no_token}
       _ when is_private_route? == true -> {:error, :unauthorized}

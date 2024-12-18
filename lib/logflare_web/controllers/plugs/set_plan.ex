@@ -10,14 +10,10 @@ defmodule LogflareWeb.Plugs.SetPlan do
   def init(_), do: nil
 
   def call(conn, opts \\ [])
-  def call(%{assigns: %{user: %User{}}} = conn, opts), do: set_plan(conn, opts)
+
+  def call(%{assigns: %{user: %User{} = user}} = conn, _opts) do
+    assign(conn, :plan, Billing.get_plan_by_user(user))
+  end
 
   def call(conn, _opts), do: conn
-
-  defp set_plan(%{assigns: %{user: user}} = conn, _opts) do
-    plan = Billing.get_plan_by_user(user)
-
-    conn
-    |> assign(:plan, plan)
-  end
 end

@@ -139,7 +139,7 @@ defmodule Logflare.Sources do
     updated = put_retention_days(updated)
 
     if source.retention_days != updated.retention_days and not SingleTenant.postgres_backend?() do
-      user = Users.Cache.get(updated.user_id) |> Users.maybe_put_bigquery_defaults()
+      user = Users.Cache.get(updated.user_id)
 
       BigQuery.patch_table_ttl(
         updated.token,
