@@ -145,6 +145,10 @@ defmodule Logflare.BackendsTest do
       {:ok, source: source, user: user}
     end
 
+    test "ensure_source_sup_started/1", %{source: source} do
+      assert :ok = Backends.ensure_source_sup_started(source)
+    end
+
     test "on attach to source, update SourceSup", %{source: source} do
       [backend1, backend2] = insert_pair(:backend)
       start_supervised!({SourceSup, source})

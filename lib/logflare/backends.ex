@@ -270,6 +270,7 @@ defmodule Logflare.Backends do
   @spec ingest_logs([log_param()], Source.t()) :: :ok
   @spec ingest_logs([log_param()], Source.t(), Backend.t() | nil) :: :ok
   def ingest_logs(event_params, source, backend \\ nil) do
+    ensure_source_sup_started(source)
     {log_events, errors} = split_valid_events(source, event_params)
     count = Enum.count(log_events)
     increment_counters(source, count)
@@ -427,10 +428,15 @@ defmodule Logflare.Backends do
   """
   @spec ensure_source_sup_started(Source.t()) :: :ok | {:error, term()}
   def ensure_source_sup_started(%Source{} = source) do
-    case start_source_sup(source) do
-      {:ok, _pid} -> :ok
-      {:error, :already_started} -> :ok
-      {:error, _} = err -> err
+    if source_sup_started?(source) == false do
+      case start_source_sup(source) do
+        :ok -> :ok
+        {:ok, _pid} -> :ok
+        {:error, :already_started} -> :ok
+        {:error, _} = err -> err
+      end
+    else
+      :ok
     end
   end
 
