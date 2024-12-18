@@ -19,7 +19,6 @@ defmodule Logflare.BackendsTest do
   alias Logflare.Rules
   alias Logflare.Backends.IngestEventQueue
   alias Logflare.Backends.SourceSupWorker
-  alias Logflare.LogEvent
 
   setup do
     start_supervised!(AllLogsLogged)
@@ -146,6 +145,10 @@ defmodule Logflare.BackendsTest do
       {:ok, source: source, user: user}
     end
 
+    test "ensure_source_sup_started/1", %{source: source} do
+      assert :ok = Backends.ensure_source_sup_started(source)
+    end
+
     test "on attach to source, update SourceSup", %{source: source} do
       [backend1, backend2] = insert_pair(:backend)
       start_supervised!({SourceSup, source})
@@ -264,6 +267,25 @@ defmodule Logflare.BackendsTest do
       # Producer will pop from the queue
       :timer.sleep(1_500)
       assert Backends.get_and_cache_local_pending_buffer_len(source.id) == 0
+    end
+
+    test "cache_estimated_buffer_lens/1 will cache all queue information", %{
+      source: %{id: source_id} = source
+    } do
+      assert {:ok,
+              %{
+                len: 0,
+                queues: [_, _]
+              }} = Backends.cache_local_buffer_lens(source_id)
+
+      events = for _n <- 1..5, do: build(:log_event, source: source, some: "event")
+      assert {:ok, 5} = Backends.ingest_logs(events, source)
+
+      assert {:ok,
+              %{
+                len: 5,
+                queues: [_, _]
+              }} = Backends.cache_local_buffer_lens(source_id)
     end
   end
 

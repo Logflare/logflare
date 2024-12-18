@@ -24,16 +24,13 @@ defmodule Logflare.Backends do
 
   defdelegate child_spec(arg), to: __MODULE__.Supervisor
 
-  @max_pending_buffer_len 100_000
+  @max_pending_buffer_len_per_queue 15_000
 
   @doc """
-  Retrieves the hardcoded max pending buffer length.
+  Retrieves the hardcoded max pending buffer length of an individual queue
   """
-  @spec max_buffer_len() :: non_neg_integer()
-  def max_buffer_len(), do: @max_pending_buffer_len
-
-  @spec max_ingest_queue_len() :: non_neg_integer()
-  def max_ingest_queue_len(), do: 10_000
+  @spec max_buffer_queue_len() :: non_neg_integer()
+  def max_buffer_queue_len(), do: @max_pending_buffer_len_per_queue
 
   @doc """
   Lists `Backend`s for a given source.
@@ -273,6 +270,7 @@ defmodule Logflare.Backends do
   @spec ingest_logs([log_param()], Source.t()) :: :ok
   @spec ingest_logs([log_param()], Source.t(), Backend.t() | nil) :: :ok
   def ingest_logs(event_params, source, backend \\ nil) do
+    ensure_source_sup_started(source)
     {log_events, errors} = split_valid_events(source, event_params)
     count = Enum.count(log_events)
     increment_counters(source, count)
@@ -430,10 +428,15 @@ defmodule Logflare.Backends do
   """
   @spec ensure_source_sup_started(Source.t()) :: :ok | {:error, term()}
   def ensure_source_sup_started(%Source{} = source) do
-    case start_source_sup(source) do
-      {:ok, _pid} -> :ok
-      {:error, :already_started} -> :ok
-      {:error, _} = err -> err
+    if source_sup_started?(source) == false do
+      case start_source_sup(source) do
+        :ok -> :ok
+        {:ok, _pid} -> :ok
+        {:error, :already_started} -> :ok
+        {:error, _} = err -> err
+      end
+    else
+      :ok
     end
   end
 
@@ -474,7 +477,16 @@ defmodule Logflare.Backends do
     do: cached_local_pending_buffer_full?(id)
 
   def cached_local_pending_buffer_full?(source_id) when is_integer(source_id) do
-    cached_local_pending_buffer_len(source_id) > @max_pending_buffer_len
+    PubSubRates.Cache.get_local_buffer(source_id, nil)
+    |> Map.get(:queues, [])
+    |> case do
+      [] ->
+        false
+
+      queues ->
+        queues
+        |> Enum.all?(fn {_key, v} -> v > @max_pending_buffer_len_per_queue end)
+    end
   end
 
   @doc """
@@ -485,12 +497,27 @@ defmodule Logflare.Backends do
           nil | integer()
         ) ::
           integer()
+  @deprecated "call `Logflare.Backends.cache_local_buffer_lens/2` instead."
   def get_and_cache_local_pending_buffer_len(source_id, backend_id \\ nil)
       when is_integer(source_id) do
-    len = IngestEventQueue.count_pending({source_id, backend_id})
+    len = IngestEventQueue.total_pending({source_id, backend_id})
     payload = %{Node.self() => %{len: len}}
     PubSubRates.Cache.cache_buffers(source_id, backend_id, payload)
     len
+  end
+
+  @doc """
+  Caches total buffer len. Includes ingested events that are awaiting cleanup.
+  """
+  def cache_local_buffer_lens(source_id, backend_id \\ nil) do
+    queues = IngestEventQueue.list_counts({source_id, backend_id})
+
+    len = for({_k, v} <- queues, do: v) |> Enum.sum()
+
+    stats = %{len: len, queues: queues}
+    payload = %{Node.self() => stats}
+    PubSubRates.Cache.cache_buffers(source_id, backend_id, payload)
+    {:ok, stats}
   end
 
   @doc """
@@ -499,10 +526,6 @@ defmodule Logflare.Backends do
   @spec cached_local_pending_buffer_len(Source.t(), Backend.t() | nil) :: non_neg_integer()
   def cached_local_pending_buffer_len(source_id, backend_id \\ nil) when is_integer(source_id) do
     PubSubRates.Cache.get_local_buffer(source_id, backend_id)
-    |> case do
-      %{len: len} -> len
-      other -> other
-    end
   end
 
   @doc """
