@@ -382,7 +382,7 @@ defmodule LogflareWeb.LogControllerTest do
     Sources.Cache.get_by_id(source.id)
     Users.Cache.get(user.id)
     Users.Cache.get_by(id: user.id)
-    Users.Cache.get_by_and_preload(api_key: user.api_key)
+    Users.Cache.get_by(api_key: user.api_key)
     Users.Cache.preload_defaults(user)
     Users.Cache.get(user.id)
 
