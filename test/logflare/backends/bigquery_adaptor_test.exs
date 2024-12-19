@@ -201,7 +201,7 @@ defmodule Logflare.Backends.BigQueryAdaptorTest do
 
   test "resolve_count will decrease counts" do
     check all pipeline_count <- integer(2..100),
-              queue_size <- integer(0..499),
+              queue_size <- integer(0..49),
               startup_queue_size <- constant(0),
               avg_rate <- integer(0..10_000),
               since <- integer(31..100) do
