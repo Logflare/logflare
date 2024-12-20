@@ -409,14 +409,49 @@ defmodule Logflare.Backends.IngestEventQueue do
   end
 
   @doc """
+  Deletes a specific event from the table.
+  If already deleted, it is a :noop.
+  """
+  @spec delete(source_backend_pid(), LogEvent.t()) :: :ok | :noop | {:erorr, :not_initialized}
+
+  def delete({_, _} = sid_bid, %LogEvent{id: id}) do
+    traverse_queues(sid_bid, fn objs, acc ->
+      for {_sid_bid_pid, tid} <- objs do
+        :ets.delete(tid, id)
+      end
+
+      acc
+    end)
+
+    :ok
+  end
+
+  def delete({_, _, pid} = sid_bid_pid, %LogEvent{id: id}) do
+    with tid when tid != nil <- get_tid(sid_bid_pid) do
+      :ets.delete(tid, id)
+
+      :ok
+    else
+      nil -> {:error, :not_initialized}
+      :"$end_of_table" -> :noop
+    end
+  end
+
+  @doc """
   Drop events from the ingest event table.
   """
   @spec drop(source_backend_pid(), :all | :pending | :ingested, non_neg_integer()) :: :ok
 
   def drop({_, _} = sid_bid, filter, n)
       when is_integer(n) and filter in [:pending, :all, :ingested] do
-    traverse_queues(sid_bid, fn {sid_bid_pid, _tid}, acc ->
-      {:ok, num} = drop(sid_bid_pid, filter, n)
+    traverse_queues(sid_bid, fn objs, acc ->
+      num =
+        for {sid_bid_pid, _tid} <- objs, reduce: 0 do
+          acc ->
+            {:ok, num} = drop(sid_bid_pid, filter, n)
+            acc + num
+        end
+
       num + acc
     end)
 
