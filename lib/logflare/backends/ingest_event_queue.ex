@@ -426,7 +426,7 @@ defmodule Logflare.Backends.IngestEventQueue do
     :ok
   end
 
-  def delete({_, _, pid} = sid_bid_pid, %LogEvent{id: id}) do
+  def delete({_, _, _pid} = sid_bid_pid, %LogEvent{id: id}) do
     with tid when tid != nil <- get_tid(sid_bid_pid) do
       :ets.delete(tid, id)
 
