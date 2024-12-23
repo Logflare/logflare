@@ -11,6 +11,7 @@ defmodule Logflare.Source.RecentLogsServer do
   alias Logflare.Backends
   alias Logflare.Sources
   alias Logflare.Source
+  alias Logflare.Sources.Counters
 
   require Logger
 
@@ -21,9 +22,6 @@ defmodule Logflare.Source.RecentLogsServer do
   def start_link(args) do
     GenServer.start_link(__MODULE__, args,
       name: Backends.via_source(args[:source], __MODULE__),
-      spawn_opt: [
-        fullsweep_after: 100
-      ],
       hibernate_after: 5_000
     )
   end
@@ -42,27 +40,10 @@ defmodule Logflare.Source.RecentLogsServer do
 
     {:ok,
      %{
-       inserts_since_boot: 0,
-       total_cluster_inserts: 0,
        source_token: source.token,
-       source_id: source.id,
-       changed_at: 0
+       source_id: source.id
      }}
   end
-
-  def get_changed_at(source) do
-    Backends.via_source(source, __MODULE__)
-    |> GenServer.whereis()
-    |> case do
-      nil ->
-        0
-
-      pid ->
-        GenServer.call(pid, :get_changed_at)
-    end
-  end
-
-  def handle_call(:get_changed_at, _caller, state), do: {:reply, state.changed_at, state}
 
   def handle_info({:stop_please, reason}, state) do
     {:stop, reason, state}
@@ -71,22 +52,33 @@ defmodule Logflare.Source.RecentLogsServer do
   def handle_info(:broadcast, state) do
     {:ok, total_cluster_inserts, inserts_since_boot} = broadcast_count(state)
 
-    changed_at =
-      if state.inserts_since_boot < inserts_since_boot do
-        System.system_time(:microsecond)
-      else
-        state.changed_at
-      end
+    prev_inserts_since_boot = Counters.get_inserts_since_boot(state.source_token)
+    prev_last_cluster_inserts = Counters.get_total_cluster_inserts(state.source_token)
+    prev_changed_at = Counters.get_source_changed_at_unix_ms(state.source_token)
+    now = System.system_time(:microsecond)
+
+    if prev_inserts_since_boot < inserts_since_boot do
+      Counters.increment_inserts_since_boot_count(
+        state.source_token,
+        inserts_since_boot - prev_inserts_since_boot
+      )
+
+      Counters.increment_source_changed_at_unix_ts(
+        state.source_token,
+        now - prev_changed_at
+      )
+    end
+
+    if prev_last_cluster_inserts < total_cluster_inserts do
+      Counters.increment_total_cluster_inserts_count(
+        state.source_token,
+        total_cluster_inserts - prev_last_cluster_inserts
+      )
+    end
 
     broadcast()
 
-    {:noreply,
-     %{
-       state
-       | total_cluster_inserts: total_cluster_inserts,
-         inserts_since_boot: inserts_since_boot,
-         changed_at: changed_at
-     }}
+    {:noreply, state}
   end
 
   def handle_info(:touch, %{source_id: source_id} = state) do
@@ -131,23 +123,21 @@ defmodule Logflare.Source.RecentLogsServer do
 
   ## Private Functions
 
-  defp broadcast_count(
-         %{source_token: source_token, inserts_since_boot: inserts_since_boot} = state
-       ) do
+  defp broadcast_count(%{source_token: source_token}) do
     current_inserts = Source.Data.get_node_inserts(source_token)
 
-    if current_inserts > inserts_since_boot do
+    if current_inserts > Counters.get_inserts_since_boot(source_token) do
       bq_inserts = Source.Data.get_bq_inserts(source_token)
       inserts_payload = %{Node.self() => %{node_inserts: current_inserts, bq_inserts: bq_inserts}}
 
       PubSubRates.global_broadcast_rate({"inserts", source_token, inserts_payload})
     end
 
-    current_cluster_inserts = PubSubRates.Cache.get_cluster_inserts(state.source_token)
-    last_cluster_inserts = state.total_cluster_inserts
+    current_cluster_inserts = PubSubRates.Cache.get_cluster_inserts(source_token)
+    last_cluster_inserts = Counters.get_total_cluster_inserts(source_token)
 
     if current_cluster_inserts > last_cluster_inserts do
-      payload = %{log_count: current_cluster_inserts, source_token: state.source_token}
+      payload = %{log_count: current_cluster_inserts, source_token: source_token}
       Source.ChannelTopics.local_broadcast_log_count(payload)
     end
 

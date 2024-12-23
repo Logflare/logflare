@@ -19,7 +19,7 @@ defmodule Logflare.Backends do
   alias Logflare.SystemMetrics
   alias Logflare.PubSubRates
   alias Logflare.Cluster
-  alias Logflare.Source.RecentLogsServer
+  alias Logflare.Sources.Counters
   import Ecto.Query
 
   defdelegate child_spec(arg), to: __MODULE__.Supervisor
@@ -572,10 +572,7 @@ defmodule Logflare.Backends do
   end
 
   def fetch_latest_timestamp(%Source{} = source) do
-    case RecentLogsServer.get_changed_at(source) do
-      v when is_number(v) -> v
-      _ -> 0
-    end
+    Counters.get_source_changed_at_unix_ms(source.token)
   end
 
   @doc """
