@@ -249,7 +249,7 @@ defmodule Logflare.Source.BigQuery.Pipeline do
 
   defp disconnect_backend_and_email(source_id, message) when is_atom(source_id) do
     source = Sources.Cache.get_by(token: source_id)
-    user = Users.Cache.get_by(id: source.user_id)
+    user = Users.Cache.get(source.user_id)
 
     defaults = %{
       bigquery_dataset_location: nil,

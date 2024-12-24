@@ -5,6 +5,7 @@ defmodule Logflare.Users.Cache do
 
   alias Logflare.Users
   alias Logflare.Utils
+  import Cachex.Spec
 
   def child_spec(_) do
     stats = Application.get_env(:logflare, :cache_stats, false)
@@ -16,6 +17,9 @@ defmodule Logflare.Users.Cache do
          [
            __MODULE__,
            [
+             warmers: [
+               warmer(required: false, module: Users.CacheWarmer, name: Users.CacheWarmer)
+             ],
              hooks:
                [
                  if(stats, do: Utils.cache_stats()),
@@ -29,7 +33,6 @@ defmodule Logflare.Users.Cache do
   end
 
   def get(id), do: apply_repo_fun(__ENV__.function, [id])
-  def get_by(keyword), do: apply_repo_fun(__ENV__.function, [keyword])
 
   def get_by_and_preload(keyword), do: apply_repo_fun(__ENV__.function, [keyword])
   def preload_defaults(user), do: apply_repo_fun(__ENV__.function, [user])
