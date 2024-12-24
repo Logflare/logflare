@@ -5,6 +5,7 @@ defmodule Logflare.BigQuery.PipelineTest do
   alias Logflare.LogEvent
   alias GoogleApi.BigQuery.V2.Model.TableDataInsertAllRequestRows
   alias Logflare.Backends.AdaptorSupervisor
+  alias Logflare.Backends.IngestEventQueue
   alias Logflare.Backends.Backend
   use ExUnitProperties
 
@@ -14,6 +15,35 @@ defmodule Logflare.BigQuery.PipelineTest do
       user = insert(:user)
       source = insert(:source, user_id: user.id)
       {:ok, source: source}
+    end
+
+    test "ack will remove items from pipeline if average rate is above 100", %{source: source} do
+      sid_bid_pid = {source.id, nil, make_ref()}
+      IngestEventQueue.upsert_tid(sid_bid_pid)
+      le = build(:log_event)
+      IngestEventQueue.add_to_table(sid_bid_pid, [le])
+      ref = {sid_bid_pid, source.token}
+      message = Pipeline.transform(le, ref: ref)
+      {mod, ref, _data} = message.acknowledger
+      assert IngestEventQueue.get_table_size(sid_bid_pid) == 1
+      mod.ack(ref, [message], [])
+      refute IngestEventQueue.get_table_size(sid_bid_pid) == 0
+
+      Logflare.PubSubRates.Cache.cache_rates(source.token, %{
+        Node.self() => %{
+          average_rate: 500,
+          last_rate: 500,
+          max_rate: 500,
+          limiter_metrics: %{
+            average: 0,
+            duration: 60,
+            sum: 0
+          }
+        }
+      })
+
+      mod.ack(ref, [message], [])
+      assert IngestEventQueue.get_table_size(sid_bid_pid) == 0
     end
 
     test "le_to_bq_row/1 generates TableDataInsertAllRequestRows struct correctly", %{

@@ -14,6 +14,8 @@ defmodule Logflare.Source.BigQuery.Pipeline do
   alias Logflare.LogEvent, as: LE
   alias Logflare.Mailer
   alias Logflare.Source
+  alias Logflare.Sources
+  alias Logflare.Backends.IngestEventQueue
   alias Logflare.Backends.BufferProducer
   alias Logflare.Source.BigQuery.Schema
   alias Logflare.Source.Supervisor
@@ -48,7 +50,9 @@ defmodule Logflare.Source.BigQuery.Pipeline do
                  source_id: source.id,
                  backend_id: backend.id
                ]},
-            transformer: {__MODULE__, :transform, []}
+            transformer:
+              {__MODULE__, :transform,
+               [ref: {{source.id, backend.id, args[:pipeline_ref]}, source.token}]}
           ],
           processors: [
             default: [concurrency: 4, max_demand: 100]
@@ -89,15 +93,25 @@ defmodule Logflare.Source.BigQuery.Pipeline do
   end
 
   # Broadway transformer for custom producer
-  def transform(event, _opts) do
+  def transform(event, args) do
+    ref = args[:ref]
+
     %Message{
       data: event,
-      acknowledger: {__MODULE__, :ack_id, :ack_data}
+      acknowledger: {__MODULE__, ref, :ack_data}
     }
   end
 
-  def ack(_ack_ref, _successful, _failed) do
+  # Ziinc: temporarily pass in source token until PubSubRates is refactored
+  def ack({queue, source_token}, successful, _failed) do
     # TODO: re-queue failed
+    metrics = Sources.get_source_metrics_for_ingest(source_token)
+
+    if metrics.avg > 100 do
+      for %{data: le} <- successful do
+        IngestEventQueue.delete(queue, le)
+      end
+    end
   end
 
   @spec handle_message(any, Broadway.Message.t(), any) :: Broadway.Message.t()
