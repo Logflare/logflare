@@ -34,6 +34,7 @@ defmodule Logflare.Users.Cache do
 
   def get(id), do: apply_repo_fun(__ENV__.function, [id])
 
+  def get_by(keyword), do: apply_repo_fun(__ENV__.function, [keyword])
   def get_by_and_preload(keyword), do: apply_repo_fun(__ENV__.function, [keyword])
   def preload_defaults(user), do: apply_repo_fun(__ENV__.function, [user])
   def preload_sources(user), do: apply_repo_fun(__ENV__.function, [user])
