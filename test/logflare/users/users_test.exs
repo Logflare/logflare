@@ -15,6 +15,15 @@ defmodule Logflare.UsersTest do
     {:ok, user: user, source: source}
   end
 
+  describe "Users.list_ingesting_users/1" do
+    test "lists ingesting users based on source activity" do
+      assert [] = Users.list_ingesting_users(limit: 500)
+      user = insert(:user)
+      insert(:source, user: user, log_events_updated_at: NaiveDateTime.utc_now())
+      assert [_] = Users.list_ingesting_users(limit: 500)
+    end
+  end
+
   describe "Users.list_users/1" do
     test "lists all users created by a partner" do
       [user | others] = insert_list(3, :user)

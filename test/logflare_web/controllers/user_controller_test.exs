@@ -9,7 +9,6 @@ defmodule LogflareWeb.UserControllerTest do
     setup do
       u1 = insert(:user, bigquery_dataset_id: "test_dataset_id_1")
       u2 = insert(:user, bigquery_dataset_id: "test_dataset_id_2")
-      # allow Users.Cache.get_by(any()), return: :should_not_happen
 
       {:ok, users: [u1, u2]}
     end

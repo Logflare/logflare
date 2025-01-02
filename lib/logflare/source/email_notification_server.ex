@@ -37,7 +37,7 @@ defmodule Logflare.Source.EmailNotificationServer do
       check_rate(state.notifications_every)
 
       source = Sources.Cache.get_by_id(state.source_token)
-      user = Users.Cache.get_by(id: source.user_id)
+      user = Users.Cache.get(source.user_id)
 
       if source.notifications.user_email_notifications do
         AccountEmail.source_notification(user, rate, source) |> Mailer.deliver()

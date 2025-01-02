@@ -8,10 +8,17 @@ defmodule LogflareWeb.HealthCheckController do
   alias Logflare.Sources
 
   def check(conn, _params) do
+    repo_uptime = Logflare.Repo.get_uptime()
+
+    caches = check_caches()
+
     common_checks_ok? =
       [
         Sources.ingest_ets_tables_started?(),
-        Source.Supervisor.booting?() == false
+        Source.Supervisor.booting?() == false,
+        # checks that db can execute query and that repo is connected and up
+        repo_uptime > 0,
+        Enum.all?(Map.values(caches), &(&1 == :ok))
       ]
       |> Enum.all?()
 
@@ -36,7 +43,7 @@ defmodule LogflareWeb.HealthCheckController do
 
     response =
       status
-      |> build_payload()
+      |> build_payload(repo_uptime: repo_uptime, caches: caches)
       |> JSON.encode!()
 
     conn
@@ -44,7 +51,8 @@ defmodule LogflareWeb.HealthCheckController do
     |> send_resp(code, response)
   end
 
-  defp build_payload(status) when status in [:ok, :coming_up] do
+  defp build_payload(status, repo_uptime: repo_uptime, caches: caches)
+       when status in [:ok, :coming_up] do
     nodes = Cluster.Utils.node_list_all()
     proc_count = Process.list() |> Enum.count()
 
@@ -53,7 +61,24 @@ defmodule LogflareWeb.HealthCheckController do
       proc_count: proc_count,
       this_node: Node.self(),
       nodes: nodes,
-      nodes_count: Enum.count(nodes)
+      nodes_count: Enum.count(nodes),
+      repo_uptime: repo_uptime,
+      caches: caches
     }
+  end
+
+  defp check_caches() do
+    for cache <-
+          Logflare.ContextCache.Supervisor.list_caches() ++
+            [
+              Logflare.Logs.LogEvents.Cache
+            ],
+        into: %{} do
+      # call is O(1)
+      case Cachex.size(cache) do
+        {:ok, _} -> {cache, :ok}
+        {:error, :no_cache} -> {cache, :no_cache}
+      end
+    end
   end
 end
