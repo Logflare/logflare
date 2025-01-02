@@ -1,7 +1,6 @@
 defmodule Logflare.Backends do
   @moduledoc false
 
-  alias Logflare.Utils.Tasks
   alias Logflare.Backends.Adaptor
   alias Logflare.Backends.Backend
   alias Logflare.Backends.SourceRegistry
@@ -544,31 +543,14 @@ defmodule Logflare.Backends do
   def list_recent_logs(%Source{} = source) do
     nodes = Cluster.Utils.node_list_all()
 
-    task =
-      Tasks.async(fn ->
-        nodes
-        |> Enum.map(
-          &Tasks.async(fn ->
-            :erpc.call(&1, __MODULE__, :list_recent_logs_local, [source], 10_000)
-          end)
-        )
-        |> Task.yield_many()
-        |> Enum.map(fn {%Task{pid: pid}, res} ->
-          res || Task.shutdown(pid)
-        end)
-      end)
-
-    case Task.yield(task, 5_000) || Task.shutdown(task) do
-      {:ok, results} ->
-        results
-        |> Enum.map(fn {:ok, events} -> events end)
-        |> List.flatten()
-        |> Enum.sort_by(& &1.body["timestamp"], &<=/2)
-        |> Enum.take(-100)
-
-      _else ->
-        list_recent_logs_local(source)
-    end
+    :erpc.multicall(nodes, __MODULE__, :list_recent_logs_local, [source.id], 5_000)
+    |> Enum.map(fn
+      {:ok, result} when is_list(result) -> result
+      _ -> []
+    end)
+    |> List.flatten()
+    |> Enum.sort_by(& &1.body["timestamp"], &<=/2)
+    |> Enum.take(-100)
   end
 
   def fetch_latest_timestamp(%Source{} = source) do
@@ -579,8 +561,10 @@ defmodule Logflare.Backends do
   Lists latest recent logs of only the local cache.
   """
   @spec list_recent_logs_local(Source.t()) :: [LogEvent.t()]
-  def list_recent_logs_local(%Source{} = source) do
-    {:ok, events} = IngestEventQueue.fetch_events({source.id, nil}, 100)
+  def list_recent_logs_local(%Source{} = source), do: list_recent_logs_local(source.id)
+
+  def list_recent_logs_local(source_id) do
+    {:ok, events} = IngestEventQueue.fetch_events({source_id, nil}, 100)
     events
   end
 
