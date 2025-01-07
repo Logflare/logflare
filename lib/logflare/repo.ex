@@ -16,9 +16,13 @@ defmodule Logflare.Repo do
          rows: [
            [uptime]
          ]
-       }}
-      when is_number(uptime) ->
-        ceil(uptime)
+       }} ->
+        if is_number(uptime) do
+          ceil(uptime)
+        else
+          # for postgres 15 and up
+          Decimal.round(uptime, 0, :ceiling)
+        end
 
       {:error, _err} = err ->
         Logger.warning("Could not get Postgres uptime, error: #{err}")
