@@ -24,8 +24,8 @@ defmodule Logflare.Application do
     children = get_children(env)
 
     if Application.get_env(:logflare, :opentelemetry_enabled?) do
-      :opentelemetry_cowboy.setup()
-      OpentelemetryPhoenix.setup(adapter: :cowboy2)
+      OpentelemetryBandit.setup()
+      OpentelemetryPhoenix.setup(adapter: :bandit)
     end
 
     # See https://hexdocs.pm/elixir/Supervisor.html
