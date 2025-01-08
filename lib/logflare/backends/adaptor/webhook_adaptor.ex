@@ -153,10 +153,16 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
     end
 
     defp process_data(payload, %{startup_config: startup_config} = context) do
-      %{config: stored_config} = Backends.Cache.get_backend(context.backend_id)
+      %{config: stored_config, metadata: backend_metadata} =
+        Backends.Cache.get_backend(context.backend_id)
 
       config =
         merge_configs(startup_config, stored_config)
+
+      backend_meta =
+        for {k, v} <- backend_metadata || %{testing: 123}, into: %{} do
+          {"backend.#{k}", v}
+        end
 
       Client.send(
         url: config.url,
@@ -164,12 +170,14 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
         headers: config[:headers] || %{},
         gzip: Map.get(config, :gzip, true),
         # metadata map will get set as OTEL attributes in EgressMiddleware
-        metadata: %{
-          source_id: context[:source_id],
-          source_uuid: context[:source_token],
-          backend_id: context[:backend_id],
-          backend_uuid: context[:backend_token]
-        },
+        metadata:
+          %{
+            "source_id" => context[:source_id],
+            "source_uuid" => context[:source_token],
+            "backend_id" => context[:backend_id],
+            "backend_uuid" => context[:backend_token]
+          }
+          |> Map.merge(backend_meta),
         http: config[:http]
       )
     end
