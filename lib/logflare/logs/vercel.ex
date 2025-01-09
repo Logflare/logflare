@@ -43,7 +43,7 @@ defmodule Logflare.Logs.Vercel do
         message = event["message"]
 
         %{
-          "message" => "#{source} | " <> message,
+          "message" => if(message, do: "#{source} | ", else: source),
           "metadata" => user_agent_to_string(event),
           "timestamp" => event["timestamp"]
         }
