@@ -40,7 +40,7 @@ All browser authentication will be disabled when in single-tenant mode.
 | `LOGFLARE_OTEL_ENDPOINT`               | String, defaults to `nil`                                           | Sets the OpenTelemetry Endpoint to send traces to via gRPC. Port number can be included, such as `https://logflare.app:443`                                                             |
 | `LOGFLARE_OTEL_SOURCE_UUID`            | String, defaults to `nil`, optionally required for OpenTelemetry.   | Sets the appropriate header for ingesting OpenTelemetry events into a Logflare source.                                                                                                  |
 | `LOGFLARE_OTEL_ACCESS_TOKEN`           | String, defaults to `nil`, optionally required for OpenTelemetry.   | Sets the appropriate authentication header for ingesting OpenTelemetry events into a Logflare source.                                                                                   |
-| `LOGFLARE_OTEL_SAMPLE_RATIO` | Float, defaults to `0.001`, optionally required for OpenTelemetry.  | Sets the sample ratio for server traces. Ingestion and Endpoint routes are dropped and are not included in tracing.                                                                     |
+| `LOGFLARE_OTEL_SAMPLE_RATIO` | Float, defaults to `1.0`, optionally required for OpenTelemetry.  | Sets the sample ratio for server traces. Ingestion and Endpoint routes are dropped and are not included in tracing.                                                                     |
 
 LOGFLARE_OTEL_SAMPLE_RATIO
 Additional environment variable configurations for the OpenTelemetry libraries used can be found [here](https://hexdocs.pm/opentelemetry_exporter/readme.html).perf/bq-pipeline-sharding
