@@ -1,5 +1,4 @@
 defmodule LogflareWeb.OpenTelemetrySampler do
-  require OpenTelemetry.Tracer, as: Tracer
   @behaviour :otel_sampler
 
   @impl :otel_sampler
