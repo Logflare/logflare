@@ -226,6 +226,7 @@ defmodule Logflare.BillingTest do
       assert %Plan{name: "Free"} = Billing.get_plan_by_user(user)
       # upgrade user
       Partners.upgrade_user(partner, user)
+
       assert %Plan{name: "Enterprise"} = Billing.get_plan_by_user(user)
     end
 
