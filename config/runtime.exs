@@ -291,7 +291,28 @@ config :libcluster,
     if(System.get_env("LIBCLUSTER_TOPOLOGY") == "postgres", do: postgres_topology, else: [])
 
 if System.get_env("LOGFLARE_OTEL_ENDPOINT") do
-  config :logflare, opentelemetry_enabled?: true
+  default_sample_ratio =
+    System.get_env("LOGFLARE_OTEL_SAMPLE_RATIO", "1.0")
+    |> String.to_float()
+
+  ingest_sample_ratio =
+    System.get_env("LOGFLARE_OTEL_INGEST_SAMPLE_RATIO")
+    |> case do
+      nil -> default_sample_ratio
+      value -> String.to_float(value)
+    end
+
+  endpoint_sample_ratio =
+    System.get_env("LOGFLARE_OTEL_ENDPOINT_SAMPLE_RATIO")
+    |> case do
+      nil -> default_sample_ratio
+      value -> String.to_float(value)
+    end
+
+  config :logflare,
+    opentelemetry_enabled?: true,
+    ingest_sample_ratio: ingest_sample_ratio,
+    endpoint_sample_ratio: endpoint_sample_ratio
 
   config :opentelemetry,
     sdk_disabled: false,
