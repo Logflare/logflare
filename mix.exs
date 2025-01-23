@@ -242,6 +242,7 @@ defmodule Logflare.Mixfile do
       "test.security": ["sobelow --threshold high --ignore Config.HTTPS"],
       "test.typings": ["cmd mkdir -p dialyzer", "dialyzer"],
       "test.coverage": ["coveralls"],
+      "test.coverage.ci": ["coveralls.github"],
       lint: ["credo"],
       "lint.diff": ["credo diff master"],
       "lint.all": ["credo --strict"],
