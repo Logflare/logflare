@@ -36,7 +36,7 @@ jobs:
           - name: Compilation Warnings
             run: mix test.compile
           - name: Tests
-            run: mix do ecto.create, ecto.migrate, test
+            run: mix do ecto.create, ecto.migrate, test.coverage
           # - name: Security - Sobelow Code Scan
           #   run: mix test.security
           # - name: Typing check
@@ -84,3 +84,5 @@ jobs:
         run: mix do deps.get, deps.compile
       - name: Run ${{ matrix.commands.name }}
         run: ${{ matrix.commands.run }}
+      - name: Coveralls
+        uses: coverallsapp/github-action@v2
