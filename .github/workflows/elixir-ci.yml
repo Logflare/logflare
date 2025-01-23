@@ -85,4 +85,5 @@ jobs:
       - name: Run ${{ matrix.commands.name }}
         run: ${{ matrix.commands.run }}
       - name: Coveralls
+        if: contains(${{ matrix.commands.run }}, 'test.coverage')
         uses: coverallsapp/github-action@v2
