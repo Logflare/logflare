@@ -60,6 +60,7 @@ jobs:
     env:
       MIX_ENV: test
       SHELL: /bin/bash
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v3
       - name: Set up Elixir
