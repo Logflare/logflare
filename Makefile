@@ -127,8 +127,8 @@ $(addprefix encrypt.,${envs}): encrypt.%: \
 grpc.protoc:
 	dir=$$(mktemp -d); \
 	trap 'rm -rf "$$dir"' EXIT; \
-	git clone https://github.com/open-telemetry/opentelemetry-proto.git $$dir; \
-	protoc -I=$$dir --elixir_out=plugins=grpc:$(PWD)/lib/logflare_grpc $$(find $$dir -iname '*.proto')
+	git clone https://github.com/Logflare/opentelemetry-proto.git $$dir; \
+	protoc -I=$$dir --elixir_out=gen_descriptors=true,plugins=grpc:$(PWD)/lib/logflare_grpc $$(find $$dir -iname '*.proto')
 
 
 # manual deployment scripts
