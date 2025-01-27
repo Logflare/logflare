@@ -1,5 +1,7 @@
 # Logflare
 
+[![Coverage Status](https://coveralls.io/repos/github/Logflare/logflare/badge.svg?branch=ziinc/anl-658-add-coveralls-to-logflarelogflare)](https://coveralls.io/github/Logflare/logflare?branch=ziinc/anl-658-add-coveralls-to-logflarelogflare)
+
 ## About
 
 Stream logs to a central service and tail them in your browser. Logflare is different because you can **bring your own backend**. Simply provide your BigQuery credentials and we stream logs into your BigQuery table while automatically managing the schema.
