@@ -330,9 +330,9 @@ if System.get_env("LOGFLARE_OTEL_ENDPOINT") do
        }}
 
   config :opentelemetry_exporter,
-    otlp_protocol: :grpc,
+    # otlp_protocol: :http_protobuf,
     otlp_endpoint: System.get_env("LOGFLARE_OTEL_ENDPOINT"),
-    otlp_compression: :gzip,
+    # otlp_compression: :gzip,
     otlp_headers: [
       {"x-source-id", System.get_env("LOGFLARE_OTEL_SOURCE_UUID")},
       {"x-api-key", System.get_env("LOGFLARE_OTEL_ACCESS_TOKEN")}

@@ -5,4 +5,5 @@ defmodule Logflare.UtilsTest do
   import Logflare.EnumDeepUpdate
   doctest Logflare.EnumDeepUpdate
   doctest Logflare.Utils
+  doctest Logflare.Utils.Map
 end

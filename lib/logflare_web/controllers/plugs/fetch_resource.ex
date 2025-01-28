@@ -12,12 +12,14 @@ defmodule LogflareWeb.Plugs.FetchResource do
   import Plug.Conn
   alias Logflare.Sources
   alias Logflare.Endpoints
+  alias Logflare.Utils
   def init(_opts), do: nil
 
   # ingest by source token
-  def call(%{assigns: %{resource_type: :source}, params: params} = conn, _opts)
-      when is_map_key(params, "source") or is_map_key(params, "collection") do
-    token = params["source"] || params["collection"]
+  def call(%{assigns: %{resource_type: :source}, params: params} = conn, _opts) do
+    token =
+      Utils.Map.get(params, :source) || Utils.Map.get(params, :collection) ||
+        get_source_from_headers(conn)
 
     source =
       case is_uuid?(token) do
@@ -93,6 +95,15 @@ defmodule LogflareWeb.Plugs.FetchResource do
     case Ecto.UUID.dump(value) do
       {:ok, _} -> true
       _ -> false
+    end
+  end
+
+  def get_source_from_headers(conn) do
+    (Plug.Conn.get_req_header(conn, "x-source") ||
+       Plug.Conn.get_req_header(conn, "x-collection"))
+    |> case do
+      [value] -> value
+      _ -> nil
     end
   end
 end
