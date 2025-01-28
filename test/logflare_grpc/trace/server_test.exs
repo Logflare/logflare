@@ -36,7 +36,7 @@ defmodule LogflareGrpc.Trace.ServerTest do
       user: user,
       port: port
     } do
-      headers = [{"x-api-key", user.api_key}, {"x-source-id", source.token}]
+      headers = [{"x-api-key", user.api_key}, {"x-source", source.token}]
 
       {:ok, channel} =
         GRPC.Stub.connect("localhost:#{port}",
@@ -52,7 +52,7 @@ defmodule LogflareGrpc.Trace.ServerTest do
     end
 
     test "returns an error if invalid api key", %{source: source, port: port} do
-      headers = [{"x-api-key", "potato"}, {"x-source-id", source.token}]
+      headers = [{"x-api-key", "potato"}, {"x-source", source.token}]
 
       {:ok, channel} =
         GRPC.Stub.connect("localhost:#{port}",
@@ -71,7 +71,7 @@ defmodule LogflareGrpc.Trace.ServerTest do
       user: user,
       port: port
     } do
-      headers = [{"x-api-key", user.api_key}, {"x-source-id", "potato"}]
+      headers = [{"x-api-key", user.api_key}, {"x-source", "potato"}]
 
       {:ok, channel} =
         GRPC.Stub.connect("localhost:#{port}",
@@ -87,7 +87,7 @@ defmodule LogflareGrpc.Trace.ServerTest do
     end
 
     test "returns an error if missing x-api-key header", %{source: source, port: port} do
-      headers = [{"x-source-id", source.token}]
+      headers = [{"x-source", source.token}]
 
       {:ok, channel} =
         GRPC.Stub.connect("localhost:#{port}",
@@ -102,7 +102,7 @@ defmodule LogflareGrpc.Trace.ServerTest do
       assert %GRPC.RPCError{message: "Invalid API Key or Source ID"} = result
     end
 
-    test "returns an error if missing x-source-id header", %{
+    test "returns an error if missing x-source header", %{
       user: user,
       port: port
     } do
