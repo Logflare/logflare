@@ -15,7 +15,6 @@ defmodule LogflareWeb.Plugs.FetchResource do
   alias Logflare.Utils
   def init(_opts), do: nil
 
-
   # ingest by source name
   def call(
         %{assigns: %{user: user, resource_type: :source}, params: params} =
@@ -50,7 +49,6 @@ defmodule LogflareWeb.Plugs.FetchResource do
 
     assign(conn, :source, source)
   end
-
 
   def call(
         %{
