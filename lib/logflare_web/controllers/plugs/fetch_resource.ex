@@ -12,25 +12,8 @@ defmodule LogflareWeb.Plugs.FetchResource do
   import Plug.Conn
   alias Logflare.Sources
   alias Logflare.Endpoints
+  alias Logflare.Utils
   def init(_opts), do: nil
-
-  # ingest by source token
-  def call(%{assigns: %{resource_type: :source}, params: params} = conn, _opts)
-      when is_map_key(params, "source") or is_map_key(params, "collection") do
-    token = params["source"] || params["collection"]
-
-    source =
-      case is_uuid?(token) do
-        true ->
-          Sources.Cache.get_by_and_preload_rules(token: token)
-          |> Sources.refresh_source_metrics_for_ingest()
-
-        _ ->
-          nil
-      end
-
-    assign(conn, :source, source)
-  end
 
   # ingest by source name
   def call(
@@ -44,6 +27,25 @@ defmodule LogflareWeb.Plugs.FetchResource do
     source =
       Sources.Cache.get_by_and_preload_rules(name: name, user_id: user.id)
       |> Sources.refresh_source_metrics_for_ingest()
+
+    assign(conn, :source, source)
+  end
+
+  # ingest by source token
+  def call(%{assigns: %{resource_type: :source}, params: params} = conn, _opts) do
+    token =
+      Utils.Map.get(params, :source) || Utils.Map.get(params, :collection) ||
+        get_source_from_headers(conn)
+
+    source =
+      case is_uuid?(token) do
+        true ->
+          Sources.Cache.get_by_and_preload_rules(token: token)
+          |> Sources.refresh_source_metrics_for_ingest()
+
+        _ ->
+          nil
+      end
 
     assign(conn, :source, source)
   end
@@ -93,6 +95,17 @@ defmodule LogflareWeb.Plugs.FetchResource do
     case Ecto.UUID.dump(value) do
       {:ok, _} -> true
       _ -> false
+    end
+  end
+
+  defp is_uuid?(_), do: false
+
+  def get_source_from_headers(conn) do
+    (Plug.Conn.get_req_header(conn, "x-source") ||
+       Plug.Conn.get_req_header(conn, "x-collection"))
+    |> case do
+      [value] -> value
+      _ -> nil
     end
   end
 end

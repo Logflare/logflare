@@ -100,4 +100,5 @@ defmodule Opentelemetry.Proto.Logs.V1.LogRecord do
   field :flags, 8, type: :fixed32
   field :trace_id, 9, type: :bytes, json_name: "traceId"
   field :span_id, 10, type: :bytes, json_name: "spanId"
+  field :event_name, 12, type: :string, json_name: "eventName"
 end

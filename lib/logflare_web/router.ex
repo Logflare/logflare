@@ -10,6 +10,7 @@ defmodule LogflareWeb.Router do
   alias LogflareWeb.JsonParser
   alias LogflareWeb.SyslogParser
   alias LogflareWeb.NdjsonParser
+  alias LogflareWeb.OtelProtobufParser
 
   # TODO: move plug calls in SourceController and RuleController into here
 
@@ -57,7 +58,7 @@ defmodule LogflareWeb.Router do
     plug(LogflareWeb.Plugs.MaybeContentTypeToJson)
 
     plug(Plug.Parsers,
-      parsers: [JsonParser, BertParser, SyslogParser, NdjsonParser],
+      parsers: [JsonParser, BertParser, SyslogParser, NdjsonParser, OtelProtobufParser],
       json_decoder: Jason,
       body_reader: {PlugCaisson, :read_body, []},
       length: 12_000_000
@@ -455,6 +456,11 @@ defmodule LogflareWeb.Router do
   scope "/endpoints/query", LogflareWeb, assigns: %{resource_type: :endpoint} do
     pipe_through([:api, :require_endpoint_auth])
     get("/:token_or_name", EndpointsController, :query)
+  end
+
+  scope "/v1", LogflareWeb, assigns: %{resource_type: :source} do
+    pipe_through([:api, :require_ingest_api_auth])
+    post("/traces", LogController, :otel_traces)
   end
 
   for path <- ["/logs", "/api/logs", "/api/events"] do

@@ -7,6 +7,7 @@ defmodule LogflareWeb.LogControllerTest do
   alias Logflare.Source.V1SourceSup
   alias Logflare.Sources
   alias Logflare.SystemMetrics.AllLogsLogged
+  alias Opentelemetry.Proto.Collector.Trace.V1.ExportTraceServiceRequest
 
   @valid %{"some" => "valid log entry", "event_message" => "hi!"}
   @valid_json Jason.encode!(@valid)
@@ -121,6 +122,33 @@ defmodule LogflareWeb.LogControllerTest do
 
       assert %{"some" => _, "event_message" => _, "cloud_event" => %{"foo_foo" => "bar"}} =
                log
+    end
+
+    test ":otel_traces ingestion", %{conn: conn, source: source, user: user} do
+      this = self()
+      ref = make_ref()
+
+      WebhookAdaptor.Client
+      |> expect(:send, fn req ->
+        send(this, {ref, req[:body]})
+        %Tesla.Env{status: 200, body: ""}
+      end)
+
+      body = TestUtilsGrpc.random_export_service_request() |> ExportTraceServiceRequest.encode()
+
+      conn =
+        conn
+        |> put_req_header("x-api-key", user.api_key)
+        |> put_req_header("x-source", Atom.to_string(source.token))
+        |> put_req_header("content-type", "application/x-protobuf")
+        |> post(Routes.log_path(conn, :otel_traces), body)
+
+      assert json_response(conn, 200) == %{"message" => "Logged!"}
+      assert_receive {^ref, [event1, event2]}, 3000
+
+      assert event1["trace_id"] == event2["trace_id"]
+      assert %{"metadata" => _, "event_message" => _} = event1
+      assert %{"metadata" => _, "event_message" => _} = event2
     end
 
     test "invaild source token uuid checks", %{conn: conn, user: user} do

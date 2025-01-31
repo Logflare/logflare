@@ -15,7 +15,8 @@ defmodule LogflareGrpc.Trace.Server do
 
   use GRPC.Server,
     service: Opentelemetry.Proto.Collector.Trace.V1.TraceService.Service,
-    compressors: [GRPC.Compressor.Gzip]
+    # compressors: [GRPC.Compressor.Gzip],
+    http_transcode: true
 
   require Logger
 
@@ -47,10 +48,8 @@ defmodule LogflareGrpc.Trace.Server do
 
   defp get_source_token(stream) do
     case GRPC.Stream.get_headers(stream) do
-      %{"x-source-token" => token} -> {:ok, token}
-      %{"x-source-id" => token} -> {:ok, token}
+      %{"x-collection" => token} -> {:ok, token}
       %{"x-source" => token} -> {:ok, token}
-      %{"x-source-uuid" => token} -> {:ok, token}
       _ -> {:error, :unauthorized}
     end
   end

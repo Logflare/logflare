@@ -15,6 +15,7 @@ defmodule LogflareWeb.Plugs.VerifyApiAccess do
   alias Logflare.Partners.Partner
   alias Logflare.Partners
   alias LogflareWeb.Api.FallbackController
+  alias Logflare.Utils
 
   def init(args), do: args |> Enum.into(%{})
 
@@ -101,7 +102,7 @@ defmodule LogflareWeb.Plugs.VerifyApiAccess do
     api_key =
       conn
       |> Plug.Conn.get_req_header("x-api-key")
-      |> List.first(conn.params["api_key"])
+      |> List.first(Utils.Map.get(conn.params, :api_key))
 
     cond do
       bearer != nil -> {:ok, bearer}

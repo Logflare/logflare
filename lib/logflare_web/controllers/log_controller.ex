@@ -2,7 +2,9 @@ defmodule LogflareWeb.LogController do
   use LogflareWeb, :controller
   use OpenApiSpex.ControllerSpecs
 
+  alias Logflare.Logs
   alias Logflare.Logs.Processor
+  alias Opentelemetry.Proto.Collector.Trace.V1.ExportTraceServiceRequest
 
   alias LogflareWeb.OpenApi.Created
   alias LogflareWeb.OpenApi.ServerError
@@ -28,8 +30,6 @@ defmodule LogflareWeb.LogController do
     ]
     when action in [:browser_reports, :generic_json, :create]
   )
-
-  alias Logflare.Logs
 
   @message "Logged!"
 
@@ -223,5 +223,13 @@ defmodule LogflareWeb.LogController do
     for {"ce-" <> header, data} <- conn.req_headers, into: %{} do
       {String.replace(header, "-", "_"), data}
     end
+  end
+
+  def otel_traces(
+        %{assigns: %{source: source}} = conn,
+        %ExportTraceServiceRequest{resource_spans: spans}
+      ) do
+    Processor.ingest(spans, Logs.OtelTrace, source)
+    |> handle(conn)
   end
 end

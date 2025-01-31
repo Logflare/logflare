@@ -37,6 +37,7 @@ defmodule LogflareWeb.ConnCase do
       import unquote(__MODULE__)
 
       alias Logflare.TestUtils
+      alias Logflare.TestUtilsGrpc
       alias Logflare.User
       alias Logflare.Partners.Partner
       alias LogflareWeb.Router.Helpers, as: Routes

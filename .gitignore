@@ -77,3 +77,6 @@ gcloud_prod.json
 .*.gcloud.json
 
 supabase
+
+examples/**/.dev.vars
+examples/**/node_modules
