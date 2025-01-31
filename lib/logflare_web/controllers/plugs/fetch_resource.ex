@@ -97,6 +97,7 @@ defmodule LogflareWeb.Plugs.FetchResource do
       _ -> false
     end
   end
+
   defp is_uuid?(_), do: false
 
   def get_source_from_headers(conn) do
