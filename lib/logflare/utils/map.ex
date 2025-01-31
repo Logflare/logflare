@@ -4,7 +4,7 @@ defmodule Logflare.Utils.Map do
 
     iex> #{__MODULE__}.get(%{test: 123}, :test)
     123
-    iex> #{__MODULE__}.get?(%{"test"=> 123}, :test)
+    iex> #{__MODULE__}.get(%{"test"=> 123}, :test)
     123
   """
   @spec get(map :: map(), key :: atom()) :: term() | nil

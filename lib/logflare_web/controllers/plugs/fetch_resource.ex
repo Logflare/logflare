@@ -15,6 +15,23 @@ defmodule LogflareWeb.Plugs.FetchResource do
   alias Logflare.Utils
   def init(_opts), do: nil
 
+
+  # ingest by source name
+  def call(
+        %{assigns: %{user: user, resource_type: :source}, params: params} =
+          conn,
+        _opts
+      )
+      when is_map_key(params, "source_name") or is_map_key(params, "collection_name") do
+    name = params["source_name"] || params["collection_name"]
+
+    source =
+      Sources.Cache.get_by_and_preload_rules(name: name, user_id: user.id)
+      |> Sources.refresh_source_metrics_for_ingest()
+
+    assign(conn, :source, source)
+  end
+
   # ingest by source token
   def call(%{assigns: %{resource_type: :source}, params: params} = conn, _opts) do
     token =
@@ -34,21 +51,6 @@ defmodule LogflareWeb.Plugs.FetchResource do
     assign(conn, :source, source)
   end
 
-  # ingest by source name
-  def call(
-        %{assigns: %{user: user, resource_type: :source}, params: params} =
-          conn,
-        _opts
-      )
-      when is_map_key(params, "source_name") or is_map_key(params, "collection_name") do
-    name = params["source_name"] || params["collection_name"]
-
-    source =
-      Sources.Cache.get_by_and_preload_rules(name: name, user_id: user.id)
-      |> Sources.refresh_source_metrics_for_ingest()
-
-    assign(conn, :source, source)
-  end
 
   def call(
         %{
