@@ -20,39 +20,55 @@ defmodule LogflareWeb.Plugs.VerifyResourceAccess do
   # check source
   def call(
         %{
-          assigns: %{
-            access_token: access_token,
-            user: %User{id: id},
-            source: %Source{id: source_id, user_id: user_id}
-          }
+          assigns:
+            %{
+              user: %User{id: id},
+              source: %Source{id: source_id, user_id: user_id}
+            } = assigns
         } = conn,
         _opts
       )
       when id == user_id do
-    if :ok == Auth.check_scopes(access_token, ["ingest", "ingest:source:#{source_id}"]) or
-         :ok == Auth.check_scopes(access_token, ["ingest", "ingest:collection:#{source_id}"]) do
-      conn
-    else
-      FallbackController.call(conn, {:error, :unauthorized})
+    access_token = Map.get(assigns, :access_token)
+
+    # legacy api key
+    cond do
+      access_token == nil ->
+        conn
+
+      :ok == Auth.check_scopes(access_token, ["ingest", "ingest:source:#{source_id}"]) or
+          :ok == Auth.check_scopes(access_token, ["ingest", "ingest:collection:#{source_id}"]) ->
+        conn
+
+      true ->
+        FallbackController.call(conn, {:error, :unauthorized})
     end
   end
 
   # check endpoint
   def call(
         %{
-          assigns: %{
-            access_token: access_token,
-            user: %User{id: id},
-            endpoint: %Query{id: endpoint_id, user_id: user_id}
-          }
+          assigns:
+            %{
+              user: %User{id: id},
+              endpoint: %Query{id: endpoint_id, user_id: user_id}
+            } = assigns
         } = conn,
         _opts
       )
       when id == user_id do
-    if :ok == Auth.check_scopes(access_token, ["query", "query:endpoint:#{endpoint_id}"]) do
-      conn
-    else
-      FallbackController.call(conn, {:error, :unauthorized})
+    access_token = Map.get(assigns, :access_token)
+
+    cond do
+      # legacy api key
+      access_token == nil ->
+        conn
+
+      :ok == Auth.check_scopes(access_token, ["query", "query:endpoint:#{endpoint_id}"]) ->
+        conn
+
+      true ->
+        FallbackController.call(conn, {:error, :unauthorized})
     end
   end
 
