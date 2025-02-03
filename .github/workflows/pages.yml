@@ -29,7 +29,7 @@ jobs:
         uses: actions/setup-node@v3
         with:
           node-version: ">=16.14"
-          cache: 'npm'
+          cache: "npm"
           cache-dependency-path: docs/docs.logflare.com/package-lock.json
       - name: Setup Pages
         uses: actions/configure-pages@v2
@@ -39,8 +39,8 @@ jobs:
       - name: Build
         working-directory: ./docs/docs.logflare.com
         run: npm run build
-      - name: Upload artifact
-        uses: actions/upload-pages-artifact@v1
+      - name: Upload static files as artifact
+        uses: actions/upload-pages-artifact@v3
         with:
           path: ./docs/docs.logflare.com/build
 
