@@ -15,7 +15,7 @@ defmodule LogflareGrpc.Trace.Server do
 
   use GRPC.Server,
     service: Opentelemetry.Proto.Collector.Trace.V1.TraceService.Service,
-    # compressors: [GRPC.Compressor.Gzip],
+    compressors: [GRPC.Compressor.Gzip],
     http_transcode: true
 
   require Logger
