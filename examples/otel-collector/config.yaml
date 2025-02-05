@@ -12,18 +12,20 @@ exporters:
   otlp:
     # if sending locally
     # endpoint: host.docker.internal:50051
+    endpoint: otel.logflare.app:443
     headers:
-      "x-source": "a1bbcb1c-53f0-413b-a5b7-ec05045c1d44"
+      "x-source": "a1bbcb1c-53f0-413b-a5b7-xxxx"
       "x-api-key": xxxx
     compression: gzip
-    tls:
-      insecure: true
+    # if sending locally, turn off tls
+    # tls:
+    #   insecure: true
   otlphttp:
     # if sending locally
     # endpoint: "http://host.docker.internal:4000"
     endpoint: "https://otel.logflare.app:443"
     headers:
-      "x-source": "75e49f4d-c2c5-4d0e-8aea-c61997111f9d"
+      "x-source": "75e49f4d-c2c5-4d0e-8aea-xxxx"
       "x-api-key": xxxx
     compression: gzip
 
