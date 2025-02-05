@@ -1,0 +1,47 @@
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+processors:
+  batch:
+
+exporters:
+  otlp:
+    # if sending locally
+    # endpoint: host.docker.internal:50051
+    headers:
+      "x-source": "a1bbcb1c-53f0-413b-a5b7-ec05045c1d44"
+      "x-api-key": xxxx
+    compression: gzip
+    tls:
+      insecure: true
+  otlphttp:
+    # if sending locally
+    # endpoint: "http://host.docker.internal:4000"
+    endpoint: "https://otel.logflare.app:443"
+    headers:
+      "x-source": "75e49f4d-c2c5-4d0e-8aea-c61997111f9d"
+      "x-api-key": xxxx
+    compression: gzip
+
+extensions:
+  health_check:
+
+service:
+  extensions: [health_check]
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [otlphttp, otlp]
+    metrics:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [otlphttp, otlp]
+    logs:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [otlphttp, otlp]
