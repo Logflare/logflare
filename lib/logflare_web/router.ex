@@ -70,15 +70,15 @@ defmodule LogflareWeb.Router do
   end
 
   pipeline :require_endpoint_auth do
-    plug(LogflareWeb.Plugs.VerifyApiAccess, scopes: ~w(public))
+    plug(LogflareWeb.Plugs.VerifyApiAccess)
     plug(LogflareWeb.Plugs.FetchResource)
-    plug(LogflareWeb.Plugs.VerifyResourceOwnership)
+    plug(LogflareWeb.Plugs.VerifyResourceAccess)
   end
 
   pipeline :require_ingest_api_auth do
-    plug(LogflareWeb.Plugs.VerifyApiAccess, scopes: ~w(public))
+    plug(LogflareWeb.Plugs.VerifyApiAccess)
     plug(LogflareWeb.Plugs.FetchResource)
-    plug(LogflareWeb.Plugs.VerifyResourceOwnership)
+    plug(LogflareWeb.Plugs.VerifyResourceAccess)
     # We are ensuring source start in Logs.ingest
     # plug LogflareWeb.Plugs.EnsureSourceStarted
     plug(LogflareWeb.Plugs.SetPlanFromCache)
