@@ -311,7 +311,7 @@ defmodule Logflare.Source.RateCounterServer do
       Counters.create(source_id)
     end
 
-    Counters.increment_ets_count(source_id, 0)
+    Counters.increment(source_id, 0)
     Counters.increment_bq_count(source_id, log_count)
   end
 end

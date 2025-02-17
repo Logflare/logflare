@@ -44,12 +44,6 @@ defmodule Logflare.Sources.Counters do
     {:ok, table}
   end
 
-  @spec increment_ets_count(atom, non_neg_integer) :: success_tuple
-  def increment_ets_count(table, count) do
-    :ets.update_counter(@ets_table_name, table, {2, count}, make_default(table))
-    {:ok, table}
-  end
-
   @spec increment_bq_count(atom, non_neg_integer) :: success_tuple
   def increment_bq_count(table, count) do
     :ets.update_counter(@ets_table_name, table, {4, count}, make_default(table))
