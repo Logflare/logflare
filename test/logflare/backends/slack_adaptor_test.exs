@@ -1,8 +1,8 @@
 defmodule Logflare.Backends.SlackAdaptorTest do
   @moduledoc false
   use Logflare.DataCase, async: false
-  alias Logflare.Source.SlackHookServer
   import Logflare.Backends.Adaptor.SlackAdaptor
+  alias Logflare.Backends.Adaptor.SlackAdaptor
   doctest Logflare.Backends.Adaptor.SlackAdaptor, except: [to_rich_text_preformatted: 1]
 
   test "to_rich_text_preformatted/1" do
@@ -120,7 +120,7 @@ defmodule Logflare.Backends.SlackAdaptorTest do
                  ]
                }
              ]
-           } = SlackHookServer.Client.slack_post_body(source, 5, [le])
+           } = SlackAdaptor.build_message(source, [le], 5)
 
     refute text =~ Integer.to_string(le.body["timestamp"])
     assert msg == le.body["event_message"]

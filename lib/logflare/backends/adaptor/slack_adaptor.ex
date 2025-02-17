@@ -46,9 +46,14 @@ defmodule Logflare.Backends.Adaptor.SlackAdaptor do
     Client.send(url, body)
   end
 
-  def send_message(%Source{id: id, slack_hook_url: url, name: source_name}, log_events, rate) do
-    source_link = Endpoint.static_url() <> Routes.source_path(Endpoint, :show, id)
+  def send_message(%Source{slack_hook_url: url} = source, log_events, rate) do
+    body = build_message(source, log_events, rate)
 
+    Logger.metadata(slackhook_request: %{url: url, body: inspect(body)})
+    Client.send(url, body)
+  end
+
+  def build_message(%Source{id: id, name: source_name}, log_events, rate) do
     events =
       log_events
       |> Enum.map(fn le ->
@@ -56,17 +61,15 @@ defmodule Logflare.Backends.Adaptor.SlackAdaptor do
         %{DateTime.to_string(dt) => le.body["event_message"]}
       end)
 
-    body =
-      to_body(events,
-        button_link: %{
-          markdown_text: "*#{rate} new event(s)* for `#{source_name}`",
-          text: "View events",
-          url: source_link
-        }
-      )
+    source_link = Endpoint.static_url() <> Routes.source_path(Endpoint, :show, id)
 
-    Logger.metadata(slackhook_request: %{url: url, body: inspect(body)})
-    Client.send(url, body)
+    to_body(events,
+      button_link: %{
+        markdown_text: "*#{rate} new event(s)* for `#{source_name}`",
+        text: "View events",
+        url: source_link
+      }
+    )
   end
 
   @doc """
