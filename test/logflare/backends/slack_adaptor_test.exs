@@ -48,6 +48,11 @@ defmodule Logflare.Backends.SlackAdaptorTest do
              to_rich_text_preformatted(%{"123" => 123.2})
   end
 
+  test "to_rich_text_preformatted/1 with nil" do
+    assert [] =
+             to_rich_text_preformatted(%{"123" => nil})
+  end
+
   test "to_rich_text_preformatted/1 with maps" do
     assert [%{text: "123:"}, %{text: " "}, %{text: "{\"test\":\"test\"}"}] =
              to_rich_text_preformatted(%{"123" => %{"test" => "test"}})

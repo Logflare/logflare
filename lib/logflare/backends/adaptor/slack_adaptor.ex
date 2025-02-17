@@ -160,6 +160,9 @@ defmodule Logflare.Backends.Adaptor.SlackAdaptor do
       v_str = stringify(v)
 
       cond do
+        v == nil ->
+          []
+
         is_number(v) and String.length(v_str) == 16 ->
           # convert to timestamp
           {:ok, dt} = DateTime.from_unix(v, :microsecond)
