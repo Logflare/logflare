@@ -30,6 +30,7 @@ defmodule Logflare.SqlTest do
             "select STRUCT()",
             "select STRUCT(\'abc\')",
             "select STRUCT(1, t.str_col)"
+            # sqlparser-rs does not handle this yet.
             # "select STRUCT(str_col AS abc)"
           ] do
         assert {:ok, _v2} = Sql.transform(:bq_sql, input, user)
