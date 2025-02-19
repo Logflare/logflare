@@ -32,9 +32,9 @@
   },
   "devDependencies": {
     "autoprefixer": "^10.4.13",
-    "esbuild": "^0.18.5",
+    "esbuild": "^0.25.0",
     "esbuild-plugin-copy": "^2.0.2",
-    "esbuild-sass-plugin": "^2.10.0",
+    "esbuild-sass-plugin": "^3.3.1",
     "glob": "^10.3.1",
     "postcss": "^8.4.31",
     "sass": "^1.58.3",
