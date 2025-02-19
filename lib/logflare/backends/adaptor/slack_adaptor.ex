@@ -6,7 +6,10 @@ defmodule Logflare.Backends.Adaptor.SlackAdaptor do
 
   alias __MODULE__.Client
 
+  alias Logflare.Source
   alias Logflare.Alerting.AlertQuery
+  alias LogflareWeb.Endpoint
+  alias LogflareWeb.Router.Helpers, as: Routes
   @endpoint LogflareWeb.Endpoint
   @doc """
   Sends a given payload to slack.
@@ -41,6 +44,32 @@ defmodule Logflare.Backends.Adaptor.SlackAdaptor do
   def send_message(url, payload) when is_binary(url) do
     body = payload |> to_body()
     Client.send(url, body)
+  end
+
+  def send_message(%Source{slack_hook_url: url} = source, log_events, rate) do
+    body = build_message(source, log_events, rate)
+
+    Logger.metadata(slackhook_request: %{url: url, body: inspect(body)})
+    Client.send(url, body)
+  end
+
+  def build_message(%Source{id: id, name: source_name}, log_events, rate) do
+    events =
+      log_events
+      |> Enum.map(fn le ->
+        {:ok, dt} = DateTime.from_unix(le.body["timestamp"], :microsecond)
+        %{DateTime.to_string(dt) => le.body["event_message"]}
+      end)
+
+    source_link = Endpoint.static_url() <> Routes.source_path(Endpoint, :show, id)
+
+    to_body(events,
+      button_link: %{
+        markdown_text: "*#{rate} new event(s)* for `#{source_name}`",
+        text: "View events",
+        url: source_link
+      }
+    )
   end
 
   @doc """
@@ -131,6 +160,9 @@ defmodule Logflare.Backends.Adaptor.SlackAdaptor do
       v_str = stringify(v)
 
       cond do
+        v == nil ->
+          []
+
         is_number(v) and String.length(v_str) == 16 ->
           # convert to timestamp
           {:ok, dt} = DateTime.from_unix(v, :microsecond)
