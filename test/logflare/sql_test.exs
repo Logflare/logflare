@@ -22,6 +22,20 @@ defmodule Logflare.SqlTest do
   end
 
   describe "bigquery dialect" do
+    test "parser can handle struct definitions" do
+      user = insert(:user)
+
+      for input <- [
+            "select STRUCT(1,2,3)",
+            "select STRUCT()",
+            "select STRUCT(\'abc\')",
+            "select STRUCT(1, t.str_col)"
+            # "select STRUCT(str_col AS abc)"
+          ] do
+        assert {:ok, _v2} = Sql.transform(:bq_sql, input, user)
+      end
+    end
+
     test "parser can handle complex sql" do
       user = insert(:user)
 
