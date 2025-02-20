@@ -12,7 +12,8 @@ crate-type = ["cdylib"]
 
 [dependencies]
 rustler = "0.29.0"
-sqlparser = {git = "https://github.com/Logflare/sqlparser-rs", branch = "main", features = ["serde"]} 
+sqlparser = { version = "0.33.0", features = ["serde"]}
+# sqlparser = {git = "https://github.com/Logflare/sqlparser-rs", branch = "main", features = ["serde"]} 
 # sqlparser = {version = "0.27.0", features = ["serde"]} 
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
