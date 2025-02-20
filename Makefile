@@ -208,6 +208,16 @@ deploy.prod.versioned:
 		--substitutions=_IMAGE_TAG=$(VERSION),_NORMALIZED_IMAGE_TAG=$(NORMALIZED_VERSION),_CLUSTER=prod-c \
 		--region=europe-west3 \
 		--gcs-log-dir="gs://logflare-prod_cloudbuild-logs/logs"
+	gcloud builds submit . \
+		--config=./cloudbuild/prod/pre-deploy.yaml \
+		--substitutions=_IMAGE_TAG=$(VERSION),_NORMALIZED_IMAGE_TAG=$(NORMALIZED_VERSION),_CLUSTER=prod-d \
+		--region=europe-west1 \
+		--gcs-log-dir="gs://logflare-prod_cloudbuild-logs/logs"
+	gcloud builds submit . \
+		--config=./cloudbuild/prod/pre-deploy.yaml \
+		--substitutions=_IMAGE_TAG=$(VERSION),_NORMALIZED_IMAGE_TAG=$(NORMALIZED_VERSION),_CLUSTER=prod-e \
+		--region=europe-west1 \
+		--gcs-log-dir="gs://logflare-prod_cloudbuild-logs/logs"
 
 	@echo "Instance template has been created successfully. Complete the deployment by navigating to https://console.cloud.google.com/compute/instanceGroups/list?hl=en&project=logflare-232118"
 .PHONY: deploy.staging.main
