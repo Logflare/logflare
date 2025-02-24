@@ -10,7 +10,6 @@ defmodule Logflare.Users do
   alias Logflare.TeamUsers.TeamUser
   alias Logflare.User
   alias Logflare.Users
-  alias Logflare.Partners.PartnerUser
   alias Logflare.Users.UserPreferences
 
   @max_limit 100
@@ -61,7 +60,7 @@ defmodule Logflare.Users do
     |> Enum.reduce(from(u in User), fn
       {:partner_id, id}, q when is_integer(id) ->
         q
-        |> join(:inner, [u], pu in PartnerUser, on: pu.user_id == u.id and pu.partner_id == ^id)
+        |> where([u], u.partner_id == ^id)
 
       {:metadata, %{} = filters}, q ->
         Enum.reduce(filters, q, fn {filter_k, v}, acc ->

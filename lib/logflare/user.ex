@@ -11,7 +11,9 @@ defmodule Logflare.User do
   alias Logflare.Billing.BillingAccount
   alias Logflare.Google.BigQuery
   alias Logflare.Users.UserPreferences
+  alias Logflare.Users.PartnerDetails
   alias Logflare.Vercel
+  alias Logflare.Partners.Partner
   alias Logflare.Alerting.AlertQuery
 
   @derive {Jason.Encoder,
@@ -84,6 +86,7 @@ defmodule Logflare.User do
     field :endpoints_beta, :boolean, default: false
     field :metadata, :map
     embeds_one :preferences, UserPreferences
+    embeds_one :partner_details, PartnerDetails
 
     has_many :billing_counts, Logflare.Billing.BillingCount, on_delete: :delete_all
     has_many :sources, Source
@@ -92,6 +95,7 @@ defmodule Logflare.User do
     has_many :vercel_auths, Vercel.Auth
 
     has_one :team, Team
+    belongs_to :partner, Partner
     has_one :billing_account, BillingAccount
 
     timestamps()
@@ -123,7 +127,8 @@ defmodule Logflare.User do
               :api_quota,
               :bigquery_udfs_hash,
               :billing_enabled,
-              :endpoints_beta
+              :endpoints_beta,
+              :partner_id
             ]
 
   @doc """
@@ -145,6 +150,7 @@ defmodule Logflare.User do
     |> add_token()
     |> add_provider_uid()
     |> cast_assoc(:team)
+    |> cast_embed(:partner_details, on_replace: :delete)
     |> default_validations(user)
   end
 

@@ -2,7 +2,6 @@ defmodule Logflare.PartnerTest do
   use Logflare.DataCase
 
   alias Logflare.Partners
-  alias Logflare.Partners.PartnerUser
   alias Logflare.Repo
   alias Logflare.User
   alias Logflare.Google.CloudResourceManager
@@ -35,21 +34,19 @@ defmodule Logflare.PartnerTest do
       email = TestUtils.gen_email()
 
       assert {:ok, user} = Partners.create_user(partner, %{"email" => email})
-
-      partner = Repo.preload(partner, :users)
-      assert [_user] = partner.users
-      assert user.email == String.downcase(email)
+      assert user.partner_id == partner.id
+      assert Repo.preload(user, :partner).partner.id == partner.id
     end
   end
 
-  describe "get_partner_by_token/1" do
+  describe "get_partner_by_uuid/1" do
     test "nil if not found" do
-      assert is_nil(Partners.get_partner_by_token(TestUtils.gen_uuid()))
+      assert is_nil(Partners.get_partner_by_uuid(TestUtils.gen_uuid()))
     end
 
     test "partner struct if exists" do
       %{token: token} = partner = insert(:partner)
-      assert partner == Partners.get_partner_by_token(token)
+      assert partner == Partners.get_partner_by_uuid(token)
     end
   end
 
@@ -60,14 +57,12 @@ defmodule Logflare.PartnerTest do
     end
   end
 
-  describe "get_user_by_token/2" do
+  describe "get_user_by_uuid/2" do
     test "fetches user if user was created by given partner" do
       partner = insert(:partner)
       email = TestUtils.gen_email()
-      {:ok, %{token: token}} = Partners.create_user(partner, %{"email" => email})
-
-      result = Partners.get_user_by_token(partner, token)
-      assert token == result.token
+      {:ok, %{id: id} = user} = Partners.create_user(partner, %{"email" => email})
+      assert %User{id: ^id} = Partners.get_user_by_uuid(partner, user.token)
     end
 
     test "nil if user was not created by given partner" do
@@ -76,7 +71,7 @@ defmodule Logflare.PartnerTest do
 
       {:ok, %{token: token}} = Partners.create_user(insert(:partner), %{"email" => email})
 
-      assert is_nil(Partners.get_user_by_token(partner, token))
+      assert is_nil(Partners.get_user_by_uuid(partner, token))
     end
   end
 
@@ -89,13 +84,11 @@ defmodule Logflare.PartnerTest do
 
       {:ok, %{id: id} = user} = Partners.create_user(partner, %{"email" => TestUtils.gen_email()})
 
-      {:ok, %{id: not_deleted_id}} =
-        Partners.create_user(partner, %{"email" => TestUtils.gen_email()})
+      assert {:ok, %{id: _}} =
+               Partners.create_user(partner, %{"email" => TestUtils.gen_email()})
 
       assert {:ok, %User{id: ^id}} = Partners.delete_user(partner, user)
-
-      partner = Repo.preload(partner, :users)
-      assert [%User{id: ^not_deleted_id}] = partner.users
+      refute Partners.get_user_by_uuid(partner, user.token)
     end
 
     test "does not delete user if user was created by another partner" do
@@ -106,16 +99,19 @@ defmodule Logflare.PartnerTest do
   end
 
   test "upgrade_user/2, downgrade_user/2, user_upgraded?/1" do
-    user = insert(:user)
-    partner = insert(:partner, users: [user])
+    partner = insert(:partner)
+    user = insert(:user, partner: partner)
     assert Partners.user_upgraded?(user) == false
-    assert {:ok, %PartnerUser{upgraded: true}} = Partners.upgrade_user(partner, user)
+    assert {:ok, %User{partner_details: %{upgraded: true}} = user} = Partners.upgrade_user(user)
     assert Partners.user_upgraded?(user)
-    assert {:ok, %PartnerUser{upgraded: false}} = Partners.downgrade_user(partner, user)
+
+    assert {:ok, %User{partner_details: %{upgraded: false}} = user} =
+             Partners.downgrade_user(user)
+
     assert Partners.user_upgraded?(user) == false
 
     assert Partners.user_upgraded?(insert(:user)) == false
 
-    assert {:error, :not_found} = Partners.upgrade_user(partner, insert(:user))
+    assert {:error, :no_partner} = Partners.upgrade_user(insert(:user))
   end
 end

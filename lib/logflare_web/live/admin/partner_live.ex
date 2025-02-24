@@ -30,7 +30,7 @@ defmodule LogflareWeb.Admin.PartnerLive do
   end
 
   def handle_event("create-token", %{"token" => token, "description" => description}, socket) do
-    partner = Partners.get_partner_by_token(token)
+    partner = Partners.get_partner_by_uuid(token)
     {:ok, token} = Auth.create_access_token(partner, %{description: description})
 
     Logger.debug("Creating access token for partner, partner_id=#{inspect(partner.id)}")

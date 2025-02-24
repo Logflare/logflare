@@ -26,9 +26,10 @@ defmodule Logflare.UsersTest do
 
   describe "Users.list_users/1" do
     test "lists all users created by a partner" do
-      [user | others] = insert_list(3, :user)
-      insert(:partner, users: others)
-      partner = insert(:partner, users: [user])
+      partner_other = insert(:partner)
+      insert_list(3, :user, partner: partner_other)
+      partner = insert(:partner)
+      user = insert(:user, partner: partner)
 
       assert [user_result] = Users.list_users(partner_id: partner.id)
       assert user_result.id == user.id

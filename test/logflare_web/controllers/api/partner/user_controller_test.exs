@@ -62,18 +62,18 @@ defmodule LogflareWeb.Api.Partner.UserControllerTest do
     test "get by metadata search", %{conn: conn} do
       insert(:user,
         metadata: %{
-          my_value: "other_val"
+          my_value: "other_value"
         }
       )
 
-      user =
-        insert(:user,
-          metadata: %{
-            my_value: "test"
-          }
-        )
+      partner = insert(:partner)
 
-      partner = insert(:partner, users: [user])
+      insert(:user,
+        partner: partner,
+        metadata: %{
+          my_value: "test"
+        }
+      )
 
       assert [user] =
                conn
@@ -137,8 +137,8 @@ defmodule LogflareWeb.Api.Partner.UserControllerTest do
 
   describe "PUT user tiers" do
     test "upgrade/downgrade", %{conn: conn} do
-      user = insert(:user)
-      partner = insert(:partner, users: [user])
+      partner = insert(:partner)
+      user = insert(:user, partner: partner)
 
       # upgrade
       assert %{"tier" => "metered"} =
@@ -213,7 +213,7 @@ defmodule LogflareWeb.Api.Partner.UserControllerTest do
              |> MapSet.new()
              |> MapSet.equal?(@allowed_fields)
 
-      assert Partners.get_user_by_token(partner, user.token) == nil
+      assert Partners.get_user_by_uuid(partner, user.token) == nil
     end
 
     test "returns 401 with the wrong auth token", %{
