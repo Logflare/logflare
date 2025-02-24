@@ -32,7 +32,8 @@ defmodule Logflare.User do
              :api_quota,
              :company,
              :token,
-             :metadata
+             :metadata,
+             :partner_details
            ]}
 
   @default_user_api_quota 150

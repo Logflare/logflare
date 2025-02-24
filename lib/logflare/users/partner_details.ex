@@ -3,6 +3,10 @@ defmodule Logflare.Users.PartnerDetails do
   use TypedEctoSchema
   import Ecto.Changeset
 
+  @derive {Jason.Encoder,
+           only: [
+             :upgraded
+           ]}
   typed_embedded_schema do
     field :upgraded, :boolean
   end

@@ -103,6 +103,8 @@ defmodule LogflareWeb.Api.Partner.UserControllerTest do
                |> json_response(200)
 
       assert response["token"] == user.token
+      # no details set yet on user
+      assert response["partner_details"] == nil
 
       assert response
              |> Map.keys()
@@ -141,14 +143,14 @@ defmodule LogflareWeb.Api.Partner.UserControllerTest do
       user = insert(:user, partner: partner)
 
       # upgrade
-      assert %{"tier" => "metered"} =
+      assert %{"tier" => "metered", "partner_details" => %{"upgraded" => true}} =
                conn
                |> add_partner_access_token(partner)
                |> put(~p"/api/partner/users/#{user.token}/upgrade")
                |> json_response(200)
 
       # downgrade
-      assert %{"tier" => "free"} =
+      assert %{"tier" => "free", "partner_details" => %{"upgraded" => false}} =
                conn
                |> recycle()
                |> add_partner_access_token(partner)
