@@ -5,6 +5,7 @@ defmodule Logflare.PartnerTest do
   alias Logflare.Repo
   alias Logflare.User
   alias Logflare.Google.CloudResourceManager
+  import Ecto.Query
 
   describe "get/1" do
     test "returns the partner with given id" do
@@ -113,5 +114,34 @@ defmodule Logflare.PartnerTest do
     assert Partners.user_upgraded?(insert(:user)) == false
 
     assert {:error, :no_partner} = Partners.upgrade_user(insert(:user))
+  end
+
+  test "backwards compat: user upgrading with partner_users table, do upgrading" do
+    partner = insert(:partner)
+    user = insert(:user, partner: partner)
+
+    Repo.insert_all("partner_users", [
+      %{partner_id: partner.id, user_id: user.id, upgraded: false}
+    ])
+
+    assert Partners.user_upgraded?(user) == false
+    assert {:ok, %User{partner_details: %{upgraded: true}} = user} = Partners.upgrade_user(user)
+    assert Repo.one(from(pu in "partner_users", select: pu.upgraded)) == true
+    assert Partners.user_upgraded?(user)
+  end
+
+  test "backwards compat: user downgrading with partner_users table, do downgrade" do
+    partner = insert(:partner)
+    user = insert(:user, partner: partner)
+
+    Repo.insert_all("partner_users", [%{partner_id: partner.id, user_id: user.id, upgraded: true}])
+
+    assert Partners.user_upgraded?(user)
+
+    assert {:ok, %User{partner_details: %{upgraded: false}} = user} =
+             Partners.downgrade_user(user)
+
+    refute Partners.user_upgraded?(user)
+    refute Repo.one(from(pu in "partner_users", select: pu.upgraded))
   end
 end
