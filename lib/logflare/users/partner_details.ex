@@ -7,6 +7,8 @@ defmodule Logflare.Users.PartnerDetails do
            only: [
              :upgraded
            ]}
+
+  @primary_key false
   typed_embedded_schema do
     field :upgraded, :boolean
   end

@@ -107,7 +107,7 @@ defmodule Logflare.Partners do
       )
       when is_boolean(value) and partner_id != nil do
     updated_details =
-      (details || %{}) |> Map.take([:upgraded, :id]) |> Map.merge(%{upgraded: value})
+      (details || %{}) |> Map.take([:upgraded]) |> Map.merge(%{upgraded: value})
 
     # backwards compat
     Repo.update_all(

@@ -87,7 +87,7 @@ defmodule Logflare.User do
     field :endpoints_beta, :boolean, default: false
     field :metadata, :map
     embeds_one :preferences, UserPreferences
-    embeds_one :partner_details, PartnerDetails
+    embeds_one :partner_details, PartnerDetails, on_replace: :delete
 
     has_many :billing_counts, Logflare.Billing.BillingCount, on_delete: :delete_all
     has_many :sources, Source
