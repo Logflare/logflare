@@ -31,7 +31,7 @@ defmodule LogflareWeb.Source.SearchLV do
 
   @tail_search_interval 500
   @user_idle_interval :timer.minutes(5)
-  @default_qs "c:count(*) c:group_by(t::minute)"
+  @default_qs "c:count(*) c:group_by(t::hour)"
 
   def mount(
         %{"source_id" => source_id} = params,

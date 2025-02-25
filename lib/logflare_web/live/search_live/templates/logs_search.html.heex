@@ -109,7 +109,7 @@
       %{
         data: if(@search_op_log_aggregates, do: @search_op_log_aggregates.rows, else: []),
         loading: @chart_loading,
-        chart_period: get_chart_period(@lql_rules, "minute"),
+        chart_period: get_chart_period(@lql_rules, "hour"),
         user_local_timezone: @user_local_timezone,
         use_local_time: @use_local_time,
         chart_data_shape_id:

@@ -7,7 +7,7 @@ defmodule Logflare.Lql.Utils do
     %ChartRule{
       aggregate: :count,
       path: "timestamp",
-      period: :minute,
+      period: :hour,
       value_type: :datetime
     }
   end
