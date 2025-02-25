@@ -64,15 +64,15 @@ defmodule LogflareWeb.Api.Partner.UserController do
 
   def upgrade(%{assigns: %{partner: partner}} = conn, %{"user_token" => user_token}) do
     with user when not is_nil(user) <- Partners.get_user_by_uuid(partner, user_token),
-         {:ok, %_{}} <- Partners.upgrade_user(user) do
-      json(conn, %{tier: "metered"})
+         {:ok, %_{} = user} <- Partners.upgrade_user(user) do
+      json(conn, Map.take(user, @allowed_fields))
     end
   end
 
   def downgrade(%{assigns: %{partner: partner}} = conn, %{"user_token" => user_token}) do
     with user when not is_nil(user) <- Partners.get_user_by_uuid(partner, user_token),
-         {:ok, %_{}} <- Partners.downgrade_user(user) do
-      json(conn, %{tier: "free"})
+         {:ok, %_{} = user} <- Partners.downgrade_user(user) do
+      json(conn, Map.take(user, @allowed_fields))
     end
   end
 

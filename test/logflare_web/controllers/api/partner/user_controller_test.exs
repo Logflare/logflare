@@ -6,7 +6,7 @@ defmodule LogflareWeb.Api.Partner.UserControllerTest do
     [partner: insert(:partner)]
   end
 
-  @allowed_fields MapSet.new(~w(api_quota company email name phone token metadata))
+  @allowed_fields MapSet.new(~w(partner_details email name token metadata))
 
   describe "index/2" do
     test "returns 200 and a list of users created by given partner", %{
@@ -143,14 +143,14 @@ defmodule LogflareWeb.Api.Partner.UserControllerTest do
       user = insert(:user, partner: partner)
 
       # upgrade
-      assert %{"tier" => "metered", "partner_details" => %{"upgraded" => true}} =
+      assert %{"partner_details" => %{"upgraded" => true}} =
                conn
                |> add_partner_access_token(partner)
                |> put(~p"/api/partner/users/#{user.token}/upgrade")
                |> json_response(200)
 
       # downgrade
-      assert %{"tier" => "free", "partner_details" => %{"upgraded" => false}} =
+      assert %{"partner_details" => %{"upgraded" => false}} =
                conn
                |> recycle()
                |> add_partner_access_token(partner)
