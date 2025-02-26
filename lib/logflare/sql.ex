@@ -346,9 +346,19 @@ defmodule Logflare.Sql do
         table_alias
       end
 
+    get_from = fn
+      %{"Query" => %{"body" => %{"Select" => %{"from" => from}}}} ->
+        from
+
+      %{"Query" => %{"body" => %{"SetOperation" => set}}} ->
+        get_in(set, ["left", "Select", "from"]) ++ get_in(set, ["right", "Select", "from"])
+    end
+
     unknown_table_names =
       for statement <- ast,
-          from <- get_in(statement, ["Query", "body", "Select", "from"]),
+          # handle normal query
+          # handle union all
+          from <- get_from.(statement),
           %{"value" => table_name} <- get_in(from, ["relation", "Table", "name"]),
           table_name not in aliases do
         table_name
