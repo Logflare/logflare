@@ -37,6 +37,22 @@ defmodule Logflare.SqlTest do
       end
     end
 
+    test "parser can handle sandboxed CTEs with union all" do
+      user = insert(:user)
+      insert(:source, user: user, name: "my_table")
+
+      # valid CTE queries with UNION ALL
+      input = """
+      with cte1 as (select a from my_table),
+           cte2 as (select b from my_table)
+      select a from cte1
+      union all
+      select b from cte2
+      """
+
+      assert {:ok, _result} = Sql.transform(:bq_sql, input, user)
+    end
+
     test "parser can handle complex sql" do
       user = insert(:user)
 
@@ -118,6 +134,18 @@ defmodule Logflare.SqlTest do
               {"with src as (select a from my_table) select c from src",
                "select c from src order by c asc"},
               "with src as (select a from #{table}) select c from src order by c asc"
+            },
+            # sandboxed CTEs with union all
+            {
+              {"with cte1 as (select a from my_table), cte2 as (select b from my_table) select a from cte1",
+               "select a from cte1 union all select b from cte2"},
+              "with cte1 as (select a from #{table}), cte2 as (select b from #{table}) select a from cte1 union all select b from cte2"
+            },
+            # handle nested CTEs
+            {
+              {"with cte1 as (select 'val' as a) select a from cte1",
+               "with cte2 as (select 'val' as b) select a, b from cte1, cte2"},
+              "with cte1 as (select 'val' as a) (with cte2 as (select 'val' as b) select a, b from cte1, cte2)"
             }
           ] do
         assert {:ok, v2} = Sql.transform(:bq_sql, input, user)
