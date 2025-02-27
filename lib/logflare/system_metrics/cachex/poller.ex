@@ -10,7 +10,6 @@ defmodule Logflare.SystemMetrics.Cachex.Poller do
 
   @poll_every 30_000
   @caches [
-    Logflare.ContextCache,
     Logflare.Users.Cache,
     Logflare.Sources.Cache,
     Logflare.Billing.Cache,

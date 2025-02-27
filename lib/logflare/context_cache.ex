@@ -30,31 +30,6 @@ defmodule Logflare.ContextCache do
 
   require Logger
 
-  alias Logflare.Utils
-
-  @cache __MODULE__
-
-  def child_spec(_) do
-    stats = Application.get_env(:logflare, :cache_stats, false)
-
-    %{
-      id: __MODULE__,
-      start:
-        {Cachex, :start_link,
-         [
-           @cache,
-           [
-             hooks:
-               [
-                 if(stats, do: Utils.cache_stats()),
-                 Utils.cache_limit(500_000)
-               ]
-               |> Enum.filter(& &1),
-             expiration: Utils.cache_expiration_min(600, 10)
-           ]
-         ]}
-    }
-  end
 
   @spec apply_fun(atom(), tuple() | atom(), [list()]) :: any()
   def apply_fun(context, {fun, _arity}, args), do: apply_fun(context, fun, args)
@@ -69,9 +44,6 @@ defmodule Logflare.ContextCache do
            {:commit, {:cached, apply(context, fun, args)}}
          end) do
       {:commit, {:cached, value}} ->
-        keys_key = {{context, select_key(value)}, :erlang.phash2(cache_key)}
-        Cachex.put(@cache, keys_key, cache_key)
-
         value
 
       {:ok, {:cached, value}} ->
@@ -92,24 +64,50 @@ defmodule Logflare.ContextCache do
    - Delete the cache entry for that context cache e.g. `Logflare.Users.Cache`
   """
 
-  @spec bust_keys(list()) :: {:ok, :busted}
-  def bust_keys([]), do: {:ok, :busted}
+  @spec bust_keys(list()) :: {:ok, non_neg_integer()}
+  def bust_keys([]), do: {:ok, 0}
 
   def bust_keys(values) when is_list(values) do
-    for {context, primary_key} <- values do
-      filter = {:==, {:element, 1, :key}, {{context, primary_key}}}
-      query = Cachex.Query.build(where: filter, output: {:key, :value})
-      context_cache = cache_name(context)
+    busted =
+      for {context, primary_key} <- values, reduce: 0 do
+        acc ->
+          {:ok, n} = bust_key({context, primary_key})
+          acc + n
+      end
 
-      Logflare.ContextCache
-      |> Cachex.stream!(query)
-      |> Enum.each(fn {k, v} ->
-        Cachex.del(context_cache, v)
-        Cachex.del(@cache, k)
-      end)
-    end
+    {:ok, busted}
+  end
 
-    {:ok, :busted}
+  defp bust_key({context, pkey}) do
+    context_cache = cache_name(context)
+
+    filter =
+      {
+        # use orelse to prevent 2nd condition failing as value is not a map
+        :orelse,
+        {:is_list, {:element, 2, :value}},
+        {:==, {:map_get, :id, {:element, 2, :value}}, pkey}
+      }
+
+    query =
+      Cachex.Query.build(where: filter, output: {:key, :value})
+
+    context_cache
+    |> Cachex.stream!(query)
+    |> Enum.reduce(0, fn
+      {k, {:cached, v}}, acc when is_list(v) ->
+        if Enum.any?(v, fn %{id: id} -> id == pkey end) do
+          Cachex.del(context_cache, k)
+          acc + 1
+        else
+          acc
+        end
+
+      {k, v}, acc ->
+        Cachex.del(context_cache, k)
+        acc + 1
+    end)
+    |> then(&{:ok, &1})
   end
 
   @spec cache_name(atom()) :: atom()
