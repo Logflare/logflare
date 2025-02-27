@@ -30,7 +30,6 @@ defmodule Logflare.ContextCache do
 
   require Logger
 
-
   @spec apply_fun(atom(), tuple() | atom(), [list()]) :: any()
   def apply_fun(context, {fun, _arity}, args), do: apply_fun(context, fun, args)
 
