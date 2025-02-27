@@ -103,11 +103,10 @@ defmodule Logflare.PartnerTest do
     partner = insert(:partner)
     user = insert(:user, partner: partner)
     assert Partners.user_upgraded?(user) == false
-    assert {:ok, %User{partner_details: %{upgraded: true}} = user} = Partners.upgrade_user(user)
+    assert {:ok, %User{partner_upgraded: true} = user} = Partners.upgrade_user(user)
     assert Partners.user_upgraded?(user)
 
-    assert {:ok, %User{partner_details: %{upgraded: false}} = user} =
-             Partners.downgrade_user(user)
+    assert {:ok, %User{partner_upgraded: false} = user} = Partners.downgrade_user(user)
 
     assert Partners.user_upgraded?(user) == false
 
@@ -125,21 +124,20 @@ defmodule Logflare.PartnerTest do
     ])
 
     assert Partners.user_upgraded?(user) == false
-    assert {:ok, %User{partner_details: %{upgraded: true}} = user} = Partners.upgrade_user(user)
+    assert {:ok, %User{partner_upgraded: true} = user} = Partners.upgrade_user(user)
     assert Repo.one(from(pu in "partner_users", select: pu.upgraded)) == true
     assert Partners.user_upgraded?(user)
   end
 
   test "backwards compat: user downgrading with partner_users table, do downgrade" do
     partner = insert(:partner)
-    user = insert(:user, partner: partner)
+    user = insert(:user, partner: partner, partner_upgraded: true)
 
     Repo.insert_all("partner_users", [%{partner_id: partner.id, user_id: user.id, upgraded: true}])
 
     assert Partners.user_upgraded?(user)
 
-    assert {:ok, %User{partner_details: %{upgraded: false}} = user} =
-             Partners.downgrade_user(user)
+    assert {:ok, %User{partner_upgraded: false} = user} = Partners.downgrade_user(user)
 
     refute Partners.user_upgraded?(user)
     refute Repo.one(from(pu in "partner_users", select: pu.upgraded))

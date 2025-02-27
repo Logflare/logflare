@@ -11,7 +11,6 @@ defmodule Logflare.User do
   alias Logflare.Billing.BillingAccount
   alias Logflare.Google.BigQuery
   alias Logflare.Users.UserPreferences
-  alias Logflare.Users.PartnerDetails
   alias Logflare.Vercel
   alias Logflare.Partners.Partner
   alias Logflare.Alerting.AlertQuery
@@ -33,7 +32,7 @@ defmodule Logflare.User do
              :company,
              :token,
              :metadata,
-             :partner_details
+             :partner_upgraded
            ]}
 
   @default_user_api_quota 150
@@ -87,7 +86,7 @@ defmodule Logflare.User do
     field :endpoints_beta, :boolean, default: false
     field :metadata, :map
     embeds_one :preferences, UserPreferences
-    embeds_one :partner_details, PartnerDetails, on_replace: :delete
+    field :partner_upgraded, :boolean, default: false
 
     has_many :billing_counts, Logflare.Billing.BillingCount, on_delete: :delete_all
     has_many :sources, Source
@@ -116,7 +115,8 @@ defmodule Logflare.User do
     :bigquery_processed_bytes_limit,
     :valid_google_account,
     :provider_uid,
-    :company
+    :company,
+    :partner_upgraded
   ]
 
   @fields @user_allowed_fields ++
@@ -151,7 +151,6 @@ defmodule Logflare.User do
     |> add_token()
     |> add_provider_uid()
     |> cast_assoc(:team)
-    |> cast_embed(:partner_details, on_replace: :delete)
     |> default_validations(user)
   end
 

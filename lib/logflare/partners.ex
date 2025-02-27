@@ -85,7 +85,7 @@ defmodule Logflare.Partners do
     {:error, :not_found}
   end
 
-  def user_upgraded?(%User{partner_details: %{upgraded: value}}), do: value
+  def user_upgraded?(%User{partner_upgraded: value}) when is_boolean(value), do: value
 
   def user_upgraded?(%{id: user_id}) do
     query = from(u in "partner_users", where: u.user_id == ^user_id, select: u.upgraded, limit: 1)
@@ -101,20 +101,14 @@ defmodule Logflare.Partners do
     {:error, :no_partner}
   end
 
-  def do_upgrade_downgrade(
-        %User{partner_id: partner_id, partner_details: details} = user,
-        value
-      )
+  def do_upgrade_downgrade(%User{partner_id: partner_id} = user, value)
       when is_boolean(value) and partner_id != nil do
-    updated_details =
-      (details || %{}) |> Map.take([:upgraded]) |> Map.merge(%{upgraded: value})
-
     # backwards compat
     Repo.update_all(
       from(u in "partner_users", where: u.user_id == ^user.id and u.partner_id == ^partner_id),
       set: [upgraded: value]
     )
 
-    Users.update_user_all_fields(user, %{partner_details: updated_details})
+    Users.update_user_all_fields(user, %{partner_upgraded: value})
   end
 end
