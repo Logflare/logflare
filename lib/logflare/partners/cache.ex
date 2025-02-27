@@ -29,8 +29,7 @@ defmodule Logflare.Partners.Cache do
   end
 
   def get_partner(id), do: apply_repo_fun(__ENV__.function, [id])
-  def get_user_by_token(partner, token), do: apply_repo_fun(__ENV__.function, [partner, token])
-  def user_upgraded?(user), do: apply_repo_fun(__ENV__.function, [user])
+  def get_user_by_uuid(partner, token), do: apply_repo_fun(__ENV__.function, [partner, token])
 
   defp apply_repo_fun(arg1, arg2) do
     Logflare.ContextCache.apply_fun(Partners, arg1, arg2)

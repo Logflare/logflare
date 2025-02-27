@@ -27,8 +27,9 @@ defmodule LogflareWeb.Plugs.VerifyApiAccessTest do
       {:ok, conn: conn}
     end
 
-    test "can impersonate partner-provisioned user", %{conn: conn, user: user} do
-      partner = insert(:partner, users: [user])
+    test "can impersonate partner-provisioned user", %{conn: conn} do
+      partner = insert(:partner)
+      user = insert(:user, partner: partner)
 
       conn
       |> put_req_header("x-lf-partner-user", user.token)

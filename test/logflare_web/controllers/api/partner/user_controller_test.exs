@@ -6,7 +6,7 @@ defmodule LogflareWeb.Api.Partner.UserControllerTest do
     [partner: insert(:partner)]
   end
 
-  @allowed_fields MapSet.new(~w(api_quota company email name phone token metadata))
+  @allowed_fields MapSet.new(~w(partner_upgraded email name token metadata))
 
   describe "index/2" do
     test "returns 200 and a list of users created by given partner", %{
@@ -62,18 +62,18 @@ defmodule LogflareWeb.Api.Partner.UserControllerTest do
     test "get by metadata search", %{conn: conn} do
       insert(:user,
         metadata: %{
-          my_value: "other_val"
+          my_value: "other_value"
         }
       )
 
-      user =
-        insert(:user,
-          metadata: %{
-            my_value: "test"
-          }
-        )
+      partner = insert(:partner)
 
-      partner = insert(:partner, users: [user])
+      insert(:user,
+        partner: partner,
+        metadata: %{
+          my_value: "test"
+        }
+      )
 
       assert [user] =
                conn
@@ -103,6 +103,8 @@ defmodule LogflareWeb.Api.Partner.UserControllerTest do
                |> json_response(200)
 
       assert response["token"] == user.token
+      # no details set yet on user
+      assert response["partner_details"] == nil
 
       assert response
              |> Map.keys()
@@ -137,18 +139,18 @@ defmodule LogflareWeb.Api.Partner.UserControllerTest do
 
   describe "PUT user tiers" do
     test "upgrade/downgrade", %{conn: conn} do
-      user = insert(:user)
-      partner = insert(:partner, users: [user])
+      partner = insert(:partner)
+      user = insert(:user, partner: partner)
 
       # upgrade
-      assert %{"tier" => "metered"} =
+      assert %{"partner_upgraded" => true} =
                conn
                |> add_partner_access_token(partner)
                |> put(~p"/api/partner/users/#{user.token}/upgrade")
                |> json_response(200)
 
       # downgrade
-      assert %{"tier" => "free"} =
+      assert %{"partner_upgraded" => false} =
                conn
                |> recycle()
                |> add_partner_access_token(partner)
@@ -213,7 +215,7 @@ defmodule LogflareWeb.Api.Partner.UserControllerTest do
              |> MapSet.new()
              |> MapSet.equal?(@allowed_fields)
 
-      assert Partners.get_user_by_token(partner, user.token) == nil
+      assert Partners.get_user_by_uuid(partner, user.token) == nil
     end
 
     test "returns 401 with the wrong auth token", %{

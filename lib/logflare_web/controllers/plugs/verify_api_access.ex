@@ -40,7 +40,7 @@ defmodule LogflareWeb.Plugs.VerifyApiAccess do
       {:ok, %Partner{} = partner} when impersonate_user_token != nil ->
         # maybe get the user target
 
-        Partners.Cache.get_user_by_token(partner, impersonate_user_token)
+        Partners.Cache.get_user_by_uuid(partner, impersonate_user_token)
         |> then(fn
           %User{id: user_id} ->
             conn
