@@ -132,7 +132,7 @@ defmodule Logflare.Auth do
   Optionally validates if the access token needs to have any required scope.
   """
   @spec verify_access_token(OauthAccessToken.t() | String.t(), String.t() | [String.t()]) ::
-          {:ok, User.t()} | {:error, term()}
+          {:ok, OauthAccessToken.t(), User.t()} | {:error, term()}
   def verify_access_token(token, scopes \\ [])
 
   def verify_access_token(token, scope) when is_binary(scope) do
@@ -166,7 +166,7 @@ defmodule Logflare.Auth do
     with {:ok, access_token} <- ExOauth2Provider.authenticate_token(str_token, config),
          :ok <- check_scopes(access_token, required_scopes),
          owner <- get_resource_owner_by_id(resource_owner, access_token.resource_owner_id) do
-      {:ok, owner}
+      {:ok, access_token, owner}
     end
   end
 

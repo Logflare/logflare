@@ -13,15 +13,15 @@ defmodule Logflare.Auth.CacheTest do
   test "verify_access_token/2 public scope is cached", %{user: user} do
     # no scope set
     {:ok, key} = Auth.create_access_token(user)
-    assert {:ok, _} = Auth.Cache.verify_access_token(key.token, ~w(public))
-    assert {:ok, _} = Auth.Cache.verify_access_token(key.token, "public")
-    assert {:ok, _} = Auth.Cache.verify_access_token(key.token)
+    assert {:ok, _, _} = Auth.Cache.verify_access_token(key.token, ~w(public))
+    assert {:ok, _, _} = Auth.Cache.verify_access_token(key.token, "public")
+    assert {:ok, _, _} = Auth.Cache.verify_access_token(key.token)
 
     # scope is set
     {:ok, key} = Auth.create_access_token(user, %{scopes: "public"})
-    assert {:ok, _} = Auth.Cache.verify_access_token(key.token, ~w(public))
-    assert {:ok, _} = Auth.Cache.verify_access_token(key.token, "public")
-    assert {:ok, _} = Auth.Cache.verify_access_token(key.token)
+    assert {:ok, _, _} = Auth.Cache.verify_access_token(key.token, ~w(public))
+    assert {:ok, _, _} = Auth.Cache.verify_access_token(key.token, "public")
+    assert {:ok, _, _} = Auth.Cache.verify_access_token(key.token)
   end
 
   test "verify_access_token/2 private scope is cached", %{user: user} do
@@ -35,14 +35,14 @@ defmodule Logflare.Auth.CacheTest do
 
     # scope is set
     {:ok, key} = Auth.create_access_token(user, %{scopes: "private"})
-    assert {:ok, _} = Auth.Cache.verify_access_token(key.token, ~w(public))
-    assert {:ok, _} = Auth.Cache.verify_access_token(key.token, ~w(private))
+    assert {:ok, _, _} = Auth.Cache.verify_access_token(key.token, ~w(public))
+    assert {:ok, _, _} = Auth.Cache.verify_access_token(key.token, ~w(private))
   end
 
   test "verify_access_token/2 partner scope is cached", %{partner: partner} do
     key = access_token_fixture(partner)
-    assert {:ok, %Partner{}} = Auth.Cache.verify_access_token(key, ~w(partner))
-    assert {:ok, %Partner{}} = Auth.Cache.verify_access_token(key.token, ~w(partner))
+    assert {:ok, key, %Partner{}} = Auth.Cache.verify_access_token(key, ~w(partner))
+    assert {:ok, _token, %Partner{}} = Auth.Cache.verify_access_token(key.token, ~w(partner))
 
     # If scope is missing, should be unauthorized
     assert {:error, :unauthorized} = Auth.Cache.verify_access_token(key)
@@ -52,11 +52,11 @@ defmodule Logflare.Auth.CacheTest do
     {:ok, key} = Auth.create_access_token(user)
 
     Auth
-    |> expect(:verify_access_token, 2, fn _ -> {:ok, key} end)
+    |> expect(:verify_access_token, 2, fn _ -> {:ok, key, user} end)
 
-    assert {:ok, _} = Auth.Cache.verify_access_token(key.token)
+    assert {:ok, _, _} = Auth.Cache.verify_access_token(key.token)
     ContextCache.bust_keys([{Auth, key.id}])
-    assert {:ok, _} = Auth.Cache.verify_access_token(key.token)
+    assert {:ok, _, _} = Auth.Cache.verify_access_token(key.token)
   end
 
   defp access_token_fixture(user_or_team_or_partner) do

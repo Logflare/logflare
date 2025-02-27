@@ -55,7 +55,7 @@ defmodule LogflareGrpc.Trace.Server do
   end
 
   defp verify_user(access_token_or_api_key) do
-    with {:ok, %User{} = owner} <-
+    with {:ok, _token, %User{} = owner} <-
            Auth.Cache.verify_access_token(access_token_or_api_key, ["public"]) do
       {:ok, owner}
     else

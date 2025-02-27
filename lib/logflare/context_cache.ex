@@ -29,6 +29,7 @@ defmodule Logflare.ContextCache do
 
   require Logger
 
+  require Ex2ms
   @spec apply_fun(atom(), tuple() | atom(), [list()]) :: any()
   def apply_fun(context, {fun, _arity}, args), do: apply_fun(context, fun, args)
 
@@ -80,8 +81,24 @@ defmodule Logflare.ContextCache do
       {
         # use orelse to prevent 2nd condition failing as value is not a map
         :orelse,
-        {:is_list, {:element, 2, :value}},
-        {:==, {:map_get, :id, {:element, 2, :value}}, pkey}
+        {:orelse,
+          # handle lists
+          {:is_list, {:element, 2, :value}},
+          # handle :ok tuples when struct with id is in 2nd element pos.
+          {:andalso,
+            {:is_tuple, {:element, 2, :value}},
+              {:andalso,
+              {:==, {:element, 1, {:element, 2, :value}}, :ok},
+              {:andalso,
+              {:is_map, {:element, 2, {:element, 2, :value}}},
+                {:==, {:map_get, :id, {:element, 2, {:element, 2, :value}}}, pkey}
+              }
+            }
+          }
+
+        },
+        # handle single maps
+        {:andalso, {:is_map, {:element, 2, :value}}, {:==, {:map_get, :id, {:element, 2, :value}}, pkey}}
       }
 
     query =
@@ -98,7 +115,7 @@ defmodule Logflare.ContextCache do
           acc
         end
 
-      {k, v}, acc ->
+      {k, _v}, acc ->
         Cachex.del(context_cache, k)
         acc + 1
     end)
@@ -109,10 +126,4 @@ defmodule Logflare.ContextCache do
   def cache_name(context) do
     Module.concat(context, Cache)
   end
-
-  defp select_key(%_{id: id}), do: id
-  defp select_key({:ok, %_{id: id}}), do: id
-  defp select_key(true), do: "true"
-  defp select_key(nil), do: :not_found
-  defp select_key(_), do: :unknown
 end

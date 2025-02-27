@@ -36,31 +36,31 @@ defmodule Logflare.AuthTest do
 
     test "verify access tokens", %{user: user} do
       key = access_token_fixture(user)
-      assert {:ok, %User{}} = Auth.verify_access_token(key)
-      assert {:ok, _} = Auth.verify_access_token(key.token)
+      assert {:ok, key, %User{}} = Auth.verify_access_token(key)
+      assert {:ok, _token, _user} = Auth.verify_access_token(key.token)
     end
   end
 
   test "verify_access_token/2 ingest scope", %{user: user} do
     # no scope set on token, defaults to ingest to any sources
     {:ok, key} = Auth.create_access_token(user)
-    assert {:ok, _} = Auth.verify_access_token(key.token, ~w(ingest))
-    assert {:ok, _} = Auth.verify_access_token(key.token, "ingest")
-    assert {:ok, _} = Auth.verify_access_token(key.token)
-    assert {:ok, _} = Auth.verify_access_token(key.token, ~w(ingest source:2))
+    assert {:ok, _, _} = Auth.verify_access_token(key.token, ~w(ingest))
+    assert {:ok, _, _} = Auth.verify_access_token(key.token, "ingest")
+    assert {:ok, _, _} = Auth.verify_access_token(key.token)
+    assert {:ok, _, _} = Auth.verify_access_token(key.token, ~w(ingest source:2))
 
     # scope is set
     {:ok, key} = Auth.create_access_token(user, %{scopes: "ingest"})
-    assert {:ok, _} = Auth.verify_access_token(key.token, ~w(ingest))
-    assert {:ok, _} = Auth.verify_access_token(key.token, "ingest")
-    assert {:ok, _} = Auth.verify_access_token(key.token)
+    assert {:ok, _, _} = Auth.verify_access_token(key.token, ~w(ingest))
+    assert {:ok, _, _} = Auth.verify_access_token(key.token, "ingest")
+    assert {:ok, _, _} = Auth.verify_access_token(key.token)
 
     # scope to a specific resource
     # source and collection are resource aliases. i.e. they refer to the same resource.
     for name <- ["source", "collection"] do
       {:ok, key} = Auth.create_access_token(user, %{scopes: "ingest:#{name}:3 ingest:#{name}:1"})
-      assert {:ok, _} = Auth.verify_access_token(key.token, ~w(ingest:#{name}:1))
-      assert {:ok, _} = Auth.verify_access_token(key.token, ~w(ingest:#{name}:3))
+      assert {:ok, _, _} = Auth.verify_access_token(key.token, ~w(ingest:#{name}:1))
+      assert {:ok, _, _} = Auth.verify_access_token(key.token, ~w(ingest:#{name}:3))
     end
   end
 
@@ -72,13 +72,13 @@ defmodule Logflare.AuthTest do
     # scope is set on token
     {:ok, key} = Auth.create_access_token(user, %{scopes: "query"})
     assert {:error, _} = Auth.verify_access_token(key.token, ~w(ingest))
-    assert {:ok, _} = Auth.verify_access_token(key.token, ~w(query))
-    assert {:ok, _} = Auth.verify_access_token(key.token)
+    assert {:ok, _, _} = Auth.verify_access_token(key.token, ~w(query))
+    assert {:ok, _, _} = Auth.verify_access_token(key.token)
 
     # scope to a specific resource
     {:ok, key} = Auth.create_access_token(user, %{scopes: "query:endpoint:3 query:endpoint:1"})
-    assert {:ok, _} = Auth.verify_access_token(key.token, ~w(query:endpoint:1))
-    assert {:ok, _} = Auth.verify_access_token(key.token, ~w(query:endpoint:3))
+    assert {:ok, _, _} = Auth.verify_access_token(key.token, ~w(query:endpoint:1))
+    assert {:ok, _, _} = Auth.verify_access_token(key.token, ~w(query:endpoint:3))
   end
 
   test "check_scopes/2 private scope ", %{user: user} do
@@ -130,14 +130,14 @@ defmodule Logflare.AuthTest do
 
     # scope is set
     {:ok, key} = Auth.create_access_token(user, %{scopes: "private"})
-    assert {:ok, _} = Auth.verify_access_token(key.token, ~w(public))
-    assert {:ok, _} = Auth.verify_access_token(key.token, ~w(private))
+    assert {:ok, _, _} = Auth.verify_access_token(key.token, ~w(public))
+    assert {:ok, _, _} = Auth.verify_access_token(key.token, ~w(private))
   end
 
   test "verify_access_token/2 partner scope", %{partner: partner} do
     key = access_token_fixture(partner)
-    assert {:ok, %Partner{}} = Auth.verify_access_token(key, ~w(partner))
-    assert {:ok, %Partner{}} = Auth.verify_access_token(key.token, ~w(partner))
+    assert {:ok, key, %Partner{}} = Auth.verify_access_token(key, ~w(partner))
+    assert {:ok, _token, %Partner{}} = Auth.verify_access_token(key.token, ~w(partner))
 
     # If scope is missing, should be unauthorized
     assert {:error, :unauthorized} = Auth.verify_access_token(key)
