@@ -6,17 +6,16 @@ defmodule Logflare.ContextCache do
   e.g. `Logflare.Users.Cache` functions go through `apply_fun/3` and results of those
   functions are returned to the caller and cached in the respective cache.
 
-  The cache implementation of `Logflare.ContextCache` is a reverse index where values
-  returned by functions are used as the cache key.
+  ## Cache Implementation
 
-  We must keep a reverse index because function are called by their arguments. So in the
-  `Logflare.Users.Cache` we can keep a key of the MFA and a value of the results.
+  The cache implementation directly queries the relevant context cache to be busted and performs
+  primary key checking within the matchspec. This approach queries across a narrower set of records,
+  providing better performance compared to a reverse index approach.
 
-  But when a record from the write-ahead log comes in the `CacheBuster` calls `bust_keys/1`
-  and we must know what the key is in the `Logflare.Users.Cache` to bust.
+  ## List Busting
 
-  So we keep the value of the `Logflare.Users.Cache` as the key in the `Logflare.ContextCache`
-  and the value of our `Logflare.ContextCache` key is the key for our `Logflare.Users.Cache`.
+  The cache supports busting records within lists. If a struct in a non-empty list contains
+  the :id field, the record will get busted when that ID is encountered in the write-ahead log.
 
   ## Memoization
 
@@ -51,18 +50,15 @@ defmodule Logflare.ContextCache do
   end
 
   @doc """
-  This function is called from the CacheBuster process when a new record comes in from the Postgres
-  write-ahead log. The WAL contains records. From those records the CacheBuster picks out
-  primary keys.
+  Busts cache entries based on context-primary-key pairs.
 
-  The records ARE the keys in the reverse cache (the ContextCache).
+  It is intended for following a WAL for cache busting.When a new record comes in from the WAL, the CacheBuster process calls this function
+  with the primary keys extracted from those records. The function then:
 
-  We must:
-   - Find the key by the record primary key
-   - Delete the reverse cache entry
-   - Delete the cache entry for that context cache e.g. `Logflare.Users.Cache`
+  1. Queries the relevant context cache using a matchspec to find entries to bust
+  2. Handles both single records and lists of records containing matching IDs
+  3. Deletes matching cache entries
   """
-
   @spec bust_keys(list()) :: {:ok, non_neg_integer()}
   def bust_keys([]), do: {:ok, 0}
 
