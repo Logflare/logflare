@@ -81,24 +81,19 @@ defmodule Logflare.ContextCache do
       {
         # use orelse to prevent 2nd condition failing as value is not a map
         :orelse,
-        {:orelse,
+        {
+          :orelse,
           # handle lists
           {:is_list, {:element, 2, :value}},
           # handle :ok tuples when struct with id is in 2nd element pos.
-          {:andalso,
-            {:is_tuple, {:element, 2, :value}},
-              {:andalso,
-              {:==, {:element, 1, {:element, 2, :value}}, :ok},
-              {:andalso,
-              {:is_map, {:element, 2, {:element, 2, :value}}},
-                {:==, {:map_get, :id, {:element, 2, {:element, 2, :value}}}, pkey}
-              }
-            }
-          }
-
+          {:andalso, {:is_tuple, {:element, 2, :value}},
+           {:andalso, {:==, {:element, 1, {:element, 2, :value}}, :ok},
+            {:andalso, {:is_map, {:element, 2, {:element, 2, :value}}},
+             {:==, {:map_get, :id, {:element, 2, {:element, 2, :value}}}, pkey}}}}
         },
         # handle single maps
-        {:andalso, {:is_map, {:element, 2, :value}}, {:==, {:map_get, :id, {:element, 2, :value}}, pkey}}
+        {:andalso, {:is_map, {:element, 2, :value}},
+         {:==, {:map_get, :id, {:element, 2, :value}}, pkey}}
       }
 
     query =

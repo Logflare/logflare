@@ -6,6 +6,7 @@ defmodule Logflare.ContextCacheTest do
   alias Logflare.Backends
   alias Logflare.Backends.Backend
   alias Logflare.Auth
+
   describe "ContextCache" do
     setup do
       insert(:plan, name: "Free")
@@ -23,9 +24,7 @@ defmodule Logflare.ContextCacheTest do
       assert is_nil(Cachex.get!(Sources.Cache, cache_key))
     end
 
-
     test "apply_fun/3,  bust_keys/1 by :id field of value for :ok tuple", %{user: user} do
-
       {:ok, key} = Auth.create_access_token(user)
       assert {:ok, _token, _user} = Auth.Cache.verify_access_token(key.token)
       cache_key = {:verify_access_token, [key.token]}
@@ -34,8 +33,6 @@ defmodule Logflare.ContextCacheTest do
       assert {:ok, 1} = ContextCache.bust_keys([{Auth, key.id}])
       assert is_nil(Cachex.get!(Auth.Cache, cache_key))
     end
-
-
 
     test "apply_fun/3, bust_keys/1 if primary key is in list of returned structs", %{
       source: source
