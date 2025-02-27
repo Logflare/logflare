@@ -2,34 +2,48 @@ defmodule Logflare.ContextCacheTest do
   use Logflare.DataCase, async: false
   alias Logflare.ContextCache
   alias Logflare.Sources
+  alias Logflare.Source
+  alias Logflare.Backends
+  alias Logflare.Backends.Backend
+  alias Logflare.Auth
 
-  describe "ContextCache functions" do
+  describe "ContextCache" do
     setup do
-      user = insert(:user)
       insert(:plan, name: "Free")
+      user = insert(:user)
       source = insert(:source, user: user)
-      args = [token: source.token]
-      source = Sources.Cache.get_by(args)
-      fun = :get_by
-      cache_key = {fun, [args]}
-      %{source: source, cache_key: cache_key}
+      %{source: source, user: user}
     end
 
-    test "cache_name/1" do
-      assert Sources.Cache == ContextCache.cache_name(Sources)
-    end
+    test "apply_fun/3,  bust_keys/1 by :id field of value", %{source: source} do
+      Sources.Cache.get_by(token: source.token)
+      cache_key = {:get_by, [[token: source.token]]}
+      assert {:cached, %Source{}} = Cachex.get!(Sources.Cache, cache_key)
 
-    test "apply_fun/3", %{cache_key: cache_key} do
-      # apply_fun was called in the setup when we called `Sources.Cache.get_by/1`
-      # here's we're making sure it did get cached correctly
-      assert {:cached, %Logflare.Source{}} = Cachex.get!(Sources.Cache, cache_key)
-    end
-
-    test "bust_keys/1", %{source: source, cache_key: cache_key} do
-      assert {:ok, :busted} = ContextCache.bust_keys([{Sources, source.id}])
+      assert {:ok, 1} = ContextCache.bust_keys([{Sources, source.id}])
       assert is_nil(Cachex.get!(Sources.Cache, cache_key))
-      match = {:entry, {{Sources, source.id}, :_}, :_, :_, :"$1"}
-      assert [] = :ets.match(ContextCache, match)
+    end
+
+    test "apply_fun/3,  bust_keys/1 by :id field of value for :ok tuple", %{user: user} do
+      {:ok, key} = Auth.create_access_token(user)
+      assert {:ok, _token, _user} = Auth.Cache.verify_access_token(key.token)
+      cache_key = {:verify_access_token, [key.token]}
+      assert {:cached, {:ok, %_{}, _user}} = Cachex.get!(Auth.Cache, cache_key)
+
+      assert {:ok, 1} = ContextCache.bust_keys([{Auth, key.id}])
+      assert is_nil(Cachex.get!(Auth.Cache, cache_key))
+    end
+
+    test "apply_fun/3, bust_keys/1 if primary key is in list of returned structs", %{
+      source: source
+    } do
+      backend = insert(:backend, sources: [source])
+      Backends.Cache.list_backends(source)
+      cache_key = {:list_backends, [source]}
+      assert {:cached, [%Backend{}]} = Cachex.get!(Backends.Cache, cache_key)
+
+      assert {:ok, 1} = ContextCache.bust_keys([{Backends, backend.id}])
+      assert is_nil(Cachex.get!(Backends.Cache, cache_key))
     end
   end
 

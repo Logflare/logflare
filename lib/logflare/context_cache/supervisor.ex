@@ -40,7 +40,6 @@ defmodule Logflare.ContextCache.Supervisor do
 
   def list_caches do
     [
-      ContextCache,
       TeamUsers.Cache,
       Partners.Cache,
       Users.Cache,

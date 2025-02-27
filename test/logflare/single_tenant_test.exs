@@ -296,8 +296,8 @@ defmodule Logflare.SingleTenantTest do
   defp assert_access_tokens(%_{id: user_id} = user) do
     assert length(Auth.list_valid_access_tokens(user)) == 2
     public = Application.get_env(:logflare, :public_access_token)
-    assert {:ok, %_{id: ^user_id}} = Auth.verify_access_token(public, "public")
+    assert {:ok, _token, %_{id: ^user_id}} = Auth.verify_access_token(public, "public")
     private = Application.get_env(:logflare, :private_access_token)
-    assert {:ok, %_{id: ^user_id}} = Auth.verify_access_token(private, "private")
+    assert {:ok, _token, %_{id: ^user_id}} = Auth.verify_access_token(private, "private")
   end
 end

@@ -32,12 +32,12 @@ defmodule Logflare.Auth.Cache do
   end
 
   @spec verify_access_token(OauthAccessToken.t() | String.t()) ::
-          {:ok, User.t()} | {:error, term()}
+          {:ok, OauthAccessToken.t(), User.t()} | {:error, term()}
   def verify_access_token(access_token_or_api_key),
     do: apply_repo_fun(__ENV__.function, [access_token_or_api_key])
 
   @spec verify_access_token(OauthAccessToken.t() | String.t(), String.t() | [String.t()]) ::
-          {:ok, User.t()} | {:error, term()}
+          {:ok, OauthAccessToken.t(), User.t()} | {:error, term()}
   def verify_access_token(access_token_or_api_key, scopes),
     do: apply_repo_fun(__ENV__.function, [access_token_or_api_key, scopes])
 
