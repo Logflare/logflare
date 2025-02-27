@@ -8,7 +8,7 @@ defmodule LogflareWeb.Api.Partner.UserController do
   alias Logflare.Users
 
   action_fallback(LogflareWeb.Api.FallbackController)
-  @allowed_fields [:email, :name, :partner_details, :token, :metadata]
+  @allowed_fields [:email, :name, :partner_upgraded, :token, :metadata]
   def index(%{assigns: %{partner: partner}} = conn, params) do
     metadata = Map.get(params, "metadata")
 
