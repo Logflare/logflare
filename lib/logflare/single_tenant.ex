@@ -14,6 +14,8 @@ defmodule Logflare.SingleTenant do
   alias Logflare.Source.BigQuery.Schema
   alias Logflare.LogEvent
   alias Logflare.Backends
+  alias Logflare.Backends.Backend
+  alias Logflare.User
   alias Logflare.Auth
   alias Logflare.SourceSchemas
   require Logger
@@ -103,11 +105,10 @@ defmodule Logflare.SingleTenant do
   @doc """
   Retrieves the default plan
   """
+  @spec get_default_plan() :: Plan.t() | nil
   def get_default_plan do
     Billing.list_plans()
-    |> Enum.find(fn plan ->
-      @plan_attrs = plan
-    end)
+    |> Enum.find(fn plan -> plan.name == "Enterprise" end)
   end
 
   @doc """
@@ -115,6 +116,7 @@ defmodule Logflare.SingleTenant do
 
   TODO: add support for bigquery v2 adaptor
   """
+  @spec get_default_backend() :: Backend.t()
   def get_default_backend do
     get_default_user()
     |> Backends.get_default_backend()
@@ -123,6 +125,7 @@ defmodule Logflare.SingleTenant do
   @doc """
   Creates an enterprise user
   """
+  @spec create_default_user() :: {:ok, User.t()} | {:error, :already_created}
   def create_default_user do
     attrs = Map.put(@user_attrs, :api_key, Application.get_env(:logflare, :public_access_token))
 
@@ -183,14 +186,18 @@ defmodule Logflare.SingleTenant do
   """
   @spec create_default_plan() :: {:ok, Plan.t()} | {:error, :already_created}
   def create_default_plan do
-    plan =
-      Billing.list_plans()
-      |> Enum.find(fn plan -> plan.name == "Enterprise" end)
+    if plan = get_default_plan() do
+      # maybe update if stored values are different
+      keys = Map.keys(@plan_attrs)
+      attrs = Map.take(plan, keys)
 
-    if plan == nil do
-      Billing.create_plan(@plan_attrs)
+      if attrs != @plan_attrs do
+        Billing.update_plan(plan, @plan_attrs)
+      else
+        {:error, :already_created}
+      end
     else
-      {:error, :already_created}
+      Billing.create_plan(@plan_attrs)
     end
   end
 

@@ -23,6 +23,13 @@ defmodule Logflare.SingleTenantTest do
       assert {:error, :already_created} = SingleTenant.create_default_plan()
     end
 
+    test "create_default_plan/0 will override previous values" do
+      assert {:ok, correct_plan} = SingleTenant.create_default_plan()
+      Repo.update_all(Plan, set: [limit_sources: 999])
+      assert {:ok, fetched} = SingleTenant.create_default_plan()
+      assert fetched.limit_sources == correct_plan.limit_sources
+    end
+
     test "get_default_user/0" do
       assert {:ok, _plan} = SingleTenant.create_default_plan()
       assert {:ok, _user} = SingleTenant.create_default_user()
@@ -31,6 +38,12 @@ defmodule Logflare.SingleTenantTest do
 
     test "get_default_plan/0" do
       assert {:ok, _plan} = SingleTenant.create_default_plan()
+      assert %Plan{name: "Enterprise"} = SingleTenant.get_default_plan()
+    end
+
+    test "bug: get_default_plan/0 handles past value changes" do
+      assert {:ok, _plan} = SingleTenant.create_default_plan()
+      Repo.update_all(Plan, set: [limit_sources: 999])
       assert %Plan{name: "Enterprise"} = SingleTenant.get_default_plan()
     end
 
