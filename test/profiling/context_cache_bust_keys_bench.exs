@@ -73,8 +73,6 @@ Benchee.run(
   memory_time: 2
 )
 
-
-
 # benchmarked on 2025-03-03
 # Name                                  ips        average  deviation         median         99th %
 # bust_keys with ETS filter          7.00 K       0.143 ms     ±0.00%       0.143 ms       0.143 ms
