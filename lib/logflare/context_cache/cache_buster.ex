@@ -17,7 +17,7 @@ defmodule Logflare.ContextCache.CacheBuster do
     end
 
     def handle_cast({:to_bust, context_pkeys}, state) do
-      ContextCache.bust_keys(context_pkeys) |> dbg()
+      ContextCache.bust_keys(context_pkeys)
       {:noreply, state}
     end
   end
