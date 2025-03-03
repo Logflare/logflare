@@ -80,9 +80,9 @@ defmodule Logflare.Application do
         Logflare.Repo,
         Logflare.Vault,
         {Phoenix.PubSub, name: Logflare.PubSub, pool_size: pool_size},
+        ContextCache.Supervisor,
         Logs.LogEvents.Cache,
         PubSubRates,
-        ContextCache.Supervisor,
 
         # v1 ingest pipline
         {Registry,
