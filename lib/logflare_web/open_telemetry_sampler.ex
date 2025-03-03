@@ -60,6 +60,18 @@ defmodule LogflareWeb.OpenTelemetrySampler do
   iex> {decision, _, _state} = should_sample(ctx, trace_id, links, span_name, span_kind, attributes, sampler_config)
   iex> decision == :drop
   false
+
+  url query can be redacted
+  iex> ctx =  %{}
+  iex> trace_id =  :otel_id_generator.generate_trace_id()
+  iex> links =  {:links, 128, 128, :infinity, 0, []}
+  iex> span_name = "HTTP POST"
+  iex> span_kind = :server
+  iex> attributes = %{ "http.request.method": "POST", "url.path": "/logs", "url.query": "api_key=123"}
+  iex> sampler_config = :otel_sampler_trace_id_ratio_based.setup(1.0)
+  iex> {decision, ["url.query": "api_key=[REDACTED]"], _state} = should_sample(ctx, trace_id, links, span_name, span_kind, attributes, sampler_config)
+  iex> decision == :drop
+  false
   """
   @impl :otel_sampler
   def should_sample(
@@ -81,15 +93,29 @@ defmodule LogflareWeb.OpenTelemetrySampler do
         _ -> sampler_config
       end
 
-    :otel_sampler_trace_id_ratio_based.should_sample(
-      ctx,
-      trace_id,
-      links,
-      span_name,
-      span_kind,
-      attributes,
-      config
-    )
+    {decision, _attrs, tracestate} =
+      :otel_sampler_trace_id_ratio_based.should_sample(
+        ctx,
+        trace_id,
+        links,
+        span_name,
+        span_kind,
+        attributes,
+        config
+      )
+
+    url_query = Map.get(attributes, :"url.query", "") || ""
+
+    if url_query =~ "api_key=" do
+      replaced = url_query |> String.replace(~r/api_key=[^&]*/, "api_key=[REDACTED]")
+
+      {decision,
+       [
+         {:"url.query", replaced}
+       ], tracestate}
+    else
+      {decision, attributes, tracestate}
+    end
   end
 
   defp ingest_config() do
