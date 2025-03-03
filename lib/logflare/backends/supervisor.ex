@@ -15,9 +15,6 @@ defmodule Logflare.Backends.Supervisor do
   def init(_) do
     base = System.schedulers_online()
 
-    # startup broadway ets config storage table and own the process
-    Broadway.ConfigStorage.ETS.setup()
-
     children = [
       Backends.IngestEventQueue,
       Backends.IngestEventQueue.BroadcastWorker,
