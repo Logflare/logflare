@@ -174,7 +174,7 @@ defmodule Logflare.Auth do
   defp get_resource_owner_by_id(Partner, id), do: Partners.Cache.get_partner(id)
 
   @doc """
-  Checks that an access token contains all scopes that are provided in a given required scopes list.
+  Checks that an access token contains any scopes that are provided in a given required scopes list.
 
   Private scope will allways return `:ok`
   iex> check_scopes(access_token, ["private"])

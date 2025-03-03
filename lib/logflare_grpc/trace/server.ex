@@ -7,9 +7,9 @@ defmodule LogflareGrpc.Trace.Server do
   alias Logflare.Sources
   alias Logflare.Source
   alias Logflare.Users
-  alias Logflare.Auth
-  alias Logflare.User
   alias Logflare.Sources
+  alias LogflareWeb.Plugs.VerifyApiAccess
+  alias LogflareWeb.Plugs.VerifyResourceAccess
   alias Opentelemetry.Proto.Collector.Trace.V1.ExportTraceServiceResponse
   alias Opentelemetry.Proto.Collector.Trace.V1.ExportTraceServiceRequest
 
@@ -23,14 +23,20 @@ defmodule LogflareGrpc.Trace.Server do
   def export(%ExportTraceServiceRequest{resource_spans: spans}, stream) do
     with {:ok, api_key} <- get_access_token(stream),
          {:ok, source_token} <- get_source_token(stream),
-         {:ok, user} <- verify_user(api_key),
-         {:ok, source} <- get_source(user, source_token) do
+         {:ok, access_token, user} <- VerifyApiAccess.identify_requestor(api_key, ["ingest"]),
+         {:ok, source} <- get_source(user, source_token),
+         {:scopes, true} <- {:scopes, VerifyResourceAccess.check_resource(source, access_token)} do
       Processor.ingest(spans, OtelTrace, source)
 
       GRPC.Server.set_trailers(stream, %{"grpc-status" => "0"})
       %ExportTraceServiceResponse{}
     else
-      {:error, :unauthorized} ->
+      e
+      when e in [
+             {:error, :unauthorized},
+             {:scopes, false},
+             {:error, :no_token}
+           ] ->
         raise GRPC.RPCError, status: :unauthenticated, message: "Invalid API Key or Source ID"
 
       err ->
@@ -51,23 +57,6 @@ defmodule LogflareGrpc.Trace.Server do
       %{"x-collection" => token} -> {:ok, token}
       %{"x-source" => token} -> {:ok, token}
       _ -> {:error, :unauthorized}
-    end
-  end
-
-  defp verify_user(access_token_or_api_key) do
-    with {:ok, _token, %User{} = owner} <-
-           Auth.Cache.verify_access_token(access_token_or_api_key, ["public"]) do
-      {:ok, owner}
-    else
-      {:error, :no_token} = err ->
-        err
-
-      {:error, _} ->
-        if user = Users.Cache.get_by_and_preload(api_key: access_token_or_api_key) do
-          {:ok, user}
-        else
-          {:error, :unauthorized}
-        end
     end
   end
 

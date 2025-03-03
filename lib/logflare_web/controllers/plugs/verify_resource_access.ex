@@ -23,25 +23,16 @@ defmodule LogflareWeb.Plugs.VerifyResourceAccess do
           assigns:
             %{
               user: %User{id: id},
-              source: %Source{id: source_id, user_id: user_id}
+              source: %Source{user_id: user_id}
             } = assigns
         } = conn,
         _opts
       )
       when id == user_id do
-    access_token = Map.get(assigns, :access_token)
-
-    # legacy api key
-    cond do
-      access_token == nil ->
-        conn
-
-      :ok == Auth.check_scopes(access_token, ["ingest", "ingest:source:#{source_id}"]) or
-          :ok == Auth.check_scopes(access_token, ["ingest", "ingest:collection:#{source_id}"]) ->
-        conn
-
-      true ->
-        FallbackController.call(conn, {:error, :unauthorized})
+    if check_resource(assigns.source, Map.get(assigns, :access_token)) do
+      conn
+    else
+      FallbackController.call(conn, {:error, :unauthorized})
     end
   end
 
@@ -79,4 +70,11 @@ defmodule LogflareWeb.Plugs.VerifyResourceAccess do
 
   # no resource is set, passthrough
   def call(conn, _), do: conn
+
+  def check_resource(%Source{}, nil), do: true
+
+  def check_resource(%Source{} = resource, token) do
+    :ok == Auth.check_scopes(token, ["ingest", "ingest:source:#{resource.id}"]) or
+      :ok == Auth.check_scopes(token, ["ingest", "ingest:collection:#{resource.id}"])
+  end
 end
