@@ -31,7 +31,51 @@ defmodule LogflareGrpc.Trace.ServerTest do
       # reply
     end
 
-    test "returns a success response and starts log event ingestion", %{
+    test "returns a success response and starts log event ingestion using access token", %{
+      source: source,
+      user: user,
+      port: port
+    } do
+      access_token = insert(:access_token, resource_owner: user)
+      headers = [{"x-api-key", access_token.token}, {"x-source", source.token}]
+
+      {:ok, channel} =
+        GRPC.Stub.connect("localhost:#{port}",
+          headers: headers,
+          accepted_compressors: [GRPC.Compressor.Gzip]
+        )
+
+      request = TestUtilsGrpc.random_export_service_request()
+
+      assert {:ok, %ExportTraceServiceResponse{}} =
+               channel
+               |> emulate_request(request)
+    end
+
+    test "returns a success using access token for specific source", %{
+      source: source,
+      user: user,
+      port: port
+    } do
+      access_token =
+        insert(:access_token, resource_owner: user, scopes: "ingest ingest:source:#{source.id}")
+
+      headers = [{"x-api-key", access_token.token}, {"x-source", source.token}]
+
+      {:ok, channel} =
+        GRPC.Stub.connect("localhost:#{port}",
+          headers: headers,
+          accepted_compressors: [GRPC.Compressor.Gzip]
+        )
+
+      request = TestUtilsGrpc.random_export_service_request()
+
+      assert {:ok, %ExportTraceServiceResponse{}} =
+               channel
+               |> emulate_request(request)
+    end
+
+    test "returns a success response and starts log event ingestion using legacy api key", %{
       source: source,
       user: user,
       port: port
@@ -53,6 +97,29 @@ defmodule LogflareGrpc.Trace.ServerTest do
 
     test "returns an error if invalid api key", %{source: source, port: port} do
       headers = [{"x-api-key", "potato"}, {"x-source", source.token}]
+
+      {:ok, channel} =
+        GRPC.Stub.connect("localhost:#{port}",
+          headers: headers,
+          accepted_compressors: [GRPC.Compressor.Gzip]
+        )
+
+      request = TestUtilsGrpc.random_export_service_request()
+
+      {:error, err} = emulate_request(channel, request)
+
+      assert %GRPC.RPCError{message: "Invalid API Key or Source ID"} = err
+    end
+
+    test "returns a success using invalid access token for specific source", %{
+      source: source,
+      user: user,
+      port: port
+    } do
+      access_token =
+        insert(:access_token, resource_owner: user, scopes: "ingest:source:#{source.id + 155}")
+
+      headers = [{"x-api-key", access_token.token}, {"x-source", source.token}]
 
       {:ok, channel} =
         GRPC.Stub.connect("localhost:#{port}",

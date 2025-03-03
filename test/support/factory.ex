@@ -234,7 +234,7 @@ defmodule Logflare.Factory do
     %OauthAccessToken{
       token: TestUtils.random_string(20),
       resource_owner: build(:user),
-      scopes: "public"
+      scopes: "ingest"
     }
   end
 
@@ -242,7 +242,7 @@ defmodule Logflare.Factory do
     %OauthAccessToken{
       token: TestUtils.random_string(20),
       resource_owner: build(:user),
-      scopes: ~w(public)
+      scopes: ~w(ingest)
     }
   end
 
