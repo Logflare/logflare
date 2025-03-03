@@ -6,7 +6,6 @@ defmodule LogflareGrpc.Trace.Server do
   alias Logflare.Logs.OtelTrace
   alias Logflare.Sources
   alias Logflare.Source
-  alias Logflare.Users
   alias Logflare.Sources
   alias LogflareWeb.Plugs.VerifyApiAccess
   alias LogflareWeb.Plugs.VerifyResourceAccess
