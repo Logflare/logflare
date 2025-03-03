@@ -188,17 +188,19 @@ defmodule LogflareWeb.AccessTokensLive do
       "Creating access token for user, user_id=#{inspect(user.id)}, params: #{inspect(params)}"
     )
 
-    scopes_main = Map.get(params, "scopes_main") || []
-    scopes_ingest = Map.get(params, "scopes_ingest") || []
-    scopes_query = Map.get(params, "scopes_query") || []
+    scopes_ingest_params = (Map.get(params, "scopes_ingest") || []) |> Enum.filter(&(&1 != ""))
+    scopes_query_params = (Map.get(params, "scopes_query") || []) |> Enum.filter(&(&1 != ""))
+    scopes_main_params = (Map.get(params, "scopes_main") || []) |> Enum.filter(&(&1 != ""))
 
     scopes_main =
-      if scopes_ingest != [], do: Enum.filter(scopes_main, &(&1 != "ingest")), else: scopes_main
+      if scopes_ingest_params != [],
+        do: List.delete(scopes_main_params, "ingest"),
+        else: scopes_main_params
 
     scopes_main =
-      if scopes_query != [], do: Enum.filter(scopes_main, &(&1 != "query")), else: scopes_main
+      if scopes_query_params != [], do: List.delete(scopes_main, "query"), else: scopes_main
 
-    scopes = scopes_main ++ scopes_ingest ++ scopes_query
+    scopes = scopes_main ++ scopes_ingest_params ++ scopes_query_params
 
     attrs =
       Map.take(params, ["description"])
