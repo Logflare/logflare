@@ -133,7 +133,7 @@ defmodule Logflare.Mixfile do
       {:tesla, "~> 1.6"},
 
       # Concurrency and pipelines
-      {:broadway, github: "Logflare/broadway", branch: "fix/safe-crud"},
+      {:broadway, github: "Logflare/broadway", branch: "fix/batcher-fullsweep-after"},
       {:syn, "~> 3.3"},
 
       # Test
