@@ -30,7 +30,7 @@ defmodule Logflare.SynEventHandler do
     keep_original(pid_meta1, pid_meta2)
   end
 
-  defp keep_original({pid1, _meta, timestamp1}, {pid2, _meta, timestamp2}) do
+  defp keep_original({pid1, _meta1, timestamp1}, {pid2, _meta2, timestamp2}) do
     if timestamp1 < timestamp2 do
       pid1
     else
