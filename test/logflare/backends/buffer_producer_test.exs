@@ -32,6 +32,28 @@ defmodule Logflare.Backends.BufferProducerTest do
     assert IngestEventQueue.get_table_size(sid_bid_pid) == 1
   end
 
+  test "moves events in IngestEventQueue to other queues on termination" do
+    user = insert(:user)
+    source = insert(:source, user: user)
+
+    le = build(:log_event, source: source)
+
+    buffer_producer_pid =
+      start_supervised!({BufferProducer, backend_id: nil, source_id: source.id})
+
+    sid_bid_pid = {source.id, nil, buffer_producer_pid}
+    startup_table_key = {source.id, nil, nil}
+    IngestEventQueue.upsert_tid(startup_table_key)
+    :timer.sleep(100)
+    :ok = IngestEventQueue.add_to_table(sid_bid_pid, [le])
+
+    Process.exit(buffer_producer_pid, :normal)
+    :timer.sleep(200)
+
+    assert IngestEventQueue.total_pending(startup_table_key) == 1
+    assert IngestEventQueue.total_pending(sid_bid_pid) == 0
+  end
+
   test "pulls events from startup queue" do
     user = insert(:user)
     source = insert(:source, user: user)
