@@ -81,7 +81,7 @@ config :phoenix, :json_library, Jason
 config :postgrex, :json_library, Jason
 
 config :syn,
-  scopes: [:endpoints, :context_cache],
+  scopes: [:endpoints, :context_cache, :alerting],
   event_handler: Logflare.SynEventHandler
 
 oauth_common = [
@@ -142,7 +142,8 @@ config :open_api_spex, :cache_adapter, OpenApiSpex.Plug.PersistentTermCache
 
 config :logflare, Logflare.Cluster.Utils, min_cluster_size: 1
 
-config :logflare, Logflare.AlertsScheduler, init_task: {Logflare.Alerting, :init_alert_jobs, []}
+config :logflare, Logflare.Alerting.AlertsScheduler,
+  init_task: {Logflare.Alerting, :init_alert_jobs, []}
 
 config :opentelemetry,
   sdk_disabled: true,

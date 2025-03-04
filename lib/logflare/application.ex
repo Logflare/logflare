@@ -116,7 +116,7 @@ defmodule Logflare.Application do
         {Task, fn -> startup_tasks() end},
 
         # citrine scheduler for alerts
-        Logflare.AlertsScheduler
+        Logflare.Alerting.Supervisor
       ]
   end
 
