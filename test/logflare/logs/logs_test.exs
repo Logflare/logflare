@@ -95,7 +95,7 @@ defmodule Logflare.LogsTest do
                                            _dataset_id,
                                            _table_name,
                                            [body: body] ->
-         #  use default config adapter
+        #  use default config adapter
         assert conn.adapter == nil
         schema = body.schema
         assert %_{name: "key", type: "STRING"} = TestUtils.get_bq_field_schema(schema, "key")
