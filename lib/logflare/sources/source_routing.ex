@@ -52,6 +52,10 @@ defmodule Logflare.Logs.SourceRouting do
     end
   end
 
+  defp do_routing(%Rule{sink: nil}, _le) do
+    {:error, :no_sink}
+  end
+
   @spec route_with_lql_rules?(LE.t(), Rule.t()) :: boolean()
   def route_with_lql_rules?(%LE{body: le_body}, %Rule{lql_filters: lql_filters})
       when lql_filters != [] do

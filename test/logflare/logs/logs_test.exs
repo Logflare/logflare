@@ -161,6 +161,20 @@ defmodule Logflare.LogsTest do
       assert :ok = Logs.ingest_logs(batch, source)
     end
 
+    test "rule without sink", %{user: user, source: source, source_b: target} do
+      insert(:rule, lql_string: "testing", sink: nil, source_id: source.id)
+      source = source |> Repo.preload(:rules, force: true)
+
+      Logs
+      |> expect(:broadcast, 1, fn le -> le end)
+
+      batch = [
+        %{"event_message" => "testing 123"}
+      ]
+
+      assert :ok = Logs.ingest_logs(batch, source)
+    end
+
     test "routing depth is max 1 level", %{user: user, source: source, source_b: target} do
       other_target = insert(:source, user: user)
       insert(:rule, lql_string: "testing", sink: target.token, source_id: source.id)
