@@ -4,7 +4,19 @@ sidebar_position: 4
 
 # Access Tokens
 
-Logflare uses access tokens for user API authentication. These access tokens must be provided with each API requests, with the exception of resources that have authentication disabled by the user
+Logflare uses access tokens for user API authentication. These access tokens must be provided with each API requests, with the exception of resources that have authentication disabled by the user.
+
+[Access Tokens Dashboard](https://logflare.app/account/access-tokens)
+
+## Scopes
+
+Access tokens can be scoped to specific functionality.
+
+1. `ingest` - allows ingestion of events into sources.
+2. `query` - allows querying of Logflare Endpoints.
+3. `management` - allows management of resources and programmatic access to Logflare functionality.
+
+`ingest` and `query` scopes can be scoped to specific sources and endpoints. It is recommended to use the least privileged token for the given task, especially for public ingestion.
 
 ## Managing Access Tokens
 
@@ -19,7 +31,7 @@ Then, enter a description for the token for reference. Click on **Create** once 
 ![Enter a description](./create-description.png)
 
 You will be shown the access token ony **once**. Do copy the token to a safe location.
-
+ 
 ![Example token](./create-success.png)
 
 To revoke access tokens, clikc on the **Revoke** button. This would immediately reject all incoming API requests.

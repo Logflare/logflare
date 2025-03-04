@@ -9,6 +9,13 @@ To run adhoc queries for exploratory analysis, use the Querying or Search functi
 - For periodic query-based checks and data push integrations, use the Alerting functionality.
 - For building GET APIs for downstream programmatic consumption and data pull integrations, use the Endpoints functionality
 
+:::info
+
+You will need to use an access token with the `management` scope to query the management API. 
+An `ingest` or `query` scoped token **cannot** be used to for this querying API.   
+:::
+
+
 ## Via Management API
 
 Sources can be queried through SQL using our management API.
