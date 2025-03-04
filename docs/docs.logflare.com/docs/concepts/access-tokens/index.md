@@ -31,7 +31,7 @@ Then, enter a description for the token for reference. Click on **Create** once 
 ![Enter a description](./create-description.png)
 
 You will be shown the access token ony **once**. Do copy the token to a safe location.
-
+ 
 ![Example token](./create-success.png)
 
 To revoke access tokens, clikc on the **Revoke** button. This would immediately reject all incoming API requests.
