@@ -208,7 +208,7 @@ defmodule Logflare.Mixfile do
       {:plug_cowboy, "~> 2.0"},
 
       # alerts feature
-      {:citrine, "~> 0.1.0"},
+      {:quantum, "~> 3.0"},
       {:crontab, "~> 1.1"},
 
       # benchmarking

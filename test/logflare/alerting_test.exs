@@ -3,12 +3,18 @@ defmodule Logflare.AlertingTest do
   use Logflare.DataCase
 
   alias Logflare.Alerting
-  alias Logflare.AlertsScheduler
+  alias Logflare.Alerting.AlertQuery
+  alias Logflare.Alerting.AlertsScheduler
 
   setup do
     insert(:plan, name: "Free")
     start_supervised!(AlertsScheduler)
     {:ok, user: insert(:user)}
+  end
+
+  test "cannot start multiple schedulers" do
+    AlertsScheduler.start_link()
+    assert {:error, {:already_started, _pid}} = AlertsScheduler.start_link()
   end
 
   describe "alert_queries" do
@@ -234,23 +240,31 @@ defmodule Logflare.AlertingTest do
   describe "citrine integration" do
     test "upsert_alert_job/1, get_alert_job/1, delete_alert_job/1, count_alert_jobs/0 retrieves alert job",
          %{user: user} do
-      alert = insert(:alert, user_id: user.id)
-      alert_id = alert.id
-      assert {:ok, %Citrine.Job{id: ^alert_id}} = Alerting.upsert_alert_job(alert)
-      # create a citrine job
-      assert %Citrine.Job{id: ^alert_id} = Alerting.get_alert_job(alert_id)
+      %{id: alert_id} = alert = insert(:alert, user_id: user.id)
 
-      assert :ok = Alerting.delete_alert_job(alert)
-      assert :ok = Alerting.delete_alert_job(alert.id)
+      assert {:ok,
+              %Quantum.Job{
+                task: {Logflare.Alerting, :run_alert, [%AlertQuery{id: ^alert_id}, :scheduled]}
+              }} = Alerting.upsert_alert_job(alert)
+
+      assert %Quantum.Job{
+               task: {Logflare.Alerting, :run_alert, [%AlertQuery{id: ^alert_id}, :scheduled]}
+             } = Alerting.get_alert_job(alert_id)
+
+      assert {:ok, _} = Alerting.delete_alert_job(alert)
+      assert {:error, :not_found} = Alerting.delete_alert_job(alert.id)
 
       assert nil == Alerting.get_alert_job(alert_id)
     end
 
     test "init function will populate citrine with alerts", %{user: user} do
-      alert = insert(:alert, user_id: user.id)
-      assert nil == Alerting.get_alert_job(alert.id)
+      %{id: alert_id} = insert(:alert, user_id: user.id)
+      assert nil == Alerting.get_alert_job(alert_id)
       assert :ok = Alerting.init_alert_jobs()
-      assert %Citrine.Job{} = Alerting.get_alert_job(alert.id)
+
+      assert %Quantum.Job{
+               task: {Logflare.Alerting, :run_alert, [%AlertQuery{id: ^alert_id}, :scheduled]}
+             } = Alerting.get_alert_job(alert_id)
     end
   end
 end
