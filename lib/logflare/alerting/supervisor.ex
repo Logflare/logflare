@@ -24,7 +24,7 @@ defmodule Logflare.Alerting.Supervisor do
         _ -> nil
       end
 
-    if pid |> dbg() == nil do
+    if pid == nil do
       case Supervisor.start_child(__MODULE__.Sup, {AlertsScheduler, name: scheduler_name()}) do
         {:ok, pid} ->
           Logger.info("Started alerts scheduler on #{inspect(Node.self())}")

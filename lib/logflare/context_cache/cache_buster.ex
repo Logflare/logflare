@@ -42,7 +42,6 @@ defmodule Logflare.ContextCache.CacheBuster do
         child_spec: __MODULE__.Worker,
         name: __MODULE__.Supervisor
       )
-      |> dbg()
 
     {:ok, %{partitions: System.schedulers_online()}}
   end
