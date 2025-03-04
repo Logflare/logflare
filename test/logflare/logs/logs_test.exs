@@ -95,7 +95,7 @@ defmodule Logflare.LogsTest do
                                            _dataset_id,
                                            _table_name,
                                            [body: body] ->
-        #  use default config adapter
+         #  use default config adapter
         assert conn.adapter == nil
         schema = body.schema
         assert %_{name: "key", type: "STRING"} = TestUtils.get_bq_field_schema(schema, "key")
@@ -155,6 +155,20 @@ defmodule Logflare.LogsTest do
 
       batch = [
         %{"event_message" => "not routed"},
+        %{"event_message" => "testing 123"}
+      ]
+
+      assert :ok = Logs.ingest_logs(batch, source)
+    end
+
+    test "rule without sink", %{user: user, source: source, source_b: target} do
+      insert(:rule, lql_string: "testing", sink: nil, source_id: source.id)
+      source = source |> Repo.preload(:rules, force: true)
+
+      Logs
+      |> expect(:broadcast, 1, fn le -> le end)
+
+      batch = [
         %{"event_message" => "testing 123"}
       ]
 
