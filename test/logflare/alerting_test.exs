@@ -8,11 +8,12 @@ defmodule Logflare.AlertingTest do
 
   setup do
     insert(:plan, name: "Free")
-    start_supervised!(AlertsScheduler)
     {:ok, user: insert(:user)}
   end
 
   test "cannot start multiple schedulers" do
+    start_supervised!(Alerting.Supervisor)
+
     AlertsScheduler.start_link()
     assert {:error, {:already_started, _pid}} = AlertsScheduler.start_link()
   end
@@ -237,9 +238,13 @@ defmodule Logflare.AlertingTest do
     end
   end
 
-  describe "citrine integration" do
+  describe "quantum integration" do
     test "upsert_alert_job/1, get_alert_job/1, delete_alert_job/1, count_alert_jobs/0 retrieves alert job",
          %{user: user} do
+      start_supervised!(Alerting.Supervisor)
+
+      :timer.sleep(500)
+
       %{id: alert_id} = alert = insert(:alert, user_id: user.id)
 
       assert {:ok,
@@ -259,8 +264,19 @@ defmodule Logflare.AlertingTest do
 
     test "init function will populate citrine with alerts", %{user: user} do
       %{id: alert_id} = insert(:alert, user_id: user.id)
-      assert nil == Alerting.get_alert_job(alert_id)
-      assert :ok = Alerting.init_alert_jobs()
+
+      assert [
+               %Quantum.Job{
+                 task: {Logflare.Alerting, :run_alert, [%AlertQuery{id: ^alert_id}, :scheduled]}
+               }
+             ] = Alerting.init_alert_jobs()
+    end
+
+    test "supervisor startup will populate citrine with alerts", %{user: user} do
+      %{id: alert_id} = insert(:alert, user_id: user.id)
+      start_supervised!(Alerting.Supervisor)
+
+      :timer.sleep(500)
 
       assert %Quantum.Job{
                task: {Logflare.Alerting, :run_alert, [%AlertQuery{id: ^alert_id}, :scheduled]}

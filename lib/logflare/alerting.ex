@@ -151,15 +151,18 @@ defmodule Logflare.Alerting do
   """
   @spec upsert_alert_job(AlertQuery.t()) :: {:ok, Citrine.Job.t()}
   def upsert_alert_job(%AlertQuery{} = alert_query) do
-    job =
-      AlertsScheduler.new_job()
-      |> Quantum.Job.set_task({__MODULE__, :run_alert, [alert_query, :scheduled]})
-      |> Quantum.Job.set_schedule(Crontab.CronExpression.Parser.parse!(alert_query.cron))
-      |> Quantum.Job.set_name(make_ref())
+    job = create_alert_job_struct(alert_query)
 
     :ok = AlertsScheduler.add_job(job)
 
     {:ok, job}
+  end
+
+  def create_alert_job_struct(alert_query) do
+    AlertsScheduler.new_job()
+    |> Quantum.Job.set_task({__MODULE__, :run_alert, [alert_query, :scheduled]})
+    |> Quantum.Job.set_schedule(Crontab.CronExpression.Parser.parse!(alert_query.cron))
+    |> Quantum.Job.set_name(make_ref())
   end
 
   @doc """
@@ -169,14 +172,9 @@ defmodule Logflare.Alerting do
   def init_alert_jobs do
     AlertQuery
     |> Repo.all()
-    |> Stream.each(fn alert_query ->
-      if get_alert_job(alert_query) == nil do
-        upsert_alert_job(alert_query)
-      end
+    |> Enum.map(fn alert_query ->
+      create_alert_job_struct(alert_query)
     end)
-    |> Stream.run()
-
-    :ok
   end
 
   @doc """
