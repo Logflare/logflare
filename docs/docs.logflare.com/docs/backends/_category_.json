@@ -1,7 +1,7 @@
 {
   "label": "Backends",
-  "collapsible": false,
-  "collapsed": false,
+  "collapsible": true,
+  "collapsed": true,
   "position": 5,
   "link": {
       "type": "doc",
