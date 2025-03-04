@@ -4,20 +4,6 @@ defmodule Logflare.Ecto.BQQueryAPI.UDF do
   """
   import Logflare.Ecto.BQQueryAPI, only: [to_bq_interval_token: 1]
 
-  defmacro lf_timestamp_trunc(timestamp, interval) do
-    fragment_string = udf_function("LF_TIMESTAMP_TRUNC(?, ?)")
-
-    interval = quoted_interval(interval)
-
-    quote do
-      fragment(
-        unquote(fragment_string),
-        unquote(timestamp),
-        ^unquote(quote(do: to_bq_interval_token(unquote(interval))))
-      )
-    end
-  end
-
   defmacro lf_timestamp_sub(date, count, interval) do
     fragment_string = udf_function("LF_TIMESTAMP_SUB(?, ?, ?)")
 
