@@ -23,7 +23,7 @@ defmodule Logflare.Source.RecentLogsServer do
       name: Backends.via_source(args[:source], __MODULE__),
       hibernate_after: 5_000,
       spawn_opt: [
-        full_sweep_after: 100
+        fullsweep_after: 100
       ]
     )
   end
