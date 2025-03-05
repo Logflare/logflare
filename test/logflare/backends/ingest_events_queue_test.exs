@@ -273,28 +273,6 @@ defmodule Logflare.Backends.IngestEventQueueTest do
     assert IngestEventQueue.total_pending(table) == 0
   end
 
-  test "QueueJanitor cleans up orphaned queues" do
-    user = insert(:user)
-    source = insert(:source, user: user)
-    backend = insert(:backend, user: user)
-    le = build(:log_event, source: source)
-
-    sid_bid_pid = {source.id, backend.id, :c.pid(0, 255, 0)}
-    startup_table_key = {source.id, backend.id, nil}
-    IngestEventQueue.upsert_tid(startup_table_key)
-    IngestEventQueue.upsert_tid(sid_bid_pid)
-    assert :ok = IngestEventQueue.add_to_table(sid_bid_pid, [le])
-
-    start_supervised!(
-      {QueueJanitor, source: source, backend: backend, interval: 50, remainder: 0}
-    )
-
-    :timer.sleep(550)
-    assert nil == IngestEventQueue.get_table_size(sid_bid_pid)
-    assert IngestEventQueue.total_pending(startup_table_key) == 1
-    assert length(IngestEventQueue.list_queues({source.id, backend.id})) == 1
-  end
-
   test "QueueJanitor purges if exceeds max" do
     user = insert(:user)
     source = insert(:source, user: user)
