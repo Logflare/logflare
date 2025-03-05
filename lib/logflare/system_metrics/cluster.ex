@@ -34,11 +34,28 @@ defmodule Logflare.SystemMetrics.Cluster do
         ] do
       case Finch.get_pool_status(pool, url) do
         {:ok, metrics} ->
-          counts = for metric <- metrics, do: metric.in_flight_requests
+          counts =
+            for metric <- metrics,
+                Map.get(metric, :in_flight_requests),
+                do: metric.in_flight_requests
+
+          in_use_connections =
+            for metric <- metrics,
+                Map.get(metric, :in_use_connections),
+                do: metric.in_use_connections
+
+          available_connections =
+            for metric <- metrics,
+                Map.get(metric, :available_connections),
+                do: metric.available_connections
 
           :telemetry.execute(
             [:logflare, :system, :finch],
-            %{in_flight_requests: Enum.sum(counts)},
+            %{
+              in_flight_requests: Enum.sum(counts),
+              in_use_connections: Enum.sum(in_use_connections),
+              available_connections: Enum.sum(available_connections)
+            },
             %{url: url, pool: Atom.to_string(pool)}
           )
 

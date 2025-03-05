@@ -35,6 +35,8 @@ config :logflare, Logflare.Repo,
 
 config :logflare, :postgres_backend_adapter, pool_size: 1
 
+config :logflare, Logflare.PubSub, pool_size: 10
+
 defmodule LogflareTest.LogFilters do
   def ignore_finch_disconnections(%{meta: %{mfa: {Finch.HTTP2.Pool, :disconnected, _}}}, _opts) do
     :stop

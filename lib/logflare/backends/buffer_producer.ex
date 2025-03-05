@@ -15,6 +15,7 @@ defmodule Logflare.Backends.BufferProducer do
 
   @impl GenStage
   def init(opts) do
+    Process.flag(:trap_exit, true)
     source = Sources.Cache.get_by_id(opts[:source_id])
 
     state = %{
@@ -81,6 +82,16 @@ defmodule Logflare.Backends.BufferProducer do
   @impl GenStage
   def handle_info({:add_to_buffer, items}, state) do
     {:noreply, items, state}
+  end
+
+  @impl GenStage
+  def handle_info({:EXIT, _caller_pid, _reason}, state) do
+    table_key = {state.source_id, state.backend_id, self()}
+    startup_table_key = {state.source_id, state.backend_id, nil}
+    # move to startup queue
+    IngestEventQueue.move(table_key, startup_table_key)
+
+    {:noreply, [], state}
   end
 
   @impl GenStage

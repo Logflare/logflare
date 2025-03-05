@@ -225,6 +225,20 @@ defmodule Logflare.Backends.IngestEventQueue do
   end
 
   @doc """
+  Deletes the queue associated with the given source-backend-pid.
+  """
+  @spec delete_queue(source_backend_pid()) :: :ok | {:error, :not_initialized}
+  def delete_queue(sid_bid_pid) do
+    with tid when tid != nil <- get_tid(sid_bid_pid) do
+      :ets.delete(tid)
+      :ets.delete(@ets_table_mapper, sid_bid_pid)
+      :ok
+    else
+      nil -> {:error, :not_initialized}
+    end
+  end
+
+  @doc """
   Returns a list of two-element tuples.
   First element is the table key.
   Second element is the pending count.

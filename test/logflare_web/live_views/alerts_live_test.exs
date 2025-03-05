@@ -28,8 +28,8 @@ defmodule LogflareWeb.AlertsLiveTest do
     setup [:create_alert_query]
 
     setup do
-      Logflare.AlertsScheduler
-      |> stub(:put_job, fn _ -> :ok end)
+      Logflare.Alerting.AlertsScheduler
+      |> stub(:add_job, fn _ -> :ok end)
 
       :ok
     end

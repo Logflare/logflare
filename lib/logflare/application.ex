@@ -116,7 +116,7 @@ defmodule Logflare.Application do
         {Task, fn -> startup_tasks() end},
 
         # citrine scheduler for alerts
-        Logflare.AlertsScheduler
+        Logflare.Alerting.Supervisor
       ]
   end
 
@@ -203,6 +203,7 @@ defmodule Logflare.Application do
   defp finch_pools do
     base = System.schedulers_online()
     min_count = max(5, ceil(base / 10))
+    http1_count = max(div(base, 10), 1)
 
     [
       # Finch connection pools, using http2
@@ -211,8 +212,9 @@ defmodule Logflare.Application do
        name: Logflare.FinchIngest,
        pools: %{
          "https://bigquery.googleapis.com" => [
-           protocols: [:http2],
-           count: max(ceil(base / 2), 10),
+           protocols: [:http1],
+           size: max(base * 10, 50),
+           count: http1_count,
            start_pool_metrics?: true
          ]
        }},
