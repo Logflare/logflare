@@ -74,7 +74,6 @@ defmodule Logflare.Backends.IngestEventQueue.QueueJanitor do
         )
       end
 
-      dbg(pid)
       # check if pid is alive
       if pid != nil and Process.alive?(pid) == false do
         startup_table_key = {state.source_id, state.backend_id, nil}
