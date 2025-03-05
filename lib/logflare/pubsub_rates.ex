@@ -6,7 +6,6 @@ defmodule Logflare.PubSubRates do
   alias Phoenix.PubSub
 
   @topics ["buffers", "rates", "inserts"]
-  @partitions Application.compile_env(:logflare, Logflare.PubSub)[:pool_size]
 
   def start_link(init_arg) do
     Supervisor.start_link(__MODULE__, init_arg, name: __MODULE__)
@@ -101,7 +100,7 @@ defmodule Logflare.PubSubRates do
   The number of partitions for a paritioned child.
   """
   @spec partitions() :: integer()
-  def partitions(), do: @partitions
+  def partitions(), do: Application.get_env(:logflare, Logflare.PubSub)[:pool_size]
 
   @doc """
   Partitions a topic for a key.
