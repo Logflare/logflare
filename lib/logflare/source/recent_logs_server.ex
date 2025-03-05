@@ -15,14 +15,16 @@ defmodule Logflare.Source.RecentLogsServer do
 
   require Logger
 
-  @touch_timer :timer.seconds(1)
-  @broadcast_every 1_800
+  @broadcast_every 2_500
 
   ## Server
   def start_link(args) do
     GenServer.start_link(__MODULE__, args,
       name: Backends.via_source(args[:source], __MODULE__),
-      hibernate_after: 5_000
+      hibernate_after: 5_000,
+      spawn_opt: [
+        full_sweep_after: 100
+      ]
     )
   end
 
@@ -32,8 +34,8 @@ defmodule Logflare.Source.RecentLogsServer do
 
     Process.flag(:trap_exit, true)
     Logger.metadata(source_id: source.token, source_token: source.token)
-
-    touch()
+    touch_every = Enum.random(10..30) * :timer.minutes(1)
+    touch(touch_every)
     broadcast()
 
     Logger.debug("[#{__MODULE__}] Started")
@@ -41,7 +43,8 @@ defmodule Logflare.Source.RecentLogsServer do
     {:ok,
      %{
        source_token: source.token,
-       source_id: source.id
+       source_id: source.id,
+       touch_every: touch_every
      }}
   end
 
@@ -102,7 +105,7 @@ defmodule Logflare.Source.RecentLogsServer do
         end
     end
 
-    touch()
+    touch(state.touch_every)
     {:noreply, state}
   end
 
@@ -144,11 +147,7 @@ defmodule Logflare.Source.RecentLogsServer do
     {:ok, current_cluster_inserts, current_inserts}
   end
 
-  defp touch() do
-    rand = Enum.random(0..30) * :timer.minutes(1)
-
-    every = rand + @touch_timer
-
+  defp touch(every) do
     Process.send_after(self(), :touch, every)
   end
 
