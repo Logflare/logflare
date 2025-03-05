@@ -88,7 +88,6 @@ defmodule Logflare.Backends.BufferProducer do
   def handle_info({:EXIT, _caller_pid, _reason}, state) do
     table_key = {state.source_id, state.backend_id, self()}
     startup_table_key = {state.source_id, state.backend_id, nil}
-    IngestEventQueue.upsert_tid(table_key)
     # move to startup queue
     IngestEventQueue.move(table_key, startup_table_key)
 
