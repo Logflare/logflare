@@ -99,7 +99,7 @@ defmodule Logflare.Source.RecentLogsServer do
         now = NaiveDateTime.utc_now()
         latest_ts = Enum.map(events, & &1.ingested_at) |> Enum.max(NaiveDateTime)
 
-        if NaiveDateTime.diff(now, latest_ts, :millisecond) < @touch_timer do
+        if NaiveDateTime.diff(now, latest_ts, :millisecond) < :timer.seconds(1) do
           source
           |> Sources.update_source(%{log_events_updated_at: DateTime.utc_now()})
         end
