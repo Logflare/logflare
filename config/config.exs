@@ -51,8 +51,6 @@ config :logflare, LogflareWeb.Endpoint,
   pubsub_server: Logflare.PubSub,
   live_view: [signing_salt: "Fvo_-oQi4bjPfQLh"]
 
-config :logflare, Logflare.PubSub, pool_size: 56
-
 # Configures Elixir's Logger
 config :logger,
   handle_otp_reports: true,
