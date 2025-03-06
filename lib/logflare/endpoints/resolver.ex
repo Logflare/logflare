@@ -30,8 +30,18 @@ defmodule Logflare.Endpoints.Resolver do
         Logger.debug("Starting up Endpoint.Cache for Endpoint.Query id=#{id}", endpoint_id: id)
 
         case DynamicSupervisor.start_child(Cache, spec) do
-          {:ok, pid} -> pid
-          {:error, {:already_started, pid}} -> pid
+          {:ok, pid} ->
+            pid
+
+          {:error, {:already_started, pid}} ->
+            pid
+
+          {:error, {:timeout, reason}} ->
+            Logger.warn(
+              "Could not start Endpoint.Cache for Endpoint.Query id=#{id}, reason=#{inspect(reason)}"
+            )
+
+            {:error, :timomeout}
         end
     end
   end
