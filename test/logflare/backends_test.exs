@@ -210,6 +210,15 @@ defmodule Logflare.BackendsTest do
       assert :ok = Backends.start_source_sup(source)
       assert :ok = Backends.restart_source_sup(source)
     end
+
+    test "rules_child_started? when SourceSup already started", %{source: source} do
+      rule_backend = insert(:backend)
+      rule = insert(:rule, source: source, backend: rule_backend)
+      refute SourceSup.rule_child_started?(rule)
+      start_supervised!({SourceSup, source})
+      :timer.sleep(500)
+      assert SourceSup.rule_child_started?(rule)
+    end
   end
 
   describe "ingestion" do

@@ -18,6 +18,7 @@ defmodule Logflare.Backends.SourceSup do
   alias Logflare.Logs.SearchQueryExecutor
   alias Logflare.Rule
   alias Logflare.Sources
+  alias Logflare.Backends.AdaptorSupervisor
 
   def start_link(%Source{} = source) do
     Supervisor.start_link(__MODULE__, source, name: Backends.via_source(source, __MODULE__))
@@ -67,18 +68,9 @@ defmodule Logflare.Backends.SourceSup do
   """
   @spec rule_child_started?(Rule.t()) :: boolean()
   def rule_child_started?(%Rule{backend_id: backend_id, source_id: source_id}) do
-    backend = Backends.Cache.get_backend(backend_id) |> Map.put(:register_for_ingest, false)
-    source = Sources.Cache.get_by_id(source_id)
-    via = Backends.via_source(source, __MODULE__)
-    spec = Backend.child_spec(source, backend)
+    via = Backends.via_source(source_id, AdaptorSupervisor, backend_id)
 
-    found_id =
-      Supervisor.which_children(via)
-      |> Enum.find(fn {id, _pid, _type, _mod} ->
-        id == spec.id
-      end)
-
-    if found_id do
+    if GenServer.whereis(via) do
       true
     else
       false

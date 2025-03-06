@@ -29,6 +29,7 @@ defmodule Logflare.Logs.SourceRouting do
     # route to a backend
     backend = Backends.Cache.get_backend(backend_id)
     le = %{le | via_rule: rule}
+    Backends.ensure_source_sup_started(source)
     if SourceSup.rule_child_started?(rule) == false, do: SourceSup.start_rule_child(rule)
 
     # ingest to a specific backend
@@ -43,6 +44,7 @@ defmodule Logflare.Logs.SourceRouting do
 
     if source.v2_pipeline do
       # TODO: ensure source started
+      Backends.ensure_source_sup_started(sink)
       Backends.ingest_logs([le], sink_source)
     else
       le
