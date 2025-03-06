@@ -11,7 +11,7 @@ steps:
       - --boot-disk-type=pd-balanced
       - --machine-type=c2d-standard-32
       - --project=logflare-232118
-      - --network-interface=network=global,network-tier=PREMIUM
+      - --network-interface=network=global,network-tier=PREMIUM,no-address
       - --maintenance-policy=TERMINATE
       - --service-account=compute-engine-2022@logflare-232118.iam.gserviceaccount.com
       - --scopes=https://www.googleapis.com/auth/cloud-platform
