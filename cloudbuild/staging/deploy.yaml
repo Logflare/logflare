@@ -11,7 +11,7 @@ steps:
       - --boot-disk-type=pd-balanced
       - --machine-type=${_INSTANCE_TYPE}
       - --project=logflare-staging
-      - --network-interface=network=default,network-tier=PREMIUM
+      - --network-interface=network=default,network-tier=PREMIUM,no-address
       - --maintenance-policy=TERMINATE
       - --service-account=compute-engine-2022@logflare-staging.iam.gserviceaccount.com
       - --scopes=https://www.googleapis.com/auth/cloud-platform
