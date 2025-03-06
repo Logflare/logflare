@@ -249,6 +249,7 @@ defmodule Logflare.AlertingTest do
 
       assert {:ok,
               %Quantum.Job{
+                run_strategy: %Quantum.RunStrategy.Local{},
                 task: {Logflare.Alerting, :run_alert, [%AlertQuery{id: ^alert_id}, :scheduled]}
               }} = Alerting.upsert_alert_job(alert)
 

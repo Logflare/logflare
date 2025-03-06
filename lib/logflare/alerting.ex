@@ -159,7 +159,7 @@ defmodule Logflare.Alerting do
   end
 
   def create_alert_job_struct(alert_query) do
-    AlertsScheduler.new_job()
+    AlertsScheduler.new_job(run_strategy: Quantum.RunStrategy.Local)
     |> Quantum.Job.set_task({__MODULE__, :run_alert, [alert_query, :scheduled]})
     |> Quantum.Job.set_schedule(Crontab.CronExpression.Parser.parse!(alert_query.cron))
     |> Quantum.Job.set_name(make_ref())
