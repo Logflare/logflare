@@ -52,8 +52,6 @@ defmodule Logflare.User.BigQueryUDFs do
       when is_binary(bdid) and bdid != "" and is_binary(bqid) and bqid != "" do
     "
     #{SFns.lf_timestamp_sub(bqid, bdid)}
-    #{SFns.lf_timestamp_trunc(bqid, bdid)}
-    #{SFns.lf_timestamp_trunc_with_timezone(bqid, bdid)}
     #{SFns.lf_generate_timestamp_array(bqid, bdid)}
     "
   end
