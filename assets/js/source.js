@@ -131,7 +131,7 @@ async function logTemplate(e) {
     </div> ` :
     ""
 
-  return `<li>
+  return `<li class="hover:tw-bg-gray-800">
     <mark class="log-datestamp" data-timestamp="${body.timestamp
     }">${formattedDatetime}</mark> ${_.escape(body.event_message)}
     ${metadataElement}
