@@ -111,10 +111,11 @@ defmodule LogflareWeb.OpenTelemetrySampler do
 
       {decision,
        [
-         {:"url.query", replaced}
+         {:"url.query", replaced},
+         {:"server.cluster", "cluster"}
        ], tracestate}
     else
-      {decision, attributes, tracestate}
+      {decision, [{:"server.cluster", "cluster"}], tracestate}
     end
   end
 

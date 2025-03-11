@@ -32,7 +32,7 @@ All browser authentication will be disabled when in single-tenant mode.
 | `DB_SCHEMA`                           | String, defaults to `nil`                                               | Allows configuration of the database schema to scope Logflare operations.                                                                                                               |
 | `LOGFLARE_LOG_LEVEL`                  | String, defaults to `info`. <br/>Options: `error`,`warning`, `info`     | Allows runtime configuration of log level.                                                                                                                                              |
 | `LOGFLARE_NODE_HOST`                  | string, defaults to `127.0.0.1`                                         | Sets node host on startup, which affects the node name `logflare@<host>`                                                                                                                |
-| `LOGFLARE_LOGGER_METADATA_CLUSTER`    | string, defaults to `nil`                                               | Sets global logging metadata for the cluster name. Useful for filtering logs by cluster name.                                                                                           |
+| `LOGFLARE_METADATA_CLUSTER`           | string, defaults to `nil`                                               | Sets global logging/tracing metadata for the cluster name. Useful for filtering logs by cluster name. See the [metadata](#Metadata) section.                                            |
 | `LOGFLARE_PUBSUB_POOL_SIZE`           | Integer, defaults to `10`                                               | Sets the number of `Phoenix.PubSub.PG2` partitions to be created. Should be configured to the number of cores of your server for optimal multi-node performance.                        |
 | `LOGFLARE_ALERTS_ENABLED`             | Boolean, defaults to `true`                                             | Flag for enabling and disabling query alerts.                                                                                                                                           |
 | `LOGFLARE_ALERTS_MIN_CLUSTER_SIZE`    | Integer, defaults to `1`                                                | Sets the required cluster size for Query Alerts to be run. If cluster size is below the provided value, query alerts will not run.                                                      |
@@ -46,6 +46,35 @@ All browser authentication will be disabled when in single-tenant mode.
 
 LOGFLARE_OTEL_SAMPLE_RATIO
 Additional environment variable configurations for the OpenTelemetry libraries used can be found [here](https://hexdocs.pm/opentelemetry_exporter/readme.html).perf/bq-pipeline-sharding
+
+#### Metadata
+
+Metadata allows passing in configuration values that will be merged into the logs and traces.
+
+Setting `LOGFLARE_METADATA_CLUSTER=production` will result the following payloads:
+
+```json
+// for logs
+{
+  "metadata": {
+    "cluster": "production",
+    ...
+  }
+}
+
+// for OpenTelemetry Traces
+{
+  "attributes": {
+    "system.cluster": "production",
+    ...
+  }
+}
+```
+
+:::warning
+`LOGFLARE_LOGGER_METADATA_CLUSTER` has been renamed to `LOGFLARE_METADATA_CLUSTER` as of `v1.13.x`.
+:::
+
 
 ### BigQuery Backend Configuration
 
