@@ -116,7 +116,7 @@ config :logger,
 
 config :logger,
   metadata:
-    [cluster: System.get_env("LOGFLARE_LOGGER_METADATA_CLUSTER")]
+    [cluster: System.get_env("LOGFLARE_METADATA_CLUSTER")]
     |> filter_nil_kv_pairs.()
 
 log_level =
