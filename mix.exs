@@ -130,7 +130,7 @@ defmodule Logflare.Mixfile do
       {:poison, "~> 5.0.0", override: true},
       {:swoosh, "~> 0.23"},
       {:ex_twilio, "~> 0.8.1"},
-      {:tesla, "~> 1.6"},
+      {:tesla, github: "Logflare/tesla", branch: "main"},
 
       # Concurrency and pipelines
       {:broadway, github: "Logflare/broadway", branch: "fix/batcher-fullsweep-after"},
