@@ -106,15 +106,20 @@ defmodule LogflareWeb.OpenTelemetrySampler do
 
     url_query = Map.get(attributes, :"url.query", "") || ""
 
+    extra_attrs =
+      for {k, v} <- Application.get_env(:logflare, :metadata, []), v != nil do
+        {String.to_atom("server.#{k}"), v}
+      end
+
     if url_query =~ "api_key=" do
       replaced = url_query |> String.replace(~r/api_key=[^&]*/, "api_key=[REDACTED]")
 
       {decision,
        [
          {:"url.query", replaced}
-       ], tracestate}
+       ] ++ extra_attrs, tracestate}
     else
-      {decision, attributes, tracestate}
+      {decision, extra_attrs, tracestate}
     end
   end
 

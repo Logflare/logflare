@@ -4,7 +4,6 @@ defmodule Logflare.SynEventHandler do
 
   Always keep oldest proces.
   """
-
   @behaviour :syn_event_handler
 
   require Logger
