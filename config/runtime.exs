@@ -4,6 +4,10 @@ filter_nil_kv_pairs = fn pairs when is_list(pairs) ->
   Enum.filter(pairs, fn {_k, v} -> v !== nil end)
 end
 
+logflare_metadata =
+  [cluster: System.get_env("LOGFLARE_METADATA_CLUSTER")]
+  |> filter_nil_kv_pairs.()
+
 config :logflare,
        Logflare.PubSub,
        [
@@ -27,7 +31,8 @@ config :logflare,
          private_access_token: System.get_env("LOGFLARE_PRIVATE_ACCESS_TOKEN"),
          cache_stats: System.get_env("LOGFLARE_CACHE_STATS", "false") == "true",
          encryption_key_default: System.get_env("LOGFLARE_DB_ENCRYPTION_KEY"),
-         encryption_key_retired: System.get_env("LOGFLARE_DB_ENCRYPTION_KEY_RETIRED")
+         encryption_key_retired: System.get_env("LOGFLARE_DB_ENCRYPTION_KEY_RETIRED"),
+         metadata: logflare_metadata
        ]
        |> filter_nil_kv_pairs.()
 
@@ -115,9 +120,7 @@ config :logger,
     |> Enum.filter(&(&1 != nil))
 
 config :logger,
-  metadata:
-    [cluster: System.get_env("LOGFLARE_METADATA_CLUSTER")]
-    |> filter_nil_kv_pairs.()
+  metadata: logflare_metadata
 
 log_level =
   case String.downcase(System.get_env("LOGFLARE_LOG_LEVEL") || "") do
