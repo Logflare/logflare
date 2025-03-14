@@ -26,7 +26,7 @@ defmodule Logflare.Alerting.Supervisor do
       end
 
     if pid == nil do
-      case Supervisor.start_child(__MODULE__.Sup, {AlertsScheduler, name: scheduler_name()}) do
+      case try_start() do
         {:ok, _pid} ->
           Logger.info("Started alerts scheduler on #{inspect(Node.self())}")
 
@@ -40,6 +40,11 @@ defmodule Logflare.Alerting.Supervisor do
     Process.send_after(self(), :maybe_start_scheduler, @interval)
 
     {:noreply, state}
+  end
+
+
+  def try_start() do
+    Supervisor.start_child(Logflare.Alerting.Supervisor.Sup, {AlertsScheduler, name: scheduler_name()})
   end
 
   @doc """
