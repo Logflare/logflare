@@ -30,6 +30,16 @@ defmodule Logflare.SynEventHandler do
     keep_original(pid_meta1, pid_meta2)
   end
 
+
+  defp keep_original({pid1, %{timestamp: timestamp1}, _timestamp1}, {pid2, %{timestamp: timestamp2}, _timestamp2}) do
+    if timestamp1 < timestamp2 do
+      pid1
+    else
+      pid2
+    end
+  end
+
+  # fallback if the :timestamp metadata with higher nanosecond resolution is not,
   defp keep_original({pid1, _meta1, timestamp1}, {pid2, _meta2, timestamp2}) do
     if timestamp1 < timestamp2 do
       pid1
