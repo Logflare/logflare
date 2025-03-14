@@ -42,9 +42,11 @@ defmodule Logflare.Alerting.Supervisor do
     {:noreply, state}
   end
 
-
   def try_start() do
-    Supervisor.start_child(Logflare.Alerting.Supervisor.Sup, {AlertsScheduler, name: scheduler_name()})
+    Supervisor.start_child(
+      Logflare.Alerting.Supervisor.Sup,
+      {AlertsScheduler, name: scheduler_name()}
+    )
   end
 
   @doc """
@@ -53,6 +55,6 @@ defmodule Logflare.Alerting.Supervisor do
   def scheduler_name do
     ts = DateTime.utc_now() |> DateTime.to_unix(:nanosecond)
     # add nanosecond resolution for timestamp comparison
-    {:via, :syn, {:alerting, Logflare.Alerting.AlertsScheduler, %{timestamp: ts }}}
+    {:via, :syn, {:alerting, Logflare.Alerting.AlertsScheduler, %{timestamp: ts}}}
   end
 end

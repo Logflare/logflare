@@ -15,11 +15,12 @@ defmodule Logflare.SynEventHandler do
         pid_meta1,
         pid_meta2
       ) do
+    original = keep_original(pid_meta1, pid_meta2)
 
-        original = keep_original(pid_meta1, pid_meta2)
-        Logger.warning(
-          "Resolving registry conflict for alerting, for Logflare.Alerting.AlertsScheduler. Keeping original #{original} on #{node(original)}"
-        )
+    Logger.warning(
+      "Resolving registry conflict for alerting, for Logflare.Alerting.AlertsScheduler. Keeping original #{original} on #{node(original)}"
+    )
+
     original
   end
 
@@ -31,8 +32,10 @@ defmodule Logflare.SynEventHandler do
     keep_original(pid_meta1, pid_meta2)
   end
 
-
-  defp keep_original({pid1, %{timestamp: timestamp1}, _timestamp1}, {pid2, %{timestamp: timestamp2}, _timestamp2}) do
+  defp keep_original(
+         {pid1, %{timestamp: timestamp1}, _timestamp1},
+         {pid2, %{timestamp: timestamp2}, _timestamp2}
+       ) do
     if timestamp1 < timestamp2 do
       pid1
     else
