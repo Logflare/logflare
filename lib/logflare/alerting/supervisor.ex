@@ -26,7 +26,7 @@ defmodule Logflare.Alerting.Supervisor do
       end
 
     if pid == nil do
-      case Supervisor.start_child(__MODULE__.Sup, {AlertsScheduler, name: scheduler_name()}) do
+      case try_start() do
         {:ok, _pid} ->
           Logger.info("Started alerts scheduler on #{inspect(Node.self())}")
 
@@ -42,10 +42,19 @@ defmodule Logflare.Alerting.Supervisor do
     {:noreply, state}
   end
 
+  def try_start() do
+    Supervisor.start_child(
+      Logflare.Alerting.Supervisor.Sup,
+      {AlertsScheduler, name: scheduler_name()}
+    )
+  end
+
   @doc """
   Returns the alerts scheduler :via name used for syn registry.
   """
   def scheduler_name do
-    {:via, :syn, {:alerting, Logflare.Alerting.AlertsScheduler}}
+    ts = DateTime.utc_now() |> DateTime.to_unix(:nanosecond)
+    # add nanosecond resolution for timestamp comparison
+    {:via, :syn, {:alerting, Logflare.Alerting.AlertsScheduler, %{timestamp: ts}}}
   end
 end

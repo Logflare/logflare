@@ -79,8 +79,8 @@ defmodule Logflare.LogsTest do
                                                    _dataset_id,
                                                    _table_name,
                                                    opts ->
-        assert {Tesla.Adapter.Finch, :call, [[name: Logflare.FinchDefault, receive_timeout: _]]} =
-                 conn.adapter
+        assert {Tesla.Adapter.Finch, :call, [kw]} = conn.adapter
+        assert kw[:name] == Logflare.FinchIngest
 
         [%{json: json}] = opts[:body].rows
         assert json["event_message"] == "testing 123"

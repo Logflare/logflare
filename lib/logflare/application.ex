@@ -203,7 +203,7 @@ defmodule Logflare.Application do
   defp finch_pools do
     base = System.schedulers_online()
     min_count = max(5, ceil(base / 10))
-    http1_count = max(div(base, 10), 1)
+    http1_count = max(div(base, 5), 1)
 
     [
       # Finch connection pools, using http2
@@ -213,7 +213,7 @@ defmodule Logflare.Application do
        pools: %{
          "https://bigquery.googleapis.com" => [
            protocols: [:http1],
-           size: max(base * 10, 50),
+           size: max(base * 15, 50),
            count: http1_count,
            start_pool_metrics?: true
          ]
@@ -231,11 +231,11 @@ defmodule Logflare.Application do
        name: Logflare.FinchDefault,
        pools: %{
          # default pool uses finch defaults
-         :default => [protocols: [:http1, :http2], count: 1, size: base * 2],
+         :default => [protocols: [:http1]],
          #  explicitly set http2 for other pools for multiplexing
          "https://bigquery.googleapis.com" => [
-           protocols: [:http2],
-           count: max(base, 10),
+           protocols: [:http1],
+           count: http1_count,
            start_pool_metrics?: true
          ],
          "https://http-intake.logs.datadoghq.com" => [
