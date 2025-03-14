@@ -1,5 +1,5 @@
 defmodule Logflare.Alerting.AlertsScheduler do
-  use Quantum, otp_app: :logflare
+  use Quantum, otp_app: :logflare, restart: :transient
   alias Logflare.Alerting
   require Logger
   @impl Quantum

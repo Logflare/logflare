@@ -15,11 +15,12 @@ defmodule Logflare.SynEventHandler do
         pid_meta1,
         pid_meta2
       ) do
-    Logger.warning(
-      "Resolving registry conflict for alerting, for Logflare.Alerting.AlertsScheduler. Keeping original"
-    )
 
-    keep_original(pid_meta1, pid_meta2)
+        original = keep_original(pid_meta1, pid_meta2)
+        Logger.warning(
+          "Resolving registry conflict for alerting, for Logflare.Alerting.AlertsScheduler. Keeping original #{original} on #{node(original)}"
+        )
+    original
   end
 
   def resolve_registry_conflict(scope, name, pid_meta1, pid_meta2) do
@@ -37,6 +38,7 @@ defmodule Logflare.SynEventHandler do
     else
       pid2
     end
+    |> dbg()
   end
 
   # fallback if the :timestamp metadata with higher nanosecond resolution is not,
