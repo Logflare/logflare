@@ -41,7 +41,6 @@ defmodule Logflare.SynEventHandler do
     else
       pid2
     end
-    |> dbg()
   end
 
   # fallback if the :timestamp metadata with higher nanosecond resolution is not,
