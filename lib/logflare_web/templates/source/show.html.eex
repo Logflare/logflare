@@ -25,7 +25,7 @@
 <div id="logs-list-stream-container" class="mt-4 container mx-auto console-text">
   <ul id="logs-list" class="list-unstyled console-text-list" hidden>
     <%= @logs |> Enum.with_index |> Enum.map(fn {log, inx} -> %>
-    <li>
+    <li class="hover:tw-bg-gray-800">
       <span class="tw-whitespace-pre-wrap"><mark class="log-datestamp" data-timestamp="<%= log.body["timestamp"] %>"><%= log.body["timestamp"] %></mark> <%= log.body["event_message"] %></span>
       <a class="metadata-link" data-toggle="collapse" href="#metadata-<%= inx %>" aria-expanded="false" class=" tw-text-[0.65rem]"">
         event body

@@ -15,7 +15,7 @@
               else
                 format_timestamp(timestamp) <> " UTC"
               end %>
-            <li id={"log-event_#{log.id || log.body["timestamp"]}"} class="tw-group">
+            <li id={"log-event_#{log.id || log.body["timestamp"]}"} class="tw-group hover:tw-bg-gray-800">
               <span class="tw-whitespace-pre-wrap"><mark class="log-datestamp" data-timestamp={timestamp}><%= formatted_timestamp %></mark>&nbsp;<%= message %></span>
               <span class="tw-inline-block tw-text-[0.65rem] tw-align-text-bottom tw-inline-flex tw-flex-row tw-gap-2">
                 <%= live_modal_show_link(component: LogflareWeb.Search.LogEventViewerComponent, modal_id: :log_event_viewer, title: "Log Event", phx_value_log_event_id: log.id, phx_value_log_event_timestamp: log.body["timestamp"]) do %>
