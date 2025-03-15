@@ -9,6 +9,27 @@ defmodule Logflare.SynEventHandler do
 
   require Logger
   @impl true
+
+  @doc """
+  Resolves registry conflicts for alerting and other scopes.
+
+  ## Examples
+
+      iex> pid1 = :c.pid(0,111,0)
+      iex> pid2 = :c.pid(0,222,0)
+      iex> meta1 = %{timestamp: 1}
+      iex> meta2 = %{timestamp: 2}
+      iex> Logflare.SynEventHandler.resolve_registry_conflict(:alerting, Logflare.Alerting.AlertsScheduler, {pid1, meta1, 1}, {pid2, meta2, 2})
+      #PID<0.111.0>
+      iex> Logflare.SynEventHandler.resolve_registry_conflict(:alerting, Logflare.Alerting.AlertsScheduler, {pid2, meta2, 2}, {pid1, meta1, 1})
+      #PID<0.111.0>
+      iex> Logflare.SynEventHandler.resolve_registry_conflict(:alerting, Logflare.Alerting.AlertsScheduler, {pid2, meta2, 1}, {pid1, meta1, 1})
+      #PID<0.111.0>
+      iex> Logflare.SynEventHandler.resolve_registry_conflict(:alerting, Logflare.Alerting.AlertsScheduler, {pid2, %{}, 2}, {pid1, %{}, 1})
+      #PID<0.111.0>
+
+  """
+
   def resolve_registry_conflict(
         :alerting,
         Logflare.Alerting.AlertsScheduler,
@@ -17,8 +38,13 @@ defmodule Logflare.SynEventHandler do
       ) do
     original = keep_original(pid_meta1, pid_meta2)
 
+    pid_node =
+      if is_pid(original) do
+        node(original)
+      end
+
     Logger.warning(
-      "Resolving registry conflict for alerting, for Logflare.Alerting.AlertsScheduler. Keeping original #{original} on #{node(original)}"
+      "Resolving registry conflict for alerting, for Logflare.Alerting.AlertsScheduler. Keeping original #{inspect(original)} on #{inspect(pid_node)}"
     )
 
     original

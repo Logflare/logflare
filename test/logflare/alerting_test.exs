@@ -6,6 +6,8 @@ defmodule Logflare.AlertingTest do
   alias Logflare.Alerting.AlertQuery
   alias Logflare.Alerting.AlertsScheduler
 
+  doctest Logflare.SynEventHandler
+
   setup do
     insert(:plan, name: "Free")
     {:ok, user: insert(:user)}
