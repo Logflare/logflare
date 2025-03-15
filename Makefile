@@ -20,7 +20,10 @@ test.only:
 	-epmd -daemon
 	mix test.only
 
-.PHONY: test test.only
+compile.check:
+	ERL_COMPILER_OPTIONS=bin_opt_info mix test.compile --force
+
+.PHONY: test test.only compile.check
 
 setup: setup.node
 	# install dependencies
