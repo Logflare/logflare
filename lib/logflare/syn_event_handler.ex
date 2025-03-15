@@ -17,8 +17,13 @@ defmodule Logflare.SynEventHandler do
       ) do
     original = keep_original(pid_meta1, pid_meta2)
 
+    pid_node =
+      if is_pid(original) do
+        node(original)
+      end
+
     Logger.warning(
-      "Resolving registry conflict for alerting, for Logflare.Alerting.AlertsScheduler. Keeping original #{original} on #{node(original)}"
+      "Resolving registry conflict for alerting, for Logflare.Alerting.AlertsScheduler. Keeping original #{inspect(original)} on #{inspect(pid_node)}"
     )
 
     original

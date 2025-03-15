@@ -27,10 +27,11 @@ defmodule Logflare.Alerting.Supervisor do
 
     if pid == nil do
       case try_start() do
-        {:ok, _pid} ->
-          Logger.info("Started alerts scheduler on #{inspect(Node.self())}")
+        {:ok, pid} ->
+          Logger.info("Started alerts scheduler on #{inspect(Node.self())}, pid: #{inspect(pid)}")
+          :syn.join(:alerting, :scheduler, self())
 
-        {:error, {:already_started, _pid}} ->
+        {:error, {:already_started, pid}} ->
           Logger.debug("Alerts scheduler already started on #{inspect(node(pid))}")
       end
     else
