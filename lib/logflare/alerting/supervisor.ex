@@ -29,7 +29,7 @@ defmodule Logflare.Alerting.Supervisor do
       case try_start() do
         {:ok, pid} ->
           Logger.info("Started alerts scheduler on #{inspect(Node.self())}, pid: #{inspect(pid)}")
-          :syn.join(:alerting, :scheduler, self())
+          :syn.join(:alerting, :scheduler, pid)
 
         {:error, {:already_started, pid}} ->
           Logger.debug("Alerts scheduler already started on #{inspect(node(pid))}")
