@@ -6,6 +6,7 @@ defmodule Logflare.Backends do
   alias Logflare.Backends.SourceRegistry
   alias Logflare.Backends.SourcesSup
   alias Logflare.Backends.SourceSup
+  alias Logflare.Backends.RecentEventsTouch
   alias Logflare.Backends.IngestEventQueue
   alias Logflare.LogEvent
   alias Logflare.Repo
@@ -369,6 +370,10 @@ defmodule Logflare.Backends do
   def via_source(source_id, mod, id), do: via_source(source_id, {mod, id})
 
   def via_source(%Source{id: id}, process_id), do: via_source(id, process_id)
+
+  def via_source(id, RecentEventsTouch) when is_number(id) do
+    {:via, :syn, {:core, RecentEventsTouch}}
+  end
 
   def via_source(id, process_id) when is_number(id) do
     {:via, Registry, {SourceRegistry, {id, process_id}}}
