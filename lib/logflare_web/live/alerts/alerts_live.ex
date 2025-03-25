@@ -210,7 +210,7 @@ defmodule LogflareWeb.AlertsLive do
               nil -> Alerting.create_alert_query(user, params)
               %_{} -> Alerting.update_alert_query(alert, params)
             end),
-         {:ok, _citrine_job} <- Alerting.upsert_alert_job(alert) |> dbg() do
+         {:ok, _citrine_job} <- Alerting.upsert_alert_job(alert) do
       {:ok, alert}
     end
   end

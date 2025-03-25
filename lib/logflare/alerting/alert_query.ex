@@ -47,7 +47,7 @@ defmodule Logflare.Alerting.AlertQuery do
     |> validate_change(:cron, fn :cron, cron ->
       with {:ok, expr} <- Crontab.CronExpression.Parser.parse(cron),
            [first, second] <- Crontab.Scheduler.get_next_run_dates(expr) |> Enum.take(2),
-           true <- NaiveDateTime.diff(first, second, :minute) <= -1 do
+           true <- NaiveDateTime.diff(first, second, :minute) <= -15 do
         []
       else
         false -> [cron: "can only trigger up to 15 minute intervals"]
