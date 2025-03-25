@@ -5,7 +5,7 @@ defmodule Logflare.Backends.RecentEventsTouch do
   Source.log_events_updated_at is used for determining sources to warm on node startup.
   """
   use TypedStruct
-  use GenServer
+  use GenServer, restart: :transient
 
   alias Logflare.Sources
   alias Logflare.Backends
@@ -16,12 +16,16 @@ defmodule Logflare.Backends.RecentEventsTouch do
   ## Server
   def start_link(args) do
     GenServer.start_link(__MODULE__, args,
-      name: Backends.via_source(args[:source], __MODULE__),
+      name: name(args[:source]),
       hibernate_after: 5_000,
       spawn_opt: [
         fullsweep_after: 100
       ]
     )
+  end
+
+  def name(source) do
+    Backends.via_source(source, __MODULE__)
   end
 
   ## Client

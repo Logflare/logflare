@@ -7,7 +7,7 @@ defmodule Logflare.Source.V1SourceSup do
   alias Logflare.Source.WebhookNotificationServer
   alias Logflare.Source.SlackHookServer
   alias Logflare.Source.BillingWriter
-
+  alias Logflare.GenSingleton
   alias Logflare.Source.RateCounterServer, as: RCS
   alias Logflare.Users
   alias Logflare.Backends
@@ -42,7 +42,8 @@ defmodule Logflare.Source.V1SourceSup do
     children = [
       {RCS, [source: source]},
       default_bigquery_spec,
-      {RecentEventsTouch, [source: source]},
+      {GenSingleton,
+       name: RecentEventsTouch.name(source), child_spec: {RecentEventsTouch, source: source}},
       {RecentInsertsBroadcaster, [source: source]},
       {EmailNotificationServer, [source: source]},
       {TextNotificationServer, [source: source, plan: plan]},
