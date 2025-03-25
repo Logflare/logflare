@@ -36,7 +36,6 @@ defmodule Logflare.GenSingleton do
           mod when is_atom(mod) -> args[:name] || mod
         end
       end
-      |> dbg()
 
     {:ok, %{pid: pid, name: name, interval: interval, child_spec: args[:child_spec]},
      {:continue, :maybe_start_child}}
@@ -57,8 +56,8 @@ defmodule Logflare.GenSingleton do
   end
 
   defp try_start_child(state) do
-    with nil <- GenServer.whereis(state.name) |> dbg(),
-         {:ok, _pid} <- Supervisor.start_child(state.pid, state.child_spec) |> dbg() do
+    with nil <- GenServer.whereis(state.name),
+         {:ok, _pid} <- Supervisor.start_child(state.pid, state.child_spec) do
       :ok
     else
       {:error, {:already_started, pid}} ->
