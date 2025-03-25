@@ -7,7 +7,7 @@ steps:
       - instance-templates
       - create-with-container
       - $_TEMPLATE_NAME
-      - --boot-disk-size=25GB
+      - --boot-disk-size=10GB
       - --boot-disk-type=pd-balanced
       - --machine-type=${_INSTANCE_TYPE}
       - --project=logflare-staging
