@@ -8,7 +8,6 @@ defmodule Logflare.Backends.SourceSup do
   alias Logflare.Source
   alias Logflare.Users
   alias Logflare.Billing
-  alias Logflare.Source.RecentEventsTouch
   alias Logflare.Source.RateCounterServer
   alias Logflare.Source.EmailNotificationServer
   alias Logflare.Source.TextNotificationServer
@@ -16,6 +15,7 @@ defmodule Logflare.Backends.SourceSup do
   alias Logflare.Source.SlackHookServer
   alias Logflare.Source.BillingWriter
   alias Logflare.Logs.SearchQueryExecutor
+  alias Logflare.Backends.RecentEventsTouch
   alias Logflare.Backends.RecentInsertsBroadcaster
   alias Logflare.Rule
   alias Logflare.Sources
