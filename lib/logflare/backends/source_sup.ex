@@ -8,7 +8,7 @@ defmodule Logflare.Backends.SourceSup do
   alias Logflare.Source
   alias Logflare.Users
   alias Logflare.Billing
-  alias Logflare.Source.RecentLogsServer
+  alias Logflare.Source.RecentEventsTouch
   alias Logflare.Source.RateCounterServer
   alias Logflare.Source.EmailNotificationServer
   alias Logflare.Source.TextNotificationServer
@@ -16,6 +16,7 @@ defmodule Logflare.Backends.SourceSup do
   alias Logflare.Source.SlackHookServer
   alias Logflare.Source.BillingWriter
   alias Logflare.Logs.SearchQueryExecutor
+  alias Logflare.Backends.RecentInsertsBroadcaster
   alias Logflare.Rule
   alias Logflare.Sources
   alias Logflare.Backends.AdaptorSupervisor
@@ -49,7 +50,8 @@ defmodule Logflare.Backends.SourceSup do
     children =
       [
         {RateCounterServer, [source: source]},
-        {RecentLogsServer, [source: source]},
+        {RecentEventsTouch, [source: source]},
+        {RecentInsertsBroadcaster, [source: source]},
         {EmailNotificationServer, [source: source]},
         {TextNotificationServer, [source: source, plan: plan]},
         {WebhookNotificationServer, [source: source]},

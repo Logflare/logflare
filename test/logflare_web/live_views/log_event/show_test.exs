@@ -9,7 +9,7 @@ defmodule LogflareWeb.LogEventLive.ShowTest do
   @moduletag :this
   @moduletag :failing
 
-  alias Logflare.Source.RecentLogsServer, as: RLS
+  alias Logflare.Backends.RecentEventsTouch
   alias Logflare.Logs.LogEvents
   import Ecto.Query
 
@@ -25,7 +25,9 @@ defmodule LogflareWeb.LogEventLive.ShowTest do
 
     source = Sources.get_by(token: source_token)
     Logflare.Sources.Counters.start_link()
-    {:ok, _} = RLS.start_link(%{source_id: String.to_atom(source_token), source: source})
+
+    {:ok, _} =
+      RecentEventsTouch.start_link(%{source_id: String.to_atom(source_token), source: source})
 
     %{user: user, source: [source]}
   end

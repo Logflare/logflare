@@ -212,7 +212,7 @@ defmodule Logflare.SingleTenant do
     if count == 0 do
       sources =
         for name <- @source_names do
-          # creating a source will automatically start the source's RLS process
+          # creating a source will automatically start the source's SourceSup process
           {:ok, source} = Sources.create_source(%{name: name}, user)
 
           source
