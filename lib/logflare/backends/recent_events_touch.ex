@@ -30,7 +30,7 @@ defmodule Logflare.Backends.RecentEventsTouch do
 
     Process.flag(:trap_exit, true)
     Logger.metadata(source_id: source.token, source_token: source.token)
-    touch_every = args[:touch_every] || Enum.random(10..30) * :timer.minutes(1)
+    touch_every = args[:touch_every]
     touch(touch_every)
 
     Logger.debug("[#{__MODULE__}] Started")
@@ -41,6 +41,12 @@ defmodule Logflare.Backends.RecentEventsTouch do
        source_id: source.id,
        touch_every: touch_every
      }}
+  end
+
+  defp random_interval_ms() do
+    min = :timer.minutes(1)
+    max = :timer.minutes(55)
+    Enum.random(min..max)
   end
 
   def handle_info(:touch, %{source_id: source_id} = state) do
@@ -87,6 +93,7 @@ defmodule Logflare.Backends.RecentEventsTouch do
   end
 
   defp touch(every) do
-    Process.send_after(self(), :touch, every)
+    interval = every || random_interval_ms()
+    Process.send_after(self(), :touch, interval |> dbg())
   end
 end
