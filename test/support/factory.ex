@@ -92,7 +92,9 @@ defmodule Logflare.Factory do
       rules: attrs[:rules] || [],
       user_id: attrs[:user_id],
       user: attrs[:user],
-      metadata: attrs[:metadata] || nil
+      metadata: attrs[:metadata] || nil,
+      updated_at: attrs[:updated_at],
+      inserted_at: attrs[:inserted_at]
     }
   end
 
@@ -122,7 +124,8 @@ defmodule Logflare.Factory do
   end
 
   def log_event_factory(attrs) do
-    {source, params} = Map.pop(attrs, :source, build(:source))
+    {source, attrs} = Map.pop(attrs, :source, build(:source))
+    {ingested_at, params} = Map.pop(attrs, :ingested_at)
 
     params =
       for {k, v} <- params, into: %{} do
@@ -147,6 +150,9 @@ defmodule Logflare.Factory do
       |> Map.drop([:metadata, :event_message, :message, :timestamp])
 
     LogEvent.make(params, %{source: source})
+    |> Map.update!(:ingested_at, fn v ->
+      if ingested_at, do: ingested_at, else: v
+    end)
   end
 
   def plan_factory() do

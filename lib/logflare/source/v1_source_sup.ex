@@ -1,9 +1,7 @@
 defmodule Logflare.Source.V1SourceSup do
-  @moduledoc """
-  Manages the individual table for the source. Limits things in the table to 1000. Manages TTL for
-  things in the table. Handles loading the table from the disk if found on startup.
-  """
-  alias Logflare.Source.RecentLogsServer
+  @moduledoc false
+  alias Logflare.Backends.RecentEventsTouch
+  alias Logflare.Backends.RecentInsertsBroadcaster
   alias Logflare.Source.EmailNotificationServer
   alias Logflare.Source.TextNotificationServer
   alias Logflare.Source.WebhookNotificationServer
@@ -44,7 +42,8 @@ defmodule Logflare.Source.V1SourceSup do
     children = [
       {RCS, [source: source]},
       default_bigquery_spec,
-      {RecentLogsServer, [source: source]},
+      {RecentEventsTouch, [source: source]},
+      {RecentInsertsBroadcaster, [source: source]},
       {EmailNotificationServer, [source: source]},
       {TextNotificationServer, [source: source, plan: plan]},
       {WebhookNotificationServer, [source: source]},

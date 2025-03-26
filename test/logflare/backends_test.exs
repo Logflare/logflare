@@ -6,7 +6,7 @@ defmodule Logflare.BackendsTest do
   alias Logflare.Backends.SourceSup
   alias Logflare.Source
   alias Logflare.Sources
-  alias Logflare.Source.RecentLogsServer
+  alias Logflare.Backends.RecentEventsTouch
   alias Logflare.SystemMetrics.AllLogsLogged
   alias Logflare.Source.ChannelTopics
   alias Logflare.Lql
@@ -19,6 +19,8 @@ defmodule Logflare.BackendsTest do
   alias Logflare.Rules
   alias Logflare.Backends.IngestEventQueue
   alias Logflare.Backends.SourceSupWorker
+  alias Logflare.Source.BigQuery.Pipeline
+  alias Logflare.Backends.DynamicPipeline
 
   setup do
     start_supervised!(AllLogsLogged)
@@ -196,7 +198,7 @@ defmodule Logflare.BackendsTest do
       start_supervised!({SourceSup, source})
       :timer.sleep(1000)
       assert true == Backends.source_sup_started?(source)
-      assert {:ok, _pid} = Backends.lookup(RecentLogsServer, source.token)
+      assert {:ok, _pid} = Backends.lookup(RecentEventsTouch, source.token)
     end
 
     test "start_source_sup/1, stop_source_sup/1, restart_source_sup/1", %{source: source} do
@@ -221,6 +223,39 @@ defmodule Logflare.BackendsTest do
     end
   end
 
+  describe "RecentEventsTocuh" do
+    setup do
+      insert(:plan)
+      user = insert(:user)
+      source = insert(:source, user_id: user.id, log_events_updated_at: NaiveDateTime.utc_now())
+      {:ok, _tid} = IngestEventQueue.upsert_tid({source.id, nil, nil})
+      {:ok, source: source}
+    end
+
+    test "RecentEventsTouch updates source.log_events_updated_at", %{
+      source: source
+    } do
+      le = build(:log_event, ingested_at: NaiveDateTime.utc_now() |> NaiveDateTime.add(2))
+      IngestEventQueue.add_to_table({source.id, nil, nil}, [le])
+      start_supervised!({RecentEventsTouch, source: source, touch_every: 100})
+      :timer.sleep(800)
+      updated = Sources.get_by(id: source.id)
+      assert updated.log_events_updated_at != source.log_events_updated_at
+      assert updated.log_events_updated_at == le.ingested_at |> NaiveDateTime.truncate(:second)
+    end
+
+    test "RecentEventsTouch does not update source.log_events_updated_at if already updated", %{
+      source: source
+    } do
+      le = build(:log_event, ingested_at: NaiveDateTime.utc_now())
+      IngestEventQueue.add_to_table({source.id, nil, nil}, [le])
+      start_supervised!({RecentEventsTouch, source: source, touch_every: 100})
+      :timer.sleep(800)
+      updated = Sources.get_by(id: source.id)
+      assert updated.log_events_updated_at == source.log_events_updated_at
+    end
+  end
+
   describe "ingestion" do
     setup do
       insert(:plan)
@@ -232,8 +267,21 @@ defmodule Logflare.BackendsTest do
     end
 
     test "correctly retains the 100 items", %{source: source} do
-      events = for _n <- 1..105, do: build(:log_event, source: source, some: "event")
-      assert {:ok, 105} = Backends.ingest_logs(events, source)
+      events = for _n <- 1..305, do: build(:log_event, source: source, some: "event")
+      assert {:ok, 305} = Backends.ingest_logs(events, source)
+      :timer.sleep(1500)
+      cached = Backends.list_recent_logs(source)
+      assert length(cached) == 100
+      cached = Backends.list_recent_logs_local(source)
+      assert length(cached) == 100
+    end
+
+    test "bug: more than 100 items with dynamic pipelines", %{source: source} do
+      events = for _n <- 1..305, do: build(:log_event, source: source, some: "event")
+      # manually increase count of the dynamic pipielines
+      name = Backends.via_source(source.id, Pipeline, nil)
+      DynamicPipeline.add_pipeline(name)
+      assert {:ok, 305} = Backends.ingest_logs(events, source)
       :timer.sleep(1500)
       cached = Backends.list_recent_logs(source)
       assert length(cached) == 100
@@ -245,7 +293,7 @@ defmodule Logflare.BackendsTest do
       assert Backends.fetch_latest_timestamp(source) == 0
       le = build(:log_event, source: source, some: "event")
       assert {:ok, _} = Backends.ingest_logs([le], source)
-      # wait for the RLS broadcast interval
+      # wait for the recent inserts broadcast interval
       :timer.sleep(2000)
       assert Backends.fetch_latest_timestamp(source) != 0
     end
@@ -503,7 +551,6 @@ defmodule Logflare.BackendsTest do
     @tag :skip
     test "BQ - v1 Logs vs v2 Logs vs v2 Backend", %{user: user} do
       [source1, source2] = insert_pair(:source, user: user, rules: [])
-      # start_supervised!({Pipeline, [rls, name: @pipeline_name]})
       start_supervised!({V1SourceSup, source: source1})
       start_supervised!({SourceSup, source2})
 
@@ -546,7 +593,6 @@ defmodule Logflare.BackendsTest do
 
       source2 = Sources.preload_defaults(source2)
 
-      # start_supervised!({Pipeline, [rls, name: @pipeline_name]})
       start_supervised!({SourceSup, source1}, id: :no_rules)
       start_supervised!({SourceSup, source2}, id: :with_rules)
 

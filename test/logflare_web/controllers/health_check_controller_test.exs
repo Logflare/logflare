@@ -29,7 +29,7 @@ defmodule LogflareWeb.HealthCheckControllerTest do
            } = json_response(conn, 200)
   end
 
-  test "coming_up while RLS boot warming", %{conn: conn} do
+  test "coming_up while SourceSup boot warming", %{conn: conn} do
     user = insert(:user)
     insert(:plan)
 

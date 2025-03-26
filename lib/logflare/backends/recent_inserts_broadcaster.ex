@@ -1,15 +1,12 @@
-defmodule Logflare.Source.RecentLogsServer do
+defmodule Logflare.Backends.RecentInsertsBroadcaster do
   @moduledoc """
-  Manages the individual table for the source. Limits things in the table to 1000. Manages TTL for
-  things in the table. Handles loading the table from the disk if found on startup.
+  Performs periodic broadcasting of cluster insert counts
   """
   use TypedStruct
   use GenServer
 
-  alias Logflare.Sources
   alias Logflare.PubSubRates
   alias Logflare.Backends
-  alias Logflare.Sources
   alias Logflare.Source
   alias Logflare.Sources.Counters
 
@@ -34,8 +31,6 @@ defmodule Logflare.Source.RecentLogsServer do
 
     Process.flag(:trap_exit, true)
     Logger.metadata(source_id: source.token, source_token: source.token)
-    touch_every = Enum.random(10..30) * :timer.minutes(1)
-    touch(touch_every)
     broadcast()
 
     Logger.debug("[#{__MODULE__}] Started")
@@ -43,13 +38,8 @@ defmodule Logflare.Source.RecentLogsServer do
     {:ok,
      %{
        source_token: source.token,
-       source_id: source.id,
-       touch_every: touch_every
+       source_id: source.id
      }}
-  end
-
-  def handle_info({:stop_please, reason}, state) do
-    {:stop, reason, state}
   end
 
   def handle_info(:broadcast, state) do
@@ -81,31 +71,6 @@ defmodule Logflare.Source.RecentLogsServer do
 
     broadcast()
 
-    {:noreply, state}
-  end
-
-  def handle_info(:touch, %{source_id: source_id} = state) do
-    source =
-      source_id
-      |> Sources.Cache.get_by_id()
-
-    Backends.list_recent_logs_local(source)
-    |> Enum.reverse()
-    |> case do
-      [] ->
-        :noop
-
-      [_ | _] = events ->
-        now = NaiveDateTime.utc_now()
-        latest_ts = Enum.map(events, & &1.ingested_at) |> Enum.max(NaiveDateTime)
-
-        if NaiveDateTime.diff(now, latest_ts, :millisecond) < :timer.seconds(1) do
-          source
-          |> Sources.update_source(%{log_events_updated_at: DateTime.utc_now()})
-        end
-    end
-
-    touch(state.touch_every)
     {:noreply, state}
   end
 
@@ -145,10 +110,6 @@ defmodule Logflare.Source.RecentLogsServer do
     end
 
     {:ok, current_cluster_inserts, current_inserts}
-  end
-
-  defp touch(every) do
-    Process.send_after(self(), :touch, every)
   end
 
   defp broadcast() do

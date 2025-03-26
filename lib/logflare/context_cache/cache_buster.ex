@@ -54,6 +54,8 @@ defmodule Logflare.ContextCache.CacheBuster do
   Sets the Logger level for this process. It's started with level :error.
 
   To debug wal records set process to level :debug and each transaction will be logged.
+
+  iex> Logflare.ContextCache.CacheBuster.set_log_level(:debug)
   """
 
   @spec set_log_level(Logger.levels()) :: :ok

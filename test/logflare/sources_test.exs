@@ -5,7 +5,7 @@ defmodule Logflare.SourcesTest do
   alias Logflare.Google.BigQuery
   alias Logflare.Google.BigQuery.GenUtils
   alias Logflare.Source
-  alias Logflare.Source.RecentLogsServer
+  alias Logflare.Backends.RecentEventsTouch
   alias Logflare.Sources
   alias Logflare.SourceSchemas
   alias Logflare.Source.V1SourceSup
@@ -203,7 +203,7 @@ defmodule Logflare.SourcesTest do
         {:ok, user: insert(:user), mod: unquote(mod), flag: unquote(flag)}
       end
 
-      test "bootup starts RLS for each recently logged source", %{
+      test "bootup starts SourceSup for each recently logged source", %{
         user: user,
         flag: flag,
         mod: mod
@@ -279,7 +279,7 @@ defmodule Logflare.SourcesTest do
         assert {:ok, _} = Source.Supervisor.reset_source(source.token)
         assert {:ok, _} = Source.Supervisor.reset_source(source.token)
         :timer.sleep(3000)
-        assert {:ok, new_pid} = Backends.lookup(RecentLogsServer, source.token)
+        assert {:ok, new_pid} = Backends.lookup(RecentEventsTouch, source.token)
         assert pid != new_pid
         assert Backends.cached_pending_buffer_len(source) == 0
       end
