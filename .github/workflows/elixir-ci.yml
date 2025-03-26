@@ -3,7 +3,7 @@ name: Elixir CI
 on:
   workflow_dispatch:
   pull_request:
-    branches: [main]
+    branches: ["**"]
     paths:
       - "lib/**"
       - "config/**"
