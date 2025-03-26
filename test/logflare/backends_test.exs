@@ -227,7 +227,7 @@ defmodule Logflare.BackendsTest do
     setup do
       insert(:plan)
       user = insert(:user)
-      source = insert(:source, user_id: user.id)
+      source = insert(:source, user_id: user.id, log_events_updated_at: NaiveDateTime.utc_now())
       {:ok, _tid} = IngestEventQueue.upsert_tid({source.id, nil, nil})
       {:ok, source: source}
     end
