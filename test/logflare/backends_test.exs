@@ -226,7 +226,7 @@ defmodule Logflare.BackendsTest do
       insert(:plan)
       user = insert(:user)
       source = insert(:source, user_id: user.id)
-      {:ok, tid} = IngestEventQueue.upsert_tid({source.id, nil, nil})
+      {:ok, _tid} = IngestEventQueue.upsert_tid({source.id, nil, nil})
       {:ok, source: source}
     end
 

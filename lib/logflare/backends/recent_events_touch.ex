@@ -10,17 +10,14 @@ defmodule Logflare.Backends.RecentEventsTouch do
   alias Logflare.Sources
   alias Logflare.Backends
   alias Logflare.Sources
-
+  alias Logflare.Utils
   require Logger
 
   ## Server
   def start_link(args) do
     GenServer.start_link(__MODULE__, args,
       name: Backends.via_source(args[:source], __MODULE__),
-      hibernate_after: 5_000,
-      spawn_opt: [
-        fullsweep_after: 100
-      ]
+      hibernate_after: 5_000
     )
   end
 
@@ -50,29 +47,8 @@ defmodule Logflare.Backends.RecentEventsTouch do
   end
 
   def handle_info(:touch, %{source_id: source_id} = state) do
-    source =
-      source_id
-      |> Sources.Cache.get_by_id()
-
-    Backends.list_recent_logs_local(source)
-    |> case do
-      [] ->
-        :noop
-
-      [_ | _] = events ->
-        prev = source.log_events_updated_at
-        latest_ts = Enum.map(events, & &1.ingested_at) |> Enum.max(NaiveDateTime)
-
-        cond do
-          prev >= latest_ts ->
-            :noop
-
-          true ->
-            source
-            |> Sources.update_source(%{log_events_updated_at: latest_ts})
-        end
-    end
-
+    # use a Task to separate out heap memory for any bound variables
+    Utils.Tasks.start_child(fn -> do_work(source_id) end)
     touch(state.touch_every)
     {:noreply, state}
   end
@@ -92,8 +68,23 @@ defmodule Logflare.Backends.RecentEventsTouch do
     reason
   end
 
+  defp do_work(source_id) do
+    %_{log_events_updated_at: prev} = source = Sources.Cache.get_by_id(source_id)
+
+    source
+    |> Backends.list_recent_logs_local()
+    |> Enum.map(& &1.ingested_at)
+    |> Enum.max(NaiveDateTime, fn -> nil end)
+    |> then(fn
+      latest_ts when latest_ts != nil and prev < latest_ts ->
+        Sources.update_source(source, %{log_events_updated_at: latest_ts})
+
+      _ ->
+        :noop
+    end)
+  end
+
   defp touch(every) do
-    interval = every || random_interval_ms()
-    Process.send_after(self(), :touch, interval |> dbg())
+    Process.send_after(self(), :touch, every || random_interval_ms())
   end
 end
