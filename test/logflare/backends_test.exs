@@ -19,6 +19,8 @@ defmodule Logflare.BackendsTest do
   alias Logflare.Rules
   alias Logflare.Backends.IngestEventQueue
   alias Logflare.Backends.SourceSupWorker
+  alias Logflare.Source.BigQuery.Pipeline
+  alias Logflare.Backends.DynamicPipeline
 
   setup do
     start_supervised!(AllLogsLogged)
@@ -265,8 +267,21 @@ defmodule Logflare.BackendsTest do
     end
 
     test "correctly retains the 100 items", %{source: source} do
-      events = for _n <- 1..105, do: build(:log_event, source: source, some: "event")
-      assert {:ok, 105} = Backends.ingest_logs(events, source)
+      events = for _n <- 1..305, do: build(:log_event, source: source, some: "event")
+      assert {:ok, 305} = Backends.ingest_logs(events, source)
+      :timer.sleep(1500)
+      cached = Backends.list_recent_logs(source)
+      assert length(cached) == 100
+      cached = Backends.list_recent_logs_local(source)
+      assert length(cached) == 100
+    end
+
+    test "bug: more than 100 items with dynamic pipelines", %{source: source} do
+      events = for _n <- 1..305, do: build(:log_event, source: source, some: "event")
+      # manually increase count of the dynamic pipielines
+      name = Backends.via_source(source.id, Pipeline, nil)
+      DynamicPipeline.add_pipeline(name)
+      assert {:ok, 305} = Backends.ingest_logs(events, source)
       :timer.sleep(1500)
       cached = Backends.list_recent_logs(source)
       assert length(cached) == 100

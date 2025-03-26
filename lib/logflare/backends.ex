@@ -561,11 +561,16 @@ defmodule Logflare.Backends do
   Lists latest recent logs of only the local cache.
   """
   @spec list_recent_logs_local(Source.t()) :: [LogEvent.t()]
-  def list_recent_logs_local(%Source{id: id}), do: list_recent_logs_local(id)
+  @spec list_recent_logs_local(Source.t(), n :: number()) :: [LogEvent.t()]
+  def list_recent_logs_local(source, n \\ 100)
+  def list_recent_logs_local(%Source{id: id}, n), do: list_recent_logs_local(id, n)
 
-  def list_recent_logs_local(source_id) do
-    {:ok, events} = IngestEventQueue.fetch_events({source_id, nil}, 100)
+  def list_recent_logs_local(source_id, n) do
+    {:ok, events} = IngestEventQueue.fetch_events({source_id, nil}, n)
+
     events
+    |> Enum.sort_by(& &1.body["timestamp"], &<=/2)
+    |> Enum.take(-n)
   end
 
   defp do_telemetry(:drop, le) do
