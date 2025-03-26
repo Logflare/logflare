@@ -25,13 +25,10 @@ defmodule Logflare.Backends.SourceSup do
   end
 
   def init(source) do
-    ingest_backends =
-      source
-      |> Backends.Cache.list_backends()
+    ingest_backends = Backends.Cache.list_backends(source_id: source.id)
 
     rules_backends =
-      source
-      |> Backends.list_backends_with_rules()
+      Backends.Cache.list_backends(source_id: source.id, rules: true)
       |> Enum.map(&%{&1 | register_for_ingest: false})
 
     user = Users.Cache.get(source.user_id)

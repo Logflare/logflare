@@ -38,7 +38,7 @@ defmodule Logflare.ContextCacheTest do
       source: source
     } do
       backend = insert(:backend, sources: [source])
-      Backends.Cache.list_backends(source)
+      Backends.Cache.list_backends(source_id: source.id)
       cache_key = {:list_backends, [source]}
       assert {:cached, [%Backend{}]} = Cachex.get!(Backends.Cache, cache_key)
 

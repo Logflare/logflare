@@ -34,17 +34,29 @@ defmodule Logflare.Backends do
   @doc """
   Lists `Backend`s for a given source.
   """
-  @spec list_backends(Source.t()) :: list(Backend.t())
-  def list_backends(%Source{id: id}) do
-    from(b in Backend, join: s in assoc(b, :sources), where: s.id == ^id)
-    |> Repo.all()
-    |> Enum.map(fn b -> typecast_config_string_map_to_atom_map(b) end)
-  end
-
   @spec list_backends(keyword()) :: [Backend.t()]
   def list_backends(filters) when is_list(filters) do
+    source_id = Keyword.get(filters, :source_id)
+
     filters
     |> Enum.reduce(from(b in Backend), fn
+      # filter down to backends of this source
+      {:source_id, id}, q ->
+        join(q, :inner, [b], s in assoc(b, :sources), on: s.id == ^id)
+
+      # filter down to backends with rules destinations
+      {:rules, true}, q when source_id != nil ->
+        join(q, :inner, [b], r in assoc(b, :rules), on: r.source_id == ^source_id)
+
+      # filter down to backends with sources that have recently ingested.
+      # orders by the last active.
+      {:ingesting, true}, q ->
+        q
+        |> join(:inner, [b], s in assoc(b, :sources),
+          on: s.log_events_updated_at >= ago(1, "day")
+        )
+        |> order_by([..., s], {:desc, s.log_events_updated_at})
+
       {:user_id, id}, q ->
         where(q, [b], b.user_id == ^id)
 
@@ -72,20 +84,6 @@ defmodule Logflare.Backends do
   @spec list_backends_by_user_id(integer()) :: [Backend.t()]
   def list_backends_by_user_id(id) when is_integer(id) do
     from(b in Backend, where: b.user_id == ^id)
-    |> Repo.all()
-    |> Enum.map(fn sb -> typecast_config_string_map_to_atom_map(sb) end)
-  end
-
-  @doc """
-  Returns all backends set as a rule destination for a given source.
-
-  ### Example
-    iex>  list_backends_with_rules(source)
-    [%Backend{...}, ...]
-  """
-  @spec list_backends_with_rules(Source.t()) :: [Backend.t()]
-  def list_backends_with_rules(%Source{id: source_id}) do
-    from(b in Backend, join: r in assoc(b, :rules), where: r.source_id == ^source_id)
     |> Repo.all()
     |> Enum.map(fn sb -> typecast_config_string_map_to_atom_map(sb) end)
   end
@@ -234,16 +232,6 @@ defmodule Logflare.Backends do
   end
 
   @doc """
-  Retrieves a backend by keyword filter.
-  """
-  @spec get_backend_by(keyword()) :: Backend.t() | nil
-  def get_backend_by(kw) do
-    if backend = Repo.get_by(Backend, kw) do
-      typecast_config_string_map_to_atom_map(backend)
-    end
-  end
-
-  @doc """
   Deletes a Backend
   """
   @spec delete_backend(Backend.t()) :: {:ok, Backend.t()}
@@ -335,7 +323,7 @@ defmodule Logflare.Backends do
   end
 
   defp dispatch_to_backends(source, nil, log_events) do
-    for backend <- [nil | __MODULE__.Cache.list_backends(source)] do
+    for backend <- [nil | __MODULE__.Cache.list_backends(source_id: source.id)] do
       log_events =
         if(backend, do: maybe_pre_ingest(source, backend, log_events), else: log_events)
 
