@@ -235,7 +235,7 @@ defmodule Logflare.BackendsTest do
     test "RecentEventsTouch updates source.log_events_updated_at", %{
       source: source
     } do
-      le = build(:log_event, ingested_at: NaiveDateTime.utc_now() |> NaiveDateTime.add(2))
+      le = build(:log_event, ingested_at: NaiveDateTime.utc_now() |> NaiveDateTime.add(200))
       IngestEventQueue.add_to_table({source.id, nil, nil}, [le])
       start_supervised!({RecentEventsTouch, source: source, touch_every: 100})
       :timer.sleep(800)
