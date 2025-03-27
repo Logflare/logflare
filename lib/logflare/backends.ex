@@ -388,11 +388,16 @@ defmodule Logflare.Backends do
   end
 
   def lookup(module, %Source{} = source) do
-    {:via, _registry, {registry, via_id}} = via_source(source, module)
+    {:via, registry_mod, {registry, via_id}} = via_result = via_source(source, module)
 
-    case Registry.lookup(registry, via_id) do
-      [{pid, _}] -> {:ok, pid}
-      _ -> {:error, :not_started}
+    if registry_mod == :syn do
+      {:ok, GenServer.whereis(via_result)}
+    else
+      case Registry.lookup(registry, via_id) do
+        [{pid, _}] -> {:ok, pid}
+        _ -> {:error, :not_started}
+      end
+
     end
   end
 

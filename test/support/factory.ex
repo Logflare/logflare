@@ -66,8 +66,7 @@ defmodule Logflare.Factory do
       },
       notifications: %{
         user_schema_update_notifications: true
-      },
-      log_events_updated_at: NaiveDateTime.utc_now()
+      }
     }
   end
 
