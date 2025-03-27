@@ -397,7 +397,6 @@ defmodule Logflare.Backends do
         [{pid, _}] -> {:ok, pid}
         _ -> {:error, :not_started}
       end
-
     end
   end
 
