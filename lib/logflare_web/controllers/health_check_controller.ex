@@ -6,11 +6,13 @@ defmodule LogflareWeb.HealthCheckController do
   alias Logflare.SingleTenant
   alias Logflare.Source
   alias Logflare.Sources
+  alias Logflare.System
 
   def check(conn, _params) do
     repo_uptime = Logflare.Repo.get_uptime()
-
     caches = check_caches()
+    memory_utilization = System.memory_utilization()
+    max_memory_ratio = Application.get_env(:logflare, :health) |> Keyword.get(:memory_utilization)
 
     common_checks_ok? =
       [
@@ -18,7 +20,8 @@ defmodule LogflareWeb.HealthCheckController do
         Source.Supervisor.booting?() == false,
         # checks that db can execute query and that repo is connected and up
         repo_uptime > 0,
-        Enum.all?(Map.values(caches), &(&1 == :ok))
+        Enum.all?(Map.values(caches), &(&1 == :ok)),
+        memory_utilization < max_memory_ratio
       ]
       |> Enum.all?()
 
@@ -43,7 +46,11 @@ defmodule LogflareWeb.HealthCheckController do
 
     response =
       status
-      |> build_payload(repo_uptime: repo_uptime, caches: caches)
+      |> build_payload(
+        repo_uptime: repo_uptime,
+        caches: caches,
+        memory_utilization: if(memory_utilization < max_memory_ratio, do: :ok, else: :critical)
+      )
       |> JSON.encode!()
 
     conn
@@ -51,7 +58,11 @@ defmodule LogflareWeb.HealthCheckController do
     |> send_resp(code, response)
   end
 
-  defp build_payload(status, repo_uptime: repo_uptime, caches: caches)
+  defp build_payload(status,
+         repo_uptime: repo_uptime,
+         caches: caches,
+         memory_utilization: memory_utilization
+       )
        when status in [:ok, :coming_up] do
     nodes = Cluster.Utils.node_list_all()
     proc_count = Process.list() |> Enum.count()
@@ -63,7 +74,8 @@ defmodule LogflareWeb.HealthCheckController do
       nodes: nodes,
       nodes_count: Enum.count(nodes),
       repo_uptime: repo_uptime,
-      caches: caches
+      caches: caches,
+      memory_utilization: memory_utilization
     }
   end
 
