@@ -36,8 +36,6 @@ defmodule Logflare.Backends do
   """
   @spec list_backends(keyword()) :: [Backend.t()]
   def list_backends(filters) when is_list(filters) do
-    source_id = Keyword.get(filters, :source_id)
-
     filters
     |> Enum.reduce(from(b in Backend), fn
       # filter down to backends of this source
@@ -45,7 +43,7 @@ defmodule Logflare.Backends do
         join(q, :inner, [b], s in assoc(b, :sources), on: s.id == ^id)
 
       # filter down to backends with rules destinations
-      {:rules, true}, q when source_id != nil ->
+      {:rules_source_id, source_id}, q ->
         join(q, :inner, [b], r in assoc(b, :rules), on: r.source_id == ^source_id)
 
       # filter down to backends with sources that have recently ingested.
