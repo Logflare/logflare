@@ -299,6 +299,20 @@ The corresponding event will be processed and ingested, where ellipsis represent
 }
 ```
 
+## Cloudflare Logpush
+
+Logflare supports ingestion of logs from Cloudflare through the [**Logpush API**](https://developers.cloudflare.com/logs/about/). This allows you to send logs directly from Cloudflare to Logflare for processing and storage.
+
+To ingest logs from Cloudflare, use the following configuration for the [HTTP Destination](https://developers.cloudflare.com/logs/get-started/enable-destinations/http/):
+
+```text
+https://api.logflare.app/api/logs/cloudflare?source=f6cccd3a-c42e-40f7-9b01-95d3699d3113&header_X_API_KEY=xxxxxxx
+```
+
+Replace the source UUID and the api key value with your own source UUID and [access token](/concepts/access-tokens/). We recommend using a source-scoped ingest access token for better security.
+
+The configuration is identical for both Logpush and Edge Log Delivery.
+
 ## Ingestion Validation
 
 Logflare will reject certain payloads containing values of certain shapes:
