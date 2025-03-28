@@ -227,15 +227,16 @@ defmodule Logflare.BackendsTest do
     setup do
       insert(:plan)
       user = insert(:user)
-      source = insert(:source, user_id: user.id, log_events_updated_at: NaiveDateTime.utc_now())
+      timestamp = NaiveDateTime.utc_now()
+      source = insert(:source, user_id: user.id, log_events_updated_at: timestamp)
       {:ok, _tid} = IngestEventQueue.upsert_tid({source.id, nil, nil})
-      {:ok, source: source}
+      {:ok, source: source, timestamp: timestamp}
     end
 
     test "RecentEventsTouch updates source.log_events_updated_at", %{
       source: source
     } do
-      le = build(:log_event, ingested_at: NaiveDateTime.utc_now() |> NaiveDateTime.add(2))
+      le = build(:log_event, ingested_at: NaiveDateTime.utc_now() |> NaiveDateTime.add(200))
       IngestEventQueue.add_to_table({source.id, nil, nil}, [le])
       start_supervised!({RecentEventsTouch, source: source, touch_every: 100})
       :timer.sleep(800)
@@ -245,9 +246,10 @@ defmodule Logflare.BackendsTest do
     end
 
     test "RecentEventsTouch does not update source.log_events_updated_at if already updated", %{
-      source: source
+      source: source,
+      timestamp: timestamp
     } do
-      le = build(:log_event, ingested_at: NaiveDateTime.utc_now())
+      le = build(:log_event, ingested_at: timestamp)
       IngestEventQueue.add_to_table({source.id, nil, nil}, [le])
       start_supervised!({RecentEventsTouch, source: source, touch_every: 100})
       :timer.sleep(800)

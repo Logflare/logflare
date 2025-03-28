@@ -6,6 +6,7 @@ defmodule Logflare.Backends do
   alias Logflare.Backends.SourceRegistry
   alias Logflare.Backends.SourcesSup
   alias Logflare.Backends.SourceSup
+  alias Logflare.Backends.RecentEventsTouch
   alias Logflare.Backends.IngestEventQueue
   alias Logflare.LogEvent
   alias Logflare.Repo
@@ -356,6 +357,10 @@ defmodule Logflare.Backends do
 
   def via_source(%Source{id: id}, process_id), do: via_source(id, process_id)
 
+  def via_source(id, RecentEventsTouch) when is_number(id) do
+    {:via, :syn, {:core, RecentEventsTouch}}
+  end
+
   def via_source(id, process_id) when is_number(id) do
     {:via, Registry, {SourceRegistry, {id, process_id}}}
   end
@@ -369,11 +374,15 @@ defmodule Logflare.Backends do
   end
 
   def lookup(module, %Source{} = source) do
-    {:via, _registry, {registry, via_id}} = via_source(source, module)
+    {:via, registry_mod, {registry, via_id}} = via_result = via_source(source, module)
 
-    case Registry.lookup(registry, via_id) do
-      [{pid, _}] -> {:ok, pid}
-      _ -> {:error, :not_started}
+    if registry_mod == :syn do
+      {:ok, GenServer.whereis(via_result)}
+    else
+      case Registry.lookup(registry, via_id) do
+        [{pid, _}] -> {:ok, pid}
+        _ -> {:error, :not_started}
+      end
     end
   end
 
