@@ -8,6 +8,13 @@ logflare_metadata =
   [cluster: System.get_env("LOGFLARE_METADATA_CLUSTER")]
   |> filter_nil_kv_pairs.()
 
+logflare_health =
+  [
+    memory_utilization:
+      System.get_env("LOGFLARE_HEALTH_MAX_MEMORY_UTILIZATION", "0.95") |> String.to_float()
+  ]
+  |> filter_nil_kv_pairs.()
+
 config :logflare,
        Logflare.PubSub,
        [
@@ -32,7 +39,8 @@ config :logflare,
          cache_stats: System.get_env("LOGFLARE_CACHE_STATS", "false") == "true",
          encryption_key_default: System.get_env("LOGFLARE_DB_ENCRYPTION_KEY"),
          encryption_key_retired: System.get_env("LOGFLARE_DB_ENCRYPTION_KEY_RETIRED"),
-         metadata: logflare_metadata
+         metadata: logflare_metadata,
+         health: logflare_health
        ]
        |> filter_nil_kv_pairs.()
 
