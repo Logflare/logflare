@@ -1,6 +1,8 @@
 defmodule Logflare.ErlSysMon do
   @moduledoc """
   Logs Erlang System Monitor events.
+
+  Also does system-related logging for debugging purposes.
   """
 
   use GenServer
@@ -20,7 +22,29 @@ defmodule Logflare.ErlSysMon do
       {:long_message_queue, {0, 1_000}}
     ])
 
+    # subscribe to
+    :net_kernel.monitor_nodes(true, %{nodedown_reason: true})
+
     {:ok, []}
+  end
+
+  # allows setting of log level for runtime debugging
+  def set_log_level(level) when is_atom(level) do
+    GenServer.call(__MODULE__, {:put_level, level})
+  end
+
+  def handle_call({:put_level, level}, _from, state) do
+    :ok = Logger.put_process_level(self(), level)
+
+    {:reply, :ok, state}
+  end
+
+  def handle_info({node_status, node, info}, state) when node_status in [:nodeup, :nodedown] do
+    Logger.debug(
+      "ErlSysMon :net_kernel message - #{inspect(node_status)} for #{inspect(node)} | info: #{inspect(info)}"
+    )
+
+    {:noreply, state}
   end
 
   def handle_info({:monitor, pid, _type, _meta} = msg, state) when is_pid(pid) do
