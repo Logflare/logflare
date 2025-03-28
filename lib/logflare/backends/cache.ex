@@ -3,6 +3,7 @@ defmodule Logflare.Backends.Cache do
 
   alias Logflare.Backends
   alias Logflare.Utils
+  import Cachex.Spec
 
   def child_spec(_) do
     stats = Application.get_env(:logflare, :cache_stats, false)
@@ -14,6 +15,9 @@ defmodule Logflare.Backends.Cache do
          [
            __MODULE__,
            [
+             warmers: [
+               warmer(required: false, module: Backends.CacheWarmer, name: Backends.CacheWarmer)
+             ],
              hooks:
                [
                  if(stats, do: Utils.cache_stats()),
@@ -26,9 +30,8 @@ defmodule Logflare.Backends.Cache do
     }
   end
 
-  def list_backends(source), do: apply_repo_fun(:list_backends, [source])
-  def get_backend_by(kv), do: apply_repo_fun(:get_backend_by, [kv])
-  def get_backend(arg), do: apply_repo_fun(:get_backend, [arg])
+  def list_backends(arg), do: apply_repo_fun(__ENV__.function, [arg])
+  def get_backend(arg), do: apply_repo_fun(__ENV__.function, [arg])
 
   defp apply_repo_fun(arg1, arg2) do
     Logflare.ContextCache.apply_fun(Backends, arg1, arg2)

@@ -98,13 +98,13 @@ defmodule Logflare.BackendsTest do
 
     test "can attach multiple backends to a source", %{source: source} do
       [backend1, backend2] = insert_pair(:backend)
-      assert [] = Backends.list_backends(source)
+      assert [] = Backends.list_backends(source_id: source.id)
       assert {:ok, %Source{}} = Backends.update_source_backends(source, [backend1, backend2])
-      assert [_, _] = Backends.list_backends(source)
+      assert [_, _] = Backends.list_backends(source_id: source.id)
 
       # removal
       assert {:ok, %Source{}} = Backends.update_source_backends(source, [])
-      assert [] = Backends.list_backends(source)
+      assert [] = Backends.list_backends(source_id: source.id)
     end
 
     test "update backend config correctly", %{user: user} do
