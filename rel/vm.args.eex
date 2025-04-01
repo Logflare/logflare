@@ -38,3 +38,7 @@
 ## Set amount of dirty allocator instances used
 ## https://www.erlang.org/doc/apps/erts/erts_alloc.html
 +Mdai max
+
+## Disable overlapping partitions
+## https://github.com/erlang/otp/issues/6470#issuecomment-1337421210 
+-kernel prevent_overlapping_partitions false
