@@ -42,3 +42,6 @@
 ## Disable overlapping partitions
 ## https://github.com/erlang/otp/issues/6470#issuecomment-1337421210 
 -kernel prevent_overlapping_partitions false
+
+## Reduce net_ticktime from default 60 to 45 seconds for faster detection of disconnected nodes
+-kernel net_ticktime 45
