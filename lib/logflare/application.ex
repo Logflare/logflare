@@ -213,7 +213,7 @@ defmodule Logflare.Application do
        pools: %{
          "https://bigquery.googleapis.com" => [
            protocols: [:http1],
-           size: max(base * 100, 150),
+           size: max(base * 125, 150),
            count: http1_count,
            start_pool_metrics?: true
          ]
@@ -223,7 +223,7 @@ defmodule Logflare.Application do
        pools: %{
          "https://bigquery.googleapis.com" => [
            protocols: [:http2],
-           count: max(base, 20),
+           count: max(base, 20) * 2,
            start_pool_metrics?: true
          ]
        }},
@@ -235,6 +235,7 @@ defmodule Logflare.Application do
          #  explicitly set http2 for other pools for multiplexing
          "https://bigquery.googleapis.com" => [
            protocols: [:http1],
+           size: 100,
            count: http1_count,
            start_pool_metrics?: true
          ],
