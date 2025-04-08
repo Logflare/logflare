@@ -108,19 +108,19 @@ defmodule Logflare.Backends.BufferProducer do
         scale? == false ->
           state.interval
 
-        metrics.avg < 100 ->
+        metrics.avg < 10 ->
           state.interval * 5
 
-        metrics.avg < 1000 ->
+        metrics.avg < 50 ->
           state.interval * 4
 
-        metrics.avg < 2000 ->
+        metrics.avg < 100 ->
           state.interval * 3
 
-        metrics.avg < 3000 ->
+        metrics.avg < 150 ->
           state.interval * 2
 
-        metrics.avg < 4000 ->
+        metrics.avg < 250 ->
           state.interval * 1.5
 
         true ->

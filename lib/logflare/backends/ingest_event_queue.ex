@@ -132,16 +132,14 @@ defmodule Logflare.Backends.IngestEventQueue do
 
     procs = Enum.map(proc_counts, fn {key, _count} -> key end)
 
-    procs_length = Enum.count(procs)
-
-    if procs_length == 0 do
+    if procs == [] do
       # not yet started, add to startup queue
       add_to_table({sid, bid, nil}, batch)
     else
       Logflare.Utils.chunked_round_robin(
         batch,
         procs,
-        250,
+        50,
         fn chunk, target ->
           add_to_table(target, chunk)
         end
