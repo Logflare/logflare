@@ -78,6 +78,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
 
   """
   def handle_resolve_count(state, lens, avg_rate) do
+
     startup_size =
       Enum.find_value(lens, 0, fn
         {{_sid, _bid, nil}, val} -> val
