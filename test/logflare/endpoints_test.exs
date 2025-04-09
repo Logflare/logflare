@@ -121,14 +121,24 @@ defmodule Logflare.EndpointsTest do
 
   describe "running queries in bigquery backends" do
     test "run an endpoint query without caching" do
-      expect(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, 1, fn _conn, _proj_id, _opts ->
+      pid = self()
+
+      expect(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, 1, fn _conn, _proj_id, opts ->
+        send(pid, opts[:body].labels)
         {:ok, TestUtils.gen_bq_response([%{"testing" => "123"}])}
       end)
 
       user = insert(:user)
       insert(:source, user: user, name: "c")
-      endpoint = insert(:endpoint, user: user, query: "select current_datetime() as testing")
+
+      %{id: endpoint_id} =
+        endpoint = insert(:endpoint, user: user, query: "select current_datetime() as testing")
+
       assert {:ok, %{rows: [%{"testing" => _}]}} = Endpoints.run_query(endpoint)
+
+      assert_received %{
+        "endpoint_id" => ^endpoint_id
+      }
     end
 
     test "run an endpoint query with query composition" do

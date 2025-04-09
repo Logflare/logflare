@@ -288,7 +288,10 @@ defmodule Logflare.Endpoints do
            bq_params,
            parameterMode: "NAMED",
            maxResults: endpoint_query.max_limit,
-           location: endpoint_query.user.bigquery_dataset_location
+           location: endpoint_query.user.bigquery_dataset_location,
+           labels: %{
+             "endpoint_id" => endpoint_query.id
+           }
          ) do
       {:ok, result} ->
         {:ok, result}

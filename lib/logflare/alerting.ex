@@ -300,7 +300,10 @@ defmodule Logflare.Alerting do
              [],
              parameterMode: "NAMED",
              maxResults: 1000,
-             location: alert_query.user.bigquery_dataset_location
+             location: alert_query.user.bigquery_dataset_location,
+             labels: %{
+               "alert_id" => alert_query.id
+             }
            ) do
       {:ok, rows}
     else
