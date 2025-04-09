@@ -55,7 +55,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
         resolve_count: fn state ->
           source = Sources.refresh_source_metrics_for_ingest(source)
 
-          lens = IngestEventQueue.list_counts({source.id, backend.id})
+          lens = IngestEventQueue.list_pending_counts({source.id, backend.id})
 
           handle_resolve_count(state, lens, source.metrics.avg)
         end
@@ -78,8 +78,6 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
 
   """
   def handle_resolve_count(state, lens, avg_rate) do
-    max_len = Backends.max_buffer_queue_len()
-
     startup_size =
       Enum.find_value(lens, 0, fn
         {{_sid, _bid, nil}, val} -> val
@@ -98,26 +96,19 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
     last_decr = state.last_count_decrease || NaiveDateTime.utc_now()
     sec_since_last_decr = NaiveDateTime.diff(NaiveDateTime.utc_now(), last_decr)
 
-    any_almost_full? = Enum.any?(lens_no_startup_values, &(&1 > 0.5 * max_len))
+    any_above_threshold? = Enum.any?(lens_no_startup_values, &(&1 >= 500))
 
     cond do
       # max out pipelines, overflow risk
       startup_size > 0 ->
-        state.pipeline_count + ceil(startup_size / 5_000)
+        state.pipeline_count + ceil(startup_size / 500)
 
-      any_almost_full? and avg_rate > 5_000 ->
-        state.pipeline_count + 2
-
-      any_almost_full? ->
-        state.pipeline_count + 1
-
-      # new items incoming
-      len > 0 and state.pipeline_count == 0 ->
-        1
+      any_above_threshold? and len > 0 ->
+        state.pipeline_count + ceil(len / 500)
 
       # gradual decrease
-      Enum.all?(lens_no_startup_values, &(&1 < 0.05 * max_len)) and state.pipeline_count > 1 and
-          (sec_since_last_decr > 30 or state.last_count_decrease == nil) ->
+      Enum.all?(lens_no_startup_values, &(&1 < 50)) and len < 500 and state.pipeline_count > 1 and
+          (sec_since_last_decr > 60 or state.last_count_decrease == nil) ->
         state.pipeline_count - 1
 
       len == 0 and avg_rate == 0 and
