@@ -8,6 +8,7 @@ defmodule Logflare.Backends.SourceSup do
   alias Logflare.Source
   alias Logflare.Users
   alias Logflare.Billing
+  alias Logflare.GenSingleton
   alias Logflare.Source.RateCounterServer
   alias Logflare.Source.EmailNotificationServer
   alias Logflare.Source.TextNotificationServer
@@ -47,7 +48,7 @@ defmodule Logflare.Backends.SourceSup do
     children =
       [
         {RateCounterServer, [source: source]},
-        {RecentEventsTouch, [source: source]},
+        {GenSingleton, child_spec: {RecentEventsTouch, source: source}},
         {RecentInsertsBroadcaster, [source: source]},
         {EmailNotificationServer, [source: source]},
         {TextNotificationServer, [source: source, plan: plan]},

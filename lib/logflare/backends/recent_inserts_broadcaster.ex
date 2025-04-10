@@ -12,7 +12,7 @@ defmodule Logflare.Backends.RecentInsertsBroadcaster do
 
   require Logger
 
-  @broadcast_every 2_500
+  @broadcast_every if Application.compile_env(:logflare, :env) == :test, do: 100, else: 5_000
 
   ## Server
   def start_link(args) do
