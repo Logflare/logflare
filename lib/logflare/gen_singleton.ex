@@ -20,21 +20,9 @@ defmodule Logflare.GenSingleton do
 
   @impl true
   def init({sup_pid, args}) do
-    name =
-      if args[:name] do
-        args[:name]
-      else
-        case args[:child_spec] do
-          {_mod, args} when is_list(args) -> Keyword.get(args, :name)
-          %{start: {_mod, _func, args}} when is_list(args) -> Keyword.get(args, :name)
-          mod when is_atom(mod) -> args[:name] || mod
-        end
-      end
-
     {:ok,
      %{
        sup_pid: sup_pid,
-       name: name,
        child_spec: args[:child_spec],
        monitor_ref: nil,
        monitor_pid: nil
@@ -60,7 +48,12 @@ defmodule Logflare.GenSingleton do
     )
 
     # delay check, but not all at the same time
-    Process.send_after(self(), :maybe_start_child, 4_000 + Enum.random(0..1_500))
+    delay =
+      if Application.get_env(:logflare, :env) == :test,
+        do: 100,
+        else: 3_000 + Enum.random(0..2_500)
+
+    Process.send_after(self(), :maybe_start_child, delay)
     {:noreply, state}
   end
 

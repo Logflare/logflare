@@ -51,8 +51,7 @@ defmodule Logflare.Backends.SourceSup do
     children =
       [
         {RateCounterServer, [source: source]},
-        {GenSingleton,
-         name: RecentEventsTouch.name(source), child_spec: {RecentEventsTouch, source: source}},
+        {GenSingleton, child_spec: {RecentEventsTouch, source: source}},
         {RecentInsertsBroadcaster, [source: source]},
         {EmailNotificationServer, [source: source]},
         {TextNotificationServer, [source: source, plan: plan]},
