@@ -20,28 +20,24 @@ defmodule Logflare.GenSingletonTest do
       refute GenServer.whereis(__MODULE__.TestGenserver)
 
       pid1 =
-        start_supervised!({GenSingleton, interval: 300, child_spec: __MODULE__.TestGenserver},
-          id: :first,
-          restart: :temporary
+        start_supervised!({GenSingleton, child_spec: __MODULE__.TestGenserver},
+          id: :first
         )
 
-      :timer.sleep(400)
-
       pid2 =
-        start_supervised!({GenSingleton, interval: 100, child_spec: __MODULE__.TestGenserver},
-          id: :second,
-          restart: :temporary
+        start_supervised!({GenSingleton, child_spec: __MODULE__.TestGenserver},
+          id: :second
         )
 
       assert GenServer.whereis(__MODULE__.TestGenserver)
-
-      assert GenSingleton.count_children(pid1) == 1
-      assert GenSingleton.count_children(pid2) == 0
+      assert pid = GenSingleton.get_pid(pid1)
+      assert GenSingleton.get_pid(pid1) == GenSingleton.get_pid(pid2)
 
       Process.exit(pid1, :kill)
       refute Process.alive?(pid1)
       :timer.sleep(200)
-      assert GenSingleton.count_children(pid2) == 1
+      assert pid == GenSingleton.get_pid(pid2)
+      assert GenServer.whereis(__MODULE__.TestGenserver)
     end
   end
 end

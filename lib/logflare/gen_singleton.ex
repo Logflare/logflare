@@ -5,27 +5,21 @@ defmodule Logflare.GenSingleton do
   """
   use GenServer
 
-  @default_check 5_000
-
   require Logger
   @type state :: any()
 
   @spec start_link(args :: any()) :: {:ok, pid} | {:error, any}
+
   def start_link(args) do
-    GenServer.start_link(__MODULE__, args, [])
+    GenServer.start_link(__MODULE__, {self(), args}, [])
   end
 
-  def count_children(pid) do
-    GenServer.call(pid, :count_children)
+  def get_pid(pid) do
+    GenServer.call(pid, :get_pid)
   end
 
   @impl true
-  def init(args) do
-    interval = args[:interval] || @default_check
-    {:ok, pid} = Supervisor.start_link([], strategy: :one_for_one)
-
-    Process.send_after(self(), :check, interval)
-
+  def init({sup_pid, args}) do
     name =
       if args[:name] do
         args[:name]
@@ -37,51 +31,72 @@ defmodule Logflare.GenSingleton do
         end
       end
 
-    {:ok, %{pid: pid, name: name, interval: interval, child_spec: args[:child_spec]},
-     {:continue, :maybe_start_child}}
+    {:ok,
+     %{
+       sup_pid: sup_pid,
+       name: name,
+       child_spec: args[:child_spec],
+       monitor_ref: nil,
+       monitor_pid: nil
+     }, {:continue, :maybe_start_child}}
   end
 
   @impl true
   def handle_continue(:maybe_start_child, state) do
-    try_start_child(state)
+    state = try_start_child(state)
     {:noreply, state}
   end
 
   @impl true
-  def handle_info(:check, state) do
-    try_start_child(state)
-    # Reschedule the next check
-    Process.send_after(self(), :check, state.interval)
+  def handle_info(:maybe_start_child, state) do
+    state = try_start_child(state)
+    {:noreply, state}
+  end
+
+  @impl true
+  def handle_info({:DOWN, ref, :process, _pid, _reason}, state) when ref == state.monitor_ref do
+    Logger.debug(
+      "GenSingleton | monitor_pid DOWN received for #{inspect(state.monitor_pid)}, scheduling check..."
+    )
+
+    # delay check, but not all at the same time
+    Process.send_after(self(), :maybe_start_child, 4_000 + Enum.random(0..1_500))
     {:noreply, state}
   end
 
   defp try_start_child(state) do
-    with nil <- GenServer.whereis(state.name),
-         {:ok, _pid} <- Supervisor.start_child(state.pid, state.child_spec) do
-      :ok
+    pid =
+      case Supervisor.start_child(state.sup_pid, state.child_spec) do
+        {:error, {:already_started, pid}} ->
+          Logger.debug(
+            "GenSingleton | process #{inspect(pid)} is already started on server: #{inspect(node(pid))}"
+          )
+
+          pid
+
+        {:ok, pid} when is_pid(pid) ->
+          Logger.debug(
+            "GenSingleton | process #{inspect(pid)} was started on server: #{inspect(node(pid))}"
+          )
+
+          pid
+
+        other ->
+          Logger.warning("GenSingleton unknown case | failed to start child: #{inspect(other)}")
+          nil
+      end
+
+    if pid do
+      monitor_ref = Process.monitor(pid)
+      %{state | monitor_ref: monitor_ref, monitor_pid: pid}
     else
-      {:error, {:already_started, pid}} ->
-        Logger.debug(
-          "GenSingleton | process #{inspect(pid)} is already started on server: #{inspect(node(pid))}"
-        )
-
-        pid
-
-      pid when is_pid(pid) ->
-        Logger.debug(
-          "GenSingleton | process #{inspect(pid)} is already started on server: #{inspect(node(pid))}"
-        )
-
-        pid
-
-      other ->
-        other
+      state
     end
   end
 
   @impl true
-  def handle_call(:count_children, _from, state) do
-    {:reply, Supervisor.count_children(state.pid).active, state}
+  def handle_call(:get_pid, _from, state) do
+    {:reply, state.monitor_pid, state}
   end
 
   @impl true

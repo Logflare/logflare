@@ -372,7 +372,7 @@ defmodule Logflare.Backends do
   def via_source(%Source{id: id}, process_id), do: via_source(id, process_id)
 
   def via_source(id, RecentEventsTouch) when is_number(id) do
-    {:via, :syn, {:core, RecentEventsTouch}}
+    {:via, :syn, {:core, {RecentEventsTouch, id}}}
   end
 
   def via_source(id, process_id) when is_number(id) do
@@ -388,15 +388,11 @@ defmodule Logflare.Backends do
   end
 
   def lookup(module, %Source{} = source) do
-    {:via, registry_mod, {registry, via_id}} = via_result = via_source(source, module)
-
-    if registry_mod == :syn do
-      {:ok, GenServer.whereis(via_result)}
-    else
-      case Registry.lookup(registry, via_id) do
-        [{pid, _}] -> {:ok, pid}
-        _ -> {:error, :not_started}
-      end
+    via_source(source, module)
+    |> GenServer.whereis()
+    |> case do
+      pid when is_pid(pid) -> {:ok, pid}
+      _ -> {:error, :not_started}
     end
   end
 
