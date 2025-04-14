@@ -323,7 +323,9 @@ defmodule Logflare.Backends.DynamicPipeline do
     end
 
     defp loop(args) do
-      Process.send_after(self(), :check, args.resolve_interval)
+      # add small randomizer to spread out resolve checks
+      randomizer = :rand.uniform(ceil(args.resolve_interval / 5))
+      Process.send_after(self(), :check, args.resolve_interval + randomizer)
     end
   end
 end
