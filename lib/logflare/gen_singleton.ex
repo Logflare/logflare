@@ -20,9 +20,11 @@ defmodule Logflare.GenSingleton do
   end
 
   def get_pid(sup_pid) do
-      Supervisor.which_children(sup_pid)
-      |> Enum.find_value(fn {_id, pid, _type, [GenSingleton.Watcher]} -> pid
-    _ -> false end)
-  |> GenSingleton.Watcher.get_pid()
+    Supervisor.which_children(sup_pid)
+    |> Enum.find_value(fn
+      {_id, pid, _type, [GenSingleton.Watcher]} -> pid
+      _ -> false
+    end)
+    |> GenSingleton.Watcher.get_pid()
   end
 end
