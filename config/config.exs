@@ -82,7 +82,7 @@ config :phoenix, :json_library, Jason
 config :postgrex, :json_library, Jason
 
 config :syn,
-  scopes: [:endpoints, :context_cache, :alerting],
+  scopes: [:core, :endpoints, :alerting],
   event_handler: Logflare.SynEventHandler
 
 oauth_common = [

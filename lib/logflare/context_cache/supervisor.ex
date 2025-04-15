@@ -55,7 +55,7 @@ defmodule Logflare.ContextCache.Supervisor do
   Returns the publisher :via name used for syn registry.
   """
   def publisher_name do
-    {:via, :syn, {:context_cache, Logflare.PgPublisher}}
+    {:via, :syn, {:core, Logflare.PgPublisher}}
     # {:global, Logflare.PgPublisher}
   end
 
