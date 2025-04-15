@@ -20,9 +20,8 @@
 +sbwtdcpu long
 +sbwtdio long
 
-## use scheduler load compacting
-+sub false
-+scl true
+## use utilization load balancing
++sub true
 
 ## Reduce scheduler wake up threshold
 +swt very_low
