@@ -42,6 +42,33 @@ defmodule Logflare.BigQuery.BqRepoTest do
       assert response.total_rows == 1
     end
 
+    test "query_with_sql_and_params add in custom labels", %{user: user} do
+      pid = self()
+
+      GoogleApi.BigQuery.V2.Api.Jobs
+      |> expect(:bigquery_jobs_query, 1, fn
+        _conn, _, opts ->
+          send(pid, opts[:body].labels)
+          {:ok, TestUtils.gen_bq_response([])}
+      end)
+
+      assert {:ok, _response} =
+               BqRepo.query_with_sql_and_params(
+                 user,
+                 "project-id",
+                 "select timestamp from `my_table`",
+                 [],
+                 labels: %{
+                   "custom_tag" => "custom_value"
+                 }
+               )
+
+      assert_received %{
+        "managed_by" => "logflare",
+        "custom_tag" => "custom_value"
+      }
+    end
+
     test "query/4 handles ecto sql", %{user: user} do
       GoogleApi.BigQuery.V2.Api.Jobs
       |> expect(:bigquery_jobs_query, fn _conn, "project-id", _opts ->
