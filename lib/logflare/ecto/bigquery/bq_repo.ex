@@ -31,10 +31,9 @@ defmodule Logflare.BqRepo do
   def query_with_sql_and_params(%User{} = user, project_id, sql, params, opts \\ [])
       when not is_nil(project_id) and is_binary(sql) and is_list(params) and is_list(opts) do
     override = Map.new(opts)
-    {labels, override} = Map.pop(override, :labels, %{})
     %Plan{name: plan} = Billing.Cache.get_plan_by_user(user)
 
-    query_request = %QueryRequest{
+    query_request = %{
       query: sql,
       useLegacySql: false,
       useQueryCache: @use_query_cache,
@@ -42,18 +41,14 @@ defmodule Logflare.BqRepo do
       queryParameters: params,
       dryRun: false,
       timeoutMs: @query_request_timeout,
-      labels:
-        Map.merge(
-          %{
-            "managed_by" => "logflare",
-            "logflare_plan" => GenUtils.format_key(plan),
-            "logflare_account" => GenUtils.format_key(user.id)
-          },
-          labels
-        )
+      labels: %{
+        "managed_by" => "logflare",
+        "logflare_plan" => GenUtils.format_key(plan),
+        "logflare_account" => GenUtils.format_key(user.id)
+      }
     }
-
-    query_request = Map.merge(query_request, override)
+    |> DeepMerge.deep_merge(override)
+    |> then(fn map -> struct(QueryRequest, map) end)
 
     result =
       GenUtils.get_conn(:query)
