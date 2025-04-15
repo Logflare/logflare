@@ -2,6 +2,7 @@ defmodule Logflare.GenSingleton.Watcher do
   @moduledoc """
   A generic singleton GenServer that will be unique cluster-wide.
   Checks if there the server is started, if not, will be started under the supervision tree as a transient GenServer.
+  Monitors the global process and restarts it if it terminates.
   """
 
   use GenServer
@@ -15,6 +16,10 @@ defmodule Logflare.GenSingleton.Watcher do
     GenServer.start_link(__MODULE__, {self(), args}, [])
   end
 
+  @doc """
+  Get the pid of the global singleton process. it will return the same pid for all nodes in cluster.
+  """
+  @spec get_pid(pid()) :: pid() | nil
   def get_pid(pid) do
     GenServer.call(pid, :get_pid)
   end

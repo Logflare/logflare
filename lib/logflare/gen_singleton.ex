@@ -1,6 +1,10 @@
 defmodule Logflare.GenSingleton do
   @moduledoc """
   A generic singleton GenServer that will be unique cluster-wide, started under the supervision tree.
+
+  Creates a monitoring process that will start the corresponding child spec under the parent supervisor.
+
+  If Watcher terminates abnormally, parent supervisor will restart all processes.
   """
 
   use Supervisor
