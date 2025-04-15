@@ -33,22 +33,23 @@ defmodule Logflare.BqRepo do
     override = Map.new(opts)
     %Plan{name: plan} = Billing.Cache.get_plan_by_user(user)
 
-    query_request = %{
-      query: sql,
-      useLegacySql: false,
-      useQueryCache: @use_query_cache,
-      parameterMode: "POSITIONAL",
-      queryParameters: params,
-      dryRun: false,
-      timeoutMs: @query_request_timeout,
-      labels: %{
-        "managed_by" => "logflare",
-        "logflare_plan" => GenUtils.format_key(plan),
-        "logflare_account" => GenUtils.format_key(user.id)
+    query_request =
+      %{
+        query: sql,
+        useLegacySql: false,
+        useQueryCache: @use_query_cache,
+        parameterMode: "POSITIONAL",
+        queryParameters: params,
+        dryRun: false,
+        timeoutMs: @query_request_timeout,
+        labels: %{
+          "managed_by" => "logflare",
+          "logflare_plan" => GenUtils.format_key(plan),
+          "logflare_account" => GenUtils.format_key(user.id)
+        }
       }
-    }
-    |> DeepMerge.deep_merge(override)
-    |> then(fn map -> struct(QueryRequest, map) end)
+      |> DeepMerge.deep_merge(override)
+      |> then(fn map -> struct(QueryRequest, map) end)
 
     result =
       GenUtils.get_conn(:query)
