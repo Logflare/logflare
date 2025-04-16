@@ -42,7 +42,7 @@ defmodule Logflare.Logs.SourceRouting do
     le = %{le | source: sink_source, via_rule: rule}
 
     if source.v2_pipeline do
-      Backends.ensure_source_sup_started(sink)
+      Backends.ensure_source_sup_started(sink_source)
       Backends.ingest_logs([le], sink_source)
     else
       le

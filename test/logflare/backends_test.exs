@@ -394,8 +394,29 @@ defmodule Logflare.BackendsTest do
       assert Backends.list_recent_logs_local(target) |> length() == 1
     end
 
-    test "routing depth is max 1 level", %{user: user} do
+    test "v1 pipeline: routing depth is max 1 level", %{user: user} do
       [source, target] = insert_pair(:source, user: user)
+      other_target = insert(:source, user: user)
+      insert(:rule, lql_string: "testing", sink: target.token, source_id: source.id)
+      insert(:rule, lql_string: "testing", sink: other_target.token, source_id: target.id)
+      source = source |> Repo.preload(:rules, force: true)
+      start_supervised!({SourceSup, source}, id: :source)
+      start_supervised!({SourceSup, target}, id: :target)
+      start_supervised!({SourceSup, other_target}, id: :other_target)
+      :timer.sleep(500)
+
+      assert {:ok, 1} = Backends.ingest_logs([%{"event_message" => "testing 123"}], source)
+      :timer.sleep(1000)
+      # 1 events
+      assert Backends.list_recent_logs_local(source) |> length() == 1
+      # 1 events
+      assert Backends.list_recent_logs_local(target) |> length() == 1
+      # 0 events
+      assert Backends.list_recent_logs_local(other_target) |> length() == 0
+    end
+
+    test "v2 pipeline: routing depth is max 1 level", %{user: user} do
+      [source, target] = insert_pair(:source, user: user, v2_pipeline: true)
       other_target = insert(:source, user: user)
       insert(:rule, lql_string: "testing", sink: target.token, source_id: source.id)
       insert(:rule, lql_string: "testing", sink: other_target.token, source_id: target.id)
