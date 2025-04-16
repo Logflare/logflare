@@ -44,10 +44,15 @@ defmodule Logflare.SqlTest do
       # valid CTE queries with UNION ALL
       input = """
       with cte1 as (select a from my_table),
-           cte2 as (select b from my_table)
+           cte2 as (select b from my_table),
+           edge_logs as (select b from my_table),
+           postgres_logs as (select b from my_table),
+           auth_logs as (select b from my_table)
       select a from cte1
       union all
       select b from cte2
+      union all
+      \nselect el.id as id from edge_logs as el\nunion all\nselect pgl.id as id from postgres_logs as pgl\nunion all\nselect al.id as id from auth_logs as al
       """
 
       assert {:ok, _result} = Sql.transform(:bq_sql, input, user)
@@ -140,6 +145,12 @@ defmodule Logflare.SqlTest do
               {"with cte1 as (select a from my_table), cte2 as (select b from my_table) select a from cte1",
                "select a from cte1 union all select b from cte2"},
               "with cte1 as (select a from #{table}), cte2 as (select b from #{table}) select a from cte1 union all select b from cte2"
+            },
+            # multiple union alls
+            {
+              {"with cte1 as (select a from my_table), cte2 as (select b from my_table) select a from cte1",
+               "select a from cte1 union all select b from cte2 union all select c from cte2"},
+              "with cte1 as (select a from #{table}), cte2 as (select b from #{table}) select a from cte1 union all select b from cte2 union all select c from cte2"
             },
             # handle nested CTEs
             {
