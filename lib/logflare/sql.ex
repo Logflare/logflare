@@ -355,20 +355,11 @@ defmodule Logflare.Sql do
 
     sandboxed_cte_names = extract_cte_alises(ast)
 
-    get_from = fn
-      %{"Query" => %{"body" => %{"Select" => %{"from" => from}}}} ->
-        from
-
-      %{"Query" => %{"body" => %{"SetOperation" => set}}} ->
-        get_in(set, ["left", "Select", "from"]) ++ get_in(set, ["right", "Select", "from"])
-    end
 
     unknown_table_names =
       for statement <- ast,
-          # handle normal query
-          # handle union all
-          from <- get_from.(statement),
-          %{"value" => table_name} <- get_in(from, ["relation", "Table", "name"]),
+          from <- extract_all_from(statement),
+      %{"value" => table_name} <- get_in(from, ["relation", "Table", "name"]),
           table_name not in aliases,
           table_name not in sandboxed_cte_names do
         table_name
@@ -744,6 +735,26 @@ defmodule Logflare.Sql do
   end
 
   defp extract_all_parameters(_kv, acc), do: acc
+
+  defp extract_all_from(ast), do: extract_all_from(ast, [])
+
+  defp extract_all_from({"from", from}, acc) when is_list(from) do
+    from ++ acc
+  end
+
+  defp extract_all_from(kv, acc) when is_list(kv) or is_map(kv) do
+    kv
+    |> Enum.reduce(acc, fn kv, nested_acc ->
+      extract_all_from(kv, nested_acc)
+    end)
+  end
+
+  defp extract_all_from({_k, v}, acc) when is_list(v) or is_map(v) do
+    extract_all_from(v, acc)
+  end
+
+  defp extract_all_from(_kv, acc), do: acc
+
 
   # returns true if the name is fully qualified and has the project id prefix.
   defp is_project_fully_qualified_name(_table_name, nil), do: false
