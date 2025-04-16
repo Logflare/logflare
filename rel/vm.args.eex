@@ -15,10 +15,9 @@
 -env ERL_MAX_ETS_TABLES 250000
 
 ## Set busy-wait. Options are: none|very_short|short|medium|long|very_long
-## Longer is better to maximize CPU saturation
-+sbwt long
-+sbwtdcpu long
-+sbwtdio long
++sbwt none
++sbwtdcpu none
++sbwtdio none
 
 ## use utilization load balancing
 +sub true
