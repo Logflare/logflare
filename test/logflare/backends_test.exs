@@ -436,7 +436,6 @@ defmodule Logflare.BackendsTest do
       assert Backends.list_recent_logs_local(other_target) |> length() == 0
     end
 
-
     test "route to backend", %{user: user} do
       pid = self()
       ref = make_ref()
