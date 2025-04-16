@@ -90,8 +90,8 @@ defmodule Logflare.User do
 
     has_many :billing_counts, Logflare.Billing.BillingCount, on_delete: :delete_all
     has_many :sources, Source
-    has_many :endpoint_queries, Logflare.Endpoints.Query
-    has_many(:alert_queries, AlertQuery)
+    has_many :endpoint_queries, Logflare.Endpoints.Query, on_delete: :delete_all
+    has_many(:alert_queries, AlertQuery, on_delete: :delete_all)
     has_many :vercel_auths, Vercel.Auth
 
     has_one :team, Team
