@@ -355,11 +355,10 @@ defmodule Logflare.Sql do
 
     sandboxed_cte_names = extract_cte_alises(ast)
 
-
     unknown_table_names =
       for statement <- ast,
           from <- extract_all_from(statement),
-      %{"value" => table_name} <- get_in(from, ["relation", "Table", "name"]),
+          %{"value" => table_name} <- get_in(from, ["relation", "Table", "name"]),
           table_name not in aliases,
           table_name not in sandboxed_cte_names do
         table_name
@@ -754,7 +753,6 @@ defmodule Logflare.Sql do
   end
 
   defp extract_all_from(_kv, acc), do: acc
-
 
   # returns true if the name is fully qualified and has the project id prefix.
   defp is_project_fully_qualified_name(_table_name, nil), do: false
