@@ -78,38 +78,6 @@ config :logflare,
          live_dashboard: System.get_env("LOGFLARE_ENABLE_LIVE_DASHBOARD", "false") == "true"
        )
 
-db_ssl = System.get_env("DB_SSL") == "true"
-
-db_ssl_opts =
-  if(
-    File.exists?(".prod.db-server-ca.pem") &&
-      File.exists?(".prod.db-client-ca.pem") && File.exists?(".prod.db-client-key.pem")
-  ) do
-    [
-      #  ssl opts follow recs here: https://erlef.github.io/security-wg/secure_coding_and_deployment_hardening/ssl
-      verify: :verify_peer,
-      cacertfile: "db-server-ca.pem",
-      certfile: "db-client-cert.pem",
-      keyfile: "db-client-key.pem",
-      versions: [:"tlsv1.2"],
-      # support wildcard
-      customize_hostname_check: [
-        match_fun: :public_key.pkix_verify_hostname_match_fun(:https)
-      ]
-    ]
-  end
-
-db_database = System.get_env("DB_DATABASE")
-db_hostname = System.get_env("DB_HOSTNAME")
-db_password = System.get_env("DB_PASSWORD")
-db_username = System.get_env("DB_USERNAME")
-
-db_port =
-  if(System.get_env("DB_PORT") != nil,
-    do: String.to_integer(System.get_env("DB_PORT")),
-    else: nil
-  )
-
 config :logflare,
        Logflare.Repo,
        filter_nil_kv_pairs.(
@@ -118,17 +86,20 @@ config :logflare,
              do: String.to_integer(System.get_env("DB_POOL_SIZE")),
              else: nil
            ),
-         database: db_database,
-         hostname: db_hostname,
-         password: db_password,
-         username: db_username,
-         port: db_port,
+         database: System.get_env("DB_DATABASE"),
+         hostname: System.get_env("DB_HOSTNAME"),
+         password: System.get_env("DB_PASSWORD"),
+         username: System.get_env("DB_USERNAME"),
          after_connect:
            if(System.get_env("DB_SCHEMA"),
              do: {Postgrex, :query!, ["set search_path=#{System.get_env("DB_SCHEMA")}", []]},
              else: nil
            ),
-         ssl: if(db_ssl, do: db_ssl_opts, else: false)
+         port:
+           if(System.get_env("DB_PORT") != nil,
+             do: String.to_integer(System.get_env("DB_PORT")),
+             else: nil
+           )
        )
 
 if System.get_env("LOGFLARE_MIN_CLUSTER_SIZE") do
@@ -275,6 +246,26 @@ if(
     ]
 end
 
+if(
+  System.get_env("DB_SSL") == "true" && File.exists?("db-server-ca.pem") &&
+    File.exists?("db-client-ca.pem") && File.exists?("db-client-key.pem")
+) do
+  config :logflare, Logflare.Repo,
+    ssl: true,
+    ssl_opts: [
+      #  ssl opts follow recs here: https://erlef.github.io/security-wg/secure_coding_and_deployment_hardening/ssl
+      verify: :verify_peer,
+      cacertfile: "db-server-ca.pem",
+      certfile: "db-client-cert.pem",
+      keyfile: "db-client-key.pem",
+      versions: [:"tlsv1.2"],
+      # support wildcard
+      customize_hostname_check: [
+        match_fun: :public_key.pkix_verify_hostname_match_fun(:https)
+      ]
+    ]
+end
+
 case System.get_env("LOGFLARE_FEATURE_FLAG_OVERRIDE") do
   nil ->
     nil
@@ -297,28 +288,11 @@ if config_env() != :test do
     period: 1_000
 end
 
-vsn = Application.spec(:logflare, :vsn) |> List.to_string()
-
-clean_for_postgres_channel = fn
-  cookie when is_atom(cookie) ->
-    cookie |> Atom.to_string() |> String.replace(~r/\W/, "_")
-
-  str ->
-    String.replace(str, ~r/\W/, "_")
-end
-
 postgres_topology = [
   postgres: [
-    strategy: LibclusterPostgres.Strategy,
+    strategy: Logflare.Cluster.PostgresStrategy,
     config: [
-      database: db_database,
-      hostname: db_hostname,
-      password: db_password,
-      username: db_username,
-      port: db_port,
-      # ssl: if(db_ssl, do: db_ssl_opts, else: false),
-      channel:
-        "cluster_#{clean_for_postgres_channel.(Node.get_cookie())}_#{clean_for_postgres_channel.(vsn)}"
+      release_name: :logflare
     ]
   ]
 ]
