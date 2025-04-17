@@ -22,8 +22,7 @@ defmodule Logflare.Logs.SearchOperation do
     field :chart_rules, [ChartRule.t()], default: []
     field :error, term()
     field :stats, :map
-    field :use_local_time, boolean
-    field :user_local_timezone, String.t()
+    field :search_timezone, String.t()
     field :chart_data_shape_id, atom(), default: nil, enforce: true
     field :type, :events | :aggregates
     field :status, {atom(), String.t() | [String.t()]}
