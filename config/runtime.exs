@@ -128,7 +128,8 @@ config :logflare,
              do: {Postgrex, :query!, ["set search_path=#{System.get_env("DB_SCHEMA")}", []]},
              else: nil
            ),
-         ssl: if(db_ssl, do: db_ssl_opts, else: false)
+         ssl: db_ssl,
+         ssl_opts: db_ssl_opts
        )
 
 if System.get_env("LOGFLARE_MIN_CLUSTER_SIZE") do
