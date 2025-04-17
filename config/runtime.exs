@@ -317,7 +317,7 @@ postgres_topology = [
       password: db_password,
       username: db_username,
       port: db_port,
-      ssl: if(db_ssl, do: db_ssl_opts, else: false),
+      # ssl: if(db_ssl, do: db_ssl_opts, else: false),
       channel:
         "cluster_#{clean_for_postgres_channel.(Node.get_cookie())}_#{clean_for_postgres_channel.(vsn)}"
     ]
