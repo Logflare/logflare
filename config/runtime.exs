@@ -310,13 +310,15 @@ end
 
 postgres_topology = [
   postgres: [
-    strategy: LibclusterPostgres.Strategy,
+    strategy: Logflare.Cluster.PostgresStrategy,
     config: [
       database: db_database,
       hostname: db_hostname,
       password: db_password,
       username: db_username,
       port: db_port,
+      ssl: db_ssl,
+      ssl_opts: db_ssl_opts,
       channel:
         "cluster_#{clean_for_postgres_channel.(Node.get_cookie())}_#{clean_for_postgres_channel.(vsn)}"
     ]
