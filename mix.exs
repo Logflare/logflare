@@ -109,7 +109,7 @@ defmodule Logflare.Mixfile do
       {:decorator, "~> 1.3"},
       {:atomic_map, "~> 0.9.3"},
       {:libcluster, "~> 3.2"},
-      {:libcluster_postgres, "~> 0.1"},
+      {:libcluster_postgres, "~> 0.1.3"},
       {:map_keys, "~> 0.1.0"},
       {:observer_cli, "~> 1.5"},
       {:cloak_ecto, "~> 1.3"},
