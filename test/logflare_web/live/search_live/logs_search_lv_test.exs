@@ -621,6 +621,59 @@ defmodule LogflareWeb.Source.SearchLVTest do
     end
   end
 
+  describe "source suggestion required fields" do
+    setup do
+      plan = insert(:plan)
+      user = insert(:user)
+      source = insert(:source, user: user, suggested_keys: "metadata.level!")
+      %{user: user, plan: plan, source: source}
+    end
+
+    setup [:setup_user_session, :setup_source_processes]
+
+    test "on source with suggestion fields, creates flash with link to force query", %{
+      conn: conn,
+      source: source
+    } do
+      {:ok, view, _html} = live(conn, Routes.live_path(conn, SearchLV, source.id))
+
+      :timer.sleep(400)
+
+      view
+      |> render_change(:start_search, %{
+        "search" => %{
+          @default_search_params
+          | "querystring" => "c:count(*) c:group_by(t::minute)"
+        }
+      })
+
+      flash = view |> element(".message .alert") |> render()
+      assert flash =~ "Query does not include required keys"
+      assert flash =~ "metadata.level"
+      refute flash =~ "Click to force query"
+      refute flash =~ "force=true"
+    end
+
+    test "on source with required fields, does not create a flash when query includes field", %{
+      conn: conn,
+      source: source
+    } do
+      {:ok, view, _html} = live(conn, Routes.live_path(conn, SearchLV, source.id))
+
+      :timer.sleep(400)
+
+      view
+      |> render_change(:start_search, %{
+        "search" => %{
+          @default_search_params
+          | "querystring" => "c:count(*) c:group_by(t::minute) metadata.level:error"
+        }
+      })
+
+      refute view |> element(".message .alert", "required") |> has_element?()
+    end
+  end
+
   describe "source disable tailing" do
     setup do
       user = insert(:user)

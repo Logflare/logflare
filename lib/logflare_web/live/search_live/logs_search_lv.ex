@@ -146,6 +146,9 @@ defmodule LogflareWeb.Source.SearchLV do
 
         socket
       else
+        {:error, :required_field_not_found} ->
+          error_socket(socket, :required_field_not_found)
+
         {:error, :suggested_field_not_found} ->
           error_socket(socket, :suggested_field_not_found)
 
@@ -723,6 +726,33 @@ defmodule LogflareWeb.Source.SearchLV do
     |> error_socket(error)
   end
 
+  defp error_socket(socket, :required_field_not_found) do
+    path =
+      Routes.live_path(socket, LogflareWeb.Source.SearchLV, socket.assigns.source,
+        force: true,
+        tailing?: true,
+        loading: true,
+        chart_loading: true,
+        querystring: socket.assigns.querystring
+      )
+
+    keys =
+      socket.assigns.source.suggested_keys
+      |> String.split(",")
+      |> Enum.filter(fn key -> String.ends_with?(key, "!") end)
+      |> Enum.map(fn key -> String.trim_trailing(key, "!") end)
+      |> Enum.join(", ")
+
+    error = [
+      "Query does not include required keys.",
+      Phoenix.HTML.raw("<br/><code class=\"tw-text-sm\">"),
+      keys,
+      Phoenix.HTML.raw("</code>")
+    ]
+
+    error_socket(socket, error)
+  end
+
   defp error_socket(socket, :suggested_field_not_found) do
     path =
       Routes.live_path(socket, LogflareWeb.Source.SearchLV, socket.assigns.source,
@@ -733,10 +763,16 @@ defmodule LogflareWeb.Source.SearchLV do
         querystring: socket.assigns.querystring
       )
 
+    keys =
+      socket.assigns.source.suggested_keys
+      |> String.split(",")
+      |> Enum.map(fn key -> String.trim_trailing(key, "!") end)
+      |> Enum.join(", ")
+
     error = [
-      "Query does not include suggested keys, perfomance will be degraded. ",
+      "Query does not include suggested keys.",
       Phoenix.HTML.raw("<br/><code class=\"tw-text-sm\">"),
-      socket.assigns.source.suggested_keys,
+      keys,
       Phoenix.HTML.raw("</code><br/>"),
       "Do you want to proceed?",
       link("Click to force query", to: path)
@@ -854,17 +890,31 @@ defmodule LogflareWeb.Source.SearchLV do
          %{suggested_keys: suggested_keys},
          %{assigns: %{force_query: false}} = socket
        ) do
-    suggested_present =
+    {required, suggested} =
       suggested_keys
       |> String.split(",")
       |> Enum.map(fn
         "m." <> suggested_field -> "metadata." <> suggested_field
         suggested_field -> suggested_field
       end)
-      |> Enum.all?(fn suggested_field ->
+      |> Enum.split_with(fn suggested_field -> String.ends_with?(suggested_field, "!") end)
+
+    suggested_present =
+      Enum.all?(suggested, fn suggested_field ->
         Enum.find(lql_rules, fn %{path: path} -> path == suggested_field end)
       end)
 
-    if suggested_present, do: {:ok, socket}, else: {:error, :suggested_field_not_found}
+    required_present =
+      Enum.all?(required, fn required_field ->
+        Enum.find(lql_rules, fn %{path: path} ->
+          path == String.trim_trailing(required_field, "!")
+        end)
+      end)
+
+    cond do
+      !required_present -> {:error, :required_field_not_found}
+      !suggested_present -> {:error, :suggested_field_not_found}
+      true -> {:ok, socket}
+    end
   end
 end
