@@ -296,7 +296,7 @@
       <%= label f, :disable_tailing do %>
         Toggle Source search tailing for this source. Currently <%= if(@source.disable_tailing, do: "disabled", else: "enabled") %>.
       <% end %>
-      <%= hidden_input f, :disable_tailing, value: if(@source.disable_tailing, do: "false", else: "true") %>
+      <%= hidden_input f, :disable_tailing, value: !@source.disable_tailing %>
     </div>
 
     <%= submit if(@source.disable_tailing, do: "Enable search tailing", else: "Disable search tailing"), class: "btn btn-primary form-button" %>

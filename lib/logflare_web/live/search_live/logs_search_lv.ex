@@ -901,9 +901,8 @@ defmodule LogflareWeb.Source.SearchLV do
 
     required_present =
       Enum.all?(required, fn required_field ->
-        Enum.find(lql_rules, fn %{path: path} ->
-          path == String.trim_trailing(required_field, "!")
-        end)
+        trimmed = String.trim_trailing(required_field, "!")
+        Enum.find(lql_rules, fn %{path: path} -> path == trimmed end)
       end)
 
     cond do
