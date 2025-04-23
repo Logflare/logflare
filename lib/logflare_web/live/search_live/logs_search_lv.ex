@@ -142,7 +142,7 @@ defmodule LogflareWeb.Source.SearchLV do
           |> assign(:search_op_log_events, search_op_log_events)
           |> assign(chart_aggregate_enabled?: search_agg_controls_enabled?(lql_rules))
 
-        kickoff_queries(source.token, socket.assigns)
+        Process.send_after(self(), :kickoff_queries, 500)
 
         socket
       else
@@ -177,6 +177,11 @@ defmodule LogflareWeb.Source.SearchLV do
 
   def render(assigns) do
     logs_search(assigns)
+  end
+
+  def handle_info(:kickoff_queries, socket) do
+    kickoff_queries(socket.assigns.source.token, socket.assigns)
+    {:noreply, socket}
   end
 
   def handle_event(
