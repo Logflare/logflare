@@ -2,7 +2,6 @@ defmodule LogflareWeb.Helpers.PageTitle do
   @moduledoc """
   Sets page titles.
   """
-  alias LogflareWeb.LayoutView
 
   # alias LogflareWeb.{SourceView, MarketingView}
 

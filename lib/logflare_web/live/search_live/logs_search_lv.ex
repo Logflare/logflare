@@ -142,7 +142,9 @@ defmodule LogflareWeb.Source.SearchLV do
           |> assign(:search_op_log_events, search_op_log_events)
           |> assign(chart_aggregate_enabled?: search_agg_controls_enabled?(lql_rules))
 
-        Process.send_after(self(), :kickoff_queries, 500)
+        if connected?(socket) do
+          kickoff_queries(source.token, socket.assigns)
+        end
 
         socket
       else
@@ -179,11 +181,6 @@ defmodule LogflareWeb.Source.SearchLV do
 
   def render(assigns) do
     logs_search(assigns)
-  end
-
-  def handle_info(:kickoff_queries, socket) do
-    kickoff_queries(socket.assigns.source.token, socket.assigns)
-    {:noreply, socket}
   end
 
   def handle_event(
@@ -734,15 +731,6 @@ defmodule LogflareWeb.Source.SearchLV do
   end
 
   defp error_socket(socket, :required_field_not_found) do
-    path =
-      Routes.live_path(socket, LogflareWeb.Source.SearchLV, socket.assigns.source,
-        force: true,
-        tailing?: true,
-        loading: true,
-        chart_loading: true,
-        querystring: socket.assigns.querystring
-      )
-
     keys =
       socket.assigns.source.suggested_keys
       |> String.split(",")

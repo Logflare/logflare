@@ -699,7 +699,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
       source: source
     } do
       # only two query runs each, one for logs list, one for chart
-      expect(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, 4, fn _conn, _proj_id, opts ->
+      expect(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, 4, fn _conn, _proj_id, _opts ->
         {:ok, TestUtils.gen_bq_response()}
       end)
 
