@@ -47,9 +47,9 @@ defmodule LogflareWeb.QueryLive do
                 "language" => "sql",
                 "fontSize" => 12,
                 "padding" => %{
-                  "top" => 14
+                  "top" => 14,
+                  "bottom" => 14
                 },
-                "fixedOverflowWidgets" => false,
                 "contextmenu" => false,
                 "hideCursorInOverviewRuler" => true,
                 "smoothScrolling" => true,
@@ -63,11 +63,9 @@ defmodule LogflareWeb.QueryLive do
                 "lineNumbersMinChars" => 0,
                 "folding" => false,
                 "roundedSelection" => true,
-                "editorClassName" => "",
                 "minimap" => %{
                   "enabled" => false
-                },
-                "placeholder" => "SELECT timestamp, event_message from `MyApp.Source`"
+                }
               }
             )
           }
@@ -163,37 +161,41 @@ defmodule LogflareWeb.QueryLive do
   end
 
   def handle_params(params, _uri, socket) do
-    query_string = params["q"] || socket.assigns.query_string
+    socket =
+      if !socket.assigns.query_string,
+        do: assign(socket, :query_string, params["q"]),
+        else: socket
+
+    if socket.assigns.query_string != "" do
+      send(self(), :parse_query)
+    end
+
+    {:noreply, socket}
+  end
+
+  def handle_info(:parse_query, socket) do
+    query_string = socket.assigns.query_string
 
     socket =
-      socket
-      |> assign(:query_string, query_string)
-      |> then(fn
-        socket when query_string != "" ->
-          case Endpoints.parse_query_string(query_string) do
-            {:ok, _} ->
-              socket
-
-            {:error, err} ->
-              assign(
-                socket,
-                :parse_error_message,
-                if(is_binary(err), do: err, else: inspect(err))
-              )
-              |> assign(:query_result_rows, nil)
-          end
-
-        socket ->
+      case Endpoints.parse_query_string(query_string) do
+        {:ok, _} ->
           socket
-      end)
+          |> assign(:parse_error_message, nil)
+
+        {:error, err} ->
+          error = if(is_binary(err), do: err, else: inspect(err))
+
+          socket
+          |> assign(:parse_error_message, error)
+      end
 
     {:noreply, socket}
   end
 
   def handle_event(
         "run-query",
-        %{"live_monaco_editor" => %{"query" => query_string}},
-        %{assigns: %{user: user}} = socket
+        _params,
+        %{assigns: %{user: user, query_string: query_string}} = socket
       ) do
     socket =
       run_query(socket, user, query_string)
@@ -207,21 +209,13 @@ defmodule LogflareWeb.QueryLive do
         %{"value" => query_string},
         socket
       ) do
+    send(self(), :parse_query)
+
     socket =
-      case Endpoints.parse_query_string(query_string) do
-        {:ok, _} ->
-          socket
-          |> assign(:parse_error_message, nil)
-
-        {:error, err} ->
-          error = if(is_binary(err), do: err, else: inspect(err))
-
-          socket
-          |> assign(:parse_error_message, error)
-      end
+      socket
       |> assign(:query_string, query_string)
 
-    {:noreply, socket}
+    handle_info(:parse_query, socket)
   end
 
   def handle_event("parse-query", %{"_target" => ["live_monaco_editor", _]}, socket) do
