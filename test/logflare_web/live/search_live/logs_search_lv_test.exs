@@ -285,6 +285,11 @@ defmodule LogflareWeb.Source.SearchLVTest do
       assert find_querystring(html) == "c:count(*) c:group_by(t::minute)"
     end
 
+    test "page title includes source name", %{conn: conn, source: source} do
+      {:ok, _view, html} = live(conn, Routes.live_path(conn, SearchLV, source.id))
+      assert html =~ "<title>#{source.name} | Logflare"
+    end
+
     test "lql filters", %{conn: conn, source: source} do
       {:ok, view, _html} = live(conn, Routes.live_path(conn, SearchLV, source.id))
 

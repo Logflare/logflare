@@ -172,6 +172,8 @@ defmodule LogflareWeb.Source.SearchLV do
   end
 
   def handle_params(_params, _uri, socket) do
+    source = socket.assigns.source
+    socket = assign(socket, :page_title, source.name)
     {:noreply, socket}
   end
 
