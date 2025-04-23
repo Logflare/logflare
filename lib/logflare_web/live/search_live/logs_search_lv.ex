@@ -47,6 +47,9 @@ defmodule LogflareWeb.Source.SearchLV do
         TeamUsers.get_team_user_and_preload(team_user_id)
       end
 
+    tailing? =
+      if source.disable_tailing, do: false, else: Map.get(params, "tailing?", "true") == "true"
+
     socket
     |> assign(
       source: source,
@@ -62,7 +65,7 @@ defmodule LogflareWeb.Source.SearchLV do
       # tailing states
       tailing_initial?: true,
       tailing_timer: nil,
-      tailing?: Map.get(params, "tailing?", "true") == "true",
+      tailing?: tailing?,
       # search states
       search_op: nil,
       search_op_error: nil,
@@ -352,7 +355,7 @@ defmodule LogflareWeb.Source.SearchLV do
       |> assign(:tailing?, false)
       |> assign(:lql_rules, lql_list)
       |> assign(:querystring, qs)
-      |> push_patch_with_params(%{querystring: qs, tailing?: assigns.tailing?})
+      |> push_patch_with_params(%{querystring: qs, tailing?: false})
 
     {:noreply, socket}
   end
@@ -568,6 +571,9 @@ defmodule LogflareWeb.Source.SearchLV do
   defp assign_new_search_with_qs(socket, params, bq_table_schema) do
     %{querystring: qs, tailing?: tailing?} = params
 
+    # source disable_tailing overrides search tailing
+    tailing? = if socket.assigns.source.disable_tailing, do: false, else: tailing?
+
     case Lql.decode(qs, bq_table_schema) do
       {:ok, lql_rules} ->
         lql_rules = Lql.Utils.put_new_chart_rule(lql_rules, Lql.Utils.default_chart_rule())
@@ -763,6 +769,10 @@ defmodule LogflareWeb.Source.SearchLV do
     {:noreply, socket}
   end
 
+  defp soft_play(_ev, %{assigns: %{source: %_{disable_tailing: true}}} = socket) do
+    {:noreply, error_socket(socket, "Tailing is disabled for this source")}
+  end
+
   defp soft_play(ev, %{assigns: prev_assigns} = socket) do
     %{source: %{token: stoken} = source} = prev_assigns
     log_lv_received_event(ev, source)
@@ -795,6 +805,13 @@ defmodule LogflareWeb.Source.SearchLV do
       |> assign(:tailing?, false)
 
     {:noreply, socket}
+  end
+
+  defp hard_play(
+         _ev,
+         %{assigns: %{source: %_{disable_tailing: true}}} = socket
+       ) do
+    {:noreply, error_socket(socket, "Tailing is disabled for this source")}
   end
 
   defp hard_play(ev, %{assigns: prev_assigns} = socket) do

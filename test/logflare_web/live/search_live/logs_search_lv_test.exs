@@ -621,6 +621,53 @@ defmodule LogflareWeb.Source.SearchLVTest do
     end
   end
 
+  describe "source disable tailing" do
+    setup do
+      user = insert(:user)
+      source = insert(:source, user: user, disable_tailing: true)
+      plan = insert(:plan)
+
+      %{
+        user: user,
+        source: source,
+        plan: plan
+      }
+    end
+
+    setup [:setup_user_session, :setup_source_processes]
+
+    test "on source load, do not auto-tail", %{
+      conn: conn,
+      source: source
+    } do
+      # only two query runs each, one for logs list, one for chart
+      expect(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, 4, fn _conn, _proj_id, opts ->
+        {:ok, TestUtils.gen_bq_response()}
+      end)
+
+      {:ok, view, _html} =
+        live(conn, ~p"/sources/#{source.id}/search?querystring=something123&tailing%3F=true")
+
+      refute get_view_assigns(view).tailing?
+
+      :timer.sleep(400)
+      assert render_click(view, "soft_play", %{}) =~ "disabled for this source"
+
+      view
+      |> render_change(:start_search, %{
+        "search" => %{
+          @default_search_params
+          | "querystring" => "c:count(*) c:group_by(t::minute) message",
+            "tailing?" => "true"
+        }
+      })
+
+      refute get_view_assigns(view).tailing?
+
+      :timer.sleep(400)
+    end
+  end
+
   defp get_view_assigns(view) do
     :sys.get_state(view.pid).socket.assigns
   end
