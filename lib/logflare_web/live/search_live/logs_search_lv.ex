@@ -47,6 +47,9 @@ defmodule LogflareWeb.Source.SearchLV do
         TeamUsers.get_team_user_and_preload(team_user_id)
       end
 
+    tailing? =
+      if source.disable_tailing, do: false, else: Map.get(params, "tailing?", "true") == "true"
+
     socket
     |> assign(
       source: source,
@@ -62,7 +65,7 @@ defmodule LogflareWeb.Source.SearchLV do
       # tailing states
       tailing_initial?: true,
       tailing_timer: nil,
-      tailing?: Map.get(params, "tailing?", "true") == "true",
+      tailing?: tailing?,
       # search states
       search_op: nil,
       search_op_error: nil,
@@ -139,10 +142,15 @@ defmodule LogflareWeb.Source.SearchLV do
           |> assign(:search_op_log_events, search_op_log_events)
           |> assign(chart_aggregate_enabled?: search_agg_controls_enabled?(lql_rules))
 
-        kickoff_queries(source.token, socket.assigns)
+        if connected?(socket) do
+          kickoff_queries(source.token, socket.assigns)
+        end
 
         socket
       else
+        {:error, :required_field_not_found} ->
+          error_socket(socket, :required_field_not_found)
+
         {:error, :suggested_field_not_found} ->
           error_socket(socket, :suggested_field_not_found)
 
@@ -166,6 +174,8 @@ defmodule LogflareWeb.Source.SearchLV do
   end
 
   def handle_params(_params, _uri, socket) do
+    source = socket.assigns.source
+    socket = assign(socket, :page_title, source.name)
     {:noreply, socket}
   end
 
@@ -352,7 +362,7 @@ defmodule LogflareWeb.Source.SearchLV do
       |> assign(:tailing?, false)
       |> assign(:lql_rules, lql_list)
       |> assign(:querystring, qs)
-      |> push_patch_with_params(%{querystring: qs, tailing?: assigns.tailing?})
+      |> push_patch_with_params(%{querystring: qs, tailing?: false})
 
     {:noreply, socket}
   end
@@ -568,6 +578,9 @@ defmodule LogflareWeb.Source.SearchLV do
   defp assign_new_search_with_qs(socket, params, bq_table_schema) do
     %{querystring: qs, tailing?: tailing?} = params
 
+    # source disable_tailing overrides search tailing
+    tailing? = if socket.assigns.source.disable_tailing, do: false, else: tailing?
+
     case Lql.decode(qs, bq_table_schema) do
       {:ok, lql_rules} ->
         lql_rules = Lql.Utils.put_new_chart_rule(lql_rules, Lql.Utils.default_chart_rule())
@@ -717,6 +730,24 @@ defmodule LogflareWeb.Source.SearchLV do
     |> error_socket(error)
   end
 
+  defp error_socket(socket, :required_field_not_found) do
+    keys =
+      socket.assigns.source.suggested_keys
+      |> String.split(",")
+      |> Enum.filter(fn key -> String.ends_with?(key, "!") end)
+      |> Enum.map(fn key -> String.trim_trailing(key, "!") end)
+      |> Enum.join(", ")
+
+    error = [
+      "Query does not include required keys.",
+      Phoenix.HTML.raw("<br/><code class=\"tw-text-sm\">"),
+      keys,
+      Phoenix.HTML.raw("</code>")
+    ]
+
+    error_socket(socket, error)
+  end
+
   defp error_socket(socket, :suggested_field_not_found) do
     path =
       Routes.live_path(socket, LogflareWeb.Source.SearchLV, socket.assigns.source,
@@ -727,10 +758,16 @@ defmodule LogflareWeb.Source.SearchLV do
         querystring: socket.assigns.querystring
       )
 
+    keys =
+      socket.assigns.source.suggested_keys
+      |> String.split(",")
+      |> Enum.map(fn key -> String.trim_trailing(key, "!") end)
+      |> Enum.join(", ")
+
     error = [
-      "Query does not include suggested keys, perfomance will be degraded. ",
+      "Query does not include suggested keys.",
       Phoenix.HTML.raw("<br/><code class=\"tw-text-sm\">"),
-      socket.assigns.source.suggested_keys,
+      keys,
       Phoenix.HTML.raw("</code><br/>"),
       "Do you want to proceed?",
       link("Click to force query", to: path)
@@ -761,6 +798,10 @@ defmodule LogflareWeb.Source.SearchLV do
          %{assigns: %{uri_params: %{"tailing?" => "false"}}} = socket
        ) do
     {:noreply, socket}
+  end
+
+  defp soft_play(_ev, %{assigns: %{source: %_{disable_tailing: true}}} = socket) do
+    {:noreply, error_socket(socket, "Tailing is disabled for this source")}
   end
 
   defp soft_play(ev, %{assigns: prev_assigns} = socket) do
@@ -795,6 +836,13 @@ defmodule LogflareWeb.Source.SearchLV do
       |> assign(:tailing?, false)
 
     {:noreply, socket}
+  end
+
+  defp hard_play(
+         _ev,
+         %{assigns: %{source: %_{disable_tailing: true}}} = socket
+       ) do
+    {:noreply, error_socket(socket, "Tailing is disabled for this source")}
   end
 
   defp hard_play(ev, %{assigns: prev_assigns} = socket) do
@@ -837,17 +885,30 @@ defmodule LogflareWeb.Source.SearchLV do
          %{suggested_keys: suggested_keys},
          %{assigns: %{force_query: false}} = socket
        ) do
-    suggested_present =
+    {required, suggested} =
       suggested_keys
       |> String.split(",")
       |> Enum.map(fn
         "m." <> suggested_field -> "metadata." <> suggested_field
         suggested_field -> suggested_field
       end)
-      |> Enum.all?(fn suggested_field ->
+      |> Enum.split_with(fn suggested_field -> String.ends_with?(suggested_field, "!") end)
+
+    suggested_present =
+      Enum.all?(suggested, fn suggested_field ->
         Enum.find(lql_rules, fn %{path: path} -> path == suggested_field end)
       end)
 
-    if suggested_present, do: {:ok, socket}, else: {:error, :suggested_field_not_found}
+    required_present =
+      Enum.all?(required, fn required_field ->
+        trimmed = String.trim_trailing(required_field, "!")
+        Enum.find(lql_rules, fn %{path: path} -> path == trimmed end)
+      end)
+
+    cond do
+      !required_present -> {:error, :required_field_not_found}
+      !suggested_present -> {:error, :suggested_field_not_found}
+      true -> {:ok, socket}
+    end
   end
 end

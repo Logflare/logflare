@@ -130,6 +130,7 @@ defmodule Logflare.Source do
     field(:drop_lql_filters, Ecto.Term, default: [])
     field(:drop_lql_string, :string)
     field(:v2_pipeline, :boolean, default: false)
+    field(:disable_tailing, :boolean, default: false)
     field(:suggested_keys, :string, default: "")
     field(:retention_days, :integer, virtual: true)
     field(:transform_copy_fields, :string)
@@ -184,7 +185,8 @@ defmodule Logflare.Source do
       :v2_pipeline,
       :suggested_keys,
       :retention_days,
-      :transform_copy_fields
+      :transform_copy_fields,
+      :disable_tailing
     ])
     |> cast_embed(:notifications, with: &Notifications.changeset/2)
     |> put_single_tenant_postgres_changes()
@@ -211,7 +213,8 @@ defmodule Logflare.Source do
       :v2_pipeline,
       :suggested_keys,
       :retention_days,
-      :transform_copy_fields
+      :transform_copy_fields,
+      :disable_tailing
     ])
     |> cast_embed(:notifications, with: &Notifications.changeset/2)
     |> put_single_tenant_postgres_changes()

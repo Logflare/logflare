@@ -284,11 +284,25 @@
       <%= text_input f, :suggested_keys , class: "form-control form-control-margin" %>
       <%= error_tag f, :suggested_keys %>
     <small class="form-text text-muted">
-      Comma-separated. For example: <code>status,metadata.level</code>
+      Comma-separated. For example: <code>status,metadata.level</code>. Add an exclaimation mark (!) to make the key required  <code>metadata.level!</code>
     </small>
     </div>
     <%= submit "Save", class: "btn btn-primary form-button" %>
   <% end %>
+
+  <%= section_header("Search Tailing") %>
+  <%= form_for @changeset, Routes.source_path(@conn, :update, @source),fn f -> %>
+    <div class="form-group">
+      <%= label f, :disable_tailing do %>
+        Toggle Source search tailing for this source. Currently <%= if(@source.disable_tailing, do: "disabled", else: "enabled") %>.
+      <% end %>
+      <%= hidden_input f, :disable_tailing, value: !@source.disable_tailing %>
+    </div>
+
+    <%= submit if(@source.disable_tailing, do: "Enable search tailing", else: "Disable search tailing"), class: "btn btn-primary form-button" %>
+  <% end %>
+
+
   <%= if LogflareWeb.Utils.flag("multibackend", @user) == true do %>
     <%= section_header("Multi Backends") %>
     <%= form_for @changeset, Routes.source_path(@conn, :update, @source),fn f -> %>

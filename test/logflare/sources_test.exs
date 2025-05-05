@@ -68,6 +68,20 @@ defmodule Logflare.SourcesTest do
     end
   end
 
+  describe "update_source_by_user/2 disable/enable tailing" do
+    setup do
+      %{user: insert(:user)}
+    end
+
+    test "valid", %{user: user} do
+      insert(:plan, name: "Free")
+      source = insert(:source, user: user)
+
+      assert {:ok, %Source{disable_tailing: true}} =
+               Sources.update_source_by_user(source, %{disable_tailing: true})
+    end
+  end
+
   describe "list_sources_by_user/1" do
     setup do
       insert(:plan)

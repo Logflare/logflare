@@ -188,8 +188,8 @@ defmodule Logflare.Logs.SearchQueryExecutor do
 
   @impl true
   def handle_info({_ref, {:search_result, lv_pid, %{events: events_so}}}, state) do
-    Logger.info(
-      "SearchQueryExecutor: Getting search results for #{pid_to_string(lv_pid)} / #{state.source_id} source..."
+    Logger.debug(
+      "SearchQueryExecutor: Getting search events for #{pid_to_string(lv_pid)} / #{state.source_id} source..."
     )
 
     {%{params: params}, new_event_tasks} = Map.pop(state.event_tasks, lv_pid)
@@ -221,8 +221,8 @@ defmodule Logflare.Logs.SearchQueryExecutor do
 
   @impl true
   def handle_info({_ref, {:search_result, lv_pid, %{aggregates: aggregates_so}}}, state) do
-    Logger.info(
-      "SearchQueryExecutor: Getting search results for #{pid_to_string(lv_pid)} / #{state.source_id} source..."
+    Logger.debug(
+      "SearchQueryExecutor: Getting search aggregates for #{pid_to_string(lv_pid)} / #{state.source_id} source..."
     )
 
     {_, new_agg_tasks} = Map.pop(state.agg_tasks, lv_pid)
@@ -247,7 +247,7 @@ defmodule Logflare.Logs.SearchQueryExecutor do
   # handles task shutdown messages
   @impl true
   def handle_info({:DOWN, _, _, _, _}, state) do
-    Logger.info("SearchQueryExecutor: task was shutdown")
+    Logger.debug("SearchQueryExecutor: task was shutdown")
     {:noreply, state}
   end
 

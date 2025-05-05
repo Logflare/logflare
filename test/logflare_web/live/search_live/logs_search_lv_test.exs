@@ -285,6 +285,11 @@ defmodule LogflareWeb.Source.SearchLVTest do
       assert find_querystring(html) == "c:count(*) c:group_by(t::minute)"
     end
 
+    test "page title includes source name", %{conn: conn, source: source} do
+      {:ok, _view, html} = live(conn, Routes.live_path(conn, SearchLV, source.id))
+      assert html =~ "<title>#{source.name} | Logflare"
+    end
+
     test "lql filters", %{conn: conn, source: source} do
       {:ok, view, _html} = live(conn, Routes.live_path(conn, SearchLV, source.id))
 
@@ -618,6 +623,106 @@ defmodule LogflareWeb.Source.SearchLVTest do
              |> Floki.parse_document!()
              |> Floki.find("div[role=alert]>span")
              |> Enum.empty?()
+    end
+  end
+
+  describe "source suggestion required fields" do
+    setup do
+      plan = insert(:plan)
+      user = insert(:user)
+      source = insert(:source, user: user, suggested_keys: "metadata.level!")
+      %{user: user, plan: plan, source: source}
+    end
+
+    setup [:setup_user_session, :setup_source_processes]
+
+    test "on source with suggestion fields, creates flash with link to force query", %{
+      conn: conn,
+      source: source
+    } do
+      {:ok, view, _html} = live(conn, Routes.live_path(conn, SearchLV, source.id))
+
+      :timer.sleep(400)
+
+      view
+      |> render_change(:start_search, %{
+        "search" => %{
+          @default_search_params
+          | "querystring" => "c:count(*) c:group_by(t::minute)"
+        }
+      })
+
+      flash = view |> element(".message .alert") |> render()
+      assert flash =~ "Query does not include required keys"
+      assert flash =~ "metadata.level"
+      refute flash =~ "Click to force query"
+      refute flash =~ "force=true"
+    end
+
+    test "on source with required fields, does not create a flash when query includes field", %{
+      conn: conn,
+      source: source
+    } do
+      {:ok, view, _html} = live(conn, Routes.live_path(conn, SearchLV, source.id))
+
+      :timer.sleep(400)
+
+      view
+      |> render_change(:start_search, %{
+        "search" => %{
+          @default_search_params
+          | "querystring" => "c:count(*) c:group_by(t::minute) metadata.level:error"
+        }
+      })
+
+      refute view |> element(".message .alert", "required") |> has_element?()
+    end
+  end
+
+  describe "source disable tailing" do
+    setup do
+      user = insert(:user)
+      source = insert(:source, user: user, disable_tailing: true)
+      plan = insert(:plan)
+
+      %{
+        user: user,
+        source: source,
+        plan: plan
+      }
+    end
+
+    setup [:setup_user_session, :setup_source_processes]
+
+    test "on source load, do not auto-tail", %{
+      conn: conn,
+      source: source
+    } do
+      # only two query runs each, one for logs list, one for chart
+      expect(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, 4, fn _conn, _proj_id, _opts ->
+        {:ok, TestUtils.gen_bq_response()}
+      end)
+
+      {:ok, view, _html} =
+        live(conn, ~p"/sources/#{source.id}/search?querystring=something123&tailing%3F=true")
+
+      refute get_view_assigns(view).tailing?
+
+      :timer.sleep(400)
+      assert render_click(view, "soft_play", %{}) =~ "disabled for this source"
+
+      view
+      |> render_change(:start_search, %{
+        "search" => %{
+          @default_search_params
+          | "querystring" => "c:count(*) c:group_by(t::minute) message",
+            "tailing?" => "true"
+        }
+      })
+
+      refute get_view_assigns(view).tailing?
+
+      :timer.sleep(400)
     end
   end
 
