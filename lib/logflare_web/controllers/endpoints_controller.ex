@@ -9,6 +9,12 @@ defmodule LogflareWeb.EndpointsController do
   alias LogflareWeb.OpenApi.ServerError
   alias LogflareWeb.OpenApiSchemas.EndpointQuery
 
+  @plug_parsers_init Plug.Parsers.init(
+                       parsers: [JsonParser],
+                       json_decoder: Jason,
+                       body_reader: {PlugCaisson, :read_body, []}
+                     )
+
   action_fallback(LogflareWeb.Api.FallbackController)
   tags(["Public"])
 
@@ -66,18 +72,11 @@ defmodule LogflareWeb.EndpointsController do
          _opts
        )
        when is_map_key(qp, "sql") == false do
-    args =
-      Plug.Parsers.init(
-        parsers: [JsonParser],
-        json_decoder: Jason,
-        body_reader: {PlugCaisson, :read_body, []}
-      )
-
     conn
     # Plug.Parsers only supports POST/PUT/PATCH
     |> Map.put(:method, "POST")
     |> Map.put(:body_params, %Plug.Conn.Unfetched{})
-    |> Plug.Parsers.call(args)
+    |> Plug.Parsers.call(@plug_parsers_init)
     |> Map.put(:method, "GET")
   end
 
