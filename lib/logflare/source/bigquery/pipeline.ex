@@ -131,7 +131,17 @@ defmodule Logflare.Source.BigQuery.Pipeline do
       }
     )
 
-    stream_batch(context, messages)
+    OpenTelemetry.Tracer.with_span :bigquery_pipeline, %{
+      attributes: %{
+        source_id: context.source_id,
+        source_token: context.source_token,
+        backend_id: context.backend_id,
+        ingest_batch_size: batch_info.size,
+        ingest_batch_trigger: batch_info.trigger
+      }
+    } do
+      stream_batch(context, messages)
+    end
   end
 
   def le_messages_to_bq_rows(messages) do
