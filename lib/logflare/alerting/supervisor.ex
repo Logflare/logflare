@@ -31,7 +31,7 @@ defmodule Logflare.Alerting.Supervisor do
           Logger.info("Started alerts scheduler on #{inspect(Node.self())}, pid: #{inspect(pid)}")
           :syn.join(:alerting, :scheduler, pid)
 
-        {:error, {:already_started, pid}} ->
+        {:error, {:already_started, pid}} ->m
           Logger.debug("Alerts scheduler already started on #{inspect(node(pid))}")
       end
     else

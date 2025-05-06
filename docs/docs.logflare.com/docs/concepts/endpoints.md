@@ -78,6 +78,11 @@ The Endpoint consumer can pass in the following query parameter to query across 
 ?sql=select err from errors where regexp_contains(err, "my_error")
 ```
 
+
+Should large SQL queries need to be executed, the SQL query string can be placed in the GET JSON body. Logflare will read the body and use the `sql` field in the body payload. This will only occur if **no `?sql=` query parameter is present in the request's query parameters**. This behaviour does not extend to other declared parameters (such as `@my_param`), and only applies to the special `sql` query parameter for sandboxed endpoints.
+
+
+
 ## HTTP Response
 
 The result of the query will be returned on the `result` key of the response payload.

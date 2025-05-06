@@ -5,6 +5,7 @@ defmodule LogflareWeb.EndpointsController do
   require Logger
   alias Logflare.Endpoints
 
+  alias LogflareWeb.JsonParser
   alias LogflareWeb.OpenApi.ServerError
   alias LogflareWeb.OpenApiSchemas.EndpointQuery
 
@@ -43,10 +44,12 @@ defmodule LogflareWeb.EndpointsController do
     }
   )
 
-  def query(%{assigns: %{endpoint: endpoint}} = conn, _params) do
+  plug(:parse_get_body)
+
+  def query(%{assigns: %{endpoint: endpoint}} = conn, params) do
     endpoint_query = Endpoints.map_query_sources(endpoint)
 
-    case Endpoints.run_cached_query(endpoint_query, conn.query_params) do
+    case Endpoints.run_cached_query(endpoint_query, params) do
       {:ok, result} ->
         Logger.debug("Endpoint cache result, #{inspect(result, pretty: true)}")
         render(conn, "query.json", result: result.rows)
@@ -55,4 +58,28 @@ defmodule LogflareWeb.EndpointsController do
         render(conn, "query.json", error: err)
     end
   end
+
+  # only parse body for get when ?sql= is empty and it is sandboxable
+  # passthrough for all other cases
+  defp parse_get_body(
+         %{assigns: %{endpoint: %_{sandboxable: true}}, query_params: qp} = conn,
+         _opts
+       )
+       when is_map_key(qp, "sql") == false do
+    args =
+      Plug.Parsers.init(
+        parsers: [JsonParser],
+        json_decoder: Jason,
+        body_reader: {PlugCaisson, :read_body, []}
+      )
+
+    conn
+    # Plug.Parsers only supports POST/PUT/PATCH
+    |> Map.put(:method, "POST")
+    |> Map.put(:body_params, %Plug.Conn.Unfetched{})
+    |> Plug.Parsers.call(args)
+    |> Map.put(:method, "GET")
+  end
+
+  defp parse_get_body(conn, _opts), do: conn
 end
