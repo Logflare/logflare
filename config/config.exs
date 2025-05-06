@@ -32,6 +32,7 @@ config :logflare, LogflareWeb.Endpoint,
   http: [
     http_options: [log_protocol_errors: false],
     thousand_island_options: [
+      num_acceptors: 200,
       # https://cloud.google.com/load-balancing/docs/https/#timeouts_and_retries
       # preserves idle keepalive connections up to load balancer max of 600s
       read_timeout: 600_000,
