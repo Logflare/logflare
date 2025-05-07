@@ -42,6 +42,14 @@ defmodule Logflare.UsersTest do
     end
   end
 
+  test "delete_user/1" do
+    user = insert(:user)
+    insert(:alert, user: user)
+    insert(:source, user: user)
+    insert(:endpoint, user: user)
+    assert {:ok, _} = Users.delete_user(user)
+  end
+
   test "users_count/0 returns user count" do
     assert Users.count_users() == 1
     insert(:user)
