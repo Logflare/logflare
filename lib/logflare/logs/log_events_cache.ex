@@ -25,7 +25,8 @@ defmodule Logflare.Logs.LogEvents.Cache do
                 Utils.cache_limit(15_000)
               ]
               |> Enum.filter(& &1),
-            expiration: Utils.cache_expiration_min(15)
+            expiration: Utils.cache_expiration_min(10),
+            compressed: true
           ]
         ]
       }
