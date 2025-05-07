@@ -23,6 +23,8 @@ defmodule Logflare.Source.BigQuery.Pipeline do
   alias Logflare.Users
   alias Logflare.PubSubRates
 
+  require OpenTelemetry.Tracer
+
   # BQ max is 10MB
   # https://cloud.google.com/bigquery/quotas#streaming_inserts
   @max_batch_length 6_000_000
