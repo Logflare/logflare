@@ -142,35 +142,36 @@ defmodule LogflareWeb.QueryLive do
   def mount(%{}, %{"user_id" => user_id} = params, socket) do
     user = Users.get(user_id)
 
-    query_string =
-      Map.get(
-        params,
-        "q",
-        "SELECT id, timestamp, metadata, event_message \nFROM `YourSource` \nWHERE timestamp > '#{DateTime.utc_now() |> DateTime.to_iso8601()}'"
-      )
-
     socket =
       socket
       |> assign(:user_id, user_id)
       |> assign(:user, user)
       |> assign(:query_result_rows, nil)
       |> assign(:parse_error_message, nil)
-      |> assign(:query_string, query_string)
+      |> assign(:query_string, nil)
 
     {:ok, socket}
   end
 
   def handle_params(params, _uri, socket) do
-    socket =
-      if !socket.assigns.query_string,
-        do: assign(socket, :query_string, params["q"]),
-        else: socket
+    q =
+      case params["q"] do
+        "" -> nil
+        v -> v
+      end
 
-    if socket.assigns.query_string != "" do
+    query_string =
+      if q != nil and socket.assigns.query_string == nil do
+        q
+      else
+        "SELECT id, timestamp, metadata, event_message \nFROM `YourSource` \nWHERE timestamp > '#{DateTime.utc_now() |> DateTime.to_iso8601()}'"
+      end
+
+    if query_string != nil do
       send(self(), :parse_query)
     end
 
-    {:noreply, socket}
+    {:noreply, assign(socket, :query_string, query_string)}
   end
 
   def handle_info(:parse_query, socket) do
