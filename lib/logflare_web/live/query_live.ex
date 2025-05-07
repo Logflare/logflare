@@ -139,7 +139,7 @@ defmodule LogflareWeb.QueryLive do
     """
   end
 
-  def mount(%{}, %{"user_id" => user_id} = params, socket) do
+  def mount(%{}, %{"user_id" => user_id}, socket) do
     user = Users.get(user_id)
 
     socket =
