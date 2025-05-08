@@ -11,6 +11,7 @@ defmodule Logflare.Endpoints do
   alias Logflare.Backends.Adaptor.PostgresAdaptor
   alias Logflare.SingleTenant
   alias Logflare.Alerting
+  alias Logflare.Alerting.Alert
   alias Logflare.Backends
 
   import Ecto.Query
@@ -126,10 +127,18 @@ defmodule Logflare.Endpoints do
     iex> parse_query_string("select @testing from date")
     {:ok, %{parameters: ["testing"]}}
   """
-  @spec parse_query_string(String.t()) :: {:ok, %{parameters: [String.t()]}} | {:error, any()}
-  def parse_query_string(query_string) do
-    with {:ok, declared_params} <- Logflare.Sql.parameters(query_string) do
-      {:ok, %{parameters: declared_params}}
+  @spec parse_query_string(:bq_sql | :pg_sql, String.t(), [Query.t()], [Alert.t()]) ::
+          {:ok, %{parameters: [String.t()], expanded_query: String.t()}} | {:error, any()}
+  def parse_query_string(language, query_string, endpoints \\ [], alerts \\ [])
+      when language in [:bq_sql, :pg_sql] do
+    with {:ok, expanded_query} <-
+           Logflare.Sql.expand_subqueries(
+             language,
+             query_string,
+             endpoints ++ alerts
+           ),
+         {:ok, declared_params} <- Logflare.Sql.parameters(expanded_query) do
+      {:ok, %{parameters: declared_params, expanded_query: expanded_query}}
     end
   end
 
