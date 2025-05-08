@@ -8,7 +8,7 @@ defmodule LogflareWeb.Api.QueryController do
   alias LogflareWeb.OpenApi.One
   alias LogflareWeb.OpenApiSchemas.QueryParseResult
   alias LogflareWeb.OpenApiSchemas.QueryResult
-
+  alias Logflare.Alerting
   action_fallback(LogflareWeb.Api.FallbackController)
 
   tags(["management"])
@@ -40,7 +40,11 @@ defmodule LogflareWeb.Api.QueryController do
   def parse(conn, %{"sql" => sql}), do: parse(conn, %{"bq_sql" => sql})
 
   def parse(%{assigns: %{user: user}} = conn, %{"bq_sql" => sql}) do
-    with {:ok, result} <- Endpoints.parse_query_string(sql),
+    endpoints = Endpoints.list_endpoints_by(user_id: user.id)
+
+    alerts = Alerting.list_alert_queries_by_user_id(user.id)
+
+    with {:ok, result} <- Endpoints.parse_query_string(:bq_sql, sql, endpoints, alerts),
          {:ok, _transformed_query} <- Logflare.Sql.transform(:bq_sql, sql, user.id) do
       json(conn, %{result: result})
     end

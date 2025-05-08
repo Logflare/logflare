@@ -36,6 +36,8 @@ defmodule LogflareWeb.EndpointsLive do
 
     allow_access = Enum.any?([Utils.flag("endpointsOpenBeta"), user.endpoints_beta])
 
+    alerts = Endpoints.list_endpoints_by(user_id: user.id)
+
     socket =
       socket
       |> assign(:user_id, user_id)
@@ -52,6 +54,8 @@ defmodule LogflareWeb.EndpointsLive do
       |> assign(:prev_params, %{})
       |> assign(:params_form, to_form(%{"query" => "", "params" => %{}}, as: "run"))
       |> assign(:declared_params, %{})
+      |> assign(:alerts, alerts)
+      |> assign(:parsed_result, nil)
 
     {:ok, socket}
   end
@@ -69,12 +73,19 @@ defmodule LogflareWeb.EndpointsLive do
       |> assign(:show_endpoint, endpoint)
       |> then(fn
         socket when endpoint != nil ->
-          {:ok, %{parameters: parameters}} = Endpoints.parse_query_string(endpoint.query)
+          {:ok, parsed_result} =
+            Endpoints.parse_query_string(
+              :bq_sql,
+              endpoint.query,
+              Enum.filter(socket.assigns.endpoints, &(&1.id != endpoint.id)),
+              socket.assigns.alerts
+            )
 
           socket
-          |> assign_updated_params_form(parameters, endpoint.query)
+          |> assign_updated_params_form(parsed_result.parameters, parsed_result.expanded_query)
           # set changeset
           |> assign(:endpoint_changeset, Endpoints.change_query(endpoint, %{}))
+          |> assign(:parsed_result, parsed_result)
 
         # index page
         %{assigns: %{live_action: :index}} = socket ->
@@ -168,12 +179,18 @@ defmodule LogflareWeb.EndpointsLive do
         %{"endpoint" => %{"query" => query_string}},
         socket
       ) do
+    endpoints =
+      if socket.assigns.show_endpoint,
+        do: Enum.filter(socket.assigns.endpoints, &(&1.id != socket.assigns.show_endpoint.id)),
+        else: socket.assigns.endpoints
+
     socket =
-      case Endpoints.parse_query_string(query_string) do
-        {:ok, %{parameters: params_list}} ->
+      case Endpoints.parse_query_string(:bq_sql, query_string, endpoints, socket.assigns.alerts) do
+        {:ok, parsed_result} ->
           socket
           |> assign(:parse_error_message, nil)
-          |> assign_updated_params_form(params_list, query_string)
+          |> assign(:parsed_result, parsed_result)
+          |> assign_updated_params_form(parsed_result.parameters, parsed_result.expanded_query)
 
         {:error, err} ->
           error = if(is_binary(err), do: err, else: inspect(err))

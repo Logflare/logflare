@@ -6,6 +6,7 @@ defmodule LogflareWeb.QueryLive do
   require Logger
 
   alias Logflare.Endpoints
+  alias Logflare.Alerting
   alias Logflare.Users
   alias Logflare.Backends
 
@@ -142,6 +143,9 @@ defmodule LogflareWeb.QueryLive do
   def mount(%{}, %{"user_id" => user_id}, socket) do
     user = Users.get(user_id)
 
+    endpoints = Endpoints.list_endpoints_by(user_id: user.id)
+    alerts = Alerting.list_alert_queries_by_user_id(user.id)
+
     socket =
       socket
       |> assign(:user_id, user_id)
@@ -149,6 +153,8 @@ defmodule LogflareWeb.QueryLive do
       |> assign(:query_result_rows, nil)
       |> assign(:parse_error_message, nil)
       |> assign(:query_string, nil)
+      |> assign(:endpoints, [])
+      |> assign(:alerts, [])
 
     {:ok, socket}
   end
@@ -178,7 +184,12 @@ defmodule LogflareWeb.QueryLive do
     query_string = socket.assigns.query_string
 
     socket =
-      case Endpoints.parse_query_string(query_string) do
+      case Endpoints.parse_query_string(
+             :bq_sql,
+             query_string,
+             socket.assigns.endpoints,
+             socket.assigns.alerts
+           ) do
         {:ok, _} ->
           socket
           |> assign(:parse_error_message, nil)
