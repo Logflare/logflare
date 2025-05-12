@@ -65,14 +65,14 @@ defmodule Logflare.EndpointsTest do
 
   test "parse_query_string/1" do
     assert {:ok, %{parameters: ["testing"]}} =
-             Endpoints.parse_query_string(:bq_sql, "select @testing as date")
+             Endpoints.parse_query_string(:bq_sql, "select @testing as date", [], [])
   end
 
   test "parse_query_string/1 for nested queries" do
     nested = insert(:endpoint, name: "nested", query: "select @other as date")
 
     assert {:ok, %{parameters: ["other"]}} =
-             Endpoints.parse_query_string(:bq_sql, "select date from `nested`", [nested])
+             Endpoints.parse_query_string(:bq_sql, "select date from `nested`", [nested], [])
   end
 
   test "create endpoint with normal source name" do
