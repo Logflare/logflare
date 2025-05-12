@@ -68,7 +68,7 @@ defmodule LogflareWeb.EndpointsController do
   # only parse body for get when ?sql= is empty and it is sandboxable
   # passthrough for all other cases
   defp parse_get_body(
-         %{assigns: %{endpoint: %_{sandboxable: true}}, query_params: qp} = conn,
+         %{method: "GET", assigns: %{endpoint: %_{sandboxable: true}}, query_params: qp} = conn,
          _opts
        )
        when is_map_key(qp, "sql") == false do
