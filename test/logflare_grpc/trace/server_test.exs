@@ -5,6 +5,11 @@ defmodule LogflareGrpc.Trace.ServerTest do
   alias Opentelemetry.Proto.Collector.Trace.V1.ExportTraceServiceResponse
   alias Opentelemetry.Proto.Collector.Trace.V1.TraceService.Stub
   alias Logflare.SystemMetrics.AllLogsLogged
+  require OpenTelemetry.Tracer
+
+  require Record
+  @fields Record.extract(:span_ctx, from_lib: "opentelemetry_api/include/opentelemetry.hrl")
+  Record.defrecordp(:span_ctx, @fields)
 
   setup do
     insert(:plan)

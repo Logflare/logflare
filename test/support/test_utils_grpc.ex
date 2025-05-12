@@ -3,6 +3,7 @@ defmodule Logflare.TestUtilsGrpc do
 
   alias Opentelemetry.Proto.Collector.Trace.V1.ExportTraceServiceRequest
   alias Opentelemetry.Proto.Common.V1.AnyValue
+  alias Opentelemetry.Proto.Common.V1.ArrayValue
   alias Opentelemetry.Proto.Common.V1.InstrumentationScope
   alias Opentelemetry.Proto.Common.V1.KeyValue
   alias Opentelemetry.Proto.Resource.V1.Resource
@@ -10,6 +11,7 @@ defmodule Logflare.TestUtilsGrpc do
   alias Opentelemetry.Proto.Trace.V1.Span
   alias Opentelemetry.Proto.Trace.V1.Span.Event
   alias Opentelemetry.Proto.Trace.V1.ResourceSpans
+  alias Opentelemetry.Proto.Common.V1.KeyValueList
 
   @doc """
   Generates a ExportTraceServiceRequest message which contains a Span and an Event in it
@@ -75,8 +77,90 @@ defmodule Logflare.TestUtilsGrpc do
     boolean = random_key_value(:boolean)
     integer = random_key_value(:integer)
     double = random_key_value(:double)
+    array_of_strings = random_key_value(:array_of_strings)
+    array_of_numbers = random_key_value(:array_of_numbers)
+    array_of_booleans = random_key_value(:array_of_booleans)
 
-    [string, boolean, integer, double]
+    [
+      string,
+      boolean,
+      integer,
+      double,
+      array_of_strings,
+      array_of_numbers,
+      array_of_booleans
+    ]
+  end
+
+  # this is not supported by traces/metrics, only logs
+  # https://github.com/open-telemetry/opentelemetry-specification/pull/2888
+  # https://github.com/open-telemetry/opentelemetry-specification/issues/376
+  defp random_key_value(:array_of_kv) do
+    %KeyValue{
+      key: "random_array_#{TestUtils.random_string()}",
+      value: %AnyValue{
+        value:
+          {:kvlist_value,
+           %KeyValueList{
+             values: [
+               random_key_value(:string),
+               random_key_value(:boolean),
+               random_key_value(:integer),
+               random_key_value(:double)
+             ]
+           }}
+      }
+    }
+  end
+
+  defp random_key_value(:array_of_strings) do
+    %KeyValue{
+      key: "random_array_#{TestUtils.random_string()}",
+      value: %AnyValue{
+        value:
+          {:array_value,
+           %ArrayValue{
+             values: [
+               random_key_value(:string).value,
+               random_key_value(:string).value,
+               random_key_value(:string).value
+             ]
+           }}
+      }
+    }
+  end
+
+  defp random_key_value(:array_of_booleans) do
+    %KeyValue{
+      key: "random_array_#{TestUtils.random_string()}",
+      value: %AnyValue{
+        value:
+          {:array_value,
+           %ArrayValue{
+             values: [
+               random_key_value(:boolean).value,
+               random_key_value(:boolean).value,
+               random_key_value(:boolean).value
+             ]
+           }}
+      }
+    }
+  end
+
+  defp random_key_value(:array_of_numbers) do
+    %KeyValue{
+      key: "random_array_#{TestUtils.random_string()}",
+      value: %AnyValue{
+        value:
+          {:array_value,
+           %ArrayValue{
+             values: [
+               random_key_value(:double).value,
+               random_key_value(:integer).value
+             ]
+           }}
+      }
+    }
   end
 
   defp random_key_value(:string) do
