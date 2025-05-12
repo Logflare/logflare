@@ -153,8 +153,8 @@ defmodule LogflareWeb.QueryLive do
       |> assign(:query_result_rows, nil)
       |> assign(:parse_error_message, nil)
       |> assign(:query_string, nil)
-      |> assign(:endpoints, [])
-      |> assign(:alerts, [])
+      |> assign(:endpoints, endpoints)
+      |> assign(:alerts, alerts)
 
     {:ok, socket}
   end
