@@ -146,6 +146,35 @@ defmodule LogflareWeb.EndpointsControllerTest do
       assert_received {:sql, sql}
       assert String.downcase(sql) =~ "select 2"
     end
+
+    test "params in POST body", %{conn: conn, user: user} do
+      pid = self()
+
+      GoogleApi.BigQuery.V2.Api.Jobs
+      |> stub(:bigquery_jobs_query, fn _conn, _proj_id, opts ->
+        send(pid, {:sql, opts[:body].query})
+
+        {:ok, TestUtils.gen_bq_response()}
+      end)
+
+      endpoint =
+        insert(:endpoint,
+          user: user,
+          enable_auth: true,
+          sandboxable: true,
+          query: "with a as (select 1 as b) select b from a"
+        )
+
+      conn =
+        conn
+        |> put_req_header("x-api-key", user.api_key)
+        |> post("/api/endpoints/query/#{endpoint.name}", %{sql: "select 2"})
+
+      assert [%{"event_message" => "some event message"}] = json_response(conn, 200)["result"]
+      assert conn.halted == false
+      assert_received {:sql, sql}
+      assert String.downcase(sql) =~ "select 2"
+    end
   end
 
   describe "single tenant endpoint query" do
