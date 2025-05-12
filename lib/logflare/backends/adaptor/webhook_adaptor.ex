@@ -156,9 +156,8 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
       %{config: stored_config, metadata: backend_metadata} =
         Backends.Cache.get_backend(context.backend_id)
 
-      # This was changed to treat the `startup_config` as the source-of-truth
       config =
-        merge_configs(stored_config, startup_config)
+        merge_configs(startup_config, stored_config)
 
       backend_meta =
         for {k, v} <- backend_metadata || %{testing: 123}, into: %{} do
@@ -166,7 +165,8 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
         end
 
       Client.send(
-        url: config.url,
+        # if a `url_override` key is available in the merged config, use that before falling back to `url`
+        url: Map.get(config, :url_override, config.url),
         body: payload,
         headers: config[:headers] || %{},
         gzip: Map.get(config, :gzip, true),

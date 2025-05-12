@@ -10,15 +10,14 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
 
   ```sql
   CREATE TABLE "default"."supabase_log_ingress" (
-      "id" UUID,
-      "event_message" String,
-      "metadata" String,
-      "service" String,
-      "timestamp" DateTime64(6)
-  )
-  ENGINE MergeTree()
-  ORDER BY ("timestamp")
-  SETTINGS index_granularity = 8192 SETTINGS flatten_nested=0
+        "id" UUID,
+        "event_message" String,
+        "body" String,
+        "timestamp" DateTime64(6)
+    )
+    ENGINE MergeTree()
+    ORDER BY ("timestamp")
+    SETTINGS index_granularity = 8192 SETTINGS flatten_nested=0
   ```
   """
 
@@ -29,10 +28,11 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
 
   typedstruct enforce: true do
     field(:url, String.t())
+    field(:url_override, String.t(), default: nil)
     field(:username, String.t())
     field(:password, String.t())
     field(:database, String.t(), default: "default")
-    field(:table, String.t())
+    field(:table, String.t(), default: "supabase_log_ingress")
     field(:port, non_neg_integer(), default: 8443)
   end
 
@@ -60,17 +60,13 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
         "X-ClickHouse-Key" => config.password
       }
 
-    # Likely want to handle failures here if the URL is trash
     uri =
       case URI.new(config.url) do
-        {:ok, %URI{port: port} = uri_temp} when port in 80..443 ->
+        {:ok, %URI{} = uri_temp} ->
           %URI{uri_temp | port: config.port}
 
-        {:ok, %URI{} = uri_temp} ->
-          uri_temp
-
         _ ->
-          nil
+          raise "Unable to parse Clickhouse URL: '#{inspect(config.url)}'"
       end
 
     # Generate the insert query we'll append to the URL
@@ -88,6 +84,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
 
     %{
       url: updated_url,
+      url_override: updated_url,
       database: config.database,
       table: config.table,
       port: config.port,
@@ -152,15 +149,14 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
     end
   end
 
-  defp translate_event(%Logflare.LogEvent{} = le) do
+  defp translate_event(%Logflare.LogEvent{body: body} = le) do
     %Logflare.LogEvent{
       le
       | body: %{
           "id" => le.id,
-          "event_message" => le.body["message"] || le.body["event_message"] || "",
-          "metadata" => le.body["metadata"],
-          "service" => le.source.service_name || le.source.name,
-          "timestamp" => le.body["timestamp"]
+          "event_message" => body["event_message"] || "",
+          "body" => Map.drop(body, ["id", "event_message", "timestamp"]),
+          "timestamp" => body["timestamp"]
         }
     }
   end

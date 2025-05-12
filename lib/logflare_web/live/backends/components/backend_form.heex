@@ -186,7 +186,7 @@
             <%= label(f_config, :url, "ClickHouse URL") %>
             <%= text_input(f_config, :url, class: "form-control") %>
             <small class="form-text text-muted">
-              The ClickHouse HTTP(S) endpoint to send events.
+              Provide the ClickHouse hostname URL with the following format, for example: <code>https://hostname</code>
             </small>
           </div>
           <div class="form-group">
@@ -200,9 +200,9 @@
           </div>
           <div class="form-group">
             <%= label(f_config, :database, "Database Name") %>
-            <%= text_input(f_config, :database, class: "form-control") %>
+            <%= text_input(f_config, :database, class: "form-control", default: "default") %>
             <%= label(f_config, :table, "Table Name") %>
-            <%= text_input(f_config, :table, class: "form-control") %>
+            <%= text_input(f_config, :table, class: "form-control", default: "supabase_log_ingress") %>
             <small class="form-text text-muted">
               The database and table names within ClickHouse where events will be stored.
             </small>
