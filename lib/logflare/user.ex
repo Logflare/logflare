@@ -88,10 +88,10 @@ defmodule Logflare.User do
     embeds_one :preferences, UserPreferences
     field :partner_upgraded, :boolean, default: false
 
-    has_many :billing_counts, Logflare.Billing.BillingCount, on_delete: :delete_all
+    has_many :billing_counts, Logflare.Billing.BillingCount
     has_many :sources, Source
     has_many :endpoint_queries, Logflare.Endpoints.Query
-    has_many(:alert_queries, AlertQuery)
+    has_many :alert_queries, AlertQuery
     has_many :vercel_auths, Vercel.Auth
 
     has_one :team, Team
