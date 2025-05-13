@@ -9,6 +9,18 @@ defmodule Logflare.Logs.OtelTraceTest do
       %{resource_spans: TestUtilsGrpc.random_resource_span(), source: source}
     end
 
+    test "attributes", %{
+      resource_spans: resource_spans,
+      source: source
+    } do
+      [%{"attributes" => a} | _] = OtelTrace.handle_batch(resource_spans, source)
+      assert a != %{}
+      assert Enum.any?(Map.values(a), &is_list/1)
+      assert Enum.any?(Map.values(a), &is_number/1)
+      assert Enum.any?(Map.values(a), &is_binary/1)
+      assert Enum.any?(Map.values(a), &is_boolean/1)
+    end
+
     test "Creates params from a list with one Resource Span that contains an Event", %{
       resource_spans: resource_spans,
       source: source

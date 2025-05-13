@@ -16,9 +16,11 @@ There are two ways to query a Logflare Endpoint, via the Endpoint UUID or via th
 
 ```
 GET  https://api.logflare.app/api/endpoints/query/9dd9a6f6-8e9b-4fa4-b682-4f2f5cd99da3
+POST  https://api.logflare.app/api/endpoints/query/9dd9a6f6-8e9b-4fa4-b682-4f2f5cd99da3
 
 # requires authentication
 GET  https://api.logflare.app/api/endpoints/query/my.custom.endpoint
+POST  https://api.logflare.app/api/endpoints/query/my.custom.endpoint
 ```
 
 Querying by name requires authentication to be enabled and for a valid access token to be provided.
@@ -36,7 +38,7 @@ Queries can contain parameters, which are declared with the `@` prefix. Matching
 For example, given the following query:
 
 ```sql
-select * from logs
+select id, event_message, timestamp, metadata from logs
 where logs.name = @name and logs.age > @min_age
 ```
 
@@ -47,7 +49,7 @@ where logs.name = @name and logs.age > @min_age
 The resulting executed query for the HTTP request will be as follows:
 
 ```sql
-select * from logs
+select id, event_message, timestamp, metadata from logs
 where logs.name = "John Doe" and logs.age > 13
 ```
 
@@ -77,6 +79,11 @@ The Endpoint consumer can pass in the following query parameter to query across 
 ```text
 ?sql=select err from errors where regexp_contains(err, "my_error")
 ```
+
+
+Should large SQL queries need to be executed, the SQL query string can be placed in the GET JSON body. Logflare will read the body and use the `sql` field in the body payload. This will only occur if **no `?sql=` query parameter is present in the request's query parameters**. This behaviour does not extend to other declared parameters (such as `@my_param`), and only applies to the special `sql` query parameter for sandboxed endpoints.
+
+
 
 ## HTTP Response
 

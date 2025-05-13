@@ -165,7 +165,8 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
         end
 
       Client.send(
-        url: config.url,
+        # if a `url_override` key is available in the merged config, use that before falling back to `url`
+        url: Map.get(config, :url_override, config.url),
         body: payload,
         headers: config[:headers] || %{},
         gzip: Map.get(config, :gzip, true),

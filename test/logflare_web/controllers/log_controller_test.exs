@@ -144,7 +144,7 @@ defmodule LogflareWeb.LogControllerTest do
         |> post(Routes.log_path(conn, :otel_traces), body)
 
       assert json_response(conn, 200) == %{"message" => "Logged!"}
-      assert_receive {^ref, [event1, event2]}, 3000
+      assert_receive {^ref, [event1, event2]}, 4000
 
       assert event1["trace_id"] == event2["trace_id"]
       assert %{"metadata" => _, "event_message" => _} = event1

@@ -59,6 +59,21 @@
     </ul>
   </div>
 
+  <div :if={@parsed_result}>
+    <p>
+      <button class="btn btn-primary" type="button" data-toggle="collapse" data-target="#collapseExample" aria-expanded="false" aria-controls="collapseExample">
+        Expand query
+      </button>
+    </p>
+    <div class="collapse" id="collapseExample">
+      <div class="card card-body">
+        <code class="tw-whitespace-pre-wrap">
+          <%= @parsed_result.expanded_query %>
+        </code>
+      </div>
+    </div>
+  </div>
+
   <.run_query_form {assigns} />
   <.run_query_result {assigns} />
 

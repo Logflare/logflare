@@ -6,6 +6,7 @@ defmodule LogflareWeb.QueryLive do
   require Logger
 
   alias Logflare.Endpoints
+  alias Logflare.Alerting
   alias Logflare.Users
   alias Logflare.Backends
 
@@ -47,9 +48,9 @@ defmodule LogflareWeb.QueryLive do
                 "language" => "sql",
                 "fontSize" => 12,
                 "padding" => %{
-                  "top" => 14
+                  "top" => 14,
+                  "bottom" => 14
                 },
-                "fixedOverflowWidgets" => false,
                 "contextmenu" => false,
                 "hideCursorInOverviewRuler" => true,
                 "smoothScrolling" => true,
@@ -63,11 +64,9 @@ defmodule LogflareWeb.QueryLive do
                 "lineNumbersMinChars" => 0,
                 "folding" => false,
                 "roundedSelection" => true,
-                "editorClassName" => "",
                 "minimap" => %{
                   "enabled" => false
-                },
-                "placeholder" => "SELECT timestamp, event_message from `MyApp.Source`"
+                }
               }
             )
           }
@@ -141,15 +140,11 @@ defmodule LogflareWeb.QueryLive do
     """
   end
 
-  def mount(%{}, %{"user_id" => user_id} = params, socket) do
+  def mount(%{}, %{"user_id" => user_id}, socket) do
     user = Users.get(user_id)
 
-    query_string =
-      Map.get(
-        params,
-        "q",
-        "SELECT id, timestamp, metadata, event_message \nFROM `YourSource` \nWHERE timestamp > '#{DateTime.utc_now() |> DateTime.to_iso8601()}'"
-      )
+    endpoints = Endpoints.list_endpoints_by(user_id: user.id)
+    alerts = Alerting.list_alert_queries_by_user_id(user.id)
 
     socket =
       socket
@@ -157,43 +152,62 @@ defmodule LogflareWeb.QueryLive do
       |> assign(:user, user)
       |> assign(:query_result_rows, nil)
       |> assign(:parse_error_message, nil)
-      |> assign(:query_string, query_string)
+      |> assign(:query_string, nil)
+      |> assign(:endpoints, endpoints)
+      |> assign(:alerts, alerts)
 
     {:ok, socket}
   end
 
   def handle_params(params, _uri, socket) do
-    query_string = params["q"] || socket.assigns.query_string
+    q =
+      case params["q"] do
+        "" -> nil
+        v -> v
+      end
+
+    query_string =
+      if q != nil and socket.assigns.query_string == nil do
+        q
+      else
+        "SELECT id, timestamp, metadata, event_message \nFROM `YourSource` \nWHERE timestamp > '#{DateTime.utc_now() |> DateTime.to_iso8601()}'"
+      end
+
+    if query_string != nil do
+      send(self(), :parse_query)
+    end
+
+    {:noreply, assign(socket, :query_string, query_string)}
+  end
+
+  def handle_info(:parse_query, socket) do
+    query_string = socket.assigns.query_string
 
     socket =
-      socket
-      |> assign(:query_string, query_string)
-      |> then(fn
-        socket when query_string != "" ->
-          case Endpoints.parse_query_string(query_string) do
-            {:ok, _} ->
-              socket
-
-            {:error, err} ->
-              assign(
-                socket,
-                :parse_error_message,
-                if(is_binary(err), do: err, else: inspect(err))
-              )
-              |> assign(:query_result_rows, nil)
-          end
-
-        socket ->
+      case Endpoints.parse_query_string(
+             :bq_sql,
+             query_string,
+             socket.assigns.endpoints,
+             socket.assigns.alerts
+           ) do
+        {:ok, _} ->
           socket
-      end)
+          |> assign(:parse_error_message, nil)
+
+        {:error, err} ->
+          error = if(is_binary(err), do: err, else: inspect(err))
+
+          socket
+          |> assign(:parse_error_message, error)
+      end
 
     {:noreply, socket}
   end
 
   def handle_event(
         "run-query",
-        %{"live_monaco_editor" => %{"query" => query_string}},
-        %{assigns: %{user: user}} = socket
+        _params,
+        %{assigns: %{user: user, query_string: query_string}} = socket
       ) do
     socket =
       run_query(socket, user, query_string)
@@ -207,21 +221,13 @@ defmodule LogflareWeb.QueryLive do
         %{"value" => query_string},
         socket
       ) do
+    send(self(), :parse_query)
+
     socket =
-      case Endpoints.parse_query_string(query_string) do
-        {:ok, _} ->
-          socket
-          |> assign(:parse_error_message, nil)
-
-        {:error, err} ->
-          error = if(is_binary(err), do: err, else: inspect(err))
-
-          socket
-          |> assign(:parse_error_message, error)
-      end
+      socket
       |> assign(:query_string, query_string)
 
-    {:noreply, socket}
+    handle_info(:parse_query, socket)
   end
 
   def handle_event("parse-query", %{"_target" => ["live_monaco_editor", _]}, socket) do

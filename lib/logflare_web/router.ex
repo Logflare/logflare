@@ -447,6 +447,7 @@ defmodule LogflareWeb.Router do
   scope "/api/endpoints", LogflareWeb, assigns: %{resource_type: :endpoint} do
     pipe_through([:api, :require_endpoint_auth])
     get("/query/:token_or_name", EndpointsController, :query)
+    post("/query/:token_or_name", EndpointsController, :query)
 
     # deprecated
     get("/query/name/:name", EndpointsController, :query)
