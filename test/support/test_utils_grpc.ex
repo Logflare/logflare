@@ -28,8 +28,10 @@ defmodule Logflare.TestUtilsGrpc do
   def random_resource_span do
     [
       %ResourceSpans{
-        resource: %Resource{},
-        scope_spans: random_scope_span()
+        resource: %Resource{
+          attributes: random_attributes()
+        },
+        scope_spans: [random_scope_span()]
       }
     ]
   end
@@ -46,7 +48,7 @@ defmodule Logflare.TestUtilsGrpc do
       spans: random_span()
     }
 
-    [scope_spans]
+    scope_spans
   end
 
   defp random_span do
@@ -58,7 +60,8 @@ defmodule Logflare.TestUtilsGrpc do
         trace_id: :crypto.strong_rand_bytes(16),
         start_time_unix_nano: DateTime.utc_now() |> DateTime.to_unix(:nanosecond),
         end_time_unix_nano: DateTime.utc_now() |> DateTime.to_unix(:nanosecond),
-        events: random_event()
+        events: random_event(),
+        attributes: random_attributes()
       }
     ]
   end
@@ -78,8 +81,9 @@ defmodule Logflare.TestUtilsGrpc do
     integer = random_key_value(:integer)
     double = random_key_value(:double)
     array_of_strings = random_key_value(:array_of_strings)
-    array_of_numbers = random_key_value(:array_of_numbers)
     array_of_booleans = random_key_value(:array_of_booleans)
+    array_of_integers = random_key_value(:array_of_integers)
+    array_of_doubles = random_key_value(:array_of_doubles)
 
     [
       string,
@@ -87,8 +91,9 @@ defmodule Logflare.TestUtilsGrpc do
       integer,
       double,
       array_of_strings,
-      array_of_numbers,
-      array_of_booleans
+      array_of_booleans,
+      array_of_integers,
+      array_of_doubles
     ]
   end
 
@@ -147,7 +152,7 @@ defmodule Logflare.TestUtilsGrpc do
     }
   end
 
-  defp random_key_value(:array_of_numbers) do
+  defp random_key_value(:array_of_doubles) do
     %KeyValue{
       key: "random_array_#{TestUtils.random_string()}",
       value: %AnyValue{
@@ -156,6 +161,22 @@ defmodule Logflare.TestUtilsGrpc do
            %ArrayValue{
              values: [
                random_key_value(:double).value,
+               random_key_value(:double).value
+             ]
+           }}
+      }
+    }
+  end
+
+  defp random_key_value(:array_of_integers) do
+    %KeyValue{
+      key: "random_array_#{TestUtils.random_string()}",
+      value: %AnyValue{
+        value:
+          {:array_value,
+           %ArrayValue{
+             values: [
+               random_key_value(:integer).value,
                random_key_value(:integer).value
              ]
            }}

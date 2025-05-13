@@ -21,13 +21,6 @@ defmodule Logflare.Logs.OtelTraceTest do
       assert Enum.any?(Map.values(a), &is_boolean/1)
     end
 
-    test "array handling", %{
-      resource_spans: resource_spans,
-      source: source
-    } do
-      batch = OtelTrace.handle_batch(resource_spans, source)
-    end
-
     test "Creates params from a list with one Resource Span that contains an Event", %{
       resource_spans: resource_spans,
       source: source
