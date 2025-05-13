@@ -14,7 +14,8 @@ defmodule Logflare.Logs.OtelTrace do
 
   alias Opentelemetry.Proto.Trace.V1.ResourceSpans
   alias Opentelemetry.Proto.Common.V1.KeyValue
-
+  alias Opentelemetry.Proto.Common.V1.AnyValue
+  alias Opentelemetry.Proto.Common.V1.ArrayValue
   @behaviour Logflare.Logs.Processor
 
   def handle_batch(resource_spans, _source) when is_list(resource_spans) do
@@ -95,7 +96,18 @@ defmodule Logflare.Logs.OtelTrace do
 
   defp extract_key_value(%KeyValue{key: key, value: nil}), do: {key, nil}
 
-  defp extract_key_value(%KeyValue{key: key, value: %{value: {_, value}}}) do
-    {key, value}
+  defp extract_key_value(%KeyValue{
+         key: key,
+         value: value
+       }) do
+    {key, extract_value(value)}
   end
+
+  defp extract_value(%AnyValue{value: {:array_value, %ArrayValue{values: values}}}) do
+    Enum.map(values, &extract_value/1)
+  end
+
+  defp extract_value(%_{value: {_type, value}}), do: value
+  defp extract_value(nil), do: nil
+  defp extract_value(value), do: value
 end
