@@ -82,7 +82,8 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptorTest do
 
       @client
       |> expect(:send, fn req ->
-        expected_url = "http://localhost:8443?query=INSERT%20INTO%20supabase_log_ingress%20FORMAT%20JSONEachRow"
+        expected_url =
+          "http://localhost:8443?query=INSERT%20INTO%20supabase_log_ingress%20FORMAT%20JSONEachRow"
 
         if req[:url] == expected_url do
           send(this, {ref, req[:body]})
