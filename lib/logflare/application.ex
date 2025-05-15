@@ -211,6 +211,7 @@ defmodule Logflare.Application do
       {Finch,
        name: Logflare.FinchIngest,
        pools: %{
+         :default => [size: 50],
          "https://bigquery.googleapis.com" => [
            protocols: [:http1],
            size: max(base * 125, 150),
@@ -266,10 +267,7 @@ defmodule Logflare.Application do
          ]
        }},
       {Finch,
-       name: Logflare.FinchDefaultHttp1, pools: %{default: [protocols: [:http1], size: 50]}},
-      {Finch,
-       name: Logflare.FinchClickhouse,
-       pools: %{default: [protocols: [:http1], size: 50, start_pool_metrics?: true]}}
+       name: Logflare.FinchDefaultHttp1, pools: %{default: [protocols: [:http1], size: 50]}}
     ]
   end
 

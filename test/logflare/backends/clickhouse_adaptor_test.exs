@@ -82,8 +82,13 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptorTest do
 
       @client
       |> expect(:send, fn req ->
-        send(this, {ref, req[:body]})
-        %Tesla.Env{status: 200, body: ""}
+        expected_url =
+          "http://localhost:8443?query=INSERT%20INTO%20supabase_log_ingress%20FORMAT%20JSONEachRow"
+
+        if req[:url] == expected_url do
+          send(this, {ref, req[:body]})
+          %Tesla.Env{status: 200, body: ""}
+        end
       end)
 
       le = build(:log_event, source: source)

@@ -85,7 +85,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
     %{
       url: updated_url,
       url_override: updated_url,
-      pool_override: Logflare.FinchClickhouse,
+      pool_override: Logflare.FinchIngest,
       database: config.database,
       table: config.table,
       port: config.port,

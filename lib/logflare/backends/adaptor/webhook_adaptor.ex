@@ -1,5 +1,24 @@
 defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
-  @moduledoc false
+  @moduledoc """
+  Backend adaptor for webhooks / HTTP posts.
+
+  A number of other adaptors (_ClickHouse, DataDog, Elastic, Loki, etc_) leverage this to handle the final HTTP transaction.
+
+  ### Finch Pool Selection
+
+  By default the pool will be selected automatically based on the `:http` configuration option.
+
+  If you want to manually select a specific Finch pool, you can use the `:pool_override` option and provide the module name.
+
+
+  ### Dynamic URL handling with URL Override
+
+  This adaptor performs a merge on config that will prevent you from leveraging a dynamically generated URL configuration at runtime.
+  To bypass this behavior, you can use the optional `:url_override` attribute.
+
+  See the `Logflare.Backends.Adaptor.ClickhouseAdaptor` for an example that utilizes this.
+  """
+
   use GenServer
   use TypedStruct
 
