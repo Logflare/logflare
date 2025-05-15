@@ -59,12 +59,25 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
     @moduledoc false
     use Tesla, docs: false
 
+    defguardp is_possible_pool(value)
+              when not is_nil(value) and not is_boolean(value) and is_atom(value)
+
     def send(opts) do
+      http_opt = Keyword.get(opts, :http)
+      pool_override_opt = Keyword.get(opts, :pool_override)
+
       adaptor =
-        if Keyword.get(opts, :http) == "http1" do
+        if http_opt == "http1" do
           {Tesla.Adapter.Finch, name: Logflare.FinchDefaultHttp1, receive_timeout: 5_000}
         else
           {Tesla.Adapter.Finch, name: Logflare.FinchDefault, receive_timeout: 5_000}
+        end
+
+      adaptor =
+        if is_possible_pool(pool_override_opt) do
+          {Tesla.Adapter.Finch, name: pool_override_opt, receive_timeout: 5_000}
+        else
+          adaptor
         end
 
       opts =
@@ -167,6 +180,7 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
       Client.send(
         # if a `url_override` key is available in the merged config, use that before falling back to `url`
         url: Map.get(config, :url_override, config.url),
+        pool_override: Map.get(config, :pool_override),
         body: payload,
         headers: config[:headers] || %{},
         gzip: Map.get(config, :gzip, true),

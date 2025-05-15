@@ -85,11 +85,12 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
     %{
       url: updated_url,
       url_override: updated_url,
+      pool_override: Logflare.FinchClickhouse,
       database: config.database,
       table: config.table,
       port: config.port,
       headers: headers,
-      http: "http2",
+      http: "http1",
       gzip: true
     }
   end
