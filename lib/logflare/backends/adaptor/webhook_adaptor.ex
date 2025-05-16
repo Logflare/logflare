@@ -83,7 +83,7 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
 
     def send(opts) do
       http_opt = Keyword.get(opts, :http)
-      pool_override_opt = Keyword.get(opts, :pool_override)
+      pool_name = Keyword.get(opts, :pool_name)
 
       adaptor =
         if http_opt == "http1" do
