@@ -86,17 +86,15 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
       pool_name = Keyword.get(opts, :pool_name)
 
       adaptor =
-        if http_opt == "http1" do
-          {Tesla.Adapter.Finch, name: Logflare.FinchDefaultHttp1, receive_timeout: 5_000}
-        else
-          {Tesla.Adapter.Finch, name: Logflare.FinchDefault, receive_timeout: 5_000}
-        end
+        cond do
+          is_possible_pool(pool_name) ->
+            {Tesla.Adapter.Finch, name: pool_name, receive_timeout: 5_000}
 
-      adaptor =
-        if is_possible_pool(pool_override_opt) do
-          {Tesla.Adapter.Finch, name: pool_name, receive_timeout: 5_000}
-        else
-          adaptor
+          http_opt == "http2" ->
+            {Tesla.Adapter.Finch, name: Logflare.FinchDefault, receive_timeout: 5_000}
+
+          true ->
+            {Tesla.Adapter.Finch, name: Logflare.FinchDefaultHttp1, receive_timeout: 5_000}
         end
 
       opts =
