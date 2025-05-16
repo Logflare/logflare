@@ -8,7 +8,7 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
 
   By default the pool will be selected automatically based on the `:http` configuration option.
 
-  If you want to manually select a specific Finch pool, you can use the `:pool_override` option and provide the module name.
+  If you want to manually select a specific Finch pool, you can use the `:pool_name` option and provide the module name.
 
 
   ### Dynamic URL handling with URL Override
