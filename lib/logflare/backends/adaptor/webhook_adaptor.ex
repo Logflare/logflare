@@ -94,7 +94,7 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
 
       adaptor =
         if is_possible_pool(pool_override_opt) do
-          {Tesla.Adapter.Finch, name: pool_override_opt, receive_timeout: 5_000}
+          {Tesla.Adapter.Finch, name: pool_name, receive_timeout: 5_000}
         else
           adaptor
         end
