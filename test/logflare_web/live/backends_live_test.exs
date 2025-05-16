@@ -39,6 +39,17 @@ defmodule LogflareWeb.BackendsLiveTest do
     assert html =~ "#{backend.type}"
   end
 
+  test "show redacts certain config attributes from display", %{
+    conn: conn,
+    user: user,
+    source: source
+  } do
+    backend = insert(:backend, sources: [source], user: user)
+    {:ok, view, _html} = live(conn, ~p"/backends/#{backend.id}")
+    html = render(view)
+    assert html =~ "&quot;dataset_id&quot;: &quot;**********&quot;"
+  end
+
   test "show with backend metadata", %{conn: conn, user: user, source: source} do
     backend =
       insert(:backend, sources: [source], user: user, metadata: %{some: "custom-metadata"})
