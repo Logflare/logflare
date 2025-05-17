@@ -82,6 +82,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptorTest do
 
       @client
       |> expect(:send, fn req ->
+        assert req[:url] =~ ~r"localhost:8443.+query=INSERT.+EachRow"
         send(this, {ref, req[:body]})
         %Tesla.Env{status: 200, body: ""}
       end)

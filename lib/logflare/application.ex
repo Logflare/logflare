@@ -211,6 +211,7 @@ defmodule Logflare.Application do
       {Finch,
        name: Logflare.FinchIngest,
        pools: %{
+         :default => [size: 50],
          "https://bigquery.googleapis.com" => [
            protocols: [:http1],
            size: max(base * 125, 150),

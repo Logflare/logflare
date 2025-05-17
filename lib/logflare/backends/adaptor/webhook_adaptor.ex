@@ -1,5 +1,24 @@
 defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
-  @moduledoc false
+  @moduledoc """
+  Backend adaptor for webhooks / HTTP posts.
+
+  A number of other adaptors (_ClickHouse, DataDog, Elastic, Loki, etc_) leverage this to handle the final HTTP transaction.
+
+  ### Finch Pool Selection
+
+  By default the pool will be selected automatically based on the `:http` configuration option.
+
+  If you want to manually select a specific Finch pool, you can use the `:pool_name` option and provide the module name.
+
+
+  ### Dynamic URL handling with URL Override
+
+  This adaptor performs a merge on config that will prevent you from leveraging a dynamically generated URL configuration at runtime.
+  To bypass this behavior, you can use the optional `:url_override` attribute.
+
+  See the `Logflare.Backends.Adaptor.ClickhouseAdaptor` for an example that utilizes this.
+  """
+
   use GenServer
   use TypedStruct
 
@@ -59,12 +78,23 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
     @moduledoc false
     use Tesla, docs: false
 
+    defguardp is_possible_pool(value)
+              when not is_nil(value) and not is_boolean(value) and is_atom(value)
+
     def send(opts) do
+      http_opt = Keyword.get(opts, :http)
+      pool_name = Keyword.get(opts, :pool_name)
+
       adaptor =
-        if Keyword.get(opts, :http) == "http1" do
-          {Tesla.Adapter.Finch, name: Logflare.FinchDefaultHttp1, receive_timeout: 5_000}
-        else
-          {Tesla.Adapter.Finch, name: Logflare.FinchDefault, receive_timeout: 5_000}
+        cond do
+          is_possible_pool(pool_name) ->
+            {Tesla.Adapter.Finch, name: pool_name, receive_timeout: 5_000}
+
+          http_opt == "http2" ->
+            {Tesla.Adapter.Finch, name: Logflare.FinchDefault, receive_timeout: 5_000}
+
+          true ->
+            {Tesla.Adapter.Finch, name: Logflare.FinchDefaultHttp1, receive_timeout: 5_000}
         end
 
       opts =
@@ -167,6 +197,7 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
       Client.send(
         # if a `url_override` key is available in the merged config, use that before falling back to `url`
         url: Map.get(config, :url_override, config.url),
+        pool_override: Map.get(config, :pool_override),
         body: payload,
         headers: config[:headers] || %{},
         gzip: Map.get(config, :gzip, true),
