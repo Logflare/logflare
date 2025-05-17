@@ -17,7 +17,7 @@
       <li class="list-group-item">
         <strong>config:</strong>
         <pre>
-          <%= Jason.encode!(@backend.config, pretty: true) %>
+          <%= Jason.encode!(LogflareWeb.Live.DisplayHelpers.sanitize_backend_config(@backend.config), pretty: true) %>
         </pre>
       </li>
       <li :if={@backend.metadata} class="list-group-item tw-flex-col tw-gap-2 ">
