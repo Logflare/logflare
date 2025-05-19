@@ -157,6 +157,9 @@ defmodule Logflare.Mixfile do
       {:ecto_sql, "~> 3.9"},
       {:typed_ecto_schema, "~> 0.1.0", runtime: false},
 
+      # ClickHouse
+      {:ch, "~> 0.3.2"},
+
       # Telemetry & logging
       {:telemetry, "~> 1.0"},
       {:telemetry_metrics, "~> 1.0"},
