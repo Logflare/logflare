@@ -1,6 +1,6 @@
-defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
+defmodule Logflare.Backends.Adaptor.ClickhouseWebhookAdaptor do
   @moduledoc """
-  ClickHouse backend adaptor
+  ClickHouse backend adaptor that leverages the WebhookAdaptor.
 
   ### Table Creation
 

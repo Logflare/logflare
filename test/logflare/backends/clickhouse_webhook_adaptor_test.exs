@@ -1,4 +1,4 @@
-defmodule Logflare.Backends.Adaptor.ClickhouseAdaptorTest do
+defmodule Logflare.Backends.Adaptor.ClickhouseWebhookAdaptorTest do
   use Logflare.DataCase, async: false
 
   alias Logflare.Backends.Adaptor
@@ -6,7 +6,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptorTest do
   alias Logflare.Backends.AdaptorSupervisor
   alias Logflare.SystemMetrics.AllLogsLogged
 
-  @subject Logflare.Backends.Adaptor.ClickhouseAdaptor
+  @subject Logflare.Backends.Adaptor.ClickhouseWebhookAdaptor
   @client Logflare.Backends.Adaptor.WebhookAdaptor.Client
 
   doctest @subject
