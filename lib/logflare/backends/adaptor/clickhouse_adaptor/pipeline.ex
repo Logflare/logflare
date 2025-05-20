@@ -1,14 +1,17 @@
 defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.Pipeline do
   @moduledoc """
-  Pipeline for ClickhouseAdaptor
+  Pipeline for `ClickhouseAdaptor`
 
-  This pipeline is responsible for taking log events from the source backend and inserting them into the configured database.
+  This pipeline is responsible for taking log events from the
+  source backend and inserting them into the configured database.
   """
 
   alias Broadway.Message
   alias Logflare.Backends.Adaptor.ClickhouseAdaptor
+  alias Logflare.Backends.Adaptor.ClickhouseAdaptor.Client
   alias Logflare.Backends.BufferProducer
 
+  @doc false
   @spec start_link(ClickhouseAdaptor.t()) :: {:ok, pid()}
   def start_link(adaptor_state) do
     Broadway.start_link(__MODULE__,
@@ -24,13 +27,13 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.Pipeline do
         default: [concurrency: 5, min_demand: 1]
       ],
       batchers: [
-        pg: [concurrency: 5, batch_size: 350]
+        ch: [concurrency: 5, batch_size: 350]
       ],
       context: adaptor_state
     )
   end
 
-  # see the implementation for Backends.via_source/2 for how tuples are used to identify child processes
+  # see the implementation for `Backends.via_source/2` for how tuples are used to identify child processes
   def process_name({:via, module, {registry, identifier}}, base_name) do
     new_identifier = Tuple.append(identifier, base_name)
     {:via, module, {registry, new_identifier}}
@@ -42,7 +45,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.Pipeline do
 
   def handle_batch(:ch, messages, _batch_info, %{source: source, backend: backend}) do
     events = for %{data: le} <- messages, do: le
-    PostgresAdaptor.insert_log_events(source, backend, events)
+    Client.insert_log_events(source, backend, events)
     messages
   end
 

@@ -17,7 +17,8 @@ defmodule Logflare.Backends.Backend do
     postgres: Adaptor.PostgresAdaptor,
     bigquery: Adaptor.BigQueryAdaptor,
     loki: Adaptor.LokiAdaptor,
-    clickhouse: Adaptor.ClickhouseWebhookAdaptor
+    clickhouse: Adaptor.ClickhouseAdaptor,
+    clickhouse_webhook: Adaptor.ClickhouseWebhookAdaptor
   }
 
   typed_schema "backends" do

@@ -83,8 +83,6 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.Supervisor do
 
     default_pool_size = Application.fetch_env!(:logflare, :clickhouse_backend_adapter)[:pool_size]
     url = Map.get(config, :url) || Map.get(config, "url")
-    port = Map.get(config, :port) || Map.get(config, "port")
-    port = String.to_integer(port)
 
     # ensure things parse correctly on the instance URL
     # handle this smoother. maybe raise instead.
@@ -96,7 +94,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.Supervisor do
       name: via(backend),
       scheme: scheme,
       hostname: hostname,
-      port: port,
+      port: get_port_config(backend),
       database: Map.get(config, :database) || Map.get(config, "database"),
       username: Map.get(config, :username) || Map.get(config, "username"),
       password: Map.get(config, :password) || Map.get(config, "password"),
@@ -122,7 +120,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.Supervisor do
         {:ok, {scheme, hostname}}
 
       {:ok, %URI{}} ->
-        {:error, "Unable to extract scheme and hostname from URL."}
+        {:error, "Unable to extract scheme and hostname from URL '#{inspect(url)}'."}
 
       {:error, _err_msg} = error ->
         error
@@ -130,4 +128,9 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.Supervisor do
   end
 
   defp extract_scheme_and_hostname(_url), do: {:error, "Unexpected URL value provided."}
+
+  defp get_port_config(%Backend{config: %{port: port}}) when is_integer(port), do: port
+
+  defp get_port_config(%Backend{config: %{port: port}}) when is_binary(port),
+    do: String.to_integer(port)
 end
