@@ -1,5 +1,7 @@
 defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.Client do
-  @moduledoc false
+  @moduledoc """
+  Clickhouse client wrapper logic that relies on `Ch`.
+  """
 
   alias Logflare.Backends.Adaptor.ClickhouseAdaptor.Supervisor
   alias Logflare.Backends.Backend
@@ -15,17 +17,6 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.Client do
     {:ok, connection_pid} = Supervisor.find_or_create_ch_connection(backend)
 
     connection_pid
-  end
-
-  @doc """
-  Returns the table name for a given Source.
-  """
-  @spec table_name(Source.t()) :: binary()
-  def table_name(%Source{token: token}) do
-    token
-    |> Atom.to_string()
-    |> String.replace("-", "_")
-    |> then(&"log_events_#{&1}")
   end
 
   @doc """
@@ -68,8 +59,6 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.Client do
     config = Map.get(backend, :config)
     table = Map.get(config, :table)
 
-    # table = table_name(source)
-
     conn_pid = get_connection(backend)
 
     event_params =
@@ -84,23 +73,16 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.Client do
         ]
       end)
 
-    IO.inspect(event_params, label: "event_params", limit: :infinity, pretty: true)
-
     opts = [
       names: ["id", "event_message", "body", "timestamp"],
       types: ["UUID", "String", "String", "DateTime64(6)"]
     ]
 
-    query_res =
-      execute_ch_query(
-        conn_pid,
-        "INSERT INTO #{table} FORMAT RowBinaryWithNamesAndTypes",
-        event_params,
-        opts
-      )
-
-    IO.inspect(query_res, label: "query result", limit: :infinity, pretty: true)
-
-    query_res
+    execute_ch_query(
+      conn_pid,
+      "INSERT INTO #{table} FORMAT RowBinaryWithNamesAndTypes",
+      event_params,
+      opts
+    )
   end
 end

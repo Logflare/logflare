@@ -85,14 +85,16 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
   end
 
   # delegated functions
-  defdelegate table_name(source), to: Client
+  defdelegate ch_connection_count(), to: Supervisor
+  defdelegate ch_connection_exists?(backend), to: Supervisor
 
   defdelegate execute_ch_query(backend_or_conn, statement, params \\ [], opts \\ []),
     to: Client
 
+  defdelegate find_or_create_ch_connection(backend), to: Supervisor
   defdelegate insert_log_event(source, backend, log_event), to: Client
   defdelegate insert_log_events(source, backend, log_events), to: Client
-  defdelegate find_or_create_ch_connection(backend), to: Supervisor
+  defdelegate terminate_ch_connection(backend), to: Supervisor
 
   @impl GenServer
   def init({source, backend}) do

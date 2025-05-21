@@ -8,11 +8,11 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.Pipeline do
 
   alias Broadway.Message
   alias Logflare.Backends.Adaptor.ClickhouseAdaptor
-  alias Logflare.Backends.Adaptor.ClickhouseAdaptor.Client
   alias Logflare.Backends.BufferProducer
 
   @doc false
-  @spec start_link(ClickhouseAdaptor.t()) :: {:ok, pid()}
+  @spec start_link(ClickhouseAdaptor.t()) ::
+          {:ok, pid()} | :ignore | {:error, {:already_started, pid()} | term()}
   def start_link(adaptor_state) do
     Broadway.start_link(__MODULE__,
       name: adaptor_state.pipeline_name,
@@ -45,7 +45,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.Pipeline do
 
   def handle_batch(:ch, messages, _batch_info, %{source: source, backend: backend}) do
     events = for %{data: le} <- messages, do: le
-    Client.insert_log_events(source, backend, events)
+    ClickhouseAdaptor.insert_log_events(source, backend, events)
     messages
   end
 

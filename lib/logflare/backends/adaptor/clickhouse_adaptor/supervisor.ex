@@ -27,27 +27,38 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.Supervisor do
   end
 
   @doc """
-  Returns count of Clickhouse `DbConnection` processes handled by this supervisor.
-  """
-  @spec ch_connection_count() :: non_neg_integer()
-  def ch_connection_count() do
-    Supervisor.count_children(@connection_sup) |> length()
-  end
-
-  @doc """
   Finds and returns a Clickhouse `DbConnection` based on a provided `Backend` or attempts to create a new one.
 
   These connection pools be used directly by the `Ch` library to run database transactions.
   """
   @spec find_or_create_ch_connection(Backend.t()) ::
           {:ok, pid()} | DynamicSupervisor.on_start_child()
-  def find_or_create_ch_connection(%Backend{id: id} = backend) do
+  def find_or_create_ch_connection(%Backend{} = backend) do
+    case find_ch_connection_pid(backend) do
+      {:error, _} ->
+        start_ch_connection(backend)
+
+      {:ok, _pid} = result ->
+        result
+    end
+  end
+
+  @doc """
+  Simple registry lookup for a Clickhouse connection pid based on a `Backend` struct.
+
+  Returns an error tuple if a connection is not found for the given `Backend`.
+
+  For most cases, it is recommended to use `find_or_create_ch_connection/1` as it will establish
+  a new connection when one does not exist already.
+  """
+  @spec find_ch_connection_pid(Backend.t()) :: {:ok, pid()} | {:error, :not_found}
+  def find_ch_connection_pid(%Backend{id: id}) do
     case Registry.lookup(@backend_registry, build_key(id)) do
       [{pid, _meta}] ->
         {:ok, pid}
 
-      [] ->
-        start_ch_connection(backend)
+      _ ->
+        {:error, :not_found}
     end
   end
 
@@ -55,15 +66,23 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.Supervisor do
   Boolean indication if a Clickhouse `DbConnection` exists for a particular `Backend` or not.
   """
   @spec ch_connection_exists?(Backend.t()) :: boolean()
-  def ch_connection_exists?(%Backend{id: id}) do
-    case Registry.lookup(@backend_registry, build_key(id)) do
-      [] -> false
-      _ -> true
+  def ch_connection_exists?(%Backend{} = backend) do
+    case find_ch_connection_pid(backend) do
+      {:ok, _pid} -> true
+      _ -> false
     end
   end
 
   @doc """
-  Returns a list of known `Backend` ids that have connections managed by this supervisor.
+  Returns count of Clickhouse `DbConnection` processes handled by the supervisor.
+  """
+  @spec ch_connection_count() :: non_neg_integer()
+  def ch_connection_count() do
+    DynamicSupervisor.count_children(@connection_sup) |> length()
+  end
+
+  @doc """
+  Returns a list of known `Backend` IDs that have connections managed by this supervisor.
   """
   @spec backend_ids() :: [non_neg_integer()]
   def backend_ids() do
@@ -76,13 +95,26 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.Supervisor do
     |> Enum.sort()
   end
 
+  @doc """
+  Attempts to terminate a Clickhouse `DBConnection` process handled by the supervisor.
+  """
+  @spec terminate_ch_connection(Backend.t()) :: :ok | {:error, :not_found}
+  def terminate_ch_connection(%Backend{} = backend) do
+    case find_ch_connection_pid(backend) do
+      {:ok, pid} ->
+        DynamicSupervisor.terminate_child(@connection_sup, pid)
+
+      {:error, _} ->
+        {:error, :not_found}
+    end
+  end
+
   @spec start_ch_connection(Backend.t()) :: DynamicSupervisor.on_start_child()
   defp start_ch_connection(%Backend{} = backend) do
-    # i'm doing something dumb here. need to fix this.
-    config = Map.get(backend, :config) || Map.get(backend, :config_encrypted)
-
     default_pool_size = Application.fetch_env!(:logflare, :clickhouse_backend_adapter)[:pool_size]
-    url = Map.get(config, :url) || Map.get(config, "url")
+
+    config = Map.get(backend, :config)
+    url = Map.get(config, :url)
 
     # ensure things parse correctly on the instance URL
     # handle this smoother. maybe raise instead.
@@ -95,9 +127,9 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.Supervisor do
       scheme: scheme,
       hostname: hostname,
       port: get_port_config(backend),
-      database: Map.get(config, :database) || Map.get(config, "database"),
-      username: Map.get(config, :username) || Map.get(config, "username"),
-      password: Map.get(config, :password) || Map.get(config, "password"),
+      database: Map.get(config, :database),
+      username: Map.get(config, :username),
+      password: Map.get(config, :password),
       pool_size: Map.get(config, :pool_size, default_pool_size),
       settings: [],
       timeout: @default_receive_timeout
@@ -129,6 +161,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.Supervisor do
 
   defp extract_scheme_and_hostname(_url), do: {:error, "Unexpected URL value provided."}
 
+  @spec get_port_config(Backend.t()) :: non_neg_integer()
   defp get_port_config(%Backend{config: %{port: port}}) when is_integer(port), do: port
 
   defp get_port_config(%Backend{config: %{port: port}}) when is_binary(port),
