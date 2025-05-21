@@ -13,7 +13,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.Pipeline do
   @doc false
   @spec start_link(ClickhouseAdaptor.t()) ::
           {:ok, pid()} | :ignore | {:error, {:already_started, pid()} | term()}
-  def start_link(adaptor_state) do
+  def start_link(%ClickhouseAdaptor{} = adaptor_state) do
     Broadway.start_link(__MODULE__,
       name: adaptor_state.pipeline_name,
       producer: [
