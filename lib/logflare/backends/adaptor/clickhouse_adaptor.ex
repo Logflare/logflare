@@ -10,6 +10,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
   require Logger
 
   alias __MODULE__.Pipeline
+  alias __MODULE__.QueryTemplates
   alias Ecto.Changeset
   alias Logflare.Backends
   alias Logflare.Backends.Backend
@@ -41,6 +42,8 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
   defguardp is_via_tuple(value)
             when is_tuple(value) and elem(value, 0) == :via and elem(value, 1) == Registry and
                    is_tuple(elem(value, 2))
+
+  defguardp is_db_connection(value) when is_struct(value, DBConnection)
 
   @type source_backend_tuple :: {Source.t(), Backend.t()}
   @type via_tuple :: {:via, Registry, {module(), {pos_integer(), {module(), pos_integer()}}}}
@@ -186,6 +189,17 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
   end
 
   @doc """
+  Produces a unique table name for ClickHouse based on a provided `Source` struct.
+  """
+  @spec clickhouse_table_name(Source.t()) :: String.t()
+  def clickhouse_table_name(%Source{token: token}) do
+    token
+    |> Atom.to_string()
+    |> String.replace("-", "_")
+    |> then(&"log_events_#{&1}")
+  end
+
+  @doc """
   Executes a raw ClickHouse query.
 
   Can be provided with either a `{Source, Backend}` tuple, a via tuple for the connection, or the `DBConnection` pid.
@@ -208,7 +222,8 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
   end
 
   def execute_ch_query(conn, statement, params, opts)
-      when (is_via_tuple(conn) or is_pid(conn)) and is_list(params) and is_list(opts) do
+      when (is_via_tuple(conn) or is_db_connection(conn) or is_pid(conn)) and is_list(params) and
+             is_list(opts) do
     Ch.query(conn, statement, params, opts)
   end
 
@@ -217,11 +232,13 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
 
   See `insert_log_events/2` and `insert_log_events/3` for additional details.
   """
-  @spec insert_log_event(source_backend_tuple(), LogEvent.t()) :: {:ok, PgLogEvent.t()}
+  @spec insert_log_event(source_backend_tuple(), LogEvent.t()) ::
+          {:ok, Ch.Result.t()} | {:error, Exception.t()}
   def insert_log_event({%Source{} = source, %Backend{} = backend}, %LogEvent{} = le),
     do: insert_log_events({source, backend}, [le])
 
-  @spec insert_log_event(via_tuple(), Backend.t(), LogEvent.t()) :: {:ok, PgLogEvent.t()}
+  @spec insert_log_event(via_tuple(), Backend.t(), LogEvent.t()) ::
+          {:ok, Ch.Result.t()} | {:error, Exception.t()}
   def insert_log_event(conn_via, %Backend{} = backend, %LogEvent{} = le)
       when is_via_tuple(conn_via),
       do: insert_log_events(conn_via, backend, [le])
@@ -233,18 +250,20 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
 
   See `execute_ch_query/4` for additional details.
   """
-  @spec insert_log_events(source_backend_tuple(), [LogEvent.t()]) :: {:ok, [PgLogEvent.t()]}
-  def insert_log_events({%Source{} = source, %Backend{} = backend}, events)
+  @spec insert_log_events(source_backend_tuple(), [LogEvent.t()]) ::
+          {:ok, Ch.Result.t()} | {:error, Exception.t()}
+  def insert_log_events({%Source{}, %Backend{}} = source_backend_pair, events)
       when is_list(events) do
-    {source, backend}
+    source_backend_pair
     |> connection_via()
-    |> insert_log_events(backend, events)
+    |> insert_log_events(source_backend_pair, events)
   end
 
-  @spec insert_log_events(via_tuple(), Backend.t(), [LogEvent.t()]) :: {:ok, [PgLogEvent.t()]}
-  def insert_log_events(conn_via, %Backend{config: config}, events)
+  @spec insert_log_events(via_tuple(), source_backend_tuple(), [LogEvent.t()]) ::
+          {:ok, Ch.Result.t()} | {:error, Exception.t()}
+  def insert_log_events(conn_via, {%Source{} = source, _backend}, events)
       when is_via_tuple(conn_via) and is_list(events) do
-    table = Map.get(config, :table)
+    table_name = clickhouse_table_name(source)
 
     event_params =
       Enum.map(events, fn log_event ->
@@ -265,7 +284,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
 
     execute_ch_query(
       conn_via,
-      "INSERT INTO #{table} FORMAT RowBinaryWithNamesAndTypes",
+      "INSERT INTO #{table_name} FORMAT RowBinaryWithNamesAndTypes",
       event_params,
       opts
     )
@@ -309,6 +328,21 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
   @impl GenServer
   def handle_call(:get_state, _from, %__MODULE__{} = state), do: {:reply, state, state}
 
+  @doc false
+  def __after_connect__(_, nil), do: :ok
+
+  def __after_connect__(conn, %__MODULE__{source: %Source{} = source} = state) do
+    # this seems to run for each connection in the pool - investigate if this is normal or not.
+    table_name = clickhouse_table_name(source)
+
+    Ch.query!(
+      conn,
+      QueryTemplates.create_log_ingest_table_statement(state.config.database, table_name)
+    )
+
+    :ok
+  end
+
   @spec find_pipeline_pid_in_source_registry(source_backend_tuple()) ::
           {:ok, pid()} | {:error, term()}
   defp find_pipeline_pid_in_source_registry({%Source{}, %Backend{}} = args) do
@@ -337,7 +371,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
   end
 
   @spec start_ch_connection(__MODULE__.t()) :: GenServer.on_start()
-  defp start_ch_connection(%__MODULE__{config: config, backend: backend, source: source}) do
+  defp start_ch_connection(%__MODULE__{config: config, backend: backend, source: source} = state) do
     default_pool_size = Application.fetch_env!(:logflare, :clickhouse_backend_adapter)[:pool_size]
 
     url = Map.get(config, :url)
@@ -353,7 +387,8 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
       password: Map.get(config, :password),
       pool_size: Map.get(config, :pool_size, default_pool_size),
       settings: [],
-      timeout: 15_000
+      timeout: 15_000,
+      after_connect: {__MODULE__, :__after_connect__, [state]}
     ]
 
     Ch.start_link(ch_opts)

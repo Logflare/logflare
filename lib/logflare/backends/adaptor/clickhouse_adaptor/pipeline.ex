@@ -44,12 +44,12 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.Pipeline do
   end
 
   def handle_batch(:ch, messages, _batch_info, %{
-        source: _source,
+        source: source,
         backend: backend,
         connection_name: connection_name
       }) do
     events = for %{data: le} <- messages, do: le
-    ClickhouseAdaptor.insert_log_events(connection_name, backend, events)
+    ClickhouseAdaptor.insert_log_events(connection_name, {source, backend}, events)
     messages
   end
 
