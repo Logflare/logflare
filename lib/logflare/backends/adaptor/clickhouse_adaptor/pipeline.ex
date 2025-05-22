@@ -10,6 +10,9 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.Pipeline do
   alias Logflare.Backends.Adaptor.ClickhouseAdaptor
   alias Logflare.Backends.BufferProducer
 
+  @concurrency 5
+  @batch_size 350
+
   @doc false
   def child_spec(arg) do
     %{
@@ -32,10 +35,10 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.Pipeline do
         concurrency: 1
       ],
       processors: [
-        default: [concurrency: 5, min_demand: 1]
+        default: [concurrency: @concurrency, min_demand: 1]
       ],
       batchers: [
-        ch: [concurrency: 5, batch_size: 350]
+        ch: [concurrency: @concurrency, batch_size: @batch_size]
       ],
       context: adaptor_state
     )
