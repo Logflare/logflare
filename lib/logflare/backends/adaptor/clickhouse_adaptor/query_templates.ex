@@ -45,11 +45,12 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.QueryTemplates do
         "timestamp" DateTime64(6)
       )
       ENGINE MergeTree()
+      PARTITION BY toYYYYMMDD("timestamp")
       ORDER BY ("timestamp")
       """,
       if is_pos_integer(ttl_days) do
         """
-        TTL "timestamp" + INTERVAL #{ttl_days} DAY
+        TTL toDateTime("timestamp") + INTERVAL #{ttl_days} DAY
         """
       end,
       "SETTINGS index_granularity = 8192 SETTINGS flatten_nested=0"
