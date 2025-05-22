@@ -11,6 +11,14 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.Pipeline do
   alias Logflare.Backends.BufferProducer
 
   @doc false
+  def child_spec(arg) do
+    %{
+      id: __MODULE__,
+      start: {__MODULE__, :start_link, [arg]}
+    }
+  end
+
+  @doc false
   @spec start_link(ClickhouseAdaptor.t()) ::
           {:ok, pid()} | :ignore | {:error, {:already_started, pid()} | term()}
   def start_link(%ClickhouseAdaptor{} = adaptor_state) do

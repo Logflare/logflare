@@ -5,11 +5,12 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
 
   import Logflare.Guards
 
-  use GenServer
+  use Supervisor
   use TypedStruct
   require Logger
 
   alias __MODULE__.Pipeline
+  alias __MODULE__.Provisioner
   alias __MODULE__.QueryTemplates
   alias Ecto.Changeset
   alias Logflare.Backends
@@ -58,9 +59,18 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
 
   @doc false
   @impl Logflare.Backends.Adaptor
-  @spec start_link(source_backend_tuple()) :: GenServer.on_start()
+  @spec start_link(source_backend_tuple()) :: Supervisor.on_start()
   def start_link({%Source{}, %Backend{}} = args) do
-    GenServer.start_link(__MODULE__, args, name: adaptor_via(args))
+    Supervisor.start_link(__MODULE__, args, name: adaptor_via(args))
+  end
+
+  @doc false
+  @spec which_children(source_backend_tuple()) :: [
+          {term() | :undefined, Supervisor.child() | :restarting, :worker | :supervisor,
+           [module()] | :dynamic}
+        ]
+  def which_children({%Source{}, %Backend{}} = args) do
+    Supervisor.which_children(adaptor_via(args))
   end
 
   @doc false
@@ -181,14 +191,6 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
   end
 
   @doc """
-  Helper function to return the runtime adaptor state by providing a `Source` and `Backend` tuple.
-  """
-  @spec adaptor_state(source_backend_tuple()) :: __MODULE__.t()
-  def adaptor_state({%Source{}, %Backend{}} = args) do
-    GenServer.call(adaptor_via(args), :get_state)
-  end
-
-  @doc """
   Produces a unique table name for ClickHouse based on a provided `Source` struct.
   """
   @spec clickhouse_table_name(Source.t()) :: String.t()
@@ -290,11 +292,29 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
     )
   end
 
+  @doc """
+  Attempts to provision a new log ingest table, if it does not already exist.
+  """
+  @spec provision_ingest_table(source_backend_tuple()) ::
+          {:ok, Ch.Result.t()} | {:error, Exception.t()}
+  def provision_ingest_table({%Source{} = source, %Backend{}} = args) do
+    with conn <- connection_via(args),
+         table_name <- clickhouse_table_name(source),
+         statement <- QueryTemplates.create_log_ingest_table_statement(table_name) do
+      execute_ch_query(conn, statement)
+    end
+  end
+
   @doc false
-  @impl GenServer
-  def init({%Source{} = source, %Backend{} = backend}) do
-    state = %__MODULE__{
-      config: backend.config,
+  @impl Supervisor
+  def init({%Source{} = source, %Backend{config: %{} = config} = backend} = args) do
+    default_pool_size = Application.fetch_env!(:logflare, :clickhouse_backend_adapter)[:pool_size]
+
+    url = Map.get(config, :url)
+    {:ok, {scheme, hostname}} = extract_scheme_and_hostname(url)
+
+    pipeline_state = %__MODULE__{
+      config: config,
       backend: backend,
       backend_token: if(backend, do: backend.token, else: nil),
       source_token: source.token,
@@ -303,44 +323,26 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
       pipeline_name: pipeline_via({source, backend})
     }
 
-    Process.flag(:trap_exit, true)
+    ch_opts = [
+      name: connection_via({source, backend}),
+      scheme: scheme,
+      hostname: hostname,
+      port: get_port_config(backend),
+      database: Map.get(config, :database),
+      username: Map.get(config, :username),
+      password: Map.get(config, :password),
+      pool_size: Map.get(config, :pool_size, default_pool_size),
+      settings: [],
+      timeout: 15_000
+    ]
 
-    with {:ok, _connection_pid} <- start_ch_connection(state),
-         {:ok, _pipeline_pid} <- Pipeline.start_link(state) do
-      {:ok, state}
-    end
-  end
+    children = [
+      Ch.child_spec(ch_opts),
+      Provisioner.child_spec(args),
+      Pipeline.child_spec(pipeline_state)
+    ]
 
-  @doc false
-  @impl GenServer
-  def terminate(:shutdown, state), do: {:noreply, state}
-
-  def terminate(reason, %__MODULE__{} = state) do
-    Logger.warning("Terminating #{__MODULE__}: '#{inspect(reason)}'",
-      source_token: state.source_token,
-      backend_id: state.backend.id
-    )
-
-    {:noreply, state}
-  end
-
-  @doc false
-  @impl GenServer
-  def handle_call(:get_state, _from, %__MODULE__{} = state), do: {:reply, state, state}
-
-  @doc false
-  def __after_connect__(_, nil), do: :ok
-
-  def __after_connect__(conn, %__MODULE__{source: %Source{} = source} = state) do
-    # this seems to run for each connection in the pool - investigate if this is normal or not.
-    table_name = clickhouse_table_name(source)
-
-    Ch.query!(
-      conn,
-      QueryTemplates.create_log_ingest_table_statement(state.config.database, table_name)
-    )
-
-    :ok
+    Supervisor.init(children, strategy: :one_for_one)
   end
 
   @spec find_pipeline_pid_in_source_registry(source_backend_tuple()) ::
@@ -368,30 +370,6 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
       _ ->
         {:error, :not_found}
     end
-  end
-
-  @spec start_ch_connection(__MODULE__.t()) :: GenServer.on_start()
-  defp start_ch_connection(%__MODULE__{config: config, backend: backend, source: source} = state) do
-    default_pool_size = Application.fetch_env!(:logflare, :clickhouse_backend_adapter)[:pool_size]
-
-    url = Map.get(config, :url)
-    {:ok, {scheme, hostname}} = extract_scheme_and_hostname(url)
-
-    ch_opts = [
-      name: connection_via({source, backend}),
-      scheme: scheme,
-      hostname: hostname,
-      port: get_port_config(backend),
-      database: Map.get(config, :database),
-      username: Map.get(config, :username),
-      password: Map.get(config, :password),
-      pool_size: Map.get(config, :pool_size, default_pool_size),
-      settings: [],
-      timeout: 15_000,
-      after_connect: {__MODULE__, :__after_connect__, [state]}
-    ]
-
-    Ch.start_link(ch_opts)
   end
 
   @spec extract_scheme_and_hostname(String.t()) ::

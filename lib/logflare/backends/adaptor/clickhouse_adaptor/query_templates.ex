@@ -7,13 +7,26 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.QueryTemplates do
 
   @doc """
   Generates a ClickHouse query statement to provision an ingest table for logs.
+
+  ###Options
+
+  - `:database` - (Optional) Will produce a fully qualified `<database>.<table>` string when provided with a value. Defaults to `nil`.
+
   """
-  @spec create_log_ingest_table_statement(database :: String.t(), table :: String.t()) ::
-          String.t()
-  def create_log_ingest_table_statement(database, table)
-      when is_non_empty_binary(database) and is_non_empty_binary(table) do
+  @spec create_log_ingest_table_statement(table :: String.t(), opts :: Keyword.t()) :: String.t()
+  def create_log_ingest_table_statement(table, opts \\ [])
+      when is_non_empty_binary(table) and is_list(opts) do
+    database = Keyword.get(opts, :database, nil)
+
+    db_table_string =
+      if is_non_empty_binary(database) do
+        "#{database}.#{table}"
+      else
+        "#{table}"
+      end
+
     """
-    CREATE TABLE IF NOT EXISTS "#{database}"."#{table}" (
+    CREATE TABLE IF NOT EXISTS #{db_table_string} (
       "id" UUID,
       "event_message" String,
       "body" String,
