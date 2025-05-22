@@ -268,13 +268,16 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
     table_name = clickhouse_table_name(source)
 
     event_params =
-      Enum.map(events, fn log_event ->
-        body = Map.drop(log_event.body, ["id", "event_message", "timestamp"])
+      Enum.map(events, fn %LogEvent{} = log_event ->
+        flattened_body =
+          log_event.body
+          |> Map.drop(["id", "event_message", "timestamp"])
+          |> Iteraptor.to_flatmap()
 
         [
           log_event.body["id"],
           log_event.body["event_message"],
-          Jason.encode!(body),
+          Jason.encode!(flattened_body),
           DateTime.from_unix!(log_event.body["timestamp"], :microsecond)
         ]
       end)
