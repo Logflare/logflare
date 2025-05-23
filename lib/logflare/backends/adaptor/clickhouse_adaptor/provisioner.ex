@@ -44,7 +44,9 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.Provisioner do
 
     Process.flag(:trap_exit, true)
 
-    with {:ok, _res} <- ClickhouseAdaptor.provision_ingest_table(args) do
+    with {:ok, _} <- ClickhouseAdaptor.provision_ingest_table(args),
+         {:ok, _} <- ClickhouseAdaptor.provision_key_type_counts_table(args),
+         {:ok, _} <- ClickhouseAdaptor.provision_materialized_view(args) do
       {:ok, state, {:continue, :close_process}}
     end
   end

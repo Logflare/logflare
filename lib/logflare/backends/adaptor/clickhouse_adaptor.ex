@@ -308,6 +308,26 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
     end
   end
 
+  @doc """
+  Attempts to provision a new key type counts table, if it does not already exist.
+  """
+  @spec provision_key_type_counts_table(source_backend_tuple()) ::
+          {:ok, Ch.Result.t()} | {:error, Exception.t()}
+  def provision_key_type_counts_table({%Source{}, %Backend{}} = args) do
+    with conn <- connection_via(args),
+         statement <- QueryTemplates.create_key_type_counts_table_statement() do
+      execute_ch_query(conn, statement)
+    end
+  end
+
+  def provision_materialized_view({%Source{} = source, %Backend{}} = args) do
+    with conn <- connection_via(args),
+         source_table_name <- clickhouse_table_name(source),
+         statement <- QueryTemplates.create_materialized_view_statement(source_table_name) do
+      execute_ch_query(conn, statement)
+    end
+  end
+
   @doc false
   @impl Supervisor
   def init({%Source{} = source, %Backend{config: %{} = config} = backend} = args) do
