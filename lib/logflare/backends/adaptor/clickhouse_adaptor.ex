@@ -333,6 +333,18 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
     end
   end
 
+  @doc """
+  Handles all provisioning tasks for a given `Source` and `Backend` pair.
+  """
+  @spec provision_all(source_backend_tuple()) :: :ok | {:error, term()}
+  def provision_all({%Source{}, %Backend{}} = args) do
+    with {:ok, _} <- provision_ingest_table(args),
+         {:ok, _} <- provision_key_type_counts_table(args),
+         {:ok, _} <- provision_materialized_view(args) do
+      :ok
+    end
+  end
+
   @doc false
   @impl Supervisor
   def init({%Source{} = source, %Backend{config: %{} = config} = backend} = args) do
