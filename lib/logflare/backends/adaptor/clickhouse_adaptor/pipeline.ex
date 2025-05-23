@@ -10,7 +10,9 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.Pipeline do
   alias Logflare.Backends.Adaptor.ClickhouseAdaptor
   alias Logflare.Backends.BufferProducer
 
-  @concurrency 5
+  @producer_concurrency 1
+  @processor_concurrency 5
+  @batcher_concurrency 5
   @batch_size 350
 
   @doc false
@@ -32,13 +34,13 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.Pipeline do
           {BufferProducer,
            [source_id: adaptor_state.source.id, backend_id: adaptor_state.backend.id]},
         transformer: {__MODULE__, :transform, []},
-        concurrency: 1
+        concurrency: @producer_concurrency
       ],
       processors: [
-        default: [concurrency: @concurrency, min_demand: 1]
+        default: [concurrency: @processor_concurrency, min_demand: 1]
       ],
       batchers: [
-        ch: [concurrency: @concurrency, batch_size: @batch_size]
+        ch: [concurrency: @batcher_concurrency, batch_size: @batch_size]
       ],
       context: adaptor_state
     )

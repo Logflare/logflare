@@ -25,7 +25,6 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
       username: String.t(),
       password: String.t(),
       database: String.t(),
-      table: String.t(),
       port: non_neg_integer(),
       pool_size: non_neg_integer()
     })
@@ -86,7 +85,6 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
        username: :string,
        password: :string,
        database: :string,
-       table: :string,
        port: :integer,
        pool_size: :integer
      }}
@@ -95,7 +93,6 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
       :username,
       :password,
       :database,
-      :table,
       :port,
       :pool_size
     ])
@@ -107,9 +104,31 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
     import Ecto.Changeset
 
     changeset
-    |> validate_required([:url, :database, :table, :port])
+    |> validate_required([:url, :database, :port])
     |> Changeset.validate_format(:url, ~r/https?\:\/\/.+/)
     |> validate_user_pass()
+  end
+
+  @doc """
+  Simple GRANT check to indicate if the configured user has the ClickHouse permissions it needs for the configured database.
+  """
+  @impl Logflare.Backends.Adaptor
+  @spec test_connection(Source.t(), Backend.t()) ::
+          :ok | {:error, :permissions_missing} | {:error, term()}
+  def test_connection(%Source{} = source, %Backend{} = backend) do
+    sql_statement = QueryTemplates.grant_check_statement()
+    conn = connection_via({source, backend})
+
+    case execute_ch_query(conn, sql_statement) do
+      {:ok, %Ch.Result{command: :check, rows: [[1]]}} ->
+        :ok
+
+      {:ok, %Ch.Result{command: :check, rows: [[0]]}} ->
+        {:error, :permissions_missing}
+
+      {:error, _} = error_result ->
+        error_result
+    end
   end
 
   @doc """

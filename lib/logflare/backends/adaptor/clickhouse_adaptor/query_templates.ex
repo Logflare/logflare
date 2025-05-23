@@ -10,6 +10,33 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.QueryTemplates do
   @default_ttl_days 90
 
   @doc """
+  Generates a ClickHouse query statement to check that the user GRANTs include the needed permissions.
+
+  The results will return a `1` if the user _has_ the needed GRANTs or a `0` otherwise.
+
+  Because this is generally run via a connection that was provided with the
+  user credentials and database, there is no need to supply the specific DB by default.
+
+  ###Options
+
+  - `:database` - (Optional) Will produce a fully qualified `<database>.*` string when provided with a value. Defaults to `nil`.
+
+  """
+  @spec grant_check_statement(opts :: Keyword.t()) :: String.t()
+  def grant_check_statement(opts \\ []) when is_list(opts) do
+    database = Keyword.get(opts, :database, nil)
+
+    grant_target_string =
+      if is_non_empty_binary(database) do
+        "#{database}.*"
+      else
+        "*"
+      end
+
+    "CHECK GRANT CREATE TABLE, ALTER TABLE, INSERT, SELECT, DROP TABLE, CREATE VIEW, DROP VIEW ON #{grant_target_string}"
+  end
+
+  @doc """
   Generates a ClickHouse query statement to provision an ingest table for logs.
 
   ###Options
