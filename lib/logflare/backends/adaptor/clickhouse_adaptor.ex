@@ -3,7 +3,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
   ClickHouse backend adaptor that relies on the `:ch` library.
   """
 
-  import Logflare.Guards
+  import Logflare.Utils.Guards
 
   use Supervisor
   use TypedStruct

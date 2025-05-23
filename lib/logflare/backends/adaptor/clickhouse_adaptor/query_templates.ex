@@ -3,7 +3,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.QueryTemplates do
   Common query templates utilized by the `ClickhouseAdaptor`.
   """
 
-  import Logflare.Guards
+  import Logflare.Utils.Guards
 
   @key_type_counts_view_name "mv_key_type_counts_per_minute"
   @key_type_counts_table_name "key_type_counts_per_minute"

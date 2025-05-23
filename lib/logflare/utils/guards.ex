@@ -1,8 +1,8 @@
-defmodule Logflare.Guards do
+defmodule Logflare.Utils.Guards do
   @moduledoc """
   Custom guard functions.
 
-  Utilize these by adding `import Logflare.Guards` in your module.
+  Utilize these by adding `import Logflare.Utils.Guards` in your module.
   """
 
   @doc """
