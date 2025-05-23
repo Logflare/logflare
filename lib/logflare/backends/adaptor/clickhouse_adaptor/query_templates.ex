@@ -133,20 +133,20 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.QueryTemplates do
 
     """
     CREATE MATERIALIZED VIEW IF NOT EXISTS #{db_view_name_string} TO #{db_key_table_string}
-    (
-        `minute` DateTime,
-        `key` String,
-        `type` String,
-        `key_count` UInt8
+    AS
+    SELECT
+      toStartOfMinute(timestamp) AS minute,
+      key,
+      JSONType(body, key) AS type,
+      count() AS key_count
+    FROM (
+      SELECT
+        arrayJoin(JSONExtractKeys(body)) AS key,
+        body,
+        timestamp
+      FROM #{db_source_table_string}
     )
-    AS SELECT
-        toStartOfMinute(timestamp) AS minute,
-        x.1 AS key,
-        x.2 AS type,
-        1 AS key_count
-    FROM #{db_source_table_string}
-    ARRAY JOIN JSONAllPathsWithTypes(CAST(body, 'JSON')) AS x
-    SETTINGS enable_json_type = 1
+    GROUP BY minute, key, type
     """
   end
 end

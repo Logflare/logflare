@@ -320,6 +320,11 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
     end
   end
 
+  @doc """
+  Attempts to provision a new materialized view, if it does not already exist.
+  """
+  @spec provision_materialized_view(source_backend_tuple()) ::
+          {:ok, Ch.Result.t()} | {:error, Exception.t()}
   def provision_materialized_view({%Source{} = source, %Backend{}} = args) do
     with conn <- connection_via(args),
          source_table_name <- clickhouse_table_name(source),
