@@ -44,7 +44,8 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.Provisioner do
 
     Process.flag(:trap_exit, true)
 
-    with :ok <- ClickhouseAdaptor.provision_all(args) do
+    with :ok <- ClickhouseAdaptor.test_connection(source, backend),
+         :ok <- ClickhouseAdaptor.provision_all(args) do
       {:ok, state, {:continue, :close_process}}
     end
   end
