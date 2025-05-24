@@ -65,6 +65,11 @@ defmodule Logflare.Backends.Adaptor do
   @callback format_batch([LogEvent.t()]) :: map() | list(map())
 
   @doc """
+  Optional callback to test the underlying connection for an adaptor. May not be applicable for some adaptors.
+  """
+  @callback test_connection(Source.t(), Backend.t()) :: :ok | {:error, term()}
+
+  @doc """
   Queries the backend using an endpoint query.
   """
   @callback execute_query(identifier(), query()) :: {:ok, [term()]} | {:error, :not_implemented}
@@ -89,5 +94,5 @@ defmodule Logflare.Backends.Adaptor do
     |> mod.validate_config()
   end
 
-  @optional_callbacks pre_ingest: 3, transform_config: 1, format_batch: 1
+  @optional_callbacks pre_ingest: 3, transform_config: 1, format_batch: 1, test_connection: 2
 end
