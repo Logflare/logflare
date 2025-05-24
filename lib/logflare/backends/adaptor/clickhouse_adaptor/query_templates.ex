@@ -5,8 +5,8 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.QueryTemplates do
 
   import Logflare.Utils.Guards
 
-  @key_type_counts_view_name "mv_key_type_counts_per_minute"
-  @key_type_counts_table_name "key_type_counts_per_minute"
+  @default_key_type_counts_view_name "mv_key_type_counts_per_minute"
+  @default_key_type_counts_table_name "key_type_counts_per_minute"
   @default_ttl_days 90
 
   @doc """
@@ -48,7 +48,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.QueryTemplates do
   @spec create_log_ingest_table_statement(table :: String.t(), opts :: Keyword.t()) :: String.t()
   def create_log_ingest_table_statement(table, opts \\ [])
       when is_non_empty_binary(table) and is_list(opts) do
-    database = Keyword.get(opts, :database, nil)
+    database = Keyword.get(opts, :database)
     ttl_days_temp = Keyword.get(opts, :ttl_days, @default_ttl_days)
 
     ttl_days =
@@ -95,19 +95,27 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.QueryTemplates do
   ###Options
 
   - `:database` - (Optional) Will produce a fully qualified `<database>.<table>` string when provided with a value. Defaults to `nil`.
+  - `:table` - (Optional) Defaults to `"key_type_counts_per_minute"` and should stay this way, but if you really want to change it - this is the way.
 
   """
-  @spec create_key_type_counts_table_statement(table :: String.t(), opts :: Keyword.t()) ::
-          String.t()
-  def create_key_type_counts_table_statement(table \\ @key_type_counts_table_name, opts \\ [])
-      when is_non_empty_binary(table) and is_list(opts) do
-    database = Keyword.get(opts, :database, nil)
+  @spec create_key_type_counts_table_statement(opts :: Keyword.t()) :: String.t()
+  def create_key_type_counts_table_statement(opts \\ []) when is_list(opts) do
+    table = Keyword.get(opts, :table)
+    database = Keyword.get(opts, :database)
 
     db_table_string =
-      if is_non_empty_binary(database) do
-        "#{database}.#{table}"
-      else
-        "#{table}"
+      cond do
+        is_non_empty_binary(database) and is_non_empty_binary(table) ->
+          "#{database}.#{table}"
+
+        is_non_empty_binary(database) ->
+          "#{database}.#{@default_key_type_counts_table_name}"
+
+        is_non_empty_binary(table) ->
+          table
+
+        true ->
+          @default_key_type_counts_table_name
       end
 
     """
@@ -130,25 +138,46 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.QueryTemplates do
   ###Options
 
   - `:database` - (Optional) Will produce a fully qualified `<database>.<table>` string when provided with a value. Defaults to `nil`.
+  - `:view_name` - (Optional) Allows overriding the materialized view name. Defaults to `"mv_key_type_counts_per_minute"`.
+  - `:key_table` - (Optional) Allows overriding the referenced key table in the mat view. Defaults to `"key_type_counts_per_minute"`.
+
   """
   @spec create_materialized_view_statement(source_table :: String.t(), opts :: Keyword.t()) ::
           String.t()
   def create_materialized_view_statement(source_table, opts \\ [])
       when is_non_empty_binary(source_table) and is_list(opts) do
-    database = Keyword.get(opts, :database, nil)
+    database = Keyword.get(opts, :database)
+    view_name = Keyword.get(opts, :view_name)
+    key_table = Keyword.get(opts, :key_table)
 
     db_view_name_string =
-      if is_non_empty_binary(database) do
-        "#{database}.#{@key_type_counts_view_name}"
-      else
-        "#{@key_type_counts_view_name}"
+      cond do
+        is_non_empty_binary(database) and is_non_empty_binary(view_name) ->
+          "#{database}.#{view_name}"
+
+        is_non_empty_binary(database) ->
+          "#{database}.#{@default_key_type_counts_view_name}"
+
+        is_non_empty_binary(view_name) ->
+          view_name
+
+        true ->
+          @default_key_type_counts_view_name
       end
 
     db_key_table_string =
-      if is_non_empty_binary(database) do
-        "#{database}.#{@key_type_counts_table_name}"
-      else
-        "#{@key_type_counts_table_name}"
+      cond do
+        is_non_empty_binary(database) and is_non_empty_binary(key_table) ->
+          "#{database}.#{key_table}"
+
+        is_non_empty_binary(database) ->
+          "#{database}.#{@default_key_type_counts_table_name}"
+
+        is_non_empty_binary(key_table) ->
+          key_table
+
+        true ->
+          @default_key_type_counts_table_name
       end
 
     db_source_table_string =
