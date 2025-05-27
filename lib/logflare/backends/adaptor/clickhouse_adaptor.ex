@@ -210,14 +210,33 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
   end
 
   @doc """
-  Produces a unique table name for ClickHouse based on a provided `Source` struct.
+  Produces a unique ingress table name for ClickHouse based on a provided `Source` struct.
   """
-  @spec clickhouse_table_name(Source.t()) :: String.t()
-  def clickhouse_table_name(%Source{token: token}) do
-    token
-    |> Atom.to_string()
-    |> String.replace("-", "_")
+  @spec clickhouse_ingress_table_name(Source.t()) :: String.t()
+  def clickhouse_ingress_table_name(%Source{} = source) do
+    source
+    |> clickhouse_source_token()
     |> then(&"log_events_#{&1}")
+  end
+
+  @doc """
+  Produces a unique key count table name for ClickHouse based on a provided `Source` struct.
+  """
+  @spec clickhouse_key_count_table_name(Source.t()) :: String.t()
+  def clickhouse_key_count_table_name(%Source{} = source) do
+    source
+    |> clickhouse_source_token()
+    |> then(&"key_type_counts_per_minute_#{&1}")
+  end
+
+  @doc """
+  Produces a unique materialized view name for ClickHouse based on a provided `Source` struct.
+  """
+  @spec clickhouse_materialized_view_name(Source.t()) :: String.t()
+  def clickhouse_materialized_view_name(%Source{} = source) do
+    source
+    |> clickhouse_source_token()
+    |> then(&"mv_key_type_counts_per_minute_#{&1}")
   end
 
   @doc """
@@ -284,7 +303,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
           {:ok, Ch.Result.t()} | {:error, Exception.t()}
   def insert_log_events(conn_via, {%Source{} = source, _backend}, events)
       when is_via_tuple(conn_via) and is_list(events) do
-    table_name = clickhouse_table_name(source)
+    table_name = clickhouse_ingress_table_name(source)
 
     event_params =
       Enum.map(events, fn %LogEvent{} = log_event ->
@@ -321,7 +340,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
           {:ok, Ch.Result.t()} | {:error, Exception.t()}
   def provision_ingest_table({%Source{} = source, %Backend{}} = args) do
     with conn <- connection_via(args),
-         table_name <- clickhouse_table_name(source),
+         table_name <- clickhouse_ingress_table_name(source),
          statement <-
            QueryTemplates.create_log_ingest_table_statement(table_name,
              ttl_days: source.retention_days
@@ -335,9 +354,11 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
   """
   @spec provision_key_type_counts_table(source_backend_tuple()) ::
           {:ok, Ch.Result.t()} | {:error, Exception.t()}
-  def provision_key_type_counts_table({%Source{}, %Backend{}} = args) do
+  def provision_key_type_counts_table({%Source{} = source, %Backend{}} = args) do
     with conn <- connection_via(args),
-         statement <- QueryTemplates.create_key_type_counts_table_statement() do
+         key_count_table_name <- clickhouse_key_count_table_name(source),
+         statement <-
+           QueryTemplates.create_key_type_counts_table_statement(table: key_count_table_name) do
       execute_ch_query(conn, statement)
     end
   end
@@ -349,8 +370,14 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
           {:ok, Ch.Result.t()} | {:error, Exception.t()}
   def provision_materialized_view({%Source{} = source, %Backend{}} = args) do
     with conn <- connection_via(args),
-         source_table_name <- clickhouse_table_name(source),
-         statement <- QueryTemplates.create_materialized_view_statement(source_table_name) do
+         source_table_name <- clickhouse_ingress_table_name(source),
+         view_name <- clickhouse_materialized_view_name(source),
+         key_count_table_name <- clickhouse_key_count_table_name(source),
+         statement <-
+           QueryTemplates.create_materialized_view_statement(source_table_name,
+             view_name: view_name,
+             key_table: key_count_table_name
+           ) do
       execute_ch_query(conn, statement)
     end
   end
@@ -450,6 +477,13 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
   end
 
   defp extract_scheme_and_hostname(_url), do: {:error, "Unexpected URL value provided."}
+
+  @spec clickhouse_source_token(Source.t()) :: String.t()
+  defp clickhouse_source_token(%Source{token: token}) do
+    token
+    |> Atom.to_string()
+    |> String.replace("-", "_")
+  end
 
   @spec get_port_config(Backend.t()) :: non_neg_integer()
   defp get_port_config(%Backend{config: %{port: port}}) when is_pos_integer(port), do: port
