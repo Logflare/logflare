@@ -23,6 +23,7 @@ config :logflare, Logflare.Alerting, min_cluster_size: 1, enabled: true
 config :logflare, Logflare.Google, dataset_id_append: "_default"
 
 config :logflare, :postgres_backend_adapter, pool_size: 3
+config :logflare, :clickhouse_backend_adapter, pool_size: 3
 
 config :logflare, Logflare.Source.BigQuery.Schema, updates_per_minute: 6
 
