@@ -38,8 +38,8 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.Provisioner do
   @impl GenServer
   def init({%Source{} = source, %Backend{} = backend} = args) do
     state = %__MODULE__{
-      source: source,
-      backend: backend
+      source: %Source{id: source.id, token: source.token},
+      backend: %Backend{id: backend.id}
     }
 
     Process.flag(:trap_exit, true)
