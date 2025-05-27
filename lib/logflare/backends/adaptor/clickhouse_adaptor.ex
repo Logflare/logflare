@@ -124,9 +124,21 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
         :ok
 
       {:ok, %Ch.Result{command: :check, rows: [[0]]}} ->
+        Logger.warning(
+          "ClickHouse GRANT check failed. Required: `CREATE TABLE`, `ALTER TABLE`, `INSERT`, `SELECT`, `DROP TABLE`, `CREATE VIEW`, `DROP VIEW`",
+          source_token: source.token,
+          backend_id: backend.id
+        )
+
         {:error, :permissions_missing}
 
       {:error, _} = error_result ->
+        Logger.warning(
+          "ClickHouse GRANT check failed. Unexpected error #{inspect(error_result)}",
+          source_token: source.token,
+          backend_id: backend.id
+        )
+
         error_result
     end
   end
