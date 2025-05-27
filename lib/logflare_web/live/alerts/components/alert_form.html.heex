@@ -1,5 +1,5 @@
 <div class="tw-flex tw-w-full tw-my-10 tw-gap-2">
-  <.form :let={f} for={@changeset} as={:alert} id="alert" phx-submit="save" class="tw-w-full">
+  <.form :let={f} for={@changeset} as={:alert} id="alert" phx-submit="save" phx-change="change" class="tw-w-full">
     <%= hidden_input(f, :language) %>
     <div class="tw-sticky tw-flex tw-justify-between tw-gap-4">
       <button :if={@alert} data-confirm="Are you sure? This cannot be undone" phx-click="delete" phx-value-alert_id={@alert.id} class="btn btn-outline-danger" type="button">
@@ -67,6 +67,35 @@
         <%= label(f, :webhook_notification_url, "Webhook URL") %>
         <%= text_input(f, :webhook_notification_url, class: "form-control") %>
         <%= error_tag(f, :webhook_notification_url) %>
+
+        <div class="mt-4">
+          <label>Webhook Headers</label>
+
+          <%= inputs_for f, :webhook_notification_headers, fn hf -> %>
+            <div class="form-inline tw-items-start mb-2">
+              <div class="mr-2">
+                <%= text_input(hf, :key, class: "form-control tw-w-56", placeholder: "Key") %>
+                
+                <%= error_tag(hf, :key) %>
+              </div>
+
+              <div class="mr-2">
+                <%= text_input(hf, :value, class: "form-control tw-w-56", placeholder: "Value") %>
+                <%= error_tag(hf, :value) %>
+              </div>
+
+              <%= hidden_input(hf, :_destroy) %>
+              <button type="submit" name="_action" value={"remove_header:#{hf.index}"} class="btn btn-danger ml-2">-</button>
+            </div>
+          <% end %>
+          
+          <div>
+            <button type="submit" name="_action" value="add_header" class="btn btn-primary">
+              Add Header +
+            </button>
+          </div>
+        </div>
+
       </div>
     </section>
   </.form>

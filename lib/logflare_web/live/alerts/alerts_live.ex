@@ -47,6 +47,7 @@ defmodule LogflareWeb.AlertsLive do
       |> assign(:query_string, nil)
       |> assign(:params_form, to_form(%{"query" => "", "params" => %{}}, as: "run"))
       |> assign(:declared_params, %{})
+      |> assign(:webhook_notification_headers, [])
 
     {:ok, socket}
   end
@@ -58,18 +59,45 @@ defmodule LogflareWeb.AlertsLive do
       if alert_id do
         Alerting.get_alert_query_by(id: alert_id, user_id: socket.assigns.user_id)
         |> Alerting.preload_alert_query()
+      else
+        %AlertQuery{webhook_notification_headers: [], user_id: socket.assigns.user_id}
       end
 
-    socket = assign(socket, :alert, alert)
+    changeset = Alerting.change_alert_query(alert)
 
     socket =
-      if socket.assigns.live_action == :edit do
-        assign(socket, :changeset, Alerting.change_alert_query(alert))
-      else
-        assign(socket, :changeset, nil)
-      end
+      socket
+      |> assign(:alert, alert)
+      |> assign(:changeset, changeset)
 
     {:noreply, socket}
+  end
+
+  def handle_event("change", %{"alert" => alert_params}, socket) do
+    changeset = Logflare.Alerting.change_alert_query(socket.assigns.alert, alert_params)
+    {:noreply, assign(socket, changeset: changeset)}
+  end
+
+  def handle_event("save", %{"_action" => "add_header", "alert" => params}, socket) do
+    updated_params =
+      update_headers(params, fn headers ->
+        headers ++ [%{"key" => "", "value" => ""}]
+      end)
+
+    changeset = Logflare.Alerting.change_alert_query(socket.assigns.alert, updated_params)
+    {:noreply, assign(socket, changeset: changeset)}
+  end
+
+  def handle_event("save", %{"_action" => "remove_header:" <> idx_str, "alert" => params}, socket) do
+    idx = String.to_integer(idx_str)
+
+    updated_params =
+      update_headers(params, fn headers ->
+        List.delete_at(headers, idx)
+      end)
+
+    changeset = Logflare.Alerting.change_alert_query(socket.assigns.alert, updated_params)
+    {:noreply, assign(socket, changeset: changeset)}
   end
 
   def handle_event(
@@ -77,7 +105,25 @@ defmodule LogflareWeb.AlertsLive do
         %{"alert" => params},
         %{assigns: %{user: user, alert: alert}} = socket
       ) do
-    Logger.debug("Saving alert", params: params)
+    Logger.info("Saving alert", params: params)
+
+    # Convert webhook_notification_headers from indexed map to list for embeds_many
+    params =
+      case Map.get(params, "webhook_notification_headers") do
+        nil ->
+          Map.put(params, "webhook_notification_headers", [])
+
+        headers when is_map(headers) ->
+          headers_list =
+            headers
+            |> Enum.filter(fn {_idx, %{"key" => k}} -> k != "" end)
+            |> Enum.map(fn {_idx, %{"key" => k, "value" => v}} -> %{"key" => k, "value" => v} end)
+
+          Map.put(params, "webhook_notification_headers", headers_list)
+
+        _ ->
+          params
+      end
 
     case upsert_alert(alert, user, params) do
       {:ok, updated_alert} ->
@@ -198,6 +244,18 @@ defmodule LogflareWeb.AlertsLive do
     end
   end
 
+  defp update_headers(params, update_fn) do
+    headers =
+      params
+      |> Map.get("webhook_notification_headers", %{})
+      |> Map.values()
+      |> Enum.filter(fn %{"key" => k} -> k != "" end)
+
+    new_headers = update_fn.(headers)
+
+    Map.put(params, "webhook_notification_headers", new_headers)
+  end
+
   defp refresh(%{assigns: assigns} = socket) do
     alerts = Alerting.list_alert_queries(assigns.user)
 
@@ -207,8 +265,15 @@ defmodule LogflareWeb.AlertsLive do
   defp upsert_alert(alert, user, params) do
     with {:ok, alert} <-
            (case alert do
-              nil -> Alerting.create_alert_query(user, params)
-              %_{} -> Alerting.update_alert_query(alert, params)
+              nil ->
+                Alerting.create_alert_query(user, params)
+
+              %_{} = alert_struct ->
+                if alert_struct.id == nil do
+                  Alerting.create_alert_query(user, params)
+                else
+                  Alerting.update_alert_query(alert_struct, params)
+                end
             end),
          {:ok, _citrine_job} <- Alerting.upsert_alert_job(alert) do
       {:ok, alert}
