@@ -7,7 +7,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.QueryTemplates do
 
   @default_key_type_counts_view_name "mv_key_type_counts_per_minute"
   @default_key_type_counts_table_name "key_type_counts_per_minute"
-  @default_ttl_days 90
+  @default_ttl_days 3
 
   @doc """
   Generates a ClickHouse query statement to check that the user GRANTs include the needed permissions.
@@ -42,7 +42,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.QueryTemplates do
   ###Options
 
   - `:database` - (Optional) Will produce a fully qualified `<database>.<table>` string when provided with a value. Defaults to `nil`.
-  - `:ttl_days` - (Optional) Will add a TTL statement to the table creation query. Defaults to `90`. `nil` will disable the TTL.
+  - `:ttl_days` - (Optional) Will add a TTL statement to the table creation query. Defaults to `3`. `nil` will disable the TTL.
 
   """
   @spec create_log_ingest_table_statement(table :: String.t(), opts :: Keyword.t()) :: String.t()

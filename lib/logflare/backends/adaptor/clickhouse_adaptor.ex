@@ -322,7 +322,10 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
   def provision_ingest_table({%Source{} = source, %Backend{}} = args) do
     with conn <- connection_via(args),
          table_name <- clickhouse_table_name(source),
-         statement <- QueryTemplates.create_log_ingest_table_statement(table_name) do
+         statement <-
+           QueryTemplates.create_log_ingest_table_statement(table_name,
+             ttl_days: source.retention_days
+           ) do
       execute_ch_query(conn, statement)
     end
   end

@@ -23,7 +23,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.QueryTemplatesTest do
       statement = QueryTemplates.create_log_ingest_table_statement(table_name)
 
       assert statement =~ "CREATE TABLE IF NOT EXISTS #{table_name}"
-      assert statement =~ "TTL toDateTime(timestamp) + INTERVAL 90 DAY"
+      assert statement =~ "TTL toDateTime(timestamp) + INTERVAL 3 DAY"
     end
 
     test "Allows the TTL to be adjusted via opts" do
