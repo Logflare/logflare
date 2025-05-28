@@ -22,6 +22,7 @@ services:
         - "supabase/logflare:1.0.0"
     ports:
       - "4000:4000"
+      # for OTLP ingestion
       - "50051:50051"
     hostname: 127.0.0.1
     volumes:
