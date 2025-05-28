@@ -49,7 +49,7 @@ config :opentelemetry,
 
 config :opentelemetry_exporter,
   otlp_protocol: :grpc,
-  otlp_compression: :gzip, 
+  otlp_compression: :gzip,
   otlp_endpoint: "https://otel.logflare.app:443",
   otlp_headers: [
     {"x-source", "my-source-uuid"},
@@ -59,6 +59,19 @@ config :opentelemetry_exporter,
 
   </TabItem>
 </Tabs>
+
+### Testing locally
+
+Run Logflare on single tenant mode:
+
+```
+docker compose -f docker-compose.yml -f docker-compose.supabase.yml up
+```
+
+1. Create a new source to populate the `x-source` header with the source UUID. 
+2. Use the api-key found in `.docker.env` and set it to `x-api-key` header
+3. Set the otlp endpoint to `http://localhost:50051`
+4. Start your OpenTelemetry instrumented app. 
 
 ### Limitations
 
