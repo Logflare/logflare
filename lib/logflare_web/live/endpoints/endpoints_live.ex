@@ -21,7 +21,7 @@ defmodule LogflareWeb.EndpointsLive do
 
   defp render_docs_link(assigns) do
     ~H"""
-    <.subheader_link to="https://docs.logflare.app/concepts/endpoints" text="docs" fa_icon="book" />
+    <.subheader_link to="https://docs.logflare.app/concepts/endpoints" external={true} text="docs" fa_icon="book" />
     """
   end
 
