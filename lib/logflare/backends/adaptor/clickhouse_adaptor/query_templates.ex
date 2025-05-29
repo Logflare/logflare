@@ -5,9 +5,22 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.QueryTemplates do
 
   import Logflare.Utils.Guards
 
-  @default_key_type_counts_view_name "mv_key_type_counts_per_minute"
-  @default_key_type_counts_table_name "key_type_counts_per_minute"
   @default_ttl_days 3
+
+  @doc """
+  Default naming prefix for the log ingest table.
+  """
+  def default_table_name_prefix(), do: "log_events"
+
+  @doc """
+  Default naming prefix for the key type count materialized view.
+  """
+  def default_key_type_counts_view_prefix(), do: "mv_key_type_counts_per_min"
+
+  @doc """
+  Default naming prefix for the key type count table.
+  """
+  def default_key_type_counts_table_prefix(), do: "key_type_counts_per_min"
 
   @doc """
   Generates a ClickHouse query statement to check that the user GRANTs include the needed permissions.
@@ -103,19 +116,21 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.QueryTemplates do
     table = Keyword.get(opts, :table)
     database = Keyword.get(opts, :database)
 
+    default_key_count_table_name = default_key_type_counts_table_prefix()
+
     db_table_string =
       cond do
         is_non_empty_binary(database) and is_non_empty_binary(table) ->
           "#{database}.#{table}"
 
         is_non_empty_binary(database) ->
-          "#{database}.#{@default_key_type_counts_table_name}"
+          "#{database}.#{default_key_count_table_name}"
 
         is_non_empty_binary(table) ->
           table
 
         true ->
-          @default_key_type_counts_table_name
+          default_key_count_table_name
       end
 
     """
@@ -150,19 +165,22 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.QueryTemplates do
     view_name = Keyword.get(opts, :view_name)
     key_table = Keyword.get(opts, :key_table)
 
+    default_key_count_view_name = default_key_type_counts_view_prefix()
+    default_key_count_table_name = default_key_type_counts_table_prefix()
+
     db_view_name_string =
       cond do
         is_non_empty_binary(database) and is_non_empty_binary(view_name) ->
           "#{database}.#{view_name}"
 
         is_non_empty_binary(database) ->
-          "#{database}.#{@default_key_type_counts_view_name}"
+          "#{database}.#{default_key_count_view_name}"
 
         is_non_empty_binary(view_name) ->
           view_name
 
         true ->
-          @default_key_type_counts_view_name
+          default_key_count_view_name
       end
 
     db_key_table_string =
@@ -171,13 +189,13 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.QueryTemplates do
           "#{database}.#{key_table}"
 
         is_non_empty_binary(database) ->
-          "#{database}.#{@default_key_type_counts_table_name}"
+          "#{database}.#{default_key_count_table_name}"
 
         is_non_empty_binary(key_table) ->
           key_table
 
         true ->
-          @default_key_type_counts_table_name
+          default_key_count_table_name
       end
 
     db_source_table_string =

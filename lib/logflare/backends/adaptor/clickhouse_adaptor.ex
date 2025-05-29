@@ -228,7 +228,8 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
   def clickhouse_ingest_table_name(%Source{} = source) do
     source
     |> clickhouse_source_token()
-    |> then(&"log_events_#{&1}")
+    |> then(&"#{QueryTemplates.default_table_name_prefix()}_#{&1}")
+    |> check_clickhouse_resource_name_length(source)
   end
 
   @doc """
@@ -238,7 +239,8 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
   def clickhouse_key_count_table_name(%Source{} = source) do
     source
     |> clickhouse_source_token()
-    |> then(&"key_type_counts_per_minute_#{&1}")
+    |> then(&"#{QueryTemplates.default_key_type_counts_table_prefix()}_#{&1}")
+    |> check_clickhouse_resource_name_length(source)
   end
 
   @doc """
@@ -248,7 +250,8 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
   def clickhouse_materialized_view_name(%Source{} = source) do
     source
     |> clickhouse_source_token()
-    |> then(&"mv_key_type_counts_per_minute_#{&1}")
+    |> then(&"#{QueryTemplates.default_key_type_counts_view_prefix()}_#{&1}")
+    |> check_clickhouse_resource_name_length(source)
   end
 
   @doc """
@@ -495,6 +498,19 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
     token
     |> Atom.to_string()
     |> String.replace("-", "_")
+  end
+
+  @spec check_clickhouse_resource_name_length(name :: String.t(), source :: Source.t()) ::
+          String.t()
+  defp check_clickhouse_resource_name_length(name, %Source{} = source)
+       when is_non_empty_binary(name) do
+    if String.length(name) >= 200 do
+      resource_prefix = String.slice(name, 0, 40) <> "..."
+
+      raise "The dynamically generated ClickHouse resource name starting with `#{resource_prefix}` exceeds the maximum limit. Source ID: #{source.id}"
+    else
+      name
+    end
   end
 
   @spec get_port_config(Backend.t()) :: non_neg_integer()
