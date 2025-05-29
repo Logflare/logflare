@@ -31,7 +31,7 @@
   </div>
 
   <div :if={@live_action == :new}>
-    <%= select(f, :type, ["Select a backend type...", Webhook: :webhook, Postgres: :postgres, BigQuery: :bigquery, Datadog: :datadog, Elastic: :elastic, Loki: :loki, ClickHouse: :clickhouse, ClickHouseWeb: :clickhouse_webhook],
+    <%= select(f, :type, ["Select a backend type...", Webhook: :webhook, Postgres: :postgres, BigQuery: :bigquery, Datadog: :datadog, Elastic: :elastic, Loki: :loki, ClickHouse: :clickhouse],
       phx_change: :change_form_type,
       class: "form-control form-control-margin",
       id: "type"
