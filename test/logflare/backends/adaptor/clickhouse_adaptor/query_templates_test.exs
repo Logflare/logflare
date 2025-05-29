@@ -55,13 +55,13 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.QueryTemplatesTest do
     test "Generates a valid statement when provided with no options" do
       statement = QueryTemplates.create_key_type_counts_table_statement()
 
-      assert statement =~ "CREATE TABLE IF NOT EXISTS key_type_counts_per_minute"
+      assert statement =~ "CREATE TABLE IF NOT EXISTS key_type_counts_per_min"
     end
 
     test "Will produce a more verbose statement when the `database` option is provided" do
       statement = QueryTemplates.create_key_type_counts_table_statement(database: "foo")
 
-      assert statement =~ "CREATE TABLE IF NOT EXISTS foo.key_type_counts_per_minute"
+      assert statement =~ "CREATE TABLE IF NOT EXISTS foo.key_type_counts_per_min"
     end
 
     test "Allows the default table name to be changed when providing the `table` option" do
@@ -83,7 +83,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.QueryTemplatesTest do
       statement = QueryTemplates.create_materialized_view_statement("source_table_123")
 
       assert statement =~
-               "CREATE MATERIALIZED VIEW IF NOT EXISTS mv_key_type_counts_per_minute TO key_type_counts_per_minute"
+               "CREATE MATERIALIZED VIEW IF NOT EXISTS mv_key_type_counts_per_min TO key_type_counts_per_min"
 
       assert statement =~ "FROM source_table_123"
     end
@@ -93,7 +93,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.QueryTemplatesTest do
         QueryTemplates.create_materialized_view_statement("source_table_123", database: "bla")
 
       assert statement =~
-               "CREATE MATERIALIZED VIEW IF NOT EXISTS bla.mv_key_type_counts_per_minute TO bla.key_type_counts_per_minute"
+               "CREATE MATERIALIZED VIEW IF NOT EXISTS bla.mv_key_type_counts_per_min TO bla.key_type_counts_per_min"
 
       assert statement =~ "FROM bla.source_table_123"
     end
@@ -105,7 +105,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.QueryTemplatesTest do
         )
 
       assert statement =~
-               "CREATE MATERIALIZED VIEW IF NOT EXISTS some_view_name TO key_type_counts_per_minute"
+               "CREATE MATERIALIZED VIEW IF NOT EXISTS some_view_name TO key_type_counts_per_min"
 
       assert statement =~ "FROM source_table_321"
     end
@@ -117,7 +117,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.QueryTemplatesTest do
         )
 
       assert statement =~
-               "CREATE MATERIALIZED VIEW IF NOT EXISTS mv_key_type_counts_per_minute TO other_key_table_name"
+               "CREATE MATERIALIZED VIEW IF NOT EXISTS mv_key_type_counts_per_min TO other_key_table_name"
 
       assert statement =~ "FROM source_table_456"
     end

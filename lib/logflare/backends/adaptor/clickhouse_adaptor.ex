@@ -124,9 +124,21 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
         :ok
 
       {:ok, %Ch.Result{command: :check, rows: [[0]]}} ->
+        Logger.warning(
+          "ClickHouse GRANT check failed. Required: `CREATE TABLE`, `ALTER TABLE`, `INSERT`, `SELECT`, `DROP TABLE`, `CREATE VIEW`, `DROP VIEW`",
+          source_token: source.token,
+          backend_id: backend.id
+        )
+
         {:error, :permissions_missing}
 
       {:error, _} = error_result ->
+        Logger.warning(
+          "ClickHouse GRANT check failed. Unexpected error #{inspect(error_result)}",
+          source_token: source.token,
+          backend_id: backend.id
+        )
+
         error_result
     end
   end
@@ -210,14 +222,36 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
   end
 
   @doc """
-  Produces a unique table name for ClickHouse based on a provided `Source` struct.
+  Produces a unique ingest table name for ClickHouse based on a provided `Source` struct.
   """
-  @spec clickhouse_table_name(Source.t()) :: String.t()
-  def clickhouse_table_name(%Source{token: token}) do
-    token
-    |> Atom.to_string()
-    |> String.replace("-", "_")
-    |> then(&"log_events_#{&1}")
+  @spec clickhouse_ingest_table_name(Source.t()) :: String.t()
+  def clickhouse_ingest_table_name(%Source{} = source) do
+    source
+    |> clickhouse_source_token()
+    |> then(&"#{QueryTemplates.default_table_name_prefix()}_#{&1}")
+    |> check_clickhouse_resource_name_length(source)
+  end
+
+  @doc """
+  Produces a unique key count table name for ClickHouse based on a provided `Source` struct.
+  """
+  @spec clickhouse_key_count_table_name(Source.t()) :: String.t()
+  def clickhouse_key_count_table_name(%Source{} = source) do
+    source
+    |> clickhouse_source_token()
+    |> then(&"#{QueryTemplates.default_key_type_counts_table_prefix()}_#{&1}")
+    |> check_clickhouse_resource_name_length(source)
+  end
+
+  @doc """
+  Produces a unique materialized view name for ClickHouse based on a provided `Source` struct.
+  """
+  @spec clickhouse_materialized_view_name(Source.t()) :: String.t()
+  def clickhouse_materialized_view_name(%Source{} = source) do
+    source
+    |> clickhouse_source_token()
+    |> then(&"#{QueryTemplates.default_key_type_counts_view_prefix()}_#{&1}")
+    |> check_clickhouse_resource_name_length(source)
   end
 
   @doc """
@@ -284,7 +318,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
           {:ok, Ch.Result.t()} | {:error, Exception.t()}
   def insert_log_events(conn_via, {%Source{} = source, _backend}, events)
       when is_via_tuple(conn_via) and is_list(events) do
-    table_name = clickhouse_table_name(source)
+    table_name = clickhouse_ingest_table_name(source)
 
     event_params =
       Enum.map(events, fn %LogEvent{} = log_event ->
@@ -321,7 +355,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
           {:ok, Ch.Result.t()} | {:error, Exception.t()}
   def provision_ingest_table({%Source{} = source, %Backend{}} = args) do
     with conn <- connection_via(args),
-         table_name <- clickhouse_table_name(source),
+         table_name <- clickhouse_ingest_table_name(source),
          statement <-
            QueryTemplates.create_log_ingest_table_statement(table_name,
              ttl_days: source.retention_days
@@ -335,9 +369,11 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
   """
   @spec provision_key_type_counts_table(source_backend_tuple()) ::
           {:ok, Ch.Result.t()} | {:error, Exception.t()}
-  def provision_key_type_counts_table({%Source{}, %Backend{}} = args) do
+  def provision_key_type_counts_table({%Source{} = source, %Backend{}} = args) do
     with conn <- connection_via(args),
-         statement <- QueryTemplates.create_key_type_counts_table_statement() do
+         key_count_table_name <- clickhouse_key_count_table_name(source),
+         statement <-
+           QueryTemplates.create_key_type_counts_table_statement(table: key_count_table_name) do
       execute_ch_query(conn, statement)
     end
   end
@@ -349,8 +385,14 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
           {:ok, Ch.Result.t()} | {:error, Exception.t()}
   def provision_materialized_view({%Source{} = source, %Backend{}} = args) do
     with conn <- connection_via(args),
-         source_table_name <- clickhouse_table_name(source),
-         statement <- QueryTemplates.create_materialized_view_statement(source_table_name) do
+         source_table_name <- clickhouse_ingest_table_name(source),
+         view_name <- clickhouse_materialized_view_name(source),
+         key_count_table_name <- clickhouse_key_count_table_name(source),
+         statement <-
+           QueryTemplates.create_materialized_view_statement(source_table_name,
+             view_name: view_name,
+             key_table: key_count_table_name
+           ) do
       execute_ch_query(conn, statement)
     end
   end
@@ -450,6 +492,26 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
   end
 
   defp extract_scheme_and_hostname(_url), do: {:error, "Unexpected URL value provided."}
+
+  @spec clickhouse_source_token(Source.t()) :: String.t()
+  defp clickhouse_source_token(%Source{token: token}) do
+    token
+    |> Atom.to_string()
+    |> String.replace("-", "_")
+  end
+
+  @spec check_clickhouse_resource_name_length(name :: String.t(), source :: Source.t()) ::
+          String.t()
+  defp check_clickhouse_resource_name_length(name, %Source{} = source)
+       when is_non_empty_binary(name) do
+    if String.length(name) >= 200 do
+      resource_prefix = String.slice(name, 0, 40) <> "..."
+
+      raise "The dynamically generated ClickHouse resource name starting with `#{resource_prefix}` exceeds the maximum limit. Source ID: #{source.id}"
+    else
+      name
+    end
+  end
 
   @spec get_port_config(Backend.t()) :: non_neg_integer()
   defp get_port_config(%Backend{config: %{port: port}}) when is_pos_integer(port), do: port
