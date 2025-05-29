@@ -222,10 +222,10 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
   end
 
   @doc """
-  Produces a unique ingress table name for ClickHouse based on a provided `Source` struct.
+  Produces a unique ingest table name for ClickHouse based on a provided `Source` struct.
   """
-  @spec clickhouse_ingress_table_name(Source.t()) :: String.t()
-  def clickhouse_ingress_table_name(%Source{} = source) do
+  @spec clickhouse_ingest_table_name(Source.t()) :: String.t()
+  def clickhouse_ingest_table_name(%Source{} = source) do
     source
     |> clickhouse_source_token()
     |> then(&"log_events_#{&1}")
@@ -315,7 +315,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
           {:ok, Ch.Result.t()} | {:error, Exception.t()}
   def insert_log_events(conn_via, {%Source{} = source, _backend}, events)
       when is_via_tuple(conn_via) and is_list(events) do
-    table_name = clickhouse_ingress_table_name(source)
+    table_name = clickhouse_ingest_table_name(source)
 
     event_params =
       Enum.map(events, fn %LogEvent{} = log_event ->
@@ -352,7 +352,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
           {:ok, Ch.Result.t()} | {:error, Exception.t()}
   def provision_ingest_table({%Source{} = source, %Backend{}} = args) do
     with conn <- connection_via(args),
-         table_name <- clickhouse_ingress_table_name(source),
+         table_name <- clickhouse_ingest_table_name(source),
          statement <-
            QueryTemplates.create_log_ingest_table_statement(table_name,
              ttl_days: source.retention_days
@@ -382,7 +382,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
           {:ok, Ch.Result.t()} | {:error, Exception.t()}
   def provision_materialized_view({%Source{} = source, %Backend{}} = args) do
     with conn <- connection_via(args),
-         source_table_name <- clickhouse_ingress_table_name(source),
+         source_table_name <- clickhouse_ingest_table_name(source),
          view_name <- clickhouse_materialized_view_name(source),
          key_count_table_name <- clickhouse_key_count_table_name(source),
          statement <-
