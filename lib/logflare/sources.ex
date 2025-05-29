@@ -37,6 +37,8 @@ defmodule Logflare.Sources do
     |> Repo.aggregate(:count)
   end
 
+  def list_sources_by_user(nil), do: []
+
   @spec list_sources_by_user(User.t()) :: [Source.t()]
   def list_sources_by_user(%User{id: user_id}), do: list_sources_by_user(user_id)
 

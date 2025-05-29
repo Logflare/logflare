@@ -210,7 +210,13 @@ defmodule Logflare.Alerting do
             url: alert_query.webhook_notification_url,
             body: %{
               "result" => results
-            }
+            },
+            headers:
+              Enum.into(
+                alert_query.webhook_notification_headers,
+                %{},
+                fn %Logflare.Alerting.AlertWebhookHeader{key: k, value: v} -> {k, v} end
+              )
           )
         end
 
