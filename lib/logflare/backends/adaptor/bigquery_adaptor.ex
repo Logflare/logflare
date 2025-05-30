@@ -12,6 +12,31 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
   alias Logflare.Sources
   alias Logflare.Billing
   alias Logflare.Backends
+  alias Logflare.Google.BigQuery
+  alias Logflare.SourceSchemas
+  alias Logflare.Backends.Adaptor.BigQueryAdaptor.GoogleApiClient
+  require Record
+
+  Record.defrecord(
+    :message,
+    Record.extract(:message, from: "deps/serde_arrow/src/serde_arrow_ipc_message.hrl")
+  )
+
+  Record.defrecord(
+    :record_batch,
+    Record.extract(:record_batch, from: "deps/serde_arrow/src/serde_arrow_ipc_record_batch.hrl")
+  )
+
+  Record.defrecord(
+    :schema,
+    Record.extract(:schema, from: "deps/serde_arrow/src/serde_arrow_ipc_schema.hrl")
+  )
+
+  Record.defrecord(
+    :field,
+    Record.extract(:field, from: "deps/serde_arrow/src//serde_arrow_ipc_field.hrl")
+  )
+
   use Supervisor
   require Logger
 
@@ -71,6 +96,102 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
     ]
 
     Supervisor.init(children, strategy: :one_for_one, max_restarts: 10)
+  end
+
+  def insert_log_events_via_storage_write_api(log_events, opts) do
+    # convert log events to table rows
+    opts =
+      Keyword.validate!(opts, [:project_id, :dataset_id, :source_token, :source_id, :source_token])
+
+    # get table id
+    table_id = format_table_name(opts[:source_token])
+    # get source schema
+    source_schema = SourceSchemas.Cache.get_source_schema_by(source_id: opts[:source_id])
+
+    # convert to arrow schema
+    arrow_schema =
+      :serde_arrow_ipc_schema.from_erlang([
+        :serde_arrow_ipc_field.from_erlang(
+          :large_binary,
+          "event_message"
+        ),
+        :serde_arrow_ipc_field.from_erlang(
+          {:int, %{bit_width: 64, is_signed: true}},
+          "timestamp"
+        )
+      ])
+
+    # convert log events to proto rows
+    event_messages =
+      log_events
+      |> Enum.map(fn log_event ->
+        log_event.body["event_message"]
+      end)
+
+    timestamps =
+      log_events
+      |> Enum.map(fn log_event ->
+        log_event.body["timestamp"]
+      end)
+
+    columns =
+      [
+        :serde_arrow_array.from_erlang(:variable_binary, event_messages, {:bin, nil}),
+        :serde_arrow_array.from_erlang(:fixed_primitive, timestamps, {:s, 64})
+      ]
+      |> dbg()
+
+    body =
+      :serde_arrow_ipc_message.body_from_erlang(columns)
+      |> dbg()
+
+    record_batch =
+      :serde_arrow_ipc_record_batch.from_erlang(columns)
+      # |> record_batch()
+      |> dbg()
+
+    record_batch_msg =
+      :serde_arrow_ipc_message.from_erlang(record_batch, body)
+      # |> message()
+      |> dbg()
+
+    record_batch_emf =
+      :serde_arrow_ipc_message.to_ipc(record_batch_msg)
+      |> dbg()
+
+    schema =
+      :serde_arrow_ipc_schema.from_erlang([
+        :serde_arrow_ipc_field.from_erlang(
+          :large_binary,
+          ~c"event_message"
+        ),
+        :serde_arrow_ipc_field.from_erlang(
+          {:int, %{bit_width: 64, is_signed: true}},
+          ~c"timestamp"
+        )
+      ])
+
+    schema_msg = :serde_arrow_ipc_message.from_erlang(schema)
+
+    schema_emf = :serde_arrow_ipc_message.to_ipc(schema_msg)
+    # append rows
+    GoogleApiClient.append_rows(
+      {:arrow, record_batch_emf, schema_emf},
+      opts[:project_id],
+      opts[:dataset_id],
+      table_id
+    )
+    |> dbg()
+  end
+
+  @spec format_table_name(atom) :: String.t()
+  def format_table_name(source_token) when is_atom(source_token) do
+    Atom.to_string(source_token)
+    |> String.replace("-", "_")
+  end
+
+  defp source_schema_to_proto_schema(source_schema) do
+    source_schema.bigquery_schema
   end
 
   @doc """

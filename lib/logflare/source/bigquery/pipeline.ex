@@ -22,6 +22,7 @@ defmodule Logflare.Source.BigQuery.Pipeline do
   alias Logflare.Sources
   alias Logflare.Users
   alias Logflare.PubSubRates
+  alias Logflare.Backends.Adaptor.BigQueryAdaptor
 
   require OpenTelemetry.Tracer
 
@@ -71,6 +72,7 @@ defmodule Logflare.Source.BigQuery.Pipeline do
             bigquery_project_id: args[:bigquery_project_id],
             bigquery_dataset_id: args[:bigquery_dataset_id],
             source_token: source.token,
+            bq_storage_write_api: source.bq_storage_write_api,
             source_id: source.id,
             backend_id: Map.get(backend || %{}, :id)
           }
@@ -142,7 +144,18 @@ defmodule Logflare.Source.BigQuery.Pipeline do
         ingest_batch_trigger: batch_info.trigger
       }
     } do
-      stream_batch(context, messages)
+      if context.bq_storage_write_api do
+        log_events = messages |> Enum.map(& &1.data)
+
+        BigQueryAdaptor.insert_log_events_via_storage_write_api(log_events,
+          project_id: context.bigquery_project_id,
+          dataset_id: context.bigquery_dataset_id,
+          source_id: context.source_id,
+          source_token: context.source_token
+        )
+      else
+        stream_batch(context, messages)
+      end
     end
   end
 

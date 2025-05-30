@@ -171,7 +171,7 @@ defmodule Logflare.Mixfile do
       {:floki, "~> 0.29.0", only: [:test]},
 
       # Rust NIFs
-      {:rustler, "~> 0.29.0"},
+      {:rustler, "~> 0.35.0"},
 
       # Frontend
       {:phoenix_live_react, "~> 0.4"},
@@ -226,7 +226,8 @@ defmodule Logflare.Mixfile do
       {:opentelemetry_exporter, "~> 1.6"},
       {:opentelemetry_phoenix, "~> 2.0.0-rc.2"},
       {:opentelemetry_bandit, "~> 0.2.0-rc.1"},
-      {:live_monaco_editor, "~> 0.1"}
+      {:live_monaco_editor, "~> 0.1"},
+      {:serde_arrow, github: "Benjamin-Philip/serde_arrow", branch: "main"}
     ]
   end
 
