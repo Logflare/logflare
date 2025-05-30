@@ -133,6 +133,12 @@ grpc.protoc:
 	git clone https://github.com/open-telemetry/opentelemetry-proto.git $$dir; \
 	protoc -I=$$dir --elixir_out=plugins=grpc:$(PWD)/lib/logflare_grpc $$(find $$dir -iname '*.proto')
 
+	# for google apis
+	dir=$$(mktemp -d); \
+	trap 'rm -rf "$$dir"' EXIT; \
+	git clone https://github.com/googleapis/googleapis.git $$dir; \
+	protoc -I=$$dir --elixir_out=plugins=grpc:$(PWD)/lib/logflare_grpc $$(find $$dir  -path "*/cloud/bigquery/*" -iname '*.proto')
+
 
 # manual deployment scripts
 
