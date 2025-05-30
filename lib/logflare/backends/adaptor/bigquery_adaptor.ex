@@ -181,7 +181,6 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
       opts[:dataset_id],
       table_id
     )
-    |> dbg()
   end
 
   @spec format_table_name(atom) :: String.t()

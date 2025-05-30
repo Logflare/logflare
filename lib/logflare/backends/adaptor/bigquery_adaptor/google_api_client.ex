@@ -18,7 +18,14 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor.GoogleApiClient do
     {:ok, channel} =
       GRPC.Stub.connect("bigquerystorage.googleapis.com:443",
         # adapter: GRPC.Client.Adapters.Mint,
-        # cred: GRPC.Credential.new([ssl: []]),
+        cred:
+          GRPC.Credential.new(
+            ssl: [
+              customize_hostname_check: [
+                match_fun: :public_key.pkix_verify_hostname_match_fun(:https)
+              ]
+            ]
+          ),
         headers: [
           # {"Content-Type", "application/x-protobuf"},
           {"Authorization", "Bearer #{goth_token.token}"}
@@ -37,20 +44,17 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor.GoogleApiClient do
         write_stream: "projects/#{project}/datasets/#{dataset}/tables/#{table}/streams/_default",
         arrow_rows: arrow_rows
       )
-      |> dbg()
 
     stream =
       channel
       |> BigQueryWrite.Stub.append_rows()
-      |> dbg()
 
     GRPC.Stub.send_request(stream, request, end_stream: true)
-    |> dbg()
 
     GRPC.Stub.recv(stream)
-    |> dbg()
     |> case do
-      {:ok, _} = res ->
+      {:ok, responses} = res ->
+        Enum.map(responses, fn res -> dbg(res) end)
         res
 
       {:error, response} = err ->

@@ -153,6 +153,8 @@ defmodule Logflare.Source.BigQuery.Pipeline do
           source_id: context.source_id,
           source_token: context.source_token
         )
+
+        messages
       else
         stream_batch(context, messages)
       end
