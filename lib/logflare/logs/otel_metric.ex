@@ -45,25 +45,119 @@ defmodule Logflare.Logs.OtelMetric do
   end
 
   defp handle_metric_data({:gauge, %{data_points: data_points}}, metric, metadata) do
-    metric_type = "gauge"
+    base = %{
+      "metric_type" => "gauge",
+      "event_message" => metric.name,
+      "unit" => metric.unit,
+      "metadata" => metadata,
+      "project" => metadata["name"]
+    }
 
     Enum.map(data_points, fn data_point ->
       %{value: {_, value}} = data_point
 
-      %{
-        "event_message" => metric.name,
-        "metadata" => metadata,
-        "start_time" => Logflare.Logs.Otel.nano_to_iso8601(data_point.start_time_unix_nano),
-        "unit" => metric.unit,
+      Map.merge(base, %{
         "value" => value,
-        "metric_type" => metric_type,
+        "start_time" => Logflare.Logs.Otel.nano_to_iso8601(data_point.start_time_unix_nano),
         "attributes" => Logflare.Logs.Otel.handle_attributes(data_point.attributes),
         "timestamp" => Logflare.Logs.Otel.nano_to_iso8601(data_point.time_unix_nano),
-        "project" => metadata["name"]
-      }
+      })
     end)
   end
 
-  # TODO: support other metric types
+  defp handle_metric_data({:sum, sum}, metric, metadata) do
+    base = %{
+      "metric_type" => "sum",
+      "event_message" => metric.name,
+      "unit" => metric.unit,
+      "metadata" => metadata,
+      "aggregation_temporality" => aggregation_temporality(sum.aggregation_temporality),
+      "is_monotonic" => sum.is_monotonic,
+      "project" => metadata["name"]
+    }
+
+    Enum.map(sum.data_points, fn data_point ->
+      %{value: {_, value}} = data_point
+
+      Map.merge(base, %{
+        "value" => value,
+        "start_time" => Logflare.Logs.Otel.nano_to_iso8601(data_point.start_time_unix_nano),
+        "attributes" => Logflare.Logs.Otel.handle_attributes(data_point.attributes),
+        "timestamp" => Logflare.Logs.Otel.nano_to_iso8601(data_point.time_unix_nano),
+      })
+    end)
+  end
+
+  defp handle_metric_data({:histogram, histogram}, metric, metadata) do
+    base = %{
+      "metric_type" => "histogram",
+      "event_message" => metric.name,
+      "unit" => metric.unit,
+      "metadata" => metadata,
+      "aggregation_temporality" => aggregation_temporality(histogram.aggregation_temporality),
+      "project" => metadata["name"]
+    }
+
+    Enum.map(histogram.data_points, fn data_point ->
+      %{value: {_, value}} = data_point
+
+      Map.merge(base, %{
+        "value" => value,
+        "count" => data_point.count,
+        "sum" => data_point.sum,
+        "min" => data_point.min,
+        "max" => data_point.max,
+        "bucket_counts" => data_point.bucket_counts,
+        "explicit_bounds" => data_point.explicit_bounds,
+        "start_time" => Logflare.Logs.Otel.nano_to_iso8601(data_point.start_time_unix_nano),
+        "attributes" => Logflare.Logs.Otel.handle_attributes(data_point.attributes),
+        "timestamp" => Logflare.Logs.Otel.nano_to_iso8601(data_point.time_unix_nano),
+      })
+    end)
+  end
+
+
+  defp handle_metric_data({:exponential_histogram, histogram}, metric, metadata) do
+    base = %{
+      "metric_type" => "exponential_histogram",
+      "event_message" => metric.name,
+      "unit" => metric.unit,
+      "metadata" => metadata,
+      "aggregation_temporality" => aggregation_temporality(histogram.aggregation_temporality),
+      "project" => metadata["name"]
+    }
+
+    Enum.map(histogram.data_points, fn data_point ->
+      %{value: {_, value}} = data_point
+
+      Map.merge(base, %{
+        "value" => value,
+        "count" => data_point.count,
+        "sum" => data_point.sum,
+        "scale" => data_point.scale,
+        "zero_count" => data_point.scale,
+        "zero_threshold" => data_point.zero_threshold,
+        "positive" => exponential_histogram_buckets(data_point.positive),
+        "negative" => exponential_histogram_buckets(data_point.negative),
+        "min" => data_point.min,
+        "max" => data_point.max,
+        "bucket_counts" => data_point.bucket_counts,
+        "explicit_bounds" => data_point.explicit_bounds,
+        "start_time" => Logflare.Logs.Otel.nano_to_iso8601(data_point.start_time_unix_nano),
+        "attributes" => Logflare.Logs.Otel.handle_attributes(data_point.attributes),
+        "timestamp" => Logflare.Logs.Otel.nano_to_iso8601(data_point.time_unix_nano),
+      })
+    end)
+  end
+
+  # TODO: support summary (?)
   defp handle_metric_data(_, _, _), do: []
+
+  defp exponential_histogram_buckets(%{offset: offset, bucket_counts: bucket_counts}) do
+    %{"offset" => offset, "bucket_counts" => bucket_counts}
+  end
+
+  defp aggregation_temporality(:AGGREGATION_TEMPORALITY_UNSPECIFIED), do: "unspecified"
+  defp aggregation_temporality(:AGGREGATION_TEMPORALITY_DELTA), do: "delta"
+  defp aggregation_temporality(:AGGREGATION_TEMPORALITY_CUMULATIVE), do: "cumulative"
 end
