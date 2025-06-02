@@ -5,6 +5,9 @@ defmodule LogflareWeb.LogController do
   alias Logflare.Logs
   alias Logflare.Logs.Processor
   alias Opentelemetry.Proto.Collector.Trace.V1.ExportTraceServiceRequest
+  alias Opentelemetry.Proto.Collector.Trace.V1.ExportTraceServiceResponse
+  alias Opentelemetry.Proto.Collector.Metrics.V1.ExportMetricsServiceRequest
+  alias Opentelemetry.Proto.Collector.Metrics.V1.ExportMetricsServiceResponse
 
   alias LogflareWeb.OpenApi.Created
   alias LogflareWeb.OpenApi.ServerError
@@ -229,7 +232,29 @@ defmodule LogflareWeb.LogController do
         %{assigns: %{source: source}} = conn,
         %ExportTraceServiceRequest{resource_spans: spans}
       ) do
-    Processor.ingest(spans, Logs.OtelTrace, source)
-    |> handle(conn)
+    case Processor.ingest(spans, Logs.OtelTrace, source) do
+      {:ok, _} ->
+        resp = Protobuf.encode_to_iodata(%ExportTraceServiceResponse{})
+        send_resp(conn, 200, resp)
+
+      # Not sure what should be done here
+      {:error, errors} ->
+        raise RuntimeError, errors
+    end
+  end
+
+  def otel_metrics(
+        %{assigns: %{source: source}} = conn,
+        %ExportMetricsServiceRequest{resource_metrics: resource_metrics}
+      ) do
+    case Processor.ingest(resource_metrics, Logs.OtelMetric, source) do
+      {:ok, _} ->
+        resp = Protobuf.encode_to_iodata(%ExportMetricsServiceResponse{})
+        send_resp(conn, 200, resp)
+
+      # Not sure what should be done here
+      {:error, errors} ->
+        raise RuntimeError, errors
+    end
   end
 end
