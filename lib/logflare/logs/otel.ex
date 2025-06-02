@@ -9,8 +9,8 @@ defmodule Logflare.Logs.Otel do
 
   def handle_resource(%{attributes: attributes}) do
     Enum.reduce(attributes, %{}, fn attribute, acc ->
-      {k,v} = extract_key_value(attribute)
-      k =  String.split(k, ".") |> Enum.reverse()
+      {k, v} = extract_key_value(attribute)
+      k = String.split(k, ".") |> Enum.reverse()
       map = Enum.reduce(k, v, fn key, acc -> %{key => acc} end)
       DeepMerge.deep_merge(map, acc)
     end)
@@ -27,9 +27,9 @@ defmodule Logflare.Logs.Otel do
   def extract_key_value(%KeyValue{key: key, value: nil}), do: {key, nil}
 
   def extract_key_value(%KeyValue{
-         key: key,
-         value: value
-       }) do
+        key: key,
+        value: value
+      }) do
     {key, extract_value(value)}
   end
 

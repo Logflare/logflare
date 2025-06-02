@@ -57,12 +57,12 @@ defmodule LogflareWeb.Router do
     plug(Plug.RequestId)
     plug(LogflareWeb.Plugs.MaybeContentTypeToJson)
 
-    plug(Plug.Parsers, [
+    plug(Plug.Parsers,
       parsers: [JsonParser, BertParser, SyslogParser, NdjsonParser, ProtobufParser],
       json_decoder: Jason,
       body_reader: {PlugCaisson, :read_body, []},
       length: 12_000_000
-    ])
+    )
 
     plug(:accepts, ["json", "bert"])
     plug(LogflareWeb.Plugs.SetHeaders)
@@ -462,16 +462,22 @@ defmodule LogflareWeb.Router do
   scope "/v1", LogflareWeb, assigns: %{resource_type: :source} do
     pipe_through([:api, :require_ingest_api_auth])
 
-    post("/traces",
+    post(
+      "/traces",
       LogController,
       :otel_traces,
-      assigns: %{protobuf_schema: Opentelemetry.Proto.Collector.Trace.V1.ExportTraceServiceRequest}
+      assigns: %{
+        protobuf_schema: Opentelemetry.Proto.Collector.Trace.V1.ExportTraceServiceRequest
+      }
     )
 
-    post("/metrics",
+    post(
+      "/metrics",
       LogController,
       :otel_metrics,
-      assigns: %{protobuf_schema: Opentelemetry.Proto.Collector.Metrics.V1.ExportMetricsServiceRequest}
+      assigns: %{
+        protobuf_schema: Opentelemetry.Proto.Collector.Metrics.V1.ExportMetricsServiceRequest
+      }
     )
   end
 
