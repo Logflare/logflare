@@ -60,7 +60,7 @@ defmodule Logflare.Logs.OtelMetric do
         "value" => value,
         "start_time" => Logflare.Logs.Otel.nano_to_iso8601(data_point.start_time_unix_nano),
         "attributes" => Logflare.Logs.Otel.handle_attributes(data_point.attributes),
-        "timestamp" => Logflare.Logs.Otel.nano_to_iso8601(data_point.time_unix_nano),
+        "timestamp" => Logflare.Logs.Otel.nano_to_iso8601(data_point.time_unix_nano)
       })
     end)
   end
@@ -83,7 +83,7 @@ defmodule Logflare.Logs.OtelMetric do
         "value" => value,
         "start_time" => Logflare.Logs.Otel.nano_to_iso8601(data_point.start_time_unix_nano),
         "attributes" => Logflare.Logs.Otel.handle_attributes(data_point.attributes),
-        "timestamp" => Logflare.Logs.Otel.nano_to_iso8601(data_point.time_unix_nano),
+        "timestamp" => Logflare.Logs.Otel.nano_to_iso8601(data_point.time_unix_nano)
       })
     end)
   end
@@ -99,10 +99,7 @@ defmodule Logflare.Logs.OtelMetric do
     }
 
     Enum.map(histogram.data_points, fn data_point ->
-      %{value: {_, value}} = data_point
-
       Map.merge(base, %{
-        "value" => value,
         "count" => data_point.count,
         "sum" => data_point.sum,
         "min" => data_point.min,
@@ -111,11 +108,10 @@ defmodule Logflare.Logs.OtelMetric do
         "explicit_bounds" => data_point.explicit_bounds,
         "start_time" => Logflare.Logs.Otel.nano_to_iso8601(data_point.start_time_unix_nano),
         "attributes" => Logflare.Logs.Otel.handle_attributes(data_point.attributes),
-        "timestamp" => Logflare.Logs.Otel.nano_to_iso8601(data_point.time_unix_nano),
+        "timestamp" => Logflare.Logs.Otel.nano_to_iso8601(data_point.time_unix_nano)
       })
     end)
   end
-
 
   defp handle_metric_data({:exponential_histogram, histogram}, metric, metadata) do
     base = %{
@@ -145,7 +141,7 @@ defmodule Logflare.Logs.OtelMetric do
         "explicit_bounds" => data_point.explicit_bounds,
         "start_time" => Logflare.Logs.Otel.nano_to_iso8601(data_point.start_time_unix_nano),
         "attributes" => Logflare.Logs.Otel.handle_attributes(data_point.attributes),
-        "timestamp" => Logflare.Logs.Otel.nano_to_iso8601(data_point.time_unix_nano),
+        "timestamp" => Logflare.Logs.Otel.nano_to_iso8601(data_point.time_unix_nano)
       })
     end)
   end
