@@ -232,29 +232,31 @@ defmodule LogflareWeb.LogController do
         %{assigns: %{source: source}} = conn,
         %ExportTraceServiceRequest{resource_spans: spans}
       ) do
-    case Processor.ingest(spans, Logs.OtelTrace, source) do
-      {:ok, _} ->
-        resp = Protobuf.encode_to_iodata(%ExportTraceServiceResponse{})
-        send_resp(conn, 200, resp)
-
-      # Not sure what should be done here
-      {:error, errors} ->
-        raise RuntimeError, errors
-    end
+    {:ok, _} = Processor.ingest(spans, Logs.OtelTrace, source)
+    resp = Protobuf.encode_to_iodata(%ExportTraceServiceResponse{})
+    send_resp(conn, 200, resp)
+  rescue
+    exception ->
+      send_proto_error(conn, 500, "Internal server error")
+      reraise exception, __STACKTRACE__
   end
 
   def otel_metrics(
         %{assigns: %{source: source}} = conn,
         %ExportMetricsServiceRequest{resource_metrics: resource_metrics}
       ) do
-    case Processor.ingest(resource_metrics, Logs.OtelMetric, source) do
-      {:ok, _} ->
-        resp = Protobuf.encode_to_iodata(%ExportMetricsServiceResponse{})
-        send_resp(conn, 200, resp)
+    {:ok, _} = Processor.ingest(resource_metrics, Logs.OtelMetric, source)
+    resp = Protobuf.encode_to_iodata(%ExportMetricsServiceResponse{})
+    send_resp(conn, 200, resp)
+  rescue
+    exception ->
+      send_proto_error(conn, 500, "Internal server error")
+      reraise exception, __STACKTRACE__
+  end
 
-      # Not sure what should be done here
-      {:error, errors} ->
-        raise RuntimeError, errors
-    end
+  defp send_proto_error(conn, status, error) do
+    conn
+    |> send_resp(status, Protobuf.encode(%Google.Rpc.Status{message: error}))
+    |> halt()
   end
 end

@@ -31,7 +31,7 @@ setup: setup.node
 
 	# add protobuf install
 	mix escript.install hex protobuf
-	
+
 	asdf reshim
 	# run elixir setup
 	mix setup
@@ -53,7 +53,7 @@ start.pink: PORT = 4001
 start.pink: LOGFLARE_GRPC_PORT = 50052
 start.pink: __start__
 
-observer: 
+observer:
 	erl -sname observer -hidden -setcookie ${ERL_COOKIE} -run observer
 
 __start__:
@@ -110,7 +110,7 @@ $(addprefix decrypt.,${envs}): decrypt.%: \
  	.$$*.req.pem \
  	.$$*.db-client-cert.pem \
  	.$$*.db-client-key.pem \
- 	.$$*.db-server-ca.pem	
+ 	.$$*.db-server-ca.pem
 
 $(addprefix encrypt.,${envs}): encrypt.%: \
 	.$$*.gcloud.json.enc \
@@ -133,6 +133,12 @@ grpc.protoc:
 	git clone https://github.com/open-telemetry/opentelemetry-proto.git $$dir; \
 	protoc -I=$$dir --elixir_out=plugins=grpc:$(PWD)/lib/logflare_grpc $$(find $$dir -iname '*.proto')
 
+# For google rpc protos (status, etc)
+	dir=$$(mktemp -d); \
+	trap 'rm -rf "$$dir"' EXIT; \
+	git clone https://github.com/googleapis/googleapis.git $$dir; \
+	protoc -I=$$dir --elixir_out=plugins=grpc:$(PWD)/lib/logflare_grpc $$(find $$dir -path "*/rpc/*" -iname '*.proto')
+
 
 # manual deployment scripts
 
@@ -143,7 +149,7 @@ deploy.staging.main:
 		--substitutions=_IMAGE_TAG=$(SHA_IMAGE_TAG) \
 		--region=europe-west1 \
 		--gcs-log-dir="gs://logflare-staging_cloudbuild-logs/logs"
-	
+
 	gcloud builds submit . \
 		--config=./cloudbuild/staging/deploy.yaml \
 		--substitutions=_IMAGE_TAG=$(SHA_IMAGE_TAG),_INSTANCE_TYPE=c2d-standard-16 \
@@ -163,7 +169,7 @@ deploy.staging.versioned:
 		--substitutions=_IMAGE_TAG=$(VERSION) \
 		--region=europe-west1 \
 		--gcs-log-dir="gs://logflare-staging_cloudbuild-logs/logs"
-	
+
 	gcloud builds submit . \
 		--config=./cloudbuild/staging/deploy.yaml \
 		--substitutions=_IMAGE_TAG=$(VERSION),_NORMALIZED_IMAGE_TAG=$(NORMALIZED_VERSION),_CLUSTER=versioned \
@@ -179,7 +185,7 @@ deploy.prod.versioned:
 		--substitutions=_IMAGE_TAG=$(VERSION) \
 		--region=europe-west3 \
 		--gcs-log-dir="gs://logflare-prod_cloudbuild-logs/logs"
-	
+
 	@echo "Creating canary instance template..."
 	gcloud builds submit . \
 		--config=./cloudbuild/prod/pre-deploy.yaml \
@@ -245,7 +251,7 @@ tag-versioned:
 	@echo "OK"
 
 	@echo "Retagging dev image to supabase/logflare:$(VERSION) ..."
-	docker buildx imagetools create -t supabase/logflare:$(VERSION) -t supabase/logflare:latest supabase/logflare:$(SHA_IMAGE_TAG) 
+	docker buildx imagetools create -t supabase/logflare:$(VERSION) -t supabase/logflare:latest supabase/logflare:$(SHA_IMAGE_TAG)
 	@echo "OK"
 
 .PHONY: tag-versioned

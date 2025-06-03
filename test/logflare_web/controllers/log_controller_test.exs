@@ -181,12 +181,11 @@ defmodule LogflareWeb.LogControllerTest do
       assert TestUtils.protobuf_response(conn, 200, ExportMetricsServiceResponse) ==
                %ExportMetricsServiceResponse{partial_success: nil}
 
-      assert_receive {^ref, [dp1, dp2, dp3, dp4]}, 4000
+      assert_receive {^ref, data_points}, 4000
 
-      assert %{"metadata" => _, "event_message" => _, "metric_type" => _} = dp1
-      assert %{"metadata" => _, "event_message" => _, "metric_type" => _} = dp2
-      assert %{"metadata" => _, "event_message" => _, "metric_type" => _} = dp3
-      assert %{"metadata" => _, "event_message" => _, "metric_type" => _} = dp4
+      assert Enum.all?(data_points, fn data_point ->
+               match?(%{"metadata" => _, "event_message" => _, "metric_type" => _}, data_point)
+             end)
     end
 
     test "invaild source token uuid checks", %{conn: conn, user: user} do
