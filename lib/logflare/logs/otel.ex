@@ -41,7 +41,6 @@ defmodule Logflare.Logs.Otel do
   def extract_value(nil), do: nil
   def extract_value(value), do: value
 
-  # TODO: rename
   def handle_attributes(attributes) do
     Map.new(attributes, &extract_key_value/1)
   end
