@@ -16,6 +16,8 @@ defmodule Logflare.Logs.OtelMetric do
 
   require Logger
 
+  alias Logflare.Logs.Otel
+
   alias Opentelemetry.Proto.Metrics.V1.ResourceMetrics
   alias Opentelemetry.Proto.Metrics.V1.ScopeMetrics
   alias Opentelemetry.Proto.Metrics.V1.Metric
@@ -29,7 +31,7 @@ defmodule Logflare.Logs.OtelMetric do
   end
 
   defp handle_resource_metrics(%ResourceMetrics{resource: resource, scope_metrics: scope_metrics}) do
-    resource = Logflare.Logs.Otel.handle_resource(resource)
+    resource = Otel.handle_resource(resource)
 
     scope_metrics
     |> Enum.map(&handle_scope_metric(&1, resource))
@@ -37,7 +39,7 @@ defmodule Logflare.Logs.OtelMetric do
   end
 
   defp handle_scope_metric(%ScopeMetrics{scope: scope, metrics: metrics}, resource) do
-    resource = Logflare.Logs.Otel.merge_scope_attributes(resource, scope)
+    resource = Otel.merge_scope_attributes(resource, scope)
     Enum.map(metrics, &handle_metric(&1, resource))
   end
 
@@ -61,9 +63,9 @@ defmodule Logflare.Logs.OtelMetric do
 
       Map.merge(base, %{
         "value" => value,
-        "start_time" => Logflare.Logs.Otel.nano_to_iso8601(data_point.start_time_unix_nano),
-        "attributes" => Logflare.Logs.Otel.handle_attributes(data_point.attributes),
-        "timestamp" => Logflare.Logs.Otel.nano_to_iso8601(data_point.time_unix_nano)
+        "start_time" => Otel.nano_to_iso8601(data_point.start_time_unix_nano),
+        "attributes" => Otel.handle_attributes(data_point.attributes),
+        "timestamp" => Otel.nano_to_iso8601(data_point.time_unix_nano)
       })
     end)
   end
@@ -84,9 +86,9 @@ defmodule Logflare.Logs.OtelMetric do
 
       Map.merge(base, %{
         "value" => value,
-        "start_time" => Logflare.Logs.Otel.nano_to_iso8601(data_point.start_time_unix_nano),
-        "attributes" => Logflare.Logs.Otel.handle_attributes(data_point.attributes),
-        "timestamp" => Logflare.Logs.Otel.nano_to_iso8601(data_point.time_unix_nano)
+        "start_time" => Otel.nano_to_iso8601(data_point.start_time_unix_nano),
+        "attributes" => Otel.handle_attributes(data_point.attributes),
+        "timestamp" => Otel.nano_to_iso8601(data_point.time_unix_nano)
       })
     end)
   end
@@ -109,9 +111,9 @@ defmodule Logflare.Logs.OtelMetric do
         "max" => data_point.max,
         "bucket_counts" => data_point.bucket_counts,
         "explicit_bounds" => data_point.explicit_bounds,
-        "start_time" => Logflare.Logs.Otel.nano_to_iso8601(data_point.start_time_unix_nano),
-        "attributes" => Logflare.Logs.Otel.handle_attributes(data_point.attributes),
-        "timestamp" => Logflare.Logs.Otel.nano_to_iso8601(data_point.time_unix_nano)
+        "start_time" => Otel.nano_to_iso8601(data_point.start_time_unix_nano),
+        "attributes" => Otel.handle_attributes(data_point.attributes),
+        "timestamp" => Otel.nano_to_iso8601(data_point.time_unix_nano)
       })
     end)
   end
@@ -137,9 +139,9 @@ defmodule Logflare.Logs.OtelMetric do
         "negative" => exponential_histogram_buckets(data_point.negative),
         "min" => data_point.min,
         "max" => data_point.max,
-        "start_time" => Logflare.Logs.Otel.nano_to_iso8601(data_point.start_time_unix_nano),
-        "attributes" => Logflare.Logs.Otel.handle_attributes(data_point.attributes),
-        "timestamp" => Logflare.Logs.Otel.nano_to_iso8601(data_point.time_unix_nano)
+        "start_time" => Otel.nano_to_iso8601(data_point.start_time_unix_nano),
+        "attributes" => Otel.handle_attributes(data_point.attributes),
+        "timestamp" => Otel.nano_to_iso8601(data_point.time_unix_nano)
       })
     end)
   end

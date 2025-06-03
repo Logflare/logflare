@@ -12,6 +12,8 @@ defmodule Logflare.Logs.OtelTrace do
   """
   require Logger
 
+  alias Logflare.Logs.Otel
+
   alias Opentelemetry.Proto.Trace.V1.ResourceSpans
   @behaviour Logflare.Logs.Processor
 
@@ -21,7 +23,7 @@ defmodule Logflare.Logs.OtelTrace do
   end
 
   defp handle_event(%ResourceSpans{resource: resource, scope_spans: scope_spans}) do
-    resource = Logflare.Logs.Otel.handle_resource(resource)
+    resource = Otel.handle_resource(resource)
 
     scope_spans
     |> Enum.map(&handle_scope_span(&1, resource))
@@ -29,12 +31,12 @@ defmodule Logflare.Logs.OtelTrace do
   end
 
   defp handle_scope_span(%{scope: scope, spans: spans}, resource) do
-    resource = Logflare.Logs.Otel.merge_scope_attributes(resource, scope)
+    resource = Otel.merge_scope_attributes(resource, scope)
     Enum.map(spans, &handle_span(&1, resource))
   end
 
   defp handle_span(span, resource) do
-    start_time = Logflare.Logs.Otel.nano_to_iso8601(span.start_time_unix_nano)
+    start_time = Otel.nano_to_iso8601(span.start_time_unix_nano)
     metadata = %{"type" => "span"}
     metadata = Map.merge(metadata, resource)
     events = Enum.map(span.events, &handle_event(&1, span, resource))
@@ -47,8 +49,8 @@ defmodule Logflare.Logs.OtelTrace do
         "parent_span_id" => Base.encode16(span.parent_span_id),
         "trace_id" => Ecto.UUID.cast!(span.trace_id),
         "start_time" => start_time,
-        "end_time" => Logflare.Logs.Otel.nano_to_iso8601(span.end_time_unix_nano),
-        "attributes" => Logflare.Logs.Otel.handle_attributes(span.attributes),
+        "end_time" => Otel.nano_to_iso8601(span.end_time_unix_nano),
+        "attributes" => Otel.handle_attributes(span.attributes),
         "timestamp" => start_time,
         "project" => resource["name"]
       }
@@ -64,8 +66,8 @@ defmodule Logflare.Logs.OtelTrace do
       "metadata" => metadata,
       "parent_span_id" => Base.encode16(span_id),
       "trace_id" => Ecto.UUID.cast!(trace_id),
-      "attributes" => Logflare.Logs.Otel.handle_attributes(event.attributes),
-      "timestamp" => Logflare.Logs.Otel.nano_to_iso8601(event.time_unix_nano)
+      "attributes" => Otel.handle_attributes(event.attributes),
+      "timestamp" => Otel.nano_to_iso8601(event.time_unix_nano)
     }
   end
 end
