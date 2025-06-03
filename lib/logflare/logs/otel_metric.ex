@@ -127,10 +127,7 @@ defmodule Logflare.Logs.OtelMetric do
     }
 
     Enum.map(histogram.data_points, fn data_point ->
-      %{value: {_, value}} = data_point
-
       Map.merge(base, %{
-        "value" => value,
         "count" => data_point.count,
         "sum" => data_point.sum,
         "scale" => data_point.scale,
@@ -140,8 +137,6 @@ defmodule Logflare.Logs.OtelMetric do
         "negative" => exponential_histogram_buckets(data_point.negative),
         "min" => data_point.min,
         "max" => data_point.max,
-        "bucket_counts" => data_point.bucket_counts,
-        "explicit_bounds" => data_point.explicit_bounds,
         "start_time" => Logflare.Logs.Otel.nano_to_iso8601(data_point.start_time_unix_nano),
         "attributes" => Logflare.Logs.Otel.handle_attributes(data_point.attributes),
         "timestamp" => Logflare.Logs.Otel.nano_to_iso8601(data_point.time_unix_nano)

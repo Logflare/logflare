@@ -157,6 +157,38 @@ defmodule LogflareWeb.LogControllerTest do
       assert %{"metadata" => _, "event_message" => _} = event2
     end
 
+    test ":otel_metrics ingestion", %{conn: conn, source: source, user: user} do
+      this = self()
+      ref = make_ref()
+
+      WebhookAdaptor.Client
+      |> expect(:send, fn req ->
+        send(this, {ref, req[:body]})
+        %Tesla.Env{status: 200, body: ""}
+      end)
+
+      body =
+        TestUtilsGrpc.random_otel_metrics_request()
+        |> ExportMetricsServiceRequest.encode()
+
+      conn =
+        conn
+        |> put_req_header("x-api-key", user.api_key)
+        |> put_req_header("x-source", Atom.to_string(source.token))
+        |> put_req_header("content-type", "application/x-protobuf")
+        |> post(Routes.log_path(conn, :otel_metrics), body)
+
+      assert TestUtils.protobuf_response(conn, 200, ExportMetricsServiceResponse) ==
+               %ExportMetricsServiceResponse{partial_success: nil}
+
+      assert_receive {^ref, [dp1, dp2, dp3, dp4]}, 4000
+
+      assert %{"metadata" => _, "event_message" => _, "metric_type" => _} = dp1
+      assert %{"metadata" => _, "event_message" => _, "metric_type" => _} = dp2
+      assert %{"metadata" => _, "event_message" => _, "metric_type" => _} = dp3
+      assert %{"metadata" => _, "event_message" => _, "metric_type" => _} = dp4
+    end
+
     test "invaild source token uuid checks", %{conn: conn, user: user} do
       conn =
         conn
