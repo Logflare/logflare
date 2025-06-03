@@ -9,6 +9,9 @@ defmodule Logflare.Logs.OtelMetric do
   * One ScopeMetrics can contain multiple Metrics
   * One Metric can contain multiple DataPoints
   * A Log Event is created for each DataPoint, including parent metric data
+
+  Supports gauges, sums, histograms and exponential histograms. Summaries aren't
+  supported.
   """
 
   require Logger
@@ -146,8 +149,11 @@ defmodule Logflare.Logs.OtelMetric do
     end)
   end
 
-  # TODO: support summary (?)
-  defp handle_metric_data(_, _, _), do: []
+  defp handle_metric_data({type, _}, _, _) do
+    Logger.warning("Unsupported metric type #{inspect(type)}, dropping")
+
+    []
+  end
 
   defp exponential_histogram_buckets(%{offset: offset, bucket_counts: bucket_counts}) do
     %{"offset" => offset, "bucket_counts" => bucket_counts}

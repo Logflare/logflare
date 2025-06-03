@@ -7,7 +7,11 @@ defmodule LogflareWeb.LogControllerTest do
   alias Logflare.Source.V1SourceSup
   alias Logflare.Sources
   alias Logflare.SystemMetrics.AllLogsLogged
+
   alias Opentelemetry.Proto.Collector.Trace.V1.ExportTraceServiceRequest
+  alias Opentelemetry.Proto.Collector.Trace.V1.ExportTraceServiceResponse
+  alias Opentelemetry.Proto.Collector.Metrics.V1.ExportMetricsServiceRequest
+  alias Opentelemetry.Proto.Collector.Metrics.V1.ExportMetricsServiceResponse
 
   @valid %{"some" => "valid log entry", "event_message" => "hi!"}
   @valid_json Jason.encode!(@valid)
@@ -143,7 +147,9 @@ defmodule LogflareWeb.LogControllerTest do
         |> put_req_header("content-type", "application/x-protobuf")
         |> post(Routes.log_path(conn, :otel_traces), body)
 
-      assert json_response(conn, 200) == %{"message" => "Logged!"}
+      assert TestUtils.protobuf_response(conn, 200, ExportTraceServiceResponse) ==
+               %ExportTraceServiceResponse{partial_success: nil}
+
       assert_receive {^ref, [event1, event2]}, 4000
 
       assert event1["trace_id"] == event2["trace_id"]
