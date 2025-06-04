@@ -10,7 +10,10 @@ defmodule LogflareWeb.Router do
   alias LogflareWeb.JsonParser
   alias LogflareWeb.SyslogParser
   alias LogflareWeb.NdjsonParser
-  alias LogflareWeb.OtelProtobufParser
+  alias LogflareWeb.ProtobufParser
+
+  alias Opentelemetry.Proto.Collector.Trace.V1.ExportTraceServiceRequest
+  alias Opentelemetry.Proto.Collector.Metrics.V1.ExportMetricsServiceRequest
 
   # TODO: move plug calls in SourceController and RuleController into here
 
@@ -58,7 +61,7 @@ defmodule LogflareWeb.Router do
     plug(LogflareWeb.Plugs.MaybeContentTypeToJson)
 
     plug(Plug.Parsers,
-      parsers: [JsonParser, BertParser, SyslogParser, NdjsonParser, OtelProtobufParser],
+      parsers: [JsonParser, BertParser, SyslogParser, NdjsonParser, ProtobufParser],
       json_decoder: Jason,
       body_reader: {PlugCaisson, :read_body, []},
       length: 12_000_000
@@ -461,7 +464,20 @@ defmodule LogflareWeb.Router do
 
   scope "/v1", LogflareWeb, assigns: %{resource_type: :source} do
     pipe_through([:api, :require_ingest_api_auth])
-    post("/traces", LogController, :otel_traces)
+
+    post(
+      "/traces",
+      LogController,
+      :otel_traces,
+      assigns: %{protobuf_schema: ExportTraceServiceRequest}
+    )
+
+    post(
+      "/metrics",
+      LogController,
+      :otel_metrics,
+      assigns: %{protobuf_schema: ExportMetricsServiceRequest}
+    )
   end
 
   for path <- ["/logs", "/api/logs", "/api/events"] do

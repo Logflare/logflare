@@ -2,16 +2,33 @@ defmodule Logflare.TestUtilsGrpc do
   alias Logflare.TestUtils
 
   alias Opentelemetry.Proto.Collector.Trace.V1.ExportTraceServiceRequest
+  alias Opentelemetry.Proto.Collector.Metrics.V1.ExportMetricsServiceRequest
+
   alias Opentelemetry.Proto.Common.V1.AnyValue
   alias Opentelemetry.Proto.Common.V1.ArrayValue
   alias Opentelemetry.Proto.Common.V1.InstrumentationScope
   alias Opentelemetry.Proto.Common.V1.KeyValue
+  alias Opentelemetry.Proto.Common.V1.KeyValueList
+
   alias Opentelemetry.Proto.Resource.V1.Resource
+
   alias Opentelemetry.Proto.Trace.V1.ScopeSpans
   alias Opentelemetry.Proto.Trace.V1.Span
   alias Opentelemetry.Proto.Trace.V1.Span.Event
   alias Opentelemetry.Proto.Trace.V1.ResourceSpans
-  alias Opentelemetry.Proto.Common.V1.KeyValueList
+
+  alias Opentelemetry.Proto.Metrics.V1.ResourceMetrics
+  alias Opentelemetry.Proto.Metrics.V1.ScopeMetrics
+  alias Opentelemetry.Proto.Metrics.V1.Metric
+
+  alias Opentelemetry.Proto.Metrics.V1.Gauge
+  alias Opentelemetry.Proto.Metrics.V1.Sum
+  alias Opentelemetry.Proto.Metrics.V1.Histogram
+  alias Opentelemetry.Proto.Metrics.V1.ExponentialHistogram
+
+  alias Opentelemetry.Proto.Metrics.V1.NumberDataPoint
+  alias Opentelemetry.Proto.Metrics.V1.HistogramDataPoint
+  alias Opentelemetry.Proto.Metrics.V1.ExponentialHistogramDataPoint
 
   @doc """
   Generates a ExportTraceServiceRequest message which contains a Span and an Event in it
@@ -36,12 +53,16 @@ defmodule Logflare.TestUtilsGrpc do
     ]
   end
 
-  defp random_scope_span do
-    scope = %InstrumentationScope{
+  defp random_scope() do
+    %InstrumentationScope{
       name: TestUtils.random_string(),
       version: TestUtils.random_string(),
       attributes: random_attributes()
     }
+  end
+
+  defp random_scope_span do
+    scope = random_scope()
 
     scope_spans = %ScopeSpans{
       scope: scope,
@@ -213,4 +234,131 @@ defmodule Logflare.TestUtilsGrpc do
       value: %AnyValue{value: {:double_value, :rand.uniform(100) + 1.00}}
     }
   end
+
+  @doc """
+  Generates a (somewhat) random otel metrics request which contains all metrics types
+  """
+  def random_otel_metrics_request do
+    %ExportMetricsServiceRequest{
+      resource_metrics: [
+        random_resource_metrics([:gauge, :histogram]),
+        random_resource_metrics([:sum, :exponential_histogram])
+      ]
+    }
+  end
+
+  defp random_resource_metrics(metric_types) do
+    %ResourceMetrics{
+      resource: %Resource{attributes: random_attributes()},
+      scope_metrics: [
+        %ScopeMetrics{
+          scope: random_scope(),
+          metrics: Enum.map(metric_types, &random_metric/1)
+        }
+      ]
+    }
+  end
+
+  defp random_metric(:gauge) do
+    %Metric{
+      name: "random_gauge_#{TestUtils.random_string()}",
+      description: "random gauge description",
+      unit: random_unit(),
+      data: {:gauge, %Gauge{data_points: random_number_data_points()}}
+    }
+  end
+
+  defp random_metric(:sum) do
+    %Metric{
+      name: "random_sum_#{TestUtils.random_string()}",
+      description: "random sum description",
+      unit: random_unit(),
+      data:
+        {:sum,
+         %Sum{
+           data_points: random_number_data_points(),
+           aggregation_temporality:
+             Enum.random([:AGGREGATION_TEMPORALITY_CUMULATIVE, :AGGREGATION_TEMPORALITY_DELTA]),
+           is_monotonic: Enum.random([true, false])
+         }}
+    }
+  end
+
+  defp random_metric(:histogram) do
+    %Metric{
+      name: "random_histogram_#{TestUtils.random_string()}",
+      description: "random histogram description",
+      unit: random_unit(),
+      data:
+        {:histogram,
+         %Histogram{
+           data_points: random_histogram_data_points(),
+           aggregation_temporality: :AGGREGATION_TEMPORALITY_CUMULATIVE
+         }}
+    }
+  end
+
+  defp random_metric(:exponential_histogram) do
+    %Metric{
+      name: "random_exponential_histogram_#{TestUtils.random_string()}",
+      description: "random exponential histogram description",
+      unit: random_unit(),
+      data:
+        {:exponential_histogram,
+         %ExponentialHistogram{
+           data_points: random_exponential_histogram_data_points(),
+           aggregation_temporality: :AGGREGATION_TEMPORALITY_CUMULATIVE
+         }}
+    }
+  end
+
+  defp random_number_data_points do
+    [
+      %NumberDataPoint{
+        attributes: random_attributes(),
+        start_time_unix_nano: :os.system_time(:nanosecond),
+        time_unix_nano: :os.system_time(:nanosecond),
+        value: {:as_int, :rand.uniform(100)}
+      }
+    ]
+  end
+
+  defp random_histogram_data_points do
+    [
+      %HistogramDataPoint{
+        attributes: random_attributes(),
+        start_time_unix_nano: :os.system_time(:nanosecond),
+        time_unix_nano: :os.system_time(:nanosecond),
+        bucket_counts: Enum.map(0..10, fn _ -> :rand.uniform(100) end),
+        count: :rand.uniform(100),
+        sum: :rand.uniform(100)
+      }
+    ]
+  end
+
+  defp random_exponential_histogram_data_points do
+    [
+      %ExponentialHistogramDataPoint{
+        attributes: random_attributes(),
+        start_time_unix_nano: :os.system_time(:nanosecond),
+        time_unix_nano: :os.system_time(:nanosecond),
+        count: :rand.uniform(100),
+        sum: :rand.uniform(100) * 1.0,
+        scale: Enum.random(-10..10),
+        zero_count: :rand.uniform(10),
+        positive: %Opentelemetry.Proto.Metrics.V1.ExponentialHistogramDataPoint.Buckets{
+          offset: 0,
+          bucket_counts: Enum.map(1..5, fn _ -> :rand.uniform(100) end)
+        },
+        negative: %Opentelemetry.Proto.Metrics.V1.ExponentialHistogramDataPoint.Buckets{
+          offset: 0,
+          bucket_counts: Enum.map(1..5, fn _ -> :rand.uniform(100) end)
+        },
+        flags: 0,
+        zero_threshold: 0.0
+      }
+    ]
+  end
+
+  defp random_unit, do: Enum.random(["s", "By", "ms"])
 end

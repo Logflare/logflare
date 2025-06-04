@@ -1,9 +1,10 @@
-defmodule LogflareWeb.OtelProtobufParser do
+defmodule LogflareWeb.ProtobufParser do
   @moduledoc """
-  Parses BERT (http://bert-rpc.org) request body
+  Parses protobuf request body
+
+  Requires the protobuf schema to be assigned to the connection.
   """
 
-  alias Opentelemetry.Proto.Collector.Trace.V1.ExportTraceServiceRequest
   @behaviour Plug.Parsers
 
   def init(opts) do
@@ -27,7 +28,8 @@ defmodule LogflareWeb.OtelProtobufParser do
   end
 
   def decode({:ok, body, conn}) do
-    {:ok, ExportTraceServiceRequest.decode(body), conn}
+    protobuf_schema = Map.fetch!(conn.assigns, :protobuf_schema)
+    {:ok, protobuf_schema.decode(body), conn}
   rescue
     e ->
       reraise Plug.Parsers.ParseError, [exception: e], __STACKTRACE__
@@ -43,12 +45,5 @@ defmodule LogflareWeb.OtelProtobufParser do
 
   def decode({:error, _}) do
     raise Plug.BadRequestError
-  end
-
-  def atoms() do
-    # fixes a bug in Bertex where Bertex.safe_decode errors because
-    # :bert and :dict atoms returned by :binary_to_term do not exist and are treated
-    # as coming from the binary
-    [:bert, :dict]
   end
 end

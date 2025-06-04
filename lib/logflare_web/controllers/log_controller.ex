@@ -5,6 +5,9 @@ defmodule LogflareWeb.LogController do
   alias Logflare.Logs
   alias Logflare.Logs.Processor
   alias Opentelemetry.Proto.Collector.Trace.V1.ExportTraceServiceRequest
+  alias Opentelemetry.Proto.Collector.Trace.V1.ExportTraceServiceResponse
+  alias Opentelemetry.Proto.Collector.Metrics.V1.ExportMetricsServiceRequest
+  alias Opentelemetry.Proto.Collector.Metrics.V1.ExportMetricsServiceResponse
 
   alias LogflareWeb.OpenApi.Created
   alias LogflareWeb.OpenApi.ServerError
@@ -229,7 +232,37 @@ defmodule LogflareWeb.LogController do
         %{assigns: %{source: source}} = conn,
         %ExportTraceServiceRequest{resource_spans: spans}
       ) do
-    Processor.ingest(spans, Logs.OtelTrace, source)
-    |> handle(conn)
+    {:ok, _} = Processor.ingest(spans, Logs.OtelTrace, source)
+    send_proto_resp(conn, %ExportTraceServiceResponse{})
+  rescue
+    exception ->
+      send_proto_error(conn, 500, "Internal server error")
+      reraise exception, __STACKTRACE__
+  end
+
+  def otel_metrics(
+        %{assigns: %{source: source}} = conn,
+        %ExportMetricsServiceRequest{resource_metrics: resource_metrics}
+      ) do
+    {:ok, _} = Processor.ingest(resource_metrics, Logs.OtelMetric, source)
+    send_proto_resp(conn, %ExportMetricsServiceResponse{})
+  rescue
+    exception ->
+      send_proto_error(conn, 500, "Internal server error")
+      reraise exception, __STACKTRACE__
+  end
+
+  defp send_proto_resp(conn, resp) do
+    payload = Protobuf.encode_to_iodata(resp)
+
+    conn
+    |> put_resp_content_type("application/x-protobuf")
+    |> send_resp(200, payload)
+  end
+
+  defp send_proto_error(conn, status, error) do
+    conn
+    |> send_resp(status, Protobuf.encode(%Google.Rpc.Status{message: error}))
+    |> halt()
   end
 end
