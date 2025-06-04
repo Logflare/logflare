@@ -233,8 +233,7 @@ defmodule LogflareWeb.LogController do
         %ExportTraceServiceRequest{resource_spans: spans}
       ) do
     {:ok, _} = Processor.ingest(spans, Logs.OtelTrace, source)
-    resp = Protobuf.encode_to_iodata(%ExportTraceServiceResponse{})
-    send_resp(conn, 200, resp)
+    send_proto_resp(conn, %ExportTraceServiceResponse{})
   rescue
     exception ->
       send_proto_error(conn, 500, "Internal server error")
@@ -246,12 +245,19 @@ defmodule LogflareWeb.LogController do
         %ExportMetricsServiceRequest{resource_metrics: resource_metrics}
       ) do
     {:ok, _} = Processor.ingest(resource_metrics, Logs.OtelMetric, source)
-    resp = Protobuf.encode_to_iodata(%ExportMetricsServiceResponse{})
-    send_resp(conn, 200, resp)
+    send_proto_resp(conn, %ExportMetricsServiceResponse{})
   rescue
     exception ->
       send_proto_error(conn, 500, "Internal server error")
       reraise exception, __STACKTRACE__
+  end
+
+  defp send_proto_resp(conn, resp) do
+    payload = Protobuf.encode_to_iodata(resp)
+
+    conn
+    |> put_resp_content_type("application/x-protobuf")
+    |> send_resp(200, payload)
   end
 
   defp send_proto_error(conn, status, error) do
