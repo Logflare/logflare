@@ -1,7 +1,6 @@
 defmodule LogflareGrpc.Trace.ServerTest do
   use Logflare.DataCase, async: false
 
-  alias LogflareGrpc.Trace.Server
   alias Opentelemetry.Proto.Collector.Trace.V1.ExportTraceServiceResponse
   alias Opentelemetry.Proto.Collector.Trace.V1.TraceService.Stub
   alias Logflare.SystemMetrics.AllLogsLogged
@@ -18,8 +17,8 @@ defmodule LogflareGrpc.Trace.ServerTest do
       user = insert(:user)
       source = insert(:source, user: user)
 
-      {:ok, _pid, port} = GRPC.Server.start([Server], 0)
-      on_exit(fn -> GRPC.Server.stop([Server]) end)
+      {:ok, _pid, port} = GRPC.Server.start_endpoint(LogflareGrpc.Endpoint, 0)
+      on_exit(fn -> GRPC.Server.stop_endpoint(LogflareGrpc.Endpoint) end)
       {:ok, %{source: source, user: user, port: port}}
     end
 
@@ -108,10 +107,10 @@ defmodule LogflareGrpc.Trace.ServerTest do
 
       {:error, err} = emulate_request(channel, request)
 
-      assert %GRPC.RPCError{message: "Invalid API Key or Source ID"} = err
+      assert %GRPC.RPCError{message: "Invalid API key"} = err
     end
 
-    test "returns a success using invalid access token for specific source", %{
+    test "returns an error using invalid access token for specific source", %{
       source: source,
       user: user,
       port: port
@@ -131,7 +130,7 @@ defmodule LogflareGrpc.Trace.ServerTest do
 
       {:error, err} = emulate_request(channel, request)
 
-      assert %GRPC.RPCError{message: "Invalid API Key or Source ID"} = err
+      assert %GRPC.RPCError{message: "Invalid API key"} = err
     end
 
     test "returns an error if invalid source ID", %{
@@ -150,7 +149,7 @@ defmodule LogflareGrpc.Trace.ServerTest do
 
       {:error, result} = emulate_request(channel, request)
 
-      assert %GRPC.RPCError{message: "Invalid API Key or Source ID"} = result
+      assert %GRPC.RPCError{message: "Invalid source id"} = result
     end
 
     test "returns an error if missing x-api-key header", %{source: source, port: port} do
@@ -166,7 +165,7 @@ defmodule LogflareGrpc.Trace.ServerTest do
 
       {:error, result} = emulate_request(channel, request)
 
-      assert %GRPC.RPCError{message: "Invalid API Key or Source ID"} = result
+      assert %GRPC.RPCError{message: "Missing or invalid API key"} = result
     end
 
     test "returns an error if missing x-source header", %{
@@ -185,7 +184,7 @@ defmodule LogflareGrpc.Trace.ServerTest do
 
       {:error, result} = emulate_request(channel, request)
 
-      assert %GRPC.RPCError{message: "Invalid API Key or Source ID"} = result
+      assert %GRPC.RPCError{message: "Missing or invalid source id"} = result
     end
   end
 end
