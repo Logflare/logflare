@@ -204,17 +204,6 @@ defmodule Logflare.TestUtils do
   end
 
   @doc """
-  Asserts a response has a certain status and decodes the protobuf body.
-
-  Similar to Phoenix's `json_response/2` function.
-  """
-  def protobuf_response(conn, expected_status, protobuf_schema) do
-    body = Phoenix.ConnTest.response(conn, expected_status)
-
-    protobuf_schema.decode(body)
-  end
-
-  @doc """
   Used to retrieve a nested BigQuery field schema from a table schema. Returns nil if not found.
 
   ### Example

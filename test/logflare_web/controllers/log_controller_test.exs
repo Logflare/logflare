@@ -147,7 +147,7 @@ defmodule LogflareWeb.LogControllerTest do
         |> put_req_header("content-type", "application/x-protobuf")
         |> post(Routes.log_path(conn, :otel_traces), body)
 
-      assert TestUtils.protobuf_response(conn, 200, ExportTraceServiceResponse) ==
+      assert protobuf_response(conn, 200, ExportTraceServiceResponse) ==
                %ExportTraceServiceResponse{partial_success: nil}
 
       assert_receive {^ref, [event1, event2]}, 4000
@@ -178,7 +178,7 @@ defmodule LogflareWeb.LogControllerTest do
         |> put_req_header("content-type", "application/x-protobuf")
         |> post(Routes.log_path(conn, :otel_metrics), body)
 
-      assert TestUtils.protobuf_response(conn, 200, ExportMetricsServiceResponse) ==
+      assert protobuf_response(conn, 200, ExportMetricsServiceResponse) ==
                %ExportMetricsServiceResponse{partial_success: nil}
 
       assert_receive {^ref, data_points}, 4000
@@ -511,5 +511,11 @@ defmodule LogflareWeb.LogControllerTest do
     conn
     |> put_req_header("content-type", "application/json")
     |> post(Routes.log_path(conn, :create, source_name: source.name), input)
+  end
+
+  defp protobuf_response(conn, expected_status, protobuf_schema) do
+    body = Phoenix.ConnTest.response(conn, expected_status)
+
+    protobuf_schema.decode(body)
   end
 end
