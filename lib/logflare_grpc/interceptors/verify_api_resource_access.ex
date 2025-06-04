@@ -18,57 +18,74 @@ defmodule LogflareGrpc.Interceptors.VerifyApiResourceAccess do
   end
 
   def call(rpc_req, stream, next, _options) do
-    api_key = fetch_api_key!(stream)
-    source_id = fetch_source_id!(stream)
-    {access_token, user} = identify_requestor!(api_key, ["ingest"])
-    source = fetch_source!(user, source_id)
-
-    if VerifyResourceAccess.check_resource(source, access_token) do
-      next.(rpc_req, %{stream | local: %{source: source}})
-    else
-      raise GRPC.RPCError, status: :permission_denied
+    with {:ok, api_key} <- fetch_api_key(stream),
+         {:ok, source_id} <- fetch_source_id(stream),
+         {:ok, access_token, user} <- identify_requestor(api_key, ["ingest"]),
+         {:ok, source} <- fetch_source(user, source_id) do
+      if VerifyResourceAccess.check_resource(source, access_token) do
+        next.(rpc_req, %{stream | local: %{source: source}})
+      else
+        {:error,
+         GRPC.RPCError.exception(status: :permission_denied, message: "Permission denied")}
+      end
     end
   end
 
-  defp identify_requestor!(api_key, scopes) do
+  defp identify_requestor(api_key, scopes) do
     case VerifyApiAccess.identify_requestor(api_key, scopes) do
       {:ok, access_token, user} ->
-        {access_token, user}
+        {:ok, access_token, user}
 
       {:error, _reason} ->
-        raise GRPC.RPCError, status: :unauthenticated, message: "Invalid API key"
+        {:error, GRPC.RPCError.exception(status: :unauthenticated, message: "Invalid API key")}
     end
   end
 
-  defp fetch_api_key!(stream) do
+  defp fetch_api_key(stream) do
     case GRPC.Stream.get_headers(stream) do
       %{"authorization" => "Bearer " <> token} ->
-        token
+        {:ok, token}
 
       %{"x-api-key" => key} ->
-        key
+        {:ok, key}
 
       _ ->
-        raise GRPC.RPCError,
-          status: :unauthenticated,
-          message: "Missing or invalid API key"
+        {:error,
+         GRPC.RPCError.exception(
+           status: :unauthenticated,
+           message: "Missing or invalid API key"
+         )}
     end
   end
 
-  defp fetch_source_id!(stream) do
+  defp fetch_source_id(stream) do
     case GRPC.Stream.get_headers(stream) do
-      %{"x-collection" => token} -> token
-      %{"x-source" => token} -> token
-      _ -> raise GRPC.RPCError, status: :unauthenticated, message: "Missing or invalid source id"
+      %{"x-collection" => token} ->
+        {:ok, token}
+
+      %{"x-source" => token} ->
+        {:ok, token}
+
+      _ ->
+        {:error,
+         GRPC.RPCError.exception(
+           status: :unauthenticated,
+           message: "Missing or invalid source id"
+         )}
     end
   end
 
-  defp fetch_source!(user, source_token) do
+  defp fetch_source(user, source_token) do
     with true <- Sources.valid_source_token_param?(source_token),
          source = %Source{} <- Sources.get_by_and_preload(user_id: user.id, token: source_token) do
-      source
+      {:ok, source}
     else
-      _ -> raise GRPC.RPCError, status: :unauthenticated, message: "Invalid source id"
+      _ ->
+        {:error,
+         GRPC.RPCError.exception(
+           status: :unauthenticated,
+           message: "Invalid source id"
+         )}
     end
   end
 end
