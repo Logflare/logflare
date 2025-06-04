@@ -115,7 +115,7 @@ defmodule LogflareGrpc.Interceptors.VerifyApiResourceAccessTest do
     } do
       headers = [{"x-api-key", user.api_key}]
 
-      assert {:error, %GRPC.RPCError{message: "Missing or invalid source id"}} =
+      assert {:error, %GRPC.RPCError{message: "Missing source id"}} =
                request_with_headers(headers, port)
     end
   end

@@ -25,8 +25,7 @@ defmodule LogflareGrpc.Interceptors.VerifyApiResourceAccess do
       if VerifyResourceAccess.check_resource(source, access_token) do
         next.(rpc_req, %{stream | local: %{source: source}})
       else
-        {:error,
-         GRPC.RPCError.exception(status: :permission_denied, message: "Permission denied")}
+        {:error, GRPC.RPCError.exception(status: :permission_denied)}
       end
     end
   end
@@ -70,22 +69,19 @@ defmodule LogflareGrpc.Interceptors.VerifyApiResourceAccess do
         {:error,
          GRPC.RPCError.exception(
            status: :unauthenticated,
-           message: "Missing or invalid source id"
+           message: "Missing source id"
          )}
     end
   end
 
   defp fetch_source(user, source_token) do
-    with true <- Sources.valid_source_token_param?(source_token),
-         source = %Source{} <- Sources.get_by_and_preload(user_id: user.id, token: source_token) do
-      {:ok, source}
+    if Sources.valid_source_token_param?(source_token) do
+      case Sources.get_by_and_preload(user_id: user.id, token: source_token) do
+        %Source{} = source -> {:ok, source}
+        _ -> {:error, GRPC.RPCError.exception(status: :permission_denied)}
+      end
     else
-      _ ->
-        {:error,
-         GRPC.RPCError.exception(
-           status: :unauthenticated,
-           message: "Invalid source id"
-         )}
+      {:error, GRPC.RPCError.exception(status: :unauthenticated, message: "Invalid source id")}
     end
   end
 end
