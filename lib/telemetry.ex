@@ -18,10 +18,8 @@ defmodule Logflare.Telemetry do
   def init(_arg) do
     otel_exporter =
       if Application.get_env(:logflare, :opentelemetry_enabled?) do
-        config = Application.get_all_env(:opentelemetry_exporter)
-
         otel_exporter_opts =
-          config
+          Application.get_all_env(:opentelemetry_exporter)
           |> Keyword.put(:metrics, otel_metrics())
           |> Keyword.update!(:otlp_headers, &Map.new/1)
 
