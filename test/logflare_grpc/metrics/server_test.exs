@@ -22,16 +22,12 @@ defmodule LogflareGrpc.Metrics.ServerTest do
       {:ok, %{source: source, user: user, port: port}}
     end
 
-    defp emulate_request(channel, request) do
-      Stub.export(channel, request)
-    end
-
     test "returns a success response and starts log event ingestion using access token", %{
       source: source,
       user: user,
       port: port
     } do
-      access_token = insert(:access_token, resource_owner: user)
+      access_token = insert(:access_token, resource_owner: user, scopes: "ingest")
       headers = [{"x-api-key", access_token.token}, {"x-source", source.token}]
 
       {:ok, channel} =
@@ -44,5 +40,9 @@ defmodule LogflareGrpc.Metrics.ServerTest do
 
       assert {:ok, %ExportMetricsServiceResponse{}} = emulate_request(channel, request)
     end
+  end
+
+  defp emulate_request(channel, request) do
+    Stub.export(channel, request)
   end
 end

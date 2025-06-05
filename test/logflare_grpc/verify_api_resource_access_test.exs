@@ -74,8 +74,8 @@ defmodule LogflareGrpc.Interceptors.VerifyApiResourceAccessTest do
     test "returns an error if invalid api key", %{source: source, port: port} do
       headers = [{"x-api-key", "potato"}, {"x-source", source.token}]
 
-      assert {:error, %GRPC.RPCError{message: "Invalid API key"}} =
-               request_with_headers(headers, port)
+      # Permission denied
+      assert {:error, %GRPC.RPCError{status: 7}} = request_with_headers(headers, port)
     end
 
     test "returns an error using invalid access token for specific source", %{
@@ -88,8 +88,8 @@ defmodule LogflareGrpc.Interceptors.VerifyApiResourceAccessTest do
 
       headers = [{"x-api-key", access_token.token}, {"x-source", source.token}]
 
-      assert {:error, %GRPC.RPCError{message: "Invalid API key"}} =
-               request_with_headers(headers, port)
+      # Permission denied
+      assert {:error, %GRPC.RPCError{status: 7}} = request_with_headers(headers, port)
     end
 
     test "returns an error if invalid source ID", %{

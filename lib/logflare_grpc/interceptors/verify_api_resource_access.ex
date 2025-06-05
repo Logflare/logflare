@@ -36,7 +36,7 @@ defmodule LogflareGrpc.Interceptors.VerifyApiResourceAccess do
         {:ok, access_token, user}
 
       {:error, _reason} ->
-        {:error, GRPC.RPCError.exception(status: :unauthenticated, message: "Invalid API key")}
+        {:error, GRPC.RPCError.exception(status: :permission_denied)}
     end
   end
 
@@ -45,8 +45,8 @@ defmodule LogflareGrpc.Interceptors.VerifyApiResourceAccess do
       %{"authorization" => "Bearer " <> token} ->
         {:ok, token}
 
-      %{"x-api-key" => key} ->
-        {:ok, key}
+      %{"x-api-key" => token} ->
+        {:ok, token}
 
       _ ->
         {:error,
@@ -59,11 +59,11 @@ defmodule LogflareGrpc.Interceptors.VerifyApiResourceAccess do
 
   defp fetch_source_id(stream) do
     case GRPC.Stream.get_headers(stream) do
-      %{"x-collection" => token} ->
-        {:ok, token}
+      %{"x-collection" => source_uuid} ->
+        {:ok, source_uuid}
 
-      %{"x-source" => token} ->
-        {:ok, token}
+      %{"x-source" => source_uuid} ->
+        {:ok, source_uuid}
 
       _ ->
         {:error,
@@ -76,7 +76,7 @@ defmodule LogflareGrpc.Interceptors.VerifyApiResourceAccess do
 
   defp fetch_source(user, source_token) do
     if Sources.valid_source_token_param?(source_token) do
-      case Sources.get_by_and_preload(user_id: user.id, token: source_token) do
+      case Sources.Cache.get_by_and_preload(user_id: user.id, token: source_token) do
         %Source{} = source -> {:ok, source}
         _ -> {:error, GRPC.RPCError.exception(status: :permission_denied)}
       end
