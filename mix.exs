@@ -124,7 +124,7 @@ defmodule Logflare.Mixfile do
 
       # Outbound Requests
       {:castore, "~> 0.1.0"},
-      {:finch, "~> 0.18.0"},
+      {:finch, "~> 0.19.0"},
       {:mint, "~> 1.0"},
       {:httpoison, "~> 1.4"},
       {:poison, "~> 5.0.0", override: true},
@@ -229,6 +229,7 @@ defmodule Logflare.Mixfile do
       {:opentelemetry_exporter, "~> 1.6"},
       {:opentelemetry_phoenix, "~> 2.0.0-rc.2"},
       {:opentelemetry_bandit, "~> 0.2.0-rc.1"},
+      {:otel_metric_exporter, "~> 0.3.6"},
       {:live_monaco_editor, "~> 0.1"}
     ]
   end
