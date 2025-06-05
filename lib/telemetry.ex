@@ -21,6 +21,14 @@ defmodule Logflare.Telemetry do
         otel_exporter_opts =
           Application.get_all_env(:opentelemetry_exporter)
           |> Keyword.put(:metrics, otel_metrics())
+          |> Keyword.put(:resource, %{
+            name: "Logflare",
+            service: %{
+              name: "Logflare",
+              version: Application.spec(:logflare, :vsn) |> to_string()
+            },
+            instance: inspect(Node.self())
+          })
           |> Keyword.update!(:otlp_headers, &Map.new/1)
 
         [{OtelMetricExporter, otel_exporter_opts}]
