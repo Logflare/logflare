@@ -20,7 +20,7 @@ defmodule LogflareGrpc.Interceptors.VerifyApiResourceAccess do
   def call(rpc_req, stream, next, _options) do
     with {:ok, api_key} <- fetch_api_key(stream),
          {:ok, source_id} <- fetch_source_id(stream),
-         {:ok, access_token, user} <- identify_requestor(api_key, ["ingest"]),
+         {:ok, access_token, user} <- identify_requestor(api_key, []),
          {:ok, source} <- fetch_source(user, source_id) do
       if VerifyResourceAccess.check_resource(source, access_token) do
         next.(rpc_req, %{stream | local: %{source: source}})
