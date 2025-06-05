@@ -74,6 +74,11 @@ defmodule LogflareWeb.Plugs.VerifyResourceAccess do
   def check_resource(%Source{}, nil), do: true
 
   def check_resource(%Source{} = resource, token) do
-    :ok == Auth.check_scopes(token, ["ingest", "ingest:source:#{resource.id}", "ingest:collection:#{resource.id}"])
+    :ok ==
+      Auth.check_scopes(token, [
+        "ingest",
+        "ingest:source:#{resource.id}",
+        "ingest:collection:#{resource.id}"
+      ])
   end
 end
