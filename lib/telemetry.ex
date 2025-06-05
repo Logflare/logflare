@@ -154,7 +154,7 @@ defmodule Logflare.Telemetry do
   def otel_metrics do
     [
       counter("logflare.rate_limiter.rejected", tags: [], description: "Rate limited API hits"),
-      last_value("logflare.system.finch.in_flight_requests", tags: [:pool_index, :url]),
+      last_value("logflare.system.finch.in_flight_requests", tags: [:pool, :url]),
       last_value("vm.memory.total", unit: {:byte, :kilobyte}),
       distribution("broadway.batcher.stop.duration", unit: {:native, :millisecond}),
       distribution("broadway.batch_processor.stop.duration", unit: {:native, :millisecond}),
