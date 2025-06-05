@@ -108,6 +108,7 @@ defmodule Logflare.Application do
          endpoint: LogflareGrpc.Endpoint, port: grpc_port, cred: grpc_creds, start_server: true},
         # Monitor system level metrics
         SystemMetricsSup,
+        Logflare.Telemetry,
 
         # For Logflare Endpoints
         {DynamicSupervisor, strategy: :one_for_one, name: Logflare.Endpoints.Cache},

@@ -72,6 +72,19 @@ defmodule LogflareWeb.Router do
     plug(OpenApiSpex.Plug.PutApiSpec, module: LogflareWeb.ApiSpec)
   end
 
+  pipeline :otlp_api do
+    plug(Plug.RequestId)
+
+    plug(Plug.Parsers,
+      parsers: [ProtobufParser],
+      body_reader: {PlugCaisson, :read_body, []},
+      length: 12_000_000
+    )
+
+    plug(:accepts, ["protobuf"])
+    plug(LogflareWeb.Plugs.SetHeaders)
+  end
+
   pipeline :require_endpoint_auth do
     plug(LogflareWeb.Plugs.VerifyApiAccess)
     plug(LogflareWeb.Plugs.FetchResource)
@@ -463,7 +476,7 @@ defmodule LogflareWeb.Router do
   end
 
   scope "/v1", LogflareWeb, assigns: %{resource_type: :source} do
-    pipe_through([:api, :require_ingest_api_auth])
+    pipe_through([:otlp_api, :require_ingest_api_auth])
 
     post(
       "/traces",

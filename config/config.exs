@@ -158,4 +158,8 @@ config :logflare, Logflare.Vault, json_library: Jason
 
 config :broadway, config_storage: :ets
 
+config :mime, :types, %{
+  "application/x-protobuf" => ["protobuf"]
+}
+
 import_config "#{Mix.env()}.exs"
