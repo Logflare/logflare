@@ -65,7 +65,7 @@ config :opentelemetry_exporter,
 Run Logflare on single tenant mode:
 
 ```
-docker compose -f docker-compose.yml -f docker-compose.supabase.yml up
+docker compose -f docker-compose.yml -f docker-compose.single_tenant.yml up
 ```
 
 1. Create a new source to populate the `x-source` header with the source UUID.
@@ -76,4 +76,3 @@ docker compose -f docker-compose.yml -f docker-compose.supabase.yml up
 ### Limitations
 
 - Only **traces** and **metrics** are currently supported.
-- Gzip compression is required.

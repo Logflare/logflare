@@ -33,17 +33,26 @@ To build images only, use `docker-compose build`
 
 ## Supabase Development
 
-### Developing in Supabase Mode
+### Developing in Single Tenant or Supabase Mode
 
-To run the dev env in Supabase mode use the following command:
+To run Logflare in single-tenant and/or Supabase mode use the following command:
+
+```bash
+# start the local database
+docker compose up -d db
+# start the server in single tenant mode
+make start.docker
+```
+
+### Testing with Docker Compose
 
 ```
-docker compose -f docker-compose.yml -f docker-compose.supabase.yml up
+docker compose -f docker-compose.yml -f docker-compose.single_tenant.yml up
 ```
 
 This will tell Logflare to perform data seeding and disable UI auth.
 
-This is useful for testing supabase mode and single tenant mode.
+This is useful for testing supabase mode and single tenant mode with docker configuration.
 
 ### Developing Logflare alongside Supabase CLI
 
