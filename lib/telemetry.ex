@@ -117,11 +117,11 @@ defmodule Logflare.Telemetry do
       ),
       distribution("logflare.ingest.pipeline.handle_batch.batch_size",
         tags: [:pipeline],
-        reporter_opts: batch_size_buckets()
+        reporter_opts: batch_size_reporter_opts()
       ),
       distribution("logflare.ingest.common_pipeline.handle_batch.batch_size",
         tags: [:pipeline],
-        reporter_opts: batch_size_buckets()
+        reporter_opts: batch_size_reporter_opts()
       ),
       counter("logflare.context_cache.busted.count", tags: [:schema, :table]),
       counter("logflare.context_cache.handle_record.count", tags: [:schema, :table]),
