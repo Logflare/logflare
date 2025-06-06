@@ -16,9 +16,30 @@ defmodule Logflare.Telemetry do
 
   @impl true
   def init(_arg) do
-    children = [
-      {:telemetry_poller, measurements: periodic_measurements(), period: 10_000}
-    ]
+    otel_exporter =
+      if Application.get_env(:logflare, :opentelemetry_enabled?) do
+        otel_exporter_opts =
+          Application.get_all_env(:opentelemetry_exporter)
+          |> Keyword.put(:metrics, otel_metrics())
+          |> Keyword.put(:resource, %{
+            name: "Logflare",
+            service: %{
+              name: "Logflare",
+              version: Application.spec(:logflare, :vsn) |> to_string()
+            },
+            instance: inspect(Node.self())
+          })
+          |> Keyword.update!(:otlp_headers, &Map.new/1)
+
+        [{OtelMetricExporter, otel_exporter_opts}]
+      else
+        []
+      end
+
+    children =
+      [
+        {:telemetry_poller, measurements: periodic_measurements(), period: 10_000}
+      ] ++ otel_exporter
 
     Supervisor.init(children, strategy: :one_for_one)
   end
@@ -126,6 +147,20 @@ defmodule Logflare.Telemetry do
       broadway_metrics,
       application_metrics
     ])
+  end
+
+  # TODO: once we are confident in OTEL metrics exporting, use the `metrics/0`
+  # function instead
+  def otel_metrics do
+    [
+      counter("logflare.rate_limiter.rejected", tags: [], description: "Rate limited API hits"),
+      last_value("logflare.system.finch.in_flight_requests", tags: [:pool, :url]),
+      last_value("vm.memory.total", unit: {:byte, :kilobyte}),
+      distribution("broadway.batcher.stop.duration", unit: {:native, :millisecond}),
+      distribution("broadway.batch_processor.stop.duration", unit: {:native, :millisecond}),
+      distribution("broadway.processor.message.stop.duration", unit: {:native, :millisecond}),
+      distribution("broadway.processor.stop.duration", unit: {:native, :millisecond})
+    ]
   end
 
   defp periodic_measurements() do

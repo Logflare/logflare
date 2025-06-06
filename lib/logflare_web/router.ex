@@ -61,7 +61,7 @@ defmodule LogflareWeb.Router do
     plug(LogflareWeb.Plugs.MaybeContentTypeToJson)
 
     plug(Plug.Parsers,
-      parsers: [JsonParser, BertParser, SyslogParser, NdjsonParser, ProtobufParser],
+      parsers: [JsonParser, BertParser, SyslogParser, NdjsonParser],
       json_decoder: Jason,
       body_reader: {PlugCaisson, :read_body, []},
       length: 12_000_000
@@ -70,6 +70,19 @@ defmodule LogflareWeb.Router do
     plug(:accepts, ["json", "bert"])
     plug(LogflareWeb.Plugs.SetHeaders)
     plug(OpenApiSpex.Plug.PutApiSpec, module: LogflareWeb.ApiSpec)
+  end
+
+  pipeline :otlp_api do
+    plug(Plug.RequestId)
+
+    plug(Plug.Parsers,
+      parsers: [ProtobufParser],
+      body_reader: {PlugCaisson, :read_body, []},
+      length: 12_000_000
+    )
+
+    plug(:accepts, ["protobuf"])
+    plug(LogflareWeb.Plugs.SetHeaders)
   end
 
   pipeline :require_endpoint_auth do
@@ -463,7 +476,7 @@ defmodule LogflareWeb.Router do
   end
 
   scope "/v1", LogflareWeb, assigns: %{resource_type: :source} do
-    pipe_through([:api, :require_ingest_api_auth])
+    pipe_through([:otlp_api, :require_ingest_api_auth])
 
     post(
       "/traces",
