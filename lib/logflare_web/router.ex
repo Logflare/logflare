@@ -61,7 +61,7 @@ defmodule LogflareWeb.Router do
     plug(LogflareWeb.Plugs.MaybeContentTypeToJson)
 
     plug(Plug.Parsers,
-      parsers: [JsonParser, BertParser, SyslogParser, NdjsonParser, ProtobufParser],
+      parsers: [JsonParser, BertParser, SyslogParser, NdjsonParser],
       json_decoder: Jason,
       body_reader: {PlugCaisson, :read_body, []},
       length: 12_000_000
