@@ -70,7 +70,9 @@ defmodule Logflare.Telemetry do
 
     database_metrics = [
       distribution("logflare.repo.query.total_time", unit: {:native, :millisecond}),
-      distribution("logflare.repo.query.decode_time", unit: {:native, :millisecond}),
+      # TODO: decode_time is `nil` in some of the ecto queries
+      # In most telemetry adapters this is fine, but it causes issues in OtelMetricExporter
+      # distribution("logflare.repo.query.decode_time", unit: {:native, :millisecond}),
       distribution("logflare.repo.query.query_time", unit: {:native, :millisecond}),
       distribution("logflare.repo.query.queue_time", unit: {:native, :millisecond}),
       distribution("logflare.repo.query.idle_time", unit: {:native, :millisecond})
