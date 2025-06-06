@@ -20,7 +20,7 @@ defmodule Logflare.Telemetry do
       if Application.get_env(:logflare, :opentelemetry_enabled?) do
         otel_exporter_opts =
           Application.get_all_env(:opentelemetry_exporter)
-          |> Keyword.put(:metrics, otel_metrics())
+          |> Keyword.put(:metrics, metrics())
           |> Keyword.put(:resource, %{
             name: "Logflare",
             service: %{
@@ -64,38 +64,38 @@ defmodule Logflare.Telemetry do
       end
 
     phoenix_metrics = [
-      summary("phoenix.endpoint.stop.duration", unit: {:native, :millisecond}),
-      summary("phoenix.router_dispatch.stop.duration", unit: {:native, :millisecond})
+      distribution("phoenix.endpoint.stop.duration", unit: {:native, :millisecond}),
+      distribution("phoenix.router_dispatch.stop.duration", unit: {:native, :millisecond})
     ]
 
     database_metrics = [
-      summary("logflare.repo.query.total_time", unit: {:native, :millisecond}),
-      summary("logflare.repo.query.decode_time", unit: {:native, :millisecond}),
-      summary("logflare.repo.query.query_time", unit: {:native, :millisecond}),
-      summary("logflare.repo.query.queue_time", unit: {:native, :millisecond}),
-      summary("logflare.repo.query.idle_time", unit: {:native, :millisecond})
+      distribution("logflare.repo.query.total_time", unit: {:native, :millisecond}),
+      distribution("logflare.repo.query.decode_time", unit: {:native, :millisecond}),
+      distribution("logflare.repo.query.query_time", unit: {:native, :millisecond}),
+      distribution("logflare.repo.query.queue_time", unit: {:native, :millisecond}),
+      distribution("logflare.repo.query.idle_time", unit: {:native, :millisecond})
     ]
 
     vm_metrics = [
-      summary("vm.memory.total", unit: {:byte, :kilobyte}),
-      summary("vm.total_run_queue_lengths.total"),
-      summary("vm.total_run_queue_lengths.cpu"),
-      summary("vm.total_run_queue_lengths.io")
+      last_value("vm.memory.total", unit: {:byte, :kilobyte}),
+      last_value("vm.total_run_queue_lengths.total"),
+      last_value("vm.total_run_queue_lengths.cpu"),
+      last_value("vm.total_run_queue_lengths.io")
     ]
 
     broadway_metrics = [
-      summary("broadway.batcher.stop.duration", unit: {:native, :millisecond}),
-      summary("broadway.batch_processor.stop.duration", unit: {:native, :millisecond}),
-      summary("broadway.processor.message.stop.duration", unit: {:native, :millisecond}),
-      summary("broadway.processor.stop.duration", unit: {:native, :millisecond})
+      distribution("broadway.batcher.stop.duration", unit: {:native, :millisecond}),
+      distribution("broadway.batch_processor.stop.duration", unit: {:native, :millisecond}),
+      distribution("broadway.processor.message.stop.duration", unit: {:native, :millisecond}),
+      distribution("broadway.processor.stop.duration", unit: {:native, :millisecond})
     ]
 
     application_metrics = [
-      summary("logflare.goth.fetch.stop.duration",
+      distribution("logflare.goth.fetch.stop.duration",
         tags: [:partition],
         unit: {:native, :millisecond}
       ),
-      summary("logflare.logs.processor.ingest.stop.duration",
+      distribution("logflare.logs.processor.ingest.stop.duration",
         tags: [:processor],
         unit: {:native, :millisecond}
       ),
@@ -103,20 +103,26 @@ defmodule Logflare.Telemetry do
         tags: [:processor],
         description: "Ingestion execution counts"
       ),
-      summary("logflare.logs.processor.ingest.logs.count",
+      distribution("logflare.logs.processor.ingest.logs.count",
         tags: [:processor],
         description: "Ingestion batch size"
       ),
-      summary("logflare.logs.processor.ingest.store.stop.duration",
+      distribution("logflare.logs.processor.ingest.store.stop.duration",
         tags: [:processor],
         unit: {:native, :millisecond}
       ),
-      summary("logflare.logs.processor.ingest.handle_batch.stop.duration",
+      distribution("logflare.logs.processor.ingest.handle_batch.stop.duration",
         tags: [:processor],
         unit: {:native, :millisecond}
       ),
-      summary("logflare.ingest.pipeline.handle_batch.batch_size", tags: [:pipeline]),
-      summary("logflare.ingest.common_pipeline.handle_batch.batch_size", tags: [:pipeline]),
+      distribution("logflare.ingest.pipeline.handle_batch.batch_size",
+        tags: [:pipeline],
+        reporter_opts: batch_size_buckets()
+      ),
+      distribution("logflare.ingest.common_pipeline.handle_batch.batch_size",
+        tags: [:pipeline],
+        reporter_opts: batch_size_buckets()
+      ),
       counter("logflare.context_cache.busted.count", tags: [:schema, :table]),
       counter("logflare.context_cache.handle_record.count", tags: [:schema, :table]),
       counter("logflare.logs.ingest_logs.drop",
@@ -136,7 +142,7 @@ defmodule Logflare.Telemetry do
         description: "Rate limited API hits"
       ),
       last_value("logflare.backends.egress.request_length", tags: [:backend_id]),
-      last_value("logflare.system.finch.in_flight_requests", tags: [:pool_index, :url])
+      last_value("logflare.system.finch.in_flight_requests", tags: [:pool, :url])
     ]
 
     Enum.concat([
@@ -147,20 +153,6 @@ defmodule Logflare.Telemetry do
       broadway_metrics,
       application_metrics
     ])
-  end
-
-  # TODO: once we are confident in OTEL metrics exporting, use the `metrics/0`
-  # function instead
-  def otel_metrics do
-    [
-      counter("logflare.rate_limiter.rejected", tags: [], description: "Rate limited API hits"),
-      last_value("logflare.system.finch.in_flight_requests", tags: [:pool, :url]),
-      last_value("vm.memory.total", unit: {:byte, :kilobyte}),
-      distribution("broadway.batcher.stop.duration", unit: {:native, :millisecond}),
-      distribution("broadway.batch_processor.stop.duration", unit: {:native, :millisecond}),
-      distribution("broadway.processor.message.stop.duration", unit: {:native, :millisecond}),
-      distribution("broadway.processor.stop.duration", unit: {:native, :millisecond})
-    ]
   end
 
   defp periodic_measurements() do
@@ -193,5 +185,9 @@ defmodule Logflare.Telemetry do
 
       :telemetry.execute([:cachex, metric], metrics)
     end)
+  end
+
+  defp batch_size_reporter_opts do
+    [buckets: [0, 5, 10, 25, 50, 100, 150, 250, 350, 1000]]
   end
 end
