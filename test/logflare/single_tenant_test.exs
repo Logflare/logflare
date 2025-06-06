@@ -23,6 +23,15 @@ defmodule Logflare.SingleTenantTest do
       assert {:error, :already_created} = SingleTenant.create_default_plan()
     end
 
+    test "create_default_plan/0 with existing data" do
+      insert(:plan, name: "Enterprise")
+      insert(:plan, name: "Enterprise")
+      assert {:ok, plan} = SingleTenant.create_default_plan()
+      assert plan.name == "Enterprise"
+      assert Billing.get_plan_by(name: "Enterprise") == plan
+      assert {:error, :already_created} = SingleTenant.create_default_plan()
+    end
+
     test "create_default_plan/0 will override previous values" do
       assert {:ok, correct_plan} = SingleTenant.create_default_plan()
       Repo.update_all(Plan, set: [limit_sources: 999])
