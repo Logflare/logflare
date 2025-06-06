@@ -3,6 +3,7 @@ defmodule Logflare.Alerting.AlertQuery do
   use TypedEctoSchema
   import Ecto.Changeset
   alias Logflare.Endpoints.Query
+  alias Logflare.Alerting.AlertWebhookHeader
 
   @derive {Jason.Encoder,
            only: [
@@ -14,6 +15,7 @@ defmodule Logflare.Alerting.AlertQuery do
              :language,
              :query,
              :webhook_notification_url,
+             :webhook_notification_headers,
              :slack_hook_url
            ]}
   typed_schema "alert_queries" do
@@ -26,6 +28,7 @@ defmodule Logflare.Alerting.AlertQuery do
     field :token, Ecto.UUID, autogenerate: true
     field :slack_hook_url, :string
     field :webhook_notification_url, :string
+    embeds_many :webhook_notification_headers, AlertWebhookHeader, on_replace: :delete
     belongs_to :user, Logflare.User
 
     timestamps()
@@ -43,6 +46,7 @@ defmodule Logflare.Alerting.AlertQuery do
       :slack_hook_url,
       :webhook_notification_url
     ])
+    |> cast_embed(:webhook_notification_headers, with: &webhook_header_changeset/2)
     |> validate_required([:name, :query, :cron, :language])
     |> validate_change(:cron, fn :cron, cron ->
       with {:ok, expr} <- Crontab.CronExpression.Parser.parse(cron),
@@ -59,5 +63,9 @@ defmodule Logflare.Alerting.AlertQuery do
     # we implement the same columns for now,
     # can consider migrating to separate table in future.
     |> Query.update_source_mapping()
+  end
+
+  defp webhook_header_changeset(schema, params) do
+    AlertWebhookHeader.changeset(schema, params)
   end
 end
