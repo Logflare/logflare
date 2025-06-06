@@ -1,8 +1,8 @@
-defmodule LogflareGrpc.Trace.ServerTest do
+defmodule LogflareGrpc.Metrics.ServerTest do
   use Logflare.DataCase, async: false
 
-  alias Opentelemetry.Proto.Collector.Trace.V1.ExportTraceServiceResponse
-  alias Opentelemetry.Proto.Collector.Trace.V1.TraceService.Stub
+  alias Opentelemetry.Proto.Collector.Metrics.V1.ExportMetricsServiceResponse
+  alias Opentelemetry.Proto.Collector.Metrics.V1.MetricsService.Stub
   alias Logflare.SystemMetrics.AllLogsLogged
 
   setup do
@@ -36,34 +36,9 @@ defmodule LogflareGrpc.Trace.ServerTest do
           accepted_compressors: [GRPC.Compressor.Gzip]
         )
 
-      request = TestUtilsGrpc.random_export_service_request()
+      request = TestUtilsGrpc.random_otel_metrics_request()
 
-      assert {:ok, %ExportTraceServiceResponse{}} =
-               channel
-               |> emulate_request(request)
-    end
-
-    test "returns a success using access token for specific source", %{
-      source: source,
-      user: user,
-      port: port
-    } do
-      access_token =
-        insert(:access_token, resource_owner: user, scopes: "ingest:source:#{source.id}")
-
-      headers = [{"x-api-key", access_token.token}, {"x-source", source.token}]
-
-      {:ok, channel} =
-        GRPC.Stub.connect("localhost:#{port}",
-          headers: headers,
-          accepted_compressors: [GRPC.Compressor.Gzip]
-        )
-
-      request = TestUtilsGrpc.random_export_service_request()
-
-      assert {:ok, %ExportTraceServiceResponse{}} =
-               channel
-               |> emulate_request(request)
+      assert {:ok, %ExportMetricsServiceResponse{}} = emulate_request(channel, request)
     end
   end
 
