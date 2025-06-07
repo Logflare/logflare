@@ -51,7 +51,7 @@ defmodule Logflare.Logs.OtelTrace do
         "end_time" => Otel.nano_to_iso8601(span.end_time_unix_nano),
         "attributes" => Otel.handle_attributes(span.attributes),
         "timestamp" => start_time,
-        "project" => resource["name"]
+        "project" => Otel.resource_project(resource)
       }
     ] ++ events
   end
@@ -68,7 +68,7 @@ defmodule Logflare.Logs.OtelTrace do
       "trace_id" => Ecto.UUID.cast!(trace_id),
       "attributes" => Otel.handle_attributes(event.attributes),
       "timestamp" => Otel.nano_to_iso8601(event.time_unix_nano),
-      "project" => resource["name"]
+      "project" => Otel.resource_project(resource)
     }
   end
 end

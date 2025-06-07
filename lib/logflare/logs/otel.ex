@@ -16,6 +16,10 @@ defmodule Logflare.Logs.Otel do
     end)
   end
 
+  def resource_project(handled_resource) do
+    handled_resource["service"]["name"]
+  end
+
   def handle_scope(scope) do
     %{name: name, version: version, attributes: scope_attributes} = scope
 

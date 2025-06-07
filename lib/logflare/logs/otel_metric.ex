@@ -49,7 +49,7 @@ defmodule Logflare.Logs.OtelMetric do
       "metadata" => metadata,
       "scope" => scope,
       "resource" => resource,
-      "project" => resource["name"]
+      "project" => Otel.resource_project(resource)
     }
 
     handle_metric_data(metric.data, base)
