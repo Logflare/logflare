@@ -92,6 +92,14 @@ defmodule Logflare.Backends do
   end
 
   @doc """
+  Preload alerts key for a given backend
+  """
+  def preload_alerts(backends) do
+    Repo.preload(backends, [:alert_queries])
+  end
+
+
+  @doc """
   Creates a Backend for a given source.
   """
   @spec create_backend(map()) :: {:ok, Backend.t()} | {:error, Ecto.Changeset.t()}
@@ -148,6 +156,7 @@ defmodule Logflare.Backends do
     backend_config =
       backend
       |> Backend.changeset(attrs)
+      |> Ecto.Changeset.put_assoc(:alert_queries, Map.get(attrs, :alert_queries))
       |> Repo.update()
 
     with {:ok, updated} <- backend_config do

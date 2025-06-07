@@ -49,6 +49,23 @@ defmodule LogflareWeb.AlertsLiveTest do
       assert has_element?(view, "code", alert_query.query)
     end
 
+    test "lists shows number of attached backends", %{conn: conn, alert_query: alert_query, user: user} do
+      backend = insert(:backend, user: user, alert_queries: [alert_query])
+
+      {:ok, view, html} = live(conn, ~p"/alerts")
+      assert html =~ alert_query.name
+      assert html =~ "Backends: 1"
+
+      {:ok, view, html} = live(conn, ~p"/alerts/#{alert_query.id}")
+      assert html =~ backend.name
+      # link to show backend
+      view
+      |> element("a", backend.name)
+      |> render_click()
+
+      assert_patched(view, "/backends/#{backend.id}")
+    end
+
     test "saves new alert_query", %{conn: conn} do
       {:ok, view, _html} = live(conn, Routes.alerts_path(conn, :index))
 

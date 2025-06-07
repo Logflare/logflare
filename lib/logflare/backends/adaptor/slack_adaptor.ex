@@ -2,7 +2,7 @@ defmodule Logflare.Backends.Adaptor.SlackAdaptor do
   @moduledoc false
   use Phoenix.VerifiedRoutes,
     router: LogflareWeb.Router,
-    endpoint: LogflareWb.Endpoint
+    endpoint: LogflareWeb.Endpoint
 
   alias __MODULE__.Client
 

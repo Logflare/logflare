@@ -168,29 +168,27 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
       |> Message.put_batcher(:http)
     end
 
-    def handle_batch(:http, messages, _batch_info, %{startup_config: startup_config} = context) do
+    def handle_batch(:http, messages, _batch_info,  context) do
+
+      %{metadata: backend_metadata}  = backend = Backends.Cache.get_backend(context.backend_id)
+      config = Backends.Adaptor.get_backend_config(backend)
+
       # convert this to a custom format if needed
       payload =
-        if format_batch = Map.get(startup_config, :format_batch) do
+        if format_batch = Map.get(config, :format_batch) do
           events = for %{data: le} <- messages, do: le
           format_batch.(events)
         else
           for %{data: le} <- messages, do: le.body
         end
 
-      process_data(payload, context)
+      process_data(payload, config, backend_metadata, context)
       messages
     end
 
-    defp process_data(payload, %{startup_config: startup_config} = context) do
-      %{config: stored_config, metadata: backend_metadata} =
-        Backends.Cache.get_backend(context.backend_id)
-
-      config =
-        merge_configs(startup_config, stored_config)
-
+    defp process_data(payload, config, backend_metadata, context) do
       backend_meta =
-        for {k, v} <- backend_metadata || %{testing: 123}, into: %{} do
+        for {k, v} <- backend_metadata || %{}, into: %{} do
           {"backend.#{k}", v}
         end
 

@@ -7,6 +7,7 @@ defmodule Logflare.Alerting do
   alias Logflare.Repo
 
   require Logger
+  alias Logflare.Backends.Adaptor
   alias Logflare.Backends.Adaptor.WebhookAdaptor
   alias Logflare.Backends.Adaptor.SlackAdaptor
   alias Logflare.Alerting.AlertQuery
@@ -223,6 +224,12 @@ defmodule Logflare.Alerting do
               error_string: inspect(res)
             )
           end
+        end
+
+        # iterate over backends and fire for each
+        for backend <- alert_query.backends do
+          adaptor_mod = Adaptor.get_adaptor(backend)
+          adaptor_mod.send_alert(backend, alert_query, results)
         end
 
         :ok
