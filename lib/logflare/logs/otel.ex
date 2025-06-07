@@ -16,12 +16,14 @@ defmodule Logflare.Logs.Otel do
     end)
   end
 
-  def merge_scope_attributes(resource, scope) do
+  def handle_scope(scope) do
     %{name: name, version: version, attributes: scope_attributes} = scope
 
-    resource
-    |> Map.merge(%{"name" => name, "version" => version})
-    |> Map.merge(handle_attributes(scope_attributes))
+    %{
+      "name" => name,
+      "version" => version,
+      "attributes" => handle_attributes(scope_attributes)
+    }
   end
 
   def extract_key_value(%KeyValue{key: key, value: nil}), do: {key, nil}
