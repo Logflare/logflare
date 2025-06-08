@@ -32,31 +32,31 @@ defmodule Logflare.Logs.OtelMetric do
 
   defp handle_resource_metrics(%ResourceMetrics{resource: resource, scope_metrics: scope_metrics}) do
     resource = Otel.handle_resource(resource)
-
-    scope_metrics
-    |> Enum.map(&handle_scope_metric(&1, resource))
-    |> List.flatten()
+    Enum.map(scope_metrics, &handle_scope_metric(&1, resource))
   end
 
   defp handle_scope_metric(%ScopeMetrics{scope: scope, metrics: metrics}, resource) do
-    resource = Otel.merge_scope_attributes(resource, scope)
-    Enum.map(metrics, &handle_metric(&1, resource))
+    scope = Otel.handle_scope(scope)
+    Enum.map(metrics, &handle_metric(&1, resource, scope))
   end
 
-  defp handle_metric(%Metric{} = metric, resource) do
+  defp handle_metric(%Metric{} = metric, resource, scope) do
     metadata = %{"type" => "metric"}
-    metadata = Map.merge(metadata, resource)
-    handle_metric_data(metric.data, metric, metadata)
-  end
 
-  defp handle_metric_data({:gauge, %{data_points: data_points}}, metric, metadata) do
     base = %{
-      "metric_type" => "gauge",
       "event_message" => metric.name,
       "unit" => metric.unit,
       "metadata" => metadata,
-      "project" => metadata["name"]
+      "scope" => scope,
+      "resource" => resource,
+      "project" => Otel.resource_project(resource)
     }
+
+    handle_metric_data(metric.data, base)
+  end
+
+  defp handle_metric_data({:gauge, %{data_points: data_points}}, base) do
+    base = Map.merge(base, %{"metric_type" => "gauge"})
 
     Enum.map(data_points, fn data_point ->
       %{value: {_, value}} = data_point
@@ -70,16 +70,13 @@ defmodule Logflare.Logs.OtelMetric do
     end)
   end
 
-  defp handle_metric_data({:sum, sum}, metric, metadata) do
-    base = %{
-      "metric_type" => "sum",
-      "event_message" => metric.name,
-      "unit" => metric.unit,
-      "metadata" => metadata,
-      "aggregation_temporality" => aggregation_temporality(sum.aggregation_temporality),
-      "is_monotonic" => sum.is_monotonic,
-      "project" => metadata["name"]
-    }
+  defp handle_metric_data({:sum, sum}, base) do
+    base =
+      Map.merge(base, %{
+        "metric_type" => "sum",
+        "aggregation_temporality" => aggregation_temporality(sum.aggregation_temporality),
+        "is_monotonic" => sum.is_monotonic
+      })
 
     Enum.map(sum.data_points, fn data_point ->
       %{value: {_, value}} = data_point
@@ -93,15 +90,12 @@ defmodule Logflare.Logs.OtelMetric do
     end)
   end
 
-  defp handle_metric_data({:histogram, histogram}, metric, metadata) do
-    base = %{
-      "metric_type" => "histogram",
-      "event_message" => metric.name,
-      "unit" => metric.unit,
-      "metadata" => metadata,
-      "aggregation_temporality" => aggregation_temporality(histogram.aggregation_temporality),
-      "project" => metadata["name"]
-    }
+  defp handle_metric_data({:histogram, histogram}, base) do
+    base =
+      Map.merge(base, %{
+        "metric_type" => "histogram",
+        "aggregation_temporality" => aggregation_temporality(histogram.aggregation_temporality)
+      })
 
     Enum.map(histogram.data_points, fn data_point ->
       Map.merge(base, %{
@@ -118,15 +112,12 @@ defmodule Logflare.Logs.OtelMetric do
     end)
   end
 
-  defp handle_metric_data({:exponential_histogram, histogram}, metric, metadata) do
-    base = %{
-      "metric_type" => "exponential_histogram",
-      "event_message" => metric.name,
-      "unit" => metric.unit,
-      "metadata" => metadata,
-      "aggregation_temporality" => aggregation_temporality(histogram.aggregation_temporality),
-      "project" => metadata["name"]
-    }
+  defp handle_metric_data({:exponential_histogram, histogram}, base) do
+    base =
+      Map.merge(base, %{
+        "metric_type" => "exponential_histogram",
+        "aggregation_temporality" => aggregation_temporality(histogram.aggregation_temporality)
+      })
 
     Enum.map(histogram.data_points, fn data_point ->
       Map.merge(base, %{
@@ -146,7 +137,7 @@ defmodule Logflare.Logs.OtelMetric do
     end)
   end
 
-  defp handle_metric_data({type, _}, _, _) do
+  defp handle_metric_data({type, _}, _) do
     Logger.warning("Unsupported metric type #{inspect(type)}, dropping")
 
     []
