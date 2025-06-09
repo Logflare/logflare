@@ -230,10 +230,11 @@ defmodule LogflareWeb.LogController do
 
   def otel_traces(
         %{assigns: %{source: source}} = conn,
-        %ExportTraceServiceRequest{resource_spans: spans}
+        %ExportTraceServiceRequest{resource_spans: resource_spans}
       ) do
-    {:ok, _} = Processor.ingest(spans, Logs.OtelTrace, source)
-    send_proto_resp(conn, %ExportTraceServiceResponse{})
+    resource_spans
+    |> Processor.ingest(Logs.OtelTrace, source)
+    |> protobuf_response(conn, %ExportTraceServiceResponse{})
   rescue
     exception ->
       send_proto_error(conn, 500, "Internal server error")
@@ -244,12 +245,21 @@ defmodule LogflareWeb.LogController do
         %{assigns: %{source: source}} = conn,
         %ExportMetricsServiceRequest{resource_metrics: resource_metrics}
       ) do
-    {:ok, _} = Processor.ingest(resource_metrics, Logs.OtelMetric, source)
-    send_proto_resp(conn, %ExportMetricsServiceResponse{})
+    resource_metrics
+    |> Processor.ingest(Logs.OtelMetric, source)
+    |> protobuf_response(conn, %ExportMetricsServiceResponse{})
   rescue
     exception ->
       send_proto_error(conn, 500, "Internal server error")
       reraise exception, __STACKTRACE__
+  end
+
+  defp protobuf_response(ingest_result, conn, success_response) do
+    case ingest_result do
+      :ok -> send_proto_resp(conn, success_response)
+      {:ok, _} -> send_proto_resp(conn, success_response)
+      {:error, _} -> send_proto_error(conn, 500, "Internal server error")
+    end
   end
 
   defp send_proto_resp(conn, resp) do
