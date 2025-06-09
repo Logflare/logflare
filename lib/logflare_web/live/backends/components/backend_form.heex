@@ -31,7 +31,7 @@
   </div>
 
   <div :if={@live_action == :new}>
-    <%= select(f, :type, ["Select a backend type...", Webhook: :webhook, Postgres: :postgres, BigQuery: :bigquery, Datadog: :datadog, Elastic: :elastic, Loki: :loki, ClickHouse: :clickhouse],
+    <%= select(f, :type, ["Select a backend type...", Webhook: :webhook, Postgres: :postgres, BigQuery: :bigquery, Datadog: :datadog, Elastic: :elastic, Loki: :loki, ClickHouse: :clickhouse, "S3 Parquet": :s3parquet],
       phx_change: :change_form_type,
       class: "form-control form-control-margin",
       id: "type"
@@ -215,6 +215,37 @@
           <div class="form-group">
             <%= label(f_config, :port, "Connection pool size") %>
             <%= text_input(f_config, :pool_size, class: "form-control", default: 1) %>
+          </div>
+        <% "s3parquet" -> %>
+          <div class="form-group">
+            <%= label(f_config, :aws_access_key_id, "AWS Access Key ID") %>
+            <%= text_input(f_config, :aws_access_key_id, class: "form-control") %>
+            <%= label(f_config, :aws_secret_access_key, "AWS Secret Access Key") %>
+            <%= text_input(f_config, :aws_secret_access_key, class: "form-control", type: "password") %>
+            <small class="form-text text-muted">
+              Credentials used to access to the S3 bucket.
+            </small>
+          </div>
+          <div class="form-group">
+            <%= label(f_config, :s3_bucket, "S3 Bucket Name") %>
+            <%= text_input(f_config, :s3_bucket, class: "form-control") %>
+            <small class="form-text text-muted">
+              Provide the S3 bucket name to where parquet files will be stored.
+            </small>
+          </div>
+          <div class="form-group">
+            <%= label(f_config, :aws_region, "AWS Region") %>
+            <%= text_input(f_config, :aws_region, class: "form-control", default: "us-west-2") %>
+            <small class="form-text text-muted">
+              The AWS region where the S3 bucket is located, for example: <code>us-west-2</code>
+            </small>
+          </div>
+          <div class="form-group">
+            <%= label(f_config, :batch_timeout, "Batch Timeout") %>
+            <%= text_input(f_config, :batch_timeout, class: "form-control", type: "number", default: 5_000) %>
+            <small class="form-text text-muted">
+              The batch timeout in milliseconds.
+            </small>
           </div>
         <% _ -> %>
           <div>Select a Backend Type</div>
