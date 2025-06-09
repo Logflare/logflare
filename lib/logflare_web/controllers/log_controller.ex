@@ -254,12 +254,12 @@ defmodule LogflareWeb.LogController do
       reraise exception, __STACKTRACE__
   end
 
-  defp protobuf_response(ingest_result, conn, success_response) do
-    case ingest_result do
-      :ok -> send_proto_resp(conn, success_response)
-      {:ok, _} -> send_proto_resp(conn, success_response)
-      {:error, _} -> send_proto_error(conn, 500, "Internal server error")
-    end
+  defp protobuf_response({:error, _}, conn, _success_response) do
+    send_proto_error(conn, 500, "Internal server error")
+  end
+
+  defp protobuf_response(_, conn, success_response) do
+    send_proto_resp(conn, success_response)
   end
 
   defp send_proto_resp(conn, resp) do
