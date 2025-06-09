@@ -18,17 +18,20 @@ defmodule Logflare.Telemetry do
   def init(_arg) do
     otel_exporter =
       if Application.get_env(:logflare, :opentelemetry_enabled?) do
+        resource =
+          :otel_resource_detector.get_resource()
+          |> :otel_resource.attributes()
+          |> :otel_attributes.map()
+          |> Enum.reduce(%{}, fn {k, v}, acc ->
+            k = Atom.to_string(k) |> String.split(".") |> Enum.reverse()
+            map = Enum.reduce(k, v, fn key, acc -> %{key => acc} end)
+            DeepMerge.deep_merge(map, acc)
+          end)
+
         otel_exporter_opts =
           Application.get_all_env(:opentelemetry_exporter)
           |> Keyword.put(:metrics, otel_metrics())
-          |> Keyword.put(:resource, %{
-            name: "Logflare",
-            service: %{
-              name: "Logflare",
-              version: Application.spec(:logflare, :vsn) |> to_string()
-            },
-            instance: inspect(Node.self())
-          })
+          |> Keyword.put(:resource, resource)
           |> Keyword.update!(:otlp_headers, &Map.new/1)
 
         [{OtelMetricExporter, otel_exporter_opts}]
