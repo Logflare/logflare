@@ -102,7 +102,7 @@ defmodule Logflare.Google.CloudResourceManagerTest do
       },
       %Binding{
         members: ["serviceAccount:#{google_configs.compute_engine_sa}"],
-        role: "roles/containerregistry.ServiceAgent"
+        role: "roles/artifactregistry.reader"
       },
       %Binding{
         members: ["serviceAccount:#{google_configs.compute_engine_sa}"],
