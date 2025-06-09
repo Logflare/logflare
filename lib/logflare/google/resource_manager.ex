@@ -100,10 +100,6 @@ defmodule Logflare.Google.CloudResourceManager do
       },
       %Model.Binding{
         members: ["serviceAccount:#{env_compute_engine_sa()}"],
-        role: "roles/containerregistry.ServiceAgent"
-      },
-      %Model.Binding{
-        members: ["serviceAccount:#{env_compute_engine_sa()}"],
         role: "roles/artifactregistry.reader"
       },
       %Model.Binding{
