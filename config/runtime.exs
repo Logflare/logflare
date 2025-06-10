@@ -167,6 +167,7 @@ config :logflare,
          project_id: System.get_env("GOOGLE_PROJECT_ID"),
          service_account: System.get_env("GOOGLE_SERVICE_ACCOUNT"),
          compute_engine_sa: System.get_env("GOOGLE_COMPUTE_ENGINE_SA"),
+         grafana_sa: System.get_env("GOOGLE_GRAFANA_SA"),
          api_sa: System.get_env("GOOGLE_API_SA"),
          cloud_build_sa: System.get_env("GOOGLE_CLOUD_BUILD_SA"),
          cloud_build_trigger_sa: System.get_env("GOOGLE_CLOUD_BUILD_TRIGGER_SA")

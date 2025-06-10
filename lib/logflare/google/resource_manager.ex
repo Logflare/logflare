@@ -94,9 +94,14 @@ defmodule Logflare.Google.CloudResourceManager do
         members: ["serviceAccount:#{env_service_account()}"],
         role: "roles/resourcemanager.projectIamAdmin"
       },
+      # roles for compute engine
       %Model.Binding{
         members: ["serviceAccount:#{env_compute_engine_sa()}"],
         role: "roles/compute.instanceAdmin"
+      },
+      %Model.Binding{
+        members: ["serviceAccount:#{env_compute_engine_sa()}"],
+        role: "roles/artifactregistry.reader"
       },
       %Model.Binding{
         members: ["serviceAccount:#{env_compute_engine_sa()}"],
@@ -110,6 +115,16 @@ defmodule Logflare.Google.CloudResourceManager do
         members: ["serviceAccount:#{env_compute_engine_sa()}"],
         role: "roles/monitoring.metricWriter"
       },
+      # roles for grafana BQ plugin
+      %Model.Binding{
+        members: ["serviceAccount:#{env_grafana_sa()}"],
+        role: "roles/bigquery.dataViewer"
+      },
+      %Model.Binding{
+        members: ["serviceAccount:#{env_grafana_sa()}"],
+        role: "roles/bigquery.jobUser"
+      },
+      # roles for cloudbuild
       %Model.Binding{
         condition: nil,
         members: ["serviceAccount:#{env_cloud_build_sa()}"],
@@ -212,4 +227,7 @@ defmodule Logflare.Google.CloudResourceManager do
 
   defp env_compute_engine_sa,
     do: Application.get_env(:logflare, Logflare.Google)[:compute_engine_sa]
+
+  defp env_grafana_sa,
+    do: Application.get_env(:logflare, Logflare.Google)[:grafana_sa]
 end
