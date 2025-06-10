@@ -39,9 +39,9 @@ defmodule Logflare.Backends do
   def list_backends(filters) when is_list(filters) do
     filters
     |> Enum.reduce(from(b in Backend), fn
-
       {:types, types}, q when is_list(types) ->
         where(q, [b], b.type in ^types)
+
       # filter down to backends of this source
       {:source_id, id}, q ->
         join(q, :inner, [b], s in assoc(b, :sources), on: s.id == ^id)
@@ -100,7 +100,6 @@ defmodule Logflare.Backends do
   def preload_alerts(backends) do
     Repo.preload(backends, [:alert_queries])
   end
-
 
   @doc """
   Creates a Backend for a given source.

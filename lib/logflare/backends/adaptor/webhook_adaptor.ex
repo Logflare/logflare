@@ -168,9 +168,8 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
       |> Message.put_batcher(:http)
     end
 
-    def handle_batch(:http, messages, _batch_info,  context) do
-
-      %{metadata: backend_metadata}  = backend = Backends.Cache.get_backend(context.backend_id)
+    def handle_batch(:http, messages, _batch_info, context) do
+      %{metadata: backend_metadata} = backend = Backends.Cache.get_backend(context.backend_id)
       config = Backends.Adaptor.get_backend_config(backend)
 
       # convert this to a custom format if needed

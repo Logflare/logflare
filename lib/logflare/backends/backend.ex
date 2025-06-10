@@ -32,7 +32,12 @@ defmodule Logflare.Backends.Backend do
     many_to_many(:sources, Source, join_through: "sources_backends")
     belongs_to(:user, User)
     has_many(:rules, Rule)
-    many_to_many(:alert_queries, AlertQuery, join_through: "alert_queries_backends", on_replace: :delete)
+
+    many_to_many(:alert_queries, AlertQuery,
+      join_through: "alert_queries_backends",
+      on_replace: :delete
+    )
+
     field(:register_for_ingest, :boolean, virtual: true, default: true)
     field :metadata, :map
     timestamps()

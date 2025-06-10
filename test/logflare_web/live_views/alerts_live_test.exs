@@ -49,7 +49,11 @@ defmodule LogflareWeb.AlertsLiveTest do
       assert has_element?(view, "code", alert_query.query)
     end
 
-    test "can attach new backend to the alert query", %{conn: conn, user: user, alert_query: alert_query} do
+    test "can attach new backend to the alert query", %{
+      conn: conn,
+      user: user,
+      alert_query: alert_query
+    } do
       backend = insert(:backend, user: user)
 
       {:ok, view, _html} = live(conn, ~p"/alerts/#{alert_query.id}")
@@ -62,7 +66,7 @@ defmodule LogflareWeb.AlertsLiveTest do
       assert view
              |> element("form#backend")
              |> render_submit(%{
-              backend: %{ backend_id: backend.id}
+               backend: %{backend_id: backend.id}
              }) =~ "Backend added successfully"
 
       html = render(view)
@@ -77,11 +81,14 @@ defmodule LogflareWeb.AlertsLiveTest do
       assert render(view) =~ alert_query.name
     end
 
-    test "can remove backend from the alert query", %{conn: conn, user: user, alert_query: alert_query} do
+    test "can remove backend from the alert query", %{
+      conn: conn,
+      user: user,
+      alert_query: alert_query
+    } do
       backend = insert(:backend, user: user, alert_queries: [alert_query])
       {:ok, view, html} = live(conn, ~p"/alerts/#{alert_query.id}")
       assert html =~ backend.name
-
 
       view
       |> element("button", "Remove backend")

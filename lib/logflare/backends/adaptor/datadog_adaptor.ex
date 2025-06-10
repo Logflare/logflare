@@ -40,7 +40,7 @@ defmodule Logflare.Backends.Adaptor.DatadogAdaptor do
   end
 
   @impl Logflare.Backends.Adaptor
-  def transform_config(%_{config: config} = backend) do
+  def transform_config(%_{config: config}) do
     %{
       url: Map.get(@api_url_mapping, config.region),
       headers: %{"dd-api-key" => config.api_key},

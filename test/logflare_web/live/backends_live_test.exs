@@ -227,19 +227,27 @@ defmodule LogflareWeb.BackendsLiveTest do
 
   test "show: add/delete an alert", %{conn: conn, user: user} do
     alert_query = insert(:alert, user: user)
-    backend = insert(:backend, user: user)
+    backend = insert(:backend, user: user, type: :incidentio)
     {:ok, view, _html} = live(conn, ~p"/backends/#{backend.id}")
 
+    view
+    |> element("button", "Add an alert")
+    |> render_click()
+
     assert view
-           |> element("button", "Add an alert")
-           |> render_click() =~ "Alert successfully added"
+           |> element("form#alert")
+           |> render_submit(%{
+             alert: %{
+               alert_id: alert_query.id
+             }
+           }) =~
+             "Alert successfully added"
 
-    assert html =
-             view
-             |> element("ul li button", "Delete alert")
-             |> render_click() =~ "Alert successfully deleted"
+    assert view
+           |> element("button", "Remove alert")
+           |> render_click() =~ "Alert successfully removed from backend"
 
-    refute html =~ alert_query.name
+    refute render(view) =~ alert_query.name
   end
 
   test "new: change type will change inputs", %{conn: conn} do

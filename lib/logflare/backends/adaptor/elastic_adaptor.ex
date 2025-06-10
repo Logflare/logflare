@@ -38,7 +38,7 @@ defmodule Logflare.Backends.Adaptor.ElasticAdaptor do
   end
 
   @impl Logflare.Backends.Adaptor
-  def transform_config(%_{config: config} = backend) do
+  def transform_config(%_{config: config}) do
     basic_auth = Utils.encode_basic_auth(config)
 
     %{

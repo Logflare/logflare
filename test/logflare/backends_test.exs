@@ -58,12 +58,12 @@ defmodule Logflare.BackendsTest do
     end
 
     test "list_backends/1 with alerts queries", %{user: user} do
-      backend = insert(:backend,  user: user)
+      backend = insert(:backend, user: user)
       alert = insert(:alert, user: user, backends: [backend])
 
-      assert [%{alert_queries: [_]}] = Backends.list_backends(user_id: user.id) |> Backends.preload_alerts()
+      assert [%{alert_queries: [_]}] =
+               Backends.list_backends(user_id: user.id) |> Backends.preload_alerts()
     end
-
 
     test "fetch_latest_timestamp/1 without SourceSup returns 0", %{source: source} do
       assert 0 == Backends.fetch_latest_timestamp(source)
@@ -116,14 +116,19 @@ defmodule Logflare.BackendsTest do
     end
 
     test "can attach/remove multiple alerts to a backend", %{user: user} do
-      [alert1, _ ] = alerts = insert_pair(:alert, user: user)
+      [alert1, _] = alerts = insert_pair(:alert, user: user)
       backend = insert(:backend, user: user)
       # addition
-      assert {:ok, %Backend{} = updated} = Backends.update_backend(backend, %{alert_queries: alerts})
-      assert [%{alert_queries: [_,_]}] = Backends.list_backends(user_id: user.id) |> Backends.preload_alerts()
+      assert {:ok, %Backend{} = updated} =
+               Backends.update_backend(backend, %{alert_queries: alerts})
+
+      assert [%{alert_queries: [_, _]}] =
+               Backends.list_backends(user_id: user.id) |> Backends.preload_alerts()
 
       # removal
-      assert {:ok, %Backend{} = updated} = Backends.update_backend(backend, %{alert_queries: [ alert1]})
+      assert {:ok, %Backend{} = updated} =
+               Backends.update_backend(backend, %{alert_queries: [alert1]})
+
       assert %Backend{alert_queries: [_]} = Backends.preload_alerts(backend)
     end
 

@@ -40,29 +40,28 @@
       </li>
     </ul>
 
-      <h3>Backends</h3>
+    <h3>Backends</h3>
 
-      <div class="tw-flex tw-gap-3 tw-items-center">
-        <button phx-click="toggle-add-backend" class="btn btn-outline-primary btn-sm">
-          <%= if @show_add_backend_form do %>
+    <div class="tw-flex tw-gap-3 tw-items-center">
+      <button phx-click="toggle-add-backend" class="btn btn-outline-primary btn-sm">
+        <%= if @show_add_backend_form do %>
           Cancel
-          <% else %>
+        <% else %>
           Add Backend
-          <% end %>
-        </button>
+        <% end %>
+      </button>
+    </div>
+    <%= if @show_add_backend_form do %>
+      <div class="tw-flex tw-gap-3 tw-items-center tw-mt-3 tw-w-full">
+        <span><strong>Add Backend:</strong></span>
+        <.form :let={f} id="backend" for={%{}} as={:backend} action="#" phx-submit="add-backend" class="tw-flex tw-gap-2 tw-items-end tw-w-full">
+          <%= select(f, :backend_id, @backend_options, class: "form-control form-control-sm", prompt: [key: "Choose a backend"]) %>
+          <%= submit("Add backend", class: "btn btn-primary btn-sm") %>
+        </.form>
       </div>
-      <%= if @show_add_backend_form do %>
-        <div class="tw-flex tw-gap-3 tw-items-center tw-mt-3 tw-w-full">
-          <span><strong>Add Backend:</strong></span>
-          <.form :let={f} id="backend" for={%{}} as={:backend} action="#" phx-submit="add-backend" class="tw-flex tw-gap-2 tw-items-end tw-w-full">
-            <%= select(f, :backend_id, @backend_options, class: "form-control form-control-sm", prompt: [key: "Choose a backend"]) %>
-            <%= submit("Add backend", class: "btn btn-primary btn-sm") %>
-          </.form>
-        </div>
-      <% end %>
+    <% end %>
 
     <ul class="list-group tw-text-sm">
-
       <li class="list-group-item">
         <span>
           <strong>slack:</strong>
@@ -84,7 +83,7 @@
         <span><strong>webhook:</strong> <%= @alert.webhook_notification_url %></span>
       </li>
 
-      <li :if={@alert} :for={backend <- @alert.backends} class="list-group-item">
+      <li :for={backend <- @alert.backends} :if={@alert} class="list-group-item">
         <div class="tw-flex tw-items-center tw-gap-2">
           <span class="badge badge-pill badge-secondary"><%= backend.type %></span>
           <.link patch={~p"/backends/#{backend.id}"} class="tw-no-underline ml-2">
@@ -97,7 +96,6 @@
       </li>
     </ul>
   </div>
-
 
   <.run_query_result {assigns} />
 </section>

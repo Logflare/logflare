@@ -88,13 +88,12 @@ defmodule Logflare.Backends.Adaptor.IncidentioAdaptorTest do
                "status" => "firing",
                "description" => _,
                "metadata" => %{"data" => [%{"event_message" => ^message}]},
-               "source_url" => alert_source_url,
+               "source_url" => alert_source_url
              } = payload
 
-        # link to the backend
-        assert alert_source_url =~ "/backends/"
+      # link to the backend
+      assert alert_source_url =~ "/backends/"
     end
-
   end
 
   describe "alert query as alert events" do
@@ -120,7 +119,16 @@ defmodule Logflare.Backends.Adaptor.IncidentioAdaptorTest do
 
     test "alert queries that are run sends the results", %{user: user, backend: backend} do
       self = self()
-      alert_query = insert(:alert, user: user, slack_hook_url: nil, webhook_notification_url: nil, backends: [backend], description: "test description", name: "test name")
+
+      alert_query =
+        insert(:alert,
+          user: user,
+          slack_hook_url: nil,
+          webhook_notification_url: nil,
+          backends: [backend],
+          description: "test description",
+          name: "test name"
+        )
 
       GoogleApi.BigQuery.V2.Api.Jobs
       |> expect(:bigquery_jobs_query, 1, fn _conn, _proj_id, _opts ->
@@ -142,17 +150,15 @@ defmodule Logflare.Backends.Adaptor.IncidentioAdaptorTest do
                "status" => "firing",
                "description" => description,
                "metadata" => %{
-                "data" => [%{"testing" => "123"}]
+                 "data" => [%{"testing" => "123"}]
                },
-               "source_url" => alert_source_url,
+               "source_url" => alert_source_url
              } = payload
 
-        # link to the alert
-        assert alert_source_url =~ "/alerts/"
-        assert title =~ alert_query.name
-        assert description =~ alert_query.description
+      # link to the alert
+      assert alert_source_url =~ "/alerts/"
+      assert title =~ alert_query.name
+      assert description =~ alert_query.description
     end
-
-
   end
 end

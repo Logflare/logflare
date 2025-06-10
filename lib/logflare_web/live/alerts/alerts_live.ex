@@ -132,15 +132,15 @@ defmodule LogflareWeb.AlertsLive do
 
     with {:ok, alert} <- Alerting.update_alert_query(alert, %{slack_hook_url: nil}) do
       alert = Alerting.preload_alert_query(alert)
+
       {:noreply,
        socket
        |> assign(:alert, alert)
        |> put_flash(:info, "Slack notifications have been removed.")}
-
     else
       {:error, %Ecto.Changeset{} = changeset} ->
         error_message = format_ecto_errors(changeset, "Failed to remove Slack notifications")
-        {:noreply,  put_flash(socket, :error, error_message)}
+        {:noreply, put_flash(socket, :error, error_message)}
     end
   end
 
@@ -208,51 +208,69 @@ defmodule LogflareWeb.AlertsLive do
     end
   end
 
-  def handle_event("add-backend", %{"backend" => %{"backend_id" => backend_id}}, %{assigns: %{alert: alert}} = socket) do
+  def handle_event(
+        "add-backend",
+        %{"backend" => %{"backend_id" => backend_id}},
+        %{assigns: %{alert: alert}} = socket
+      ) do
     backend = Backends.get_backend(backend_id)
 
-    socket = if backend do
-      case Alerting.update_alert_query(alert, %{backends: [backend | alert.backends]}) do
-        {:ok, updated_alert} ->
-          updated_alert = Alerting.preload_alert_query(updated_alert)
-          socket
-          |> assign(:alert, updated_alert)
-          |> put_flash(:info, "Backend added successfully")
+    socket =
+      if backend do
+        case Alerting.update_alert_query(alert, %{backends: [backend | alert.backends]}) do
+          {:ok, updated_alert} ->
+            updated_alert = Alerting.preload_alert_query(updated_alert)
 
-        {:error, %Ecto.Changeset{} = changeset} ->
-          error_message = format_ecto_errors(changeset, "Failed to add backend")
+            socket
+            |> assign(:alert, updated_alert)
+            |> put_flash(:info, "Backend added successfully")
 
-          socket
-          |> put_flash(:error, error_message)
+          {:error, %Ecto.Changeset{} = changeset} ->
+            error_message = format_ecto_errors(changeset, "Failed to add backend")
+
+            socket
+            |> put_flash(:error, error_message)
+        end
+      else
+        socket
+        |> put_flash(:error, "Backend not found")
       end
-    else
-      socket
-      |> put_flash(:error, "Backend not found")
-    end
+
     {:noreply, socket}
   end
 
-  def handle_event("remove-backend", %{"backend_id" => backend_id}, %{assigns: %{alert: alert}} = socket) do
+  def handle_event(
+        "remove-backend",
+        %{"backend_id" => backend_id},
+        %{assigns: %{alert: alert}} = socket
+      ) do
     backend = Backends.get_backend(backend_id)
 
-    socket = if backend do
-      # Remove the association between alert and backend
-      Alerting.update_alert_query(alert, %{backends: Enum.filter(alert.backends, &(&1.id != backend.id))})
-      |> case do
-        {:ok, updated_alert} ->
-          updated_alert = Alerting.preload_alert_query(updated_alert)
-          socket
-          |> assign(:alert, updated_alert)
-          |> put_flash(:info, "Backend removed successfully")
-        {:error, %Ecto.Changeset{} = changeset} ->
-          error_message = format_ecto_errors(changeset, "Failed to remove backend")
-          socket
-          |> put_flash(:error, error_message)
+    socket =
+      if backend do
+        # Remove the association between alert and backend
+        Alerting.update_alert_query(alert, %{
+          backends: Enum.filter(alert.backends, &(&1.id != backend.id))
+        })
+        |> case do
+          {:ok, updated_alert} ->
+            updated_alert = Alerting.preload_alert_query(updated_alert)
+
+            socket
+            |> assign(:alert, updated_alert)
+            |> put_flash(:info, "Backend removed successfully")
+
+          {:error, %Ecto.Changeset{} = changeset} ->
+            error_message = format_ecto_errors(changeset, "Failed to remove backend")
+
+            socket
+            |> put_flash(:error, error_message)
+        end
+      else
+        socket
+        |> put_flash(:error, "Backend not found")
       end
-    else
-      socket
-      |> put_flash(:error, "Backend not found")
-    end
+
     {:noreply, socket}
   end
 

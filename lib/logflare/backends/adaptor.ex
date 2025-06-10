@@ -100,5 +100,10 @@ defmodule Logflare.Backends.Adaptor do
   """
   @callback send_alert(Backend.t(), AlertQuery.t(), [term()]) :: :ok | {:error, term()}
 
-  @optional_callbacks pre_ingest: 3, transform_config: 1, format_batch: 1, format_batch: 2, test_connection: 2, send_alert: 3
+  @optional_callbacks pre_ingest: 3,
+                      transform_config: 1,
+                      format_batch: 1,
+                      format_batch: 2,
+                      test_connection: 2,
+                      send_alert: 3
 end

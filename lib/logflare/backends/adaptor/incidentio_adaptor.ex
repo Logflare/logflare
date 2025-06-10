@@ -49,8 +49,10 @@ defmodule Logflare.Backends.Adaptor.IncidentioAdaptor do
     config_map = transform_config(updated_backend)
 
     config = for {key, value} <- config_map, do: {key, value}
-    config = Keyword.put(config, :body, config_map.format_batch.(results))
-    WebhookAdaptor.Client.send(config)
+
+    config
+    |> Keyword.put(:body, config_map.format_batch.(results))
+    |> WebhookAdaptor.Client.send()
   end
 
   @impl Logflare.Backends.Adaptor
@@ -88,7 +90,7 @@ defmodule Logflare.Backends.Adaptor.IncidentioAdaptor do
       "Authorization" => "Bearer #{config[:api_token]}"
     }
 
-    enriched_config = Map.put(config, :source_url, url(~p"/backends/#{backend.id}"))
+    enriched_config = Map.put_new(config, :source_url, url(~p"/backends/#{backend.id}"))
 
     %{
       url: url,
