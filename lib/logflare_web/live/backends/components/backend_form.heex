@@ -218,9 +218,9 @@
           </div>
         <% "s3parquet" -> %>
           <div class="form-group">
-            <%= label(f_config, :aws_access_key_id, "AWS Access Key ID") %>
+            <%= label(f_config, :aws_access_key_id, "Access Key ID") %>
             <%= text_input(f_config, :aws_access_key_id, class: "form-control") %>
-            <%= label(f_config, :aws_secret_access_key, "AWS Secret Access Key") %>
+            <%= label(f_config, :aws_secret_access_key, "Secret Access Key") %>
             <%= text_input(f_config, :aws_secret_access_key, class: "form-control", type: "password") %>
             <small class="form-text text-muted">
               Credentials used to access to the S3 bucket.
@@ -230,14 +230,14 @@
             <%= label(f_config, :s3_bucket, "S3 Bucket Name") %>
             <%= text_input(f_config, :s3_bucket, class: "form-control") %>
             <small class="form-text text-muted">
-              Provide the S3 bucket name to where parquet files will be stored.
+              Provide the S3 bucket name to where files will be stored.
             </small>
           </div>
           <div class="form-group">
             <%= label(f_config, :aws_region, "AWS Region") %>
             <%= text_input(f_config, :aws_region, class: "form-control", default: "us-west-2") %>
             <small class="form-text text-muted">
-              The AWS region where the S3 bucket is located, for example: <code>us-west-2</code>
+              The region where the S3 bucket is located, for example: <code>us-west-2</code>
             </small>
           </div>
           <div class="form-group">

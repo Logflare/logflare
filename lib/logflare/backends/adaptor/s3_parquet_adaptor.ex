@@ -19,9 +19,9 @@ defmodule Logflare.Backends.Adaptor.S3ParquetAdaptor do
   typedstruct do
     field(:config, %{
       s3_bucket: String.t(),
-      aws_region: String.t(),
-      aws_access_key_id: String.t(),
-      aws_secret_access_key: String.t(),
+      storage_region: String.t(),
+      access_key_id: String.t(),
+      secret_access_key: String.t(),
       batch_timeout: pos_integer()
     })
 
@@ -64,16 +64,16 @@ defmodule Logflare.Backends.Adaptor.S3ParquetAdaptor do
     {%{},
      %{
        s3_bucket: :string,
-       aws_region: :string,
-       aws_access_key_id: :string,
-       aws_secret_access_key: :string,
+       storage_region: :string,
+       access_key_id: :string,
+       secret_access_key: :string,
        batch_timeout: :integer
      }}
     |> Changeset.cast(params, [
       :s3_bucket,
-      :aws_region,
-      :aws_access_key_id,
-      :aws_secret_access_key,
+      :storage_region,
+      :access_key_id,
+      :secret_access_key,
       :batch_timeout
     ])
   end
@@ -84,7 +84,7 @@ defmodule Logflare.Backends.Adaptor.S3ParquetAdaptor do
     import Ecto.Changeset
 
     changeset
-    |> validate_required([:s3_bucket, :aws_region, :aws_access_key_id, :aws_secret_access_key])
+    |> validate_required([:s3_bucket, :storage_region, :access_key_id, :secret_access_key])
     |> Changeset.validate_number(:batch_timeout, greater_than_or_equal_to: @min_batch_timeout)
   end
 
@@ -184,9 +184,9 @@ defmodule Logflare.Backends.Adaptor.S3ParquetAdaptor do
     |> DataFrame.to_parquet(s3_file_path,
       streaming: true,
       config: [
-        access_key_id: backend.config.aws_access_key_id,
-        secret_access_key: backend.config.aws_secret_access_key,
-        region: backend.config.aws_region
+        access_key_id: backend.config.access_key_id,
+        secret_access_key: backend.config.secret_access_key,
+        region: backend.config.storage_region
       ]
     )
   end
