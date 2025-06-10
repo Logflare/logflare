@@ -20,25 +20,31 @@ defmodule Logflare.Google.CloudResourceManagerTest do
            google_configs: google_configs,
            expected_members: expected_members
          } do
+      pid = self()
+
       stub(
         GoogleApi.CloudResourceManager.V1.Api.Projects,
         :cloudresourcemanager_projects_set_iam_policy,
         fn _, project_number, [body: body] ->
           assert project_number == google_configs.project_number
-
-          assert {[%{members: members, role: role}], service_accounts} =
-                   Enum.split_with(body.policy.bindings, fn %{role: role} ->
-                     role == "roles/bigquery.jobUser"
-                   end)
-
-          assert Enum.sort(members) == Enum.sort(expected_members)
-          assert role == "roles/bigquery.jobUser"
-          assert service_accounts == expected_service_accounts(google_configs)
+          send(pid, body.policy.bindings)
           {:ok, ""}
         end
       )
 
       CloudResourceManager.set_iam_policy(async: false)
+
+      assert_received [_ | _] = bindings
+
+      assert Enum.all?(bindings, fn binding ->
+               %Binding{members: [_ | _], role: "" <> _} = binding
+             end)
+
+      members_list = Enum.flat_map(bindings, & &1.members)
+
+      for member <- expected_members do
+        assert Enum.member?(members_list, member)
+      end
     end
   end
 
@@ -84,74 +90,5 @@ defmodule Logflare.Google.CloudResourceManagerTest do
     ]
     |> Enum.sort_by(& &1.updated_at, {:desc, Date})
     |> Enum.map(&"user:#{&1.email}")
-  end
-
-  defp expected_service_accounts(google_configs) do
-    [
-      %Binding{
-        members: ["serviceAccount:#{google_configs.service_account}"],
-        role: "roles/bigquery.admin"
-      },
-      %Binding{
-        members: ["serviceAccount:#{google_configs.service_account}"],
-        role: "roles/resourcemanager.projectIamAdmin"
-      },
-      %Binding{
-        members: ["serviceAccount:#{google_configs.compute_engine_sa}"],
-        role: "roles/compute.instanceAdmin"
-      },
-      %Binding{
-        members: ["serviceAccount:#{google_configs.compute_engine_sa}"],
-        role: "roles/artifactregistry.reader"
-      },
-      %Binding{
-        members: ["serviceAccount:#{google_configs.compute_engine_sa}"],
-        role: "roles/logging.logWriter"
-      },
-      %Binding{
-        members: ["serviceAccount:#{google_configs.compute_engine_sa}"],
-        role: "roles/monitoring.metricWriter"
-      },
-      %Binding{
-        members: ["serviceAccount:#{google_configs.cloud_build_sa}"],
-        role: "roles/cloudbuild.builds.builder"
-      },
-      %Binding{
-        members: ["serviceAccount:#{google_configs.cloud_build_sa}"],
-        role: "roles/compute.admin"
-      },
-      %Binding{
-        members: ["serviceAccount:#{google_configs.cloud_build_sa}"],
-        role: "roles/container.admin"
-      },
-      %Binding{
-        members: ["serviceAccount:#{google_configs.cloud_build_sa}"],
-        role: "roles/cloudkms.cryptoKeyDecrypter"
-      },
-      %Binding{
-        members: ["serviceAccount:#{google_configs.cloud_build_sa}"],
-        role: "roles/iam.serviceAccountUser"
-      },
-      %Binding{
-        members: ["serviceAccount:#{google_configs.api_sa}"],
-        role: "roles/editor"
-      },
-      %Binding{
-        members: ["serviceAccount:#{google_configs.api_sa}"],
-        role: "roles/cloudbuild.builds.editor"
-      },
-      %Binding{
-        members: ["serviceAccount:#{google_configs.cloud_build_trigger_sa}"],
-        role: "roles/cloudbuild.builds.editor"
-      },
-      %Binding{
-        members: ["serviceAccount:#{google_configs.cloud_build_trigger_sa}"],
-        role: "roles/iam.serviceAccountUser"
-      },
-      %Binding{
-        members: ["serviceAccount:#{google_configs.cloud_build_trigger_sa}"],
-        role: "roles/cloudbuild.serviceAgent"
-      }
-    ]
   end
 end

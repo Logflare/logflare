@@ -18,33 +18,32 @@ defmodule Logflare.Logs.OtelTrace do
   @behaviour Logflare.Logs.Processor
 
   def handle_batch(resource_spans, _source) when is_list(resource_spans) do
-    Enum.map(resource_spans, &handle_event/1)
+    resource_spans
+    |> Enum.map(&handle_resource_span/1)
     |> List.flatten()
   end
 
-  defp handle_event(%ResourceSpans{resource: resource, scope_spans: scope_spans}) do
+  defp handle_resource_span(%ResourceSpans{resource: resource, scope_spans: scope_spans}) do
     resource = Otel.handle_resource(resource)
-
-    scope_spans
-    |> Enum.map(&handle_scope_span(&1, resource))
-    |> List.flatten()
+    Enum.map(scope_spans, &handle_scope_span(&1, resource))
   end
 
   defp handle_scope_span(%{scope: scope, spans: spans}, resource) do
-    resource = Otel.merge_scope_attributes(resource, scope)
-    Enum.map(spans, &handle_span(&1, resource))
+    scope = Otel.handle_scope(scope)
+    Enum.map(spans, &handle_span(&1, resource, scope))
   end
 
-  defp handle_span(span, resource) do
+  defp handle_span(span, resource, scope) do
     start_time = Otel.nano_to_iso8601(span.start_time_unix_nano)
     metadata = %{"type" => "span"}
-    metadata = Map.merge(metadata, resource)
-    events = Enum.map(span.events, &handle_event(&1, span, resource))
+    events = Enum.map(span.events, &handle_event(&1, span, resource, scope))
 
     [
       %{
         "event_message" => span.name,
         "metadata" => metadata,
+        "resource" => resource,
+        "scope" => scope,
         "span_id" => Base.encode16(span.span_id),
         "parent_span_id" => Base.encode16(span.parent_span_id),
         "trace_id" => Ecto.UUID.cast!(span.trace_id),
@@ -52,22 +51,24 @@ defmodule Logflare.Logs.OtelTrace do
         "end_time" => Otel.nano_to_iso8601(span.end_time_unix_nano),
         "attributes" => Otel.handle_attributes(span.attributes),
         "timestamp" => start_time,
-        "project" => resource["name"]
+        "project" => Otel.resource_project(resource)
       }
     ] ++ events
   end
 
-  defp handle_event(event, %{span_id: span_id, trace_id: trace_id}, resource) do
+  defp handle_event(event, %{span_id: span_id, trace_id: trace_id}, resource, scope) do
     metadata = %{"type" => "event"}
-    metadata = Map.merge(metadata, resource)
 
     %{
       "event_message" => event.name,
       "metadata" => metadata,
+      "resource" => resource,
+      "scope" => scope,
       "parent_span_id" => Base.encode16(span_id),
       "trace_id" => Ecto.UUID.cast!(trace_id),
       "attributes" => Otel.handle_attributes(event.attributes),
-      "timestamp" => Otel.nano_to_iso8601(event.time_unix_nano)
+      "timestamp" => Otel.nano_to_iso8601(event.time_unix_nano),
+      "project" => Otel.resource_project(resource)
     }
   end
 end

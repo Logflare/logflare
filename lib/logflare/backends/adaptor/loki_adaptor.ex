@@ -34,7 +34,7 @@ defmodule Logflare.Backends.Adaptor.LokiAdaptor do
 
   @impl Logflare.Backends.Adaptor
   def start_link({source, backend}) do
-    backend = %{backend | config: transform_config(backend.config)}
+    backend = %{backend | config: transform_config(backend)}
 
     WebhookAdaptor.start_link({source, backend})
   end
@@ -83,7 +83,7 @@ defmodule Logflare.Backends.Adaptor.LokiAdaptor do
   def execute_query(_ident, _query), do: {:error, :not_implemented}
 
   @impl Logflare.Backends.Adaptor
-  def transform_config(config) do
+  def transform_config(%_{config: config}) do
     basic_auth = Utils.encode_basic_auth(config)
 
     headers = Map.get(config, :headers, %{})
