@@ -85,95 +85,44 @@ defmodule Logflare.Google.CloudResourceManager do
   end
 
   defp get_service_accounts() do
-    [
-      %Model.Binding{
-        members: ["serviceAccount:#{env_service_account()}"],
-        role: "roles/bigquery.admin"
-      },
-      %Model.Binding{
-        members: ["serviceAccount:#{env_service_account()}"],
-        role: "roles/resourcemanager.projectIamAdmin"
-      },
-      # roles for compute engine
-      %Model.Binding{
-        members: ["serviceAccount:#{env_compute_engine_sa()}"],
-        role: "roles/compute.instanceAdmin"
-      },
-      %Model.Binding{
-        members: ["serviceAccount:#{env_compute_engine_sa()}"],
-        role: "roles/artifactregistry.reader"
-      },
-      %Model.Binding{
-        members: ["serviceAccount:#{env_compute_engine_sa()}"],
-        role: "roles/artifactregistry.reader"
-      },
-      %Model.Binding{
-        members: ["serviceAccount:#{env_compute_engine_sa()}"],
-        role: "roles/logging.logWriter"
-      },
-      %Model.Binding{
-        members: ["serviceAccount:#{env_compute_engine_sa()}"],
-        role: "roles/monitoring.metricWriter"
-      },
-      # roles for grafana BQ plugin
-      %Model.Binding{
-        members: ["serviceAccount:#{env_grafana_sa()}"],
-        role: "roles/bigquery.dataViewer"
-      },
-      %Model.Binding{
-        members: ["serviceAccount:#{env_grafana_sa()}"],
-        role: "roles/bigquery.jobUser"
-      },
-      # roles for cloudbuild
-      %Model.Binding{
-        condition: nil,
-        members: ["serviceAccount:#{env_cloud_build_sa()}"],
-        role: "roles/cloudbuild.builds.builder"
-      },
-      %Model.Binding{
-        condition: nil,
-        members: ["serviceAccount:#{env_cloud_build_sa()}"],
-        role: "roles/compute.admin"
-      },
-      %Model.Binding{
-        condition: nil,
-        members: ["serviceAccount:#{env_cloud_build_sa()}"],
-        role: "roles/container.admin"
-      },
-      %Model.Binding{
-        condition: nil,
-        members: ["serviceAccount:#{env_cloud_build_sa()}"],
-        role: "roles/cloudkms.cryptoKeyDecrypter"
-      },
-      %Model.Binding{
-        condition: nil,
-        members: [
-          "serviceAccount:#{env_cloud_build_sa()}"
+    for {member, roles} <- [
+          {env_service_account(),
+           ["roles/bigquery.admin", "roles/resourcemanager.projectIamAdmin"]},
+          {env_compute_engine_sa(),
+           [
+             "roles/compute.instanceAdmin",
+             "roles/artifactregistry.reader",
+             "roles/artifactregistry.writer",
+             "roles/logging.logWriter",
+             "roles/monitoring.metricWriter"
+           ]},
+          {env_cloud_build_sa(),
+           [
+             "roles/cloudbuild.builds.builder",
+             "roles/compute.admin",
+             "roles/container.admin",
+             "roles/cloudkms.cryptoKeyDecrypter",
+             "roles/iam.serviceAccountUser",
+             "roles/editor",
+             "roles/cloudbuild.builds.editor",
+             "roles/cloudbuild.serviceAgent"
+           ]},
+          {env_cloud_build_trigger_sa(),
+           [
+             "roles/cloudbuild.builds.editor",
+             "roles/iam.serviceAccountUser",
+             "roles/cloudbuild.serviceAgent"
+           ]},
+          {env_api_sa(), ["roles/editor", "roles/cloudbuild.builds.editor"]},
+          {env_grafana_sa(), ["roles/bigquery.dataViewer", "roles/bigquery.jobUser"]}
         ],
-        role: "roles/iam.serviceAccountUser"
-      },
+        member,
+        role <- roles do
       %Model.Binding{
-        members: ["serviceAccount:#{env_api_sa()}"],
-        role: "roles/editor"
-      },
-      %Model.Binding{
-        condition: nil,
-        members: ["serviceAccount:#{env_api_sa()}"],
-        role: "roles/cloudbuild.builds.editor"
-      },
-      %Model.Binding{
-        members: ["serviceAccount:#{env_cloud_build_trigger_sa()}"],
-        role: "roles/cloudbuild.builds.editor"
-      },
-      %Model.Binding{
-        members: ["serviceAccount:#{env_cloud_build_trigger_sa()}"],
-        role: "roles/iam.serviceAccountUser"
-      },
-      %Model.Binding{
-        members: ["serviceAccount:#{env_cloud_build_trigger_sa()}"],
-        role: "roles/cloudbuild.serviceAgent"
+        members: ["serviceAccount:" <> member],
+        role: role
       }
-    ]
+    end
   end
 
   defp build_members() do
