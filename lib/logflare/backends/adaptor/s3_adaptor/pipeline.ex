@@ -12,7 +12,10 @@ defmodule Logflare.Backends.Adaptor.S3Adaptor.Pipeline do
 
   @producer_concurrency 1
   @processor_concurrency 5
-  @batch_size 10_000
+
+  # batch events based on a maximum message count or byte length
+  @max_batch_size 10_000
+  @max_batch_length 8_000_000
 
   @doc false
   def child_spec(arg) do
@@ -41,7 +44,7 @@ defmodule Logflare.Backends.Adaptor.S3Adaptor.Pipeline do
       batchers: [
         s3: [
           concurrency: 1,
-          batch_size: @batch_size,
+          batch_size: batch_size_splitter(),
           batch_timeout: adaptor_state.config.batch_timeout
         ]
       ],
@@ -74,5 +77,36 @@ defmodule Logflare.Backends.Adaptor.S3Adaptor.Pipeline do
 
   def ack(_ack_ref, _successful, _failed) do
     # TODO: re-queue failed
+  end
+
+  # splits batch sizes based on message body size OR message count, whichever limit is reached first
+  # https://hexdocs.pm/broadway/Broadway.html#start_link/2
+  @spec batch_size_splitter() :: {tuple(), (any(), tuple() -> {:emit | :cont, tuple()})}
+  defp batch_size_splitter() do
+    {
+      {@max_batch_size, @max_batch_length},
+      fn
+        # reach max count, emit
+        _message, {1, _len} ->
+          {:emit, {@max_batch_size, @max_batch_length}}
+
+        # check content length
+        message, {count, len} ->
+          length = message_size(message.data.body)
+
+          if len - length <= 0 do
+            # below max batch count, but reach max batch length
+            {:emit, {@max_batch_size, @max_batch_length}}
+          else
+            # below max batch count, below max batch length
+            {:cont, {count - 1, len - length}}
+          end
+      end
+    }
+  end
+
+  @spec message_size(any()) :: non_neg_integer()
+  defp message_size(data) do
+    :erlang.external_size(data)
   end
 end
