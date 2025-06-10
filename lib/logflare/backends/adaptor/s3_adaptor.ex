@@ -38,6 +38,7 @@ defmodule Logflare.Backends.Adaptor.S3Adaptor do
   @type via_tuple :: {:via, Registry, {module(), {pos_integer(), {module(), pos_integer()}}}}
 
   @min_batch_timeout 1_000
+  @max_batch_timeout 5_000
 
   @doc false
   def child_spec(arg) do
@@ -85,7 +86,10 @@ defmodule Logflare.Backends.Adaptor.S3Adaptor do
 
     changeset
     |> validate_required([:s3_bucket, :storage_region, :access_key_id, :secret_access_key])
-    |> Changeset.validate_number(:batch_timeout, greater_than_or_equal_to: @min_batch_timeout)
+    |> Changeset.validate_number(:batch_timeout,
+      greater_than_or_equal_to: @min_batch_timeout,
+      less_than_or_equal_to: @max_batch_timeout
+    )
   end
 
   @doc """
