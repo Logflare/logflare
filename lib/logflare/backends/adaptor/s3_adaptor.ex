@@ -12,7 +12,6 @@ defmodule Logflare.Backends.Adaptor.S3Adaptor do
   alias Explorer.DataFrame
   alias Logflare.Backends
   alias Logflare.Backends.Backend
-  alias Logflare.Backends.SourceRegistry
   alias Logflare.LogEvent
   alias Logflare.Source
 
@@ -119,22 +118,16 @@ defmodule Logflare.Backends.Adaptor.S3Adaptor do
   """
   @spec pipeline_pid(source_backend_tuple()) :: pid() | nil
   def pipeline_pid({%Source{}, %Backend{}} = args) do
-    case find_pipeline_pid_in_source_registry(args) do
-      {:ok, pid} -> pid
-      _ -> nil
-    end
+    args
+    |> pipeline_via()
+    |> GenServer.whereis()
   end
 
   @doc """
   Determines if a particular Broadway pipeline process is alive based on a `Source` and `Backend` pair.
   """
   @spec pipeline_alive?(source_backend_tuple()) :: boolean()
-  def pipeline_alive?({%Source{}, %Backend{}} = args) do
-    case pipeline_pid(args) do
-      nil -> false
-      pid -> Process.alive?(pid)
-    end
-  end
+  def pipeline_alive?(args), do: !!pipeline_pid(args)
 
   @doc """
   Generates the S3 path for a new parquet file based on a `Source` struct.
@@ -208,20 +201,6 @@ defmodule Logflare.Backends.Adaptor.S3Adaptor do
     ]
 
     Supervisor.init(children, strategy: :one_for_one)
-  end
-
-  @spec find_pipeline_pid_in_source_registry(source_backend_tuple()) ::
-          {:ok, pid()} | {:error, term()}
-  defp find_pipeline_pid_in_source_registry({%Source{}, %Backend{}} = args) do
-    key = pipeline_via(args)
-
-    case Registry.lookup(SourceRegistry, key) do
-      [{pid, _meta}] ->
-        {:ok, pid}
-
-      _ ->
-        {:error, :not_found}
-    end
   end
 
   @spec s3_source_token(Source.t()) :: String.t()
