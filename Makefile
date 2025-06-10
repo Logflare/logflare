@@ -139,6 +139,10 @@ grpc.protoc:
 	git clone https://github.com/googleapis/googleapis.git $$dir; \
 	protoc -I=$$dir --elixir_out=plugins=grpc:$(PWD)/lib/logflare_grpc $$(find $$dir -path "*/rpc/*" -iname '*.proto')
 
+# Mock data for testing interceptors
+	dir=./priv/test_protobuf; \
+	protoc -I=$$dir --elixir_out=plugins=grpc:$(PWD)/test/support/test_protobuf/ $$(find $$dir -iname '*.proto')
+
 
 # manual deployment scripts
 
