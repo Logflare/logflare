@@ -35,12 +35,12 @@ defmodule Logflare.Backends.Adaptor.DatadogAdaptor do
 
   @impl Logflare.Backends.Adaptor
   def start_link({source, backend}) do
-    backend = %{backend | config: transform_config(backend.config)}
+    backend = %{backend | config: transform_config(backend)}
     WebhookAdaptor.start_link({source, backend})
   end
 
   @impl Logflare.Backends.Adaptor
-  def transform_config(config) do
+  def transform_config(%_{config: config}) do
     %{
       url: Map.get(@api_url_mapping, config.region),
       headers: %{"dd-api-key" => config.api_key},

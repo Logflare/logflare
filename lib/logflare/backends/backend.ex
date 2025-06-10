@@ -9,6 +9,7 @@ defmodule Logflare.Backends.Backend do
   alias Logflare.Source
   alias Logflare.User
   alias Logflare.Rule
+  alias Logflare.Alerting.AlertQuery
 
   @adaptor_mapping %{
     webhook: Adaptor.WebhookAdaptor,
@@ -17,7 +18,8 @@ defmodule Logflare.Backends.Backend do
     postgres: Adaptor.PostgresAdaptor,
     bigquery: Adaptor.BigQueryAdaptor,
     loki: Adaptor.LokiAdaptor,
-    clickhouse: Adaptor.ClickhouseAdaptor
+    clickhouse: Adaptor.ClickhouseAdaptor,
+    incidentio: Adaptor.IncidentioAdaptor
   }
 
   typed_schema "backends" do
@@ -30,6 +32,12 @@ defmodule Logflare.Backends.Backend do
     many_to_many(:sources, Source, join_through: "sources_backends")
     belongs_to(:user, User)
     has_many(:rules, Rule)
+
+    many_to_many(:alert_queries, AlertQuery,
+      join_through: "alert_queries_backends",
+      on_replace: :delete
+    )
+
     field(:register_for_ingest, :boolean, virtual: true, default: true)
     field :metadata, :map
     timestamps()

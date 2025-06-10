@@ -31,7 +31,7 @@
   </div>
 
   <div :if={@live_action == :new}>
-    <%= select(f, :type, ["Select a backend type...", Webhook: :webhook, Postgres: :postgres, BigQuery: :bigquery, Datadog: :datadog, Elastic: :elastic, Loki: :loki, ClickHouse: :clickhouse],
+    <%= select(f, :type, ["Select a backend type...", Webhook: :webhook, Postgres: :postgres, BigQuery: :bigquery, Datadog: :datadog, Elastic: :elastic, Loki: :loki, ClickHouse: :clickhouse, "Incident.io": :incidentio],
       phx_change: :change_form_type,
       class: "form-control form-control-margin",
       id: "type"
@@ -215,6 +215,45 @@
           <div class="form-group">
             <%= label(f_config, :port, "Connection pool size") %>
             <%= text_input(f_config, :pool_size, class: "form-control", default: 1) %>
+          </div>
+        <% "incidentio" -> %>
+          <div class="form-group">
+            <%= label(f_config, :api_token, "API Token") %>
+            <%= text_input(f_config, :api_token, class: "form-control") %>
+            <small class="form-text text-muted">
+              The API Token used for authenticating with the incident.io API.
+            </small>
+          </div>
+          <div class="form-group">
+            <%= label(f_config, :alert_source_config_id, "Alert Source Configuration ID") %>
+            <%= text_input(f_config, :alert_source_config_id, class: "form-control") %>
+            <small class="form-text text-muted">
+              Used for determining which alert source config produced the alert when the alert fires.
+            </small>
+          </div>
+          <div class="form-group">
+            <%= label(f_config, :metadata, "Metadata") %>
+            <% default_metadata_value =
+              case input_value(f_config, :metadata) do
+                map when is_map(map) ->
+                  map
+                  |> Enum.map(fn {k, v} -> "#{k}=#{v}" end)
+                  |> Enum.join(",")
+
+                value when is_binary(value) ->
+                  value
+
+                _ ->
+                  ""
+              end %>
+            <%= text_input(f_config, :metadata,
+              class: "form-control",
+              value: default_metadata_value,
+              placeholder: "team=api,priority=high"
+            ) %>
+            <small class="form-text text-muted">
+              Comma-separated key value pairs that will get merged into the JSON <code>metadata</code> key of the CreateHTTP Alert Event payload. See <a href="https://api-docs.incident.io/tag/Alert-Events-V2/">API docs</a> for more information.
+            </small>
           </div>
         <% _ -> %>
           <div>Select a Backend Type</div>

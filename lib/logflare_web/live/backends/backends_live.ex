@@ -32,6 +32,8 @@ defmodule LogflareWeb.BackendsLive do
       |> assign(:backend_changeset, nil)
       |> assign(:sources, Sources.list_sources_by_user(user.id))
       |> assign(:show_rule_form?, false)
+      |> assign(:show_alert_form?, false)
+      |> assign(:alert_options, [])
       |> assign(:form_type, nil)
       |> refresh_backends()
       |> refresh_backend(params["id"])
@@ -57,7 +59,25 @@ defmodule LogflareWeb.BackendsLive do
       Map.update(params, "config", nil, fn config ->
         {key, config} = Map.pop(config, "header1_key")
         {value, config} = Map.pop(config, "header1_value")
+
         Map.put(config, "headers", %{key => value})
+        |> case do
+          %{"metadata" => metadata_str} = config when is_binary(metadata_str) ->
+            metadata =
+              metadata_str
+              |> String.split(",")
+              |> Enum.reduce(%{}, fn pair, acc ->
+                case String.split(pair, "=", parts: 2) do
+                  [key, value] -> Map.put(acc, String.trim(key), String.trim(value))
+                  _ -> acc
+                end
+              end)
+
+            Map.put(config, "metadata", metadata)
+
+          config ->
+            config
+        end
       end)
 
     socket =
@@ -167,6 +187,68 @@ defmodule LogflareWeb.BackendsLive do
     end
   end
 
+  def handle_event("toggle_alert_form", _params, socket) do
+    socket =
+      if !socket.assigns.show_alert_form? do
+        # Load alert options when form is toggled open
+        alert_queries = Logflare.Alerting.list_alert_queries_by_user_id(socket.assigns.user.id)
+        alert_options = Enum.map(alert_queries, fn alert -> {alert.name, alert.id} end)
+
+        socket
+        |> assign(:alert_options, alert_options)
+        |> assign(:show_alert_form?, true)
+      else
+        assign(socket, :show_alert_form?, false)
+      end
+
+    {:noreply, socket}
+  end
+
+  def handle_event("add_alert", %{"alert" => %{"alert_id" => alert_id}}, socket) do
+    alert_query = Logflare.Alerting.get_alert_query!(alert_id)
+
+    socket =
+      case Logflare.Backends.update_backend(socket.assigns.backend, %{
+             alert_queries: [alert_query | socket.assigns.backend.alert_queries]
+           }) do
+        {:ok, _backend} ->
+          socket
+          |> assign(:show_alert_form?, false)
+          |> refresh_backend(socket.assigns.backend.id)
+          |> put_flash(:info, "Alert successfully added to backend")
+
+        {:error, changeset} ->
+          message = changeset_to_flash_message(changeset)
+          put_flash(socket, :error, "Encountered error when adding alert:\n#{message}")
+      end
+
+    {:noreply, socket}
+  end
+
+  def handle_event("remove_alert", %{"alert_id" => alert_id}, socket) do
+    alert_id = String.to_integer(alert_id)
+
+    alert_queries =
+      socket.assigns.backend.alert_queries
+      |> Enum.reject(&(&1.id == alert_id))
+
+    socket =
+      case Logflare.Backends.update_backend(socket.assigns.backend, %{
+             alert_queries: alert_queries
+           }) do
+        {:ok, _backend} ->
+          socket
+          |> refresh_backend(socket.assigns.backend.id)
+          |> put_flash(:info, "Alert successfully removed from backend")
+
+        {:error, changeset} ->
+          message = changeset_to_flash_message(changeset)
+          put_flash(socket, :error, "Encountered error when removing alert:\n#{message}")
+      end
+
+    {:noreply, socket}
+  end
+
   defp _to_string(val) when is_list(val) do
     Enum.join(val, ", ")
   end
@@ -201,7 +283,7 @@ defmodule LogflareWeb.BackendsLive do
   end
 
   defp refresh_backend(socket, id) do
-    backend = Backends.get_backend(id) |> Backends.preload_rules()
+    backend = Backends.get_backend(id) |> Backends.preload_rules() |> Backends.preload_alerts()
 
     socket
     |> assign(:backend, backend)

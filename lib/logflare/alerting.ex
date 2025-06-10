@@ -7,6 +7,8 @@ defmodule Logflare.Alerting do
   alias Logflare.Repo
 
   require Logger
+  alias Logflare.Backends
+  alias Logflare.Backends.Adaptor
   alias Logflare.Backends.Adaptor.WebhookAdaptor
   alias Logflare.Backends.Adaptor.SlackAdaptor
   alias Logflare.Alerting.AlertQuery
@@ -55,7 +57,20 @@ defmodule Logflare.Alerting do
   end
 
   def preload_alert_query(alert) do
-    Repo.preload(alert, [:user])
+    Repo.preload(alert, [:user, :backends])
+    |> case do
+      %AlertQuery{backends: backends} = alert when is_list(backends) ->
+        %{
+          alert
+          | backends:
+              Enum.map(backends, fn backend ->
+                Backends.typecast_config_string_map_to_atom_map(backend)
+              end)
+        }
+
+      alert ->
+        alert
+    end
   end
 
   @doc """
@@ -91,9 +106,18 @@ defmodule Logflare.Alerting do
 
   """
   def update_alert_query(%AlertQuery{} = alert_query, attrs) do
+    backends_modified = if backends = Map.get(attrs, :backends), do: true, else: false
+
     alert_query
-    |> Repo.preload(:user)
+    |> preload_alert_query()
     |> AlertQuery.changeset(attrs)
+    |> then(fn
+      changeset when backends_modified == true ->
+        Ecto.Changeset.put_assoc(changeset, :backends, backends)
+
+      changeset ->
+        changeset
+    end)
     |> Repo.update()
   end
 
@@ -201,7 +225,7 @@ defmodule Logflare.Alerting do
   end
 
   def run_alert(%AlertQuery{} = alert_query) do
-    alert_query = alert_query |> Repo.preload([:user])
+    alert_query = alert_query |> preload_alert_query()
 
     case execute_alert_query(alert_query) do
       {:ok, [_ | _] = results} ->
@@ -223,6 +247,12 @@ defmodule Logflare.Alerting do
               error_string: inspect(res)
             )
           end
+        end
+
+        # iterate over backends and fire for each
+        for backend <- alert_query.backends do
+          adaptor_mod = Adaptor.get_adaptor(backend)
+          adaptor_mod.send_alert(backend, alert_query, results)
         end
 
         :ok
