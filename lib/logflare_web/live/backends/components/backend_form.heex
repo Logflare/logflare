@@ -218,10 +218,10 @@
           </div>
         <% "s3" -> %>
           <div class="form-group">
-            <%= label(f_config, :aws_access_key_id, "Access Key ID") %>
-            <%= text_input(f_config, :aws_access_key_id, class: "form-control") %>
-            <%= label(f_config, :aws_secret_access_key, "Secret Access Key") %>
-            <%= text_input(f_config, :aws_secret_access_key, class: "form-control", type: "password") %>
+            <%= label(f_config, :access_key_id, "Access Key ID") %>
+            <%= text_input(f_config, :access_key_id, class: "form-control") %>
+            <%= label(f_config, :secret_access_key, "Secret Access Key") %>
+            <%= text_input(f_config, :secret_access_key, class: "form-control", type: "password") %>
             <small class="form-text text-muted">
               Credentials used to access to the S3 bucket.
             </small>
@@ -234,8 +234,8 @@
             </small>
           </div>
           <div class="form-group">
-            <%= label(f_config, :aws_region, "AWS Region") %>
-            <%= text_input(f_config, :aws_region, class: "form-control", default: "us-west-2") %>
+            <%= label(f_config, :storage_region, "Storage Region") %>
+            <%= text_input(f_config, :storage_region, class: "form-control", default: "us-west-2") %>
             <small class="form-text text-muted">
               The region where the S3 bucket is located, for example: <code>us-west-2</code>
             </small>
