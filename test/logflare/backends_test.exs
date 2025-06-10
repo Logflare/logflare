@@ -119,14 +119,14 @@ defmodule Logflare.BackendsTest do
       [alert1, _] = alerts = insert_pair(:alert, user: user)
       backend = insert(:backend, user: user)
       # addition
-      assert {:ok, %Backend{} = updated} =
+      assert {:ok, %Backend{} = backend} =
                Backends.update_backend(backend, %{alert_queries: alerts})
 
       assert [%{alert_queries: [_, _]}] =
                Backends.list_backends(user_id: user.id) |> Backends.preload_alerts()
 
       # removal
-      assert {:ok, %Backend{} = updated} =
+      assert {:ok, %Backend{} = backend} =
                Backends.update_backend(backend, %{alert_queries: [alert1]})
 
       assert %Backend{alert_queries: [_]} = Backends.preload_alerts(backend)
