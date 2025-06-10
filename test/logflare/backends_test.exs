@@ -59,7 +59,7 @@ defmodule Logflare.BackendsTest do
 
     test "list_backends/1 with alerts queries", %{user: user} do
       backend = insert(:backend, user: user)
-      alert = insert(:alert, user: user, backends: [backend])
+      insert(:alert, user: user, backends: [backend])
 
       assert [%{alert_queries: [_]}] =
                Backends.list_backends(user_id: user.id) |> Backends.preload_alerts()
