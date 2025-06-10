@@ -27,7 +27,7 @@ defmodule Logflare.Alerting.AlertQuery do
     field :slack_hook_url, :string
     field :webhook_notification_url, :string
     belongs_to :user, Logflare.User
-    many_to_many :backends, Logflare.Backends.Backend, join_through: "alert_queries_backends"
+    many_to_many :backends, Logflare.Backends.Backend, join_through: "alert_queries_backends", on_replace: :delete
 
     timestamps()
   end

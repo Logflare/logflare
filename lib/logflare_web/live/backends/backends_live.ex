@@ -58,6 +58,21 @@ defmodule LogflareWeb.BackendsLive do
         {key, config} = Map.pop(config, "header1_key")
         {value, config} = Map.pop(config, "header1_value")
         Map.put(config, "headers", %{key => value})
+        |> case do
+          %{"metadata"=> metadata_str} = config when is_binary(metadata_str)  ->
+            metadata = metadata_str
+            |> String.split(",")
+            |> Enum.reduce(%{}, fn pair, acc ->
+              case String.split(pair, "=", parts: 2) do
+                [key, value] -> Map.put(acc, String.trim(key), String.trim(value))
+                _ -> acc
+              end
+            end)
+
+            Map.put(config, "metadata", metadata)
+
+            config -> config
+        end
       end)
 
     socket =
@@ -201,7 +216,7 @@ defmodule LogflareWeb.BackendsLive do
   end
 
   defp refresh_backend(socket, id) do
-    backend = Backends.get_backend(id) |> Backends.preload_rules()
+    backend = Backends.get_backend(id) |> Backends.preload_rules() |> Backends.preload_alerts()
 
     socket
     |> assign(:backend, backend)

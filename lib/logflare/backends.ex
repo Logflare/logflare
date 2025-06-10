@@ -39,6 +39,9 @@ defmodule Logflare.Backends do
   def list_backends(filters) when is_list(filters) do
     filters
     |> Enum.reduce(from(b in Backend), fn
+
+      {:types, types}, q when is_list(types) ->
+        where(q, [b], b.type in ^types)
       # filter down to backends of this source
       {:source_id, id}, q ->
         join(q, :inner, [b], s in assoc(b, :sources), on: s.id == ^id)
@@ -153,10 +156,18 @@ defmodule Logflare.Backends do
   """
   @spec update_backend(Backend.t(), map()) :: {:ok, Backend.t()} | {:error, Ecto.Changeset.t()}
   def update_backend(%Backend{} = backend, attrs) do
+    alerts_modified = if Map.get(attrs, :alert_queries), do: true, else: false
+
     backend_config =
       backend
       |> Backend.changeset(attrs)
-      |> Ecto.Changeset.put_assoc(:alert_queries, Map.get(attrs, :alert_queries))
+      |> then(fn changeset ->
+        if alerts_modified do
+          Ecto.Changeset.put_assoc(changeset, :alert_queries, Map.get(attrs, :alert_queries))
+        else
+          changeset
+        end
+      end)
       |> Repo.update()
 
     with {:ok, updated} <- backend_config do
@@ -198,9 +209,9 @@ defmodule Logflare.Backends do
   end
 
   # common typecasting from string map to attom for config
-  defp typecast_config_string_map_to_atom_map(nil), do: nil
+  def typecast_config_string_map_to_atom_map(nil), do: nil
 
-  defp typecast_config_string_map_to_atom_map(%Backend{type: type} = backend) do
+  def typecast_config_string_map_to_atom_map(%Backend{type: type} = backend) do
     mod = Backend.adaptor_mapping()[type]
 
     updated =
