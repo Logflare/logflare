@@ -1,13 +1,13 @@
-defmodule Logflare.Backends.Adaptor.S3ParquetAdaptor.Pipeline do
+defmodule Logflare.Backends.Adaptor.S3Adaptor.Pipeline do
   @moduledoc """
-  Pipeline for `S3ParquetAdaptor`
+  Pipeline for `S3Adaptor`
 
   This pipeline is responsible for taking log events from the
   source backend and inserting them into the configured S3 bucket.
   """
 
   alias Broadway.Message
-  alias Logflare.Backends.Adaptor.S3ParquetAdaptor
+  alias Logflare.Backends.Adaptor.S3Adaptor
   alias Logflare.Backends.BufferProducer
 
   @producer_concurrency 1
@@ -23,9 +23,9 @@ defmodule Logflare.Backends.Adaptor.S3ParquetAdaptor.Pipeline do
   end
 
   @doc false
-  @spec start_link(S3ParquetAdaptor.t()) ::
+  @spec start_link(S3Adaptor.t()) ::
           {:ok, pid()} | :ignore | {:error, {:already_started, pid()} | term()}
-  def start_link(%S3ParquetAdaptor{} = adaptor_state) do
+  def start_link(%S3Adaptor{} = adaptor_state) do
     Broadway.start_link(__MODULE__,
       name: adaptor_state.pipeline_name,
       producer: [
@@ -39,7 +39,7 @@ defmodule Logflare.Backends.Adaptor.S3ParquetAdaptor.Pipeline do
         default: [concurrency: @processor_concurrency, min_demand: 1]
       ],
       batchers: [
-        s3_parquet: [
+        s3: [
           concurrency: 1,
           batch_size: @batch_size,
           batch_timeout: adaptor_state.config.batch_timeout
@@ -56,12 +56,12 @@ defmodule Logflare.Backends.Adaptor.S3ParquetAdaptor.Pipeline do
   end
 
   def handle_message(_processor_name, message, _adaptor_state) do
-    Message.put_batcher(message, :s3_parquet)
+    Message.put_batcher(message, :s3)
   end
 
-  def handle_batch(:s3_parquet, messages, _batch_info, %{source: source, backend: backend}) do
+  def handle_batch(:s3, messages, _batch_info, %{source: source, backend: backend}) do
     events = for %{data: le} <- messages, do: le
-    S3ParquetAdaptor.push_log_events_to_s3({source, backend}, events)
+    S3Adaptor.push_log_events_to_s3({source, backend}, events)
     messages
   end
 

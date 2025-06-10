@@ -1,6 +1,6 @@
-defmodule Logflare.Backends.Adaptor.S3ParquetAdaptor do
+defmodule Logflare.Backends.Adaptor.S3Adaptor do
   @moduledoc """
-  Backend adaptor that writes batches of logs to S3 in Parquet format.
+  Backend adaptor that writes batches of logs to S3.
   """
 
   use Supervisor
@@ -138,7 +138,7 @@ defmodule Logflare.Backends.Adaptor.S3ParquetAdaptor do
   @spec new_s3_filename(source_backend_tuple()) :: String.t()
   def new_s3_filename({%Source{} = source, %Backend{} = backend}) do
     bucket_name = backend.config.s3_bucket
-    source_token = s3_parquet_source_token(source) |> String.replace("-", "_")
+    source_token = s3_source_token(source)
     now = DateTime.utc_now(:microsecond) |> DateTime.to_unix(:microsecond)
 
     "s3://#{bucket_name}/#{source_token}/#{now}.parquet"
@@ -147,12 +147,8 @@ defmodule Logflare.Backends.Adaptor.S3ParquetAdaptor do
   @doc """
   Converts a list of `LogEvent` structs to a parquet file and uploads it to S3.
   """
-  @spec push_log_events_to_s3(source_backend_tuple(), LogEvent.t() | [LogEvent.t()]) ::
+  @spec push_log_events_to_s3(source_backend_tuple(), [LogEvent.t()]) ::
           :ok | {:error, term()}
-  def push_log_events_to_s3({%Source{} = source, %Backend{} = backend}, %LogEvent{} = le) do
-    push_log_events_to_s3({source, backend}, [le])
-  end
-
   def push_log_events_to_s3({%Source{} = source, %Backend{} = backend}, events)
       when is_list(events) do
     s3_file_path = new_s3_filename({source, backend})
@@ -224,8 +220,8 @@ defmodule Logflare.Backends.Adaptor.S3ParquetAdaptor do
     end
   end
 
-  @spec s3_parquet_source_token(Source.t()) :: String.t()
-  defp s3_parquet_source_token(%Source{token: token}) do
+  @spec s3_source_token(Source.t()) :: String.t()
+  defp s3_source_token(%Source{token: token}) do
     token
     |> Atom.to_string()
     |> String.replace("-", "_")

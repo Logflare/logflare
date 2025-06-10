@@ -31,7 +31,7 @@
   </div>
 
   <div :if={@live_action == :new}>
-    <%= select(f, :type, ["Select a backend type...", Webhook: :webhook, Postgres: :postgres, BigQuery: :bigquery, Datadog: :datadog, Elastic: :elastic, Loki: :loki, ClickHouse: :clickhouse, "S3 Parquet": :s3parquet],
+    <%= select(f, :type, ["Select a backend type...", Webhook: :webhook, Postgres: :postgres, BigQuery: :bigquery, Datadog: :datadog, Elastic: :elastic, Loki: :loki, ClickHouse: :clickhouse, S3: :s3],
       phx_change: :change_form_type,
       class: "form-control form-control-margin",
       id: "type"
@@ -216,7 +216,7 @@
             <%= label(f_config, :port, "Connection pool size") %>
             <%= text_input(f_config, :pool_size, class: "form-control", default: 1) %>
           </div>
-        <% "s3parquet" -> %>
+        <% "s3" -> %>
           <div class="form-group">
             <%= label(f_config, :aws_access_key_id, "Access Key ID") %>
             <%= text_input(f_config, :aws_access_key_id, class: "form-control") %>
@@ -230,7 +230,7 @@
             <%= label(f_config, :s3_bucket, "S3 Bucket Name") %>
             <%= text_input(f_config, :s3_bucket, class: "form-control") %>
             <small class="form-text text-muted">
-              Provide the S3 bucket name to where files will be stored.
+              The S3 bucket name to where files will be stored.
             </small>
           </div>
           <div class="form-group">
