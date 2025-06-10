@@ -186,18 +186,51 @@ defmodule Logflare.SingleTenant do
   """
   @spec create_default_plan() :: {:ok, Plan.t()} | {:error, :already_created}
   def create_default_plan do
-    if plan = get_default_plan() do
-      # maybe update if stored values are different
-      keys = Map.keys(@plan_attrs)
-      attrs = Map.take(plan, keys)
+    plans = Enum.filter(Billing.list_plans(), fn plan -> plan.name == "Enterprise" end)
 
-      if attrs != @plan_attrs do
-        Billing.update_plan(plan, @plan_attrs)
-      else
-        {:error, :already_created}
-      end
-    else
-      Billing.create_plan(@plan_attrs)
+    case plans do
+      [plan] ->
+        # maybe update if stored values are different
+        keys = Map.keys(@plan_attrs)
+        attrs = Map.take(plan, keys)
+
+        if attrs != @plan_attrs do
+          Billing.update_plan(plan, @plan_attrs)
+        else
+          {:error, :already_created}
+        end
+
+      # multiple plans
+      [_ | _] ->
+        keys = Map.keys(@plan_attrs)
+
+        to_keep =
+          Enum.find(plans, fn plan ->
+            attrs = Map.take(plan, keys)
+            attrs == @plan_attrs
+          end)
+
+        if to_keep do
+          # delete all except the correct one
+          for plan <- plans, plan.id != to_keep.id do
+            Billing.delete_plan(plan)
+          end
+
+          {:ok, to_keep}
+        else
+          # take the first one and update it, delete the rest
+          to_keep_and_update = List.first(plans)
+          {:ok, updated} = Billing.update_plan(to_keep_and_update, @plan_attrs)
+
+          for plan <- plans, plan.id != to_keep_and_update.id do
+            Billing.delete_plan(plan)
+          end
+
+          {:ok, updated}
+        end
+
+      [] ->
+        Billing.create_plan(@plan_attrs)
     end
   end
 
