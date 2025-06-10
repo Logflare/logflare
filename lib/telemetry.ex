@@ -190,6 +190,6 @@ defmodule Logflare.Telemetry do
   end
 
   defp batch_size_reporter_opts do
-    [buckets: [0, 5, 10, 25, 50, 100, 150, 250, 350, 1000]]
+    [buckets: [0, 1, 5, 10, 50, 100, 150, 250, 500, 1000, 2000]]
   end
 end
