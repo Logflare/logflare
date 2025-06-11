@@ -1,10 +1,7 @@
 defmodule Logflare.Logs.OtelLog do
   @moduledoc """
-  Converts Otel logs to event parameters
+  Converts a list of Otel ResourceLogs to a list of Logflare events
 
-  Converts a list of ResourceLogs to a list of Logflare Events
-
-  Important details about the conversation:
   * One ResourceLog can contain multiple ScopeLogs
   * One ScopeLogs can contain multiple LogRecords
   * A Log Event is created for each LogRecord
@@ -12,8 +9,6 @@ defmodule Logflare.Logs.OtelLog do
   `event_message` is derived from the LogRecord body whenever the log body is a
   string. When it is something else, it is derived from the log `event_name`.
   """
-
-  require Logger
 
   alias Logflare.Logs.Otel
 

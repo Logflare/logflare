@@ -1,16 +1,12 @@
 defmodule Logflare.Logs.OtelTrace do
   @moduledoc """
-  Converts a GRPC Trace to event parameters
+  Converts a list of Otel ResourceSpans to a list of Logflare events
 
-  Converts a list of ResourceSpans to a list of Logflare Events
-  Important details about the conversation:
   * One ResourceSpans can contain multiple ScopeSpans
   * One ScopeSpans can contain multiple Spans
   * One Span can contain multiple Events
   * A Log Event is created for each Span and each Event
-
   """
-  require Logger
 
   alias Logflare.Logs.Otel
 

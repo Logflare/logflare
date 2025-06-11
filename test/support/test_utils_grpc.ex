@@ -34,7 +34,6 @@ defmodule Logflare.TestUtilsGrpc do
   alias Opentelemetry.Proto.Logs.V1.ResourceLogs
   alias Opentelemetry.Proto.Logs.V1.ScopeLogs
   alias Opentelemetry.Proto.Logs.V1.LogRecord
-  alias Opentelemetry.Proto.Logs.V1.SeverityNumber
 
   @doc """
   Generates a ExportTraceServiceRequest message which contains a Span and an Event in it
