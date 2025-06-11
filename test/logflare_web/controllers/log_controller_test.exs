@@ -12,6 +12,8 @@ defmodule LogflareWeb.LogControllerTest do
   alias Opentelemetry.Proto.Collector.Trace.V1.ExportTraceServiceResponse
   alias Opentelemetry.Proto.Collector.Metrics.V1.ExportMetricsServiceRequest
   alias Opentelemetry.Proto.Collector.Metrics.V1.ExportMetricsServiceResponse
+  alias Opentelemetry.Proto.Collector.Logs.V1.ExportLogsServiceRequest
+  alias Opentelemetry.Proto.Collector.Logs.V1.ExportLogsServiceResponse
 
   @valid %{"some" => "valid log entry", "event_message" => "hi!"}
   @valid_json Jason.encode!(@valid)
@@ -183,9 +185,45 @@ defmodule LogflareWeb.LogControllerTest do
 
       assert_receive {^ref, data_points}, 4000
 
-      assert Enum.all?(data_points, fn data_point ->
-               match?(%{"metadata" => _, "event_message" => _, "metric_type" => _}, data_point)
-             end)
+      Enum.each(data_points, fn data_point ->
+        assert %{"metadata" => _, "event_message" => _, "metric_type" => _} = data_point
+      end)
+    end
+
+    test ":otel_logs ingestion", %{conn: conn, source: source, user: user} do
+      this = self()
+      ref = make_ref()
+
+      WebhookAdaptor.Client
+      |> expect(:send, fn req ->
+        send(this, {ref, req[:body]})
+        %Tesla.Env{status: 200, body: ""}
+      end)
+
+      body =
+        TestUtilsGrpc.random_otel_logs_request()
+        |> ExportLogsServiceRequest.encode()
+
+      conn =
+        conn
+        |> put_req_header("x-api-key", user.api_key)
+        |> put_req_header("x-source", Atom.to_string(source.token))
+        |> put_req_header("content-type", "application/x-protobuf")
+        |> post(Routes.log_path(conn, :otel_logs), body)
+
+      assert protobuf_response(conn, 200, ExportLogsServiceResponse) ==
+               %ExportLogsServiceResponse{partial_success: nil}
+
+      assert_receive {^ref, logs}, 4000
+
+      Enum.each(logs, fn log ->
+        assert %{
+                 "metadata" => %{"type" => "otel_log"},
+                 "event_message" => _,
+                 "attributes" => _,
+                 "timestamp" => _
+               } = log
+      end)
     end
 
     test "invaild source token uuid checks", %{conn: conn, user: user} do
