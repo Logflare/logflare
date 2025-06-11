@@ -1,0 +1,46 @@
+---
+sidebar_position: 7
+---
+# ClickHouse
+
+The ClickHouse backend is **ingest-only** to a ClickHouse [HTTP](https://clickhouse.com/docs/interfaces/http) endpoint.
+
+## Behavior and Configuration
+
+### Configuration
+
+The following values are required when creating a ClickHouse backend:
+
+- `url`: (`string`, required) a valid HTTP(S) endpoint.
+- `username`: (`string`, required) used for auth.
+- `password`: (`string`, required) used for auth.
+- `database`: (`string`, required) the database to use.
+- `port`: (`number`, required) the port to use.
+
+
+### User Grants
+
+The ClickHouse backend requires the following [user grants](https://clickhouse.com/docs/sql-reference/statements/grant):
+
+- `INSERT`
+- `SELECT`
+- `CREATE TABLE`
+- `ALTER TABLE`
+- `DROP TABLE`,
+- `CREATE VIEW`
+- `DROP VIEW`
+
+:::note
+It is suggested that you create a dedicated database and user specifically for Logflare to isolate data and permissions.
+:::
+
+## Implementation Details
+
+The ClickHouse backend will automatically attempt to provision required tables and views after receiving the first log event.
+
+The ingest table schema is as follows:
+
+- `id`: The log event `UUID`.
+- `event_message`: The provided or generated event message of the log event, stored as `String`
+- `body`: The processed log event, stored as serialized JSON in a `String` column.
+- `timestamp`: Unix microsecond, stored as `DateTime64(6)`
