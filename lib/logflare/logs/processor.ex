@@ -18,7 +18,8 @@ defmodule Logflare.Logs.Processor do
   @doc """
   Process `data` using `processor` to translate from incoming format to storage format.
   """
-  @spec ingest([map()], module(), Logflare.Source.t()) :: :ok | {:ok, count :: pos_integer()} | {:error, term()}
+  @spec ingest([map()], module(), Logflare.Source.t()) ::
+          :ok | {:ok, count :: pos_integer()} | {:error, term()}
   def ingest(data, processor, %Logflare.Source{} = source)
       when is_list(data) and is_atom(processor) do
     metadata = %{
