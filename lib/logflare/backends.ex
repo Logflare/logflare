@@ -272,8 +272,8 @@ defmodule Logflare.Backends do
   Once this function returns `:ok`, the events get dispatched to respective backend adaptor portions of the pipeline to be further processed.
   """
   @type log_param :: map()
-  @spec ingest_logs([log_param()], Source.t()) :: :ok
-  @spec ingest_logs([log_param()], Source.t(), Backend.t() | nil) :: :ok
+  @spec ingest_logs([log_param()], Source.t()) :: {:ok, count :: pos_integer()}  | {:error, [term()]}
+  @spec ingest_logs([log_param()], Source.t(), Backend.t() | nil) :: {:ok, count :: pos_integer()} | {:error, [term()]}
   def ingest_logs(event_params, source, backend \\ nil) do
     ensure_source_sup_started(source)
     {log_events, errors} = split_valid_events(source, event_params)
@@ -402,7 +402,7 @@ defmodule Logflare.Backends do
   end
 
   @doc """
-  checks if the SourceSup for a given source has been started.
+  Checks if the SourceSup for a given source has been started.
   """
   @spec source_sup_started?(Source.t() | non_neg_integer()) :: boolean()
   def source_sup_started?(%Source{id: id}), do: source_sup_started?(id)
