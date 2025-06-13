@@ -1300,6 +1300,35 @@ defmodule Logflare.Sql do
             |> List.flatten()
 
           Map.put(acc, alias_name, arr_path)
+
+        %{
+          "relation" => %{
+            "UNNEST" => %{
+              "array_exprs" => array_exprs,
+              "alias" => %{"name" => %{"value" => alias_name}}
+            }
+          }
+        },
+        acc ->
+          arr_path =
+            for expr <- array_exprs do
+              case expr do
+                %{"Identifier" => %{"value" => identifier_val}} ->
+                  [identifier_val]
+
+                %{"CompoundIdentifier" => identifiers} ->
+                  for i <- identifiers, value = i["value"], value not in table_aliases do
+                    if is_map_key(acc, value), do: acc[value], else: [value]
+                  end
+                  |> List.flatten()
+
+                _ ->
+                  []
+              end
+            end
+            |> List.flatten()
+
+          Map.put(acc, alias_name, arr_path)
       end)
     end
     |> Enum.reduce(%{}, fn mappings, acc -> Map.merge(acc, mappings) end)
