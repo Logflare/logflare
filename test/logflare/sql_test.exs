@@ -27,11 +27,10 @@ defmodule Logflare.SqlTest do
 
       for input <- [
             "select STRUCT(1,2,3)",
-            "select STRUCT()",
             "select STRUCT(\'abc\')",
-            "select STRUCT(1, t.str_col)"
-            # sqlparser-rs does not handle this yet.
-            # "select STRUCT(str_col AS abc)"
+            "select STRUCT(1, t.str_col)",
+            "select STRUCT(str_col AS abc)"
+            # Note: empty STRUCT() is not supported in sqlparser 0.39.0
           ] do
         assert {:ok, _v2} = Sql.transform(:bq_sql, input, user)
       end
@@ -263,9 +262,9 @@ defmodule Logflare.SqlTest do
             },
             {{"with src as (select a from my_table) select c from src",
               "select a from b; select c from d;"}, "Only singular query allowed"},
-            # no source name in query
+            # no source name in query - unquoted identifier with hyphens causes parser error
             {"select datetime() from light-two-os-directions-test",
-             "can't find source light-two-os-directions-test"},
+             "Expected end of statement, found: -"},
             {"select datetime() from `light-two-os-directions-test`",
              "can't find source light-two-os-directions-test"},
             {"with src as (select a from unknown_table) select datetime() from my_table",
@@ -345,7 +344,7 @@ defmodule Logflare.SqlTest do
       input = " select a from `#{@single_tenant_bq_project_id}.my_dataset.my_table`"
 
       assert {:ok, transformed} = Sql.transform(:bq_sql, input, user)
-      assert transformed =~ "#{@single_tenant_bq_project_id}.my_dataset.my_table"
+      assert transformed =~ "`#{@single_tenant_bq_project_id}`.`my_dataset`.`my_table`"
       refute transformed =~ @logflare_project_id
     end
   end

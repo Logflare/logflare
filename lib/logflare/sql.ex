@@ -224,9 +224,10 @@ defmodule Logflare.Sql do
     sandboxed_cte_names =
       if sandboxed_query_ast, do: extract_cte_alises(sandboxed_query_ast), else: []
 
-    table_names = for %{"value" => table_name} <- name, do: table_name
+    qualified_name =
+      Enum.map_join(name, ".", fn %{"value" => part} -> part end)
 
-    table_names
+    [qualified_name]
     # remove known names
     |> Enum.reject(fn name ->
       cond do
@@ -417,19 +418,23 @@ defmodule Logflare.Sql do
         "bigquery" -> "`"
       end
 
+    # Join qualified table name parts (e.g., ["a", "b", "c"] -> "a.b.c")
+    qualified_name = Enum.map_join(names, ".", fn %{"value" => part} -> part end)
+
     new_name_list =
-      for %{"value" => value, "quote_style" => quote_style} = name_map <- names do
-        if value in data.source_names do
-          Map.merge(
-            name_map,
-            %{
-              "quote_style" => quote_style || dialect_quote_style,
-              "value" => transform_name(value, data)
-            }
-          )
-        else
-          name_map
-        end
+      if qualified_name in data.source_names do
+        # Replace entire qualified name with transformed name
+        transformed_name = transform_name(qualified_name, data)
+
+        [
+          %{
+            "quote_style" => dialect_quote_style,
+            "value" => transformed_name
+          }
+        ]
+      else
+        # Keep original name parts
+        names
       end
 
     {k, %{v | "name" => new_name_list}}
@@ -587,10 +592,14 @@ defmodule Logflare.Sql do
        when is_list(name) do
     cte_names = extract_cte_alises(ast)
 
+    # Join qualified table name parts back together (e.g., ["a", "b", "c"] -> "a.b.c")
+    qualified_name = Enum.map_join(name, ".", fn %{"value" => part} -> part end)
+
     new_names =
-      for %{"value" => table_name} <- name,
-          table_name not in prev and table_name not in cte_names do
-        table_name
+      if qualified_name not in prev and qualified_name not in cte_names do
+        [qualified_name]
+      else
+        []
       end
 
     new_names ++ prev
@@ -828,7 +837,11 @@ defmodule Logflare.Sql do
         # TODO: remove once sqlparser-rs bug is fixed
         # parser for postgres adds parenthesis to the end for postgres
         |> String.replace(~r/current\_timestamp\(\)/im, "current_timestamp")
-        |> String.replace(~r/\"([\w\_\-]*\.[\w\_\-]+)\.([\w_]{36})"/im, replacement_pattern)
+        |> String.replace(~r/\"\"\.\"([\w\_\-]+)\"\.\"([\w_]{36})"/im, replacement_pattern)
+        |> String.replace(
+          ~r/"(?!.*log_events_)([a-zA-Z_][a-zA-Z0-9_]*)"\."(?!.*log_events_)([a-zA-Z_][a-zA-Z0-9_]*)"/,
+          "\"\\g{1}.\\g{2}\""
+        )
 
       Logger.debug(
         "Postgres translation is complete: #{query} | \n output: #{inspect(converted)}"
