@@ -123,7 +123,7 @@ defmodule Logflare.Mixfile do
       {:earmark, "~> 1.4.33"},
 
       # Outbound Requests
-      {:castore, "~> 0.1.0"},
+      {:castore, "~> 1.0"},
       {:finch, "~> 0.19.0"},
       {:mint, "~> 1.0"},
       {:httpoison, "~> 1.4"},
@@ -160,6 +160,9 @@ defmodule Logflare.Mixfile do
       # ClickHouse
       {:ch, "~> 0.3.2"},
 
+      # DataFrames
+      {:explorer, "~> 0.10.1"},
+
       # Telemetry & logging
       {:telemetry, "~> 1.0"},
       {:telemetry_metrics, "~> 1.0"},
@@ -174,7 +177,7 @@ defmodule Logflare.Mixfile do
       {:floki, "~> 0.29.0", only: [:test]},
 
       # Rust NIFs
-      {:rustler, "~> 0.29.0"},
+      {:rustler, "~> 0.34.0"},
 
       # Frontend
       {:phoenix_live_react, "~> 0.4"},
