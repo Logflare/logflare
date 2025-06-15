@@ -29,9 +29,9 @@ defmodule Logflare.Endpoints.Cache do
         }
 
   def start_link({query, params}) do
-    GenServer.start_link(__MODULE__, {query, params},
-      name: {:via, :syn, {:endpoints, {query.id, params}}}
-    )
+    name = {:via, :syn, {:endpoints, {query.id, params}}}
+
+    GenServer.start_link(__MODULE__, {query, params}, name: name)
   end
 
   @doc """

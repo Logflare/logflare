@@ -19,7 +19,8 @@ defmodule Logflare.Endpoints.Resolver do
   Returns the resolved pid.
   """
   def resolve(%Logflare.Endpoints.Query{id: id} = query, params) do
-    :syn.lookup(:endpoints, {id, params})
+    {:via, :syn, {:endpoints, {query.id, params}}}
+    |> GenServer.whereis()
     |> case do
       {pid, _} when is_pid(pid) ->
         Cache.touch(pid)
@@ -29,7 +30,11 @@ defmodule Logflare.Endpoints.Resolver do
         spec = {Cache, {query, params}}
         Logger.debug("Starting up Endpoint.Cache for Endpoint.Query id=#{id}", endpoint_id: id)
 
-        case DynamicSupervisor.start_child(Cache, spec) do
+        via =
+          {:via, PartitionSupervisor,
+           {Logflare.Endpoints.Cache.PartitionSupervisor, {id, params}}}
+
+        case DynamicSupervisor.start_child(via, spec) do
           {:ok, pid} -> pid
           {:error, {:already_started, pid}} -> pid
         end
