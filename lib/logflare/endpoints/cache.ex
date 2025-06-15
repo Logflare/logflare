@@ -24,7 +24,7 @@ defmodule Logflare.Endpoints.Cache do
           params: map(),
           last_query_at: DateTime.t(),
           last_update_at: DateTime.t(),
-          cached_result: Logflare.BqRepo.results(),
+          cached_result: binary(),
           disable_cache: boolean()
         }
 
@@ -119,7 +119,7 @@ defmodule Logflare.Endpoints.Cache do
         state =
           state
           |> Map.put(:last_query_at, DateTime.utc_now())
-          |> Map.put(:cached_result, result)
+          |> Map.put(:cached_result, gzip(result))
 
         {:reply, response, state}
 
@@ -143,7 +143,7 @@ defmodule Logflare.Endpoints.Cache do
       state
       |> Map.put(:last_query_at, DateTime.utc_now())
 
-    {:reply, {:ok, cached_result}, state}
+    {:reply, {:ok, gunzip(cached_result)}, state}
   end
 
   def handle_call(:invalidate, _from, state) do
@@ -195,6 +195,19 @@ defmodule Logflare.Endpoints.Cache do
   def do_query(state) do
     Logflare.Endpoints.run_query(state.query, state.params)
   end
+
+  defp gunzip(results) do
+    results
+    |> :zlib.gunzip()
+    |> :erlang.binary_to_term()
+  end
+
+  defp gzip(results) do
+    results
+    |> :erlang.term_to_binary()
+    |> :zlib.gzip()
+  end
+
 
   defp refresh(every) do
     Process.send_after(self(), :refresh, every)
