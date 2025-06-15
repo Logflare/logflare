@@ -208,7 +208,6 @@ defmodule Logflare.Endpoints.Cache do
     |> :zlib.gzip()
   end
 
-
   defp refresh(every) do
     Process.send_after(self(), :refresh, every)
   end
