@@ -29,7 +29,9 @@ defmodule Logflare.Endpoints.Cache do
         }
 
   def start_link({query, params}) do
-    name = {:via, :syn, {:endpoints, {query.id, params}}}
+    endpoints = endpoints_part(query.id, params)
+
+    name = {:via, :syn, {endpoints, {query.id, params}}}
 
     GenServer.start_link(__MODULE__, {query, params}, name: name)
   end
@@ -93,7 +95,8 @@ defmodule Logflare.Endpoints.Cache do
   end
 
   def init({query, params}) do
-    :syn.join(:endpoints, query.id, self())
+    endpoints = endpoints_part(query.id)
+    :syn.join(endpoints, query.id, self())
 
     state =
       %__MODULE__{
@@ -194,6 +197,16 @@ defmodule Logflare.Endpoints.Cache do
 
   def do_query(state) do
     Logflare.Endpoints.run_query(state.query, state.params)
+  end
+
+  def endpoints_part(query_id, params) do
+    part = :erlang.phash2({query_id, params}, System.schedulers_online())
+    "endpoints_#{part}" |> String.to_existing_atom()
+  end
+
+  def endpoints_part(query_id) do
+    part = :erlang.phash2(query_id, System.schedulers_online())
+    "endpoints_#{part}" |> String.to_existing_atom()
   end
 
   defp gunzip(results) do

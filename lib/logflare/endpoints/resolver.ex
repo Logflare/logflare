@@ -10,7 +10,9 @@ defmodule Logflare.Endpoints.Resolver do
   Lists all caches for an endpoint
   """
   def list_caches(%Logflare.Endpoints.Query{id: id}) do
-    :syn.members(:endpoints, id)
+    endpoints = Cache.endpoints_part(id)
+
+    :syn.members(endpoints, id)
     |> Enum.map(fn {pid, _} -> pid end)
   end
 
@@ -19,7 +21,9 @@ defmodule Logflare.Endpoints.Resolver do
   Returns the resolved pid.
   """
   def resolve(%Logflare.Endpoints.Query{id: id} = query, params) do
-    {:via, :syn, {:endpoints, {query.id, params}}}
+    endpoints = Cache.endpoints_part(query.id, params)
+
+    {:via, :syn, {endpoints, {query.id, params}}}
     |> GenServer.whereis()
     |> case do
       {pid, _} when is_pid(pid) ->

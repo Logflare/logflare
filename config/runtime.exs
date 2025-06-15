@@ -350,3 +350,10 @@ if System.get_env("LOGFLARE_OTEL_ENDPOINT") do
       {"x-api-key", System.get_env("LOGFLARE_OTEL_ACCESS_TOKEN")}
     ]
 end
+
+syn_endpoints_partitions =
+  for n <- 0..System.schedulers_online(), do: "endpoints_#{n}" |> String.to_atom()
+
+config :syn,
+  scopes: [:core, :alerting] ++ syn_endpoints_partitions,
+  event_handler: Logflare.SynEventHandler
