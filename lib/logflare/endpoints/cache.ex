@@ -172,7 +172,7 @@ defmodule Logflare.Endpoints.Cache do
 
   def handle_info({from_task, {:ok, results}}, state) do
     tasks = Enum.reject(state.query_tasks, &(&1.pid == from_task))
-    {:noreply, %{state | cached_result: results, query_tasks: tasks}}
+    {:noreply, %{state | cached_result: gzip(results), query_tasks: tasks}}
   end
 
   def handle_info({_from_task, {:error, _response}}, state) do
