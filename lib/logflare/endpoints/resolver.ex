@@ -30,7 +30,9 @@ defmodule Logflare.Endpoints.Resolver do
         spec = {Cache, {query, params}}
         Logger.debug("Starting up Endpoint.Cache for Endpoint.Query id=#{id}", endpoint_id: id)
 
-        via = {:via, PartitionSupervisor, {Logflare.Endpoints.Cache.PartitionSupervisor, {id, params}}}
+        via =
+          {:via, PartitionSupervisor,
+           {Logflare.Endpoints.Cache.PartitionSupervisor, {id, params}}}
 
         case DynamicSupervisor.start_child(via, spec) do
           {:ok, pid} -> pid
