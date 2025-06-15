@@ -122,7 +122,7 @@ defmodule Logflare.Endpoints.Cache do
         state =
           state
           |> Map.put(:last_query_at, DateTime.utc_now())
-          |> Map.put(:cached_result, gzip(result))
+          |> Map.put(:cached_result, result)
 
         {:reply, response, state}
 
@@ -146,7 +146,7 @@ defmodule Logflare.Endpoints.Cache do
       state
       |> Map.put(:last_query_at, DateTime.utc_now())
 
-    {:reply, {:ok, gunzip(cached_result)}, state}
+    {:reply, {:ok, cached_result}, state}
   end
 
   def handle_call(:invalidate, _from, state) do
@@ -207,18 +207,6 @@ defmodule Logflare.Endpoints.Cache do
   def endpoints_part(query_id) do
     part = :erlang.phash2(query_id, System.schedulers_online())
     "endpoints_#{part}" |> String.to_existing_atom()
-  end
-
-  defp gunzip(results) do
-    results
-    |> :zlib.gunzip()
-    |> :erlang.binary_to_term()
-  end
-
-  defp gzip(results) do
-    results
-    |> :erlang.term_to_binary()
-    |> :zlib.gzip()
   end
 
   defp refresh(every) do
