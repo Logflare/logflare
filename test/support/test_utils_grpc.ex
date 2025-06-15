@@ -3,6 +3,7 @@ defmodule Logflare.TestUtilsGrpc do
 
   alias Opentelemetry.Proto.Collector.Trace.V1.ExportTraceServiceRequest
   alias Opentelemetry.Proto.Collector.Metrics.V1.ExportMetricsServiceRequest
+  alias Opentelemetry.Proto.Collector.Logs.V1.ExportLogsServiceRequest
 
   alias Opentelemetry.Proto.Common.V1.AnyValue
   alias Opentelemetry.Proto.Common.V1.ArrayValue
@@ -29,6 +30,10 @@ defmodule Logflare.TestUtilsGrpc do
   alias Opentelemetry.Proto.Metrics.V1.NumberDataPoint
   alias Opentelemetry.Proto.Metrics.V1.HistogramDataPoint
   alias Opentelemetry.Proto.Metrics.V1.ExponentialHistogramDataPoint
+
+  alias Opentelemetry.Proto.Logs.V1.ResourceLogs
+  alias Opentelemetry.Proto.Logs.V1.ScopeLogs
+  alias Opentelemetry.Proto.Logs.V1.LogRecord
 
   @doc """
   Generates a ExportTraceServiceRequest message which contains a Span and an Event in it
@@ -361,4 +366,68 @@ defmodule Logflare.TestUtilsGrpc do
   end
 
   defp random_unit, do: Enum.random(["s", "By", "ms"])
+
+  @doc """
+  Generates a ExportTraceServiceRequest message which contains a Span and an Event in it
+  """
+  def random_otel_logs_request do
+    %ExportLogsServiceRequest{
+      resource_logs: random_resource_logs()
+    }
+  end
+
+  def random_resource_logs do
+    [
+      %ResourceLogs{
+        resource: %Resource{
+          attributes: random_attributes()
+        },
+        scope_logs: [random_scope_logs()]
+      }
+    ]
+  end
+
+  defp random_scope_logs do
+    scope = random_scope()
+
+    %ScopeLogs{
+      scope: scope,
+      log_records: [random_log_record()]
+    }
+  end
+
+  defp random_log_record do
+    %LogRecord{
+      time_unix_nano: DateTime.utc_now() |> DateTime.to_unix(:nanosecond),
+      severity_number: random_severity_number(),
+      severity_text: random_severity_text(),
+      body: %AnyValue{value: {:string_value, Logflare.TestUtils.random_string()}},
+      attributes: random_attributes(),
+      trace_id: :crypto.strong_rand_bytes(16),
+      span_id: :crypto.strong_rand_bytes(8),
+      event_name: TestUtils.random_string()
+    }
+  end
+
+  defp random_severity_number do
+    Enum.random([
+      :SEVERITY_NUMBER_UNSPECIFIED,
+      :SEVERITY_NUMBER_TRACE,
+      :SEVERITY_NUMBER_INFO,
+      :SEVERITY_NUMBER_WARN,
+      :SEVERITY_NUMBER_ERROR,
+      :SEVERITY_NUMBER_FATAL
+    ])
+  end
+
+  defp random_severity_text do
+    Enum.random([
+      "TRACE",
+      "DEBUG",
+      "INFO",
+      "WARN",
+      "ERROR",
+      "FATAL"
+    ])
+  end
 end

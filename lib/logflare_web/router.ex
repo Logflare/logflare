@@ -14,6 +14,7 @@ defmodule LogflareWeb.Router do
 
   alias Opentelemetry.Proto.Collector.Trace.V1.ExportTraceServiceRequest
   alias Opentelemetry.Proto.Collector.Metrics.V1.ExportMetricsServiceRequest
+  alias Opentelemetry.Proto.Collector.Logs.V1.ExportLogsServiceRequest
 
   # TODO: move plug calls in SourceController and RuleController into here
 
@@ -490,6 +491,13 @@ defmodule LogflareWeb.Router do
       LogController,
       :otel_metrics,
       assigns: %{protobuf_schema: ExportMetricsServiceRequest}
+    )
+
+    post(
+      "/logs",
+      LogController,
+      :otel_logs,
+      assigns: %{protobuf_schema: ExportLogsServiceRequest}
     )
   end
 
