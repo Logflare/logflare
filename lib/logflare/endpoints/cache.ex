@@ -159,11 +159,10 @@ defmodule Logflare.Endpoints.Cache do
   end
 
   def handle_cast(:touch, state) do
-    state = %{state | last_query_at: DateTime.utc_now()}
     :timer.cancel(state.shutdown_timer)
     timer = state.query |> cache_duration_ms() |> shutdown()
 
-    {:noreply, %{state | shutdown_timer: timer}}
+    {:noreply, %{state | shutdown_timer: timer, last_query_at: DateTime.utc_now()}}
   end
 
   def handle_info(:refresh, state) do
