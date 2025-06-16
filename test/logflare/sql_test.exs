@@ -429,7 +429,7 @@ defmodule Logflare.SqlTest do
     project_id = override_project_id || user.bigquery_project_id || @logflare_project_id
     dataset_id = override_dataset_id || user.bigquery_dataset_id || "#{user.id}_#{@env}"
 
-    "`#{project_id}.#{dataset_id}.#{token}`"
+    "`#{project_id}`.`#{dataset_id}`.`#{token}`"
   end
 
   test "expand_subqueries/2 for :bq_sql will expand an alert/endpoint query into a subquery" do

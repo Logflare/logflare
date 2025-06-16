@@ -70,6 +70,37 @@ defmodule Logflare.Sql do
     end
   end
 
+  defp replace_names_with_subqueries(
+         {"relation" = k,
+          %{"Table" => %{"alias" => table_alias, "name" => [%{"value" => _} | _] = table_values}} =
+            v},
+         data
+       ) do
+    table_name = table_values |> Enum.map_join(".", & &1["value"])
+    query = Enum.find(data.queries, &(&1.name == table_name))
+
+    if query do
+      parser_language =
+        case data.language do
+          :pg_sql -> "postgres"
+          :bq_sql -> "bigquery"
+        end
+
+      {:ok, [%{"Query" => body}]} = Parser.parse(parser_language, query.query)
+
+      {k,
+       %{
+         "Derived" => %{
+           "alias" => table_alias,
+           "lateral" => false,
+           "subquery" => body
+         }
+       }}
+    else
+      {k, v}
+    end
+  end
+
   defp replace_names_with_subqueries({k, v}, data) when is_list(v) or is_map(v) do
     {k, replace_names_with_subqueries(v, data)}
   end
