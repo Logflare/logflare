@@ -812,6 +812,7 @@ defmodule Logflare.Sql do
 
     for ast <- stmts do
       ast
+      |> bq_to_pg_convert_tables()
       |> bq_to_pg_convert_functions()
       |> bq_to_pg_field_references()
       |> pg_traverse_final_pass()
@@ -837,11 +838,7 @@ defmodule Logflare.Sql do
         # TODO: remove once sqlparser-rs bug is fixed
         # parser for postgres adds parenthesis to the end for postgres
         |> String.replace(~r/current\_timestamp\(\)/im, "current_timestamp")
-        |> String.replace(~r/\"\"\.\"([\w\_\-]+)\"\.\"([\w_]{36})"/im, replacement_pattern)
-        |> String.replace(
-          ~r/"(?!.*log_events_)([a-zA-Z_][a-zA-Z0-9_]*)"\."(?!.*log_events_)([a-zA-Z_][a-zA-Z0-9_]*)"/,
-          "\"\\g{1}.\\g{2}\""
-        )
+        |> String.replace(~r/\"([\w\_\-]*\.[\w\_\-]+)\.([\w_]{36})"/im, replacement_pattern)
 
       Logger.debug(
         "Postgres translation is complete: #{query} | \n output: #{inspect(converted)}"
@@ -862,6 +859,39 @@ defmodule Logflare.Sql do
       Regex.replace(~r/@#{param}(?!:\s|$)/, acc, "$#{index}::text", global: false)
     end)
   end
+
+  # traverse ast to convert all tables
+  defp bq_to_pg_convert_tables({"Table" = k, v}) do
+    {quote_style, table_name} =
+      case Map.get(v, "name") do
+        [%{"quote_style" => quote_style, "value" => value}] ->
+          {quote_style, value}
+
+        [%{"quote_style" => quote_style, "value" => _} | _] = values ->
+          value = Enum.map_join(values, ".", & &1["value"])
+          {quote_style, value}
+      end
+
+    {k,
+     %{
+       v
+       | "name" => [%{"quote_style" => quote_style, "value" => table_name}]
+     }}
+  end
+
+  defp bq_to_pg_convert_tables({k, v}) when is_list(v) or is_map(v) do
+    {k, bq_to_pg_convert_tables(v)}
+  end
+
+  defp bq_to_pg_convert_tables(kv) when is_list(kv) do
+    Enum.map(kv, fn kv -> bq_to_pg_convert_tables(kv) end)
+  end
+
+  defp bq_to_pg_convert_tables(kv) when is_map(kv) do
+    Enum.map(kv, fn kv -> bq_to_pg_convert_tables(kv) end) |> Map.new()
+  end
+
+  defp bq_to_pg_convert_tables(kv), do: kv
 
   # traverse ast to convert all functions
   defp bq_to_pg_convert_functions({k, v} = kv)
