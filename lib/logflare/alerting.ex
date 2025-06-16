@@ -57,20 +57,11 @@ defmodule Logflare.Alerting do
   end
 
   def preload_alert_query(alert) do
-    Repo.preload(alert, [:user, :backends])
-    |> case do
-      %AlertQuery{backends: backends} = alert when is_list(backends) ->
-        %{
-          alert
-          | backends:
-              Enum.map(backends, fn backend ->
-                Backends.typecast_config_string_map_to_atom_map(backend)
-              end)
-        }
-
-      alert ->
-        alert
-    end
+    alert
+    |> Repo.preload([:user, :backends])
+    |> then(fn %AlertQuery{backends: backends} = alert ->
+      %{alert | backends: Enum.map(backends, &Backends.typecast_config_string_map_to_atom_map/1)}
+    end)
   end
 
   @doc """
