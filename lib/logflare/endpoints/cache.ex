@@ -35,7 +35,7 @@ defmodule Logflare.Endpoints.Cache do
 
     name = {:via, :syn, {endpoints, {query.id, params}}}
 
-    GenServer.start_link(__MODULE__, {query, params}, name: name)
+    GenServer.start_link(__MODULE__, {query, params}, name: name, hibernate_after: 5_000)
   end
 
   @doc """
@@ -195,12 +195,14 @@ defmodule Logflare.Endpoints.Cache do
     {:stop, :normal, state}
   end
 
-  def handle_info({:DOWN, _ref, :process, _pid, :normal}, state) do
-    {:noreply, state}
+  def handle_info({:DOWN, _ref, :process, pid, :normal}, state) do
+    tasks = Enum.reject(state.query_tasks, &(&1.pid == pid))
+
+    {:noreply, %{state | query_tasks: tasks}}
   end
 
   def handle_info({:DOWN, _ref, :process, _pid, reason}, state) do
-    Logger.warning("#{__MODULE__} task exited with reason #{reason}")
+    Logger.warning("#{__MODULE__}: task exited with reason #{reason}")
     {:stop, :normal, state}
   end
 
