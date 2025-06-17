@@ -16,6 +16,10 @@ test:
 	-epmd -daemon
 	mix test
 
+test.failed:
+	-epmd -daemon
+	mix test --failed
+
 test.only:
 	-epmd -daemon
 	mix test.only
