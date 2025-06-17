@@ -176,6 +176,16 @@
           </div>
 
           <div class="form-group">
+            <%= label(f_config, :username, "Basic Auth Username") %>
+            <%= text_input(f_config, :username, class: "form-control") %>
+            <%= label(f_config, :password, "Basic Auth Password") %>
+            <%= text_input(f_config, :password, class: "form-control", type: "password") %>
+            <small class="form-text text-muted">
+              For basic auth, both username and password must be provided.
+            </small>
+          </div>
+
+          <div class="form-group">
             <%= label(f_config, :header1_key, "Header 1 Key") %>
             <%= text_input(f_config, :header1_key, class: "form-control") %>
             <%= label(f_config, :header1_value, "Header 1 Value") %>
