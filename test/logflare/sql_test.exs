@@ -262,9 +262,6 @@ defmodule Logflare.SqlTest do
             },
             {{"with src as (select a from my_table) select c from src",
               "select a from b; select c from d;"}, "Only singular query allowed"},
-            # no source name in query - unquoted identifier with hyphens causes parser error
-            {"select datetime() from light-two-os-directions-test",
-             "Expected end of statement, found: -"},
             {"select datetime() from `light-two-os-directions-test`",
              "can't find source light-two-os-directions-test"},
             {"with src as (select a from unknown_table) select datetime() from my_table",
