@@ -1,6 +1,6 @@
 [package]
 name = "sqlparser_ex"
-version = "0.3.0"
+version = "0.3.1"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -12,7 +12,7 @@ crate-type = ["cdylib"]
 
 [dependencies]
 rustler = "0.36.2"
-sqlparser = { version = "0.39.0", features = ["serde"]}
+sqlparser = { version = "0.40.0", features = ["serde"]}
 # sqlparser = {git = "https://github.com/Logflare/sqlparser-rs", branch = "main", features = ["serde"]}
 # sqlparser = {version = "0.27.0", features = ["serde"]}
 serde = { version = "1", features = ["derive"] }
