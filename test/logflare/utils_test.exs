@@ -1,9 +1,7 @@
 defmodule Logflare.UtilsTest do
-  @moduledoc false
   use ExUnit.Case, async: true
-  import Logflare.Utils
-  import Logflare.EnumDeepUpdate
-  doctest Logflare.EnumDeepUpdate
-  doctest Logflare.Utils
-  doctest Logflare.Utils.Map
+
+  doctest Logflare.EnumDeepUpdate, import: true
+  doctest Logflare.Utils, import: true
+  doctest Logflare.Utils.Map, import: true
 end

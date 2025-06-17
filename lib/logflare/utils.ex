@@ -1,6 +1,6 @@
 defmodule Logflare.Utils do
   @moduledoc """
-  Context-only utilities. Should not be used outside of `lib/logflare/*`
+  Context-only utilities. Should not be used outside of `lib/logflare/*`.
   """
   import Cachex.Spec
 
@@ -50,7 +50,8 @@ defmodule Logflare.Utils do
   @doc """
   Stringifies an atom map to a string map.
 
-  ### Example
+  ## Examples
+
     iex> stringify_keys(%{test: "data"})
     %{"test" => "data"}
   """
@@ -82,7 +83,8 @@ defmodule Logflare.Utils do
   @doc """
   Sets the default ecto changeset field value if not set
 
-  ###  Example
+  ## Examples
+
     iex> data = %{title: "hello"}
     iex> types = %{title: :string}
     iex> changeset = Ecto.Changeset.cast({data, types}, %{title: nil}, [:title])
@@ -100,7 +102,8 @@ defmodule Logflare.Utils do
   Performs chunked round robin of a batch of items to a group of targets.
   Repeats the group of targets until the batch is completely empty.
 
-  ###  Example
+  ## Examples
+
     iex> batch = [1, 2, 4]
     iex> targets = [:x, :y]
     iex> chunk_size = 2
