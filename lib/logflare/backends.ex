@@ -501,23 +501,6 @@ defmodule Logflare.Backends do
   end
 
   @doc """
-  Get local pending buffer len of a source/backend combination, and caches it at the same time.
-  """
-  @spec get_and_cache_local_pending_buffer_len(
-          integer(),
-          nil | integer()
-        ) ::
-          integer()
-  @deprecated "call `Logflare.Backends.cache_local_buffer_lens/2` instead."
-  def get_and_cache_local_pending_buffer_len(source_id, backend_id \\ nil)
-      when is_integer(source_id) do
-    len = IngestEventQueue.total_pending({source_id, backend_id})
-    payload = %{Node.self() => %{len: len}}
-    PubSubRates.Cache.cache_buffers(source_id, backend_id, payload)
-    len
-  end
-
-  @doc """
   Caches total buffer len. Includes ingested events that are awaiting cleanup.
   """
   def cache_local_buffer_lens(source_id, backend_id \\ nil) do

@@ -244,8 +244,8 @@ defmodule Logflare.Backends.IngestEventQueueTest do
     IngestEventQueue.add_to_table(table, [le])
     IngestEventQueue.add_to_table(other_table, [le])
     :timer.sleep(300)
-    assert Backends.get_and_cache_local_pending_buffer_len(source.id) == 1
-    assert Backends.get_and_cache_local_pending_buffer_len(source.id, backend.id) == 1
+    assert {:ok, %{len: 1}} = Backends.cache_local_buffer_lens(source.id)
+    assert {:ok, %{len: 1}} = Backends.cache_local_buffer_lens(source.id, backend.id)
     assert PubSubRates.Cache.get_cluster_buffers(source.id, backend.id) == 1
     assert PubSubRates.Cache.get_cluster_buffers(source.id, nil) == 1
   end
