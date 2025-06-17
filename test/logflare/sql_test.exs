@@ -297,7 +297,7 @@ defmodule Logflare.SqlTest do
       for {input, expected} <- [
             # fully qualified names must start with the user's bigquery project
             {"select a from `#{@user_project_id}.#{@user_dataset_id}.mytable`",
-             "select a from `#{@user_project_id}.#{@user_dataset_id}.mytable`"},
+             "select a from `#{@user_project_id}`.`#{@user_dataset_id}`.`mytable`"},
             #  source names that look like dataset format
             {"select a from `a.b.c`", "select a from #{bq_table_name(source_abc)}"},
             {"with a as (select b from `c.x.y`) select b from a",
