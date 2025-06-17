@@ -27,7 +27,6 @@ defmodule Logflare.Endpoints.Resolver do
     |> GenServer.whereis()
     |> case do
       {pid, _} when is_pid(pid) ->
-        Cache.touch(pid)
         pid
 
       _ ->

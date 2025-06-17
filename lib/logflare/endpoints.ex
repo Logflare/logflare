@@ -221,9 +221,14 @@ defmodule Logflare.Endpoints do
   """
   @spec run_cached_query(Query.t(), map()) :: run_query_return()
   def run_cached_query(query, params \\ %{}) do
-    query
-    |> Resolver.resolve(params)
-    |> Cache.query()
+    if query.cache_duration_seconds > 0 do
+      query
+      |> Resolver.resolve(params)
+      |> Cache.query()
+    else
+      # execute the query directly
+      run_query(query, params)
+    end
   end
 
   defp exec_query_on_backend(
