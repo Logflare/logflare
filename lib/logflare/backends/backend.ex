@@ -19,7 +19,8 @@ defmodule Logflare.Backends.Backend do
     bigquery: Adaptor.BigQueryAdaptor,
     loki: Adaptor.LokiAdaptor,
     clickhouse: Adaptor.ClickhouseAdaptor,
-    incidentio: Adaptor.IncidentioAdaptor
+    incidentio: Adaptor.IncidentioAdaptor,
+    s3: Adaptor.S3Adaptor
   }
 
   typed_schema "backends" do
