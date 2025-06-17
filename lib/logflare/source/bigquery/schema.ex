@@ -123,7 +123,7 @@ defmodule Logflare.Source.BigQuery.Schema do
     schema = try_schema_update(body, state.schema)
 
     if not same_schemas?(state.schema, schema) and
-         state.next_update < System.system_time(:millisecond) and
+         state.next_update <= System.system_time(:millisecond) and
          !SingleTenant.postgres_backend?() do
       case BigQuery.patch_table(
              state.source_token,
