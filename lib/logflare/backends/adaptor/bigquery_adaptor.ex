@@ -12,10 +12,12 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
   alias Logflare.Sources
   alias Logflare.Billing
   alias Logflare.Backends
+  alias Logflare.Google.BigQuery.GenUtils
   use Supervisor
   require Logger
 
   @behaviour Logflare.Backends.Adaptor
+  @service_account_prefix "logflare_managed"
 
   @impl Logflare.Backends.Adaptor
   def start_link({source, backend} = source_backend) do
@@ -135,4 +137,65 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
   @impl Logflare.Backends.Adaptor
   def validate_config(changeset),
     do: changeset
+
+  @spec managed_service_account_name(String.t(), non_neg_integer()) :: String.t()
+  def managed_service_account_name(project_id, service_account_index \\ 0) do
+    "#{@service_account_prefix}_#{service_account_index}@#{project_id}.iam.gserviceaccount.com"
+  end
+
+
+  @doc """
+  Lists all managed service accounts
+  """
+  @spec list_managed_service_accounts(String.t()) :: [GoogleApi.IAM.V1.Model.ServiceAccount.t()]
+  def list_managed_service_accounts(project_id) do
+    get_next_page(project_id, nil)
+    |> Enum.filter(&(&1.name =~ @service_account_prefix))
+  end
+
+  defp handle_response({:ok, response}) do
+    case response do
+      {:ok, %{accounts: accounts, next_page_token: nil}} ->
+        accounts
+
+      {:ok, %{accounts: accounts, next_page_token: next_page_token}} ->
+        get_next_page(project_id, next_page_token) ++ accounts
+    end
+    |> List.flatten()
+  end
+
+  defp handle_response({:error, error}) do
+    Logger.error("Error listing managed service accounts: #{inspect(error)}")
+    []
+  end
+
+  defp get_next_page(project_id, page_token) do
+    GenUtils.get_conn(:default)
+    |> GoogleApi.IAM.V1.Api.Projects.iam_projects_service_accounts_list(project_id,
+      page_size: 100,
+      page_token: page_token
+    )
+    |> handle_response()
+  end
+
+  def create_managed_service_accounts(project_id) do
+    # determine the ids of of service accounts to create, based on what service accounts already exist
+    size = Application.get_env(:logflare, :bigquery_backend_adaptor)[:managed_service_account_pool_size]
+    existing = list_managed_service_accounts(project_id) |> Enum.map(& &1.name)
+    indexes = for i <- 0..(size - 1), managed_service_account_name(project_id, i) not in existing, do: i
+
+    for i <- indexes do
+      create_managed_service_account(project_id, i)
+    end
+  end
+
+  defp create_managed_service_account(project_id, service_account_index) do
+    GenUtils.get_conn(:default)
+    |> GoogleApi.IAM.V1.Api.Projects.iam_projects_service_accounts_create(project_id, %{
+      account_id: managed_service_account_name(project_id, service_account_index),
+      service_account_object: %{
+        project_id: project_id
+      }
+    })
+  end
 end
