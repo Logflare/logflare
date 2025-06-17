@@ -1027,7 +1027,36 @@ defmodule Logflare.Sql do
 
   defp bq_to_pg_convert_functions(kv), do: kv
 
-  # between operator should have balues cast to numeric
+  # convert JsonAccess to PostgreSQL JSON operators
+  defp pg_traverse_final_pass(
+         {"JsonAccess" = k, %{"value" => value, "path" => %{"path" => path}} = v}
+       ) do
+    case path do
+      [%{"Dot" => %{"key" => key}}] ->
+        # Convert to BinaryOp with -> operator
+        {"BinaryOp",
+         %{
+           "left" => pg_traverse_final_pass(value),
+           "op" => "Arrow",
+           "right" => %{"Value" => %{"SingleQuotedString" => key}}
+         }}
+
+      [%{"Bracket" => %{"key" => key_expr}}] ->
+        # Bracket notation
+        {"BinaryOp",
+         %{
+           "left" => pg_traverse_final_pass(value),
+           "op" => "Arrow",
+           "right" => pg_traverse_final_pass(key_expr)
+         }}
+
+      _ ->
+        # Multiple path elements - keep as-is for now
+        {k, pg_traverse_final_pass(v)}
+    end
+  end
+
+  # between operator should have values cast to numeric
   defp pg_traverse_final_pass({"Between" = k, %{"expr" => expr} = v}) do
     new_expr = expr |> pg_traverse_final_pass() |> cast_to_numeric()
     {k, %{v | "expr" => new_expr}}
@@ -1042,7 +1071,7 @@ defmodule Logflare.Sql do
             "op" => operator
           } = v}
        ) do
-    # handle left/right numberic value comparisons
+    # handle left/right numeric value comparisons
     is_numeric_comparison = numeric_value?(left) or numeric_value?(right)
 
     [left, right] =
@@ -1069,15 +1098,30 @@ defmodule Logflare.Sql do
             |> jsonb_to_text()
 
           true ->
-            expr
+            pg_traverse_final_pass(expr)
         end
       end
 
     {k, %{v | "left" => left, "right" => right} |> pg_traverse_final_pass()}
   end
 
+  # handle InList expressions - convert Arrow to LongArrow for text comparison
+  defp pg_traverse_final_pass({"InList" = k, %{"expr" => expr} = v}) do
+    processed_expr =
+      case expr do
+        %{"Nested" => %{"BinaryOp" => %{"op" => "Arrow"} = bin_op}} ->
+          %{"Nested" => %{"BinaryOp" => %{bin_op | "op" => "LongArrow"}}}
+
+        other ->
+          pg_traverse_final_pass(other)
+      end
+
+    {k, %{v | "expr" => processed_expr}}
+  end
+
   # convert backticks to double quotes
   defp pg_traverse_final_pass({"quote_style" = k, "`"}), do: {k, "\""}
+
   # drop cross join unnest
   defp pg_traverse_final_pass({"joins" = k, joins}) do
     filtered_joins =
@@ -1200,14 +1244,17 @@ defmodule Logflare.Sql do
     at_time_zone(%{
       "Nested" => %{
         "JsonAccess" => %{
-          "left" => %{
+          "value" => %{
             "CompoundIdentifier" => [
               %{"quote_style" => nil, "value" => table},
               %{"quote_style" => nil, "value" => "body"}
             ]
           },
-          "operator" => "LongArrow",
-          "right" => %{"Value" => %{"SingleQuotedString" => "timestamp"}}
+          "path" => %{
+            "path" => [
+              %{"Dot" => %{"key" => "timestamp", "quoted" => false}}
+            ]
+          }
         }
       }
     })
@@ -1217,11 +1264,14 @@ defmodule Logflare.Sql do
     at_time_zone(%{
       "Nested" => %{
         "JsonAccess" => %{
-          "left" => %{
+          "value" => %{
             "Identifier" => %{"quote_style" => nil, "value" => "body"}
           },
-          "operator" => "LongArrow",
-          "right" => %{"Value" => %{"SingleQuotedString" => "timestamp"}}
+          "path" => %{
+            "path" => [
+              %{"Dot" => %{"key" => "timestamp", "quoted" => false}}
+            ]
+          }
         }
       }
     })
@@ -1229,20 +1279,23 @@ defmodule Logflare.Sql do
 
   defp convert_keys_to_json_query(
          %{"CompoundIdentifier" => [%{"value" => key}]},
-         data,
+         _data,
          [table, field]
        ) do
     %{
       "Nested" => %{
         "JsonAccess" => %{
-          "left" => %{
+          "value" => %{
             "CompoundIdentifier" => [
               %{"quote_style" => nil, "value" => table},
               %{"quote_style" => nil, "value" => field}
             ]
           },
-          "operator" => json_access_arrow(data, false),
-          "right" => %{"Value" => %{"SingleQuotedString" => key}}
+          "path" => %{
+            "path" => [
+              %{"Dot" => %{"key" => key, "quoted" => false}}
+            ]
+          }
         }
       }
     }
@@ -1250,15 +1303,18 @@ defmodule Logflare.Sql do
 
   defp convert_keys_to_json_query(
          %{"CompoundIdentifier" => [%{"value" => key}]},
-         data,
+         _data,
          base
        ) do
     %{
       "Nested" => %{
         "JsonAccess" => %{
-          "left" => %{"Identifier" => %{"quote_style" => nil, "value" => base}},
-          "operator" => json_access_arrow(data, false),
-          "right" => %{"Value" => %{"SingleQuotedString" => key}}
+          "value" => %{"Identifier" => %{"quote_style" => nil, "value" => base}},
+          "path" => %{
+            "path" => [
+              %{"Dot" => %{"key" => key, "quoted" => false}}
+            ]
+          }
         }
       }
     }
@@ -1267,7 +1323,7 @@ defmodule Logflare.Sql do
   # handle cross join aliases when there are different base field names as compared to what is referenced
   defp convert_keys_to_json_query(
          %{"CompoundIdentifier" => [%{"value" => _join_alias}, %{"value" => key} | _]},
-         data,
+         _data,
          {base, arr_path}
        ) do
     str_path = Enum.join(arr_path, ",")
@@ -1276,9 +1332,12 @@ defmodule Logflare.Sql do
     %{
       "Nested" => %{
         "JsonAccess" => %{
-          "left" => %{"Identifier" => %{"quote_style" => nil, "value" => base}},
-          "operator" => json_access_arrow(data, true),
-          "right" => %{"Value" => %{"SingleQuotedString" => path}}
+          "value" => %{"Identifier" => %{"quote_style" => nil, "value" => base}},
+          "path" => %{
+            "path" => [
+              %{"Bracket" => %{"key" => %{"Value" => %{"SingleQuotedString" => path}}}}
+            ]
+          }
         }
       }
     }
@@ -1295,9 +1354,12 @@ defmodule Logflare.Sql do
     %{
       "Nested" => %{
         "JsonAccess" => %{
-          "left" => %{"Identifier" => %{"quote_style" => nil, "value" => base}},
-          "operator" => json_access_arrow(data, true),
-          "right" => %{"Value" => %{"SingleQuotedString" => path}}
+          "value" => %{"Identifier" => %{"quote_style" => nil, "value" => base}},
+          "path" => %{
+            "path" => [
+              %{"Bracket" => %{"key" => %{"Value" => %{"SingleQuotedString" => path}}}}
+            ]
+          }
         }
       }
     }
@@ -1305,15 +1367,18 @@ defmodule Logflare.Sql do
 
   defp convert_keys_to_json_query(
          %{"Identifier" => %{"value" => name}},
-         data,
+         _data,
          base
        ) do
     %{
       "Nested" => %{
         "JsonAccess" => %{
-          "left" => %{"Identifier" => %{"quote_style" => nil, "value" => base}},
-          "operator" => json_access_arrow(data, false),
-          "right" => %{"Value" => %{"SingleQuotedString" => name}}
+          "value" => %{"Identifier" => %{"quote_style" => nil, "value" => base}},
+          "path" => %{
+            "path" => [
+              %{"Dot" => %{"key" => name, "quoted" => false}}
+            ]
+          }
         }
       }
     }
@@ -1679,8 +1744,8 @@ defmodule Logflare.Sql do
   defp cast_to_numeric(expr) do
     %{
       "Cast" => %{
-        "data_type" => %{"Numeric" => "None"},
-        "expr" => expr
+        "expr" => expr,
+        "data_type" => %{"Numeric" => %{"precision" => nil, "scale" => nil}}
       }
     }
   end
@@ -1688,35 +1753,27 @@ defmodule Logflare.Sql do
   defp cast_to_jsonb(expr) do
     %{
       "Cast" => %{
-        "data_type" => %{"Custom" => [[%{"quote_style" => nil, "value" => "jsonb"}], []]},
-        "expr" => expr
+        "expr" => expr,
+        "data_type" => %{
+          "Custom" => %{
+            "name" => [%{"quote_style" => nil, "value" => "jsonb"}],
+            "modifiers" => []
+          }
+        }
       }
     }
   end
 
   defp jsonb_to_text(expr) do
     %{
-      "Nested" => %{
-        "JsonAccess" => %{
-          "left" => expr,
-          "operator" => "HashLongArrow",
-          "right" => %{"Value" => %{"SingleQuotedString" => "{}"}}
-        }
+      "Function" => %{
+        "name" => %{"quote_style" => nil, "value" => "jsonb_extract_path_text"},
+        "args" => %{"None" => [expr, %{"Value" => %{"SingleQuotedString" => "0"}}]},
+        "filter" => nil,
+        "null_treatment" => nil,
+        "over" => nil,
+        "within_group" => []
       }
     }
-  end
-
-  defp json_access_arrow(data, hash) do
-    arrow =
-      cond do
-        data.in_binaryop or data.in_between or data.in_function_or_cast -> "LongArrow"
-        true -> "Arrow"
-      end
-
-    if hash do
-      "Hash" <> arrow
-    else
-      arrow
-    end
   end
 end
