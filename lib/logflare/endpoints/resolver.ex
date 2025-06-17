@@ -26,10 +26,10 @@ defmodule Logflare.Endpoints.Resolver do
     {:via, :syn, {endpoints, {query.id, params}}}
     |> GenServer.whereis()
     |> case do
-      {pid, _} when is_pid(pid) ->
+      pid when is_pid(pid) ->
         pid
 
-      _ ->
+      nil ->
         spec = {Cache, {query, params}}
         Logger.debug("Starting up Endpoint.Cache for Endpoint.Query id=#{id}", endpoint_id: id)
 
