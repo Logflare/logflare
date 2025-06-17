@@ -146,7 +146,7 @@ defmodule Logflare.Sql do
     sources = Sources.list_sources_by_user(user)
     source_mapping = source_mapping(sources)
 
-    with {:ok, statements} <- Parser.parse("bigquery", query) do
+    with {:ok, statements} <- Parser.parse("postgres", query) do
       statements
       |> do_transform(%{
         sources: sources,
