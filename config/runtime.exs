@@ -44,6 +44,13 @@ config :logflare,
        ]
        |> filter_nil_kv_pairs.()
 
+config :logflare, :bigquery_backend_adaptor,
+[  managed_service_account_pool_size:
+    System.get_env("LOGFLARE_BIGQUERY_MANAGED_SERVICE_ACCOUNT_POOL_SIZE", "3")
+    |> String.to_integer()]
+|> filter_nil_kv_pairs.()
+
+
 config :logflare,
        :bigquery_backend_adaptor,
        [
