@@ -87,7 +87,12 @@ defmodule Logflare.Google.CloudResourceManager do
   defp get_service_accounts() do
     for {member, roles} <- [
           {env_service_account(),
-           ["roles/bigquery.admin", "roles/resourcemanager.projectIamAdmin", "roles/iam.serviceAccountCreator", "roles/resourcemanager.projectIamAdmin", "roles/iam.serviceAccountTokenCreator"]},
+           [
+             "roles/bigquery.admin",
+             "roles/resourcemanager.projectIamAdmin",
+             "roles/iam.serviceAccountCreator",
+             "roles/iam.serviceAccountTokenCreator"
+           ]},
           {env_compute_engine_sa(),
            [
              "roles/compute.instanceAdmin",

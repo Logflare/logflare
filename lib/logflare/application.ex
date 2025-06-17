@@ -3,6 +3,7 @@ defmodule Logflare.Application do
   use Application
   require Logger
 
+  alias Logflare.Backends.Adaptor.BigQueryAdaptor
   alias Logflare.ContextCache
   alias Logflare.Logs
   alias Logflare.SingleTenant
@@ -123,58 +124,15 @@ defmodule Logflare.Application do
       ]
   end
 
+  def goth_partition_count, do: 5
+
   def conditional_children do
     goth =
-      case Application.get_env(:goth, :json) do
-        nil ->
-          []
+      [
+        BigQueryAdaptor.partitioned_goth_child_spec()
+      ] ++ BigQueryAdaptor.impersonated_goth_child_specs()
 
-        json ->
-          # Setup Goth for GCP connections
-          credentials = Jason.decode!(json)
-          scopes = ["https://www.googleapis.com/auth/cloud-platform"]
-          source = {:service_account, credentials, scopes: scopes}
-
-          spec =
-            {
-              Goth,
-              # https://hexdocs.pm/goth/Goth.html#fetch/2
-              #  refresh 15 min before
-              #  don't start server until fetch is made
-              #  cap retries at 10s, warn when >5
-              name: Logflare.Goth,
-              source: source,
-              refresh_before: 60 * 15,
-              prefetch: :sync,
-              http_client: &goth_finch_http_client/1,
-              retry_delay: fn
-                n when n < 3 ->
-                  1000
-
-                n when n < 5 ->
-                  Logger.warning("Goth refresh retry count is #{n}")
-                  1000 * 3
-
-                n when n < 10 ->
-                  Logger.warning("Goth refresh retry count is #{n}")
-                  1000 * 5
-
-                n ->
-                  Logger.warning("Goth refresh retry count is #{n}")
-                  1000 * 10
-              end
-            }
-
-          # Partition Goth
-          [
-            {PartitionSupervisor,
-             child_spec: spec,
-             name: Logflare.GothPartitionSup,
-             with_arguments: fn [opts], partition ->
-               [Keyword.put(opts, :name, {Logflare.Goth, partition})]
-             end}
-          ]
-      end
+    dbg(goth)
 
     # only add in config cat to multi-tenant prod
     config_cat =
@@ -189,18 +147,6 @@ defmodule Logflare.Application do
   def config_change(changed, _new, removed) do
     LogflareWeb.Endpoint.config_change(changed, removed)
     :ok
-  end
-
-  # tell goth to use our finch pool
-  # https://github.com/peburrows/goth/blob/master/lib/goth/token.ex#L144
-  defp goth_finch_http_client(options) do
-    {method, options} = Keyword.pop!(options, :method)
-    {url, options} = Keyword.pop!(options, :url)
-    {headers, options} = Keyword.pop!(options, :headers)
-    {body, options} = Keyword.pop!(options, :body)
-
-    Finch.build(method, url, headers, body)
-    |> Finch.request(Logflare.FinchGoth, options)
   end
 
   defp finch_pools do
@@ -277,6 +223,10 @@ defmodule Logflare.Application do
   def startup_tasks do
     # if single tenant, insert enterprise user
     Logger.info("Executing startup tasks")
+
+    if !SingleTenant.postgres_backend?() do
+      BigQueryAdaptor.create_managed_service_accounts()
+    end
 
     if SingleTenant.single_tenant?() do
       Logger.info("Ensuring single tenant user is seeded...")

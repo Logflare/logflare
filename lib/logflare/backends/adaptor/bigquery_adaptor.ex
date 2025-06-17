@@ -17,8 +17,8 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
   require Logger
 
   @behaviour Logflare.Backends.Adaptor
-  @service_account_prefix "logflare_managed"
-
+  @service_account_prefix "logflare-managed"
+  @managed_service_account_partition_count 5
   @impl Logflare.Backends.Adaptor
   def start_link({source, backend} = source_backend) do
     Supervisor.start_link(__MODULE__, source_backend,
@@ -140,9 +140,13 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
 
   @spec managed_service_account_name(String.t(), non_neg_integer()) :: String.t()
   def managed_service_account_name(project_id, service_account_index \\ 0) do
-    "#{@service_account_prefix}_#{service_account_index}@#{project_id}.iam.gserviceaccount.com"
+    "#{@service_account_prefix}-#{service_account_index}@#{project_id}.iam.gserviceaccount.com"
   end
 
+  @spec managed_service_account_id(String.t(), non_neg_integer()) :: String.t()
+  def managed_service_account_id(project_id, service_account_index \\ 0) do
+    "#{@service_account_prefix}-#{service_account_index}"
+  end
 
   @doc """
   Lists all managed service accounts
@@ -153,36 +157,47 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
     |> Enum.filter(&(&1.name =~ @service_account_prefix))
   end
 
-  defp handle_response({:ok, response}) do
+  defp handle_response({:ok, response}, project_id) do
+    dbg(response)
+
     case response do
-      {:ok, %{accounts: accounts, next_page_token: nil}} ->
+      %{accounts: accounts, nextPageToken: nil} ->
         accounts
 
-      {:ok, %{accounts: accounts, next_page_token: next_page_token}} ->
+      %{accounts: accounts, nextPageToken: next_page_token} ->
         get_next_page(project_id, next_page_token) ++ accounts
     end
     |> List.flatten()
   end
 
-  defp handle_response({:error, error}) do
+  defp handle_response({:error, error}, project_id) do
     Logger.error("Error listing managed service accounts: #{inspect(error)}")
     []
   end
 
   defp get_next_page(project_id, page_token) do
     GenUtils.get_conn(:default)
-    |> GoogleApi.IAM.V1.Api.Projects.iam_projects_service_accounts_list(project_id,
-      page_size: 100,
-      page_token: page_token
+    |> GoogleApi.IAM.V1.Api.Projects.iam_projects_service_accounts_list("projects/#{project_id}",
+      pageSize: 100,
+      pageToken: page_token
     )
-    |> handle_response()
+    |> dbg()
+    |> handle_response(project_id)
   end
 
-  def create_managed_service_accounts(project_id) do
+  def create_managed_service_accounts(project_id \\ nil) do
+    project_id = project_id || Application.get_env(:logflare, Logflare.Google)[:project_id]
+
     # determine the ids of of service accounts to create, based on what service accounts already exist
-    size = Application.get_env(:logflare, :bigquery_backend_adaptor)[:managed_service_account_pool_size]
-    existing = list_managed_service_accounts(project_id) |> Enum.map(& &1.name)
-    indexes = for i <- 0..(size - 1), managed_service_account_name(project_id, i) not in existing, do: i
+    size =
+      Application.get_env(:logflare, :bigquery_backend_adaptor)[
+        :managed_service_account_pool_size
+      ]
+
+    existing = list_managed_service_accounts(project_id) |> Enum.map(& &1.email)
+
+    indexes =
+      for i <- 0..(size - 1), managed_service_account_name(project_id, i) not in existing, do: i
 
     for i <- indexes do
       create_managed_service_account(project_id, i)
@@ -191,11 +206,115 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
 
   defp create_managed_service_account(project_id, service_account_index) do
     GenUtils.get_conn(:default)
-    |> GoogleApi.IAM.V1.Api.Projects.iam_projects_service_accounts_create(project_id, %{
-      account_id: managed_service_account_name(project_id, service_account_index),
-      service_account_object: %{
-        project_id: project_id
+    |> GoogleApi.IAM.V1.Api.Projects.iam_projects_service_accounts_create(
+      "projects/#{project_id}",
+      body: %GoogleApi.IAM.V1.Model.CreateServiceAccountRequest{
+        accountId: managed_service_account_id(project_id, service_account_index)
       }
-    })
+    )
+    |> dbg()
+  end
+
+  def managed_service_account_pool_size do
+    Application.get_env(:logflare, :bigquery_backend_adaptor)[:managed_service_account_pool_size]
+  end
+
+  def managed_service_account_partition_count, do: @managed_service_account_partition_count
+
+  def ingest_service_account_partition_count,
+    do: max(@managed_service_account_partition_count, System.schedulers_online())
+
+  # Goth provisioning
+  def partitioned_goth_child_spec() do
+    if json = Application.get_env(:goth, :json) do
+      {PartitionSupervisor,
+       child_spec: goth_child_spec(json),
+       name: Logflare.GothPartitionSup,
+       with_arguments: fn [opts], partition ->
+         [Keyword.put(opts, :name, {Logflare.Goth, partition})]
+       end}
+    end
+  end
+
+  def goth_child_spec(nil), do: nil
+
+  def goth_child_spec(json, sub \\ nil) do
+    credentials = Jason.decode!(json)
+    scopes = ["https://www.googleapis.com/auth/cloud-platform"]
+
+    source =
+      if sub,
+        do:
+          {:service_account, credentials,
+           [
+             url:
+               "https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/#{sub}:signJwt",
+             claims: %{"sub" => sub, "scope" => "https://www.googleapis.com/auth/cloud-platform"}
+           ]},
+        else: {:service_account, credentials, scopes: scopes}
+
+    # source = {:service_account, credentials, scopes: scopes}
+    {
+      Goth,
+      # https://hexdocs.pm/goth/Goth.html#fetch/2
+      #  refresh 15 min before
+      #  don't start server until fetch is made
+      #  cap retries at 10s, warn when >5
+      name: Logflare.Goth,
+      source: source,
+      refresh_before: 60 * 15,
+      prefetch: :sync,
+      http_client: &goth_finch_http_client/1,
+      retry_delay: fn
+        n when n < 3 ->
+          1000
+
+        n when n < 5 ->
+          Logger.warning("Goth refresh retry count is #{n}")
+          1000 * 3
+
+        n when n < 10 ->
+          Logger.warning("Goth refresh retry count is #{n}")
+          1000 * 5
+
+        n ->
+          Logger.warning("Goth refresh retry count is #{n}")
+          1000 * 10
+      end
+    }
+  end
+
+  def impersonated_goth_child_specs() do
+    project_id = Application.get_env(:logflare, Logflare.Google)[:project_id]
+    pool_size = managed_service_account_pool_size()
+    json = Application.get_env(:goth, :json)
+
+    if json != nil and pool_size > 0 do
+      for i <- 0..(pool_size - 1) do
+        spec = goth_child_spec(json, managed_service_account_name(project_id, i))
+
+        {PartitionSupervisor,
+         child_spec: spec,
+         partitions: @managed_service_account_partition_count,
+         name: String.to_atom("Logflare.GothPartitionSup_#{i}"),
+         with_arguments: fn [opts], partition ->
+           [Keyword.put(opts, :name, {Logflare.GothQuery, i, partition})]
+         end}
+      end
+    else
+      []
+    end
+  end
+
+  # tell goth to use our finch pool
+  # https://github.com/peburrows/goth/blob/master/lib/goth/token.ex#L144
+  defp goth_finch_http_client(options) do
+    {method, options} = Keyword.pop!(options, :method)
+    {url, options} = Keyword.pop!(options, :url)
+    {headers, options} = Keyword.pop!(options, :headers)
+    {body, options} = Keyword.pop!(options, :body)
+
+    Finch.build(method, url, headers, body)
+    |> Finch.request(Logflare.FinchGoth, options)
   end
 end
