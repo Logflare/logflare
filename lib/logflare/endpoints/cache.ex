@@ -13,21 +13,19 @@ defmodule Logflare.Endpoints.Cache do
   defstruct query: nil,
             query_tasks: [],
             params: %{},
-            last_query_at: nil,
-            last_update_at: nil,
             cached_result: nil,
             disable_cache: false,
-            shutdown_timer: nil
+            shutdown_timer: nil,
+            refresh_timer: nil
 
   @type t :: %__MODULE__{
           query: %Logflare.Endpoints.Query{},
           query_tasks: list(%Task{}),
           params: map(),
-          last_query_at: DateTime.t(),
-          last_update_at: DateTime.t(),
           cached_result: binary(),
           disable_cache: boolean(),
-          shutdown_timer: reference()
+          shutdown_timer: reference(),
+          refresh_timer: reference()
         }
 
   def start_link({query, params}) do
@@ -89,13 +87,6 @@ defmodule Logflare.Endpoints.Cache do
     GenServer.call(cache, :invalidate)
   end
 
-  @doc """
-  Updates the `last_query_at` key in the process state to act as if a query was recently made.
-  """
-  def touch(cache) when is_pid(cache) do
-    GenServer.cast(cache, :touch)
-  end
-
   def init({query, params}) do
     endpoints = endpoints_part(query.id)
     :syn.join(endpoints, query.id, self())
@@ -106,14 +97,12 @@ defmodule Logflare.Endpoints.Cache do
       %__MODULE__{
         query: query,
         params: params,
-        last_update_at: DateTime.utc_now(),
-        last_query_at: DateTime.utc_now(),
         shutdown_timer: timer
       }
       |> fetch_latest_query_endpoint()
       |> put_disable_cache()
 
-    unless state.disable_cache, do: refresh(proactive_querying_ms(state))
+    unless state.disable_cache, do: refresh(proactive_querying_ms(query))
 
     {:ok, state}
   end
@@ -124,10 +113,7 @@ defmodule Logflare.Endpoints.Cache do
   def handle_call(:query, _from, %__MODULE__{cached_result: nil, disable_cache: false} = state) do
     case do_query(state) do
       {:ok, result} = response ->
-        state =
-          state
-          |> Map.put(:last_query_at, DateTime.utc_now())
-          |> Map.put(:cached_result, result)
+        state = Map.put(state, :cached_result, result)
 
         {:reply, response, state}
 
@@ -147,22 +133,11 @@ defmodule Logflare.Endpoints.Cache do
   end
 
   def handle_call(:query, _from, %__MODULE__{cached_result: cached_result} = state) do
-    state =
-      state
-      |> Map.put(:last_query_at, DateTime.utc_now())
-
     {:reply, {:ok, cached_result}, state}
   end
 
   def handle_call(:invalidate, _from, state) do
     {:stop, :normal, {:ok, :stopped}, state}
-  end
-
-  def handle_cast(:touch, state) do
-    :timer.cancel(state.shutdown_timer)
-    timer = state.query |> cache_duration_ms() |> shutdown()
-
-    {:noreply, %{state | shutdown_timer: timer, last_query_at: DateTime.utc_now()}}
   end
 
   def handle_info(:refresh, state) do
@@ -178,16 +153,20 @@ defmodule Logflare.Endpoints.Cache do
   end
 
   def handle_info(:shutdown, state) do
+    Logger.debug("#{__MODULE__}: shutting down cache normally")
     {:stop, :normal, state}
   end
 
   def handle_info({from_task, {:ok, results}}, state) do
     tasks = Enum.reject(state.query_tasks, &(&1.pid == from_task))
 
-    :timer.cancel(state.shutdown_timer)
-    timer = refresh(proactive_querying_ms(state))
+    if is_reference(state.refresh_timer) do
+      Process.cancel_timer(state.refresh_timer)
+    end
 
-    {:noreply, %{state | cached_result: results, query_tasks: tasks, shutdown_timer: timer}}
+    timer = refresh(proactive_querying_ms(state.query))
+
+    {:noreply, %{state | cached_result: results, query_tasks: tasks, refresh_timer: timer}}
   end
 
   def handle_info({_from_task, {:error, _response}}, state) do
@@ -227,8 +206,8 @@ defmodule Logflare.Endpoints.Cache do
     Process.send_after(self(), :shutdown, every)
   end
 
-  defp proactive_querying_ms(state) do
-    state.query.proactive_requerying_seconds * 1_000
+  defp proactive_querying_ms(query) do
+    query.proactive_requerying_seconds * 1_000
   end
 
   defp cache_duration_ms(query) do
