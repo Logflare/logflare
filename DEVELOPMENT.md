@@ -52,6 +52,18 @@ docker-compose up -d db
 
 # start in single tenant postgres backend
 make start.st.pg
+
+# run tests
+mix test
+mix test.watch
+make test.failed
+mix test --repeat-until-failure 1000 test/...
+
+# run checks
+mix test.coverage
+mix test.compile
+mix format
+mix lint
 ```
 
 ### Developing for Single Tenant

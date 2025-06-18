@@ -33,6 +33,7 @@ compile.check:
 .PHONY: test test.only compile.check
 
 setup: setup.node
+	-epmd -daemon
 	# install dependencies
 	asdf install
 
