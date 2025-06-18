@@ -12,12 +12,20 @@ defmodule Logflare.EndpointsCacheTest do
           user: user,
           query: "select current_datetime() as testing",
           proactive_requerying_seconds: 1,
+          cache_duration_seconds: 3
+        )
+
+      endpoint_2 =
+        insert(:endpoint,
+          user: user,
+          query: "select current_datetime() as testing",
+          proactive_requerying_seconds: 3,
           cache_duration_seconds: 1
         )
 
       _plan = insert(:plan, name: "Free")
 
-      %{user: user, endpoint: endpoint}
+      %{user: user, endpoint: endpoint, endpoint_2: endpoint_2}
     end
 
     test "cache starts and serves cached results", %{endpoint: endpoint} do
@@ -75,7 +83,7 @@ defmodule Logflare.EndpointsCacheTest do
       end)
 
       # should be larger than :proactive_requerying_seconds
-      Process.sleep(1100)
+      Process.sleep(endpoint.proactive_requerying_seconds * 1000 + 100)
 
       refute Process.alive?(cache_pid)
     end
@@ -97,8 +105,11 @@ defmodule Logflare.EndpointsCacheTest do
     test "cache dies after cache_duration_seconds", %{endpoint: endpoint} do
       test_response = [%{"testing" => "123"}]
 
+      expected_calls =
+        (endpoint.cache_duration_seconds / endpoint.proactive_requerying_seconds) |> floor()
+
       GoogleApi.BigQuery.V2.Api.Jobs
-      |> expect(:bigquery_jobs_query, 1, fn _conn, _proj_id, _opts ->
+      |> expect(:bigquery_jobs_query, expected_calls, fn _conn, _proj_id, _opts ->
         {:ok, TestUtils.gen_bq_response(test_response)}
       end)
 
@@ -108,12 +119,12 @@ defmodule Logflare.EndpointsCacheTest do
       # First query should succeed
       assert {:ok, %{rows: [%{"testing" => "123"}]}} = Endpoints.run_cached_query(endpoint)
 
-      # Cache should still be alive after 500ms
-      Process.sleep(500)
+      # Cache should still be alive before cache_duration_seconds
+      Process.sleep(endpoint.cache_duration_seconds * 1000 - 100)
       assert Process.alive?(cache_pid)
 
-      # Cache should die after cache_duration_seconds (1 second)
-      Process.sleep(600)
+      # Cache should die after cache_duration_seconds
+      Process.sleep(endpoint.cache_duration_seconds * 1000 + 100)
       refute Process.alive?(cache_pid)
     end
 
@@ -132,7 +143,7 @@ defmodule Logflare.EndpointsCacheTest do
       assert {:ok, %{rows: [%{"testing" => "123"}]}} = Endpoints.run_cached_query(endpoint)
 
       # Cache should still return first response before proactive_requerying_seconds
-      Process.sleep(500)
+      Process.sleep(endpoint.proactive_requerying_seconds * 1000 - 100)
       assert {:ok, %{rows: [%{"testing" => "123"}]}} = Endpoints.run_cached_query(endpoint)
 
       test_response = [%{"testing" => "456"}]
@@ -143,8 +154,60 @@ defmodule Logflare.EndpointsCacheTest do
       end)
 
       # After proactive_requerying_seconds, should return updated response
-      Process.sleep(600)
+      Process.sleep(endpoint.proactive_requerying_seconds * 1000 + 100)
       assert {:ok, %{rows: [%{"testing" => "456"}]}} = Endpoints.run_cached_query(endpoint)
+
+      :timer.sleep(2000)
+      refute Process.alive?(cache_pid)
+    end
+
+    test "cache dies after cache_duration_seconds after proactive requery ", %{user: user} do
+      endpoint =
+        insert(:endpoint,
+          user: user,
+          query: "select current_datetime() as testing",
+          proactive_requerying_seconds: 1,
+          cache_duration_seconds: 3
+        )
+
+      # perform at most 2 queries before dying
+      GoogleApi.BigQuery.V2.Api.Jobs
+      |> expect(:bigquery_jobs_query, 3, fn _conn, _proj_id, _opts ->
+        {:ok, TestUtils.gen_bq_response()}
+      end)
+
+      {:ok, cache_pid} = start_supervised({Logflare.Endpoints.Cache, {endpoint, %{}}})
+      assert Process.alive?(cache_pid)
+      assert {:ok, %{rows: [_]}} = Endpoints.run_cached_query(endpoint)
+
+      Process.sleep(700)
+      assert {:ok, %{rows: [_]}} = Endpoints.run_cached_query(endpoint)
+
+      # should terminate after cache_duration_seconds
+      Process.sleep(2500)
+      refute Process.alive?(cache_pid)
+    end
+
+    test "endpoint 2: cache dies before proactive query", %{endpoint_2: endpoint} do
+      test_response = [%{"testing" => "123"}]
+
+      GoogleApi.BigQuery.V2.Api.Jobs
+      |> expect(:bigquery_jobs_query, 1, fn _conn, _proj_id, _opts ->
+        {:ok, TestUtils.gen_bq_response(test_response)}
+      end)
+
+      {:ok, cache_pid} = start_supervised({Logflare.Endpoints.Cache, {endpoint, %{}}})
+      assert Process.alive?(cache_pid)
+
+      # First query should succeed
+      assert {:ok, %{rows: [%{"testing" => "123"}]}} = Endpoints.run_cached_query(endpoint)
+
+      reject(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, 4)
+
+      # should be larger than :proactive_requerying_seconds
+      Process.sleep(endpoint.proactive_requerying_seconds * 1000 + 100)
+
+      refute Process.alive?(cache_pid)
     end
   end
 end

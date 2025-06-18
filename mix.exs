@@ -123,7 +123,7 @@ defmodule Logflare.Mixfile do
       {:earmark, "~> 1.4.33"},
 
       # Outbound Requests
-      {:castore, "~> 0.1.0"},
+      {:castore, "~> 1.0"},
       {:finch, "~> 0.19.0"},
       {:mint, "~> 1.0"},
       {:httpoison, "~> 1.4"},
@@ -159,6 +159,9 @@ defmodule Logflare.Mixfile do
 
       # ClickHouse
       {:ch, "~> 0.3.2"},
+
+      # DataFrames
+      {:explorer, "~> 0.10.1"},
 
       # Telemetry & logging
       {:telemetry, "~> 1.0"},

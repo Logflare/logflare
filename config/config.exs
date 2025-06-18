@@ -84,10 +84,6 @@ config :ueberauth, Ueberauth,
 config :phoenix, :json_library, Jason
 config :postgrex, :json_library, Jason
 
-config :syn,
-  scopes: [:core, :endpoints, :alerting],
-  event_handler: Logflare.SynEventHandler
-
 oauth_common = [
   repo: Logflare.Repo,
   grant_flows: ~w(authorization_code),

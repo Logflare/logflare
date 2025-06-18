@@ -16,6 +16,10 @@ test:
 	-epmd -daemon
 	mix test
 
+test.failed:
+	-epmd -daemon
+	mix test --failed
+
 test.only:
 	-epmd -daemon
 	mix test.only
@@ -44,20 +48,29 @@ setup.node:
 start: start.orange
 
 start.orange: ERL_NAME = orange
-start.orange: PORT ?= 4000
+start.orange: PORT = 4000
+start.orange: ENV_FILE = .dev.env
 start.orange: LOGFLARE_GRPC_PORT = 50051
 start.orange: __start__
 
 start.pink: ERL_NAME = pink
 start.pink: PORT = 4001
+start.pink: ENV_FILE = .dev.env
 start.pink: LOGFLARE_GRPC_PORT = 50052
 start.pink: __start__
 
-observer:
+
+start.docker: ERL_NAME = docker
+start.docker: PORT ?= 4000
+start.docker: ENV_FILE = .docker.env
+start.docker: LOGFLARE_GRPC_PORT = 50051
+start.docker: __start__
+
+observer: 
 	erl -sname observer -hidden -setcookie ${ERL_COOKIE} -run observer
 
 __start__:
-	@env $$(cat .dev.env | xargs) PORT=${PORT} LOGFLARE_GRPC_PORT=${LOGFLARE_GRPC_PORT} iex --sname ${ERL_NAME} --cookie ${ERL_COOKIE} -S mix phx.server
+	@env $$(cat ${ENV_FILE} | xargs) PORT=${PORT} LOGFLARE_GRPC_PORT=${LOGFLARE_GRPC_PORT} iex --sname ${ERL_NAME} --cookie ${ERL_COOKIE} -S mix phx.server
 
 
 migrate:
