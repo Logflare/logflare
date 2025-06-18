@@ -1290,7 +1290,7 @@ defmodule Logflare.Sql do
               %{"quote_style" => nil, "value" => field}
             ]
           },
-          "op" => "LongArrow",
+          "op" => "Arrow",
           "right" => %{
             "Value" => %{"SingleQuotedString" => key}
           }
@@ -1308,7 +1308,7 @@ defmodule Logflare.Sql do
       "Nested" => %{
         "BinaryOp" => %{
           "left" => %{"Identifier" => %{"quote_style" => nil, "value" => base}},
-          "op" => "LongArrow",
+          "op" => "Arrow",
           "right" => %{
             "Value" => %{"SingleQuotedString" => key}
           }
@@ -1330,7 +1330,7 @@ defmodule Logflare.Sql do
       "Nested" => %{
         "BinaryOp" => %{
           "left" => %{"Identifier" => %{"quote_style" => nil, "value" => base}},
-          "op" => "LongArrow",
+          "op" => "HashArrow",
           "right" => %{
             "Value" => %{"SingleQuotedString" => path}
           }
@@ -1351,7 +1351,7 @@ defmodule Logflare.Sql do
       "Nested" => %{
         "BinaryOp" => %{
           "left" => %{"Identifier" => %{"quote_style" => nil, "value" => base}},
-          "op" => "LongArrow",
+          "op" => "HashArrow",
           "right" => %{
             "Value" => %{"SingleQuotedString" => path}
           }
@@ -1369,7 +1369,7 @@ defmodule Logflare.Sql do
       "Nested" => %{
         "BinaryOp" => %{
           "left" => %{"Identifier" => %{"quote_style" => nil, "value" => base}},
-          "op" => "LongArrow",
+          "op" => "Arrow",
           "right" => %{
             "Value" => %{"SingleQuotedString" => name}
           }
