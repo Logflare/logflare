@@ -1778,7 +1778,7 @@ defmodule Logflare.Sql do
                           "BinaryOp" => %{
                             "left" => %{
                               "Cast" => %{
-                                "kind" => "Cast",
+                                "kind" => "DoubleColon",
                                 "data_type" => %{"BigInt" => nil},
                                 "expr" => identifier,
                                 "format" => nil
