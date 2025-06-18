@@ -247,13 +247,12 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
         do:
           {:service_account, credentials,
            [
-             url:
-               "https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/#{sub}:signJwt",
+             #  url:
+             #    "https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/#{sub}:signJwt",
              claims: %{"sub" => sub, "scope" => "https://www.googleapis.com/auth/cloud-platform"}
            ]},
         else: {:service_account, credentials, scopes: scopes}
 
-    # source = {:service_account, credentials, scopes: scopes}
     {
       Goth,
       # https://hexdocs.pm/goth/Goth.html#fetch/2
