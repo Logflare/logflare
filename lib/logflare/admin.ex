@@ -3,9 +3,9 @@ defmodule Logflare.Admin do
   require Logger
 
   @doc """
-  Shuts down a given node asyncronously in a separate process.
+  Shuts down a given node asynchronously in a separate process.
 
-  A delay (default is 5s) occurs just before systen stop is triggered.
+  A delay (default is 5s) occurs just before system stop is triggered.
   """
   @spec shutdown(node(), integer()) :: {:ok, Task.t()}
   def shutdown(node \\ Node.self(), delay \\ 5000) when is_atom(node) do
