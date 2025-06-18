@@ -1,7 +1,8 @@
 services:
   logflare:
-    environment:
-     POSTGRES_BACKEND_URL: postgresql://postgres:postgres@localhost:5432/logflare_dev
+    environment: !override
+      DB_HOSTNAME: db
+      POSTGRES_BACKEND_URL: postgresql://postgres:postgres@db:5432/logflare_dev
     volumes: !override
       - type: bind
         source: ${PWD}/.single_tenant_pg.env

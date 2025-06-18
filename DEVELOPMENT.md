@@ -36,12 +36,15 @@ make start
 iex> LogflareLogger.info("testing")
 ```
 
-Run `make reset` followed by `make setup` to reset all deps and local state.
+To run multi-node cluster:
+
+```bash
+# in separate terminals
+make start.orange
+make start.pink
+```
 
 ### Setup for External Contributors
-
-1. Install dependencies with `make setup`
-2. Start local database: `docker-compose up -d db`
 
 ```bash
 # install dependencies
@@ -88,16 +91,16 @@ Use any of the variations, which will start logflare in single-tenant mode:
 
 ```bash
 # to build locally with bq backend
-docker compose up -d db logflare
+docker compose up db logflare
 
 # to build locally with pg backend
-docker compose -f docker-compose.yml -f docker-compose.pg.yml up -d db logflare
+docker compose -f docker-compose.yml -f docker-compose.pg.yml up db logflare
 
 # to run latest image locally with bq backend
-docker compose -f docker-compose.yml -f docker-compose.latest.yml up -d db logflare
+docker compose -f docker-compose.yml -f docker-compose.latest.yml up db logflare
 
 # to run latest image locally with pg backend
-docker compose -f docker-compose.yml -f docker-compose.latest.yml -f docker-compose.pg.yml up -d db logflare
+docker compose -f docker-compose.yml -f docker-compose.latest.yml -f docker-compose.pg.yml up db logflare
 ```
 
 ### Developing Logflare alongside Supabase CLI
