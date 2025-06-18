@@ -1046,7 +1046,7 @@ defmodule Logflare.Sql do
       end
 
     updated_cast = %{
-      "kind" => "DoubleColon",
+      "kind" => Map.get(v, "kind", "Cast"),
       "expr" => processed_expr,
       "data_type" => data_type,
       "format" => Map.get(v, "format")
@@ -1097,7 +1097,7 @@ defmodule Logflare.Sql do
           other
       end
 
-    new_expr = processed_expr |> pg_traverse_final_pass() |> cast_to_numeric()
+    new_expr = processed_expr |> pg_traverse_final_pass() |> cast_to_numeric_double_colon()
     {k, %{v | "expr" => new_expr}}
   end
 
@@ -1808,6 +1808,17 @@ defmodule Logflare.Sql do
   end
 
   defp cast_to_numeric(expr) do
+    %{
+      "Cast" => %{
+        "kind" => "Cast",
+        "expr" => expr,
+        "data_type" => %{"Numeric" => "None"},
+        "format" => nil
+      }
+    }
+  end
+
+  defp cast_to_numeric_double_colon(expr) do
     %{
       "Cast" => %{
         "kind" => "DoubleColon",
