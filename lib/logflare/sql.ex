@@ -932,35 +932,35 @@ defmodule Logflare.Sql do
     case function_name do
       "regexp_contains" ->
         string =
-          get_in(v, ["args", Access.at(0), "Unnamed", "Expr"])
+          get_function_arg(v, 0)
           |> update_in(["Value"], &%{"SingleQuotedString" => &1["DoubleQuotedString"]})
 
         pattern =
-          get_in(v, ["args", Access.at(1), "Unnamed", "Expr"])
+          get_function_arg(v, 1)
           |> update_in(["Value"], &%{"SingleQuotedString" => &1["DoubleQuotedString"]})
 
         {"BinaryOp", %{"left" => string, "op" => "PGRegexMatch", "right" => pattern}}
 
       "countif" ->
-        filter = get_in(v, ["args", Access.at(0), "Unnamed", "Expr"])
+        filter = get_function_arg(v, 0)
 
-        {"AggregateExpressionWithFilter",
+        {k,
          %{
-           "expr" => %{
-             "Function" => %{
-               "args" => [%{"Unnamed" => "Wildcard"}],
-               "distinct" => false,
-               "name" => [%{"quote_style" => nil, "value" => "count"}],
-               "over" => nil,
-               "special" => false
-             }
-           },
-           "filter" => bq_to_pg_convert_functions(filter)
+           v
+           | "args" => %{
+               "List" => %{
+                 "args" => [%{"Unnamed" => %{"Expr" => %{"Wildcard" => nil}}}],
+                 "clauses" => [],
+                 "duplicate_treatment" => nil
+               }
+             },
+             "filter" => bq_to_pg_convert_functions(filter),
+             "name" => [%{"quote_style" => nil, "value" => "count"}]
          }}
 
       "timestamp_sub" ->
-        to_sub = get_in(v, ["args", Access.at(0), "Unnamed", "Expr"])
-        interval = get_in(v, ["args", Access.at(1), "Unnamed", "Expr", "Interval"])
+        to_sub = get_function_arg(v, 0)
+        interval = get_in(get_function_arg(v, 1), ["Interval"])
         interval_type = interval["leading_field"]
         interval_value_str = get_in(interval, ["value", "Value", "Number", Access.at(0)])
         pg_interval = String.downcase("#{interval_value_str} #{interval_type}")
@@ -981,30 +981,38 @@ defmodule Logflare.Sql do
          }}
 
       "timestamp_trunc" ->
-        to_trunc = get_in(v, ["args", Access.at(0), "Unnamed", "Expr"])
+        to_trunc = get_function_arg(v, 0)
 
         interval_type =
-          get_in(v, ["args", Access.at(1), "Unnamed", "Expr", "Identifier", "value"])
+          get_in(get_function_arg(v, 1), ["Identifier", "value"])
           |> String.downcase()
 
         field_arg =
           if timestamp_identifier?(to_trunc) do
             at_time_zone(to_trunc)
           else
-            to_trunc
+            bq_to_pg_convert_functions(to_trunc)
           end
 
         {k,
          %{
            v
-           | "args" => [
-               %{
-                 "Unnamed" => %{"Expr" => %{"Value" => %{"SingleQuotedString" => interval_type}}}
-               },
-               %{
-                 "Unnamed" => %{"Expr" => field_arg}
+           | "args" => %{
+               "List" => %{
+                 "args" => [
+                   %{
+                     "Unnamed" => %{
+                       "Expr" => %{"Value" => %{"SingleQuotedString" => interval_type}}
+                     }
+                   },
+                   %{
+                     "Unnamed" => %{"Expr" => field_arg}
+                   }
+                 ],
+                 "clauses" => [],
+                 "duplicate_treatment" => nil
                }
-             ],
+             },
              "name" => [%{"quote_style" => nil, "value" => "date_trunc"}]
          }}
 
@@ -1026,6 +1034,28 @@ defmodule Logflare.Sql do
   end
 
   defp bq_to_pg_convert_functions(kv), do: kv
+
+  # update Cast expressions to include kind field for v0.47 compatibility
+  defp pg_traverse_final_pass({"Cast" = k, %{"expr" => expr, "data_type" => data_type} = v}) do
+    # For Cast expressions, convert Arrow to LongArrow for text conversion
+    processed_expr =
+      case expr do
+        %{"Nested" => %{"BinaryOp" => %{"op" => "Arrow"} = bin_op}} ->
+          %{"Nested" => %{"BinaryOp" => %{bin_op | "op" => "LongArrow"}}}
+
+        other ->
+          pg_traverse_final_pass(other)
+      end
+
+    updated_cast = %{
+      "kind" => "Cast",
+      "expr" => processed_expr,
+      "data_type" => data_type,
+      "format" => Map.get(v, "format")
+    }
+
+    {k, updated_cast}
+  end
 
   # convert JsonAccess to PostgreSQL JSON operators
   defp pg_traverse_final_pass(
@@ -1705,35 +1735,53 @@ defmodule Logflare.Sql do
 
   defp timestamp_identifier?(_), do: false
 
+  defp get_function_arg(%{"args" => %{"List" => %{"args" => args}}}, index) do
+    case Enum.at(args, index) do
+      %{"Unnamed" => %{"Expr" => expr}} -> expr
+      _ -> nil
+    end
+  end
+
+  defp get_function_arg(_, _), do: nil
+
   defp at_time_zone(identifier) do
     %{
       "Nested" => %{
         "AtTimeZone" => %{
-          "time_zone" => "UTC",
+          "time_zone" => %{"Value" => %{"SingleQuotedString" => "UTC"}},
           "timestamp" => %{
             "Function" => %{
-              "args" => [
-                %{
-                  "Unnamed" => %{
-                    "Expr" => %{
-                      "BinaryOp" => %{
-                        "left" => %{
-                          "Cast" => %{
-                            "data_type" => %{"BigInt" => nil},
-                            "expr" => identifier
+              "args" => %{
+                "List" => %{
+                  "args" => [
+                    %{
+                      "Unnamed" => %{
+                        "Expr" => %{
+                          "BinaryOp" => %{
+                            "left" => %{
+                              "Cast" => %{
+                                "kind" => "Cast",
+                                "data_type" => %{"BigInt" => nil},
+                                "expr" => identifier,
+                                "format" => nil
+                              }
+                            },
+                            "op" => "Divide",
+                            "right" => %{"Value" => %{"Number" => ["1000000.0", false]}}
                           }
-                        },
-                        "op" => "Divide",
-                        "right" => %{"Value" => %{"Number" => ["1000000.0", false]}}
+                        }
                       }
                     }
-                  }
+                  ],
+                  "clauses" => [],
+                  "duplicate_treatment" => nil
                 }
-              ],
-              "distinct" => false,
+              },
+              "filter" => nil,
               "name" => [%{"quote_style" => nil, "value" => "to_timestamp"}],
+              "null_treatment" => nil,
               "over" => nil,
-              "special" => false
+              "within_group" => []
             }
           }
         }
@@ -1744,8 +1792,10 @@ defmodule Logflare.Sql do
   defp cast_to_numeric(expr) do
     %{
       "Cast" => %{
+        "kind" => "Cast",
         "expr" => expr,
-        "data_type" => %{"Numeric" => %{"precision" => nil, "scale" => nil}}
+        "data_type" => %{"Numeric" => "None"},
+        "format" => nil
       }
     }
   end
@@ -1753,13 +1803,15 @@ defmodule Logflare.Sql do
   defp cast_to_jsonb(expr) do
     %{
       "Cast" => %{
+        "kind" => "Cast",
         "expr" => expr,
         "data_type" => %{
-          "Custom" => %{
-            "name" => [%{"quote_style" => nil, "value" => "jsonb"}],
-            "modifiers" => []
-          }
-        }
+          "Custom" => [
+            [%{"quote_style" => nil, "value" => "jsonb"}],
+            []
+          ]
+        },
+        "format" => nil
       }
     }
   end
@@ -1767,8 +1819,17 @@ defmodule Logflare.Sql do
   defp jsonb_to_text(expr) do
     %{
       "Function" => %{
-        "name" => %{"quote_style" => nil, "value" => "jsonb_extract_path_text"},
-        "args" => %{"None" => [expr, %{"Value" => %{"SingleQuotedString" => "0"}}]},
+        "name" => [%{"quote_style" => nil, "value" => "jsonb_extract_path_text"}],
+        "args" => %{
+          "List" => %{
+            "args" => [
+              %{"Unnamed" => %{"Expr" => expr}},
+              %{"Unnamed" => %{"Expr" => %{"Value" => %{"SingleQuotedString" => "0"}}}}
+            ],
+            "clauses" => [],
+            "duplicate_treatment" => nil
+          }
+        },
         "filter" => nil,
         "null_treatment" => nil,
         "over" => nil,
