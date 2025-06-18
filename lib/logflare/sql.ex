@@ -1057,35 +1057,6 @@ defmodule Logflare.Sql do
     {k, updated_cast}
   end
 
-  # convert JsonAccess to PostgreSQL JSON operators
-  defp pg_traverse_final_pass(
-         {"JsonAccess" = k, %{"value" => value, "path" => %{"path" => path}} = v}
-       ) do
-    case path do
-      [%{"Dot" => %{"key" => key}}] ->
-        # Convert to BinaryOp with -> operator
-        {"BinaryOp",
-         %{
-           "left" => pg_traverse_final_pass(value),
-           "op" => "Arrow",
-           "right" => %{"Value" => %{"SingleQuotedString" => key}}
-         }}
-
-      [%{"Bracket" => %{"key" => key_expr}}] ->
-        # Bracket notation
-        {"BinaryOp",
-         %{
-           "left" => pg_traverse_final_pass(value),
-           "op" => "Arrow",
-           "right" => pg_traverse_final_pass(key_expr)
-         }}
-
-      _ ->
-        # Multiple path elements - keep as-is for now
-        {k, pg_traverse_final_pass(v)}
-    end
-  end
-
   # between operator should have values cast to numeric
   defp pg_traverse_final_pass({"Between" = k, %{"expr" => expr} = v}) do
     new_expr = expr |> pg_traverse_final_pass() |> cast_to_numeric()
@@ -1273,17 +1244,16 @@ defmodule Logflare.Sql do
        when cte_aliases == %{} or in_cte_tables_tree == true do
     at_time_zone(%{
       "Nested" => %{
-        "JsonAccess" => %{
-          "value" => %{
+        "BinaryOp" => %{
+          "left" => %{
             "CompoundIdentifier" => [
               %{"quote_style" => nil, "value" => table},
               %{"quote_style" => nil, "value" => "body"}
             ]
           },
-          "path" => %{
-            "path" => [
-              %{"Dot" => %{"key" => "timestamp", "quoted" => false}}
-            ]
+          "op" => "LongArrow",
+          "right" => %{
+            "Value" => %{"SingleQuotedString" => "timestamp"}
           }
         }
       }
@@ -1293,14 +1263,13 @@ defmodule Logflare.Sql do
   defp convert_keys_to_json_query(%{"Identifier" => %{"value" => "timestamp"}}, _data, "body") do
     at_time_zone(%{
       "Nested" => %{
-        "JsonAccess" => %{
-          "value" => %{
+        "BinaryOp" => %{
+          "left" => %{
             "Identifier" => %{"quote_style" => nil, "value" => "body"}
           },
-          "path" => %{
-            "path" => [
-              %{"Dot" => %{"key" => "timestamp", "quoted" => false}}
-            ]
+          "op" => "LongArrow",
+          "right" => %{
+            "Value" => %{"SingleQuotedString" => "timestamp"}
           }
         }
       }
@@ -1314,17 +1283,16 @@ defmodule Logflare.Sql do
        ) do
     %{
       "Nested" => %{
-        "JsonAccess" => %{
-          "value" => %{
+        "BinaryOp" => %{
+          "left" => %{
             "CompoundIdentifier" => [
               %{"quote_style" => nil, "value" => table},
               %{"quote_style" => nil, "value" => field}
             ]
           },
-          "path" => %{
-            "path" => [
-              %{"Dot" => %{"key" => key, "quoted" => false}}
-            ]
+          "op" => "LongArrow",
+          "right" => %{
+            "Value" => %{"SingleQuotedString" => key}
           }
         }
       }
@@ -1338,12 +1306,11 @@ defmodule Logflare.Sql do
        ) do
     %{
       "Nested" => %{
-        "JsonAccess" => %{
-          "value" => %{"Identifier" => %{"quote_style" => nil, "value" => base}},
-          "path" => %{
-            "path" => [
-              %{"Dot" => %{"key" => key, "quoted" => false}}
-            ]
+        "BinaryOp" => %{
+          "left" => %{"Identifier" => %{"quote_style" => nil, "value" => base}},
+          "op" => "LongArrow",
+          "right" => %{
+            "Value" => %{"SingleQuotedString" => key}
           }
         }
       }
@@ -1361,12 +1328,11 @@ defmodule Logflare.Sql do
 
     %{
       "Nested" => %{
-        "JsonAccess" => %{
-          "value" => %{"Identifier" => %{"quote_style" => nil, "value" => base}},
-          "path" => %{
-            "path" => [
-              %{"Bracket" => %{"key" => %{"Value" => %{"SingleQuotedString" => path}}}}
-            ]
+        "BinaryOp" => %{
+          "left" => %{"Identifier" => %{"quote_style" => nil, "value" => base}},
+          "op" => "LongArrow",
+          "right" => %{
+            "Value" => %{"SingleQuotedString" => path}
           }
         }
       }
@@ -1383,12 +1349,11 @@ defmodule Logflare.Sql do
 
     %{
       "Nested" => %{
-        "JsonAccess" => %{
-          "value" => %{"Identifier" => %{"quote_style" => nil, "value" => base}},
-          "path" => %{
-            "path" => [
-              %{"Bracket" => %{"key" => %{"Value" => %{"SingleQuotedString" => path}}}}
-            ]
+        "BinaryOp" => %{
+          "left" => %{"Identifier" => %{"quote_style" => nil, "value" => base}},
+          "op" => "LongArrow",
+          "right" => %{
+            "Value" => %{"SingleQuotedString" => path}
           }
         }
       }
@@ -1402,12 +1367,11 @@ defmodule Logflare.Sql do
        ) do
     %{
       "Nested" => %{
-        "JsonAccess" => %{
-          "value" => %{"Identifier" => %{"quote_style" => nil, "value" => base}},
-          "path" => %{
-            "path" => [
-              %{"Dot" => %{"key" => name, "quoted" => false}}
-            ]
+        "BinaryOp" => %{
+          "left" => %{"Identifier" => %{"quote_style" => nil, "value" => base}},
+          "op" => "LongArrow",
+          "right" => %{
+            "Value" => %{"SingleQuotedString" => name}
           }
         }
       }
@@ -1726,6 +1690,11 @@ defmodule Logflare.Sql do
   defp numeric_value?(_), do: false
   defp json_access?(%{"Nested" => %{"JsonAccess" => _}}), do: true
   defp json_access?(%{"JsonAccess" => _}), do: true
+
+  defp json_access?(%{"Nested" => %{"BinaryOp" => %{"op" => op}}}),
+    do: op in ["Arrow", "LongArrow"]
+
+  defp json_access?(%{"BinaryOp" => %{"op" => op}}), do: op in ["Arrow", "LongArrow"]
   defp json_access?(_), do: false
 
   defp timestamp_identifier?(%{"Identifier" => %{"value" => "timestamp"}}), do: true
