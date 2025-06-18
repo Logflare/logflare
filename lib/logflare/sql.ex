@@ -1035,9 +1035,7 @@ defmodule Logflare.Sql do
 
   defp bq_to_pg_convert_functions(kv), do: kv
 
-  # update Cast expressions to include kind field for v0.47 compatibility
   defp pg_traverse_final_pass({"Cast" = k, %{"expr" => expr, "data_type" => data_type} = v}) do
-    # For Cast expressions, convert Arrow to LongArrow for text conversion
     processed_expr =
       case expr do
         %{"Nested" => %{"BinaryOp" => %{"op" => "Arrow"} = bin_op}} ->
@@ -1055,6 +1053,37 @@ defmodule Logflare.Sql do
     }
 
     {k, updated_cast}
+  end
+
+  defp pg_traverse_final_pass({"Function" = k, %{"name" => [%{"value" => function_name}]} = v})
+       when function_name in ["DATE_TRUNC", "date_trunc"] do
+    processed_args =
+      case v do
+        %{"args" => %{"List" => %{"args" => args} = list_args} = args_wrapper} ->
+          converted_args =
+            Enum.map(args, fn
+              %{
+                "Unnamed" => %{
+                  "Expr" => %{"Nested" => %{"BinaryOp" => %{"op" => "Arrow"} = bin_op}}
+                }
+              } ->
+                %{
+                  "Unnamed" => %{
+                    "Expr" => %{"Nested" => %{"BinaryOp" => %{bin_op | "op" => "LongArrow"}}}
+                  }
+                }
+
+              other_arg ->
+                other_arg
+            end)
+
+          %{v | "args" => %{args_wrapper | "List" => %{list_args | "args" => converted_args}}}
+
+        other ->
+          other
+      end
+
+    {k, processed_args}
   end
 
   # between operator should have values cast to numeric
