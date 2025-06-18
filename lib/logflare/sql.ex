@@ -1801,6 +1801,7 @@ defmodule Logflare.Sql do
                   "duplicate_treatment" => nil
                 }
               },
+              "parameters" => "None",
               "filter" => nil,
               "name" => [%{"quote_style" => nil, "value" => "to_timestamp"}],
               "null_treatment" => nil,
@@ -1846,6 +1847,7 @@ defmodule Logflare.Sql do
                   "duplicate_treatment" => nil
                 }
               },
+              "parameters" => "None",
               "filter" => nil,
               "name" => [%{"quote_style" => nil, "value" => "to_timestamp"}],
               "null_treatment" => nil,
