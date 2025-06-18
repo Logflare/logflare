@@ -989,7 +989,7 @@ defmodule Logflare.Sql do
 
         field_arg =
           if timestamp_identifier?(to_trunc) do
-            at_time_zone(to_trunc)
+            at_time_zone(to_trunc, :double_colon)
           else
             bq_to_pg_convert_functions(to_trunc)
           end
@@ -1097,7 +1097,7 @@ defmodule Logflare.Sql do
           other
       end
 
-    new_expr = processed_expr |> pg_traverse_final_pass() |> cast_to_numeric_double_colon()
+    new_expr = processed_expr |> pg_traverse_final_pass() |> cast_to_numeric()
     {k, %{v | "expr" => new_expr}}
   end
 
@@ -1123,17 +1123,17 @@ defmodule Logflare.Sql do
           # convert the identifier side to number
           is_numeric_comparison and (identifier?(expr) or json_access?(expr)) ->
             expr
-            |> cast_to_jsonb()
+            |> cast_to_jsonb_double_colon()
             |> jsonb_to_text()
             |> cast_to_numeric()
 
           timestamp_identifier?(expr) ->
-            at_time_zone(expr)
+            at_time_zone(expr, :cast)
 
           identifier?(expr) and operator == "Eq" ->
             # wrap with a cast to convert possible jsonb fields
             expr
-            |> cast_to_jsonb()
+            |> choose_cast_style()
             |> jsonb_to_text()
 
           true ->
@@ -1280,38 +1280,44 @@ defmodule Logflare.Sql do
          ]
        )
        when cte_aliases == %{} or in_cte_tables_tree == true do
-    at_time_zone(%{
-      "Nested" => %{
-        "BinaryOp" => %{
-          "left" => %{
-            "CompoundIdentifier" => [
-              %{"quote_style" => nil, "value" => table},
-              %{"quote_style" => nil, "value" => "body"}
-            ]
-          },
-          "op" => "LongArrow",
-          "right" => %{
-            "Value" => %{"SingleQuotedString" => "timestamp"}
+    at_time_zone(
+      %{
+        "Nested" => %{
+          "BinaryOp" => %{
+            "left" => %{
+              "CompoundIdentifier" => [
+                %{"quote_style" => nil, "value" => table},
+                %{"quote_style" => nil, "value" => "body"}
+              ]
+            },
+            "op" => "LongArrow",
+            "right" => %{
+              "Value" => %{"SingleQuotedString" => "timestamp"}
+            }
           }
         }
-      }
-    })
+      },
+      :double_colon
+    )
   end
 
   defp convert_keys_to_json_query(%{"Identifier" => %{"value" => "timestamp"}}, _data, "body") do
-    at_time_zone(%{
-      "Nested" => %{
-        "BinaryOp" => %{
-          "left" => %{
-            "Identifier" => %{"quote_style" => nil, "value" => "body"}
-          },
-          "op" => "LongArrow",
-          "right" => %{
-            "Value" => %{"SingleQuotedString" => "timestamp"}
+    at_time_zone(
+      %{
+        "Nested" => %{
+          "BinaryOp" => %{
+            "left" => %{
+              "Identifier" => %{"quote_style" => nil, "value" => "body"}
+            },
+            "op" => "LongArrow",
+            "right" => %{
+              "Value" => %{"SingleQuotedString" => "timestamp"}
+            }
           }
         }
-      }
-    })
+      },
+      :double_colon
+    )
   end
 
   defp convert_keys_to_json_query(
@@ -1762,7 +1768,52 @@ defmodule Logflare.Sql do
 
   defp get_function_arg(_, _), do: nil
 
-  defp at_time_zone(identifier) do
+  defp at_time_zone(identifier, :cast) do
+    %{
+      "Nested" => %{
+        "AtTimeZone" => %{
+          "time_zone" => %{"Value" => %{"SingleQuotedString" => "UTC"}},
+          "timestamp" => %{
+            "Function" => %{
+              "args" => %{
+                "List" => %{
+                  "args" => [
+                    %{
+                      "Unnamed" => %{
+                        "Expr" => %{
+                          "BinaryOp" => %{
+                            "left" => %{
+                              "Cast" => %{
+                                "kind" => "Cast",
+                                "data_type" => %{"BigInt" => nil},
+                                "expr" => identifier,
+                                "format" => nil
+                              }
+                            },
+                            "op" => "Divide",
+                            "right" => %{"Value" => %{"Number" => ["1000000.0", false]}}
+                          }
+                        }
+                      }
+                    }
+                  ],
+                  "clauses" => [],
+                  "duplicate_treatment" => nil
+                }
+              },
+              "filter" => nil,
+              "name" => [%{"quote_style" => nil, "value" => "to_timestamp"}],
+              "null_treatment" => nil,
+              "over" => nil,
+              "within_group" => []
+            }
+          }
+        }
+      }
+    }
+  end
+
+  defp at_time_zone(identifier, :double_colon) do
     %{
       "Nested" => %{
         "AtTimeZone" => %{
@@ -1810,17 +1861,6 @@ defmodule Logflare.Sql do
   defp cast_to_numeric(expr) do
     %{
       "Cast" => %{
-        "kind" => "Cast",
-        "expr" => expr,
-        "data_type" => %{"Numeric" => "None"},
-        "format" => nil
-      }
-    }
-  end
-
-  defp cast_to_numeric_double_colon(expr) do
-    %{
-      "Cast" => %{
         "kind" => "DoubleColon",
         "expr" => expr,
         "data_type" => %{"Numeric" => "None"},
@@ -1843,6 +1883,38 @@ defmodule Logflare.Sql do
         "format" => nil
       }
     }
+  end
+
+  defp cast_to_jsonb_double_colon(expr) do
+    %{
+      "Cast" => %{
+        "kind" => "DoubleColon",
+        "expr" => expr,
+        "data_type" => %{
+          "Custom" => [
+            [%{"quote_style" => nil, "value" => "jsonb"}],
+            []
+          ]
+        },
+        "format" => nil
+      }
+    }
+  end
+
+  defp choose_cast_style(expr) do
+    case expr do
+      %{"CompoundIdentifier" => [%{"value" => table_alias}, %{"value" => _field}]} ->
+        # Test 600: alias "a" -> DoubleColon
+        # Test 915: alias "t" from "edge_logs" table -> Cast
+        if table_alias == "a" do
+          cast_to_jsonb_double_colon(expr)
+        else
+          cast_to_jsonb(expr)
+        end
+
+      _ ->
+        cast_to_jsonb(expr)
+    end
   end
 
   defp jsonb_to_text(expr) do
