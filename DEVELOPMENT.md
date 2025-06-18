@@ -2,10 +2,9 @@
 
 ## Dev Env Setup
 
-## Pre-requisites:
+Pre-requisites:
 
-asdf
-
+- asdf
 - docker
 
 ### Setup for Supabase Team
@@ -19,10 +18,9 @@ make decrypt.dev
 
 # start dev server
 make start
-
 ```
 
-To test the ingestion
+To test the ingestion:
 
 ```bash
 # Set for testing logging ingestion
@@ -44,7 +42,6 @@ Run `make reset` followed by `make setup` to reset all deps and local state.
 
 1. Install dependencies with `make setup`
 2. Start local database: `docker-compose up -d db`
-3.
 
 ```bash
 # install dependencies
@@ -102,6 +99,23 @@ In order to test all changes locally, perform the following steps:
    - run `go run . init` to create a local Supabase project
 3. Update the test Supabase project's config under `supabase/config.toml`
    - Logflare uses the `analytics` namespace.
+
+## Command Reference
+
+```bash
+make setup
+make start
+make start.{orange|pink}
+make start.{st|sb}.{bq|pg}
+make decrypt.{dev|staging|prod}
+make encrypt.{dev|staging|prod}
+make reset
+make grpc.protoc
+make deploy.staging.{main|versioned}
+make deploy.prod.versioned
+make tag-versioned
+make ssl.{prod|staging}
+```
 
 ## Release Management
 
