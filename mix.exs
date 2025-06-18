@@ -177,7 +177,7 @@ defmodule Logflare.Mixfile do
       {:floki, "~> 0.29.0", only: [:test]},
 
       # Rust NIFs
-      {:rustler, "~> 0.36.2"},
+      {:rustler, "~> 0.36.2", override: true},
 
       # Frontend
       {:phoenix_live_react, "~> 0.4"},
