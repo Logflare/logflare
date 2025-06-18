@@ -2,57 +2,94 @@
 
 ## Dev Env Setup
 
-1. Run `make setup`, which will:
-   1. Install dependencies with `asdf` using `asdf install`
-2. Decrypt secrets with `make decrypt.dev`. It will decrypt two files:
-   1. Dev secrets - `.dev.env`
-   2. Google JWT key - `.gcloud.json`
-3. Start dev dependencies: `docker compose up -d db stripe-mock`
-4. Run `make setup` for dependencies, migrations, and seed data.
-5. Start server with `make start`
-6. Sign in as a user
-7. Create a source
-8. Update `.dev.env`, search for the `LOGFLARE_LOGGER_BACKEND_API_KEY` and
-   `LOGFLARE_LOGGER_BACKEND_SOURCE_ID` and update them accordingly
-9. Set user API key can be retrieved from dashboard or from database `users`
-   table, source id is from the source page
-10. In `iex` console, test that everything works:
+## Pre-requisites:
 
-```elixir
-iex> LogflareLogger.info("testing log message")
-```
+asdf
 
-## Docker Services
+- docker
 
-Run the local database with `docker-compose up -d db`.
-
-To run the full docker setup, run `docker-compose up -d`. This will load the GCP
-JWT and the `.docker.env`. Ensure that both files exist.
-
-To build images only, use `docker-compose build`
-
-## Supabase Development
-
-### Developing in Single Tenant or Supabase Mode
-
-To run Logflare in single-tenant and/or Supabase mode use the following command:
+### Setup for Supabase Team
 
 ```bash
-# start the local database
-docker compose up -d db
-# start the server in single tenant mode
-make start.docker
+# install deps
+make setup
+
+# decrypt secrets
+make decrypt.dev
+
+# start dev server
+make start
+
 ```
 
-### Testing with Docker Compose
+To test the ingestion
 
+```bash
+# Set for testing logging ingestion
+sed -i 's/LOGFLARE_LOGGER_BACKEND_API_KEY=.*/LOGFLARE_LOGGER_BACKEND_API_KEY=my-cool-api-key-123/' .dev.env
+# Set for testing OTEL ingestion
+sed -i 's/LOGFLARE_OTEL_SOURCE_UUID=.*/LOGFLARE_OTEL_SOURCE_UUID=my-otel-source-uuid/' .dev.env
+sed -i 's/LOGFLARE_OTEL_ACCESS_TOKEN=.*/LOGFLARE_OTEL_ACCESS_TOKEN=my-cool-api-key-123/' .dev.env
+
+# restart server with iex
+make start
+
+# with iex
+iex> LogflareLogger.info("testing")
 ```
-docker compose -f docker-compose.yml -f docker-compose.single_tenant.yml up
+
+Run `make reset` followed by `make setup` to reset all deps and local state.
+
+### Setup for External Contributors
+
+1. Install dependencies with `make setup`
+2. Start local database: `docker-compose up -d db`
+3.
+
+```bash
+# install dependencies
+make setup
+
+# start local database
+docker-compose up -d db
+
+# start in single tenant postgres backend
+make start.st.pg
 ```
 
-This will tell Logflare to perform data seeding and disable UI auth.
+### Developing for Single Tenant
 
-This is useful for testing supabase mode and single tenant mode with docker configuration.
+Use the single tenant `make start.*` variations. This works by switching out the `LOGFLARE_SINGLE_TENANT` env var.
+
+```bash
+make start.st.pg
+make start.st.bq
+```
+
+To develop with Supabase mode:
+
+```bash
+make start.sb.bq
+make start.sb.pg
+```
+
+### Running with Docker Compose
+
+Use any of the variations, which will start logflare in single-tenant mode:
+
+```bash
+# to build locally with bq backend
+docker compose up -d db logflare
+
+# to build locally with pg backend
+docker compose -f docker-compose.yml -f docker-compose.pg.yml up -d db logflare
+
+# to run latest image locally with bq backend
+docker compose -f docker-compose.yml -f docker-compose.latest.yml up -d db logflare
+
+# to run latest image locally with pg backend
+docker compose -f docker-compose.yml -f docker-compose.latest.yml -f docker-compose.pg.yml up -d db logflare
+```
 
 ### Developing Logflare alongside Supabase CLI
 

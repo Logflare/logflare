@@ -59,7 +59,8 @@ gcloud_prod.json
 .*.env
 
 !.template.env
-!.docker.env
+!.single_tenant_bq.env
+!.single_tenant_pg.env
 # rustler nif binaries
 /priv/native
 

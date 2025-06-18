@@ -60,12 +60,15 @@ config :opentelemetry_exporter,
   </TabItem>
 </Tabs>
 
-### Testing locally
+### Testing OpenTelemetry ingestion locally
 
-Run Logflare on single tenant mode:
+Clone the Github repo, and then run the following:
 
-```
-docker compose -f docker-compose.yml -f docker-compose.single_tenant.yml up
+```bash
+# for bq backend
+docker compose -f docker-compose.yml -f docker-compose.latest.yml up -d db logflare
+# for pg backend
+docker compose -f docker-compose.yml -f docker-compose.pg.yml -f docker-compose.latest.yml up -d db logflare
 ```
 
 1. Create a new source to populate the `x-source` header with the source UUID.
