@@ -1046,7 +1046,7 @@ defmodule Logflare.Sql do
       end
 
     updated_cast = %{
-      "kind" => "Cast",
+      "kind" => "DoubleColon",
       "expr" => processed_expr,
       "data_type" => data_type,
       "format" => Map.get(v, "format")
@@ -1088,7 +1088,16 @@ defmodule Logflare.Sql do
 
   # between operator should have values cast to numeric
   defp pg_traverse_final_pass({"Between" = k, %{"expr" => expr} = v}) do
-    new_expr = expr |> pg_traverse_final_pass() |> cast_to_numeric()
+    processed_expr =
+      case expr do
+        %{"Nested" => %{"BinaryOp" => %{"op" => "Arrow"} = bin_op}} ->
+          %{"Nested" => %{"BinaryOp" => %{bin_op | "op" => "LongArrow"}}}
+
+        other ->
+          other
+      end
+
+    new_expr = processed_expr |> pg_traverse_final_pass() |> cast_to_numeric()
     {k, %{v | "expr" => new_expr}}
   end
 
@@ -1307,7 +1316,7 @@ defmodule Logflare.Sql do
 
   defp convert_keys_to_json_query(
          %{"CompoundIdentifier" => [%{"value" => key}]},
-         _data,
+         data,
          [table, field]
        ) do
     %{
@@ -1319,7 +1328,7 @@ defmodule Logflare.Sql do
               %{"quote_style" => nil, "value" => field}
             ]
           },
-          "op" => "Arrow",
+          "op" => select_json_operator(data, false),
           "right" => %{
             "Value" => %{"SingleQuotedString" => key}
           }
@@ -1330,14 +1339,14 @@ defmodule Logflare.Sql do
 
   defp convert_keys_to_json_query(
          %{"CompoundIdentifier" => [%{"value" => key}]},
-         _data,
+         data,
          base
        ) do
     %{
       "Nested" => %{
         "BinaryOp" => %{
           "left" => %{"Identifier" => %{"quote_style" => nil, "value" => base}},
-          "op" => "Arrow",
+          "op" => select_json_operator(data, false),
           "right" => %{
             "Value" => %{"SingleQuotedString" => key}
           }
@@ -1349,7 +1358,7 @@ defmodule Logflare.Sql do
   # handle cross join aliases when there are different base field names as compared to what is referenced
   defp convert_keys_to_json_query(
          %{"CompoundIdentifier" => [%{"value" => _join_alias}, %{"value" => key} | _]},
-         _data,
+         data,
          {base, arr_path}
        ) do
     str_path = Enum.join(arr_path, ",")
@@ -1359,7 +1368,7 @@ defmodule Logflare.Sql do
       "Nested" => %{
         "BinaryOp" => %{
           "left" => %{"Identifier" => %{"quote_style" => nil, "value" => base}},
-          "op" => "HashArrow",
+          "op" => select_json_operator(data, true),
           "right" => %{
             "Value" => %{"SingleQuotedString" => path}
           }
@@ -1380,7 +1389,7 @@ defmodule Logflare.Sql do
       "Nested" => %{
         "BinaryOp" => %{
           "left" => %{"Identifier" => %{"quote_style" => nil, "value" => base}},
-          "op" => "HashArrow",
+          "op" => select_json_operator(data, true),
           "right" => %{
             "Value" => %{"SingleQuotedString" => path}
           }
@@ -1391,20 +1400,31 @@ defmodule Logflare.Sql do
 
   defp convert_keys_to_json_query(
          %{"Identifier" => %{"value" => name}},
-         _data,
+         data,
          base
        ) do
     %{
       "Nested" => %{
         "BinaryOp" => %{
           "left" => %{"Identifier" => %{"quote_style" => nil, "value" => base}},
-          "op" => "Arrow",
+          "op" => select_json_operator(data, false),
           "right" => %{
             "Value" => %{"SingleQuotedString" => name}
           }
         }
       }
     }
+  end
+
+  defp select_json_operator(data, is_complex_path) do
+    need_text = Map.get(data, :in_between, false) or Map.get(data, :in_binaryop, false)
+
+    case {is_complex_path, need_text} do
+      {true, true} -> "HashLongArrow"
+      {true, false} -> "HashArrow"
+      {false, true} -> "LongArrow"
+      {false, false} -> "Arrow"
+    end
   end
 
   defp get_identifier_alias(%{
@@ -1790,7 +1810,7 @@ defmodule Logflare.Sql do
   defp cast_to_numeric(expr) do
     %{
       "Cast" => %{
-        "kind" => "Cast",
+        "kind" => "DoubleColon",
         "expr" => expr,
         "data_type" => %{"Numeric" => "None"},
         "format" => nil
