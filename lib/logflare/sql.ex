@@ -1847,22 +1847,14 @@ defmodule Logflare.Sql do
 
   defp jsonb_to_text(expr) do
     %{
-      "Function" => %{
-        "name" => [%{"quote_style" => nil, "value" => "jsonb_extract_path_text"}],
-        "args" => %{
-          "List" => %{
-            "args" => [
-              %{"Unnamed" => %{"Expr" => expr}},
-              %{"Unnamed" => %{"Expr" => %{"Value" => %{"SingleQuotedString" => "0"}}}}
-            ],
-            "clauses" => [],
-            "duplicate_treatment" => nil
+      "Nested" => %{
+        "BinaryOp" => %{
+          "left" => expr,
+          "op" => "HashLongArrow",
+          "right" => %{
+            "Value" => %{"SingleQuotedString" => "{}"}
           }
-        },
-        "filter" => nil,
-        "null_treatment" => nil,
-        "over" => nil,
-        "within_group" => []
+        }
       }
     }
   end
