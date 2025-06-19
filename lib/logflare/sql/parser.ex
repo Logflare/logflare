@@ -12,9 +12,7 @@ defmodule Logflare.Sql.Parser do
   @valid_dialects ~w(bigquery clickhouse postgres)
 
   defmodule Native do
-    @moduledoc """
-    Module used for interacting with the `sqlparser_ex` NIF.
-    """
+    @moduledoc false
 
     use Rustler, otp_app: :logflare, crate: "sqlparser_ex"
 
