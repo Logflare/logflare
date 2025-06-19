@@ -88,7 +88,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.QueryTemplates do
       )
       ENGINE MergeTree()
       PARTITION BY toYYYYMMDD(timestamp)
-      ORDER BY (timestamp)
+      ORDER BY (timestamp) DESC
       """,
       if is_pos_integer(ttl_days) do
         """
