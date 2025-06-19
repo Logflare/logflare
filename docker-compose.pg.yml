@@ -1,0 +1,10 @@
+services:
+  logflare:
+    environment: !override
+      DB_HOSTNAME: db
+      POSTGRES_BACKEND_URL: postgresql://postgres:postgres@db:5432/logflare_dev
+    volumes: !override
+      - type: bind
+        source: ${PWD}/.single_tenant_pg.env
+        target: /tmp/.secrets.env
+        read_only: true

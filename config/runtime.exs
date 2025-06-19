@@ -227,7 +227,9 @@ cond do
            )
 
   config_env() != :test ->
-    config :goth, json: File.read!("gcloud.json")
+    if File.exists?("gcloud.json") do
+      config :goth, json: File.read!("gcloud.json")
+    end
 
   config_env() == :test ->
     :ok

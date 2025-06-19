@@ -4,7 +4,7 @@ services:
     environment:
       POSTGRES_PASSWORD: postgres
       POSTGRES_USER: postgres
-      POSTGRES_DB: logflare_docker
+      POSTGRES_DB: logflare_dev
     ports:
       - "5432:5432"
     volumes:
@@ -27,7 +27,7 @@ services:
     hostname: 127.0.0.1
     volumes:
       - type: bind
-        source: ${PWD}/.docker.env
+        source: ${PWD}/.single_tenant_bq.env
         target: /tmp/.secrets.env
         read_only: true
       - type: bind
