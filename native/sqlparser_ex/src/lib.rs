@@ -53,38 +53,12 @@ fn parse(dialect_str: &str, query: &str) -> NifResult<Response> {
     }
 }
 
-fn ensure_required_fields(value: &mut serde_json::Value) {
-    use serde_json::Value;
-
-    match value {
-        Value::Object(obj) => {
-            for key in ["Query", "Select", "Function"] {
-                if let Some(Value::Object(nested)) = obj.get_mut(key) {
-                    nested.entry("order_by").or_insert_with(|| Value::Array(vec![]));
-                }
-            }
-
-            for (_, v) in obj.iter_mut() {
-                ensure_required_fields(v);
-            }
-        },
-        Value::Array(arr) => {
-            for item in arr.iter_mut() {
-                ensure_required_fields(item);
-            }
-        },
-        _ => {}
-    }
-}
-
 #[rustler::nif]
 fn to_string(json: &str) -> NifResult<Response> {
-    let mut value: serde_json::Value = match serde_json::from_str(json) {
+    let value: serde_json::Value = match serde_json::from_str(json) {
         Ok(val) => val,
         Err(e) => return Ok(Response::error(&format!("JSON parsing error: {}", e))),
     };
-
-    ensure_required_fields(&mut value);
 
     let fixed_json = match serde_json::to_string(&value) {
         Ok(json) => json,
