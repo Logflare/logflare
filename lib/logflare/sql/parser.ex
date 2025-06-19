@@ -4,7 +4,6 @@ defmodule Logflare.Sql.Parser do
 
   This leverages the [sqlparser](https://crates.io/crates/sqlparser) Rust crate to handle SQL parsing and AST generation.
 
-  Valid dialects are: `"bigquery"`, `"clickhouse"`, and `"postgres"`.
   """
 
   import Logflare.Utils.Guards
