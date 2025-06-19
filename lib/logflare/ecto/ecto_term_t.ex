@@ -1,6 +1,6 @@
 defmodule Ecto.Term do
   @moduledoc """
-  Generitc Erlang term type
+  Generic Erlang term type for storing arbitrary Elixir values as binary in the database.
   """
 
   @behaviour Ecto.Type
@@ -12,7 +12,10 @@ defmodule Ecto.Term do
     {:ok, value}
   end
 
-  @spec load(any) :: :error | {:ok, any}
+  @spec load(binary() | nil) :: {:ok, any()} | {:error, ArgumentError.t()}
+  def load(nil), do: {:ok, nil}
+  def load(""), do: {:ok, ""}
+
   def load(value) do
     try do
       {:ok, :erlang.binary_to_term(value)}
@@ -21,13 +24,15 @@ defmodule Ecto.Term do
     end
   end
 
+  @spec dump(any()) :: {:ok, binary() | nil}
+  def dump(nil), do: {:ok, nil}
+  def dump(""), do: {:ok, ""}
+
   def dump(value) do
     {:ok, :erlang.term_to_binary(value)}
   end
 
-  def embed_as(_) do
-    :self
-  end
+  def embed_as(_), do: :self
 
   def equal?(term1, term2) do
     term1 === term2
