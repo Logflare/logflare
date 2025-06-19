@@ -50,8 +50,8 @@ defmodule Logflare.Logs.OtelLog do
       "attributes" => Otel.handle_attributes(log_record.attributes),
       "severity_number" => SeverityNumber.value(log_record.severity_number),
       "severity_text" => log_record.severity_text,
-      "trace_id" => Ecto.UUID.cast!(log_record.trace_id),
-      "span_id" => Base.encode16(log_record.span_id),
+      "trace_id" => Base.encode16(log_record.trace_id, case: :lower),
+      "span_id" => Base.encode16(log_record.span_id, case: :lower),
       "timestamp" => Otel.nano_to_iso8601(log_record.time_unix_nano)
     })
   end
