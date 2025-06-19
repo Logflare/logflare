@@ -69,6 +69,8 @@ mix format
 mix lint
 ```
 
+To configure the BigQuery backend, please follow the [BigQuery setup documentation](https://docs.logflare.app/self-hosting/#bigquery-setup).
+
 ### Developing for Single Tenant
 
 Use the single tenant `make start.*` variations. This works by switching out the `LOGFLARE_SINGLE_TENANT` env var.
