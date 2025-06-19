@@ -31,7 +31,7 @@
   </div>
 
   <div :if={@live_action == :new}>
-    <%= select(f, :type, ["Select a backend type...", Webhook: :webhook, Postgres: :postgres, BigQuery: :bigquery, Datadog: :datadog, Elastic: :elastic, Loki: :loki, ClickHouse: :clickhouse, "Incident.io": :incidentio],
+    <%= select(f, :type, ["Select a backend type...", Webhook: :webhook, Postgres: :postgres, BigQuery: :bigquery, Datadog: :datadog, Elastic: :elastic, Loki: :loki, ClickHouse: :clickhouse, "Incident.io": :incidentio, S3: :s3],
       phx_change: :change_form_type,
       class: "form-control form-control-margin",
       id: "type"
@@ -176,6 +176,16 @@
           </div>
 
           <div class="form-group">
+            <%= label(f_config, :username, "Basic Auth Username") %>
+            <%= text_input(f_config, :username, class: "form-control") %>
+            <%= label(f_config, :password, "Basic Auth Password") %>
+            <%= text_input(f_config, :password, class: "form-control", type: "password") %>
+            <small class="form-text text-muted">
+              For basic auth, both username and password must be provided.
+            </small>
+          </div>
+
+          <div class="form-group">
             <%= label(f_config, :header1_key, "Header 1 Key") %>
             <%= text_input(f_config, :header1_key, class: "form-control") %>
             <%= label(f_config, :header1_value, "Header 1 Value") %>
@@ -253,6 +263,37 @@
             ) %>
             <small class="form-text text-muted">
               Comma-separated key value pairs that will get merged into the JSON <code>metadata</code> key of the CreateHTTP Alert Event payload. See <a href="https://api-docs.incident.io/tag/Alert-Events-V2/">API docs</a> for more information.
+            </small>
+          </div>
+        <% "s3" -> %>
+          <div class="form-group">
+            <%= label(f_config, :access_key_id, "Access Key ID") %>
+            <%= text_input(f_config, :access_key_id, class: "form-control") %>
+            <%= label(f_config, :secret_access_key, "Secret Access Key") %>
+            <%= text_input(f_config, :secret_access_key, class: "form-control", type: "password") %>
+            <small class="form-text text-muted">
+              Credentials used to access to the S3 bucket.
+            </small>
+          </div>
+          <div class="form-group">
+            <%= label(f_config, :s3_bucket, "S3 Bucket Name") %>
+            <%= text_input(f_config, :s3_bucket, class: "form-control") %>
+            <small class="form-text text-muted">
+              The S3 bucket name to where files will be stored.
+            </small>
+          </div>
+          <div class="form-group">
+            <%= label(f_config, :storage_region, "Storage Region") %>
+            <%= text_input(f_config, :storage_region, class: "form-control", default: "us-west-2") %>
+            <small class="form-text text-muted">
+              The region where the S3 bucket is located, for example: <code>us-west-2</code>
+            </small>
+          </div>
+          <div class="form-group">
+            <%= label(f_config, :batch_timeout, "Batch Timeout") %>
+            <%= text_input(f_config, :batch_timeout, class: "form-control", type: "number", default: 5_000) %>
+            <small class="form-text text-muted">
+              The batch timeout in milliseconds.
             </small>
           </div>
         <% _ -> %>

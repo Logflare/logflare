@@ -9,12 +9,19 @@ SHA_IMAGE_TAG ?= dev-$(shell git rev-parse --short=7 HEAD)
 VERSION ?= $(shell cat ./VERSION)
 NORMALIZED_VERSION ?= $(shell cat ./VERSION | tr '.' '-')
 
+LOGFLARE_SUPABASE_MODE ?= false
+
+
 help:
 	@cat DEVELOPMENT.md
 
 test:
 	-epmd -daemon
 	mix test
+
+test.failed:
+	-epmd -daemon
+	mix test --failed
 
 test.only:
 	-epmd -daemon
@@ -26,6 +33,7 @@ compile.check:
 .PHONY: test test.only compile.check
 
 setup: setup.node
+	-epmd -daemon
 	# install dependencies
 	asdf install
 
@@ -39,32 +47,60 @@ setup: setup.node
 setup.node:
 	npm --prefix ./assets install
 
-.PHONY: setup setup.node
+reset:
+	docker compose down
+	MIX_ENV=dev mix ecto.reset
+	MIX_ENV=test mix ecto.reset
+	rm -rf _build .elixir_ls deps assets/node_modules
+
+.PHONY: setup setup.node reset
 
 start: start.orange
 
 start.orange: ERL_NAME = orange
-start.orange: PORT ?= 4000
+start.orange: PORT = 4000
+start.orange: ENV_FILE = .dev.env
 start.orange: LOGFLARE_GRPC_PORT = 50051
 start.orange: __start__
 
 start.pink: ERL_NAME = pink
 start.pink: PORT = 4001
+start.pink: ENV_FILE = .dev.env
 start.pink: LOGFLARE_GRPC_PORT = 50052
 start.pink: __start__
 
-observer:
+# temp alias
+
+start.sb.bq: LOGFLARE_SUPABASE_MODE = true
+start.sb.bq: start.st.bq
+
+start.st.bq: ERL_NAME = st_
+start.st.bq: PORT ?= 4000
+start.st.bq: ENV_FILE = .single_tenant_bq.env
+start.st.bq: LOGFLARE_GRPC_PORT = 50051
+start.st.bq: __start__
+
+start.sb.pg: LOGFLARE_SUPABASE_MODE = true
+start.sb.pg: start.st.pg
+
+start.st.pg: ERL_NAME = st_pg
+start.st.pg: PORT ?= 4000
+start.st.pg: ENV_FILE = .single_tenant_pg.env
+start.st.pg: LOGFLARE_GRPC_PORT = 50051
+start.st.pg: __start__
+
+observer: 
 	erl -sname observer -hidden -setcookie ${ERL_COOKIE} -run observer
 
 __start__:
-	@env $$(cat .dev.env | xargs) PORT=${PORT} LOGFLARE_GRPC_PORT=${LOGFLARE_GRPC_PORT} iex --sname ${ERL_NAME} --cookie ${ERL_COOKIE} -S mix phx.server
+	@env $$(cat ${ENV_FILE} | xargs) PORT=${PORT} LOGFLARE_GRPC_PORT=${LOGFLARE_GRPC_PORT} LOGFLARE_SUPABASE_MODE=${LOGFLARE_SUPABASE_MODE} iex --sname ${ERL_NAME} --cookie ${ERL_COOKIE} -S mix phx.server
 
 
 migrate:
 	@env $$(cat .dev.env | xargs) mix ecto.migrate
 
 
-.PHONY: __start__ migrate
+.PHONY: __start__ migrate start.sb.pg start.sb.bq start.st.pg start.st.bq start.orange start.pink
 
 # Encryption and decryption of secrets
 # Usage:

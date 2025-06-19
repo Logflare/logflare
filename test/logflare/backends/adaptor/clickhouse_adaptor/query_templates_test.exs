@@ -26,6 +26,15 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.QueryTemplatesTest do
       assert statement =~ "TTL toDateTime(timestamp) + INTERVAL 3 DAY"
     end
 
+    test "prefixes the database name to the table name" do
+      database = "bar"
+      table_name = "foo"
+      statement = QueryTemplates.create_log_ingest_table_statement(table_name, database: database)
+
+      assert statement =~ "CREATE TABLE IF NOT EXISTS #{database}.#{table_name}"
+      assert statement =~ "TTL toDateTime(timestamp) + INTERVAL 3 DAY"
+    end
+
     test "Allows the TTL to be adjusted via opts" do
       table_name = "foo"
       statement = QueryTemplates.create_log_ingest_table_statement(table_name, ttl_days: 5)
@@ -99,27 +108,57 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.QueryTemplatesTest do
     end
 
     test "Allows the default view name to be modified" do
+      source_table = "source_table_321"
+      view_name = "custom_view_name"
+      database = "some_database"
+
       statement =
-        QueryTemplates.create_materialized_view_statement("source_table_321",
-          view_name: "some_view_name"
+        QueryTemplates.create_materialized_view_statement(source_table,
+          view_name: view_name
         )
 
       assert statement =~
-               "CREATE MATERIALIZED VIEW IF NOT EXISTS some_view_name TO key_type_counts_per_min"
+               "CREATE MATERIALIZED VIEW IF NOT EXISTS #{view_name} TO key_type_counts_per_min"
 
-      assert statement =~ "FROM source_table_321"
+      assert statement =~ "FROM #{source_table}"
+
+      statement =
+        QueryTemplates.create_materialized_view_statement(source_table,
+          database: database,
+          view_name: view_name
+        )
+
+      assert statement =~
+               "CREATE MATERIALIZED VIEW IF NOT EXISTS #{database}.#{view_name} TO #{database}.key_type_counts_per_min"
+
+      assert statement =~ "FROM #{database}.#{source_table}"
     end
 
     test "Allows the key table name to be modified" do
+      source_table = "source_table_456"
+      key_table = "other_key_table_name"
+      database = "some_database"
+
       statement =
-        QueryTemplates.create_materialized_view_statement("source_table_456",
-          key_table: "other_key_table_name"
+        QueryTemplates.create_materialized_view_statement(source_table,
+          key_table: key_table
         )
 
       assert statement =~
-               "CREATE MATERIALIZED VIEW IF NOT EXISTS mv_key_type_counts_per_min TO other_key_table_name"
+               "CREATE MATERIALIZED VIEW IF NOT EXISTS mv_key_type_counts_per_min TO #{key_table}"
 
-      assert statement =~ "FROM source_table_456"
+      assert statement =~ "FROM #{source_table}"
+
+      statement =
+        QueryTemplates.create_materialized_view_statement(source_table,
+          database: database,
+          key_table: key_table
+        )
+
+      assert statement =~
+               "CREATE MATERIALIZED VIEW IF NOT EXISTS #{database}.mv_key_type_counts_per_min TO #{database}.#{key_table}"
+
+      assert statement =~ "FROM #{database}.#{source_table}"
     end
   end
 end

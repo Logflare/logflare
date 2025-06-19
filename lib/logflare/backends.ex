@@ -272,8 +272,10 @@ defmodule Logflare.Backends do
   Once this function returns `:ok`, the events get dispatched to respective backend adaptor portions of the pipeline to be further processed.
   """
   @type log_param :: map()
-  @spec ingest_logs([log_param()], Source.t()) :: :ok
-  @spec ingest_logs([log_param()], Source.t(), Backend.t() | nil) :: :ok
+  @spec ingest_logs([log_param()], Source.t()) ::
+          {:ok, count :: pos_integer()} | {:error, [term()]}
+  @spec ingest_logs([log_param()], Source.t(), Backend.t() | nil) ::
+          {:ok, count :: pos_integer()} | {:error, [term()]}
   def ingest_logs(event_params, source, backend \\ nil) do
     ensure_source_sup_started(source)
     {log_events, errors} = split_valid_events(source, event_params)
@@ -402,7 +404,7 @@ defmodule Logflare.Backends do
   end
 
   @doc """
-  checks if the SourceSup for a given source has been started.
+  Checks if the SourceSup for a given source has been started.
   """
   @spec source_sup_started?(Source.t() | non_neg_integer()) :: boolean()
   def source_sup_started?(%Source{id: id}), do: source_sup_started?(id)
@@ -496,23 +498,6 @@ defmodule Logflare.Backends do
         queues
         |> Enum.all?(fn {_key, v} -> v > @max_pending_buffer_len_per_queue end)
     end
-  end
-
-  @doc """
-  Get local pending buffer len of a source/backend combination, and caches it at the same time.
-  """
-  @spec get_and_cache_local_pending_buffer_len(
-          integer(),
-          nil | integer()
-        ) ::
-          integer()
-  @deprecated "call `Logflare.Backends.cache_local_buffer_lens/2` instead."
-  def get_and_cache_local_pending_buffer_len(source_id, backend_id \\ nil)
-      when is_integer(source_id) do
-    len = IngestEventQueue.total_pending({source_id, backend_id})
-    payload = %{Node.self() => %{len: len}}
-    PubSubRates.Cache.cache_buffers(source_id, backend_id, payload)
-    len
   end
 
   @doc """

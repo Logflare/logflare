@@ -4,7 +4,12 @@
 if [ -f /tmp/.secrets.env ]
 then
     echo '/tmp/.secrets.env file present, loading secrets...';
-    export $(grep -v '^#' /tmp/.secrets.env | xargs);
+    export $(grep -v '^#' /tmp/.secrets.env | grep -v '^$' | while IFS= read -r line; do
+        var_name=$(echo "$line" | cut -d'=' -f1)
+        if [ -z "$(eval echo \$$var_name)" ]; then
+            echo "$line"
+        fi
+    done | xargs);
 fi
 
 # maybe run a startup script
