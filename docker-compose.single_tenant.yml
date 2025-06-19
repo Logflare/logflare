@@ -1,9 +1,0 @@
-services:
-  logflare:
-    environment:
-     POSTGRES_BACKEND_URL: postgresql://postgres:postgres@db:5432/logflare_docker
-    volumes: !override
-      - type: bind
-        source: ${PWD}/.docker.env
-        target: /tmp/.secrets.env
-        read_only: true

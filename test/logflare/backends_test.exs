@@ -342,17 +342,6 @@ defmodule Logflare.BackendsTest do
       end)
     end
 
-    test "can get length of queue", %{source: source} do
-      assert Backends.get_and_cache_local_pending_buffer_len(source.id, nil) == 0
-      assert Backends.get_and_cache_local_pending_buffer_len(source.id) == 0
-      events = for _n <- 1..5, do: build(:log_event, source: source, some: "event")
-      assert {:ok, 5} = Backends.ingest_logs(events, source)
-      assert Backends.get_and_cache_local_pending_buffer_len(source.id) > 0
-      # Producer will pop from the queue
-      :timer.sleep(1_500)
-      assert Backends.get_and_cache_local_pending_buffer_len(source.id) == 0
-    end
-
     test "cache_estimated_buffer_lens/1 will cache all queue information", %{
       source: %{id: source_id} = source
     } do
@@ -690,9 +679,6 @@ defmodule Logflare.BackendsTest do
       %{
         "with cache" => fn {_input, _resource} ->
           Backends.cached_local_pending_buffer_len(source, backend)
-        end,
-        "without caching" => fn {_input, _resource} ->
-          Backends.get_and_cache_local_pending_buffer_len(source, backend)
         end
       },
       inputs: %{

@@ -135,6 +135,8 @@ defmodule Logflare.Backends.BigQueryAdaptorTest do
       source: source,
       backend: backend
     } do
+      source_id = source.id
+      backend_id = backend.id
       log_event = build(:log_event, source: source, test: <<97, 98, 99, 222, 126, 199, 31, 89>>)
       pid = self()
       ref = make_ref()
@@ -159,16 +161,27 @@ defmodule Logflare.Backends.BigQueryAdaptorTest do
 
       assert {:ok, _} = Backends.ingest_logs([log_event], source)
 
-      assert Backends.get_and_cache_local_pending_buffer_len(source.id, nil) == 1
-      assert Backends.get_and_cache_local_pending_buffer_len(source.id, backend.id) == 1
+      assert {:ok, %{len: 1}} = Backends.cache_local_buffer_lens(source_id, nil)
+      assert {:ok, %{len: 1}} = Backends.cache_local_buffer_lens(source_id, backend_id)
       :timer.sleep(2000)
 
       TestUtils.retry_assert(fn ->
         assert_receive ^ref
       end)
 
-      assert Backends.get_and_cache_local_pending_buffer_len(source.id, nil) == 0
-      assert Backends.get_and_cache_local_pending_buffer_len(source.id, backend.id) == 0
+      {:ok, %{queues: queues}} = Backends.cache_local_buffer_lens(source_id, nil)
+
+      assert Enum.find_value(queues, fn
+               {{^source_id, nil, nil}, count} -> count
+               _ -> nil
+             end) == 0
+
+      {:ok, %{queues: queues}} = Backends.cache_local_buffer_lens(source_id, backend_id)
+
+      assert Enum.find_value(queues, fn
+               {{^source_id, ^backend_id, nil}, count} -> count
+               _ -> nil
+             end) == 0
     end
   end
 
