@@ -347,6 +347,37 @@ defmodule Logflare.SqlTest do
   end
 
   describe "clickhouse dialect" do
+    test "parser can handle tuple definitions" do
+      user = insert(:user)
+
+      for input <- [
+            "select tuple(1,2,3) as foo",
+            "select tuple(\'abc\')",
+            "select tuple(1, t.str_col) from values(\'str_col String\', (\'hello\'), (\'world\'), (\'test\')) t",
+            "SELECT tuple(t.str_col) AS abc from values(\'str_col String\', (\'hello\'), (\'world\'), (\'test\')) t"
+          ] do
+        assert {:ok, _v2} = Sql.transform(:ch_sql, input, user)
+      end
+    end
+
+    test "parser can handle complex sql" do
+      user = insert(:user)
+
+      for input <- [
+            "select d[0]",
+            # Array indexing with expressions
+            "select arr[1 + 2], arr[length(arr)] from values('arr Array(Int32)', ([10,20,30,40,50]))",
+            # Map access with brackets
+            "select map_col['key1'], map_col[concat('key', '2')] from (select map('key1', 100, 'key2', 200) as map_col)",
+            # Array slicing
+            "select arraySlice(arr, 2, 3) as slice_2_to_4, arraySlice(arr, 1, 3) as first_3, arraySlice(arr, 2) as from_2_onwards from values('arr Array(Int32)', ([1,2,3,4,5,6,7]))",
+            # Nested access
+            "select nested.names[1], nested.values[1] from values('nested Nested(names String, values Int32)', (['john', 'jane'], [25, 30]))"
+          ] do
+        assert {:ok, _v2} = Sql.transform(:ch_sql, input, user)
+      end
+    end
+
     test "parser can handle sandboxed CTEs with union all" do
       user = insert(:user)
       insert(:source, user: user, name: "my_ch_table")
