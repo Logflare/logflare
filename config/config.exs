@@ -120,6 +120,8 @@ config :swoosh, local: true
 # use the default querying connection pool
 # see application.ex for pool settings
 config :tesla,
+  # TODO: `use Tesla.Builder` and `use Tesla` are soft-deprecated. It will be removed in future major version in favor of Runtime Configuration instead. See https://github.com/elixir-tesla/tesla/discussions/732 to learn more.
+  disable_deprecated_builder_warning: true,
   adapter: {Tesla.Adapter.Finch, name: Logflare.FinchDefault, receive_timeout: 60_000}
 
 config :number,
