@@ -152,14 +152,14 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
   Lists all managed service accounts
   """
   @spec list_managed_service_accounts(String.t()) :: [GoogleApi.IAM.V1.Model.ServiceAccount.t()]
-  def list_managed_service_accounts(project_id) do
+  def list_managed_service_accounts(project_id \\ nil) do
+    project_id = project_id || Application.get_env(:logflare, Logflare.Google)[:project_id]
+
     get_next_page(project_id, nil)
     |> Enum.filter(&(&1.name =~ @service_account_prefix))
   end
 
   defp handle_response({:ok, response}, project_id) do
-    dbg(response)
-
     case response do
       %{accounts: accounts, nextPageToken: nil} ->
         accounts
@@ -181,7 +181,6 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
       pageSize: 100,
       pageToken: page_token
     )
-    |> dbg()
     |> handle_response(project_id)
   end
 
@@ -212,7 +211,6 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
         accountId: managed_service_account_id(project_id, service_account_index)
       }
     )
-    |> dbg()
   end
 
   def managed_service_account_pool_size do
@@ -247,9 +245,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
         do:
           {:service_account, credentials,
            [
-             #  url:
-             #    "https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/#{sub}:signJwt",
-             claims: %{"sub" => sub, "scope" => "https://www.googleapis.com/auth/cloud-platform"}
+             sub: sub
            ]},
         else: {:service_account, credentials, scopes: scopes}
 

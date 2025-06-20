@@ -30,7 +30,7 @@ defmodule Logflare.Alerting.AlertQuery do
 
     many_to_many :backends, Logflare.Backends.Backend,
       join_through: "alert_queries_backends",
-     _ on_replace: :delete
+      on_replace: :delete
 
     timestamps()
   end
