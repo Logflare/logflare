@@ -346,6 +346,29 @@ defmodule Logflare.SqlTest do
     end
   end
 
+  describe "clickhouse dialect" do
+    test "parser can handle sandboxed CTEs with union all" do
+      user = insert(:user)
+      insert(:source, user: user, name: "my_ch_table")
+
+      # valid CTE queries with UNION ALL
+      input = """
+      with cte1 as (select a from my_ch_table),
+           cte2 as (select b from my_ch_table),
+           edge_logs as (select b from my_ch_table),
+           postgres_logs as (select b from my_ch_table),
+           auth_logs as (select b from my_ch_table)
+      select a from cte1
+      union all
+      select b from cte2
+      union all
+      \nselect el.id as id from edge_logs as el\nunion all\nselect pgl.id as id from postgres_logs as pgl\nunion all\nselect al.id as id from auth_logs as al
+      """
+
+      assert {:ok, _result} = Sql.transform(:ch_sql, input, user)
+    end
+  end
+
   test "sources/2 creates a source mapping present for sources present in the query" do
     user = insert(:user)
     source = insert(:source, user: user, name: "my_table")
