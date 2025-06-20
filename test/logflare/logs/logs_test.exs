@@ -161,7 +161,7 @@ defmodule Logflare.LogsTest do
       assert :ok = Logs.ingest_logs(batch, source)
     end
 
-    test "rule without sink", %{user: user, source: source, source_b: target} do
+    test "rule without sink", %{source: source} do
       insert(:rule, lql_string: "testing", sink: nil, source_id: source.id)
       source = source |> Repo.preload(:rules, force: true)
 

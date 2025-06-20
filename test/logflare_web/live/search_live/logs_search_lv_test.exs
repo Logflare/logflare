@@ -500,8 +500,8 @@ defmodule LogflareWeb.Source.SearchLVTest do
     end
   end
 
-  @tag :skip
   describe "single tenant searching" do
+    @describetag :skip
     TestUtils.setup_single_tenant(seed_user: true)
 
     setup do
