@@ -1,10 +1,14 @@
 defmodule Logflare.SqlTest do
   @moduledoc false
+
   use Logflare.DataCase
+
+  alias Logflare.Backends.AdaptorSupervisor
+  alias Logflare.Backends.Adaptor.ClickhouseAdaptor
+  alias Logflare.Backends.Adaptor.PostgresAdaptor
   alias Logflare.SingleTenant
   alias Logflare.Sql
-  alias Logflare.Backends.Adaptor.PostgresAdaptor
-  alias Logflare.Backends.AdaptorSupervisor
+
   @logflare_project_id "logflare-project-id"
   @user_project_id "user-project-id"
   @user_dataset_id "user-dataset-id"
@@ -480,6 +484,24 @@ defmodule Logflare.SqlTest do
 
       assert {:ok, transformed} = Sql.transform(:pg_sql, input, user)
       assert transformed =~ ~s("#{PostgresAdaptor.table_name(source)}")
+    end
+  end
+
+  describe "transform/3 for :clickhouse backends" do
+    setup do
+      user = insert(:user)
+      source = insert(:source, user: user, name: "source_a")
+      %{user: user, source: source}
+    end
+
+    test "changes query on FROM command to correct table name", %{
+      source: %{name: name} = source,
+      user: user
+    } do
+      input = "SELECT body, event_message, timestamp FROM #{name}"
+
+      assert {:ok, transformed} = Sql.transform(:ch_sql, input, user)
+      assert transformed =~ "#{ClickhouseAdaptor.clickhouse_ingest_table_name(source)}"
     end
   end
 

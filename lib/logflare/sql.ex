@@ -11,6 +11,7 @@ defmodule Logflare.Sql do
   alias Logflare.User
   alias Logflare.SingleTenant
   alias Logflare.Sql.Parser
+  alias Logflare.Backends.Adaptor.ClickhouseAdaptor
   alias Logflare.Backends.Adaptor.PostgresAdaptor
   alias Logflare.Endpoints
   alias Logflare.Alerts.Alert
@@ -474,8 +475,9 @@ defmodule Logflare.Sql do
   defp replace_names({"Table" = k, %{"name" => names} = v}, data) do
     dialect_quote_style =
       case data.dialect do
-        "postgres" -> "\""
         "bigquery" -> "`"
+        "clickhouse" -> nil
+        "postgres" -> "\""
       end
 
     # Join qualified table name parts (e.g., ["a", "b", "c"] -> "a.b.c")
@@ -571,6 +573,11 @@ defmodule Logflare.Sql do
   end
 
   defp replace_sandboxed_query(kv, _data), do: kv
+
+  defp transform_name(relname, %{dialect: "clickhouse"} = data) do
+    source = Enum.find(data.sources, fn s -> s.name == relname end)
+    ClickhouseAdaptor.clickhouse_ingest_table_name(source)
+  end
 
   defp transform_name(relname, %{dialect: "postgres"} = data) do
     source = Enum.find(data.sources, fn s -> s.name == relname end)
