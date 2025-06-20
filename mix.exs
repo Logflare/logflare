@@ -150,7 +150,7 @@ defmodule Logflare.Mixfile do
       {:google_api_cloud_resource_manager, "~> 0.34.0"},
       {:google_api_big_query, "~> 0.79.0"},
       {:google_api_iam, "~> 0.45.0"},
-      {:goth, "~> 1.4.5"},
+      {:goth, path: "../goth"},
       {:google_gax, github: "Logflare/elixir-google-gax", ref: "6772193", override: true},
 
       # Ecto

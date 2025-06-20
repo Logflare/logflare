@@ -132,8 +132,6 @@ defmodule Logflare.Application do
         BigQueryAdaptor.partitioned_goth_child_spec()
       ] ++ BigQueryAdaptor.impersonated_goth_child_specs()
 
-    dbg(goth)
-
     # only add in config cat to multi-tenant prod
     config_cat =
       case Application.get_env(:logflare, :config_cat_sdk_key) do
