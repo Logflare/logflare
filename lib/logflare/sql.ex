@@ -4,7 +4,9 @@ defmodule Logflare.Sql do
 
   This module provides the main interface with the rest of the app.
   """
+
   require Logger
+
   alias Logflare.Sources
   alias Logflare.User
   alias Logflare.SingleTenant
@@ -13,24 +15,44 @@ defmodule Logflare.Sql do
   alias Logflare.Endpoints
   alias Logflare.Alerts.Alert
 
-  @type language :: :pg_sql | :bq_sql
+  @valid_query_languages ~w(bq_sql ch_sql pg_sql)a
+
+  @typep query_language :: :bq_sql | :ch_sql | :pg_sql
+
+  @doc """
+  Converts a language atom to its corresponding dialect.
+
+  ## Examples
+
+      iex> Logflare.Sql.to_dialect(:bq_sql)
+      "bigquery"
+
+      iex> Logflare.Sql.to_dialect(:ch_sql)
+      "clickhouse"
+
+      iex> Logflare.Sql.to_dialect(:pg_sql)
+      "postgres"
+  """
+  @spec to_dialect(query_language()) :: String.t()
+  def to_dialect(:bq_sql), do: "bigquery"
+  def to_dialect(:ch_sql), do: "clickhouse"
+  def to_dialect(:pg_sql), do: "postgres"
 
   @doc """
   Expands entity names that match query names into a subquery
   """
-  @spec expand_subqueries(language(), String.t(), [Alert.t() | Endpoints.Query.t()]) ::
+  @spec expand_subqueries(
+          query_language(),
+          input :: String.t(),
+          queries :: [Alert.t() | Endpoints.Query.t()]
+        ) ::
           {:ok, String.t()}
   def expand_subqueries(_language, input, []), do: {:ok, input}
 
   def expand_subqueries(language, input, queries)
-      when is_atom(language) and is_list(queries) and is_binary(input) do
-    parser_dialect =
-      case language do
-        :bq_sql -> "bigquery"
-        :pg_sql -> "postgres"
-      end
-
-    with {:ok, statements} <- Parser.parse(parser_dialect, input),
+      when language in @valid_query_languages and is_binary(input) and is_list(queries) do
+    with parser_dialect <- to_dialect(language),
+         {:ok, statements} <- Parser.parse(parser_dialect, input),
          eligible_queries <- Enum.filter(queries, &(&1.language == language)) do
       statements
       |> replace_names_with_subqueries(%{
@@ -49,13 +71,8 @@ defmodule Logflare.Sql do
     query = Enum.find(data.queries, &(&1.name == table_name))
 
     if query do
-      parser_language =
-        case data.language do
-          :pg_sql -> "postgres"
-          :bq_sql -> "bigquery"
-        end
-
-      {:ok, [%{"Query" => body}]} = Parser.parse(parser_language, query.query)
+      parser_dialect = to_dialect(data.language)
+      {:ok, [%{"Query" => body}]} = Parser.parse(parser_dialect, query.query)
 
       {k,
        %{
@@ -80,13 +97,8 @@ defmodule Logflare.Sql do
     query = Enum.find(data.queries, &(&1.name == table_name))
 
     if query do
-      parser_language =
-        case data.language do
-          :pg_sql -> "postgres"
-          :bq_sql -> "bigquery"
-        end
-
-      {:ok, [%{"Query" => body}]} = Parser.parse(parser_language, query.query)
+      parser_dialect = to_dialect(data.language)
+      {:ok, [%{"Query" => body}]} = Parser.parse(parser_dialect, query.query)
 
       {k,
        %{
@@ -136,7 +148,7 @@ defmodule Logflare.Sql do
     {:ok, "..."}
   """
   @typep input :: String.t() | {String.t(), String.t()}
-  @spec transform(language(), input(), User.t() | pos_integer()) :: {:ok, String.t()}
+  @spec transform(query_language(), input(), User.t() | pos_integer()) :: {:ok, String.t()}
   def transform(lang, input, user_id) when is_integer(user_id) do
     user = Logflare.Users.get(user_id)
     transform(lang, input, user)
@@ -153,6 +165,23 @@ defmodule Logflare.Sql do
         source_mapping: source_mapping,
         source_names: Map.keys(source_mapping),
         dialect: "postgres",
+        ast: statements
+      })
+      |> Parser.to_string()
+    end
+  end
+
+  def transform(:ch_sql, query, user) do
+    sources = Sources.list_sources_by_user(user)
+    source_mapping = source_mapping(sources)
+
+    with {:ok, statements} <- Parser.parse("postgres", query) do
+      statements
+      |> do_transform(%{
+        sources: sources,
+        source_mapping: source_mapping,
+        source_names: Map.keys(source_mapping),
+        dialect: "clickhouse",
         ast: statements
       })
       |> Parser.to_string()

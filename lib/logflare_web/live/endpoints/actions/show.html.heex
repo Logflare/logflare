@@ -26,6 +26,7 @@
     <span class="tw-block">
       <%= case @show_endpoint.language do
         :bq_sql -> "BigQuery SQL"
+        :ch_sql -> "ClickHouse SQL"
         :pg_sql -> "Postgres SQL"
         :lql -> "Logflare Query Language"
       end %>

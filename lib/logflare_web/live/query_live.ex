@@ -239,6 +239,7 @@ defmodule LogflareWeb.QueryLive do
     type =
       case Backends.get_default_backend(user) do
         %_{type: :bigquery} -> :bq_sql
+        %_{type: :clickhouse} -> :ch_sql
         %_{type: :postgres} -> :pg_sql
       end
 

@@ -66,6 +66,13 @@ defmodule LogflareWeb.Api.QueryController do
         required: false,
         example: "select current_timestamp() as 'test'"
       ],
+      ch_sql: [
+        in: :query,
+        description: "ClickHouse SQL string",
+        type: :string,
+        required: false,
+        example: "select now() as test"
+      ],
       pg_sql: [
         in: :query,
         description: "PostgresSQL string",
@@ -79,19 +86,26 @@ defmodule LogflareWeb.Api.QueryController do
 
   def query(conn, %{"sql" => sql}), do: query(conn, %{"bq_sql" => sql})
 
-  def query(%{assigns: %{user: user}} = conn, %{"pg_sql" => sql}) do
-    with {:ok, %{rows: rows}} <- Endpoints.run_query_string(user, {:pg_sql, sql}) do
-      json(conn, %{result: rows})
-    end
-  end
-
   def query(%{assigns: %{user: user}} = conn, %{"bq_sql" => sql}) do
     with {:ok, %{rows: rows}} <- Endpoints.run_query_string(user, {:bq_sql, sql}) do
       json(conn, %{result: rows})
     end
   end
 
+  def query(%{assigns: %{user: user}} = conn, %{"ch_sql" => sql}) do
+    with {:ok, %{rows: rows}} <- Endpoints.run_query_string(user, {:ch_sql, sql}) do
+      json(conn, %{result: rows})
+    end
+  end
+
+  def query(%{assigns: %{user: user}} = conn, %{"pg_sql" => sql}) do
+    with {:ok, %{rows: rows}} <- Endpoints.run_query_string(user, {:pg_sql, sql}) do
+      json(conn, %{result: rows})
+    end
+  end
+
   def query(_conn, _params) do
-    {:error, "No query params provided. Supported query params are sql=, bq_sql=, and pg_sql="}
+    {:error,
+     "No query params provided. Supported query params are sql=, bq_sql=, ch_sql=, and pg_sql="}
   end
 end
