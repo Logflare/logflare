@@ -19,7 +19,7 @@ defmodule Logflare.Alerting.AlertQuery do
   typed_schema "alert_queries" do
     field :name, :string
     field :description, :string
-    field(:language, Ecto.Enum, values: [:bq_sql, :pg_sql, :lql], default: :bq_sql)
+    field :language, Ecto.Enum, values: [:bq_sql, :pg_sql, :lql, :ch_sql], default: :bq_sql
     field :query, :string
     field :cron, :string
     field :source_mapping, :map

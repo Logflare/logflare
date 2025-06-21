@@ -54,6 +54,7 @@ gcloud_prod.json
 /cover/
 /node_modules/
 .vscode/
+/native/sqlparser_ex/target/
 
 .google.secret.json
 .*.env

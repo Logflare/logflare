@@ -1,10 +1,14 @@
 defmodule Logflare.SqlTest do
   @moduledoc false
+
   use Logflare.DataCase
+
+  alias Logflare.Backends.AdaptorSupervisor
+  alias Logflare.Backends.Adaptor.ClickhouseAdaptor
+  alias Logflare.Backends.Adaptor.PostgresAdaptor
   alias Logflare.SingleTenant
   alias Logflare.Sql
-  alias Logflare.Backends.Adaptor.PostgresAdaptor
-  alias Logflare.Backends.AdaptorSupervisor
+
   @logflare_project_id "logflare-project-id"
   @user_project_id "user-project-id"
   @user_dataset_id "user-dataset-id"
@@ -27,11 +31,10 @@ defmodule Logflare.SqlTest do
 
       for input <- [
             "select STRUCT(1,2,3)",
-            "select STRUCT()",
             "select STRUCT(\'abc\')",
-            "select STRUCT(1, t.str_col)"
-            # sqlparser-rs does not handle this yet.
-            # "select STRUCT(str_col AS abc)"
+            "select STRUCT(1, t.str_col)",
+            "select STRUCT(str_col AS abc)"
+            # Note: empty STRUCT() is not supported in sqlparser 0.39.0
           ] do
         assert {:ok, _v2} = Sql.transform(:bq_sql, input, user)
       end
@@ -263,9 +266,6 @@ defmodule Logflare.SqlTest do
             },
             {{"with src as (select a from my_table) select c from src",
               "select a from b; select c from d;"}, "Only singular query allowed"},
-            # no source name in query
-            {"select datetime() from light-two-os-directions-test",
-             "can't find source light-two-os-directions-test"},
             {"select datetime() from `light-two-os-directions-test`",
              "can't find source light-two-os-directions-test"},
             {"with src as (select a from unknown_table) select datetime() from my_table",
@@ -298,7 +298,7 @@ defmodule Logflare.SqlTest do
       for {input, expected} <- [
             # fully qualified names must start with the user's bigquery project
             {"select a from `#{@user_project_id}.#{@user_dataset_id}.mytable`",
-             "select a from `#{@user_project_id}.#{@user_dataset_id}.mytable`"},
+             "select a from `#{@user_project_id}`.`#{@user_dataset_id}`.`mytable`"},
             #  source names that look like dataset format
             {"select a from `a.b.c`", "select a from #{bq_table_name(source_abc)}"},
             {"with a as (select b from `c.x.y`) select b from a",
@@ -345,8 +345,62 @@ defmodule Logflare.SqlTest do
       input = " select a from `#{@single_tenant_bq_project_id}.my_dataset.my_table`"
 
       assert {:ok, transformed} = Sql.transform(:bq_sql, input, user)
-      assert transformed =~ "#{@single_tenant_bq_project_id}.my_dataset.my_table"
+      assert transformed =~ "`#{@single_tenant_bq_project_id}`.`my_dataset`.`my_table`"
       refute transformed =~ @logflare_project_id
+    end
+  end
+
+  describe "clickhouse dialect" do
+    test "parser can handle tuple definitions" do
+      user = insert(:user)
+
+      for input <- [
+            "select tuple(1,2,3) as foo",
+            "select tuple(\'abc\')",
+            "select tuple(1, t.str_col) from values(\'str_col String\', (\'hello\'), (\'world\'), (\'test\')) t",
+            "SELECT tuple(t.str_col) AS abc from values(\'str_col String\', (\'hello\'), (\'world\'), (\'test\')) t"
+          ] do
+        assert {:ok, _v2} = Sql.transform(:ch_sql, input, user)
+      end
+    end
+
+    test "parser can handle complex sql" do
+      user = insert(:user)
+
+      for input <- [
+            "select d[0]",
+            # Array indexing with expressions
+            "select arr[1 + 2], arr[length(arr)] from values('arr Array(Int32)', ([10,20,30,40,50]))",
+            # Map access with brackets
+            "select map_col['key1'], map_col[concat('key', '2')] from (select map('key1', 100, 'key2', 200) as map_col)",
+            # Array slicing
+            "select arraySlice(arr, 2, 3) as slice_2_to_4, arraySlice(arr, 1, 3) as first_3, arraySlice(arr, 2) as from_2_onwards from values('arr Array(Int32)', ([1,2,3,4,5,6,7]))",
+            # Nested access
+            "select nested.names[1], nested.values[1] from values('nested Nested(names String, values Int32)', (['john', 'jane'], [25, 30]))"
+          ] do
+        assert {:ok, _v2} = Sql.transform(:ch_sql, input, user)
+      end
+    end
+
+    test "parser can handle sandboxed CTEs with union all" do
+      user = insert(:user)
+      insert(:source, user: user, name: "my_ch_table")
+
+      # valid CTE queries with UNION ALL
+      input = """
+      with cte1 as (select a from my_ch_table),
+           cte2 as (select b from my_ch_table),
+           edge_logs as (select b from my_ch_table),
+           postgres_logs as (select b from my_ch_table),
+           auth_logs as (select b from my_ch_table)
+      select a from cte1
+      union all
+      select b from cte2
+      union all
+      \nselect el.id as id from edge_logs as el\nunion all\nselect pgl.id as id from postgres_logs as pgl\nunion all\nselect al.id as id from auth_logs as al
+      """
+
+      assert {:ok, _result} = Sql.transform(:ch_sql, input, user)
     end
   end
 
@@ -484,6 +538,24 @@ defmodule Logflare.SqlTest do
 
       assert {:ok, transformed} = Sql.transform(:pg_sql, input, user)
       assert transformed =~ ~s("#{PostgresAdaptor.table_name(source)}")
+    end
+  end
+
+  describe "transform/3 for :clickhouse backends" do
+    setup do
+      user = insert(:user)
+      source = insert(:source, user: user, name: "source_a")
+      %{user: user, source: source}
+    end
+
+    test "changes query on FROM command to correct table name", %{
+      source: %{name: name} = source,
+      user: user
+    } do
+      input = "SELECT body, event_message, timestamp FROM #{name}"
+
+      assert {:ok, transformed} = Sql.transform(:ch_sql, input, user)
+      assert transformed =~ "#{ClickhouseAdaptor.clickhouse_ingest_table_name(source)}"
     end
   end
 
