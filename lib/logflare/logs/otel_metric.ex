@@ -1,10 +1,7 @@
 defmodule Logflare.Logs.OtelMetric do
   @moduledoc """
-  Converts a Otel metric to event parameters
+  Converts a list of Otel ResourceMetrics to a list of Logflare events
 
-  Converts a list of ResourceMetrics to a list of Logflare Events
-
-  Important details about the conversation:
   * One ResourceMetric can contain multiple ScopeSpans
   * One ScopeMetrics can contain multiple Metrics
   * One Metric can contain multiple DataPoints
