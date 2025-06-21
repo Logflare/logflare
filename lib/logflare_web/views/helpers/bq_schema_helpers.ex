@@ -47,10 +47,10 @@ defmodule LogflareWeb.Helpers.BqSchema do
     |> Timex.format!(@fmt_string, :strftime)
   end
 
-  def format_timestamp(timestamp, user_local_timezone) do
+  def format_timestamp(timestamp, search_timezone) do
     timestamp
     |> Timex.from_unix(:microsecond)
-    |> Timex.Timezone.convert(user_local_timezone)
+    |> Timex.Timezone.convert(search_timezone)
     |> Timex.format!(@fmt_string, :strftime)
   end
 
