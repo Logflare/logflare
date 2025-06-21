@@ -25,6 +25,8 @@ config :logflare, Logflare.Google, dataset_id_append: "_default"
 config :logflare, :postgres_backend_adapter, pool_size: 3
 config :logflare, :clickhouse_backend_adapter, pool_size: 3
 
+config :logflare, :bigquery_backend_adaptor, managed_service_account_pool_size: 0
+
 config :logflare, Logflare.Source.BigQuery.Schema, updates_per_minute: 6
 
 # Configures the endpoint

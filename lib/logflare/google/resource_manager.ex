@@ -12,6 +12,7 @@ defmodule Logflare.Google.CloudResourceManager do
   alias Logflare.TeamUsers
   alias Logflare.Billing
   alias Logflare.Utils.Tasks
+  alias Logflare.Backends.Adaptor.BigQueryAdaptor
 
   def list_projects() do
     conn = GenUtils.get_conn()
@@ -85,37 +86,48 @@ defmodule Logflare.Google.CloudResourceManager do
   end
 
   defp get_service_accounts() do
-    for {member, roles} <- [
-          {env_service_account(),
-           ["roles/bigquery.admin", "roles/resourcemanager.projectIamAdmin"]},
-          {env_compute_engine_sa(),
-           [
-             "roles/compute.instanceAdmin",
-             "roles/artifactregistry.reader",
-             "roles/artifactregistry.writer",
-             "roles/logging.logWriter",
-             "roles/monitoring.metricWriter"
-           ]},
-          {env_cloud_build_sa(),
-           [
-             "roles/cloudbuild.builds.builder",
-             "roles/compute.admin",
-             "roles/container.admin",
-             "roles/cloudkms.cryptoKeyDecrypter",
-             "roles/iam.serviceAccountUser",
-             "roles/editor",
-             "roles/cloudbuild.builds.editor",
-             "roles/cloudbuild.serviceAgent"
-           ]},
-          {env_cloud_build_trigger_sa(),
-           [
-             "roles/cloudbuild.builds.editor",
-             "roles/iam.serviceAccountUser",
-             "roles/cloudbuild.serviceAgent"
-           ]},
-          {env_api_sa(), ["roles/editor", "roles/cloudbuild.builds.editor"]},
-          {env_grafana_sa(), ["roles/bigquery.dataViewer", "roles/bigquery.jobUser"]}
-        ],
+    managed_service_accounts =
+      for %{email: name} <- BigQueryAdaptor.list_managed_service_accounts() do
+        {name, ["roles/bigquery.admin"]}
+      end
+
+    for {member, roles} <-
+          [
+            {env_service_account(),
+             [
+               "roles/bigquery.admin",
+               "roles/resourcemanager.projectIamAdmin",
+               "roles/iam.serviceAccountCreator",
+               "roles/iam.serviceAccountTokenCreator"
+             ]},
+            {env_compute_engine_sa(),
+             [
+               "roles/compute.instanceAdmin",
+               "roles/artifactregistry.reader",
+               "roles/artifactregistry.writer",
+               "roles/logging.logWriter",
+               "roles/monitoring.metricWriter"
+             ]},
+            {env_cloud_build_sa(),
+             [
+               "roles/cloudbuild.builds.builder",
+               "roles/compute.admin",
+               "roles/container.admin",
+               "roles/cloudkms.cryptoKeyDecrypter",
+               "roles/iam.serviceAccountUser",
+               "roles/editor",
+               "roles/cloudbuild.builds.editor",
+               "roles/cloudbuild.serviceAgent"
+             ]},
+            {env_cloud_build_trigger_sa(),
+             [
+               "roles/cloudbuild.builds.editor",
+               "roles/iam.serviceAccountUser",
+               "roles/cloudbuild.serviceAgent"
+             ]},
+            {env_api_sa(), ["roles/editor", "roles/cloudbuild.builds.editor"]},
+            {env_grafana_sa(), ["roles/bigquery.dataViewer", "roles/bigquery.jobUser"]}
+          ] ++ managed_service_accounts,
         member,
         role <- roles do
       %Model.Binding{
