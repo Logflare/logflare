@@ -36,8 +36,8 @@ defmodule Logflare.Logs.OtelLogTest do
       expected_body = Otel.extract_value(first_record.body)
       expected_severity_number = SeverityNumber.value(first_record.severity_number)
       expected_severity_text = first_record.severity_text
-      expected_trace_id = Ecto.UUID.cast!(first_record.trace_id)
-      expected_span_id = Base.encode16(first_record.span_id)
+      expected_trace_id = Base.encode16(first_record.trace_id, case: :lower)
+      expected_span_id = Base.encode16(first_record.span_id, case: :lower)
 
       assert %{
                "event_message" => ^expected_body,
