@@ -59,7 +59,7 @@ defmodule LogflareWeb.LogController do
       ]
     ],
     responses: %{
-      201 => Created.response(LogsCreated),
+      200 => Created.response(LogsCreated),
       500 => ServerError.response()
     }
   )
