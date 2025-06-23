@@ -61,8 +61,6 @@ defmodule Logflare.ContextCache do
   3. Deletes matching cache entries
   """
   @spec bust_keys(list()) :: {:ok, non_neg_integer()}
-  def bust_keys([]), do: {:ok, 0}
-
   def bust_keys(values) when is_list(values) do
     busted =
       for {context, primary_key} <- values, reduce: 0 do

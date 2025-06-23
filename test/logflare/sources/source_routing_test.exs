@@ -641,8 +641,8 @@ defmodule Logflare.Logs.SourceRoutingTest do
     end
   end
 
-  @tag :failing
   describe "Source routing with regex routing" do
+    @describetag :failing
     test "successfull" do
       {:ok, _} = Source.Supervisor.start_link()
       u = Users.get_by_and_preload(email: System.get_env("LOGFLARE_TEST_USER_WITH_SET_IAM"))

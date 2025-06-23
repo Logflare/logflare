@@ -1,4 +1,4 @@
-<div class="subhead ">
+<div class="subhead">
   <div class="container mx-auto">
     <h5>~/admin/cluster</h5>
     <div class="log-settings">
@@ -9,7 +9,7 @@
 
 <div class="content dashboard container mx-auto">
   <h1>Create Partner</h1>
-  <.form :let={f} for={@changeset} action="#" phx-submit="save">
+  <.form :let={f} id="create-partner" for={@changeset} action="#" phx-submit="save">
     <%= text_input(f, :name,
       placeholder: "Partner Name",
       class: "form-control form-control-margin"

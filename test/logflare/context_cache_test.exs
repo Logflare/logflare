@@ -15,6 +15,10 @@ defmodule Logflare.ContextCacheTest do
       %{source: source, user: user}
     end
 
+    test "bust_keys/1, does nothing for empty list" do
+      assert {:ok, 0} = ContextCache.bust_keys([])
+    end
+
     test "apply_fun/3,  bust_keys/1 by :id field of value", %{source: source} do
       Sources.Cache.get_by(token: source.token)
       cache_key = {:get_by, [[token: source.token]]}

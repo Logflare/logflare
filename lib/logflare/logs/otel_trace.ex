@@ -1,16 +1,12 @@
 defmodule Logflare.Logs.OtelTrace do
   @moduledoc """
-  Converts a GRPC Trace to event parameters
+  Converts a list of Otel ResourceSpans to a list of Logflare events
 
-  Converts a list of ResourceSpans to a list of Logflare Events
-  Important details about the conversation:
   * One ResourceSpans can contain multiple ScopeSpans
   * One ScopeSpans can contain multiple Spans
   * One Span can contain multiple Events
   * A Log Event is created for each Span and each Event
-
   """
-  require Logger
 
   alias Logflare.Logs.Otel
 
@@ -44,9 +40,9 @@ defmodule Logflare.Logs.OtelTrace do
         "metadata" => metadata,
         "resource" => resource,
         "scope" => scope,
-        "span_id" => Base.encode16(span.span_id),
-        "parent_span_id" => Base.encode16(span.parent_span_id),
-        "trace_id" => Ecto.UUID.cast!(span.trace_id),
+        "span_id" => Base.encode16(span.span_id, case: :lower),
+        "parent_span_id" => Base.encode16(span.parent_span_id, case: :lower),
+        "trace_id" => Base.encode16(span.trace_id, case: :lower),
         "start_time" => start_time,
         "end_time" => Otel.nano_to_iso8601(span.end_time_unix_nano),
         "attributes" => Otel.handle_attributes(span.attributes),
@@ -65,7 +61,7 @@ defmodule Logflare.Logs.OtelTrace do
       "resource" => resource,
       "scope" => scope,
       "parent_span_id" => Base.encode16(span_id),
-      "trace_id" => Ecto.UUID.cast!(trace_id),
+      "trace_id" => Base.encode16(trace_id, case: :lower),
       "attributes" => Otel.handle_attributes(event.attributes),
       "timestamp" => Otel.nano_to_iso8601(event.time_unix_nano),
       "project" => Otel.resource_project(resource)

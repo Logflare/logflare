@@ -34,6 +34,11 @@ defmodule Ecto.TermTest do
   end
 
   describe "load/1" do
+    test "handles empty string and nil input correctly" do
+      assert {:ok, nil} = Term.load(nil)
+      assert {:ok, ""} = Term.load("")
+    end
+
     test "returns error for invalid binary or non-binary input" do
       assert {:error, %ArgumentError{}} = Term.load("not a term binary")
       assert {:error, %ArgumentError{}} = Term.load(123)
