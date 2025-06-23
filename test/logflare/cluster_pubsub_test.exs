@@ -44,7 +44,7 @@ defmodule Logflare.ClusterPubSubTest do
 
       TestUtils.retry_assert(fn ->
         PubSubRates.global_broadcast_rate({"buffers", source_id, backend_id, %{data: "some val"}})
-        assert_received {"buffers", ^source_id, backend_id, %{data: "some val"}}
+        assert_received {"buffers", ^source_id, ^backend_id, %{data: "some val"}}
       end)
     end
 

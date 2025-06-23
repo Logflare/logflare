@@ -145,8 +145,9 @@ defmodule Logflare.Backends.WebhookAdaptorTest do
     assert {:ok, _} = EgressMiddleware.call(%Tesla.Env{}, [], metadata: nil)
   end
 
-  @tag :benchmark
   describe "benchmark" do
+    @describetag :benchmark
+
     setup do
       start_supervised!(BencheeAsync.Reporter)
 
