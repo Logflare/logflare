@@ -37,9 +37,9 @@ defmodule Logflare.Logs.OtelTraceTest do
 
       le_span = Enum.find(batch, fn params -> params["metadata"]["type"] == "span" end)
 
-      assert le_span["trace_id"] == elem(Ecto.UUID.cast(span.trace_id), 1)
-      assert le_span["span_id"] == Base.encode16(span.span_id)
-      assert le_span["parent_span_id"] == Base.encode16(span.parent_span_id)
+      assert le_span["trace_id"] == Base.encode16(span.trace_id, case: :lower)
+      assert le_span["span_id"] == Base.encode16(span.span_id, case: :lower)
+      assert le_span["parent_span_id"] == Base.encode16(span.parent_span_id, case: :lower)
       assert le_span["event_message"] == span.name
 
       assert elem(DateTime.from_iso8601(le_span["timestamp"]), 1) ==

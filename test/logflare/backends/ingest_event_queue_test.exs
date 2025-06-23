@@ -324,9 +324,9 @@ defmodule Logflare.Backends.IngestEventQueueTest do
   end
 
   describe "IngestEventQueue" do
-    @tag :benchmark
-    @tag timeout: :infinity
-    @tag :skip
+    @describetag :benchmark
+    @describetag timeout: :infinity
+    @describetag :skip
 
     # Benchmark results
     # drop_with_chunking is ~15.65x slower (100 chunk)
@@ -480,14 +480,15 @@ defmodule Logflare.Backends.IngestEventQueueTest do
     end
   end
 
-  @tag :benchmark
-  @tag timeout: :infinity
-  @tag :skip
   # Post-benchmark results:
   # truncate is way slower at large queue sizes, ~x5 slower for 50k. 10k and 1k are comparably close for both.
   # slightly less reductions for drop
-  # memeory consumption is identical.
+  # memory consumption is identical.
   describe "QueueJanitor" do
+    @describetag :benchmark
+    @describetag timeout: :infinity
+    @describetag :skip
+
     test "truncate vs drop" do
       user = insert(:user)
       source = insert(:source, user: user)
@@ -496,7 +497,7 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       {:ok, tid} = IngestEventQueue.upsert_tid({source.id, backend.id, pid})
       sbp = {source.id, backend.id, pid}
 
-      state = %{
+      _state = %{
         source_id: source.id,
         backend_id: backend.id,
         remainder: 100,
@@ -509,9 +510,9 @@ defmodule Logflare.Backends.IngestEventQueueTest do
           # "work - truncate" => fn {_input, _resource} ->
           #   QueueJanitor.do_work(state)
           # end,
-          "work - drop" => fn {_input, _resource} ->
-            QueueJanitor.do_drop(state)
-          end
+          # "work - drop" => fn {_input, _resource} ->
+          #   QueueJanitor.do_drop(state)
+          # end
         },
         inputs: %{
           "50k" => for(_ <- 1..50_000, do: build(:log_event)),

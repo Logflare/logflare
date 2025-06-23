@@ -128,7 +128,8 @@ defmodule Logflare.Backends.Adaptor.LokiAdaptorTest do
              } = payload
 
       assert ts =~ inspect(le.body["timestamp"])
-      assert message = le.body
+
+      assert %{"event_message" => ^message} = le.body
     end
   end
 end

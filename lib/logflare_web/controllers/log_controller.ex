@@ -8,6 +8,8 @@ defmodule LogflareWeb.LogController do
   alias Opentelemetry.Proto.Collector.Trace.V1.ExportTraceServiceResponse
   alias Opentelemetry.Proto.Collector.Metrics.V1.ExportMetricsServiceRequest
   alias Opentelemetry.Proto.Collector.Metrics.V1.ExportMetricsServiceResponse
+  alias Opentelemetry.Proto.Collector.Logs.V1.ExportLogsServiceRequest
+  alias Opentelemetry.Proto.Collector.Logs.V1.ExportLogsServiceResponse
 
   alias LogflareWeb.OpenApi.Created
   alias LogflareWeb.OpenApi.ServerError
@@ -57,7 +59,7 @@ defmodule LogflareWeb.LogController do
       ]
     ],
     responses: %{
-      201 => Created.response(LogsCreated),
+      200 => Created.response(LogsCreated),
       500 => ServerError.response()
     }
   )
@@ -248,6 +250,19 @@ defmodule LogflareWeb.LogController do
     resource_metrics
     |> Processor.ingest(Logs.OtelMetric, source)
     |> protobuf_response(conn, %ExportMetricsServiceResponse{})
+  rescue
+    exception ->
+      send_proto_error(conn, 500, "Internal server error")
+      reraise exception, __STACKTRACE__
+  end
+
+  def otel_logs(
+        %{assigns: %{source: source}} = conn,
+        %ExportLogsServiceRequest{resource_logs: resource_logs}
+      ) do
+    resource_logs
+    |> Processor.ingest(Logs.OtelLog, source)
+    |> protobuf_response(conn, %ExportLogsServiceResponse{})
   rescue
     exception ->
       send_proto_error(conn, 500, "Internal server error")
