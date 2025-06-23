@@ -12,6 +12,7 @@ defmodule Logflare.Endpoints do
   alias Logflare.Users
   alias Logflare.Utils
   alias Logflare.Backends
+  alias Logflare.Backends.Adaptor.ClickhouseAdaptor
   alias Logflare.Backends.Adaptor.PostgresAdaptor
   alias Logflare.SingleTenant
   alias Logflare.Alerting
@@ -271,6 +272,47 @@ defmodule Logflare.Endpoints do
 
     with {:ok, rows} <-
            PostgresAdaptor.execute_query(backend, {transformed_query, args}) do
+      {:ok, %{rows: rows}}
+    end
+  end
+
+  defp exec_query_on_backend(
+         %Query{query: query_string, language: :ch_sql} = endpoint_query,
+         transformed_query,
+         _declared_params,
+         params
+       ) do
+    user = Users.Cache.get(endpoint_query.user_id)
+
+    backend =
+      case Backends.get_default_backend(user) do
+        %_{type: :bigquery} ->
+          Backends.list_backends(user_id: user.id, type: :clickhouse)
+          |> Enum.random()
+
+        backend ->
+          backend
+      end
+
+    if is_nil(backend) do
+      raise "No matching source backend found for Clickhouse query execution"
+    end
+
+    # convert params to CH params style
+    positions =
+      Sql.parameter_positions(query_string)
+      |> then(fn {:ok, params} ->
+        params
+        |> Enum.sort_by(&{elem(&1, 0)})
+      end)
+
+    args =
+      for {_pos, parameter} <- positions do
+        Map.get(params, parameter)
+      end
+
+    with {:ok, rows} <-
+           ClickhouseAdaptor.execute_query(backend, {transformed_query, args}) do
       {:ok, %{rows: rows}}
     end
   end

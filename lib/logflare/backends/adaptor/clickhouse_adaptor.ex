@@ -17,6 +17,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
   alias Logflare.Backends.Backend
   alias Logflare.Backends.SourceRegistry
   alias Logflare.LogEvent
+  alias Logflare.Repo
   alias Logflare.Source
 
   typedstruct do
@@ -74,7 +75,34 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
 
   @doc false
   @impl Logflare.Backends.Adaptor
-  def execute_query(_ident, _query), do: {:error, :not_implemented}
+  def execute_query(%Backend{} = backend, query_string) when is_non_empty_binary(query_string),
+    do: execute_query(backend, {query_string, []})
+
+  def execute_query(%Backend{} = backend, {query_string, params})
+      when is_non_empty_binary(query_string) and is_list(params) do
+    # Try to find a source associated with this backend to derive the Clickhouse connection details
+    case find_source_for_backend(backend) do
+      %Source{} = source ->
+        with {:ok, %Ch.Result{} = result} <-
+               execute_ch_query({source, backend}, query_string, params) do
+          {:ok, convert_ch_result_to_rows(result)}
+        end
+
+      nil ->
+        {:error, "No source found for Clickhouse backend."}
+    end
+  end
+
+  def execute_query({%Source{} = source, %Backend{} = backend}, query_string)
+      when is_non_empty_binary(query_string),
+      do: execute_query({source, backend}, {query_string, []})
+
+  def execute_query({%Source{} = source, %Backend{} = backend}, {query_string, params})
+      when is_non_empty_binary(query_string) and is_list(params) do
+    with {:ok, %Ch.Result{} = result} <- execute_ch_query({source, backend}, query_string, params) do
+      {:ok, convert_ch_result_to_rows(result)}
+    end
+  end
 
   @doc false
   @impl Logflare.Backends.Adaptor
@@ -532,6 +560,102 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
       |> Changeset.add_error(:password, msg)
     else
       changeset
+    end
+  end
+
+  @spec find_source_for_backend(Backend.t()) :: Source.t() | nil
+  defp find_source_for_backend(%Backend{type: :clickhouse} = backend) do
+    case do_find_source_for_backend(backend) do
+      {:ok, source} -> source
+      {:error, _reason} -> nil
+    end
+  end
+
+  defp find_source_for_backend(%Backend{type: type, id: backend_id}) do
+    Logger.warning("Backend type `#{type}` not supported for ClickHouse queries",
+      backend_id: backend_id
+    )
+
+    nil
+  end
+
+  @spec do_find_source_for_backend(Backend.t()) :: {:ok, Source.t() | nil} | {:error, String.t()}
+  defp do_find_source_for_backend(%Backend{} = backend) do
+    case find_source_for_backend_via_registry(backend) do
+      %Source{} = source ->
+        {:ok, source}
+
+      nil ->
+        case find_source_for_backend_via_database(backend) do
+          %Source{} = source -> {:ok, source}
+          nil -> {:error, "No sources found for Clickhouse backend"}
+        end
+    end
+  end
+
+  @spec find_source_for_backend_via_registry(Backend.t()) :: Source.t() | nil
+  defp find_source_for_backend_via_registry(%Backend{id: backend_id, user_id: user_id}) do
+    Registry.select(SourceRegistry, [
+      {{{:"$1", {Connection, :"$2"}}, :_, :_}, [{:==, :"$2", backend_id}], [:"$1"]}
+    ])
+    |> Enum.uniq()
+    |> Enum.find_value(fn source_id ->
+      case Logflare.Sources.Cache.get_by_id(source_id) do
+        %Source{user_id: ^user_id} = source -> source
+        _ -> nil
+      end
+    end)
+  end
+
+  @spec find_source_for_backend_via_database(Backend.t()) :: Source.t() | nil
+  defp find_source_for_backend_via_database(%Backend{user_id: user_id} = backend) do
+    backend
+    |> Repo.preload(:sources)
+    |> Map.get(:sources, [])
+    |> Enum.filter(fn %Source{} = source ->
+      source.user_id == user_id
+    end)
+    |> List.first()
+    |> tap(fn
+      %Source{id: source_id} ->
+        Logger.debug(
+          "Found source #{source_id} for backend `#{backend.id}` via database (user `#{user_id}`)"
+        )
+
+      nil ->
+        Logger.debug("No sources found for backend `#{backend.id}` (user `#{user_id}`)")
+    end)
+  end
+
+  @spec convert_ch_result_to_rows(Ch.Result.t()) :: [map()]
+  defp convert_ch_result_to_rows(%Ch.Result{} = result) do
+    case {result.columns, result.rows} do
+      {nil, nil} ->
+        []
+
+      {nil, rows} when is_list(rows) ->
+        # No column names, return rows as-is
+        rows
+
+      {_columns, nil} ->
+        # No rows
+        []
+
+      {columns, rows} when is_list(columns) and is_list(rows) ->
+        # Convert rows to maps using column names
+        for row <- rows do
+          columns
+          |> Enum.zip(row)
+          |> Map.new()
+        end
+
+      {columns, rows} ->
+        # Handle other formats - Ch.Result.rows can be iodata
+        Logger.warning(
+          "Unexpected ClickHouse result format: columns=#{inspect(columns)}, rows=#{inspect(rows)}"
+        )
+
+        []
     end
   end
 end
