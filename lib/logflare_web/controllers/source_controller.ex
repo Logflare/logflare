@@ -199,7 +199,7 @@ defmodule LogflareWeb.SourceController do
     message = [
       "Please ",
       Phoenix.HTML.Link.link("upgrade to explore",
-        to: "#{Routes.billing_account_path(conn, :edit)}"
+        to: ~p"/billing/edit"
       ),
       " in Google Data Studio."
     ]
@@ -417,7 +417,7 @@ defmodule LogflareWeb.SourceController do
         message = [
           "Please ",
           Phoenix.HTML.Link.link("upgrade",
-            to: "#{Routes.billing_account_path(conn, :edit)}"
+            to: ~p"/billing/edit"
           ),
           " first!"
         ]

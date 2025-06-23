@@ -127,6 +127,12 @@ defmodule LogflareWeb do
     end
   end
 
+  def routes do
+    quote do
+      unquote(path_helpers())
+    end
+  end
+
   defp path_helpers do
     quote do
       # declare endpoint and router for Phoenix.VerifiedRoutes

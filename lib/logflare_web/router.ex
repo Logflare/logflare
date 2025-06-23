@@ -315,7 +315,7 @@ defmodule LogflareWeb.Router do
 
     post("/", BillingController, :create)
     delete("/", BillingController, :delete)
-    live("/edit", BillingAccountLive, :edit)
+    live("/edit", BillingAccountLive.Edit, :edit)
     get("/sync", BillingController, :sync)
   end
 
