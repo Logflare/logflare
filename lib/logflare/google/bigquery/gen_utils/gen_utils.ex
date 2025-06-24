@@ -117,6 +117,7 @@ defmodule Logflare.Google.BigQuery.GenUtils do
            partition: partition
          }}
       end
+
     :telemetry.span([:logflare, :goth, :fetch], metadata, fn ->
       result = Goth.fetch(name)
       {result, metadata}
