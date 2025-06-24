@@ -1,6 +1,6 @@
 # Logflare
 
-[![Coverage Status](https://coveralls.io/repos/github/Logflare/logflare/badge.svg?branch=ziinc/anl-658-add-coveralls-to-logflarelogflare)](https://coveralls.io/github/Logflare/logflare?branch=ziinc/anl-658-add-coveralls-to-logflarelogflare)
+[![Coverage Status](https://coveralls.io/repos/github/Logflare/logflare/badge.svg?branch=main)](https://coveralls.io/github/Logflare/logflare?branch=main)
 
 ## About
 
