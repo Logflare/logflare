@@ -138,18 +138,36 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
   def validate_config(changeset),
     do: changeset
 
+  @doc """
+  Returns the email of a managed service account
+
+    iex> managed_service_account_name("my-project", 0)
+    "logflare-managed-0@my-project.iam.gserviceaccount.com"
+  """
   @spec managed_service_account_name(String.t(), non_neg_integer()) :: String.t()
   def managed_service_account_name(project_id, service_account_index \\ 0) do
-    "#{@service_account_prefix}-#{service_account_index}@#{project_id}.iam.gserviceaccount.com"
+    "#{managed_service_account_id(service_account_index)}@#{project_id}.iam.gserviceaccount.com"
   end
 
-  @spec managed_service_account_id(String.t(), non_neg_integer()) :: String.t()
-  def managed_service_account_id(project_id, service_account_index \\ 0) do
+  @doc """
+  Returns the id of a managed service account
+
+    iex> managed_service_account_id("my-project", 0)
+    "logflare-managed-0"
+  """
+  @spec managed_service_account_id(non_neg_integer()) :: String.t()
+  def managed_service_account_id(service_account_index \\ 0) do
     "#{@service_account_prefix}-#{service_account_index}"
   end
 
   @doc """
-  Lists all managed service accounts
+  Lists all managed service accounts.
+
+    iex> list_managed_service_accounts()
+    [%GoogleApi.IAM.V1.Model.ServiceAccount{...}, ...]
+
+
+    https://hexdocs.pm/google_api_iam/0.45.0/GoogleApi.IAM.V1.Model.ServiceAccount.html
   """
   @spec list_managed_service_accounts(String.t()) :: [GoogleApi.IAM.V1.Model.ServiceAccount.t()]
   def list_managed_service_accounts(project_id \\ nil) do
@@ -170,11 +188,12 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
     |> List.flatten()
   end
 
-  defp handle_response({:error, error}, project_id) do
+  defp handle_response({:error, error}, _project_id) do
     Logger.error("Error listing managed service accounts: #{inspect(error)}")
     []
   end
 
+  # handles pagination for the IAM api
   defp get_next_page(project_id, page_token) do
     GenUtils.get_conn(:default)
     |> GoogleApi.IAM.V1.Api.Projects.iam_projects_service_accounts_list("projects/#{project_id}",
@@ -184,6 +203,15 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
     |> handle_response(project_id)
   end
 
+  @doc """
+  Creates managed service accounts for the project. Multiple service accounts are created, each with partitioning.
+
+    iex> create_managed_service_accounts()
+    :ok
+  """
+  @spec create_managed_service_accounts(optional(String.t())) :: [
+          GoogleApi.IAM.V1.Model.ServiceAccount.t()
+        ]
   def create_managed_service_accounts(project_id \\ nil) do
     project_id = project_id || Application.get_env(:logflare, Logflare.Google)[:project_id]
 
@@ -208,21 +236,49 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
     |> GoogleApi.IAM.V1.Api.Projects.iam_projects_service_accounts_create(
       "projects/#{project_id}",
       body: %GoogleApi.IAM.V1.Model.CreateServiceAccountRequest{
-        accountId: managed_service_account_id(project_id, service_account_index)
+        accountId: managed_service_account_id(service_account_index)
       }
     )
   end
 
+  @doc """
+  Returns the size of the managed service account pool from configuration
+
+    iex> managed_service_account_pool_size()
+    5
+  """
   def managed_service_account_pool_size do
     Application.get_env(:logflare, :bigquery_backend_adaptor)[:managed_service_account_pool_size]
   end
 
+  @doc """
+  Returns the number of partitions for each managed service account
+
+    iex> managed_service_account_partition_count()
+    #{@managed_service_account_partition_count}
+  """
   def managed_service_account_partition_count, do: @managed_service_account_partition_count
 
+  @doc """
+  Returns the number of partitions for the ingest service account, which accounts for number of schedulers.
+
+    iex> ingest_service_account_partition_count()
+    5
+  """
   def ingest_service_account_partition_count,
     do: max(@managed_service_account_partition_count, System.schedulers_online())
 
   # Goth provisioning
+
+  @doc """
+  Returns a child spec for the Goth PartitionSupervisor, which is partitioned for each service account.
+
+    iex> partitioned_goth_child_spec()
+    {PartitionSupervisor, ...}
+
+  if no base service account is set, no child spec is returned.
+  """
+  @spec partitioned_goth_child_spec() :: Supervisor.child_spec() | nil
   def partitioned_goth_child_spec() do
     if json = Application.get_env(:goth, :json) do
       {PartitionSupervisor,
@@ -234,8 +290,13 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
     end
   end
 
-  def goth_child_spec(nil), do: nil
+  @doc """
+  Returns a Goth child spec for a given service account key. If `sub` is provided, the tokens generated will be impersonated by the `sub` service account.
 
+    iex> goth_child_spec(json)
+    {Goth, ...}
+  """
+  @spec goth_child_spec(String.t(), optional(String.t())) :: Supervisor.child_spec()
   def goth_child_spec(json, sub \\ nil) do
     credentials = Jason.decode!(json)
     scopes = ["https://www.googleapis.com/auth/cloud-platform"]
@@ -279,6 +340,12 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
     }
   end
 
+  @doc """
+  Returns a list of partitioned Goth child specs with impersonation for the set service account.
+
+    iex> impersonated_goth_child_specs()
+    [{PartitionSupervisor, ...}, ...]
+  """
   def impersonated_goth_child_specs() do
     project_id = Application.get_env(:logflare, Logflare.Google)[:project_id]
     pool_size = managed_service_account_pool_size()
