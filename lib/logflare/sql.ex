@@ -178,7 +178,7 @@ defmodule Logflare.Sql do
     opts = Enum.into(opts, %{dialect: "bigquery"})
 
     with {:ok, ast} <- Parser.parse(opts.dialect, query),
-         [_ | _] <- extract_cte_alises(ast) do
+         [_ | _] <- extract_cte_aliases(ast) do
       true
     else
       _ -> false
@@ -219,10 +219,10 @@ defmodule Logflare.Sql do
          ast: ast
        })
        when is_list(name) do
-    cte_names = extract_cte_alises(ast)
+    cte_names = extract_cte_aliases(ast)
 
     sandboxed_cte_names =
-      if sandboxed_query_ast, do: extract_cte_alises(sandboxed_query_ast), else: []
+      if sandboxed_query_ast, do: extract_cte_aliases(sandboxed_query_ast), else: []
 
     table_names = for %{"value" => table_name} <- name, do: table_name
 
@@ -353,7 +353,7 @@ defmodule Logflare.Sql do
         table_alias
       end
 
-    sandboxed_cte_names = extract_cte_alises(ast)
+    sandboxed_cte_names = extract_cte_aliases(ast)
 
     unknown_table_names =
       for statement <- ast,
@@ -585,7 +585,7 @@ defmodule Logflare.Sql do
          ast: ast
        })
        when is_list(name) do
-    cte_names = extract_cte_alises(ast)
+    cte_names = extract_cte_aliases(ast)
 
     new_names =
       for %{"value" => table_name} <- name,
@@ -609,7 +609,7 @@ defmodule Logflare.Sql do
 
   defp find_all_source_names(_kv, acc, _data), do: acc
 
-  defp extract_cte_alises(ast) do
+  defp extract_cte_aliases(ast) do
     for statement <- ast,
         %{"alias" => %{"name" => %{"value" => cte_name}}} <-
           get_in(statement, ["Query", "with", "cte_tables"]) || [] do
@@ -1037,7 +1037,7 @@ defmodule Logflare.Sql do
     alias_path_mappings = get_bq_alias_path_mappings(ast)
 
     # create mapping of cte tables to field aliases
-    cte_table_names = extract_cte_alises([ast])
+    cte_table_names = extract_cte_aliases([ast])
     cte_tables_tree = get_in(ast, ["Query", "with", "cte_tables"])
 
     # TOOD: refactor

@@ -487,6 +487,112 @@ defmodule Logflare.SqlTest do
     end
   end
 
+  describe "contains_cte?/2" do
+    test "returns true for queries with CTEs" do
+      query_with_cte = """
+      WITH users_summary AS (
+        SELECT user_id, COUNT(*) as total_events
+        FROM events
+        GROUP BY user_id
+      )
+      SELECT * FROM users_summary WHERE total_events > 10
+      """
+
+      assert Sql.contains_cte?(query_with_cte)
+
+      query_with_multiple_ctes = """
+      WITH
+        users_summary AS (
+          SELECT user_id, COUNT(*) as total_events
+          FROM events
+          GROUP BY user_id
+        ),
+        recent_events AS (
+          SELECT * FROM events WHERE timestamp > '2023-01-01'
+        )
+      SELECT u.user_id, u.total_events, r.timestamp
+      FROM users_summary u
+      JOIN recent_events r ON u.user_id = r.user_id
+      """
+
+      assert Sql.contains_cte?(query_with_multiple_ctes)
+
+      recursive_cte = """
+      WITH RECURSIVE employee_hierarchy AS (
+        SELECT employee_id, manager_id, name, 0 as level
+        FROM employees
+        WHERE manager_id IS NULL
+        UNION ALL
+        SELECT e.employee_id, e.manager_id, e.name, eh.level + 1
+        FROM employees e
+        JOIN employee_hierarchy eh ON e.manager_id = eh.employee_id
+      )
+      SELECT * FROM employee_hierarchy
+      """
+
+      assert Sql.contains_cte?(recursive_cte)
+    end
+
+    test "returns false for queries without CTEs" do
+      simple_query = "SELECT * FROM users"
+      refute Sql.contains_cte?(simple_query)
+
+      join_query = """
+      SELECT u.name, e.event_type
+      FROM users u
+      JOIN events e ON u.id = e.user_id
+      WHERE u.active = true
+      """
+
+      refute Sql.contains_cte?(join_query)
+
+      subquery = """
+      SELECT *
+      FROM users
+      WHERE id IN (SELECT user_id FROM events WHERE event_type = 'login')
+      """
+
+      refute Sql.contains_cte?(subquery)
+
+      complex_query = """
+      SELECT
+        u.name,
+        COUNT(e.id) as event_count,
+        AVG(e.duration) as avg_duration
+      FROM users u
+      LEFT JOIN events e ON u.id = e.user_id
+      WHERE u.created_at > '2023-01-01'
+      GROUP BY u.id, u.name
+      HAVING COUNT(e.id) > 5
+      ORDER BY event_count DESC
+      LIMIT 10
+      """
+
+      refute Sql.contains_cte?(complex_query)
+    end
+
+    test "works with different SQL dialects" do
+      cte_query = """
+      WITH user_stats AS (
+        SELECT user_id, COUNT(*) as count
+        FROM events
+        GROUP BY user_id
+      )
+      SELECT * FROM user_stats
+      """
+
+      assert Sql.contains_cte?(cte_query)
+      assert Sql.contains_cte?(cte_query, dialect: "bigquery")
+      assert Sql.contains_cte?(cte_query, dialect: "postgres")
+    end
+
+    test "case insensitive WITH detection" do
+      assert Sql.contains_cte?("with cte as (select 1) select * from cte")
+      assert Sql.contains_cte?("WITH CTE AS (SELECT 1) SELECT * FROM CTE")
+      assert Sql.contains_cte?("With Cte As (Select 1) Select * From Cte")
+    end
+  end
+
   describe "bq -> pg translation" do
     setup do
       repo = Application.get_env(:logflare, Logflare.Repo)
