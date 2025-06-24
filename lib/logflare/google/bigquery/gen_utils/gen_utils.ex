@@ -94,7 +94,9 @@ defmodule Logflare.Google.BigQuery.GenUtils do
     {name, metadata} =
       if conn_type == :query do
         service_account_count = BigQueryAdaptor.managed_service_account_pool_size()
-        sa_index = if service_account_count > 0, do: :erlang.phash2(self(), service_account_count), else: 0
+
+        sa_index =
+          if service_account_count > 0, do: :erlang.phash2(self(), service_account_count), else: 0
 
         {{
            Logflare.GothQuery,
@@ -115,6 +117,7 @@ defmodule Logflare.Google.BigQuery.GenUtils do
            partition: partition
          }}
       end
+
     :telemetry.span([:logflare, :goth, :fetch], metadata, fn ->
       result = Goth.fetch(name)
       {result, metadata}
