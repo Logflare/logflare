@@ -13,6 +13,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
   alias Logflare.Billing
   alias Logflare.Backends
   alias Logflare.Google.BigQuery.GenUtils
+  alias Logflare.Google.CloudResourceManager
   use Supervisor
   require Logger
 
@@ -209,7 +210,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
     iex> create_managed_service_accounts()
     :ok
   """
-  @spec create_managed_service_accounts(optional(String.t())) :: [
+  @spec create_managed_service_accounts(String.t()) :: [
           GoogleApi.IAM.V1.Model.ServiceAccount.t()
         ]
   def create_managed_service_accounts(project_id \\ nil) do
@@ -221,14 +222,23 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
         :managed_service_account_pool_size
       ]
 
-    existing = list_managed_service_accounts(project_id) |> Enum.map(& &1.email)
+    accounts =
+      if size > 0 do
+        existing = list_managed_service_accounts(project_id) |> Enum.map(& &1.email)
 
-    indexes =
-      for i <- 0..(size - 1), managed_service_account_name(project_id, i) not in existing, do: i
+        indexes =
+          for i <- 0..(size - 1),
+              managed_service_account_name(project_id, i) not in existing,
+              do: i
 
-    for i <- indexes do
-      create_managed_service_account(project_id, i)
-    end
+        for i <- indexes, {:ok, sa} = create_managed_service_account(project_id, i) do
+          sa
+        end
+      else
+        []
+      end
+
+    {:ok, accounts}
   end
 
   defp create_managed_service_account(project_id, service_account_index) do
@@ -296,7 +306,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
     iex> goth_child_spec(json)
     {Goth, ...}
   """
-  @spec goth_child_spec(String.t(), optional(String.t())) :: Supervisor.child_spec()
+  @spec goth_child_spec(String.t(), String.t()) :: Supervisor.child_spec()
   def goth_child_spec(json, sub \\ nil) do
     credentials = Jason.decode!(json)
     scopes = ["https://www.googleapis.com/auth/cloud-platform"]
@@ -378,5 +388,15 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
 
     Finch.build(method, url, headers, body)
     |> Finch.request(Logflare.FinchGoth, options)
+  end
+
+  @doc """
+  Updates the IAM policy for the project.
+
+    iex> update_iam_policy()
+    :ok
+  """
+  def update_iam_policy() do
+    CloudResourceManager.set_iam_policy(async: false)
   end
 end

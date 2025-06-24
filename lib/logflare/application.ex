@@ -224,6 +224,7 @@ defmodule Logflare.Application do
 
     if !SingleTenant.postgres_backend?() do
       BigQueryAdaptor.create_managed_service_accounts()
+      BigQueryAdaptor.update_iam_policy()
     end
 
     if SingleTenant.single_tenant?() do
