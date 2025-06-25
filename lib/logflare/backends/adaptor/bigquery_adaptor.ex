@@ -175,7 +175,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
     project_id = project_id || Application.get_env(:logflare, Logflare.Google)[:project_id]
 
     get_next_page(project_id, nil)
-    |> Enum.filter(&(&1.name =~ @service_account_prefix))
+    |> Enum.filter(&(&1.name =~ @service_account_prefix <> "@"))
   end
 
   defp handle_response({:ok, response}, project_id) do
@@ -309,16 +309,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
   @spec goth_child_spec(String.t(), String.t()) :: Supervisor.child_spec()
   def goth_child_spec(json, sub \\ nil) do
     credentials = Jason.decode!(json)
-    scopes = ["https://www.googleapis.com/auth/cloud-platform"]
-
-    source =
-      if sub,
-        do:
-          {:service_account, credentials,
-           [
-             sub: sub
-           ]},
-        else: {:service_account, credentials, scopes: scopes}
+    source = {:service_account, credentials, if(sub, do: [sub: sub], else: [])}
 
     {
       Goth,
