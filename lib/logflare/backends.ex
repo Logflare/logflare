@@ -371,7 +371,7 @@ defmodule Logflare.Backends do
   iex> Backends.via_source(source, :buffer)
   """
   @spec via_source(Source.t(), term()) :: tuple()
-  @spec via_source(Source.t() | non_neg_integer(), module(), non_neg_integer()) :: tuple()
+  @spec via_source(Source.t() | non_neg_integer(), term(), non_neg_integer()) :: tuple()
   def via_source(%Source{id: sid}, mod, %Backend{id: bid}), do: via_source(sid, mod, bid)
   def via_source(%Source{id: sid}, mod, id), do: via_source(sid, {mod, id})
   def via_source(source_id, mod, id), do: via_source(source_id, {mod, id})
