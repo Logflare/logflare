@@ -266,6 +266,7 @@ defmodule LogflareWeb.SourceController do
 
   def public(%{assigns: %{user: _user, source: source}} = conn, %{"public_token" => _public_token}) do
     avg_rate = source.metrics.avg
+
     render_show_with_assigns(conn, conn.assigns.user, source, avg_rate)
   end
 

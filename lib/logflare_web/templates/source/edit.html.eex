@@ -193,8 +193,7 @@
   <%= if @source.public_token != nil do %>
   <div>
     <code><%= Routes.source_url(@conn, :public, @source.public_token) %></code>
-    <button class="btn btn-secondary btn-sm" id="copy-path"
-      data-clipboard-text="<%= Routes.source_url(@conn, :public, @source.public_token) %>">Copy path</button>
+    <button class="btn btn-secondary btn-sm" id="copy-path" data-clipboard-text="<%= Routes.source_url(@conn, :public, @source.public_token) %>">Copy path</button>
   </div>
   <% end %>
   <%= form_for @changeset, Routes.source_path(@conn, :update, @source), fn d -> %>
