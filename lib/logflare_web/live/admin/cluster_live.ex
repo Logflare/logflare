@@ -8,30 +8,25 @@ defmodule LogflareWeb.Admin.ClusterLive do
   require Logger
 
   def mount(_params, _session, socket) do
-    socket =
-      assign_cluster_status(socket)
-      |> assign(:node_self, Node.self())
-
     if connected?(socket) do
       :timer.send_interval(2_000, self(), :update_cluster_status)
     end
 
-    {:ok, socket}
+    {:ok, assign_cluster_status(socket)}
   end
 
   def handle_event("shutdown", %{"node" => node}, socket) do
     msg = "Node shutdown initiated for #{node}"
     Logger.warning(msg)
 
-    String.to_atom(node) |> Admin.shutdown()
+    String.to_existing_atom(node) |> Admin.shutdown()
 
     {:noreply, socket |> put_flash(:info, msg)}
   end
 
   @spec handle_info(:update_cluster_status, Socket.t()) :: {:noreply, Socket.t()}
   def handle_info(:update_cluster_status, socket) do
-    socket = assign_cluster_status(socket)
-    {:noreply, socket}
+    {:noreply, assign_cluster_status(socket)}
   end
 
   def handle_info({:DOWN, _ref, :process, _from, :normal}, socket) do
@@ -39,10 +34,6 @@ defmodule LogflareWeb.Admin.ClusterLive do
   end
 
   def handle_info({_ref, :ok}, socket) do
-    {:noreply, socket}
-  end
-
-  def handle_info({_ref, :abcast}, socket) do
     {:noreply, socket}
   end
 
