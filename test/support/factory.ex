@@ -48,10 +48,14 @@ defmodule Logflare.Factory do
   end
 
   def team_user_factory do
+    email = "#{TestUtils.random_string(8)}@#{TestUtils.random_string()}.com"
+
     %TeamUser{
       name: "some name #{TestUtils.random_string()}",
       team: build(:team),
-      provider: "google"
+      provider: "google",
+      email: email,
+      provider_uid: "provider_uid_#{TestUtils.random_string()}"
     }
   end
 

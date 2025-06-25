@@ -68,6 +68,19 @@ defmodule Logflare.Users do
           where(acc, [u], fragment("? -> ?", u.metadata, ^normalized_k) == ^v)
         end)
 
+      {:provider, :google}, q ->
+        where(q, [u], u.provider == "google" and u.valid_google_account != false)
+
+      {:paying, true}, q ->
+        join(q, :left, [u], ba in assoc(u, :billing_account))
+        |> where(
+          [u, ..., ba],
+          (not is_nil(ba.stripe_subscriptions) and
+             fragment("jsonb_array_length(? -> 'data')", ba.stripe_subscriptions) > 0) or
+            (is_nil(ba) and u.billing_enabled) == false or
+            ba.lifetime_plan == true
+        )
+
       _, q ->
         q
     end)
@@ -115,6 +128,17 @@ defmodule Logflare.Users do
 
   def preload_team(user) do
     Repo.preload(user, :team)
+  end
+
+  def preload_team_users(user) do
+    Repo.preload(user, team: [:team_users])
+  end
+
+  def preload_valid_google_team_users(user) do
+    query =
+      from(tu in TeamUser, where: tu.valid_google_account != false and tu.provider == "google")
+
+    Repo.preload(user, team: [team_users: query])
   end
 
   def preload_billing_account(user) do
