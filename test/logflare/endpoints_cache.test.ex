@@ -38,7 +38,7 @@ defmodule Logflare.EndpointsCacheTest do
       end)
 
       # Start cache process
-      {:ok, cache_pid} = start_supervised({Logflare.Endpoints.Cache, {endpoint, %{}}})
+      {:ok, cache_pid} = start_supervised({Logflare.Endpoints.ResultsCache, {endpoint, %{}}})
       assert Process.alive?(cache_pid)
 
       # First query should hit backend
@@ -54,7 +54,7 @@ defmodule Logflare.EndpointsCacheTest do
         {:error, :timeout}
       end)
 
-      {:ok, cache_pid} = start_supervised({Logflare.Endpoints.Cache, {endpoint, %{}}})
+      {:ok, cache_pid} = start_supervised({Logflare.Endpoints.ResultsCache, {endpoint, %{}}})
       assert Process.alive?(cache_pid)
 
       assert {:error, %{"message" => :timeout}} = Endpoints.run_cached_query(endpoint)
@@ -70,7 +70,7 @@ defmodule Logflare.EndpointsCacheTest do
         {:ok, TestUtils.gen_bq_response(test_response)}
       end)
 
-      {:ok, cache_pid} = start_supervised({Logflare.Endpoints.Cache, {endpoint, %{}}})
+      {:ok, cache_pid} = start_supervised({Logflare.Endpoints.ResultsCache, {endpoint, %{}}})
       assert Process.alive?(cache_pid)
 
       # First query should succeed
@@ -94,7 +94,7 @@ defmodule Logflare.EndpointsCacheTest do
         {:error, TestUtils.gen_bq_error("BQ Error")}
       end)
 
-      {:ok, cache_pid} = start_supervised({Logflare.Endpoints.Cache, {endpoint, %{}}})
+      {:ok, cache_pid} = start_supervised({Logflare.Endpoints.ResultsCache, {endpoint, %{}}})
       assert Process.alive?(cache_pid)
 
       assert {:error, %{"message" => "BQ Error"}} = Endpoints.run_cached_query(endpoint)
@@ -113,7 +113,7 @@ defmodule Logflare.EndpointsCacheTest do
         {:ok, TestUtils.gen_bq_response(test_response)}
       end)
 
-      {:ok, cache_pid} = start_supervised({Logflare.Endpoints.Cache, {endpoint, %{}}})
+      {:ok, cache_pid} = start_supervised({Logflare.Endpoints.ResultsCache, {endpoint, %{}}})
       assert Process.alive?(cache_pid)
 
       # First query should succeed
@@ -136,7 +136,7 @@ defmodule Logflare.EndpointsCacheTest do
         {:ok, TestUtils.gen_bq_response(test_response)}
       end)
 
-      {:ok, cache_pid} = start_supervised({Logflare.Endpoints.Cache, {endpoint, %{}}})
+      {:ok, cache_pid} = start_supervised({Logflare.Endpoints.ResultsCache, {endpoint, %{}}})
       assert Process.alive?(cache_pid)
 
       # First query should return first test response
@@ -176,7 +176,7 @@ defmodule Logflare.EndpointsCacheTest do
         {:ok, TestUtils.gen_bq_response()}
       end)
 
-      {:ok, cache_pid} = start_supervised({Logflare.Endpoints.Cache, {endpoint, %{}}})
+      {:ok, cache_pid} = start_supervised({Logflare.Endpoints.ResultsCache, {endpoint, %{}}})
       assert Process.alive?(cache_pid)
       assert {:ok, %{rows: [_]}} = Endpoints.run_cached_query(endpoint)
 
@@ -196,7 +196,7 @@ defmodule Logflare.EndpointsCacheTest do
         {:ok, TestUtils.gen_bq_response(test_response)}
       end)
 
-      {:ok, cache_pid} = start_supervised({Logflare.Endpoints.Cache, {endpoint, %{}}})
+      {:ok, cache_pid} = start_supervised({Logflare.Endpoints.ResultsCache, {endpoint, %{}}})
       assert Process.alive?(cache_pid)
 
       # First query should succeed

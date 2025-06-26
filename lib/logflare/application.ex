@@ -54,7 +54,7 @@ defmodule Logflare.Application do
          partitions: max(round(System.schedulers_online() / 8), 1)},
         {PartitionSupervisor, child_spec: Task.Supervisor, name: Logflare.TaskSupervisors},
         {PartitionSupervisor,
-         child_spec: DynamicSupervisor, name: Logflare.Endpoints.Cache.PartitionSupervisor},
+         child_spec: DynamicSupervisor, name: Logflare.Endpoints.ResultsCache.PartitionSupervisor},
         {DynamicSupervisor,
          strategy: :one_for_one,
          restart: :transient,
@@ -114,7 +114,7 @@ defmodule Logflare.Application do
 
         # For Logflare Endpoints
         {PartitionSupervisor,
-         child_spec: DynamicSupervisor, name: Logflare.Endpoints.Cache.PartitionSupervisor},
+         child_spec: DynamicSupervisor, name: Logflare.Endpoints.ResultsCache.PartitionSupervisor},
 
         # Startup tasks after v2 pipeline started
         {Task, fn -> startup_tasks() end},

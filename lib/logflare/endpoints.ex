@@ -1,6 +1,6 @@
 defmodule Logflare.Endpoints do
   @moduledoc false
-  alias Logflare.Endpoints.Cache
+  alias Logflare.Endpoints.ResultsCache
   alias Logflare.Endpoints.Query
   alias Logflare.Endpoints.Resolver
   alias Logflare.Repo
@@ -45,23 +45,18 @@ defmodule Logflare.Endpoints do
   @spec get_endpoint_query(integer()) :: Query.t() | nil
   def get_endpoint_query(id), do: Repo.get(Query, id)
 
-  @spec get_query_by_token(binary()) :: Query.t() | nil
-  def get_query_by_token(token) when is_binary(token), do: get_by(token: token)
 
   def get_mapped_query_by_token(token) when is_binary(token) do
-    token
-    |> get_query_by_token()
-    |> then(fn
-      nil -> nil
-      query -> Query.map_query_sources(query)
-    end)
+    get_by(token: token)
+    |> Query.map_query_sources()
   end
 
   @doc """
   Puts the `:query` key of the `Query` with the latest source mappings.
   This ensure that the query will have the latest source names (assuming a name change)
   """
-  @spec map_query_sources(Query.t()) :: Query.t()
+  @spec map_query_sources(Query.t() | nil) :: Query.t() | nil
+  def map_query_sources(nil), do: nil
   def map_query_sources(endpoint), do: Query.map_query_sources(endpoint)
 
   @spec get_by(Keyword.t()) :: Query.t() | nil
@@ -107,7 +102,7 @@ defmodule Logflare.Endpoints do
         # kill all caches
         for pid <- Resolver.list_caches(endpoint) do
           Utils.Tasks.async(fn ->
-            Cache.invalidate(pid)
+            ResultsCache.invalidate(pid)
           end)
         end
         |> Task.await_many(30_000)
@@ -224,7 +219,7 @@ defmodule Logflare.Endpoints do
     if query.cache_duration_seconds > 0 do
       query
       |> Resolver.resolve(params)
-      |> Cache.query()
+      |> ResultsCache.query()
     else
       # execute the query directly
       run_query(query, params)

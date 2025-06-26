@@ -26,11 +26,6 @@ defmodule Logflare.EndpointsTest do
     assert endpoint.id == Endpoints.get_by(name: "some endpoint").id
   end
 
-  test "get_query_by_token/1" do
-    %{id: id, token: token} = insert(:endpoint)
-    assert %Query{id: ^id} = Endpoints.get_query_by_token(token)
-  end
-
   test "get_mapped_query_by_token/1 transforms renamed source names correctly" do
     user = insert(:user)
     source = insert(:source, user: user, name: "my_table")
@@ -193,7 +188,7 @@ defmodule Logflare.EndpointsTest do
           cache_duration_seconds: 4
         )
 
-      _pid = start_supervised!({Logflare.Endpoints.Cache, {endpoint, %{}}})
+      _pid = start_supervised!({Logflare.Endpoints.ResultsCache, {endpoint, %{}}})
       assert {:ok, %{rows: [%{"testing" => _}]}} = Endpoints.run_cached_query(endpoint)
       # 2nd query should hit local cache
       assert {:ok, %{rows: [%{"testing" => _}]}} = Endpoints.run_cached_query(endpoint)
@@ -232,7 +227,7 @@ defmodule Logflare.EndpointsTest do
 
         user = insert(:user)
         endpoint = insert(:endpoint, user: user, query: "select current_datetime() as testing")
-        cache_pid = start_supervised!({Logflare.Endpoints.Cache, {endpoint, %{}}})
+        cache_pid = start_supervised!({Logflare.Endpoints.ResultsCache, {endpoint, %{}}})
         assert {:ok, %{rows: [%{"testing" => _}]}} = Endpoints.run_cached_query(endpoint)
 
         params =
@@ -309,7 +304,7 @@ defmodule Logflare.EndpointsTest do
              }
            } = Endpoints.calculate_endpoint_metrics(endpoint)
 
-    _pid = start_supervised!({Logflare.Endpoints.Cache, {endpoint, %{}}})
+    _pid = start_supervised!({Logflare.Endpoints.ResultsCache, {endpoint, %{}}})
 
     assert %_{
              metrics: %Query.Metrics{
