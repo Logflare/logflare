@@ -80,7 +80,7 @@ defmodule LogflareWeb.BillingAccountLive.PaymentMethodComponent do
           |> put_flash(:info, "Payment method created!")
           |> assign(:payment_methods, methods)
 
-        {:noreply, push_patch(socket, to: Routes.billing_account_path(socket, :edit))}
+        {:noreply, push_patch(socket, to: ~p"/billing/edit")}
 
       {:error, _err} ->
         {:noreply, socket}
@@ -100,7 +100,7 @@ defmodule LogflareWeb.BillingAccountLive.PaymentMethodComponent do
         |> assign(:payment_methods, payment_methods)
         |> clear_flash()
         |> put_flash(:info, "Payment method deleted!")
-        |> push_patch(to: Routes.billing_account_path(socket, :edit))
+        |> push_patch(to: ~p"/billing/edit")
 
       {:noreply, socket}
     else
@@ -109,7 +109,7 @@ defmodule LogflareWeb.BillingAccountLive.PaymentMethodComponent do
           socket
           |> clear_flash()
           |> put_flash(:error, message)
-          |> push_patch(to: Routes.billing_account_path(socket, :edit))
+          |> push_patch(to: ~p"/billing/edit")
 
         {:noreply, socket}
 
@@ -118,7 +118,7 @@ defmodule LogflareWeb.BillingAccountLive.PaymentMethodComponent do
           socket
           |> clear_flash()
           |> put_flash(:error, "Something went wrong. Please contact support if this continues.")
-          |> push_patch(to: Routes.billing_account_path(socket, :edit))
+          |> push_patch(to: ~p"/billing/edit")
 
         {:noreply, socket}
     end
@@ -137,7 +137,7 @@ defmodule LogflareWeb.BillingAccountLive.PaymentMethodComponent do
         |> assign(:payment_methods, payment_methods)
         |> clear_flash()
         |> put_flash(:info, "Payment methods successfully synced!")
-        |> push_patch(to: Routes.billing_account_path(socket, :edit))
+        |> push_patch(to: ~p"/billing/edit")
 
       {:noreply, socket}
     end
@@ -170,7 +170,7 @@ defmodule LogflareWeb.BillingAccountLive.PaymentMethodComponent do
         |> assign(:user, Map.put(user, :billing_account, billing_account))
         |> clear_flash()
         |> put_flash(:info, message)
-        |> push_patch(to: Routes.billing_account_path(socket, :edit))
+        |> push_patch(to: ~p"/billing/edit")
 
       {:noreply, socket}
     end

@@ -56,7 +56,7 @@
 <div class="sub-form">
 <%= if @user.billing_account do %>
   <%= section_header("Edit Billing Account") %>
-  <%= link "Edit billing account", to: Routes.billing_account_path(@conn, :edit), class: "btn btn-primary form-button" %>
+  <%= link "Edit billing account", to: ~p"/billing/edit", class: "btn btn-primary form-button" %>
 <% else %>
   <%= section_header("Create a Billing Account") %>
   <%= link "Create a billing account", to: Routes.billing_path(@conn, :create), method: :post, class: "btn btn-primary form-button" %>

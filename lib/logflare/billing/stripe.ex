@@ -2,7 +2,8 @@ defmodule Logflare.Billing.Stripe do
   @moduledoc """
     Communicate with the Stripe API.
   """
-  alias LogflareWeb.Router.Helpers, as: Routes
+  use LogflareWeb, :routes
+
   alias LogflareWeb.Endpoint
   alias Logflare.Billing.{BillingAccount, Plan}
   alias Logflare.Billing
@@ -108,7 +109,7 @@ defmodule Logflare.Billing.Stripe do
   def create_billing_portal_session(%BillingAccount{} = billing_account) do
     params = %{
       customer: billing_account.stripe_customer,
-      return_url: Routes.billing_account_url(Endpoint, :edit)
+      return_url: url(~p"/billing/edit")
     }
 
     Stripe.BillingPortal.Session.create(params)
