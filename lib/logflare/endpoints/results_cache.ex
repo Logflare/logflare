@@ -157,7 +157,6 @@ defmodule Logflare.Endpoints.ResultsCache do
 
     timer = refresh(proactive_querying_ms(query))
     new_state = %{state | cached_result: results, query_tasks: tasks, refresh_timer: timer}
-    dbg(query)
 
     if disable_cache?(query) do
       {:stop, :normal, new_state}
