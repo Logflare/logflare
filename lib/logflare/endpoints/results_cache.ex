@@ -200,10 +200,6 @@ defmodule Logflare.Endpoints.ResultsCache do
     "endpoints_#{part}" |> String.to_existing_atom()
   end
 
-  def endpoints_partitions() do
-    for n <- 0..System.schedulers_online(), do: "endpoints_#{n}" |> String.to_existing_atom()
-  end
-
   def name(query_id, params) do
     partition = endpoints_part(query_id, params)
     param_hash = :erlang.phash2(params)

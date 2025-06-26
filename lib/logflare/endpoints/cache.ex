@@ -21,7 +21,7 @@ defmodule Logflare.Endpoints.Cache do
                  if(stats, do: Utils.cache_stats()),
                  Utils.cache_limit(100_000)
                ]
-               |> Enum.filter(& &1),
+               |> Enum.reject(&is_nil/1),
              expiration: Utils.cache_expiration_min()
            ]
          ]}
