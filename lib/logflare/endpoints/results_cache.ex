@@ -13,7 +13,6 @@ defmodule Logflare.Endpoints.ResultsCache do
   defstruct query_tasks: [],
             params: %{},
             cached_result: nil,
-            disable_cache: false,
             shutdown_timer: nil,
             refresh_timer: nil,
             endpoint_query_id: nil,
@@ -25,7 +24,6 @@ defmodule Logflare.Endpoints.ResultsCache do
           query_tasks: list(%Task{}),
           params: map(),
           cached_result: binary(),
-          disable_cache: boolean(),
           shutdown_timer: reference(),
           refresh_timer: reference()
         }
@@ -99,10 +97,8 @@ defmodule Logflare.Endpoints.ResultsCache do
         params: params,
         shutdown_timer: timer
       }
-      |> fetch_latest_query_endpoint()
-      |> put_disable_cache()
 
-    unless state.disable_cache, do: refresh(proactive_querying_ms(query))
+    unless disable_cache?(query), do: refresh(proactive_querying_ms(query))
 
     {:ok, state}
   end
@@ -110,24 +106,19 @@ defmodule Logflare.Endpoints.ResultsCache do
   @doc """
   Queries BigQuery. Public because it's spawned in a task.
   """
-  def handle_call(:query, _from, %__MODULE__{cached_result: nil, disable_cache: false} = state) do
+  def handle_call(:query, _from, %__MODULE__{cached_result: nil} = state) do
     case do_query(state) do
-      {:ok, result} = response ->
+      {:ok, result, query} ->
         state = Map.put(state, :cached_result, result)
+        response = {:ok, result}
 
-        {:reply, response, state}
+        if disable_cache?(query) do
+          {:stop, :normal, response, state}
+        else
+          {:reply, response, state}
+        end
 
-      {:error, _err} = response ->
-        {:stop, :normal, response, state}
-    end
-  end
-
-  def handle_call(:query, _from, %__MODULE__{cached_result: nil, disable_cache: true} = state) do
-    case do_query(state) do
-      {:ok, _result} = response ->
-        {:stop, :normal, response, state}
-
-      {:error, _err} = response ->
+      {:error, _err, _query} = response ->
         {:stop, :normal, response, state}
     end
   end
@@ -186,8 +177,10 @@ defmodule Logflare.Endpoints.ResultsCache do
   end
 
   def do_query(state) do
-    query = Endpoints.Cache.get_by(id: state.endpoint_query_id)
+    query = Endpoints.Cache.get_mapped_query_by_token(state.endpoint_query_token)
+
     Logflare.Endpoints.run_query(query, state.params)
+    |> Tuple.append(query)
   end
 
   def endpoints_part(query_id, params) do
@@ -222,16 +215,7 @@ defmodule Logflare.Endpoints.ResultsCache do
     query.cache_duration_seconds * 1_000
   end
 
-  defp fetch_latest_query_endpoint(state) do
-    %{
-      state
-      | query: Endpoints.Cache.get_mapped_query_by_token(state.endpoint_query_token)
-    }
-  end
-
-  defp put_disable_cache(state) do
-    if state.query.cache_duration_seconds == 0,
-      do: %{state | disable_cache: true},
-      else: %{state | disable_cache: false}
+  defp disable_cache?(query) do
+    query.cache_duration_seconds == 0
   end
 end
