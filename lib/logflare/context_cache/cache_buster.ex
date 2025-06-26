@@ -76,7 +76,6 @@ defmodule Logflare.ContextCache.CacheBuster do
         record = handle_record(record),
         record != :noop do
       record
-      |> maybe_local_proc_restarts()
     end
     |> tap(fn
       [] ->

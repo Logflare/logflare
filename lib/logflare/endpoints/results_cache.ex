@@ -31,10 +31,7 @@ defmodule Logflare.Endpoints.ResultsCache do
         }
 
   def start_link({query, params}) do
-    endpoints = endpoints_part(query.id, params)
-
     name = name(query.id, params)
-
     GenServer.start_link(__MODULE__, {query, params}, name: name, hibernate_after: 5_000)
   end
 
