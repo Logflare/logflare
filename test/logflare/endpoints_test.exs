@@ -194,6 +194,26 @@ defmodule Logflare.EndpointsTest do
       assert {:ok, %{rows: [%{"testing" => _}]}} = Endpoints.run_cached_query(endpoint)
     end
 
+    test "run_cached_query/1 only 1 query run" do
+      expect(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, 1, fn _conn, _proj_id, _opts ->
+        {:ok, TestUtils.gen_bq_response([%{"testing" => "123"}])}
+      end)
+
+      user = insert(:user)
+
+      endpoint =
+        insert(:endpoint,
+          user: user,
+          query: "select current_datetime() as testing",
+          cache_duration_seconds: 1
+        )
+
+      _pid = start_supervised!({Logflare.Endpoints.ResultsCache, {endpoint, %{}}})
+      assert {:ok, %{rows: [%{"testing" => _}]}} = Endpoints.run_cached_query(endpoint)
+      # 2nd query should hit local cache
+      assert {:ok, %{rows: [%{"testing" => _}]}} = Endpoints.run_cached_query(endpoint)
+    end
+
     test "run_cached_query/1 with cache disabled" do
       expect(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, 2, fn _conn, _proj_id, _opts ->
         {:ok, TestUtils.gen_bq_response([%{"testing" => "123"}])}

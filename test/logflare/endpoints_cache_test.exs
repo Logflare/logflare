@@ -128,6 +128,29 @@ defmodule Logflare.EndpointsCacheTest do
       refute Process.alive?(cache_pid)
     end
 
+    test "cache dies after cache_duration_seconds gets set to 0", %{endpoint: endpoint} do
+      test_response = [%{"testing" => "123"}]
+
+      GoogleApi.BigQuery.V2.Api.Jobs
+      |> expect(:bigquery_jobs_query, 2, fn _conn, _proj_id, _opts ->
+        {:ok, TestUtils.gen_bq_response(test_response)}
+      end)
+
+      {:ok, cache_pid} = start_supervised({Logflare.Endpoints.ResultsCache, {endpoint, %{}}})
+      assert Process.alive?(cache_pid)
+
+      # First query should succeed
+      assert {:ok, %{rows: [%{"testing" => "123"}]}} = Endpoints.run_cached_query(endpoint)
+      assert Process.alive?(cache_pid)
+
+      Logflare.Repo.update_all(Endpoints.Query, set: [cache_duration_seconds: 0]) |> dbg()
+      Logflare.ContextCache.bust_keys([{Logflare.Endpoints, endpoint.id}])
+
+      # Cache should still be alive before cache_duration_seconds
+      Process.sleep(endpoint.proactive_requerying_seconds * 1000 * 2)
+      refute Process.alive?(cache_pid)
+    end
+
     test "cache updates cached results after proactive_requerying_seconds", %{endpoint: endpoint} do
       test_response = [%{"testing" => "123"}]
 

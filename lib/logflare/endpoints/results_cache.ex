@@ -118,8 +118,8 @@ defmodule Logflare.Endpoints.ResultsCache do
           {:reply, response, state}
         end
 
-      {:error, _err, _query} = response ->
-        {:stop, :normal, response, state}
+      {:error, err, _query} ->
+        {:stop, :normal, {:error, err}, state}
     end
   end
 
@@ -148,20 +148,25 @@ defmodule Logflare.Endpoints.ResultsCache do
     {:stop, :normal, state}
   end
 
-  def handle_info({from_task, {:ok, results}}, state) do
+  def handle_info({from_task, {:ok, results, query}}, state) do
     tasks = Enum.reject(state.query_tasks, &(&1.pid == from_task))
 
     if is_reference(state.refresh_timer) do
       Process.cancel_timer(state.refresh_timer)
     end
 
-    query = Endpoints.Cache.get_by(id: state.endpoint_query_id)
     timer = refresh(proactive_querying_ms(query))
+    new_state = %{state | cached_result: results, query_tasks: tasks, refresh_timer: timer}
+    dbg(query)
 
-    {:noreply, %{state | cached_result: results, query_tasks: tasks, refresh_timer: timer}}
+    if disable_cache?(query) do
+      {:stop, :normal, new_state}
+    else
+      {:noreply, new_state}
+    end
   end
 
-  def handle_info({_from_task, {:error, _response}}, state) do
+  def handle_info({_from_task, {:error, _response, _query}}, state) do
     {:stop, :normal, state}
   end
 
