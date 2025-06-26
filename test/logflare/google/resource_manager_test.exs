@@ -21,6 +21,11 @@ defmodule Logflare.Google.CloudResourceManagerTest do
            expected_members: expected_members
          } do
       pid = self()
+      # Mock IAM API calls for listing existing service accounts
+      stub(GoogleApi.IAM.V1.Api.Projects, :iam_projects_service_accounts_list, fn
+        _conn, "projects/" <> _project_id, _opts ->
+          {:ok, %{accounts: [], nextPageToken: nil}}
+      end)
 
       stub(
         GoogleApi.CloudResourceManager.V1.Api.Projects,

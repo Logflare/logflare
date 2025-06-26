@@ -7,10 +7,6 @@ defmodule Logflare.Backends.BigQueryAdaptorTest do
   alias Logflare.Backends.Adaptor.BigQueryAdaptor
   alias Logflare.SystemMetrics.AllLogsLogged
 
-  @subject Logflare.Backends.Adaptor.BigQueryAdaptor
-
-  doctest @subject
-
   setup do
     start_supervised!(AllLogsLogged)
     insert(:plan)
@@ -317,6 +313,77 @@ defmodule Logflare.Backends.BigQueryAdaptorTest do
         assert desired < pipeline_count
         assert desired == 0
       end
+    end
+  end
+
+  describe "managed service accounts" do
+    setup do
+      original_pool_size =
+        Application.get_env(:logflare, :bigquery_backend_adaptor)[
+          :managed_service_account_pool_size
+        ]
+
+      Application.put_env(:logflare, :bigquery_backend_adaptor,
+        managed_service_account_pool_size: 2
+      )
+
+      on_exit(fn ->
+        Application.put_env(:logflare, :bigquery_backend_adaptor,
+          managed_service_account_pool_size: original_pool_size
+        )
+      end)
+
+      :ok
+    end
+
+    test "create_managed_service_accounts/0" do
+      ref = self()
+      # Mock IAM API calls for listing existing service accounts
+      expect(GoogleApi.IAM.V1.Api.Projects, :iam_projects_service_accounts_list, fn
+        _conn, "projects/" <> _project_id, _opts ->
+          {:ok, %{accounts: [], nextPageToken: nil}}
+      end)
+
+      # Mock IAM API calls for creating new service accounts
+      expect(GoogleApi.IAM.V1.Api.Projects, :iam_projects_service_accounts_create, 2, fn
+        _conn, "projects/" <> project_id, opts ->
+          # Assert the body has the correct account ID
+          assert %{accountId: account_id} = opts[:body]
+          assert account_id =~ ~r/logflare-managed-\d+/
+          send(ref, {:created, account_id})
+
+          {:ok,
+           %GoogleApi.IAM.V1.Model.ServiceAccount{
+             email: "#{account_id}@#{project_id}.iam.gserviceaccount.com"
+           }}
+      end)
+
+      assert {:ok, [_, _]} = BigQueryAdaptor.create_managed_service_accounts()
+
+      assert_receive {:created, "logflare-managed-0"}, 1000
+      assert_receive {:created, "logflare-managed-1"}, 1000
+    end
+
+    test "update_iam_policy/0" do
+      pid = self()
+      # Mock IAM API calls for listing existing service accounts
+      expect(GoogleApi.IAM.V1.Api.Projects, :iam_projects_service_accounts_list, fn
+        _conn, "projects/" <> _project_id, _opts ->
+          {:ok, %{accounts: [], nextPageToken: nil}}
+      end)
+
+      expect(
+        GoogleApi.CloudResourceManager.V1.Api.Projects,
+        :cloudresourcemanager_projects_set_iam_policy,
+        fn _conn, project_number, [body: body] ->
+          send(pid, body.policy.bindings)
+          {:ok, ""}
+        end
+      )
+
+      BigQueryAdaptor.update_iam_policy()
+
+      assert_received [_ | _]
     end
   end
 end
