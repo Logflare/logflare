@@ -10,16 +10,18 @@ defmodule Logflare.Endpoints.ResultsCache do
 
   use GenServer, restart: :temporary
 
-  defstruct query: nil,
-            query_tasks: [],
+  defstruct query_tasks: [],
             params: %{},
             cached_result: nil,
             disable_cache: false,
             shutdown_timer: nil,
-            refresh_timer: nil
+            refresh_timer: nil,
+            endpoint_query_id: nil,
+            endpoint_query_token: nil
 
   @type t :: %__MODULE__{
-          query: %Logflare.Endpoints.Query{},
+          endpoint_query_id: integer(),
+          endpoint_query_token: String.t(),
           query_tasks: list(%Task{}),
           params: map(),
           cached_result: binary(),
@@ -31,7 +33,7 @@ defmodule Logflare.Endpoints.ResultsCache do
   def start_link({query, params}) do
     endpoints = endpoints_part(query.id, params)
 
-    name = {:via, :syn, {endpoints, {query.id, params}}}
+    name = name(query.id, params)
 
     GenServer.start_link(__MODULE__, {query, params}, name: name, hibernate_after: 5_000)
   end
@@ -95,7 +97,8 @@ defmodule Logflare.Endpoints.ResultsCache do
 
     state =
       %__MODULE__{
-        query: query,
+        endpoint_query_id: query.id,
+        endpoint_query_token: query.token,
         params: params,
         shutdown_timer: timer
       }
@@ -164,7 +167,8 @@ defmodule Logflare.Endpoints.ResultsCache do
       Process.cancel_timer(state.refresh_timer)
     end
 
-    timer = refresh(proactive_querying_ms(state.query))
+    query = Endpoints.Cache.get_by(id: state.endpoint_query_id)
+    timer = refresh(proactive_querying_ms(query))
 
     {:noreply, %{state | cached_result: results, query_tasks: tasks, refresh_timer: timer}}
   end
@@ -185,7 +189,8 @@ defmodule Logflare.Endpoints.ResultsCache do
   end
 
   def do_query(state) do
-    Logflare.Endpoints.run_query(state.query, state.params)
+    query = Endpoints.Cache.get_by(id: state.endpoint_query_id)
+    Logflare.Endpoints.run_query(query, state.params)
   end
 
   def endpoints_part(query_id, params) do
@@ -196,6 +201,16 @@ defmodule Logflare.Endpoints.ResultsCache do
   def endpoints_part(query_id) do
     part = :erlang.phash2(query_id, System.schedulers_online())
     "endpoints_#{part}" |> String.to_existing_atom()
+  end
+
+  def endpoints_partitions() do
+    for n <- 0..System.schedulers_online(), do: "endpoints_#{n}" |> String.to_existing_atom()
+  end
+
+  def name(query_id, params) do
+    partition = endpoints_part(query_id, params)
+    param_hash = :erlang.phash2(params)
+    {:via, :syn, {partition, {query_id, param_hash}}}
   end
 
   defp refresh(every) do
@@ -217,9 +232,7 @@ defmodule Logflare.Endpoints.ResultsCache do
   defp fetch_latest_query_endpoint(state) do
     %{
       state
-      | query:
-          Endpoints.get_mapped_query_by_token(state.query.token)
-          |> Logflare.Repo.preload(:user)
+      | query: Endpoints.Cache.get_mapped_query_by_token(state.endpoint_query_token)
     }
   end
 

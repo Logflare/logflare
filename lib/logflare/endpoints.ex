@@ -45,10 +45,10 @@ defmodule Logflare.Endpoints do
   @spec get_endpoint_query(integer()) :: Query.t() | nil
   def get_endpoint_query(id), do: Repo.get(Query, id)
 
-
   def get_mapped_query_by_token(token) when is_binary(token) do
     get_by(token: token)
     |> Query.map_query_sources()
+    |> Repo.preload(:user)
   end
 
   @doc """
