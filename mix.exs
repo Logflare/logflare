@@ -138,6 +138,7 @@ defmodule Logflare.Mixfile do
 
       # Test
       {:mix_test_watch, "~> 1.0", only: [:dev, :test], runtime: false},
+      {:phoenix_test, "~> 0.7.0", only: :test, runtime: false},
       {:mimic, "~> 1.0", only: [:dev, :test]},
       {:stream_data, "~> 1.2.0", only: [:dev, :test]},
 
@@ -175,7 +176,7 @@ defmodule Logflare.Mixfile do
       {:ets, "~> 0.8.0"},
 
       # HTML
-      {:floki, "~> 0.29.0", only: [:test]},
+      {:floki, "~> 0.38.0", only: [:test]},
 
       # Rust NIFs
       {:rustler, "~> 0.34.0"},
