@@ -375,7 +375,7 @@ defmodule Logflare.Backends.BigQueryAdaptorTest do
       expect(
         GoogleApi.CloudResourceManager.V1.Api.Projects,
         :cloudresourcemanager_projects_set_iam_policy,
-        fn _conn, project_number, [body: body] ->
+        fn _conn, _project_number, [body: body] ->
           send(pid, body.policy.bindings)
           {:ok, ""}
         end
