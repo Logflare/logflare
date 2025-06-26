@@ -32,8 +32,9 @@ defmodule LogflareWeb.ConnCase do
       import LogflareWeb.Router.Helpers
       import Phoenix.ConnTest
       import Phoenix.LiveViewTest
-      import Plug.Conn
       import Phoenix.VerifiedRoutes
+      import PhoenixTest
+      import Plug.Conn
       import unquote(__MODULE__)
 
       alias Logflare.TestUtils

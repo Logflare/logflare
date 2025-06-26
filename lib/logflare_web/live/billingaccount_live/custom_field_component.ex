@@ -53,7 +53,7 @@ defmodule LogflareWeb.BillingAccountLive.CustomFieldComponent do
         |> assign(billing_account: ba)
         |> clear_flash()
         |> put_flash(:info, "Custom field deleted!")
-        |> push_patch(to: Routes.billing_account_path(socket, :edit))
+        |> push_patch(to: ~p"/billing/edit")
 
       {:noreply, socket}
     else
@@ -82,7 +82,7 @@ defmodule LogflareWeb.BillingAccountLive.CustomFieldComponent do
         |> assign(custom_fields_form: to_form(%{}, as: :fields))
         |> clear_flash()
         |> put_flash(:info, "Custom field added!")
-        |> push_patch(to: Routes.billing_account_path(socket, :edit))
+        |> push_patch(to: ~p"/billing/edit")
 
       {:noreply, socket}
     else
@@ -96,7 +96,7 @@ defmodule LogflareWeb.BillingAccountLive.CustomFieldComponent do
         socket =
           socket
           |> put_flash(:error, "Maximum 4 custom invoice fields!")
-          |> push_patch(to: Routes.billing_account_path(socket, :edit))
+          |> push_patch(to: ~p"/billing/edit")
 
         {:noreply, socket}
 
@@ -153,7 +153,7 @@ defmodule LogflareWeb.BillingAccountLive.CustomFieldComponent do
       socket
       |> clear_flash()
       |> put_flash(:info, "Something went wrong! Please contact support if this continues.")
-      |> push_patch(to: Routes.billing_account_path(socket, :edit))
+      |> push_patch(to: ~p"/billing/edit")
 
     {:noreply, socket}
   end

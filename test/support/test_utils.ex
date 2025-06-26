@@ -462,4 +462,37 @@ defmodule Logflare.TestUtils do
         reraise error, __STACKTRACE__
       end
   end
+
+  @doc """
+  `Phoenix.LiveViewTest` has `open_browser/2` function that opens a browser with
+  the given HTML content. This is kinda the same but for Phoenix static views.
+
+  ## Usage
+
+  You can call this with any HTML content.
+
+  ```elixir
+  TestUtils.open_browser("<html><body>Hello World</body></html>")
+  ```
+
+  However, it is mostly useful in tests.
+
+  ```elixir
+  conn
+  |> get("/some/path")
+  |> html_response(200)
+  |> TestUtils.open_browser()
+  ```
+  """
+  def open_browser(html, filename \\ "/tmp/test-#{System.unique_integer([:positive])}.html") do
+    File.write!(filename, html)
+
+    case :os.type() do
+      {:unix, :darwin} -> System.cmd("open", [filename])
+      {:unix, _} -> System.cmd("xdg-open", [filename])
+      {:win32, _} -> System.cmd("cmd", ["/c", "start", filename])
+    end
+
+    html
+  end
 end

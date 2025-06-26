@@ -199,7 +199,7 @@ defmodule LogflareWeb.SourceController do
     message = [
       "Please ",
       Phoenix.HTML.Link.link("upgrade to explore",
-        to: "#{Routes.billing_account_path(conn, :edit)}"
+        to: ~p"/billing/edit"
       ),
       " in Google Data Studio."
     ]
@@ -266,6 +266,7 @@ defmodule LogflareWeb.SourceController do
 
   def public(%{assigns: %{user: _user, source: source}} = conn, %{"public_token" => _public_token}) do
     avg_rate = source.metrics.avg
+
     render_show_with_assigns(conn, conn.assigns.user, source, avg_rate)
   end
 
@@ -417,7 +418,7 @@ defmodule LogflareWeb.SourceController do
         message = [
           "Please ",
           Phoenix.HTML.Link.link("upgrade",
-            to: "#{Routes.billing_account_path(conn, :edit)}"
+            to: ~p"/billing/edit"
           ),
           " first!"
         ]

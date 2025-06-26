@@ -1,13 +1,15 @@
-defmodule LogflareWeb.BillingAccountLive do
+defmodule LogflareWeb.BillingAccountLive.Edit do
   @moduledoc """
-  Billing edit LiveView
+  Billing Account Edit Page.
   """
-  require Logger
   use LogflareWeb, :live_view
 
-  alias LogflareWeb.BillingAccountView
+  import LogflareWeb.Helpers.Forms
+  import Logflare.Sources, only: [count_for_billing: 1]
+
   alias Logflare.{Users, Billing}
-  alias LogflareWeb.Router.Helpers, as: Routes
+
+  require Logger
 
   @impl true
   def mount(_params, %{"user_id" => user_id}, socket) do
@@ -25,7 +27,7 @@ defmodule LogflareWeb.BillingAccountLive do
         socket =
           socket
           |> put_flash(:error, "Create a billing account first!")
-          |> redirect(to: Routes.user_path(socket, :edit) <> "#create-a-billing-account")
+          |> redirect(to: ~p"/account/edit#create-a-billing-account")
 
         {:ok, socket}
 
@@ -56,7 +58,7 @@ defmodule LogflareWeb.BillingAccountLive do
     user = socket.assigns.user
 
     send_update(LogflareWeb.BillingAccountLive.ChartComponent,
-      id: :chart,
+      id: "chart",
       user: user,
       days: String.to_integer(days)
     )
@@ -66,7 +68,7 @@ defmodule LogflareWeb.BillingAccountLive do
 
   def handle_info({_ref, {:ok, data}}, socket) do
     send_update(LogflareWeb.BillingAccountLive.ChartComponent,
-      id: :chart,
+      id: "chart",
       chart_data: data
     )
 
@@ -79,7 +81,7 @@ defmodule LogflareWeb.BillingAccountLive do
   end
 
   def handle_info({:chart_tick, counter}, socket) do
-    send_update(LogflareWeb.BillingAccountLive.ChartComponent, id: :chart, counter: counter)
+    send_update(LogflareWeb.BillingAccountLive.ChartComponent, id: "chart", counter: counter)
 
     {:noreply, socket}
   end
@@ -87,7 +89,7 @@ defmodule LogflareWeb.BillingAccountLive do
   def handle_info({:update_payment_methods, callback, method}, socket) do
     send_update(
       LogflareWeb.BillingAccountLive.PaymentMethodComponent,
-      id: :payment_method,
+      id: "payment_method",
       callback: callback,
       payment_methods: method
     )
@@ -98,15 +100,10 @@ defmodule LogflareWeb.BillingAccountLive do
   def handle_info({:update_billing_account, ba}, socket) do
     send_update(
       LogflareWeb.BillingAccountLive.PaymentMethodComponent,
-      id: :payment_method,
+      id: "payment_method",
       billing_account: ba
     )
 
     {:noreply, socket}
-  end
-
-  @impl true
-  def render(assigns) do
-    BillingAccountView.render("edit.html", assigns)
   end
 end

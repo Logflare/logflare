@@ -54,7 +54,7 @@
   <div class="sub-form">
     <%= section_header("Usage") %>
     <p>Your total log event count per day for the last 30 days.</p>
-    <.form :let={f} for={@usage_form} action="#" phx-change="usage_picker">
+    <.form :let={f} id="usage-form" for={@usage_form} action="#" phx-change="usage_picker">
       <%= select(f, :days, [{"30 days", 30}, {"60 days", 60}, {"90 days", 90}],
         class: "btn btn-secondary dropdown-toggle",
         type: "button",

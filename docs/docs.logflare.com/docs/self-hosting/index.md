@@ -85,11 +85,26 @@ Setting `LOGFLARE_METADATA_CLUSTER=production` will result the following payload
 
 ### BigQuery Backend Configuration
 
-| Env Var                    | Type                        | Description                                                   |
-| -------------------------- | --------------------------- | ------------------------------------------------------------- |
-| `GOOGLE_PROJECT_ID`        | string, required            | Specifies the GCP project to use.                             |
-| `GOOGLE_PROJECT_NUMBER`    | string, required            | Specifies the GCP project to use.                             |
-| `GOOGLE_DATASET_ID_APPEND` | string, defaults to `_prod` | This allows customization of the dataset created in BigQuery. |
+| Env Var                             | Type                        | Description                                                                                                                                                                                         |
+| ----------------------------------- | --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GOOGLE_PROJECT_ID`                 | string, required            | Specifies the GCP project to use.                                                                                                                                                                   |
+| `GOOGLE_PROJECT_NUMBER`             | string, required            | Specifies the GCP project to use.                                                                                                                                                                   |
+| `GOOGLE_DATASET_ID_APPEND`          | string, defaults to `_prod` | This allows customization of the dataset created in BigQuery.                                                                                                                                       |
+| `LOGFLARE_BIGQUERY_MANAGED_SA_POOL` | Integer, defaults to `0`    | Sets the number of managed service accounts to create for BigQuery API operations. When set to 0, managed service accounts are disabled, and all queries will run throguh the main service account. |
+
+#### Managed Service Accounts
+
+When `LOGFLARE_BIGQUERY_MANAGED_SA_POOL` is a non-zero value, managed service accounts will use impersonation when making requests against the BigQuery REST API. Increase this value when experiencing rate limiting.
+
+This is due to BigQuery having a fixed 100 requests per second per user limit on their core REST API. However, service account impersonation allows us to spread out requests across multiple service accounts, thereby avoiding this limitation.
+
+Managed service accounts will be provisioned automatically by the server, hence it will require additional permissions:
+
+- `roles/resourcemanager.projectIamAdmin`
+- `roles/iam.serviceAccountCreator`
+- `roles/iam.serviceAccountTokenCreator`
+
+Without these two additional permissions, the managed service accounts feature will not work.
 
 ### PostgreSQL Backend Configuration
 
@@ -135,21 +150,11 @@ The requirements for server startup are as follows after creating the project:
 
 To ensure that you have sufficient permissions to insert into your Google Cloud BigQuery, ensure that you have created a service account with either:
 
-- BigQuery Admin role; or
-- The following permissions:
-  - bigquery.datasets.create
-  - bigquery.datasets.get
-  - bigquery.datasets.getIamPolicy
-  - bigquery.datasets.update
-  - bigquery.jobs.create
-  - bigquery.routines.create
-  - bigquery.routines.update
-  - bigquery.tables.create
-  - bigquery.tables.delete
-  - bigquery.tables.get
-  - bigquery.tables.getData
-  - bigquery.tables.update
-  - bigquery.tables.updateData
+- `roles/bigquery.admin`
+- for [managed service accounts](#managed-service-accounts)
+  - `roles/resourcemanager.projectIamAdmin`
+  - `role/iam.serviceAccountCreator`
+  - `role/iam.serviceAccountTokenCreator`
 
 We recommend setting the BigQuery Admin role, as it simplifies permissions setup.
 

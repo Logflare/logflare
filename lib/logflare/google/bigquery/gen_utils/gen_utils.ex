@@ -8,6 +8,7 @@ defmodule Logflare.Google.BigQuery.GenUtils do
   alias Logflare.{Sources, Users}
   alias Logflare.{Source, User}
   alias GoogleApi.BigQuery.V2.Connection
+  alias Logflare.Backends.Adaptor.BigQueryAdaptor
 
   @table_ttl 604_800_000
   @default_dataset_location "US"
@@ -81,13 +82,44 @@ defmodule Logflare.Google.BigQuery.GenUtils do
   @spec get_conn(conn_type()) :: Tesla.Env.client()
   def get_conn(conn_type \\ :default) do
     # use pid as the partition hash
-    partition_count = System.schedulers_online()
+    partition_count =
+      if conn_type == :query do
+        BigQueryAdaptor.managed_service_account_partition_count()
+      else
+        BigQueryAdaptor.ingest_service_account_partition_count()
+      end
+
     partition = :erlang.phash2(self(), partition_count)
 
-    metadata = %{partition: partition}
+    {name, metadata} =
+      if conn_type == :query do
+        service_account_count = BigQueryAdaptor.managed_service_account_pool_size()
+
+        sa_index =
+          if service_account_count > 0, do: :erlang.phash2(self(), service_account_count), else: 0
+
+        {{
+           Logflare.GothQuery,
+           sa_index,
+           partition
+         },
+         %{
+           service_account_count: service_account_count,
+           sa_index: sa_index,
+           partition: partition
+         }}
+      else
+        {{
+           Logflare.Goth,
+           partition
+         },
+         %{
+           partition: partition
+         }}
+      end
 
     :telemetry.span([:logflare, :goth, :fetch], metadata, fn ->
-      result = Goth.fetch({Logflare.Goth, partition})
+      result = Goth.fetch(name)
       {result, metadata}
     end)
     |> case do

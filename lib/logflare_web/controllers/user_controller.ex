@@ -30,7 +30,7 @@ defmodule LogflareWeb.UserController do
     message = [
       "Please ",
       Phoenix.HTML.Link.link("upgrade to a paid plan",
-        to: "#{Routes.billing_account_path(conn, :edit)}"
+        to: ~p"/billing/edit"
       ),
       " to setup your own BigQuery backend."
     ]
