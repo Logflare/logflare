@@ -165,6 +165,7 @@ defmodule LogflareWeb.Router do
 
   scope "/", LogflareWeb do
     pipe_through(:browser)
+
     get("/", MarketingController, :index)
     get("/pricing", MarketingController, :pricing)
     get("/terms", MarketingController, :terms)
@@ -174,6 +175,7 @@ defmodule LogflareWeb.Router do
 
   scope "/guides", LogflareWeb do
     pipe_through(:browser)
+
     get("/", MarketingController, :guides)
     get("/overview", MarketingController, :overview)
     get("/bigquery-setup", MarketingController, :big_query_setup)
@@ -185,6 +187,7 @@ defmodule LogflareWeb.Router do
 
   scope "/", LogflareWeb do
     pipe_through([:browser, :require_auth])
+
     get("/dashboard", SourceController, :dashboard)
     live("/access-tokens", AccessTokensLive, :index)
     live("/backends", BackendsLive, :index)
@@ -315,7 +318,7 @@ defmodule LogflareWeb.Router do
 
     post("/", BillingController, :create)
     delete("/", BillingController, :delete)
-    live("/edit", BillingAccountLive, :edit)
+    live("/edit", BillingAccountLive.Edit, :edit)
     get("/sync", BillingController, :sync)
   end
 

@@ -138,6 +138,7 @@ defmodule Logflare.Mixfile do
 
       # Test
       {:mix_test_watch, "~> 1.0", only: [:dev, :test], runtime: false},
+      {:phoenix_test, "~> 0.7.0", only: :test, runtime: false},
       {:mimic, "~> 1.0", only: [:dev, :test]},
       {:stream_data, "~> 1.2.0", only: [:dev, :test]},
 
@@ -149,7 +150,8 @@ defmodule Logflare.Mixfile do
       # GCP
       {:google_api_cloud_resource_manager, "~> 0.34.0"},
       {:google_api_big_query, "~> 0.79.0"},
-      {:goth, "~> 1.4.0"},
+      {:google_api_iam, "~> 0.45.0"},
+      {:goth, github: "Logflare/goth", branch: "feat/service-account-impersonation"},
       {:google_gax, github: "Logflare/elixir-google-gax", ref: "6772193", override: true},
 
       # Ecto
@@ -174,7 +176,7 @@ defmodule Logflare.Mixfile do
       {:ets, "~> 0.8.0"},
 
       # HTML
-      {:floki, "~> 0.29.0", only: [:test]},
+      {:floki, "~> 0.38.0", only: [:test]},
 
       # Rust NIFs
       {:rustler, "~> 0.36.2", override: true},

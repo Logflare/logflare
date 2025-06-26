@@ -33,46 +33,25 @@ defmodule LogflareWeb.SourceControllerTest do
     end
 
     test "renders dashboard", %{conn: conn, source: source} do
-      html =
-        conn
-        |> get(Routes.source_path(conn, :dashboard))
-        |> html_response(200)
-
-      # nav
-      assert html =~ "~/logs"
-      assert html =~ "Saved Searches"
-      assert html =~ "Dashboard"
-      assert html =~ source.name
-
-      # default ttl
-      assert html =~ "ttl: 3 day"
+      conn
+      |> visit(~p"/dashboard")
+      |> assert_has("li > a", text: "Dashboard", exact: true)
+      |> assert_has("h5", text: "Saved Searches", exact: true)
+      |> assert_has("a", text: source.name, href: ~p"/sources/#{source}")
     end
 
     test "renders default plan ttl correctly", %{conn: conn} do
       conn
-      |> get(Routes.source_path(conn, :dashboard))
-      |> html_response(200) =~ "ttl: 3 day"
-    end
-
-    test "renders default bigquery ttl correctly", %{conn: conn} do
-      conn
-      |> get(Routes.source_path(conn, :dashboard))
-      |> html_response(200) =~ "ttl: 3 day"
+      |> visit(~p"/dashboard")
+      |> assert_has("small", text: "ttl: 3 days")
     end
 
     test "show source", %{conn: conn, source: source} do
-      html =
-        conn
-        |> get(Routes.source_path(conn, :show, source))
-        |> html_response(200)
-
-      # main nav
-      assert html =~ "Sign out"
-      # subnav
-      assert html =~ source.name
-      assert html =~ "scroll down"
-      # search
-      assert html =~ "Search"
+      conn
+      |> visit(~p"/sources/#{source}")
+      |> assert_has("h5 > a", text: source.name, href: ~p"/sources/#{source}")
+      |> assert_has("li > a", text: "Sign out", exact: true)
+      |> assert_has("button > span", text: "Search", exact: true)
     end
 
     test "show source's recent logs", %{conn: conn, source: source} do
@@ -80,13 +59,12 @@ defmodule LogflareWeb.SourceControllerTest do
       le = build(:log_event, source: source)
       Backends.ingest_logs([le], source)
 
-      html =
-        conn
-        |> get(Routes.source_path(conn, :show, source))
-        |> html_response(200)
-
-      assert html =~ le.body["event_message"]
-      assert html =~ "event body"
+      conn
+      |> visit(~p"/sources/#{source}")
+      |> assert_has("li > a", text: "event body", exact: true)
+      |> assert_has("pre > code",
+        text: Logflare.JSON.encode!(le.body["event_message"], pretty: true)
+      )
     end
 
     test "invalid source", %{conn: conn, source: source} do
@@ -162,32 +140,22 @@ defmodule LogflareWeb.SourceControllerTest do
 
     test "can see SMS alert options", %{conn: conn, paid_user: paid_user} do
       source = insert(:source, user: paid_user)
-      paid_user = Repo.preload(paid_user, :sources)
 
-      html =
-        conn
-        |> login_user(paid_user)
-        |> get(Routes.source_path(conn, :edit, source))
-        |> html_response(200)
-
-      assert html =~ "Update SMS preferences"
-      refute html =~ "SMS alerts are not available with the Free plan"
+      conn
+      |> login_user(paid_user)
+      |> visit(~p"/sources/#{source}/edit")
+      |> assert_has("button", text: "Update SMS preferences", exact: true)
+      |> refute_has("p", text: "SMS alerts are not available with the Free plan.")
     end
 
     test "free user", %{conn: conn, free_user: free_user} do
       source = insert(:source, user: free_user)
-      free_user = Repo.preload(free_user, :sources)
 
-      html =
-        conn
-        |> login_user(free_user)
-        |> get(Routes.source_path(conn, :edit, source))
-        |> html_response(200)
-
-      # cannot see update button
-      refute html =~ "Update SMS preferences"
-      # can see alert
-      assert html =~ "SMS alerts are not available with the Free plan"
+      conn
+      |> login_user(free_user)
+      |> visit(~p"/sources/#{source}/edit")
+      |> refute_has("button", text: "Update SMS preferences", exact: true)
+      |> assert_has("p", text: "SMS alerts are not available with the Free plan.")
     end
   end
 
@@ -203,19 +171,15 @@ defmodule LogflareWeb.SourceControllerTest do
     test "pipeline", %{conn: conn, free_user: user} do
       source = insert(:source, user: user)
 
-      html =
-        conn
-        |> login_user(user)
-        |> get(Routes.source_path(conn, :edit, source))
-        |> html_response(200)
-
-      assert html =~ "Pipeline Rules"
-      assert html =~ "Copy fields"
-      assert html =~ "Update field copying rules"
+      conn
+      |> login_user(user)
+      |> visit(~p"/sources/#{source}/edit")
+      |> assert_has("h3", text: "Pipeline Rules", exact: true)
+      |> assert_has("h5", text: "Copy fields")
+      |> assert_has("button", text: "Update field copying rules", exact: true)
 
       conn =
         conn
-        |> recycle()
         |> login_user(user)
         |> patch("/sources/#{source.id}", %{
           source: %{
@@ -229,9 +193,7 @@ defmodule LogflareWeb.SourceControllerTest do
       assert html_response(conn, 302) =~ "redirected"
       assert Phoenix.Flash.get(conn.assigns.flash, :info) == "Source updated!"
 
-      updated = Sources.get_by(id: source.id)
-
-      assert updated.transform_copy_fields != nil
+      assert Sources.get_by(id: source.id).transform_copy_fields
     end
   end
 
@@ -245,28 +207,14 @@ defmodule LogflareWeb.SourceControllerTest do
     test "renders source in dashboard", %{conn: conn, user: user} do
       source = insert(:source, user: user)
 
-      html =
-        conn
-        |> get(Routes.source_path(conn, :dashboard))
-        |> html_response(200)
-
-      assert html =~ source.name
-    end
-
-    test "renders source page", %{conn: conn, user: user} do
-      source = insert(:source, user: user)
-
-      html =
-        conn
-        |> get(Routes.source_path(conn, :show, source))
-        |> html_response(200)
-
-      assert html =~ source.name
+      conn
+      |> visit(~p"/dashboard")
+      |> assert_has("a", text: source.name, href: ~p"/sources/#{source}")
     end
   end
 
   describe "dashboard - rejected" do
-    setup [:old_setup, :expect_user_plan]
+    setup [:create_plan, :old_setup, :expect_user_plan]
 
     test "renders rejected logs page", %{conn: conn, users: [u1, _u2], sources: [s1, _s2 | _]} do
       RejectedLogEvents.ingest(%LogEvent{
@@ -297,8 +245,51 @@ defmodule LogflareWeb.SourceControllerTest do
     end
   end
 
+  describe "show" do
+    setup [:create_plan, :old_setup, :expect_user_plan]
+
+    test "returns 403 for a source not owned by the user", %{
+      conn: conn,
+      users: [_u1, u2 | _],
+      sources: [s1 | _]
+    } do
+      conn =
+        conn
+        |> login_user(u2)
+        |> get(~p"/sources/#{s1}")
+
+      assert html_response(conn, 403) =~ "Forbidden"
+    end
+  end
+
+  describe "new" do
+    setup [:create_plan]
+
+    test "logged user can create a new source", %{conn: conn} do
+      user = insert(:user)
+      Teams.create_team(user, %{name: "Test Team"})
+
+      conn
+      |> login_user(user)
+      |> visit(~p"/dashboard")
+      |> click_link("New source")
+      |> assert_path(~p"/sources/new")
+      |> assert_has("h5", text: "~/logs/new")
+      |> assert_has("form")
+      |> fill_in("Source Name", with: "MyApp.Logs")
+      |> submit()
+      |> assert_path(~p"/sources/*", query_params: %{new: true})
+    end
+
+    test "returns 403 for a user not logged in", %{conn: conn} do
+      assert conn
+             |> visit(~p"/sources/new")
+             |> assert_path(~p"/auth/login")
+    end
+  end
+
   describe "update" do
-    setup [:old_setup, :expect_user_plan]
+    setup [:create_plan, :old_setup, :expect_user_plan]
 
     test "returns 200 with valid params", %{conn: conn, users: [u1, _u2], sources: [s1, _s2 | _]} do
       new_name = TestUtils.random_string()
@@ -417,26 +408,8 @@ defmodule LogflareWeb.SourceControllerTest do
     end
   end
 
-  describe "show" do
-    setup [:old_setup, :expect_user_plan]
-
-    test "returns 403 for a source not owned by the user", %{
-      conn: conn,
-      users: [_u1, u2 | _],
-      sources: [s1 | _]
-    } do
-      conn =
-        conn
-        |> login_user(u2)
-        |> get(source_path(conn, :show, s1.id))
-
-      assert html_response(conn, 403) =~ "403"
-      assert html_response(conn, 403) =~ "Forbidden"
-    end
-  end
-
   describe "create" do
-    setup [:old_setup, :expect_user_plan]
+    setup [:create_plan, :old_setup, :expect_user_plan]
 
     test "returns 200 with valid params", %{conn: conn, users: [u1 | _]} do
       name = TestUtils.random_string()
@@ -444,7 +417,7 @@ defmodule LogflareWeb.SourceControllerTest do
       conn =
         conn
         |> login_user(u1)
-        |> post("/sources", %{
+        |> post(~p"/sources", %{
           "source" => %{
             "name" => name
           }
@@ -460,7 +433,7 @@ defmodule LogflareWeb.SourceControllerTest do
       conn =
         conn
         |> login_user(u1)
-        |> post("/sources", %{
+        |> post(~p"/sources", %{
           "source" => %{
             "name" => ""
           }
@@ -477,7 +450,7 @@ defmodule LogflareWeb.SourceControllerTest do
       conn =
         conn
         |> login_user(u1)
-        |> post("/sources", %{
+        |> post(~p"/sources", %{
           "source" => %{
             "name" => ""
           }
@@ -492,13 +465,13 @@ defmodule LogflareWeb.SourceControllerTest do
   end
 
   describe "favorite" do
-    setup [:old_setup, :expect_user_plan]
+    setup [:create_plan, :old_setup, :expect_user_plan]
 
     test "returns 200 flipping the value", %{conn: conn, users: [u1 | _], sources: [s1 | _]} do
       conn =
         conn
         |> login_user(u1)
-        |> get(source_path(conn, :favorite, Integer.to_string(s1.id)))
+        |> get(~p"/sources/#{s1}/favorite")
 
       new_s1 = Sources.get_by(id: s1.id)
 
@@ -509,44 +482,43 @@ defmodule LogflareWeb.SourceControllerTest do
   end
 
   describe "public" do
-    setup [:old_setup]
+    setup [:create_plan, :old_setup]
 
     test "shows a source page", %{conn: conn, sources: [s1 | _]} do
-      conn =
-        conn
-        |> get(source_path(conn, :public, s1.public_token))
-
-      assert html_response(conn, 200) =~ s1.name
+      conn
+      |> visit(~p"/sources/public/#{s1.public_token}")
+      |> assert_has("h5 > a", text: s1.name)
+      |> assert_has("span#source-id", text: to_string(s1.token))
     end
   end
 
   describe "delete" do
-    setup [:old_setup]
+    setup [:create_plan, :old_setup]
 
-    test "deletes a source", %{conn: init_conn, sources: [s1 | _], users: [u1 | _]} do
-      conn =
-        init_conn
-        |> login_user(u1)
-        |> delete(source_path(init_conn, :del_source_and_redirect, s1.id))
+    test "deletes a source", %{conn: conn, sources: [s1 | _], users: [u1 | _]} do
+      conn
+      |> login_user(u1)
+      |> visit(~p"/dashboard")
+      |> assert_has("a", href: ~p"/sources/#{s1}", text: s1.name)
 
-      assert redirected_to(conn, 302) =~ "/dashboard"
+      assert conn
+             |> login_user(u1)
+             |> delete(~p"/sources/#{s1}/force-delete")
+             |> redirected_to(302) =~ "/dashboard"
 
-      conn =
-        init_conn
-        |> login_user(u1)
-        |> get(Routes.source_path(init_conn, :dashboard))
+      refute Sources.get(s1.id)
 
-      assert html = html_response(conn, 200)
-      refute html =~ s1.name
-
-      assert is_nil(Sources.get(s1.id))
+      conn
+      |> login_user(u1)
+      |> visit(~p"/dashboard")
+      |> refute_has("a", href: ~p"/sources/#{s1}", text: s1.name)
     end
   end
 
   describe "update v1-v2 pipeline" do
-    setup do
-      insert(:plan)
+    setup :create_plan
 
+    setup do
       Logflare.Google.BigQuery
       |> stub(:init_table!, fn _, _, _, _, _, _ -> :ok end)
 
@@ -563,28 +535,29 @@ defmodule LogflareWeb.SourceControllerTest do
     test "toggling from v1 to v2", %{conn: conn, user: user} do
       source = insert(:source, user: user)
 
-      conn =
-        conn
-        |> login_user(user)
-        |> put(~p"/sources/#{source.id}", %{"source" => %{"v2_pipeline" => true}})
-
-      assert redirected_to(conn) == ~p"/sources/#{source.id}/edit"
+      assert conn
+             |> login_user(user)
+             |> put(~p"/sources/#{source.id}", %{"source" => %{"v2_pipeline" => true}})
+             |> redirected_to(302) == ~p"/sources/#{source}/edit"
     end
 
     test "toggle from v2 to v1", %{conn: conn, user: user} do
       source = insert(:source, user: user, v2_pipeline: true)
 
-      conn =
-        conn
-        |> login_user(user)
-        |> put(~p"/sources/#{source.id}", %{"source" => %{"v2_pipeline" => false}})
-
-      assert redirected_to(conn) == ~p"/sources/#{source.id}/edit"
+      assert conn
+             |> login_user(user)
+             |> put(~p"/sources/#{source.id}", %{"source" => %{"v2_pipeline" => false}})
+             |> redirected_to(302) == ~p"/sources/#{source}/edit"
     end
   end
 
-  defp old_setup(_) do
+  defp create_plan(_) do
     insert(:plan, name: "Free")
+
+    :ok
+  end
+
+  defp old_setup(_) do
     u1 = insert(:user)
     u2 = insert(:user)
     Teams.create_team(u1, %{name: "u1 team"})
@@ -594,7 +567,6 @@ defmodule LogflareWeb.SourceControllerTest do
     s2 = insert(:source, user_id: u1.id)
     s3 = insert(:source, user_id: u2.id)
 
-    # users = Repo.preload([u1, u2], :sources)
     users = [u1, u2]
     sources = [s1, s2, s3]
 
