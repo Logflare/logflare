@@ -9,6 +9,7 @@ defmodule LogflareWeb.Api.EndpointController do
   alias LogflareWeb.OpenApi.Created
   alias LogflareWeb.OpenApi.List
   alias LogflareWeb.OpenApi.NotFound
+  alias LogflareWeb.OpenApi.UnprocessableEntity
 
   alias LogflareWeb.OpenApiSchemas.EndpointApiSchema
 
@@ -46,7 +47,8 @@ defmodule LogflareWeb.Api.EndpointController do
     request_body: EndpointApiSchema.params(),
     responses: %{
       201 => Created.response(EndpointApiSchema),
-      404 => NotFound.response()
+      404 => NotFound.response(),
+      422 => UnprocessableEntity.response()
     }
   )
 
@@ -63,9 +65,10 @@ defmodule LogflareWeb.Api.EndpointController do
     parameters: [token: [in: :path, description: "Endpoint UUID Token", type: :string]],
     request_body: EndpointApiSchema.params(),
     responses: %{
-      204 => Accepted.response(),
       200 => Accepted.response(EndpointApiSchema),
-      404 => NotFound.response()
+      204 => Accepted.response(),
+      404 => NotFound.response(),
+      422 => UnprocessableEntity.response()
     }
   )
 
@@ -75,12 +78,14 @@ defmodule LogflareWeb.Api.EndpointController do
       conn
       |> case do
         %{method: "PUT"} ->
-          put_status(conn, 200)
+          conn
+          |> put_status(200)
           |> json(query)
 
         %{method: "PATCH"} ->
           conn
-          |> send_resp(204, "")
+          |> put_status(204)
+          |> text("")
       end
     end
   end
@@ -100,8 +105,8 @@ defmodule LogflareWeb.Api.EndpointController do
     with query when not is_nil(query) <- Endpoints.get_by(token: token, user_id: user.id),
          {:ok, _} <- Endpoints.delete_query(query) do
       conn
-      |> Plug.Conn.send_resp(204, [])
-      |> Plug.Conn.halt()
+      |> put_status(204)
+      |> text("")
     end
   end
 end

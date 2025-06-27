@@ -19,10 +19,11 @@ defmodule LogflareWeb.Api.EndpointControllerTest do
       response =
         conn
         |> add_access_token(user, ~w(private))
-        |> get("/api/endpoints")
+        |> get(~p"/api/endpoints")
         |> json_response(200)
+        |> assert_schema("EndpointApiSchemaListResponse")
 
-      response = response |> Enum.map(& &1["token"]) |> Enum.sort()
+      response = response |> Enum.map(& &1.token) |> Enum.sort()
       expected = endpoints |> Enum.map(& &1.token) |> Enum.sort()
 
       assert response == expected
@@ -38,10 +39,11 @@ defmodule LogflareWeb.Api.EndpointControllerTest do
       response =
         conn
         |> add_access_token(user, ~w(private))
-        |> get("/api/endpoints/#{endpoint.token}")
+        |> get(~p"/api/endpoints/#{endpoint.token}")
         |> json_response(200)
+        |> assert_schema("EndpointApiSchema")
 
-      assert response["token"] == endpoint.token
+      assert response.token == endpoint.token
     end
 
     test "returns not found if doesn't own the endpoint query", %{
@@ -52,8 +54,9 @@ defmodule LogflareWeb.Api.EndpointControllerTest do
 
       conn
       |> add_access_token(invalid_user, ~w(private))
-      |> get("/api/endpoints/#{endpoint.token}")
-      |> response(404)
+      |> get(~p"/api/endpoints/#{endpoint.token}")
+      |> json_response(404)
+      |> assert_schema("NotFoundResponse")
     end
   end
 
@@ -63,55 +66,73 @@ defmodule LogflareWeb.Api.EndpointControllerTest do
       user: user
     } do
       name = TestUtils.random_string()
+      query = "select a from logs"
 
       response =
         conn
         |> add_access_token(user, ~w(private))
-        |> post("/api/endpoints", %{name: name, language: "bq_sql", query: "select a from logs"})
+        |> post(~p"/api/endpoints", %{name: name, language: "bq_sql", query: query})
         |> json_response(201)
+        |> assert_schema("EndpointApiSchema")
 
-      assert response["name"] == name
+      assert response.name == name
+      assert response.query == query
     end
 
     test "returns 422 on missing arguments", %{conn: conn, user: user} do
-      resp =
+      response =
         conn
         |> add_access_token(user, ~w(private))
-        |> post("/api/endpoints")
+        |> post(~p"/api/endpoints")
         |> json_response(422)
+        |> assert_schema("UnprocessableEntityResponse")
 
-      assert %{"errors" => %{"name" => _, "query" => _}} = resp
+      assert %{errors: %{"name" => _, "query" => _}} = response
     end
 
     test "returns 422 on bad arguments", %{conn: conn, user: user} do
-      resp =
+      response =
         conn
         |> add_access_token(user, ~w(private))
-        |> post("/api/endpoints", %{name: 123})
+        |> post(~p"/api/endpoints", %{name: 123})
         |> json_response(422)
+        |> assert_schema("UnprocessableEntityResponse")
 
-      assert %{"errors" => %{"name" => _, "query" => _}} = resp
+      assert %{errors: %{"name" => _, "query" => _}} = response
     end
   end
 
   describe "update/2" do
-    test "updates an existing enpoint query from a user", %{
+    test "updates an existing endpoint query from a user", %{
       conn: conn,
       user: user,
       endpoints: [endpoint | _]
     } do
       name = TestUtils.random_string()
+      token = endpoint.token
 
       response =
         conn
         |> add_access_token(user, ~w(private))
-        |> patch("/api/endpoints/#{endpoint.token}", %{name: name})
-        |> response(204)
+        |> patch(~p"/api/endpoints/#{token}", %{name: name})
+        |> text_response(204)
+        |> assert_schema("AcceptedResponse")
 
       assert response == ""
+
+      another_name = TestUtils.random_string()
+
+      response =
+        conn
+        |> add_access_token(user, ~w(private))
+        |> put(~p"/api/endpoints/#{token}", %{name: another_name})
+        |> json_response(200)
+        |> assert_schema("EndpointApiSchema")
+
+      assert %{name: ^another_name, token: ^token} = response
     end
 
-    test "returns not found if doesn't own the enpoint query", %{
+    test "returns not found if doesn't own the endpoint query", %{
       conn: conn,
       endpoints: [endpoint | _]
     } do
@@ -119,8 +140,9 @@ defmodule LogflareWeb.Api.EndpointControllerTest do
 
       conn
       |> add_access_token(invalid_user, ~w(private))
-      |> patch("/api/endpoints/#{endpoint.token}", %{name: TestUtils.random_string()})
-      |> response(404)
+      |> patch(~p"/api/endpoints/#{endpoint.token}", %{name: TestUtils.random_string()})
+      |> json_response(404)
+      |> assert_schema("NotFoundResponse")
     end
 
     test "returns 422 on bad arguments", %{
@@ -128,45 +150,49 @@ defmodule LogflareWeb.Api.EndpointControllerTest do
       user: user,
       endpoints: [endpoint | _]
     } do
-      resp =
+      response =
         conn
         |> add_access_token(user, ~w(private))
-        |> patch("/api/endpoints/#{endpoint.token}", %{name: 123})
+        |> patch(~p"/api/endpoints/#{endpoint.token}", %{name: 123})
         |> json_response(422)
+        |> assert_schema("UnprocessableEntityResponse")
 
-      assert resp == %{"errors" => %{"name" => ["is invalid"]}}
+      assert %{errors: %{"name" => ["is invalid"]}} = response
     end
   end
 
   describe "delete/2" do
-    test "deletes an existing enpoint query from a user", %{
+    test "deletes an existing endpoint query from a user", %{
       conn: conn,
       user: user,
       endpoints: [endpoint | _]
     } do
       name = TestUtils.random_string()
 
-      assert conn
-             |> add_access_token(user, ~w(private))
-             |> delete("/api/endpoints/#{endpoint.token}", %{name: name})
-             |> response(204)
+      conn
+      |> add_access_token(user, ~w(private))
+      |> delete(~p"/api/endpoints/#{endpoint.token}", %{name: name})
+      |> text_response(204)
+      |> assert_schema("AcceptedResponse")
 
-      assert conn
-             |> add_access_token(user, ~w(private))
-             |> get("/api/endpoints/#{endpoint.token}")
-             |> response(404)
+      conn
+      |> add_access_token(user, ~w(private))
+      |> get(~p"/api/endpoints/#{endpoint.token}")
+      |> json_response(404)
+      |> assert_schema("NotFoundResponse")
     end
 
-    test "returns not found if doesn't own the enpoint query", %{
+    test "returns not found if doesn't own the endpoint query", %{
       conn: conn,
       endpoints: [endpoint | _]
     } do
       invalid_user = insert(:user)
 
-      assert conn
-             |> add_access_token(invalid_user, ~w(private))
-             |> delete("/api/endpoints/#{endpoint.token}", %{name: TestUtils.random_string()})
-             |> response(404)
+      conn
+      |> add_access_token(invalid_user, ~w(private))
+      |> delete(~p"/api/endpoints/#{endpoint.token}", %{name: TestUtils.random_string()})
+      |> json_response(404)
+      |> assert_schema("NotFoundResponse")
     end
   end
 end
