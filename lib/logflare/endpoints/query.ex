@@ -27,7 +27,7 @@ defmodule Logflare.Endpoints.Query do
     field(:name, :string)
     field(:query, :string)
     field(:description, :string)
-    field(:language, Ecto.Enum, values: [:bq_sql, :pg_sql, :lql], default: :bq_sql)
+    field(:language, Ecto.Enum, values: [:bq_sql, :pg_sql, :lql, :ch_sql], default: :bq_sql)
     field(:source_mapping, :map)
     field(:sandboxable, :boolean)
     field(:cache_duration_seconds, :integer, default: 3_600)

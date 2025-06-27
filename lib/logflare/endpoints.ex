@@ -1,21 +1,28 @@
 defmodule Logflare.Endpoints do
   @moduledoc false
+
+  import Ecto.Query
+
   alias Logflare.Endpoints.Cache
   alias Logflare.Endpoints.Query
   alias Logflare.Endpoints.Resolver
   alias Logflare.Repo
+  alias Logflare.Sql
   alias Logflare.User
   alias Logflare.Users
   alias Logflare.Utils
   alias Logflare.Backends
+  alias Logflare.Backends.Adaptor.ClickhouseAdaptor
   alias Logflare.Backends.Adaptor.PostgresAdaptor
   alias Logflare.SingleTenant
   alias Logflare.Alerting
   alias Logflare.Alerting.Alert
   alias Logflare.Backends
 
-  import Ecto.Query
+  @query_languages ~w(bq_sql ch_sql pg_sql lql)a
+
   @typep run_query_return :: {:ok, %{rows: [map()]}} | {:error, String.t()}
+  @typep query_language :: :bq_sql | :ch_sql | :pg_sql | :lql
 
   @spec count_endpoints_by_user(User.t() | integer()) :: integer()
   def count_endpoints_by_user(%User{id: user_id}), do: count_endpoints_by_user(user_id)
@@ -127,17 +134,17 @@ defmodule Logflare.Endpoints do
     iex> parse_query_string("select @testing from date", [], [])
     {:ok, %{parameters: ["testing"]}}
   """
-  @spec parse_query_string(:bq_sql | :pg_sql, String.t(), [Query.t()], [Alert.t()]) ::
+  @spec parse_query_string(query_language(), String.t(), [Query.t()], [Alert.t()]) ::
           {:ok, %{parameters: [String.t()], expanded_query: String.t()}} | {:error, any()}
   def parse_query_string(language, query_string, endpoints, alerts)
-      when language in [:bq_sql, :pg_sql] do
+      when language in @query_languages do
     with {:ok, expanded_query} <-
-           Logflare.Sql.expand_subqueries(
+           Sql.expand_subqueries(
              language,
              query_string,
              endpoints ++ alerts
            ),
-         {:ok, declared_params} <- Logflare.Sql.parameters(expanded_query) do
+         {:ok, declared_params} <- Sql.parameters(expanded_query) do
       {:ok, %{parameters: declared_params, expanded_query: expanded_query}}
     end
   end
@@ -147,6 +154,7 @@ defmodule Logflare.Endpoints do
   """
   @spec run_query(Query.t(), params :: map()) :: run_query_return()
   def run_query(%Query{} = endpoint_query, params \\ %{}) do
+    sql_dialect = Sql.to_dialect(endpoint_query.language)
     %Query{query: query_string, user_id: user_id, sandboxable: sandboxable} = endpoint_query
     sql_param = Map.get(params, "sql")
 
@@ -156,9 +164,9 @@ defmodule Logflare.Endpoints do
 
     alerts = Alerting.list_alert_queries_by_user_id(endpoint_query.user_id)
 
-    with {:ok, declared_params} <- Logflare.Sql.parameters(query_string),
+    with {:ok, declared_params} <- Sql.parameters(query_string, dialect: sql_dialect),
          {:ok, expanded_query} <-
-           Logflare.Sql.expand_subqueries(
+           Sql.expand_subqueries(
              endpoint_query.language,
              query_string,
              endpoints ++ alerts
@@ -166,14 +174,14 @@ defmodule Logflare.Endpoints do
          transform_input =
            if(sandboxable && sql_param, do: {expanded_query, sql_param}, else: expanded_query),
          {:ok, transformed_query} <-
-           Logflare.Sql.transform(endpoint_query.language, transform_input, user_id) do
+           Sql.transform(endpoint_query.language, transform_input, user_id) do
       {endpoint, query_string} =
         if SingleTenant.supabase_mode?() and SingleTenant.postgres_backend?() and
              endpoint_query.language != :pg_sql do
           # translate the query
           schema_prefix = Keyword.get(SingleTenant.postgres_backend_adapter_opts(), :schema)
 
-          {:ok, q} = Logflare.Sql.translate(:bq_sql, :pg_sql, transformed_query, schema_prefix)
+          {:ok, q} = Sql.translate(:bq_sql, :pg_sql, transformed_query, schema_prefix)
 
           {Map.put(endpoint_query, :language, :pg_sql), q}
         else
@@ -192,10 +200,10 @@ defmodule Logflare.Endpoints do
     {:ok, %{rows:  [...]} }
   """
   @typep run_query_string_opts :: [sandboxable: boolean(), params: map()]
-  @typep language :: :bq_sql | :pg_sql | :lql
-  @spec run_query_string(User.t(), {language(), String.t()}, run_query_string_opts()) ::
+  @spec run_query_string(User.t(), {query_language(), String.t()}, run_query_string_opts()) ::
           run_query_return()
-  def run_query_string(user, {language, query_string}, opts \\ %{}) do
+  def run_query_string(user, {language, query_string}, opts \\ %{})
+      when language in @query_languages do
     opts = Enum.into(opts, %{sandboxable: false, params: %{}})
 
     source_mapping =
@@ -237,6 +245,8 @@ defmodule Logflare.Endpoints do
          _declared_params,
          params
        ) do
+    sql_dialect = Sql.to_dialect(endpoint_query.language)
+
     # find compatible source backend
     # TODO: move this to Backends module
     user = Users.Cache.get(endpoint_query.user_id)
@@ -257,7 +267,7 @@ defmodule Logflare.Endpoints do
 
     # convert params to PG params style
     positions =
-      Logflare.Sql.parameter_positions(query_string)
+      Sql.parameter_positions(query_string, dialect: sql_dialect)
       |> then(fn {:ok, params} ->
         params
         |> Enum.sort_by(&{elem(&1, 0)})
@@ -271,6 +281,51 @@ defmodule Logflare.Endpoints do
     with {:ok, rows} <-
            PostgresAdaptor.execute_query(backend, {transformed_query, args}) do
       {:ok, %{rows: rows}}
+    end
+  end
+
+  defp exec_query_on_backend(
+         %Query{query: query_string, language: :ch_sql} = endpoint_query,
+         transformed_query,
+         _declared_params,
+         params
+       ) do
+    sql_dialect = Sql.to_dialect(endpoint_query.language)
+    user = Users.Cache.get(endpoint_query.user_id)
+
+    backend =
+      case Backends.get_default_backend(user) do
+        %_{type: :bigquery} ->
+          Backends.list_backends(user_id: user.id, type: :clickhouse)
+          |> Enum.random()
+
+        backend ->
+          backend
+      end
+
+    if is_nil(backend) do
+      raise "No matching source backend found for Clickhouse query execution"
+    end
+
+    # convert params to CH params style
+    positions =
+      Sql.parameter_positions(query_string, dialect: sql_dialect)
+      |> then(fn {:ok, params} ->
+        params
+        |> Enum.sort_by(&{elem(&1, 0)})
+      end)
+
+    args =
+      for {_pos, parameter} <- positions do
+        Map.get(params, parameter)
+      end
+
+    case ClickhouseAdaptor.execute_query(backend, {transformed_query, args}) do
+      {:ok, rows} ->
+        {:ok, %{rows: rows}}
+
+      {:error, error} ->
+        {:error, error}
     end
   end
 
