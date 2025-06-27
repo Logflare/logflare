@@ -53,6 +53,7 @@ defmodule Logflare.Google.CloudResourceManager do
           %{members: Enum.uniq(members) |> Enum.count()},
           %{}
         )
+
         Logger.info("Set IAM policy successful")
 
       {:error, _err} = err ->
