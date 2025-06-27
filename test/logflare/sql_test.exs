@@ -398,6 +398,23 @@ defmodule Logflare.SqlTest do
 
       assert {:ok, _result} = Sql.transform(:ch_sql, input, user)
     end
+
+    test "can extract out parameter names in the SQL string" do
+      for {input, output} <- [
+            {"select event_message, JSONExtractString(body, 'metadata.custom_user_data.company') AS company, timestamp FROM foo.ch WHERE company = @company",
+             ["company"]},
+            {"select @a from old", ["a"]}
+          ] do
+        assert {:ok, ^output} = Sql.parameters(input, dialect: "clickhouse")
+      end
+    end
+
+    test "parameters positions are extracted" do
+      ch_query =
+        "select event_message, JSONExtractString(body, 'metadata.custom_user_data.company') AS company, timestamp FROM foo.ch WHERE company = @company"
+
+      assert {:ok, %{1 => "company"}} = Sql.parameter_positions(ch_query, dialect: "clickhouse")
+    end
   end
 
   test "sources/2 creates a source mapping present for sources present in the query" do
