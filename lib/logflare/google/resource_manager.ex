@@ -44,69 +44,66 @@ defmodule Logflare.Google.CloudResourceManager do
     policy = %Model.Policy{bindings: bindings}
     body = %Model.SetIamPolicyRequest{policy: policy}
 
-    {function, arity} = __ENV__.function
-    caller = "#{function}" <> "_" <> "#{arity}"
-
     case Api.Projects.cloudresourcemanager_projects_set_iam_policy(conn, env_project_number(),
            body: body
          ) do
       {:ok, _response} ->
-        Logger.info("Set IAM policy: #{Enum.count(members)} accounts",
-          logflare: %{
-            google: %{
-              cloudresourcemanager: %{
-                "#{caller}": %{
-                  accounts: Enum.count(members),
-                  response: :ok
-                }
-              }
-            }
-          }
+        :telemetry.execute(
+          [:logflare, :google, :set_iam_policy],
+          %{members: Enum.uniq(members) |> Enum.count()},
+          %{}
         )
 
-      {:error, %Tesla.Env{} = response} ->
-        message = GenUtils.get_tesla_error_message(response)
-        user_exists_regexp = ~r/User (\S+?@\S+) does not exist/
+      {:error, _err} = err ->
+        handle_errors(err)
+    end
+  end
 
-        cond do
-          message =~ user_exists_regexp ->
-            [captured] = Regex.run(user_exists_regexp, message, capture: :all_but_first)
-            # set user as invalid google account
-            result =
-              cond do
-                user = Users.get_by(email: captured) ->
-                  user
-                  |> Users.update_user_all_fields(%{valid_google_account: false})
+  defp handle_errors({:error, %Tesla.Env{} = response}) do
+    message = GenUtils.get_tesla_error_message(response)
+    user_exists_regexp = ~r/User (\S+?@\S+) does not exist/
 
-                team_user = TeamUsers.get_team_user_by(email: captured) ->
-                  team_user
-                  |> TeamUsers.update_team_user(%{valid_google_account: false})
+    cond do
+      message =~ user_exists_regexp ->
+        [captured] = Regex.run(user_exists_regexp, message, capture: :all_but_first)
+        # set user as invalid google account
+        result =
+          cond do
+            user = Users.get_by(email: captured) ->
+              user
+              |> Users.update_user_all_fields(%{valid_google_account: false})
 
-                true ->
-                  :noop
-              end
+            team_user = TeamUsers.get_team_user_by(email: captured) ->
+              team_user
+              |> TeamUsers.update_team_user(%{valid_google_account: false})
 
-            if result == :noop do
-              Logger.error(
-                "Could find user #{captured} in the database. Set IAM policy error: #{message}"
-              )
-            else
-              Logger.info(
-                "Google account #{captured} was marked as invalid and excluded from IAM policy"
-              )
-            end
+            true ->
+              :noop
+          end
 
-          true ->
-            Logger.error("Set IAM policy error: #{message}",
-              error_string: Jason.decode!(response.body)
-            )
-
-            :noop
+        if result == :noop do
+          Logger.error(
+            "Could find user #{captured} in the database. Set IAM policy error: #{message}",
+            error_string: Jason.decode!(response.body)
+          )
+        else
+          Logger.info(
+            "Google account #{captured} was marked as invalid and excluded from IAM policy",
+            error_string: Jason.decode!(response.body)
+          )
         end
 
-      {:error, err} ->
-        Logger.error("Set IAM policy unknown error: #{inspect(err)}")
+      true ->
+        Logger.error("Set IAM policy unknown API error: #{message}",
+          error_string: Jason.decode!(response.body)
+        )
+
+        :noop
     end
+  end
+
+  defp handle_errors({:error, err}) do
+    Logger.error("Set IAM policy unknown error: #{inspect(err)}")
   end
 
   defp get_service_accounts() do
@@ -166,9 +163,12 @@ defmodule Logflare.Google.CloudResourceManager do
       Users.list_users(paying: true, provider: :google)
       |> Users.preload_valid_google_team_users()
       |> Enum.flat_map(fn user ->
-        for tu <- user.team.team_users do
-          tu.email
-        end ++ [user.email]
+        [
+          user.email
+          | for tu <- user.team.team_users do
+              tu.email
+            end
+        ]
       end)
 
     if length(emails) > 1000 do

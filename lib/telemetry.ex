@@ -144,7 +144,10 @@ defmodule Logflare.Telemetry do
         description: "Rate limited API hits"
       ),
       last_value("logflare.backends.egress.request_length", tags: [:backend_id]),
-      last_value("logflare.system.finch.in_flight_requests", tags: [:pool, :url])
+      last_value("logflare.system.finch.in_flight_requests", tags: [:pool, :url]),
+      last_value("logflare.google.set_iam_policy.members",
+        description: "Google IAM policy members count"
+      )
     ]
 
     Enum.concat([
