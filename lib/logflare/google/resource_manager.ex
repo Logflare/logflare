@@ -2,15 +2,11 @@ defmodule Logflare.Google.CloudResourceManager do
   @moduledoc false
   require Logger
 
-  import Ecto.Query
-
   alias GoogleApi.CloudResourceManager.V1.Api
   alias GoogleApi.CloudResourceManager.V1.Model
-  alias Logflare.Repo
   alias Logflare.Google.BigQuery.GenUtils
-  alias Logflare.User
+  alias Logflare.Users
   alias Logflare.TeamUsers
-  alias Logflare.Billing
   alias Logflare.Utils.Tasks
   alias Logflare.Backends.Adaptor.BigQueryAdaptor
 
@@ -68,20 +64,48 @@ defmodule Logflare.Google.CloudResourceManager do
           }
         )
 
-      {:error, response} ->
-        Logger.error("Set IAM policy error: #{GenUtils.get_tesla_error_message(response)}",
-          logflare: %{
-            google: %{
-              cloudresourcemanager: %{
-                "#{caller}": %{
-                  accounts: Enum.count(members),
-                  response: :error,
-                  response_message: "#{GenUtils.get_tesla_error_message(response)}"
-                }
-              }
-            }
-          }
-        )
+      {:error, %Tesla.Env{} = response} ->
+        message = GenUtils.get_tesla_error_message(response)
+        user_exists_regexp = ~r/User (\S+?@\S+) does not exist/
+
+        cond do
+          message =~ user_exists_regexp ->
+            [captured] = Regex.run(user_exists_regexp, message, capture: :all_but_first)
+            # set user as invalid google account
+            result =
+              cond do
+                user = Users.get_by(email: captured) ->
+                  user
+                  |> Users.update_user_all_fields(%{valid_google_account: false})
+
+                team_user = TeamUsers.get_team_user_by(email: captured) ->
+                  team_user
+                  |> TeamUsers.update_team_user(%{valid_google_account: false})
+
+                true ->
+                  :noop
+              end
+
+            if result == :noop do
+              Logger.error(
+                "Could find user #{captured} in the database. Set IAM policy error: #{message}"
+              )
+            else
+              Logger.info(
+                "Google account #{captured} was marked as invalid and excluded from IAM policy"
+              )
+            end
+
+          true ->
+            Logger.error("Set IAM policy error: #{message}",
+              error_string: Jason.decode!(response.body)
+            )
+
+            :noop
+        end
+
+      {:error, err} ->
+        Logger.error("Set IAM policy unknown error: #{inspect(err)}")
     end
   end
 
@@ -138,45 +162,25 @@ defmodule Logflare.Google.CloudResourceManager do
   end
 
   defp build_members() do
-    query =
-      from(u in User,
-        join: t in assoc(u, :team),
-        preload: [team: t],
-        select: u
+    emails =
+      Users.list_users(paying: true, provider: :google)
+      |> Users.preload_valid_google_team_users()
+      |> Enum.flat_map(fn user ->
+        for tu <- user.team.team_users do
+          tu.email
+        end ++ [user.email]
+      end)
+
+    if length(emails) > 1000 do
+      Logger.warning(
+        "Number of user emails attached to IAM policy is greater than 1000 (current: #{length(emails)}), taking first 1400"
       )
+    end
 
-    all_paid_users =
-      query
-      |> Repo.all()
-      |> Enum.filter(fn user ->
-        case Billing.get_plan_by_user(user) do
-          %Billing.Plan{name: "Free"} -> false
-          _plan -> true
-        end
-      end)
-
-    valid_paid_users =
-      all_paid_users
-      |> Enum.filter(&is_valid_member?/1)
-      |> List.flatten()
-
-    paid_users_team_members =
-      all_paid_users
-      |> Enum.map(fn paid_user ->
-        team_users = TeamUsers.list_team_users_by(team_id: paid_user.team.id)
-        Enum.filter(team_users, &is_valid_member?/1)
-      end)
-      |> List.flatten()
-
-    (valid_paid_users ++ paid_users_team_members)
-    |> Enum.sort_by(& &1.updated_at, {:desc, Date})
-    |> Enum.take(1450)
-    |> Enum.map(&("user:" <> &1.email))
+    emails
+    |> Enum.take(1400)
+    |> Enum.map(&("user:" <> &1))
   end
-
-  defp is_valid_member?(%{provider: "google", valid_google_account: true}), do: true
-  defp is_valid_member?(%{provider: "google", valid_google_account: nil}), do: true
-  defp is_valid_member?(_), do: false
 
   defp env_project_number, do: Application.get_env(:logflare, Logflare.Google)[:project_number]
   defp env_service_account, do: Application.get_env(:logflare, Logflare.Google)[:service_account]

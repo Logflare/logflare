@@ -15,17 +15,22 @@ defmodule Logflare.Google.CloudResourceManagerTest do
   end
 
   describe "set_iam_policy/0" do
+    setup do
+      # Mock IAM API calls for listing existing service accounts
+      stub(GoogleApi.IAM.V1.Api.Projects, :iam_projects_service_accounts_list, fn
+        _conn, "projects/" <> _project_id, _opts ->
+          {:ok, %{accounts: [], nextPageToken: nil}}
+      end)
+
+      :ok
+    end
+
     test "request body sends expected roles for paying users, paying team users and service accounts",
          %{
            google_configs: google_configs,
            expected_members: expected_members
          } do
       pid = self()
-      # Mock IAM API calls for listing existing service accounts
-      stub(GoogleApi.IAM.V1.Api.Projects, :iam_projects_service_accounts_list, fn
-        _conn, "projects/" <> _project_id, _opts ->
-          {:ok, %{accounts: [], nextPageToken: nil}}
-      end)
 
       stub(
         GoogleApi.CloudResourceManager.V1.Api.Projects,
@@ -50,6 +55,73 @@ defmodule Logflare.Google.CloudResourceManagerTest do
       for member <- expected_members do
         assert Enum.member?(members_list, member)
       end
+    end
+
+    test "sets user as invalid google account if user does not exist" do
+      user = insert(:user, valid_google_account: true)
+
+      expect(
+        GoogleApi.CloudResourceManager.V1.Api.Projects,
+        :cloudresourcemanager_projects_set_iam_policy,
+        fn _, _project_number, [body: _body] ->
+          {:error,
+           %Tesla.Env{
+             status: 404,
+             body: Jason.encode!(%{error: %{message: "User #{user.email} does not exist."}})
+           }}
+        end
+      )
+
+      assert ExUnit.CaptureLog.capture_log(fn ->
+               CloudResourceManager.set_iam_policy(async: false)
+             end) =~ "marked as invalid"
+
+      user = Logflare.Repo.get!(Logflare.User, user.id)
+      refute user.valid_google_account
+
+      expect(
+        GoogleApi.CloudResourceManager.V1.Api.Projects,
+        :cloudresourcemanager_projects_set_iam_policy,
+        fn _, _project_number, [body: _body] ->
+          {:ok,
+           %Tesla.Env{
+             status: 200,
+             body: ""
+           }}
+        end
+      )
+
+      refute ExUnit.CaptureLog.capture_log(fn ->
+               CloudResourceManager.set_iam_policy(async: false)
+             end) =~ "marked as invalid"
+    end
+
+    test "sets team_user as invalid google account if user does not exist" do
+      team_user = insert(:team_user, valid_google_account: true)
+
+      expect(
+        GoogleApi.CloudResourceManager.V1.Api.Projects,
+        :cloudresourcemanager_projects_set_iam_policy,
+        fn _, _project_number, [body: _body] ->
+          {:error,
+           %Tesla.Env{
+             status: 404,
+             body: Jason.encode!(%{error: %{message: "User #{team_user.email} does not exist."}})
+           }}
+        end
+      )
+
+      assert ExUnit.CaptureLog.capture_log(fn ->
+               CloudResourceManager.set_iam_policy(async: false)
+             end) =~ "marked as invalid"
+
+      team_user = Logflare.Repo.get!(Logflare.TeamUsers.TeamUser, team_user.id)
+      refute team_user.valid_google_account
+
+      # attempting to re-set the policy should not raise an error
+      refute ExUnit.CaptureLog.capture_log(fn ->
+               CloudResourceManager.set_iam_policy(async: false)
+             end) =~ "marked as invalid"
     end
   end
 
