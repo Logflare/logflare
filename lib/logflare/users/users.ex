@@ -130,10 +130,6 @@ defmodule Logflare.Users do
     Repo.preload(user, :team)
   end
 
-  def preload_team_users(user) do
-    Repo.preload(user, team: [:team_users])
-  end
-
   def preload_valid_google_team_users(user) do
     query =
       from(tu in TeamUser, where: tu.valid_google_account != false and tu.provider == "google")

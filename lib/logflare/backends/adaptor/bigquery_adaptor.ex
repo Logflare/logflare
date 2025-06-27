@@ -175,7 +175,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
     project_id = project_id || Application.get_env(:logflare, Logflare.Google)[:project_id]
 
     get_next_page(project_id, nil)
-    |> Enum.filter(&(&1.name =~ @service_account_prefix <> "@"))
+    |> Enum.filter(&(&1.name =~ @service_account_prefix))
   end
 
   defp handle_response({:ok, response}, project_id) do
