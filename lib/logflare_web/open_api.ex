@@ -22,15 +22,19 @@ defmodule LogflareWeb.OpenApi do
   end
 
   defmodule List do
-    require OpenApiSpex
-
-    OpenApiSpex.schema(%{type: :array, items: Endpoint})
+    def schema(module) do
+      %Schema{
+        title: "#{module.schema().title}ListResponse",
+        type: :array,
+        items: module
+      }
+    end
 
     def response(module) do
       {
         "#{module.schema().title} List Response",
         "application/json",
-        %Schema{type: :array, items: module}
+        schema(module)
       }
     end
   end
@@ -45,18 +49,36 @@ defmodule LogflareWeb.OpenApi do
   end
 
   defmodule Accepted do
-    require OpenApiSpex
-    OpenApiSpex.schema(%{})
+    def schema, do: %Schema{title: "AcceptedResponse"}
 
-    def response(), do: {"Accepted Response", "text/plain", __MODULE__}
+    def response(), do: {"Accepted Response", "text/plain", schema()}
     def response(module), do: {"Accepted Response", "application/json", module}
   end
 
   defmodule NotFound do
-    require OpenApiSpex
-    OpenApiSpex.schema(%{})
+    def schema do
+      %Schema{
+        title: "NotFoundResponse",
+        type: :object,
+        properties: %{error: %Schema{type: :string}},
+        required: [:error]
+      }
+    end
 
-    def response(), do: {"Not found", "text/plain", __MODULE__}
+    def response(), do: {"Not found", "text/plain", schema()}
+  end
+
+  defmodule UnprocessableEntity do
+    def schema do
+      %Schema{
+        title: "UnprocessableEntityResponse",
+        type: :object,
+        properties: %{errors: %Schema{type: :object}},
+        required: [:errors]
+      }
+    end
+
+    def response(), do: {"Unprocessable Entity", "application/json", schema()}
   end
 
   defmodule BadRequest do
