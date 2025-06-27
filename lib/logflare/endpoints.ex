@@ -154,6 +154,7 @@ defmodule Logflare.Endpoints do
   """
   @spec run_query(Query.t(), params :: map()) :: run_query_return()
   def run_query(%Query{} = endpoint_query, params \\ %{}) do
+    sql_dialect = Sql.to_dialect(endpoint_query.language)
     %Query{query: query_string, user_id: user_id, sandboxable: sandboxable} = endpoint_query
     sql_param = Map.get(params, "sql")
 
@@ -163,7 +164,7 @@ defmodule Logflare.Endpoints do
 
     alerts = Alerting.list_alert_queries_by_user_id(endpoint_query.user_id)
 
-    with {:ok, declared_params} <- Sql.parameters(query_string),
+    with {:ok, declared_params} <- Sql.parameters(query_string, dialect: sql_dialect),
          {:ok, expanded_query} <-
            Sql.expand_subqueries(
              endpoint_query.language,
@@ -244,6 +245,8 @@ defmodule Logflare.Endpoints do
          _declared_params,
          params
        ) do
+    sql_dialect = Sql.to_dialect(endpoint_query.language)
+
     # find compatible source backend
     # TODO: move this to Backends module
     user = Users.Cache.get(endpoint_query.user_id)
@@ -264,7 +267,7 @@ defmodule Logflare.Endpoints do
 
     # convert params to PG params style
     positions =
-      Sql.parameter_positions(query_string)
+      Sql.parameter_positions(query_string, dialect: sql_dialect)
       |> then(fn {:ok, params} ->
         params
         |> Enum.sort_by(&{elem(&1, 0)})
@@ -287,6 +290,7 @@ defmodule Logflare.Endpoints do
          _declared_params,
          params
        ) do
+    sql_dialect = Sql.to_dialect(endpoint_query.language)
     user = Users.Cache.get(endpoint_query.user_id)
 
     backend =
@@ -305,7 +309,7 @@ defmodule Logflare.Endpoints do
 
     # convert params to CH params style
     positions =
-      Sql.parameter_positions(query_string)
+      Sql.parameter_positions(query_string, dialect: sql_dialect)
       |> then(fn {:ok, params} ->
         params
         |> Enum.sort_by(&{elem(&1, 0)})
@@ -316,9 +320,12 @@ defmodule Logflare.Endpoints do
         Map.get(params, parameter)
       end
 
-    with {:ok, rows} <-
-           ClickhouseAdaptor.execute_query(backend, {transformed_query, args}) do
-      {:ok, %{rows: rows}}
+    case ClickhouseAdaptor.execute_query(backend, {transformed_query, args}) do
+      {:ok, rows} ->
+        {:ok, %{rows: rows}}
+
+      {:error, error} ->
+        {:error, error}
     end
   end
 

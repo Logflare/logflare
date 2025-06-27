@@ -155,34 +155,36 @@ defmodule Logflare.Sql do
     transform(lang, input, user)
   end
 
-  def transform(:pg_sql, query, user) do
+  def transform(:pg_sql = language, query, user) do
+    sql_dialect = to_dialect(language)
     sources = Sources.list_sources_by_user(user)
     source_mapping = source_mapping(sources)
 
-    with {:ok, statements} <- Parser.parse("postgres", query) do
+    with {:ok, statements} <- Parser.parse(sql_dialect, query) do
       statements
       |> do_transform(%{
         sources: sources,
         source_mapping: source_mapping,
         source_names: Map.keys(source_mapping),
-        dialect: "postgres",
+        dialect: sql_dialect,
         ast: statements
       })
       |> Parser.to_string()
     end
   end
 
-  def transform(:ch_sql, query, user) do
+  def transform(:ch_sql = language, query, user) do
+    sql_dialect = to_dialect(language)
     sources = Sources.list_sources_by_user(user)
     source_mapping = source_mapping(sources)
 
-    with {:ok, statements} <- Parser.parse("postgres", query) do
+    with {:ok, statements} <- Parser.parse(sql_dialect, query) do
       statements
       |> do_transform(%{
         sources: sources,
         source_mapping: source_mapping,
         source_names: Map.keys(source_mapping),
-        dialect: "clickhouse",
+        dialect: sql_dialect,
         ast: statements
       })
       |> Parser.to_string()
@@ -784,9 +786,9 @@ defmodule Logflare.Sql do
     {:ok, ["something"]}
   """
   def parameters(query, opts \\ []) do
-    opts = Enum.into(opts, %{dialect: "bigquery"})
+    dialect = Keyword.get(opts, :dialect, "bigquery")
 
-    with {:ok, ast} <- Parser.parse(opts.dialect, query) do
+    with {:ok, ast} <- Parser.parse(dialect, query) do
       {:ok, extract_all_parameters(ast)}
     end
   end
@@ -851,15 +853,17 @@ defmodule Logflare.Sql do
   iex> parameter_positions("select @test as testing")
   %{1 => "test"}
   """
-  @spec parameter_positions(String.t()) :: %{integer() => String.t()}
-  def parameter_positions(string) when is_binary(string) do
-    {:ok, parameters} = parameters(string)
-    {:ok, do_parameter_positions_mapping(string, parameters)}
+  @spec parameter_positions(query :: String.t(), opts :: Keyword.t()) :: %{
+          integer() => String.t()
+        }
+  def parameter_positions(query, opts \\ []) when is_binary(query) and is_list(opts) do
+    {:ok, parameters} = parameters(query, opts)
+    {:ok, do_parameter_positions_mapping(query, parameters)}
   end
 
-  def do_parameter_positions_mapping(_string, []), do: %{}
+  def do_parameter_positions_mapping(_query, []), do: %{}
 
-  def do_parameter_positions_mapping(string, params) when is_binary(string) and is_list(params) do
+  def do_parameter_positions_mapping(query, params) when is_binary(query) and is_list(params) do
     str =
       params
       |> Enum.uniq()
@@ -867,7 +871,7 @@ defmodule Logflare.Sql do
 
     regexp = Regex.compile!("@(#{str})(?:\\s|$|\\,|\\,|\\)|\\()")
 
-    Regex.scan(regexp, string)
+    Regex.scan(regexp, query)
     |> Enum.with_index(1)
     |> Enum.reduce(%{}, fn {[_, param], index}, acc ->
       Map.put(acc, index, String.trim(param))

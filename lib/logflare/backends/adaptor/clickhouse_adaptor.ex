@@ -94,24 +94,43 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
     # Try to find a source associated with this backend to derive the Clickhouse connection details
     case find_source_for_backend(backend) do
       %Source{} = source ->
-        with {:ok, %Ch.Result{} = result} <-
-               execute_ch_query({source, backend}, query_string, params) do
-          {:ok, convert_ch_result_to_rows(result)}
-        end
+        execute_query({source, backend}, {query_string, params})
 
       nil ->
         {:error, "No source found for Clickhouse backend."}
     end
   end
 
-  def execute_query({%Source{} = source, %Backend{} = backend}, query_string)
+  def execute_query({%Source{}, %Backend{}} = source_backend, query_string)
       when is_non_empty_binary(query_string),
-      do: execute_query({source, backend}, {query_string, []})
+      do: execute_query(source_backend, {query_string, []})
 
   def execute_query({%Source{} = source, %Backend{} = backend}, {query_string, params})
       when is_non_empty_binary(query_string) and is_list(params) do
-    with {:ok, %Ch.Result{} = result} <- execute_ch_query({source, backend}, query_string, params) do
-      {:ok, convert_ch_result_to_rows(result)}
+    case execute_ch_query({source, backend}, query_string, params) do
+      {:ok, %Ch.Result{} = result} ->
+        {:ok, convert_ch_result_to_rows(result)}
+
+      {:error, %Ch.Error{message: error_msg}} when is_non_empty_binary(error_msg) ->
+        Logger.warning(
+          "ClickHouse query failed: #{inspect(error_msg)}",
+          source_token: source.token,
+          backend_id: backend.id
+        )
+
+        {:error, "Error executing Clickhouse query"}
+
+      {:error, reason} when is_non_empty_binary(reason) ->
+        Logger.warning(
+          "ClickHouse query failed: #{inspect(reason)}",
+          source_token: source.token,
+          backend_id: backend.id
+        )
+
+        {:error, "Error executing Clickhouse query"}
+
+      {:error, _} ->
+        {:error, "Error executing Clickhouse query"}
     end
   end
 
@@ -235,10 +254,10 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
   @spec connection_via(source_backend_tuple(), connection_type :: ch_connection_type()) ::
           via_tuple()
   def connection_via({%Source{} = source, %Backend{} = backend}, :read),
-    do: Backends.via_source(source, :ReadConnection, backend)
+    do: Backends.via_source(source, :ClickhouseReadConnection, backend)
 
   def connection_via({%Source{} = source, %Backend{} = backend}, :write),
-    do: Backends.via_source(source, :WriteConnection, backend)
+    do: Backends.via_source(source, :ClickhouseWriteConnection, backend)
 
   @doc """
   Returns the pid for the ClickHouse connection related to a specific `Source` and `Backend` pair.
@@ -327,7 +346,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
           statement :: iodata(),
           params :: map | [term] | [row :: [term]] | iodata | Enumerable.t(),
           [Ch.query_option()]
-        ) :: {:ok, Ch.Result.t()} | {:error, Exception.t()}
+        ) :: {:ok, Ch.Result.t()} | {:error, Exception.t()} | {:error, Ch.Error.t()}
   def execute_ch_query(backend_source_or_conn_via, statement, params \\ [], opts \\ [])
 
   def execute_ch_query({%Source{} = source, %Backend{} = backend}, statement, params, opts)
@@ -656,7 +675,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
   @spec find_source_for_backend_via_registry(Backend.t()) :: Source.t() | nil
   defp find_source_for_backend_via_registry(%Backend{id: backend_id, user_id: user_id}) do
     Registry.select(SourceRegistry, [
-      {{{:"$1", {:ReadConnection, :"$2"}}, :_, :_}, [{:==, :"$2", backend_id}], [:"$1"]}
+      {{{:"$1", {:ClickhouseReadConnection, :"$2"}}, :_, :_}, [{:==, :"$1", backend_id}], [:"$2"]}
     ])
     |> Enum.uniq()
     |> Enum.find_value(fn source_id ->
