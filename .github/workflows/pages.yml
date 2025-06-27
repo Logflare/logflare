@@ -28,7 +28,7 @@ jobs:
       - name: Setup Node.js environment
         uses: actions/setup-node@v3
         with:
-          node-version: ">=16.14"
+          node-version: ">=22.9"
           cache: "npm"
           cache-dependency-path: docs/docs.logflare.com/package-lock.json
       - name: Setup Pages

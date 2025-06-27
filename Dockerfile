@@ -24,7 +24,7 @@ COPY assets/package.json assets/package-lock.json assets/
 # install build dependencies
 RUN apt-get update -y && apt-get install -y curl bash build-essential git gcc make && \
     # install nodejs
-    curl -fsSL https://deb.nodesource.com/setup_18.x | bash - && \
+    curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && \
     apt-get install -y nodejs && \
     # install rust
     curl https://sh.rustup.rs -sSf | bash -s -- -y && \
