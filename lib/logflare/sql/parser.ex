@@ -34,10 +34,8 @@ defmodule Logflare.Sql.Parser do
   @doc """
   Converts an AST or list of ASTs back into a SQL string.
   """
-  @spec to_string(map()) :: String.t()
+  @spec to_string(map() | [map()]) :: String.t()
   def to_string(ast) when is_map(ast), do: __MODULE__.to_string([ast])
-
-  @spec to_string([map()]) :: String.t()
   def to_string(asts) when is_list(asts) do
     asts
     |> Jason.encode!()
