@@ -112,7 +112,7 @@ document.addEventListener("DOMContentLoaded", (e) => {
 window.addEventListener("logflare:copy-to-clipboard", (event) => {
   if ("clipboard" in navigator) {
     const text = event.detail?.text || event.target.textContent;
-    const tooltip = document.getElementById("copy-tooltip");
+    const tooltip = document.getElementById("copy-tooltip") || document.querySelector(".tooltip-inner")
     if (tooltip) {
       tooltip.innerHTML = "Copied!";
     }
