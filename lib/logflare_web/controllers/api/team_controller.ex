@@ -8,6 +8,7 @@ defmodule LogflareWeb.Api.TeamController do
   alias LogflareWeb.OpenApi.Created
   alias LogflareWeb.OpenApi.List
   alias LogflareWeb.OpenApi.NotFound
+  alias LogflareWeb.OpenApi.UnprocessableEntity
 
   alias LogflareWeb.OpenApiSchemas.Team
 
@@ -46,7 +47,8 @@ defmodule LogflareWeb.Api.TeamController do
     request_body: Team.params(),
     responses: %{
       201 => Created.response(Team),
-      404 => NotFound.response()
+      404 => NotFound.response(),
+      422 => UnprocessableEntity.response()
     }
   )
 
@@ -64,9 +66,10 @@ defmodule LogflareWeb.Api.TeamController do
     parameters: [token: [in: :path, description: "Team Token", type: :string]],
     request_body: Team.params(),
     responses: %{
-      204 => Accepted.response(),
       201 => Created.response(Team),
-      404 => NotFound.response()
+      204 => Accepted.response(),
+      404 => NotFound.response(),
+      422 => UnprocessableEntity.response()
     }
   )
 

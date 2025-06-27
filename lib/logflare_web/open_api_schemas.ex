@@ -164,19 +164,19 @@ defmodule LogflareWeb.OpenApiSchemas do
       api_key: %Schema{type: :string},
       email_preferred: %Schema{type: :string},
       name: %Schema{type: :string},
-      image: %Schema{type: :string},
+      image: %Schema{type: :string, nullable: true},
       email_me_product: %Schema{type: :boolean},
-      phone: %Schema{type: :string},
-      bigquery_project_id: %Schema{type: :string},
-      bigquery_dataset_location: %Schema{type: :string},
-      bigquery_dataset_id: %Schema{type: :string},
+      phone: %Schema{type: :string, nullable: true},
+      bigquery_project_id: %Schema{type: :string, nullable: true},
+      bigquery_dataset_location: %Schema{type: :string, nullable: true},
+      bigquery_dataset_id: %Schema{type: :string, nullable: true},
       api_quota: %Schema{type: :integer},
-      company: %Schema{type: :string},
+      company: %Schema{type: :string, nullable: true},
       token: %Schema{type: :string}
     }
     use LogflareWeb.OpenApi,
       properties: @properties,
-      required: [:email, :provider, :token, :provider_uid, :api_key]
+      required: [:email, :provider, :token, :api_key]
   end
 
   defmodule TeamUser do
