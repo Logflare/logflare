@@ -65,35 +65,23 @@ defmodule Logflare.Sql do
 
   defp replace_names_with_subqueries(
          {"relation" = k,
-          %{"Table" => %{"alias" => table_alias, "name" => [%{"value" => table_name}]}} = v},
+          %{"Table" => %{"alias" => table_alias, "name" => table_name_values}} = v},
          data
-       ) do
-    query = Enum.find(data.queries, &(&1.name == table_name))
+       )
+       when is_list(table_name_values) and is_map(data) do
+    # handle both single and split table name AST
+    table_name =
+      case table_name_values do
+        [%{"value" => table_name}] ->
+          table_name
 
-    if query do
-      parser_dialect = to_dialect(data.language)
-      {:ok, [%{"Query" => body}]} = Parser.parse(parser_dialect, query.query)
+        [%{"value" => _} | _] ->
+          Enum.map_join(table_name_values, ".", & &1["value"])
 
-      {k,
-       %{
-         "Derived" => %{
-           "alias" => table_alias,
-           "lateral" => false,
-           "subquery" => body
-         }
-       }}
-    else
-      {k, v}
-    end
-  end
+        _ ->
+          raise "Invalid table name"
+      end
 
-  defp replace_names_with_subqueries(
-         {"relation" = k,
-          %{"Table" => %{"alias" => table_alias, "name" => [%{"value" => _} | _] = table_values}} =
-            v},
-         data
-       ) do
-    table_name = table_values |> Enum.map_join(".", & &1["value"])
     query = Enum.find(data.queries, &(&1.name == table_name))
 
     if query do
@@ -126,8 +114,6 @@ defmodule Logflare.Sql do
   end
 
   defp replace_names_with_subqueries(kv, _data), do: kv
-
-  # replaces all table names with subqueries
 
   @doc """
   Transforms and validates an SQL query for querying with bigquery.any()
