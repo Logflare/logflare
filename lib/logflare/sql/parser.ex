@@ -36,6 +36,7 @@ defmodule Logflare.Sql.Parser do
   """
   @spec to_string(map() | [map()]) :: String.t()
   def to_string(ast) when is_map(ast), do: __MODULE__.to_string([ast])
+
   def to_string(asts) when is_list(asts) do
     asts
     |> Jason.encode!()
