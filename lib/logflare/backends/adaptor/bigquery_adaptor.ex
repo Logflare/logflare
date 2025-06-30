@@ -262,6 +262,14 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
   end
 
   @doc """
+  Returns true if managed service accounts are enabled
+  """
+  @spec managed_service_accounts_enabled? :: boolean()
+  def managed_service_accounts_enabled? do
+    managed_service_account_pool_size() > 0
+  end
+
+  @doc """
   Returns the number of partitions for each managed service account
 
     iex> managed_service_account_partition_count()

@@ -110,8 +110,12 @@ defmodule Logflare.Google.CloudResourceManager do
 
   defp get_service_accounts() do
     managed_service_accounts =
-      for %{email: name} <- BigQueryAdaptor.list_managed_service_accounts() do
-        {name, ["roles/bigquery.admin"]}
+      if BigQueryAdaptor.managed_service_accounts_enabled?() do
+        for %{email: name} <- BigQueryAdaptor.list_managed_service_accounts() do
+          {name, ["roles/bigquery.admin"]}
+        end
+      else
+        []
       end
 
     for {member, roles} <-

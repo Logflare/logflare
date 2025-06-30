@@ -92,11 +92,10 @@ defmodule Logflare.Google.BigQuery.GenUtils do
     partition = :erlang.phash2(self(), partition_count)
 
     {name, metadata} =
-      if conn_type == :query do
-        service_account_count = BigQueryAdaptor.managed_service_account_pool_size()
+      if conn_type == :query && BigQueryAdaptor.managed_service_accounts_enabled?() do
+        pool_size = BigQueryAdaptor.managed_service_account_pool_size()
 
-        sa_index =
-          if service_account_count > 0, do: :erlang.phash2(self(), service_account_count), else: 0
+        sa_index = :erlang.phash2(self(), pool_size)
 
         {{
            Logflare.GothQuery,
@@ -104,7 +103,7 @@ defmodule Logflare.Google.BigQuery.GenUtils do
            partition
          },
          %{
-           service_account_count: service_account_count,
+           pool_size: pool_size,
            sa_index: sa_index,
            partition: partition
          }}
