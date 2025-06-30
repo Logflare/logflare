@@ -234,6 +234,7 @@ defmodule Logflare.Endpoints do
     end
   end
 
+  # postgres
   defp exec_query_on_backend(
          %Query{query: query_string, language: :pg_sql} = endpoint_query,
          transformed_query,
@@ -279,14 +280,14 @@ defmodule Logflare.Endpoints do
     end
   end
 
+  # clickhouse
   defp exec_query_on_backend(
-         %Query{query: query_string, language: :ch_sql} = endpoint_query,
+         %Query{user_id: user_id, language: :ch_sql},
          transformed_query,
-         _declared_params,
+         declared_params,
          params
        ) do
-    sql_dialect = Sql.to_dialect(endpoint_query.language)
-    user = Users.Cache.get(endpoint_query.user_id)
+    user = Users.Cache.get(user_id)
 
     backend =
       case Backends.get_default_backend(user) do
@@ -302,18 +303,11 @@ defmodule Logflare.Endpoints do
       raise "No matching source backend found for Clickhouse query execution"
     end
 
-    # convert params to CH params style
-    positions =
-      Sql.parameter_positions(query_string, dialect: sql_dialect)
-      |> then(fn {:ok, params} ->
-        params
-        |> Enum.sort_by(&{elem(&1, 0)})
-      end)
+    # convert query params to CH params style (ex: `@company` -> `{company:String}`)
+    transformed_query = ClickhouseAdaptor.convert_query_params(transformed_query, declared_params)
 
-    args =
-      for {_pos, parameter} <- positions do
-        Map.get(params, parameter)
-      end
+    # extract our param arguments, based on the declared params
+    args = Map.take(params, declared_params)
 
     case ClickhouseAdaptor.execute_query(backend, {transformed_query, args}) do
       {:ok, rows} ->
@@ -324,6 +318,7 @@ defmodule Logflare.Endpoints do
     end
   end
 
+  # bigquery
   defp exec_query_on_backend(
          %Query{language: _} = endpoint_query,
          transformed_query,

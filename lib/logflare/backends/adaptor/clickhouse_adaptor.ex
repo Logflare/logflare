@@ -55,6 +55,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
 
   defguardp is_db_connection(value) when is_struct(value, DBConnection)
   defguardp is_valid_connection_type(value) when value in ~w(read write)a
+  defguardp is_possible_query_params(value) when is_list(value) or is_map(value)
 
   @type source_backend_tuple :: {Source.t(), Backend.t()}
   @type ch_connection_type :: :read | :write
@@ -90,7 +91,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
     do: execute_query(backend, {query_string, []})
 
   def execute_query(%Backend{} = backend, {query_string, params})
-      when is_non_empty_binary(query_string) and is_list(params) do
+      when is_non_empty_binary(query_string) and is_possible_query_params(params) do
     # Try to find a source associated with this backend to derive the Clickhouse connection details
     case find_source_for_backend(backend) do
       %Source{} = source ->
@@ -106,7 +107,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
       do: execute_query(source_backend, {query_string, []})
 
   def execute_query({%Source{} = source, %Backend{} = backend}, {query_string, params})
-      when is_non_empty_binary(query_string) and is_list(params) do
+      when is_non_empty_binary(query_string) and is_possible_query_params(params) do
     case execute_ch_query({source, backend}, query_string, params) do
       {:ok, %Ch.Result{} = result} ->
         {:ok, convert_ch_result_to_rows(result)}
@@ -199,6 +200,44 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
 
         error_result
     end
+  end
+
+  @doc """
+  Converts query parameters in a SQL statement to ClickHouse format.
+
+  Note that this only supports string-based paramaters.
+
+  ## Examples
+
+      iex> Logflare.Backends.Adaptor.ClickhouseAdaptor.convert_query_params("SELECT * FROM table WHERE id = @id", ["id"])
+      "SELECT * FROM table WHERE id = {id:String}"
+
+      iex> Logflare.Backends.Adaptor.ClickhouseAdaptor.convert_query_params("SELECT * FROM table WHERE id = @id", [])
+      "SELECT * FROM table WHERE id = @id"
+
+      iex> Logflare.Backends.Adaptor.ClickhouseAdaptor.convert_query_params("SELECT * FROM table WHERE id = @id", ["id", "name"])
+      "SELECT * FROM table WHERE id = {id:String}"
+
+      iex> Logflare.Backends.Adaptor.ClickhouseAdaptor.convert_query_params("SELECT * FROM table WHERE id = @id", ["name"])
+      "SELECT * FROM table WHERE id = @id"
+  """
+  @spec convert_query_params(sql_statement :: String.t(), allowed_params :: [String.t()]) ::
+          String.t()
+  def convert_query_params(sql_statement, allowed_params)
+      when is_non_empty_binary(sql_statement) and is_list(allowed_params) do
+    allowed_set = MapSet.new(allowed_params)
+
+    Regex.replace(~r/@(\w+)/, sql_statement, fn match, param ->
+      if MapSet.member?(allowed_set, param) do
+        "{#{param}:String}"
+      else
+        Logger.warning(
+          "SQL parameter `@#{param}` not in allowed list: #{inspect(allowed_params)}"
+        )
+
+        match
+      end
+    end)
   end
 
   @doc """
@@ -344,13 +383,13 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
   @spec execute_ch_query(
           source_backend_tuple() | via_tuple() | DBConnection.conn(),
           statement :: iodata(),
-          params :: map | [term] | [row :: [term]] | iodata | Enumerable.t(),
+          params :: map() | [term()] | [row :: [term()]] | iodata() | Enumerable.t(),
           [Ch.query_option()]
         ) :: {:ok, Ch.Result.t()} | {:error, Exception.t()} | {:error, Ch.Error.t()}
   def execute_ch_query(backend_source_or_conn_via, statement, params \\ [], opts \\ [])
 
   def execute_ch_query({%Source{} = source, %Backend{} = backend}, statement, params, opts)
-      when is_list(params) and is_list(opts) do
+      when is_possible_query_params(params) and is_list(opts) do
     connection_type_opt = Keyword.get(opts, :connection_type, :write)
     connection_type = if connection_type_opt == :write, do: :write, else: :read
 
@@ -360,7 +399,8 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
   end
 
   def execute_ch_query(conn, statement, params, opts)
-      when (is_via_tuple(conn) or is_db_connection(conn) or is_pid(conn)) and is_list(params) and
+      when (is_via_tuple(conn) or is_db_connection(conn) or is_pid(conn)) and
+             is_possible_query_params(params) and
              is_list(opts) do
     updated_opts = Keyword.drop(opts, [:connection_type])
     Ch.query(conn, statement, params, updated_opts)
