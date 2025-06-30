@@ -369,7 +369,17 @@ defmodule Logflare.Backends.BigQueryAdaptorTest do
       # Mock IAM API calls for listing existing service accounts
       expect(GoogleApi.IAM.V1.Api.Projects, :iam_projects_service_accounts_list, fn
         _conn, "projects/" <> _project_id, _opts ->
-          {:ok, %{accounts: [], nextPageToken: nil}}
+          {:ok,
+           %{
+             accounts: [
+               %GoogleApi.IAM.V1.Model.ServiceAccount{
+                 email: "logflare-managed-0@some-project.iam.gserviceaccount.com",
+                 name:
+                   "projects/some-project/serviceAccounts/logflare-managed-0@some-project.iam.gserviceaccount.com"
+               }
+             ],
+             nextPageToken: nil
+           }}
       end)
 
       expect(
