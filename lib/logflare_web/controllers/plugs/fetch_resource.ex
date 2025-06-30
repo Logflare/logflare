@@ -66,11 +66,14 @@ defmodule LogflareWeb.Plugs.FetchResource do
 
     endpoint =
       case is_uuid?(token_or_name) do
-        true ->
-          Endpoints.get_query_by_token(token_or_name)
-
         false when user_id != nil ->
-          Endpoints.get_by(name: token_or_name, user_id: user_id)
+          Endpoints.Cache.get_by(name: token_or_name, user_id: user_id)
+
+        true when user_id != nil ->
+          Endpoints.Cache.get_by(token: token_or_name, user_id: user_id)
+
+        true when user_id == nil ->
+          Endpoints.Cache.get_by(token: token_or_name)
 
         _ ->
           nil
@@ -84,7 +87,7 @@ defmodule LogflareWeb.Plugs.FetchResource do
           conn,
         _opts
       ) do
-    endpoint = Endpoints.get_by(name: name, user_id: user_id)
+    endpoint = Endpoints.Cache.get_by(name: name, user_id: user_id)
     assign(conn, :endpoint, endpoint)
   end
 

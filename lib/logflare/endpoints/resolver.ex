@@ -2,17 +2,17 @@ defmodule Logflare.Endpoints.Resolver do
   @moduledoc """
   Finds or spawns Endpoint.Cache processes across the cluster. Unique process for query plus query params.
   """
-  alias Logflare.Endpoints.Cache
+  alias Logflare.Endpoints.ResultsCache
 
   require Logger
 
   @doc """
-  Lists all caches for an endpoint
+  Lists all caches for an endpoint across all paritions
   """
   def list_caches(%Logflare.Endpoints.Query{id: id}) do
-    endpoints = Cache.endpoints_part(id)
+    endpoints_partition = ResultsCache.endpoints_part(id)
 
-    :syn.members(endpoints, id)
+    :syn.members(endpoints_partition, id)
     |> Enum.map(fn {pid, _} -> pid end)
   end
 
@@ -21,21 +21,19 @@ defmodule Logflare.Endpoints.Resolver do
   Returns the resolved pid.
   """
   def resolve(%Logflare.Endpoints.Query{id: id} = query, params) do
-    endpoints = Cache.endpoints_part(query.id, params)
-
-    {:via, :syn, {endpoints, {query.id, params}}}
+    ResultsCache.name(query.id, params)
     |> GenServer.whereis()
     |> case do
       pid when is_pid(pid) ->
         pid
 
       nil ->
-        spec = {Cache, {query, params}}
+        spec = {ResultsCache, {query, params}}
         Logger.debug("Starting up Endpoint.Cache for Endpoint.Query id=#{id}", endpoint_id: id)
 
         via =
           {:via, PartitionSupervisor,
-           {Logflare.Endpoints.Cache.PartitionSupervisor, {id, params}}}
+           {Logflare.Endpoints.ResultsCache.PartitionSupervisor, {id, params}}}
 
         case DynamicSupervisor.start_child(via, spec) do
           {:ok, pid} -> pid

@@ -158,12 +158,28 @@ defmodule Logflare.ContextCache.CacheBuster do
     {Logflare.Auth, String.to_integer(id)}
   end
 
+  defp handle_record(%UpdatedRecord{
+         relation: {_schema, "endpoint_queries"},
+         record: %{"id" => id}
+       })
+       when is_binary(id) do
+    {Logflare.Endpoints, String.to_integer(id)}
+  end
+
   defp handle_record(%NewRecord{
          relation: {_schema, "billing_accounts"},
          record: %{"id" => _id}
        }) do
     # When new records are created they were previously cached as `nil` so we need to bust the :not_found keys
     {Logflare.Billing, :not_found}
+  end
+
+  defp handle_record(%NewRecord{
+         relation: {_schema, "endpoint_queries"},
+         record: %{"id" => _id}
+       }) do
+    # When new records are created they were previously cached as `nil` so we need to bust the :not_found keys
+    {Logflare.Endpoints, :not_found}
   end
 
   defp handle_record(%NewRecord{
@@ -239,6 +255,14 @@ defmodule Logflare.ContextCache.CacheBuster do
        })
        when is_binary(id) do
     {Logflare.Sources, String.to_integer(id)}
+  end
+
+  defp handle_record(%DeletedRecord{
+         relation: {_schema, "endpoint_queries"},
+         old_record: %{"id" => id}
+       })
+       when is_binary(id) do
+    {Logflare.Endpoints, String.to_integer(id)}
   end
 
   defp handle_record(%DeletedRecord{

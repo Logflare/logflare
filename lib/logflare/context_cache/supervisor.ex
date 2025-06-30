@@ -14,7 +14,7 @@ defmodule Logflare.ContextCache.Supervisor do
   alias Logflare.TeamUsers
   alias Logflare.Partners
   alias Logflare.Auth
-
+  alias Logflare.Endpoints
   alias Logflare.Repo
 
   def start_link(_) do
@@ -47,7 +47,8 @@ defmodule Logflare.ContextCache.Supervisor do
       Sources.Cache,
       Billing.Cache,
       SourceSchemas.Cache,
-      Auth.Cache
+      Auth.Cache,
+      Endpoints.Cache
     ]
   end
 
