@@ -302,6 +302,7 @@ defmodule Logflare.Backends.DynamicPipeline do
             for _ <- 1..diff do
               DynamicPipeline.add_pipeline(state.name)
             end
+            |> do_telemetry(:increment, state, pipeline_count)
 
             new_state
 
@@ -311,6 +312,7 @@ defmodule Logflare.Backends.DynamicPipeline do
             for _pipeline <- 1..diff do
               DynamicPipeline.remove_pipeline(state.name)
             end
+            |> do_telemetry(:decrement, state, pipeline_count)
 
             new_state
 
@@ -326,6 +328,27 @@ defmodule Logflare.Backends.DynamicPipeline do
       # add small randomizer to spread out resolve checks
       randomizer = :rand.uniform(ceil(args.resolve_interval / 5))
       Process.send_after(self(), :check, args.resolve_interval + randomizer)
+    end
+
+    defp do_telemetry(actions, action, state, from_pipeline_count) do
+      error_count =
+        Enum.count(actions, fn
+          {:error, _} -> true
+          _ -> false
+        end)
+
+      :telemetry.execute(
+        [:logflare, :backends, :dynamic_pipeline, action],
+        %{
+          error_count: error_count,
+          success_count: length(actions) - error_count,
+          from_pipeline_count: from_pipeline_count
+        },
+        %{
+          source_id: state.pipeline_args[:source].id,
+          source_token: state.pipeline_args[:source].token
+        }
+      )
     end
   end
 end
