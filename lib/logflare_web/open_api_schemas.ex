@@ -60,17 +60,17 @@ defmodule LogflareWeb.OpenApiSchemas do
 
   defmodule EndpointApiSchema do
     @properties %{
+      id: %Schema{type: :integer},
+      description: %Schema{type: :string, nullable: true},
       token: %Schema{type: :string},
       name: %Schema{type: :string},
       query: %Schema{type: :string},
-      source_mapping: %Schema{type: :object},
-      sandboxable: %Schema{type: :boolean},
+      source_mapping: %Schema{type: :object, nullable: true},
+      sandboxable: %Schema{type: :boolean, nullable: true},
       cache_duration_seconds: %Schema{type: :integer},
       proactive_requerying_seconds: %Schema{type: :integer},
       max_limit: %Schema{type: :integer},
-      enable_auth: %Schema{type: :boolean},
-      inserted_at: %Schema{type: :string, format: :"date-time"},
-      updated_at: %Schema{type: :string, format: :"date-time"}
+      enable_auth: %Schema{type: :boolean}
     }
     use LogflareWeb.OpenApi, properties: @properties, required: [:name, :query]
   end
