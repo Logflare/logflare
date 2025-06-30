@@ -1,4 +1,4 @@
-defmodule Logflare.EndpointsCacheTest do
+defmodule Logflare.Endpoints.CacheTest do
   use Logflare.DataCase
 
   alias Logflare.Endpoints
@@ -143,8 +143,10 @@ defmodule Logflare.EndpointsCacheTest do
       assert {:ok, %{rows: [%{"testing" => "123"}]}} = Endpoints.run_cached_query(endpoint)
       assert Process.alive?(cache_pid)
 
-      Logflare.Repo.update_all(Endpoints.Query, set: [cache_duration_seconds: 0]) |> dbg()
-      Logflare.ContextCache.bust_keys([{Logflare.Endpoints, endpoint.id}])
+      assert Logflare.Repo.update_all(Endpoints.Query, set: [cache_duration_seconds: 0]) ==
+               {2, nil}
+
+      assert Logflare.ContextCache.bust_keys([{Logflare.Endpoints, endpoint.id}]) == {:ok, 1}
 
       # Cache should still be alive before cache_duration_seconds
       Process.sleep(endpoint.proactive_requerying_seconds * 1000 * 2)
