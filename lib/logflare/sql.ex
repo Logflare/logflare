@@ -140,25 +140,8 @@ defmodule Logflare.Sql do
     transform(lang, input, user)
   end
 
-  def transform(:pg_sql = language, query, user) do
-    sql_dialect = to_dialect(language)
-    sources = Sources.list_sources_by_user(user)
-    source_mapping = source_mapping(sources)
-
-    with {:ok, statements} <- Parser.parse(sql_dialect, query) do
-      statements
-      |> do_transform(%{
-        sources: sources,
-        source_mapping: source_mapping,
-        source_names: Map.keys(source_mapping),
-        dialect: sql_dialect,
-        ast: statements
-      })
-      |> Parser.to_string()
-    end
-  end
-
-  def transform(:ch_sql = language, query, user) do
+  # clickhouse and postgres
+  def transform(language, query, %User{} = user) when language in ~w(ch_sql pg_sql)a do
     sql_dialect = to_dialect(language)
     sources = Sources.list_sources_by_user(user)
     source_mapping = source_mapping(sources)
