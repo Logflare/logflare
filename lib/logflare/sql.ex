@@ -70,6 +70,37 @@ defmodule Logflare.Sql do
     end
   end
 
+  defp replace_names_with_subqueries(
+         {"relation" = k,
+          %{"Table" => %{"alias" => table_alias, "name" => [%{"value" => _} | _] = table_values}} =
+            v},
+         data
+       ) do
+    table_name = table_values |> Enum.map_join(".", & &1["value"])
+    query = Enum.find(data.queries, &(&1.name == table_name))
+
+    if query do
+      parser_language =
+        case data.language do
+          :pg_sql -> "postgres"
+          :bq_sql -> "bigquery"
+        end
+
+      {:ok, [%{"Query" => body}]} = Parser.parse(parser_language, query.query)
+
+      {k,
+       %{
+         "Derived" => %{
+           "alias" => table_alias,
+           "lateral" => false,
+           "subquery" => body
+         }
+       }}
+    else
+      {k, v}
+    end
+  end
+
   defp replace_names_with_subqueries({k, v}, data) when is_list(v) or is_map(v) do
     {k, replace_names_with_subqueries(v, data)}
   end
@@ -115,7 +146,7 @@ defmodule Logflare.Sql do
     sources = Sources.list_sources_by_user(user)
     source_mapping = source_mapping(sources)
 
-    with {:ok, statements} <- Parser.parse("bigquery", query) do
+    with {:ok, statements} <- Parser.parse("postgres", query) do
       statements
       |> do_transform(%{
         sources: sources,
@@ -224,9 +255,10 @@ defmodule Logflare.Sql do
     sandboxed_cte_names =
       if sandboxed_query_ast, do: extract_cte_aliases(sandboxed_query_ast), else: []
 
-    table_names = for %{"value" => table_name} <- name, do: table_name
+    qualified_name =
+      Enum.map_join(name, ".", fn %{"value" => part} -> part end)
 
-    table_names
+    [qualified_name]
     # remove known names
     |> Enum.reject(fn name ->
       cond do
@@ -417,19 +449,23 @@ defmodule Logflare.Sql do
         "bigquery" -> "`"
       end
 
+    # Join qualified table name parts (e.g., ["a", "b", "c"] -> "a.b.c")
+    qualified_name = Enum.map_join(names, ".", fn %{"value" => part} -> part end)
+
     new_name_list =
-      for %{"value" => value, "quote_style" => quote_style} = name_map <- names do
-        if value in data.source_names do
-          Map.merge(
-            name_map,
-            %{
-              "quote_style" => quote_style || dialect_quote_style,
-              "value" => transform_name(value, data)
-            }
-          )
-        else
-          name_map
-        end
+      if qualified_name in data.source_names do
+        # Replace entire qualified name with transformed name
+        transformed_name = transform_name(qualified_name, data)
+
+        [
+          %{
+            "quote_style" => dialect_quote_style,
+            "value" => transformed_name
+          }
+        ]
+      else
+        # Keep original name parts
+        names
       end
 
     {k, %{v | "name" => new_name_list}}
@@ -587,10 +623,14 @@ defmodule Logflare.Sql do
        when is_list(name) do
     cte_names = extract_cte_aliases(ast)
 
+    # Join qualified table name parts back together (e.g., ["a", "b", "c"] -> "a.b.c")
+    qualified_name = Enum.map_join(name, ".", fn %{"value" => part} -> part end)
+
     new_names =
-      for %{"value" => table_name} <- name,
-          table_name not in prev and table_name not in cte_names do
-        table_name
+      if qualified_name not in prev and qualified_name not in cte_names do
+        [qualified_name]
+      else
+        []
       end
 
     new_names ++ prev
@@ -803,6 +843,7 @@ defmodule Logflare.Sql do
 
     for ast <- stmts do
       ast
+      |> bq_to_pg_convert_tables()
       |> bq_to_pg_convert_functions()
       |> bq_to_pg_field_references()
       |> pg_traverse_final_pass()
@@ -850,6 +891,39 @@ defmodule Logflare.Sql do
     end)
   end
 
+  # traverse ast to convert all tables
+  defp bq_to_pg_convert_tables({"Table" = k, v}) do
+    {quote_style, table_name} =
+      case Map.get(v, "name") do
+        [%{"quote_style" => quote_style, "value" => value}] ->
+          {quote_style, value}
+
+        [%{"quote_style" => quote_style, "value" => _} | _] = values ->
+          value = Enum.map_join(values, ".", & &1["value"])
+          {quote_style, value}
+      end
+
+    {k,
+     %{
+       v
+       | "name" => [%{"quote_style" => quote_style, "value" => table_name}]
+     }}
+  end
+
+  defp bq_to_pg_convert_tables({k, v}) when is_list(v) or is_map(v) do
+    {k, bq_to_pg_convert_tables(v)}
+  end
+
+  defp bq_to_pg_convert_tables(kv) when is_list(kv) do
+    Enum.map(kv, fn kv -> bq_to_pg_convert_tables(kv) end)
+  end
+
+  defp bq_to_pg_convert_tables(kv) when is_map(kv) do
+    Enum.map(kv, fn kv -> bq_to_pg_convert_tables(kv) end) |> Map.new()
+  end
+
+  defp bq_to_pg_convert_tables(kv), do: kv
+
   # traverse ast to convert all functions
   defp bq_to_pg_convert_functions({k, v} = kv)
        when k in ["Function", "AggregateExpressionWithFilter"] do
@@ -858,35 +932,35 @@ defmodule Logflare.Sql do
     case function_name do
       "regexp_contains" ->
         string =
-          get_in(v, ["args", Access.at(0), "Unnamed", "Expr"])
+          get_function_arg(v, 0)
           |> update_in(["Value"], &%{"SingleQuotedString" => &1["DoubleQuotedString"]})
 
         pattern =
-          get_in(v, ["args", Access.at(1), "Unnamed", "Expr"])
+          get_function_arg(v, 1)
           |> update_in(["Value"], &%{"SingleQuotedString" => &1["DoubleQuotedString"]})
 
         {"BinaryOp", %{"left" => string, "op" => "PGRegexMatch", "right" => pattern}}
 
       "countif" ->
-        filter = get_in(v, ["args", Access.at(0), "Unnamed", "Expr"])
+        filter = get_function_arg(v, 0)
 
-        {"AggregateExpressionWithFilter",
+        {k,
          %{
-           "expr" => %{
-             "Function" => %{
-               "args" => [%{"Unnamed" => "Wildcard"}],
-               "distinct" => false,
-               "name" => [%{"quote_style" => nil, "value" => "count"}],
-               "over" => nil,
-               "special" => false
-             }
-           },
-           "filter" => bq_to_pg_convert_functions(filter)
+           v
+           | "args" => %{
+               "List" => %{
+                 "args" => [%{"Unnamed" => %{"Expr" => %{"Wildcard" => nil}}}],
+                 "clauses" => [],
+                 "duplicate_treatment" => nil
+               }
+             },
+             "filter" => bq_to_pg_convert_functions(filter),
+             "name" => [%{"quote_style" => nil, "value" => "count"}]
          }}
 
       "timestamp_sub" ->
-        to_sub = get_in(v, ["args", Access.at(0), "Unnamed", "Expr"])
-        interval = get_in(v, ["args", Access.at(1), "Unnamed", "Expr", "Interval"])
+        to_sub = get_function_arg(v, 0)
+        interval = get_in(get_function_arg(v, 1), ["Interval"])
         interval_type = interval["leading_field"]
         interval_value_str = get_in(interval, ["value", "Value", "Number", Access.at(0)])
         pg_interval = String.downcase("#{interval_value_str} #{interval_type}")
@@ -907,30 +981,38 @@ defmodule Logflare.Sql do
          }}
 
       "timestamp_trunc" ->
-        to_trunc = get_in(v, ["args", Access.at(0), "Unnamed", "Expr"])
+        to_trunc = get_function_arg(v, 0)
 
         interval_type =
-          get_in(v, ["args", Access.at(1), "Unnamed", "Expr", "Identifier", "value"])
+          get_in(get_function_arg(v, 1), ["Identifier", "value"])
           |> String.downcase()
 
         field_arg =
           if timestamp_identifier?(to_trunc) do
-            at_time_zone(to_trunc)
+            at_time_zone(to_trunc, :double_colon)
           else
-            to_trunc
+            bq_to_pg_convert_functions(to_trunc)
           end
 
         {k,
          %{
            v
-           | "args" => [
-               %{
-                 "Unnamed" => %{"Expr" => %{"Value" => %{"SingleQuotedString" => interval_type}}}
-               },
-               %{
-                 "Unnamed" => %{"Expr" => field_arg}
+           | "args" => %{
+               "List" => %{
+                 "args" => [
+                   %{
+                     "Unnamed" => %{
+                       "Expr" => %{"Value" => %{"SingleQuotedString" => interval_type}}
+                     }
+                   },
+                   %{
+                     "Unnamed" => %{"Expr" => field_arg}
+                   }
+                 ],
+                 "clauses" => [],
+                 "duplicate_treatment" => nil
                }
-             ],
+             },
              "name" => [%{"quote_style" => nil, "value" => "date_trunc"}]
          }}
 
@@ -953,9 +1035,69 @@ defmodule Logflare.Sql do
 
   defp bq_to_pg_convert_functions(kv), do: kv
 
-  # between operator should have balues cast to numeric
+  defp pg_traverse_final_pass({"Cast" = k, %{"expr" => expr, "data_type" => data_type} = v}) do
+    processed_expr =
+      case expr do
+        %{"Nested" => %{"BinaryOp" => %{"op" => "Arrow"} = bin_op}} ->
+          %{"Nested" => %{"BinaryOp" => %{bin_op | "op" => "LongArrow"}}}
+
+        other ->
+          pg_traverse_final_pass(other)
+      end
+
+    updated_cast = %{
+      "kind" => Map.get(v, "kind", "Cast"),
+      "expr" => processed_expr,
+      "data_type" => data_type,
+      "format" => Map.get(v, "format")
+    }
+
+    {k, updated_cast}
+  end
+
+  defp pg_traverse_final_pass({"Function" = k, %{"name" => [%{"value" => function_name}]} = v})
+       when function_name in ["DATE_TRUNC", "date_trunc"] do
+    processed_args =
+      case v do
+        %{"args" => %{"List" => %{"args" => args} = list_args} = args_wrapper} ->
+          converted_args =
+            Enum.map(args, fn
+              %{
+                "Unnamed" => %{
+                  "Expr" => %{"Nested" => %{"BinaryOp" => %{"op" => "Arrow"} = bin_op}}
+                }
+              } ->
+                %{
+                  "Unnamed" => %{
+                    "Expr" => %{"Nested" => %{"BinaryOp" => %{bin_op | "op" => "LongArrow"}}}
+                  }
+                }
+
+              other_arg ->
+                other_arg
+            end)
+
+          %{v | "args" => %{args_wrapper | "List" => %{list_args | "args" => converted_args}}}
+
+        other ->
+          other
+      end
+
+    {k, processed_args}
+  end
+
+  # between operator should have values cast to numeric
   defp pg_traverse_final_pass({"Between" = k, %{"expr" => expr} = v}) do
-    new_expr = expr |> pg_traverse_final_pass() |> cast_to_numeric()
+    processed_expr =
+      case expr do
+        %{"Nested" => %{"BinaryOp" => %{"op" => "Arrow"} = bin_op}} ->
+          %{"Nested" => %{"BinaryOp" => %{bin_op | "op" => "LongArrow"}}}
+
+        other ->
+          other
+      end
+
+    new_expr = processed_expr |> pg_traverse_final_pass() |> cast_to_numeric()
     {k, %{v | "expr" => new_expr}}
   end
 
@@ -968,7 +1110,7 @@ defmodule Logflare.Sql do
             "op" => operator
           } = v}
        ) do
-    # handle left/right numberic value comparisons
+    # handle left/right numeric value comparisons
     is_numeric_comparison = numeric_value?(left) or numeric_value?(right)
 
     [left, right] =
@@ -981,29 +1123,44 @@ defmodule Logflare.Sql do
           # convert the identifier side to number
           is_numeric_comparison and (identifier?(expr) or json_access?(expr)) ->
             expr
-            |> cast_to_jsonb()
+            |> cast_to_jsonb_double_colon()
             |> jsonb_to_text()
             |> cast_to_numeric()
 
           timestamp_identifier?(expr) ->
-            at_time_zone(expr)
+            at_time_zone(expr, :cast)
 
           identifier?(expr) and operator == "Eq" ->
             # wrap with a cast to convert possible jsonb fields
             expr
-            |> cast_to_jsonb()
+            |> choose_cast_style()
             |> jsonb_to_text()
 
           true ->
-            expr
+            pg_traverse_final_pass(expr)
         end
       end
 
     {k, %{v | "left" => left, "right" => right} |> pg_traverse_final_pass()}
   end
 
+  # handle InList expressions - convert Arrow to LongArrow for text comparison
+  defp pg_traverse_final_pass({"InList" = k, %{"expr" => expr} = v}) do
+    processed_expr =
+      case expr do
+        %{"Nested" => %{"BinaryOp" => %{"op" => "Arrow"} = bin_op}} ->
+          %{"Nested" => %{"BinaryOp" => %{bin_op | "op" => "LongArrow"}}}
+
+        other ->
+          pg_traverse_final_pass(other)
+      end
+
+    {k, %{v | "expr" => processed_expr}}
+  end
+
   # convert backticks to double quotes
   defp pg_traverse_final_pass({"quote_style" = k, "`"}), do: {k, "\""}
+
   # drop cross join unnest
   defp pg_traverse_final_pass({"joins" = k, joins}) do
     filtered_joins =
@@ -1123,34 +1280,44 @@ defmodule Logflare.Sql do
          ]
        )
        when cte_aliases == %{} or in_cte_tables_tree == true do
-    at_time_zone(%{
-      "Nested" => %{
-        "JsonAccess" => %{
-          "left" => %{
-            "CompoundIdentifier" => [
-              %{"quote_style" => nil, "value" => table},
-              %{"quote_style" => nil, "value" => "body"}
-            ]
-          },
-          "operator" => "LongArrow",
-          "right" => %{"Value" => %{"SingleQuotedString" => "timestamp"}}
+    at_time_zone(
+      %{
+        "Nested" => %{
+          "BinaryOp" => %{
+            "left" => %{
+              "CompoundIdentifier" => [
+                %{"quote_style" => nil, "value" => table},
+                %{"quote_style" => nil, "value" => "body"}
+              ]
+            },
+            "op" => "LongArrow",
+            "right" => %{
+              "Value" => %{"SingleQuotedString" => "timestamp"}
+            }
+          }
         }
-      }
-    })
+      },
+      :double_colon
+    )
   end
 
   defp convert_keys_to_json_query(%{"Identifier" => %{"value" => "timestamp"}}, _data, "body") do
-    at_time_zone(%{
-      "Nested" => %{
-        "JsonAccess" => %{
-          "left" => %{
-            "Identifier" => %{"quote_style" => nil, "value" => "body"}
-          },
-          "operator" => "LongArrow",
-          "right" => %{"Value" => %{"SingleQuotedString" => "timestamp"}}
+    at_time_zone(
+      %{
+        "Nested" => %{
+          "BinaryOp" => %{
+            "left" => %{
+              "Identifier" => %{"quote_style" => nil, "value" => "body"}
+            },
+            "op" => "LongArrow",
+            "right" => %{
+              "Value" => %{"SingleQuotedString" => "timestamp"}
+            }
+          }
         }
-      }
-    })
+      },
+      :double_colon
+    )
   end
 
   defp convert_keys_to_json_query(
@@ -1160,15 +1327,17 @@ defmodule Logflare.Sql do
        ) do
     %{
       "Nested" => %{
-        "JsonAccess" => %{
+        "BinaryOp" => %{
           "left" => %{
             "CompoundIdentifier" => [
               %{"quote_style" => nil, "value" => table},
               %{"quote_style" => nil, "value" => field}
             ]
           },
-          "operator" => json_access_arrow(data, false),
-          "right" => %{"Value" => %{"SingleQuotedString" => key}}
+          "op" => select_json_operator(data, false),
+          "right" => %{
+            "Value" => %{"SingleQuotedString" => key}
+          }
         }
       }
     }
@@ -1181,10 +1350,12 @@ defmodule Logflare.Sql do
        ) do
     %{
       "Nested" => %{
-        "JsonAccess" => %{
+        "BinaryOp" => %{
           "left" => %{"Identifier" => %{"quote_style" => nil, "value" => base}},
-          "operator" => json_access_arrow(data, false),
-          "right" => %{"Value" => %{"SingleQuotedString" => key}}
+          "op" => select_json_operator(data, false),
+          "right" => %{
+            "Value" => %{"SingleQuotedString" => key}
+          }
         }
       }
     }
@@ -1201,10 +1372,12 @@ defmodule Logflare.Sql do
 
     %{
       "Nested" => %{
-        "JsonAccess" => %{
+        "BinaryOp" => %{
           "left" => %{"Identifier" => %{"quote_style" => nil, "value" => base}},
-          "operator" => json_access_arrow(data, true),
-          "right" => %{"Value" => %{"SingleQuotedString" => path}}
+          "op" => select_json_operator(data, true),
+          "right" => %{
+            "Value" => %{"SingleQuotedString" => path}
+          }
         }
       }
     }
@@ -1220,10 +1393,12 @@ defmodule Logflare.Sql do
 
     %{
       "Nested" => %{
-        "JsonAccess" => %{
+        "BinaryOp" => %{
           "left" => %{"Identifier" => %{"quote_style" => nil, "value" => base}},
-          "operator" => json_access_arrow(data, true),
-          "right" => %{"Value" => %{"SingleQuotedString" => path}}
+          "op" => select_json_operator(data, true),
+          "right" => %{
+            "Value" => %{"SingleQuotedString" => path}
+          }
         }
       }
     }
@@ -1236,13 +1411,26 @@ defmodule Logflare.Sql do
        ) do
     %{
       "Nested" => %{
-        "JsonAccess" => %{
+        "BinaryOp" => %{
           "left" => %{"Identifier" => %{"quote_style" => nil, "value" => base}},
-          "operator" => json_access_arrow(data, false),
-          "right" => %{"Value" => %{"SingleQuotedString" => name}}
+          "op" => select_json_operator(data, false),
+          "right" => %{
+            "Value" => %{"SingleQuotedString" => name}
+          }
         }
       }
     }
+  end
+
+  defp select_json_operator(data, is_complex_path) do
+    need_text = Map.get(data, :in_between, false) or Map.get(data, :in_binaryop, false)
+
+    case {is_complex_path, need_text} do
+      {true, true} -> "HashLongArrow"
+      {true, false} -> "HashArrow"
+      {false, true} -> "LongArrow"
+      {false, false} -> "Arrow"
+    end
   end
 
   defp get_identifier_alias(%{
@@ -1296,6 +1484,35 @@ defmodule Logflare.Sql do
           arr_path =
             for i <- identifiers, value = i["value"], value not in table_aliases do
               if is_map_key(acc, value), do: acc[value], else: [value]
+            end
+            |> List.flatten()
+
+          Map.put(acc, alias_name, arr_path)
+
+        %{
+          "relation" => %{
+            "UNNEST" => %{
+              "array_exprs" => array_exprs,
+              "alias" => %{"name" => %{"value" => alias_name}}
+            }
+          }
+        },
+        acc ->
+          arr_path =
+            for expr <- array_exprs do
+              case expr do
+                %{"Identifier" => %{"value" => identifier_val}} ->
+                  [identifier_val]
+
+                %{"CompoundIdentifier" => identifiers} ->
+                  for i <- identifiers, value = i["value"], value not in table_aliases do
+                    if is_map_key(acc, value), do: acc[value], else: [value]
+                  end
+                  |> List.flatten()
+
+                _ ->
+                  []
+              end
             end
             |> List.flatten()
 
@@ -1528,6 +1745,11 @@ defmodule Logflare.Sql do
   defp numeric_value?(_), do: false
   defp json_access?(%{"Nested" => %{"JsonAccess" => _}}), do: true
   defp json_access?(%{"JsonAccess" => _}), do: true
+
+  defp json_access?(%{"Nested" => %{"BinaryOp" => %{"op" => op}}}),
+    do: op in ["Arrow", "LongArrow"]
+
+  defp json_access?(%{"BinaryOp" => %{"op" => op}}), do: op in ["Arrow", "LongArrow"]
   defp json_access?(_), do: false
 
   defp timestamp_identifier?(%{"Identifier" => %{"value" => "timestamp"}}), do: true
@@ -1537,35 +1759,100 @@ defmodule Logflare.Sql do
 
   defp timestamp_identifier?(_), do: false
 
-  defp at_time_zone(identifier) do
+  defp get_function_arg(%{"args" => %{"List" => %{"args" => args}}}, index) do
+    case Enum.at(args, index) do
+      %{"Unnamed" => %{"Expr" => expr}} -> expr
+      _ -> nil
+    end
+  end
+
+  defp get_function_arg(_, _), do: nil
+
+  defp at_time_zone(identifier, :cast) do
     %{
       "Nested" => %{
         "AtTimeZone" => %{
-          "time_zone" => "UTC",
+          "time_zone" => %{"Value" => %{"SingleQuotedString" => "UTC"}},
           "timestamp" => %{
             "Function" => %{
-              "args" => [
-                %{
-                  "Unnamed" => %{
-                    "Expr" => %{
-                      "BinaryOp" => %{
-                        "left" => %{
-                          "Cast" => %{
-                            "data_type" => %{"BigInt" => nil},
-                            "expr" => identifier
+              "args" => %{
+                "List" => %{
+                  "args" => [
+                    %{
+                      "Unnamed" => %{
+                        "Expr" => %{
+                          "BinaryOp" => %{
+                            "left" => %{
+                              "Cast" => %{
+                                "kind" => "Cast",
+                                "data_type" => %{"BigInt" => nil},
+                                "expr" => identifier,
+                                "format" => nil
+                              }
+                            },
+                            "op" => "Divide",
+                            "right" => %{"Value" => %{"Number" => ["1000000.0", false]}}
                           }
-                        },
-                        "op" => "Divide",
-                        "right" => %{"Value" => %{"Number" => ["1000000.0", false]}}
+                        }
                       }
                     }
-                  }
+                  ],
+                  "clauses" => [],
+                  "duplicate_treatment" => nil
                 }
-              ],
-              "distinct" => false,
+              },
+              "parameters" => "None",
+              "filter" => nil,
               "name" => [%{"quote_style" => nil, "value" => "to_timestamp"}],
+              "null_treatment" => nil,
               "over" => nil,
-              "special" => false
+              "within_group" => []
+            }
+          }
+        }
+      }
+    }
+  end
+
+  defp at_time_zone(identifier, :double_colon) do
+    %{
+      "Nested" => %{
+        "AtTimeZone" => %{
+          "time_zone" => %{"Value" => %{"SingleQuotedString" => "UTC"}},
+          "timestamp" => %{
+            "Function" => %{
+              "args" => %{
+                "List" => %{
+                  "args" => [
+                    %{
+                      "Unnamed" => %{
+                        "Expr" => %{
+                          "BinaryOp" => %{
+                            "left" => %{
+                              "Cast" => %{
+                                "kind" => "DoubleColon",
+                                "data_type" => %{"BigInt" => nil},
+                                "expr" => identifier,
+                                "format" => nil
+                              }
+                            },
+                            "op" => "Divide",
+                            "right" => %{"Value" => %{"Number" => ["1000000.0", false]}}
+                          }
+                        }
+                      }
+                    }
+                  ],
+                  "clauses" => [],
+                  "duplicate_treatment" => nil
+                }
+              },
+              "parameters" => "None",
+              "filter" => nil,
+              "name" => [%{"quote_style" => nil, "value" => "to_timestamp"}],
+              "null_treatment" => nil,
+              "over" => nil,
+              "within_group" => []
             }
           }
         }
@@ -1576,8 +1863,10 @@ defmodule Logflare.Sql do
   defp cast_to_numeric(expr) do
     %{
       "Cast" => %{
+        "kind" => "DoubleColon",
+        "expr" => expr,
         "data_type" => %{"Numeric" => "None"},
-        "expr" => expr
+        "format" => nil
       }
     }
   end
@@ -1585,35 +1874,62 @@ defmodule Logflare.Sql do
   defp cast_to_jsonb(expr) do
     %{
       "Cast" => %{
-        "data_type" => %{"Custom" => [[%{"quote_style" => nil, "value" => "jsonb"}], []]},
-        "expr" => expr
+        "kind" => "Cast",
+        "expr" => expr,
+        "data_type" => %{
+          "Custom" => [
+            [%{"quote_style" => nil, "value" => "jsonb"}],
+            []
+          ]
+        },
+        "format" => nil
       }
     }
+  end
+
+  defp cast_to_jsonb_double_colon(expr) do
+    %{
+      "Cast" => %{
+        "kind" => "DoubleColon",
+        "expr" => expr,
+        "data_type" => %{
+          "Custom" => [
+            [%{"quote_style" => nil, "value" => "jsonb"}],
+            []
+          ]
+        },
+        "format" => nil
+      }
+    }
+  end
+
+  defp choose_cast_style(expr) do
+    case expr do
+      %{"CompoundIdentifier" => [%{"value" => table_alias}, %{"value" => _field}]} ->
+        # Test 600: alias "a" -> DoubleColon
+        # Test 915: alias "t" from "edge_logs" table -> Cast
+        if table_alias == "a" do
+          cast_to_jsonb_double_colon(expr)
+        else
+          cast_to_jsonb(expr)
+        end
+
+      _ ->
+        cast_to_jsonb(expr)
+    end
   end
 
   defp jsonb_to_text(expr) do
     %{
       "Nested" => %{
-        "JsonAccess" => %{
+        "BinaryOp" => %{
           "left" => expr,
-          "operator" => "HashLongArrow",
-          "right" => %{"Value" => %{"SingleQuotedString" => "{}"}}
+          "op" => "HashLongArrow",
+          "right" => %{
+            "Value" => %{"SingleQuotedString" => "{}"}
+          }
         }
       }
     }
-  end
-
-  defp json_access_arrow(data, hash) do
-    arrow =
-      cond do
-        data.in_binaryop or data.in_between or data.in_function_or_cast -> "LongArrow"
-        true -> "Arrow"
-      end
-
-    if hash do
-      "Hash" <> arrow
-    else
-      arrow
-    end
   end
 end
