@@ -106,4 +106,8 @@ defmodule LogflareWeb.ConnCase do
 
     Plug.Conn.put_req_header(conn, "authorization", "Bearer #{access_token.token}")
   end
+
+  def assert_schema(data, schema_name) do
+    OpenApiSpex.TestAssertions.assert_schema(data, schema_name, LogflareWeb.ApiSpec.spec())
+  end
 end

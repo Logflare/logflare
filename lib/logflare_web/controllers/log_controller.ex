@@ -85,6 +85,8 @@ defmodule LogflareWeb.LogController do
     |> handle(conn)
   end
 
+  operation :cloudflare, false
+
   def cloudflare(%{assigns: %{source: source}} = conn, %{"batch" => batch}) when is_list(batch) do
     batch
     |> Processor.ingest(Logs.Raw, source)
@@ -99,11 +101,15 @@ defmodule LogflareWeb.LogController do
     |> handle(conn)
   end
 
+  operation :syslog, false
+
   def syslog(%{assigns: %{source: source}} = conn, %{"batch" => batch}) when is_list(batch) do
     batch
     |> Processor.ingest(Logs.Raw, source)
     |> handle(conn)
   end
+
+  operation :generic_json, false
 
   def generic_json(%{assigns: %{source: source}} = conn, %{"_json" => batch})
       when is_list(batch) do
@@ -119,6 +125,8 @@ defmodule LogflareWeb.LogController do
     |> handle(conn)
   end
 
+  operation :vector, false
+
   def vector(%{assigns: %{source: source}} = conn, %{"_json" => batch})
       when is_list(batch) do
     batch
@@ -132,6 +140,8 @@ defmodule LogflareWeb.LogController do
     |> Processor.ingest(Logs.Vector, source)
     |> handle(conn)
   end
+
+  operation :browser_reports, false
 
   def browser_reports(%{assigns: %{source: source}} = conn, %{"_json" => batch})
       when is_list(batch) do
@@ -147,12 +157,16 @@ defmodule LogflareWeb.LogController do
     |> handle(conn)
   end
 
+  operation :elixir_logger, false
+
   def elixir_logger(%{assigns: %{source: source}} = conn, %{"batch" => batch})
       when is_list(batch) do
     batch
     |> Processor.ingest(Logs.Raw, source)
     |> handle(conn)
   end
+
+  operation :create_with_typecasts, false
 
   def create_with_typecasts(%{assigns: %{source: source}} = conn, %{"batch" => batch})
       when is_list(batch) do
@@ -161,12 +175,16 @@ defmodule LogflareWeb.LogController do
     |> handle(conn)
   end
 
+  operation :vercel_ingest, false
+
   def vercel_ingest(%{assigns: %{source: source}} = conn, %{"_json" => batch})
       when is_list(batch) do
     batch
     |> Processor.ingest(Logs.Vercel, source)
     |> handle(conn)
   end
+
+  operation :netlify, false
 
   def netlify(%{assigns: %{source: source}} = conn, %{"_json" => batch}) when is_list(batch) do
     batch
@@ -181,11 +199,15 @@ defmodule LogflareWeb.LogController do
     |> handle(conn)
   end
 
+  operation :github, false
+
   def github(%{assigns: %{source: source}, body_params: params} = conn, _params) do
     [params]
     |> Processor.ingest(Logs.Github, source)
     |> handle(conn)
   end
+
+  operation :cloud_event, false
 
   def cloud_event(%Plug.Conn{} = conn, %{"_json" => batch})
       when is_list(batch) do
@@ -230,6 +252,8 @@ defmodule LogflareWeb.LogController do
     end
   end
 
+  operation :otel_traces, false
+
   def otel_traces(
         %{assigns: %{source: source}} = conn,
         %ExportTraceServiceRequest{resource_spans: resource_spans}
@@ -243,6 +267,8 @@ defmodule LogflareWeb.LogController do
       reraise exception, __STACKTRACE__
   end
 
+  operation :otel_metrics, false
+
   def otel_metrics(
         %{assigns: %{source: source}} = conn,
         %ExportMetricsServiceRequest{resource_metrics: resource_metrics}
@@ -255,6 +281,8 @@ defmodule LogflareWeb.LogController do
       send_proto_error(conn, 500, "Internal server error")
       reraise exception, __STACKTRACE__
   end
+
+  operation :otel_logs, false
 
   def otel_logs(
         %{assigns: %{source: source}} = conn,
