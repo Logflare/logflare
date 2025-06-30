@@ -383,7 +383,67 @@ defmodule Logflare.Backends.BigQueryAdaptorTest do
 
       BigQueryAdaptor.update_iam_policy()
 
-      assert_received [_ | _]
+      assert_received [_ | _] = bindings
+
+      assert Enum.any?(bindings, fn binding ->
+               Enum.any?(binding.members, fn member ->
+                 member =~ "logflare-managed-"
+               end)
+             end)
+    end
+  end
+
+  describe "managed service accounts is disabled" do
+    setup do
+      original_pool_size =
+        Application.get_env(:logflare, :bigquery_backend_adaptor)[
+          :managed_service_account_pool_size
+        ]
+
+      Application.put_env(:logflare, :bigquery_backend_adaptor,
+        managed_service_account_pool_size: 0
+      )
+
+      on_exit(fn ->
+        Application.put_env(:logflare, :bigquery_backend_adaptor,
+          managed_service_account_pool_size: original_pool_size
+        )
+      end)
+
+      :ok
+    end
+
+    test "create_managed_service_accounts/0 should not provision service accounts" do
+      reject(&GoogleApi.IAM.V1.Api.Projects.iam_projects_service_accounts_list/3)
+      reject(&GoogleApi.IAM.V1.Api.Projects.iam_projects_service_accounts_create/3)
+
+      assert {:ok, []} = BigQueryAdaptor.create_managed_service_accounts()
+      assert BigQueryAdaptor.managed_service_accounts_enabled?() == false
+    end
+
+    test "update_iam_policy/0 should not update iam policy with service accounts" do
+      pid = self()
+      reject(&GoogleApi.IAM.V1.Api.Projects.iam_projects_service_accounts_list/3)
+      reject(&GoogleApi.IAM.V1.Api.Projects.iam_projects_service_accounts_create/3)
+
+      expect(
+        GoogleApi.CloudResourceManager.V1.Api.Projects,
+        :cloudresourcemanager_projects_set_iam_policy,
+        fn _conn, _project_number, [body: body] ->
+          send(pid, body.policy.bindings)
+          {:ok, ""}
+        end
+      )
+
+      BigQueryAdaptor.update_iam_policy()
+
+      assert_received [_ | _] = bindings
+
+      refute Enum.any?(bindings, fn binding ->
+               Enum.any?(binding.members, fn member ->
+                 member =~ "logflare-managed-"
+               end)
+             end)
     end
   end
 end
