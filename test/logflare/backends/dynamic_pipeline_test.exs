@@ -1,4 +1,4 @@
-defmodule Logflare.DynamicPipelineTest do
+defmodule Logflare.Backends.DynamicPipelineTest do
   use Logflare.DataCase
 
   alias Logflare.Backends.DynamicPipeline
