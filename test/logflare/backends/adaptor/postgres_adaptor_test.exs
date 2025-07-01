@@ -218,7 +218,7 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptorTest do
       assert errors_on(cast_and_validate_config(url: "postgresql://localhost:5432")) == %{}
       assert errors_on(cast_and_validate_config(hostname: "localhost"))
 
-      assert errors_on(cast_and_validate_config(%{})) == %{
+      assert errors_on(cast_and_validate_config()) == %{
                hostname: [
                  "either connection url or separate connection credentials must be provided"
                ],
@@ -227,13 +227,7 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptorTest do
     end
   end
 
-  defp cast_and_validate_config(attrs) when is_list(attrs) do
-    attrs
-    |> Map.new()
-    |> cast_and_validate_config()
-  end
-
-  defp cast_and_validate_config(attrs) when is_map(attrs) do
-    Adaptor.cast_and_validate_config(PostgresAdaptor, attrs)
+  defp cast_and_validate_config(attrs \\ []) when is_list(attrs) do
+    Adaptor.cast_and_validate_config(PostgresAdaptor, Map.new(attrs))
   end
 end
