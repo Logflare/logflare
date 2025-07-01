@@ -147,6 +147,22 @@ defmodule Logflare.Telemetry do
       last_value("logflare.system.finch.in_flight_requests", tags: [:pool, :url]),
       last_value("logflare.google.set_iam_policy.members",
         description: "Google IAM policy members count"
+      ),
+      last_value("logflare.backends.dynamic_pipeline.increment.success_count",
+        tags: [:backend_id],
+        description: "Dynamic pipeline sucessfully increment count"
+      ),
+      last_value("logflare.backends.dynamic_pipeline.increment.error_count",
+        tags: [:backend_id],
+        description: "Dynamic pipeline failed increment count"
+      ),
+      last_value("logflare.backends.dynamic_pipeline.decrement.success_count",
+        tags: [:backend_id],
+        description: "Dynamic pipeline sucessfully decrement count"
+      ),
+      last_value("logflare.backends.dynamic_pipeline.decrement.error_count",
+        tags: [:backend_id],
+        description: "Dynamic pipeline failed decrement count"
       )
     ]
 
