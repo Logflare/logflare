@@ -475,7 +475,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
 
       TestUtils.retry_assert(fn ->
         view
-        |> element("li a[phx-value-log-event-id='some-uuid']", "view")
+        |> element("li:first-of-type a[phx-value-log-event-id='some-uuid']", "view")
         |> render_click()
       end)
 
