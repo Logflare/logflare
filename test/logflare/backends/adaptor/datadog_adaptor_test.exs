@@ -18,17 +18,6 @@ defmodule Logflare.Backends.Adaptor.DatadogAdaptorTest do
     :ok
   end
 
-  test "regions/1 return valid datadog regions list" do
-    assert Enum.sort(DatadogAdaptor.regions()) == [
-             "AP1",
-             "EU",
-             "US1",
-             "US1-FED",
-             "US3",
-             "US5"
-           ]
-  end
-
   describe "cast and validate" do
     test "API key is required and region only accepts valid regions" do
       changeset = Adaptor.cast_and_validate_config(@subject, %{})
