@@ -82,7 +82,8 @@ defmodule Logflare.Telemetry do
       last_value("vm.memory.total", unit: {:byte, :kilobyte}),
       last_value("vm.total_run_queue_lengths.total"),
       last_value("vm.total_run_queue_lengths.cpu"),
-      last_value("vm.total_run_queue_lengths.io")
+      last_value("vm.total_run_queue_lengths.io"),
+      last_value("logflare.system.observer.metrics.total_active_tasks")
     ]
 
     broadway_metrics = [
@@ -147,6 +148,16 @@ defmodule Logflare.Telemetry do
       last_value("logflare.system.finch.in_flight_requests", tags: [:pool, :url]),
       last_value("logflare.google.set_iam_policy.members",
         description: "Google IAM policy members count"
+      ),
+      last_value("logflare.backends.dynamic_pipeline.pipeline_count",
+        tags: [:backend_id]
+      ),
+      last_value("logflare.backends.ingest_event_queue.queue_janitor.length",
+        tags: [:backend_id]
+      ),
+      distribution("logflare.ingest.pipeline.stream_batch.stop.duration",
+        tags: [:source_token],
+        unit: {:native, :millisecond}
       ),
       last_value("logflare.backends.dynamic_pipeline.increment.success_count",
         tags: [:backend_id],

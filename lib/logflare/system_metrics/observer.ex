@@ -42,7 +42,8 @@ defmodule Logflare.SystemMetrics.Observer do
       port_limit: :erlang.system_info(:port_limit),
       port_count: :erlang.system_info(:port_count),
       ets_limit: :erlang.system_info(:ets_limit),
-      ets_count: :erlang.system_info(:ets_count)
+      ets_count: :erlang.system_info(:ets_count),
+      total_active_tasks: :erlang.statistics(:total_active_tasks)
     ]
     |> Map.new()
   end
