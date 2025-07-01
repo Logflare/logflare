@@ -1,5 +1,4 @@
 defmodule Logflare.Mixfile do
-  @moduledoc false
   use Mix.Project
 
   def project do
@@ -243,7 +242,7 @@ defmodule Logflare.Mixfile do
     [
       setup: ["deps.get", "ecto.setup", "ecto.seed"],
       # coveralls will trigger unit tests as well
-      test: ["ecto.create --quiet", "ecto.migrate", "test --no-start"],
+      test: ["ecto.create --quiet", "ecto.migrate --quiet", "test --no-start"],
       "test.only": ["test --no-start"],
       "test.watch": ["test.watch --no-start"],
       "test.compile": ["compile --warnings-as-errors"],
