@@ -10,18 +10,8 @@ defmodule Logflare.Backends.Adaptor.LokiAdaptor do
 
   """
 
-  use TypedStruct
-
   alias Logflare.Backends.Adaptor.WebhookAdaptor
   alias Logflare.Utils
-
-  typedstruct enforce: true do
-    field(:url, String.t())
-    field(:headers, map(), optional: true)
-    # basic auth username and password
-    field(:username, String.t())
-    field(:password, String.t())
-  end
 
   @behaviour Logflare.Backends.Adaptor
 
