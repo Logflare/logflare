@@ -131,6 +131,7 @@
         #
         ## Warnings
         #
+        {Credo.Check.Warning.Dbg, []},
         {Credo.Check.Warning.BoolOperationOnSameValues, []},
         {Credo.Check.Warning.ExpensiveEmptyEnumCheck, []},
         {Credo.Check.Warning.IExPry, []},
