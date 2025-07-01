@@ -96,7 +96,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
       assert view |> element(".subhead") |> render() =~ "(+00:00)"
     end
 
-    test "subheader - viewing timezone switcher", %{conn: conn, source: source} do
+    test "subheader - switch dispalyed timezone with dropdown", %{conn: conn, source: source} do
       {:ok, view, _html} = live(conn, ~p"/sources/#{source.id}/search")
 
       assert view
@@ -106,6 +106,18 @@ defmodule LogflareWeb.Source.SearchLVTest do
       html = view |> element("#logs-list-container") |> render()
 
       assert html =~ "+08:00"
+    end
+
+    test "subheader - switch displayed timezone with UTC button", %{conn: conn, source: source} do
+      {:ok, view, _html} = live(conn, ~p"/sources/#{source.id}/search?tz=Singapore")
+
+      assert view |> element(".subhead") |> render() =~ "(+08:00)"
+
+      assert view
+             |> element(".subhead form#results-actions button[phx-value-display_timezone]")
+             |> render_click()
+
+      assert view |> element("#logs-list-container") |> render() =~ "+00:00"
     end
 
     test "subheader - load with timezone in url even if it differs from preference", %{
