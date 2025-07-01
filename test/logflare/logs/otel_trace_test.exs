@@ -68,5 +68,237 @@ defmodule Logflare.Logs.OtelTraceTest do
       [params | _] = resource_spans |> OtelTrace.handle_batch(source)
       assert {:ok, _} = Jason.encode(params)
     end
+
+    test "correctly parses resource spans", %{
+      source: source
+    } do
+      request = %Opentelemetry.Proto.Collector.Trace.V1.ExportTraceServiceRequest{
+        resource_spans: [
+          %Opentelemetry.Proto.Trace.V1.ResourceSpans{
+            resource: %Opentelemetry.Proto.Resource.V1.Resource{
+              attributes: [
+                %Opentelemetry.Proto.Common.V1.KeyValue{
+                  key: "cloud.provider",
+                  value: %Opentelemetry.Proto.Common.V1.AnyValue{
+                    value: {:string_value, "cloudflare"}
+                  }
+                },
+                %Opentelemetry.Proto.Common.V1.KeyValue{
+                  key: "cloud.region",
+                  value: %Opentelemetry.Proto.Common.V1.AnyValue{
+                    value: {:string_value, "earth"}
+                  }
+                },
+                %Opentelemetry.Proto.Common.V1.KeyValue{
+                  key: "service.namespace",
+                  value: %Opentelemetry.Proto.Common.V1.AnyValue{
+                    value: nil
+                  }
+                },
+                %Opentelemetry.Proto.Common.V1.KeyValue{
+                  key: "service.version",
+                  value: %Opentelemetry.Proto.Common.V1.AnyValue{
+                    value: nil
+                  }
+                }
+              ],
+              dropped_attributes_count: 0
+            },
+            scope_spans: [
+              %Opentelemetry.Proto.Trace.V1.ScopeSpans{
+                scope: %Opentelemetry.Proto.Common.V1.InstrumentationScope{
+                  name: "@microlabs/otel-cf-workers",
+                  version: "",
+                  attributes: [],
+                  dropped_attributes_count: 0,
+                  __unknown_fields__: []
+                },
+                spans: [
+                  %Opentelemetry.Proto.Trace.V1.Span{
+                    trace_id:
+                      <<227, 221, 157, 247, 77, 58, 239, 142, 56, 225, 253, 181, 247, 183, 189,
+                        119, 143, 30, 227, 94, 253, 211, 135, 252>>,
+                    span_id: <<119, 222, 252, 119, 183, 154, 233, 230, 184, 231, 189, 188>>,
+                    trace_state: "",
+                    parent_span_id: <<219, 158, 187, 245, 189, 26, 225, 205, 221, 223, 141, 245>>,
+                    name: "fetch POST api.logflare.app",
+                    kind: :SPAN_KIND_CLIENT,
+                    start_time_unix_nano: 1_751_301_254_474_000_000,
+                    end_time_unix_nano: 1_751_301_254_983_000_000,
+                    attributes: [
+                      %Opentelemetry.Proto.Common.V1.KeyValue{
+                        key: "http.request.method",
+                        value: %Opentelemetry.Proto.Common.V1.AnyValue{
+                          value: {:string_value, "POST"}
+                        }
+                      },
+                      %Opentelemetry.Proto.Common.V1.KeyValue{
+                        key: "network.protocol.name",
+                        value: %Opentelemetry.Proto.Common.V1.AnyValue{
+                          value: {:string_value, "http"}
+                        }
+                      },
+                      %Opentelemetry.Proto.Common.V1.KeyValue{
+                        key: "network.protocol.version",
+                        value: %Opentelemetry.Proto.Common.V1.AnyValue{
+                          value: nil
+                        }
+                      },
+                      %Opentelemetry.Proto.Common.V1.KeyValue{
+                        key: "http.request.body.size",
+                        value: %Opentelemetry.Proto.Common.V1.AnyValue{
+                          value: nil
+                        }
+                      },
+                      %Opentelemetry.Proto.Common.V1.KeyValue{
+                        key: "user_agent.original",
+                        value: %Opentelemetry.Proto.Common.V1.AnyValue{
+                          value: nil
+                        }
+                      },
+                      %Opentelemetry.Proto.Common.V1.KeyValue{
+                        key: "http.mime_type",
+                        value: %Opentelemetry.Proto.Common.V1.AnyValue{
+                          value: {:string_value, "application/json; charset=utf-8"}
+                        }
+                      },
+                      %Opentelemetry.Proto.Common.V1.KeyValue{
+                        key: "http.accepts",
+                        value: %Opentelemetry.Proto.Common.V1.AnyValue{
+                          value: nil
+                        }
+                      },
+                      %Opentelemetry.Proto.Common.V1.KeyValue{
+                        key: "http.response.status_code",
+                        value: %Opentelemetry.Proto.Common.V1.AnyValue{
+                          value: {:int_value, 401}
+                        }
+                      },
+                      %Opentelemetry.Proto.Common.V1.KeyValue{
+                        key: "http.response.body.size",
+                        value: %Opentelemetry.Proto.Common.V1.AnyValue{
+                          value: nil
+                        }
+                      }
+                    ],
+                    dropped_attributes_count: 0,
+                    events: [],
+                    dropped_events_count: 0,
+                    links: [],
+                    dropped_links_count: 0,
+                    status: %Opentelemetry.Proto.Trace.V1.Status{
+                      message: "",
+                      code: :STATUS_CODE_UNSET,
+                      __unknown_fields__: []
+                    },
+                    flags: 0,
+                    __unknown_fields__: []
+                  },
+                  %Opentelemetry.Proto.Trace.V1.Span{
+                    trace_id:
+                      <<227, 221, 157, 247, 77, 58, 239, 142, 56, 225, 253, 181, 247, 183, 189,
+                        119, 143, 30, 227, 94, 253, 211, 135, 252>>,
+                    span_id: <<219, 158, 187, 245, 189, 26, 225, 205, 221, 223, 141, 245>>,
+                    trace_state: "",
+                    parent_span_id: "",
+                    name: "fetchHandler GET",
+                    kind: :SPAN_KIND_SERVER,
+                    start_time_unix_nano: 1_751_301_254_474_000_000,
+                    end_time_unix_nano: 1_751_301_254_983_000_000,
+                    attributes: [
+                      %Opentelemetry.Proto.Common.V1.KeyValue{
+                        key: "faas.invocation_id",
+                        value: %Opentelemetry.Proto.Common.V1.AnyValue{
+                          value: nil
+                        }
+                      },
+                      %Opentelemetry.Proto.Common.V1.KeyValue{
+                        key: "http.request.body.size",
+                        value: %Opentelemetry.Proto.Common.V1.AnyValue{
+                          value: nil
+                        }
+                      },
+                      %Opentelemetry.Proto.Common.V1.KeyValue{
+                        key: "user_agent.original",
+                        value: %Opentelemetry.Proto.Common.V1.AnyValue{
+                          value:
+                            {:string_value,
+                             "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:139.0) Gecko/20100101 Firefox/139.0"}
+                        }
+                      },
+                      %Opentelemetry.Proto.Common.V1.KeyValue{
+                        key: "http.accepts",
+                        value: %Opentelemetry.Proto.Common.V1.AnyValue{
+                          value: {:string_value, "gzip, deflate, br, zstd"}
+                        }
+                      },
+                      %Opentelemetry.Proto.Common.V1.KeyValue{
+                        key: "url.full",
+                        value: %Opentelemetry.Proto.Common.V1.AnyValue{
+                          value: {:string_value, "http://localhost:8787/"}
+                        }
+                      },
+                      %Opentelemetry.Proto.Common.V1.KeyValue{
+                        key: "server.address",
+                        value: %Opentelemetry.Proto.Common.V1.AnyValue{
+                          value: {:string_value, "localhost:8787"}
+                        }
+                      },
+                      %Opentelemetry.Proto.Common.V1.KeyValue{
+                        key: "http.response.status_code",
+                        value: %Opentelemetry.Proto.Common.V1.AnyValue{
+                          value: {:int_value, 200}
+                        }
+                      },
+                      %Opentelemetry.Proto.Common.V1.KeyValue{
+                        key: "http.response.body.size",
+                        value: %Opentelemetry.Proto.Common.V1.AnyValue{
+                          value: nil
+                        }
+                      }
+                    ],
+                    dropped_attributes_count: 0,
+                    events: [],
+                    dropped_events_count: 0,
+                    links: [],
+                    dropped_links_count: 0,
+                    status: %Opentelemetry.Proto.Trace.V1.Status{
+                      message: "",
+                      code: :STATUS_CODE_UNSET
+                    },
+                    flags: 0
+                  }
+                ],
+                schema_url: ""
+              }
+            ],
+            schema_url: ""
+          }
+        ]
+      }
+
+      converted =
+        OtelTrace.handle_batch(request.resource_spans, source)
+
+      assert converted
+             |> Iteraptor.each(
+               fn
+                 {k, %_{} = v} = self ->
+                   raise "contains struct"
+
+                 {[:values | _], v} = self ->
+                   raise "contains atom"
+
+                 {[:__unknown_fields__ | _], v} = self ->
+                   raise "contains atom"
+
+                 self ->
+                   self
+               end,
+               structs: :keep,
+               yield: :all,
+               keys: :reverse
+             )
+    end
   end
 end

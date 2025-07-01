@@ -78,11 +78,12 @@ defmodule LogflareWeb.Router do
 
     plug(Plug.Parsers,
       parsers: [ProtobufParser],
+      json_decoder: Jason,
       body_reader: {PlugCaisson, :read_body, []},
       length: 12_000_000
     )
 
-    plug(:accepts, ["protobuf"])
+    plug(:accepts, ["json", "protobuf"])
     plug(LogflareWeb.Plugs.SetHeaders)
   end
 

@@ -15,7 +15,13 @@ defmodule LogflareWeb.ProtobufParser do
   def parse(conn, "application", "x-protobuf", _headers, {{mod, fun, args}, _opts}) do
     conn
     |> then(&apply(mod, fun, [&1 | args]))
-    |> decode()
+    |> decode(:protobuf)
+  end
+
+  def parse(conn, "application", "json", _headers, {{mod, fun, args}, _opts}) do
+    conn
+    |> then(&apply(mod, fun, [&1 | args]))
+    |> decode(:json)
   end
 
   @doc false
@@ -23,11 +29,11 @@ defmodule LogflareWeb.ProtobufParser do
     {:next, conn}
   end
 
-  def decode({:ok, <<>>, conn}) do
+  def decode({:ok, <<>>, conn}, _type) do
     {:ok, %{}, conn}
   end
 
-  def decode({:ok, body, conn}) do
+  def decode({:ok, body, conn}, :protobuf) do
     protobuf_schema = Map.fetch!(conn.assigns, :protobuf_schema)
     {:ok, protobuf_schema.decode(body), conn}
   rescue
@@ -35,15 +41,24 @@ defmodule LogflareWeb.ProtobufParser do
       reraise Plug.Parsers.ParseError, [exception: e], __STACKTRACE__
   end
 
-  def decode({:more, _, conn}) do
+  def decode({:ok, body, conn}, :json) do
+    protobuf_schema = Map.fetch!(conn.assigns, :protobuf_schema)
+    {:ok, data} = Protobuf.JSON.decode(body, protobuf_schema)
+    {:ok, data, conn}
+  rescue
+    e ->
+      reraise Plug.Parsers.ParseError, [exception: e], __STACKTRACE__
+  end
+
+  def decode({:more, _, conn}, _type) do
     {:error, :too_large, conn}
   end
 
-  def decode({:error, :timeout}) do
+  def decode({:error, :timeout}, _type) do
     raise Plug.TimeoutError
   end
 
-  def decode({:error, _}) do
+  def decode({:error, _}, _type) do
     raise Plug.BadRequestError
   end
 end

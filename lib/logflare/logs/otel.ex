@@ -90,6 +90,7 @@ defmodule Logflare.Logs.Otel do
   end
 
   def extract_value(%_{value: {_type, value}}), do: value
+  def extract_value(%_{value: nil}), do: nil
   def extract_value(nil), do: nil
   def extract_value(value), do: value
 
