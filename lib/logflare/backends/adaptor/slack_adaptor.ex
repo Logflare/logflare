@@ -6,9 +6,7 @@ defmodule Logflare.Backends.Adaptor.SlackAdaptor do
 
   alias Logflare.Source
   alias Logflare.Alerting.AlertQuery
-  alias LogflareWeb.Endpoint
-  alias LogflareWeb.Router.Helpers, as: Routes
-  @endpoint LogflareWeb.Endpoint
+
   @doc """
   Sends a given payload to slack.
 
@@ -59,7 +57,7 @@ defmodule Logflare.Backends.Adaptor.SlackAdaptor do
         %{DateTime.to_string(dt) => le.body["event_message"]}
       end)
 
-    source_link = Endpoint.static_url() <> Routes.source_path(Endpoint, :show, id)
+    source_link = url(~p"/sources/#{id}")
 
     to_body(events,
       button_link: %{
