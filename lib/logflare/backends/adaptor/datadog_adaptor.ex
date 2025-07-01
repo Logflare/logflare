@@ -4,8 +4,6 @@ defmodule Logflare.Backends.Adaptor.DatadogAdaptor do
   for DataDog logs ingestion endpoint.
   """
 
-  use TypedStruct
-
   alias Logflare.Backends.Adaptor.WebhookAdaptor
 
   # https://docs.datadoghq.com/api/latest/logs/#send-logs
@@ -20,11 +18,6 @@ defmodule Logflare.Backends.Adaptor.DatadogAdaptor do
   @regions Map.keys(@api_url_mapping)
 
   def regions, do: @regions
-
-  typedstruct enforce: true do
-    field(:api_key, String.t())
-    field(:region, String.t())
-  end
 
   @behaviour Logflare.Backends.Adaptor
 

@@ -6,7 +6,6 @@ defmodule Logflare.Backends.Adaptor.S3Adaptor do
   import Logflare.Utils.Guards
 
   use Supervisor
-  use TypedStruct
   require Logger
 
   alias __MODULE__.Pipeline
@@ -18,22 +17,6 @@ defmodule Logflare.Backends.Adaptor.S3Adaptor do
   alias Logflare.LogEvent
   alias Logflare.Source
   alias Logflare.Sources
-
-  typedstruct do
-    field(:config, %{
-      s3_bucket: String.t(),
-      storage_region: String.t(),
-      access_key_id: String.t(),
-      secret_access_key: String.t(),
-      batch_timeout: pos_integer()
-    })
-
-    field(:source, Source.t())
-    field(:backend, Backend.t())
-    field(:backend_token, String.t())
-    field(:source_token, atom())
-    field(:pipeline_name, tuple())
-  end
 
   @behaviour Adaptor
 

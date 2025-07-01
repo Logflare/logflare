@@ -20,21 +20,11 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
   """
 
   use GenServer
-  use TypedStruct
 
   alias Logflare.Backends
   alias Logflare.Backends.Adaptor.WebhookAdaptor.EgressMiddleware
 
   @behaviour Logflare.Backends.Adaptor
-
-  typedstruct do
-    field(:config, %{
-      url: String.t(),
-      headers: map(),
-      http: String.t(),
-      gzip: boolean()
-    })
-  end
 
   @impl Logflare.Backends.Adaptor
   def start_link({source, backend} = args) do
