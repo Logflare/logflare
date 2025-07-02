@@ -845,7 +845,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
       assert view
              |> has_element?("#results-actions_display_timezone :checked", "Europe/London")
 
-      updated_user = Logflare.Repo.get(Logflare.User, user.id) |> dbg
+      updated_user = Logflare.Repo.get(Logflare.User, user.id)
       assert updated_user.preferences.display_timezone == nil
     end
 

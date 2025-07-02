@@ -206,7 +206,6 @@ defmodule LogflareWeb.Source.SearchLV do
         preferences: Map.from_struct(preferences)
       })
 
-    user.preferences |> dbg
     {:noreply, assign(socket, user: user, display_timezone: display_timezone)}
   end
 
