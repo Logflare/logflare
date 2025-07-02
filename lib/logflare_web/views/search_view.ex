@@ -4,6 +4,7 @@ defmodule LogflareWeb.SearchView do
   import LogflareWeb.Helpers.BqSchema
   import LogflareWeb.ModalLiveHelpers
   import Logflare.Lql.Utils
+  import LogflareWeb.SearchLive.DisplayTimezoneComponent
   alias Logflare.DateTimeUtils
   alias LogflareWeb.Search
 end
