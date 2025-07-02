@@ -443,8 +443,9 @@ defmodule Logflare.Sql do
   defp do_replace_names({"Table" = k, %{"name" => names} = v}, data) do
     dialect_quote_style =
       case data.dialect do
-        "postgres" -> "\""
         "bigquery" -> "`"
+        "clickhouse" -> nil
+        "postgres" -> "\""
       end
 
     qualified_name = Enum.map_join(names, ".", fn %{"value" => part} -> part end)
@@ -513,6 +514,11 @@ defmodule Logflare.Sql do
   end
 
   defp do_replace_sandboxed_query(ast_node, _data), do: {:recurse, ast_node}
+
+  defp transform_name(relname, %{dialect: "clickhouse"} = data) do
+    source = Enum.find(data.sources, fn s -> s.name == relname end)
+    ClickhouseAdaptor.clickhouse_ingest_table_name(source)
+  end
 
   defp transform_name(relname, %{dialect: "postgres"} = data) do
     source = Enum.find(data.sources, fn s -> s.name == relname end)
