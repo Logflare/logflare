@@ -23,16 +23,6 @@ defmodule LogflareWeb.OpenTelemetrySamplerTest do
 
   doctest LogflareWeb.OpenTelemetrySampler, import: true
 
-  describe "setup/1" do
-    test "delegates to trace id ratio based sampler" do
-      opts = %{probability: 0.5}
-      assert config = %{probability: 0.5} = OpenTelemetrySampler.setup(opts)
-
-      expected_config = :otel_sampler_trace_id_ratio_based.setup(0.5)
-      assert config == expected_config
-    end
-  end
-
   describe "description/1" do
     test "returns the module name as description" do
       opts = %{probability: 1}
@@ -48,7 +38,7 @@ defmodule LogflareWeb.OpenTelemetrySamplerTest do
       links = {:links, 128, 128, :infinity, 0, []}
       span_name = "HTTP POST"
       span_kind = :server
-      sampler_config = :otel_sampler_trace_id_ratio_based.setup(1.0)
+      sampler_config = OpenTelemetrySampler.setup(%{probability: 1.0})
 
       %{
         ctx: ctx,
