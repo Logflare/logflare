@@ -175,54 +175,60 @@ defmodule Logflare.Source.BigQuery.Pipeline do
   def stream_batch(%{source_token: source_token} = context, messages) do
     Logger.metadata(source_id: source_token, source_token: source_token)
 
-    rows = le_messages_to_bq_rows(messages)
+    :telemetry.span(
+      [:logflare, :ingest, :pipeline, :stream_batch],
+      %{source_token: source_token},
+      fn ->
+        rows = le_messages_to_bq_rows(messages)
 
-    # TODO ... Send some errors through the pipeline again. The generic "retry" error specifically.
-    # All others send to the rejected list with the message from BigQuery.
-    # See todo in `process_data` also.
-    case BigQuery.stream_batch!(context, rows) do
-      {:ok, %GoogleApi.BigQuery.V2.Model.TableDataInsertAllResponse{insertErrors: nil}} ->
-        :ok
+        # TODO ... Send some errors through the pipeline again. The generic "retry" error specifically.
+        # All others send to the rejected list with the message from BigQuery.
+        # See todo in `process_data` also.
+        case BigQuery.stream_batch!(context, rows) do
+          {:ok, %GoogleApi.BigQuery.V2.Model.TableDataInsertAllResponse{insertErrors: nil}} ->
+            :ok
 
-      {:ok, %GoogleApi.BigQuery.V2.Model.TableDataInsertAllResponse{insertErrors: errors}} ->
-        Logger.warning("BigQuery insert errors.", error_string: inspect(errors))
+          {:ok, %GoogleApi.BigQuery.V2.Model.TableDataInsertAllResponse{insertErrors: errors}} ->
+            Logger.warning("BigQuery insert errors.", error_string: inspect(errors))
 
-      {:error, %Tesla.Env{} = response} ->
-        case GenUtils.get_tesla_error_message(response) do
-          "Access Denied: BigQuery BigQuery: Streaming insert is not allowed in the free tier" =
-              message ->
-            disconnect_backend_and_email(source_token, message)
+          {:error, %Tesla.Env{} = response} ->
+            case GenUtils.get_tesla_error_message(response) do
+              "Access Denied: BigQuery BigQuery: Streaming insert is not allowed in the free tier" =
+                  message ->
+                disconnect_backend_and_email(source_token, message)
 
-          "The project" <> _tail = message ->
-            # "The project web-wtc-1537199112807 has not enabled BigQuery."
-            disconnect_backend_and_email(source_token, message)
+              "The project" <> _tail = message ->
+                # "The project web-wtc-1537199112807 has not enabled BigQuery."
+                disconnect_backend_and_email(source_token, message)
 
-          # Don't disconnect here because sometimes the GCP API doesn't find projects
-          #
-          # "Not found:" <> _tail = message ->
-          #   disconnect_backend_and_email(source_id, message)
-          #   messages
+              # Don't disconnect here because sometimes the GCP API doesn't find projects
+              #
+              # "Not found:" <> _tail = message ->
+              #   disconnect_backend_and_email(source_id, message)
+              #   messages
 
-          _message ->
-            Logger.warning("Stream batch response error!",
-              tesla_response: GenUtils.get_tesla_error_message(response)
-            )
+              _message ->
+                Logger.warning("Stream batch response error!",
+                  tesla_response: GenUtils.get_tesla_error_message(response)
+                )
+            end
+
+          {:error, :emfile = response} ->
+            Logger.error("Stream batch emfile error!", tesla_response: response)
+
+          {:error, :timeout = response} ->
+            Logger.warning("Stream batch timeout error!", tesla_response: response)
+
+          {:error, :checkout_timeout = response} ->
+            Logger.warning("Stream batch checkout_timeout error!", tesla_response: response)
+
+          {:error, response} ->
+            Logger.warning("Stream batch unknown error!", tesla_response: inspect(response))
         end
 
-      {:error, :emfile = response} ->
-        Logger.error("Stream batch emfile error!", tesla_response: response)
-
-      {:error, :timeout = response} ->
-        Logger.warning("Stream batch timeout error!", tesla_response: response)
-
-      {:error, :checkout_timeout = response} ->
-        Logger.warning("Stream batch checkout_timeout error!", tesla_response: response)
-
-      {:error, response} ->
-        Logger.warning("Stream batch unknown error!", tesla_response: inspect(response))
-    end
-
-    messages
+        {messages, %{}}
+      end
+    )
   end
 
   def process_data(%LE{source: %Source{lock_schema: true}} = log_event, _context) do

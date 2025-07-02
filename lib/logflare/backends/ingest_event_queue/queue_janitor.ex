@@ -53,7 +53,15 @@ defmodule Logflare.Backends.IngestEventQueue.QueueJanitor do
   def do_drop(state, metrics) do
     sid_bid = {state.source_id, state.backend_id}
     # safety measure, drop all if still exceed
-    for {_sid, _bid, pid} = sid_bid_pid <- IngestEventQueue.list_queues(sid_bid),
+    queues = IngestEventQueue.list_queues(sid_bid)
+
+    :telemetry.execute(
+      [:logflare, :backends, :ingest_event_queue, :queue_janitor],
+      %{length: length(queues)},
+      %{source_id: state.source_id, backend_id: state.backend_id}
+    )
+
+    for {_sid, _bid, pid} = sid_bid_pid <- queues,
         size = IngestEventQueue.get_table_size(sid_bid_pid),
         is_integer(size) do
       if metrics.avg > 100 do

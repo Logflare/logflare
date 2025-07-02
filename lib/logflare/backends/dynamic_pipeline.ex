@@ -294,6 +294,20 @@ defmodule Logflare.Backends.DynamicPipeline do
       pipelines = DynamicPipeline.list_pipelines(state.name)
       pipeline_count = Enum.count(pipelines)
 
+      :telemetry.execute(
+        [:logflare, :backends, :dynamic_pipeline],
+        %{
+          pipeline_count: pipeline_count
+        },
+        %{
+          source_id: state.pipeline_args[:source].id,
+          source_token: state.pipeline_args[:source].token,
+          backend_id: state.pipeline_args[:backend].id,
+          backend_token: state.pipeline_args[:backend].token,
+          backend_type: state.pipeline_args[:backend].type
+        }
+      )
+
       state =
         case DynamicPipeline.resolve_pipeline_count(state, pipeline_count) do
           {:incr, desired_count, new_state} ->
