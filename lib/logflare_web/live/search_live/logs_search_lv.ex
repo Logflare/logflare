@@ -26,6 +26,7 @@ defmodule LogflareWeb.Source.SearchLV do
   import Logflare.Logs.Search.Utils
   import LogflareWeb.SearchLV.Utils
   import Logflare.Utils, only: [iso_timestamp: 1]
+  import LogflareWeb.SearchLive.DisplayTimezoneComponent
 
   require Logger
   embed_templates "templates/*"
@@ -61,7 +62,7 @@ defmodule LogflareWeb.Source.SearchLV do
       team_user: team_user,
       search_tip: gen_search_tip(),
       user_timezone_from_connect_params: nil,
-      display_timezone: Map.get(params, "tz", "Etc/UTC"),
+      display_timezone: fetch_display_timezone(user, params),
       search_timezone: Map.get(params, "tz", "Etc/UTC"),
       # loading states
       loading: true,
@@ -185,6 +186,28 @@ defmodule LogflareWeb.Source.SearchLV do
 
   def render(assigns) do
     logs_search(assigns)
+  end
+
+  def handle_event(
+        "results-action-change",
+        %{"remember_timezone" => remember?, "display_timezone" => display_timezone},
+        socket
+      ) do
+    %{user: user} = socket.assigns
+
+    preferences =
+      user.preferences
+      |> Map.update(:display_timezone, nil, fn _ ->
+        if remember? == "true", do: display_timezone, else: nil
+      end)
+
+    {:ok, user} =
+      Users.update_user_with_preferences(user, %{
+        preferences: Map.from_struct(preferences)
+      })
+
+    user.preferences |> dbg
+    {:noreply, assign(socket, user: user, display_timezone: display_timezone)}
   end
 
   def handle_event("results-action-change", %{"display_timezone" => tz}, socket) do
@@ -917,4 +940,10 @@ defmodule LogflareWeb.Source.SearchLV do
       true -> {:ok, socket}
     end
   end
+
+  defp fetch_display_timezone(%{preferences: %{display_timezone: display_timezone}}, _params)
+       when not is_nil(display_timezone),
+       do: display_timezone
+
+  defp fetch_display_timezone(_user, params), do: Map.get(params, "tz", "Etc/UTC")
 end

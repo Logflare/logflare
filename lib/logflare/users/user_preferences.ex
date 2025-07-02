@@ -5,11 +5,12 @@ defmodule Logflare.Users.UserPreferences do
 
   typed_embedded_schema do
     field :timezone, :string
+    field :display_timezone, :string
   end
 
   def changeset(user_prefs, attrs \\ %{}) do
     user_prefs
-    |> cast(attrs, [:timezone])
+    |> cast(attrs, [:timezone, :display_timezone])
     |> validate_required([:timezone])
   end
 end

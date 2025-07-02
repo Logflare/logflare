@@ -21,7 +21,8 @@
         class: "text-primary"
       ) %>/search
     </h5>
-    <div class="log-settings">
+    <div class="log-settings tw-justify-between tw-mt-2">
+      <.display_timezone preferences={@user.preferences} display_timezone={@display_timezone} search_timezone={@search_timezone} />
       <ul>
         <li>
           <a href="javascript:Source.scrollOverflowBottom();">
@@ -35,14 +36,6 @@
         </li>
         <li>
           <%= LqlHelpers.bq_source_schema_modal_link() %>
-        </li>
-        <li>
-          <%= live_modal_show_link(component: Search.UserPreferencesComponent, modal_id: :user_preferences, title: "Preferences", return_to: @uri.path <> "?" <> (@uri.query || ""))  do %>
-            <i class="fas fa-globe"></i>
-            <span class="hide-on-mobile">
-              timezone <%= DateTimeUtils.humanize_timezone_offset(Timex.Timezone.get(@search_timezone).offset_utc) %>
-            </span>
-          <% end %>
         </li>
         <li>
           <span id="search-uri-query" class="pointer-cursor" data-trigger="hover focus" data-delay="0" data-toggle="tooltip" data-placement="top" data-title="<span id=&quot;copy-tooltip&quot;>Copy uri</span>">
@@ -72,22 +65,6 @@
             <% end %>
           </li>
         <% end %>
-      </ul>
-    </div>
-    <div>
-      <ul>
-        <li>
-          <.form :let={f} for={%{}} phx-change="results-action-change" id="results-actions">
-            <label class="sr-only" for="display_timezone">Display Timezone</label>
-            <div class="input-group input-group-sm">
-              <div class="input-group-prepend">
-                <div class="input-group-text  tw-bg-transparent tw-text-black tw-text-xs">display timezone</div>
-              </div>
-              <%= select(f, :display_timezone, LogflareWeb.Search.UserPreferencesComponent.build_timezones_select_form_options(), selected: @display_timezone, class: "form-control form-control-sm tw-w-64 tw-text-xs") %>
-              <button type="button" class="btn btn-link tw-text-xs" phx-click="results-action-change" phx-value-display_timezone="Etc/UTC">UTC</button>
-            </div>
-          </.form>
-        </li>
       </ul>
     </div>
   </div>

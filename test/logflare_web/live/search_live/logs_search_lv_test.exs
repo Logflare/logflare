@@ -778,6 +778,121 @@ defmodule LogflareWeb.Source.SearchLVTest do
     end
   end
 
+  describe "display timezone UI behavior" do
+    setup do
+      user = insert(:user, %{preferences: %{timezone: "Singapore"}})
+      source = insert(:source, user: user)
+      plan = insert(:plan)
+      [user: user, source: source, plan: plan]
+    end
+
+    setup [:setup_user_session, :setup_source_processes]
+
+    test "when remember is checked display_timezone is set in user preferences",
+         %{
+           conn: conn,
+           user: user,
+           source: source
+         } do
+      {:ok, view, _html} =
+        live(
+          conn,
+          ~p"/sources/#{source.id}/search?querystring=something123&tailing%3F=&tz=Singapore"
+        )
+
+      html =
+        view
+        |> element("#results-actions")
+        |> render_change(%{
+          display_timezone: "Europe/London",
+          remember_timezone: "true"
+        })
+
+      assert view
+             |> has_element?("#results-actions_display_timezone :checked", "Europe/London")
+
+      updated_user = Logflare.Repo.reload!(user)
+      assert updated_user.preferences.display_timezone == "Europe/London"
+    end
+
+    test "when remember is unchecked display_timezone is removed from user preferences",
+         %{
+           conn: conn,
+           user: user,
+           source: source
+         } do
+      {:ok, view, _html} =
+        live(
+          conn,
+          ~p"/sources/#{source.id}/search?querystring=something123&tailing%3F=&tz=Singapore"
+        )
+
+      preferences =
+        user.preferences
+        |> Map.put(:display_timezone, "Europe/London")
+
+      user
+      |> Logflare.Users.update_user_with_preferences(%{preferences: Map.from_struct(preferences)})
+
+      html =
+        view
+        |> element("#results-actions")
+        |> render_change(%{
+          display_timezone: "Europe/London",
+          remember_timezone: "false"
+        })
+
+      assert view
+             |> has_element?("#results-actions_display_timezone :checked", "Europe/London")
+
+      updated_user = Logflare.Repo.get(Logflare.User, user.id) |> dbg
+      assert updated_user.preferences.display_timezone == nil
+    end
+
+    test "remember checkbox is hidden display_timezone is same as user's timezone", %{
+      conn: conn,
+      user: user,
+      source: source
+    } do
+      {:ok, view, _html} =
+        live(
+          conn,
+          ~p"/sources/#{source.id}/search?querystring=something123&tailing%3F=&tz=Singapore"
+        )
+
+      assert view
+             |> element("#results-actions")
+             |> render_change(%{display_timezone: "Singapore"})
+
+      html = render(view)
+
+      # Checkbox should be hidden when display_timezone == user's timezone
+      refute html =~ "name=\"remember_timezone\""
+      refute html =~ "Remember"
+    end
+
+    test "when display_timezone is different to user's timezone, show checkbox", %{
+      conn: conn,
+      user: user,
+      source: source
+    } do
+      {:ok, view, _html} =
+        live(
+          conn,
+          ~p"/sources/#{source.id}/search?querystring=something123&tailing%3F=&tz=Singapore"
+        )
+
+      assert view
+             |> element("#results-actions")
+             |> render_change(%{display_timezone: "America/New_York"})
+
+      html = render(view)
+
+      assert html =~ "name=\"remember_timezone\""
+      assert html =~ "Remember"
+    end
+  end
+
   defp get_view_assigns(view) do
     :sys.get_state(view.pid).socket.assigns
   end
