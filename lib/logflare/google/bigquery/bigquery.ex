@@ -101,7 +101,7 @@ defmodule Logflare.Google.BigQuery do
     partitioning = %Model.TimePartitioning{
       requirePartitionFilter: true,
       field: "timestamp",
-      type: "DAY",
+      type: "HOUR",
       expirationMs: table_ttl
     }
 
@@ -135,8 +135,12 @@ defmodule Logflare.Google.BigQuery do
     table_name = GenUtils.format_table_name(source_id)
     dataset_id = dataset_id || GenUtils.get_account_id(source_id) <> env_dataset_id_append()
 
+    {:ok, table} = get_table(source_id)
+    timepartitioning_type = table.timePartitioning.type
+
     partitioning = %Model.TimePartitioning{
-      type: "DAY",
+      # use the same type as the existing table, as BQ does not allow changing it
+      type: timepartitioning_type,
       expirationMs: table_ttl
     }
 
