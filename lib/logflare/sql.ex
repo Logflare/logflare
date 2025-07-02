@@ -11,6 +11,8 @@ defmodule Logflare.Sql do
   alias Logflare.User
   alias Logflare.SingleTenant
   alias Logflare.Sql.Parser
+  alias Logflare.Sql.AstUtils
+  alias Logflare.Backends.Adaptor.ClickhouseAdaptor
   alias Logflare.Backends.Adaptor.PostgresAdaptor
   alias Logflare.Endpoints
   alias Logflare.Alerts.Alert
@@ -63,13 +65,16 @@ defmodule Logflare.Sql do
     end
   end
 
-  defp replace_names_with_subqueries(
+  defp replace_names_with_subqueries(ast, data) do
+    AstUtils.transform_recursive(ast, data, &do_replace_names_with_subqueries/2)
+  end
+
+  defp do_replace_names_with_subqueries(
          {"relation" = k,
           %{"Table" => %{"alias" => table_alias, "name" => table_name_values}} = v},
          data
        )
        when is_list(table_name_values) and is_map(data) do
-    # handle both single and split table name AST
     table_name =
       case table_name_values do
         [%{"value" => table_name}] ->
@@ -101,19 +106,7 @@ defmodule Logflare.Sql do
     end
   end
 
-  defp replace_names_with_subqueries({k, v}, data) when is_list(v) or is_map(v) do
-    {k, replace_names_with_subqueries(v, data)}
-  end
-
-  defp replace_names_with_subqueries(kv, data) when is_list(kv) do
-    Enum.map(kv, fn kv -> replace_names_with_subqueries(kv, data) end)
-  end
-
-  defp replace_names_with_subqueries(kv, data) when is_map(kv) do
-    Map.new(kv, &replace_names_with_subqueries(&1, data))
-  end
-
-  defp replace_names_with_subqueries(kv, _data), do: kv
+  defp do_replace_names_with_subqueries(ast_node, _data), do: {:recurse, ast_node}
 
   @doc """
   Transforms and validates an SQL query for querying with bigquery.any()
@@ -443,19 +436,21 @@ defmodule Logflare.Sql do
     end)
   end
 
-  defp replace_names({"Table" = k, %{"name" => names} = v}, data) do
+  defp replace_names(ast, data) do
+    AstUtils.transform_recursive(ast, data, &do_replace_names/2)
+  end
+
+  defp do_replace_names({"Table" = k, %{"name" => names} = v}, data) do
     dialect_quote_style =
       case data.dialect do
         "postgres" -> "\""
         "bigquery" -> "`"
       end
 
-    # Join qualified table name parts (e.g., ["a", "b", "c"] -> "a.b.c")
     qualified_name = Enum.map_join(names, ".", fn %{"value" => part} -> part end)
 
     new_name_list =
       if qualified_name in data.source_names do
-        # Replace entire qualified name with transformed name
         transformed_name = transform_name(qualified_name, data)
 
         [
@@ -465,14 +460,13 @@ defmodule Logflare.Sql do
           }
         ]
       else
-        # Keep original name parts
         names
       end
 
     {k, %{v | "name" => new_name_list}}
   end
 
-  defp replace_names({"CompoundIdentifier" = k, [first | other]}, data) do
+  defp do_replace_names({"CompoundIdentifier" = k, [first | other]}, data) do
     value = Map.get(first, "value")
 
     new_identifier =
@@ -488,25 +482,15 @@ defmodule Logflare.Sql do
     {k, [new_identifier | other]}
   end
 
-  defp replace_names({k, v}, data) when is_list(v) or is_map(v) do
-    {k, replace_names(v, data)}
+  defp do_replace_names(ast_node, _data), do: {:recurse, ast_node}
+
+  defp replace_sandboxed_query(ast, data) do
+    AstUtils.transform_recursive(ast, data, &do_replace_sandboxed_query/2)
   end
 
-  defp replace_names(kv, data) when is_list(kv) do
-    Enum.map(kv, fn kv -> replace_names(kv, data) end)
-  end
+  defp do_replace_sandboxed_query({"query", %{"body" => _}} = kv, _data), do: kv
 
-  defp replace_names(kv, data) when is_map(kv) do
-    Enum.map(kv, fn kv -> replace_names(kv, data) end) |> Map.new()
-  end
-
-  defp replace_names(kv, _data), do: kv
-
-  # ignore the queries inside of the CTE
-  defp replace_sandboxed_query({"query", %{"body" => _}} = kv, _data), do: kv
-
-  # only replace the top level query
-  defp replace_sandboxed_query(
+  defp do_replace_sandboxed_query(
          {
            "Query" = k,
            %{"with" => %{"cte_tables" => _}} = sandbox_query
@@ -522,27 +506,13 @@ defmodule Logflare.Sql do
       |> get_in(["Query"])
 
     if replacement_query["with"] do
-      # if the replacement query has a with clause, nest it in a Query node
       {k, Map.merge(sandbox_query, %{"body" => %{"Query" => replacement_query}})}
     else
-      # if the replacement query does not have a with clause, just drop the with clause
       {k, Map.merge(sandbox_query, Map.drop(replacement_query, ["with"]))}
     end
   end
 
-  defp replace_sandboxed_query({k, v}, data) when is_list(v) or is_map(v) do
-    {k, replace_sandboxed_query(v, data)}
-  end
-
-  defp replace_sandboxed_query(kv, data) when is_list(kv) do
-    Enum.map(kv, fn kv -> replace_sandboxed_query(kv, data) end)
-  end
-
-  defp replace_sandboxed_query(kv, data) when is_map(kv) do
-    Enum.map(kv, fn kv -> replace_sandboxed_query(kv, data) end) |> Map.new()
-  end
-
-  defp replace_sandboxed_query(kv, _data), do: kv
+  defp do_replace_sandboxed_query(ast_node, _data), do: {:recurse, ast_node}
 
   defp transform_name(relname, %{dialect: "postgres"} = data) do
     source = Enum.find(data.sources, fn s -> s.name == relname end)
@@ -759,44 +729,19 @@ defmodule Logflare.Sql do
     end
   end
 
-  defp extract_all_parameters(ast),
-    do: extract_all_parameters(ast, [])
-
-  defp extract_all_parameters({"Placeholder", "@" <> value}, acc) do
-    if value in acc, do: acc, else: [value | acc]
+  defp extract_all_parameters(ast) do
+    AstUtils.collect_from_ast(ast, &do_extract_parameters/1) |> Enum.uniq()
   end
 
-  defp extract_all_parameters(kv, acc) when is_list(kv) or is_map(kv) do
-    kv
-    |> Enum.reduce(acc, fn kv, nested_acc ->
-      extract_all_parameters(kv, nested_acc)
-    end)
+  defp do_extract_parameters({"Placeholder", "@" <> value}), do: {:collect, value}
+  defp do_extract_parameters(_ast_node), do: :skip
+
+  defp extract_all_from(ast) do
+    AstUtils.collect_from_ast(ast, &do_extract_from/1) |> List.flatten()
   end
 
-  defp extract_all_parameters({_k, v}, acc) when is_list(v) or is_map(v) do
-    extract_all_parameters(v, acc)
-  end
-
-  defp extract_all_parameters(_kv, acc), do: acc
-
-  defp extract_all_from(ast), do: extract_all_from(ast, [])
-
-  defp extract_all_from({"from", from}, acc) when is_list(from) do
-    from ++ acc
-  end
-
-  defp extract_all_from(kv, acc) when is_list(kv) or is_map(kv) do
-    kv
-    |> Enum.reduce(acc, fn kv, nested_acc ->
-      extract_all_from(kv, nested_acc)
-    end)
-  end
-
-  defp extract_all_from({_k, v}, acc) when is_list(v) or is_map(v) do
-    extract_all_from(v, acc)
-  end
-
-  defp extract_all_from(_kv, acc), do: acc
+  defp do_extract_from({"from", from}) when is_list(from), do: {:collect, from}
+  defp do_extract_from(_ast_node), do: :skip
 
   # returns true if the name is fully qualified and has the project id prefix.
   defp is_project_fully_qualified_name(_table_name, nil), do: false
@@ -897,8 +842,11 @@ defmodule Logflare.Sql do
     end)
   end
 
-  # traverse ast to convert all tables
-  defp bq_to_pg_convert_tables({"Table" = k, v}) do
+  defp bq_to_pg_convert_tables(ast) do
+    AstUtils.transform_recursive(ast, nil, &do_bq_to_pg_convert_tables/2)
+  end
+
+  defp do_bq_to_pg_convert_tables({"Table" = k, v}, _data) do
     {quote_style, table_name} =
       case Map.get(v, "name") do
         [%{"quote_style" => quote_style, "value" => value}] ->
@@ -916,22 +864,13 @@ defmodule Logflare.Sql do
      }}
   end
 
-  defp bq_to_pg_convert_tables({k, v}) when is_list(v) or is_map(v) do
-    {k, bq_to_pg_convert_tables(v)}
+  defp do_bq_to_pg_convert_tables(ast_node, _data), do: {:recurse, ast_node}
+
+  defp bq_to_pg_convert_functions(ast) do
+    AstUtils.transform_recursive(ast, nil, &do_bq_to_pg_convert_functions/2)
   end
 
-  defp bq_to_pg_convert_tables(kv) when is_list(kv) do
-    Enum.map(kv, fn kv -> bq_to_pg_convert_tables(kv) end)
-  end
-
-  defp bq_to_pg_convert_tables(kv) when is_map(kv) do
-    Enum.map(kv, fn kv -> bq_to_pg_convert_tables(kv) end) |> Map.new()
-  end
-
-  defp bq_to_pg_convert_tables(kv), do: kv
-
-  # traverse ast to convert all functions
-  defp bq_to_pg_convert_functions({k, v} = kv)
+  defp do_bq_to_pg_convert_functions({k, v} = kv, _data)
        when k in ["Function", "AggregateExpressionWithFilter"] do
     function_name = v |> get_in(["name", Access.at(0), "value"]) |> String.downcase()
 
@@ -1027,19 +966,7 @@ defmodule Logflare.Sql do
     end
   end
 
-  defp bq_to_pg_convert_functions({k, v}) when is_list(v) or is_map(v) do
-    {k, bq_to_pg_convert_functions(v)}
-  end
-
-  defp bq_to_pg_convert_functions(kv) when is_list(kv) do
-    Enum.map(kv, fn kv -> bq_to_pg_convert_functions(kv) end)
-  end
-
-  defp bq_to_pg_convert_functions(kv) when is_map(kv) do
-    Enum.map(kv, fn kv -> bq_to_pg_convert_functions(kv) end) |> Map.new()
-  end
-
-  defp bq_to_pg_convert_functions(kv), do: kv
+  defp do_bq_to_pg_convert_functions(ast_node, _data), do: {:recurse, ast_node}
 
   defp pg_traverse_final_pass({"Cast" = k, %{"expr" => expr, "data_type" => data_type} = v}) do
     processed_expr =
