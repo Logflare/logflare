@@ -122,7 +122,7 @@ defmodule LogflareWeb.OpenTelemetrySamplerTest do
       Application.put_env(:logflare, :ingest_sample_ratio, 0.0)
       Application.put_env(:logflare, :endpoint_sample_ratio, 0.0)
 
-      sampler_config = :otel_sampler_trace_id_ratio_based.setup(1.0)
+      sampler_config = OpenTelemetrySampler.setup(%{probability: 1})
       attributes = %{"http.request.method": "GET", "url.path": "/dashboard"}
 
       {decision, _attrs, _state} =
