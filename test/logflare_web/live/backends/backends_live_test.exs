@@ -166,14 +166,16 @@ defmodule LogflareWeb.BackendsLiveTest do
     test "can create a new backend", %{conn: conn} do
       {:ok, view, _html} = live(conn, ~p"/backends")
 
-      # create
       assert view
              |> element("a", "New backend")
              |> render_click() =~ ~r/\/new/
 
       assert view
-             |> element("form")
-             |> render_submit(%{
+             |> element("select#type")
+             |> render_change(%{backend: %{type: "webhook"}}) =~ "Websocket URL"
+
+      assert view
+             |> form("form", %{
                backend: %{
                  name: "my webhook",
                  type: "webhook",
@@ -181,8 +183,8 @@ defmodule LogflareWeb.BackendsLiveTest do
                    url: "http://localhost:1234"
                  }
                }
-             }) =~
-               "localhost"
+             })
+             |> render_submit() =~ "localhost"
 
       refute render(view) =~ "URL"
 
@@ -248,10 +250,8 @@ defmodule LogflareWeb.BackendsLiveTest do
 
       html =
         view
-        |> element("form")
-        |> render_submit(%{
+        |> form("form", %{
           backend: %{
-            type: :webhook,
             description: "some description",
             name: "some other name",
             config: %{
@@ -259,6 +259,7 @@ defmodule LogflareWeb.BackendsLiveTest do
             }
           }
         })
+        |> render_submit()
 
       assert html =~ "some-other-url.com"
       assert html =~ "some other name"
