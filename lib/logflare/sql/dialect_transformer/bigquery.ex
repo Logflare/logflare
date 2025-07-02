@@ -5,6 +5,8 @@ defmodule Logflare.Sql.DialectTransformer.BigQuery do
 
   @behaviour Logflare.Sql.DialectTransformer
 
+  import Logflare.Utils.Guards
+
   alias Logflare.User
 
   @impl true
@@ -43,12 +45,12 @@ defmodule Logflare.Sql.DialectTransformer.BigQuery do
         logflare_dataset_id: logflare_dataset_id,
         user_dataset_id: user_dataset_id
       })
-      when is_binary(logflare_project_id) and is_binary(logflare_dataset_id) do
+      when is_non_empty_binary(logflare_project_id) and is_non_empty_binary(logflare_dataset_id) do
     cond do
       is_nil(user_project_id) and is_nil(user_dataset_id) ->
         :ok
 
-      is_binary(user_project_id) and is_binary(user_dataset_id) ->
+      is_non_empty_binary(user_project_id) and is_non_empty_binary(user_dataset_id) ->
         :ok
 
       true ->

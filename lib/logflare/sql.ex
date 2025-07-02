@@ -5,6 +5,8 @@ defmodule Logflare.Sql do
   This module provides the main interface with the rest of the app.
   """
 
+  import Logflare.Utils.Guards
+
   require Logger
 
   alias Logflare.Alerts.Alert
@@ -50,7 +52,7 @@ defmodule Logflare.Sql do
   def expand_subqueries(_language, input, []), do: {:ok, input}
 
   def expand_subqueries(language, input, queries)
-      when language in @valid_query_languages and is_binary(input) and is_list(queries) do
+      when language in @valid_query_languages and is_non_empty_binary(input) and is_list(queries) do
     with parser_dialect <- to_dialect(language),
          {:ok, statements} <- Parser.parse(parser_dialect, input),
          eligible_queries <- Enum.filter(queries, &(&1.language == language)) do
@@ -155,7 +157,7 @@ defmodule Logflare.Sql do
   def transform(lang, input, %User{} = user) when lang in [:bq_sql, nil] do
     {query, sandboxed_query} =
       case input do
-        q when is_binary(q) -> {q, nil}
+        q when is_non_empty_binary(q) -> {q, nil}
         other when is_tuple(other) -> other
       end
 
@@ -184,7 +186,7 @@ defmodule Logflare.Sql do
     end
   end
 
-  defp sandboxed_ast(query, dialect) when is_binary(query),
+  defp sandboxed_ast(query, dialect) when is_non_empty_binary(query),
     do: Parser.parse(dialect, query)
 
   defp sandboxed_ast(_, _), do: {:ok, nil}
@@ -492,7 +494,7 @@ defmodule Logflare.Sql do
          },
          %{sandboxed_query: sandboxed_query, sandboxed_query_ast: ast} = data
        )
-       when is_binary(sandboxed_query) do
+       when is_non_empty_binary(sandboxed_query) do
     sandboxed_statements = do_transform(ast, %{data | sandboxed_query: nil})
 
     replacement_query =
@@ -544,7 +546,7 @@ defmodule Logflare.Sql do
             |> Map.get(name)
             |> Map.get(:token)
             |> then(fn
-              v when is_atom(v) -> Atom.to_string(v)
+              v when is_atom_value(v) -> Atom.to_string(v)
               v -> v
             end)
 
@@ -722,7 +724,8 @@ defmodule Logflare.Sql do
   # returns true if the name is fully qualified and has the project id prefix.
   defp is_project_fully_qualified_name(_table_name, nil), do: false
 
-  defp is_project_fully_qualified_name(table_name, project_id) when is_binary(project_id) do
+  defp is_project_fully_qualified_name(table_name, project_id)
+       when is_non_empty_binary(project_id) do
     {:ok, regex} = Regex.compile("#{project_id}\\..+\\..+")
     Regex.match?(regex, table_name)
   end
@@ -743,14 +746,15 @@ defmodule Logflare.Sql do
   @spec parameter_positions(query :: String.t(), opts :: Keyword.t()) :: %{
           integer() => String.t()
         }
-  def parameter_positions(query, opts \\ []) when is_binary(query) and is_list(opts) do
+  def parameter_positions(query, opts \\ []) when is_non_empty_binary(query) and is_list(opts) do
     {:ok, parameters} = parameters(query, opts)
     {:ok, do_parameter_positions_mapping(query, parameters)}
   end
 
   def do_parameter_positions_mapping(_query, []), do: %{}
 
-  def do_parameter_positions_mapping(query, params) when is_binary(query) and is_list(params) do
+  def do_parameter_positions_mapping(query, params)
+      when is_non_empty_binary(query) and is_list(params) do
     str =
       params
       |> Enum.uniq()
@@ -774,7 +778,7 @@ defmodule Logflare.Sql do
           query :: String.t(),
           schema_prefix :: String.t() | nil
         ) :: {:ok, String.t()} | {:error, String.t()}
-  def translate(:bq_sql, :pg_sql, query, schema_prefix \\ nil) when is_binary(query) do
+  def translate(:bq_sql, :pg_sql, query, schema_prefix \\ nil) when is_non_empty_binary(query) do
     DialectTranslation.translate_bq_to_pg(query, schema_prefix)
   end
 end

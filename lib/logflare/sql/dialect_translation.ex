@@ -82,7 +82,8 @@ defmodule Logflare.Sql.DialectTranslation do
         }
   defp do_parameter_positions_mapping(_query, []), do: %{}
 
-  defp do_parameter_positions_mapping(query, params) when is_binary(query) and is_list(params) do
+  defp do_parameter_positions_mapping(query, params)
+       when is_non_empty_binary(query) and is_list(params) do
     str =
       params
       |> Enum.uniq()
