@@ -8,12 +8,11 @@ defmodule Logflare.Sql do
   require Logger
 
   alias Logflare.Alerts.Alert
-  alias Logflare.Backends.Adaptor.ClickhouseAdaptor
-  alias Logflare.Backends.Adaptor.PostgresAdaptor
   alias Logflare.Endpoints
   alias Logflare.SingleTenant
   alias Logflare.Sources
   alias Logflare.Sql.AstUtils
+  alias Logflare.Sql.DialectTransformer
   alias Logflare.Sql.DialectTranslation
   alias Logflare.Sql.Parser
   alias Logflare.User
@@ -37,9 +36,7 @@ defmodule Logflare.Sql do
       "postgres"
   """
   @spec to_dialect(query_language()) :: String.t()
-  def to_dialect(:bq_sql), do: "bigquery"
-  def to_dialect(:ch_sql), do: "clickhouse"
-  def to_dialect(:pg_sql), do: "postgres"
+  defdelegate to_dialect(language), to: DialectTransformer
 
   @doc """
   Expands entity names that match query names into a subquery
@@ -128,7 +125,8 @@ defmodule Logflare.Sql do
     {:ok, "..."}
   """
   @typep input :: String.t() | {String.t(), String.t()}
-  @spec transform(query_language(), input(), User.t() | pos_integer()) :: {:ok, String.t()}
+  @spec transform(query_language(), input(), User.t() | pos_integer()) ::
+          {:ok, String.t()}
   def transform(lang, input, user_id) when is_integer(user_id) do
     user = Logflare.Users.get(user_id)
     transform(lang, input, user)
@@ -155,8 +153,6 @@ defmodule Logflare.Sql do
 
   # default to bq_sql
   def transform(lang, input, %User{} = user) when lang in [:bq_sql, nil] do
-    %_{bigquery_project_id: user_project_id, bigquery_dataset_id: user_dataset_id} = user
-
     {query, sandboxed_query} =
       case input do
         q when is_binary(q) -> {q, nil}
@@ -168,11 +164,7 @@ defmodule Logflare.Sql do
 
     with {:ok, statements} <- Parser.parse("bigquery", query),
          {:ok, sandboxed_query_ast} <- sandboxed_ast(sandboxed_query, "bigquery"),
-         data = %{
-           logflare_project_id: Application.get_env(:logflare, Logflare.Google)[:project_id],
-           user_project_id: user_project_id,
-           logflare_dataset_id: User.generate_bq_dataset_id(user),
-           user_dataset_id: user_dataset_id,
+         base_data = %{
            sources: sources,
            source_mapping: source_mapping,
            source_names: Map.keys(source_mapping),
@@ -181,6 +173,7 @@ defmodule Logflare.Sql do
            ast: statements,
            dialect: "bigquery"
          },
+         data = DialectTransformer.BigQuery.build_transformation_data(user, base_data),
          :ok <- validate_query(statements, data),
          :ok <- maybe_validate_sandboxed_query_ast({statements, sandboxed_query_ast}, data) do
       data = %{data | sandboxed_query_ast: sandboxed_query_ast}
@@ -199,7 +192,7 @@ defmodule Logflare.Sql do
   @doc """
   Checks if a query contains a Common Table Expression (CTE).
   """
-  @spec contains_cte?(String.t(), Keyword.t()) :: boolean()
+  @spec contains_cte?(query :: String.t(), opts :: Keyword.t()) :: boolean()
   def contains_cte?(query, opts \\ []) when is_list(opts) do
     dialect = Keyword.get(opts, :dialect, "bigquery")
 
@@ -442,18 +435,14 @@ defmodule Logflare.Sql do
   end
 
   defp do_replace_names({"Table" = k, %{"name" => names} = v}, data) do
-    dialect_quote_style =
-      case data.dialect do
-        "bigquery" -> "`"
-        "clickhouse" -> nil
-        "postgres" -> "\""
-      end
+    transformer = DialectTransformer.for_dialect(data.dialect)
+    dialect_quote_style = transformer.quote_style()
 
     qualified_name = Enum.map_join(names, ".", fn %{"value" => part} -> part end)
 
     new_name_list =
       if qualified_name in data.source_names do
-        transformed_name = transform_name(qualified_name, data)
+        transformed_name = transformer.transform_source_name(qualified_name, data)
 
         [
           %{
@@ -470,12 +459,16 @@ defmodule Logflare.Sql do
 
   defp do_replace_names({"CompoundIdentifier" = k, [first | other]}, data) do
     value = Map.get(first, "value")
+    transformer = DialectTransformer.for_dialect(data.dialect)
 
     new_identifier =
       if value in data.source_names do
         Map.merge(
           first,
-          %{"value" => transform_name(value, data), "quote_style" => "`"}
+          %{
+            "value" => transformer.transform_source_name(value, data),
+            "quote_style" => transformer.quote_style()
+          }
         )
       else
         first
@@ -516,35 +509,6 @@ defmodule Logflare.Sql do
 
   defp do_replace_sandboxed_query(ast_node, _data), do: {:recurse, ast_node}
 
-  defp transform_name(relname, %{dialect: "clickhouse"} = data) do
-    source = Enum.find(data.sources, fn s -> s.name == relname end)
-    ClickhouseAdaptor.clickhouse_ingest_table_name(source)
-  end
-
-  defp transform_name(relname, %{dialect: "postgres"} = data) do
-    source = Enum.find(data.sources, fn s -> s.name == relname end)
-    PostgresAdaptor.table_name(source)
-  end
-
-  defp transform_name(relname, %{dialect: "bigquery"} = data) do
-    source = Enum.find(data.sources, fn s -> s.name == relname end)
-
-    token =
-      source.token
-      |> Atom.to_string()
-      |> String.replace("-", "_")
-
-    # byob bq
-    project_id =
-      if is_nil(data.user_project_id), do: data.logflare_project_id, else: data.user_project_id
-
-    # byob bq
-    dataset_id =
-      if is_nil(data.user_dataset_id), do: data.logflare_dataset_id, else: data.user_dataset_id
-
-    ~s(#{project_id}.#{dataset_id}.#{token})
-  end
-
   @doc """
   Returns a name-token mapping of all sources detected in the query.
 
@@ -555,7 +519,7 @@ defmodule Logflare.Sql do
     iex> sources("select a from my_table", %User{...})
     {:ok, %{"my_table" => "abced-weqqwe-..."}}
   """
-  @spec sources(String.t(), User.t(), Keyword.t()) ::
+  @spec sources(query :: String.t(), user :: User.t(), opts :: Keyword.t()) ::
           {:ok, %{String.t() => String.t()}} | {:error, String.t()}
   def sources(query, user, opts \\ []) when is_list(opts) do
     dialect = Keyword.get(opts, :dialect, "bigquery")
@@ -643,7 +607,12 @@ defmodule Logflare.Sql do
   iex> source_mapping("select a from old_table_name", %{"old_table_name"=> "abcde-fg123-..."}, %User{})
   {:ok, "select a from new_table_name"}
   """
-  @spec source_mapping(String.t(), User.t(), map(), Keyword.t()) ::
+  @spec source_mapping(
+          query :: String.t(),
+          user :: User.t(),
+          mapping :: map(),
+          opts :: Keyword.t()
+        ) ::
           {:ok, String.t()} | {:error, String.t()}
   def source_mapping(query, user, mapping, opts \\ [])
 
