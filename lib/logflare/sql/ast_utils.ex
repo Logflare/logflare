@@ -11,7 +11,7 @@ defmodule Logflare.Sql.AstUtils do
   Transform function should return `{:recurse, node}` to continue traversal.
   Any other value will be cause the traversal to end.
   """
-  @spec transform_recursive(any(), any(), function()) :: any()
+  @spec transform_recursive(ast_node :: any(), data :: any(), transform_fn :: function()) :: any()
   def transform_recursive(ast_node, data, transform_fn) when is_function(transform_fn) do
     case transform_fn.(ast_node, data) do
       {:recurse, node} -> do_recursive_transform(node, data, transform_fn)
@@ -36,11 +36,11 @@ defmodule Logflare.Sql.AstUtils do
   @doc """
   Collects items from an AST using a provided collector function.
 
-  The collector_fn should return either:
+  The collector function should return either:
   - `{:collect, item}` to add item to the result list and stop recursing on this node
   - `:skip` to continue recursing without collecting from this node
   """
-  @spec collect_from_ast(any(), function()) :: list()
+  @spec collect_from_ast(ast :: any(), collector_fn :: function()) :: list()
   def collect_from_ast(ast, collector_fn) when is_function(collector_fn) do
     do_collect_from_ast(ast, [], collector_fn) |> Enum.reverse()
   end
