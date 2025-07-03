@@ -3,6 +3,7 @@ defmodule Logflare.Utils do
   Context-only utilities. Should not be used outside of `lib/logflare/*`.
   """
   import Cachex.Spec
+  import Logflare.Utils.Guards, only: [is_atom_value: 1]
 
   def cache_stats() do
     hook(module: Cachex.Stats)
@@ -69,17 +70,6 @@ defmodule Logflare.Utils do
 
   def stringify_keys(not_a_map), do: not_a_map
 
-  def stringify(v) when is_integer(v) do
-    Integer.to_string(v)
-  end
-
-  def stringify(v) when is_float(v) do
-    Float.to_string(v)
-  end
-
-  def stringify(v) when is_binary(v), do: v
-  def stringify(v), do: inspect(v)
-
   @doc """
   Stringifies a term.
 
@@ -97,7 +87,7 @@ defmodule Logflare.Utils do
     iex> stringify([])
     "[]"
   """
-  def stringify(v) when is_atom(v), do: Atom.to_string(v)
+  def stringify(v) when is_atom_value(v), do: Atom.to_string(v)
   def stringify(v) when is_binary(v), do: v
   def stringify(v) when is_float(v), do: Float.to_string(v)
   def stringify(v) when is_integer(v), do: Integer.to_string(v)
