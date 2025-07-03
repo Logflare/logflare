@@ -30,6 +30,22 @@ defmodule LogflareWeb.Search.LogEventViewerComponent do
     {:ok, socket}
   end
 
+  def update(assigns, socket) do
+    %{"log-event-id" => id, "log-event-timestamp" => timestamp} = assigns.params
+    d = String.to_integer(timestamp) |> DateTime.from_unix!(:microsecond) |> DateTime.to_date()
+
+    assigns = assigns |> Map.merge(%{log_event_id: id, timestamp: d})
+
+    socket =
+      socket
+      |> assign_defaults(assigns)
+      |> start_async(:load, fn ->
+        load_event(assigns)
+      end)
+
+    {:ok, socket}
+  end
+
   # @impl true
   # def update(assigns, socket) do
   #   %{"log-event-id" => id, "log-event-timestamp" => timestamp} = assigns.params

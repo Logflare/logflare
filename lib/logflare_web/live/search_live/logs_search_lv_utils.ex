@@ -34,4 +34,11 @@ defmodule LogflareWeb.SearchLV.Utils do
   def pid_source_to_string(pid, source) do
     "#{pid_to_string(pid)} for #{source.token}"
   end
+
+  def iso_timestamp(timestamp) do
+    timestamp
+    |> DateTime.from_unix!(:microsecond)
+    |> DateTime.truncate(:second)
+    |> DateTime.to_iso8601()
+  end
 end
