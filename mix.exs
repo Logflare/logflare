@@ -154,8 +154,8 @@ defmodule Logflare.Mixfile do
       {:google_gax, github: "Logflare/elixir-google-gax", ref: "6772193", override: true},
 
       # Ecto
-      {:ecto, "~> 3.9", override: true},
-      {:ecto_sql, "~> 3.9"},
+      {:ecto, "~> 3.12"},
+      {:ecto_sql, "~> 3.12"},
       {:typed_ecto_schema, "~> 0.4.3", runtime: false},
 
       # ClickHouse
