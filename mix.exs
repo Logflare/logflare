@@ -156,7 +156,7 @@ defmodule Logflare.Mixfile do
       # Ecto
       {:ecto, "~> 3.9", override: true},
       {:ecto_sql, "~> 3.9"},
-      {:typed_ecto_schema, "~> 0.1.0", runtime: false},
+      {:typed_ecto_schema, "~> 0.4.3", runtime: false},
 
       # ClickHouse
       {:ch, "~> 0.3.2"},
@@ -215,7 +215,7 @@ defmodule Logflare.Mixfile do
       {:plug_cowboy, "~> 2.0"},
 
       # alerts feature
-      {:quantum, "~> 3.0"},
+      {:quantum, github: "Logflare/quantum-core", branch: "feat/string-job-names"},
       {:crontab, "~> 1.1"},
 
       # benchmarking

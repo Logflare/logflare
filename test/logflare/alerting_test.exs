@@ -51,9 +51,15 @@ defmodule Logflare.AlertingTest do
       webhook_notification_url: nil
     }
 
+    setup do
+      start_supervised!(Alerting.Supervisor)
+      :ok
+    end
+
     def alert_query_fixture(user, attrs \\ %{}) do
       attrs = Enum.into(attrs, @valid_attrs)
       {:ok, alert_query} = Alerting.create_alert_query(user, attrs)
+      Alerting.sync_alert_jobs()
       alert_query
     end
 
@@ -134,12 +140,15 @@ defmodule Logflare.AlertingTest do
                Alerting.update_alert_query(alert_query, @invalid_attrs)
 
       assert alert_query.updated_at == Alerting.get_alert_query!(alert_query.id).updated_at
+      job = Alerting.get_alert_job(alert_query.id)
+      assert job
     end
 
     test "delete_alert_query/1 deletes the alert_query", %{user: user} do
       alert_query = alert_query_fixture(user)
       assert {:ok, %AlertQuery{}} = Alerting.delete_alert_query(alert_query)
       assert_raise Ecto.NoResultsError, fn -> Alerting.get_alert_query!(alert_query.id) end
+      assert nil == Alerting.get_alert_job(alert_query.id)
     end
 
     test "change_alert_query/1 returns a alert_query changeset", %{user: user} do
@@ -241,13 +250,17 @@ defmodule Logflare.AlertingTest do
   end
 
   describe "quantum integration" do
+    setup do
+      start_supervised!(Alerting.Supervisor)
+      # wait for scheduler init to finish
+      :timer.sleep(500)
+      :ok
+    end
+
     test "upsert_alert_job/1, get_alert_job/1, delete_alert_job/1, count_alert_jobs/0 retrieves alert job",
          %{user: user} do
-      start_supervised!(Alerting.Supervisor)
-
-      :timer.sleep(500)
-
       %{id: alert_id} = alert = insert(:alert, user_id: user.id)
+      Alerting.sync_alert_jobs()
 
       assert {:ok,
               %Quantum.Job{
@@ -265,7 +278,13 @@ defmodule Logflare.AlertingTest do
       assert nil == Alerting.get_alert_job(alert_id)
     end
 
-    test "init function will populate citrine with alerts", %{user: user} do
+    test "upsert alert job multiple times will ensure only one job is present", %{user: user} do
+      alert = insert(:alert, user_id: user.id)
+      for _ <- 0..10, do: Alerting.upsert_alert_job(alert)
+      assert Alerting.list_alert_jobs() |> length == 1
+    end
+
+    test "init/sync functions will populate scheduler with alerts", %{user: user} do
       %{id: alert_id} = insert(:alert, user_id: user.id)
 
       assert [
@@ -273,15 +292,21 @@ defmodule Logflare.AlertingTest do
                  task: {Logflare.Alerting, :run_alert, [%AlertQuery{id: ^alert_id}, :scheduled]}
                }
              ] = Alerting.init_alert_jobs()
+
+      refute Alerting.get_alert_job(alert_id)
+      Alerting.sync_alert_jobs()
+
+      assert Alerting.get_alert_job(alert_id)
     end
 
-    test "supervisor startup will populate citrine with alerts", %{user: user} do
+    test "supervisor startup will populate scheduler with alerts", %{user: user} do
       %{id: alert_id} = insert(:alert, user_id: user.id)
-      start_supervised!(Alerting.Supervisor)
-
+      Alerting.sync_alert_jobs()
       :timer.sleep(500)
+      str_id = Integer.to_string(alert_id)
 
       assert %Quantum.Job{
+               name: ^str_id,
                task: {Logflare.Alerting, :run_alert, [%AlertQuery{id: ^alert_id}, :scheduled]}
              } = Alerting.get_alert_job(alert_id)
     end

@@ -125,7 +125,10 @@ defmodule Logflare.Alerting do
 
   """
   def delete_alert_query(%AlertQuery{} = alert_query) do
-    Repo.delete(alert_query)
+    with {:ok, _} <- Repo.delete(alert_query) do
+      {:ok, _job} = delete_alert_job(alert_query)
+      {:ok, alert_query}
+    end
   end
 
   @doc """
@@ -150,15 +153,7 @@ defmodule Logflare.Alerting do
   def get_alert_job(%AlertQuery{id: id}), do: get_alert_job(id)
 
   def get_alert_job(id) do
-    AlertsScheduler.jobs()
-    |> Enum.find_value(fn {_ref,
-                           %Quantum.Job{
-                             task: {_module, _function, [%AlertQuery{id: query_id}, _]}
-                           } = job} ->
-      if query_id == id do
-        job
-      end
-    end)
+    remote_call_scheduler(:find_job, ["#{id}"])
   end
 
   @doc """
@@ -167,17 +162,19 @@ defmodule Logflare.Alerting do
   @spec upsert_alert_job(AlertQuery.t()) :: {:ok, Citrine.Job.t()}
   def upsert_alert_job(%AlertQuery{} = alert_query) do
     job = create_alert_job_struct(alert_query)
-
-    :ok = AlertsScheduler.add_job(job)
-
+    :ok = remote_call_scheduler(:add_job, [job])
     {:ok, job}
   end
 
-  def create_alert_job_struct(alert_query) do
+  @doc """
+  Creates an alert job struct (but does not insert it into the scheduler.)
+  """
+  @spec create_alert_job_struct(AlertQuery.t()) :: Quantum.Job.t()
+  def create_alert_job_struct(%AlertQuery{} = alert_query) do
     AlertsScheduler.new_job(run_strategy: Quantum.RunStrategy.Local)
     |> Quantum.Job.set_task({__MODULE__, :run_alert, [alert_query, :scheduled]})
     |> Quantum.Job.set_schedule(Crontab.CronExpression.Parser.parse!(alert_query.cron))
-    |> Quantum.Job.set_name(make_ref())
+    |> Quantum.Job.set_name(Integer.to_string(alert_query.id))
   end
 
   @doc """
@@ -189,6 +186,13 @@ defmodule Logflare.Alerting do
     |> Repo.all()
     |> Enum.map(fn alert_query ->
       create_alert_job_struct(alert_query)
+    end)
+  end
+
+  def sync_alert_jobs do
+    init_alert_jobs()
+    |> Enum.each(fn job ->
+      remote_call_scheduler(:add_job, [job])
     end)
   end
 
@@ -257,9 +261,8 @@ defmodule Logflare.Alerting do
   end
 
   @doc """
-  Deletes an AlertQuery's Citrine.Job from the scheduler
+  Deletes an AlertQuery's job from the scheduler
   noop if already deleted.
-
   ### Examples
 
   ```elixir
@@ -272,14 +275,30 @@ defmodule Logflare.Alerting do
   @spec delete_alert_job(AlertQuery.t() | number()) :: :ok
   def delete_alert_job(%AlertQuery{id: id}), do: delete_alert_job(id)
 
-  def delete_alert_job(alert_id) do
-    job = get_alert_job(alert_id)
-
-    if job do
-      :ok = AlertsScheduler.delete_job(job.name)
+  def delete_alert_job(alert_id) when is_integer(alert_id) do
+    with %_{} = job <- remote_call_scheduler(:find_job, [Integer.to_string(alert_id)]),
+         :ok <- remote_call_scheduler(:delete_job, [job.name]) do
       {:ok, job}
     else
-      {:error, :not_found}
+      nil ->
+        {:error, :not_found}
+    end
+  end
+
+  @doc """
+  List alert jobs on the scheduler
+  """
+  def list_alert_jobs do
+    remote_call_scheduler(:jobs)
+  end
+
+  defp remote_call_scheduler(f, a \\ []) do
+    with pid when is_pid(pid) <- GenServer.whereis(scheduler_name()),
+         node <- node(pid) do
+      :erpc.call(node, AlertsScheduler, f, a, 5000)
+    else
+      nil ->
+        {:error, :scheduler_not_found}
     end
   end
 
@@ -346,4 +365,13 @@ defmodule Logflare.Alerting do
 
   # helper to get the google project id via env.
   defp env_project_id, do: Application.get_env(:logflare, Logflare.Google)[:project_id]
+
+  @doc """
+  Returns the alerts scheduler :via name used for syn registry.
+  """
+  def scheduler_name do
+    ts = DateTime.utc_now() |> DateTime.to_unix(:nanosecond)
+    # add nanosecond resolution for timestamp comparison
+    {:via, :syn, {:alerting, Logflare.Alerting.AlertsScheduler, %{timestamp: ts}}}
+  end
 end
