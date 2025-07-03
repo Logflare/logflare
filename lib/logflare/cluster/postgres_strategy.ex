@@ -86,7 +86,7 @@ defmodule Logflare.Cluster.PostgresStrategy do
   def handle_info({:notification, _pid, _ref, _channel, node_str}, state) do
     node = String.to_atom(node_str)
 
-    if node != node() do
+    if node != node() and node not in Node.list() do
       topology = state.topology
       Logger.debug(topology, "Trying to connect to node: #{node}")
 
