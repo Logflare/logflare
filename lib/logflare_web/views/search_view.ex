@@ -4,7 +4,7 @@ defmodule LogflareWeb.SearchView do
   import LogflareWeb.Helpers.BqSchema
   import LogflareWeb.ModalLiveHelpers
   import Logflare.Lql.Utils
-  import LogflareWeb.SearchLV.Utils, only: [iso_timestamp: 1]
+  import Logflare.Utils, only: [iso_timestamp: 1]
   alias Logflare.DateTimeUtils
   alias LogflareWeb.Search
 end

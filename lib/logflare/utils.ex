@@ -185,4 +185,24 @@ defmodule Logflare.Utils do
       [result | results]
     )
   end
+
+  @doc """
+  Converts a Unix timestamp in microseconds to an ISO8601 string.
+
+  ## Examples
+
+    iex> iso_timestamp(1609459200000000)
+    "2021-01-01T00:00:00Z"
+
+    iex> iso_timestamp(:not_a_timestamp)
+    nil
+  """
+  def iso_timestamp(timestamp) when is_integer(timestamp) do
+    timestamp
+    |> DateTime.from_unix!(:microsecond)
+    |> DateTime.truncate(:second)
+    |> DateTime.to_iso8601()
+  end
+
+  def iso_timestamp(_timestamp), do: nil
 end
