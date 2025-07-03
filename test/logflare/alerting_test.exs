@@ -14,10 +14,8 @@ defmodule Logflare.AlertingTest do
   end
 
   test "cannot start multiple schedulers" do
-    start_supervised!(Alerting.Supervisor)
-
-    AlertsScheduler.start_link()
-    assert {:error, {:already_started, _pid}} = AlertsScheduler.start_link()
+    AlertsScheduler.start_link(name: :test_scheduler)
+    assert {:error, {:already_started, _pid}} = AlertsScheduler.start_link(name: :test_scheduler)
   end
 
   describe "alert_queries" do
@@ -284,6 +282,16 @@ defmodule Logflare.AlertingTest do
       assert Alerting.list_alert_jobs() |> length == 1
     end
 
+    test "upsert job with new values will replace existing job", %{user: user} do
+      alert = insert(:alert, user_id: user.id, query: "select 3")
+      Alerting.upsert_alert_job(alert)
+      original_job = Alerting.get_alert_job(alert.id)
+      assert Alerting.get_alert_job(alert.id)
+      new_alert = %{alert | query: "select 1"}
+      Alerting.upsert_alert_job(new_alert)
+      assert original_job != Alerting.get_alert_job(alert.id)
+    end
+
     test "init/sync functions will populate scheduler with alerts", %{user: user} do
       %{id: alert_id} = insert(:alert, user_id: user.id)
 
@@ -297,6 +305,25 @@ defmodule Logflare.AlertingTest do
       Alerting.sync_alert_jobs()
 
       assert Alerting.get_alert_job(alert_id)
+    end
+
+    test "sync specific alert by alert_id when not in scheduler", %{user: user} do
+      %{id: alert_id} = insert(:alert, user_id: user.id)
+
+      refute Alerting.get_alert_job(alert_id)
+      Alerting.sync_alert_job(alert_id)
+      assert Alerting.get_alert_job(alert_id)
+    end
+
+    test "sync deleted alert when in scheduler", %{user: user} do
+      %{id: alert_id} = insert(:alert, user_id: user.id)
+      Alerting.sync_alert_jobs()
+
+      assert Alerting.get_alert_job(alert_id)
+      Repo.delete_all(AlertQuery)
+      Alerting.sync_alert_job(alert_id)
+
+      refute Alerting.get_alert_job(alert_id)
     end
 
     test "supervisor startup will populate scheduler with alerts", %{user: user} do

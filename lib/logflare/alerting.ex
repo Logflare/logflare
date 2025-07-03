@@ -197,6 +197,26 @@ defmodule Logflare.Alerting do
   end
 
   @doc """
+  Syncs a specific alert job by alert_id.
+  Upserts the job if it doesn't exist, otherwise deletes the existing job.
+  """
+  @spec sync_alert_job(number()) :: :ok | {:error, :not_found}
+  def sync_alert_job(alert_id) when is_integer(alert_id) do
+    alert_query = get_alert_query_by(id: alert_id)
+
+    if alert_query do
+      upsert_alert_job(alert_query)
+    else
+      # alert query does not exist, maybe remove from scheduler
+      job = get_alert_job(alert_id)
+
+      if job do
+        delete_alert_job(alert_id)
+      end
+    end
+  end
+
+  @doc """
   Performs the check lifecycle of an AlertQuery.
 
   Send notifications if necessary configurations are set. If no results are returned from the query execution, no alert is sent.
