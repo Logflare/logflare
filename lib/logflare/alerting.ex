@@ -7,6 +7,8 @@ defmodule Logflare.Alerting do
   alias Logflare.Repo
 
   require Logger
+  require OpenTelemetry.Tracer
+
   alias Logflare.Backends
   alias Logflare.Backends.Adaptor
   alias Logflare.Backends.Adaptor.WebhookAdaptor
@@ -236,7 +238,7 @@ defmodule Logflare.Alerting do
         {:error, :below_min_cluster_size}
 
       true ->
-        OpenTelemetry.with_span "alerting.run_alert", %{
+        OpenTelemetry.Tracer.with_span "alerting.run_alert", %{
           "alert.id" => alert_query.id,
           "alert.name" => alert_query.name,
           "alert.user_id" => alert_query.user_id,
@@ -259,6 +261,8 @@ defmodule Logflare.Alerting do
               "result" => results
             }
           )
+
+          OpenTelemetry.Tracer.add_event("alerting.run_alert.webhook_notification_sent", %{})
         end
 
         if alert_query.slack_hook_url do
@@ -270,12 +274,22 @@ defmodule Logflare.Alerting do
               error_string: inspect(res)
             )
           end
+
+          OpenTelemetry.Tracer.add_event("alerting.run_alert.slack_notification_sent", %{})
         end
 
         # iterate over backends and fire for each
         for backend <- alert_query.backends do
           adaptor_mod = Adaptor.get_adaptor(backend)
           adaptor_mod.send_alert(backend, alert_query, results)
+
+          OpenTelemetry.Tracer.add_event(
+            "alerting.run_alert.#{backend.type}.notification_sent",
+            %{
+              "alert.backend.id" => backend.id,
+              "alert.backend.type" => backend.type
+            }
+          )
         end
 
         :ok
