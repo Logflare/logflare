@@ -4,33 +4,57 @@ defmodule Logflare.Sql do
 
   This module provides the main interface with the rest of the app.
   """
-  require Logger
-  alias Logflare.Sources
-  alias Logflare.User
-  alias Logflare.SingleTenant
-  alias Logflare.Sql.Parser
-  alias Logflare.Backends.Adaptor.PostgresAdaptor
-  alias Logflare.Endpoints
-  alias Logflare.Alerts.Alert
 
-  @type language :: :pg_sql | :bq_sql
+  import Logflare.Utils.Guards
+
+  require Logger
+
+  alias Logflare.Alerts.Alert
+  alias Logflare.Endpoints
+  alias Logflare.SingleTenant
+  alias Logflare.Sources
+  alias Logflare.Sql.AstUtils
+  alias Logflare.Sql.DialectTransformer
+  alias Logflare.Sql.DialectTranslation
+  alias Logflare.Sql.Parser
+  alias Logflare.User
+
+  @valid_query_languages ~w(bq_sql ch_sql pg_sql)a
+
+  @typep query_language :: :bq_sql | :ch_sql | :pg_sql
+
+  @doc """
+  Converts a language atom to its corresponding dialect.
+
+  ## Examples
+
+      iex> Logflare.Sql.to_dialect(:bq_sql)
+      "bigquery"
+
+      iex> Logflare.Sql.to_dialect(:ch_sql)
+      "clickhouse"
+
+      iex> Logflare.Sql.to_dialect(:pg_sql)
+      "postgres"
+  """
+  @spec to_dialect(query_language()) :: String.t()
+  defdelegate to_dialect(language), to: DialectTransformer
 
   @doc """
   Expands entity names that match query names into a subquery
   """
-  @spec expand_subqueries(language(), String.t(), [Alert.t() | Endpoints.Query.t()]) ::
+  @spec expand_subqueries(
+          query_language(),
+          input :: String.t(),
+          queries :: [Alert.t() | Endpoints.Query.t()]
+        ) ::
           {:ok, String.t()}
   def expand_subqueries(_language, input, []), do: {:ok, input}
 
   def expand_subqueries(language, input, queries)
-      when is_atom(language) and is_list(queries) and is_binary(input) do
-    parser_dialect =
-      case language do
-        :bq_sql -> "bigquery"
-        :pg_sql -> "postgres"
-      end
-
-    with {:ok, statements} <- Parser.parse(parser_dialect, input),
+      when language in @valid_query_languages and is_non_empty_binary(input) and is_list(queries) do
+    with parser_dialect <- to_dialect(language),
+         {:ok, statements} <- Parser.parse(parser_dialect, input),
          eligible_queries <- Enum.filter(queries, &(&1.language == language)) do
       statements
       |> replace_names_with_subqueries(%{
@@ -41,21 +65,33 @@ defmodule Logflare.Sql do
     end
   end
 
-  defp replace_names_with_subqueries(
+  defp replace_names_with_subqueries(ast, data) do
+    AstUtils.transform_recursive(ast, data, &do_replace_names_with_subqueries/2)
+  end
+
+  defp do_replace_names_with_subqueries(
          {"relation" = k,
-          %{"Table" => %{"alias" => table_alias, "name" => [%{"value" => table_name}]}} = v},
+          %{"Table" => %{"alias" => table_alias, "name" => table_name_values}} = v},
          data
-       ) do
+       )
+       when is_list(table_name_values) and is_map(data) do
+    table_name =
+      case table_name_values do
+        [%{"value" => table_name}] ->
+          table_name
+
+        [%{"value" => _} | _] ->
+          Enum.map_join(table_name_values, ".", & &1["value"])
+
+        _ ->
+          raise "Invalid table name"
+      end
+
     query = Enum.find(data.queries, &(&1.name == table_name))
 
     if query do
-      parser_language =
-        case data.language do
-          :pg_sql -> "postgres"
-          :bq_sql -> "bigquery"
-        end
-
-      {:ok, [%{"Query" => body}]} = Parser.parse(parser_language, query.query)
+      parser_dialect = to_dialect(data.language)
+      {:ok, [%{"Query" => body}]} = Parser.parse(parser_dialect, query.query)
 
       {k,
        %{
@@ -70,52 +106,7 @@ defmodule Logflare.Sql do
     end
   end
 
-  defp replace_names_with_subqueries(
-         {"relation" = k,
-          %{"Table" => %{"alias" => table_alias, "name" => [%{"value" => _} | _] = table_values}} =
-            v},
-         data
-       ) do
-    table_name = table_values |> Enum.map_join(".", & &1["value"])
-    query = Enum.find(data.queries, &(&1.name == table_name))
-
-    if query do
-      parser_language =
-        case data.language do
-          :pg_sql -> "postgres"
-          :bq_sql -> "bigquery"
-        end
-
-      {:ok, [%{"Query" => body}]} = Parser.parse(parser_language, query.query)
-
-      {k,
-       %{
-         "Derived" => %{
-           "alias" => table_alias,
-           "lateral" => false,
-           "subquery" => body
-         }
-       }}
-    else
-      {k, v}
-    end
-  end
-
-  defp replace_names_with_subqueries({k, v}, data) when is_list(v) or is_map(v) do
-    {k, replace_names_with_subqueries(v, data)}
-  end
-
-  defp replace_names_with_subqueries(kv, data) when is_list(kv) do
-    Enum.map(kv, fn kv -> replace_names_with_subqueries(kv, data) end)
-  end
-
-  defp replace_names_with_subqueries(kv, data) when is_map(kv) do
-    Map.new(kv, &replace_names_with_subqueries(&1, data))
-  end
-
-  defp replace_names_with_subqueries(kv, _data), do: kv
-
-  # replaces all table names with subqueries
+  defp do_replace_names_with_subqueries(ast_node, _data), do: {:recurse, ast_node}
 
   @doc """
   Transforms and validates an SQL query for querying with bigquery.any()
@@ -136,23 +127,26 @@ defmodule Logflare.Sql do
     {:ok, "..."}
   """
   @typep input :: String.t() | {String.t(), String.t()}
-  @spec transform(language(), input(), User.t() | pos_integer()) :: {:ok, String.t()}
+  @spec transform(query_language(), input(), User.t() | pos_integer()) ::
+          {:ok, String.t()}
   def transform(lang, input, user_id) when is_integer(user_id) do
     user = Logflare.Users.get(user_id)
     transform(lang, input, user)
   end
 
-  def transform(:pg_sql, query, user) do
+  # clickhouse and postgres
+  def transform(language, query, %User{} = user) when language in ~w(ch_sql pg_sql)a do
+    sql_dialect = to_dialect(language)
     sources = Sources.list_sources_by_user(user)
     source_mapping = source_mapping(sources)
 
-    with {:ok, statements} <- Parser.parse("postgres", query) do
+    with {:ok, statements} <- Parser.parse(sql_dialect, query) do
       statements
       |> do_transform(%{
         sources: sources,
         source_mapping: source_mapping,
         source_names: Map.keys(source_mapping),
-        dialect: "postgres",
+        dialect: sql_dialect,
         ast: statements
       })
       |> Parser.to_string()
@@ -161,11 +155,9 @@ defmodule Logflare.Sql do
 
   # default to bq_sql
   def transform(lang, input, %User{} = user) when lang in [:bq_sql, nil] do
-    %_{bigquery_project_id: user_project_id, bigquery_dataset_id: user_dataset_id} = user
-
     {query, sandboxed_query} =
       case input do
-        q when is_binary(q) -> {q, nil}
+        q when is_non_empty_binary(q) -> {q, nil}
         other when is_tuple(other) -> other
       end
 
@@ -174,11 +166,7 @@ defmodule Logflare.Sql do
 
     with {:ok, statements} <- Parser.parse("bigquery", query),
          {:ok, sandboxed_query_ast} <- sandboxed_ast(sandboxed_query, "bigquery"),
-         data = %{
-           logflare_project_id: Application.get_env(:logflare, Logflare.Google)[:project_id],
-           user_project_id: user_project_id,
-           logflare_dataset_id: User.generate_bq_dataset_id(user),
-           user_dataset_id: user_dataset_id,
+         base_data = %{
            sources: sources,
            source_mapping: source_mapping,
            source_names: Map.keys(source_mapping),
@@ -187,6 +175,7 @@ defmodule Logflare.Sql do
            ast: statements,
            dialect: "bigquery"
          },
+         data = DialectTransformer.BigQuery.build_transformation_data(user, base_data),
          :ok <- validate_query(statements, data),
          :ok <- maybe_validate_sandboxed_query_ast({statements, sandboxed_query_ast}, data) do
       data = %{data | sandboxed_query_ast: sandboxed_query_ast}
@@ -197,18 +186,19 @@ defmodule Logflare.Sql do
     end
   end
 
-  defp sandboxed_ast(query, dialect) when is_binary(query),
+  defp sandboxed_ast(query, dialect) when is_non_empty_binary(query),
     do: Parser.parse(dialect, query)
 
   defp sandboxed_ast(_, _), do: {:ok, nil}
 
   @doc """
-  Performs a check if a query contains a CTE. returns true if it is, returns false if not
+  Checks if a query contains a Common Table Expression (CTE).
   """
-  def contains_cte?(query, opts \\ []) do
-    opts = Enum.into(opts, %{dialect: "bigquery"})
+  @spec contains_cte?(query :: String.t(), opts :: Keyword.t()) :: boolean()
+  def contains_cte?(query, opts \\ []) when is_list(opts) do
+    dialect = Keyword.get(opts, :dialect, "bigquery")
 
-    with {:ok, ast} <- Parser.parse(opts.dialect, query),
+    with {:ok, ast} <- Parser.parse(dialect, query),
          [_ | _] <- extract_cte_aliases(ast) do
       true
     else
@@ -442,20 +432,19 @@ defmodule Logflare.Sql do
     end)
   end
 
-  defp replace_names({"Table" = k, %{"name" => names} = v}, data) do
-    dialect_quote_style =
-      case data.dialect do
-        "postgres" -> "\""
-        "bigquery" -> "`"
-      end
+  defp replace_names(ast, data) do
+    AstUtils.transform_recursive(ast, data, &do_replace_names/2)
+  end
 
-    # Join qualified table name parts (e.g., ["a", "b", "c"] -> "a.b.c")
+  defp do_replace_names({"Table" = k, %{"name" => names} = v}, data) do
+    transformer = DialectTransformer.for_dialect(data.dialect)
+    dialect_quote_style = transformer.quote_style()
+
     qualified_name = Enum.map_join(names, ".", fn %{"value" => part} -> part end)
 
     new_name_list =
       if qualified_name in data.source_names do
-        # Replace entire qualified name with transformed name
-        transformed_name = transform_name(qualified_name, data)
+        transformed_name = transformer.transform_source_name(qualified_name, data)
 
         [
           %{
@@ -464,21 +453,24 @@ defmodule Logflare.Sql do
           }
         ]
       else
-        # Keep original name parts
         names
       end
 
     {k, %{v | "name" => new_name_list}}
   end
 
-  defp replace_names({"CompoundIdentifier" = k, [first | other]}, data) do
+  defp do_replace_names({"CompoundIdentifier" = k, [first | other]}, data) do
     value = Map.get(first, "value")
+    transformer = DialectTransformer.for_dialect(data.dialect)
 
     new_identifier =
       if value in data.source_names do
         Map.merge(
           first,
-          %{"value" => transform_name(value, data), "quote_style" => "`"}
+          %{
+            "value" => transformer.transform_source_name(value, data),
+            "quote_style" => transformer.quote_style()
+          }
         )
       else
         first
@@ -487,32 +479,22 @@ defmodule Logflare.Sql do
     {k, [new_identifier | other]}
   end
 
-  defp replace_names({k, v}, data) when is_list(v) or is_map(v) do
-    {k, replace_names(v, data)}
+  defp do_replace_names(ast_node, _data), do: {:recurse, ast_node}
+
+  defp replace_sandboxed_query(ast, data) do
+    AstUtils.transform_recursive(ast, data, &do_replace_sandboxed_query/2)
   end
 
-  defp replace_names(kv, data) when is_list(kv) do
-    Enum.map(kv, fn kv -> replace_names(kv, data) end)
-  end
+  defp do_replace_sandboxed_query({"query", %{"body" => _}} = kv, _data), do: kv
 
-  defp replace_names(kv, data) when is_map(kv) do
-    Enum.map(kv, fn kv -> replace_names(kv, data) end) |> Map.new()
-  end
-
-  defp replace_names(kv, _data), do: kv
-
-  # ignore the queries inside of the CTE
-  defp replace_sandboxed_query({"query", %{"body" => _}} = kv, _data), do: kv
-
-  # only replace the top level query
-  defp replace_sandboxed_query(
+  defp do_replace_sandboxed_query(
          {
            "Query" = k,
            %{"with" => %{"cte_tables" => _}} = sandbox_query
          },
          %{sandboxed_query: sandboxed_query, sandboxed_query_ast: ast} = data
        )
-       when is_binary(sandboxed_query) do
+       when is_non_empty_binary(sandboxed_query) do
     sandboxed_statements = do_transform(ast, %{data | sandboxed_query: nil})
 
     replacement_query =
@@ -521,66 +503,28 @@ defmodule Logflare.Sql do
       |> get_in(["Query"])
 
     if replacement_query["with"] do
-      # if the replacement query has a with clause, nest it in a Query node
       {k, Map.merge(sandbox_query, %{"body" => %{"Query" => replacement_query}})}
     else
-      # if the replacement query does not have a with clause, just drop the with clause
       {k, Map.merge(sandbox_query, Map.drop(replacement_query, ["with"]))}
     end
   end
 
-  defp replace_sandboxed_query({k, v}, data) when is_list(v) or is_map(v) do
-    {k, replace_sandboxed_query(v, data)}
-  end
-
-  defp replace_sandboxed_query(kv, data) when is_list(kv) do
-    Enum.map(kv, fn kv -> replace_sandboxed_query(kv, data) end)
-  end
-
-  defp replace_sandboxed_query(kv, data) when is_map(kv) do
-    Enum.map(kv, fn kv -> replace_sandboxed_query(kv, data) end) |> Map.new()
-  end
-
-  defp replace_sandboxed_query(kv, _data), do: kv
-
-  defp transform_name(relname, %{dialect: "postgres"} = data) do
-    source = Enum.find(data.sources, fn s -> s.name == relname end)
-    PostgresAdaptor.table_name(source)
-  end
-
-  defp transform_name(relname, %{dialect: "bigquery"} = data) do
-    source = Enum.find(data.sources, fn s -> s.name == relname end)
-
-    token =
-      source.token
-      |> Atom.to_string()
-      |> String.replace("-", "_")
-
-    # byob bq
-    project_id =
-      if is_nil(data.user_project_id), do: data.logflare_project_id, else: data.user_project_id
-
-    # byob bq
-    dataset_id =
-      if is_nil(data.user_dataset_id), do: data.logflare_dataset_id, else: data.user_dataset_id
-
-    ~s(#{project_id}.#{dataset_id}.#{token})
-  end
+  defp do_replace_sandboxed_query(ast_node, _data), do: {:recurse, ast_node}
 
   @doc """
-  Returns a name-uuid mapping of all sources detected from inside of the query.
+  Returns a name-token mapping of all sources detected in the query.
 
-  excludes any unrecognized names (such as fully-qualified names).
+  Excludes any unrecognized names (such as fully-qualified names).
 
   ### Example
 
     iex> sources("select a from my_table", %User{...})
     {:ok, %{"my_table" => "abced-weqqwe-..."}}
   """
-  @spec sources(String.t(), User.t()) :: {:ok, %{String.t() => String.t()}} | {:error, String.t()}
-  def sources(query, user, opts \\ []) do
-    opts = Enum.into(opts, %{dialect: "bigquery"})
-
+  @spec sources(query :: String.t(), user :: User.t(), opts :: Keyword.t()) ::
+          {:ok, %{String.t() => String.t()}} | {:error, String.t()}
+  def sources(query, user, opts \\ []) when is_list(opts) do
+    dialect = Keyword.get(opts, :dialect, "bigquery")
     sources = Sources.list_sources_by_user(user)
     source_names = for s <- sources, do: s.name
 
@@ -589,7 +533,7 @@ defmodule Logflare.Sql do
         {source.name, source}
       end
 
-    with {:ok, ast} <- Parser.parse(opts.dialect, query),
+    with {:ok, ast} <- Parser.parse(dialect, query),
          names <-
            ast
            |> find_all_source_names()
@@ -602,7 +546,7 @@ defmodule Logflare.Sql do
             |> Map.get(name)
             |> Map.get(:token)
             |> then(fn
-              v when is_atom(v) -> Atom.to_string(v)
+              v when is_atom_value(v) -> Atom.to_string(v)
               v -> v
             end)
 
@@ -658,24 +602,31 @@ defmodule Logflare.Sql do
   end
 
   @doc """
-  Transforms and a stale query string with renamed sources to
+  Updates source names in a query based on a token mapping.
 
   ### Example
 
   iex> source_mapping("select a from old_table_name", %{"old_table_name"=> "abcde-fg123-..."}, %User{})
   {:ok, "select a from new_table_name"}
   """
+  @spec source_mapping(
+          query :: String.t(),
+          user :: User.t(),
+          mapping :: map(),
+          opts :: Keyword.t()
+        ) ::
+          {:ok, String.t()} | {:error, String.t()}
   def source_mapping(query, user, mapping, opts \\ [])
 
-  def source_mapping(query, %Logflare.User{id: user_id}, mapping, opts) do
+  def source_mapping(query, %User{id: user_id}, mapping, opts) do
     source_mapping(query, user_id, mapping, opts)
   end
 
-  def source_mapping(query, user_id, mapping, opts) do
-    opts = Enum.into(opts, %{dialect: "bigquery"})
+  def source_mapping(query, user_id, mapping, opts) when is_list(opts) do
+    dialect = Keyword.get(opts, :dialect, "bigquery")
     sources = Sources.list_sources_by_user(user_id)
 
-    with {:ok, ast} <- Parser.parse(opts.dialect, query) do
+    with {:ok, ast} <- Parser.parse(dialect, query) do
       ast
       |> replace_old_source_names(%{
         sources: sources,
@@ -747,57 +698,34 @@ defmodule Logflare.Sql do
     iex> parameters(query)
     {:ok, ["something"]}
   """
-  def parameters(query, opts \\ []) do
-    opts = Enum.into(opts, %{dialect: "bigquery"})
+  @spec parameters(String.t(), Keyword.t()) :: {:ok, [String.t()]} | {:error, String.t()}
+  def parameters(query, opts \\ []) when is_list(opts) do
+    dialect = Keyword.get(opts, :dialect, "bigquery")
 
-    with {:ok, ast} <- Parser.parse(opts.dialect, query) do
+    with {:ok, ast} <- Parser.parse(dialect, query) do
       {:ok, extract_all_parameters(ast)}
     end
   end
 
-  defp extract_all_parameters(ast),
-    do: extract_all_parameters(ast, [])
-
-  defp extract_all_parameters({"Placeholder", "@" <> value}, acc) do
-    if value in acc, do: acc, else: [value | acc]
+  defp extract_all_parameters(ast) do
+    AstUtils.collect_from_ast(ast, &do_extract_parameters/1) |> Enum.uniq()
   end
 
-  defp extract_all_parameters(kv, acc) when is_list(kv) or is_map(kv) do
-    kv
-    |> Enum.reduce(acc, fn kv, nested_acc ->
-      extract_all_parameters(kv, nested_acc)
-    end)
+  defp do_extract_parameters({"Placeholder", "@" <> value}), do: {:collect, value}
+  defp do_extract_parameters(_ast_node), do: :skip
+
+  defp extract_all_from(ast) do
+    AstUtils.collect_from_ast(ast, &do_extract_from/1) |> List.flatten()
   end
 
-  defp extract_all_parameters({_k, v}, acc) when is_list(v) or is_map(v) do
-    extract_all_parameters(v, acc)
-  end
-
-  defp extract_all_parameters(_kv, acc), do: acc
-
-  defp extract_all_from(ast), do: extract_all_from(ast, [])
-
-  defp extract_all_from({"from", from}, acc) when is_list(from) do
-    from ++ acc
-  end
-
-  defp extract_all_from(kv, acc) when is_list(kv) or is_map(kv) do
-    kv
-    |> Enum.reduce(acc, fn kv, nested_acc ->
-      extract_all_from(kv, nested_acc)
-    end)
-  end
-
-  defp extract_all_from({_k, v}, acc) when is_list(v) or is_map(v) do
-    extract_all_from(v, acc)
-  end
-
-  defp extract_all_from(_kv, acc), do: acc
+  defp do_extract_from({"from", from}) when is_list(from), do: {:collect, from}
+  defp do_extract_from(_ast_node), do: :skip
 
   # returns true if the name is fully qualified and has the project id prefix.
   defp is_project_fully_qualified_name(_table_name, nil), do: false
 
-  defp is_project_fully_qualified_name(table_name, project_id) when is_binary(project_id) do
+  defp is_project_fully_qualified_name(table_name, project_id)
+       when is_non_empty_binary(project_id) do
     {:ok, regex} = Regex.compile("#{project_id}\\..+\\..+")
     Regex.match?(regex, table_name)
   end
@@ -809,21 +737,24 @@ defmodule Logflare.Sql do
   end
 
   @doc """
-  Determine positions of all parameters
+  Returns parameter positions mapped to their names.
 
   ### Example
   iex> parameter_positions("select @test as testing")
   %{1 => "test"}
   """
-  @spec parameter_positions(String.t()) :: %{integer() => String.t()}
-  def parameter_positions(string) when is_binary(string) do
-    {:ok, parameters} = parameters(string)
-    {:ok, do_parameter_positions_mapping(string, parameters)}
+  @spec parameter_positions(query :: String.t(), opts :: Keyword.t()) :: %{
+          integer() => String.t()
+        }
+  def parameter_positions(query, opts \\ []) when is_non_empty_binary(query) and is_list(opts) do
+    {:ok, parameters} = parameters(query, opts)
+    {:ok, do_parameter_positions_mapping(query, parameters)}
   end
 
-  def do_parameter_positions_mapping(_string, []), do: %{}
+  def do_parameter_positions_mapping(_query, []), do: %{}
 
-  def do_parameter_positions_mapping(string, params) when is_binary(string) and is_list(params) do
+  def do_parameter_positions_mapping(query, params)
+      when is_non_empty_binary(query) and is_list(params) do
     str =
       params
       |> Enum.uniq()
@@ -831,1105 +762,23 @@ defmodule Logflare.Sql do
 
     regexp = Regex.compile!("@(#{str})(?:\\s|$|\\,|\\,|\\)|\\()")
 
-    Regex.scan(regexp, string)
+    Regex.scan(regexp, query)
     |> Enum.with_index(1)
     |> Enum.reduce(%{}, fn {[_, param], index}, acc ->
       Map.put(acc, index, String.trim(param))
     end)
   end
 
-  def translate(:bq_sql, :pg_sql, query, schema_prefix \\ nil) when is_binary(query) do
-    {:ok, stmts} = Parser.parse("bigquery", query)
-
-    for ast <- stmts do
-      ast
-      |> bq_to_pg_convert_tables()
-      |> bq_to_pg_convert_functions()
-      |> bq_to_pg_field_references()
-      |> pg_traverse_final_pass()
-    end
-    |> then(fn ast ->
-      params = extract_all_parameters(ast)
-
-      {:ok, query_string} =
-        ast
-        |> Parser.to_string()
-
-      # explicitly set the schema prefix of the table
-      replacement_pattern =
-        if schema_prefix do
-          ~s|"#{schema_prefix}"."log_events_\\g{2}"|
-        else
-          "\"log_events_\\g{2}\""
-        end
-
-      converted =
-        query_string
-        |> bq_to_pg_convert_parameters(params)
-        # TODO: remove once sqlparser-rs bug is fixed
-        # parser for postgres adds parenthesis to the end for postgres
-        |> String.replace(~r/current\_timestamp\(\)/im, "current_timestamp")
-        |> String.replace(~r/\"([\w\_\-]*\.[\w\_\-]+)\.([\w_]{36})"/im, replacement_pattern)
-
-      Logger.debug(
-        "Postgres translation is complete: #{query} | \n output: #{inspect(converted)}"
-      )
-
-      {:ok, converted}
-    end)
-  end
-
-  # use regexp to convert the string to
-  defp bq_to_pg_convert_parameters(string, []), do: string
-
-  defp bq_to_pg_convert_parameters(string, params) do
-    do_parameter_positions_mapping(string, params)
-    |> Map.to_list()
-    |> Enum.sort_by(fn {i, _v} -> i end, :asc)
-    |> Enum.reduce(string, fn {index, param}, acc ->
-      Regex.replace(~r/@#{param}(?!:\s|$)/, acc, "$#{index}::text", global: false)
-    end)
-  end
-
-  # traverse ast to convert all tables
-  defp bq_to_pg_convert_tables({"Table" = k, v}) do
-    {quote_style, table_name} =
-      case Map.get(v, "name") do
-        [%{"quote_style" => quote_style, "value" => value}] ->
-          {quote_style, value}
-
-        [%{"quote_style" => quote_style, "value" => _} | _] = values ->
-          value = Enum.map_join(values, ".", & &1["value"])
-          {quote_style, value}
-      end
-
-    {k,
-     %{
-       v
-       | "name" => [%{"quote_style" => quote_style, "value" => table_name}]
-     }}
-  end
-
-  defp bq_to_pg_convert_tables({k, v}) when is_list(v) or is_map(v) do
-    {k, bq_to_pg_convert_tables(v)}
-  end
-
-  defp bq_to_pg_convert_tables(kv) when is_list(kv) do
-    Enum.map(kv, fn kv -> bq_to_pg_convert_tables(kv) end)
-  end
-
-  defp bq_to_pg_convert_tables(kv) when is_map(kv) do
-    Enum.map(kv, fn kv -> bq_to_pg_convert_tables(kv) end) |> Map.new()
-  end
-
-  defp bq_to_pg_convert_tables(kv), do: kv
-
-  # traverse ast to convert all functions
-  defp bq_to_pg_convert_functions({k, v} = kv)
-       when k in ["Function", "AggregateExpressionWithFilter"] do
-    function_name = v |> get_in(["name", Access.at(0), "value"]) |> String.downcase()
-
-    case function_name do
-      "regexp_contains" ->
-        string =
-          get_function_arg(v, 0)
-          |> update_in(["Value"], &%{"SingleQuotedString" => &1["DoubleQuotedString"]})
-
-        pattern =
-          get_function_arg(v, 1)
-          |> update_in(["Value"], &%{"SingleQuotedString" => &1["DoubleQuotedString"]})
-
-        {"BinaryOp", %{"left" => string, "op" => "PGRegexMatch", "right" => pattern}}
-
-      "countif" ->
-        filter = get_function_arg(v, 0)
-
-        {k,
-         %{
-           v
-           | "args" => %{
-               "List" => %{
-                 "args" => [%{"Unnamed" => %{"Expr" => %{"Wildcard" => nil}}}],
-                 "clauses" => [],
-                 "duplicate_treatment" => nil
-               }
-             },
-             "filter" => bq_to_pg_convert_functions(filter),
-             "name" => [%{"quote_style" => nil, "value" => "count"}]
-         }}
-
-      "timestamp_sub" ->
-        to_sub = get_function_arg(v, 0)
-        interval = get_in(get_function_arg(v, 1), ["Interval"])
-        interval_type = interval["leading_field"]
-        interval_value_str = get_in(interval, ["value", "Value", "Number", Access.at(0)])
-        pg_interval = String.downcase("#{interval_value_str} #{interval_type}")
-
-        {"BinaryOp",
-         %{
-           "left" => bq_to_pg_convert_functions(to_sub),
-           "op" => "Minus",
-           "right" => %{
-             "Interval" => %{
-               "fractional_seconds_precision" => nil,
-               "last_field" => nil,
-               "leading_field" => nil,
-               "leading_precision" => nil,
-               "value" => %{"Value" => %{"SingleQuotedString" => pg_interval}}
-             }
-           }
-         }}
-
-      "timestamp_trunc" ->
-        to_trunc = get_function_arg(v, 0)
-
-        interval_type =
-          get_in(get_function_arg(v, 1), ["Identifier", "value"])
-          |> String.downcase()
-
-        field_arg =
-          if timestamp_identifier?(to_trunc) do
-            at_time_zone(to_trunc, :double_colon)
-          else
-            bq_to_pg_convert_functions(to_trunc)
-          end
-
-        {k,
-         %{
-           v
-           | "args" => %{
-               "List" => %{
-                 "args" => [
-                   %{
-                     "Unnamed" => %{
-                       "Expr" => %{"Value" => %{"SingleQuotedString" => interval_type}}
-                     }
-                   },
-                   %{
-                     "Unnamed" => %{"Expr" => field_arg}
-                   }
-                 ],
-                 "clauses" => [],
-                 "duplicate_treatment" => nil
-               }
-             },
-             "name" => [%{"quote_style" => nil, "value" => "date_trunc"}]
-         }}
-
-      _ ->
-        kv
-    end
-  end
-
-  defp bq_to_pg_convert_functions({k, v}) when is_list(v) or is_map(v) do
-    {k, bq_to_pg_convert_functions(v)}
-  end
-
-  defp bq_to_pg_convert_functions(kv) when is_list(kv) do
-    Enum.map(kv, fn kv -> bq_to_pg_convert_functions(kv) end)
-  end
-
-  defp bq_to_pg_convert_functions(kv) when is_map(kv) do
-    Enum.map(kv, fn kv -> bq_to_pg_convert_functions(kv) end) |> Map.new()
-  end
-
-  defp bq_to_pg_convert_functions(kv), do: kv
-
-  defp pg_traverse_final_pass({"Cast" = k, %{"expr" => expr, "data_type" => data_type} = v}) do
-    processed_expr =
-      case expr do
-        %{"Nested" => %{"BinaryOp" => %{"op" => "Arrow"} = bin_op}} ->
-          %{"Nested" => %{"BinaryOp" => %{bin_op | "op" => "LongArrow"}}}
-
-        other ->
-          pg_traverse_final_pass(other)
-      end
-
-    updated_cast = %{
-      "kind" => Map.get(v, "kind", "Cast"),
-      "expr" => processed_expr,
-      "data_type" => data_type,
-      "format" => Map.get(v, "format")
-    }
-
-    {k, updated_cast}
-  end
-
-  defp pg_traverse_final_pass({"Function" = k, %{"name" => [%{"value" => function_name}]} = v})
-       when function_name in ["DATE_TRUNC", "date_trunc"] do
-    processed_args =
-      case v do
-        %{"args" => %{"List" => %{"args" => args} = list_args} = args_wrapper} ->
-          converted_args =
-            Enum.map(args, fn
-              %{
-                "Unnamed" => %{
-                  "Expr" => %{"Nested" => %{"BinaryOp" => %{"op" => "Arrow"} = bin_op}}
-                }
-              } ->
-                %{
-                  "Unnamed" => %{
-                    "Expr" => %{"Nested" => %{"BinaryOp" => %{bin_op | "op" => "LongArrow"}}}
-                  }
-                }
-
-              other_arg ->
-                other_arg
-            end)
-
-          %{v | "args" => %{args_wrapper | "List" => %{list_args | "args" => converted_args}}}
-
-        other ->
-          other
-      end
-
-    {k, processed_args}
-  end
-
-  # between operator should have values cast to numeric
-  defp pg_traverse_final_pass({"Between" = k, %{"expr" => expr} = v}) do
-    processed_expr =
-      case expr do
-        %{"Nested" => %{"BinaryOp" => %{"op" => "Arrow"} = bin_op}} ->
-          %{"Nested" => %{"BinaryOp" => %{bin_op | "op" => "LongArrow"}}}
-
-        other ->
-          other
-      end
-
-    new_expr = processed_expr |> pg_traverse_final_pass() |> cast_to_numeric()
-    {k, %{v | "expr" => new_expr}}
-  end
-
-  # handle binary operations comparison casting
-  defp pg_traverse_final_pass(
-         {"BinaryOp" = k,
-          %{
-            "left" => left,
-            "right" => right,
-            "op" => operator
-          } = v}
-       ) do
-    # handle left/right numeric value comparisons
-    is_numeric_comparison = numeric_value?(left) or numeric_value?(right)
-
-    [left, right] =
-      for expr <- [left, right] do
-        cond do
-          # skip if it is a value
-          match?(%{"Value" => _}, expr) ->
-            expr
-
-          # convert the identifier side to number
-          is_numeric_comparison and (identifier?(expr) or json_access?(expr)) ->
-            expr
-            |> cast_to_jsonb_double_colon()
-            |> jsonb_to_text()
-            |> cast_to_numeric()
-
-          timestamp_identifier?(expr) ->
-            at_time_zone(expr, :cast)
-
-          identifier?(expr) and operator == "Eq" ->
-            # wrap with a cast to convert possible jsonb fields
-            expr
-            |> choose_cast_style()
-            |> jsonb_to_text()
-
-          true ->
-            pg_traverse_final_pass(expr)
-        end
-      end
-
-    {k, %{v | "left" => left, "right" => right} |> pg_traverse_final_pass()}
-  end
-
-  # handle InList expressions - convert Arrow to LongArrow for text comparison
-  defp pg_traverse_final_pass({"InList" = k, %{"expr" => expr} = v}) do
-    processed_expr =
-      case expr do
-        %{"Nested" => %{"BinaryOp" => %{"op" => "Arrow"} = bin_op}} ->
-          %{"Nested" => %{"BinaryOp" => %{bin_op | "op" => "LongArrow"}}}
-
-        other ->
-          pg_traverse_final_pass(other)
-      end
-
-    {k, %{v | "expr" => processed_expr}}
-  end
-
-  # convert backticks to double quotes
-  defp pg_traverse_final_pass({"quote_style" = k, "`"}), do: {k, "\""}
-
-  # drop cross join unnest
-  defp pg_traverse_final_pass({"joins" = k, joins}) do
-    filtered_joins =
-      for j <- joins,
-          Map.get(j, "join_operator") != "CrossJoin",
-          !is_map_key(Map.get(j, "relation"), "UNNEST") do
-        j
-      end
-
-    {k, filtered_joins}
-  end
-
-  defp pg_traverse_final_pass({k, v}) when is_list(v) or is_map(v) do
-    {k, pg_traverse_final_pass(v)}
-  end
-
-  defp pg_traverse_final_pass(kv) when is_list(kv) do
-    Enum.map(kv, fn kv -> pg_traverse_final_pass(kv) end)
-  end
-
-  defp pg_traverse_final_pass(kv) when is_map(kv) do
-    Enum.map(kv, fn kv -> pg_traverse_final_pass(kv) end) |> Map.new()
-  end
-
-  defp pg_traverse_final_pass(kv), do: kv
-
-  defp bq_to_pg_field_references(ast) do
-    joins = get_in(ast, ["Query", "body", "Select", "from", Access.at(0), "joins"]) || []
-    cleaned_joins = Enum.filter(joins, fn join -> get_in(join, ["relation", "UNNEST"]) == nil end)
-
-    alias_path_mappings = get_bq_alias_path_mappings(ast)
-
-    # create mapping of cte tables to field aliases
-    cte_table_names = extract_cte_aliases([ast])
-    cte_tables_tree = get_in(ast, ["Query", "with", "cte_tables"])
-
-    # TOOD: refactor
-    cte_aliases =
-      for table <- cte_table_names, into: %{} do
-        tree =
-          Enum.find(cte_tables_tree, fn tree ->
-            get_in(tree, ["alias", "name", "value"]) == table
-          end)
-
-        fields =
-          if tree != nil do
-            for field <- get_in(tree, ["query", "body", "Select", "projection"]) || [],
-                {expr, identifier} <- field,
-                expr in ["UnnamedExpr", "ExprWithAlias"] do
-              get_identifier_alias(identifier)
-            end
-          else
-            []
-          end
-
-        {table, fields}
-      end
-
-    # TOOD: refactor
-    cte_from_aliases =
-      for table <- cte_table_names, into: %{} do
-        tree =
-          Enum.find(cte_tables_tree, fn tree ->
-            get_in(tree, ["alias", "name", "value"]) == table
-          end)
-
-        aliases =
-          if tree != nil do
-            for from_tree <- get_in(tree, ["query", "body", "Select", "from"]),
-                table_name = get_in(from_tree, ["relation", "Table", "alias", "name", "value"]),
-                table_name != nil do
-              table_name
-            end
-          else
-            []
-          end
-
-        {table, aliases}
-      end
-
-    ast
-    |> traverse_convert_identifiers(%{
-      alias_path_mappings: alias_path_mappings,
-      cte_aliases: cte_aliases,
-      cte_from_aliases: cte_from_aliases,
-      in_cte_tables_tree: false,
-      in_function_or_cast: false,
-      in_projection_tree: false,
-      from_table_aliases: [],
-      from_table_values: [],
-      in_binaryop: false,
-      in_between: false,
-      in_inlist: false
-    })
-    |> then(fn
-      ast when joins != [] ->
-        put_in(ast, ["Query", "body", "Select", "from", Access.at(0), "joins"], cleaned_joins)
-
-      ast ->
-        ast
-    end)
-  end
-
-  defp convert_keys_to_json_query(identifiers, data, base \\ "body")
-
-  # convert body.timestamp from unix microsecond to postgres timestamp
-  defp convert_keys_to_json_query(
-         %{"CompoundIdentifier" => [%{"value" => "timestamp"}]},
-         %{
-           in_cte_tables_tree: in_cte_tables_tree,
-           cte_aliases: cte_aliases,
-           in_projection_tree: false
-         } = _data,
-         [
-           table,
-           "body"
-         ]
-       )
-       when cte_aliases == %{} or in_cte_tables_tree == true do
-    at_time_zone(
-      %{
-        "Nested" => %{
-          "BinaryOp" => %{
-            "left" => %{
-              "CompoundIdentifier" => [
-                %{"quote_style" => nil, "value" => table},
-                %{"quote_style" => nil, "value" => "body"}
-              ]
-            },
-            "op" => "LongArrow",
-            "right" => %{
-              "Value" => %{"SingleQuotedString" => "timestamp"}
-            }
-          }
-        }
-      },
-      :double_colon
-    )
-  end
-
-  defp convert_keys_to_json_query(%{"Identifier" => %{"value" => "timestamp"}}, _data, "body") do
-    at_time_zone(
-      %{
-        "Nested" => %{
-          "BinaryOp" => %{
-            "left" => %{
-              "Identifier" => %{"quote_style" => nil, "value" => "body"}
-            },
-            "op" => "LongArrow",
-            "right" => %{
-              "Value" => %{"SingleQuotedString" => "timestamp"}
-            }
-          }
-        }
-      },
-      :double_colon
-    )
-  end
-
-  defp convert_keys_to_json_query(
-         %{"CompoundIdentifier" => [%{"value" => key}]},
-         data,
-         [table, field]
-       ) do
-    %{
-      "Nested" => %{
-        "BinaryOp" => %{
-          "left" => %{
-            "CompoundIdentifier" => [
-              %{"quote_style" => nil, "value" => table},
-              %{"quote_style" => nil, "value" => field}
-            ]
-          },
-          "op" => select_json_operator(data, false),
-          "right" => %{
-            "Value" => %{"SingleQuotedString" => key}
-          }
-        }
-      }
-    }
-  end
-
-  defp convert_keys_to_json_query(
-         %{"CompoundIdentifier" => [%{"value" => key}]},
-         data,
-         base
-       ) do
-    %{
-      "Nested" => %{
-        "BinaryOp" => %{
-          "left" => %{"Identifier" => %{"quote_style" => nil, "value" => base}},
-          "op" => select_json_operator(data, false),
-          "right" => %{
-            "Value" => %{"SingleQuotedString" => key}
-          }
-        }
-      }
-    }
-  end
-
-  # handle cross join aliases when there are different base field names as compared to what is referenced
-  defp convert_keys_to_json_query(
-         %{"CompoundIdentifier" => [%{"value" => _join_alias}, %{"value" => key} | _]},
-         data,
-         {base, arr_path}
-       ) do
-    str_path = Enum.join(arr_path, ",")
-    path = "{#{str_path},#{key}}"
-
-    %{
-      "Nested" => %{
-        "BinaryOp" => %{
-          "left" => %{"Identifier" => %{"quote_style" => nil, "value" => base}},
-          "op" => select_json_operator(data, true),
-          "right" => %{
-            "Value" => %{"SingleQuotedString" => path}
-          }
-        }
-      }
-    }
-  end
-
-  defp convert_keys_to_json_query(
-         %{"CompoundIdentifier" => [%{"value" => join_alias}, %{"value" => key} | _]},
-         data,
-         base
-       ) do
-    str_path = Enum.join(data.alias_path_mappings[join_alias], ",")
-    path = "{#{str_path},#{key}}"
-
-    %{
-      "Nested" => %{
-        "BinaryOp" => %{
-          "left" => %{"Identifier" => %{"quote_style" => nil, "value" => base}},
-          "op" => select_json_operator(data, true),
-          "right" => %{
-            "Value" => %{"SingleQuotedString" => path}
-          }
-        }
-      }
-    }
-  end
-
-  defp convert_keys_to_json_query(
-         %{"Identifier" => %{"value" => name}},
-         data,
-         base
-       ) do
-    %{
-      "Nested" => %{
-        "BinaryOp" => %{
-          "left" => %{"Identifier" => %{"quote_style" => nil, "value" => base}},
-          "op" => select_json_operator(data, false),
-          "right" => %{
-            "Value" => %{"SingleQuotedString" => name}
-          }
-        }
-      }
-    }
-  end
-
-  defp select_json_operator(data, is_complex_path) do
-    need_text = Map.get(data, :in_between, false) or Map.get(data, :in_binaryop, false)
-
-    case {is_complex_path, need_text} do
-      {true, true} -> "HashLongArrow"
-      {true, false} -> "HashArrow"
-      {false, true} -> "LongArrow"
-      {false, false} -> "Arrow"
-    end
-  end
-
-  defp get_identifier_alias(%{
-         "CompoundIdentifier" => [%{"value" => _join_alias}, %{"value" => key} | _]
-       }) do
-    key
-  end
-
-  defp get_identifier_alias(%{"Identifier" => %{"value" => name}}) do
-    name
-  end
-
-  # handle literal values
-  defp get_identifier_alias(%{"expr" => _, "alias" => %{"value" => name}}) do
-    name
-  end
-
-  # return non-matching as is
-  defp get_identifier_alias(identifier), do: identifier
-
-  defp get_bq_alias_path_mappings(ast) do
-    from_list = get_in(ast, ["Query", "body", "Select", "from"]) || []
-
-    table_aliases =
-      Enum.map(from_list, fn from ->
-        get_in(from, ["relation", "Table", "alias", "name", "value"])
-      end)
-
-    for from <- from_list do
-      Enum.reduce(from["joins"] || [], %{}, fn
-        %{
-          "relation" => %{
-            "UNNEST" => %{
-              "array_expr" => %{"Identifier" => %{"value" => identifier_val}},
-              "alias" => %{"name" => %{"value" => alias_name}}
-            }
-          }
-        },
-        acc ->
-          Map.put(acc, alias_name, [identifier_val])
-
-        %{
-          "relation" => %{
-            "UNNEST" => %{
-              "array_expr" => %{"CompoundIdentifier" => identifiers},
-              "alias" => %{"name" => %{"value" => alias_name}}
-            }
-          }
-        },
-        acc ->
-          arr_path =
-            for i <- identifiers, value = i["value"], value not in table_aliases do
-              if is_map_key(acc, value), do: acc[value], else: [value]
-            end
-            |> List.flatten()
-
-          Map.put(acc, alias_name, arr_path)
-
-        %{
-          "relation" => %{
-            "UNNEST" => %{
-              "array_exprs" => array_exprs,
-              "alias" => %{"name" => %{"value" => alias_name}}
-            }
-          }
-        },
-        acc ->
-          arr_path =
-            for expr <- array_exprs do
-              case expr do
-                %{"Identifier" => %{"value" => identifier_val}} ->
-                  [identifier_val]
-
-                %{"CompoundIdentifier" => identifiers} ->
-                  for i <- identifiers, value = i["value"], value not in table_aliases do
-                    if is_map_key(acc, value), do: acc[value], else: [value]
-                  end
-                  |> List.flatten()
-
-                _ ->
-                  []
-              end
-            end
-            |> List.flatten()
-
-          Map.put(acc, alias_name, arr_path)
-      end)
-    end
-    |> Enum.reduce(%{}, fn mappings, acc -> Map.merge(acc, mappings) end)
-  end
-
-  defp traverse_convert_identifiers({"InList" = k, v}, data) do
-    {k, traverse_convert_identifiers(v, Map.put(data, :in_inlist, true))}
-  end
-
-  defp traverse_convert_identifiers({"BinaryOp" = k, v}, data) do
-    {k, traverse_convert_identifiers(v, Map.put(data, :in_binaryop, true))}
-  end
-
-  defp traverse_convert_identifiers({"Between" = k, v}, data) do
-    {k, traverse_convert_identifiers(v, Map.put(data, :in_between, true))}
-  end
-
-  defp traverse_convert_identifiers({"cte_tables" = k, v}, data) do
-    {k, traverse_convert_identifiers(v, Map.put(data, :in_cte_tables_tree, true))}
-  end
-
-  defp traverse_convert_identifiers({"projection" = k, v}, data) do
-    {k, traverse_convert_identifiers(v, Map.put(data, :in_projection_tree, true))}
-  end
-
-  # handle top level queries
-  defp traverse_convert_identifiers(
-         {"Query" = k, %{"body" => %{"Select" => %{"from" => [_ | _] = from_list}}} = v},
-         %{in_cte_tables_tree: false} = data
-       ) do
-    # TODO: refactor
-    aliases =
-      for from <- from_list,
-          value = get_in(from, ["relation", "Table", "alias", "name", "value"]),
-          value != nil do
-        value
-      end
-
-    # values
-    values =
-      for from <- from_list,
-          value_map = (get_in(from, ["relation", "Table", "name"]) || []) |> hd(),
-          value_map != nil do
-        value_map["value"]
-      end
-
-    alias_path_mappings = get_bq_alias_path_mappings(%{"Query" => v})
-
-    data =
-      Map.merge(data, %{
-        from_table_aliases: aliases,
-        from_table_values: values,
-        alias_path_mappings: alias_path_mappings
-      })
-
-    {k, traverse_convert_identifiers(v, data)}
-  end
-
-  # handle CTE-level queries
-  defp traverse_convert_identifiers(
-         {"query" = k,
-          %{
-            "body" => %{
-              "Select" => %{"from" => [_ | _] = from_list}
-            }
-          } = v},
-         %{in_cte_tables_tree: true} = data
-       ) do
-    # TODO: refactor
-    aliases =
-      for from <- from_list,
-          value = get_in(from, ["relation", "Table", "alias", "name", "value"]),
-          value != nil do
-        value
-      end
-
-    values =
-      for from <- from_list,
-          value_map = (get_in(from, ["relation", "Table", "name"]) || []) |> hd(),
-          value_map != nil do
-        value_map["value"]
-      end
-
-    alias_path_mappings = get_bq_alias_path_mappings(%{"Query" => v})
-
-    data =
-      Map.merge(data, %{
-        from_table_aliases: aliases,
-        from_table_values: values,
-        alias_path_mappings: alias_path_mappings
-      })
-
-    {k, traverse_convert_identifiers(v, data)}
-  end
-
-  defp traverse_convert_identifiers({k, v}, data) when k in ["Function", "Cast"] do
-    {k, traverse_convert_identifiers(v, Map.put(data, :in_function_or_cast, true))}
-  end
-
-  # auto set the column alias if not set
-  defp traverse_convert_identifiers({"UnnamedExpr", identifier}, data)
-       when is_map_key(identifier, "CompoundIdentifier") or is_map_key(identifier, "Identifier") do
-    normalized_identifier = get_identifier_alias(identifier)
-
-    if normalized_identifier do
-      {"ExprWithAlias",
-       %{
-         "alias" => %{"quote_style" => nil, "value" => get_identifier_alias(identifier)},
-         "expr" => traverse_convert_identifiers(identifier, data)
-       }}
-    else
-      identifier
-    end
-  end
-
-  defp traverse_convert_identifiers(
-         {"CompoundIdentifier" = k, [%{"value" => head_val}, tail] = v},
-         data
-       ) do
-    cond do
-      # Use match?/2 there to check if list has at least 2 values in it. It is
-      # faster than `langth(list) > 2` as it do not need to traverse whole list
-      # during check
-      is_map_key(data.alias_path_mappings, head_val) and
-          match?([_, _ | _], data.alias_path_mappings[head_val || []]) ->
-        # referencing a cross join unnest
-        # pop first path part and use it as the base
-        # with a cross join unnest(metadata) as m
-        # with a cross join unnest(m.request) as request
-        # reference of request.status_code gets converted to:
-        # metadata -> 'request, status_code'
-        # base is set to the first item of the path (full json path is metadata.request.status_code)
-
-        # pop the first
-        [base | arr_path] = data.alias_path_mappings[head_val]
-
-        convert_keys_to_json_query(%{k => v}, data, {base, arr_path})
-        |> Map.to_list()
-        |> List.first()
-
-      # outside of a cte, referencing table alias
-      # preserve as is
-      head_val in data.from_table_aliases and data.in_cte_tables_tree == false and
-          data.cte_aliases != %{} ->
-        {k, v}
-
-      # first OR condition: outside of cte and non-cte
-      # second OR condition: inside a cte
-      head_val in data.from_table_aliases or
-          Enum.any?(data.from_table_values, fn from ->
-            head_val in Map.get(data.cte_from_aliases, from, [])
-          end) ->
-        # convert to t.body -> 'tail'
-        convert_keys_to_json_query(%{k => [tail]}, data, [head_val, "body"])
-        |> Map.to_list()
-        |> List.first()
-
-      is_map_key(data.cte_aliases, head_val) ->
-        # referencing a cte field alias
-        # leave as is, head.tail
-        {k, v}
-
-      Enum.any?(data.from_table_values, fn from ->
-        head_val in Map.get(data.cte_aliases, from, [])
-      end) ->
-        # referencing a cte field, pop and convert
-        # metadata.key  into metadata -> 'key'
-        convert_keys_to_json_query(%{k => [tail]}, data, head_val)
-        |> Map.to_list()
-        |> List.first()
-
-      true ->
-        # convert to body -> '{head,tail}'
-        do_normal_compount_identifier_convert({k, v}, data)
-    end
-  end
-
-  # identifiers should be left as is if it is referencing a cte table
-  defp traverse_convert_identifiers(
-         {"Identifier" = k, %{"value" => field_alias} = v},
-         %{in_cte_tables_tree: false, cte_aliases: cte_aliases} = data
-       )
-       when cte_aliases != %{} do
-    allowed_aliases = cte_aliases |> Map.values() |> List.flatten()
-
-    if field_alias in allowed_aliases do
-      {k, v}
-    else
-      do_normal_compount_identifier_convert({k, v}, data)
-    end
-  end
-
-  # leave compound identifier as is
-  defp traverse_convert_identifiers({"CompoundIdentifier" = k, v}, _data), do: {k, v}
-
-  defp traverse_convert_identifiers({"Identifier" = k, v}, data) do
-    convert_keys_to_json_query(%{k => v}, data)
-    |> Map.to_list()
-    |> List.first()
-  end
-
-  defp traverse_convert_identifiers({k, v}, data) when is_list(v) or is_map(v) do
-    {k, traverse_convert_identifiers(v, data)}
-  end
-
-  defp traverse_convert_identifiers(kv, data) when is_list(kv) do
-    Enum.map(kv, fn kv -> traverse_convert_identifiers(kv, data) end)
-  end
-
-  defp traverse_convert_identifiers(kv, data) when is_map(kv) do
-    Enum.map(kv, fn kv -> traverse_convert_identifiers(kv, data) end) |> Map.new()
-  end
-
-  defp traverse_convert_identifiers(kv, _data), do: kv
-
-  defp do_normal_compount_identifier_convert({k, v}, data) do
-    convert_keys_to_json_query(%{k => v}, data)
-    |> Map.to_list()
-    |> List.first()
-  end
-
-  defp identifier?(identifier),
-    do: is_map_key(identifier, "CompoundIdentifier") or is_map_key(identifier, "Identifier")
-
-  defp numeric_value?(%{"Value" => %{"Number" => _}}), do: true
-  defp numeric_value?(_), do: false
-  defp json_access?(%{"Nested" => %{"JsonAccess" => _}}), do: true
-  defp json_access?(%{"JsonAccess" => _}), do: true
-
-  defp json_access?(%{"Nested" => %{"BinaryOp" => %{"op" => op}}}),
-    do: op in ["Arrow", "LongArrow"]
-
-  defp json_access?(%{"BinaryOp" => %{"op" => op}}), do: op in ["Arrow", "LongArrow"]
-  defp json_access?(_), do: false
-
-  defp timestamp_identifier?(%{"Identifier" => %{"value" => "timestamp"}}), do: true
-
-  defp timestamp_identifier?(%{"CompoundIdentifier" => [_head, %{"value" => "timestamp"}]}),
-    do: true
-
-  defp timestamp_identifier?(_), do: false
-
-  defp get_function_arg(%{"args" => %{"List" => %{"args" => args}}}, index) do
-    case Enum.at(args, index) do
-      %{"Unnamed" => %{"Expr" => expr}} -> expr
-      _ -> nil
-    end
-  end
-
-  defp get_function_arg(_, _), do: nil
-
-  defp at_time_zone(identifier, :cast) do
-    %{
-      "Nested" => %{
-        "AtTimeZone" => %{
-          "time_zone" => %{"Value" => %{"SingleQuotedString" => "UTC"}},
-          "timestamp" => %{
-            "Function" => %{
-              "args" => %{
-                "List" => %{
-                  "args" => [
-                    %{
-                      "Unnamed" => %{
-                        "Expr" => %{
-                          "BinaryOp" => %{
-                            "left" => %{
-                              "Cast" => %{
-                                "kind" => "Cast",
-                                "data_type" => %{"BigInt" => nil},
-                                "expr" => identifier,
-                                "format" => nil
-                              }
-                            },
-                            "op" => "Divide",
-                            "right" => %{"Value" => %{"Number" => ["1000000.0", false]}}
-                          }
-                        }
-                      }
-                    }
-                  ],
-                  "clauses" => [],
-                  "duplicate_treatment" => nil
-                }
-              },
-              "parameters" => "None",
-              "filter" => nil,
-              "name" => [%{"quote_style" => nil, "value" => "to_timestamp"}],
-              "null_treatment" => nil,
-              "over" => nil,
-              "within_group" => []
-            }
-          }
-        }
-      }
-    }
-  end
-
-  defp at_time_zone(identifier, :double_colon) do
-    %{
-      "Nested" => %{
-        "AtTimeZone" => %{
-          "time_zone" => %{"Value" => %{"SingleQuotedString" => "UTC"}},
-          "timestamp" => %{
-            "Function" => %{
-              "args" => %{
-                "List" => %{
-                  "args" => [
-                    %{
-                      "Unnamed" => %{
-                        "Expr" => %{
-                          "BinaryOp" => %{
-                            "left" => %{
-                              "Cast" => %{
-                                "kind" => "DoubleColon",
-                                "data_type" => %{"BigInt" => nil},
-                                "expr" => identifier,
-                                "format" => nil
-                              }
-                            },
-                            "op" => "Divide",
-                            "right" => %{"Value" => %{"Number" => ["1000000.0", false]}}
-                          }
-                        }
-                      }
-                    }
-                  ],
-                  "clauses" => [],
-                  "duplicate_treatment" => nil
-                }
-              },
-              "parameters" => "None",
-              "filter" => nil,
-              "name" => [%{"quote_style" => nil, "value" => "to_timestamp"}],
-              "null_treatment" => nil,
-              "over" => nil,
-              "within_group" => []
-            }
-          }
-        }
-      }
-    }
-  end
-
-  defp cast_to_numeric(expr) do
-    %{
-      "Cast" => %{
-        "kind" => "DoubleColon",
-        "expr" => expr,
-        "data_type" => %{"Numeric" => "None"},
-        "format" => nil
-      }
-    }
-  end
-
-  defp cast_to_jsonb(expr) do
-    %{
-      "Cast" => %{
-        "kind" => "Cast",
-        "expr" => expr,
-        "data_type" => %{
-          "Custom" => [
-            [%{"quote_style" => nil, "value" => "jsonb"}],
-            []
-          ]
-        },
-        "format" => nil
-      }
-    }
-  end
-
-  defp cast_to_jsonb_double_colon(expr) do
-    %{
-      "Cast" => %{
-        "kind" => "DoubleColon",
-        "expr" => expr,
-        "data_type" => %{
-          "Custom" => [
-            [%{"quote_style" => nil, "value" => "jsonb"}],
-            []
-          ]
-        },
-        "format" => nil
-      }
-    }
-  end
-
-  defp choose_cast_style(expr) do
-    case expr do
-      %{"CompoundIdentifier" => [%{"value" => table_alias}, %{"value" => _field}]} ->
-        # Test 600: alias "a" -> DoubleColon
-        # Test 915: alias "t" from "edge_logs" table -> Cast
-        if table_alias == "a" do
-          cast_to_jsonb_double_colon(expr)
-        else
-          cast_to_jsonb(expr)
-        end
-
-      _ ->
-        cast_to_jsonb(expr)
-    end
-  end
-
-  defp jsonb_to_text(expr) do
-    %{
-      "Nested" => %{
-        "BinaryOp" => %{
-          "left" => expr,
-          "op" => "HashLongArrow",
-          "right" => %{
-            "Value" => %{"SingleQuotedString" => "{}"}
-          }
-        }
-      }
-    }
+  @doc """
+  Translates BigQuery SQL to PostgreSQL SQL.
+  """
+  @spec translate(
+          from :: :bq_sql,
+          to :: :pg_sql,
+          query :: String.t(),
+          schema_prefix :: String.t() | nil
+        ) :: {:ok, String.t()} | {:error, String.t()}
+  def translate(:bq_sql, :pg_sql, query, schema_prefix \\ nil) when is_non_empty_binary(query) do
+    DialectTranslation.translate_bq_to_pg(query, schema_prefix)
   end
 end
