@@ -46,7 +46,9 @@ defmodule LogflareWeb.BillingAccountLive.EditTest do
              |> post(~p"/webhooks/stripe", stripe_webhook_payload)
              |> json_response(200) == %{"message" => "ok"}
 
-      assert render(view) =~ "VISA ending in 4242 expires 3/1995"
+      TestUtils.retry_assert(fn ->
+        assert render(view) =~ "VISA ending in 4242 expires 3/1995"
+      end)
     end
   end
 
