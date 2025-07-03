@@ -61,19 +61,31 @@ defmodule LogflareWeb.AlertsLive do
     alert =
       if alert_id do
         Alerting.get_alert_query_by(id: alert_id, user_id: socket.assigns.user_id)
-        |> Alerting.preload_alert_query()
+        |> case do
+          nil -> nil
+          alert -> Alerting.preload_alert_query(alert)
+        end
       end
 
     socket = assign(socket, :alert, alert)
 
     socket =
-      if socket.assigns.live_action == :edit do
+      if socket.assigns.live_action == :edit and alert != nil do
         assign(socket, :changeset, Alerting.change_alert_query(alert))
       else
         assign(socket, :changeset, nil)
       end
 
-    {:noreply, socket}
+    if !!alert_id and !alert do
+      socket =
+        socket
+        |> put_flash(:info, "Alert not found!")
+        |> push_navigate(to: ~p"/alerts")
+
+      {:noreply, socket}
+    else
+      {:noreply, socket}
+    end
   end
 
   def handle_event(
@@ -299,7 +311,7 @@ defmodule LogflareWeb.AlertsLive do
               nil -> Alerting.create_alert_query(user, params)
               %_{} -> Alerting.update_alert_query(alert, params)
             end),
-         {:ok, _citrine_job} <- Alerting.upsert_alert_job(alert) do
+         {:ok, _} <- Alerting.upsert_alert_job(alert) do
       {:ok, alert}
     end
   end
