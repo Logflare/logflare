@@ -28,7 +28,8 @@ defmodule Logflare.Utils.Debugging do
     :erpc.multicall(all_nodes(), __MODULE__, :list_all_scheduler_job_counts_callback, [], 5000)
   end
 
-  defp list_all_scheduler_job_counts_callback do
+  @doc false
+  def list_all_scheduler_job_counts_callback do
     jobs = Logflare.Alerting.AlertsScheduler.jobs()
     {Node.self(), jobs |> length()}
   end
