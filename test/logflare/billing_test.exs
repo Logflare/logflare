@@ -44,6 +44,7 @@ defmodule Logflare.BillingTest do
       assert Billing.sync_subscriptions(nil) == :noop
 
       billing_account = insert(:billing_account)
+      stripe_customer_id = billing_account.stripe_customer
 
       stripe_response = %Stripe.List{
         data: [
@@ -61,13 +62,19 @@ defmodule Logflare.BillingTest do
         ]
       }
 
+      pid = self()
+
       expect(Stripe.Subscription, :list, 1, fn params ->
-        assert params.customer == billing_account.stripe_customer
+        send(pid, params)
         {:ok, stripe_response}
       end)
 
       assert {:ok, %BillingAccount{} = updated} = Billing.sync_subscriptions(billing_account)
       assert updated.id == billing_account.id
+
+      TestUtils.retry_assert(fn ->
+        assert_received %{customer: ^stripe_customer_id}
+      end)
 
       assert Repo.reload(billing_account).stripe_subscriptions ==
                stringify_struct(stripe_response)
@@ -77,6 +84,7 @@ defmodule Logflare.BillingTest do
       assert Billing.sync_invoices(nil) == :noop
 
       billing_account = insert(:billing_account)
+      stripe_customer_id = billing_account.stripe_customer
 
       stripe_response = %Stripe.List{
         data: [
@@ -93,13 +101,19 @@ defmodule Logflare.BillingTest do
         ]
       }
 
+      pid = self()
+
       expect(Stripe.Invoice, :list, 1, fn params ->
-        assert params.customer == billing_account.stripe_customer
+        send(pid, params)
         {:ok, stripe_response}
       end)
 
       assert {:ok, %BillingAccount{} = updated} = Billing.sync_invoices(billing_account)
       assert updated.id == billing_account.id
+
+      TestUtils.retry_assert(fn ->
+        assert_received %{customer: ^stripe_customer_id}
+      end)
 
       assert Repo.reload(billing_account).stripe_invoices ==
                stringify_struct(stripe_response)
@@ -107,6 +121,7 @@ defmodule Logflare.BillingTest do
 
     test "sync_billing_account/1 syncs all Stripe data from Stripe" do
       billing_account = insert(:billing_account)
+      stripe_customer_id = billing_account.stripe_customer
 
       stripe_subscriptions = %Stripe.List{
         data: [
@@ -140,7 +155,7 @@ defmodule Logflare.BillingTest do
       }
 
       stripe_customer = %{
-        id: billing_account.stripe_customer,
+        id: stripe_customer_id,
         invoice_settings: %{
           default_payment_method: "pm_123",
           custom_fields: [
@@ -152,23 +167,37 @@ defmodule Logflare.BillingTest do
         }
       }
 
+      pid = self()
+
       expect(Stripe.Subscription, :list, 1, fn params ->
-        assert params.customer == billing_account.stripe_customer
+        send(pid, params)
         {:ok, stripe_subscriptions}
       end)
 
       expect(Stripe.Invoice, :list, 1, fn params ->
-        assert params.customer == billing_account.stripe_customer
+        send(pid, params)
         {:ok, stripe_invoices}
       end)
 
       expect(Stripe.Customer, :retrieve, 1, fn customer_id ->
-        assert customer_id == billing_account.stripe_customer
+        send(pid, customer_id)
         {:ok, stripe_customer}
       end)
 
       assert {:ok, %BillingAccount{} = updated} = Billing.sync_billing_account(billing_account)
       assert updated.id == billing_account.id
+
+      TestUtils.retry_assert(fn ->
+        assert_received %{customer: ^stripe_customer_id}
+      end)
+
+      TestUtils.retry_assert(fn ->
+        assert_received %{customer: ^stripe_customer_id}
+      end)
+
+      TestUtils.retry_assert(fn ->
+        assert_received ^stripe_customer_id
+      end)
 
       billing_account = Repo.reload(billing_account)
 
