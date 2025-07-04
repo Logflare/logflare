@@ -3,6 +3,9 @@ defmodule Logflare.ContextCache.CacheBuster do
     Monitors our Postgres replication log and busts the cache accordingly.
   """
 
+  alias Logflare.Alerting
+  alias Logflare.Utils
+
   # worker process
   defmodule Worker do
     use GenServer
@@ -75,6 +78,7 @@ defmodule Logflare.ContextCache.CacheBuster do
     for record <- changes,
         record = handle_record(record),
         record != :noop do
+      maybe_do_cross_cluster_syncing(record)
       record
     end
     |> tap(fn
@@ -93,6 +97,15 @@ defmodule Logflare.ContextCache.CacheBuster do
 
     {:noreply, state}
   end
+
+  defp maybe_do_cross_cluster_syncing({Alerting, alert_id}) do
+    # sync alert job
+    Utils.Tasks.start_child(fn ->
+      Alerting.sync_alert_job(alert_id)
+    end)
+  end
+
+  defp maybe_do_cross_cluster_syncing(_), do: :noop
 
   defp handle_record(%UpdatedRecord{
          relation: {_schema, "sources"},
