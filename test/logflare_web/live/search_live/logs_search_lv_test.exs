@@ -279,6 +279,18 @@ defmodule LogflareWeb.Source.SearchLVTest do
              |> element("#logs-list-container a", "permalink")
              |> has_element?()
 
+      # permalink should have timestamp query parameter
+      assert view
+             |> element("#logs-list-container a", ~r/permalink/)
+
+      assert view
+             |> element("#logs-list-container a[href*='timestamp']", "permalink")
+             |> has_element?()
+
+      assert view
+             |> element("#logs-list-container a[href*='uuid']", "permalink")
+             |> has_element?()
+
       # default input values
       assert find_selected_chart_period(html) == "minute"
       assert find_chart_aggregate(html) == "count"
@@ -404,6 +416,33 @@ defmodule LogflareWeb.Source.SearchLVTest do
 
       html = view |> element("#logs-list-container") |> render()
       assert html =~ "some event message"
+    end
+
+    test "log event links", %{conn: conn, source: source} do
+      stub(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, fn _conn, _proj_id, _opts ->
+        {:ok,
+         TestUtils.gen_bq_response(%{
+           "event_message" => "some modal message",
+           "testing" => "modal123",
+           "id" => "some-uuid"
+         })}
+      end)
+
+      {:ok, view, _html} = live(conn, Routes.live_path(conn, SearchLV, source.id))
+
+      # wait for async search task to complete
+      :timer.sleep(500)
+
+      assert view
+             |> element("#logs-list li a[href^='/sources']", "permalink")
+             |> render() =~ ~r/timestamp=\d{4}-\d{2}-\d{2}/
+
+      assert view
+             |> element(
+               "#logs-list li:first-of-type a[phx-value-log-event-id='some-uuid']",
+               "view"
+             )
+             |> render() =~ ~r/phx-value-log-event-timestamp="\d+/
     end
 
     test "log event modal", %{conn: conn, source: source} do

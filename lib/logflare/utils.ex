@@ -3,6 +3,7 @@ defmodule Logflare.Utils do
   Context-only utilities. Should not be used outside of `lib/logflare/*`.
   """
   import Cachex.Spec
+  import Logflare.Utils.Guards, only: [is_atom_value: 1]
 
   def cache_stats() do
     hook(module: Cachex.Stats)
@@ -69,15 +70,27 @@ defmodule Logflare.Utils do
 
   def stringify_keys(not_a_map), do: not_a_map
 
-  def stringify(v) when is_integer(v) do
-    Integer.to_string(v)
-  end
+  @doc """
+  Stringifies a term.
 
-  def stringify(v) when is_float(v) do
-    Float.to_string(v)
-  end
-
+  ### Example
+    iex> stringify(:my_atom)
+    "my_atom"
+    iex> stringify(1.1)
+    "1.1"
+    iex> stringify(122)
+    "122"
+    iex> stringify("something")
+    "something"
+    iex> stringify(%{})
+    "%{}"
+    iex> stringify([])
+    "[]"
+  """
+  def stringify(v) when is_atom_value(v), do: Atom.to_string(v)
   def stringify(v) when is_binary(v), do: v
+  def stringify(v) when is_float(v), do: Float.to_string(v)
+  def stringify(v) when is_integer(v), do: Integer.to_string(v)
   def stringify(v), do: inspect(v)
 
   @doc """
@@ -172,4 +185,24 @@ defmodule Logflare.Utils do
       [result | results]
     )
   end
+
+  @doc """
+  Converts a Unix timestamp in microseconds to an ISO8601 string.
+
+  ## Examples
+
+    iex> iso_timestamp(1609459200000000)
+    "2021-01-01T00:00:00Z"
+
+    iex> iso_timestamp(:not_a_timestamp)
+    nil
+  """
+  def iso_timestamp(timestamp) when is_integer(timestamp) do
+    timestamp
+    |> DateTime.from_unix!(:microsecond)
+    |> DateTime.truncate(:second)
+    |> DateTime.to_iso8601()
+  end
+
+  def iso_timestamp(_timestamp), do: nil
 end

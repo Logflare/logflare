@@ -25,6 +25,7 @@ defmodule LogflareWeb.Source.SearchLV do
 
   import Logflare.Logs.Search.Utils
   import LogflareWeb.SearchLV.Utils
+  import Logflare.Utils, only: [iso_timestamp: 1]
 
   require Logger
   embed_templates "templates/*"
