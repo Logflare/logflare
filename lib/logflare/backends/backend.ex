@@ -8,7 +8,7 @@ defmodule Logflare.Backends.Backend do
   alias Logflare.Backends.Backend
   alias Logflare.Source
   alias Logflare.User
-  alias Logflare.Rule
+  alias Logflare.Sources.Rule
   alias Logflare.Alerting.AlertQuery
 
   @adaptor_mapping %{

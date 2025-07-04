@@ -16,7 +16,7 @@ defmodule Logflare.BackendsTest do
   alias Logflare.Logs.SourceRouting
   alias Logflare.PubSubRates
   alias Logflare.Repo
-  alias Logflare.Rules
+  alias Logflare.Sources.Rules
   alias Logflare.Backends.IngestEventQueue
   alias Logflare.Backends.SourceSupWorker
   alias Logflare.Source.BigQuery.Pipeline
@@ -208,7 +208,7 @@ defmodule Logflare.BackendsTest do
       assert new_length > prev_length
       assert new_length - prev_length == 3
 
-      Logflare.Repo.delete_all(Logflare.Rule)
+      Logflare.Repo.delete_all(Logflare.Sources.Rule)
       Logflare.Repo.delete_all(Logflare.Backends.SourcesBackend)
       Logflare.Repo.delete_all(Logflare.Backends.Backend)
 

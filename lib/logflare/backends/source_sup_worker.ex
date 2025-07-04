@@ -5,7 +5,7 @@ defmodule Logflare.Backends.SourceSupWorker do
   use GenServer
   alias Logflare.Sources
   alias Logflare.Backends
-  alias Logflare.Rules
+  alias Logflare.Sources.Rules
   alias Logflare.Backends.SourceSup
   require Logger
 
