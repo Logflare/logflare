@@ -141,7 +141,7 @@
 
           <div class="form-group">
             <%= label(f_config, :region, "Region") %>
-            <%= select(f_config, :region, ["Select a region..." | Map.keys(Logflare.Backends.Adaptor.DatadogAdaptor.api_url_mapping())],
+            <%= select(f_config, :region, ["Select a region..." | Logflare.Backends.Adaptor.DatadogAdaptor.regions()],
               class: "form-control form-control-margin",
               id: "datadog-region"
             ) %>

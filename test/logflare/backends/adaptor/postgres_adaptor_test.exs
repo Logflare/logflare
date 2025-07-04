@@ -1,10 +1,11 @@
 defmodule Logflare.Backends.Adaptor.PostgresAdaptorTest do
   use Logflare.DataCase
   import ExUnit.CaptureLog
-  alias Logflare.Backends.Adaptor.PostgresAdaptor
-  alias Logflare.SystemMetrics.AllLogsLogged
   alias Logflare.Backends
+  alias Logflare.Backends.Adaptor
+  alias Logflare.Backends.Adaptor.PostgresAdaptor
   alias Logflare.Backends.AdaptorSupervisor
+  alias Logflare.SystemMetrics.AllLogsLogged
 
   setup do
     start_supervised!(AllLogsLogged)
@@ -49,13 +50,12 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptorTest do
 
       assert {:ok, _} = Backends.ingest_logs([log_event], source)
 
-      # TODO: replace with a timeout retry func
-      :timer.sleep(2_500)
-
       # query by Ecto.Query
       query = from(l in PostgresAdaptor.table_name(source), select: l.body)
 
-      assert {:ok, [%{"test" => "data"}]} = PostgresAdaptor.execute_query(backend, query)
+      TestUtils.retry_assert(fn ->
+        assert {:ok, [%{"test" => "data"}]} = PostgresAdaptor.execute_query(backend, query)
+      end)
 
       # query by string
       assert {:ok, [%{"body" => [%{"test" => "data"}]}]} =
@@ -92,34 +92,33 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptorTest do
 
       assert {:ok, _} = Backends.ingest_logs([log_event], source)
 
-      # TODO: replace with a timeout retry func
-      :timer.sleep(2_500)
-
-      # query by string
-      assert {:ok,
-              [
-                %{
-                  "body" => [
-                    %{
-                      "event_message" => "some msg",
-                      "nested" => [
-                        %{
-                          "host" => "db-default",
-                          "parsed" => [
-                            %{
-                              "elements" => [%{"meta" => [%{"data" => "date"}]}]
-                            }
-                          ]
-                        }
-                      ]
-                    }
-                  ]
-                }
-              ]} =
-               PostgresAdaptor.execute_query(
-                 backend,
-                 "select body from #{PostgresAdaptor.table_name(source)}"
-               )
+      TestUtils.retry_assert(fn ->
+        # query by string
+        assert {:ok,
+                [
+                  %{
+                    "body" => [
+                      %{
+                        "event_message" => "some msg",
+                        "nested" => [
+                          %{
+                            "host" => "db-default",
+                            "parsed" => [
+                              %{
+                                "elements" => [%{"meta" => [%{"data" => "date"}]}]
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]} =
+                 PostgresAdaptor.execute_query(
+                   backend,
+                   "select body from #{PostgresAdaptor.table_name(source)}"
+                 )
+      end)
 
       # non map results are not impacted by metadata transformations
       query = from(l in PostgresAdaptor.table_name(source), select: count(l.id))
@@ -165,8 +164,8 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptorTest do
       capture_log(fn ->
         assert {:ok, _pid} = start_supervised({AdaptorSupervisor, {source, backend}})
 
-        assert {:error, :cannot_connect} =
-                 PostgresAdaptor.insert_log_event(source, backend, log_event)
+        assert PostgresAdaptor.insert_log_event(source, backend, log_event) ==
+                 {:error, :cannot_connect}
       end) =~ "invalid_password"
     end
   end
@@ -204,20 +203,31 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptorTest do
     end
   end
 
-  test "bug: cast_config/1 and validate_config/1 postgresql url variations" do
-    assert cast_config(url: "postgresql://localhost:5432").valid?
-    assert cast_config(url: "postgres://localhost:5432").valid?
+  describe "cast_and_validate_config" do
+    test "bug: postgresql url variations" do
+      assert cast_and_validate_config(url: "postgresql://localhost:5432").valid?
+      assert cast_and_validate_config(url: "postgres://localhost:5432").valid?
 
-    refute cast_config(url: "://localhost:5432").valid?
-    refute cast_config(url: "//localhost:5432").valid?
-    refute cast_config(url: "/localhost:5432").valid?
-    refute cast_config(url: "postgres//localhost:5432").valid?
+      refute cast_and_validate_config(url: "://localhost:5432").valid?
+      refute cast_and_validate_config(url: "//localhost:5432").valid?
+      refute cast_and_validate_config(url: "/localhost:5432").valid?
+      refute cast_and_validate_config(url: "postgres//localhost:5432").valid?
+    end
+
+    test "requires either url or hostname" do
+      assert errors_on(cast_and_validate_config(url: "postgresql://localhost:5432")) == %{}
+      assert errors_on(cast_and_validate_config(hostname: "localhost"))
+
+      assert errors_on(cast_and_validate_config()) == %{
+               hostname: [
+                 "either connection url or separate connection credentials must be provided"
+               ],
+               url: ["either connection url or separate connection credentials must be provided"]
+             }
+    end
   end
 
-  defp cast_config(attrs) do
-    attrs
-    |> Map.new()
-    |> PostgresAdaptor.cast_config()
-    |> PostgresAdaptor.validate_config()
+  defp cast_and_validate_config(attrs \\ []) when is_list(attrs) do
+    Adaptor.cast_and_validate_config(PostgresAdaptor, Map.new(attrs))
   end
 end

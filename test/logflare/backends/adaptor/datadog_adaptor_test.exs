@@ -5,8 +5,9 @@ defmodule Logflare.Backends.Adaptor.DatadogAdaptorTest do
   alias Logflare.Backends
   alias Logflare.Backends.AdaptorSupervisor
   alias Logflare.SystemMetrics.AllLogsLogged
+  alias Logflare.Backends.Adaptor.DatadogAdaptor
 
-  @subject Logflare.Backends.Adaptor.DatadogAdaptor
+  @subject DatadogAdaptor
   @client Logflare.Backends.Adaptor.WebhookAdaptor.Client
 
   doctest @subject
@@ -18,7 +19,7 @@ defmodule Logflare.Backends.Adaptor.DatadogAdaptorTest do
   end
 
   describe "cast and validate" do
-    test "API key is required" do
+    test "API key is required and region only accepts valid regions" do
       changeset = Adaptor.cast_and_validate_config(@subject, %{})
 
       refute changeset.valid?
@@ -30,6 +31,11 @@ defmodule Logflare.Backends.Adaptor.DatadogAdaptorTest do
 
       refute Adaptor.cast_and_validate_config(@subject, %{
                "api_key" => "foobarbaz"
+             }).valid?
+
+      refute Adaptor.cast_and_validate_config(@subject, %{
+               "api_key" => "foobarbaz",
+               "region" => "US0"
              }).valid?
     end
   end

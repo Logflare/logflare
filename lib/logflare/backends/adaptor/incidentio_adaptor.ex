@@ -2,23 +2,9 @@ defmodule Logflare.Backends.Adaptor.IncidentioAdaptor do
   @moduledoc """
   Adaptor for Incident.io Alert Events
   """
-
-  use TypedStruct
-
-  use Phoenix.VerifiedRoutes,
-    router: LogflareWeb.Router,
-    endpoint: LogflareWeb.Endpoint
+  use LogflareWeb, :routes
 
   alias Logflare.Backends.Adaptor.WebhookAdaptor
-
-  typedstruct enforce: true do
-    field(:api_token, String.t())
-    field(:alert_source_config_id, String.t())
-    field(:metadata, map(), optional: true)
-    field(:title, String.t(), optional: true)
-    field(:description, String.t(), optional: true)
-    field(:source_url, String.t(), optional: true)
-  end
 
   @behaviour Logflare.Backends.Adaptor
 
