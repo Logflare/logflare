@@ -1,10 +1,9 @@
 defmodule LogflareWeb.LogEventLive do
   @moduledoc """
-  Handles all user interactions with the source logs search
+  Handles all user interactions with a single event
   """
   use LogflareWeb, :live_view
 
-  # alias LogflareWeb.LogView
   alias Logflare.Logs.LogEvents
   alias Logflare.Sources
   alias Logflare.Users
@@ -13,9 +12,11 @@ defmodule LogflareWeb.LogEventLive do
   require Logger
 
   def mount(%{"source_id" => source_id} = params, session, socket) do
-    source_id = String.to_integer(source_id)
     ts = Map.get(params, "timestamp")
-    source = Sources.get(source_id)
+
+    source =
+      source_id |> String.to_integer() |> Sources.Cache.get_by_id()
+
     token = source.token
 
     team_user =
@@ -31,6 +32,8 @@ defmodule LogflareWeb.LogEventLive do
       else
         nil
       end
+
+    {:ok, log_event} = LogEvents.Cache.get(token, {"uuid", params["uuid"]})
 
     socket =
       socket
@@ -48,7 +51,7 @@ defmodule LogflareWeb.LogEventLive do
         socket ->
           socket
       end
-      |> assign(:log_event, LogEvents.Cache.get!(token, {"uuid", params["uuid"]}))
+      |> assign(:log_event, log_event)
 
     {:ok, socket}
   end
