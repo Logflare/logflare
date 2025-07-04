@@ -9,7 +9,7 @@ defmodule Logflare.Billing.BillingAccount do
     field(:stripe_subscriptions, :map)
     field(:stripe_invoices, :map)
     field(:custom_invoice_fields, {:array, :map}, default: [])
-    field :lifetime_plan, :boolean, default: false
+    field(:lifetime_plan, :boolean, default: false)
     field(:lifetime_plan_invoice, :string)
     field(:default_payment_method, :string)
     belongs_to(:user, Logflare.User)

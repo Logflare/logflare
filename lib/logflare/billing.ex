@@ -59,7 +59,7 @@ defmodule Logflare.Billing do
         Source.Supervisor.reset_all_user_sources(user)
         res
 
-      {:error, _changeset = res} ->
+      {:error, _changeset} = res ->
         res
     end
   end
