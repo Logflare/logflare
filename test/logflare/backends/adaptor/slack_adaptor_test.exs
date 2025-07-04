@@ -9,9 +9,20 @@ defmodule Logflare.Backends.SlackAdaptorTest do
     test "can work with alert query" do
       alert = insert(:alert)
 
+      pid = self()
+
       Logflare.Backends.Adaptor.SlackAdaptor.Client
       |> expect(:send, fn _url, body ->
-        assert body.blocks == [
+        send(pid, {:blocks, body.blocks})
+        {:ok, %Tesla.Env{}}
+      end)
+
+      assert {:ok, _} = SlackAdaptor.send_message(alert, [])
+
+      TestUtils.retry_assert(fn ->
+        assert_received {:blocks, blocks}
+
+        assert blocks == [
                  %{
                    type: "section",
                    accessory: %{
@@ -26,15 +37,25 @@ defmodule Logflare.Backends.SlackAdaptorTest do
                    }
                  }
                ]
+      end)
+
+      Logflare.Backends.Adaptor.SlackAdaptor.Client
+      |> expect(:send, fn _url, body ->
+        send(pid, {:blocks, body.blocks})
 
         {:ok, %Tesla.Env{}}
       end)
 
-      assert {:ok, _} = SlackAdaptor.send_message(alert, [])
+      assert {:ok, _} =
+               SlackAdaptor.send_message(alert, [
+                 %{"test title" => "message body"},
+                 %{"another title" => "another body"}
+               ])
 
-      Logflare.Backends.Adaptor.SlackAdaptor.Client
-      |> expect(:send, fn _url, body ->
-        assert body.blocks == [
+      TestUtils.retry_assert(fn ->
+        assert_received {:blocks, blocks}
+
+        assert blocks == [
                  %{
                    type: "section",
                    accessory: %{
@@ -75,23 +96,34 @@ defmodule Logflare.Backends.SlackAdaptorTest do
                    ]
                  }
                ]
-
-        {:ok, %Tesla.Env{}}
       end)
-
-      assert {:ok, _} =
-               SlackAdaptor.send_message(alert, [
-                 %{"test title" => "message body"},
-                 %{"another title" => "another body"}
-               ])
     end
 
     test "can work with any payload" do
       test_url = "http://example.com/test"
 
+      pid = self()
+
       Logflare.Backends.Adaptor.SlackAdaptor.Client
       |> expect(:send, fn url, body ->
-        assert url == test_url
+        send(pid, {:url, url})
+        send(pid, {:body, body})
+
+        {:ok, %Tesla.Env{}}
+      end)
+
+      assert {:ok, _} =
+               SlackAdaptor.send_message(test_url, [
+                 %{"test title" => "message body"},
+                 %{"another title" => "another body"}
+               ])
+
+      TestUtils.retry_assert(fn ->
+        assert_received {:url, ^test_url}
+      end)
+
+      TestUtils.retry_assert(fn ->
+        assert_received {:body, body}
 
         assert body == %{
                  blocks: [
@@ -123,15 +155,7 @@ defmodule Logflare.Backends.SlackAdaptorTest do
                    }
                  ]
                }
-
-        {:ok, %Tesla.Env{}}
       end)
-
-      assert {:ok, _} =
-               SlackAdaptor.send_message(test_url, [
-                 %{"test title" => "message body"},
-                 %{"another title" => "another body"}
-               ])
     end
   end
 
