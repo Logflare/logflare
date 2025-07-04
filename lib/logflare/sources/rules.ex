@@ -1,11 +1,11 @@
-defmodule Logflare.Rules do
+defmodule Logflare.Sources.Rules do
   @moduledoc false
   import Ecto.Query
   require Logger
 
   alias Logflare.Lql
   alias Logflare.Repo
-  alias Logflare.Rule
+  alias Logflare.Sources.Rule
   alias Logflare.Source
   alias Logflare.Sources
   alias Logflare.SourceSchemas

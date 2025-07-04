@@ -1,12 +1,13 @@
-defmodule Logflare.RulesTest do
+defmodule Logflare.Sources.RulesTest do
   use Logflare.DataCase
-  alias Logflare.Rules
-  alias Logflare.Rule
+  alias Logflare.Sources.Rules
+  alias Logflare.Sources.Rule
   alias Logflare.Sources
   alias Logflare.Backends
   alias Logflare.Backends.SourceSup
   alias Logflare.Logs.SourceRouting
   alias Logflare.SystemMetrics.AllLogsLogged
+  alias GoogleApi.BigQuery.V2.Model.{TableSchema, TableFieldSchema}
 
   test "list_rules" do
     user = insert(:user)
@@ -20,7 +21,7 @@ defmodule Logflare.RulesTest do
     assert [_] = Rules.list_rules(backend)
   end
 
-  test "create_rule from attrs" do
+  test "create_rule/1 from attrs" do
     user = insert(:user)
     source = insert(:source, user: user)
 
@@ -34,17 +35,19 @@ defmodule Logflare.RulesTest do
                lql_string: "a:testing"
              })
 
-    # delete the rule
-    assert {:ok, _rule} = Rules.delete_rule(rule)
+    Rules.delete_rule!(rule.id)
+
+    refute Rules.get_rule(rule.id)
   end
 
-  test "create_rule with backend" do
+  test "create_rule/1 with backend" do
     user = insert(:user)
     source = insert(:source, user: user)
     backend = insert(:backend, sources: [source], user: user)
 
     assert {:ok,
             %Rule{
+              id: rule_id,
               lql_string: "a:testing",
               lql_filters: [_]
             } = rule} =
@@ -54,8 +57,130 @@ defmodule Logflare.RulesTest do
                lql_string: "a:testing"
              })
 
+    assert {:ok, %Rule{id: ^rule_id}} = Rules.fetch_rule_by(user_id: user.id)
+
     # delete the rule
     assert {:ok, _rule} = Rules.delete_rule(rule)
+
+    refute Rules.get_rule(rule.id)
+
+    assert {:error, :not_found} = Rules.fetch_rule_by(user_id: user.id)
+  end
+
+  describe "create_rule/2" do
+    test "creates a rule with valid LQL string and source" do
+      user = insert(:user)
+      source = insert(:source, user: user)
+
+      insert(:source_schema,
+        source: source,
+        bigquery_schema: %TableSchema{
+          fields: [
+            %TableFieldSchema{name: "message", type: "STRING"},
+            %TableFieldSchema{name: "timestamp", type: "TIMESTAMP"},
+            %TableFieldSchema{name: "level", type: "STRING"}
+          ]
+        }
+      )
+
+      params = %{
+        "lql_string" => "level:error"
+      }
+
+      assert {:ok, %Rule{} = rule} = Rules.create_rule(params, source)
+      assert rule.lql_string == "level:error"
+      assert rule.source_id == source.id
+      assert rule.token != nil
+      assert is_list(rule.lql_filters)
+      assert length(rule.lql_filters) >= 1
+    end
+
+    test "creates a rule with backend_id when provided" do
+      user = insert(:user)
+      source = insert(:source, user: user)
+      backend = insert(:backend, user: user)
+
+      insert(:source_schema,
+        source: source,
+        bigquery_schema: %TableSchema{
+          fields: [
+            %TableFieldSchema{name: "message", type: "STRING"},
+            %TableFieldSchema{name: "timestamp", type: "TIMESTAMP"},
+            %TableFieldSchema{name: "level", type: "STRING"}
+          ]
+        }
+      )
+
+      params = %{
+        "lql_string" => "level:info",
+        "backend_id" => backend.id
+      }
+
+      assert {:ok, %Rule{} = rule} = Rules.create_rule(params, source)
+      assert rule.lql_string == "level:info"
+      assert rule.source_id == source.id
+      assert rule.backend_id == backend.id
+    end
+
+    test "returns error when LQL string is invalid due to field not found" do
+      user = insert(:user)
+      source = insert(:source, user: user)
+
+      insert(:source_schema,
+        source: source,
+        bigquery_schema: %TableSchema{
+          fields: [
+            %TableFieldSchema{name: "message", type: "STRING"},
+            %TableFieldSchema{name: "timestamp", type: "TIMESTAMP"},
+            %TableFieldSchema{name: "level", type: "STRING"}
+          ]
+        }
+      )
+
+      params = %{
+        "lql_string" => "nonexistent_field:error"
+      }
+
+      assert {:error, :field_not_found, _suggested_query, _error_message} =
+               Rules.create_rule(params, source)
+    end
+
+    test "returns error when lql_string is empty" do
+      user = insert(:user)
+      source = insert(:source, user: user)
+
+      insert(:source_schema,
+        source: source,
+        bigquery_schema:
+          TestUtils.build_bq_schema(%{
+            "test" => %{"nested" => 123, "listical" => ["testing", "123"]}
+          })
+      )
+
+      params = %{
+        "lql_string" => ""
+      }
+
+      assert {:error, %Ecto.Changeset{} = changeset} = Rules.create_rule(params, source)
+      assert changeset.valid? == false
+      assert errors_on(changeset).lql_string == ["can't be blank"]
+    end
+  end
+
+  test "changeset_error_to_string/1 rule with errors can be converted to a single string" do
+    user = insert(:user)
+    source = insert(:source, user: user)
+    backend = insert(:backend, sources: [source], user: user)
+
+    assert {:error, %Ecto.Changeset{} = changeset} =
+             Rules.create_rule(%{
+               source_id: source.id,
+               backend_id: backend.id,
+               lql_string: ""
+             })
+
+    assert changeset.valid? == false
+    assert Rule.changeset_error_to_string(changeset) == "lql_string: can't be blank\n"
   end
 
   test "update_rule" do
@@ -65,6 +190,12 @@ defmodule Logflare.RulesTest do
 
     assert {:ok, %Rule{lql_string: "a:1 b:2 c:3", lql_filters: [_, _, _]}} =
              Rules.update_rule(rule, %{lql_string: "a:1 b:2 c:3"})
+
+    assert {:error, %Ecto.Changeset{} = changeset} =
+             Rules.update_rule(rule, %{lql_string: nil})
+
+    assert changeset.valid? == false
+    assert errors_on(changeset).lql_string == ["can't be blank"]
   end
 
   describe "SourceSup management" do

@@ -4,7 +4,7 @@ defmodule LogflareWeb.BackendsLive do
   require Logger
   alias Logflare.Backends
   alias Logflare.Users
-  alias Logflare.Rules
+  alias Logflare.Sources.Rules
   alias Logflare.Sources
 
   embed_templates("actions/*", suffix: "_action")
