@@ -148,14 +148,14 @@ defmodule Logflare.Alerting do
   end
 
   @doc """
-  Retrieves a Citrine.Job based on AlertQuery.
-  Citrine.Job shares the same id as AlertQuery, resulting in a 1-1 relationship.
+  Retrieves a Job based on AlertQuery.
+  Job shares the same id as AlertQuery, resulting in a 1-1 relationship.
   """
   @spec get_alert_job(AlertQuery.t()) :: Citrine.Job.t()
   def get_alert_job(%AlertQuery{id: id}), do: get_alert_job(id)
 
   def get_alert_job(id) do
-    remote_call_scheduler(:find_job, ["#{id}"])
+    remote_call_scheduler(:find_job, [Integer.to_string(id)])
   end
 
   @doc """
@@ -206,16 +206,20 @@ defmodule Logflare.Alerting do
   def sync_alert_job(alert_id) when is_integer(alert_id) do
     alert_query = get_alert_query_by(id: alert_id)
 
-    if alert_query do
-      upsert_alert_job(alert_query)
-    else
-      # alert query does not exist, maybe remove from scheduler
-      job = get_alert_job(alert_id)
+    on_scheduler_node(fn ->
+      if alert_query do
+        job = create_alert_job_struct(alert_query)
+        AlertsScheduler.add_job(job)
+        {:ok, job}
+      else
+        # alert query does not exist, maybe remove from scheduler
+        job = AlertsScheduler.find_job(Integer.to_string(alert_id))
 
-      if job do
-        delete_alert_job(alert_id)
+        if job do
+          AlertsScheduler.delete_job(job.name)
+        end
       end
-    end
+    end)
   end
 
   @doc """
@@ -318,13 +322,16 @@ defmodule Logflare.Alerting do
   def delete_alert_job(%AlertQuery{id: id}), do: delete_alert_job(id)
 
   def delete_alert_job(alert_id) when is_integer(alert_id) do
-    with %_{} = job <- remote_call_scheduler(:find_job, [Integer.to_string(alert_id)]),
-         :ok <- remote_call_scheduler(:delete_job, [job.name]) do
-      {:ok, job}
-    else
-      nil ->
-        {:error, :not_found}
-    end
+    on_scheduler_node(fn ->
+      case AlertsScheduler.find_job(Integer.to_string(alert_id)) do
+        %_{} = job ->
+          AlertsScheduler.delete_job(job.name)
+          {:ok, job}
+
+        nil ->
+          {:error, :not_found}
+      end
+    end)
   end
 
   @doc """
@@ -341,6 +348,13 @@ defmodule Logflare.Alerting do
     else
       nil ->
         {:error, :scheduler_not_found}
+    end
+  end
+
+  defp on_scheduler_node(func) do
+    with pid when is_pid(pid) <- GenServer.whereis(scheduler_name()),
+         node <- node(pid) do
+      :erpc.call(node, func, 5000)
     end
   end
 

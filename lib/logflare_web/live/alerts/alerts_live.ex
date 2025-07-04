@@ -76,7 +76,7 @@ defmodule LogflareWeb.AlertsLive do
         assign(socket, :changeset, nil)
       end
 
-    if !!alert_id and !alert do
+    if alert_id != nil and alert == nil do
       socket =
         socket
         |> put_flash(:info, "Alert not found!")
