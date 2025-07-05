@@ -1,12 +1,19 @@
 defmodule Logflare.Endpoints.Query do
   @moduledoc false
+
   use TypedEctoSchema
   import Ecto.Changeset
+  import Logflare.Utils.Guards
   require Logger
 
-  alias Logflare.Endpoints.Query
-  alias Logflare.Endpoints
+  alias Ecto.Changeset
   alias Logflare.Alerting
+  alias Logflare.Backends
+  alias Logflare.Backends.Backend
+  alias Logflare.Endpoints
+  alias Logflare.Endpoints.Query
+  alias Logflare.Sql
+  alias Logflare.User
 
   @derive {Jason.Encoder,
            only: [
@@ -27,7 +34,7 @@ defmodule Logflare.Endpoints.Query do
     field(:name, :string)
     field(:query, :string)
     field(:description, :string)
-    field(:language, Ecto.Enum, values: [:bq_sql, :pg_sql, :lql], default: :bq_sql)
+    field(:language, Ecto.Enum, values: [:bq_sql, :lql, :pg_sql], default: :bq_sql)
     field(:source_mapping, :map)
     field(:sandboxable, :boolean)
     field(:cache_duration_seconds, :integer, default: 3_600)
@@ -37,7 +44,8 @@ defmodule Logflare.Endpoints.Query do
 
     field(:metrics, :map, virtual: true)
 
-    belongs_to(:user, Logflare.User)
+    belongs_to(:user, User)
+    belongs_to(:backend, Backend)
 
     timestamps()
   end
@@ -64,9 +72,11 @@ defmodule Logflare.Endpoints.Query do
       :max_limit,
       :enable_auth,
       :language,
-      :description
+      :description,
+      :backend_id
     ])
-    |> validate_required([:name, :query, :language])
+    |> infer_language_from_backend()
+    |> validate_required([:name, :query, :language, :backend_id])
   end
 
   def update_by_user_changeset(query, attrs) do
@@ -81,8 +91,10 @@ defmodule Logflare.Endpoints.Query do
       :max_limit,
       :enable_auth,
       :language,
-      :description
+      :description,
+      :backend_id
     ])
+    |> infer_language_from_backend()
     |> validate_query(:query)
     |> default_validations()
     |> update_source_mapping()
@@ -90,16 +102,18 @@ defmodule Logflare.Endpoints.Query do
 
   def default_validations(changeset) do
     changeset
-    |> validate_required([:name, :query, :user, :language])
+    |> validate_required([:name, :query, :user, :language, :backend_id])
     |> unique_constraint(:name, name: :endpoint_queries_name_index)
     |> unique_constraint(:token)
     |> validate_number(:max_limit, greater_than: 0, less_than: 10_001)
   end
 
-  def validate_query(changeset, field) when is_atom(field) do
-    language = Ecto.Changeset.get_field(changeset, :language, :bq_sql)
+  def validate_query(changeset, field) when is_atom_value(field) do
+    language = Changeset.get_field(changeset, :language, :bq_sql)
     user = get_field(changeset, :user)
     endpoint_name = get_field(changeset, :name)
+
+    IO.inspect(language, label: "language", limit: :infinity, pretty: true)
 
     # TODO abstract out to separate Query context
 
@@ -117,13 +131,15 @@ defmodule Logflare.Endpoints.Query do
 
     validate_change(changeset, field, fn field, value ->
       {:ok, expanded_query} =
-        Logflare.Sql.expand_subqueries(
+        Sql.expand_subqueries(
           language,
           value,
           queries
         )
 
-      case Logflare.Sql.transform(language, expanded_query, user) do
+      IO.inspect(expanded_query, label: "expanded_query", limit: :infinity, pretty: true)
+
+      case Sql.transform(language, expanded_query, user) do
         {:ok, _} -> []
         {:error, error} -> [{field, error}]
       end
@@ -131,15 +147,38 @@ defmodule Logflare.Endpoints.Query do
   end
 
   # Only update source mapping if there are no errors
-  def update_source_mapping(%Ecto.Changeset{errors: [], changes: %{query: query}} = changeset)
-      when is_binary(query) do
-    case Logflare.Sql.sources(query, get_field(changeset, :user)) do
+  def update_source_mapping(%Changeset{errors: [], changes: %{query: query}} = changeset)
+      when is_non_empty_binary(query) do
+    case Sql.sources(query, get_field(changeset, :user)) do
       {:ok, source_mapping} -> put_change(changeset, :source_mapping, source_mapping)
       {:error, error} -> add_error(changeset, :query, error)
     end
   end
 
   def update_source_mapping(changeset), do: changeset
+
+  defp infer_language_from_backend(%Changeset{} = changeset) do
+    # Only infer language if it is not explicitly provided
+    case get_change(changeset, :language) do
+      nil ->
+        case get_field(changeset, :backend_id) do
+          nil ->
+            changeset
+
+          backend_id ->
+            backend = Backends.get_backend(backend_id)
+            language = map_backend_to_language(backend)
+            put_change(changeset, :language, language)
+        end
+
+      _ ->
+        changeset
+    end
+  end
+
+  defp map_backend_to_language(%{type: :bigquery}), do: :bq_sql
+  defp map_backend_to_language(%{type: :postgres}), do: :bq_sql
+  defp map_backend_to_language(_), do: :bq_sql
 
   @doc """
   Replaces a query with latest source names.

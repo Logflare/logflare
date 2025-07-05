@@ -72,37 +72,41 @@ defmodule Logflare.EndpointsTest do
 
   test "create endpoint with normal source name" do
     user = insert(:user)
+    backend = insert(:backend, user: user, type: :bigquery)
     source = insert(:source, user: user, name: "mysource")
 
     assert {:ok, %_{query: stored_sql, source_mapping: mapping}} =
              Endpoints.create_query(user, %{
                name: "fully-qualified",
                query: "select @test from #{source.name}",
-               language: :bq_sql
+               language: :bq_sql,
+               backend_id: backend.id
              })
 
     assert stored_sql =~ "mysource"
     assert mapping["mysource"] == Atom.to_string(source.token)
   end
 
-  test "create endpoint with fully-qualified names " do
+  test "create endpoint with fully-qualified names" do
     user = insert(:user, bigquery_project_id: "myproject")
+    backend = insert(:backend, user: user, type: :bigquery)
 
     assert {:ok, %_{query: stored_sql, source_mapping: mapping}} =
              Endpoints.create_query(user, %{
                name: "fully-qualified",
                query: "select @test from `myproject.mydataset.mytable`",
-               language: :bq_sql
+               language: :bq_sql,
+               backend_id: backend.id
              })
 
     assert mapping == %{}
-
     assert stored_sql =~ "myproject"
   end
 
   test "create an endpoint query with query composition" do
     insert(:plan)
     user = insert(:user)
+    backend = insert(:backend, user: user, type: :bigquery)
 
     insert(:endpoint,
       user: user,
@@ -114,11 +118,45 @@ defmodule Logflare.EndpointsTest do
              Endpoints.create_query(user, %{
                name: "fully-qualified.name",
                query: "select testing from `my.date`",
-               language: :bq_sql
+               language: :bq_sql,
+               backend_id: backend.id
              })
 
     assert mapping == %{}
     assert stored_sql =~ "my.date"
+  end
+
+  describe "language inference from backend" do
+    test "`postgres` backend maps to `pg_sql` language" do
+      user = insert(:user)
+      backend = insert(:backend, user: user, type: :postgres)
+
+      assert {:ok, endpoint} =
+               Endpoints.create_query(user, %{
+                 name: "postgres-endpoint",
+                 query: "select current_date as date",
+                 backend_id: backend.id
+                 # Note: no language specified - should be inferred
+               })
+
+      assert endpoint.language == :pg_sql
+      assert endpoint.backend_id == backend.id
+    end
+
+    test "`bigquery` backend maps to `bq_sql` language" do
+      user = insert(:user)
+      backend = insert(:backend, user: user, type: :bigquery)
+
+      assert {:ok, endpoint} =
+               Endpoints.create_query(user, %{
+                 name: "bigquery-endpoint",
+                 query: "select current_date() as date",
+                 backend_id: backend.id
+               })
+
+      assert endpoint.language == :bq_sql
+      assert endpoint.backend_id == backend.id
+    end
   end
 
   describe "running queries in bigquery backends" do

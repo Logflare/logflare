@@ -221,15 +221,20 @@ defmodule Logflare.Factory do
     %UserPreferences{}
   end
 
-  def endpoint_factory do
+  def endpoint_factory(attrs \\ %{}) do
+    user = attrs[:user] || insert(:user)
+    backend = attrs[:backend] || insert(:backend, user: user, type: :bigquery)
+
     %Query{
-      user: build(:user),
+      user: user,
+      backend: backend,
       description: "some desc #{TestUtils.random_string()}",
       token: Ecto.UUID.generate(),
       query: "select current_date() as date",
       language: :bq_sql,
       name: TestUtils.random_string()
     }
+    |> merge_attributes(Map.drop(attrs, [:user, :backend]))
   end
 
   def child_endpoint_factory do

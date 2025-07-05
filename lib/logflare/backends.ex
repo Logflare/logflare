@@ -119,34 +119,39 @@ defmodule Logflare.Backends do
   end
 
   def get_default_backend(%User{} = user) do
-    if SingleTenant.single_tenant?() and SingleTenant.postgres_backend?() do
-      opts = SingleTenant.postgres_backend_adapter_opts()
+    backend_attrs =
+      if SingleTenant.single_tenant?() and SingleTenant.postgres_backend?() do
+        opts = SingleTenant.postgres_backend_adapter_opts()
 
-      %Backend{
-        type: :postgres,
-        config: Map.new(opts),
-        user_id: user.id,
-        name: "Default postgres backend"
-      }
-    else
-      {project_id, dataset_id} =
-        if user.bigquery_project_id do
-          {user.bigquery_project_id, user.bigquery_dataset_id}
-        else
-          project_id = User.bq_project_id()
-          dataset_id = User.generate_bq_dataset_id(user.id)
-          {project_id, dataset_id}
-        end
+        %{
+          type: :postgres,
+          config: Map.new(opts),
+          user_id: user.id,
+          name: "Default postgres backend"
+        }
+      else
+        {project_id, dataset_id} =
+          if user.bigquery_project_id do
+            {user.bigquery_project_id, user.bigquery_dataset_id}
+          else
+            project_id = User.bq_project_id()
+            dataset_id = User.generate_bq_dataset_id(user.id)
+            {project_id, dataset_id}
+          end
 
-      %Backend{
-        type: :bigquery,
-        config: %{
-          project_id: project_id,
-          dataset_id: dataset_id
-        },
-        user_id: user.id,
-        name: "Default bigquery backend"
-      }
+        %{
+          type: :bigquery,
+          config: %{
+            project_id: project_id,
+            dataset_id: dataset_id
+          },
+          user_id: user.id,
+          name: "Default bigquery backend"
+        }
+      end
+
+    with {:ok, backend} <- create_backend(backend_attrs) do
+      backend
     end
   end
 
