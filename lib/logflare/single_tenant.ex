@@ -286,12 +286,18 @@ defmodule Logflare.SingleTenant do
   @spec create_supabase_endpoints() :: {:ok, [Query.t()]}
   def create_supabase_endpoints do
     user = get_default_user()
+    backend = get_default_backend()
+
+    IO.inspect(backend, label: "backend")
+
     count = Endpoints.count_endpoints_by_user(user)
 
     if count == 0 do
       endpoints =
         for params <- endpoint_params() do
-          {:ok, endpoint} = Endpoints.create_query(user, params)
+          params_with_backend = Map.put(params, :backend_id, backend.id)
+          IO.inspect(params_with_backend, label: "params_with_backend")
+          {:ok, endpoint} = Endpoints.create_query(user, params_with_backend)
           endpoint
         end
 

@@ -16,6 +16,7 @@ defmodule LogflareWeb.EndpointsControllerTest do
     setup do
       source = build(:source, rules: [])
       user = insert(:user, sources: [source])
+      backend = insert(:backend, user: user, type: :bigquery)
       _plan = insert(:plan, name: "Free")
 
       GoogleApi.BigQuery.V2.Api.Jobs
@@ -26,11 +27,11 @@ defmodule LogflareWeb.EndpointsControllerTest do
         {:ok, TestUtils.gen_bq_response()}
       end)
 
-      {:ok, user: user, source: source}
+      {:ok, user: user, source: source, backend: backend}
     end
 
-    test "GET query", %{conn: init_conn, user: user} do
-      endpoint = insert(:endpoint, user: user, enable_auth: false)
+    test "GET query", %{conn: init_conn, user: user, backend: backend} do
+      endpoint = insert(:endpoint, user: user, backend: backend, enable_auth: false)
 
       conn =
         init_conn
@@ -47,8 +48,8 @@ defmodule LogflareWeb.EndpointsControllerTest do
       assert conn.halted == false
     end
 
-    test "GET query with user.api_key", %{conn: init_conn, user: user} do
-      endpoint = insert(:endpoint, user: user, enable_auth: true)
+    test "GET query with user.api_key", %{conn: init_conn, user: user, backend: backend} do
+      endpoint = insert(:endpoint, user: user, backend: backend, enable_auth: true)
 
       conn =
         init_conn
@@ -77,9 +78,9 @@ defmodule LogflareWeb.EndpointsControllerTest do
       assert conn.halted == false
     end
 
-    test "GET query with other user's api key", %{conn: init_conn, user: user} do
+    test "GET query with other user's api key", %{conn: init_conn, user: user, backend: backend} do
       user2 = insert(:user)
-      endpoint = insert(:endpoint, user: user, enable_auth: true)
+      endpoint = insert(:endpoint, user: user, backend: backend, enable_auth: true)
 
       conn =
         init_conn
@@ -91,12 +92,12 @@ defmodule LogflareWeb.EndpointsControllerTest do
     end
 
     # ticket: https://www.notion.so/supabase/bug-Logflare-endpoint-query-by-name-sometimes-mistakes-a-string-for-a-uuid-0034097613954fafab27ed608e287f70?pvs=4
-    test "bug: query by name uuid pattern check", %{conn: init_conn, user: user} do
+    test "bug: query by name uuid pattern check", %{conn: init_conn, user: user, backend: backend} do
       for name <- [
             "logs.all.staging",
             "logs-all-staging"
           ] do
-        endpoint = insert(:endpoint, name: name, user: user, enable_auth: true)
+        endpoint = insert(:endpoint, name: name, user: user, backend: backend, enable_auth: true)
 
         conn =
           init_conn
@@ -113,11 +114,12 @@ defmodule LogflareWeb.EndpointsControllerTest do
     setup do
       _plan = insert(:plan, name: "Free")
       user = insert(:user)
+      backend = insert(:backend, user: user, type: :bigquery)
       source = build(:source, user: user)
-      {:ok, user: user, source: source}
+      {:ok, user: user, source: source, backend: backend}
     end
 
-    test "params in GET body", %{conn: conn, user: user} do
+    test "params in GET body", %{conn: conn, user: user, backend: backend} do
       pid = self()
 
       GoogleApi.BigQuery.V2.Api.Jobs
@@ -130,6 +132,7 @@ defmodule LogflareWeb.EndpointsControllerTest do
       endpoint =
         insert(:endpoint,
           user: user,
+          backend: backend,
           enable_auth: true,
           sandboxable: true,
           query: "with a as (select 1 as b) select b from a"
@@ -147,7 +150,7 @@ defmodule LogflareWeb.EndpointsControllerTest do
       assert String.downcase(sql) =~ "select 2"
     end
 
-    test "params in POST body", %{conn: conn, user: user} do
+    test "params in POST body", %{conn: conn, user: user, backend: backend} do
       pid = self()
 
       GoogleApi.BigQuery.V2.Api.Jobs
@@ -160,6 +163,7 @@ defmodule LogflareWeb.EndpointsControllerTest do
       endpoint =
         insert(:endpoint,
           user: user,
+          backend: backend,
           enable_auth: true,
           sandboxable: true,
           query: "with a as (select 1 as b) select b from a"
@@ -184,11 +188,12 @@ defmodule LogflareWeb.EndpointsControllerTest do
 
     setup do
       user = SingleTenant.get_default_user()
-      {:ok, user: user}
+      backend = insert(:backend, user: user, type: :bigquery)
+      {:ok, user: user, backend: backend}
     end
 
-    test "single tenant endpoint GET", %{conn: conn, user: user} do
-      endpoint = insert(:endpoint, user: user, enable_auth: true)
+    test "single tenant endpoint GET", %{conn: conn, user: user, backend: backend} do
+      endpoint = insert(:endpoint, user: user, backend: backend, enable_auth: true)
 
       GoogleApi.BigQuery.V2.Api.Jobs
       |> stub(:bigquery_jobs_query, fn _conn, _proj_id, _opts ->
