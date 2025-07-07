@@ -4,7 +4,7 @@ defmodule LogflareWeb.Api.RuleController do
 
   alias Logflare.Backends
   alias Logflare.Sources
-  alias Logflare.Sources.Rules
+  alias Logflare.Rules
   alias LogflareWeb.OpenApi.Accepted
   alias LogflareWeb.OpenApi.Created
   alias LogflareWeb.OpenApi.List

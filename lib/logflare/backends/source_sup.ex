@@ -18,7 +18,7 @@ defmodule Logflare.Backends.SourceSup do
   alias Logflare.Logs.SearchQueryExecutor
   alias Logflare.Backends.RecentEventsTouch
   alias Logflare.Backends.RecentInsertsBroadcaster
-  alias Logflare.Sources.Rule
+  alias Logflare.Rules.Rule
   alias Logflare.Sources
   alias Logflare.Backends.AdaptorSupervisor
 

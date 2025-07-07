@@ -1,7 +1,7 @@
-defmodule Logflare.Sources.RulesTest do
+defmodule Logflare.RulesTest do
   use Logflare.DataCase
-  alias Logflare.Sources.Rules
-  alias Logflare.Sources.Rule
+  alias Logflare.Rules
+  alias Logflare.Rules.Rule
   alias Logflare.Sources
   alias Logflare.Backends
   alias Logflare.Backends.SourceSup

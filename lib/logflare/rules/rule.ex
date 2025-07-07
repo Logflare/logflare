@@ -1,4 +1,4 @@
-defmodule Logflare.Sources.Rule do
+defmodule Logflare.Rules.Rule do
   @moduledoc false
   use TypedEctoSchema
   alias Logflare.Source
