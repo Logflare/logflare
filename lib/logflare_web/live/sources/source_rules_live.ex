@@ -6,7 +6,7 @@ defmodule LogflareWeb.Sources.RulesLV do
   use LogflareWeb, :live_view
 
   alias Logflare.Lql
-  alias Logflare.Rule
+  alias Logflare.Rules.Rule
   alias Logflare.Rules
   alias Logflare.Sources
   alias Logflare.SourceSchemas

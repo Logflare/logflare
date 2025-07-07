@@ -208,7 +208,7 @@ defmodule Logflare.BackendsTest do
       assert new_length > prev_length
       assert new_length - prev_length == 3
 
-      Logflare.Repo.delete_all(Logflare.Rule)
+      Logflare.Repo.delete_all(Logflare.Rules.Rule)
       Logflare.Repo.delete_all(Logflare.Backends.SourcesBackend)
       Logflare.Repo.delete_all(Logflare.Backends.Backend)
 

@@ -7,7 +7,7 @@ defmodule Logflare.Logs do
   alias Logflare.{SystemMetrics, Source, Sources}
   alias Logflare.Logs.SourceRouting
   alias Logflare.Logs.IngestTypecasting
-  alias Logflare.Rule
+  alias Logflare.Rules.Rule
   alias Logflare.Backends.IngestEventQueue
 
   @spec ingest_logs(list(map), Source.t()) :: :ok | {:error, term}

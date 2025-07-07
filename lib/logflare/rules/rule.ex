@@ -1,4 +1,4 @@
-defmodule Logflare.Rule do
+defmodule Logflare.Rules.Rule do
   @moduledoc false
   use TypedEctoSchema
   alias Logflare.Source
@@ -17,7 +17,7 @@ defmodule Logflare.Rule do
 
   typed_schema "rules" do
     field :sink, Ecto.UUID.Atom
-    field(:token, Ecto.UUID, autogenerate: true)
+    field :token, Ecto.UUID, autogenerate: true
     field :lql_filters, Ecto.Term, default: []
     field :lql_string, :string
     belongs_to :source, Source
@@ -37,12 +37,12 @@ defmodule Logflare.Rule do
   end
 
   defp maybe_parse_lql(changeset) do
-    qs = get_field(changeset, :lql_string)
+    {:ok, rules} =
+      changeset
+      |> get_field(:lql_string)
+      |> Parser.parse()
 
-    case Parser.parse(qs) do
-      {:ok, rules} -> put_change(changeset, :lql_filters, rules)
-      _ -> changeset
-    end
+    put_change(changeset, :lql_filters, rules)
   end
 
   def changeset_error_to_string(changeset) do

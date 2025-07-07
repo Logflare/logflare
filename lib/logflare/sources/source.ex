@@ -139,7 +139,7 @@ defmodule Logflare.Source do
 
     belongs_to(:user, Logflare.User)
 
-    has_many(:rules, Logflare.Rule)
+    has_many(:rules, Logflare.Rules.Rule)
 
     many_to_many(:backends, Logflare.Backends.Backend,
       join_through: "sources_backends",
