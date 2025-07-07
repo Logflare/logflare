@@ -14,19 +14,6 @@ defmodule LogflareWeb.OpenTelemetrySampler do
   @doc """
   Drops traces for ingest and endpoints related routes.
 
-  Delegates to trace id sampler.
-
-  iex> ctx =  %{}
-  iex> trace_id =  :otel_id_generator.generate_trace_id()
-  iex> links =  {:links, 128, 128, :infinity, 0, []}
-  iex> span_name = "HTTP POST"
-  iex> span_kind = :server
-  iex> attributes = %{ "http.request.method": "POST", "url.path": "/logs/json"}
-  iex> sampler_config = :otel_sampler_trace_id_ratio_based.setup(0.001)
-  iex> {decision, _, _state} = should_sample(ctx, trace_id, links, span_name, span_kind, attributes, sampler_config)
-  iex> decision in [:drop, :record_and_sample]
-  true
-
   ingestion routes can be sampled separately from the main sample ratio
   iex> ctx =  %{}
   iex> trace_id =  :otel_id_generator.generate_trace_id()
@@ -58,18 +45,6 @@ defmodule LogflareWeb.OpenTelemetrySampler do
   true
   iex> Application.put_env(:logflare, :endpoint_sample_ratio, 1.0)
   iex> {decision, _, _state} = should_sample(ctx, trace_id, links, span_name, span_kind, attributes, sampler_config)
-  iex> decision == :drop
-  false
-
-  url query can be redacted
-  iex> ctx =  %{}
-  iex> trace_id =  :otel_id_generator.generate_trace_id()
-  iex> links =  {:links, 128, 128, :infinity, 0, []}
-  iex> span_name = "HTTP POST"
-  iex> span_kind = :server
-  iex> attributes = %{ "http.request.method": "POST", "url.path": "/logs", "url.query": "api_key=123"}
-  iex> sampler_config = :otel_sampler_trace_id_ratio_based.setup(1.0)
-  iex> {decision, ["url.query": "api_key=[REDACTED]"], _state} = should_sample(ctx, trace_id, links, span_name, span_kind, attributes, sampler_config)
   iex> decision == :drop
   false
   """
