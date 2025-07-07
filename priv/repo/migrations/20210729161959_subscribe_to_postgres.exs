@@ -16,10 +16,10 @@ defmodule Logflare.Repo.Migrations.SubscribeToPostgres do
   use Ecto.Migration
   @disable_ddl_transaction true
   @disable_migration_lock true
-  @username Application.get_env(:logflare, Logflare.Repo)[:username]
-  @slot Application.get_env(:logflare, Logflare.ContextCache.CacheBuster)[:replication_slot]
-  @env Application.get_env(:logflare, :env)
-  @publications Application.get_env(:logflare, Logflare.ContextCache.CacheBuster)[:publications]
+  @username Application.compile_env(:logflare, Logflare.Repo)[:username]
+  @slot Application.compile_env(:logflare, Logflare.ContextCache.CacheBuster)[:replication_slot]
+  @env Application.compile_env(:logflare, :env)
+  @publications Application.compile_env(:logflare, Logflare.ContextCache.CacheBuster)[:publications]
   @publication_tables [
     "billing_accounts",
     "plans",

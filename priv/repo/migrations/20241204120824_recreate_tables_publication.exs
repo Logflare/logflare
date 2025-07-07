@@ -2,7 +2,7 @@ defmodule Logflare.Repo.Migrations.RecreateTablesPublication do
   use Ecto.Migration
   use Ecto.Migration
 
-  @publications Application.get_env(:logflare, Logflare.ContextCache.CacheBuster)[:publications]
+  @publications Application.compile_env(:logflare, Logflare.ContextCache.CacheBuster)[:publications]
   @table "oauth_access_tokens"
 
   def up do

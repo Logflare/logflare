@@ -1,6 +1,7 @@
 defmodule Logflare.Repo.Migrations.RenameColumnsForMnesiaCompatibility do
   use Ecto.Migration
-  @env Application.get_env(:logflare, :env)
+
+  @env Application.compile_env(:logflare, :env)
 
   def change do
     alter table(:users) do
