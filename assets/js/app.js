@@ -33,6 +33,8 @@ import "./vendor/daterangepicker.css";
 // interfaces
 import * as Interfaces from "./interfaces";
 
+import MonacoEditorCompletionProvider from "./monaco_editor_completion_provider";
+
 let csrfToken = document
   .querySelector("meta[name='csrf-token']")
   .getAttribute("content");
@@ -54,8 +56,9 @@ const hooks = {
   ...LiveModalHooks,
   ...BillingHooks,
   CodeEditorHook
-  
 };
+
+window.addEventListener("lme:editor_mounted", MonacoEditorCompletionProvider);
 
 let liveSocket = new LiveSocket("/live", Socket, {
   hooks,
