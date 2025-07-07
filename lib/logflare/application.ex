@@ -128,9 +128,11 @@ defmodule Logflare.Application do
 
   def conditional_children do
     goth =
-      [
-        BigQueryAdaptor.partitioned_goth_child_spec()
-      ] ++ BigQueryAdaptor.impersonated_goth_child_specs()
+      case BigQueryAdaptor.partitioned_goth_child_spec() do
+        nil -> []
+        goth_child_spec -> [goth_child_spec]
+      end ++
+        BigQueryAdaptor.impersonated_goth_child_specs()
 
     # only add in config cat to multi-tenant prod
     config_cat =
