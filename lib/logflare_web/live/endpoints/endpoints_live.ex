@@ -55,6 +55,7 @@ defmodule LogflareWeb.EndpointsLive do
       |> assign(:params_form, to_form(%{"query" => "", "params" => %{}}, as: "run"))
       |> assign(:declared_params, %{})
       |> assign(:alerts, alerts)
+      |> assign_completions()
       |> assign(:parsed_result, nil)
 
     {:ok, socket}
@@ -97,7 +98,10 @@ defmodule LogflareWeb.EndpointsLive do
         other ->
           other
           # reset the changeset
-          |> assign(:endpoint_changeset, nil)
+          |> assign(
+            :endpoint_changeset,
+            Endpoints.change_query(%Endpoints.Query{query: placeholder_sql()})
+          )
           # reset test results
           |> assign(:query_result_rows, nil)
       end)
@@ -227,10 +231,26 @@ defmodule LogflareWeb.EndpointsLive do
     assign(socket, :endpoints, endpoints)
   end
 
+  defp assign_completions(socket) do
+    %{user_id: user_id, alerts: alerts, endpoints: endpoints} = socket.assigns
+
+    sources = Logflare.Sources.list_sources_by_user(user_id)
+
+    completions =
+      [sources, endpoints, alerts] |> List.flatten() |> Enum.map(fn item -> item.name end)
+
+    assign(socket, :completions, completions)
+  end
+
   defp upsert_query(show_endpoint, user, params) do
     case show_endpoint do
       nil -> Endpoints.create_query(user, params)
       %_{} -> Endpoints.update_query(show_endpoint, params)
     end
   end
+
+  defp placeholder_sql,
+    do: """
+    select timestamp, event_message from YourApp.SourceName
+    """
 end
