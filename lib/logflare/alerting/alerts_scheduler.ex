@@ -5,6 +5,7 @@ defmodule Logflare.Alerting.AlertsScheduler do
   @impl Quantum
   def init(config) do
     jobs = Alerting.init_alert_jobs()
+    Logger.info("Initializing alerts scheduler with #{length(jobs)} jobs")
     Keyword.put(config, :jobs, jobs)
   end
 end

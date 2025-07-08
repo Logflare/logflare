@@ -7,6 +7,8 @@ defmodule Logflare.Alerting do
   alias Logflare.Repo
 
   require Logger
+  require OpenTelemetry.Tracer
+
   alias Logflare.Backends
   alias Logflare.Backends.Adaptor
   alias Logflare.Backends.Adaptor.WebhookAdaptor
@@ -16,6 +18,7 @@ defmodule Logflare.Alerting do
   alias Logflare.Endpoints
   alias Logflare.Alerting.AlertsScheduler
   alias Logflare.Cluster
+  alias Logflare.Utils
 
   @doc """
   Returns the list of alert_queries.
@@ -125,7 +128,12 @@ defmodule Logflare.Alerting do
 
   """
   def delete_alert_query(%AlertQuery{} = alert_query) do
-    Repo.delete(alert_query)
+    with {:ok, _} <- Repo.delete(alert_query) do
+      {:ok, _job} = delete_alert_job(alert_query)
+      {:ok, alert_query}
+    else
+      {:error, :not_found} -> {:ok, alert_query}
+    end
   end
 
   @doc """
@@ -143,21 +151,15 @@ defmodule Logflare.Alerting do
   end
 
   @doc """
-  Retrieves a Citrine.Job based on AlertQuery.
-  Citrine.Job shares the same id as AlertQuery, resulting in a 1-1 relationship.
+  Retrieves a Job based on AlertQuery.
+  Job shares the same id as AlertQuery, resulting in a 1-1 relationship.
   """
   @spec get_alert_job(AlertQuery.t()) :: Citrine.Job.t()
   def get_alert_job(%AlertQuery{id: id}), do: get_alert_job(id)
 
   def get_alert_job(id) do
-    AlertsScheduler.jobs()
-    |> Enum.find_value(fn {_ref,
-                           %Quantum.Job{
-                             task: {_module, _function, [%AlertQuery{id: query_id}, _]}
-                           } = job} ->
-      if query_id == id do
-        job
-      end
+    on_scheduler_node(fn ->
+      AlertsScheduler.find_job(Integer.to_string(id))
     end)
   end
 
@@ -167,17 +169,19 @@ defmodule Logflare.Alerting do
   @spec upsert_alert_job(AlertQuery.t()) :: {:ok, Citrine.Job.t()}
   def upsert_alert_job(%AlertQuery{} = alert_query) do
     job = create_alert_job_struct(alert_query)
-
-    :ok = AlertsScheduler.add_job(job)
-
+    :ok = on_scheduler_node(fn -> AlertsScheduler.add_job(job) end)
     {:ok, job}
   end
 
-  def create_alert_job_struct(alert_query) do
+  @doc """
+  Creates an alert job struct (but does not insert it into the scheduler.)
+  """
+  @spec create_alert_job_struct(AlertQuery.t()) :: Quantum.Job.t()
+  def create_alert_job_struct(%AlertQuery{} = alert_query) do
     AlertsScheduler.new_job(run_strategy: Quantum.RunStrategy.Local)
     |> Quantum.Job.set_task({__MODULE__, :run_alert, [alert_query, :scheduled]})
     |> Quantum.Job.set_schedule(Crontab.CronExpression.Parser.parse!(alert_query.cron))
-    |> Quantum.Job.set_name(make_ref())
+    |> Quantum.Job.set_name(Integer.to_string(alert_query.id))
   end
 
   @doc """
@@ -192,6 +196,45 @@ defmodule Logflare.Alerting do
     end)
   end
 
+  def sync_alert_jobs do
+    on_scheduler_node(fn ->
+      # start unlinked task on remote scheduler node
+      Utils.Tasks.start_child(fn ->
+        init_alert_jobs()
+        |> tap(fn _ ->
+          AlertsScheduler.delete_all_jobs()
+        end)
+        |> Enum.each(fn job ->
+          AlertsScheduler.add_job(job)
+        end)
+      end)
+    end)
+  end
+
+  @doc """
+  Syncs a specific alert job by alert_id.
+  Upserts the job if it doesn't exist, otherwise deletes the existing job.
+  """
+  @spec sync_alert_job(number()) :: :ok | {:error, :not_found}
+  def sync_alert_job(alert_id) when is_integer(alert_id) do
+    alert_query = get_alert_query_by(id: alert_id)
+
+    on_scheduler_node(fn ->
+      if alert_query do
+        job = create_alert_job_struct(alert_query)
+        AlertsScheduler.add_job(job)
+        {:ok, job}
+      else
+        # alert query does not exist, maybe remove from scheduler
+        job = AlertsScheduler.find_job(Integer.to_string(alert_id))
+
+        if job do
+          AlertsScheduler.delete_job(job.name)
+        end
+      end
+    end)
+  end
+
   @doc """
   Performs the check lifecycle of an AlertQuery.
 
@@ -202,16 +245,24 @@ defmodule Logflare.Alerting do
   def run_alert(%AlertQuery{} = alert_query, :scheduled) do
     # perform pre-run checks
     cfg = Application.get_env(:logflare, Logflare.Alerting)
+    cluster_size = Cluster.Utils.actual_cluster_size()
 
     cond do
       cfg[:enabled] == false ->
         {:error, :not_enabled}
 
-      cfg[:min_cluster_size] >= Cluster.Utils.actual_cluster_size() ->
+      cfg[:min_cluster_size] >= cluster_size ->
         {:error, :below_min_cluster_size}
 
       true ->
-        run_alert(alert_query)
+        OpenTelemetry.Tracer.with_span "alerting.run_alert", %{
+          "alert.id" => alert_query.id,
+          "alert.name" => alert_query.name,
+          "alert.user_id" => alert_query.user_id,
+          "system.cluster_size" => cluster_size
+        } do
+          run_alert(alert_query)
+        end
     end
   end
 
@@ -227,6 +278,8 @@ defmodule Logflare.Alerting do
               "result" => results
             }
           )
+
+          OpenTelemetry.Tracer.add_event("alerting.run_alert.webhook_notification_sent", %{})
         end
 
         if alert_query.slack_hook_url do
@@ -238,12 +291,22 @@ defmodule Logflare.Alerting do
               error_string: inspect(res)
             )
           end
+
+          OpenTelemetry.Tracer.add_event("alerting.run_alert.slack_notification_sent", %{})
         end
 
         # iterate over backends and fire for each
         for backend <- alert_query.backends do
           adaptor_mod = Adaptor.get_adaptor(backend)
           adaptor_mod.send_alert(backend, alert_query, results)
+
+          OpenTelemetry.Tracer.add_event(
+            "alerting.run_alert.#{backend.type}.notification_sent",
+            %{
+              "alert.backend.id" => backend.id,
+              "alert.backend.type" => backend.type
+            }
+          )
         end
 
         :ok
@@ -257,9 +320,8 @@ defmodule Logflare.Alerting do
   end
 
   @doc """
-  Deletes an AlertQuery's Citrine.Job from the scheduler
+  Deletes an AlertQuery's job from the scheduler
   noop if already deleted.
-
   ### Examples
 
   ```elixir
@@ -272,14 +334,32 @@ defmodule Logflare.Alerting do
   @spec delete_alert_job(AlertQuery.t() | number()) :: :ok
   def delete_alert_job(%AlertQuery{id: id}), do: delete_alert_job(id)
 
-  def delete_alert_job(alert_id) do
-    job = get_alert_job(alert_id)
+  def delete_alert_job(alert_id) when is_integer(alert_id) do
+    on_scheduler_node(fn ->
+      case AlertsScheduler.find_job(Integer.to_string(alert_id)) do
+        %_{} = job ->
+          AlertsScheduler.delete_job(job.name)
+          {:ok, job}
 
-    if job do
-      :ok = AlertsScheduler.delete_job(job.name)
-      {:ok, job}
-    else
-      {:error, :not_found}
+        nil ->
+          {:error, :not_found}
+      end
+    end)
+  end
+
+  @doc """
+  List alert jobs on the scheduler
+  """
+  def list_alert_jobs do
+    on_scheduler_node(fn ->
+      AlertsScheduler.jobs()
+    end)
+  end
+
+  defp on_scheduler_node(func) do
+    with pid when is_pid(pid) <- GenServer.whereis(scheduler_name()),
+         node <- node(pid) do
+      :erpc.call(node, func, 5000)
     end
   end
 
@@ -346,4 +426,13 @@ defmodule Logflare.Alerting do
 
   # helper to get the google project id via env.
   defp env_project_id, do: Application.get_env(:logflare, Logflare.Google)[:project_id]
+
+  @doc """
+  Returns the alerts scheduler :via name used for syn registry.
+  """
+  def scheduler_name do
+    ts = DateTime.utc_now() |> DateTime.to_unix(:nanosecond)
+    # add nanosecond resolution for timestamp comparison
+    {:via, :syn, {:alerting, Logflare.Alerting.AlertsScheduler, %{timestamp: ts}}}
+  end
 end

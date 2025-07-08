@@ -17,6 +17,7 @@ defmodule LogflareWeb.AlertsLiveTest do
     insert(:plan, name: "Free")
     user = insert(:user)
     conn = login_user(conn, user)
+    start_supervised!(Logflare.Alerting.Supervisor)
     [user: user, conn: conn]
   end
 
@@ -79,6 +80,11 @@ defmodule LogflareWeb.AlertsLiveTest do
 
       assert_patched(view, ~p"/backends/#{backend.id}")
       assert render(view) =~ alert_query.name
+    end
+
+    test "show for nonexistent query", %{conn: conn} do
+      {:error, {:live_redirect, %{flash: %{"info" => "Alert not found" <> _}}}} =
+        live(conn, ~p"/alerts/123")
     end
 
     test "can remove backend from the alert query", %{
