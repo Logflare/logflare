@@ -35,7 +35,7 @@ defmodule Logflare.RulesTest do
                lql_string: "a:testing"
              })
 
-    Rules.delete_rule!(rule.id)
+    assert {:ok, _rule} = Rules.delete_rule(rule)
 
     refute Rules.get_rule(rule.id)
   end

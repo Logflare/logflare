@@ -102,9 +102,10 @@ defmodule LogflareWeb.Sources.RulesLV do
   def handle_event("delete_rule", %{"rule_id" => rule_id}, socket) do
     source = socket.assigns.source
 
-    rule_id
-    |> String.to_integer()
-    |> Rules.delete_rule!()
+    {:ok, _rule} =
+      rule_id
+      |> String.to_integer()
+      |> Rules.delete_rule()
 
     source = Sources.get_by_and_preload(token: source.token)
 

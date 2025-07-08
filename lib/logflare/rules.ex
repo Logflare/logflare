@@ -103,10 +103,6 @@ defmodule Logflare.Rules do
     res
   end
 
-  def delete_rule!(rule_id) do
-    Rule |> Repo.get!(rule_id) |> Repo.delete!()
-  end
-
   def upgrade_all_source_rules_to_next_lql_version() do
     Logger.info("Started upgrade of all source rules to next lql version...")
 
