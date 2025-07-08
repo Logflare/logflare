@@ -667,7 +667,12 @@ defmodule Logflare.Backends.BigQueryAdaptorTest do
         {:ok, %Goth.Token{token: "auth-token"}}
       end)
 
-      user = insert(:user, bigquery_enable_managed_service_accounts: false)
+      user =
+        insert(:user,
+          bigquery_project_id: "my-project",
+          bigquery_enable_managed_service_accounts: false
+        )
+
       BigQueryAdaptor.get_conn({:query, user})
       assert_receive {Logflare.Goth, _}
     end
