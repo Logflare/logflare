@@ -155,7 +155,9 @@ defmodule Logflare.Alerting do
   def get_alert_job(%AlertQuery{id: id}), do: get_alert_job(id)
 
   def get_alert_job(id) do
-    remote_call_scheduler(:find_job, [Integer.to_string(id)])
+    on_scheduler_node(fn ->
+      AlertingScheduler.find_job(Integer.to_string(id))
+    end)
   end
 
   @doc """
@@ -164,7 +166,7 @@ defmodule Logflare.Alerting do
   @spec upsert_alert_job(AlertQuery.t()) :: {:ok, Citrine.Job.t()}
   def upsert_alert_job(%AlertQuery{} = alert_query) do
     job = create_alert_job_struct(alert_query)
-    :ok = remote_call_scheduler(:add_job, [job])
+    :ok = on_scheduler_node(fn -> AlertsScheduler.add_job(job) end)
     {:ok, job}
   end
 
@@ -192,9 +194,17 @@ defmodule Logflare.Alerting do
   end
 
   def sync_alert_jobs do
-    init_alert_jobs()
-    |> Enum.each(fn job ->
-      remote_call_scheduler(:add_job, [job])
+    on_scheduler_node(fn ->
+      # start unlinked task on remote scheduler node
+      Tasks.start_child(fn ->
+        init_alert_jobs()
+        |> tap(fn _ ->
+          AlertsScheduler.delete_all_jobs()
+        end)
+        |> Enum.each(fn job ->
+          AlertsScheduler.add_job(job)
+        end)
+      end)
     end)
   end
 
@@ -338,17 +348,9 @@ defmodule Logflare.Alerting do
   List alert jobs on the scheduler
   """
   def list_alert_jobs do
-    remote_call_scheduler(:jobs)
-  end
-
-  defp remote_call_scheduler(f, a \\ []) do
-    with pid when is_pid(pid) <- GenServer.whereis(scheduler_name()),
-         node <- node(pid) do
-      :erpc.call(node, AlertsScheduler, f, a, 5000)
-    else
-      nil ->
-        {:error, :scheduler_not_found}
-    end
+    on_scheduler_node(fn ->
+      AlertsScheduler.jobs()
+    end)
   end
 
   defp on_scheduler_node(func) do
