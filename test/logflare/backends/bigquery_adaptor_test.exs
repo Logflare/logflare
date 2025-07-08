@@ -6,6 +6,7 @@ defmodule Logflare.Backends.BigQueryAdaptorTest do
   alias Logflare.Backends.SourceSup
   alias Logflare.Backends.Adaptor.BigQueryAdaptor
   alias Logflare.SystemMetrics.AllLogsLogged
+  alias GoogleApi.CloudResourceManager.V1.Model
 
   setup do
     start_supervised!(AllLogsLogged)
@@ -453,6 +454,195 @@ defmodule Logflare.Backends.BigQueryAdaptorTest do
                Enum.any?(binding.members, fn member ->
                  member =~ "logflare-managed-"
                end)
+             end)
+    end
+  end
+
+  test "fetch iam policy for a given user" do
+    user = insert(:user, bigquery_project_id: "my-project")
+
+    expect(
+      GoogleApi.CloudResourceManager.V1.Api.Projects,
+      :cloudresourcemanager_projects_get_iam_policy,
+      fn _, _project_id, [body: _body] ->
+        policy = %Model.Policy{
+          bindings: [
+            %Model.Binding{members: ["user:original@user.com"], role: "roles/bigquery.jobUser"}
+          ]
+        }
+
+        {:ok, policy}
+      end
+    )
+
+    assert {:ok, policy} = BigQueryAdaptor.get_iam_policy(user)
+    assert policy.bindings |> length() > 0
+  end
+
+  describe "fetch and update iam policy" do
+    setup do
+      original_pool_size =
+        Application.get_env(:logflare, :bigquery_backend_adaptor)[
+          :managed_service_account_pool_size
+        ]
+
+      Application.put_env(:logflare, :bigquery_backend_adaptor,
+        managed_service_account_pool_size: 5
+      )
+
+      on_exit(fn ->
+        Application.put_env(:logflare, :bigquery_backend_adaptor,
+          managed_service_account_pool_size: original_pool_size
+        )
+      end)
+
+      :ok
+    end
+
+    test "append_managed_sa_to_iam_policy/1 should update iam policy if it is missing managed service accounts" do
+      user =
+        insert(:user,
+          bigquery_enable_managed_service_accounts: true,
+          bigquery_project_id: "my-project"
+        )
+
+      expect(
+        GoogleApi.CloudResourceManager.V1.Api.Projects,
+        :cloudresourcemanager_projects_get_iam_policy,
+        fn _, _project_id, [body: _body] ->
+          policy = %Model.Policy{
+            bindings: [
+              %Model.Binding{members: ["user:original@user.com"], role: "roles/bigquery.jobUser"}
+            ]
+          }
+
+          {:ok, policy}
+        end
+      )
+
+      expect(
+        GoogleApi.CloudResourceManager.V1.Api.Projects,
+        :cloudresourcemanager_projects_set_iam_policy,
+        fn _, _project_id, [body: body] ->
+          {:ok, body.policy}
+        end
+      )
+
+      expect(GoogleApi.IAM.V1.Api.Projects, :iam_projects_service_accounts_list, fn
+        _conn, "projects/" <> _project_id, _opts ->
+          {:ok,
+           %{
+             accounts: [
+               %GoogleApi.IAM.V1.Model.ServiceAccount{
+                 email: "logflare-managed-0@some-project.iam.gserviceaccount.com",
+                 name:
+                   "projects/some-project/serviceAccounts/logflare-managed-0@some-project.iam.gserviceaccount.com"
+               }
+             ],
+             nextPageToken: nil
+           }}
+      end)
+
+      assert {:ok, %Model.Policy{bindings: bindings}} =
+               BigQueryAdaptor.append_managed_sa_to_iam_policy(user)
+
+      members = Enum.flat_map(bindings, & &1.members)
+
+      assert Enum.any?(members, fn member ->
+               String.contains?(member, "user:original@user.com")
+             end)
+
+      assert Enum.any?(members, fn member ->
+               String.contains?(member, "logflare-managed-")
+             end)
+    end
+
+    test "append_managed_sa_to_iam_policy/1 should not update iam policy if it is missing managed service accounts" do
+      user =
+        insert(:user,
+          bigquery_enable_managed_service_accounts: false,
+          bigquery_project_id: "my-project"
+        )
+
+      reject(
+        &GoogleApi.CloudResourceManager.V1.Api.Projects.cloudresourcemanager_projects_get_iam_policy/3
+      )
+
+      reject(
+        &GoogleApi.CloudResourceManager.V1.Api.Projects.cloudresourcemanager_projects_set_iam_policy/3
+      )
+
+      assert {:error, :managed_service_accounts_disabled} =
+               BigQueryAdaptor.append_managed_sa_to_iam_policy(user)
+    end
+
+    test "append_managed_sa_to_iam_policy/1 should not update iam policy if user does not have a project id" do
+      user =
+        insert(:user, bigquery_enable_managed_service_accounts: true, bigquery_project_id: nil)
+
+      reject(
+        &GoogleApi.CloudResourceManager.V1.Api.Projects.cloudresourcemanager_projects_get_iam_policy/3
+      )
+
+      reject(
+        &GoogleApi.CloudResourceManager.V1.Api.Projects.cloudresourcemanager_projects_set_iam_policy/3
+      )
+
+      assert {:error, :no_project_id} = BigQueryAdaptor.append_managed_sa_to_iam_policy(user)
+    end
+
+    test "byob user should have managed service accounts appended to policy" do
+      user =
+        insert(:user,
+          bigquery_project_id: "my-project",
+          bigquery_enable_managed_service_accounts: true
+        )
+
+      pid = self()
+
+      expect(
+        GoogleApi.CloudResourceManager.V1.Api.Projects,
+        :cloudresourcemanager_projects_set_iam_policy,
+        fn _, _project_number, [body: body] ->
+          send(pid, body.policy.bindings)
+          {:ok, ""}
+        end
+      )
+
+      expect(GoogleApi.IAM.V1.Api.Projects, :iam_projects_service_accounts_list, fn
+        _conn, "projects/" <> _project_id, _opts ->
+          {:ok,
+           %{
+             accounts: [
+               %GoogleApi.IAM.V1.Model.ServiceAccount{
+                 email: "logflare-managed-0@some-project.iam.gserviceaccount.com",
+                 name:
+                   "projects/some-project/serviceAccounts/logflare-managed-0@some-project.iam.gserviceaccount.com"
+               }
+             ],
+             nextPageToken: nil
+           }}
+      end)
+
+      policy = %Model.Policy{
+        bindings: [
+          %Model.Binding{members: ["user:some@user.com"], role: "roles/bigquery.jobUser"}
+        ]
+      }
+
+      assert {:ok, _policy} =
+               BigQueryAdaptor.append_managed_service_accounts(user.bigquery_project_id, policy)
+
+      assert_received [_ | _] = bindings
+
+      members = Enum.flat_map(bindings, & &1.members)
+
+      assert Enum.any?(members, fn member ->
+               String.contains?(member, "user:some@user.com")
+             end)
+
+      assert Enum.any?(members, fn member ->
+               String.contains?(member, "logflare-managed-")
              end)
     end
   end

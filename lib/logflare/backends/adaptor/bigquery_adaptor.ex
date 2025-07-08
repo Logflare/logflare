@@ -14,6 +14,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
   alias Logflare.Backends
   alias Logflare.Google.BigQuery.GenUtils
   alias Logflare.Google.CloudResourceManager
+  alias Logflare.Google
   use Supervisor
   require Logger
 
@@ -159,6 +160,14 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
   @spec managed_service_account_id(non_neg_integer()) :: String.t()
   def managed_service_account_id(service_account_index \\ 0) do
     "#{@service_account_prefix}-#{service_account_index}"
+  end
+
+  @doc """
+  Returns a list of all managed service account ids
+  """
+  def managed_service_account_ids() do
+    for i <- 0..(managed_service_account_pool_size() - 1),
+        do: managed_service_account_id(i)
   end
 
   @doc """
@@ -395,7 +404,17 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
     iex> update_iam_policy()
     :ok
   """
-  def update_iam_policy() do
+  def update_iam_policy(user \\ nil) do
     CloudResourceManager.set_iam_policy(async: false)
+
+    if Map.get(user || %{}, :bigquery_project_id) do
+      # byob project, maybe append managed SA to policy
+      append_managed_sa_to_iam_policy(user) |> dbg()
+    end
   end
+
+  defdelegate get_iam_policy(user), to: CloudResourceManager
+  defdelegate append_managed_sa_to_iam_policy(user), to: CloudResourceManager
+  defdelegate append_managed_service_accounts(project_id, policy), to: CloudResourceManager
+  defdelegate patch_dataset_access(user), to: Google.BigQuery
 end

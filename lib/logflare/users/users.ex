@@ -3,7 +3,7 @@ defmodule Logflare.Users do
 
   import Ecto.Query
   alias Logflare.Google.BigQuery
-  alias Logflare.Google.CloudResourceManager
+  alias Logflare.Backends.Adaptor.BigQueryAdaptor
   alias Logflare.Repo
   alias Logflare.Source.Supervisor
   alias Logflare.Sources
@@ -219,7 +219,7 @@ defmodule Logflare.Users do
     case Repo.delete(user) do
       {:ok, _user} = response ->
         BigQuery.delete_dataset(user)
-        CloudResourceManager.set_iam_policy()
+        BigQueryAdaptor.update_iam_policy()
         response
 
       {:error, _reason} = response ->
