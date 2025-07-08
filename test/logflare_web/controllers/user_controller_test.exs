@@ -130,6 +130,7 @@ defmodule LogflareWeb.UserControllerTest do
           {:ok, ""}
         end
       )
+
       conn = delete(conn, ~p"/account")
       assert redirected_to(conn, 302) =~ ~p"/auth/login?user_deleted=true"
     end

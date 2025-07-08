@@ -85,7 +85,12 @@ defmodule Logflare.Google.BigQuery.GenUtils do
     # use pid as the partition hash
     {use_managed_sa?, partition_count} =
       case conn_type do
-        {:query, %{bigquery_enable_managed_service_accounts: true}}
+        {:query,
+         %_{bigquery_project_id: project_id, bigquery_enable_managed_service_accounts: true}}
+        when system_managed_sa_enabled == true and project_id != nil ->
+          {true, BigQueryAdaptor.managed_service_account_partition_count()}
+
+        {:query, %_{bigquery_project_id: nil}}
         when system_managed_sa_enabled == true ->
           {true, BigQueryAdaptor.managed_service_account_partition_count()}
 
@@ -93,16 +98,10 @@ defmodule Logflare.Google.BigQuery.GenUtils do
           {false, BigQueryAdaptor.ingest_service_account_partition_count()}
       end
 
-    is_query? =
-      case conn_type do
-        {:query, _} -> true
-        _ -> false
-      end
-
     partition = :erlang.phash2(self(), partition_count)
 
     {name, metadata} =
-      if use_managed_sa? == true and is_query? == true do
+      if use_managed_sa? == true do
         pool_size = BigQueryAdaptor.managed_service_account_pool_size()
 
         sa_index = :erlang.phash2(self(), pool_size)
