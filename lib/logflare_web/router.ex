@@ -253,7 +253,7 @@ defmodule LogflareWeb.Router do
 
     resources "/", SourceController, except: [:index, :new, :create, :delete] do
       live_session(:rules, root_layout: {LogflareWeb.LayoutView, :root}) do
-        live("/rules", Sources.RulesLV)
+        live("/rules", Sources.RulesLive)
       end
 
       delete("/saved-searches/:id", SavedSearchesController, :delete)

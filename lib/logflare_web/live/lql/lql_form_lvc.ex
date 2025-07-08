@@ -2,12 +2,9 @@ defmodule LogflareWeb.Lql.LqlFormLVC do
   @moduledoc """
   LiveView component for LQL form
   """
-  use Phoenix.LiveComponent
-  alias LogflareWeb.LqlView
+  use LogflareWeb, :live_component
 
-  def render(assigns) do
-    LqlView.render("lql_form.html", assigns)
-  end
+  alias LogflareWeb.LqlHelpers
 
   def update(assigns, socket) do
     socket = assign(socket, assigns)
