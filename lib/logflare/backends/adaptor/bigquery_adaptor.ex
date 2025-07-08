@@ -417,4 +417,6 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
   defdelegate append_managed_sa_to_iam_policy(user), to: CloudResourceManager
   defdelegate append_managed_service_accounts(project_id, policy), to: CloudResourceManager
   defdelegate patch_dataset_access(user), to: Google.BigQuery
+
+  defdelegate get_conn(conn_type), to: GenUtils
 end

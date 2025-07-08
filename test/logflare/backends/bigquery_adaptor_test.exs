@@ -645,5 +645,57 @@ defmodule Logflare.Backends.BigQueryAdaptorTest do
                String.contains?(member, "logflare-managed-")
              end)
     end
+
+    test "gen_utils get_conn/1 when managed sa pool is enabled and user has managed sa enabled" do
+      pid = self()
+
+      stub(Goth, :fetch, fn mod ->
+        send(pid, mod)
+        {:ok, %Goth.Token{token: "auth-token"}}
+      end)
+
+      user = insert(:user, bigquery_enable_managed_service_accounts: true)
+      BigQueryAdaptor.get_conn({:query, user})
+      assert_receive {Logflare.GothQuery, _, _}
+    end
+
+    test "gen_utils get_conn/1 when managed sa pool is enabled and user has managed sa disabled" do
+      pid = self()
+
+      stub(Goth, :fetch, fn mod ->
+        send(pid, mod)
+        {:ok, %Goth.Token{token: "auth-token"}}
+      end)
+
+      user = insert(:user, bigquery_enable_managed_service_accounts: false)
+      BigQueryAdaptor.get_conn({:query, user})
+      assert_receive {Logflare.Goth, _}
+    end
+  end
+
+  test "gen_utils get_conn/1 when managed sa pool is disable and user has managed sa enabled" do
+    pid = self()
+
+    stub(Goth, :fetch, fn mod ->
+      send(pid, mod)
+      {:ok, %Goth.Token{token: "auth-token"}}
+    end)
+
+    user = insert(:user, bigquery_enable_managed_service_accounts: true)
+    BigQueryAdaptor.get_conn({:query, user})
+    assert_receive {Logflare.Goth, _}
+  end
+
+  test "gen_utils get_conn/1 when managed sa pool is disabled  and user has managed sa disabled" do
+    pid = self()
+
+    stub(Goth, :fetch, fn mod ->
+      send(pid, mod)
+      {:ok, %Goth.Token{token: "auth-token"}}
+    end)
+
+    user = insert(:user, bigquery_enable_managed_service_accounts: false)
+    BigQueryAdaptor.get_conn({:query, user})
+    assert_receive {Logflare.Goth, _}
   end
 end
