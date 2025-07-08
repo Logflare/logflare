@@ -10,6 +10,11 @@ defmodule Logflare.AlertingTest do
 
   setup do
     insert(:plan, name: "Free")
+
+    on_exit(fn ->
+      Logflare.Utils.Tasks.kill_all_tasks()
+    end)
+
     {:ok, user: insert(:user)}
   end
 
@@ -304,7 +309,7 @@ defmodule Logflare.AlertingTest do
       refute Alerting.get_alert_job(alert_id)
       Alerting.sync_alert_jobs()
 
-      assert Alerting.get_alert_job(alert_id)
+      TestUtils.retry_assert(fn -> Alerting.get_alert_job(alert_id) end)
     end
 
     test "sync specific alert by alert_id when not in scheduler", %{user: user} do
@@ -312,30 +317,31 @@ defmodule Logflare.AlertingTest do
 
       refute Alerting.get_alert_job(alert_id)
       Alerting.sync_alert_job(alert_id)
-      assert Alerting.get_alert_job(alert_id)
+      TestUtils.retry_assert(fn -> Alerting.get_alert_job(alert_id) end)
     end
 
     test "sync deleted alert when in scheduler", %{user: user} do
       %{id: alert_id} = insert(:alert, user_id: user.id)
       Alerting.sync_alert_jobs()
 
-      assert Alerting.get_alert_job(alert_id)
+      TestUtils.retry_assert(fn -> Alerting.get_alert_job(alert_id) end)
       Repo.delete_all(AlertQuery)
       Alerting.sync_alert_job(alert_id)
-
-      refute Alerting.get_alert_job(alert_id)
+      TestUtils.retry_assert(fn -> refute Alerting.get_alert_job(alert_id) end)
     end
 
     test "supervisor startup will populate scheduler with alerts", %{user: user} do
       %{id: alert_id} = insert(:alert, user_id: user.id)
       Alerting.sync_alert_jobs()
-      :timer.sleep(500)
-      str_id = Integer.to_string(alert_id)
 
-      assert %Quantum.Job{
-               name: ^str_id,
-               task: {Logflare.Alerting, :run_alert, [%AlertQuery{id: ^alert_id}, :scheduled]}
-             } = Alerting.get_alert_job(alert_id)
+      TestUtils.retry_assert(fn ->
+        str_id = Integer.to_string(alert_id)
+
+        assert %Quantum.Job{
+                 name: ^str_id,
+                 task: {Logflare.Alerting, :run_alert, [%AlertQuery{id: ^alert_id}, :scheduled]}
+               } = Alerting.get_alert_job(alert_id)
+      end)
     end
   end
 end

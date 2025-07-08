@@ -18,6 +18,7 @@ defmodule Logflare.Alerting do
   alias Logflare.Endpoints
   alias Logflare.Alerting.AlertsScheduler
   alias Logflare.Cluster
+  alias Logflare.Utils
 
   @doc """
   Returns the list of alert_queries.
@@ -130,6 +131,8 @@ defmodule Logflare.Alerting do
     with {:ok, _} <- Repo.delete(alert_query) do
       {:ok, _job} = delete_alert_job(alert_query)
       {:ok, alert_query}
+    else
+      {:error, :not_found} -> {:ok, alert_query}
     end
   end
 
@@ -156,7 +159,7 @@ defmodule Logflare.Alerting do
 
   def get_alert_job(id) do
     on_scheduler_node(fn ->
-      AlertingScheduler.find_job(Integer.to_string(id))
+      AlertsScheduler.find_job(Integer.to_string(id))
     end)
   end
 
@@ -196,7 +199,7 @@ defmodule Logflare.Alerting do
   def sync_alert_jobs do
     on_scheduler_node(fn ->
       # start unlinked task on remote scheduler node
-      Tasks.start_child(fn ->
+      Utils.Tasks.start_child(fn ->
         init_alert_jobs()
         |> tap(fn _ ->
           AlertsScheduler.delete_all_jobs()
