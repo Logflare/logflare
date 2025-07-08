@@ -153,7 +153,7 @@ defmodule Logflare.Google.BigQuery.GenUtils do
     ).adapter
   end
 
-  defp build_tesla_adapter_call(:query) do
+  defp build_tesla_adapter_call({:query, _}) do
     Tesla.client(
       [],
       {Tesla.Adapter.Finch, name: Logflare.FinchQuery, receive_timeout: 60_000}
