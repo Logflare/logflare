@@ -313,9 +313,13 @@ defmodule Logflare.Endpoints do
            parameterMode: "NAMED",
            maxResults: endpoint_query.max_limit,
            location: endpoint_query.user.bigquery_dataset_location,
-           labels: %{
-             "endpoint_id" => endpoint_query.id
-           }
+           labels:
+             Map.merge(
+               %{
+                 "endpoint_id" => endpoint_query.id
+               },
+               endpoint_query.parsed_labels || %{}
+             )
          ) do
       {:ok, result} ->
         {:ok, result}
