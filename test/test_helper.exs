@@ -5,6 +5,7 @@ ExUnit.start()
 # Mimic mocks setup
 Mimic.copy(Broadway)
 Mimic.copy(ConfigCat)
+Mimic.copy(ConfigCat.User)
 Mimic.copy(ExTwilio.Message)
 Mimic.copy(Finch)
 Mimic.copy(GoogleApi.BigQuery.V2.Api.Datasets)
