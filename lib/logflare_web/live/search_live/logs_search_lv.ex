@@ -31,7 +31,7 @@ defmodule LogflareWeb.Source.SearchLV do
   embed_templates "templates/*"
 
   @tail_search_interval 500
-  @user_idle_interval :timer.minutes(5)
+  @user_idle_interval :timer.minutes(2)
   @default_qs "c:count(*) c:group_by(t::minute)"
 
   def mount(
@@ -51,8 +51,11 @@ defmodule LogflareWeb.Source.SearchLV do
     tailing? =
       if source.disable_tailing, do: false, else: Map.get(params, "tailing?", "true") == "true"
 
+    {:ok, executor_pid} = SearchQueryExecutor.start_link(source: source)
+
     socket
     |> assign(
+      executor_pid: executor_pid,
       source: source,
       user: user,
       team_user: team_user,
@@ -189,12 +192,11 @@ defmodule LogflareWeb.Source.SearchLV do
         %{"search" => %{"querystring" => qs}},
         %{assigns: prev_assigns} = socket
       ) do
-    %{id: _sid, token: stoken} = prev_assigns.source
     log_lv_received_event(ev, prev_assigns.source)
     bq_table_schema = prev_assigns.source.bq_table_schema
 
     maybe_cancel_tailing_timer(socket)
-    SearchQueryExecutor.maybe_cancel_query(stoken)
+    SearchQueryExecutor.cancel_query(socket.assigns.executor_pid)
 
     socket =
       assign_new_search_with_qs(
@@ -343,7 +345,7 @@ defmodule LogflareWeb.Source.SearchLV do
     period = Map.get(params, "period")
 
     maybe_cancel_tailing_timer(socket)
-    SearchQueryExecutor.maybe_cancel_query(socket.assigns.source.token)
+    SearchQueryExecutor.cancel_query(socket.assigns.executor_pid)
 
     {:ok, ts_rules} = Lql.decode(ts_qs, assigns.source.bq_table_schema)
 
@@ -369,9 +371,8 @@ defmodule LogflareWeb.Source.SearchLV do
   end
 
   def handle_event("toggle_local_time", _metadata, socket) do
-    source = socket.assigns.source
     maybe_cancel_tailing_timer(socket)
-    SearchQueryExecutor.maybe_cancel_query(source.token)
+    SearchQueryExecutor.cancel_query(socket.assigns.executor_pid)
 
     socket =
       socket
@@ -561,7 +562,7 @@ defmodule LogflareWeb.Source.SearchLV do
   def handle_info(:schedule_tail_search = msg, %{assigns: assigns} = socket) do
     if socket.assigns.tailing? do
       log_lv_received_info(msg, assigns.source)
-      SearchQueryExecutor.maybe_execute_events_query(assigns.source.token, assigns)
+      SearchQueryExecutor.query(assigns.executor_pid, assigns)
     end
 
     {:noreply, socket}
@@ -570,7 +571,7 @@ defmodule LogflareWeb.Source.SearchLV do
   def handle_info(:schedule_tail_agg = msg, %{assigns: assigns} = socket) do
     if socket.assigns.tailing? do
       log_lv_received_info(msg, assigns.source)
-      SearchQueryExecutor.maybe_execute_agg_query(assigns.source.token, assigns)
+      SearchQueryExecutor.query_agg(assigns.executor_pid, assigns)
     end
 
     {:noreply, socket}
@@ -701,10 +702,12 @@ defmodule LogflareWeb.Source.SearchLV do
   end
 
   defp kickoff_queries(source_token, assigns) when is_atom(source_token) do
-    Logger.info("Kicking off queries for #{source_token}", source_id: source_token)
+    Logger.debug("Kicking off queries for #{source_token}", source_id: source_token)
 
-    SearchQueryExecutor.maybe_execute_events_query(source_token, assigns)
-    SearchQueryExecutor.maybe_execute_agg_query(source_token, assigns)
+    if assigns do
+      SearchQueryExecutor.query(assigns.executor_pid, assigns)
+      SearchQueryExecutor.query_agg(assigns.executor_pid, assigns)
+    end
   end
 
   defp period_to_ms(:second), do: :timer.seconds(1)
@@ -825,12 +828,11 @@ defmodule LogflareWeb.Source.SearchLV do
     {:noreply, socket}
   end
 
-  defp soft_pause(ev, %{assigns: prev_assigns} = socket) do
-    %{source: %{token: stoken} = source} = prev_assigns
+  defp soft_pause(ev, %{assigns: %{source: source, executor_pid: executor_pid}} = socket) do
     log_lv_received_event(ev, source)
 
     maybe_cancel_tailing_timer(socket)
-    SearchQueryExecutor.maybe_cancel_query(stoken)
+    SearchQueryExecutor.cancel_query(executor_pid)
 
     socket =
       socket

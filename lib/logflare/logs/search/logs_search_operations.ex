@@ -8,6 +8,7 @@ defmodule Logflare.Logs.SearchOperations do
   alias Logflare.Lql
   alias Logflare.EctoQueryBQ
   alias Logflare.SourceSchemas
+  alias Logflare.Sources
 
   import Ecto.Query
 
@@ -194,8 +195,28 @@ defmodule Logflare.Logs.SearchOperations do
         t? and !ti? ->
           case so.partition_by do
             :pseudo ->
+              metrics = Sources.get_source_metrics_for_ingest(so.source_token)
+
+              {value, unit} =
+                cond do
+                  metrics.avg < 10 ->
+                    {2, "DAY"}
+
+                  metrics.avg < 50 ->
+                    {1, "DAY"}
+
+                  metrics.avg < 100 ->
+                    {6, "HOUR"}
+
+                  metrics.avg < 200 ->
+                    {1, "HOUR"}
+
+                  true ->
+                    {1, "MINUTE"}
+                end
+
               query
-              |> where([t, ...], t.timestamp >= lf_timestamp_sub(^utc_today, 2, "DAY"))
+              |> where([t, ...], t.timestamp >= lf_timestamp_sub(^utc_today, ^value, ^unit))
               |> where([t, ...], in_streaming_buffer())
 
             :timestamp ->
@@ -266,8 +287,8 @@ defmodule Logflare.Logs.SearchOperations do
 
     partition_days =
       case hd(so.chart_rules).period do
-        :day -> 31
-        :hour -> 7
+        :day -> 14
+        :hour -> 3
         :minute -> 1
         :second -> 1
       end
