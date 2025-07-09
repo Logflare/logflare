@@ -1,5 +1,9 @@
 defmodule Logflare.Logs.SearchQueryExecutor do
+  @moduledoc """
+  Handles all search queries for the specific source
+  """
   use GenServer
+
   alias Logflare.Logs.Search
   alias Logflare.Logs.SearchOperation, as: SO
   import LogflareWeb.SearchLV.Utils
@@ -7,26 +11,14 @@ defmodule Logflare.Logs.SearchQueryExecutor do
   alias Logflare.User.BigQueryUDFs
   alias Logflare.{Users, User}
   alias Logflare.Utils.Tasks
-  use TypedStruct
+
   require Logger
+
   @query_timeout 60_000
-
-  @moduledoc """
-  Handles all search queries for the specific source
-  """
-
-  typedstruct do
-    field :source_id, atom, enforce: true
-    field :user, User.t(), enforce: true
-    field :event_tasks, map, enforce: true
-    field :agg_tasks, map, enforce: true
-  end
 
   # API
   def start_link(args) do
-    caller = self()
-
-    GenServer.start_link(__MODULE__, Keyword.put(args, :caller, caller),
+    GenServer.start_link(__MODULE__, Keyword.put(args, :caller, self()),
       spawn_opt: [fullsweep_after: 5_000],
       hibernate_after: 5_000
     )
