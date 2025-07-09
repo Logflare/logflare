@@ -13,7 +13,6 @@ defmodule Logflare.Source.V1SourceSup do
   alias Logflare.Backends
   alias Logflare.Backends.Backend
   alias Logflare.Billing
-  alias Logflare.Logs.SearchQueryExecutor
 
   require Logger
   use Supervisor
@@ -48,7 +47,6 @@ defmodule Logflare.Source.V1SourceSup do
       {TextNotificationServer, [source: source, plan: plan]},
       {WebhookNotificationServer, [source: source]},
       {SlackHookServer, [source: source]},
-      {SearchQueryExecutor, [source: source]},
       {BillingWriter, [source: source]}
     ]
 
