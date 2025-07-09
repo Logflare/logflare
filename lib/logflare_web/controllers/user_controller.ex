@@ -6,6 +6,8 @@ defmodule LogflareWeb.UserController do
 
   alias Logflare.{User, Repo, Users, TeamUsers, Source.Supervisor, Billing.Stripe}
 
+  alias Logflare.Backends.Adaptor.BigQueryAdaptor
+
   defp env_service_account,
     do: Application.get_env(:logflare, Logflare.Google)[:service_account] || ""
 
@@ -48,6 +50,11 @@ defmodule LogflareWeb.UserController do
       {:ok, updated_user} ->
         if updated_user.bigquery_project_id != user.bigquery_project_id,
           do: Supervisor.reset_all_user_sources(user)
+
+        if updated_user.bigquery_enable_managed_service_accounts do
+          # update iam policy
+          BigQueryAdaptor.update_iam_policy(updated_user)
+        end
 
         conn
         |> put_flash(:info, "Account updated!")

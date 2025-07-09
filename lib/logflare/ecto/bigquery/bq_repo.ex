@@ -52,7 +52,7 @@ defmodule Logflare.BqRepo do
       |> then(fn map -> struct(QueryRequest, map) end)
 
     result =
-      GenUtils.get_conn(:query)
+      GenUtils.get_conn({:query, user})
       |> Api.Jobs.bigquery_jobs_query(project_id, body: query_request)
       |> GenUtils.maybe_parse_google_api_result()
 

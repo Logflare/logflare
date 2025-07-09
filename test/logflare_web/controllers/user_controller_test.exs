@@ -123,8 +123,13 @@ defmodule LogflareWeb.UserControllerTest do
     end
 
     test "succeeds", %{conn: conn} do
-      CloudResourceManager
-      |> expect(:set_iam_policy, fn -> nil end)
+      expect(
+        GoogleApi.CloudResourceManager.V1.Api.Projects,
+        :cloudresourcemanager_projects_set_iam_policy,
+        fn _, _project_number, [body: _body] ->
+          {:ok, ""}
+        end
+      )
 
       conn = delete(conn, ~p"/account")
       assert redirected_to(conn, 302) =~ ~p"/auth/login?user_deleted=true"
@@ -140,8 +145,13 @@ defmodule LogflareWeb.UserControllerTest do
     end
 
     test "bug: should be able to delete a partner-provisioned account", %{conn: conn} do
-      CloudResourceManager
-      |> expect(:set_iam_policy, fn -> nil end)
+      expect(
+        GoogleApi.CloudResourceManager.V1.Api.Projects,
+        :cloudresourcemanager_projects_set_iam_policy,
+        fn _, _project_number, [body: _body] ->
+          {:ok, ""}
+        end
+      )
 
       conn = delete(conn, ~p"/account")
       assert redirected_to(conn, 302) =~ ~p"/auth/login"

@@ -54,8 +54,13 @@ defmodule LogflareWeb.TeamUserControllerTest do
     |> assert_has("h5", text: "Profile Preferences", exact: true)
     |> assert_has("a", text: "Leave now")
 
-    Logflare.Google.CloudResourceManager
-    |> expect(:set_iam_policy, fn -> nil end)
+    expect(
+      GoogleApi.CloudResourceManager.V1.Api.Projects,
+      :cloudresourcemanager_projects_set_iam_policy,
+      fn _, _project_number, [body: _body] ->
+        {:ok, ""}
+      end
+    )
 
     conn =
       conn
@@ -75,8 +80,13 @@ defmodule LogflareWeb.TeamUserControllerTest do
     member_user = insert(:user)
     member_team_user = insert(:team_user, team: team, email: member_user.email)
 
-    Logflare.Google.CloudResourceManager
-    |> expect(:set_iam_policy, fn -> nil end)
+    expect(
+      GoogleApi.CloudResourceManager.V1.Api.Projects,
+      :cloudresourcemanager_projects_set_iam_policy,
+      fn _, _project_number, [body: _body] ->
+        {:ok, ""}
+      end
+    )
 
     conn =
       conn
