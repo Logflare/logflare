@@ -1,25 +1,23 @@
-defmodule LogflareWeb.Sources.RulesLV do
+defmodule LogflareWeb.Sources.RulesLive do
   @moduledoc """
-  Source Rule LV form edit
+  Source Rule form edit.
   """
-  require Logger
   use LogflareWeb, :live_view
 
+  import LogflareWeb.ModalLiveHelpers
+
   alias Logflare.Lql
-  alias Logflare.Rules.Rule
   alias Logflare.Rules
-  alias Logflare.Sources
+  alias Logflare.Rules.Rule
   alias Logflare.SourceSchemas
+  alias Logflare.Sources
   alias Logflare.Users
-  alias LogflareWeb.RuleView
+  alias LogflareWeb.LqlHelpers
+
+  require Logger
 
   @lql_dialect :routing
   @lql_string ""
-
-  @impl true
-  def render(assigns) do
-    RuleView.render("source_rules.html", assigns)
-  end
 
   @impl true
   def mount(%{"source_id" => source_id}, %{"user_id" => user_id}, socket) do
@@ -105,6 +103,7 @@ defmodule LogflareWeb.Sources.RulesLV do
     {:ok, _rule} =
       rule_id
       |> String.to_integer()
+      |> Rules.get_rule()
       |> Rules.delete_rule()
 
     source = Sources.get_by_and_preload(token: source.token)
