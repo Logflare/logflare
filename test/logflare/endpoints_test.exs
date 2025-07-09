@@ -161,6 +161,29 @@ defmodule Logflare.EndpointsTest do
       assert {:ok, %{rows: [%{"testing" => _}]}} = Endpoints.run_query(endpoint2)
     end
 
+    test "run_query/1 will exec a bq query with parsed labels" do
+      pid = self()
+
+      expect(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, 1, fn _conn, _proj_id, opts ->
+        send(pid, opts[:body].labels)
+        {:ok, TestUtils.gen_bq_response([%{"testing" => "123"}])}
+      end)
+
+      user = insert(:user)
+
+      endpoint =
+        insert(:endpoint,
+          user: user,
+          name: "my.date",
+          language: :bq_sql,
+          query: "select current_datetime() as testing",
+          parsed_labels: %{"my_label" => "my_value"}
+        )
+
+      assert {:ok, %{rows: [%{"testing" => _}]}} = Endpoints.run_query(endpoint)
+      assert_received %{"my_label" => "my_value"}
+    end
+
     test "run_query_string/3" do
       expect(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, 1, fn _conn, _proj_id, _opts ->
         {:ok, TestUtils.gen_bq_response([%{"testing" => "123"}])}
