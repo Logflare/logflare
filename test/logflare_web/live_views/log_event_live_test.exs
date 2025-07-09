@@ -33,12 +33,13 @@ defmodule LogflareWeb.LogEventLiveTest do
 
     {:ok, view, _html} = live(conn, ~p"/sources/#{source.id}/event?#{%{uuid: le.id}}")
 
-    :timer.sleep(1500)
-    assert render(view) =~ le.body["event_message"]
-    assert render(view) =~ le.id
-    assert_receive {:query, ^ref, query}
-    assert query =~ "t0.timestamp >="
-    assert query =~ "t0.id ="
+    TestUtils.retry_assert(fn ->
+      assert render(view) =~ le.body["event_message"]
+      assert render(view) =~ le.id
+      assert_receive {:query, ^ref, query}
+      assert query =~ "t0.timestamp >="
+      assert query =~ "t0.id ="
+    end)
   end
 
   test "show by uuid with timestamp param", %{conn: conn, source: source} do
@@ -60,9 +61,10 @@ defmodule LogflareWeb.LogEventLiveTest do
         ~p"/sources/#{source.id}/event?#{%{timestamp: "2024-01-10T20:13:03Z", uuid: le.id}}"
       )
 
-    :timer.sleep(1500)
-    assert_receive {:query, ^ref, body}
-    assert Enum.any?(body.queryParameters, &(&1.parameterValue.value =~ "2024-01-"))
+    TestUtils.retry_assert(fn ->
+      assert_receive {:query, ^ref, body}
+      assert Enum.any?(body.queryParameters, &(&1.parameterValue.value =~ "2024-01-"))
+    end)
   end
 
   test "load from event cache", %{conn: conn, source: source} do
@@ -86,8 +88,6 @@ defmodule LogflareWeb.LogEventLiveTest do
     logs =
       capture_log(fn ->
         {:ok, view, _html} = live(conn, ~p"/sources/#{source.id}/event?#{%{uuid: le.id}}")
-
-        :timer.sleep(400)
 
         TestUtils.retry_assert(fn ->
           assert render(view) =~ "some error"
