@@ -9,7 +9,7 @@ defmodule Logflare.Logs.SearchQueryExecutor do
   import LogflareWeb.SearchLV.Utils
   alias Logflare.LogEvent
   alias Logflare.User.BigQueryUDFs
-  alias Logflare.{Users, User}
+  alias Logflare.Users
   alias Logflare.Utils.Tasks
 
   require Logger
