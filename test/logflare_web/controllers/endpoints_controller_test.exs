@@ -119,8 +119,7 @@ defmodule LogflareWeb.EndpointsControllerTest do
 
     test "reference params in label, my_label=@my_param", %{
       conn: conn,
-      user: user,
-      source: source
+      user: user
     } do
       pid = self()
 
@@ -135,7 +134,7 @@ defmodule LogflareWeb.EndpointsControllerTest do
           user: user,
           enable_auth: true,
           query: "with a as (select 1 as b) select b from a",
-          labels: "my_label=@my_param,other_value"
+          labels: ",my_label=@my_param,other_value,my=value,"
         )
 
       conn =
@@ -149,9 +148,17 @@ defmodule LogflareWeb.EndpointsControllerTest do
 
       assert [_] = json_response(conn, 200)["result"]
       assert conn.halted == false
-      assert_received labels = %{"my_label" => "my_value", "other_value" => "1234"}
-      refute labels["omit"]
-      refute labels["sql"]
+      assert_received labels
+
+      assert labels == %{
+               "my_label" => "my_value",
+               "other_value" => "1234",
+               "endpoint_id" => endpoint.id,
+               "logflare_account" => user.id,
+               "logflare_plan" => "free",
+               "managed_by" => "logflare",
+               "my" => "value"
+             }
     end
   end
 
