@@ -838,7 +838,7 @@ defmodule Logflare.Sql.DialectTranslation do
        ) do
     cond do
       # Use match?/2 there to check if list has at least 2 values in it. It is
-      # faster than `langth(list) > 2` as it do not need to traverse whole list
+      # faster than `length(list) > 2` as it do not need to traverse whole list
       # during check
       is_map_key(data.alias_path_mappings, head_val) and
           match?([_, _ | _], data.alias_path_mappings[head_val || []]) ->
