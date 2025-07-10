@@ -75,8 +75,6 @@ defmodule LogflareWeb.EndpointsController do
     end
   end
 
-
-
   # only parse body for get when ?sql= is empty and it is sandboxable
   # passthrough for all other cases
   defp parse_get_body(
