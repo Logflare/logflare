@@ -45,7 +45,7 @@ defmodule Logflare.BqRepo do
         labels: %{
           "managed_by" => "logflare",
           "logflare_plan" => GenUtils.format_key(plan),
-          "logflare_account" => GenUtils.format_key(user.id)
+          "logflare_account" => user.id
         }
       }
       |> DeepMerge.deep_merge(override)

@@ -84,7 +84,7 @@ defmodule LogflareWeb.EndpointsController do
         end
       end
 
-    for split <- String.split(allowlist_str || "", ","), into: %{} do
+    for split <- String.split(allowlist_str || "", ","), split != "", into: %{} do
       case String.split(split, "=") do
         [key, "@" <> param_key] ->
           {key, Map.get(params, param_key) || Map.get(header_values, key)}
