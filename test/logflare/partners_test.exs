@@ -1,11 +1,11 @@
 defmodule Logflare.PartnerTest do
   use Logflare.DataCase
 
+  import Ecto.Query
+
   alias Logflare.Partners
   alias Logflare.Repo
   alias Logflare.User
-  alias Logflare.Google.CloudResourceManager
-  import Ecto.Query
 
   describe "get/1" do
     test "returns the partner with given id" do

@@ -1,9 +1,9 @@
 defmodule LogflareWeb.UserControllerTest do
-  @moduledoc false
-  import LogflareWeb.Router.Helpers
   use LogflareWeb.ConnCase
+
   alias Logflare.Users
-  alias Logflare.Google.CloudResourceManager
+
+  import LogflareWeb.Router.Helpers
 
   describe "UserController update" do
     setup do

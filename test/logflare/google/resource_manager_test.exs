@@ -1,9 +1,8 @@
 defmodule Logflare.Google.CloudResourceManagerTest do
-  @moduledoc false
   use Logflare.DataCase
+
   alias Logflare.Google.CloudResourceManager
   alias GoogleApi.CloudResourceManager.V1.Model.Binding
-  alias GoogleApi.CloudResourceManager.V1.Model
 
   setup do
     google_configs = Map.new(Application.get_env(:logflare, Logflare.Google))
