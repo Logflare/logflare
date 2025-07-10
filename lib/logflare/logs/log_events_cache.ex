@@ -63,9 +63,9 @@ defmodule Logflare.Logs.LogEvents.Cache do
     Cachex.put(__MODULE__, {source_token, key}, log_event)
   end
 
-  @spec get!(atom(), term()) :: LE.t() | nil
-  def get!(source_token, log_id) do
-    Cachex.get!(__MODULE__, {source_token, log_id})
+  @spec get(atom(), term()) :: LE.t() | nil
+  def get(source_token, log_id) do
+    Cachex.get(__MODULE__, {source_token, log_id})
   end
 
   def name, do: __MODULE__

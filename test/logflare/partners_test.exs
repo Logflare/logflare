@@ -1,11 +1,11 @@
 defmodule Logflare.PartnerTest do
   use Logflare.DataCase
 
+  import Ecto.Query
+
   alias Logflare.Partners
   alias Logflare.Repo
   alias Logflare.User
-  alias Logflare.Google.CloudResourceManager
-  import Ecto.Query
 
   describe "get/1" do
     test "returns the partner with given id" do
@@ -78,8 +78,13 @@ defmodule Logflare.PartnerTest do
 
   describe "delete_user/2" do
     test "deletes user and removes association with partner" do
-      CloudResourceManager
-      |> expect(:set_iam_policy, fn -> nil end)
+      expect(
+        GoogleApi.CloudResourceManager.V1.Api.Projects,
+        :cloudresourcemanager_projects_set_iam_policy,
+        fn _, _project_number, [body: _body] ->
+          {:ok, ""}
+        end
+      )
 
       partner = insert(:partner)
 

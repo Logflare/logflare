@@ -5,7 +5,7 @@ defmodule Logflare.Rules do
 
   alias Logflare.Lql
   alias Logflare.Repo
-  alias Logflare.Rule
+  alias Logflare.Rules.Rule
   alias Logflare.Source
   alias Logflare.Sources
   alias Logflare.SourceSchemas
@@ -101,10 +101,6 @@ defmodule Logflare.Rules do
     Cluster.Utils.rpc_multicall(SourceSup, :stop_rule_child, [rule])
 
     res
-  end
-
-  def delete_rule!(rule_id) do
-    Rule |> Repo.get!(rule_id) |> Repo.delete!()
   end
 
   def upgrade_all_source_rules_to_next_lql_version() do

@@ -6,6 +6,7 @@ defmodule Logflare.Google.CloudResourceManager do
   alias GoogleApi.CloudResourceManager.V1.Model
   alias Logflare.Google.BigQuery.GenUtils
   alias Logflare.Users
+  alias Logflare.User
   alias Logflare.TeamUsers
   alias Logflare.Utils.Tasks
   alias Logflare.Backends.Adaptor.BigQueryAdaptor
@@ -25,6 +26,80 @@ defmodule Logflare.Google.CloudResourceManager do
       env_project_number(),
       body: body
     )
+  end
+
+  def get_iam_policy(%User{bigquery_project_id: nil}), do: {:error, :no_project_id}
+
+  def get_iam_policy(user) do
+    conn = GenUtils.get_conn()
+
+    Api.Projects.cloudresourcemanager_projects_get_iam_policy(
+      conn,
+      user.bigquery_project_id,
+      body: %Model.GetIamPolicyRequest{}
+    )
+  end
+
+  def append_managed_sa_to_iam_policy(%User{bigquery_project_id: nil}),
+    do: {:error, :no_project_id}
+
+  def append_managed_sa_to_iam_policy(%User{bigquery_enable_managed_service_accounts: false}),
+    do: {:error, :managed_service_accounts_disabled}
+
+  def append_managed_sa_to_iam_policy(user) do
+    with {:enabled?, true} <- {:enabled?, BigQueryAdaptor.managed_service_accounts_enabled?()},
+         {:ok, policy} <- get_iam_policy(user),
+         {:contains?, _policy, false} <-
+           {:contains?, policy, contains_managed_service_accounts?(policy)} do
+      append_managed_service_accounts(user.bigquery_project_id, policy)
+    else
+      {:contains?, policy, _} -> {:ok, policy}
+      {:enabled?, false} -> {:error, :managed_service_accounts_disabled}
+      {:error, _err} = err -> err
+    end
+  end
+
+  # returns false if missing any of the managed service accounts
+  defp contains_managed_service_accounts?(%Model.Policy{bindings: bindings}) do
+    ids = BigQueryAdaptor.managed_service_account_ids()
+    members = Enum.flat_map(bindings, fn %{members: members} -> members end)
+
+    Enum.all?(ids, fn id ->
+      Enum.any?(members, fn member ->
+        member =~ id
+      end)
+    end)
+  end
+
+  def append_managed_service_accounts(project_id, %Model.Policy{bindings: bindings})
+      when project_id != nil do
+    conn = GenUtils.get_conn()
+
+    members =
+      for %{email: name} <- BigQueryAdaptor.list_managed_service_accounts() do
+        "serviceAccount:" <> name
+      end
+
+    new_binding = %Model.Binding{members: members, role: "roles/bigquery.admin"}
+
+    policy = %Model.Policy{bindings: [new_binding | bindings]}
+    body = %Model.SetIamPolicyRequest{policy: policy}
+
+    case Api.Projects.cloudresourcemanager_projects_set_iam_policy(conn, project_id, body: body) do
+      {:ok, response} ->
+        Logger.info(
+          "Appended managed service accounts to IAM policy for #{project_id} successful"
+        )
+
+        {:ok, response}
+
+      {:error, err} ->
+        Logger.error(
+          "Append managed service accounts to IAM policy for #{project_id} unknown error: #{inspect(err)}"
+        )
+
+        {:error, err}
+    end
   end
 
   def set_iam_policy(opts \\ [async: true])

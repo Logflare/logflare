@@ -208,7 +208,7 @@ defmodule Logflare.BackendsTest do
       assert new_length > prev_length
       assert new_length - prev_length == 3
 
-      Logflare.Repo.delete_all(Logflare.Rule)
+      Logflare.Repo.delete_all(Logflare.Rules.Rule)
       Logflare.Repo.delete_all(Logflare.Backends.SourcesBackend)
       Logflare.Repo.delete_all(Logflare.Backends.Backend)
 
@@ -243,8 +243,10 @@ defmodule Logflare.BackendsTest do
       rule = insert(:rule, source: source, backend: rule_backend)
       refute SourceSup.rule_child_started?(rule)
       start_supervised!({SourceSup, source})
-      :timer.sleep(500)
-      assert SourceSup.rule_child_started?(rule)
+
+      TestUtils.retry_assert(fn ->
+        assert SourceSup.rule_child_started?(rule)
+      end)
     end
   end
 
@@ -296,11 +298,13 @@ defmodule Logflare.BackendsTest do
     test "correctly retains the 100 items", %{source: source} do
       events = for _n <- 1..305, do: build(:log_event, source: source, some: "event")
       assert {:ok, 305} = Backends.ingest_logs(events, source)
-      :timer.sleep(1500)
-      cached = Backends.list_recent_logs(source)
-      assert length(cached) == 100
-      cached = Backends.list_recent_logs_local(source)
-      assert length(cached) == 100
+
+      TestUtils.retry_assert(fn ->
+        cached = Backends.list_recent_logs(source)
+        assert length(cached) == 100
+        cached = Backends.list_recent_logs_local(source)
+        assert length(cached) == 100
+      end)
     end
 
     test "bug: more than 100 items with dynamic pipelines", %{source: source} do
@@ -309,20 +313,23 @@ defmodule Logflare.BackendsTest do
       name = Backends.via_source(source.id, Pipeline, nil)
       DynamicPipeline.add_pipeline(name)
       assert {:ok, 305} = Backends.ingest_logs(events, source)
-      :timer.sleep(1500)
-      cached = Backends.list_recent_logs(source)
-      assert length(cached) == 100
-      cached = Backends.list_recent_logs_local(source)
-      assert length(cached) == 100
+
+      TestUtils.retry_assert(fn ->
+        cached = Backends.list_recent_logs(source)
+        assert length(cached) == 100
+        cached = Backends.list_recent_logs_local(source)
+        assert length(cached) == 100
+      end)
     end
 
     test "caches latest timestamp correctly", %{source: source} do
       assert Backends.fetch_latest_timestamp(source) == 0
       le = build(:log_event, source: source, some: "event")
       assert {:ok, _} = Backends.ingest_logs([le], source)
-      # wait for the recent inserts broadcast interval
-      :timer.sleep(2000)
-      assert Backends.fetch_latest_timestamp(source) != 0
+
+      TestUtils.retry_assert(fn ->
+        assert Backends.fetch_latest_timestamp(source) != 0
+      end)
     end
 
     test "performs broadcasts for global cache rates and dashboard rates", %{
@@ -401,11 +408,12 @@ defmodule Logflare.BackendsTest do
                  source
                )
 
-      :timer.sleep(200)
-      # 2 events
-      assert Backends.list_recent_logs_local(source) |> length() == 2
-      # 1 events
-      assert Backends.list_recent_logs_local(target) |> length() == 1
+      TestUtils.retry_assert(fn ->
+        # 2 events
+        assert Backends.list_recent_logs_local(source) |> length() == 2
+        # 1 events
+        assert Backends.list_recent_logs_local(target) |> length() == 1
+      end)
     end
 
     test "v1 pipeline: routing depth is max 1 level", %{user: user} do
@@ -420,13 +428,15 @@ defmodule Logflare.BackendsTest do
       :timer.sleep(500)
 
       assert {:ok, 1} = Backends.ingest_logs([%{"event_message" => "testing 123"}], source)
-      :timer.sleep(1000)
-      # 1 events
-      assert Backends.list_recent_logs_local(source) |> length() == 1
-      # 1 events
-      assert Backends.list_recent_logs_local(target) |> length() == 1
-      # 0 events
-      assert Backends.list_recent_logs_local(other_target) |> length() == 0
+
+      TestUtils.retry_assert(fn ->
+        # 1 events
+        assert Backends.list_recent_logs_local(source) |> length() == 1
+        # 1 events
+        assert Backends.list_recent_logs_local(target) |> length() == 1
+        # 0 events
+        assert Backends.list_recent_logs_local(other_target) |> length() == 0
+      end)
     end
 
     test "v2 pipeline: routing depth is max 1 level", %{user: user} do
@@ -441,13 +451,15 @@ defmodule Logflare.BackendsTest do
       :timer.sleep(500)
 
       assert {:ok, 1} = Backends.ingest_logs([%{"event_message" => "testing 123"}], source)
-      :timer.sleep(1000)
-      # 1 events
-      assert Backends.list_recent_logs_local(source) |> length() == 1
-      # 1 events
-      assert Backends.list_recent_logs_local(target) |> length() == 1
-      # 0 events
-      assert Backends.list_recent_logs_local(other_target) |> length() == 0
+
+      TestUtils.retry_assert(fn ->
+        # 1 events
+        assert Backends.list_recent_logs_local(source) |> length() == 1
+        # 1 events
+        assert Backends.list_recent_logs_local(target) |> length() == 1
+        # 0 events
+        assert Backends.list_recent_logs_local(other_target) |> length() == 0
+      end)
     end
 
     test "route to backend", %{user: user} do

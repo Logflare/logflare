@@ -78,21 +78,30 @@ defmodule Logflare.Google.BigQuery.GenUtils do
 
   Uses `Logflare.FinchDefault` by default
   """
-  @typep conn_type :: :ingest | :query | :default
+  @typep conn_type :: :ingest | {:query, User.t()} | :default
   @spec get_conn(conn_type()) :: Tesla.Env.client()
   def get_conn(conn_type \\ :default) do
+    system_managed_sa_enabled = BigQueryAdaptor.managed_service_accounts_enabled?()
     # use pid as the partition hash
-    partition_count =
-      if conn_type == :query do
-        BigQueryAdaptor.managed_service_account_partition_count()
-      else
-        BigQueryAdaptor.ingest_service_account_partition_count()
+    {use_managed_sa?, partition_count} =
+      case conn_type do
+        {:query,
+         %_{bigquery_project_id: project_id, bigquery_enable_managed_service_accounts: true}}
+        when system_managed_sa_enabled == true and project_id != nil ->
+          {true, BigQueryAdaptor.managed_service_account_partition_count()}
+
+        {:query, %_{bigquery_project_id: nil}}
+        when system_managed_sa_enabled == true ->
+          {true, BigQueryAdaptor.managed_service_account_partition_count()}
+
+        _ ->
+          {false, BigQueryAdaptor.ingest_service_account_partition_count()}
       end
 
     partition = :erlang.phash2(self(), partition_count)
 
     {name, metadata} =
-      if conn_type == :query && BigQueryAdaptor.managed_service_accounts_enabled?() do
+      if use_managed_sa? == true do
         pool_size = BigQueryAdaptor.managed_service_account_pool_size()
 
         sa_index = :erlang.phash2(self(), pool_size)
@@ -144,7 +153,7 @@ defmodule Logflare.Google.BigQuery.GenUtils do
     ).adapter
   end
 
-  defp build_tesla_adapter_call(:query) do
+  defp build_tesla_adapter_call({:query, _}) do
     Tesla.client(
       [],
       {Tesla.Adapter.Finch, name: Logflare.FinchQuery, receive_timeout: 60_000}

@@ -5,8 +5,7 @@ defmodule LogflareWeb.AuthController do
   alias Logflare.Auth
   alias Logflare.AccountEmail
   alias Logflare.Mailer
-  alias Logflare.Google.CloudResourceManager
-  alias Logflare.Google.BigQuery
+  alias Logflare.Backends.Adaptor.BigQueryAdaptor
   alias Logflare.Vercel
   require Logger
 
@@ -75,8 +74,8 @@ defmodule LogflareWeb.AuthController do
   def signin_invitee(conn, auth_params, team) do
     case TeamUsers.insert_or_update_team_user(team, auth_params) do
       {:ok, team_user} ->
-        CloudResourceManager.set_iam_policy()
-        BigQuery.patch_dataset_access(team.user)
+        BigQueryAdaptor.update_iam_policy()
+        BigQueryAdaptor.patch_dataset_access(team.user)
 
         conn
         |> put_flash(:info, "Welcome to Logflare!")
@@ -129,8 +128,8 @@ defmodule LogflareWeb.AuthController do
 
     case TeamUsers.insert_or_update_team_user(team_user.team, auth_params) do
       {:ok, team_user} ->
-        CloudResourceManager.set_iam_policy()
-        BigQuery.patch_dataset_access(user)
+        BigQueryAdaptor.update_iam_policy()
+        BigQueryAdaptor.patch_dataset_access(user)
 
         conn
         |> put_flash(:info, "Welcome back!")
@@ -156,8 +155,8 @@ defmodule LogflareWeb.AuthController do
         |> AccountEmail.welcome()
         |> Mailer.deliver()
 
-        CloudResourceManager.set_iam_policy()
-        BigQuery.patch_dataset_access(user)
+        BigQueryAdaptor.update_iam_policy(user)
+        BigQueryAdaptor.patch_dataset_access(user)
 
         conn
         |> put_flash(:info, "Thanks for signing up! Now create a source!")
@@ -165,8 +164,8 @@ defmodule LogflareWeb.AuthController do
         |> redirect(to: Routes.source_path(conn, :new, signup: true))
 
       {:ok_found_user, user} ->
-        CloudResourceManager.set_iam_policy()
-        BigQuery.patch_dataset_access(user)
+        BigQueryAdaptor.update_iam_policy(user)
+        BigQueryAdaptor.patch_dataset_access(user)
 
         oauth_params = get_session(conn, :oauth_params)
         vercel_setup_params = get_session(conn, :vercel_setup)

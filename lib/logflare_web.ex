@@ -90,10 +90,6 @@ defmodule LogflareWeb do
 
       use Phoenix.LiveView, opts
 
-      # declare endpoint and router for Phoenix.VerifiedRoutes
-      @endpoint LogflareWeb.Endpoint
-      @router LogflareWeb.Router
-
       import PhoenixLiveReact, only: [live_react_component: 2, live_react_component: 3]
       import LogflareWeb.CoreComponents
 

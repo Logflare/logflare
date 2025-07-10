@@ -78,6 +78,7 @@ defmodule Logflare.User do
     field :bigquery_dataset_id, :string
     field :bigquery_udfs_hash, :string
     field :bigquery_processed_bytes_limit, :integer
+    field :bigquery_enable_managed_service_accounts, :boolean, default: false
     field :api_quota, :integer, default: @default_user_api_quota
     field :valid_google_account, :boolean
     field :provider_uid, :string
@@ -113,6 +114,7 @@ defmodule Logflare.User do
     :bigquery_dataset_location,
     :bigquery_dataset_id,
     :bigquery_processed_bytes_limit,
+    :bigquery_enable_managed_service_accounts,
     :valid_google_account,
     :provider_uid,
     :company,

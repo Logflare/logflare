@@ -4,7 +4,8 @@ defmodule Logflare.Logs.SourceRoutingTest do
   alias Logflare.LogEvent, as: LE
   alias Logflare.Logs.SourceRouting
   alias Logflare.Lql.FilterRule, as: FR
-  alias Logflare.{Rule, Rules}
+  alias Logflare.Rules
+  alias Logflare.Rules.Rule
   alias Logflare.Source
   alias Logflare.Source.BigQuery.Schema
   alias Logflare.Source.BigQuery.SchemaBuilder

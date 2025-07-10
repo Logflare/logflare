@@ -1,10 +1,9 @@
-defmodule LogflareWeb.LogEventLive.Show do
+defmodule LogflareWeb.LogEventLive do
   @moduledoc """
-  Handles all user interactions with the source logs search
+  Handles all user interactions with a single event
   """
   use LogflareWeb, :live_view
 
-  # alias LogflareWeb.LogView
   alias Logflare.Logs.LogEvents
   alias Logflare.Sources
   alias Logflare.Users
@@ -13,7 +12,11 @@ defmodule LogflareWeb.LogEventLive.Show do
   require Logger
 
   def mount(%{"source_id" => source_id} = params, session, socket) do
-    source = Sources.get_source_for_lv_param(source_id)
+    ts = Map.get(params, "timestamp")
+
+    source =
+      source_id |> String.to_integer() |> Sources.Cache.get_by_id()
+
     token = source.token
 
     team_user =
@@ -30,25 +33,25 @@ defmodule LogflareWeb.LogEventLive.Show do
         nil
       end
 
-    {path, log_id} = cache_key = params_to_cache_key(params)
+    {:ok, log_event} = LogEvents.Cache.get(token, {"uuid", params["uuid"]})
 
     socket =
       socket
       |> assign(:source, source)
       |> assign(:user, user)
       |> assign(:team_user, team_user)
-      |> assign(:path, path)
+      |> assign(:log_event, nil)
       |> assign(:origin, params["origin"])
-      |> assign(:id_param, log_id)
+      |> assign(:log_event_id, params["uuid"])
+      |> case do
+        socket when ts != nil ->
+          {:ok, dt, _} = DateTime.from_iso8601(ts)
+          assign(socket, :timestamp, dt)
 
-    le = LogEvents.Cache.get!(token, cache_key)
-
-    socket =
-      if le do
-        assign(socket, :log_event, le)
-      else
-        socket
+        socket ->
+          socket
       end
+      |> assign(:log_event, log_event)
 
     {:ok, socket}
   end
@@ -57,12 +60,7 @@ defmodule LogflareWeb.LogEventLive.Show do
     LogflareWeb.LogView.render("log_event.html", assigns)
   end
 
-  @spec params_to_cache_key(map()) :: {String.t(), String.t()}
-  defp params_to_cache_key(%{"uuid" => id}) do
-    {"uuid", id}
-  end
-
-  defp params_to_cache_key(%{"path" => path, "value" => value}) do
-    {path, value}
+  def handle_info({:put_flash, type, msg}, socket) do
+    {:noreply, socket |> put_flash(type, msg)}
   end
 end

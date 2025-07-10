@@ -110,7 +110,7 @@ defmodule Logflare.Mixfile do
       {:libcluster, "~> 3.2"},
       {:map_keys, "~> 0.1.0"},
       {:observer_cli, "~> 1.5"},
-      {:cloak_ecto, "~> 1.3"},
+      {:cloak_ecto, github: "logflare/cloak_ecto"},
 
       # Parsing
       {:bertex, ">= 0.0.0"},
@@ -154,9 +154,9 @@ defmodule Logflare.Mixfile do
       {:google_gax, github: "Logflare/elixir-google-gax", ref: "6772193", override: true},
 
       # Ecto
-      {:ecto, "~> 3.9", override: true},
-      {:ecto_sql, "~> 3.9"},
-      {:typed_ecto_schema, "~> 0.1.0", runtime: false},
+      {:ecto, "~> 3.12"},
+      {:ecto_sql, "~> 3.12"},
+      {:typed_ecto_schema, "~> 0.4.3", runtime: false},
 
       # ClickHouse
       {:ch, "~> 0.3.2"},
@@ -215,7 +215,7 @@ defmodule Logflare.Mixfile do
       {:plug_cowboy, "~> 2.0"},
 
       # alerts feature
-      {:quantum, "~> 3.0"},
+      {:quantum, github: "Logflare/quantum-core", branch: "feat/string-job-names"},
       {:crontab, "~> 1.1"},
 
       # benchmarking

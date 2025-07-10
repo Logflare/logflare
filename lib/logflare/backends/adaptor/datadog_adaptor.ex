@@ -4,8 +4,6 @@ defmodule Logflare.Backends.Adaptor.DatadogAdaptor do
   for DataDog logs ingestion endpoint.
   """
 
-  use TypedStruct
-
   alias Logflare.Backends.Adaptor.WebhookAdaptor
 
   # https://docs.datadoghq.com/api/latest/logs/#send-logs
@@ -17,12 +15,9 @@ defmodule Logflare.Backends.Adaptor.DatadogAdaptor do
     "AP1" => "https://http-intake.logs.ap1.datadoghq.com/api/v2/logs",
     "US1-FED" => "https://http-intake.logs.ddog-gov.com/api/v2/logs"
   }
+  @regions Map.keys(@api_url_mapping)
 
-  def api_url_mapping, do: @api_url_mapping
-
-  typedstruct enforce: true do
-    field(:api_key, String.t())
-  end
+  def regions, do: @regions
 
   @behaviour Logflare.Backends.Adaptor
 
@@ -67,7 +62,7 @@ defmodule Logflare.Backends.Adaptor.DatadogAdaptor do
   def validate_config(changeset) do
     changeset
     |> Ecto.Changeset.validate_required([:api_key, :region])
-    |> Ecto.Changeset.validate_inclusion(:region, Map.keys(@api_url_mapping))
+    |> Ecto.Changeset.validate_inclusion(:region, @regions)
   end
 
   defp translate_event(%Logflare.LogEvent{} = le) do

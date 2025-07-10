@@ -253,7 +253,7 @@ defmodule LogflareWeb.Router do
 
     resources "/", SourceController, except: [:index, :new, :create, :delete] do
       live_session(:rules, root_layout: {LogflareWeb.LayoutView, :root}) do
-        live("/rules", Sources.RulesLV)
+        live("/rules", Sources.RulesLive)
       end
 
       delete("/saved-searches/:id", SavedSearchesController, :delete)
@@ -264,7 +264,7 @@ defmodule LogflareWeb.Router do
     get("/:id/delete-slack-hook", SourceController, :delete_slack_hook)
     get("/:id/rejected", SourceController, :rejected_logs)
     live("/:source_id/search", Source.SearchLV)
-    live("/:source_id/event", LogEventLive.Show, :show)
+    live("/:source_id/event", LogEventLive, :show)
     get("/:id/favorite", SourceController, :favorite)
     get("/:id/clear", SourceController, :clear_logs)
     get("/:id/explore", SourceController, :explore)
