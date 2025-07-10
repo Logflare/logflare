@@ -63,7 +63,7 @@ defmodule LogflareWeb.EndpointsController do
         _ -> ""
       end
 
-    parsed_labels = parsed_labels(endpoint_query.labels, header_str, params)
+    parsed_labels = Endpoints.parse_labels(endpoint_query.labels, header_str, params)
 
     case Endpoints.run_cached_query(%{endpoint_query | parsed_labels: parsed_labels}, params) do
       {:ok, result} ->
@@ -75,28 +75,7 @@ defmodule LogflareWeb.EndpointsController do
     end
   end
 
-  defp parsed_labels(allowlist_str, header_str, params) do
-    header_values =
-      for item <- String.split(header_str || "", ","), into: %{} do
-        case String.split(item, "=") do
-          [key, value] -> {key, value}
-          [key] -> {key, nil}
-        end
-      end
 
-    for split <- String.split(allowlist_str || "", ","), split != "", into: %{} do
-      case String.split(split, "=") do
-        [key, "@" <> param_key] ->
-          {key, Map.get(params, param_key) || Map.get(header_values, key)}
-
-        [key] ->
-          {key, Map.get(header_values, key)}
-
-        [key, value] ->
-          {key, value}
-      end
-    end
-  end
 
   # only parse body for get when ?sql= is empty and it is sandboxable
   # passthrough for all other cases
