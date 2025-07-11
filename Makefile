@@ -11,6 +11,42 @@ NORMALIZED_VERSION ?= $(shell cat ./VERSION | tr '.' '-')
 
 LOGFLARE_SUPABASE_MODE ?= false
 
+# Detect which version manager is available (MISE preferred over ASDF)
+MISE_AVAILABLE := $(shell command -v mise 2> /dev/null)
+ASDF_AVAILABLE := $(shell command -v asdf 2> /dev/null)
+
+ifdef MISE_AVAILABLE
+	VERSION_MANAGER := mise
+	VERSION_MANAGER_INSTALL := mise install
+	VERSION_MANAGER_RESHIM := mise reshim
+else ifdef ASDF_AVAILABLE
+	VERSION_MANAGER := asdf
+	VERSION_MANAGER_INSTALL := asdf install
+	VERSION_MANAGER_RESHIM := asdf reshim
+else
+	VERSION_MANAGER :=
+	VERSION_MANAGER_INSTALL :=
+	VERSION_MANAGER_RESHIM :=
+endif
+
+# Tool validation
+REQUIRED_TOOLS := docker git gcloud
+
+define check_tool
+	@if command -v $(1) >/dev/null 2>&1; then \
+		echo "✓ $(1) found"; \
+	else \
+		echo "⚠ Warning: $(1) is not installed or not in PATH"; \
+	fi
+endef
+
+# Color codes
+GREEN := \033[0;32m
+YELLOW := \033[1;33m
+BLUE := \033[0;34m
+RED := \033[0;31m
+BOLD := \033[1m
+NC := \033[0m
 
 help:
 	@cat DEVELOPMENT.md
@@ -32,20 +68,63 @@ compile.check:
 
 .PHONY: test test.only compile.check
 
-setup: setup.node
-	-epmd -daemon
+check-tools:
+	@echo ""
+	@echo "$(BOLD)$(BLUE)🔧 Checking required tools...$(NC)"
+	@echo ""
+	@for tool in $(REQUIRED_TOOLS); do \
+		if command -v $$tool >/dev/null 2>&1; then \
+			echo "  $(GREEN)✓$(NC) $$tool found"; \
+		else \
+			echo "  $(YELLOW)⚠$(NC)  Warning: $$tool is not installed or not in PATH"; \
+		fi; \
+	done
+	@echo ""
+	@echo "$(BOLD)$(BLUE)Tool check complete$(NC)"
+	@echo ""
+
+check-version-manager:
+ifndef VERSION_MANAGER
+	@echo ""
+	@echo "$(RED)❌ Error: Neither MISE nor ASDF is installed.$(NC)"
+	@echo "$(BOLD)Please install one of the following:$(NC)"
+	@echo "  - MISE: https://mise.jdx.dev/getting-started.html"
+	@echo "  - ASDF: https://asdf-vm.com/guide/getting-started.html"
+	@echo ""
+	@exit 1
+else
+	@echo "$(BOLD)$(BLUE)📦 Using $(VERSION_MANAGER) for version management$(NC)"
+	@echo ""
+endif
+
+setup: check-tools check-version-manager setup.node
 	# install dependencies
-	asdf install
+	@echo "$(BOLD)$(BLUE)🚀 Installing language dependencies...$(NC)"
+	@echo ""
+	$(VERSION_MANAGER_INSTALL)
+	-epmd -daemon
 
 	# add protobuf install
+	@echo ""
+	@echo "$(BOLD)$(BLUE)🔧 Installing protobuf tooling...$(NC)"
 	mix escript.install hex protobuf
+	@echo ""
 
-	asdf reshim
+	$(VERSION_MANAGER_RESHIM)
 	# run elixir setup
+	@echo "$(BOLD)$(BLUE)⚙️  Running Elixir setup...$(NC)"
+	@echo ""
 	mix setup
+	@echo ""
+
+	@echo "$(BOLD)$(GREEN)✅ Setup complete!$(NC)"
+	@echo ""
 
 setup.node:
+	@echo "$(BOLD)$(BLUE)📦 Installing Node.js dependencies...$(NC)"
+	@echo ""
 	npm --prefix ./assets install
+	@echo ""
 
 reset:
 	docker compose down
@@ -53,7 +132,7 @@ reset:
 	MIX_ENV=test mix ecto.reset
 	rm -rf _build .elixir_ls deps assets/node_modules
 
-.PHONY: setup setup.node reset
+.PHONY: setup setup.node reset check-version-manager check-tools
 
 start: start.orange
 
@@ -89,7 +168,7 @@ start.st.pg: ENV_FILE = .single_tenant_pg.env
 start.st.pg: LOGFLARE_GRPC_PORT = 50051
 start.st.pg: __start__
 
-observer: 
+observer:
 	erl -sname observer -hidden -setcookie ${ERL_COOKIE} -run observer
 
 __start__:
