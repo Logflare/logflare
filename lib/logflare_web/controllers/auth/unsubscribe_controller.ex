@@ -5,6 +5,7 @@ defmodule LogflareWeb.Auth.UnsubscribeController do
   alias Logflare.Auth
 
   @max_age 86_400
+
   def unsubscribe(conn, %{"id" => source_id, "token" => token, "type" => "team_user"}) do
     case Auth.verify_email_token(token, @max_age) do
       {:ok, email} ->
@@ -128,7 +129,7 @@ defmodule LogflareWeb.Auth.UnsubscribeController do
       {:ok, _source} ->
         conn
         |> put_flash(:info, "Unsubscribed!")
-        |> redirect(to: Routes.auth_path(conn, :login))
+        |> redirect(to: ~p"/auth/login")
 
       {:error, _changeset} ->
         error_and_redirect(
@@ -141,7 +142,7 @@ defmodule LogflareWeb.Auth.UnsubscribeController do
   defp error_and_redirect(conn, message) do
     conn
     |> put_flash(:error, message)
-    |> redirect(to: Routes.auth_path(conn, :login))
+    |> redirect(to: ~p"/auth/login")
   end
 
   defp filter_email(_email, other_emails) when is_nil(other_emails), do: nil

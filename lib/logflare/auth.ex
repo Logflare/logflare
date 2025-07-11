@@ -14,6 +14,7 @@ defmodule Logflare.Auth do
   alias Phoenix.Token
 
   @max_age_default 86_400
+
   defp env_salt, do: Application.get_env(:logflare, LogflareWeb.Endpoint)[:secret_key_base]
   defp env_oauth_config, do: Application.get_env(:logflare, ExOauth2Provider)
   defp env_partner_oauth_config, do: Application.get_env(:logflare, ExOauth2ProviderPartner)
