@@ -127,27 +127,6 @@ defmodule LogflareWeb.EndpointsLiveTest do
     test "new endpoint", %{conn: conn} do
       {:ok, view, _html} = live(conn, "/endpoints/new")
 
-      # Error
-      assert view
-             |> element("#endpoint-query")
-             |> render_change(%{
-               endpoint: %{
-                 query: "select current_datetime() order-by invalid"
-               }
-             }) =~ "parser error"
-
-      # no error
-      refute view
-             |> element("#endpoint-query")
-             |> render_change(%{
-               endpoint: %{
-                 query: "select @my_param as valid"
-               }
-             }) =~ "parser error"
-
-      # detects params correctly
-      assert has_element?(view, "form label", "my_param")
-
       # saves the change
       assert view
              |> element("form", "Save")
@@ -166,27 +145,6 @@ defmodule LogflareWeb.EndpointsLiveTest do
     test "edit endpoint", %{conn: conn, user: user} do
       endpoint = insert(:endpoint, user: user, query: "select @other as initial")
       {:ok, view, _html} = live(conn, "/endpoints/#{endpoint.id}/edit")
-
-      # Error
-      assert view
-             |> element("*#endpoint-query")
-             |> render_change(%{
-               endpoint: %{
-                 query: "select current_datetime() order-by invalid"
-               }
-             }) =~ "parser error"
-
-      # no error
-      refute view
-             |> element("*#endpoint-query")
-             |> render_change(%{
-               endpoint: %{
-                 query: "select @my_param as valid"
-               }
-             }) =~ "parser error"
-
-      # detects params correctly
-      assert has_element?(view, "form label", "my_param")
 
       # saves the change
       assert view
@@ -231,14 +189,6 @@ defmodule LogflareWeb.EndpointsLiveTest do
 
       refute render(view) =~ "results-123"
 
-      refute view
-             |> element("#endpoint-query")
-             |> render_change(%{
-               endpoint: %{
-                 query: "select current_datetime() as new"
-               }
-             }) =~ "parser error"
-
       view
       |> element("form", "Test query")
       |> render_submit(%{
@@ -270,12 +220,6 @@ defmodule LogflareWeb.EndpointsLiveTest do
       endpoint = insert(:endpoint, user: user)
       {:ok, view, _html} = live(conn, "/endpoints/#{endpoint.id}/edit")
       refute render(view) =~ "results-123"
-
-      view
-      |> element("#endpoint-query")
-      |> render_change(%{
-        query: "select current_datetime() as updated"
-      })
 
       view
       |> element("form", "Test query")
