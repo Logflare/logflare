@@ -16,7 +16,8 @@ defmodule Logflare.Endpoints.ResultsCache do
             shutdown_timer: nil,
             refresh_timer: nil,
             endpoint_query_id: nil,
-            endpoint_query_token: nil
+            endpoint_query_token: nil,
+            parsed_labels: %{}
 
   @type t :: %__MODULE__{
           endpoint_query_id: integer(),
@@ -25,7 +26,8 @@ defmodule Logflare.Endpoints.ResultsCache do
           params: map(),
           cached_result: binary(),
           shutdown_timer: reference(),
-          refresh_timer: reference()
+          refresh_timer: reference(),
+          parsed_labels: map()
         }
 
   def start_link({query, params}) do
@@ -95,7 +97,8 @@ defmodule Logflare.Endpoints.ResultsCache do
         endpoint_query_id: query.id,
         endpoint_query_token: query.token,
         params: params,
-        shutdown_timer: timer
+        shutdown_timer: timer,
+        parsed_labels: query.parsed_labels
       }
 
     unless disable_cache?(query), do: refresh(proactive_querying_ms(query))
@@ -181,7 +184,9 @@ defmodule Logflare.Endpoints.ResultsCache do
   end
 
   def do_query(state) do
-    query = Endpoints.Cache.get_mapped_query_by_token(state.endpoint_query_token)
+    query =
+      Endpoints.Cache.get_mapped_query_by_token(state.endpoint_query_token)
+      |> Map.put(:parsed_labels, state.parsed_labels)
 
     Logflare.Endpoints.run_query(query, state.params)
     |> Tuple.append(query)

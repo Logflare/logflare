@@ -26,7 +26,8 @@ defmodule LogflareWeb.EndpointsController do
       "Content-Type",
       "Content-Length",
       "X-Requested-With",
-      "X-API-Key"
+      "X-API-Key",
+      "LF-ENDPOINT-LABELS"
     ],
     methods: ["GET", "POST", "OPTIONS"],
     send_preflight_response?: true
@@ -55,7 +56,16 @@ defmodule LogflareWeb.EndpointsController do
   def query(%{assigns: %{endpoint: endpoint}} = conn, params) do
     endpoint_query = Endpoints.map_query_sources(endpoint)
 
-    case Endpoints.run_cached_query(endpoint_query, params) do
+    header_str =
+      get_req_header(conn, "lf-endpoint-labels")
+      |> case do
+        [str] -> str
+        _ -> ""
+      end
+
+    parsed_labels = Endpoints.parse_labels(endpoint_query.labels, header_str, params)
+
+    case Endpoints.run_cached_query(%{endpoint_query | parsed_labels: parsed_labels}, params) do
       {:ok, result} ->
         Logger.debug("Endpoint cache result, #{inspect(result, pretty: true)}")
         render(conn, "query.json", result: result.rows)
