@@ -15,7 +15,6 @@ defmodule Logflare.Backends.SourceSup do
   alias Logflare.Source.WebhookNotificationServer
   alias Logflare.Source.SlackHookServer
   alias Logflare.Source.BillingWriter
-  alias Logflare.Logs.SearchQueryExecutor
   alias Logflare.Backends.RecentEventsTouch
   alias Logflare.Backends.RecentInsertsBroadcaster
   alias Logflare.Rules.Rule
@@ -54,7 +53,6 @@ defmodule Logflare.Backends.SourceSup do
         {TextNotificationServer, [source: source, plan: plan]},
         {WebhookNotificationServer, [source: source]},
         {SlackHookServer, [source: source]},
-        {SearchQueryExecutor, [source: source]},
         {BillingWriter, [source: source]},
         {SourceSupWorker, [source: source]}
       ] ++ specs
