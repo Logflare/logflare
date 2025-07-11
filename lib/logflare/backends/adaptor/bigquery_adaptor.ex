@@ -409,7 +409,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
 
     if Map.get(user || %{}, :bigquery_project_id) do
       # byob project, maybe append managed SA to policy
-      append_managed_sa_to_iam_policy(user) |> dbg()
+      append_managed_sa_to_iam_policy(user)
     end
   end
 

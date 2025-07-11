@@ -5,6 +5,7 @@ defmodule Logflare.Endpoints.Resolver do
   alias Logflare.Endpoints.ResultsCache
 
   require Logger
+  require OpenTelemetry.Tracer
 
   @doc """
   Lists all caches for an endpoint across all paritions
@@ -21,23 +22,48 @@ defmodule Logflare.Endpoints.Resolver do
   Returns the resolved pid.
   """
   def resolve(%Logflare.Endpoints.Query{id: id} = query, params) do
+    attributes = %{
+      "endpoint.id" => id,
+      "endpoint.token" => query.token,
+      "endpoint.name" => query.name,
+      "endpoint.user_id" => query.user_id
+    }
+
     ResultsCache.name(query.id, params)
     |> GenServer.whereis()
     |> case do
       pid when is_pid(pid) ->
+        OpenTelemetry.Tracer.add_event("logflare.endpoints.results_cache.found", attributes)
         pid
 
       nil ->
-        spec = {ResultsCache, {query, params}}
-        Logger.debug("Starting up Endpoint.Cache for Endpoint.Query id=#{id}", endpoint_id: id)
+        OpenTelemetry.Tracer.with_span "logflare.endpoints.results_cache.create", %{
+          attributes: attributes
+        } do
+          spec = {ResultsCache, {query, params}}
+          Logger.debug("Starting up Endpoint.Cache for Endpoint.Query id=#{id}", endpoint_id: id)
 
-        via =
-          {:via, PartitionSupervisor,
-           {Logflare.Endpoints.ResultsCache.PartitionSupervisor, {id, params}}}
+          via =
+            {:via, PartitionSupervisor,
+             {Logflare.Endpoints.ResultsCache.PartitionSupervisor, {id, params}}}
 
-        case DynamicSupervisor.start_child(via, spec) do
-          {:ok, pid} -> pid
-          {:error, {:already_started, pid}} -> pid
+          case DynamicSupervisor.start_child(via, spec) do
+            {:ok, pid} ->
+              OpenTelemetry.Tracer.add_event(
+                "logflare.endpoints.results_cache.created",
+                attributes
+              )
+
+              pid
+
+            {:error, {:already_started, pid}} ->
+              OpenTelemetry.Tracer.add_event(
+                "logflare.endpoints.results_cache.already_existed",
+                attributes
+              )
+
+              pid
+          end
         end
     end
   end
