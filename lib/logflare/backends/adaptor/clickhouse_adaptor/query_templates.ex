@@ -87,8 +87,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.QueryTemplates do
         `timestamp` DateTime64(6)
       )
       ENGINE MergeTree()
-      PARTITION BY toYYYYMMDD(timestamp)
-      ORDER BY (timestamp)
+      PARTITION BY toYearWeek(timestamp)
       """,
       if is_pos_integer(ttl_days) do
         """
@@ -141,7 +140,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.QueryTemplates do
       `key_count` UInt64
     )
     ENGINE = SharedSummingMergeTree('/clickhouse/tables/{uuid}/{shard}', '{replica}')
-    PARTITION BY toYYYYMMDD(minute)
+    PARTITION BY toYYYYMM(minute)
     ORDER BY (minute, key, type)
     SETTINGS index_granularity = 8192
     """
