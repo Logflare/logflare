@@ -121,6 +121,55 @@ defmodule Logflare.EndpointsTest do
     assert stored_sql =~ "my.date"
   end
 
+  describe "language inference from backend" do
+    test "postgres backend maps to `pg_sql` language" do
+      user = insert(:user)
+      backend = insert(:backend, user: user, type: :postgres)
+
+      assert {:ok, endpoint} =
+               Endpoints.create_query(user, %{
+                 name: "postgres-endpoint",
+                 query: "select current_date as date",
+                 backend_id: backend.id
+                 # Note: no language specified - should be inferred
+               })
+
+      assert endpoint.language == :pg_sql
+      assert endpoint.backend_id == backend.id
+    end
+
+    test "bigquery backend maps to `bq_sql` language" do
+      user = insert(:user)
+      backend = insert(:backend, user: user, type: :bigquery)
+
+      assert {:ok, endpoint} =
+               Endpoints.create_query(user, %{
+                 name: "bigquery-endpoint",
+                 query: "select current_date() as date",
+                 backend_id: backend.id
+               })
+
+      assert endpoint.language == :bq_sql
+      assert endpoint.backend_id == backend.id
+    end
+
+    test "backend does not overwrite explicit language definition" do
+      user = insert(:user)
+      backend = insert(:backend, user: user, type: :bigquery)
+
+      assert {:ok, endpoint} =
+               Endpoints.create_query(user, %{
+                 name: "bigquery-endpoint-lql-test",
+                 query: "select current_date() as date",
+                 backend_id: backend.id,
+                 language: :pg_sql
+               })
+
+      assert endpoint.language == :pg_sql
+      assert endpoint.backend_id == backend.id
+    end
+  end
+
   describe "running queries in bigquery backends" do
     test "run an endpoint query without caching" do
       pid = self()
