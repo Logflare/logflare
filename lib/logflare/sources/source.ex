@@ -122,6 +122,7 @@ defmodule Logflare.Source do
     field(:bq_table_schema, :any, virtual: true)
     field(:bq_table_typemap, :any, virtual: true)
     field(:bq_table_partition_type, Ecto.Enum, values: [:pseudo, :timestamp], default: :timestamp)
+    field(:bq_storage_write_api, :boolean, default: false)
     field(:custom_event_message_keys, :string)
     field(:log_events_updated_at, :naive_datetime)
     field(:notifications_every, :integer, default: :timer.hours(4))
@@ -186,7 +187,8 @@ defmodule Logflare.Source do
       :suggested_keys,
       :retention_days,
       :transform_copy_fields,
-      :disable_tailing
+      :disable_tailing,
+      :bq_storage_write_api
     ])
     |> cast_embed(:notifications, with: &Notifications.changeset/2)
     |> put_single_tenant_postgres_changes()
@@ -214,7 +216,8 @@ defmodule Logflare.Source do
       :suggested_keys,
       :retention_days,
       :transform_copy_fields,
-      :disable_tailing
+      :disable_tailing,
+      :bq_storage_write_api
     ])
     |> cast_embed(:notifications, with: &Notifications.changeset/2)
     |> put_single_tenant_postgres_changes()
