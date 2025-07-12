@@ -1,6 +1,8 @@
 defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
   @moduledoc false
 
+  alias Explorer.DataFrame
+  alias Logflare.Google.BigQuery.EventUtils
   alias Logflare.Backends
   alias Logflare.Backends.DynamicPipeline
   alias Logflare.Backends.Backend
@@ -15,6 +17,31 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
   alias Logflare.Google.BigQuery.GenUtils
   alias Logflare.Google.CloudResourceManager
   alias Logflare.Google
+  alias Logflare.Google.BigQuery
+  alias Logflare.SourceSchemas
+  alias Logflare.Backends.Adaptor.BigQueryAdaptor.GoogleApiClient
+  require Record
+
+  Record.defrecord(
+    :message,
+    Record.extract(:message, from: "deps/serde_arrow/src/serde_arrow_ipc_message.hrl")
+  )
+
+  Record.defrecord(
+    :record_batch,
+    Record.extract(:record_batch, from: "deps/serde_arrow/src/serde_arrow_ipc_record_batch.hrl")
+  )
+
+  Record.defrecord(
+    :schema,
+    Record.extract(:schema, from: "deps/serde_arrow/src/serde_arrow_ipc_schema.hrl")
+  )
+
+  Record.defrecord(
+    :field,
+    Record.extract(:field, from: "deps/serde_arrow/src//serde_arrow_ipc_field.hrl")
+  )
+
   use Supervisor
   require Logger
 
@@ -75,6 +102,38 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
     ]
 
     Supervisor.init(children, strategy: :one_for_one, max_restarts: 10)
+  end
+
+  def insert_log_events_via_storage_write_api(log_events, opts) do
+    # convert log events to table rows
+    opts =
+      Keyword.validate!(opts, [:project_id, :dataset_id, :source_token, :source_id, :source_token])
+
+    # get table id
+    table_id = format_table_name(opts[:source_token])
+
+    data_frames =
+      log_events
+      |> Enum.map(&EventUtils.log_event_to_struct(&1))
+      |> DataFrame.new()
+
+    # append rows
+    GoogleApiClient.append_rows(
+      {:arrow, data_frames},
+      opts[:project_id],
+      opts[:dataset_id],
+      table_id
+    )
+  end
+
+  @spec format_table_name(atom) :: String.t()
+  def format_table_name(source_token) when is_atom(source_token) do
+    Atom.to_string(source_token)
+    |> String.replace("-", "_")
+  end
+
+  defp source_schema_to_proto_schema(source_schema) do
+    source_schema.bigquery_schema
   end
 
   @doc """
