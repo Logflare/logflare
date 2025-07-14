@@ -150,6 +150,20 @@ defmodule Logflare.Sources do
       )
     end
 
+    if source.bigquery_clustering_fields != updated.bigquery_clustering_fields and
+         not SingleTenant.postgres_backend?() do
+      user = Users.Cache.get(updated.user_id)
+
+      fields = String.split(updated.bigquery_clustering_fields || "", ",") ++ ["timestamp", "id"]
+
+      BigQuery.patch_table_clustering(
+        updated.token,
+        fields,
+        user.bigquery_dataset_id,
+        user.bigquery_project_id
+      )
+    end
+
     {:ok, updated}
   end
 

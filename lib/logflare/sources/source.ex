@@ -29,7 +29,8 @@ defmodule Logflare.Source do
              :custom_event_message_keys,
              :backends,
              :retention_days,
-             :transform_copy_fields
+             :transform_copy_fields,
+             :bigquery_clustering_fields
            ]}
   defp env_dataset_id_append,
     do: Application.get_env(:logflare, Logflare.Google)[:dataset_id_append]
@@ -134,6 +135,7 @@ defmodule Logflare.Source do
     field(:suggested_keys, :string, default: "")
     field(:retention_days, :integer, virtual: true)
     field(:transform_copy_fields, :string)
+    field(:bigquery_clustering_fields, :string)
     # Causes a shitstorm
     # field :bigquery_schema, Ecto.Term
 
@@ -171,6 +173,7 @@ defmodule Logflare.Source do
       :public_token,
       :favorite,
       :bigquery_table_ttl,
+      :bigquery_clustering_fields,
       # users can't update thier API quota currently
       :api_quota,
       :webhook_notification_url,
@@ -202,6 +205,7 @@ defmodule Logflare.Source do
       :public_token,
       :favorite,
       :bigquery_table_ttl,
+      :bigquery_clustering_fields,
       :webhook_notification_url,
       :slack_hook_url,
       :custom_event_message_keys,

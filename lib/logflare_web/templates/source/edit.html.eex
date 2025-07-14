@@ -261,21 +261,35 @@
 
   <%= section_header("Backend TTL") %>
   <%= if @conn.assigns.user.billing_enabled do %>
-  <p>Set how long to keep data in your backend.</p>
+    <p>Set how long to keep data in your backend.</p>
+    <%= form_for @changeset, Routes.source_path(@conn, :update, @source), fn e -> %>
+    <div class="form-group">
+      <%= text_input e, :retention_days, placeholder: "3", class: "form-control form-control-margin" %>
+      <%= error_tag e, :retention_days %>
+      <small class="form-text text-muted">
+        Days to keep data.
+      </small>
+    </div>
+    <%= submit "Update backend settings", class: "btn btn-primary form-button" %>
+    <% end %>
+  <% else %>
+    <p>Add a Google Cloud Platform project ID to get started!</p>
+    <%= link "Setup custom backend", to: Routes.user_path(@conn, :edit) <> "#bigquery-backend", class: "btn btn-primary form-button", role: "button" %>
+  <% end %>
+
+  <%= section_header("Backend Clustering") %>
+  <p>Set additional clustering columns to improve query performance. <code>timestamp</code> and <code>id</code> are always clustered.</p>
   <%= form_for @changeset, Routes.source_path(@conn, :update, @source), fn e -> %>
   <div class="form-group">
-    <%= text_input e, :retention_days, placeholder: "3", class: "form-control form-control-margin" %>
-    <%= error_tag e, :retention_days %>
+    <%= text_input e, :bigquery_clustering_fields, placeholder: "my_field,my_other_field", class: "form-control form-control-margin" %>
+    <%= error_tag e, :bigquery_clustering_fields %>
     <small class="form-text text-muted">
-      Days to keep data.
+      Comma-separated. For example: <code>my_field,my_other_field</code>.
     </small>
   </div>
-  <%= submit "Update backend settings", class: "btn btn-primary form-button" %>
+  <%= submit "Update clustering", class: "btn btn-primary form-button" %>
   <% end %>
-  <% else %>
-  <p>Add a Google Cloud Platform project ID to get started!</p>
-  <%= link "Setup custom backend", to: Routes.user_path(@conn, :edit) <> "#bigquery-backend", class: "btn btn-primary form-button", role: "button" %>
-  <% end %>
+
   <%= section_header("Suggested Search Keys") %>
   <p>Set suggested search keys for this source, to encourage usage of certain filtering keys when performing searches across large sources. If a declared key is missing, users will be prompted to include the key when a search is made.</p>
   <%= form_for @changeset, Routes.source_path(@conn, :update, @source),fn f -> %>
