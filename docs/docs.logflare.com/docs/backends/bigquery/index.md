@@ -29,6 +29,14 @@ For metered plan users, if the TTL is not set, the BigQuery table will default t
 
 For users on the Free plan, the maximum retention is **3 days**.
 
+### Querying
+
+Querying is done using [optional job creation mode](https://cloud.google.com/bigquery/docs/running-queries#optional-job-creation).
+
+:::note
+When monitoring or running analysis, the `job_id` of the BigQuery JOBS view will have the `queryId` of the query request made. See [the official documentation](https://cloud.google.com/bigquery/docs/information-schema-jobs#optional-job-creation) for more information.
+:::
+
 #### Deep Dive: Table Partitioning
 
 Table partitioning effectively splits a BigQuery table into many smaller tables.
