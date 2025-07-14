@@ -1,5 +1,8 @@
 defmodule Ecto.Atom do
-  @moduledoc false
+  @moduledoc """
+  Ecto type for storing atoms as strings in the database.
+  """
+
   @behaviour Ecto.Type
 
   def type, do: :string
@@ -7,7 +10,13 @@ defmodule Ecto.Atom do
   def cast(value) when is_atom(value), do: {:ok, value}
   def cast(_), do: :error
 
-  def load(value), do: {:ok, String.to_existing_atom(value)}
+  def load(value) do
+    try do
+      {:ok, String.to_existing_atom(value)}
+    rescue
+      e in ArgumentError -> {:error, e}
+    end
+  end
 
   def dump(value) when is_atom(value), do: {:ok, Atom.to_string(value)}
   def dump(_), do: :error
