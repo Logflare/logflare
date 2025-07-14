@@ -121,6 +121,20 @@
           Cached results will be refreshed at this interval. Ignored if caching is disabled.
         </small>
       </div>
+      <div>
+        <%= label(f, :labels, "Query Execution Labels") %>
+        <div class="input-group">
+          <%= text_input(f, :labels,
+            placeholder: if(@show_endpoint, do: nil, else: ""),
+            class: "form-control"
+          ) %>
+        </div>
+        <%= error_tag(f, :labels) %>
+        <small class="form-text text-muted">
+          A comma-separated allowlist of labels to be added to the query execution backend. To reference parameters, use the format <code>my_param=@my_param,my_other_field,meta</code>.
+          Key value pairs will be added to the query execution backend using the <code>LF-ENDPOINT-LABELS: my_other_field=some-val,meta=123</code> request header.
+        </small>
+      </div>
     </section>
   </.form>
   <aside class="tw-w-1/2">
