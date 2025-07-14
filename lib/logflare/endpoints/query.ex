@@ -28,7 +28,8 @@ defmodule Logflare.Endpoints.Query do
              :cache_duration_seconds,
              :proactive_requerying_seconds,
              :max_limit,
-             :enable_auth
+             :enable_auth,
+             :labels
            ]}
   typed_schema "endpoint_queries" do
     field(:token, Ecto.UUID, autogenerate: true)
@@ -42,7 +43,8 @@ defmodule Logflare.Endpoints.Query do
     field(:proactive_requerying_seconds, :integer, default: 1_800)
     field(:max_limit, :integer, default: 1_000)
     field(:enable_auth, :boolean, default: true)
-
+    field(:labels, :string)
+    field(:parsed_labels, :map, virtual: true)
     field(:metrics, :map, virtual: true)
 
     belongs_to(:user, User)
@@ -74,7 +76,8 @@ defmodule Logflare.Endpoints.Query do
       :enable_auth,
       :language,
       :description,
-      :backend_id
+      :backend_id,
+      :labels
     ])
     |> infer_language_from_backend()
     |> validate_required([:name, :query, :language])
@@ -93,7 +96,8 @@ defmodule Logflare.Endpoints.Query do
       :enable_auth,
       :language,
       :description,
-      :backend_id
+      :backend_id,
+      :labels
     ])
     |> infer_language_from_backend()
     |> validate_query(:query)

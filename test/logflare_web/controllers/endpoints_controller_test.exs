@@ -109,6 +109,59 @@ defmodule LogflareWeb.EndpointsControllerTest do
     end
   end
 
+  describe "bigquery with labels" do
+    setup do
+      _plan = insert(:plan, name: "Free")
+      user = insert(:user)
+      source = build(:source, user: user)
+      {:ok, user: user, source: source}
+    end
+
+    test "reference params in label, my_label=@my_param", %{
+      conn: conn,
+      user: user
+    } do
+      pid = self()
+
+      GoogleApi.BigQuery.V2.Api.Jobs
+      |> stub(:bigquery_jobs_query, fn _conn, _proj_id, opts ->
+        send(pid, opts[:body].labels)
+        {:ok, TestUtils.gen_bq_response()}
+      end)
+
+      endpoint =
+        insert(:endpoint,
+          user: user,
+          enable_auth: true,
+          query: "with a as (select 1 as b) select b from a",
+          labels: ",my_label=@my_param,other_value,my=value,"
+        )
+
+      conn =
+        conn
+        |> put_req_header("x-api-key", user.api_key)
+        |> put_req_header("content-type", "application/json")
+        |> put_req_header("lf-endpoint-labels", "other_value=1234,omit=334")
+        |> get(
+          ~p"/api/endpoints/query/#{endpoint.name}?#{%{"other_value" => 1234, "omit" => 333, "my_param" => "my_value", "sql" => "select 2"}}"
+        )
+
+      assert [_] = json_response(conn, 200)["result"]
+      assert conn.halted == false
+      assert_received labels
+
+      assert labels == %{
+               "my_label" => "my_value",
+               "other_value" => "1234",
+               "endpoint_id" => endpoint.id,
+               "logflare_account" => user.id,
+               "logflare_plan" => "free",
+               "managed_by" => "logflare",
+               "my" => "value"
+             }
+    end
+  end
+
   describe "sandboxed query" do
     setup do
       _plan = insert(:plan, name: "Free")

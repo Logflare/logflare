@@ -4,7 +4,7 @@
 
 Pre-requisites:
 
-- asdf
+- asdf (or mise)
 - docker
 
 ### Setup for Supabase Team

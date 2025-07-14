@@ -80,10 +80,7 @@ The Endpoint consumer can pass in the following query parameter to query across 
 ?sql=select err from errors where regexp_contains(err, "my_error")
 ```
 
-
 Should large SQL queries need to be executed, the SQL query string can be placed in the GET JSON body. Logflare will read the body and use the `sql` field in the body payload. This will only occur if **no `?sql=` query parameter is present in the request's query parameters**. This behaviour does not extend to other declared parameters (such as `@my_param`), and only applies to the special `sql` query parameter for sandboxed endpoints.
-
-
 
 ## HTTP Response
 
@@ -108,6 +105,45 @@ Caching is performed on a query parameter basis. As such, if there are three API
 Logflare endpoints can be proactively requeried to ensure that the cache does not become stale throughout the cache lifetime.
 
 When configured, the cache will be automatically updated at the set interval, performing only one query to update the cached data.
+
+## Query Tagging with Labels
+
+Endpoints support query labeling for tracking and monitoring in the backend. Labels are configured as a comma-separated allowlist and can reference parameters (`@my_param`), values provided in the `LF-ENDPOINT-LABELS` request header, or static values.
+
+### Configuration Format
+
+```text
+static_key=static_value,param_key=@param_name,header_only_key
+```
+
+### Label Sources (by precedence)
+
+1. **Query parameters** - `@param_name` references take values from URL parameters
+2. **Request headers** - `LF-ENDPOINT-LABELS: key=value,key2=value2`
+3. **Static values** - Fixed values in the configuration
+
+### Example
+
+**Configuration:** `user_id=@user_id,environment=production,session_id`
+
+**Request:**
+
+```bash
+GET /api/endpoints/query/my-endpoint?user_id=123
+LF-ENDPOINT-LABELS: session_id=abc123,ignored=xyz
+```
+
+**Resulting labels:**
+
+```json
+{
+  "user_id": "123",
+  "environment": "production",
+  "session_id": "abc123"
+}
+```
+
+Only allowlisted labels are processed. Query parameters override header values for the same key.
 
 ## Security
 

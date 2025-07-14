@@ -138,6 +138,83 @@ defmodule Logflare.Endpoints do
   end
 
   @doc """
+  Parses endpoint labels from allowlist configuration, request headers, and query parameters.
+
+  This function processes label configurations that can come from three sources:
+  1. Static values defined in the allowlist string
+  2. Dynamic values from query parameters (prefixed with "@")
+  3. Values from request headers
+
+  The allowlist string defines which labels are allowed and how they should be populated.
+  It supports three formats:
+  - `key=value` - static label with fixed value
+  - `key=@param` - dynamic label populated from query parameter "param"
+  - `key` - label populated from request header with the same key name
+
+  ## Parameters
+
+    * `allowlist_str` - Comma-separated string defining allowed labels and their sources
+    * `header_str` - Comma-separated string from LF-ENDPOINT-LABELS header containing key=value pairs
+    * `params` - Map of query parameters that may contain label values
+
+  ## Examples
+
+      # Static labels
+      iex> Logflare.Endpoints.parse_labels("environment=production,team=backend", "", %{})
+      %{"environment" => "production", "team" => "backend"}
+
+      # Header-based labels
+      iex> Logflare.Endpoints.parse_labels("user_id,session_id", "user_id=123,session_id=abc", %{})
+      %{"user_id" => "123", "session_id" => "abc"}
+
+      # Parameter-based labels
+      iex> Logflare.Endpoints.parse_labels("tenant=@tenant_id", "", %{"tenant_id" => "org-123"})
+      %{"tenant" => "org-123"}
+
+      # Mixed sources with fallback
+      iex> Logflare.Endpoints.parse_labels("user=@user_id", "user=999", %{"user_id" => "123"})
+      %{"user" => "123"}
+
+      # Fallback to header when param missing
+      iex> Logflare.Endpoints.parse_labels("user=@user_id", "user=999", %{})
+      %{"user" => "999"}
+
+      # Empty or nil inputs
+      iex> Logflare.Endpoints.parse_labels(nil, nil, %{})
+      %{}
+
+      iex> Logflare.Endpoints.parse_labels("", "", %{})
+      %{}
+
+  ## Returns
+
+  A map where keys are label names and values are the resolved label values.
+  """
+  @spec parse_labels(String.t() | nil, String.t() | nil, map()) :: map()
+  def parse_labels(allowlist_str, header_str, params) do
+    header_values =
+      for item <- String.split(header_str || "", ","), into: %{} do
+        case String.split(item, "=") do
+          [key, value] -> {key, value}
+          [key] -> {key, nil}
+        end
+      end
+
+    for split <- String.split(allowlist_str || "", ","), split != "", into: %{} do
+      case String.split(split, "=") do
+        [key, "@" <> param_key] ->
+          {key, Map.get(params, param_key) || Map.get(header_values, key)}
+
+        [key] ->
+          {key, Map.get(header_values, key)}
+
+        [key, value] ->
+          {key, value}
+      end
+    end
+  end
+
+  @doc """
   Runs a an endpoint query
   """
   @spec run_query(Query.t(), params :: map()) :: run_query_return()
@@ -175,7 +252,22 @@ defmodule Logflare.Endpoints do
           {endpoint_query, transformed_query}
         end
 
-      exec_query_on_backend(endpoint, query_string, declared_params, params)
+      :telemetry.span(
+        [:logflare, :endpoints, :run_query, :exec_query_on_backend],
+        %{endpoint_id: endpoint.id, language: endpoint.language},
+        fn ->
+          result = exec_query_on_backend(endpoint, query_string, declared_params, params)
+
+          total_rows =
+            case result do
+              {:ok, %{total_rows: total}} -> total
+              {:ok, %{rows: rows}} -> length(rows)
+              _ -> 0
+            end
+
+          {result, %{total_rows: total_rows}}
+        end
+      )
     end
   end
 
@@ -298,9 +390,13 @@ defmodule Logflare.Endpoints do
            parameterMode: "NAMED",
            maxResults: endpoint_query.max_limit,
            location: endpoint_query.user.bigquery_dataset_location,
-           labels: %{
-             "endpoint_id" => endpoint_query.id
-           }
+           labels:
+             Map.merge(
+               %{
+                 "endpoint_id" => endpoint_query.id
+               },
+               endpoint_query.parsed_labels || %{}
+             )
          ) do
       {:ok, result} ->
         {:ok, result}
