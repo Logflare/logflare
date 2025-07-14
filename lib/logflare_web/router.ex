@@ -347,9 +347,9 @@ defmodule LogflareWeb.Router do
 
     get("/plans", AdminPlanController, :index)
     get("/plans/new", AdminPlanController, :new)
-    post("/plans/new", AdminPlanController, :create)
+    post("/plans", AdminPlanController, :create)
     get("/plans/:id/edit", AdminPlanController, :edit)
-    put("/plans/:id/edit", AdminPlanController, :update)
+    put("/plans/:id", AdminPlanController, :update)
 
     delete("/accounts/:id", AdminController, :delete_account)
     get("/accounts/:id/become", AdminController, :become_account)

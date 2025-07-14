@@ -282,7 +282,7 @@ defmodule Logflare.AlertingTest do
       assert {:ok, _} = Alerting.delete_alert_job(alert)
       assert {:error, :not_found} = Alerting.delete_alert_job(alert.id)
 
-      assert nil == Alerting.get_alert_job(alert_id)
+      TestUtils.retry_assert(fn -> refute Alerting.get_alert_job(alert_id) end)
     end
 
     test "upsert alert job multiple times will ensure only one job is present", %{user: user} do
