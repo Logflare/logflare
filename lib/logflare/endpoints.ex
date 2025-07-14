@@ -175,7 +175,22 @@ defmodule Logflare.Endpoints do
           {endpoint_query, transformed_query}
         end
 
-      exec_query_on_backend(endpoint, query_string, declared_params, params)
+      :telemetry.span(
+        [:logflare, :endpoints, :run_query, :exec_query_on_backend],
+        %{endpoint_id: endpoint.id, language: endpoint.language},
+        fn ->
+          result = exec_query_on_backend(endpoint, query_string, declared_params, params)
+
+          total_rows =
+            case result do
+              {:ok, %{total_rows: total}} -> total
+              {:ok, %{rows: rows}} -> length(rows)
+              _ -> 0
+            end
+
+          {result, %{total_rows: total_rows}}
+        end
+      )
     end
   end
 

@@ -174,6 +174,19 @@ defmodule Logflare.Telemetry do
       last_value("logflare.backends.dynamic_pipeline.decrement.error_count",
         tags: [:backend_id],
         description: "Dynamic pipeline failed decrement count"
+      ),
+      distribution("logflare.endpoints.run_query.exec_query_on_backend.stop.duration",
+        tags: [:endpoint_id],
+        unit: {:native, :millisecond},
+        description: "Endpoint query execution duration"
+      ),
+      counter("logflare.endpoints.run_query.exec_query_on_backend.stop.duration",
+        tags: [:endpoint_id],
+        description: "Endpoint query execution counts"
+      ),
+      distribution("logflare.endpoints.run_query.exec_query_on_backend.total_rows",
+        tags: [:endpoint_id],
+        description: "Number of rows returned by endpoint query execution"
       )
     ]
 
