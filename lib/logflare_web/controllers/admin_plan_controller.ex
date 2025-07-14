@@ -22,7 +22,7 @@ defmodule LogflareWeb.AdminPlanController do
       {:ok, _plan} ->
         conn
         |> put_flash(:info, "Plan created!")
-        |> redirect(to: Routes.admin_plan_path(conn, :index))
+        |> redirect(to: ~p"/admin/plans")
 
       {:error, changeset} ->
         conn
@@ -46,7 +46,7 @@ defmodule LogflareWeb.AdminPlanController do
       {:ok, _plan} ->
         conn
         |> put_flash(:info, "Plan updated!")
-        |> redirect(to: Routes.admin_plan_path(conn, :index))
+        |> redirect(to: ~p"/admin/plans")
 
       {:error, changeset} ->
         conn
