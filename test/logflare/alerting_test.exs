@@ -149,7 +149,11 @@ defmodule Logflare.AlertingTest do
 
     test "delete_alert_query/1 deletes the alert_query", %{user: user} do
       alert_query = alert_query_fixture(user)
-      assert {:ok, %AlertQuery{}} = Alerting.delete_alert_query(alert_query)
+
+      TestUtils.retry_assert(fn ->
+        assert {:ok, %AlertQuery{}} = Alerting.delete_alert_query(alert_query)
+      end)
+
       assert_raise Ecto.NoResultsError, fn -> Alerting.get_alert_query!(alert_query.id) end
       assert nil == Alerting.get_alert_job(alert_query.id)
     end

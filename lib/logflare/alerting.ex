@@ -128,8 +128,8 @@ defmodule Logflare.Alerting do
 
   """
   def delete_alert_query(%AlertQuery{} = alert_query) do
-    with {:ok, _} <- Repo.delete(alert_query) do
-      {:ok, _job} = delete_alert_job(alert_query)
+    with {:ok, _} <- Repo.delete(alert_query),
+         {:ok, _job} <- delete_alert_job(alert_query) do
       {:ok, alert_query}
     else
       {:error, :not_found} -> {:ok, alert_query}
