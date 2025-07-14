@@ -40,16 +40,8 @@
           This endpoint will execute this query on each <code>GET</code> request.
           Declare parameters using <code>@parameter_name</code> and pass it to the endpoint via query parameters <code>?parameter_name=some-value</code>
         </p>
-        <%= textarea(f, :query,
-          placeholder: "select timestamp, event_message from `YourApp.SourceName`",
-          class: "form-control form-control-margin",
-          "phx-change": "parse-query",
-          id: "endpoint-query",
-          value: Map.get(@params_form.params, "query"),
-          style: "height: 20rem"
-        ) %>
-        <%= error_tag(f, :query) %>
-        <.alert :if={@parse_error_message} variant="warning"><%= @parse_error_message %></.alert>
+
+        <.live_component module={LogflareWeb.MonacoEditorComponent} id="endpoint_query" field={f[:query]} endpoints={@endpoints} alerts={@alerts} completions={@completions} />
       </div>
 
       <div class="form-group">
