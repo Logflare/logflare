@@ -9,8 +9,8 @@
             <!-- TODO: TO BE DELETED WHEN UNDERLYING ISSUE IS FOUND -->
             <% %{"timestamp" => timestamp, "event_message" => message} = log.body
 
-            tz_part = DateTimeUtils.humanize_timezone_offset(Timex.Timezone.get(@display_timezone).offset_utc)
-            formatted_timestamp = format_timestamp(timestamp, @display_timezone) <> "#{tz_part}" %>
+            tz_part = DateTimeUtils.humanize_timezone_offset(Timex.Timezone.get(@search_timezone).offset_utc)
+            formatted_timestamp = format_timestamp(timestamp, @search_timezone) <> "#{tz_part}" %>
             <li id={"log-event_#{log.id || log.body["timestamp"]}"} class="tw-group">
               <span class="tw-whitespace-pre-wrap"><mark class="log-datestamp" data-timestamp={timestamp}><%= formatted_timestamp %></mark>&nbsp;<%= message %></span>
               <span class="tw-inline-block tw-text-[0.65rem] tw-align-text-bottom tw-inline-flex tw-flex-row tw-gap-2">

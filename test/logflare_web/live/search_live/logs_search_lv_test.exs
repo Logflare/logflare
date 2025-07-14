@@ -87,13 +87,8 @@ defmodule LogflareWeb.Source.SearchLVTest do
       {:ok, view, _html} = live(conn, ~p"/sources/#{source.id}/search")
 
       assert view
-             |> element(".subhead a", "timezone")
-             |> render_click()
-
-      :timer.sleep(300)
-      assert render(view) =~ "local timezone for your"
-      # default to Etc/UTC
-      assert view |> element(".subhead") |> render() =~ "(+00:00)"
+             |> element("#results-actions_search_timezone option[selected]")
+             |> render() =~ "UTC"
     end
 
     test "subheader - switch dispalyed timezone with dropdown", %{conn: conn, source: source} do
@@ -101,7 +96,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
 
       assert view
              |> element(".subhead form#results-actions")
-             |> render_change(%{display_timezone: "Asia/Singapore"})
+             |> render_change(%{search_timezone: "Asia/Singapore"})
 
       html = view |> element("#logs-list-container") |> render()
 
@@ -114,10 +109,33 @@ defmodule LogflareWeb.Source.SearchLVTest do
       assert view |> element(".subhead") |> render() =~ "(+08:00)"
 
       assert view
-             |> element(".subhead form#results-actions button[phx-value-display_timezone]")
+             |> element(".subhead form#results-actions button[phx-value-search_timezone]")
              |> render_click()
 
       assert view |> element("#logs-list-container") |> render() =~ "+00:00"
+    end
+
+    test "subheader - checkbox is checked when loaded timzone matches user preference", %{
+      conn: conn,
+      user: user,
+      source: source
+    } do
+      {:ok, _user} =
+        Logflare.Users.update_user_with_preferences(user, %{
+          preferences: %{timezone: "Asia/Singapore"}
+        })
+
+      {:ok, view, _html} =
+        live(conn, ~p"/sources/#{source.id}/search?querystring=&tailing=F&tz=Asia/Singapore")
+
+      assert view
+             |> element(
+               ".subhead form#results-actions #results-actions_remember_timezone:checked"
+             )
+
+      assert view
+             |> element("#results-actions_search_timezone option[selected]")
+             |> render() =~ "Asia/Singapore"
     end
 
     test "subheader - load with timezone in url even if it differs from preference", %{
@@ -161,34 +179,6 @@ defmodule LogflareWeb.Source.SearchLVTest do
 
       assert view |> element(".subhead") |> render() =~ "(+08:00)"
       assert render(view) =~ "something123"
-    end
-
-    test "bug: switching tz should not result in query getting cleared", %{
-      conn: conn,
-      source: source
-    } do
-      {:ok, view, _html} =
-        live(
-          conn,
-          ~p"/sources/#{source.id}/search?querystring=something123&tailing%3F=&tz=Singapore"
-        )
-
-      assert view |> element(".subhead a", "timezone") |> render_click() =~ "Preferences"
-
-      # switch to arizona
-      {:error, {:live_redirect, %{to: to}}} =
-        view
-        |> element("form#user-tz-form")
-        |> render_submit(%{user_preferences: %{timezone: "US/Arizona"}})
-
-      assert to =~ "something123"
-      assert to =~ "US%2FArizona"
-
-      # don't follow_redirect because we alter cookies (for team users), load the redireted url directly
-      {:ok, view, _html} = live(conn, to)
-
-      assert render(view) =~ "something123"
-      assert view |> element(".subhead") |> render() =~ "(-07:00)"
     end
   end
 
@@ -778,7 +768,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
     end
   end
 
-  describe "display timezone UI behavior" do
+  describe "timezone dropdown behavior" do
     setup do
       user = insert(:user, %{preferences: %{timezone: "Singapore"}})
       source = insert(:source, user: user)
@@ -788,7 +778,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
 
     setup [:setup_user_session, :setup_source_processes]
 
-    test "when remember is checked display_timezone is set in user preferences",
+    test "when remember is checked timezone is set in user preferences",
          %{
            conn: conn,
            user: user,
@@ -800,58 +790,21 @@ defmodule LogflareWeb.Source.SearchLVTest do
           ~p"/sources/#{source.id}/search?querystring=something123&tailing%3F=&tz=Singapore"
         )
 
-      html =
-        view
-        |> element("#results-actions")
-        |> render_change(%{
-          display_timezone: "Europe/London",
-          remember_timezone: "true"
-        })
+      view
+      |> element("#results-actions")
+      |> render_change(%{
+        search_timezone: "Europe/London",
+        remember_timezone: "true"
+      })
 
       assert view
-             |> has_element?("#results-actions_display_timezone :checked", "Europe/London")
+             |> has_element?("#results-actions_search_timezone :checked", "Europe/London")
 
-      updated_user = Logflare.Repo.reload!(user)
-      assert updated_user.preferences.display_timezone == "Europe/London"
+      assert Logflare.Repo.reload!(user).preferences.timezone == "Europe/London"
     end
 
-    test "when remember is unchecked display_timezone is removed from user preferences",
-         %{
-           conn: conn,
-           user: user,
-           source: source
-         } do
-      {:ok, view, _html} =
-        live(
-          conn,
-          ~p"/sources/#{source.id}/search?querystring=something123&tailing%3F=&tz=Singapore"
-        )
-
-      preferences =
-        user.preferences
-        |> Map.put(:display_timezone, "Europe/London")
-
-      user
-      |> Logflare.Users.update_user_with_preferences(%{preferences: Map.from_struct(preferences)})
-
-      html =
-        view
-        |> element("#results-actions")
-        |> render_change(%{
-          display_timezone: "Europe/London",
-          remember_timezone: "false"
-        })
-
-      assert view
-             |> has_element?("#results-actions_display_timezone :checked", "Europe/London")
-
-      updated_user = Logflare.Repo.get(Logflare.User, user.id)
-      assert updated_user.preferences.display_timezone == nil
-    end
-
-    test "remember checkbox is hidden display_timezone is same as user's timezone", %{
+    test "remember checkbox is hidden when search_timezone is same as user's timezone", %{
       conn: conn,
-      user: user,
       source: source
     } do
       {:ok, view, _html} =
@@ -862,7 +815,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
 
       assert view
              |> element("#results-actions")
-             |> render_change(%{display_timezone: "Singapore"})
+             |> render_change(%{timezone: "Singapore"})
 
       html = render(view)
 
@@ -871,7 +824,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
       refute html =~ "Remember"
     end
 
-    test "when display_timezone is different to user's timezone, show checkbox", %{
+    test "when search_timezone is different to user's timezone, show checkbox", %{
       conn: conn,
       user: user,
       source: source
@@ -882,14 +835,43 @@ defmodule LogflareWeb.Source.SearchLVTest do
           ~p"/sources/#{source.id}/search?querystring=something123&tailing%3F=&tz=Singapore"
         )
 
+      assert user.preferences.timezone == "Singapore"
+
       assert view
              |> element("#results-actions")
-             |> render_change(%{display_timezone: "America/New_York"})
+             |> render_change(%{search_timezone: "America/New_York"})
 
       html = render(view)
 
       assert html =~ "name=\"remember_timezone\""
       assert html =~ "Remember"
+    end
+
+    test "bug: switching tz should not result in query getting cleared", %{
+      conn: conn,
+      source: source
+    } do
+      {:ok, view, _html} =
+        live(
+          conn,
+          ~p"/sources/#{source.id}/search?querystring=something123&tailing%3F=&tz=Singapore"
+        )
+
+      # switch to arizona
+      assert view
+             |> element("#results-actions")
+             |> render_change(%{search_timezone: "US/Arizona"})
+
+      to = assert_patch(view)
+
+      assert to =~ "something123"
+      assert to =~ "US%2FArizona"
+
+      # don't follow_redirect because we alter cookies (for team users), load the redireted url directly
+      {:ok, view, _html} = live(conn, to)
+
+      assert render(view) =~ "something123"
+      assert view |> element(".subhead") |> render() =~ "(-07:00)"
     end
   end
 

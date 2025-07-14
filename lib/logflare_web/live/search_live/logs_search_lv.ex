@@ -26,7 +26,7 @@ defmodule LogflareWeb.Source.SearchLV do
   import Logflare.Logs.Search.Utils
   import LogflareWeb.SearchLV.Utils
   import Logflare.Utils, only: [iso_timestamp: 1]
-  import LogflareWeb.SearchLive.DisplayTimezoneComponent
+  import LogflareWeb.SearchLive.TimezoneComponent
 
   require Logger
   embed_templates "templates/*"
@@ -62,7 +62,6 @@ defmodule LogflareWeb.Source.SearchLV do
       team_user: team_user,
       search_tip: gen_search_tip(),
       user_timezone_from_connect_params: nil,
-      display_timezone: fetch_display_timezone(user, params),
       search_timezone: Map.get(params, "tz", "Etc/UTC"),
       # loading states
       loading: true,
@@ -190,27 +189,53 @@ defmodule LogflareWeb.Source.SearchLV do
 
   def handle_event(
         "results-action-change",
-        %{"remember_timezone" => remember?, "display_timezone" => display_timezone},
+        %{"remember_timezone" => "true", "search_timezone" => timezone},
         socket
       ) do
-    %{user: user} = socket.assigns
+    %{user: user, search_timezone: search_timezone} = socket.assigns
 
     preferences =
       user.preferences
-      |> Map.update(:display_timezone, nil, fn _ ->
-        if remember? == "true", do: display_timezone, else: nil
-      end)
+      |> Map.from_struct()
+      |> Map.put(:timezone, timezone)
 
-    {:ok, user} =
-      Users.update_user_with_preferences(user, %{
-        preferences: Map.from_struct(preferences)
-      })
+    socket =
+      case Users.update_user_with_preferences(user, %{preferences: preferences}) do
+        {:ok, user} ->
+          socket
+          |> assign(user: user)
+          |> put_flash(:info, "Timezone preference saved")
 
-    {:noreply, assign(socket, user: user, display_timezone: display_timezone)}
+        {:error, _changeset} ->
+          socket
+          |> put_flash(:error, "Timezone preference could not be saved")
+      end
+
+    if timezone == search_timezone do
+      {:noreply, socket}
+    else
+      handle_event(
+        "results-action-change",
+        %{"search_timezone" => timezone},
+        socket
+      )
+    end
   end
 
-  def handle_event("results-action-change", %{"display_timezone" => tz}, socket) do
-    {:noreply, socket |> assign(:display_timezone, tz)}
+  def handle_event("results-action-change", %{"search_timezone" => tz}, socket) do
+    source = socket.assigns.source
+    maybe_cancel_tailing_timer(socket)
+    SearchQueryExecutor.maybe_cancel_query(source.token)
+
+    socket =
+      socket
+      |> assign(:search_timezone, tz)
+      |> assign_new_search_with_qs(
+        %{querystring: socket.assigns.querystring, tailing?: socket.assigns.tailing?},
+        socket.assigns.source.bq_table_schema
+      )
+
+    {:noreply, socket |> assign(:timezone, tz)}
   end
 
   def handle_event(
@@ -391,21 +416,6 @@ defmodule LogflareWeb.Source.SearchLV do
     {:noreply, socket}
   end
 
-  def handle_event("toggle_local_time", _metadata, socket) do
-    maybe_cancel_tailing_timer(socket)
-    SearchQueryExecutor.cancel_query(socket.assigns.executor_pid)
-
-    socket =
-      socket
-      |> assign(:use_local_time, not socket.assigns.use_local_time)
-      |> assign_new_search_with_qs(
-        %{querystring: socket.assigns.querystring, tailing?: socket.assigns.tailing?},
-        socket.assigns.source.bq_table_schema
-      )
-
-    {:noreply, socket}
-  end
-
   def handle_event("save_search" = ev, _, socket) do
     %{
       source: source,
@@ -469,7 +479,7 @@ defmodule LogflareWeb.Source.SearchLV do
         Map.update!(
           la,
           "timestamp",
-          &BqSchemaHelpers.format_timestamp(&1, socket.assigns.display_timezone)
+          &BqSchemaHelpers.format_timestamp(&1, socket.assigns.search_timezone)
         )
       end)
 
@@ -601,6 +611,8 @@ defmodule LogflareWeb.Source.SearchLV do
     # source disable_tailing overrides search tailing
     tailing? = if socket.assigns.source.disable_tailing, do: false, else: tailing?
 
+    tz = socket.assigns.search_timezone
+
     case Lql.decode(qs, bq_table_schema) do
       {:ok, lql_rules} ->
         lql_rules = Lql.Utils.put_new_chart_rule(lql_rules, Lql.Utils.default_chart_rule())
@@ -612,7 +624,7 @@ defmodule LogflareWeb.Source.SearchLV do
         |> clear_flash()
         |> assign(:lql_rules, lql_rules)
         |> assign(:querystring, qs)
-        |> push_patch_with_params(%{querystring: qs, tailing?: tailing?})
+        |> push_patch_with_params(%{querystring: qs, tz: tz, tailing?: tailing?})
 
       {:error, error} ->
         error_socket(socket, error)
@@ -638,12 +650,10 @@ defmodule LogflareWeb.Source.SearchLV do
       tz_param != nil ->
         socket
         |> assign(:search_timezone, tz_param)
-        |> assign(:display_timezone, tz_param)
 
       team_user && team_user.preferences ->
         socket
         |> assign(:search_timezone, team_user.preferences.timezone)
-        |> assign(:display_timezone, team_user.preferences.timezone)
 
       team_user && is_nil(team_user.preferences) ->
         {:ok, team_user} =
@@ -652,7 +662,6 @@ defmodule LogflareWeb.Source.SearchLV do
         socket
         |> assign(:team_user, team_user)
         |> assign(:search_timezone, tz_connect)
-        |> assign(:display_timezone, tz_connect)
         |> put_flash(
           :info,
           "Your timezone setting for team #{team_user.team.name} sources was set to #{tz_connect}. You can change it using the 'timezone' link in the top menu."
@@ -661,7 +670,6 @@ defmodule LogflareWeb.Source.SearchLV do
       user.preferences ->
         socket
         |> assign(:search_timezone, user.preferences.timezone)
-        |> assign(:display_timezone, user.preferences.timezone)
 
       is_nil(user.preferences) ->
         {:ok, user} =
@@ -673,7 +681,7 @@ defmodule LogflareWeb.Source.SearchLV do
         |> assign(:user, user)
         |> put_flash(
           :info,
-          "Your timezone was set to #{tz_connect}. You can change it using the 'timezone' link in the top menu."
+          "Your timezone was set to #{tz_connect}. You can change it using the 'timezone' dropdown in the top menu."
         )
     end
     |> then(fn
@@ -939,10 +947,4 @@ defmodule LogflareWeb.Source.SearchLV do
       true -> {:ok, socket}
     end
   end
-
-  defp fetch_display_timezone(%{preferences: %{display_timezone: display_timezone}}, _params)
-       when not is_nil(display_timezone),
-       do: display_timezone
-
-  defp fetch_display_timezone(_user, params), do: Map.get(params, "tz", "Etc/UTC")
 end

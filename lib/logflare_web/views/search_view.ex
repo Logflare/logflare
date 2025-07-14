@@ -5,7 +5,7 @@ defmodule LogflareWeb.SearchView do
   import LogflareWeb.ModalLiveHelpers
   import Logflare.Lql.Utils
   import Logflare.Utils, only: [iso_timestamp: 1]
-  import LogflareWeb.SearchLive.DisplayTimezoneComponent
+  import LogflareWeb.SearchLive.TimezoneComponent
   alias Logflare.DateTimeUtils
   alias LogflareWeb.Search
 end

@@ -22,7 +22,7 @@
       ) %>/search
     </h5>
     <div class="log-settings tw-justify-between tw-mt-2">
-      <.display_timezone preferences={@user.preferences} display_timezone={@display_timezone} search_timezone={@search_timezone} />
+      <.timezone user_preferences={@user.preferences} search_timezone={@search_timezone} />
       <ul>
         <li>
           <a href="javascript:Source.scrollOverflowBottom();">
@@ -75,7 +75,6 @@
       search_op_log_events: @search_op_log_events,
       last_query_completed_at: @last_query_completed_at,
       search_timezone: @search_timezone,
-      display_timezone: @display_timezone,
       loading: @loading,
       source: @source
     ) %>
@@ -87,7 +86,6 @@
         data: if(@search_op_log_aggregates, do: @search_op_log_aggregates.rows, else: []),
         loading: @chart_loading,
         chart_period: get_chart_period(@lql_rules, "minute"),
-        display_timezone: @display_timezone,
         chart_data_shape_id:
           if(@search_op_log_aggregates,
             do: @search_op_log_aggregates.chart_data_shape_id,
