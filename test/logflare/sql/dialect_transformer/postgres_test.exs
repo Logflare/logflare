@@ -18,8 +18,8 @@ defmodule Logflare.Sql.DialectTransformer.PostgresTest do
 
   describe "transform_source_name/2" do
     test "delegates to PostgresAdaptor.table_name/1" do
-      user = insert(:user)
-      source = insert(:source, name: "test_source", user: user)
+      user = build(:user)
+      source = build(:source, name: "test_source", user: user)
 
       data = %{
         sources: [source],
@@ -33,9 +33,9 @@ defmodule Logflare.Sql.DialectTransformer.PostgresTest do
     end
 
     test "finds correct source by name from multiple sources" do
-      user = insert(:user)
-      source1 = insert(:source, name: "source_one", user: user)
-      source2 = insert(:source, name: "source_two", user: user)
+      user = build(:user)
+      source1 = build(:source, name: "source_one", user: user)
+      source2 = build(:source, name: "source_two", user: user)
 
       data = %{
         sources: [source1, source2],
@@ -49,8 +49,8 @@ defmodule Logflare.Sql.DialectTransformer.PostgresTest do
     end
 
     test "handles source with special characters in token" do
-      user = insert(:user)
-      source = insert(:source, name: "special_source", user: user)
+      user = build(:user)
+      source = build(:source, name: "special_source", user: user)
 
       data = %{
         sources: [source],
