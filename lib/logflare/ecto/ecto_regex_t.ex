@@ -1,6 +1,36 @@
 defmodule Ecto.Regex do
   @moduledoc """
-  Regex type for Ecto
+  An Ecto type for storing regular expressions in the database. It accepts both string patterns and `Regex` structs.
+
+  ## Usage in Schemas
+
+  ```elixir
+  defmodule MyApp.Filter do
+    use Ecto.Schema
+
+    schema "filters" do
+      field :name, :string
+      field :pattern, Ecto.Regex
+    end
+  end
+  ```
+
+  ## Database Migration
+
+  The underlying database type for this Ecto type is `:binary`, which allows for
+  efficient storage of compiled regex patterns.
+
+  ```elixir
+  defmodule MyApp.Repo.Migrations.CreateFilters do
+    def change do
+      create table(:filters) do
+        add :name, :string, null: false
+        add :pattern, :binary, null: false
+        timestamps()
+      end
+    end
+  end
+  ```
   """
 
   @behaviour Ecto.Type
@@ -15,7 +45,7 @@ defmodule Ecto.Regex do
     end
   end
 
-  def cast(%Regex{} = value), do: value
+  def cast(%Regex{} = value), do: {:ok, value}
   def cast(_), do: :error
 
   @spec load(any) :: :error | {:ok, any}
