@@ -172,7 +172,10 @@ observer:
 	erl -sname observer -hidden -setcookie ${ERL_COOKIE} -run observer
 
 __start__:
-	@env $$(cat ${ENV_FILE} | xargs) PORT=${PORT} LOGFLARE_GRPC_PORT=${LOGFLARE_GRPC_PORT} LOGFLARE_SUPABASE_MODE=${LOGFLARE_SUPABASE_MODE} iex --sname ${ERL_NAME} --cookie ${ERL_COOKIE} -S mix phx.server
+	@if [ ! -f ${ENV_FILE} ]; then \
+		touch ${ENV_FILE}; \
+	fi
+	@env $$(cat .dev.env ${ENV_FILE} | xargs) PORT=${PORT} LOGFLARE_GRPC_PORT=${LOGFLARE_GRPC_PORT} LOGFLARE_SUPABASE_MODE=${LOGFLARE_SUPABASE_MODE} iex --sname ${ERL_NAME} --cookie ${ERL_COOKIE} -S mix phx.server
 
 
 migrate:
