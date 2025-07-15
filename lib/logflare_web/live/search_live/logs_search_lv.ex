@@ -21,7 +21,6 @@ defmodule LogflareWeb.Source.SearchLV do
   import LogflareWeb.ModalLiveHelpers
   import Logflare.Lql.Utils
   alias Logflare.DateTimeUtils
-  alias LogflareWeb.Search
 
   import Logflare.Logs.Search.Utils
   import LogflareWeb.SearchLV.Utils
@@ -223,9 +222,8 @@ defmodule LogflareWeb.Source.SearchLV do
   end
 
   def handle_event("results-action-change", %{"search_timezone" => tz}, socket) do
-    source = socket.assigns.source
     maybe_cancel_tailing_timer(socket)
-    SearchQueryExecutor.maybe_cancel_query(source.token)
+    SearchQueryExecutor.cancel_query(socket.assigns.executor_pid)
 
     socket =
       socket
