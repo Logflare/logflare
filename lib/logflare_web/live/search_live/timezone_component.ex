@@ -4,7 +4,6 @@ defmodule LogflareWeb.SearchLive.TimezoneComponent do
 
   attr :search_timezone, :string, required: true
   attr :user_preferences, :map, required: true
-  attr :remember_timezone, :boolean, default: false
 
   def timezone(assigns) do
     ~H"""
