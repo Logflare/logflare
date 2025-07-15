@@ -824,7 +824,7 @@ defmodule Logflare.Sql.DialectTranslation do
     if normalized_identifier do
       {"ExprWithAlias",
        %{
-         "alias" => %{"quote_style" => nil, "value" => get_identifier_alias(identifier)},
+         "alias" => %{"quote_style" => nil, "value" => normalized_identifier},
          "expr" => traverse_convert_identifiers(identifier, data)
        }}
     else
@@ -943,13 +943,13 @@ defmodule Logflare.Sql.DialectTranslation do
 
   defp numeric_value?(%{"Value" => %{"Number" => _}}), do: true
   defp numeric_value?(_), do: false
-  defp json_access?(%{"Nested" => %{"JsonAccess" => _}}), do: true
+
+  defp json_access?(%{"Nested" => nested}), do: json_access?(nested)
   defp json_access?(%{"JsonAccess" => _}), do: true
 
-  defp json_access?(%{"Nested" => %{"BinaryOp" => %{"op" => op}}}),
-    do: op in ["Arrow", "LongArrow"]
+  defp json_access?(%{"BinaryOp" => %{"op" => op}}),
+    do: op in ["Arrow", "LongArrow", "HashLongArrow", "HashArrow"]
 
-  defp json_access?(%{"BinaryOp" => %{"op" => op}}), do: op in ["Arrow", "LongArrow"]
   defp json_access?(_), do: false
 
   defp timestamp_identifier?(%{"Identifier" => %{"value" => "timestamp"}}), do: true

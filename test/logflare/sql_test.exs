@@ -1170,6 +1170,23 @@ defmodule Logflare.SqlTest do
       assert Sql.Parser.parse("postgres", translated) == Sql.Parser.parse("postgres", pg_query)
     end
 
+    test "translate operator to numeric when nested field reference present" do
+      bq_query = ~s"""
+      select count(t.id) as count  from `my.source` t
+      cross join unnest(t.col) as c
+      where c.nested > 200
+      """
+
+      pg_query = ~s"""
+      select count((t.body -> 'id')) as count  from "my.source" t
+      where ((body #>> '{col,nested}')::jsonb #>> '{}')::numeric > 200
+      """
+
+      {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
+      assert Sql.Parser.parse("postgres", translated) == Sql.Parser.parse("postgres", pg_query)
+    end
+
+
     # functions metrics
     # test "APPROX_QUANTILES is translated"
     # tes "offset() and indexing is translated"
