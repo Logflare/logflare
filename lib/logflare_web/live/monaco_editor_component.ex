@@ -117,7 +117,6 @@ defmodule LogflareWeb.MonacoEditorComponent do
     {:noreply, socket}
   end
 
-  def parse_query(query_string, endpoints, alerts)
   @spec parse_query(String.t(), [%Logflare.Endpoints.Query{}], [%Logflare.Alerting.AlertQuery{}]) ::
           :ok | {:error, String.t()}
   def parse_query("", _endpoints, _alerts), do: :ok
