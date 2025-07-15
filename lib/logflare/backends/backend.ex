@@ -41,7 +41,7 @@ defmodule Logflare.Backends.Backend do
       on_replace: :delete
     )
 
-    has_many(:queries, Query)
+    has_many(:endpoint_queries, Query)
 
     field(:register_for_ingest, :boolean, virtual: true, default: true)
     field :metadata, :map
