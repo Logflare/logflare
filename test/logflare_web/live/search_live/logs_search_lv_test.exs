@@ -437,7 +437,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
       :timer.sleep(500)
 
       assert view
-             |> element("#logs-list li a[href^='/sources']", "permalink")
+             |> element("#logs-list li:first-of-type a[href^='/sources']", "permalink")
              |> render() =~ ~r/timestamp=\d{4}-\d{2}-\d{2}/
 
       assert view
