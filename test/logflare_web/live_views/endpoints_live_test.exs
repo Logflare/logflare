@@ -127,7 +127,6 @@ defmodule LogflareWeb.EndpointsLiveTest do
     test "new endpoint", %{conn: conn} do
       {:ok, view, _html} = live(conn, "/endpoints/new")
 
-      # validates the changes
       valid_query = "select current_timestamp() as my_time"
       invalid_query = "bad_query"
 
