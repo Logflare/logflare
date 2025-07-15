@@ -40,6 +40,7 @@ defmodule Logflare.BqRepo do
         useQueryCache: @use_query_cache,
         parameterMode: "POSITIONAL",
         queryParameters: params,
+        jobCreationMode: "JOB_CREATION_OPTIONAL",
         dryRun: false,
         timeoutMs: @query_request_timeout,
         labels: %{
