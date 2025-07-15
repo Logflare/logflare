@@ -9,6 +9,7 @@ defmodule LogflareWeb.AlertsLive do
   alias Logflare.Alerting
   alias Logflare.Alerting.AlertQuery
   alias Logflare.Backends
+  alias Logflare.Endpoints
 
   embed_templates("actions/*", suffix: "_action")
   embed_templates("components/*")
@@ -51,6 +52,7 @@ defmodule LogflareWeb.AlertsLive do
       |> assign(:params_form, to_form(%{"query" => "", "params" => %{}}, as: "run"))
       |> assign(:declared_params, %{})
       |> assign(:show_add_backend_form, false)
+      |> assign_endpoints_and_sources()
 
     {:ok, socket}
   end
@@ -303,6 +305,16 @@ defmodule LogflareWeb.AlertsLive do
     alerts = Alerting.list_alert_queries(assigns.user)
 
     assign(socket, :alerts, alerts)
+  end
+
+  defp assign_endpoints_and_sources(socket) do
+    %{user_id: user_id} = socket.assigns
+
+    socket
+    |> assign(
+      sources: Logflare.Sources.list_sources_by_user(user_id),
+      endpoints: Endpoints.list_endpoints_by(user_id: user_id)
+    )
   end
 
   defp upsert_alert(alert, user, params) do

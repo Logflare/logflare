@@ -55,7 +55,7 @@ defmodule LogflareWeb.EndpointsLive do
       |> assign(:params_form, to_form(%{"query" => "", "params" => %{}}, as: "run"))
       |> assign(:declared_params, %{})
       |> assign(:alerts, alerts)
-      |> assign_completions()
+      |> assign_sources()
       |> assign(:parsed_result, nil)
 
     {:ok, socket}
@@ -178,34 +178,6 @@ defmodule LogflareWeb.EndpointsLive do
     end
   end
 
-  def handle_event(
-        "parse-query",
-        %{"endpoint" => %{"query" => query_string}},
-        socket
-      ) do
-    endpoints =
-      if socket.assigns.show_endpoint,
-        do: Enum.filter(socket.assigns.endpoints, &(&1.id != socket.assigns.show_endpoint.id)),
-        else: socket.assigns.endpoints
-
-    socket =
-      case Endpoints.parse_query_string(:bq_sql, query_string, endpoints, socket.assigns.alerts) do
-        {:ok, parsed_result} ->
-          socket
-          |> assign(:parse_error_message, nil)
-          |> assign(:parsed_result, parsed_result)
-          |> assign_updated_params_form(parsed_result.parameters, parsed_result.expanded_query)
-
-        {:error, err} ->
-          error = if(is_binary(err), do: err, else: inspect(err))
-
-          socket
-          |> assign(:parse_error_message, error)
-      end
-
-    {:noreply, socket}
-  end
-
   def handle_event("apply-beta", _params, %{assigns: %{user: user}} = socket) do
     Logger.debug("Endpoints application submitted.", %{user: %{id: user.id, email: user.email}})
 
@@ -231,15 +203,12 @@ defmodule LogflareWeb.EndpointsLive do
     assign(socket, :endpoints, endpoints)
   end
 
-  defp assign_completions(socket) do
-    %{user_id: user_id, alerts: alerts, endpoints: endpoints} = socket.assigns
+  defp assign_sources(socket) do
+    %{user_id: user_id} = socket.assigns
 
     sources = Logflare.Sources.list_sources_by_user(user_id)
 
-    completions =
-      [sources, endpoints, alerts] |> List.flatten() |> Enum.map(fn item -> item.name end)
-
-    assign(socket, :completions, completions)
+    assign(socket, sources: sources)
   end
 
   defp upsert_query(show_endpoint, user, params) do

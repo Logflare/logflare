@@ -17,8 +17,8 @@ defmodule LogflareWeb.MonacoEditorComponentTest do
           id: "test-editor",
           field: assigns.form[:query],
           endpoints: [],
-          alerts: [],
-          completions: []
+          sources: [],
+          alerts: []
         })
 
       assert html =~ ~s(phx-hook="CodeEditorHook")
@@ -29,13 +29,13 @@ defmodule LogflareWeb.MonacoEditorComponentTest do
         render_component(MonacoEditorComponent, %{
           id: "test-editor",
           field: assigns.form[:query],
-          endpoints: [],
-          alerts: [],
-          completions: ["First", "Second"]
+          endpoints: [%{id: "endpoint1", name: "Endpoint 1"}],
+          sources: [%{id: "source1", name: "Source 1"}],
+          alerts: []
         })
 
       assert html =~ ~s(<script phx-update="ignore" id="query_completions">)
-      assert html =~ ~s(const completions = ["First","Second"])
+      assert html =~ ~s(const completions = ["Source 1","Endpoint 1"])
     end
 
     test "renders with parser error message set", %{assigns: assigns} do
@@ -44,8 +44,8 @@ defmodule LogflareWeb.MonacoEditorComponentTest do
           id: "test-editor",
           field: assigns.form[:query],
           endpoints: [],
+          sources: [],
           alerts: [],
-          completions: [],
           parse_error_message: "Invalid SQL syntax"
         })
 
@@ -61,8 +61,8 @@ defmodule LogflareWeb.MonacoEditorComponentTest do
           id: "test-editor",
           field: form[:query],
           endpoints: [],
-          alerts: [],
-          completions: []
+          sources: [],
+          alerts: []
         })
 
       assert html =~ "SELECT * FROM MyApp.Logs"

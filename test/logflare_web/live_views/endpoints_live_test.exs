@@ -127,6 +127,18 @@ defmodule LogflareWeb.EndpointsLiveTest do
     test "new endpoint", %{conn: conn} do
       {:ok, view, _html} = live(conn, "/endpoints/new")
 
+      valid_query = "select current_timestamp() as my_time"
+      invalid_query = "bad_query"
+
+      # triggering event handler directly since Monaco does this via JavaScript
+      assert view
+             |> with_target("#endpoint_query_editor")
+             |> render_hook("parse-query", %{"value" => invalid_query}) =~ "SQL Parse error!"
+
+      refute view
+             |> with_target("#endpoint_query_editor")
+             |> render_hook("parse-query", %{"value" => valid_query}) =~ "SQL Parse error!"
+
       # saves the change
       assert view
              |> element("form", "Save")

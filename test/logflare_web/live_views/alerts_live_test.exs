@@ -82,6 +82,22 @@ defmodule LogflareWeb.AlertsLiveTest do
       assert render(view) =~ alert_query.name
     end
 
+    test "validates query", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/alerts/new")
+
+      valid_query = "select current_timestamp() as my_time"
+      invalid_query = "bad_query"
+
+      # triggering event handler directly since Monaco does this via JavaScript
+      assert view
+             |> with_target("#alert_query_editor")
+             |> render_hook("parse-query", %{"value" => invalid_query}) =~ "SQL Parse error!"
+
+      refute view
+             |> with_target("#alert_query_editor")
+             |> render_hook("parse-query", %{"value" => valid_query}) =~ "SQL Parse error!"
+    end
+
     test "show for nonexistent query", %{conn: conn} do
       {:error, {:live_redirect, %{flash: %{"info" => "Alert not found" <> _}}}} =
         live(conn, ~p"/alerts/123")
