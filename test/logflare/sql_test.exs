@@ -680,7 +680,7 @@ defmodule Logflare.SqlTest do
           %{
             "event_message" => "something",
             "test" => "data",
-            "metadata" => %{"nested" => "value"}
+            "metadata" => %{"nested" => "value", "num" => 123}
           },
           %{source: source}
         )
@@ -715,6 +715,30 @@ defmodule Logflare.SqlTest do
       assert {:ok, transformed} = Sql.transform(:pg_sql, translated, user)
       # execute it on PG
       assert {:ok, [%{"test" => "data", "nested" => "value"}]} =
+               PostgresAdaptor.execute_query(backend, transformed)
+    end
+
+    test "translate operator to numeric when nested field reference present", %{
+      backend: backend,
+      user: user
+    } do
+      bq_query = ~s"""
+      select count(t.id) as count  from `c.d.e` t
+      cross join unnest(t.metadata) as m
+      where m.num > 100
+      """
+
+      pg_query = ~s"""
+      select count((t.body -> 'id')) as count  from "c.d.e" t
+      where ((body #>> '{metadata,num}')::jsonb #>> '{}')::numeric > 100
+      """
+
+      {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
+      assert Sql.Parser.parse("postgres", translated) == Sql.Parser.parse("postgres", pg_query)
+
+      assert {:ok, transformed} = Sql.transform(:pg_sql, translated, user)
+
+      assert {:ok, [%{"count" => 1}]} =
                PostgresAdaptor.execute_query(backend, transformed)
     end
 
@@ -1164,22 +1188,6 @@ defmodule Logflare.SqlTest do
         and 123 = (t.col::jsonb #>> '{}')::numeric
         and 123 > (t.col::jsonb #>> '{}')::numeric
         and 123 < (t.col::jsonb #>> '{}')::numeric
-      """
-
-      {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
-      assert Sql.Parser.parse("postgres", translated) == Sql.Parser.parse("postgres", pg_query)
-    end
-
-    test "translate operator to numeric when nested field reference present" do
-      bq_query = ~s"""
-      select count(t.id) as count  from `my.source` t
-      cross join unnest(t.col) as c
-      where c.nested > 200
-      """
-
-      pg_query = ~s"""
-      select count((t.body -> 'id')) as count  from "my.source" t
-      where ((body #>> '{col,nested}')::jsonb #>> '{}')::numeric > 200
       """
 
       {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
