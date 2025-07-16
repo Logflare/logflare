@@ -632,7 +632,9 @@ defmodule Logflare.Sql.DialectTranslation do
   end
 
   defp select_json_operator(data, is_complex_path) do
-    need_text = Map.get(data, :in_between, false) or Map.get(data, :in_binaryop, false)
+    need_text =
+      Map.get(data, :in_between, false) or Map.get(data, :in_binaryop, false) or
+        Map.get(data, :in_inlist, false)
 
     case {is_complex_path, need_text} do
       {true, true} -> "HashLongArrow"
