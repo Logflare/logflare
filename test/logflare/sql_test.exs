@@ -742,6 +742,34 @@ defmodule Logflare.SqlTest do
                PostgresAdaptor.execute_query(backend, transformed)
     end
 
+    test "REGEXP_CONTAINS is translated", %{backend: backend, user: user} do
+      bq_query = ~s|select regexp_contains("string", "str") as has_substring|
+
+      pg_query = ~s|select 'string' ~ 'str' as has_substring|
+
+      {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
+      assert Sql.Parser.parse("postgres", translated) == Sql.Parser.parse("postgres", pg_query)
+
+      assert {:ok, transformed} = Sql.transform(:pg_sql, translated, user)
+
+      assert {:ok, [%{"has_substring" => true}]} =
+               PostgresAdaptor.execute_query(backend, transformed)
+    end
+
+    test "REGEXP_CONTAINS is translated with field reference", %{backend: backend, user: user} do
+      bq_query = ~s|select regexp_contains(t.test, "str") as has_substring from `c.d.e` t|
+
+      pg_query = ~s|select (t.body ->> 'test') ~ 'str' as has_substring from "c.d.e" t|
+
+      {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
+      assert Sql.Parser.parse("postgres", translated) == Sql.Parser.parse("postgres", pg_query)
+
+      assert {:ok, transformed} = Sql.transform(:pg_sql, translated, user)
+
+      assert {:ok, [%{"has_substring" => false}]} =
+               PostgresAdaptor.execute_query(backend, transformed)
+    end
+
     test "entities backtick to double quote" do
       bq_query = """
       select test from `c.d.e`
@@ -995,15 +1023,6 @@ defmodule Logflare.SqlTest do
       # determines sequence of parameters
       assert {:ok, %{1 => "test", 2 => "test_another", 4 => "test"}} =
                Sql.parameter_positions(bq_query)
-    end
-
-    test "REGEXP_CONTAINS is translated" do
-      bq_query = ~s|select regexp_contains("string", "str") as has_substring|
-
-      pg_query = ~s|select 'string' ~ 'str' as has_substring|
-
-      {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
-      assert Sql.Parser.parse("postgres", translated) == Sql.Parser.parse("postgres", pg_query)
     end
 
     test "malformed table name when global bq project id is not set" do

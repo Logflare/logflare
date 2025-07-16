@@ -128,7 +128,7 @@ defmodule Logflare.Sql.DialectTranslation do
     AstUtils.transform_recursive(ast, nil, &do_bq_to_pg_convert_functions/2)
   end
 
-  defp do_bq_to_pg_convert_functions({k, v} = kv, _data)
+  defp do_bq_to_pg_convert_functions({k, v} = kv, data)
        when k in ["Function", "AggregateExpressionWithFilter"] do
     function_name = v |> get_in(["name", Access.at(0), "value"]) |> String.downcase()
 
@@ -136,7 +136,16 @@ defmodule Logflare.Sql.DialectTranslation do
       "regexp_contains" ->
         string =
           get_function_arg(v, 0)
-          |> update_in(["Value"], &%{"SingleQuotedString" => &1["DoubleQuotedString"]})
+          |> case do
+            %{"CompoundIdentifier" => _arr} = identifier ->
+              identifier
+
+            %{"Identifier" => _arr} = identifier ->
+              identifier
+
+            literal ->
+              update_in(literal, ["Value"], &%{"SingleQuotedString" => &1["DoubleQuotedString"]})
+          end
 
         pattern =
           get_function_arg(v, 1)
