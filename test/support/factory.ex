@@ -62,7 +62,7 @@ defmodule Logflare.Factory do
   def source_factory do
     %Source{
       name: TestUtils.random_string(10),
-      token: TestUtils.gen_uuid(),
+      token: TestUtils.gen_uuid_atom(),
       rules: [],
       favorite: false,
       metrics: %{

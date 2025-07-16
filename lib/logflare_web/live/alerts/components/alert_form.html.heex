@@ -33,14 +33,7 @@
         <p>
           This alert will execute this query periodically. If a non-zero number of rows are returned from this query, the notification will be triggered.
         </p>
-        <%= textarea(f, :query,
-          placeholder: "select timestamp, event_message from `YourApp.SourceName` \nwhere regexp_contains(event_message, 'error')",
-          class: "form-control form-control-margin",
-          id: "alert-query",
-          style: "height: 20rem"
-        ) %>
-        <%= error_tag(f, :query) %>
-        <.alert :if={@parse_error_message} variant="warning"><%= @parse_error_message %></.alert>
+        <.live_component module={LogflareWeb.MonacoEditorComponent} id="alert_query_editor" field={f[:query]} endpoints={@endpoints} alerts={@alerts} sources={@sources} />
       </div>
 
       <.header_with_anchor text="Query Schedule" />

@@ -123,9 +123,11 @@ defmodule Logflare.TestUtils do
     Float.to_string(exp_first_part) <> "E9"
   end
 
-  def gen_uuid do
-    Ecto.UUID.generate()
-  end
+  @spec gen_uuid() :: String.t()
+  def gen_uuid, do: Ecto.UUID.generate()
+
+  @spec gen_uuid_atom() :: atom()
+  def gen_uuid_atom, do: gen_uuid() |> String.to_atom()
 
   @spec gen_email() :: String.t()
   def gen_email, do: "#{random_string()}@#{random_string()}.com"

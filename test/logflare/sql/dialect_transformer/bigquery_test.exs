@@ -9,7 +9,7 @@ defmodule Logflare.Sql.DialectTransformer.BigQueryTest do
   @user_dataset_id "user-dataset-id"
 
   setup do
-    insert(:plan)
+    build(:plan)
     values = Application.get_env(:logflare, Logflare.Google)
     to_put = Keyword.put(values, :project_id, @logflare_project_id)
     Application.put_env(:logflare, Logflare.Google, to_put)
@@ -33,8 +33,8 @@ defmodule Logflare.Sql.DialectTransformer.BigQueryTest do
 
   describe "transform_source_name/2" do
     test "uses logflare project when user project is nil" do
-      user = insert(:user, bigquery_project_id: nil, bigquery_dataset_id: nil)
-      source = insert(:source, name: "test_source", user: user)
+      user = build(:user, bigquery_project_id: nil, bigquery_dataset_id: nil)
+      source = build(:source, name: "test_source", user: user)
 
       data = %{
         sources: [source],
@@ -51,12 +51,12 @@ defmodule Logflare.Sql.DialectTransformer.BigQueryTest do
 
     test "uses user project when configured" do
       user =
-        insert(:user,
+        build(:user,
           bigquery_project_id: @user_project_id,
           bigquery_dataset_id: @user_dataset_id
         )
 
-      source = insert(:source, name: "test_source", user: user)
+      source = build(:source, name: "test_source", user: user)
 
       data = %{
         sources: [source],
@@ -72,8 +72,8 @@ defmodule Logflare.Sql.DialectTransformer.BigQueryTest do
     end
 
     test "sanitizes hyphens in tokens" do
-      user = insert(:user, bigquery_project_id: nil, bigquery_dataset_id: nil)
-      source = insert(:source, name: "hyphenated_source", user: user)
+      user = build(:user, bigquery_project_id: nil, bigquery_dataset_id: nil)
+      source = build(:source, name: "hyphenated_source", user: user)
 
       data = %{
         sources: [source],
@@ -89,9 +89,9 @@ defmodule Logflare.Sql.DialectTransformer.BigQueryTest do
     end
 
     test "finds correct source by name" do
-      user = insert(:user, bigquery_project_id: nil, bigquery_dataset_id: nil)
-      source1 = insert(:source, name: "source_one", user: user)
-      source2 = insert(:source, name: "source_two", user: user)
+      user = build(:user, bigquery_project_id: nil, bigquery_dataset_id: nil)
+      source1 = build(:source, name: "source_one", user: user)
+      source2 = build(:source, name: "source_two", user: user)
 
       data = %{
         sources: [source1, source2],
@@ -165,7 +165,7 @@ defmodule Logflare.Sql.DialectTransformer.BigQueryTest do
   describe "build_transformation_data/2" do
     test "builds data with user's BigQuery configuration" do
       user =
-        insert(:user,
+        build(:user,
           bigquery_project_id: @user_project_id,
           bigquery_dataset_id: @user_dataset_id
         )
@@ -188,7 +188,7 @@ defmodule Logflare.Sql.DialectTransformer.BigQueryTest do
     end
 
     test "preserves base data fields" do
-      user = insert(:user, bigquery_project_id: nil, bigquery_dataset_id: nil)
+      user = build(:user, bigquery_project_id: nil, bigquery_dataset_id: nil)
 
       base_data = %{
         sources: [:source1],

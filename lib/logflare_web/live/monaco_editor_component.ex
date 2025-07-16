@@ -1,15 +1,43 @@
 defmodule LogflareWeb.MonacoEditorComponent do
   use LogflareWeb, :live_component
 
+  @moduledoc """
+  Provides a Monaco Editor component for creating LQL queries.
+
+  Expects following attributes:
+    - `field`: a `Phoenix.HTML.FormField` for the query.
+    - `endpoints`: A list of endpoints, used for validating LQL queries and completions.
+    - `alerts`: A list of alerts, used for validating LQL queries and completions.
+    - `sources`: A list of sources, used for completions.
+    - `id`: A unique identifier for the editor.
+
+  ## Example
+
+        <.live_component module={LogflareWeb.MonacoEditorComponent}
+          id="endpoint_query"
+          field={f[:query]}
+          endpoints={@endpoints}
+          alerts={@alerts}
+          sources={@sources}
+          />
+  """
+
   def mount(socket) do
     {:ok, assign(socket, parse_error_message: nil)}
+  end
+
+  def update(assigns, socket) do
+    {:ok,
+     socket
+     |> assign(assigns)
+     |> assign_completions()}
   end
 
   def render(assigns) do
     assigns = assigns |> assign(editor_opts: editor_opts())
 
     ~H"""
-    <div>
+    <div id={@id}>
       <LiveMonacoEditor.code_editor value={@field.value} target={@myself} change="parse-query" path="query_string" id="query" opts={@editor_opts} />
       <%= hidden_input(@field.form, :query, value: @field.value) %>
       <%= error_tag(@field.form, :query) %>
@@ -89,7 +117,8 @@ defmodule LogflareWeb.MonacoEditorComponent do
     {:noreply, socket}
   end
 
-  def parse_query(query_string, endpoints, alerts)
+  @spec parse_query(String.t(), [%Logflare.Endpoints.Query{}], [%Logflare.Alerting.AlertQuery{}]) ::
+          :ok | {:error, String.t()}
   def parse_query("", _endpoints, _alerts), do: :ok
 
   def parse_query(query_string, endpoints, alerts) do
@@ -109,6 +138,15 @@ defmodule LogflareWeb.MonacoEditorComponent do
         message = if(is_binary(err), do: err, else: inspect(err))
         {:error, message}
     end
+  end
+
+  defp assign_completions(socket) do
+    %{endpoints: endpoints, alerts: alerts, sources: sources} = socket.assigns
+
+    completions =
+      [sources, endpoints, alerts] |> List.flatten() |> Enum.map(fn item -> item.name end)
+
+    assign(socket, completions: completions)
   end
 
   defp editor_opts do
