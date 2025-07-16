@@ -660,21 +660,102 @@ defmodule Logflare.SqlTest do
     end
   end
 
+  describe "translate/2 with nested fields" do
+    setup [:setup_postgres_backend]
+
+    test "translate operator to numeric with between with 1 level nested field reference",
+         %{user: user, source: source, backend: backend} = ctx do
+      insert_log_event(ctx, %{
+        "event_message" => "something",
+        "col" => %{"nested" => 223}
+      })
+
+      insert_log_event(ctx, %{
+        "event_message" => "something",
+        "col" => %{"nested" => 400}
+      })
+
+      bq_query = ~s"""
+      select count(t.id) as count from `#{source.name}` t
+      cross join unnest(t.col) as c
+      where c.nested between 200 and 299
+      """
+
+      {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
+      assert {:ok, transformed} = Sql.transform(:pg_sql, translated, user)
+      assert {:ok, [%{"count" => 1}]} = PostgresAdaptor.execute_query(backend, transformed)
+    end
+
+    test "translate operator to numeric with between with 2 level nested field reference",
+         %{user: user, source: source, backend: backend} = ctx do
+      insert_log_event(ctx, %{
+        "event_message" => "something",
+        "col" => %{"nested" => %{"num" => 223}}
+      })
+
+      insert_log_event(ctx, %{
+        "event_message" => "something",
+        "col" => %{"nested" => %{"num" => 400}}
+      })
+
+      bq_query = ~s"""
+      select count(t.id) as count from `#{source.name}` t
+      cross join unnest(t.col) as c
+      cross join unnest(c.nested) as d
+      where d.num between 200 and 299
+      """
+
+      {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
+      assert {:ok, transformed} = Sql.transform(:pg_sql, translated, user)
+      assert {:ok, [%{"count" => 1}]} = PostgresAdaptor.execute_query(backend, transformed)
+    end
+  end
+
+  describe "translate/2 with CTEs" do
+    setup [:setup_postgres_backend]
+
+    test "CTE translation with cross join",
+         %{user: user, source: source, backend: backend} = ctx do
+      insert_log_event(ctx, %{
+        "event_message" => "something",
+        "metadata" => %{
+          "request" => %{"method" => "GET", "path" => "/"},
+          "response" => %{"status_code" => 200}
+        }
+      })
+
+      bq_query = ~s"""
+      with logs as (
+        select t.timestamp, t.id, t.event_message, t.metadata
+        from  `#{source.name}` t
+        cross join unnest(metadata) as m
+      )
+      select event_message, request.method, request.path, response.status_code
+      from logs
+      cross join unnest(metadata) as m
+      cross join unnest(m.request) as request
+      cross join unnest(m.response) as response
+      """
+
+      {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
+      assert {:ok, transformed} = Sql.transform(:pg_sql, translated, user)
+
+      assert {:ok,
+              [
+                %{
+                  "event_message" => "something",
+                  "method" => "GET",
+                  "path" => "/",
+                  "status_code" => 200
+                }
+              ]} = PostgresAdaptor.execute_query(backend, transformed)
+    end
+  end
+
   describe "bq -> pg translation" do
-    setup do
-      repo = Application.get_env(:logflare, Logflare.Repo)
+    setup [:setup_postgres_backend]
 
-      config = %{
-        url:
-          "postgresql://#{repo[:username]}:#{repo[:password]}@#{repo[:hostname]}/#{repo[:database]}"
-      }
-
-      user = insert(:user)
-      source = insert(:source, user: user, name: "c.d.e")
-      backend = insert(:backend, type: :postgres, sources: [source], config: config)
-
-      pid = start_supervised!({AdaptorSupervisor, {source, backend}})
-
+    setup %{source: source, backend: backend} do
       log_event =
         Logflare.LogEvent.make(
           %{
@@ -686,12 +767,7 @@ defmodule Logflare.SqlTest do
         )
 
       PostgresAdaptor.insert_log_event(source, backend, log_event)
-
-      on_exit(fn ->
-        PostgresAdaptor.destroy_instance({source, backend})
-      end)
-
-      %{source: source, backend: backend, pid: pid, user: user}
+      :ok
     end
 
     test "UNNESTs into JSON-Query", %{backend: backend, user: user} do
@@ -1062,43 +1138,6 @@ defmodule Logflare.SqlTest do
       assert Sql.Parser.parse("postgres", translated) == Sql.Parser.parse("postgres", pg_query)
     end
 
-    test "CTE translation with cross join" do
-      bq_query = ~s"""
-      with edge_logs as (
-        select t.timestamp, t.id, t.event_message, t.metadata
-        from  `cloudflare.logs.prod` t
-        cross join unnest(metadata) as m
-      )
-      select id, timestamp, event_message, request.method, request.path, response.status_code
-      from edge_logs
-      cross join unnest(metadata) as m
-      cross join unnest(m.request) as request
-      cross join unnest(m.response) as response
-      """
-
-      pg_query = ~s"""
-      with edge_logs as (
-        select
-          (t.body -> 'timestamp') as timestamp,
-          (t.body -> 'id') as id,
-          (t.body -> 'event_message') AS event_message,
-          (t.body -> 'metadata') as metadata
-        from  "cloudflare.logs.prod" t
-      )
-      SELECT
-      id AS id,
-      timestamp AS timestamp,
-      event_message AS event_message,
-      ( metadata #> '{request,method}') AS method,
-      ( metadata #> '{request,path}') AS path,
-      ( metadata #> '{response,status_code}') AS status_code
-      FROM edge_logs
-      """
-
-      {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
-      assert Sql.Parser.parse("postgres", translated) == Sql.Parser.parse("postgres", pg_query)
-    end
-
     test "special handling of timestamp field and date_trunc : " do
       bq_query = ~s"""
       with edge_logs as (select t.timestamp from  `cloudflare.logs.prod` t)
@@ -1213,9 +1252,39 @@ defmodule Logflare.SqlTest do
       assert Sql.Parser.parse("postgres", translated) == Sql.Parser.parse("postgres", pg_query)
     end
 
-
     # functions metrics
     # test "APPROX_QUANTILES is translated"
     # tes "offset() and indexing is translated"
+  end
+
+  defp setup_postgres_backend(context) do
+    repo = Application.get_env(:logflare, Logflare.Repo)
+
+    config = %{
+      url:
+        "postgresql://#{repo[:username]}:#{repo[:password]}@#{repo[:hostname]}/#{repo[:database]}"
+    }
+
+    user = insert(:user)
+    source = insert(:source, user: user, name: "c.d.e")
+    backend = insert(:backend, type: :postgres, sources: [source], config: config)
+
+    pid = start_supervised!({AdaptorSupervisor, {source, backend}})
+
+    on_exit(fn ->
+      PostgresAdaptor.destroy_instance({source, backend})
+    end)
+
+    %{source: source, backend: backend, pid: pid, user: user}
+  end
+
+  defp insert_log_event(%{source: source, backend: backend}, event) do
+    log_event =
+      Logflare.LogEvent.make(
+        event,
+        %{source: source}
+      )
+
+    PostgresAdaptor.insert_log_event(source, backend, log_event)
   end
 end

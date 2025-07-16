@@ -846,21 +846,23 @@ defmodule Logflare.Sql.DialectTranslation do
          data
        ) do
     cond do
-      # Use match?/2 there to check if list has at least 2 values in it. It is
-      # faster than `length(list) > 2` as it do not need to traverse whole list
-      # during check
       is_map_key(data.alias_path_mappings, head_val) and
-          match?([_, _ | _], data.alias_path_mappings[head_val || []]) ->
+        match?([_, _ | _], data.alias_path_mappings[head_val || []]) and
+          data.in_cte_tables_tree == false ->
         # referencing a cross join unnest
-        # pop first path part and use it as the base
-        # with a cross join unnest(metadata) as m
-        # with a cross join unnest(m.request) as request
-        # reference of request.status_code gets converted to:
-        # metadata -> 'request, status_code'
-        # base is set to the first item of the path (full json path is metadata.request.status_code)
+        {base, arr_path} =
+          cond do
+            data.cte_from_aliases != %{} and is_map_key(data.alias_path_mappings, head_val) ->
+              # triggers when referencing a cte alias and a nested field inside the cte
+              [base | arr_path] = data.alias_path_mappings[head_val]
+              {base, arr_path}
 
-        # pop the first
-        [base | arr_path] = data.alias_path_mappings[head_val]
+            true ->
+              {"body", data.alias_path_mappings[head_val]}
+          end
+
+        # data.alias_path_mappings[head_val]
+        # arr_path = data.alias_path_mappings[head_val]
 
         convert_keys_to_json_query(%{k => v}, data, {base, arr_path})
         |> Map.to_list()
