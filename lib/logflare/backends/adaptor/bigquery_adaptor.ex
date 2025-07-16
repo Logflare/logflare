@@ -293,7 +293,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
     5
   """
   def ingest_service_account_partition_count,
-    do: max(@managed_service_account_partition_count, System.schedulers_online())
+    do: System.schedulers_online()
 
   # Goth provisioning
 
