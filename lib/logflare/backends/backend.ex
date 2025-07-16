@@ -1,15 +1,17 @@
 defmodule Logflare.Backends.Backend do
   @moduledoc false
-  use TypedEctoSchema
 
+  use TypedEctoSchema
   import Ecto.Changeset
 
+  alias Ecto.Changeset
+  alias Logflare.Alerting.AlertQuery
   alias Logflare.Backends.Adaptor
   alias Logflare.Backends.Backend
+  alias Logflare.Endpoints.Query
+  alias Logflare.Rules.Rule
   alias Logflare.Source
   alias Logflare.User
-  alias Logflare.Rules.Rule
-  alias Logflare.Alerting.AlertQuery
 
   @adaptor_mapping %{
     webhook: Adaptor.WebhookAdaptor,
@@ -39,6 +41,8 @@ defmodule Logflare.Backends.Backend do
       on_replace: :delete
     )
 
+    has_many(:endpoint_queries, Query)
+
     field(:register_for_ingest, :boolean, virtual: true, default: true)
     field :metadata, :map
     timestamps()
@@ -56,7 +60,7 @@ defmodule Logflare.Backends.Backend do
   end
 
   # temp function
-  defp do_config_change(%Ecto.Changeset{changes: %{config: config}} = changeset) do
+  defp do_config_change(%Changeset{changes: %{config: config}} = changeset) do
     changeset
     |> put_change(:config_encrypted, config)
     |> delete_change(:config)
@@ -66,10 +70,10 @@ defmodule Logflare.Backends.Backend do
 
   # common config validation function
   defp validate_config(%{valid?: true} = changeset) do
-    type = Ecto.Changeset.get_field(changeset, :type)
+    type = Changeset.get_field(changeset, :type)
     mod = adaptor_mapping()[type]
 
-    Ecto.Changeset.validate_change(changeset, :config, fn :config, config ->
+    Changeset.validate_change(changeset, :config, fn :config, config ->
       case Adaptor.cast_and_validate_config(mod, config) do
         %{valid?: true} -> []
         %{valid?: false, errors: errors} -> for {key, err} <- errors, do: {:"config.#{key}", err}
