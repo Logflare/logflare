@@ -128,7 +128,7 @@ defmodule Logflare.Sql.DialectTranslation do
     AstUtils.transform_recursive(ast, nil, &do_bq_to_pg_convert_functions/2)
   end
 
-  defp do_bq_to_pg_convert_functions({k, v} = kv, data)
+  defp do_bq_to_pg_convert_functions({k, v} = kv, _data)
        when k in ["Function", "AggregateExpressionWithFilter"] do
     function_name = v |> get_in(["name", Access.at(0), "value"]) |> String.downcase()
 
