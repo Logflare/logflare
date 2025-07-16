@@ -26,18 +26,37 @@ defmodule LogflareWeb.SourceControllerTest do
     setup %{conn: conn} do
       user = insert(:user)
       insert(:plan, name: "Free")
-      insert(:team, user: user)
+      team = insert(:team, user: user)
       source = insert(:source, user: user)
       user = Repo.preload(user, :sources)
-      [source: source, conn: login_user(conn, user)]
+      [source: source, team: team, conn: login_user(conn, user)]
     end
 
-    test "renders dashboard", %{conn: conn, source: source} do
+    test "renders dashboard", %{conn: conn, source: source, team: team} do
       conn
       |> visit(~p"/dashboard")
       |> assert_has("li > a", text: "Dashboard", exact: true)
       |> assert_has("h5", text: "Saved Searches", exact: true)
-      |> assert_has("a", text: source.name, href: ~p"/sources/#{source}")
+      |> assert_has("a[href='#{~p"/sources/#{source}"}']", text: source.name)
+      |> assert_has("h5", text: "Teams")
+      |> assert_has("li", text: team.name)
+    end
+
+    test "renders dashboard when user is member of another team", %{conn: conn, source: source} do
+      user = conn.assigns.user
+      team_user = insert(:team_user, email: user.email, provider_uid: user.provider_uid)
+
+      conn
+      |> put_session(:team_user_id, team_user.id)
+      |> visit(~p"/dashboard")
+      |> assert_has("li > a", text: "Dashboard", exact: true)
+      |> assert_has("h5", text: "Saved Searches", exact: true)
+      |> assert_has("a[href='#{~p"/sources/#{source}"}']", text: source.name)
+      |> assert_has("h5", text: "Teams")
+      |> assert_has(
+        "a[href='#{~p"/profile/switch?#{%{"user_id" => team_user.team.user_id, "team_user_id" => team_user.id}}"}']",
+        text: team_user.team.name
+      )
     end
 
     test "renders default plan ttl correctly", %{conn: conn} do
@@ -49,7 +68,7 @@ defmodule LogflareWeb.SourceControllerTest do
     test "show source", %{conn: conn, source: source} do
       conn
       |> visit(~p"/sources/#{source}")
-      |> assert_has("h5 > a", text: source.name, href: ~p"/sources/#{source}")
+      |> assert_has("h5 > a[href='#{~p"/sources/#{source}"}']", text: source.name)
       |> assert_has("li > a", text: "Sign out", exact: true)
       |> assert_has("button > span", text: "Search", exact: true)
     end
@@ -181,7 +200,7 @@ defmodule LogflareWeb.SourceControllerTest do
       conn =
         conn
         |> login_user(user)
-        |> patch("/sources/#{source.id}", %{
+        |> patch(~p"/sources/#{source}", %{
           source: %{
             transform_copy_fields: """
             test:123
@@ -228,7 +247,7 @@ defmodule LogflareWeb.SourceControllerTest do
       conn =
         conn
         |> login_user(u1)
-        |> get("/sources/#{s1.id}/rejected")
+        |> get(~p"/sources/#{s1}/rejected")
 
       assert html_response(conn, 200) =~ "dashboard"
 
@@ -305,7 +324,7 @@ defmodule LogflareWeb.SourceControllerTest do
       conn =
         conn
         |> login_user(u1)
-        |> patch("/sources/#{s1.id}", params)
+        |> patch(~p"/sources/#{s1}", params)
 
       s1_new = Sources.get_by(token: s1.token)
 
@@ -318,7 +337,7 @@ defmodule LogflareWeb.SourceControllerTest do
         conn
         |> recycle()
         |> login_user(u1)
-        |> get(source_path(conn, :edit, s1.id))
+        |> get(~p"/sources/#{s1}")
 
       assert conn.assigns.source.name == new_name
     end
@@ -341,7 +360,7 @@ defmodule LogflareWeb.SourceControllerTest do
       conn =
         conn
         |> login_user(u1)
-        |> patch("/sources/#{s1.id}", params)
+        |> patch(~p"/sources/#{s1}", params)
 
       s1_new = Sources.get_by(token: s1.token)
 
@@ -372,7 +391,7 @@ defmodule LogflareWeb.SourceControllerTest do
       conn =
         conn
         |> login_user(u1)
-        |> patch("/sources/#{s1.id}", params)
+        |> patch(~p"/sources/#{s1}", params)
 
       s1_new = Sources.get_by(id: s1.id)
 
@@ -392,7 +411,7 @@ defmodule LogflareWeb.SourceControllerTest do
         conn
         |> login_user(u1)
         |> patch(
-          "/sources/#{u2s1.id}",
+          ~p"/sources/#{u2s1}",
           %{
             "source" => %{
               "name" => "it's mine now!"
@@ -546,7 +565,7 @@ defmodule LogflareWeb.SourceControllerTest do
 
       assert conn
              |> login_user(user)
-             |> put(~p"/sources/#{source.id}", %{"source" => %{"v2_pipeline" => false}})
+             |> put(~p"/sources/#{source}", %{"source" => %{"v2_pipeline" => false}})
              |> redirected_to(302) == ~p"/sources/#{source}/edit"
     end
   end
