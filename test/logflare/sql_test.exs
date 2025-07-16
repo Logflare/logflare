@@ -728,7 +728,6 @@ defmodule Logflare.SqlTest do
       """
 
       {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
-      dbg(translated)
       assert {:ok, transformed} = Sql.transform(:pg_sql, translated, user)
 
       assert {:ok,
@@ -1286,7 +1285,7 @@ defmodule Logflare.SqlTest do
     # tes "offset() and indexing is translated"
   end
 
-  defp setup_postgres_backend(context) do
+  defp setup_postgres_backend(_context) do
     repo = Application.get_env(:logflare, Logflare.Repo)
 
     config = %{
