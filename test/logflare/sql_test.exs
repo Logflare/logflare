@@ -709,6 +709,35 @@ defmodule Logflare.SqlTest do
       assert {:ok, transformed} = Sql.transform(:pg_sql, translated, user)
       assert {:ok, [%{"count" => 1}]} = PostgresAdaptor.execute_query(backend, transformed)
     end
+
+    test "CTE translation with cross join",
+         %{user: user, source: source, backend: backend} = ctx do
+      insert_log_event(ctx, %{
+        "event_message" => "something",
+        "metadata" => %{
+          "request" => %{"method" => "GET", "path" => "/"},
+          "response" => %{"status_code" => 200}
+        }
+      })
+
+      bq_query = ~s"""
+      select count(CASE WHEN (req.method IN ('GET', 'POST')) THEN 1 END) as count,
+      from  `#{source.name}` t
+      cross join unnest(metadata) as m
+      cross join unnest(m.request) as req
+      """
+
+      {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
+      dbg(translated)
+      assert {:ok, transformed} = Sql.transform(:pg_sql, translated, user)
+
+      assert {:ok,
+              [
+                %{
+                  "count" => 1
+                }
+              ]} = PostgresAdaptor.execute_query(backend, transformed)
+    end
   end
 
   describe "translate/2 with CTEs" do
