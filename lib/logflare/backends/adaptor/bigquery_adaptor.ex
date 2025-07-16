@@ -293,7 +293,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
     5
   """
   def ingest_service_account_partition_count,
-    do: max(@managed_service_account_partition_count, System.schedulers_online())
+    do: max(managed_service_account_partition_count(), System.schedulers_online())
 
   # Goth provisioning
 
@@ -311,6 +311,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
       {PartitionSupervisor,
        child_spec: goth_child_spec(json),
        name: Logflare.GothPartitionSup,
+       partitions: ingest_service_account_partition_count(),
        with_arguments: fn [opts], partition ->
          [Keyword.put(opts, :name, {Logflare.Goth, partition})]
        end}
