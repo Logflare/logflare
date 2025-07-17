@@ -1,6 +1,8 @@
 defmodule Logflare.Backends.Adaptor.PostgresAdaptorTest do
   use Logflare.DataCase
+
   import ExUnit.CaptureLog
+
   alias Logflare.Backends
   alias Logflare.Backends.Adaptor
   alias Logflare.Backends.Adaptor.PostgresAdaptor

@@ -18,7 +18,7 @@ defmodule Logflare.Backends.DynamicPipelineTest do
     backend = insert(:backend, type: :bigquery)
 
     # create the startup queue
-    IngestEventQueue.upsert_tid({source, backend, nil})
+    IngestEventQueue.upsert_tid({source.id, backend.id, nil})
 
     [
       name: Backends.via_source(source, :some_mod, backend),

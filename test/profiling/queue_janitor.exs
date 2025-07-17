@@ -6,7 +6,7 @@ import Logflare.Factory
 source = insert(:source, user: insert(:user))
 
 le = build(:log_event, message: "some value")
-IngestEventQueue.upsert_tid({source, nil})
+IngestEventQueue.upsert_tid({source.id, nil})
 :ok = IngestEventQueue.add_to_table({source, nil}, [le])
 QueueJanitor.start_link(source: source, backend: nil)
 :timer.sleep(5_000)

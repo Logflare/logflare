@@ -5,16 +5,18 @@ defmodule Logflare.Backends.IngestEventQueue do
   :ets-backed buffer uses an :ets mapping pattern to fan out multiple :ets tables.
   """
   use GenServer
+
   alias Logflare.Source
   alias Logflare.Backends.Backend
   alias Logflare.LogEvent
+
   require Ex2ms
 
   @ets_table_mapper :ingest_event_queue_mapping
   @ets_table :source_ingest_events
   @typep source_backend_pid ::
-           {Source.t() | non_neg_integer(), Backend.t() | nil | non_neg_integer(), pid()}
-  @typep table_key :: {non_neg_integer(), nil | non_neg_integer(), pid()}
+           {Source.t() | non_neg_integer(), Backend.t() | nil | non_neg_integer(), nil | pid()}
+  @typep table_key :: {non_neg_integer(), nil | non_neg_integer(), nil | pid()}
   @typep queues_key :: {non_neg_integer(), nil | non_neg_integer()}
 
   ## Server
@@ -57,7 +59,8 @@ defmodule Logflare.Backends.IngestEventQueue do
   """
   @spec upsert_tid(table_key()) ::
           {:ok, reference()} | {:error, :already_exists, reference()}
-  def upsert_tid(sid_bid_pid) do
+  def upsert_tid({sid, bid, pid} = sid_bid_pid)
+      when is_integer(sid) and (is_integer(bid) or is_nil(bid)) and (is_pid(pid) or is_nil(pid)) do
     case get_tid(sid_bid_pid) do
       nil ->
         # create and insert

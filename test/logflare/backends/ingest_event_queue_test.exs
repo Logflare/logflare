@@ -46,9 +46,9 @@ defmodule Logflare.Backends.IngestEventQueueTest do
     end
 
     test "list_queues/1 returns list of table keys", %{source: source, backend: backend} do
-      IngestEventQueue.upsert_tid({source.id, backend.id, 1})
-      IngestEventQueue.upsert_tid({source.id, backend.id, 12})
-      IngestEventQueue.upsert_tid({source.id, backend.id, 123})
+      IngestEventQueue.upsert_tid({source.id, backend.id, :erlang.list_to_pid(~c"<0.12.34>")})
+      IngestEventQueue.upsert_tid({source.id, backend.id, :erlang.list_to_pid(~c"<0.12.35>")})
+      IngestEventQueue.upsert_tid({source.id, backend.id, :erlang.list_to_pid(~c"<0.12.36>")})
       assert IngestEventQueue.list_queues({source.id, backend.id}) |> length() == 3
     end
 
