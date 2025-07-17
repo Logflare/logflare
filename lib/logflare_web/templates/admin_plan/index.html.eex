@@ -44,11 +44,11 @@
           <td><%= p.limit_team_users_limit %></td>
           <td><%= p.limit_source_fields_limit %></td>
           <td><%= p.limit_source_ttl %></td>
-          <td><%= link "Edit", to: Routes.admin_plan_path(@conn, :edit, p), class: "btn btn-secondary btn-sm" %></td>
+          <td><%= link "Edit", to: ~p"/admin/plans/#{p}/edit", class: "btn btn-secondary btn-sm" %></td>
         </tr>
         <% end %>
       </tbody>
     </table>
   </div>
-  <%= link "New plan", to: Routes.admin_plan_path(@conn, :new), class: "btn btn-primary" %>
+  <%= link "New plan", to: ~p"/admin/plans/new", class: "btn btn-primary" %>
 </div>
