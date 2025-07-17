@@ -85,7 +85,6 @@ defmodule Logflare.PubSubRates do
   def global_broadcast_rate({topic, source_id, backend_id, _payload} = data)
       when topic in @topics do
     partitioned_topic = partitioned_topic(topic, {source_id, backend_id})
-
     Phoenix.PubSub.broadcast(Logflare.PubSub, partitioned_topic, data)
   end
 
