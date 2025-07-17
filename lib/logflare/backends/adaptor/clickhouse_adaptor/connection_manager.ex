@@ -154,8 +154,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.ConnectionManager do
     new_timer = Process.send_after(self(), :resolve_connections, @resolve_interval)
 
     new_state =
-      state
-      |> Map.put(:resolve_timer, new_timer)
+      %__MODULE__{state | resolve_timer: new_timer}
       |> resolve_connection_state(:ingest)
       |> resolve_connection_state(:query)
 
@@ -198,7 +197,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.ConnectionManager do
     end
   end
 
-  defp ensure_connection_started(state, :ingest) do
+  defp ensure_connection_started(%__MODULE__{} = state, :ingest) do
     start_connection(state, :ingest)
   end
 
@@ -211,52 +210,44 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.ConnectionManager do
     end
   end
 
-  defp ensure_connection_started(state, :query) do
+  defp ensure_connection_started(%__MODULE__{} = state, :query) do
     start_connection(state, :query)
   end
 
-  defp connection_active?(state, :ingest) do
-    state.ingest_connection_pid != nil && Process.alive?(state.ingest_connection_pid)
+  defp connection_active?(%__MODULE__{ingest_connection_pid: pid}, :ingest) do
+    is_pid(pid) && Process.alive?(pid)
   end
 
-  defp connection_active?(state, :query) do
-    state.query_connection_pid != nil && Process.alive?(state.query_connection_pid)
+  defp connection_active?(%__MODULE__{query_connection_pid: pid}, :query) do
+    is_pid(pid) && Process.alive?(pid)
   end
 
-  defp record_activity(state, :ingest) do
-    now = System.system_time(:millisecond)
-    %{state | ingest_last_activity: now}
+  defp record_activity(%__MODULE__{} = state, :ingest) do
+    %{state | ingest_last_activity: System.system_time(:millisecond)}
   end
 
-  defp record_activity(state, :query) do
-    now = System.system_time(:millisecond)
-    %{state | query_last_activity: now}
+  defp record_activity(%__MODULE__{} = state, :query) do
+    %{state | query_last_activity: System.system_time(:millisecond)}
   end
 
-  defp start_connection(state, :ingest) do
-    opts = state.ingest_ch_opts
-    pid_key = :ingest_connection_pid
-    connection_type = :ingest
-
-    case Ch.start_link(opts) do
+  defp start_connection(%__MODULE__{ingest_ch_opts: ingest_ch_opts} = state, :ingest) do
+    case Ch.start_link(ingest_ch_opts) do
       {:ok, pid} ->
-        # Monitor the connection process
         Process.monitor(pid)
 
-        Logger.info("Started Clickhouse #{connection_type} connection",
+        Logger.info("Started Clickhouse ingest connection pool",
           source_id: state.source.id,
           backend_id: state.backend.id
         )
 
         new_state =
-          state
-          |> Map.put(pid_key, pid)
-          |> record_activity(connection_type)
+          %__MODULE__{state | ingest_connection_pid: pid}
+          |> record_activity(:ingest)
 
         {:ok, new_state}
 
       {:error, reason} ->
-        Logger.error("Failed to start Clickhouse #{connection_type} connection",
+        Logger.error("Failed to start Clickhouse ingest connection pool",
           source_id: state.source.id,
           backend_id: state.backend.id,
           reason: reason
@@ -266,30 +257,24 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.ConnectionManager do
     end
   end
 
-  defp start_connection(state, :query) do
-    opts = state.query_ch_opts
-    pid_key = :query_connection_pid
-    connection_type = :query
-
-    case Ch.start_link(opts) do
+  defp start_connection(%__MODULE__{query_ch_opts: query_ch_opts} = state, :query) do
+    case Ch.start_link(query_ch_opts) do
       {:ok, pid} ->
-        # Monitor the connection process
         Process.monitor(pid)
 
-        Logger.info("Started Clickhouse #{connection_type} connection",
+        Logger.info("Started Clickhouse query connection pool",
           source_id: state.source.id,
           backend_id: state.backend.id
         )
 
         new_state =
-          state
-          |> Map.put(pid_key, pid)
-          |> record_activity(connection_type)
+          %__MODULE__{state | query_connection_pid: pid}
+          |> record_activity(:query)
 
         {:ok, new_state}
 
       {:error, reason} ->
-        Logger.error("Failed to start Clickhouse #{connection_type} connection",
+        Logger.error("Failed to start Clickhouse query connection pool",
           source_id: state.source.id,
           backend_id: state.backend.id,
           reason: reason
@@ -299,12 +284,11 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.ConnectionManager do
     end
   end
 
-  defp resolve_connection_state(state, :ingest) do
+  defp resolve_connection_state(
+         %__MODULE__{ingest_connection_pid: pid, ingest_last_activity: last_activity} = state,
+         :ingest
+       ) do
     now = System.system_time(:millisecond)
-    last_activity = state.ingest_last_activity
-    timeout = @ingest_inactivity_timeout
-    pid_key = :ingest_connection_pid
-    pid = Map.get(state, pid_key)
 
     cond do
       # No connection, no activity needed
@@ -313,14 +297,14 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.ConnectionManager do
 
       # Connection exists but not alive, clean up
       not Process.alive?(pid) ->
-        Map.put(state, pid_key, nil)
+        %__MODULE__{state | ingest_connection_pid: nil}
 
       # No activity recorded yet, keep connection
       last_activity == nil ->
         state
 
       # Activity within timeout, keep connection
-      now - last_activity < timeout ->
+      now - last_activity < @ingest_inactivity_timeout ->
         state
 
       # Inactive for too long, stop connection
@@ -329,12 +313,11 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.ConnectionManager do
     end
   end
 
-  defp resolve_connection_state(state, :query) do
+  defp resolve_connection_state(
+         %__MODULE__{query_connection_pid: pid, query_last_activity: last_activity} = state,
+         :query
+       ) do
     now = System.system_time(:millisecond)
-    last_activity = state.query_last_activity
-    timeout = @query_inactivity_timeout
-    pid_key = :query_connection_pid
-    pid = Map.get(state, pid_key)
 
     cond do
       # No connection, no activity needed
@@ -343,14 +326,14 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.ConnectionManager do
 
       # Connection exists but not alive, clean up
       not Process.alive?(pid) ->
-        Map.put(state, pid_key, nil)
+        %__MODULE__{state | query_connection_pid: nil}
 
       # No activity recorded yet, keep connection
       last_activity == nil ->
         state
 
       # Activity within timeout, keep connection
-      now - last_activity < timeout ->
+      now - last_activity < @query_inactivity_timeout ->
         state
 
       # Inactive for too long, stop connection
@@ -359,11 +342,8 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.ConnectionManager do
     end
   end
 
-  defp stop_connection(state, :ingest) do
-    pid_key = :ingest_connection_pid
-    pid = Map.get(state, pid_key)
-
-    if pid && Process.alive?(pid) do
+  defp stop_connection(%__MODULE__{ingest_connection_pid: pid} = state, :ingest) do
+    if is_pid(pid) && Process.alive?(pid) do
       GenServer.stop(pid)
 
       Logger.info("Stopped Clickhouse ingest connection due to inactivity",
@@ -372,14 +352,11 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.ConnectionManager do
       )
     end
 
-    Map.put(state, pid_key, nil)
+    %__MODULE__{state | ingest_connection_pid: nil}
   end
 
-  defp stop_connection(state, :query) do
-    pid_key = :query_connection_pid
-    pid = Map.get(state, pid_key)
-
-    if pid && Process.alive?(pid) do
+  defp stop_connection(%__MODULE__{query_connection_pid: pid} = state, :query) do
+    if is_pid(pid) && Process.alive?(pid) do
       GenServer.stop(pid)
 
       Logger.info("Stopped Clickhouse query connection due to inactivity",
@@ -388,8 +365,10 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.ConnectionManager do
       )
     end
 
-    Map.put(state, pid_key, nil)
+    %__MODULE__{state | query_connection_pid: nil}
   end
+
+  defp stop_connection(%__MODULE__{} = state, _), do: state
 
   defp connection_manager_via({source, backend}) do
     Backends.via_source(source, __MODULE__, backend)
