@@ -6,8 +6,6 @@ defmodule Logflare.SynEventHandler do
   """
   @behaviour :syn_event_handler
 
-  alias Logflare.Utils.Tasks
-
   require Logger
   @impl true
 
