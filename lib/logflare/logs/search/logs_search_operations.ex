@@ -67,20 +67,21 @@ defmodule Logflare.Logs.SearchOperations do
 
   @spec apply_query_defaults(SO.t()) :: SO.t()
   def apply_query_defaults(%SO{chart_data_shape_id: chart_data_shape_id} = so) do
-    dbg(so)
     query =
       from(so.source.bq_table_id)
-    |> select( [t], [t.timestamp, t.id, t.event_message])
+      |> select([t], [t.timestamp, t.id, t.event_message])
       |> case do
         q when chart_data_shape_id == :elixir_logger_levels ->
           q
-          |> Lql.EctoHelpers.unnest_and_join_nested_columns(:inner, "metadata")
+          |> Lql.EctoHelpers.unnest_and_join_nested_columns(:inner, "metadata.level")
           |> select_merge([..., m], %{level: m.level})
-        q -> q
+
+        q ->
+          q
       end
       |> order_by([t], desc: t.timestamp)
       |> limit(@default_limit)
-      |> dbg()
+
     %{so | query: query}
   end
 
@@ -141,8 +142,6 @@ defmodule Logflare.Logs.SearchOperations do
       SourceSchemas.get_source_schema_by(source_id: so.source.id)
       |> Map.get(:schema_flat_map)
 
-
-    dbg({so.type, Map.has_key?(flat_type_map, "metadata.level")})
     chart_data_shape_id =
       cond do
         Map.has_key?(flat_type_map, "metadata.status_code") ->

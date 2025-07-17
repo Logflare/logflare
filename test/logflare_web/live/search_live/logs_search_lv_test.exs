@@ -586,7 +586,6 @@ defmodule LogflareWeb.Source.SearchLVTest do
   end
 
   describe "single tenant searching" do
-    @describetag :skip
     TestUtils.setup_single_tenant(seed_user: true)
 
     setup do
@@ -607,7 +606,11 @@ defmodule LogflareWeb.Source.SearchLVTest do
         query = opts[:body].query |> String.downcase()
 
         if query =~ "strpos(t0.event_message, ?" do
-          {:ok, TestUtils.gen_bq_response(%{"event_message" => "some correct message"})}
+          {:ok,
+           TestUtils.gen_bq_response(%{
+             "event_message" => "some correct message",
+             "level" => "warning"
+           })}
         else
           {:ok, TestUtils.gen_bq_response()}
         end
@@ -615,19 +618,18 @@ defmodule LogflareWeb.Source.SearchLVTest do
 
       {:ok, view, _html} = live(conn, Routes.live_path(conn, SearchLV, source.id))
       # post-init fetching
-      :timer.sleep(800)
 
       render_change(view, :start_search, %{
         "search" => %{@default_search_params | "querystring" => "somestring"}
       })
 
       # wait for async search task to complete
-      # TODO: find better way to test searching
-      :timer.sleep(800)
+      TestUtils.retry_assert(fn ->
+        html = view |> element("#logs-list-container") |> render()
 
-      html = view |> element("#logs-list-container") |> render()
-
-      assert html =~ "some correct message"
+        assert html =~ "some correct message"
+        assert html =~ ~s|class="log-warning">warning|
+      end)
     end
   end
 

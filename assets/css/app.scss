@@ -273,10 +273,35 @@ a:focus, button.btn-link:focus {
 }
 
 mark {
-  background-color: #5eeb8f;
-  & .log-error {
-    background-color: #f14216;
-  }
+    /* default, used for info and no log level */
+    background-color: #5eeb8f;
+    &.log-error {
+        background-color: #dc3545;
+    }
+
+    &.log-warning {
+        background-color: #f1ba58;
+    }
+
+    &.log-debug {
+        background-color: #8e6ddf;
+    }
+
+    &.log-critical {
+        background-color: #bd1550;
+    }
+
+    &.log-emergency {
+        background-color: #b11226;
+    }
+
+    &.log-alert {
+        background-color: #dc3545;
+    }
+
+    &.log-notice {
+        background-color: #03c03c;
+    }
 }
 
 .example-log-code {
