@@ -8,6 +8,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.Pipeline do
 
   alias Broadway.Message
   alias Logflare.Backends.Adaptor.ClickhouseAdaptor
+  alias Logflare.Backends.Adaptor.ClickhouseAdaptor.ConnectionManager
   alias Logflare.Backends.BufferProducer
 
   @producer_concurrency 1
@@ -62,6 +63,9 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.Pipeline do
         connection_name: connection_name
       }) do
     events = for %{data: le} <- messages, do: le
+
+    # Notify connection manager of ingest activity
+    ConnectionManager.notify_ingest_activity(source, backend)
     ClickhouseAdaptor.insert_log_events(connection_name, {source, backend}, events)
     messages
   end
