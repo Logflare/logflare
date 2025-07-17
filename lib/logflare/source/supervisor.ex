@@ -10,7 +10,6 @@ defmodule Logflare.Source.Supervisor do
   alias Logflare.Sources
   alias Logflare.Sources.Counters
   alias Logflare.Google.BigQuery
-  alias Logflare.Utils.Tasks
   alias Logflare.Source.V1SourceDynSup
   alias Logflare.Source.V1SourceSup
   alias Logflare.ContextCache
@@ -55,10 +54,6 @@ defmodule Logflare.Source.Supervisor do
       for source <- chunk do
         do_start_source_sup(source)
       end
-
-      # BigQuery Rate limit is 100/second
-      # Also gives the database a break on boot
-      Process.sleep(250)
     end)
 
     Agent.update(@agent, &%{&1 | status: :ok})
@@ -220,8 +215,7 @@ defmodule Logflare.Source.Supervisor do
   end
 
   defp create_source(%Source{} = source) do
-    with {:ok, _pid} = res <- do_start_source_sup(source),
-         :ok <- init_table(source.token) do
+    with {:ok, _pid} = res <- do_start_source_sup(source) do
       res
     else
       {:error, :already_started} = err ->
@@ -263,29 +257,6 @@ defmodule Logflare.Source.Supervisor do
       _ ->
         :noop
     end
-
-    :ok
-  end
-
-  def init_table(source_token) do
-    %{
-      user_id: user_id,
-      bigquery_table_ttl: bigquery_table_ttl,
-      bigquery_project_id: bigquery_project_id,
-      bigquery_dataset_location: bigquery_dataset_location,
-      bigquery_dataset_id: bigquery_dataset_id
-    } = BigQuery.GenUtils.get_bq_user_info(source_token)
-
-    Tasks.start_child(fn ->
-      BigQuery.init_table!(
-        user_id,
-        source_token,
-        bigquery_project_id,
-        bigquery_table_ttl,
-        bigquery_dataset_location,
-        bigquery_dataset_id
-      )
-    end)
 
     :ok
   end
