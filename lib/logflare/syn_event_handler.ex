@@ -86,14 +86,6 @@ defmodule Logflare.SynEventHandler do
   end
 
   defp try_to_stop(pid) do
-    Tasks.start_child(fn ->
-      node_to_kill = node(pid)
-      # Random sleep to prevent concurrent attempts to stop the same process
-      Process.sleep(:rand.uniform(1500))
-
-      if :erpc.call(node_to_kill, Process, :alive?, [pid], 5000) do
-        :erpc.call(node_to_kill, Process, :exit, [pid, :normal], 5000)
-      end
-    end)
+    Process.exit(pid, :syn_resolve_kill)
   end
 end
