@@ -1,5 +1,20 @@
 defmodule Logflare.Google.BigQuery.EventUtils do
   @moduledoc false
+
+  def log_event_to_struct(%Logflare.LogEvent{body: body}) do
+    {:ok, bq_timestamp} = DateTime.from_unix(body["timestamp"], :microsecond)
+
+    for {k, v} <- body, into: %{} do
+      if is_map(v) do
+        {k, prepare_for_ingest(v)}
+      else
+        {k, v}
+      end
+    end
+    |> Map.put("timestamp", bq_timestamp)
+    |> Map.put("event_message", body["event_message"])
+  end
+
   @doc """
   Prepares an event for ingest into BigQuery
   """

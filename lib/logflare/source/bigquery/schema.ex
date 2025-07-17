@@ -96,7 +96,7 @@ defmodule Logflare.Source.BigQuery.Schema do
   # TODO: remove, external procs should not have access to internal state
   def get_state(name), do: GenServer.call(name, :get)
 
-  @spec update(atom(), LogEvent.t()) :: :ok
+  @spec update(pid() | {atom(), any()} | {:via, atom(), any()}, LogEvent.t()) :: :ok
   def update(pid, %LogEvent{} = log_event) when is_pid(pid) or is_tuple(pid) do
     GenServer.cast(pid, {:update, log_event})
   end
