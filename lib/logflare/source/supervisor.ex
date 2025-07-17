@@ -10,7 +10,6 @@ defmodule Logflare.Source.Supervisor do
   alias Logflare.Sources
   alias Logflare.Sources.Counters
   alias Logflare.Google.BigQuery
-  alias Logflare.Utils.Tasks
   alias Logflare.Source.V1SourceDynSup
   alias Logflare.Source.V1SourceSup
   alias Logflare.ContextCache
