@@ -66,8 +66,9 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.ConnectionManager do
   """
   @spec notify_ingest_activity(Source.t(), Backend.t()) :: :ok
   def notify_ingest_activity(%Source{} = source, %Backend{} = backend) do
-    manager = connection_manager_via({source, backend})
-    GenServer.cast(manager, {:activity, :ingest})
+    {source, backend}
+    |> connection_manager_via()
+    |> GenServer.cast({:activity, :ingest})
   end
 
   @doc """
@@ -77,8 +78,9 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.ConnectionManager do
   """
   @spec notify_query_activity(Source.t(), Backend.t()) :: :ok
   def notify_query_activity(%Source{} = source, %Backend{} = backend) do
-    manager = connection_manager_via({source, backend})
-    GenServer.cast(manager, {:activity, :query})
+    {source, backend}
+    |> connection_manager_via()
+    |> GenServer.cast({:activity, :query})
   end
 
   @doc """
@@ -90,8 +92,9 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.ConnectionManager do
           :ok | {:error, term()}
   def ensure_connection_started(%Source{} = source, %Backend{} = backend, connection_type)
       when is_connection_type(connection_type) do
-    manager = connection_manager_via({source, backend})
-    GenServer.call(manager, {:ensure_connection, connection_type})
+    {source, backend}
+    |> connection_manager_via()
+    |> GenServer.call({:ensure_connection, connection_type})
   end
 
   @doc """
