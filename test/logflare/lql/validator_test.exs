@@ -196,7 +196,9 @@ defmodule Logflare.Lql.ValidatorTest do
       }
 
       result = Validator.validate(lql_rules, tailing?: false)
-      assert result =~ "The interval length between min and max timestamp is larger than 250 periods"
+
+      assert result =~
+               "The interval length between min and max timestamp is larger than 250 periods"
     end
 
     test "works with multiple timestamp filters" do

@@ -2,8 +2,10 @@ defmodule Logflare.Logs.SearchOperation do
   @moduledoc """
   Logs search options and result
   """
-  alias Logflare.Lql
+
   use TypedStruct
+
+  alias Logflare.Lql
 
   typedstruct do
     field :source, Source.t()

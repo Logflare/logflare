@@ -1,10 +1,13 @@
 defmodule Logflare.LqlParserTest do
-  @moduledoc false
   use Logflare.DataCase, async: true
-  alias Logflare.Lql
-  alias Logflare.Lql.{Parser, ChartRule, FilterRule}
+
   alias Logflare.DateTimeUtils
+  alias Logflare.Lql
+  alias Logflare.Lql.ChartRule
+  alias Logflare.Lql.FilterRule
+  alias Logflare.Lql.Parser
   alias Logflare.Source.BigQuery.SchemaBuilder
+
   @default_schema SchemaBuilder.initial_table_schema()
 
   describe "parse/1" do

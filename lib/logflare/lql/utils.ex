@@ -1,6 +1,9 @@
 defmodule Logflare.Lql.Utils do
   @moduledoc false
-  alias Logflare.Lql.{FilterRule, ChartRule}
+
+  alias Logflare.Lql.ChartRule
+  alias Logflare.Lql.FilterRule
+
   @type lql_list :: [ChartRule.t() | FilterRule.t()]
 
   def default_chart_rule() do

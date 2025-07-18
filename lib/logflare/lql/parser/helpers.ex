@@ -2,10 +2,26 @@ defmodule Logflare.Lql.Parser.Helpers do
   @moduledoc """
   Includes parsers and combinators for Lql parser
   """
+
   import NimbleParsec
-  alias Logflare.Lql.FilterRule
+
   alias Logflare.DateTimeUtils
+  alias Logflare.Lql.FilterRule
+
   @isolated_string :isolated_string
+  @list_includes_op :list_includes
+  @list_includes_regex_op :list_includes_regexp
+
+  @level_orders %{
+    0 => "debug",
+    1 => "info",
+    2 => "notice",
+    3 => "warning",
+    4 => "error",
+    5 => "critical",
+    6 => "alert",
+    7 => "emergency"
+  }
 
   def word do
     optional(
@@ -163,14 +179,14 @@ defmodule Logflare.Lql.Parser.Helpers do
     |> ignore(string(")"))
   end
 
-  def any_field do
+  def any_field() do
     ascii_string([?a..?z, ?A..?Z, ?., ?_, ?0..?9], min: 1)
     |> reduce({List, :to_string, []})
     |> unwrap_and_tag(:path)
     |> label("schema field")
   end
 
-  def metadata_field do
+  def metadata_field() do
     choice([string("metadata"), string("m") |> replace("metadata")])
     |> string(".")
     |> ascii_string([?a..?z, ?A..?Z, ?., ?_, ?0..?9], min: 2)
@@ -179,8 +195,6 @@ defmodule Logflare.Lql.Parser.Helpers do
     |> label("metadata field")
   end
 
-  @list_includes_op :list_includes
-  @list_includes_regex_op :list_includes_regexp
   def operator() do
     choice([
       string(":>=") |> replace(:>=),
@@ -209,7 +223,7 @@ defmodule Logflare.Lql.Parser.Helpers do
     |> label("number")
   end
 
-  def field_value do
+  def field_value() do
     choice([
       range_operator(number()),
       number(),
@@ -253,7 +267,7 @@ defmodule Logflare.Lql.Parser.Helpers do
     ])
   end
 
-  def timestamp_shorthand_value do
+  def timestamp_shorthand_value() do
     choice([
       string("now"),
       string("today"),
@@ -409,7 +423,7 @@ defmodule Logflare.Lql.Parser.Helpers do
     end
   end
 
-  def date do
+  def date() do
     ascii_string([?0..?9], 4)
     |> string("-")
     |> ascii_string([?0..?9], 2)
@@ -421,7 +435,7 @@ defmodule Logflare.Lql.Parser.Helpers do
     |> reduce(:parse_date_or_datetime)
   end
 
-  def datetime do
+  def datetime() do
     date()
     |> string("T")
     |> ascii_string([?0..?9], 2)
@@ -526,7 +540,7 @@ defmodule Logflare.Lql.Parser.Helpers do
     )
   end
 
-  def date_or_datetime do
+  def date_or_datetime() do
     [datetime(), date()]
     |> choice()
     |> label("date or datetime value")
@@ -552,7 +566,7 @@ defmodule Logflare.Lql.Parser.Helpers do
     |> label("timestamp value")
   end
 
-  def invalid_match_all_value do
+  def invalid_match_all_value() do
     choice([
       ascii_string([33..255], min: 1),
       empty() |> replace(~S|""|)
@@ -614,16 +628,6 @@ defmodule Logflare.Lql.Parser.Helpers do
     |> reduce(:to_rule)
   end
 
-  @level_orders %{
-    0 => "debug",
-    1 => "info",
-    2 => "notice",
-    3 => "warning",
-    4 => "error",
-    5 => "critical",
-    6 => "alert",
-    7 => "emergency"
-  }
   def to_rule(metadata_level_clause: ["metadata.level", {:range_operator, [left, right]}]) do
     left..right
     |> Enum.map(&Map.get(@level_orders, &1))
@@ -723,9 +727,7 @@ defmodule Logflare.Lql.Parser.Helpers do
     throw("Error while parsing `#{p}` field metadata filter value: #{v}")
   end
 
-  def check_for_no_invalid_metadata_field_values(rule, _) do
-    rule
-  end
+  def check_for_no_invalid_metadata_field_values(rule, _), do: rule
 
   def not_quote(<<?\\, ?", _::binary>>, context, _, _), do: {:cont, context}
   def not_quote(<<?", _::binary>>, context, _, _), do: {:halt, context}
@@ -750,7 +752,5 @@ defmodule Logflare.Lql.Parser.Helpers do
     |> Map.get(level)
   end
 
-  def get_level_by_order(level) do
-    @level_orders[level]
-  end
+  def get_level_by_order(level), do: @level_orders[level]
 end
