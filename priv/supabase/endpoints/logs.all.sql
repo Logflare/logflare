@@ -9,18 +9,22 @@ with retention as (
   ) as date
 ),
 
+project_param AS (
+  SELECT COALESCE(@project, '"default"') AS project  -- JSON string
+),
+
 edge_logs as (
 select 
   t.timestamp,
   t.id, 
   t.event_message, 
   t.metadata 
-from retention, `cloudflare.logs.prod` as t
+from retention, project_param, `cloudflare.logs.prod` as t
   cross join unnest(metadata) as m
 where
   -- order of the where clauses matters
   -- project then timestamp then everything else
-  t.project = @project
+  t.project = project_param.project
   AND CASE WHEN COALESCE(@iso_timestamp_start, '') = '' THEN  TRUE ELSE  cast(t.timestamp as timestamp) > cast(@iso_timestamp_start as timestamp) END
   AND CASE WHEN COALESCE(@iso_timestamp_end, '') = '' THEN TRUE ELSE cast(t.timestamp as timestamp) <= cast(@iso_timestamp_end as timestamp) END
   AND cast(t.timestamp as timestamp) > retention.date
@@ -34,11 +38,11 @@ postgres_logs as (
   t.id, 
   t.event_message, 
   t.metadata
-from retention, `postgres.logs` as t
+from retention, project_param, `postgres.logs` as t
 where
   -- order of the where clauses matters
   -- project then timestamp then everything else
-  t.project = @project
+  t.project = project_param.project
   AND CASE WHEN COALESCE(@iso_timestamp_start, '') = '' THEN  TRUE ELSE  cast(t.timestamp as timestamp) > cast(@iso_timestamp_start as timestamp) END
   AND CASE WHEN COALESCE(@iso_timestamp_end, '') = '' THEN TRUE ELSE cast(t.timestamp as timestamp) <= cast(@iso_timestamp_end as timestamp) END
   AND cast(t.timestamp as timestamp) > retention.date
@@ -67,12 +71,12 @@ select
   t.id, 
   t.event_message, 
   t.metadata 
-from retention, `deno-subhosting-events` as t
+from retention, project_param, `deno-subhosting-events` as t
   cross join unnest(t.metadata) as m
 where
   -- order of the where clauses matters
   -- project then timestamp then everything else
-  m.project_ref = @project
+  m.project_ref = project_param.project
   AND CASE WHEN COALESCE(@iso_timestamp_start, '') = '' THEN  TRUE ELSE  cast(t.timestamp as timestamp) > cast(@iso_timestamp_start as timestamp) END
   AND CASE WHEN COALESCE(@iso_timestamp_end, '') = '' THEN TRUE ELSE cast(t.timestamp as timestamp) <= cast(@iso_timestamp_end as timestamp) END
   AND cast(t.timestamp as timestamp) > retention.date
@@ -85,13 +89,13 @@ select
   t.id, 
   t.event_message, 
   t.metadata 
-from retention, `gotrue.logs.prod` as t
+from retention, project_param, `gotrue.logs.prod` as t
   cross join unnest(t.metadata) as m
 where
   -- order of the where clauses matters
   -- project then timestamp then everything else
   -- m.project = @project
-  t.project = @project
+  t.project = project_param.project
   AND CASE WHEN COALESCE(@iso_timestamp_start, '') = '' THEN  TRUE ELSE  cast(t.timestamp as timestamp) > cast(@iso_timestamp_start as timestamp) END
   AND CASE WHEN COALESCE(@iso_timestamp_end, '') = '' THEN TRUE ELSE cast(t.timestamp as timestamp) <= cast(@iso_timestamp_end as timestamp) END
   AND cast(t.timestamp as timestamp) > retention.date
@@ -104,10 +108,10 @@ select
   t.id, 
   t.event_message, 
   t.metadata 
-from retention, `realtime.logs.prod` as t
+from retention, project_param, `realtime.logs.prod` as t
   cross join unnest(t.metadata) as m
 where
-  m.project = @project 
+  m.project = project_param.project
   AND CASE WHEN COALESCE(@iso_timestamp_start, '') = '' THEN  TRUE ELSE  cast(t.timestamp as timestamp) > cast(@iso_timestamp_start as timestamp) END
   AND CASE WHEN COALESCE(@iso_timestamp_end, '') = '' THEN TRUE ELSE cast(t.timestamp as timestamp) <= cast(@iso_timestamp_end as timestamp) END
   AND cast(t.timestamp as timestamp) > retention.date
@@ -120,10 +124,10 @@ select
   t.id, 
   t.event_message, 
   t.metadata 
-from retention, `storage.logs.prod.2` as t
+from retention, project_param, `storage.logs.prod.2` as t
   cross join unnest(t.metadata) as m
 where
-  m.project = @project
+  m.project = project_param.project
   AND CASE WHEN COALESCE(@iso_timestamp_start, '') = '' THEN  TRUE ELSE  cast(t.timestamp as timestamp) > cast(@iso_timestamp_start as timestamp) END
   AND CASE WHEN COALESCE(@iso_timestamp_end, '') = '' THEN TRUE ELSE cast(t.timestamp as timestamp) <= cast(@iso_timestamp_end as timestamp) END
   AND cast(t.timestamp as timestamp) > retention.date
@@ -136,12 +140,12 @@ select
   t.id, 
   t.event_message, 
   t.metadata 
-from retention, `postgREST.logs.prod` as t
+from retention, project_param, `postgREST.logs.prod` as t
   cross join unnest(t.metadata) as m
 where
   CASE WHEN COALESCE(@iso_timestamp_start, '') = '' THEN  TRUE ELSE  cast(t.timestamp as timestamp) > cast(@iso_timestamp_start as timestamp) END
   AND CASE WHEN COALESCE(@iso_timestamp_end, '') = '' THEN TRUE ELSE cast(t.timestamp as timestamp) <= cast(@iso_timestamp_end as timestamp) END
-  AND t.project = @project
+  AND t.project = project_param.project
   AND cast(t.timestamp as timestamp) > retention.date
 order by cast(t.timestamp as timestamp) desc
 ),
@@ -152,12 +156,12 @@ select
   t.id, 
   t.event_message, 
   t.metadata 
-from retention, `pgbouncer.logs.prod` as t
+from retention, project_param, `pgbouncer.logs.prod` as t
   cross join unnest(t.metadata) as m
 where
   CASE WHEN COALESCE(@iso_timestamp_start, '') = '' THEN  TRUE ELSE  cast(t.timestamp as timestamp) > cast(@iso_timestamp_start as timestamp) END
   AND CASE WHEN COALESCE(@iso_timestamp_end, '') = '' THEN TRUE ELSE cast(t.timestamp as timestamp) <= cast(@iso_timestamp_end as timestamp) END
-  AND t.project = @project
+  AND t.project = project_param.project
   AND cast(t.timestamp as timestamp) > retention.date
 order by cast(t.timestamp as timestamp) desc
 )
