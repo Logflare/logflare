@@ -2,8 +2,20 @@ defmodule Logflare.Lql.Encoder do
   @moduledoc """
   Encodes Lql rules to a lql querystring
   """
-  alias Logflare.Lql.{Parser, FilterRule, ChartRule}
 
+  import Logflare.Utils.Guards
+
+  alias Logflare.Lql.ChartRule
+  alias Logflare.Lql.FilterRule
+  alias Logflare.Lql.Parser
+
+  @date_periods ~w(year month day)a
+  @time_periods ~w(hour minute second)a
+
+  defguardp is_valid_date_or_datetime(value)
+            when is_date(value) or is_datetime(value) or is_naive_datetime(value)
+
+  @spec to_querystring([FilterRule.t() | ChartRule.t()]) :: String.t()
   def to_querystring(lql_rules) when is_list(lql_rules) do
     lql_rules
     |> Enum.group_by(fn
@@ -39,6 +51,7 @@ defmodule Logflare.Lql.Encoder do
     |> String.trim()
   end
 
+  @spec to_fragment(FilterRule.t() | ChartRule.t()) :: String.t()
   defp to_fragment(%FilterRule{shorthand: sh} = f) when not is_nil(sh) do
     "#{f.path}:#{sh}" |> String.trim_trailing("s") |> String.replace("timestamp:", "t:")
   end
@@ -57,15 +70,7 @@ defmodule Logflare.Lql.Encoder do
          values: [lv, rv],
          modifiers: _mods
        }) do
-    dtstring =
-      if match?(%Date{}, lv) do
-        to_datetime_with_range(lv, rv)
-        # "#{lv}..#{rv}"
-      else
-        to_datetime_with_range(lv, rv)
-      end
-
-    "t:#{dtstring}"
+    "t:#{to_datetime_with_range(lv, rv)}"
   end
 
   defp to_fragment(%FilterRule{path: "timestamp", operator: op, value: v}) do
@@ -140,55 +145,59 @@ defmodule Logflare.Lql.Encoder do
   end
 
   def to_datetime_with_range(%Date{} = ldt, %Date{} = rdt) do
-    date_periods = [:year, :month, :day]
-
-    mapper = fn period -> timestamp_mapper(ldt, rdt, period) end
-    date_periods |> Enum.map_join("-", mapper)
+    mapper_fn = fn period -> timestamp_mapper(ldt, rdt, period) end
+    Enum.map_join(@date_periods, "-", mapper_fn)
   end
 
-  def to_datetime_with_range(ldt, rdt) do
-    date_periods = [:year, :month, :day]
-    time_periods = [:hour, :minute, :second]
-    us = [:microsecond]
-
-    mapper = fn period -> timestamp_mapper(ldt, rdt, period) end
-
-    date_string = date_periods |> Enum.map_join("-", mapper)
-    time_string = time_periods |> Enum.map_join(":", mapper)
-    maybe_us_string = us |> Enum.map(mapper) |> hd
+  def to_datetime_with_range(ldt, rdt)
+      when is_valid_date_or_datetime(ldt) and is_valid_date_or_datetime(rdt) do
+    mapper_fn = fn period -> timestamp_mapper(ldt, rdt, period) end
+    date_string = Enum.map_join(@date_periods, "-", mapper_fn)
+    time_string = Enum.map_join(@time_periods, ":", mapper_fn)
+    maybe_usec_string = Enum.map([:microsecond], mapper_fn) |> hd()
     datetime_string = date_string <> "T" <> time_string
 
-    if maybe_us_string != "" do
-      datetime_string <> "." <> maybe_us_string
+    if is_non_empty_binary(maybe_usec_string) do
+      datetime_string <> "." <> maybe_usec_string
     else
       datetime_string
     end
   end
 
-  defp timestamp_mapper(ldt, rdt, period) do
+  defp timestamp_mapper(
+         %{microsecond: {0, _}} = _ldt,
+         %{microsecond: {0, _}} = _rdt,
+         :microsecond
+       ) do
+    ""
+  end
+
+  defp timestamp_mapper(
+         %{microsecond: {lv, _}} = _ldt,
+         %{microsecond: {rv, _}} = _rdt,
+         :microsecond
+       ) do
     {lv, rv} =
-      if period != :microsecond do
-        lv = Map.get(ldt, period)
-        rv = Map.get(rdt, period)
+      [lv, rv]
+      |> Enum.map(&to_string/1)
+      |> Enum.map(&String.pad_leading(&1, 6, "0"))
+      |> Enum.map(&String.trim_trailing(&1, "0"))
+      |> Enum.map(&if &1 == "", do: "0", else: &1)
+      |> List.to_tuple()
 
-        lv = String.pad_leading("#{lv}", 2, "0")
-        rv = String.pad_leading("#{rv}", 2, "0")
-        {lv, rv}
-      else
-        {lv, _} = Map.get(ldt, period)
-        {rv, _} = Map.get(rdt, period)
+    if lv == rv do
+      "#{lv}"
+    else
+      "{#{lv}..#{rv}}"
+    end
+  end
 
-        if lv == 0 and rv == 0 do
-          {"", ""}
-        else
-          [lv, rv]
-          |> Enum.map(&to_string/1)
-          |> Enum.map(&String.pad_leading(&1, 6, "0"))
-          |> Enum.map(&String.trim_trailing(&1, "0"))
-          |> Enum.map(&if &1 == "", do: "0", else: &1)
-          |> List.to_tuple()
-        end
-      end
+  defp timestamp_mapper(ldt, rdt, period) do
+    lv = Map.get(ldt, period)
+    rv = Map.get(rdt, period)
+
+    lv = String.pad_leading("#{lv}", 2, "0")
+    rv = String.pad_leading("#{rv}", 2, "0")
 
     if lv == rv do
       "#{lv}"

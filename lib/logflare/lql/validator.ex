@@ -1,8 +1,9 @@
 defmodule Logflare.Lql.Validator do
   @moduledoc false
-  import Logflare.Logs.SearchOperations.Helpers
 
-  alias Logflare.Utils.List, as: ListH
+  alias Logflare.Utils.Chart
+  alias Logflare.Utils.List, as: ListUtils
+  alias Logflare.Logs.SearchOperations.Helpers, as: SearchOperationHelpers
 
   @timestamp_filter_with_tailing "Timestamp filters can't be used if live tail search is active"
   @default_max_n_chart_ticks 250
@@ -16,16 +17,17 @@ defmodule Logflare.Lql.Validator do
 
     %{tailing?: tailing?} = Map.new(opts)
 
-    %{min: min_ts, max: max_ts} = get_min_max_filter_timestamps(lql_ts_filters, chart_period)
+    %{min: min_ts, max: max_ts} =
+      SearchOperationHelpers.get_min_max_filter_timestamps(lql_ts_filters, chart_period)
 
     cond do
       tailing? and not Enum.empty?(lql_ts_filters) ->
         @timestamp_filter_with_tailing
 
-      ListH.at_least?(chart_rules, 2) ->
+      ListUtils.at_least?(chart_rules, 2) ->
         "Only one chart rule can be used in a LQL query"
 
-      ListH.exactly?(chart_rules, 1) and
+      ListUtils.exactly?(chart_rules, 1) and
         hd(chart_rules).value_type not in ~w[integer float]a and
           hd(chart_rules).path != "timestamp" ->
         chart_rule = hd(chart_rules)
@@ -35,7 +37,7 @@ defmodule Logflare.Lql.Validator do
       Timex.diff(max_ts, min_ts, chart_period) == 0 ->
         "Selected chart period #{chart_period} is longer than the timestamp filter interval. Please select a shorter chart period."
 
-      get_number_of_chart_ticks(min_ts, max_ts, chart_period) > @default_max_n_chart_ticks ->
+      Chart.get_number_of_chart_ticks(min_ts, max_ts, chart_period) > @default_max_n_chart_ticks ->
         "The interval length between min and max timestamp is larger than #{@default_max_n_chart_ticks} periods, please use a longer chart aggregation period."
 
       true ->

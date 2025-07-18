@@ -4,8 +4,16 @@ defmodule LogflareWeb.Source.SearchLV do
   """
   use LogflareWeb, :live_view
 
+  require Logger
+
+  import Logflare.Lql.Utils
+  import LogflareWeb.ModalLiveHelpers
+  import LogflareWeb.SearchLive.TimezoneComponent
+  import LogflareWeb.SearchLV.Utils
+
   alias Logflare.Billing
   alias Logflare.Logs.SearchQueryExecutor
+  alias Logflare.Logs.SearchUtils
   alias Logflare.Lql
   alias Logflare.Lql.ChartRule
   alias Logflare.SavedSearches
@@ -17,14 +25,6 @@ defmodule LogflareWeb.Source.SearchLV do
   alias LogflareWeb.Router.Helpers, as: Routes
   alias LogflareWeb.SearchView
 
-  import LogflareWeb.ModalLiveHelpers
-  import Logflare.Lql.Utils
-
-  import Logflare.Logs.Search.Utils
-  import LogflareWeb.SearchLV.Utils
-  import LogflareWeb.SearchLive.TimezoneComponent
-
-  require Logger
   embed_templates "templates/*"
 
   @tail_search_interval 500
@@ -56,7 +56,7 @@ defmodule LogflareWeb.Source.SearchLV do
       source: source,
       user: user,
       team_user: team_user,
-      search_tip: gen_search_tip(),
+      search_tip: SearchUtils.gen_search_tip(),
       user_timezone_from_connect_params: nil,
       search_timezone: Map.get(params, "tz", "Etc/UTC"),
       # loading states
