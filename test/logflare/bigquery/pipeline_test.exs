@@ -19,7 +19,7 @@ defmodule Logflare.BigQuery.PipelineTest do
     end
 
     test "ack will remove items from pipeline if average rate is above 100", %{source: source} do
-      sid_bid_pid = {source.id, nil, make_ref()}
+      sid_bid_pid = {source.id, nil, self()}
       IngestEventQueue.upsert_tid(sid_bid_pid)
       le = build(:log_event)
       IngestEventQueue.add_to_table(sid_bid_pid, [le])

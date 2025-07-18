@@ -371,10 +371,11 @@ defmodule Logflare.Backends do
   iex> Backends.via_source(source, :buffer)
   """
   @spec via_source(Source.t(), term()) :: tuple()
-  @spec via_source(Source.t() | non_neg_integer(), module(), non_neg_integer()) :: tuple()
-  def via_source(%Source{id: sid}, mod, %Backend{id: bid}), do: via_source(sid, mod, bid)
-  def via_source(%Source{id: sid}, mod, id), do: via_source(sid, {mod, id})
-  def via_source(source_id, mod, id), do: via_source(source_id, {mod, id})
+  @spec via_source(Source.t() | non_neg_integer(), module(), Backend.t() | non_neg_integer()) ::
+          tuple()
+  def via_source(%Source{id: sid}, mod, backend), do: via_source(sid, mod, backend)
+  def via_source(source, mod, %Backend{id: bid}), do: via_source(source, mod, bid)
+  def via_source(source_id, mod, backend_id), do: via_source(source_id, {mod, backend_id})
 
   def via_source(%Source{id: id}, process_id), do: via_source(id, process_id)
 
@@ -503,6 +504,8 @@ defmodule Logflare.Backends do
   @doc """
   Caches total buffer len. Includes ingested events that are awaiting cleanup.
   """
+  @spec cache_local_buffer_lens(non_neg_integer(), non_neg_integer() | nil) ::
+          {:ok, %{len: non_neg_integer(), queues: map()}}
   def cache_local_buffer_lens(source_id, backend_id \\ nil) do
     queues = IngestEventQueue.list_counts({source_id, backend_id})
 

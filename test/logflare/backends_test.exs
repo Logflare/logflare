@@ -684,7 +684,7 @@ defmodule Logflare.BackendsTest do
     user = insert(:user)
     source = insert(:source, user: user)
     backend = insert(:backend, user: user)
-    {:ok, tid} = IngestEventQueue.upsert_tid({source, backend})
+    {:ok, tid} = IngestEventQueue.upsert_tid({source.id, backend.id})
     sb = {source.id, backend.id}
 
     Benchee.run(
