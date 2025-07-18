@@ -7,8 +7,8 @@ defmodule Logflare.BigQuery.EctoQueryBQTest do
   alias GoogleApi.BigQuery.V2.Model.QueryParameterType
   alias GoogleApi.BigQuery.V2.Model.QueryParameterValue
   alias Logflare.EctoQueryBQ
-  alias Logflare.Lql
   alias Logflare.Lql.FilterRule
+  alias Logflare.Lql
 
   @bq_table_id "some-table"
 
@@ -65,7 +65,7 @@ defmodule Logflare.BigQuery.EctoQueryBQTest do
             ] ++ operator_cases do
         query =
           Ecto.Query.from(@bq_table_id, select: [:timestamp, :metadata])
-          |> Lql.EctoHelpers.apply_filter_rules_to_query([rule])
+          |> Lql.apply_filter_rules_to_query([rule])
 
         {sql, params} = EctoQueryBQ.SQL.to_sql_params(query)
         assert sql =~ "SELECT s0.timestamp, s0.metadata"
@@ -108,7 +108,7 @@ defmodule Logflare.BigQuery.EctoQueryBQTest do
       query =
         from(@bq_table_id)
         |> select([:timestamp, :metadata])
-        |> Lql.EctoHelpers.apply_filter_rules_to_query(filter_rules)
+        |> Lql.apply_filter_rules_to_query(filter_rules)
 
       {sql, _params} = EctoQueryBQ.SQL.to_sql_params(query)
       assert sql =~ "0.top = ?"
@@ -127,7 +127,7 @@ defmodule Logflare.BigQuery.EctoQueryBQTest do
       query =
         from(@bq_table_id)
         |> select([:timestamp, :metadata])
-        |> Lql.EctoHelpers.apply_filter_rules_to_query(filter_rules)
+        |> Lql.apply_filter_rules_to_query(filter_rules)
 
       {sql, _params} = EctoQueryBQ.SQL.to_sql_params(query)
 
@@ -152,7 +152,7 @@ defmodule Logflare.BigQuery.EctoQueryBQTest do
       query =
         from(@bq_table_id)
         |> select([:timestamp, :metadata])
-        |> Lql.EctoHelpers.apply_filter_rules_to_query(filter_rules)
+        |> Lql.apply_filter_rules_to_query(filter_rules)
 
       {sql, params} = EctoQueryBQ.SQL.to_sql_params(query)
       assert sql =~ "AND"
@@ -169,7 +169,7 @@ defmodule Logflare.BigQuery.EctoQueryBQTest do
       query =
         from(@bq_table_id)
         |> select([:timestamp, :metadata])
-        |> Lql.EctoHelpers.apply_filter_rules_to_query([filter_rule])
+        |> Lql.apply_filter_rules_to_query([filter_rule])
 
       {sql, params} = EctoQueryBQ.SQL.to_sql_params(query)
       assert sql =~ "BETWEEN ? AND ?"
@@ -186,7 +186,7 @@ defmodule Logflare.BigQuery.EctoQueryBQTest do
       query =
         from(@bq_table_id)
         |> select([:timestamp, :metadata])
-        |> Lql.EctoHelpers.apply_filter_rules_to_query([filter_rule])
+        |> Lql.apply_filter_rules_to_query([filter_rule])
 
       {sql, params} = EctoQueryBQ.SQL.to_sql_params(query)
       assert sql =~ "IS NULL"
@@ -203,7 +203,7 @@ defmodule Logflare.BigQuery.EctoQueryBQTest do
       query =
         from(@bq_table_id)
         |> select([:timestamp, :metadata])
-        |> Lql.EctoHelpers.apply_filter_rules_to_query([filter_rule])
+        |> Lql.apply_filter_rules_to_query([filter_rule])
 
       {sql, params} = EctoQueryBQ.SQL.to_sql_params(query)
       assert sql =~ "STRPOS(s0.event_message, ?) > 0"
@@ -220,7 +220,7 @@ defmodule Logflare.BigQuery.EctoQueryBQTest do
       query =
         from(@bq_table_id)
         |> select([:timestamp, :metadata])
-        |> Lql.EctoHelpers.apply_filter_rules_to_query([filter_rule])
+        |> Lql.apply_filter_rules_to_query([filter_rule])
 
       {sql, params} = EctoQueryBQ.SQL.to_sql_params(query)
       assert sql =~ "IN UNNEST(f1.tags)"
@@ -237,7 +237,7 @@ defmodule Logflare.BigQuery.EctoQueryBQTest do
       query =
         from(@bq_table_id)
         |> select([:timestamp, :metadata])
-        |> Lql.EctoHelpers.apply_filter_rules_to_query([filter_rule])
+        |> Lql.apply_filter_rules_to_query([filter_rule])
 
       {sql, params} = EctoQueryBQ.SQL.to_sql_params(query)
       assert sql =~ "EXISTS(SELECT * FROM UNNEST(f1.tags) AS x WHERE REGEXP_CONTAINS(x, ?))"
@@ -255,7 +255,7 @@ defmodule Logflare.BigQuery.EctoQueryBQTest do
       query =
         from(@bq_table_id)
         |> select([:timestamp, :metadata])
-        |> Lql.EctoHelpers.apply_filter_rules_to_query([filter_rule])
+        |> Lql.apply_filter_rules_to_query([filter_rule])
 
       {sql, params} = EctoQueryBQ.SQL.to_sql_params(query)
       assert sql =~ "NOT ("
@@ -284,7 +284,7 @@ defmodule Logflare.BigQuery.EctoQueryBQTest do
       query =
         from(@bq_table_id)
         |> select([:timestamp, :metadata])
-        |> Lql.EctoHelpers.apply_filter_rules_to_query(filter_rules)
+        |> Lql.apply_filter_rules_to_query(filter_rules)
 
       {sql, params} = EctoQueryBQ.SQL.to_sql_params(query)
 
@@ -323,7 +323,7 @@ defmodule Logflare.BigQuery.EctoQueryBQTest do
       query =
         from(@bq_table_id)
         |> select([:timestamp, :metadata])
-        |> Lql.EctoHelpers.apply_filter_rules_to_query(filter_rules)
+        |> Lql.apply_filter_rules_to_query(filter_rules)
 
       {sql, params} = EctoQueryBQ.SQL.to_sql_params(query)
 
@@ -348,7 +348,7 @@ defmodule Logflare.BigQuery.EctoQueryBQTest do
       query =
         from(@bq_table_id)
         |> select([:timestamp, :metadata])
-        |> Lql.EctoHelpers.apply_filter_rules_to_query([filter_rule])
+        |> Lql.apply_filter_rules_to_query([filter_rule])
 
       {sql, params} = EctoQueryBQ.SQL.to_sql_params(query)
 
@@ -378,7 +378,7 @@ defmodule Logflare.BigQuery.EctoQueryBQTest do
       query =
         from(@bq_table_id)
         |> select([:timestamp, :metadata])
-        |> Lql.EctoHelpers.apply_filter_rules_to_query(filter_rules)
+        |> Lql.apply_filter_rules_to_query(filter_rules)
 
       {sql, params} = EctoQueryBQ.SQL.to_sql_params(query)
 
@@ -417,7 +417,7 @@ defmodule Logflare.BigQuery.EctoQueryBQTest do
       query =
         from(@bq_table_id)
         |> select([:timestamp, :metadata])
-        |> Lql.EctoHelpers.apply_filter_rules_to_query(filter_rules)
+        |> Lql.apply_filter_rules_to_query(filter_rules)
 
       {_sql, params} = EctoQueryBQ.SQL.to_sql_params(query)
 

@@ -6,7 +6,7 @@ defmodule LogflareWeb.SourceController do
   alias Logflare.Google.BigQuery
   alias Logflare.JSON
   alias Logflare.Logs.RejectedLogEvents
-  alias Logflare.Logs.Search
+  alias Logflare.Logs.SearchUtils
   alias Logflare.Lql
   alias Logflare.Repo
   alias Logflare.Source
@@ -152,7 +152,7 @@ defmodule LogflareWeb.SourceController do
   end
 
   def render_show_with_assigns(conn, _user, source, avg_rate) when avg_rate <= 5 do
-    search_tip = Search.Utils.gen_search_tip()
+    search_tip = SearchUtils.gen_search_tip()
 
     render(
       conn,
@@ -165,7 +165,7 @@ defmodule LogflareWeb.SourceController do
   end
 
   def render_show_with_assigns(conn, _user, source, avg_rate) when avg_rate > 5 do
-    search_tip = Search.Utils.gen_search_tip()
+    search_tip = SearchUtils.gen_search_tip()
 
     search_path =
       Routes.live_path(conn, LogflareWeb.Source.SearchLV, source,

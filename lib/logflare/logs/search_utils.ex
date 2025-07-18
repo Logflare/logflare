@@ -1,9 +1,16 @@
-defmodule Logflare.Logs.Search.Utils do
+defmodule Logflare.Logs.SearchUtils do
   @moduledoc """
   Utilities for Logs search and Logs live view modules
   """
+
   require Logger
 
+  import Logflare.Utils.Guards
+
+  @doc """
+  Generates a random search tip for the user.
+  """
+  @spec gen_search_tip() :: String.t()
   def gen_search_tip() do
     tips = [
       "Search is case sensitive.",
@@ -20,7 +27,7 @@ defmodule Logflare.Logs.Search.Utils do
     Enum.random(tips)
   end
 
-  def halt(so, halt_reason) when is_binary(halt_reason) when is_atom(halt_reason) do
+  def halt(so, halt_reason) when is_binary(halt_reason) or is_atom_value(halt_reason) do
     so
     |> put_result(:error, :halted)
     |> put_status(:halted, halt_reason)
@@ -34,7 +41,7 @@ defmodule Logflare.Logs.Search.Utils do
     %{so | error: err}
   end
 
-  def put_result(so, key, value) when is_atom(key) do
+  def put_result(so, key, value) when is_atom_value(key) do
     %{so | key => value}
   end
 
@@ -48,7 +55,7 @@ defmodule Logflare.Logs.Search.Utils do
 
   def put_result_in(_, so, path \\ nil)
   def put_result_in(:ok, so, _), do: so
-  def put_result_in({:ok, value}, so, path) when is_atom(path), do: %{so | path => value}
+  def put_result_in({:ok, value}, so, path) when is_atom_value(path), do: %{so | path => value}
   def put_result_in({:error, term}, so, _), do: %{so | error: term}
   def put_result_in(value, so, path), do: %{so | path => value}
 end

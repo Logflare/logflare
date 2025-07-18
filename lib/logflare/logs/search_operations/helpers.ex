@@ -1,11 +1,11 @@
 defmodule Logflare.Logs.SearchOperations.Helpers do
   @moduledoc false
-  alias Logflare.Google.BigQuery.GenUtils
+
   alias Logflare.EctoQueryBQ
-  alias Logflare.Source
-  alias Logflare.Google.BigQuery.{GenUtils}
-  alias Logflare.{Source, EctoQueryBQ}
+  alias Logflare.Google.BigQuery.GenUtils
   alias Logflare.Lql.FilterRule, as: FR
+  alias Logflare.Source
+
   @type minmax :: %{min: DateTime.t(), max: DateTime.t(), message: nil | String.t()}
   @default_open_interval_length 1_000
 
