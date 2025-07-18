@@ -4,7 +4,6 @@ defmodule Logflare.Logs.SearchQueries do
   @chart_periods ~w(day hour minute second)a
   alias Logflare.Ecto.BQQueryAPI
   alias Logflare.Lql
-  import BQQueryAPI.UDF
   import BQQueryAPI
 
   def select_timestamp(q, chart_period) do
@@ -12,7 +11,6 @@ defmodule Logflare.Logs.SearchQueries do
     |> select([t], %{
       timestamp:
         fragment(
-
           """
           (case
           when ? = 'DAY'  then TIMESTAMP_TRUNC(?, DAY)
@@ -31,6 +29,7 @@ defmodule Logflare.Logs.SearchQueries do
           t.timestamp
         )
     })
+    |> dbg
   end
 
   def select_timestamp(q, chart_period, timezone) do
@@ -288,7 +287,6 @@ defmodule Logflare.Logs.SearchQueries do
     |> where([t], t.id == ^id)
     |> select([t], fragment("*"))
   end
-
 
   def source_table_streaming_buffer(bq_table_id) when is_binary(bq_table_id) do
     from(bq_table_id)
