@@ -1,5 +1,6 @@
 defmodule Logflare.Lql.Parser do
   @moduledoc false
+
   import NimbleParsec
   import __MODULE__.Helpers
 
