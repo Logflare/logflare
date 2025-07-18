@@ -555,6 +555,8 @@ defmodule LogflareWeb.Source.SearchLV do
           |> put_flash(:error, msg)
 
         %Tesla.Env{status: 400} = err ->
+          err.body |> IO.puts()
+
           Logger.error("Backend search error for source: #{source.token}",
             error_string: inspect(err),
             source_id: source.token
