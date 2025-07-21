@@ -552,6 +552,9 @@ defmodule LogflareWeb.Source.SearchLVTest do
 
     test "stop/start live search", %{conn: conn, source: source} do
       {:ok, view, _html} = live(conn, Routes.live_path(conn, SearchLV, source))
+      %{executor_pid: search_executor_pid} = view |> get_view_assigns()
+      Ecto.Adapters.SQL.Sandbox.allow(Logflare.Repo, self(), search_executor_pid)
+
       # post-init fetching
       :timer.sleep(500)
 
@@ -617,6 +620,10 @@ defmodule LogflareWeb.Source.SearchLVTest do
       end)
 
       {:ok, view, _html} = live(conn, Routes.live_path(conn, SearchLV, source.id))
+
+      %{executor_pid: search_executor_pid} = view |> get_view_assigns()
+      Ecto.Adapters.SQL.Sandbox.allow(Logflare.Repo, self(), search_executor_pid)
+
       # post-init fetching
 
       render_change(view, :start_search, %{

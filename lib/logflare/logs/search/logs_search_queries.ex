@@ -29,7 +29,6 @@ defmodule Logflare.Logs.SearchQueries do
           t.timestamp
         )
     })
-    |> dbg
   end
 
   def select_timestamp(q, chart_period, timezone) do
