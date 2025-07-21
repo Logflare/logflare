@@ -2,7 +2,8 @@ defmodule Logflare.Lql.Parser do
   @moduledoc """
   Core LQL parsing logic which relies on `NimbleParsec`.
 
-  See `Logflare.Lql.Parser.Helpers` for additional parser combinators.
+  See `Logflare.Lql.Parser.Helpers` for additional parser combinators
+  and other helper functions.
   """
 
   import NimbleParsec
@@ -231,8 +232,10 @@ defmodule Logflare.Lql.Parser do
 
   defp maybe_cast_value(c, :string), do: c
   defp maybe_cast_value(c, :datetime), do: c
+  # questionable if this can be reached
   defp maybe_cast_value(c, :naive_datetime), do: c
 
+  # also questionable if this can be reached
   defp maybe_cast_value(c, nil) do
     throw("Query parsing error: attempting to cast value #{c.value} to nil type for #{c.path}")
   end
