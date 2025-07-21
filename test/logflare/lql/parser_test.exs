@@ -1,5 +1,6 @@
-defmodule Logflare.LqlParserTest do
-  use Logflare.DataCase, async: true
+defmodule Logflare.Lql.ParserTest do
+  use ExUnit.Case, async: true
+  use Mimic
 
   alias Logflare.DateTimeUtils
   alias Logflare.Lql

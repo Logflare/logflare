@@ -1,5 +1,5 @@
 defmodule Logflare.Lql.ValidatorTest do
-  use Logflare.DataCase, async: true
+  use ExUnit.Case, async: true
 
   alias Logflare.Lql.ChartRule
   alias Logflare.Lql.FilterRule

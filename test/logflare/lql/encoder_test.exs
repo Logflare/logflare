@@ -1,5 +1,5 @@
 defmodule Logflare.Lql.EncoderTest do
-  use Logflare.DataCase, async: true
+  use ExUnit.Case, async: true
 
   alias Logflare.Lql.ChartRule
   alias Logflare.Lql.Encoder
