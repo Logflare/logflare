@@ -1,7 +1,6 @@
 defmodule Logflare.Lql.Parser.BasicCombinatorsTest do
   use ExUnit.Case, async: true
-
-  import NimbleParsec
+  use LqlParserTestHelpers
 
   alias Logflare.Lql.Parser.BasicCombinators
 
@@ -11,6 +10,7 @@ defmodule Logflare.Lql.Parser.BasicCombinatorsTest do
   defparsec(:test_metadata_field_parser, BasicCombinators.metadata_field())
   defparsec(:test_operator_parser, BasicCombinators.operator())
   defparsec(:test_level_strings, BasicCombinators.level_strings())
+  defparsec(:test_word_parser, BasicCombinators.word())
 
   describe "basic parser combinators" do
     test "null parser" do
@@ -51,6 +51,18 @@ defmodule Logflare.Lql.Parser.BasicCombinatorsTest do
       assert {:ok, [5], "", _, _, _} = test_level_strings("critical")
       assert {:ok, [6], "", _, _, _} = test_level_strings("alert")
       assert {:ok, [7], "", _, _, _} = test_level_strings("emergency")
+    end
+
+    test "word parser creates `FilterRule` for event_message" do
+      result = test_word_parser("error")
+      assert match?({:ok, [%{path: "event_message", value: "error"}], "", _, _, _}, result)
+
+      result = test_word_parser("~pattern")
+
+      assert match?(
+               {:ok, [%{path: "event_message", operator: :"~", value: "pattern"}], "", _, _, _},
+               result
+             )
     end
   end
 
