@@ -1,21 +1,37 @@
 defmodule Logflare.Lql.Validator do
   @moduledoc false
 
+  alias Logflare.Logs.SearchOperations.Helpers, as: SearchOperationHelpers
+  alias Logflare.Lql.ChartRule
+  alias Logflare.Lql.FilterRule
   alias Logflare.Utils.Chart
   alias Logflare.Utils.List, as: ListUtils
-  alias Logflare.Logs.SearchOperations.Helpers, as: SearchOperationHelpers
 
   @timestamp_filter_with_tailing "Timestamp filters can't be used if live tail search is active"
   @default_max_n_chart_ticks 250
 
-  def validate(lql_rules, opts) do
+  @type lql_rules :: %{
+          lql_ts_filters: [FilterRule.t()],
+          chart_period: atom(),
+          chart_rules: [ChartRule.t()]
+        }
+
+  @spec validate(lql_rules(), opts :: Keyword.t()) :: String.t() | nil
+  def validate(lql_rules, opts \\ []) when is_list(opts) do
     %{
       lql_ts_filters: lql_ts_filters,
       chart_period: chart_period,
       chart_rules: chart_rules
     } = lql_rules
 
-    %{tailing?: tailing?} = Map.new(opts)
+    tailing? = Keyword.get(opts, :tailing?, false)
+
+    tailing? =
+      if is_boolean(tailing?) do
+        tailing?
+      else
+        raise ArgumentError, "tailing? must be a boolean value"
+      end
 
     %{min: min_ts, max: max_ts} =
       SearchOperationHelpers.get_min_max_filter_timestamps(lql_ts_filters, chart_period)

@@ -1,5 +1,5 @@
 defmodule Logflare.Lql.BackendTransformerTest do
-  use Logflare.DataCase
+  use Logflare.DataCase, async: true
 
   alias Logflare.Lql.BackendTransformer
   alias Logflare.Lql.BackendTransformer.BigQuery

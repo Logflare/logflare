@@ -1,5 +1,6 @@
 defmodule Logflare.LqlTest do
-  use Logflare.DataCase
+  use Logflare.DataCase, async: true
+
   import Ecto.Query
 
   alias Logflare.Lql
@@ -110,8 +111,8 @@ defmodule Logflare.LqlTest do
     end
   end
 
-  describe "integration with existing API" do
-    test "decode/2 works as expected" do
+  describe "decode/2" do
+    test "works with BigQuery TableSchema" do
       lql_string = "m.status:error"
       schema = build_basic_schema()
 
@@ -121,7 +122,33 @@ defmodule Logflare.LqlTest do
       assert [%FilterRule{path: "metadata.status", operator: :=, value: "error"}] = rules
     end
 
-    test "encode/1 works as expected" do
+    test "handles empty string with any schema" do
+      {:ok, rules} = Lql.decode("", "any_schema")
+
+      assert rules == []
+    end
+  end
+
+  describe "decode!/2" do
+    test "works with BigQuery TableSchema and returns rules directly" do
+      lql_string = "m.status:error"
+      schema = build_basic_schema()
+
+      rules = Lql.decode!(lql_string, schema)
+
+      assert length(rules) == 1
+      assert [%FilterRule{path: "metadata.status", operator: :=, value: "error"}] = rules
+    end
+
+    test "handles empty string with any schema and returns rules directly" do
+      rules = Lql.decode!("", "any_schema")
+
+      assert rules == []
+    end
+  end
+
+  describe "encode/1" do
+    test "encodes filter rules to query string" do
       rules = [%FilterRule{path: "metadata.status", operator: :=, value: "error", modifiers: %{}}]
 
       {:ok, encoded} = Lql.encode(rules)
@@ -129,12 +156,72 @@ defmodule Logflare.LqlTest do
       assert encoded == "m.status:error"
     end
 
-    test "encode!/1 works as expected" do
+    test "handles empty rules list" do
+      {:ok, encoded} = Lql.encode([])
+
+      assert encoded == ""
+    end
+  end
+
+  describe "encode!/1" do
+    test "encodes filter rules to query string directly" do
       rules = [%FilterRule{path: "metadata.status", operator: :=, value: "error", modifiers: %{}}]
 
       encoded = Lql.encode!(rules)
 
       assert encoded == "m.status:error"
+    end
+
+    test "handles empty rules list" do
+      encoded = Lql.encode!([])
+
+      assert encoded == ""
+    end
+  end
+
+  describe "build_message_filter_from_regex/1" do
+    test "builds filter from simple text" do
+      text = "error"
+
+      {:ok, rules} = Lql.build_message_filter_from_regex(text)
+
+      assert length(rules) == 1
+      assert [%FilterRule{path: "event_message", value: "error"}] = rules
+    end
+
+    test "builds filter from multiple words" do
+      text = "database connection failed"
+
+      {:ok, rules} = Lql.build_message_filter_from_regex(text)
+
+      assert length(rules) == 3
+      paths = Enum.map(rules, & &1.path)
+      assert "event_message" in paths
+    end
+
+    test "builds filter from quoted string" do
+      quoted_text = ~s|"user authentication failed"|
+
+      {:ok, rules} = Lql.build_message_filter_from_regex(quoted_text)
+
+      assert length(rules) == 1
+      filter_rule = hd(rules)
+      assert filter_rule.path == "event_message"
+      assert filter_rule.value == "user authentication failed"
+      assert filter_rule.modifiers.quoted_string == true
+    end
+
+    test "builds filter from regex pattern" do
+      regex = ~s|~"error.*timeout"|
+
+      {:ok, rules} = Lql.build_message_filter_from_regex(regex)
+
+      assert length(rules) == 1
+      filter_rule = hd(rules)
+      assert filter_rule.path == "event_message"
+      assert filter_rule.value == "error.*timeout"
+      assert filter_rule.operator == :"~"
+      assert filter_rule.modifiers.quoted_string == true
     end
   end
 

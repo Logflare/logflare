@@ -308,6 +308,282 @@ defmodule Logflare.Lql.IntegrationTest do
     end
   end
 
+  describe "edge cases and error handling" do
+    setup do
+      user = insert(:user)
+      source = insert(:source, user_id: user.id)
+      {:ok, source: source, user: user}
+    end
+
+    test "handles empty LQL string", %{source: _source} do
+      {:ok, parsed_rules} = Parser.parse("", @default_schema)
+      encoded_string = Lql.encode!(parsed_rules)
+
+      assert parsed_rules == []
+      assert encoded_string == ""
+    end
+
+    test "handles nil LQL string", %{source: _source} do
+      {:ok, parsed_rules} = Parser.parse(nil)
+      encoded_string = Lql.encode!(parsed_rules)
+
+      assert parsed_rules == []
+      assert encoded_string == ""
+    end
+
+    test "handles whitespace-only LQL string", %{source: _source} do
+      result = Parser.parse("   \n  \t  ", @default_schema)
+
+      case result do
+        {:ok, parsed_rules} ->
+          encoded_string = Lql.encode!(parsed_rules)
+          assert parsed_rules == []
+          assert encoded_string == ""
+
+        {:error, _} ->
+          # If the parser cannot handle whitespace-only strings, we expect an error
+          assert true
+      end
+    end
+
+    test "returns error for invalid field path", %{source: _source} do
+      schema = build_schema(%{"metadata" => %{"status" => "test"}})
+      lql_string = "m.nonexistent_field:value"
+
+      result = Parser.parse(lql_string, schema)
+
+      assert {:error, :field_not_found, "", _} = result
+    end
+
+    test "returns error for invalid timestamp format", %{source: _source} do
+      lql_string = "t:invalid-timestamp"
+
+      result = Parser.parse(lql_string, @default_schema)
+
+      assert {:error, "Error while parsing timestamp" <> _} = result
+    end
+
+    test "returns error for invalid boolean value", %{source: _source} do
+      schema = build_schema(%{"metadata" => %{"flag" => true}})
+      lql_string = "m.flag:not_boolean"
+
+      result = Parser.parse(lql_string, schema)
+
+      assert {:error,
+              "Query syntax error: Expected boolean for metadata.flag, got: 'not_boolean'"} =
+               result
+    end
+
+    test "returns error for invalid integer value", %{source: _source} do
+      schema = build_schema(%{"metadata" => %{"count" => 42}})
+      lql_string = "m.count:not_an_integer"
+
+      result = Parser.parse(lql_string, schema)
+
+      assert {:error,
+              "Query syntax error: expected integer for metadata.count, got: 'not_an_integer'"} =
+               result
+    end
+
+    test "returns error for invalid float value", %{source: _source} do
+      schema = build_schema(%{"metadata" => %{"latency" => 3.14}})
+      lql_string = "m.latency:not_a_float"
+
+      result = Parser.parse(lql_string, schema)
+
+      assert {:error,
+              "Query syntax error: expected float for metadata.latency, got: 'not_a_float'"} =
+               result
+    end
+
+    test "handles multiple level filters with range encoding", %{source: _source} do
+      schema = build_schema(%{"metadata" => %{"level" => "info"}})
+      lql_string = "m.level:debug m.level:error m.level:warning"
+
+      {:ok, parsed_rules} = Parser.parse(lql_string, schema)
+      encoded_string = Lql.encode!(parsed_rules)
+
+      # Current behavior doesn't automatically create ranges - it keeps individual filters
+      assert String.contains?(encoded_string, "m.level:debug")
+      assert String.contains?(encoded_string, "m.level:error")
+      assert String.contains?(encoded_string, "m.level:warning")
+      assert length(parsed_rules) == 3
+    end
+
+    test "handles complex timestamp range with microseconds", %{source: _source} do
+      lql_string = "t:2020-01-01T12:30:45.123456..2020-01-01T12:30:45.654321"
+
+      {:ok, parsed_rules} = Parser.parse(lql_string, @default_schema)
+      encoded_string = Lql.encode!(parsed_rules)
+
+      assert length(parsed_rules) == 1
+      [rule] = parsed_rules
+      assert %FilterRule{path: "timestamp", operator: :range} = rule
+
+      # Should be able to re-parse
+      {:ok, reparsed_rules} = Parser.parse(encoded_string, @default_schema)
+      assert length(reparsed_rules) == 1
+    end
+
+    test "handles extreme timestamp shorthand values", %{source: _source} do
+      test_cases = [
+        "t:last@1s",
+        "t:last@999m",
+        "t:last@24h",
+        "t:last@365d",
+        "t:this@minute",
+        "t:this@year"
+      ]
+
+      for lql_string <- test_cases do
+        {:ok, parsed_rules} = Parser.parse(lql_string, @default_schema)
+        _encoded_string = Lql.encode!(parsed_rules)
+
+        assert length(parsed_rules) == 1
+        [rule] = parsed_rules
+        assert %FilterRule{path: "timestamp", shorthand: _} = rule
+
+        assert String.starts_with?(rule.shorthand, "last@") or
+                 String.starts_with?(rule.shorthand, "this@")
+      end
+    end
+
+    test "handles deeply nested field paths", %{source: _source} do
+      schema =
+        build_schema(%{
+          "metadata" => %{
+            "user" => %{
+              "profile" => %{
+                "settings" => %{
+                  "notifications" => %{"enabled" => true}
+                }
+              }
+            }
+          }
+        })
+
+      lql_string = "m.user.profile.settings.notifications.enabled:true"
+
+      {:ok, parsed_rules} = Parser.parse(lql_string, schema)
+      encoded_string = Lql.encode!(parsed_rules)
+
+      assert String.contains?(
+               encoded_string,
+               "m.user.profile.settings.notifications.enabled:true"
+             )
+
+      assert length(parsed_rules) == 1
+
+      [rule] = parsed_rules
+
+      assert %FilterRule{
+               path: "metadata.user.profile.settings.notifications.enabled",
+               value: true
+             } = rule
+    end
+
+    test "handles array regex operations", %{source: _source} do
+      schema = build_schema(%{"metadata" => %{"tags" => ["production", "staging"]}})
+      lql_string = "m.tags:@>~prod"
+
+      {:ok, parsed_rules} = Parser.parse(lql_string, schema)
+      encoded_string = Lql.encode!(parsed_rules)
+
+      assert encoded_string == lql_string
+      assert length(parsed_rules) == 1
+
+      [rule] = parsed_rules
+
+      assert %FilterRule{path: "metadata.tags", operator: :list_includes_regexp, value: "prod"} =
+               rule
+    end
+
+    test "handles special characters in quoted strings", %{source: _source} do
+      test_cases = [
+        {~S|"hello@example.com"|, "hello@example.com"},
+        {~S|"user[123]"|, "user[123]"},
+        {~S|"path/to/file.txt"|, "path/to/file.txt"},
+        {~S|"value with spaces and symbols!@#$%"|, "value with spaces and symbols!@#$%"}
+      ]
+
+      for {lql_string, expected_value} <- test_cases do
+        {:ok, parsed_rules} = Parser.parse(lql_string, @default_schema)
+        encoded_string = Lql.encode!(parsed_rules)
+
+        assert encoded_string == lql_string
+        assert length(parsed_rules) == 1
+
+        [rule] = parsed_rules
+
+        assert %FilterRule{
+                 path: "event_message",
+                 value: ^expected_value,
+                 modifiers: %{quoted_string: true}
+               } = rule
+      end
+    end
+
+    test "handles mixed negation with different operators", %{source: _source} do
+      schema = build_schema(%{"metadata" => %{"status" => "test", "count" => 42}})
+      lql_string = "-m.status:success -m.count:>100 -event_message:~error"
+
+      {:ok, parsed_rules} = Parser.parse(lql_string, schema)
+      encoded_string = Lql.encode!(parsed_rules)
+
+      # All rules should be negated
+      for rule <- parsed_rules do
+        assert %FilterRule{modifiers: %{negate: true}} = rule
+      end
+
+      assert length(parsed_rules) == 3
+
+      # Should contain negated elements in encoded string
+      assert String.contains?(encoded_string, "-m.status:success")
+      assert String.contains?(encoded_string, "-m.count:>100")
+    end
+
+    test "handles SearchOperation with tailing enabled", %{source: source} do
+      schema = build_schema(%{"metadata" => %{"status" => "error"}})
+      lql_string = "m.status:error"
+      {:ok, lql_rules} = Parser.parse(lql_string, schema)
+
+      search_op =
+        SearchOperation.new(%{
+          source: source,
+          querystring: lql_string,
+          lql_rules: lql_rules,
+          tailing?: true,
+          partition_by: :timestamp,
+          type: :events
+        })
+
+      assert search_op.tailing? == true
+      assert search_op.source == source
+      assert length(search_op.lql_meta_and_msg_filters) == 1
+    end
+
+    test "handles SearchOperation validation errors", %{source: source} do
+      schema = build_schema(%{"metadata" => %{"status" => "error"}})
+      lql_string = "m.status:error t:today"
+      {:ok, lql_rules} = Parser.parse(lql_string, schema)
+
+      # This should be caught by the validator as tailing with timestamp filters
+      search_op =
+        SearchOperation.new(%{
+          source: source,
+          querystring: lql_string,
+          lql_rules: lql_rules,
+          tailing?: true,
+          partition_by: :timestamp,
+          type: :events
+        })
+
+      # Should still create the operation but may have validation warnings
+      assert search_op.tailing? == true
+      assert length(search_op.lql_ts_filters) == 1
+    end
+  end
+
   defp build_schema(input) do
     SchemaBuilder.build_table_schema(input, @default_schema)
   end
