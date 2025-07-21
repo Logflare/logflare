@@ -2,12 +2,17 @@ defmodule Logflare.Lql.Parser do
   @moduledoc """
   Core LQL parsing logic which relies on `NimbleParsec`.
 
-  See `Logflare.Lql.Parser.Helpers` for additional parser combinators
-  and other helper functions.
+  See additional modules found within the `Logflare.Lql.Parser` namespace
+  for the actual parsers/combinators.
   """
 
   import NimbleParsec
-  import __MODULE__.Helpers
+  import Logflare.Lql.Parser.BasicCombinators
+  import Logflare.Lql.Parser.ChartParsers
+  import Logflare.Lql.Parser.ClauseBuilders
+  import Logflare.Lql.Parser.RuleBuilders
+  import Logflare.Lql.Parser.DateTimeParsers
+  import Logflare.Lql.Parser.Validators
 
   require Logger
 

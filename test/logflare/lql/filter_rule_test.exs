@@ -1,5 +1,5 @@
 defmodule Logflare.Lql.FilterRuleTest do
-  use Logflare.DataCase, async: true
+  use ExUnit.Case, async: true
 
   alias Logflare.Lql.FilterRule
 
