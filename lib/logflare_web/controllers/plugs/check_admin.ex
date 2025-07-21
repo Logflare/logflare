@@ -15,7 +15,7 @@ defmodule LogflareWeb.Plugs.CheckAdmin do
     conn
     |> put_status(403)
     |> put_view(ErrorView)
-    |> render("403_page.html")
+    |> render("403_page.html", conn.assigns)
     |> halt()
   end
 end

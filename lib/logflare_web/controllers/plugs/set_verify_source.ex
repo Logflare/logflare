@@ -35,7 +35,7 @@ defmodule LogflareWeb.Plugs.SetVerifySource do
         |> put_status(403)
         |> put_layout(false)
         |> put_view(LogflareWeb.ErrorView)
-        |> render("403_page.html")
+        |> render("403_page.html", conn.assigns)
         |> halt()
     end
   end

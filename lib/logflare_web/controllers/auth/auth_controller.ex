@@ -14,6 +14,10 @@ defmodule LogflareWeb.AuthController do
   def logout(conn, _params) do
     conn
     |> configure_session(drop: true)
+    |> put_resp_cookie("_logflare_last_provider", "", max_age: 0)
+    |> put_resp_cookie("_logflare_last_team", "", max_age: 0)
+    |> put_resp_cookie("_logflare_team_user_id", "", max_age: 0)
+    |> put_resp_cookie("_logflare_user_id", "", max_age: 0)
     |> redirect(to: Routes.auth_path(conn, :login))
   end
 
@@ -233,19 +237,45 @@ defmodule LogflareWeb.AuthController do
   end
 
   defp maybe_redirect_team_user(conn) do
-    team_user_id = conn.cookies["_logflare_team_user_id"]
-    user_id = conn.cookies["_logflare_user_id"]
+    last_team = conn.cookies["_logflare_last_team"]
+    user_id = get_session(conn, :user_id)
 
-    if team_user_id && user_id do
-      redirect(conn,
-        to:
-          Routes.team_user_path(conn, :change_team, %{
-            "user_id" => user_id,
-            "team_user_id" => team_user_id
-          })
-      )
-    else
-      redirect(conn, to: Routes.source_path(conn, :dashboard))
+    case last_team && user_id do
+      team_id when is_binary(team_id) ->
+        # Find the team_user for this user's email and team combination
+        user = Users.get(user_id)
+
+        case user &&
+               TeamUsers.get_team_user_by(email: user.email, team_id: String.to_integer(team_id)) do
+          nil ->
+            redirect(conn, to: ~p"/dashboard")
+
+          team_user ->
+            redirect(conn,
+              to:
+                Routes.team_user_path(conn, :change_team, %{
+                  "user_id" => user_id,
+                  "team_user_id" => team_user.id
+                })
+            )
+        end
+
+      _ ->
+        # Fallback to old cookie behavior if no last_team cookie
+        team_user_id = conn.cookies["_logflare_team_user_id"]
+        user_id = conn.cookies["_logflare_user_id"]
+
+        if team_user_id && user_id do
+          redirect(conn,
+            to:
+              Routes.team_user_path(conn, :change_team, %{
+                "user_id" => user_id,
+                "team_user_id" => team_user_id
+              })
+          )
+        else
+          redirect(conn, to: Routes.source_path(conn, :dashboard))
+        end
     end
   end
 
