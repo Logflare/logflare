@@ -210,7 +210,6 @@ const chartSettings = (type) => {
       };
   }
 };
-
 const periods = ["day", "hour", "minute", "second"];
 const LogEventsChart = ({
   data,
@@ -220,7 +219,7 @@ const LogEventsChart = ({
   display_timezone: userTz,
   pushEvent,
 }) => {
-  const tz = userTz
+  const tz = userTz || "Etc/UTC";
   const onClick = (event) => {
     pushEvent("soft_pause", {});
     const utcDatetime = event.data.datetime;
