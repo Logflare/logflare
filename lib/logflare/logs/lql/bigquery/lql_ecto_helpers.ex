@@ -59,7 +59,7 @@ defmodule Logflare.Lql.EctoHelpers do
             )
           end
         end)
-      end
+    end
   end
 
   defp split_by_dots(str) do
