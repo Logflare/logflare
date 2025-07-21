@@ -114,7 +114,7 @@ defmodule Logflare.Mixfile do
 
       # Parsing
       {:bertex, ">= 0.0.0"},
-      {:nimble_parsec, "~> 1.0"},
+      {:nimble_parsec, "~> 1.4.2"},
       {:warpath, "~> 0.5.0"},
       {:timber_logfmt, github: "Logflare/logfmt-elixir"},
 
