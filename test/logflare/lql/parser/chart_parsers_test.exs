@@ -7,6 +7,7 @@ defmodule Logflare.Lql.Parser.ChartParsersTest do
 
   defparsec(:test_chart_aggregate, ChartParsers.chart_aggregate())
   defparsec(:test_chart_aggregate_group_by, ChartParsers.chart_aggregate_group_by())
+  defparsec(:test_chart_clause, ChartParsers.chart_clause())
 
   describe "chart parsing combinators" do
     test "chart aggregate parser" do
@@ -56,6 +57,26 @@ defmodule Logflare.Lql.Parser.ChartParsersTest do
 
       assert {:ok, [period: :day], "", _, _, _} =
                test_chart_aggregate_group_by("group_by(t::d)")
+    end
+
+    test "chart clause parser with tag" do
+      # Test chart aggregate clause
+      result = test_chart_clause("c:count(*)")
+      assert match?({:ok, [chart: [aggregate: :count, path: "timestamp"]], "", _, _, _}, result)
+
+      result = test_chart_clause("chart:sum(metadata.metric)")
+
+      assert match?(
+               {:ok, [chart: [aggregate: :sum, path: "metadata.metric"]], "", _, _, _},
+               result
+             )
+
+      # Test chart group_by clause
+      result = test_chart_clause("c:group_by(t::minute)")
+      assert match?({:ok, [chart: [period: :minute]], "", _, _, _}, result)
+
+      result = test_chart_clause("chart:group_by(timestamp::hour)")
+      assert match?({:ok, [chart: [period: :hour]], "", _, _, _}, result)
     end
   end
 end

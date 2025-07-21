@@ -154,7 +154,7 @@ defmodule Logflare.Lql.Utils do
     from = NaiveDateTime.add(from, diff, :microsecond)
     to = NaiveDateTime.add(to, diff, :microsecond)
 
-    range = %Logflare.Lql.FilterRule{
+    range = %FilterRule{
       modifiers: %{},
       operator: :range,
       path: "timestamp",
