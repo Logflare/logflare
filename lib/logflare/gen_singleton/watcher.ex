@@ -66,6 +66,10 @@ defmodule Logflare.GenSingleton.Watcher do
   defp try_start_child(state) do
     pid =
       case Supervisor.start_child(state.sup_pid, state.child_spec) do
+        {:error, {:syn_resolve_kill, _spec}} ->
+          Logger.debug("GenSingleton | Process conflict detected, child did not start")
+          nil
+
         {:error, {:already_started, pid}} ->
           Logger.debug(
             "GenSingleton | process #{inspect(pid)} is already started on server: #{inspect(node(pid))}"
