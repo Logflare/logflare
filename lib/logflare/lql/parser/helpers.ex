@@ -751,6 +751,4 @@ defmodule Logflare.Lql.Parser.Helpers do
     |> Map.new()
     |> Map.get(level)
   end
-
-  def get_level_by_order(level), do: @level_orders[level]
 end

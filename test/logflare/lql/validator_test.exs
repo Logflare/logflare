@@ -17,7 +17,7 @@ defmodule Logflare.Lql.ValidatorTest do
       assert is_nil(result)
     end
 
-    test "returns error when tailing is true and timestamp filters exist" do
+    test "returns error when tailing? opt is true and timestamp filters exist" do
       lql_rules = %{
         lql_ts_filters: [
           %FilterRule{
@@ -34,7 +34,19 @@ defmodule Logflare.Lql.ValidatorTest do
       assert result == "Timestamp filters can't be used if live tail search is active"
     end
 
-    test "passes when tailing is true but no timestamp filters exist" do
+    test "raises an error when tailing? option is provided as a non-boolean" do
+      lql_rules = %{
+        lql_ts_filters: [],
+        chart_period: :minute,
+        chart_rules: []
+      }
+
+      assert_raise ArgumentError, "tailing? must be a boolean value", fn ->
+        Validator.validate(lql_rules, tailing?: "invalid")
+      end
+    end
+
+    test "passes when tailing? is true but no timestamp filters exist" do
       lql_rules = %{
         lql_ts_filters: [],
         chart_period: :minute,
@@ -45,7 +57,7 @@ defmodule Logflare.Lql.ValidatorTest do
       assert is_nil(result)
     end
 
-    test "passes when tailing is false even with timestamp filters" do
+    test "passes when tailing? is false even with timestamp filters" do
       lql_rules = %{
         lql_ts_filters: [
           %FilterRule{

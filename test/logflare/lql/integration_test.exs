@@ -341,7 +341,6 @@ defmodule Logflare.Lql.IntegrationTest do
           assert encoded_string == ""
 
         {:error, _} ->
-          # If the parser cannot handle whitespace-only strings, we expect an error
           assert true
       end
     end

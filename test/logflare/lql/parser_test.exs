@@ -71,6 +71,8 @@ defmodule Logflare.LqlParserTest do
     end
   end
 
+  setup :verify_on_exit!
+
   describe "LQL parsing" do
     test "other top-level fields" do
       schema = build_schema(%{"a" => "t", "b" => %{"c" => %{"d" => "test"}}})
@@ -541,6 +543,12 @@ defmodule Logflare.LqlParserTest do
       assert {:error, _err} = Parser.parse("\x00\x01\x02", @default_schema)
     end
 
+    test "handles NimbleParsec 2-tuple error format" do
+      # trying to trigger this error with a null byte input
+      result = Parser.parse(IO.iodata_to_binary([<<0x00>>]), @default_schema)
+      assert match?({:error, _}, result)
+    end
+
     test "returns error for map type fields" do
       schema = build_schema(%{"metadata" => %{"config" => %{}}})
 
@@ -555,6 +563,13 @@ defmodule Logflare.LqlParserTest do
                Parser.parse("created_at:test", schema)
     end
 
+    test "handles string type without casting" do
+      schema = build_schema(%{"metadata" => %{"message" => "string_value"}})
+
+      assert {:ok, [%FilterRule{path: "metadata.message", value: "test_string"}]} =
+               Parser.parse("m.message:test_string", schema)
+    end
+
     test "returns error for nonexistent field" do
       assert {:error, :field_not_found, "",
               [
@@ -563,6 +578,33 @@ defmodule Logflare.LqlParserTest do
                 ""
               ]} =
                Parser.parse("m.nonexistent:value", @default_schema)
+    end
+
+    test "handles naive_datetime fields without casting" do
+      schema = build_schema(%{"metadata" => %{"test_field" => "value"}})
+      mocked_typemap = %{"metadata.test_field" => :naive_datetime}
+
+      copy(Logflare.Google.BigQuery.SchemaUtils)
+
+      stub(Logflare.Google.BigQuery.SchemaUtils, :bq_schema_to_flat_typemap, fn _ ->
+        mocked_typemap
+      end)
+
+      assert {:ok, [%FilterRule{path: "metadata.test_field", value: "test_value"}]} =
+               Parser.parse("m.test_field:test_value", schema)
+    end
+
+    test "returns field not found error for nil type fields" do
+      schema = build_schema(%{"metadata" => %{"test_field" => "value"}})
+      mocked_typemap = %{"metadata.test_field" => nil}
+
+      copy(Logflare.Google.BigQuery.SchemaUtils)
+
+      stub(Logflare.Google.BigQuery.SchemaUtils, :bq_schema_to_flat_typemap, fn _ ->
+        mocked_typemap
+      end)
+
+      assert {:error, :field_not_found, "", _} = Parser.parse("m.test_field:test_value", schema)
     end
   end
 
