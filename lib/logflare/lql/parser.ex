@@ -1,19 +1,19 @@
 defmodule Logflare.Lql.Parser do
   @moduledoc """
-  Core LQL parsing logic.
+  Core LQL parsing logic which relies on `NimbleParsec`.
 
-  Relies on `NimbleParsec`. Find additional parsers and combinators in `Logflare.Lql.Parser.Helpers`.
+  See `Logflare.Lql.Parser.Helpers` for additional parser combinators.
   """
 
   import NimbleParsec
   import __MODULE__.Helpers
 
+  require Logger
+
   alias GoogleApi.BigQuery.V2.Model.TableSchema, as: TS
   alias Logflare.Google.BigQuery.SchemaUtils
   alias Logflare.Lql.ChartRule
   alias Logflare.Lql.FilterRule
-
-  require Logger
 
   defparsec(
     :do_parse,

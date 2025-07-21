@@ -10,10 +10,10 @@ defmodule Logflare.Lql do
   import Logflare.Utils.Guards
 
   alias GoogleApi.BigQuery.V2.Model.TableSchema, as: TS
-  alias __MODULE__.Parser
-  alias __MODULE__.Encoder
-  alias __MODULE__.BackendTransformer
   alias Logflare.Source.BigQuery.SchemaBuilder
+  alias __MODULE__.BackendTransformer
+  alias __MODULE__.Encoder
+  alias __MODULE__.Parser
 
   @doc """
   Parses LQL query string with schema validation.

@@ -14,6 +14,7 @@ defmodule Logflare.Lql.ChartRule do
     field :aggregate, Ecto.Atom, virtual: true, default: :count
   end
 
+  @spec build_from_path(String.t()) :: map()
   def build_from_path(path) do
     %__MODULE__{}
     |> cast(%{path: path}, __MODULE__.__schema__(:fields))

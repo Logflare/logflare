@@ -16,22 +16,24 @@ defmodule Logflare.Lql.FilterRule do
     field :shorthand, :string, virtual: true
   end
 
+  @spec changeset(any(), __MODULE__.t()) :: Ecto.Changeset.t()
   def changeset(_, %__MODULE__{} = rule) do
-    rule
-    |> cast(%{}, fields())
+    cast(rule, %{}, fields())
   end
 
+  @spec changeset(__MODULE__.t(), map()) :: Ecto.Changeset.t()
   def changeset(rule, params) do
-    rule
-    |> cast(params, fields())
+    cast(rule, params, fields())
   end
 
+  @spec build(list()) :: __MODULE__.t()
   def build(params) when is_list(params) do
     %__MODULE__{}
     |> cast(Map.new(params), fields())
     |> Map.get(:changes)
   end
 
+  @spec fields() :: list(atom())
   def fields() do
     __MODULE__.__schema__(:fields)
   end

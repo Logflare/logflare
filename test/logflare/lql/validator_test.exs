@@ -34,6 +34,36 @@ defmodule Logflare.Lql.ValidatorTest do
       assert result == "Timestamp filters can't be used if live tail search is active"
     end
 
+    test "passes when tailing is true but no timestamp filters exist" do
+      lql_rules = %{
+        lql_ts_filters: [],
+        chart_period: :minute,
+        chart_rules: []
+      }
+
+      result = Validator.validate(lql_rules, tailing?: true)
+      assert is_nil(result)
+    end
+
+    test "passes when tailing is false even with timestamp filters" do
+      lql_rules = %{
+        lql_ts_filters: [
+          %FilterRule{
+            path: "timestamp",
+            operator: :>,
+            value: ~N[2023-01-01 00:00:00]
+          }
+        ],
+        chart_period: :minute,
+        chart_rules: []
+      }
+
+      result = Validator.validate(lql_rules, tailing?: false)
+
+      assert result =~
+               "The interval length between min and max timestamp is larger than 250 periods"
+    end
+
     test "returns error when multiple chart rules exist" do
       lql_rules = %{
         lql_ts_filters: [],
@@ -58,7 +88,7 @@ defmodule Logflare.Lql.ValidatorTest do
       assert result == "Only one chart rule can be used in a LQL query"
     end
 
-    test "returns error when chart rule uses non-numeric field type" do
+    test "returns error when exactly one chart rule uses non-numeric field type" do
       lql_rules = %{
         lql_ts_filters: [],
         chart_period: :minute,
@@ -76,6 +106,24 @@ defmodule Logflare.Lql.ValidatorTest do
 
       assert result =~
                "Can't aggregate on a non-numeric field type 'string' for path metadata.user_name"
+    end
+
+    test "passes when exactly one chart rule uses numeric field type" do
+      lql_rules = %{
+        lql_ts_filters: [],
+        chart_period: :minute,
+        chart_rules: [
+          %ChartRule{
+            path: "metadata.count",
+            aggregate: :sum,
+            period: :minute,
+            value_type: :integer
+          }
+        ]
+      }
+
+      result = Validator.validate(lql_rules, tailing?: false)
+      assert is_nil(result)
     end
 
     test "allows chart rule on timestamp field regardless of type" do
@@ -250,6 +298,35 @@ defmodule Logflare.Lql.ValidatorTest do
 
       result = Validator.validate(lql_rules, tailing?: false)
       assert is_nil(result)
+    end
+
+    test "validates exactly one chart rule condition for non-numeric type" do
+      start_time = ~N[2023-01-01 00:00:00]
+      end_time = ~N[2023-01-01 02:00:00]
+
+      lql_rules = %{
+        lql_ts_filters: [
+          %FilterRule{
+            path: "timestamp",
+            operator: :range,
+            values: [start_time, end_time]
+          }
+        ],
+        chart_period: :minute,
+        chart_rules: [
+          %ChartRule{
+            path: "metadata.status",
+            aggregate: :count,
+            period: :minute,
+            value_type: :boolean
+          }
+        ]
+      }
+
+      result = Validator.validate(lql_rules, tailing?: false)
+
+      assert result =~
+               "Can't aggregate on a non-numeric field type 'boolean' for path metadata.status"
     end
   end
 end

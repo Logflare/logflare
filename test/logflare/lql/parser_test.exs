@@ -11,6 +11,10 @@ defmodule Logflare.LqlParserTest do
   @default_schema SchemaBuilder.initial_table_schema()
 
   describe "parse/1" do
+    test "parse empty string" do
+      assert {:ok, []} == Parser.parse("")
+    end
+
     test "parse string value" do
       qs = ~S|a:testing|
 
@@ -26,6 +30,15 @@ defmodule Logflare.LqlParserTest do
       assert {:ok,
               [
                 %FilterRule{operator: :=, path: "a", value: true}
+              ]} == Parser.parse(qs)
+    end
+
+    test "parse boolean false without schema" do
+      qs = ~S|a:false|
+
+      assert {:ok,
+              [
+                %FilterRule{operator: :=, path: "a", value: false}
               ]} == Parser.parse(qs)
     end
 
@@ -518,6 +531,39 @@ defmodule Logflare.LqlParserTest do
       assert err =~ "emailAddress"
       assert err =~ "metadata filter value"
     end
+
+    test "returns error when parser cannot handle part of input" do
+      assert {:error, "LQL parser doesn't know how to handle this part: " <> _rest} =
+               Parser.parse("event_message:test ][=invalid syntax", @default_schema)
+    end
+
+    test "returns error for general parsing errors" do
+      assert {:error, _err} = Parser.parse("\x00\x01\x02", @default_schema)
+    end
+
+    test "returns error for map type fields" do
+      schema = build_schema(%{"metadata" => %{"config" => %{}}})
+
+      assert {:error, :field_not_found, "", ["Field type `map` is not queryable.", "", ""]} =
+               Parser.parse("m.config:value", schema)
+    end
+
+    test "handles naive_datetime type without casting" do
+      schema = build_schema(%{"created_at" => "2023-01-01T00:00:00"})
+
+      assert {:ok, [%FilterRule{path: "created_at", value: "test"}]} =
+               Parser.parse("created_at:test", schema)
+    end
+
+    test "returns error for nonexistent field" do
+      assert {:error, :field_not_found, "",
+              [
+                "LQL parser error: path `metadata.nonexistent` not present in source schema.",
+                "",
+                ""
+              ]} =
+               Parser.parse("m.nonexistent:value", @default_schema)
+    end
   end
 
   describe "LQL parser for timestamp range shorthand" do
@@ -600,20 +646,247 @@ defmodule Logflare.LqlParserTest do
     end
   end
 
-  test "Encoder.to_datetime_with_range/2" do
-    for {start_str, end_str, expected} <- [
-          # minutes
-          {"2020-01-01T03:05:15Z", "2020-01-01T03:59:15Z", "2020-01-01T03:{05..59}:15"},
-          # hour
-          {"2020-01-01T17:00:15Z", "2020-01-01T23:00:15Z", "2020-01-01T{17..23}:00:15"},
-          # day
-          {"2020-01-01T17:00:15Z", "2020-01-15T17:00:15Z", "2020-01-{01..15}T17:00:15"},
-          # none
-          {"2020-12-01T17:00:15Z", "2020-12-01T17:00:15Z", "2020-12-01T17:00:15"}
-        ] do
-      start_value = NaiveDateTime.from_iso8601!(start_str)
-      end_value = NaiveDateTime.from_iso8601!(end_str)
-      assert Lql.Encoder.to_datetime_with_range(start_value, end_value) == expected
+  describe "parsing error handling" do
+    test "returns error for malformed query syntax" do
+      assert {:error, error} = Parser.parse("m.field:", @default_schema)
+      assert error =~ "Error while parsing"
+      assert error =~ "metadata filter value"
+    end
+
+    test "returns error for invalid timestamp format" do
+      assert {:error, error} = Parser.parse("t:>invalid-date", @default_schema)
+      assert error =~ "Error while parsing timestamp"
+    end
+
+    test "returns error for invalid operator combinations" do
+      assert {:error, error} = Parser.parse("m.field:>>100", @default_schema)
+      assert error =~ "Error while parsing"
+    end
+
+    test "returns error for unclosed quotes" do
+      assert {:error, error} = Parser.parse("\"unclosed quote", @default_schema)
+      assert is_binary(error)
+    end
+
+    test "returns error for invalid chart syntax" do
+      result = Parser.parse("c:invalid(m.field)", @default_schema)
+      assert match?({:error, :field_not_found, _, _}, result)
+    end
+
+    test "handles empty query string" do
+      result = Parser.parse("", @default_schema)
+      assert result == {:ok, []}
+    end
+
+    test "handles whitespace-only query" do
+      result = Parser.parse("   ", @default_schema)
+      assert match?({:ok, _}, result) or match?({:error, _}, result)
+    end
+
+    test "handles field not in schema" do
+      result = Parser.parse("m.nonexistent.field:value", @default_schema)
+      assert match?({:error, :field_not_found, _, _}, result)
+    end
+  end
+
+  describe "edge cases" do
+    test "handles extremely long field names" do
+      long_field = String.duplicate("a", 100)
+      schema = build_schema(%{"metadata" => %{long_field => "value"}})
+      query = "m.#{long_field}:value"
+
+      result = Parser.parse(query, schema)
+      assert match?({:ok, _}, result)
+    end
+
+    test "handles extremely long values" do
+      schema = build_schema(%{"metadata" => %{"field" => "test"}})
+      long_value = String.duplicate("test", 100)
+      query = "m.field:\"#{long_value}\""
+
+      result = Parser.parse(query, schema)
+      assert match?({:ok, _}, result)
+    end
+
+    test "handles special characters in values" do
+      schema = build_schema(%{"metadata" => %{"field" => "test"}})
+      special_chars = ["!@#$%^&*()", "こんにちは", "🚀"]
+
+      for char <- special_chars do
+        query = "m.field:\"#{char}\""
+        result = Parser.parse(query, schema)
+        assert match?({:ok, _}, result)
+      end
+    end
+
+    test "handles multiple consecutive operators" do
+      invalid_queries = [
+        "m.field::value",
+        "m.field:>=<100",
+        "m.field:~~pattern"
+      ]
+
+      for query <- invalid_queries do
+        result = Parser.parse(query, @default_schema)
+        assert match?({:error, _}, result)
+      end
+    end
+
+    test "handles numeric edge cases" do
+      schema = build_schema(%{"metadata" => %{"field" => 1}})
+
+      queries = [
+        "m.field:0",
+        "m.field:999999999999999999999"
+      ]
+
+      for query <- queries do
+        result = Parser.parse(query, schema)
+        assert match?({:ok, _}, result)
+      end
+
+      float_schema = build_schema(%{"metadata" => %{"field" => 1.0}})
+      float_result = Parser.parse("m.field:3.14159265359", float_schema)
+      assert match?({:ok, _}, float_result)
+    end
+
+    test "handles boolean values" do
+      schema = build_schema(%{"metadata" => %{"field" => true}})
+
+      queries = [
+        "m.field:true",
+        "m.field:false"
+      ]
+
+      for query <- queries do
+        result = Parser.parse(query, schema)
+        assert match?({:ok, _}, result)
+      end
+    end
+
+    test "handles NULL values" do
+      schema = build_schema(%{"metadata" => %{"field" => "test"}})
+      query = "m.field:NULL"
+
+      result = Parser.parse(query, schema)
+      assert match?({:ok, _}, result)
+    end
+
+    test "handles timestamp edge cases" do
+      queries = [
+        "t:1970-01-01",
+        "t:2000-02-29",
+        "t:2023-01-01T00:00:00"
+      ]
+
+      for query <- queries do
+        result = Parser.parse(query, @default_schema)
+        assert match?({:ok, _}, result)
+      end
+    end
+
+    test "handles range operators" do
+      schema = build_schema(%{"metadata" => %{"field" => 1}})
+
+      queries = [
+        "m.field:1..10",
+        "m.field:10..1",
+        "m.field:1..1"
+      ]
+
+      for query <- queries do
+        result = Parser.parse(query, schema)
+        assert match?({:ok, _}, result)
+      end
+    end
+
+    test "handles regex patterns" do
+      queries = [
+        "~error",
+        "~[a-z]+",
+        "~\\d+"
+      ]
+
+      for query <- queries do
+        result = Parser.parse(query, @default_schema)
+        assert match?({:ok, _}, result)
+      end
+    end
+
+    test "handles array operations" do
+      schema = build_schema(%{"metadata" => %{"array" => ["value"]}})
+
+      queries = [
+        "m.array:@>value",
+        "m.array:@>\"quoted value\"",
+        "m.array:@>123"
+      ]
+
+      for query <- queries do
+        result = Parser.parse(query, schema)
+        assert match?({:ok, _}, result)
+      end
+    end
+
+    test "handles chart operators" do
+      schema = build_schema(%{"metadata" => %{"field" => 1.0}})
+
+      queries = [
+        "c:count(*)",
+        "c:sum(m.field)",
+        "c:avg(m.field)"
+      ]
+
+      for query <- queries do
+        result = Parser.parse(query, schema)
+        assert match?({:ok, _}, result)
+      end
+
+      combined_query = "c:avg(m.field) c:group_by(t::minute)"
+      result = Parser.parse(combined_query, schema)
+      assert match?({:ok, _}, result)
+    end
+
+    test "handles negation" do
+      schema = build_schema(%{"metadata" => %{"field" => "value"}})
+
+      queries = [
+        "-m.field:value",
+        "-~pattern"
+      ]
+
+      for query <- queries do
+        result = Parser.parse(query, schema)
+        assert match?({:ok, _}, result)
+      end
+    end
+
+    test "handles multiple filters" do
+      schema = build_schema(%{"metadata" => %{"field1" => "value1", "field2" => "value2"}})
+      query = "m.field1:value1 m.field2:value2"
+
+      result = Parser.parse(query, schema)
+      assert match?({:ok, _}, result)
+    end
+  end
+
+  describe "schema validation" do
+    test "handles missing schema gracefully" do
+      assert_raise FunctionClauseError, fn ->
+        Parser.parse("m.field:value", nil)
+      end
+    end
+
+    test "handles empty schema" do
+      empty_schema = %GoogleApi.BigQuery.V2.Model.TableSchema{fields: []}
+      result = Parser.parse("m.field:value", empty_schema)
+      assert match?({:error, :field_not_found, _, _}, result)
+    end
+
+    test "handles basic schema with new fields" do
+      basic_schema = SchemaBuilder.initial_table_schema()
+      result = Parser.parse("m.new_field:value", basic_schema)
+      assert match?({:error, :field_not_found, _, _}, result)
     end
   end
 

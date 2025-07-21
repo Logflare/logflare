@@ -1,5 +1,6 @@
 defmodule Logflare.Lql.BackendTransformer.BigQueryTest do
-  use Logflare.DataCase
+  use Logflare.DataCase, async: true
+
   import Ecto.Query
 
   alias Logflare.Lql.BackendTransformer.BigQuery
