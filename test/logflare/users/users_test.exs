@@ -1,6 +1,6 @@
 defmodule Logflare.UsersTest do
-  @moduledoc false
-  use Logflare.DataCase
+  use Logflare.DataCase, async: false
+
   alias Logflare.Sources
   alias Logflare.User
   alias Logflare.Users
@@ -44,10 +44,28 @@ defmodule Logflare.UsersTest do
 
   test "delete_user/1" do
     user = insert(:user)
-    insert(:alert, user: user)
-    insert(:source, user: user)
-    insert(:endpoint, user: user)
+    alert = insert(:alert, user: user)
+    source = insert(:source, user: user)
+    endpoint = insert(:endpoint, user: user)
+
+    expect(
+      GoogleApi.CloudResourceManager.V1.Api.Projects,
+      :cloudresourcemanager_projects_set_iam_policy,
+      fn _, _project_number, [body: _body] ->
+        {:ok,
+         %Tesla.Env{
+           status: 200,
+           body: ""
+         }}
+      end
+    )
+
     assert {:ok, _} = Users.delete_user(user)
+
+    refute Repo.reload(alert)
+    refute Repo.reload(source)
+    refute Repo.reload(endpoint)
+    refute Repo.reload(user)
   end
 
   test "users_count/0 returns user count" do
