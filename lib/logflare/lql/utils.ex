@@ -1,11 +1,14 @@
 defmodule Logflare.Lql.Utils do
   @moduledoc false
 
+  import Logflare.Utils.Guards
+
   alias Logflare.Lql.ChartRule
   alias Logflare.Lql.FilterRule
 
   @type lql_list :: [ChartRule.t() | FilterRule.t()]
 
+  @spec default_chart_rule() :: ChartRule.t()
   def default_chart_rule() do
     %ChartRule{
       aggregate: :count,
@@ -15,7 +18,8 @@ defmodule Logflare.Lql.Utils do
     }
   end
 
-  def get_chart_period(lql_rules, default \\ nil) do
+  @spec get_chart_period(lql_list(), default :: any()) :: atom()
+  def get_chart_period(lql_rules, default \\ nil) when is_list(lql_rules) do
     chart = get_chart_rule(lql_rules)
 
     if chart do
@@ -25,7 +29,8 @@ defmodule Logflare.Lql.Utils do
     end
   end
 
-  def get_chart_aggregate(lql_rules, default \\ nil) do
+  @spec get_chart_aggregate(lql_list(), default :: any()) :: atom()
+  def get_chart_aggregate(lql_rules, default \\ nil) when is_list(lql_rules) do
     chart = get_chart_rule(lql_rules)
 
     if chart do
@@ -35,26 +40,31 @@ defmodule Logflare.Lql.Utils do
     end
   end
 
-  def get_filter_rules(rules) do
+  @spec get_filter_rules(lql_list()) :: lql_list()
+  def get_filter_rules(rules) when is_list(rules) do
     Enum.filter(rules, &match?(%FilterRule{}, &1))
   end
 
-  def get_chart_rules(rules) do
+  @spec get_chart_rules(lql_list()) :: lql_list()
+  def get_chart_rules(rules) when is_list(rules) do
     Enum.filter(rules, &match?(%ChartRule{}, &1))
   end
 
-  @spec get_chart_rule(lql_list) :: ChartRule.t() | nil
-  def get_chart_rule(rules) do
+  @spec get_chart_rule(lql_list()) :: ChartRule.t() | nil
+  def get_chart_rule(rules) when is_list(rules) do
     Enum.find(rules, &match?(%ChartRule{}, &1))
   end
 
-  def update_timestamp_rules(lql_list, new_rules) do
+  @spec update_timestamp_rules(lql_list(), lql_list()) :: lql_list()
+  def update_timestamp_rules(lql_list, new_rules)
+      when is_list(lql_list) and is_list(new_rules) do
     lql_list
     |> Enum.reject(&match?(%FilterRule{path: "timestamp"}, &1))
     |> Enum.concat(new_rules)
   end
 
-  def put_chart_period(lql_list, period) when is_atom(period) do
+  @spec put_chart_period(lql_list(), atom()) :: lql_list()
+  def put_chart_period(lql_list, period) when is_list(lql_list) and is_atom_value(period) do
     i = Enum.find_index(lql_list, &match?(%ChartRule{}, &1))
 
     chart =
@@ -65,8 +75,9 @@ defmodule Logflare.Lql.Utils do
     List.replace_at(lql_list, i, chart)
   end
 
-  @spec update_chart_rule(lql_list, ChartRule.t(), map()) :: lql_list
-  def update_chart_rule(rules, default, params) when is_map(params) and is_list(rules) do
+  @spec update_chart_rule(lql_list(), ChartRule.t(), params :: map()) :: lql_list()
+  def update_chart_rule(rules, %ChartRule{} = default, params)
+      when is_list(rules) and is_map(params) do
     i = Enum.find_index(rules, &match?(%ChartRule{}, &1))
 
     if i do
@@ -81,7 +92,8 @@ defmodule Logflare.Lql.Utils do
     end
   end
 
-  def put_new_chart_rule(rules, chart) do
+  @spec put_new_chart_rule(lql_list(), ChartRule.t()) :: lql_list()
+  def put_new_chart_rule(rules, %ChartRule{} = chart) when is_list(rules) do
     i = Enum.find_index(rules, &match?(%ChartRule{}, &1))
 
     if i do
@@ -91,14 +103,17 @@ defmodule Logflare.Lql.Utils do
     end
   end
 
-  def get_ts_filters(rules) do
+  @spec get_ts_filters(lql_list()) :: lql_list()
+  def get_ts_filters(rules) when is_list(rules) do
     Enum.filter(rules, &(&1.path == "timestamp"))
   end
 
-  def get_meta_and_msg_filters(rules) do
+  @spec get_meta_and_msg_filters(lql_list()) :: lql_list()
+  def get_meta_and_msg_filters(rules) when is_list(rules) do
     Enum.filter(rules, &(&1.path != "timestamp"))
   end
 
+  @spec get_lql_parser_warnings(lql_list(), Keyword.t()) :: String.t() | nil
   def get_lql_parser_warnings(lql_rules, dialect: :routing) when is_list(lql_rules) do
     cond do
       Enum.find(lql_rules, &(&1.path == "timestamp")) ->
@@ -112,7 +127,9 @@ defmodule Logflare.Lql.Utils do
     end
   end
 
-  def jump_timestamp(rules, direction) when direction in [:backwards, :forwards] do
+  @spec jump_timestamp(lql_list(), :backwards | :forwards) :: lql_list()
+  def jump_timestamp(rules, direction)
+      when is_list(rules) and direction in [:backwards, :forwards] do
     timestamp_rules =
       get_ts_filters(rules)
       |> get_filter_rules()
@@ -149,6 +166,7 @@ defmodule Logflare.Lql.Utils do
     update_timestamp_rules(rules, [range])
   end
 
+  @spec timestamp_filter_rule_is_shorthand?(FilterRule.t()) :: boolean()
   def timestamp_filter_rule_is_shorthand?(%FilterRule{shorthand: shorthand}) do
     case shorthand do
       x when binary_part(x, 0, 4) in ["last", "this"] -> true

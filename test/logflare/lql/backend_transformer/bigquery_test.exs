@@ -1,7 +1,7 @@
 defmodule Logflare.Lql.BackendTransformer.BigQueryTest do
   use Logflare.DataCase
-
   import Ecto.Query
+
   alias Logflare.Lql.BackendTransformer.BigQuery
   alias Logflare.Lql.FilterRule
   alias Logflare.Lql.ChartRule
@@ -56,7 +56,7 @@ defmodule Logflare.Lql.BackendTransformer.BigQueryTest do
 
     test "applies top-level filter rules" do
       query = from(@bq_table_id, select: [:timestamp, :event_message])
-      
+
       filter_rule = %FilterRule{
         path: "event_message",
         operator: :=,
@@ -65,14 +65,14 @@ defmodule Logflare.Lql.BackendTransformer.BigQueryTest do
       }
 
       result = BigQuery.apply_filter_rules_to_query(query, [filter_rule])
-      
+
       # Should add a WHERE clause for the top-level field
       assert %Ecto.Query{wheres: [_where_clause]} = result
     end
 
     test "applies nested filter rules with UNNEST" do
       query = from(@bq_table_id, select: [:timestamp, :metadata])
-      
+
       filter_rule = %FilterRule{
         path: "metadata.status",
         operator: :=,
@@ -81,14 +81,14 @@ defmodule Logflare.Lql.BackendTransformer.BigQueryTest do
       }
 
       result = BigQuery.apply_filter_rules_to_query(query, [filter_rule])
-      
+
       # Should add both JOIN and WHERE clauses for nested fields
       assert %Ecto.Query{joins: [_join_clause], wheres: [_where_clause]} = result
     end
 
     test "handles multiple filter rules" do
       query = from(@bq_table_id, select: [:timestamp, :metadata])
-      
+
       filter_rules = [
         %FilterRule{
           path: "event_message",
@@ -105,14 +105,14 @@ defmodule Logflare.Lql.BackendTransformer.BigQueryTest do
       ]
 
       result = BigQuery.apply_filter_rules_to_query(query, filter_rules)
-      
+
       # Should have both top-level WHERE and nested JOIN+WHERE
       assert %Ecto.Query{joins: [_join_clause], wheres: [_where1, _where2]} = result
     end
 
     test "handles range operator" do
       query = from(@bq_table_id, select: [:timestamp])
-      
+
       filter_rule = %FilterRule{
         path: "timestamp",
         operator: :range,
@@ -121,7 +121,7 @@ defmodule Logflare.Lql.BackendTransformer.BigQueryTest do
       }
 
       result = BigQuery.apply_filter_rules_to_query(query, [filter_rule])
-      
+
       # Should add a BETWEEN clause
       assert %Ecto.Query{wheres: [_where_clause]} = result
     end
@@ -137,7 +137,7 @@ defmodule Logflare.Lql.BackendTransformer.BigQueryTest do
     test "adds UNNEST joins for nested fields" do
       query = from(@bq_table_id, select: [:timestamp, :metadata])
       result = BigQuery.handle_nested_field_access(query, "metadata.status")
-      
+
       # Should add an INNER JOIN with UNNEST
       assert %Ecto.Query{joins: [join_clause]} = result
       assert join_clause.qual == :inner
@@ -145,8 +145,10 @@ defmodule Logflare.Lql.BackendTransformer.BigQueryTest do
 
     test "adds multiple UNNEST joins for deeply nested fields" do
       query = from(@bq_table_id, select: [:timestamp, :metadata])
-      result = BigQuery.handle_nested_field_access(query, "metadata.request.headers.authorization")
-      
+
+      result =
+        BigQuery.handle_nested_field_access(query, "metadata.request.headers.authorization")
+
       # Should add multiple INNER JOINs with UNNEST
       assert %Ecto.Query{joins: [_join1, _join2, _join3]} = result
     end
