@@ -85,6 +85,7 @@
       %{
         data: if(@search_op_log_aggregates, do: @search_op_log_aggregates.rows, else: []),
         loading: @chart_loading,
+        display_timezone: @search_timezone || "Etc/UTC",
         chart_period: get_chart_period(@lql_rules, "minute"),
         chart_data_shape_id:
           if(@search_op_log_aggregates,

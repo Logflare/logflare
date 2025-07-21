@@ -180,6 +180,19 @@ defmodule LogflareWeb.Source.SearchLVTest do
       assert view |> element(".subhead") |> render() =~ "(+08:00)"
       assert render(view) =~ "something123"
     end
+
+    test "chart - timezone passed to chart component", %{conn: conn, source: source} do
+      {:ok, view, _html} =
+        live(
+          conn,
+          ~p"/sources/#{source.id}/search?querystring=something123&tailing%3F=&tz=Singapore"
+        )
+
+      assert view
+             |> element(~s|div[data-live-react-class="Components.LogEventsChart"]|)
+             |> render() =~
+               Plug.HTML.html_escape(~s|"display_timezone":"Singapore"|)
+    end
   end
 
   describe "preference timezone for team_user" do
