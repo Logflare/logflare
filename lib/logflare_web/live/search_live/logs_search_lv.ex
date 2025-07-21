@@ -17,14 +17,11 @@ defmodule LogflareWeb.Source.SearchLV do
   alias LogflareWeb.Router.Helpers, as: Routes
   alias LogflareWeb.SearchView
 
-  import LogflareWeb.Helpers.BqSchema
   import LogflareWeb.ModalLiveHelpers
   import Logflare.Lql.Utils
-  alias Logflare.DateTimeUtils
 
   import Logflare.Logs.Search.Utils
   import LogflareWeb.SearchLV.Utils
-  import Logflare.Utils, only: [iso_timestamp: 1]
   import LogflareWeb.SearchLive.TimezoneComponent
 
   require Logger
@@ -555,8 +552,6 @@ defmodule LogflareWeb.Source.SearchLV do
           |> put_flash(:error, msg)
 
         %Tesla.Env{status: 400} = err ->
-          err.body |> IO.puts()
-
           Logger.error("Backend search error for source: #{source.token}",
             error_string: inspect(err),
             source_id: source.token
