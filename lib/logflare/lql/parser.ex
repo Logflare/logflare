@@ -1,5 +1,9 @@
 defmodule Logflare.Lql.Parser do
-  @moduledoc false
+  @moduledoc """
+  Core LQL parsing logic.
+
+  Relies on `NimbleParsec`. Find additional parsers and combinators in `Logflare.Lql.Parser.Helpers`.
+  """
 
   import NimbleParsec
   import __MODULE__.Helpers

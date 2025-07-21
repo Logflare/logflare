@@ -7,7 +7,7 @@ defmodule Logflare.Lql.Encoder do
 
   alias Logflare.Lql.ChartRule
   alias Logflare.Lql.FilterRule
-  alias Logflare.Lql.Parser
+  alias Logflare.Lql.Parser.Helpers, as: ParserHelpers
 
   @date_periods ~w(year month day)a
   @time_periods ~w(hour minute second)a
@@ -38,7 +38,7 @@ defmodule Logflare.Lql.Encoder do
             # `filter_rules` has at least 2 entries
             {"m.level", [_, _ | _] = filter_rules} ->
               {min_level, max_level} =
-                Enum.min_max_by(filter_rules, &Parser.Helpers.get_level_order(&1.value))
+                Enum.min_max_by(filter_rules, &ParserHelpers.get_level_order(&1.value))
 
               "m.level:#{min_level.value}..#{max_level.value}"
 
