@@ -40,12 +40,12 @@
 <div id="logs-list-stream-container" class="mt-4 container mx-auto console-text">
   <ul id="logs-list" class="list-unstyled console-text-list" hidden>
     <li :for={{log, inx} <- @logs |> Enum.with_index()} class="hover:tw-bg-gray-800">
-      <span class="tw-whitespace-pre-wrap"><mark class="log-datestamp" data-timestamp={log.body["timestamp"]}>{log.body["timestamp"]}</mark>{log.body["event_message"]}</span>
 
-      <a class="metadata-link" data-toggle="collapse" href={"#metadata-#{inx}"} aria-expanded="false" class=" tw-text-[0.65rem]">
+      <span class="tw-whitespace-pre-wrap"><mark class="log-datestamp" data-timestamp={log.body["timestamp"]}><%= log.body["timestamp"] %></mark> <mark :if={log.level} class={"log-level-#{log.level}"}><%= log.level %></mark> <%= log.body["event_message"] %></span>
+      <a class="metadata-link" data-toggle="collapse" href={"#metadata-#{inx}"} aria-expanded="false" class="tw-text-[0.65rem]">
         event body
       </a>
-      <div class="collapse metadata" id={"#metadata-#{inx}"}>
+      <div class="collapse metadata" id={"metadata-#{inx}"}>
         <pre class="pre-metadata"><code><%= JSON.encode!(log.body, pretty: true) %></code></pre>
       </div>
       <%= if log.via_rule do %>

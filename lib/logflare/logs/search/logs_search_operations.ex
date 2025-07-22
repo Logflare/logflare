@@ -66,20 +66,13 @@ defmodule Logflare.Logs.SearchOperations do
   end
 
   @spec apply_query_defaults(SO.t()) :: SO.t()
-  def apply_query_defaults(%SO{chart_data_shape_id: chart_data_shape_id} = so) do
+  def apply_query_defaults(%SO{} = so) do
     query =
       from(so.source.bq_table_id)
       |> select([t], [t.timestamp, t.id, t.event_message])
-      |> case do
-        q when chart_data_shape_id == :elixir_logger_levels ->
-          q
-          |> Lql.EctoHelpers.unnest_and_join_nested_columns(:inner, "metadata.level")
-          |> select_merge([..., m], %{level: m.level})
-
-        q ->
-          q
-      end
-      |> order_by([t], desc: t.timestamp)
+      |> Lql.EctoHelpers.unnest_and_join_nested_columns(:inner, "metadata.level")
+      |> select_merge([..., m], %{level: m.level})
+      |> order_by([t, ...], desc: t.timestamp)
       |> limit(@default_limit)
 
     %{so | query: query}
@@ -191,7 +184,6 @@ defmodule Logflare.Logs.SearchOperations do
   def apply_timestamp_filter_rules(%SO{type: :events} = so) do
     %SO{tailing?: t?, tailing_initial?: ti?, query: query} = so
     chart_period = hd(so.chart_rules).period
-
     utc_today = Date.utc_today()
 
     ts_filters = so.lql_ts_filters
