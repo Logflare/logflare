@@ -1,5 +1,6 @@
 defmodule LogflareWeb.SourceView do
   import LogflareWeb.Helpers.Forms
+  import LogflareWeb.SearchLive.LogEventComponents, only: [mark: 1]
   alias LogflareWeb.Router.Helpers, as: Routes
   use LogflareWeb, :view
 
