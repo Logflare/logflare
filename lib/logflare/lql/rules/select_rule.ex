@@ -17,6 +17,7 @@ defmodule Logflare.Lql.Rules.SelectRule do
 
   use TypedEctoSchema
   import Ecto.Changeset
+  import Logflare.Utils.Guards
 
   alias Ecto.Changeset
 
@@ -30,106 +31,82 @@ defmodule Logflare.Lql.Rules.SelectRule do
 
   @spec changeset(any(), __MODULE__.t()) :: Changeset.t()
   def changeset(_, %__MODULE__{} = rule) do
-    cast(rule, %{}, fields())
+    cast(rule, %{}, virtual_fields())
   end
 
   @spec changeset(__MODULE__.t(), map()) :: Changeset.t()
   def changeset(%__MODULE__{} = rule, params) do
-    cast(rule, params, fields())
+    cast(rule, params, virtual_fields())
     |> validate_path()
   end
 
   @spec build(list()) :: __MODULE__.t()
   def build(params) when is_list(params) do
+    IO.inspect(Map.new(params), label: "params", limit: :infinity, pretty: true)
+    IO.inspect(virtual_fields(), label: "virtual_fields", limit: :infinity, pretty: true)
+
     %__MODULE__{}
-    |> cast(Map.new(params), fields())
+    |> cast(Map.new(params), virtual_fields())
+    |> IO.inspect(label: "after cast", limit: :infinity, pretty: true)
     |> validate_path()
+    |> IO.inspect(label: "after validate_path", limit: :infinity, pretty: true)
     |> case do
       %{valid?: true} = changeset -> changeset.changes
       %{valid?: false} -> %{}
     end
   end
 
-  @spec fields() :: list(atom())
-  def fields() do
-    __MODULE__.__schema__(:fields)
+  @spec virtual_fields() :: list(atom())
+  def virtual_fields() do
+    __MODULE__.__schema__(:virtual_fields)
   end
 
   @spec build_from_path(String.t()) :: map()
-  def build_from_path(path) when is_binary(path) do
-    wildcard = path == "*"
+  def build_from_path(path) when is_non_empty_binary(path) do
+    is_wildcard? = path == "*"
 
     %__MODULE__{}
-    |> cast(%{path: path, wildcard: wildcard}, fields())
+    |> cast(%{path: path, wildcard: is_wildcard?}, virtual_fields())
+    |> validate_required([:path])
     |> validate_path()
     |> case do
-      %{valid?: true} = changeset ->
-        Map.merge(%{path: path, wildcard: wildcard}, changeset.changes)
+      %Changeset{valid?: true} = changeset ->
+        IO.inspect(changeset, label: "cs", limit: :infinity, pretty: true)
+        Map.merge(%{path: path, wildcard: is_wildcard?}, changeset.changes)
 
-      %{valid?: false} ->
-        %{path: path, wildcard: wildcard}
+      %Changeset{valid?: false} ->
+        %{path: path, wildcard: is_wildcard?}
     end
   end
 
-  @spec build_from_path(nil) :: map()
-  def build_from_path(nil) do
-    build_from_path("*")
-  end
+  @spec build_from_path(any()) :: map()
+  def build_from_path(_path), do: build_from_path("*")
 
   # =============================================================================
   # Rule-Specific Operations
   # =============================================================================
 
   @doc """
-  Normalizes a list of SelectRule structs by applying wildcard precedence and deduplication.
+  Normalizes a list of `SelectRule` structs by applying wildcard precedence and path deduplication.
 
   ## Wildcard Precedence
-  If any select rule uses wildcard (s:*), only the first wildcard rule is returned
+  If any select rule uses wildcard `s:*`, only the first wildcard rule is returned
   since wildcard selection supersedes all specific field selections.
-
-  ## Deduplication
-  When no wildcards are present, duplicate field paths are removed, keeping the
-  first occurrence of each unique path.
-
-  ## Examples
-
-      # Wildcard wins
-      rules = [
-        %SelectRule{path: "field1", wildcard: false},
-        %SelectRule{path: "*", wildcard: true},
-        %SelectRule{path: "field2", wildcard: false}
-      ]
-      SelectRule.normalize(rules)
-      # => [%SelectRule{path: "*", wildcard: true}]
-
-      # Deduplication without wildcards
-      rules = [
-        %SelectRule{path: "field1", wildcard: false},
-        %SelectRule{path: "field2", wildcard: false},
-        %SelectRule{path: "field1", wildcard: false}  # duplicate
-      ]
-      SelectRule.normalize(rules)
-      # => [%SelectRule{path: "field1", wildcard: false},
-      #     %SelectRule{path: "field2", wildcard: false}]
   """
   @spec normalize([__MODULE__.t()]) :: [__MODULE__.t()]
   def normalize(select_rules) when is_list(select_rules) do
     select_rules
     |> apply_wildcard_precedence()
-    |> deduplicate()
+    |> deduplicate_paths()
   end
 
   @doc """
-  Applies wildcard precedence to a list of SelectRule structs.
-
-  If any rule uses wildcard selection (path: "*"), returns only the first
-  wildcard rule. Otherwise returns all rules unchanged.
+  Applies wildcard precedence to a list of `SelectRule` structs.
   """
   @spec apply_wildcard_precedence([__MODULE__.t()]) :: [__MODULE__.t()]
   def apply_wildcard_precedence(select_rules) when is_list(select_rules) do
     case Enum.any?(select_rules, & &1.wildcard) do
       true ->
-        # Wildcard wins - return only the first wildcard rule
         select_rules
         |> Enum.find(& &1.wildcard)
         |> List.wrap()
@@ -140,14 +117,11 @@ defmodule Logflare.Lql.Rules.SelectRule do
   end
 
   @doc """
-  Removes duplicate field selections from a list of SelectRule structs.
-
-  Keeps the first occurrence of each unique field path.
+  Removes duplicate field selections from a list of `SelectRule` structs based on the path attribute.
   """
-  @spec deduplicate([__MODULE__.t()]) :: [__MODULE__.t()]
-  def deduplicate(select_rules) when is_list(select_rules) do
-    select_rules
-    |> Enum.uniq_by(& &1.path)
+  @spec deduplicate_paths([__MODULE__.t()]) :: [__MODULE__.t()]
+  def deduplicate_paths(select_rules) when is_list(select_rules) do
+    Enum.uniq_by(select_rules, & &1.path)
   end
 
   # =============================================================================
@@ -162,7 +136,7 @@ defmodule Logflare.Lql.Rules.SelectRule do
         path == "*" ->
           []
 
-        is_binary(path) and
+        is_non_empty_binary(path) and
             String.match?(path, ~r/^[a-zA-Z_][a-zA-Z0-9_]*(\.[a-zA-Z_][a-zA-Z0-9_]*)*$/) ->
           []
 
@@ -171,5 +145,6 @@ defmodule Logflare.Lql.Rules.SelectRule do
       end
     end)
     |> put_change(:wildcard, get_field(changeset, :path) == "*")
+    |> IO.inspect(label: "in validate path", limit: :infinity, pretty: true)
   end
 end

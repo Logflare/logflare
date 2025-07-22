@@ -136,6 +136,8 @@ defmodule Logflare.Lql.Rules.FilterRuleTest do
 
       result = FilterRule.build(params)
 
+      IO.inspect(result, label: "Result", limit: :infinity, pretty: true)
+
       assert is_map(result)
     end
 

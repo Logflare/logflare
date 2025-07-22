@@ -2,7 +2,7 @@ defmodule Logflare.Lql.Rules.ChartRule do
   @moduledoc """
   Represents a chart aggregation rule in LQL for generating time-series charts and analytics.
 
-  ChartRule defines how to aggregate log data over time periods to create visual charts
+  `ChartRule` defines how to aggregate log data over time periods to create visual charts
   and statistical summaries. It supports various aggregation functions and time grouping
   periods for analyzing trends in log data.
 
@@ -74,10 +74,15 @@ defmodule Logflare.Lql.Rules.ChartRule do
     field :aggregate, Ecto.Atom, virtual: true, default: :count
   end
 
+  @spec virtual_fields() :: list(atom())
+  def virtual_fields() do
+    __MODULE__.__schema__(:virtual_fields)
+  end
+
   @spec build_from_path(String.t()) :: map()
   def build_from_path(path) do
     %__MODULE__{}
-    |> cast(%{path: path}, __MODULE__.__schema__(:fields))
+    |> cast(%{path: path}, virtual_fields())
     |> Map.get(:changes)
   end
 
@@ -86,19 +91,19 @@ defmodule Logflare.Lql.Rules.ChartRule do
   # =============================================================================
 
   @doc """
-  Extracts the period field from a ChartRule.
+  Extracts the period field from a `ChartRule`.
   """
   @spec get_period(__MODULE__.t()) :: atom()
   def get_period(%__MODULE__{period: period}), do: period
 
   @doc """
-  Extracts the aggregate field from a ChartRule.
+  Extracts the aggregate field from a `ChartRule`.
   """
   @spec get_aggregate(__MODULE__.t()) :: atom()
   def get_aggregate(%__MODULE__{aggregate: aggregate}), do: aggregate
 
   @doc """
-  Updates the period field of a ChartRule.
+  Updates the period field of a `ChartRule`.
   """
   @spec put_period(__MODULE__.t(), atom()) :: __MODULE__.t()
   def put_period(%__MODULE__{} = chart_rule, period) when is_atom(period) do
@@ -106,7 +111,7 @@ defmodule Logflare.Lql.Rules.ChartRule do
   end
 
   @doc """
-  Updates a ChartRule with the provided parameters map.
+  Updates a `ChartRule` with the provided parameters map.
   """
   @spec update(__MODULE__.t(), map()) :: __MODULE__.t()
   def update(%__MODULE__{} = chart_rule, params) when is_map(params) do

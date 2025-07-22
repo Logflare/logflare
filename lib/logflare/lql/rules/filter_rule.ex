@@ -2,7 +2,7 @@ defmodule Logflare.Lql.Rules.FilterRule do
   @moduledoc """
   Represents a filter rule in LQL for searching and filtering log events.
 
-  FilterRule supports filtering on event messages, metadata fields, timestamps, and nested
+  `FilterRule` supports filtering on event messages, metadata fields, timestamps, and nested
   field structures with various operators including exact matches, comparisons, regex,
   array operations, and range queries.
 
@@ -77,24 +77,24 @@ defmodule Logflare.Lql.Rules.FilterRule do
 
   @spec changeset(any(), __MODULE__.t()) :: Ecto.Changeset.t()
   def changeset(_, %__MODULE__{} = rule) do
-    cast(rule, %{}, fields())
+    cast(rule, %{}, virtual_fields())
   end
 
   @spec changeset(__MODULE__.t(), map()) :: Ecto.Changeset.t()
   def changeset(rule, params) do
-    cast(rule, params, fields())
+    cast(rule, params, virtual_fields())
   end
 
   @spec build(list()) :: __MODULE__.t()
   def build(params) when is_list(params) do
     %__MODULE__{}
-    |> cast(Map.new(params), fields())
+    |> cast(Map.new(params), virtual_fields())
     |> Map.get(:changes)
   end
 
-  @spec fields() :: list(atom())
-  def fields() do
-    __MODULE__.__schema__(:fields)
+  @spec virtual_fields() :: list(atom())
+  def virtual_fields() do
+    __MODULE__.__schema__(:virtual_fields)
   end
 
   # =============================================================================
@@ -102,9 +102,9 @@ defmodule Logflare.Lql.Rules.FilterRule do
   # =============================================================================
 
   @doc """
-  Extracts timestamp filter rules from a list of FilterRule structs.
+  Extracts timestamp filter rules from a list of `FilterRule` structs.
 
-  Returns only FilterRule structs where the path is "timestamp".
+  Returns only `FilterRule` structs where the path is "timestamp".
   """
   @spec extract_timestamp_filters([__MODULE__.t()]) :: [__MODULE__.t()]
   def extract_timestamp_filters(filter_rules) when is_list(filter_rules) do
@@ -114,7 +114,7 @@ defmodule Logflare.Lql.Rules.FilterRule do
   @doc """
   Extracts non-timestamp filter rules from a list of FilterRule structs.
 
-  Returns FilterRule structs where the path is NOT "timestamp" (metadata and message filters).
+  Returns `FilterRule` structs where the path is NOT "timestamp" (metadata and message filters).
   """
   @spec extract_metadata_filters([__MODULE__.t()]) :: [__MODULE__.t()]
   def extract_metadata_filters(filter_rules) when is_list(filter_rules) do
@@ -122,7 +122,7 @@ defmodule Logflare.Lql.Rules.FilterRule do
   end
 
   @doc """
-  Checks if a FilterRule uses timestamp shorthand notation.
+  Checks if a `FilterRule` uses timestamp shorthand notation.
 
   Returns true for shorthand patterns like:
   - "last@5minute", "this@hour"
@@ -140,7 +140,7 @@ defmodule Logflare.Lql.Rules.FilterRule do
   end
 
   @doc """
-  Creates a new timestamp range FilterRule by jumping forward or backward in time.
+  Creates a new timestamp range `FilterRule` by jumping forward or backward in time.
 
   Takes existing timestamp filters, calculates the time difference, and creates
   a new range filter shifted by that interval in the specified direction.
