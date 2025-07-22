@@ -15,7 +15,7 @@ defmodule LogflareWeb.Search.LogEventViewerComponent do
     {:ok, socket}
   end
 
-  def update(%{log_event: log_event_result} = assigns, socket) do
+  def update(%{log_event: %LE{} = log_event_result} = assigns, socket) do
     socket =
       assign(socket, :log_event, log_event_result)
       |> assign_defaults(assigns)
@@ -51,7 +51,7 @@ defmodule LogflareWeb.Search.LogEventViewerComponent do
 
     LogEvents.Cache.put(
       socket.assigns.source.token,
-      {"uuid", le.id},
+      le.id,
       le
     )
 
@@ -70,9 +70,18 @@ defmodule LogflareWeb.Search.LogEventViewerComponent do
   end
 
   def load_event(%{log_event_id: log_id, source: source} = params) do
-    dbg(params.timestamp)
     range = get_partitions_range(params)
-    LogEvents.fetch_event_by_id(source.token, log_id, partitions_range: range, lql: params.lql)
+
+    case LogEvents.Cache.get(source.token, log_id) |> dbg() do
+      {:ok, %LE{} = le} ->
+        le
+
+      _ ->
+        LogEvents.Cache.fetch_event_by_id(source.token, log_id,
+          partitions_range: range,
+          lql: params.lql
+        )
+    end
   end
 
   @impl true

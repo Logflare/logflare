@@ -25,7 +25,6 @@ defmodule Logflare.Logs.LogEvents do
         %Lql.FilterRule{} -> true
         _ -> false
       end)
-      |> dbg()
 
     bq_table_id = source.bq_table_id
     bq_project_id = source.user.bigquery_project_id || GCPConfig.default_project_id()
@@ -38,7 +37,6 @@ defmodule Logflare.Logs.LogEvents do
       |> where([t], t.timestamp <= ^max)
       |> where([t], t.id == ^id)
       |> select([t], fragment("*"))
-      |> dbg()
 
     source.user
     |> BqRepo.query(bq_project_id, query, dataset_id: dataset_id)
