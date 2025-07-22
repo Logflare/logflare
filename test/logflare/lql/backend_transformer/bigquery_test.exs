@@ -4,6 +4,7 @@ defmodule Logflare.Lql.BackendTransformer.BigQueryTest do
   import Ecto.Query
 
   alias Logflare.Lql.BackendTransformer.BigQuery
+  alias Logflare.Lql.Rules.SelectRule
   alias Logflare.Lql.Rules.ChartRule
   alias Logflare.Lql.Rules.FilterRule
 
@@ -254,6 +255,84 @@ defmodule Logflare.Lql.BackendTransformer.BigQueryTest do
       assert_raise RuntimeError, ~r/Chart rule transformation not yet implemented/, fn ->
         BigQuery.transform_chart_rule(chart_rule, %{})
       end
+    end
+  end
+
+  describe "transform_select_rule/2" do
+    test "transforms wildcard select rule" do
+      select_rule = %SelectRule{path: "*", wildcard: true}
+
+      result = BigQuery.transform_select_rule(select_rule, %{})
+
+      assert result == {:wildcard, []}
+    end
+
+    test "transforms top-level field select rule" do
+      select_rule = %SelectRule{path: "event_message", wildcard: false}
+
+      result = BigQuery.transform_select_rule(select_rule, %{})
+
+      assert result == {:field, :event_message, []}
+    end
+
+    test "transforms nested field select rule" do
+      select_rule = %SelectRule{path: "metadata.user.id", wildcard: false}
+
+      result = BigQuery.transform_select_rule(select_rule, %{})
+
+      assert {:nested_field, ["metadata", "user", "id"], ["metadata", "metadata.user"]} = result
+    end
+
+    test "transforms special top-level field select rule" do
+      select_rule = %SelectRule{path: "timestamp", wildcard: false}
+
+      result = BigQuery.transform_select_rule(select_rule, %{})
+
+      assert result == {:field, :timestamp, []}
+    end
+  end
+
+  describe "apply_select_rules_to_query/3" do
+    setup do
+      base_query = from(l in @bq_table_id, select: l)
+      [base_query: base_query]
+    end
+
+    test "returns query unchanged for empty select rules", %{base_query: base_query} do
+      result = BigQuery.apply_select_rules_to_query(base_query, [], [])
+
+      assert result == base_query
+    end
+
+    test "returns query unchanged for wildcard select rule", %{base_query: base_query} do
+      select_rules = [%SelectRule{path: "*", wildcard: true}]
+
+      result = BigQuery.apply_select_rules_to_query(base_query, select_rules, [])
+
+      assert result == base_query
+    end
+
+    test "applies wildcard precedence - ignores other rules when wildcard present", %{
+      base_query: base_query
+    } do
+      select_rules = [
+        %SelectRule{path: "event_message", wildcard: false},
+        %SelectRule{path: "*", wildcard: true},
+        %SelectRule{path: "timestamp", wildcard: false}
+      ]
+
+      result = BigQuery.apply_select_rules_to_query(base_query, select_rules, [])
+
+      assert result == base_query
+    end
+
+    test "applies single top-level field selection", %{base_query: base_query} do
+      select_rules = [%SelectRule{path: "event_message", wildcard: false}]
+
+      result = BigQuery.apply_select_rules_to_query(base_query, select_rules, [])
+
+      assert %Ecto.Query{} = result
+      refute result == base_query
     end
   end
 end

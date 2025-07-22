@@ -77,6 +77,34 @@ defmodule Logflare.Lql do
   end
 
   @doc """
+  Applies select rules to a query using the appropriate transformer.
+  """
+  @spec apply_select_rules(Ecto.Query.t(), [term()], keyword()) :: Ecto.Query.t()
+  def apply_select_rules(query, select_rules, opts \\ []) do
+    adapter = Keyword.get(opts, :adapter, :bigquery)
+    transformer = BackendTransformer.for_dialect(adapter)
+    transformer.apply_select_rules_to_query(query, select_rules, opts)
+  end
+
+  @doc """
+  Applies all LQL rules to a query using the appropriate transformer.
+
+  This is a convenience function that applies filter rules, select rules, and any other
+  applicable transformations in the correct order.
+  """
+  @spec apply_rules(Ecto.Query.t(), [term()], keyword()) :: Ecto.Query.t()
+  def apply_rules(query, lql_rules, opts \\ []) do
+    alias Logflare.Lql.Rules
+
+    filter_rules = Rules.get_filter_rules(lql_rules)
+    select_rules = Rules.get_select_rules(lql_rules)
+
+    query
+    |> apply_filter_rules(filter_rules, opts)
+    |> apply_select_rules(select_rules, opts)
+  end
+
+  @doc """
   Handles nested field access using the appropriate backend transformer.
   """
   @spec handle_nested_field_access(Ecto.Query.t(), String.t(), keyword()) :: Ecto.Query.t()

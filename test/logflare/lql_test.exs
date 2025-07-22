@@ -5,6 +5,7 @@ defmodule Logflare.LqlTest do
 
   alias Logflare.Lql
   alias Logflare.Lql.Rules.FilterRule
+  alias Logflare.Lql.Rules.SelectRule
   alias Logflare.Source.BigQuery.SchemaBuilder
 
   describe "apply_filter_rules/3" do
@@ -215,5 +216,50 @@ defmodule Logflare.LqlTest do
         }
       ]
     }
+  end
+
+  describe "apply_rules/3" do
+    test "applies both filter and select rules to query" do
+      query = from("test_table")
+
+      filter_rule = %FilterRule{
+        path: "event_message",
+        operator: :=,
+        value: "error",
+        modifiers: %{}
+      }
+
+      select_rule = %SelectRule{
+        path: "timestamp",
+        wildcard: false
+      }
+
+      lql_rules = [filter_rule, select_rule]
+      result_query = Lql.apply_rules(query, lql_rules)
+
+      assert %Ecto.Query{} = result_query
+      refute result_query == query
+    end
+
+    test "handles mixed rule types correctly" do
+      query = from("test_table")
+
+      lql_rules = [
+        %FilterRule{path: "metadata.level", operator: :=, value: "info", modifiers: %{}},
+        %SelectRule{path: "*", wildcard: true}
+      ]
+
+      result_query = Lql.apply_rules(query, lql_rules)
+
+      assert %Ecto.Query{} = result_query
+    end
+
+    test "works with empty rule list" do
+      query = from("test_table")
+
+      result_query = Lql.apply_rules(query, [])
+
+      assert result_query == query
+    end
   end
 end
