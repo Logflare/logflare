@@ -31,12 +31,17 @@ defmodule LogflareWeb.SearchLive.LogEventComponents do
         :formatted_timestamp,
         format_timestamp(body["timestamp"], assigns.search_timezone) <> tz_part
       )
-      |> assign(:log_level, if(body["level"] in @log_levels, do: body["level"], else: nil))
+      |> assign(
+        :log_level,
+        if(body["level"] in @log_levels, do: body["level"], else: nil)
+      )
 
     ~H"""
     <li id={"log-event_#{@log.id || @log.body["timestamp"]}"} class="tw-group">
       <span class="tw-inline-block">
-        <.mark timestamp={@timestamp} search_timezone={@search_timezone} log_level={@log_level} />
+        <.metadata timestamp={@timestamp} log_level={@log_level}>
+          <%= format_timestamp(@timestamp, @search_timezone) %>
+        </.metadata>
         <%= @message %>
       </span>
       <span class="tw-inline-block tw-text-[0.65rem] tw-align-text-bottom tw-inline-flex tw-flex-row tw-gap-2">
@@ -56,12 +61,12 @@ defmodule LogflareWeb.SearchLive.LogEventComponents do
 
   attr :log_level, :string, default: nil
   attr :timestamp, :string
-  attr :search_timezone, :string
+  slot :inner_block
 
-  def mark(assigns) do
+  def metadata(assigns) do
     ~H"""
     <mark class={"log-#{@log_level} mr-2"} data-timestamp={@timestamp}>
-      <%= format_timestamp(@timestamp, @search_timezone) %>
+      <%= render_slot(@inner_block) %>
     </mark>
     <mark :if={@log_level} class={"log-level-#{@log_level}"}><%= @log_level %></mark>
     """
