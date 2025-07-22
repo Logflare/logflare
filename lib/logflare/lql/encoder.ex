@@ -1,13 +1,13 @@
 defmodule Logflare.Lql.Encoder do
   @moduledoc """
-  Encodes Lql rules to a lql querystring
+  Encodes LQL rules to a LQL querystring
   """
 
   import Logflare.Utils.Guards
 
   alias Logflare.Lql.ChartRule
   alias Logflare.Lql.FilterRule
-  alias Logflare.Lql.Parser.RuleBuilders
+  alias Logflare.Lql.Parser.Helpers
 
   @date_periods ~w(year month day)a
   @time_periods ~w(hour minute second)a
@@ -38,12 +38,12 @@ defmodule Logflare.Lql.Encoder do
             # `filter_rules` has at least 2 entries
             {"m.level", [_, _ | _] = filter_rules} ->
               {min_level, max_level} =
-                Enum.min_max_by(filter_rules, &RuleBuilders.get_level_order(&1.value))
+                Enum.min_max_by(filter_rules, &Helpers.get_level_order(&1.value))
 
               "m.level:#{min_level.value}..#{max_level.value}"
 
             {_path, filter_rules} ->
-              filter_rules |> Enum.map_join(" ", &to_fragment/1)
+              Enum.map_join(filter_rules, " ", &to_fragment/1)
           end
 
         qs <> " " <> append
@@ -53,7 +53,9 @@ defmodule Logflare.Lql.Encoder do
 
   @spec to_fragment(FilterRule.t() | ChartRule.t()) :: String.t()
   defp to_fragment(%FilterRule{shorthand: sh} = f) when not is_nil(sh) do
-    "#{f.path}:#{sh}" |> String.trim_trailing("s") |> String.replace("timestamp:", "t:")
+    "#{f.path}:#{sh}"
+    |> String.trim_trailing("s")
+    |> String.replace("timestamp:", "t:")
   end
 
   defp to_fragment(%FilterRule{modifiers: %{negate: true} = mods} = f) do

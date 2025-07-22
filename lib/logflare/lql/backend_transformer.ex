@@ -3,8 +3,9 @@ defmodule Logflare.Lql.BackendTransformer do
   Behaviour for LQL-to-backend query transformations.
 
   This module defines the interface that all LQL backend transformer implementations must follow.
-  Each backend transformer (BigQuery, ClickHouse, PostgreSQL, etc.) implements this behaviour
-  to provide backend-specific query translation from LQL FilterRules and ChartRules.
+
+  Each backend transformer (BigQuery, ClickHouse, PostgreSQL, etc.) must implement this behaviour
+  to provide backend-specific query translation from LQL `FilterRule` and `ChartRule` structs.
   """
 
   alias Logflare.Lql.ChartRule
