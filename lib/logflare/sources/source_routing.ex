@@ -1,14 +1,16 @@
 defmodule Logflare.Logs.SourceRouting do
   @moduledoc false
-  alias Logflare.{Source, Sources}
-  alias Logflare.Rules.Rule
-  alias Logflare.Lql
-  alias Logflare.LogEvent, as: LE
-  alias Logflare.Logs
-  alias Logflare.Backends
-  alias Logflare.Backends.SourceSup
 
   require Logger
+
+  alias Logflare.Backends
+  alias Logflare.Backends.SourceSup
+  alias Logflare.LogEvent, as: LE
+  alias Logflare.Logs
+  alias Logflare.Lql.Rules.FilterRule
+  alias Logflare.Rules.Rule
+  alias Logflare.Source
+  alias Logflare.Sources
 
   @spec route_to_sinks_and_ingest(LE.t()) :: LE.t()
   def route_to_sinks_and_ingest(events) when is_list(events),
@@ -61,7 +63,7 @@ defmodule Logflare.Logs.SourceRouting do
       when lql_filters != [] do
     lql_rules_match? =
       Enum.reduce_while(lql_filters, true, fn lql_filter, _acc ->
-        %Lql.FilterRule{path: path, value: value, operator: operator, modifiers: mds} = lql_filter
+        %FilterRule{path: path, value: value, operator: operator, modifiers: mds} = lql_filter
 
         le_values = collect_by_path(le_body, path)
 

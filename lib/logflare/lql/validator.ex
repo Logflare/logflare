@@ -2,18 +2,21 @@ defmodule Logflare.Lql.Validator do
   @moduledoc false
 
   alias Logflare.Logs.SearchOperations.Helpers, as: SearchOperationHelpers
-  alias Logflare.Lql.ChartRule
-  alias Logflare.Lql.FilterRule
+  alias Logflare.Lql.Rules.ChartRule
+  alias Logflare.Lql.Rules.FilterRule
+  alias Logflare.Lql.Rules.SelectRule
   alias Logflare.Utils.Chart
   alias Logflare.Utils.List, as: ListUtils
 
   @timestamp_filter_with_tailing "Timestamp filters can't be used if live tail search is active"
   @default_max_n_chart_ticks 250
+  @max_select_rules 50
 
   @type lql_rules :: %{
           lql_ts_filters: [FilterRule.t()],
           chart_period: atom(),
-          chart_rules: [ChartRule.t()]
+          chart_rules: [ChartRule.t()],
+          select_rules: [SelectRule.t()]
         }
 
   @spec validate(lql_rules(), opts :: Keyword.t()) :: String.t() | nil
@@ -21,7 +24,8 @@ defmodule Logflare.Lql.Validator do
     %{
       lql_ts_filters: lql_ts_filters,
       chart_period: chart_period,
-      chart_rules: chart_rules
+      chart_rules: chart_rules,
+      select_rules: select_rules
     } = lql_rules
 
     tailing? = Keyword.get(opts, :tailing?, false)
@@ -55,6 +59,9 @@ defmodule Logflare.Lql.Validator do
 
       Chart.get_number_of_chart_ticks(min_ts, max_ts, chart_period) > @default_max_n_chart_ticks ->
         "The interval length between min and max timestamp is larger than #{@default_max_n_chart_ticks} periods, please use a longer chart aggregation period."
+
+      length(select_rules) > @max_select_rules ->
+        "Too many field selections (maximum #{@max_select_rules} allowed)"
 
       true ->
         nil

@@ -3,7 +3,7 @@ defmodule Logflare.Logs.SearchOperations.Helpers do
 
   alias Logflare.EctoQueryBQ
   alias Logflare.Google.BigQuery.GenUtils
-  alias Logflare.Lql.FilterRule, as: FR
+  alias Logflare.Lql.Rules.FilterRule, as: FR
   alias Logflare.Source
 
   @type minmax :: %{min: DateTime.t(), max: DateTime.t(), message: nil | String.t()}

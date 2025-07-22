@@ -3,9 +3,9 @@ defmodule Logflare.Lql.IntegrationTest do
 
   alias Logflare.Logs.SearchOperation
   alias Logflare.Lql
-  alias Logflare.Lql.ChartRule
-  alias Logflare.Lql.FilterRule
   alias Logflare.Lql.Parser
+  alias Logflare.Lql.Rules.ChartRule
+  alias Logflare.Lql.Rules.FilterRule
   alias Logflare.Source.BigQuery.SchemaBuilder
 
   @default_schema SchemaBuilder.initial_table_schema()

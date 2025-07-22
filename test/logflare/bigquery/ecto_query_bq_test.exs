@@ -7,7 +7,7 @@ defmodule Logflare.BigQuery.EctoQueryBQTest do
   alias GoogleApi.BigQuery.V2.Model.QueryParameterType
   alias GoogleApi.BigQuery.V2.Model.QueryParameterValue
   alias Logflare.EctoQueryBQ
-  alias Logflare.Lql.FilterRule
+  alias Logflare.Lql.Rules.FilterRule
   alias Logflare.Lql
 
   @bq_table_id "some-table"

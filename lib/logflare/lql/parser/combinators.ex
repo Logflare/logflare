@@ -237,6 +237,21 @@ defmodule Logflare.Lql.Parser.Combinators do
   end
 
   # ============================================================================
+  # Select Combinators
+  # ============================================================================
+
+  def select_clause() do
+    ignore(choice([string("select"), string("s")]))
+    |> ignore(ascii_char([?:]))
+    |> choice([
+      string("*") |> replace("*") |> unwrap_and_tag(:path),
+      metadata_field(),
+      any_field()
+    ])
+    |> tag(:select)
+  end
+
+  # ============================================================================
   # DateTime Combinators
   # ============================================================================
 

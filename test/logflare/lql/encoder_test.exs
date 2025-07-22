@@ -1,9 +1,9 @@
 defmodule Logflare.Lql.EncoderTest do
   use ExUnit.Case, async: true
 
-  alias Logflare.Lql.ChartRule
   alias Logflare.Lql.Encoder
-  alias Logflare.Lql.FilterRule
+  alias Logflare.Lql.Rules.ChartRule
+  alias Logflare.Lql.Rules.FilterRule
 
   describe "to_querystring/1" do
     test "encodes single filter rule" do

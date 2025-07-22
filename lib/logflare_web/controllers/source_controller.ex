@@ -346,7 +346,7 @@ defmodule LogflareWeb.SourceController do
          schema <- Map.get(source_schema, :bigquery_schema),
          {:ok, lql_rules} <- Lql.Parser.parse(lqlstring, schema),
          {:warnings, nil} <-
-           {:warnings, Lql.Utils.get_lql_parser_warnings(lql_rules, dialect: @lql_dialect)},
+           {:warnings, Lql.Rules.get_lql_parser_warnings(lql_rules, dialect: @lql_dialect)},
          params <- Map.put(params, "drop_lql_filters", lql_rules),
          {:ok, _changeset} <- Sources.update_source_by_user(source, params) do
       conn

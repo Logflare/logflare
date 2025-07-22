@@ -35,10 +35,9 @@ defmodule Logflare.Logs.SearchOperation do
   def new(params) do
     so = struct(__MODULE__, params)
 
-    filter_rules = Lql.Utils.get_filter_rules(so.lql_rules)
-    chart_rules = Lql.Utils.get_chart_rules(so.lql_rules)
-    ts_filters = Lql.Utils.get_ts_filters(filter_rules)
-    lql_meta_and_msg_filters = Lql.Utils.get_meta_and_msg_filters(filter_rules)
+    chart_rules = Lql.Rules.get_chart_rules(so.lql_rules)
+    ts_filters = Lql.Rules.get_timestamp_filters(so.lql_rules)
+    lql_meta_and_msg_filters = Lql.Rules.get_metadata_and_message_filters(so.lql_rules)
 
     %{
       so

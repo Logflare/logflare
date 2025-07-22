@@ -3,7 +3,7 @@ defmodule LogflareWeb.SearchView do
 
   import LogflareWeb.Helpers.BqSchema
   import LogflareWeb.ModalLiveHelpers
-  import Logflare.Lql.Utils
+  import Logflare.Lql.Rules
   import Logflare.Utils, only: [iso_timestamp: 1]
   import LogflareWeb.SearchLive.TimezoneComponent
   alias Logflare.DateTimeUtils

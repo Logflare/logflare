@@ -1,7 +1,7 @@
-defmodule Logflare.Lql.ChartRuleTest do
+defmodule Logflare.Lql.Rules.ChartRuleTest do
   use ExUnit.Case, async: true
 
-  alias Logflare.Lql.ChartRule
+  alias Logflare.Lql.Rules.ChartRule
 
   describe "__struct__" do
     test "creates struct with default values" do

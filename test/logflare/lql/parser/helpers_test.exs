@@ -1,8 +1,8 @@
 defmodule Logflare.Lql.Parser.HelpersTest do
   use ExUnit.Case, async: true
 
-  alias Logflare.Lql.FilterRule
   alias Logflare.Lql.Parser.Helpers
+  alias Logflare.Lql.Rules.FilterRule
 
   describe "to_rule/2 functions" do
     test "handles quoted field value" do

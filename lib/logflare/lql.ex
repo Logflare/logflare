@@ -114,12 +114,4 @@ defmodule Logflare.Lql do
     transformer = BackendTransformer.for_dialect(adapter)
     transformer.transform_filter_rule(filter_rule, %{})
   end
-
-  @doc """
-  Checks if modifiers indicate negation.
-
-  This is a utility function that works across all backends.
-  """
-  @spec is_negated?(map()) :: boolean()
-  def is_negated?(modifiers), do: Map.get(modifiers, :negate, false)
 end

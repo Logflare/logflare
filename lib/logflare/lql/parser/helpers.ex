@@ -7,7 +7,7 @@ defmodule Logflare.Lql.Parser.Helpers do
   """
 
   alias Logflare.DateTimeUtils
-  alias Logflare.Lql.FilterRule
+  alias Logflare.Lql.Rules.FilterRule
 
   @isolated_string :isolated_string
 
