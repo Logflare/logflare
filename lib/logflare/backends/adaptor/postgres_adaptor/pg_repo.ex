@@ -50,7 +50,7 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor.PgRepo do
   end
 
   @doc """
-  Drops the migration table
+  Drops the migration table.
   """
   @spec destroy_instance(Adaptor.source_backend(), timeout()) :: :ok
   def destroy_instance({source, backend}, timeout \\ 5000) do

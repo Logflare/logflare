@@ -41,7 +41,7 @@ defmodule LogflareWeb.Plugs.BufferLimiterTest do
     source: source,
     table_key: table_key
   } do
-    other_table_key = {source.id, nil, make_ref()}
+    other_table_key = {source.id, nil, self()}
     IngestEventQueue.upsert_tid(other_table_key)
 
     for _ <- 1..round(Backends.max_buffer_queue_len() / 2) do
