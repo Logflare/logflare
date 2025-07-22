@@ -64,6 +64,8 @@ defmodule Logflare.Lql.Rules.ChartRule do
   use TypedEctoSchema
   import Ecto.Changeset
 
+  alias Ecto.Changeset
+
   @derive {Jason.Encoder, []}
 
   @primary_key false
@@ -74,16 +76,37 @@ defmodule Logflare.Lql.Rules.ChartRule do
     field :aggregate, Ecto.Atom, virtual: true, default: :count
   end
 
+  @spec changeset(any(), __MODULE__.t()) :: Changeset.t()
+  def changeset(_, %__MODULE__{} = rule) do
+    cast(rule, %{}, virtual_fields())
+  end
+
+  @spec changeset(__MODULE__.t(), map()) :: Changeset.t()
+  def changeset(%__MODULE__{} = rule, params) do
+    cast(rule, params, virtual_fields())
+  end
+
+  @spec build(list()) :: __MODULE__.t()
+  def build(params) when is_list(params) do
+    changeset = changeset(%__MODULE__{}, Map.new(params))
+
+    case changeset do
+      %{valid?: true} ->
+        Changeset.apply_changes(changeset)
+
+      %{valid?: false} ->
+        %__MODULE__{}
+    end
+  end
+
+  @spec build_from_path(String.t()) :: __MODULE__.t()
+  def build_from_path(path) do
+    build(path: path)
+  end
+
   @spec virtual_fields() :: list(atom())
   def virtual_fields() do
     __MODULE__.__schema__(:virtual_fields)
-  end
-
-  @spec build_from_path(String.t()) :: map()
-  def build_from_path(path) do
-    %__MODULE__{}
-    |> cast(%{path: path}, virtual_fields())
-    |> Map.get(:changes)
   end
 
   # =============================================================================
@@ -103,18 +126,18 @@ defmodule Logflare.Lql.Rules.ChartRule do
   def get_aggregate(%__MODULE__{aggregate: aggregate}), do: aggregate
 
   @doc """
-  Updates the period field of a `ChartRule`.
-  """
-  @spec put_period(__MODULE__.t(), atom()) :: __MODULE__.t()
-  def put_period(%__MODULE__{} = chart_rule, period) when is_atom(period) do
-    %{chart_rule | period: period}
-  end
-
-  @doc """
-  Updates a `ChartRule` with the provided parameters map.
+  Updates a `ChartRule` with the provided parameters map using changeset validation.
   """
   @spec update(__MODULE__.t(), map()) :: __MODULE__.t()
   def update(%__MODULE__{} = chart_rule, params) when is_map(params) do
-    Map.merge(chart_rule, params)
+    changeset = changeset(chart_rule, params)
+
+    case changeset do
+      %{valid?: true} ->
+        Changeset.apply_changes(changeset)
+
+      %{valid?: false} ->
+        chart_rule
+    end
   end
 end

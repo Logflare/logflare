@@ -74,7 +74,7 @@ defmodule Logflare.Lql.Parser do
           chart_rule_tokens
           |> Enum.reduce(%{}, fn {:chart, fields}, acc -> Map.merge(acc, Map.new(fields)) end)
 
-        struct!(ChartRule, chart_rule)
+        ChartRule.build(Map.to_list(chart_rule))
       end
 
     select_rules =
@@ -137,7 +137,7 @@ defmodule Logflare.Lql.Parser do
               |> Enum.reduce(%{}, fn {:chart, fields}, acc -> Map.merge(acc, Map.new(fields)) end)
               |> then(&Map.put(&1, :value_type, get_path_type(typemap, &1.path, querystring)))
 
-            struct!(ChartRule, chart_rule)
+            ChartRule.build(Map.to_list(chart_rule))
           end
 
         select_rules =

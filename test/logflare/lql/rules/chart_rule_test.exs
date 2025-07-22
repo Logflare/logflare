@@ -29,24 +29,159 @@ defmodule Logflare.Lql.Rules.ChartRuleTest do
   end
 
   describe "build_from_path/1" do
-    test "builds changes map from path" do
+    test "builds ChartRule struct from path" do
       result = ChartRule.build_from_path("metadata.metric")
-      assert is_map(result)
+      assert %ChartRule{} = result
+      assert result.path == "metadata.metric"
     end
 
-    test "builds changes map from timestamp path" do
+    test "builds ChartRule struct from timestamp path" do
       result = ChartRule.build_from_path("timestamp")
-      assert is_map(result)
+      assert %ChartRule{} = result
+      assert result.path == "timestamp"
     end
 
-    test "builds changes map from empty path" do
+    test "builds ChartRule struct from empty path" do
       result = ChartRule.build_from_path("")
-      assert is_map(result)
+      assert %ChartRule{} = result
+      assert result.path == "timestamp"
     end
 
-    test "builds changes map from nil path" do
+    test "builds ChartRule struct from nil path" do
       result = ChartRule.build_from_path(nil)
-      assert is_map(result)
+      assert %ChartRule{} = result
+      assert result.path == nil
+    end
+  end
+
+  describe "build/1" do
+    test "builds ChartRule struct from keyword list" do
+      params = [
+        path: "metadata.latency",
+        aggregate: :avg,
+        period: :hour,
+        value_type: :float
+      ]
+
+      result = ChartRule.build(params)
+
+      assert %ChartRule{} = result
+      assert result.path == "metadata.latency"
+      assert result.aggregate == :avg
+      assert result.period == :hour
+      assert result.value_type == :float
+    end
+
+    test "builds ChartRule struct with defaults for missing fields" do
+      params = [path: "custom.field"]
+
+      result = ChartRule.build(params)
+
+      assert %ChartRule{} = result
+      assert result.path == "custom.field"
+      assert result.aggregate == :count
+      assert result.period == :minute
+      assert result.value_type == nil
+    end
+  end
+
+  describe "changeset/2" do
+    test "creates changeset from existing ChartRule struct" do
+      chart_rule = %ChartRule{
+        path: "metadata.latency",
+        aggregate: :avg,
+        period: :hour,
+        value_type: :float
+      }
+
+      changeset = ChartRule.changeset(%ChartRule{}, chart_rule)
+
+      assert %Ecto.Changeset{} = changeset
+      assert changeset.valid?
+    end
+
+    test "creates changeset from params map" do
+      params = %{
+        path: "metadata.requests",
+        aggregate: :sum,
+        period: :minute,
+        value_type: :integer
+      }
+
+      changeset = ChartRule.changeset(%ChartRule{}, params)
+
+      assert %Ecto.Changeset{} = changeset
+      assert changeset.valid?
+    end
+
+    test "creates changeset with string keys" do
+      params = %{
+        "path" => "timestamp",
+        "aggregate" => :count,
+        "period" => :hour
+      }
+
+      changeset = ChartRule.changeset(%ChartRule{}, params)
+
+      assert %Ecto.Changeset{} = changeset
+      assert changeset.valid?
+    end
+  end
+
+  describe "update/2" do
+    test "updates ChartRule with valid parameters" do
+      chart_rule = %ChartRule{
+        path: "timestamp",
+        aggregate: :count,
+        period: :minute
+      }
+
+      updated =
+        ChartRule.update(chart_rule, %{
+          aggregate: :avg,
+          period: :hour,
+          path: "metadata.latency"
+        })
+
+      assert %ChartRule{} = updated
+      assert updated.aggregate == :avg
+      assert updated.period == :hour
+      assert updated.path == "metadata.latency"
+    end
+
+    test "returns original ChartRule when update parameters are invalid" do
+      chart_rule = %ChartRule{
+        path: "timestamp",
+        aggregate: :count,
+        period: :minute
+      }
+
+      # Test with invalid parameter types
+      updated =
+        ChartRule.update(chart_rule, %{
+          aggregate: "invalid_atom",
+          period: 123
+        })
+
+      # Should return original unchanged
+      assert updated == chart_rule
+    end
+
+    test "partially updates ChartRule with mixed valid/invalid parameters" do
+      chart_rule = %ChartRule{
+        path: "timestamp",
+        aggregate: :count,
+        period: :minute
+      }
+
+      # Valid path, invalid aggregate - should return original
+      updated =
+        ChartRule.update(chart_rule, %{
+          path: "metadata.requests",
+          aggregate: "not_an_atom"
+        })
+
+      assert updated == chart_rule
     end
   end
 

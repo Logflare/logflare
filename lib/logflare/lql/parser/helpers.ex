@@ -31,12 +31,12 @@ defmodule Logflare.Lql.Parser.Helpers do
     left..right
     |> Enum.map(&Map.get(@level_orders, &1))
     |> Enum.map(fn level ->
-      %FilterRule{
+      FilterRule.build(
         path: "metadata.level",
         operator: :=,
         value: level,
         modifiers: %{}
-      }
+      )
     end)
   end
 
@@ -46,20 +46,20 @@ defmodule Logflare.Lql.Parser.Helpers do
   end
 
   def to_rule(args, :quoted_event_message) do
-    %FilterRule{
+    FilterRule.build(
       path: "event_message",
       value: args[@isolated_string],
       operator: args[:operator] || :string_contains,
       modifiers: %{quoted_string: true}
-    }
+    )
   end
 
   def to_rule(args, :event_message) do
-    %FilterRule{
+    FilterRule.build(
       path: "event_message",
       value: args[:word],
       operator: args[:operator] || :string_contains
-    }
+    )
   end
 
   def to_rule(args, :filter_maybe_shorthand) do
