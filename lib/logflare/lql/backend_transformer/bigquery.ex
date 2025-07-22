@@ -3,13 +3,16 @@ defmodule Logflare.Lql.BackendTransformer.BigQuery do
   BigQuery-specific LQL backend transformer implementation.
 
   This module implements the `Logflare.Lql.BackendTransformer` behaviour for BigQuery, providing
-  translation of LQL FilterRules and ChartRules into BigQuery-compatible
+  translation of LQL `FilterRule` and `ChartRule` structs into BigQuery-compatible
   Ecto queries with proper UNNEST operations for nested fields.
   """
 
   @behaviour Logflare.Lql.BackendTransformer
 
   import Ecto.Query
+
+  alias Ecto.Query
+  alias Ecto.Query.DynamicExpr
 
   @special_top_level ~w(_PARTITIONDATE _PARTITIONTIME event_message timestamp id)
 
@@ -38,10 +41,7 @@ defmodule Logflare.Lql.BackendTransformer.BigQuery do
 
   @impl true
   def apply_filter_rules_to_query(query, filter_rules, opts \\ [])
-
-  def apply_filter_rules_to_query(query, [], _opts) do
-    query
-  end
+  def apply_filter_rules_to_query(query, [], _opts), do: query
 
   def apply_filter_rules_to_query(query, rules, _opts) do
     {top_level_filters, other_filters} =
@@ -102,10 +102,10 @@ defmodule Logflare.Lql.BackendTransformer.BigQuery do
   end
 
   @spec unnest_and_join_nested_columns(
-          query :: Ecto.Query.t(),
+          query :: Query.t(),
           join_type :: :inner | :left | :right | :full,
           path :: String.t()
-        ) :: Ecto.Query.t()
+        ) :: Query.t()
   defp unnest_and_join_nested_columns(query, join_type, path) do
     path
     |> split_by_dots()
@@ -131,6 +131,10 @@ defmodule Logflare.Lql.BackendTransformer.BigQuery do
     end
   end
 
+  @spec where_match_filter_rule(
+          query :: Query.t(),
+          rule :: map()
+        ) :: Query.t()
   defp where_match_filter_rule(query, rule) do
     column =
       rule.path
@@ -151,7 +155,7 @@ defmodule Logflare.Lql.BackendTransformer.BigQuery do
           operator :: atom(),
           value :: any(),
           modifiers :: map()
-        ) :: Ecto.Query.DynamicExpr.t()
+        ) :: DynamicExpr.t()
   defp dynamic_where_filter_rule(column, operator, value, modifiers) do
     clause =
       case operator do
