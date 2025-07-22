@@ -5,8 +5,9 @@ defmodule Logflare.LqlTest do
 
   alias Logflare.Lql
   alias Logflare.Lql.Rules.FilterRule
+  alias Logflare.Source.BigQuery.SchemaBuilder
 
-  describe "apply_filter_rules_to_query/3" do
+  describe "apply_filter_rules/3" do
     test "applies filter rules to query using BigQuery backend transformer by default" do
       query = from("test_table")
 
@@ -17,7 +18,7 @@ defmodule Logflare.LqlTest do
         modifiers: %{}
       }
 
-      result = Lql.apply_filter_rules_to_query(query, [filter_rule])
+      result = Lql.apply_filter_rules(query, [filter_rule])
       assert %Ecto.Query{} = result
     end
 
@@ -31,14 +32,14 @@ defmodule Logflare.LqlTest do
         modifiers: %{}
       }
 
-      result = Lql.apply_filter_rules_to_query(query, [filter_rule], adapter: :bigquery)
+      result = Lql.apply_filter_rules(query, [filter_rule], adapter: :bigquery)
       assert %Ecto.Query{} = result
     end
 
     test "handles empty filter rules list" do
       query = from("test_table")
 
-      result = Lql.apply_filter_rules_to_query(query, [])
+      result = Lql.apply_filter_rules(query, [])
       assert result == query
     end
   end
@@ -153,11 +154,11 @@ defmodule Logflare.LqlTest do
     end
   end
 
-  describe "build_message_filter_from_regex/1" do
+  describe "decode/2 with message filters (legacy build_message_filter_from_regex behavior)" do
     test "builds filter from simple text" do
       text = "error"
 
-      {:ok, rules} = Lql.build_message_filter_from_regex(text)
+      {:ok, rules} = Lql.decode(text, SchemaBuilder.initial_table_schema())
 
       assert length(rules) == 1
       assert [%FilterRule{path: "event_message", value: "error"}] = rules
@@ -166,7 +167,7 @@ defmodule Logflare.LqlTest do
     test "builds filter from multiple words" do
       text = "database connection failed"
 
-      {:ok, rules} = Lql.build_message_filter_from_regex(text)
+      {:ok, rules} = Lql.decode(text, SchemaBuilder.initial_table_schema())
 
       assert length(rules) == 3
       paths = Enum.map(rules, & &1.path)
@@ -176,7 +177,7 @@ defmodule Logflare.LqlTest do
     test "builds filter from quoted string" do
       quoted_text = ~s|"user authentication failed"|
 
-      {:ok, rules} = Lql.build_message_filter_from_regex(quoted_text)
+      {:ok, rules} = Lql.decode(quoted_text, SchemaBuilder.initial_table_schema())
 
       assert length(rules) == 1
       filter_rule = hd(rules)
@@ -188,7 +189,7 @@ defmodule Logflare.LqlTest do
     test "builds filter from regex pattern" do
       regex = ~s|~"error.*timeout"|
 
-      {:ok, rules} = Lql.build_message_filter_from_regex(regex)
+      {:ok, rules} = Lql.decode(regex, SchemaBuilder.initial_table_schema())
 
       assert length(rules) == 1
       filter_rule = hd(rules)

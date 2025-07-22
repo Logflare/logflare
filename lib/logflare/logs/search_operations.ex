@@ -259,7 +259,7 @@ defmodule Logflare.Logs.SearchOperations do
                 fragment("EXTRACT(DATE FROM ?)", t.timestamp) >= ^Timex.to_date(min) and
                   fragment("EXTRACT(DATE FROM ?)", t.timestamp) <= ^Timex.to_date(max)
               )
-              |> Lql.apply_filter_rules_to_query(ts_filters)
+              |> Lql.apply_filter_rules(ts_filters)
 
             :pseudo ->
               query
@@ -268,7 +268,7 @@ defmodule Logflare.Logs.SearchOperations do
                   partition_date() <= ^Timex.to_date(max)
               )
               |> or_where(in_streaming_buffer())
-              |> Lql.apply_filter_rules_to_query(ts_filters)
+              |> Lql.apply_filter_rules(ts_filters)
           end
       end
 
@@ -343,14 +343,14 @@ defmodule Logflare.Logs.SearchOperations do
           end
 
         query
-        |> Lql.apply_filter_rules_to_query(ts_filters)
+        |> Lql.apply_filter_rules(ts_filters)
       end
 
     %{so | query: q}
   end
 
   def apply_filters(%SO{type: :events, query: q} = so) do
-    q = Lql.apply_filter_rules_to_query(q, so.lql_meta_and_msg_filters)
+    q = Lql.apply_filter_rules(q, so.lql_meta_and_msg_filters)
 
     %{so | query: q}
   end
@@ -399,7 +399,7 @@ defmodule Logflare.Logs.SearchOperations do
 
     query =
       query
-      |> Lql.apply_filter_rules_to_query(so.lql_meta_and_msg_filters)
+      |> Lql.apply_filter_rules(so.lql_meta_and_msg_filters)
       |> order_by([t, ...], desc: 1)
 
     query = select_timestamp(query, chart_period)
