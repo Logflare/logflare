@@ -33,34 +33,34 @@ defmodule Logflare.Lql.Rules.SelectRuleTest do
   end
 
   describe "build_from_path/1" do
-    test "builds result from specific field path" do
+    test "builds SelectRule struct from specific field path" do
       result = SelectRule.build_from_path("metadata.user.id")
 
-      assert is_map(result)
+      assert %SelectRule{} = result
       assert result.path == "metadata.user.id"
       assert result.wildcard == false
     end
 
-    test "builds result from wildcard path" do
+    test "builds SelectRule struct from wildcard path" do
       result = SelectRule.build_from_path("*")
 
-      assert is_map(result)
+      assert %SelectRule{} = result
       assert result.path == "*"
       assert result.wildcard == true
     end
 
-    test "builds result from nil path defaults to wildcard" do
+    test "builds SelectRule struct from nil path defaults to wildcard" do
       result = SelectRule.build_from_path(nil)
 
-      assert is_map(result)
+      assert %SelectRule{} = result
       assert result.path == "*"
       assert result.wildcard == true
     end
 
-    test "builds result from any field path" do
+    test "builds SelectRule struct from any field path" do
       result = SelectRule.build_from_path("event_message")
 
-      assert is_map(result)
+      assert %SelectRule{} = result
       assert result.path == "event_message"
       assert result.wildcard == false
     end
@@ -71,9 +71,7 @@ defmodule Logflare.Lql.Rules.SelectRuleTest do
       params = [path: "metadata.user_id", wildcard: false]
       result = SelectRule.build(params)
 
-      IO.inspect(result, label: "Result", limit: :infinity, pretty: true)
-
-      assert is_map(result)
+      assert %SelectRule{} = result
       assert result.path == "metadata.user_id"
       assert result.wildcard == false
     end
@@ -82,7 +80,7 @@ defmodule Logflare.Lql.Rules.SelectRuleTest do
       params = [path: "*", wildcard: true]
       result = SelectRule.build(params)
 
-      assert is_map(result)
+      assert %SelectRule{} = result
       assert result.path == "*"
       assert result.wildcard == true
     end
@@ -91,7 +89,7 @@ defmodule Logflare.Lql.Rules.SelectRuleTest do
       params = [path: "event_message"]
       result = SelectRule.build(params)
 
-      assert is_map(result)
+      assert %SelectRule{} = result
       assert result.path == "event_message"
       assert result.wildcard == false
     end
@@ -100,7 +98,7 @@ defmodule Logflare.Lql.Rules.SelectRuleTest do
   describe "changeset/2" do
     test "creates valid changeset with valid data" do
       rule = %SelectRule{}
-      params = %{path: "metadata.user_id", wildcard: false}
+      params = %{path: "metadata.user_id"}
 
       changeset = SelectRule.changeset(rule, params)
 

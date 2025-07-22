@@ -123,7 +123,10 @@ defmodule Logflare.Lql.Rules.FilterRuleTest do
 
       result = FilterRule.build(params)
 
-      assert is_map(result)
+      assert %FilterRule{} = result
+      assert result.path == "metadata.user"
+      assert result.operator == :=
+      assert result.value == "alice"
     end
 
     test "builds result with modifiers from keyword list" do
@@ -136,9 +139,11 @@ defmodule Logflare.Lql.Rules.FilterRuleTest do
 
       result = FilterRule.build(params)
 
-      IO.inspect(result, label: "Result", limit: :infinity, pretty: true)
-
-      assert is_map(result)
+      assert %FilterRule{} = result
+      assert result.path == "event_message"
+      assert result.operator == :string_contains
+      assert result.value == "hello world"
+      assert result.modifiers == %{quoted_string: true}
     end
 
     test "builds result with range values from keyword list" do
@@ -150,7 +155,10 @@ defmodule Logflare.Lql.Rules.FilterRuleTest do
 
       result = FilterRule.build(params)
 
-      assert is_map(result)
+      assert %FilterRule{} = result
+      assert result.path == "metadata.count"
+      assert result.operator == :range
+      assert result.values == [10, 50]
     end
 
     test "builds result with shorthand from keyword list" do
@@ -162,15 +170,24 @@ defmodule Logflare.Lql.Rules.FilterRuleTest do
 
       result = FilterRule.build(params)
 
-      assert is_map(result)
+      assert %FilterRule{} = result
+      assert result.path == "timestamp"
+      assert result.operator == :range
+      assert result.shorthand == "today"
     end
   end
 
-  describe "fields/0" do
-    test "returns schema fields" do
-      fields = FilterRule.fields()
+  describe "virtual_fields/0" do
+    test "returns virtual field names" do
+      fields = FilterRule.virtual_fields()
 
-      assert is_list(fields) or is_atom(fields)
+      assert is_list(fields)
+      assert :path in fields
+      assert :value in fields
+      assert :values in fields
+      assert :operator in fields
+      assert :modifiers in fields
+      assert :shorthand in fields
     end
   end
 

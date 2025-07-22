@@ -131,7 +131,7 @@ defmodule Logflare.Lql.Rules do
 
       index ->
         chart = Enum.at(lql_rules, index)
-        updated_chart = ChartRule.put_period(chart, period)
+        updated_chart = ChartRule.update(chart, %{period: period})
         List.replace_at(lql_rules, index, updated_chart)
     end
   end
@@ -173,12 +173,12 @@ defmodule Logflare.Lql.Rules do
   """
   @spec default_chart_rule() :: ChartRule.t()
   def default_chart_rule() do
-    %ChartRule{
+    ChartRule.build(
       aggregate: :count,
       path: "timestamp",
       period: :minute,
       value_type: :datetime
-    }
+    )
   end
 
   @doc """
@@ -186,10 +186,10 @@ defmodule Logflare.Lql.Rules do
   """
   @spec default_select_rule() :: SelectRule.t()
   def default_select_rule() do
-    %SelectRule{
+    SelectRule.build(
       path: "*",
       wildcard: true
-    }
+    )
   end
 
   # =============================================================================

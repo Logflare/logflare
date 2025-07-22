@@ -63,6 +63,8 @@ defmodule Logflare.Lql.Rules.FilterRule do
   use TypedEctoSchema
   import Ecto.Changeset
 
+  alias Ecto.Changeset
+
   @derive {Jason.Encoder, []}
 
   @primary_key false
@@ -75,21 +77,27 @@ defmodule Logflare.Lql.Rules.FilterRule do
     field :shorthand, :string, virtual: true
   end
 
-  @spec changeset(any(), __MODULE__.t()) :: Ecto.Changeset.t()
+  @spec changeset(any(), __MODULE__.t()) :: Changeset.t()
   def changeset(_, %__MODULE__{} = rule) do
     cast(rule, %{}, virtual_fields())
   end
 
-  @spec changeset(__MODULE__.t(), map()) :: Ecto.Changeset.t()
+  @spec changeset(__MODULE__.t(), map()) :: Changeset.t()
   def changeset(rule, params) do
     cast(rule, params, virtual_fields())
   end
 
   @spec build(list()) :: __MODULE__.t()
   def build(params) when is_list(params) do
-    %__MODULE__{}
-    |> cast(Map.new(params), virtual_fields())
-    |> Map.get(:changes)
+    changeset = changeset(%__MODULE__{}, Map.new(params))
+
+    case changeset do
+      %{valid?: true} ->
+        Changeset.apply_changes(changeset)
+
+      %{valid?: false} ->
+        %__MODULE__{}
+    end
   end
 
   @spec virtual_fields() :: list(atom())
@@ -177,14 +185,14 @@ defmodule Logflare.Lql.Rules.FilterRule do
         new_to = NaiveDateTime.add(to, diff, :microsecond)
 
         [
-          %__MODULE__{
+          build(
             modifiers: %{},
             operator: :range,
             path: "timestamp",
             shorthand: nil,
             value: nil,
             values: [new_from, new_to]
-          }
+          )
         ]
     end
   end

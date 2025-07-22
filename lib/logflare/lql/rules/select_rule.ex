@@ -42,45 +42,29 @@ defmodule Logflare.Lql.Rules.SelectRule do
 
   @spec build(list()) :: __MODULE__.t()
   def build(params) when is_list(params) do
-    IO.inspect(Map.new(params), label: "params", limit: :infinity, pretty: true)
-    IO.inspect(virtual_fields(), label: "virtual_fields", limit: :infinity, pretty: true)
+    changeset = changeset(%__MODULE__{}, Map.new(params))
 
-    %__MODULE__{}
-    |> cast(Map.new(params), virtual_fields())
-    |> IO.inspect(label: "after cast", limit: :infinity, pretty: true)
-    |> validate_path()
-    |> IO.inspect(label: "after validate_path", limit: :infinity, pretty: true)
-    |> case do
-      %{valid?: true} = changeset -> changeset.changes
-      %{valid?: false} -> %{}
+    case changeset do
+      %{valid?: true} ->
+        Changeset.apply_changes(changeset)
+
+      %{valid?: false} ->
+        %__MODULE__{}
     end
   end
+
+  @spec build_from_path(String.t()) :: __MODULE__.t()
+  def build_from_path(path) when is_non_empty_binary(path) do
+    build(path: path)
+  end
+
+  @spec build_from_path(any()) :: __MODULE__.t()
+  def build_from_path(_path), do: build_from_path("*")
 
   @spec virtual_fields() :: list(atom())
   def virtual_fields() do
     __MODULE__.__schema__(:virtual_fields)
   end
-
-  @spec build_from_path(String.t()) :: map()
-  def build_from_path(path) when is_non_empty_binary(path) do
-    is_wildcard? = path == "*"
-
-    %__MODULE__{}
-    |> cast(%{path: path, wildcard: is_wildcard?}, virtual_fields())
-    |> validate_required([:path])
-    |> validate_path()
-    |> case do
-      %Changeset{valid?: true} = changeset ->
-        IO.inspect(changeset, label: "cs", limit: :infinity, pretty: true)
-        Map.merge(%{path: path, wildcard: is_wildcard?}, changeset.changes)
-
-      %Changeset{valid?: false} ->
-        %{path: path, wildcard: is_wildcard?}
-    end
-  end
-
-  @spec build_from_path(any()) :: map()
-  def build_from_path(_path), do: build_from_path("*")
 
   # =============================================================================
   # Rule-Specific Operations
@@ -129,22 +113,24 @@ defmodule Logflare.Lql.Rules.SelectRule do
   # =============================================================================
 
   defp validate_path(%Changeset{} = changeset) do
-    changeset
-    |> validate_required([:path])
-    |> validate_change(:path, fn :path, path ->
-      cond do
-        path == "*" ->
-          []
+    updated_changeset =
+      changeset
+      |> validate_required([:path])
+      |> validate_change(:path, fn :path, path ->
+        cond do
+          path == "*" ->
+            []
 
-        is_non_empty_binary(path) and
-            String.match?(path, ~r/^[a-zA-Z_][a-zA-Z0-9_]*(\.[a-zA-Z_][a-zA-Z0-9_]*)*$/) ->
-          []
+          is_non_empty_binary(path) and
+              String.match?(path, ~r/^[a-zA-Z_][a-zA-Z0-9_]*(\.[a-zA-Z_][a-zA-Z0-9_]*)*$/) ->
+            []
 
-        true ->
-          [path: "must be '*' for wildcard or a valid dot-separated field path"]
-      end
-    end)
-    |> put_change(:wildcard, get_field(changeset, :path) == "*")
-    |> IO.inspect(label: "in validate path", limit: :infinity, pretty: true)
+          true ->
+            [path: "must be '*' for wildcard or a valid dot-separated field path"]
+        end
+      end)
+
+    path = get_field(updated_changeset, :path)
+    force_change(updated_changeset, :wildcard, path == "*")
   end
 end
