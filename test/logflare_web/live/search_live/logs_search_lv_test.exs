@@ -476,9 +476,11 @@ defmodule LogflareWeb.Source.SearchLVTest do
       source = insert(:source, user: user)
       insert(:source_schema, source: source, bigquery_schema: schema)
       pid = self()
+
       expect(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, fn _conn, _proj_id, opts ->
         query = opts[:body].query
         send(pid, {:query, query})
+
         {:ok,
          TestUtils.gen_bq_response(%{
            "event_message" => "some modal message",

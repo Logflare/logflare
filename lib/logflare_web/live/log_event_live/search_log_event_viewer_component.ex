@@ -11,16 +11,7 @@ defmodule LogflareWeb.Search.LogEventViewerComponent do
   alias Logflare.Sources
 
   @impl true
-  def update(%{log_event: nil} = assigns, socket) do
-    params = event_params(assigns)
-
-    socket =
-      socket
-      |> assign_defaults(assigns)
-      |> start_async(:load, fn ->
-        load_event(params)
-      end)
-
+  def update(_assigns, %{assigns: %{error: {:error, :not_found}}} = socket) do
     {:ok, socket}
   end
 
@@ -34,7 +25,11 @@ defmodule LogflareWeb.Search.LogEventViewerComponent do
 
   def update(assigns, socket) do
     %{"log-event-id" => id, "log-event-timestamp" => timestamp} = assigns.params
-    d = String.to_integer(timestamp) |> DateTime.from_unix!(:microsecond) |> DateTime.to_date()
+
+    d =
+      if is_binary(timestamp),
+        do: String.to_integer(timestamp) |> DateTime.from_unix!(:microsecond),
+        else: timestamp
 
     params =
       event_params(assigns)
@@ -64,15 +59,7 @@ defmodule LogflareWeb.Search.LogEventViewerComponent do
   end
 
   def handle_async(:load, {:ok, {:error, :not_found}}, socket) do
-    [from, to] = socket.assigns.partitions_range
-
-    err =
-      "Log event with id #{socket.assigns.log_event_id} between #{from} and #{to} was not found"
-
-    Logger.warning(err)
-    send(self(), {:put_flash, :error, err})
-
-    {:noreply, socket}
+    {:noreply, socket |> assign(:error, {:error, :not_found})}
   end
 
   def handle_async(:load, {:ok, {:error, raw_err}}, socket) do
@@ -83,8 +70,19 @@ defmodule LogflareWeb.Search.LogEventViewerComponent do
   end
 
   def load_event(%{log_event_id: log_id, source: source} = params) do
+    dbg(params.timestamp)
     range = get_partitions_range(params)
-    LogEvents.fetch_event_by_id(source.token, log_id, partitions_range: range, lql: params[:lql])
+    LogEvents.fetch_event_by_id(source.token, log_id, partitions_range: range, lql: params.lql)
+  end
+
+  @impl true
+  def render(%{error: {:error, :not_found}} = assigns) do
+    ~H"""
+    <div class="">
+      <h4>Log Event Not Found</h4>
+      <p>The requested log event could not be found. It may have been deleted or the ID is incorrect.</p>
+    </div>
+    """
   end
 
   @impl true
@@ -127,6 +125,7 @@ defmodule LogflareWeb.Search.LogEventViewerComponent do
     |> assign(:source, source)
     |> assign(:timestamp, timestamp)
     |> assign(:lql, lql)
+    |> assign(:error, nil)
   end
 
   # timestamp is explicitly set, query around the range

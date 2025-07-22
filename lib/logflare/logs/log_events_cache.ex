@@ -33,29 +33,10 @@ defmodule Logflare.Logs.LogEvents.Cache do
     }
   end
 
-  @fetch_event_by_id_and_timestamp_key {:fetch_event_by_id_and_timestamp, 2}
-  @spec put_event_with_id_and_timestamp(atom, keyword, LE.t()) :: term
-  def put_event_with_id_and_timestamp(source_token, kw, %LE{} = log_event) do
-    cache_key = {@fetch_event_by_id_and_timestamp_key, [source_token, kw]}
-    Cachex.put(@cache, cache_key, {:ok, log_event})
-  end
-
-  @spec fetch_event_by_id_and_timestamp(atom, keyword) :: {:ok, map()} | {:error, map()}
-  def fetch_event_by_id_and_timestamp(source_token, kw) when is_atom(source_token) do
-    ContextCache.apply_fun(LogEvents, @fetch_event_by_id_and_timestamp_key, [source_token, kw])
-  end
-
   @fetch_event_by_id {:fetch_event_by_id, 2}
   @spec fetch_event_by_id(atom, binary()) :: {:ok, LE.t() | nil} | {:error, map()}
   def fetch_event_by_id(source_token, id) when is_atom(source_token) and is_binary(id) do
     ContextCache.apply_fun(LogEvents, @fetch_event_by_id, [source_token, id])
-  end
-
-  @fetch_event_by_path {:fetch_event_by_path, 3}
-  @spec fetch_event_by_path(atom, binary(), term()) :: {:ok, LE.t() | nil} | {:error, map()}
-  def fetch_event_by_path(source_token, path, value)
-      when is_atom(source_token) and is_binary(path) do
-    ContextCache.apply_fun(LogEvents, @fetch_event_by_path, [source_token, path, value])
   end
 
   @spec put(atom(), term(), LE.t()) :: {:error, boolean} | {:ok, boolean}

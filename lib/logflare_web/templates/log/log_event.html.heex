@@ -14,8 +14,10 @@
   <.live_component module={LogflareWeb.Search.LogEventViewerComponent} id={:log_event_viewer} {%{
   user: @user,
     source: @source,
-    log_event_id: @log_event_id,
-    timestamp: @timestamp,
-    lql: assigns[:lql]
+    params: %{
+      "log-event-id" => @log_event_id,
+      "log-event-timestamp"=> @timestamp,
+      "lql"=> assigns[:lql]
+    }
   }} />
 </div>
