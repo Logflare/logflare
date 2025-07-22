@@ -1,5 +1,6 @@
 defmodule Logflare.Backends.Adaptor.PostgresAdaptorTest do
-  use Logflare.DataCase
+  use Logflare.DataCase, async: false
+
   import ExUnit.CaptureLog
   alias Logflare.Backends
   alias Logflare.Backends.Adaptor
@@ -9,10 +10,7 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptorTest do
 
   setup do
     start_supervised!(AllLogsLogged)
-    :ok
-  end
 
-  setup do
     insert(:plan)
     repo = Application.get_env(:logflare, Logflare.Repo)
 
@@ -42,6 +40,7 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptorTest do
       :ok
     end
 
+    @tag silent_logs: true
     test "ingest/2 and execute_query/2 dispatched message", %{
       backend: backend,
       source: source
@@ -73,6 +72,7 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptorTest do
                )
     end
 
+    @tag silent_logs: true
     test "ingest/2 and execute_query/2 dispatched message with metadata transformation into list",
          %{
            backend: backend,
@@ -144,9 +144,9 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptorTest do
 
       backend = insert(:backend, type: :postgres, sources: [source], config: config)
 
-      capture_log(fn ->
-        assert {:ok, _pid} = start_supervised({AdaptorSupervisor, {source, backend}})
-      end) =~ "invalid_password"
+      assert capture_log(fn ->
+               assert {:ok, _pid} = start_supervised({AdaptorSupervisor, {source, backend}})
+             end) =~ "invalid_password"
     end
 
     test "cannot connect to invalid ", %{source: source} do
@@ -161,12 +161,12 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptorTest do
       backend = insert(:backend, type: :postgres, sources: [source], config: config)
       log_event = build(:log_event, source: source, test: "data")
 
-      capture_log(fn ->
-        assert {:ok, _pid} = start_supervised({AdaptorSupervisor, {source, backend}})
+      assert capture_log(fn ->
+               assert {:ok, _pid} = start_supervised({AdaptorSupervisor, {source, backend}})
 
-        assert PostgresAdaptor.insert_log_event(source, backend, log_event) ==
-                 {:error, :cannot_connect}
-      end) =~ "invalid_password"
+               assert PostgresAdaptor.insert_log_event(source, backend, log_event) ==
+                        {:error, :cannot_connect}
+             end) =~ "(localhost:1234): connection refused"
     end
   end
 

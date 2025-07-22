@@ -52,6 +52,19 @@ defmodule Logflare.DataCase do
       Mimic.set_mimic_global(tags)
     end
 
+    if tags[:silent_logs] do
+      if tags[:async] do
+        raise ArgumentError,
+              "cannot set silent_logs to true for async tests since it changes Logger level globally"
+      else
+        original_level = Logger.level()
+
+        Logger.configure(level: :critical)
+
+        on_exit(fn -> Logger.configure(level: original_level) end)
+      end
+    end
+
     :ok
   end
 
