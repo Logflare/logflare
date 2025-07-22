@@ -27,13 +27,15 @@ defmodule LogflareGrpc.Interceptors.VerifyApiResourceAccessTest do
     :ok
   end
 
-  describe "call/2" do
+  describe "when the user is authorized" do
     setup do
       user = insert(:user)
       source = insert(:source, user: user)
 
       {:ok, _pid, port} = GRPC.Server.start_endpoint(TestEndpoint, 0)
+
       on_exit(fn -> GRPC.Server.stop_endpoint(TestEndpoint) end)
+
       {:ok, %{source: source, user: user, port: port}}
     end
 
@@ -61,6 +63,22 @@ defmodule LogflareGrpc.Interceptors.VerifyApiResourceAccessTest do
       assert {:ok, %EmptyResponse{}} = request_with_headers(headers, port)
     end
 
+    test "success using Bearer token with x-collection", %{
+      source: source,
+      user: user,
+      port: port
+    } do
+      access_token =
+        insert(:access_token, resource_owner: user, scopes: "ingest ingest:source:#{source.id}")
+
+      headers = [
+        {"authorization", "Bearer #{access_token.token}"},
+        {"x-collection", source.token}
+      ]
+
+      assert {:ok, %EmptyResponse{}} = request_with_headers(headers, port)
+    end
+
     test "success using legacy api key", %{
       source: source,
       user: user,
@@ -69,6 +87,25 @@ defmodule LogflareGrpc.Interceptors.VerifyApiResourceAccessTest do
       headers = [{"x-api-key", user.api_key}, {"x-source", source.token}]
 
       assert {:ok, %EmptyResponse{}} = request_with_headers(headers, port)
+    end
+  end
+
+  describe "when the user does not have permissions" do
+    setup do
+      user = insert(:user)
+      source = insert(:source, user: user)
+      original_level = Logger.level()
+      # This is necessary to avoid the GRPC error logs
+      Logger.configure(level: :critical)
+
+      {:ok, _pid, port} = GRPC.Server.start_endpoint(TestEndpoint, 0)
+
+      on_exit(fn ->
+        GRPC.Server.stop_endpoint(TestEndpoint)
+        Logger.configure(level: original_level)
+      end)
+
+      {:ok, %{source: source, user: user, port: port}}
     end
 
     test "returns an error if invalid api key", %{source: source, port: port} do
@@ -88,8 +125,11 @@ defmodule LogflareGrpc.Interceptors.VerifyApiResourceAccessTest do
 
       headers = [{"x-api-key", access_token.token}, {"x-source", source.token}]
 
-      # Permission denied
-      assert {:error, %GRPC.RPCError{status: 7}} = request_with_headers(headers, port)
+      assert {:error,
+              %GRPC.RPCError{
+                status: 7,
+                message: "The caller does not have permission to execute the specified operation"
+              }} = request_with_headers(headers, port)
     end
 
     test "returns an error if invalid source ID", %{
@@ -99,6 +139,20 @@ defmodule LogflareGrpc.Interceptors.VerifyApiResourceAccessTest do
       headers = [{"x-api-key", user.api_key}, {"x-source", "potato"}]
 
       assert {:error, %GRPC.RPCError{message: "Invalid source id"}} =
+               request_with_headers(headers, port)
+    end
+
+    test "returns unauthorized errors if source ID does not exist", %{
+      user: user,
+      port: port
+    } do
+      headers = [{"x-api-key", user.api_key}, {"x-source", Ecto.UUID.generate()}]
+
+      assert {:error,
+              %GRPC.RPCError{
+                status: 7,
+                message: "The caller does not have permission to execute the specified operation"
+              }} =
                request_with_headers(headers, port)
     end
 
