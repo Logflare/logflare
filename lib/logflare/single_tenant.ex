@@ -79,18 +79,6 @@ defmodule Logflare.SingleTenant do
         enable_auth: true,
         cache_duration_seconds: 900,
         proactive_requerying_seconds: 300
-      },
-      %{
-        name: "functions.invocation-stats",
-        query:
-          Application.app_dir(:logflare, "priv/supabase/endpoints/functions.invocation-stats.sql")
-          |> File.read!(),
-        sandboxable: true,
-        max_limit: 1000,
-        language: :bq_sql,
-        enable_auth: true,
-        cache_duration_seconds: 900,
-        proactive_requerying_seconds: 300
       }
     ]
   end
