@@ -4,8 +4,8 @@ defmodule Logflare.Lql.BackendTransformer.BigQueryTest do
   import Ecto.Query
 
   alias Logflare.Lql.BackendTransformer.BigQuery
-  alias Logflare.Lql.FilterRule
-  alias Logflare.Lql.ChartRule
+  alias Logflare.Lql.Rules.ChartRule
+  alias Logflare.Lql.Rules.FilterRule
 
   @bq_table_id "test-table"
 
@@ -13,6 +13,7 @@ defmodule Logflare.Lql.BackendTransformer.BigQueryTest do
     test "implements all required callbacks" do
       assert function_exported?(BigQuery, :transform_filter_rule, 2)
       assert function_exported?(BigQuery, :transform_chart_rule, 2)
+      assert function_exported?(BigQuery, :transform_select_rule, 2)
       assert function_exported?(BigQuery, :apply_filter_rules_to_query, 3)
       assert function_exported?(BigQuery, :dialect, 0)
       assert function_exported?(BigQuery, :quote_style, 0)

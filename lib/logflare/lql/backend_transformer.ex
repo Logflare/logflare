@@ -4,12 +4,14 @@ defmodule Logflare.Lql.BackendTransformer do
 
   This module defines the interface that all LQL backend transformer implementations must follow.
 
-  Each backend transformer (BigQuery, ClickHouse, PostgreSQL, etc.) must implement this behaviour
-  to provide backend-specific query translation from LQL `FilterRule` and `ChartRule` structs.
+  Each backend transformer (BigQuery, ClickHouse, PostgreSQL, etc.) must implement this
+  behaviour to provide backend-specific query translation from
+  LQL `ChartRule`, `FilterRule`, and `SelectRule` structs.
   """
 
-  alias Logflare.Lql.ChartRule
-  alias Logflare.Lql.FilterRule
+  alias Logflare.Lql.Rules.ChartRule
+  alias Logflare.Lql.Rules.FilterRule
+  alias Logflare.Lql.Rules.SelectRule
   alias Logflare.Sources.Source
 
   @type transformation_data :: %{
@@ -41,18 +43,25 @@ defmodule Logflare.Lql.BackendTransformer do
   @callback transform_filter_rule(FilterRule.t(), transformation_data()) :: term()
 
   @doc """
-  Transforms a single LQL ChartRule into a backend-specific aggregation query.
+  Transforms a single LQL `ChartRule` into a backend-specific aggregation query.
 
   Converts LQL chart/aggregation rules into backend-specific query structures.
   """
   @callback transform_chart_rule(ChartRule.t(), transformation_data()) :: term()
 
   @doc """
-  Applies multiple LQL FilterRules to a query, returning the modified query.
+  Applies multiple LQL `FilterRules` to a query, returning the modified query.
 
   This is the main entry point for applying LQL filters to a backend query.
   """
   @callback apply_filter_rules_to_query(query :: term(), [FilterRule.t()], keyword()) :: term()
+
+  @doc """
+  Transforms a single LQL `SelectRule` into a backend-specific field selection.
+
+  Converts LQL field selection rules into backend-specific query structures.
+  """
+  @callback transform_select_rule(SelectRule.t(), transformation_data()) :: term()
 
   @doc """
   Returns the dialect string used by this transformer.

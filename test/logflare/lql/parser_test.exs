@@ -4,9 +4,9 @@ defmodule Logflare.Lql.ParserTest do
 
   alias Logflare.DateTimeUtils
   alias Logflare.Lql
-  alias Logflare.Lql.ChartRule
-  alias Logflare.Lql.FilterRule
   alias Logflare.Lql.Parser
+  alias Logflare.Lql.Rules.ChartRule
+  alias Logflare.Lql.Rules.FilterRule
   alias Logflare.Source.BigQuery.SchemaBuilder
 
   @default_schema SchemaBuilder.initial_table_schema()
@@ -179,7 +179,7 @@ defmodule Logflare.Lql.ParserTest do
           path: "metadata.str",
           value: "a"
         },
-        %Logflare.Lql.FilterRule{
+        %FilterRule{
           modifiers: %{negate: true},
           operator: :range,
           path: "timestamp",
@@ -324,7 +324,7 @@ defmodule Logflare.Lql.ParserTest do
           ] do
         assert {:ok,
                 [
-                  %Logflare.Lql.FilterRule{
+                  %FilterRule{
                     operator: :range,
                     path: "timestamp",
                     shorthand: ^shorthand,
@@ -633,7 +633,7 @@ defmodule Logflare.Lql.ParserTest do
       qs = "t:>2020-01-01T13:14:15.000500"
 
       lql_rules = [
-        %Logflare.Lql.FilterRule{
+        %FilterRule{
           operator: :>,
           path: "timestamp",
           value: ~N[2020-01-01 13:14:15.000500]
@@ -655,7 +655,7 @@ defmodule Logflare.Lql.ParserTest do
         qs = "t:2020-01-01T13:14:15.{#{range}}"
 
         lql_rules = [
-          %Logflare.Lql.FilterRule{
+          %FilterRule{
             operator: :range,
             path: "timestamp",
             values: [

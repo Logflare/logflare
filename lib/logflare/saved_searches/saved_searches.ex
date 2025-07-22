@@ -1,11 +1,16 @@
 defmodule Logflare.SavedSearches do
   @moduledoc false
+
   import Ecto.Query
-  alias Logflare.{SavedSearch, Repo}
-  alias Logflare.{Source}
-  alias Logflare.Lql
-  alias Logflare.Lql.{ChartRule, FilterRule}
+
   require Logger
+
+  alias Logflare.Lql
+  alias Logflare.Lql.Rules.ChartRule
+  alias Logflare.Lql.Rules.FilterRule
+  alias Logflare.Repo
+  alias Logflare.SavedSearch
+  alias Logflare.Source
 
   @type lql_rule :: ChartRule.t() | FilterRule.t()
 
@@ -28,8 +33,8 @@ defmodule Logflare.SavedSearches do
          }
   @spec insert(insert_params(), Source.t()) :: {:ok, SavedSearch} | {:error, term}
   def insert(%{lql_rules: lql_rules} = params, %Source{} = source) do
-    lql_filters = Lql.Utils.get_filter_rules(lql_rules)
-    lql_charts = Lql.Utils.get_chart_rules(lql_rules)
+    lql_filters = Lql.Rules.get_filter_rules(lql_rules)
+    lql_charts = Lql.Rules.get_chart_rules(lql_rules)
 
     source
     |> Ecto.build_assoc(:saved_searches)

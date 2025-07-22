@@ -4,7 +4,7 @@ defmodule Logflare.LqlTest do
   import Ecto.Query
 
   alias Logflare.Lql
-  alias Logflare.Lql.FilterRule
+  alias Logflare.Lql.Rules.FilterRule
 
   describe "apply_filter_rules_to_query/3" do
     test "applies filter rules to query using BigQuery backend transformer by default" do
@@ -82,32 +82,6 @@ defmodule Logflare.LqlTest do
 
       result = Lql.transform_filter_rule(filter_rule, adapter: :bigquery)
       assert %Ecto.Query.DynamicExpr{} = result
-    end
-  end
-
-  describe "is_negated?/1" do
-    test "returns true when negate modifier is present" do
-      modifiers = %{negate: true}
-
-      assert Lql.is_negated?(modifiers) == true
-    end
-
-    test "returns false when negate modifier is false" do
-      modifiers = %{negate: false}
-
-      assert Lql.is_negated?(modifiers) == false
-    end
-
-    test "returns false when negate modifier is not present" do
-      modifiers = %{}
-
-      assert Lql.is_negated?(modifiers) == false
-    end
-
-    test "returns false when modifiers is empty" do
-      modifiers = %{}
-
-      assert Lql.is_negated?(modifiers) == false
     end
   end
 

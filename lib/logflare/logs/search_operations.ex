@@ -14,8 +14,8 @@ defmodule Logflare.Logs.SearchOperations do
   alias Logflare.Logs.SearchOperations.Helpers, as: SearchOperationHelpers
   alias Logflare.Logs.SearchUtils
   alias Logflare.Lql
-  alias Logflare.Lql.ChartRule
-  alias Logflare.Lql.FilterRule
+  alias Logflare.Lql.Rules.ChartRule
+  alias Logflare.Lql.Rules.FilterRule
   alias Logflare.SourceSchemas
   alias Logflare.Sources
   alias Logflare.Utils.Chart, as: ChartUtils

@@ -1,7 +1,7 @@
-defmodule Logflare.Lql.FilterRuleTest do
+defmodule Logflare.Lql.Rules.FilterRuleTest do
   use ExUnit.Case, async: true
 
-  alias Logflare.Lql.FilterRule
+  alias Logflare.Lql.Rules.FilterRule
 
   describe "__struct__" do
     test "creates struct with default values" do

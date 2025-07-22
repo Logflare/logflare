@@ -1,8 +1,9 @@
 defmodule Logflare.Lql.ValidatorTest do
   use ExUnit.Case, async: true
 
-  alias Logflare.Lql.ChartRule
-  alias Logflare.Lql.FilterRule
+  alias Logflare.Lql.Rules.ChartRule
+  alias Logflare.Lql.Rules.FilterRule
+  alias Logflare.Lql.Rules.SelectRule
   alias Logflare.Lql.Validator
 
   describe "validate/2" do
@@ -10,7 +11,8 @@ defmodule Logflare.Lql.ValidatorTest do
       lql_rules = %{
         lql_ts_filters: [],
         chart_period: :minute,
-        chart_rules: []
+        chart_rules: [],
+        select_rules: []
       }
 
       result = Validator.validate(lql_rules, tailing?: false)
@@ -27,7 +29,8 @@ defmodule Logflare.Lql.ValidatorTest do
           }
         ],
         chart_period: :minute,
-        chart_rules: []
+        chart_rules: [],
+        select_rules: []
       }
 
       result = Validator.validate(lql_rules, tailing?: true)
@@ -38,7 +41,8 @@ defmodule Logflare.Lql.ValidatorTest do
       lql_rules = %{
         lql_ts_filters: [],
         chart_period: :minute,
-        chart_rules: []
+        chart_rules: [],
+        select_rules: []
       }
 
       assert_raise ArgumentError, "tailing? must be a boolean value", fn ->
@@ -50,7 +54,8 @@ defmodule Logflare.Lql.ValidatorTest do
       lql_rules = %{
         lql_ts_filters: [],
         chart_period: :minute,
-        chart_rules: []
+        chart_rules: [],
+        select_rules: []
       }
 
       result = Validator.validate(lql_rules, tailing?: true)
@@ -67,7 +72,8 @@ defmodule Logflare.Lql.ValidatorTest do
           }
         ],
         chart_period: :minute,
-        chart_rules: []
+        chart_rules: [],
+        select_rules: []
       }
 
       result = Validator.validate(lql_rules, tailing?: false)
@@ -93,7 +99,8 @@ defmodule Logflare.Lql.ValidatorTest do
             period: :minute,
             value_type: :integer
           }
-        ]
+        ],
+        select_rules: []
       }
 
       result = Validator.validate(lql_rules, tailing?: false)
@@ -111,7 +118,8 @@ defmodule Logflare.Lql.ValidatorTest do
             period: :minute,
             value_type: :string
           }
-        ]
+        ],
+        select_rules: []
       }
 
       result = Validator.validate(lql_rules, tailing?: false)
@@ -131,7 +139,8 @@ defmodule Logflare.Lql.ValidatorTest do
             period: :minute,
             value_type: :integer
           }
-        ]
+        ],
+        select_rules: []
       }
 
       result = Validator.validate(lql_rules, tailing?: false)
@@ -149,7 +158,8 @@ defmodule Logflare.Lql.ValidatorTest do
             period: :minute,
             value_type: :string
           }
-        ]
+        ],
+        select_rules: []
       }
 
       result = Validator.validate(lql_rules, tailing?: false)
@@ -167,7 +177,8 @@ defmodule Logflare.Lql.ValidatorTest do
             period: :minute,
             value_type: :integer
           }
-        ]
+        ],
+        select_rules: []
       }
 
       result = Validator.validate(lql_rules, tailing?: false)
@@ -185,7 +196,8 @@ defmodule Logflare.Lql.ValidatorTest do
             period: :minute,
             value_type: :float
           }
-        ]
+        ],
+        select_rules: []
       }
 
       result = Validator.validate(lql_rules, tailing?: false)
@@ -208,7 +220,8 @@ defmodule Logflare.Lql.ValidatorTest do
         ],
         # Chart period is longer than the 1-minute interval
         chart_period: :hour,
-        chart_rules: []
+        chart_rules: [],
+        select_rules: []
       }
 
       result = Validator.validate(lql_rules, tailing?: false)
@@ -233,7 +246,8 @@ defmodule Logflare.Lql.ValidatorTest do
         ],
         # Would generate too many ticks
         chart_period: :minute,
-        chart_rules: []
+        chart_rules: [],
+        select_rules: []
       }
 
       result = Validator.validate(lql_rules, tailing?: false)
@@ -252,7 +266,8 @@ defmodule Logflare.Lql.ValidatorTest do
           }
         ],
         chart_period: :minute,
-        chart_rules: []
+        chart_rules: [],
+        select_rules: []
       }
 
       result = Validator.validate(lql_rules, tailing?: false)
@@ -276,7 +291,8 @@ defmodule Logflare.Lql.ValidatorTest do
           }
         ],
         chart_period: :hour,
-        chart_rules: []
+        chart_rules: [],
+        select_rules: []
       }
 
       result = Validator.validate(lql_rules, tailing?: false)
@@ -305,7 +321,8 @@ defmodule Logflare.Lql.ValidatorTest do
             period: :minute,
             value_type: :float
           }
-        ]
+        ],
+        select_rules: []
       }
 
       result = Validator.validate(lql_rules, tailing?: false)
@@ -332,13 +349,109 @@ defmodule Logflare.Lql.ValidatorTest do
             period: :minute,
             value_type: :boolean
           }
-        ]
+        ],
+        select_rules: []
       }
 
       result = Validator.validate(lql_rules, tailing?: false)
 
       assert result =~
                "Can't aggregate on a non-numeric field type 'boolean' for path metadata.status"
+    end
+
+    test "passes with valid select rules" do
+      lql_rules = %{
+        lql_ts_filters: [],
+        chart_period: :minute,
+        chart_rules: [],
+        select_rules: [
+          %SelectRule{path: "metadata.user_id", wildcard: false},
+          %SelectRule{path: "event_message", wildcard: false}
+        ]
+      }
+
+      result = Validator.validate(lql_rules, tailing?: false)
+      assert is_nil(result)
+    end
+
+    test "passes with wildcard selection only" do
+      lql_rules = %{
+        lql_ts_filters: [],
+        chart_period: :minute,
+        chart_rules: [],
+        select_rules: [
+          %SelectRule{path: "*", wildcard: true}
+        ]
+      }
+
+      result = Validator.validate(lql_rules, tailing?: false)
+      assert is_nil(result)
+    end
+
+    test "passes with wildcard and specific selections combined (wildcard wins)" do
+      lql_rules = %{
+        lql_ts_filters: [],
+        chart_period: :minute,
+        chart_rules: [],
+        select_rules: [
+          %SelectRule{path: "*", wildcard: true},
+          %SelectRule{path: "metadata.user_id", wildcard: false}
+        ]
+      }
+
+      result = Validator.validate(lql_rules, tailing?: false)
+      assert is_nil(result)
+    end
+
+    test "passes with duplicate field selections" do
+      lql_rules = %{
+        lql_ts_filters: [],
+        chart_period: :minute,
+        chart_rules: [],
+        select_rules: [
+          %SelectRule{path: "metadata.user_id", wildcard: false},
+          %SelectRule{path: "metadata.user_id", wildcard: false}
+        ]
+      }
+
+      result = Validator.validate(lql_rules, tailing?: false)
+      assert is_nil(result)
+    end
+
+    test "returns error for too many select rules" do
+      # Create 51 select rules (exceeds limit of 50)
+      select_rules =
+        for i <- 1..51 do
+          %SelectRule{path: "field_#{i}", wildcard: false}
+        end
+
+      lql_rules = %{
+        lql_ts_filters: [],
+        chart_period: :minute,
+        chart_rules: [],
+        select_rules: select_rules
+      }
+
+      result = Validator.validate(lql_rules, tailing?: false)
+      assert result == "Too many field selections (maximum 50 allowed)"
+    end
+
+    test "passes with exactly 50 select rules" do
+      # Create exactly 50 select rules (at the limit)
+      select_rules =
+        for i <- 1..50 do
+          %SelectRule{path: "field_#{i}", wildcard: false}
+        end
+
+      lql_rules = %{
+        lql_ts_filters: [],
+        chart_period: :minute,
+        chart_rules: [],
+        select_rules: select_rules
+      }
+
+      result = Validator.validate(lql_rules, tailing?: false)
+      assert is_nil(result)
     end
   end
 end

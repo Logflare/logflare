@@ -14,8 +14,10 @@ defmodule Logflare.Lql.Parser do
 
   alias GoogleApi.BigQuery.V2.Model.TableSchema, as: TS
   alias Logflare.Google.BigQuery.SchemaUtils
-  alias Logflare.Lql.ChartRule
-  alias Logflare.Lql.FilterRule
+  alias Logflare.Lql.Rules
+  alias Logflare.Lql.Rules.ChartRule
+  alias Logflare.Lql.Rules.FilterRule
+  alias Logflare.Lql.Rules.SelectRule
 
   defparsec(
     :do_parse,
@@ -23,6 +25,7 @@ defmodule Logflare.Lql.Parser do
       optional(string("-") |> replace(:negate)),
       choice([
         chart_clause(),
+        select_clause(),
         timestamp_clause(),
         metadata_level_clause(),
         metadata_clause(),
@@ -40,7 +43,7 @@ defmodule Logflare.Lql.Parser do
   `parse/1` allows for parsing of an LQL statement without validating against a provided BQ schema.
   This allows for parse-only workflows, as coupling validations with the parsing makes things more complex.
   """
-  @spec parse(String.t()) :: {:ok, [FilterRule.t() | ChartRule.t()]}
+  @spec parse(String.t()) :: {:ok, Rules.lql_rules()}
   def parse(nil), do: {:ok, []}
   def parse(""), do: {:ok, []}
 
@@ -50,11 +53,18 @@ defmodule Logflare.Lql.Parser do
       |> String.trim()
       |> do_parse()
 
-    {chart_rule_tokens, other_rules} =
+    {chart_rule_tokens, remaining_rules} =
       rules
       |> List.flatten()
       |> Enum.split_with(fn
         {:chart, _} -> true
+        _ -> false
+      end)
+
+    {select_rule_tokens, other_rules} =
+      remaining_rules
+      |> Enum.split_with(fn
+        {:select, _} -> true
         _ -> false
       end)
 
@@ -67,13 +77,24 @@ defmodule Logflare.Lql.Parser do
         struct!(ChartRule, chart_rule)
       end
 
+    select_rules =
+      select_rule_tokens
+      |> Enum.map(fn {:select, fields} ->
+        select_rule =
+          fields
+          |> Map.new()
+          |> Map.put(:wildcard, Map.get(Map.new(fields), :path) == "*")
+
+        struct!(SelectRule, select_rule)
+      end)
+
     filter_rules =
       Enum.map(other_rules, fn rule ->
         maybe_cast_value(rule)
       end)
 
     rules =
-      [chart_rule | filter_rules]
+      ([chart_rule | select_rules] ++ filter_rules)
       |> List.flatten()
       |> Enum.reject(&is_nil/1)
 
@@ -92,11 +113,18 @@ defmodule Logflare.Lql.Parser do
 
     case parsed do
       {:ok, rules, "", _, {_, _}, _} ->
-        {chart_rule_tokens, other_rules} =
+        {chart_rule_tokens, remaining_rules} =
           rules
           |> List.flatten()
           |> Enum.split_with(fn
             {:chart, _} -> true
+            _ -> false
+          end)
+
+        {select_rule_tokens, other_rules} =
+          remaining_rules
+          |> Enum.split_with(fn
+            {:select, _} -> true
             _ -> false
           end)
 
@@ -112,6 +140,17 @@ defmodule Logflare.Lql.Parser do
             struct!(ChartRule, chart_rule)
           end
 
+        select_rules =
+          select_rule_tokens
+          |> Enum.map(fn {:select, fields} ->
+            select_rule =
+              fields
+              |> Map.new()
+              |> Map.put(:wildcard, Map.get(Map.new(fields), :path) == "*")
+
+            struct!(SelectRule, select_rule)
+          end)
+
         rules =
           Enum.map(other_rules, fn
             %FilterRule{path: path} = rule ->
@@ -120,7 +159,7 @@ defmodule Logflare.Lql.Parser do
           end)
 
         rules =
-          [chart_rule | rules]
+          ([chart_rule | select_rules] ++ rules)
           |> List.flatten()
           |> Enum.reject(&is_nil/1)
 

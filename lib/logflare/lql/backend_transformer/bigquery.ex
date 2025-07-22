@@ -3,7 +3,7 @@ defmodule Logflare.Lql.BackendTransformer.BigQuery do
   BigQuery-specific LQL backend transformer implementation.
 
   This module implements the `Logflare.Lql.BackendTransformer` behaviour for BigQuery, providing
-  translation of LQL `FilterRule` and `ChartRule` structs into BigQuery-compatible
+  translation of LQL `ChartRule`, `FilterRule`, and `SelectRule` structs into BigQuery-compatible
   Ecto queries with proper UNNEST operations for nested fields.
   """
 
@@ -99,6 +99,13 @@ defmodule Logflare.Lql.BackendTransformer.BigQuery do
     # TODO: Implement chart rule transformation for BigQuery
     # This would handle aggregations, grouping, etc.
     raise "Chart rule transformation not yet implemented for BigQuery transformer"
+  end
+
+  @impl true
+  def transform_select_rule(_select_rule, _transformation_data) do
+    # TODO: Implement select rule transformation for BigQuery
+    # This would handle field selection, projections, etc.
+    raise "Select rule transformation not yet implemented for BigQuery transformer"
   end
 
   @spec unnest_and_join_nested_columns(

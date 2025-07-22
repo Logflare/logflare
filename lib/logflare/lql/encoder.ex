@@ -5,9 +5,11 @@ defmodule Logflare.Lql.Encoder do
 
   import Logflare.Utils.Guards
 
-  alias Logflare.Lql.ChartRule
-  alias Logflare.Lql.FilterRule
   alias Logflare.Lql.Parser.Helpers
+  alias Logflare.Lql.Rules
+  alias Logflare.Lql.Rules.ChartRule
+  alias Logflare.Lql.Rules.FilterRule
+  alias Logflare.Lql.Rules.SelectRule
 
   @date_periods ~w(year month day)a
   @time_periods ~w(hour minute second)a
@@ -15,21 +17,27 @@ defmodule Logflare.Lql.Encoder do
   defguardp is_valid_date_or_datetime(value)
             when is_date(value) or is_datetime(value) or is_naive_datetime(value)
 
-  @spec to_querystring([FilterRule.t() | ChartRule.t()]) :: String.t()
+  @spec to_querystring(Rules.lql_rules()) :: String.t()
   def to_querystring(lql_rules) when is_list(lql_rules) do
     lql_rules
     |> Enum.group_by(fn
       %ChartRule{} -> :chart
+      %SelectRule{} -> :select
       %FilterRule{} = f -> f.path
     end)
     |> Enum.sort_by(fn
-      {:chart, _} -> 1
-      {_path, _} -> 0
+      {:select, _} -> 0
+      {:chart, _} -> 2
+      {_path, _} -> 1
     end)
     |> Enum.reduce("", fn
       grouped_rules, qs ->
         append =
           case grouped_rules do
+            {:select, select_rules} ->
+              select_rules
+              |> Enum.map_join(" ", &to_fragment/1)
+
             {:chart, chart_rules} ->
               chart_rules
               |> Enum.map_join(" ", &to_fragment/1)
@@ -51,7 +59,7 @@ defmodule Logflare.Lql.Encoder do
     |> String.trim()
   end
 
-  @spec to_fragment(FilterRule.t() | ChartRule.t()) :: String.t()
+  @spec to_fragment(Rules.lql_rule()) :: String.t()
   defp to_fragment(%FilterRule{shorthand: sh} = f) when not is_nil(sh) do
     "#{f.path}:#{sh}"
     |> String.trim_trailing("s")
@@ -144,6 +152,16 @@ defmodule Logflare.Lql.Encoder do
 
     qs = "c:#{c.aggregate}(#{path}) c:group_by(t::#{c.period})"
     Regex.replace(~r/(?<=sum|avg|count|max|p50|p95|p99)\(metadata./, qs, "(m.")
+  end
+
+  defp to_fragment(%SelectRule{} = s) do
+    path =
+      case s.path do
+        "*" -> "*"
+        x -> String.replace_leading(x, "metadata.", "m.")
+      end
+
+    "s:#{path}"
   end
 
   def to_datetime_with_range(%Date{} = ldt, %Date{} = rdt) do
