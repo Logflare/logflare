@@ -3,7 +3,6 @@ defmodule LogflareWeb.TeamUserControllerTest do
 
   setup do
     insert(:plan)
-
     :ok
   end
 
@@ -57,9 +56,7 @@ defmodule LogflareWeb.TeamUserControllerTest do
     expect(
       GoogleApi.CloudResourceManager.V1.Api.Projects,
       :cloudresourcemanager_projects_set_iam_policy,
-      fn _, _project_number, [body: _body] ->
-        {:ok, ""}
-      end
+      fn _, _project_number, [body: _body] -> {:ok, ""} end
     )
 
     conn =
@@ -70,7 +67,6 @@ defmodule LogflareWeb.TeamUserControllerTest do
 
     assert redirected_to(conn, 302) =~ "/login"
     assert Phoenix.Flash.get(conn.assigns.flash, :info) == "Profile deleted!"
-
     refute Logflare.TeamUsers.get_team_user(team_user.id)
   end
 
@@ -83,9 +79,7 @@ defmodule LogflareWeb.TeamUserControllerTest do
     expect(
       GoogleApi.CloudResourceManager.V1.Api.Projects,
       :cloudresourcemanager_projects_set_iam_policy,
-      fn _, _project_number, [body: _body] ->
-        {:ok, ""}
-      end
+      fn _, _project_number, [body: _body] -> {:ok, ""} end
     )
 
     conn =
@@ -95,7 +89,6 @@ defmodule LogflareWeb.TeamUserControllerTest do
 
     assert redirected_to(conn, 302) == "/account/edit"
     assert Phoenix.Flash.get(conn.assigns.flash, :info) == "Member profile deleted!"
-
     refute Logflare.TeamUsers.get_team_user(member_team_user.id)
   end
 
@@ -143,10 +136,7 @@ defmodule LogflareWeb.TeamUserControllerTest do
       conn
       |> login_user(user)
       |> put_session(:team_user_id, team_user1.id)
-      |> get(~p"/profile/switch", %{
-        "user_id" => user.id,
-        "team_user_id" => team_user2.id
-      })
+      |> get(~p"/profile/switch", %{"user_id" => user.id, "team_user_id" => team_user2.id})
 
     assert redirected_to(conn, 302) =~ "/dashboard"
     assert Phoenix.Flash.get(conn.assigns.flash, :info) == "Welcome to this Logflare team!"
@@ -163,9 +153,7 @@ defmodule LogflareWeb.TeamUserControllerTest do
       conn
       |> login_user(user)
       |> put_session(:team_user_id, team_user.id)
-      |> get(~p"/profile/switch", %{
-        "user_id" => user.id
-      })
+      |> get(~p"/profile/switch", %{"user_id" => user.id})
 
     assert redirected_to(conn, 302) == ~p"/dashboard"
     assert Phoenix.Flash.get(conn.assigns.flash, :info) == "Welcome to this Logflare team!"
@@ -181,10 +169,7 @@ defmodule LogflareWeb.TeamUserControllerTest do
     conn =
       conn
       |> login_user(user)
-      |> get(~p"/profile/switch", %{
-        "user_id" => user.id,
-        "team_user_id" => team_user.id
-      })
+      |> get(~p"/profile/switch", %{"user_id" => user.id, "team_user_id" => team_user.id})
 
     assert redirected_to(conn, 302) == ~p"/dashboard"
     assert Phoenix.Flash.get(conn.assigns.flash, :info) == "Welcome to this Logflare team!"
@@ -215,5 +200,58 @@ defmodule LogflareWeb.TeamUserControllerTest do
     assert conn
            |> delete(~p"/profile/switch")
            |> redirected_to(302) == ~p"/auth/login"
+  end
+
+  test "switching teams sets last team cookie with team_id for team_user", %{conn: conn} do
+    user = insert(:user)
+    other_user = insert(:user)
+    team1 = insert(:team, user: user)
+    team_user1 = insert(:team_user, team: team1, email: user.email)
+    team2 = insert(:team, user: other_user)
+    team_user2 = insert(:team_user, team: team2, email: user.email)
+
+    conn =
+      conn
+      |> login_user(user)
+      |> put_session(:team_user_id, team_user1.id)
+      |> get(~p"/profile/switch", %{"user_id" => user.id, "team_user_id" => team_user2.id})
+
+    assert redirected_to(conn, 302) =~ "/dashboard"
+    cookies = Map.get(conn.resp_cookies, "_logflare_last_team", %{})
+    assert cookies.value == "#{team2.id}"
+    assert cookies.max_age == 2_592_000
+  end
+
+  test "switching to personal account sets last team cookie with user's team_id", %{conn: conn} do
+    user = insert(:user)
+    team = insert(:team, user: user)
+    team_user = insert(:team_user, team: team, email: user.email)
+
+    conn =
+      conn
+      |> login_user(user)
+      |> put_session(:team_user_id, team_user.id)
+      |> get(~p"/profile/switch", %{"user_id" => user.id})
+
+    assert redirected_to(conn, 302) == ~p"/dashboard"
+    cookies = Map.get(conn.resp_cookies, "_logflare_last_team", %{})
+    assert cookies.value == "#{team.id}"
+    assert cookies.max_age == 2_592_000
+  end
+
+  test "switching from personal to team account sets last team cookie", %{conn: conn} do
+    user = insert(:user)
+    team = insert(:team, user: user)
+    team_user = insert(:team_user, team: team, email: user.email)
+
+    conn =
+      conn
+      |> login_user(user)
+      |> get(~p"/profile/switch", %{"user_id" => user.id, "team_user_id" => team_user.id})
+
+    assert redirected_to(conn, 302) == ~p"/dashboard"
+    cookies = Map.get(conn.resp_cookies, "_logflare_last_team", %{})
+    assert cookies.value == "#{team.id}"
+    assert cookies.max_age == 2_592_000
   end
 end
