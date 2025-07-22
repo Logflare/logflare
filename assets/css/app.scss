@@ -275,32 +275,40 @@ a:focus, button.btn-link:focus {
 mark {
     /* default, used for info and no log level */
     background-color: #5eeb8f;
-    &.log-error {
-        background-color: #dc3545;
+
+    &[class^="log-level-"] {
+        background: none;
     }
 
-    &.log-warning {
-        background-color: #f1ba58;
+    &.log-level-info {
+        color: #5eeb8f;
+    }
+    &.log-level-error {
+        color: #dc3545;
     }
 
-    &.log-debug {
-        background-color: #8e6ddf;
+    &.log-level-warning {
+        color: #f1ba58;
     }
 
-    &.log-critical {
-        background-color: #bd1550;
+    &.log-level-debug {
+        color: #3787ff;
     }
 
-    &.log-emergency {
-        background-color: #b11226;
+    &.log-level-critical {
+        color: #bd1550;
     }
 
-    &.log-alert {
-        background-color: #dc3545;
+    &.log-level-emergency {
+        color: #b11226;
     }
 
-    &.log-notice {
-        background-color: #03c03c;
+    &.log-level-alert {
+        color: #dc3545;
+    }
+
+    &.log-level-notice {
+        color: #03c03c;
     }
 }
 
