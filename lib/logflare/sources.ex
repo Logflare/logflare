@@ -266,11 +266,18 @@ defmodule Logflare.Sources do
   end
 
   def get_bq_schema(%Source{} = source) do
-    name = Backends.via_source(source, Schema, nil)
+    case SourceSchemas.Cache.get_source_schema_by(source_id: source.id) do
+      nil ->
+        name = Backends.via_source(source, Schema, nil)
 
-    with %{schema: schema} <- Schema.get_state(name) do
-      schema = SchemaUtils.deep_sort_by_fields_name(schema)
-      {:ok, schema}
+        with %{schema: schema} <- Schema.get_state(name) do
+          schema = SchemaUtils.deep_sort_by_fields_name(schema)
+          {:ok, schema}
+        end
+
+      %_{bigquery_schema: schema} ->
+        schema = SchemaUtils.deep_sort_by_fields_name(schema)
+        {:ok, schema}
     end
   end
 
@@ -399,6 +406,7 @@ defmodule Logflare.Sources do
     bq_table_schema =
       case get_bq_schema(source) do
         {:ok, bq_table_schema} -> bq_table_schema
+        {:error, :not_found} -> nil
         {:error, error} -> raise(error)
       end
 

@@ -2,12 +2,16 @@ defmodule Logflare.Logs.LogEvents do
   @moduledoc false
   alias Logflare.Google.BigQuery.GCPConfig
   alias Logflare.Sources
+  alias Logflare.SourceSchemas
   alias Logflare.LogEvent
   alias Logflare.Logs.SearchOperations
   alias Logflare.Logs.SearchQueries
   alias Logflare.BqRepo
   alias Logflare.Google.BigQuery.GenUtils
+  alias Logflare.Lql
   # import Logflare.Ecto.BQQueryAPI
+
+  import Ecto.Query
 
   @spec fetch_event_by_id_and_timestamp(atom, keyword) :: {:ok, map()} | {:error, map()}
   def fetch_event_by_id_and_timestamp(source_token, kw) when is_atom(source_token) do
@@ -45,31 +49,47 @@ defmodule Logflare.Logs.LogEvents do
   @spec fetch_event_by_id(atom(), binary(), Keyword.t()) :: map() | {:error, any()}
   def fetch_event_by_id(source_token, id, opts)
       when is_list(opts) and is_atom(source_token) and is_binary(id) do
-    partitions_range = Keyword.get(opts, :partitions_range, [])
+    [min, max] = Keyword.get(opts, :partitions_range, [])
     source = Sources.Cache.get_by_and_preload(token: source_token)
+    source_schema = SourceSchemas.Cache.get_source_schema_by(source_id: source.id)
+    lql = Keyword.get(opts, :lql, "")
+    {:ok, lql_rules} = Lql.decode(lql, source_schema.bigquery_schema)
+
+    lql_rules =
+      lql_rules
+      |> Enum.filter(fn
+        %Lql.FilterRule{path: "timestamp"} -> false
+        %Lql.FilterRule{} -> true
+        _ -> false
+      end)
+
     bq_table_id = source.bq_table_id
     bq_project_id = source.user.bigquery_project_id || GCPConfig.default_project_id()
     %{bigquery_dataset_id: dataset_id} = GenUtils.get_bq_user_info(source.token)
 
-    base_query = SearchQueries.source_log_event_id(bq_table_id, id)
-    partition_type = Sources.get_table_partition_type(source)
+    query =
+      from(bq_table_id)
+      |> Lql.EctoHelpers.apply_filter_rules_to_query(lql_rules)
+      |> where([t], t.timestamp >= ^min)
+      |> where([t], t.timestamp <= ^max)
+      |> where([t], t.id == ^id)
+      |> select([t], fragment("*"))
 
-    fetch_streaming_buffer(
-      source.user,
-      bq_project_id,
-      base_query,
-      dataset_id,
-      partition_type
-    ) ||
-      fetch_with_partitions_range(
-        source.user,
-        bq_project_id,
-        base_query,
-        dataset_id,
-        partitions_range,
-        partition_type
-      ) ||
-      {:error, :not_found}
+    source.user
+    |> BqRepo.query(bq_project_id, query, dataset_id: dataset_id)
+    |> case do
+      {:ok, %{rows: []}} ->
+        nil
+
+      {:ok, %{rows: [row]}} ->
+        row
+
+      {:ok, %{rows: _rows}} ->
+        {:error, "Multiple rows returned, expected one"}
+
+      {:error, error} ->
+        {:error, error}
+    end
   end
 
   @spec fetch_event_by_path(atom(), binary(), term()) :: {:ok, map() | nil} | {:error, any()}
@@ -102,7 +122,6 @@ defmodule Logflare.Logs.LogEvents do
   end
 
   defp fetch_last_3d(user, bq_project_id, query, dataset_id, :timestamp) do
-    import Ecto.Query
     from_utc = Timex.shift(Timex.today(), days: -3)
 
     query =
@@ -121,24 +140,6 @@ defmodule Logflare.Logs.LogEvents do
     |> process()
   end
 
-  defp fetch_with_partitions_range(user, bq_project_id, query, dataset_id, [], _) do
-    user
-    |> BqRepo.query(bq_project_id, query, dataset_id: dataset_id)
-    |> process()
-  end
-
-  defp fetch_with_partitions_range(user, bq_project_id, query, dataset_id, [min, max], :timestamp) do
-    import Ecto.Query
-
-    query =
-      query
-      |> where([t], t.timestamp >= ^min)
-      |> where([t], t.timestamp <= ^max)
-
-    user
-    |> BqRepo.query(bq_project_id, query, dataset_id: dataset_id)
-    |> process()
-  end
 
   defp fetch_with_partitions_range(user, bq_project_id, query, dataset_id, [min, max], :pseudo) do
     query = SearchQueries.where_partitiondate_between(query, min, max)

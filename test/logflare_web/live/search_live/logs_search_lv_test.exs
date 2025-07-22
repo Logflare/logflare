@@ -440,15 +440,23 @@ defmodule LogflareWeb.Source.SearchLVTest do
              |> element("#logs-list li:first-of-type a[href^='/sources']", "permalink")
              |> render() =~ ~r/timestamp=\d{4}-\d{2}-\d{2}/
 
-      assert view
-             |> element(
-               "#logs-list li:first-of-type a[phx-value-log-event-id='some-uuid']",
-               "view"
-             )
-             |> render() =~ ~r/phx-value-log-event-timestamp="\d+/
+      link =
+        view
+        |> element(
+          "#logs-list li:first-of-type a[phx-value-log-event-id='some-uuid']",
+          "view"
+        )
+        |> render()
+
+      assert link =~ ~r/phx-value-log-event-timestamp="\d+/
+      assert link =~ ~r/phx-value-lql="\w+/
     end
 
-    test "log event modal", %{conn: conn, source: source} do
+    test "log event modal", %{conn: conn, user: user} do
+      schema = TestUtils.build_bq_schema(%{"testing" => "string"})
+      source = insert(:source, user: user)
+      insert(:source_schema, source: source, bigquery_schema: schema)
+      # TODO: use expect, remove UDFs creation query
       stub(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, fn _conn, _proj_id, _opts ->
         {:ok,
          TestUtils.gen_bq_response(%{
@@ -458,10 +466,26 @@ defmodule LogflareWeb.Source.SearchLVTest do
          })}
       end)
 
-      {:ok, view, _html} = live(conn, Routes.live_path(conn, SearchLV, source.id))
+      {:ok, view, _html} =
+        live(conn, ~p"/sources/#{source.id}/search?#{%{querystring: "testing:modal123"}}")
 
       # wait for async search task to complete
       :timer.sleep(500)
+
+      schema = TestUtils.build_bq_schema(%{"testing" => "string"})
+      source = insert(:source, user: user)
+      insert(:source_schema, source: source, bigquery_schema: schema)
+      pid = self()
+      expect(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, fn _conn, _proj_id, opts ->
+        query = opts[:body].query
+        send(pid, {:query, query})
+        {:ok,
+         TestUtils.gen_bq_response(%{
+           "event_message" => "some modal message",
+           "testing" => "modal123",
+           "id" => "some-uuid"
+         })}
+      end)
 
       TestUtils.retry_assert(fn ->
         view
@@ -476,6 +500,10 @@ defmodule LogflareWeb.Source.SearchLVTest do
         assert html =~ "modal123"
         assert html =~ "some modal message"
       end)
+
+      assert_receive {:query, query}
+      # filter on the field name
+      assert query =~ ~r"..\.testing"
     end
 
     test "shows flash error for malformed query", %{conn: conn, source: source} do

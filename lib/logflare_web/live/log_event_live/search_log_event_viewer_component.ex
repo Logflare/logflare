@@ -39,6 +39,7 @@ defmodule LogflareWeb.Search.LogEventViewerComponent do
     params =
       event_params(assigns)
       |> Map.merge(%{log_event_id: id, timestamp: d})
+      |> Map.put(:lql, assigns.params["lql"] || "")
 
     socket =
       socket
@@ -83,7 +84,7 @@ defmodule LogflareWeb.Search.LogEventViewerComponent do
 
   def load_event(%{log_event_id: log_id, source: source} = params) do
     range = get_partitions_range(params)
-    LogEvents.fetch_event_by_id(source.token, log_id, partitions_range: range)
+    LogEvents.fetch_event_by_id(source.token, log_id, partitions_range: range, lql: params[:lql])
   end
 
   @impl true
@@ -118,17 +119,19 @@ defmodule LogflareWeb.Search.LogEventViewerComponent do
     team_user = socket.assigns[:team_user] || assigns[:team_user]
     source = socket.assigns[:source] || assigns[:source]
     timestamp = socket.assigns[:timestamp] || assigns[:timestamp]
+    lql = socket.assigns[:lql] || assigns[:lql] || ""
 
     socket
     |> assign(:user, user)
     |> assign(:team_user, team_user)
     |> assign(:source, source)
     |> assign(:timestamp, timestamp)
+    |> assign(:lql, lql)
   end
 
   # timestamp is explicitly set, query around the range
   defp get_partitions_range(%{timestamp: ts}) do
-    [Timex.shift(ts, days: -1), Timex.shift(ts, days: 1)]
+    [Timex.shift(ts, hours: -1), Timex.shift(ts, hours: 1)]
   end
 
   # no timestamp is set, fallback to ttl
@@ -138,13 +141,7 @@ defmodule LogflareWeb.Search.LogEventViewerComponent do
     plan = Billing.Cache.get_plan_by_user(user)
     ttl = Sources.source_ttl_to_days(source, plan)
 
-    cond do
-      ttl <= 7 ->
-        [Timex.shift(d, days: -ttl), Timex.shift(d, days: 1)]
-
-      true ->
-        [Timex.shift(d, days: -90), Timex.shift(d, days: 1)]
-    end
+    [Timex.shift(d, days: -min(ttl, 7)), Timex.shift(d, days: 1)]
   end
 
   defp event_params(assigns) do
