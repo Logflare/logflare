@@ -635,7 +635,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
         html = view |> element("#logs-list-container") |> render()
 
         assert html =~ "some correct message"
-        assert html =~ ~s|class="log-warning">warning|
+        assert html =~ ~s|class="log-level-warning">warning|
       end)
     end
   end

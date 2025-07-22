@@ -36,10 +36,7 @@ defmodule LogflareWeb.SearchLive.LogEventComponents do
     ~H"""
     <li id={"log-event_#{@log.id || @log.body["timestamp"]}"} class="tw-group">
       <span class="tw-inline-block">
-        <mark class={"log-#{@log_level} mr-2"} data-timestamp={@timestamp}>
-          <%= format_timestamp(@timestamp, @search_timezone) %>
-        </mark>
-        <mark :if={@log_level} class={"log-level-#{@log_level}"}><%= @log_level %></mark>
+        <.mark timestamp={@timestamp} search_timezone={@search_timezone} log_level={@log_level} />
         <%= @message %>
       </span>
       <span class="tw-inline-block tw-text-[0.65rem] tw-align-text-bottom tw-inline-flex tw-flex-row tw-gap-2">
@@ -56,4 +53,17 @@ defmodule LogflareWeb.SearchLive.LogEventComponents do
   end
 
   def log_search_event(assigns), do: ~H""
+
+  attr :log_level, :string, default: nil
+  attr :timestamp, :string
+  attr :search_timezone, :string
+
+  def mark(assigns) do
+    ~H"""
+    <mark class={"log-#{@log_level} mr-2"} data-timestamp={@timestamp}>
+      <%= format_timestamp(@timestamp, @search_timezone) %>
+    </mark>
+    <mark :if={@log_level} class={"log-level-#{@log_level}"}><%= @log_level %></mark>
+    """
+  end
 end
