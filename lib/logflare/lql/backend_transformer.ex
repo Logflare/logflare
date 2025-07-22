@@ -64,6 +64,15 @@ defmodule Logflare.Lql.BackendTransformer do
   @callback transform_select_rule(SelectRule.t(), transformation_data()) :: term()
 
   @doc """
+  Applies a list of `SelectRule` structs to modify query field selection.
+
+  This function processes field selection rules and applies them to the query,
+  handling both wildcard selection and specific field projections.
+  """
+  @callback apply_select_rules_to_query(Ecto.Query.t(), [SelectRule.t()], Keyword.t()) ::
+              Ecto.Query.t()
+
+  @doc """
   Returns the dialect string used by this transformer.
 
   Should return values like "bigquery", "clickhouse", "postgres", etc.

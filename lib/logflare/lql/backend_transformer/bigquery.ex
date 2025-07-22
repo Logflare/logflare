@@ -34,9 +34,26 @@ defmodule Logflare.Lql.BackendTransformer.BigQuery do
 
   @impl true
   def build_transformation_data(base_data) do
-    # BigQuery uses the base transformation data as-is
-    # Future implementations might add BigQuery-specific fields
+    # currently using the base transformation data as-is
     base_data
+  end
+
+  @impl true
+  def apply_select_rules_to_query(query, select_rules, _opts \\ [])
+  def apply_select_rules_to_query(query, [], _opts), do: query
+
+  def apply_select_rules_to_query(query, select_rules, _opts) do
+    normalized_rules =
+      case Enum.find(select_rules, & &1.wildcard) do
+        nil -> select_rules
+        _wildcard -> [%{wildcard: true, path: "*"}]
+      end
+
+    case normalized_rules do
+      [] -> query
+      [%{wildcard: true}] -> query
+      rules -> build_combined_select(query, rules)
+    end
   end
 
   @impl true
@@ -102,10 +119,24 @@ defmodule Logflare.Lql.BackendTransformer.BigQuery do
   end
 
   @impl true
-  def transform_select_rule(_select_rule, _transformation_data) do
-    # TODO: Implement select rule transformation for BigQuery
-    # This would handle field selection, projections, etc.
-    raise "Select rule transformation not yet implemented for BigQuery transformer"
+  def transform_select_rule(%{wildcard: true}, _transformation_data) do
+    {:wildcard, []}
+  end
+
+  def transform_select_rule(%{path: path} = _select_rule, _transformation_data)
+      when is_binary(path) do
+    cond do
+      path in @special_top_level or not String.contains?(path, ".") ->
+        {:field, String.to_atom(path), []}
+
+      true ->
+        nested_columns = split_by_dots(path)
+        {:nested_field, nested_columns, unnest_paths_for_select(nested_columns)}
+    end
+  end
+
+  def transform_select_rule(select_rule, _transformation_data) do
+    {:error, "Invalid SelectRule: #{inspect(select_rule)}"}
   end
 
   @spec unnest_and_join_nested_columns(
@@ -213,6 +244,36 @@ defmodule Logflare.Lql.BackendTransformer.BigQuery do
 
   @spec is_negated?(map()) :: boolean()
   defp is_negated?(modifiers), do: Map.get(modifiers, :negate)
+
+  @spec build_combined_select(Query.t(), [map()]) :: Query.t()
+  defp build_combined_select(query, select_rules) do
+    Enum.reduce(select_rules, query, fn %{path: path}, acc_query ->
+      field_atom =
+        cond do
+          path in @special_top_level or not String.contains?(path, ".") ->
+            String.to_atom(path)
+
+          true ->
+            String.replace(path, ".", "_") |> String.to_atom()
+        end
+
+      select_merge(acc_query, [l], %{^field_atom => field(l, ^field_atom)})
+    end)
+  end
+
+  @spec unnest_paths_for_select([String.t()]) :: [String.t()]
+  defp unnest_paths_for_select(nested_columns) when length(nested_columns) <= 1, do: []
+
+  defp unnest_paths_for_select(nested_columns) do
+    nested_columns
+    |> Enum.with_index()
+    |> Enum.take(length(nested_columns) - 1)
+    |> Enum.map(fn {_column, index} ->
+      nested_columns
+      |> Enum.take(index + 1)
+      |> Enum.join(".")
+    end)
+  end
 
   @spec split_by_dots(String.t()) :: [String.t()]
   defp split_by_dots(value) when is_binary(value) do

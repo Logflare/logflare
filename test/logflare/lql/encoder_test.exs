@@ -4,6 +4,7 @@ defmodule Logflare.Lql.EncoderTest do
   alias Logflare.Lql.Encoder
   alias Logflare.Lql.Rules.ChartRule
   alias Logflare.Lql.Rules.FilterRule
+  alias Logflare.Lql.Rules.SelectRule
 
   describe "to_querystring/1" do
     test "encodes single filter rule" do
@@ -186,6 +187,55 @@ defmodule Logflare.Lql.EncoderTest do
         end_value = NaiveDateTime.from_iso8601!(end_str)
         assert Encoder.to_datetime_with_range(start_value, end_value) == expected
       end
+    end
+
+    test "encodes select rules" do
+      lql_rules = [
+        %SelectRule{path: "event_message", wildcard: false}
+      ]
+
+      result = Encoder.to_querystring(lql_rules)
+      assert result == "s:event_message"
+    end
+
+    test "encodes wildcard select rule" do
+      lql_rules = [
+        %SelectRule{path: "*", wildcard: true}
+      ]
+
+      result = Encoder.to_querystring(lql_rules)
+      assert result == "s:*"
+    end
+
+    test "encodes nested field select rules" do
+      lql_rules = [
+        %SelectRule{path: "metadata.user.id", wildcard: false}
+      ]
+
+      result = Encoder.to_querystring(lql_rules)
+      assert result == "s:m.user.id"
+    end
+
+    test "encodes multiple select rules" do
+      lql_rules = [
+        %SelectRule{path: "event_message", wildcard: false},
+        %SelectRule{path: "timestamp", wildcard: false},
+        %SelectRule{path: "metadata.user.id", wildcard: false}
+      ]
+
+      result = Encoder.to_querystring(lql_rules)
+      assert result == "s:event_message s:timestamp s:m.user.id"
+    end
+
+    test "encodes mixed rule types in correct order" do
+      lql_rules = [
+        %FilterRule{operator: :=, path: "event_message", value: "error"},
+        %SelectRule{path: "metadata.level", wildcard: false},
+        %ChartRule{path: "timestamp", aggregate: :count, period: :minute}
+      ]
+
+      result = Encoder.to_querystring(lql_rules)
+      assert result == "s:m.level error c:count(*) c:group_by(t::minute)"
     end
   end
 end
