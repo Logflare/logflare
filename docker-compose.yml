@@ -14,9 +14,22 @@ services:
     image: stripe/stripe-mock:latest
     ports:
       - "12111:12111"
+  base:
+    build:
+      dockerfile: ./Dockerfile.base
+      tags:
+        - "supabase/logflare:base"
+
+  runner:
+    build:
+      dockerfile: ./Dockerfile.runner
+      tags:
+        - "supabase/logflare:runner"
   logflare:
     build:
       dockerfile: ./Dockerfile
+      # to use the multi-step images
+      # dockerfile: ./Dockerfile.multi-step
       tags:
         - "supabase/logflare:latest"
         - "supabase/logflare:1.0.0"
