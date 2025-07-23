@@ -1,5 +1,6 @@
 defmodule Logflare.Lql.Parser.HelpersTest do
   use ExUnit.Case, async: true
+  use Mimic
 
   alias Logflare.Lql.Parser.Helpers
   alias Logflare.Lql.Rules.FilterRule
@@ -317,6 +318,32 @@ defmodule Logflare.Lql.Parser.HelpersTest do
 
       assert catch_throw(Helpers.check_for_no_invalid_metadata_field_values(rule, :metadata)) =~
                "Error while parsing `metadata.field` field"
+    end
+  end
+
+  describe "ISO8601 parsing error handling" do
+    test "handles ISO8601 parsing with timezone offset" do
+      copy(Date)
+      stub(Date, :from_iso8601, fn _ -> {:ok, ~D[2023-01-01], "+00:00"} end)
+
+      result = Helpers.parse_date_or_datetime([{:date, "2023-01-01"}])
+      assert result == ~D[2023-01-01]
+    end
+
+    test "handles invalid ISO8601 format error" do
+      copy(Date)
+      stub(Date, :from_iso8601, fn _ -> {:error, :invalid_format} end)
+
+      error = catch_throw(Helpers.parse_date_or_datetime([{:date, "invalid-date"}]))
+      assert error =~ "Error while parsing timestamp date value: expected ISO8601 string, got"
+    end
+
+    test "handles generic ISO8601 error" do
+      copy(Date)
+      stub(Date, :from_iso8601, fn _ -> {:error, "custom error"} end)
+
+      error = catch_throw(Helpers.parse_date_or_datetime([{:date, "2023-01-01"}]))
+      assert error == "custom error"
     end
   end
 end
