@@ -3,7 +3,6 @@ defmodule Logflare.LogEventsTest do
   use Logflare.DataCase
   alias Logflare.Logs.LogEvents
 
-
   test "fetch_event_by_id/3 with id and partition range" do
     le = build(:log_event, message: "some message")
     pid = self()
