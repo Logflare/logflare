@@ -305,6 +305,9 @@ defmodule Logflare.BillingTest do
         Billing.get_payment_method!(pm.id)
       end
 
+      Stripe.PaymentMethod
+      |> expect(:detach, fn _ -> {:error, "error deleting"} end)
+
       assert {:error, _stripe_error_message} =
                Billing.delete_payment_method_with_stripe(another_pm)
 

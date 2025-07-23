@@ -1,5 +1,4 @@
 defmodule LogflareWeb.SourceControllerTest do
-  @moduledoc false
   use LogflareWeb.ConnCase
 
   import LogflareWeb.Router.Helpers
@@ -8,7 +7,6 @@ defmodule LogflareWeb.SourceControllerTest do
   alias Logflare.Sources
   alias Logflare.Repo
   alias Logflare.LogEvent
-  alias Logflare.Billing.Plan
   alias Logflare.Logs.Validators
   alias Logflare.Logs.RejectedLogEvents
   alias Logflare.SingleTenant
@@ -233,7 +231,7 @@ defmodule LogflareWeb.SourceControllerTest do
   end
 
   describe "dashboard - rejected" do
-    setup [:create_plan, :old_setup, :expect_user_plan]
+    setup [:create_plan, :old_setup]
 
     test "renders rejected logs page", %{conn: conn, users: [u1, _u2], sources: [s1, _s2 | _]} do
       RejectedLogEvents.ingest(%LogEvent{
@@ -265,7 +263,7 @@ defmodule LogflareWeb.SourceControllerTest do
   end
 
   describe "show" do
-    setup [:create_plan, :old_setup, :expect_user_plan]
+    setup [:create_plan, :old_setup]
 
     test "returns 403 for a source not owned by the user", %{
       conn: conn,
@@ -308,7 +306,7 @@ defmodule LogflareWeb.SourceControllerTest do
   end
 
   describe "update" do
-    setup [:create_plan, :old_setup, :expect_user_plan]
+    setup [:create_plan, :old_setup]
 
     test "returns 200 with valid params", %{conn: conn, users: [u1, _u2], sources: [s1, _s2 | _]} do
       new_name = TestUtils.random_string()
@@ -428,7 +426,7 @@ defmodule LogflareWeb.SourceControllerTest do
   end
 
   describe "create" do
-    setup [:create_plan, :old_setup, :expect_user_plan]
+    setup [:create_plan, :old_setup]
 
     test "returns 200 with valid params", %{conn: conn, users: [u1 | _]} do
       name = TestUtils.random_string()
@@ -484,7 +482,7 @@ defmodule LogflareWeb.SourceControllerTest do
   end
 
   describe "favorite" do
-    setup [:create_plan, :old_setup, :expect_user_plan]
+    setup [:create_plan, :old_setup]
 
     test "returns 200 flipping the value", %{conn: conn, users: [u1 | _], sources: [s1 | _]} do
       conn =
@@ -590,15 +588,5 @@ defmodule LogflareWeb.SourceControllerTest do
     sources = [s1, s2, s3]
 
     {:ok, users: users, sources: sources}
-  end
-
-  defp expect_user_plan(_ctx) do
-    expect(Logflare.Billing, :get_plan_by_user, fn _ ->
-      %Plan{
-        stripe_id: "31415"
-      }
-    end)
-
-    :ok
   end
 end

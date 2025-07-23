@@ -99,8 +99,8 @@ defmodule Logflare.Google.CloudResourceManagerTest do
     test "sets team_user as invalid google account if user does not exist" do
       team_user = insert(:team_user, valid_google_account: true)
 
-      expect(
-        GoogleApi.CloudResourceManager.V1.Api.Projects,
+      GoogleApi.CloudResourceManager.V1.Api.Projects
+      |> expect(
         :cloudresourcemanager_projects_set_iam_policy,
         fn _, _project_number, [body: _body] ->
           {:error,
@@ -110,6 +110,13 @@ defmodule Logflare.Google.CloudResourceManagerTest do
            }}
         end
       )
+      |> stub(:cloudresourcemanager_projects_set_iam_policy, fn conn, project_number, opts ->
+        call_original(
+          GoogleApi.CloudResourceManager.V1.Api.Projects,
+          :cloudresourcemanager_projects_set_iam_policy,
+          [conn, project_number, opts]
+        )
+      end)
 
       assert ExUnit.CaptureLog.capture_log(fn ->
                CloudResourceManager.set_iam_policy(async: false)
