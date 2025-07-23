@@ -5,6 +5,8 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.QueryTemplates do
 
   import Logflare.Utils.Guards
 
+  alias Logflare.Backends.Adaptor.ClickhouseAdaptor
+
   @default_ttl_days 3
 
   @doc """
@@ -109,12 +111,14 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.QueryTemplates do
 
   - `:database` - (Optional) Will produce a fully qualified `<database>.<table>` string when provided with a value. Defaults to `nil`.
   - `:table` - (Optional) Defaults to `"key_type_counts_per_minute"` and should stay this way, but if you really want to change it - this is the way.
+  - `:engine` - (Optional) ClickHouse table engine. Defaults to `"SharedSummingMergeTree('/clickhouse/tables/{uuid}/{shard}', '{replica}')"` for replicated setups, use `"SummingMergeTree()"` for single-node setups.
 
   """
   @spec create_key_type_counts_table_statement(opts :: Keyword.t()) :: String.t()
   def create_key_type_counts_table_statement(opts \\ []) when is_list(opts) do
     table = Keyword.get(opts, :table)
     database = Keyword.get(opts, :database)
+    engine = Keyword.get(opts, :engine, ClickhouseAdaptor.default_engine())
 
     default_key_count_table_name = default_key_type_counts_table_prefix()
 
@@ -140,7 +144,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.QueryTemplates do
       `type` String,
       `key_count` UInt64
     )
-    ENGINE = SharedSummingMergeTree('/clickhouse/tables/{uuid}/{shard}', '{replica}')
+    ENGINE = #{engine}
     PARTITION BY toYYYYMMDD(minute)
     ORDER BY (minute, key, type)
     SETTINGS index_granularity = 8192

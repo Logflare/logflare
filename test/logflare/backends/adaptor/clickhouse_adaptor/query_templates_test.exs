@@ -161,4 +161,33 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.QueryTemplatesTest do
       assert statement =~ "FROM #{database}.#{source_table}"
     end
   end
+
+  describe "engine configuration" do
+    test "query template uses SummingMergeTree in test environment" do
+      config = Application.get_env(:logflare, :clickhouse_backend_adapter, [])
+      engine = Keyword.get(config, :engine, "default")
+
+      assert engine == "SummingMergeTree()"
+
+      statement = QueryTemplates.create_key_type_counts_table_statement(engine: engine)
+
+      assert statement =~ "ENGINE = SummingMergeTree()"
+      refute statement =~ "SharedSummingMergeTree"
+    end
+
+    test "query template defaults to SharedSummingMergeTree when no engine option provided" do
+      statement = QueryTemplates.create_key_type_counts_table_statement()
+
+      assert statement =~
+               "ENGINE = SharedSummingMergeTree('/clickhouse/tables/{uuid}/{shard}', '{replica}')"
+    end
+
+    test "can override engine with explicit option" do
+      custom_engine = "ReplacingMergeTree()"
+      statement = QueryTemplates.create_key_type_counts_table_statement(engine: custom_engine)
+
+      assert statement =~ "ENGINE = #{custom_engine}"
+      refute statement =~ "SharedSummingMergeTree"
+    end
+  end
 end

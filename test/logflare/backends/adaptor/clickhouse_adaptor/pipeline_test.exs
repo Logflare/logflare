@@ -5,7 +5,6 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.PipelineTest do
   alias Broadway.Message
   alias Logflare.Backends.Adaptor.ClickhouseAdaptor
   alias Logflare.Backends.Adaptor.ClickhouseAdaptor.Pipeline
-  alias Logflare.Backends.Adaptor.ClickhouseAdaptor.ConnectionManager
   alias Logflare.Backends.BufferProducer
   alias Logflare.Backends.SourceRegistry
   alias Logflare.LogEvent
@@ -44,7 +43,6 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.PipelineTest do
         assert opts[:name] == adaptor_state.pipeline_name
         assert opts[:context] == adaptor_state
 
-        # Verify producer configuration
         producer_config = opts[:producer]
 
         assert producer_config[:module] ==
@@ -131,15 +129,6 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.PipelineTest do
         %Message{data: log_event2, acknowledger: {Pipeline, :ack_id, :ack_data}}
       ]
 
-      # Mock ConnectionManager.notify_ingest_activity
-      ConnectionManager
-      |> expect(:notify_ingest_activity, fn source_arg, backend_arg ->
-        assert source_arg == source
-        assert backend_arg == backend
-        :ok
-      end)
-
-      # Mock ClickhouseAdaptor.insert_log_events
       ClickhouseAdaptor
       |> expect(:insert_log_events, fn conn_name, {source_arg, backend_arg}, events ->
         assert conn_name == connection_name
@@ -156,9 +145,6 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.PipelineTest do
     end
 
     test "handles empty messages list", %{context: context} do
-      ConnectionManager
-      |> expect(:notify_ingest_activity, fn _, _ -> :ok end)
-
       ClickhouseAdaptor
       |> expect(:insert_log_events, fn _, _, events ->
         assert events == []
