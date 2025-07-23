@@ -33,16 +33,17 @@ defmodule LogflareWeb.LogEventLive do
         nil
       end
 
-    {:ok, log_event} = LogEvents.Cache.get(token, {"uuid", params["uuid"]})
+    {:ok, log_event} = LogEvents.Cache.get(token, params["uuid"])
 
     socket =
       socket
       |> assign(:source, source)
       |> assign(:user, user)
       |> assign(:team_user, team_user)
-      |> assign(:log_event, nil)
+      |> assign(:log_event, log_event)
       |> assign(:origin, params["origin"])
       |> assign(:log_event_id, params["uuid"])
+      |> assign(:lql, params["lql"])
       |> case do
         socket when ts != nil ->
           {:ok, dt, _} = DateTime.from_iso8601(ts)
@@ -51,7 +52,6 @@ defmodule LogflareWeb.LogEventLive do
         socket ->
           socket
       end
-      |> assign(:log_event, log_event)
 
     {:ok, socket}
   end

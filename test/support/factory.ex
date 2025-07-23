@@ -74,8 +74,15 @@ defmodule Logflare.Factory do
     }
   end
 
-  def source_schema_factory do
-    %SourceSchema{}
+  def source_schema_factory(attrs) do
+    %SourceSchema{
+      bigquery_schema: attrs[:bigquery_schema] || TestUtils.default_bq_schema(),
+      schema_flat_map:
+        Logflare.Google.BigQuery.SchemaUtils.bq_schema_to_flat_typemap(
+          attrs[:bigquery_schema] || TestUtils.default_bq_schema()
+        )
+    }
+    |> merge_attributes(attrs)
   end
 
   def backend_factory(attrs) do

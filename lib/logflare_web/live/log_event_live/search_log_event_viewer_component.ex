@@ -11,20 +11,11 @@ defmodule LogflareWeb.Search.LogEventViewerComponent do
   alias Logflare.Sources
 
   @impl true
-  def update(%{log_event: nil} = assigns, socket) do
-    params = event_params(assigns)
-
-    socket =
-      socket
-      |> assign_defaults(assigns)
-      |> start_async(:load, fn ->
-        load_event(params)
-      end)
-
+  def update(_assigns, %{assigns: %{error: {:error, :not_found}}} = socket) do
     {:ok, socket}
   end
 
-  def update(%{log_event: log_event_result} = assigns, socket) do
+  def update(%{log_event: %LE{} = log_event_result} = assigns, socket) do
     socket =
       assign(socket, :log_event, log_event_result)
       |> assign_defaults(assigns)
@@ -34,11 +25,16 @@ defmodule LogflareWeb.Search.LogEventViewerComponent do
 
   def update(assigns, socket) do
     %{"log-event-id" => id, "log-event-timestamp" => timestamp} = assigns.params
-    d = String.to_integer(timestamp) |> DateTime.from_unix!(:microsecond) |> DateTime.to_date()
+
+    d =
+      if is_binary(timestamp),
+        do: String.to_integer(timestamp) |> DateTime.from_unix!(:microsecond),
+        else: timestamp
 
     params =
       event_params(assigns)
       |> Map.merge(%{log_event_id: id, timestamp: d})
+      |> Map.put(:lql, assigns.params["lql"] || "")
 
     socket =
       socket
@@ -55,7 +51,7 @@ defmodule LogflareWeb.Search.LogEventViewerComponent do
 
     LogEvents.Cache.put(
       socket.assigns.source.token,
-      {"uuid", le.id},
+      le.id,
       le
     )
 
@@ -63,15 +59,7 @@ defmodule LogflareWeb.Search.LogEventViewerComponent do
   end
 
   def handle_async(:load, {:ok, {:error, :not_found}}, socket) do
-    [from, to] = socket.assigns.partitions_range
-
-    err =
-      "Log event with id #{socket.assigns.log_event_id} between #{from} and #{to} was not found"
-
-    Logger.warning(err)
-    send(self(), {:put_flash, :error, err})
-
-    {:noreply, socket}
+    {:noreply, socket |> assign(:error, {:error, :not_found})}
   end
 
   def handle_async(:load, {:ok, {:error, raw_err}}, socket) do
@@ -83,7 +71,27 @@ defmodule LogflareWeb.Search.LogEventViewerComponent do
 
   def load_event(%{log_event_id: log_id, source: source} = params) do
     range = get_partitions_range(params)
-    LogEvents.fetch_event_by_id(source.token, log_id, partitions_range: range)
+
+    case LogEvents.Cache.get(source.token, log_id) |> dbg() do
+      {:ok, %LE{} = le} ->
+        le
+
+      _ ->
+        LogEvents.Cache.fetch_event_by_id(source.token, log_id,
+          partitions_range: range,
+          lql: params.lql
+        )
+    end
+  end
+
+  @impl true
+  def render(%{error: {:error, :not_found}} = assigns) do
+    ~H"""
+    <div class="">
+      <h4>Log Event Not Found</h4>
+      <p>The requested log event could not be found. It may have been deleted or the ID is incorrect.</p>
+    </div>
+    """
   end
 
   @impl true
@@ -118,17 +126,20 @@ defmodule LogflareWeb.Search.LogEventViewerComponent do
     team_user = socket.assigns[:team_user] || assigns[:team_user]
     source = socket.assigns[:source] || assigns[:source]
     timestamp = socket.assigns[:timestamp] || assigns[:timestamp]
+    lql = socket.assigns[:lql] || assigns[:lql] || ""
 
     socket
     |> assign(:user, user)
     |> assign(:team_user, team_user)
     |> assign(:source, source)
     |> assign(:timestamp, timestamp)
+    |> assign(:lql, lql)
+    |> assign(:error, nil)
   end
 
   # timestamp is explicitly set, query around the range
   defp get_partitions_range(%{timestamp: ts}) do
-    [Timex.shift(ts, days: -1), Timex.shift(ts, days: 1)]
+    [Timex.shift(ts, hours: -1), Timex.shift(ts, hours: 1)]
   end
 
   # no timestamp is set, fallback to ttl
@@ -138,13 +149,7 @@ defmodule LogflareWeb.Search.LogEventViewerComponent do
     plan = Billing.Cache.get_plan_by_user(user)
     ttl = Sources.source_ttl_to_days(source, plan)
 
-    cond do
-      ttl <= 7 ->
-        [Timex.shift(d, days: -ttl), Timex.shift(d, days: 1)]
-
-      true ->
-        [Timex.shift(d, days: -90), Timex.shift(d, days: 1)]
-    end
+    [Timex.shift(d, days: -min(ttl, 7)), Timex.shift(d, days: 1)]
   end
 
   defp event_params(assigns) do
