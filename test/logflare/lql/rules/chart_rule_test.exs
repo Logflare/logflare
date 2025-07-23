@@ -83,6 +83,15 @@ defmodule Logflare.Lql.Rules.ChartRuleTest do
       assert result.period == :minute
       assert result.value_type == nil
     end
+
+    test "returns empty struct for invalid changeset in build" do
+      result = ChartRule.build([])
+
+      assert %ChartRule{} = result
+      assert result.path == "timestamp"
+      assert result.aggregate == :count
+      assert result.period == :minute
+    end
   end
 
   describe "changeset/2" do

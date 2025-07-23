@@ -93,6 +93,15 @@ defmodule Logflare.Lql.Rules.SelectRuleTest do
       assert result.path == "event_message"
       assert result.wildcard == false
     end
+
+    test "returns empty struct for invalid changeset" do
+      params = [path: "invalid-field-name!"]
+      result = SelectRule.build(params)
+
+      assert %SelectRule{} = result
+      assert result.path == nil
+      assert result.wildcard == false
+    end
   end
 
   describe "changeset/2" do
@@ -148,6 +157,16 @@ defmodule Logflare.Lql.Rules.SelectRuleTest do
       assert changeset.changes.path == "user.profile.settings.theme.colors.primary.dark_mode"
       assert changeset.changes.wildcard == false
     end
+
+    test "creates changeset from existing struct" do
+      existing_rule = %SelectRule{path: "metadata.user_id", wildcard: false}
+
+      changeset = SelectRule.changeset(nil, existing_rule)
+
+      assert changeset.valid?
+      assert changeset.changes == %{}
+      assert changeset.data == existing_rule
+    end
   end
 
   describe "virtual_fields/0" do
@@ -179,7 +198,6 @@ defmodule Logflare.Lql.Rules.SelectRuleTest do
       rules = [
         %SelectRule{path: "field1", wildcard: false},
         %SelectRule{path: "field2", wildcard: false},
-        # duplicate
         %SelectRule{path: "field1", wildcard: false}
       ]
 
@@ -239,10 +257,8 @@ defmodule Logflare.Lql.Rules.SelectRuleTest do
       rules = [
         %SelectRule{path: "field1", wildcard: false},
         %SelectRule{path: "field2", wildcard: false},
-        # duplicate
         %SelectRule{path: "field1", wildcard: false},
         %SelectRule{path: "field3", wildcard: false},
-        # duplicate
         %SelectRule{path: "field2", wildcard: false}
       ]
 

@@ -334,5 +334,31 @@ defmodule Logflare.Lql.BackendTransformer.BigQueryTest do
       assert %Ecto.Query{} = result
       refute result == base_query
     end
+
+    test "applies select rules without opts argument", %{base_query: base_query} do
+      select_rules = [%SelectRule{path: "timestamp", wildcard: false}]
+      result = BigQuery.apply_select_rules_to_query(base_query, select_rules)
+
+      assert %Ecto.Query{} = result
+      refute result == base_query
+    end
+
+    test "handles nested field selection triggering dot replacement in build_combined_select", %{
+      base_query: base_query
+    } do
+      select_rules = [%SelectRule{path: "user.profile.name", wildcard: false}]
+      result = BigQuery.apply_select_rules_to_query(base_query, select_rules, [])
+
+      assert %Ecto.Query{} = result
+      refute result == base_query
+    end
+
+    test "handles empty normalized rules case", %{base_query: base_query} do
+      select_rules = []
+
+      result = BigQuery.apply_select_rules_to_query(base_query, select_rules, [])
+
+      assert result == base_query
+    end
   end
 end

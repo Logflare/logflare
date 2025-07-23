@@ -11,6 +11,7 @@ defmodule Logflare.Lql do
   alias __MODULE__.BackendTransformer
   alias __MODULE__.Encoder
   alias __MODULE__.Parser
+  alias __MODULE__.Rules
 
   @doc """
   Parses LQL query string with schema validation.
@@ -67,6 +68,22 @@ defmodule Logflare.Lql do
   end
 
   @doc """
+  Applies all LQL rules to a query using the appropriate transformer.
+
+  This is a convenience function that applies filter rules, select rules, and any other
+  applicable transformations in the correct order.
+  """
+  @spec apply_rules(Ecto.Query.t(), [term()], keyword()) :: Ecto.Query.t()
+  def apply_rules(query, lql_rules, opts \\ []) do
+    filter_rules = Rules.get_filter_rules(lql_rules)
+    select_rules = Rules.get_select_rules(lql_rules)
+
+    query
+    |> apply_filter_rules(filter_rules, opts)
+    |> apply_select_rules(select_rules, opts)
+  end
+
+  @doc """
   Applies filter rules to a query using the appropriate transformer.
   """
   @spec apply_filter_rules(Ecto.Query.t(), [term()], keyword()) :: Ecto.Query.t()
@@ -84,24 +101,6 @@ defmodule Logflare.Lql do
     adapter = Keyword.get(opts, :adapter, :bigquery)
     transformer = BackendTransformer.for_dialect(adapter)
     transformer.apply_select_rules_to_query(query, select_rules, opts)
-  end
-
-  @doc """
-  Applies all LQL rules to a query using the appropriate transformer.
-
-  This is a convenience function that applies filter rules, select rules, and any other
-  applicable transformations in the correct order.
-  """
-  @spec apply_rules(Ecto.Query.t(), [term()], keyword()) :: Ecto.Query.t()
-  def apply_rules(query, lql_rules, opts \\ []) do
-    alias Logflare.Lql.Rules
-
-    filter_rules = Rules.get_filter_rules(lql_rules)
-    select_rules = Rules.get_select_rules(lql_rules)
-
-    query
-    |> apply_filter_rules(filter_rules, opts)
-    |> apply_select_rules(select_rules, opts)
   end
 
   @doc """

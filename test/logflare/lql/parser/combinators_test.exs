@@ -32,6 +32,8 @@ defmodule Logflare.Lql.Parser.CombinatorsTest do
   defparsec(:test_timestamp_clause, Combinators.timestamp_clause())
   defparsec(:test_metadata_clause, Combinators.metadata_clause())
   defparsec(:test_field_clause, Combinators.field_clause())
+  defparsec(:test_select_clause, Combinators.select_clause())
+  defparsec(:test_metadata_level_clause, Combinators.metadata_level_clause())
 
   describe "basic combinators" do
     test "null parser" do
@@ -225,6 +227,65 @@ defmodule Logflare.Lql.Parser.CombinatorsTest do
       assert Combinators.not_right_paren("atest", [], 0, 0) == {:cont, []}
       assert Combinators.not_right_paren("123test", [], 0, 0) == {:cont, []}
       assert Combinators.not_right_paren(" test", [], 0, 0) == {:cont, []}
+    end
+  end
+
+  describe "select_clause" do
+    test "parses wildcard select clause" do
+      assert {:ok, [{:select, [path: "*"]}], "", _, _, _} = test_select_clause("s:*")
+    end
+
+    test "parses field select clause" do
+      assert {:ok, [{:select, [path: "event_message"]}], "", _, _, _} =
+               test_select_clause("s:event_message")
+    end
+
+    test "parses metadata select clause" do
+      assert {:ok, [{:select, [path: "metadata.user.id"]}], "", _, _, _} =
+               test_select_clause("s:m.user.id")
+    end
+
+    test "parses select clause with full syntax" do
+      assert {:ok, [{:select, [path: "timestamp"]}], "", _, _, _} =
+               test_select_clause("select:timestamp")
+    end
+
+    test "parses deeply nested field select clause" do
+      assert {:ok, [{:select, [path: "request.headers.authorization.bearer.token"]}], "", _, _, _} =
+               test_select_clause("s:request.headers.authorization.bearer.token")
+    end
+  end
+
+  describe "metadata_level_clause" do
+    test "parses single level range" do
+      assert {:ok, [rules], "", _, _, _} =
+               test_metadata_level_clause("metadata.level:error..error")
+
+      assert is_list(rules)
+      assert length(rules) == 1
+
+      [rule] = rules
+      assert %Logflare.Lql.Rules.FilterRule{} = rule
+      assert rule.path == "metadata.level"
+      assert rule.operator == :=
+      assert rule.value == "error"
+    end
+
+    test "parses level range" do
+      assert {:ok, [rules], "", _, _, _} =
+               test_metadata_level_clause("metadata.level:debug..error")
+
+      assert is_list(rules)
+      assert length(rules) == 5
+
+      paths = Enum.map(rules, & &1.path)
+      operators = Enum.map(rules, & &1.operator)
+      values = Enum.map(rules, & &1.value)
+
+      assert Enum.all?(paths, &(&1 == "metadata.level"))
+      assert Enum.all?(operators, &(&1 == :=))
+      assert "debug" in values
+      assert "error" in values
     end
   end
 end

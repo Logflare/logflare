@@ -175,6 +175,13 @@ defmodule Logflare.Lql.Rules.FilterRuleTest do
       assert result.operator == :range
       assert result.shorthand == "today"
     end
+
+    test "returns empty struct for invalid changeset" do
+      result = FilterRule.build([])
+      assert %FilterRule{} = result
+      assert result.path == nil
+      assert result.operator == nil
+    end
   end
 
   describe "virtual_fields/0" do
@@ -223,6 +230,92 @@ defmodule Logflare.Lql.Rules.FilterRuleTest do
       assert decoded["operator"] == "range"
       assert decoded["values"] == [1, 100]
       assert decoded["value"] == nil
+    end
+  end
+
+  describe "rule-specific operations" do
+    test "extract_timestamp_filters/1 extracts only timestamp rules" do
+      rules = [
+        %FilterRule{path: "timestamp", operator: :>, value: ~N[2020-01-01 00:00:00]},
+        %FilterRule{path: "event_message", operator: :=, value: "error"},
+        %FilterRule{
+          path: "timestamp",
+          operator: :range,
+          values: [~N[2020-01-01 00:00:00], ~N[2020-01-02 00:00:00]]
+        },
+        %FilterRule{path: "metadata.level", operator: :=, value: "info"}
+      ]
+
+      timestamp_rules = FilterRule.extract_timestamp_filters(rules)
+
+      assert length(timestamp_rules) == 2
+      assert Enum.all?(timestamp_rules, &(&1.path == "timestamp"))
+    end
+
+    test "extract_metadata_filters/1 extracts non-timestamp rules" do
+      rules = [
+        %FilterRule{path: "timestamp", operator: :>, value: ~N[2020-01-01 00:00:00]},
+        %FilterRule{path: "event_message", operator: :=, value: "error"},
+        %FilterRule{path: "metadata.level", operator: :=, value: "info"}
+      ]
+
+      metadata_rules = FilterRule.extract_metadata_filters(rules)
+
+      assert length(metadata_rules) == 2
+      assert Enum.all?(metadata_rules, &(&1.path != "timestamp"))
+    end
+
+    test "is_shorthand_timestamp?/1 recognizes shorthand patterns" do
+      # today/yesterday patterns
+      today_rule = %FilterRule{shorthand: "today"}
+      assert FilterRule.is_shorthand_timestamp?(today_rule) == true
+
+      yesterday_rule = %FilterRule{shorthand: "yesterday"}
+      assert FilterRule.is_shorthand_timestamp?(yesterday_rule) == true
+
+      # last@/this@ patterns
+      last_rule = %FilterRule{shorthand: "last@5minutes"}
+      assert FilterRule.is_shorthand_timestamp?(last_rule) == true
+
+      this_rule = %FilterRule{shorthand: "this@hour"}
+      assert FilterRule.is_shorthand_timestamp?(this_rule) == true
+
+      # non-shorthand patterns
+      non_shorthand = %FilterRule{shorthand: "other"}
+      assert FilterRule.is_shorthand_timestamp?(non_shorthand) == false
+
+      nil_shorthand = %FilterRule{shorthand: nil}
+      assert FilterRule.is_shorthand_timestamp?(nil_shorthand) == false
+    end
+
+    test "jump_timestamps/2 with empty timestamp list" do
+      rules_without_timestamps = [
+        %FilterRule{path: "event_message", operator: :=, value: "error"},
+        %FilterRule{path: "metadata.level", operator: :=, value: "info"}
+      ]
+
+      result = FilterRule.jump_timestamps(rules_without_timestamps, :forwards)
+      assert result == []
+
+      result = FilterRule.jump_timestamps(rules_without_timestamps, :backwards)
+      assert result == []
+    end
+
+    test "jump_timestamps/2 with timestamp rules" do
+      rules_with_timestamps = [
+        %FilterRule{path: "timestamp", operator: :>, value: ~N[2020-01-01 00:00:00]},
+        %FilterRule{path: "timestamp", operator: :<=, value: ~N[2020-01-02 00:00:00]}
+      ]
+
+      result = FilterRule.jump_timestamps(rules_with_timestamps, :forwards)
+
+      assert length(result) == 1
+      [jump_rule] = result
+      assert %FilterRule{} = jump_rule
+      assert jump_rule.path == "timestamp"
+      assert jump_rule.operator == :range
+      assert is_list(jump_rule.values)
+      assert length(jump_rule.values) == 2
     end
   end
 end
