@@ -51,7 +51,7 @@ defmodule LogflareWeb.SearchLive.LogEventComponents do
         <.link class="tw-text-[0.65rem]  group-hover:tw-visible tw-invisible" phx-click={JS.dispatch("logflare:copy-to-clipboard", detail: %{text: "#{@formatted_timestamp}    #{@message}"})} data-toggle="tooltip" data-placement="top" title="Copy to clipboard">
           copy
         </.link>
-        <.link class="group-hover:tw-visible tw-invisible" target="_blank" href={~p"/sources/#{@source.id}/event?#{%{uuid: @log.id, timestamp: iso_timestamp(@timestamp), lql: @querystring}}"}>permalink</.link>
+        <.link class="group-hover:tw-visible tw-invisible" target="_blank" href={~p"/sources/#{@source.id}/event?#{%{uuid: @log.id, timestamp: iso_timestamp(@timestamp), lql: @query_string}}"}>permalink</.link>
       </span>
     </li>
     """
