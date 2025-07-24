@@ -27,7 +27,7 @@ env:
 jobs:
   check:
     name: Checks
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     strategy:
       matrix:
         commands:
