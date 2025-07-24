@@ -130,7 +130,9 @@ defmodule Logflare.Logs.SyslogParser do
   defp merge_syslog_sd(tokens) when is_list(tokens) do
     {sd_element_values, new_tokens} = Keyword.pop_values(tokens, :sd_element)
 
-    if not Enum.empty?(sd_element_values) do
+    if Enum.empty?(sd_element_values) do
+      tokens
+    else
       sd =
         sd_element_values
         |> Enum.map(fn sd_element ->
@@ -141,8 +143,6 @@ defmodule Logflare.Logs.SyslogParser do
         end)
 
       new_tokens ++ [sd: sd]
-    else
-      tokens
     end
   end
 

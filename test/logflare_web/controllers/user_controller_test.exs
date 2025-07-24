@@ -61,7 +61,7 @@ defmodule LogflareWeb.UserControllerTest do
         name: TestUtils.random_string(),
         image: "https://#{TestUtils.random_string()}.com",
         email_me_product: true,
-        phone: 12345
+        phone: 12_345
       }
 
       conn =

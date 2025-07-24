@@ -12,7 +12,7 @@ defmodule Logflare.System do
   true
   """
   @spec memory_utilization() :: float()
-  def memory_utilization() do
+  def memory_utilization do
     data = :memsup.get_system_memory_data()
     total = data[:system_total_memory]
     used = :erlang.memory(:total)
