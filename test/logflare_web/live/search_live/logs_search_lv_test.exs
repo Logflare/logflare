@@ -380,7 +380,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
       stub(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, fn _conn, _proj_id, opts ->
         query = opts[:body].query |> String.downcase()
 
-        if query =~ "select" and query =~ "inner join unnest" do
+        if query =~ "select" and query =~ "nested" do
           assert query =~ "0.top = ?"
           assert query =~ "1.nested = ?"
           {:ok, TestUtils.gen_bq_response(%{"event_message" => "some correct message"})}
