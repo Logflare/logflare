@@ -135,12 +135,12 @@ defmodule Logflare.Lql.EctoHelpers do
           )
       end
 
-    if is_negated?(modifiers) do
+    if negated?(modifiers) do
       dynamic([..., n1], not (^clause))
     else
       clause
     end
   end
 
-  def is_negated?(modifiers), do: Map.get(modifiers, :negate)
+  def negated?(modifiers), do: Map.get(modifiers, :negate)
 end

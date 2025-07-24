@@ -62,7 +62,7 @@ defmodule Logflare.SourcesTest do
     end
 
     test "retention days exceeds", %{user: user} do
-      insert(:plan, name: "Free", limit_source_ttl: :timer.hours(24) * 1)
+      insert(:plan, name: "Free", limit_source_ttl: :timer.hours(24))
       source = insert(:source, user: user)
       assert {:error, %Ecto.Changeset{}} = Sources.update_source(source, %{retention_days: 12})
     end

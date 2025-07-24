@@ -38,8 +38,8 @@ defmodule LogflareWeb.Api.SourceController do
   )
 
   def show(%{assigns: %{user: user}} = conn, %{"token" => token}) do
-    with source when not is_nil(source) <- Sources.get_by(token: token, user_id: user.id),
-         source = Sources.preload_defaults(source) do
+    with source when not is_nil(source) <- Sources.get_by(token: token, user_id: user.id) do
+      source = Sources.preload_defaults(source)
       json(conn, source)
     end
   end
@@ -186,8 +186,9 @@ defmodule LogflareWeb.Api.SourceController do
   )
 
   def show_schema(%{assigns: %{user: user}} = conn, %{"source_token" => token} = params) do
-    with source when not is_nil(source) <- Sources.get_by(token: token, user_id: user.id),
-         schema = SourceSchemas.get_source_schema_by(source_id: source.id) do
+    with source when not is_nil(source) <- Sources.get_by(token: token, user_id: user.id) do
+      schema = SourceSchemas.get_source_schema_by(source_id: source.id)
+
       data =
         if Map.get(params, "variant") == "dot" do
           SourceSchemas.format_schema(schema, :dot)

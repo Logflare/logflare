@@ -226,17 +226,17 @@ defmodule LogflareWeb.AccessTokensLive do
     data = Map.drop(payload, ["_csrf_token", "_target"])
 
     data =
-      if "ingest" not in Map.get(data, "scopes_main", []) do
-        Map.put(data, "scopes_ingest", [])
-      else
+      if "ingest" in Map.get(data, "scopes_main", []) do
         data
+      else
+        Map.put(data, "scopes_ingest", [])
       end
 
     data =
-      if "query" not in Map.get(data, "scopes_main", []) do
-        Map.put(data, "scopes_query", [])
-      else
+      if "query" in Map.get(data, "scopes_main", []) do
         data
+      else
+        Map.put(data, "scopes_query", [])
       end
 
     merged = Map.merge(socket.assigns.create_token_form, data)

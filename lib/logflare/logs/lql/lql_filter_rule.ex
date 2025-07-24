@@ -30,7 +30,7 @@ defmodule Logflare.Lql.FilterRule do
     |> Map.get(:changes)
   end
 
-  def fields() do
+  def fields do
     __MODULE__.__schema__(:fields)
   end
 end

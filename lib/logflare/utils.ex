@@ -57,7 +57,7 @@ defmodule Logflare.Utils do
     %{"test" => "data"}
   """
   @spec stringify_keys(map()) :: map()
-  def stringify_keys(map = %{}) do
+  def stringify_keys(%{} = map) do
     Map.new(map, fn
       {k, v} when is_atom(k) -> {Atom.to_string(k), stringify_keys(v)}
       {k, v} when is_binary(k) -> {k, stringify_keys(v)}

@@ -306,8 +306,8 @@ defmodule Logflare.SqlTest do
       end
     end
 
-    # This test checks if a source name starting with a logflare project id will get transformed correctly to the source value
-    # this ensures  users cannot access other users' sources.
+    # This test checks if a source name starting with a logflare project id will # get transformed correctly to the
+    # source value this ensures  users cannot access other users' sources.
     test "source name replacement attack check - transform sources that have a fully-qualified name starting with global logflare project id" do
       user = insert(:user)
       source_name = "#{@logflare_project_id}.some.table"

@@ -79,7 +79,7 @@ defmodule LogflareWeb.HealthCheckController do
     }
   end
 
-  defp check_caches() do
+  defp check_caches do
     for cache <-
           Logflare.ContextCache.Supervisor.list_caches() ++
             [
