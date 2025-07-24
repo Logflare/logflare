@@ -17,7 +17,6 @@ defmodule Logflare.Logs.SearchOperations do
   import Logflare.Logs.SearchOperations.Helpers
   import Logflare.Logs.Search.Utils
   import Logflare.Logs.SearchQueries
-  import BQQueryAPI.UDF
   import BQQueryAPI
 
   alias Logflare.Logs.SearchOperation, as: SO
@@ -221,19 +220,15 @@ defmodule Logflare.Logs.SearchOperations do
                 end
 
               query
-              |> where([t, ...], t.timestamp >= lf_timestamp_sub(^utc_today, ^value, ^unit))
+              |> Lql.EctoHelpers.where_timestamp_ago(utc_today, value, unit)
               |> where([t, ...], in_streaming_buffer())
 
             :timestamp ->
               query
-              |> where(
-                [t, ...],
-                t.timestamp >=
-                  lf_timestamp_sub(
-                    ^DateTime.utc_now(),
-                    @tailing_timestamp_filter_minutes,
-                    "MINUTE"
-                  )
+              |> Lql.EctoHelpers.where_timestamp_ago(
+                DateTime.utc_now(),
+                @tailing_timestamp_filter_minutes,
+                "MINUTE"
               )
           end
 
@@ -241,11 +236,11 @@ defmodule Logflare.Logs.SearchOperations do
           case so.partition_by do
             :timestamp ->
               query
-              |> where([t, ...], t.timestamp >= lf_timestamp_sub(^utc_today, 2, "DAY"))
+              |> Lql.EctoHelpers.where_timestamp_ago(utc_today, 2, "DAY")
 
             :pseudo ->
               query
-              |> where([t, ...], t.timestamp >= lf_timestamp_sub(^utc_today, 2, "DAY"))
+              |> Lql.EctoHelpers.where_timestamp_ago(utc_today, 2, "DAY")
               |> where(
                 partition_date() >= bq_date_sub(^utc_today, "2", "DAY") or in_streaming_buffer()
               )
@@ -284,7 +279,10 @@ defmodule Logflare.Logs.SearchOperations do
 
     ts_filters = so.lql_ts_filters
 
-    period = to_timex_shift_key(hd(so.chart_rules).period)
+    period =
+      hd(so.chart_rules).period
+      |> Logflare.Ecto.BQQueryAPI.to_bq_interval_token()
+
     tick_count = default_period_tick_count(hd(so.chart_rules).period)
 
     utc_today = Date.utc_today()
@@ -302,7 +300,7 @@ defmodule Logflare.Logs.SearchOperations do
       if t? or Enum.empty?(ts_filters) do
         query =
           query
-          |> where([t], t.timestamp >= lf_timestamp_sub(^utc_now, ^tick_count, ^period))
+          |> Logflare.Lql.EctoHelpers.where_timestamp_ago(utc_now, tick_count, period)
           |> limit([t], ^tick_count)
 
         case so.partition_by do

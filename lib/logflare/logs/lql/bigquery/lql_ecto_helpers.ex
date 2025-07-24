@@ -143,4 +143,53 @@ defmodule Logflare.Lql.EctoHelpers do
   end
 
   def is_negated?(modifiers), do: Map.get(modifiers, :negate)
+
+  def where_timestamp_ago(query, datetime, count, unit) do
+    case unit do
+      "MICROSECOND" ->
+        query
+        |> where(
+          [t],
+          t.timestamp >= fragment("TIMESTAMP_SUB(?, INTERVAL ? MICROSECOND)", ^datetime, ^count)
+        )
+
+      "MILLISECOND" ->
+        query
+        |> where(
+          [t],
+          t.timestamp >= fragment("TIMESTAMP_SUB(?, INTERVAL ? MILLISECOND)", ^datetime, ^count)
+        )
+
+      "SECOND" ->
+        query
+        |> where(
+          [t],
+          t.timestamp >= fragment("TIMESTAMP_SUB(?, INTERVAL ? SECOND)", ^datetime, ^count)
+        )
+
+      "MINUTE" ->
+        query
+        |> where(
+          [t],
+          t.timestamp >= fragment("TIMESTAMP_SUB(?, INTERVAL ? MINUTE)", ^datetime, ^count)
+        )
+
+      "HOUR" ->
+        query
+        |> where(
+          [t],
+          t.timestamp >= fragment("TIMESTAMP_SUB(?, INTERVAL ? HOUR)", ^datetime, ^count)
+        )
+
+      "DAY" ->
+        query
+        |> where(
+          [t],
+          t.timestamp >= fragment("TIMESTAMP_SUB(?, INTERVAL ? DAY)", ^datetime, ^count)
+        )
+
+      _ ->
+        raise ArgumentError, "Invalid interval: #{unit}"
+    end
+  end
 end
