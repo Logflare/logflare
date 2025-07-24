@@ -70,10 +70,17 @@ defmodule Logflare.Logs.SearchOperations do
     query =
       from(so.source.bq_table_id)
       |> select([t], [t.timestamp, t.id, t.event_message])
+      |> order_by([t], desc: t.timestamp)
+      |> limit(@default_limit)
+
+    %{so | query: query}
+  end
+
+  def unnest_log_level(so) do
+    query =
+      so.query
       |> Lql.EctoHelpers.unnest_and_join_nested_columns(:inner, "metadata.level")
       |> select_merge([..., m], %{level: m.level})
-      |> order_by([t, ...], desc: t.timestamp)
-      |> limit(@default_limit)
 
     %{so | query: query}
   end
