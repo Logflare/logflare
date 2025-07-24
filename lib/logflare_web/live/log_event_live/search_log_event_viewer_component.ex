@@ -72,7 +72,7 @@ defmodule LogflareWeb.Search.LogEventViewerComponent do
   def load_event(%{log_event_id: log_id, source: source} = params) do
     range = get_partitions_range(params)
 
-    case LogEvents.Cache.get(source.token, log_id) |> dbg() do
+    case LogEvents.Cache.get(source.token, log_id) do
       {:ok, %LE{} = le} ->
         le
 
