@@ -7,7 +7,7 @@ defmodule LogflareWeb.SourceController do
   alias Logflare.Google.BigQuery
   alias Logflare.JSON
   alias Logflare.Logs.RejectedLogEvents
-  alias Logflare.Logs.Search
+  alias Logflare.Logs.SearchUtils
   alias Logflare.Lql
   alias Logflare.Repo
   alias Logflare.Source
@@ -126,7 +126,7 @@ defmodule LogflareWeb.SourceController do
   end
 
   def render_show_with_assigns(conn, _user, source, avg_rate) when avg_rate <= 5 do
-    search_tip = Search.Utils.gen_search_tip()
+    search_tip = SearchUtils.gen_search_tip()
 
     render(
       conn,
@@ -139,7 +139,7 @@ defmodule LogflareWeb.SourceController do
   end
 
   def render_show_with_assigns(conn, _user, source, avg_rate) when avg_rate > 5 do
-    search_tip = Search.Utils.gen_search_tip()
+    search_tip = SearchUtils.gen_search_tip()
 
     search_path =
       Routes.live_path(conn, LogflareWeb.Source.SearchLV, source,
@@ -346,7 +346,7 @@ defmodule LogflareWeb.SourceController do
          schema <- Map.get(source_schema, :bigquery_schema),
          {:ok, lql_rules} <- Lql.Parser.parse(lqlstring, schema),
          {:warnings, nil} <-
-           {:warnings, Lql.Utils.get_lql_parser_warnings(lql_rules, dialect: @lql_dialect)},
+           {:warnings, Lql.Rules.get_lql_parser_warnings(lql_rules, dialect: @lql_dialect)},
          params <- Map.put(params, "drop_lql_filters", lql_rules),
          {:ok, _changeset} <- Sources.update_source_by_user(source, params) do
       conn

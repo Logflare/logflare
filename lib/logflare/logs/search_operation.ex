@@ -2,8 +2,13 @@ defmodule Logflare.Logs.SearchOperation do
   @moduledoc """
   Logs search options and result
   """
-  alias Logflare.Lql
+
   use TypedStruct
+
+  alias Logflare.Lql.Rules, as: LqlRules
+  alias Logflare.Lql.Rules.ChartRule
+  alias Logflare.Lql.Rules.FilterRule
+  alias Logflare.Lql.Rules.SelectRule
 
   typedstruct do
     field :source, Source.t()
@@ -20,7 +25,7 @@ defmodule Logflare.Logs.SearchOperation do
     field :rows, [map()], default: []
     field :lql_meta_and_msg_filters, [FilterRule.t()], default: []
     field :lql_ts_filters, [FilterRule.t()], default: []
-    field :lql_rules, [FilterRule.t() | ChartRule.t()]
+    field :lql_rules, [ChartRule.t() | FilterRule.t() | SelectRule.t()]
     field :chart_rules, [ChartRule.t()], default: []
     field :error, term()
     field :stats, :map
@@ -33,10 +38,9 @@ defmodule Logflare.Logs.SearchOperation do
   def new(params) do
     so = struct(__MODULE__, params)
 
-    filter_rules = Lql.Utils.get_filter_rules(so.lql_rules)
-    chart_rules = Lql.Utils.get_chart_rules(so.lql_rules)
-    ts_filters = Lql.Utils.get_ts_filters(filter_rules)
-    lql_meta_and_msg_filters = Lql.Utils.get_meta_and_msg_filters(filter_rules)
+    chart_rules = LqlRules.get_chart_rules(so.lql_rules)
+    ts_filters = LqlRules.get_timestamp_filters(so.lql_rules)
+    lql_meta_and_msg_filters = LqlRules.get_metadata_and_message_filters(so.lql_rules)
 
     %{
       so
