@@ -25,7 +25,6 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
 
   @ingest_timeout 15_000
   @query_timeout 60_000
-  @default_engine "SharedSummingMergeTree('/clickhouse/tables/{uuid}/{shard}', '{replica}')"
 
   typedstruct do
     field(:config, %{
@@ -448,12 +447,8 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
           {:ok, Ch.Result.t()} | {:error, Exception.t()}
   def provision_key_type_counts_table({%Source{} = source, %Backend{}} = args) do
     with key_count_table_name <- clickhouse_key_count_table_name(source),
-         engine <- get_engine_from_app_config(),
          statement <-
-           QueryTemplates.create_key_type_counts_table_statement(
-             table: key_count_table_name,
-             engine: engine
-           ) do
+           QueryTemplates.create_key_type_counts_table_statement(table: key_count_table_name) do
       execute_ch_ingest_query(args, statement)
     end
   end
@@ -505,12 +500,6 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
   def ensure_connection_started({%Source{} = source, %Backend{} = backend}, connection_type) do
     ConnectionManager.ensure_connection_started(source, backend, connection_type)
   end
-
-  @doc """
-  Returns the default database engine for the ClickHouse backend.
-  """
-  @spec default_engine() :: String.t()
-  def default_engine(), do: @default_engine
 
   @doc false
   @impl Supervisor
@@ -631,11 +620,6 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
     token
     |> Atom.to_string()
     |> String.replace("-", "_")
-  end
-
-  @spec get_engine_from_app_config() :: String.t()
-  defp get_engine_from_app_config() do
-    Application.get_env(:logflare, :clickhouse_backend_adapter)[:engine] || @default_engine
   end
 
   @spec check_clickhouse_resource_name_length(name :: String.t(), source :: Source.t()) ::

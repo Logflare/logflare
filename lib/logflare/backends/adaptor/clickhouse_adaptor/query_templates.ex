@@ -5,8 +5,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.QueryTemplates do
 
   import Logflare.Utils.Guards
 
-  alias Logflare.Backends.Adaptor.ClickhouseAdaptor
-
+  @default_table_engine Application.compile_env(:logflare, :clickhouse_backend_adaptor)[:engine]
   @default_ttl_days 3
 
   @doc """
@@ -57,6 +56,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.QueryTemplates do
   ###Options
 
   - `:database` - (Optional) Will produce a fully qualified `<database>.<table>` string when provided with a value. Defaults to `nil`.
+  - `:engine` - (Optional) ClickHouse table engine. Defaults to `"MergeTree"`. Default can be adjusted in `/config/*.exs`.
   - `:ttl_days` - (Optional) Will add a TTL statement to the table creation query. Defaults to `3`. `nil` will disable the TTL.
 
   """
@@ -64,6 +64,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.QueryTemplates do
   def create_log_ingest_table_statement(table, opts \\ [])
       when is_non_empty_binary(table) and is_list(opts) do
     database = Keyword.get(opts, :database)
+    engine = Keyword.get(opts, :engine, @default_table_engine)
     ttl_days_temp = Keyword.get(opts, :ttl_days, @default_ttl_days)
 
     ttl_days =
@@ -88,7 +89,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.QueryTemplates do
         `body` String,
         `timestamp` DateTime64(6)
       )
-      ENGINE MergeTree()
+      ENGINE = #{engine}
       PARTITION BY toYYYYMMDD(timestamp)
       ORDER BY (timestamp)
       """,
@@ -111,14 +112,14 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.QueryTemplates do
 
   - `:database` - (Optional) Will produce a fully qualified `<database>.<table>` string when provided with a value. Defaults to `nil`.
   - `:table` - (Optional) Defaults to `"key_type_counts_per_minute"` and should stay this way, but if you really want to change it - this is the way.
-  - `:engine` - (Optional) ClickHouse table engine. Defaults to `"SharedSummingMergeTree('/clickhouse/tables/{uuid}/{shard}', '{replica}')"` for replicated setups, use `"SummingMergeTree()"` for single-node setups.
+  - `:engine` - (Optional) ClickHouse table engine. Defaults to `"MergeTree"`. Default can be adjusted in `/config/*.exs`.
 
   """
   @spec create_key_type_counts_table_statement(opts :: Keyword.t()) :: String.t()
   def create_key_type_counts_table_statement(opts \\ []) when is_list(opts) do
     table = Keyword.get(opts, :table)
     database = Keyword.get(opts, :database)
-    engine = Keyword.get(opts, :engine, ClickhouseAdaptor.default_engine())
+    engine = Keyword.get(opts, :engine, @default_table_engine)
 
     default_key_count_table_name = default_key_type_counts_table_prefix()
 
