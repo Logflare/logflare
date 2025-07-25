@@ -79,7 +79,7 @@ defmodule LogflareWeb.SourceControllerTest do
       conn
       |> visit(~p"/sources/#{source}")
       |> assert_has("li > a", text: "event body", exact: true)
-      |> assert_has("li mark.log-level-debug", text: "debug")
+      |> assert_has("li mark.log-level-debug", text: "debug", exact: true)
       |> assert_has("pre > code",
         text: Logflare.JSON.encode!(le.body["event_message"], pretty: true)
       )
