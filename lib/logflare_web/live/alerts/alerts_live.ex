@@ -290,12 +290,12 @@ defmodule LogflareWeb.AlertsLive do
 
   def handle_event("toggle-add-backend", _params, socket) do
     socket =
-      if !socket.assigns.show_add_backend_form do
+      if socket.assigns.show_add_backend_form do
+        socket
+      else
         backends = Backends.list_backends(user_id: socket.assigns.user_id, types: [:incidentio])
         backend_options = Enum.map(backends, fn b -> {b.name, b.id} end)
         assign(socket, :backend_options, backend_options)
-      else
-        socket
       end
 
     {:noreply, assign(socket, :show_add_backend_form, !socket.assigns.show_add_backend_form)}

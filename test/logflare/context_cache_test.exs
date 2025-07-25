@@ -120,7 +120,7 @@ defmodule Logflare.ContextCacheTest do
 
   # describe "ContextCache"
 
-  defp get_cainophile_child() do
+  defp get_cainophile_child do
     for {Cainophile.Adapters.Postgres, _, _, _} = child <-
           Supervisor.which_children(ContextCache.Supervisor) do
       child

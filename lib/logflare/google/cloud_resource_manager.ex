@@ -140,42 +140,40 @@ defmodule Logflare.Google.CloudResourceManager do
     message = GenUtils.get_tesla_error_message(response)
     user_exists_regexp = ~r/User (\S+?@\S+) does not exist/
 
-    cond do
-      message =~ user_exists_regexp ->
-        [captured] = Regex.run(user_exists_regexp, message, capture: :all_but_first)
-        # set user as invalid google account
-        result =
-          cond do
-            user = Users.get_by(email: captured) ->
-              user
-              |> Users.update_user_all_fields(%{valid_google_account: false})
+    if message =~ user_exists_regexp do
+      [captured] = Regex.run(user_exists_regexp, message, capture: :all_but_first)
+      # set user as invalid google account
+      result =
+        cond do
+          user = Users.get_by(email: captured) ->
+            user
+            |> Users.update_user_all_fields(%{valid_google_account: false})
 
-            team_user = TeamUsers.get_team_user_by(email: captured) ->
-              team_user
-              |> TeamUsers.update_team_user(%{valid_google_account: false})
+          team_user = TeamUsers.get_team_user_by(email: captured) ->
+            team_user
+            |> TeamUsers.update_team_user(%{valid_google_account: false})
 
-            true ->
-              :noop
-          end
-
-        if result == :noop do
-          Logger.error(
-            "Could find user #{captured} in the database. Set IAM policy error: #{message}",
-            error_string: Jason.decode!(response.body)
-          )
-        else
-          Logger.info(
-            "Google account #{captured} was marked as invalid and excluded from IAM policy",
-            error_string: Jason.decode!(response.body)
-          )
+          true ->
+            :noop
         end
 
-      true ->
-        Logger.error("Set IAM policy unknown API error: #{message}",
+      if result == :noop do
+        Logger.error(
+          "Could find user #{captured} in the database. Set IAM policy error: #{message}",
           error_string: Jason.decode!(response.body)
         )
+      else
+        Logger.info(
+          "Google account #{captured} was marked as invalid and excluded from IAM policy",
+          error_string: Jason.decode!(response.body)
+        )
+      end
+    else
+      Logger.error("Set IAM policy unknown API error: #{message}",
+        error_string: Jason.decode!(response.body)
+      )
 
-        :noop
+      :noop
     end
   end
 

@@ -1,4 +1,6 @@
 defmodule Logflare.Backends.Adaptor.WebhookAdaptor.EgressMiddleware do
+  @moduledoc false
+
   require OpenTelemetry.Tracer
 
   @behaviour Tesla.Middleware

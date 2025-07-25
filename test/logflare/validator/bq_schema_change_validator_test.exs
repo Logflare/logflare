@@ -11,6 +11,7 @@ defmodule Logflare.Validator.BigQuerySchemaChangeTest do
   alias Logflare.Google.BigQuery.SchemaFactory
   alias Logflare.Factory
   alias Logflare.Sources
+
   @moduletag :failing
 
   describe "bigquery schema change validation" do
@@ -162,7 +163,7 @@ defmodule Logflare.Validator.BigQuerySchemaChangeTest do
     end
   end
 
-  def typemap_for_third() do
+  def typemap_for_third do
     %{
       timestamp: %{t: :datetime},
       event_message: %{t: :string},

@@ -853,14 +853,12 @@ defmodule Logflare.Sql.DialectTranslation do
           data.in_cte_tables_tree == false ->
         # referencing a cross join unnest
         {base, arr_path} =
-          cond do
-            data.cte_from_aliases != %{} and is_map_key(data.alias_path_mappings, head_val) ->
-              # triggers when referencing a cte alias and a nested field inside the cte
-              [base | arr_path] = data.alias_path_mappings[head_val]
-              {base, arr_path}
-
-            true ->
-              {"body", data.alias_path_mappings[head_val]}
+          if data.cte_from_aliases != %{} and is_map_key(data.alias_path_mappings, head_val) do
+            # triggers when referencing a cte alias and a nested field inside the cte
+            [base | arr_path] = data.alias_path_mappings[head_val]
+            {base, arr_path}
+          else
+            {"body", data.alias_path_mappings[head_val]}
           end
 
         # data.alias_path_mappings[head_val]

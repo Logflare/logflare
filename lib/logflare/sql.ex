@@ -262,13 +262,13 @@ defmodule Logflare.Sql do
           true
 
         SingleTenant.single_tenant?() and
-            is_project_fully_qualified_name(name, logflare_project_id) ->
+            project_fully_qualified_name?(name, logflare_project_id) ->
           # single tenant mode, allow user to use the global BQ project id
           true
 
         # user bigquery id is set
         user_project_id != nil ->
-          is_project_fully_qualified_name(name, user_project_id)
+          project_fully_qualified_name?(name, user_project_id)
 
         # all else are unknown
 
@@ -722,9 +722,9 @@ defmodule Logflare.Sql do
   defp do_extract_from(_ast_node), do: :skip
 
   # returns true if the name is fully qualified and has the project id prefix.
-  defp is_project_fully_qualified_name(_table_name, nil), do: false
+  defp project_fully_qualified_name?(_table_name, nil), do: false
 
-  defp is_project_fully_qualified_name(table_name, project_id)
+  defp project_fully_qualified_name?(table_name, project_id)
        when is_non_empty_binary(project_id) do
     {:ok, regex} = Regex.compile("#{project_id}\\..+\\..+")
     Regex.match?(regex, table_name)

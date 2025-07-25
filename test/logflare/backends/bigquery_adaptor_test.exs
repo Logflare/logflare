@@ -185,7 +185,7 @@ defmodule Logflare.Backends.BigQueryAdaptorTest do
   describe "handle_resolve_count/3" do
     test "resolve_count will increase counts when queue size is above threshold" do
       check all pipeline_count <- integer(0..100),
-                queue_size <- integer(505..10000),
+                queue_size <- integer(505..10_000),
                 avg_rate <- integer(100..10_000),
                 last <- member_of([nil, NaiveDateTime.utc_now()]) do
         state = %{
@@ -212,7 +212,7 @@ defmodule Logflare.Backends.BigQueryAdaptorTest do
     test "resolve_count will increase counts when startup queue is non-empty" do
       check all pipeline_count <- integer(0..100),
                 queue_size <- integer(1..250),
-                startup_queue_size <- integer(5000..10000),
+                startup_queue_size <- integer(5000..10_000),
                 avg_rate <- integer(100..10_000),
                 last <- member_of([nil, NaiveDateTime.utc_now()]) do
         state = %{
