@@ -504,7 +504,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
   @doc false
   @impl Supervisor
   def init({%Source{} = source, %Backend{config: %{} = config} = backend} = args) do
-    default_pool_size = Application.fetch_env!(:logflare, :clickhouse_backend_adapter)[:pool_size]
+    default_pool_size = Application.fetch_env!(:logflare, :clickhouse_backend_adaptor)[:pool_size]
     ingest_pool_size = Map.get(config, :pool_size, default_pool_size)
 
     # set the query pool size to half of the write pool size, if larger than the default

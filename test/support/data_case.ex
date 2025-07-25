@@ -84,7 +84,17 @@ defmodule Logflare.DataCase do
   """
   def setup_clickhouse_test(opts \\ []) do
     config = Keyword.get(opts, :config, %{})
-    user = Keyword.get(opts, :user) || Logflare.Factory.insert(:user)
+
+    user =
+      case Keyword.get(opts, :user) do
+        nil ->
+          Logflare.Factory.insert(:plan, name: "Free")
+          Logflare.Factory.insert(:user)
+
+        existing_user ->
+          existing_user
+      end
+
     source = Keyword.get(opts, :source) || Logflare.Factory.insert(:source, user: user)
 
     default_config = %{
@@ -112,7 +122,7 @@ defmodule Logflare.DataCase do
   Builds ClickHouse connection options for testing.
   """
   def build_clickhouse_connection_opts(source, backend, type) when type in [:ingest, :query] do
-    alias Logflare.Backends
+    alias Logflare.Backends.Adaptor.ClickhouseAdaptor
 
     base_opts = [
       scheme: "http",
@@ -129,7 +139,11 @@ defmodule Logflare.DataCase do
         :query -> [pool_size: 3, timeout: 60_000]
       end
 
-    connection_name = Backends.via_source(source, :"#{type}_connection", backend)
+    connection_name =
+      case type do
+        :ingest -> ClickhouseAdaptor.ingest_connection_via({source, backend})
+        :query -> ClickhouseAdaptor.query_connection_via({source, backend})
+      end
 
     base_opts
     |> Keyword.merge(type_specific_opts)
