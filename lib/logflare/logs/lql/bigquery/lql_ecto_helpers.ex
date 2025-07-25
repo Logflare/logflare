@@ -144,6 +144,19 @@ defmodule Logflare.Lql.EctoHelpers do
 
   def is_negated?(modifiers), do: Map.get(modifiers, :negate)
 
+  @doc """
+  Query filter where `timestamp` is older than a given interval.
+
+  `unit` must be one of `MICROSECOND`, `MILLISECOND`, `SECOND`, `MINUTE`, `HOUR`, or `DAY`.
+
+  ## Examples
+
+      iex> from("logs") |> where_timestamp_ago(~U[2025-02-21 03:27:12Z], 1, "MINUTE")
+      #Ecto.Query<from l0 in "logs", where: l0.timestamp >= fragment("TIMESTAMP_SUB(?, INTERVAL ? MINUTE)", ^~U[2025-02-21 03:27:12Z], ^1)>
+
+      iex> from("logs") |> where_timestamp_ago(~U[2025-02-21 03:27:12Z], 1, "ILLEGAL_VALUE")
+      ** (ArgumentError) Invalid interval: ILLEGAL_VALUE
+  """
   def where_timestamp_ago(query, datetime, count, unit) do
     case unit do
       "MICROSECOND" ->
