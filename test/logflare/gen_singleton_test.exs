@@ -1,5 +1,5 @@
 defmodule Logflare.GenSingletonTest do
-  use ExUnit.Case
+  use Logflare.DataCase, async: false
   alias Logflare.GenSingleton
 
   defmodule TestGenserver do
@@ -12,6 +12,20 @@ defmodule Logflare.GenSingletonTest do
     @impl GenServer
     def init(args) do
       {:ok, args}
+    end
+  end
+
+  defmodule TestSupervisor do
+    use Supervisor
+
+    def start_link(args) do
+      Supervisor.start_link(__MODULE__, args, name: __MODULE__)
+    end
+
+    @impl Supervisor
+    def init(_args) do
+      children = []
+      Supervisor.init(children, strategy: :one_for_one)
     end
   end
 
@@ -38,6 +52,29 @@ defmodule Logflare.GenSingletonTest do
       :timer.sleep(200)
       assert pid = GenSingleton.get_pid(pid2)
       assert GenServer.whereis(__MODULE__.TestGenserver) == pid
+    end
+  end
+
+  describe "bug: AlertsScheduler integration" do
+    test "starts the GenServer with valid arguments" do
+      refute GenServer.whereis(__MODULE__.TestSupervisor)
+
+      pid1 =
+        start_supervised!(
+          {GenSingleton, child_spec: __MODULE__.TestSupervisor},
+          id: :first
+        )
+
+      TestUtils.retry_assert(fn ->
+        assert GenSingleton.get_pid(pid1) == GenServer.whereis(__MODULE__.TestSupervisor)
+        assert initial_pid = GenServer.whereis(__MODULE__.TestSupervisor)
+
+        Supervisor.stop(__MODULE__.TestSupervisor)
+        refute Process.alive?(initial_pid)
+        :timer.sleep(200)
+        assert pid = GenSingleton.get_pid(pid1)
+        assert pid != initial_pid
+      end)
     end
   end
 end
