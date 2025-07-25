@@ -635,11 +635,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
 
   @spec get_engine_from_app_config() :: String.t()
   defp get_engine_from_app_config() do
-    Application.get_env(:logflare, :clickhouse_backend_adapter, [])
-    |> Keyword.get(
-      :engine,
-      "SharedSummingMergeTree('/clickhouse/tables/{uuid}/{shard}', '{replica}')"
-    )
+    Application.get_env(:logflare, :clickhouse_backend_adapter)[:engine] || @default_engine
   end
 
   @spec check_clickhouse_resource_name_length(name :: String.t(), source :: Source.t()) ::
