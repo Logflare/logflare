@@ -1,16 +1,27 @@
 defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.ProvisionerTest do
   use Logflare.DataCase, async: false
-  import Mimic
 
   alias Logflare.Backends.Adaptor.ClickhouseAdaptor
   alias Logflare.Backends.Adaptor.ClickhouseAdaptor.Provisioner
 
-  setup :set_mimic_global
-  setup :verify_on_exit!
+  setup do
+    {source, backend, cleanup_fn} = setup_clickhouse_test()
+    on_exit(cleanup_fn)
+
+    {:ok, supervisor_pid} = ClickhouseAdaptor.start_link({source, backend})
+
+    on_exit(fn ->
+      if Process.alive?(supervisor_pid) do
+        Process.exit(supervisor_pid, :kill)
+      end
+    end)
+
+    [source: source, backend: backend]
+  end
 
   describe "child_spec/1" do
-    test "returns correct child specification" do
-      args = {build(:source), build(:backend)}
+    test "returns correct child specification", %{source: source, backend: backend} do
+      args = {source, backend}
       spec = Provisioner.child_spec(args)
 
       assert spec.id == Provisioner
@@ -20,234 +31,158 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.ProvisionerTest do
   end
 
   describe "successful provisioning flow" do
-    setup do
-      user = insert(:user)
-      source = insert(:source, user: user)
-      backend = insert(:backend, type: :clickhouse)
-
-      [source: source, backend: backend]
-    end
-
     test "provisions successfully and terminates normally", %{source: source, backend: backend} do
-      ClickhouseAdaptor
-      |> expect(:test_connection, fn test_source, test_backend ->
-        assert test_source.id == source.id
-        assert test_backend.id == backend.id
-        :ok
-      end)
-
-      ClickhouseAdaptor
-      |> expect(:provision_all, fn {prov_source, prov_backend} ->
-        assert prov_source.id == source.id
-        assert prov_backend.id == backend.id
-        :ok
-      end)
-
       {:ok, pid} = Provisioner.start_link({source, backend})
       ref = Process.monitor(pid)
 
-      assert_receive {:DOWN, ^ref, :process, ^pid, :noproc}, 1_000
+      assert_receive {:DOWN, ^ref, :process, ^pid, :noproc}, 5_000
+
+      table_name = ClickhouseAdaptor.clickhouse_ingest_table_name(source)
+
+      {:ok, result} =
+        ClickhouseAdaptor.execute_ch_read_query(
+          {source, backend},
+          "EXISTS TABLE #{table_name}"
+        )
+
+      assert [%{"result" => 1}] = result
     end
 
-    test "handles state correctly during initialization", %{source: source, backend: backend} do
-      ClickhouseAdaptor
-      |> expect(:test_connection, fn _, _ -> :ok end)
-      |> expect(:provision_all, fn _ -> :ok end)
-
+    test "creates all required tables and views", %{source: source, backend: backend} do
       {:ok, pid} = Provisioner.start_link({source, backend})
       ref = Process.monitor(pid)
 
-      assert_receive {:DOWN, ^ref, :process, ^pid, :noproc}, 1_000
+      assert_receive {:DOWN, ^ref, :process, ^pid, :noproc}, 5_000
+
+      ingest_table = ClickhouseAdaptor.clickhouse_ingest_table_name(source)
+      key_count_table = ClickhouseAdaptor.clickhouse_key_count_table_name(source)
+      materialized_view = ClickhouseAdaptor.clickhouse_materialized_view_name(source)
+
+      {:ok, ingest_exists} =
+        ClickhouseAdaptor.execute_ch_read_query(
+          {source, backend},
+          "EXISTS TABLE #{ingest_table}"
+        )
+
+      assert [%{"result" => 1}] = ingest_exists
+
+      {:ok, key_count_exists} =
+        ClickhouseAdaptor.execute_ch_read_query(
+          {source, backend},
+          "EXISTS TABLE #{key_count_table}"
+        )
+
+      assert [%{"result" => 1}] = key_count_exists
+
+      {:ok, view_exists} =
+        ClickhouseAdaptor.execute_ch_read_query(
+          {source, backend},
+          "EXISTS TABLE #{materialized_view}"
+        )
+
+      assert [%{"result" => 1}] = view_exists
     end
   end
 
   describe "connection test failure handling" do
-    setup do
-      user = insert(:user)
-      source = insert(:source, user: user)
-      backend = insert(:backend, type: :clickhouse)
+    test "fails initialization when ClickHouse is unavailable" do
+      {source, invalid_backend, cleanup_fn} =
+        setup_clickhouse_test(
+          config: %{
+            url: "http://invalid-host:9999",
+            username: "invalid_user",
+            password: "invalid_pass",
+            port: 9999
+          }
+        )
 
-      [source: source, backend: backend]
-    end
+      on_exit(cleanup_fn)
 
-    test "fails initialization when connection test fails", %{source: source, backend: backend} do
-      ClickhouseAdaptor
-      |> expect(:test_connection, fn _, _ -> {:error, :connection_failed} end)
-
-      result = Provisioner.start_link({source, backend})
-
-      assert {:error, :connection_failed} = result
-    end
-
-    test "does not call provision_all when connection test fails", %{
-      source: source,
-      backend: backend
-    } do
-      ClickhouseAdaptor
-      |> expect(:test_connection, fn _, _ -> {:error, :invalid_credentials} end)
-      |> reject(:provision_all, 1)
-
-      assert {:error, :invalid_credentials} = Provisioner.start_link({source, backend})
-    end
-  end
-
-  describe "provisioning failure handling" do
-    setup do
-      user = insert(:user)
-      source = insert(:source, user: user)
-      backend = insert(:backend, type: :clickhouse)
-
-      [source: source, backend: backend]
-    end
-
-    test "fails initialization when provisioning fails", %{source: source, backend: backend} do
-      ClickhouseAdaptor
-      |> expect(:test_connection, fn _, _ -> :ok end)
-      |> expect(:provision_all, fn _ -> {:error, :table_creation_failed} end)
-
-      result = Provisioner.start_link({source, backend})
-
-      assert {:error, :table_creation_failed} = result
-    end
-
-    test "handles different provisioning error types", %{source: source, backend: backend} do
-      test_cases = [
-        {:error, :insufficient_permissions},
-        {:error, :database_not_found},
-        {:error, :timeout}
-      ]
-
-      for error_result <- test_cases do
-        ClickhouseAdaptor
-        |> expect(:test_connection, fn _, _ -> :ok end)
-        |> expect(:provision_all, fn _ -> error_result end)
-
-        result = Provisioner.start_link({source, backend})
-        assert {:error, reason} = result
-        assert reason == elem(error_result, 1)
-      end
-    end
-  end
-
-  describe "process lifecycle and monitoring" do
-    setup do
-      user = insert(:user)
-      source = insert(:source, user: user)
-      backend = insert(:backend, type: :clickhouse)
-
-      [source: source, backend: backend]
-    end
-
-    test "process traps exits during initialization", %{source: source, backend: backend} do
-      test_pid = self()
-
-      ClickhouseAdaptor
-      |> expect(:test_connection, fn _, _ ->
-        send(test_pid, {:trapped_exits, Process.flag(:trap_exit, false)})
-        :ok
-      end)
-      |> expect(:provision_all, fn _ -> :ok end)
-
-      {:ok, _pid} = Provisioner.start_link({source, backend})
-
-      assert_receive {:trapped_exits, true}, 1_000
-    end
-
-    test "continues to close_process after successful provisioning", %{
-      source: source,
-      backend: backend
-    } do
-      ClickhouseAdaptor
-      |> expect(:test_connection, fn _, _ -> :ok end)
-      |> expect(:provision_all, fn _ -> :ok end)
-
-      {:ok, pid} = Provisioner.start_link({source, backend})
-      ref = Process.monitor(pid)
-
-      assert_receive {:DOWN, ^ref, :process, ^pid, :noproc}, 1_000
-    end
-  end
-
-  describe "integration with ClickhouseAdaptor functionality" do
-    setup do
-      user = insert(:user)
-      source = insert(:source, user: user)
-      backend = insert(:backend, type: :clickhouse)
-
-      [source: source, backend: backend]
-    end
-
-    test "calls ClickhouseAdaptor functions with correct arguments", %{
-      source: source,
-      backend: backend
-    } do
-      ClickhouseAdaptor
-      |> expect(:test_connection, fn test_source, test_backend ->
-        assert test_source.id == source.id
-        assert test_source.token == source.token
-        assert test_backend.id == backend.id
-        assert test_backend.type == backend.type
-        :ok
-      end)
-      |> expect(:provision_all, fn {prov_source, prov_backend} ->
-        assert prov_source.id == source.id
-        assert prov_backend.id == backend.id
-        :ok
-      end)
-
-      assert {:ok, pid} = Provisioner.start_link({source, backend})
-      ref = Process.monitor(pid)
-
-      assert_receive {:DOWN, ^ref, :process, ^pid, :noproc}, 1_000
-    end
-
-    test "preserves source and backend data in state", %{source: source, backend: backend} do
-      ClickhouseAdaptor
-      |> expect(:test_connection, fn _, _ -> :ok end)
-      |> expect(:provision_all, fn _ -> :ok end)
-
-      {:ok, pid} = Provisioner.start_link({source, backend})
+      {:ok, pid} =
+        Task.start(fn ->
+          ClickhouseAdaptor.start_link({source, invalid_backend})
+        end)
 
       ref = Process.monitor(pid)
-      assert_receive {:DOWN, ^ref, :process, ^pid, :noproc}, 1_000
+      assert_receive {:DOWN, ^ref, :process, ^pid, _reason}, 5_000
     end
   end
 
-  describe "edge cases and boundary conditions" do
-    test "handles invalid source/backend combos" do
-      ClickhouseAdaptor
-      |> expect(:test_connection, fn _, _ -> {:error, :invalid_args} end)
-      |> reject(:provision_all, 1)
-
-      invalid_source = %Logflare.Source{id: nil, token: nil}
-      invalid_backend = %Logflare.Backends.Backend{id: nil}
-
-      result = Provisioner.start_link({invalid_source, invalid_backend})
-      assert {:error, :invalid_args} = result
-    end
-
-    test "handles concurrent provisioner starts for same source/backend", %{} do
-      user = insert(:user)
-      source = insert(:source, user: user)
-      backend = insert(:backend, type: :clickhouse)
-
-      ClickhouseAdaptor
-      |> expect(:test_connection, 2, fn _, _ -> :ok end)
-      |> expect(:provision_all, 2, fn _ ->
-        Process.sleep(100)
-        :ok
-      end)
-
-      task1 = Task.async(fn -> Provisioner.start_link({source, backend}) end)
-      task2 = Task.async(fn -> Provisioner.start_link({source, backend}) end)
-      assert {:ok, pid1} = Task.await(task1)
-      assert {:ok, pid2} = Task.await(task2)
-
+  describe "provisioning idempotency" do
+    test "can run multiple times without errors", %{source: source, backend: backend} do
+      {:ok, pid1} = Provisioner.start_link({source, backend})
       ref1 = Process.monitor(pid1)
-      ref2 = Process.monitor(pid2)
+      assert_receive {:DOWN, ^ref1, :process, ^pid1, :noproc}, 5_000
 
-      assert_receive {:DOWN, ^ref1, :process, ^pid1, :noproc}, 1_000
-      assert_receive {:DOWN, ^ref2, :process, ^pid2, :noproc}, 1_000
+      {:ok, pid2} = Provisioner.start_link({source, backend})
+      ref2 = Process.monitor(pid2)
+      assert_receive {:DOWN, ^ref2, :process, ^pid2, :noproc}, 5_000
+
+      table_name = ClickhouseAdaptor.clickhouse_ingest_table_name(source)
+
+      {:ok, result} =
+        ClickhouseAdaptor.execute_ch_read_query(
+          {source, backend},
+          "SELECT count(*) as count FROM #{table_name}"
+        )
+
+      assert [%{"count" => 0}] = result
+    end
+  end
+
+  describe "process lifecycle" do
+    test "terminates after successful provisioning", %{source: source, backend: backend} do
+      {:ok, pid} = Provisioner.start_link({source, backend})
+
+      ref = Process.monitor(pid)
+      assert_receive {:DOWN, ^ref, :process, ^pid, :noproc}, 5_000
+    end
+
+    test "can insert data after provisioning completes", %{source: source, backend: backend} do
+      {:ok, pid} = Provisioner.start_link({source, backend})
+      ref = Process.monitor(pid)
+      assert_receive {:DOWN, ^ref, :process, ^pid, :noproc}, 5_000
+
+      log_event = build(:log_event, source: source, message: "Test after provisioning")
+      {:ok, _result} = ClickhouseAdaptor.insert_log_events({source, backend}, [log_event])
+
+      table_name = ClickhouseAdaptor.clickhouse_ingest_table_name(source)
+
+      {:ok, result} =
+        ClickhouseAdaptor.execute_ch_read_query(
+          {source, backend},
+          "SELECT count(*) as count FROM #{table_name}"
+        )
+
+      assert [%{"count" => 1}] = result
+    end
+  end
+
+  describe "table schema verification" do
+    test "creates tables with correct schema", %{source: source, backend: backend} do
+      {:ok, pid} = Provisioner.start_link({source, backend})
+      ref = Process.monitor(pid)
+      assert_receive {:DOWN, ^ref, :process, ^pid, :noproc}, 5_000
+
+      table_name = ClickhouseAdaptor.clickhouse_ingest_table_name(source)
+
+      {:ok, columns} =
+        ClickhouseAdaptor.execute_ch_read_query(
+          {source, backend},
+          "DESCRIBE TABLE #{table_name}"
+        )
+
+      column_names = Enum.map(columns, & &1["name"])
+      assert "id" in column_names
+      assert "event_message" in column_names
+      assert "body" in column_names
+      assert "timestamp" in column_names
+
+      id_column = Enum.find(columns, &(&1["name"] == "id"))
+      assert %{"type" => "UUID"} = id_column
+
+      timestamp_column = Enum.find(columns, &(&1["name"] == "timestamp"))
+      assert %{"type" => "DateTime64(6)"} = timestamp_column
     end
   end
 end

@@ -47,6 +47,15 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.Provisioner do
     with :ok <- ClickhouseAdaptor.test_connection(source, backend),
          :ok <- ClickhouseAdaptor.provision_all(args) do
       {:ok, state, {:continue, :close_process}}
+    else
+      {:error, reason} = error ->
+        Logger.error("Failed to provision ClickHouse resources",
+          source_token: source.token,
+          backend_id: backend.id,
+          reason: inspect(reason)
+        )
+
+        {:stop, error}
     end
   end
 
