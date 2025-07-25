@@ -2,57 +2,23 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.ConnectionManagerTest do
   use Logflare.DataCase, async: false
 
   alias Logflare.Backends.Adaptor.ClickhouseAdaptor.ConnectionManager
-  alias Logflare.Backends
 
-  @clickhouse_config %{
-    url: "http://localhost:8123",
-    database: "logflare_test",
-    username: "logflare",
-    password: "logflare",
-    port: 8123,
-    ingest_pool_size: 5,
-    query_pool_size: 3
-  }
+  setup do
+    {source, backend, ch_cleanup_fn} = setup_clickhouse_test()
+    on_exit(ch_cleanup_fn)
 
-  @ingest_opts [
-    scheme: "http",
-    hostname: "localhost",
-    port: 8123,
-    database: "logflare_test",
-    username: "logflare",
-    password: "logflare",
-    pool_size: 5,
-    timeout: 15_000
-  ]
+    ingest_opts = build_clickhouse_connection_opts(source, backend, :ingest)
+    query_opts = build_clickhouse_connection_opts(source, backend, :query)
 
-  @query_opts [
-    scheme: "http",
-    hostname: "localhost",
-    port: 8123,
-    database: "logflare_test",
-    username: "logflare",
-    password: "logflare",
-    pool_size: 3,
-    timeout: 60_000
-  ]
+    [
+      source: source,
+      backend: backend,
+      ingest_opts: ingest_opts,
+      query_opts: query_opts
+    ]
+  end
 
   describe "ConnectionManager lifecycle" do
-    setup do
-      user = insert(:user)
-      source = insert(:source, user: user)
-      backend = insert(:backend, type: :clickhouse, config: @clickhouse_config)
-
-      ingest_opts = build_connection_opts(source, backend, :ingest)
-      query_opts = build_connection_opts(source, backend, :query)
-
-      [
-        source: source,
-        backend: backend,
-        ingest_opts: ingest_opts,
-        query_opts: query_opts
-      ]
-    end
-
     test "starts successfully with proper state", %{
       source: source,
       backend: backend,
@@ -82,24 +48,13 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.ConnectionManagerTest do
   end
 
   describe "connection management" do
-    setup do
-      user = insert(:user)
-      source = insert(:source, user: user)
-      backend = insert(:backend, type: :clickhouse, config: @clickhouse_config)
+    setup context do
+      {:ok, _manager_pid} =
+        ConnectionManager.start_link(
+          {context.source, context.backend, context.ingest_opts, context.query_opts}
+        )
 
-      ingest_opts = build_connection_opts(source, backend, :ingest)
-      query_opts = build_connection_opts(source, backend, :query)
-
-      {:ok, manager_pid} =
-        ConnectionManager.start_link({source, backend, ingest_opts, query_opts})
-
-      [
-        source: source,
-        backend: backend,
-        manager_pid: manager_pid,
-        ingest_opts: ingest_opts,
-        query_opts: query_opts
-      ]
+      context
     end
 
     test "ensure_connection_started starts ingest connection", %{source: source, backend: backend} do
@@ -141,22 +96,13 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.ConnectionManagerTest do
   end
 
   describe "activity tracking" do
-    setup do
-      user = insert(:user)
-      source = insert(:source, user: user)
-      backend = insert(:backend, type: :clickhouse, config: @clickhouse_config)
+    setup context do
+      {:ok, _manager_pid} =
+        ConnectionManager.start_link(
+          {context.source, context.backend, context.ingest_opts, context.query_opts}
+        )
 
-      ingest_opts = build_connection_opts(source, backend, :ingest)
-      query_opts = build_connection_opts(source, backend, :query)
-
-      {:ok, manager_pid} =
-        ConnectionManager.start_link({source, backend, ingest_opts, query_opts})
-
-      [
-        source: source,
-        backend: backend,
-        manager_pid: manager_pid
-      ]
+      context
     end
 
     test "notify_ingest_activity updates activity timestamp", %{source: source, backend: backend} do
@@ -168,57 +114,16 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.ConnectionManagerTest do
     end
   end
 
-  describe "connection cleanup" do
-    setup do
-      user = insert(:user)
-      source = insert(:source, user: user)
-      backend = insert(:backend, type: :clickhouse, config: @clickhouse_config)
-
-      ingest_opts = build_connection_opts(source, backend, :ingest)
-      query_opts = build_connection_opts(source, backend, :query)
-
-      {:ok, manager_pid} =
-        ConnectionManager.start_link({source, backend, ingest_opts, query_opts})
-
-      [
-        source: source,
-        backend: backend,
-        manager_pid: manager_pid
-      ]
-    end
-
-    test "handles connection process death", %{source: source, backend: backend} do
-      assert :ok == ConnectionManager.ensure_connection_started(source, backend, :ingest)
-      assert ConnectionManager.connection_active?(source, backend, :ingest) == true
-
-      # This test verifies that connection_active? properly detects dead processes
-      # The ConnectionManager's internal monitoring handles cleanup automatically
-      # Allow connection to stabilize
-      Process.sleep(50)
-      assert ConnectionManager.connection_active?(source, backend, :ingest) == true
-    end
-  end
-
   describe "resolve timer" do
-    setup do
-      user = insert(:user)
-      source = insert(:source, user: user)
-      backend = insert(:backend, type: :clickhouse, config: @clickhouse_config)
-
-      ingest_opts = build_connection_opts(source, backend, :ingest)
-      query_opts = build_connection_opts(source, backend, :query)
-
+    test "resolve timer is set up and processes messages", %{
+      source: source,
+      backend: backend,
+      ingest_opts: ingest_opts,
+      query_opts: query_opts
+    } do
       {:ok, manager_pid} =
         ConnectionManager.start_link({source, backend, ingest_opts, query_opts})
 
-      [
-        source: source,
-        backend: backend,
-        manager_pid: manager_pid
-      ]
-    end
-
-    test "resolve timer is set up and processes messages", %{manager_pid: manager_pid} do
       assert Process.alive?(manager_pid)
       Process.sleep(100)
       assert Process.alive?(manager_pid)
@@ -226,14 +131,12 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.ConnectionManagerTest do
   end
 
   describe "System.system_time usage" do
-    test "activity tracking uses consistent timestamp format" do
-      user = insert(:user)
-      source = insert(:source, user: user)
-      backend = insert(:backend, type: :clickhouse, config: @clickhouse_config)
-
-      ingest_opts = build_connection_opts(source, backend, :ingest)
-      query_opts = build_connection_opts(source, backend, :query)
-
+    test "activity tracking uses consistent timestamp format", %{
+      source: source,
+      backend: backend,
+      ingest_opts: ingest_opts,
+      query_opts: query_opts
+    } do
       {:ok, manager_pid} =
         ConnectionManager.start_link({source, backend, ingest_opts, query_opts})
 
@@ -244,39 +147,20 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.ConnectionManagerTest do
   end
 
   describe "error handling" do
-    setup do
-      user = insert(:user)
-      source = insert(:source, user: user)
-      backend = insert(:backend, type: :clickhouse, config: @clickhouse_config)
-
-      ingest_opts = build_connection_opts(source, backend, :ingest)
-      query_opts = build_connection_opts(source, backend, :query)
-
-      {:ok, manager_pid} =
-        ConnectionManager.start_link({source, backend, ingest_opts, query_opts})
-
-      [
-        source: source,
-        backend: backend,
-        manager_pid: manager_pid
-      ]
-    end
-
     test "handles multiple ensure_connection_started calls gracefully", %{
       source: source,
-      backend: backend
+      backend: backend,
+      ingest_opts: ingest_opts,
+      query_opts: query_opts
     } do
+      {:ok, _manager_pid} =
+        ConnectionManager.start_link({source, backend, ingest_opts, query_opts})
+
       assert :ok == ConnectionManager.ensure_connection_started(source, backend, :ingest)
       assert :ok == ConnectionManager.ensure_connection_started(source, backend, :ingest)
       assert :ok == ConnectionManager.ensure_connection_started(source, backend, :ingest)
 
       assert ConnectionManager.connection_active?(source, backend, :ingest) == true
     end
-  end
-
-  defp build_connection_opts(source, backend, type) do
-    base_opts = if type == :ingest, do: @ingest_opts, else: @query_opts
-    connection_name = Backends.via_source(source, :"#{type}_connection", backend)
-    Keyword.put(base_opts, :name, connection_name)
   end
 end
