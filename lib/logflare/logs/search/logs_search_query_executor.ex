@@ -8,8 +8,6 @@ defmodule Logflare.Logs.SearchQueryExecutor do
   alias Logflare.Logs.SearchOperation, as: SO
   import LogflareWeb.SearchLV.Utils
   alias Logflare.LogEvent
-  alias Logflare.User.BigQueryUDFs
-  alias Logflare.Users
   alias Logflare.Utils.Tasks
 
   require Logger
@@ -63,10 +61,6 @@ defmodule Logflare.Logs.SearchQueryExecutor do
     Logger.debug(
       "Starting search query from #{pid_to_string(lv_pid)} for #{state.source_id} source..."
     )
-
-    user = Users.Cache.get(state.user_id) |> Users.Cache.preload_defaults()
-
-    BigQueryUDFs.create_if_not_exists_udfs_for_user_dataset(user)
 
     {ref, _params} = state.event_task
 

@@ -76,7 +76,6 @@ defmodule Logflare.User do
     field :bigquery_project_id, :string
     field :bigquery_dataset_location, :string
     field :bigquery_dataset_id, :string
-    field :bigquery_udfs_hash, :string
     field :bigquery_processed_bytes_limit, :integer
     field :bigquery_enable_managed_service_accounts, :boolean, default: false
     field :api_quota, :integer, default: @default_user_api_quota
@@ -128,7 +127,6 @@ defmodule Logflare.User do
               :api_key,
               :old_api_key,
               :api_quota,
-              :bigquery_udfs_hash,
               :billing_enabled,
               :endpoints_beta,
               :partner_id
