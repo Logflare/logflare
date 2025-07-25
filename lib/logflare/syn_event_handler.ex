@@ -84,6 +84,18 @@ defmodule Logflare.SynEventHandler do
   end
 
   defp try_to_stop(pid) do
-    Process.exit(pid, :syn_resolve_kill)
+    if is_supervisor?(pid) do
+      Supervisor.stop(pid)
+    else
+      Process.exit(pid, :syn_resolve_kill)
+    end
+  end
+
+  def is_supervisor?(pid) do
+    case Process.info(pid, :dictionary) |> Keyword.get(:"$initial_call") do
+      {:supervisor, _, _} -> true
+      {Supervisor, _, _} -> true
+      _ -> false
+    end
   end
 end
