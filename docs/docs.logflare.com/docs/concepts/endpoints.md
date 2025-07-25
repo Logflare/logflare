@@ -145,6 +145,29 @@ LF-ENDPOINT-LABELS: session_id=abc123,ignored=xyz
 
 Only allowlisted labels are processed. Query parameters override header values for the same key.
 
+## Subquery Expansion with Other Endpoints
+
+Logflare endpoints support subquery expansion, allowing you to reference and query data from other endpoints within your SQL queries. This enables powerful data composition and cross-endpoint analysis.
+
+To reference another endpoint in your query, use the endpoint or alert's name as the table reference:
+
+```sql
+-- my-base-endpoint
+select my_field, count(id) as counts from `my-source`
+where my_data > @value
+group by my_field
+
+```
+
+```sql
+-- final endpoint
+select my_field, counts from `my-endpoint`
+```
+
+The underlying base endpoint reference will get expanded at runtime to a subquery. Any endpoint parameters referenced using `@` will be extended to the parent endpoint as well.
+
+In this case, the `@value` parameter will be required by the final endpoint as well.
+
 ## Security
 
 Endpoints are unsecure by default. However, you can generate [access tokens](/concepts/access-tokens) to secure the API endpoints.
