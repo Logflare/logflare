@@ -8,15 +8,15 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptorTest do
 
   describe "table name generation" do
     setup do
-      user = insert(:user)
-      source = insert(:source, user: user)
+      {source, backend, cleanup_fn} = setup_clickhouse_test()
+      on_exit(cleanup_fn)
 
       stringified_source_token =
         source.token
         |> Atom.to_string()
         |> String.replace("-", "_")
 
-      [source: source, stringified_source_token: stringified_source_token]
+      [source: source, backend: backend, stringified_source_token: stringified_source_token]
     end
 
     test "clickhouse_ingest_table_name/1 generates a unique log ingest table name based on the source token",
@@ -68,6 +68,103 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptorTest do
                      |> modify_source_with_long_token()
                      |> ClickhouseAdaptor.clickhouse_materialized_view_name()
                    end
+    end
+  end
+
+  describe "connection and basic functionality" do
+    setup do
+      {source, backend, cleanup_fn} = setup_clickhouse_test()
+      on_exit(cleanup_fn)
+
+      {:ok, _pid} = ClickhouseAdaptor.start_link({source, backend})
+
+      [source: source, backend: backend]
+    end
+
+    test "can test ClickHouse connection", %{source: source, backend: backend} do
+      result = ClickhouseAdaptor.test_connection(source, backend)
+      assert :ok = result
+    end
+
+    test "can execute ingest queries", %{source: source, backend: backend} do
+      result =
+        ClickhouseAdaptor.execute_ch_ingest_query(
+          {source, backend},
+          "SELECT 1 as test"
+        )
+
+      assert {:ok, %Ch.Result{rows: [[1]]}} = result
+    end
+
+    test "can execute read queries", %{source: source, backend: backend} do
+      result =
+        ClickhouseAdaptor.execute_ch_read_query(
+          {source, backend},
+          "SELECT 2 as test"
+        )
+
+      assert {:ok, [%{"test" => 2}]} = result
+    end
+
+    test "handles query errors", %{source: source, backend: backend} do
+      result =
+        ClickhouseAdaptor.execute_ch_read_query(
+          {source, backend},
+          "INVALID SQL QUERY"
+        )
+
+      assert {:error, _} = result
+    end
+  end
+
+  describe "log event insertion and retrieval" do
+    setup do
+      {source, backend, cleanup_fn} = setup_clickhouse_test()
+      on_exit(cleanup_fn)
+
+      {:ok, _pid} = ClickhouseAdaptor.start_link({source, backend})
+      assert {:ok, _} = ClickhouseAdaptor.provision_ingest_table({source, backend})
+
+      [source: source, backend: backend]
+    end
+
+    test "can insert and retrieve log events", %{source: source, backend: backend} do
+      log_events = [
+        build(:log_event,
+          source: source,
+          message: "Test message 1",
+          body: %{"level" => "info", "user_id" => 123}
+        ),
+        build(:log_event,
+          source: source,
+          message: "Test message 2",
+          body: %{"level" => "error", "user_id" => 456}
+        )
+      ]
+
+      result = ClickhouseAdaptor.insert_log_events({source, backend}, log_events)
+      assert {:ok, %Ch.Result{}} = result
+
+      Process.sleep(100)
+
+      table_name = ClickhouseAdaptor.clickhouse_ingest_table_name(source)
+
+      query_result =
+        ClickhouseAdaptor.execute_ch_read_query(
+          {source, backend},
+          "SELECT event_message, body FROM #{table_name} ORDER BY timestamp"
+        )
+
+      assert {:ok, rows} = query_result
+      assert length(rows) == 2
+
+      assert [%{"event_message" => "Test message 1"}, %{"event_message" => "Test message 2"}] =
+               rows
+    end
+
+    test "handles empty event list", %{source: source, backend: backend} do
+      result = ClickhouseAdaptor.insert_log_events({source, backend}, [])
+      assert {:ok, %Ch.Result{}} = result
     end
   end
 

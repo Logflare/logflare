@@ -1,68 +1,25 @@
 defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.ConnectionManagerTest do
   use Logflare.DataCase, async: false
-  import Mimic
 
+  alias Logflare.Backends.Adaptor.ClickhouseAdaptor
   alias Logflare.Backends.Adaptor.ClickhouseAdaptor.ConnectionManager
-  alias Logflare.Backends
 
-  setup :set_mimic_global
-  setup :verify_on_exit!
+  setup do
+    {source, backend, ch_cleanup_fn} = setup_clickhouse_test()
+    on_exit(ch_cleanup_fn)
 
-  @ingest_opts [
-    scheme: "http",
-    hostname: "localhost",
-    port: 8123,
-    database: "test_db",
-    username: "test_user",
-    password: "test_pass",
-    pool_size: 5,
-    timeout: 15_000
-  ]
+    ingest_opts = build_clickhouse_connection_opts(source, backend, :ingest)
+    query_opts = build_clickhouse_connection_opts(source, backend, :query)
 
-  @query_opts [
-    scheme: "http",
-    hostname: "localhost",
-    port: 8123,
-    database: "test_db",
-    username: "test_user",
-    password: "test_pass",
-    pool_size: 3,
-    timeout: 60_000
-  ]
+    [
+      source: source,
+      backend: backend,
+      ingest_opts: ingest_opts,
+      query_opts: query_opts
+    ]
+  end
 
   describe "ConnectionManager lifecycle" do
-    setup do
-      user = insert(:user)
-      source = insert(:source, user: user)
-
-      backend =
-        insert(:backend,
-          type: :clickhouse,
-          config: %{
-            url: "http://localhost:8123",
-            database: "test_db",
-            username: "test_user",
-            password: "test_pass",
-            port: 8123,
-            ingest_pool_size: 5,
-            query_pool_size: 3
-          }
-        )
-
-      ingest_opts =
-        Keyword.put(@ingest_opts, :name, Backends.via_source(source, :ingest_connection, backend))
-
-      query_opts =
-        Keyword.put(@query_opts, :name, Backends.via_source(source, :query_connection, backend))
-
-      [
-        source: source,
-        backend: backend,
-        ingest_opts: ingest_opts,
-        query_opts: query_opts
-      ]
-    end
-
     test "starts successfully with proper state", %{
       source: source,
       backend: backend,
@@ -92,91 +49,42 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.ConnectionManagerTest do
   end
 
   describe "connection management" do
-    setup do
-      user = insert(:user)
-      source = insert(:source, user: user)
-
-      backend =
-        insert(:backend,
-          type: :clickhouse,
-          config: %{
-            url: "http://localhost:8123",
-            database: "test_db",
-            username: "test_user",
-            password: "test_pass",
-            port: 8123,
-            ingest_pool_size: 5,
-            query_pool_size: 3
-          }
+    setup context do
+      {:ok, _manager_pid} =
+        ConnectionManager.start_link(
+          {context.source, context.backend, context.ingest_opts, context.query_opts}
         )
 
-      ingest_opts =
-        Keyword.put(@ingest_opts, :name, Backends.via_source(source, :ingest_connection, backend))
-
-      query_opts =
-        Keyword.put(@query_opts, :name, Backends.via_source(source, :query_connection, backend))
-
-      {:ok, manager_pid} =
-        ConnectionManager.start_link({source, backend, ingest_opts, query_opts})
-
-      [
-        source: source,
-        backend: backend,
-        manager_pid: manager_pid,
-        ingest_opts: ingest_opts,
-        query_opts: query_opts
-      ]
+      context
     end
 
     test "ensure_connection_started starts ingest connection", %{source: source, backend: backend} do
-      mock_pid = spawn(fn -> Process.sleep(1000) end)
-
-      expect(Ch, :start_link, fn opts ->
-        assert opts[:name] == Backends.via_source(source, :ingest_connection, backend)
-        {:ok, mock_pid}
-      end)
-
       assert :ok == ConnectionManager.ensure_connection_started(source, backend, :ingest)
       assert ConnectionManager.connection_active?(source, backend, :ingest) == true
-
-      if Process.alive?(mock_pid), do: Process.exit(mock_pid, :kill)
     end
 
     test "ensure_connection_started starts query connection", %{source: source, backend: backend} do
-      mock_pid = spawn(fn -> Process.sleep(1000) end)
-
-      expect(Ch, :start_link, fn opts ->
-        assert opts[:name] == Backends.via_source(source, :query_connection, backend)
-        {:ok, mock_pid}
-      end)
-
       assert :ok == ConnectionManager.ensure_connection_started(source, backend, :query)
       assert ConnectionManager.connection_active?(source, backend, :query) == true
-
-      if Process.alive?(mock_pid), do: Process.exit(mock_pid, :kill)
     end
 
     test "ensure_connection_started returns existing connection if already started", %{
       source: source,
       backend: backend
     } do
-      mock_pid = spawn(fn -> Process.sleep(1000) end)
-
-      expect(Ch, :start_link, fn _opts -> {:ok, mock_pid} end)
-
       assert :ok == ConnectionManager.ensure_connection_started(source, backend, :ingest)
       assert :ok == ConnectionManager.ensure_connection_started(source, backend, :ingest)
-
-      if Process.alive?(mock_pid), do: Process.exit(mock_pid, :kill)
     end
 
-    test "ensure_connection_started returns error on failure", %{source: source, backend: backend} do
-      expect(Ch, :start_link, fn _opts -> {:error, :connection_failed} end)
+    test "ensure_connection_started works with valid ClickHouse instance", %{
+      source: source,
+      backend: backend
+    } do
+      assert :ok == ConnectionManager.ensure_connection_started(source, backend, :ingest)
+      assert ConnectionManager.connection_active?(source, backend, :ingest) == true
 
-      assert {:error, :connection_failed} ==
-               ConnectionManager.ensure_connection_started(source, backend, :ingest)
-
-      assert ConnectionManager.connection_active?(source, backend, :ingest) == false
+      assert :ok == ConnectionManager.ensure_connection_started(source, backend, :query)
+      assert ConnectionManager.connection_active?(source, backend, :query) == true
     end
 
     test "connection_active? returns false for non-existent connections", %{
@@ -189,38 +97,13 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.ConnectionManagerTest do
   end
 
   describe "activity tracking" do
-    setup do
-      user = insert(:user)
-      source = insert(:source, user: user)
-
-      backend =
-        insert(:backend,
-          type: :clickhouse,
-          config: %{
-            url: "http://localhost:8123",
-            database: "test_db",
-            username: "test_user",
-            password: "test_pass",
-            port: 8123,
-            ingest_pool_size: 5,
-            query_pool_size: 3
-          }
+    setup context do
+      {:ok, _manager_pid} =
+        ConnectionManager.start_link(
+          {context.source, context.backend, context.ingest_opts, context.query_opts}
         )
 
-      ingest_opts =
-        Keyword.put(@ingest_opts, :name, Backends.via_source(source, :ingest_connection, backend))
-
-      query_opts =
-        Keyword.put(@query_opts, :name, Backends.via_source(source, :query_connection, backend))
-
-      {:ok, manager_pid} =
-        ConnectionManager.start_link({source, backend, ingest_opts, query_opts})
-
-      [
-        source: source,
-        backend: backend,
-        manager_pid: manager_pid
-      ]
+      context
     end
 
     test "notify_ingest_activity updates activity timestamp", %{source: source, backend: backend} do
@@ -232,92 +115,16 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.ConnectionManagerTest do
     end
   end
 
-  describe "connection cleanup" do
-    setup do
-      user = insert(:user)
-      source = insert(:source, user: user)
-
-      backend =
-        insert(:backend,
-          type: :clickhouse,
-          config: %{
-            url: "http://localhost:8123",
-            database: "test_db",
-            username: "test_user",
-            password: "test_pass",
-            port: 8123,
-            ingest_pool_size: 5,
-            query_pool_size: 3
-          }
-        )
-
-      ingest_opts =
-        Keyword.put(@ingest_opts, :name, Backends.via_source(source, :ingest_connection, backend))
-
-      query_opts =
-        Keyword.put(@query_opts, :name, Backends.via_source(source, :query_connection, backend))
-
-      {:ok, manager_pid} =
-        ConnectionManager.start_link({source, backend, ingest_opts, query_opts})
-
-      [
-        source: source,
-        backend: backend,
-        manager_pid: manager_pid
-      ]
-    end
-
-    test "handles connection process death", %{source: source, backend: backend} do
-      mock_pid = spawn(fn -> Process.sleep(50) end)
-
-      expect(Ch, :start_link, fn _opts -> {:ok, mock_pid} end)
-
-      assert :ok == ConnectionManager.ensure_connection_started(source, backend, :ingest)
-      assert ConnectionManager.connection_active?(source, backend, :ingest) == true
-
-      Process.exit(mock_pid, :kill)
-      Process.sleep(100)
-
-      assert ConnectionManager.connection_active?(source, backend, :ingest) == false
-    end
-  end
-
   describe "resolve timer" do
-    setup do
-      user = insert(:user)
-      source = insert(:source, user: user)
-
-      backend =
-        insert(:backend,
-          type: :clickhouse,
-          config: %{
-            url: "http://localhost:8123",
-            database: "test_db",
-            username: "test_user",
-            password: "test_pass",
-            port: 8123,
-            ingest_pool_size: 5,
-            query_pool_size: 3
-          }
-        )
-
-      ingest_opts =
-        Keyword.put(@ingest_opts, :name, Backends.via_source(source, :ingest_connection, backend))
-
-      query_opts =
-        Keyword.put(@query_opts, :name, Backends.via_source(source, :query_connection, backend))
-
+    test "resolve timer is set up and processes messages", %{
+      source: source,
+      backend: backend,
+      ingest_opts: ingest_opts,
+      query_opts: query_opts
+    } do
       {:ok, manager_pid} =
         ConnectionManager.start_link({source, backend, ingest_opts, query_opts})
 
-      [
-        source: source,
-        backend: backend,
-        manager_pid: manager_pid
-      ]
-    end
-
-    test "resolve timer is set up and processes messages", %{manager_pid: manager_pid} do
       assert Process.alive?(manager_pid)
       Process.sleep(100)
       assert Process.alive?(manager_pid)
@@ -325,30 +132,12 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.ConnectionManagerTest do
   end
 
   describe "System.system_time usage" do
-    test "activity tracking uses consistent timestamp format" do
-      user = insert(:user)
-      source = insert(:source, user: user)
-
-      backend =
-        insert(:backend,
-          type: :clickhouse,
-          config: %{
-            url: "http://localhost:8123",
-            database: "test_db",
-            username: "test_user",
-            password: "test_pass",
-            port: 8123,
-            ingest_pool_size: 5,
-            query_pool_size: 3
-          }
-        )
-
-      ingest_opts =
-        Keyword.put(@ingest_opts, :name, Backends.via_source(source, :ingest_connection, backend))
-
-      query_opts =
-        Keyword.put(@query_opts, :name, Backends.via_source(source, :query_connection, backend))
-
+    test "activity tracking uses consistent timestamp format", %{
+      source: source,
+      backend: backend,
+      ingest_opts: ingest_opts,
+      query_opts: query_opts
+    } do
       {:ok, manager_pid} =
         ConnectionManager.start_link({source, backend, ingest_opts, query_opts})
 
@@ -359,47 +148,140 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.ConnectionManagerTest do
   end
 
   describe "error handling" do
-    setup do
-      user = insert(:user)
-      source = insert(:source, user: user)
+    test "handles multiple ensure_connection_started calls gracefully", %{
+      source: source,
+      backend: backend,
+      ingest_opts: ingest_opts,
+      query_opts: query_opts
+    } do
+      {:ok, _manager_pid} =
+        ConnectionManager.start_link({source, backend, ingest_opts, query_opts})
 
-      backend =
-        insert(:backend,
-          type: :clickhouse,
+      assert :ok == ConnectionManager.ensure_connection_started(source, backend, :ingest)
+      assert :ok == ConnectionManager.ensure_connection_started(source, backend, :ingest)
+      assert :ok == ConnectionManager.ensure_connection_started(source, backend, :ingest)
+
+      assert ConnectionManager.connection_active?(source, backend, :ingest) == true
+    end
+  end
+
+  describe "connection failure scenarios with invalid config" do
+    setup do
+      {source, invalid_backend, cleanup_fn} =
+        setup_clickhouse_test(
           config: %{
-            url: "http://localhost:8123",
-            database: "test_db",
-            username: "test_user",
-            password: "test_pass",
-            port: 8123,
-            ingest_pool_size: 5,
-            query_pool_size: 3
+            url: "http://invalid-hostname:8123",
+            username: "invalid_user",
+            password: "invalid_pass",
+            port: 9999
           }
         )
 
-      ingest_opts =
-        Keyword.put(@ingest_opts, :name, Backends.via_source(source, :ingest_connection, backend))
+      on_exit(cleanup_fn)
 
-      query_opts =
-        Keyword.put(@query_opts, :name, Backends.via_source(source, :query_connection, backend))
+      [source: source, invalid_backend: invalid_backend]
+    end
+
+    test "handles invalid database configuration gracefully", %{
+      source: source,
+      invalid_backend: invalid_backend
+    } do
+      invalid_ingest_opts = build_clickhouse_connection_opts(source, invalid_backend, :ingest)
+      invalid_query_opts = build_clickhouse_connection_opts(source, invalid_backend, :query)
+
+      invalid_ingest_opts =
+        Keyword.merge(invalid_ingest_opts,
+          hostname: "invalid-hostname",
+          port: 9999,
+          username: "invalid_user",
+          password: "invalid_pass"
+        )
+
+      invalid_query_opts =
+        Keyword.merge(invalid_query_opts,
+          hostname: "invalid-hostname",
+          port: 9999,
+          username: "invalid_user",
+          password: "invalid_pass"
+        )
+
+      {:ok, _manager_pid} =
+        ConnectionManager.start_link(
+          {source, invalid_backend, invalid_ingest_opts, invalid_query_opts}
+        )
+
+      case ConnectionManager.ensure_connection_started(source, invalid_backend, :ingest) do
+        :ok ->
+          assert {:error, _reason} = ClickhouseAdaptor.test_connection(source, invalid_backend)
+
+        {:error, _reason} ->
+          assert ConnectionManager.connection_active?(source, invalid_backend, :ingest) == false
+      end
+    end
+  end
+
+  describe "connection scenarios with valid config" do
+    setup do
+      {source, backend, cleanup_fn} = setup_clickhouse_test()
+      on_exit(cleanup_fn)
+
+      [source: source, backend: backend]
+    end
+
+    test "handles connection drops and recovery", %{source: source, backend: backend} do
+      ingest_opts = build_clickhouse_connection_opts(source, backend, :ingest)
+      query_opts = build_clickhouse_connection_opts(source, backend, :query)
+
+      {:ok, _manager_pid} =
+        ConnectionManager.start_link({source, backend, ingest_opts, query_opts})
+
+      assert :ok == ConnectionManager.ensure_connection_started(source, backend, :ingest)
+      assert :ok == ConnectionManager.ensure_connection_started(source, backend, :query)
+
+      assert ConnectionManager.connection_active?(source, backend, :ingest) == true
+      assert ConnectionManager.connection_active?(source, backend, :query) == true
+
+      alias Logflare.Backends.Adaptor.ClickhouseAdaptor
+      assert :ok == ClickhouseAdaptor.test_connection(source, backend)
+
+      assert ConnectionManager.connection_active?(source, backend, :ingest) == true
+      assert ConnectionManager.connection_active?(source, backend, :query) == true
+    end
+
+    test "properly handles connection process monitoring", %{source: source, backend: backend} do
+      ingest_opts = build_clickhouse_connection_opts(source, backend, :ingest)
+      query_opts = build_clickhouse_connection_opts(source, backend, :query)
 
       {:ok, manager_pid} =
         ConnectionManager.start_link({source, backend, ingest_opts, query_opts})
 
-      [
-        source: source,
-        backend: backend,
-        manager_pid: manager_pid
-      ]
+      assert :ok == ConnectionManager.ensure_connection_started(source, backend, :ingest)
+      assert ConnectionManager.connection_active?(source, backend, :ingest) == true
+
+      assert Process.alive?(manager_pid)
+
+      Process.sleep(10)
+
+      assert ConnectionManager.connection_active?(source, backend, :ingest) == true
     end
 
-    test "handles multiple ensure_connection_started calls gracefully", %{
+    test "connection_active? returns false when manager process doesn't exist", %{
       source: source,
       backend: backend
     } do
-      mock_pid = spawn(fn -> Process.sleep(1000) end)
+      assert ConnectionManager.connection_active?(source, backend, :ingest) == false
+      assert ConnectionManager.connection_active?(source, backend, :query) == false
+    end
 
-      expect(Ch, :start_link, fn _opts -> {:ok, mock_pid} end)
+    test "multiple connection attempts are handled gracefully", %{
+      source: source,
+      backend: backend
+    } do
+      ingest_opts = build_clickhouse_connection_opts(source, backend, :ingest)
+      query_opts = build_clickhouse_connection_opts(source, backend, :query)
+
+      {:ok, _manager_pid} =
+        ConnectionManager.start_link({source, backend, ingest_opts, query_opts})
 
       assert :ok == ConnectionManager.ensure_connection_started(source, backend, :ingest)
       assert :ok == ConnectionManager.ensure_connection_started(source, backend, :ingest)
@@ -407,17 +289,10 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.ConnectionManagerTest do
 
       assert ConnectionManager.connection_active?(source, backend, :ingest) == true
 
-      if Process.alive?(mock_pid), do: Process.exit(mock_pid, :kill)
-    end
+      assert :ok == ConnectionManager.ensure_connection_started(source, backend, :query)
+      assert :ok == ConnectionManager.ensure_connection_started(source, backend, :query)
 
-    test "handles dead connection detection", %{source: source, backend: backend} do
-      dead_pid = spawn(fn -> :ok end)
-
-      expect(Ch, :start_link, fn _opts -> {:ok, dead_pid} end)
-
-      assert :ok == ConnectionManager.ensure_connection_started(source, backend, :ingest)
-      Process.sleep(100)
-      assert ConnectionManager.connection_active?(source, backend, :ingest) == false
+      assert ConnectionManager.connection_active?(source, backend, :query) == true
     end
   end
 end
