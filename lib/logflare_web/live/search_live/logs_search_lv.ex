@@ -17,14 +17,11 @@ defmodule LogflareWeb.Source.SearchLV do
   alias LogflareWeb.Router.Helpers, as: Routes
   alias LogflareWeb.SearchView
 
-  import LogflareWeb.Helpers.BqSchema
   import LogflareWeb.ModalLiveHelpers
   import Logflare.Lql.Utils
-  alias Logflare.DateTimeUtils
 
   import Logflare.Logs.Search.Utils
   import LogflareWeb.SearchLV.Utils
-  import Logflare.Utils, only: [iso_timestamp: 1]
   import LogflareWeb.SearchLive.TimezoneComponent
 
   require Logger
@@ -560,6 +557,7 @@ defmodule LogflareWeb.Source.SearchLV do
             source_id: source.token
           )
 
+          err.body |> IO.puts()
           send(self(), :soft_pause)
 
           msg = "Backend error! Retry your query. Please contact support if this continues."
