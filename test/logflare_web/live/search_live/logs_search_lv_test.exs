@@ -630,7 +630,6 @@ defmodule LogflareWeb.Source.SearchLVTest do
         "search" => %{@default_search_params | "querystring" => "somestring"}
       })
 
-      # wait for async search task to complete
       TestUtils.retry_assert(fn ->
         html = view |> element("#logs-list-container") |> render()
 
