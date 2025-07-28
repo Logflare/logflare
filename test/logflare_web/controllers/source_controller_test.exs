@@ -73,12 +73,13 @@ defmodule LogflareWeb.SourceControllerTest do
 
     test "show source's recent logs", %{conn: conn, source: source} do
       start_supervised!({SourceSup, source})
-      le = build(:log_event, source: source)
+      le = build(:log_event, source: source, metadata: %{"level" => "debug"})
       Backends.ingest_logs([le], source)
 
       conn
       |> visit(~p"/sources/#{source}")
       |> assert_has("li > a", text: "event body", exact: true)
+      |> assert_has("li mark.log-level-debug", text: "debug")
       |> assert_has("pre > code",
         text: Logflare.JSON.encode!(le.body["event_message"], pretty: true)
       )

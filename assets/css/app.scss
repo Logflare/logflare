@@ -273,7 +273,43 @@ a:focus, button.btn-link:focus {
 }
 
 mark {
-  background-color: #5eeb8f;
+    /* default, used for info and no log level */
+    background-color: #5eeb8f;
+
+    &[class^="log-level-"] {
+        background: none;
+    }
+
+    &.log-level-info {
+        color: #5eeb8f;
+    }
+    &.log-level-error {
+        color: #dc3545;
+    }
+
+    &.log-level-warning {
+        color: #f1ba58;
+    }
+
+    &.log-level-debug {
+        color: #3787ff;
+    }
+
+    &.log-level-critical {
+        color: #bd1550;
+    }
+
+    &.log-level-emergency {
+        color: #b11226;
+    }
+
+    &.log-level-alert {
+        color: #dc3545;
+    }
+
+    &.log-level-notice {
+        color: #03c03c;
+    }
 }
 
 .example-log-code {
