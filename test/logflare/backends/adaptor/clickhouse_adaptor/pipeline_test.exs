@@ -13,9 +13,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.PipelineTest do
     {:ok, supervisor_pid} = ClickhouseAdaptor.start_link({source, backend})
 
     on_exit(fn ->
-      if Process.alive?(supervisor_pid) do
-        Process.exit(supervisor_pid, :kill)
-      end
+      Process.exit(supervisor_pid, :kill)
     end)
 
     adaptor_state = %ClickhouseAdaptor{
