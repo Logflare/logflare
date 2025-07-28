@@ -70,4 +70,109 @@ defmodule Logflare.DataCase do
       end)
     end)
   end
+
+  @doc """
+  Sets up a ClickHouse test environment with automatic cleanup.
+
+  Returns `{source, backend, cleanup_fn}` tuple.
+
+  ## Options
+  - `:config` - Custom ClickHouse configuration (merged with defaults)
+  - `:user` - Existing user to use (creates one if not provided)
+  - `:source` - Existing source to use (creates one if not provided)
+
+  """
+  def setup_clickhouse_test(opts \\ []) do
+    config = Keyword.get(opts, :config, %{})
+
+    user =
+      case Keyword.get(opts, :user) do
+        nil ->
+          Logflare.Factory.insert(:plan, name: "Free")
+          Logflare.Factory.insert(:user)
+
+        existing_user ->
+          existing_user
+      end
+
+    source = Keyword.get(opts, :source) || Logflare.Factory.insert(:source, user: user)
+
+    default_config = %{
+      url: "http://localhost:8123",
+      database: "logflare_test",
+      username: "logflare",
+      password: "logflare",
+      port: 8123,
+      ingest_pool_size: 5,
+      query_pool_size: 3
+    }
+
+    backend =
+      Logflare.Factory.insert(:backend,
+        type: :clickhouse,
+        config: Map.merge(default_config, config)
+      )
+
+    cleanup_fn = fn -> cleanup_clickhouse_tables({source, backend}) end
+
+    {source, backend, cleanup_fn}
+  end
+
+  @doc """
+  Builds ClickHouse connection options for testing.
+  """
+  def build_clickhouse_connection_opts(source, backend, type) when type in [:ingest, :query] do
+    alias Logflare.Backends.Adaptor.ClickhouseAdaptor
+
+    base_opts = [
+      scheme: "http",
+      hostname: "localhost",
+      port: 8123,
+      database: "logflare_test",
+      username: "logflare",
+      password: "logflare"
+    ]
+
+    type_specific_opts =
+      case type do
+        :ingest -> [pool_size: 5, timeout: 15_000]
+        :query -> [pool_size: 3, timeout: 60_000]
+      end
+
+    connection_name =
+      case type do
+        :ingest -> ClickhouseAdaptor.ingest_connection_via({source, backend})
+        :query -> ClickhouseAdaptor.query_connection_via({source, backend})
+      end
+
+    base_opts
+    |> Keyword.merge(type_specific_opts)
+    |> Keyword.put(:name, connection_name)
+  end
+
+  @doc """
+  Cleanup ClickHouse tables for a given `Source` and `Backend`.
+  """
+  def cleanup_clickhouse_tables({source, backend}) do
+    table_names = [
+      Logflare.Backends.Adaptor.ClickhouseAdaptor.clickhouse_ingest_table_name(source),
+      Logflare.Backends.Adaptor.ClickhouseAdaptor.clickhouse_key_count_table_name(source),
+      Logflare.Backends.Adaptor.ClickhouseAdaptor.clickhouse_materialized_view_name(source)
+    ]
+
+    for table_name <- table_names do
+      try do
+        Logflare.Backends.Adaptor.ClickhouseAdaptor.execute_ch_ingest_query(
+          {source, backend},
+          "DROP TABLE IF EXISTS #{table_name}"
+        )
+      rescue
+        # Ignore cleanup errors
+        _ -> :ok
+      catch
+        # Process may not be running during cleanup :shrug:
+        :exit, _ -> :ok
+      end
+    end
+  end
 end

@@ -44,3 +44,9 @@ The ingest table schema is as follows:
 - `event_message`: The provided or generated event message of the log event, stored as `String`
 - `body`: The processed log event, stored as serialized JSON in a `String` column.
 - `timestamp`: Unix microsecond, stored as `DateTime64(6)`
+
+### Table Engine
+
+By default, the ClickHouse backends will utilize the [`MergeTree` engine](https://clickhouse.com/docs/engines/table-engines/mergetree-family/mergetree).
+
+Note that when using ClickHouse Cloud, replication is handled automatically as mentioned in the [data replication documentaion](https://clickhouse.com/docs/engines/table-engines/mergetree-family/replication#creating-replicated-tables).
