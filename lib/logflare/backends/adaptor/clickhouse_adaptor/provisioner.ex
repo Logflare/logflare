@@ -52,7 +52,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.Provisioner do
         Logger.error("Failed to provision ClickHouse resources",
           source_token: source.token,
           backend_id: backend.id,
-          reason: inspect(reason)
+          error_string: inspect(reason)
         )
 
         {:stop, error}
