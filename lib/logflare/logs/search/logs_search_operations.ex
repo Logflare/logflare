@@ -78,7 +78,7 @@ defmodule Logflare.Logs.SearchOperations do
   def unnest_log_level(so) do
     query =
       so.query
-      |> join(:inner, [t], m in fragment("UNNEST(?)", t.metadata))
+      |> join(:inner, [t], m in fragment("UNNEST(?)", t.metadata), on: true)
       |> select_merge([..., m], %{
         level: fragment("JSON_EXTRACT_SCALAR(TO_JSON_STRING(?), '$.level') as level", m)
       })
