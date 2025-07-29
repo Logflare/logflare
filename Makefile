@@ -70,58 +70,55 @@ compile.check:
 
 check-tools:
 	@echo ""
-	@echo "$(BOLD)$(BLUE)🔧 Checking required tools...$(NC)"
+	@echo -e "$(BOLD)$(BLUE)🔧 Checking required tools...$(NC)"
 	@echo ""
 	@for tool in $(REQUIRED_TOOLS); do \
 		if command -v $$tool >/dev/null 2>&1; then \
-			echo "  $(GREEN)✓$(NC) $$tool found"; \
+			echo -e "  $(GREEN)✓$(NC) $$tool found"; \
 		else \
-			echo "  $(YELLOW)⚠$(NC)  Warning: $$tool is not installed or not in PATH"; \
+			echo -e "  $(YELLOW)⚠$(NC)  Warning: $$tool is not installed or not in PATH"; \
 		fi; \
 	done
 	@echo ""
-	@echo "$(BOLD)$(BLUE)Tool check complete$(NC)"
+	@echo -e "$(BOLD)$(BLUE)Tool check complete$(NC)"
 	@echo ""
 
 check-version-manager:
 ifndef VERSION_MANAGER
 	@echo ""
-	@echo "$(RED)❌ Error: Neither MISE nor ASDF is installed.$(NC)"
-	@echo "$(BOLD)Please install one of the following:$(NC)"
+	@echo -e "$(RED)❌ Error: Neither MISE nor ASDF is installed.$(NC)"
+	@echo -e "$(BOLD)Please install one of the following:$(NC)"
 	@echo "  - MISE: https://mise.jdx.dev/getting-started.html"
 	@echo "  - ASDF: https://asdf-vm.com/guide/getting-started.html"
 	@echo ""
 	@exit 1
 else
-	@echo "$(BOLD)$(BLUE)📦 Using $(VERSION_MANAGER) for version management$(NC)"
+	@echo -e "$(BOLD)$(BLUE)📦 Using $(VERSION_MANAGER) for version management$(NC)"
 	@echo ""
 endif
 
 setup: check-tools check-version-manager setup.node
-	# install dependencies
-	@echo "$(BOLD)$(BLUE)🚀 Installing language dependencies...$(NC)"
+	@echo -e "$(BOLD)$(BLUE)🚀 Installing language dependencies...$(NC)"
 	@echo ""
 	$(VERSION_MANAGER_INSTALL)
 	-epmd -daemon
 
-	# add protobuf install
 	@echo ""
-	@echo "$(BOLD)$(BLUE)🔧 Installing protobuf tooling...$(NC)"
+	@echo -e "$(BOLD)$(BLUE)🔧 Installing protobuf tooling...$(NC)"
 	mix escript.install hex protobuf
 	@echo ""
 
 	$(VERSION_MANAGER_RESHIM)
-	# run elixir setup
-	@echo "$(BOLD)$(BLUE)⚙️  Running Elixir setup...$(NC)"
+	@echo -e "$(BOLD)$(BLUE)⚙️ Running Elixir setup...$(NC)"
 	@echo ""
 	mix setup
 	@echo ""
 
-	@echo "$(BOLD)$(GREEN)✅ Setup complete!$(NC)"
+	@echo -e "$(BOLD)$(GREEN)✅ Setup complete!$(NC)"
 	@echo ""
 
 setup.node:
-	@echo "$(BOLD)$(BLUE)📦 Installing Node.js dependencies...$(NC)"
+	@echo -e "$(BOLD)$(BLUE)📦 Installing Node.js dependencies...$(NC)"
 	@echo ""
 	npm --prefix ./assets install
 	@echo ""
