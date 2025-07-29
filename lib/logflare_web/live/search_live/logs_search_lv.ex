@@ -559,12 +559,10 @@ defmodule LogflareWeb.Source.SearchLV do
 
           send(self(), :soft_pause)
 
-          msg = "Backend error! Retry your query. Please contact support if this continues."
-
           socket
           |> assign(loading: false)
           |> assign(chart_loading: false)
-          |> put_flash(:error, msg)
+          |> put_flash_query_error(err)
 
         err ->
           Logger.error("Backend search error for source: #{source.token}",
@@ -941,5 +939,35 @@ defmodule LogflareWeb.Source.SearchLV do
       !suggested_present -> {:error, :suggested_field_not_found}
       true -> {:ok, socket}
     end
+  end
+
+  defp put_flash_query_error(socket, %Tesla.Env{status: 400} = response) do
+    case Jason.decode(response.body) do
+      {:ok, %{"error" => %{"message" => "Query exceeded limit for bytes billed:" <> rest}}} ->
+        [limit | _] = String.split(rest, ".")
+
+        limit_gb =
+          limit
+          |> String.trim()
+          |> String.to_integer()
+          |> div(1_000_000_000)
+
+        socket
+        |> put_flash(
+          :error,
+          "Query halted: total bytes processed for this query is expected to be greater than #{limit_gb} GB"
+        )
+
+      _ ->
+        put_flash_query_error(socket, nil)
+    end
+  end
+
+  defp put_flash_query_error(socket, _) do
+    socket
+    |> put_flash(
+      :error,
+      "Backend error! Retry your query. Please contact support if this continues."
+    )
   end
 end
