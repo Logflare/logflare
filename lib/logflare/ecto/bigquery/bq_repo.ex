@@ -44,7 +44,7 @@ defmodule Logflare.BqRepo do
         dryRun: false,
         jobTimeoutMs: @query_request_timeout,
         timeoutMs: @query_request_timeout,
-        # Not enforced for now.
+        # Not enforced for now
         # maximumBytesBilled: user.bigquery_processed_bytes_limit,
         labels: %{
           "managed_by" => "logflare",
@@ -59,6 +59,7 @@ defmodule Logflare.BqRepo do
       GenUtils.get_conn({:query, user})
       |> Api.Jobs.bigquery_jobs_query(project_id, body: query_request)
       |> GenUtils.maybe_parse_google_api_result()
+      |> warn_if_cost_above_limit(query_request.labels, user)
 
     with {:ok, response} <- result do
       response =
@@ -97,4 +98,30 @@ defmodule Logflare.BqRepo do
 
     query_with_sql_and_params(user, project_id, sql, params, opts)
   end
+
+  defp warn_if_cost_above_limit(
+         {:ok, %{totalBytesProcessed: total_bytes_processed}} = result,
+         request_labels,
+         user
+       )
+       when is_binary(total_bytes_processed) do
+    %{bigquery_processed_bytes_limit: limit} = user
+
+    labels =
+      Enum.reduce(request_labels, [], fn {key, value}, acc ->
+        acc ++ ["#{key}: #{value}"]
+      end)
+      |> Enum.join(", ")
+
+    if String.to_integer(total_bytes_processed) > user.bigquery_processed_bytes_limit do
+      Logger.warning(
+        "Query bytes exceeded plan. limit: #{limit}, bytes: #{total_bytes_processed}, #{labels}",
+        user: user.id
+      )
+    end
+
+    result
+  end
+
+  defp warn_if_cost_above_limit(result, _request_labels, _user), do: result
 end
