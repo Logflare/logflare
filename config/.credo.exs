@@ -143,11 +143,10 @@
           {Credo.Check.Warning.UnusedPathOperation, []},
           {Credo.Check.Warning.UnusedRegexOperation, []},
           {Credo.Check.Warning.UnusedStringOperation, []},
-          {Credo.Check.Warning.UnusedTupleOperation, []}
+          {Credo.Check.Warning.UnusedTupleOperation, []},
 
-          #
-          # Custom checks can be created using `mix credo.gen.check`.
-          #
+          # Controversial
+          {Credo.Check.Refactor.IoPuts, []}
         ],
         disabled: [
           #
