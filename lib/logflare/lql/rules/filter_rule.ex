@@ -138,8 +138,8 @@ defmodule Logflare.Lql.Rules.FilterRule do
 
   Returns false for other patterns or nil shorthand.
   """
-  @spec is_shorthand_timestamp?(__MODULE__.t()) :: boolean()
-  def is_shorthand_timestamp?(%__MODULE__{shorthand: shorthand}) do
+  @spec shorthand_timestamp?(__MODULE__.t()) :: boolean()
+  def shorthand_timestamp?(%__MODULE__{shorthand: shorthand}) do
     case shorthand do
       x when is_binary(x) and binary_part(x, 0, min(byte_size(x), 4)) in ["last", "this"] -> true
       x when x in ["today", "yesterday"] -> true

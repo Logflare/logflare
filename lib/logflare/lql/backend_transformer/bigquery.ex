@@ -125,13 +125,11 @@ defmodule Logflare.Lql.BackendTransformer.BigQuery do
 
   def transform_select_rule(%{path: path} = _select_rule, _transformation_data)
       when is_binary(path) do
-    cond do
-      path in @special_top_level or not String.contains?(path, ".") ->
-        {:field, String.to_atom(path), []}
-
-      true ->
-        nested_columns = split_by_dots(path)
-        {:nested_field, nested_columns, unnest_paths_for_select(nested_columns)}
+    if path in @special_top_level or not String.contains?(path, ".") do
+      {:field, String.to_atom(path), []}
+    else
+      nested_columns = split_by_dots(path)
+      {:nested_field, nested_columns, unnest_paths_for_select(nested_columns)}
     end
   end
 
@@ -290,26 +288,24 @@ defmodule Logflare.Lql.BackendTransformer.BigQuery do
           )
       end
 
-    if is_negated?(modifiers) do
+    if negated?(modifiers) do
       dynamic([..., n1], not (^clause))
     else
       clause
     end
   end
 
-  @spec is_negated?(map()) :: boolean()
-  defp is_negated?(modifiers), do: Map.get(modifiers, :negate)
+  @spec negated?(map()) :: boolean()
+  defp negated?(modifiers), do: Map.get(modifiers, :negate)
 
   @spec build_combined_select(Query.t(), [map()]) :: Query.t()
   defp build_combined_select(query, select_rules) do
     Enum.reduce(select_rules, query, fn %{path: path}, acc_query ->
       field_atom =
-        cond do
-          path in @special_top_level or not String.contains?(path, ".") ->
-            String.to_atom(path)
-
-          true ->
-            String.replace(path, ".", "_") |> String.to_atom()
+        if path in @special_top_level or not String.contains?(path, ".") do
+          String.to_atom(path)
+        else
+          String.replace(path, ".", "_") |> String.to_atom()
         end
 
       select_merge(acc_query, [l], %{^field_atom => field(l, ^field_atom)})

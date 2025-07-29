@@ -38,7 +38,7 @@ defmodule LogflareWeb.Plugs.FetchResource do
         get_source_from_headers(conn)
 
     source =
-      case is_uuid?(token) do
+      case uuid?(token) do
         true ->
           Sources.Cache.get_by_and_preload_rules(token: token)
           |> Sources.refresh_source_metrics_for_ingest()
@@ -65,7 +65,7 @@ defmodule LogflareWeb.Plugs.FetchResource do
       end)
 
     endpoint =
-      case is_uuid?(token_or_name) do
+      case uuid?(token_or_name) do
         false when user_id != nil ->
           Endpoints.Cache.get_by(name: token_or_name, user_id: user_id)
 
@@ -94,14 +94,14 @@ defmodule LogflareWeb.Plugs.FetchResource do
   def call(conn, _), do: conn
 
   # returns true if it is a valid uuid4 string
-  defp is_uuid?(value) when is_binary(value) do
+  defp uuid?(value) when is_binary(value) do
     case Ecto.UUID.dump(value) do
       {:ok, _} -> true
       _ -> false
     end
   end
 
-  defp is_uuid?(_), do: false
+  defp uuid?(_), do: false
 
   def get_source_from_headers(conn) do
     (Plug.Conn.get_req_header(conn, "x-source") ||

@@ -557,7 +557,6 @@ defmodule LogflareWeb.Source.SearchLV do
             source_id: source.token
           )
 
-          err.body |> IO.puts()
           send(self(), :soft_pause)
 
           msg = "Backend error! Retry your query. Please contact support if this continues."

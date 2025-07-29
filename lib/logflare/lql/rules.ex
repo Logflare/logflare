@@ -253,7 +253,7 @@ defmodule Logflare.Lql.Rules do
   """
   @spec timestamp_filter_rule_is_shorthand?(FilterRule.t()) :: boolean()
   def timestamp_filter_rule_is_shorthand?(%FilterRule{} = filter_rule) do
-    FilterRule.is_shorthand_timestamp?(filter_rule)
+    FilterRule.shorthand_timestamp?(filter_rule)
   end
 
   # =============================================================================

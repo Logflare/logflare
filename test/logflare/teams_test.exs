@@ -1,6 +1,7 @@
 defmodule Logflare.TeamsTest do
   @moduledoc false
   use Logflare.DataCase
+
   alias Logflare.Teams
   alias Logflare.Teams.Team
   alias Logflare.User
@@ -25,21 +26,6 @@ defmodule Logflare.TeamsTest do
     assert %Team{id: ^team_id} = Teams.get_team_by(name: name)
   end
 
-  test "preload_user/1 preloads user" do
-    %{id: user_id} = user = insert(:user)
-    team = insert(:team, user: user)
-
-    assert %{user: %User{id: ^user_id}} = Teams.preload_user(team)
-  end
-
-  test "preload_user/1 preloads preload_team_users" do
-    team = insert(:team, user: insert(:user))
-    %{email: user_email} = user = insert(:user)
-    insert(:team_user, team: team, email: user.email)
-
-    assert %{team_users: [%{email: ^user_email}]} = Teams.preload_team_users(team)
-  end
-
   test "get_home_team/1 returns a paying user's home team" do
     # owned by different user
     home_team = insert(:team)
@@ -47,6 +33,45 @@ defmodule Logflare.TeamsTest do
     team_user = insert(:team_user, email: user.email)
 
     assert Teams.get_home_team(team_user).id == home_team.id
+
+    Repo.delete!(user)
+
+    assert Teams.get_home_team(team_user) == nil
+  end
+
+  test "get_home_team/1 returns nil when user does not exist" do
+    team_user = insert(:team_user, email: "")
+
+    assert Teams.get_home_team(team_user) == nil
+  end
+
+  test "preload_user/1 preloads :user" do
+    %{id: user_id} = user = insert(:user)
+    team = insert(:team, user: user)
+
+    assert %{user: %User{id: ^user_id}} = Teams.preload_user(team)
+    assert Teams.preload_user(nil) == nil
+  end
+
+  test "preload_team_users/1 preloads :team_users" do
+    team = insert(:team, user: insert(:user))
+    %{email: user_email} = user = insert(:user)
+    insert(:team_user, team: team, email: user.email)
+
+    assert %{team_users: [%{email: ^user_email}]} = Teams.preload_team_users(team)
+    assert Teams.preload_team_users(nil) == nil
+  end
+
+  test "preload_fields/1 preloads all fields in the atom list" do
+    %{id: user_id} = user = insert(:user)
+    team = insert(:team, user: user)
+    %{email: user_email} = user = insert(:user)
+    insert(:team_user, team: team, email: user.email)
+
+    assert %{user: %User{id: ^user_id}, team_users: [%{email: ^user_email}]} =
+             Teams.preload_fields(team, [:user, :team_users])
+
+    assert Teams.preload_fields(nil, [:user]) == nil
   end
 
   test "create_team/2 creates a new team in the database" do
@@ -68,6 +93,11 @@ defmodule Logflare.TeamsTest do
     assert_raise Ecto.StaleEntryError, fn ->
       Teams.delete_team(team)
     end
+  end
+
+  test "change_team/1 returns a team changeset" do
+    %{id: id} = team = insert(:team)
+    assert %Ecto.Changeset{data: %Team{id: ^id}} = Teams.change_team(team)
   end
 
   test "list_teams_by_user_access/1 lists all teams of a given user" do

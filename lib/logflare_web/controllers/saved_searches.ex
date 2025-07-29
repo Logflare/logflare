@@ -1,6 +1,7 @@
 defmodule LogflareWeb.SavedSearchesController do
   use LogflareWeb, :controller
-  alias Logflare.{SavedSearches}
+
+  alias Logflare.SavedSearches
   require Logger
 
   plug LogflareWeb.Plugs.SetVerifySource

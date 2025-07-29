@@ -11,6 +11,7 @@ import {
 import {
   applyToAllLogTimestamps
 } from "./logs"
+import { escape, get, isEmpty } from "lodash"
 
 export async function main({
   scrollTracker
@@ -120,15 +121,15 @@ async function logTemplate(e) {
 
   const logLevelTemplate = log_level
     ? `<mark class="log-level-${log_level}">${log_level}</mark>`
-    : "";
+    : "<span class='tw-w-[0.1rem] tw-inline-block'></span>";
 
-  const metadataElement = !_.isEmpty(body.metadata)
+  const metadataElement = !isEmpty(body?.metadata)
     ? `
     <a class="metadata-link" data-toggle="collapse" href="#${metadataId}" aria-expanded="false">
         event body
     </a>
     <div class="collapse metadata" id="${metadataId}">
-        <pre class="pre-metadata"><code>${_.escape(metadata)}</code></pre>
+        <pre class="pre-metadata"><code>${escape(metadata)}</code></pre>
     </div> ` :
     ""
 
@@ -136,7 +137,7 @@ async function logTemplate(e) {
     <mark class="log-datestamp" data-timestamp="${
       body.timestamp
     }">${formattedDatetime}</mark> ${logLevelTemplate}
-    ${_.escape(body.event_message)}
+    ${escape(body.event_message)}
     ${metadataElement}
     ${via_rule
       ? `<span
