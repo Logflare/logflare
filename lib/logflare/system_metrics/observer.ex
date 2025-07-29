@@ -15,11 +15,11 @@ defmodule Logflare.SystemMetrics.Observer do
     :telemetry.execute([:logflare, :system, :observer, :memory], mem_metrics)
   end
 
-  defp get_memory() do
+  defp get_memory do
     :erlang.memory() |> Enum.map(fn {k, v} -> {k, div(v, 1024 * 1024)} end) |> Enum.into(%{})
   end
 
-  defp get_metrics() do
+  defp get_metrics do
     {{:input, input}, {:output, output}} = :erlang.statistics(:io)
 
     [

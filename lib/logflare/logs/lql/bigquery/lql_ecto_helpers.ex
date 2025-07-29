@@ -1,7 +1,10 @@
 defmodule Logflare.Lql.EctoHelpers do
   @moduledoc false
+
   import Ecto.Query
+
   alias Logflare.Lql.FilterRule
+
   @special_top_level ~w(_PARTITIONDATE _PARTITIONTIME event_message timestamp id)
 
   @spec apply_filter_rules_to_query(Ecto.Query.t(), [FilterRule.t()], keyword) :: Ecto.Query.t()
@@ -135,14 +138,12 @@ defmodule Logflare.Lql.EctoHelpers do
           )
       end
 
-    if is_negated?(modifiers) do
+    if negated?(modifiers) do
       dynamic([..., n1], not (^clause))
     else
       clause
     end
   end
-
-  def is_negated?(modifiers), do: Map.get(modifiers, :negate)
 
   @doc """
   Query filter where `timestamp` is older than a given interval.
@@ -205,4 +206,6 @@ defmodule Logflare.Lql.EctoHelpers do
         raise ArgumentError, "Invalid interval: #{unit}"
     end
   end
+
+  def negated?(modifiers), do: Map.get(modifiers, :negate)
 end

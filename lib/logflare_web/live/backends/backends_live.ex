@@ -189,7 +189,9 @@ defmodule LogflareWeb.BackendsLive do
 
   def handle_event("toggle_alert_form", _params, socket) do
     socket =
-      if !socket.assigns.show_alert_form? do
+      if socket.assigns.show_alert_form? do
+        assign(socket, :show_alert_form?, false)
+      else
         # Load alert options when form is toggled open
         alert_queries = Logflare.Alerting.list_alert_queries_by_user_id(socket.assigns.user.id)
         alert_options = Enum.map(alert_queries, fn alert -> {alert.name, alert.id} end)
@@ -197,8 +199,6 @@ defmodule LogflareWeb.BackendsLive do
         socket
         |> assign(:alert_options, alert_options)
         |> assign(:show_alert_form?, true)
-      else
-        assign(socket, :show_alert_form?, false)
       end
 
     {:noreply, socket}
