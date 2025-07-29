@@ -7,8 +7,6 @@ defmodule LogflareWeb.Source.SearchLV do
   require Logger
 
   import Logflare.Lql.Rules
-  import Logflare.Utils, only: [iso_timestamp: 1]
-  import LogflareWeb.Helpers.BqSchema
   import LogflareWeb.ModalLiveHelpers
   import LogflareWeb.SearchLive.TimezoneComponent
   import LogflareWeb.SearchLV.Utils

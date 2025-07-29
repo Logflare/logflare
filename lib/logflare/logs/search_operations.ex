@@ -14,6 +14,7 @@ defmodule Logflare.Logs.SearchOperations do
   alias Logflare.Logs.SearchOperations.Helpers, as: SearchOperationHelpers
   alias Logflare.Logs.SearchUtils
   alias Logflare.Lql
+  alias Logflare.Lql.BackendTransformer.BigQuery, as: BigQueryTransformer
   alias Logflare.Lql.Rules.ChartRule
   alias Logflare.Lql.Rules.FilterRule
   alias Logflare.SourceSchemas
@@ -221,12 +222,16 @@ defmodule Logflare.Logs.SearchOperations do
                 end
 
               query
-              |> Logflare.Lql.BackendTransformer.BigQuery.where_timestamp_ago(utc_today, value, unit)
+              |> BigQueryTransformer.where_timestamp_ago(
+                utc_today,
+                value,
+                unit
+              )
               |> where([t, ...], in_streaming_buffer())
 
             :timestamp ->
               query
-              |> Logflare.Lql.BackendTransformer.BigQuery.where_timestamp_ago(
+              |> BigQueryTransformer.where_timestamp_ago(
                 DateTime.utc_now(),
                 @tailing_timestamp_filter_minutes,
                 "MINUTE"
@@ -237,11 +242,11 @@ defmodule Logflare.Logs.SearchOperations do
           case so.partition_by do
             :timestamp ->
               query
-              |> Logflare.Lql.BackendTransformer.BigQuery.where_timestamp_ago(utc_today, 2, "DAY")
+              |> BigQueryTransformer.where_timestamp_ago(utc_today, 2, "DAY")
 
             :pseudo ->
               query
-              |> Logflare.Lql.BackendTransformer.BigQuery.where_timestamp_ago(utc_today, 2, "DAY")
+              |> BigQueryTransformer.where_timestamp_ago(utc_today, 2, "DAY")
               |> where(
                 partition_date() >= bq_date_sub(^utc_today, "2", "DAY") or in_streaming_buffer()
               )
@@ -307,7 +312,11 @@ defmodule Logflare.Logs.SearchOperations do
       if t? or Enum.empty?(ts_filters) do
         query =
           query
-          |> Logflare.Logflare.Lql.BackendTransformer.BigQuery.where_timestamp_ago(utc_now, tick_count, period)
+          |> BigQueryTransformer.where_timestamp_ago(
+            utc_now,
+            tick_count,
+            period
+          )
           |> limit([t], ^tick_count)
 
         case so.partition_by do

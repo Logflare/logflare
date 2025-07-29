@@ -139,6 +139,61 @@ defmodule Logflare.Lql.BackendTransformer.BigQuery do
     {:error, "Invalid SelectRule: #{inspect(select_rule)}"}
   end
 
+  @doc """
+  Query filter where `timestamp` is older than a given interval.
+
+  `unit` must be one of `MICROSECOND`, `MILLISECOND`, `SECOND`, `MINUTE`, `HOUR`, or `DAY`.
+  """
+  @spec where_timestamp_ago(Query.t(), DateTime.t(), integer(), String.t()) :: Query.t()
+  def where_timestamp_ago(query, datetime, count, unit) do
+    case unit do
+      "MICROSECOND" ->
+        query
+        |> where(
+          [t],
+          t.timestamp >= fragment("TIMESTAMP_SUB(?, INTERVAL ? MICROSECOND)", ^datetime, ^count)
+        )
+
+      "MILLISECOND" ->
+        query
+        |> where(
+          [t],
+          t.timestamp >= fragment("TIMESTAMP_SUB(?, INTERVAL ? MILLISECOND)", ^datetime, ^count)
+        )
+
+      "SECOND" ->
+        query
+        |> where(
+          [t],
+          t.timestamp >= fragment("TIMESTAMP_SUB(?, INTERVAL ? SECOND)", ^datetime, ^count)
+        )
+
+      "MINUTE" ->
+        query
+        |> where(
+          [t],
+          t.timestamp >= fragment("TIMESTAMP_SUB(?, INTERVAL ? MINUTE)", ^datetime, ^count)
+        )
+
+      "HOUR" ->
+        query
+        |> where(
+          [t],
+          t.timestamp >= fragment("TIMESTAMP_SUB(?, INTERVAL ? HOUR)", ^datetime, ^count)
+        )
+
+      "DAY" ->
+        query
+        |> where(
+          [t],
+          t.timestamp >= fragment("TIMESTAMP_SUB(?, INTERVAL ? DAY)", ^datetime, ^count)
+        )
+
+      _ ->
+        raise ArgumentError, "Invalid interval: #{unit}"
+    end
+  end
+
   @spec unnest_and_join_nested_columns(
           query :: Query.t(),
           join_type :: :inner | :left | :right | :full,
@@ -280,31 +335,5 @@ defmodule Logflare.Lql.BackendTransformer.BigQuery do
     value
     |> String.split(".")
     |> List.wrap()
-  end
-
-  @doc """
-  Query filter where `timestamp` is older than a given interval.
-
-  `unit` must be one of `MICROSECOND`, `MILLISECOND`, `SECOND`, `MINUTE`, `HOUR`, or `DAY`.
-
-  ## Examples
-
-      iex> from("logs") |> where_timestamp_ago(~U[2025-02-21 03:27:12Z], 1, "MINUTE")
-      #Ecto.Query<from l0 in "logs", where: l0.timestamp >= fragment("TIMESTAMP_SUB(?, INTERVAL ? MINUTE)", ^~U[2025-02-21 03:27:12Z], ^1)>
-
-      iex> from("logs") |> where_timestamp_ago(~U[2025-02-21 03:27:12Z], 1, "ILLEGAL_VALUE")
-      ** (ArgumentError) Invalid interval: ILLEGAL_VALUE
-  """
-  @spec where_timestamp_ago(Ecto.Query.t(), DateTime.t(), integer(), String.t()) :: Ecto.Query.t()
-  def where_timestamp_ago(query, datetime, count, unit) do
-    case unit do
-      "MICROSECOND" -> query |> where([t], t.timestamp >= fragment("TIMESTAMP_SUB(?, INTERVAL ? MICROSECOND)", ^datetime, ^count))
-      "MILLISECOND" -> query |> where([t], t.timestamp >= fragment("TIMESTAMP_SUB(?, INTERVAL ? MILLISECOND)", ^datetime, ^count))
-      "SECOND" -> query |> where([t], t.timestamp >= fragment("TIMESTAMP_SUB(?, INTERVAL ? SECOND)", ^datetime, ^count))
-      "MINUTE" -> query |> where([t], t.timestamp >= fragment("TIMESTAMP_SUB(?, INTERVAL ? MINUTE)", ^datetime, ^count))
-      "HOUR" -> query |> where([t], t.timestamp >= fragment("TIMESTAMP_SUB(?, INTERVAL ? HOUR)", ^datetime, ^count))
-      "DAY" -> query |> where([t], t.timestamp >= fragment("TIMESTAMP_SUB(?, INTERVAL ? DAY)", ^datetime, ^count))
-      _ -> raise ArgumentError, "Invalid interval: #{unit}"
-    end
   end
 end

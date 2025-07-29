@@ -3,10 +3,12 @@ defmodule Logflare.Lql.BackendTransformer.BigQueryTest do
 
   import Ecto.Query
 
+  alias Ecto.Query
+  alias Ecto.Query.BooleanExpr
   alias Logflare.Lql.BackendTransformer.BigQuery
-  alias Logflare.Lql.Rules.SelectRule
   alias Logflare.Lql.Rules.ChartRule
   alias Logflare.Lql.Rules.FilterRule
+  alias Logflare.Lql.Rules.SelectRule
 
   @bq_table_id "test-table"
 
@@ -69,7 +71,6 @@ defmodule Logflare.Lql.BackendTransformer.BigQueryTest do
 
       result = BigQuery.apply_filter_rules_to_query(query, [filter_rule])
 
-      # Should add a WHERE clause for the top-level field
       assert %Ecto.Query{wheres: [_where_clause]} = result
     end
 
@@ -85,7 +86,6 @@ defmodule Logflare.Lql.BackendTransformer.BigQueryTest do
 
       result = BigQuery.apply_filter_rules_to_query(query, [filter_rule])
 
-      # Should add both JOIN and WHERE clauses for nested fields
       assert %Ecto.Query{joins: [_join_clause], wheres: [_where_clause]} = result
     end
 
@@ -109,7 +109,6 @@ defmodule Logflare.Lql.BackendTransformer.BigQueryTest do
 
       result = BigQuery.apply_filter_rules_to_query(query, filter_rules)
 
-      # Should have both top-level WHERE and nested JOIN+WHERE
       assert %Ecto.Query{joins: [_join_clause], wheres: [_where1, _where2]} = result
     end
 
@@ -125,7 +124,6 @@ defmodule Logflare.Lql.BackendTransformer.BigQueryTest do
 
       result = BigQuery.apply_filter_rules_to_query(query, [filter_rule])
 
-      # Should add a BETWEEN clause
       assert %Ecto.Query{wheres: [_where_clause]} = result
     end
   end
@@ -141,7 +139,6 @@ defmodule Logflare.Lql.BackendTransformer.BigQueryTest do
       query = from(@bq_table_id, select: [:timestamp, :metadata])
       result = BigQuery.handle_nested_field_access(query, "metadata.status")
 
-      # Should add an INNER JOIN with UNNEST
       assert %Ecto.Query{joins: [join_clause]} = result
       assert join_clause.qual == :inner
     end
@@ -152,7 +149,6 @@ defmodule Logflare.Lql.BackendTransformer.BigQueryTest do
       result =
         BigQuery.handle_nested_field_access(query, "metadata.request.headers.authorization")
 
-      # Should add multiple INNER JOINs with UNNEST
       assert %Ecto.Query{joins: [_join1, _join2, _join3]} = result
     end
   end
@@ -331,7 +327,7 @@ defmodule Logflare.Lql.BackendTransformer.BigQueryTest do
 
       result = BigQuery.apply_select_rules_to_query(base_query, select_rules, [])
 
-      assert %Ecto.Query{} = result
+      assert %Query{} = result
       refute result == base_query
     end
 
@@ -339,7 +335,7 @@ defmodule Logflare.Lql.BackendTransformer.BigQueryTest do
       select_rules = [%SelectRule{path: "timestamp", wildcard: false}]
       result = BigQuery.apply_select_rules_to_query(base_query, select_rules)
 
-      assert %Ecto.Query{} = result
+      assert %Query{} = result
       refute result == base_query
     end
 
@@ -349,7 +345,7 @@ defmodule Logflare.Lql.BackendTransformer.BigQueryTest do
       select_rules = [%SelectRule{path: "user.profile.name", wildcard: false}]
       result = BigQuery.apply_select_rules_to_query(base_query, select_rules, [])
 
-      assert %Ecto.Query{} = result
+      assert %Query{} = result
       refute result == base_query
     end
 
@@ -359,6 +355,152 @@ defmodule Logflare.Lql.BackendTransformer.BigQueryTest do
       result = BigQuery.apply_select_rules_to_query(base_query, select_rules, [])
 
       assert result == base_query
+    end
+  end
+
+  describe "where_timestamp_ago/4" do
+    setup do
+      base_query = from("logs")
+      test_datetime = ~U[2025-02-21 03:27:12Z]
+      {:ok, base_query: base_query, datetime: test_datetime}
+    end
+
+    test "adds timestamp filter for MINUTE interval", %{
+      base_query: base_query,
+      datetime: datetime
+    } do
+      result = BigQuery.where_timestamp_ago(base_query, datetime, 5, "MINUTE")
+
+      assert %Query{wheres: [%BooleanExpr{expr: expr}]} = result
+      assert {:>=, _, [_, {:fragment, _, fragment_parts}]} = expr
+
+      fragment_string =
+        fragment_parts
+        |> Enum.filter(&match?({:raw, _}, &1))
+        |> Enum.map(fn {:raw, s} -> s end)
+        |> Enum.join()
+
+      assert fragment_string == "TIMESTAMP_SUB(, INTERVAL  MINUTE)"
+    end
+
+    test "adds timestamp filter for HOUR interval", %{base_query: base_query, datetime: datetime} do
+      result = BigQuery.where_timestamp_ago(base_query, datetime, 24, "HOUR")
+
+      assert %Query{wheres: [%BooleanExpr{expr: expr}]} = result
+      assert {:>=, _, [_, {:fragment, _, fragment_parts}]} = expr
+
+      fragment_string =
+        fragment_parts
+        |> Enum.filter(&match?({:raw, _}, &1))
+        |> Enum.map(fn {:raw, s} -> s end)
+        |> Enum.join()
+
+      assert fragment_string == "TIMESTAMP_SUB(, INTERVAL  HOUR)"
+    end
+
+    test "adds timestamp filter for DAY interval", %{base_query: base_query, datetime: datetime} do
+      result = BigQuery.where_timestamp_ago(base_query, datetime, 7, "DAY")
+
+      assert %Query{wheres: [%BooleanExpr{expr: expr}]} = result
+      assert {:>=, _, [_, {:fragment, _, fragment_parts}]} = expr
+
+      fragment_string =
+        fragment_parts
+        |> Enum.filter(&match?({:raw, _}, &1))
+        |> Enum.map(fn {:raw, s} -> s end)
+        |> Enum.join()
+
+      assert fragment_string == "TIMESTAMP_SUB(, INTERVAL  DAY)"
+    end
+
+    test "adds timestamp filter for SECOND interval", %{
+      base_query: base_query,
+      datetime: datetime
+    } do
+      result = BigQuery.where_timestamp_ago(base_query, datetime, 30, "SECOND")
+
+      assert %Query{wheres: [%BooleanExpr{expr: expr}]} = result
+      assert {:>=, _, [_, {:fragment, _, fragment_parts}]} = expr
+
+      fragment_string =
+        fragment_parts
+        |> Enum.filter(&match?({:raw, _}, &1))
+        |> Enum.map(fn {:raw, s} -> s end)
+        |> Enum.join()
+
+      assert fragment_string == "TIMESTAMP_SUB(, INTERVAL  SECOND)"
+    end
+
+    test "adds timestamp filter for MILLISECOND interval", %{
+      base_query: base_query,
+      datetime: datetime
+    } do
+      result = BigQuery.where_timestamp_ago(base_query, datetime, 1000, "MILLISECOND")
+
+      assert %Query{wheres: [%BooleanExpr{expr: expr}]} = result
+      assert {:>=, _, [_, {:fragment, _, fragment_parts}]} = expr
+
+      fragment_string =
+        fragment_parts
+        |> Enum.filter(&match?({:raw, _}, &1))
+        |> Enum.map(fn {:raw, s} -> s end)
+        |> Enum.join()
+
+      assert fragment_string == "TIMESTAMP_SUB(, INTERVAL  MILLISECOND)"
+    end
+
+    test "adds timestamp filter for MICROSECOND interval", %{
+      base_query: base_query,
+      datetime: datetime
+    } do
+      result = BigQuery.where_timestamp_ago(base_query, datetime, 1_000_000, "MICROSECOND")
+
+      assert %Query{wheres: [%BooleanExpr{expr: expr}]} = result
+      assert {:>=, _, [_, {:fragment, _, fragment_parts}]} = expr
+
+      fragment_string =
+        fragment_parts
+        |> Enum.filter(&match?({:raw, _}, &1))
+        |> Enum.map(fn {:raw, s} -> s end)
+        |> Enum.join()
+
+      assert fragment_string == "TIMESTAMP_SUB(, INTERVAL  MICROSECOND)"
+    end
+
+    test "raises ArgumentError for invalid interval", %{
+      base_query: base_query,
+      datetime: datetime
+    } do
+      assert_raise ArgumentError, "Invalid interval: INVALID", fn ->
+        BigQuery.where_timestamp_ago(base_query, datetime, 1, "INVALID")
+      end
+    end
+
+    test "composes with existing where clauses", %{datetime: datetime} do
+      assert %Query{} =
+               query =
+               from("logs")
+               |> where([t], t.level == "error")
+               |> BigQuery.where_timestamp_ago(datetime, 10, "MINUTE")
+               |> where([t], t.status == 500)
+
+      assert length(query.wheres) == 3
+    end
+
+    test "all intervals generate valid queries", %{base_query: base_query, datetime: datetime} do
+      intervals = [
+        {"MICROSECOND", 1_000_000},
+        {"MILLISECOND", 1000},
+        {"SECOND", 60},
+        {"MINUTE", 60},
+        {"HOUR", 24},
+        {"DAY", 7}
+      ]
+
+      for {unit, count} <- intervals do
+        assert %Query{wheres: [%BooleanExpr{} | _]} =
+                 BigQuery.where_timestamp_ago(base_query, datetime, count, unit)
+      end
     end
   end
 end

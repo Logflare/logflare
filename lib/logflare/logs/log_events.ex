@@ -1,11 +1,13 @@
 defmodule Logflare.Logs.LogEvents do
   @moduledoc false
-  alias Logflare.Google.BigQuery.GCPConfig
-  alias Logflare.Sources
-  alias Logflare.SourceSchemas
+
   alias Logflare.BqRepo
+  alias Logflare.Google.BigQuery.GCPConfig
   alias Logflare.Google.BigQuery.GenUtils
   alias Logflare.Lql
+  alias Logflare.Lql.Rules.FilterRule
+  alias Logflare.SourceSchemas
+  alias Logflare.Sources
 
   import Ecto.Query
 
@@ -21,8 +23,8 @@ defmodule Logflare.Logs.LogEvents do
     lql_rules =
       lql_rules
       |> Enum.filter(fn
-        %Lql.FilterRule{path: "timestamp"} -> false
-        %Lql.FilterRule{} -> true
+        %FilterRule{path: "timestamp"} -> false
+        %FilterRule{} -> true
         _ -> false
       end)
 
@@ -32,7 +34,7 @@ defmodule Logflare.Logs.LogEvents do
 
     query =
       from(bq_table_id)
-      |> Lql.EctoHelpers.apply_filter_rules_to_query(lql_rules)
+      |> Lql.apply_filter_rules(lql_rules)
       |> where([t], t.timestamp >= ^min)
       |> where([t], t.timestamp <= ^max)
       |> where([t], t.id == ^id)
