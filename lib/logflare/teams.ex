@@ -1,6 +1,8 @@
 defmodule Logflare.Teams do
   @moduledoc false
+
   import Ecto.Query, warn: false
+
   alias Logflare.Repo
   alias Logflare.Teams.Team
   alias Logflare.TeamUsers.TeamUser
@@ -30,17 +32,14 @@ defmodule Logflare.Teams do
 
   @doc "Preloads the `:user` assoc"
   @spec preload_user(nil | Team.t()) :: Team.t() | nil
-  def preload_user(nil), do: nil
   def preload_user(team), do: Repo.preload(team, :user)
 
   @doc "Preloads the `:team_users` assoc"
   @spec preload_team_users(nil | Team.t()) :: Team.t() | nil
-  def preload_team_users(nil), do: nil
   def preload_team_users(team), do: Repo.preload(team, :team_users)
 
   @doc "Preloads given fields of a Team"
   @spec preload_fields(nil | Team.t(), list(keyword() | atom())) :: Team.t() | nil
-  def preload_fields(nil, _fields), do: nil
   def preload_fields(team, fields), do: Repo.preload(team, fields)
 
   @doc "Creates a team from a user."
