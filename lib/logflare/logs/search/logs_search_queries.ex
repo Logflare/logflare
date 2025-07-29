@@ -31,35 +31,6 @@ defmodule Logflare.Logs.SearchQueries do
     })
   end
 
-  def select_timestamp(q, chart_period, timezone) do
-    q
-    |> select([t], %{
-      timestamp:
-        fragment(
-          """
-          (case
-          when ? = 'DAY'  then TIMESTAMP_TRUNC(?, DAY , ?)
-          when ? = 'HOUR'  then TIMESTAMP_TRUNC(?, HOUR , ?)
-          when ? = 'MINUTE'  then TIMESTAMP_TRUNC(?, MINUTE , ?)
-          when ? = 'SECOND'  then TIMESTAMP_TRUNC(?, SECOND , ?)
-          end) as timestamp
-          """,
-          ^String.upcase("#{chart_period}"),
-          t.timestamp,
-          ^timezone,
-          ^String.upcase("#{chart_period}"),
-          t.timestamp,
-          ^timezone,
-          ^String.upcase("#{chart_period}"),
-          t.timestamp,
-          ^timezone,
-          ^String.upcase("#{chart_period}"),
-          t.timestamp,
-          ^timezone
-        )
-    })
-  end
-
   @spec select_merge_agg_value(any, :avg | :count | :sum | :max, atom()) :: Ecto.Query.t()
   def select_merge_agg_value(query, :count, :timestamp) do
     select_merge(query, [t, ...], %{
