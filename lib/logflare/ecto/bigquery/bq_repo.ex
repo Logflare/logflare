@@ -44,6 +44,8 @@ defmodule Logflare.BqRepo do
         dryRun: false,
         jobTimeoutMs: @query_request_timeout,
         timeoutMs: @query_request_timeout,
+        # Not enforced for now.
+        # maximumBytesBilled: user.bigquery_processed_bytes_limit,
         labels: %{
           "managed_by" => "logflare",
           "logflare_plan" => GenUtils.format_key(plan),
