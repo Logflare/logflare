@@ -3,6 +3,8 @@ defmodule Logflare.SourceSchemas.Cache do
   alias Logflare.SourceSchemas
   alias Logflare.Utils
 
+  import Cachex.Spec
+
   def child_spec(_) do
     stats = Application.get_env(:logflare, :cache_stats, false)
 
@@ -13,6 +15,13 @@ defmodule Logflare.SourceSchemas.Cache do
          [
            __MODULE__,
            [
+             warmers: [
+               warmer(
+                 required: false,
+                 module: SourceSchemas.CacheWarmer,
+                 name: SourceSchemas.CacheWarmer
+               )
+             ],
              hooks:
                [
                  if(stats, do: Utils.cache_stats()),
@@ -26,7 +35,6 @@ defmodule Logflare.SourceSchemas.Cache do
     }
   end
 
-  def get_source_schema(id), do: apply_fun(__ENV__.function, [id])
   def get_source_schema_by(kv), do: apply_fun(__ENV__.function, [kv])
 
   defp apply_fun(arg1, arg2) do

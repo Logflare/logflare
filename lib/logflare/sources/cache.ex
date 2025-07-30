@@ -4,6 +4,8 @@ defmodule Logflare.Sources.Cache do
   alias Logflare.Sources
   alias Logflare.Utils
 
+  import Cachex.Spec
+
   def child_spec(_) do
     stats = Application.get_env(:logflare, :cache_stats, false)
 
@@ -14,6 +16,9 @@ defmodule Logflare.Sources.Cache do
          [
            __MODULE__,
            [
+             warmers: [
+               warmer(required: false, module: Sources.CacheWarmer, name: Sources.CacheWarmer)
+             ],
              hooks:
                [
                  if(stats, do: Utils.cache_stats()),

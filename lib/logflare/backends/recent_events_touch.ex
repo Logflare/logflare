@@ -17,10 +17,7 @@ defmodule Logflare.Backends.RecentEventsTouch do
   def start_link(args) do
     GenServer.start_link(__MODULE__, args,
       name: name(args[:source]),
-      hibernate_after: 5_000,
-      spawn_opt: [
-        fullsweep_after: 100
-      ]
+      hibernate_after: 5_000
     )
   end
 
@@ -48,8 +45,8 @@ defmodule Logflare.Backends.RecentEventsTouch do
   end
 
   defp random_interval_ms() do
-    min = :timer.minutes(1)
-    max = :timer.minutes(55)
+    min = :timer.minutes(30)
+    max = :timer.minutes(120)
     Enum.random(min..max)
   end
 

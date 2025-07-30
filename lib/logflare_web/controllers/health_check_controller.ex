@@ -4,7 +4,6 @@ defmodule LogflareWeb.HealthCheckController do
   alias Logflare.JSON
   alias Logflare.Cluster
   alias Logflare.SingleTenant
-  alias Logflare.Source
   alias Logflare.Sources
   alias Logflare.System
 
@@ -17,7 +16,6 @@ defmodule LogflareWeb.HealthCheckController do
     common_checks_ok? =
       [
         Sources.ingest_ets_tables_started?(),
-        Source.Supervisor.booting?() == false,
         # checks that db can execute query and that repo is connected and up
         repo_uptime > 0,
         Enum.all?(Map.values(caches), &(&1 == :ok)),

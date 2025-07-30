@@ -10,17 +10,14 @@ defmodule Logflare.Source.Supervisor do
   alias Logflare.Sources
   alias Logflare.Sources.Counters
   alias Logflare.Google.BigQuery
-  alias Logflare.Utils.Tasks
   alias Logflare.Source.V1SourceDynSup
   alias Logflare.Source.V1SourceSup
   alias Logflare.ContextCache
   alias Logflare.SourceSchemas
   alias Logflare.Backends
-
-  import Ecto.Query, only: [from: 2]
+  alias Logflare.Utils.Tasks
 
   require Logger
-  @agent __MODULE__.State
 
   # TODO: Move all manager fns into a manager server so errors in manager fns don't kill the whole supervision tree
 
@@ -30,40 +27,11 @@ defmodule Logflare.Source.Supervisor do
 
   def init(_args) do
     Process.flag(:trap_exit, true)
-    Agent.start_link(fn -> %{status: :boot} end, name: @agent)
 
-    {:ok, nil, {:continue, :boot}}
+    {:ok, nil}
   end
 
   ## Server
-
-  def handle_continue(:boot, state) do
-    # Starting sources by latest events first
-    # Starting sources only when we've seen an event in the last 6 hours
-    # Plugs.EnsureSourceStarted makes sure if a source isn't started, it gets started for ingest and the UI
-    query =
-      from(s in Source,
-        order_by: s.log_events_updated_at,
-        where: s.log_events_updated_at > ago(1, "hour"),
-        select: s,
-        limit: 5_000
-      )
-
-    Repo.all(query)
-    |> Enum.chunk_every(25)
-    |> Enum.each(fn chunk ->
-      for source <- chunk do
-        do_start_source_sup(source)
-      end
-
-      # BigQuery Rate limit is 100/second
-      # Also gives the database a break on boot
-      Process.sleep(250)
-    end)
-
-    Agent.update(@agent, &%{&1 | status: :ok})
-    {:noreply, state}
-  end
 
   def handle_cast({:create, source_token}, state) do
     source = Sources.Cache.get_by(token: source_token)
@@ -154,15 +122,6 @@ defmodule Logflare.Source.Supervisor do
   end
 
   ## Public Functions
-
-  @spec booting?() :: boolean()
-  def booting?() do
-    Agent.get(@agent, & &1)
-    |> case do
-      %{status: :ok} -> false
-      _ -> true
-    end
-  end
 
   def start_source(source_token) when is_atom(source_token) do
     # Calling this server doing boot times out due to dealing with bigquery in init_table()
