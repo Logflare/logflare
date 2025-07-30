@@ -76,7 +76,7 @@ defmodule LogflareGrpc.Interceptors.VerifyApiResourceAccess do
 
   defp fetch_source(user, source_token) do
     if Sources.valid_source_token_param?(source_token) do
-      case Sources.Cache.get_by_and_preload(user_id: user.id, token: source_token) do
+      case Sources.Cache.get_by_and_preload_rules(user_id: user.id, token: source_token) do
         %Source{} = source -> {:ok, source}
         _ -> {:error, GRPC.RPCError.exception(status: :permission_denied)}
       end
