@@ -4,9 +4,8 @@ filter_nil_kv_pairs = fn pairs when is_list(pairs) ->
   Enum.filter(pairs, fn {_k, v} -> v !== nil end)
 end
 
-detect_ip_version = fn host when is_binary(host) ->
+detect_ip_version = fn host ->
   host = String.to_charlist(host)
-
   cond do
     match?({:ok, _}, :inet6_tcp.getaddr(host)) -> {:ok, :inet6}
     match?({:ok, _}, :inet.gethostbyname(host)) -> {:ok, :inet}
@@ -14,11 +13,13 @@ detect_ip_version = fn host when is_binary(host) ->
   end
 end
 
-socket_options_for_host = fn host when is_binary(host) ->
-  case detect_ip_version.(host) do
-    {:ok, ip_version} -> [ip_version]
-    {:error, reason} -> raise "Failed to detect IP version: #{reason}"
-  end
+socket_options_for_host = fn 
+  host when is_binary(host) ->
+    case detect_ip_version.(host) do
+      {:ok, ip_version} -> [ip_version]
+      {:error, reason} -> raise "Failed to detect IP version: #{reason}"
+    end
+  _host -> []
 end
 
 config :logflare,
