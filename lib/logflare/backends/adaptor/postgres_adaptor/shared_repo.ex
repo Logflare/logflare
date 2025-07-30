@@ -45,7 +45,11 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor.SharedRepo do
         opts ++ fields
       end
 
-    opts = opts ++ [socket_options: config[:socket_options]]
+    if Logflare.SingleTenant.single_tenant?() do
+      opts = opts ++ [socket_options: config[:socket_options]]
+    else
+      opts
+    end
 
     with {:error, {:already_started, pid}} <- Supervisor.start_child({__MODULE__, opts}) do
       {:ok, pid}
