@@ -16,7 +16,11 @@ defmodule Logflare.SourceSchemas.Cache do
            __MODULE__,
            [
              warmers: [
-               warmer(required: false, module: SourceSchemas.CacheWarmer, name: SourceSchemas.CacheWarmer)
+               warmer(
+                 required: false,
+                 module: SourceSchemas.CacheWarmer,
+                 name: SourceSchemas.CacheWarmer
+               )
              ],
              hooks:
                [

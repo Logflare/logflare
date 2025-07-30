@@ -1,5 +1,4 @@
 defmodule Logflare.Sources.CacheWarmer do
-  alias Logflare.Sources
   alias Logflare.Repo
   alias Logflare.Source
   import Ecto.Query

@@ -16,9 +16,9 @@ defmodule Logflare.Sources.Cache do
          [
            __MODULE__,
            [
-            warmers: [
-              warmer(required: false, module: Sources.CacheWarmer, name: Sources.CacheWarmer)
-            ],
+             warmers: [
+               warmer(required: false, module: Sources.CacheWarmer, name: Sources.CacheWarmer)
+             ],
              hooks:
                [
                  if(stats, do: Utils.cache_stats()),
