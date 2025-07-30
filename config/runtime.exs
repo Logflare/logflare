@@ -256,13 +256,14 @@ if config_env() != :test do
   config :grpc, port: System.get_env("LOGFLARE_GRPC_PORT", "50051") |> String.to_integer()
 end
 
-socket_options_for_url = fn url when is_binary(url) ->
-  case URI.parse(url) do
-    %URI{host: host} -> socket_options_for_host.(host)
-    _ -> raise "Failed to parse URL: #{inspect(url)}"
-  end
+socket_options_for_url = fn 
+  url when is_binary(url) ->
+    case URI.parse(url) do
+      %URI{host: host} -> socket_options_for_host.(host)
+      _ -> raise "Failed to parse URL: #{inspect(url)}"
+    end
+  _url -> nil
 end
-
 cond do
   System.get_env("LOGFLARE_SINGLE_TENANT", "false") == "true" &&
       not is_nil(System.get_env("POSTGRES_BACKEND_URL")) ->
