@@ -17,10 +17,7 @@ defmodule Logflare.Backends.RecentEventsTouch do
   def start_link(args) do
     GenServer.start_link(__MODULE__, args,
       name: name(args[:source]),
-      hibernate_after: 5_000,
-      spawn_opt: [
-        fullsweep_after: 100
-      ]
+      hibernate_after: 5_000
     )
   end
 
