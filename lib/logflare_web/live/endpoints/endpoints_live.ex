@@ -185,6 +185,33 @@ defmodule LogflareWeb.EndpointsLive do
     {:noreply, put_flash(socket, :info, message)}
   end
 
+  def handle_info({:query_string_updated, query_string}, socket) do
+    changeset =
+      Endpoints.change_query(%Endpoints.Query{
+        query: query_string
+      })
+
+    parsed_result =
+      Endpoints.parse_query_string(
+        :bq_sql,
+        query_string,
+        socket.assigns.endpoints,
+        socket.assigns.alerts
+      )
+
+    socket =
+      case parsed_result do
+        {:ok, %{parameters: parameters, expanded_query: expanded_query}} ->
+          socket
+          |> assign_updated_params_form(parameters, expanded_query)
+
+        _error ->
+          socket
+      end
+
+    {:noreply, socket |> assign(endpoint_changeset: changeset)}
+  end
+
   defp assign_updated_params_form(socket, parameters, query_string) do
     params = for(k <- parameters, do: {k, nil}, into: %{})
     form = to_form(%{"query" => query_string, "params" => params}, as: "run")
