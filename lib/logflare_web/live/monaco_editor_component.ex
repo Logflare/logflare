@@ -10,6 +10,7 @@ defmodule LogflareWeb.MonacoEditorComponent do
     - `alerts`: A list of alerts, used for validating LQL queries and completions.
     - `sources`: A list of sources, used for completions.
     - `id`: A unique identifier for the editor.
+    - `on_query_change`: Optional function to be called when the query changes.
 
   ## Example
 
@@ -19,11 +20,12 @@ defmodule LogflareWeb.MonacoEditorComponent do
           endpoints={@endpoints}
           alerts={@alerts}
           sources={@sources}
+          on_query_change={fn query_string -> send(self(), {:query_string_updated, query_string}) end}
           />
   """
 
   def mount(socket) do
-    {:ok, assign(socket, parse_error_message: nil)}
+    {:ok, assign(socket, parse_error_message: nil, on_query_change: nil)}
   end
 
   def update(assigns, socket) do
@@ -97,6 +99,10 @@ defmodule LogflareWeb.MonacoEditorComponent do
 
   def handle_event("parse-query", %{"value" => query}, socket) do
     %{endpoints: endpoints, alerts: alerts} = socket.assigns
+
+    if is_function(socket.assigns.on_query_change) do
+      socket.assigns.on_query_change.(query)
+    end
 
     field = socket.assigns.field |> Map.put(:value, query)
 

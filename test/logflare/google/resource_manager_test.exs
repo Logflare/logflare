@@ -132,7 +132,7 @@ defmodule Logflare.Google.CloudResourceManagerTest do
     end
   end
 
-  defp setup_test_state() do
+  defp setup_test_state do
     stripe_id = "testing"
     insert(:plan, name: "Free")
     insert(:plan, name: "Legacy")

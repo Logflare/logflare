@@ -33,7 +33,7 @@ defmodule LogflareWeb.JsonParser do
     try do
       apply(module, fun, [body | args])
     rescue
-      e -> raise Plug.Parsers.ParseError, exception: e
+      e -> reraise Plug.Parsers.ParseError, exception: e
     else
       terms when is_map(terms) and not nest_all ->
         {:ok, terms, conn}

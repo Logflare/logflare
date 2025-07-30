@@ -244,7 +244,7 @@ defmodule Logflare.Source.BigQuery.Pipeline do
     # random sample if local ingest rate is above a certain level
     probability =
       case PubSubRates.Cache.get_local_rates(source.token) do
-        %{average_rate: avg} when avg > 10000 -> 0.0001
+        %{average_rate: avg} when avg > 10_000 -> 0.0001
         %{average_rate: avg} when avg > 1000 -> 0.001
         %{average_rate: avg} when avg > 100 -> 0.01
         %{average_rate: avg} when avg > 10 -> 0.1

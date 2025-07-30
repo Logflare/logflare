@@ -1,10 +1,12 @@
 defmodule LogflareWeb.LqlHelpers do
   @moduledoc false
   use LogflareWeb, :view
+
   import LogflareWeb.ModalLiveHelpers
+
   alias LogflareWeb.SharedView
 
-  def lql_help_modal_link() do
+  def lql_help_modal_link do
     live_modal_show_link(
       template: "lql_help.html",
       view: SharedView,
@@ -19,7 +21,7 @@ defmodule LogflareWeb.LqlHelpers do
     end
   end
 
-  def bq_source_schema_modal_link() do
+  def bq_source_schema_modal_link do
     live_modal_show_link(
       component: LogflareWeb.SourceBqSchemaComponent,
       modal_id: :bq_schema_link,

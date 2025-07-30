@@ -72,6 +72,6 @@ defmodule LogflareWeb.Api.AccessTokenController do
   end
 
   defp maybe_redact_token(%{scopes: scopes} = t) do
-    if "public" not in String.split(scopes), do: %{t | token: nil}, else: t
+    if "public" in String.split(scopes), do: t, else: %{t | token: nil}
   end
 end

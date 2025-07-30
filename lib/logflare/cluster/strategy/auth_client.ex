@@ -19,7 +19,7 @@ defmodule Logflare.Cluster.Strategy.GoogleComputeEngine.AuthClient do
 
   adapter(Tesla.Adapter.Mint, timeout: 60_000, mode: :passive)
 
-  def metadata() do
+  def metadata do
     get("/instance/service-accounts/default/token", headers: [{"Metadata-Flavor", "Google"}])
   end
 end

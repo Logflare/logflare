@@ -1,9 +1,11 @@
 defmodule Logflare.SystemMetrics.Cluster do
   @moduledoc false
+
   require Logger
+
   alias Logflare.Cluster.Utils
 
-  def dispatch_stats() do
+  def dispatch_stats do
     # emit a telemetry event when called
     min = Utils.min_cluster_size()
     actual = Utils.actual_cluster_size()
@@ -17,7 +19,7 @@ defmodule Logflare.SystemMetrics.Cluster do
     :telemetry.execute([:logflare, :system, :cluster_size], %{count: actual}, %{min: min})
   end
 
-  def finch() do
+  def finch do
     # TODO(ziinc): add in datadog pools
     for url <- [
           "https://bigquery.googleapis.com",

@@ -3,10 +3,13 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
   ClickHouse backend adaptor that relies on the `:ch` library.
   """
 
-  import Logflare.Utils.Guards
+  @behaviour Logflare.Backends.Adaptor
 
   use Supervisor
   use TypedStruct
+
+  import Logflare.Utils.Guards
+
   require Logger
 
   alias __MODULE__.ConnectionManager
@@ -19,6 +22,9 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
   alias Logflare.Backends.SourceRegistry
   alias Logflare.LogEvent
   alias Logflare.Source
+
+  @ingest_timeout 15_000
+  @query_timeout 60_000
 
   typedstruct do
     field(:config, %{
@@ -38,17 +44,12 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
     field(:pipeline_name, tuple())
   end
 
-  @behaviour Logflare.Backends.Adaptor
+  @type source_backend_tuple :: {Source.t(), Backend.t()}
+  @type via_tuple :: {:via, Registry, {module(), {pos_integer(), {module(), pos_integer()}}}}
 
   defguardp is_via_tuple(value)
             when is_tuple(value) and elem(value, 0) == :via and elem(value, 1) == Registry and
                    is_tuple(elem(value, 2))
-
-  @type source_backend_tuple :: {Source.t(), Backend.t()}
-  @type via_tuple :: {:via, Registry, {module(), {pos_integer(), {module(), pos_integer()}}}}
-
-  @ingest_timeout 15_000
-  @query_timeout 60_000
 
   @doc false
   def child_spec(arg) do
@@ -503,7 +504,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
   @doc false
   @impl Supervisor
   def init({%Source{} = source, %Backend{config: %{} = config} = backend} = args) do
-    default_pool_size = Application.fetch_env!(:logflare, :clickhouse_backend_adapter)[:pool_size]
+    default_pool_size = Application.fetch_env!(:logflare, :clickhouse_backend_adaptor)[:pool_size]
     ingest_pool_size = Map.get(config, :pool_size, default_pool_size)
 
     # set the query pool size to half of the write pool size, if larger than the default

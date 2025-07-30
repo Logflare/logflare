@@ -159,3 +159,12 @@ information that we want to log but don't necessarily want searchable or parsed
 for schema updating.
 
 For example, do `Logger.error("Some error", error_string: inspect(params))`
+
+
+## Deprecations
+
+### users.bigquery_udfs_hash
+
+The `bigquery_udfs_hash` column on the `users` table is deprecated. It is no
+longer referenced in the `Logflare.User` schema and will be dropped from the `users`
+table in a future release

@@ -2,8 +2,10 @@ defmodule LogflareWeb.Plugs.RateLimiter do
   @moduledoc """
   A plug that allows or denies API action based on the API request rate rules for user/source
   """
-  alias Logflare.{Users}
+
   import Plug.Conn
+
+  alias Logflare.Users
 
   def init(_opts), do: nil
 

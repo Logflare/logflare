@@ -35,6 +35,22 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.QueryTemplatesTest do
       assert statement =~ "TTL toDateTime(timestamp) + INTERVAL 3 DAY"
     end
 
+    test "Defaults to using the `MergeTree` engine" do
+      statement = QueryTemplates.create_log_ingest_table_statement("foo")
+
+      assert statement =~ "ENGINE = MergeTree"
+    end
+
+    test "Allows the engine to be adjusted via opts" do
+      table_name = "foo"
+      custom_engine = "ReplacingMergeTree"
+
+      statement =
+        QueryTemplates.create_log_ingest_table_statement(table_name, engine: custom_engine)
+
+      assert statement =~ "ENGINE = #{custom_engine}"
+    end
+
     test "Allows the TTL to be adjusted via opts" do
       table_name = "foo"
       statement = QueryTemplates.create_log_ingest_table_statement(table_name, ttl_days: 5)
@@ -84,6 +100,21 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.QueryTemplatesTest do
         QueryTemplates.create_key_type_counts_table_statement(database: "foo", table: "bar")
 
       assert statement =~ "CREATE TABLE IF NOT EXISTS foo.bar"
+    end
+
+    test "Defaults to using the `MergeTree` engine" do
+      statement = QueryTemplates.create_key_type_counts_table_statement()
+
+      assert statement =~ "ENGINE = MergeTree"
+    end
+
+    test "Allows the engine to be adjusted via opts" do
+      custom_engine = "ReplacingMergeTree"
+
+      statement =
+        QueryTemplates.create_key_type_counts_table_statement(engine: custom_engine)
+
+      assert statement =~ "ENGINE = #{custom_engine}"
     end
   end
 
@@ -159,6 +190,21 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.QueryTemplatesTest do
                "CREATE MATERIALIZED VIEW IF NOT EXISTS #{database}.mv_key_type_counts_per_min TO #{database}.#{key_table}"
 
       assert statement =~ "FROM #{database}.#{source_table}"
+    end
+  end
+
+  describe "engine configuration" do
+    test "query template defaults to `MergeTree` when no engine option provided" do
+      statement = QueryTemplates.create_key_type_counts_table_statement()
+
+      assert statement =~ "ENGINE = MergeTree"
+    end
+
+    test "can override engine with explicit option" do
+      custom_engine = "ReplacingMergeTree"
+      statement = QueryTemplates.create_key_type_counts_table_statement(engine: custom_engine)
+
+      assert statement =~ "ENGINE = #{custom_engine}"
     end
   end
 end

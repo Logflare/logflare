@@ -23,9 +23,12 @@ config :logflare, Logflare.Alerting, min_cluster_size: 1, enabled: true
 config :logflare, Logflare.Google, dataset_id_append: "_default"
 
 config :logflare, :postgres_backend_adapter, pool_size: 3
-config :logflare, :clickhouse_backend_adapter, pool_size: 3
 
 config :logflare, :bigquery_backend_adaptor, managed_service_account_pool_size: 0
+
+config :logflare, :clickhouse_backend_adaptor,
+  engine: "MergeTree",
+  pool_size: 3
 
 config :logflare, Logflare.Source.BigQuery.Schema, updates_per_minute: 6
 
