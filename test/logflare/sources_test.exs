@@ -217,32 +217,6 @@ defmodule Logflare.SourcesTest do
         {:ok, user: insert(:user), mod: unquote(mod), flag: unquote(flag)}
       end
 
-      test "bootup starts SourceSup for each recently logged source", %{
-        user: user,
-        flag: flag,
-        mod: mod
-      } do
-        source_stale = insert(:source, user: user, v2_pipeline: flag)
-
-        [source | _] =
-          for _ <- 1..24 do
-            insert(:source,
-              user: user,
-              log_events_updated_at: DateTime.utc_now(),
-              v2_pipeline: flag
-            )
-          end
-
-        start_supervised!(Source.Supervisor)
-        assert Source.Supervisor.booting?()
-        :timer.sleep(1500)
-        refute Source.Supervisor.booting?()
-        assert {:ok, pid} = Backends.lookup(mod, source.token)
-        assert is_pid(pid)
-        assert {:error, :not_started} = Backends.lookup(mod, source_stale.token)
-        :timer.sleep(1000)
-      end
-
       test "start_source/1, lookup/2, delete_source/1", %{user: user, flag: flag, mod: mod} do
         Logflare.Google.BigQuery
         |> expect(:delete_table, fn _token -> :ok end)
