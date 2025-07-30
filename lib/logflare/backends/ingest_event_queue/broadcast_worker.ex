@@ -39,7 +39,11 @@ defmodule Logflare.Backends.IngestEventQueue.BroadcastWorker do
       @ets_table_mapper
     )
 
-    Process.send_after(self(), :global_broadcast, state.interval * 2)
+    # scale broadcasting interval to cluster size
+    cluster_size = Logflare.Cluster.Utils.actual_cluster_size()
+    broadcast_interval = max(state.interval, round(:rand.uniform(cluster_size * 100)))
+
+    Process.send_after(self(), :global_broadcast, broadcast_interval)
     {:noreply, state}
   end
 
