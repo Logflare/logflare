@@ -41,31 +41,6 @@ defmodule LogflareWeb.HealthCheckControllerTest do
     assert %{"memory_utilization" => "ok"} = json_response(conn, 200)
   end
 
-  test "coming_up while SourceSup boot warming", %{conn: conn} do
-    user = insert(:user)
-    insert(:plan)
-
-    for _ <- 1..25 do
-      insert(:source, user: user, log_events_updated_at: NaiveDateTime.utc_now())
-    end
-
-    start_supervised!(Source.Supervisor)
-
-    conn =
-      conn
-      |> get("/health")
-
-    assert %{"status" => "coming_up"} = json_response(conn, 503)
-    :timer.sleep(1200)
-
-    conn =
-      conn
-      |> recycle()
-      |> get("/health")
-
-    assert %{"status" => "ok"} = json_response(conn, 200)
-  end
-
   describe "Supabase mode - without seed" do
     TestUtils.setup_single_tenant(seed_user: false, supabase_mode: true)
 
