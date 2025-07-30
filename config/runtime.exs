@@ -6,6 +6,7 @@ end
 
 detect_ip_version = fn host ->
   host = String.to_charlist(host)
+
   cond do
     match?({:ok, _}, :inet6_tcp.getaddr(host)) -> {:ok, :inet6}
     match?({:ok, _}, :inet.gethostbyname(host)) -> {:ok, :inet}
@@ -13,13 +14,15 @@ detect_ip_version = fn host ->
   end
 end
 
-socket_options_for_host = fn 
+socket_options_for_host = fn
   host when is_binary(host) ->
     case detect_ip_version.(host) do
       {:ok, ip_version} -> [ip_version]
       {:error, reason} -> raise "Failed to detect IP version: #{reason}"
     end
-  _host -> []
+
+  _host ->
+    []
 end
 
 logflare_metadata =
@@ -32,7 +35,6 @@ logflare_health =
       System.get_env("LOGFLARE_HEALTH_MAX_MEMORY_UTILIZATION", "0.95") |> String.to_float()
   ]
   |> filter_nil_kv_pairs.()
-  
 
 config :logflare,
        Logflare.PubSub,
@@ -92,11 +94,14 @@ config :logflare,
              port: System.get_env("PHX_HTTP_PORT"),
              ip:
                case System.get_env("PHX_HTTP_IP") do
-                 nil -> nil
-                 value -> case :inet.parse_address(to_charlist(value)) do
-                   {:ok, ip} -> ip
-                   {:error, _} -> raise "Failed to parse IP address: #{value}"
-                 end
+                 nil ->
+                   nil
+
+                 value ->
+                   case :inet.parse_address(to_charlist(value)) do
+                     {:ok, ip} -> ip
+                     {:error, _} -> raise "Failed to parse IP address: #{value}"
+                   end
                end
            ),
          url:
@@ -256,14 +261,17 @@ if config_env() != :test do
   config :grpc, port: System.get_env("LOGFLARE_GRPC_PORT", "50051") |> String.to_integer()
 end
 
-socket_options_for_url = fn 
+socket_options_for_url = fn
   url when is_binary(url) ->
     case URI.parse(url) do
       %URI{host: host} -> socket_options_for_host.(host)
       _ -> raise "Failed to parse URL: #{inspect(url)}"
     end
-  _url -> nil
+
+  _url ->
+    nil
 end
+
 cond do
   System.get_env("LOGFLARE_SINGLE_TENANT", "false") == "true" &&
       not is_nil(System.get_env("POSTGRES_BACKEND_URL")) ->
