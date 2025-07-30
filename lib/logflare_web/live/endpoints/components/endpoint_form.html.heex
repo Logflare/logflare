@@ -41,7 +41,19 @@
           Declare parameters using <code>@parameter_name</code> and pass it to the endpoint via query parameters <code>?parameter_name=some-value</code>
         </p>
 
-        <.live_component module={LogflareWeb.MonacoEditorComponent} id="endpoint_query_editor" field={f[:query]} endpoints={@endpoints} alerts={@alerts} sources={@sources} />
+        <.live_component
+          module={LogflareWeb.MonacoEditorComponent}
+          id="endpoint_query_editor"
+          field={f[:query]}
+          endpoints={@endpoints}
+          alerts={@alerts}
+          sources={@sources}
+          on_query_change={
+            fn query_string ->
+              send(self(), {:query_string_updated, query_string})
+            end
+          }
+        />
       </div>
 
       <div class="form-group">
