@@ -26,7 +26,6 @@ defmodule Logflare.SourceSchemas.Cache do
     }
   end
 
-  def get_source_schema(id), do: apply_fun(__ENV__.function, [id])
   def get_source_schema_by(kv), do: apply_fun(__ENV__.function, [kv])
 
   defp apply_fun(arg1, arg2) do
