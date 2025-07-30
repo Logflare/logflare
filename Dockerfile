@@ -13,14 +13,6 @@ ENV MIX_ENV prod
 
 WORKDIR /app
 
-COPY config/config.exs config/
-COPY config/prod.exs config/
-COPY config/runtime.exs config/
-COPY . ./
-COPY ./VERSION mix.exs mix.lock ./
-COPY assets/package.json assets/package-lock.json assets/
-
-
 # install build dependencies
 RUN apt-get update -y && apt-get install -y curl bash build-essential git gcc make && \
     # install nodejs
@@ -29,11 +21,18 @@ RUN apt-get update -y && apt-get install -y curl bash build-essential git gcc ma
     # install rust
     curl https://sh.rustup.rs -sSf | bash -s -- -y && \
     # cleanup
-    apt-get clean && rm -f /var/lib/apt/lists/*_* && \
-    # app dependencies
-    mix do local.rebar --force, local.hex --force, deps.get, deps.compile && \
-    npm --prefix assets ci
+    apt-get clean && rm -f /var/lib/apt/lists/*_*
+# app dependencies
+COPY ./VERSION mix.exs mix.lock ./
+RUN mix do local.rebar --force, local.hex --force, deps.get, deps.compile
 
+COPY assets/package.json assets/package-lock.json assets/
+RUN npm --prefix assets ci
+
+COPY config/config.exs config/
+COPY config/prod.exs config/
+COPY config/runtime.exs config/
+COPY . ./
 
 # rust bin path
 ENV PATH="/root/.cargo/bin:${PATH}"
