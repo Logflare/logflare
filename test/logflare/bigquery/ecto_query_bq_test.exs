@@ -7,8 +7,8 @@ defmodule Logflare.BigQuery.EctoQueryBQTest do
   alias GoogleApi.BigQuery.V2.Model.QueryParameterType
   alias GoogleApi.BigQuery.V2.Model.QueryParameterValue
   alias Logflare.EctoQueryBQ
-  alias Logflare.Lql.Rules.FilterRule
   alias Logflare.Lql
+  alias Logflare.Lql.Rules.FilterRule
 
   @bq_table_id "some-table"
 
@@ -190,7 +190,7 @@ defmodule Logflare.BigQuery.EctoQueryBQTest do
 
       {sql, params} = EctoQueryBQ.SQL.to_sql_params(query)
       assert sql =~ "IS NULL"
-      assert length(params) == 0
+      assert params == []
     end
 
     test "string_contains operator" do
