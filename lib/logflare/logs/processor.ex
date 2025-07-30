@@ -18,7 +18,8 @@ defmodule Logflare.Logs.Processor do
   @doc """
   Process `data` using `processor` to translate from incoming format to storage format.
   """
-  @spec ingest([map()], module(), Logflare.Source.t()) :: :ok | {:error, term()}
+  @spec ingest([map()], module(), Logflare.Source.t()) ::
+          :ok | {:ok, count :: pos_integer()} | {:error, term()}
   def ingest(data, processor, %Logflare.Source{} = source)
       when is_list(data) and is_atom(processor) do
     metadata = %{
@@ -52,8 +53,7 @@ defmodule Logflare.Logs.Processor do
   end
 
   defp store(%Logflare.Source{v2_pipeline: true} = source, batch) do
-    Backends.start_source_sup(source)
-
+    Backends.ensure_source_sup_started(source)
     Backends.ingest_logs(batch, source)
   end
 

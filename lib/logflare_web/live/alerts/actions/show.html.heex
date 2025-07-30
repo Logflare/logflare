@@ -38,25 +38,61 @@
       <li class="list-group-item">
         <span><strong>cron:</strong> <%= @alert.cron %></span>
       </li>
+    </ul>
+
+    <h3>Backends</h3>
+
+    <div class="tw-flex tw-gap-3 tw-items-center">
+      <button phx-click="toggle-add-backend" class="btn btn-outline-primary btn-sm">
+        <%= if @show_add_backend_form do %>
+          Cancel
+        <% else %>
+          Add Backend
+        <% end %>
+      </button>
+    </div>
+    <%= if @show_add_backend_form do %>
+      <div class="tw-flex tw-gap-3 tw-items-center tw-mt-3 tw-w-full">
+        <span><strong>Add Backend:</strong></span>
+        <.form :let={f} id="backend" for={%{}} as={:backend} action="#" phx-submit="add-backend" class="tw-flex tw-gap-2 tw-items-end tw-w-full">
+          <%= select(f, :backend_id, @backend_options, class: "form-control form-control-sm", prompt: [key: "Choose a backend"]) %>
+          <%= submit("Add backend", class: "btn btn-primary btn-sm") %>
+        </.form>
+      </div>
+    <% end %>
+
+    <ul class="list-group tw-text-sm">
       <li class="list-group-item">
         <span>
           <strong>slack:</strong>
           <%= if @alert.slack_hook_url do %>
             <div class="tw-flex tw-gap-3 tw-align-items-center">
               <span>Connected</span>
-              <button phx-click="remove-slack" class="btn btn-outline-danger btn-sm">
+              <button phx-click="remove-slack" class="btn btn-outline-danger btn-xs tw-text-xs p-1 ml-5">
                 Remove Slack
               </button>
             </div>
           <% else %>
             <a href={"https://slack.com/oauth/v2/authorize?client_id=#{Application.get_env(:ueberauth, Ueberauth.Strategy.SlackV2.OAuth)[:client_id]}&scope=incoming-webhook&install_redirect=update-to-granular-scopes&redirect_uri=#{url(~p"/auth/slack/callback")}&state=#{Jason.encode!(%{"action" => "save_hook_url", "alert_query_id" => @alert.id})}"}>
-              <img alt="Add to Slack" height="40" width="139" src="https://platform.slack-edge.com/img/add_to_slack.png" srcset="https://platform.slack-edge.com/img/add_to_slack.png 1x, https://platform.slack-edge.com/img/add_to_slack@2x.png 2x" />
+              <img alt="Add to Slack" height="30" width="100" class="ml-4" src="https://platform.slack-edge.com/img/add_to_slack.png" srcset="https://platform.slack-edge.com/img/add_to_slack.png 1x, https://platform.slack-edge.com/img/add_to_slack@2x.png 2x;" />
             </a>
           <% end %>
         </span>
       </li>
       <li class="list-group-item">
         <span><strong>webhook:</strong> <%= @alert.webhook_notification_url %></span>
+      </li>
+
+      <li :for={backend <- @alert.backends} :if={@alert} class="list-group-item">
+        <div class="tw-flex tw-items-center tw-gap-2">
+          <span class="badge badge-pill badge-secondary"><%= backend.type %></span>
+          <.link patch={~p"/backends/#{backend.id}"} class="tw-no-underline ml-2">
+            <span><strong><%= backend.name %></strong></span>
+          </.link>
+          <button phx-click="remove-backend" phx-value-backend_id={backend.id} class="btn btn-outline-danger btn-xs tw-text-xs p-1 ml-5">
+            Remove backend
+          </button>
+        </div>
       </li>
     </ul>
   </div>

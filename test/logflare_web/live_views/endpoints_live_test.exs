@@ -92,7 +92,7 @@ defmodule LogflareWeb.EndpointsLiveTest do
 
   test "index - show cache count", %{conn: conn, user: user} do
     endpoint = insert(:endpoint, user: user)
-    _pid = start_supervised!({Logflare.Endpoints.Cache, {endpoint, %{}}})
+    _pid = start_supervised!({Logflare.Endpoints.ResultsCache, {endpoint, %{}}})
 
     {:ok, view, _html} = live(conn, "/endpoints")
 
@@ -127,26 +127,27 @@ defmodule LogflareWeb.EndpointsLiveTest do
     test "new endpoint", %{conn: conn} do
       {:ok, view, _html} = live(conn, "/endpoints/new")
 
-      # Error
+      valid_query = "select current_timestamp() as my_time"
+      invalid_query = "bad_query"
+
+      # triggering event handler directly since Monaco does this via JavaScript
       assert view
-             |> element("#endpoint-query")
-             |> render_change(%{
-               endpoint: %{
-                 query: "select current_datetime() order-by invalid"
-               }
-             }) =~ "parser error"
+             |> with_target("#endpoint_query_editor")
+             |> render_hook("parse-query", %{"value" => invalid_query}) =~ "SQL Parse error!"
 
-      # no error
       refute view
-             |> element("#endpoint-query")
-             |> render_change(%{
-               endpoint: %{
-                 query: "select @my_param as valid"
-               }
-             }) =~ "parser error"
+             |> with_target("#endpoint_query_editor")
+             |> render_hook("parse-query", %{"value" => valid_query}) =~ "SQL Parse error!"
 
-      # detects params correctly
-      assert has_element?(view, "form label", "my_param")
+      # Run form is updated with query and declared params
+      assert view
+             |> with_target("#endpoint_query_editor")
+             |> render_hook("parse-query", %{"value" => valid_query <> " where id = @id"})
+
+      assert view |> element(~s|input#run_query[value="#{valid_query}]"|)
+
+      assert view |> render =~
+               ~s|<input id="run_params_0_id" name="run[params][id]" type="text" value=""/>|
 
       # saves the change
       assert view
@@ -167,27 +168,6 @@ defmodule LogflareWeb.EndpointsLiveTest do
       endpoint = insert(:endpoint, user: user, query: "select @other as initial")
       {:ok, view, _html} = live(conn, "/endpoints/#{endpoint.id}/edit")
 
-      # Error
-      assert view
-             |> element("*#endpoint-query")
-             |> render_change(%{
-               endpoint: %{
-                 query: "select current_datetime() order-by invalid"
-               }
-             }) =~ "parser error"
-
-      # no error
-      refute view
-             |> element("*#endpoint-query")
-             |> render_change(%{
-               endpoint: %{
-                 query: "select @my_param as valid"
-               }
-             }) =~ "parser error"
-
-      # detects params correctly
-      assert has_element?(view, "form label", "my_param")
-
       # saves the change
       assert view
              |> element("form#endpoint")
@@ -198,6 +178,7 @@ defmodule LogflareWeb.EndpointsLiveTest do
              })
 
       assert has_element?(view, "code", "select @my_param as valid")
+
       assert_patched(view, "/endpoints/#{endpoint.id}")
       # no longer has the initail query string
       refute render(view) =~ endpoint.query
@@ -231,14 +212,6 @@ defmodule LogflareWeb.EndpointsLiveTest do
 
       refute render(view) =~ "results-123"
 
-      refute view
-             |> element("#endpoint-query")
-             |> render_change(%{
-               endpoint: %{
-                 query: "select current_datetime() as new"
-               }
-             }) =~ "parser error"
-
       view
       |> element("form", "Test query")
       |> render_submit(%{
@@ -270,12 +243,6 @@ defmodule LogflareWeb.EndpointsLiveTest do
       endpoint = insert(:endpoint, user: user)
       {:ok, view, _html} = live(conn, "/endpoints/#{endpoint.id}/edit")
       refute render(view) =~ "results-123"
-
-      view
-      |> element("#endpoint-query")
-      |> render_change(%{
-        query: "select current_datetime() as updated"
-      })
 
       view
       |> element("form", "Test query")

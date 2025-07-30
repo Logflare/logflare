@@ -60,17 +60,17 @@ defmodule LogflareWeb.OpenApiSchemas do
 
   defmodule EndpointApiSchema do
     @properties %{
+      id: %Schema{type: :integer},
+      description: %Schema{type: :string, nullable: true},
       token: %Schema{type: :string},
       name: %Schema{type: :string},
       query: %Schema{type: :string},
-      source_mapping: %Schema{type: :object},
-      sandboxable: %Schema{type: :boolean},
+      source_mapping: %Schema{type: :object, nullable: true},
+      sandboxable: %Schema{type: :boolean, nullable: true},
       cache_duration_seconds: %Schema{type: :integer},
       proactive_requerying_seconds: %Schema{type: :integer},
       max_limit: %Schema{type: :integer},
-      enable_auth: %Schema{type: :boolean},
-      inserted_at: %Schema{type: :string, format: :"date-time"},
-      updated_at: %Schema{type: :string, format: :"date-time"}
+      enable_auth: %Schema{type: :boolean}
     }
     use LogflareWeb.OpenApi, properties: @properties, required: [:name, :query]
   end
@@ -164,19 +164,19 @@ defmodule LogflareWeb.OpenApiSchemas do
       api_key: %Schema{type: :string},
       email_preferred: %Schema{type: :string},
       name: %Schema{type: :string},
-      image: %Schema{type: :string},
+      image: %Schema{type: :string, nullable: true},
       email_me_product: %Schema{type: :boolean},
-      phone: %Schema{type: :string},
-      bigquery_project_id: %Schema{type: :string},
-      bigquery_dataset_location: %Schema{type: :string},
-      bigquery_dataset_id: %Schema{type: :string},
+      phone: %Schema{type: :string, nullable: true},
+      bigquery_project_id: %Schema{type: :string, nullable: true},
+      bigquery_dataset_location: %Schema{type: :string, nullable: true},
+      bigquery_dataset_id: %Schema{type: :string, nullable: true},
       api_quota: %Schema{type: :integer},
-      company: %Schema{type: :string},
+      company: %Schema{type: :string, nullable: true},
       token: %Schema{type: :string}
     }
     use LogflareWeb.OpenApi,
       properties: @properties,
-      required: [:email, :provider, :token, :provider_uid, :api_key]
+      required: [:email, :provider, :token, :api_key]
   end
 
   defmodule TeamUser do

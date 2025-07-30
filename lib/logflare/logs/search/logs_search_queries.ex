@@ -4,7 +4,6 @@ defmodule Logflare.Logs.SearchQueries do
   @chart_periods ~w(day hour minute second)a
   alias Logflare.Ecto.BQQueryAPI
   alias Logflare.Lql
-  import BQQueryAPI.UDF
   import BQQueryAPI
 
   def select_timestamp(q, chart_period) do
@@ -12,22 +11,22 @@ defmodule Logflare.Logs.SearchQueries do
     |> select([t], %{
       timestamp:
         fragment(
-          "(`$$__DEFAULT_DATASET__$$`.LF_TIMESTAMP_TRUNC(?, ?)) as timestamp",
-          t.timestamp,
-          ^String.upcase("#{chart_period}")
-        )
-    })
-  end
-
-  def select_timestamp(q, chart_period, timezone) do
-    q
-    |> select([t], %{
-      timestamp:
-        fragment(
-          "(`$$__DEFAULT_DATASET__$$`.LF_TIMESTAMP_TRUNC_WITH_TIMEZONE(?, ?, ?)) as timestamp",
+          """
+          (case
+          when ? = 'DAY'  then TIMESTAMP_TRUNC(?, DAY)
+          when ? = 'HOUR'  then TIMESTAMP_TRUNC(?, HOUR)
+          when ? = 'MINUTE'  then TIMESTAMP_TRUNC(?, MINUTE)
+          when ? = 'SECOND'  then TIMESTAMP_TRUNC(?, SECOND)
+          end) as timestamp
+          """,
+          ^String.upcase("#{chart_period}"),
           t.timestamp,
           ^String.upcase("#{chart_period}"),
-          ^timezone
+          t.timestamp,
+          ^String.upcase("#{chart_period}"),
+          t.timestamp,
+          ^String.upcase("#{chart_period}"),
+          t.timestamp
         )
     })
   end
@@ -93,10 +92,6 @@ defmodule Logflare.Logs.SearchQueries do
     limit(query, ^number)
   end
 
-  def timestamp_truncator(period) when period in @chart_periods do
-    dynamic([t], lf_timestamp_trunc(t.timestamp, ^period))
-  end
-
   def where_streaming_buffer(query) do
     where(query, in_streaming_buffer())
   end
@@ -111,12 +106,6 @@ defmodule Logflare.Logs.SearchQueries do
         ^Timex.to_date(max)
       )
     )
-  end
-
-  def select_timestamp_trunc(query, chart_period) do
-    select(query, [t, ...], %{
-      timestamp: lf_timestamp_trunc(t.timestamp, ^chart_period)
-    })
   end
 
   def select_merge_total(query) do
@@ -267,10 +256,6 @@ defmodule Logflare.Logs.SearchQueries do
     from(bq_table_id)
     |> where([t], t.id == ^id)
     |> select([t], fragment("*"))
-  end
-
-  def select_default_fields(query, :events) do
-    select(query, [:timestamp, :id, :event_message])
   end
 
   def source_table_streaming_buffer(bq_table_id) when is_binary(bq_table_id) do

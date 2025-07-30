@@ -7,8 +7,7 @@ defmodule Logflare.Logs do
   alias Logflare.{SystemMetrics, Source, Sources}
   alias Logflare.Logs.SourceRouting
   alias Logflare.Logs.IngestTypecasting
-  alias Logflare.Logs.IngestTransformers
-  alias Logflare.Rule
+  alias Logflare.Rules.Rule
   alias Logflare.Backends.IngestEventQueue
 
   @spec ingest_logs(list(map), Source.t()) :: :ok | {:error, term}
@@ -19,7 +18,6 @@ defmodule Logflare.Logs do
     |> Enum.map(fn log ->
       log
       |> IngestTypecasting.maybe_apply_transform_directives()
-      |> IngestTransformers.transform(:to_bigquery_column_spec)
       |> LE.make(%{source: source})
       |> maybe_mark_le_dropped_by_lql()
       |> maybe_ingest_and_broadcast()

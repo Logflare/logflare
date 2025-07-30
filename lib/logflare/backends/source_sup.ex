@@ -8,29 +8,28 @@ defmodule Logflare.Backends.SourceSup do
   alias Logflare.Source
   alias Logflare.Users
   alias Logflare.Billing
-  alias Logflare.Source.RecentLogsServer
+  alias Logflare.GenSingleton
   alias Logflare.Source.RateCounterServer
   alias Logflare.Source.EmailNotificationServer
   alias Logflare.Source.TextNotificationServer
   alias Logflare.Source.WebhookNotificationServer
   alias Logflare.Source.SlackHookServer
   alias Logflare.Source.BillingWriter
-  alias Logflare.Logs.SearchQueryExecutor
-  alias Logflare.Rule
+  alias Logflare.Backends.RecentEventsTouch
+  alias Logflare.Backends.RecentInsertsBroadcaster
+  alias Logflare.Rules.Rule
   alias Logflare.Sources
+  alias Logflare.Backends.AdaptorSupervisor
 
   def start_link(%Source{} = source) do
     Supervisor.start_link(__MODULE__, source, name: Backends.via_source(source, __MODULE__))
   end
 
   def init(source) do
-    ingest_backends =
-      source
-      |> Backends.Cache.list_backends()
+    ingest_backends = Backends.Cache.list_backends(source_id: source.id)
 
     rules_backends =
-      source
-      |> Backends.list_backends_with_rules()
+      Backends.Cache.list_backends(rules_source_id: source.id)
       |> Enum.map(&%{&1 | register_for_ingest: false})
 
     user = Users.Cache.get(source.user_id)
@@ -48,12 +47,12 @@ defmodule Logflare.Backends.SourceSup do
     children =
       [
         {RateCounterServer, [source: source]},
-        {RecentLogsServer, [source: source]},
+        {GenSingleton, child_spec: {RecentEventsTouch, source: source}},
+        {RecentInsertsBroadcaster, [source: source]},
         {EmailNotificationServer, [source: source]},
         {TextNotificationServer, [source: source, plan: plan]},
         {WebhookNotificationServer, [source: source]},
         {SlackHookServer, [source: source]},
-        {SearchQueryExecutor, [source: source]},
         {BillingWriter, [source: source]},
         {SourceSupWorker, [source: source]}
       ] ++ specs
@@ -67,18 +66,9 @@ defmodule Logflare.Backends.SourceSup do
   """
   @spec rule_child_started?(Rule.t()) :: boolean()
   def rule_child_started?(%Rule{backend_id: backend_id, source_id: source_id}) do
-    backend = Backends.Cache.get_backend(backend_id) |> Map.put(:register_for_ingest, false)
-    source = Sources.Cache.get_by_id(source_id)
-    via = Backends.via_source(source, __MODULE__)
-    spec = Backend.child_spec(source, backend)
+    via = Backends.via_source(source_id, AdaptorSupervisor, backend_id)
 
-    found_id =
-      Supervisor.which_children(via)
-      |> Enum.find(fn {id, _pid, _type, _mod} ->
-        id == spec.id
-      end)
-
-    if found_id do
+    if GenServer.whereis(via) do
       true
     else
       false

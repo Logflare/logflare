@@ -8,7 +8,6 @@ alias Logflare.Google.BigQuery
 alias Logflare.Google.BigQuery.GenUtils
 alias Logflare.Source.BigQuery.Pipeline
 alias Logflare.Repo
-alias Logflare.Source.RecentLogsServer, as: RLS
 alias Logflare.LogEvent
 import Ecto.Query
 

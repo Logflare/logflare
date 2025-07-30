@@ -39,7 +39,7 @@ defmodule Logflare.Backends.Adaptor do
     adaptor = get_adaptor(backend)
 
     if function_exported?(adaptor, :transform_config, 1) do
-      adaptor.transform_config(config)
+      adaptor.transform_config(backend)
     else
       config
     end
@@ -52,7 +52,7 @@ defmodule Logflare.Backends.Adaptor do
   Optional callback to transform a stored backend config before usage.
   Example use cases: when an adaptor extends another adaptor by customizing the end configuration.
   """
-  @callback transform_config(map()) :: map()
+  @callback transform_config(backend :: Backend.t()) :: map()
 
   @doc """
   Optional callback to manipulate log events before queueing.
@@ -63,6 +63,12 @@ defmodule Logflare.Backends.Adaptor do
   Optional callback to manipulate a batch before it is sent. This is pipeline specific, and must be handled by the underlying pipeline.
   """
   @callback format_batch([LogEvent.t()]) :: map() | list(map())
+  @callback format_batch([LogEvent.t()], config :: map()) :: map() | list(map())
+
+  @doc """
+  Optional callback to test the underlying connection for an adaptor. May not be applicable for some adaptors.
+  """
+  @callback test_connection(Source.t(), Backend.t()) :: :ok | {:error, term()}
 
   @doc """
   Queries the backend using an endpoint query.
@@ -89,5 +95,15 @@ defmodule Logflare.Backends.Adaptor do
     |> mod.validate_config()
   end
 
-  @optional_callbacks pre_ingest: 3, transform_config: 1, format_batch: 1
+  @doc """
+  Sends an alert notification for a given backend.
+  """
+  @callback send_alert(Backend.t(), AlertQuery.t(), [term()]) :: :ok | {:error, term()}
+
+  @optional_callbacks pre_ingest: 3,
+                      transform_config: 1,
+                      format_batch: 1,
+                      format_batch: 2,
+                      test_connection: 2,
+                      send_alert: 3
 end

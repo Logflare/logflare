@@ -123,9 +123,11 @@ defmodule Logflare.TestUtils do
     Float.to_string(exp_first_part) <> "E9"
   end
 
-  def gen_uuid do
-    Ecto.UUID.generate()
-  end
+  @spec gen_uuid() :: String.t()
+  def gen_uuid, do: Ecto.UUID.generate()
+
+  @spec gen_uuid_atom() :: atom()
+  def gen_uuid_atom, do: gen_uuid() |> String.to_atom()
 
   @spec gen_email() :: String.t()
   def gen_email, do: "#{random_string()}@#{random_string()}.com"
@@ -307,7 +309,7 @@ defmodule Logflare.TestUtils do
             "FirewallMatchesRuleIDs" => [],
             "SecurityLevel" => "low",
             "EdgeResponseBytes" => 810,
-            "ClientASN" => 14618,
+            "ClientASN" => 14_618,
             "EdgePathingStatus" => "nr",
             "EdgeResponseContentType" => "application/json",
             "ParentRayID" => "00",
@@ -317,7 +319,7 @@ defmodule Logflare.TestUtils do
             "ClientDeviceType" => "desktop",
             "WorkerCPUTime" => 1990,
             "EdgeStartTimestamp" => 1_667_512_927_424_000_000,
-            "ClientSrcPort" => 58960,
+            "ClientSrcPort" => 58_960,
             "ClientXRequestedWith" => "",
             "OriginResponseBytes" => 0,
             "OriginResponseHTTPLastModified" => "",
@@ -377,7 +379,7 @@ defmodule Logflare.TestUtils do
             "FirewallMatchesRuleIDs" => [],
             "SecurityLevel" => "off",
             "EdgeResponseBytes" => 605,
-            "ClientASN" => 14618,
+            "ClientASN" => 14_618,
             "EdgePathingStatus" => "nr",
             "EdgeResponseContentType" => "application/json",
             "ParentRayID" => "76486432482f826f",
@@ -461,5 +463,38 @@ defmodule Logflare.TestUtils do
       else
         reraise error, __STACKTRACE__
       end
+  end
+
+  @doc """
+  `Phoenix.LiveViewTest` has `open_browser/2` function that opens a browser with
+  the given HTML content. This is kinda the same but for Phoenix static views.
+
+  ## Usage
+
+  You can call this with any HTML content.
+
+  ```elixir
+  TestUtils.open_browser("<html><body>Hello World</body></html>")
+  ```
+
+  However, it is mostly useful in tests.
+
+  ```elixir
+  conn
+  |> get("/some/path")
+  |> html_response(200)
+  |> TestUtils.open_browser()
+  ```
+  """
+  def open_browser(html, filename \\ "/tmp/test-#{System.unique_integer([:positive])}.html") do
+    File.write!(filename, html)
+
+    case :os.type() do
+      {:unix, :darwin} -> System.cmd("open", [filename])
+      {:unix, _} -> System.cmd("xdg-open", [filename])
+      {:win32, _} -> System.cmd("cmd", ["/c", "start", filename])
+    end
+
+    html
   end
 end

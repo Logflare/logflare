@@ -4,7 +4,8 @@ defmodule Logflare.Logs.SourceRoutingTest do
   alias Logflare.LogEvent, as: LE
   alias Logflare.Logs.SourceRouting
   alias Logflare.Lql.FilterRule, as: FR
-  alias Logflare.{Rule, Rules}
+  alias Logflare.Rules
+  alias Logflare.Rules.Rule
   alias Logflare.Source
   alias Logflare.Source.BigQuery.Schema
   alias Logflare.Source.BigQuery.SchemaBuilder
@@ -641,8 +642,8 @@ defmodule Logflare.Logs.SourceRoutingTest do
     end
   end
 
-  @tag :failing
   describe "Source routing with regex routing" do
+    @describetag :failing
     test "successfull" do
       {:ok, _} = Source.Supervisor.start_link()
       u = Users.get_by_and_preload(email: System.get_env("LOGFLARE_TEST_USER_WITH_SET_IAM"))

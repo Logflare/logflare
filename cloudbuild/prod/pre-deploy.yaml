@@ -7,11 +7,11 @@ steps:
       - instance-templates
       - create-with-container
       - $_TEMPLATE_NAME
-      - --boot-disk-size=25GB
+      - --boot-disk-size=10GB
       - --boot-disk-type=pd-balanced
-      - --machine-type=c2d-highcpu-56
+      - --machine-type=c2d-highcpu-32
       - --project=logflare-232118
-      - --network-interface=network=global,network-tier=PREMIUM
+      - --network-interface=network=global,network-tier=PREMIUM,no-address
       - --maintenance-policy=TERMINATE
       - --service-account=compute-engine-2022@logflare-232118.iam.gserviceaccount.com
       - --scopes=https://www.googleapis.com/auth/cloud-platform
@@ -22,7 +22,7 @@ steps:
       - --container-image=${_CONTAINER_IMAGE}
       - --container-privileged
       - --container-restart-policy=always
-      - --container-env=LOGFLARE_GRPC_PORT=50051,LOGFLARE_MIN_CLUSTER_SIZE=2,RELEASE_COOKIE=${_COOKIE},LOGFLARE_PUBSUB_POOL_SIZE=56,LOGFLARE_LOGGER_METADATA_CLUSTER=${_CLUSTER},LOGFLARE_ALERTS_MIN_CLUSTER_SIZE=7
+      - --container-env=LOGFLARE_GRPC_PORT=50051,LOGFLARE_MIN_CLUSTER_SIZE=2,RELEASE_COOKIE=${_COOKIE},LOGFLARE_PUBSUB_POOL_SIZE=32,LOGFLARE_METADATA_CLUSTER=${_CLUSTER},LOGFLARE_ALERTS_MIN_CLUSTER_SIZE=40
       - --no-shielded-secure-boot
       - --shielded-vtpm
       - --shielded-integrity-monitoring

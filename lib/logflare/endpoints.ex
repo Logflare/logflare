@@ -1,6 +1,6 @@
 defmodule Logflare.Endpoints do
   @moduledoc false
-  alias Logflare.Endpoints.Cache
+  alias Logflare.Endpoints.ResultsCache
   alias Logflare.Endpoints.Query
   alias Logflare.Endpoints.Resolver
   alias Logflare.Repo
@@ -11,6 +11,7 @@ defmodule Logflare.Endpoints do
   alias Logflare.Backends.Adaptor.PostgresAdaptor
   alias Logflare.SingleTenant
   alias Logflare.Alerting
+  alias Logflare.Alerting.Alert
   alias Logflare.Backends
 
   import Ecto.Query
@@ -44,23 +45,18 @@ defmodule Logflare.Endpoints do
   @spec get_endpoint_query(integer()) :: Query.t() | nil
   def get_endpoint_query(id), do: Repo.get(Query, id)
 
-  @spec get_query_by_token(binary()) :: Query.t() | nil
-  def get_query_by_token(token) when is_binary(token), do: get_by(token: token)
-
   def get_mapped_query_by_token(token) when is_binary(token) do
-    token
-    |> get_query_by_token()
-    |> then(fn
-      nil -> nil
-      query -> Query.map_query_sources(query)
-    end)
+    get_by(token: token)
+    |> Query.map_query_sources()
+    |> Repo.preload(:user)
   end
 
   @doc """
   Puts the `:query` key of the `Query` with the latest source mappings.
   This ensure that the query will have the latest source names (assuming a name change)
   """
-  @spec map_query_sources(Query.t()) :: Query.t()
+  @spec map_query_sources(Query.t() | nil) :: Query.t() | nil
+  def map_query_sources(nil), do: nil
   def map_query_sources(endpoint), do: Query.map_query_sources(endpoint)
 
   @spec get_by(Keyword.t()) :: Query.t() | nil
@@ -106,7 +102,7 @@ defmodule Logflare.Endpoints do
         # kill all caches
         for pid <- Resolver.list_caches(endpoint) do
           Utils.Tasks.async(fn ->
-            Cache.invalidate(pid)
+            ResultsCache.invalidate(pid)
           end)
         end
         |> Task.await_many(30_000)
@@ -123,13 +119,98 @@ defmodule Logflare.Endpoints do
   Parses a query string (but does not run it)
 
   ### Example
-    iex> parse_query_string("select @testing from date")
+    iex> parse_query_string("select @testing from date", [], [])
     {:ok, %{parameters: ["testing"]}}
   """
-  @spec parse_query_string(String.t()) :: {:ok, %{parameters: [String.t()]}} | {:error, any()}
-  def parse_query_string(query_string) do
-    with {:ok, declared_params} <- Logflare.Sql.parameters(query_string) do
-      {:ok, %{parameters: declared_params}}
+  @spec parse_query_string(:bq_sql | :pg_sql, String.t(), [Query.t()], [Alert.t()]) ::
+          {:ok, %{parameters: [String.t()], expanded_query: String.t()}} | {:error, any()}
+  def parse_query_string(language, query_string, endpoints, alerts)
+      when language in [:bq_sql, :pg_sql] do
+    with {:ok, expanded_query} <-
+           Logflare.Sql.expand_subqueries(
+             language,
+             query_string,
+             endpoints ++ alerts
+           ),
+         {:ok, declared_params} <- Logflare.Sql.parameters(expanded_query) do
+      {:ok, %{parameters: declared_params, expanded_query: expanded_query}}
+    end
+  end
+
+  @doc """
+  Parses endpoint labels from allowlist configuration, request headers, and query parameters.
+
+  This function processes label configurations that can come from three sources:
+  1. Static values defined in the allowlist string
+  2. Dynamic values from query parameters (prefixed with "@")
+  3. Values from request headers
+
+  The allowlist string defines which labels are allowed and how they should be populated.
+  It supports three formats:
+  - `key=value` - static label with fixed value
+  - `key=@param` - dynamic label populated from query parameter "param"
+  - `key` - label populated from request header with the same key name
+
+  ## Parameters
+
+    * `allowlist_str` - Comma-separated string defining allowed labels and their sources
+    * `header_str` - Comma-separated string from LF-ENDPOINT-LABELS header containing key=value pairs
+    * `params` - Map of query parameters that may contain label values
+
+  ## Examples
+
+      # Static labels
+      iex> Logflare.Endpoints.parse_labels("environment=production,team=backend", "", %{})
+      %{"environment" => "production", "team" => "backend"}
+
+      # Header-based labels
+      iex> Logflare.Endpoints.parse_labels("user_id,session_id", "user_id=123,session_id=abc", %{})
+      %{"user_id" => "123", "session_id" => "abc"}
+
+      # Parameter-based labels
+      iex> Logflare.Endpoints.parse_labels("tenant=@tenant_id", "", %{"tenant_id" => "org-123"})
+      %{"tenant" => "org-123"}
+
+      # Mixed sources with fallback
+      iex> Logflare.Endpoints.parse_labels("user=@user_id", "user=999", %{"user_id" => "123"})
+      %{"user" => "123"}
+
+      # Fallback to header when param missing
+      iex> Logflare.Endpoints.parse_labels("user=@user_id", "user=999", %{})
+      %{"user" => "999"}
+
+      # Empty or nil inputs
+      iex> Logflare.Endpoints.parse_labels(nil, nil, %{})
+      %{}
+
+      iex> Logflare.Endpoints.parse_labels("", "", %{})
+      %{}
+
+  ## Returns
+
+  A map where keys are label names and values are the resolved label values.
+  """
+  @spec parse_labels(String.t() | nil, String.t() | nil, map()) :: map()
+  def parse_labels(allowlist_str, header_str, params) do
+    header_values =
+      for item <- String.split(header_str || "", ","), into: %{} do
+        case String.split(item, "=") do
+          [key, value] -> {key, value}
+          [key] -> {key, nil}
+        end
+      end
+
+    for split <- String.split(allowlist_str || "", ","), split != "", into: %{} do
+      case String.split(split, "=") do
+        [key, "@" <> param_key] ->
+          {key, Map.get(params, param_key) || Map.get(header_values, key)}
+
+        [key] ->
+          {key, Map.get(header_values, key)}
+
+        [key, value] ->
+          {key, value}
+      end
     end
   end
 
@@ -171,7 +252,22 @@ defmodule Logflare.Endpoints do
           {endpoint_query, transformed_query}
         end
 
-      exec_query_on_backend(endpoint, query_string, declared_params, params)
+      :telemetry.span(
+        [:logflare, :endpoints, :run_query, :exec_query_on_backend],
+        %{endpoint_id: endpoint.id, language: endpoint.language},
+        fn ->
+          result = exec_query_on_backend(endpoint, query_string, declared_params, params)
+
+          total_rows =
+            case result do
+              {:ok, %{total_rows: total}} -> total
+              {:ok, %{rows: rows}} -> length(rows)
+              _ -> 0
+            end
+
+          {result, %{total_rows: total_rows}}
+        end
+      )
     end
   end
 
@@ -212,9 +308,14 @@ defmodule Logflare.Endpoints do
   """
   @spec run_cached_query(Query.t(), map()) :: run_query_return()
   def run_cached_query(query, params \\ %{}) do
-    query
-    |> Resolver.resolve(params)
-    |> Cache.query()
+    if query.cache_duration_seconds > 0 do
+      query
+      |> Resolver.resolve(params)
+      |> ResultsCache.query()
+    else
+      # execute the query directly
+      run_query(query, params)
+    end
   end
 
   defp exec_query_on_backend(
@@ -288,7 +389,14 @@ defmodule Logflare.Endpoints do
            bq_params,
            parameterMode: "NAMED",
            maxResults: endpoint_query.max_limit,
-           location: endpoint_query.user.bigquery_dataset_location
+           location: endpoint_query.user.bigquery_dataset_location,
+           labels:
+             Map.merge(
+               %{
+                 "endpoint_id" => endpoint_query.id
+               },
+               endpoint_query.parsed_labels || %{}
+             )
          ) do
       {:ok, result} ->
         {:ok, result}

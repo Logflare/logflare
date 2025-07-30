@@ -1,6 +1,6 @@
 defmodule Logflare.UsersTest do
-  @moduledoc false
-  use Logflare.DataCase
+  use Logflare.DataCase, async: false
+
   alias Logflare.Sources
   alias Logflare.User
   alias Logflare.Users
@@ -15,11 +15,21 @@ defmodule Logflare.UsersTest do
     {:ok, user: user, source: source}
   end
 
+  describe "Users.list_ingesting_users/1" do
+    test "lists ingesting users based on source activity" do
+      assert [] = Users.list_ingesting_users(limit: 500)
+      user = insert(:user)
+      insert(:source, user: user, log_events_updated_at: NaiveDateTime.utc_now())
+      assert [_] = Users.list_ingesting_users(limit: 500)
+    end
+  end
+
   describe "Users.list_users/1" do
     test "lists all users created by a partner" do
-      [user | others] = insert_list(3, :user)
-      insert(:partner, users: others)
-      partner = insert(:partner, users: [user])
+      partner_other = insert(:partner)
+      insert_list(3, :user, partner: partner_other)
+      partner = insert(:partner)
+      user = insert(:user, partner: partner)
 
       assert [user_result] = Users.list_users(partner_id: partner.id)
       assert user_result.id == user.id
@@ -30,6 +40,32 @@ defmodule Logflare.UsersTest do
       insert(:user, metadata: %{"a" => "123"})
       assert [_] = Users.list_users(metadata: %{"a" => "123"})
     end
+  end
+
+  test "delete_user/1" do
+    user = insert(:user)
+    alert = insert(:alert, user: user)
+    source = insert(:source, user: user)
+    endpoint = insert(:endpoint, user: user)
+
+    expect(
+      GoogleApi.CloudResourceManager.V1.Api.Projects,
+      :cloudresourcemanager_projects_set_iam_policy,
+      fn _, _project_number, [body: _body] ->
+        {:ok,
+         %Tesla.Env{
+           status: 200,
+           body: ""
+         }}
+      end
+    )
+
+    assert {:ok, _} = Users.delete_user(user)
+
+    refute Repo.reload(alert)
+    refute Repo.reload(source)
+    refute Repo.reload(endpoint)
+    refute Repo.reload(user)
   end
 
   test "users_count/0 returns user count" do
@@ -59,12 +95,10 @@ defmodule Logflare.UsersTest do
   end
 
   describe "get_by/1" do
-    test "get user by id", %{source: s1, user: u1} do
-      assert u1 == Users.get_by(id: u1.id) |> Users.preload_defaults()
-      assert length(u1.sources) > 0
-      assert s1_db = hd(u1.sources)
-      assert s1_db.token == s1.token
-      assert s1_db.user_id == u1.id
+    test "get user by id", %{user: u1} do
+      assert %User{} = fetched = Users.get_by(id: u1.id)
+      assert fetched.bigquery_dataset_id
+      assert fetched.bigquery_project_id
     end
 
     test "get user by api_key", %{user: right_user} do

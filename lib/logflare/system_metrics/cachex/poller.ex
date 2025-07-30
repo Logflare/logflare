@@ -10,7 +10,6 @@ defmodule Logflare.SystemMetrics.Cachex.Poller do
 
   @poll_every 30_000
   @caches [
-    Logflare.ContextCache,
     Logflare.Users.Cache,
     Logflare.Sources.Cache,
     Logflare.Billing.Cache,
@@ -69,7 +68,7 @@ defmodule Logflare.SystemMetrics.Cachex.Poller do
     {:noreply, state}
   end
 
-  defp poll_stats() do
+  defp poll_stats do
     Process.send_after(self(), :stats, @poll_every)
   end
 end

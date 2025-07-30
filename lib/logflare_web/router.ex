@@ -10,6 +10,11 @@ defmodule LogflareWeb.Router do
   alias LogflareWeb.JsonParser
   alias LogflareWeb.SyslogParser
   alias LogflareWeb.NdjsonParser
+  alias LogflareWeb.ProtobufParser
+
+  alias Opentelemetry.Proto.Collector.Trace.V1.ExportTraceServiceRequest
+  alias Opentelemetry.Proto.Collector.Metrics.V1.ExportMetricsServiceRequest
+  alias Opentelemetry.Proto.Collector.Logs.V1.ExportLogsServiceRequest
 
   # TODO: move plug calls in SourceController and RuleController into here
 
@@ -68,16 +73,30 @@ defmodule LogflareWeb.Router do
     plug(OpenApiSpex.Plug.PutApiSpec, module: LogflareWeb.ApiSpec)
   end
 
+  pipeline :otlp_api do
+    plug(Plug.RequestId)
+
+    plug(Plug.Parsers,
+      parsers: [ProtobufParser],
+      json_decoder: Jason,
+      body_reader: {PlugCaisson, :read_body, []},
+      length: 12_000_000
+    )
+
+    plug(:accepts, ["json", "protobuf"])
+    plug(LogflareWeb.Plugs.SetHeaders)
+  end
+
   pipeline :require_endpoint_auth do
-    plug(LogflareWeb.Plugs.VerifyApiAccess, scopes: ~w(public))
+    plug(LogflareWeb.Plugs.VerifyApiAccess)
     plug(LogflareWeb.Plugs.FetchResource)
-    plug(LogflareWeb.Plugs.VerifyResourceOwnership)
+    plug(LogflareWeb.Plugs.VerifyResourceAccess)
   end
 
   pipeline :require_ingest_api_auth do
-    plug(LogflareWeb.Plugs.VerifyApiAccess, scopes: ~w(public))
+    plug(LogflareWeb.Plugs.VerifyApiAccess)
     plug(LogflareWeb.Plugs.FetchResource)
-    plug(LogflareWeb.Plugs.VerifyResourceOwnership)
+    plug(LogflareWeb.Plugs.VerifyResourceAccess)
     # We are ensuring source start in Logs.ingest
     # plug LogflareWeb.Plugs.EnsureSourceStarted
     plug(LogflareWeb.Plugs.SetPlanFromCache)
@@ -147,6 +166,7 @@ defmodule LogflareWeb.Router do
 
   scope "/", LogflareWeb do
     pipe_through(:browser)
+
     get("/", MarketingController, :index)
     get("/pricing", MarketingController, :pricing)
     get("/terms", MarketingController, :terms)
@@ -156,6 +176,7 @@ defmodule LogflareWeb.Router do
 
   scope "/guides", LogflareWeb do
     pipe_through(:browser)
+
     get("/", MarketingController, :guides)
     get("/overview", MarketingController, :overview)
     get("/bigquery-setup", MarketingController, :big_query_setup)
@@ -167,6 +188,7 @@ defmodule LogflareWeb.Router do
 
   scope "/", LogflareWeb do
     pipe_through([:browser, :require_auth])
+
     get("/dashboard", SourceController, :dashboard)
     live("/access-tokens", AccessTokensLive, :index)
     live("/backends", BackendsLive, :index)
@@ -231,7 +253,7 @@ defmodule LogflareWeb.Router do
 
     resources "/", SourceController, except: [:index, :new, :create, :delete] do
       live_session(:rules, root_layout: {LogflareWeb.LayoutView, :root}) do
-        live("/rules", Sources.RulesLV)
+        live("/rules", Sources.RulesLive)
       end
 
       delete("/saved-searches/:id", SavedSearchesController, :delete)
@@ -242,7 +264,7 @@ defmodule LogflareWeb.Router do
     get("/:id/delete-slack-hook", SourceController, :delete_slack_hook)
     get("/:id/rejected", SourceController, :rejected_logs)
     live("/:source_id/search", Source.SearchLV)
-    live("/:source_id/event", LogEventLive.Show, :show)
+    live("/:source_id/event", LogEventLive, :show)
     get("/:id/favorite", SourceController, :favorite)
     get("/:id/clear", SourceController, :clear_logs)
     get("/:id/explore", SourceController, :explore)
@@ -297,7 +319,7 @@ defmodule LogflareWeb.Router do
 
     post("/", BillingController, :create)
     delete("/", BillingController, :delete)
-    live("/edit", BillingAccountLive, :edit)
+    live("/edit", BillingAccountLive.Edit, :edit)
     get("/sync", BillingController, :sync)
   end
 
@@ -325,9 +347,9 @@ defmodule LogflareWeb.Router do
 
     get("/plans", AdminPlanController, :index)
     get("/plans/new", AdminPlanController, :new)
-    post("/plans/new", AdminPlanController, :create)
+    post("/plans", AdminPlanController, :create)
     get("/plans/:id/edit", AdminPlanController, :edit)
-    put("/plans/:id/edit", AdminPlanController, :update)
+    put("/plans/:id", AdminPlanController, :update)
 
     delete("/accounts/:id", AdminController, :delete_account)
     get("/accounts/:id/become", AdminController, :become_account)
@@ -446,6 +468,7 @@ defmodule LogflareWeb.Router do
   scope "/api/endpoints", LogflareWeb, assigns: %{resource_type: :endpoint} do
     pipe_through([:api, :require_endpoint_auth])
     get("/query/:token_or_name", EndpointsController, :query)
+    post("/query/:token_or_name", EndpointsController, :query)
 
     # deprecated
     get("/query/name/:name", EndpointsController, :query)
@@ -455,6 +478,31 @@ defmodule LogflareWeb.Router do
   scope "/endpoints/query", LogflareWeb, assigns: %{resource_type: :endpoint} do
     pipe_through([:api, :require_endpoint_auth])
     get("/:token_or_name", EndpointsController, :query)
+  end
+
+  scope "/v1", LogflareWeb, assigns: %{resource_type: :source} do
+    pipe_through([:otlp_api, :require_ingest_api_auth])
+
+    post(
+      "/traces",
+      LogController,
+      :otel_traces,
+      assigns: %{protobuf_schema: ExportTraceServiceRequest}
+    )
+
+    post(
+      "/metrics",
+      LogController,
+      :otel_metrics,
+      assigns: %{protobuf_schema: ExportMetricsServiceRequest}
+    )
+
+    post(
+      "/logs",
+      LogController,
+      :otel_logs,
+      assigns: %{protobuf_schema: ExportLogsServiceRequest}
+    )
   end
 
   for path <- ["/logs", "/api/logs", "/api/events"] do

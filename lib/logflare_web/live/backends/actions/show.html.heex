@@ -17,7 +17,7 @@
       <li class="list-group-item">
         <strong>config:</strong>
         <pre>
-          <%= Jason.encode!(@backend.config, pretty: true) %>
+          <%= Jason.encode!(LogflareWeb.Live.DisplayHelpers.sanitize_backend_config(@backend.config), pretty: true) %>
         </pre>
       </li>
       <li :if={@backend.metadata} class="list-group-item tw-flex-col tw-gap-2 ">
@@ -68,4 +68,51 @@
       </.button>
     </li>
   </ul>
+
+  <div :if={@backend.type in [:incidentio]}>
+    <h4>Alert Queries</h4>
+    <p>
+      Alert queries that use this backend as a destination.
+    </p>
+
+    <p :if={Enum.empty?(@backend.alert_queries)}>No alert queries configured</p>
+    <div>
+      <.button phx-click="toggle_alert_form" variant="secondary">
+        <%= if @show_alert_form? do %>
+          Cancel
+        <% else %>
+          Add an alert
+        <% end %>
+      </.button>
+    </div>
+
+    <.form :let={f} :if={@show_alert_form?} id="alert" for={%{}} as={:alert} action="#" phx-submit="add_alert">
+      <div class="form-group">
+        <%= label(f, :alert_id, "Alert") %>
+        <%= select(f, :alert_id, @alert_options, class: "form-control", prompt: [key: "Choose an alert"]) %>
+        <small id="alert_id" class="form-text text-muted">Select an alert query to add to this backend</small>
+      </div>
+
+      <%= hidden_input(f, :backend_id, value: @backend.id) %>
+      <%= submit("Add Alert", class: "btn btn-primary") %>
+    </.form>
+
+    <ul :for={alert_query <- @backend.alert_queries} class="tw-flex tw-flex-row tw-gap-4">
+      <li class="list-group-item tw-pointer-none tw-w-full tw-flex tw-flex-row tw-justify-between">
+        <div class="tw-flex tw-flex-col tw-gap-1">
+          <div class="tw-flex tw-items-center tw-gap-2">
+            <.link patch={~p"/alerts/#{alert_query.id}"} class="text-primary">
+              <%= alert_query.name %>
+            </.link>
+            <span class="badge badge-secondary"><%= alert_query.cron %></span>
+          </div>
+          <small class="text-muted"><%= alert_query.description %></small>
+        </div>
+
+        <.button phx-click="remove_alert" phx-value-alert_id={alert_query.id} variant="danger">
+          Remove alert
+        </.button>
+      </li>
+    </ul>
+  </div>
 </section>

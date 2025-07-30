@@ -16,9 +16,11 @@ There are two ways to query a Logflare Endpoint, via the Endpoint UUID or via th
 
 ```
 GET  https://api.logflare.app/api/endpoints/query/9dd9a6f6-8e9b-4fa4-b682-4f2f5cd99da3
+POST  https://api.logflare.app/api/endpoints/query/9dd9a6f6-8e9b-4fa4-b682-4f2f5cd99da3
 
 # requires authentication
 GET  https://api.logflare.app/api/endpoints/query/my.custom.endpoint
+POST  https://api.logflare.app/api/endpoints/query/my.custom.endpoint
 ```
 
 Querying by name requires authentication to be enabled and for a valid access token to be provided.
@@ -36,7 +38,7 @@ Queries can contain parameters, which are declared with the `@` prefix. Matching
 For example, given the following query:
 
 ```sql
-select * from logs
+select id, event_message, timestamp, metadata from logs
 where logs.name = @name and logs.age > @min_age
 ```
 
@@ -47,7 +49,7 @@ where logs.name = @name and logs.age > @min_age
 The resulting executed query for the HTTP request will be as follows:
 
 ```sql
-select * from logs
+select id, event_message, timestamp, metadata from logs
 where logs.name = "John Doe" and logs.age > 13
 ```
 
@@ -78,6 +80,8 @@ The Endpoint consumer can pass in the following query parameter to query across 
 ?sql=select err from errors where regexp_contains(err, "my_error")
 ```
 
+Should large SQL queries need to be executed, the SQL query string can be placed in the GET JSON body. Logflare will read the body and use the `sql` field in the body payload. This will only occur if **no `?sql=` query parameter is present in the request's query parameters**. This behaviour does not extend to other declared parameters (such as `@my_param`), and only applies to the special `sql` query parameter for sandboxed endpoints.
+
 ## HTTP Response
 
 The result of the query will be returned on the `result` key of the response payload.
@@ -101,6 +105,68 @@ Caching is performed on a query parameter basis. As such, if there are three API
 Logflare endpoints can be proactively requeried to ensure that the cache does not become stale throughout the cache lifetime.
 
 When configured, the cache will be automatically updated at the set interval, performing only one query to update the cached data.
+
+## Query Tagging with Labels
+
+Endpoints support query labeling for tracking and monitoring in the backend. Labels are configured as a comma-separated allowlist and can reference parameters (`@my_param`), values provided in the `LF-ENDPOINT-LABELS` request header, or static values.
+
+### Configuration Format
+
+```text
+static_key=static_value,param_key=@param_name,header_only_key
+```
+
+### Label Sources (by precedence)
+
+1. **Query parameters** - `@param_name` references take values from URL parameters
+2. **Request headers** - `LF-ENDPOINT-LABELS: key=value,key2=value2`
+3. **Static values** - Fixed values in the configuration
+
+### Example
+
+**Configuration:** `user_id=@user_id,environment=production,session_id`
+
+**Request:**
+
+```bash
+GET /api/endpoints/query/my-endpoint?user_id=123
+LF-ENDPOINT-LABELS: session_id=abc123,ignored=xyz
+```
+
+**Resulting labels:**
+
+```json
+{
+  "user_id": "123",
+  "environment": "production",
+  "session_id": "abc123"
+}
+```
+
+Only allowlisted labels are processed. Query parameters override header values for the same key.
+
+## Subquery Expansion with Other Endpoints
+
+Logflare endpoints support subquery expansion, allowing you to reference and query data from other endpoints within your SQL queries. This enables powerful data composition and cross-endpoint analysis.
+
+To reference another endpoint in your query, use the endpoint or alert's name as the table reference:
+
+```sql
+-- my-base-endpoint
+select my_field, count(id) as counts from `my-source`
+where my_data > @value
+group by my_field
+
+```
+
+```sql
+-- final endpoint
+select my_field, counts from `my-endpoint`
+```
+
+The underlying base endpoint reference will get expanded at runtime to a subquery. Any endpoint parameters referenced using `@` will be extended to the parent endpoint as well.
+
+In this case, the `@value` parameter will be required by the final endpoint as well.
 
 ## Security
 

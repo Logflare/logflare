@@ -3,14 +3,13 @@ defmodule Logflare.Users do
 
   import Ecto.Query
   alias Logflare.Google.BigQuery
-  alias Logflare.Google.CloudResourceManager
+  alias Logflare.Backends.Adaptor.BigQueryAdaptor
   alias Logflare.Repo
   alias Logflare.Source.Supervisor
   alias Logflare.Sources
   alias Logflare.TeamUsers.TeamUser
   alias Logflare.User
   alias Logflare.Users
-  alias Logflare.Partners.PartnerUser
   alias Logflare.Users.UserPreferences
 
   @max_limit 100
@@ -23,6 +22,19 @@ defmodule Logflare.Users do
   @spec count_users() :: integer()
   def count_users do
     Repo.aggregate(User, :count)
+  end
+
+  @doc "Lists users with sources that are actively ingesting events"
+  @spec list_ingesting_users(keyword()) :: [User.t()]
+  def list_ingesting_users(limit: limit) do
+    from(u in User,
+      join: s in assoc(u, :sources),
+      where: s.log_events_updated_at >= ago(1, "day"),
+      order_by: {:desc, s.log_events_updated_at},
+      limit: ^limit,
+      select: u
+    )
+    |> Repo.all()
   end
 
   @doc """
@@ -48,7 +60,7 @@ defmodule Logflare.Users do
     |> Enum.reduce(from(u in User), fn
       {:partner_id, id}, q when is_integer(id) ->
         q
-        |> join(:inner, [u], pu in PartnerUser, on: pu.user_id == u.id and pu.partner_id == ^id)
+        |> where([u], u.partner_id == ^id)
 
       {:metadata, %{} = filters}, q ->
         Enum.reduce(filters, q, fn {filter_k, v}, acc ->
@@ -56,45 +68,73 @@ defmodule Logflare.Users do
           where(acc, [u], fragment("? -> ?", u.metadata, ^normalized_k) == ^v)
         end)
 
+      {:provider, :google}, q ->
+        where(q, [u], u.provider == "google" and u.valid_google_account != false)
+
+      {:paying, true}, q ->
+        join(q, :left, [u], ba in assoc(u, :billing_account))
+        |> where(
+          [u, ..., ba],
+          (not is_nil(ba.stripe_subscriptions) and
+             fragment("jsonb_array_length(? -> 'data')", ba.stripe_subscriptions) > 0) or
+            (is_nil(ba) and u.billing_enabled) == false or
+            ba.lifetime_plan == true
+        )
+
       _, q ->
         q
     end)
     |> limit(^min(opts.limit, @max_limit))
     |> Repo.all()
-  end
-
-  def list() do
-    Repo.all(User)
+    |> Enum.map(&maybe_put_bigquery_defaults/1)
   end
 
   def get(user_id) do
     Repo.get(User, user_id)
+    |> maybe_put_bigquery_defaults()
   end
 
-  def get_by(keyword) do
-    Repo.get_by(User, keyword)
+  def get_by(kw) do
+    Repo.get_by(User, kw)
+    |> maybe_put_bigquery_defaults()
   end
 
-  def get_by_and_preload(keyword) do
-    user = Repo.get_by(User, keyword)
-
-    case user do
-      %User{} = u -> preload_defaults(u)
-      nil -> nil
-    end
+  def get_by_and_preload(kw) do
+    get_by(kw)
+    |> preload_defaults()
   end
 
-  def preload_defaults(user) do
+  def preload_defaults(nil), do: nil
+
+  def preload_defaults(%User{} = user) do
     user
     |> Repo.preload([:sources, :billing_account, :team])
-    |> maybe_put_bigquery_defaults()
     |> Map.update!(:sources, fn sources ->
       Enum.map(sources, &Sources.put_retention_days/1)
     end)
   end
 
+  def preload_defaults(users) when is_list(users) do
+    users
+    |> Repo.preload([:sources, :billing_account, :team])
+    |> Enum.map(fn user ->
+      user
+      |> maybe_put_bigquery_defaults()
+      |> Map.update!(:sources, fn sources ->
+        Enum.map(sources, &Sources.put_retention_days/1)
+      end)
+    end)
+  end
+
   def preload_team(user) do
     Repo.preload(user, :team)
+  end
+
+  def preload_valid_google_team_users(user) do
+    query =
+      from(tu in TeamUser, where: tu.valid_google_account != false and tu.provider == "google")
+
+    Repo.preload(user, team: [team_users: query])
   end
 
   def preload_billing_account(user) do
@@ -116,7 +156,9 @@ defmodule Logflare.Users do
     Repo.preload(user, :endpoint_queries)
   end
 
-  def maybe_put_bigquery_defaults(user) do
+  defp maybe_put_bigquery_defaults(nil), do: nil
+
+  defp maybe_put_bigquery_defaults(user) do
     user =
       case user.bigquery_dataset_id do
         nil -> %{user | bigquery_dataset_id: User.generate_bq_dataset_id(user)}
@@ -177,7 +219,7 @@ defmodule Logflare.Users do
     case Repo.delete(user) do
       {:ok, _user} = response ->
         BigQuery.delete_dataset(user)
-        CloudResourceManager.set_iam_policy()
+        BigQueryAdaptor.update_iam_policy()
         response
 
       {:error, _reason} = response ->

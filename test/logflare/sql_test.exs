@@ -22,6 +22,41 @@ defmodule Logflare.SqlTest do
   end
 
   describe "bigquery dialect" do
+    test "parser can handle struct definitions" do
+      user = insert(:user)
+
+      for input <- [
+            "select STRUCT(1,2,3)",
+            "select STRUCT(\'abc\')",
+            "select STRUCT(1, t.str_col)",
+            "select STRUCT(str_col AS abc)"
+            # Note: empty STRUCT() is not supported in sqlparser 0.39.0
+          ] do
+        assert {:ok, _v2} = Sql.transform(:bq_sql, input, user)
+      end
+    end
+
+    test "parser can handle sandboxed CTEs with union all" do
+      user = insert(:user)
+      insert(:source, user: user, name: "my_table")
+
+      # valid CTE queries with UNION ALL
+      input = """
+      with cte1 as (select a from my_table),
+           cte2 as (select b from my_table),
+           edge_logs as (select b from my_table),
+           postgres_logs as (select b from my_table),
+           auth_logs as (select b from my_table)
+      select a from cte1
+      union all
+      select b from cte2
+      union all
+      \nselect el.id as id from edge_logs as el\nunion all\nselect pgl.id as id from postgres_logs as pgl\nunion all\nselect al.id as id from auth_logs as al
+      """
+
+      assert {:ok, _result} = Sql.transform(:bq_sql, input, user)
+    end
+
     test "parser can handle complex sql" do
       user = insert(:user)
 
@@ -103,6 +138,24 @@ defmodule Logflare.SqlTest do
               {"with src as (select a from my_table) select c from src",
                "select c from src order by c asc"},
               "with src as (select a from #{table}) select c from src order by c asc"
+            },
+            # sandboxed CTEs with union all
+            {
+              {"with cte1 as (select a from my_table), cte2 as (select b from my_table) select a from cte1",
+               "select a from cte1 union all select b from cte2"},
+              "with cte1 as (select a from #{table}), cte2 as (select b from #{table}) select a from cte1 union all select b from cte2"
+            },
+            # multiple union alls
+            {
+              {"with cte1 as (select a from my_table), cte2 as (select b from my_table) select a from cte1",
+               "select a from cte1 union all select b from cte2 union all select c from cte2"},
+              "with cte1 as (select a from #{table}), cte2 as (select b from #{table}) select a from cte1 union all select b from cte2 union all select c from cte2"
+            },
+            # handle nested CTEs
+            {
+              {"with cte1 as (select 'val' as a) select a from cte1",
+               "with cte2 as (select 'val' as b) select a, b from cte1, cte2"},
+              "with cte1 as (select 'val' as a) (with cte2 as (select 'val' as b) select a, b from cte1, cte2)"
             }
           ] do
         assert {:ok, v2} = Sql.transform(:bq_sql, input, user)
@@ -209,9 +262,6 @@ defmodule Logflare.SqlTest do
             },
             {{"with src as (select a from my_table) select c from src",
               "select a from b; select c from d;"}, "Only singular query allowed"},
-            # no source name in query
-            {"select datetime() from light-two-os-directions-test",
-             "can't find source light-two-os-directions-test"},
             {"select datetime() from `light-two-os-directions-test`",
              "can't find source light-two-os-directions-test"},
             {"with src as (select a from unknown_table) select datetime() from my_table",
@@ -244,7 +294,7 @@ defmodule Logflare.SqlTest do
       for {input, expected} <- [
             # fully qualified names must start with the user's bigquery project
             {"select a from `#{@user_project_id}.#{@user_dataset_id}.mytable`",
-             "select a from `#{@user_project_id}.#{@user_dataset_id}.mytable`"},
+             "select a from `#{@user_project_id}`.`#{@user_dataset_id}`.`mytable`"},
             #  source names that look like dataset format
             {"select a from `a.b.c`", "select a from #{bq_table_name(source_abc)}"},
             {"with a as (select b from `c.x.y`) select b from a",
@@ -256,8 +306,8 @@ defmodule Logflare.SqlTest do
       end
     end
 
-    # This test checks if a source name starting with a logflare project id will get transformed correctly to the source value
-    # this ensures  users cannot access other users' sources.
+    # This test checks if a source name starting with a logflare project id will # get transformed correctly to the
+    # source value this ensures  users cannot access other users' sources.
     test "source name replacement attack check - transform sources that have a fully-qualified name starting with global logflare project id" do
       user = insert(:user)
       source_name = "#{@logflare_project_id}.some.table"
@@ -291,8 +341,79 @@ defmodule Logflare.SqlTest do
       input = " select a from `#{@single_tenant_bq_project_id}.my_dataset.my_table`"
 
       assert {:ok, transformed} = Sql.transform(:bq_sql, input, user)
-      assert transformed =~ "#{@single_tenant_bq_project_id}.my_dataset.my_table"
+      assert transformed =~ "`#{@single_tenant_bq_project_id}`.`my_dataset`.`my_table`"
       refute transformed =~ @logflare_project_id
+    end
+  end
+
+  describe "clickhouse dialect" do
+    test "parser can handle tuple definitions" do
+      user = insert(:user)
+
+      for input <- [
+            "select tuple(1,2,3) as foo",
+            "select tuple(\'abc\')",
+            "select tuple(1, t.str_col) from values(\'str_col String\', (\'hello\'), (\'world\'), (\'test\')) t",
+            "SELECT tuple(t.str_col) AS abc from values(\'str_col String\', (\'hello\'), (\'world\'), (\'test\')) t"
+          ] do
+        assert {:ok, _v2} = Sql.transform(:ch_sql, input, user)
+      end
+    end
+
+    test "parser can handle complex sql" do
+      user = insert(:user)
+
+      for input <- [
+            "select d[0]",
+            # Array indexing with expressions
+            "select arr[1 + 2], arr[length(arr)] from values('arr Array(Int32)', ([10,20,30,40,50]))",
+            # Map access with brackets
+            "select map_col['key1'], map_col[concat('key', '2')] from (select map('key1', 100, 'key2', 200) as map_col)",
+            # Array slicing
+            "select arraySlice(arr, 2, 3) as slice_2_to_4, arraySlice(arr, 1, 3) as first_3, arraySlice(arr, 2) as from_2_onwards from values('arr Array(Int32)', ([1,2,3,4,5,6,7]))",
+            # Nested access
+            "select nested.names[1], nested.values[1] from values('nested Nested(names String, values Int32)', (['john', 'jane'], [25, 30]))"
+          ] do
+        assert {:ok, _v2} = Sql.transform(:ch_sql, input, user)
+      end
+    end
+
+    test "parser can handle sandboxed CTEs with union all" do
+      user = insert(:user)
+      insert(:source, user: user, name: "my_ch_table")
+
+      # valid CTE queries with UNION ALL
+      input = """
+      with cte1 as (select a from my_ch_table),
+           cte2 as (select b from my_ch_table),
+           edge_logs as (select b from my_ch_table),
+           postgres_logs as (select b from my_ch_table),
+           auth_logs as (select b from my_ch_table)
+      select a from cte1
+      union all
+      select b from cte2
+      union all
+      \nselect el.id as id from edge_logs as el\nunion all\nselect pgl.id as id from postgres_logs as pgl\nunion all\nselect al.id as id from auth_logs as al
+      """
+
+      assert {:ok, _result} = Sql.transform(:ch_sql, input, user)
+    end
+
+    test "can extract out parameter names in the SQL string" do
+      for {input, output} <- [
+            {"select event_message, JSONExtractString(body, 'metadata.custom_user_data.company') AS company, timestamp FROM foo.ch WHERE company = @company",
+             ["company"]},
+            {"select @a from old", ["a"]}
+          ] do
+        assert {:ok, ^output} = Sql.parameters(input, dialect: "clickhouse")
+      end
+    end
+
+    test "parameters positions are extracted" do
+      ch_query =
+        "select event_message, JSONExtractString(body, 'metadata.custom_user_data.company') AS company, timestamp FROM foo.ch WHERE company = @company"
+
+      assert {:ok, %{1 => "company"}} = Sql.parameter_positions(ch_query, dialect: "clickhouse")
     end
   end
 
@@ -433,38 +554,248 @@ defmodule Logflare.SqlTest do
     end
   end
 
+  describe "contains_cte?/2" do
+    test "returns true for queries with CTEs" do
+      query_with_cte = """
+      WITH users_summary AS (
+        SELECT user_id, COUNT(*) as total_events
+        FROM events
+        GROUP BY user_id
+      )
+      SELECT * FROM users_summary WHERE total_events > 10
+      """
+
+      assert Sql.contains_cte?(query_with_cte)
+
+      query_with_multiple_ctes = """
+      WITH
+        users_summary AS (
+          SELECT user_id, COUNT(*) as total_events
+          FROM events
+          GROUP BY user_id
+        ),
+        recent_events AS (
+          SELECT * FROM events WHERE timestamp > '2023-01-01'
+        )
+      SELECT u.user_id, u.total_events, r.timestamp
+      FROM users_summary u
+      JOIN recent_events r ON u.user_id = r.user_id
+      """
+
+      assert Sql.contains_cte?(query_with_multiple_ctes)
+
+      recursive_cte = """
+      WITH RECURSIVE employee_hierarchy AS (
+        SELECT employee_id, manager_id, name, 0 as level
+        FROM employees
+        WHERE manager_id IS NULL
+        UNION ALL
+        SELECT e.employee_id, e.manager_id, e.name, eh.level + 1
+        FROM employees e
+        JOIN employee_hierarchy eh ON e.manager_id = eh.employee_id
+      )
+      SELECT * FROM employee_hierarchy
+      """
+
+      assert Sql.contains_cte?(recursive_cte)
+    end
+
+    test "returns false for queries without CTEs" do
+      simple_query = "SELECT * FROM users"
+      refute Sql.contains_cte?(simple_query)
+
+      join_query = """
+      SELECT u.name, e.event_type
+      FROM users u
+      JOIN events e ON u.id = e.user_id
+      WHERE u.active = true
+      """
+
+      refute Sql.contains_cte?(join_query)
+
+      subquery = """
+      SELECT *
+      FROM users
+      WHERE id IN (SELECT user_id FROM events WHERE event_type = 'login')
+      """
+
+      refute Sql.contains_cte?(subquery)
+
+      complex_query = """
+      SELECT
+        u.name,
+        COUNT(e.id) as event_count,
+        AVG(e.duration) as avg_duration
+      FROM users u
+      LEFT JOIN events e ON u.id = e.user_id
+      WHERE u.created_at > '2023-01-01'
+      GROUP BY u.id, u.name
+      HAVING COUNT(e.id) > 5
+      ORDER BY event_count DESC
+      LIMIT 10
+      """
+
+      refute Sql.contains_cte?(complex_query)
+    end
+
+    test "works with different SQL dialects" do
+      cte_query = """
+      WITH user_stats AS (
+        SELECT user_id, COUNT(*) as count
+        FROM events
+        GROUP BY user_id
+      )
+      SELECT * FROM user_stats
+      """
+
+      assert Sql.contains_cte?(cte_query)
+      assert Sql.contains_cte?(cte_query, dialect: "bigquery")
+      assert Sql.contains_cte?(cte_query, dialect: "postgres")
+    end
+
+    test "case insensitive WITH detection" do
+      assert Sql.contains_cte?("with cte as (select 1) select * from cte")
+      assert Sql.contains_cte?("WITH CTE AS (SELECT 1) SELECT * FROM CTE")
+      assert Sql.contains_cte?("With Cte As (Select 1) Select * From Cte")
+    end
+  end
+
+  describe "translate/2 with nested fields" do
+    setup [:setup_postgres_backend]
+
+    test "translate operator to numeric with between with 1 level nested field reference",
+         %{user: user, source: source, backend: backend} = ctx do
+      insert_log_event(ctx, %{
+        "event_message" => "something",
+        "col" => %{"nested" => 223}
+      })
+
+      insert_log_event(ctx, %{
+        "event_message" => "something",
+        "col" => %{"nested" => 400}
+      })
+
+      bq_query = ~s"""
+      select count(t.id) as count from `#{source.name}` t
+      cross join unnest(t.col) as c
+      where c.nested between 200 and 299
+      """
+
+      {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
+      assert {:ok, transformed} = Sql.transform(:pg_sql, translated, user)
+      assert {:ok, [%{"count" => 1}]} = PostgresAdaptor.execute_query(backend, transformed)
+    end
+
+    test "translate operator to numeric with between with 2 level nested field reference",
+         %{user: user, source: source, backend: backend} = ctx do
+      insert_log_event(ctx, %{
+        "event_message" => "something",
+        "col" => %{"nested" => %{"num" => 223}}
+      })
+
+      insert_log_event(ctx, %{
+        "event_message" => "something",
+        "col" => %{"nested" => %{"num" => 400}}
+      })
+
+      bq_query = ~s"""
+      select count(t.id) as count from `#{source.name}` t
+      cross join unnest(t.col) as c
+      cross join unnest(c.nested) as d
+      where d.num between 200 and 299
+      """
+
+      {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
+      assert {:ok, transformed} = Sql.transform(:pg_sql, translated, user)
+      assert {:ok, [%{"count" => 1}]} = PostgresAdaptor.execute_query(backend, transformed)
+    end
+
+    test "CTE translation with cross join",
+         %{user: user, source: source, backend: backend} = ctx do
+      insert_log_event(ctx, %{
+        "event_message" => "something",
+        "metadata" => %{
+          "request" => %{"method" => "GET", "path" => "/"},
+          "response" => %{"status_code" => 200}
+        }
+      })
+
+      bq_query = ~s"""
+      select count(CASE WHEN (req.method IN ('GET', 'POST')) THEN 1 END) as count,
+      from  `#{source.name}` t
+      cross join unnest(metadata) as m
+      cross join unnest(m.request) as req
+      """
+
+      {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
+      assert {:ok, transformed} = Sql.transform(:pg_sql, translated, user)
+
+      assert {:ok,
+              [
+                %{
+                  "count" => 1
+                }
+              ]} = PostgresAdaptor.execute_query(backend, transformed)
+    end
+  end
+
+  describe "translate/2 with CTEs" do
+    setup [:setup_postgres_backend]
+
+    test "CTE translation with cross join",
+         %{user: user, source: source, backend: backend} = ctx do
+      insert_log_event(ctx, %{
+        "event_message" => "something",
+        "metadata" => %{
+          "request" => %{"method" => "GET", "path" => "/"},
+          "response" => %{"status_code" => 200}
+        }
+      })
+
+      bq_query = ~s"""
+      with logs as (
+        select t.timestamp, t.id, t.event_message, t.metadata
+        from  `#{source.name}` t
+        cross join unnest(metadata) as m
+      )
+      select event_message, request.method, request.path, response.status_code
+      from logs
+      cross join unnest(metadata) as m
+      cross join unnest(m.request) as request
+      cross join unnest(m.response) as response
+      """
+
+      {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
+      assert {:ok, transformed} = Sql.transform(:pg_sql, translated, user)
+
+      assert {:ok,
+              [
+                %{
+                  "event_message" => "something",
+                  "method" => "GET",
+                  "path" => "/",
+                  "status_code" => 200
+                }
+              ]} = PostgresAdaptor.execute_query(backend, transformed)
+    end
+  end
+
   describe "bq -> pg translation" do
-    setup do
-      repo = Application.get_env(:logflare, Logflare.Repo)
+    setup [:setup_postgres_backend]
 
-      config = %{
-        url:
-          "postgresql://#{repo[:username]}:#{repo[:password]}@#{repo[:hostname]}/#{repo[:database]}"
-      }
-
-      user = insert(:user)
-      source = insert(:source, user: user, name: "c.d.e")
-      backend = insert(:backend, type: :postgres, sources: [source], config: config)
-
-      pid = start_supervised!({AdaptorSupervisor, {source, backend}})
-
+    setup %{source: source, backend: backend} do
       log_event =
         Logflare.LogEvent.make(
           %{
             "event_message" => "something",
             "test" => "data",
-            "metadata" => %{"nested" => "value"}
+            "metadata" => %{"nested" => "value", "num" => 123}
           },
           %{source: source}
         )
 
       PostgresAdaptor.insert_log_event(source, backend, log_event)
-
-      on_exit(fn ->
-        PostgresAdaptor.destroy_instance({source, backend})
-      end)
-
-      %{source: source, backend: backend, pid: pid, user: user}
+      :ok
     end
 
     test "UNNESTs into JSON-Query", %{backend: backend, user: user} do
@@ -488,6 +819,58 @@ defmodule Logflare.SqlTest do
       assert {:ok, transformed} = Sql.transform(:pg_sql, translated, user)
       # execute it on PG
       assert {:ok, [%{"test" => "data", "nested" => "value"}]} =
+               PostgresAdaptor.execute_query(backend, transformed)
+    end
+
+    test "translate operator to numeric when nested field reference present", %{
+      backend: backend,
+      user: user
+    } do
+      bq_query = ~s"""
+      select count(t.id) as count  from `c.d.e` t
+      cross join unnest(t.metadata) as m
+      where m.num > 100
+      """
+
+      pg_query = ~s"""
+      select count((t.body -> 'id')) as count  from "c.d.e" t
+      where ((body #>> '{metadata,num}')::jsonb #>> '{}')::numeric > 100
+      """
+
+      {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
+      assert Sql.Parser.parse("postgres", translated) == Sql.Parser.parse("postgres", pg_query)
+
+      assert {:ok, transformed} = Sql.transform(:pg_sql, translated, user)
+
+      assert {:ok, [%{"count" => 1}]} =
+               PostgresAdaptor.execute_query(backend, transformed)
+    end
+
+    test "REGEXP_CONTAINS is translated", %{backend: backend, user: user} do
+      bq_query = ~s|select regexp_contains("string", "str") as has_substring|
+
+      pg_query = ~s|select 'string' ~ 'str' as has_substring|
+
+      {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
+      assert Sql.Parser.parse("postgres", translated) == Sql.Parser.parse("postgres", pg_query)
+
+      assert {:ok, transformed} = Sql.transform(:pg_sql, translated, user)
+
+      assert {:ok, [%{"has_substring" => true}]} =
+               PostgresAdaptor.execute_query(backend, transformed)
+    end
+
+    test "REGEXP_CONTAINS is translated with field reference", %{backend: backend, user: user} do
+      bq_query = ~s|select regexp_contains(t.test, "str") as has_substring from `c.d.e` t|
+
+      pg_query = ~s|select (t.body ->> 'test') ~ 'str' as has_substring from "c.d.e" t|
+
+      {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
+      assert Sql.Parser.parse("postgres", translated) == Sql.Parser.parse("postgres", pg_query)
+
+      assert {:ok, transformed} = Sql.transform(:pg_sql, translated, user)
+
+      assert {:ok, [%{"has_substring" => false}]} =
                PostgresAdaptor.execute_query(backend, transformed)
     end
 
@@ -746,15 +1129,6 @@ defmodule Logflare.SqlTest do
                Sql.parameter_positions(bq_query)
     end
 
-    test "REGEXP_CONTAINS is translated" do
-      bq_query = ~s|select regexp_contains("string", "str") as has_substring|
-
-      pg_query = ~s|select 'string' ~ 'str' as has_substring|
-
-      {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
-      assert Sql.Parser.parse("postgres", translated) == Sql.Parser.parse("postgres", pg_query)
-    end
-
     test "malformed table name when global bq project id is not set" do
       # if global bq project id is not set, the first part will be empty
       input =
@@ -787,43 +1161,6 @@ defmodule Logflare.SqlTest do
 
       pg_query =
         ~s|select (t.body -> 'id') as id from my_table t where (to_timestamp( (t.body ->> 'timestamp')::bigint / 1000000.0) AT TIME ZONE 'UTC') is not null|
-
-      {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
-      assert Sql.Parser.parse("postgres", translated) == Sql.Parser.parse("postgres", pg_query)
-    end
-
-    test "CTE translation with cross join" do
-      bq_query = ~s"""
-      with edge_logs as (
-        select t.timestamp, t.id, t.event_message, t.metadata
-        from  `cloudflare.logs.prod` t
-        cross join unnest(metadata) as m
-      )
-      select id, timestamp, event_message, request.method, request.path, response.status_code
-      from edge_logs
-      cross join unnest(metadata) as m
-      cross join unnest(m.request) as request
-      cross join unnest(m.response) as response
-      """
-
-      pg_query = ~s"""
-      with edge_logs as (
-        select
-          (t.body -> 'timestamp') as timestamp,
-          (t.body -> 'id') as id,
-          (t.body -> 'event_message') AS event_message,
-          (t.body -> 'metadata') as metadata
-        from  "cloudflare.logs.prod" t
-      )
-      SELECT
-      id AS id,
-      timestamp AS timestamp,
-      event_message AS event_message,
-      ( metadata #> '{request,method}') AS method,
-      ( metadata #> '{request,path}') AS path,
-      ( metadata #> '{response,status_code}') AS status_code
-      FROM edge_logs
-      """
 
       {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
       assert Sql.Parser.parse("postgres", translated) == Sql.Parser.parse("postgres", pg_query)
@@ -946,5 +1283,36 @@ defmodule Logflare.SqlTest do
     # functions metrics
     # test "APPROX_QUANTILES is translated"
     # tes "offset() and indexing is translated"
+  end
+
+  defp setup_postgres_backend(_context) do
+    repo = Application.get_env(:logflare, Logflare.Repo)
+
+    config = %{
+      url:
+        "postgresql://#{repo[:username]}:#{repo[:password]}@#{repo[:hostname]}/#{repo[:database]}"
+    }
+
+    user = insert(:user)
+    source = insert(:source, user: user, name: "c.d.e")
+    backend = insert(:backend, type: :postgres, sources: [source], config: config)
+
+    pid = start_supervised!({AdaptorSupervisor, {source, backend}})
+
+    on_exit(fn ->
+      PostgresAdaptor.destroy_instance({source, backend})
+    end)
+
+    %{source: source, backend: backend, pid: pid, user: user}
+  end
+
+  defp insert_log_event(%{source: source, backend: backend}, event) do
+    log_event =
+      Logflare.LogEvent.make(
+        event,
+        %{source: source}
+      )
+
+    PostgresAdaptor.insert_log_event(source, backend, log_event)
   end
 end

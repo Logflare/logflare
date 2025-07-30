@@ -1,4 +1,4 @@
-defmodule Logflare.DynamicPipelineTest do
+defmodule Logflare.Backends.DynamicPipelineTest do
   use Logflare.DataCase
 
   alias Logflare.Backends.DynamicPipeline
@@ -18,7 +18,7 @@ defmodule Logflare.DynamicPipelineTest do
     backend = insert(:backend, type: :bigquery)
 
     # create the startup queue
-    IngestEventQueue.upsert_tid({source, backend, nil})
+    IngestEventQueue.upsert_tid({source.id, backend.id, nil})
 
     [
       name: Backends.via_source(source, :some_mod, backend),
@@ -176,5 +176,80 @@ defmodule Logflare.DynamicPipelineTest do
       )
 
     assert DynamicPipeline.whereis(name) == pid
+  end
+
+  test "trace increases and decreases of pipelines",
+       %{name: name, pipeline_args: pipeline_args} do
+    ref_increment =
+      :telemetry_test.attach_event_handlers(self(), [
+        [:logflare, :backends, :dynamic_pipeline, :increment]
+      ])
+
+    ref_decrement =
+      :telemetry_test.attach_event_handlers(self(), [
+        [:logflare, :backends, :dynamic_pipeline, :decrement]
+      ])
+
+    pid =
+      spawn(fn ->
+        :timer.sleep(400)
+      end)
+
+    start_supervised!(
+      {DynamicPipeline,
+       name: name,
+       pipeline: Pipeline,
+       pipeline_args: pipeline_args,
+       max_pipelines: 11,
+       resolve_count: fn state ->
+         assert is_map_key(state, :last_count_increase)
+         assert is_map_key(state, :last_count_decrease)
+
+         if Process.alive?(pid) do
+           10
+         else
+           5
+         end
+       end,
+       resolve_interval: 100}
+    )
+
+    TestUtils.retry_assert(fn ->
+      assert DynamicPipeline.pipeline_count(name) == 0
+    end)
+
+    TestUtils.retry_assert(fn ->
+      assert DynamicPipeline.pipeline_count(name) == 10
+    end)
+
+    TestUtils.retry_assert(fn ->
+      assert DynamicPipeline.pipeline_count(name) == 5
+    end)
+
+    source_id = pipeline_args[:source].id
+    source_token = pipeline_args[:source].token
+    backend_id = pipeline_args[:backend].id
+    backend_token = pipeline_args[:backend].token
+    backend_type = pipeline_args[:backend].type
+
+    assert_received {[:logflare, :backends, :dynamic_pipeline, :increment], ^ref_increment,
+                     %{error_count: 0, success_count: 10, from_pipeline_count: 0},
+                     %{
+                       source_id: ^source_id,
+                       source_token: ^source_token,
+                       backend_id: ^backend_id,
+                       backend_token: ^backend_token,
+                       backend_type: ^backend_type
+                     }}
+
+    assert_received {[:logflare, :backends, :dynamic_pipeline, :decrement], ^ref_decrement,
+                     %{error_count: 0, success_count: 5, from_pipeline_count: 10},
+                     %{
+                       source_id: ^source_id,
+                       source_token: ^source_token,
+                       backend_id: ^backend_id,
+                       backend_token: ^backend_token,
+                       backend_type: ^backend_type
+                     }}
   end
 end

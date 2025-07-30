@@ -26,11 +26,6 @@ defmodule Logflare.EndpointsTest do
     assert endpoint.id == Endpoints.get_by(name: "some endpoint").id
   end
 
-  test "get_query_by_token/1" do
-    %{id: id, token: token} = insert(:endpoint)
-    assert %Query{id: ^id} = Endpoints.get_query_by_token(token)
-  end
-
   test "get_mapped_query_by_token/1 transforms renamed source names correctly" do
     user = insert(:user)
     source = insert(:source, user: user, name: "my_table")
@@ -65,7 +60,14 @@ defmodule Logflare.EndpointsTest do
 
   test "parse_query_string/1" do
     assert {:ok, %{parameters: ["testing"]}} =
-             Endpoints.parse_query_string("select @testing as date")
+             Endpoints.parse_query_string(:bq_sql, "select @testing as date", [], [])
+  end
+
+  test "parse_query_string/1 for nested queries" do
+    nested = insert(:endpoint, name: "nested", query: "select @other as date")
+
+    assert {:ok, %{parameters: ["other"]}} =
+             Endpoints.parse_query_string(:bq_sql, "select date from `nested`", [nested], [])
   end
 
   test "create endpoint with normal source name" do
@@ -119,16 +121,75 @@ defmodule Logflare.EndpointsTest do
     assert stored_sql =~ "my.date"
   end
 
+  describe "language inference from backend" do
+    test "postgres backend maps to `pg_sql` language" do
+      user = insert(:user)
+      backend = insert(:backend, user: user, type: :postgres)
+
+      assert {:ok, endpoint} =
+               Endpoints.create_query(user, %{
+                 name: "postgres-endpoint",
+                 query: "select current_date as date",
+                 backend_id: backend.id
+                 # Note: no language specified - should be inferred
+               })
+
+      assert endpoint.language == :pg_sql
+      assert endpoint.backend_id == backend.id
+    end
+
+    test "bigquery backend maps to `bq_sql` language" do
+      user = insert(:user)
+      backend = insert(:backend, user: user, type: :bigquery)
+
+      assert {:ok, endpoint} =
+               Endpoints.create_query(user, %{
+                 name: "bigquery-endpoint",
+                 query: "select current_date() as date",
+                 backend_id: backend.id
+               })
+
+      assert endpoint.language == :bq_sql
+      assert endpoint.backend_id == backend.id
+    end
+
+    test "backend does not overwrite explicit language definition" do
+      user = insert(:user)
+      backend = insert(:backend, user: user, type: :bigquery)
+
+      assert {:ok, endpoint} =
+               Endpoints.create_query(user, %{
+                 name: "bigquery-endpoint-lql-test",
+                 query: "select current_date() as date",
+                 backend_id: backend.id,
+                 language: :pg_sql
+               })
+
+      assert endpoint.language == :pg_sql
+      assert endpoint.backend_id == backend.id
+    end
+  end
+
   describe "running queries in bigquery backends" do
     test "run an endpoint query without caching" do
-      expect(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, 1, fn _conn, _proj_id, _opts ->
+      pid = self()
+
+      expect(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, 1, fn _conn, _proj_id, opts ->
+        send(pid, opts[:body].labels)
         {:ok, TestUtils.gen_bq_response([%{"testing" => "123"}])}
       end)
 
       user = insert(:user)
       insert(:source, user: user, name: "c")
-      endpoint = insert(:endpoint, user: user, query: "select current_datetime() as testing")
+
+      %{id: endpoint_id} =
+        endpoint = insert(:endpoint, user: user, query: "select current_datetime() as testing")
+
       assert {:ok, %{rows: [%{"testing" => _}]}} = Endpoints.run_query(endpoint)
+
+      assert_received %{
+        "endpoint_id" => ^endpoint_id
+      }
     end
 
     test "run an endpoint query with query composition" do
@@ -147,6 +208,29 @@ defmodule Logflare.EndpointsTest do
 
       endpoint2 = insert(:endpoint, user: user, query: "select testing from `my.date`")
       assert {:ok, %{rows: [%{"testing" => _}]}} = Endpoints.run_query(endpoint2)
+    end
+
+    test "run_query/1 will exec a bq query with parsed labels" do
+      pid = self()
+
+      expect(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, 1, fn _conn, _proj_id, opts ->
+        send(pid, opts[:body].labels)
+        {:ok, TestUtils.gen_bq_response([%{"testing" => "123"}])}
+      end)
+
+      user = insert(:user)
+
+      endpoint =
+        insert(:endpoint,
+          user: user,
+          name: "my.date",
+          language: :bq_sql,
+          query: "select current_datetime() as testing",
+          parsed_labels: %{"my_label" => "my_value"}
+        )
+
+      assert {:ok, %{rows: [%{"testing" => _}]}} = Endpoints.run_query(endpoint)
+      assert_received %{"my_label" => "my_value"}
     end
 
     test "run_query_string/3" do
@@ -168,8 +252,54 @@ defmodule Logflare.EndpointsTest do
       end)
 
       user = insert(:user)
-      endpoint = insert(:endpoint, user: user, query: "select current_datetime() as testing")
-      _pid = start_supervised!({Logflare.Endpoints.Cache, {endpoint, %{}}})
+
+      endpoint =
+        insert(:endpoint,
+          user: user,
+          query: "select current_datetime() as testing",
+          cache_duration_seconds: 4
+        )
+
+      _pid = start_supervised!({Logflare.Endpoints.ResultsCache, {endpoint, %{}}})
+      assert {:ok, %{rows: [%{"testing" => _}]}} = Endpoints.run_cached_query(endpoint)
+      # 2nd query should hit local cache
+      assert {:ok, %{rows: [%{"testing" => _}]}} = Endpoints.run_cached_query(endpoint)
+    end
+
+    test "run_cached_query/1 only 1 query run" do
+      expect(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, 1, fn _conn, _proj_id, _opts ->
+        {:ok, TestUtils.gen_bq_response([%{"testing" => "123"}])}
+      end)
+
+      user = insert(:user)
+
+      endpoint =
+        insert(:endpoint,
+          user: user,
+          query: "select current_datetime() as testing",
+          cache_duration_seconds: 1
+        )
+
+      _pid = start_supervised!({Logflare.Endpoints.ResultsCache, {endpoint, %{}}})
+      assert {:ok, %{rows: [%{"testing" => _}]}} = Endpoints.run_cached_query(endpoint)
+      # 2nd query should hit local cache
+      assert {:ok, %{rows: [%{"testing" => _}]}} = Endpoints.run_cached_query(endpoint)
+    end
+
+    test "run_cached_query/1 with cache disabled" do
+      expect(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, 2, fn _conn, _proj_id, _opts ->
+        {:ok, TestUtils.gen_bq_response([%{"testing" => "123"}])}
+      end)
+
+      user = insert(:user)
+
+      endpoint =
+        insert(:endpoint,
+          user: user,
+          query: "select current_datetime() as testing",
+          cache_duration_seconds: 0
+        )
+
       assert {:ok, %{rows: [%{"testing" => _}]}} = Endpoints.run_cached_query(endpoint)
       # 2nd query should hit local cache
       assert {:ok, %{rows: [%{"testing" => _}]}} = Endpoints.run_cached_query(endpoint)
@@ -189,7 +319,7 @@ defmodule Logflare.EndpointsTest do
 
         user = insert(:user)
         endpoint = insert(:endpoint, user: user, query: "select current_datetime() as testing")
-        cache_pid = start_supervised!({Logflare.Endpoints.Cache, {endpoint, %{}}})
+        cache_pid = start_supervised!({Logflare.Endpoints.ResultsCache, {endpoint, %{}}})
         assert {:ok, %{rows: [%{"testing" => _}]}} = Endpoints.run_cached_query(endpoint)
 
         params =
@@ -266,7 +396,7 @@ defmodule Logflare.EndpointsTest do
              }
            } = Endpoints.calculate_endpoint_metrics(endpoint)
 
-    _pid = start_supervised!({Logflare.Endpoints.Cache, {endpoint, %{}}})
+    _pid = start_supervised!({Logflare.Endpoints.ResultsCache, {endpoint, %{}}})
 
     assert %_{
              metrics: %Query.Metrics{

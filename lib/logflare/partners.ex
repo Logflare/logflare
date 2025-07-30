@@ -5,11 +5,9 @@ defmodule Logflare.Partners do
   import Ecto.Query
 
   alias Logflare.Partners.Partner
-  alias Logflare.Partners.PartnerUser
   alias Logflare.Repo
   alias Logflare.Users
   alias Logflare.User
-  alias Ecto.Multi
   @spec get_partner(integer()) :: Partner.t() | nil
   @doc """
   Fetch single partner by given id
@@ -32,11 +30,11 @@ defmodule Logflare.Partners do
   """
   def list_partners(), do: Repo.all(Partner)
 
-  @spec get_partner_by_token(binary()) :: Partner.t() | nil
+  @spec get_partner_by_uuid(binary()) :: Partner.t() | nil
   @doc """
-  Fetch single entry by given token
+  Fetch single entry by given uuid based on the :token field
   """
-  def get_partner_by_token(token), do: Repo.get_by(Partner, token: token)
+  def get_partner_by_uuid(uuid), do: Repo.get_by(Partner, token: uuid)
 
   @spec create_user(Partner.t(), map()) ::
           {:ok, User.t()} | {:error, any()}
@@ -44,21 +42,9 @@ defmodule Logflare.Partners do
   Creates a new user and associates it with given partner
   """
   def create_user(%Partner{} = partner, params) do
-    params = Map.merge(params, %{"provider" => "email"})
+    params = Map.merge(params, %{"provider" => "email", "partner_id" => partner.id})
 
-    Repo.transaction(fn ->
-      with {:ok, user} <- Users.insert_user(params),
-           {:ok, _} <- associate_user_to_partner(partner, user) do
-        user
-      else
-        {:error, error} -> Repo.rollback(error)
-      end
-    end)
-  end
-
-  defp associate_user_to_partner(%Partner{id: partner_id}, %User{id: user_id}) do
-    entry = PartnerUser.changeset(%PartnerUser{}, %{partner_id: partner_id, user_id: user_id})
-    Repo.insert(entry)
+    Users.insert_user(params)
   end
 
   @spec delete_partner_by_token(binary()) :: {:ok, Partner.t()} | {:error, any()}
@@ -67,21 +53,19 @@ defmodule Logflare.Partners do
   """
   def delete_partner_by_token(token) do
     token
-    |> get_partner_by_token()
+    |> get_partner_by_uuid()
     |> Repo.delete()
   end
 
-  @spec get_user_by_token(Partner.t(), binary()) :: User.t() | nil
+  @spec get_user_by_uuid(Partner.t(), binary()) :: User.t() | nil
 
   @doc """
-  Fetches user by token for a given Partner
+  Fetches user by uuid (token field) for a given Partner
   """
-  def get_user_by_token(%Partner{token: token}, user_token) do
+  def get_user_by_uuid(%Partner{id: id}, user_uuid) do
     query =
-      from(p in Partner,
-        join: u in assoc(p, :users),
-        where: p.token == ^token and u.token == ^user_token,
-        select: u
+      from(u in User,
+        where: u.partner_id == ^id and u.token == ^user_uuid
       )
 
     Repo.one(query)
@@ -91,52 +75,40 @@ defmodule Logflare.Partners do
   Deletes user if user was created by given partner
   """
   @spec delete_user(Partner.t(), User.t()) :: {:ok, User.t()} | {:error, any()}
-  def delete_user(%Partner{} = partner, %User{token: user_token}) do
-    Repo.transaction(fn ->
-      with user when not is_nil(user) <- get_user_by_token(partner, user_token),
-           {:ok, _} <- diassociate_user_from_partner(partner, user),
-           {:ok, _} <- Users.delete_user(user) do
-        user
-      else
-        nil -> Repo.rollback(:not_found)
-        {:error, error} -> Repo.rollback(error)
-      end
-    end)
+  def delete_user(%Partner{id: partner_id}, %User{partner_id: user_partner_id} = user)
+      when user_partner_id == partner_id do
+    Users.delete_user(user)
   end
 
-  defp diassociate_user_from_partner(%Partner{id: partner_id}, %User{id: user_id}) do
-    query =
-      from(pu in PartnerUser,
-        where: pu.partner_id == ^partner_id,
-        where: pu.user_id == ^user_id,
-        select: pu.id
-      )
-
-    Multi.new()
-    |> Multi.delete_all(:delete, query)
-    |> Repo.transaction()
+  def delete_user(%Partner{id: partner_id}, %User{partner_id: user_partner_id})
+      when user_partner_id != partner_id do
+    {:error, :not_found}
   end
 
-  def user_upgraded?(%User{id: id}) do
-    query =
-      from(pu in PartnerUser, where: pu.user_id == ^id, select: pu.upgraded)
+  def user_upgraded?(%User{partner_upgraded: value}) when is_boolean(value), do: value
 
+  def user_upgraded?(%{id: user_id}) do
+    query = from(u in "partner_users", where: u.user_id == ^user_id, select: u.upgraded, limit: 1)
     Repo.one(query) || false
   end
 
-  def upgrade_user(p, u), do: do_upgrade_downgrade(p, u, true)
-  def downgrade_user(p, u), do: do_upgrade_downgrade(p, u, false)
+  def user_upgraded?(_), do: false
 
-  def do_upgrade_downgrade(%Partner{id: partner_id}, %User{id: user_id}, value) do
-    query =
-      from(pu in PartnerUser,
-        where: pu.partner_id == ^partner_id and pu.user_id == ^user_id,
-        select: pu
-      )
+  def upgrade_user(u), do: do_upgrade_downgrade(u, true)
+  def downgrade_user(u), do: do_upgrade_downgrade(u, false)
 
-    case Repo.update_all(query, set: [upgraded: value]) do
-      {1, [partner_user]} -> {:ok, partner_user}
-      _ -> {:error, :not_found}
-    end
+  def do_upgrade_downgrade(%User{partner_id: nil}, _value) do
+    {:error, :no_partner}
+  end
+
+  def do_upgrade_downgrade(%User{partner_id: partner_id} = user, value)
+      when is_boolean(value) and partner_id != nil do
+    # backwards compat
+    Repo.update_all(
+      from(u in "partner_users", where: u.user_id == ^user.id and u.partner_id == ^partner_id),
+      set: [upgraded: value]
+    )
+
+    Users.update_user_all_fields(user, %{partner_upgraded: value})
   end
 end

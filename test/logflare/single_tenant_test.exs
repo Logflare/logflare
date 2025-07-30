@@ -23,6 +23,22 @@ defmodule Logflare.SingleTenantTest do
       assert {:error, :already_created} = SingleTenant.create_default_plan()
     end
 
+    test "create_default_plan/0 with existing data" do
+      insert(:plan, name: "Enterprise")
+      insert(:plan, name: "Enterprise")
+      assert {:ok, plan} = SingleTenant.create_default_plan()
+      assert plan.name == "Enterprise"
+      assert Billing.get_plan_by(name: "Enterprise") == plan
+      assert {:error, :already_created} = SingleTenant.create_default_plan()
+    end
+
+    test "create_default_plan/0 will override previous values" do
+      assert {:ok, correct_plan} = SingleTenant.create_default_plan()
+      Repo.update_all(Plan, set: [limit_sources: 999])
+      assert {:ok, fetched} = SingleTenant.create_default_plan()
+      assert fetched.limit_sources == correct_plan.limit_sources
+    end
+
     test "get_default_user/0" do
       assert {:ok, _plan} = SingleTenant.create_default_plan()
       assert {:ok, _user} = SingleTenant.create_default_user()
@@ -31,6 +47,12 @@ defmodule Logflare.SingleTenantTest do
 
     test "get_default_plan/0" do
       assert {:ok, _plan} = SingleTenant.create_default_plan()
+      assert %Plan{name: "Enterprise"} = SingleTenant.get_default_plan()
+    end
+
+    test "bug: get_default_plan/0 handles past value changes" do
+      assert {:ok, _plan} = SingleTenant.create_default_plan()
+      Repo.update_all(Plan, set: [limit_sources: 999])
       assert %Plan{name: "Enterprise"} = SingleTenant.get_default_plan()
     end
 
@@ -93,7 +115,7 @@ defmodule Logflare.SingleTenantTest do
       %{id: user_id} = user = SingleTenant.get_default_user()
       assert {:ok, source} = Sources.create_source(%{name: TestUtils.random_string()}, user)
       assert %Source{user_id: ^user_id, v2_pipeline: true} = source
-      assert [] == Logflare.Backends.list_backends(source)
+      assert [] == Logflare.Backends.list_backends(source_id: source.id)
       assert %Backend{type: :postgres, config: %{url: ^url}} = SingleTenant.get_default_backend()
       assert %Backend{type: :postgres, config: %{url: ^url}} = Backends.get_default_backend(user)
     end
@@ -296,8 +318,8 @@ defmodule Logflare.SingleTenantTest do
   defp assert_access_tokens(%_{id: user_id} = user) do
     assert length(Auth.list_valid_access_tokens(user)) == 2
     public = Application.get_env(:logflare, :public_access_token)
-    assert {:ok, %_{id: ^user_id}} = Auth.verify_access_token(public, "public")
+    assert {:ok, _token, %_{id: ^user_id}} = Auth.verify_access_token(public, "public")
     private = Application.get_env(:logflare, :private_access_token)
-    assert {:ok, %_{id: ^user_id}} = Auth.verify_access_token(private, "private")
+    assert {:ok, _token, %_{id: ^user_id}} = Auth.verify_access_token(private, "private")
   end
 end

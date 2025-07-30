@@ -1,6 +1,6 @@
 {
   "coverage_options": {
-    "minimum_coverage": 20
+    "minimum_coverage": 60
   },
   "skip_files": [
     "test",

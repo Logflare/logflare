@@ -1,4 +1,6 @@
 defmodule Logflare.Backends.Adaptor.PostgresAdaptor.Repo.Migrations do
+  @moduledoc false
+
   alias Logflare.Backends.Adaptor.PostgresAdaptor.SharedRepo, as: Repo
   alias Logflare.Backends.Adaptor.PostgresAdaptor, as: Adaptor
 

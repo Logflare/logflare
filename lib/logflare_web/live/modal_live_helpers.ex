@@ -35,12 +35,6 @@ defmodule LogflareWeb.ModalLiveHelpers do
             String.to_existing_atom(v)
           end
 
-        module_or_template =
-          case type do
-            "template" -> module_or_template
-            "component" -> module_or_template
-          end
-
         socket =
           socket
           |> assign(:show_modal, true)

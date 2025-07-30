@@ -14,7 +14,7 @@ defmodule Logflare.ContextCache.Supervisor do
   alias Logflare.TeamUsers
   alias Logflare.Partners
   alias Logflare.Auth
-
+  alias Logflare.Endpoints
   alias Logflare.Repo
 
   def start_link(_) do
@@ -25,13 +25,21 @@ defmodule Logflare.ContextCache.Supervisor do
 
   @impl Supervisor
   def init(_) do
-    res = Supervisor.init(get_children(@env), strategy: :one_for_one)
-    res
+    Supervisor.init(get_children(@env), strategy: :one_for_one)
   end
 
-  defp get_children(:test) do
+  defp get_children(:test), do: list_caches()
+
+  defp get_children(_) do
+    list_caches() ++
+      [
+        ContextCache.TransactionBroadcaster,
+        ContextCache.CacheBuster
+      ]
+  end
+
+  def list_caches do
     [
-      ContextCache,
       TeamUsers.Cache,
       Partners.Cache,
       Users.Cache,
@@ -39,23 +47,16 @@ defmodule Logflare.ContextCache.Supervisor do
       Sources.Cache,
       Billing.Cache,
       SourceSchemas.Cache,
-      Auth.Cache
+      Auth.Cache,
+      Endpoints.Cache
     ]
-  end
-
-  defp get_children(_) do
-    get_children(:test) ++
-      [
-        ContextCache.TransactionBroadcaster,
-        ContextCache.CacheBuster
-      ]
   end
 
   @doc """
   Returns the publisher :via name used for syn registry.
   """
   def publisher_name do
-    {:via, :syn, {:context_cache, Logflare.PgPublisher}}
+    {:via, :syn, {:core, Logflare.PgPublisher}}
     # {:global, Logflare.PgPublisher}
   end
 

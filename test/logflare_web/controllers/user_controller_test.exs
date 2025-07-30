@@ -1,15 +1,14 @@
 defmodule LogflareWeb.UserControllerTest do
-  @moduledoc false
-  import LogflareWeb.Router.Helpers
   use LogflareWeb.ConnCase
+
   alias Logflare.Users
-  alias Logflare.Google.CloudResourceManager
+
+  import LogflareWeb.Router.Helpers
 
   describe "UserController update" do
     setup do
       u1 = insert(:user, bigquery_dataset_id: "test_dataset_id_1")
       u2 = insert(:user, bigquery_dataset_id: "test_dataset_id_2")
-      # allow Users.Cache.get_by(any()), return: :should_not_happen
 
       {:ok, users: [u1, u2]}
     end
@@ -62,7 +61,7 @@ defmodule LogflareWeb.UserControllerTest do
         name: TestUtils.random_string(),
         image: "https://#{TestUtils.random_string()}.com",
         email_me_product: true,
-        phone: 12345
+        phone: 12_345
       }
 
       conn =
@@ -124,8 +123,13 @@ defmodule LogflareWeb.UserControllerTest do
     end
 
     test "succeeds", %{conn: conn} do
-      CloudResourceManager
-      |> expect(:set_iam_policy, fn -> nil end)
+      expect(
+        GoogleApi.CloudResourceManager.V1.Api.Projects,
+        :cloudresourcemanager_projects_set_iam_policy,
+        fn _, _project_number, [body: _body] ->
+          {:ok, ""}
+        end
+      )
 
       conn = delete(conn, ~p"/account")
       assert redirected_to(conn, 302) =~ ~p"/auth/login?user_deleted=true"
@@ -141,8 +145,13 @@ defmodule LogflareWeb.UserControllerTest do
     end
 
     test "bug: should be able to delete a partner-provisioned account", %{conn: conn} do
-      CloudResourceManager
-      |> expect(:set_iam_policy, fn -> nil end)
+      expect(
+        GoogleApi.CloudResourceManager.V1.Api.Projects,
+        :cloudresourcemanager_projects_set_iam_policy,
+        fn _, _project_number, [body: _body] ->
+          {:ok, ""}
+        end
+      )
 
       conn = delete(conn, ~p"/account")
       assert redirected_to(conn, 302) =~ ~p"/auth/login"

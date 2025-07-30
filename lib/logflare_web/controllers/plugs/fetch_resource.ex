@@ -12,25 +12,8 @@ defmodule LogflareWeb.Plugs.FetchResource do
   import Plug.Conn
   alias Logflare.Sources
   alias Logflare.Endpoints
+  alias Logflare.Utils
   def init(_opts), do: nil
-
-  # ingest by source token
-  def call(%{assigns: %{resource_type: :source}, params: params} = conn, _opts)
-      when is_map_key(params, "source") or is_map_key(params, "collection") do
-    token = params["source"] || params["collection"]
-
-    source =
-      case is_uuid?(token) do
-        true ->
-          Sources.Cache.get_by_and_preload_rules(token: token)
-          |> Sources.refresh_source_metrics_for_ingest()
-
-        _ ->
-          nil
-      end
-
-    assign(conn, :source, source)
-  end
 
   # ingest by source name
   def call(
@@ -44,6 +27,25 @@ defmodule LogflareWeb.Plugs.FetchResource do
     source =
       Sources.Cache.get_by_and_preload_rules(name: name, user_id: user.id)
       |> Sources.refresh_source_metrics_for_ingest()
+
+    assign(conn, :source, source)
+  end
+
+  # ingest by source token
+  def call(%{assigns: %{resource_type: :source}, params: params} = conn, _opts) do
+    token =
+      Utils.Map.get(params, :source) || Utils.Map.get(params, :collection) ||
+        get_source_from_headers(conn)
+
+    source =
+      case uuid?(token) do
+        true ->
+          Sources.Cache.get_by_and_preload_rules(token: token)
+          |> Sources.refresh_source_metrics_for_ingest()
+
+        _ ->
+          nil
+      end
 
     assign(conn, :source, source)
   end
@@ -63,12 +65,15 @@ defmodule LogflareWeb.Plugs.FetchResource do
       end)
 
     endpoint =
-      case is_uuid?(token_or_name) do
-        true ->
-          Endpoints.get_query_by_token(token_or_name)
-
+      case uuid?(token_or_name) do
         false when user_id != nil ->
-          Endpoints.get_by(name: token_or_name, user_id: user_id)
+          Endpoints.Cache.get_by(name: token_or_name, user_id: user_id)
+
+        true when user_id != nil ->
+          Endpoints.Cache.get_by(token: token_or_name, user_id: user_id)
+
+        true when user_id == nil ->
+          Endpoints.Cache.get_by(token: token_or_name)
 
         _ ->
           nil
@@ -82,17 +87,28 @@ defmodule LogflareWeb.Plugs.FetchResource do
           conn,
         _opts
       ) do
-    endpoint = Endpoints.get_by(name: name, user_id: user_id)
+    endpoint = Endpoints.Cache.get_by(name: name, user_id: user_id)
     assign(conn, :endpoint, endpoint)
   end
 
   def call(conn, _), do: conn
 
   # returns true if it is a valid uuid4 string
-  defp is_uuid?(value) when is_binary(value) do
+  defp uuid?(value) when is_binary(value) do
     case Ecto.UUID.dump(value) do
       {:ok, _} -> true
       _ -> false
+    end
+  end
+
+  defp uuid?(_), do: false
+
+  def get_source_from_headers(conn) do
+    (Plug.Conn.get_req_header(conn, "x-source") ||
+       Plug.Conn.get_req_header(conn, "x-collection"))
+    |> case do
+      [value] -> value
+      _ -> nil
     end
   end
 end

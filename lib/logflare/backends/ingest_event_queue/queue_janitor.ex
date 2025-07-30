@@ -14,8 +14,8 @@ defmodule Logflare.Backends.IngestEventQueue.QueueJanitor do
   require Logger
   @default_interval 1_000
   @default_remainder 100
-  @default_max Logflare.Backends.max_buffer_len()
-  @default_purge_ratio 0.1
+  @default_max Logflare.Backends.max_buffer_queue_len()
+  @default_purge_ratio 0.05
 
   def start_link(opts) do
     GenServer.start_link(__MODULE__, opts)
@@ -35,49 +35,60 @@ defmodule Logflare.Backends.IngestEventQueue.QueueJanitor do
       purge_ratio: Keyword.get(opts, :purge_ratio, @default_purge_ratio)
     }
 
-    schedule(state, false)
+    handle_info(:work, state)
     {:ok, state}
   end
 
   def handle_info(:work, state) do
-    do_drop(state)
     scale? = if Application.get_env(:logflare, :env) == :test, do: false, else: true
+    metrics = Sources.get_source_metrics_for_ingest(state.source_token)
+    do_drop(state, metrics)
 
-    schedule(state, scale?)
+    schedule(state, scale?, metrics)
 
     {:noreply, state}
   end
 
   # expose for benchmarking
-  def do_drop(state) do
+  def do_drop(state, metrics) do
     sid_bid = {state.source_id, state.backend_id}
     # safety measure, drop all if still exceed
-    for {_sid, _bid, ref} = sid_bid_pid <- IngestEventQueue.list_queues(sid_bid),
-        pending_size = IngestEventQueue.count_pending(sid_bid_pid),
-        is_integer(pending_size) do
-      if pending_size > state.remainder do
+    queues = IngestEventQueue.list_queues(sid_bid)
+
+    :telemetry.execute(
+      [:logflare, :backends, :ingest_event_queue, :queue_janitor],
+      %{length: length(queues)},
+      %{source_id: state.source_id, backend_id: state.backend_id}
+    )
+
+    for {_sid, _bid, pid} = sid_bid_pid <- queues,
+        size = IngestEventQueue.get_table_size(sid_bid_pid),
+        is_integer(size) do
+      if metrics.avg > 100 do
         IngestEventQueue.truncate_table(sid_bid_pid, :ingested, 0)
       else
         IngestEventQueue.truncate_table(sid_bid_pid, :ingested, state.remainder)
       end
 
-      pending_size = IngestEventQueue.count_pending(sid_bid_pid)
+      size = IngestEventQueue.get_table_size(sid_bid_pid)
 
-      if pending_size > state.max and ref != nil do
-        to_drop = round(state.purge_ratio * pending_size)
+      if size > state.max and pid != nil and is_integer(size) do
+        to_drop = round(state.purge_ratio * size)
         IngestEventQueue.drop(sid_bid_pid, :pending, to_drop)
 
         Logger.warning(
           "IngestEventQueue private :ets buffer exceeded max for source id=#{state.source_id}, dropping #{to_drop} events",
-          backend_id: state.backend_id
+          backend_id: state.backend_id,
+          source_id: state.source_token,
+          source_token: state.source_token,
+          ingest_drop_count: to_drop
         )
       end
     end
   end
 
   # schedule work based on rps
-  defp schedule(state, scale?) do
-    metrics = Sources.get_source_metrics_for_ingest(state.source_token)
+  defp schedule(state, scale?, metrics) do
     # dynamically schedule based on metrics interval
     interval =
       cond do

@@ -15,6 +15,7 @@ defmodule LogflareWeb.Plugs.VerifyApiAccess do
   alias Logflare.Partners.Partner
   alias Logflare.Partners
   alias LogflareWeb.Api.FallbackController
+  alias Logflare.Utils
 
   def init(args), do: args |> Enum.into(%{})
 
@@ -39,19 +40,22 @@ defmodule LogflareWeb.Plugs.VerifyApiAccess do
       {:ok, %Partner{} = partner} when impersonate_user_token != nil ->
         # maybe get the user target
 
-        Partners.Cache.get_user_by_token(partner, impersonate_user_token)
+        Partners.Cache.get_user_by_uuid(partner, impersonate_user_token)
         |> then(fn
-          %User{} = u ->
+          %User{id: user_id} ->
             conn
             |> assign(:partner, partner)
-            |> assign(:user, Users.Cache.preload_defaults(u))
+            |> assign(:user, Users.Cache.get(user_id))
 
           _ ->
             FallbackController.call(conn, {:error, :unauthorized})
         end)
 
-      {:ok, %User{} = user} ->
-        assign(conn, :user, user)
+      {:ok, token, %User{} = user} ->
+        conn
+        |> assign(:user, user)
+        # either nil or %OauthAccessToken{}
+        |> assign(:access_token, token)
 
       {:error, :no_token} when resource_type != nil ->
         conn
@@ -61,24 +65,34 @@ defmodule LogflareWeb.Plugs.VerifyApiAccess do
     end
   end
 
-  defp identify_requestor(conn, scopes) do
-    extracted = extract_token(conn)
+  def identify_requestor(%Plug.Conn{} = conn, scopes) do
+    conn
+    |> extract_token()
+    |> identify_requestor(scopes)
+  end
+
+  def identify_requestor(str_token, scopes) when is_binary(str_token) do
+    identify_requestor({:ok, str_token}, scopes)
+  end
+
+  def identify_requestor(extracted_token, scopes) when is_tuple(extracted_token) do
     is_private_route? = "private" in scopes
 
-    with {:ok, access_token_or_api_key} <- extracted,
-         {:ok, %User{} = owner} <- Auth.Cache.verify_access_token(access_token_or_api_key, scopes) do
-      {:ok, Users.Cache.preload_defaults(owner)}
+    with {:ok, access_token_or_api_key} <- extracted_token,
+         {:ok, token, %User{id: user_id}} <-
+           Auth.Cache.verify_access_token(access_token_or_api_key, scopes) do
+      {:ok, token, Users.Cache.get(user_id)}
     else
       # don't preload for partners
-      {:ok, %Partner{}} = res -> res
+      {:ok, _token, %Partner{} = partner} -> {:ok, partner}
       {:error, :no_token} = err -> err
-      {:error, _} = err -> handle_legacy_api_key(extracted, err, is_private_route?)
+      {:error, _} = err -> handle_legacy_api_key(extracted_token, err, is_private_route?)
     end
   end
 
   defp handle_legacy_api_key({:ok, api_key}, err, is_private_route?) do
-    case Users.Cache.get_by_and_preload(api_key: api_key) do
-      %_{} = user when is_private_route? == false -> {:ok, user}
+    case Users.Cache.get_by(api_key: api_key) do
+      %_{} = user when is_private_route? == false -> {:ok, nil, user}
       _ when is_private_route? == false -> {:error, :no_token}
       _ when is_private_route? == true -> {:error, :unauthorized}
       _ -> err
@@ -100,7 +114,7 @@ defmodule LogflareWeb.Plugs.VerifyApiAccess do
     api_key =
       conn
       |> Plug.Conn.get_req_header("x-api-key")
-      |> List.first(conn.params["api_key"])
+      |> List.first(Utils.Map.get(conn.params, :api_key))
 
     cond do
       bearer != nil -> {:ok, bearer}

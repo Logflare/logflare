@@ -14,7 +14,7 @@ defmodule Logflare.Factory do
   alias Logflare.Lql
   alias Logflare.OauthAccessTokens.OauthAccessToken
   alias Logflare.Partners.Partner
-  alias Logflare.Rule
+  alias Logflare.Rules.Rule
   alias Logflare.Source
   alias Logflare.SourceSchemas.SourceSchema
   alias Logflare.Teams.Team
@@ -35,8 +35,7 @@ defmodule Logflare.Factory do
       bigquery_processed_bytes_limit: 10_000_000_000,
       token: TestUtils.gen_uuid(),
       api_key: TestUtils.random_string(10),
-      provider_uid: "provider_uid_#{TestUtils.random_string()}",
-      bigquery_udfs_hash: ""
+      provider_uid: "provider_uid_#{TestUtils.random_string()}"
     }
   end
 
@@ -48,17 +47,21 @@ defmodule Logflare.Factory do
   end
 
   def team_user_factory do
+    email = "#{TestUtils.random_string(8)}@#{TestUtils.random_string()}.com"
+
     %TeamUser{
       name: "some name #{TestUtils.random_string()}",
       team: build(:team),
-      provider: "google"
+      provider: "google",
+      email: email,
+      provider_uid: "provider_uid_#{TestUtils.random_string()}"
     }
   end
 
   def source_factory do
     %Source{
       name: TestUtils.random_string(10),
-      token: TestUtils.gen_uuid(),
+      token: TestUtils.gen_uuid_atom(),
       rules: [],
       favorite: false,
       metrics: %{
@@ -70,8 +73,15 @@ defmodule Logflare.Factory do
     }
   end
 
-  def source_schema_factory do
-    %SourceSchema{}
+  def source_schema_factory(attrs) do
+    %SourceSchema{
+      bigquery_schema: attrs[:bigquery_schema] || TestUtils.default_bq_schema(),
+      schema_flat_map:
+        Logflare.Google.BigQuery.SchemaUtils.bq_schema_to_flat_typemap(
+          attrs[:bigquery_schema] || TestUtils.default_bq_schema()
+        )
+    }
+    |> merge_attributes(attrs)
   end
 
   def backend_factory(attrs) do
@@ -92,7 +102,10 @@ defmodule Logflare.Factory do
       rules: attrs[:rules] || [],
       user_id: attrs[:user_id],
       user: attrs[:user],
-      metadata: attrs[:metadata] || nil
+      metadata: attrs[:metadata] || nil,
+      updated_at: attrs[:updated_at],
+      inserted_at: attrs[:inserted_at],
+      alert_queries: attrs[:alert_queries] || []
     }
   end
 
@@ -122,7 +135,8 @@ defmodule Logflare.Factory do
   end
 
   def log_event_factory(attrs) do
-    {source, params} = Map.pop(attrs, :source, build(:source))
+    {source, attrs} = Map.pop(attrs, :source, build(:source))
+    {ingested_at, params} = Map.pop(attrs, :ingested_at)
 
     params =
       for {k, v} <- params, into: %{} do
@@ -147,6 +161,9 @@ defmodule Logflare.Factory do
       |> Map.drop([:metadata, :event_message, :message, :timestamp])
 
     LogEvent.make(params, %{source: source})
+    |> Map.update!(:ingested_at, fn v ->
+      if ingested_at, do: ingested_at, else: v
+    end)
   end
 
   def plan_factory() do
@@ -210,15 +227,21 @@ defmodule Logflare.Factory do
     %UserPreferences{}
   end
 
-  def endpoint_factory do
+  def endpoint_factory(attrs \\ %{}) do
+    user = Map.get(attrs, :user, build(:user))
+    backend = Map.get(attrs, :backend)
+    language = Map.get(attrs, :language, :bq_sql)
+
     %Query{
-      user: build(:user),
+      user: user,
       description: "some desc #{TestUtils.random_string()}",
       token: Ecto.UUID.generate(),
       query: "select current_date() as date",
-      language: :bq_sql,
+      language: language,
+      backend: backend,
       name: TestUtils.random_string()
     }
+    |> merge_attributes(Map.drop(attrs, [:backend, :language, :user]))
   end
 
   def child_endpoint_factory do
@@ -234,7 +257,7 @@ defmodule Logflare.Factory do
     %OauthAccessToken{
       token: TestUtils.random_string(20),
       resource_owner: build(:user),
-      scopes: "public"
+      scopes: "ingest"
     }
   end
 
@@ -242,7 +265,7 @@ defmodule Logflare.Factory do
     %OauthAccessToken{
       token: TestUtils.random_string(20),
       resource_owner: build(:user),
-      scopes: ~w(public)
+      scopes: ~w(ingest)
     }
   end
 

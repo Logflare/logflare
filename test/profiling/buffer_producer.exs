@@ -15,7 +15,7 @@ batch =
     %Logflare.LogEvent{id: "123", message: :something}
   end
 
-Logflare.Backends.IngestEventQueue.upsert_tid({source, nil})
+Logflare.Backends.IngestEventQueue.upsert_tid({source.id, nil})
 
 for _ <- 1..1000 do
   :ok = Logflare.Backends.IngestEventQueue.add_to_table({source, nil}, batch)

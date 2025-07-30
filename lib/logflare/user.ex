@@ -12,6 +12,7 @@ defmodule Logflare.User do
   alias Logflare.Google.BigQuery
   alias Logflare.Users.UserPreferences
   alias Logflare.Vercel
+  alias Logflare.Partners.Partner
   alias Logflare.Alerting.AlertQuery
 
   @derive {Jason.Encoder,
@@ -30,7 +31,8 @@ defmodule Logflare.User do
              :api_quota,
              :company,
              :token,
-             :metadata
+             :metadata,
+             :partner_upgraded
            ]}
 
   @default_user_api_quota 150
@@ -74,8 +76,8 @@ defmodule Logflare.User do
     field :bigquery_project_id, :string
     field :bigquery_dataset_location, :string
     field :bigquery_dataset_id, :string
-    field :bigquery_udfs_hash, :string
     field :bigquery_processed_bytes_limit, :integer
+    field :bigquery_enable_managed_service_accounts, :boolean, default: false
     field :api_quota, :integer, default: @default_user_api_quota
     field :valid_google_account, :boolean
     field :provider_uid, :string
@@ -84,14 +86,16 @@ defmodule Logflare.User do
     field :endpoints_beta, :boolean, default: false
     field :metadata, :map
     embeds_one :preferences, UserPreferences
+    field :partner_upgraded, :boolean, default: false
 
-    has_many :billing_counts, Logflare.Billing.BillingCount, on_delete: :delete_all
+    has_many :billing_counts, Logflare.Billing.BillingCount
     has_many :sources, Source
     has_many :endpoint_queries, Logflare.Endpoints.Query
-    has_many(:alert_queries, AlertQuery)
+    has_many :alert_queries, AlertQuery
     has_many :vercel_auths, Vercel.Auth
 
     has_one :team, Team
+    belongs_to :partner, Partner
     has_one :billing_account, BillingAccount
 
     timestamps()
@@ -109,9 +113,11 @@ defmodule Logflare.User do
     :bigquery_dataset_location,
     :bigquery_dataset_id,
     :bigquery_processed_bytes_limit,
+    :bigquery_enable_managed_service_accounts,
     :valid_google_account,
     :provider_uid,
-    :company
+    :company,
+    :partner_upgraded
   ]
 
   @fields @user_allowed_fields ++
@@ -121,9 +127,9 @@ defmodule Logflare.User do
               :api_key,
               :old_api_key,
               :api_quota,
-              :bigquery_udfs_hash,
               :billing_enabled,
-              :endpoints_beta
+              :endpoints_beta,
+              :partner_id
             ]
 
   @doc """

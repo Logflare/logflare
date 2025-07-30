@@ -2,48 +2,108 @@
 
 ## Dev Env Setup
 
-1. Install dependencies with `asdf` using `asdf install`
-2. Decrypt secrets with `make decrypt.dev`. It will decrypt two files:
-   1. Dev secrets - `.dev.env`
-   2. Google JWT key - `.gcloud.json`
-3. Start dev dependencies: `docker compose up -d db stripe-mock`
-4. Run `make setup` for dependencies, migrations, and seed data.
-5. Start server with `make start`
-6. Sign in as a user
-7. Create a source
-8. Update `.dev.env`, search for the `LOGFLARE_LOGGER_BACKEND_API_KEY` and
-   `LOGFLARE_LOGGER_BACKEND_SOURCE_ID` and update them accordingly
-9. Set user API key can be retrieved from dashboard or from database `users`
-   table, source id is from the source page
-10. In `iex` console, test that everything works:
+Pre-requisites:
 
-```elixir
-iex> LogflareLogger.info("testing log message")
+- asdf (or mise)
+- docker
+
+### Setup for Supabase Team
+
+```bash
+# install deps
+make setup
+
+# decrypt secrets
+make decrypt.dev
+
+# start dev server
+make start
 ```
 
-## Docker Services
+To test the ingestion:
 
-Run the local database with `docker-compose up -d db`.
+```bash
+# Set for testing logging ingestion
+sed -i 's/LOGFLARE_LOGGER_BACKEND_API_KEY=.*/LOGFLARE_LOGGER_BACKEND_API_KEY=my-cool-api-key-123/' .dev.env
+# Set for testing OTEL ingestion
+sed -i 's/LOGFLARE_OTEL_SOURCE_UUID=.*/LOGFLARE_OTEL_SOURCE_UUID=my-otel-source-uuid/' .dev.env
+sed -i 's/LOGFLARE_OTEL_ACCESS_TOKEN=.*/LOGFLARE_OTEL_ACCESS_TOKEN=my-cool-api-key-123/' .dev.env
 
-To run the full docker setup, run `docker-compose up -d`. This will load the GCP
-JWT and the `.docker.env`. Ensure that both files exist.
+# restart server with iex
+make start
 
-To build images only, use `docker-compose build`
-
-## Supabase Development
-
-### Developing in Supabase Mode
-
-To run the dev env in Supabase mode, adjust the `.docker.env` config:
-
-```
-LOGFLARE_SINGLE_TENANT=true LOGFLARE_SUPABASE_MODE=true
+# with iex
+iex> LogflareLogger.info("testing")
 ```
 
-This will tell Logflare to perform data seeding and disable UI auth.
+To run multi-node cluster:
 
-Thereafter, run `mix start.docker` to run the dev server with docker config.
-This is useful for testing supabase mode and single tenant mode.
+```bash
+# in separate terminals
+make start.orange
+make start.pink
+```
+
+### Setup for External Contributors
+
+```bash
+# install dependencies
+make setup
+
+# start local database
+docker-compose up -d db
+
+# start in single tenant postgres backend
+make start.st.pg
+
+# run tests
+mix test
+mix test.watch
+make test.failed
+mix test --repeat-until-failure 1000 test/...
+
+# run checks
+mix test.coverage
+mix test.compile
+mix format
+mix lint
+```
+
+To configure the BigQuery backend, please follow the [BigQuery setup documentation](https://docs.logflare.app/self-hosting/#bigquery-setup).
+
+### Developing for Single Tenant
+
+Use the single tenant `make start.*` variations. This works by switching out the `LOGFLARE_SINGLE_TENANT` env var.
+
+```bash
+make start.st.pg
+make start.st.bq
+```
+
+To develop with Supabase mode:
+
+```bash
+make start.sb.bq
+make start.sb.pg
+```
+
+### Running with Docker Compose
+
+Use any of the variations, which will start logflare in single-tenant mode:
+
+```bash
+# to build locally with bq backend
+docker compose up db logflare
+
+# to build locally with pg backend
+docker compose -f docker-compose.yml -f docker-compose.pg.yml up db logflare
+
+# to run latest image locally with bq backend
+docker compose -f docker-compose.yml -f docker-compose.latest.yml up db logflare
+
+# to run latest image locally with pg backend
+docker compose -f docker-compose.yml -f docker-compose.latest.yml -f docker-compose.pg.yml up db logflare
+```
 
 ### Developing Logflare alongside Supabase CLI
 
@@ -56,6 +116,23 @@ In order to test all changes locally, perform the following steps:
    - run `go run . init` to create a local Supabase project
 3. Update the test Supabase project's config under `supabase/config.toml`
    - Logflare uses the `analytics` namespace.
+
+## Command Reference
+
+```bash
+make setup
+make start
+make start.{orange|pink}
+make start.{st|sb}.{bq|pg}
+make decrypt.{dev|staging|prod}
+make encrypt.{dev|staging|prod}
+make reset
+make grpc.protoc
+make deploy.staging.{main|versioned}
+make deploy.prod.versioned
+make tag-versioned
+make ssl.{prod|staging}
+```
 
 ## Release Management
 
@@ -82,3 +159,12 @@ information that we want to log but don't necessarily want searchable or parsed
 for schema updating.
 
 For example, do `Logger.error("Some error", error_string: inspect(params))`
+
+
+## Deprecations
+
+### users.bigquery_udfs_hash
+
+The `bigquery_udfs_hash` column on the `users` table is deprecated. It is no
+longer referenced in the `Logflare.User` schema and will be dropped from the `users`
+table in a future release

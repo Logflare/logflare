@@ -1,5 +1,6 @@
 defmodule LogflareWeb.SourceController do
   use LogflareWeb, :controller
+
   require Logger
 
   alias Logflare.Billing
@@ -28,44 +29,17 @@ defmodule LogflareWeb.SourceController do
 
   @lql_dialect :routing
 
-  def dashboard(%{assigns: %{user: user, team_user: team_user, team: _team}} = conn, _params) do
-    sources = Sources.preload_for_dashboard(user.sources)
-
-    home_team = Teams.get_home_team(team_user)
-
-    team_users_with_teams =
-      TeamUsers.list_team_users_by_and_preload(provider_uid: team_user.provider_uid)
-
-    pipeline_counts =
-      for source <- sources, into: %{} do
-        name = Backends.via_source(source, Logflare.Source.BigQuery.Pipeline, nil)
-
-        count =
-          if GenServer.whereis(name) do
-            Backends.DynamicPipeline.pipeline_count(name)
-          else
-            0
-          end
-
-        {source.id, count}
-      end
-
-    render(conn, "dashboard.html",
-      sources: sources,
-      pipeline_counts: pipeline_counts,
-      home_team: home_team,
-      team_users: team_users_with_teams,
-      current_node: Node.self()
-    )
-  end
-
   def dashboard(%{assigns: %{user: user, team: team}} = conn, _params) do
     user = Users.preload_sources(user)
     sources = Sources.preload_for_dashboard(user.sources)
 
-    home_team = team
-
-    team_users_with_teams = TeamUsers.list_team_users_by_and_preload(email: user.email)
+    {home_team, team_users_with_teams} =
+      if team_user = conn.assigns[:team_user] do
+        {Teams.get_home_team(team_user),
+         TeamUsers.list_team_users_by_and_preload(provider_uid: team_user.provider_uid)}
+      else
+        {team, TeamUsers.list_team_users_by_and_preload(email: user.email)}
+      end
 
     pipeline_counts =
       for source <- sources, into: %{} do
@@ -199,7 +173,7 @@ defmodule LogflareWeb.SourceController do
     message = [
       "Please ",
       Phoenix.HTML.Link.link("upgrade to explore",
-        to: "#{Routes.billing_account_path(conn, :edit)}"
+        to: ~p"/billing/edit"
       ),
       " in Google Data Studio."
     ]
@@ -266,6 +240,7 @@ defmodule LogflareWeb.SourceController do
 
   def public(%{assigns: %{user: _user, source: source}} = conn, %{"public_token" => _public_token}) do
     avg_rate = source.metrics.avg
+
     render_show_with_assigns(conn, conn.assigns.user, source, avg_rate)
   end
 
@@ -417,7 +392,7 @@ defmodule LogflareWeb.SourceController do
         message = [
           "Please ",
           Phoenix.HTML.Link.link("upgrade",
-            to: "#{Routes.billing_account_path(conn, :edit)}"
+            to: ~p"/billing/edit"
           ),
           " first!"
         ]
@@ -577,6 +552,15 @@ defmodule LogflareWeb.SourceController do
     for le <- log_events, le do
       le
       |> Map.take([:body, :via_rule, :origin_source_id])
+      |> case do
+        %{body: %{"metadata" => %{"level" => level}}}
+        when level in ~W(debug info warning error alert critical notice emergency) ->
+          body = Map.put(le.body, "level", level)
+          %{le | body: body}
+
+        le ->
+          le
+      end
     end
   end
 

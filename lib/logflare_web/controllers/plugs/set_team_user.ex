@@ -1,6 +1,6 @@
 defmodule LogflareWeb.Plugs.SetTeamUser do
   @moduledoc """
-  Assigns team user if browser session is present in conn
+  Assigns team user if browser session is present in conn.
   """
   import Plug.Conn
   import Phoenix.Controller

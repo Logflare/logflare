@@ -2,7 +2,14 @@ defmodule LogflareWeb.LogController do
   use LogflareWeb, :controller
   use OpenApiSpex.ControllerSpecs
 
+  alias Logflare.Logs
   alias Logflare.Logs.Processor
+  alias Opentelemetry.Proto.Collector.Trace.V1.ExportTraceServiceRequest
+  alias Opentelemetry.Proto.Collector.Trace.V1.ExportTraceServiceResponse
+  alias Opentelemetry.Proto.Collector.Metrics.V1.ExportMetricsServiceRequest
+  alias Opentelemetry.Proto.Collector.Metrics.V1.ExportMetricsServiceResponse
+  alias Opentelemetry.Proto.Collector.Logs.V1.ExportLogsServiceRequest
+  alias Opentelemetry.Proto.Collector.Logs.V1.ExportLogsServiceResponse
 
   alias LogflareWeb.OpenApi.Created
   alias LogflareWeb.OpenApi.ServerError
@@ -29,8 +36,6 @@ defmodule LogflareWeb.LogController do
     when action in [:browser_reports, :generic_json, :create]
   )
 
-  alias Logflare.Logs
-
   @message "Logged!"
 
   operation(:create,
@@ -54,7 +59,7 @@ defmodule LogflareWeb.LogController do
       ]
     ],
     responses: %{
-      201 => Created.response(LogsCreated),
+      200 => Created.response(LogsCreated),
       500 => ServerError.response()
     }
   )
@@ -80,6 +85,8 @@ defmodule LogflareWeb.LogController do
     |> handle(conn)
   end
 
+  operation :cloudflare, false
+
   def cloudflare(%{assigns: %{source: source}} = conn, %{"batch" => batch}) when is_list(batch) do
     batch
     |> Processor.ingest(Logs.Raw, source)
@@ -94,11 +101,15 @@ defmodule LogflareWeb.LogController do
     |> handle(conn)
   end
 
+  operation :syslog, false
+
   def syslog(%{assigns: %{source: source}} = conn, %{"batch" => batch}) when is_list(batch) do
     batch
     |> Processor.ingest(Logs.Raw, source)
     |> handle(conn)
   end
+
+  operation :generic_json, false
 
   def generic_json(%{assigns: %{source: source}} = conn, %{"_json" => batch})
       when is_list(batch) do
@@ -114,6 +125,8 @@ defmodule LogflareWeb.LogController do
     |> handle(conn)
   end
 
+  operation :vector, false
+
   def vector(%{assigns: %{source: source}} = conn, %{"_json" => batch})
       when is_list(batch) do
     batch
@@ -127,6 +140,8 @@ defmodule LogflareWeb.LogController do
     |> Processor.ingest(Logs.Vector, source)
     |> handle(conn)
   end
+
+  operation :browser_reports, false
 
   def browser_reports(%{assigns: %{source: source}} = conn, %{"_json" => batch})
       when is_list(batch) do
@@ -142,12 +157,16 @@ defmodule LogflareWeb.LogController do
     |> handle(conn)
   end
 
+  operation :elixir_logger, false
+
   def elixir_logger(%{assigns: %{source: source}} = conn, %{"batch" => batch})
       when is_list(batch) do
     batch
     |> Processor.ingest(Logs.Raw, source)
     |> handle(conn)
   end
+
+  operation :create_with_typecasts, false
 
   def create_with_typecasts(%{assigns: %{source: source}} = conn, %{"batch" => batch})
       when is_list(batch) do
@@ -156,12 +175,16 @@ defmodule LogflareWeb.LogController do
     |> handle(conn)
   end
 
+  operation :vercel_ingest, false
+
   def vercel_ingest(%{assigns: %{source: source}} = conn, %{"_json" => batch})
       when is_list(batch) do
     batch
     |> Processor.ingest(Logs.Vercel, source)
     |> handle(conn)
   end
+
+  operation :netlify, false
 
   def netlify(%{assigns: %{source: source}} = conn, %{"_json" => batch}) when is_list(batch) do
     batch
@@ -176,11 +199,15 @@ defmodule LogflareWeb.LogController do
     |> handle(conn)
   end
 
+  operation :github, false
+
   def github(%{assigns: %{source: source}, body_params: params} = conn, _params) do
     [params]
     |> Processor.ingest(Logs.Github, source)
     |> handle(conn)
   end
+
+  operation :cloud_event, false
 
   def cloud_event(%Plug.Conn{} = conn, %{"_json" => batch})
       when is_list(batch) do
@@ -223,5 +250,72 @@ defmodule LogflareWeb.LogController do
     for {"ce-" <> header, data} <- conn.req_headers, into: %{} do
       {String.replace(header, "-", "_"), data}
     end
+  end
+
+  operation :otel_traces, false
+
+  def otel_traces(
+        %{assigns: %{source: source}} = conn,
+        %ExportTraceServiceRequest{resource_spans: resource_spans}
+      ) do
+    resource_spans
+    |> Processor.ingest(Logs.OtelTrace, source)
+    |> protobuf_response(conn, %ExportTraceServiceResponse{})
+  rescue
+    exception ->
+      send_proto_error(conn, 500, "Internal server error")
+      reraise exception, __STACKTRACE__
+  end
+
+  operation :otel_metrics, false
+
+  def otel_metrics(
+        %{assigns: %{source: source}} = conn,
+        %ExportMetricsServiceRequest{resource_metrics: resource_metrics}
+      ) do
+    resource_metrics
+    |> Processor.ingest(Logs.OtelMetric, source)
+    |> protobuf_response(conn, %ExportMetricsServiceResponse{})
+  rescue
+    exception ->
+      send_proto_error(conn, 500, "Internal server error")
+      reraise exception, __STACKTRACE__
+  end
+
+  operation :otel_logs, false
+
+  def otel_logs(
+        %{assigns: %{source: source}} = conn,
+        %ExportLogsServiceRequest{resource_logs: resource_logs}
+      ) do
+    resource_logs
+    |> Processor.ingest(Logs.OtelLog, source)
+    |> protobuf_response(conn, %ExportLogsServiceResponse{})
+  rescue
+    exception ->
+      send_proto_error(conn, 500, "Internal server error")
+      reraise exception, __STACKTRACE__
+  end
+
+  defp protobuf_response({:error, _}, conn, _success_response) do
+    send_proto_error(conn, 500, "Internal server error")
+  end
+
+  defp protobuf_response(_, conn, success_response) do
+    send_proto_resp(conn, success_response)
+  end
+
+  defp send_proto_resp(conn, resp) do
+    payload = Protobuf.encode_to_iodata(resp)
+
+    conn
+    |> put_resp_content_type("application/x-protobuf")
+    |> send_resp(200, payload)
+  end
+
+  defp send_proto_error(conn, status, error) do
+    conn
+    |> send_resp(status, Protobuf.encode(%Google.Rpc.Status{message: error}))
+    |> halt()
   end
 end

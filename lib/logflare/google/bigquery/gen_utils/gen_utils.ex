@@ -8,6 +8,7 @@ defmodule Logflare.Google.BigQuery.GenUtils do
   alias Logflare.{Sources, Users}
   alias Logflare.{Source, User}
   alias GoogleApi.BigQuery.V2.Connection
+  alias Logflare.Backends.Adaptor.BigQueryAdaptor
 
   @table_ttl 604_800_000
   @default_dataset_location "US"
@@ -29,7 +30,7 @@ defmodule Logflare.Google.BigQuery.GenUtils do
   @spec get_project_id(atom()) :: String.t()
   def get_project_id(source_id) when is_atom(source_id) do
     %Source{user_id: user_id} = Sources.Cache.get_by(token: source_id)
-    %User{bigquery_project_id: project_id} = Users.Cache.get_by(id: user_id)
+    %User{bigquery_project_id: project_id} = Users.Cache.get(user_id)
 
     project_id || env_project_id()
   end
@@ -44,7 +45,7 @@ defmodule Logflare.Google.BigQuery.GenUtils do
       bigquery_project_id: project_id,
       bigquery_dataset_location: dataset_location,
       bigquery_dataset_id: dataset_id
-    } = Users.Cache.get_by(id: user_id)
+    } = Users.Cache.get(user_id)
 
     new_ttl =
       cond do
@@ -77,17 +78,56 @@ defmodule Logflare.Google.BigQuery.GenUtils do
 
   Uses `Logflare.FinchDefault` by default
   """
-  @typep conn_type :: :ingest | :query | :default
+  @typep conn_type :: :ingest | {:query, User.t()} | :default
   @spec get_conn(conn_type()) :: Tesla.Env.client()
   def get_conn(conn_type \\ :default) do
+    system_managed_sa_enabled = BigQueryAdaptor.managed_service_accounts_enabled?()
     # use pid as the partition hash
-    partition_count = System.schedulers_online()
+    {use_managed_sa?, partition_count} =
+      case conn_type do
+        {:query,
+         %_{bigquery_project_id: project_id, bigquery_enable_managed_service_accounts: true}}
+        when system_managed_sa_enabled == true and project_id != nil ->
+          {true, BigQueryAdaptor.managed_service_account_partition_count()}
+
+        {:query, %_{bigquery_project_id: nil}}
+        when system_managed_sa_enabled == true ->
+          {true, BigQueryAdaptor.managed_service_account_partition_count()}
+
+        _ ->
+          {false, BigQueryAdaptor.ingest_service_account_partition_count()}
+      end
+
     partition = :erlang.phash2(self(), partition_count)
 
-    metadata = %{partition: partition}
+    {name, metadata} =
+      if use_managed_sa? == true do
+        pool_size = BigQueryAdaptor.managed_service_account_pool_size()
+
+        sa_index = :erlang.phash2(self(), pool_size)
+
+        {{
+           Logflare.GothQuery,
+           sa_index,
+           partition
+         },
+         %{
+           pool_size: pool_size,
+           sa_index: sa_index,
+           partition: partition
+         }}
+      else
+        {{
+           Logflare.Goth,
+           partition
+         },
+         %{
+           partition: partition
+         }}
+      end
 
     :telemetry.span([:logflare, :goth, :fetch], metadata, fn ->
-      result = Goth.fetch({Logflare.Goth, partition})
+      result = Goth.fetch(name)
       {result, metadata}
     end)
     |> case do
@@ -106,13 +146,17 @@ defmodule Logflare.Google.BigQuery.GenUtils do
   # copy over runtime adapter building from Tesla.client/2
   # https://github.com/elixir-tesla/tesla/blob/v1.7.0/lib/tesla/builder.ex#L206
   defp build_tesla_adapter_call(:ingest) do
-    Tesla.client([], {Tesla.Adapter.Finch, name: Logflare.FinchDefault, receive_timeout: 5_000}).adapter
-  end
-
-  defp build_tesla_adapter_call(:query) do
     Tesla.client(
       [],
-      {Tesla.Adapter.Finch, name: Logflare.FinchDefault, receive_timeout: 60_000}
+      {Tesla.Adapter.Finch,
+       name: Logflare.FinchIngest, pool_timeout: 2_500, receive_timeout: 5_000}
+    ).adapter
+  end
+
+  defp build_tesla_adapter_call({:query, _}) do
+    Tesla.client(
+      [],
+      {Tesla.Adapter.Finch, name: Logflare.FinchQuery, receive_timeout: 60_000}
     ).adapter
   end
 

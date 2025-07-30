@@ -216,14 +216,16 @@ defmodule LogflareWeb.AdminController do
     from u in User,
       order_by: [desc: :inserted_at],
       select: u,
-      preload: :billing_account
+      preload: :billing_account,
+      limit: 100
   end
 
   defp query_accounts(sort_by) when is_binary(sort_by) do
     from u in User,
       order_by: [desc: ^sort_option_to_atom(sort_by)],
       select: u,
-      preload: :billing_account
+      preload: :billing_account,
+      limit: 100
   end
 
   defp query_accounts(email, sort_by) when is_binary(sort_by) do
@@ -233,7 +235,8 @@ defmodule LogflareWeb.AdminController do
       order_by: [desc: ^sort_option_to_atom(sort_by)],
       where: ilike(u.email, ^e),
       select: u,
-      preload: :billing_account
+      preload: :billing_account,
+      limit: 100
   end
 
   defp sort_option_to_atom(option) when is_binary(option) do

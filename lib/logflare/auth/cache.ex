@@ -16,17 +16,28 @@ defmodule Logflare.Auth.Cache do
       id: __MODULE__,
       start:
         {Cachex, :start_link,
-         [__MODULE__, [stats: stats, expiration: Utils.cache_expiration_sec(30, 15)]]}
+         [
+           __MODULE__,
+           [
+             hooks:
+               [
+                 if(stats, do: Utils.cache_stats()),
+                 Utils.cache_limit(100_000)
+               ]
+               |> Enum.filter(& &1),
+             expiration: Utils.cache_expiration_min(5, 2)
+           ]
+         ]}
     }
   end
 
   @spec verify_access_token(OauthAccessToken.t() | String.t()) ::
-          {:ok, User.t()} | {:error, term()}
+          {:ok, OauthAccessToken.t(), User.t()} | {:error, term()}
   def verify_access_token(access_token_or_api_key),
     do: apply_repo_fun(__ENV__.function, [access_token_or_api_key])
 
   @spec verify_access_token(OauthAccessToken.t() | String.t(), String.t() | [String.t()]) ::
-          {:ok, User.t()} | {:error, term()}
+          {:ok, OauthAccessToken.t(), User.t()} | {:error, term()}
   def verify_access_token(access_token_or_api_key, scopes),
     do: apply_repo_fun(__ENV__.function, [access_token_or_api_key, scopes])
 

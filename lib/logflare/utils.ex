@@ -1,8 +1,27 @@
 defmodule Logflare.Utils do
   @moduledoc """
-  Context-only utilities. Should not be used outside of `lib/logflare/*`
+  Context-only utilities. Should not be used outside of `lib/logflare/*`.
   """
   import Cachex.Spec
+  import Logflare.Utils.Guards, only: [is_atom_value: 1]
+
+  def cache_stats() do
+    hook(module: Cachex.Stats)
+  end
+
+  def cache_limit(n) when is_integer(n) do
+    hook(
+      module: Cachex.Limit.Scheduled,
+      args: {
+        # setting cache max size
+        n,
+        # options for `Cachex.prune/3`
+        [],
+        # options for `Cachex.Limit.Scheduled`
+        []
+      }
+    )
+  end
 
   @doc """
   Builds a long Cachex expiration spec
@@ -32,12 +51,13 @@ defmodule Logflare.Utils do
   @doc """
   Stringifies an atom map to a string map.
 
-  ### Example
+  ## Examples
+
     iex> stringify_keys(%{test: "data"})
     %{"test" => "data"}
   """
   @spec stringify_keys(map()) :: map()
-  def stringify_keys(map = %{}) do
+  def stringify_keys(%{} = map) do
     Map.new(map, fn
       {k, v} when is_atom(k) -> {Atom.to_string(k), stringify_keys(v)}
       {k, v} when is_binary(k) -> {k, stringify_keys(v)}
@@ -50,21 +70,34 @@ defmodule Logflare.Utils do
 
   def stringify_keys(not_a_map), do: not_a_map
 
-  def stringify(v) when is_integer(v) do
-    Integer.to_string(v)
-  end
+  @doc """
+  Stringifies a term.
 
-  def stringify(v) when is_float(v) do
-    Float.to_string(v)
-  end
-
+  ### Example
+    iex> stringify(:my_atom)
+    "my_atom"
+    iex> stringify(1.1)
+    "1.1"
+    iex> stringify(122)
+    "122"
+    iex> stringify("something")
+    "something"
+    iex> stringify(%{})
+    "%{}"
+    iex> stringify([])
+    "[]"
+  """
+  def stringify(v) when is_atom_value(v), do: Atom.to_string(v)
   def stringify(v) when is_binary(v), do: v
+  def stringify(v) when is_float(v), do: Float.to_string(v)
+  def stringify(v) when is_integer(v), do: Integer.to_string(v)
   def stringify(v), do: inspect(v)
 
   @doc """
   Sets the default ecto changeset field value if not set
 
-  ###  Example
+  ## Examples
+
     iex> data = %{title: "hello"}
     iex> types = %{title: :string}
     iex> changeset = Ecto.Changeset.cast({data, types}, %{title: nil}, [:title])
@@ -82,7 +115,8 @@ defmodule Logflare.Utils do
   Performs chunked round robin of a batch of items to a group of targets.
   Repeats the group of targets until the batch is completely empty.
 
-  ###  Example
+  ## Examples
+
     iex> batch = [1, 2, 4]
     iex> targets = [:x, :y]
     iex> chunk_size = 2
@@ -113,6 +147,16 @@ defmodule Logflare.Utils do
     next_chunk_rr(batch, chunk_size, targets, targets, func, [])
   end
 
+  @doc """
+  Takes an adapter config and encodes basic auth.
+  """
+  def encode_basic_auth(%{username: username, password: password})
+      when is_binary(username) and is_binary(password) do
+    Base.encode64(username <> ":" <> password)
+  end
+
+  def encode_basic_auth(_adapter_config), do: nil
+
   defp next_chunk_rr([], _chunk_size, _remaining, _initial_targets, _func, results) do
     Enum.reverse(results)
   end
@@ -141,4 +185,24 @@ defmodule Logflare.Utils do
       [result | results]
     )
   end
+
+  @doc """
+  Converts a Unix timestamp in microseconds to an ISO8601 string.
+
+  ## Examples
+
+    iex> iso_timestamp(1609459200000000)
+    "2021-01-01T00:00:00Z"
+
+    iex> iso_timestamp(:not_a_timestamp)
+    nil
+  """
+  def iso_timestamp(timestamp) when is_integer(timestamp) do
+    timestamp
+    |> DateTime.from_unix!(:microsecond)
+    |> DateTime.truncate(:second)
+    |> DateTime.to_iso8601()
+  end
+
+  def iso_timestamp(_timestamp), do: nil
 end

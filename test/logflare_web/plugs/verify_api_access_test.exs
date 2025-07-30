@@ -27,8 +27,9 @@ defmodule LogflareWeb.Plugs.VerifyApiAccessTest do
       {:ok, conn: conn}
     end
 
-    test "can impersonate partner-provisioned user", %{conn: conn, user: user} do
-      partner = insert(:partner, users: [user])
+    test "can impersonate partner-provisioned user", %{conn: conn} do
+      partner = insert(:partner)
+      user = insert(:user, partner: partner)
 
       conn
       |> put_req_header("x-lf-partner-user", user.token)
@@ -174,34 +175,6 @@ defmodule LogflareWeb.Plugs.VerifyApiAccessTest do
       assert conn.halted == false
       assert Map.get(conn.assigns, :user) == nil
     end
-  end
-
-  test "public scope", %{user: user} do
-    {:ok, access_token} = Logflare.Auth.create_access_token(user, %{scopes: "public"})
-
-    build_conn(:get, "/any", %{})
-    |> put_req_header("x-api-key", access_token.token)
-    |> VerifyApiAccess.call(%{scopes: ~w(public)})
-    |> assert_authorized(user)
-
-    build_conn(:get, "/any", %{})
-    |> put_req_header("x-api-key", access_token.token)
-    |> VerifyApiAccess.call(%{scopes: ~w(public)})
-    |> assert_authorized(user)
-
-    # no scope set
-    {:ok, access_token} = Logflare.Auth.create_access_token(user)
-
-    build_conn(:get, "/any", %{})
-    |> put_req_header("x-api-key", access_token.token)
-    |> VerifyApiAccess.call(%{scopes: ~w(public)})
-    |> assert_authorized(user)
-
-    # user.api_key
-    build_conn(:get, "/any", %{})
-    |> put_req_header("x-api-key", user.api_key)
-    |> VerifyApiAccess.call(%{scopes: ~w(public)})
-    |> assert_authorized(user)
   end
 
   test "private scope", %{user: user} do

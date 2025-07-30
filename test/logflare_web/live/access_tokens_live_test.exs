@@ -31,7 +31,7 @@ defmodule LogflareWeb.AccessTokensLiveTest do
     assert html =~ "Copy"
   end
 
-  test "public token", %{conn: conn, user: user} do
+  test "deprecated: public token", %{conn: conn, user: user} do
     token = insert(:access_token, scopes: "public", resource_owner: user)
     {:ok, view, _html} = live(conn, ~p"/access-tokens")
     html = render(view)
@@ -46,22 +46,63 @@ defmodule LogflareWeb.AccessTokensLiveTest do
     assert html =~ "No description"
   end
 
+  test "create token - ingest into all", %{conn: conn} do
+    {:ok, view, _html} = live(conn, ~p"/access-tokens")
+    do_ui_create_token(view, "ingest")
+    html = view |> element("table") |> render()
+    # able to copy, visible
+    assert view
+           |> element("button", "Copy")
+           |> has_element?()
+
+    assert html =~ "ingest"
+  end
+
+  test "create token - ingest into one source", %{conn: conn, user: user} do
+    source = insert(:source, user: user)
+    {:ok, view, _html} = live(conn, ~p"/access-tokens")
+    html = do_ui_create_token(view, "ingest:source:#{source.id}")
+    # able to copy, visible
+    assert view
+           |> element("button", "Copy")
+           |> has_element?()
+
+    assert html =~ "ingest (#{source.name})"
+    refute html =~ "ingest (all)"
+  end
+
+  test "create token - query for one endpoint", %{conn: conn, user: user} do
+    endpoint = insert(:endpoint, user: user)
+    {:ok, view, _html} = live(conn, ~p"/access-tokens")
+    do_ui_create_token(view, "query:endpoint:#{endpoint.id}")
+
+    assert view
+           |> element("button", "Copy")
+           |> has_element?()
+
+    html = view |> element("table") |> render()
+    assert html =~ "query (#{endpoint.name})"
+    refute html =~ "query (all)"
+  end
+
+  test "create ingest token", %{conn: conn} do
+    {:ok, view, _html} = live(conn, ~p"/access-tokens")
+
+    do_ui_create_token(view, "ingest")
+
+    assert view
+           |> element("button", "Copy")
+           |> has_element?()
+
+    html = view |> element("table") |> render()
+    assert html =~ "some description"
+    assert html =~ "ingest (all)"
+  end
+
   test "create private token", %{conn: conn} do
     {:ok, view, _html} = live(conn, ~p"/access-tokens")
 
-    assert view
-           |> element("button", "Create access token")
-           |> render_click()
-
-    assert view |> element("button", "Create") |> has_element?()
-    assert view |> element("label", "Scope") |> has_element?()
-
-    assert view
-           |> element("form")
-           |> render_submit(%{
-             description: "some description",
-             scopes: "private"
-           }) =~ "created successfully"
+    do_ui_create_token(view, "private")
 
     html = view |> element("table") |> render()
     assert html =~ "some description"
@@ -80,5 +121,26 @@ defmodule LogflareWeb.AccessTokensLiveTest do
     html = render(view)
     refute html =~ token.token
     assert html =~ "private"
+  end
+
+  # returns the rendered table html
+  defp do_ui_create_token(view, scopes) do
+    assert view
+           |> element("button", "Create access token")
+           |> render_click()
+
+    assert view |> element("button", "Create") |> has_element?()
+    assert view |> element("label", "Scope") |> has_element?()
+
+    assert view
+           |> element("form")
+           |> render_submit(%{
+             description: "some description",
+             scopes_main: if(scopes =~ ":", do: [], else: [scopes]),
+             scopes_ingest: if(scopes =~ "ingest:", do: [], else: [scopes]),
+             scopes_query: if(scopes =~ "query:", do: [], else: [scopes])
+           }) =~ "created successfully"
+
+    view |> element("table") |> render()
   end
 end

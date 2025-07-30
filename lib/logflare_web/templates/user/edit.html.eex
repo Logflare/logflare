@@ -56,7 +56,7 @@
 <div class="sub-form">
 <%= if @user.billing_account do %>
   <%= section_header("Edit Billing Account") %>
-  <%= link "Edit billing account", to: Routes.billing_account_path(@conn, :edit), class: "btn btn-primary form-button" %>
+  <%= link "Edit billing account", to: ~p"/billing/edit", class: "btn btn-primary form-button" %>
 <% else %>
   <%= section_header("Create a Billing Account") %>
   <%= link "Create a billing account", to: Routes.billing_path(@conn, :create), method: :post, class: "btn btn-primary form-button" %>
@@ -83,7 +83,7 @@
   <p>Team members can delete and edit sources. They cannot edit account settings or manage team members. Use this link to invite team members. This link will expire 24 hours from now.</p>
   <code><%= Routes.auth_url(@conn, :login, invite_token: Logflare.Auth.gen_email_token(@team.id)) %></code>
 </div>
-<button class="btn btn-primary form-button" id="copy-path" data-clipboard-text="<%= Routes.auth_url(@conn, :login, invite_token: Logflare.Auth.gen_email_token(@team.id)) %>" data-toggle="tooltip" data-html=true data-placement="top" title="<span id=&quot;copy-tooltip&quot;>Copy this</span>">Copy invite link</button>
+<button class="btn btn-primary form-button" id="copy-path" data-clipboard-text="<%= Routes.auth_url(@conn, :login, invite_token: Logflare.Auth.gen_email_token(@team.id)) %>" data-toggle="tooltip" data-placement="top" title="<span id=&quot;copy-tooltip&quot;>Copy this</span>">Copy invite link</button>
 </div>
 
 <h4 class="header-margin">Account Preferences</h4>

@@ -14,6 +14,8 @@ defmodule Logflare.Source.BigQuery.Pipeline do
   alias Logflare.LogEvent, as: LE
   alias Logflare.Mailer
   alias Logflare.Source
+  alias Logflare.Sources
+  alias Logflare.Backends.IngestEventQueue
   alias Logflare.Backends.BufferProducer
   alias Logflare.Source.BigQuery.Schema
   alias Logflare.Source.Supervisor
@@ -21,11 +23,12 @@ defmodule Logflare.Source.BigQuery.Pipeline do
   alias Logflare.Users
   alias Logflare.PubSubRates
 
-  # each batch should at most be 5MB
+  require OpenTelemetry.Tracer
+
   # BQ max is 10MB
   # https://cloud.google.com/bigquery/quotas#streaming_inserts
-  @max_batch_length 5_000_000
-  @max_batch_size 300
+  @max_batch_length 6_000_000
+  @max_batch_size 500
 
   def start_link(args, opts \\ []) do
     {name, args} = Keyword.pop(args, :name)
@@ -39,23 +42,25 @@ defmodule Logflare.Source.BigQuery.Pipeline do
           # top-level will apply to all children
           hibernate_after: 5_000,
           spawn_opt: [
-            fullsweep_after: 10
+            fullsweep_after: 15
           ],
           producer: [
             module:
               {BufferProducer,
                [
-                 source: source,
-                 backend: backend
+                 source_id: source.id,
+                 backend_id: backend.id
                ]},
-            transformer: {__MODULE__, :transform, []}
+            transformer:
+              {__MODULE__, :transform,
+               [ref: {{source.id, backend.id, args[:pipeline_ref]}, source.token}]}
           ],
           processors: [
-            default: [concurrency: 4, max_demand: 100]
+            default: [concurrency: 8, max_demand: 100]
           ],
           batchers: [
             bq: [
-              concurrency: 8,
+              concurrency: 16,
               batch_size: bq_batch_size_splitter(),
               batch_timeout: 1_500,
               # must be set when using custom batch_size splitter
@@ -89,15 +94,25 @@ defmodule Logflare.Source.BigQuery.Pipeline do
   end
 
   # Broadway transformer for custom producer
-  def transform(event, _opts) do
+  def transform(event, args) do
+    ref = args[:ref]
+
     %Message{
       data: event,
-      acknowledger: {__MODULE__, :ack_id, :ack_data}
+      acknowledger: {__MODULE__, ref, :ack_data}
     }
   end
 
-  def ack(_ack_ref, _successful, _failed) do
+  # Ziinc: temporarily pass in source token until PubSubRates is refactored
+  def ack({queue, source_token}, successful, _failed) do
     # TODO: re-queue failed
+    metrics = Sources.get_source_metrics_for_ingest(source_token)
+
+    if metrics.avg > 100 do
+      for %{data: le} <- successful do
+        IngestEventQueue.delete(queue, le)
+      end
+    end
   end
 
   @spec handle_message(any, Broadway.Message.t(), any) :: Broadway.Message.t()
@@ -118,7 +133,17 @@ defmodule Logflare.Source.BigQuery.Pipeline do
       }
     )
 
-    stream_batch(context, messages)
+    OpenTelemetry.Tracer.with_span :bigquery_pipeline, %{
+      attributes: %{
+        source_id: context.source_id,
+        source_token: context.source_token,
+        backend_id: context.backend_id,
+        ingest_batch_size: batch_info.size,
+        ingest_batch_trigger: batch_info.trigger
+      }
+    } do
+      stream_batch(context, messages)
+    end
   end
 
   def le_messages_to_bq_rows(messages) do
@@ -150,54 +175,60 @@ defmodule Logflare.Source.BigQuery.Pipeline do
   def stream_batch(%{source_token: source_token} = context, messages) do
     Logger.metadata(source_id: source_token, source_token: source_token)
 
-    rows = le_messages_to_bq_rows(messages)
+    :telemetry.span(
+      [:logflare, :ingest, :pipeline, :stream_batch],
+      %{source_token: source_token},
+      fn ->
+        rows = le_messages_to_bq_rows(messages)
 
-    # TODO ... Send some errors through the pipeline again. The generic "retry" error specifically.
-    # All others send to the rejected list with the message from BigQuery.
-    # See todo in `process_data` also.
-    case BigQuery.stream_batch!(context, rows) do
-      {:ok, %GoogleApi.BigQuery.V2.Model.TableDataInsertAllResponse{insertErrors: nil}} ->
-        :ok
+        # TODO ... Send some errors through the pipeline again. The generic "retry" error specifically.
+        # All others send to the rejected list with the message from BigQuery.
+        # See todo in `process_data` also.
+        case BigQuery.stream_batch!(context, rows) do
+          {:ok, %GoogleApi.BigQuery.V2.Model.TableDataInsertAllResponse{insertErrors: nil}} ->
+            :ok
 
-      {:ok, %GoogleApi.BigQuery.V2.Model.TableDataInsertAllResponse{insertErrors: errors}} ->
-        Logger.warning("BigQuery insert errors.", error_string: inspect(errors))
+          {:ok, %GoogleApi.BigQuery.V2.Model.TableDataInsertAllResponse{insertErrors: errors}} ->
+            Logger.warning("BigQuery insert errors.", error_string: inspect(errors))
 
-      {:error, %Tesla.Env{} = response} ->
-        case GenUtils.get_tesla_error_message(response) do
-          "Access Denied: BigQuery BigQuery: Streaming insert is not allowed in the free tier" =
-              message ->
-            disconnect_backend_and_email(source_token, message)
+          {:error, %Tesla.Env{} = response} ->
+            case GenUtils.get_tesla_error_message(response) do
+              "Access Denied: BigQuery BigQuery: Streaming insert is not allowed in the free tier" =
+                  message ->
+                disconnect_backend_and_email(source_token, message)
 
-          "The project" <> _tail = message ->
-            # "The project web-wtc-1537199112807 has not enabled BigQuery."
-            disconnect_backend_and_email(source_token, message)
+              "The project" <> _tail = message ->
+                # "The project web-wtc-1537199112807 has not enabled BigQuery."
+                disconnect_backend_and_email(source_token, message)
 
-          # Don't disconnect here because sometimes the GCP API doesn't find projects
-          #
-          # "Not found:" <> _tail = message ->
-          #   disconnect_backend_and_email(source_id, message)
-          #   messages
+              # Don't disconnect here because sometimes the GCP API doesn't find projects
+              #
+              # "Not found:" <> _tail = message ->
+              #   disconnect_backend_and_email(source_id, message)
+              #   messages
 
-          _message ->
-            Logger.warning("Stream batch response error!",
-              tesla_response: GenUtils.get_tesla_error_message(response)
-            )
+              _message ->
+                Logger.warning("Stream batch response error!",
+                  tesla_response: GenUtils.get_tesla_error_message(response)
+                )
+            end
+
+          {:error, :emfile = response} ->
+            Logger.error("Stream batch emfile error!", tesla_response: response)
+
+          {:error, :timeout = response} ->
+            Logger.warning("Stream batch timeout error!", tesla_response: response)
+
+          {:error, :checkout_timeout = response} ->
+            Logger.warning("Stream batch checkout_timeout error!", tesla_response: response)
+
+          {:error, response} ->
+            Logger.warning("Stream batch unknown error!", tesla_response: inspect(response))
         end
 
-      {:error, :emfile = response} ->
-        Logger.error("Stream batch emfile error!", tesla_response: response)
-
-      {:error, :timeout = response} ->
-        Logger.warning("Stream batch timeout error!", tesla_response: response)
-
-      {:error, :checkout_timeout = response} ->
-        Logger.warning("Stream batch checkout_timeout error!", tesla_response: response)
-
-      {:error, response} ->
-        Logger.warning("Stream batch unknown error!", tesla_response: inspect(response))
-    end
-
-    messages
+        {messages, %{}}
+      end
+    )
   end
 
   def process_data(%LE{source: %Source{lock_schema: true}} = log_event, _context) do
@@ -213,10 +244,10 @@ defmodule Logflare.Source.BigQuery.Pipeline do
     # random sample if local ingest rate is above a certain level
     probability =
       case PubSubRates.Cache.get_local_rates(source.token) do
-        %{average_rate: avg} when avg > 1000 -> 0.01
-        %{average_rate: avg} when avg > 500 -> 0.05
-        %{average_rate: avg} when avg > 100 -> 0.1
-        %{average_rate: avg} when avg > 10 -> 0.2
+        %{average_rate: avg} when avg > 10_000 -> 0.0001
+        %{average_rate: avg} when avg > 1000 -> 0.001
+        %{average_rate: avg} when avg > 100 -> 0.01
+        %{average_rate: avg} when avg > 10 -> 0.1
         _ -> 1
       end
 
@@ -235,7 +266,7 @@ defmodule Logflare.Source.BigQuery.Pipeline do
 
   defp disconnect_backend_and_email(source_id, message) when is_atom(source_id) do
     source = Sources.Cache.get_by(token: source_id)
-    user = Users.Cache.get_by(id: source.user_id)
+    user = Users.Cache.get(source.user_id)
 
     defaults = %{
       bigquery_dataset_location: nil,
@@ -274,12 +305,7 @@ defmodule Logflare.Source.BigQuery.Pipeline do
 
         # check content length
         message, {count, len} ->
-          {:ok, payload} =
-            with {:error, %Jason.EncodeError{}} <- Jason.encode(message.data.body) do
-              {:ok, inspect_payload(message.data.body)}
-            end
-
-          length = IO.iodata_length(payload)
+          length = message_size(message.data.body)
 
           if len - length <= 0 do
             # below max batch count, but reach max batch length
@@ -292,12 +318,7 @@ defmodule Logflare.Source.BigQuery.Pipeline do
     }
   end
 
-  def inspect_payload(%{} = payload) do
-    inspect(payload,
-      binaries: :as_strings,
-      charlists: :as_lists,
-      limit: :infinity,
-      printable_limit: :infinity
-    )
+  def message_size(data) do
+    :erlang.external_size(data)
   end
 end

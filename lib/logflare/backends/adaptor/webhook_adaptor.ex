@@ -1,21 +1,30 @@
 defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
-  @moduledoc false
+  @moduledoc """
+  Backend adaptor for webhooks / HTTP posts.
+
+  A number of other adaptors (_ClickHouse, DataDog, Elastic, Loki, etc_) leverage this to handle the final HTTP transaction.
+
+  ### Finch Pool Selection
+
+  By default the pool will be selected automatically based on the `:http` configuration option.
+
+  If you want to manually select a specific Finch pool, you can use the `:pool_name` option and provide the module name.
+
+
+  ### Dynamic URL handling with URL Override
+
+  This adaptor performs a merge on config that will prevent you from leveraging a dynamically generated URL configuration at runtime.
+  To bypass this behavior, you can use the optional `:url_override` attribute.
+
+  See the `Logflare.Backends.Adaptor.ClickhouseWebhookAdaptor` for an example that utilizes this.
+  """
+
   use GenServer
-  use TypedStruct
 
   alias Logflare.Backends
   alias Logflare.Backends.Adaptor.WebhookAdaptor.EgressMiddleware
 
   @behaviour Logflare.Backends.Adaptor
-
-  typedstruct do
-    field(:config, %{
-      url: String.t(),
-      headers: map(),
-      http: String.t(),
-      gzip: boolean()
-    })
-  end
 
   @impl Logflare.Backends.Adaptor
   def start_link({source, backend} = args) do
@@ -59,12 +68,23 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
     @moduledoc false
     use Tesla, docs: false
 
+    defguardp is_possible_pool(value)
+              when not is_nil(value) and not is_boolean(value) and is_atom(value)
+
     def send(opts) do
+      http_opt = Keyword.get(opts, :http)
+      pool_name = Keyword.get(opts, :pool_name)
+
       adaptor =
-        if Keyword.get(opts, :http) == "http1" do
-          {Tesla.Adapter.Finch, name: Logflare.FinchDefaultHttp1, receive_timeout: 5_000}
-        else
-          {Tesla.Adapter.Finch, name: Logflare.FinchDefault, receive_timeout: 5_000}
+        cond do
+          is_possible_pool(pool_name) ->
+            {Tesla.Adapter.Finch, name: pool_name, receive_timeout: 5_000}
+
+          http_opt == "http2" ->
+            {Tesla.Adapter.Finch, name: Logflare.FinchDefault, receive_timeout: 5_000}
+
+          true ->
+            {Tesla.Adapter.Finch, name: Logflare.FinchDefaultHttp1, receive_timeout: 5_000}
         end
 
       opts =
@@ -105,8 +125,8 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
           module:
             {BufferProducer,
              [
-               backend: args.backend,
-               source: args.source
+               backend_id: Map.get(args.backend || %{}, :id),
+               source_id: args.source.id
              ]},
           transformer: {__MODULE__, :transform, []},
           concurrency: 1
@@ -138,31 +158,45 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
       |> Message.put_batcher(:http)
     end
 
-    def handle_batch(:http, messages, _batch_info, %{startup_config: startup_config} = context) do
+    def handle_batch(:http, messages, _batch_info, context) do
+      %{metadata: backend_metadata} = backend = Backends.Cache.get_backend(context.backend_id)
+      config = Backends.Adaptor.get_backend_config(backend)
+
       # convert this to a custom format if needed
       payload =
-        if format_batch = Map.get(startup_config, :format_batch) do
+        if format_batch = Map.get(config, :format_batch) do
           events = for %{data: le} <- messages, do: le
           format_batch.(events)
         else
           for %{data: le} <- messages, do: le.body
         end
 
-      process_data(payload, context)
+      process_data(payload, config, backend_metadata, context)
       messages
     end
 
-    defp process_data(payload, %{startup_config: startup_config} = context) do
-      %{config: stored_config} = Backends.Cache.get_backend(context.backend_id)
-
-      config = Map.merge(startup_config, stored_config)
+    defp process_data(payload, config, backend_metadata, context) do
+      backend_meta =
+        for {k, v} <- backend_metadata || %{}, into: %{} do
+          {"backend.#{k}", v}
+        end
 
       Client.send(
-        url: config.url,
+        # if a `url_override` key is available in the merged config, use that before falling back to `url`
+        url: Map.get(config, :url_override, config.url),
+        pool_override: Map.get(config, :pool_override),
         body: payload,
         headers: config[:headers] || %{},
         gzip: Map.get(config, :gzip, true),
-        metadata: Map.take(context, [:source_id, :source_token, :backend_id, :backend_token]),
+        # metadata map will get set as OTEL attributes in EgressMiddleware
+        metadata:
+          %{
+            "source_id" => context[:source_id],
+            "source_uuid" => context[:source_token],
+            "backend_id" => context[:backend_id],
+            "backend_uuid" => context[:backend_token]
+          }
+          |> Map.merge(backend_meta),
         http: config[:http]
       )
     end
@@ -173,6 +207,49 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
         data: event,
         acknowledger: {__MODULE__, :ack_id, :ack_data}
       }
+    end
+
+    @doc """
+    Merges configs and handles headers.
+
+    Keys in maps in the second argument always overwrite the
+    keys in maps in the first argument, even when nested.
+
+    ## Examples
+
+      iex> Logflare.Backends.Adaptor.WebhookAdaptor.Pipeline.merge_configs(%{}, %{})
+      %{}
+
+      iex> Logflare.Backends.Adaptor.WebhookAdaptor.Pipeline.merge_configs(%{headers: %{"one" => "one-value"}}, %{headers: %{"one" => "two-value"}})
+      %{headers: %{"one" => "two-value"}}
+
+      iex> Logflare.Backends.Adaptor.WebhookAdaptor.Pipeline.merge_configs(%{"username" => "me", "password" => "god"}, %{headers: %{"one" => "two-value"}})
+      %{"username" => "me", "password" => "god", headers: %{"one" => "two-value"}}
+
+      iex> Logflare.Backends.Adaptor.WebhookAdaptor.Pipeline.merge_configs(%{username: "me", password: "god"}, %{headers: %{"one" => "two-value"}})
+      %{username: "me", password: "god", headers: %{"one" => "two-value"}}
+
+      iex> Logflare.Backends.Adaptor.WebhookAdaptor.Pipeline.merge_configs(%{username: "me", password: "god", headers: %{"one" => "one-value"}}, %{headers: %{"one" => "two-value"}})
+      %{username: "me", password: "god", headers: %{"one" => "two-value"}}
+
+      iex> Logflare.Backends.Adaptor.WebhookAdaptor.Pipeline.merge_configs(%{username: "me", password: "god", headers: %{"one" => "one-value"}}, %{headers: %{}})
+      %{username: "me", password: "god", headers: %{"one" => "one-value"}}
+
+      iex> Logflare.Backends.Adaptor.WebhookAdaptor.Pipeline.merge_configs(%{"username" => "me", "password" => "god"}, %{"username" => "me", "password" => "another-god"})
+      %{"username" => "me", "password" => "another-god"}
+
+      iex> Logflare.Backends.Adaptor.WebhookAdaptor.Pipeline.merge_configs(%{"username" => "me", "password" => "god"}, %{"username" => "me", "password" => "another-god"})
+      %{"username" => "me", "password" => "another-god"}
+
+    """
+    def merge_configs(config_1, config_2) when is_map(config_1) and is_map(config_2) do
+      Map.merge(config_1, config_2, fn
+        :headers, v1, v2 ->
+          Map.merge(v1, v2)
+
+        _key, _v1, v2 ->
+          v2
+      end)
     end
 
     def ack(_ack_ref, _successful, _failed) do

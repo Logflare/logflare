@@ -3,7 +3,7 @@
     <h5>~/logs/<%= link @source.name, to: Routes.source_path(@conn, :show, @source), class: "text-primary" %>/edit</h5>
     <div class="log-settings">
       <ul>
-        <li><%= link to: Routes.source_live_path(@conn, LogflareWeb.Sources.RulesLV, @source.id) do %><i
+        <li><%= link to: Routes.source_live_path(@conn, LogflareWeb.Sources.RulesLive, @source.id) do %><i
             class="fas fa-code-branch"></i><span class="hide-on-mobile"> rules</span><% end %></li>
         <li><a href="mailto:support@logflare.app?Subject=Logflare%20Help" target="_top"><i
               class="fas fa-question-circle"></i> <span class="hide-on-mobile">help</a></span></li>
@@ -16,7 +16,7 @@
   <%= section_header("Source Name") %>
   <p>For example, <code>YourApp</code> would be good for all logs from your app. <code>YourApp.bots</code> would be a
     good place to keep all bot logs. Route logs with LQL rules using
-    <%= link to: Routes.source_live_path(@conn, LogflareWeb.Sources.RulesLV, @source.id) do %>rules<% end %>.</p>
+    <%= link to: Routes.source_live_path(@conn, LogflareWeb.Sources.RulesLive, @source.id) do %>rules<% end %>.</p>
   <%= form_for @changeset, Routes.source_path(@conn, :update, @source), fn a -> %>
   <div class="form-group">
     <%= text_input a, :name, placeholder: "YourApp.SourceName", class: "form-control form-control-margin" %>
@@ -187,27 +187,13 @@
   <%= link "Test webhook", to: Routes.source_path(@conn, :test_alerts, @source), class: "btn btn-primary form-button", role: "button" %>
   <% end %>
 
-  <%= section_header("Custom Event Message") %>
-  <p>Comma separated list of metadata keys to customize the log event message. Use <code>message</code> to target the default log event message. Use JSONpath queries to target more complex nested data structures. The root (<code>$.</code>) is implied here.</p>
-  <%= form_for @changeset, Routes.source_path(@conn, :update, @source), fn aa -> %>
-  <div class="form-group">
-    <%= text_input aa, :custom_event_message_keys, placeholder: "metadata.field.key, metadata.field.another_key", class: "form-control form-control-margin" %>
-    <%= error_tag aa, :custom_event_message_keys %>
-    <small class="form-text text-muted">
-      Key values will be concatenated with a pipe ( | ).
-    </small>
-  </div>
-
-  <%= submit "Update keys", class: "btn btn-primary form-button" %>
-  <% end %>
   <%= section_header("Public Access") %>
   <p>Public paths let you share your logs with other people without having to give them a login. Generate a public token
     and this source will be accessible by anyone with this url. Regenerate a public path if needed.</p>
   <%= if @source.public_token != nil do %>
   <div>
     <code><%= Routes.source_url(@conn, :public, @source.public_token) %></code>
-    <button class="btn btn-secondary btn-sm" id="copy-path"
-      data-clipboard-text="<%= Routes.source_url(@conn, :public, @source.public_token) %>">Copy path</button>
+    <button class="btn btn-secondary btn-sm" id="copy-path" data-clipboard-text="<%= Routes.source_url(@conn, :public, @source.public_token) %>">Copy path</button>
   </div>
   <% end %>
   <%= form_for @changeset, Routes.source_path(@conn, :update, @source), fn d -> %>
@@ -228,36 +214,82 @@
   </p>
   <%= button "#{if @source.validate_schema, do: "Disable", else: "Enable"} schema validation", to: Routes.source_path(@conn, :toggle_schema_validation, @source), class: "btn btn-primary form-button" %>
 
-   <%= section_header("Drop Log Events") %>
+
+  <hr/>
+  <h3>Pipeline Rules</h3>
+
+  <%= section_header("Drop Log Events") %>
   <p>Use an LQL statement to drop log events on ingest.</p>
   <%= form_for @changeset, Routes.source_path(@conn, :update, @source), fn drop -> %>
   <div class="form-group">
     <%= text_input drop, :drop_lql_string, placeholder: "", class: "form-control form-control-margin" %>
     <%= error_tag drop, :drop_lql_string %>
-    <small class="form-text text-muted">
-      Currently in beta.
-    </small>
   </div>
   <%= submit "Update LQL", class: "btn btn-primary form-button" %>
   <% end %>
 
-  <%= section_header("Backend TTL") %>
-  <%= if @conn.assigns.user.billing_enabled do %>
-  <p>Set how long to keep data in your backend.</p>
-  <%= form_for @changeset, Routes.source_path(@conn, :update, @source), fn e -> %>
+  <%= section_header("Custom Event Message") %>
+  <p>Comma separated list of metadata keys to customize the log event message. Use <code>message</code> to target the default log event message. Use JSONpath queries to target more complex nested data structures. The root (<code>$.</code>) is implied here.</p>
+  <%= form_for @changeset, Routes.source_path(@conn, :update, @source), fn aa -> %>
   <div class="form-group">
-    <%= text_input e, :retention_days, placeholder: "3", class: "form-control form-control-margin" %>
-    <%= error_tag e, :retention_days %>
+    <%= text_input aa, :custom_event_message_keys, placeholder: "metadata.field.key, metadata.field.another_key", class: "form-control form-control-margin" %>
+    <%= error_tag aa, :custom_event_message_keys %>
     <small class="form-text text-muted">
-      Days to keep data.
+      Key values will be concatenated with a pipe ( | ).
     </small>
   </div>
-  <%= submit "Update backend settings", class: "btn btn-primary form-button" %>
+
+  <%= submit "Update keys", class: "btn btn-primary form-button" %>
   <% end %>
+
+
+  <%= section_header("Copy fields") %>
+  <p>
+    Copy fields to different paths at ingestion.  Rules are executed sequentailly. Invalid rules are ignored.
+  </p>
+  <%= form_for @changeset, Routes.source_path(@conn, :update, @source), fn e -> %>
+    <div class="form-group">
+      <%= textarea e, :transform_copy_fields, placeholder: "metadata.my_field:my.destination.path", class: "form-control form-control-margin tw-h-[120px]" %>
+      <%= error_tag e, :transform_copy_fields %>
+      <small class="form-text text-muted">
+        Separate each rule with a new line. Use the pattern <code>from.field:to.other.field</code> to specify the path to copy a field.
+      </small>
+    </div>
+    <%= submit "Update field copying rules", class: "btn btn-primary form-button" %>
+  <% end %>
+  <hr/>
+
+  <%= section_header("Backend TTL") %>
+  <%= if @conn.assigns.user.billing_enabled do %>
+    <p>Set how long to keep data in your backend.</p>
+    <%= form_for @changeset, Routes.source_path(@conn, :update, @source), fn e -> %>
+    <div class="form-group">
+      <%= text_input e, :retention_days, placeholder: "3", class: "form-control form-control-margin" %>
+      <%= error_tag e, :retention_days %>
+      <small class="form-text text-muted">
+        Days to keep data.
+      </small>
+    </div>
+    <%= submit "Update backend settings", class: "btn btn-primary form-button" %>
+    <% end %>
   <% else %>
-  <p>Add a Google Cloud Platform project ID to get started!</p>
-  <%= link "Setup custom backend", to: Routes.user_path(@conn, :edit) <> "#bigquery-backend", class: "btn btn-primary form-button", role: "button" %>
+    <p>Add a Google Cloud Platform project ID to get started!</p>
+    <%= link "Setup custom backend", to: Routes.user_path(@conn, :edit) <> "#bigquery-backend", class: "btn btn-primary form-button", role: "button" %>
   <% end %>
+
+  <%= section_header("Backend Clustering") %>
+  <p>Set additional clustering columns to improve query performance. <code>timestamp</code> and <code>id</code> are always clustered.</p>
+  <%= form_for @changeset, Routes.source_path(@conn, :update, @source), fn e -> %>
+  <div class="form-group">
+    <%= text_input e, :bigquery_clustering_fields, placeholder: "my_field,my_other_field", class: "form-control form-control-margin" %>
+    <%= error_tag e, :bigquery_clustering_fields %>
+    <small class="form-text text-muted">
+      Comma-separated. For example: <code>my_field,my_other_field</code>.
+    </small>
+  </div>
+  <%= submit "Update clustering", class: "btn btn-primary form-button" %>
+  <% end %>
+
   <%= section_header("Suggested Search Keys") %>
   <p>Set suggested search keys for this source, to encourage usage of certain filtering keys when performing searches across large sources. If a declared key is missing, users will be prompted to include the key when a search is made.</p>
   <%= form_for @changeset, Routes.source_path(@conn, :update, @source),fn f -> %>
@@ -265,11 +297,25 @@
       <%= text_input f, :suggested_keys , class: "form-control form-control-margin" %>
       <%= error_tag f, :suggested_keys %>
     <small class="form-text text-muted">
-      Comma-separated. For example: <code>status,metadata.level</code>
+      Comma-separated. For example: <code>status,metadata.level</code>. Add an exclaimation mark (!) to make the key required  <code>metadata.level!</code>
     </small>
     </div>
     <%= submit "Save", class: "btn btn-primary form-button" %>
   <% end %>
+
+  <%= section_header("Search Tailing") %>
+  <%= form_for @changeset, Routes.source_path(@conn, :update, @source),fn f -> %>
+    <div class="form-group">
+      <%= label f, :disable_tailing do %>
+        Toggle Source search tailing for this source. Currently <%= if(@source.disable_tailing, do: "disabled", else: "enabled") %>.
+      <% end %>
+      <%= hidden_input f, :disable_tailing, value: !@source.disable_tailing %>
+    </div>
+
+    <%= submit if(@source.disable_tailing, do: "Enable search tailing", else: "Disable search tailing"), class: "btn btn-primary form-button" %>
+  <% end %>
+
+
   <%= if LogflareWeb.Utils.flag("multibackend", @user) == true do %>
     <%= section_header("Multi Backends") %>
     <%= form_for @changeset, Routes.source_path(@conn, :update, @source),fn f -> %>

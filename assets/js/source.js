@@ -11,6 +11,7 @@ import {
 import {
   applyToAllLogTimestamps
 } from "./logs"
+import { escape, get, isEmpty } from "lodash"
 
 export async function main({
   scrollTracker
@@ -110,30 +111,33 @@ export function scrollBottom() {
 }
 
 async function logTemplate(e) {
-  const {
-    via_rule,
-    origin_source_id,
-    body
-  } = e
-  const metadata = JSON.stringify(body, null, 2)
-  const formatter = await userSelectedFormatter()
-  const formattedDatetime = formatter(body.timestamp)
-  const randomId = Math.random() * 10e16
-  const metadataId = `metadata-${body.timestamp}-${randomId}`
+  const { via_rule, origin_source_id, body } = e;
+  const metadata = JSON.stringify(body, null, 2);
+  const formatter = await userSelectedFormatter();
+  const formattedDatetime = formatter(body.timestamp);
+  const randomId = Math.random() * 10e16;
+  const metadataId = `metadata-${body.timestamp}-${randomId}`;
+  const log_level = _.get(body, ["metadata", "level"]);
 
-  const metadataElement = !_.isEmpty(body.metadata) ?
-    `
+  const logLevelTemplate = log_level
+    ? `<mark class="log-level-${log_level}">${log_level}</mark>`
+    : "<span class='tw-w-[0.1rem] tw-inline-block'></span>";
+
+  const metadataElement = !isEmpty(body?.metadata)
+    ? `
     <a class="metadata-link" data-toggle="collapse" href="#${metadataId}" aria-expanded="false">
         event body
     </a>
     <div class="collapse metadata" id="${metadataId}">
-        <pre class="pre-metadata"><code>${_.escape(metadata)}</code></pre>
+        <pre class="pre-metadata"><code>${escape(metadata)}</code></pre>
     </div> ` :
     ""
 
-  return `<li>
-    <mark class="log-datestamp" data-timestamp="${body.timestamp
-    }">${formattedDatetime}</mark> ${_.escape(body.event_message)}
+  return `<li class="hover:tw-bg-gray-800">
+    <mark class="log-datestamp" data-timestamp="${
+      body.timestamp
+    }">${formattedDatetime}</mark> ${logLevelTemplate}
+    ${escape(body.event_message)}
     ${metadataElement}
     ${via_rule
       ? `<span
@@ -168,7 +172,7 @@ function resetScrollTracker() {
           let searchInView = entry.isIntersecting
           if (searchInView) {
             // stick to bottom
-            
+
             window.scrollTracker = true
           } else {
             // don't stick to bottom
@@ -176,7 +180,7 @@ function resetScrollTracker() {
           }
         })
       })
-    
+
     const target = document.querySelector("#observer-target")
     observer.observe(target)
 }

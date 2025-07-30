@@ -79,8 +79,8 @@ defmodule Logflare.LogsTest do
                                                    _dataset_id,
                                                    _table_name,
                                                    opts ->
-        assert {Tesla.Adapter.Finch, :call, [[name: Logflare.FinchDefault, receive_timeout: _]]} =
-                 conn.adapter
+        assert {Tesla.Adapter.Finch, :call, [kw]} = conn.adapter
+        assert kw[:name] == Logflare.FinchIngest
 
         [%{json: json}] = opts[:body].rows
         assert json["event_message"] == "testing 123"
@@ -155,6 +155,20 @@ defmodule Logflare.LogsTest do
 
       batch = [
         %{"event_message" => "not routed"},
+        %{"event_message" => "testing 123"}
+      ]
+
+      assert :ok = Logs.ingest_logs(batch, source)
+    end
+
+    test "rule without sink", %{source: source} do
+      insert(:rule, lql_string: "testing", sink: nil, source_id: source.id)
+      source = source |> Repo.preload(:rules, force: true)
+
+      Logs
+      |> expect(:broadcast, 1, fn le -> le end)
+
+      batch = [
         %{"event_message" => "testing 123"}
       ]
 

@@ -17,6 +17,7 @@ defmodule Logflare.Sources do
   alias Logflare.Source.BigQuery.SchemaBuilder
   alias Logflare.SourceSchemas
   alias Logflare.User
+  alias Logflare.Billing.Plan
   alias Logflare.Backends
   alias Logflare.Billing.Plan
   alias Logflare.Billing
@@ -90,7 +91,7 @@ defmodule Logflare.Sources do
   @doc """
   Retrieves a source by its uuid token
   """
-  @spec get(atom | Stringt.t()) :: Source.t() | nil
+  @spec get_source_by_token(atom | Stringt.t()) :: Source.t() | nil
   def get_source_by_token(source_token) when is_atom(source_token) or is_binary(source_token) do
     get_by(token: source_token)
   end
@@ -117,7 +118,7 @@ defmodule Logflare.Sources do
     get_source_by_token(source_token)
   end
 
-  def get(source_id) when is_integer(source_id) do
+  def get(source_id) when is_integer(source_id) or is_binary(source_id) do
     Repo.get(Source, source_id)
     |> put_retention_days()
   end
@@ -139,11 +140,25 @@ defmodule Logflare.Sources do
     updated = put_retention_days(updated)
 
     if source.retention_days != updated.retention_days and not SingleTenant.postgres_backend?() do
-      user = Users.Cache.get(updated.user_id) |> Users.maybe_put_bigquery_defaults()
+      user = Users.Cache.get(updated.user_id)
 
       BigQuery.patch_table_ttl(
         updated.token,
         updated.retention_days * 86_400_000,
+        user.bigquery_dataset_id,
+        user.bigquery_project_id
+      )
+    end
+
+    if source.bigquery_clustering_fields != updated.bigquery_clustering_fields and
+         not SingleTenant.postgres_backend?() do
+      user = Users.Cache.get(updated.user_id)
+
+      fields = String.split(updated.bigquery_clustering_fields || "", ",") ++ ["timestamp", "id"]
+
+      BigQuery.patch_table_clustering(
+        updated.token,
+        fields,
         user.bigquery_dataset_id,
         user.bigquery_project_id
       )
@@ -251,11 +266,18 @@ defmodule Logflare.Sources do
   end
 
   def get_bq_schema(%Source{} = source) do
-    name = Backends.via_source(source, Schema, nil)
+    case SourceSchemas.Cache.get_source_schema_by(source_id: source.id) do
+      nil ->
+        name = Backends.via_source(source, Schema, nil)
 
-    with %{schema: schema} <- Schema.get_state(name) do
-      schema = SchemaUtils.deep_sort_by_fields_name(schema)
-      {:ok, schema}
+        with %{schema: schema} <- Schema.get_state(name) do
+          schema = SchemaUtils.deep_sort_by_fields_name(schema)
+          {:ok, schema}
+        end
+
+      %_{bigquery_schema: schema} ->
+        schema = SchemaUtils.deep_sort_by_fields_name(schema)
+        {:ok, schema}
     end
   end
 
@@ -384,6 +406,7 @@ defmodule Logflare.Sources do
     bq_table_schema =
       case get_bq_schema(source) do
         {:ok, bq_table_schema} -> bq_table_schema
+        {:error, :not_found} -> nil
         {:error, error} -> raise(error)
       end
 

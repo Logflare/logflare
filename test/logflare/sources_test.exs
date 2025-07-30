@@ -5,7 +5,7 @@ defmodule Logflare.SourcesTest do
   alias Logflare.Google.BigQuery
   alias Logflare.Google.BigQuery.GenUtils
   alias Logflare.Source
-  alias Logflare.Source.RecentLogsServer
+  alias Logflare.Backends.RecentEventsTouch
   alias Logflare.Sources
   alias Logflare.SourceSchemas
   alias Logflare.Source.V1SourceSup
@@ -62,9 +62,23 @@ defmodule Logflare.SourcesTest do
     end
 
     test "retention days exceeds", %{user: user} do
-      insert(:plan, name: "Free", limit_source_ttl: :timer.hours(24) * 1)
+      insert(:plan, name: "Free", limit_source_ttl: :timer.hours(24))
       source = insert(:source, user: user)
       assert {:error, %Ecto.Changeset{}} = Sources.update_source(source, %{retention_days: 12})
+    end
+  end
+
+  describe "update_source_by_user/2 disable/enable tailing" do
+    setup do
+      %{user: insert(:user)}
+    end
+
+    test "valid", %{user: user} do
+      insert(:plan, name: "Free")
+      source = insert(:source, user: user)
+
+      assert {:ok, %Source{disable_tailing: true}} =
+               Sources.update_source_by_user(source, %{disable_tailing: true})
     end
   end
 
@@ -203,7 +217,7 @@ defmodule Logflare.SourcesTest do
         {:ok, user: insert(:user), mod: unquote(mod), flag: unquote(flag)}
       end
 
-      test "bootup starts RLS for each recently logged source", %{
+      test "bootup starts SourceSup for each recently logged source", %{
         user: user,
         flag: flag,
         mod: mod
@@ -279,7 +293,7 @@ defmodule Logflare.SourcesTest do
         assert {:ok, _} = Source.Supervisor.reset_source(source.token)
         assert {:ok, _} = Source.Supervisor.reset_source(source.token)
         :timer.sleep(3000)
-        assert {:ok, new_pid} = Backends.lookup(RecentLogsServer, source.token)
+        assert {:ok, new_pid} = Backends.lookup(RecentEventsTouch, source.token)
         assert pid != new_pid
         assert Backends.cached_pending_buffer_len(source) == 0
       end

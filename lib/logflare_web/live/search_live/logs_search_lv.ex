@@ -17,20 +17,18 @@ defmodule LogflareWeb.Source.SearchLV do
   alias LogflareWeb.Router.Helpers, as: Routes
   alias LogflareWeb.SearchView
 
-  import LogflareWeb.Helpers.BqSchema
   import LogflareWeb.ModalLiveHelpers
   import Logflare.Lql.Utils
-  alias Logflare.DateTimeUtils
-  alias LogflareWeb.Search
 
   import Logflare.Logs.Search.Utils
   import LogflareWeb.SearchLV.Utils
+  import LogflareWeb.SearchLive.TimezoneComponent
 
   require Logger
   embed_templates "templates/*"
 
   @tail_search_interval 500
-  @user_idle_interval :timer.minutes(5)
+  @user_idle_interval :timer.minutes(2)
   @default_qs "c:count(*) c:group_by(t::minute)"
 
   def mount(
@@ -47,22 +45,27 @@ defmodule LogflareWeb.Source.SearchLV do
         TeamUsers.get_team_user_and_preload(team_user_id)
       end
 
+    tailing? =
+      if source.disable_tailing, do: false, else: Map.get(params, "tailing?", "true") == "true"
+
+    {:ok, executor_pid} = SearchQueryExecutor.start_link(source: source)
+
     socket
     |> assign(
+      executor_pid: executor_pid,
       source: source,
       user: user,
       team_user: team_user,
       search_tip: gen_search_tip(),
-      user_local_timezone: Map.get(params, "tz", "Etc/UTC"),
       user_timezone_from_connect_params: nil,
-      use_local_time: true,
+      search_timezone: Map.get(params, "tz", "Etc/UTC"),
       # loading states
       loading: true,
       chart_loading: true,
       # tailing states
       tailing_initial?: true,
       tailing_timer: nil,
-      tailing?: Map.get(params, "tailing?", "true") == "true",
+      tailing?: tailing?,
       # search states
       search_op: nil,
       search_op_error: nil,
@@ -139,10 +142,15 @@ defmodule LogflareWeb.Source.SearchLV do
           |> assign(:search_op_log_events, search_op_log_events)
           |> assign(chart_aggregate_enabled?: search_agg_controls_enabled?(lql_rules))
 
-        kickoff_queries(source.token, socket.assigns)
+        if connected?(socket) do
+          kickoff_queries(source.token, socket.assigns)
+        end
 
         socket
       else
+        {:error, :required_field_not_found} ->
+          error_socket(socket, :required_field_not_found)
+
         {:error, :suggested_field_not_found} ->
           error_socket(socket, :suggested_field_not_found)
 
@@ -166,6 +174,8 @@ defmodule LogflareWeb.Source.SearchLV do
   end
 
   def handle_params(_params, _uri, socket) do
+    source = socket.assigns.source
+    socket = assign(socket, :page_title, source.name)
     {:noreply, socket}
   end
 
@@ -174,16 +184,65 @@ defmodule LogflareWeb.Source.SearchLV do
   end
 
   def handle_event(
+        "results-action-change",
+        %{"remember_timezone" => "true", "search_timezone" => timezone},
+        socket
+      ) do
+    %{user: user, search_timezone: search_timezone} = socket.assigns
+
+    preferences =
+      user.preferences
+      |> Map.from_struct()
+      |> Map.put(:timezone, timezone)
+
+    socket =
+      case Users.update_user_with_preferences(user, %{preferences: preferences}) do
+        {:ok, user} ->
+          socket
+          |> assign(user: user)
+          |> put_flash(:info, "Timezone preference saved")
+
+        {:error, _changeset} ->
+          socket
+          |> put_flash(:error, "Timezone preference could not be saved")
+      end
+
+    if timezone == search_timezone do
+      {:noreply, socket}
+    else
+      handle_event(
+        "results-action-change",
+        %{"search_timezone" => timezone},
+        socket
+      )
+    end
+  end
+
+  def handle_event("results-action-change", %{"search_timezone" => tz}, socket) do
+    maybe_cancel_tailing_timer(socket)
+    SearchQueryExecutor.cancel_query(socket.assigns.executor_pid)
+
+    socket =
+      socket
+      |> assign(:search_timezone, tz)
+      |> assign_new_search_with_qs(
+        %{querystring: socket.assigns.querystring, tailing?: socket.assigns.tailing?},
+        socket.assigns.source.bq_table_schema
+      )
+
+    {:noreply, socket |> assign(:timezone, tz)}
+  end
+
+  def handle_event(
         "start_search" = ev,
         %{"search" => %{"querystring" => qs}},
         %{assigns: prev_assigns} = socket
       ) do
-    %{id: _sid, token: stoken} = prev_assigns.source
     log_lv_received_event(ev, prev_assigns.source)
     bq_table_schema = prev_assigns.source.bq_table_schema
 
     maybe_cancel_tailing_timer(socket)
-    SearchQueryExecutor.maybe_cancel_query(stoken)
+    SearchQueryExecutor.cancel_query(socket.assigns.executor_pid)
 
     socket =
       assign_new_search_with_qs(
@@ -214,28 +273,23 @@ defmodule LogflareWeb.Source.SearchLV do
 
       {:noreply, socket}
     else
-      timestamp_rules =
-        if socket.assigns.use_local_time do
-          user_local_timezone = socket.assigns.user_local_timezone
-          tz = Timex.Timezone.get(user_local_timezone)
+      tz = Timex.Timezone.get(socket.assigns.search_timezone)
 
-          Enum.map(timestamp_rules, fn
-            lql_rule ->
-              if Lql.Utils.timestamp_filter_rule_is_shorthand?(lql_rule) do
-                Map.replace!(
-                  lql_rule,
-                  :values,
-                  for value <- lql_rule.values do
-                    Timex.shift(value, seconds: Timex.diff(value, tz))
-                  end
-                )
-              else
-                lql_rule
-              end
-          end)
-        else
-          timestamp_rules
-        end
+      timestamp_rules =
+        Enum.map(timestamp_rules, fn
+          lql_rule ->
+            if Lql.Utils.timestamp_filter_rule_is_shorthand?(lql_rule) do
+              Map.replace!(
+                lql_rule,
+                :values,
+                for value <- lql_rule.values do
+                  Timex.shift(value, seconds: Timex.diff(value, tz))
+                end
+              )
+            else
+              lql_rule
+            end
+        end)
 
       rules = Lql.Utils.update_timestamp_rules(rules, timestamp_rules)
       new_rules = Lql.Utils.jump_timestamp(rules, String.to_atom(direction))
@@ -332,7 +386,7 @@ defmodule LogflareWeb.Source.SearchLV do
     period = Map.get(params, "period")
 
     maybe_cancel_tailing_timer(socket)
-    SearchQueryExecutor.maybe_cancel_query(socket.assigns.source.token)
+    SearchQueryExecutor.cancel_query(socket.assigns.executor_pid)
 
     {:ok, ts_rules} = Lql.decode(ts_qs, assigns.source.bq_table_schema)
 
@@ -352,23 +406,7 @@ defmodule LogflareWeb.Source.SearchLV do
       |> assign(:tailing?, false)
       |> assign(:lql_rules, lql_list)
       |> assign(:querystring, qs)
-      |> push_patch_with_params(%{querystring: qs, tailing?: assigns.tailing?})
-
-    {:noreply, socket}
-  end
-
-  def handle_event("toggle_local_time", _metadata, socket) do
-    source = socket.assigns.source
-    maybe_cancel_tailing_timer(socket)
-    SearchQueryExecutor.maybe_cancel_query(source.token)
-
-    socket =
-      socket
-      |> assign(:use_local_time, not socket.assigns.use_local_time)
-      |> assign_new_search_with_qs(
-        %{querystring: socket.assigns.querystring, tailing?: socket.assigns.tailing?},
-        socket.assigns.source.bq_table_schema
-      )
+      |> push_patch_with_params(%{querystring: qs, tailing?: false})
 
     {:noreply, socket}
   end
@@ -429,18 +467,15 @@ defmodule LogflareWeb.Source.SearchLV do
   def handle_info({:search_result, %{aggregates: _aggs} = search_result}, socket) do
     log_lv_received_event("search_result", socket.assigns.source)
 
-    timezone =
-      if socket.assigns.use_local_time do
-        socket.assigns.user_local_timezone
-      else
-        "Etc/UTC"
-      end
-
     log_aggregates =
       search_result.aggregates.rows
       |> Enum.reverse()
       |> Enum.map(fn la ->
-        Map.update!(la, "timestamp", &BqSchemaHelpers.format_timestamp(&1, timezone))
+        Map.update!(
+          la,
+          "timestamp",
+          &BqSchemaHelpers.format_timestamp(&1, socket.assigns.search_timezone)
+        )
       end)
 
     aggs =
@@ -550,7 +585,7 @@ defmodule LogflareWeb.Source.SearchLV do
   def handle_info(:schedule_tail_search = msg, %{assigns: assigns} = socket) do
     if socket.assigns.tailing? do
       log_lv_received_info(msg, assigns.source)
-      SearchQueryExecutor.maybe_execute_events_query(assigns.source.token, assigns)
+      SearchQueryExecutor.query(assigns.executor_pid, assigns)
     end
 
     {:noreply, socket}
@@ -559,7 +594,7 @@ defmodule LogflareWeb.Source.SearchLV do
   def handle_info(:schedule_tail_agg = msg, %{assigns: assigns} = socket) do
     if socket.assigns.tailing? do
       log_lv_received_info(msg, assigns.source)
-      SearchQueryExecutor.maybe_execute_agg_query(assigns.source.token, assigns)
+      SearchQueryExecutor.query_agg(assigns.executor_pid, assigns)
     end
 
     {:noreply, socket}
@@ -567,6 +602,11 @@ defmodule LogflareWeb.Source.SearchLV do
 
   defp assign_new_search_with_qs(socket, params, bq_table_schema) do
     %{querystring: qs, tailing?: tailing?} = params
+
+    # source disable_tailing overrides search tailing
+    tailing? = if socket.assigns.source.disable_tailing, do: false, else: tailing?
+
+    tz = socket.assigns.search_timezone
 
     case Lql.decode(qs, bq_table_schema) do
       {:ok, lql_rules} ->
@@ -579,7 +619,7 @@ defmodule LogflareWeb.Source.SearchLV do
         |> clear_flash()
         |> assign(:lql_rules, lql_rules)
         |> assign(:querystring, qs)
-        |> push_patch_with_params(%{querystring: qs, tailing?: tailing?})
+        |> push_patch_with_params(%{querystring: qs, tz: tz, tailing?: tailing?})
 
       {:error, error} ->
         error_socket(socket, error)
@@ -604,10 +644,11 @@ defmodule LogflareWeb.Source.SearchLV do
     cond do
       tz_param != nil ->
         socket
-        |> assign(:user_local_timezone, tz_param)
+        |> assign(:search_timezone, tz_param)
 
       team_user && team_user.preferences ->
-        assign(socket, :user_local_timezone, team_user.preferences.timezone)
+        socket
+        |> assign(:search_timezone, team_user.preferences.timezone)
 
       team_user && is_nil(team_user.preferences) ->
         {:ok, team_user} =
@@ -615,33 +656,35 @@ defmodule LogflareWeb.Source.SearchLV do
 
         socket
         |> assign(:team_user, team_user)
-        |> assign(:user_local_timezone, tz_connect)
+        |> assign(:search_timezone, tz_connect)
         |> put_flash(
           :info,
           "Your timezone setting for team #{team_user.team.name} sources was set to #{tz_connect}. You can change it using the 'timezone' link in the top menu."
         )
 
       user.preferences ->
-        assign(socket, :user_local_timezone, user.preferences.timezone)
+        socket
+        |> assign(:search_timezone, user.preferences.timezone)
 
       is_nil(user.preferences) ->
         {:ok, user} =
           Users.update_user_with_preferences(user, %{preferences: %{timezone: tz_connect}})
 
         socket
-        |> assign(:user_local_timezone, tz_connect)
+        |> assign(:search_timezone, tz_connect)
+        |> assign(:display_timezone, tz_connect)
         |> assign(:user, user)
         |> put_flash(
           :info,
-          "Your timezone was set to #{tz_connect}. You can change it using the 'timezone' link in the top menu."
+          "Your timezone was set to #{tz_connect}. You can change it using the 'timezone' dropdown in the top menu."
         )
     end
     |> then(fn
-      %{assigns: %{uri_params: %{"tz" => tz}, user_local_timezone: local_tz}} = socket
+      %{assigns: %{uri_params: %{"tz" => tz}, search_timezone: local_tz}} = socket
       when tz != local_tz ->
         push_patch_with_params(socket, %{"tz" => local_tz})
 
-      %{assigns: %{uri_params: params, user_local_timezone: local_tz}} = socket
+      %{assigns: %{uri_params: params, search_timezone: local_tz}} = socket
       when not is_map_key(params, "tz") and local_tz != "Etc/UTC" ->
         push_patch_with_params(socket, %{"tz" => local_tz})
 
@@ -687,10 +730,12 @@ defmodule LogflareWeb.Source.SearchLV do
   end
 
   defp kickoff_queries(source_token, assigns) when is_atom(source_token) do
-    Logger.info("Kicking off queries for #{source_token}", source_id: source_token)
+    Logger.debug("Kicking off queries for #{source_token}", source_id: source_token)
 
-    SearchQueryExecutor.maybe_execute_events_query(source_token, assigns)
-    SearchQueryExecutor.maybe_execute_agg_query(source_token, assigns)
+    if assigns do
+      SearchQueryExecutor.query(assigns.executor_pid, assigns)
+      SearchQueryExecutor.query_agg(assigns.executor_pid, assigns)
+    end
   end
 
   defp period_to_ms(:second), do: :timer.seconds(1)
@@ -717,6 +762,24 @@ defmodule LogflareWeb.Source.SearchLV do
     |> error_socket(error)
   end
 
+  defp error_socket(socket, :required_field_not_found) do
+    keys =
+      socket.assigns.source.suggested_keys
+      |> String.split(",")
+      |> Enum.filter(fn key -> String.ends_with?(key, "!") end)
+      |> Enum.map(fn key -> String.trim_trailing(key, "!") end)
+      |> Enum.join(", ")
+
+    error = [
+      "Query does not include required keys.",
+      Phoenix.HTML.raw("<br/><code class=\"tw-text-sm\">"),
+      keys,
+      Phoenix.HTML.raw("</code>")
+    ]
+
+    error_socket(socket, error)
+  end
+
   defp error_socket(socket, :suggested_field_not_found) do
     path =
       Routes.live_path(socket, LogflareWeb.Source.SearchLV, socket.assigns.source,
@@ -727,10 +790,16 @@ defmodule LogflareWeb.Source.SearchLV do
         querystring: socket.assigns.querystring
       )
 
+    keys =
+      socket.assigns.source.suggested_keys
+      |> String.split(",")
+      |> Enum.map(fn key -> String.trim_trailing(key, "!") end)
+      |> Enum.join(", ")
+
     error = [
-      "Query does not include suggested keys, perfomance will be degraded. ",
+      "Query does not include suggested keys.",
       Phoenix.HTML.raw("<br/><code class=\"tw-text-sm\">"),
-      socket.assigns.source.suggested_keys,
+      keys,
       Phoenix.HTML.raw("</code><br/>"),
       "Do you want to proceed?",
       link("Click to force query", to: path)
@@ -763,6 +832,10 @@ defmodule LogflareWeb.Source.SearchLV do
     {:noreply, socket}
   end
 
+  defp soft_play(_ev, %{assigns: %{source: %_{disable_tailing: true}}} = socket) do
+    {:noreply, error_socket(socket, "Tailing is disabled for this source")}
+  end
+
   defp soft_play(ev, %{assigns: prev_assigns} = socket) do
     %{source: %{token: stoken} = source} = prev_assigns
     log_lv_received_event(ev, source)
@@ -783,18 +856,24 @@ defmodule LogflareWeb.Source.SearchLV do
     {:noreply, socket}
   end
 
-  defp soft_pause(ev, %{assigns: prev_assigns} = socket) do
-    %{source: %{token: stoken} = source} = prev_assigns
+  defp soft_pause(ev, %{assigns: %{source: source, executor_pid: executor_pid}} = socket) do
     log_lv_received_event(ev, source)
 
     maybe_cancel_tailing_timer(socket)
-    SearchQueryExecutor.maybe_cancel_query(stoken)
+    SearchQueryExecutor.cancel_query(executor_pid)
 
     socket =
       socket
       |> assign(:tailing?, false)
 
     {:noreply, socket}
+  end
+
+  defp hard_play(
+         _ev,
+         %{assigns: %{source: %_{disable_tailing: true}}} = socket
+       ) do
+    {:noreply, error_socket(socket, "Tailing is disabled for this source")}
   end
 
   defp hard_play(ev, %{assigns: prev_assigns} = socket) do
@@ -837,17 +916,30 @@ defmodule LogflareWeb.Source.SearchLV do
          %{suggested_keys: suggested_keys},
          %{assigns: %{force_query: false}} = socket
        ) do
-    suggested_present =
+    {required, suggested} =
       suggested_keys
       |> String.split(",")
       |> Enum.map(fn
         "m." <> suggested_field -> "metadata." <> suggested_field
         suggested_field -> suggested_field
       end)
-      |> Enum.all?(fn suggested_field ->
+      |> Enum.split_with(fn suggested_field -> String.ends_with?(suggested_field, "!") end)
+
+    suggested_present =
+      Enum.all?(suggested, fn suggested_field ->
         Enum.find(lql_rules, fn %{path: path} -> path == suggested_field end)
       end)
 
-    if suggested_present, do: {:ok, socket}, else: {:error, :suggested_field_not_found}
+    required_present =
+      Enum.all?(required, fn required_field ->
+        trimmed = String.trim_trailing(required_field, "!")
+        Enum.find(lql_rules, fn %{path: path} -> path == trimmed end)
+      end)
+
+    cond do
+      !required_present -> {:error, :required_field_not_found}
+      !suggested_present -> {:error, :suggested_field_not_found}
+      true -> {:ok, socket}
+    end
   end
 end

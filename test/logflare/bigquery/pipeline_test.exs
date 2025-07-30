@@ -5,7 +5,9 @@ defmodule Logflare.BigQuery.PipelineTest do
   alias Logflare.LogEvent
   alias GoogleApi.BigQuery.V2.Model.TableDataInsertAllRequestRows
   alias Logflare.Backends.AdaptorSupervisor
+  alias Logflare.Backends.IngestEventQueue
   alias Logflare.Backends.Backend
+  alias Logflare.Backends
   use ExUnitProperties
 
   @pipeline_name :test_pipeline
@@ -14,6 +16,35 @@ defmodule Logflare.BigQuery.PipelineTest do
       user = insert(:user)
       source = insert(:source, user_id: user.id)
       {:ok, source: source}
+    end
+
+    test "ack will remove items from pipeline if average rate is above 100", %{source: source} do
+      sid_bid_pid = {source.id, nil, self()}
+      IngestEventQueue.upsert_tid(sid_bid_pid)
+      le = build(:log_event)
+      IngestEventQueue.add_to_table(sid_bid_pid, [le])
+      ref = {sid_bid_pid, source.token}
+      message = Pipeline.transform(le, ref: ref)
+      {mod, ref, _data} = message.acknowledger
+      assert IngestEventQueue.get_table_size(sid_bid_pid) == 1
+      mod.ack(ref, [message], [])
+      refute IngestEventQueue.get_table_size(sid_bid_pid) == 0
+
+      Logflare.PubSubRates.Cache.cache_rates(source.token, %{
+        Node.self() => %{
+          average_rate: 500,
+          last_rate: 500,
+          max_rate: 500,
+          limiter_metrics: %{
+            average: 0,
+            duration: 60,
+            sum: 0
+          }
+        }
+      })
+
+      mod.ack(ref, [message], [])
+      assert IngestEventQueue.get_table_size(sid_bid_pid) == 0
     end
 
     test "le_to_bq_row/1 generates TableDataInsertAllRequestRows struct correctly", %{
@@ -59,7 +90,7 @@ defmodule Logflare.BigQuery.PipelineTest do
                     max_length: 500
                   ) do
         assert IO.iodata_length(Jason.encode!(payload)) <
-                 IO.iodata_length(Pipeline.inspect_payload(payload))
+                 Pipeline.message_size(payload)
       end
     end
   end
@@ -84,8 +115,8 @@ defmodule Logflare.BigQuery.PipelineTest do
 
       insert(:plan)
       user = insert(:user)
-      source = insert(:source, user_id: user.id, lock_schema: true)
-      args = [source: source, name: @pipeline_name]
+      source = insert(:source, user: user, lock_schema: true)
+      args = [source: source, backend: Backends.get_default_backend(user), name: @pipeline_name]
       le = build(:log_event, source: source)
 
       start_supervised!(
@@ -108,21 +139,26 @@ defmodule Logflare.BigQuery.PipelineTest do
           # {4, 4}, #264k, 33k/proc
           # {4, 6}, #368k, 36.8k/proc
           # 472k, 39k/proc
-          {4, 8},
+          # {4, 8},
           # 559k, 39k/proc
-          {4, 10}
-          # {4, 16},#743k,  37k/proc
-          # {6, 6}, #395k, 32.9k/proc
-          # {6, 8}, #500k, 35.7k/proc
-          # {6, 10}, #595k, 37.1k/proc
-          # {6, 12},#680k, 37k/proc
-          # {6, 14},#757.75k, 37.8k/proc
-          # {6, 16}, #813.25k, 36.96/proc
-          # {8, 8}, #522, 32k/proc
-          # {8, 16},#856k, 35k/proc
-          # {12, 8}, #525k, 26k/proc
-          # {10, 16}, #907k, 34k/proc
-          # {12, 16}, #953k, 34k/proc
+          # {4, 10},
+          # {4, 12},
+          # {4, 14},
+          # 527.75k
+          {4, 16},
+          # {6, 6},
+          # {6, 8},
+          # {6, 10},
+          # {6, 12},
+          # {6, 14},
+          # {6, 16},
+          # {8, 8},
+          # 515.25k-539.00k
+          {8, 12},
+          # 696.75k-778.75k
+          {8, 16}
+          # {12, 12}, #544.50
+          # {12, 16}, #855.75k
         ] do
       @tag :benchmark
       test "#{processors}-#{batchers}", %{args: args, batch: batch, test: name} do

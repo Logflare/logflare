@@ -1,7 +1,7 @@
 defmodule Logflare.Logs.SourceRouting do
   @moduledoc false
   alias Logflare.{Source, Sources}
-  alias Logflare.Rule
+  alias Logflare.Rules.Rule
   alias Logflare.Lql
   alias Logflare.LogEvent, as: LE
   alias Logflare.Logs
@@ -42,7 +42,7 @@ defmodule Logflare.Logs.SourceRouting do
     le = %{le | source: sink_source, via_rule: rule}
 
     if source.v2_pipeline do
-      # TODO: ensure source started
+      Backends.ensure_source_sup_started(sink_source)
       Backends.ingest_logs([le], sink_source)
     else
       le
@@ -50,6 +50,10 @@ defmodule Logflare.Logs.SourceRouting do
       |> tap(&Logs.ingest/1)
       |> tap(&Logs.broadcast/1)
     end
+  end
+
+  defp do_routing(%Rule{sink: nil}, _le) do
+    {:error, :no_sink}
   end
 
   @spec route_with_lql_rules?(LE.t(), Rule.t()) :: boolean()

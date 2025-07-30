@@ -28,7 +28,9 @@ defmodule Logflare.Source do
              :notifications,
              :custom_event_message_keys,
              :backends,
-             :retention_days
+             :retention_days,
+             :transform_copy_fields,
+             :bigquery_clustering_fields
            ]}
   defp env_dataset_id_append,
     do: Application.get_env(:logflare, Logflare.Google)[:dataset_id_append]
@@ -129,14 +131,17 @@ defmodule Logflare.Source do
     field(:drop_lql_filters, Ecto.Term, default: [])
     field(:drop_lql_string, :string)
     field(:v2_pipeline, :boolean, default: false)
+    field(:disable_tailing, :boolean, default: false)
     field(:suggested_keys, :string, default: "")
     field(:retention_days, :integer, virtual: true)
+    field(:transform_copy_fields, :string)
+    field(:bigquery_clustering_fields, :string)
     # Causes a shitstorm
     # field :bigquery_schema, Ecto.Term
 
     belongs_to(:user, Logflare.User)
 
-    has_many(:rules, Logflare.Rule)
+    has_many(:rules, Logflare.Rules.Rule)
 
     many_to_many(:backends, Logflare.Backends.Backend,
       join_through: "sources_backends",
@@ -168,6 +173,7 @@ defmodule Logflare.Source do
       :public_token,
       :favorite,
       :bigquery_table_ttl,
+      :bigquery_clustering_fields,
       # users can't update thier API quota currently
       :api_quota,
       :webhook_notification_url,
@@ -181,7 +187,9 @@ defmodule Logflare.Source do
       :drop_lql_string,
       :v2_pipeline,
       :suggested_keys,
-      :retention_days
+      :retention_days,
+      :transform_copy_fields,
+      :disable_tailing
     ])
     |> cast_embed(:notifications, with: &Notifications.changeset/2)
     |> put_single_tenant_postgres_changes()
@@ -197,6 +205,7 @@ defmodule Logflare.Source do
       :public_token,
       :favorite,
       :bigquery_table_ttl,
+      :bigquery_clustering_fields,
       :webhook_notification_url,
       :slack_hook_url,
       :custom_event_message_keys,
@@ -207,7 +216,9 @@ defmodule Logflare.Source do
       :drop_lql_string,
       :v2_pipeline,
       :suggested_keys,
-      :retention_days
+      :retention_days,
+      :transform_copy_fields,
+      :disable_tailing
     ])
     |> cast_embed(:notifications, with: &Notifications.changeset/2)
     |> put_single_tenant_postgres_changes()
@@ -238,7 +249,7 @@ defmodule Logflare.Source do
         days = round(plan.limit_source_ttl / :timer.hours(24))
 
         cond do
-          user.bigquery_project_id ->
+          user.bigquery_project_id != Application.get_env(:logflare, Logflare.Google)[:project_id] ->
             []
 
           ttl > days ->

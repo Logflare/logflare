@@ -10,16 +10,8 @@ defmodule Logflare.Backends.Adaptor.ElasticAdaptor do
 
   """
 
-  use TypedStruct
-
   alias Logflare.Backends.Adaptor.WebhookAdaptor
-
-  typedstruct enforce: true do
-    field(:url, String.t())
-    # basic auth username and password
-    field(:username, String.t())
-    field(:password, String.t())
-  end
+  alias Logflare.Utils
 
   @behaviour Logflare.Backends.Adaptor
 
@@ -32,13 +24,13 @@ defmodule Logflare.Backends.Adaptor.ElasticAdaptor do
 
   @impl Logflare.Backends.Adaptor
   def start_link({source, backend}) do
-    backend = %{backend | config: transform_config(backend.config)}
+    backend = %{backend | config: transform_config(backend)}
     WebhookAdaptor.start_link({source, backend})
   end
 
   @impl Logflare.Backends.Adaptor
-  def transform_config(config) do
-    basic_auth = get_basic_auth(config)
+  def transform_config(%_{config: config}) do
+    basic_auth = Utils.encode_basic_auth(config)
 
     %{
       url: config.url,
@@ -51,13 +43,6 @@ defmodule Logflare.Backends.Adaptor.ElasticAdaptor do
         end
     }
   end
-
-  defp get_basic_auth(%{username: username, password: password})
-       when is_binary(username) and is_binary(password) do
-    Base.encode64(username <> ":" <> password)
-  end
-
-  defp get_basic_auth(_), do: nil
 
   @impl Logflare.Backends.Adaptor
   def execute_query(_ident, _query), do: {:error, :not_implemented}

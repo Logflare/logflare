@@ -29,6 +29,14 @@ For metered plan users, if the TTL is not set, the BigQuery table will default t
 
 For users on the Free plan, the maximum retention is **3 days**.
 
+### Querying
+
+Querying is done using [optional job creation mode](https://cloud.google.com/bigquery/docs/running-queries#optional-job-creation).
+
+:::note
+When monitoring or running analysis, the `job_id` of the BigQuery JOBS view will have the `queryId` of the query request made. See [the official documentation](https://cloud.google.com/bigquery/docs/information-schema-jobs#optional-job-creation) for more information.
+:::
+
 #### Deep Dive: Table Partitioning
 
 Table partitioning effectively splits a BigQuery table into many smaller tables.
@@ -98,6 +106,15 @@ Assign `BigQuery Data Owner` and `BigQuery Job User` permissions to the Logflare
 
 ![BigQuery Job User Permissions](./bq-job-user-permissions.png)
 
+:::note
+If using [managed service accounts](#managed-service-accounts), include the following additional roles:
+
+- `roles/resourcemanager.projectIamAdmin`
+- `roles/iam.serviceAccountCreator`
+- `roles/iam.serviceAccountTokenCreator`
+
+:::
+
 #### Step 3: Update Account Settings in Logflare
 
 Find the GCP project ID in the [dashboard](https://console.cloud.google.com/home/dashboard)
@@ -117,6 +134,24 @@ You can also optionally update your sources' TTL to tweak how long you want to r
 :::note
 The steps for setting up self-hosted Logflare requires different BigQuery configurations, please refer to the [self-hosting](/self-hosting) documentation for more details.
 :::
+
+### Managed Service Accounts
+
+When query volume for your instance is high, you may experience BigQuery rate limiting for their REST API. This occurs when BigQuery receives over 100 requests per second per user. This adversely affects the Logflare Endpoints functionality as well as Logflare Search functionality.
+
+By default, all BYOB users have managed service accounts disabled. In order to enable routing requests through mangaged service accounts, go to **Accounts > BigQuery Backend > Managed Service Accounts** and enable the setting by ticking the checkbox.
+
+Ensure that the Logflare service account has the following roles:
+
+- `roles/bigquery.admin` **(no change)**
+- `roles/resourcemanager.projectIamAdmin` **(new)** - used to set the IAM policy with the managed service accounts
+- `roles/iam.serviceAccountCreator` **(new)** - used to create new managed service accounts
+- `roles/iam.serviceAccountTokenCreator` **(new)** - used to generate short-lived tokens for authenticating with BigQuery REST API
+
+Enabling this option will have the following effects:
+
+- BigQuery REST API requests made will be routed through multiple managed service accounts. Each managed service account has the `logflare-managed-` prefix followed by the index (for example `logflare-managed-0`).
+- IAM policy for this project will be completely managed by Logflare, and permissions for managed service accounts will be handled in a non-destructive manner.
 
 ## Querying in BigQuery
 

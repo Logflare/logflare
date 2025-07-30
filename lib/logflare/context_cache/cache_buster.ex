@@ -3,6 +3,29 @@ defmodule Logflare.ContextCache.CacheBuster do
     Monitors our Postgres replication log and busts the cache accordingly.
   """
 
+  alias Logflare.Alerting
+  alias Logflare.Utils
+
+  # worker process
+  defmodule Worker do
+    use GenServer
+    alias Logflare.ContextCache
+
+    def start_link(init_args) do
+      GenServer.start_link(__MODULE__, init_args)
+    end
+
+    def init(state) do
+      {:ok, state}
+    end
+
+    def handle_cast({:to_bust, context_pkeys}, state) do
+      ContextCache.bust_keys(context_pkeys)
+      {:noreply, state}
+    end
+  end
+
+  # main process
   use GenServer
 
   require Logger
@@ -14,9 +37,16 @@ defmodule Logflare.ContextCache.CacheBuster do
     GenServer.start_link(__MODULE__, init_args, name: __MODULE__)
   end
 
-  def init(state) do
+  def init(_state) do
     subscribe_to_transactions()
-    {:ok, state}
+
+    {:ok, _pid} =
+      PartitionSupervisor.start_link(
+        child_spec: __MODULE__.Worker,
+        name: __MODULE__.Supervisor
+      )
+
+    {:ok, %{partitions: System.schedulers_online()}}
   end
 
   def subscribe_to_transactions do
@@ -27,6 +57,8 @@ defmodule Logflare.ContextCache.CacheBuster do
   Sets the Logger level for this process. It's started with level :error.
 
   To debug wal records set process to level :debug and each transaction will be logged.
+
+  iex> Logflare.ContextCache.CacheBuster.set_log_level(:debug)
   """
 
   @spec set_log_level(Logger.levels()) :: :ok
@@ -46,6 +78,7 @@ defmodule Logflare.ContextCache.CacheBuster do
     for record <- changes,
         record = handle_record(record),
         record != :noop do
+      maybe_do_cross_cluster_syncing(record)
       record
     end
     |> tap(fn
@@ -55,10 +88,24 @@ defmodule Logflare.ContextCache.CacheBuster do
       records ->
         :telemetry.execute([:logflare, :cache_buster, :to_bust], %{count: length(records)})
     end)
-    |> ContextCache.bust_keys()
+    |> then(fn records ->
+      GenServer.cast(
+        {:via, PartitionSupervisor, {__MODULE__.Supervisor, records}},
+        {:to_bust, records}
+      )
+    end)
 
     {:noreply, state}
   end
+
+  defp maybe_do_cross_cluster_syncing({Alerting, alert_id}) do
+    # sync alert job
+    Utils.Tasks.start_child(fn ->
+      Alerting.sync_alert_job(alert_id)
+    end)
+  end
+
+  defp maybe_do_cross_cluster_syncing(_), do: :noop
 
   defp handle_record(%UpdatedRecord{
          relation: {_schema, "sources"},
@@ -116,12 +163,36 @@ defmodule Logflare.ContextCache.CacheBuster do
     {Logflare.TeamUsers, String.to_integer(id)}
   end
 
+  defp handle_record(%UpdatedRecord{
+         relation: {_schema, "oauth_access_tokens"},
+         record: %{"id" => id}
+       })
+       when is_binary(id) do
+    {Logflare.Auth, String.to_integer(id)}
+  end
+
+  defp handle_record(%UpdatedRecord{
+         relation: {_schema, "endpoint_queries"},
+         record: %{"id" => id}
+       })
+       when is_binary(id) do
+    {Logflare.Endpoints, String.to_integer(id)}
+  end
+
   defp handle_record(%NewRecord{
          relation: {_schema, "billing_accounts"},
          record: %{"id" => _id}
        }) do
     # When new records are created they were previously cached as `nil` so we need to bust the :not_found keys
     {Logflare.Billing, :not_found}
+  end
+
+  defp handle_record(%NewRecord{
+         relation: {_schema, "endpoint_queries"},
+         record: %{"id" => _id}
+       }) do
+    # When new records are created they were previously cached as `nil` so we need to bust the :not_found keys
+    {Logflare.Endpoints, :not_found}
   end
 
   defp handle_record(%NewRecord{
@@ -175,6 +246,14 @@ defmodule Logflare.ContextCache.CacheBuster do
     {Logflare.TeamUsers, :not_found}
   end
 
+  defp handle_record(%NewRecord{
+         relation: {_schema, "oauth_access_tokens"},
+         record: %{"id" => _id}
+       }) do
+    # When new records are created they were previously cached as `nil` so we need to bust the :not_found keys
+    {Logflare.Auth, :not_found}
+  end
+
   defp handle_record(%DeletedRecord{
          relation: {_schema, "billing_accounts"},
          old_record: %{"id" => id}
@@ -189,6 +268,14 @@ defmodule Logflare.ContextCache.CacheBuster do
        })
        when is_binary(id) do
     {Logflare.Sources, String.to_integer(id)}
+  end
+
+  defp handle_record(%DeletedRecord{
+         relation: {_schema, "endpoint_queries"},
+         old_record: %{"id" => id}
+       })
+       when is_binary(id) do
+    {Logflare.Endpoints, String.to_integer(id)}
   end
 
   defp handle_record(%DeletedRecord{
@@ -231,6 +318,15 @@ defmodule Logflare.ContextCache.CacheBuster do
        when is_binary(id) do
     # Must do `alter table rules replica identity full` to get full records on deletes otherwise all fields are null
     {Logflare.TeamUsers, String.to_integer(id)}
+  end
+
+  defp handle_record(%DeletedRecord{
+         relation: {_schema, "oauth_access_tokens"},
+         old_record: %{"id" => id}
+       })
+       when is_binary(id) do
+    # Must do `alter table rules replica identity full` to get full records on deletes otherwise all fields are null
+    {Logflare.Auth, String.to_integer(id)}
   end
 
   defp handle_record(_record) do

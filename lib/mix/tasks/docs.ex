@@ -6,10 +6,10 @@ defmodule Logflare.MixTasks.Docs do
 
   @impl Mix.Task
   def run(_) do
-    # TODO: convert commands to platform agonostic
-    IO.puts("Cleaning /priv/docs...")
-    Mix.shell().cmd("rm -rf docs", cd: "priv")
-    IO.puts("Copying logflare docs...")
-    Mix.shell().cmd("cp -r docs ../../priv", cd: "docs/docs.logflare.com")
+    priv_docs_dir = Path.join(["priv", "docs"])
+    Mix.shell().info("Cleaning #{priv_docs_dir}...")
+    File.rm_rf!(priv_docs_dir)
+    Mix.shell().info("Copying logflare docs...")
+    File.cp_r!(Path.join(["docs", "docs.logflare.com", "docs"]), priv_docs_dir)
   end
 end

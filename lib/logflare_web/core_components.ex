@@ -76,10 +76,11 @@ defmodule LogflareWeb.CoreComponents do
   attr :to, :string
   attr :fa_icon, :string
   attr :live_patch, :boolean, default: false
+  attr :external, :boolean, default: false
 
   def subheader_link(assigns) do
     ~H"""
-    <.dynamic_link to={@to} patch={@live_patch} class="tw-text-black tw-p-1 tw-flex tw-gap-1 tw-items-center tw-justify-center">
+    <.dynamic_link to={@to} patch={@live_patch} external={@external} class="tw-text-black tw-p-1 tw-flex tw-gap-1 tw-items-center tw-justify-center">
       <i :if={@fa_icon} class={"inline-block h-3 w-3 fas fa-#{@fa_icon}"}></i><span> <%= @text %></span>
     </.dynamic_link>
     """
@@ -108,19 +109,28 @@ defmodule LogflareWeb.CoreComponents do
   attr :patch, :boolean
   attr :attrs, :global
   slot :inner_block, required: true
+  attr :external, :boolean, default: false
 
   defp dynamic_link(assigns) do
-    link_type =
-      if assigns.patch do
-        :patch
-      else
-        :navigate
-      end
+    if assigns.external do
+      ~H"""
+      <a href={@to} target="_blank" rel="noopener noreferrer" {@attrs}>
+        <%= render_slot(@inner_block) %>
+      </a>
+      """
+    else
+      link_type =
+        if assigns.patch do
+          :patch
+        else
+          :navigate
+        end
 
-    assigns = assign(assigns, :to, %{link_type => assigns.to})
+      assigns = assign(assigns, :to, %{link_type => assigns.to})
 
-    ~H"""
-    <.link {@to} {@attrs}><%= render_slot(@inner_block) %></.link>
-    """
+      ~H"""
+      <.link {@to} {@attrs}><%= render_slot(@inner_block) %></.link>
+      """
+    end
   end
 end

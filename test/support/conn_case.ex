@@ -32,11 +32,13 @@ defmodule LogflareWeb.ConnCase do
       import LogflareWeb.Router.Helpers
       import Phoenix.ConnTest
       import Phoenix.LiveViewTest
-      import Plug.Conn
       import Phoenix.VerifiedRoutes
+      import PhoenixTest
+      import Plug.Conn
       import unquote(__MODULE__)
 
       alias Logflare.TestUtils
+      alias Logflare.TestUtilsGrpc
       alias Logflare.User
       alias Logflare.Partners.Partner
       alias LogflareWeb.Router.Helpers, as: Routes
@@ -103,5 +105,9 @@ defmodule LogflareWeb.ConnCase do
     {:ok, access_token} = Logflare.Auth.create_access_token(partner, %{scopes: scopes})
 
     Plug.Conn.put_req_header(conn, "authorization", "Bearer #{access_token.token}")
+  end
+
+  def assert_schema(data, schema_name) do
+    OpenApiSpex.TestAssertions.assert_schema(data, schema_name, LogflareWeb.ApiSpec.spec())
   end
 end

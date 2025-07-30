@@ -135,14 +135,35 @@ defmodule Logflare.Google.BigQuery do
     table_name = GenUtils.format_table_name(source_id)
     dataset_id = dataset_id || GenUtils.get_account_id(source_id) <> env_dataset_id_append()
 
+    {:ok, table} = get_table(source_id)
+    timepartitioning_type = table.timePartitioning.type
+
     partitioning = %Model.TimePartitioning{
-      type: "DAY",
+      # use the same type as the existing table, as BQ does not allow changing it
+      type: timepartitioning_type,
       expirationMs: table_ttl
     }
 
     conn
     |> Api.Tables.bigquery_tables_patch(project_id, dataset_id, table_name,
       body: %Model.Table{timePartitioning: partitioning}
+    )
+    |> GenUtils.maybe_parse_google_api_result()
+  end
+
+  @spec patch_table_clustering(atom, list(String.t()), binary, binary) :: ok_err_tup
+  def patch_table_clustering(source_id, clustering, dataset_id, project_id) do
+    conn = GenUtils.get_conn()
+    table_name = GenUtils.format_table_name(source_id)
+    dataset_id = dataset_id || GenUtils.get_account_id(source_id) <> env_dataset_id_append()
+
+    clustering_model = %Model.Clustering{
+      fields: clustering
+    }
+
+    conn
+    |> Api.Tables.bigquery_tables_patch(project_id, dataset_id, table_name,
+      body: %Model.Table{clustering: clustering_model}
     )
     |> GenUtils.maybe_parse_google_api_result()
   end
@@ -194,6 +215,7 @@ defmodule Logflare.Google.BigQuery do
     table_name = GenUtils.format_table_name(source_token)
 
     body = %Model.TableDataInsertAllRequest{
+      skipInvalidRows: true,
       ignoreUnknownValues: true,
       rows: batch
     }
@@ -259,7 +281,7 @@ defmodule Logflare.Google.BigQuery do
       labels: %{
         "managed_by" => "logflare",
         "logflare_plan" => GenUtils.format_key(plan),
-        "logflare_account" => GenUtils.format_key(user.id)
+        "logflare_account" => user.id
       },
       location: dataset_location
     }
@@ -324,7 +346,7 @@ defmodule Logflare.Google.BigQuery do
       labels: %{
         "managed_by" => "logflare",
         "logflare_plan" => GenUtils.format_key(plan),
-        "logflare_account" => GenUtils.format_key(user.id)
+        "logflare_account" => user.id
       }
     }
 
@@ -387,7 +409,7 @@ defmodule Logflare.Google.BigQuery do
     access = access_emails ++ access_defaults
 
     %Plan{name: plan} =
-      Users.Cache.get_by(id: user_id)
+      Users.Cache.get(user_id)
       |> Billing.Cache.get_plan_by_user()
 
     body = %Model.Dataset{
@@ -396,7 +418,7 @@ defmodule Logflare.Google.BigQuery do
       labels: %{
         "managed_by" => "logflare",
         "logflare_plan" => GenUtils.format_key(plan),
-        "logflare_account" => GenUtils.format_key(user_id)
+        "logflare_account" => user_id
       }
     }
 

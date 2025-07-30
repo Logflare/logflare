@@ -19,40 +19,93 @@ All browser authentication will be disabled when in single-tenant mode.
 
 ### Common Configuration
 
-| Env Var                                | Type                                                                | Description                                                                                                                                                                             |
-| -------------------------------------- | ------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `LOGFLARE_DB_ENCRYPTION_KEY`           | Base64 encryption key, **required**                                 | Encryption key used for encrypting sensitive data.                                                                                                                                      |
-| `LOGFLARE_DB_ENCRYPTION_KEY_RETIRED`   | Base64 encryption key, defaults to `nil`                            | The deprecated encryption key to migrate existing database secrets from. Data will be migrated to the key set under `LOGFLARE_DB_ENCRYPTION_KEY`. Used for encryption key rolling only. |
-| `LOGFLARE_SINGLE_TENANT`               | Boolean, defaults to `false`                                        | If enabled, a singular user will be seeded. All browser usage will default to the user.                                                                                                 |
-| `LOGFLARE_API_KEY`                     | string, defaults to `nil`                                           | **Deprecated**. Use `LOGFLARE_PUBLIC_ACCESS_TOKEN` instead. Alias for `LOGFLARE_PUBLIC_ACCESS_TOKEN`.                                                                                   |
-| `LOGFLARE_PUBLIC_ACCESS_TOKEN`         | string, defaults to `nil`                                           | If set, creates a public access token for the provisioned user, for ingestion or querying usage. Single-tenant mode only.                                                               |
-| `LOGFLARE_PRIVATE_ACCESS_TOKEN`        | string, defaults to `nil`                                           | If set, creates a private access token for the provisioned user, for management API usage. Single-tenant mode only.                                                                     |
-| `LOGFLARE_SUPABASE_MODE`               | Boolean, defaults to `false`                                        | A special mode for Logflare, where Supabase-specific resources will be seeded. Intended for Suapbase self-hosted usage.                                                                 |
-| `PHX_HTTP_IP`                          | String, defaults to `nil`                                           | Allows configuration of the HTTP server IP to bind to. Specifying an IPv6 like `::` will enable IPv6.                                                                                   |
-| `PHX_HTTP_PORT`                        | Integer, defaults to `4000`                                         | Allows configuration of the HTTP server port.                                                                                                                                           |
-| `DB_SCHEMA`                            | String, defaults to `nil`                                           | Allows configuration of the database schema to scope Logflare operations.                                                                                                               |
-| `LOGFLARE_LOG_LEVEL`                   | String, defaults to `info`. <br/>Options: `error`,`warning`, `info` | Allows runtime configuration of log level.                                                                                                                                              |
-| `LOGFLARE_NODE_HOST`                   | string, defaults to `127.0.0.1`                                     | Sets node host on startup, which affects the node name `logflare@<host>`                                                                                                                |
-| `LOGFLARE_LOGGER_METADATA_CLUSTER`     | string, defaults to `nil`                                           | Sets global logging metadata for the cluster name. Useful for filtering logs by cluster name.                                                                                           |
-| `LOGFLARE_PUBSUB_POOL_SIZE`            | Integer, defaults to `10`                                           | Sets the number of `Phoenix.PubSub.PG2` partitions to be created. Should be configured to the number of cores of your server for optimal multi-node performance.                        |
-| `LOGFLARE_ALERTS_ENABLED`              | Boolean, defaults to `true`                                         | Flag for enabling and disabling query alerts.                                                                                                                                           |
-| `LOGFLARE_ALERTS_MIN_CLUSTER_SIZE`     | Integer, defaults to `1`                                            | Sets the required cluster size for Query Alerts to be run. If cluster size is below the provided value, query alerts will not run.                                                      |
-| `LOGFLARE_MIN_CLUSTER_SIZE`            | Integer, defaults to `1`                                            | Sets the target cluster size, and emits a warning log periodically if the cluster is below the set number of nodes..                                                                    |
-| `LOGFLARE_OTEL_ENDPOINT`               | String, defaults to `nil`                                           | Sets the OpenTelemetry Endpoint to send traces to via gRPC. Port number can be included, such as `https://logflare.app:443`                                                             |
-| `LOGFLARE_OTEL_SOURCE_UUID`            | String, defaults to `nil`, optionally required for OpenTelemetry.   | Sets the appropriate header for ingesting OpenTelemetry events into a Logflare source.                                                                                                  |
-| `LOGFLARE_OTEL_ACCESS_TOKEN`           | String, defaults to `nil`, optionally required for OpenTelemetry.   | Sets the appropriate authentication header for ingesting OpenTelemetry events into a Logflare source.                                                                                   |
-| `LOGFLARE_OPEN_TELEMETRY_SAMPLE_RATIO` | Float, defaults to `0.001`, optionally required for OpenTelemetry.  | Sets the sample ratio for server traces. Ingestion and Endpoint routes are dropped and are not included in tracing.                                                                     |
+| Env Var                                        | Type                                                                    | Description                                                                                                                                                                             |
+| ---------------------------------------------- | ----------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `LOGFLARE_DB_ENCRYPTION_KEY`                   | Base64 encryption key, **required**                                     | Encryption key used for encrypting sensitive data.                                                                                                                                      |
+| `LOGFLARE_DB_ENCRYPTION_KEY_RETIRED`           | Base64 encryption key, defaults to `nil`                                | The deprecated encryption key to migrate existing database secrets from. Data will be migrated to the key set under `LOGFLARE_DB_ENCRYPTION_KEY`. Used for encryption key rolling only. |
+| `LOGFLARE_SINGLE_TENANT`                       | Boolean, defaults to `false`                                            | If enabled, a singular user will be seeded. All browser usage will default to the user.                                                                                                 |
+| `LOGFLARE_API_KEY`                             | string, defaults to `nil`                                               | **Deprecated**. Use `LOGFLARE_PUBLIC_ACCESS_TOKEN` instead. Alias for `LOGFLARE_PUBLIC_ACCESS_TOKEN`.                                                                                   |
+| `LOGFLARE_PUBLIC_ACCESS_TOKEN`                 | string, defaults to `nil`                                               | If set, creates a public access token for the provisioned user, for ingestion or querying usage. Single-tenant mode only.                                                               |
+| `LOGFLARE_PRIVATE_ACCESS_TOKEN`                | string, defaults to `nil`                                               | If set, creates a private access token for the provisioned user, for management API usage. Single-tenant mode only.                                                                     |
+| `LOGFLARE_SUPABASE_MODE`                       | Boolean, defaults to `false`                                            | A special mode for Logflare, where Supabase-specific resources will be seeded. Intended for Suapbase self-hosted usage.                                                                 |
+| `PHX_HTTP_IP`                                  | String, defaults to `nil`                                               | Allows configuration of the HTTP server IP to bind to. Specifying an IPv6 like `::` will enable IPv6.                                                                                   |
+| `PHX_HTTP_PORT`                                | Integer, defaults to `4000`                                             | Allows configuration of the HTTP server port.                                                                                                                                           |
+| `DB_SCHEMA`                                    | String, defaults to `nil`                                               | Allows configuration of the database schema to scope Logflare operations.                                                                                                               |
+| `LOGFLARE_LOG_LEVEL`                           | String, defaults to `info`. <br/>Options: `error`,`warning`, `info`     | Allows runtime configuration of log level.                                                                                                                                              |
+| `LOGFLARE_NODE_HOST`                           | string, defaults to `127.0.0.1`                                         | Sets node host on startup, which affects the node name `logflare@<host>`                                                                                                                |
+| `LOGFLARE_METADATA_CLUSTER`                    | string, defaults to `nil`                                               | Sets global logging/tracing metadata for the cluster name. Useful for filtering logs by cluster name. See the [metadata](#Metadata) section.                                            |
+| `LOGFLARE_PUBSUB_POOL_SIZE`                    | Integer, defaults to `10`                                               | Sets the number of `Phoenix.PubSub.PG2` partitions to be created. Should be configured to the number of cores of your server for optimal multi-node performance.                        |
+| `LOGFLARE_ALERTS_ENABLED`                      | Boolean, defaults to `true`                                             | Flag for enabling and disabling query alerts.                                                                                                                                           |
+| `LOGFLARE_ALERTS_MIN_CLUSTER_SIZE`             | Integer, defaults to `1`                                                | Sets the required cluster size for Query Alerts to be run. If cluster size is below the provided value, query alerts will not run.                                                      |
+| `LOGFLARE_MIN_CLUSTER_SIZE`                    | Integer, defaults to `1`                                                | Sets the target cluster size, and emits a warning log periodically if the cluster is below the set number of nodes..                                                                    |
+| `LOGFLARE_OTEL_ENDPOINT`                       | String, defaults to `nil`                                               | Sets the OpenTelemetry Endpoint to send traces to via gRPC. Port number can be included, such as `https://logflare.app:443`                                                             |
+| `LOGFLARE_OTEL_SOURCE_UUID`                    | String, defaults to `nil`, optionally required for OpenTelemetry.       | Sets the appropriate header for ingesting OpenTelemetry events into a Logflare source.                                                                                                  |
+| `LOGFLARE_OTEL_ACCESS_TOKEN`                   | String, defaults to `nil`, optionally required for OpenTelemetry.       | Sets the appropriate authentication header for ingesting OpenTelemetry events into a Logflare source.                                                                                   |
+| `LOGFLARE_OTEL_SAMPLE_RATIO`                   | Float, defaults to `1.0`.                                               | Sets the sample ratio for server traces.                                                                                                                                                |
+| `LOGFLARE_OTEL_INGEST_SAMPLE_RATIO`            | Float, defaults to the value of `LOGFLARE_OTEL_SAMPLE_RATIO`, optional. | Sets the sample ratio for ingestion-related server traces.                                                                                                                              |
+| `LOGFLARE_OTEL_ENDPOINT_SAMPLE_RATIO`          | Float, defaults to the value of `LOGFLARE_OTEL_SAMPLE_RATIO`, optional. | Sets the sample ratio for endpoint-related server traces.                                                                                                                               |
+| `LOGFLARE_HEALTH_MAX_MEMORY_UTILIZATION_RATIO` | Float, defaults to `0.95`                                               | Sets the maximum allowable memory utilization ratio for health checks. If exceeded, the health check will fail.                                                                         |
 
-LOGFLARE_OPEN_TELEMETRY_SAMPLE_RATIO
 Additional environment variable configurations for the OpenTelemetry libraries used can be found [here](https://hexdocs.pm/opentelemetry_exporter/readme.html).perf/bq-pipeline-sharding
+
+#### Health Checks
+
+Logflare has a health check endpoint `/health`, which is used to ensure that the system is functioning correctly with sufficient resources for normal functions.
+
+Environment variables that influence the logic are prefixed with `LOGFLARE_HEALTH_*`. Refer to above table for customizing the values.
+
+#### Metadata
+
+Metadata allows passing in configuration values that will be merged into the logs and traces.
+
+Environment variables that influence the logic are prefixed with `LOGFLARE_METADATA_*`. Refer to above table for customizing the values.
+
+Setting `LOGFLARE_METADATA_CLUSTER=production` will result the following payloads:
+
+```json
+// for logs
+{
+  "metadata": {
+    "cluster": "production",
+    ...
+  }
+}
+
+// for OpenTelemetry Traces
+{
+  "attributes": {
+    "system.cluster": "production",
+    ...
+  }
+}
+```
+
+:::warning
+`LOGFLARE_LOGGER_METADATA_CLUSTER` has been renamed to `LOGFLARE_METADATA_CLUSTER` as of `v1.13.x`.
+:::
 
 ### BigQuery Backend Configuration
 
-| Env Var                    | Type                        | Description                                                   |
-| -------------------------- | --------------------------- | ------------------------------------------------------------- |
-| `GOOGLE_PROJECT_ID`        | string, required            | Specifies the GCP project to use.                             |
-| `GOOGLE_PROJECT_NUMBER`    | string, required            | Specifies the GCP project to use.                             |
-| `GOOGLE_DATASET_ID_APPEND` | string, defaults to `_prod` | This allows customization of the dataset created in BigQuery. |
+| Env Var                             | Type                        | Description                                                                                                                                                                                         |
+| ----------------------------------- | --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GOOGLE_PROJECT_ID`                 | string, required            | Specifies the GCP project to use.                                                                                                                                                                   |
+| `GOOGLE_PROJECT_NUMBER`             | string, required            | Specifies the GCP project to use.                                                                                                                                                                   |
+| `GOOGLE_DATASET_ID_APPEND`          | string, defaults to `_prod` | This allows customization of the dataset created in BigQuery.                                                                                                                                       |
+| `LOGFLARE_BIGQUERY_MANAGED_SA_POOL` | Integer, defaults to `0`    | Sets the number of managed service accounts to create for BigQuery API operations. When set to 0, managed service accounts are disabled, and all queries will run throguh the main service account. |
+
+#### Managed Service Accounts
+
+When `LOGFLARE_BIGQUERY_MANAGED_SA_POOL` is a non-zero value, managed service accounts will use impersonation when making requests against the BigQuery REST API. Increase this value when experiencing rate limiting.
+
+This is due to BigQuery having a fixed 100 requests per second per user limit on their core REST API. However, service account impersonation allows us to spread out requests across multiple service accounts, thereby avoiding this limitation.
+
+Managed service accounts will be provisioned automatically by the server, hence it will require additional permissions:
+
+- `roles/resourcemanager.projectIamAdmin`
+- `roles/iam.serviceAccountCreator`
+- `roles/iam.serviceAccountTokenCreator`
+
+Without these two additional permissions, the managed service accounts feature will not work.
 
 ### PostgreSQL Backend Configuration
 
@@ -98,21 +151,11 @@ The requirements for server startup are as follows after creating the project:
 
 To ensure that you have sufficient permissions to insert into your Google Cloud BigQuery, ensure that you have created a service account with either:
 
-- BigQuery Admin role; or
-- The following permissions:
-  - bigquery.datasets.create
-  - bigquery.datasets.get
-  - bigquery.datasets.getIamPolicy
-  - bigquery.datasets.update
-  - bigquery.jobs.create
-  - bigquery.routines.create
-  - bigquery.routines.update
-  - bigquery.tables.create
-  - bigquery.tables.delete
-  - bigquery.tables.get
-  - bigquery.tables.getData
-  - bigquery.tables.update
-  - bigquery.tables.updateData
+- `roles/bigquery.admin`
+- for [managed service accounts](#managed-service-accounts)
+  - `roles/resourcemanager.projectIamAdmin`
+  - `role/iam.serviceAccountCreator`
+  - `role/iam.serviceAccountTokenCreator`
 
 We recommend setting the BigQuery Admin role, as it simplifies permissions setup.
 
@@ -235,3 +278,27 @@ When applying such authentication rules, we recommend requiring all routes to be
 ```
 
 the `/logs` path is for legacy reasons and is mostly for compatibility with older Logflare libraries.
+
+## OpenTelemetry
+
+To deploy OpenTelemetry to Cloudflare + GCP successfully, the following need to be accomplished:
+
+1. Expose instance group named port 50051 (or whatever it is set on the server.)
+2. Set load balancer to send `otel.logflare.app:443` to the above named port on the designated backend. Backend must be set to HTTP/2 protocol.
+3. Between instances and load balancer, connections need to be TLS encrypted. Can be self-signed. Generate self-signed certs with `make ssl.prod` and `make ssl.staging`. No CA cert needs to be used when self-signing, can use public certs.
+4. Between CF and GCP, connections should have Full SSL (optionally strict). Generate an origin cert on CF and use it on the load balancer. SSL is terminated at the load balancer.
+5. Connecting client should not need an SSL cert to connect (unless you want to encrypt the traffic between client and instance)
+
+### OTel Troubleshooting
+
+1. I'm getting GRPC status 14 with `upstream connect error` with an TLS wrong version number error.
+
+   ```
+   upstream connect error or disconnect/reset before headers. reset reason: remote connection failure, transport failure reason: TLS_error:|268435703:SSL routines:OPENSSL_internal:WRONG_VERSION_NUMBER:TLS_error_end
+   ```
+
+   It is due fauly or non-existent self-signed certificate on the instance. Regenerate the self-signed certificate.
+
+2. I'm getting gRPC status 14 with a timeout error. Initial request works but streaming errors out.
+
+   Backend protocol must be set to HTTP/2 and self-signed certs must be put on the instance.

@@ -14,9 +14,9 @@ defmodule Logflare.LogEventTest do
     [source: source, user: user]
   end
 
-  @valid_params %{"event_message" => "something", "metadata" => %{"my" => "key"}}
+  @vallog_event_ids %{"event_message" => "something", "metadata" => %{"my" => "key"}}
   test "make/2 from valid params", %{source: source} do
-    params = @valid_params
+    params = @vallog_event_ids
 
     assert %LogEvent{
              body: body,
@@ -30,10 +30,99 @@ defmodule Logflare.LogEventTest do
              valid: true,
              pipeline_error: nil,
              via_rule: nil
-           } = LogEvent.make(@valid_params, %{source: source})
+           } = LogEvent.make(@vallog_event_ids, %{source: source})
 
     assert id == body["id"]
     assert body["metadata"]["my"] == "key"
+  end
+
+  describe "make/2 transformations" do
+    test "dashes to underscores", %{source: source} do
+      assert %LogEvent{
+               body: %{
+                 "_test_field" => _
+               }
+             } = LogEvent.make(%{"test-field" => 123}, %{source: source})
+    end
+
+    test "field copying - nested", %{source: source} do
+      source = %{
+        source
+        | transform_copy_fields: """
+            food:my.field
+          """
+      }
+
+      assert %LogEvent{
+               body: %{
+                 "my" => %{
+                   "field" => 123
+                 },
+                 "food" => _
+               }
+             } = LogEvent.make(%{"food" => 123}, %{source: source})
+    end
+
+    test "field copying - top level", %{source: source} do
+      source = %{
+        source
+        | transform_copy_fields: """
+            food:field
+          """
+      }
+
+      assert %LogEvent{
+               body: %{
+                 "field" => 123,
+                 "food" => 123
+               }
+             } = LogEvent.make(%{"food" => 123}, %{source: source})
+    end
+
+    test "field copying - multiple", %{source: source} do
+      source = %{
+        source
+        | transform_copy_fields: """
+            food:field
+            field:123
+          """
+      }
+
+      assert %LogEvent{
+               body: %{
+                 "123" => 123,
+                 "field" => 123,
+                 "food" => 123
+               }
+             } = LogEvent.make(%{"food" => 123}, %{source: source})
+    end
+
+    test "field copying - dashes in field", %{source: source} do
+      source = %{
+        source
+        | transform_copy_fields: """
+            _my_food:field
+          """
+      }
+
+      assert %LogEvent{body: body} = LogEvent.make(%{"my-food" => 123}, %{source: source})
+      assert Map.drop(body, ["id", "timestamp"]) == %{"_my_food" => 123, "field" => 123}
+    end
+
+    test "field copying - invalid instructions are ignored", %{source: source} do
+      source = %{
+        source
+        | transform_copy_fields: """
+            food field
+            food-field
+            foodfield
+            missing:field
+          """
+      }
+
+      assert %LogEvent{body: body} = LogEvent.make(%{"food" => 123}, %{source: source})
+      assert Map.drop(body, ["id", "timestamp"]) == %{"food" => 123}
+    end
   end
 
   test "make/2 with metadata string", %{source: source} do
@@ -56,7 +145,7 @@ defmodule Logflare.LogEventTest do
 
   test "make/2 cast custom param values", %{source: source} do
     params =
-      Map.merge(@valid_params, %{
+      Map.merge(@vallog_event_ids, %{
         "valid" => false,
         "pipeline_error" => "some error"
       })
@@ -224,7 +313,7 @@ defmodule Logflare.LogEventTest do
                     float(min: 1_713_268_000_000.1, max: 1_713_268_000_999.9),
                     float(min: 1_713_268_565_000_000.1, max: 1_713_268_565_000_999.9)
                   ]) do
-        params = Map.put(@valid_params, "timestamp", ts)
+        params = Map.put(@vallog_event_ids, "timestamp", ts)
         LogEvent.make(params, %{source: source})
       end
     end

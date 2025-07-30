@@ -19,10 +19,29 @@ defmodule LogflareWeb.HealthCheckControllerTest do
 
     conn = get(conn, "/health")
 
-    assert %{"nodes" => [_], "nodes_count" => 1, "status" => "ok"} = json_response(conn, 200)
+    assert %{
+             "nodes" => [_],
+             "nodes_count" => 1,
+             "status" => "ok",
+             "caches" => %{
+               "Elixir.Logflare.Auth.Cache" => "ok"
+             }
+           } = json_response(conn, 200)
   end
 
-  test "coming_up while RLS boot warming", %{conn: conn} do
+  test "memory check", %{conn: conn} do
+    insert(:user)
+    insert(:plan)
+    start_supervised!(Source.Supervisor)
+
+    conn =
+      conn
+      |> get("/health")
+
+    assert %{"memory_utilization" => "ok"} = json_response(conn, 200)
+  end
+
+  test "coming_up while SourceSup boot warming", %{conn: conn} do
     user = insert(:user)
     insert(:plan)
 
@@ -77,6 +96,7 @@ defmodule LogflareWeb.HealthCheckControllerTest do
     end
 
     test "ok", %{conn: conn} do
+      # :timer.sleep(500)
       SingleTenant.create_supabase_sources()
       SingleTenant.create_supabase_endpoints()
 

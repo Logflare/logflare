@@ -14,6 +14,7 @@ defmodule Logflare.Auth do
   alias Phoenix.Token
 
   @max_age_default 86_400
+
   defp env_salt, do: Application.get_env(:logflare, LogflareWeb.Endpoint)[:secret_key_base]
   defp env_oauth_config, do: Application.get_env(:logflare, ExOauth2Provider)
   defp env_partner_oauth_config, do: Application.get_env(:logflare, ExOauth2ProviderPartner)
@@ -132,7 +133,7 @@ defmodule Logflare.Auth do
   Optionally validates if the access token needs to have any required scope.
   """
   @spec verify_access_token(OauthAccessToken.t() | String.t(), String.t() | [String.t()]) ::
-          {:ok, User.t()} | {:error, term()}
+          {:ok, OauthAccessToken.t(), User.t()} | {:error, term()}
   def verify_access_token(token, scopes \\ [])
 
   def verify_access_token(token, scope) when is_binary(scope) do
@@ -164,25 +165,57 @@ defmodule Logflare.Auth do
     resource_owner = Keyword.get(config, :resource_owner)
 
     with {:ok, access_token} <- ExOauth2Provider.authenticate_token(str_token, config),
-         token_scopes <- String.split(access_token.scopes || ""),
-         :ok <- check_scopes(token_scopes, required_scopes),
+         :ok <- check_scopes(access_token, required_scopes),
          owner <- get_resource_owner_by_id(resource_owner, access_token.resource_owner_id) do
-      {:ok, owner}
-    else
-      {:scope, false} -> {:error, :unauthorized}
-      err -> err
+      {:ok, access_token, owner}
     end
   end
 
   defp get_resource_owner_by_id(User, id), do: Users.Cache.get(id)
   defp get_resource_owner_by_id(Partner, id), do: Partners.Cache.get_partner(id)
 
-  defp check_scopes(token_scopes, required) do
+  @doc """
+  Checks that an access token contains any scopes that are provided in a given required scopes list.
+
+  Private scope will allways return `:ok`
+  iex> check_scopes(access_token, ["private"])
+
+  iex> check_scopes(%OauthAccessToken{scopes: "ingest:source:1"}, ["ingest:source:1"])
+  If multiple scopes are provided, each scope must be in the access token's scope string
+    :ok
+  only can ingest to token-specified scopes
+    iex> check_scopes(%OauthAccessToken{scopes: "ingest:source:1"}, ["ingest"])
+    {:error, :unauthorized}
+
+  if scopes to check for are missing, will be unauthorized
+    iex> check_scopes(%OauthAccessToken{scopes: "ingest"}, ["ingest", "source:1"])
+    {:error, :unauthorized}
+
+  """
+  def check_scopes(%_{} = access_token, required_scopes) when is_list(required_scopes) do
+    token_scopes = String.split(access_token.scopes || "")
+
     cond do
-      "private" in token_scopes -> :ok
-      Enum.empty?(required) -> :ok
-      Enum.any?(token_scopes, fn scope -> scope in required end) -> :ok
-      true -> {:error, :unauthorized}
+      "private" in token_scopes ->
+        :ok
+
+      Enum.empty?(required_scopes) ->
+        :ok
+
+      # legacy behaviours
+      # empty scope
+      Enum.empty?(token_scopes) and Enum.any?(required_scopes, &String.starts_with?(&1, "ingest")) ->
+        :ok
+
+      # deprecated scope
+      "public" in token_scopes and Enum.any?(required_scopes, &String.starts_with?(&1, "ingest")) ->
+        :ok
+
+      Enum.any?(token_scopes, fn scope -> scope in required_scopes end) ->
+        :ok
+
+      true ->
+        {:error, :unauthorized}
     end
   end
 

@@ -17,6 +17,7 @@ defmodule LogflareWeb.AlertsLiveTest do
     insert(:plan, name: "Free")
     user = insert(:user)
     conn = login_user(conn, user)
+    start_supervised!(Logflare.Alerting.Supervisor)
     [user: user, conn: conn]
   end
 
@@ -28,8 +29,8 @@ defmodule LogflareWeb.AlertsLiveTest do
     setup [:create_alert_query]
 
     setup do
-      Logflare.AlertsScheduler
-      |> stub(:put_job, fn _ -> :ok end)
+      Logflare.Alerting.AlertsScheduler
+      |> stub(:add_job, fn _ -> :ok end)
 
       :ok
     end
@@ -47,6 +48,75 @@ defmodule LogflareWeb.AlertsLiveTest do
       assert has_element?(view, "h1,h2,h3,h4,h5", alert_query.name)
       assert has_element?(view, "p", alert_query.description)
       assert has_element?(view, "code", alert_query.query)
+    end
+
+    test "can attach new backend to the alert query", %{
+      conn: conn,
+      user: user,
+      alert_query: alert_query
+    } do
+      backend = insert(:backend, user: user)
+
+      {:ok, view, _html} = live(conn, ~p"/alerts/#{alert_query.id}")
+
+      # toggle open the backend form
+      view
+      |> element("button", "Add Backend")
+      |> render_click()
+
+      assert view
+             |> element("form#backend")
+             |> render_submit(%{
+               backend: %{backend_id: backend.id}
+             }) =~ "Backend added successfully"
+
+      html = render(view)
+      assert html =~ backend.name
+
+      # nav to show backend page
+      view
+      |> element("a", backend.name)
+      |> render_click()
+
+      assert_patched(view, ~p"/backends/#{backend.id}")
+      assert render(view) =~ alert_query.name
+    end
+
+    test "validates query", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/alerts/new")
+
+      valid_query = "select current_timestamp() as my_time"
+      invalid_query = "bad_query"
+
+      # triggering event handler directly since Monaco does this via JavaScript
+      assert view
+             |> with_target("#alert_query_editor")
+             |> render_hook("parse-query", %{"value" => invalid_query}) =~ "SQL Parse error!"
+
+      refute view
+             |> with_target("#alert_query_editor")
+             |> render_hook("parse-query", %{"value" => valid_query}) =~ "SQL Parse error!"
+    end
+
+    test "show for nonexistent query", %{conn: conn} do
+      {:error, {:live_redirect, %{flash: %{"info" => "Alert not found" <> _}}}} =
+        live(conn, ~p"/alerts/123")
+    end
+
+    test "can remove backend from the alert query", %{
+      conn: conn,
+      user: user,
+      alert_query: alert_query
+    } do
+      backend = insert(:backend, user: user, alert_queries: [alert_query])
+      {:ok, view, html} = live(conn, ~p"/alerts/#{alert_query.id}")
+      assert html =~ backend.name
+
+      view
+      |> element("button", "Remove backend")
+      |> render_click() =~ "Backend removed successfully"
+
+      refute has_element?(view, backend.name)
     end
 
     test "saves new alert_query", %{conn: conn} do
@@ -129,7 +199,7 @@ defmodule LogflareWeb.AlertsLiveTest do
     end
 
     test "deletes alert_query in listing", %{conn: conn, alert_query: alert_query} do
-      {:ok, view, _html} = live(conn, Routes.alerts_path(conn, :edit, alert_query))
+      {:ok, view, _html} = live(conn, ~p"/alerts/#{alert_query.id}/edit")
 
       assert view
              |> element("button", "Delete")
@@ -140,7 +210,7 @@ defmodule LogflareWeb.AlertsLiveTest do
     end
 
     test "remove slack hook", %{conn: conn, alert_query: alert_query} do
-      {:ok, view, _html} = live(conn, Routes.alerts_path(conn, :show, alert_query))
+      {:ok, view, _html} = live(conn, ~p"/alerts/#{alert_query.id}")
 
       assert view
              |> element("button", "Remove Slack")

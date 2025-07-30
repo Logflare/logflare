@@ -2,7 +2,6 @@ defmodule LogflareWeb.Helpers.PageTitle do
   @moduledoc """
   Sets page titles.
   """
-  alias LogflareWeb.LayoutView
 
   # alias LogflareWeb.{SourceView, MarketingView}
 
@@ -15,7 +14,7 @@ defmodule LogflareWeb.Helpers.PageTitle do
 
   # defp get(%{view_module: MarketingView}), do: "Works"
 
-  defp get(%{view_module: LayoutView, view_template: "root.html", source: source}) do
+  defp get(%{source: source}) do
     source.name
   end
 

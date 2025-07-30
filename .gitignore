@@ -54,12 +54,14 @@ gcloud_prod.json
 /cover/
 /node_modules/
 .vscode/
+/native/sqlparser_ex/target/
 
 .google.secret.json
 .*.env
 
 !.template.env
-!.docker.env
+!.single_tenant_bq.env
+!.single_tenant_pg.env
 # rustler nif binaries
 /priv/native
 
@@ -77,3 +79,6 @@ gcloud_prod.json
 .*.gcloud.json
 
 supabase
+
+examples/**/.dev.vars
+examples/**/node_modules

@@ -13,7 +13,18 @@ defmodule Logflare.Billing.Cache do
       id: __MODULE__,
       start:
         {Cachex, :start_link,
-         [__MODULE__, [stats: stats, expiration: Utils.cache_expiration_min(), limit: 100_000]]}
+         [
+           __MODULE__,
+           [
+             hooks:
+               [
+                 if(stats, do: Utils.cache_stats()),
+                 Utils.cache_limit(100_000)
+               ]
+               |> Enum.filter(& &1),
+             expiration: Utils.cache_expiration_min(180, 10)
+           ]
+         ]}
     }
   end
 

@@ -24,10 +24,36 @@ config :logflare, Logflare.Google, dataset_id_append: "_default"
 
 config :logflare, :postgres_backend_adapter, pool_size: 3
 
+config :logflare, :bigquery_backend_adaptor, managed_service_account_pool_size: 0
+
+config :logflare, :clickhouse_backend_adaptor,
+  engine: "MergeTree",
+  pool_size: 3
+
 config :logflare, Logflare.Source.BigQuery.Schema, updates_per_minute: 6
 
 # Configures the endpoint
 config :logflare, LogflareWeb.Endpoint,
+  adapter: Bandit.PhoenixAdapter,
+  http: [
+    http_1_options: [max_request_line_length: 100_000],
+    http_options: [log_protocol_errors: false],
+    thousand_island_options: [
+      num_acceptors: 1000,
+      # https://cloud.google.com/load-balancing/docs/https/#timeouts_and_retries
+      # preserves idle keepalive connections up to load balancer max of 600s
+      read_timeout: 600_000,
+      # transport options are passed wholly to :gen_tcp
+      # https://github.com/mtrudel/thousand_island/blob/ae733332892b1bb2482a9cf4e97de03411fba2ad/lib/thousand_island/transports/tcp.ex#L61
+      transport_options: [
+        # https://www.erlang.org/doc/man/inet
+        # both reuseport and reuseport_lb should be provided for linux
+        reuseport: true,
+        reuseport_lb: true
+        #
+      ]
+    ]
+  ],
   url: [host: "localhost", scheme: "http", port: 4000],
   secret_key_base: "DSzZYeAgGaXlfRXPQqMOPiA8hJOYSImhnR2lO8lREOE2vWDmkGn1XWHxoCZoASlP",
   render_errors: [view: LogflareWeb.ErrorView, accepts: ~w(html json)],
@@ -62,10 +88,6 @@ config :ueberauth, Ueberauth,
 
 config :phoenix, :json_library, Jason
 config :postgrex, :json_library, Jason
-
-config :syn,
-  scopes: [:endpoints, :context_cache],
-  event_handler: Logflare.SynEventHandler
 
 oauth_common = [
   repo: Logflare.Repo,
@@ -103,6 +125,8 @@ config :swoosh, local: true
 # use the default querying connection pool
 # see application.ex for pool settings
 config :tesla,
+  # TODO: `use Tesla.Builder` and `use Tesla` are soft-deprecated. It will be removed in future major version in favor of Runtime Configuration instead. See https://github.com/elixir-tesla/tesla/discussions/732 to learn more.
+  disable_deprecated_builder_warning: true,
   adapter: {Tesla.Adapter.Finch, name: Logflare.FinchDefault, receive_timeout: 60_000}
 
 config :number,
@@ -125,9 +149,8 @@ config :open_api_spex, :cache_adapter, OpenApiSpex.Plug.PersistentTermCache
 
 config :logflare, Logflare.Cluster.Utils, min_cluster_size: 1
 
-config :grpc, start_server: true
-
-config :logflare, Logflare.AlertsScheduler, init_task: {Logflare.Alerting, :init_alert_jobs, []}
+config :logflare, Logflare.Alerting.AlertsScheduler,
+  init_task: {Logflare.Alerting, :init_alert_jobs, []}
 
 config :opentelemetry,
   sdk_disabled: true,
@@ -135,5 +158,11 @@ config :opentelemetry,
   traces_exporter: :none
 
 config :logflare, Logflare.Vault, json_library: Jason
+
+config :broadway, config_storage: :ets
+
+config :mime, :types, %{
+  "application/x-protobuf" => ["protobuf"]
+}
 
 import_config "#{Mix.env()}.exs"

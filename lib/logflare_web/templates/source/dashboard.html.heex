@@ -5,7 +5,7 @@
       <ul>
         <li>
           <i class="fa fa-info-circle" aria-hidden="true"></i>
-          <span>ingest API key <code class="pointer-cursor logflare-tooltip" id="api-key" data-showing-api-key="false" data-clipboard-text={@user.api_key} data-toggle="tooltip" data-html="true" data-placement="top" title="<span id=&quot;copy-tooltip&quot;>Copy this</span>">CLICK ME</code></span>
+          <span>ingest API key <code class="pointer-cursor logflare-tooltip" id="api-key" data-showing-api-key="false" data-clipboard-text={@user.api_key} data-toggle="tooltip" data-placement="top" title="<span id=&quot;copy-tooltip&quot;>Copy this</span>">CLICK ME</code></span>
         </li>
         <li>
           <%= link to: ~p"/access-tokens" do %>
@@ -20,13 +20,13 @@
           </li>
         <% end %>
         <li>
-          <%= link to: Routes.vercel_log_drains_path(@conn, :edit) do %>
+          <%= link to: ~p"/integrations/vercel/edit" do %>
             ▲<span class="hide-on-mobile"> vercel
             integration</span>
           <% end %>
         </li>
         <li>
-          <%= link to: Routes.billing_account_path(@conn, :edit) do %>
+          <%= link to: ~p"/billing/edit" do %>
             <i class="fas fa-money-bill"></i><span class="hide-on-mobile"> billing</span>
           <% end %>
         </li>
@@ -58,13 +58,13 @@
             <li><strong><%= @home_team.name %></strong><small>home team</small></li>
           <% else %>
             <li>
-              <%= link(@home_team.name, to: Routes.team_user_path(@conn, :change_team, %{"user_id" => @home_team.user_id})) %><small>
+              <%= link(@home_team.name, to: ~p"/profile/switch?#{%{"user_id" => @home_team.user_id}}") %><small>
               home team</small>
             </li>
           <% end %>
         <% else %>
           <li>
-            <%= link("Create your own Logflare account.", to: Routes.auth_path(@conn, :create_and_sign_in), method: "POST", class: "") %>
+            <%= link("Create your own Logflare account.", to: ~p"/account", method: "POST", class: "") %>
           </li>
         <% end %>
 
@@ -75,14 +75,14 @@
             <li><strong><%= team_user.team.name %></strong></li>
           <% else %>
             <li>
-              <%= link(team_user.team.name, to: Routes.team_user_path(@conn, :change_team, %{"user_id" => team_user.team.user_id, "team_user_id" => team_user.id})) %>
+              <%= link(team_user.team.name, to: ~p"/profile/switch?#{%{"user_id" => team_user.team.user_id, "team_user_id" => team_user.id}}") %>
             </li>
           <% end %>
         <% end %>
       </ul>
       <h5 class="header-margin">Members</h5>
       <%= render(LogflareWeb.SharedView, "team_members.html", assigns) %>
-      <%= link("Invite more team members.", to: Routes.user_path(@conn, :edit) <> "#team-members") %>
+      <%= link("Invite more team members.", to: ~p"/account/edit#team-members") %>
     </div>
 
     <div id="source-list" class="col-lg-7 mb-4">
@@ -119,15 +119,15 @@
             </div>
             <div>
               <div class="float-right">
-                <%= link to: Routes.source_path(@conn, :edit, source.id), class: "dashboard-links" do %>
+                <%= link to: ~p"/sources/#{source}/edit", class: "dashboard-links" do %>
                   <i class="fas fa-edit"></i>
                 <% end %>
-                <%= link to: Routes.source_path(@conn, :delete, source.id), method: :delete, class: "dashboard-links" do %>
+                <%= link to: ~p"/sources/#{source}/delete", method: :delete, class: "dashboard-links" do %>
                   <i class="fa fa-trash"></i>
                 <% end %>
               </div>
               <div class="source-link word-break-all">
-                <%= link(source.name, to: Routes.source_path(@conn, :show, source.id)) %>
+                <%= link(source.name, to: ~p"/sources/#{source}") %>
                 <span id={source.token}>
                   <small class="my-badge my-badge-info">
                     <%= source.metrics.inserts_string %>

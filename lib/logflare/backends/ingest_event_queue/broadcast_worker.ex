@@ -39,7 +39,11 @@ defmodule Logflare.Backends.IngestEventQueue.BroadcastWorker do
       @ets_table_mapper
     )
 
-    Process.send_after(self(), :global_broadcast, state.interval * 2)
+    # scale broadcasting interval to cluster size
+    cluster_size = Logflare.Cluster.Utils.actual_cluster_size()
+    broadcast_interval = max(state.interval, round(:rand.uniform(cluster_size * 100)))
+
+    Process.send_after(self(), :global_broadcast, broadcast_interval)
     {:noreply, state}
   end
 
@@ -61,11 +65,11 @@ defmodule Logflare.Backends.IngestEventQueue.BroadcastWorker do
     {:noreply, state}
   end
 
-  defp global_broadcast_producer_buffer_len({source_id, backend_id}) do
-    len = Backends.get_and_cache_local_pending_buffer_len(source_id, backend_id)
-
-    local_buffer = %{Node.self() => %{len: len}}
-    PubSubRates.global_broadcast_rate({:buffers, source_id, backend_id, local_buffer})
+  defp global_broadcast_producer_buffer_len({source_id, backend_id})
+       when is_integer(source_id) and (is_integer(backend_id) or is_nil(backend_id)) do
+    {:ok, stats} = Backends.cache_local_buffer_lens(source_id, backend_id)
+    local_buffer = %{Node.self() => stats}
+    PubSubRates.global_broadcast_rate({"buffers", source_id, backend_id, local_buffer})
   end
 
   defp local_broadcast_cluster_length({source_id, backend_id}) do

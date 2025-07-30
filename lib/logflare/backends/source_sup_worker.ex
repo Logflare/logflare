@@ -32,7 +32,7 @@ defmodule Logflare.Backends.SourceSupWorker do
   defp do_check(nil), do: :noop
 
   defp do_check(source) do
-    backends = Backends.list_backends(source)
+    backends = Backends.list_backends(source_id: source.id)
     rules = Rules.list_rules(source)
 
     # start rules source-backends

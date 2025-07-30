@@ -1,6 +1,7 @@
 defmodule Opentelemetry.Proto.Logs.V1.SeverityNumber do
   @moduledoc false
-  use Protobuf, enum: true, protoc_gen_elixir_version: "0.11.0", syntax: :proto3
+
+  use Protobuf, enum: true, syntax: :proto3, protoc_gen_elixir_version: "0.13.0"
 
   field :SEVERITY_NUMBER_UNSPECIFIED, 0
   field :SEVERITY_NUMBER_TRACE, 1
@@ -31,15 +32,17 @@ end
 
 defmodule Opentelemetry.Proto.Logs.V1.LogRecordFlags do
   @moduledoc false
-  use Protobuf, enum: true, protoc_gen_elixir_version: "0.11.0", syntax: :proto3
 
-  field :LOG_RECORD_FLAG_UNSPECIFIED, 0
-  field :LOG_RECORD_FLAG_TRACE_FLAGS_MASK, 255
+  use Protobuf, enum: true, syntax: :proto3, protoc_gen_elixir_version: "0.13.0"
+
+  field :LOG_RECORD_FLAGS_DO_NOT_USE, 0
+  field :LOG_RECORD_FLAGS_TRACE_FLAGS_MASK, 255
 end
 
 defmodule Opentelemetry.Proto.Logs.V1.LogsData do
   @moduledoc false
-  use Protobuf, protoc_gen_elixir_version: "0.11.0", syntax: :proto3
+
+  use Protobuf, syntax: :proto3, protoc_gen_elixir_version: "0.13.0"
 
   field :resource_logs, 1,
     repeated: true,
@@ -49,7 +52,8 @@ end
 
 defmodule Opentelemetry.Proto.Logs.V1.ResourceLogs do
   @moduledoc false
-  use Protobuf, protoc_gen_elixir_version: "0.11.0", syntax: :proto3
+
+  use Protobuf, syntax: :proto3, protoc_gen_elixir_version: "0.13.0"
 
   field :resource, 1, type: Opentelemetry.Proto.Resource.V1.Resource
 
@@ -63,7 +67,8 @@ end
 
 defmodule Opentelemetry.Proto.Logs.V1.ScopeLogs do
   @moduledoc false
-  use Protobuf, protoc_gen_elixir_version: "0.11.0", syntax: :proto3
+
+  use Protobuf, syntax: :proto3, protoc_gen_elixir_version: "0.13.0"
 
   field :scope, 1, type: Opentelemetry.Proto.Common.V1.InstrumentationScope
 
@@ -77,7 +82,8 @@ end
 
 defmodule Opentelemetry.Proto.Logs.V1.LogRecord do
   @moduledoc false
-  use Protobuf, protoc_gen_elixir_version: "0.11.0", syntax: :proto3
+
+  use Protobuf, syntax: :proto3, protoc_gen_elixir_version: "0.13.0"
 
   field :time_unix_nano, 1, type: :fixed64, json_name: "timeUnixNano"
   field :observed_time_unix_nano, 11, type: :fixed64, json_name: "observedTimeUnixNano"
@@ -94,4 +100,5 @@ defmodule Opentelemetry.Proto.Logs.V1.LogRecord do
   field :flags, 8, type: :fixed32
   field :trace_id, 9, type: :bytes, json_name: "traceId"
   field :span_id, 10, type: :bytes, json_name: "spanId"
+  field :event_name, 12, type: :string, json_name: "eventName"
 end

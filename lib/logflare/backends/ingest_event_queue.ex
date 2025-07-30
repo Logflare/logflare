@@ -5,16 +5,18 @@ defmodule Logflare.Backends.IngestEventQueue do
   :ets-backed buffer uses an :ets mapping pattern to fan out multiple :ets tables.
   """
   use GenServer
+
   alias Logflare.Source
   alias Logflare.Backends.Backend
   alias Logflare.LogEvent
+
   require Ex2ms
 
   @ets_table_mapper :ingest_event_queue_mapping
   @ets_table :source_ingest_events
   @typep source_backend_pid ::
-           {Source.t() | non_neg_integer(), Backend.t() | nil | non_neg_integer(), pid()}
-  @typep table_key :: {non_neg_integer(), nil | non_neg_integer(), pid()}
+           {Source.t() | non_neg_integer(), Backend.t() | nil | non_neg_integer(), nil | pid()}
+  @typep table_key :: {non_neg_integer(), nil | non_neg_integer(), nil | pid()}
   @typep queues_key :: {non_neg_integer(), nil | non_neg_integer()}
 
   ## Server
@@ -57,7 +59,8 @@ defmodule Logflare.Backends.IngestEventQueue do
   """
   @spec upsert_tid(table_key()) ::
           {:ok, reference()} | {:error, :already_exists, reference()}
-  def upsert_tid(sid_bid_pid) do
+  def upsert_tid({sid, bid, pid} = sid_bid_pid)
+      when is_integer(sid) and (is_integer(bid) or is_nil(bid)) and (is_pid(pid) or is_nil(pid)) do
     case get_tid(sid_bid_pid) do
       nil ->
         # create and insert
@@ -132,16 +135,14 @@ defmodule Logflare.Backends.IngestEventQueue do
 
     procs = Enum.map(proc_counts, fn {key, _count} -> key end)
 
-    procs_length = Enum.count(procs)
-
-    if procs_length == 0 do
+    if procs == [] do
       # not yet started, add to startup queue
       add_to_table({sid, bid, nil}, batch)
     else
       Logflare.Utils.chunked_round_robin(
         batch,
         procs,
-        250,
+        50,
         fn chunk, target ->
           add_to_table(target, chunk)
         end
@@ -225,6 +226,20 @@ defmodule Logflare.Backends.IngestEventQueue do
   end
 
   @doc """
+  Deletes the queue associated with the given source-backend-pid.
+  """
+  @spec delete_queue(source_backend_pid()) :: :ok | {:error, :not_initialized}
+  def delete_queue(sid_bid_pid) do
+    with tid when tid != nil <- get_tid(sid_bid_pid) do
+      :ets.delete(tid)
+      :ets.delete(@ets_table_mapper, sid_bid_pid)
+      :ok
+    else
+      nil -> {:error, :not_initialized}
+    end
+  end
+
+  @doc """
   Returns a list of two-element tuples.
   First element is the table key.
   Second element is the pending count.
@@ -236,7 +251,7 @@ defmodule Logflare.Backends.IngestEventQueue do
       fn objs, acc ->
         items =
           for {sid_bid_pid, _tid} <- objs,
-              count = count_pending(sid_bid_pid),
+              count = total_pending(sid_bid_pid),
               is_integer(count) do
             {sid_bid_pid, count}
           end
@@ -271,15 +286,15 @@ defmodule Logflare.Backends.IngestEventQueue do
   @doc """
   Counts pending items from a given table
   """
-  @spec count_pending(source_backend_pid()) :: integer() | {:error, :not_initialized}
-  def count_pending({_, _} = sid_bid) do
+  @spec total_pending(source_backend_pid()) :: integer() | {:error, :not_initialized}
+  def total_pending({_, _} = sid_bid) do
     # iterate over each matching source-backend queue and sum the totals
     for {_sid_bid_pid, count} <- list_pending_counts(sid_bid), reduce: 0 do
       acc -> acc + count
     end
   end
 
-  def count_pending({_sid, _bid, _pid} = sid_bid_pid) do
+  def total_pending({_sid, _bid, _pid} = sid_bid_pid) do
     ms =
       Ex2ms.fun do
         {_event_id, :pending, _event} -> true
@@ -371,64 +386,70 @@ defmodule Logflare.Backends.IngestEventQueue do
     end
   end
 
-  def truncate_table({sid, _bid, _pid} = sid_bid_pid, :ingested, 0) when is_integer(sid) do
+  def truncate_table({sid, _bid, _pid} = sid_bid_pid, status, n)
+      when is_integer(sid) and status in [:all, :pending, :ingested] do
     # drop all objects
-    with tid when tid != nil <- get_tid(sid_bid_pid) do
-      :ets.match_delete(tid, {:_, :ingested, :_})
+
+    ms =
+      Ex2ms.fun do
+        {_event_id, _event_status, event} = obj when ^status == :all -> obj
+        {_event_id, event_status, event} = obj when event_status == ^status -> obj
+      end
+
+    del_ms =
+      Ex2ms.fun do
+        {_event_id, _event_status, event} = obj when ^status == :all -> true
+        {_event_id, event_status, event} = obj when event_status == ^status -> true
+      end
+
+    with tid when tid != nil <- get_tid(sid_bid_pid),
+         size when is_integer(size) <- :ets.info(tid, :size) do
+      to_insert =
+        if n == 0 do
+          []
+        else
+          :ets.select(tid, ms, min(n, max(size, 1)))
+          |> case do
+            {taken, _} -> taken
+            :"$end_of_table" -> []
+          end
+        end
+
+      :ets.select_delete(tid, del_ms)
+      :ets.insert(tid, to_insert)
       :ok
     else
       nil -> {:error, :not_initialized}
     end
   end
 
-  def truncate_table({sid, _bid, _pid} = sid_bid_pid, filter, n)
-      when is_integer(sid) and is_integer(n) and filter in [:pending, :all, :ingested] do
-    # chunk over table and drop
-    ms =
-      Ex2ms.fun do
-        {event_id, _status, _event} when ^filter == :all -> event_id
-        {event_id, status, _event} when status == ^filter -> event_id
+  @doc """
+  Deletes a specific event from the table.
+  If already deleted, it is a :noop.
+  """
+  @spec delete(source_backend_pid(), LogEvent.t()) :: :ok | :noop | {:erorr, :not_initialized}
+
+  def delete({_, _} = sid_bid, %LogEvent{id: id}) do
+    traverse_queues(sid_bid, fn objs, acc ->
+      for {_sid_bid_pid, tid} <- objs do
+        :ets.delete(tid, id)
       end
 
+      acc
+    end)
+
+    :ok
+  end
+
+  def delete({_, _, _pid} = sid_bid_pid, %LogEvent{id: id}) do
     with tid when tid != nil <- get_tid(sid_bid_pid) do
-      :ets.safe_fixtable(tid, true)
-      res = truncate_traverse(tid, :ets.select(tid, ms, 100), 0, n)
-      :ets.safe_fixtable(tid, false)
-      res
+      :ets.delete(tid, id)
+
+      :ok
     else
       nil -> {:error, :not_initialized}
-      :"$end_of_table" -> {:ok, []}
+      :"$end_of_table" -> :noop
     end
-  end
-
-  defp truncate_traverse(_tid, :"$end_of_table", _acc, _limit), do: :ok
-
-  defp truncate_traverse(tid, {taken, cont}, acc, limit) when acc < limit do
-    # keep
-    diff = limit - acc
-    rem = Enum.count(taken) - diff
-
-    to_add =
-      if rem > 0 do
-        # satisfy all, drop up to required
-        for key <- Enum.take(taken, diff) do
-          :ets.delete(tid, key)
-        end
-
-        diff
-      else
-        # cannot satisfy all, keep all and continue
-        Enum.count(taken)
-      end
-
-    truncate_traverse(tid, :ets.select(cont), acc + to_add, limit)
-  end
-
-  defp truncate_traverse(tid, {taken, cont}, acc, limit) when acc >= limit do
-    # delete the rest
-    for key <- taken, do: :ets.delete(tid, key)
-
-    truncate_traverse(tid, :ets.select(cont), acc, limit)
   end
 
   @doc """
@@ -438,8 +459,14 @@ defmodule Logflare.Backends.IngestEventQueue do
 
   def drop({_, _} = sid_bid, filter, n)
       when is_integer(n) and filter in [:pending, :all, :ingested] do
-    traverse_queues(sid_bid, fn {sid_bid_pid, _tid}, acc ->
-      {:ok, num} = drop(sid_bid_pid, filter, n)
+    traverse_queues(sid_bid, fn objs, acc ->
+      num =
+        for {sid_bid_pid, _tid} <- objs, reduce: 0 do
+          acc ->
+            {:ok, num} = drop(sid_bid_pid, filter, n)
+            acc + num
+        end
+
       num + acc
     end)
 

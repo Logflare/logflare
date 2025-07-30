@@ -7,6 +7,8 @@ defmodule Logflare.Logs.SearchOperation do
 
   typedstruct do
     field :source, Source.t()
+    field :source_token, atom()
+    field :source_id, number()
     field :partition_by, :pseudo | :timestamp, enforce: true
     field :querystring, String.t(), enforce: true
     field :query, Ecto.Query.t()
@@ -22,8 +24,7 @@ defmodule Logflare.Logs.SearchOperation do
     field :chart_rules, [ChartRule.t()], default: []
     field :error, term()
     field :stats, :map
-    field :use_local_time, boolean
-    field :user_local_timezone, String.t()
+    field :search_timezone, String.t()
     field :chart_data_shape_id, atom(), default: nil, enforce: true
     field :type, :events | :aggregates
     field :status, {atom(), String.t() | [String.t()]}
@@ -41,7 +42,9 @@ defmodule Logflare.Logs.SearchOperation do
       so
       | lql_meta_and_msg_filters: lql_meta_and_msg_filters,
         chart_rules: chart_rules,
-        lql_ts_filters: ts_filters
+        lql_ts_filters: ts_filters,
+        source_token: so.source.token,
+        source_id: so.source.id
     }
   end
 end

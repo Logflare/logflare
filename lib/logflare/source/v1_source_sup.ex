@@ -1,21 +1,18 @@
 defmodule Logflare.Source.V1SourceSup do
-  @moduledoc """
-  Manages the individual table for the source. Limits things in the table to 1000. Manages TTL for
-  things in the table. Handles loading the table from the disk if found on startup.
-  """
-  alias Logflare.Source.RecentLogsServer
+  @moduledoc false
+  alias Logflare.Backends.RecentEventsTouch
+  alias Logflare.Backends.RecentInsertsBroadcaster
   alias Logflare.Source.EmailNotificationServer
   alias Logflare.Source.TextNotificationServer
   alias Logflare.Source.WebhookNotificationServer
   alias Logflare.Source.SlackHookServer
   alias Logflare.Source.BillingWriter
-
+  alias Logflare.GenSingleton
   alias Logflare.Source.RateCounterServer, as: RCS
   alias Logflare.Users
   alias Logflare.Backends
   alias Logflare.Backends.Backend
   alias Logflare.Billing
-  alias Logflare.Logs.SearchQueryExecutor
 
   require Logger
   use Supervisor
@@ -33,7 +30,6 @@ defmodule Logflare.Source.V1SourceSup do
     user =
       source.user_id
       |> Users.Cache.get()
-      |> Users.maybe_put_bigquery_defaults()
       |> Users.preload_billing_account()
 
     plan = Billing.Cache.get_plan_by_user(user)
@@ -45,12 +41,12 @@ defmodule Logflare.Source.V1SourceSup do
     children = [
       {RCS, [source: source]},
       default_bigquery_spec,
-      {RecentLogsServer, [source: source]},
+      {GenSingleton, child_spec: {RecentEventsTouch, source: source}},
+      {RecentInsertsBroadcaster, [source: source]},
       {EmailNotificationServer, [source: source]},
       {TextNotificationServer, [source: source, plan: plan]},
       {WebhookNotificationServer, [source: source]},
       {SlackHookServer, [source: source]},
-      {SearchQueryExecutor, [source: source]},
       {BillingWriter, [source: source]}
     ]
 

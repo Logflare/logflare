@@ -1,11 +1,10 @@
-version: "3.9"
 services:
   db:
-    image: postgres:13.4-alpine
+    image: postgres:15
     environment:
       POSTGRES_PASSWORD: postgres
       POSTGRES_USER: postgres
-      POSTGRES_DB: logflare_docker
+      POSTGRES_DB: logflare_dev
     ports:
       - "5432:5432"
     volumes:
@@ -23,10 +22,12 @@ services:
         - "supabase/logflare:1.0.0"
     ports:
       - "4000:4000"
+      # for OTLP ingestion
+      - "50051:50051"
     hostname: 127.0.0.1
     volumes:
       - type: bind
-        source: ${PWD}/.docker.env
+        source: ${PWD}/.single_tenant_bq.env
         target: /tmp/.secrets.env
         read_only: true
       - type: bind
@@ -66,7 +67,7 @@ services:
       - "3100:3100"
     volumes:
       - ./test/loki.yml:/etc/loki/local-config.yaml
-    command: -config.file=/etc/loki/local-config.yaml -log.level=debug 
+    command: -config.file=/etc/loki/local-config.yaml -log.level=debug
 
   grafana:
     environment:
@@ -83,7 +84,7 @@ services:
         datasources:
         - name: Loki
           type: loki
-          access: proxy 
+          access: proxy
           orgId: 1
           url: http://loki:3100
           basicAuth: false
@@ -95,6 +96,27 @@ services:
     image: grafana/grafana:latest
     ports:
       - "3000:3000"
+  collector:
+    image: otel/opentelemetry-collector-contrib:0.118.0
+    volumes:
+      - ./examples/otel-collector/config.yaml:/etc/otelcol-contrib/config.yaml
+    ports:
+      - 13133:13133 # health_check extension
+      - 4317:4317 # OTLP gRPC receiver
+      - 4318:4318 # OTLP http receiver
+  clickhouse:
+    image: clickhouse/clickhouse-server:25.4
+    ports:
+      - "8123:8123" # HTTP interface
+      - "9000:9000"  # Native client interface
+    volumes:
+      - clickhouse-data:/var/lib/clickhouse
+      - clickhouse-logs:/var/log/clickhouse-server
+    environment:
+      CLICKHOUSE_DB: logflare_test
+      CLICKHOUSE_USER: logflare
+      CLICKHOUSE_PASSWORD: logflare
 volumes:
   pg-data:
-
+  clickhouse-data:
+  clickhouse-logs:

@@ -1,5 +1,4 @@
 defmodule Logflare.Mixfile do
-  @moduledoc false
   use Mix.Project
 
   def project do
@@ -72,13 +71,13 @@ defmodule Logflare.Mixfile do
   defp deps do
     [
       # Phoenix stuff
-      {:phoenix, "~> 1.7"},
+      {:phoenix, "~> 1.7.14"},
       {:phoenix_live_view, "~> 0.18"},
       {:phoenix_view, "~> 2.0"},
       {:phoenix_pubsub, "~> 2.1"},
       {:phoenix_ecto, "~> 4.4"},
       {:phoenix_live_reload, "~> 1.4", only: :dev},
-      {:bandit, ">= 0.7.7"},
+      {:bandit, "~> 1.5.7"},
       {:plug_crypto, "~> 1.2.2"},
       {:cors_plug, "~> 2.0"},
       {:plug_caisson, "~> 0.2.1"},
@@ -103,7 +102,7 @@ defmodule Logflare.Mixfile do
       {:timex, "~> 3.1"},
       {:typed_struct, "~> 0.1", runtime: false},
       {:lqueue, "~> 1.1"},
-      {:cachex, "~> 3.1"},
+      {:cachex, "~> 4.0"},
       {:ex_machina, "~> 2.3", only: [:dev, :test]},
       {:iteraptor, "~> 1.10"},
       {:decorator, "~> 1.3"},
@@ -111,7 +110,7 @@ defmodule Logflare.Mixfile do
       {:libcluster, "~> 3.2"},
       {:map_keys, "~> 0.1.0"},
       {:observer_cli, "~> 1.5"},
-      {:cloak_ecto, "~> 1.3"},
+      {:cloak_ecto, github: "logflare/cloak_ecto"},
 
       # Parsing
       {:bertex, ">= 0.0.0"},
@@ -123,8 +122,8 @@ defmodule Logflare.Mixfile do
       {:earmark, "~> 1.4.33"},
 
       # Outbound Requests
-      {:castore, "~> 0.1.0"},
-      {:finch, "~> 0.18.0"},
+      {:castore, "~> 1.0"},
+      {:finch, "~> 0.19.0"},
       {:mint, "~> 1.0"},
       {:httpoison, "~> 1.4"},
       {:poison, "~> 5.0.0", override: true},
@@ -133,13 +132,14 @@ defmodule Logflare.Mixfile do
       {:tesla, "~> 1.6"},
 
       # Concurrency and pipelines
-      {:broadway, github: "Logflare/broadway", ref: "092f4ab"},
+      {:broadway, github: "Logflare/broadway", branch: "fix/batcher-fullsweep-after"},
       {:syn, "~> 3.3"},
 
       # Test
       {:mix_test_watch, "~> 1.0", only: [:dev, :test], runtime: false},
-      {:mimic, "~> 1.0", only: [:dev, :test]},
-      {:stream_data, "~> 0.6.0", only: [:dev, :test]},
+      {:phoenix_test, "~> 0.7.0", only: :test, runtime: false},
+      {:mimic, "~> 2.0", only: [:dev, :test]},
+      {:stream_data, "~> 1.2.0", only: [:dev, :test]},
 
       # Pagination
       {:scrivener_ecto, "~> 2.2"},
@@ -148,14 +148,21 @@ defmodule Logflare.Mixfile do
 
       # GCP
       {:google_api_cloud_resource_manager, "~> 0.34.0"},
-      {:google_api_big_query, "~> 0.79.0"},
-      {:goth, "~> 1.4.0"},
+      {:google_api_big_query, "~> 0.88.0"},
+      {:google_api_iam, "~> 0.45.0"},
+      {:goth, github: "Logflare/goth", branch: "feat/service-account-impersonation"},
       {:google_gax, github: "Logflare/elixir-google-gax", ref: "6772193", override: true},
 
       # Ecto
-      {:ecto, "~> 3.9", override: true},
-      {:ecto_sql, "~> 3.9"},
-      {:typed_ecto_schema, "~> 0.1.0", runtime: false},
+      {:ecto, "~> 3.12"},
+      {:ecto_sql, "~> 3.12"},
+      {:typed_ecto_schema, "~> 0.4.3", runtime: false},
+
+      # ClickHouse
+      {:ch, "~> 0.3.2"},
+
+      # DataFrames
+      {:explorer, "~> 0.10.1"},
 
       # Telemetry & logging
       {:telemetry, "~> 1.0"},
@@ -168,10 +175,10 @@ defmodule Logflare.Mixfile do
       {:ets, "~> 0.8.0"},
 
       # HTML
-      {:floki, "~> 0.29.0", only: [:test]},
+      {:floki, "~> 0.38.0", only: [:test]},
 
       # Rust NIFs
-      {:rustler, "~> 0.29.0"},
+      {:rustler, "~> 0.36.2", override: true},
 
       # Frontend
       {:phoenix_live_react, "~> 0.4"},
@@ -200,15 +207,15 @@ defmodule Logflare.Mixfile do
       # Postgres Subscribe
       {:cainophile, github: "Logflare/cainophile", ref: "267999b"},
       {:open_api_spex, "~> 3.16"},
-      {:grpc, "~> 0.5.0"},
-      {:protobuf, "~> 0.10"},
+      {:grpc, "~> 0.9.0"},
+      {:protobuf, "~> 0.12"},
       {:gun, "~> 2.0", override: true},
       {:cowlib, ">=2.12.0", override: true},
       {:phoenix_live_dashboard, "~> 0.8"},
       {:plug_cowboy, "~> 2.0"},
 
       # alerts feature
-      {:citrine, "~> 0.1.0"},
+      {:quantum, github: "Logflare/quantum-core", branch: "feat/string-job-names"},
       {:crontab, "~> 1.1"},
 
       # benchmarking
@@ -224,8 +231,9 @@ defmodule Logflare.Mixfile do
       {:opentelemetry, "~> 1.3"},
       {:opentelemetry_api, "~> 1.2"},
       {:opentelemetry_exporter, "~> 1.6"},
-      {:opentelemetry_phoenix, "~> 1.1"},
-      {:opentelemetry_cowboy, "~> 0.2"},
+      {:opentelemetry_phoenix, "~> 2.0.0-rc.2"},
+      {:opentelemetry_bandit, "~> 0.2.0-rc.1"},
+      {:otel_metric_exporter, "~> 0.3.6"},
       {:live_monaco_editor, "~> 0.1"}
     ]
   end
@@ -234,7 +242,7 @@ defmodule Logflare.Mixfile do
     [
       setup: ["deps.get", "ecto.setup", "ecto.seed"],
       # coveralls will trigger unit tests as well
-      test: ["ecto.create --quiet", "ecto.migrate", "test --no-start"],
+      test: ["ecto.create --quiet", "ecto.migrate --quiet", "test --no-start"],
       "test.only": ["test --no-start"],
       "test.watch": ["test.watch --no-start"],
       "test.compile": ["compile --warnings-as-errors"],
@@ -242,8 +250,9 @@ defmodule Logflare.Mixfile do
       "test.security": ["sobelow --threshold high --ignore Config.HTTPS"],
       "test.typings": ["cmd mkdir -p dialyzer", "dialyzer"],
       "test.coverage": ["coveralls"],
+      "test.coverage.ci": ["coveralls.github"],
       lint: ["credo"],
-      "lint.diff": ["credo diff master"],
+      "lint.diff": ["credo diff main"],
       "lint.all": ["credo --strict"],
       "ecto.seed": ["run priv/repo/seeds.exs"],
       "ecto.setup": ["ecto.create", "ecto.migrate"],

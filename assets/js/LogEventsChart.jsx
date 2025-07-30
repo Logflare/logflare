@@ -210,18 +210,16 @@ const chartSettings = (type) => {
       };
   }
 };
-
 const periods = ["day", "hour", "minute", "second"];
 const LogEventsChart = ({
   data,
   loading,
   chart_data_shape_id: chartDataShapeId,
   chart_period: chartPeriod,
-  use_local_time: useLocalTime,
-  user_local_timezone: userTz,
+  display_timezone: userTz,
   pushEvent,
 }) => {
-  const tz = useLocalTime ? userTz : "Etc/UTC";
+  const tz = userTz || "Etc/UTC";
   const onClick = (event) => {
     pushEvent("soft_pause", {});
     const utcDatetime = event.data.datetime;

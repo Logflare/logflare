@@ -1,0 +1,23 @@
+{
+  "name": "cf-worker-otel",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "deploy": "wrangler deploy",
+    "dev": "wrangler dev",
+    "start": "wrangler dev",
+    "test": "vitest",
+    "cf-typegen": "wrangler types"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-pool-workers": "^0.8.47",
+    "@cloudflare/workers-types": "^4.20250121.0",
+    "typescript": "^5.5.2",
+    "vitest": "3.2.4",
+    "wrangler": "^4.22.0"
+  },
+  "dependencies": {
+    "@microlabs/otel-cf-workers": "^1.0.0-rc.49",
+    "@opentelemetry/api": "^1.9.0"
+  }
+}

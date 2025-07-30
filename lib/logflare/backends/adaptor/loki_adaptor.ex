@@ -10,15 +10,8 @@ defmodule Logflare.Backends.Adaptor.LokiAdaptor do
 
   """
 
-  use TypedStruct
-
   alias Logflare.Backends.Adaptor.WebhookAdaptor
   alias Logflare.Utils
-
-  typedstruct enforce: true do
-    field(:url, String.t())
-    field(:headers, map(), optional: true)
-  end
 
   @behaviour Logflare.Backends.Adaptor
 
@@ -31,16 +24,7 @@ defmodule Logflare.Backends.Adaptor.LokiAdaptor do
 
   @impl Logflare.Backends.Adaptor
   def start_link({source, backend}) do
-    backend = %{
-      backend
-      | config: %{
-          url: backend.config.url,
-          headers: Map.get(backend.config, :headers, %{}),
-          format_batch: &format_batch/1,
-          gzip: true,
-          http: "http1"
-        }
-    }
+    backend = %{backend | config: transform_config(backend)}
 
     WebhookAdaptor.start_link({source, backend})
   end
@@ -89,9 +73,31 @@ defmodule Logflare.Backends.Adaptor.LokiAdaptor do
   def execute_query(_ident, _query), do: {:error, :not_implemented}
 
   @impl Logflare.Backends.Adaptor
+  def transform_config(%_{config: config}) do
+    basic_auth = Utils.encode_basic_auth(config)
+
+    headers = Map.get(config, :headers, %{})
+
+    headers =
+      if basic_auth do
+        Map.put(headers, "Authorization", "Basic #{basic_auth}")
+      else
+        headers
+      end
+
+    %{
+      url: config.url,
+      headers: headers,
+      format_batch: &format_batch/1,
+      gzip: true,
+      http: "http1"
+    }
+  end
+
+  @impl Logflare.Backends.Adaptor
   def cast_config(params) do
-    {%{}, %{url: :string, headers: :map}}
-    |> Ecto.Changeset.cast(params, [:headers, :url])
+    {%{}, %{url: :string, headers: :map, username: :string, password: :string}}
+    |> Ecto.Changeset.cast(params, [:headers, :url, :username, :password])
   end
 
   @impl Logflare.Backends.Adaptor
@@ -101,5 +107,22 @@ defmodule Logflare.Backends.Adaptor.LokiAdaptor do
     changeset
     |> validate_required([:url])
     |> Ecto.Changeset.validate_format(:url, ~r/https?\:\/\/.+/)
+    |> validate_user_pass()
+  end
+
+  defp validate_user_pass(changeset) do
+    user = Ecto.Changeset.get_field(changeset, :username)
+    pass = Ecto.Changeset.get_field(changeset, :password)
+    user_pass = [user, pass]
+
+    if user_pass != [nil, nil] and Enum.any?(user_pass, &is_nil/1) do
+      msg = "Both username and password must be provided for basic auth"
+
+      changeset
+      |> Ecto.Changeset.add_error(:username, msg)
+      |> Ecto.Changeset.add_error(:password, msg)
+    else
+      changeset
+    end
   end
 end

@@ -8,6 +8,8 @@ defmodule LogflareWeb.AlertsLive do
   alias Logflare.Users
   alias Logflare.Alerting
   alias Logflare.Alerting.AlertQuery
+  alias Logflare.Backends
+  alias Logflare.Endpoints
 
   embed_templates("actions/*", suffix: "_action")
   embed_templates("components/*")
@@ -20,7 +22,7 @@ defmodule LogflareWeb.AlertsLive do
 
   defp render_docs_link(assigns) do
     ~H"""
-    <.subheader_link to="https://docs.logflare.app/concepts/endpoints" text="docs" fa_icon="book" />
+    <.subheader_link to="https://docs.logflare.app/alerts" external={true} text="docs" fa_icon="book" />
     """
   end
 
@@ -41,12 +43,16 @@ defmodule LogflareWeb.AlertsLive do
       |> refresh()
       |> assign(:query_result_rows, nil)
       |> assign(:alert, nil)
-      |> assign(:endpoint_changeset, Alerting.change_alert_query(%AlertQuery{}))
+      # to be lazy loaded
+      |> assign(:backend_options, [])
+      |> assign(:changeset, Alerting.change_alert_query(%AlertQuery{}))
       |> assign(:base_url, LogflareWeb.Endpoint.url())
       |> assign(:parse_error_message, nil)
       |> assign(:query_string, nil)
       |> assign(:params_form, to_form(%{"query" => "", "params" => %{}}, as: "run"))
       |> assign(:declared_params, %{})
+      |> assign(:show_add_backend_form, false)
+      |> assign_endpoints_and_sources()
 
     {:ok, socket}
   end
@@ -57,19 +63,31 @@ defmodule LogflareWeb.AlertsLive do
     alert =
       if alert_id do
         Alerting.get_alert_query_by(id: alert_id, user_id: socket.assigns.user_id)
-        |> Alerting.preload_alert_query()
+        |> case do
+          nil -> nil
+          alert -> Alerting.preload_alert_query(alert)
+        end
       end
 
     socket = assign(socket, :alert, alert)
 
     socket =
-      if socket.assigns.live_action == :edit do
+      if socket.assigns.live_action == :edit and alert != nil do
         assign(socket, :changeset, Alerting.change_alert_query(alert))
       else
         assign(socket, :changeset, nil)
       end
 
-    {:noreply, socket}
+    if alert_id != nil and alert == nil do
+      socket =
+        socket
+        |> put_flash(:info, "Alert not found!")
+        |> push_navigate(to: ~p"/alerts")
+
+      {:noreply, socket}
+    else
+      {:noreply, socket}
+    end
   end
 
   def handle_event(
@@ -85,7 +103,7 @@ defmodule LogflareWeb.AlertsLive do
 
         {:noreply,
          socket
-         |> assign(:alert, updated_alert)
+         |> assign(:alert, updated_alert |> Alerting.preload_alert_query())
          |> put_flash(:info, "Successfully #{verb} alert #{updated_alert.name}")
          |> push_patch(to: ~p"/alerts/#{updated_alert.id}")}
 
@@ -127,10 +145,16 @@ defmodule LogflareWeb.AlertsLive do
     alert = Alerting.get_alert_query!(alert_id)
 
     with {:ok, alert} <- Alerting.update_alert_query(alert, %{slack_hook_url: nil}) do
+      alert = Alerting.preload_alert_query(alert)
+
       {:noreply,
        socket
        |> assign(:alert, alert)
        |> put_flash(:info, "Slack notifications have been removed.")}
+    else
+      {:error, %Ecto.Changeset{} = changeset} ->
+        error_message = format_ecto_errors(changeset, "Failed to remove Slack notifications")
+        {:noreply, put_flash(socket, :error, error_message)}
     end
   end
 
@@ -198,10 +222,99 @@ defmodule LogflareWeb.AlertsLive do
     end
   end
 
+  def handle_event(
+        "add-backend",
+        %{"backend" => %{"backend_id" => backend_id}},
+        %{assigns: %{alert: alert}} = socket
+      ) do
+    backend = Backends.get_backend(backend_id)
+
+    socket =
+      if backend do
+        case Alerting.update_alert_query(alert, %{backends: [backend | alert.backends]}) do
+          {:ok, updated_alert} ->
+            updated_alert = Alerting.preload_alert_query(updated_alert)
+
+            socket
+            |> assign(:alert, updated_alert)
+            |> put_flash(:info, "Backend added successfully")
+
+          {:error, %Ecto.Changeset{} = changeset} ->
+            error_message = format_ecto_errors(changeset, "Failed to add backend")
+
+            socket
+            |> put_flash(:error, error_message)
+        end
+      else
+        socket
+        |> put_flash(:error, "Backend not found")
+      end
+
+    {:noreply, socket}
+  end
+
+  def handle_event(
+        "remove-backend",
+        %{"backend_id" => backend_id},
+        %{assigns: %{alert: alert}} = socket
+      ) do
+    backend = Backends.get_backend(backend_id)
+
+    socket =
+      if backend do
+        # Remove the association between alert and backend
+        Alerting.update_alert_query(alert, %{
+          backends: Enum.filter(alert.backends, &(&1.id != backend.id))
+        })
+        |> case do
+          {:ok, updated_alert} ->
+            updated_alert = Alerting.preload_alert_query(updated_alert)
+
+            socket
+            |> assign(:alert, updated_alert)
+            |> put_flash(:info, "Backend removed successfully")
+
+          {:error, %Ecto.Changeset{} = changeset} ->
+            error_message = format_ecto_errors(changeset, "Failed to remove backend")
+
+            socket
+            |> put_flash(:error, error_message)
+        end
+      else
+        socket
+        |> put_flash(:error, "Backend not found")
+      end
+
+    {:noreply, socket}
+  end
+
+  def handle_event("toggle-add-backend", _params, socket) do
+    socket =
+      if socket.assigns.show_add_backend_form do
+        socket
+      else
+        backends = Backends.list_backends(user_id: socket.assigns.user_id, types: [:incidentio])
+        backend_options = Enum.map(backends, fn b -> {b.name, b.id} end)
+        assign(socket, :backend_options, backend_options)
+      end
+
+    {:noreply, assign(socket, :show_add_backend_form, !socket.assigns.show_add_backend_form)}
+  end
+
   defp refresh(%{assigns: assigns} = socket) do
     alerts = Alerting.list_alert_queries(assigns.user)
 
     assign(socket, :alerts, alerts)
+  end
+
+  defp assign_endpoints_and_sources(socket) do
+    %{user_id: user_id} = socket.assigns
+
+    socket
+    |> assign(
+      sources: Logflare.Sources.list_sources_by_user(user_id),
+      endpoints: Endpoints.list_endpoints_by(user_id: user_id)
+    )
   end
 
   defp upsert_alert(alert, user, params) do
@@ -210,8 +323,19 @@ defmodule LogflareWeb.AlertsLive do
               nil -> Alerting.create_alert_query(user, params)
               %_{} -> Alerting.update_alert_query(alert, params)
             end),
-         {:ok, _citrine_job} <- Alerting.upsert_alert_job(alert) do
+         {:ok, _} <- Alerting.upsert_alert_job(alert) do
       {:ok, alert}
+    end
+  end
+
+  defp format_ecto_errors(%Ecto.Changeset{} = changeset, default_message) do
+    changeset
+    |> Ecto.Changeset.traverse_errors(fn {msg, _opts} -> msg end)
+    |> Enum.map(fn {field, errors} -> "#{field}: #{Enum.join(errors, ", ")}" end)
+    |> Enum.join("; ")
+    |> case do
+      "" -> default_message
+      errors -> "#{default_message}: #{errors}"
     end
   end
 end

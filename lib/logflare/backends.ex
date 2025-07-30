@@ -1,12 +1,12 @@
 defmodule Logflare.Backends do
   @moduledoc false
 
-  alias Logflare.Utils.Tasks
   alias Logflare.Backends.Adaptor
   alias Logflare.Backends.Backend
   alias Logflare.Backends.SourceRegistry
   alias Logflare.Backends.SourcesSup
   alias Logflare.Backends.SourceSup
+  alias Logflare.Backends.RecentEventsTouch
   alias Logflare.Backends.IngestEventQueue
   alias Logflare.LogEvent
   alias Logflare.Repo
@@ -19,36 +19,46 @@ defmodule Logflare.Backends do
   alias Logflare.SystemMetrics
   alias Logflare.PubSubRates
   alias Logflare.Cluster
-  alias Logflare.Source.RecentLogsServer
+  alias Logflare.Sources.Counters
   import Ecto.Query
 
   defdelegate child_spec(arg), to: __MODULE__.Supervisor
 
-  @max_pending_buffer_len 50_000
+  @max_pending_buffer_len_per_queue 15_000
 
   @doc """
-  Retrieves the hardcoded max pending buffer length.
+  Retrieves the hardcoded max pending buffer length of an individual queue
   """
-  @spec max_buffer_len() :: non_neg_integer()
-  def max_buffer_len(), do: @max_pending_buffer_len
-
-  @spec max_ingest_queue_len() :: non_neg_integer()
-  def max_ingest_queue_len(), do: 10_000
+  @spec max_buffer_queue_len() :: non_neg_integer()
+  def max_buffer_queue_len(), do: @max_pending_buffer_len_per_queue
 
   @doc """
   Lists `Backend`s for a given source.
   """
-  @spec list_backends(Source.t()) :: list(Backend.t())
-  def list_backends(%Source{id: id}) do
-    from(b in Backend, join: s in assoc(b, :sources), where: s.id == ^id)
-    |> Repo.all()
-    |> Enum.map(fn b -> typecast_config_string_map_to_atom_map(b) end)
-  end
-
   @spec list_backends(keyword()) :: [Backend.t()]
   def list_backends(filters) when is_list(filters) do
     filters
     |> Enum.reduce(from(b in Backend), fn
+      {:types, types}, q when is_list(types) ->
+        where(q, [b], b.type in ^types)
+
+      # filter down to backends of this source
+      {:source_id, id}, q ->
+        join(q, :inner, [b], s in assoc(b, :sources), on: s.id == ^id)
+
+      # filter down to backends with rules destinations
+      {:rules_source_id, source_id}, q ->
+        join(q, :inner, [b], r in assoc(b, :rules), on: r.source_id == ^source_id)
+
+      # filter down to backends with sources that have recently ingested.
+      # orders by the last active.
+      {:ingesting, true}, q ->
+        q
+        |> join(:inner, [b], s in assoc(b, :sources),
+          on: s.log_events_updated_at >= ago(1, "day")
+        )
+        |> order_by([..., s], {:desc, s.log_events_updated_at})
+
       {:user_id, id}, q ->
         where(q, [b], b.user_id == ^id)
 
@@ -80,22 +90,15 @@ defmodule Logflare.Backends do
     |> Enum.map(fn sb -> typecast_config_string_map_to_atom_map(sb) end)
   end
 
-  @doc """
-  Returns all backends set as a rule destination for a given source.
-
-  ### Example
-    iex>  list_backends_with_rules(source)
-    [%Backend{...}, ...]
-  """
-  @spec list_backends_with_rules(Source.t()) :: [Backend.t()]
-  def list_backends_with_rules(%Source{id: source_id}) do
-    from(b in Backend, join: r in assoc(b, :rules), where: r.source_id == ^source_id)
-    |> Repo.all()
-    |> Enum.map(fn sb -> typecast_config_string_map_to_atom_map(sb) end)
-  end
-
   def preload_rules(backends) do
     Repo.preload(backends, rules: [:source])
+  end
+
+  @doc """
+  Preload alerts key for a given backend
+  """
+  def preload_alerts(backends) do
+    Repo.preload(backends, [:alert_queries])
   end
 
   @doc """
@@ -152,9 +155,18 @@ defmodule Logflare.Backends do
   """
   @spec update_backend(Backend.t(), map()) :: {:ok, Backend.t()} | {:error, Ecto.Changeset.t()}
   def update_backend(%Backend{} = backend, attrs) do
+    alerts_modified = if Map.get(attrs, :alert_queries), do: true, else: false
+
     backend_config =
       backend
       |> Backend.changeset(attrs)
+      |> then(fn changeset ->
+        if alerts_modified do
+          Ecto.Changeset.put_assoc(changeset, :alert_queries, Map.get(attrs, :alert_queries))
+        else
+          changeset
+        end
+      end)
       |> Repo.update()
 
     with {:ok, updated} <- backend_config do
@@ -196,9 +208,9 @@ defmodule Logflare.Backends do
   end
 
   # common typecasting from string map to attom for config
-  defp typecast_config_string_map_to_atom_map(nil), do: nil
+  def typecast_config_string_map_to_atom_map(nil), do: nil
 
-  defp typecast_config_string_map_to_atom_map(%Backend{type: type} = backend) do
+  def typecast_config_string_map_to_atom_map(%Backend{type: type} = backend) do
     mod = Backend.adaptor_mapping()[type]
 
     updated =
@@ -238,16 +250,6 @@ defmodule Logflare.Backends do
   end
 
   @doc """
-  Retrieves a backend by keyword filter.
-  """
-  @spec get_backend_by(keyword()) :: Backend.t() | nil
-  def get_backend_by(kw) do
-    if backend = Repo.get_by(Backend, kw) do
-      typecast_config_string_map_to_atom_map(backend)
-    end
-  end
-
-  @doc """
   Deletes a Backend
   """
   @spec delete_backend(Backend.t()) :: {:ok, Backend.t()}
@@ -270,9 +272,12 @@ defmodule Logflare.Backends do
   Once this function returns `:ok`, the events get dispatched to respective backend adaptor portions of the pipeline to be further processed.
   """
   @type log_param :: map()
-  @spec ingest_logs([log_param()], Source.t()) :: :ok
-  @spec ingest_logs([log_param()], Source.t(), Backend.t() | nil) :: :ok
+  @spec ingest_logs([log_param()], Source.t()) ::
+          {:ok, count :: pos_integer()} | {:error, [term()]}
+  @spec ingest_logs([log_param()], Source.t(), Backend.t() | nil) ::
+          {:ok, count :: pos_integer()} | {:error, [term()]}
   def ingest_logs(event_params, source, backend \\ nil) do
+    ensure_source_sup_started(source)
     {log_events, errors} = split_valid_events(source, event_params)
     count = Enum.count(log_events)
     increment_counters(source, count)
@@ -338,7 +343,7 @@ defmodule Logflare.Backends do
   end
 
   defp dispatch_to_backends(source, nil, log_events) do
-    for backend <- [nil | __MODULE__.Cache.list_backends(source)] do
+    for backend <- [nil | __MODULE__.Cache.list_backends(source_id: source.id)] do
       log_events =
         if(backend, do: maybe_pre_ingest(source, backend, log_events), else: log_events)
 
@@ -366,12 +371,17 @@ defmodule Logflare.Backends do
   iex> Backends.via_source(source, :buffer)
   """
   @spec via_source(Source.t(), term()) :: tuple()
-  @spec via_source(Source.t() | non_neg_integer(), module(), non_neg_integer()) :: tuple()
-  def via_source(%Source{id: sid}, mod, %Backend{id: bid}), do: via_source(sid, mod, bid)
-  def via_source(%Source{id: sid}, mod, id), do: via_source(sid, {mod, id})
-  def via_source(source_id, mod, id), do: via_source(source_id, {mod, id})
+  @spec via_source(Source.t() | non_neg_integer(), module(), Backend.t() | non_neg_integer()) ::
+          tuple()
+  def via_source(%Source{id: sid}, mod, backend), do: via_source(sid, mod, backend)
+  def via_source(source, mod, %Backend{id: bid}), do: via_source(source, mod, bid)
+  def via_source(source_id, mod, backend_id), do: via_source(source_id, {mod, backend_id})
 
   def via_source(%Source{id: id}, process_id), do: via_source(id, process_id)
+
+  def via_source(id, RecentEventsTouch) when is_number(id) do
+    {:via, :syn, {:core, {RecentEventsTouch, id}}}
+  end
 
   def via_source(id, process_id) when is_number(id) do
     {:via, Registry, {SourceRegistry, {id, process_id}}}
@@ -386,16 +396,16 @@ defmodule Logflare.Backends do
   end
 
   def lookup(module, %Source{} = source) do
-    {:via, _registry, {registry, via_id}} = via_source(source, module)
-
-    case Registry.lookup(registry, via_id) do
-      [{pid, _}] -> {:ok, pid}
+    via_source(source, module)
+    |> GenServer.whereis()
+    |> case do
+      pid when is_pid(pid) -> {:ok, pid}
       _ -> {:error, :not_started}
     end
   end
 
   @doc """
-  checks if the SourceSup for a given source has been started.
+  Checks if the SourceSup for a given source has been started.
   """
   @spec source_sup_started?(Source.t() | non_neg_integer()) :: boolean()
   def source_sup_started?(%Source{id: id}), do: source_sup_started?(id)
@@ -410,7 +420,10 @@ defmodule Logflare.Backends do
   @spec start_source_sup(Source.t()) :: :ok | {:error, :already_started}
   def start_source_sup(%Source{} = source) do
     # ensure that v1 pipeline source is already down
-    case DynamicSupervisor.start_child(SourcesSup, {SourceSup, source}) do
+    case DynamicSupervisor.start_child(
+           {:via, PartitionSupervisor, {SourcesSup, source.id}},
+           {SourceSup, source}
+         ) do
       {:ok, _pid} ->
         :ok
 
@@ -427,10 +440,15 @@ defmodule Logflare.Backends do
   """
   @spec ensure_source_sup_started(Source.t()) :: :ok | {:error, term()}
   def ensure_source_sup_started(%Source{} = source) do
-    case start_source_sup(source) do
-      {:ok, _pid} -> :ok
-      {:error, :already_started} -> :ok
-      {:error, _} = err -> err
+    if source_sup_started?(source) == false do
+      case start_source_sup(source) do
+        :ok -> :ok
+        {:ok, _pid} -> :ok
+        {:error, :already_started} -> :ok
+        {:error, _} = err -> err
+      end
+    else
+      :ok
     end
   end
 
@@ -440,7 +458,11 @@ defmodule Logflare.Backends do
   @spec stop_source_sup(Source.t()) :: :ok | {:error, :not_started}
   def stop_source_sup(%Source{} = source) do
     with [{pid, _}] <- Registry.lookup(SourceRegistry, {source.id, SourceSup}),
-         :ok <- DynamicSupervisor.terminate_child(SourcesSup, pid) do
+         :ok <-
+           DynamicSupervisor.terminate_child(
+             {:via, PartitionSupervisor, {SourcesSup, source.id}},
+             pid
+           ) do
       :ok
     else
       _ -> {:error, :not_started}
@@ -467,23 +489,32 @@ defmodule Logflare.Backends do
     do: cached_local_pending_buffer_full?(id)
 
   def cached_local_pending_buffer_full?(source_id) when is_integer(source_id) do
-    cached_local_pending_buffer_len(source_id) > @max_pending_buffer_len
+    PubSubRates.Cache.get_local_buffer(source_id, nil)
+    |> Map.get(:queues, [])
+    |> case do
+      [] ->
+        false
+
+      queues ->
+        queues
+        |> Enum.all?(fn {_key, v} -> v > @max_pending_buffer_len_per_queue end)
+    end
   end
 
   @doc """
-  Get local pending buffer len of a source/backend combination, and caches it at the same time.
+  Caches total buffer len. Includes ingested events that are awaiting cleanup.
   """
-  @spec get_and_cache_local_pending_buffer_len(
-          integer(),
-          nil | integer()
-        ) ::
-          integer()
-  def get_and_cache_local_pending_buffer_len(source_id, backend_id \\ nil)
-      when is_integer(source_id) do
-    len = IngestEventQueue.count_pending({source_id, backend_id})
-    payload = %{Node.self() => %{len: len}}
+  @spec cache_local_buffer_lens(non_neg_integer(), non_neg_integer() | nil) ::
+          {:ok, %{len: non_neg_integer(), queues: map()}}
+  def cache_local_buffer_lens(source_id, backend_id \\ nil) do
+    queues = IngestEventQueue.list_counts({source_id, backend_id})
+
+    len = for({_k, v} <- queues, do: v) |> Enum.sum()
+
+    stats = %{len: len, queues: queues}
+    payload = %{Node.self() => stats}
     PubSubRates.Cache.cache_buffers(source_id, backend_id, payload)
-    len
+    {:ok, stats}
   end
 
   @doc """
@@ -492,10 +523,6 @@ defmodule Logflare.Backends do
   @spec cached_local_pending_buffer_len(Source.t(), Backend.t() | nil) :: non_neg_integer()
   def cached_local_pending_buffer_len(source_id, backend_id \\ nil) when is_integer(source_id) do
     PubSubRates.Cache.get_local_buffer(source_id, backend_id)
-    |> case do
-      %{len: len} -> len
-      other -> other
-    end
   end
 
   @doc """
@@ -514,47 +541,34 @@ defmodule Logflare.Backends do
   def list_recent_logs(%Source{} = source) do
     nodes = Cluster.Utils.node_list_all()
 
-    task =
-      Tasks.async(fn ->
-        nodes
-        |> Enum.map(
-          &Tasks.async(fn ->
-            :erpc.call(&1, __MODULE__, :list_recent_logs_local, [source], 10_000)
-          end)
-        )
-        |> Task.yield_many()
-        |> Enum.map(fn {%Task{pid: pid}, res} ->
-          res || Task.shutdown(pid)
-        end)
-      end)
-
-    case Task.yield(task, 5_000) || Task.shutdown(task) do
-      {:ok, results} ->
-        results
-        |> Enum.map(fn {:ok, events} -> events end)
-        |> List.flatten()
-        |> Enum.sort_by(& &1.body["timestamp"], &<=/2)
-        |> Enum.take(-100)
-
-      _else ->
-        list_recent_logs_local(source)
-    end
+    :erpc.multicall(nodes, __MODULE__, :list_recent_logs_local, [source.id], 5_000)
+    |> Enum.map(fn
+      {:ok, result} when is_list(result) -> result
+      _ -> []
+    end)
+    |> List.flatten()
+    |> Enum.sort_by(& &1.body["timestamp"], &<=/2)
+    |> Enum.take(-100)
   end
 
   def fetch_latest_timestamp(%Source{} = source) do
-    case RecentLogsServer.get_changed_at(source) do
-      v when is_number(v) -> v
-      _ -> 0
-    end
+    Counters.get_source_changed_at_unix_ms(source.token)
   end
 
   @doc """
   Lists latest recent logs of only the local cache.
   """
   @spec list_recent_logs_local(Source.t()) :: [LogEvent.t()]
-  def list_recent_logs_local(%Source{} = source) do
-    {:ok, events} = IngestEventQueue.fetch_events({source.id, nil}, 100)
+  @spec list_recent_logs_local(Source.t(), n :: number()) :: [LogEvent.t()]
+  def list_recent_logs_local(source, n \\ 100)
+  def list_recent_logs_local(%Source{id: id}, n), do: list_recent_logs_local(id, n)
+
+  def list_recent_logs_local(source_id, n) do
+    {:ok, events} = IngestEventQueue.fetch_events({source_id, nil}, n)
+
     events
+    |> Enum.sort_by(& &1.body["timestamp"], &<=/2)
+    |> Enum.take(-n)
   end
 
   defp do_telemetry(:drop, le) do

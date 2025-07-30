@@ -11,7 +11,7 @@ defmodule Logflare.BqRepo do
   import Logflare.TypeCasts
   require Logger
 
-  @query_request_timeout 60_000
+  @query_request_timeout 25_000
   @use_query_cache true
   @type results :: %{
           :rows => nil | [term()],
@@ -31,28 +31,30 @@ defmodule Logflare.BqRepo do
   def query_with_sql_and_params(%User{} = user, project_id, sql, params, opts \\ [])
       when not is_nil(project_id) and is_binary(sql) and is_list(params) and is_list(opts) do
     override = Map.new(opts)
-
     %Plan{name: plan} = Billing.Cache.get_plan_by_user(user)
 
-    query_request = %QueryRequest{
-      query: sql,
-      useLegacySql: false,
-      useQueryCache: @use_query_cache,
-      parameterMode: "POSITIONAL",
-      queryParameters: params,
-      dryRun: false,
-      timeoutMs: @query_request_timeout,
-      labels: %{
-        "managed_by" => "logflare",
-        "logflare_plan" => GenUtils.format_key(plan),
-        "logflare_account" => GenUtils.format_key(user.id)
+    query_request =
+      %{
+        query: sql,
+        useLegacySql: false,
+        useQueryCache: @use_query_cache,
+        parameterMode: "POSITIONAL",
+        queryParameters: params,
+        jobCreationMode: "JOB_CREATION_OPTIONAL",
+        dryRun: false,
+        jobTimeoutMs: @query_request_timeout,
+        timeoutMs: @query_request_timeout,
+        labels: %{
+          "managed_by" => "logflare",
+          "logflare_plan" => GenUtils.format_key(plan),
+          "logflare_account" => user.id
+        }
       }
-    }
-
-    query_request = Map.merge(query_request, override)
+      |> DeepMerge.deep_merge(override)
+      |> then(fn map -> struct(QueryRequest, map) end)
 
     result =
-      GenUtils.get_conn(:query)
+      GenUtils.get_conn({:query, user})
       |> Api.Jobs.bigquery_jobs_query(project_id, body: query_request)
       |> GenUtils.maybe_parse_google_api_result()
 

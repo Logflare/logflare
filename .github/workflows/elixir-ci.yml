@@ -2,19 +2,21 @@ name: Elixir CI
 
 on:
   workflow_dispatch:
+  schedule:
+    - cron: '0 0 * * SUN'
   pull_request:
-    branches: [main]
+    branches: ["**"]
     paths:
-      - 'lib/**'
-      - 'config/**'
-      - '*.exs'
-      - '*.lock'
-      - 'docs/docs.logflare.com/docs/**'
-      - 'native/**'
-      - 'priv/**'
-      - 'test/**'
+      - "lib/**"
+      - "config/**"
+      - "*.exs"
+      - "*.lock"
+      - "docs/docs.logflare.com/docs/**"
+      - "native/**"
+      - "priv/**"
+      - "test/**"
       # Run suite when this file is changed
-      - '.github/workflows/elixir-ci.yml'
+      - ".github/workflows/elixir-ci.yml"
 
 permissions:
   contents: read
@@ -22,29 +24,28 @@ permissions:
 env:
   MIX_ENV: test
 
-
 jobs:
   check:
     name: Checks
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     strategy:
       matrix:
         commands:
           - name: Code Quality - Linting
-            run: mix lint --only warnings
+            run: mix lint
           - name: Code Quality - Formatting
             run: mix test.format
           - name: Compilation Warnings
             run: mix test.compile
           - name: Tests
-            run: mix do ecto.create, ecto.migrate, test
+            run: mix do ecto.create, ecto.migrate, test.coverage.ci
           # - name: Security - Sobelow Code Scan
           #   run: mix test.security
           # - name: Typing check
           #   run: mix test.typings
     services:
       postgres:
-        image: bitnami/postgresql:13.15.0
+        image: bitnami/postgresql:15
         ports:
           - 5432:5432
         env:
@@ -58,9 +59,24 @@ jobs:
           --health-interval 10s
           --health-timeout 5s
           --health-retries 10
+      clickhouse:
+        image: clickhouse/clickhouse-server:25.4
+        ports:
+          - 8123:8123
+          - 9000:9000
+        env:
+          CLICKHOUSE_DB: logflare_test
+          CLICKHOUSE_USER: logflare
+          CLICKHOUSE_PASSWORD: logflare
+        options: >-
+          --health-cmd "wget --no-verbose --tries=1 --spider http://localhost:8123/ping || exit 1"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
     env:
       MIX_ENV: test
       SHELL: /bin/bash
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v3
       - name: Set up Elixir

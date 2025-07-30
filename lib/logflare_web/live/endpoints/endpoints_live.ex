@@ -21,7 +21,7 @@ defmodule LogflareWeb.EndpointsLive do
 
   defp render_docs_link(assigns) do
     ~H"""
-    <.subheader_link to="https://docs.logflare.app/concepts/endpoints" text="docs" fa_icon="book" />
+    <.subheader_link to="https://docs.logflare.app/concepts/endpoints" external={true} text="docs" fa_icon="book" />
     """
   end
 
@@ -35,6 +35,8 @@ defmodule LogflareWeb.EndpointsLive do
     user = Users.get(user_id)
 
     allow_access = Enum.any?([Utils.flag("endpointsOpenBeta"), user.endpoints_beta])
+
+    alerts = Endpoints.list_endpoints_by(user_id: user.id)
 
     socket =
       socket
@@ -52,6 +54,9 @@ defmodule LogflareWeb.EndpointsLive do
       |> assign(:prev_params, %{})
       |> assign(:params_form, to_form(%{"query" => "", "params" => %{}}, as: "run"))
       |> assign(:declared_params, %{})
+      |> assign(:alerts, alerts)
+      |> assign_sources()
+      |> assign(:parsed_result, nil)
 
     {:ok, socket}
   end
@@ -69,12 +74,19 @@ defmodule LogflareWeb.EndpointsLive do
       |> assign(:show_endpoint, endpoint)
       |> then(fn
         socket when endpoint != nil ->
-          {:ok, %{parameters: parameters}} = Endpoints.parse_query_string(endpoint.query)
+          {:ok, parsed_result} =
+            Endpoints.parse_query_string(
+              :bq_sql,
+              endpoint.query,
+              Enum.filter(socket.assigns.endpoints, &(&1.id != endpoint.id)),
+              socket.assigns.alerts
+            )
 
           socket
-          |> assign_updated_params_form(parameters, endpoint.query)
+          |> assign_updated_params_form(parsed_result.parameters, parsed_result.expanded_query)
           # set changeset
           |> assign(:endpoint_changeset, Endpoints.change_query(endpoint, %{}))
+          |> assign(:parsed_result, parsed_result)
 
         # index page
         %{assigns: %{live_action: :index}} = socket ->
@@ -86,7 +98,10 @@ defmodule LogflareWeb.EndpointsLive do
         other ->
           other
           # reset the changeset
-          |> assign(:endpoint_changeset, nil)
+          |> assign(
+            :endpoint_changeset,
+            Endpoints.change_query(%Endpoints.Query{query: placeholder_sql()})
+          )
           # reset test results
           |> assign(:query_result_rows, nil)
       end)
@@ -163,33 +178,38 @@ defmodule LogflareWeb.EndpointsLive do
     end
   end
 
-  def handle_event(
-        "parse-query",
-        %{"endpoint" => %{"query" => query_string}},
-        socket
-      ) do
-    socket =
-      case Endpoints.parse_query_string(query_string) do
-        {:ok, %{parameters: params_list}} ->
-          socket
-          |> assign(:parse_error_message, nil)
-          |> assign_updated_params_form(params_list, query_string)
-
-        {:error, err} ->
-          error = if(is_binary(err), do: err, else: inspect(err))
-
-          socket
-          |> assign(:parse_error_message, error)
-      end
-
-    {:noreply, socket}
-  end
-
   def handle_event("apply-beta", _params, %{assigns: %{user: user}} = socket) do
     Logger.debug("Endpoints application submitted.", %{user: %{id: user.id, email: user.email}})
 
     message = "Successfully applied for the Endpoints beta. We'll be in touch!"
     {:noreply, put_flash(socket, :info, message)}
+  end
+
+  def handle_info({:query_string_updated, query_string}, socket) do
+    changeset =
+      Endpoints.change_query(%Endpoints.Query{
+        query: query_string
+      })
+
+    parsed_result =
+      Endpoints.parse_query_string(
+        :bq_sql,
+        query_string,
+        socket.assigns.endpoints,
+        socket.assigns.alerts
+      )
+
+    socket =
+      case parsed_result do
+        {:ok, %{parameters: parameters, expanded_query: expanded_query}} ->
+          socket
+          |> assign_updated_params_form(parameters, expanded_query)
+
+        _error ->
+          socket
+      end
+
+    {:noreply, socket |> assign(endpoint_changeset: changeset)}
   end
 
   defp assign_updated_params_form(socket, parameters, query_string) do
@@ -210,10 +230,23 @@ defmodule LogflareWeb.EndpointsLive do
     assign(socket, :endpoints, endpoints)
   end
 
+  defp assign_sources(socket) do
+    %{user_id: user_id} = socket.assigns
+
+    sources = Logflare.Sources.list_sources_by_user(user_id)
+
+    assign(socket, sources: sources)
+  end
+
   defp upsert_query(show_endpoint, user, params) do
     case show_endpoint do
       nil -> Endpoints.create_query(user, params)
       %_{} -> Endpoints.update_query(show_endpoint, params)
     end
   end
+
+  defp placeholder_sql,
+    do: """
+    select timestamp, event_message from YourApp.SourceName
+    """
 end

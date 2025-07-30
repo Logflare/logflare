@@ -8,6 +8,7 @@ defmodule Logflare.Logs.SearchOperations do
   alias Logflare.Lql
   alias Logflare.EctoQueryBQ
   alias Logflare.SourceSchemas
+  alias Logflare.Sources
 
   import Ecto.Query
 
@@ -16,7 +17,6 @@ defmodule Logflare.Logs.SearchOperations do
   import Logflare.Logs.SearchOperations.Helpers
   import Logflare.Logs.Search.Utils
   import Logflare.Logs.SearchQueries
-  import BQQueryAPI.UDF
   import BQQueryAPI
 
   alias Logflare.Logs.SearchOperation, as: SO
@@ -65,12 +65,23 @@ defmodule Logflare.Logs.SearchOperations do
   end
 
   @spec apply_query_defaults(SO.t()) :: SO.t()
-  def apply_query_defaults(%SO{type: :events} = so) do
+  def apply_query_defaults(%SO{} = so) do
     query =
       from(so.source.bq_table_id)
-      |> select_default_fields(:events)
-      |> order_by(desc: :timestamp)
+      |> select([t], [t.timestamp, t.id, t.event_message])
+      |> order_by([t], desc: t.timestamp)
       |> limit(@default_limit)
+
+    %{so | query: query}
+  end
+
+  def unnest_log_level(so) do
+    query =
+      so.query
+      |> join(:inner, [t], m in fragment("UNNEST(?)", t.metadata), on: true)
+      |> select_merge([..., m], %{
+        level: fragment("JSON_EXTRACT_SCALAR(TO_JSON_STRING(?), '$.level') as level", m)
+      })
 
     %{so | query: query}
   end
@@ -132,21 +143,18 @@ defmodule Logflare.Logs.SearchOperations do
       SourceSchemas.get_source_schema_by(source_id: so.source.id)
       |> Map.get(:schema_flat_map)
 
-    [%{path: path}] = so.chart_rules
-    path_is_timestamp? = path == "timestamp"
-
     chart_data_shape_id =
       cond do
-        path_is_timestamp? and Map.has_key?(flat_type_map, "metadata.status_code") ->
+        Map.has_key?(flat_type_map, "metadata.status_code") ->
           :netlify_status_codes
 
-        path_is_timestamp? and Map.has_key?(flat_type_map, "metadata.response.status_code") ->
+        Map.has_key?(flat_type_map, "metadata.response.status_code") ->
           :cloudflare_status_codes
 
-        path_is_timestamp? and Map.has_key?(flat_type_map, "metadata.proxy.statusCode") ->
+        Map.has_key?(flat_type_map, "metadata.proxy.statusCode") ->
           :vercel_status_codes
 
-        path_is_timestamp? and Map.has_key?(flat_type_map, "metadata.level") ->
+        Map.has_key?(flat_type_map, "metadata.level") ->
           :elixir_logger_levels
 
         true ->
@@ -184,7 +192,6 @@ defmodule Logflare.Logs.SearchOperations do
   def apply_timestamp_filter_rules(%SO{type: :events} = so) do
     %SO{tailing?: t?, tailing_initial?: ti?, query: query} = so
     chart_period = hd(so.chart_rules).period
-
     utc_today = Date.utc_today()
 
     ts_filters = so.lql_ts_filters
@@ -194,20 +201,36 @@ defmodule Logflare.Logs.SearchOperations do
         t? and !ti? ->
           case so.partition_by do
             :pseudo ->
+              metrics = Sources.get_source_metrics_for_ingest(so.source_token)
+
+              {value, unit} =
+                cond do
+                  metrics.avg < 10 ->
+                    {2, "DAY"}
+
+                  metrics.avg < 50 ->
+                    {1, "DAY"}
+
+                  metrics.avg < 100 ->
+                    {6, "HOUR"}
+
+                  metrics.avg < 200 ->
+                    {1, "HOUR"}
+
+                  true ->
+                    {1, "MINUTE"}
+                end
+
               query
-              |> where([t, ...], t.timestamp >= lf_timestamp_sub(^utc_today, 2, "DAY"))
+              |> Lql.EctoHelpers.where_timestamp_ago(utc_today, value, unit)
               |> where([t, ...], in_streaming_buffer())
 
             :timestamp ->
               query
-              |> where(
-                [t, ...],
-                t.timestamp >=
-                  lf_timestamp_sub(
-                    ^DateTime.utc_now(),
-                    @tailing_timestamp_filter_minutes,
-                    "MINUTE"
-                  )
+              |> Lql.EctoHelpers.where_timestamp_ago(
+                DateTime.utc_now(),
+                @tailing_timestamp_filter_minutes,
+                "MINUTE"
               )
           end
 
@@ -215,11 +238,11 @@ defmodule Logflare.Logs.SearchOperations do
           case so.partition_by do
             :timestamp ->
               query
-              |> where([t, ...], t.timestamp >= lf_timestamp_sub(^utc_today, 2, "DAY"))
+              |> Lql.EctoHelpers.where_timestamp_ago(utc_today, 2, "DAY")
 
             :pseudo ->
               query
-              |> where([t, ...], t.timestamp >= lf_timestamp_sub(^utc_today, 2, "DAY"))
+              |> Lql.EctoHelpers.where_timestamp_ago(utc_today, 2, "DAY")
               |> where(
                 partition_date() >= bq_date_sub(^utc_today, "2", "DAY") or in_streaming_buffer()
               )
@@ -258,7 +281,10 @@ defmodule Logflare.Logs.SearchOperations do
 
     ts_filters = so.lql_ts_filters
 
-    period = to_timex_shift_key(hd(so.chart_rules).period)
+    period =
+      hd(so.chart_rules).period
+      |> Logflare.Ecto.BQQueryAPI.to_bq_interval_token()
+
     tick_count = default_period_tick_count(hd(so.chart_rules).period)
 
     utc_today = Date.utc_today()
@@ -266,8 +292,8 @@ defmodule Logflare.Logs.SearchOperations do
 
     partition_days =
       case hd(so.chart_rules).period do
-        :day -> 31
-        :hour -> 7
+        :day -> 14
+        :hour -> 3
         :minute -> 1
         :second -> 1
       end
@@ -276,7 +302,7 @@ defmodule Logflare.Logs.SearchOperations do
       if t? or Enum.empty?(ts_filters) do
         query =
           query
-          |> where([t], t.timestamp >= lf_timestamp_sub(^utc_now, ^tick_count, ^period))
+          |> Logflare.Lql.EctoHelpers.where_timestamp_ago(utc_now, tick_count, period)
           |> limit([t], ^tick_count)
 
         case so.partition_by do
@@ -334,30 +360,26 @@ defmodule Logflare.Logs.SearchOperations do
   @spec apply_local_timestamp_correction(SO.t()) :: SO.t()
   def apply_local_timestamp_correction(%SO{} = so) do
     lql_ts_filters =
-      if so.use_local_time do
-        so.lql_ts_filters
-        |> Enum.map(fn
-          %{path: "timestamp", values: values, operator: :range} = pvo ->
-            values =
-              for value <- values do
-                value
-                |> Timex.to_datetime(so.user_local_timezone || "Etc/UTC")
-                |> Timex.Timezone.convert("Etc/UTC")
-              end
-
-            %{pvo | values: values}
-
-          %{path: "timestamp", value: value} = pvo ->
-            value =
+      so.lql_ts_filters
+      |> Enum.map(fn
+        %{path: "timestamp", values: values, operator: :range} = pvo ->
+          values =
+            for value <- values do
               value
-              |> Timex.to_datetime(so.user_local_timezone || "Etc/UTC")
+              |> Timex.to_datetime(so.search_timezone || "Etc/UTC")
               |> Timex.Timezone.convert("Etc/UTC")
+            end
 
-            %{pvo | value: value}
-        end)
-      else
-        so.lql_ts_filters
-      end
+          %{pvo | values: values}
+
+        %{path: "timestamp", value: value} = pvo ->
+          value =
+            value
+            |> Timex.to_datetime(so.search_timezone || "Etc/UTC")
+            |> Timex.Timezone.convert("Etc/UTC")
+
+          %{pvo | value: value}
+      end)
 
     %{so | lql_ts_filters: lql_ts_filters}
   end
@@ -372,12 +394,7 @@ defmodule Logflare.Logs.SearchOperations do
       |> Lql.EctoHelpers.apply_filter_rules_to_query(so.lql_meta_and_msg_filters)
       |> order_by([t, ...], desc: 1)
 
-    query =
-      if chart_period == :day and so.use_local_time and so.user_local_timezone do
-        select_timestamp(query, chart_period, so.user_local_timezone)
-      else
-        select_timestamp(query, chart_period)
-      end
+    query = select_timestamp(query, chart_period)
 
     query =
       case chart_rules do

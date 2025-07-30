@@ -22,13 +22,25 @@ socket_options_for_host = fn
   _host -> []
 end
 
+logflare_metadata =
+  [cluster: System.get_env("LOGFLARE_METADATA_CLUSTER")]
+  |> filter_nil_kv_pairs.()
+
+logflare_health =
+  [
+    memory_utilization:
+      System.get_env("LOGFLARE_HEALTH_MAX_MEMORY_UTILIZATION", "0.95") |> String.to_float()
+  ]
+  |> filter_nil_kv_pairs.()
+  
+
 config :logflare,
        Logflare.PubSub,
        [
          pool_size:
            if(System.get_env("LOGFLARE_PUBSUB_POOL_SIZE") != nil,
              do: String.to_integer(System.get_env("LOGFLARE_PUBSUB_POOL_SIZE")),
-             else: nil
+             else: 56
            )
        ]
        |> filter_nil_kv_pairs.()
@@ -45,7 +57,18 @@ config :logflare,
          private_access_token: System.get_env("LOGFLARE_PRIVATE_ACCESS_TOKEN"),
          cache_stats: System.get_env("LOGFLARE_CACHE_STATS", "false") == "true",
          encryption_key_default: System.get_env("LOGFLARE_DB_ENCRYPTION_KEY"),
-         encryption_key_retired: System.get_env("LOGFLARE_DB_ENCRYPTION_KEY_RETIRED")
+         encryption_key_retired: System.get_env("LOGFLARE_DB_ENCRYPTION_KEY_RETIRED"),
+         metadata: logflare_metadata,
+         health: logflare_health
+       ]
+       |> filter_nil_kv_pairs.()
+
+config :logflare,
+       :bigquery_backend_adaptor,
+       [
+         managed_service_account_pool_size:
+           System.get_env("LOGFLARE_BIGQUERY_MANAGED_SA_POOL", "0")
+           |> String.to_integer()
        ]
        |> filter_nil_kv_pairs.()
 
@@ -145,9 +168,7 @@ config :logger,
     |> Enum.filter(&(&1 != nil))
 
 config :logger,
-  metadata:
-    [cluster: System.get_env("LOGFLARE_LOGGER_METADATA_CLUSTER")]
-    |> filter_nil_kv_pairs.()
+  metadata: logflare_metadata
 
 log_level =
   case String.downcase(System.get_env("LOGFLARE_LOG_LEVEL") || "") do
@@ -186,6 +207,7 @@ config :logflare,
          project_id: System.get_env("GOOGLE_PROJECT_ID"),
          service_account: System.get_env("GOOGLE_SERVICE_ACCOUNT"),
          compute_engine_sa: System.get_env("GOOGLE_COMPUTE_ENGINE_SA"),
+         grafana_sa: System.get_env("GOOGLE_GRAFANA_SA"),
          api_sa: System.get_env("GOOGLE_API_SA"),
          cloud_build_sa: System.get_env("GOOGLE_CLOUD_BUILD_SA"),
          cloud_build_trigger_sa: System.get_env("GOOGLE_CLOUD_BUILD_TRIGGER_SA")
@@ -253,7 +275,9 @@ cond do
            )
 
   config_env() != :test ->
-    config :goth, json: File.read!("gcloud.json")
+    if File.exists?("gcloud.json") do
+      config :goth, json: File.read!("gcloud.json")
+    end
 
   config_env() == :test ->
     :ok
@@ -263,15 +287,13 @@ cond do
 end
 
 if(
-  System.get_env("LOGFLARE_ENABLE_GRPC_SSL") == "true" && File.exists?("cacert.pem") &&
+  System.get_env("LOGFLARE_ENABLE_GRPC_SSL") == "true" &&
     File.exists?("cert.pem") && File.exists?("cert.key")
 ) do
   config :logflare,
     ssl: [
-      cacertfile: "cacert.pem",
       certfile: "cert.pem",
-      keyfile: "cert.key",
-      verify: :verify_peer
+      keyfile: "cert.key"
     ]
 end
 
@@ -331,7 +353,28 @@ config :libcluster,
     if(System.get_env("LIBCLUSTER_TOPOLOGY") == "postgres", do: postgres_topology, else: [])
 
 if System.get_env("LOGFLARE_OTEL_ENDPOINT") do
-  config :logflare, opentelemetry_enabled?: true
+  default_sample_ratio =
+    System.get_env("LOGFLARE_OTEL_SAMPLE_RATIO", "1.0")
+    |> String.to_float()
+
+  ingest_sample_ratio =
+    System.get_env("LOGFLARE_OTEL_INGEST_SAMPLE_RATIO")
+    |> case do
+      nil -> default_sample_ratio
+      value -> String.to_float(value)
+    end
+
+  endpoint_sample_ratio =
+    System.get_env("LOGFLARE_OTEL_ENDPOINT_SAMPLE_RATIO")
+    |> case do
+      nil -> default_sample_ratio
+      value -> String.to_float(value)
+    end
+
+  config :logflare,
+    opentelemetry_enabled?: true,
+    ingest_sample_ratio: ingest_sample_ratio,
+    endpoint_sample_ratio: endpoint_sample_ratio
 
   config :opentelemetry,
     sdk_disabled: false,
@@ -343,17 +386,24 @@ if System.get_env("LOGFLARE_OTEL_ENDPOINT") do
            {LogflareWeb.OpenTelemetrySampler,
             %{
               probability:
-                System.get_env("LOGFLARE_OPEN_TELEMETRY_SAMPLE_RATIO", "0.001")
+                System.get_env("LOGFLARE_OTEL_SAMPLE_RATIO", "1.0")
                 |> String.to_float()
             }}
        }}
 
   config :opentelemetry_exporter,
-    otlp_protocol: :grpc,
+    otlp_protocol: :http_protobuf,
     otlp_endpoint: System.get_env("LOGFLARE_OTEL_ENDPOINT"),
     otlp_compression: :gzip,
     otlp_headers: [
-      {"x-source-id", System.get_env("LOGFLARE_OTEL_SOURCE_UUID")},
+      {"x-source", System.get_env("LOGFLARE_OTEL_SOURCE_UUID")},
       {"x-api-key", System.get_env("LOGFLARE_OTEL_ACCESS_TOKEN")}
     ]
 end
+
+syn_endpoints_partitions =
+  for n <- 0..System.schedulers_online(), do: "endpoints_#{n}" |> String.to_atom()
+
+config :syn,
+  scopes: [:core, :alerting] ++ syn_endpoints_partitions,
+  event_handler: Logflare.SynEventHandler
