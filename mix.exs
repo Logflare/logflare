@@ -252,7 +252,7 @@ defmodule Logflare.Mixfile do
       "test.coverage": ["coveralls"],
       "test.coverage.ci": ["coveralls.github"],
       lint: ["credo"],
-      "lint.diff": ["credo diff master"],
+      "lint.diff": ["credo diff main"],
       "lint.all": ["credo --strict"],
       "ecto.seed": ["run priv/repo/seeds.exs"],
       "ecto.setup": ["ecto.create", "ecto.migrate"],
