@@ -8,9 +8,10 @@ defmodule Logflare.GenSingleton.Watcher do
   use GenServer
 
   require Logger
-  @type state :: any()
+  @type option :: {:child_spec, Supervisor.child_spec()}
+  @type options :: [option()]
 
-  @spec start_link(args :: any()) :: {:ok, pid} | {:error, any}
+  @spec start_link(options()) :: {:ok, pid} | {:error, any}
 
   def start_link(args) do
     GenServer.start_link(__MODULE__, {self(), args}, [])

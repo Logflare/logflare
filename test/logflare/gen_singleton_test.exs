@@ -55,8 +55,8 @@ defmodule Logflare.GenSingletonTest do
     end
   end
 
-  describe "bug: AlertsScheduler integration" do
-    test "starts the GenServer with valid arguments" do
+  describe "Stopping the GenSingleton supervised process" do
+    test "stop_local/1" do
       refute GenServer.whereis(__MODULE__.TestSupervisor)
 
       pid1 =
@@ -68,8 +68,8 @@ defmodule Logflare.GenSingletonTest do
       TestUtils.retry_assert(fn ->
         assert GenSingleton.get_pid(pid1) == GenServer.whereis(__MODULE__.TestSupervisor)
         assert initial_pid = GenServer.whereis(__MODULE__.TestSupervisor)
-
-        Supervisor.stop(__MODULE__.TestSupervisor)
+        Process.info(initial_pid)
+        assert :ok = GenSingleton.stop_local(pid1)
         refute Process.alive?(initial_pid)
         :timer.sleep(200)
         assert pid = GenSingleton.get_pid(pid1)
