@@ -139,6 +139,16 @@ defmodule LogflareWeb.EndpointsLiveTest do
              |> with_target("#endpoint_query_editor")
              |> render_hook("parse-query", %{"value" => valid_query}) =~ "SQL Parse error!"
 
+      # Run form is updated with query and declared params
+      assert view
+             |> with_target("#endpoint_query_editor")
+             |> render_hook("parse-query", %{"value" => valid_query <> " where id = @id"})
+
+      assert view |> element(~s|input#run_query[value="#{valid_query}]"|)
+
+      assert view |> render =~
+               ~s|<input id="run_params_0_id" name="run[params][id]" type="text" value=""/>|
+
       # saves the change
       assert view
              |> element("form", "Save")
@@ -168,6 +178,7 @@ defmodule LogflareWeb.EndpointsLiveTest do
              })
 
       assert has_element?(view, "code", "select @my_param as valid")
+
       assert_patched(view, "/endpoints/#{endpoint.id}")
       # no longer has the initail query string
       refute render(view) =~ endpoint.query

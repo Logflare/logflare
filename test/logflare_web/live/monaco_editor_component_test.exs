@@ -94,5 +94,38 @@ defmodule LogflareWeb.MonacoEditorComponentTest do
 
       assert :ok = MonacoEditorComponent.parse_query(query, endpoints, alerts)
     end
+
+    test "parse_query/3 calls on_query_change callback", %{conn: conn} do
+      defmodule EditorLive do
+        use Phoenix.LiveView
+
+        def mount(_params, %{"parent" => parent}, socket) do
+          {:ok, assign(socket, parent: parent, form: %{"query" => "select 1"} |> to_form())}
+        end
+
+        def render(assigns) do
+          ~H"""
+          <.live_component
+            module={LogflareWeb.MonacoEditorComponent}
+            id="test-editor"
+            field={@form[:query]}
+            endpoints={[]}
+            sources={[]}
+            alerts={[]}
+            on_query_change={fn query -> send(@parent, {:query_changed, query}) end}
+          />
+          """
+        end
+      end
+
+      parent = self()
+      {:ok, view, _html} = live_isolated(conn, EditorLive, session: %{"parent" => parent})
+
+      view
+      |> with_target("#test-editor")
+      |> render_change("parse-query", %{"value" => "select 2"})
+
+      assert_received {:query_changed, "select 2"}
+    end
   end
 end
