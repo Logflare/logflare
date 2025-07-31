@@ -110,8 +110,12 @@ defmodule Logflare.DataCase do
     backend =
       Logflare.Factory.insert(:backend,
         type: :clickhouse,
-        config: Map.merge(default_config, config)
+        config: Map.merge(default_config, config),
+        user: user
       )
+
+    source = Logflare.Repo.preload(source, :backends)
+    {:ok, source} = Logflare.Sources.update_source(source, %{backends: [backend]})
 
     cleanup_fn = fn -> cleanup_clickhouse_tables({source, backend}) end
 
