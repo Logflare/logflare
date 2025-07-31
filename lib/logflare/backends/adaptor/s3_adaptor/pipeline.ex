@@ -86,7 +86,7 @@ defmodule Logflare.Backends.Adaptor.S3Adaptor.Pipeline do
   # splits batch sizes based on message body size OR message count, whichever limit is reached first
   # https://hexdocs.pm/broadway/Broadway.html#start_link/2
   @spec batch_size_splitter() :: {tuple(), (any(), tuple() -> {:emit | :cont, tuple()})}
-  defp batch_size_splitter() do
+  defp batch_size_splitter do
     {
       {@max_batch_size, @max_batch_length},
       fn

@@ -24,7 +24,7 @@ defmodule LogflareWeb.UtcTimeLive do
 
   defp put_date(socket) do
     date =
-      Timex.now()
+      DateTime.utc_now()
       |> Timex.to_datetime("Etc/UTC")
       |> Timex.format!("{h12}:{m}:{s}{am}")
 

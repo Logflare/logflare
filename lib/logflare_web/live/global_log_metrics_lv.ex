@@ -34,11 +34,11 @@ defmodule LogflareWeb.GlobalLogMetricsLV do
 
     log_count =
       total_logs_logged_cluster()
-      |> number_to_delimited
+      |> number_to_delimited()
 
     total_logs_per_second =
       get_logs_per_second_cluster()
-      |> number_to_delimited
+      |> number_to_delimited()
 
     socket
     |> assign(:log_count, log_count)

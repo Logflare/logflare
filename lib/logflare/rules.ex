@@ -103,7 +103,7 @@ defmodule Logflare.Rules do
     res
   end
 
-  def upgrade_all_source_rules_to_next_lql_version() do
+  def upgrade_all_source_rules_to_next_lql_version do
     Logger.info("Started upgrade of all source rules to next lql version...")
 
     rules =

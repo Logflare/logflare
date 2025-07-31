@@ -28,7 +28,7 @@ defmodule Logflare.Partners do
   @doc """
   Lists all partners
   """
-  def list_partners(), do: Repo.all(Partner)
+  def list_partners, do: Repo.all(Partner)
 
   @spec get_partner_by_uuid(binary()) :: Partner.t() | nil
   @doc """

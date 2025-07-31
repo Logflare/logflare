@@ -172,7 +172,7 @@ defmodule Logflare.Source.Supervisor do
     |> Enum.each(fn s -> reset_source(s.token) end)
   end
 
-  defp do_pg_ops?() do
+  defp do_pg_ops? do
     !!Application.get_env(:logflare, :single_tenant) &&
       !!Application.get_env(:logflare, :postgres_backend_adapter)
   end

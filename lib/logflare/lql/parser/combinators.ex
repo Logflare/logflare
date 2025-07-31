@@ -81,7 +81,7 @@ defmodule Logflare.Lql.Parser.Combinators do
     |> reduce({:to_rule, [location]})
   end
 
-  def parens_string() do
+  def parens_string do
     ignore(string("("))
     |> repeat_while(
       utf8_char([]),
@@ -94,14 +94,14 @@ defmodule Logflare.Lql.Parser.Combinators do
     |> reduce({:to_rule, [:quoted_field_value]})
   end
 
-  def any_field() do
+  def any_field do
     ascii_string([?a..?z, ?A..?Z, ?., ?_, ?0..?9], min: 1)
     |> reduce({List, :to_string, []})
     |> unwrap_and_tag(:path)
     |> label("schema field")
   end
 
-  def metadata_field() do
+  def metadata_field do
     choice([string("metadata"), string("m") |> replace("metadata")])
     |> string(".")
     |> ascii_string([?a..?z, ?A..?Z, ?., ?_, ?0..?9], min: 2)
@@ -110,7 +110,7 @@ defmodule Logflare.Lql.Parser.Combinators do
     |> label("metadata field")
   end
 
-  def operator() do
+  def operator do
     choice([
       string(":>=") |> replace(:>=),
       string(":<=") |> replace(:<=),
@@ -126,7 +126,7 @@ defmodule Logflare.Lql.Parser.Combinators do
     |> label("filter operator")
   end
 
-  def number() do
+  def number do
     ascii_string([?0..?9], min: 1)
     |> concat(
       optional(
@@ -138,11 +138,11 @@ defmodule Logflare.Lql.Parser.Combinators do
     |> label("number")
   end
 
-  def null() do
+  def null do
     string("NULL") |> replace(:NULL)
   end
 
-  def field_value() do
+  def field_value do
     choice([
       range_operator(number()),
       number(),
@@ -156,7 +156,7 @@ defmodule Logflare.Lql.Parser.Combinators do
     |> label("valid filter value")
   end
 
-  def invalid_match_all_value() do
+  def invalid_match_all_value do
     choice([
       ascii_string([33..255], min: 1),
       empty() |> replace(~S|""|)
@@ -172,7 +172,7 @@ defmodule Logflare.Lql.Parser.Combinators do
     |> tag(:range_operator)
   end
 
-  def level_strings() do
+  def level_strings do
     choice([
       string("debug") |> replace(0),
       string("info") |> replace(1),
@@ -189,7 +189,7 @@ defmodule Logflare.Lql.Parser.Combinators do
   # Chart Combinators
   # ============================================================================
 
-  def chart_clause() do
+  def chart_clause do
     ignore(choice([string("chart"), string("c")]))
     |> ignore(ascii_char([?:]))
     |> choice([
@@ -199,7 +199,7 @@ defmodule Logflare.Lql.Parser.Combinators do
     |> tag(:chart)
   end
 
-  def chart_aggregate() do
+  def chart_aggregate do
     choice([
       string("avg") |> replace(:avg),
       string("count") |> replace(:count),
@@ -217,7 +217,7 @@ defmodule Logflare.Lql.Parser.Combinators do
     |> ignore(string(")"))
   end
 
-  def chart_aggregate_group_by() do
+  def chart_aggregate_group_by do
     ignore(string("group_by"))
     |> ignore(string("("))
     |> ignore(choice([string("timestamp"), string("t")]))
@@ -240,7 +240,7 @@ defmodule Logflare.Lql.Parser.Combinators do
   # Select Combinators
   # ============================================================================
 
-  def select_clause() do
+  def select_clause do
     ignore(choice([string("select"), string("s")]))
     |> ignore(ascii_char([?:]))
     |> choice([
@@ -255,7 +255,7 @@ defmodule Logflare.Lql.Parser.Combinators do
   # DateTime Combinators
   # ============================================================================
 
-  def datetime_abbreviations() do
+  def datetime_abbreviations do
     choice([
       string("weeks") |> replace(:weeks),
       string("months") |> replace(:months),
@@ -281,7 +281,7 @@ defmodule Logflare.Lql.Parser.Combinators do
     ])
   end
 
-  def date() do
+  def date do
     ascii_string([?0..?9], 4)
     |> string("-")
     |> ascii_string([?0..?9], 2)
@@ -293,7 +293,7 @@ defmodule Logflare.Lql.Parser.Combinators do
     |> reduce(:parse_date_or_datetime)
   end
 
-  def datetime() do
+  def datetime do
     date()
     |> string("T")
     |> ascii_string([?0..?9], 2)
@@ -332,7 +332,7 @@ defmodule Logflare.Lql.Parser.Combinators do
     ])
   end
 
-  def datetime_with_range() do
+  def datetime_with_range do
     integer_with_range(4)
     |> tag(:year)
     |> ignore(string("-"))
@@ -352,7 +352,7 @@ defmodule Logflare.Lql.Parser.Combinators do
     |> tag(:datetime_with_range)
   end
 
-  def time_with_range() do
+  def time_with_range do
     ignore(string("T"))
     |> concat(
       integer_with_range(2)
@@ -398,13 +398,13 @@ defmodule Logflare.Lql.Parser.Combinators do
     )
   end
 
-  def date_or_datetime() do
+  def date_or_datetime do
     [datetime(), date()]
     |> choice()
     |> label("date or datetime value")
   end
 
-  def timestamp_shorthand_value() do
+  def timestamp_shorthand_value do
     choice([
       string("now"),
       string("today"),
@@ -420,7 +420,7 @@ defmodule Logflare.Lql.Parser.Combinators do
     |> reduce(:timestamp_shorthand_to_value)
   end
 
-  def timestamp_value() do
+  def timestamp_value do
     choice([
       range_operator(date_or_datetime()),
       datetime_with_range(),
@@ -436,7 +436,7 @@ defmodule Logflare.Lql.Parser.Combinators do
   # Clause Combinators
   # ============================================================================
 
-  def timestamp_clause() do
+  def timestamp_clause do
     choice([string("timestamp"), string("t")])
     |> replace({:path, "timestamp"})
     |> concat(operator())
@@ -467,7 +467,7 @@ defmodule Logflare.Lql.Parser.Combinators do
     |> label("field filter rule clause")
   end
 
-  def metadata_level_clause() do
+  def metadata_level_clause do
     string("metadata.level")
     |> ignore(string(":"))
     |> concat(range_operator(level_strings()))

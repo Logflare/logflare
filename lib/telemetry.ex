@@ -200,7 +200,7 @@ defmodule Logflare.Telemetry do
     ])
   end
 
-  defp periodic_measurements() do
+  defp periodic_measurements do
     cache_stats? = Application.get_env(:logflare, :cache_stats, false)
 
     if cache_stats? do
