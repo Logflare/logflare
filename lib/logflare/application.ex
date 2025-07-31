@@ -191,27 +191,27 @@ defmodule Logflare.Application do
          ],
          "https://http-intake.logs.datadoghq.com" => [
            protocols: [:http2],
-           count: min_count,
+           count: 1,
            start_pool_metrics?: true
          ],
          "https://http-intake.logs.us3.datadoghq.com" => [
            protocols: [:http2],
-           count: min_count,
+           count: 1,
            start_pool_metrics?: true
          ],
          "https://http-intake.logs.us5.datadoghq.com" => [
            protocols: [:http2],
-           count: min_count,
+           count: 1,
            start_pool_metrics?: true
          ],
          "https://http-intake.logs.datadoghq.eu" => [
            protocols: [:http2],
-           count: min_count,
+           count: 1,
            start_pool_metrics?: true
          ],
          "https://http-intake.logs.ap1.datadoghq.com" => [
            protocols: [:http2],
-           count: min_count,
+           count: 1,
            start_pool_metrics?: true
          ]
        }},
