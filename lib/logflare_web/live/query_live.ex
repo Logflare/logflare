@@ -9,6 +9,7 @@ defmodule LogflareWeb.QueryLive do
   alias Logflare.Alerting
   alias Logflare.Users
   alias Logflare.Backends
+  alias LogflareWeb.QueryComponents
 
   def render(assigns) do
     ~H"""
@@ -86,7 +87,12 @@ defmodule LogflareWeb.QueryLive do
     </section>
 
     <section :if={@query_result_rows} class="container mx-auto">
-      <h3>Query result</h3>
+      <div class="tw-flex tw-justify-between tw-items-end">
+        <h3>Query result</h3>
+        <div class="tw-mb-1">
+          <QueryComponents.query_cost bytes={@total_bytes_processed} />
+        </div>
+      </div>
       <p :if={@query_result_rows == []}>
         No rows returned from query. Try adjusting your query and try again!
       </p>
@@ -151,6 +157,7 @@ defmodule LogflareWeb.QueryLive do
       |> assign(:user_id, user_id)
       |> assign(:user, user)
       |> assign(:query_result_rows, nil)
+      |> assign(:total_bytes_processed, nil)
       |> assign(:parse_error_message, nil)
       |> assign(:query_string, nil)
       |> assign(:endpoints, endpoints)
@@ -243,10 +250,11 @@ defmodule LogflareWeb.QueryLive do
       end
 
     case Endpoints.run_query_string(user, {type, query_string}, params: %{}) do
-      {:ok, %{rows: rows}} ->
+      {:ok, %{rows: rows, total_bytes_processed: total_bytes_processed}} ->
         socket
         |> put_flash(:info, "Ran query successfully")
         |> assign(:query_result_rows, rows)
+        |> assign(:total_bytes_processed, total_bytes_processed)
 
       {:error, err} ->
         socket

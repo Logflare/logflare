@@ -7,7 +7,7 @@ defmodule LogflareWeb.EndpointsLive do
 
   alias Logflare.Endpoints
   alias Logflare.Users
-  alias LogflareWeb.Utils
+  alias LogflareWeb.{QueryComponents, Utils}
 
   embed_templates("actions/*", suffix: "_action")
   embed_templates("components/*")
@@ -45,6 +45,7 @@ defmodule LogflareWeb.EndpointsLive do
       #  must be below user_id assign
       |> refresh_endpoints()
       |> assign(:query_result_rows, nil)
+      |> assign(:total_bytes_processed, nil)
       |> assign(:show_endpoint, nil)
       |> assign(:endpoint_changeset, Endpoints.change_query(%Endpoints.Query{}))
       |> assign(:allow_access, allow_access)
@@ -175,12 +176,13 @@ defmodule LogflareWeb.EndpointsLive do
            params: query_params,
            parsed_labels: parsed_labels
          ) do
-      {:ok, %{rows: rows}} ->
+      {:ok, %{rows: rows, total_bytes_processed: total_bytes_processed}} ->
         {:noreply,
          socket
          |> put_flash(:info, "Ran query successfully")
          |> assign(:prev_params, query_params)
-         |> assign(:query_result_rows, rows)}
+         |> assign(:query_result_rows, rows)
+         |> assign(:total_bytes_processed, total_bytes_processed)}
 
       {:error, err} ->
         {:noreply,

@@ -290,6 +290,8 @@ defmodule LogflareWeb.AlertsLiveTest do
       assert view
              |> element("button", "Run query")
              |> render_click() =~ "results-123"
+
+      assert view |> render() =~ "1 byte processed"
     end
 
     test "errors from BQ are dispalyed", %{conn: conn, alert_query: alert_query} do
