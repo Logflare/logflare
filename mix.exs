@@ -133,7 +133,7 @@ defmodule Logflare.Mixfile do
 
       # Concurrency and pipelines
       {:broadway, github: "Logflare/broadway", branch: "fix/batcher-fullsweep-after"},
-      {:syn, "~> 3.3"},
+      {:syn, github: "Logflare/syn"},
 
       # Test
       {:mix_test_watch, "~> 1.0", only: [:dev, :test], runtime: false},

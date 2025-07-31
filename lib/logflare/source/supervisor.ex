@@ -75,10 +75,6 @@ defmodule Logflare.Source.Supervisor do
         :noop
 
       {:error, :already_started} ->
-        Logger.info(
-          "SourceSup already started by another concurrent action, will not attempt further start: #{source_token}"
-        )
-
         :noop
 
       {:error, _reason} = err ->
@@ -212,11 +208,6 @@ defmodule Logflare.Source.Supervisor do
         maybe_restart_mismatched_source_pipelines(source_token)
 
       %{v1: {:error, _}, v2: {:error, _}} ->
-        Logger.info("Source.Supervisor - SourceSup not found, starting...",
-          source_id: source_token,
-          source_token: source_token
-        )
-
         start_source(source_token)
 
       _ ->
