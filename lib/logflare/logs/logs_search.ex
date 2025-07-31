@@ -46,34 +46,15 @@ defmodule Logflare.Logs.Search do
   end
 
   def aggs(%SO{} = so) do
-    so = get_and_put_partition_by(so)
-
-    tasks = [
-      Tasks.async(fn -> search_result_aggregates(so) end)
-    ]
-
-    tasks_with_results = Task.yield_many(tasks, 30_000)
-
-    results =
-      tasks_with_results
-      |> Enum.map(fn {task, res} ->
-        res || Task.shutdown(task, :brutal_kill)
-      end)
-
-    [agg_result] = results
-
-    case agg_result do
-      {:ok, {:ok, agg_so}} ->
+    so
+    |> get_and_put_partition_by()
+    |> search_result_aggregates()
+    |> case do
+      {:ok, agg_so} ->
         {:ok, %{aggregates: agg_so}}
-
-      {:ok, {:error, result_so}} ->
-        {:error, result_so}
 
       {:error, result_so} ->
         {:error, result_so}
-
-      nil ->
-        {:error, "Search task timeout"}
     end
   end
 
