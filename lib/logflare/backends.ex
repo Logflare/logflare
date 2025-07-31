@@ -380,7 +380,8 @@ defmodule Logflare.Backends do
   def via_source(%Source{id: id}, process_id), do: via_source(id, process_id)
 
   def via_source(id, RecentEventsTouch) when is_number(id) do
-    {:via, :syn, {:core, {RecentEventsTouch, id}}}
+    ts = DateTime.utc_now() |> DateTime.to_unix(:nanosecond)
+    {:via, :syn, {:core, {RecentEventsTouch, id}, %{timestamp: ts}}}
   end
 
   def via_source(id, process_id) when is_number(id) do
