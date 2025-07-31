@@ -6,8 +6,6 @@ defmodule Logflare.SynEventHandler do
   """
   @behaviour :syn_event_handler
 
-  alias Logflare.GenSingleton
-
   require Logger
   @impl true
 
@@ -37,7 +35,7 @@ defmodule Logflare.SynEventHandler do
         pid_meta1,
         pid_meta2
       ) do
-    {{original, _, _}, {_to_stop, to_stop_meta, _}} = keep_original(pid_meta1, pid_meta2)
+    {original, to_stop} = keep_original(pid_meta1, pid_meta2)
 
     pid_node =
       if is_pid(original) do
@@ -48,8 +46,7 @@ defmodule Logflare.SynEventHandler do
       "Resolving registry conflict for alerting, for Logflare.Alerting.AlertsScheduler. Keeping original #{inspect(original)} on #{inspect(pid_node)}"
     )
 
-    # stop the process via GenSingleton
-    GenSingleton.stop_local(to_stop_meta.sup_pid)
+    try_to_stop_process(to_stop)
 
     original
   end
@@ -59,31 +56,41 @@ defmodule Logflare.SynEventHandler do
       "Resolving registry conflict for #{scope}, #{inspect(name)}, #{inspect(pid_meta1)} and #{inspect(pid_meta2)}. Keeping #{inspect(pid_meta1)}"
     )
 
-    {{original, _, _}, {to_stop, _, _}} = keep_original(pid_meta1, pid_meta2)
-    Process.exit(to_stop, :syn_resolve_kill)
+    {original, to_stop} = keep_original(pid_meta1, pid_meta2)
+    try_to_stop_process(to_stop)
     original
   end
 
   defp keep_original(
-         {_pid1, %{timestamp: timestamp1}, _timestamp1} = pid_meta1,
-         {_pid2, %{timestamp: timestamp2}, _timestamp2} = pid_meta2
+         {pid1, %{timestamp: timestamp1}, _timestamp1},
+         {pid2, %{timestamp: timestamp2}, _timestamp2}
        ) do
     if timestamp1 < timestamp2 do
-      {pid_meta1, pid_meta2}
+      {pid1, pid2}
     else
-      {pid_meta2, pid_meta1}
+      {pid2, pid1}
     end
   end
 
   # fallback if the :timestamp metadata with higher nanosecond resolution is not,
   defp keep_original(
-         {_pid1, _meta1, timestamp1} = pid_meta1,
-         {_pid2, _meta2, timestamp2} = pid_meta2
+         {pid1, _meta1, timestamp1},
+         {pid2, _meta2, timestamp2}
        ) do
     if timestamp1 < timestamp2 do
-      {pid_meta1, pid_meta2}
+      {pid1, pid2}
     else
-      {pid_meta2, pid_meta1}
+      {pid2, pid1}
+    end
+  end
+
+  def try_to_stop_process(pid) do
+    try do
+      GenServer.stop(pid)
+      :ok
+    catch
+      :exit, _ ->
+        :noop
     end
   end
 end
