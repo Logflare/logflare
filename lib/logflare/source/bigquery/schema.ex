@@ -120,9 +120,10 @@ defmodule Logflare.Source.BigQuery.Schema do
   def handle_cast({:update, %LogEvent{body: body, id: event_id}}, state) do
     LogflareLogger.context(source_id: state.source_token, log_event_id: event_id)
 
-    schema = try_schema_update(body, state.schema)
+    db_schema = SourceSchemas.Cache.get_source_schema_by(source_id: state.source_id)
+    schema = try_schema_update(body, db_schema)
 
-    if not same_schemas?(state.schema, schema) and
+    if not same_schemas?(db_schema, schema) and
          state.next_update <= System.system_time(:millisecond) and
          !SingleTenant.postgres_backend?() do
       case BigQuery.patch_table(
@@ -137,7 +138,7 @@ defmodule Logflare.Source.BigQuery.Schema do
 
           persist()
 
-          notify_maybe(state.source_token, schema, state.schema)
+          notify_maybe(state.source_token, schema, db_schema)
 
           {:noreply,
            %{
@@ -241,7 +242,12 @@ defmodule Logflare.Source.BigQuery.Schema do
   end
 
   defp same_schemas?(old_schema, new_schema) do
-    old_schema == new_schema
+    old_flatmap = SchemaUtils.bq_schema_to_flat_typemap(old_schema.bigquery_schema)
+    new_flatmap = SchemaUtils.bq_schema_to_flat_typemap(new_schema.bigquery_schema)
+
+    diff_keys = Map.keys(new_flatmap) -- Map.keys(old_flatmap)
+
+    old_schema == new_schema and !Enum.empty?(diff_keys)
   end
 
   defp try_schema_update(body, schema) do
