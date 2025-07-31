@@ -12,7 +12,6 @@ defmodule Logflare.Sources.RateCounters do
   end
 
   def init(state) do
-    Logger.info("Rate counter table started!")
     :ets.new(@ets_table_name, [:public, :named_table])
     {:ok, state}
   end

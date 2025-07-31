@@ -73,19 +73,21 @@ defmodule Logflare.Backends.RecentEventsTouch do
   end
 
   defp do_work(source_id) do
-    %_{log_events_updated_at: prev} = source = Sources.Cache.get_by_id(source_id)
+    with %_{log_events_updated_at: prev} = source <- Sources.Cache.get_by_id(source_id) do
+      source
+      |> Backends.list_recent_logs_local()
+      |> Enum.map(& &1.ingested_at)
+      |> Enum.max(NaiveDateTime, fn -> nil end)
+      |> then(fn
+        latest_ts when latest_ts != nil and prev < latest_ts ->
+          Sources.update_source(source, %{log_events_updated_at: latest_ts})
 
-    source
-    |> Backends.list_recent_logs_local()
-    |> Enum.map(& &1.ingested_at)
-    |> Enum.max(NaiveDateTime, fn -> nil end)
-    |> then(fn
-      latest_ts when latest_ts != nil and prev < latest_ts ->
-        Sources.update_source(source, %{log_events_updated_at: latest_ts})
-
-      _ ->
-        :noop
-    end)
+        _ ->
+          :noop
+      end)
+    else
+      _ -> :noop
+    end
   end
 
   defp touch(every) do

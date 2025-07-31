@@ -10,7 +10,6 @@ defmodule Logflare.SigtermHandler do
 
   @impl true
   def init(_) do
-    Logger.info("#{__MODULE__} is being initialized...")
     {:ok, %{}}
   end
 
