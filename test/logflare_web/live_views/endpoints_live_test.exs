@@ -229,6 +229,8 @@ defmodule LogflareWeb.EndpointsLiveTest do
       assert has_element?(view, "label", "Max limit")
       assert has_element?(view, "label", "Enable authentication")
 
+      assert view |> render() =~ "1 byte processed"
+
       assert view
              |> element("form#endpoint")
              |> render_submit(%{
