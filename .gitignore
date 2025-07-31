@@ -83,3 +83,6 @@ supabase
 
 examples/**/.dev.vars
 examples/**/node_modules
+
+# dev worktree patterns
+dev-*

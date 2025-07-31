@@ -42,6 +42,7 @@ defmodule Logflare.BqRepo do
         queryParameters: params,
         jobCreationMode: "JOB_CREATION_OPTIONAL",
         dryRun: false,
+        jobTimeoutMs: @query_request_timeout,
         timeoutMs: @query_request_timeout,
         labels: %{
           "managed_by" => "logflare",
