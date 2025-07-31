@@ -200,7 +200,8 @@ defmodule Logflare.TestUtils do
       kind: "bigquery#queryResponse",
       rows: rows,
       schema: schema,
-      totalBytesProcessed: "0",
+      # Simple result length as test value
+      totalBytesProcessed: length(rows) |> to_string(),
       totalRows: inspect(length(results))
     }
   end
