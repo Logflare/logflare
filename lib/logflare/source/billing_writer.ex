@@ -60,11 +60,6 @@ defmodule Logflare.Source.BillingWriter do
            Billing.get_billing_account_stripe_subscription_item(billing_account),
          {:ok, _response} <-
            Billing.Stripe.record_usage(si_id, count) do
-      Logger.info("Successfully recorded usage counts (#{inspect(count)}) to Stripe",
-        user_id: state.user_id,
-        count: count
-      )
-
       :noop
     else
       nil ->

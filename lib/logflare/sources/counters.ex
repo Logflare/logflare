@@ -16,7 +16,6 @@ defmodule Logflare.Sources.Counters do
   def init(state) do
     Process.flag(:trap_exit, true)
 
-    Logger.info("Table counters started!")
     :ets.new(@ets_table_name, [:public, :named_table])
     {:ok, state}
   end
