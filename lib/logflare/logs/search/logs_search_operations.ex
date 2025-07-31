@@ -28,7 +28,8 @@ defmodule Logflare.Logs.SearchOperations do
   @default_max_n_chart_ticks 1_000
   @tailing_timestamp_filter_minutes 10
   # Note that this is only a timeout for the request, not the query.
-  # If the query takes longer to run than the timeout value, the call returns without any results and with the 'jobComplete' flag set to false.
+  # If the query takes longer to run than the timeout value, the call returns without any results and with the
+  # 'jobComplete' flag set to false.
 
   # Halt reasons
 

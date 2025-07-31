@@ -96,7 +96,7 @@
           #
           {Credo.Check.Readability.FunctionNames, []},
           {Credo.Check.Readability.LargeNumbers, []},
-          {Credo.Check.Readability.MaxLineLength, [priority: :low, max_length: 120]},
+          {Credo.Check.Readability.MaxLineLength, [max_length: 120]},
           {Credo.Check.Readability.ModuleAttributeNames, []},
           {Credo.Check.Readability.ModuleNames, []},
           {Credo.Check.Readability.ParenthesesInCondition, []},

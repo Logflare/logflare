@@ -237,7 +237,8 @@ defmodule Logflare.Source.BigQuery.Pipeline do
 
   def process_data(%LE{source: source} = log_event, context) do
     # TODO ... We use `ignoreUnknownValues: true` when we do `stream_batch!`. If we set that to `true`
-    # then this makes BigQuery check the payloads for new fields. In the response we'll get a list of events that didn't validate.
+    # then this makes BigQuery check the payloads for new fields. In the response we'll get a list of events that
+    # didn't validate.
     # Send those events through the pipeline again, but run them through our schema process this time. Do all
     # these things a max of like 5 times and after that send them to the rejected pile.
 
