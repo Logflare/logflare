@@ -11,17 +11,17 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.QueryTemplates do
   @doc """
   Default naming prefix for the log ingest table.
   """
-  def default_table_name_prefix(), do: "log_events"
+  def default_table_name_prefix, do: "log_events"
 
   @doc """
   Default naming prefix for the key type count materialized view.
   """
-  def default_key_type_counts_view_prefix(), do: "mv_key_type_counts_per_min"
+  def default_key_type_counts_view_prefix, do: "mv_key_type_counts_per_min"
 
   @doc """
   Default naming prefix for the key type count table.
   """
-  def default_key_type_counts_table_prefix(), do: "key_type_counts_per_min"
+  def default_key_type_counts_table_prefix, do: "key_type_counts_per_min"
 
   @doc """
   Generates a ClickHouse query statement to check that the user GRANTs include the needed permissions.
@@ -70,8 +70,6 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.QueryTemplates do
     ttl_days =
       if is_pos_integer(ttl_days_temp) do
         ttl_days_temp
-      else
-        nil
       end
 
     db_table_string =

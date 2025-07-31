@@ -72,7 +72,7 @@ defmodule Logflare.VaultTest do
     end
   end
 
-  defp get_config_encrypted() do
+  defp get_config_encrypted do
     [
       %{
         config: nil,
