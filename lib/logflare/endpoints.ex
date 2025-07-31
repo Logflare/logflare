@@ -1,20 +1,24 @@
 defmodule Logflare.Endpoints do
   @moduledoc false
-  alias Logflare.Endpoints.ResultsCache
-  alias Logflare.Endpoints.Query
-  alias Logflare.Endpoints.Resolver
-  alias Logflare.Repo
-  alias Logflare.User
-  alias Logflare.Users
-  alias Logflare.Utils
-  alias Logflare.Backends
-  alias Logflare.Backends.Adaptor.PostgresAdaptor
-  alias Logflare.SingleTenant
+
+  import Ecto.Query
+  import Logflare.Utils.Guards, only: [is_atom_value: 1]
+
   alias Logflare.Alerting
   alias Logflare.Alerting.Alert
   alias Logflare.Backends
+  alias Logflare.Backends.Backend
+  alias Logflare.Endpoints.Query
+  alias Logflare.Endpoints.Resolver
+  alias Logflare.Endpoints.ResultsCache
+  alias Logflare.Repo
+  alias Logflare.SingleTenant
+  alias Logflare.User
+  alias Logflare.Users
+  alias Logflare.Utils
 
-  import Ecto.Query
+  @valid_sql_languages ~w(bq_sql ch_sql pg_sql)a
+
   @typep run_query_return :: {:ok, %{rows: [map()]}} | {:error, String.t()}
 
   @spec count_endpoints_by_user(User.t() | integer()) :: integer()
@@ -239,24 +243,12 @@ defmodule Logflare.Endpoints do
            if(sandboxable && sql_param, do: {expanded_query, sql_param}, else: expanded_query),
          {:ok, transformed_query} <-
            Logflare.Sql.transform(endpoint_query.language, transform_input, user_id) do
-      {endpoint, query_string} =
-        if SingleTenant.supabase_mode?() and SingleTenant.postgres_backend?() and
-             endpoint_query.language != :pg_sql do
-          # translate the query
-          schema_prefix = Keyword.get(SingleTenant.postgres_backend_adapter_opts(), :schema)
-
-          {:ok, q} = Logflare.Sql.translate(:bq_sql, :pg_sql, transformed_query, schema_prefix)
-
-          {Map.put(endpoint_query, :language, :pg_sql), q}
-        else
-          {endpoint_query, transformed_query}
-        end
-
       :telemetry.span(
         [:logflare, :endpoints, :run_query, :exec_query_on_backend],
-        %{endpoint_id: endpoint.id, language: endpoint.language},
+        %{endpoint_id: endpoint_query.id, language: endpoint_query.language},
         fn ->
-          result = exec_query_on_backend(endpoint, query_string, declared_params, params)
+          result =
+            exec_query_on_backend(endpoint_query, transformed_query, declared_params, params)
 
           total_rows =
             case result do
@@ -318,147 +310,120 @@ defmodule Logflare.Endpoints do
     end
   end
 
+  @spec exec_query_on_backend(Query.t(), String.t(), [String.t()], map()) :: run_query_return()
   defp exec_query_on_backend(
-         %Query{query: query_string, language: :pg_sql} = endpoint_query,
-         transformed_query,
-         _declared_params,
-         params
-       ) do
-    # find compatible source backend
-    # TODO: move this to Backends module
-    user = Users.Cache.get(endpoint_query.user_id)
-    # TODO (ziinc): backend should be passed as an arg, shouldn't be random
-    backend =
-      case Backends.get_default_backend(user) do
-        %_{type: :bigquery} ->
-          Backends.list_backends(user_id: user.id, type: :postgres)
-          |> Enum.random()
-
-        backend ->
-          backend
-      end
-
-    if is_nil(backend) do
-      raise "No matching source backend found for Postgres query execution"
-    end
-
-    # convert params to PG params style
-    positions =
-      Logflare.Sql.parameter_positions(query_string)
-      |> then(fn {:ok, params} ->
-        params
-        |> Enum.sort_by(&{elem(&1, 0)})
-      end)
-
-    args =
-      for {_pos, parameter} <- positions do
-        Map.get(params, parameter)
-      end
-
-    with {:ok, rows} <-
-           PostgresAdaptor.execute_query(backend, {transformed_query, args}) do
-      {:ok, %{rows: rows}}
-    end
-  end
-
-  defp exec_query_on_backend(
-         %Query{language: _} = endpoint_query,
+         %Query{language: sql_language} = endpoint_query,
          transformed_query,
          declared_params,
          input_params
        )
-       when is_binary(transformed_query) and
+       when sql_language in @valid_sql_languages and
+              is_binary(transformed_query) and
               is_list(declared_params) and
               is_map(input_params) do
-    endpoint_query = Repo.preload(endpoint_query, :user)
+    with {:ok, backend} <- get_backend_for_query(endpoint_query),
+         adaptor <- Backends.Adaptor.get_adaptor(backend) do
+      # First, let the adaptor transform the query if needed
+      final_query =
+        if function_exported?(adaptor, :transform_query, 3) do
+          context = build_transformation_context(backend)
 
-    bq_params =
-      Enum.map(declared_params, fn input_name ->
-        %{
-          name: input_name,
-          parameterValue: %{value: input_params[input_name]},
-          parameterType: %{type: "STRING"}
-        }
-      end)
-
-    # execute the query on bigquery
-    case Logflare.BqRepo.query_with_sql_and_params(
-           endpoint_query.user,
-           endpoint_query.user.bigquery_project_id || env_project_id(),
-           transformed_query,
-           bq_params,
-           parameterMode: "NAMED",
-           maxResults: endpoint_query.max_limit,
-           location: endpoint_query.user.bigquery_dataset_location,
-           labels:
-             Map.merge(
-               %{
-                 "endpoint_id" => endpoint_query.id
-               },
-               endpoint_query.parsed_labels || %{}
-             )
-         ) do
-      {:ok, result} ->
-        {:ok, result}
-
-      {:error, %{body: body}} ->
-        error = Jason.decode!(body)["error"] |> process_bq_error(endpoint_query.user_id)
-        {:error, error}
-
-      {:error, err} when is_atom(err) ->
-        {:error, process_bq_error(err, endpoint_query.user_id)}
-    end
-  end
-
-  defp env_project_id, do: Application.get_env(:logflare, Logflare.Google)[:project_id]
-  defp env, do: Application.get_env(:logflare, :env)
-
-  @doc """
-  Formats a bigquery json decoded error.
-  User id should be provided for handling BQ table name replacements to source names.
-  """
-  @spec process_bq_error(map(), integer()) :: map()
-  def process_bq_error(error, user_id) when is_atom(error) do
-    %{"message" => process_bq_message(error, user_id)}
-  end
-
-  def process_bq_error(error, user_id) when is_map(error) do
-    error = %{error | "message" => process_bq_message(error["message"], user_id)}
-
-    if is_list(error["errors"]) do
-      %{
-        error
-        | "errors" => Enum.map(error["errors"], fn err -> process_bq_error(err, user_id) end)
-      }
-    else
-      error
-    end
-  end
-
-  def process_bq_message(message, _user_id) when is_atom(message), do: message
-
-  def process_bq_message(message, user_id) when is_binary(message) do
-    regex =
-      ~r/#{env_project_id()}\.#{user_id}_#{env()}\.(?<uuid>[0-9a-fA-F]{8}_[0-9a-fA-F]{4}_[0-9a-fA-F]{4}_[0-9a-fA-F]{4}_[0-9a-fA-F]{12})/
-
-    case Regex.named_captures(regex, message) do
-      %{"uuid" => uuid} ->
-        uuid = String.replace(uuid, "_", "-")
-
-        query =
-          from(s in Logflare.Source,
-            where: s.token == ^uuid and s.user_id == ^user_id,
-            select: s.name
-          )
-
-        case Logflare.Repo.one(query) do
-          nil -> message
-          name -> Regex.replace(regex, message, name)
+          case adaptor.transform_query(transformed_query, endpoint_query.language, context) do
+            {:ok, adapted_query} -> adapted_query
+            # fallback to original if transformation fails
+            {:error, _} -> transformed_query
+          end
+        else
+          transformed_query
         end
 
-      _ ->
-        message
+      # Then handle parameter mapping
+      query_args =
+        if function_exported?(adaptor, :map_query_parameters, 4) do
+          # Use the adaptor's custom parameter mapping
+          mapped_params =
+            adaptor.map_query_parameters(
+              endpoint_query.query,
+              final_query,
+              declared_params,
+              input_params
+            )
+
+          {final_query, mapped_params}
+        else
+          # Fall back to the standard approach
+          {final_query, declared_params, input_params, endpoint_query}
+        end
+
+      case adaptor.execute_query(backend, query_args) do
+        {:ok, rows} when is_list(rows) ->
+          {:ok, %{rows: rows}}
+
+        {:ok, %{rows: rows}} ->
+          {:ok, %{rows: rows}}
+
+        {:error, error} ->
+          {:error, error}
+      end
     end
+  end
+
+  @spec get_backend_for_query(Query.t()) :: {:ok, Backend.t()} | {:error, String.t()}
+  defp get_backend_for_query(%Query{backend_id: backend_id}) when not is_nil(backend_id) do
+    case Backends.get_backend(backend_id) do
+      %Backend{} = backend -> {:ok, backend}
+      nil -> {:error, "Backend not found"}
+    end
+  end
+
+  defp get_backend_for_query(%Query{user_id: user_id, language: :bq_sql}) do
+    user = Users.Cache.get(user_id)
+    {:ok, Backends.get_default_backend(user)}
+  end
+
+  defp get_backend_for_query(%Query{user_id: user_id, language: language}) do
+    user = Users.Cache.get(user_id)
+
+    case find_backend_for_language(user, language) do
+      {:ok, backend} -> {:ok, backend}
+      {:error, _} -> {:ok, Backends.get_default_backend(user)}
+    end
+  end
+
+  @spec find_backend_for_language(User.t(), atom()) ::
+          {:ok, Backend.t()} | {:error, :no_backend_found}
+  defp find_backend_for_language(%User{} = user, language) when is_atom_value(language) do
+    user_backends = Backends.list_backends_by_user_id(user.id)
+
+    backend_for_language =
+      Enum.find(user_backends, fn backend ->
+        supported_languages = Backends.Adaptor.get_supported_languages(backend)
+        language in supported_languages
+      end)
+
+    case backend_for_language do
+      nil -> {:error, :no_backend_found}
+      backend -> {:ok, backend}
+    end
+  end
+
+  @spec build_transformation_context(Backend.t()) :: map()
+  defp build_transformation_context(backend) do
+    # Build context map for query transformation
+    context = %{}
+
+    # Add schema_prefix for PostgreSQL backends in SingleTenant mode
+    # The adaptor will determine if this is needed
+    context =
+      if SingleTenant.supabase_mode?() and SingleTenant.postgres_backend?() do
+        schema_prefix = Keyword.get(SingleTenant.postgres_backend_adapter_opts(), :schema)
+        Map.put(context, :schema_prefix, schema_prefix)
+      else
+        context
+      end
+
+    # Add backend-specific configuration  
+    Map.put(context, :backend_config, backend.config)
   end
 
   @doc """

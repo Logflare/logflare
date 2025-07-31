@@ -9,15 +9,16 @@ defmodule Logflare.Alerting do
   require Logger
   require OpenTelemetry.Tracer
 
+  alias Logflare.Alerting.AlertQuery
+  alias Logflare.Alerting.AlertsScheduler
   alias Logflare.Backends
   alias Logflare.Backends.Adaptor
-  alias Logflare.Backends.Adaptor.WebhookAdaptor
+  alias Logflare.Backends.Adaptor.BigQueryAdaptor
   alias Logflare.Backends.Adaptor.SlackAdaptor
-  alias Logflare.Alerting.AlertQuery
-  alias Logflare.User
-  alias Logflare.Endpoints
-  alias Logflare.Alerting.AlertsScheduler
+  alias Logflare.Backends.Adaptor.WebhookAdaptor
   alias Logflare.Cluster
+  alias Logflare.Endpoints
+  alias Logflare.User
   alias Logflare.Utils
 
   @doc """
@@ -411,7 +412,7 @@ defmodule Logflare.Alerting do
       {:error, %Tesla.Env{body: body}} ->
         error =
           Jason.decode!(body)["error"]
-          |> Endpoints.process_bq_error(alert_query.user_id)
+          |> BigQueryAdaptor.process_bq_error(alert_query.user_id)
           |> case do
             %{"message" => msg} -> msg
             other -> other

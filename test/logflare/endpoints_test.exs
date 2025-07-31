@@ -364,12 +364,15 @@ defmodule Logflare.EndpointsTest do
         PostgresAdaptor.destroy_instance({source, backend})
       end)
 
-      %{source: source, user: user}
+      %{source: source, user: user, backend: backend}
     end
 
-    test "run an endpoint query without caching", %{source: source, user: user} do
+    test "run an endpoint query without caching", %{source: source, user: user, backend: backend} do
       query = "select body from #{source.name}"
-      endpoint = insert(:endpoint, user: user, query: query, language: :pg_sql)
+
+      endpoint =
+        insert(:endpoint, user: user, query: query, language: :pg_sql, backend_id: backend.id)
+
       assert {:ok, %{rows: []}} = Endpoints.run_query(endpoint)
     end
 
@@ -378,9 +381,12 @@ defmodule Logflare.EndpointsTest do
       assert {:ok, %{rows: []}} = Endpoints.run_query_string(user, {:pg_sql, query})
     end
 
-    test "run_cached_query/1", %{source: source, user: user} do
+    test "run_cached_query/1", %{source: source, user: user, backend: backend} do
       query = "select body from #{source.name}"
-      endpoint = insert(:endpoint, user: user, query: query, language: :pg_sql)
+
+      endpoint =
+        insert(:endpoint, user: user, query: query, language: :pg_sql, backend_id: backend.id)
+
       assert {:ok, %{rows: []}} = Endpoints.run_cached_query(endpoint)
     end
   end
