@@ -1,9 +1,11 @@
 defmodule Logflare.Lql.Utils do
   @moduledoc false
+  alias Logflare.Lql.FilterRule
   alias Logflare.Lql.{FilterRule, ChartRule}
+
   @type lql_list :: [ChartRule.t() | FilterRule.t()]
 
-  def default_chart_rule() do
+  def default_chart_rule do
     %ChartRule{
       aggregate: :count,
       path: "timestamp",

@@ -450,7 +450,7 @@ defmodule Logflare.Sources do
   end
 
   @doc "Checks if all ETS tables used for source ingestion are started"
-  def ingest_ets_tables_started?() do
+  def ingest_ets_tables_started? do
     case {:ets.whereis(:rate_counters), :ets.whereis(:table_counters)} do
       {a, b} when is_reference(a) and is_reference(b) -> true
       _ -> false

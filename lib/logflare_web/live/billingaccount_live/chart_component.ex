@@ -71,7 +71,7 @@ defmodule LogflareWeb.BillingAccountLive.ChartComponent do
     {:ok, data}
   end
 
-  defp placeholder() do
+  defp placeholder do
     {:safe, [~s|<svg class="loading" viewBox="0 0 400 75" role="img"></svg>|]}
   end
 end

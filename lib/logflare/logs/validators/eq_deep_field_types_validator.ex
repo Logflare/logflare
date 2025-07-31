@@ -50,7 +50,7 @@ defmodule Logflare.Logs.Validators.EqDeepFieldTypes do
     end)
     |> deep_merge_enums()
     |> deep_validate_lists_are_homogenous()
-    |> is_map
+    |> is_map()
   end
 
   def message do

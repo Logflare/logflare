@@ -406,13 +406,13 @@ defmodule LogflareWeb.VercelLogDrainsLive do
     send(self(), {:send_flash, {level, message}})
   end
 
-  defp contacting_vercel() do
+  defp contacting_vercel do
     send(self(), :contacting_vercel)
   end
 
   defp unauthorized_socket(socket) do
     socket
-    |> clear_flash
+    |> clear_flash()
     |> put_flash(
       :error,
       "This installation is not authorized. Try reinstalling the Logflare integration."
@@ -423,7 +423,7 @@ defmodule LogflareWeb.VercelLogDrainsLive do
     Logger.error("Unknown Vercel API error.", error_string: inspect(resp))
 
     socket
-    |> clear_flash
+    |> clear_flash()
     |> put_flash(
       :error,
       "Something went wrong. Try reinstalling the Logflare integration. Contact support if this continues."

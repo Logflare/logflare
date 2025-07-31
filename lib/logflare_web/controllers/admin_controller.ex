@@ -206,13 +206,13 @@ defmodule LogflareWeb.AdminController do
     |> Repo.paginate(%{page_size: @page_size, page: 1})
   end
 
-  defp query() do
+  defp query do
     from s in Source,
       order_by: [desc: s.inserted_at],
       select: s
   end
 
-  defp query_accounts() do
+  defp query_accounts do
     from u in User,
       order_by: [desc: :inserted_at],
       select: u,

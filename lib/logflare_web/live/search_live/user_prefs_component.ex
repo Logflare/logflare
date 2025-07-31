@@ -105,7 +105,7 @@ defmodule LogflareWeb.Search.UserPreferencesComponent do
     SearchView.render("user_prefs_component.html", assigns)
   end
 
-  def build_timezones_select_form_options() do
+  def build_timezones_select_form_options do
     Timex.timezones()
     |> Enum.map(&[offset: Timex.Timezone.get(&1).offset_utc, t: &1])
     |> Enum.sort_by(& &1[:offset])

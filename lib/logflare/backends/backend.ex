@@ -48,7 +48,7 @@ defmodule Logflare.Backends.Backend do
     timestamps()
   end
 
-  def adaptor_mapping(), do: @adaptor_mapping
+  def adaptor_mapping, do: @adaptor_mapping
 
   def changeset(backend, attrs) do
     backend

@@ -255,7 +255,7 @@ defmodule LogflareWeb.SourceController do
     )
   end
 
-  defp notifications_options() do
+  defp notifications_options do
     env = Application.get_env(:logflare, :env)
 
     plans =

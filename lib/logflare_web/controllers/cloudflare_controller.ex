@@ -20,9 +20,9 @@ defmodule LogflareWeb.CloudflareController do
 
   defp build_response(conn, user_token) when is_nil(user_token) do
     init_json(conn)
-    |> reset_options
-    |> reset_sources
-    |> reset_links
+    |> reset_options()
+    |> reset_sources()
+    |> reset_links()
   end
 
   defp build_response(conn, user_token) do

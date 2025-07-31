@@ -4,7 +4,7 @@ defmodule Logflare.Logs.Search.Utils do
   """
   require Logger
 
-  def gen_search_tip() do
+  def gen_search_tip do
     tips = [
       "Search is case sensitive.",
       "Exact match an integer (e.g. `m.response.status_code:500`).",
