@@ -44,20 +44,13 @@ defmodule Logflare.Source.BigQuery.Schema do
     Logger.metadata(source_id: args[:source_token], source_token: args[:source_token])
     Process.flag(:trap_exit, true)
 
-    persist(0)
-
     {:ok,
      %{
        source_id: source.id,
        source_token: source.token,
        bigquery_project_id: args[:bigquery_project_id],
        bigquery_dataset_id: args[:bigquery_dataset_id],
-       schema: SchemaBuilder.initial_table_schema(),
-       type_map: %{
-         event_message: %{t: :string},
-         timestamp: %{t: :datetime},
-         id: %{t: :string}
-       },
+       type_map: nil,
        field_count: 3,
        field_count_limit: args[:plan].limit_source_fields_limit,
        next_update: System.system_time(:millisecond)
@@ -79,8 +72,7 @@ defmodule Logflare.Source.BigQuery.Schema do
         {:noreply,
          %{
            state
-           | schema: schema,
-             type_map: type_map,
+           | type_map: type_map,
              field_count: field_count
          }}
     end
@@ -120,7 +112,14 @@ defmodule Logflare.Source.BigQuery.Schema do
   def handle_cast({:update, %LogEvent{body: body, id: event_id}}, state) do
     LogflareLogger.context(source_id: state.source_token, log_event_id: event_id)
 
-    db_schema = SourceSchemas.Cache.get_source_schema_by(source_id: state.source_id)
+    source_schema =
+      SourceSchemas.Cache.get_source_schema_by(source_id: state.source_id)
+
+    db_schema =
+      if source_schema,
+        do: source_schema.bigquery_schema,
+        else: SchemaBuilder.initial_table_schema()
+
     schema = try_schema_update(body, db_schema)
 
     if not same_schemas?(db_schema, schema) and
@@ -136,7 +135,7 @@ defmodule Logflare.Source.BigQuery.Schema do
           type_map = BigQuery.SchemaUtils.to_typemap(schema)
           field_count = count_fields(type_map)
 
-          persist()
+          persist(state.source_id, schema)
 
           notify_maybe(state.source_token, schema, db_schema)
 
@@ -166,7 +165,7 @@ defmodule Logflare.Source.BigQuery.Schema do
                       type_map = BigQuery.SchemaUtils.to_typemap(schema)
                       field_count = count_fields(type_map)
 
-                      persist()
+                      persist(state.source_id, schema)
 
                       {:noreply,
                        %{
@@ -209,20 +208,14 @@ defmodule Logflare.Source.BigQuery.Schema do
     end
   end
 
-  def handle_info(:persist, state) do
-    source = Sources.Cache.get_by(token: state.source_token)
-    flat_map = SchemaUtils.bq_schema_to_flat_typemap(state.schema)
+  defp persist(source_id, new_schema) do
+    source = Sources.Cache.get_by(id: source_id)
+    flat_map = SchemaUtils.bq_schema_to_flat_typemap(new_schema)
 
     SourceSchemas.create_or_update_source_schema(source, %{
-      bigquery_schema: state.schema,
+      bigquery_schema: new_schema,
       schema_flat_map: flat_map
     })
-
-    {:noreply, state}
-  end
-
-  defp persist(persist_every \\ 0) do
-    Process.send_after(self(), :persist, persist_every)
   end
 
   defp count_fields(type_map) do
@@ -242,12 +235,12 @@ defmodule Logflare.Source.BigQuery.Schema do
   end
 
   defp same_schemas?(old_schema, new_schema) do
-    old_flatmap = SchemaUtils.bq_schema_to_flat_typemap(old_schema.bigquery_schema)
-    new_flatmap = SchemaUtils.bq_schema_to_flat_typemap(new_schema.bigquery_schema)
+    old_flatmap = SchemaUtils.bq_schema_to_flat_typemap(old_schema)
+    new_flatmap = SchemaUtils.bq_schema_to_flat_typemap(new_schema)
 
     diff_keys = Map.keys(new_flatmap) -- Map.keys(old_flatmap)
 
-    old_schema == new_schema and !Enum.empty?(diff_keys)
+    old_schema == new_schema and Enum.empty?(diff_keys)
   end
 
   defp try_schema_update(body, schema) do
