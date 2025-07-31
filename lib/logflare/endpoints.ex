@@ -422,7 +422,7 @@ defmodule Logflare.Endpoints do
         context
       end
 
-    # Add backend-specific configuration  
+    # Add backend-specific configuration
     Map.put(context, :backend_config, backend.config)
   end
 
