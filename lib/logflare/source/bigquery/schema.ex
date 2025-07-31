@@ -135,8 +135,6 @@ defmodule Logflare.Source.BigQuery.Schema do
           type_map = BigQuery.SchemaUtils.to_typemap(schema)
           field_count = count_fields(type_map)
 
-          Logger.info("Source schema updated from log_event!")
-
           persist()
 
           notify_maybe(state.source_token, schema, state.schema)
@@ -166,8 +164,6 @@ defmodule Logflare.Source.BigQuery.Schema do
                     {:ok, _table_info} ->
                       type_map = BigQuery.SchemaUtils.to_typemap(schema)
                       field_count = count_fields(type_map)
-
-                      Logger.info("Source schema updated from BigQuery!")
 
                       persist()
 
