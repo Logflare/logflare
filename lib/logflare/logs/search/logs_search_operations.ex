@@ -28,7 +28,8 @@ defmodule Logflare.Logs.SearchOperations do
   @default_max_n_chart_ticks 1_000
   @tailing_timestamp_filter_minutes 10
   # Note that this is only a timeout for the request, not the query.
-  # If the query takes longer to run than the timeout value, the call returns without any results and with the 'jobComplete' flag set to false.
+  # If the query takes longer to run than the timeout value, the call returns without any results and with the
+  # 'jobComplete' flag set to false.
 
   # Halt reasons
 
@@ -140,8 +141,11 @@ defmodule Logflare.Logs.SearchOperations do
 
   def put_chart_data_shape_id(%SO{} = so) do
     flat_type_map =
-      SourceSchemas.get_source_schema_by(source_id: so.source.id)
-      |> Map.get(:schema_flat_map)
+      SourceSchemas.Cache.get_source_schema_by(source_id: so.source.id)
+      |> case do
+        nil -> %{}
+        %{} = schema -> Map.get(schema, :schema_flat_map)
+      end
 
     chart_data_shape_id =
       cond do

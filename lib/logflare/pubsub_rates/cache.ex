@@ -145,7 +145,8 @@ defmodule Logflare.PubSubRates.Cache do
   def get_cluster_rates(source_id) when is_atom(source_id) do
     case get_rates(source_id) do
       {:ok, nil} ->
-        # This should be data from the node RCS * the cluster size, otherwise we're effectively not rate limiting until cluster rates get cached.
+        # This should be data from the node RCS * the cluster size, otherwise we're effectively not rate limiting until
+        # cluster rates get cached.
         %{
           average_rate: 0,
           last_rate: 0,
