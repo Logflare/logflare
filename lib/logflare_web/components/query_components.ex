@@ -14,7 +14,7 @@ defmodule LogflareWeb.QueryComponents do
       |> assign(size: Decimal.from_float(size) |> Decimal.normalize())
 
     ~H"""
-    <div class="tw-text-sm" :if={is_number(@bytes)}>
+    <div :if={is_number(@bytes)} class="tw-text-sm">
       <%= @size %> <%= @unit %> processed
     </div>
     """

@@ -87,11 +87,11 @@ defmodule LogflareWeb.QueryLive do
     </section>
 
     <section :if={@query_result_rows} class="container mx-auto">
-    <div class="tw-flex tw-justify-between tw-items-end">
-      <h3>Query result</h3>
-      <div class="tw-mb-1">
-      <QueryComponents.query_cost bytes={@total_bytes_processed} />
-      </div>
+      <div class="tw-flex tw-justify-between tw-items-end">
+        <h3>Query result</h3>
+        <div class="tw-mb-1">
+          <QueryComponents.query_cost bytes={@total_bytes_processed} />
+        </div>
       </div>
       <p :if={@query_result_rows == []}>
         No rows returned from query. Try adjusting your query and try again!
