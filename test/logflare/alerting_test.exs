@@ -170,7 +170,8 @@ defmodule Logflare.AlertingTest do
         {:ok, TestUtils.gen_bq_response([%{"testing" => "123"}])}
       end)
 
-      assert {:ok, [%{"testing" => "123"}]} = Alerting.execute_alert_query(alert_query)
+      assert {:ok, %{rows: [%{"testing" => "123"}], total_bytes_processed: 1}} =
+               Alerting.execute_alert_query(alert_query)
     end
 
     test "execute_alert_query with query composition" do
@@ -191,7 +192,8 @@ defmodule Logflare.AlertingTest do
         insert(:alert, user: user, query: "select testing from `my.date`")
         |> Logflare.Repo.preload([:user])
 
-      assert {:ok, [%{"testing" => "123"}]} = Alerting.execute_alert_query(alert_query)
+      assert {:ok, %{rows: [%{"testing" => "123"}]}} =
+               Alerting.execute_alert_query(alert_query)
     end
 
     test "run_alert_query/1 runs the entire alert", %{user: user} do
