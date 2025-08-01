@@ -3,9 +3,8 @@ defmodule LogflareWeb.OpenApiSchemas do
 
   defmodule EndpointQuery do
     @properties %{
-      result: %Schema{type: :string, example: "Logged!"},
+      result: %Schema{type: :array, allOf: %Schema{type: :object}},
       errors: %Schema{
-        required: false,
         oneOf: [
           %Schema{type: :object},
           %Schema{type: :string}
