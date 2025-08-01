@@ -50,6 +50,7 @@ defmodule Logflare.Source.BigQuery.Schema do
        source_token: source.token,
        bigquery_project_id: args[:bigquery_project_id],
        bigquery_dataset_id: args[:bigquery_dataset_id],
+       schema: SchemaBuilder.initial_table_schema(),
        field_count: 3,
        field_count_limit: args[:plan].limit_source_fields_limit,
        next_update: System.system_time(:millisecond)
@@ -70,7 +71,8 @@ defmodule Logflare.Source.BigQuery.Schema do
         {:noreply,
          %{
            state
-           | field_count: field_count
+           | schema: schema,
+             field_count: field_count
          }}
     end
   end
@@ -115,7 +117,7 @@ defmodule Logflare.Source.BigQuery.Schema do
     db_schema =
       if source_schema,
         do: source_schema.bigquery_schema,
-        else: SchemaBuilder.initial_table_schema()
+        else: state.schema
 
     schema = try_schema_update(body, db_schema)
 
@@ -138,7 +140,8 @@ defmodule Logflare.Source.BigQuery.Schema do
           {:noreply,
            %{
              state
-             | field_count: field_count,
+             | schema: schema,
+               field_count: field_count,
                next_update: next_update()
            }}
 
@@ -163,7 +166,8 @@ defmodule Logflare.Source.BigQuery.Schema do
                       {:noreply,
                        %{
                          state
-                         | field_count: field_count,
+                         | schema: schema,
+                           field_count: field_count,
                            next_update: next_update()
                        }}
 

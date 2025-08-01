@@ -141,8 +141,11 @@ defmodule Logflare.Logs.SearchOperations do
 
   def put_chart_data_shape_id(%SO{} = so) do
     flat_type_map =
-      SourceSchemas.get_source_schema_by(source_id: so.source.id)
-      |> Map.get(:schema_flat_map)
+      SourceSchemas.Cache.get_source_schema_by(source_id: so.source.id)
+      |> case do
+        nil -> %{}
+        %{} = schema -> Map.get(schema, :schema_flat_map)
+      end
 
     chart_data_shape_id =
       cond do
