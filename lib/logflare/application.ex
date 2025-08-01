@@ -151,7 +151,6 @@ defmodule Logflare.Application do
 
   defp finch_pools do
     base = System.schedulers_online()
-    min_count = max(5, ceil(base / 10))
     http1_count = max(div(base, 4), 1)
 
     [
