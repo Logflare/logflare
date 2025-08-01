@@ -5,9 +5,14 @@ defmodule Logflare.Sources do
 
   import Ecto.Query, only: [from: 2]
 
+  alias Logflare.Backends
+  alias Logflare.Billing
+  alias Logflare.Billing.Plan
   alias Logflare.Cluster
+  alias Logflare.Google.BigQuery
   alias Logflare.Google.BigQuery.GenUtils
   alias Logflare.Google.BigQuery.SchemaUtils
+  alias Logflare.Logs.RejectedLogEvents
   alias Logflare.PubSubRates
   alias Logflare.Repo
   alias Logflare.SavedSearch
@@ -17,14 +22,8 @@ defmodule Logflare.Sources do
   alias Logflare.Source.BigQuery.SchemaBuilder
   alias Logflare.SourceSchemas
   alias Logflare.User
-  alias Logflare.Billing.Plan
-  alias Logflare.Backends
-  alias Logflare.Billing.Plan
-  alias Logflare.Billing
-  alias Logflare.User
   alias Logflare.Users
-  alias Logflare.SingleTenant
-  alias Logflare.Google.BigQuery
+  alias Number.Delimit
 
   require Logger
 
@@ -345,9 +344,6 @@ defmodule Logflare.Sources do
   def refresh_source_metrics(nil), do: nil
 
   def refresh_source_metrics(%Source{token: token} = source) do
-    alias Logflare.Logs.RejectedLogEvents
-    alias Number.Delimit
-
     rates = PubSubRates.Cache.get_cluster_rates(token)
     buffer = PubSubRates.Cache.get_cluster_buffers(source.id)
     inserts = PubSubRates.Cache.get_cluster_inserts(token)

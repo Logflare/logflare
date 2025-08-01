@@ -1,7 +1,8 @@
 defmodule Logflare.TestUtils do
   @moduledoc """
-  Testing utilities. Globally alised under the `TestUtils` namespace.
+  Testing utilities. Globally aliased under the `TestUtils` namespace.
   """
+
   alias GoogleApi.BigQuery.V2.Model.TableFieldSchema
   alias GoogleApi.BigQuery.V2.Model.TableSchema
 
