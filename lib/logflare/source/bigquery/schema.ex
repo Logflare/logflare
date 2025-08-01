@@ -50,7 +50,6 @@ defmodule Logflare.Source.BigQuery.Schema do
        source_token: source.token,
        bigquery_project_id: args[:bigquery_project_id],
        bigquery_dataset_id: args[:bigquery_dataset_id],
-       type_map: nil,
        field_count: 3,
        field_count_limit: args[:plan].limit_source_fields_limit,
        next_update: System.system_time(:millisecond)
@@ -66,14 +65,12 @@ defmodule Logflare.Source.BigQuery.Schema do
 
       source_schema ->
         schema = BigQuery.SchemaUtils.deep_sort_by_fields_name(source_schema.bigquery_schema)
-        type_map = BigQuery.SchemaUtils.to_typemap(schema)
-        field_count = count_fields(type_map)
+        field_count = count_fields(schema)
 
         {:noreply,
          %{
            state
-           | type_map: type_map,
-             field_count: field_count
+           | field_count: field_count
          }}
     end
   end
@@ -132,8 +129,7 @@ defmodule Logflare.Source.BigQuery.Schema do
              state.bigquery_project_id
            ) do
         {:ok, _table_info} ->
-          type_map = BigQuery.SchemaUtils.to_typemap(schema)
-          field_count = count_fields(type_map)
+          field_count = count_fields(schema)
 
           persist(state.source_id, schema)
 
@@ -142,9 +138,7 @@ defmodule Logflare.Source.BigQuery.Schema do
           {:noreply,
            %{
              state
-             | schema: schema,
-               type_map: type_map,
-               field_count: field_count,
+             | field_count: field_count,
                next_update: next_update()
            }}
 
@@ -162,17 +156,14 @@ defmodule Logflare.Source.BigQuery.Schema do
                          state.bigquery_project_id
                        ) do
                     {:ok, _table_info} ->
-                      type_map = BigQuery.SchemaUtils.to_typemap(schema)
-                      field_count = count_fields(type_map)
+                      field_count = count_fields(schema)
 
                       persist(state.source_id, schema)
 
                       {:noreply,
                        %{
                          state
-                         | schema: schema,
-                           type_map: type_map,
-                           field_count: field_count,
+                         | field_count: field_count,
                            next_update: next_update()
                        }}
 
@@ -218,8 +209,9 @@ defmodule Logflare.Source.BigQuery.Schema do
     })
   end
 
-  defp count_fields(type_map) do
-    type_map
+  defp count_fields(schema) do
+    schema
+    |> BigQuery.SchemaUtils.to_typemap()
     |> BigQuery.SchemaUtils.flatten_typemap()
     |> Enum.count()
   end
