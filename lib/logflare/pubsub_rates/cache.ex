@@ -31,7 +31,7 @@ defmodule Logflare.PubSubRates.Cache do
     }
   end
 
-  def clear() do
+  def clear do
     Cachex.clear(__MODULE__)
   end
 

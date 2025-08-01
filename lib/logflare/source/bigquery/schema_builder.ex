@@ -150,7 +150,7 @@ defmodule Logflare.Source.BigQuery.SchemaBuilder do
     |> deep_sort_by_fields_name()
   end
 
-  def initial_table_schema() do
+  def initial_table_schema do
     %Model.TableSchema{
       fields: [
         %TFS{

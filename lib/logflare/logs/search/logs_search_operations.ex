@@ -1,25 +1,23 @@
 defmodule Logflare.Logs.SearchOperations do
   @moduledoc false
-  alias Logflare.BqRepo
-  alias Logflare.DateTimeUtils
-  alias Logflare.Google.BigQuery.{GenUtils}
-  alias Logflare.Google.BigQuery.GCPConfig
-  alias Logflare.Logs.Search.Utils
-  alias Logflare.Lql
-  alias Logflare.EctoQueryBQ
-  alias Logflare.SourceSchemas
-  alias Logflare.Sources
 
   import Ecto.Query
-
-  alias Logflare.Ecto.BQQueryAPI
 
   import Logflare.Logs.SearchOperations.Helpers
   import Logflare.Logs.Search.Utils
   import Logflare.Logs.SearchQueries
-  import BQQueryAPI
+  import Logflare.Ecto.BQQueryAPI
 
+  alias Logflare.BqRepo
+  alias Logflare.DateTimeUtils
+  alias Logflare.EctoQueryBQ
+  alias Logflare.Google.BigQuery.GCPConfig
+  alias Logflare.Google.BigQuery.GenUtils
+  alias Logflare.Logs.Search.Utils
   alias Logflare.Logs.SearchOperation, as: SO
+  alias Logflare.Lql
+  alias Logflare.SourceSchemas
+  alias Logflare.Sources
 
   @type chart_period :: :day | :hour | :minute | :second
   @type dt_or_ndt :: DateTime.t() | NaiveDateTime.t()

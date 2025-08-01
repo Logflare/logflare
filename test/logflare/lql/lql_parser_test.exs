@@ -1,10 +1,12 @@
 defmodule Logflare.LqlParserTest do
   @moduledoc false
   use Logflare.DataCase, async: true
+
   alias Logflare.Lql
   alias Logflare.Lql.{Parser, ChartRule, FilterRule}
   alias Logflare.DateTimeUtils
   alias Logflare.Source.BigQuery.SchemaBuilder
+
   @default_schema SchemaBuilder.initial_table_schema()
 
   describe "parse/1" do
@@ -614,15 +616,15 @@ defmodule Logflare.LqlParserTest do
     end
   end
 
-  def today_dt() do
+  def today_dt do
     Timex.today() |> Timex.to_datetime()
   end
 
-  def now_ndt() do
+  def now_ndt do
     %{Timex.now() | microsecond: {0, 0}}
   end
 
-  def now_udt_zero_sec() do
+  def now_udt_zero_sec do
     %{now_ndt() | second: 0}
   end
 

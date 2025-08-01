@@ -98,12 +98,12 @@ defmodule LogflareWeb.OpenTelemetrySampler do
     end
   end
 
-  defp ingest_config() do
+  defp ingest_config do
     prob = Application.get_env(:logflare, :ingest_sample_ratio)
     :otel_sampler_trace_id_ratio_based.setup(prob)
   end
 
-  defp endpoint_config() do
+  defp endpoint_config do
     prob = Application.get_env(:logflare, :endpoint_sample_ratio)
     :otel_sampler_trace_id_ratio_based.setup(prob)
   end

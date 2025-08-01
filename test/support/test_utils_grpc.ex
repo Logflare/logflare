@@ -58,7 +58,7 @@ defmodule Logflare.TestUtilsGrpc do
     ]
   end
 
-  defp random_scope() do
+  defp random_scope do
     %InstrumentationScope{
       name: TestUtils.random_string(),
       version: TestUtils.random_string(),

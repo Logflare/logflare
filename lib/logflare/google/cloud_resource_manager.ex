@@ -11,12 +11,14 @@ defmodule Logflare.Google.CloudResourceManager do
   alias Logflare.Utils.Tasks
   alias Logflare.Backends.Adaptor.BigQueryAdaptor
 
-  def list_projects() do
+  require Logger
+
+  def list_projects do
     conn = GenUtils.get_conn()
     Api.Projects.cloudresourcemanager_projects_list(conn)
   end
 
-  def get_iam_policy() do
+  def get_iam_policy do
     conn = GenUtils.get_conn()
 
     body = %Model.GetIamPolicyRequest{}
@@ -181,7 +183,7 @@ defmodule Logflare.Google.CloudResourceManager do
     Logger.error("Set IAM policy unknown error: #{inspect(err)}")
   end
 
-  defp get_service_accounts() do
+  defp get_service_accounts do
     managed_service_accounts =
       if BigQueryAdaptor.managed_service_accounts_enabled?() do
         for %{email: name} <- BigQueryAdaptor.list_managed_service_accounts() do
@@ -237,7 +239,7 @@ defmodule Logflare.Google.CloudResourceManager do
     end
   end
 
-  defp build_members() do
+  defp build_members do
     emails =
       Users.list_users(paying: true, provider: :google)
       |> Users.preload_valid_google_team_users()

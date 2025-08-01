@@ -48,7 +48,7 @@ defmodule Logflare.Source.BillingWriter do
     {:noreply, %{state | billing_last_node_count: node_count}}
   end
 
-  defp write() do
+  defp write do
     every = :timer.minutes(Enum.random(45..75))
     Process.send_after(self(), :write_count, every)
   end

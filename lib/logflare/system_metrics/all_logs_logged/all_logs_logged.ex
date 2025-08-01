@@ -81,7 +81,7 @@ defmodule Logflare.SystemMetrics.AllLogsLogged do
 
   ## Private Functions
 
-  defp node_name() do
+  defp node_name do
     Atom.to_string(node())
   end
 
