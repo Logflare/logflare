@@ -268,24 +268,24 @@ defmodule Logflare.Lql.Rules.FilterRuleTest do
     test "is_shorthand_timestamp?/1 recognizes shorthand patterns" do
       # today/yesterday patterns
       today_rule = %FilterRule{shorthand: "today"}
-      assert FilterRule.is_shorthand_timestamp?(today_rule) == true
+      assert FilterRule.shorthand_timestamp?(today_rule) == true
 
       yesterday_rule = %FilterRule{shorthand: "yesterday"}
-      assert FilterRule.is_shorthand_timestamp?(yesterday_rule) == true
+      assert FilterRule.shorthand_timestamp?(yesterday_rule) == true
 
       # last@/this@ patterns
       last_rule = %FilterRule{shorthand: "last@5minutes"}
-      assert FilterRule.is_shorthand_timestamp?(last_rule) == true
+      assert FilterRule.shorthand_timestamp?(last_rule) == true
 
       this_rule = %FilterRule{shorthand: "this@hour"}
-      assert FilterRule.is_shorthand_timestamp?(this_rule) == true
+      assert FilterRule.shorthand_timestamp?(this_rule) == true
 
       # non-shorthand patterns
       non_shorthand = %FilterRule{shorthand: "other"}
-      assert FilterRule.is_shorthand_timestamp?(non_shorthand) == false
+      assert FilterRule.shorthand_timestamp?(non_shorthand) == false
 
       nil_shorthand = %FilterRule{shorthand: nil}
-      assert FilterRule.is_shorthand_timestamp?(nil_shorthand) == false
+      assert FilterRule.shorthand_timestamp?(nil_shorthand) == false
     end
 
     test "jump_timestamps/2 with empty timestamp list" do
