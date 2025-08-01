@@ -4,6 +4,7 @@ defmodule Logflare.ContextCache.CacheBuster do
   """
 
   alias Logflare.Alerting
+  alias Logflare.Rules
   alias Logflare.Utils
 
   # worker process
@@ -110,6 +111,13 @@ defmodule Logflare.ContextCache.CacheBuster do
     # sync backend across cluster for v2 sources
     Utils.Tasks.start_child(fn ->
       Logflare.Backends.sync_backend_across_cluster(backend_id)
+    end)
+  end
+
+  defp maybe_do_cross_cluster_syncing({Rules, rule_id}) do
+    # sync rule
+    Utils.Tasks.start_child(fn ->
+      Rules.sync_rule(rule_id)
     end)
   end
 

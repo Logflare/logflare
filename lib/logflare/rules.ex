@@ -103,6 +103,23 @@ defmodule Logflare.Rules do
     res
   end
 
+  @doc """
+  Ensures that the rule's backend is started.
+  If the rule does not exist, it is a noop.
+  """
+  @spec sync_rule(integer()) :: :ok
+  def sync_rule(rule_id) do
+    if rule = get_rule(rule_id) do
+      # ensure that rules backends are started
+
+      if SourceSup.rule_child_started?(rule) == false do
+        SourceSup.start_rule_child(rule)
+      end
+    end
+
+    :ok
+  end
+
   def upgrade_all_source_rules_to_next_lql_version() do
     Logger.info("Started upgrade of all source rules to next lql version...")
 
