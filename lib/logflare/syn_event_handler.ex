@@ -28,36 +28,26 @@ defmodule Logflare.SynEventHandler do
       #PID<0.111.0>
 
   """
-
-  def resolve_registry_conflict(
-        :alerting,
-        Logflare.Alerting.AlertsScheduler,
-        pid_meta1,
-        pid_meta2
-      ) do
+  def resolve_registry_conflict(scope, name, pid_meta1, pid_meta2) do
     {original, to_stop} = keep_original(pid_meta1, pid_meta2)
 
-    pid_node =
-      if is_pid(original) do
-        node(original)
+    if node() == node(to_stop) do
+      {pid1, meta1, _} = pid_meta1
+      {pid2, meta2, _} = pid_meta2
+      local_indicator = if node() == node(original), do: "local", else: "remote"
+
+      message =
+        "#{__MODULE__}  [#{node()}|registry<#{scope}>] Registry CONFLICT for name #{inspect(name)}: {#{inspect(pid1)}, #{inspect(meta1)}} vs {#{inspect(pid2)}, #{inspect(meta2)}} -> keeping #{local_indicator}: #{inspect(original)}"
+
+      if name == Logflare.Alerting.AlertsScheduler do
+        Logger.warning(message)
+      else
+        Logger.debug(message)
       end
 
-    Logger.warning(
-      "Resolving registry conflict for alerting, for Logflare.Alerting.AlertsScheduler. Keeping original #{inspect(original)} on #{inspect(pid_node)}"
-    )
+      try_to_stop_process(to_stop)
+    end
 
-    try_to_stop_process(to_stop)
-
-    original
-  end
-
-  def resolve_registry_conflict(scope, name, pid_meta1, pid_meta2) do
-    Logger.debug(
-      "Resolving registry conflict for #{scope}, #{inspect(name)}, #{inspect(pid_meta1)} and #{inspect(pid_meta2)}. Keeping #{inspect(pid_meta1)}"
-    )
-
-    {original, to_stop} = keep_original(pid_meta1, pid_meta2)
-    try_to_stop_process(to_stop)
     original
   end
 
@@ -88,6 +78,10 @@ defmodule Logflare.SynEventHandler do
     try do
       GenServer.stop(pid)
       :ok
+    rescue
+      _ ->
+        Process.exit(pid, :syn_resolve_kill)
+        :ok
     catch
       :exit, _ ->
         :noop
