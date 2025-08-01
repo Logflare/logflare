@@ -151,7 +151,6 @@ defmodule Logflare.Application do
 
   defp finch_pools do
     base = System.schedulers_online()
-    min_count = max(5, ceil(base / 10))
     http1_count = max(div(base, 4), 1)
 
     [
@@ -191,27 +190,27 @@ defmodule Logflare.Application do
          ],
          "https://http-intake.logs.datadoghq.com" => [
            protocols: [:http2],
-           count: min_count,
+           count: 1,
            start_pool_metrics?: true
          ],
          "https://http-intake.logs.us3.datadoghq.com" => [
            protocols: [:http2],
-           count: min_count,
+           count: 1,
            start_pool_metrics?: true
          ],
          "https://http-intake.logs.us5.datadoghq.com" => [
            protocols: [:http2],
-           count: min_count,
+           count: 1,
            start_pool_metrics?: true
          ],
          "https://http-intake.logs.datadoghq.eu" => [
            protocols: [:http2],
-           count: min_count,
+           count: 1,
            start_pool_metrics?: true
          ],
          "https://http-intake.logs.ap1.datadoghq.com" => [
            protocols: [:http2],
-           count: min_count,
+           count: 1,
            start_pool_metrics?: true
          ]
        }},
