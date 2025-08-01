@@ -299,7 +299,10 @@ defmodule Logflare.Logs.Vercel.NimbleLambdaMessageParser do
 
   defparsec :body, body
 
-  # Example: \nREPORT RequestId: 4d0ff57e-4022-4bfd-8689-a69e39f80f69\tDuration: 174.83 ms\tBilled Duration: 200 ms\tMemory Size: 1024 MB\tMax Memory Used: 84 MB\t\n
+  # Example:
+  # "\nREPORT RequestId: 4d0ff57e-4022-4bfd-8689-a69e39f80f69\t" <>
+  # "Duration: 174.83 ms\tBilled Duration: 200 ms\t" <>
+  # "Memory Size: 1024 MB\tMax Memory Used: 84 MB\t\n"
   def token_to_float([s]), do: String.to_float(s) |> round()
 
   number_string =
