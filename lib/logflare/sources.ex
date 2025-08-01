@@ -300,14 +300,6 @@ defmodule Logflare.Sources do
     |> Repo.preload([:rules])
   end
 
-  def put_bq_table_data(source) do
-    source
-    |> put_bq_table_id()
-    |> put_bq_table_schema()
-    |> put_bq_table_typemap()
-    |> put_bq_dataset_id()
-  end
-
   def preload_saved_searches(source) do
     import Ecto.Query
 
@@ -404,7 +396,7 @@ defmodule Logflare.Sources do
   @spec put_bq_table_schema(Source.t()) :: Source.t()
   def put_bq_table_schema(%Source{} = source) do
     bq_table_schema =
-      case get_bq_schema(source) do
+      case get_bq_schema(source) |> dbg() do
         {:ok, bq_table_schema} -> bq_table_schema
         {:error, :not_found} -> nil
         {:error, error} -> raise(error)
@@ -434,7 +426,10 @@ defmodule Logflare.Sources do
   def get_source_for_lv_param(source_id) when is_binary(source_id) or is_integer(source_id) do
     get_by_and_preload(id: source_id)
     |> preload_saved_searches()
-    |> put_bq_table_data()
+    |> put_bq_table_id()
+    |> put_bq_table_schema()
+    |> put_bq_table_typemap()
+    |> put_bq_dataset_id()
   end
 
   @spec get_table_partition_type(Source.t()) :: :timestamp | :pseudo
