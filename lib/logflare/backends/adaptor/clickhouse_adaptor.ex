@@ -15,13 +15,16 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
   alias __MODULE__.ConnectionManager
   alias __MODULE__.Pipeline
   alias __MODULE__.Provisioner
+  alias __MODULE__.QueryConnection
   alias __MODULE__.QueryTemplates
   alias Ecto.Changeset
   alias Logflare.Backends
   alias Logflare.Backends.Backend
   alias Logflare.Backends.SourceRegistry
   alias Logflare.LogEvent
+  alias Logflare.Repo
   alias Logflare.Source
+  alias Logflare.Sources
 
   @ingest_timeout 15_000
   @query_timeout 60_000
@@ -51,6 +54,8 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
             when is_tuple(value) and elem(value, 0) == :via and elem(value, 1) == Registry and
                    is_tuple(elem(value, 2))
 
+  defguardp is_list_or_map(value) when is_list(value) or is_map(value)
+
   @doc false
   def child_spec(arg) do
     %{
@@ -75,9 +80,40 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
     Supervisor.which_children(adaptor_via(args))
   end
 
-  @doc false
   @impl Logflare.Backends.Adaptor
-  def execute_query(_ident, _query), do: {:error, :not_implemented}
+  def execute_query(%Backend{} = backend, query_string) when is_non_empty_binary(query_string) do
+    execute_query(backend, {query_string, []})
+  end
+
+  def execute_query(%Backend{} = backend, {query_string, params})
+      when is_non_empty_binary(query_string) and is_list(params) do
+    source_backend = get_source_backend_for_query(backend)
+
+    case execute_ch_read_query(source_backend, query_string, params) do
+      {:ok, result} -> {:ok, result}
+      error -> error
+    end
+  end
+
+  def execute_query(%Backend{} = backend, {query_string, declared_params, input_params})
+      when is_non_empty_binary(query_string) and is_list(declared_params) and is_map(input_params) do
+    execute_query_with_params(backend, query_string, declared_params, input_params)
+  end
+
+  def execute_query(
+        %Backend{} = backend,
+        {query_string, declared_params, input_params, _endpoint_query}
+      )
+      when is_non_empty_binary(query_string) and is_list(declared_params) and is_map(input_params) do
+    execute_query_with_params(backend, query_string, declared_params, input_params)
+  end
+
+  def execute_query(_backend, %Ecto.Query{} = _query) do
+    {:error, :ecto_queries_not_supported}
+  end
+
+  @impl Logflare.Backends.Adaptor
+  def get_supported_languages, do: [:ch_sql]
 
   @doc false
   @impl Logflare.Backends.Adaptor
@@ -322,11 +358,11 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
           statement :: iodata(),
           params :: map | [term] | [row :: [term]] | iodata | Enumerable.t(),
           [Ch.query_option()]
-        ) :: {:ok, Ch.Result.t()} | {:error, Exception.t()}
+        ) :: {:ok, [map()]} | {:error, any()}
   def execute_ch_read_query(source_backend_tuple, statement, params \\ [], opts \\ [])
 
   def execute_ch_read_query({%Source{} = source, %Backend{} = backend}, statement, params, opts)
-      when is_list(params) and is_list(opts) do
+      when is_list_or_map(params) and is_list(opts) do
     ConnectionManager.ensure_connection_started(source, backend, :query)
     ConnectionManager.notify_query_activity(source, backend)
 
@@ -687,5 +723,76 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
 
         []
     end
+  end
+
+  @spec get_source_backend_for_query(Backend.t()) :: source_backend_tuple()
+  defp get_source_backend_for_query(%Backend{} = backend) do
+    case find_source_for_backend_via_registry(backend) do
+      %Source{} = source ->
+        {source, backend}
+
+      nil ->
+        case find_source_for_backend_via_database(backend) do
+          %Source{} = source ->
+            {source, backend}
+
+          nil ->
+            raise "No sources found for ClickHouse backend #{backend.id}"
+        end
+    end
+  end
+
+  @spec find_source_for_backend_via_registry(Backend.t()) :: Source.t() | nil
+  defp find_source_for_backend_via_registry(%Backend{id: backend_id, user_id: user_id}) do
+    Registry.select(SourceRegistry, [
+      {{{:"$1", {:"$2", :"$3"}}, :_, :_}, [{:==, :"$3", backend_id}], [:"$1"]}
+    ])
+    |> Enum.uniq()
+    |> Enum.find_value(fn source_id ->
+      case Sources.Cache.get_by_id(source_id) do
+        %Source{user_id: ^user_id} = source -> source
+        _ -> nil
+      end
+    end)
+  end
+
+  @spec find_source_for_backend_via_database(Backend.t()) :: Source.t() | nil
+  defp find_source_for_backend_via_database(%Backend{user_id: user_id} = backend) do
+    backend
+    |> Repo.preload(:sources)
+    |> Map.get(:sources, [])
+    |> Enum.filter(fn %Source{} = source ->
+      source.user_id == user_id
+    end)
+    |> List.first()
+  end
+
+  @spec execute_query_with_params(Backend.t(), String.t(), [String.t()], map()) ::
+          {:ok, [map()]} | {:error, any()}
+  defp execute_query_with_params(backend, query_string, declared_params, input_params) do
+    converted_query = convert_query_params(query_string, declared_params)
+    ch_params = Map.take(input_params, declared_params)
+    source_backend = get_source_backend_for_query(backend)
+
+    case execute_ch_read_query(source_backend, converted_query, ch_params) do
+      {:ok, result} -> {:ok, result}
+      error -> error
+    end
+  end
+
+  @spec convert_query_params(String.t(), [String.t()]) :: String.t()
+  defp convert_query_params(sql_statement, allowed_params)
+       when is_non_empty_binary(sql_statement) and is_list(allowed_params) do
+    allowed_set = MapSet.new(allowed_params)
+
+    # Convert `@param` syntax to ClickHouse `{param:String}` syntax
+    Regex.replace(~r/@(\w+)/, sql_statement, fn match, param ->
+      if MapSet.member?(allowed_set, param) do
+        "{#{param}:String}"
+      else
+        Logger.warning("SQL parameter `@#{param}` not in allowed list")
+        match
+      end
+    end)
   end
 end

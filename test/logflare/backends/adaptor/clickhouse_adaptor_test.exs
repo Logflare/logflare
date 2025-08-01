@@ -184,4 +184,37 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptorTest do
     |> Enum.map(fn _ -> Enum.random(alphanumeric) end)
     |> List.to_string()
   end
+
+  describe "execute_query/2" do
+    setup do
+      {source, backend, cleanup_fn} = setup_clickhouse_test()
+      on_exit(cleanup_fn)
+
+      {:ok, _pid} = ClickhouseAdaptor.start_link({source, backend})
+
+      [source: source, backend: backend]
+    end
+
+    test "executes simple queries using backend-only interface", %{backend: backend} do
+      result = ClickhouseAdaptor.execute_query(backend, "SELECT 1 as test_value")
+
+      assert {:ok, [%{"test_value" => 1}]} = result
+    end
+
+    test "converts `@param` syntax to ClickHouse `{param:String}` format", %{backend: backend} do
+      result =
+        ClickhouseAdaptor.execute_query(
+          backend,
+          {"SELECT @test_value as param_result", ["test_value"], %{"test_value" => "hello"}}
+        )
+
+      assert {:ok, [%{"param_result" => "hello"}]} = result
+    end
+
+    test "handles query errors gracefully", %{backend: backend} do
+      result = ClickhouseAdaptor.execute_query(backend, "INVALID SQL SYNTAX")
+
+      assert {:error, _error_message} = result
+    end
+  end
 end
