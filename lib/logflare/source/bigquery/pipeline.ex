@@ -133,14 +133,19 @@ defmodule Logflare.Source.BigQuery.Pipeline do
       }
     )
 
+    attributes =
+      for {k, v} <- [
+            source_id: context.source_id,
+            source_token: context.source_token,
+            backend_id: context.backend_id,
+            ingest_batch_size: batch_info.size,
+            ingest_batch_trigger: batch_info.trigger
+          ],
+          v != nil,
+          do: {k, v}
+
     OpenTelemetry.Tracer.with_span :bigquery_pipeline, %{
-      attributes: %{
-        source_id: context.source_id,
-        source_token: context.source_token,
-        backend_id: context.backend_id,
-        ingest_batch_size: batch_info.size,
-        ingest_batch_trigger: batch_info.trigger
-      }
+      attributes: Map.new(attributes)
     } do
       stream_batch(context, messages)
     end
