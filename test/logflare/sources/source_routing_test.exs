@@ -1,9 +1,9 @@
 defmodule Logflare.Logs.SourceRoutingTest do
-  @moduledoc false
   use Logflare.DataCase
+
   alias Logflare.LogEvent, as: LE
   alias Logflare.Logs.SourceRouting
-  alias Logflare.Lql.FilterRule, as: FR
+  alias Logflare.Lql.Rules.FilterRule
   alias Logflare.Rules
   alias Logflare.Rules.Rule
   alias Logflare.Source
@@ -20,7 +20,7 @@ defmodule Logflare.Logs.SourceRoutingTest do
         %Rule{
           lql_string: "",
           lql_filters: [
-            %FR{
+            %FilterRule{
               value: value,
               operator: :list_includes,
               modifiers: %{},
@@ -60,7 +60,7 @@ defmodule Logflare.Logs.SourceRoutingTest do
         %Rule{
           lql_string: "",
           lql_filters: [
-            %FR{
+            %FilterRule{
               value: value,
               operator: :list_includes_regexp,
               modifiers: %{},
@@ -95,7 +95,7 @@ defmodule Logflare.Logs.SourceRoutingTest do
         %Rule{
           lql_string: "",
           lql_filters: [
-            %FR{
+            %FilterRule{
               value: value,
               operator: :string_contains,
               modifiers: %{},
@@ -135,7 +135,7 @@ defmodule Logflare.Logs.SourceRoutingTest do
         %Rule{
           lql_string: "",
           lql_filters: [
-            %Logflare.Lql.FilterRule{
+            %FilterRule{
               modifiers: %{},
               operator: :string_contains,
               path: "event_message",
@@ -163,7 +163,7 @@ defmodule Logflare.Logs.SourceRoutingTest do
         %Rule{
           lql_string: "",
           lql_filters: [
-            %FR{
+            %FilterRule{
               value: value,
               operator: :"~",
               modifiers: %{},
@@ -195,7 +195,7 @@ defmodule Logflare.Logs.SourceRoutingTest do
       rule = %Rule{
         lql_string: "",
         lql_filters: [
-          %FR{
+          %FilterRule{
             value: "123",
             operator: :"~",
             modifiers: %{},
@@ -216,7 +216,7 @@ defmodule Logflare.Logs.SourceRoutingTest do
         %Rule{
           lql_string: "",
           lql_filters: [
-            %FR{
+            %FilterRule{
               value: value,
               operator: operator,
               modifiers: %{},
@@ -256,13 +256,13 @@ defmodule Logflare.Logs.SourceRoutingTest do
       rule = %Rule{
         lql_string: "",
         lql_filters: [
-          %FR{
+          %FilterRule{
             value: 0,
             operator: :=,
             modifiers: %{},
             path: "metadata.field1"
           },
-          %FR{
+          %FilterRule{
             value: "string",
             operator: :"~",
             modifiers: %{},
@@ -294,13 +294,13 @@ defmodule Logflare.Logs.SourceRoutingTest do
       rule = %Rule{
         lql_string: "",
         lql_filters: [
-          %FR{
+          %FilterRule{
             value: 0,
             operator: :=,
             modifiers: %{negate: true},
             path: "metadata.field1"
           },
-          %FR{
+          %FilterRule{
             value: "string",
             operator: :"~",
             modifiers: %{},
@@ -332,13 +332,13 @@ defmodule Logflare.Logs.SourceRoutingTest do
       rule = %Rule{
         lql_string: "",
         lql_filters: [
-          %FR{
+          %FilterRule{
             value: "info",
             operator: :=,
             modifiers: %{negate: true},
             path: "metadata.level"
           },
-          %FR{
+          %FilterRule{
             value: "error",
             operator: :=,
             modifiers: %{negate: true},
@@ -409,7 +409,7 @@ defmodule Logflare.Logs.SourceRoutingTest do
       rule = %Rule{
         lql_string: "",
         lql_filters: [
-          %FR{
+          %FilterRule{
             value: "value",
             operator: :=,
             modifiers: %{},
@@ -446,7 +446,7 @@ defmodule Logflare.Logs.SourceRoutingTest do
       rule = %Rule{
         lql_string: "",
         lql_filters: [
-          %FR{
+          %FilterRule{
             value: "value",
             operator: :=,
             modifiers: %{},
@@ -465,7 +465,7 @@ defmodule Logflare.Logs.SourceRoutingTest do
         %Rule{
           lql_string: "",
           lql_filters: [
-            %FR{
+            %FilterRule{
               operator: :range,
               values: [lvalue, rvalue],
               modifiers: modifiers,
@@ -507,7 +507,7 @@ defmodule Logflare.Logs.SourceRoutingTest do
         %Rule{
           lql_string: "",
           lql_filters: [
-            %FR{
+            %FilterRule{
               value: value,
               operator: :list_includes,
               modifiers: %{},
@@ -592,7 +592,7 @@ defmodule Logflare.Logs.SourceRoutingTest do
       rule = %Rule{
         lql_string: "",
         lql_filters: [
-          %FR{
+          %FilterRule{
             value: "value",
             operator: :=,
             modifiers: %{},
@@ -629,7 +629,7 @@ defmodule Logflare.Logs.SourceRoutingTest do
       rule = %Rule{
         lql_string: "",
         lql_filters: [
-          %FR{
+          %FilterRule{
             value: "value",
             operator: :=,
             modifiers: %{},
