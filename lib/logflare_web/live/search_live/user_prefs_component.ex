@@ -2,13 +2,37 @@ defmodule LogflareWeb.Search.UserPreferencesComponent do
   @moduledoc """
   Responsible for user preference mangament
   """
+  use LogflareWeb, :live_component
+
   alias Logflare.Users
   alias Logflare.Users.UserPreferences
   alias Logflare.TeamUsers.TeamUser
   alias Logflare.DateTimeUtils
-  alias LogflareWeb.SearchView
-  use LogflareWeb, :live_component
+
   @default_timezone "Etc/UTC"
+
+  @impl true
+  def render(assigns) do
+    ~H"""
+    <div>
+      <%= if @user_type == :team_user do %>
+        <div>Set the local timezone for your team <%= @team_user.team.name %> account</div>
+      <% end %>
+      <%= if @user_type == :user do %>
+        <div>Set your local timezone for your account <%= @user.email %></div>
+      <% end %>
+      <.form :let={f} for={@user_preferences} action="#" id="user-tz-form" phx-submit="update-preferences" phx-target={@myself}>
+        <div class="form-group">
+          <%= hidden_input(f, :id) %>
+          <%= label(f, :timezone, "Timezone", class: "col-form-label") %>
+          <%= select(f, :timezone, @timezones_form_options, class: "form-control") %>
+          <%= error_tag(f, :timezone) %>
+        </div>
+        <%= submit("Update", phx_disable_with: "Updating...", class: "btn btn-primary") %>
+      </.form>
+    </div>
+    """
+  end
 
   @impl true
   def mount(socket) do
@@ -98,11 +122,6 @@ defmodule LogflareWeb.Search.UserPreferencesComponent do
       end)
 
     {:noreply, socket}
-  end
-
-  @impl true
-  def render(assigns) do
-    SearchView.render("user_prefs_component.html", assigns)
   end
 
   def build_timezones_select_form_options() do
