@@ -48,8 +48,8 @@ defmodule LogflareWeb.SearchLive.LogEventComponents do
         <%= live_modal_show_link(component: LogflareWeb.Search.LogEventViewerComponent, modal_id: :log_event_viewer, title: "Log Event", phx_value_log_event_id: @log.id, phx_value_log_event_timestamp: @log.body["timestamp"], phx_value_lql:  @query_string) do %>
           <span>view</span>
         <% end %>
-        <%= live_modal_show_link(component: LogflareWeb.Search.LogEventViewerComponent, modal_id: :log_event_peek_viewer, title: "Peek Around Event", phx_value_log_event_id: @log.id, phx_value_log_event_timestamp: @log.body["timestamp"], phx_value_lql:  @query_string) do %>
-          <span>peek</span>
+        <%= live_modal_show_link(component: LogflareWeb.SearchLive.EventContextComponent, modal_id: :log_event_context_viewer, title: "View Event Context", phx_value_log_event_id: @log.id, phx_value_log_event_timestamp: @log.body["timestamp"], phx_value_lql:  @query_string) do %>
+          <span>context</span>
         <% end %>
         <.link class="tw-text-[0.65rem]  group-hover:tw-visible tw-invisible" phx-click={JS.dispatch("logflare:copy-to-clipboard", detail: %{text: "#{@formatted_timestamp}    #{@message}"})} data-toggle="tooltip" data-placement="top" title="Copy to clipboard">
           copy
