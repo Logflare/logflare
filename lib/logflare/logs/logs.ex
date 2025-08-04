@@ -2,13 +2,15 @@ defmodule Logflare.Logs do
   @moduledoc false
   require Logger
 
-  alias Logflare.LogEvent, as: LE
-  alias Logflare.Logs.{RejectedLogEvents}
-  alias Logflare.{SystemMetrics, Source, Sources}
-  alias Logflare.Logs.SourceRouting
-  alias Logflare.Logs.IngestTypecasting
-  alias Logflare.Rules.Rule
   alias Logflare.Backends.IngestEventQueue
+  alias Logflare.LogEvent, as: LE
+  alias Logflare.Logs.IngestTypecasting
+  alias Logflare.Logs.RejectedLogEvents
+  alias Logflare.Logs.SourceRouting
+  alias Logflare.Rules.Rule
+  alias Logflare.Source
+  alias Logflare.Sources
+  alias Logflare.SystemMetrics
 
   @spec ingest_logs(list(map), Source.t()) :: :ok | {:error, term}
   def ingest_logs(log_params_batch, %Source{rules: rules} = source) when is_list(rules) do

@@ -25,13 +25,11 @@ defmodule Logflare.Logs.Validators.BigQuerySchemaChange do
   end
 
   def try_merge(metadata_flatmap, schema_flatmap) do
-    try do
-      merge_flat_typemaps(metadata_flatmap, schema_flatmap)
-      :ok
-    rescue
-      e ->
-        {:error, Exception.message(e)}
-    end
+    merge_flat_typemaps(metadata_flatmap, schema_flatmap)
+    :ok
+  rescue
+    e ->
+      {:error, Exception.message(e)}
   end
 
   def merge_flat_typemaps(nil, original), do: original

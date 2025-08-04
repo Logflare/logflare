@@ -2,7 +2,6 @@ defmodule Logflare.Logs.SearchOperationsTest do
   use Logflare.DataCase, async: true
 
   alias Logflare.Logs.SearchOperations
-  alias GoogleApi.BigQuery.V2.Model.TableFieldSchema, as: TFS
 
   describe "unnesting metadata if present" do
     setup do

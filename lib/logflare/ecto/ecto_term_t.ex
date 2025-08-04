@@ -17,11 +17,9 @@ defmodule Ecto.Term do
   def load(""), do: {:ok, ""}
 
   def load(value) do
-    try do
-      {:ok, :erlang.binary_to_term(value)}
-    rescue
-      e in ArgumentError -> {:error, e}
-    end
+    {:ok, :erlang.binary_to_term(value)}
+  rescue
+    e in ArgumentError -> {:error, e}
   end
 
   @spec dump(any()) :: {:ok, binary() | nil}

@@ -50,11 +50,9 @@ defmodule Ecto.Regex do
 
   @spec load(any) :: :error | {:ok, any}
   def load(value) do
-    try do
-      {:ok, :erlang.binary_to_term(value)}
-    rescue
-      e in ArgumentError -> {:error, e}
-    end
+    {:ok, :erlang.binary_to_term(value)}
+  rescue
+    e in ArgumentError -> {:error, e}
   end
 
   def dump(%Regex{} = value) do
