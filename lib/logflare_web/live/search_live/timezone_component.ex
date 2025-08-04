@@ -2,6 +2,8 @@ defmodule LogflareWeb.SearchLive.TimezoneComponent do
   use LogflareWeb, :html
   use Phoenix.Component
 
+  alias Logflare.DateTimeUtils
+
   attr :search_timezone, :string, required: true
   attr :user_preferences, :map, required: true
 
@@ -38,7 +40,6 @@ defmodule LogflareWeb.SearchLive.TimezoneComponent do
   end
 
   defp user_timezone(preferences), do: preferences && Map.get(preferences, :timezone)
-
 
   defp build_timezones_select_form_options() do
     Timex.timezones()
