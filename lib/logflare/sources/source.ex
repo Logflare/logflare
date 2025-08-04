@@ -1,5 +1,6 @@
 defmodule Logflare.Source do
   @moduledoc false
+
   use TypedEctoSchema
 
   import Ecto.Changeset
@@ -32,11 +33,13 @@ defmodule Logflare.Source do
              :transform_copy_fields,
              :bigquery_clustering_fields
            ]}
+
   defp env_dataset_id_append,
     do: Application.get_env(:logflare, Logflare.Google)[:dataset_id_append]
 
   defmodule Metrics do
     @moduledoc false
+
     use TypedEctoSchema
 
     @derive {Jason.Encoder,
@@ -69,7 +72,9 @@ defmodule Logflare.Source do
 
   defmodule Notifications do
     @moduledoc false
+
     use Ecto.Schema
+
     @primary_key false
     @derive {Jason.Encoder,
              only: [
@@ -136,6 +141,7 @@ defmodule Logflare.Source do
     field(:retention_days, :integer, virtual: true)
     field(:transform_copy_fields, :string)
     field(:bigquery_clustering_fields, :string)
+    field(:default_ingest_enabled?, :boolean, source: :default_ingest_enabled, default: false)
     # Causes a shitstorm
     # field :bigquery_schema, Ecto.Term
 
@@ -189,7 +195,8 @@ defmodule Logflare.Source do
       :suggested_keys,
       :retention_days,
       :transform_copy_fields,
-      :disable_tailing
+      :disable_tailing,
+      :default_ingest_enabled?
     ])
     |> cast_embed(:notifications, with: &Notifications.changeset/2)
     |> put_single_tenant_postgres_changes()
@@ -218,7 +225,8 @@ defmodule Logflare.Source do
       :suggested_keys,
       :retention_days,
       :transform_copy_fields,
-      :disable_tailing
+      :disable_tailing,
+      :default_ingest_enabled?
     ])
     |> cast_embed(:notifications, with: &Notifications.changeset/2)
     |> put_single_tenant_postgres_changes()

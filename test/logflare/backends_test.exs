@@ -82,7 +82,7 @@ defmodule Logflare.BackendsTest do
           default_ingest?: true
         )
 
-      results = Backends.list_backends(default_ingest: true, user_id: user.id)
+      results = Backends.list_backends(default_ingest?: true, user_id: user.id)
       assert length(results) == 2
 
       result_ids = Enum.map(results, & &1.id) |> Enum.sort()
@@ -130,7 +130,7 @@ defmodule Logflare.BackendsTest do
 
       assert {:ok, _} = Backends.update_source_backends(source, [backend1, backend2, backend3])
 
-      results = Backends.list_backends(source_id: source.id, default_ingest: true)
+      results = Backends.list_backends(source_id: source.id, default_ingest?: true)
       assert length(results) == 2
 
       result_ids = Enum.map(results, & &1.id) |> Enum.sort()
