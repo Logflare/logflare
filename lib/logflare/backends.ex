@@ -73,6 +73,10 @@ defmodule Logflare.Backends do
 
         where(q, [b], b.metadata == ^normalized)
 
+      # filter by `default_ingest` flag
+      {:default_ingest, true}, q ->
+        where(q, [b], b.default_ingest? == true)
+
       _, q ->
         q
     end)

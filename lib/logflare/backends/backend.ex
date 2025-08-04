@@ -45,6 +45,7 @@ defmodule Logflare.Backends.Backend do
 
     field(:register_for_ingest, :boolean, virtual: true, default: true)
     field :metadata, :map
+    field :default_ingest?, :boolean, source: :default_ingest, default: false
     timestamps()
   end
 
@@ -52,10 +53,11 @@ defmodule Logflare.Backends.Backend do
 
   def changeset(backend, attrs) do
     backend
-    |> cast(attrs, [:type, :config, :user_id, :name, :description, :metadata])
+    |> cast(attrs, [:type, :config, :user_id, :name, :description, :metadata, :default_ingest?])
     |> validate_required([:user_id, :type, :config, :name])
     |> validate_inclusion(:type, Map.keys(@adaptor_mapping))
     |> validate_config()
+    |> validate_default_ingest()
     |> do_config_change()
   end
 
@@ -82,6 +84,23 @@ defmodule Logflare.Backends.Backend do
   end
 
   defp validate_config(changeset), do: changeset
+
+  defp validate_default_ingest(%Changeset{changes: %{default_ingest?: true}} = changeset) do
+    type = get_field(changeset, :type)
+    backend = %Backend{type: type}
+
+    if Adaptor.supports_default_ingest?(backend) do
+      changeset
+    else
+      add_error(
+        changeset,
+        :default_ingest?,
+        "Backend type #{type} does not support default ingest"
+      )
+    end
+  end
+
+  defp validate_default_ingest(changeset), do: changeset
 
   @spec child_spec(Source.t(), Backend.t()) :: map()
   defdelegate child_spec(source, backend), to: Adaptor
