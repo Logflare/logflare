@@ -14,7 +14,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.Pipeline do
   @producer_concurrency 1
   @processor_concurrency 5
   @batcher_concurrency 5
-  @batch_size 350
+  @batch_size 1_000
 
   @doc false
   def child_spec(arg) do
