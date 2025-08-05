@@ -141,7 +141,12 @@ defmodule Logflare.Source do
     field(:retention_days, :integer, virtual: true)
     field(:transform_copy_fields, :string)
     field(:bigquery_clustering_fields, :string)
-    field(:default_ingest_enabled?, :boolean, source: :default_ingest_enabled, default: false)
+
+    field(:default_ingest_backend_enabled?, :boolean,
+      source: :default_ingest_backend_enabled,
+      default: false
+    )
+
     # Causes a shitstorm
     # field :bigquery_schema, Ecto.Term
 
@@ -196,7 +201,7 @@ defmodule Logflare.Source do
       :retention_days,
       :transform_copy_fields,
       :disable_tailing,
-      :default_ingest_enabled?
+      :default_ingest_backend_enabled?
     ])
     |> cast_embed(:notifications, with: &Notifications.changeset/2)
     |> put_single_tenant_postgres_changes()
@@ -226,7 +231,7 @@ defmodule Logflare.Source do
       :retention_days,
       :transform_copy_fields,
       :disable_tailing,
-      :default_ingest_enabled?
+      :default_ingest_backend_enabled?
     ])
     |> cast_embed(:notifications, with: &Notifications.changeset/2)
     |> put_single_tenant_postgres_changes()

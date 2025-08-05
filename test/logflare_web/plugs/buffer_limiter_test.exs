@@ -122,7 +122,7 @@ defmodule LogflareWeb.Plugs.BufferLimiterTest do
   describe "default ingest feature" do
     setup do
       user = insert(:user)
-      source = insert(:source, user: user, default_ingest_enabled?: true)
+      source = insert(:source, user: user, default_ingest_backend_enabled?: true)
 
       backend1 =
         insert(:backend,
@@ -205,10 +205,10 @@ defmodule LogflareWeb.Plugs.BufferLimiterTest do
       assert conn.status == 429
     end
 
-    test "falls back to regular buffer check when default_ingest_enabled? is false", %{
+    test "falls back to regular buffer check when default_ingest_backend_enabled? is false", %{
       conn: conn
     } do
-      source = insert(:source, user: insert(:user), default_ingest_enabled?: false)
+      source = insert(:source, user: insert(:user), default_ingest_backend_enabled?: false)
 
       table_key = {source.id, nil, self()}
       IngestEventQueue.upsert_tid(table_key)

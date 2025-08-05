@@ -21,13 +21,16 @@ defmodule LogflareWeb.Plugs.BufferLimiter do
   @doc """
   Checks buffer capacity and applies rate limiting based on source configuration.
 
-  - For sources with `default_ingest_enabled?: true`, only considers default ingest backends
+  - For sources with `default_ingest_backend_enabled?: true`, only considers default ingest backends
   - For standard sources, considers all backends when determining buffer fullness
   """
   @spec call(Plug.Conn.t(), opts()) :: Plug.Conn.t()
   def call(conn, opts)
 
-  def call(%{assigns: %{source: %Source{default_ingest_enabled?: true} = source}} = conn, _opts) do
+  def call(
+        %{assigns: %{source: %Source{default_ingest_backend_enabled?: true} = source}} = conn,
+        _opts
+      ) do
     if Backends.cached_local_pending_buffer_full_default_ingest?(source) do
       reject_request(conn)
     else
