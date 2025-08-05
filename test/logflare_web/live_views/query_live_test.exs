@@ -12,7 +12,9 @@ defmodule LogflareWeb.QueryLiveTest do
   describe "query page" do
     test "run a valid query", %{conn: conn} do
       GoogleApi.BigQuery.V2.Api.Jobs
-      |> expect(:bigquery_jobs_query, 1, fn _conn, _proj_id, _opts ->
+      |> expect(:bigquery_jobs_query, 1, fn _conn, _proj_id, opts ->
+        assert [body: %_{useQueryCache: false}] = opts
+
         {:ok, TestUtils.gen_bq_response([%{"ts" => "some-data"}])}
       end)
 

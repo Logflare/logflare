@@ -174,7 +174,8 @@ defmodule LogflareWeb.EndpointsLive do
 
     case Endpoints.run_query_string(user, {:bq_sql, query_string},
            params: query_params,
-           parsed_labels: parsed_labels
+           parsed_labels: parsed_labels,
+           use_query_cache: false
          ) do
       {:ok, %{rows: rows, total_bytes_processed: total_bytes_processed}} ->
         {:noreply,

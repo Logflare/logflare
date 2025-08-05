@@ -47,12 +47,13 @@ defmodule Logflare.BqRepo do
       end)
 
     override = Map.put(override, :labels, cleaned_labels)
+    use_query_cache = Keyword.get(opts, :use_query_cache, @use_query_cache)
 
     query_request =
       %{
         query: sql,
         useLegacySql: false,
-        useQueryCache: @use_query_cache,
+        useQueryCache: use_query_cache,
         parameterMode: "POSITIONAL",
         queryParameters: params,
         jobCreationMode: "JOB_CREATION_OPTIONAL",

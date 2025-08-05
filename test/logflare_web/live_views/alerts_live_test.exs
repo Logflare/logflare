@@ -281,7 +281,8 @@ defmodule LogflareWeb.AlertsLiveTest do
 
     test "rows are displayed", %{conn: conn, alert_query: alert_query} do
       GoogleApi.BigQuery.V2.Api.Jobs
-      |> expect(:bigquery_jobs_query, 1, fn _conn, _proj_id, _opts ->
+      |> expect(:bigquery_jobs_query, 1, fn _conn, _proj_id, opts ->
+        assert [body: %_{useQueryCache: false}] = opts
         {:ok, TestUtils.gen_bq_response([%{"testing" => "results-123"}])}
       end)
 

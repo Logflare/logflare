@@ -380,11 +380,12 @@ defmodule Logflare.Alerting do
   {:ok, [%{"user_id" => "my-user-id"}]}
   ```
   """
-  @spec execute_alert_query(AlertQuery.t()) :: {:ok, [map()]}
-  def execute_alert_query(%AlertQuery{user: %User{}} = alert_query) do
+  @spec execute_alert_query(AlertQuery.t(), use_query_cache: boolean) :: {:ok, [map()]}
+  def execute_alert_query(%AlertQuery{user: %User{}} = alert_query, opts \\ []) do
     Logger.debug("Executing AlertQuery | #{alert_query.name} | #{alert_query.id}")
 
     endpoints = Endpoints.list_endpoints_by(user_id: alert_query.user_id)
+    use_query_cache = Keyword.get(opts, :use_query_cache, true)
 
     alerts =
       list_alert_queries_by_user_id(alert_query.user_id)
@@ -407,6 +408,7 @@ defmodule Logflare.Alerting do
              parameterMode: "NAMED",
              maxResults: 1000,
              location: alert_query.user.bigquery_dataset_location,
+             use_query_cache: use_query_cache,
              labels: %{
                "alert_id" => alert_query.id
              }

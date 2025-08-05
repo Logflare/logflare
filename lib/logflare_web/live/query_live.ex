@@ -249,7 +249,10 @@ defmodule LogflareWeb.QueryLive do
         %_{type: :postgres} -> :pg_sql
       end
 
-    case Endpoints.run_query_string(user, {type, query_string}, params: %{}) do
+    case Endpoints.run_query_string(user, {type, query_string},
+           params: %{},
+           use_query_cache: false
+         ) do
       {:ok, %{rows: rows, total_bytes_processed: total_bytes_processed}} ->
         socket
         |> put_flash(:info, "Ran query successfully")

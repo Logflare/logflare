@@ -176,7 +176,7 @@ defmodule LogflareWeb.AlertsLive do
         _params,
         %{assigns: %{alert: %_{} = alert}} = socket
       ) do
-    with {:ok, result} <- Alerting.execute_alert_query(alert) do
+    with {:ok, result} <- Alerting.execute_alert_query(alert, use_query_cache: false) do
       {:noreply,
        socket
        |> assign(:query_result_rows, result.rows)
