@@ -164,7 +164,10 @@ defmodule LogflareWeb.EndpointsLive do
     query_string = Map.get(payload, "query")
     query_params = Map.get(payload, "params", %{})
 
-    case Endpoints.run_query_string(user, {:bq_sql, query_string}, params: query_params) do
+    case Endpoints.run_query_string(user, {:bq_sql, query_string},
+           params: query_params,
+           use_query_cache: false
+         ) do
       {:ok, %{rows: rows, total_bytes_processed: total_bytes_processed}} ->
         {:noreply,
          socket

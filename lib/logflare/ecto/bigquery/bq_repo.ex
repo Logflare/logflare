@@ -32,12 +32,13 @@ defmodule Logflare.BqRepo do
       when not is_nil(project_id) and is_binary(sql) and is_list(params) and is_list(opts) do
     override = Map.new(opts)
     %Plan{name: plan} = Billing.Cache.get_plan_by_user(user)
+    use_query_cache = Keyword.get(opts, :use_query_cache, @use_query_cache)
 
     query_request =
       %{
         query: sql,
         useLegacySql: false,
-        useQueryCache: @use_query_cache,
+        useQueryCache: use_query_cache,
         parameterMode: "POSITIONAL",
         queryParameters: params,
         jobCreationMode: "JOB_CREATION_OPTIONAL",
