@@ -4,10 +4,18 @@ defmodule LogflareWeb.Source.SearchLV do
   """
   use LogflareWeb, :live_view
 
+  require Logger
+
+  import Logflare.Lql.Rules
+  import LogflareWeb.ModalLiveHelpers
+  import LogflareWeb.SearchLive.TimezoneComponent
+  import LogflareWeb.SearchLV.Utils
+
   alias Logflare.Billing
   alias Logflare.Logs.SearchQueryExecutor
+  alias Logflare.Logs.SearchUtils
   alias Logflare.Lql
-  alias Logflare.Lql.ChartRule
+  alias Logflare.Lql.Rules.ChartRule
   alias Logflare.SavedSearches
   alias Logflare.Sources
   alias Logflare.TeamUsers
@@ -17,14 +25,6 @@ defmodule LogflareWeb.Source.SearchLV do
   alias LogflareWeb.Router.Helpers, as: Routes
   alias LogflareWeb.SearchView
 
-  import LogflareWeb.ModalLiveHelpers
-  import Logflare.Lql.Utils
-
-  import Logflare.Logs.Search.Utils
-  import LogflareWeb.SearchLV.Utils
-  import LogflareWeb.SearchLive.TimezoneComponent
-
-  require Logger
   embed_templates "templates/*"
 
   @tail_search_interval 500
@@ -56,7 +56,7 @@ defmodule LogflareWeb.Source.SearchLV do
       source: source,
       user: user,
       team_user: team_user,
-      search_tip: gen_search_tip(),
+      search_tip: SearchUtils.gen_search_tip(),
       user_timezone_from_connect_params: nil,
       search_timezone: Map.get(params, "tz", "Etc/UTC"),
       # loading states
@@ -119,7 +119,7 @@ defmodule LogflareWeb.Source.SearchLV do
 
     socket =
       with {:ok, lql_rules} <- Lql.decode(qs, source.bq_table_schema),
-           lql_rules = Lql.Utils.put_new_chart_rule(lql_rules, Lql.Utils.default_chart_rule()),
+           lql_rules = Lql.Rules.put_new_chart_rule(lql_rules, Lql.Rules.default_chart_rule()),
            {:ok, socket} <- check_suggested_keys(lql_rules, source, socket) do
         qs = Lql.encode!(lql_rules)
 
@@ -260,8 +260,8 @@ defmodule LogflareWeb.Source.SearchLV do
 
     timestamp_rules =
       rules
-      |> Lql.Utils.get_ts_filters()
-      |> Lql.Utils.get_filter_rules()
+      |> Lql.Rules.get_timestamp_filters()
+      |> Lql.Rules.get_filter_rules()
 
     if Enum.empty?(timestamp_rules) do
       socket =
@@ -278,7 +278,7 @@ defmodule LogflareWeb.Source.SearchLV do
       timestamp_rules =
         Enum.map(timestamp_rules, fn
           lql_rule ->
-            if Lql.Utils.timestamp_filter_rule_is_shorthand?(lql_rule) do
+            if Lql.Rules.timestamp_filter_rule_is_shorthand?(lql_rule) do
               Map.replace!(
                 lql_rule,
                 :values,
@@ -291,8 +291,8 @@ defmodule LogflareWeb.Source.SearchLV do
             end
         end)
 
-      rules = Lql.Utils.update_timestamp_rules(rules, timestamp_rules)
-      new_rules = Lql.Utils.jump_timestamp(rules, String.to_atom(direction))
+      rules = Lql.Rules.update_timestamp_rules(rules, timestamp_rules)
+      new_rules = Lql.Rules.jump_timestamp(rules, String.to_atom(direction))
       qs = Lql.encode!(new_rules)
 
       socket =
@@ -350,15 +350,15 @@ defmodule LogflareWeb.Source.SearchLV do
     socket = assign(socket, :querystring, new_qs)
 
     prev_chart_rule =
-      Lql.Utils.get_chart_rule(prev_assigns.lql_rules) || Lql.Utils.default_chart_rule()
+      Lql.Rules.get_chart_rule(prev_assigns.lql_rules) || Lql.Rules.default_chart_rule()
 
     socket =
       if new_chart_agg != prev_chart_rule.aggregate or
            new_chart_period != prev_chart_rule.period do
         lql_rules =
-          Lql.Utils.update_chart_rule(
+          Lql.Rules.update_chart_rule(
             prev_assigns.lql_rules,
-            Lql.Utils.default_chart_rule(),
+            Lql.Rules.default_chart_rule(),
             %{aggregate: new_chart_agg, period: new_chart_period}
           )
 
@@ -390,11 +390,11 @@ defmodule LogflareWeb.Source.SearchLV do
 
     {:ok, ts_rules} = Lql.decode(ts_qs, assigns.source.bq_table_schema)
 
-    lql_list = Lql.Utils.update_timestamp_rules(assigns.lql_rules, ts_rules)
+    lql_list = Lql.Rules.update_timestamp_rules(assigns.lql_rules, ts_rules)
 
     lql_list =
       if period do
-        Lql.Utils.put_chart_period(lql_list, String.to_existing_atom(period))
+        Lql.Rules.put_chart_period(lql_list, String.to_existing_atom(period))
       else
         lql_list
       end
@@ -610,7 +610,7 @@ defmodule LogflareWeb.Source.SearchLV do
 
     case Lql.decode(qs, bq_table_schema) do
       {:ok, lql_rules} ->
-        lql_rules = Lql.Utils.put_new_chart_rule(lql_rules, Lql.Utils.default_chart_rule())
+        lql_rules = Lql.Rules.put_new_chart_rule(lql_rules, Lql.Rules.default_chart_rule())
         qs = Lql.encode!(lql_rules)
 
         socket

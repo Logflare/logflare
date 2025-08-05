@@ -2,15 +2,16 @@ defmodule Logflare.Logs.SearchQueryExecutor do
   @moduledoc """
   Handles all search queries for the specific source
   """
-  use GenServer
 
+  use GenServer
+  require Logger
+
+  import LogflareWeb.SearchLV.Utils
+
+  alias Logflare.LogEvent
   alias Logflare.Logs.Search
   alias Logflare.Logs.SearchOperation, as: SO
-  import LogflareWeb.SearchLV.Utils
-  alias Logflare.LogEvent
   alias Logflare.Utils.Tasks
-
-  require Logger
 
   @query_timeout 60_000
 
