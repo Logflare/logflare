@@ -31,7 +31,8 @@ defmodule Logflare.Source do
              :backends,
              :retention_days,
              :transform_copy_fields,
-             :bigquery_clustering_fields
+             :bigquery_clustering_fields,
+             :default_ingest_backend_enabled?
            ]}
 
   defp env_dataset_id_append,
