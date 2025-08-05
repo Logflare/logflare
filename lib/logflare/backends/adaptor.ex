@@ -96,14 +96,36 @@ defmodule Logflare.Backends.Adaptor do
   end
 
   @doc """
+  Returns true if a given `Backend` supports being used for default ingest.
+
+  Default to false.
+  """
+  @spec supports_default_ingest?(Backend.t()) :: boolean()
+  def supports_default_ingest?(backend) do
+    adaptor = get_adaptor(backend)
+
+    if function_exported?(adaptor, :supports_default_ingest?, 0) do
+      adaptor.supports_default_ingest?()
+    else
+      false
+    end
+  end
+
+  @doc """
   Sends an alert notification for a given backend.
   """
   @callback send_alert(Backend.t(), AlertQuery.t(), [term()]) :: :ok | {:error, term()}
+
+  @doc """
+  Indicates if this adaptor supports being a default ingest backend.
+  """
+  @callback supports_default_ingest?() :: boolean()
 
   @optional_callbacks pre_ingest: 3,
                       transform_config: 1,
                       format_batch: 1,
                       format_batch: 2,
                       test_connection: 2,
-                      send_alert: 3
+                      send_alert: 3,
+                      supports_default_ingest?: 0
 end

@@ -132,6 +132,9 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor do
     {:ok, rows}
   end
 
+  @impl Logflare.Backends.Adaptor
+  def supports_default_ingest?, do: true
+
   defp nested_map_update(value) when is_struct(value), do: value
 
   defp nested_map_update(value) when is_map(value),
