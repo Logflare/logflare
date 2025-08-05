@@ -52,6 +52,7 @@ gcloud_prod.json
 
 # Project exclude paths
 /cover/
+*.coverdata
 /node_modules/
 .vscode/
 /native/sqlparser_ex/target/
