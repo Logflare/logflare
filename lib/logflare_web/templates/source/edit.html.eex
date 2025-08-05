@@ -330,7 +330,7 @@
 
       <div class="form-group">
         <%= label f, :default_ingest_backend_enabled? do %>
-          Enable Default Ingest Backend Mode
+          Toggle Default Ingest Mode
         <% end %>
         <%= checkbox f, :default_ingest_backend_enabled?, checked: @source.default_ingest_backend_enabled?, value: @source.default_ingest_backend_enabled?  %>
         <%= error_tag f, :default_ingest_backend_enabled? %>
