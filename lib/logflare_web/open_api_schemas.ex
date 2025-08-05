@@ -150,6 +150,7 @@ defmodule LogflareWeb.OpenApiSchemas do
       token: %Schema{type: :string},
       config: %Schema{type: :object},
       metadata: %Schema{type: :object},
+      default_ingest?: %Schema{type: :boolean},
       inserted_at: %Schema{type: :string, format: :"date-time"},
       updated_at: %Schema{type: :string, format: :"date-time"}
     }

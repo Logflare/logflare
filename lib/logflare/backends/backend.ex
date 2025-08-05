@@ -120,7 +120,8 @@ defmodule Logflare.Backends.Backend do
           :type,
           :id,
           :config,
-          :metadata
+          :metadata,
+          :default_ingest?
         ])
         |> Map.update(:config, %{}, fn
           config when type == :postgres ->
