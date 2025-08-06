@@ -9,7 +9,7 @@ defmodule LogflareWeb.QueryLive do
   alias Logflare.Alerting
   alias Logflare.Users
   alias Logflare.Backends
-  alias LogflareWeb.QueryComponents
+  alias LogflareWeb.{MonacoEditorComponent, QueryComponents}
 
   def render(assigns) do
     ~H"""

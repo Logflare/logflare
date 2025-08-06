@@ -286,8 +286,10 @@ defmodule Logflare.Endpoints do
   @typep language :: :bq_sql | :pg_sql | :lql
   @spec run_query_string(User.t(), {language(), String.t()}, run_query_string_opts()) ::
           run_query_return()
-  def run_query_string(user, {language, query_string}, opts \\ %{}) do
-    opts = Enum.into(opts, %{sandboxable: false, use_query_cache: true, params: %{}})
+  def run_query_string(user, {language, query_string}, opts \\ []) do
+    opts = Keyword.merge([sandboxable: false, use_query_cache: true, params: %{}], opts)
+
+    request_opts = opts |> Keyword.take([:use_query_cache, :dry_run])
 
     source_mapping =
       user
@@ -298,13 +300,13 @@ defmodule Logflare.Endpoints do
     query = %Query{
       query: query_string,
       language: language,
-      sandboxable: opts.sandboxable,
+      sandboxable: opts[:sandboxable],
       user: user,
       user_id: user.id,
       source_mapping: source_mapping
     }
 
-    run_query(query, opts.params, use_query_cache: opts.use_query_cache)
+    run_query(query, opts[:params], request_opts)
   end
 
   @doc """
@@ -388,6 +390,7 @@ defmodule Logflare.Endpoints do
       end)
 
     use_query_cache = Keyword.get(opts, :use_query_cache, true)
+    dry_run = Keyword.get(opts, :dry_run, false)
 
     # execute the query on bigquery
     case Logflare.BqRepo.query_with_sql_and_params(
@@ -399,6 +402,7 @@ defmodule Logflare.Endpoints do
            maxResults: endpoint_query.max_limit,
            location: endpoint_query.user.bigquery_dataset_location,
            use_query_cache: use_query_cache,
+           dryRun: dry_run,
            labels:
              Map.merge(
                %{
