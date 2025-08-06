@@ -64,14 +64,18 @@ defmodule Logflare.Logs.SearchOperations do
   end
 
   def unnest_log_level(so) do
-    query =
-      so.query
-      |> join(:inner, [t], m in fragment("UNNEST(?)", t.metadata), on: true)
-      |> select_merge([..., m], %{
-        level: fragment("JSON_EXTRACT_SCALAR(TO_JSON_STRING(?), '$.level') as level", m)
-      })
+    if bq_schema_has_metadata?(so.source.bq_table_schema) do
+      query =
+        so.query
+        |> join(:inner, [t], m in fragment("UNNEST(?)", t.metadata), on: true)
+        |> select_merge([..., m], %{
+          level: fragment("JSON_EXTRACT_SCALAR(TO_JSON_STRING(?), '$.level') as level", m)
+        })
 
-    %{so | query: query}
+      %{so | query: query}
+    else
+      so
+    end
   end
 
   @spec apply_halt_conditions(SO.t()) :: SO.t()
@@ -532,5 +536,9 @@ defmodule Logflare.Logs.SearchOperations do
           total_duration: nil
         }
     }
+  end
+
+  defp bq_schema_has_metadata?(%{fields: fields}) do
+    Enum.any?(fields, fn field -> field.name == "metadata" && field.type == "RECORD" end)
   end
 end
