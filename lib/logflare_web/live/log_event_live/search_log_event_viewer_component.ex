@@ -47,6 +47,10 @@ defmodule LogflareWeb.Search.LogEventViewerComponent do
     {:ok, socket}
   end
 
+  def handle_async(:load, {:ok, %Logflare.LogEvent{} = log_event}, socket) do
+    {:noreply, assign(socket, :log_event, log_event)}
+  end
+
   def handle_async(:load, {:ok, %{} = bq_row}, socket) do
     le = LE.make_from_db(bq_row, %{source: socket.assigns.source})
 
@@ -56,7 +60,7 @@ defmodule LogflareWeb.Search.LogEventViewerComponent do
       le
     )
 
-    {:noreply, assign(socket, :log_event, le)}
+    handle_async(:load, {:ok, le}, socket)
   end
 
   def handle_async(:load, {:ok, {:error, :not_found}}, socket) do
