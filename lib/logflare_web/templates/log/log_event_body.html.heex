@@ -31,7 +31,7 @@
         <.link href="#" phx-click={Phoenix.LiveView.JS.dispatch("logflare:copy-to-clipboard", detail: %{text: @id})} data-toggle="tooltip" data-placement="top" title="Copy to clipboard">
           copy
         </.link>
-        <.link target="_blank" class="tw-ml-4" href={~p"/sources/#{@source.id}/event?uuid=#{@id}"}>permalink</.link>
+        <.log_event_permalink log_event_id={@id} timestamp={@body["timestamp"]} source={@source} lql={@lql} class="" />
       </div>
     </li>
   </ul>

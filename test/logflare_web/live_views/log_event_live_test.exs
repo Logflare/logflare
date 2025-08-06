@@ -32,7 +32,7 @@ defmodule LogflareWeb.LogEventLiveTest do
        TestUtils.gen_bq_response([%{"id" => le.id, "event_message" => le.body["event_message"]}])}
     end)
 
-    {:ok, _view, _html} =
+    {:ok, view, _html} =
       live(
         conn,
         ~p"/sources/#{source.id}/event?#{%{timestamp: "2024-01-10T20:13:03Z", uuid: le.id}}"
@@ -56,8 +56,13 @@ defmodule LogflareWeb.LogEventLiveTest do
         ~p"/sources/#{source.id}/event?#{%{timestamp: "2024-01-10T20:13:03Z", uuid: le.id}}"
       )
 
+    timestamp = le.body["timestamp"] |> Logflare.Utils.iso_timestamp() |> URI.encode_www_form()
+
     assert render(view) =~ le.body["event_message"]
     assert render(view) =~ le.id
+
+    assert view |> element("a", "permalink") |> render() =~
+             "sources/#{source.id}/event?timestamp=#{timestamp}"
   end
 
   test "mounted, query returned error", %{conn: conn, source: source} do
