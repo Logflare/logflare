@@ -146,8 +146,8 @@ defmodule LogflareWeb.MonacoEditorComponent do
            endpoints,
            alerts
          ) do
-      {:ok, _} ->
-        :ok
+      {:ok, result} ->
+        {:ok, result}
 
       {:error, "sql parser error: " <> message} ->
         {:error, message}
