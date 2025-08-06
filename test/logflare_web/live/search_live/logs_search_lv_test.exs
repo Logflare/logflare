@@ -528,6 +528,28 @@ defmodule LogflareWeb.Source.SearchLVTest do
       assert render(view) =~ "Error while parsing timestamp filter"
     end
 
+    test "shows flash error for query exceeding processed bytes limit", %{
+      conn: conn,
+      source: source
+    } do
+      assert {:ok, view, _html} =
+               live(conn, Routes.live_path(conn, SearchLV, source, querystring: "t:20022"))
+
+      error_response =
+        %{
+          error: %{
+            message:
+              "Query exceeded limit for bytes billed: 2000000000. 20004857600 or higher required."
+          }
+        }
+        |> Jason.encode!()
+
+      send(view.pid, {:search_error, %{error: %Tesla.Env{status: 400, body: error_response}}})
+
+      assert render(view) =~
+               "Query halted: total bytes processed for this query is expected to be greater than 2 GB"
+    end
+
     test "redirected for non-owner user", %{conn: conn, source: source} do
       conn =
         conn
