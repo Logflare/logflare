@@ -1,8 +1,6 @@
 defmodule LogflareWeb.SourceControllerTest do
   use LogflareWeb.ConnCase
 
-  import LogflareWeb.Router.Helpers
-
   alias Logflare.Teams
   alias Logflare.Sources
   alias Logflare.Repo
@@ -88,7 +86,7 @@ defmodule LogflareWeb.SourceControllerTest do
     test "invalid source", %{conn: conn, source: source} do
       html =
         conn
-        |> get(Routes.source_path(conn, :show, 12_345))
+        |> get(~p"/sources/12345")
         |> html_response(404)
 
       # main nav
@@ -105,7 +103,7 @@ defmodule LogflareWeb.SourceControllerTest do
 
       html =
         conn
-        |> get(Routes.source_path(conn, :show, other_source))
+        |> get(~p"/sources/#{other_source}")
         |> html_response(403)
 
       # main nav

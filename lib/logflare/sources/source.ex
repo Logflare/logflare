@@ -134,7 +134,7 @@ defmodule Logflare.Source do
     field(:notifications_every, :integer, default: :timer.hours(4))
     field(:lock_schema, :boolean, default: false)
     field(:validate_schema, :boolean, default: true)
-    field(:drop_lql_filters, Ecto.Term, default: [])
+    field(:drop_lql_filters, Ecto.LqlRules, default: [])
     field(:drop_lql_string, :string)
     field(:v2_pipeline, :boolean, default: false)
     field(:disable_tailing, :boolean, default: false)

@@ -39,28 +39,14 @@ defmodule Logflare.Logs.SearchOperations do
   @spec do_query(SO.t()) :: SO.t()
   def do_query(%SO{} = so) do
     bq_project_id = so.source.user.bigquery_project_id || GCPConfig.default_project_id()
-    bytes_limit = so.source.user.bigquery_processed_bytes_limit
     %{bigquery_dataset_id: dataset_id} = GenUtils.get_bq_user_info(so.source.token)
 
-    query_total_bytes_halt =
-      "Query halted: total bytes processed for this query is expected to be larger than #{div(bytes_limit, 1_000_000_000)} GB"
-
     with {:ok, response} <-
-           BqRepo.query(so.source.user, bq_project_id, so.query,
-             dataset_id: dataset_id,
-             dryRun: true
-           ),
-         is_within_limit? = response.total_bytes_processed <= bytes_limit,
-         {:total_bytes_processed, true} <- {:total_bytes_processed, is_within_limit?},
-         {:ok, response} <-
            BqRepo.query(so.source.user, bq_project_id, so.query, dataset_id: dataset_id) do
       so
       |> SearchUtils.put_result(:query_result, response)
       |> SearchUtils.put_result(:rows, response.rows)
     else
-      {:total_bytes_processed, false} ->
-        SearchUtils.halt(so, query_total_bytes_halt)
-
       {:error, err} ->
         SearchUtils.put_result(so, :error, err)
     end

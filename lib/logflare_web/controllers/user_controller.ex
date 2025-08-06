@@ -4,7 +4,7 @@ defmodule LogflareWeb.UserController do
 
   plug LogflareWeb.Plugs.AuthMustBeOwner
 
-  alias Logflare.{User, Repo, Users, TeamUsers, Source.Supervisor, Billing.Stripe}
+  alias Logflare.{User, Users, TeamUsers, Source.Supervisor, Billing.Stripe}
 
   alias Logflare.Backends.Adaptor.BigQueryAdaptor
 
@@ -39,14 +39,11 @@ defmodule LogflareWeb.UserController do
 
     conn
     |> put_flash(:error, message)
-    |> redirect(to: Routes.user_path(conn, :edit))
+    |> redirect(to: ~p"/account/edit")
   end
 
   def update(%{assigns: %{user: user}} = conn, %{"user" => params}) do
-    user
-    |> User.user_allowed_changeset(params)
-    |> Repo.update()
-    |> case do
+    case Users.update_user_allowed(user, params) do
       {:ok, updated_user} ->
         if updated_user.bigquery_project_id != user.bigquery_project_id,
           do: Supervisor.reset_all_user_sources(user)
@@ -58,7 +55,7 @@ defmodule LogflareWeb.UserController do
 
         conn
         |> put_flash(:info, "Account updated!")
-        |> redirect(to: Routes.user_path(conn, :edit))
+        |> redirect(to: ~p"/account/edit")
 
       {:error, changeset} ->
         conn
@@ -81,7 +78,7 @@ defmodule LogflareWeb.UserController do
          {:ok, _response} <- Stripe.delete_customer(stripe_customer) do
       conn
       |> configure_session(drop: true)
-      |> redirect(to: Routes.auth_path(conn, :login, user_deleted: true))
+      |> redirect(to: ~p"/auth/login?#{%{user_deleted: true}}")
     else
       _err ->
         conn
@@ -98,7 +95,7 @@ defmodule LogflareWeb.UserController do
       {:ok, _user} ->
         conn
         |> configure_session(drop: true)
-        |> redirect(to: Routes.auth_path(conn, :login, user_deleted: true))
+        |> redirect(to: ~p"/auth/login?#{%{user_deleted: true}}")
 
       _err ->
         conn
@@ -118,8 +115,7 @@ defmodule LogflareWeb.UserController do
         old_api_key = user.api_key
         auth_params = %{api_key: new_api_key, old_api_key: old_api_key}
 
-        changeset = User.changeset(user, auth_params)
-        Repo.update(changeset)
+        Users.update_user_all_fields(user, auth_params)
 
         conn
         |> put_flash(:info, "API key restored!")
@@ -131,8 +127,7 @@ defmodule LogflareWeb.UserController do
         old_api_key = user.api_key
         auth_params = %{api_key: new_api_key, old_api_key: old_api_key}
 
-        changeset = User.changeset(user, auth_params)
-        Repo.update(changeset)
+        Users.update_user_all_fields(user, auth_params)
 
         conn
         |> put_flash(:info, [
