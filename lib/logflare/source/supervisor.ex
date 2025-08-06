@@ -66,9 +66,12 @@ defmodule Logflare.Source.Supervisor do
     source_schema = SourceSchemas.get_source_schema_by(source_id: source.id)
 
     ContextCache.bust_keys([
-      {Sources, source.id},
-      {SourceSchemas, source_schema.id}
+      {Sources, source.id}
     ])
+
+    if source_schema do
+      ContextCache.bust_keys([{SourceSchemas, source_schema.id}])
+    end
 
     case create_source(source) do
       {:ok, _pid} ->

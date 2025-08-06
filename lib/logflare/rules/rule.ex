@@ -18,7 +18,7 @@ defmodule Logflare.Rules.Rule do
   typed_schema "rules" do
     field :sink, Ecto.UUID.Atom
     field :token, Ecto.UUID, autogenerate: true
-    field :lql_filters, Ecto.Term, default: []
+    field :lql_filters, Ecto.LqlRules, default: []
     field :lql_string, :string
     belongs_to :source, Source
     belongs_to :backend, Backend

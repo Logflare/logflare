@@ -13,7 +13,7 @@ permissions:
 jobs:
   build:
     name: Build and test
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     services:
       postgres:
         image: bitnami/postgresql:13.15.0

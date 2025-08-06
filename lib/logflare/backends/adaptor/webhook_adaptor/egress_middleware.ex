@@ -24,7 +24,8 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor.EgressMiddleware do
       end
 
     meta_kw =
-      for {k, v} <- Keyword.get(options, :metadata) || %{} do
+      for {k, v} <- Keyword.get(options, :metadata) || %{},
+          v != nil do
         {k, v}
       end
 

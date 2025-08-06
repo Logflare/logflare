@@ -66,11 +66,11 @@ defmodule LogflareWeb.Sources.RulesLive do
     lqlstring = rule_params["lql_string"]
 
     socket =
-      with source_schema <- SourceSchemas.get_source_schema_by(source_id: source.id),
+      with source_schema <- SourceSchemas.Cache.get_source_schema_by(source_id: source.id),
            schema <- Map.get(source_schema, :bigquery_schema),
            {:ok, lql_rules} <- Lql.Parser.parse(lqlstring, schema),
            {:warnings, nil} <-
-             {:warnings, Lql.Utils.get_lql_parser_warnings(lql_rules, dialect: @lql_dialect)} do
+             {:warnings, Lql.Rules.get_lql_parser_warnings(lql_rules, dialect: @lql_dialect)} do
         rule_params = Map.put(rule_params, "lql_filters", lql_rules)
 
         case Rules.create_rule(rule_params, source) do

@@ -4,10 +4,18 @@ defmodule LogflareWeb.Source.SearchLV do
   """
   use LogflareWeb, :live_view
 
+  require Logger
+
+  import Logflare.Lql.Rules
+  import LogflareWeb.ModalLiveHelpers
+  import LogflareWeb.SearchLive.TimezoneComponent
+  import LogflareWeb.SearchLV.Utils
+
   alias Logflare.Billing
   alias Logflare.Logs.SearchQueryExecutor
+  alias Logflare.Logs.SearchUtils
   alias Logflare.Lql
-  alias Logflare.Lql.ChartRule
+  alias Logflare.Lql.Rules.ChartRule
   alias Logflare.SavedSearches
   alias Logflare.Sources
   alias Logflare.TeamUsers
@@ -17,14 +25,6 @@ defmodule LogflareWeb.Source.SearchLV do
   alias LogflareWeb.Router.Helpers, as: Routes
   alias LogflareWeb.SearchView
 
-  import LogflareWeb.ModalLiveHelpers
-  import Logflare.Lql.Utils
-
-  import Logflare.Logs.Search.Utils
-  import LogflareWeb.SearchLV.Utils
-  import LogflareWeb.SearchLive.TimezoneComponent
-
-  require Logger
   embed_templates "templates/*"
 
   @tail_search_interval 500
@@ -56,7 +56,7 @@ defmodule LogflareWeb.Source.SearchLV do
       source: source,
       user: user,
       team_user: team_user,
-      search_tip: gen_search_tip(),
+      search_tip: SearchUtils.gen_search_tip(),
       user_timezone_from_connect_params: nil,
       search_timezone: Map.get(params, "tz", "Etc/UTC"),
       # loading states
@@ -119,7 +119,7 @@ defmodule LogflareWeb.Source.SearchLV do
 
     socket =
       with {:ok, lql_rules} <- Lql.decode(qs, source.bq_table_schema),
-           lql_rules = Lql.Utils.put_new_chart_rule(lql_rules, Lql.Utils.default_chart_rule()),
+           lql_rules = Lql.Rules.put_new_chart_rule(lql_rules, Lql.Rules.default_chart_rule()),
            {:ok, socket} <- check_suggested_keys(lql_rules, source, socket) do
         qs = Lql.encode!(lql_rules)
 
@@ -234,11 +234,10 @@ defmodule LogflareWeb.Source.SearchLV do
   end
 
   def handle_event(
-        "start_search" = ev,
+        "start_search",
         %{"search" => %{"querystring" => qs}},
         %{assigns: prev_assigns} = socket
       ) do
-    log_lv_received_event(ev, prev_assigns.source)
     bq_table_schema = prev_assigns.source.bq_table_schema
 
     maybe_cancel_tailing_timer(socket)
@@ -254,14 +253,13 @@ defmodule LogflareWeb.Source.SearchLV do
     {:noreply, socket}
   end
 
-  def handle_event(direction = ev, _, socket) when direction in ["backwards", "forwards"] do
-    log_lv_received_event(ev, socket.assigns.source)
+  def handle_event(direction, _, socket) when direction in ["backwards", "forwards"] do
     rules = socket.assigns.lql_rules
 
     timestamp_rules =
       rules
-      |> Lql.Utils.get_ts_filters()
-      |> Lql.Utils.get_filter_rules()
+      |> Lql.Rules.get_timestamp_filters()
+      |> Lql.Rules.get_filter_rules()
 
     if Enum.empty?(timestamp_rules) do
       socket =
@@ -278,7 +276,7 @@ defmodule LogflareWeb.Source.SearchLV do
       timestamp_rules =
         Enum.map(timestamp_rules, fn
           lql_rule ->
-            if Lql.Utils.timestamp_filter_rule_is_shorthand?(lql_rule) do
+            if Lql.Rules.timestamp_filter_rule_is_shorthand?(lql_rule) do
               Map.replace!(
                 lql_rule,
                 :values,
@@ -291,8 +289,8 @@ defmodule LogflareWeb.Source.SearchLV do
             end
         end)
 
-      rules = Lql.Utils.update_timestamp_rules(rules, timestamp_rules)
-      new_rules = Lql.Utils.jump_timestamp(rules, String.to_atom(direction))
+      rules = Lql.Rules.update_timestamp_rules(rules, timestamp_rules)
+      new_rules = Lql.Rules.jump_timestamp(rules, String.to_atom(direction))
       qs = Lql.encode!(new_rules)
 
       socket =
@@ -305,20 +303,14 @@ defmodule LogflareWeb.Source.SearchLV do
   end
 
   def handle_event("soft_play" = ev, _, %{assigns: %{uri_params: _params}} = socket) do
-    log_lv_received_event(ev, socket.assigns.source)
-
     soft_play(ev, socket)
   end
 
   def handle_event("soft_pause" = ev, _, %{assigns: %{uri_params: _params}} = socket) do
-    log_lv_received_event(ev, socket.assigns.source)
-
     soft_pause(ev, socket)
   end
 
   def handle_event("hard_play" = ev, _, socket) do
-    log_lv_received_event(ev, socket.assigns.source)
-
     hard_play(ev, socket)
   end
 
@@ -337,9 +329,8 @@ defmodule LogflareWeb.Source.SearchLV do
     {:noreply, socket}
   end
 
-  def handle_event("form_update" = ev, %{"search" => search}, %{assigns: prev_assigns} = socket) do
+  def handle_event("form_update" = _ev, %{"search" => search}, %{assigns: prev_assigns} = socket) do
     source = prev_assigns.source
-    log_lv_received_event(ev, source)
 
     new_qs = search["querystring"]
     new_chart_agg = String.to_existing_atom(search["chart_aggregate"])
@@ -350,15 +341,15 @@ defmodule LogflareWeb.Source.SearchLV do
     socket = assign(socket, :querystring, new_qs)
 
     prev_chart_rule =
-      Lql.Utils.get_chart_rule(prev_assigns.lql_rules) || Lql.Utils.default_chart_rule()
+      Lql.Rules.get_chart_rule(prev_assigns.lql_rules) || Lql.Rules.default_chart_rule()
 
     socket =
       if new_chart_agg != prev_chart_rule.aggregate or
            new_chart_period != prev_chart_rule.period do
         lql_rules =
-          Lql.Utils.update_chart_rule(
+          Lql.Rules.update_chart_rule(
             prev_assigns.lql_rules,
-            Lql.Utils.default_chart_rule(),
+            Lql.Rules.default_chart_rule(),
             %{aggregate: new_chart_agg, period: new_chart_period}
           )
 
@@ -379,9 +370,7 @@ defmodule LogflareWeb.Source.SearchLV do
     {:noreply, socket}
   end
 
-  def handle_event("datetime_update" = ev, params, %{assigns: assigns} = socket) do
-    log_lv_received_event(ev, socket.assigns.source)
-
+  def handle_event("datetime_update" = _ev, params, %{assigns: assigns} = socket) do
     ts_qs = Map.get(params, "querystring")
     period = Map.get(params, "period")
 
@@ -390,11 +379,11 @@ defmodule LogflareWeb.Source.SearchLV do
 
     {:ok, ts_rules} = Lql.decode(ts_qs, assigns.source.bq_table_schema)
 
-    lql_list = Lql.Utils.update_timestamp_rules(assigns.lql_rules, ts_rules)
+    lql_list = Lql.Rules.update_timestamp_rules(assigns.lql_rules, ts_rules)
 
     lql_list =
       if period do
-        Lql.Utils.put_chart_period(lql_list, String.to_existing_atom(period))
+        Lql.Rules.put_chart_period(lql_list, String.to_existing_atom(period))
       else
         lql_list
       end
@@ -411,7 +400,7 @@ defmodule LogflareWeb.Source.SearchLV do
     {:noreply, socket}
   end
 
-  def handle_event("save_search" = ev, _, socket) do
+  def handle_event("save_search" = _ev, _, socket) do
     %{
       source: source,
       querystring: qs,
@@ -419,8 +408,6 @@ defmodule LogflareWeb.Source.SearchLV do
       tailing?: tailing?,
       user: user
     } = socket.assigns
-
-    log_lv_received_event(ev, source)
 
     %Billing.Plan{limit_saved_search_limit: limit} = Billing.get_plan_by_user(user)
 
@@ -451,8 +438,7 @@ defmodule LogflareWeb.Source.SearchLV do
     end
   end
 
-  def handle_event("reset_search" = ev, _, socket) do
-    log_lv_received_event(ev, socket.assigns.source)
+  def handle_event("reset_search", _, socket) do
     {:noreply, reset_search(socket)}
   end
 
@@ -465,8 +451,6 @@ defmodule LogflareWeb.Source.SearchLV do
   end
 
   def handle_info({:search_result, %{aggregates: _aggs} = search_result}, socket) do
-    log_lv_received_event("search_result", socket.assigns.source)
-
     log_aggregates =
       search_result.aggregates.rows
       |> Enum.reverse()
@@ -484,8 +468,6 @@ defmodule LogflareWeb.Source.SearchLV do
       |> put_in([:rows], log_aggregates)
 
     if socket.assigns.tailing? do
-      log_lv(socket.assigns.source, "is scheduling tail aggregate")
-
       %ChartRule{period: period} =
         socket.assigns.lql_rules
         |> Enum.find(fn x -> Map.has_key?(x, :period) end)
@@ -502,11 +484,8 @@ defmodule LogflareWeb.Source.SearchLV do
   end
 
   def handle_info({:search_result, %{events: _events} = search_result}, socket) do
-    log_lv_received_event("search_result", socket.assigns.source)
-
     tailing_timer =
       if socket.assigns.tailing? do
-        log_lv(socket.assigns.source, "is scheduling tail search")
         Process.send_after(self(), :schedule_tail_search, @tail_search_interval)
       end
 
@@ -535,9 +514,7 @@ defmodule LogflareWeb.Source.SearchLV do
     {:noreply, socket}
   end
 
-  def handle_info({:search_error = msg, search_op}, %{assigns: %{source: source}} = socket) do
-    log_lv_received_info(msg, source)
-
+  def handle_info({:search_error, search_op}, %{assigns: %{source: source}} = socket) do
     socket =
       case search_op.error do
         :halted ->
@@ -559,12 +536,10 @@ defmodule LogflareWeb.Source.SearchLV do
 
           send(self(), :soft_pause)
 
-          msg = "Backend error! Retry your query. Please contact support if this continues."
-
           socket
           |> assign(loading: false)
           |> assign(chart_loading: false)
-          |> put_flash(:error, msg)
+          |> put_flash_query_error(err)
 
         err ->
           Logger.error("Backend search error for source: #{source.token}",
@@ -582,18 +557,16 @@ defmodule LogflareWeb.Source.SearchLV do
     {:noreply, socket}
   end
 
-  def handle_info(:schedule_tail_search = msg, %{assigns: assigns} = socket) do
+  def handle_info(:schedule_tail_search, %{assigns: assigns} = socket) do
     if socket.assigns.tailing? do
-      log_lv_received_info(msg, assigns.source)
       SearchQueryExecutor.query(assigns.executor_pid, assigns)
     end
 
     {:noreply, socket}
   end
 
-  def handle_info(:schedule_tail_agg = msg, %{assigns: assigns} = socket) do
+  def handle_info(:schedule_tail_agg, %{assigns: assigns} = socket) do
     if socket.assigns.tailing? do
-      log_lv_received_info(msg, assigns.source)
       SearchQueryExecutor.query_agg(assigns.executor_pid, assigns)
     end
 
@@ -610,7 +583,7 @@ defmodule LogflareWeb.Source.SearchLV do
 
     case Lql.decode(qs, bq_table_schema) do
       {:ok, lql_rules} ->
-        lql_rules = Lql.Utils.put_new_chart_rule(lql_rules, Lql.Utils.default_chart_rule())
+        lql_rules = Lql.Rules.put_new_chart_rule(lql_rules, Lql.Rules.default_chart_rule())
         qs = Lql.encode!(lql_rules)
 
         socket
@@ -836,9 +809,8 @@ defmodule LogflareWeb.Source.SearchLV do
     {:noreply, error_socket(socket, "Tailing is disabled for this source")}
   end
 
-  defp soft_play(ev, %{assigns: prev_assigns} = socket) do
-    %{source: %{token: stoken} = source} = prev_assigns
-    log_lv_received_event(ev, source)
+  defp soft_play(_ev, %{assigns: prev_assigns} = socket) do
+    %{source: %{token: stoken} = _source} = prev_assigns
 
     kickoff_queries(stoken, socket.assigns)
 
@@ -856,9 +828,7 @@ defmodule LogflareWeb.Source.SearchLV do
     {:noreply, socket}
   end
 
-  defp soft_pause(ev, %{assigns: %{source: source, executor_pid: executor_pid}} = socket) do
-    log_lv_received_event(ev, source)
-
+  defp soft_pause(_ev, %{assigns: %{source: _source, executor_pid: executor_pid}} = socket) do
     maybe_cancel_tailing_timer(socket)
     SearchQueryExecutor.cancel_query(executor_pid)
 
@@ -876,9 +846,8 @@ defmodule LogflareWeb.Source.SearchLV do
     {:noreply, error_socket(socket, "Tailing is disabled for this source")}
   end
 
-  defp hard_play(ev, %{assigns: prev_assigns} = socket) do
-    %{source: %{token: stoken} = source} = prev_assigns
-    log_lv_received_event(ev, source)
+  defp hard_play(_ev, %{assigns: prev_assigns} = socket) do
+    %{source: %{token: stoken} = _source} = prev_assigns
 
     kickoff_queries(stoken, socket.assigns)
 
@@ -941,5 +910,35 @@ defmodule LogflareWeb.Source.SearchLV do
       !suggested_present -> {:error, :suggested_field_not_found}
       true -> {:ok, socket}
     end
+  end
+
+  defp put_flash_query_error(socket, %Tesla.Env{status: 400} = response) do
+    case Jason.decode(response.body) do
+      {:ok, %{"error" => %{"message" => "Query exceeded limit for bytes billed:" <> rest}}} ->
+        [limit | _] = String.split(rest, ".")
+
+        limit_gb =
+          limit
+          |> String.trim()
+          |> String.to_integer()
+          |> div(1_000_000_000)
+
+        socket
+        |> put_flash(
+          :error,
+          "Query halted: total bytes processed for this query is expected to be greater than #{limit_gb} GB"
+        )
+
+      _ ->
+        put_flash_query_error(socket, nil)
+    end
+  end
+
+  defp put_flash_query_error(socket, _) do
+    socket
+    |> put_flash(
+      :error,
+      "Backend error! Retry your query. Please contact support if this continues."
+    )
   end
 end

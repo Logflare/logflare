@@ -68,7 +68,7 @@ defmodule Logflare.GenSingleton.Watcher do
     spec = Supervisor.child_spec(child_spec, [])
 
     pid =
-      case Supervisor.start_child(state.sup_pid, spec)
+      case Supervisor.start_child(sup_pid, spec)
            |> then(fn
              {:error, :already_present} ->
                Supervisor.restart_child(sup_pid, spec.id)

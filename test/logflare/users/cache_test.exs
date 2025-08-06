@@ -1,9 +1,9 @@
 defmodule Logflare.Users.CacheTest do
-  @moduledoc false
+  use Logflare.DataCase
+
   alias Logflare.Users
   alias Logflare.User
   alias Logflare.Users.CacheWarmer
-  use Logflare.DataCase
 
   setup do
     insert(:plan)
@@ -42,7 +42,7 @@ defmodule Logflare.Users.CacheTest do
     assert {:ok, pairs} = CacheWarmer.execute(nil)
     assert {:ok, true} = Cachex.put_many(Users.Cache, pairs)
 
-    Logflare.Users
+    Users
     |> reject(:get, 1)
 
     assert Users.Cache.get(user.id)

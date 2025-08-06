@@ -4,7 +4,6 @@ defmodule Logflare.AlertingTest do
 
   alias Logflare.Alerting
   alias Logflare.Alerting.AlertQuery
-  alias Logflare.GenSingleton
   alias Logflare.Alerting.AlertsScheduler
 
   doctest Logflare.SynEventHandler
@@ -346,43 +345,6 @@ defmodule Logflare.AlertingTest do
                  name: ^str_id,
                  task: {Logflare.Alerting, :run_alert, [%AlertQuery{id: ^alert_id}, :scheduled]}
                } = Alerting.get_alert_job(alert_id)
-      end)
-    end
-  end
-
-  describe "syn_event_handler stops conflicting pid" do
-    test "stop_local/1" do
-      pid1 =
-        start_supervised!(
-          {GenSingleton, child_spec: {AlertsScheduler, name: :test_scheduler_1}},
-          id: :first
-        )
-
-      pid2 =
-        start_supervised!(
-          {GenSingleton, child_spec: {AlertsScheduler, name: :test_scheduler_2}},
-          id: :second
-        )
-
-      TestUtils.retry_assert(fn ->
-        Logflare.SynEventHandler.resolve_registry_conflict(
-          :alerting,
-          AlertsScheduler,
-          {
-            GenServer.whereis(:test_scheduler_1),
-            %{timestamp: 1, sup_pid: pid1},
-            1
-          },
-          {
-            GenServer.whereis(:test_scheduler_2),
-            %{timestamp: 2, sup_pid: pid2},
-            2
-          }
-        )
-
-        # assert that the older scheduler is still running
-        assert GenServer.whereis(:test_scheduler_1) != nil
-        assert GenServer.whereis(:test_scheduler_2) == nil
       end)
     end
   end

@@ -19,6 +19,7 @@ defmodule LogflareWeb.Search.LogEventViewerComponent do
     socket =
       assign(socket, :log_event, log_event_result)
       |> assign_defaults(assigns)
+      |> assign(:lql, assigns.params["lql"])
 
     {:ok, socket}
   end
@@ -110,6 +111,7 @@ defmodule LogflareWeb.Search.LogEventViewerComponent do
       fmt_body: BqSchema.encode_metadata(body),
       message: body["event_message"],
       id: le.id,
+      lql: assigns.lql,
       timestamp: timestamp,
       local_timezone: tz,
       local_timestamp: local_timestamp

@@ -1,13 +1,15 @@
 defmodule Logflare.Logs.SearchQueries do
   @moduledoc false
-  import Ecto.Query
-  @chart_periods ~w(day hour minute second)a
-  alias Logflare.Ecto.BQQueryAPI
-  alias Logflare.Lql
-  import BQQueryAPI
 
-  def select_timestamp(q, chart_period) do
-    q
+  import Ecto.Query
+  import Logflare.Ecto.BQQueryAPI
+
+  alias Logflare.Lql
+
+  @chart_periods ~w(day hour minute second)a
+
+  def select_timestamp(query, chart_period) do
+    query
     |> select([t], %{
       timestamp:
         fragment(
@@ -27,6 +29,35 @@ defmodule Logflare.Logs.SearchQueries do
           t.timestamp,
           ^String.upcase("#{chart_period}"),
           t.timestamp
+        )
+    })
+  end
+
+  def select_timestamp(query, chart_period, timezone) do
+    query
+    |> select([t], %{
+      timestamp:
+        fragment(
+          """
+          (case
+          when ? = 'DAY'  then TIMESTAMP_TRUNC(?, DAY , ?)
+          when ? = 'HOUR'  then TIMESTAMP_TRUNC(?, HOUR , ?)
+          when ? = 'MINUTE'  then TIMESTAMP_TRUNC(?, MINUTE , ?)
+          when ? = 'SECOND'  then TIMESTAMP_TRUNC(?, SECOND , ?)
+          end) as timestamp
+          """,
+          ^String.upcase("#{chart_period}"),
+          t.timestamp,
+          ^timezone,
+          ^String.upcase("#{chart_period}"),
+          t.timestamp,
+          ^timezone,
+          ^String.upcase("#{chart_period}"),
+          t.timestamp,
+          ^timezone,
+          ^String.upcase("#{chart_period}"),
+          t.timestamp,
+          ^timezone
         )
     })
   end
@@ -114,9 +145,9 @@ defmodule Logflare.Logs.SearchQueries do
     })
   end
 
-  def select_count_netlify_http_status_code(q) do
-    q
-    |> Lql.EctoHelpers.unnest_and_join_nested_columns(:inner, "metadata.status_code")
+  def select_count_netlify_http_status_code(query) do
+    query
+    |> Lql.handle_nested_field_access("metadata.status_code")
     |> select_merge([..., t], %{
       other:
         fragment(
@@ -134,9 +165,9 @@ defmodule Logflare.Logs.SearchQueries do
     |> select_merge_total()
   end
 
-  def select_count_cloudflare_http_status_code(q) do
-    q
-    |> Lql.EctoHelpers.unnest_and_join_nested_columns(:inner, "metadata.response.status_code")
+  def select_count_cloudflare_http_status_code(query) do
+    query
+    |> Lql.handle_nested_field_access("metadata.response.status_code")
     |> select_merge([..., t], %{
       other:
         fragment(
@@ -154,9 +185,9 @@ defmodule Logflare.Logs.SearchQueries do
     |> select_merge_total()
   end
 
-  def select_count_vercel_http_status_code(q) do
-    q
-    |> Lql.EctoHelpers.unnest_and_join_nested_columns(:inner, "metadata.proxy.statusCode")
+  def select_count_vercel_http_status_code(query) do
+    query
+    |> Lql.handle_nested_field_access("metadata.proxy.statusCode")
     |> select_merge([..., t], %{
       other:
         fragment(
@@ -174,9 +205,9 @@ defmodule Logflare.Logs.SearchQueries do
     |> select_merge_total()
   end
 
-  def select_count_log_level(q) do
-    q
-    |> Lql.EctoHelpers.unnest_and_join_nested_columns(:inner, "metadata.level")
+  def select_count_log_level(query) do
+    query
+    |> Lql.handle_nested_field_access("metadata.level")
     |> select_merge([..., t], %{
       other:
         fragment(
@@ -216,7 +247,7 @@ defmodule Logflare.Logs.SearchQueries do
   end
 
   def source_log_event_query(bq_table_id, id, timestamp) when is_binary(id) do
-    q =
+    query =
       from(bq_table_id)
       |> where([t], t.id == ^id)
       |> or_where([t], t.timestamp == ^timestamp)
@@ -228,12 +259,12 @@ defmodule Logflare.Logs.SearchQueries do
       le_date_plus_1 = Timex.shift(le_date, days: 1)
 
       where(
-        q,
+        query,
         partition_date() == ^le_date or partition_date() == ^le_date_plus_1 or
           in_streaming_buffer()
       )
     else
-      where(q, partition_date() == ^le_date or in_streaming_buffer())
+      where(query, partition_date() == ^le_date or in_streaming_buffer())
     end
   end
 
@@ -248,7 +279,7 @@ defmodule Logflare.Logs.SearchQueries do
         timestamp: t.timestamp,
         message: t.event_message
     })
-    |> Lql.EctoHelpers.unnest_and_join_nested_columns(:inner, path)
+    |> Lql.handle_nested_field_access(path)
     |> where([..., t1], field(t1, ^last_column) == ^value)
   end
 
@@ -270,7 +301,7 @@ defmodule Logflare.Logs.SearchQueries do
     |> where([t], t.timestamp >= ^Timex.shift(DateTime.utc_now(), seconds: -60))
   end
 
-  def where_log_id(q, id) do
-    where(q, [t], t.id == ^id)
+  def where_log_id(query, id) do
+    where(query, [t], t.id == ^id)
   end
 end

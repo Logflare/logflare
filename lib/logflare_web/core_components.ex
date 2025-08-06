@@ -2,6 +2,7 @@ defmodule LogflareWeb.CoreComponents do
   @moduledoc """
   Global components.
   """
+  use LogflareWeb, :routes
   use Phoenix.Component
 
   @doc "Alert the user of something"
@@ -132,5 +133,18 @@ defmodule LogflareWeb.CoreComponents do
       <.link {@to} {@attrs}><%= render_slot(@inner_block) %></.link>
       """
     end
+  end
+
+  attr :log_event_id, :string
+  attr :timestamp, :integer
+  attr :source, Logflare.Source
+  attr :lql, :string
+  attr :label, :string, default: "permalink"
+  attr :class, :string, default: "group-hover:tw-visible tw-invisible"
+
+  def log_event_permalink(assigns) do
+    ~H"""
+    <.link class={@class} target="_blank" href={~p"/sources/#{@source.id}/event?#{%{uuid: @log_event_id, timestamp: Logflare.Utils.iso_timestamp(@timestamp), lql: @lql}}"}><%= @label %></.link>
+    """
   end
 end
