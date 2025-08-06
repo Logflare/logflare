@@ -3,17 +3,19 @@ defmodule LogflareWeb.UserControllerTest do
 
   alias Logflare.Users
 
-  import LogflareWeb.Router.Helpers
+  setup do
+    insert(:plan)
+    :ok
+  end
 
   describe "UserController update" do
     setup do
-      u1 = insert(:user, bigquery_dataset_id: "test_dataset_id_1")
+      u1 = insert(:user, bigquery_dataset_id: "test_dataset_id_1", billing_enabled: true)
       u2 = insert(:user, bigquery_dataset_id: "test_dataset_id_2")
 
       {:ok, users: [u1, u2]}
     end
 
-    @tag :failing
     test "of restricted fields fails", %{
       conn: conn,
       users: [u1 | _]
@@ -22,11 +24,13 @@ defmodule LogflareWeb.UserControllerTest do
       nope_api_quota = 1337
       nope_user_id = 1
 
+      reject(Users.Cache, :get_by, 1)
+
       conn =
         conn
-        |> Plug.Test.init_test_session(%{user_id: u1.id})
+        |> put_session(:user_id, u1.id)
         |> put(
-          "/account/edit",
+          ~p"/account/edit",
           %{
             "user" => %{
               "name" => u1.name,
@@ -43,11 +47,9 @@ defmodule LogflareWeb.UserControllerTest do
       refute s1_new.token == nope_token
       refute s1_new.api_quota == nope_api_quota
       refute s1_new.id == nope_user_id
-      assert redirected_to(conn, 302) =~ user_path(conn, :edit)
-      # refute_called(Users.Cache.get_by(any()), once())
+      assert redirected_to(conn, 302) =~ ~p"/account/edit"
     end
 
-    @tag :failing
     test "of allowed fields succeeds", %{
       conn: conn,
       users: [u1 | _]
@@ -61,63 +63,90 @@ defmodule LogflareWeb.UserControllerTest do
         name: TestUtils.random_string(),
         image: "https://#{TestUtils.random_string()}.com",
         email_me_product: true,
-        phone: 12_345
+        phone: "(555) 12345"
       }
+
+      reject(Users.Cache, :get_by, 1)
 
       conn =
         conn
-        |> Plug.Test.init_test_session(%{user_id: u1.id})
-        |> put("/account/edit", %{"user" => new})
+        |> put_session(:user_id, u1.id)
+        |> put(~p"/account/edit", %{"user" => new})
 
-      s1_new =
-        Users.get_by(id: u1.id)
-        |> Map.from_struct()
-        |> Map.take(Map.keys(new))
+      comparable_keys = Map.keys(new) -- [:email, :email_preferred]
+
+      s1_new = Users.get_by(id: u1.id)
 
       refute conn.assigns[:changeset]
-      assert s1_new == new
-      assert html_response(conn, 302) =~ user_path(conn, :edit)
+      assert s1_new.email == String.downcase(new.email)
+      assert s1_new.email_preferred == String.downcase(new.email_preferred)
+
+      assert s1_new |> Map.from_struct() |> Map.take(comparable_keys) ==
+               Map.take(new, comparable_keys)
+
+      assert html_response(conn, 302) =~ ~p"/account/edit"
 
       conn =
         conn
         |> recycle()
         |> Plug.Test.init_test_session(%{user_id: u1.id})
-        |> get(user_path(conn, :edit))
+        |> get(~p"/account/edit")
 
-      assert conn.assigns.user.email == new_email
-
-      # refute_called(Users.Cache.get_by(any()), once())
+      assert conn.assigns.user.email == String.downcase(new_email)
     end
 
-    @tag :failing
-    test "of bigquery_project_id resets all user tables", %{
+    test "of bigquery_project_id resets all user tables if premium user", %{
       conn: conn,
       users: [u1 | _]
     } do
-      # allow BigQuery.create_dataset(any(), any(), any(), any()), return: {:ok, []}
-      # allow Source.Supervisor.reset_all_user_sources(any()), return: :ok
+      pid = self()
+      u1_id = u1.id
+      bq_project_id = "logflare-byob-for-test"
+      insert(:plan, name: "Lifetime")
+      insert(:billing_account, user: u1, lifetime_plan: true)
+
+      expect(Logflare.Google.BigQuery, :create_dataset, fn user_id,
+                                                           _dataset_id,
+                                                           _location,
+                                                           project_id ->
+        send(pid, {{:user_id, :project_id}, {user_id, project_id}})
+        {:ok, []}
+      end)
+
+      expect(Logflare.Source.Supervisor, :reset_all_user_sources, fn user ->
+        send(pid, {:user_id, user.id})
+        :ok
+      end)
 
       conn =
         conn
-        |> Plug.Test.init_test_session(%{user_id: u1.id})
+        |> put_session(:user_id, u1.id)
         |> put(
-          "/account/edit",
+          ~p"/account/edit",
           %{
             "user" => %{
-              "bigquery_project_id" => "logflare-byob-for-test"
+              "bigquery_project_id" => bq_project_id
             }
           }
         )
 
+      TestUtils.retry_assert(fn ->
+        u_id = to_string(u1_id)
+        assert_received {{:user_id, :project_id}, {^u_id, ^bq_project_id}}
+      end)
+
+      TestUtils.retry_assert(fn ->
+        assert_received {:user_id, ^u1_id}
+      end)
+
       refute conn.assigns[:changeset]
-      assert redirected_to(conn, 302) =~ user_path(conn, :edit)
-      # assert get_flash(conn, :new_bq_project)
+      assert redirected_to(conn, 302) =~ ~p"/account/edit"
+      assert Phoenix.Flash.get(conn.assigns.flash, :info) == "Account updated!"
     end
   end
 
   describe "UserController delete" do
     setup %{conn: conn} do
-      insert(:plan)
       user = insert(:user)
       [conn: login_user(conn, user), user: user]
     end
@@ -138,7 +167,6 @@ defmodule LogflareWeb.UserControllerTest do
 
   describe "partner-provisioned user" do
     setup %{conn: conn} do
-      insert(:plan)
       user = insert(:user)
       insert(:partner, users: [user])
       [conn: login_user(conn, user)]

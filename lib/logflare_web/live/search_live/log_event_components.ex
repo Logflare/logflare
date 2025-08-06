@@ -5,7 +5,7 @@ defmodule LogflareWeb.SearchLive.LogEventComponents do
   use Phoenix.Component
 
   import LogflareWeb.ModalLiveHelpers
-  import Logflare.Utils, only: [iso_timestamp: 1]
+  import LogflareWeb.CoreComponents
   import LogflareWeb.Helpers.BqSchema
 
   alias Logflare.DateTimeUtils
@@ -51,7 +51,7 @@ defmodule LogflareWeb.SearchLive.LogEventComponents do
         <.link class="tw-text-[0.65rem]  group-hover:tw-visible tw-invisible" phx-click={JS.dispatch("logflare:copy-to-clipboard", detail: %{text: "#{@formatted_timestamp}    #{@message}"})} data-toggle="tooltip" data-placement="top" title="Copy to clipboard">
           copy
         </.link>
-        <.link class="group-hover:tw-visible tw-invisible" target="_blank" href={~p"/sources/#{@source.id}/event?#{%{uuid: @log.id, timestamp: iso_timestamp(@timestamp), lql: @query_string}}"}>permalink</.link>
+        <.log_event_permalink log_event_id={@log.id} timestamp={@timestamp} source={@source} lql={@query_string} class="group-hover:tw-visible tw-invisible" />
       </span>
     </li>
     """

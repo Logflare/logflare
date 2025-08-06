@@ -51,7 +51,7 @@ make start.pink
 make setup
 
 # start local database
-docker-compose up -d db
+docker-compose up -d db clickhouse
 
 # start in single tenant postgres backend
 make start.st.pg
