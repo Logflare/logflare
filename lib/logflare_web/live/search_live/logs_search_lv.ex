@@ -234,11 +234,10 @@ defmodule LogflareWeb.Source.SearchLV do
   end
 
   def handle_event(
-        "start_search" = ev,
+        "start_search",
         %{"search" => %{"querystring" => qs}},
         %{assigns: prev_assigns} = socket
       ) do
-    log_lv_received_event(ev, prev_assigns.source)
     bq_table_schema = prev_assigns.source.bq_table_schema
 
     maybe_cancel_tailing_timer(socket)
@@ -254,8 +253,7 @@ defmodule LogflareWeb.Source.SearchLV do
     {:noreply, socket}
   end
 
-  def handle_event(direction = ev, _, socket) when direction in ["backwards", "forwards"] do
-    log_lv_received_event(ev, socket.assigns.source)
+  def handle_event(direction, _, socket) when direction in ["backwards", "forwards"] do
     rules = socket.assigns.lql_rules
 
     timestamp_rules =
@@ -305,20 +303,14 @@ defmodule LogflareWeb.Source.SearchLV do
   end
 
   def handle_event("soft_play" = ev, _, %{assigns: %{uri_params: _params}} = socket) do
-    log_lv_received_event(ev, socket.assigns.source)
-
     soft_play(ev, socket)
   end
 
   def handle_event("soft_pause" = ev, _, %{assigns: %{uri_params: _params}} = socket) do
-    log_lv_received_event(ev, socket.assigns.source)
-
     soft_pause(ev, socket)
   end
 
   def handle_event("hard_play" = ev, _, socket) do
-    log_lv_received_event(ev, socket.assigns.source)
-
     hard_play(ev, socket)
   end
 
@@ -337,9 +329,8 @@ defmodule LogflareWeb.Source.SearchLV do
     {:noreply, socket}
   end
 
-  def handle_event("form_update" = ev, %{"search" => search}, %{assigns: prev_assigns} = socket) do
+  def handle_event("form_update" = _ev, %{"search" => search}, %{assigns: prev_assigns} = socket) do
     source = prev_assigns.source
-    log_lv_received_event(ev, source)
 
     new_qs = search["querystring"]
     new_chart_agg = String.to_existing_atom(search["chart_aggregate"])
@@ -379,9 +370,7 @@ defmodule LogflareWeb.Source.SearchLV do
     {:noreply, socket}
   end
 
-  def handle_event("datetime_update" = ev, params, %{assigns: assigns} = socket) do
-    log_lv_received_event(ev, socket.assigns.source)
-
+  def handle_event("datetime_update" = _ev, params, %{assigns: assigns} = socket) do
     ts_qs = Map.get(params, "querystring")
     period = Map.get(params, "period")
 
@@ -411,7 +400,7 @@ defmodule LogflareWeb.Source.SearchLV do
     {:noreply, socket}
   end
 
-  def handle_event("save_search" = ev, _, socket) do
+  def handle_event("save_search" = _ev, _, socket) do
     %{
       source: source,
       querystring: qs,
@@ -419,8 +408,6 @@ defmodule LogflareWeb.Source.SearchLV do
       tailing?: tailing?,
       user: user
     } = socket.assigns
-
-    log_lv_received_event(ev, source)
 
     %Billing.Plan{limit_saved_search_limit: limit} = Billing.get_plan_by_user(user)
 
@@ -451,8 +438,7 @@ defmodule LogflareWeb.Source.SearchLV do
     end
   end
 
-  def handle_event("reset_search" = ev, _, socket) do
-    log_lv_received_event(ev, socket.assigns.source)
+  def handle_event("reset_search", _, socket) do
     {:noreply, reset_search(socket)}
   end
 
@@ -465,8 +451,6 @@ defmodule LogflareWeb.Source.SearchLV do
   end
 
   def handle_info({:search_result, %{aggregates: _aggs} = search_result}, socket) do
-    log_lv_received_event("search_result", socket.assigns.source)
-
     log_aggregates =
       search_result.aggregates.rows
       |> Enum.reverse()
@@ -484,8 +468,6 @@ defmodule LogflareWeb.Source.SearchLV do
       |> put_in([:rows], log_aggregates)
 
     if socket.assigns.tailing? do
-      log_lv(socket.assigns.source, "is scheduling tail aggregate")
-
       %ChartRule{period: period} =
         socket.assigns.lql_rules
         |> Enum.find(fn x -> Map.has_key?(x, :period) end)
@@ -502,11 +484,8 @@ defmodule LogflareWeb.Source.SearchLV do
   end
 
   def handle_info({:search_result, %{events: _events} = search_result}, socket) do
-    log_lv_received_event("search_result", socket.assigns.source)
-
     tailing_timer =
       if socket.assigns.tailing? do
-        log_lv(socket.assigns.source, "is scheduling tail search")
         Process.send_after(self(), :schedule_tail_search, @tail_search_interval)
       end
 
@@ -535,9 +514,7 @@ defmodule LogflareWeb.Source.SearchLV do
     {:noreply, socket}
   end
 
-  def handle_info({:search_error = msg, search_op}, %{assigns: %{source: source}} = socket) do
-    log_lv_received_info(msg, source)
-
+  def handle_info({:search_error, search_op}, %{assigns: %{source: source}} = socket) do
     socket =
       case search_op.error do
         :halted ->
@@ -582,18 +559,16 @@ defmodule LogflareWeb.Source.SearchLV do
     {:noreply, socket}
   end
 
-  def handle_info(:schedule_tail_search = msg, %{assigns: assigns} = socket) do
+  def handle_info(:schedule_tail_search, %{assigns: assigns} = socket) do
     if socket.assigns.tailing? do
-      log_lv_received_info(msg, assigns.source)
       SearchQueryExecutor.query(assigns.executor_pid, assigns)
     end
 
     {:noreply, socket}
   end
 
-  def handle_info(:schedule_tail_agg = msg, %{assigns: assigns} = socket) do
+  def handle_info(:schedule_tail_agg, %{assigns: assigns} = socket) do
     if socket.assigns.tailing? do
-      log_lv_received_info(msg, assigns.source)
       SearchQueryExecutor.query_agg(assigns.executor_pid, assigns)
     end
 
@@ -836,9 +811,8 @@ defmodule LogflareWeb.Source.SearchLV do
     {:noreply, error_socket(socket, "Tailing is disabled for this source")}
   end
 
-  defp soft_play(ev, %{assigns: prev_assigns} = socket) do
-    %{source: %{token: stoken} = source} = prev_assigns
-    log_lv_received_event(ev, source)
+  defp soft_play(_ev, %{assigns: prev_assigns} = socket) do
+    %{source: %{token: stoken} = _source} = prev_assigns
 
     kickoff_queries(stoken, socket.assigns)
 
@@ -856,9 +830,7 @@ defmodule LogflareWeb.Source.SearchLV do
     {:noreply, socket}
   end
 
-  defp soft_pause(ev, %{assigns: %{source: source, executor_pid: executor_pid}} = socket) do
-    log_lv_received_event(ev, source)
-
+  defp soft_pause(_ev, %{assigns: %{source: _source, executor_pid: executor_pid}} = socket) do
     maybe_cancel_tailing_timer(socket)
     SearchQueryExecutor.cancel_query(executor_pid)
 
@@ -876,9 +848,8 @@ defmodule LogflareWeb.Source.SearchLV do
     {:noreply, error_socket(socket, "Tailing is disabled for this source")}
   end
 
-  defp hard_play(ev, %{assigns: prev_assigns} = socket) do
-    %{source: %{token: stoken} = source} = prev_assigns
-    log_lv_received_event(ev, source)
+  defp hard_play(_ev, %{assigns: prev_assigns} = socket) do
+    %{source: %{token: stoken} = _source} = prev_assigns
 
     kickoff_queries(stoken, socket.assigns)
 
