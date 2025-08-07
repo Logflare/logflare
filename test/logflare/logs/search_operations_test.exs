@@ -4,19 +4,6 @@ defmodule Logflare.Logs.SearchOperationsTest do
   alias Logflare.Logs.SearchOperations
   alias GoogleApi.BigQuery.V2.Model.TableFieldSchema, as: TFS
 
-  @metadata_field %TFS{
-    type: "RECORD",
-    name: "metadata",
-    mode: "REPEATED",
-    fields: [
-      %TFS{
-        type: "STRING",
-        name: "status",
-        mode: "NULLABLE"
-      }
-    ]
-  }
-
   describe "unnesting metadata if present" do
     setup do
       schema = Logflare.Source.BigQuery.SchemaBuilder.initial_table_schema()
@@ -45,12 +32,15 @@ defmodule Logflare.Logs.SearchOperationsTest do
     end
 
     test "unnest_log_level/1 with metadata", %{so: so} do
-      metadata_schema =
-        so.source.bq_table_schema
-        |> Map.put(:fields, so.source.bq_table_schema.fields ++ [@metadata_field])
+      source =
+        so.source
+        |> Map.put(
+          :bq_table_schema,
+          TestUtils.build_bq_schema(%{"metadata" => %{"level" => "value"}})
+        )
 
       so =
-        %{so | source: %{so.source | bq_table_schema: metadata_schema}}
+        %{so | source: source}
         |> SearchOperations.apply_query_defaults()
         |> SearchOperations.unnest_log_level()
 
