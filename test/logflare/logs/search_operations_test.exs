@@ -36,7 +36,7 @@ defmodule Logflare.Logs.SearchOperationsTest do
         so.source
         |> Map.put(
           :bq_table_schema,
-          TestUtils.build_bq_schema(%{"metadata" => %{"level" => "value"}}) |> dbg()
+          TestUtils.build_bq_schema(%{"metadata" => %{"level" => "value"}})
         )
 
       so =
