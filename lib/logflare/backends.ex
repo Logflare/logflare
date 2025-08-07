@@ -487,13 +487,55 @@ defmodule Logflare.Backends do
   end
 
   @doc """
-  Uses the buffers cache in PubSubRates.Cache to determine if pending buffer is full.
-  Much more performant than not using the cache.
-  """
-  def cached_local_pending_buffer_full?(%Source{id: id}),
-    do: cached_local_pending_buffer_full?(id)
+  Uses the buffers cache in `PubSubRates.Cache` to determine if pending buffer is full.
 
-  def cached_local_pending_buffer_full?(source_id) when is_integer(source_id) do
+  For sources with `default_ingest_backend_enabled? = true`:
+    - Checks the system default backend queue
+    - Checks user-designated default backends
+    - Returns true if ANY of these are full
+    - Falls back to checking all queues if no user default backends are configured
+
+  For normal sources:
+    - Checks ALL backend queues
+    - Returns true only if ALL queues are full
+  """
+  @spec cached_local_pending_buffer_full?(Source.t()) :: boolean()
+  def cached_local_pending_buffer_full?(
+        %Source{default_ingest_backend_enabled?: true, id: id} = source
+      ) do
+    default_backends = __MODULE__.Cache.list_backends(source_id: id, default_ingest?: true)
+
+    case default_backends do
+      [] ->
+        # fall back to checking all queues
+        check_all_queues(source)
+
+      backends ->
+        # Always check system default queue (BQ/PG)
+        system_default_full? =
+          case PubSubRates.Cache.get_local_buffer(id, nil) do
+            %{len: len} -> len > @max_pending_buffer_len_per_queue
+            _ -> false
+          end
+
+        # Check if ANY user-designated default backend buffer is full
+        user_defaults_full? =
+          Enum.any?(backends, fn backend ->
+            buffer_data = PubSubRates.Cache.get_local_buffer(id, backend.id)
+            len = Map.get(buffer_data, :len, 0)
+            len > @max_pending_buffer_len_per_queue
+          end)
+
+        system_default_full? or user_defaults_full?
+    end
+  end
+
+  def cached_local_pending_buffer_full?(%Source{} = source) do
+    check_all_queues(source)
+  end
+
+  @spec check_all_queues(Source.t()) :: boolean()
+  defp check_all_queues(%Source{id: source_id}) do
     PubSubRates.Cache.get_local_buffer(source_id, nil)
     |> Map.get(:queues, [])
     |> case do
@@ -501,31 +543,7 @@ defmodule Logflare.Backends do
         false
 
       queues ->
-        queues
-        |> Enum.all?(fn {_key, v} -> v > @max_pending_buffer_len_per_queue end)
-    end
-  end
-
-  @doc """
-  Uses the buffers cache in `PubSubRates.Cache` to determine if pending buffer is full for default ingest backends only.
-  """
-  def cached_local_pending_buffer_full_default_ingest?(%Source{id: id}),
-    do: cached_local_pending_buffer_full_default_ingest?(id)
-
-  def cached_local_pending_buffer_full_default_ingest?(source_id) when is_integer(source_id) do
-    default_backends = __MODULE__.Cache.list_backends(source_id: source_id, default_ingest?: true)
-
-    case default_backends do
-      [] ->
-        cached_local_pending_buffer_full?(source_id)
-
-      backends ->
-        # Check each default ingest backend's buffer individually
-        Enum.any?(backends, fn backend ->
-          buffer_data = PubSubRates.Cache.get_local_buffer(source_id, backend.id)
-          len = Map.get(buffer_data, :len, 0)
-          len > @max_pending_buffer_len_per_queue
-        end)
+        Enum.all?(queues, fn {_key, v} -> v > @max_pending_buffer_len_per_queue end)
     end
   end
 

@@ -228,5 +228,103 @@ defmodule LogflareWeb.Plugs.BufferLimiterTest do
       assert conn.halted == true
       assert conn.status == 429
     end
+
+    test "returns 429 when system default queue is full even if user defaults are not", %{
+      conn: conn,
+      source: source,
+      backend1: backend1
+    } do
+      system_queue_key = {source.id, nil, self()}
+      IngestEventQueue.upsert_tid(system_queue_key)
+
+      for _ <- 1..(Backends.max_buffer_queue_len() + 500) do
+        le = build(:log_event)
+        IngestEventQueue.add_to_table(system_queue_key, [le])
+      end
+
+      user_queue_key = {source.id, backend1.id, self()}
+      IngestEventQueue.upsert_tid(user_queue_key)
+
+      for _ <- 1..100 do
+        le = build(:log_event)
+        IngestEventQueue.add_to_table(user_queue_key, [le])
+      end
+
+      Backends.cache_local_buffer_lens(source.id, nil)
+      Backends.cache_local_buffer_lens(source.id, backend1.id)
+
+      conn =
+        conn
+        |> assign(:source, source)
+        |> BufferLimiter.call(%{})
+
+      assert conn.halted == true
+      assert conn.status == 429
+    end
+
+    test "returns 429 when user default queue is full even if system default is not", %{
+      conn: conn,
+      source: source,
+      backend1: backend1
+    } do
+      system_queue_key = {source.id, nil, self()}
+      IngestEventQueue.upsert_tid(system_queue_key)
+
+      for _ <- 1..100 do
+        le = build(:log_event)
+        IngestEventQueue.add_to_table(system_queue_key, [le])
+      end
+
+      user_queue_key = {source.id, backend1.id, self()}
+      IngestEventQueue.upsert_tid(user_queue_key)
+
+      for _ <- 1..(Backends.max_buffer_queue_len() + 500) do
+        le = build(:log_event)
+        IngestEventQueue.add_to_table(user_queue_key, [le])
+      end
+
+      Backends.cache_local_buffer_lens(source.id, nil)
+      Backends.cache_local_buffer_lens(source.id, backend1.id)
+
+      conn =
+        conn
+        |> assign(:source, source)
+        |> BufferLimiter.call(%{})
+
+      assert conn.halted == true
+      assert conn.status == 429
+    end
+
+    test "passes through when neither system nor user default queues are full", %{
+      conn: conn,
+      source: source,
+      backend1: backend1
+    } do
+      system_queue_key = {source.id, nil, self()}
+      IngestEventQueue.upsert_tid(system_queue_key)
+
+      for _ <- 1..100 do
+        le = build(:log_event)
+        IngestEventQueue.add_to_table(system_queue_key, [le])
+      end
+
+      user_queue_key = {source.id, backend1.id, self()}
+      IngestEventQueue.upsert_tid(user_queue_key)
+
+      for _ <- 1..100 do
+        le = build(:log_event)
+        IngestEventQueue.add_to_table(user_queue_key, [le])
+      end
+
+      Backends.cache_local_buffer_lens(source.id, nil)
+      Backends.cache_local_buffer_lens(source.id, backend1.id)
+
+      conn =
+        conn
+        |> assign(:source, source)
+        |> BufferLimiter.call(%{})
+
+      assert conn.halted == false
+    end
   end
 end
