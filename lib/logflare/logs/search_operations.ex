@@ -21,6 +21,7 @@ defmodule Logflare.Logs.SearchOperations do
   alias Logflare.Sources
   alias Logflare.Utils.Chart, as: ChartUtils
   alias Logflare.Utils.List, as: ListUtils
+  alias Logflare.Google.BigQuery.SchemaUtils
 
   @type chart_period :: :day | :hour | :minute | :second
   @type dt_or_ndt :: DateTime.t() | NaiveDateTime.t()
@@ -63,13 +64,15 @@ defmodule Logflare.Logs.SearchOperations do
     %{so | query: query}
   end
 
-  def unnest_log_level(so) do
-    if bq_schema_has_metadata?(so.source.bq_table_schema) do
+  def unnest_log_level(%_{source: %{bq_table_schema: bq_schema}} = so) do
+    flatmap = SchemaUtils.bq_schema_to_flat_typemap(bq_schema)
+
+    if is_map_key(flatmap, "metadata.level") do
       query =
         so.query
         |> join(:inner, [t], m in fragment("UNNEST(?)", t.metadata), on: true)
         |> select_merge([..., m], %{
-          level: fragment("JSON_EXTRACT_SCALAR(TO_JSON_STRING(?), '$.level') as level", m)
+          level: m.level
         })
 
       %{so | query: query}
@@ -536,9 +539,5 @@ defmodule Logflare.Logs.SearchOperations do
           total_duration: nil
         }
     }
-  end
-
-  defp bq_schema_has_metadata?(%{fields: fields}) do
-    Enum.any?(fields, fn field -> field.name == "metadata" && field.type == "RECORD" end)
   end
 end
