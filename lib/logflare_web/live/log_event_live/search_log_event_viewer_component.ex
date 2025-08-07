@@ -65,7 +65,7 @@ defmodule LogflareWeb.Search.LogEventViewerComponent do
 
   def handle_async(:load, {:ok, {:error, raw_err}}, socket) do
     Logger.error("Error loading log event: #{Logflare.Utils.stringify(raw_err)}")
-    err = "Oops, something went wrong! #{Logflare.Utils.stringify(raw_err)}"
+    err = "Oops, something went wrong!"
     send(self(), {:put_flash, :error, err})
     {:noreply, socket}
   end
