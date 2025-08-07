@@ -17,7 +17,6 @@ defmodule Logflare.Source.BigQuery.Schema do
   alias Logflare.AccountEmail
   alias Logflare.Mailer
   alias Logflare.Google.BigQuery.SchemaUtils
-  alias Logflare.Backends
   alias Logflare.TeamUsers
   alias Logflare.SingleTenant
 
@@ -77,23 +76,10 @@ defmodule Logflare.Source.BigQuery.Schema do
     end
   end
 
-  # TODO: remove, external procs should not have access to internal state
-  def get_state(source_token) when is_atom(source_token) do
-    with {:ok, pid} <- Backends.lookup(__MODULE__, source_token) do
-      GenServer.call(pid, :get)
-    end
-  end
-
-  # TODO: remove, external procs should not have access to internal state
-  def get_state(name), do: GenServer.call(name, :get)
-
   @spec update(atom(), LogEvent.t()) :: :ok
   def update(pid, %LogEvent{} = log_event) when is_pid(pid) or is_tuple(pid) do
     GenServer.cast(pid, {:update, log_event})
   end
-
-  # TODO: remove, external procs should not have access to internal state
-  def handle_call(:get, _from, state), do: {:reply, state, state}
 
   def handle_cast(
         {:update, %LogEvent{source: %Source{lock_schema: true}}},

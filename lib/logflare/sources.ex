@@ -20,7 +20,6 @@ defmodule Logflare.Sources do
   alias Logflare.SavedSearch
   alias Logflare.SingleTenant
   alias Logflare.Source
-  alias Logflare.Source.BigQuery.Schema
   alias Logflare.Source.BigQuery.SchemaBuilder
   alias Logflare.SourceSchemas
   alias Logflare.User
@@ -297,12 +296,7 @@ defmodule Logflare.Sources do
   def get_bq_schema(%Source{} = source) do
     case SourceSchemas.Cache.get_source_schema_by(source_id: source.id) do
       nil ->
-        name = Backends.via_source(source, Schema, nil)
-
-        with %{schema: schema} <- Schema.get_state(name) do
-          schema = SchemaUtils.deep_sort_by_fields_name(schema)
-          {:ok, schema}
-        end
+        {:ok, SchemaBuilder.initial_table_schema()}
 
       %_{bigquery_schema: schema} ->
         schema = SchemaUtils.deep_sort_by_fields_name(schema)
@@ -421,14 +415,13 @@ defmodule Logflare.Sources do
 
   @spec put_bq_table_schema(Source.t()) :: Source.t()
   def put_bq_table_schema(%Source{} = source) do
-    bq_table_schema =
-      case get_bq_schema(source) do
-        {:ok, bq_table_schema} -> bq_table_schema
-        {:error, :not_found} -> nil
-        {:error, error} -> raise(error)
-      end
+    source_schema = SourceSchemas.Cache.get_source_schema_by(source_id: source.id)
 
-    %{source | bq_table_schema: bq_table_schema}
+    if source_schema do
+      %{source | bq_table_schema: source_schema.bigquery_schema}
+    else
+      %{source | bq_table_schema: SchemaBuilder.initial_table_schema()}
+    end
   end
 
   @spec put_bq_table_typemap(Source.t()) :: Source.t()
