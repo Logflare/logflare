@@ -546,12 +546,13 @@ defmodule LogflareWeb.Source.SearchLVTest do
       |> element("li:first-of-type a[phx-value-log-event-id='some-uuid']", "view")
       |> render_click()
 
+      # wait for cache to populate
       :timer.sleep(500)
 
       # Second render loads the LogEvent from cache
-      view
-      |> element("li:first-of-type a[phx-value-log-event-id='some-uuid']", "view")
-      |> render_click()
+      assert view
+             |> element("li:first-of-type a[phx-value-log-event-id='some-uuid']", "view")
+             |> render_click()
     end
 
     test "shows flash error for malformed query", %{conn: conn, source: source} do
