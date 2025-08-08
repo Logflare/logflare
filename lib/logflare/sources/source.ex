@@ -23,7 +23,6 @@ defmodule Logflare.Source do
              :bigquery_table_ttl,
              :public_token,
              :bq_table_id,
-             :bq_table_schema,
              :has_rejected_events,
              :metrics,
              :notifications,
@@ -126,8 +125,6 @@ defmodule Logflare.Source do
     field(:has_rejected_events, :boolean, default: false, virtual: true)
     field(:bq_table_id, :string, virtual: true)
     field(:bq_dataset_id, :string, virtual: true)
-    field(:bq_table_schema, :any, virtual: true)
-    field(:bq_table_typemap, :any, virtual: true)
     field(:bq_table_partition_type, Ecto.Enum, values: [:pseudo, :timestamp], default: :timestamp)
     field(:custom_event_message_keys, :string)
     field(:log_events_updated_at, :naive_datetime)

@@ -265,7 +265,6 @@ defmodule Logflare.SingleTenantTest do
     end
 
     test "supabase_mode_status/0" do
-      stub(Schema, :get_state, fn _ -> %{field_count: 3} end)
       SingleTenant.create_supabase_sources()
 
       assert %{
@@ -275,8 +274,6 @@ defmodule Logflare.SingleTenantTest do
                seed_endpoints: nil,
                source_schemas_updated: :ok
              } = SingleTenant.supabase_mode_status()
-
-      stub(Schema, :get_state, fn _ -> %{field_count: 5} end)
 
       assert %{source_schemas_updated: :ok} = SingleTenant.supabase_mode_status()
     end
