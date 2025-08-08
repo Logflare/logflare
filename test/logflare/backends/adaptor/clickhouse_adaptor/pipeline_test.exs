@@ -7,6 +7,8 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.PipelineTest do
   alias Logflare.Backends.SourceRegistry
 
   setup do
+    Logflare.Factory.insert(:plan, name: "Free")
+
     {source, backend, cleanup_fn} = setup_clickhouse_test()
     on_exit(cleanup_fn)
 
