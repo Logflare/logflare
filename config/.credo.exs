@@ -117,10 +117,12 @@
           #
           {Credo.Check.Refactor.CondStatements, []},
           {Credo.Check.Refactor.FunctionArity, []},
+          {Credo.Check.Refactor.IoPuts, []},
           {Credo.Check.Refactor.LongQuoteBlocks, []},
           {Credo.Check.Refactor.MatchInCondition, []},
           {Credo.Check.Refactor.NegatedConditionsInUnless, []},
           {Credo.Check.Refactor.NegatedConditionsWithElse, []},
+          {Credo.Check.Refactor.Nesting, []},
           {Credo.Check.Refactor.UnlessWithElse, []},
           {Credo.Check.Refactor.WithClauses, []},
 
@@ -143,10 +145,7 @@
           {Credo.Check.Warning.UnusedPathOperation, []},
           {Credo.Check.Warning.UnusedRegexOperation, []},
           {Credo.Check.Warning.UnusedStringOperation, []},
-          {Credo.Check.Warning.UnusedTupleOperation, []},
-
-          # Controversial
-          {Credo.Check.Refactor.IoPuts, []}
+          {Credo.Check.Warning.UnusedTupleOperation, []}
         ],
         disabled: [
           #
@@ -174,8 +173,6 @@
           {Credo.Check.Refactor.MapInto, []},
           {Credo.Check.Refactor.ModuleDependencies, []},
           {Credo.Check.Refactor.NegatedIsNil, []},
-          # TODO: enable it in the future once we refactor nested code
-          {Credo.Check.Refactor.Nesting, []},
           {Credo.Check.Refactor.PipeChainStart, []},
           {Credo.Check.Refactor.VariableRebinding, []},
           {Credo.Check.Warning.LazyLogging, []},
