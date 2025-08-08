@@ -23,7 +23,7 @@ defmodule Logflare.Source.BigQuery.Schema do
   def start_link(args) when is_list(args) do
     {name, args} = Keyword.pop(args, :name)
 
-    GenServer.start_link(__MODULE__, args, name: name, hibernate_after: 5_000 )
+    GenServer.start_link(__MODULE__, args, name: name, hibernate_after: 5_000)
   end
 
   def init(args) do
