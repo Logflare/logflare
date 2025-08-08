@@ -89,12 +89,6 @@ defmodule LogflareWeb.SourceBackendsLive do
     {:noreply, socket}
   end
 
-  defp _to_string(val) when is_list(val) do
-    Enum.join(val, ", ")
-  end
-
-  defp _to_string(val), do: to_string(val)
-
   defp refresh_data(%{assigns: %{source_id: source_id}} = socket) do
     source =
       Logflare.Sources.get(source_id)
@@ -108,4 +102,10 @@ defmodule LogflareWeb.SourceBackendsLive do
     |> assign(:backends, backends)
     |> assign(:attached_backend_ids, attached_backend_ids)
   end
+
+  defp _to_string(val) when is_list(val) do
+    Enum.join(val, ", ")
+  end
+
+  defp _to_string(val), do: to_string(val)
 end
