@@ -55,13 +55,7 @@ defmodule Logflare.Source.EmailNotificationServer do
       end
 
       if source.notifications.team_user_ids_for_email do
-        Enum.each(source.notifications.team_user_ids_for_email, fn x ->
-          team_user = TeamUsers.Cache.get_team_user(x)
-
-          if team_user do
-            AccountEmail.source_notification(team_user, rate, source) |> Mailer.deliver()
-          end
-        end)
+        notify_team_users_by_email(source.notifications.team_user_ids_for_email, rate, source)
       end
 
       {:noreply, %{state | inserts_since_boot: current_inserts}}
@@ -69,6 +63,16 @@ defmodule Logflare.Source.EmailNotificationServer do
       check_rate(state.notifications_every)
       {:noreply, state}
     end
+  end
+
+  defp notify_team_users_by_email(emails, rate, source) do
+    Enum.each(emails, fn email ->
+      team_user = TeamUsers.Cache.get_team_user(email)
+
+      if team_user do
+        AccountEmail.source_notification(team_user, rate, source) |> Mailer.deliver()
+      end
+    end)
   end
 
   defp check_rate(notifications_every) do
