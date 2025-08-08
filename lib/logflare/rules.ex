@@ -7,7 +7,6 @@ defmodule Logflare.Rules do
   alias Logflare.Repo
   alias Logflare.Rules.Rule
   alias Logflare.Source
-  alias Logflare.Sources
   alias Logflare.SourceSchemas
   alias Logflare.Backends.Backend
   alias Logflare.Backends.SourceSup
@@ -101,46 +100,5 @@ defmodule Logflare.Rules do
     Cluster.Utils.rpc_multicall(SourceSup, :stop_rule_child, [rule])
 
     res
-  end
-
-  def upgrade_all_source_rules_to_next_lql_version() do
-    Logger.info("Started upgrade of all source rules to next lql version...")
-
-    rules =
-      Rule
-      |> where([r], not is_nil(r.lql_filters) and not is_nil(r.lql_string))
-      |> Repo.all()
-
-    for rule <- rules do
-      source =
-        rule.source_id
-        |> Sources.get()
-        |> Sources.put_bq_table_schema()
-
-      case Lql.decode(rule.lql_string, source.bq_table_schema) do
-        {:ok, lql_filters} ->
-          if lql_filters != rule.lql_filters do
-            rule
-            |> Rule.changeset(%{lql_filters: lql_filters})
-            |> Repo.update()
-            |> case do
-              {:ok, r} ->
-                Logger.info(
-                  "Rule #{r.id} for source #{r.source_id} was successfully upgraded to new LQL filters format."
-                )
-
-              {:error, changeset} ->
-                Logger.error(
-                  "Rule #{rule.id} for source #{rule.source_id} failed to upgrade to new LQL filters format, Repo update erro: #{inspect(changeset.errors)}"
-                )
-            end
-          end
-
-        {:error, error} ->
-          Logger.error(
-            "Rule #{rule.id} for source #{rule.source_id} failed to upgrade to new LQL filters format, LQL decoding error: #{inspect(error)}"
-          )
-      end
-    end
   end
 end

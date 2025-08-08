@@ -21,7 +21,6 @@ defmodule Logflare.Logs.SearchOperations do
   alias Logflare.Sources
   alias Logflare.Utils.Chart, as: ChartUtils
   alias Logflare.Utils.List, as: ListUtils
-  alias Logflare.Google.BigQuery.SchemaUtils
 
   @type chart_period :: :day | :hour | :minute | :second
   @type dt_or_ndt :: DateTime.t() | NaiveDateTime.t()
@@ -64,10 +63,11 @@ defmodule Logflare.Logs.SearchOperations do
     %{so | query: query}
   end
 
-  def unnest_log_level(%_{source: %{bq_table_schema: bq_schema}} = so) do
-    flatmap = SchemaUtils.bq_schema_to_flat_typemap(bq_schema)
+  def unnest_log_level(%_{source: %{id: source_id}} = so) do
+    source_schema = SourceSchemas.Cache.get_source_schema_by(source_id: source_id)
+    flatmap = Map.get(source_schema || %{}, :schema_flat_map)
 
-    if is_map_key(flatmap, "metadata.level") do
+    if is_map_key(flatmap || %{}, "metadata.level") do
       query =
         so.query
         |> join(:inner, [t], m in fragment("UNNEST(?)", t.metadata), on: true)
@@ -140,10 +140,10 @@ defmodule Logflare.Logs.SearchOperations do
 
   def put_chart_data_shape_id(%SO{} = so) do
     flat_type_map =
-      SourceSchemas.get_source_schema_by(source_id: so.source.id)
+      SourceSchemas.Cache.get_source_schema_by(source_id: so.source.id)
       |> case do
-        nil -> %{}
-        %{} = schema -> Map.get(schema, :schema_flat_map)
+        %_{schema_flat_map: flatmap} -> flatmap || %{}
+        _ -> %{}
       end
 
     chart_data_shape_id =
