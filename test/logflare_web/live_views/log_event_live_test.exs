@@ -81,7 +81,8 @@ defmodule LogflareWeb.LogEventLiveTest do
           )
 
         TestUtils.retry_assert(fn ->
-          assert render(view) =~ "some error"
+          assert render(view) =~ "Oops, something went wrong"
+          refute render(view) =~ "some error"
           refute render(view) =~ "some err message"
         end)
       end)
