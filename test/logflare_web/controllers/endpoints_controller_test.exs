@@ -1,6 +1,6 @@
 defmodule LogflareWeb.EndpointsControllerTest do
-  @moduledoc false
-  use LogflareWeb.ConnCase
+  use LogflareWeb.ConnCase, async: false
+
   alias Logflare.SingleTenant
   alias Logflare.Backends
   alias Logflare.Source
@@ -18,63 +18,169 @@ defmodule LogflareWeb.EndpointsControllerTest do
       user = insert(:user, sources: [source])
       _plan = insert(:plan, name: "Free")
 
-      GoogleApi.BigQuery.V2.Api.Jobs
-      |> stub(:bigquery_jobs_query, fn conn, _proj_id, _opts ->
-        assert {Tesla.Adapter.Finch, :call, [[name: Logflare.FinchQuery, receive_timeout: _]]} =
-                 conn.adapter
-
-        {:ok, TestUtils.gen_bq_response()}
-      end)
-
       {:ok, user: user, source: source}
     end
 
     test "GET query", %{conn: init_conn, user: user} do
       endpoint = insert(:endpoint, user: user, enable_auth: false)
+      pid = self()
+
+      expect(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, fn _conn, _proj_id, _opts ->
+        {:error, :failed_request}
+      end)
 
       conn =
         init_conn
-        |> get("/endpoints/query/#{endpoint.token}")
+        |> get(~p"/endpoints/query/#{endpoint.token}")
 
-      assert [%{"event_message" => "some event message"}] = json_response(conn, 200)["result"]
-      assert conn.halted == false
+      response =
+        conn
+        |> json_response(200)
+        |> assert_schema("EndpointQuery")
+
+      assert response.errors == %{"message" => "failed_request"}
+      refute response.result
+      refute conn.halted
+
+      GoogleApi.BigQuery.V2.Api.Jobs
+      |> expect(:bigquery_jobs_query, fn conn, _proj_id, _opts ->
+        send(pid, {:conn_adapter, conn.adapter})
+
+        {:ok, TestUtils.gen_bq_response()}
+      end)
 
       conn =
         init_conn
-        |> get("/api/endpoints/query/#{endpoint.token}")
+        |> get(~p"/endpoints/query/#{endpoint.token}")
 
-      assert [%{"event_message" => "some event message"}] = json_response(conn, 200)["result"]
-      assert conn.halted == false
+      TestUtils.retry_assert(fn ->
+        assert_received {:conn_adapter,
+                         {Tesla.Adapter.Finch, :call,
+                          [[name: Logflare.FinchQuery, receive_timeout: _]]}}
+      end)
+
+      response =
+        conn
+        |> json_response(200)
+        |> assert_schema("EndpointQuery")
+
+      assert [
+               %{
+                 "event_message" => "some event message",
+                 "id" => _id,
+                 "timestamp" => _timestamp
+               }
+             ] = response.result
+
+      refute response.errors
+      refute conn.halted
+
+      reject(&GoogleApi.BigQuery.V2.Api.Jobs.bigquery_jobs_query/3)
+
+      conn =
+        init_conn
+        |> get(~p"/endpoints/query/#{endpoint.token}")
+
+      response =
+        conn
+        |> json_response(200)
+        |> assert_schema("EndpointQuery")
+
+      assert [
+               %{
+                 "event_message" => "some event message",
+                 "id" => _id,
+                 "timestamp" => _timestamp
+               }
+             ] = response.result
+
+      refute response.errors
+
+      refute conn.halted
     end
 
     test "GET query with user.api_key", %{conn: init_conn, user: user} do
       endpoint = insert(:endpoint, user: user, enable_auth: true)
 
+      GoogleApi.BigQuery.V2.Api.Jobs
+      |> expect(:bigquery_jobs_query, fn _conn, _proj_id, _opts ->
+        {:ok, TestUtils.gen_bq_response()}
+      end)
+
       conn =
         init_conn
         |> put_req_header("x-api-key", user.api_key)
-        |> get("/endpoints/query/#{endpoint.token}")
+        |> get(~p"/endpoints/query/#{endpoint.token}")
 
-      assert [%{"event_message" => "some event message"}] = json_response(conn, 200)["result"]
-      assert conn.halted == false
+      response =
+        conn
+        |> json_response(200)
+        |> assert_schema("EndpointQuery")
+
+      assert [
+               %{
+                 "event_message" => "some event message",
+                 "id" => _id,
+                 "timestamp" => _timestamp
+               }
+             ] = response.result
+
+      refute response.errors
+      refute conn.halted
+
+      GoogleApi.BigQuery.V2.Api.Jobs
+      |> expect(:bigquery_jobs_query, fn _conn, _proj_id, _opts ->
+        {:ok, TestUtils.gen_bq_response()}
+      end)
 
       # should be able to query with endpoint name (deprecated path)
       conn =
         init_conn
         |> put_req_header("x-api-key", user.api_key)
-        |> get("/api/endpoints/query/name/#{endpoint.name}")
+        |> get(~p"/api/endpoints/query/name/#{endpoint.name}")
 
-      assert [%{"event_message" => "some event message"}] = json_response(conn, 200)["result"]
-      assert conn.halted == false
+      response =
+        conn
+        |> json_response(200)
+        |> assert_schema("EndpointQuery")
+
+      assert [
+               %{
+                 "event_message" => "some event message",
+                 "id" => _id,
+                 "timestamp" => _timestamp
+               }
+             ] = response.result
+
+      refute response.errors
+      refute conn.halted
+
+      GoogleApi.BigQuery.V2.Api.Jobs
+      |> expect(:bigquery_jobs_query, fn _conn, _proj_id, _opts ->
+        {:ok, TestUtils.gen_bq_response()}
+      end)
 
       # should be able to query with endpoint name
       conn =
         init_conn
         |> put_req_header("x-api-key", user.api_key)
-        |> get("/api/endpoints/query/#{endpoint.name}")
+        |> get(~p"/api/endpoints/query/#{endpoint.name}")
 
-      assert [%{"event_message" => "some event message"}] = json_response(conn, 200)["result"]
-      assert conn.halted == false
+      response =
+        conn
+        |> json_response(200)
+        |> assert_schema("EndpointQuery")
+
+      assert [
+               %{
+                 "event_message" => "some event message",
+                 "id" => _id,
+                 "timestamp" => _timestamp
+               }
+             ] = response.result
+
+      refute response.errors
+      refute conn.halted
     end
 
     test "GET query with other user's api key", %{conn: init_conn, user: user} do
@@ -84,9 +190,12 @@ defmodule LogflareWeb.EndpointsControllerTest do
       conn =
         init_conn
         |> put_req_header("x-api-key", user2.api_key)
-        |> get("/endpoints/query/#{endpoint.token}")
+        |> get(~p"/endpoints/query/#{endpoint.token}")
 
-      assert conn.status == 401
+      assert conn
+             |> json_response(401)
+             |> assert_schema("Unauthorized") == %{"error" => "Unauthorized"}
+
       assert conn.halted == true
     end
 
@@ -96,15 +205,33 @@ defmodule LogflareWeb.EndpointsControllerTest do
             "logs.all.staging",
             "logs-all-staging"
           ] do
+        GoogleApi.BigQuery.V2.Api.Jobs
+        |> expect(:bigquery_jobs_query, fn _conn, _proj_id, _opts ->
+          {:ok, TestUtils.gen_bq_response()}
+        end)
+
         endpoint = insert(:endpoint, name: name, user: user, enable_auth: true)
 
         conn =
           init_conn
           |> put_req_header("x-api-key", user.api_key)
-          |> get("/api/endpoints/query/#{endpoint.name}")
+          |> get(~p"/api/endpoints/query/#{endpoint.name}")
 
-        assert [%{"event_message" => "some event message"}] = json_response(conn, 200)["result"]
-        assert conn.halted == false
+        response =
+          conn
+          |> json_response(200)
+          |> assert_schema("EndpointQuery")
+
+        assert [
+                 %{
+                   "event_message" => "some event message",
+                   "id" => _id,
+                   "timestamp" => _timestamp
+                 }
+               ] = response.result
+
+        refute response.errors
+        refute conn.halted
       end
     end
   end
@@ -192,7 +319,7 @@ defmodule LogflareWeb.EndpointsControllerTest do
         conn
         |> put_req_header("x-api-key", user.api_key)
         |> put_req_header("content-type", "application/json")
-        |> get("/api/endpoints/query/#{endpoint.name}", Jason.encode!(%{sql: "select 2"}))
+        |> get(~p"/api/endpoints/query/#{endpoint.name}", Jason.encode!(%{sql: "select 2"}))
 
       assert [%{"event_message" => "some event message"}] = json_response(conn, 200)["result"]
       assert conn.halted == false
@@ -221,7 +348,7 @@ defmodule LogflareWeb.EndpointsControllerTest do
       conn =
         conn
         |> put_req_header("x-api-key", user.api_key)
-        |> post("/api/endpoints/query/#{endpoint.name}", %{sql: "select 2"})
+        |> post(~p"/api/endpoints/query/#{endpoint.name}", %{sql: "select 2"})
 
       assert [%{"event_message" => "some event message"}] = json_response(conn, 200)["result"]
       assert conn.halted == false
@@ -251,7 +378,7 @@ defmodule LogflareWeb.EndpointsControllerTest do
       conn =
         conn
         |> put_req_header("x-api-key", user.api_key)
-        |> get("/endpoints/query/#{endpoint.token}")
+        |> get(~p"/endpoints/query/#{endpoint.token}")
 
       assert [%{"event_message" => "some event message"}] = json_response(conn, 200)["result"]
       assert conn.halted == false
@@ -262,13 +389,13 @@ defmodule LogflareWeb.EndpointsControllerTest do
     TestUtils.setup_single_tenant(seed_user: true)
 
     test "can view endpoints page", %{conn: conn} do
-      conn = get(conn, "/endpoints")
-      assert html_response(conn, 200) =~ "/endpoints"
+      conn = get(conn, ~p"/endpoints")
+      assert html_response(conn, 200) =~ ~p"/endpoints"
     end
 
     test "can make new endpoint", %{conn: conn} do
-      conn = get(conn, "/endpoints/new")
-      assert html_response(conn, 200) =~ "/endpoints"
+      conn = get(conn, ~p"/endpoints/new")
+      assert html_response(conn, 200) =~ ~p"/endpoints"
     end
   end
 
