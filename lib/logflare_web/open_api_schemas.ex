@@ -110,7 +110,6 @@ defmodule LogflareWeb.OpenApiSchemas do
       bigquery_table_ttl: %Schema{type: :integer},
       public_token: %Schema{type: :string},
       bq_table_id: %Schema{type: :string},
-      bq_table_schema: %Schema{type: :object},
       has_rejected_events: %Schema{type: :boolean},
       metrics: %Schema{type: :object},
       notifications: %Schema{type: :array, items: Notification},

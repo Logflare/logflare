@@ -23,13 +23,7 @@ defmodule Logflare.Source.BigQuery.Schema do
   def start_link(args) when is_list(args) do
     {name, args} = Keyword.pop(args, :name)
 
-    GenServer.start_link(__MODULE__, args,
-      name: name,
-      spawn_opt: [
-        fullsweep_after: 1_000
-      ],
-      hibernate_after: 5_000
-    )
+    GenServer.start_link(__MODULE__, args, name: name, hibernate_after: 5_000 )
   end
 
   def init(args) do
@@ -49,7 +43,6 @@ defmodule Logflare.Source.BigQuery.Schema do
        source_token: source.token,
        bigquery_project_id: args[:bigquery_project_id],
        bigquery_dataset_id: args[:bigquery_dataset_id],
-       schema: SchemaBuilder.initial_table_schema(),
        field_count: 3,
        field_count_limit: args[:plan].limit_source_fields_limit,
        next_update: System.system_time(:millisecond)
@@ -57,22 +50,13 @@ defmodule Logflare.Source.BigQuery.Schema do
   end
 
   def handle_continue(:boot, state) do
-    case SourceSchemas.Cache.get_source_schema_by(source_id: state.source_id) do
-      nil ->
-        Logger.info("Nil schema: #{state.source_token}")
+    if source_schema = SourceSchemas.Cache.get_source_schema_by(source_id: state.source_id) do
+      schema = BigQuery.SchemaUtils.deep_sort_by_fields_name(source_schema.bigquery_schema)
+      field_count = count_fields(schema)
 
-        {:noreply, %{state | next_update: next_update()}}
-
-      source_schema ->
-        schema = BigQuery.SchemaUtils.deep_sort_by_fields_name(source_schema.bigquery_schema)
-        field_count = count_fields(schema)
-
-        {:noreply,
-         %{
-           state
-           | schema: schema,
-             field_count: field_count
-         }}
+      {:noreply, %{state | field_count: field_count}}
+    else
+      {:noreply, state}
     end
   end
 
@@ -103,7 +87,7 @@ defmodule Logflare.Source.BigQuery.Schema do
     db_schema =
       if source_schema,
         do: source_schema.bigquery_schema,
-        else: state.schema
+        else: SchemaBuilder.initial_table_schema()
 
     schema = try_schema_update(body, db_schema)
 
@@ -126,8 +110,7 @@ defmodule Logflare.Source.BigQuery.Schema do
           {:noreply,
            %{
              state
-             | schema: schema,
-               field_count: field_count,
+             | field_count: field_count,
                next_update: next_update()
            }}
 
@@ -149,13 +132,7 @@ defmodule Logflare.Source.BigQuery.Schema do
 
                       persist(state.source_id, schema)
 
-                      {:noreply,
-                       %{
-                         state
-                         | schema: schema,
-                           field_count: field_count,
-                           next_update: next_update()
-                       }}
+                      {:noreply, %{state | field_count: field_count, next_update: next_update()}}
 
                     {:error, response} ->
                       Logger.warning("Source schema update error!",
@@ -191,7 +168,9 @@ defmodule Logflare.Source.BigQuery.Schema do
 
   defp persist(source_id, new_schema) do
     source = Sources.Cache.get_by(id: source_id)
-    flat_map = SchemaUtils.bq_schema_to_flat_typemap(new_schema)
+
+    flat_map =
+      SchemaUtils.bq_schema_to_flat_typemap(new_schema)
 
     SourceSchemas.create_or_update_source_schema(source, %{
       bigquery_schema: new_schema,

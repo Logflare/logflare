@@ -7,7 +7,6 @@ defmodule Logflare.Rules do
   alias Logflare.Repo
   alias Logflare.Rules.Rule
   alias Logflare.Source
-  alias Logflare.Sources
   alias Logflare.SourceSchemas
   alias Logflare.Backends.Backend
   alias Logflare.Backends.SourceSup
