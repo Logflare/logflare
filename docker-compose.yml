@@ -105,7 +105,7 @@ services:
       - 4317:4317 # OTLP gRPC receiver
       - 4318:4318 # OTLP http receiver
   clickhouse:
-    image: clickhouse/clickhouse-server:25.4
+    image: clickhouse/clickhouse-server:25.6
     ports:
       - "8123:8123" # HTTP interface
       - "9000:9000"  # Native client interface
