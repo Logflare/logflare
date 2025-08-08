@@ -240,14 +240,12 @@ defmodule Logflare.Source.BigQuery.Schema do
   end
 
   defp try_schema_update(body, schema) do
-    try do
-      SchemaBuilder.build_table_schema(body, schema)
-    rescue
-      e ->
-        Logger.warning("Field schema type change error!", error_string: inspect(e))
+    SchemaBuilder.build_table_schema(body, schema)
+  rescue
+    e ->
+      Logger.warning("Field schema type change error!", error_string: inspect(e))
 
-        schema
-    end
+      schema
   end
 
   # public function for testing
