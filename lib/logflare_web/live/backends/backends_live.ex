@@ -63,15 +63,7 @@ defmodule LogflareWeb.BackendsLive do
         Map.put(config, "headers", %{key => value})
         |> case do
           %{"metadata" => metadata_str} = config when is_binary(metadata_str) ->
-            metadata =
-              metadata_str
-              |> String.split(",")
-              |> Enum.reduce(%{}, fn pair, acc ->
-                case String.split(pair, "=", parts: 2) do
-                  [key, value] -> Map.put(acc, String.trim(key), String.trim(value))
-                  _ -> acc
-                end
-              end)
+            metadata = parse_metadata(metadata_str)
 
             Map.put(config, "metadata", metadata)
 
@@ -249,24 +241,6 @@ defmodule LogflareWeb.BackendsLive do
     {:noreply, socket}
   end
 
-  defp _to_string(val) when is_list(val) do
-    Enum.join(val, ", ")
-  end
-
-  defp _to_string(val), do: to_string(val)
-
-  defp changeset_to_flash_message(changeset) do
-    Ecto.Changeset.traverse_errors(changeset, fn {msg, opts} ->
-      Enum.reduce(opts, msg, fn {key, value}, acc ->
-        String.replace(acc, "%{#{key}}", _to_string(value))
-      end)
-    end)
-    |> Enum.reduce("", fn {k, v}, acc ->
-      joined_errors = Enum.join(v, ";\n")
-      "#{acc} #{k}: #{joined_errors}"
-    end)
-  end
-
   defp refresh_backends(socket) do
     backends =
       Backends.list_backends_by_user_id(socket.assigns.user.id)
@@ -289,4 +263,33 @@ defmodule LogflareWeb.BackendsLive do
     |> assign(:backend, backend)
     |> assign(:form_type, Atom.to_string(backend.type))
   end
+
+  defp parse_metadata(data) when is_binary(data) do
+    data
+    |> String.split(",")
+    |> Enum.reduce(%{}, fn pair, acc ->
+      case String.split(pair, "=", parts: 2) do
+        [key, value] -> Map.put(acc, String.trim(key), String.trim(value))
+        _ -> acc
+      end
+    end)
+  end
+
+  defp changeset_to_flash_message(changeset) do
+    Ecto.Changeset.traverse_errors(changeset, fn {msg, opts} ->
+      Enum.reduce(opts, msg, fn {key, value}, acc ->
+        String.replace(acc, "%{#{key}}", _to_string(value))
+      end)
+    end)
+    |> Enum.reduce("", fn {k, v}, acc ->
+      joined_errors = Enum.join(v, ";\n")
+      "#{acc} #{k}: #{joined_errors}"
+    end)
+  end
+
+  defp _to_string(val) when is_list(val) do
+    Enum.join(val, ", ")
+  end
+
+  defp _to_string(val), do: to_string(val)
 end
