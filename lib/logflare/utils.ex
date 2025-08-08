@@ -5,6 +5,11 @@ defmodule Logflare.Utils do
   import Cachex.Spec
   import Logflare.Utils.Guards, only: [is_atom_value: 1]
 
+  @original_to_string String.Chars.impl_for(%Tesla.Env{})
+  @original_inspect Inspect.impl_for(%Tesla.Env{})
+  def tesla_env_to_string(), do: @original_to_string
+  def tesla_env_inspect(), do: @original_inspect
+
   def cache_stats() do
     hook(module: Cachex.Stats)
   end
@@ -205,4 +210,45 @@ defmodule Logflare.Utils do
   end
 
   def iso_timestamp(_timestamp), do: nil
+
+  @doc """
+  Redacts sensitive headers from a list of Tesla.Env headers. Used for automatic redaction
+  """
+  @spec redact_sensitive_headers(list(tuple())) :: list(tuple())
+  def redact_sensitive_headers(headers) do
+    for {key, value} <- headers do
+      if String.downcase(key) in ["authorization", "x-api-key"] do
+        {key, "REDACTED"}
+      else
+        {key, value}
+      end
+    end
+  end
+end
+
+defimpl String.Chars, for: Tesla.Env do
+  def to_string(%Tesla.Env{headers: headers} = env) do
+    if Application.get_env(:logflare, :env) in [:test, :dev] do
+      apply(Logflare.Utils.tesla_env_to_string(), :to_string, [env])
+    else
+      redacted_headers = Logflare.Utils.redact_sensitive_headers(headers)
+
+      apply(Logflare.Utils.tesla_env_to_string(), :to_string, [%{env | headers: redacted_headers}])
+    end
+  end
+end
+
+defimpl Inspect, for: Tesla.Env do
+  def inspect(%Tesla.Env{headers: headers} = env, opts) do
+    if Application.get_env(:logflare, :env) in [:test, :dev] do
+      apply(Logflare.Utils.tesla_env_inspect(), :inspect, [env, opts])
+    else
+      redacted_headers = Logflare.Utils.redact_sensitive_headers(headers)
+
+      apply(Logflare.Utils.tesla_env_inspect(), :inspect, [
+        %{env | headers: redacted_headers},
+        opts
+      ])
+    end
+  end
 end
