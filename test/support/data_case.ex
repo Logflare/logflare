@@ -88,7 +88,6 @@ defmodule Logflare.DataCase do
     user =
       case Keyword.get(opts, :user) do
         nil ->
-          Logflare.Factory.insert(:plan, name: "Free")
           Logflare.Factory.insert(:user)
 
         existing_user ->
