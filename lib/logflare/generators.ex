@@ -4,7 +4,7 @@ defmodule Logflare.Generators do
   @objects File.read!("priv/generators/objects.txt")
   @teams File.read!("priv/generators/teams.txt")
 
-  def team_name() do
+  def team_name do
     opts = [capitalize: true]
 
     predicate(opts) <> " " <> team(opts)
@@ -15,7 +15,7 @@ defmodule Logflare.Generators do
     |> String.capitalize()
   end
 
-  def predicate() do
+  def predicate do
     @predicates
     |> String.split("\n", trim: true)
     |> Enum.random()
@@ -26,7 +26,7 @@ defmodule Logflare.Generators do
     |> String.capitalize()
   end
 
-  def object() do
+  def object do
     @objects
     |> String.split("\n", trim: true)
     |> Enum.random()
@@ -37,7 +37,7 @@ defmodule Logflare.Generators do
     |> String.capitalize()
   end
 
-  def team() do
+  def team do
     @teams
     |> String.split("\n", trim: true)
     |> Enum.random()

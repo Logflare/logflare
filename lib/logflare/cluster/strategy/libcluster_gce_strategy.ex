@@ -33,7 +33,7 @@ defmodule Logflare.Cluster.Strategy.GoogleComputeEngine do
     {:noreply, state}
   end
 
-  def load() do
+  def load do
     Process.send(Logflare.ClusterSupervisor, :load, [])
   end
 
@@ -176,7 +176,7 @@ defmodule Logflare.Cluster.Strategy.GoogleComputeEngine do
     end
   end
 
-  defp get_metadata() do
+  defp get_metadata do
     Cluster.Logger.debug(:gce, "Fetching metadata ...")
 
     case GCE.AuthClient.metadata() do

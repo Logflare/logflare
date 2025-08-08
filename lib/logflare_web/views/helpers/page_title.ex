@@ -7,7 +7,7 @@ defmodule LogflareWeb.Helpers.PageTitle do
 
   @suffix "Logflare | Cloudflare, Vercel & Elixir Logging"
 
-  def page_title(conn), do: conn |> get |> put_suffix
+  def page_title(conn), do: conn |> get() |> put_suffix()
 
   defp put_suffix(nil), do: @suffix
   defp put_suffix(title), do: title <> " | " <> @suffix

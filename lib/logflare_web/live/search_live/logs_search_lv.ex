@@ -496,7 +496,7 @@ defmodule LogflareWeb.Source.SearchLV do
       |> assign(:tailing_timer, tailing_timer)
       |> assign(:loading, false)
       |> assign(:tailing_initial?, false)
-      |> assign(:last_query_completed_at, Timex.now())
+      |> assign(:last_query_completed_at, DateTime.utc_now())
 
     socket =
       cond do

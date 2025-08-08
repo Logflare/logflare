@@ -44,7 +44,7 @@ defmodule Logflare.Backends.RecentEventsTouch do
      }}
   end
 
-  defp random_interval_ms() do
+  defp random_interval_ms do
     min = :timer.minutes(30)
     max = :timer.minutes(120)
     Enum.random(min..max)
