@@ -4,20 +4,20 @@ defmodule Logflare.Alerting do
   """
 
   import Ecto.Query, warn: false
-  alias Logflare.Repo
 
   require Logger
   require OpenTelemetry.Tracer
 
+  alias Logflare.Alerting.AlertQuery
+  alias Logflare.Alerting.AlertsScheduler
   alias Logflare.Backends
   alias Logflare.Backends.Adaptor
-  alias Logflare.Backends.Adaptor.WebhookAdaptor
   alias Logflare.Backends.Adaptor.SlackAdaptor
-  alias Logflare.Alerting.AlertQuery
-  alias Logflare.User
-  alias Logflare.Endpoints
-  alias Logflare.Alerting.AlertsScheduler
+  alias Logflare.Backends.Adaptor.WebhookAdaptor
   alias Logflare.Cluster
+  alias Logflare.Endpoints
+  alias Logflare.Repo
+  alias Logflare.User
   alias Logflare.Utils
 
   @doc """
@@ -198,17 +198,14 @@ defmodule Logflare.Alerting do
 
   def sync_alert_jobs do
     on_scheduler_node(fn ->
-      # start unlinked task on remote scheduler node
-      Utils.Tasks.start_child(fn ->
-        init_alert_jobs()
-        |> tap(fn _ ->
-          AlertsScheduler.delete_all_jobs()
-        end)
-        |> Enum.each(fn job ->
-          AlertsScheduler.add_job(job)
-        end)
-      end)
+      Utils.Tasks.start_child(&do_sync_alert_jobs/0)
     end)
+  end
+
+  defp do_sync_alert_jobs do
+    init_alert_jobs()
+    |> tap(fn _ -> AlertsScheduler.delete_all_jobs() end)
+    |> Enum.each(&AlertsScheduler.add_job/1)
   end
 
   @doc """
@@ -217,22 +214,22 @@ defmodule Logflare.Alerting do
   """
   @spec sync_alert_job(number()) :: :ok | {:error, :not_found}
   def sync_alert_job(alert_id) when is_integer(alert_id) do
-    alert_query = get_alert_query_by(id: alert_id)
+    on_scheduler_node(fn -> do_sync_alert_job(alert_id) end)
+  end
 
-    on_scheduler_node(fn ->
-      if alert_query do
-        job = create_alert_job_struct(alert_query)
-        AlertsScheduler.add_job(job)
-        {:ok, job}
-      else
-        # alert query does not exist, maybe remove from scheduler
-        job = AlertsScheduler.find_job(Integer.to_string(alert_id))
+  defp do_sync_alert_job(alert_id) do
+    if alert_query = get_alert_query_by(id: alert_id) do
+      job = create_alert_job_struct(alert_query)
+      AlertsScheduler.add_job(job)
+      {:ok, job}
+    else
+      # alert query does not exist, maybe remove from scheduler
+      job = AlertsScheduler.find_job(Integer.to_string(alert_id))
 
-        if job do
-          AlertsScheduler.delete_job(job.name)
-        end
+      if job do
+        AlertsScheduler.delete_job(job.name)
       end
-    end)
+    end
   end
 
   @doc """
@@ -272,27 +269,11 @@ defmodule Logflare.Alerting do
     case execute_alert_query(alert_query) do
       {:ok, [_ | _] = results} ->
         if alert_query.webhook_notification_url do
-          WebhookAdaptor.Client.send(
-            url: alert_query.webhook_notification_url,
-            body: %{
-              "result" => results
-            }
-          )
-
-          OpenTelemetry.Tracer.add_event("alerting.run_alert.webhook_notification_sent", %{})
+          send_webhook_notification(alert_query, results)
         end
 
         if alert_query.slack_hook_url do
-          {:ok, res} = SlackAdaptor.send_message(alert_query, results)
-
-          if res.status != 200 do
-            Logger.warning(
-              "SlackAdaptor send_message failed with #{res.status} : #{inspect(res.body)}",
-              error_string: inspect(res)
-            )
-          end
-
-          OpenTelemetry.Tracer.add_event("alerting.run_alert.slack_notification_sent", %{})
+          send_slack_notification!(alert_query, results)
         end
 
         # iterate over backends and fire for each
@@ -317,6 +298,30 @@ defmodule Logflare.Alerting do
       other ->
         other
     end
+  end
+
+  defp send_webhook_notification(alert_query, results) do
+    WebhookAdaptor.Client.send(
+      url: alert_query.webhook_notification_url,
+      body: %{
+        "result" => results
+      }
+    )
+
+    OpenTelemetry.Tracer.add_event("alerting.run_alert.webhook_notification_sent", %{})
+  end
+
+  defp send_slack_notification!(alert_query, results) do
+    {:ok, res} = SlackAdaptor.send_message(alert_query, results)
+
+    if res.status != 200 do
+      Logger.warning(
+        "SlackAdaptor send_message failed with #{res.status} : #{inspect(res.body)}",
+        error_string: inspect(res)
+      )
+    end
+
+    OpenTelemetry.Tracer.add_event("alerting.run_alert.slack_notification_sent", %{})
   end
 
   @doc """
