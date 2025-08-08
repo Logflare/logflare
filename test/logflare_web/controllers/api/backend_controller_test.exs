@@ -218,6 +218,44 @@ defmodule LogflareWeb.Api.BackendControllerTest do
 
       assert %{"errors" => %{"name" => ["is invalid"]}} = resp
     end
+
+    test "creates a clickhouse backend with `default_ingest?` true", %{conn: conn, user: user} do
+      name = TestUtils.random_string()
+
+      response =
+        conn
+        |> add_access_token(user, "private")
+        |> post("/api/backends", %{
+          name: name,
+          type: "clickhouse",
+          config: %{url: "http://localhost:8123", database: "default", port: 8123},
+          default_ingest?: true
+        })
+        |> json_response(201)
+
+      assert response["name"] == name
+      assert response["default_ingest?"] == true
+    end
+
+    test "creates a backend without `default_ingest?` field (defaults to false)", %{
+      conn: conn,
+      user: user
+    } do
+      name = TestUtils.random_string()
+
+      response =
+        conn
+        |> add_access_token(user, "private")
+        |> post("/api/backends", %{
+          name: name,
+          type: "clickhouse",
+          config: %{url: "http://localhost:8123", database: "default", port: 8123}
+        })
+        |> json_response(201)
+
+      assert response["name"] == name
+      assert response["default_ingest?"] == false
+    end
   end
 
   describe "update/2" do
@@ -257,6 +295,23 @@ defmodule LogflareWeb.Api.BackendControllerTest do
         |> json_response(422)
 
       assert resp == %{"errors" => %{"name" => ["is invalid"]}}
+    end
+
+    test "updates `default_ingest?` field", %{conn: conn, user: user} do
+      backend = insert(:backend, user: user, type: :bigquery, default_ingest?: false)
+
+      conn
+      |> add_access_token(user, "private")
+      |> patch("/api/backends/#{backend.token}", %{default_ingest?: true})
+      |> response(204)
+
+      response =
+        conn
+        |> add_access_token(user, "private")
+        |> get("/api/backends/#{backend.token}")
+        |> json_response(200)
+
+      assert response["default_ingest?"] == true
     end
   end
 

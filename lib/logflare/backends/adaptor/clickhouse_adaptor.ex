@@ -79,6 +79,9 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
   @impl Logflare.Backends.Adaptor
   def execute_query(_ident, _query), do: {:error, :not_implemented}
 
+  @impl Logflare.Backends.Adaptor
+  def supports_default_ingest?, do: true
+
   @doc false
   @impl Logflare.Backends.Adaptor
   def cast_config(%{} = params) do

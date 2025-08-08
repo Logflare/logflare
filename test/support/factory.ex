@@ -103,6 +103,7 @@ defmodule Logflare.Factory do
       user_id: attrs[:user_id],
       user: attrs[:user],
       metadata: attrs[:metadata] || nil,
+      default_ingest?: attrs[:default_ingest?] || false,
       updated_at: attrs[:updated_at],
       inserted_at: attrs[:inserted_at],
       alert_queries: attrs[:alert_queries] || []

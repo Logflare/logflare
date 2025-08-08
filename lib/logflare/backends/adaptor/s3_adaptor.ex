@@ -84,6 +84,9 @@ defmodule Logflare.Backends.Adaptor.S3Adaptor do
     config
   end
 
+  @impl Adaptor
+  def supports_default_ingest?, do: true
+
   @doc """
   Generates a via tuple based on a `Source` and `Backend` pair for this adaptor instance.
 

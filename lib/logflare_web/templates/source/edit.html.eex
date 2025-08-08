@@ -328,6 +328,14 @@
         <%= error_tag f, :v2_pipeline %>
       </div>
 
+      <div class="form-group">
+        <%= label f, :default_ingest_backend_enabled? do %>
+          Toggle Default Ingest Mode
+        <% end %>
+        <%= checkbox f, :default_ingest_backend_enabled?, checked: @source.default_ingest_backend_enabled?, value: @source.default_ingest_backend_enabled?  %>
+        <%= error_tag f, :default_ingest_backend_enabled? %>
+      </div>
+
       <%= submit "Save", class: "btn btn-primary form-button" %>
     <% end %>
     <%= if LogflareWeb.Utils.flag("multibackend", @user) do %>

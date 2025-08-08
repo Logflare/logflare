@@ -131,6 +131,9 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
     do: {:error, :not_implemented}
 
   @impl Logflare.Backends.Adaptor
+  def supports_default_ingest?, do: true
+
+  @impl Logflare.Backends.Adaptor
   def cast_config(params) do
     {%{}, %{project_id: :string, dataset_id: :string}}
     |> Ecto.Changeset.cast(params, [:project_id, :dataset_id])
