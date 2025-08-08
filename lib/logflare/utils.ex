@@ -7,8 +7,8 @@ defmodule Logflare.Utils do
 
   @original_to_string String.Chars.impl_for(%Tesla.Env{})
   @original_inspect Inspect.impl_for(%Tesla.Env{})
-  def telsa_env_to_string(), do: @original_to_string
-  def telsa_env_inspect(), do: @original_inspect
+  def tesla_env_to_string(), do: @original_to_string
+  def tesla_env_inspect(), do: @original_inspect
 
   def cache_stats() do
     hook(module: Cachex.Stats)
@@ -267,12 +267,12 @@ defimpl Inspect, for: Tesla.Env do
     if Application.get_env(:logflare, :env) not in [:test, :dev] do
       redacted_headers = Logflare.Utils.redact_sensitive_headers(headers)
 
-      apply(Logflare.Utils.telsa_env_inspect(), :inspect, [
+      apply(Logflare.Utils.tesla_env_inspect(), :inspect, [
         %{env | headers: redacted_headers},
         opts
       ])
     else
-      apply(Logflare.Utils.telsa_env_inspect(), :inspect, [env, opts])
+      apply(Logflare.Utils.tesla_env_inspect(), :inspect, [env, opts])
     end
   end
 end
