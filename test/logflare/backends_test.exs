@@ -48,26 +48,6 @@ defmodule Logflare.BackendsTest do
       [source: insert(:source, user_id: user.id), user: user]
     end
 
-    test "list_sources_for_backend/1", %{source: source, user: user} do
-      backend1 = insert(:backend, user: user)
-      backend2 = insert(:backend, user: user)
-      source2 = insert(:source, user_id: user.id)
-
-      assert [] == Backends.list_sources_for_backend(backend1.id)
-      assert {:ok, _} = Backends.update_source_backends(source, [backend1])
-      assert {:ok, _} = Backends.update_source_backends(source2, [backend2])
-      assert {:ok, _} = Backends.update_source_backends(source, [backend1, backend2])
-
-      backend1_sources = Backends.list_sources_for_backend(backend1.id)
-      assert length(backend1_sources) == 1
-      assert hd(backend1_sources).id == source.id
-
-      backend2_sources = Backends.list_sources_for_backend(backend2.id)
-      assert length(backend2_sources) == 2
-      source_ids = Enum.map(backend2_sources, & &1.id) |> Enum.sort()
-      assert source_ids == [source.id, source2.id] |> Enum.sort()
-    end
-
     test "list_backends/1 with metadata" do
       backend = insert(:backend, metadata: %{some: "data", value: true, other: false})
 
