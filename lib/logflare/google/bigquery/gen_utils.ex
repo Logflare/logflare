@@ -2,13 +2,20 @@ defmodule Logflare.Google.BigQuery.GenUtils do
   @moduledoc """
   Generic utils for BigQuery.
   """
+
   require Logger
 
-  alias Logflare.JSON
-  alias Logflare.{Sources, Users}
-  alias Logflare.{Source, User}
+  import Ecto.Query
+  import Logflare.Utils.Guards, only: [is_atom_value: 1]
+
   alias GoogleApi.BigQuery.V2.Connection
   alias Logflare.Backends.Adaptor.BigQueryAdaptor
+  alias Logflare.JSON
+  alias Logflare.Repo
+  alias Logflare.Source
+  alias Logflare.Sources
+  alias Logflare.User
+  alias Logflare.Users
 
   @table_ttl 604_800_000
   @default_dataset_location "US"
@@ -205,4 +212,56 @@ defmodule Logflare.Google.BigQuery.GenUtils do
 
   def format_key(label) when is_integer(label), do: label |> Integer.to_string() |> format_key()
   def format_key(label) when is_atom(label), do: label |> Atom.to_string() |> format_key()
+
+  @doc """
+  Processes BigQuery error messages to make them more user-friendly.
+  """
+  @spec process_bq_errors(error :: map() | atom(), user_id :: integer()) :: map()
+  def process_bq_errors(error, user_id) when is_atom_value(error) do
+    %{"message" => process_bq_error_msg(error, user_id)}
+  end
+
+  def process_bq_errors(error, user_id) when is_map(error) do
+    error = %{error | "message" => process_bq_error_msg(error["message"], user_id)}
+
+    if is_list(error["errors"]) do
+      %{
+        error
+        | "errors" => Enum.map(error["errors"], fn err -> process_bq_errors(err, user_id) end)
+      }
+    else
+      error
+    end
+  end
+
+  @spec process_bq_error_msg(message :: atom() | String.t(), user_id :: integer()) ::
+          atom() | String.t()
+  defp process_bq_error_msg(message, _user_id) when is_atom_value(message), do: message
+
+  defp process_bq_error_msg(message, user_id) when is_binary(message) do
+    regex =
+      ~r/#{env_project_id()}\.#{user_id}_#{env()}\.(?<uuid>[0-9a-fA-F]{8}_[0-9a-fA-F]{4}_[0-9a-fA-F]{4}_[0-9a-fA-F]{4}_[0-9a-fA-F]{12})/
+
+    case Regex.named_captures(regex, message) do
+      %{"uuid" => uuid} ->
+        uuid = String.replace(uuid, "_", "-")
+
+        query =
+          from(s in Source,
+            where: s.token == ^uuid and s.user_id == ^user_id,
+            select: s.name
+          )
+
+        case Repo.one(query) do
+          nil -> message
+          source_name -> String.replace(message, regex, source_name)
+        end
+
+      nil ->
+        message
+    end
+  end
+
+  @spec env() :: String.t()
+  defp env, do: Application.get_env(:logflare, :env)
 end
