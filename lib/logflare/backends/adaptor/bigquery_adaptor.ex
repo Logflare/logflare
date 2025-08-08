@@ -5,7 +5,6 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
 
   use Supervisor
 
-  import Ecto.Query
   import Logflare.Utils.Guards
 
   require Logger
@@ -20,8 +19,6 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
   alias Logflare.Google
   alias Logflare.Google.BigQuery.GenUtils
   alias Logflare.Google.CloudResourceManager
-  alias Logflare.Repo
-  alias Logflare.Source
   alias Logflare.Source.BigQuery.Pipeline
   alias Logflare.Source.BigQuery.Schema
   alias Logflare.Sources
@@ -216,11 +213,11 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
         {:ok, result.rows}
 
       {:error, %{body: body}} ->
-        error = Jason.decode!(body)["error"] |> process_bq_error(user.id)
+        error = Jason.decode!(body)["error"] |> GenUtils.process_bq_errors(user.id)
         {:error, error}
 
       {:error, err} when is_atom(err) ->
-        {:error, process_bq_error(err, user.id)}
+        {:error, GenUtils.process_bq_errors(err, user.id)}
     end
   end
 
@@ -517,54 +514,5 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
   defdelegate patch_dataset_access(user), to: Google.BigQuery
   defdelegate get_conn(conn_type), to: GenUtils
 
-  @spec process_bq_error(map() | atom(), integer()) :: map()
-  def process_bq_error(error, user_id) when is_atom_value(error) do
-    %{"message" => process_bq_message(error, user_id)}
-  end
-
-  def process_bq_error(error, user_id) when is_map(error) do
-    error = %{error | "message" => process_bq_message(error["message"], user_id)}
-
-    if is_list(error["errors"]) do
-      %{
-        error
-        | "errors" => Enum.map(error["errors"], fn err -> process_bq_error(err, user_id) end)
-      }
-    else
-      error
-    end
-  end
-
-  @spec process_bq_message(atom() | String.t(), integer()) :: atom() | String.t()
-  defp process_bq_message(message, _user_id) when is_atom_value(message), do: message
-
-  defp process_bq_message(message, user_id) when is_binary(message) do
-    regex =
-      ~r/#{env_project_id()}\.#{user_id}_#{env()}\.(?<uuid>[0-9a-fA-F]{8}_[0-9a-fA-F]{4}_[0-9a-fA-F]{4}_[0-9a-fA-F]{4}_[0-9a-fA-F]{12})/
-
-    case Regex.named_captures(regex, message) do
-      %{"uuid" => uuid} ->
-        uuid = String.replace(uuid, "_", "-")
-
-        query =
-          from(s in Source,
-            where: s.token == ^uuid and s.user_id == ^user_id,
-            select: s.name
-          )
-
-        case Repo.one(query) do
-          nil -> message
-          source_name -> String.replace(message, regex, source_name)
-        end
-
-      nil ->
-        message
-    end
-  end
-
-  @spec env_project_id() :: String.t()
   defp env_project_id, do: Application.get_env(:logflare, Logflare.Google)[:project_id]
-
-  @spec env() :: String.t()
-  defp env, do: Application.get_env(:logflare, :env)
 end
