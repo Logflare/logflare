@@ -348,13 +348,7 @@ defmodule Logflare.Billing do
             get_plan_by(name: "Free")
 
           billing_account ->
-            case Billing.get_billing_account_stripe_plan(billing_account) do
-              nil ->
-                get_plan_by(name: "Free")
-
-              stripe_plan ->
-                get_plan_by(stripe_id: stripe_plan["id"])
-            end
+            get_plan_from_billing_account(billing_account)
         end
     end
   end
@@ -402,4 +396,14 @@ defmodule Logflare.Billing do
 
   @spec cost_estimate(Plan.t(), pos_integer()) :: pos_integer()
   def cost_estimate(%Plan{price: price}, usage), do: price * usage
+
+  defp get_plan_from_billing_account(billing_account) do
+    case Billing.get_billing_account_stripe_plan(billing_account) do
+      nil ->
+        get_plan_by(name: "Free")
+
+      stripe_plan ->
+        get_plan_by(stripe_id: stripe_plan["id"])
+    end
+  end
 end

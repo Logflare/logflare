@@ -3,14 +3,14 @@ defmodule Logflare.SavedSearches do
 
   import Ecto.Query
 
-  require Logger
-
   alias Logflare.Lql
   alias Logflare.Lql.Rules.ChartRule
   alias Logflare.Lql.Rules.FilterRule
   alias Logflare.Repo
   alias Logflare.SavedSearch
   alias Logflare.Source
+
+  require Logger
 
   @type lql_rule :: ChartRule.t() | FilterRule.t()
 

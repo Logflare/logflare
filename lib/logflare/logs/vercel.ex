@@ -22,17 +22,15 @@ defmodule Logflare.Logs.Vercel do
   end
 
   defp try_lambda_parse(message, source) do
-    try do
-      NimbleLambdaMessageParser.parse(message)
-    rescue
-      _e ->
-        Logger.error("Lambda parse error!",
-          source_id: source.token,
-          vercel_app: %{lambda_message: message, parse_status: "error"}
-        )
+    NimbleLambdaMessageParser.parse(message)
+  rescue
+    _e ->
+      Logger.error("Lambda parse error!",
+        source_id: source.token,
+        vercel_app: %{lambda_message: message, parse_status: "error"}
+      )
 
-        {:error, %{"parse_status" => "error"}}
-    end
+      {:error, %{"parse_status" => "error"}}
   end
 
   defp handle_event(event) when is_map(event) do

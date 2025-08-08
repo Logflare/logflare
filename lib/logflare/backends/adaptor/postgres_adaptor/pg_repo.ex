@@ -55,14 +55,18 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor.PgRepo do
   @spec destroy_instance(Adaptor.source_backend(), timeout()) :: :ok
   def destroy_instance({source, backend}, timeout \\ 5000) do
     SharedRepo.with_repo(backend, fn ->
-      if Process.whereis(SharedRepo) != nil do
-        if Ecto.Adapters.SQL.table_exists?(SharedRepo, table_name(source)) do
-          SharedRepo.down!(source)
-        end
-
-        SharedRepo.stop(timeout)
-      end
+      do_destroy_instance(source, timeout)
     end)
+  end
+
+  defp do_destroy_instance(source, timeout) do
+    if Process.whereis(SharedRepo) != nil do
+      if Ecto.Adapters.SQL.table_exists?(SharedRepo, table_name(source)) do
+        SharedRepo.down!(source)
+      end
+
+      SharedRepo.stop(timeout)
+    end
   end
 
   @doc """

@@ -521,6 +521,40 @@ defmodule LogflareWeb.Source.SearchLVTest do
       assert query =~ ~r"..\.testing"
     end
 
+    test "log event modal - loading from cache", %{conn: conn, user: user} do
+      schema = TestUtils.build_bq_schema(%{"testing" => "string"})
+      source = insert(:source, user: user)
+      insert(:source_schema, source: source, bigquery_schema: schema)
+
+      stub(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, fn _conn, _proj_id, _opts ->
+        {:ok,
+         TestUtils.gen_bq_response(%{
+           "event_message" => "some modal message",
+           "testing" => "modal123",
+           "id" => "some-uuid"
+         })}
+      end)
+
+      {:ok, view, _html} =
+        live(conn, ~p"/sources/#{source.id}/search?#{%{querystring: ""}}")
+
+      # Wait for search to complete
+      :timer.sleep(200)
+
+      # First render builds a LogEvent and caches it
+      view
+      |> element("li:first-of-type a[phx-value-log-event-id='some-uuid']", "view")
+      |> render_click()
+
+      # wait for cache to populate
+      :timer.sleep(500)
+
+      # Second render loads the LogEvent from cache
+      assert view
+             |> element("li:first-of-type a[phx-value-log-event-id='some-uuid']", "view")
+             |> render_click()
+    end
+
     test "shows flash error for malformed query", %{conn: conn, source: source} do
       assert {:ok, view, _html} =
                live(conn, Routes.live_path(conn, SearchLV, source, querystring: "t:20022"))

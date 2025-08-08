@@ -24,13 +24,11 @@ defmodule Ecto.LqlRules do
   def load(""), do: {:ok, ""}
 
   def load(value) do
-    try do
-      term = :erlang.binary_to_term(value)
-      converted_term = convert_legacy_rules(term)
-      {:ok, converted_term}
-    rescue
-      e in ArgumentError -> {:error, e}
-    end
+    term = :erlang.binary_to_term(value)
+    converted_term = convert_legacy_rules(term)
+    {:ok, converted_term}
+  rescue
+    e in ArgumentError -> {:error, e}
   end
 
   @spec dump(any()) :: {:ok, binary() | nil}

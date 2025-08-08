@@ -181,6 +181,9 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor do
     end
   end
 
+  @impl Logflare.Backends.Adaptor
+  def supports_default_ingest?, do: true
+
   @spec should_transform_bigquery_to_postgres?() :: boolean()
   defp should_transform_bigquery_to_postgres?() do
     # Only transform BigQuery SQL -> PostgreSQL in SingleTenant Supabase mode with PostgreSQL backend enabled

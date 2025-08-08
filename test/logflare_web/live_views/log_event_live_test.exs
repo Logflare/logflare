@@ -32,7 +32,7 @@ defmodule LogflareWeb.LogEventLiveTest do
        TestUtils.gen_bq_response([%{"id" => le.id, "event_message" => le.body["event_message"]}])}
     end)
 
-    {:ok, view, _html} =
+    {:ok, _view, _html} =
       live(
         conn,
         ~p"/sources/#{source.id}/event?#{%{timestamp: "2024-01-10T20:13:03Z", uuid: le.id}}"
@@ -81,7 +81,8 @@ defmodule LogflareWeb.LogEventLiveTest do
           )
 
         TestUtils.retry_assert(fn ->
-          assert render(view) =~ "some error"
+          assert render(view) =~ "Oops, something went wrong"
+          refute render(view) =~ "some error"
           refute render(view) =~ "some err message"
         end)
       end)

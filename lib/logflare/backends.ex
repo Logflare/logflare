@@ -73,6 +73,10 @@ defmodule Logflare.Backends do
 
         where(q, [b], b.metadata == ^normalized)
 
+      # filter by `default_ingest?` flag
+      {:default_ingest?, true}, q ->
+        where(q, [b], b.default_ingest? == true)
+
       _, q ->
         q
     end)
@@ -114,6 +118,9 @@ defmodule Logflare.Backends do
     with {:ok, updated} <- backend do
       backend = Repo.preload(updated, :sources)
       Enum.each(backend.sources, &restart_source_sup(&1))
+
+      if updated.default_ingest?, do: sync_backend_across_cluster(updated.id)
+
       {:ok, typecast_config_string_map_to_atom_map(updated)}
     end
   end
@@ -156,6 +163,7 @@ defmodule Logflare.Backends do
   @spec update_backend(Backend.t(), map()) :: {:ok, Backend.t()} | {:error, Ecto.Changeset.t()}
   def update_backend(%Backend{} = backend, attrs) do
     alerts_modified = if Map.get(attrs, :alert_queries), do: true, else: false
+    default_ingest_modified? = Map.has_key?(attrs, :default_ingest?)
 
     backend_config =
       backend
@@ -172,6 +180,9 @@ defmodule Logflare.Backends do
     with {:ok, updated} <- backend_config do
       backend = Repo.preload(backend, :sources)
       Enum.each(backend.sources, &restart_source_sup(&1))
+
+      if default_ingest_modified?, do: sync_backend_across_cluster(updated.id)
+
       {:ok, typecast_config_string_map_to_atom_map(updated)}
     end
   end
@@ -197,8 +208,16 @@ defmodule Logflare.Backends do
             :update ->
               SourceSup.start_backend_child(source, backend)
 
+              if source.v2_pipeline do
+                Cluster.Utils.rpc_multicall(SourceSup, :start_backend_child, [source, backend])
+              end
+
             :replace ->
               SourceSup.stop_backend_child(source, backend)
+
+              if source.v2_pipeline do
+                Cluster.Utils.rpc_multicall(SourceSup, :stop_backend_child, [source, backend])
+              end
           end
         end
       end
@@ -261,6 +280,53 @@ defmodule Logflare.Backends do
       message: "There are still sources connected to this backend"
     )
     |> Repo.delete()
+  end
+
+  @doc """
+  Lists all sources associated with a backend.
+  """
+  @spec list_sources_for_backend(integer()) :: [Source.t()]
+  def list_sources_for_backend(backend_id) when is_integer(backend_id) do
+    case __MODULE__.Cache.get_backend(backend_id) do
+      %Backend{sources: [%Source{} | _] = sources} ->
+        sources
+
+      %Backend{} = backend ->
+        backend = Repo.preload(backend, :sources)
+        backend.sources
+
+      nil ->
+        []
+    end
+  end
+
+  @doc """
+  Syncs backend across all cluster nodes for v2 pipeline sources.
+
+  This ensures that when a backend's configuration changes (e.g., `default_ingest?` flag),
+  all running `SourceSup` instances are updated immediately without waiting for the
+  periodic `SourceSupWorker` check.
+  """
+  @spec sync_backend_across_cluster(integer()) :: :ok
+  def sync_backend_across_cluster(backend_id) when is_integer(backend_id) do
+    case __MODULE__.Cache.get_backend(backend_id) do
+      %Backend{sources: [_ | _] = sources} = backend ->
+        for source <- sources, source.v2_pipeline do
+          Cluster.Utils.rpc_multicall(SourceSup, :start_backend_child, [source, backend])
+        end
+
+      %Backend{} = backend ->
+        sources = list_sources_for_backend(backend_id)
+
+        for source <- sources, source.v2_pipeline do
+          Cluster.Utils.rpc_multicall(SourceSup, :start_backend_child, [source, backend])
+        end
+
+      nil ->
+        :ok
+    end
+
+    :ok
   end
 
   @doc """
@@ -483,13 +549,55 @@ defmodule Logflare.Backends do
   end
 
   @doc """
-  Uses the buffers cache in PubSubRates.Cache to determine if pending buffer is full.
-  Much more performant than not using the cache.
-  """
-  def cached_local_pending_buffer_full?(%Source{id: id}),
-    do: cached_local_pending_buffer_full?(id)
+  Uses the buffers cache in `PubSubRates.Cache` to determine if pending buffer is full.
 
-  def cached_local_pending_buffer_full?(source_id) when is_integer(source_id) do
+  For sources with `default_ingest_backend_enabled? = true`:
+    - Checks the system default backend queue
+    - Checks user-designated default backends
+    - Returns true if ANY of these are full
+    - Falls back to checking all queues if no user default backends are configured
+
+  For normal sources:
+    - Checks ALL backend queues
+    - Returns true only if ALL queues are full
+  """
+  @spec cached_local_pending_buffer_full?(Source.t()) :: boolean()
+  def cached_local_pending_buffer_full?(
+        %Source{default_ingest_backend_enabled?: true, id: id} = source
+      ) do
+    default_backends = __MODULE__.Cache.list_backends(source_id: id, default_ingest?: true)
+
+    case default_backends do
+      [] ->
+        # fall back to checking all queues
+        check_all_queues(source)
+
+      backends ->
+        # Always check system default queue (BQ/PG)
+        system_default_full? =
+          case PubSubRates.Cache.get_local_buffer(id, nil) do
+            %{len: len} -> len > @max_pending_buffer_len_per_queue
+            _ -> false
+          end
+
+        # Check if ANY user-designated default backend buffer is full
+        user_defaults_full? =
+          Enum.any?(backends, fn backend ->
+            buffer_data = PubSubRates.Cache.get_local_buffer(id, backend.id)
+            len = Map.get(buffer_data, :len, 0)
+            len > @max_pending_buffer_len_per_queue
+          end)
+
+        system_default_full? or user_defaults_full?
+    end
+  end
+
+  def cached_local_pending_buffer_full?(%Source{} = source) do
+    check_all_queues(source)
+  end
+
+  @spec check_all_queues(Source.t()) :: boolean()
+  defp check_all_queues(%Source{id: source_id}) do
     PubSubRates.Cache.get_local_buffer(source_id, nil)
     |> Map.get(:queues, [])
     |> case do
@@ -497,8 +605,7 @@ defmodule Logflare.Backends do
         false
 
       queues ->
-        queues
-        |> Enum.all?(fn {_key, v} -> v > @max_pending_buffer_len_per_queue end)
+        Enum.all?(queues, fn {_key, v} -> v > @max_pending_buffer_len_per_queue end)
     end
   end
 

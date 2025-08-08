@@ -1,6 +1,6 @@
 defmodule Logflare.BackendsTest do
-  @moduledoc false
   use Logflare.DataCase
+
   alias Logflare.Backends
   alias Logflare.Backends.Backend
   alias Logflare.Backends.SourceSup
@@ -48,6 +48,26 @@ defmodule Logflare.BackendsTest do
       [source: insert(:source, user_id: user.id), user: user]
     end
 
+    test "list_sources_for_backend/1", %{source: source, user: user} do
+      backend1 = insert(:backend, user: user)
+      backend2 = insert(:backend, user: user)
+      source2 = insert(:source, user_id: user.id)
+
+      assert [] == Backends.list_sources_for_backend(backend1.id)
+      assert {:ok, _} = Backends.update_source_backends(source, [backend1])
+      assert {:ok, _} = Backends.update_source_backends(source2, [backend2])
+      assert {:ok, _} = Backends.update_source_backends(source, [backend1, backend2])
+
+      backend1_sources = Backends.list_sources_for_backend(backend1.id)
+      assert length(backend1_sources) == 1
+      assert hd(backend1_sources).id == source.id
+
+      backend2_sources = Backends.list_sources_for_backend(backend2.id)
+      assert length(backend2_sources) == 2
+      source_ids = Enum.map(backend2_sources, & &1.id) |> Enum.sort()
+      assert source_ids == [source.id, source2.id] |> Enum.sort()
+    end
+
     test "list_backends/1 with metadata" do
       backend = insert(:backend, metadata: %{some: "data", value: true, other: false})
 
@@ -55,6 +75,89 @@ defmodule Logflare.BackendsTest do
                Backends.list_backends(metadata: %{some: "data", value: "true", other: false})
 
       assert result.id == backend.id
+    end
+
+    test "list_backends/1 with default_ingest filter", %{user: user} do
+      backend1 =
+        insert(:backend,
+          user: user,
+          type: :bigquery,
+          config: %{project_id: "test", dataset_id: "test"},
+          default_ingest?: true
+        )
+
+      _backend2 =
+        insert(:backend,
+          user: user,
+          type: :webhook,
+          config: %{url: "http://test.com"},
+          default_ingest?: false
+        )
+
+      backend3 =
+        insert(:backend,
+          user: user,
+          type: :postgres,
+          config: %{url: "postgres://test"},
+          default_ingest?: true
+        )
+
+      results = Backends.list_backends(default_ingest?: true, user_id: user.id)
+      assert length(results) == 2
+
+      result_ids = Enum.map(results, & &1.id) |> Enum.sort()
+      expected_ids = [backend1.id, backend3.id] |> Enum.sort()
+      assert result_ids == expected_ids
+
+      assert Enum.all?(results, &(&1.default_ingest? == true))
+    end
+
+    test "list_backends/1 with default_ingest and source_id filters", %{
+      source: source,
+      user: user
+    } do
+      backend1 =
+        insert(:backend,
+          user: user,
+          type: :bigquery,
+          config: %{project_id: "test", dataset_id: "test"},
+          default_ingest?: true
+        )
+
+      backend2 =
+        insert(:backend,
+          user: user,
+          type: :clickhouse,
+          config: %{url: "http://ch", database: "test", port: 8123},
+          default_ingest?: true
+        )
+
+      backend3 =
+        insert(:backend,
+          user: user,
+          type: :webhook,
+          config: %{url: "http://test.com"},
+          default_ingest?: false
+        )
+
+      backend4 =
+        insert(:backend,
+          user: user,
+          type: :postgres,
+          config: %{url: "postgres://test"},
+          default_ingest?: true
+        )
+
+      assert {:ok, _} = Backends.update_source_backends(source, [backend1, backend2, backend3])
+
+      results = Backends.list_backends(source_id: source.id, default_ingest?: true)
+      assert length(results) == 2
+
+      result_ids = Enum.map(results, & &1.id) |> Enum.sort()
+      expected_ids = [backend1.id, backend2.id] |> Enum.sort()
+      assert result_ids == expected_ids
+
+      refute backend4.id in result_ids
     end
 
     test "list_backends/1 with alerts queries", %{user: user} do

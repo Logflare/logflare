@@ -228,6 +228,9 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
   def get_supported_languages, do: [:bq_sql]
 
   @impl Logflare.Backends.Adaptor
+  def supports_default_ingest?, do: true
+
+  @impl Logflare.Backends.Adaptor
   def cast_config(params) do
     {%{}, %{project_id: :string, dataset_id: :string}}
     |> Changeset.cast(params, [:project_id, :dataset_id])

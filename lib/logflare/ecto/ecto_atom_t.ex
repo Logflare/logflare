@@ -11,11 +11,9 @@ defmodule Ecto.Atom do
   def cast(_), do: :error
 
   def load(value) do
-    try do
-      {:ok, String.to_existing_atom(value)}
-    rescue
-      e in ArgumentError -> {:error, e}
-    end
+    {:ok, String.to_existing_atom(value)}
+  rescue
+    e in ArgumentError -> {:error, e}
   end
 
   def dump(value) when is_atom(value), do: {:ok, Atom.to_string(value)}

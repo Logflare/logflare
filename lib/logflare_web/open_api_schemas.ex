@@ -116,6 +116,7 @@ defmodule LogflareWeb.OpenApiSchemas do
       metrics: %Schema{type: :object},
       notifications: %Schema{type: :array, items: Notification},
       custom_event_message_keys: %Schema{type: :string},
+      default_ingest_backend_enabled?: %Schema{type: :boolean},
       inserted_at: %Schema{type: :string, format: :"date-time"},
       updated_at: %Schema{type: :string, format: :"date-time"}
     }
@@ -150,6 +151,7 @@ defmodule LogflareWeb.OpenApiSchemas do
       token: %Schema{type: :string},
       config: %Schema{type: :object},
       metadata: %Schema{type: :object},
+      default_ingest?: %Schema{type: :boolean},
       inserted_at: %Schema{type: :string, format: :"date-time"},
       updated_at: %Schema{type: :string, format: :"date-time"}
     }
