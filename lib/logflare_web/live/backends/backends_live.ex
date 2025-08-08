@@ -55,22 +55,7 @@ defmodule LogflareWeb.BackendsLive do
         %{"backend" => params},
         %{assigns: %{live_action: :edit}} = socket
       ) do
-    params =
-      Map.update(params, "config", nil, fn config ->
-        {key, config} = Map.pop(config, "header1_key")
-        {value, config} = Map.pop(config, "header1_value")
-
-        Map.put(config, "headers", %{key => value})
-        |> case do
-          %{"metadata" => metadata_str} = config when is_binary(metadata_str) ->
-            metadata = parse_metadata(metadata_str)
-
-            Map.put(config, "metadata", metadata)
-
-          config ->
-            config
-        end
-      end)
+    params = transform_params(params)
 
     socket =
       case Logflare.Backends.update_backend(socket.assigns.backend, params) do
@@ -97,6 +82,8 @@ defmodule LogflareWeb.BackendsLive do
         %{"backend" => params},
         %{assigns: %{live_action: :new}} = socket
       ) do
+    params = transform_params(params)
+
     socket =
       case Logflare.Backends.create_backend(params) do
         {:ok, backend} ->
@@ -264,7 +251,28 @@ defmodule LogflareWeb.BackendsLive do
     |> assign(:form_type, Atom.to_string(backend.type))
   end
 
-  defp parse_metadata(data) when is_binary(data) do
+
+  defp transform_params(params) do
+    type = params["type"]
+
+    Map.update(params, "config", nil, fn config ->
+      {key, config} = Map.pop(config, "header1_key")
+      {value, config} = Map.pop(config, "header1_value")
+
+      Map.put(config, "headers", %{key => value})
+      |> case do
+        %{"metadata" => metadata_str} = config
+        when is_binary(metadata_str) and type == "incidentio" ->
+          metadata = parse_incidentio_metadata(metadata_str)
+          Map.put(config, "metadata", metadata)
+
+        config ->
+          config
+      end
+    end)
+  end
+
+  defp parse_incidentio_metadata(data) when is_binary(data) do
     data
     |> String.split(",")
     |> Enum.reduce(%{}, fn pair, acc ->
@@ -292,4 +300,5 @@ defmodule LogflareWeb.BackendsLive do
   end
 
   defp _to_string(val), do: to_string(val)
+
 end
