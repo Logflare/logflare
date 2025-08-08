@@ -281,32 +281,30 @@ defmodule Logflare.LogEvent do
     |> validate_required([:stage, :message])
   end
 
-  defp make_message(le, source) do
-    message = le.body["message"] || le.body["event_message"]
+  defp make_message(log_event, source) do
+    keys
+    |> String.split(",", trim: true)
+    |> Enum.map_join(" | ", fn key -> build_message(key, log_event) end)
+  end
 
-    if keys = source.custom_event_message_keys do
-      keys
-      |> String.split(",", trim: true)
-      |> Enum.map_join(" | ", fn x ->
-        case String.trim(x) do
-          "id" ->
-            le.id
+  defp build_message(key, log_event) do
+    message = log_event.body["message"] || log_event.body["event_message"]
 
-          "message" ->
-            message
+    case String.trim(key) do
+      "id" ->
+        log_event.id
 
-          "event_message" ->
-            message
+      "message" ->
+        message
 
-          "m." <> rest ->
-            query_json(le.body, "$.metadata.#{rest}")
+      "event_message" ->
+        message
 
-          keys ->
-            query_json(le.body, "$.#{keys}")
-        end
-      end)
-    else
-      message
+      "m." <> rest ->
+        query_json(log_event.body, "$.metadata.#{rest}")
+
+      keys ->
+        query_json(log_event.body, "$.#{keys}")
     end
   end
 
