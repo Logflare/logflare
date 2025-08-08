@@ -252,27 +252,27 @@ end
 
 defimpl String.Chars, for: Tesla.Env do
   def to_string(%Tesla.Env{headers: headers} = env) do
-    if Application.get_env(:logflare, :env) not in [:test, :dev] do
+    if Application.get_env(:logflare, :env) in [:test, :dev] do
+      apply(Logflare.Utils.tesla_env_to_string(), :to_string, [env])
+    else
       redacted_headers = Logflare.Utils.redact_sensitive_headers(headers)
 
       apply(Logflare.Utils.tesla_env_to_string(), :to_string, [%{env | headers: redacted_headers}])
-    else
-      apply(Logflare.Utils.tesla_env_to_string(), :to_string, [env])
     end
   end
 end
 
 defimpl Inspect, for: Tesla.Env do
   def inspect(%Tesla.Env{headers: headers} = env, opts) do
-    if Application.get_env(:logflare, :env) not in [:test, :dev] do
+    apply(Logflare.Utils.tesla_env_inspect(), :inspect, [env, opts])
+  else
+    if Application.get_env(:logflare, :env) in [:test, :dev] do
       redacted_headers = Logflare.Utils.redact_sensitive_headers(headers)
 
       apply(Logflare.Utils.tesla_env_inspect(), :inspect, [
         %{env | headers: redacted_headers},
         opts
       ])
-    else
-      apply(Logflare.Utils.tesla_env_inspect(), :inspect, [env, opts])
     end
   end
 end
