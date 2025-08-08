@@ -264,9 +264,9 @@ end
 
 defimpl Inspect, for: Tesla.Env do
   def inspect(%Tesla.Env{headers: headers} = env, opts) do
-    apply(Logflare.Utils.tesla_env_inspect(), :inspect, [env, opts])
-  else
     if Application.get_env(:logflare, :env) in [:test, :dev] do
+      apply(Logflare.Utils.tesla_env_inspect(), :inspect, [env, opts])
+    else
       redacted_headers = Logflare.Utils.redact_sensitive_headers(headers)
 
       apply(Logflare.Utils.tesla_env_inspect(), :inspect, [
