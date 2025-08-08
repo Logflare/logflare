@@ -113,9 +113,6 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
   end
 
   @impl Logflare.Backends.Adaptor
-  def get_supported_languages, do: [:ch_sql]
-
-  @impl Logflare.Backends.Adaptor
   def supports_default_ingest?, do: true
 
   @doc false

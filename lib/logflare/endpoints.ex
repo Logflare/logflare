@@ -376,35 +376,40 @@ defmodule Logflare.Endpoints do
     end
   end
 
-  defp get_backend_for_query(%Query{user_id: user_id, language: :bq_sql}) do
-    user = Users.Cache.get(user_id)
-    {:ok, Backends.get_default_backend(user)}
-  end
-
   defp get_backend_for_query(%Query{user_id: user_id, language: language}) do
-    user = Users.Cache.get(user_id)
-
-    case find_backend_for_language(user, language) do
-      {:ok, backend} -> {:ok, backend}
-      {:error, _} -> {:ok, Backends.get_default_backend(user)}
-    end
+    backend_type = language_to_backend_type(language)
+    find_backend_by_type_or_default(user_id, backend_type)
   end
 
-  @spec find_backend_for_language(User.t(), atom()) ::
-          {:ok, Backend.t()} | {:error, :no_backend_found}
-  defp find_backend_for_language(%User{} = user, language) when is_atom_value(language) do
-    user_backends = Backends.list_backends_by_user_id(user.id)
+  defp get_backend_for_query(%Query{user_id: user_id}) do
+    find_backend_by_type_or_default(user_id, nil)
+  end
 
-    backend_for_language =
-      Enum.find(user_backends, fn backend ->
-        supported_languages = Backends.Adaptor.get_supported_languages(backend)
-        language in supported_languages
-      end)
+  @spec language_to_backend_type(atom()) :: atom() | nil
+  defp language_to_backend_type(:pg_sql), do: :postgres
+  defp language_to_backend_type(:ch_sql), do: :clickhouse
+  defp language_to_backend_type(:bq_sql), do: :bigquery
+  defp language_to_backend_type(_), do: nil
 
-    case backend_for_language do
-      nil -> {:error, :no_backend_found}
+  @spec find_backend_by_type_or_default(user_id :: integer(), backend_type :: atom() | nil) ::
+          {:ok, Backend.t()} | {:error, String.t()}
+  defp find_backend_by_type_or_default(user_id, backend_type) when is_atom_value(backend_type) do
+    user_backends = Backends.list_backends_by_user_id(user_id)
+
+    case Enum.find(user_backends, &(&1.type == backend_type)) do
+      nil -> get_default_backend(user_id)
       backend -> {:ok, backend}
     end
+  end
+
+  defp find_backend_by_type_or_default(user_id, nil) do
+    get_default_backend(user_id)
+  end
+
+  @spec get_default_backend(integer()) :: {:ok, Backend.t()} | {:error, String.t()}
+  defp get_default_backend(user_id) do
+    user = Users.Cache.get(user_id)
+    {:ok, Backends.get_default_backend(user)}
   end
 
   @spec build_transformation_context(Backend.t()) :: map()

@@ -76,11 +76,6 @@ defmodule Logflare.Backends.Adaptor do
   @callback execute_query(identifier(), query()) :: {:ok, [term()]} | {:error, :not_implemented}
 
   @doc """
-  Returns the list of query languages supported by this adaptor.
-  """
-  @callback get_supported_languages() :: [atom()]
-
-  @doc """
   Typecasts config params.
   """
   @callback cast_config(param :: map()) :: Ecto.Changeset.t()
@@ -98,21 +93,6 @@ defmodule Logflare.Backends.Adaptor do
     params
     |> mod.cast_config()
     |> mod.validate_config()
-  end
-
-  @doc """
-  Returns the list of supported query languages for a given backend.
-  Returns an empty list if the adaptor does not support querying.
-  """
-  @spec get_supported_languages(Backend.t()) :: [atom()]
-  def get_supported_languages(%Backend{} = backend) do
-    adaptor = get_adaptor(backend)
-
-    if function_exported?(adaptor, :get_supported_languages, 0) do
-      adaptor.get_supported_languages()
-    else
-      []
-    end
   end
 
   @doc """
@@ -194,7 +174,6 @@ defmodule Logflare.Backends.Adaptor do
                       format_batch: 1,
                       format_batch: 2,
                       test_connection: 2,
-                      get_supported_languages: 0,
                       transform_query: 3,
                       map_query_parameters: 4,
                       send_alert: 3,

@@ -225,9 +225,6 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
   end
 
   @impl Logflare.Backends.Adaptor
-  def get_supported_languages, do: [:bq_sql]
-
-  @impl Logflare.Backends.Adaptor
   def supports_default_ingest?, do: true
 
   @impl Logflare.Backends.Adaptor

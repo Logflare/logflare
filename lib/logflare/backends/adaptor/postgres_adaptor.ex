@@ -144,9 +144,6 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor do
   end
 
   @impl Logflare.Backends.Adaptor
-  def get_supported_languages, do: [:pg_sql]
-
-  @impl Logflare.Backends.Adaptor
   def transform_query(query, :bq_sql, context) do
     if should_transform_bigquery_to_postgres?() do
       schema_prefix = Map.get(context, :schema_prefix)
