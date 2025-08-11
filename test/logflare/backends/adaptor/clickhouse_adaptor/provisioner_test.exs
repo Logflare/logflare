@@ -5,7 +5,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.ProvisionerTest do
   alias Logflare.Backends.Adaptor.ClickhouseAdaptor.Provisioner
 
   setup do
-    Logflare.Factory.insert(:plan, name: "Free")
+    insert(:plan, name: "Free")
 
     {source, backend, cleanup_fn} = setup_clickhouse_test()
     on_exit(cleanup_fn)

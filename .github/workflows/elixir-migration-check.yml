@@ -39,11 +39,18 @@ jobs:
           CLICKHOUSE_DB: logflare_test
           CLICKHOUSE_USER: logflare
           CLICKHOUSE_PASSWORD: logflare
+          CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
         options: >-
           --health-cmd "wget --no-verbose --tries=1 --spider http://localhost:8123/ping || exit 1"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 10
+          --memory="1500m"
+          --memory-reservation="512m"
+          --cpus="1.0"
+          --shm-size="256m"
+          --tmpfs /var/lib/clickhouse:rw,size=1G
+          --tmpfs /var/log/clickhouse-server:rw,size=100M
     env:
       MIX_ENV: test
       SHELL: /bin/bash

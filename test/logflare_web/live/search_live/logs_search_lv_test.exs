@@ -1,6 +1,6 @@
 defmodule LogflareWeb.Source.SearchLVTest do
   @moduledoc false
-  use LogflareWeb.ConnCase
+  use LogflareWeb.ConnCase, async: false
 
   alias Logflare.Source
   alias Logflare.SingleTenant
@@ -29,7 +29,15 @@ defmodule LogflareWeb.Source.SearchLVTest do
   end
 
   defp on_exit_kill_tasks(_ctx) do
-    on_exit(fn -> Logflare.Utils.Tasks.kill_all_tasks() end)
+    on_exit(fn ->
+      # Kill all tasks first
+      Logflare.Utils.Tasks.kill_all_tasks()
+
+      # Give processes time to clean up
+      Process.sleep(10)
+
+      :ok
+    end)
 
     :ok
   end
@@ -236,7 +244,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
       [user: user, source: source, plan: plan]
     end
 
-    setup [:setup_user_session, :setup_source_processes]
+    setup [:setup_mocks, :setup_user_session, :setup_source_processes]
 
     test "subheader - lql docs", %{conn: conn, source: source} do
       {:ok, view, _html} = live(conn, ~p"/sources/#{source.id}/search")
@@ -268,6 +276,9 @@ defmodule LogflareWeb.Source.SearchLVTest do
     test "subheader - aggregeate", %{conn: conn, source: source} do
       {:ok, view, _html} = live(conn, ~p"/sources/#{source.id}/search")
 
+      %{executor_pid: search_executor_pid} = get_view_assigns(view)
+      Ecto.Adapters.SQL.Sandbox.allow(Logflare.Repo, self(), search_executor_pid)
+
       assert view
              |> element(".subhead a", "aggregate")
              |> render_click()
@@ -278,6 +289,8 @@ defmodule LogflareWeb.Source.SearchLVTest do
 
     test "load page", %{conn: conn, source: source} do
       {:ok, view, html} = live(conn, Routes.live_path(conn, SearchLV, source.id))
+      %{executor_pid: search_executor_pid} = get_view_assigns(view)
+      Ecto.Adapters.SQL.Sandbox.allow(Logflare.Repo, self(), search_executor_pid)
 
       assert html =~ "~/logs/"
       assert html =~ source.name
@@ -320,6 +333,9 @@ defmodule LogflareWeb.Source.SearchLVTest do
 
     test "lql filters", %{conn: conn, source: source} do
       {:ok, view, _html} = live(conn, Routes.live_path(conn, SearchLV, source.id))
+
+      %{executor_pid: search_executor_pid} = get_view_assigns(view)
+      Ecto.Adapters.SQL.Sandbox.allow(Logflare.Repo, self(), search_executor_pid)
 
       :timer.sleep(1000)
 
@@ -390,6 +406,9 @@ defmodule LogflareWeb.Source.SearchLVTest do
       end)
 
       {:ok, view, _html} = live(conn, Routes.live_path(conn, SearchLV, source.id))
+      %{executor_pid: search_executor_pid} = get_view_assigns(view)
+      Ecto.Adapters.SQL.Sandbox.allow(Logflare.Repo, self(), search_executor_pid)
+
       # post-init fetching
       :timer.sleep(800)
 
@@ -420,6 +439,10 @@ defmodule LogflareWeb.Source.SearchLVTest do
       end)
 
       {:ok, view, _html} = live(conn, Routes.live_path(conn, SearchLV, source.id))
+
+      %{executor_pid: search_executor_pid} = get_view_assigns(view)
+      Ecto.Adapters.SQL.Sandbox.allow(Logflare.Repo, self(), search_executor_pid)
+
       # post-init fetching
       :timer.sleep(500)
 
@@ -445,6 +468,9 @@ defmodule LogflareWeb.Source.SearchLVTest do
       end)
 
       {:ok, view, _html} = live(conn, Routes.live_path(conn, SearchLV, source.id))
+
+      %{executor_pid: search_executor_pid} = get_view_assigns(view)
+      Ecto.Adapters.SQL.Sandbox.allow(Logflare.Repo, self(), search_executor_pid)
 
       # wait for async search task to complete
       :timer.sleep(500)
@@ -481,6 +507,9 @@ defmodule LogflareWeb.Source.SearchLVTest do
 
       {:ok, view, _html} =
         live(conn, ~p"/sources/#{source.id}/search?#{%{querystring: "testing:modal123"}}")
+
+      %{executor_pid: search_executor_pid} = get_view_assigns(view)
+      Ecto.Adapters.SQL.Sandbox.allow(Logflare.Repo, self(), search_executor_pid)
 
       # wait for async search task to complete
       :timer.sleep(500)
@@ -538,6 +567,9 @@ defmodule LogflareWeb.Source.SearchLVTest do
       {:ok, view, _html} =
         live(conn, ~p"/sources/#{source.id}/search?#{%{querystring: ""}}")
 
+      %{executor_pid: search_executor_pid} = get_view_assigns(view)
+      Ecto.Adapters.SQL.Sandbox.allow(Logflare.Repo, self(), search_executor_pid)
+
       # Wait for search to complete
       :timer.sleep(200)
 
@@ -559,6 +591,9 @@ defmodule LogflareWeb.Source.SearchLVTest do
       assert {:ok, view, _html} =
                live(conn, Routes.live_path(conn, SearchLV, source, querystring: "t:20022"))
 
+      %{executor_pid: search_executor_pid} = get_view_assigns(view)
+      Ecto.Adapters.SQL.Sandbox.allow(Logflare.Repo, self(), search_executor_pid)
+
       assert render(view) =~ "Error while parsing timestamp filter"
     end
 
@@ -568,6 +603,9 @@ defmodule LogflareWeb.Source.SearchLVTest do
     } do
       assert {:ok, view, _html} =
                live(conn, Routes.live_path(conn, SearchLV, source, querystring: "t:20022"))
+
+      %{executor_pid: search_executor_pid} = get_view_assigns(view)
+      Ecto.Adapters.SQL.Sandbox.allow(Logflare.Repo, self(), search_executor_pid)
 
       error_response =
         %{
@@ -616,15 +654,28 @@ defmodule LogflareWeb.Source.SearchLVTest do
 
       assert get_view_assigns(view).tailing?
       render_click(view, "soft_pause", %{})
+
+      # Allow database access after pause click which might trigger a new search
+      %{executor_pid: search_executor_pid} = view |> get_view_assigns()
+      Ecto.Adapters.SQL.Sandbox.allow(Logflare.Repo, self(), search_executor_pid)
+
       refute get_view_assigns(view).tailing?
 
       render_click(view, "soft_play", %{})
+
+      # Allow database access after play click which might trigger a new search
+      %{executor_pid: search_executor_pid} = view |> get_view_assigns()
+      Ecto.Adapters.SQL.Sandbox.allow(Logflare.Repo, self(), search_executor_pid)
+
       assert get_view_assigns(view).tailing?
     end
 
     test "datetime_update", %{conn: conn, source: source} do
       {:ok, view, _html} =
         live(conn, Routes.live_path(conn, SearchLV, source, querystring: "error"))
+
+      %{executor_pid: search_executor_pid} = get_view_assigns(view)
+      Ecto.Adapters.SQL.Sandbox.allow(Logflare.Repo, self(), search_executor_pid)
 
       # post-init fetching
       :timer.sleep(500)

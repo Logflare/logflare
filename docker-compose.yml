@@ -110,13 +110,30 @@ services:
       - "8123:8123" # HTTP interface
       - "9000:9000"  # Native client interface
     volumes:
-      - clickhouse-data:/var/lib/clickhouse
-      - clickhouse-logs:/var/log/clickhouse-server
+      # Only mount config files, no data persistence
+      - ./priv/clickhouse/clickhouse-config.xml:/etc/clickhouse-server/config.d/memory-settings.xml:ro
+      - ./priv/clickhouse/clickhouse-users.xml:/etc/clickhouse-server/users.d/memory-profiles.xml:ro
+    tmpfs:
+      # Use tmpfs (RAM) for data - automatically cleaned on container restart
+      - /var/lib/clickhouse:size=1G
+      - /var/log/clickhouse-server:size=100M
     environment:
       CLICKHOUSE_DB: logflare_test
       CLICKHOUSE_USER: logflare
       CLICKHOUSE_PASSWORD: logflare
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
+    deploy:
+      resources:
+        limits:
+          memory: 1500M
+          cpus: '1.0'
+        reservations:
+          memory: 512M
+    restart: unless-stopped
+    shm_size: 256M
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
 volumes:
   pg-data:
-  clickhouse-data:
-  clickhouse-logs:
