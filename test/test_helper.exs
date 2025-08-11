@@ -5,6 +5,7 @@ ExUnit.start()
 # Mimic mocks setup
 Mimic.copy(Broadway)
 Mimic.copy(Ch)
+Mimic.copy(Date)
 Mimic.copy(ConfigCat)
 Mimic.copy(ConfigCat.User)
 Mimic.copy(ExTwilio.Message)

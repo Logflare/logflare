@@ -323,7 +323,6 @@ defmodule Logflare.Lql.Parser.HelpersTest do
 
   describe "ISO8601 parsing error handling" do
     test "handles ISO8601 parsing with timezone offset" do
-      copy(Date)
       stub(Date, :from_iso8601, fn _ -> {:ok, ~D[2023-01-01], "+00:00"} end)
 
       result = Helpers.parse_date_or_datetime([{:date, "2023-01-01"}])
@@ -331,7 +330,6 @@ defmodule Logflare.Lql.Parser.HelpersTest do
     end
 
     test "handles invalid ISO8601 format error" do
-      copy(Date)
       stub(Date, :from_iso8601, fn _ -> {:error, :invalid_format} end)
 
       error = catch_throw(Helpers.parse_date_or_datetime([{:date, "invalid-date"}]))
@@ -339,7 +337,6 @@ defmodule Logflare.Lql.Parser.HelpersTest do
     end
 
     test "handles generic ISO8601 error" do
-      copy(Date)
       stub(Date, :from_iso8601, fn _ -> {:error, "custom error"} end)
 
       error = catch_throw(Helpers.parse_date_or_datetime([{:date, "2023-01-01"}]))
