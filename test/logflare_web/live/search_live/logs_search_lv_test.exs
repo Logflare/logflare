@@ -25,7 +25,37 @@ defmodule LogflareWeb.Source.SearchLVTest do
       {:ok, TestUtils.gen_bq_response()}
     end)
 
+    setup_task_mocks()
+
     :ok
+  end
+
+  defp setup_task_mocks do
+    stub(Logflare.Utils.Tasks, :async, fn func, opts ->
+      owner_pid = self()
+
+      # Setup DB ownership for the spawned tasks
+      wrapped_func = fn ->
+        try do
+          :ok = Ecto.Adapters.SQL.Sandbox.checkout(Logflare.Repo)
+        rescue
+          DBConnection.OwnershipError ->
+            try do
+              Ecto.Adapters.SQL.Sandbox.allow(Logflare.Repo, owner_pid, self())
+            rescue
+              _ -> :ok
+            end
+        end
+
+        func.()
+      end
+
+      Task.Supervisor.async(
+        {:via, PartitionSupervisor, {Logflare.TaskSupervisors, self()}},
+        wrapped_func,
+        opts
+      )
+    end)
   end
 
   defp on_exit_kill_tasks(_ctx) do

@@ -20,18 +20,13 @@ defmodule Logflare.Utils.Tasks do
   end
 
   @doc """
-  Linked to caller, linked to supervisor.
-
-  In test environment, this function automatically handles database ownership
-  for spawned tasks to prevent Ecto.Sandbox errors.
+  Linked to caller, linked to supervisor
   """
   @spec async((-> any())) :: Task.t()
   def async(func, opts \\ []) do
-    wrapped_func = maybe_wrap_for_test_db(func)
-
     Task.Supervisor.async(
       {:via, PartitionSupervisor, {Logflare.TaskSupervisors, self()}},
-      wrapped_func,
+      func,
       opts
     )
   end
@@ -57,33 +52,5 @@ defmodule Logflare.Utils.Tasks do
     |> Enum.map(fn {_, pid, _, _} ->
       pid |> Task.Supervisor.children() |> Enum.map(&Task.Supervisor.terminate_child(pid, &1))
     end)
-  end
-
-  defp maybe_wrap_for_test_db(func) do
-    if Application.get_env(:logflare, :env) == :test do
-      owner_pid = self()
-
-      fn ->
-        setup_test_db_ownership(owner_pid)
-        func.()
-      end
-    else
-      func
-    end
-  end
-
-  # Ensure tests have database access for tasks spawned through Task.Supervisor
-  defp setup_test_db_ownership(owner_pid) do
-    try do
-      :ok = Ecto.Adapters.SQL.Sandbox.checkout(Logflare.Repo)
-    rescue
-      DBConnection.OwnershipError ->
-        # If checkout fails, try to allow from owner
-        try do
-          Ecto.Adapters.SQL.Sandbox.allow(Logflare.Repo, owner_pid, self())
-        rescue
-          _ -> :ok
-        end
-    end
   end
 end
