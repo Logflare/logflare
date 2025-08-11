@@ -1,0 +1,15 @@
+<?xml version="1.0"?>
+<clickhouse>
+    <profiles>
+        <default>
+            <!-- Per-query memory limit (512MB) -->
+            <max_memory_usage>536870912</max_memory_usage>
+            <!-- Spill to disk after 256MB -->
+            <max_bytes_before_external_group_by>268435456</max_bytes_before_external_group_by>
+            <max_bytes_before_external_sort>268435456</max_bytes_before_external_sort>
+            <!-- Reduce parallelism -->
+            <max_threads>2</max_threads>
+            <max_insert_threads>2</max_insert_threads>
+        </default>
+    </profiles>
+</clickhouse>

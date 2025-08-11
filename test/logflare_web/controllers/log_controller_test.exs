@@ -500,7 +500,9 @@ defmodule LogflareWeb.LogControllerTest do
   defp reject_context_functions(_) do
     reject(&Sources.get_source_by_token/1)
     reject(&Sources.get/1)
-    reject(&Sources.get_by/1)
+    # Allow Sources.get_by/1 to be called by background processes (like the SourceSupWorker)
+    # but stub it to return nil to avoid actual database calls
+    stub(Sources, :get_by, fn _ -> nil end)
     reject(&Sources.get_by_and_preload_rules/1)
     reject(&Sources.preload_defaults/1)
     reject(&Users.get/1)
