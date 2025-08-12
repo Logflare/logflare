@@ -65,7 +65,6 @@ defmodule Logflare.Logs.LogEvents do
   end
 
   def partition_query(query, [min, max], :pseudo) do
-    {min, Timex.to_date(min)}
 
     where(
       query,
