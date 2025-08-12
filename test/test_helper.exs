@@ -65,6 +65,7 @@ Mimic.stub(Goth)
 Mimic.stub(Finch)
 
 ExUnit.configure(
+  capture_log: true,
   exclude: [not_implemented: true, integration: true, failing: true, benchmark: true]
 )
 
