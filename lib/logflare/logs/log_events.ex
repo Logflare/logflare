@@ -65,7 +65,6 @@ defmodule Logflare.Logs.LogEvents do
   end
 
   def partition_query(query, [min, max], :pseudo) do
-
     where(
       query,
       [t],
