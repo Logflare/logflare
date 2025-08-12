@@ -62,6 +62,34 @@ defmodule LogflareWeb.SearchLive.LogEventComponents do
 
   def log_search_event(assigns), do: ~H""
 
+  attr :log_event, Logflare.LogEvent, required: true
+  attr :timezone, :string, required: true
+  attr :rest, :global, default: %{class: "tw-group"}
+  slot :inner_block
+  slot :actions
+
+  def log_event(assigns) do
+    %{log_event: %{body: body}} = assigns
+
+    assigns =
+      assigns
+      |> assign(timestamp: body["timestamp"], message: body["event_message"])
+      |> assign(
+        :log_level,
+        if(body["level"] in @log_levels, do: body["level"], else: nil)
+      )
+
+    ~H"""
+    <li id={"log-event_#{@log_event.id || @log_event.body["timestamp"]}"} {@rest}>
+      <.metadata timestamp={@timestamp} log_level={@log_level}>
+        <%= format_timestamp(@timestamp, @timezone) %>
+      </.metadata>
+      <%= render_slot(@inner_block) || @message %>
+      <%= render_slot(@actions) %>
+    </li>
+    """
+  end
+
   attr :log_level, :string, default: nil
   attr :timestamp, :string
   slot :inner_block
