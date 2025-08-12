@@ -48,16 +48,40 @@ defmodule LogflareWeb.SearchLive.EventContextComponent do
         ]
       end)
 
-    {:ok, assign(socket, logs: logs)}
+    {:ok, assign(socket, lql_rules: assigns.params["lql_rules"], logs: logs)}
   end
 
   def render(assigns) do
     ~H"""
-    <div class="list-unstyled console-text-list -tw-mx-6">
-      <ul class="list-unstyled">
+    <div class="list-unstyled console-text-list -tw-mx-6 tw-relative">
+      <div class="tw-flex tw-px-2 tw-py-4 tw-mb-4 tw-bg-gray-800 tw-items-baseline tw-absolute tw-w-full">
+        <div class="tw-mr-3 tw-w-[9rem] tw-text-right">Query</div>
+        <div class="tw-font-mono tw-text-white tw-text-sm tw-space-x-2">
+          <.lql_rule :for={rule <- @lql_rules} :if={is_struct(rule, Logflare.Lql.Rules.FilterRule) && rule.path != "timestamp"} rule={rule} />
+        </div>
+      </div>
+      <ul class="list-unstyled tw-top-14 tw-relative tw-max-h-[calc(100vh-200px)] tw-overflow-y-scroll tw-pr-2">
         <.log_event :for={log <- @logs} log={log} />
       </ul>
     </div>
+    """
+  end
+
+  attr :rule, Logflare.Lql.Rules.FilterRule, required: true
+
+  def lql_rule(assigns) do
+    operator =
+      case assigns.rule.operator do
+        := -> ":"
+        other -> other |> to_string()
+      end
+
+    assigns =
+      assigns
+      |> assign(:operator, operator)
+
+    ~H"""
+    <span><%= @rule.path %><%= @operator %><%= @rule.value %></span>
     """
   end
 
@@ -66,17 +90,18 @@ defmodule LogflareWeb.SearchLive.EventContextComponent do
   def log_event(assigns) do
     ~H"""
     <li class={[
-      "hover:tw-bg-gray-800",
-      if(@log.highlight?, do: "tw-bg-gray-500", else: "")
+      "hover:tw-bg-gray-800 tw-relative",
+      if(@log.highlight?, do: "tw-bg-gray-500 my-2", else: "")
     ]}>
+      <span :if={@log.highlight?} class="fas fa-chevron-right tw-absolute tw-top-1 -tw-left-6 tw-text-white"></span>
       <div class="console-text tw-flex tw-flex-wrap tw-mb-0 tw-space-x-2">
         <mark class={["log-datestamp tw-grow-0", if(@log.highlight?, do: "tw-bg-gray-500 tw-text-white", else: "")]} data-timestamp={@log.body["timestamp"]}>
           <%= @log.body["timestamp"] %>
         </mark>
-        <div class="tw-flex-1 tw-truncate">
+        <div class="tw-flex-1 tw-truncate tw-py-1">
           <code class="tw-text-nowrap  console-text"><%= @log.body["event_message"] %></code>
         </div>
-        <a class={["metadata-link", if(@log.highlight?, do: "tw-bg-gray-500 tw-text-white", else: "")]} data-toggle="collapse" href={"#metadata-" <> @log.id} aria-expanded="false" class="tw-text-[0.65rem]">
+        <a class={["metadata-link", if(@log.highlight?, do: "tw-bg-gray-500 tw-text-white tw-py-1", else: "tw-py-1")]} data-toggle="collapse" href={"#metadata-" <> @log.id} aria-expanded="false" class="tw-text-[0.65rem]">
           event body
         </a>
         <div class="tw-h-0 tw-basis-full"></div>
