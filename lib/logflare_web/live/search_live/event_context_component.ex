@@ -2,69 +2,96 @@ defmodule LogflareWeb.SearchLive.EventContextComponent do
   use LogflareWeb, :live_component
 
   alias Logflare.JSON
-  use Timex
+  alias Phoenix.LiveView.AsyncResult
+  import LogflareWeb.SearchLive.LogEventComponents, only: [log_event: 1]
+  import LogflareWeb.ModalLiveHelpers
 
   @impl true
   def update(assigns, socket) do
-    log =
-      %{
-        "timestamp" => "2025-07-28 06:54:26",
-        "id" => "8429494b-0e1b-491d-a224-74ee8c265294",
-        "event_message" =>
-          "{\"name\":\"banana\",\"qty\":12,\"store\":{\"address\":\"123 W Main St\",\"city\":\"Phoenix\",\"state\":\"AZ\",\"zip\":85016},\"tags\":[\"popular, tropical, organic\"],\"type\":\"fruit\",\"yellow\":true}",
-        "metadata" => [
-          %{
-            "name" => "banana",
-            "qty" => "12",
-            "store" => [
-              %{
-                "address" => "123 W Main St",
-                "city" => "Phoenix",
-                "state" => "AZ",
-                "zip" => "85016"
-              }
-            ],
-            "tags" => ["popular", "tropical", "organic"],
-            "type" => "fruit",
-            "yellow" => "true",
-            "level" => nil
-          }
-        ]
+    %{
+      params: %{
+        "log-event-timestamp" => log_timestamp,
+        "log-event-id" => log_event_id,
+        "lql_rules" => lql_rules,
+        "source_id" => source_id,
+        "timezone" => timezone
       }
+    } = assigns
 
-    logs =
-      0..100
-      |> Enum.reduce([], fn _, acc ->
-        ts =
-          DateTime.utc_now()
-          |> DateTime.add(:rand.uniform(1000), :second)
-          |> Calendar.strftime("%Y-%m-%d %H:%M:%S")
+    log_timestamp = String.to_integer(log_timestamp)
 
-        log = %{log | "timestamp" => ts}
-
-        [
-          %{id: Ecto.UUID.generate(), body: log, via_rule: nil, highlight?: length(acc) == 50}
-          | acc
-        ]
-      end)
-
-    {:ok, assign(socket, lql_rules: assigns.params["lql_rules"], logs: logs)}
+    {:ok,
+     socket
+     |> assign(lql_rules: lql_rules)
+     |> assign(target_event_id: log_event_id, timezone: timezone)
+     |> assign(:logs, AsyncResult.loading())
+     |> start_async(:logs, fn ->
+       search_logs(log_event_id, log_timestamp, source_id, lql_rules)
+     end)}
   end
 
+  def handle_async(:logs, {:ok, log_events}, socket) do
+    {:noreply,
+     socket
+     |> assign(:logs, AsyncResult.ok(socket.assigns.logs, :ok))
+     |> stream(:log_events, log_events, reset: true)}
+  end
+
+  def handle_async(:logs, {:exit, reason}, socket) do
+    {:noreply,
+     socket
+     |> assign(:logs, AsyncResult.failed(socket.assigns.logs, reason))
+     |> stream(:log_events, [], reset: true)}
+  end
+
+  @impl true
   def render(assigns) do
     ~H"""
     <div class="list-unstyled console-text-list -tw-mx-6 tw-relative">
-      <div class="tw-flex tw-px-2 tw-py-4 tw-mb-4 tw-bg-gray-800 tw-items-baseline tw-absolute tw-w-full">
+      <div class="tw-flex tw-px-2 tw-py-4 tw-mb-4 tw-bg-gray-800 tw-items-baseline tw-sticky tw-w-full">
         <div class="tw-mr-3 tw-w-[9rem] tw-text-right">Query</div>
         <div class="tw-font-mono tw-text-white tw-text-sm tw-space-x-2">
           <.lql_rule :for={rule <- @lql_rules} :if={is_struct(rule, Logflare.Lql.Rules.FilterRule) && rule.path != "timestamp"} rule={rule} />
         </div>
       </div>
-      <ul class="list-unstyled tw-top-14 tw-relative tw-max-h-[calc(100vh-200px)] tw-overflow-y-scroll tw-pr-2">
-        <.log_event :for={log <- @logs} log={log} />
-      </ul>
+      <div class="tw-h-[calc(100vh-200px)] tw-overflow-y-auto tw-pr-2">
+        <.async_result assign={@logs}>
+          <:loading><%= live_react_component("Components.Loader", %{}, id: "shared-loader") %></:loading>
+
+          <ul class="list-unstyled console-text" id="log-events" phx-update="stream">
+            <.log_event
+              :for={{_id, log_event} <- @streams.log_events}
+              log_event={log_event}
+              timezone={@timezone}
+              class={[
+                "tw-group tw-flex tw-flex-wrap tw-items-center tw-pr-1",
+                if(highlight?(log_event, @target_event_id),
+                  do: "tw-bg-gray-600 tw-outline-gray-500 tw-outline tw-my-2",
+                  else: ""
+                )
+              ]}
+            >
+              <span class="tw-truncate tw-flex-1 tw-pr-1">
+                <%= log_event.body["event_message"] %>
+              </span>
+              <:actions>
+                <a class="metadata-link " data-toggle="collapse" href={"#metadata-" <> log_event.id} aria-expanded="false" class="tw-text-[0.65rem]">
+                  event body
+                </a>
+                <div class="collapse metadata tw-overflow-hidden" id={"metadata-" <> log_event.id}>
+                  <pre class="pre-metadata text-clip tw-overflow-x-auto"><code class="tw-text-nowrap"><%= JSON.encode!(log_event.body, pretty: true) %></code></pre>
+                </div>
+              </:actions>
+            </.log_event>
+          </ul>
+        </.async_result>
+      </div>
     </div>
     """
+  end
+
+  def highlight?(log_event, target_event_id) do
+    log_event.id == target_event_id
   end
 
   attr :rule, Logflare.Lql.Rules.FilterRule, required: true
@@ -85,36 +112,73 @@ defmodule LogflareWeb.SearchLive.EventContextComponent do
     """
   end
 
-  attr :log, :map, required: true
+  def search_logs(log_event_id, timestamp, source_id, lql_rules) do
+    import Ecto.Query
+    source = Logflare.Sources.get_source_for_lv_param(source_id)
 
-  def log_event(assigns) do
-    ~H"""
-    <li class={[
-      "hover:tw-bg-gray-800 tw-relative",
-      if(@log.highlight?, do: "tw-bg-gray-500 my-2", else: "")
-    ]}>
-      <span :if={@log.highlight?} class="fas fa-chevron-right tw-absolute tw-top-1 -tw-left-6 tw-text-white"></span>
-      <div class="console-text tw-flex tw-flex-wrap tw-mb-0 tw-space-x-2">
-        <mark class={["log-datestamp tw-grow-0", if(@log.highlight?, do: "tw-bg-gray-500 tw-text-white", else: "")]} data-timestamp={@log.body["timestamp"]}>
-          <%= @log.body["timestamp"] %>
-        </mark>
-        <div class="tw-flex-1 tw-truncate tw-py-1">
-          <code class="tw-text-nowrap  console-text"><%= @log.body["event_message"] %></code>
-        </div>
-        <a class={["metadata-link", if(@log.highlight?, do: "tw-bg-gray-500 tw-text-white tw-py-1", else: "tw-py-1")]} data-toggle="collapse" href={"#metadata-" <> @log.id} aria-expanded="false" class="tw-text-[0.65rem]">
-          event body
-        </a>
-        <div class="tw-h-0 tw-basis-full"></div>
-        <div class="collapse metadata tw-overflow-hidden" id={"metadata-" <> @log.id}>
-          <pre class="pre-metadata text-clip tw-overflow-x-auto"><code class="tw-text-nowrap"><%= JSON.encode!(@log.body, pretty: true) %></code></pre>
-        </div>
-        <%= if @log.via_rule do %>
-          <span data-toggle="tooltip" data-placement="top" title={"Matching #{ @log.via_rule.lql_string } routing from #{@log.origin_source_id }"} style="color: ##5eeb8f;">
-            <i class="fa fa-code-branch" style="font-size: 1em;"></i>
-          </span>
-        <% end %>
-      </div>
-    </li>
-    """
+    so =
+      %{
+        lql_rules: lql_rules,
+        timestamp: timestamp,
+        source: source,
+        tailing?: false
+      }
+      |> Logflare.Logs.SearchOperation.new()
+      |> Logflare.Logs.Search.get_and_put_partition_by()
+
+    # target_event =
+    #   from(t in so.source.bq_table_id)
+    #   |> where([t], t.d == ^log_event_id)
+    #   |> where([t], t.timestamp > ^timestamp)
+    #   |> Ecto.Query.select([t], %{"target_timestamp" => t.timestamp})
+    #   |> limit(1)
+
+    # SELECT timestamp as target_ts
+    #   FROM `logflare-dev-464423.1_dev.9db56741_41ca_4fe8_8c05_051a76a4c5d6`
+    #   WHERE id = "4984baad-b0bc-4247-9800-4388e6d95f76"
+    #     AND timestamp > TIMESTAMP("2025-08-01")
+    #   LIMIT 1
+    # ),
+    #
+
+    min = Timex.from_unix(timestamp, :microsecond)
+
+    rows_after_query =
+      from(so.source.bq_table_id)
+      |> Ecto.Query.select([t], [t.timestamp, t.id, t.event_message])
+      |> where(
+        [t],
+        fragment("EXTRACT(DATE FROM ?)", t.timestamp) >= ^Timex.to_date(min) and
+          t.timestamp >= ^min
+      )
+      |> order_by([t], asc: t.timestamp)
+      |> limit(50)
+
+    rows_before_query =
+      from(so.source.bq_table_id)
+      |> Ecto.Query.select([t], [t.timestamp, t.id, t.event_message])
+      |> where(
+        [t],
+        fragment("EXTRACT(DATE FROM ?)", t.timestamp) <= ^Timex.to_date(min) and
+          t.timestamp < ^min
+      )
+      |> order_by([t], desc: t.timestamp)
+      |> limit(50)
+
+    tasks = [
+      Task.async(fn ->
+        %{so | query: rows_before_query} |> Logflare.Logs.SearchOperations.do_query()
+      end),
+      Task.async(fn ->
+        %{so | query: rows_after_query} |> Logflare.Logs.SearchOperations.do_query()
+      end)
+    ]
+
+    [search_op_before, search_op_after] = Task.await_many(tasks)
+
+    search_op_before.rows |> dbg
+
+    (search_op_before.rows ++ search_op_after.rows)
+    |> Enum.map(&Logflare.LogEvent.make_from_db(&1, %{source: source}))
   end
 end
