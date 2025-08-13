@@ -3,15 +3,15 @@ defmodule Logflare.Logs.SearchUtils do
   Utilities for Logs search and Logs live view modules.
   """
 
-  require Logger
-
   import Logflare.Utils.Guards
+
+  require Logger
 
   @doc """
   Generates a random search tip for the user.
   """
   @spec gen_search_tip() :: String.t()
-  def gen_search_tip() do
+  def gen_search_tip do
     tips = [
       "Search is case sensitive.",
       "Exact match an integer (e.g. `m.response.status_code:500`).",
