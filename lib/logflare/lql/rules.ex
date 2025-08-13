@@ -172,7 +172,7 @@ defmodule Logflare.Lql.Rules do
   Returns a default `ChartRule` with standard settings.
   """
   @spec default_chart_rule() :: ChartRule.t()
-  def default_chart_rule() do
+  def default_chart_rule do
     ChartRule.build(
       aggregate: :count,
       path: "timestamp",
@@ -185,7 +185,7 @@ defmodule Logflare.Lql.Rules do
   Returns a default `SelectRule` with wildcard selection.
   """
   @spec default_select_rule() :: SelectRule.t()
-  def default_select_rule() do
+  def default_select_rule do
     SelectRule.build(
       path: "*",
       wildcard: true
