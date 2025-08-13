@@ -99,7 +99,7 @@ defmodule Logflare.PubSubRates do
   The number of partitions for a paritioned child.
   """
   @spec partitions() :: integer()
-  def partitions(), do: Application.get_env(:logflare, Logflare.PubSub)[:pool_size]
+  def partitions, do: Application.get_env(:logflare, Logflare.PubSub)[:pool_size]
 
   @doc """
   Partitions a topic for a key.
