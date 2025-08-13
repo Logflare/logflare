@@ -1,26 +1,32 @@
 defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
   @moduledoc false
 
-  alias Logflare.Backends
-  alias Logflare.Backends.DynamicPipeline
-  alias Logflare.Backends.Backend
-  alias Logflare.Backends.IngestEventQueue
-  alias Logflare.Source.BigQuery.Pipeline
-  alias Logflare.Source.BigQuery.Schema
-  alias Logflare.Source.BigQuery.Pipeline
-  alias Logflare.Users
-  alias Logflare.Sources
-  alias Logflare.Billing
-  alias Logflare.Backends
-  alias Logflare.Google.BigQuery.GenUtils
-  alias Logflare.Google.CloudResourceManager
-  alias Logflare.Google
+  @behaviour Logflare.Backends.Adaptor
+
   use Supervisor
+
+  import Logflare.Utils.Guards
+
   require Logger
 
-  @behaviour Logflare.Backends.Adaptor
+  alias Ecto.Changeset
+  alias Logflare.Backends
+  alias Logflare.Backends.Backend
+  alias Logflare.Backends.DynamicPipeline
+  alias Logflare.Backends.IngestEventQueue
+  alias Logflare.Billing
+  alias Logflare.BqRepo
+  alias Logflare.Google
+  alias Logflare.Google.BigQuery.GenUtils
+  alias Logflare.Google.CloudResourceManager
+  alias Logflare.Source.BigQuery.Pipeline
+  alias Logflare.Source.BigQuery.Schema
+  alias Logflare.Sources
+  alias Logflare.Users
+
   @service_account_prefix "logflare-managed"
   @managed_service_account_partition_count 5
+
   @impl Logflare.Backends.Adaptor
   def start_link({source, backend} = source_backend) do
     Supervisor.start_link(__MODULE__, source_backend,
@@ -127,8 +133,93 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
   end
 
   @impl Logflare.Backends.Adaptor
-  def execute_query(_id, _query),
-    do: {:error, :not_implemented}
+  def execute_query(%Backend{} = backend, query_string) when is_non_empty_binary(query_string) do
+    execute_query(backend, {query_string, [], %{}})
+  end
+
+  def execute_query(
+        %Backend{user_id: user_id} = _backend,
+        {query_string, declared_params, input_params}
+      )
+      when is_non_empty_binary(query_string) and is_list(declared_params) and is_map(input_params) do
+    execute_query_with_context(user_id, query_string, declared_params, input_params, nil)
+  end
+
+  def execute_query(
+        %Backend{user_id: user_id} = _backend,
+        {query_string, declared_params, input_params, endpoint_query}
+      )
+      when is_non_empty_binary(query_string) and is_list(declared_params) and is_map(input_params) do
+    execute_query_with_context(
+      user_id,
+      query_string,
+      declared_params,
+      input_params,
+      endpoint_query
+    )
+  end
+
+  def execute_query(%Backend{} = _backend, %Ecto.Query{} = _query) do
+    {:error, :not_implemented}
+  end
+
+  defp execute_query_with_context(
+         user_id,
+         query_string,
+         declared_params,
+         input_params,
+         endpoint_query
+       ) do
+    user = Users.get(user_id)
+
+    bq_params =
+      Enum.map(declared_params, fn input_name ->
+        %{
+          name: input_name,
+          parameterValue: %{value: input_params[input_name]},
+          parameterType: %{type: "STRING"}
+        }
+      end)
+
+    # Build query options with labels if endpoint_query is provided
+    query_opts = [
+      parameterMode: "NAMED",
+      location: user.bigquery_dataset_location
+    ]
+
+    query_opts =
+      if endpoint_query do
+        query_opts ++
+          [
+            maxResults: endpoint_query.max_limit,
+            labels:
+              Map.merge(
+                %{"endpoint_id" => endpoint_query.id},
+                endpoint_query.parsed_labels || %{}
+              )
+          ]
+      else
+        query_opts
+      end
+
+    case BqRepo.query_with_sql_and_params(
+           user,
+           user.bigquery_project_id || env_project_id(),
+           query_string,
+           bq_params,
+           query_opts
+         ) do
+      {:ok, result} ->
+        {:ok, result.rows}
+
+      {:error, %{body: body}} ->
+        error = Jason.decode!(body)["error"] |> GenUtils.process_bq_errors(user.id)
+        {:error, error}
+
+      {:error, err} when is_atom(err) ->
+        {:error, GenUtils.process_bq_errors(err, user.id)}
+    end
+  end
 
   @impl Logflare.Backends.Adaptor
   def supports_default_ingest?, do: true
@@ -136,7 +227,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
   @impl Logflare.Backends.Adaptor
   def cast_config(params) do
     {%{}, %{project_id: :string, dataset_id: :string}}
-    |> Ecto.Changeset.cast(params, [:project_id, :dataset_id])
+    |> Changeset.cast(params, [:project_id, :dataset_id])
   end
 
   @impl Logflare.Backends.Adaptor
@@ -184,7 +275,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
   """
   @spec list_managed_service_accounts(String.t()) :: [GoogleApi.IAM.V1.Model.ServiceAccount.t()]
   def list_managed_service_accounts(project_id \\ nil) do
-    project_id = project_id || Application.get_env(:logflare, Logflare.Google)[:project_id]
+    project_id = project_id || env_project_id()
 
     get_next_page(project_id, nil)
     |> Enum.filter(&(&1.name =~ @service_account_prefix))
@@ -226,7 +317,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
           GoogleApi.IAM.V1.Model.ServiceAccount.t()
         ]
   def create_managed_service_accounts(project_id \\ nil) do
-    project_id = project_id || Application.get_env(:logflare, Logflare.Google)[:project_id]
+    project_id = project_id || env_project_id()
 
     # determine the ids of of service accounts to create, based on what service accounts already exist
     size =
@@ -369,7 +460,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
     [{PartitionSupervisor, ...}, ...]
   """
   def impersonated_goth_child_specs() do
-    project_id = Application.get_env(:logflare, Logflare.Google)[:project_id]
+    project_id = env_project_id()
     pool_size = managed_service_account_pool_size()
     json = Application.get_env(:goth, :json)
 
@@ -421,6 +512,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
   defdelegate append_managed_sa_to_iam_policy(user), to: CloudResourceManager
   defdelegate append_managed_service_accounts(project_id, policy), to: CloudResourceManager
   defdelegate patch_dataset_access(user), to: Google.BigQuery
-
   defdelegate get_conn(conn_type), to: GenUtils
+
+  defp env_project_id, do: Application.get_env(:logflare, Logflare.Google)[:project_id]
 end

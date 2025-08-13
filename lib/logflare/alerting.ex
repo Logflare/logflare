@@ -12,6 +12,7 @@ defmodule Logflare.Alerting do
   alias Logflare.Alerting.AlertsScheduler
   alias Logflare.Backends
   alias Logflare.Backends.Adaptor
+  alias Logflare.Google.BigQuery.GenUtils
   alias Logflare.Backends.Adaptor.SlackAdaptor
   alias Logflare.Backends.Adaptor.WebhookAdaptor
   alias Logflare.Cluster
@@ -416,7 +417,7 @@ defmodule Logflare.Alerting do
       {:error, %Tesla.Env{body: body}} ->
         error =
           Jason.decode!(body)["error"]
-          |> Endpoints.process_bq_error(alert_query.user_id)
+          |> GenUtils.process_bq_errors(alert_query.user_id)
           |> case do
             %{"message" => msg} -> msg
             other -> other
