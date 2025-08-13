@@ -533,21 +533,18 @@ defmodule Logflare.Backends do
         default_ingest_backend_enabled?: true
       }) do
     case PubSubRates.Cache.get_local_buffer(source_id, nil) do
-      %{queues: queues} when is_map(queues) and map_size(queues) > 0 ->
+      %{queues: [_ | _] = queues} ->
         Enum.any?(queues, fn
-          {nil, count} ->
+          {{_sid, nil, _pid}, count} ->
             count > @max_pending_buffer_len_per_queue
 
-          {backend_id, count} when is_integer(backend_id) ->
+          {{_sid, backend_id, _pid}, count} when is_integer(backend_id) ->
             backend = __MODULE__.Cache.get_backend(backend_id)
             backend && backend.default_ingest? && count > @max_pending_buffer_len_per_queue
 
           {_key, count} ->
             count > @max_pending_buffer_len_per_queue
         end)
-
-      %{len: len} when len > 0 ->
-        len > @max_pending_buffer_len_per_queue
 
       _ ->
         false

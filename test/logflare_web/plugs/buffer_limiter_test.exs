@@ -142,6 +142,9 @@ defmodule LogflareWeb.Plugs.BufferLimiterTest do
 
       {:ok, _} = Backends.update_source_backends(source, [backend1, backend2])
 
+      Backends.Cache.get_backend(backend1.id)
+      Backends.Cache.get_backend(backend2.id)
+
       conn = build_conn(:post, "/api/logs", %{"message" => "some text"})
 
       {:ok, conn: conn, source: source, backend1: backend1, backend2: backend2}
@@ -169,8 +172,7 @@ defmodule LogflareWeb.Plugs.BufferLimiterTest do
         IngestEventQueue.add_to_table(table_key_bigquery, [le])
       end
 
-      Backends.cache_local_buffer_lens(source.id, backend1.id)
-      Backends.cache_local_buffer_lens(source.id, backend2.id)
+      Backends.cache_local_buffer_lens(source.id, nil)
 
       conn =
         conn
@@ -182,10 +184,9 @@ defmodule LogflareWeb.Plugs.BufferLimiterTest do
 
     test "returns 429 when default ingest backend is full", %{
       conn: conn,
-      source: source,
-      backend1: backend1
+      source: source
     } do
-      table_key = {source.id, backend1.id, self()}
+      table_key = {source.id, nil, self()}
       IngestEventQueue.upsert_tid(table_key)
 
       # Fill up the default ingest backend
@@ -194,7 +195,7 @@ defmodule LogflareWeb.Plugs.BufferLimiterTest do
         IngestEventQueue.add_to_table(table_key, [le])
       end
 
-      Backends.cache_local_buffer_lens(source.id, backend1.id)
+      Backends.cache_local_buffer_lens(source.id, nil)
 
       conn =
         conn
@@ -264,10 +265,9 @@ defmodule LogflareWeb.Plugs.BufferLimiterTest do
 
     test "returns 429 when user default queue is full even if system default is not", %{
       conn: conn,
-      source: source,
-      backend1: backend1
+      source: source
     } do
-      system_queue_key = {source.id, nil, self()}
+      system_queue_key = {source.id, nil, spawn(fn -> :ok end)}
       IngestEventQueue.upsert_tid(system_queue_key)
 
       for _ <- 1..100 do
@@ -275,7 +275,7 @@ defmodule LogflareWeb.Plugs.BufferLimiterTest do
         IngestEventQueue.add_to_table(system_queue_key, [le])
       end
 
-      user_queue_key = {source.id, backend1.id, self()}
+      user_queue_key = {source.id, nil, self()}
       IngestEventQueue.upsert_tid(user_queue_key)
 
       for _ <- 1..(Backends.max_buffer_queue_len() + 500) do
@@ -284,7 +284,6 @@ defmodule LogflareWeb.Plugs.BufferLimiterTest do
       end
 
       Backends.cache_local_buffer_lens(source.id, nil)
-      Backends.cache_local_buffer_lens(source.id, backend1.id)
 
       conn =
         conn
