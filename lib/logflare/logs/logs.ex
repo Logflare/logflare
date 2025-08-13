@@ -1,6 +1,5 @@
 defmodule Logflare.Logs do
   @moduledoc false
-  require Logger
 
   alias Logflare.Backends.IngestEventQueue
   alias Logflare.LogEvent, as: LE
@@ -11,6 +10,8 @@ defmodule Logflare.Logs do
   alias Logflare.Source
   alias Logflare.Sources
   alias Logflare.SystemMetrics
+
+  require Logger
 
   @spec ingest_logs(list(map), Source.t()) :: :ok | {:error, term}
   def ingest_logs(log_params_batch, %Source{rules: rules} = source) when is_list(rules) do

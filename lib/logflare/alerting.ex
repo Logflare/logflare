@@ -362,8 +362,8 @@ defmodule Logflare.Alerting do
   end
 
   defp on_scheduler_node(func) do
-    with pid when is_pid(pid) <- GenServer.whereis(scheduler_name()),
-         node <- node(pid) do
+    with pid when is_pid(pid) <- GenServer.whereis(scheduler_name()) do
+      node = node(pid)
       :erpc.call(node, func, 5000)
     end
   end
