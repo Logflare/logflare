@@ -1,5 +1,4 @@
 defmodule Logflare.EndpointsTest do
-  @moduledoc false
   use Logflare.DataCase
 
   alias Logflare.Endpoints

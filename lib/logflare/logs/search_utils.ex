@@ -1,6 +1,6 @@
 defmodule Logflare.Logs.SearchUtils do
   @moduledoc """
-  Utilities for Logs search and Logs live view modules
+  Utilities for Logs search and Logs live view modules.
   """
 
   require Logger

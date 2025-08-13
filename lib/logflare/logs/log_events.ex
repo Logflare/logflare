@@ -17,6 +17,8 @@ defmodule Logflare.Logs.LogEvents do
     [min, max] = Keyword.get(opts, :partitions_range, [])
     source = Sources.Cache.get_by_and_preload(token: source_token)
     source_schema = SourceSchemas.Cache.get_source_schema_by(source_id: source.id)
+    partition_type = Sources.get_table_partition_type(source)
+
     lql = Keyword.get(opts, :lql, "")
     {:ok, lql_rules} = Lql.decode(lql, source_schema.bigquery_schema)
 
@@ -35,9 +37,8 @@ defmodule Logflare.Logs.LogEvents do
     query =
       from(bq_table_id)
       |> Lql.apply_filter_rules(lql_rules)
-      |> where([t], t.timestamp >= ^min)
-      |> where([t], t.timestamp <= ^max)
       |> where([t], t.id == ^id)
+      |> partition_query([min, max], partition_type)
       |> select([t], fragment("*"))
 
     source.user
@@ -55,5 +56,23 @@ defmodule Logflare.Logs.LogEvents do
       {:error, error} ->
         {:error, error}
     end
+  end
+
+  def partition_query(query, [min, max], :timestamp) do
+    query
+    |> where([t], t.timestamp >= ^min)
+    |> where([t], t.timestamp <= ^max)
+  end
+
+  def partition_query(query, [min, max], :pseudo) do
+    where(
+      query,
+      [t],
+      fragment(
+        "_PARTITIONTIME BETWEEN TIMESTAMP_TRUNC(?, DAY) AND TIMESTAMP_TRUNC(?, DAY)",
+        ^Timex.to_date(min),
+        ^Timex.to_date(max)
+      )
+    )
   end
 end

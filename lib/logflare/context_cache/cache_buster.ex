@@ -105,7 +105,8 @@ defmodule Logflare.ContextCache.CacheBuster do
     end)
   end
 
-  defp maybe_do_cross_cluster_syncing({Logflare.Backends, backend_id}) do
+  defp maybe_do_cross_cluster_syncing({Logflare.Backends, backend_id})
+       when is_integer(backend_id) do
     # sync backend across cluster for v2 sources
     Utils.Tasks.start_child(fn ->
       Logflare.Backends.sync_backend_across_cluster(backend_id)

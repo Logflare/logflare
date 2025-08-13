@@ -1,15 +1,13 @@
 defmodule LogflareWeb.Source.SearchLV do
   @moduledoc """
-  Handles all user interactions with the source logs search
+  Handles all user interactions with the source logs search.
   """
   use LogflareWeb, :live_view
 
-  require Logger
-
   import Logflare.Lql.Rules
   import LogflareWeb.ModalLiveHelpers
-  import LogflareWeb.SearchLive.TimezoneComponent
   import LogflareWeb.SearchLV.Utils
+  import LogflareWeb.SearchLive.TimezoneComponent
 
   alias Logflare.Billing
   alias Logflare.Logs.SearchQueryExecutor
@@ -25,17 +23,15 @@ defmodule LogflareWeb.Source.SearchLV do
   alias LogflareWeb.Router.Helpers, as: Routes
   alias LogflareWeb.SearchView
 
+  require Logger
+
   embed_templates "templates/*"
 
   @tail_search_interval 500
   @user_idle_interval :timer.minutes(2)
   @default_qs "c:count(*) c:group_by(t::minute)"
 
-  def mount(
-        %{"source_id" => source_id} = params,
-        %{"user_id" => user_id} = session,
-        socket
-      ) do
+  def mount(%{"source_id" => source_id} = params, %{"user_id" => user_id} = session, socket) do
     source = Sources.get_source_for_lv_param(source_id)
     socket = assign(socket, :source, source)
     user = Users.get_by_and_preload(id: user_id)
