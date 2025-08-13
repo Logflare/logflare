@@ -3,7 +3,9 @@ defmodule Logflare.Sources do
   Sources-related context
   """
 
-  import Ecto.Query, only: [from: 2]
+  import Ecto.Query
+
+  require Logger
 
   alias Logflare.Backends
   alias Logflare.Billing
@@ -25,8 +27,6 @@ defmodule Logflare.Sources do
   alias Logflare.Users
   alias Number.Delimit
 
-  require Logger
-
   @default_bucket_width 60
 
   @spec count_sources_by_user(User.t() | integer()) :: integer()
@@ -42,6 +42,36 @@ defmodule Logflare.Sources do
 
   def list_sources_by_user(user_id) do
     from(s in Source, where: s.user_id == ^user_id)
+    |> Repo.all()
+    |> Enum.map(&put_retention_days/1)
+  end
+
+  @doc """
+  Lists sources based on provided filters.
+  """
+  @spec list_sources(Keyword.t()) :: [Source.t()]
+  def list_sources(filters) when is_list(filters) do
+    filters
+    |> Enum.reduce(from(s in Source), fn
+      {:backend_id, backend_id}, q when is_integer(backend_id) ->
+        from(s in q,
+          join: sb in "sources_backends",
+          on: sb.source_id == s.id,
+          where: sb.backend_id == ^backend_id
+        )
+
+      {:user_id, user_id}, q when is_integer(user_id) ->
+        where(q, [s], s.user_id == ^user_id)
+
+      {:v2_pipeline, v2_pipeline}, q when is_boolean(v2_pipeline) ->
+        where(q, [s], s.v2_pipeline == ^v2_pipeline)
+
+      {:default_ingest_backend_enabled?, enabled}, q when is_boolean(enabled) ->
+        where(q, [s], s.default_ingest_backend_enabled? == ^enabled)
+
+      _, q ->
+        q
+    end)
     |> Repo.all()
     |> Enum.map(&put_retention_days/1)
   end
