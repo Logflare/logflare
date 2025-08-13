@@ -15,7 +15,7 @@ defmodule Logflare.SystemMetrics.Wobserver.Helper do
     @spec encode(pid :: pid, options :: any) :: String.t()
     def encode(pid, options) do
       pid
-      |> inspect
+      |> inspect()
       |> BitString.encode(options)
     end
   end
@@ -28,7 +28,7 @@ defmodule Logflare.SystemMetrics.Wobserver.Helper do
     @spec encode(port :: port, options :: any) :: String.t()
     def encode(port, options) do
       port
-      |> inspect
+      |> inspect()
       |> BitString.encode(options)
     end
   end
@@ -41,7 +41,7 @@ defmodule Logflare.SystemMetrics.Wobserver.Helper do
     @spec encode(reference :: reference, options :: any) :: String.t()
     def encode(reference, options) do
       reference
-      |> inspect
+      |> inspect()
       |> BitString.encode(options)
     end
   end

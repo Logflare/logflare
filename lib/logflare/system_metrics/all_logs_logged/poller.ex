@@ -1,13 +1,13 @@
 defmodule Logflare.SystemMetrics.AllLogsLogged.Poller do
   @moduledoc false
   use GenServer
+
+  alias Logflare.Cluster
   alias Logflare.Repo
   alias Logflare.SystemMetric
-  alias Logflare.Cluster
+  alias Logflare.SystemMetrics.AllLogsLogged
 
   require Logger
-
-  alias Logflare.SystemMetrics.AllLogsLogged
 
   @poll_per_second 1_000
 
@@ -15,7 +15,7 @@ defmodule Logflare.SystemMetrics.AllLogsLogged.Poller do
     GenServer.start_link(__MODULE__, init_args, name: __MODULE__)
   end
 
-  def get_logs_per_second_cluster() do
+  def get_logs_per_second_cluster do
     {success, _failed} =
       GenServer.multi_call(Cluster.Utils.node_list_all(), __MODULE__, :logs_last_second, 5_000)
 
@@ -25,11 +25,11 @@ defmodule Logflare.SystemMetrics.AllLogsLogged.Poller do
     |> Enum.sum()
   end
 
-  def get_total_logs_per_second() do
+  def get_total_logs_per_second do
     GenServer.call(__MODULE__, :logs_last_second)
   end
 
-  def total_logs_logged_cluster() do
+  def total_logs_logged_cluster do
     SystemMetric
     |> Repo.all()
     |> Enum.map(fn x -> x.all_logs_logged end)
@@ -75,7 +75,7 @@ defmodule Logflare.SystemMetrics.AllLogsLogged.Poller do
 
   def handle_call(:logs_last_second, _from, state), do: {:reply, state.last_second, state}
 
-  defp poll_per_second() do
+  defp poll_per_second do
     Process.send_after(self(), :poll_per_second, @poll_per_second)
   end
 
