@@ -7,7 +7,7 @@ defmodule Logflare.Source.WebhookNotificationServer.DiscordClient do
 
   @middleware [Tesla.Middleware.JSON]
 
-  def new() do
+  def new do
     middleware =
       [
         #  {Tesla.Middleware.Retry,
