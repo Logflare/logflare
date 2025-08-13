@@ -44,6 +44,32 @@ defmodule LogflareWeb.LogEventLiveTest do
     end)
   end
 
+  test "bug: :pseudo query includes streaming buffer", %{conn: conn, user: user} do
+    source = insert(:source, user: user, bq_table_partition_type: :pseudo)
+    le = build(:log_event, source: source, message: "some message")
+
+    pid = self()
+    ref = make_ref()
+
+    expect(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, 1, fn _conn, _proj_id, opts ->
+      send(pid, {:query, ref, opts[:body].query})
+
+      {:ok,
+       TestUtils.gen_bq_response([%{"id" => le.id, "event_message" => le.body["event_message"]}])}
+    end)
+
+    {:ok, _view, _html} =
+      live(
+        conn,
+        ~p"/sources/#{source.id}/event?#{%{timestamp: "2024-01-10T20:13:03Z", uuid: le.id}}"
+      )
+
+    TestUtils.retry_assert(fn ->
+      assert_receive {:query, ^ref, query}
+      assert query =~ "_PARTITIONDATE IS NULL"
+    end)
+  end
+
   test "load from event cache", %{conn: conn, source: source} do
     reject(&GoogleApi.BigQuery.V2.Api.Jobs.bigquery_jobs_query/3)
 
