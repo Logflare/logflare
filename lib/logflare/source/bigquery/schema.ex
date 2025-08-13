@@ -44,7 +44,7 @@ defmodule Logflare.Source.BigQuery.Schema do
        bigquery_project_id: args[:bigquery_project_id],
        bigquery_dataset_id: args[:bigquery_dataset_id],
        field_count: 3,
-       field_count_limit: args[:plan].limit_source_fields_limit,
+       field_count_limit: Map.get(args[:plan] || %{}, :limit_source_fields_limit, 500),
        next_update: System.system_time(:millisecond)
      }, {:continue, :boot}}
   end

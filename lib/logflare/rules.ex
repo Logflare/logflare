@@ -118,46 +118,4 @@ defmodule Logflare.Rules do
 
     :ok
   end
-
-  def upgrade_all_source_rules_to_next_lql_version() do
-    Logger.info("Started upgrade of all source rules to next lql version...")
-
-    rules =
-      Rule
-      |> where([r], not is_nil(r.lql_filters) and not is_nil(r.lql_string))
-      |> Repo.all()
-
-    for rule <- rules do
-      source =
-        rule.source_id
-        |> Sources.get()
-        |> Sources.put_bq_table_schema()
-
-      case Lql.decode(rule.lql_string, source.bq_table_schema) do
-        {:ok, lql_filters} ->
-          maybe_update_lql_filters(rule, lql_filters)
-
-        {:error, error} ->
-          Logger.error(
-            "Rule #{rule.id} for source #{rule.source_id} failed to upgrade to new LQL filters format, LQL decoding error: #{inspect(error)}"
-          )
-      end
-    end
-  end
-
-  defp maybe_update_lql_filters(rule, lql_filters) do
-    if lql_filters != rule.lql_filters do
-      case update_rule(rule, %{lql_filters: lql_filters}) do
-        {:ok, updated_rule} ->
-          Logger.info(
-            "Rule #{updated_rule.id} for source #{updated_rule.source_id} was successfully upgraded to new LQL filters format."
-          )
-
-        {:error, changeset} ->
-          Logger.error(
-            "Rule #{rule.id} for source #{rule.source_id} failed to upgrade to new LQL filters format, Repo update errors: #{inspect(changeset.errors)}"
-          )
-      end
-    end
-  end
 end
