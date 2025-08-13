@@ -2,7 +2,8 @@ defmodule Logflare.Source.BigQuery.Schema do
   @moduledoc """
   Manages the source schema across a cluster.
 
-  Schema updates are limited to @updates_per_minute. Server is booted with schema from Postgres. Handles schema mismatch between BigQuery and Logflare.
+  Schema updates are limited to `Application.get_env(:logflare, #{__MODULE__})[:updates_per_minute]`.
+  Handles schema mismatch between BigQuery and Logflare.
   """
   use GenServer
 
@@ -10,13 +11,13 @@ defmodule Logflare.Source.BigQuery.Schema do
 
   alias Logflare.Google.BigQuery
   alias Logflare.Source.BigQuery.SchemaBuilder
+  alias Logflare.Google.BigQuery.SchemaUtils
   alias Logflare.Sources
   alias Logflare.SourceSchemas
   alias Logflare.Source
   alias Logflare.LogEvent
   alias Logflare.AccountEmail
   alias Logflare.Mailer
-  alias Logflare.Google.BigQuery.SchemaUtils
   alias Logflare.TeamUsers
   alias Logflare.SingleTenant
 
@@ -26,43 +27,38 @@ defmodule Logflare.Source.BigQuery.Schema do
     GenServer.start_link(__MODULE__, args, name: name, hibernate_after: 5_000)
   end
 
-  def init(args) do
-    source = Keyword.get(args, :source)
-
-    if source == nil do
-      raise ":source must be provided on startup for Schema module"
-    end
-
-    # TODO: remove source_id from metadata to reduce confusion
-    Logger.metadata(source_id: args[:source_token], source_token: args[:source_token])
-    Process.flag(:trap_exit, true)
-
-    {:ok,
-     %{
-       source_id: source.id,
-       source_token: source.token,
-       bigquery_project_id: args[:bigquery_project_id],
-       bigquery_dataset_id: args[:bigquery_dataset_id],
-       field_count: 3,
-       field_count_limit: Map.get(args[:plan] || %{}, :limit_source_fields_limit, 500),
-       next_update: System.system_time(:millisecond)
-     }, {:continue, :boot}}
-  end
-
-  def handle_continue(:boot, state) do
-    if source_schema = SourceSchemas.Cache.get_source_schema_by(source_id: state.source_id) do
-      schema = BigQuery.SchemaUtils.deep_sort_by_fields_name(source_schema.bigquery_schema)
-      field_count = count_fields(schema)
-
-      {:noreply, %{state | field_count: field_count}}
-    else
-      {:noreply, state}
-    end
-  end
-
   @spec update(atom(), LogEvent.t()) :: :ok
   def update(pid, %LogEvent{} = log_event) when is_pid(pid) or is_tuple(pid) do
     GenServer.cast(pid, {:update, log_event})
+  end
+
+  # GenServer callbacks
+
+  def init(args) do
+    %Source{id: source_id, token: source_token} = Keyword.get(args, :source)
+
+    Logger.metadata(source_id: source_id, source_token: source_token)
+    Process.flag(:trap_exit, true)
+
+    state = %{
+      source_id: source_id,
+      source_token: source_token,
+      bigquery_project_id: args[:bigquery_project_id],
+      bigquery_dataset_id: args[:bigquery_dataset_id],
+      field_count: 3,
+      field_count_limit: Map.get(args[:plan] || %{}, :limit_source_fields_limit, 500),
+      next_update: System.system_time(:millisecond)
+    }
+
+    source_schema = SourceSchemas.Cache.get_source_schema_by(source_id: source_id)
+    {:ok, state, {:continue, {:boot, source_schema}}}
+  end
+
+  def handle_continue({:boot, nil}, state), do: {:noreply, state}
+
+  def handle_continue({:boot, source_schema}, state) do
+    schema = BigQuery.SchemaUtils.deep_sort_by_fields_name(source_schema.bigquery_schema)
+    {:noreply, %{state | field_count: count_fields(schema)}}
   end
 
   def handle_cast(
