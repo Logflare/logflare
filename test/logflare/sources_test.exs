@@ -381,14 +381,22 @@ defmodule Logflare.SourcesTest do
   end
 
   describe "list_sources/1" do
-    test "list_sources/1 with backend_id filter" do
-      user = insert(:user)
+    setup do
+      insert(:plan)
+      [user: insert(:user)]
+    end
+
+    test "list_sources/1 with backend_id filter", %{user: user} do
       backend1 = insert(:backend, user: user)
       backend2 = insert(:backend, user: user)
 
-      source1 = insert(:source, user: user, v2_pipeline: true, v2_backend_id: backend1.id)
-      source2 = insert(:source, user: user, v2_pipeline: true, v2_backend_id: backend2.id)
-      source3 = insert(:source, user: user, v2_pipeline: true, v2_backend_id: backend1.id)
+      source1 = insert(:source, user: user, v2_pipeline: true)
+      source2 = insert(:source, user: user, v2_pipeline: true)
+      source3 = insert(:source, user: user, v2_pipeline: true)
+
+      {:ok, _} = Logflare.Backends.update_source_backends(source1, [backend1])
+      {:ok, _} = Logflare.Backends.update_source_backends(source2, [backend2])
+      {:ok, _} = Logflare.Backends.update_source_backends(source3, [backend1])
 
       results = Sources.list_sources(backend_id: backend1.id)
       assert length(results) == 2
@@ -398,9 +406,7 @@ defmodule Logflare.SourcesTest do
       assert result_ids == expected_ids
     end
 
-    test "list_sources/1 with default_ingest_backend_enabled? filter" do
-      user = insert(:user)
-
+    test "list_sources/1 with default_ingest_backend_enabled? filter", %{user: user} do
       source1 = insert(:source, user: user, default_ingest_backend_enabled?: true)
       _source2 = insert(:source, user: user, default_ingest_backend_enabled?: false)
       source3 = insert(:source, user: user, default_ingest_backend_enabled?: true)
@@ -415,23 +421,20 @@ defmodule Logflare.SourcesTest do
       assert Enum.all?(results, &(&1.default_ingest_backend_enabled? == true))
     end
 
-    test "list_sources/1 with combined backend_id and default_ingest filters" do
-      user = insert(:user)
+    test "list_sources/1 with combined backend_id and default_ingest filters", %{user: user} do
       backend = insert(:backend, user: user)
 
       source1 =
         insert(:source,
           user: user,
           v2_pipeline: true,
-          v2_backend_id: backend.id,
           default_ingest_backend_enabled?: true
         )
 
-      _source2 =
+      source2 =
         insert(:source,
           user: user,
           v2_pipeline: true,
-          v2_backend_id: backend.id,
           default_ingest_backend_enabled?: false
         )
 
@@ -439,9 +442,12 @@ defmodule Logflare.SourcesTest do
         insert(:source,
           user: user,
           v2_pipeline: true,
-          v2_backend_id: backend.id,
           default_ingest_backend_enabled?: true
         )
+
+      {:ok, _} = Logflare.Backends.update_source_backends(source1, [backend])
+      {:ok, _} = Logflare.Backends.update_source_backends(source2, [backend])
+      {:ok, _} = Logflare.Backends.update_source_backends(source3, [backend])
 
       results =
         Sources.list_sources(
@@ -455,9 +461,7 @@ defmodule Logflare.SourcesTest do
       assert result_ids == expected_ids
     end
 
-    test "list_sources/1 with v2_pipeline filter" do
-      user = insert(:user)
-
+    test "list_sources/1 with v2_pipeline filter", %{user: user} do
       source1 = insert(:source, user: user, v2_pipeline: true)
       source2 = insert(:source, user: user, v2_pipeline: false)
       source3 = insert(:source, user: user, v2_pipeline: true)
@@ -474,8 +478,7 @@ defmodule Logflare.SourcesTest do
       assert hd(v1_results).id == source2.id
     end
 
-    test "list_sources/1 ignores unknown filters" do
-      user = insert(:user)
+    test "list_sources/1 ignores unknown filters", %{user: user} do
       source1 = insert(:source, user: user)
       source2 = insert(:source, user: user)
 

@@ -55,7 +55,11 @@ defmodule Logflare.Sources do
     filters
     |> Enum.reduce(from(s in Source), fn
       {:backend_id, backend_id}, q when is_integer(backend_id) ->
-        where(q, [s], s.v2_backend_id == ^backend_id)
+        from(s in q,
+          join: sb in "sources_backends",
+          on: sb.source_id == s.id,
+          where: sb.backend_id == ^backend_id
+        )
 
       {:user_id, user_id}, q when is_integer(user_id) ->
         where(q, [s], s.user_id == ^user_id)
