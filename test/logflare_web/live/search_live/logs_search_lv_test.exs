@@ -381,7 +381,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
       # ref https://www.notion.so/supabase/Backend-Search-Error-187112eabd094dcc8042c6952f4f5fac
 
       GoogleApi.BigQuery.V2.Api.Tables
-      |> stub(:bigquery_tables_patch, fn _conn, _proj, _dataset, _table, _opts ->
+      |> stub(:bigquery_tables_patch, fn _conn, _proj, _dataset, table, opts ->
         {:ok, %GoogleApi.BigQuery.V2.Model.Table{}}
       end)
 
@@ -391,7 +391,8 @@ defmodule LogflareWeb.Source.SearchLVTest do
       Backends.via_source(source, Schema, nil)
       |> Schema.update(le)
 
-      # TODO: find a better way to test a source schema structure
+      :timer.sleep(500)
+      Cachex.clear(Logflare.SourceSchemas.Cache)
 
       stub(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, fn _conn, _proj_id, opts ->
         query = opts[:body].query |> String.downcase()
@@ -412,17 +413,17 @@ defmodule LogflareWeb.Source.SearchLVTest do
       # post-init fetching
       :timer.sleep(800)
 
-      render_change(view, :start_search, %{
-        "search" => %{@default_search_params | "querystring" => "m.nested:test top:test"}
-      })
+      TestUtils.retry_assert(fn ->
+        render_change(view, :start_search, %{
+          "search" => %{@default_search_params | "querystring" => "m.nested:test top:test"}
+        })
 
-      # wait for async search task to complete
-      # TODO: find better way to test searching
-      :timer.sleep(800)
+        :timer.sleep(200)
 
-      html = view |> element("#logs-list-container") |> render()
+        html = view |> element("#logs-list-container") |> render()
 
-      assert html =~ "some correct message"
+        assert html =~ "some correct message"
+      end)
     end
 
     test "chart display interval", %{conn: conn, source: source} do

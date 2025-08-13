@@ -15,6 +15,7 @@ defmodule LogflareWeb.Source.SearchLV do
   alias Logflare.Lql
   alias Logflare.Lql.Rules.ChartRule
   alias Logflare.SavedSearches
+  alias Logflare.SourceSchemas
   alias Logflare.Sources
   alias Logflare.TeamUsers
   alias Logflare.User
@@ -22,6 +23,7 @@ defmodule LogflareWeb.Source.SearchLV do
   alias LogflareWeb.Helpers.BqSchema, as: BqSchemaHelpers
   alias LogflareWeb.Router.Helpers, as: Routes
   alias LogflareWeb.SearchView
+  alias Logflare.Source.BigQuery.SchemaBuilder
 
   require Logger
 
@@ -114,7 +116,8 @@ defmodule LogflareWeb.Source.SearchLV do
     socket = assign_new_user_timezone(socket, socket.assigns[:team_user], socket.assigns.user)
 
     socket =
-      with {:ok, lql_rules} <- Lql.decode(qs, source.bq_table_schema),
+      with {:ok, lql_rules} <-
+             Lql.decode(qs, get_bigquery_schema(source)),
            lql_rules = Lql.Rules.put_new_chart_rule(lql_rules, Lql.Rules.default_chart_rule()),
            {:ok, socket} <- check_suggested_keys(lql_rules, source, socket) do
         qs = Lql.encode!(lql_rules)
@@ -223,7 +226,7 @@ defmodule LogflareWeb.Source.SearchLV do
       |> assign(:search_timezone, tz)
       |> assign_new_search_with_qs(
         %{querystring: socket.assigns.querystring, tailing?: socket.assigns.tailing?},
-        socket.assigns.source.bq_table_schema
+        get_bigquery_schema(socket.assigns.source)
       )
 
     {:noreply, socket |> assign(:timezone, tz)}
@@ -234,8 +237,6 @@ defmodule LogflareWeb.Source.SearchLV do
         %{"search" => %{"querystring" => qs}},
         %{assigns: prev_assigns} = socket
       ) do
-    bq_table_schema = prev_assigns.source.bq_table_schema
-
     maybe_cancel_tailing_timer(socket)
     SearchQueryExecutor.cancel_query(socket.assigns.executor_pid)
 
@@ -243,7 +244,7 @@ defmodule LogflareWeb.Source.SearchLV do
       assign_new_search_with_qs(
         socket,
         %{querystring: qs, tailing?: prev_assigns.tailing?},
-        bq_table_schema
+        get_bigquery_schema(socket.assigns.source)
       )
 
     {:noreply, socket}
@@ -373,7 +374,8 @@ defmodule LogflareWeb.Source.SearchLV do
     maybe_cancel_tailing_timer(socket)
     SearchQueryExecutor.cancel_query(socket.assigns.executor_pid)
 
-    {:ok, ts_rules} = Lql.decode(ts_qs, assigns.source.bq_table_schema)
+    {:ok, ts_rules} =
+      Lql.decode(ts_qs, get_bigquery_schema(assigns.source))
 
     lql_list = Lql.Rules.update_timestamp_rules(assigns.lql_rules, ts_rules)
 
@@ -859,7 +861,9 @@ defmodule LogflareWeb.Source.SearchLV do
   end
 
   defp reset_search(%{assigns: assigns} = socket) do
-    lql_rules = Lql.decode!(@default_qs, assigns.source.bq_table_schema)
+    lql_rules =
+      Lql.decode!(@default_qs, get_bigquery_schema(assigns.source))
+
     qs = Lql.encode!(lql_rules)
 
     socket
@@ -936,5 +940,13 @@ defmodule LogflareWeb.Source.SearchLV do
       :error,
       "Backend error! Retry your query. Please contact support if this continues."
     )
+  end
+
+  defp get_bigquery_schema(source) do
+    if source_schema = SourceSchemas.Cache.get_source_schema_by(source_id: source.id) do
+      source_schema.bigquery_schema
+    else
+      SchemaBuilder.initial_table_schema()
+    end
   end
 end

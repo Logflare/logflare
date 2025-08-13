@@ -2,7 +2,8 @@ defmodule Logflare.Source.BigQuery.Schema do
   @moduledoc """
   Manages the source schema across a cluster.
 
-  Schema updates are limited to @updates_per_minute. Server is booted with schema from Postgres. Handles schema mismatch between BigQuery and Logflare.
+  Schema updates are limited to `Application.get_env(:logflare, #{__MODULE__})[:updates_per_minute]`.
+  Handles schema mismatch between BigQuery and Logflare.
   """
   use GenServer
 
@@ -10,90 +11,55 @@ defmodule Logflare.Source.BigQuery.Schema do
 
   alias Logflare.Google.BigQuery
   alias Logflare.Source.BigQuery.SchemaBuilder
+  alias Logflare.Google.BigQuery.SchemaUtils
   alias Logflare.Sources
   alias Logflare.SourceSchemas
   alias Logflare.Source
   alias Logflare.LogEvent
   alias Logflare.AccountEmail
   alias Logflare.Mailer
-  alias Logflare.Google.BigQuery.SchemaUtils
-  alias Logflare.Backends
   alias Logflare.TeamUsers
   alias Logflare.SingleTenant
 
   def start_link(args) when is_list(args) do
     {name, args} = Keyword.pop(args, :name)
 
-    GenServer.start_link(__MODULE__, args,
-      name: name,
-      spawn_opt: [
-        fullsweep_after: 1_000
-      ],
-      hibernate_after: 5_000
-    )
+    GenServer.start_link(__MODULE__, args, name: name, hibernate_after: 5_000)
   end
-
-  def init(args) do
-    source = Keyword.get(args, :source)
-
-    if source == nil do
-      raise ":source must be provided on startup for Schema module"
-    end
-
-    # TODO: remove source_id from metadata to reduce confusion
-    Logger.metadata(source_id: args[:source_token], source_token: args[:source_token])
-    Process.flag(:trap_exit, true)
-
-    {:ok,
-     %{
-       source_id: source.id,
-       source_token: source.token,
-       bigquery_project_id: args[:bigquery_project_id],
-       bigquery_dataset_id: args[:bigquery_dataset_id],
-       schema: SchemaBuilder.initial_table_schema(),
-       field_count: 3,
-       field_count_limit: args[:plan].limit_source_fields_limit,
-       next_update: System.system_time(:millisecond)
-     }, {:continue, :boot}}
-  end
-
-  def handle_continue(:boot, state) do
-    case SourceSchemas.Cache.get_source_schema_by(source_id: state.source_id) do
-      nil ->
-        Logger.info("Nil schema: #{state.source_token}")
-
-        {:noreply, %{state | next_update: next_update()}}
-
-      source_schema ->
-        schema = BigQuery.SchemaUtils.deep_sort_by_fields_name(source_schema.bigquery_schema)
-        field_count = count_fields(schema)
-
-        {:noreply,
-         %{
-           state
-           | schema: schema,
-             field_count: field_count
-         }}
-    end
-  end
-
-  # TODO: remove, external procs should not have access to internal state
-  def get_state(source_token) when is_atom(source_token) do
-    with {:ok, pid} <- Backends.lookup(__MODULE__, source_token) do
-      GenServer.call(pid, :get)
-    end
-  end
-
-  # TODO: remove, external procs should not have access to internal state
-  def get_state(name), do: GenServer.call(name, :get)
 
   @spec update(atom(), LogEvent.t()) :: :ok
   def update(pid, %LogEvent{} = log_event) when is_pid(pid) or is_tuple(pid) do
     GenServer.cast(pid, {:update, log_event})
   end
 
-  # TODO: remove, external procs should not have access to internal state
-  def handle_call(:get, _from, state), do: {:reply, state, state}
+  # GenServer callbacks
+
+  def init(args) do
+    %Source{id: source_id, token: source_token} = Keyword.get(args, :source)
+
+    Logger.metadata(source_id: source_id, source_token: source_token)
+    Process.flag(:trap_exit, true)
+
+    state = %{
+      source_id: source_id,
+      source_token: source_token,
+      bigquery_project_id: args[:bigquery_project_id],
+      bigquery_dataset_id: args[:bigquery_dataset_id],
+      field_count: 3,
+      field_count_limit: Map.get(args[:plan] || %{}, :limit_source_fields_limit, 500),
+      next_update: System.system_time(:millisecond)
+    }
+
+    source_schema = SourceSchemas.Cache.get_source_schema_by(source_id: source_id)
+    {:ok, state, {:continue, {:boot, source_schema}}}
+  end
+
+  def handle_continue({:boot, nil}, state), do: {:noreply, state}
+
+  def handle_continue({:boot, source_schema}, state) do
+    schema = BigQuery.SchemaUtils.deep_sort_by_fields_name(source_schema.bigquery_schema)
+    {:noreply, %{state | field_count: count_fields(schema)}}
+  end
 
   def handle_cast(
         {:update, %LogEvent{source: %Source{lock_schema: true}}},
@@ -117,7 +83,7 @@ defmodule Logflare.Source.BigQuery.Schema do
     db_schema =
       if source_schema,
         do: source_schema.bigquery_schema,
-        else: state.schema
+        else: SchemaBuilder.initial_table_schema()
 
     schema = try_schema_update(body, db_schema)
 
@@ -140,8 +106,7 @@ defmodule Logflare.Source.BigQuery.Schema do
           {:noreply,
            %{
              state
-             | schema: schema,
-               field_count: field_count,
+             | field_count: field_count,
                next_update: next_update()
            }}
 
@@ -163,13 +128,7 @@ defmodule Logflare.Source.BigQuery.Schema do
 
                       persist(state.source_id, schema)
 
-                      {:noreply,
-                       %{
-                         state
-                         | schema: schema,
-                           field_count: field_count,
-                           next_update: next_update()
-                       }}
+                      {:noreply, %{state | field_count: field_count, next_update: next_update()}}
 
                     {:error, response} ->
                       Logger.warning("Source schema update error!",
@@ -205,7 +164,9 @@ defmodule Logflare.Source.BigQuery.Schema do
 
   defp persist(source_id, new_schema) do
     source = Sources.Cache.get_by(id: source_id)
-    flat_map = SchemaUtils.bq_schema_to_flat_typemap(new_schema)
+
+    flat_map =
+      SchemaUtils.bq_schema_to_flat_typemap(new_schema)
 
     SourceSchemas.create_or_update_source_schema(source, %{
       bigquery_schema: new_schema,

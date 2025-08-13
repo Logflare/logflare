@@ -20,7 +20,6 @@ defmodule Logflare.Sources do
   alias Logflare.SavedSearch
   alias Logflare.SingleTenant
   alias Logflare.Source
-  alias Logflare.Source.BigQuery.Schema
   alias Logflare.Source.BigQuery.SchemaBuilder
   alias Logflare.SourceSchemas
   alias Logflare.User
@@ -297,12 +296,7 @@ defmodule Logflare.Sources do
   def get_bq_schema(%Source{} = source) do
     case SourceSchemas.Cache.get_source_schema_by(source_id: source.id) do
       nil ->
-        name = Backends.via_source(source, Schema, nil)
-
-        with %{schema: schema} <- Schema.get_state(name) do
-          schema = SchemaUtils.deep_sort_by_fields_name(schema)
-          {:ok, schema}
-        end
+        {:ok, SchemaBuilder.initial_table_schema()}
 
       %_{bigquery_schema: schema} ->
         schema = SchemaUtils.deep_sort_by_fields_name(schema)
@@ -419,24 +413,6 @@ defmodule Logflare.Sources do
     %{source | bq_table_id: Source.generate_bq_table_id(source)}
   end
 
-  @spec put_bq_table_schema(Source.t()) :: Source.t()
-  def put_bq_table_schema(%Source{} = source) do
-    bq_table_schema =
-      case get_bq_schema(source) do
-        {:ok, bq_table_schema} -> bq_table_schema
-        {:error, :not_found} -> nil
-        {:error, error} -> raise(error)
-      end
-
-    %{source | bq_table_schema: bq_table_schema}
-  end
-
-  @spec put_bq_table_typemap(Source.t()) :: Source.t()
-  def put_bq_table_typemap(%Source{} = source) do
-    bq_table_typemap = SchemaUtils.to_typemap(source.bq_table_schema)
-    %{source | bq_table_typemap: bq_table_typemap}
-  end
-
   def put_bq_dataset_id(%Source{} = source) do
     %{bigquery_dataset_id: dataset_id} = GenUtils.get_bq_user_info(source.token)
     %{source | bq_dataset_id: dataset_id}
@@ -453,8 +429,6 @@ defmodule Logflare.Sources do
     get_by_and_preload(id: source_id)
     |> preload_saved_searches()
     |> put_bq_table_id()
-    |> put_bq_table_schema()
-    |> put_bq_table_typemap()
     |> put_bq_dataset_id()
   end
 
