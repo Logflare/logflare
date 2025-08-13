@@ -6,6 +6,7 @@ defmodule LogflareWeb.EndpointsController do
   alias Logflare.Endpoints
 
   alias LogflareWeb.JsonParser
+  alias LogflareWeb.OpenApi.Unauthorized
   alias LogflareWeb.OpenApi.ServerError
   alias LogflareWeb.OpenApiSchemas.EndpointQuery
 
@@ -47,6 +48,7 @@ defmodule LogflareWeb.EndpointsController do
     ],
     responses: %{
       200 => EndpointQuery.response(),
+      401 => Unauthorized.response(),
       500 => ServerError.response()
     }
   )
@@ -70,8 +72,8 @@ defmodule LogflareWeb.EndpointsController do
         Logger.debug("Endpoint cache result, #{inspect(result, pretty: true)}")
         render(conn, "query.json", result: result.rows)
 
-      {:error, err} ->
-        render(conn, "query.json", error: err)
+      {:error, errors} ->
+        render(conn, "query.json", errors: errors)
     end
   end
 
