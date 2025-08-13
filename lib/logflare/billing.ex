@@ -383,7 +383,7 @@ defmodule Logflare.Billing do
 
   @doc "Returns the legacy plan"
   @spec legacy_plan :: Plan.t()
-  def legacy_plan() do
+  def legacy_plan do
     %Plan{
       limit_rate_limit: 150,
       limit_source_rate_limit: 50,
