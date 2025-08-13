@@ -167,7 +167,7 @@ defmodule Logflare.Factory do
     end)
   end
 
-  def plan_factory() do
+  def plan_factory do
     %Plan{
       stripe_id: "31415",
       price: 0,
@@ -224,7 +224,7 @@ defmodule Logflare.Factory do
   end
 
   @spec user_preferences_factory :: Logflare.Users.UserPreferences.t()
-  def user_preferences_factory() do
+  def user_preferences_factory do
     %UserPreferences{}
   end
 
@@ -286,7 +286,7 @@ defmodule Logflare.Factory do
     }
   end
 
-  def user_without_billing_account_factory() do
+  def user_without_billing_account_factory do
     build(:user,
       valid_google_account: true,
       billing_account: nil,
@@ -295,7 +295,7 @@ defmodule Logflare.Factory do
     )
   end
 
-  def user_without_stripe_subscription_factory() do
+  def user_without_stripe_subscription_factory do
     build(:user,
       provider: "google",
       valid_google_account: true,
@@ -304,7 +304,7 @@ defmodule Logflare.Factory do
     )
   end
 
-  def user_with_wrong_stripe_sub_content_factory() do
+  def user_with_wrong_stripe_sub_content_factory do
     build(:user,
       provider: "google",
       valid_google_account: true,
@@ -313,7 +313,7 @@ defmodule Logflare.Factory do
     )
   end
 
-  def user_with_lifetime_account_non_google_factory() do
+  def user_with_lifetime_account_non_google_factory do
     build(:user,
       provider: "potato",
       billing_account: insert(:billing_account, lifetime_plan: true),
@@ -321,7 +321,7 @@ defmodule Logflare.Factory do
     )
   end
 
-  def user_with_lifetime_account_factory() do
+  def user_with_lifetime_account_factory do
     build(:user,
       provider: "google",
       valid_google_account: true,
@@ -330,7 +330,7 @@ defmodule Logflare.Factory do
     )
   end
 
-  def user_with_legacy_account_factory() do
+  def user_with_legacy_account_factory do
     build(:user,
       provider: "google",
       valid_google_account: true,
@@ -353,7 +353,7 @@ defmodule Logflare.Factory do
     )
   end
 
-  def billing_counts_factory() do
+  def billing_counts_factory do
     user = insert(:user)
     source = build(:source, user: user)
 
@@ -365,13 +365,13 @@ defmodule Logflare.Factory do
     }
   end
 
-  def partner_factory() do
+  def partner_factory do
     %Partner{
       name: TestUtils.random_string()
     }
   end
 
-  def alert_factory() do
+  def alert_factory do
     %AlertQuery{
       name: "some name",
       cron: "0 0 1 * *",
