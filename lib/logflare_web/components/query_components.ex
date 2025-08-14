@@ -49,9 +49,9 @@ defmodule LogflareWeb.QueryComponents do
     units = ["bytes", "KB", "MB", "GB", "TB"]
 
     {size, unit} =
-      Enum.reduce_while(units, {count, 1}, fn unit, {size, index} ->
+      Enum.reduce_while(units, count, fn unit, size ->
         if size >= 1024 do
-          {:cont, {size / 1024, index + 1}}
+          {:cont, size / 1024}
         else
           {:halt, {size * 1.0, unit}}
         end
