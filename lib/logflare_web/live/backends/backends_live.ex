@@ -251,7 +251,6 @@ defmodule LogflareWeb.BackendsLive do
     |> assign(:form_type, Atom.to_string(backend.type))
   end
 
-
   defp transform_params(params) do
     type = params["type"]
 
@@ -300,5 +299,4 @@ defmodule LogflareWeb.BackendsLive do
   end
 
   defp _to_string(val), do: to_string(val)
-
 end
