@@ -105,7 +105,7 @@ defmodule Logflare.Lql.Rules.ChartRule do
   end
 
   @spec virtual_fields() :: list(atom())
-  def virtual_fields() do
+  def virtual_fields do
     __MODULE__.__schema__(:virtual_fields)
   end
 
