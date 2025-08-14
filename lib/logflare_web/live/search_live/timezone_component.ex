@@ -41,7 +41,7 @@ defmodule LogflareWeb.SearchLive.TimezoneComponent do
 
   defp user_timezone(preferences), do: preferences && Map.get(preferences, :timezone)
 
-  defp build_timezones_select_form_options() do
+  defp build_timezones_select_form_options do
     Timex.timezones()
     |> Enum.map(&[offset: Timex.Timezone.get(&1).offset_utc, t: &1])
     |> Enum.sort_by(& &1[:offset])
