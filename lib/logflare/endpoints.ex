@@ -218,7 +218,8 @@ defmodule Logflare.Endpoints do
   @doc """
   Runs a an endpoint query
   """
-  @spec run_query(Query.t(), params :: map(), opts :: list()) :: run_query_return()
+  @type run_query_options :: {:dry_run, boolean()} | {:use_query_cache, boolean()}
+  @spec run_query(Query.t(), params :: map(), opts :: [run_query_options()]) :: run_query_return()
   def run_query(%Query{} = endpoint_query, params \\ %{}, opts \\ []) do
     %Query{query: query_string, user_id: user_id, sandboxable: sandboxable} = endpoint_query
     sql_param = Map.get(params, "sql")
@@ -279,23 +280,18 @@ defmodule Logflare.Endpoints do
     iex> run_query_string(%User{...}, {:bq_sql, "select current_time() where @value > 4"}, params: %{"value" => "123"})
     {:ok, %{rows:  [...]} }
   """
-  @typep run_query_string_opts :: [
-           sandboxable: boolean(),
-           parsed_labels: map(),
-           use_query_cache: boolean(),
-           params: map()
-         ]
+  @typep run_query_string_opts ::
+           {:sandboxable, boolean()}
+           | {:parsed_labels, map()}
+           | {:params, map()}
+           | run_query_options()
   @typep language :: :bq_sql | :pg_sql | :lql
   @spec run_query_string(User.t(), {language(), String.t()}, run_query_string_opts()) ::
           run_query_return()
-  def run_query_string(user, {language, query_string}, opts \\ %{}) do
+  def run_query_string(user, {language, query_string}, opts \\ []) do
     opts =
-      Enum.into(opts, %{
-        sandboxable: false,
-        use_query_cache: true,
-        parsed_labels: %{},
-        params: %{}
-      })
+      [sandboxable: false, use_query_cache: true, parsed_labels: %{}, params: %{}]
+      |> Keyword.merge(opts)
 
     request_opts = opts |> Keyword.take([:use_query_cache, :dry_run])
 
@@ -311,7 +307,7 @@ defmodule Logflare.Endpoints do
       sandboxable: opts[:sandboxable],
       user: user,
       user_id: user.id,
-      parsed_labels: opts.parsed_labels,
+      parsed_labels: opts[:parsed_labels],
       source_mapping: source_mapping
     }
 
