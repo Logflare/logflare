@@ -282,7 +282,10 @@ defmodule Logflare.AlertingTest do
              } = Alerting.get_alert_job(alert_id)
 
       assert {:ok, _} = Alerting.delete_alert_job(alert)
-      assert {:error, :not_found} = Alerting.delete_alert_job(alert.id)
+
+      TestUtils.retry_assert(fn ->
+        assert {:error, :not_found} = Alerting.delete_alert_job(alert.id)
+      end)
 
       TestUtils.retry_assert(fn -> refute Alerting.get_alert_job(alert_id) end)
     end
