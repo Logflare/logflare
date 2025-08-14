@@ -13,6 +13,7 @@ defmodule Logflare.Source.V1SourceSup do
   alias Logflare.Backends
   alias Logflare.Backends.Backend
   alias Logflare.Billing
+  alias Logflare.Backends.SourceSupJanitor
 
   require Logger
   use Supervisor
@@ -47,7 +48,8 @@ defmodule Logflare.Source.V1SourceSup do
       {TextNotificationServer, [source: source, plan: plan]},
       {WebhookNotificationServer, [source: source]},
       {SlackHookServer, [source: source]},
-      {BillingWriter, [source: source]}
+      {BillingWriter, [source: source]},
+      {SourceSupJanitor, [source: source]}
     ]
 
     Supervisor.init(children, strategy: :one_for_one, max_restarts: 10)
