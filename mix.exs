@@ -171,9 +171,6 @@ defmodule Logflare.Mixfile do
       {:logflare_logger_backend, "~> 0.11.4"},
       {:logger_json, "~> 5.1"},
 
-      # ETS
-      {:ets, "~> 0.8.0"},
-
       # HTML
       {:floki, "~> 0.38.0", only: [:test]},
 

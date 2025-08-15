@@ -381,7 +381,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
       # ref https://www.notion.so/supabase/Backend-Search-Error-187112eabd094dcc8042c6952f4f5fac
 
       GoogleApi.BigQuery.V2.Api.Tables
-      |> stub(:bigquery_tables_patch, fn _conn, _proj, _dataset, table, opts ->
+      |> stub(:bigquery_tables_patch, fn _conn, _proj, _dataset, _table, _opts ->
         {:ok, %GoogleApi.BigQuery.V2.Model.Table{}}
       end)
 

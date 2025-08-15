@@ -80,7 +80,7 @@ defmodule Logflare.Vault do
   end
 
   # helper, exposed for testing
-  def do_migrate() do
+  def do_migrate do
     for schema <- @schemas do
       Migrator.migrate(Logflare.Repo, schema)
     end
@@ -96,7 +96,7 @@ defmodule Logflare.Vault do
   end
 
   # helper for tests
-  def get_config() do
+  def get_config do
     Cloak.Vault.read_config(@table_name)
   end
 

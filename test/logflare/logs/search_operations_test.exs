@@ -32,8 +32,6 @@ defmodule Logflare.Logs.SearchOperationsTest do
     end
 
     test "unnest_log_level/1 with metadata", %{so: so} do
-      test_pid = self()
-
       GoogleApi.BigQuery.V2.Api.Tables
       |> stub(:bigquery_tables_patch, fn _conn, _project_id, _dataset_id, _table_name, _opts ->
         {:ok, %{}}

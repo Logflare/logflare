@@ -8,7 +8,10 @@ defmodule Logflare.Logs.LogEvents do
   alias Logflare.Lql.Rules.FilterRule
   alias Logflare.SourceSchemas
   alias Logflare.Sources
+  alias Logflare.Source.BigQuery.SchemaBuilder
 
+  require Logflare.Ecto.BQQueryAPI
+  import Logflare.Ecto.BQQueryAPI, only: [in_streaming_buffer: 0]
   import Ecto.Query
 
   @spec fetch_event_by_id(atom(), binary(), Keyword.t()) :: map() | {:error, any()}
@@ -20,7 +23,12 @@ defmodule Logflare.Logs.LogEvents do
     partition_type = Sources.get_table_partition_type(source)
 
     lql = Keyword.get(opts, :lql, "")
-    {:ok, lql_rules} = Lql.decode(lql, source_schema.bigquery_schema)
+
+    {:ok, lql_rules} =
+      Lql.decode(
+        lql,
+        Map.get(source_schema || %{}, :bigquery_schema, SchemaBuilder.initial_table_schema())
+      )
 
     lql_rules =
       lql_rules
@@ -72,7 +80,7 @@ defmodule Logflare.Logs.LogEvents do
         "_PARTITIONTIME BETWEEN TIMESTAMP_TRUNC(?, DAY) AND TIMESTAMP_TRUNC(?, DAY)",
         ^Timex.to_date(min),
         ^Timex.to_date(max)
-      )
+      ) or in_streaming_buffer()
     )
   end
 end

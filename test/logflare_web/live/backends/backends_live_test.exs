@@ -192,6 +192,35 @@ defmodule LogflareWeb.BackendsLiveTest do
       assert render(view) =~ "Successfully created backend"
     end
 
+    test "bug: can create a new incidentio backend with metadata", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/backends")
+
+      assert view
+             |> element("a", "New backend")
+             |> render_click() =~ ~r/\/new/
+
+      assert view
+             |> element("select#type")
+             |> render_change(%{backend: %{type: "incidentio"}}) =~
+               "Alert Source Configuration ID"
+
+      assert view
+             |> form("form", %{
+               backend: %{
+                 name: "my incidentio",
+                 type: "incidentio",
+                 config: %{
+                   api_token: "http://localhost:1234",
+                   alert_source_config_id: "123",
+                   metadata: "team=example"
+                 }
+               }
+             })
+             |> render_submit()
+
+      assert render(view) =~ "Successfully created backend"
+    end
+
     test "on backend type switch, will change the inputs", %{conn: conn} do
       {:ok, view, _html} = live(conn, ~p"/backends/new")
 
