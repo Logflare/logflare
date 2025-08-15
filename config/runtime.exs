@@ -264,8 +264,8 @@ end
 socket_options_for_url = fn
   url when is_binary(url) ->
     case URI.parse(url) do
-      %URI{host: host} -> socket_options_for_host.(host)
-      _ -> raise "Failed to parse URL: #{inspect(url)}"
+      %URI{host: host} when is_binary(host) -> socket_options_for_host.(host)
+      _ -> raise "Failed to parse URL with host: #{inspect(url)}"
     end
 
   _url ->
