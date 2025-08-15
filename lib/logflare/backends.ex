@@ -280,16 +280,16 @@ defmodule Logflare.Backends do
   @doc """
   Syncs backend across all cluster nodes for v2 pipeline sources.
 
-  This ensures that when a backend's configuration changes (e.g., `default_ingest?` flag),
+  This ensures that when a backend's configuration changes,
   all running `SourceSup` instances are updated immediately without waiting for the
   periodic `SourceSupWorker` check.
   """
   @spec sync_backend_across_cluster(integer()) :: :ok
   def sync_backend_across_cluster(backend_id) when is_integer(backend_id) do
-    with %Backend{} = backend <- get_backend(backend_id) do
-      for source <- Sources.list_sources(backend_id: backend_id) do
-        Cluster.Utils.rpc_multicall(SourceSup, :start_backend_child, [source, backend])
-      end
+    sources = Sources.list_sources(backend_id: backend_id)
+
+    for source <- sources do
+      restart_source_sup(source)
     end
 
     :ok
@@ -375,7 +375,9 @@ defmodule Logflare.Backends do
   end
 
   defp dispatch_to_backends(source, nil, log_events) do
-    for backend <- [nil | __MODULE__.Cache.list_backends(source_id: source.id)] do
+    backends = __MODULE__.Cache.list_backends(source_id: source.id)
+
+    for backend <- [nil | backends] do
       log_events =
         if(backend, do: maybe_pre_ingest(source, backend, log_events), else: log_events)
 
@@ -532,6 +534,12 @@ defmodule Logflare.Backends do
         id: source_id,
         default_ingest_backend_enabled?: true
       }) do
+    default_backends =
+      __MODULE__.Cache.list_backends(source_id: source_id)
+      |> Enum.filter(& &1.default_ingest?)
+
+    default_backend_ids = MapSet.new(default_backends, & &1.id)
+
     case PubSubRates.Cache.get_local_buffer(source_id, nil) do
       %{queues: [_ | _] = queues} ->
         Enum.any?(queues, fn
@@ -539,8 +547,8 @@ defmodule Logflare.Backends do
             count > @max_pending_buffer_len_per_queue
 
           {{_sid, backend_id, _pid}, count} when is_integer(backend_id) ->
-            backend = __MODULE__.Cache.get_backend(backend_id)
-            backend && backend.default_ingest? && count > @max_pending_buffer_len_per_queue
+            MapSet.member?(default_backend_ids, backend_id) &&
+              count > @max_pending_buffer_len_per_queue
 
           {_key, count} ->
             count > @max_pending_buffer_len_per_queue

@@ -353,6 +353,106 @@ defmodule LogflareWeb.BackendsLiveTest do
       assert view
              |> render() =~ "There are still sources connected to this backend"
     end
+
+    test "shows source selection when default_ingest is toggled", %{
+      conn: conn,
+      user: user,
+      source: source
+    } do
+      source2 = insert(:source, user_id: user.id, name: "Other Source")
+      backend = insert(:backend, sources: [], user: user, type: :bigquery)
+      {:ok, view, _html} = live(conn, ~p"/backends/#{backend.id}/edit")
+
+      refute render(view) =~ "Source for Default Ingest"
+
+      view
+      |> element("input[type=checkbox][name='backend[default_ingest?]']")
+      |> render_change(%{backend: %{"default_ingest?" => "true"}})
+
+      html = render(view)
+      assert html =~ "Source for Default Ingest"
+      assert html =~ source.name
+      assert html =~ source2.name
+    end
+
+    test "updates backend with source association when default_ingest is enabled", %{
+      conn: conn,
+      user: user,
+      source: source
+    } do
+      backend = insert(:backend, sources: [], user: user, type: :bigquery, default_ingest?: false)
+      {:ok, view, _html} = live(conn, ~p"/backends/#{backend.id}/edit")
+
+      view
+      |> element("input[type=checkbox][name='backend[default_ingest?]']")
+      |> render_change(%{backend: %{"default_ingest?" => "true"}})
+
+      html =
+        view
+        |> form("form", %{
+          backend: %{
+            "name" => backend.name,
+            "default_ingest?" => "true",
+            "source_id" => to_string(source.id)
+          }
+        })
+        |> render_submit()
+
+      assert html =~ "Successfully updated backend"
+
+      updated_backend =
+        Logflare.Backends.get_backend(backend.id) |> Logflare.Repo.preload(:sources)
+
+      assert updated_backend.default_ingest?
+      assert length(updated_backend.sources) == 1
+      assert hd(updated_backend.sources).id == source.id
+    end
+
+    test "preserves existing source association when editing default_ingest backend", %{
+      conn: conn,
+      user: user,
+      source: source
+    } do
+      backend =
+        insert(:backend, sources: [source], user: user, type: :bigquery, default_ingest?: true)
+
+      {:ok, view, _html} = live(conn, ~p"/backends/#{backend.id}/edit")
+
+      html = render(view)
+      assert html =~ "Source for Default Ingest"
+
+      assert view
+             |> element(
+               "select[name='backend[source_id]'] option[value='#{source.id}'][selected]"
+             )
+             |> has_element?()
+    end
+
+    test "requires source selection when enabling default_ingest", %{
+      conn: conn,
+      user: user
+    } do
+      backend = insert(:backend, sources: [], user: user, type: :bigquery, default_ingest?: false)
+      {:ok, view, _html} = live(conn, ~p"/backends/#{backend.id}/edit")
+
+      view
+      |> element("input[type=checkbox][name='backend[default_ingest?]']")
+      |> render_change(%{backend: %{"default_ingest?" => "true"}})
+
+      html =
+        view
+        |> form("form", %{
+          backend: %{
+            "name" => backend.name,
+            "default_ingest?" => "true",
+            "source_id" => "Select a source..."
+          }
+        })
+        |> render_submit()
+
+      assert html =~ "Please select a source when enabling default ingest"
+      refute html =~ "Successfully updated backend"
+    end
   end
 
   test "redirects to login page when not logged in", %{conn: conn} do
