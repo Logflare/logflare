@@ -3,8 +3,9 @@ defmodule LogflareWeb.SearchLive.EventContextComponent do
 
   alias Logflare.JSON
   alias Phoenix.LiveView.AsyncResult
+  alias Logflare.{Lql, SourceSchemas}
+  alias Logflare.Source.BigQuery.SchemaBuilder
   import LogflareWeb.SearchLive.LogEventComponents, only: [log_event: 1]
-  import LogflareWeb.ModalLiveHelpers
 
   @impl true
   def update(assigns, socket) do
@@ -12,11 +13,20 @@ defmodule LogflareWeb.SearchLive.EventContextComponent do
       params: %{
         "log-event-timestamp" => log_timestamp,
         "log-event-id" => log_event_id,
-        "lql_rules" => lql_rules,
-        "source_id" => source_id,
+        "querystring" => query_string,
+        "source-id" => source_id,
         "timezone" => timezone
       }
     } = assigns
+
+    source_schema = SourceSchemas.Cache.get_source_schema_by(source_id: source_id)
+
+    {:ok, lql_rules} =
+      Lql.decode(
+        query_string,
+        Map.get(source_schema || %{}, :bigquery_schema, SchemaBuilder.initial_table_schema())
+      )
+      |> dbg
 
     log_timestamp = String.to_integer(log_timestamp)
 
@@ -49,7 +59,6 @@ defmodule LogflareWeb.SearchLive.EventContextComponent do
     ~H"""
     <div class="list-unstyled console-text-list -tw-mx-6 tw-relative">
       <div class="tw-flex tw-px-2 tw-py-4 tw-mb-4 tw-bg-gray-800 tw-items-baseline tw-sticky tw-w-full">
-        <div class="tw-mr-3 tw-w-[9rem] tw-text-right">Query</div>
         <div class="tw-font-mono tw-text-white tw-text-sm tw-space-x-2">
           <.lql_rule :for={rule <- @lql_rules} :if={is_struct(rule, Logflare.Lql.Rules.FilterRule) && rule.path != "timestamp"} rule={rule} />
         </div>

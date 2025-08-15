@@ -19,7 +19,7 @@ defmodule LogflareWeb.SearchLive.LogEventComponents do
   slot :inner_block
   slot :actions
 
-  def log_event(%{log: %{body: body}} = assigns) when is_map_key(body, "event_message") do
+  def log_event(%{log_event: %{body: body}} = assigns) when is_map_key(body, "event_message") do
     assigns =
       assigns
       |> assign(timestamp: body["timestamp"], message: body["event_message"])
@@ -56,7 +56,7 @@ defmodule LogflareWeb.SearchLive.LogEventComponents do
 
   def formatted_timestamp(log_event, timezone) do
     tz_part =
-      Timex.Timezone.get(search_timezone).offset_utc
+      Timex.Timezone.get(timezone).offset_utc
       |> DateTimeUtils.humanize_timezone_offset()
 
     format_timestamp(log_event.body["timestamp"], timezone) <> tz_part
