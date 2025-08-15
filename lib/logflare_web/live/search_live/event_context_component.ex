@@ -54,7 +54,7 @@ defmodule LogflareWeb.SearchLive.EventContextComponent do
           <.lql_rule :for={rule <- @lql_rules} :if={is_struct(rule, Logflare.Lql.Rules.FilterRule) && rule.path != "timestamp"} rule={rule} />
         </div>
       </div>
-      <div class="tw-h-[calc(100vh-200px)] tw-overflow-y-auto tw-pr-2">
+      <div class="tw-h-[calc(100vh-200px)] tw-overflow-y-auto tw-pr-2 tw-pl-5 -tw-ml-5">
         <.async_result assign={@logs}>
           <:loading><%= live_react_component("Components.Loader", %{}, id: "shared-loader") %></:loading>
 
@@ -64,13 +64,17 @@ defmodule LogflareWeb.SearchLive.EventContextComponent do
               log_event={log_event}
               timezone={@timezone}
               class={[
-                "tw-group tw-flex tw-flex-wrap tw-items-center tw-pr-1",
+                "tw-group tw-flex tw-flex-wrap tw-items-center tw-pr-1 tw-relative",
                 if(highlight?(log_event, @target_event_id),
                   do: "tw-bg-gray-600 tw-outline-gray-500 tw-outline tw-my-2",
                   else: ""
                 )
               ]}
             >
+              <span :if={highlight?(log_event, @target_event_id)} class="tw-absolute -tw-left-4">
+                <i class="fas fa-chevron-right"></i>
+              </span>
+
               <span class="tw-truncate tw-flex-1 tw-pr-1">
                 <%= log_event.body["event_message"] %>
               </span>
