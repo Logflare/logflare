@@ -19,7 +19,7 @@ defmodule Logflare.EctoQueryBQ.SQL do
     # removes double quotes around the names after the dot
     |> String.replace(~r/\."([\w\.]+)"/, ".\\1")
     # removes double quotes around the fully qualified BQ table id
-    |> String.replace(~r/FROM\s+"(.+)"/, "FROM \\1")
+    |> String.replace(~r/FROM\s+"(.+?)"/, "FROM \\1")
     # removes double quotes around the alias
     |> String.replace(~r/AS\s+"(\w+)"/, "AS \\1")
   end
