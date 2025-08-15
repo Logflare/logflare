@@ -30,7 +30,7 @@ defmodule Logflare.Backends do
   @doc """
   Retrieves the hardcoded max pending buffer length of an individual queue
   """
-  @spec max_buffer_queue_len :: non_neg_integer()
+  @spec max_buffer_queue_len() :: non_neg_integer()
   def max_buffer_queue_len, do: @max_pending_buffer_len_per_queue
 
   @doc """
