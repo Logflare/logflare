@@ -247,6 +247,105 @@ defmodule Logflare.BackendsTest do
     end
   end
 
+  describe "update_backend/2 with default_ingest?" do
+    setup do
+      insert(:plan)
+      user = insert(:user)
+      clickhouse_config = %{url: "http://localhost", database: "test", port: 8123}
+
+      backend =
+        insert(:backend,
+          user: user,
+          type: :clickhouse,
+          default_ingest?: false,
+          config: clickhouse_config
+        )
+
+      source = insert(:source, user: user)
+
+      {:ok, user: user, backend: backend, source: source, config: clickhouse_config}
+    end
+
+    test "requires source_id when enabling default_ingest?", %{backend: backend} do
+      assert {:error, changeset} =
+               Backends.update_backend(backend, %{default_ingest?: true})
+
+      assert "Please select a source when enabling default ingest" in errors_on(changeset).default_ingest?
+    end
+
+    test "creates source association when enabling default_ingest?", %{
+      backend: backend,
+      source: source
+    } do
+      {:ok, source} = Sources.update_source(source, %{default_ingest_backend_enabled?: true})
+
+      assert {:ok, updated} =
+               Backends.update_backend(backend, %{
+                 default_ingest?: true,
+                 source_id: to_string(source.id)
+               })
+
+      assert updated.default_ingest? == true
+
+      source = Sources.get(source.id) |> Sources.preload_backends()
+      assert Enum.any?(source.backends, &(&1.id == backend.id))
+    end
+
+    test "removes source associations when disabling default_ingest?", %{
+      user: user,
+      source: source,
+      config: config
+    } do
+      {:ok, source} = Sources.update_source(source, %{default_ingest_backend_enabled?: true})
+
+      backend =
+        insert(:backend, user: user, type: :clickhouse, default_ingest?: true, config: config)
+
+      assert {:ok, _} = Backends.update_source_backends(source, [backend])
+
+      assert {:ok, updated} =
+               Backends.update_backend(backend, %{default_ingest?: false})
+
+      assert updated.default_ingest? == false
+
+      source = Sources.get(source.id) |> Sources.preload_backends()
+      assert Enum.empty?(source.backends)
+    end
+
+    test "does not duplicate source associations", %{user: user, source: source, config: config} do
+      {:ok, source} = Sources.update_source(source, %{default_ingest_backend_enabled?: true})
+
+      backend =
+        insert(:backend, user: user, type: :clickhouse, default_ingest?: true, config: config)
+
+      assert {:ok, _} = Backends.update_source_backends(source, [backend])
+
+      assert {:ok, _updated} =
+               Backends.update_backend(backend, %{
+                 default_ingest?: true,
+                 source_id: to_string(source.id)
+               })
+
+      source = Sources.get(source.id) |> Sources.preload_backends()
+      backend_ids = Enum.map(source.backends, & &1.id)
+      assert length(backend_ids) == 1
+      assert backend.id in backend_ids
+    end
+
+    test "requires source to have default_ingest_backend_enabled?", %{
+      backend: backend,
+      source: source
+    } do
+      assert {:error, changeset} =
+               Backends.update_backend(backend, %{
+                 default_ingest?: true,
+                 source_id: to_string(source.id)
+               })
+
+      assert "Source must have default ingest backend support enabled" in errors_on(changeset).default_ingest?
+    end
+  end
+
   describe "SourceSup management" do
     setup do
       insert(:plan)

@@ -2,26 +2,29 @@ defmodule Logflare.Backends do
   @moduledoc false
 
   import Ecto.Query
+  import Logflare.Utils.Guards
 
+  alias Ecto.Changeset
   alias Logflare.Backends.Adaptor
   alias Logflare.Backends.Backend
+  alias Logflare.Backends.IngestEventQueue
+  alias Logflare.Backends.RecentEventsTouch
   alias Logflare.Backends.SourceRegistry
   alias Logflare.Backends.SourcesSup
   alias Logflare.Backends.SourceSup
-  alias Logflare.Backends.RecentEventsTouch
-  alias Logflare.Backends.IngestEventQueue
+  alias Logflare.ContextCache
+  alias Logflare.Cluster
   alias Logflare.LogEvent
-  alias Logflare.Repo
-  alias Logflare.Source
-  alias Logflare.SingleTenant
-  alias Logflare.User
-  alias Logflare.Sources
   alias Logflare.Logs
   alias Logflare.Logs.SourceRouting
-  alias Logflare.SystemMetrics
   alias Logflare.PubSubRates
-  alias Logflare.Cluster
+  alias Logflare.Repo
+  alias Logflare.SingleTenant
+  alias Logflare.Source
+  alias Logflare.Sources
   alias Logflare.Sources.Counters
+  alias Logflare.SystemMetrics
+  alias Logflare.User
 
   defdelegate child_spec(arg), to: __MODULE__.Supervisor
 
@@ -95,6 +98,10 @@ defmodule Logflare.Backends do
     |> Enum.map(fn sb -> typecast_config_string_map_to_atom_map(sb) end)
   end
 
+  @doc """
+  Preload rules for a given backend
+  """
+  @spec preload_rules([Backend.t()]) :: [Backend.t()]
   def preload_rules(backends) do
     Repo.preload(backends, rules: [:source])
   end
@@ -102,14 +109,23 @@ defmodule Logflare.Backends do
   @doc """
   Preload alerts key for a given backend
   """
+  @spec preload_alerts([Backend.t()]) :: [Backend.t()]
   def preload_alerts(backends) do
     Repo.preload(backends, [:alert_queries])
   end
 
   @doc """
+  Preload sources for a given backend or list of backends
+  """
+  @spec preload_sources(Backend.t() | [Backend.t()]) :: Backend.t() | [Backend.t()]
+  def preload_sources(backend_or_backends) do
+    Repo.preload(backend_or_backends, :sources)
+  end
+
+  @doc """
   Creates a Backend for a given source.
   """
-  @spec create_backend(map()) :: {:ok, Backend.t()} | {:error, Ecto.Changeset.t()}
+  @spec create_backend(map()) :: {:ok, Backend.t()} | {:error, Changeset.t()}
   def create_backend(attrs) do
     backend =
       %Backend{}
@@ -161,64 +177,180 @@ defmodule Logflare.Backends do
   @doc """
   Updates the config of a Backend.
   """
-  @spec update_backend(Backend.t(), map()) :: {:ok, Backend.t()} | {:error, Ecto.Changeset.t()}
+  @spec update_backend(Backend.t(), map()) :: {:ok, Backend.t()} | {:error, Changeset.t()}
   def update_backend(%Backend{} = backend, attrs) do
-    alerts_modified = if Map.get(attrs, :alert_queries), do: true, else: false
-    default_ingest_modified? = Map.has_key?(attrs, :default_ingest?)
+    alerts_modified = Map.has_key?(attrs, :alert_queries)
 
-    backend_config =
+    default_ingest_modified? =
+      Map.has_key?(attrs, "default_ingest?") or Map.has_key?(attrs, :default_ingest?)
+
+    source_id = Map.get(attrs, "source_id") || Map.get(attrs, :source_id)
+
+    changeset =
       backend
       |> Backend.changeset(attrs)
+      |> validate_default_ingest_source(source_id)
       |> then(fn changeset ->
         if alerts_modified do
-          Ecto.Changeset.put_assoc(changeset, :alert_queries, Map.get(attrs, :alert_queries))
+          Changeset.put_assoc(changeset, :alert_queries, Map.get(attrs, :alert_queries))
         else
           changeset
         end
       end)
-      |> Repo.update()
 
-    with {:ok, updated} <- backend_config do
-      backend = Repo.preload(backend, :sources)
-      Enum.each(backend.sources, &restart_source_sup(&1))
+    case Repo.update(changeset) do
+      {:ok, updated} ->
+        updated = preload_sources(updated)
 
-      if default_ingest_modified?, do: sync_backend_across_cluster(updated.id)
+        if default_ingest_modified? do
+          was_enabled = backend.default_ingest?
+          is_enabled = updated.default_ingest?
+          handle_default_ingest_associations(updated, source_id, was_enabled, is_enabled)
+          sync_backend_across_cluster(updated.id)
+        end
 
-      {:ok, typecast_config_string_map_to_atom_map(updated)}
+        Enum.each(updated.sources, &restart_source_sup(&1))
+
+        {:ok, typecast_config_string_map_to_atom_map(updated)}
+
+      error ->
+        error
     end
   end
+
+  @spec validate_default_ingest_source(Changeset.t(), String.t() | integer() | nil) ::
+          Changeset.t()
+  defp validate_default_ingest_source(%{changes: %{default_ingest?: true}} = changeset, source_id)
+       when is_non_empty_binary(source_id) or is_integer(source_id) do
+    case Sources.get(source_id) do
+      %Source{default_ingest_backend_enabled?: true} ->
+        changeset
+
+      %Source{default_ingest_backend_enabled?: false} ->
+        Changeset.add_error(
+          changeset,
+          :default_ingest?,
+          "Source must have default ingest backend support enabled"
+        )
+
+      nil ->
+        Changeset.add_error(
+          changeset,
+          :default_ingest?,
+          "Source not found"
+        )
+    end
+  end
+
+  defp validate_default_ingest_source(
+         %Changeset{changes: %{default_ingest?: true}} = changeset,
+         _source_id
+       ) do
+    Changeset.add_error(
+      changeset,
+      :default_ingest?,
+      "Please select a source when enabling default ingest"
+    )
+  end
+
+  defp validate_default_ingest_source(changeset, _source_id), do: changeset
+
+  @spec handle_default_ingest_associations(
+          Backend.t(),
+          source_id :: String.t() | integer() | nil,
+          was_enabled :: boolean(),
+          is_enabled :: boolean()
+        ) :: :ok
+  defp handle_default_ingest_associations(backend, source_id, false, true)
+       when is_non_empty_binary(source_id) or is_integer(source_id) do
+    source = Sources.get(source_id) |> Sources.preload_backends()
+
+    if not Enum.any?(source.backends, &(&1.id == backend.id)) do
+      update_source_backends(source, source.backends ++ [backend])
+    end
+
+    :ok
+  end
+
+  defp handle_default_ingest_associations(backend, _source_id, true, false) do
+    backend_with_sources =
+      backend
+      |> Repo.reload!()
+      |> Repo.preload(:sources)
+
+    Enum.each(backend_with_sources.sources, fn source ->
+      source = Sources.preload_backends(source)
+      filtered_backends = Enum.reject(source.backends, &(&1.id == backend.id))
+      update_source_backends(source, filtered_backends)
+    end)
+
+    :ok
+  end
+
+  defp handle_default_ingest_associations(_backend, _source_id, _was_enabled, _is_enabled),
+    do: :ok
 
   @doc """
   Updates the backends of a source wholly. Does not work on partial data, all backends must be provided.
   """
   @spec update_source_backends(Source.t(), [Backend.t()]) ::
-          {:ok, Source.t()} | {:error, Ecto.Changeset.t()}
+          {:ok, Source.t()} | {:error, Changeset.t()}
   def update_source_backends(%Source{} = source, backends) do
+    source_with_backends = Sources.preload_backends(source)
+
     changeset =
-      source
-      |> Repo.preload(:backends)
-      |> Ecto.Changeset.change()
-      |> Ecto.Changeset.put_assoc(:backends, backends)
+      source_with_backends
+      |> Changeset.change()
+      |> Changeset.put_assoc(:backends, backends)
 
     with {:ok, _} = result <- Repo.update(changeset) do
-      changes = Ecto.Changeset.get_change(changeset, :backends)
+      backend_ids = Enum.map(backends, & &1.id)
+
+      cache_keys =
+        [{Logflare.Sources, source.id}] ++ Enum.map(backend_ids, &{Logflare.Backends, &1})
+
+      ContextCache.bust_keys(cache_keys)
+      clear_list_backends_cache(source.id)
 
       if source_sup_started?(source) do
-        for %Ecto.Changeset{action: action, data: backend} <- changes do
-          case action do
-            :update ->
-              SourceSup.start_backend_child(source, backend)
-              Cluster.Utils.rpc_multicall(SourceSup, :start_backend_child, [source, backend])
+        previous_backends = source_with_backends.backends
+        current_backends = backends
 
-            :replace ->
-              SourceSup.stop_backend_child(source, backend)
-              Cluster.Utils.rpc_multicall(SourceSup, :stop_backend_child, [source, backend])
-          end
+        added_backends =
+          Enum.filter(current_backends, fn cb ->
+            not Enum.any?(previous_backends, &(&1.id == cb.id))
+          end)
+
+        removed_backends =
+          Enum.filter(previous_backends, fn pb ->
+            not Enum.any?(current_backends, &(&1.id == pb.id))
+          end)
+
+        for backend <- added_backends do
+          SourceSup.start_backend_child(source, backend)
+          Cluster.Utils.rpc_multicall(SourceSup, :start_backend_child, [source, backend])
         end
+
+        for backend <- removed_backends do
+          SourceSup.stop_backend_child(source, backend)
+          Cluster.Utils.rpc_multicall(SourceSup, :stop_backend_child, [source, backend])
+        end
+      else
+        :ok
       end
 
       result
     end
+  end
+
+  @doc """
+  Clears cached `list_backends` queries for a specific source.
+  """
+  @spec clear_list_backends_cache(source_id :: integer()) :: :ok
+  def clear_list_backends_cache(source_id) when is_integer(source_id) do
+    Cachex.del(__MODULE__.Cache, {:list_backends, [[source_id: source_id]]})
+    Cachex.del(__MODULE__.Cache, {:list_backends, [source_id: source_id]})
+    :ok
   end
 
   # common typecasting from string map to attom for config
@@ -231,7 +363,7 @@ defmodule Logflare.Backends do
       Map.update!(backend, :config_encrypted, fn config ->
         (config || %{})
         |> mod.cast_config()
-        |> Ecto.Changeset.apply_changes()
+        |> Changeset.apply_changes()
       end)
 
     Map.put(updated, :config, updated.config_encrypted)
@@ -269,8 +401,8 @@ defmodule Logflare.Backends do
   @spec delete_backend(Backend.t()) :: {:ok, Backend.t()}
   def delete_backend(%Backend{} = backend) do
     backend
-    |> Ecto.Changeset.change()
-    |> Ecto.Changeset.foreign_key_constraint(:sources,
+    |> Changeset.change()
+    |> Changeset.foreign_key_constraint(:sources,
       name: "sources_backends_backend_id_fkey",
       message: "There are still sources connected to this backend"
     )
@@ -287,8 +419,11 @@ defmodule Logflare.Backends do
   @spec sync_backend_across_cluster(integer()) :: :ok
   def sync_backend_across_cluster(backend_id) when is_integer(backend_id) do
     with %Backend{} = backend <- get_backend(backend_id) do
-      for source <- Sources.list_sources(backend_id: backend_id) do
+      sources = Sources.list_sources(backend_id: backend_id)
+
+      for source <- sources do
         Cluster.Utils.rpc_multicall(SourceSup, :start_backend_child, [source, backend])
+        Cluster.Utils.rpc_multicall(__MODULE__, :clear_list_backends_cache, [source.id])
       end
     end
 
@@ -375,7 +510,9 @@ defmodule Logflare.Backends do
   end
 
   defp dispatch_to_backends(source, nil, log_events) do
-    for backend <- [nil | __MODULE__.Cache.list_backends(source_id: source.id)] do
+    backends = __MODULE__.Cache.list_backends(source_id: source.id)
+
+    for backend <- [nil | backends] do
       log_events =
         if(backend, do: maybe_pre_ingest(source, backend, log_events), else: log_events)
 
@@ -532,6 +669,11 @@ defmodule Logflare.Backends do
         id: source_id,
         default_ingest_backend_enabled?: true
       }) do
+    default_backend_ids =
+      __MODULE__.Cache.list_backends(source_id: source_id)
+      |> Enum.filter(& &1.default_ingest?)
+      |> MapSet.new(& &1.id)
+
     case PubSubRates.Cache.get_local_buffer(source_id, nil) do
       %{queues: [_ | _] = queues} ->
         Enum.any?(queues, fn
@@ -539,8 +681,8 @@ defmodule Logflare.Backends do
             count > @max_pending_buffer_len_per_queue
 
           {{_sid, backend_id, _pid}, count} when is_integer(backend_id) ->
-            backend = __MODULE__.Cache.get_backend(backend_id)
-            backend && backend.default_ingest? && count > @max_pending_buffer_len_per_queue
+            MapSet.member?(default_backend_ids, backend_id) &&
+              count > @max_pending_buffer_len_per_queue
 
           {_key, count} ->
             count > @max_pending_buffer_len_per_queue

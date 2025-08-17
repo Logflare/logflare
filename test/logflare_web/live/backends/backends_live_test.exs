@@ -1,6 +1,8 @@
 defmodule LogflareWeb.BackendsLiveTest do
   use LogflareWeb.ConnCase
 
+  alias Logflare.Sources
+
   setup do
     insert(:plan)
 
@@ -352,6 +354,171 @@ defmodule LogflareWeb.BackendsLiveTest do
 
       assert view
              |> render() =~ "There are still sources connected to this backend"
+    end
+  end
+
+  describe "default ingest" do
+    setup :log_in_user_with_source
+
+    test "shows default ingest section for supported backends", %{conn: conn, user: user} do
+      backend =
+        insert(:backend,
+          user: user,
+          type: :clickhouse,
+          config: %{
+            url: "http://localhost",
+            database: "test",
+            port: 8123
+          }
+        )
+
+      {:ok, view, _html} = live(conn, ~p"/backends/#{backend.id}")
+
+      html = render(view)
+      assert html =~ "Default Ingest Sources"
+      assert html =~ "Add a Source"
+    end
+
+    test "does not show default ingest section for unsupported backends", %{
+      conn: conn,
+      user: user
+    } do
+      backend = insert(:backend, user: user, type: :webhook, config: %{url: "http://test.com"})
+      {:ok, view, _html} = live(conn, ~p"/backends/#{backend.id}")
+
+      html = render(view)
+      refute html =~ "Default Ingest Sources"
+      refute html =~ "Add a Source"
+    end
+
+    test "toggle form shows source selection", %{conn: conn, user: user, source: source} do
+      {:ok, source} =
+        Logflare.Sources.update_source(source, %{default_ingest_backend_enabled?: true})
+
+      backend =
+        insert(:backend,
+          user: user,
+          type: :clickhouse,
+          config: %{
+            url: "http://localhost",
+            database: "test",
+            port: 8123
+          }
+        )
+
+      {:ok, view, _html} = live(conn, ~p"/backends/#{backend.id}")
+
+      assert view
+             |> element("button", "Add a Source")
+             |> render_click() =~ "Source"
+
+      html = render(view)
+      assert html =~ source.name
+      assert html =~ "Choose a source"
+    end
+
+    test "add source as default ingest", %{conn: conn, user: user, source: source} do
+      {:ok, source} =
+        Sources.update_source(source, %{default_ingest_backend_enabled?: true})
+
+      backend =
+        insert(:backend,
+          user: user,
+          type: :clickhouse,
+          config: %{
+            url: "http://localhost",
+            database: "test",
+            port: 8123
+          }
+        )
+
+      {:ok, view, _html} = live(conn, ~p"/backends/#{backend.id}")
+
+      view
+      |> element("button", "Add a Source")
+      |> render_click()
+
+      html =
+        view
+        |> element("form#default_ingest")
+        |> render_submit(%{
+          default_ingest: %{
+            source_id: source.id,
+            backend_id: backend.id
+          }
+        })
+
+      assert html =~ "Successfully marked backend as default ingest for source"
+      assert html =~ source.name
+      assert html =~ "uses this backend as default ingest"
+    end
+
+    test "remove source from default ingest", %{conn: conn, user: user, source: source} do
+      {:ok, source} =
+        Sources.update_source(source, %{default_ingest_backend_enabled?: true})
+
+      backend =
+        insert(:backend,
+          user: user,
+          type: :clickhouse,
+          config: %{url: "http://localhost", database: "test", port: 8123},
+          default_ingest?: true
+        )
+
+      {:ok, _} = Logflare.Backends.update_source_backends(source, [backend])
+      {:ok, view, _html} = live(conn, ~p"/backends/#{backend.id}")
+
+      html = render(view)
+      assert html =~ source.name
+      assert html =~ "uses this backend as default ingest"
+
+      html =
+        view
+        |> element("button", "Remove")
+        |> render_click()
+
+      assert html =~ "Removed default ingest for source"
+      refute html =~ "uses this backend as default ingest"
+    end
+
+    test "only shows sources with default_ingest_backend_enabled?", %{
+      conn: conn,
+      user: user,
+      source: source
+    } do
+      {:ok, _enabled_source} =
+        Sources.update_source(source, %{
+          default_ingest_backend_enabled?: true,
+          name: "Enabled Source"
+        })
+
+      insert(:source,
+        user: user,
+        default_ingest_backend_enabled?: false,
+        name: "Disabled Source"
+      )
+
+      backend =
+        insert(:backend,
+          user: user,
+          type: :clickhouse,
+          config: %{
+            url: "http://localhost",
+            database: "test",
+            port: 8123
+          }
+        )
+
+      {:ok, view, _html} = live(conn, ~p"/backends/#{backend.id}")
+
+      view
+      |> element("button", "Add a Source")
+      |> render_click()
+
+      html = render(view)
+
+      assert html =~ "Enabled Source"
+      refute html =~ "Disabled Source"
     end
   end
 
