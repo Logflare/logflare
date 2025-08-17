@@ -1,11 +1,16 @@
 defmodule LogflareWeb.BackendsLive do
   @moduledoc false
+
   use LogflareWeb, :live_view
   require Logger
+
+  import Logflare.Utils.Guards
+
   alias Logflare.Backends
-  alias Logflare.Users
+  alias Logflare.Repo
   alias Logflare.Rules
   alias Logflare.Sources
+  alias Logflare.Users
 
   embed_templates("actions/*", suffix: "_action")
   embed_templates("components/*")
@@ -35,6 +40,8 @@ defmodule LogflareWeb.BackendsLive do
       |> assign(:show_alert_form?, false)
       |> assign(:alert_options, [])
       |> assign(:form_type, nil)
+      |> assign(:show_default_ingest_sources?, false)
+      |> assign(:selected_source_id, nil)
       |> refresh_backends()
       |> refresh_backend(params["id"])
 
@@ -58,20 +65,28 @@ defmodule LogflareWeb.BackendsLive do
     params = transform_params(params)
 
     socket =
-      case Logflare.Backends.update_backend(socket.assigns.backend, params) do
-        {:ok, backend} ->
-          socket
-          |> assign(:show_rule_form?, false)
-          |> refresh_backend(backend.id)
-          |> refresh_backends()
-          |> put_flash(:info, "Successfully updated backend")
-          |> push_patch(to: ~p"/backends/#{backend.id}")
+      case validate_default_ingest_params(params) do
+        :error ->
+          put_flash(socket, :error, "Please select a source when enabling default ingest")
 
-        {:error, changeset} ->
-          # TODO: move this to a helper function
-          message = changeset_to_flash_message(changeset)
+        :ok ->
+          case Backends.update_backend(socket.assigns.backend, params) do
+            {:ok, backend} ->
+              backend = maybe_update_source_associations(backend, params)
 
-          put_flash(socket, :error, "Encountered error when adding backend:\n#{message}")
+              socket
+              |> assign(:show_rule_form?, false)
+              |> assign(:show_default_ingest_sources?, false)
+              |> refresh_backend(backend.id)
+              |> refresh_backends()
+              |> put_flash(:info, "Successfully updated backend")
+              |> push_patch(to: ~p"/backends/#{backend.id}")
+
+            {:error, changeset} ->
+              message = changeset_to_flash_message(changeset)
+
+              put_flash(socket, :error, "Encountered error when adding backend:\n#{message}")
+          end
       end
 
     {:noreply, socket}
@@ -128,6 +143,17 @@ defmodule LogflareWeb.BackendsLive do
 
   def handle_event("change_form_type", %{"backend" => %{"type" => type}}, socket) do
     {:noreply, assign(socket, form_type: type)}
+  end
+
+  def handle_event("toggle_default_ingest", %{"backend" => params}, socket) do
+    default_ingest = params["default_ingest?"] == "true"
+
+    socket =
+      socket
+      |> assign(:show_default_ingest_sources?, default_ingest)
+      |> maybe_load_selected_sources()
+
+    {:noreply, socket}
   end
 
   def handle_event("toggle_rule_form", _params, socket) do
@@ -249,6 +275,8 @@ defmodule LogflareWeb.BackendsLive do
     socket
     |> assign(:backend, backend)
     |> assign(:form_type, Atom.to_string(backend.type))
+    |> assign(:show_default_ingest_sources?, backend.default_ingest?)
+    |> maybe_load_selected_sources()
   end
 
   defp transform_params(params) do
@@ -299,4 +327,76 @@ defmodule LogflareWeb.BackendsLive do
   end
 
   defp _to_string(val), do: to_string(val)
+
+  defp maybe_load_selected_sources(%{assigns: %{backend: backend}} = socket)
+       when not is_nil(backend) do
+    source_id =
+      backend
+      |> Repo.preload(:sources)
+      |> Map.get(:sources, [])
+      |> List.first()
+      |> case do
+        nil -> nil
+        source -> source.id
+      end
+
+    assign(socket, :selected_source_id, source_id)
+  end
+
+  defp maybe_load_selected_sources(socket), do: socket
+
+  defp maybe_update_source_associations(backend, params) do
+    case params["default_ingest?"] do
+      "true" ->
+        add_source_association(backend, params["source_id"])
+
+      "false" ->
+        remove_all_source_associations(backend)
+
+      _ ->
+        backend
+    end
+  end
+
+  defp add_source_association(backend, nil), do: backend
+  defp add_source_association(backend, ""), do: backend
+  defp add_source_association(backend, "Select a source..."), do: backend
+
+  defp add_source_association(backend, source_id) do
+    source = Sources.get(source_id) |> Repo.preload(:backends)
+
+    backend_already_associated? = Enum.any?(source.backends, &(&1.id == backend.id))
+
+    if not backend_already_associated? do
+      Backends.update_source_backends(source, source.backends ++ [backend])
+    end
+
+    backend
+  end
+
+  defp remove_all_source_associations(backend) do
+    backend = Repo.preload(backend, :sources)
+
+    Enum.each(backend.sources, fn source ->
+      source = Repo.preload(source, :backends)
+      filtered_backends = Enum.reject(source.backends, &(&1.id == backend.id))
+      Backends.update_source_backends(source, filtered_backends)
+    end)
+
+    backend
+  end
+
+  defp validate_default_ingest_params(params) do
+    case params do
+      %{"default_ingest?" => "true", "source_id" => source_id}
+      when is_non_empty_binary(source_id) and source_id != "Select a source..." ->
+        :ok
+
+      %{"default_ingest?" => "true"} ->
+        :error
+
+      _ ->
+        :ok
+    end
+  end
 end

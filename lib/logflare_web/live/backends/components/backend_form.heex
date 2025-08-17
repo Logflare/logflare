@@ -308,11 +308,31 @@
       <%= label f, :default_ingest? do %>
         Default Ingest Backend
       <% end %>
-      <%= checkbox(f, :default_ingest?, checked: @backend && @backend.default_ingest?, value: @backend && @backend.default_ingest?) %>
+      <%= checkbox(f, :default_ingest?,
+        checked: @backend && @backend.default_ingest?,
+        value: @backend && @backend.default_ingest?,
+        phx_change: :toggle_default_ingest
+      ) %>
       <%= error_tag(f, :default_ingest?) %>
       <small class="form-text text-muted">
         Mark this backend as a default ingest backend.
       </small>
     </div>
+
+    <%= if @show_default_ingest_sources? do %>
+      <div class="form-group mt-2">
+        <%= label f, :source_id do %>
+          Source for Default Ingest
+        <% end %>
+        <%= select(f, :source_id, ["Select a source..." | Enum.map(@sources, fn s -> {s.name, s.id} end)],
+          selected: @selected_source_id,
+          class: "form-control",
+          required: true
+        ) %>
+        <small class="form-text text-muted">
+          Select the source that will use this backend as its default ingest destination.
+        </small>
+      </div>
+    <% end %>
   <% end %>
 </.form>

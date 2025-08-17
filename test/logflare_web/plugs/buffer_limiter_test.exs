@@ -294,7 +294,7 @@ defmodule LogflareWeb.Plugs.BufferLimiterTest do
       assert conn.status == 429
     end
 
-    test "passes through when neither system nor user default queues are full", %{
+    test "allows request when both system and default ingest buffers have space", %{
       conn: conn,
       source: source,
       backend1: backend1
@@ -317,6 +317,117 @@ defmodule LogflareWeb.Plugs.BufferLimiterTest do
 
       Backends.cache_local_buffer_lens(source.id, nil)
       Backends.cache_local_buffer_lens(source.id, backend1.id)
+
+      conn =
+        conn
+        |> assign(:source, source)
+        |> BufferLimiter.call(%{})
+
+      assert conn.halted == false
+    end
+
+    test "ignores unlinked backend buffers even if backend has default ingest enabled", %{
+      conn: conn
+    } do
+      user = insert(:user)
+      source = insert(:source, user: user, default_ingest_backend_enabled?: true)
+
+      unlinked_backend =
+        insert(:backend,
+          user: user,
+          type: :bigquery,
+          config: %{project_id: "test", dataset_id: "test"},
+          default_ingest?: true
+        )
+
+      unlinked_queue_key = {source.id, unlinked_backend.id, self()}
+      IngestEventQueue.upsert_tid(unlinked_queue_key)
+
+      for _ <- 1..(Backends.max_buffer_queue_len() + 500) do
+        le = build(:log_event)
+        IngestEventQueue.add_to_table(unlinked_queue_key, [le])
+      end
+
+      Backends.cache_local_buffer_lens(source.id, unlinked_backend.id)
+
+      conn =
+        conn
+        |> assign(:source, source)
+        |> BufferLimiter.call(%{})
+
+      assert conn.halted == false
+    end
+
+    test "returns 429 when system buffer is full, even if source has default ingest disabled", %{
+      conn: conn
+    } do
+      user = insert(:user)
+      source = insert(:source, user: user, default_ingest_backend_enabled?: false)
+
+      backend =
+        insert(:backend,
+          user: user,
+          type: :bigquery,
+          config: %{project_id: "test", dataset_id: "test"},
+          default_ingest?: true
+        )
+
+      {:ok, _} = Backends.update_source_backends(source, [backend])
+
+      backend_queue_key = {source.id, backend.id, self()}
+      IngestEventQueue.upsert_tid(backend_queue_key)
+
+      for _ <- 1..(Backends.max_buffer_queue_len() + 500) do
+        le = build(:log_event)
+        IngestEventQueue.add_to_table(backend_queue_key, [le])
+      end
+
+      Backends.cache_local_buffer_lens(source.id, backend.id)
+
+      other_queue_key = {source.id, nil, self()}
+      IngestEventQueue.upsert_tid(other_queue_key)
+
+      for _ <- 1..(Backends.max_buffer_queue_len() + 500) do
+        le = build(:log_event)
+        IngestEventQueue.add_to_table(other_queue_key, [le])
+      end
+
+      Backends.cache_local_buffer_lens(source.id, nil)
+
+      conn =
+        conn
+        |> assign(:source, source)
+        |> BufferLimiter.call(%{})
+
+      assert conn.halted == true
+      assert conn.status == 429
+    end
+
+    test "ignores backend buffers when source has default ingest disabled", %{
+      conn: conn
+    } do
+      user = insert(:user)
+      source = insert(:source, user: user, default_ingest_backend_enabled?: false)
+
+      backend =
+        insert(:backend,
+          user: user,
+          type: :bigquery,
+          config: %{project_id: "test", dataset_id: "test"},
+          default_ingest?: true
+        )
+
+      {:ok, _} = Backends.update_source_backends(source, [backend])
+
+      backend_queue_key = {source.id, backend.id, self()}
+      IngestEventQueue.upsert_tid(backend_queue_key)
+
+      for _ <- 1..(Backends.max_buffer_queue_len() + 500) do
+        le = build(:log_event)
+        IngestEventQueue.add_to_table(backend_queue_key, [le])
+      end
+
+      Backends.cache_local_buffer_lens(source.id, backend.id)
 
       conn =
         conn
