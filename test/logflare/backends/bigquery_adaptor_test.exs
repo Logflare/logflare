@@ -1,4 +1,5 @@
 defmodule Logflare.Backends.BigQueryAdaptorTest do
+  alias Explorer.DataFrame
   use Logflare.DataCase
   use ExUnitProperties
 
@@ -179,6 +180,58 @@ defmodule Logflare.Backends.BigQueryAdaptorTest do
                {{^source_id, ^backend_id, nil}, count} -> count
                _ -> nil
              end) == 0
+    end
+  end
+
+  describe "default bigquery backend - storage write api" do
+    test "can ingest into source without creating a BQ backend" do
+      user = insert(:user)
+      source = insert(:source, user: user, bq_storage_write_api: true)
+      start_supervised!({SourceSup, source})
+      log_event = build(:log_event, source: source)
+      pid = self()
+
+      Logflare.Backends.Adaptor.BigQueryAdaptor.GoogleApiClient
+      |> expect(:append_rows, fn {:arrow, dataframe}, _project, _dataset, _table_id ->
+        send(pid, :streamed)
+
+        assert {:ok, _} = DataFrame.dump_ipc(dataframe)
+        assert {:ok, _} = DataFrame.dump_ipc_record_batch(dataframe)
+        {:ok, %Google.Cloud.Bigquery.Storage.V1.AppendRowsResponse{}}
+      end)
+
+      assert {:ok, 1} = Backends.ingest_logs([log_event], source)
+
+      TestUtils.retry_assert(fn ->
+        assert_receive :streamed, 2500
+      end)
+
+      :timer.sleep(1000)
+    end
+
+    test "does not use LF managed BQ if legacy user BQ config is set" do
+      user = insert(:user, bigquery_project_id: "some-project", bigquery_dataset_id: "some-id")
+      source = insert(:source, user: user)
+      start_supervised!({SourceSup, source})
+      log_event = build(:log_event, source: source)
+
+      pid = self()
+
+      Logflare.Google.BigQuery
+      |> expect(:stream_batch!, fn arg, _ ->
+        assert arg.bigquery_project_id == "some-project"
+        assert arg.bigquery_dataset_id == "some-id"
+        send(pid, :ok)
+        {:ok, %GoogleApi.BigQuery.V2.Model.TableDataInsertAllResponse{insertErrors: nil}}
+      end)
+
+      assert {:ok, 1} = Backends.ingest_logs([log_event], source)
+
+      TestUtils.retry_assert(fn ->
+        assert_receive :ok, 2500
+      end)
+
+      :timer.sleep(1000)
     end
   end
 
