@@ -1,6 +1,8 @@
 defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
   @moduledoc false
 
+  alias Explorer.DataFrame
+  alias Logflare.Google.BigQuery.EventUtils
   alias Logflare.Backends
   alias Logflare.Backends.DynamicPipeline
   alias Logflare.Backends.Backend
@@ -15,6 +17,9 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
   alias Logflare.Google.BigQuery.GenUtils
   alias Logflare.Google.CloudResourceManager
   alias Logflare.Google
+  alias Logflare.Backends.Adaptor.BigQueryAdaptor.GoogleApiClient
+  require Record
+
   use Supervisor
   require Logger
 
@@ -75,6 +80,34 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
     ]
 
     Supervisor.init(children, strategy: :one_for_one, max_restarts: 10)
+  end
+
+  def insert_log_events_via_storage_write_api(log_events, opts) do
+    # convert log events to table rows
+    opts =
+      Keyword.validate!(opts, [:project_id, :dataset_id, :source_token, :source_id, :source_token])
+
+    # get table id
+    table_id = format_table_name(opts[:source_token])
+
+    data_frames =
+      log_events
+      |> Enum.map(&log_event_to_struct(&1))
+      |> DataFrame.new()
+
+    # append rows
+    GoogleApiClient.append_rows(
+      {:arrow, data_frames},
+      opts[:project_id],
+      opts[:dataset_id],
+      table_id
+    )
+  end
+
+  @spec format_table_name(atom) :: String.t()
+  def format_table_name(source_token) when is_atom(source_token) do
+    Atom.to_string(source_token)
+    |> String.replace("-", "_")
   end
 
   @doc """
@@ -423,4 +456,6 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
   defdelegate patch_dataset_access(user), to: Google.BigQuery
 
   defdelegate get_conn(conn_type), to: GenUtils
+
+  defdelegate log_event_to_struct(log_event), to: EventUtils
 end
