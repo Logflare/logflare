@@ -14,6 +14,17 @@ defmodule Logflare.Telemetry do
     {Logflare.Users.Cache, :users}
   ]
 
+  @process_metrics %{
+    memory: %{
+      process_attribute: :memory,
+      measurement: :size
+    },
+    message_queue: %{
+      process_attribute: :message_queue_len,
+      measurement: :length
+    }
+  }
+
   @impl true
   def init(_arg) do
     otel_exporter =
@@ -187,6 +198,15 @@ defmodule Logflare.Telemetry do
       distribution("logflare.endpoints.run_query.exec_query_on_backend.total_rows",
         tags: [:endpoint_id],
         description: "Number of rows returned by endpoint query execution"
+      ),
+      distribution("logflare.system.top_processes.message_queue.length",
+        tags: [:name, :pid],
+        description: "Top processes by message queue length"
+      ),
+      distribution("logflare.system.top_processes.memory.size",
+        tags: [:name, :pid],
+        description: "Top processes by memory usage",
+        unit: {:byte, :kilobyte}
       )
     ]
 
@@ -203,11 +223,20 @@ defmodule Logflare.Telemetry do
   defp periodic_measurements do
     cache_stats? = Application.get_env(:logflare, :cache_stats, false)
 
-    if cache_stats? do
-      [{__MODULE__, :cachex_metrics, []}]
-    else
-      []
-    end
+    cachex_metrics =
+      if cache_stats? do
+        [{__MODULE__, :cachex_metrics, []}]
+      else
+        []
+      end
+
+    process_metrics =
+      [
+        {__MODULE__, :process_message_queue_metrics, []},
+        {__MODULE__, :process_memory_metrics, []}
+      ]
+
+    cachex_metrics ++ process_metrics
   end
 
   def cachex_metrics do
@@ -231,6 +260,68 @@ defmodule Logflare.Telemetry do
       :telemetry.execute([:cachex, metric], metrics)
     end)
   end
+
+  def process_message_queue_metrics,
+    do: process_attribute_metrics(:message_queue)
+
+  def process_memory_metrics,
+    do: process_attribute_metrics(:memory)
+
+  defp process_attribute_metrics(type) do
+    metric_params = @process_metrics[type]
+
+    :recon.proc_count(metric_params.process_attribute, 5)
+    |> Enum.each(fn {pid, val, call_info} ->
+      [current_function, initial_call] = get_current_and_initial_call(call_info)
+      name = get_display_flag(call_info, initial_call, pid)
+
+      metrics = %{metric_params.measurement => val}
+
+      metadata = %{
+        pid: inspect(pid),
+        name: name,
+        current_fuction: mfa_to_string(current_function),
+        initial_call: mfa_to_string(initial_call)
+      }
+
+      :telemetry.execute([:logflare, :system, :top_processes, type], metrics, metadata)
+    end)
+  end
+
+  defp get_current_and_initial_call(call_info) do
+    [:current_function, :initial_call]
+    |> Enum.map(fn key ->
+      call_info
+      |> List.keyfind(key, 0)
+      |> elem(1)
+    end)
+  end
+
+  defp get_display_flag([possible_name | _], initial_call, pid),
+    do: choose_name(possible_name) || choose_label(pid) || choose_initial_call(initial_call, pid)
+
+  defp choose_name(name) when is_atom(name), do: name
+  defp choose_name(_), do: false
+
+  defp choose_label(pid) do
+    with true <- function_exported?(:proc_lib, :get_label, 1),
+         label when label != :undefined <- :proc_lib.get_label(pid) do
+      :io_lib.format("~p", [label])
+      |> to_string()
+    else
+      _ -> false
+    end
+  end
+
+  defp choose_initial_call({:proc_lib, :init_p, 5}, pid) do
+    pid
+    |> :proc_lib.translate_initial_call()
+    |> mfa_to_string()
+  end
+
+  defp choose_call(call, _pid), do: mfa_to_string(call)
+
+  defp mfa_to_string({m, f, a}), do: "#{inspect(m)}.#{f}/#{a}"
 
   defp batch_size_reporter_opts do
     [buckets: [0, 1, 5, 10, 50, 100, 150, 250, 500, 1000, 2000]]
