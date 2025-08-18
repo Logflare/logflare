@@ -194,13 +194,59 @@ defmodule Logflare.Google.BigQuery.GenUtils do
   def get_tesla_error_message(:closed), do: "closed"
   def get_tesla_error_message(message), do: inspect(message)
 
-  def format_key(label) when is_binary(label) do
-    # https://cloud.google.com/resource-manager/docs/creating-managing-labels?_ga=2.5645051.-99470436.1587500458#requirements
+  @doc """
+  Formats a label to be used as a key or value in Google Cloud resources.
 
+  Keys and values can contain only lowercase letters, numeric characters, underscores, and dashes.
+  All characters must use UTF-8 encoding, and international characters are allowed.
+  Keys must start with a lowercase letter or international character.
+
+  > Keys must start with a lowercase letter or international character.
+  Values can start with a number
+
+  https://cloud.google.com/resource-manager/docs/labels-overview
+
+  ## Examples
+
+  iex> Logflare.Google.BigQuery.GenUtils.format_key("My Label 123")
+  "my_label_123"
+
+  iex> Logflare.Google.BigQuery.GenUtils.format_key("Label-With-Dash")
+  "label-with-dash"
+
+  iex> Logflare.Google.BigQuery.GenUtils.format_key("LABEL_with_MIXED_case")
+  "label_with_mixed_case"
+
+  iex> Logflare.Google.BigQuery.GenUtils.format_key("123label")
+  "123label"
+
+  iex> Logflare.Google.BigQuery.GenUtils.format_key("ключ")
+  "ключ"
+
+  iex> Logflare.Google.BigQuery.GenUtils.format_key(:atom_label)
+  "atom_label"
+
+  iex> Logflare.Google.BigQuery.GenUtils.format_key(42)
+  "42"
+
+  iex> Logflare.Google.BigQuery.GenUtils.format_key("label with spaces and-dash")
+  "label_with_spaces_and-dash"
+
+  iex> Logflare.Google.BigQuery.GenUtils.format_key("#$@#::timestampZ")
+  "timestampz"
+
+  iex> Logflare.Google.BigQuery.GenUtils.format_key("SomeVeryLongStringOfTextThatExceedsSixtyThreeCharactersInLengthXYZ")
+  "someverylongstringoftextthatexceedssixtythreecharactersinlength"
+
+  iex> Logflare.Google.BigQuery.GenUtils.format_key("My-Label With$Weird#Chars")
+  "my-label_withweirdchars"
+  """
+  def format_key(label) when is_binary(label) do
     label
     |> String.downcase()
     |> String.replace(" ", "_")
-    |> String.slice(0, 62)
+    |> String.replace(~r/[^[:alnum:]_-]/u, "")
+    |> String.slice(0, 63)
   end
 
   def format_key(label) when is_integer(label), do: label |> Integer.to_string() |> format_key()

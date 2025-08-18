@@ -33,6 +33,21 @@ defmodule Logflare.BqRepo do
     override = Map.new(opts)
     %Plan{name: plan} = Billing.Cache.get_plan_by_user(user)
 
+    # Clean labels using format_key for both key and value
+    cleaned_labels =
+      %{
+        "managed_by" => "logflare",
+        "logflare_plan" => plan,
+        "logflare_account" => user.id
+      }
+      |> Map.merge(Map.get(override, :labels, %{}))
+      |> Enum.map(fn {k, v} ->
+        {GenUtils.format_key(k), GenUtils.format_key(v)}
+      end)
+      |> Enum.into(%{})
+
+    override = Map.put(override, :labels, cleaned_labels)
+
     query_request =
       %{
         query: sql,
@@ -44,13 +59,7 @@ defmodule Logflare.BqRepo do
         dryRun: false,
         jobTimeoutMs: @query_request_timeout,
         timeoutMs: @query_request_timeout,
-        # Not enforced for now
-        # maximumBytesBilled: user.bigquery_processed_bytes_limit,
-        labels: %{
-          "managed_by" => "logflare",
-          "logflare_plan" => GenUtils.format_key(plan),
-          "logflare_account" => user.id
-        }
+        labels: cleaned_labels
       }
       |> DeepMerge.deep_merge(override)
       |> then(fn map -> struct(QueryRequest, map) end)
