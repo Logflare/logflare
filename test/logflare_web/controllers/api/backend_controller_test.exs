@@ -299,10 +299,11 @@ defmodule LogflareWeb.Api.BackendControllerTest do
 
     test "updates `default_ingest?` field", %{conn: conn, user: user} do
       backend = insert(:backend, user: user, type: :bigquery, default_ingest?: false)
+      source = insert(:source, user: user, default_ingest_backend_enabled?: true)
 
       conn
       |> add_access_token(user, "private")
-      |> patch("/api/backends/#{backend.token}", %{default_ingest?: true})
+      |> patch("/api/backends/#{backend.token}", %{default_ingest?: true, source_id: source.id})
       |> response(204)
 
       response =
@@ -312,6 +313,28 @@ defmodule LogflareWeb.Api.BackendControllerTest do
         |> json_response(200)
 
       assert response["default_ingest?"] == true
+
+      updated_source = Logflare.Sources.get(source.id) |> Logflare.Sources.preload_backends()
+      assert Enum.any?(updated_source.backends, &(&1.id == backend.id))
+    end
+
+    test "returns error when enabling default_ingest? without source_id", %{
+      conn: conn,
+      user: user
+    } do
+      backend = insert(:backend, user: user, type: :bigquery, default_ingest?: false)
+
+      response =
+        conn
+        |> add_access_token(user, "private")
+        |> patch("/api/backends/#{backend.token}", %{default_ingest?: true})
+        |> json_response(422)
+
+      assert response == %{
+               "errors" => %{
+                 "default_ingest?" => ["Please select a source when enabling default ingest"]
+               }
+             }
     end
   end
 
