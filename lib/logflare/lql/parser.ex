@@ -130,15 +130,7 @@ defmodule Logflare.Lql.Parser do
 
         typemap = SchemaUtils.bq_schema_to_flat_typemap(schema)
 
-        chart_rule =
-          if not Enum.empty?(chart_rule_tokens) do
-            chart_rule =
-              chart_rule_tokens
-              |> Enum.reduce(%{}, fn {:chart, fields}, acc -> Map.merge(acc, Map.new(fields)) end)
-              |> then(&Map.put(&1, :value_type, get_path_type(typemap, &1.path, querystring)))
-
-            ChartRule.build(Map.to_list(chart_rule))
-          end
+        chart_rule = build_chart_rule(chart_rule_tokens, typemap, querystring)
 
         select_rules =
           select_rule_tokens
@@ -180,6 +172,17 @@ defmodule Logflare.Lql.Parser do
 
     err ->
       {:error, err}
+  end
+
+  defp build_chart_rule(chart_rule_tokens, typemap, querystring) do
+    if not Enum.empty?(chart_rule_tokens) do
+      chart_rule =
+        chart_rule_tokens
+        |> Enum.reduce(%{}, fn {:chart, fields}, acc -> Map.merge(acc, Map.new(fields)) end)
+        |> then(&Map.put(&1, :value_type, get_path_type(typemap, &1.path, querystring)))
+
+      ChartRule.build(Map.to_list(chart_rule))
+    end
   end
 
   defp get_path_type(typemap, path, _querystring) do
