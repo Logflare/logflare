@@ -64,30 +64,7 @@ defmodule Logflare.Logs.Vercel.LambdaMessageParser do
       |> Enum.find(fn x -> String.contains?(x, "REPORT") end)
       |> String.split("\t")
       |> Enum.drop_while(fn x -> String.contains?(x, "RequestId:") == true end)
-      |> Enum.map(fn x ->
-        case String.split(x, ":", trim: true) do
-          [k, v] ->
-            [v, kind] =
-              String.trim(v)
-              |> String.split(" ")
-
-            key =
-              "#{k}_#{kind}"
-              |> String.downcase()
-              |> String.replace(" ", "_")
-
-            value =
-              case Float.parse(v) do
-                {float, _rem} -> Kernel.round(float)
-                :error -> raise("Error parsing floats")
-              end
-
-            {key, value}
-
-          _ ->
-            {"key", "value"}
-        end
-      end)
+      |> Enum.map(&parse_message/1)
       |> Enum.into(%{})
       |> Map.drop(["key"])
 
@@ -103,5 +80,30 @@ defmodule Logflare.Logs.Vercel.LambdaMessageParser do
       "report" => nil,
       "lines" => nil
     }
+  end
+
+  defp parse_message(message) do
+    case String.split(message, ":", trim: true) do
+      [k, v] ->
+        [v, kind] =
+          String.trim(v)
+          |> String.split(" ")
+
+        key =
+          "#{k}_#{kind}"
+          |> String.downcase()
+          |> String.replace(" ", "_")
+
+        value =
+          case Float.parse(v) do
+            {float, _rem} -> Kernel.round(float)
+            :error -> raise("Error parsing floats")
+          end
+
+        {key, value}
+
+      _ ->
+        {"key", "value"}
+    end
   end
 end
