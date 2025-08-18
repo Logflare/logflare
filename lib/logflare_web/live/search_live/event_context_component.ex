@@ -3,7 +3,7 @@ defmodule LogflareWeb.SearchLive.EventContextComponent do
 
   alias Logflare.JSON
   alias Phoenix.LiveView.AsyncResult
-  alias Logflare.{Lql, SourceSchemas}
+  alias Logflare.{Lql, SourceSchemas, Sources}
   alias Logflare.Source.BigQuery.SchemaBuilder
   import LogflareWeb.SearchLive.LogEventComponents, only: [log_event: 1]
 
@@ -34,17 +34,28 @@ defmodule LogflareWeb.SearchLive.EventContextComponent do
      socket
      |> assign(lql_rules: lql_rules)
      |> assign(target_event_id: log_event_id, timezone: timezone)
+     |> assign(after_truncated: false)
+     |> assign(before_truncated: false)
      |> assign(:logs, AsyncResult.loading())
      |> start_async(:logs, fn ->
        search_logs(log_event_id, log_timestamp, source_id, lql_rules)
      end)}
   end
 
-  def handle_async(:logs, {:ok, log_events}, socket) do
+  def handle_async(
+        :logs,
+        {:ok,
+         %{events: events, before_truncated: before_truncated, after_truncated: after_truncated}},
+        socket
+      ) do
+    {after_truncated, before_truncated} |> dbg
+
     {:noreply,
      socket
      |> assign(:logs, AsyncResult.ok(socket.assigns.logs, :ok))
-     |> stream(:log_events, log_events, reset: true)}
+     |> assign(:before_truncated, before_truncated)
+     |> assign(:after_truncated, after_truncated)
+     |> stream(:log_events, events, reset: true)}
   end
 
   def handle_async(:logs, {:exit, reason}, socket) do
@@ -67,11 +78,15 @@ defmodule LogflareWeb.SearchLive.EventContextComponent do
         <.async_result assign={@logs}>
           <:loading><%= live_react_component("Components.Loader", %{}, id: "shared-loader") %></:loading>
 
+          <div :if={@before_truncated} class="tw-text-center tw-pt-2 tw-uppercase tw-text-sm">
+            Limit 50 events before selection
+          </div>
           <ul class="list-unstyled console-text" id="log-events" phx-update="stream">
             <.log_event
-              :for={{_id, log_event} <- @streams.log_events}
+              :for={{id, log_event} <- @streams.log_events}
               log_event={log_event}
               timezone={@timezone}
+              id={id}
               class={[
                 "tw-group tw-flex tw-flex-wrap tw-items-center tw-pr-1 tw-relative",
                 if(highlight?(log_event, @target_event_id),
@@ -80,7 +95,7 @@ defmodule LogflareWeb.SearchLive.EventContextComponent do
                 )
               ]}
             >
-              <span :if={highlight?(log_event, @target_event_id)} class="tw-absolute -tw-left-4">
+              <span :if={highlight?(log_event, @target_event_id)} phx-mounted={Phoenix.LiveView.JS.dispatch("scrollToLogEvent", detail: %{targetId: id})} class="tw-absolute -tw-left-4">
                 <i class="fas fa-chevron-right"></i>
               </span>
 
@@ -97,7 +112,20 @@ defmodule LogflareWeb.SearchLive.EventContextComponent do
               </:actions>
             </.log_event>
           </ul>
+          <div :if={@after_truncated} class="tw-text-center tw-pt-2 tw-uppercase tw-text-sm">
+            Limit 50 events after selection
+          </div>
         </.async_result>
+        <script phx-update="ignore" id="scroll-to-log-event">
+          console.log("scrollToLogEvent")
+          window.addEventListener("scrollToLogEvent", (event) => {
+              const target = document.getElementById(event.detail.targetId);
+              console.log(target)
+              if (target) {
+                target.scrollIntoView({ behavior: "smooth" });
+              }
+            });
+        </script>
       </div>
     </div>
     """
@@ -127,7 +155,8 @@ defmodule LogflareWeb.SearchLive.EventContextComponent do
 
   def search_logs(log_event_id, timestamp, source_id, lql_rules) do
     import Ecto.Query
-    source = Logflare.Sources.get_source_for_lv_param(source_id)
+    source = Sources.get_source_for_lv_param(source_id)
+    partition_type = Sources.get_table_partition_type(source)
 
     so =
       %{
@@ -139,59 +168,64 @@ defmodule LogflareWeb.SearchLive.EventContextComponent do
       |> Logflare.Logs.SearchOperation.new()
       |> Logflare.Logs.Search.get_and_put_partition_by()
 
-    # target_event =
-    #   from(t in so.source.bq_table_id)
-    #   |> where([t], t.d == ^log_event_id)
-    #   |> where([t], t.timestamp > ^timestamp)
-    #   |> Ecto.Query.select([t], %{"target_timestamp" => t.timestamp})
-    #   |> limit(1)
+    ts = Timex.from_unix(timestamp, :microsecond)
+    min = ts |> Timex.shift(days: -1)
+    max = ts |> Timex.shift(days: 1)
 
-    # SELECT timestamp as target_ts
-    #   FROM `logflare-dev-464423.1_dev.9db56741_41ca_4fe8_8c05_051a76a4c5d6`
-    #   WHERE id = "4984baad-b0bc-4247-9800-4388e6d95f76"
-    #     AND timestamp > TIMESTAMP("2025-08-01")
-    #   LIMIT 1
-    # ),
-    #
-
-    min = Timex.from_unix(timestamp, :microsecond)
-
-    rows_after_query =
+    # Get target + 50 before
+    before_query =
       from(so.source.bq_table_id)
-      |> Ecto.Query.select([t], [t.timestamp, t.id, t.event_message])
-      |> where(
-        [t],
-        fragment("EXTRACT(DATE FROM ?)", t.timestamp) >= ^Timex.to_date(min) and
-          t.timestamp >= ^min
-      )
-      |> order_by([t], asc: t.timestamp)
-      |> limit(50)
+      |> Logflare.Logs.LogEvents.partition_query([min, max], partition_type)
+      |> where([t], t.timestamp < ^ts or (t.timestamp == ^ts and t.id <= ^log_event_id))
+      |> order_by([t], desc: t.timestamp, desc: t.id)
+      |> Ecto.Query.select([t], %{
+        id: t.id,
+        timestamp: t.timestamp,
+        event_message: t.event_message,
+        rank:
+          fragment("1 - ROW_NUMBER() OVER (ORDER BY ? DESC, ? DESC)", t.timestamp, t.id)
+          |> selected_as(:rank)
+      })
+      |> limit(51)
+      |> subquery()
+      |> Ecto.Query.select([t], t)
 
-    rows_before_query =
+    # Get 50 after (excluding target)
+    after_query =
       from(so.source.bq_table_id)
-      |> Ecto.Query.select([t], [t.timestamp, t.id, t.event_message])
-      |> where(
-        [t],
-        fragment("EXTRACT(DATE FROM ?)", t.timestamp) <= ^Timex.to_date(min) and
-          t.timestamp < ^min
-      )
-      |> order_by([t], desc: t.timestamp)
+      |> Logflare.Logs.LogEvents.partition_query([min, max], partition_type)
+      |> where([t], t.timestamp > ^ts or (t.timestamp == ^ts and t.id > ^log_event_id))
+      |> order_by([t], asc: t.timestamp, asc: t.id)
+      |> Ecto.Query.select([t], %{
+        id: t.id,
+        timestamp: t.timestamp,
+        event_message: t.event_message,
+        rank:
+          over(fragment("ROW_NUMBER()"), order_by: [asc: t.timestamp, asc: t.id])
+          |> selected_as(:rank)
+      })
       |> limit(50)
+      |> subquery()
+      |> Ecto.Query.select([t], t)
 
-    tasks = [
-      Task.async(fn ->
-        %{so | query: rows_before_query} |> Logflare.Logs.SearchOperations.do_query()
-      end),
-      Task.async(fn ->
-        %{so | query: rows_after_query} |> Logflare.Logs.SearchOperations.do_query()
-      end)
-    ]
+    # Combine and reorder
+    query =
+      before_query
+      |> union_all(^after_query)
+      |> subquery()
+      |> Ecto.Query.select([t], %{
+        id: t.id,
+        timestamp: t.timestamp,
+        event_message: t.event_message,
+        rank: t.rank
+      })
+      |> order_by([t], asc: t.timestamp, asc: t.id)
 
-    [search_op_before, search_op_after] = Task.await_many(tasks)
+    result = %{so | query: query} |> Logflare.Logs.SearchOperations.do_query()
+    events = result.rows |> Enum.map(&Logflare.LogEvent.make_from_db(&1, %{source: source}))
+    before_truncated = result.rows |> List.first() |> Map.get("rank") == -50
+    after_truncated = result.rows |> List.last() |> Map.get("rank") == 50
 
-    search_op_before.rows |> dbg
-
-    (search_op_before.rows ++ search_op_after.rows)
-    |> Enum.map(&Logflare.LogEvent.make_from_db(&1, %{source: source}))
+    %{events: events, before_truncated: before_truncated, after_truncated: after_truncated}
   end
 end
