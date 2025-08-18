@@ -1,6 +1,6 @@
 defmodule Logflare.Logs.Vercel.NimbleLambdaMessageParserTest do
-  @moduledoc false
   use Logflare.DataCase, async: true
+
   import Logflare.Logs.Vercel.NimbleLambdaMessageParser
 
   describe "Vercel Lambda Message Parser" do
