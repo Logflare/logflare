@@ -280,8 +280,8 @@ defmodule LogflareWeb.EndpointsControllerTest do
       assert labels == %{
                "my_label" => "my_value",
                "other_value" => "1234",
-               "endpoint_id" => endpoint.id,
-               "logflare_account" => user.id,
+               "endpoint_id" => Integer.to_string(endpoint.id),
+               "logflare_account" => Integer.to_string(user.id),
                "logflare_plan" => "free",
                "managed_by" => "logflare",
                "my" => "value"
