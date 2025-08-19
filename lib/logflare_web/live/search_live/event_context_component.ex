@@ -2,7 +2,7 @@ defmodule LogflareWeb.SearchLive.EventContextComponent do
   use LogflareWeb, :live_component
 
   alias Logflare.JSON
-  alias Phoenix.LiveView.AsyncResult
+  alias Phoenix.LiveView.{AsyncResult, JS}
   alias Logflare.{Lql, SourceSchemas, Sources}
   alias Logflare.Source.BigQuery.SchemaBuilder
   import LogflareWeb.SearchLive.LogEventComponents, only: [log_event: 1]
@@ -26,7 +26,6 @@ defmodule LogflareWeb.SearchLive.EventContextComponent do
         query_string,
         Map.get(source_schema || %{}, :bigquery_schema, SchemaBuilder.initial_table_schema())
       )
-      |> dbg
 
     log_timestamp = String.to_integer(log_timestamp)
 
@@ -48,8 +47,6 @@ defmodule LogflareWeb.SearchLive.EventContextComponent do
          %{events: events, before_truncated: before_truncated, after_truncated: after_truncated}},
         socket
       ) do
-    {after_truncated, before_truncated} |> dbg
-
     {:noreply,
      socket
      |> assign(:logs, AsyncResult.ok(socket.assigns.logs, :ok))
@@ -74,11 +71,11 @@ defmodule LogflareWeb.SearchLive.EventContextComponent do
           <.lql_rule :for={rule <- @lql_rules} :if={is_struct(rule, Logflare.Lql.Rules.FilterRule) && rule.path != "timestamp"} rule={rule} />
         </div>
       </div>
-      <div class="tw-h-[calc(100vh-200px)] tw-overflow-y-auto tw-pr-2 tw-pl-5 -tw-ml-5">
+      <div class="tw-h-[calc(100vh-200px)] tw-overflow-y-auto tw-pr-2 tw-pl-5 -tw-ml-5" id="context_log_events" phx-hook="ScrollIntoView" phx-value-scroll-target={@target_event_id}>
         <.async_result assign={@logs}>
           <:loading><%= live_react_component("Components.Loader", %{}, id: "shared-loader") %></:loading>
 
-          <div :if={@before_truncated} class="tw-text-center tw-pt-2 tw-uppercase tw-text-sm">
+          <div :if={@before_truncated} class="tw-text-center tw-py-2 tw-uppercase tw-text-sm">
             Limit 50 events before selection
           </div>
           <ul class="list-unstyled console-text" id="log-events" phx-update="stream">
@@ -95,7 +92,7 @@ defmodule LogflareWeb.SearchLive.EventContextComponent do
                 )
               ]}
             >
-              <span :if={highlight?(log_event, @target_event_id)} phx-mounted={Phoenix.LiveView.JS.dispatch("scrollToLogEvent", detail: %{targetId: id})} class="tw-absolute -tw-left-4">
+              <span :if={highlight?(log_event, @target_event_id)} phx-mounted={JS.dispatch("scrollIntoView")} class="tw-absolute -tw-left-4">
                 <i class="fas fa-chevron-right"></i>
               </span>
 
@@ -116,16 +113,6 @@ defmodule LogflareWeb.SearchLive.EventContextComponent do
             Limit 50 events after selection
           </div>
         </.async_result>
-        <script phx-update="ignore" id="scroll-to-log-event">
-          console.log("scrollToLogEvent")
-          window.addEventListener("scrollToLogEvent", (event) => {
-              const target = document.getElementById(event.detail.targetId);
-              console.log(target)
-              if (target) {
-                target.scrollIntoView({ behavior: "smooth" });
-              }
-            });
-        </script>
       </div>
     </div>
     """
