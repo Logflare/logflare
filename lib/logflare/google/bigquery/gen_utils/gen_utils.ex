@@ -245,8 +245,8 @@ defmodule Logflare.Google.BigQuery.GenUtils do
   iex> Logflare.Google.BigQuery.GenUtils.format_value("label with spaces and-dash")
   "label_with_spaces_and-dash"
 
-  iex> Logflare.Google.BigQuery.GenUtils.format_value("#$@#::timestampZ")
-  "timestampz"
+  iex> Logflare.Google.BigQuery.GenUtils.format_value("2025-08-19T14:59:02.111Z")
+  "1755615542111"
 
   iex> Logflare.Google.BigQuery.GenUtils.format_value("SomeVeryLongStringOfTextThatExceedsSixtyThreeCharactersInLengthXYZ")
   "someverylongstringoftextthatexceedssixtythreecharactersinlength"
@@ -255,6 +255,12 @@ defmodule Logflare.Google.BigQuery.GenUtils do
   "my-label_withweirdchars"
   """
   def format_value(v) when is_binary(v) do
+    v =
+      case DateTime.from_iso8601(v) do
+        {:ok, datetime, _} -> DateTime.to_unix(datetime, :milliseconds) |> Integer.to_string()
+        _ -> v
+      end
+
     v
     |> String.downcase()
     |> String.replace(" ", "_")
