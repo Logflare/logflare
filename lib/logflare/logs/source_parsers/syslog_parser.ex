@@ -133,17 +133,20 @@ defmodule Logflare.Logs.SyslogParser do
     if Enum.empty?(sd_element_values) do
       tokens
     else
-      sd =
-        sd_element_values
-        |> Enum.map(fn sd_element ->
-          Enum.reduce(sd_element, %{}, fn
-            {:sd_name, sd_name}, acc -> Map.put(acc, "id", sd_name)
-            [param_name: k, param_value: v], acc -> Map.put(acc, k, v)
-          end)
-        end)
+      sd = build_sd(sd_element_values)
 
       new_tokens ++ [sd: sd]
     end
+  end
+
+  defp build_sd(sd_element_values) do
+    sd_element_values
+    |> Enum.map(fn sd_element ->
+      Enum.reduce(sd_element, %{}, fn
+        {:sd_name, sd_name}, acc -> Map.put(acc, "id", sd_name)
+        [param_name: k, param_value: v], acc -> Map.put(acc, k, v)
+      end)
+    end)
   end
 
   defp rename_fields(map) do
