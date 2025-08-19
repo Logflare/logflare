@@ -1,10 +1,12 @@
 defmodule Logflare.Rules.Rule do
   @moduledoc false
   use TypedEctoSchema
+
+  import Ecto.Changeset
+
   alias Logflare.Source
   alias Logflare.Backends.Backend
   alias Logflare.Lql.Parser
-  import Ecto.Changeset
 
   @derive {Jason.Encoder,
            only: [
@@ -43,17 +45,5 @@ defmodule Logflare.Rules.Rule do
       |> Parser.parse()
 
     put_change(changeset, :lql_filters, rules)
-  end
-
-  def changeset_error_to_string(changeset) do
-    changeset
-    |> Ecto.Changeset.traverse_errors(fn {msg, opts} ->
-      Enum.reduce(opts, msg, fn {key, value}, acc ->
-        String.replace(acc, "%{#{key}}", to_string(inspect(value)))
-      end)
-    end)
-    |> Enum.reduce("", fn {k, v}, acc ->
-      "#{acc}#{k}: #{v}\n"
-    end)
   end
 end

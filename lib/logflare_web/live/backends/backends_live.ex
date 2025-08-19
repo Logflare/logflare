@@ -1,13 +1,15 @@
 defmodule LogflareWeb.BackendsLive do
   @moduledoc false
-
   use LogflareWeb, :live_view
-  require Logger
+
+  import LogflareWeb.Utils, only: [stringify_changeset_errors: 1]
 
   alias Logflare.Backends
   alias Logflare.Rules
   alias Logflare.Sources
   alias Logflare.Users
+
+  require Logger
 
   embed_templates("actions/*", suffix: "_action")
   embed_templates("components/*")
@@ -72,7 +74,7 @@ defmodule LogflareWeb.BackendsLive do
           |> push_patch(to: ~p"/backends/#{backend.id}")
 
         {:error, changeset} ->
-          message = changeset_to_flash_message(changeset)
+          message = stringify_changeset_errors(changeset)
           put_flash(socket, :error, "Encountered error when updating backend:\n#{message}")
       end
 
@@ -97,7 +99,7 @@ defmodule LogflareWeb.BackendsLive do
 
         {:error, changeset} ->
           # TODO: move this to a helper function
-          message = changeset_to_flash_message(changeset)
+          message = stringify_changeset_errors(changeset)
 
           put_flash(socket, :error, "Encountered error when adding backend:\n#{message}")
       end
@@ -117,8 +119,7 @@ defmodule LogflareWeb.BackendsLive do
           |> put_flash(:info, "Successfully created rule for #{socket.assigns.backend.name}")
 
         {:error, changeset} ->
-          # TODO: move this to a helper function
-          message = changeset_to_flash_message(changeset)
+          message = stringify_changeset_errors(changeset)
 
           put_flash(socket, :error, "Encountered error when adding rule:\n#{message}")
       end
@@ -153,7 +154,7 @@ defmodule LogflareWeb.BackendsLive do
           |> put_flash(:info, "Successfully marked backend as default ingest for source")
 
         {:error, changeset} ->
-          message = changeset_to_flash_message(changeset)
+          message = stringify_changeset_errors(changeset)
           put_flash(socket, :error, "Error setting default ingest:\n#{message}")
       end
 
@@ -221,7 +222,7 @@ defmodule LogflareWeb.BackendsLive do
       {:noreply, socket}
     else
       {:error, changeset} ->
-        message = changeset_to_flash_message(changeset)
+        message = stringify_changeset_errors(changeset)
 
         {:noreply,
          put_flash(socket, :error, "Encountered error when adding backend:\n#{message}")}
@@ -259,7 +260,7 @@ defmodule LogflareWeb.BackendsLive do
           |> put_flash(:info, "Alert successfully added to backend")
 
         {:error, changeset} ->
-          message = changeset_to_flash_message(changeset)
+          message = stringify_changeset_errors(changeset)
           put_flash(socket, :error, "Encountered error when adding alert:\n#{message}")
       end
 
@@ -283,7 +284,7 @@ defmodule LogflareWeb.BackendsLive do
           |> put_flash(:info, "Alert successfully removed from backend")
 
         {:error, changeset} ->
-          message = changeset_to_flash_message(changeset)
+          message = stringify_changeset_errors(changeset)
           put_flash(socket, :error, "Encountered error when removing alert:\n#{message}")
       end
 
@@ -352,22 +353,4 @@ defmodule LogflareWeb.BackendsLive do
       end
     end)
   end
-
-  defp changeset_to_flash_message(changeset) do
-    Ecto.Changeset.traverse_errors(changeset, fn {msg, opts} ->
-      Enum.reduce(opts, msg, fn {key, value}, acc ->
-        String.replace(acc, "%{#{key}}", _to_string(value))
-      end)
-    end)
-    |> Enum.reduce("", fn {k, v}, acc ->
-      joined_errors = Enum.join(v, ";\n")
-      "#{acc} #{k}: #{joined_errors}"
-    end)
-  end
-
-  defp _to_string(val) when is_list(val) do
-    Enum.join(val, ", ")
-  end
-
-  defp _to_string(val), do: to_string(val)
 end

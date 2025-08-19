@@ -2,6 +2,7 @@ defmodule Logflare.LogEvent do
   use TypedEctoSchema
 
   import Ecto.Changeset
+  import LogflareWeb.Utils, only: [stringify_changeset_errors: 1]
 
   alias Logflare.Logs.Ingest.MetadataCleaner
   alias Logflare.Source
@@ -69,7 +70,7 @@ defmodule Logflare.LogEvent do
         else: %LE.PipelineError{
           stage: "changeset",
           type: "validators",
-          message: changeset_error_to_string(changeset)
+          message: stringify_changeset_errors(changeset)
         }
 
     le_map =
@@ -238,20 +239,6 @@ defmodule Logflare.LogEvent do
       end
 
     {:ok, Map.put(le, :body, new_body)}
-  end
-
-  # used to stringify changeset errors
-  # TODO: move to utils
-  defp changeset_error_to_string(changeset) do
-    Ecto.Changeset.traverse_errors(changeset, fn {msg, opts} ->
-      Enum.reduce(opts, msg, fn {key, value}, acc ->
-        String.replace(acc, "%{#{key}}", to_string(value))
-      end)
-    end)
-    |> Enum.reduce("", fn {k, v}, acc ->
-      joined_errors = inspect(v)
-      "#{acc}#{k}: #{joined_errors}\n"
-    end)
   end
 
   @doc """
