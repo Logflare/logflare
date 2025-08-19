@@ -186,10 +186,10 @@ defmodule Logflare.EndpointsTest do
 
       assert {:ok, %{rows: [%{"testing" => _}]}} = Endpoints.run_query(endpoint)
 
-      endpoint_id_label_value = Integer.to_string(endpoint.id)
+      endpoint_id_label_value = Integer.to_string(endpoint_id)
 
       assert_received %{
-        "endpoint_id" => endpoint_id_label_value
+        "endpoint_id" => ^endpoint_id_label_value
       }
     end
 
