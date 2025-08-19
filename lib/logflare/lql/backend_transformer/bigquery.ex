@@ -289,7 +289,10 @@ defmodule Logflare.Lql.BackendTransformer.BigQuery do
       end
 
     if negated?(modifiers) do
-      dynamic([..., n1], not (^clause))
+      case {operator, value} do
+        {:=, :NULL} -> dynamic([..., n1], not (^clause))
+        {_, _} -> dynamic([..., n1], is_nil(field(n1, ^column)) or not (^clause))
+      end
     else
       clause
     end

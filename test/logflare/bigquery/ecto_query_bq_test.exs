@@ -430,5 +430,48 @@ defmodule Logflare.BigQuery.EctoQueryBQTest do
       assert "FLOAT" in param_types
       assert "BOOL" in param_types
     end
+
+    test "negated operators include NULL values" do
+      for operator <- [:=, :<, :<=, :>, :>=] do
+        filter_rules = [
+          %FilterRule{
+            path: "metadata.a",
+            operator: operator,
+            value: 123,
+            modifiers: %{negate: true}
+          }
+        ]
+
+        query =
+          from(@bq_table_id)
+          |> select([:timestamp, :metadata])
+          |> Lql.apply_filter_rules(filter_rules)
+
+        {sql, _params} = EctoQueryBQ.SQL.to_sql_params(query)
+
+        assert sql =~ "WHERE ((f1.a IS NULL) OR NOT (f1.a #{operator} ?))"
+      end
+    end
+
+    test "negated IS NULL operator shouldn't have OR IS NULL" do
+      filter_rules = [
+        %FilterRule{
+          path: "metadata.a",
+          operator: :=,
+          value: :NULL,
+          modifiers: %{negate: true}
+        }
+      ]
+
+      query =
+        from(@bq_table_id)
+        |> select([:timestamp, :metadata])
+        |> Lql.apply_filter_rules(filter_rules)
+
+      {sql, _params} = EctoQueryBQ.SQL.to_sql_params(query)
+
+      assert sql =~ "WHERE (NOT (f1.a IS NULL))"
+      refute sql =~ "IS NULL) OR NOT"
+    end
   end
 end
