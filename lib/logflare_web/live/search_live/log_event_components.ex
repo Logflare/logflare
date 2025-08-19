@@ -14,6 +14,7 @@ defmodule LogflareWeb.SearchLive.LogEventComponents do
   @log_levels ~W(debug info warning error alert critical notice emergency)
 
   attr :log_event, Logflare.LogEvent, required: true
+  attr :id, :string, required: false
   attr :timezone, :string, required: true
   attr :rest, :global, default: %{class: "tw-group"}
   slot :inner_block
@@ -27,9 +28,13 @@ defmodule LogflareWeb.SearchLive.LogEventComponents do
         :log_level,
         if(body["level"] in @log_levels, do: body["level"], else: nil)
       )
+      |> assign_new(:id, fn %{log_event: log_event} ->
+        id = log_event.id || log_event.body["timestamp"]
+        "log-event_" <> id
+      end)
 
     ~H"""
-    <li id={"log-event_#{@log_event.id || @log_event.body["timestamp"]}"} {@rest}>
+    <li id={@id} {@rest}>
       <.metadata timestamp={@timestamp} log_level={@log_level}>
         <%= format_timestamp(@timestamp, @timezone) %>
       </.metadata>
