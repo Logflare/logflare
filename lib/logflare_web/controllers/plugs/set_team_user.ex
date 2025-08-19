@@ -18,21 +18,25 @@ defmodule LogflareWeb.Plugs.SetTeamUser do
         conn
 
       team_user_id ->
-        case TeamUsers.get_team_user(team_user_id) do
-          nil ->
-            drop(conn)
+        set_team_user(conn, team_user_id)
+    end
+  end
 
-          t ->
-            case TeamUsers.touch_team_user(t) do
-              {1, [team_user]} ->
-                team_user |> TeamUsers.preload_defaults()
+  defp set_team_user(conn, team_user_id) do
+    case TeamUsers.get_team_user(team_user_id) do
+      nil ->
+        drop(conn)
 
-                conn
-                |> assign(:team_user, team_user)
+      t ->
+        case TeamUsers.touch_team_user(t) do
+          {1, [team_user]} ->
+            team_user |> TeamUsers.preload_defaults()
 
-              _ ->
-                error(conn)
-            end
+            conn
+            |> assign(:team_user, team_user)
+
+          _ ->
+            error(conn)
         end
     end
   end

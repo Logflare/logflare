@@ -40,39 +40,41 @@ defmodule Logflare.Source.TextNotificationServer do
     {:ok, current_inserts} = Counters.get_inserts(state.source_token)
     rate = current_inserts - state.inserts_since_boot
 
-    case rate > 0 do
-      true ->
-        check_rate(state.notifications_every)
+    if rate > 0 do
+      check_rate(state.notifications_every)
 
-        source = Sources.Cache.get_by_id(state.source_token)
+      source = Sources.Cache.get_by_id(state.source_token)
 
-        if source.notifications.user_text_notifications == true do
-          user = Users.Cache.get_by(id: source.user_id)
-          source_link = Routes.source_url(Endpoint, :show, source.id)
-          body = "#{source.name} has #{rate} new event(s). See: #{source_link} "
+      if source.notifications.user_text_notifications do
+        send_text_notifications(source, rate)
+      end
 
-          ExTwilio.Message.create(to: user.phone, from: @twilio_phone, body: body)
-
-          if source.notifications.team_user_ids_for_sms do
-            Enum.each(source.notifications.team_user_ids_for_sms, fn x ->
-              team_user = TeamUsers.Cache.get_team_user(x)
-
-              if team_user do
-                ExTwilio.Message.create(to: team_user.phone, from: @twilio_phone, body: body)
-              end
-            end)
-          end
-        end
-
-        {:noreply, %{state | inserts_since_boot: current_inserts}}
-
-      false ->
-        check_rate(state.notifications_every)
-        {:noreply, state}
+      {:noreply, %{state | inserts_since_boot: current_inserts}}
+    else
+      check_rate(state.notifications_every)
+      {:noreply, state}
     end
   end
 
   defp check_rate(notifications_every) do
     Process.send_after(self(), :check_rate, notifications_every)
+  end
+
+  defp send_text_notifications(source, rate) do
+    user = Users.Cache.get_by(id: source.user_id)
+    source_link = Routes.source_url(Endpoint, :show, source.id)
+    body = "#{source.name} has #{rate} new event(s). See: #{source_link} "
+
+    ExTwilio.Message.create(to: user.phone, from: @twilio_phone, body: body)
+
+    if source.notifications.team_user_ids_for_sms do
+      Enum.each(source.notifications.team_user_ids_for_sms, fn x ->
+        team_user = TeamUsers.Cache.get_team_user(x)
+
+        if team_user do
+          ExTwilio.Message.create(to: team_user.phone, from: @twilio_phone, body: body)
+        end
+      end)
+    end
   end
 end

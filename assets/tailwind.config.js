@@ -1,7 +1,7 @@
 /** @type {import('tailwindcss').Config} */
 module.exports = {
   content: [
-    "./**/*.{js,jsx,ts,tsx}",
+    "./js/*.{js,jsx,ts,tsx}",
     "../lib/logflare_web/*.{eex,leex,heex,ex}",
     "../lib/logflare_web/**/*.{eex,leex,heex,ex}",
   ],
