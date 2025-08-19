@@ -159,7 +159,6 @@ defmodule LogflareWeb.SearchLive.EventContextComponent do
     min = ts |> Timex.shift(days: -1)
     max = ts |> Timex.shift(days: 1)
 
-    # Get target + 50 before
     before_query =
       from(so.source.bq_table_id)
       |> Logflare.Logs.LogEvents.partition_query([min, max], partition_type)
@@ -177,7 +176,6 @@ defmodule LogflareWeb.SearchLive.EventContextComponent do
       |> subquery()
       |> Ecto.Query.select([t], t)
 
-    # Get 50 after (excluding target)
     after_query =
       from(so.source.bq_table_id)
       |> Logflare.Logs.LogEvents.partition_query([min, max], partition_type)
@@ -209,10 +207,18 @@ defmodule LogflareWeb.SearchLive.EventContextComponent do
       |> order_by([t], asc: t.timestamp, asc: t.id)
 
     result = %{so | query: query} |> Logflare.Logs.SearchOperations.do_query()
-    events = result.rows |> Enum.map(&Logflare.LogEvent.make_from_db(&1, %{source: source}))
+
     before_truncated = result.rows |> List.first() |> Map.get("rank") == -50
     after_truncated = result.rows |> List.last() |> Map.get("rank") == 50
 
-    %{events: events, before_truncated: before_truncated, after_truncated: after_truncated}
+    events =
+      result.rows
+      |> Enum.map(fn row ->
+        row
+        |> Map.drop([:rank])
+        |> Logflare.LogEvent.make_from_db(%{source: source})
+      end)
+
+    %{events: events, is_truncated_before: before_truncated, is_truncated_after: after_truncated}
   end
 end
