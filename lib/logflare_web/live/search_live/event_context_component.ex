@@ -19,31 +19,12 @@ defmodule LogflareWeb.SearchLive.EventContextComponent do
       }
     } = assigns
 
-    source_schema = SourceSchemas.Cache.get_source_schema_by(source_id: source_id)
     event_timestamp = log_timestamp |> String.to_integer() |> Timex.from_unix(:microsecond)
 
-    timestamp_range =
-      Lql.Rules.FilterRule.build(
-        path: "timestamp",
-        operator: :range,
-        values: [
-          Timex.shift(event_timestamp, days: -1) |> DateTime.truncate(:second),
-          Timex.shift(event_timestamp, days: 1) |> DateTime.truncate(:second)
-        ]
-      )
+    # build lql_rules from suggested keys
+    source = Sources.get_source_for_lv_param(source_id)
 
-    lql_rules =
-      with {:ok, lql_rules} <-
-             Lql.decode(
-               query_string,
-               Map.get(
-                 source_schema || %{},
-                 :bigquery_schema,
-                 SchemaBuilder.initial_table_schema()
-               )
-             ) do
-        Lql.Rules.update_timestamp_rules(lql_rules, [timestamp_range])
-      end
+    lql_rules = prepare_lql_rules(source, query_string, event_timestamp)
 
     {:ok,
      socket
@@ -57,16 +38,41 @@ defmodule LogflareWeb.SearchLive.EventContextComponent do
      end)}
   end
 
-  def handle_async(
-        :logs,
-        {:ok,
-         %{
-           events: events,
-           is_truncated_before: before_truncated,
-           is_truncated_after: after_truncated
-         }},
-        socket
-      ) do
+  def prepare_lql_rules(source, query_string, event_timestamp) do
+    source_schema = SourceSchemas.Cache.get_source_schema_by(source_id: source.id)
+
+    {:ok, lql_rules} =
+      Lql.decode(
+        query_string,
+        Map.get(source_schema || %{}, :bigquery_schema, SchemaBuilder.initial_table_schema())
+      )
+
+    timestamp_range =
+      Lql.Rules.FilterRule.build(
+        path: "timestamp",
+        operator: :range,
+        values: [
+          Timex.shift(event_timestamp, days: -1) |> DateTime.truncate(:second),
+          Timex.shift(event_timestamp, days: 1) |> DateTime.truncate(:second)
+        ]
+      )
+
+    Lql.Rules.update_timestamp_rules(lql_rules, [timestamp_range])
+  end
+
+  @impl true
+  def handle_async(:logs, {:ok, %{rows: rows, source: source}}, socket) do
+    before_truncated = rows |> List.first() |> Map.get("rank") == -50
+    after_truncated = rows |> List.last() |> Map.get("rank") == 50
+
+    events =
+      rows
+      |> Enum.map(fn row ->
+        row
+        |> Map.drop([:rank])
+        |> Logflare.LogEvent.make_from_db(%{source: source})
+      end)
+
     {:noreply,
      socket
      |> assign(:logs, AsyncResult.ok(socket.assigns.logs, :ok))
@@ -181,85 +187,22 @@ defmodule LogflareWeb.SearchLive.EventContextComponent do
   end
 
   def search_logs(log_event_id, ts, source_id, lql_rules) do
-    import Ecto.Query
     source = Sources.get_source_for_lv_param(source_id)
-    partition_type = Sources.get_table_partition_type(source)
 
     so =
       %{
         lql_rules: lql_rules,
-        timestamp: ts,
         source: source,
         tailing?: false
       }
       |> Logflare.Logs.SearchOperation.new()
-      |> Logflare.Logs.Search.get_and_put_partition_by()
 
-    %{values: [min, max]} =
-      lql_rules
-      |> Lql.Rules.get_timestamp_filters()
-      |> Enum.find(fn rule -> rule.operator == :range end)
+    case Logflare.Logs.Search.search_event_context(so, log_event_id, ts) do
+      %{rows: rows} ->
+        %{rows: rows, source: source}
 
-    before_query =
-      from(so.source.bq_table_id)
-      |> Logflare.Logs.LogEvents.partition_query([min, max], partition_type)
-      |> where([t], t.timestamp < ^ts or (t.timestamp == ^ts and t.id <= ^log_event_id))
-      |> order_by([t], desc: t.timestamp, desc: t.id)
-      |> Ecto.Query.select([t], %{
-        id: t.id,
-        timestamp: t.timestamp,
-        event_message: t.event_message,
-        rank:
-          fragment("1 - ROW_NUMBER() OVER (ORDER BY ? DESC, ? DESC)", t.timestamp, t.id)
-          |> selected_as(:rank)
-      })
-      |> limit(51)
-      |> subquery()
-      |> Ecto.Query.select([t], t)
-
-    after_query =
-      from(so.source.bq_table_id)
-      |> Logflare.Logs.LogEvents.partition_query([min, max], partition_type)
-      |> where([t], t.timestamp > ^ts or (t.timestamp == ^ts and t.id > ^log_event_id))
-      |> order_by([t], asc: t.timestamp, asc: t.id)
-      |> Ecto.Query.select([t], %{
-        id: t.id,
-        timestamp: t.timestamp,
-        event_message: t.event_message,
-        rank:
-          over(fragment("ROW_NUMBER()"), order_by: [asc: t.timestamp, asc: t.id])
-          |> selected_as(:rank)
-      })
-      |> limit(50)
-      |> subquery()
-      |> Ecto.Query.select([t], t)
-
-    # Combine and reorder
-    query =
-      before_query
-      |> union_all(^after_query)
-      |> subquery()
-      |> Ecto.Query.select([t], %{
-        id: t.id,
-        timestamp: t.timestamp,
-        event_message: t.event_message,
-        rank: t.rank
-      })
-      |> order_by([t], asc: t.timestamp, asc: t.id)
-
-    result = %{so | query: query} |> Logflare.Logs.SearchOperations.do_query()
-
-    before_truncated = result.rows |> List.first() |> Map.get("rank") == -50
-    after_truncated = result.rows |> List.last() |> Map.get("rank") == 50
-
-    events =
-      result.rows
-      |> Enum.map(fn row ->
-        row
-        |> Map.drop([:rank])
-        |> Logflare.LogEvent.make_from_db(%{source: source})
-      end)
-
-    %{events: events, is_truncated_before: before_truncated, is_truncated_after: after_truncated}
+      %{error: error} ->
+        %{rows: [], error: error}
+    end
   end
 end
