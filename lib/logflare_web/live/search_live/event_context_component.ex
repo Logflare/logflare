@@ -20,38 +20,58 @@ defmodule LogflareWeb.SearchLive.EventContextComponent do
     } = assigns
 
     source_schema = SourceSchemas.Cache.get_source_schema_by(source_id: source_id)
+    event_timestamp = log_timestamp |> String.to_integer() |> Timex.from_unix(:microsecond)
 
-    {:ok, lql_rules} =
-      Lql.decode(
-        query_string,
-        Map.get(source_schema || %{}, :bigquery_schema, SchemaBuilder.initial_table_schema())
+    timestamp_range =
+      Lql.Rules.FilterRule.build(
+        path: "timestamp",
+        operator: :range,
+        values: [
+          Timex.shift(event_timestamp, days: -1) |> DateTime.truncate(:second),
+          Timex.shift(event_timestamp, days: 1) |> DateTime.truncate(:second)
+        ]
       )
 
-    log_timestamp = String.to_integer(log_timestamp)
+    lql_rules =
+      with {:ok, lql_rules} <-
+             Lql.decode(
+               query_string,
+               Map.get(
+                 source_schema || %{},
+                 :bigquery_schema,
+                 SchemaBuilder.initial_table_schema()
+               )
+             ) do
+        Lql.Rules.update_timestamp_rules(lql_rules, [timestamp_range])
+      end
 
     {:ok,
      socket
      |> assign(lql_rules: lql_rules)
      |> assign(target_event_id: log_event_id, timezone: timezone)
-     |> assign(after_truncated: false)
-     |> assign(before_truncated: false)
+     |> assign(is_truncated_before: false)
+     |> assign(is_truncated_after: false)
      |> assign(:logs, AsyncResult.loading())
      |> start_async(:logs, fn ->
-       search_logs(log_event_id, log_timestamp, source_id, lql_rules)
+       search_logs(log_event_id, event_timestamp, source_id, lql_rules)
      end)}
   end
 
   def handle_async(
         :logs,
         {:ok,
-         %{events: events, before_truncated: before_truncated, after_truncated: after_truncated}},
+         %{
+           events: events,
+           is_truncated_before: before_truncated,
+           is_truncated_after: after_truncated
+         }},
         socket
       ) do
     {:noreply,
      socket
      |> assign(:logs, AsyncResult.ok(socket.assigns.logs, :ok))
-     |> assign(:before_truncated, before_truncated)
-     |> assign(:after_truncated, after_truncated)
+     |> assign(:is_truncated_before, before_truncated)
+     |> assign(:is_truncated_after, after_truncated)
      |> stream(:log_events, events, reset: true)}
   end
 
@@ -68,14 +88,14 @@ defmodule LogflareWeb.SearchLive.EventContextComponent do
     <div class="list-unstyled console-text-list -tw-mx-6 tw-relative">
       <div class="tw-flex tw-px-2 tw-py-4 tw-mb-4 tw-bg-gray-800 tw-items-baseline tw-sticky tw-w-full">
         <div class="tw-font-mono tw-text-white tw-text-sm tw-space-x-2">
-          <.lql_rule :for={rule <- @lql_rules} :if={is_struct(rule, Logflare.Lql.Rules.FilterRule) && rule.path != "timestamp"} rule={rule} />
+          <.lql_rules rules={@lql_rules} />
         </div>
       </div>
       <div class="tw-h-[calc(100vh-200px)] tw-overflow-y-auto tw-pr-2 tw-pl-5 -tw-ml-5" id="context_log_events" phx-hook="ScrollIntoView" phx-value-scroll-target={@target_event_id}>
         <.async_result assign={@logs}>
           <:loading><%= live_react_component("Components.Loader", %{}, id: "shared-loader") %></:loading>
 
-          <div :if={@before_truncated} class="tw-text-center tw-py-2 tw-uppercase tw-text-sm">
+          <div :if={@is_truncated_before} class="tw-text-center tw-py-2 tw-uppercase tw-text-sm">
             Limit 50 events before selection
           </div>
           <ul class="list-unstyled console-text" id="log-events" phx-update="stream">
@@ -109,7 +129,7 @@ defmodule LogflareWeb.SearchLive.EventContextComponent do
               </:actions>
             </.log_event>
           </ul>
-          <div :if={@after_truncated} class="tw-text-center tw-pt-2 tw-uppercase tw-text-sm">
+          <div :if={@is_truncated_after} class="tw-text-center tw-pt-2 tw-uppercase tw-text-sm">
             Limit 50 events after selection
           </div>
         </.async_result>
@@ -122,7 +142,27 @@ defmodule LogflareWeb.SearchLive.EventContextComponent do
     log_event.id == target_event_id
   end
 
-  attr :rule, Logflare.Lql.Rules.FilterRule, required: true
+  attr :rules, :list
+
+  def lql_rules(assigns) do
+    rules = Lql.Rules.get_timestamp_filters(assigns.rules)
+
+    assigns =
+      assigns
+      |> assign(:query, Lql.encode!(rules))
+
+    ~H"""
+    <%= @query %>
+    """
+  end
+
+  attr :rule, Lql.Rules.FilterRule, required: true
+
+  def lql_rule(%{rule: %{path: "timestamp", operator: :range}} = assigns) do
+    ~H"""
+    t:
+    """
+  end
 
   def lql_rule(assigns) do
     operator =
@@ -140,7 +180,7 @@ defmodule LogflareWeb.SearchLive.EventContextComponent do
     """
   end
 
-  def search_logs(log_event_id, timestamp, source_id, lql_rules) do
+  def search_logs(log_event_id, ts, source_id, lql_rules) do
     import Ecto.Query
     source = Sources.get_source_for_lv_param(source_id)
     partition_type = Sources.get_table_partition_type(source)
@@ -148,16 +188,17 @@ defmodule LogflareWeb.SearchLive.EventContextComponent do
     so =
       %{
         lql_rules: lql_rules,
-        timestamp: timestamp,
+        timestamp: ts,
         source: source,
         tailing?: false
       }
       |> Logflare.Logs.SearchOperation.new()
       |> Logflare.Logs.Search.get_and_put_partition_by()
 
-    ts = Timex.from_unix(timestamp, :microsecond)
-    min = ts |> Timex.shift(days: -1)
-    max = ts |> Timex.shift(days: 1)
+    %{values: [min, max]} =
+      lql_rules
+      |> Lql.Rules.get_timestamp_filters()
+      |> Enum.find(fn rule -> rule.operator == :range end)
 
     before_query =
       from(so.source.bq_table_id)
