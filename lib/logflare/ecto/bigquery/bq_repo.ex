@@ -30,21 +30,21 @@ defmodule Logflare.BqRepo do
         ) :: query_result()
   def query_with_sql_and_params(%User{} = user, project_id, sql, params, opts \\ [])
       when not is_nil(project_id) and is_binary(sql) and is_list(params) and is_list(opts) do
-    override = Map.new(opts)
     %Plan{name: plan} = Billing.Cache.get_plan_by_user(user)
 
-    # Clean labels using format_key for both key and value
+    override = Map.new(opts)
+    override_labels = Map.get(override, :labels, %{}) |> Map.to_list()
+
     cleaned_labels =
-      %{
-        "managed_by" => "logflare",
-        "logflare_plan" => plan,
-        "logflare_account" => user.id
-      }
-      |> Map.merge(Map.get(override, :labels, %{}))
-      |> Enum.map(fn {k, v} ->
+      [
+        {"managed_by", "logflare"},
+        {"logflare_plan", plan},
+        {"logflare_account", user.id}
+        | override_labels
+      ]
+      |> Map.new(fn {k, v} ->
         {GenUtils.format_key(k), GenUtils.format_value(v)}
       end)
-      |> Enum.into(%{})
 
     override = Map.put(override, :labels, cleaned_labels)
 
@@ -78,13 +78,11 @@ defmodule Logflare.BqRepo do
         |> Map.update(:totalRows, 0, &maybe_string_to_integer_or_zero/1)
         |> Map.from_struct()
         |> Enum.map(fn {key, value} ->
-          key =
-            key
-            |> Atom.to_string()
-            |> Recase.to_snake()
-            |> String.to_atom()
-
-          {key, value}
+          key
+          |> Atom.to_string()
+          |> Recase.to_snake()
+          |> String.to_atom()
+          |> then(fn key -> {key, value} end)
         end)
         |> Map.new()
 
