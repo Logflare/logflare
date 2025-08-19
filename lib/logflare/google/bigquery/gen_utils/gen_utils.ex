@@ -201,54 +201,67 @@ defmodule Logflare.Google.BigQuery.GenUtils do
   All characters must use UTF-8 encoding, and international characters are allowed.
   Keys must start with a lowercase letter or international character.
 
-  > Keys must start with a lowercase letter or international character.
-  Values can start with a number
-
   https://cloud.google.com/resource-manager/docs/labels-overview
 
   ## Examples
 
-  iex> Logflare.Google.BigQuery.GenUtils.format_key("My Label 123")
+  iex> Logflare.Google.BigQuery.GenUtils.format_key("123label")
+  "label"
+  """
+  def format_key(k) when is_binary(k) do
+    k |> String.replace(~r/^[^[:alpha:]]+/u, "") |> format_value()
+  end
+
+  def format_key(k) when is_integer(k), do: k |> Integer.to_string() |> format_key()
+  def format_key(k) when is_atom(k), do: k |> Atom.to_string() |> format_key()
+
+  @doc """
+  Formats values for BigQuery label values. Values are like keys except they can start
+  with an integer.
+
+  ## Examples
+
+  iex> Logflare.Google.BigQuery.GenUtils.format_value("My Label 123")
   "my_label_123"
 
-  iex> Logflare.Google.BigQuery.GenUtils.format_key("Label-With-Dash")
+  iex> Logflare.Google.BigQuery.GenUtils.format_value("Label-With-Dash")
   "label-with-dash"
 
-  iex> Logflare.Google.BigQuery.GenUtils.format_key("LABEL_with_MIXED_case")
+  iex> Logflare.Google.BigQuery.GenUtils.format_value("LABEL_with_MIXED_case")
   "label_with_mixed_case"
 
-  iex> Logflare.Google.BigQuery.GenUtils.format_key("123label")
+  iex> Logflare.Google.BigQuery.GenUtils.format_value("123label")
   "123label"
 
-  iex> Logflare.Google.BigQuery.GenUtils.format_key("ключ")
+  iex> Logflare.Google.BigQuery.GenUtils.format_value("ключ")
   "ключ"
 
-  iex> Logflare.Google.BigQuery.GenUtils.format_key(:atom_label)
+  iex> Logflare.Google.BigQuery.GenUtils.format_value(:atom_label)
   "atom_label"
 
-  iex> Logflare.Google.BigQuery.GenUtils.format_key(42)
+  iex> Logflare.Google.BigQuery.GenUtils.format_value(42)
   "42"
 
-  iex> Logflare.Google.BigQuery.GenUtils.format_key("label with spaces and-dash")
+  iex> Logflare.Google.BigQuery.GenUtils.format_value("label with spaces and-dash")
   "label_with_spaces_and-dash"
 
-  iex> Logflare.Google.BigQuery.GenUtils.format_key("#$@#::timestampZ")
+  iex> Logflare.Google.BigQuery.GenUtils.format_value("#$@#::timestampZ")
   "timestampz"
 
-  iex> Logflare.Google.BigQuery.GenUtils.format_key("SomeVeryLongStringOfTextThatExceedsSixtyThreeCharactersInLengthXYZ")
+  iex> Logflare.Google.BigQuery.GenUtils.format_value("SomeVeryLongStringOfTextThatExceedsSixtyThreeCharactersInLengthXYZ")
   "someverylongstringoftextthatexceedssixtythreecharactersinlength"
 
-  iex> Logflare.Google.BigQuery.GenUtils.format_key("My-Label With$Weird#Chars")
+  iex> Logflare.Google.BigQuery.GenUtils.format_value("My-Label With$Weird#Chars")
   "my-label_withweirdchars"
   """
-  def format_key(label) when is_binary(label) do
-    label
+  def format_value(v) when is_binary(v) do
+    v
     |> String.downcase()
     |> String.replace(" ", "_")
     |> String.replace(~r/[^[:alnum:]_-]/u, "")
     |> String.slice(0, 63)
   end
 
-  def format_key(label) when is_integer(label), do: label |> Integer.to_string() |> format_key()
-  def format_key(label) when is_atom(label), do: label |> Atom.to_string() |> format_key()
+  def format_value(v) when is_integer(v), do: v |> Integer.to_string() |> format_value()
+  def format_value(v) when is_atom(v), do: v |> Atom.to_string() |> format_value()
 end

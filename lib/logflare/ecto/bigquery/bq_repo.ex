@@ -42,7 +42,7 @@ defmodule Logflare.BqRepo do
       }
       |> Map.merge(Map.get(override, :labels, %{}))
       |> Enum.map(fn {k, v} ->
-        {GenUtils.format_key(k), GenUtils.format_key(v)}
+        {GenUtils.format_key(k), GenUtils.format_value(v)}
       end)
       |> Enum.into(%{})
 
