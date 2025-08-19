@@ -453,7 +453,7 @@ defmodule Logflare.BigQuery.EctoQueryBQTest do
       end
     end
 
-    test "negated IS NULL operator should be IS NOT NULL" do
+    test "negated IS NULL operator shouldn't have OR IS NULL" do
       filter_rules = [
         %FilterRule{
           path: "metadata.a",
