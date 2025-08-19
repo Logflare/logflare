@@ -116,6 +116,74 @@ defmodule Logflare.Logs.Search do
     end
   end
 
+  @doc """
+  Search for events before and after a selected event.
+  """
+  def search_event_context(%SO{} = so, log_event_id, %DateTime{} = timestamp) do
+    so =
+      so
+      |> Logflare.Logs.Search.get_and_put_partition_by()
+
+    %{values: [min, max]} =
+      so.lql_rules
+      |> Logflare.Lql.Rules.get_timestamp_filters()
+      |> Enum.find(fn rule -> rule.operator == :range end)
+
+    before_query =
+      from(so.source.bq_table_id)
+      |> Logflare.Logs.LogEvents.partition_query([min, max], so.partition_by)
+      |> where(
+        [t],
+        t.timestamp < ^timestamp or (t.timestamp == ^timestamp and t.id <= ^log_event_id)
+      )
+      |> order_by([t], desc: t.timestamp, desc: t.id)
+      |> select([t], %{
+        id: t.id,
+        timestamp: t.timestamp,
+        event_message: t.event_message,
+        rank:
+          fragment("1 - ROW_NUMBER() OVER (ORDER BY ? DESC, ? DESC)", t.timestamp, t.id)
+          |> selected_as(:rank)
+      })
+      |> limit(51)
+      |> subquery()
+      |> select([t], t)
+
+    after_query =
+      from(so.source.bq_table_id)
+      |> Logflare.Logs.LogEvents.partition_query([min, max], so.partition_by)
+      |> where(
+        [t],
+        t.timestamp > ^timestamp or (t.timestamp == ^timestamp and t.id > ^log_event_id)
+      )
+      |> order_by([t], asc: t.timestamp, asc: t.id)
+      |> select([t], %{
+        id: t.id,
+        timestamp: t.timestamp,
+        event_message: t.event_message,
+        rank:
+          over(fragment("ROW_NUMBER()"), order_by: [asc: t.timestamp, asc: t.id])
+          |> selected_as(:rank)
+      })
+      |> limit(50)
+      |> subquery()
+      |> select([t], t)
+
+    query =
+      before_query
+      |> union_all(^after_query)
+      |> subquery()
+      |> select([t], %{
+        id: t.id,
+        timestamp: t.timestamp,
+        event_message: t.event_message,
+        rank: t.rank
+      })
+      |> order_by([t], asc: t.timestamp, asc: t.id)
+
+    %{so | query: query} |> do_query()
+  end
+
   def query_source_streaming_buffer(%Source{} = source) do
     q =
       case Sources.get_table_partition_type(source) do
