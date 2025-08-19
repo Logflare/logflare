@@ -48,26 +48,6 @@ defmodule Logflare.BackendsTest do
       [source: insert(:source, user_id: user.id), user: user]
     end
 
-    test "list_sources_for_backend/1", %{source: source, user: user} do
-      backend1 = insert(:backend, user: user)
-      backend2 = insert(:backend, user: user)
-      source2 = insert(:source, user_id: user.id)
-
-      assert [] == Backends.list_sources_for_backend(backend1.id)
-      assert {:ok, _} = Backends.update_source_backends(source, [backend1])
-      assert {:ok, _} = Backends.update_source_backends(source2, [backend2])
-      assert {:ok, _} = Backends.update_source_backends(source, [backend1, backend2])
-
-      backend1_sources = Backends.list_sources_for_backend(backend1.id)
-      assert length(backend1_sources) == 1
-      assert hd(backend1_sources).id == source.id
-
-      backend2_sources = Backends.list_sources_for_backend(backend2.id)
-      assert length(backend2_sources) == 2
-      source_ids = Enum.map(backend2_sources, & &1.id) |> Enum.sort()
-      assert source_ids == [source.id, source2.id] |> Enum.sort()
-    end
-
     test "list_backends/1 with metadata" do
       backend = insert(:backend, metadata: %{some: "data", value: true, other: false})
 
@@ -264,6 +244,105 @@ defmodule Logflare.BackendsTest do
       assert %Backend{config: %{url: "http" <> _}} = Backends.get_backend(backend.id)
 
       :timer.sleep(1000)
+    end
+  end
+
+  describe "update_backend/2 with default_ingest?" do
+    setup do
+      insert(:plan)
+      user = insert(:user)
+      clickhouse_config = %{url: "http://localhost", database: "test", port: 8123}
+
+      backend =
+        insert(:backend,
+          user: user,
+          type: :clickhouse,
+          default_ingest?: false,
+          config: clickhouse_config
+        )
+
+      source = insert(:source, user: user)
+
+      {:ok, user: user, backend: backend, source: source, config: clickhouse_config}
+    end
+
+    test "requires source_id when enabling default_ingest?", %{backend: backend} do
+      assert {:error, changeset} =
+               Backends.update_backend(backend, %{default_ingest?: true})
+
+      assert "Please select a source when enabling default ingest" in errors_on(changeset).default_ingest?
+    end
+
+    test "creates source association when enabling default_ingest?", %{
+      backend: backend,
+      source: source
+    } do
+      {:ok, source} = Sources.update_source(source, %{default_ingest_backend_enabled?: true})
+
+      assert {:ok, updated} =
+               Backends.update_backend(backend, %{
+                 default_ingest?: true,
+                 source_id: to_string(source.id)
+               })
+
+      assert updated.default_ingest? == true
+
+      source = Sources.get(source.id) |> Sources.preload_backends()
+      assert Enum.any?(source.backends, &(&1.id == backend.id))
+    end
+
+    test "removes source associations when disabling default_ingest?", %{
+      user: user,
+      source: source,
+      config: config
+    } do
+      {:ok, source} = Sources.update_source(source, %{default_ingest_backend_enabled?: true})
+
+      backend =
+        insert(:backend, user: user, type: :clickhouse, default_ingest?: true, config: config)
+
+      assert {:ok, _} = Backends.update_source_backends(source, [backend])
+
+      assert {:ok, updated} =
+               Backends.update_backend(backend, %{default_ingest?: false})
+
+      assert updated.default_ingest? == false
+
+      source = Sources.get(source.id) |> Sources.preload_backends()
+      assert Enum.empty?(source.backends)
+    end
+
+    test "does not duplicate source associations", %{user: user, source: source, config: config} do
+      {:ok, source} = Sources.update_source(source, %{default_ingest_backend_enabled?: true})
+
+      backend =
+        insert(:backend, user: user, type: :clickhouse, default_ingest?: true, config: config)
+
+      assert {:ok, _} = Backends.update_source_backends(source, [backend])
+
+      assert {:ok, _updated} =
+               Backends.update_backend(backend, %{
+                 default_ingest?: true,
+                 source_id: to_string(source.id)
+               })
+
+      source = Sources.get(source.id) |> Sources.preload_backends()
+      backend_ids = Enum.map(source.backends, & &1.id)
+      assert length(backend_ids) == 1
+      assert backend.id in backend_ids
+    end
+
+    test "requires source to have default_ingest_backend_enabled?", %{
+      backend: backend,
+      source: source
+    } do
+      assert {:error, changeset} =
+               Backends.update_backend(backend, %{
+                 default_ingest?: true,
+                 source_id: to_string(source.id)
+               })
+
+      assert "Source must have default ingest backend support enabled" in errors_on(changeset).default_ingest?
     end
   end
 

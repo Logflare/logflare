@@ -301,7 +301,7 @@ defmodule Logflare.Source.BigQuery.Pipeline do
   # https://hexdocs.pm/broadway/Broadway.html#start_link/2
   # split batch sizes based on json size
   # ensure that we are well below the 10MB limit
-  def bq_batch_size_splitter() do
+  def bq_batch_size_splitter do
     {
       {@max_batch_size, @max_batch_length},
       fn

@@ -99,7 +99,17 @@ defmodule Logflare.ContextCache do
 
     context_cache
     |> Cachex.stream!(query)
-    |> Enum.reduce(0, fn
+    |> delete_matching_entries(context_cache, pkey)
+    |> then(&{:ok, &1})
+  end
+
+  @spec cache_name(atom()) :: atom()
+  def cache_name(context) do
+    Module.concat(context, Cache)
+  end
+
+  defp delete_matching_entries(entries, context_cache, pkey) do
+    Enum.reduce(entries, 0, fn
       {k, {:cached, v}}, acc when is_list(v) ->
         if Enum.any?(v, fn %{id: id} -> id == pkey end) do
           Cachex.del(context_cache, k)
@@ -112,11 +122,5 @@ defmodule Logflare.ContextCache do
         Cachex.del(context_cache, k)
         acc + 1
     end)
-    |> then(&{:ok, &1})
-  end
-
-  @spec cache_name(atom()) :: atom()
-  def cache_name(context) do
-    Module.concat(context, Cache)
   end
 end

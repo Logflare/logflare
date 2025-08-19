@@ -1,5 +1,5 @@
 defmodule Logflare.Lql.ParserTest do
-  use ExUnit.Case, async: true
+  use ExUnit.Case, async: false
   use Mimic
 
   alias Logflare.DateTimeUtils
@@ -585,8 +585,6 @@ defmodule Logflare.Lql.ParserTest do
       schema = build_schema(%{"metadata" => %{"test_field" => "value"}})
       mocked_typemap = %{"metadata.test_field" => :naive_datetime}
 
-      copy(Logflare.Google.BigQuery.SchemaUtils)
-
       stub(Logflare.Google.BigQuery.SchemaUtils, :bq_schema_to_flat_typemap, fn _ ->
         mocked_typemap
       end)
@@ -598,8 +596,6 @@ defmodule Logflare.Lql.ParserTest do
     test "returns field not found error for nil type fields" do
       schema = build_schema(%{"metadata" => %{"test_field" => "value"}})
       mocked_typemap = %{"metadata.test_field" => nil}
-
-      copy(Logflare.Google.BigQuery.SchemaUtils)
 
       stub(Logflare.Google.BigQuery.SchemaUtils, :bq_schema_to_flat_typemap, fn _ ->
         mocked_typemap
@@ -933,15 +929,15 @@ defmodule Logflare.Lql.ParserTest do
     end
   end
 
-  def today_dt() do
+  def today_dt do
     Timex.today() |> Timex.to_datetime()
   end
 
-  def now_ndt() do
+  def now_ndt do
     %{Timex.now() | microsecond: {0, 0}}
   end
 
-  def now_udt_zero_sec() do
+  def now_udt_zero_sec do
     %{now_ndt() | second: 0}
   end
 

@@ -1,14 +1,16 @@
 defmodule LogflareWeb.Search.LogEventViewerComponent do
   @moduledoc false
   use LogflareWeb, :live_component
-  alias LogflareWeb.LogView
-  require Logger
-  alias LogflareWeb.Helpers.BqSchema
-  alias Logflare.Logs.LogEvents
-  alias Logflare.LogEvent, as: LE
-  alias LogflareWeb.SharedView
+
   alias Logflare.Billing
+  alias Logflare.LogEvent, as: LE
+  alias Logflare.Logs.LogEvents
   alias Logflare.Sources
+  alias LogflareWeb.Helpers.BqSchema
+  alias LogflareWeb.LogView
+  alias LogflareWeb.SharedView
+
+  require Logger
 
   @impl true
   def update(_assigns, %{assigns: %{error: {:error, :not_found}}} = socket) do
@@ -47,10 +49,12 @@ defmodule LogflareWeb.Search.LogEventViewerComponent do
     {:ok, socket}
   end
 
+  @impl true
   def handle_async(:load, {:ok, %Logflare.LogEvent{} = log_event}, socket) do
     {:noreply, assign(socket, :log_event, log_event)}
   end
 
+  @impl true
   def handle_async(:load, {:ok, %{} = bq_row}, socket) do
     le = LE.make_from_db(bq_row, %{source: socket.assigns.source})
 
@@ -63,10 +67,12 @@ defmodule LogflareWeb.Search.LogEventViewerComponent do
     handle_async(:load, {:ok, le}, socket)
   end
 
+  @impl true
   def handle_async(:load, {:ok, {:error, :not_found}}, socket) do
     {:noreply, socket |> assign(:error, {:error, :not_found})}
   end
 
+  @impl true
   def handle_async(:load, {:ok, {:error, raw_err}}, socket) do
     Logger.error("Error loading log event: #{Logflare.Utils.stringify(raw_err)}")
     err = "Oops, something went wrong!"

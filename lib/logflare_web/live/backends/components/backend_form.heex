@@ -302,17 +302,4 @@
       <% end %>
     </div>
   </.inputs_for>
-
-  <%= if @backend != nil and LogflareWeb.Utils.flag("multibackend", @user) == true and Logflare.Backends.Adaptor.supports_default_ingest?(@backend) do %>
-    <div class="form-group mt-2">
-      <%= label f, :default_ingest? do %>
-        Default Ingest Backend
-      <% end %>
-      <%= checkbox(f, :default_ingest?, checked: @backend && @backend.default_ingest?, value: @backend && @backend.default_ingest?) %>
-      <%= error_tag(f, :default_ingest?) %>
-      <small class="form-text text-muted">
-        Mark this backend as a default ingest backend.
-      </small>
-    </div>
-  <% end %>
 </.form>

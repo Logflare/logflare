@@ -1,11 +1,13 @@
 defmodule LogflareWeb.BackendsLive do
   @moduledoc false
+
   use LogflareWeb, :live_view
   require Logger
+
   alias Logflare.Backends
-  alias Logflare.Users
   alias Logflare.Rules
   alias Logflare.Sources
+  alias Logflare.Users
 
   embed_templates("actions/*", suffix: "_action")
   embed_templates("components/*")
@@ -35,6 +37,8 @@ defmodule LogflareWeb.BackendsLive do
       |> assign(:show_alert_form?, false)
       |> assign(:alert_options, [])
       |> assign(:form_type, nil)
+      |> assign(:show_default_ingest_form?, false)
+      |> assign(:default_ingest_sources, [])
       |> refresh_backends()
       |> refresh_backend(params["id"])
 
@@ -55,33 +59,10 @@ defmodule LogflareWeb.BackendsLive do
         %{"backend" => params},
         %{assigns: %{live_action: :edit}} = socket
       ) do
-    params =
-      Map.update(params, "config", nil, fn config ->
-        {key, config} = Map.pop(config, "header1_key")
-        {value, config} = Map.pop(config, "header1_value")
-
-        Map.put(config, "headers", %{key => value})
-        |> case do
-          %{"metadata" => metadata_str} = config when is_binary(metadata_str) ->
-            metadata =
-              metadata_str
-              |> String.split(",")
-              |> Enum.reduce(%{}, fn pair, acc ->
-                case String.split(pair, "=", parts: 2) do
-                  [key, value] -> Map.put(acc, String.trim(key), String.trim(value))
-                  _ -> acc
-                end
-              end)
-
-            Map.put(config, "metadata", metadata)
-
-          config ->
-            config
-        end
-      end)
+    params = transform_params(params)
 
     socket =
-      case Logflare.Backends.update_backend(socket.assigns.backend, params) do
+      case Backends.update_backend(socket.assigns.backend, params) do
         {:ok, backend} ->
           socket
           |> assign(:show_rule_form?, false)
@@ -91,10 +72,8 @@ defmodule LogflareWeb.BackendsLive do
           |> push_patch(to: ~p"/backends/#{backend.id}")
 
         {:error, changeset} ->
-          # TODO: move this to a helper function
           message = changeset_to_flash_message(changeset)
-
-          put_flash(socket, :error, "Encountered error when adding backend:\n#{message}")
+          put_flash(socket, :error, "Encountered error when updating backend:\n#{message}")
       end
 
     {:noreply, socket}
@@ -105,6 +84,8 @@ defmodule LogflareWeb.BackendsLive do
         %{"backend" => params},
         %{assigns: %{live_action: :new}} = socket
       ) do
+    params = transform_params(params)
+
     socket =
       case Logflare.Backends.create_backend(params) do
         {:ok, backend} ->
@@ -149,6 +130,66 @@ defmodule LogflareWeb.BackendsLive do
 
   def handle_event("change_form_type", %{"backend" => %{"type" => type}}, socket) do
     {:noreply, assign(socket, form_type: type)}
+  end
+
+  def handle_event("toggle_default_ingest_form", _params, socket) do
+    {:noreply,
+     assign(socket, :show_default_ingest_form?, !socket.assigns.show_default_ingest_form?)}
+  end
+
+  def handle_event(
+        "save_default_ingest",
+        %{"default_ingest" => %{"source_id" => source_id}},
+        socket
+      ) do
+    backend = socket.assigns.backend
+
+    socket =
+      case Backends.update_backend(backend, %{default_ingest?: true, source_id: source_id}) do
+        {:ok, _backend} ->
+          socket
+          |> refresh_backend(backend.id)
+          |> assign(:show_default_ingest_form?, false)
+          |> put_flash(:info, "Successfully marked backend as default ingest for source")
+
+        {:error, changeset} ->
+          message = changeset_to_flash_message(changeset)
+          put_flash(socket, :error, "Error setting default ingest:\n#{message}")
+      end
+
+    {:noreply, socket}
+  end
+
+  def handle_event("remove_default_ingest", %{"source_id" => source_id}, socket) do
+    backend = socket.assigns.backend
+    source = Sources.get(source_id)
+
+    # Remove this backend from the source's backends
+    updated_backends =
+      source
+      |> Sources.preload_backends()
+      |> Map.get(:backends, [])
+      |> Enum.reject(&(&1.id == backend.id))
+
+    socket =
+      case Backends.update_source_backends(source, updated_backends) do
+        {:ok, _} ->
+          # If no more sources are using this backend, disable default_ingest flag
+          remaining_sources = Sources.list_sources(backend_id: backend.id)
+
+          if Enum.empty?(remaining_sources) do
+            Backends.update_backend(backend, %{default_ingest?: false})
+          end
+
+          socket
+          |> refresh_backend(backend.id)
+          |> put_flash(:info, "Removed default ingest for source")
+
+        {:error, _} ->
+          put_flash(socket, :error, "Error removing default ingest")
+      end
+
+    {:noreply, socket}
   end
 
   def handle_event("toggle_rule_form", _params, socket) do
@@ -249,24 +290,6 @@ defmodule LogflareWeb.BackendsLive do
     {:noreply, socket}
   end
 
-  defp _to_string(val) when is_list(val) do
-    Enum.join(val, ", ")
-  end
-
-  defp _to_string(val), do: to_string(val)
-
-  defp changeset_to_flash_message(changeset) do
-    Ecto.Changeset.traverse_errors(changeset, fn {msg, opts} ->
-      Enum.reduce(opts, msg, fn {key, value}, acc ->
-        String.replace(acc, "%{#{key}}", _to_string(value))
-      end)
-    end)
-    |> Enum.reduce("", fn {k, v}, acc ->
-      joined_errors = Enum.join(v, ";\n")
-      "#{acc} #{k}: #{joined_errors}"
-    end)
-  end
-
   defp refresh_backends(socket) do
     backends =
       Backends.list_backends_by_user_id(socket.assigns.user.id)
@@ -285,8 +308,66 @@ defmodule LogflareWeb.BackendsLive do
   defp refresh_backend(socket, id) do
     backend = Backends.get_backend(id) |> Backends.preload_rules() |> Backends.preload_alerts()
 
+    # Load sources that use this backend as default ingest
+    default_ingest_sources =
+      if backend && backend.default_ingest? do
+        Sources.list_sources(backend_id: backend.id)
+      else
+        []
+      end
+
     socket
     |> assign(:backend, backend)
     |> assign(:form_type, Atom.to_string(backend.type))
+    |> assign(:default_ingest_sources, default_ingest_sources)
   end
+
+  defp transform_params(params) do
+    type = params["type"]
+
+    Map.update(params, "config", nil, fn config ->
+      {key, config} = Map.pop(config, "header1_key")
+      {value, config} = Map.pop(config, "header1_value")
+
+      Map.put(config, "headers", %{key => value})
+      |> case do
+        %{"metadata" => metadata_str} = config
+        when is_binary(metadata_str) and type == "incidentio" ->
+          metadata = parse_incidentio_metadata(metadata_str)
+          Map.put(config, "metadata", metadata)
+
+        config ->
+          config
+      end
+    end)
+  end
+
+  defp parse_incidentio_metadata(data) when is_binary(data) do
+    data
+    |> String.split(",")
+    |> Enum.reduce(%{}, fn pair, acc ->
+      case String.split(pair, "=", parts: 2) do
+        [key, value] -> Map.put(acc, String.trim(key), String.trim(value))
+        _ -> acc
+      end
+    end)
+  end
+
+  defp changeset_to_flash_message(changeset) do
+    Ecto.Changeset.traverse_errors(changeset, fn {msg, opts} ->
+      Enum.reduce(opts, msg, fn {key, value}, acc ->
+        String.replace(acc, "%{#{key}}", _to_string(value))
+      end)
+    end)
+    |> Enum.reduce("", fn {k, v}, acc ->
+      joined_errors = Enum.join(v, ";\n")
+      "#{acc} #{k}: #{joined_errors}"
+    end)
+  end
+
+  defp _to_string(val) when is_list(val) do
+    Enum.join(val, ", ")
+  end
+
+  defp _to_string(val), do: to_string(val)
 end

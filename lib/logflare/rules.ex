@@ -7,7 +7,6 @@ defmodule Logflare.Rules do
   alias Logflare.Repo
   alias Logflare.Rules.Rule
   alias Logflare.Source
-  alias Logflare.Sources
   alias Logflare.SourceSchemas
   alias Logflare.Backends.Backend
   alias Logflare.Backends.SourceSup
@@ -103,44 +102,20 @@ defmodule Logflare.Rules do
     res
   end
 
-  def upgrade_all_source_rules_to_next_lql_version() do
-    Logger.info("Started upgrade of all source rules to next lql version...")
+  @doc """
+  Ensures that the rule's backend is started.
+  If the rule does not exist, it is a noop.
+  """
+  @spec sync_rule(integer()) :: :ok
+  def sync_rule(rule_id) do
+    if rule = get_rule(rule_id) do
+      # ensure that rules backends are started
 
-    rules =
-      Rule
-      |> where([r], not is_nil(r.lql_filters) and not is_nil(r.lql_string))
-      |> Repo.all()
-
-    for rule <- rules do
-      source =
-        rule.source_id
-        |> Sources.get()
-        |> Sources.put_bq_table_schema()
-
-      case Lql.decode(rule.lql_string, source.bq_table_schema) do
-        {:ok, lql_filters} ->
-          if lql_filters != rule.lql_filters do
-            rule
-            |> Rule.changeset(%{lql_filters: lql_filters})
-            |> Repo.update()
-            |> case do
-              {:ok, r} ->
-                Logger.info(
-                  "Rule #{r.id} for source #{r.source_id} was successfully upgraded to new LQL filters format."
-                )
-
-              {:error, changeset} ->
-                Logger.error(
-                  "Rule #{rule.id} for source #{rule.source_id} failed to upgrade to new LQL filters format, Repo update erro: #{inspect(changeset.errors)}"
-                )
-            end
-          end
-
-        {:error, error} ->
-          Logger.error(
-            "Rule #{rule.id} for source #{rule.source_id} failed to upgrade to new LQL filters format, LQL decoding error: #{inspect(error)}"
-          )
+      if SourceSup.rule_child_started?(rule) == false do
+        SourceSup.start_rule_child(rule)
       end
     end
+
+    :ok
   end
 end

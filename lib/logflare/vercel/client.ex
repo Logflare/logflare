@@ -8,7 +8,7 @@ defmodule Logflare.Vercel.Client do
   defp env_client_secret, do: Application.get_env(:logflare, __MODULE__)[:client_secret]
   defp env_redirect_uri, do: Application.get_env(:logflare, __MODULE__)[:redirect_uri]
 
-  def new() do
+  def new do
     new(%Vercel.Auth{})
   end
 

@@ -3,8 +3,9 @@ defmodule Logflare.Source.Data do
   alias Logflare.Sources.Counters
   alias Logflare.Google.BigQuery
   alias Logflare.Source.RateCounterServer
-  alias Logflare.Source.BigQuery.Schema
-  alias Logflare.Backends
+  alias Logflare.SourceSchemas
+  alias Logflare.Source.BigQuery.SchemaBuilder
+  alias Logflare.Google.BigQuery.SchemaUtils
 
   @spec get_log_count(atom, String.t()) :: non_neg_integer()
   def get_log_count(token, _bigquery_project_id) do
@@ -80,9 +81,16 @@ defmodule Logflare.Source.Data do
 
   @spec get_schema_field_count(struct()) :: non_neg_integer
   def get_schema_field_count(source) do
-    case Backends.lookup(Schema, source.token) do
-      {:ok, _pid} -> Schema.get_state(source.token).field_count
-      {:error, _} -> 0
+    source_schema = SourceSchemas.Cache.get_source_schema_by(source_id: source.id)
+
+    if source_schema do
+      source_schema.bigquery_schema
+      |> SchemaUtils.bq_schema_to_flat_typemap()
+      |> Enum.count()
+    else
+      SchemaBuilder.initial_table_schema()
+      |> SchemaUtils.bq_schema_to_flat_typemap()
+      |> Enum.count()
     end
   end
 end

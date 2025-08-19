@@ -44,7 +44,7 @@ defmodule LogflareWeb.BertParser do
     raise Plug.BadRequestError
   end
 
-  def atoms() do
+  def atoms do
     # fixes a bug in Bertex where Bertex.safe_decode errors because
     # :bert and :dict atoms returned by :binary_to_term do not exist and are treated
     # as coming from the binary

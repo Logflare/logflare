@@ -73,6 +73,8 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptorTest do
 
   describe "connection and basic functionality" do
     setup do
+      insert(:plan, name: "Free")
+
       {source, backend, cleanup_fn} = setup_clickhouse_test()
       on_exit(cleanup_fn)
 
@@ -119,6 +121,8 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptorTest do
 
   describe "log event insertion and retrieval" do
     setup do
+      insert(:plan, name: "Free")
+
       {source, backend, cleanup_fn} = setup_clickhouse_test()
       on_exit(cleanup_fn)
 

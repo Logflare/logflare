@@ -28,6 +28,50 @@
   </div>
 </section>
 
+<section :if={LogflareWeb.Utils.flag("multibackend", @user) == true and Logflare.Backends.Adaptor.supports_default_ingest?(@backend)} class="mx-auto container pt-3 tw-flex tw-flex-col tw-gap-4">
+  <h4>Default Ingest Sources</h4>
+  <p>
+    Sources configured to use this backend as a default ingest destination.
+  </p>
+
+  <div>
+    <.button phx-click="toggle_default_ingest_form" variant="secondary">
+      <%= if @show_default_ingest_form? do %>
+        Cancel
+      <% else %>
+        Add a Source
+      <% end %>
+    </.button>
+  </div>
+
+  <.form :let={f} :if={@show_default_ingest_form?} id="default_ingest" for={%{}} as={:default_ingest} action="#" phx-submit="save_default_ingest">
+    <div class="form-group">
+      <%= label(f, :source_id, "Source") %>
+      <%= select(f, :source_id, Enum.filter(@sources, & &1.default_ingest_backend_enabled?) |> Enum.map(fn s -> {s.name, s.id} end),
+        class: "form-control",
+        prompt: [key: "Choose a source"]
+      ) %>
+      <small id="source_id" class="form-text text-muted">This source will use this backend as its default ingest destination. Only sources with default ingest backend support enabled are shown.</small>
+    </div>
+
+    <%= hidden_input(f, :backend_id, value: @backend.id) %>
+    <%= submit("Save", class: "btn btn-primary") %>
+  </.form>
+
+  <p :if={Enum.empty?(@default_ingest_sources || [])}>No sources configured for default ingest</p>
+  <ul :for={source <- @default_ingest_sources || []} class="tw-flex tw-flex-row tw-gap-4">
+    <li class="list-group-item tw-pointer-none tw-w-full tw-flex tw-flex-row tw-justify-between">
+      <span>
+        Source <code><%= source.name %></code> uses this backend as default ingest
+      </span>
+
+      <.button phx-click="remove_default_ingest" phx-value-source_id={source.id} variant="danger">
+        Remove
+      </.button>
+    </li>
+  </ul>
+</section>
+
 <section class="mx-auto container pt-3 tw-flex tw-flex-col tw-gap-4">
   <h4>Drain Rules</h4>
   <p>

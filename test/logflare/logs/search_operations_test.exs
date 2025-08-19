@@ -1,12 +1,13 @@
 defmodule Logflare.Logs.SearchOperationsTest do
-  use Logflare.DataCase, async: true
+  use Logflare.DataCase, async: false
 
   alias Logflare.Logs.SearchOperations
+  alias Logflare.Source.BigQuery.Schema
 
   describe "unnesting metadata if present" do
     setup do
-      schema = Logflare.Source.BigQuery.SchemaBuilder.initial_table_schema()
-      source = build(:source, bq_table_id: "1", bq_table_schema: schema)
+      insert(:plan)
+      source = insert(:source, user: insert(:user), bq_table_id: "1")
 
       [
         so: %Logflare.Logs.SearchOperation{
@@ -31,21 +32,36 @@ defmodule Logflare.Logs.SearchOperationsTest do
     end
 
     test "unnest_log_level/1 with metadata", %{so: so} do
-      source =
-        so.source
-        |> Map.put(
-          :bq_table_schema,
-          TestUtils.build_bq_schema(%{"metadata" => %{"level" => "value"}})
+      GoogleApi.BigQuery.V2.Api.Tables
+      |> stub(:bigquery_tables_patch, fn _conn, _project_id, _dataset_id, _table_name, _opts ->
+        {:ok, %{}}
+      end)
+
+      Logflare.Mailer
+      |> expect(:deliver, 1, fn _ -> :ok end)
+
+      pid =
+        start_supervised!(
+          {Schema,
+           source: so.source,
+           bigquery_project_id: "some-project",
+           bigquery_dataset_id: "some-dataset"}
         )
 
-      so =
-        %{so | source: source}
-        |> SearchOperations.apply_query_defaults()
-        |> SearchOperations.unnest_log_level()
+      Schema.update(pid, build(:log_event, metadata: %{"level" => "value"}))
 
-      {sql, _} = Logflare.EctoQueryBQ.SQL.to_sql_params(so.query)
+      TestUtils.retry_assert(fn ->
+        Cachex.clear(Logflare.SourceSchemas.Cache)
 
-      assert sql =~ "UNNEST(t0.metadata)"
+        so =
+          so
+          |> SearchOperations.apply_query_defaults()
+          |> SearchOperations.unnest_log_level()
+
+        {sql, _} = Logflare.EctoQueryBQ.SQL.to_sql_params(so.query)
+
+        assert sql =~ "UNNEST(t0.metadata)"
+      end)
     end
   end
 end

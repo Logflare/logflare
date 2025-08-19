@@ -112,7 +112,7 @@ defmodule Logflare.Backends.RecentInsertsBroadcaster do
     {:ok, current_cluster_inserts, current_inserts}
   end
 
-  defp broadcast() do
+  defp broadcast do
     # scale broadcasting interval to cluster size
     cluster_size = Logflare.Cluster.Utils.actual_cluster_size()
     broadcast_every = max(@broadcast_every, round(:rand.uniform(cluster_size * 200)))

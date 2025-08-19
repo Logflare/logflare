@@ -3,30 +3,28 @@ defmodule Logflare.Sources do
   Sources-related context
   """
 
-  import Ecto.Query, only: [from: 2]
+  import Ecto.Query
 
+  require Logger
+
+  alias Logflare.Backends
+  alias Logflare.Billing
+  alias Logflare.Billing.Plan
   alias Logflare.Cluster
+  alias Logflare.Google.BigQuery
   alias Logflare.Google.BigQuery.GenUtils
   alias Logflare.Google.BigQuery.SchemaUtils
+  alias Logflare.Logs.RejectedLogEvents
   alias Logflare.PubSubRates
   alias Logflare.Repo
   alias Logflare.SavedSearch
   alias Logflare.SingleTenant
   alias Logflare.Source
-  alias Logflare.Source.BigQuery.Schema
   alias Logflare.Source.BigQuery.SchemaBuilder
   alias Logflare.SourceSchemas
   alias Logflare.User
-  alias Logflare.Billing.Plan
-  alias Logflare.Backends
-  alias Logflare.Billing.Plan
-  alias Logflare.Billing
-  alias Logflare.User
   alias Logflare.Users
-  alias Logflare.SingleTenant
-  alias Logflare.Google.BigQuery
-
-  require Logger
+  alias Number.Delimit
 
   @default_bucket_width 60
 
@@ -43,6 +41,36 @@ defmodule Logflare.Sources do
 
   def list_sources_by_user(user_id) do
     from(s in Source, where: s.user_id == ^user_id)
+    |> Repo.all()
+    |> Enum.map(&put_retention_days/1)
+  end
+
+  @doc """
+  Lists sources based on provided filters.
+  """
+  @spec list_sources(Keyword.t()) :: [Source.t()]
+  def list_sources(filters) when is_list(filters) do
+    filters
+    |> Enum.reduce(from(s in Source), fn
+      {:backend_id, backend_id}, q when is_integer(backend_id) ->
+        from(s in q,
+          join: sb in "sources_backends",
+          on: sb.source_id == s.id,
+          where: sb.backend_id == ^backend_id
+        )
+
+      {:user_id, user_id}, q when is_integer(user_id) ->
+        where(q, [s], s.user_id == ^user_id)
+
+      {:v2_pipeline, v2_pipeline}, q when is_boolean(v2_pipeline) ->
+        where(q, [s], s.v2_pipeline == ^v2_pipeline)
+
+      {:default_ingest_backend_enabled?, enabled}, q when is_boolean(enabled) ->
+        where(q, [s], s.default_ingest_backend_enabled? == ^enabled)
+
+      _, q ->
+        q
+    end)
     |> Repo.all()
     |> Enum.map(&put_retention_days/1)
   end
@@ -268,12 +296,7 @@ defmodule Logflare.Sources do
   def get_bq_schema(%Source{} = source) do
     case SourceSchemas.Cache.get_source_schema_by(source_id: source.id) do
       nil ->
-        name = Backends.via_source(source, Schema, nil)
-
-        with %{schema: schema} <- Schema.get_state(name) do
-          schema = SchemaUtils.deep_sort_by_fields_name(schema)
-          {:ok, schema}
-        end
+        {:ok, SchemaBuilder.initial_table_schema()}
 
       %_{bigquery_schema: schema} ->
         schema = SchemaUtils.deep_sort_by_fields_name(schema)
@@ -345,9 +368,6 @@ defmodule Logflare.Sources do
   def refresh_source_metrics(nil), do: nil
 
   def refresh_source_metrics(%Source{token: token} = source) do
-    alias Logflare.Logs.RejectedLogEvents
-    alias Number.Delimit
-
     rates = PubSubRates.Cache.get_cluster_rates(token)
     buffer = PubSubRates.Cache.get_cluster_buffers(source.id)
     inserts = PubSubRates.Cache.get_cluster_inserts(token)
@@ -393,24 +413,6 @@ defmodule Logflare.Sources do
     %{source | bq_table_id: Source.generate_bq_table_id(source)}
   end
 
-  @spec put_bq_table_schema(Source.t()) :: Source.t()
-  def put_bq_table_schema(%Source{} = source) do
-    bq_table_schema =
-      case get_bq_schema(source) do
-        {:ok, bq_table_schema} -> bq_table_schema
-        {:error, :not_found} -> nil
-        {:error, error} -> raise(error)
-      end
-
-    %{source | bq_table_schema: bq_table_schema}
-  end
-
-  @spec put_bq_table_typemap(Source.t()) :: Source.t()
-  def put_bq_table_typemap(%Source{} = source) do
-    bq_table_typemap = SchemaUtils.to_typemap(source.bq_table_schema)
-    %{source | bq_table_typemap: bq_table_typemap}
-  end
-
   def put_bq_dataset_id(%Source{} = source) do
     %{bigquery_dataset_id: dataset_id} = GenUtils.get_bq_user_info(source.token)
     %{source | bq_dataset_id: dataset_id}
@@ -427,8 +429,6 @@ defmodule Logflare.Sources do
     get_by_and_preload(id: source_id)
     |> preload_saved_searches()
     |> put_bq_table_id()
-    |> put_bq_table_schema()
-    |> put_bq_table_typemap()
     |> put_bq_dataset_id()
   end
 
@@ -450,7 +450,7 @@ defmodule Logflare.Sources do
   end
 
   @doc "Checks if all ETS tables used for source ingestion are started"
-  def ingest_ets_tables_started?() do
+  def ingest_ets_tables_started? do
     case {:ets.whereis(:rate_counters), :ets.whereis(:table_counters)} do
       {a, b} when is_reference(a) and is_reference(b) -> true
       _ -> false

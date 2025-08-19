@@ -3,9 +3,8 @@ defmodule LogflareWeb.OpenApiSchemas do
 
   defmodule EndpointQuery do
     @properties %{
-      result: %Schema{type: :string, example: "Logged!"},
+      result: %Schema{type: :array, allOf: %Schema{type: :object}},
       errors: %Schema{
-        required: false,
         oneOf: [
           %Schema{type: :object},
           %Schema{type: :string}
@@ -111,7 +110,6 @@ defmodule LogflareWeb.OpenApiSchemas do
       bigquery_table_ttl: %Schema{type: :integer},
       public_token: %Schema{type: :string},
       bq_table_id: %Schema{type: :string},
-      bq_table_schema: %Schema{type: :object},
       has_rejected_events: %Schema{type: :boolean},
       metrics: %Schema{type: :object},
       notifications: %Schema{type: :array, items: Notification},

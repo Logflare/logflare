@@ -5,7 +5,7 @@ defmodule Logflare.Utils do
   import Cachex.Spec
   import Logflare.Utils.Guards, only: [is_atom_value: 1]
 
-  def cache_stats() do
+  def cache_stats do
     hook(module: Cachex.Stats)
   end
 

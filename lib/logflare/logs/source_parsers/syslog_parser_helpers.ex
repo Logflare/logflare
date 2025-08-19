@@ -4,7 +4,7 @@ defmodule Logflare.Logs.SyslogParser.Helpers do
   import NimbleParsec
   @ascii_printable_chars [33..126]
 
-  def byte_length() do
+  def byte_length do
     integer(min: 1)
     |> unwrap_and_tag(:byte_length)
     |> label("byte_length")
@@ -71,9 +71,9 @@ defmodule Logflare.Logs.SyslogParser.Helpers do
     )
   end
 
-  def sd_element() do
+  def sd_element do
     ignore(string("["))
-    |> sd_name
+    |> sd_name()
     |> times(
       ignore(sp())
       |> concat(param_name())

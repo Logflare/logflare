@@ -1,6 +1,7 @@
 defmodule Logflare.BigQuery.PredefinedTestUser do
   @moduledoc false
-  def table_schema() do
+
+  def table_schema do
     %GoogleApi.BigQuery.V2.Model.TableSchema{
       fields: [
         %GoogleApi.BigQuery.V2.Model.TableFieldSchema{

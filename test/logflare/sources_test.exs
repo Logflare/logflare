@@ -1,5 +1,4 @@
 defmodule Logflare.SourcesTest do
-  @moduledoc false
   use Logflare.DataCase
 
   alias Logflare.Google.BigQuery
@@ -379,5 +378,117 @@ defmodule Logflare.SourcesTest do
 
   test "ingest_ets_tables_started?/0" do
     assert Sources.ingest_ets_tables_started?()
+  end
+
+  describe "list_sources/1" do
+    setup do
+      insert(:plan)
+      [user: insert(:user)]
+    end
+
+    test "list_sources/1 with backend_id filter", %{user: user} do
+      backend1 = insert(:backend, user: user)
+      backend2 = insert(:backend, user: user)
+
+      source1 = insert(:source, user: user, v2_pipeline: true)
+      source2 = insert(:source, user: user, v2_pipeline: true)
+      source3 = insert(:source, user: user, v2_pipeline: true)
+
+      {:ok, _} = Logflare.Backends.update_source_backends(source1, [backend1])
+      {:ok, _} = Logflare.Backends.update_source_backends(source2, [backend2])
+      {:ok, _} = Logflare.Backends.update_source_backends(source3, [backend1])
+
+      results = Sources.list_sources(backend_id: backend1.id)
+      assert length(results) == 2
+
+      result_ids = Enum.map(results, & &1.id) |> Enum.sort()
+      expected_ids = [source1.id, source3.id] |> Enum.sort()
+      assert result_ids == expected_ids
+    end
+
+    test "list_sources/1 with default_ingest_backend_enabled? filter", %{user: user} do
+      source1 = insert(:source, user: user, default_ingest_backend_enabled?: true)
+      _source2 = insert(:source, user: user, default_ingest_backend_enabled?: false)
+      source3 = insert(:source, user: user, default_ingest_backend_enabled?: true)
+
+      results = Sources.list_sources(default_ingest_backend_enabled?: true)
+      assert length(results) == 2
+
+      result_ids = Enum.map(results, & &1.id) |> Enum.sort()
+      expected_ids = [source1.id, source3.id] |> Enum.sort()
+      assert result_ids == expected_ids
+
+      assert Enum.all?(results, &(&1.default_ingest_backend_enabled? == true))
+    end
+
+    test "list_sources/1 with combined backend_id and default_ingest filters", %{user: user} do
+      backend = insert(:backend, user: user)
+
+      source1 =
+        insert(:source,
+          user: user,
+          v2_pipeline: true,
+          default_ingest_backend_enabled?: true
+        )
+
+      source2 =
+        insert(:source,
+          user: user,
+          v2_pipeline: true,
+          default_ingest_backend_enabled?: false
+        )
+
+      source3 =
+        insert(:source,
+          user: user,
+          v2_pipeline: true,
+          default_ingest_backend_enabled?: true
+        )
+
+      {:ok, _} = Logflare.Backends.update_source_backends(source1, [backend])
+      {:ok, _} = Logflare.Backends.update_source_backends(source2, [backend])
+      {:ok, _} = Logflare.Backends.update_source_backends(source3, [backend])
+
+      results =
+        Sources.list_sources(
+          backend_id: backend.id,
+          default_ingest_backend_enabled?: true
+        )
+
+      assert length(results) == 2
+      result_ids = Enum.map(results, & &1.id) |> Enum.sort()
+      expected_ids = [source1.id, source3.id] |> Enum.sort()
+      assert result_ids == expected_ids
+    end
+
+    test "list_sources/1 with v2_pipeline filter", %{user: user} do
+      source1 = insert(:source, user: user, v2_pipeline: true)
+      source2 = insert(:source, user: user, v2_pipeline: false)
+      source3 = insert(:source, user: user, v2_pipeline: true)
+
+      v2_results = Sources.list_sources(v2_pipeline: true)
+      assert length(v2_results) == 2
+
+      v2_ids = Enum.map(v2_results, & &1.id) |> Enum.sort()
+      expected_v2_ids = [source1.id, source3.id] |> Enum.sort()
+      assert v2_ids == expected_v2_ids
+
+      v1_results = Sources.list_sources(v2_pipeline: false)
+      assert length(v1_results) == 1
+      assert hd(v1_results).id == source2.id
+    end
+
+    test "list_sources/1 ignores unknown filters", %{user: user} do
+      source1 = insert(:source, user: user)
+      source2 = insert(:source, user: user)
+
+      # Unknown filter should be ignored
+      results = Sources.list_sources(unknown_filter: "ignored", user_id: user.id)
+      assert length(results) == 2
+
+      result_ids = Enum.map(results, & &1.id) |> Enum.sort()
+      expected_ids = [source1.id, source2.id] |> Enum.sort()
+      assert result_ids == expected_ids
+    end
   end
 end

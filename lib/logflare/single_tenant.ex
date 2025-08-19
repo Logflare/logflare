@@ -299,7 +299,7 @@ defmodule Logflare.SingleTenant do
 
   @doc "Returns postgres backend adapter configurations if single tenant and env is set"
   @spec postgres_backend_adapter_opts :: Keyword.t() | nil
-  def postgres_backend_adapter_opts() do
+  def postgres_backend_adapter_opts do
     if single_tenant?() do
       Application.get_env(:logflare, :postgres_backend_adapter)
     end
@@ -377,7 +377,7 @@ defmodule Logflare.SingleTenant do
   Returns true if postgres backend is enabled for single tenant
   """
   @spec postgres_backend? :: boolean()
-  def postgres_backend?() do
+  def postgres_backend? do
     opts = postgres_backend_adapter_opts() || []
 
     url = Keyword.get(opts, :url)

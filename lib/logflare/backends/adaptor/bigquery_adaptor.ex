@@ -259,7 +259,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
   @doc """
   Returns a list of all managed service account ids
   """
-  def managed_service_account_ids() do
+  def managed_service_account_ids do
     for i <- 0..(managed_service_account_pool_size() - 1),
         do: managed_service_account_id(i)
   end
@@ -400,7 +400,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
   if no base service account is set, no child spec is returned.
   """
   @spec partitioned_goth_child_spec() :: Supervisor.child_spec() | nil
-  def partitioned_goth_child_spec() do
+  def partitioned_goth_child_spec do
     if json = Application.get_env(:goth, :json) do
       {PartitionSupervisor,
        child_spec: goth_child_spec(json),

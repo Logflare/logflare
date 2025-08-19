@@ -1,5 +1,5 @@
 <%= for {key, alert_class} <- [success: "success", info: "info", error: "danger", warning: "warning"] do %>
-  <%= if inner_block = live_flash(@flash, key) do %>
+  <%= if inner_block = Phoenix.Flash.get(@flash, key) do %>
     <.live_component module={LogflareWeb.AlertComponent} key={key} alert_class={alert_class} id={"#{key}_flash_alert"}>
       <%= inner_block %>
     </.live_component>

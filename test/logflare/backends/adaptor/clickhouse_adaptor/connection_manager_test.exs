@@ -5,7 +5,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.ConnectionManagerTest do
   alias Logflare.Backends.Adaptor.ClickhouseAdaptor.ConnectionManager
 
   setup do
-    Logflare.Factory.insert(:plan, name: "Free")
+    insert(:plan, name: "Free")
 
     {source, backend, ch_cleanup_fn} = setup_clickhouse_test()
     on_exit(ch_cleanup_fn)
