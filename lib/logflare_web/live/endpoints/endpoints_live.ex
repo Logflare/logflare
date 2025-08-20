@@ -185,11 +185,18 @@ defmodule LogflareWeb.EndpointsLive do
     {:noreply, put_flash(socket, :info, message)}
   end
 
+  def handle_event("validate", %{"endpoint" => endpoint_params}, socket) do
+    # query may not be valid yet so it is handled separately in handle_info
+    attrs = Map.drop(endpoint_params, ["query"])
+    changeset = Endpoints.change_query(socket.assigns.endpoint_changeset.data, attrs)
+    {:noreply, assign(socket, :endpoint_changeset, changeset)}
+  end
+
   def handle_info({:query_string_updated, query_string}, socket) do
+    # query may not yet be valid but still need to update changes in form
     changeset =
-      Endpoints.change_query(%Endpoints.Query{
-        query: query_string
-      })
+      socket.assigns.endpoint_changeset
+      |> Ecto.Changeset.put_change(:query, query_string)
 
     parsed_result =
       Endpoints.parse_query_string(
