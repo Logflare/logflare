@@ -163,7 +163,18 @@ defmodule LogflareWeb.EndpointsLive do
     query_string = Map.get(payload, "query")
     query_params = Map.get(payload, "params", %{})
 
-    case Endpoints.run_query_string(user, {:bq_sql, query_string}, params: query_params) do
+    allowed_labels = Ecto.Changeset.get_field(socket.assigns.endpoint_changeset, :labels)
+
+    parsed_labels =
+      Endpoints.parse_labels(allowed_labels, "", query_params)
+      |> Map.merge(%{
+        "endpoint_id" => socket.assigns.endpoint_changeset.data.id
+      })
+
+    case Endpoints.run_query_string(user, {:bq_sql, query_string},
+           params: query_params,
+           parsed_labels: parsed_labels
+         ) do
       {:ok, %{rows: rows}} ->
         {:noreply,
          socket
