@@ -25,6 +25,8 @@ defmodule Logflare.Telemetry do
     }
   }
 
+  @metrics_interval 30_000
+
   @impl true
   def init(_arg) do
     otel_exporter =
@@ -49,7 +51,7 @@ defmodule Logflare.Telemetry do
 
     children =
       [
-        {:telemetry_poller, measurements: periodic_measurements(), period: 10_000}
+        {:telemetry_poller, measurements: periodic_measurements(), period: @metrics_interval}
       ] ++ otel_exporter
 
     Supervisor.init(children, strategy: :one_for_one)
@@ -200,13 +202,13 @@ defmodule Logflare.Telemetry do
         description: "Number of rows returned by endpoint query execution"
       ),
       distribution("logflare.system.top_processes.message_queue.length",
-        tags: [:name, :pid],
+        tags: [:name],
         description: "Top processes by message queue length"
       ),
       distribution("logflare.system.top_processes.memory.size",
-        tags: [:name, :pid],
+        tags: [:name],
         description: "Top processes by memory usage",
-        unit: {:byte, :kilobyte}
+        unit: {:byte, :megabyte}
       )
     ]
 
@@ -270,7 +272,7 @@ defmodule Logflare.Telemetry do
   defp process_attribute_metrics(type) do
     metric_params = @process_metrics[type]
 
-    :recon.proc_count(metric_params.process_attribute, 5)
+    :recon.proc_count(metric_params.process_attribute, 10)
     |> Enum.each(fn {pid, val, call_info} ->
       [current_function, initial_call] = get_current_and_initial_call(call_info)
       name = get_display_flag(call_info, initial_call, pid)
