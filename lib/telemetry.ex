@@ -319,7 +319,7 @@ defmodule Logflare.Telemetry do
     |> mfa_to_string()
   end
 
-  defp choose_call(call, _pid), do: mfa_to_string(call)
+  defp choose_initial_call(call, _pid), do: mfa_to_string(call)
 
   defp mfa_to_string({m, f, a}), do: "#{inspect(m)}.#{f}/#{a}"
 
