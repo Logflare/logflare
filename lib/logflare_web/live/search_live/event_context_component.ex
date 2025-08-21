@@ -129,7 +129,7 @@ defmodule LogflareWeb.SearchLive.EventContextComponent do
                 <a class="metadata-link " data-toggle="collapse" href={"#metadata-" <> log_event.id} aria-expanded="false" class="tw-text-[0.65rem]">
                   event body
                 </a>
-                <div class="collapse metadata tw-overflow-hidden" id={"metadata-" <> log_event.id}>
+                <div class="collapse metadata tw-overflow-hidden tw-basis-full" id={"metadata-" <> log_event.id}>
                   <pre class="pre-metadata text-clip tw-overflow-x-auto"><code class="tw-text-nowrap"><%= JSON.encode!(log_event.body, pretty: true) %></code></pre>
                 </div>
               </:actions>
