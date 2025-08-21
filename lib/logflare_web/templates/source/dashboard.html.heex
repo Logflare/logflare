@@ -122,9 +122,6 @@
                 <%= link to: ~p"/sources/#{source}/edit", class: "dashboard-links" do %>
                   <i class="fas fa-edit"></i>
                 <% end %>
-                <%= link to: ~p"/sources/#{source}", method: :delete, class: "dashboard-links" do %>
-                  <i class="fa fa-trash"></i>
-                <% end %>
               </div>
               <div class="source-link word-break-all">
                 <%= link(source.name, to: ~p"/sources/#{source}") %>

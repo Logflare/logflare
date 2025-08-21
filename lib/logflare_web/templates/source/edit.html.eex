@@ -344,6 +344,11 @@
 
   <% end %>
 
+  <%= section_header("Delete Source") %>
+  <%= button to: Routes.source_path(@conn, :delete, @source), method: :delete, class: "btn btn-outline-danger form-button", data: [confirm: "Are you sure? This cannot be undone"] do %>
+     <i class="fas fa-trash"></i>
+    Delete Source
+  <% end %>
 
   <script>
     document.addEventListener("DOMContentLoaded", async () => {
