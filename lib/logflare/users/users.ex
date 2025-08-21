@@ -57,37 +57,39 @@ defmodule Logflare.Users do
       |> Map.split([:limit])
 
     filters
-    |> Enum.reduce(from(u in User), fn
-      {:partner_id, id}, q when is_integer(id) ->
-        q
-        |> where([u], u.partner_id == ^id)
-
-      {:metadata, %{} = filters}, q ->
-        Enum.reduce(filters, q, fn {filter_k, v}, acc ->
-          normalized_k = if is_atom(filter_k), do: Atom.to_string(filter_k), else: filter_k
-          where(acc, [u], fragment("? -> ?", u.metadata, ^normalized_k) == ^v)
-        end)
-
-      {:provider, :google}, q ->
-        where(q, [u], u.provider == "google" and u.valid_google_account != false)
-
-      {:paying, true}, q ->
-        join(q, :left, [u], ba in assoc(u, :billing_account))
-        |> where(
-          [u, ..., ba],
-          (not is_nil(ba.stripe_subscriptions) and
-             fragment("jsonb_array_length(? -> 'data')", ba.stripe_subscriptions) > 0) or
-            (is_nil(ba) and u.billing_enabled) == false or
-            ba.lifetime_plan == true
-        )
-
-      _, q ->
-        q
-    end)
+    |> Enum.reduce(from(u in User), &apply_user_filter/2)
     |> limit(^min(opts.limit, @max_limit))
     |> Repo.all()
     |> Enum.map(&maybe_put_bigquery_defaults/1)
   end
+
+  defp apply_user_filter({:partner_id, partner_id}, query) when is_integer(partner_id) do
+    where(query, [u], u.partner_id == ^partner_id)
+  end
+
+  defp apply_user_filter({:metadata, %{} = filters}, query) do
+    Enum.reduce(filters, query, fn {filter_k, v}, acc ->
+      normalized_k = if is_atom(filter_k), do: Atom.to_string(filter_k), else: filter_k
+      where(acc, [u], fragment("? -> ?", u.metadata, ^normalized_k) == ^v)
+    end)
+  end
+
+  defp apply_user_filter({:provider, :google}, query) do
+    where(query, [u], u.provider == "google" and u.valid_google_account != false)
+  end
+
+  defp apply_user_filter({:paying, true}, query) do
+    query
+    |> join(:left, [u], ba in assoc(u, :billing_account))
+    |> where(
+      [u, ..., ba],
+      (not is_nil(ba.stripe_subscriptions) and
+         fragment("jsonb_array_length(? -> 'data')", ba.stripe_subscriptions) > 0) or
+        (is_nil(ba) and u.billing_enabled) == false or ba.lifetime_plan == true
+    )
+  end
+
+  defp apply_user_filter(_filter, query), do: query
 
   def get(user_id) do
     Repo.get(User, user_id)
