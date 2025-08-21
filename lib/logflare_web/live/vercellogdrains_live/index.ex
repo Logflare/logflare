@@ -376,30 +376,31 @@ defmodule LogflareWeb.VercelLogDrainsLive do
   defp assign_mapped_auths_teams(socket) do
     auths = socket.assigns.auths
 
-    auths_teams =
-      Enum.map(auths, fn auth ->
-        team =
-          if auth.team_id do
-            resp =
-              Vercel.Client.new(auth)
-              |> Vercel.Client.get_team(auth.team_id)
-
-            case resp do
-              {:ok, %Tesla.Env{status: 200} = resp} ->
-                resp.body
-
-              {:ok, %Tesla.Env{status: 403}} ->
-                nil
-
-              _ ->
-                nil
-            end
-          end
-
-        %{auth: auth, team: team}
-      end)
+    auths_teams = Enum.map(auths, &get_vercel_team/1)
 
     assign(socket, :auths_teams, auths_teams)
+  end
+
+  defp get_vercel_team(auth) do
+    team =
+      if auth.team_id do
+        resp =
+          Vercel.Client.new(auth)
+          |> Vercel.Client.get_team(auth.team_id)
+
+        case resp do
+          {:ok, %Tesla.Env{status: 200} = resp} ->
+            resp.body
+
+          {:ok, %Tesla.Env{status: 403}} ->
+            nil
+
+          _ ->
+            nil
+        end
+      end
+
+    %{auth: auth, team: team}
   end
 
   defp send_flash(level, message) do
