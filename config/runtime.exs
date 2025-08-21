@@ -1,4 +1,5 @@
 import Config
+alias Logflare.Utils
 
 filter_nil_kv_pairs = fn pairs when is_list(pairs) ->
   Enum.filter(pairs, fn {_k, v} -> v !== nil end)
@@ -12,17 +13,6 @@ detect_ip_version = fn host ->
     match?({:ok, _}, :inet.gethostbyname(host)) -> {:ok, :inet}
     true -> {:error, :nxdomain}
   end
-end
-
-socket_options_for_host = fn
-  host when is_binary(host) ->
-    case detect_ip_version.(host) do
-      {:ok, ip_version} -> [ip_version]
-      {:error, reason} -> raise "Failed to detect IP version: #{reason}"
-    end
-
-  _host ->
-    []
 end
 
 logflare_metadata =
@@ -134,7 +124,11 @@ config :logflare,
          hostname: System.get_env("DB_HOSTNAME"),
          password: System.get_env("DB_PASSWORD"),
          username: System.get_env("DB_USERNAME"),
-         socket_options: socket_options_for_host.(System.get_env("DB_HOSTNAME")),
+         socket_options:
+           case Utils.ip_version(System.get_env("DB_HOSTNAME", "")) do
+             nil -> []
+             version -> [version]
+           end,
          after_connect:
            if(System.get_env("DB_SCHEMA"),
              do: {Postgrex, :query!, ["set search_path=#{System.get_env("DB_SCHEMA")}", []]},
@@ -264,8 +258,14 @@ end
 socket_options_for_url = fn
   url when is_binary(url) ->
     case URI.parse(url) do
-      %URI{host: host} -> socket_options_for_host.(host)
-      _ -> raise "Failed to parse URL: #{inspect(url)}"
+      %URI{host: host} ->
+        case Utils.ip_version(host) do
+          nil -> []
+          version -> [version]
+        end
+
+      _ ->
+        raise "Failed to parse URL: #{inspect(url)}"
     end
 
   _url ->
@@ -280,7 +280,7 @@ cond do
            filter_nil_kv_pairs.(
              url: System.get_env("POSTGRES_BACKEND_URL"),
              schema: System.get_env("POSTGRES_BACKEND_SCHEMA"),
-             socket_options: socket_options_for_url.(System.get_env("POSTGRES_BACKEND_URL"))
+             socket_options: socket_options_for_url.(System.get_env("POSTGRES_BACKEND_URL", ""))
            )
 
   config_env() != :test ->
