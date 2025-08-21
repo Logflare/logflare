@@ -311,7 +311,9 @@ defmodule Logflare.EndpointsTest do
           :sandboxable,
           :cache_duration_seconds,
           :proactive_requerying_seconds,
-          :max_limit
+          :max_limit,
+          :enable_auth,
+          :labels
         ] do
       test "update_query/2 will kill all existing caches on field change (#{field_changed})" do
         expect(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, 2, fn _, _, _ ->
@@ -327,6 +329,8 @@ defmodule Logflare.EndpointsTest do
           case unquote(field_changed) do
             :query -> %{query: "select 'datetime' as date"}
             :sandboxable -> %{sandboxable: true}
+            :enable_auth -> %{enable_auth: !endpoint.enable_auth}
+            :labels -> %{labels: "environment"}
             # integer keys
             key -> Map.new([{key, 123}])
           end

@@ -94,7 +94,8 @@ defmodule Logflare.Endpoints do
             :cache_duration_seconds,
             :proactive_requerying_seconds,
             :max_limit,
-            :enable_auth
+            :enable_auth,
+            :labels
           ]
         end)
 
