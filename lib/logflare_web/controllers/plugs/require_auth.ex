@@ -12,31 +12,28 @@ defmodule LogflareWeb.Plugs.RequireAuth do
     assigns = conn.assigns
     user = assigns[:user]
     is_single_tenant = SingleTenant.single_tenant?()
+    user_id = get_session(conn, :user_id)
 
     cond do
       user != nil and is_single_tenant ->
         conn
         |> put_session(:user_id, user.id)
 
-      user ->
-        user_id = get_session(conn, :user_id)
+      user && user_id ->
+        referer = get_session(conn, :redirect_to)
 
-        if user_id do
-          referer = get_session(conn, :redirect_to)
-
-          if referer do
-            conn
-            |> put_session(:user_id, user_id)
-            |> put_session(:redirect_to, nil)
-            |> maybe_get_put_team_user_session()
-            |> redirect(to: referer)
-            |> halt()
-          else
-            conn
-            |> put_last_provider_cookie()
-            |> put_session(:user_id, user_id)
-            |> maybe_get_put_team_user_session()
-          end
+        if referer do
+          conn
+          |> put_session(:user_id, user_id)
+          |> put_session(:redirect_to, nil)
+          |> maybe_get_put_team_user_session()
+          |> redirect(to: referer)
+          |> halt()
+        else
+          conn
+          |> put_last_provider_cookie()
+          |> put_session(:user_id, user_id)
+          |> maybe_get_put_team_user_session()
         end
 
       conn.request_path == "/oauth/authorize" ->
