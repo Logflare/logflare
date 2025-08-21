@@ -257,7 +257,7 @@ defmodule Logflare.Google.BigQuery.GenUtils do
   def format_value(v) when is_binary(v) do
     v =
       case DateTime.from_iso8601(v) do
-        {:ok, datetime, _} -> DateTime.to_unix(datetime, :milliseconds) |> Integer.to_string()
+        {:ok, datetime, _} -> DateTime.to_unix(datetime, :millisecond) |> Integer.to_string()
         _ -> v
       end
 
