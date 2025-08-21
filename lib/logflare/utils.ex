@@ -205,4 +205,28 @@ defmodule Logflare.Utils do
   end
 
   def iso_timestamp(_timestamp), do: nil
+
+  @doc """
+  Determines the IP version of an address.
+
+  iex> ip_version("127.0.0.1")
+  :inet
+
+  iex> ip_version("127.0.0.1:8222")
+  nil
+
+  iex> ip_version("1467:f4e1:7a77:756a:896c:dff5:ca48:cf3c")
+  :inet6
+
+  iex> ip_version("not_an_address")
+  nil
+  """
+  @spec ip_version(String.t()) :: :inet | :inet6 | nil
+  def ip_version(address) when is_binary(address) do
+    case :inet.parse_address(String.to_charlist(address)) do
+      {:ok, {_, _, _, _}} -> :inet
+      {:ok, {_, _, _, _, _, _, _, _}} -> :inet6
+      {:error, _} -> nil
+    end
+  end
 end
