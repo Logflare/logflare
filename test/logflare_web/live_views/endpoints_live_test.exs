@@ -124,11 +124,12 @@ defmodule LogflareWeb.EndpointsLiveTest do
   end
 
   describe "parse queries on change" do
-    test "new endpoint", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/endpoints/new")
+    setup do
+      [valid_query: "select current_timestamp() as my_time", invalid_query: "bad_query"]
+    end
 
-      valid_query = "select current_timestamp() as my_time"
-      invalid_query = "bad_query"
+    test "new endpoint", %{conn: conn, valid_query: valid_query, invalid_query: invalid_query} do
+      {:ok, view, _html} = live(conn, "/endpoints/new")
 
       # triggering event handler directly since Monaco does this via JavaScript
       assert view
@@ -182,6 +183,32 @@ defmodule LogflareWeb.EndpointsLiveTest do
       assert_patched(view, "/endpoints/#{endpoint.id}")
       # no longer has the initail query string
       refute render(view) =~ endpoint.query
+    end
+
+    test "form fields are tracked through query parsing", %{
+      conn: conn,
+      user: user,
+      valid_query: valid_query,
+      invalid_query: invalid_query
+    } do
+      {:ok, view, _html} = live(conn, "/endpoints/new")
+
+      assert view
+             |> form("#endpoint", %{
+               endpoint: %{labels: "session_id"}
+             })
+             |> render_submit() =~ "session_id"
+
+      [invalid_query, valid_query]
+      |> Enum.each(fn query ->
+        view
+        |> with_target("#endpoint_query_editor")
+        |> render_hook("parse-query", %{"value" => query})
+
+        assert view
+               |> element("#endpoint_labels")
+               |> render =~ "session_id"
+      end)
     end
   end
 

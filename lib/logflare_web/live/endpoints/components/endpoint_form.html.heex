@@ -1,5 +1,5 @@
 <div class="tw-flex tw-my-10 tw-gap-2">
-  <.form :let={f} for={@endpoint_changeset} as={:endpoint} id="endpoint" phx-submit="save-endpoint" class="tw-w-1/2 tw-border-r-1 pr-2 tw-border-l-0 tw-border-t-0 tw-border-b-0 tw-border-solid tw-border-gray-600">
+  <.form :let={f} for={@endpoint_changeset} as={:endpoint} id="endpoint" phx-change="validate" phx-submit="save-endpoint" class="tw-w-1/2 tw-border-r-1 pr-2 tw-border-l-0 tw-border-t-0 tw-border-b-0 tw-border-solid tw-border-gray-600">
     <%= hidden_input(f, :language) %>
     <div class="tw-sticky tw-flex tw-justify-between tw-gap-4">
       <button :if={@show_endpoint} data-confirm="Are you sure? This cannot be undone" phx-click="delete-endpoint" phx-value-endpoint_id={@show_endpoint.id} class="btn btn-outline-danger" type="button">
