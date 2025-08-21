@@ -187,7 +187,6 @@ defmodule LogflareWeb.EndpointsLiveTest do
 
     test "form fields are tracked through query parsing", %{
       conn: conn,
-      user: user,
       valid_query: valid_query,
       invalid_query: invalid_query
     } do
