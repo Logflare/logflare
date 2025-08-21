@@ -670,67 +670,70 @@ defmodule Logflare.Sql.DialectTranslation do
         get_in(from, ["relation", "Table", "alias", "name", "value"])
       end)
 
-    for from <- from_list do
-      Enum.reduce(from["joins"] || [], %{}, fn
-        %{
-          "relation" => %{
-            "UNNEST" => %{
-              "array_expr" => %{"Identifier" => %{"value" => identifier_val}},
-              "alias" => %{"name" => %{"value" => alias_name}}
-            }
-          }
-        },
-        acc ->
-          Map.put(acc, alias_name, [identifier_val])
-
-        %{
-          "relation" => %{
-            "UNNEST" => %{
-              "array_expr" => %{"CompoundIdentifier" => identifiers},
-              "alias" => %{"name" => %{"value" => alias_name}}
-            }
-          }
-        },
-        acc ->
-          arr_path =
-            for i <- identifiers, value = i["value"], value not in table_aliases do
-              if is_map_key(acc, value), do: acc[value], else: [value]
-            end
-            |> List.flatten()
-
-          Map.put(acc, alias_name, arr_path)
-
-        %{
-          "relation" => %{
-            "UNNEST" => %{
-              "array_exprs" => array_exprs,
-              "alias" => %{"name" => %{"value" => alias_name}}
-            }
-          }
-        },
-        acc ->
-          arr_path =
-            for expr <- array_exprs do
-              case expr do
-                %{"Identifier" => %{"value" => identifier_val}} ->
-                  [identifier_val]
-
-                %{"CompoundIdentifier" => identifiers} ->
-                  for i <- identifiers, value = i["value"], value not in table_aliases do
-                    if is_map_key(acc, value), do: acc[value], else: [value]
-                  end
-                  |> List.flatten()
-
-                _ ->
-                  []
-              end
-            end
-            |> List.flatten()
-
-          Map.put(acc, alias_name, arr_path)
-      end)
-    end
+    from_list
+    |> Enum.map(&build_mappings(&1, table_aliases))
     |> Enum.reduce(%{}, fn mappings, acc -> Map.merge(acc, mappings) end)
+  end
+
+  defp build_mappings(from, table_aliases) do
+    Enum.reduce(from["joins"] || [], %{}, fn
+      %{
+        "relation" => %{
+          "UNNEST" => %{
+            "array_expr" => %{"Identifier" => %{"value" => identifier_val}},
+            "alias" => %{"name" => %{"value" => alias_name}}
+          }
+        }
+      },
+      acc ->
+        Map.put(acc, alias_name, [identifier_val])
+
+      %{
+        "relation" => %{
+          "UNNEST" => %{
+            "array_expr" => %{"CompoundIdentifier" => identifiers},
+            "alias" => %{"name" => %{"value" => alias_name}}
+          }
+        }
+      },
+      acc ->
+        arr_path =
+          for i <- identifiers, value = i["value"], value not in table_aliases do
+            if is_map_key(acc, value), do: acc[value], else: [value]
+          end
+          |> List.flatten()
+
+        Map.put(acc, alias_name, arr_path)
+
+      %{
+        "relation" => %{
+          "UNNEST" => %{
+            "array_exprs" => array_exprs,
+            "alias" => %{"name" => %{"value" => alias_name}}
+          }
+        }
+      },
+      acc ->
+        arr_path =
+          for expr <- array_exprs do
+            case expr do
+              %{"Identifier" => %{"value" => identifier_val}} ->
+                [identifier_val]
+
+              %{"CompoundIdentifier" => identifiers} ->
+                for i <- identifiers, value = i["value"], value not in table_aliases do
+                  if is_map_key(acc, value), do: acc[value], else: [value]
+                end
+                |> List.flatten()
+
+              _ ->
+                []
+            end
+          end
+          |> List.flatten()
+
+        Map.put(acc, alias_name, arr_path)
+    end)
   end
 
   defp traverse_convert_identifiers({"InList" = k, v}, data) do
