@@ -124,11 +124,12 @@ defmodule LogflareWeb.EndpointsLiveTest do
   end
 
   describe "parse queries on change" do
-    test "new endpoint", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/endpoints/new")
+    setup do
+      [valid_query: "select current_timestamp() as my_time", invalid_query: "bad_query"]
+    end
 
-      valid_query = "select current_timestamp() as my_time"
-      invalid_query = "bad_query"
+    test "new endpoint", %{conn: conn, valid_query: valid_query, invalid_query: invalid_query} do
+      {:ok, view, _html} = live(conn, "/endpoints/new")
 
       # triggering event handler directly since Monaco does this via JavaScript
       assert view
@@ -183,6 +184,31 @@ defmodule LogflareWeb.EndpointsLiveTest do
       # no longer has the initail query string
       refute render(view) =~ endpoint.query
     end
+
+    test "form fields are tracked through query parsing", %{
+      conn: conn,
+      valid_query: valid_query,
+      invalid_query: invalid_query
+    } do
+      {:ok, view, _html} = live(conn, "/endpoints/new")
+
+      assert view
+             |> form("#endpoint", %{
+               endpoint: %{labels: "session_id"}
+             })
+             |> render_submit() =~ "session_id"
+
+      [invalid_query, valid_query]
+      |> Enum.each(fn query ->
+        view
+        |> with_target("#endpoint_query_editor")
+        |> render_hook("parse-query", %{"value" => query})
+
+        assert view
+               |> element("#endpoint_labels")
+               |> render =~ "session_id"
+      end)
+    end
   end
 
   test "show endpoint, auth disabled", %{conn: conn, user: user} do
@@ -199,8 +225,11 @@ defmodule LogflareWeb.EndpointsLiveTest do
 
   describe "run queries" do
     setup do
+      pid = self()
+
       GoogleApi.BigQuery.V2.Api.Jobs
-      |> expect(:bigquery_jobs_query, 1, fn _conn, _proj_id, _opts ->
+      |> expect(:bigquery_jobs_query, 1, fn _conn, _proj_id, opts ->
+        send(pid, {:labels, opts[:body].labels})
         {:ok, TestUtils.gen_bq_response([%{"testing" => "results-123"}])}
       end)
 
@@ -220,6 +249,8 @@ defmodule LogflareWeb.EndpointsLiveTest do
           params: %{}
         }
       }) =~ "results-123"
+
+      assert_received {:labels, %{"endpoint_id" => "nil", "managed_by" => "logflare"}}
 
       assert has_element?(view, "label", "Description")
       assert has_element?(view, "h5", "Caching")
@@ -262,7 +293,11 @@ defmodule LogflareWeb.EndpointsLiveTest do
 
     test "show endpoint, with params", %{conn: conn, user: user} do
       endpoint =
-        insert(:endpoint, user: user, query: "select 'id' as id, @test_param as param;\n\n")
+        insert(:endpoint,
+          user: user,
+          query: "select 'id' as id, @test_param as param;\n\n",
+          labels: "session_id,test=@test_param"
+        )
 
       {:ok, view, _html} = live(conn, "/endpoints/#{endpoint.id}")
       refute render(view) =~ "results-123"
@@ -286,6 +321,9 @@ defmodule LogflareWeb.EndpointsLiveTest do
              }) =~ "results-123"
 
       assert has_element?(view, "input[value='my_param_value']")
+
+      assert_received {:labels, labels = %{"test" => "my_param_value", "session_id" => "nil"}}
+      assert labels["endpoint_id"] == endpoint.id |> to_string()
     end
   end
 end

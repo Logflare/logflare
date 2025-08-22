@@ -186,8 +186,10 @@ defmodule Logflare.EndpointsTest do
 
       assert {:ok, %{rows: [%{"testing" => _}]}} = Endpoints.run_query(endpoint)
 
+      endpoint_id_label_value = Integer.to_string(endpoint_id)
+
       assert_received %{
-        "endpoint_id" => ^endpoint_id
+        "endpoint_id" => ^endpoint_id_label_value
       }
     end
 
@@ -309,7 +311,9 @@ defmodule Logflare.EndpointsTest do
           :sandboxable,
           :cache_duration_seconds,
           :proactive_requerying_seconds,
-          :max_limit
+          :max_limit,
+          :enable_auth,
+          :labels
         ] do
       test "update_query/2 will kill all existing caches on field change (#{field_changed})" do
         expect(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, 2, fn _, _, _ ->
@@ -325,6 +329,8 @@ defmodule Logflare.EndpointsTest do
           case unquote(field_changed) do
             :query -> %{query: "select 'datetime' as date"}
             :sandboxable -> %{sandboxable: true}
+            :enable_auth -> %{enable_auth: !endpoint.enable_auth}
+            :labels -> %{labels: "environment"}
             # integer keys
             key -> Map.new([{key, 123}])
           end

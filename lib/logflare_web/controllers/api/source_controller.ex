@@ -195,7 +195,7 @@ defmodule LogflareWeb.Api.SourceController do
         else
           SourceSchemas.format_schema(schema, :json_schema, %{
             :title => source.name,
-            :"$id" => ~p"/sources/#{source.token}/schema"
+            :"$id" => ~p"/api/sources/#{source.token}/schema"
           })
         end
 

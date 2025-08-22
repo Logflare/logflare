@@ -3,13 +3,15 @@ defmodule LogflareWeb.AlertsLive do
   use LogflareWeb, :live_view
   use Phoenix.Component
 
-  require Logger
+  import LogflareWeb.Utils, only: [stringify_changeset_errors: 2]
 
   alias Logflare.Users
   alias Logflare.Alerting
   alias Logflare.Alerting.AlertQuery
   alias Logflare.Backends
   alias Logflare.Endpoints
+
+  require Logger
 
   embed_templates("actions/*", suffix: "_action")
   embed_templates("components/*")
@@ -153,7 +155,9 @@ defmodule LogflareWeb.AlertsLive do
        |> put_flash(:info, "Slack notifications have been removed.")}
     else
       {:error, %Ecto.Changeset{} = changeset} ->
-        error_message = format_ecto_errors(changeset, "Failed to remove Slack notifications")
+        error_message =
+          stringify_changeset_errors(changeset, "Failed to remove Slack notifications")
+
         {:noreply, put_flash(socket, :error, error_message)}
     end
   end
@@ -240,7 +244,7 @@ defmodule LogflareWeb.AlertsLive do
             |> put_flash(:info, "Backend added successfully")
 
           {:error, %Ecto.Changeset{} = changeset} ->
-            error_message = format_ecto_errors(changeset, "Failed to add backend")
+            error_message = stringify_changeset_errors(changeset, "Failed to add backend")
 
             socket
             |> put_flash(:error, error_message)
@@ -275,7 +279,7 @@ defmodule LogflareWeb.AlertsLive do
             |> put_flash(:info, "Backend removed successfully")
 
           {:error, %Ecto.Changeset{} = changeset} ->
-            error_message = format_ecto_errors(changeset, "Failed to remove backend")
+            error_message = stringify_changeset_errors(changeset, "Failed to remove backend")
 
             socket
             |> put_flash(:error, error_message)
@@ -325,17 +329,6 @@ defmodule LogflareWeb.AlertsLive do
             end),
          {:ok, _} <- Alerting.upsert_alert_job(alert) do
       {:ok, alert}
-    end
-  end
-
-  defp format_ecto_errors(%Ecto.Changeset{} = changeset, default_message) do
-    changeset
-    |> Ecto.Changeset.traverse_errors(fn {msg, _opts} -> msg end)
-    |> Enum.map(fn {field, errors} -> "#{field}: #{Enum.join(errors, ", ")}" end)
-    |> Enum.join("; ")
-    |> case do
-      "" -> default_message
-      errors -> "#{default_message}: #{errors}"
     end
   end
 end

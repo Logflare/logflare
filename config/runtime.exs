@@ -1,7 +1,18 @@
 import Config
+alias Logflare.Utils
 
 filter_nil_kv_pairs = fn pairs when is_list(pairs) ->
   Enum.filter(pairs, fn {_k, v} -> v !== nil end)
+end
+
+detect_ip_version = fn host ->
+  host = String.to_charlist(host)
+
+  cond do
+    match?({:ok, _}, :inet6_tcp.getaddr(host)) -> {:ok, :inet6}
+    match?({:ok, _}, :inet.gethostbyname(host)) -> {:ok, :inet}
+    true -> {:error, :nxdomain}
+  end
 end
 
 logflare_metadata =
@@ -68,7 +79,21 @@ config :logflare,
 config :logflare,
        LogflareWeb.Endpoint,
        filter_nil_kv_pairs.(
-         http: filter_nil_kv_pairs.(port: System.get_env("PHX_HTTP_PORT")),
+         http:
+           filter_nil_kv_pairs.(
+             port: System.get_env("PHX_HTTP_PORT"),
+             ip:
+               case System.get_env("PHX_HTTP_IP") do
+                 nil ->
+                   nil
+
+                 value ->
+                   case :inet.parse_address(to_charlist(value)) do
+                     {:ok, ip} -> ip
+                     {:error, _} -> raise "Failed to parse IP address: #{value}"
+                   end
+               end
+           ),
          url:
            filter_nil_kv_pairs.(
              host: System.get_env("PHX_URL_HOST"),
@@ -99,6 +124,11 @@ config :logflare,
          hostname: System.get_env("DB_HOSTNAME"),
          password: System.get_env("DB_PASSWORD"),
          username: System.get_env("DB_USERNAME"),
+         socket_options:
+           case Utils.ip_version(System.get_env("DB_HOSTNAME", "")) do
+             nil -> []
+             version -> [version]
+           end,
          after_connect:
            if(System.get_env("DB_SCHEMA"),
              do: {Postgrex, :query!, ["set search_path=#{System.get_env("DB_SCHEMA")}", []]},
@@ -225,6 +255,23 @@ if config_env() != :test do
   config :grpc, port: System.get_env("LOGFLARE_GRPC_PORT", "50051") |> String.to_integer()
 end
 
+socket_options_for_url = fn
+  url when is_binary(url) ->
+    case URI.parse(url) do
+      %URI{host: host} ->
+        case Utils.ip_version(host) do
+          nil -> []
+          version -> [version]
+        end
+
+      _ ->
+        raise "Failed to parse URL: #{inspect(url)}"
+    end
+
+  _url ->
+    nil
+end
+
 cond do
   System.get_env("LOGFLARE_SINGLE_TENANT", "false") == "true" &&
       not is_nil(System.get_env("POSTGRES_BACKEND_URL")) ->
@@ -232,7 +279,8 @@ cond do
            :postgres_backend_adapter,
            filter_nil_kv_pairs.(
              url: System.get_env("POSTGRES_BACKEND_URL"),
-             schema: System.get_env("POSTGRES_BACKEND_SCHEMA")
+             schema: System.get_env("POSTGRES_BACKEND_SCHEMA"),
+             socket_options: socket_options_for_url.(System.get_env("POSTGRES_BACKEND_URL", ""))
            )
 
   config_env() != :test ->

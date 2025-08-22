@@ -2,6 +2,7 @@ defmodule LogflareWeb.UtilsTest do
   use LogflareWeb.ConnCase, async: false
 
   alias LogflareWeb.Utils
+  alias Logflare.Rules
 
   doctest LogflareWeb.Utils, import: true
 
@@ -110,6 +111,72 @@ defmodule LogflareWeb.UtilsTest do
       TestUtils.retry_assert(fn ->
         assert_received {:get_value_called, "test-feature", false, :user_obj}
       end)
+    end
+  end
+
+  describe "stringify_changeset_errors/1" do
+    test "converts single field error to string" do
+      user = insert(:user)
+      source = insert(:source, user: user)
+      backend = insert(:backend, sources: [source], user: user)
+
+      assert {:error, %Ecto.Changeset{} = changeset} =
+               Rules.create_rule(%{
+                 source_id: source.id,
+                 backend_id: backend.id,
+                 lql_string: ""
+               })
+
+      assert changeset.valid? == false
+      assert Utils.stringify_changeset_errors(changeset) == "lql_string: can't be blank"
+    end
+
+    test "handles errors with interpolation values" do
+      changeset = %Ecto.Changeset{
+        errors: [
+          age: {"must be greater than %{number}", [number: 18]},
+          name: {"should be at most %{count} character(s)", [count: 255]}
+        ],
+        data: %{},
+        types: %{age: :integer, name: :string}
+      }
+
+      expected = """
+      name: should be at most 255 character(s)
+      age: must be greater than 18\
+      """
+
+      assert Utils.stringify_changeset_errors(changeset) == expected
+    end
+
+    test "handles multiple errors for the same field" do
+      changeset = %Ecto.Changeset{
+        errors: [
+          email: {"can't be blank", []},
+          email: {"is invalid format", []}
+        ],
+        data: %{},
+        types: %{email: :string}
+      }
+
+      assert Utils.stringify_changeset_errors(changeset) ==
+               "email: can't be blank & is invalid format"
+    end
+  end
+
+  describe "stringify_changeset_errors/2" do
+    test "handles multiple errors with default message" do
+      changeset = %Ecto.Changeset{
+        errors: [
+          name: {"can't be blank", []},
+          email: {"is invalid", []}
+        ],
+        data: %{},
+        types: %{name: :string, email: :string}
+      }
+
+      assert Utils.stringify_changeset_errors(changeset, "Form submission failed") ==
+               "Form submission failed: name: can't be blank; email: is invalid"
     end
   end
 

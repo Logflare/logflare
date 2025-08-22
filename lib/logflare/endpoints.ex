@@ -94,7 +94,8 @@ defmodule Logflare.Endpoints do
             :cache_duration_seconds,
             :proactive_requerying_seconds,
             :max_limit,
-            :enable_auth
+            :enable_auth,
+            :labels
           ]
         end)
 
@@ -278,12 +279,12 @@ defmodule Logflare.Endpoints do
     iex> run_query_string(%User{...}, {:bq_sql, "select current_time() where @value > 4"}, params: %{"value" => "123"})
     {:ok, %{rows:  [...]} }
   """
-  @typep run_query_string_opts :: [sandboxable: boolean(), params: map()]
+  @typep run_query_string_opts :: [sandboxable: boolean(), params: map(), parsed_labels: map()]
   @typep language :: :bq_sql | :pg_sql | :lql
   @spec run_query_string(User.t(), {language(), String.t()}, run_query_string_opts()) ::
           run_query_return()
   def run_query_string(user, {language, query_string}, opts \\ %{}) do
-    opts = Enum.into(opts, %{sandboxable: false, params: %{}})
+    opts = Enum.into(opts, %{sandboxable: false, parsed_labels: %{}, params: %{}})
 
     source_mapping =
       user
@@ -297,6 +298,7 @@ defmodule Logflare.Endpoints do
       sandboxable: opts.sandboxable,
       user: user,
       user_id: user.id,
+      parsed_labels: opts.parsed_labels,
       source_mapping: source_mapping
     }
 

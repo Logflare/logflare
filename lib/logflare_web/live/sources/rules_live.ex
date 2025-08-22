@@ -5,10 +5,10 @@ defmodule LogflareWeb.Sources.RulesLive do
   use LogflareWeb, :live_view
 
   import LogflareWeb.ModalLiveHelpers
+  import LogflareWeb.Utils, only: [stringify_changeset_errors: 1]
 
   alias Logflare.Lql
   alias Logflare.Rules
-  alias Logflare.Rules.Rule
   alias Logflare.SourceSchemas
   alias Logflare.Sources
   alias Logflare.Users
@@ -80,7 +80,7 @@ defmodule LogflareWeb.Sources.RulesLive do
             |> put_flash(:info, "LQL source routing rule created successfully!")
 
           {:error, changeset} ->
-            error_message = Rule.changeset_error_to_string(changeset)
+            error_message = stringify_changeset_errors(changeset)
             put_flash(socket, :error, error_message)
         end
       else

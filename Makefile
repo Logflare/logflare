@@ -323,7 +323,7 @@ deploy.prod.versioned:
 	@echo "Creating prod instance templates..."
 	gcloud builds submit . \
 		--config=./cloudbuild/prod/pre-deploy.yaml \
-		--substitutions=_IMAGE_TAG=$(VERSION),_NORMALIZED_IMAGE_TAG=$(NORMALIZED_VERSION),_CLUSTER=prod-a \
+		--substitutions=_IMAGE_TAG=$(VERSION),_NORMALIZED_IMAGE_TAG=$(NORMALIZED_VERSION),_CLUSTER=prod-a,_LOGFLARE_ALERTS_ENABLED=true \
 		--region=europe-west3 \
 		--gcs-log-dir="gs://logflare-prod_cloudbuild-logs/logs"
 	gcloud builds submit . \

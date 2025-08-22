@@ -1,5 +1,6 @@
 defmodule Logflare.RulesTest do
   use Logflare.DataCase
+
   alias Logflare.Rules
   alias Logflare.Rules.Rule
   alias Logflare.Sources
@@ -165,22 +166,6 @@ defmodule Logflare.RulesTest do
       assert changeset.valid? == false
       assert errors_on(changeset).lql_string == ["can't be blank"]
     end
-  end
-
-  test "changeset_error_to_string/1 rule with errors can be converted to a single string" do
-    user = insert(:user)
-    source = insert(:source, user: user)
-    backend = insert(:backend, sources: [source], user: user)
-
-    assert {:error, %Ecto.Changeset{} = changeset} =
-             Rules.create_rule(%{
-               source_id: source.id,
-               backend_id: backend.id,
-               lql_string: ""
-             })
-
-    assert changeset.valid? == false
-    assert Rule.changeset_error_to_string(changeset) == "lql_string: can't be blank\n"
   end
 
   test "update_rule" do

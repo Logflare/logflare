@@ -122,7 +122,7 @@ defmodule Logflare.Google.BigQuery do
         description: "Managed by Logflare",
         labels: %{
           "managed_by" => "logflare",
-          "logflare_source" => GenUtils.format_key(source)
+          "logflare_source" => GenUtils.format_value(source)
         }
       }
     )
@@ -280,7 +280,7 @@ defmodule Logflare.Google.BigQuery do
       description: "Managed by Logflare",
       labels: %{
         "managed_by" => "logflare",
-        "logflare_plan" => GenUtils.format_key(plan),
+        "logflare_plan" => GenUtils.format_value(plan),
         "logflare_account" => user.id
       },
       location: dataset_location
@@ -345,7 +345,7 @@ defmodule Logflare.Google.BigQuery do
       description: "Managed by Logflare",
       labels: %{
         "managed_by" => "logflare",
-        "logflare_plan" => GenUtils.format_key(plan),
+        "logflare_plan" => GenUtils.format_value(plan),
         "logflare_account" => user.id
       }
     }
@@ -417,7 +417,7 @@ defmodule Logflare.Google.BigQuery do
       description: "Managed by Logflare",
       labels: %{
         "managed_by" => "logflare",
-        "logflare_plan" => GenUtils.format_key(plan),
+        "logflare_plan" => GenUtils.format_value(plan),
         "logflare_account" => user_id
       }
     }

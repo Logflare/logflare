@@ -125,11 +125,8 @@ defmodule LogflareWeb do
 
   def routes do
     quote do
-      # declare endpoint and router for Phoenix.VerifiedRoutes
-      @endpoint LogflareWeb.Endpoint
-      @router LogflareWeb.Router
       alias LogflareWeb.Router.Helpers, as: Routes
-      import Phoenix.VerifiedRoutes
+      use Phoenix.VerifiedRoutes, endpoint: LogflareWeb.Endpoint, router: LogflareWeb.Router
     end
   end
 
