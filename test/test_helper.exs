@@ -51,6 +51,7 @@ Mimic.copy(Logflare.Sources.Cache)
 Mimic.copy(Logflare.SystemMetrics.AllLogsLogged)
 Mimic.copy(Logflare.Users)
 Mimic.copy(Logflare.Users.Cache)
+Mimic.copy(Logflare.Utils.Tasks)
 Mimic.copy(LogflareWeb.Plugs.RateLimiter)
 Mimic.copy(Stripe.Customer)
 Mimic.copy(Stripe.PaymentMethod)
@@ -64,6 +65,7 @@ Mimic.stub(Goth)
 Mimic.stub(Finch)
 
 ExUnit.configure(
+  capture_log: true,
   exclude: [not_implemented: true, integration: true, failing: true, benchmark: true]
 )
 
