@@ -201,7 +201,7 @@ defmodule Logflare.Telemetry do
         tags: [:endpoint_id],
         description: "Number of rows returned by endpoint query execution"
       ),
-      distribution("logflare.system.top_processes.message_queue.length",
+      last_value("logflare.system.top_processes.message_queue.length",
         tags: [:name],
         description: "Top processes by message queue length"
       ),
@@ -209,6 +209,14 @@ defmodule Logflare.Telemetry do
         tags: [:name],
         description: "Top processes by memory usage",
         unit: {:byte, :megabyte}
+      ),
+      last_value("logflare.system.top_ets_tables.individual.size",
+        tags: [:name],
+        description: "Top ETS individual tables by size"
+      ),
+      sum("logflare.system.top_ets_tables.grouped.size",
+        tags: [:name],
+        description: "Top ETS tables by size, grouped by name"
       )
     ]
 
@@ -235,7 +243,8 @@ defmodule Logflare.Telemetry do
     process_metrics =
       [
         {__MODULE__, :process_message_queue_metrics, []},
-        {__MODULE__, :process_memory_metrics, []}
+        {__MODULE__, :process_memory_metrics, []},
+        {__MODULE__, :ets_table_metrics, []}
       ]
 
     cachex_metrics ++ process_metrics
@@ -324,6 +333,43 @@ defmodule Logflare.Telemetry do
   defp choose_initial_call(call, _pid), do: mfa_to_string(call)
 
   defp mfa_to_string({m, f, a}), do: "#{inspect(m)}.#{f}/#{a}"
+
+  def ets_table_metrics do
+    tables = get_ets_tables_info()
+
+    # send top 10
+    tables
+    |> Enum.take(10)
+    |> Enum.each(fn table ->
+      metrics = %{size: table[:size]}
+      metadata = %{name: table[:name]}
+
+      :telemetry.execute([:logflare, :system, :top_ets_tables, :individual], metrics, metadata)
+    end)
+
+    # send grouped top 100
+    tables
+    |> Enum.take(100)
+    |> Enum.each(fn table ->
+      metrics = %{size: table[:size]}
+      metadata = %{name: ets_table_base_name(table[:name])}
+
+      :telemetry.execute([:logflare, :system, :top_ets_tables, :grouped], metrics, metadata)
+    end)
+  end
+
+  defp get_ets_tables_info do
+    :ets.all()
+    |> Enum.map(&:ets.info/1)
+    |> Enum.sort_by(& &1[:size], :desc)
+  end
+
+  @number_suffix_regex ~r/(?=.*)(\d+)$/
+  defp ets_table_base_name(name) do
+    name
+    |> inspect()
+    |> String.replace(@number_suffix_regex, "")
+  end
 
   defp batch_size_reporter_opts do
     [buckets: [0, 1, 5, 10, 50, 100, 150, 250, 500, 1000, 2000]]
