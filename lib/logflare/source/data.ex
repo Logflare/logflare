@@ -12,21 +12,7 @@ defmodule Logflare.Source.Data do
     case BigQuery.get_table(token) do
       {:ok, table_info} ->
         table_rows = String.to_integer(table_info.numRows)
-
-        buffer_rows =
-          case is_nil(table_info.streamingBuffer) do
-            true ->
-              0
-
-            false ->
-              case is_nil(table_info.streamingBuffer.estimatedRows) do
-                true ->
-                  0
-
-                false ->
-                  String.to_integer(table_info.streamingBuffer.estimatedRows)
-              end
-          end
+        buffer_rows = get_streaming_buffer_rows(table_info.streamingBuffer)
 
         table_rows + buffer_rows
 
@@ -34,6 +20,10 @@ defmodule Logflare.Source.Data do
         0
     end
   end
+
+  defp get_streaming_buffer_rows(nil), do: 0
+  defp get_streaming_buffer_rows(%{estimatedRows: nil}), do: 0
+  defp get_streaming_buffer_rows(%{estimatedRows: rows}), do: String.to_integer(rows)
 
   @spec get_total_inserts(atom) :: non_neg_integer
   def get_total_inserts(source_id) when is_atom(source_id) do
