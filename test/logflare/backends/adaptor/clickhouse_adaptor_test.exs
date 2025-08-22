@@ -19,13 +19,13 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptorTest do
       [source: source, backend: backend, stringified_source_token: stringified_source_token]
     end
 
-    test "clickhouse_ingest_table_name/1 generates a unique log ingest table name based on the source token",
+    test "`clickhouse_ingest_table_name/1` generates a unique log ingest table name based on the source token",
          %{source: source, stringified_source_token: stringified_source_token} do
       assert ClickhouseAdaptor.clickhouse_ingest_table_name(source) ==
                "log_events_#{stringified_source_token}"
     end
 
-    test "clickhouse_ingest_table_name/1 will raise an exception if the table name is equal to or exceeds 200 chars",
+    test "`clickhouse_ingest_table_name/1` will raise an exception if the table name is equal to or exceeds 200 chars",
          %{source: source} do
       assert_raise RuntimeError,
                    ~r/^The dynamically generated ClickHouse resource name starting with `log_events_/,
@@ -36,13 +36,13 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptorTest do
                    end
     end
 
-    test "clickhouse_key_count_table_name/1 generates a unique key count table name based on the source token",
+    test "`clickhouse_key_count_table_name/1` generates a unique key count table name based on the source token",
          %{source: source, stringified_source_token: stringified_source_token} do
       assert ClickhouseAdaptor.clickhouse_key_count_table_name(source) ==
                "key_type_counts_per_min_#{stringified_source_token}"
     end
 
-    test "clickhouse_key_count_table_name/1 will raise an exception if the table name is equal to or exceeds 200 chars",
+    test "`clickhouse_key_count_table_name/1` will raise an exception if the table name is equal to or exceeds 200 chars",
          %{source: source} do
       assert_raise RuntimeError,
                    ~r/^The dynamically generated ClickHouse resource name starting with `key_type_counts_per_min_/,
@@ -53,13 +53,13 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptorTest do
                    end
     end
 
-    test "clickhouse_materialized_view_name/1 generates a unique mat view name based on the source token",
+    test "`clickhouse_materialized_view_name/1` generates a unique mat view name based on the source token",
          %{source: source, stringified_source_token: stringified_source_token} do
       assert ClickhouseAdaptor.clickhouse_materialized_view_name(source) ==
                "mv_key_type_counts_per_min_#{stringified_source_token}"
     end
 
-    test "clickhouse_materialized_view_name/1 will raise an exception if the view name is equal to or exceeds 200 chars",
+    test "`clickhouse_materialized_view_name/1` will raise an exception if the view name is equal to or exceeds 200 chars",
          %{source: source} do
       assert_raise RuntimeError,
                    ~r/^The dynamically generated ClickHouse resource name starting with `mv_key_type_counts_per_min_/,
@@ -83,37 +83,38 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptorTest do
       [source: source, backend: backend]
     end
 
-    test "can test ClickHouse connection", %{source: source, backend: backend} do
-      result = ClickhouseAdaptor.test_connection(source, backend)
+    test "can test connection using a `{source, backend}` tuple", %{
+      source: source,
+      backend: backend
+    } do
+      result = ClickhouseAdaptor.test_connection({source, backend})
+      assert :ok = result
+    end
+
+    test "can test connection using a `backend` struct", %{
+      backend: backend
+    } do
+      result = ClickhouseAdaptor.test_connection(backend)
       assert :ok = result
     end
 
     test "can execute ingest queries", %{source: source, backend: backend} do
       result =
-        ClickhouseAdaptor.execute_ch_ingest_query(
-          {source, backend},
-          "SELECT 1 as test"
-        )
+        ClickhouseAdaptor.execute_ch_ingest_query({source, backend}, "SELECT 1 as test")
 
       assert {:ok, %Ch.Result{rows: [[1]]}} = result
     end
 
-    test "can execute read queries", %{source: source, backend: backend} do
+    test "can execute read queries", %{backend: backend} do
       result =
-        ClickhouseAdaptor.execute_ch_read_query(
-          {source, backend},
-          "SELECT 2 as test"
-        )
+        ClickhouseAdaptor.execute_ch_read_query(backend, "SELECT 2 as test")
 
       assert {:ok, [%{"test" => 2}]} = result
     end
 
-    test "handles query errors", %{source: source, backend: backend} do
+    test "handles query errors", %{backend: backend} do
       result =
-        ClickhouseAdaptor.execute_ch_read_query(
-          {source, backend},
-          "INVALID SQL QUERY"
-        )
+        ClickhouseAdaptor.execute_ch_read_query(backend, "INVALID SQL QUERY")
 
       assert {:error, _} = result
     end
@@ -155,7 +156,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptorTest do
 
       query_result =
         ClickhouseAdaptor.execute_ch_read_query(
-          {source, backend},
+          backend,
           "SELECT event_message, body FROM #{table_name} ORDER BY timestamp"
         )
 

@@ -60,13 +60,13 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.Pipeline do
   def handle_batch(:ch, messages, _batch_info, %{
         source: source,
         backend: backend,
-        connection_name: connection_name
+        ingest_connection: ingest_connection
       }) do
     events = for %{data: le} <- messages, do: le
 
     # Notify connection manager of ingest activity
-    ConnectionManager.notify_ingest_activity(source, backend)
-    ClickhouseAdaptor.insert_log_events(connection_name, {source, backend}, events)
+    ConnectionManager.notify_activity({source, backend})
+    ClickhouseAdaptor.insert_log_events(ingest_connection, {source, backend}, events)
     messages
   end
 

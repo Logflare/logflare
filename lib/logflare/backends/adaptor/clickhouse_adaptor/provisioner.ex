@@ -8,6 +8,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.Provisioner do
 
   use GenServer
   use TypedStruct
+
   require Logger
 
   alias Logflare.Backends.Adaptor.ClickhouseAdaptor
@@ -36,31 +37,55 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.Provisioner do
 
   @doc false
   @impl GenServer
-  def init({%Source{} = source, %Backend{} = backend} = args) do
-    state = %__MODULE__{
-      source: %Source{id: source.id, token: source.token},
-      backend: %Backend{id: backend.id}
-    }
-
+  def init({%Source{} = source, %Backend{} = backend}) do
     Process.flag(:trap_exit, true)
 
-    with :ok <- ClickhouseAdaptor.test_connection(source, backend),
-         :ok <- ClickhouseAdaptor.provision_all(args) do
-      {:ok, state, {:continue, :close_process}}
+    state = %__MODULE__{
+      source: source,
+      backend: backend
+    }
+
+    {:ok, state, {:continue, :test_connection}}
+  end
+
+  @doc false
+  @impl GenServer
+  def handle_continue(
+        :test_connection,
+        %__MODULE__{source: %Source{} = source, backend: %Backend{} = backend} = state
+      ) do
+    with :ok <- ClickhouseAdaptor.test_connection({source, backend}) do
+      {:noreply, state, {:continue, :provision_all}}
     else
       {:error, reason} = error ->
-        Logger.error("Failed to provision ClickHouse resources",
+        Logger.error("ClickHouse test connection failed",
           source_token: source.token,
           backend_id: backend.id,
           error_string: inspect(reason)
         )
 
-        {:stop, error}
+        {:stop, error, state}
     end
   end
 
-  @doc false
-  @impl GenServer
+  def handle_continue(
+        :provision_all,
+        %__MODULE__{source: %Source{} = source, backend: %Backend{} = backend} = state
+      ) do
+    with :ok <- ClickhouseAdaptor.provision_all({source, backend}) do
+      {:noreply, state, {:continue, :close_process}}
+    else
+      {:error, reason} = error ->
+        Logger.error("ClickHouse provisioning failed",
+          source_token: source.token,
+          backend_id: backend.id,
+          error_string: inspect(reason)
+        )
+
+        {:stop, error, state}
+    end
+  end
+
   def handle_continue(:close_process, state), do: {:stop, :normal, state}
 
   @doc false

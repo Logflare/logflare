@@ -14,7 +14,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.ProvisionerTest do
 
     on_exit(fn ->
       if Process.alive?(supervisor_pid) do
-        Process.exit(supervisor_pid, :kill)
+        Process.exit(supervisor_pid, :shutdown)
       end
     end)
 
@@ -37,13 +37,13 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.ProvisionerTest do
       {:ok, pid} = Provisioner.start_link({source, backend})
       ref = Process.monitor(pid)
 
-      assert_receive {:DOWN, ^ref, :process, ^pid, :noproc}, 5_000
+      assert_receive {:DOWN, ^ref, :process, ^pid, :normal}, 5_000
 
       table_name = ClickhouseAdaptor.clickhouse_ingest_table_name(source)
 
       {:ok, result} =
         ClickhouseAdaptor.execute_ch_read_query(
-          {source, backend},
+          backend,
           "EXISTS TABLE #{table_name}"
         )
 
@@ -54,33 +54,24 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.ProvisionerTest do
       {:ok, pid} = Provisioner.start_link({source, backend})
       ref = Process.monitor(pid)
 
-      assert_receive {:DOWN, ^ref, :process, ^pid, :noproc}, 5_000
+      assert_receive {:DOWN, ^ref, :process, ^pid, :normal}, 5_000
 
       ingest_table = ClickhouseAdaptor.clickhouse_ingest_table_name(source)
       key_count_table = ClickhouseAdaptor.clickhouse_key_count_table_name(source)
       materialized_view = ClickhouseAdaptor.clickhouse_materialized_view_name(source)
 
       {:ok, ingest_exists} =
-        ClickhouseAdaptor.execute_ch_read_query(
-          {source, backend},
-          "EXISTS TABLE #{ingest_table}"
-        )
+        ClickhouseAdaptor.execute_ch_read_query(backend, "EXISTS TABLE #{ingest_table}")
 
       assert [%{"result" => 1}] = ingest_exists
 
       {:ok, key_count_exists} =
-        ClickhouseAdaptor.execute_ch_read_query(
-          {source, backend},
-          "EXISTS TABLE #{key_count_table}"
-        )
+        ClickhouseAdaptor.execute_ch_read_query(backend, "EXISTS TABLE #{key_count_table}")
 
       assert [%{"result" => 1}] = key_count_exists
 
       {:ok, view_exists} =
-        ClickhouseAdaptor.execute_ch_read_query(
-          {source, backend},
-          "EXISTS TABLE #{materialized_view}"
-        )
+        ClickhouseAdaptor.execute_ch_read_query(backend, "EXISTS TABLE #{materialized_view}")
 
       assert [%{"result" => 1}] = view_exists
     end
@@ -114,17 +105,17 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.ProvisionerTest do
     test "can run multiple times without errors", %{source: source, backend: backend} do
       {:ok, pid1} = Provisioner.start_link({source, backend})
       ref1 = Process.monitor(pid1)
-      assert_receive {:DOWN, ^ref1, :process, ^pid1, :noproc}, 5_000
+      assert_receive {:DOWN, ^ref1, :process, ^pid1, :normal}, 5_000
 
       {:ok, pid2} = Provisioner.start_link({source, backend})
       ref2 = Process.monitor(pid2)
-      assert_receive {:DOWN, ^ref2, :process, ^pid2, :noproc}, 5_000
+      assert_receive {:DOWN, ^ref2, :process, ^pid2, :normal}, 5_000
 
       table_name = ClickhouseAdaptor.clickhouse_ingest_table_name(source)
 
       {:ok, result} =
         ClickhouseAdaptor.execute_ch_read_query(
-          {source, backend},
+          backend,
           "SELECT count(*) as count FROM #{table_name}"
         )
 
@@ -137,13 +128,13 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.ProvisionerTest do
       {:ok, pid} = Provisioner.start_link({source, backend})
 
       ref = Process.monitor(pid)
-      assert_receive {:DOWN, ^ref, :process, ^pid, :noproc}, 5_000
+      assert_receive {:DOWN, ^ref, :process, ^pid, :normal}, 5_000
     end
 
     test "can insert data after provisioning completes", %{source: source, backend: backend} do
       {:ok, pid} = Provisioner.start_link({source, backend})
       ref = Process.monitor(pid)
-      assert_receive {:DOWN, ^ref, :process, ^pid, :noproc}, 5_000
+      assert_receive {:DOWN, ^ref, :process, ^pid, :normal}, 5_000
 
       log_event = build(:log_event, source: source, message: "Test after provisioning")
       {:ok, _result} = ClickhouseAdaptor.insert_log_events({source, backend}, [log_event])
@@ -152,7 +143,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.ProvisionerTest do
 
       {:ok, result} =
         ClickhouseAdaptor.execute_ch_read_query(
-          {source, backend},
+          backend,
           "SELECT count(*) as count FROM #{table_name}"
         )
 
@@ -164,15 +155,12 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.ProvisionerTest do
     test "creates tables with correct schema", %{source: source, backend: backend} do
       {:ok, pid} = Provisioner.start_link({source, backend})
       ref = Process.monitor(pid)
-      assert_receive {:DOWN, ^ref, :process, ^pid, :noproc}, 5_000
+      assert_receive {:DOWN, ^ref, :process, ^pid, :normal}, 5_000
 
       table_name = ClickhouseAdaptor.clickhouse_ingest_table_name(source)
 
       {:ok, columns} =
-        ClickhouseAdaptor.execute_ch_read_query(
-          {source, backend},
-          "DESCRIBE TABLE #{table_name}"
-        )
+        ClickhouseAdaptor.execute_ch_read_query(backend, "DESCRIBE TABLE #{table_name}")
 
       column_names = Enum.map(columns, & &1["name"])
       assert "id" in column_names
