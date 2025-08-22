@@ -22,7 +22,7 @@ steps:
       - --container-image=${_CONTAINER_IMAGE}
       - --container-privileged
       - --container-restart-policy=always
-      - --container-env=LOGFLARE_GRPC_PORT=50051,LOGFLARE_MIN_CLUSTER_SIZE=2,RELEASE_COOKIE=${_COOKIE},LOGFLARE_PUBSUB_POOL_SIZE=32,LOGFLARE_METADATA_CLUSTER=${_CLUSTER},LOGFLARE_ALERTS_MIN_CLUSTER_SIZE=60
+      - --container-env=LOGFLARE_GRPC_PORT=50051,LOGFLARE_MIN_CLUSTER_SIZE=2,RELEASE_COOKIE=${_COOKIE},LOGFLARE_PUBSUB_POOL_SIZE=32,LOGFLARE_METADATA_CLUSTER=${_CLUSTER},LOGFLARE_ALERTS_ENABLED=${_LOGFLARE_ALERTS_ENABLED}
       - --no-shielded-secure-boot
       - --shielded-vtpm
       - --shielded-integrity-monitoring
@@ -36,6 +36,7 @@ substitutions:
   _IMAGE_TAG: $SHORT_SHA
   _TEMPLATE_NAME: logflare-prod-${_NORMALIZED_IMAGE_TAG}-${_CLUSTER}
   _CONTAINER_IMAGE: gcr.io/logflare-232118/logflare_app:${_IMAGE_TAG}
+  _LOGFLARE_ALERTS_ENABLED: false
 timeout: 1800s
 options:
   dynamicSubstitutions: true
