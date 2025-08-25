@@ -102,7 +102,7 @@ defmodule Logflare.Logs.SourceRouting do
           apply(Kernel, operator, [le_value, value])
       end
 
-    if mds[:negate], do: not matches?, else: matches?
+    if modifiers[:negate], do: not matches?, else: matches?
   end
 
   defp collect_by_path(params, path) when is_binary(path) do
