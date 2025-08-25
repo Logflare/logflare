@@ -676,65 +676,87 @@ defmodule Logflare.Sql.DialectTranslation do
   end
 
   defp build_mappings(from, table_aliases) do
-    Enum.reduce(from["joins"] || [], %{}, fn
-      %{
-        "relation" => %{
-          "UNNEST" => %{
-            "array_expr" => %{"Identifier" => %{"value" => identifier_val}},
-            "alias" => %{"name" => %{"value" => alias_name}}
-          }
-        }
-      },
-      acc ->
-        Map.put(acc, alias_name, [identifier_val])
-
-      %{
-        "relation" => %{
-          "UNNEST" => %{
-            "array_expr" => %{"CompoundIdentifier" => identifiers},
-            "alias" => %{"name" => %{"value" => alias_name}}
-          }
-        }
-      },
-      acc ->
-        arr_path =
-          for i <- identifiers, value = i["value"], value not in table_aliases do
-            if is_map_key(acc, value), do: acc[value], else: [value]
-          end
-          |> List.flatten()
-
-        Map.put(acc, alias_name, arr_path)
-
-      %{
-        "relation" => %{
-          "UNNEST" => %{
-            "array_exprs" => array_exprs,
-            "alias" => %{"name" => %{"value" => alias_name}}
-          }
-        }
-      },
-      acc ->
-        arr_path =
-          for expr <- array_exprs do
-            case expr do
-              %{"Identifier" => %{"value" => identifier_val}} ->
-                [identifier_val]
-
-              %{"CompoundIdentifier" => identifiers} ->
-                for i <- identifiers, value = i["value"], value not in table_aliases do
-                  if is_map_key(acc, value), do: acc[value], else: [value]
-                end
-                |> List.flatten()
-
-              _ ->
-                []
-            end
-          end
-          |> List.flatten()
-
-        Map.put(acc, alias_name, arr_path)
+    Enum.reduce(from["joins"] || [], %{}, fn join, acc ->
+      process_unnest_join(join, acc, table_aliases)
     end)
   end
+
+  defp process_unnest_join(
+         %{
+           "relation" => %{
+             "UNNEST" => %{
+               "array_expr" => %{"Identifier" => %{"value" => identifier_val}},
+               "alias" => %{"name" => %{"value" => alias_name}}
+             }
+           }
+         },
+         acc,
+         _table_aliases
+       ) do
+    Map.put(acc, alias_name, [identifier_val])
+  end
+
+  defp process_unnest_join(
+         %{
+           "relation" => %{
+             "UNNEST" => %{
+               "array_expr" => %{"CompoundIdentifier" => identifiers},
+               "alias" => %{"name" => %{"value" => alias_name}}
+             }
+           }
+         },
+         acc,
+         table_aliases
+       ) do
+    arr_path = build_array_path_from_identifiers(identifiers, acc, table_aliases)
+    Map.put(acc, alias_name, arr_path)
+  end
+
+  defp process_unnest_join(
+         %{
+           "relation" => %{
+             "UNNEST" => %{
+               "array_exprs" => array_exprs,
+               "alias" => %{"name" => %{"value" => alias_name}}
+             }
+           }
+         },
+         acc,
+         table_aliases
+       ) do
+    arr_path = build_array_path_from_expressions(array_exprs, acc, table_aliases)
+    Map.put(acc, alias_name, arr_path)
+  end
+
+  defp process_unnest_join(_join, acc, _table_aliases), do: acc
+
+  defp build_array_path_from_identifiers(identifiers, acc, table_aliases) do
+    for i <- identifiers, value = i["value"], value not in table_aliases do
+      if is_map_key(acc, value), do: acc[value], else: [value]
+    end
+    |> List.flatten()
+  end
+
+  defp build_array_path_from_expressions(array_exprs, acc, table_aliases) do
+    for expr <- array_exprs do
+      process_array_expression(expr, acc, table_aliases)
+    end
+    |> List.flatten()
+  end
+
+  defp process_array_expression(
+         %{"Identifier" => %{"value" => identifier_val}},
+         _acc,
+         _table_aliases
+       ) do
+    [identifier_val]
+  end
+
+  defp process_array_expression(%{"CompoundIdentifier" => identifiers}, acc, table_aliases) do
+    build_array_path_from_identifiers(identifiers, acc, table_aliases)
+  end
+
+  defp process_array_expression(_, _acc, _table_aliases), do: []
 
   defp traverse_convert_identifiers({"InList" = k, v}, data) do
     {k, traverse_convert_identifiers(v, Map.put(data, :in_inlist, true))}
