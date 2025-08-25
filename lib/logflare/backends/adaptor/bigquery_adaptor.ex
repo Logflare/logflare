@@ -1,26 +1,29 @@
 defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
   @moduledoc false
 
-  alias Logflare.Backends
-  alias Logflare.Backends.DynamicPipeline
-  alias Logflare.Backends.Backend
-  alias Logflare.Backends.IngestEventQueue
-  alias Logflare.Source.BigQuery.Pipeline
-  alias Logflare.Source.BigQuery.Schema
-  alias Logflare.Source.BigQuery.Pipeline
-  alias Logflare.Users
-  alias Logflare.Sources
-  alias Logflare.Billing
-  alias Logflare.Backends
-  alias Logflare.Google.BigQuery.GenUtils
-  alias Logflare.Google.CloudResourceManager
-  alias Logflare.Google
+  @behaviour Logflare.Backends.Adaptor
+
   use Supervisor
+
   require Logger
 
-  @behaviour Logflare.Backends.Adaptor
-  @service_account_prefix "logflare-managed"
+  alias Ecto.Changeset
+  alias Logflare.Backends
+  alias Logflare.Backends.Backend
+  alias Logflare.Backends.DynamicPipeline
+  alias Logflare.Backends.IngestEventQueue
+  alias Logflare.Billing
+  alias Logflare.Google
+  alias Logflare.Google.BigQuery.GenUtils
+  alias Logflare.Google.CloudResourceManager
+  alias Logflare.Source.BigQuery.Pipeline
+  alias Logflare.Source.BigQuery.Schema
+  alias Logflare.Sources
+  alias Logflare.Users
+
   @managed_service_account_partition_count 5
+  @service_account_prefix "logflare-managed"
+
   @impl Logflare.Backends.Adaptor
   def start_link({source, backend} = source_backend) do
     Supervisor.start_link(__MODULE__, source_backend,
@@ -136,7 +139,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
   @impl Logflare.Backends.Adaptor
   def cast_config(params) do
     {%{}, %{project_id: :string, dataset_id: :string}}
-    |> Ecto.Changeset.cast(params, [:project_id, :dataset_id])
+    |> Changeset.cast(params, [:project_id, :dataset_id])
   end
 
   @impl Logflare.Backends.Adaptor
@@ -184,7 +187,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
   """
   @spec list_managed_service_accounts(String.t()) :: [GoogleApi.IAM.V1.Model.ServiceAccount.t()]
   def list_managed_service_accounts(project_id \\ nil) do
-    project_id = project_id || Application.get_env(:logflare, Logflare.Google)[:project_id]
+    project_id = project_id || env_project_id()
 
     get_next_page(project_id, nil)
     |> Enum.filter(&(&1.name =~ @service_account_prefix))
@@ -226,7 +229,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
           GoogleApi.IAM.V1.Model.ServiceAccount.t()
         ]
   def create_managed_service_accounts(project_id \\ nil) do
-    project_id = project_id || Application.get_env(:logflare, Logflare.Google)[:project_id]
+    project_id = project_id || env_project_id()
 
     # determine the ids of of service accounts to create, based on what service accounts already exist
     size =
@@ -369,7 +372,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
     [{PartitionSupervisor, ...}, ...]
   """
   def impersonated_goth_child_specs do
-    project_id = Application.get_env(:logflare, Logflare.Google)[:project_id]
+    project_id = env_project_id()
     pool_size = managed_service_account_pool_size()
     json = Application.get_env(:goth, :json)
 
@@ -421,6 +424,8 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
   defdelegate append_managed_sa_to_iam_policy(user), to: CloudResourceManager
   defdelegate append_managed_service_accounts(project_id, policy), to: CloudResourceManager
   defdelegate patch_dataset_access(user), to: Google.BigQuery
-
   defdelegate get_conn(conn_type), to: GenUtils
+
+  @spec env_project_id :: String.t()
+  defp env_project_id, do: Application.get_env(:logflare, Logflare.Google)[:project_id]
 end

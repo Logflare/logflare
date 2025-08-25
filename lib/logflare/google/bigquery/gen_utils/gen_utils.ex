@@ -2,16 +2,23 @@ defmodule Logflare.Google.BigQuery.GenUtils do
   @moduledoc """
   Generic utils for BigQuery.
   """
+
   require Logger
 
-  alias Logflare.JSON
-  alias Logflare.{Sources, Users}
-  alias Logflare.{Source, User}
+  import Ecto.Query
+  import Logflare.Utils.Guards
+
   alias GoogleApi.BigQuery.V2.Connection
   alias Logflare.Backends.Adaptor.BigQueryAdaptor
+  alias Logflare.JSON
+  alias Logflare.Repo
+  alias Logflare.Source
+  alias Logflare.Sources
+  alias Logflare.User
+  alias Logflare.Users
 
-  @table_ttl 604_800_000
   @default_dataset_location "US"
+  @table_ttl 604_800_000
 
   @doc """
   Returns the default TTL used (in days) for initializing the table.
@@ -20,23 +27,16 @@ defmodule Logflare.Google.BigQuery.GenUtils do
     @table_ttl / :timer.hours(24)
   end
 
-  defp env_project_id, do: Application.get_env(:logflare, Logflare.Google)[:project_id]
-
-  defp env_default_table_name_append,
-    do:
-      Application.get_env(:logflare, Logflare.Google)[:dataset_id_append] ||
-        ""
-
-  @spec get_project_id(atom()) :: String.t()
-  def get_project_id(source_id) when is_atom(source_id) do
+  @spec get_project_id(source_id :: atom()) :: String.t()
+  def get_project_id(source_id) when is_atom_value(source_id) do
     %Source{user_id: user_id} = Sources.Cache.get_by(token: source_id)
     %User{bigquery_project_id: project_id} = Users.Cache.get(user_id)
 
     project_id || env_project_id()
   end
 
-  @spec get_bq_user_info(atom) :: map
-  def get_bq_user_info(source_id) when is_atom(source_id) do
+  @spec get_bq_user_info(source_id :: atom()) :: map()
+  def get_bq_user_info(source_id) when is_atom_value(source_id) do
     %Source{user_id: user_id, bigquery_table_ttl: ttl} = Sources.Cache.get_by(token: source_id)
 
     %User{
@@ -67,10 +67,11 @@ defmodule Logflare.Google.BigQuery.GenUtils do
     }
   end
 
-  @spec format_table_name(atom) :: String.t()
-  def format_table_name(source) do
-    string = Atom.to_string(source)
-    String.replace(string, "-", "_")
+  @spec format_table_name(source_id :: atom()) :: String.t()
+  def format_table_name(source_id) when is_atom_value(source_id) do
+    source_id
+    |> Atom.to_string()
+    |> String.replace("-", "_")
   end
 
   @doc """
@@ -143,35 +144,14 @@ defmodule Logflare.Google.BigQuery.GenUtils do
     |> Map.update!(:adapter, fn _value -> build_tesla_adapter_call(conn_type) end)
   end
 
-  # copy over runtime adapter building from Tesla.client/2
-  # https://github.com/elixir-tesla/tesla/blob/v1.7.0/lib/tesla/builder.ex#L206
-  defp build_tesla_adapter_call(:ingest) do
-    Tesla.client(
-      [],
-      {Tesla.Adapter.Finch,
-       name: Logflare.FinchIngest, pool_timeout: 2_500, receive_timeout: 5_000}
-    ).adapter
-  end
-
-  defp build_tesla_adapter_call({:query, _}) do
-    Tesla.client(
-      [],
-      {Tesla.Adapter.Finch, name: Logflare.FinchQuery, receive_timeout: 60_000}
-    ).adapter
-  end
-
-  # use adapter in config.exs
-  defp build_tesla_adapter_call(_), do: nil
-
-  @spec get_account_id(atom) :: String.t()
-  def get_account_id(source_id) when is_atom(source_id) do
+  @spec get_account_id(source_id :: atom()) :: String.t()
+  def get_account_id(source_id) when is_atom_value(source_id) do
     %Logflare.Source{user_id: account_id} = Sources.Cache.get_by(token: source_id)
     "#{account_id}"
   end
 
   @spec maybe_parse_google_api_result({:ok, any()} | {:error, any()}) ::
           {:ok, any()} | {:error, any()}
-
   def maybe_parse_google_api_result({:error, %Tesla.Env{} = teslaenv}) do
     {:error, teslaenv}
   end
@@ -208,12 +188,13 @@ defmodule Logflare.Google.BigQuery.GenUtils do
   iex> Logflare.Google.BigQuery.GenUtils.format_key("123label")
   "label"
   """
+  @spec format_key(String.t() | integer() | atom()) :: String.t()
   def format_key(k) when is_binary(k) do
     k |> String.replace(~r/^[^[:alpha:]]+/u, "") |> format_value()
   end
 
   def format_key(k) when is_integer(k), do: k |> Integer.to_string() |> format_key()
-  def format_key(k) when is_atom(k), do: k |> Atom.to_string() |> format_key()
+  def format_key(k) when is_atom_value(k), do: k |> Atom.to_string() |> format_key()
 
   @doc """
   Formats values for BigQuery label values. Values are like keys except they can start
@@ -254,6 +235,7 @@ defmodule Logflare.Google.BigQuery.GenUtils do
   iex> Logflare.Google.BigQuery.GenUtils.format_value("My-Label With$Weird#Chars")
   "my-label_withweirdchars"
   """
+  @spec format_value(String.t() | integer() | atom()) :: String.t()
   def format_value(v) when is_binary(v) do
     v =
       case DateTime.from_iso8601(v) do
@@ -269,5 +251,86 @@ defmodule Logflare.Google.BigQuery.GenUtils do
   end
 
   def format_value(v) when is_integer(v), do: v |> Integer.to_string() |> format_value()
-  def format_value(v) when is_atom(v), do: v |> Atom.to_string() |> format_value()
+  def format_value(v) when is_atom_value(v), do: v |> Atom.to_string() |> format_value()
+
+  @doc """
+  Processes BigQuery error messages to make them more user-friendly.
+  """
+  @spec process_bq_errors(error :: map() | atom(), user_id :: integer()) :: map()
+  def process_bq_errors(error, user_id) when is_atom_value(error) do
+    %{"message" => process_bq_error_msg(error, user_id)}
+  end
+
+  def process_bq_errors(error, user_id) when is_map(error) do
+    error = %{error | "message" => process_bq_error_msg(error["message"], user_id)}
+
+    if is_list(error["errors"]) do
+      %{
+        error
+        | "errors" => Enum.map(error["errors"], fn err -> process_bq_errors(err, user_id) end)
+      }
+    else
+      error
+    end
+  end
+
+  @spec process_bq_error_msg(message :: atom() | String.t(), user_id :: integer()) ::
+          atom() | String.t()
+  defp process_bq_error_msg(message, _user_id) when is_atom_value(message), do: message
+
+  defp process_bq_error_msg(message, user_id) when is_binary(message) do
+    regex =
+      ~r/#{env_project_id()}\.#{user_id}_#{env()}\.(?<uuid>[0-9a-fA-F]{8}_[0-9a-fA-F]{4}_[0-9a-fA-F]{4}_[0-9a-fA-F]{4}_[0-9a-fA-F]{12})/
+
+    case Regex.named_captures(regex, message) do
+      %{"uuid" => uuid} ->
+        uuid = String.replace(uuid, "_", "-")
+
+        query =
+          from(s in Source,
+            where: s.token == ^uuid and s.user_id == ^user_id,
+            select: s.name
+          )
+
+        case Repo.one(query) do
+          nil -> message
+          source_name -> String.replace(message, regex, source_name)
+        end
+
+      nil ->
+        message
+    end
+  end
+
+  @spec env_project_id() :: String.t()
+  defp env_project_id, do: Application.get_env(:logflare, Logflare.Google)[:project_id]
+
+  @spec env_default_table_name_append() :: String.t()
+  defp env_default_table_name_append do
+    Application.get_env(:logflare, Logflare.Google)[:dataset_id_append] || ""
+  end
+
+  # copy over runtime adapter building from Tesla.client/2
+  # https://github.com/elixir-tesla/tesla/blob/v1.7.0/lib/tesla/builder.ex#L206
+  @spec build_tesla_adapter_call(term()) :: Tesla.Adapter.t()
+  defp build_tesla_adapter_call(:ingest) do
+    Tesla.client(
+      [],
+      {Tesla.Adapter.Finch,
+       name: Logflare.FinchIngest, pool_timeout: 2_500, receive_timeout: 5_000}
+    ).adapter
+  end
+
+  defp build_tesla_adapter_call({:query, _}) do
+    Tesla.client(
+      [],
+      {Tesla.Adapter.Finch, name: Logflare.FinchQuery, receive_timeout: 60_000}
+    ).adapter
+  end
+
+  # use adapter in config.exs
+  defp build_tesla_adapter_call(_), do: nil
+
+  @spec env() :: String.t()
+  defp env, do: Application.get_env(:logflare, :env)
 end
