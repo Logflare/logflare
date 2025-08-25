@@ -5,6 +5,8 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
 
   use Supervisor
 
+  import Logflare.Utils.Guards
+
   require Logger
 
   alias Ecto.Changeset
@@ -13,6 +15,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
   alias Logflare.Backends.DynamicPipeline
   alias Logflare.Backends.IngestEventQueue
   alias Logflare.Billing
+  alias Logflare.BqRepo
   alias Logflare.Google
   alias Logflare.Google.BigQuery.GenUtils
   alias Logflare.Google.CloudResourceManager
@@ -130,8 +133,35 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
   end
 
   @impl Logflare.Backends.Adaptor
-  def execute_query(_id, _query),
-    do: {:error, :not_implemented}
+  def execute_query(%Backend{} = backend, query_string) when is_non_empty_binary(query_string) do
+    execute_query(backend, {query_string, [], %{}})
+  end
+
+  def execute_query(
+        %Backend{user_id: user_id} = _backend,
+        {query_string, declared_params, input_params}
+      )
+      when is_non_empty_binary(query_string) and is_list(declared_params) and is_map(input_params) do
+    execute_query_with_context(user_id, query_string, declared_params, input_params, nil)
+  end
+
+  def execute_query(
+        %Backend{user_id: user_id} = _backend,
+        {query_string, declared_params, input_params, endpoint_query}
+      )
+      when is_non_empty_binary(query_string) and is_list(declared_params) and is_map(input_params) do
+    execute_query_with_context(
+      user_id,
+      query_string,
+      declared_params,
+      input_params,
+      endpoint_query
+    )
+  end
+
+  def execute_query(%Backend{} = _backend, %Ecto.Query{} = _query) do
+    {:error, :not_implemented}
+  end
 
   @impl Logflare.Backends.Adaptor
   def supports_default_ingest?, do: true
@@ -181,7 +211,6 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
 
     iex> list_managed_service_accounts()
     [%GoogleApi.IAM.V1.Model.ServiceAccount{...}, ...]
-
 
     https://hexdocs.pm/google_api_iam/0.45.0/GoogleApi.IAM.V1.Model.ServiceAccount.html
   """
@@ -236,6 +265,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
     iex> managed_service_account_pool_size()
     5
   """
+  @spec managed_service_account_pool_size :: integer()
   def managed_service_account_pool_size do
     Application.get_env(:logflare, :bigquery_backend_adaptor)[:managed_service_account_pool_size]
   end
@@ -254,6 +284,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
     iex> managed_service_account_partition_count()
     #{@managed_service_account_partition_count}
   """
+  @spec managed_service_account_partition_count :: integer()
   def managed_service_account_partition_count, do: @managed_service_account_partition_count
 
   @doc """
@@ -262,8 +293,10 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
     iex> ingest_service_account_partition_count()
     5
   """
-  def ingest_service_account_partition_count,
-    do: max(managed_service_account_partition_count(), System.schedulers_online())
+  @spec ingest_service_account_partition_count :: integer()
+  def ingest_service_account_partition_count do
+    max(managed_service_account_partition_count(), System.schedulers_online())
+  end
 
   # Goth provisioning
 
@@ -335,6 +368,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
     iex> impersonated_goth_child_specs()
     [{PartitionSupervisor, ...}, ...]
   """
+  @spec impersonated_goth_child_specs :: [Supervisor.child_spec()]
   def impersonated_goth_child_specs do
     project_id = env_project_id()
     pool_size = managed_service_account_pool_size()
@@ -363,6 +397,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
     iex> update_iam_policy()
     :ok
   """
+  @spec update_iam_policy :: :ok
   def update_iam_policy(user \\ nil) do
     CloudResourceManager.set_iam_policy(async: false)
 
@@ -378,7 +413,17 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
   defdelegate patch_dataset_access(user), to: Google.BigQuery
   defdelegate get_conn(conn_type), to: GenUtils
 
-  defp handle_response({:ok, response}, project_id) do
+  # handles pagination for the IAM api
+  defp get_next_page(project_id, page_token) do
+    GenUtils.get_conn(:default)
+    |> GoogleApi.IAM.V1.Api.Projects.iam_projects_service_accounts_list("projects/#{project_id}",
+      pageSize: 100,
+      pageToken: page_token
+    )
+    |> handle_api_response(project_id)
+  end
+
+  defp handle_api_response({:ok, response}, project_id) do
     case response do
       %{accounts: accounts, nextPageToken: nil} ->
         accounts
@@ -389,21 +434,13 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
     |> List.flatten()
   end
 
-  defp handle_response({:error, error}, _project_id) do
+  defp handle_api_response({:error, error}, _project_id) do
     Logger.error("Error listing managed service accounts: #{inspect(error)}")
     []
   end
 
-  # handles pagination for the IAM api
-  defp get_next_page(project_id, page_token) do
-    GenUtils.get_conn(:default)
-    |> GoogleApi.IAM.V1.Api.Projects.iam_projects_service_accounts_list("projects/#{project_id}",
-      pageSize: 100,
-      pageToken: page_token
-    )
-    |> handle_response(project_id)
-  end
-
+  @spec create_managed_service_account(project_id :: String.t(), service_account_index :: integer) ::
+          {:ok, String.t()} | {:error, String.t()}
   defp create_managed_service_account(project_id, service_account_index) do
     GenUtils.get_conn(:default)
     |> GoogleApi.IAM.V1.Api.Projects.iam_projects_service_accounts_create(
@@ -424,6 +461,64 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
 
     Finch.build(method, url, headers, body)
     |> Finch.request(Logflare.FinchGoth, options)
+  end
+
+  defp execute_query_with_context(
+         user_id,
+         query_string,
+         declared_params,
+         input_params,
+         endpoint_query
+       ) do
+    user = Users.get(user_id)
+
+    bq_params =
+      Enum.map(declared_params, fn input_name ->
+        %{
+          name: input_name,
+          parameterValue: %{value: input_params[input_name]},
+          parameterType: %{type: "STRING"}
+        }
+      end)
+
+    # Build query options with labels if endpoint_query is provided
+    query_opts = [
+      parameterMode: "NAMED",
+      location: user.bigquery_dataset_location
+    ]
+
+    query_opts =
+      if endpoint_query do
+        query_opts ++
+          [
+            maxResults: endpoint_query.max_limit,
+            labels:
+              Map.merge(
+                %{"endpoint_id" => endpoint_query.id},
+                endpoint_query.parsed_labels || %{}
+              )
+          ]
+      else
+        query_opts
+      end
+
+    case BqRepo.query_with_sql_and_params(
+           user,
+           user.bigquery_project_id || env_project_id(),
+           query_string,
+           bq_params,
+           query_opts
+         ) do
+      {:ok, result} ->
+        {:ok, result.rows}
+
+      {:error, %{body: body}} ->
+        error = Jason.decode!(body)["error"] |> GenUtils.process_bq_errors(user.id)
+        {:error, error}
+
+      {:error, err} when is_atom(err) ->
+        {:error, GenUtils.process_bq_errors(err, user.id)}
+    end
   end
 
   @spec env_project_id :: String.t()

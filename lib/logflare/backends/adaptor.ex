@@ -61,7 +61,7 @@ defmodule Logflare.Backends.Adaptor do
   Default to false.
   """
   @spec supports_default_ingest?(Backend.t()) :: boolean()
-  def supports_default_ingest?(backend) do
+  def supports_default_ingest?(%Backend{} = backend) do
     adaptor = get_adaptor(backend)
 
     if function_exported?(adaptor, :supports_default_ingest?, 0) do
@@ -69,6 +69,30 @@ defmodule Logflare.Backends.Adaptor do
     else
       false
     end
+  end
+
+  @doc """
+  Returns true if a provided `Backend` supports transforming queries.
+
+  Default to false.
+  """
+  @spec can_transform_query?(Backend.t()) :: boolean()
+  def can_transform_query?(%Backend{} = backend) do
+    backend
+    |> get_adaptor()
+    |> function_exported?(:transform_query, 3)
+  end
+
+  @doc """
+  Returns true if a provided `Backend` supports mapping of query parameters.
+
+  Default to false.
+  """
+  @spec can_map_query_parameters?(Backend.t()) :: boolean()
+  def can_map_query_parameters?(%Backend{} = backend) do
+    backend
+    |> get_adaptor()
+    |> function_exported?(:map_query_parameters, 4)
   end
 
   @callback start_link(source_backend()) ::

@@ -1,32 +1,42 @@
 defmodule Logflare.Endpoints do
   @moduledoc false
-  alias Logflare.Endpoints.ResultsCache
-  alias Logflare.Endpoints.Query
-  alias Logflare.Endpoints.Resolver
-  alias Logflare.Repo
-  alias Logflare.User
-  alias Logflare.Users
-  alias Logflare.Utils
-  alias Logflare.Backends
-  alias Logflare.Backends.Adaptor.PostgresAdaptor
-  alias Logflare.SingleTenant
+
+  import Ecto.Query
+  import Logflare.Utils.Guards
+
   alias Logflare.Alerting
   alias Logflare.Alerting.Alert
   alias Logflare.Backends
+  alias Logflare.Backends.Backend
+  alias Logflare.Endpoints.Query
+  alias Logflare.Endpoints.Resolver
+  alias Logflare.Endpoints.ResultsCache
+  alias Logflare.Repo
+  alias Logflare.SingleTenant
+  alias Logflare.Sql
+  alias Logflare.User
+  alias Logflare.Users
+  alias Logflare.Utils
 
-  import Ecto.Query
+  @valid_sql_languages ~w(bq_sql ch_sql pg_sql)a
+
+  @typep language :: :bq_sql | :ch_sql | :pg_sql | :lql
   @typep run_query_return :: {:ok, %{rows: [map()]}} | {:error, String.t()}
+  @typep run_query_string_opts :: [sandboxable: boolean(), params: map(), parsed_labels: map()]
 
-  @spec count_endpoints_by_user(User.t() | integer()) :: integer()
+  defguardp is_integer_or_string(value) when is_integer(value) or is_non_empty_binary(value)
+
+  @spec count_endpoints_by_user(User.t()) :: integer()
   def count_endpoints_by_user(%User{id: user_id}), do: count_endpoints_by_user(user_id)
 
-  def count_endpoints_by_user(user_id) do
+  @spec count_endpoints_by_user(user_id :: integer()) :: integer()
+  def count_endpoints_by_user(user_id) when is_integer(user_id) do
     q = from(s in Query, where: s.user_id == ^user_id)
     Repo.aggregate(q, :count)
   end
 
-  @spec list_endpoints_by(keyword()) :: [Query.t()] | []
-  def list_endpoints_by(kw) do
+  @spec list_endpoints_by(Keyword.t()) :: [Query.t()] | []
+  def list_endpoints_by(kw) when is_list(kw) do
     q = from(e in Query)
 
     Enum.reduce(kw, q, fn {k, v}, q ->
@@ -42,10 +52,15 @@ defmodule Logflare.Endpoints do
   @doc """
   Retrieves an endpoint `Query`
   """
-  @spec get_endpoint_query(integer()) :: Query.t() | nil
-  def get_endpoint_query(id), do: Repo.get(Query, id)
+  @spec get_endpoint_query(query_id :: integer() | String.t()) :: Query.t() | nil
+  def get_endpoint_query(query_id) when is_integer_or_string(query_id),
+    do: Repo.get(Query, query_id)
 
-  def get_mapped_query_by_token(token) when is_binary(token) do
+  @doc """
+  Retrieves a mapped endpoint `Query` by token
+  """
+  @spec get_mapped_query_by_token(token :: String.t()) :: Query.t() | nil
+  def get_mapped_query_by_token(token) when is_non_empty_binary(token) do
     get_by(token: token)
     |> Query.map_query_sources()
     |> Repo.preload(:user)
@@ -57,13 +72,13 @@ defmodule Logflare.Endpoints do
   """
   @spec map_query_sources(Query.t() | nil) :: Query.t() | nil
   def map_query_sources(nil), do: nil
-  def map_query_sources(endpoint), do: Query.map_query_sources(endpoint)
+  def map_query_sources(%Query{} = query), do: Query.map_query_sources(query)
 
   @spec get_by(Keyword.t()) :: Query.t() | nil
   def get_by(kw), do: Repo.get_by(Query, kw)
 
   @spec create_query(User.t(), map()) :: {:ok, Query.t()} | {:error, any()}
-  def create_query(user, params) do
+  def create_query(%User{} = user, params) when is_map(params) do
     user
     |> Ecto.build_assoc(:endpoint_queries)
     |> Repo.preload(:user)
@@ -80,7 +95,7 @@ defmodule Logflare.Endpoints do
   end
 
   @spec update_query(Query.t(), map()) :: {:ok, Query.t()} | {:error, any()}
-  def update_query(query, params) do
+  def update_query(%Query{} = query, params) when is_map(params) do
     with endpoint <- Repo.preload(query, :user),
          changeset <- Query.update_by_user_changeset(endpoint, params),
          {:ok, endpoint} <- Repo.update(changeset) do
@@ -117,23 +132,25 @@ defmodule Logflare.Endpoints do
   def delete_query(query), do: Repo.delete(query)
 
   @doc """
-  Parses a query string (but does not run it)
-
-  ### Example
-    iex> parse_query_string("select @testing from date", [], [])
-    {:ok, %{parameters: ["testing"]}}
+  Parses a query string without running it.
   """
-  @spec parse_query_string(:bq_sql | :pg_sql, String.t(), [Query.t()], [Alert.t()]) ::
+  @spec parse_query_string(
+          language :: :bq_sql | :ch_sql | :pg_sql,
+          query_string :: String.t(),
+          endpoint_queries :: [Query.t()],
+          alerts :: [Alert.t()]
+        ) ::
           {:ok, %{parameters: [String.t()], expanded_query: String.t()}} | {:error, any()}
-  def parse_query_string(language, query_string, endpoints, alerts)
-      when language in [:bq_sql, :pg_sql] do
+  def parse_query_string(language, query_string, endpoint_queries, alerts)
+      when language in @valid_sql_languages and is_non_empty_binary(query_string) and
+             is_list(endpoint_queries) and is_list(alerts) do
     with {:ok, expanded_query} <-
-           Logflare.Sql.expand_subqueries(
+           Sql.expand_subqueries(
              language,
              query_string,
-             endpoints ++ alerts
+             endpoint_queries ++ alerts
            ),
-         {:ok, declared_params} <- Logflare.Sql.parameters(expanded_query) do
+         {:ok, declared_params} <- Sql.parameters(expanded_query) do
       {:ok, %{parameters: declared_params, expanded_query: expanded_query}}
     end
   end
@@ -229,9 +246,9 @@ defmodule Logflare.Endpoints do
 
     alerts = Alerting.list_alert_queries_by_user_id(endpoint_query.user_id)
 
-    with {:ok, declared_params} <- Logflare.Sql.parameters(query_string),
+    with {:ok, declared_params} <- Sql.parameters(query_string),
          {:ok, expanded_query} <-
-           Logflare.Sql.expand_subqueries(
+           Sql.expand_subqueries(
              endpoint_query.language,
              query_string,
              endpoints ++ alerts
@@ -239,25 +256,13 @@ defmodule Logflare.Endpoints do
          transform_input =
            if(sandboxable && sql_param, do: {expanded_query, sql_param}, else: expanded_query),
          {:ok, transformed_query} <-
-           Logflare.Sql.transform(endpoint_query.language, transform_input, user_id) do
-      {endpoint, query_string} =
-        if SingleTenant.supabase_mode?() and SingleTenant.postgres_backend?() and
-             endpoint_query.language != :pg_sql do
-          # translate the query
-          schema_prefix = Keyword.get(SingleTenant.postgres_backend_adapter_opts(), :schema)
-
-          {:ok, q} = Logflare.Sql.translate(:bq_sql, :pg_sql, transformed_query, schema_prefix)
-
-          {Map.put(endpoint_query, :language, :pg_sql), q}
-        else
-          {endpoint_query, transformed_query}
-        end
-
+           Sql.transform(endpoint_query.language, transform_input, user_id) do
       :telemetry.span(
         [:logflare, :endpoints, :run_query, :exec_query_on_backend],
-        %{endpoint_id: endpoint.id, language: endpoint.language},
+        %{endpoint_id: endpoint_query.id, language: endpoint_query.language},
         fn ->
-          result = exec_query_on_backend(endpoint, query_string, declared_params, params)
+          result =
+            exec_query_on_backend(endpoint_query, transformed_query, declared_params, params)
 
           total_rows =
             case result do
@@ -279,11 +284,12 @@ defmodule Logflare.Endpoints do
     iex> run_query_string(%User{...}, {:bq_sql, "select current_time() where @value > 4"}, params: %{"value" => "123"})
     {:ok, %{rows:  [...]} }
   """
-  @typep run_query_string_opts :: [sandboxable: boolean(), params: map(), parsed_labels: map()]
-  @typep language :: :bq_sql | :pg_sql | :lql
-  @spec run_query_string(User.t(), {language(), String.t()}, run_query_string_opts()) ::
-          run_query_return()
-  def run_query_string(user, {language, query_string}, opts \\ %{}) do
+  @spec run_query_string(
+          User.t(),
+          {language :: language(), query_string :: String.t()},
+          run_query_string_opts()
+        ) :: run_query_return()
+  def run_query_string(%User{} = user, {language, query_string}, opts \\ %{}) do
     opts = Enum.into(opts, %{sandboxable: false, parsed_labels: %{}, params: %{}})
 
     source_mapping =
@@ -308,8 +314,8 @@ defmodule Logflare.Endpoints do
   @doc """
   Runs a cached query.
   """
-  @spec run_cached_query(Query.t(), map()) :: run_query_return()
-  def run_cached_query(query, params \\ %{}) do
+  @spec run_cached_query(query :: Query.t(), params :: map()) :: run_query_return()
+  def run_cached_query(%Query{} = query, params \\ %{}) when is_map(params) do
     if query.cache_duration_seconds > 0 do
       query
       |> Resolver.resolve(params)
@@ -320,165 +326,142 @@ defmodule Logflare.Endpoints do
     end
   end
 
-  defp exec_query_on_backend(
-         %Query{query: query_string, language: :pg_sql} = endpoint_query,
-         transformed_query,
-         _declared_params,
-         params
-       ) do
-    # find compatible source backend
-    # TODO: move this to Backends module
-    user = Users.Cache.get(endpoint_query.user_id)
-    # TODO (ziinc): backend should be passed as an arg, shouldn't be random
-    backend =
-      case Backends.get_default_backend(user) do
-        %_{type: :bigquery} ->
-          Backends.list_backends(user_id: user.id, type: :postgres)
-          |> Enum.random()
-
-        backend ->
-          backend
-      end
-
-    if is_nil(backend) do
-      raise "No matching source backend found for Postgres query execution"
-    end
-
-    # convert params to PG params style
-    positions =
-      Logflare.Sql.parameter_positions(query_string)
-      |> then(fn {:ok, params} ->
-        params
-        |> Enum.sort_by(&{elem(&1, 0)})
-      end)
-
-    args =
-      for {_pos, parameter} <- positions do
-        Map.get(params, parameter)
-      end
-
-    with {:ok, rows} <-
-           PostgresAdaptor.execute_query(backend, {transformed_query, args}) do
-      {:ok, %{rows: rows}}
-    end
-  end
-
-  defp exec_query_on_backend(
-         %Query{language: _} = endpoint_query,
-         transformed_query,
-         declared_params,
-         input_params
-       )
-       when is_binary(transformed_query) and
-              is_list(declared_params) and
-              is_map(input_params) do
-    endpoint_query = Repo.preload(endpoint_query, :user)
-
-    bq_params =
-      Enum.map(declared_params, fn input_name ->
-        %{
-          name: input_name,
-          parameterValue: %{value: input_params[input_name]},
-          parameterType: %{type: "STRING"}
-        }
-      end)
-
-    # execute the query on bigquery
-    case Logflare.BqRepo.query_with_sql_and_params(
-           endpoint_query.user,
-           endpoint_query.user.bigquery_project_id || env_project_id(),
-           transformed_query,
-           bq_params,
-           parameterMode: "NAMED",
-           maxResults: endpoint_query.max_limit,
-           location: endpoint_query.user.bigquery_dataset_location,
-           labels:
-             Map.merge(
-               %{
-                 "endpoint_id" => endpoint_query.id
-               },
-               endpoint_query.parsed_labels || %{}
-             )
-         ) do
-      {:ok, result} ->
-        {:ok, result}
-
-      {:error, %{body: body}} ->
-        error = Jason.decode!(body)["error"] |> process_bq_error(endpoint_query.user_id)
-        {:error, error}
-
-      {:error, err} when is_atom(err) ->
-        {:error, process_bq_error(err, endpoint_query.user_id)}
-    end
-  end
-
-  defp env_project_id, do: Application.get_env(:logflare, Logflare.Google)[:project_id]
-  defp env, do: Application.get_env(:logflare, :env)
-
-  @doc """
-  Formats a bigquery json decoded error.
-  User id should be provided for handling BQ table name replacements to source names.
-  """
-  @spec process_bq_error(map(), integer()) :: map()
-  def process_bq_error(error, user_id) when is_atom(error) do
-    %{"message" => process_bq_message(error, user_id)}
-  end
-
-  def process_bq_error(error, user_id) when is_map(error) do
-    error = %{error | "message" => process_bq_message(error["message"], user_id)}
-
-    if is_list(error["errors"]) do
-      %{
-        error
-        | "errors" => Enum.map(error["errors"], fn err -> process_bq_error(err, user_id) end)
-      }
-    else
-      error
-    end
-  end
-
-  def process_bq_message(message, _user_id) when is_atom(message), do: message
-
-  def process_bq_message(message, user_id) when is_binary(message) do
-    regex =
-      ~r/#{env_project_id()}\.#{user_id}_#{env()}\.(?<uuid>[0-9a-fA-F]{8}_[0-9a-fA-F]{4}_[0-9a-fA-F]{4}_[0-9a-fA-F]{4}_[0-9a-fA-F]{12})/
-
-    case Regex.named_captures(regex, message) do
-      %{"uuid" => uuid} ->
-        uuid = String.replace(uuid, "_", "-")
-
-        query =
-          from(s in Logflare.Source,
-            where: s.token == ^uuid and s.user_id == ^user_id,
-            select: s.name
-          )
-
-        case Logflare.Repo.one(query) do
-          nil -> message
-          name -> Regex.replace(regex, message, name)
-        end
-
-      _ ->
-        message
-    end
-  end
-
   @doc """
   Calculates and sets the `:metrics` key with `Query.Metrics`, which contains info and stats relating to the endpoint
   """
   @spec calculate_endpoint_metrics(Query.t() | [Query.t()]) :: Query.t() | [Query.t()]
-  def calculate_endpoint_metrics(endpoints) when is_list(endpoints) do
-    for endpoint <- endpoints, do: calculate_endpoint_metrics(endpoint)
+  def calculate_endpoint_metrics(endpoint_queries) when is_list(endpoint_queries) do
+    for endpoint_query <- endpoint_queries, do: calculate_endpoint_metrics(endpoint_query)
   end
 
-  def calculate_endpoint_metrics(%Query{} = endpoint) do
-    cache_count = endpoint |> Resolver.list_caches() |> length()
+  def calculate_endpoint_metrics(%Query{} = endpoint_query) do
+    cache_count = endpoint_query |> Resolver.list_caches() |> length()
 
     %{
-      endpoint
+      endpoint_query
       | metrics: %Query.Metrics{
           cache_count: cache_count
         }
     }
+  end
+
+  @spec exec_query_on_backend(
+          endpoint_query :: Query.t(),
+          transformed_query :: String.t(),
+          declared_params :: [String.t()],
+          input_params :: map()
+        ) :: run_query_return()
+  defp exec_query_on_backend(
+         %Query{language: sql_language} = endpoint_query,
+         transformed_query,
+         declared_params,
+         input_params
+       )
+       when sql_language in @valid_sql_languages and is_binary(transformed_query) and
+              is_list(declared_params) and is_map(input_params) do
+    with {:ok, %Backend{} = backend} <- get_backend_for_query(endpoint_query),
+         adaptor <- Backends.Adaptor.get_adaptor(backend) do
+      # let the adaptor transform the query if needed
+      final_query =
+        if Backends.Adaptor.can_transform_query?(backend) do
+          transformation_context = build_transformation_context(backend)
+
+          case adaptor.transform_query(transformed_query, sql_language, transformation_context) do
+            {:ok, adapted_query} -> adapted_query
+            # fallback to original if transformation fails
+            {:error, _} -> transformed_query
+          end
+        else
+          transformed_query
+        end
+
+      # handle parameter mapping
+      query_args =
+        if Backends.Adaptor.can_map_query_parameters?(backend) do
+          mapped_params =
+            adaptor.map_query_parameters(
+              endpoint_query.query,
+              final_query,
+              declared_params,
+              input_params
+            )
+
+          {final_query, mapped_params}
+        else
+          {final_query, declared_params, input_params, endpoint_query}
+        end
+
+      case adaptor.execute_query(backend, query_args) do
+        {:ok, rows} when is_list(rows) ->
+          {:ok, %{rows: rows}}
+
+        {:ok, %{rows: rows}} ->
+          {:ok, %{rows: rows}}
+
+        {:error, error} ->
+          {:error, error}
+      end
+    end
+  end
+
+  @spec get_backend_for_query(Query.t()) :: {:ok, Backend.t()} | {:error, String.t()}
+  defp get_backend_for_query(%Query{backend_id: backend_id}) when is_integer(backend_id) do
+    case Backends.get_backend(backend_id) do
+      %Backend{} = backend -> {:ok, backend}
+      nil -> {:error, "Backend not found"}
+    end
+  end
+
+  defp get_backend_for_query(%Query{user_id: user_id, language: language}) do
+    backend_type = language_to_backend_type(language)
+    find_backend_by_type_or_default(user_id, backend_type)
+  end
+
+  defp get_backend_for_query(%Query{user_id: user_id}) do
+    find_backend_by_type_or_default(user_id, nil)
+  end
+
+  @spec language_to_backend_type(language()) :: atom() | nil
+  defp language_to_backend_type(:pg_sql), do: :postgres
+  defp language_to_backend_type(:ch_sql), do: :clickhouse
+  defp language_to_backend_type(:bq_sql), do: :bigquery
+  defp language_to_backend_type(_), do: nil
+
+  @spec find_backend_by_type_or_default(user_id :: integer(), backend_type :: atom() | nil) ::
+          {:ok, Backend.t()} | {:error, String.t()}
+  defp find_backend_by_type_or_default(user_id, backend_type)
+       when is_integer(user_id) and is_atom_value(backend_type) do
+    user_backends = Backends.list_backends_by_user_id(user_id)
+
+    case Enum.find(user_backends, &(&1.type == backend_type)) do
+      nil -> get_default_backend_for_user(user_id)
+      backend -> {:ok, backend}
+    end
+  end
+
+  defp find_backend_by_type_or_default(user_id, nil) when is_integer(user_id) do
+    get_default_backend_for_user(user_id)
+  end
+
+  @spec get_default_backend_for_user(user_id :: integer()) ::
+          {:ok, Backend.t()} | {:error, String.t()}
+  defp get_default_backend_for_user(user_id) when is_integer(user_id) do
+    user = Users.Cache.get(user_id)
+    {:ok, Backends.get_default_backend(user)}
+  end
+
+  @spec build_transformation_context(Backend.t()) :: map()
+  defp build_transformation_context(%Backend{} = backend) do
+    context = %{}
+
+    context =
+      if SingleTenant.supabase_mode?() and SingleTenant.postgres_backend?() do
+        schema_prefix = Keyword.get(SingleTenant.postgres_backend_adapter_opts(), :schema)
+        Map.put(context, :schema_prefix, schema_prefix)
+      else
+        context
+      end
+
+    Map.put(context, :backend_config, backend.config)
   end
 end

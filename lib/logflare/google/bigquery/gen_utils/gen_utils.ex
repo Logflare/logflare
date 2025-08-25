@@ -197,8 +197,9 @@ defmodule Logflare.Google.BigQuery.GenUtils do
   def format_key(k) when is_atom_value(k), do: k |> Atom.to_string() |> format_key()
 
   @doc """
-  Formats values for BigQuery label values. Values are like keys except they can start
-  with an integer.
+  Formats values for BigQuery label values.
+
+  Values are like keys except they can start with an integer.
 
   ## Examples
 
@@ -234,8 +235,11 @@ defmodule Logflare.Google.BigQuery.GenUtils do
 
   iex> Logflare.Google.BigQuery.GenUtils.format_value("My-Label With$Weird#Chars")
   "my-label_withweirdchars"
+
+  iex> Logflare.Google.BigQuery.GenUtils.format_value(nil)
+  nil
   """
-  @spec format_value(String.t() | integer() | atom()) :: String.t()
+  @spec format_value(String.t() | integer() | atom()) :: String.t() | nil
   def format_value(v) when is_binary(v) do
     v =
       case DateTime.from_iso8601(v) do
@@ -250,6 +254,7 @@ defmodule Logflare.Google.BigQuery.GenUtils do
     |> String.slice(0, 63)
   end
 
+  def format_value(nil), do: nil
   def format_value(v) when is_integer(v), do: v |> Integer.to_string() |> format_value()
   def format_value(v) when is_atom_value(v), do: v |> Atom.to_string() |> format_value()
 

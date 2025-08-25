@@ -2,8 +2,10 @@ defmodule Logflare.Endpoints.Query do
   @moduledoc false
 
   use TypedEctoSchema
+
   import Ecto.Changeset
   import Logflare.Utils.Guards
+
   require Logger
 
   alias Ecto.Changeset
@@ -11,7 +13,6 @@ defmodule Logflare.Endpoints.Query do
   alias Logflare.Backends
   alias Logflare.Backends.Backend
   alias Logflare.Endpoints
-  alias Logflare.Endpoints.Query
   alias Logflare.SingleTenant
   alias Logflare.Sql
   alias Logflare.User
@@ -180,7 +181,7 @@ defmodule Logflare.Endpoints.Query do
   @doc """
   Replaces a query with latest source names.
   """
-  @spec map_query_sources(Query.t()) :: Query.t()
+  @spec map_query_sources(__MODULE__.t()) :: __MODULE__.t()
   def map_query_sources(
         %__MODULE__{query: query, source_mapping: source_mapping, user_id: user_id} = q
       ) do
