@@ -57,7 +57,12 @@ defmodule LogflareWeb.SearchLive.EventContextComponent do
         ]
       )
 
-    Lql.Rules.update_timestamp_rules(lql_rules, [timestamp_range])
+    required_fields = required_fields(source)
+
+    lql_rules
+    |> Logflare.Lql.Rules.get_filter_rules()
+    |> Enum.filter(&(&1.path in required_fields))
+    |> Lql.Rules.update_timestamp_rules([timestamp_range])
   end
 
   @impl true
@@ -94,7 +99,7 @@ defmodule LogflareWeb.SearchLive.EventContextComponent do
     <div class="list-unstyled console-text-list -tw-mx-6 tw-relative">
       <div class="tw-flex tw-px-2 tw-py-4 tw-mb-4 tw-bg-gray-800 tw-items-baseline tw-sticky tw-w-full">
         <div class="tw-font-mono tw-text-white tw-text-sm tw-space-x-2">
-          <.lql_rules rules={@lql_rules} />
+          <%= Lql.encode!(@lql_rules) %>
         </div>
       </div>
       <div class="tw-h-[calc(100vh-200px)] tw-overflow-y-auto tw-pr-2 tw-pl-5 -tw-ml-5" id="context_log_events" phx-hook="ScrollIntoView" phx-value-scroll-target={@target_event_id}>
@@ -148,44 +153,6 @@ defmodule LogflareWeb.SearchLive.EventContextComponent do
     log_event.id == target_event_id
   end
 
-  attr :rules, :list
-
-  def lql_rules(assigns) do
-    rules = Lql.Rules.get_timestamp_filters(assigns.rules)
-
-    assigns =
-      assigns
-      |> assign(:query, Lql.encode!(rules))
-
-    ~H"""
-    <%= @query %>
-    """
-  end
-
-  attr :rule, Lql.Rules.FilterRule, required: true
-
-  def lql_rule(%{rule: %{path: "timestamp", operator: :range}} = assigns) do
-    ~H"""
-    t:
-    """
-  end
-
-  def lql_rule(assigns) do
-    operator =
-      case assigns.rule.operator do
-        := -> ":"
-        other -> other |> to_string()
-      end
-
-    assigns =
-      assigns
-      |> assign(:operator, operator)
-
-    ~H"""
-    <span><%= @rule.path %><%= @operator %><%= @rule.value %></span>
-    """
-  end
-
   def search_logs(log_event_id, ts, source_id, lql_rules) do
     source = Sources.get_source_for_lv_param(source_id)
 
@@ -204,5 +171,21 @@ defmodule LogflareWeb.SearchLive.EventContextComponent do
       %{error: error} ->
         %{rows: [], error: error}
     end
+  end
+
+  defp required_fields(source) do
+    clustering_fields =
+      (source.bigquery_clustering_fields || "")
+      |> String.split(",")
+
+    suggested_keys =
+      source.suggested_keys
+      |> String.split(",")
+      |> Enum.map(fn
+        "m." <> suggested_field -> "metadata." <> suggested_field
+        suggested_field -> suggested_field
+      end)
+
+    clustering_fields ++ suggested_keys
   end
 end
