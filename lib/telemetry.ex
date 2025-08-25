@@ -205,7 +205,7 @@ defmodule Logflare.Telemetry do
         tags: [:name],
         description: "Top processes by message queue length"
       ),
-      distribution("logflare.system.top_processes.memory.size",
+      last_value("logflare.system.top_processes.memory.size",
         tags: [:name],
         description: "Top processes by memory usage",
         unit: {:byte, :megabyte}
