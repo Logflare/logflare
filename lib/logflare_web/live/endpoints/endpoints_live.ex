@@ -196,19 +196,17 @@ defmodule LogflareWeb.EndpointsLive do
     {:noreply, put_flash(socket, :info, message)}
   end
 
-  def handle_event("validate", %{"endpoint" => endpoint_params}, socket) do
-    # query may not be valid yet so it is handled separately in handle_info
-    attrs = Map.drop(endpoint_params, ["query"])
-    changeset = Endpoints.change_query(socket.assigns.endpoint_changeset.data, attrs)
-    {:noreply, assign(socket, :endpoint_changeset, changeset)}
+  def handle_event("validate", %{"_target" => ["live_monaco_editor", _]}, socket) do
+    # ignore change events from the editor field
+    {:noreply, socket}
+  end
+
+  def handle_event("validate", _params, socket) do
+    # noop
+    {:noreply, socket}
   end
 
   def handle_info({:query_string_updated, query_string}, socket) do
-    # query may not yet be valid but still need to update changes in form
-    changeset =
-      socket.assigns.endpoint_changeset
-      |> Ecto.Changeset.put_change(:query, query_string)
-
     parsed_result =
       Endpoints.parse_query_string(
         :bq_sql,
@@ -227,7 +225,7 @@ defmodule LogflareWeb.EndpointsLive do
           socket
       end
 
-    {:noreply, socket |> assign(endpoint_changeset: changeset)}
+    {:noreply, socket}
   end
 
   defp assign_updated_params_form(socket, parameters, query_string) do

@@ -25,13 +25,23 @@ defmodule LogflareWeb.MonacoEditorComponent do
   """
 
   def mount(socket) do
-    {:ok, assign(socket, parse_error_message: nil, on_query_change: nil)}
+    {:ok, assign(socket, parse_error_message: nil, on_query_change: nil, query: nil)}
   end
 
   def update(assigns, socket) do
+    # only use field if not first mount
+    assigns_query = socket.assigns.query
+
+    query =
+      case assigns do
+        %{field: %{value: query}} when assigns_query == nil -> query
+        _ -> assigns_query || ""
+      end
+
     {:ok,
      socket
      |> assign(assigns)
+     |> assign(:query, query)
      |> assign_completions()}
   end
 
@@ -41,7 +51,7 @@ defmodule LogflareWeb.MonacoEditorComponent do
     ~H"""
     <div id={@id}>
       <LiveMonacoEditor.code_editor value={@field.value} target={@myself} change="parse-query" path="query_string" id="query" opts={@editor_opts} />
-      <%= hidden_input(@field.form, :query, value: @field.value) %>
+      <%= hidden_input(@field.form, :query, value: @query) %>
       <%= error_tag(@field.form, :query) %>
       <.alert :if={@parse_error_message} variant="warning">
         <strong>SQL Parse error!</strong>
@@ -109,11 +119,13 @@ defmodule LogflareWeb.MonacoEditorComponent do
     socket =
       case parse_query(query, endpoints, alerts) do
         :ok ->
-          assign(socket, field: field, parse_error_message: nil)
+          assign(socket, parse_error_message: nil)
 
         {:error, message} ->
-          assign(socket, field: field, parse_error_message: message)
+          assign(socket, parse_error_message: message)
       end
+      |> assign(:query, query)
+      |> assign(:field, field)
 
     {:noreply, socket}
   end

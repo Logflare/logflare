@@ -183,31 +183,44 @@ defmodule LogflareWeb.EndpointsLiveTest do
       assert_patched(view, "/endpoints/#{endpoint.id}")
       # no longer has the initail query string
       refute render(view) =~ endpoint.query
+      refute render(view) =~ "@other"
+      refute render(view) =~ "initial"
     end
 
-    test "form fields are tracked through query parsing", %{
+    test "bug: edit query with validation errors do not affect saved values", %{
       conn: conn,
-      valid_query: valid_query,
-      invalid_query: invalid_query
+      user: user
     } do
-      {:ok, view, _html} = live(conn, "/endpoints/new")
+      endpoint = insert(:endpoint, user: user, query: "select @other as initial")
+      {:ok, view, _html} = live(conn, "/endpoints/#{endpoint.id}/edit")
+
+      view
+      |> change_editor_query("select @test as changed")
+
+      assert view |> element("#endpoint_query") |> render() =~ "select @test as changed"
+
+      view
+      |> element("form#endpoint")
+      |> render_change(%{
+        endpoint: %{
+          name: "changed"
+        }
+      })
+
+      # should not reset the hidden input
+      assert view |> element("#endpoint_query") |> render() =~ "select @test as changed"
 
       assert view
-             |> form("#endpoint", %{
-               endpoint: %{labels: "session_id"}
+             |> form("#endpoint")
+             |> render_submit(%{
+               endpoint: %{
+                 name: "changed",
+                 query: "select @test as changed_again"
+               }
              })
-             |> render_submit() =~ "session_id"
 
-      [invalid_query, valid_query]
-      |> Enum.each(fn query ->
-        view
-        |> with_target("#endpoint_query_editor")
-        |> render_hook("parse-query", %{"value" => query})
-
-        assert view
-               |> element("#endpoint_labels")
-               |> render =~ "session_id"
-      end)
+      assert render(view) =~ "select @test as changed_again"
+      assert render(view) =~ "changed"
     end
   end
 
@@ -325,5 +338,14 @@ defmodule LogflareWeb.EndpointsLiveTest do
       assert_received {:labels, labels = %{"test" => "my_param_value", "session_id" => "nil"}}
       assert labels["endpoint_id"] == endpoint.id |> to_string()
     end
+  end
+
+  defp change_editor_query(view, query) do
+    result =
+      view
+      |> with_target("#endpoint_query_editor")
+      |> render_hook("parse-query", %{"value" => query})
+
+    result
   end
 end
