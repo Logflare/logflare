@@ -119,6 +119,7 @@ defmodule Logflare.Logs.Search do
   @doc """
   Search for events before and after a selected event.
   """
+  @spec search_event_context(SO.t(), String.t(), DateTime.t()) :: {:ok, SO.t()} | {:error, SO.t()}
   def search_event_context(%SO{} = so, log_event_id, %DateTime{} = timestamp) do
     so =
       so
@@ -131,53 +132,57 @@ defmodule Logflare.Logs.Search do
 
     fields = [:id, :timestamp, :event_message, :metadata]
 
-    before_query =
+    base_query =
       from(so.source.bq_table_id)
       |> Logflare.Logs.LogEvents.partition_query([min, max], so.partition_by)
+      |> select([t], map(t, ^fields))
+      |> Logflare.Lql.apply_filter_rules(so.lql_rules)
+
+    before_query =
+      base_query
       |> where(
         [t],
         t.timestamp < ^timestamp or (t.timestamp == ^timestamp and t.id <= ^log_event_id)
       )
       |> order_by([t], desc: t.timestamp, desc: t.id)
-      |> select([t], map(t, ^fields))
       |> select_merge([t], %{
         rank:
           fragment("1 - ROW_NUMBER() OVER (ORDER BY ? DESC, ? DESC)", t.timestamp, t.id)
           |> selected_as(:rank)
       })
-      |> Logflare.Lql.apply_filter_rules(so.lql_rules)
+      # include the target event and up to 50 following
       |> limit(51)
-      |> subquery()
-      |> select([t], t)
 
     after_query =
-      from(so.source.bq_table_id)
-      |> Logflare.Logs.LogEvents.partition_query([min, max], so.partition_by)
+      base_query
       |> where(
         [t],
         t.timestamp > ^timestamp or (t.timestamp == ^timestamp and t.id > ^log_event_id)
       )
       |> order_by([t], asc: t.timestamp, asc: t.id)
-      |> select([t], map(t, ^fields))
       |> select_merge([t], %{
         rank:
           over(fragment("ROW_NUMBER()"), order_by: [asc: t.timestamp, asc: t.id])
           |> selected_as(:rank)
       })
-      |> Logflare.Lql.apply_filter_rules(so.lql_rules)
       |> limit(50)
-      |> subquery()
-      |> select([t], t)
 
     query =
       before_query
-      |> union_all(^after_query)
+      |> subquery()
+      |> select([t], t)
+      |> union_all(^(after_query |> subquery() |> select([t], t)))
       |> subquery()
       |> select([t], map(t, ^fields))
       |> select_merge([t], %{rank: t.rank})
       |> order_by([t], asc: t.timestamp, asc: t.id)
 
-    %{so | query: query} |> do_query()
+    with so <- %{so | query: query},
+         so = %{error: nil} <- do_query(so) do
+      {:ok, so}
+    else
+      so -> {:error, so}
+    end
   end
 
   def query_source_streaming_buffer(%Source{} = source) do

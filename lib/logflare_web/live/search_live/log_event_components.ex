@@ -4,12 +4,9 @@ defmodule LogflareWeb.SearchLive.LogEventComponents do
 
   use Phoenix.Component
 
-  import LogflareWeb.ModalLiveHelpers
-  import LogflareWeb.CoreComponents
   import LogflareWeb.Helpers.BqSchema
 
   alias Logflare.DateTimeUtils
-  alias Phoenix.LiveView.JS
 
   @log_levels ~W(debug info warning error alert critical notice emergency)
 
