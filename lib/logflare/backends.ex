@@ -7,6 +7,7 @@ defmodule Logflare.Backends do
   alias Ecto.Changeset
   alias Logflare.Backends.Adaptor
   alias Logflare.Backends.Backend
+  alias Logflare.Backends.BackendRegistry
   alias Logflare.Backends.IngestEventQueue
   alias Logflare.Backends.RecentEventsTouch
   alias Logflare.Backends.SourceRegistry
@@ -555,6 +556,16 @@ defmodule Logflare.Backends do
 
   def via_source(id, process_id) when is_number(id) do
     {:via, Registry, {SourceRegistry, {id, process_id}}}
+  end
+
+  @doc """
+  Registers a unique backend-related process on the backend registry.
+  """
+  @spec via_backend(Backend.t() | non_neg_integer(), module()) :: tuple()
+  def via_backend(%Backend{id: id}, mod), do: via_backend(id, mod)
+
+  def via_backend(backend_id, mod) when is_number(backend_id) do
+    {:via, Registry, {BackendRegistry, {mod, backend_id}}}
   end
 
   @doc """

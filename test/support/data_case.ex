@@ -140,8 +140,8 @@ defmodule Logflare.DataCase do
 
     connection_name =
       case type do
-        :ingest -> ClickhouseAdaptor.ingest_connection_via({source, backend})
-        :query -> ClickhouseAdaptor.query_connection_via({source, backend})
+        :ingest -> ClickhouseAdaptor.connection_pool_via({source, backend})
+        :query -> ClickhouseAdaptor.connection_pool_via(backend)
       end
 
     base_opts

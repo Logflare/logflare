@@ -1,14 +1,14 @@
 defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.ConnectionManager do
   @moduledoc """
-  Manages ClickHouse connection lifecycle for both ingest and query connections.
+  Manages a ClickHouse connection pool lifecycle.
 
-  Connection types:
-  - `:ingest` - for write operations (log ingestion)
-  - `:query` - for read operations (endpoint queries)
+  Query/read connection pools are keyed by `Backend`.
+  Ingest/write connection pools are keyed by `{Source, Backend}`.
   """
 
   use GenServer
   use TypedStruct
+
   require Logger
 
   alias Logflare.Backends
@@ -18,240 +18,246 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.ConnectionManager do
   @type source_backend_tuple :: {Source.t(), Backend.t()}
   @type connection_type :: :ingest | :query
 
-  # Activity thresholds (following BigQuery patterns)
-  @ingest_inactivity_timeout :timer.minutes(5)
-  @query_inactivity_timeout :timer.minutes(5)
+  @inactivity_timeout :timer.minutes(5)
   @resolve_interval :timer.seconds(30)
 
   typedstruct do
-    field :source, Source.t(), enforce: true
+    field :pool_type, connection_type(), enforce: true
+    field :source, Source.t() | nil, default: nil
     field :backend, Backend.t(), enforce: true
-    field :ingest_ch_opts, Keyword.t(), enforce: true
-    field :query_ch_opts, Keyword.t(), enforce: true
-    field :ingest_connection_pid, pid() | nil, default: nil
-    field :query_connection_pid, pid() | nil, default: nil
-    field :ingest_last_activity, integer() | nil, default: nil
-    field :query_last_activity, integer() | nil, default: nil
-    field :resolve_timer, reference() | nil, default: nil
+    field :ch_opts, Keyword.t(), enforce: true
+    field :pool_pid, pid() | nil, default: nil
+    field :last_activity, integer() | nil, default: nil
+    field :resolve_timer_ref, reference() | nil, default: nil
   end
 
-  defguardp is_connection_type(type) when type in ~w(ingest query)a
+  @doc """
+  Starts a ClickHouse connection manager process.
 
-  @doc false
+  These processes have unique behavior based on the arguments provided.
+
+  If providing a `Source` and `Backend`, it is assumed this is an ingest/write connection pool.
+  If only providing a `Backend`, it is assumed this is a query/read connection pool.
+  """
   @spec start_link(
-          {Source.t(), Backend.t(), ingest_ch_opts :: Keyword.t(), query_ch_opts :: Keyword.t()}
+          {Source.t(), Backend.t(), ch_opts :: Keyword.t()}
+          | {Backend.t(), ch_opts :: Keyword.t()}
         ) :: GenServer.on_start()
-  def start_link({%Source{} = source, %Backend{} = backend, ingest_ch_opts, query_ch_opts})
-      when is_list(ingest_ch_opts) and is_list(query_ch_opts) do
-    GenServer.start_link(__MODULE__, {source, backend, ingest_ch_opts, query_ch_opts},
+  def start_link({%Source{} = source, %Backend{} = backend, ch_opts}) when is_list(ch_opts) do
+    GenServer.start_link(__MODULE__, {source, backend, ch_opts},
       name: connection_manager_via({source, backend})
     )
   end
 
+  def start_link({%Backend{} = backend, ch_opts}) when is_list(ch_opts) do
+    GenServer.start_link(__MODULE__, {backend, ch_opts}, name: connection_manager_via(backend))
+  end
+
   @doc false
   @spec child_spec(
-          {Source.t(), Backend.t(), ingest_ch_opts :: Keyword.t(), query_ch_opts :: Keyword.t()}
+          {Source.t(), Backend.t(), ch_opts :: Keyword.t()}
+          | {Backend.t(), ch_opts :: Keyword.t()}
         ) :: Supervisor.child_spec()
-  def child_spec({%Source{} = source, %Backend{} = backend, ingest_ch_opts, query_ch_opts}) do
+  def child_spec({%Source{} = source, %Backend{} = backend, ch_opts}) do
     %{
       id: {__MODULE__, {source.id, backend.id}},
-      start: {__MODULE__, :start_link, [{source, backend, ingest_ch_opts, query_ch_opts}]}
+      start: {__MODULE__, :start_link, [{source, backend, ch_opts}]}
+    }
+  end
+
+  def child_spec({%Backend{} = backend, ch_opts}) do
+    %{
+      id: {__MODULE__, {backend.id}},
+      start: {__MODULE__, :start_link, [{backend, ch_opts}]}
     }
   end
 
   @doc """
-  Notifies the connection manager of ingest activity.
-
-  This resets the inactivity timer for ingest connections.
+  Generates a unique ClickHouse connection pool via tuple based on a `{Source, Backend}` or `Backend`.
   """
-  @spec notify_ingest_activity(Source.t(), Backend.t()) :: :ok
-  def notify_ingest_activity(%Source{} = source, %Backend{} = backend) do
-    {source, backend}
-    |> connection_manager_via()
-    |> GenServer.cast({:activity, :ingest})
+  @spec connection_pool_via({Source.t(), Backend.t()} | Backend.t()) :: tuple()
+  def connection_pool_via({%Source{} = source, %Backend{} = backend}) do
+    Backends.via_source(source, CHWritePool, backend)
+  end
+
+  def connection_pool_via(%Backend{} = backend) do
+    Backends.via_backend(backend, CHReadPool)
   end
 
   @doc """
-  Notifies the connection manager of query activity.
+  Notifies the connection manager of activity.
 
-  This resets the inactivity timer for query connections.
+  This resets the inactivity timer for connections.
   """
-  @spec notify_query_activity(Source.t(), Backend.t()) :: :ok
-  def notify_query_activity(%Source{} = source, %Backend{} = backend) do
-    {source, backend}
+  @spec notify_activity({Source.t(), Backend.t()} | Backend.t()) :: :ok
+  def notify_activity({%Source{}, %Backend{}} = args) do
+    args
     |> connection_manager_via()
-    |> GenServer.cast({:activity, :query})
+    |> GenServer.cast(:update_activity)
+  end
+
+  def notify_activity(%Backend{} = backend) do
+    backend
+    |> connection_manager_via()
+    |> GenServer.cast(:update_activity)
   end
 
   @doc """
-  Ensures a connection of the specified type is started.
+  Ensures a connection pool has been started.
 
-  This will start the connection if it's not already running and notify the manager of activity.
+  This will start the connection pool if it's not already running and notifies the manager of activity.
   """
-  @spec ensure_connection_started(Source.t(), Backend.t(), connection_type()) ::
-          :ok | {:error, term()}
-  def ensure_connection_started(%Source{} = source, %Backend{} = backend, connection_type)
-      when is_connection_type(connection_type) do
-    {source, backend}
+  @spec ensure_pool_started({Source.t(), Backend.t()} | Backend.t()) :: :ok | {:error, term()}
+  def ensure_pool_started({%Source{}, %Backend{}} = args) do
+    args
     |> connection_manager_via()
-    |> GenServer.call({:ensure_connection, connection_type})
+    |> GenServer.call(:ensure_pool)
+  end
+
+  def ensure_pool_started(%Backend{} = backend) do
+    backend
+    |> connection_manager_via()
+    |> GenServer.call(:ensure_pool)
   end
 
   @doc """
-  Checks if a connection of the specified type is currently active.
+  Checks if a connection pool is currently active or not.
   """
-  @spec connection_active?(Source.t(), Backend.t(), connection_type()) :: boolean()
-  def connection_active?(%Source{} = source, %Backend{} = backend, connection_type)
-      when is_connection_type(connection_type) do
-    manager = connection_manager_via({source, backend})
+  @spec pool_active?({Source.t(), Backend.t()} | Backend.t()) :: boolean()
+  def pool_active?({%Source{}, %Backend{}} = args) do
+    conn_mgr = connection_manager_via(args)
 
     try do
-      GenServer.call(manager, {:connection_active?, connection_type})
+      GenServer.call(conn_mgr, :pool_active)
+    catch
+      :exit, _ -> false
+    end
+  end
+
+  def pool_active?(%Backend{} = backend) do
+    conn_mgr = connection_manager_via(backend)
+
+    try do
+      GenServer.call(conn_mgr, :pool_active)
     catch
       :exit, _ -> false
     end
   end
 
   @impl true
-  def init({source, backend, ingest_ch_opts, query_ch_opts}) do
-    resolve_timer = Process.send_after(self(), :resolve_connections, @resolve_interval)
+  def init(args) do
+    resolve_timer_ref = Process.send_after(self(), :resolve_connections, @resolve_interval)
 
-    state = %__MODULE__{
-      source: source,
-      backend: backend,
-      ingest_ch_opts: ingest_ch_opts,
-      query_ch_opts: query_ch_opts,
-      resolve_timer: resolve_timer
-    }
+    initial_state =
+      case args do
+        {%Source{} = source, %Backend{} = backend, ch_opts} ->
+          %__MODULE__{
+            pool_type: :ingest,
+            source: source,
+            backend: backend,
+            ch_opts: ch_opts,
+            resolve_timer_ref: resolve_timer_ref
+          }
 
-    {:ok, state}
+        {%Backend{} = backend, ch_opts} ->
+          %__MODULE__{
+            pool_type: :query,
+            source: nil,
+            backend: backend,
+            ch_opts: ch_opts,
+            resolve_timer_ref: resolve_timer_ref
+          }
+      end
+
+    {:ok, initial_state}
   end
 
   @impl true
-  def handle_call({:ensure_connection, connection_type}, _from, state) do
-    {result, new_state} = ensure_connection_started(state, connection_type)
+  def handle_call(:ensure_pool, _from, %__MODULE__{pool_pid: pool_pid} = state)
+      when is_pid(pool_pid) do
+    {result, new_state} =
+      if Process.alive?(pool_pid) do
+        {:ok, record_activity(state)}
+      else
+        start_pool(state)
+      end
+
+    {:reply, result, new_state}
+  end
+
+  def handle_call(:ensure_pool, _from, %__MODULE__{} = state) do
+    {result, new_state} = start_pool(state)
     {:reply, result, new_state}
   end
 
   @impl true
-  def handle_call({:connection_active?, connection_type}, _from, state) do
-    active = connection_active?(state, connection_type)
-    {:reply, active, state}
+  def handle_call(:pool_active, _from, %__MODULE__{pool_pid: pool_pid} = state)
+      when is_pid(pool_pid) do
+    {:reply, Process.alive?(pool_pid), state}
   end
+
+  def handle_call(:pool_active, _from, %__MODULE__{} = state), do: {:reply, false, state}
 
   @impl true
-  def handle_cast({:activity, :ingest}, state) do
-    {:noreply, %{state | ingest_last_activity: System.system_time(:millisecond)}}
-  end
-
-  def handle_cast({:activity, :query}, state) do
-    {:noreply, %{state | query_last_activity: System.system_time(:millisecond)}}
-  end
+  def handle_cast(:update_activity, %__MODULE__{} = state), do: {:noreply, record_activity(state)}
 
   @impl true
-  def handle_info(:resolve_connections, state) do
-    if state.resolve_timer do
-      Process.cancel_timer(state.resolve_timer)
+  def handle_info(:resolve_connections, %__MODULE__{} = state) do
+    if state.resolve_timer_ref do
+      Process.cancel_timer(state.resolve_timer_ref)
     end
 
-    new_timer = Process.send_after(self(), :resolve_connections, @resolve_interval)
+    new_timer_ref = Process.send_after(self(), :resolve_connections, @resolve_interval)
 
     new_state =
-      %__MODULE__{state | resolve_timer: new_timer}
-      |> resolve_connection_state(:ingest)
-      |> resolve_connection_state(:query)
+      %__MODULE__{state | resolve_timer_ref: new_timer_ref}
+      |> resolve_connection_state()
 
     {:noreply, new_state}
   end
 
   @impl true
-  def handle_info({:DOWN, _ref, :process, pid, _reason}, state) when is_pid(pid) do
-    new_state =
-      cond do
-        pid == state.ingest_connection_pid ->
-          Logger.warning("Clickhouse ingest connection proc died",
-            source_id: state.source.id,
-            backend_id: state.backend.id
-          )
+  def handle_info({:DOWN, _ref, :process, pid, _reason}, %__MODULE__{pool_pid: pid} = state)
+      when is_pid(pid) do
+    Logger.warning("Clickhouse connection pool died (#{state.pool_type})",
+      source_id: get_source_id_from_state(state),
+      backend_id: state.backend.id
+    )
 
-          %{state | ingest_connection_pid: nil}
-
-        pid == state.query_connection_pid ->
-          Logger.warning("Clickhouse query connection proc died",
-            source_id: state.source.id,
-            backend_id: state.backend.id
-          )
-
-          %{state | query_connection_pid: nil}
-
-        true ->
-          state
-      end
-
-    {:noreply, new_state}
+    {:noreply, %{state | pool_pid: nil}}
   end
 
-  defp ensure_connection_started(%__MODULE__{ingest_connection_pid: conn_pid} = state, :ingest)
-       when is_pid(conn_pid) do
-    if Process.alive?(conn_pid) do
-      {:ok, record_activity(state, :ingest)}
-    else
-      start_connection(state, :ingest)
-    end
+  def handle_info({:DOWN, _ref, :process, _pid, _reason}, %__MODULE__{} = state) do
+    {:noreply, state}
   end
 
-  defp ensure_connection_started(%__MODULE__{} = state, :ingest) do
-    start_connection(state, :ingest)
+  @spec record_activity(__MODULE__.t()) :: __MODULE__.t()
+  defp record_activity(%__MODULE__{} = state) do
+    %{state | last_activity: System.system_time(:millisecond)}
   end
 
-  defp ensure_connection_started(%__MODULE__{query_connection_pid: conn_pid} = state, :query)
-       when is_pid(conn_pid) do
-    if Process.alive?(conn_pid) do
-      {:ok, record_activity(state, :query)}
-    else
-      start_connection(state, :query)
-    end
-  end
+  @spec start_pool(__MODULE__.t()) :: {:ok, __MODULE__.t()} | {:error, any()}
+  defp start_pool(%__MODULE__{ch_opts: ch_opts} = state) do
+    source_id = get_source_id_from_state(state)
 
-  defp ensure_connection_started(%__MODULE__{} = state, :query) do
-    start_connection(state, :query)
-  end
-
-  defp connection_active?(%__MODULE__{ingest_connection_pid: pid}, :ingest) do
-    is_pid(pid) && Process.alive?(pid)
-  end
-
-  defp connection_active?(%__MODULE__{query_connection_pid: pid}, :query) do
-    is_pid(pid) && Process.alive?(pid)
-  end
-
-  defp record_activity(%__MODULE__{} = state, :ingest) do
-    %{state | ingest_last_activity: System.system_time(:millisecond)}
-  end
-
-  defp record_activity(%__MODULE__{} = state, :query) do
-    %{state | query_last_activity: System.system_time(:millisecond)}
-  end
-
-  defp start_connection(%__MODULE__{ingest_ch_opts: ingest_ch_opts} = state, :ingest) do
-    case Ch.start_link(ingest_ch_opts) do
+    case Ch.start_link(ch_opts) do
       {:ok, pid} ->
         Process.monitor(pid)
 
-        Logger.info("Started Clickhouse ingest connection pool",
-          source_id: state.source.id,
+        Logger.info("Started Clickhouse connection pool (#{state.pool_type})",
+          source_id: source_id,
           backend_id: state.backend.id
         )
 
         new_state =
-          %__MODULE__{state | ingest_connection_pid: pid}
-          |> record_activity(:ingest)
+          %__MODULE__{state | pool_pid: pid}
+          |> record_activity()
 
         {:ok, new_state}
 
       {:error, reason} ->
-        Logger.error("Failed to start Clickhouse ingest connection pool",
-          source_id: state.source.id,
+        Logger.error("Failed to start Clickhouse connection pool (#{state.pool_type})",
+          source_id: source_id,
           backend_id: state.backend.id,
           reason: reason
         )
@@ -260,120 +266,59 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.ConnectionManager do
     end
   end
 
-  defp start_connection(%__MODULE__{query_ch_opts: query_ch_opts} = state, :query) do
-    case Ch.start_link(query_ch_opts) do
-      {:ok, pid} ->
-        Process.monitor(pid)
-
-        Logger.info("Started Clickhouse query connection pool",
-          source_id: state.source.id,
-          backend_id: state.backend.id
-        )
-
-        new_state =
-          %__MODULE__{state | query_connection_pid: pid}
-          |> record_activity(:query)
-
-        {:ok, new_state}
-
-      {:error, reason} ->
-        Logger.error("Failed to start Clickhouse query connection pool",
-          source_id: state.source.id,
-          backend_id: state.backend.id,
-          reason: reason
-        )
-
-        {{:error, reason}, state}
-    end
-  end
-
+  @spec resolve_connection_state(%__MODULE__{}) :: %__MODULE__{}
   defp resolve_connection_state(
-         %__MODULE__{ingest_connection_pid: pid, ingest_last_activity: last_activity} = state,
-         :ingest
+         %__MODULE__{pool_pid: pool_pid, last_activity: last_activity} = state
        ) do
     now = System.system_time(:millisecond)
 
     cond do
-      # No connection, no activity needed
-      pid == nil ->
+      # No pool, nothing to do
+      is_nil(pool_pid) ->
         state
 
-      # Connection exists but not alive, clean up
-      not Process.alive?(pid) ->
-        %__MODULE__{state | ingest_connection_pid: nil}
+      # Pool exists but not alive, clean up
+      not Process.alive?(pool_pid) ->
+        %__MODULE__{state | pool_pid: nil}
 
-      # No activity recorded yet, keep connection
-      last_activity == nil ->
-        state
+      # No activity recorded yet, set activity to now
+      is_nil(last_activity) ->
+        record_activity(state)
 
       # Activity within timeout, keep connection
-      now - last_activity < @ingest_inactivity_timeout ->
+      now - last_activity < @inactivity_timeout ->
         state
 
-      # Inactive for too long, stop connection
+      # Inactive for too long, stop connection pool
       true ->
-        stop_connection(state, :ingest)
+        stop_pool(state)
     end
   end
 
-  defp resolve_connection_state(
-         %__MODULE__{query_connection_pid: pid, query_last_activity: last_activity} = state,
-         :query
-       ) do
-    now = System.system_time(:millisecond)
+  @spec stop_pool(%__MODULE__{}) :: %__MODULE__{}
+  defp stop_pool(%__MODULE__{pool_pid: pool_pid} = state) when is_pid(pool_pid) do
+    if Process.alive?(pool_pid) do
+      GenServer.stop(pool_pid)
 
-    cond do
-      # No connection, no activity needed
-      pid == nil ->
-        state
-
-      # Connection exists but not alive, clean up
-      not Process.alive?(pid) ->
-        %__MODULE__{state | query_connection_pid: nil}
-
-      # No activity recorded yet, keep connection
-      last_activity == nil ->
-        state
-
-      # Activity within timeout, keep connection
-      now - last_activity < @query_inactivity_timeout ->
-        state
-
-      # Inactive for too long, stop connection
-      true ->
-        stop_connection(state, :query)
-    end
-  end
-
-  defp stop_connection(%__MODULE__{ingest_connection_pid: pid} = state, :ingest) do
-    if is_pid(pid) && Process.alive?(pid) do
-      GenServer.stop(pid)
-
-      Logger.info("Stopped Clickhouse ingest connection due to inactivity",
-        source_id: state.source.id,
+      Logger.info("Stopped Clickhouse connection pool due to inactivity",
+        source_id: get_source_id_from_state(state),
         backend_id: state.backend.id
       )
     end
 
-    %__MODULE__{state | ingest_connection_pid: nil}
+    %__MODULE__{state | pool_pid: nil}
   end
 
-  defp stop_connection(%__MODULE__{query_connection_pid: pid} = state, :query) do
-    if is_pid(pid) && Process.alive?(pid) do
-      GenServer.stop(pid)
+  @spec get_source_id_from_state(%__MODULE__{}) :: integer() | nil
+  defp get_source_id_from_state(%__MODULE__{source: %Source{id: id}}), do: id
+  defp get_source_id_from_state(%__MODULE__{}), do: nil
 
-      Logger.info("Stopped Clickhouse query connection due to inactivity",
-        source_id: state.source.id,
-        backend_id: state.backend.id
-      )
-    end
-
-    %__MODULE__{state | query_connection_pid: nil}
-  end
-
-  defp stop_connection(%__MODULE__{} = state, _), do: state
-
-  defp connection_manager_via({source, backend}) do
+  @spec connection_manager_via({Source.t(), Backend.t()} | Backend.t()) :: tuple()
+  defp connection_manager_via({%Source{} = source, %Backend{} = backend}) do
     Backends.via_source(source, __MODULE__, backend)
+  end
+
+  defp connection_manager_via(%Backend{} = backend) do
+    Backends.via_backend(backend, __MODULE__)
   end
 end

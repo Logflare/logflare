@@ -40,7 +40,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
     field(:backend, Backend.t())
     field(:backend_token, String.t())
     field(:source_token, atom())
-    field(:connection_name, tuple())
+    field(:ingest_connection, tuple())
     field(:pipeline_name, tuple())
   end
 
@@ -50,6 +50,8 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
   defguardp is_via_tuple(value)
             when is_tuple(value) and elem(value, 0) == :via and elem(value, 1) == Registry and
                    is_tuple(elem(value, 2))
+
+  defdelegate connection_pool_via(arg), to: ConnectionManager
 
   @doc false
   def child_spec(arg) do
@@ -72,7 +74,9 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
            [module()] | :dynamic}
         ]
   def which_children({%Source{}, %Backend{}} = args) do
-    Supervisor.which_children(adaptor_via(args))
+    args
+    |> adaptor_via()
+    |> Supervisor.which_children()
   end
 
   @doc false
@@ -119,9 +123,9 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
   Simple GRANT check to indicate if the configured user has the ClickHouse permissions it needs for the configured database.
   """
   @impl Logflare.Backends.Adaptor
-  @spec test_connection(Source.t(), Backend.t()) ::
+  @spec test_connection({Source.t(), Backend.t()} | Backend.t()) ::
           :ok | {:error, :permissions_missing} | {:error, term()}
-  def test_connection(%Source{} = source, %Backend{} = backend) do
+  def test_connection({%Source{} = source, %Backend{} = backend}) do
     sql_statement = QueryTemplates.grant_check_statement()
 
     case execute_ch_ingest_query({source, backend}, sql_statement) do
@@ -141,6 +145,31 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
         Logger.warning(
           "ClickHouse GRANT check failed. Unexpected error #{inspect(error_result)}",
           source_token: source.token,
+          backend_id: backend.id
+        )
+
+        error_result
+    end
+  end
+
+  def test_connection(%Backend{} = backend) do
+    sql_statement = QueryTemplates.grant_check_statement()
+
+    case execute_ch_read_query(backend, sql_statement) do
+      {:ok, [%{"result" => 1}]} ->
+        :ok
+
+      {:ok, [%{"result" => 0}]} ->
+        Logger.warning(
+          "ClickHouse GRANT check failed. Required: `CREATE TABLE`, `ALTER TABLE`, `INSERT`, `SELECT`, `DROP TABLE`, `CREATE VIEW`, `DROP VIEW`",
+          backend_id: backend.id
+        )
+
+        {:error, :permissions_missing}
+
+      {:error, _} = error_result ->
+        Logger.warning(
+          "ClickHouse GRANT check failed. Unexpected error #{inspect(error_result)}",
           backend_id: backend.id
         )
 
@@ -175,7 +204,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
   """
   @spec pipeline_pid(source_backend_tuple()) :: pid() | nil
   def pipeline_pid({%Source{}, %Backend{}} = args) do
-    case find_pipeline_pid_in_source_registry(args) do
+    case find_pipeline_pid(args) do
       {:ok, pid} -> pid
       _ -> nil
     end
@@ -187,74 +216,6 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
   @spec pipeline_alive?(source_backend_tuple()) :: boolean()
   def pipeline_alive?({%Source{}, %Backend{}} = args) do
     case pipeline_pid(args) do
-      nil -> false
-      pid -> Process.alive?(pid)
-    end
-  end
-
-  @doc """
-  Generates a unique ClickHouse ingest connection via tuple based on a `Source` and `Backend` pair.
-
-  See `Backends.via_source/3` for more details.
-  """
-  @spec ingest_connection_via(source_backend_tuple()) :: via_tuple()
-  def ingest_connection_via({%Source{} = source, %Backend{} = backend}) do
-    Backends.via_source(source, IngestConnection, backend)
-  end
-
-  @doc """
-  Generates a unique ClickHouse query connection via tuple based on a `Source` and `Backend` pair.
-
-  See `Backends.via_source/3` for more details.
-  """
-  @spec query_connection_via(source_backend_tuple()) :: via_tuple()
-  def query_connection_via({%Source{} = source, %Backend{} = backend}) do
-    Backends.via_source(source, QueryConnection, backend)
-  end
-
-  @doc """
-  Returns the pid for the ClickHouse ingest connection related to a specific `Source` and `Backend` pair.
-
-  If the process is not located in the registry or does not exist, this will return `nil`.
-  """
-  @spec ingest_connection_pid(source_backend_tuple()) :: pid() | nil
-  def ingest_connection_pid({%Source{}, %Backend{}} = args) do
-    case find_ingest_connection_pid_in_source_registry(args) do
-      {:ok, pid} -> pid
-      _ -> nil
-    end
-  end
-
-  @doc """
-  Returns the pid for the ClickHouse query connection related to a specific `Source` and `Backend` pair.
-
-  If the process is not located in the registry or does not exist, this will return `nil`.
-  """
-  @spec query_connection_pid(source_backend_tuple()) :: pid() | nil
-  def query_connection_pid({%Source{}, %Backend{}} = args) do
-    case find_query_connection_pid_in_source_registry(args) do
-      {:ok, pid} -> pid
-      _ -> nil
-    end
-  end
-
-  @doc """
-  Determines if a particular ClickHouse ingest connection process is alive based on a `Source` and `Backend` pair.
-  """
-  @spec ingest_connection_alive?(source_backend_tuple()) :: boolean()
-  def ingest_connection_alive?({%Source{}, %Backend{}} = args) do
-    case ingest_connection_pid(args) do
-      nil -> false
-      pid -> Process.alive?(pid)
-    end
-  end
-
-  @doc """
-  Determines if a particular ClickHouse query connection process is alive based on a `Source` and `Backend` pair.
-  """
-  @spec query_connection_alive?(source_backend_tuple()) :: boolean()
-  def query_connection_alive?({%Source{}, %Backend{}} = args) do
-    case query_connection_pid(args) do
       nil -> false
       pid -> Process.alive?(pid)
     end
@@ -304,15 +265,21 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
           params :: map | [term] | [row :: [term]] | iodata | Enumerable.t(),
           [Ch.query_option()]
         ) :: {:ok, Ch.Result.t()} | {:error, Exception.t()}
-  def execute_ch_ingest_query(source_backend_tuple, statement, params \\ [], opts \\ [])
+  def execute_ch_ingest_query(source_backend, statement, params \\ [], opts \\ [])
 
-  def execute_ch_ingest_query({%Source{} = source, %Backend{} = backend}, statement, params, opts)
+  def execute_ch_ingest_query(
+        {%Source{}, %Backend{}} = source_backend,
+        statement,
+        params,
+        opts
+      )
       when is_list(params) and is_list(opts) do
-    ConnectionManager.ensure_connection_started(source, backend, :ingest)
-    ConnectionManager.notify_ingest_activity(source, backend)
+    ConnectionManager.ensure_pool_started(source_backend)
+    ConnectionManager.notify_activity(source_backend)
 
-    conn = ingest_connection_via({source, backend})
-    Ch.query(conn, statement, params, opts)
+    source_backend
+    |> connection_pool_via()
+    |> Ch.query(statement, params, opts)
   end
 
   @doc """
@@ -321,28 +288,27 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
   This function is for read operations like SELECT queries and analytics.
   """
   @spec execute_ch_read_query(
-          source_backend_tuple(),
+          Backend.t(),
           statement :: iodata(),
           params :: map | [term] | [row :: [term]] | iodata | Enumerable.t(),
           [Ch.query_option()]
         ) :: {:ok, Ch.Result.t()} | {:error, Exception.t()}
-  def execute_ch_read_query(source_backend_tuple, statement, params \\ [], opts \\ [])
+  def execute_ch_read_query(backend, statement, params \\ [], opts \\ [])
 
-  def execute_ch_read_query({%Source{} = source, %Backend{} = backend}, statement, params, opts)
+  def execute_ch_read_query(%Backend{} = backend, statement, params, opts)
       when is_list(params) and is_list(opts) do
-    ConnectionManager.ensure_connection_started(source, backend, :query)
-    ConnectionManager.notify_query_activity(source, backend)
+    ConnectionManager.ensure_pool_started(backend)
+    ConnectionManager.notify_activity(backend)
 
-    conn = query_connection_via({source, backend})
+    pool_via = connection_pool_via(backend)
 
-    case Ch.query(conn, statement, params, opts) do
+    case Ch.query(pool_via, statement, params, opts) do
       {:ok, %Ch.Result{} = result} ->
         {:ok, convert_ch_result_to_rows(result)}
 
       {:error, %Ch.Error{message: error_msg}} when is_non_empty_binary(error_msg) ->
         Logger.warning(
           "ClickHouse query failed: #{inspect(error_msg)}",
-          source_token: source.token,
           backend_id: backend.id
         )
 
@@ -351,7 +317,6 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
       {:error, reason} when is_non_empty_binary(reason) ->
         Logger.warning(
           "ClickHouse query failed: #{inspect(reason)}",
-          source_token: source.token,
           backend_id: backend.id
         )
 
@@ -387,11 +352,10 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
   """
   @spec insert_log_events(source_backend_tuple(), [LogEvent.t()]) ::
           {:ok, Ch.Result.t()} | {:error, Exception.t()}
-  def insert_log_events({%Source{}, %Backend{}} = source_backend_pair, events)
-      when is_list(events) do
-    source_backend_pair
-    |> ingest_connection_via()
-    |> insert_log_events(source_backend_pair, events)
+  def insert_log_events({%Source{}, %Backend{}} = source_backend, events) when is_list(events) do
+    source_backend
+    |> connection_pool_via()
+    |> insert_log_events(source_backend, events)
   end
 
   @spec insert_log_events(via_tuple(), source_backend_tuple(), [LogEvent.t()]) ::
@@ -486,24 +450,6 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
     end
   end
 
-  @doc """
-  Checks if a connection type is currently active for a `Source` and `Backend` pair.
-  """
-  @spec connection_active?(source_backend_tuple(), ConnectionManager.connection_type()) ::
-          boolean()
-  def connection_active?({%Source{} = source, %Backend{} = backend}, connection_type) do
-    ConnectionManager.connection_active?(source, backend, connection_type)
-  end
-
-  @doc """
-  Ensures a connection type is started for a `Source` and `Backend` pair.
-  """
-  @spec ensure_connection_started(source_backend_tuple(), ConnectionManager.connection_type()) ::
-          :ok | {:error, term()}
-  def ensure_connection_started({%Source{} = source, %Backend{} = backend}, connection_type) do
-    ConnectionManager.ensure_connection_started(source, backend, connection_type)
-  end
-
   @doc false
   @impl Supervisor
   def init({%Source{} = source, %Backend{config: %{} = config} = backend} = args) do
@@ -519,19 +465,22 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
     url = Map.get(config, :url)
     {:ok, {scheme, hostname}} = extract_scheme_and_hostname(url)
 
+    ingest_pool_via = connection_pool_via({source, backend})
+    query_pool_via = connection_pool_via(backend)
+
     pipeline_state = %__MODULE__{
       config: config,
       backend: backend,
-      backend_token: if(backend, do: backend.token, else: nil),
+      backend_token: backend.token,
       source_token: source.token,
       source: source,
-      connection_name: ingest_connection_via({source, backend}),
+      ingest_connection: ingest_pool_via,
       pipeline_name: pipeline_via({source, backend})
     }
 
     # Ingest connection pool opts
     ingest_ch_opts = [
-      name: ingest_connection_via({source, backend}),
+      name: ingest_pool_via,
       scheme: scheme,
       hostname: hostname,
       port: get_port_config(backend),
@@ -545,7 +494,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
 
     # Query (reads) connection pool opts
     query_ch_opts = [
-      name: query_connection_via({source, backend}),
+      name: query_pool_via,
       scheme: scheme,
       hostname: hostname,
       port: get_port_config(backend),
@@ -558,7 +507,8 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
     ]
 
     children = [
-      {ConnectionManager, {source, backend, ingest_ch_opts, query_ch_opts}},
+      ConnectionManager.child_spec({source, backend, ingest_ch_opts}),
+      ConnectionManager.child_spec({backend, query_ch_opts}),
       Provisioner.child_spec(args),
       Pipeline.child_spec(pipeline_state)
     ]
@@ -566,27 +516,10 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
     Supervisor.init(children, strategy: :one_for_one)
   end
 
-  @spec find_pipeline_pid_in_source_registry(source_backend_tuple()) ::
-          {:ok, pid()} | {:error, term()}
-  defp find_pipeline_pid_in_source_registry({%Source{}, %Backend{}} = args) do
+  @spec find_pipeline_pid(source_backend_tuple()) :: {:ok, pid()} | {:error, term()}
+  defp find_pipeline_pid({%Source{}, %Backend{}} = args) do
     args
     |> pipeline_via()
-    |> find_pid_in_source_registry()
-  end
-
-  @spec find_ingest_connection_pid_in_source_registry(source_backend_tuple()) ::
-          {:ok, pid()} | {:error, term()}
-  defp find_ingest_connection_pid_in_source_registry({%Source{}, %Backend{}} = args) do
-    args
-    |> ingest_connection_via()
-    |> find_pid_in_source_registry()
-  end
-
-  @spec find_query_connection_pid_in_source_registry(source_backend_tuple()) ::
-          {:ok, pid()} | {:error, term()}
-  defp find_query_connection_pid_in_source_registry({%Source{}, %Backend{}} = args) do
-    args
-    |> query_connection_via()
     |> find_pid_in_source_registry()
   end
 

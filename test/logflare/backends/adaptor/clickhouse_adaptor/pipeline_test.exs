@@ -3,6 +3,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.PipelineTest do
 
   alias Broadway.Message
   alias Logflare.Backends.Adaptor.ClickhouseAdaptor
+  alias Logflare.Backends.Adaptor.ClickhouseAdaptor.ConnectionManager
   alias Logflare.Backends.Adaptor.ClickhouseAdaptor.Pipeline
   alias Logflare.Backends.SourceRegistry
 
@@ -15,20 +16,27 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.PipelineTest do
     {:ok, supervisor_pid} = ClickhouseAdaptor.start_link({source, backend})
 
     on_exit(fn ->
-      Process.exit(supervisor_pid, :kill)
+      if Process.alive?(supervisor_pid) do
+        Process.exit(supervisor_pid, :shutdown)
+      end
     end)
+
+    Process.sleep(200)
+
+    :ok = ConnectionManager.ensure_pool_started({source, backend})
+    :ok = ConnectionManager.ensure_pool_started(backend)
 
     adaptor_state = %ClickhouseAdaptor{
       source: source,
       backend: backend,
       pipeline_name: {:via, Registry, {SourceRegistry, {source.id, backend.id, Pipeline}}},
-      connection_name: ClickhouseAdaptor.ingest_connection_via({source, backend})
+      ingest_connection: ClickhouseAdaptor.connection_pool_via({source, backend})
     }
 
     context = %{
       source: source,
       backend: backend,
-      connection_name: adaptor_state.connection_name
+      ingest_connection: adaptor_state.ingest_connection
     }
 
     [
@@ -93,11 +101,13 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.PipelineTest do
 
       assert result == messages
 
+      Process.sleep(200)
+
       table_name = ClickhouseAdaptor.clickhouse_ingest_table_name(source)
 
       {:ok, query_result} =
         ClickhouseAdaptor.execute_ch_read_query(
-          {source, backend},
+          backend,
           "SELECT count(*) as count FROM #{table_name}"
         )
 
@@ -147,11 +157,13 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.PipelineTest do
       result = Pipeline.handle_batch(:ch, messages, %{}, context)
       assert result == messages
 
+      Process.sleep(200)
+
       table_name = ClickhouseAdaptor.clickhouse_ingest_table_name(source)
 
       {:ok, query_result} =
         ClickhouseAdaptor.execute_ch_read_query(
-          {source, backend},
+          backend,
           "SELECT event_message FROM #{table_name} ORDER BY event_message"
         )
 
