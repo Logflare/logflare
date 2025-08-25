@@ -69,7 +69,7 @@ defmodule LogflareWeb.SearchLive.EventContextComponent do
       rows
       |> Enum.map(fn row ->
         row
-        |> Map.drop([:rank])
+        |> Map.drop(["rank"])
         |> Logflare.LogEvent.make_from_db(%{source: source})
       end)
 
