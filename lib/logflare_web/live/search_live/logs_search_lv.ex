@@ -268,23 +268,7 @@ defmodule LogflareWeb.Source.SearchLV do
 
       {:noreply, socket}
     else
-      tz = Timex.Timezone.get(socket.assigns.search_timezone)
-
-      timestamp_rules =
-        Enum.map(timestamp_rules, fn
-          lql_rule ->
-            if Lql.Rules.timestamp_filter_rule_is_shorthand?(lql_rule) do
-              Map.replace!(
-                lql_rule,
-                :values,
-                for value <- lql_rule.values do
-                  Timex.shift(value, seconds: Timex.diff(value, tz))
-                end
-              )
-            else
-              lql_rule
-            end
-        end)
+      timestamp_rules = adjust_timestamp_rules(timestamp_rules, socket.assigns.search_timezone)
 
       rules = Lql.Rules.update_timestamp_rules(rules, timestamp_rules)
       new_rules = Lql.Rules.jump_timestamp(rules, String.to_atom(direction))
@@ -698,6 +682,23 @@ defmodule LogflareWeb.Source.SearchLV do
     |> Enum.find(%{}, &match?(%ChartRule{}, &1))
     |> Map.get(:value_type)
     |> Kernel.in([:integer, :float])
+  end
+
+  defp adjust_timestamp_rules(timestamp_rules, search_timezone) do
+    tz = Timex.Timezone.get(search_timezone)
+
+    Enum.map(timestamp_rules, fn
+      lql_rule ->
+        if Lql.Rules.timestamp_filter_rule_is_shorthand?(lql_rule) do
+          Map.replace!(lql_rule, :values, shift_timestamps(lql_rule.values, tz))
+        else
+          lql_rule
+        end
+    end)
+  end
+
+  defp shift_timestamps(timestamps, timezone) do
+    Enum.map(timestamps, &Timex.shift(&1, seconds: Timex.diff(&1, timezone)))
   end
 
   defp kickoff_queries(source_token, assigns) when is_atom(source_token) do
