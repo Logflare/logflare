@@ -193,32 +193,6 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
     |> Enum.filter(&(&1.name =~ @service_account_prefix))
   end
 
-  defp handle_response({:ok, response}, project_id) do
-    case response do
-      %{accounts: accounts, nextPageToken: nil} ->
-        accounts
-
-      %{accounts: accounts, nextPageToken: next_page_token} ->
-        get_next_page(project_id, next_page_token) ++ accounts
-    end
-    |> List.flatten()
-  end
-
-  defp handle_response({:error, error}, _project_id) do
-    Logger.error("Error listing managed service accounts: #{inspect(error)}")
-    []
-  end
-
-  # handles pagination for the IAM api
-  defp get_next_page(project_id, page_token) do
-    GenUtils.get_conn(:default)
-    |> GoogleApi.IAM.V1.Api.Projects.iam_projects_service_accounts_list("projects/#{project_id}",
-      pageSize: 100,
-      pageToken: page_token
-    )
-    |> handle_response(project_id)
-  end
-
   @doc """
   Creates managed service accounts for the project. Multiple service accounts are created, each with partitioning.
 
@@ -254,16 +228,6 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
       end
 
     {:ok, accounts}
-  end
-
-  defp create_managed_service_account(project_id, service_account_index) do
-    GenUtils.get_conn(:default)
-    |> GoogleApi.IAM.V1.Api.Projects.iam_projects_service_accounts_create(
-      "projects/#{project_id}",
-      body: %GoogleApi.IAM.V1.Model.CreateServiceAccountRequest{
-        accountId: managed_service_account_id(service_account_index)
-      }
-    )
   end
 
   @doc """
@@ -393,18 +357,6 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
     end
   end
 
-  # tell goth to use our finch pool
-  # https://github.com/peburrows/goth/blob/master/lib/goth/token.ex#L144
-  defp goth_finch_http_client(options) do
-    {method, options} = Keyword.pop!(options, :method)
-    {url, options} = Keyword.pop!(options, :url)
-    {headers, options} = Keyword.pop!(options, :headers)
-    {body, options} = Keyword.pop!(options, :body)
-
-    Finch.build(method, url, headers, body)
-    |> Finch.request(Logflare.FinchGoth, options)
-  end
-
   @doc """
   Updates the IAM policy for the project.
 
@@ -425,6 +377,54 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
   defdelegate append_managed_service_accounts(project_id, policy), to: CloudResourceManager
   defdelegate patch_dataset_access(user), to: Google.BigQuery
   defdelegate get_conn(conn_type), to: GenUtils
+
+  defp handle_response({:ok, response}, project_id) do
+    case response do
+      %{accounts: accounts, nextPageToken: nil} ->
+        accounts
+
+      %{accounts: accounts, nextPageToken: next_page_token} ->
+        get_next_page(project_id, next_page_token) ++ accounts
+    end
+    |> List.flatten()
+  end
+
+  defp handle_response({:error, error}, _project_id) do
+    Logger.error("Error listing managed service accounts: #{inspect(error)}")
+    []
+  end
+
+  # handles pagination for the IAM api
+  defp get_next_page(project_id, page_token) do
+    GenUtils.get_conn(:default)
+    |> GoogleApi.IAM.V1.Api.Projects.iam_projects_service_accounts_list("projects/#{project_id}",
+      pageSize: 100,
+      pageToken: page_token
+    )
+    |> handle_response(project_id)
+  end
+
+  defp create_managed_service_account(project_id, service_account_index) do
+    GenUtils.get_conn(:default)
+    |> GoogleApi.IAM.V1.Api.Projects.iam_projects_service_accounts_create(
+      "projects/#{project_id}",
+      body: %GoogleApi.IAM.V1.Model.CreateServiceAccountRequest{
+        accountId: managed_service_account_id(service_account_index)
+      }
+    )
+  end
+
+  # tell goth to use our finch pool
+  # https://github.com/peburrows/goth/blob/master/lib/goth/token.ex#L144
+  defp goth_finch_http_client(options) do
+    {method, options} = Keyword.pop!(options, :method)
+    {url, options} = Keyword.pop!(options, :url)
+    {headers, options} = Keyword.pop!(options, :headers)
+    {body, options} = Keyword.pop!(options, :body)
+
+    Finch.build(method, url, headers, body)
+    |> Finch.request(Logflare.FinchGoth, options)
+  end
 
   @spec env_project_id :: String.t()
   defp env_project_id, do: Application.get_env(:logflare, Logflare.Google)[:project_id]
