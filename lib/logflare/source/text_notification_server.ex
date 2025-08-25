@@ -67,14 +67,14 @@ defmodule Logflare.Source.TextNotificationServer do
 
     ExTwilio.Message.create(to: user.phone, from: @twilio_phone, body: body)
 
-    if source.notifications.team_user_ids_for_sms do
-      Enum.each(source.notifications.team_user_ids_for_sms, fn x ->
-        team_user = TeamUsers.Cache.get_team_user(x)
+    source.notifications
+    |> Map.get(:team_user_ids_for_sms, [])
+    |> Enum.each(fn x ->
+      team_user = TeamUsers.Cache.get_team_user(x)
 
-        if team_user do
-          ExTwilio.Message.create(to: team_user.phone, from: @twilio_phone, body: body)
-        end
-      end)
-    end
+      if team_user do
+        ExTwilio.Message.create(to: team_user.phone, from: @twilio_phone, body: body)
+      end
+    end)
   end
 end
