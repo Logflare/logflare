@@ -71,7 +71,7 @@ defmodule Logflare.Logs.SourceRouting do
   end
 
   defp evaluate_filter_condition(lql_filter, le_value) do
-    %FilterRule{value: value, operator: operator, modifiers: mds} = lql_filter
+    %FilterRule{value: value, operator: operator, modifiers: modifiers} = lql_filter
     le_str_value = stringify(le_value)
 
     matches? =
