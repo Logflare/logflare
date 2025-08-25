@@ -192,7 +192,6 @@ defmodule Logflare.Mixfile do
       {:unicode, "~> 1.20"},
       {:configcat, "~> 2.0.0"},
       {:ex2ms, "~> 1.7"},
-      {:recon, git: "https://github.com/ferd/recon", branch: "master", override: true},
 
       # Code quality
       {:credo, "~> 1.6", only: [:dev, :test], runtime: false},
