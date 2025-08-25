@@ -141,6 +141,7 @@ defmodule Logflare.Logs.Search do
         id: t.id,
         timestamp: t.timestamp,
         event_message: t.event_message,
+        metadata: t.metadata,
         rank:
           fragment("1 - ROW_NUMBER() OVER (ORDER BY ? DESC, ? DESC)", t.timestamp, t.id)
           |> selected_as(:rank)
@@ -161,6 +162,7 @@ defmodule Logflare.Logs.Search do
         id: t.id,
         timestamp: t.timestamp,
         event_message: t.event_message,
+        metadata: t.metadata,
         rank:
           over(fragment("ROW_NUMBER()"), order_by: [asc: t.timestamp, asc: t.id])
           |> selected_as(:rank)
@@ -177,6 +179,7 @@ defmodule Logflare.Logs.Search do
         id: t.id,
         timestamp: t.timestamp,
         event_message: t.event_message,
+        metadata: t.metadata,
         rank: t.rank
       })
       |> order_by([t], asc: t.timestamp, asc: t.id)
