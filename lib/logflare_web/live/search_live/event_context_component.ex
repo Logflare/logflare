@@ -3,9 +3,11 @@ defmodule LogflareWeb.SearchLive.EventContextComponent do
 
   alias Logflare.JSON
   alias Phoenix.LiveView.{AsyncResult, JS}
-  alias Logflare.{Lql, SourceSchemas, Sources}
+  alias Logflare.{Lql, Logs, SourceSchemas, Source, Sources}
   alias Logflare.Source.BigQuery.SchemaBuilder
   import LogflareWeb.SearchLive.LogEventComponents, only: [log_event: 1]
+
+  require Logger
 
   @impl true
   def update(assigns, socket) do
@@ -37,6 +39,7 @@ defmodule LogflareWeb.SearchLive.EventContextComponent do
      end)}
   end
 
+  @spec prepare_lql_rules(%Source{}, String.t(), DateTime.t()) :: Lql.Rules.lql_rules()
   def prepare_lql_rules(source, query_string, event_timestamp) do
     source_schema = SourceSchemas.Cache.get_source_schema_by(source_id: source.id)
 
@@ -65,7 +68,6 @@ defmodule LogflareWeb.SearchLive.EventContextComponent do
   end
 
   @impl true
-
   def handle_async(:logs, {:ok, %{rows: rows, source: source}}, socket) do
     before_truncated = rows |> List.first() |> Map.get("rank") == -50
     after_truncated = rows |> List.last() |> Map.get("rank") == 50
@@ -86,10 +88,15 @@ defmodule LogflareWeb.SearchLive.EventContextComponent do
      |> stream(:log_events, events, reset: true)}
   end
 
-  def handle_async(:logs, {:ok, %{error: error}}, socket) do
+  def handle_async(:logs, {:ok, %{error: error, source: source}}, socket) do
+    Logger.error("Backend context search error for source: #{source.token}",
+      error_string: inspect(error),
+      source_id: source.token
+    )
+
     {:noreply,
      socket
-     |> assign(:logs, AsyncResult.failed(socket.assigns.logs, "an  error occurred"))
+     |> assign(:logs, AsyncResult.failed(socket.assigns.logs, "An error occurred."))
      |> stream(:log_events, [], reset: true)}
   end
 
@@ -112,7 +119,9 @@ defmodule LogflareWeb.SearchLive.EventContextComponent do
       <div class="tw-h-[calc(100vh-200px)] tw-overflow-y-auto tw-pr-2 tw-pl-5 -tw-ml-5" id="context_log_events" phx-hook="ScrollIntoView" phx-value-scroll-target={@target_event_id}>
         <.async_result assign={@logs}>
           <:loading><%= live_react_component("Components.Loader", %{}, id: "shared-loader") %></:loading>
-          <:failed>An error occurred.</:failed>
+          <:failed>
+            <div id="context_log_events_error">An error occurred.</div>
+          </:failed>
 
           <div :if={@is_truncated_before} class="tw-text-center tw-py-2 tw-uppercase tw-text-sm">
             Limit 50 events before selection
@@ -161,6 +170,8 @@ defmodule LogflareWeb.SearchLive.EventContextComponent do
     log_event.id == target_event_id
   end
 
+  @spec search_logs(String.t(), DateTime.t(), binary | integer, Lql.Rules.lql_rules()) ::
+          {:ok, map} | {:error, map}
   def search_logs(log_event_id, ts, source_id, lql_rules) do
     source = Sources.get_source_for_lv_param(source_id)
 
@@ -170,14 +181,14 @@ defmodule LogflareWeb.SearchLive.EventContextComponent do
         source: source,
         tailing?: false
       }
-      |> Logflare.Logs.SearchOperation.new()
+      |> Logs.SearchOperation.new()
 
-    case Logflare.Logs.Search.search_event_context(so, log_event_id, ts) do
-      %{rows: rows, error: nil} ->
+    case Logs.Search.search_event_context(so, log_event_id, ts) do
+      {:ok, %{rows: rows}} ->
         %{rows: rows, source: source}
 
-      %{error: error} ->
-        %{error: error}
+      {:error, %{error: error}} ->
+        %{error: error, source: source}
     end
   end
 
