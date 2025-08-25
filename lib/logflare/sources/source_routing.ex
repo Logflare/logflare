@@ -61,66 +61,48 @@ defmodule Logflare.Logs.SourceRouting do
   @spec route_with_lql_rules?(LE.t(), Rule.t()) :: boolean()
   def route_with_lql_rules?(%LE{body: le_body}, %Rule{lql_filters: lql_filters})
       when lql_filters != [] do
-    lql_rules_match? =
-      Enum.reduce_while(lql_filters, true, fn lql_filter, _acc ->
-        %FilterRule{path: path, value: value, operator: operator, modifiers: mds} = lql_filter
-
-        le_values = collect_by_path(le_body, path)
-
-        lql_filter_matches_any_of_nested_values? =
-          Enum.reduce_while(le_values, false, fn le_value, _acc ->
-            le_str_value = stringify(le_value)
-
-            lql_filter_matches? =
-              cond do
-                is_nil(le_value) ->
-                  false
-
-                operator == :range ->
-                  [lvalue, rvalue] = lql_filter.values
-                  le_value >= lvalue and le_value <= rvalue
-
-                operator == :list_includes ->
-                  le_value == value
-
-                operator == :list_includes_regexp ->
-                  le_str_value =~ ~r/#{value}/u
-
-                operator == :string_contains ->
-                  String.contains?(le_str_value, stringify(value))
-
-                operator == := ->
-                  le_value == value
-
-                operator == :"~" ->
-                  le_str_value =~ ~r/#{value}/u
-
-                operator in [:<=, :<, :>=, :>] ->
-                  apply(Kernel, operator, [le_value, value])
-              end
-
-            lql_filter_matches? =
-              if mds[:negate] do
-                not lql_filter_matches?
-              else
-                lql_filter_matches?
-              end
-
-            if lql_filter_matches? do
-              {:halt, lql_filter_matches?}
-            else
-              {:cont, false}
-            end
-          end)
-
-        if lql_filter_matches_any_of_nested_values? do
-          {:cont, true}
-        else
-          {:halt, false}
-        end
+    Enum.all?(lql_filters, fn lql_filter ->
+      le_body
+      |> collect_by_path(lql_filter.path)
+      |> Enum.any?(fn le_value ->
+        evaluate_filter_condition(lql_filter, le_value)
       end)
+    end)
+  end
 
-    lql_rules_match?
+  defp evaluate_filter_condition(lql_filter, le_value) do
+    %FilterRule{value: value, operator: operator, modifiers: mds} = lql_filter
+    le_str_value = stringify(le_value)
+
+    matches? =
+      cond do
+        is_nil(le_value) ->
+          false
+
+        operator == :range ->
+          [lvalue, rvalue] = lql_filter.values
+          le_value >= lvalue and le_value <= rvalue
+
+        operator == :list_includes ->
+          le_value == value
+
+        operator == :list_includes_regexp ->
+          le_str_value =~ ~r/#{value}/u
+
+        operator == :string_contains ->
+          String.contains?(le_str_value, stringify(value))
+
+        operator == := ->
+          le_value == value
+
+        operator == :"~" ->
+          le_str_value =~ ~r/#{value}/u
+
+        operator in [:<=, :<, :>=, :>] ->
+          apply(Kernel, operator, [le_value, value])
+      end
+
+    if mds[:negate], do: not matches?, else: matches?
   end
 
   defp collect_by_path(params, path) when is_binary(path) do
