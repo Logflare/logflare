@@ -109,18 +109,17 @@ defmodule Logflare.ContextCache do
   end
 
   defp delete_matching_entries(entries, context_cache, pkey) do
-    Enum.reduce(entries, 0, fn
-      {k, {:cached, v}}, acc when is_list(v) ->
-        if Enum.any?(v, fn %{id: id} -> id == pkey end) do
-          Cachex.del(context_cache, k)
-          acc + 1
-        else
-          acc
-        end
+    entries
+    |> Stream.filter(fn
+      {_k, {:cached, v}} when is_list(v) ->
+        Enum.any?(v, &(&1.id == pkey))
 
-      {k, _v}, acc ->
-        Cachex.del(context_cache, k)
-        acc + 1
+      {_k, _v} ->
+        true
+    end)
+    |> Enum.reduce(0, fn {k, _v}, acc ->
+      Cachex.del(context_cache, k)
+      acc + 1
     end)
   end
 end

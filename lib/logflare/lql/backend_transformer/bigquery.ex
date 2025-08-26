@@ -201,25 +201,18 @@ defmodule Logflare.Lql.BackendTransformer.BigQuery do
     path
     |> split_by_dots()
     |> Enum.slice(0..-2//1)
-    |> case do
-      [] ->
-        query
+    |> Enum.with_index(1)
+    |> Enum.reduce(query, fn {column, level}, acc_query ->
+      add_unnest_join(acc_query, join_type, String.to_atom(column), level)
+    end)
+  end
 
-      columns ->
-        columns
-        |> Enum.with_index(1)
-        |> Enum.reduce(query, fn {column, level}, q ->
-          column = String.to_atom(column)
+  defp add_unnest_join(query, join_type, column, 1) do
+    join(query, join_type, [top], n in fragment("UNNEST(?)", field(top, ^column)), on: true)
+  end
 
-          if level === 1 do
-            join(q, join_type, [top], n in fragment("UNNEST(?)", field(top, ^column)), on: true)
-          else
-            join(q, join_type, [..., n1], n in fragment("UNNEST(?)", field(n1, ^column)),
-              on: true
-            )
-          end
-        end)
-    end
+  defp add_unnest_join(query, join_type, column, _level) do
+    join(query, join_type, [..., n1], n in fragment("UNNEST(?)", field(n1, ^column)), on: true)
   end
 
   @spec where_match_filter_rule(

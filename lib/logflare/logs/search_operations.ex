@@ -205,23 +205,7 @@ defmodule Logflare.Logs.SearchOperations do
             :pseudo ->
               metrics = Sources.get_source_metrics_for_ingest(so.source_token)
 
-              {value, unit} =
-                cond do
-                  metrics.avg < 10 ->
-                    {2, "DAY"}
-
-                  metrics.avg < 50 ->
-                    {1, "DAY"}
-
-                  metrics.avg < 100 ->
-                    {6, "HOUR"}
-
-                  metrics.avg < 200 ->
-                    {1, "HOUR"}
-
-                  true ->
-                    {1, "MINUTE"}
-                end
+              {value, unit} = to_value_unit(metrics.avg)
 
               query
               |> BigQueryTransformer.where_timestamp_ago(
@@ -359,6 +343,12 @@ defmodule Logflare.Logs.SearchOperations do
 
     %{so | query: q}
   end
+
+  defp to_value_unit(average) when average < 10, do: {2, "DAY"}
+  defp to_value_unit(average) when average < 50, do: {1, "DAY"}
+  defp to_value_unit(average) when average < 100, do: {6, "HOUR"}
+  defp to_value_unit(average) when average < 200, do: {1, "HOUR"}
+  defp to_value_unit(_average), do: {1, "MINUTE"}
 
   def apply_filters(%SO{type: :events, query: q} = so) do
     q = Lql.apply_filter_rules(q, so.lql_meta_and_msg_filters)
