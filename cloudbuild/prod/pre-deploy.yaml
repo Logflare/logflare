@@ -36,7 +36,7 @@ substitutions:
   _IMAGE_TAG: $SHORT_SHA
   _TEMPLATE_NAME: logflare-prod-${_NORMALIZED_IMAGE_TAG}-${_CLUSTER}
   _CONTAINER_IMAGE: gcr.io/logflare-232118/logflare_app:${_IMAGE_TAG}
-  _LOGFLARE_ALERTS_ENABLED: false
+  _LOGFLARE_ALERTS_ENABLED: "false"
 timeout: 1800s
 options:
   dynamicSubstitutions: true
