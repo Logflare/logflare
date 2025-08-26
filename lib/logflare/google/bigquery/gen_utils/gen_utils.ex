@@ -237,7 +237,7 @@ defmodule Logflare.Google.BigQuery.GenUtils do
   "my-label_withweirdchars"
 
   iex> Logflare.Google.BigQuery.GenUtils.format_value(nil)
-  nil
+  "nil"
   """
   @spec format_value(String.t() | integer() | atom()) :: String.t() | nil
   def format_value(v) when is_binary(v) do
