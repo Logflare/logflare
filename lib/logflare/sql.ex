@@ -65,49 +65,6 @@ defmodule Logflare.Sql do
     end
   end
 
-  defp replace_names_with_subqueries(ast, data) do
-    AstUtils.transform_recursive(ast, data, &do_replace_names_with_subqueries/2)
-  end
-
-  defp do_replace_names_with_subqueries(
-         {"relation" = k,
-          %{"Table" => %{"alias" => table_alias, "name" => table_name_values}} = v},
-         data
-       )
-       when is_list(table_name_values) and is_map(data) do
-    table_name =
-      case table_name_values do
-        [%{"value" => table_name}] ->
-          table_name
-
-        [%{"value" => _} | _] ->
-          Enum.map_join(table_name_values, ".", & &1["value"])
-
-        _ ->
-          raise "Invalid table name"
-      end
-
-    query = Enum.find(data.queries, &(&1.name == table_name))
-
-    if query do
-      parser_dialect = to_dialect(data.language)
-      {:ok, [%{"Query" => body}]} = Parser.parse(parser_dialect, query.query)
-
-      {k,
-       %{
-         "Derived" => %{
-           "alias" => table_alias,
-           "lateral" => false,
-           "subquery" => body
-         }
-       }}
-    else
-      {k, v}
-    end
-  end
-
-  defp do_replace_names_with_subqueries(ast_node, _data), do: {:recurse, ast_node}
-
   @doc """
   Transforms and validates an SQL query for querying with bigquery.any()
   The resultant SQL is BigQuery compatible.
@@ -186,10 +143,98 @@ defmodule Logflare.Sql do
     end
   end
 
-  defp sandboxed_ast(query, dialect) when is_non_empty_binary(query),
-    do: Parser.parse(dialect, query)
+  @doc """
+  Translates BigQuery SQL to PostgreSQL SQL.
+  """
+  @spec translate(
+          from :: :bq_sql,
+          to :: :pg_sql,
+          query :: String.t(),
+          schema_prefix :: String.t() | nil
+        ) :: {:ok, String.t()} | {:error, String.t()}
+  def translate(:bq_sql, :pg_sql, query, schema_prefix \\ nil) when is_non_empty_binary(query) do
+    DialectTranslation.translate_bq_to_pg(query, schema_prefix)
+  end
 
-  defp sandboxed_ast(_, _), do: {:ok, nil}
+  @doc """
+  Returns a name-token mapping of all sources detected in the query.
+
+  Excludes any unrecognized names (such as fully-qualified names).
+
+  ### Example
+
+    iex> sources("select a from my_table", %User{...})
+    {:ok, %{"my_table" => "abced-weqqwe-..."}}
+  """
+  @spec sources(query :: String.t(), user :: User.t(), opts :: Keyword.t()) ::
+          {:ok, %{String.t() => String.t()}} | {:error, String.t()}
+  def sources(query, user, opts \\ []) when is_list(opts) do
+    dialect = Keyword.get(opts, :dialect, "bigquery")
+    sources = Sources.list_sources_by_user(user)
+    source_names = for s <- sources, do: s.name
+
+    source_mapping =
+      for source <- sources, into: %{} do
+        {source.name, source}
+      end
+
+    with {:ok, ast} <- Parser.parse(dialect, query),
+         names <-
+           ast
+           |> find_all_source_names()
+           |> Enum.filter(fn name -> name in source_names end) do
+      sources =
+        names
+        |> Enum.map(fn name ->
+          token =
+            source_mapping
+            |> Map.get(name)
+            |> Map.get(:token)
+            |> then(fn
+              v when is_atom_value(v) -> Atom.to_string(v)
+              v -> v
+            end)
+
+          {name, token}
+        end)
+        |> Map.new()
+
+      {:ok, sources}
+    end
+  end
+
+  @doc """
+  Extract out parameters from the SQL string.
+
+  ### Example
+
+    iex> query = "select f.to from my_table f where f.to = @something"
+    iex> parameters(query)
+    {:ok, ["something"]}
+  """
+  @spec parameters(String.t(), Keyword.t()) :: {:ok, [String.t()]} | {:error, String.t()}
+  def parameters(query, opts \\ []) when is_list(opts) do
+    dialect = Keyword.get(opts, :dialect, "bigquery")
+
+    with {:ok, ast} <- Parser.parse(dialect, query) do
+      {:ok, extract_all_parameters(ast)}
+    end
+  end
+
+  @doc """
+  Returns parameter positions mapped to their names.
+
+  ### Example
+  iex> parameter_positions("select @test as testing")
+  %{1 => "test"}
+  """
+  @spec parameter_positions(query :: String.t(), opts :: Keyword.t()) :: %{
+          integer() => String.t()
+        }
+  def parameter_positions(query, opts \\ []) when is_non_empty_binary(query) and is_list(opts) do
+    {:ok, parameters} = parameters(query, opts)
+    {:ok, do_parameter_positions_mapping(query, parameters)}
+  end
 
   @doc """
   Checks if a query contains a Common Table Expression (CTE).
@@ -205,6 +250,89 @@ defmodule Logflare.Sql do
       _ -> false
     end
   end
+
+  @doc """
+  Updates source names in a query based on a token mapping.
+
+  ### Example
+
+  iex> source_mapping("select a from old_table_name", %{"old_table_name"=> "abcde-fg123-..."}, %User{})
+  {:ok, "select a from new_table_name"}
+  """
+  @spec source_mapping(
+          query :: String.t(),
+          user :: User.t(),
+          mapping :: map(),
+          opts :: Keyword.t()
+        ) ::
+          {:ok, String.t()} | {:error, String.t()}
+  def source_mapping(query, user, mapping, opts \\ [])
+
+  def source_mapping(query, %User{id: user_id}, mapping, opts) do
+    source_mapping(query, user_id, mapping, opts)
+  end
+
+  def source_mapping(query, user_id, mapping, opts) when is_list(opts) do
+    dialect = Keyword.get(opts, :dialect, "bigquery")
+    sources = Sources.list_sources_by_user(user_id)
+
+    with {:ok, ast} <- Parser.parse(dialect, query) do
+      ast
+      |> replace_old_source_names(%{
+        sources: sources,
+        mapping: mapping
+      })
+      |> Parser.to_string()
+    end
+  end
+
+  defp replace_names_with_subqueries(ast, data) do
+    AstUtils.transform_recursive(ast, data, &do_replace_names_with_subqueries/2)
+  end
+
+  defp do_replace_names_with_subqueries(
+         {"relation" = k,
+          %{"Table" => %{"alias" => table_alias, "name" => table_name_values}} = v},
+         data
+       )
+       when is_list(table_name_values) and is_map(data) do
+    table_name =
+      case table_name_values do
+        [%{"value" => table_name}] ->
+          table_name
+
+        [%{"value" => _} | _] ->
+          Enum.map_join(table_name_values, ".", & &1["value"])
+
+        _ ->
+          raise "Invalid table name"
+      end
+
+    query = Enum.find(data.queries, &(&1.name == table_name))
+
+    if query do
+      parser_dialect = to_dialect(data.language)
+      {:ok, [%{"Query" => body}]} = Parser.parse(parser_dialect, query.query)
+
+      {k,
+       %{
+         "Derived" => %{
+           "alias" => table_alias,
+           "lateral" => false,
+           "subquery" => body
+         }
+       }}
+    else
+      {k, v}
+    end
+  end
+
+  defp do_replace_names_with_subqueries(ast_node, _data), do: {:recurse, ast_node}
+
+  defp sandboxed_ast(query, dialect) when is_non_empty_binary(query),
+    do: Parser.parse(dialect, query)
+
+  defp sandboxed_ast(_, _), do: {:ok, nil}
 
   # applies to both ctes, sandboxed queries, and non-ctes
   defp validate_query(ast, data) when is_list(ast) do
@@ -511,53 +639,6 @@ defmodule Logflare.Sql do
 
   defp do_replace_sandboxed_query(ast_node, _data), do: {:recurse, ast_node}
 
-  @doc """
-  Returns a name-token mapping of all sources detected in the query.
-
-  Excludes any unrecognized names (such as fully-qualified names).
-
-  ### Example
-
-    iex> sources("select a from my_table", %User{...})
-    {:ok, %{"my_table" => "abced-weqqwe-..."}}
-  """
-  @spec sources(query :: String.t(), user :: User.t(), opts :: Keyword.t()) ::
-          {:ok, %{String.t() => String.t()}} | {:error, String.t()}
-  def sources(query, user, opts \\ []) when is_list(opts) do
-    dialect = Keyword.get(opts, :dialect, "bigquery")
-    sources = Sources.list_sources_by_user(user)
-    source_names = for s <- sources, do: s.name
-
-    source_mapping =
-      for source <- sources, into: %{} do
-        {source.name, source}
-      end
-
-    with {:ok, ast} <- Parser.parse(dialect, query),
-         names <-
-           ast
-           |> find_all_source_names()
-           |> Enum.filter(fn name -> name in source_names end) do
-      sources =
-        names
-        |> Enum.map(fn name ->
-          token =
-            source_mapping
-            |> Map.get(name)
-            |> Map.get(:token)
-            |> then(fn
-              v when is_atom_value(v) -> Atom.to_string(v)
-              v -> v
-            end)
-
-          {name, token}
-        end)
-        |> Map.new()
-
-      {:ok, sources}
-    end
-  end
-
   defp find_all_source_names(ast),
     do: find_all_source_names(ast, [], %{ast: ast})
 
@@ -598,41 +679,6 @@ defmodule Logflare.Sql do
         %{"alias" => %{"name" => %{"value" => cte_name}}} <-
           get_in(statement, ["Query", "with", "cte_tables"]) || [] do
       cte_name
-    end
-  end
-
-  @doc """
-  Updates source names in a query based on a token mapping.
-
-  ### Example
-
-  iex> source_mapping("select a from old_table_name", %{"old_table_name"=> "abcde-fg123-..."}, %User{})
-  {:ok, "select a from new_table_name"}
-  """
-  @spec source_mapping(
-          query :: String.t(),
-          user :: User.t(),
-          mapping :: map(),
-          opts :: Keyword.t()
-        ) ::
-          {:ok, String.t()} | {:error, String.t()}
-  def source_mapping(query, user, mapping, opts \\ [])
-
-  def source_mapping(query, %User{id: user_id}, mapping, opts) do
-    source_mapping(query, user_id, mapping, opts)
-  end
-
-  def source_mapping(query, user_id, mapping, opts) when is_list(opts) do
-    dialect = Keyword.get(opts, :dialect, "bigquery")
-    sources = Sources.list_sources_by_user(user_id)
-
-    with {:ok, ast} <- Parser.parse(dialect, query) do
-      ast
-      |> replace_old_source_names(%{
-        sources: sources,
-        mapping: mapping
-      })
-      |> Parser.to_string()
     end
   end
 
@@ -689,24 +735,6 @@ defmodule Logflare.Sql do
     source.name
   end
 
-  @doc """
-  Extract out parameters from the SQL string.
-
-  ### Example
-
-    iex> query = "select f.to from my_table f where f.to = @something"
-    iex> parameters(query)
-    {:ok, ["something"]}
-  """
-  @spec parameters(String.t(), Keyword.t()) :: {:ok, [String.t()]} | {:error, String.t()}
-  def parameters(query, opts \\ []) when is_list(opts) do
-    dialect = Keyword.get(opts, :dialect, "bigquery")
-
-    with {:ok, ast} <- Parser.parse(dialect, query) do
-      {:ok, extract_all_parameters(ast)}
-    end
-  end
-
   defp extract_all_parameters(ast) do
     AstUtils.collect_from_ast(ast, &do_extract_parameters/1) |> Enum.uniq()
   end
@@ -722,6 +750,8 @@ defmodule Logflare.Sql do
   defp do_extract_from(_ast_node), do: :skip
 
   # returns true if the name is fully qualified and has the project id prefix.
+  @spec project_fully_qualified_name?(table_name :: String.t(), project_id :: String.t()) ::
+          boolean()
   defp project_fully_qualified_name?(_table_name, nil), do: false
 
   defp project_fully_qualified_name?(table_name, project_id)
@@ -730,31 +760,20 @@ defmodule Logflare.Sql do
     Regex.match?(regex, table_name)
   end
 
+  @spec source_mapping(sources :: [Logflare.Source.t()]) :: %{String.t() => Logflare.Source.t()}
   defp source_mapping(sources) do
     for source <- sources, into: %{} do
       {source.name, source}
     end
   end
 
-  @doc """
-  Returns parameter positions mapped to their names.
-
-  ### Example
-  iex> parameter_positions("select @test as testing")
-  %{1 => "test"}
-  """
-  @spec parameter_positions(query :: String.t(), opts :: Keyword.t()) :: %{
+  @spec do_parameter_positions_mapping(query :: String.t(), params :: [String.t()]) :: %{
           integer() => String.t()
         }
-  def parameter_positions(query, opts \\ []) when is_non_empty_binary(query) and is_list(opts) do
-    {:ok, parameters} = parameters(query, opts)
-    {:ok, do_parameter_positions_mapping(query, parameters)}
-  end
+  defp do_parameter_positions_mapping(_query, []), do: %{}
 
-  def do_parameter_positions_mapping(_query, []), do: %{}
-
-  def do_parameter_positions_mapping(query, params)
-      when is_non_empty_binary(query) and is_list(params) do
+  defp do_parameter_positions_mapping(query, params)
+       when is_non_empty_binary(query) and is_list(params) do
     str =
       params
       |> Enum.uniq()
@@ -767,18 +786,5 @@ defmodule Logflare.Sql do
     |> Enum.reduce(%{}, fn {[_, param], index}, acc ->
       Map.put(acc, index, String.trim(param))
     end)
-  end
-
-  @doc """
-  Translates BigQuery SQL to PostgreSQL SQL.
-  """
-  @spec translate(
-          from :: :bq_sql,
-          to :: :pg_sql,
-          query :: String.t(),
-          schema_prefix :: String.t() | nil
-        ) :: {:ok, String.t()} | {:error, String.t()}
-  def translate(:bq_sql, :pg_sql, query, schema_prefix \\ nil) when is_non_empty_binary(query) do
-    DialectTranslation.translate_bq_to_pg(query, schema_prefix)
   end
 end

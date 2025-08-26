@@ -7,19 +7,24 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor do
 
   On ingest, pipeline will insert it into the log event table for the given source.
   """
-  use GenServer
-  use TypedStruct
-  require Logger
-
-  alias Logflare.Backends.Adaptor.PostgresAdaptor.Pipeline
-  alias Logflare.Backends.Adaptor.PostgresAdaptor.PgRepo
-  alias Logflare.Backends.Adaptor.PostgresAdaptor.SharedRepo
-  alias Logflare.Backends
-  alias Logflare.Backends.Backend
 
   @behaviour Logflare.Backends.Adaptor
 
+  use GenServer
+  use TypedStruct
+
   import Ecto.Changeset
+  import Logflare.Utils.Guards
+
+  require Logger
+
+  alias Logflare.Backends
+  alias Logflare.Backends.Adaptor.PostgresAdaptor.Pipeline
+  alias Logflare.Backends.Adaptor.PostgresAdaptor.PgRepo
+  alias Logflare.Backends.Adaptor.PostgresAdaptor.SharedRepo
+  alias Logflare.Backends.Backend
+  alias Logflare.SingleTenant
+  alias Logflare.Sql
 
   typedstruct do
     field(:config, %{
@@ -62,30 +67,10 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor do
     |> cast(params, [:url, :schema, :username, :password, :hostname, :database, :port, :pool_size])
   end
 
-  @impl Logflare.Backends.Adaptor
-  def validate_config(changeset) do
-    changeset
-    |> validate_format(:url, ~r/(?:postgres|postgresql)\:\/\/.+/)
-    |> then(fn changeset ->
-      url = get_change(changeset, :url)
-      hostname = get_change(changeset, :hostname)
-
-      if url == nil and hostname == nil do
-        msg = "either connection url or separate connection credentials must be provided"
-
-        changeset
-        |> add_error(:url, msg)
-        |> add_error(:hostname, msg)
-      else
-        changeset
-      end
-    end)
-  end
-
   @doc """
-  Executes either an Ecto.Query or an sql string on the Postgres backend.
+  Executes either an `Ecto.Query` or a sql string against the Postgres backend.
 
-  If an sql string is provided, one can also provide parameters to be passed.
+  If a sql string is provided, one can also provide parameters to be passed.
   Parameter placeholders should correspond to Postgres format, i.e. `$#`
 
   ### Examples
@@ -111,11 +96,11 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor do
     {:ok, result}
   end
 
-  def execute_query(%Backend{} = backend, query_string) when is_binary(query_string),
+  def execute_query(%Backend{} = backend, query_string) when is_non_empty_binary(query_string),
     do: execute_query(backend, {query_string, []})
 
   def execute_query(%Backend{} = backend, {query_string, params})
-      when is_binary(query_string) and is_list(params) do
+      when is_non_empty_binary(query_string) and is_list(params) do
     {:ok, result} =
       SharedRepo.with_repo(backend, fn ->
         SharedRepo.query(query_string, params)
@@ -132,24 +117,68 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor do
     {:ok, rows}
   end
 
+  def execute_query(%Backend{} = backend, {query_string, declared_params, input_params})
+      when is_non_empty_binary(query_string) and is_list(declared_params) and is_map(input_params) do
+    args = Enum.map(declared_params, fn param -> Map.get(input_params, param) end)
+    execute_query(backend, {query_string, args})
+  end
+
+  @impl Logflare.Backends.Adaptor
+  def map_query_parameters(original_query, _transformed_query, _declared_params, input_params) do
+    positions = Sql.parameter_positions(original_query)
+
+    case positions do
+      {:ok, params} ->
+        params
+        |> Enum.sort_by(&elem(&1, 0))
+        |> Enum.map(fn {_pos, parameter} ->
+          Map.get(input_params, parameter)
+        end)
+
+      _ ->
+        []
+    end
+  end
+
   @impl Logflare.Backends.Adaptor
   def supports_default_ingest?, do: true
 
-  defp nested_map_update(value) when is_struct(value), do: value
-
-  defp nested_map_update(value) when is_map(value),
-    do: Enum.reduce(value, %{}, &nested_map_update/2)
-
-  defp nested_map_update(value) when is_list(value), do: Enum.map(value, &nested_map_update/1)
-
-  defp nested_map_update(value), do: value
-
-  defp nested_map_update({key, value}, acc) when is_map(value) do
-    Map.put(acc, key, [nested_map_update(value)])
+  @impl Logflare.Backends.Adaptor
+  def transform_query(query, :bq_sql, context) do
+    if should_transform_bigquery_to_postgres?() do
+      schema_prefix = Map.get(context, :schema_prefix)
+      Sql.translate(:bq_sql, :pg_sql, query, schema_prefix)
+    else
+      {:error, "BigQuery SQL not supported by this PostgreSQL backend"}
+    end
   end
 
-  defp nested_map_update({key, value}, acc) do
-    Map.put(acc, key, nested_map_update(value))
+  def transform_query(query, :pg_sql, _context) do
+    {:ok, query}
+  end
+
+  def transform_query(_query, from_language, _context) do
+    {:error, "Transformation from #{from_language} to PostgreSQL not supported"}
+  end
+
+  @impl Logflare.Backends.Adaptor
+  def validate_config(changeset) do
+    changeset
+    |> validate_format(:url, ~r/(?:postgres|postgresql)\:\/\/.+/)
+    |> then(fn changeset ->
+      url = get_change(changeset, :url)
+      hostname = get_change(changeset, :hostname)
+
+      if url == nil and hostname == nil do
+        msg = "either connection url or separate connection credentials must be provided"
+
+        changeset
+        |> add_error(:url, msg)
+        |> add_error(:hostname, msg)
+      else
+        changeset
+      end
+    end)
   end
 
   # expose PgRepo functions
@@ -184,5 +213,29 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor do
 
     {:ok, _pipeline_pid} = Pipeline.start_link(state)
     {:ok, state}
+  end
+
+  @spec should_transform_bigquery_to_postgres?() :: boolean()
+  defp should_transform_bigquery_to_postgres?() do
+    # Only transform BigQuery SQL -> PostgreSQL in SingleTenant Supabase mode with PostgreSQL backend enabled
+    SingleTenant.supabase_mode?() and SingleTenant.postgres_backend?()
+  end
+
+  @spec nested_map_update(term()) :: term()
+  defp nested_map_update(value) when is_struct(value), do: value
+
+  defp nested_map_update(value) when is_map(value),
+    do: Enum.reduce(value, %{}, &nested_map_update/2)
+
+  defp nested_map_update(value) when is_list(value), do: Enum.map(value, &nested_map_update/1)
+
+  defp nested_map_update(value), do: value
+
+  defp nested_map_update({key, value}, acc) when is_map(value) do
+    Map.put(acc, key, [nested_map_update(value)])
+  end
+
+  defp nested_map_update({key, value}, acc) do
+    Map.put(acc, key, nested_map_update(value))
   end
 end

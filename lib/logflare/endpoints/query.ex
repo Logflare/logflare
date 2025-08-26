@@ -2,8 +2,10 @@ defmodule Logflare.Endpoints.Query do
   @moduledoc false
 
   use TypedEctoSchema
+
   import Ecto.Changeset
   import Logflare.Utils.Guards
+
   require Logger
 
   alias Ecto.Changeset
@@ -11,7 +13,6 @@ defmodule Logflare.Endpoints.Query do
   alias Logflare.Backends
   alias Logflare.Backends.Backend
   alias Logflare.Endpoints
-  alias Logflare.Endpoints.Query
   alias Logflare.SingleTenant
   alias Logflare.Sql
   alias Logflare.User
@@ -36,7 +37,7 @@ defmodule Logflare.Endpoints.Query do
     field(:name, :string)
     field(:query, :string)
     field(:description, :string)
-    field(:language, Ecto.Enum, values: [:bq_sql, :lql, :pg_sql], default: :bq_sql)
+    field(:language, Ecto.Enum, values: [:bq_sql, :ch_sql, :lql, :pg_sql], default: :bq_sql)
     field(:source_mapping, :map)
     field(:sandboxable, :boolean)
     field(:cache_duration_seconds, :integer, default: 3_600)
@@ -177,15 +178,10 @@ defmodule Logflare.Endpoints.Query do
     end
   end
 
-  # Only set to `pg_sql` if postgres backend and single tenant / supabase mode is false
-  @spec map_backend_to_language(Backend.t(), boolean()) :: :bq_sql | :pg_sql
-  defp map_backend_to_language(%{type: :postgres}, false), do: :pg_sql
-  defp map_backend_to_language(_backend, _supabase_mode), do: :bq_sql
-
   @doc """
   Replaces a query with latest source names.
   """
-  @spec map_query_sources(Query.t()) :: Query.t()
+  @spec map_query_sources(__MODULE__.t()) :: __MODULE__.t()
   def map_query_sources(
         %__MODULE__{query: query, source_mapping: source_mapping, user_id: user_id} = q
       ) do
@@ -198,4 +194,9 @@ defmodule Logflare.Endpoints.Query do
         q
     end
   end
+
+  @spec map_backend_to_language(Backend.t(), boolean()) :: :bq_sql | :ch_sql | :pg_sql
+  defp map_backend_to_language(%{type: :clickhouse}, _supabase_mode), do: :ch_sql
+  defp map_backend_to_language(%{type: :postgres}, false), do: :pg_sql
+  defp map_backend_to_language(_backend, _supabase_mode), do: :bq_sql
 end

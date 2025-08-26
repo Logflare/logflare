@@ -53,6 +53,8 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
 
   defdelegate connection_pool_via(arg), to: ConnectionManager
 
+  defguardp is_list_or_map(value) when is_list(value) or is_map(value)
+
   @doc false
   def child_spec(arg) do
     %{
@@ -81,7 +83,34 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
 
   @doc false
   @impl Logflare.Backends.Adaptor
-  def execute_query(_ident, _query), do: {:error, :not_implemented}
+  def execute_query(%Backend{} = backend, query_string) when is_non_empty_binary(query_string) do
+    execute_query(backend, {query_string, []})
+  end
+
+  def execute_query(%Backend{} = backend, {query_string, params})
+      when is_non_empty_binary(query_string) and is_list(params) do
+    case execute_ch_read_query(backend, query_string, params) do
+      {:ok, result} -> {:ok, result}
+      error -> error
+    end
+  end
+
+  def execute_query(%Backend{} = backend, {query_string, declared_params, input_params})
+      when is_non_empty_binary(query_string) and is_list(declared_params) and is_map(input_params) do
+    execute_query_with_params(backend, query_string, declared_params, input_params)
+  end
+
+  def execute_query(
+        %Backend{} = backend,
+        {query_string, declared_params, input_params, _endpoint_query}
+      )
+      when is_non_empty_binary(query_string) and is_list(declared_params) and is_map(input_params) do
+    execute_query_with_params(backend, query_string, declared_params, input_params)
+  end
+
+  def execute_query(_backend, %Ecto.Query{} = _query) do
+    {:error, :ecto_queries_not_supported}
+  end
 
   @impl Logflare.Backends.Adaptor
   def supports_default_ingest?, do: true
@@ -296,7 +325,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
   def execute_ch_read_query(backend, statement, params \\ [], opts \\ [])
 
   def execute_ch_read_query(%Backend{} = backend, statement, params, opts)
-      when is_list(params) and is_list(opts) do
+      when is_list_or_map(params) and is_list(opts) do
     ConnectionManager.ensure_pool_started(backend)
     ConnectionManager.notify_activity(backend)
 
@@ -623,5 +652,44 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
 
         []
     end
+  end
+
+  @spec execute_query_with_params(
+          Backend.t(),
+          query_string :: String.t(),
+          declared_params :: [String.t()],
+          input_params :: map()
+        ) ::
+          {:ok, [map()]} | {:error, any()}
+  defp execute_query_with_params(
+         %Backend{} = backend,
+         query_string,
+         declared_params,
+         input_params
+       ) do
+    converted_query = convert_query_params(query_string, declared_params)
+    ch_params = Map.take(input_params, declared_params)
+
+    case execute_ch_read_query(backend, converted_query, ch_params) do
+      {:ok, result} -> {:ok, result}
+      error -> error
+    end
+  end
+
+  @spec convert_query_params(sql_statement :: String.t(), allowed_params :: [String.t()]) ::
+          String.t()
+  defp convert_query_params(sql_statement, allowed_params)
+       when is_non_empty_binary(sql_statement) and is_list(allowed_params) do
+    allowed_set = MapSet.new(allowed_params)
+
+    # Convert `@param` syntax to ClickHouse `{param:String}` syntax
+    Regex.replace(~r/@(\w+)/, sql_statement, fn match, param ->
+      if MapSet.member?(allowed_set, param) do
+        "{#{param}:String}"
+      else
+        Logger.warning("SQL parameter `@#{param}` not in allowed list")
+        match
+      end
+    end)
   end
 end
