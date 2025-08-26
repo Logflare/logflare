@@ -21,10 +21,9 @@ defmodule LogflareWeb.SearchLive.EventContextComponent do
 
     event_timestamp = log_timestamp |> String.to_integer() |> Timex.from_unix(:microsecond)
 
-    # build lql_rules from suggested keys
-    source = Sources.get_source_for_lv_param(source_id)
-
-    lql_rules = prepare_lql_rules(source, query_string, event_timestamp)
+    lql_rules =
+      Sources.get_source_for_lv_param(source_id)
+      |> prepare_lql_rules(query_string, event_timestamp)
 
     {:ok,
      socket
@@ -66,6 +65,7 @@ defmodule LogflareWeb.SearchLive.EventContextComponent do
   end
 
   @impl true
+
   def handle_async(:logs, {:ok, %{rows: rows, source: source}}, socket) do
     before_truncated = rows |> List.first() |> Map.get("rank") == -50
     after_truncated = rows |> List.last() |> Map.get("rank") == 50
@@ -84,6 +84,13 @@ defmodule LogflareWeb.SearchLive.EventContextComponent do
      |> assign(:is_truncated_before, before_truncated)
      |> assign(:is_truncated_after, after_truncated)
      |> stream(:log_events, events, reset: true)}
+  end
+
+  def handle_async(:logs, {:ok, %{error: error}}, socket) do
+    {:noreply,
+     socket
+     |> assign(:logs, AsyncResult.failed(socket.assigns.logs, "an  error occurred"))
+     |> stream(:log_events, [], reset: true)}
   end
 
   def handle_async(:logs, {:exit, reason}, socket) do
@@ -105,6 +112,7 @@ defmodule LogflareWeb.SearchLive.EventContextComponent do
       <div class="tw-h-[calc(100vh-200px)] tw-overflow-y-auto tw-pr-2 tw-pl-5 -tw-ml-5" id="context_log_events" phx-hook="ScrollIntoView" phx-value-scroll-target={@target_event_id}>
         <.async_result assign={@logs}>
           <:loading><%= live_react_component("Components.Loader", %{}, id: "shared-loader") %></:loading>
+          <:failed>An error occurred.</:failed>
 
           <div :if={@is_truncated_before} class="tw-text-center tw-py-2 tw-uppercase tw-text-sm">
             Limit 50 events before selection
@@ -165,11 +173,11 @@ defmodule LogflareWeb.SearchLive.EventContextComponent do
       |> Logflare.Logs.SearchOperation.new()
 
     case Logflare.Logs.Search.search_event_context(so, log_event_id, ts) do
-      %{rows: rows} ->
+      %{rows: rows, error: nil} ->
         %{rows: rows, source: source}
 
       %{error: error} ->
-        %{rows: [], error: error}
+        %{error: error}
     end
   end
 

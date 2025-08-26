@@ -129,6 +129,8 @@ defmodule Logflare.Logs.Search do
       |> Logflare.Lql.Rules.get_timestamp_filters()
       |> Enum.find(fn rule -> rule.operator == :range end)
 
+    fields = [:id, :timestamp, :event_message, :metadata]
+
     before_query =
       from(so.source.bq_table_id)
       |> Logflare.Logs.LogEvents.partition_query([min, max], so.partition_by)
@@ -137,11 +139,8 @@ defmodule Logflare.Logs.Search do
         t.timestamp < ^timestamp or (t.timestamp == ^timestamp and t.id <= ^log_event_id)
       )
       |> order_by([t], desc: t.timestamp, desc: t.id)
-      |> select([t], %{
-        id: t.id,
-        timestamp: t.timestamp,
-        event_message: t.event_message,
-        metadata: t.metadata,
+      |> select([t], map(t, ^fields))
+      |> select_merge([t], %{
         rank:
           fragment("1 - ROW_NUMBER() OVER (ORDER BY ? DESC, ? DESC)", t.timestamp, t.id)
           |> selected_as(:rank)
@@ -159,11 +158,8 @@ defmodule Logflare.Logs.Search do
         t.timestamp > ^timestamp or (t.timestamp == ^timestamp and t.id > ^log_event_id)
       )
       |> order_by([t], asc: t.timestamp, asc: t.id)
-      |> select([t], %{
-        id: t.id,
-        timestamp: t.timestamp,
-        event_message: t.event_message,
-        metadata: t.metadata,
+      |> select([t], map(t, ^fields))
+      |> select_merge([t], %{
         rank:
           over(fragment("ROW_NUMBER()"), order_by: [asc: t.timestamp, asc: t.id])
           |> selected_as(:rank)
@@ -177,13 +173,8 @@ defmodule Logflare.Logs.Search do
       before_query
       |> union_all(^after_query)
       |> subquery()
-      |> select([t], %{
-        id: t.id,
-        timestamp: t.timestamp,
-        event_message: t.event_message,
-        metadata: t.metadata,
-        rank: t.rank
-      })
+      |> select([t], map(t, ^fields))
+      |> select_merge([t], %{rank: t.rank})
       |> order_by([t], asc: t.timestamp, asc: t.id)
 
     %{so | query: query} |> do_query()
