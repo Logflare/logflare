@@ -85,7 +85,7 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor do
   ```
   """
   @impl Logflare.Backends.Adaptor
-  def execute_query(%Backend{} = backend, %Ecto.Query{} = query) do
+  def execute_query(%Backend{} = backend, %Ecto.Query{} = query, _opts) do
     mod = PgRepo.create_repo(backend)
 
     result =
@@ -96,10 +96,12 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor do
     {:ok, result}
   end
 
-  def execute_query(%Backend{} = backend, query_string) when is_non_empty_binary(query_string),
-    do: execute_query(backend, {query_string, []})
+  def execute_query(%Backend{} = backend, query_string, opts)
+      when is_non_empty_binary(query_string) and is_list(opts) do
+    execute_query(backend, {query_string, []}, opts)
+  end
 
-  def execute_query(%Backend{} = backend, {query_string, params})
+  def execute_query(%Backend{} = backend, {query_string, params}, _opts)
       when is_non_empty_binary(query_string) and is_list(params) do
     {:ok, result} =
       SharedRepo.with_repo(backend, fn ->
@@ -117,10 +119,21 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor do
     {:ok, rows}
   end
 
-  def execute_query(%Backend{} = backend, {query_string, declared_params, input_params})
-      when is_non_empty_binary(query_string) and is_list(declared_params) and is_map(input_params) do
+  def execute_query(%Backend{} = backend, {query_string, declared_params, input_params}, opts)
+      when is_non_empty_binary(query_string) and is_list(declared_params) and is_map(input_params) and
+             is_list(opts) do
     args = Enum.map(declared_params, fn param -> Map.get(input_params, param) end)
-    execute_query(backend, {query_string, args})
+    execute_query(backend, {query_string, args}, opts)
+  end
+
+  def execute_query(
+        %Backend{} = backend,
+        {query_string, declared_params, input_params, _endpoint_query},
+        opts
+      )
+      when is_non_empty_binary(query_string) and is_list(declared_params) and is_map(input_params) and
+             is_list(opts) do
+    execute_query(backend, {query_string, declared_params, input_params}, opts)
   end
 
   @impl Logflare.Backends.Adaptor

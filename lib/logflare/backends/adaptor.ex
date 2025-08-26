@@ -111,8 +111,11 @@ defmodule Logflare.Backends.Adaptor do
 
   @doc """
   Queries the backend using an endpoint query.
+
+  The `opts` parameter can be used to include backend-specific options.
   """
-  @callback execute_query(identifier(), query()) :: {:ok, [term()]} | {:error, :not_implemented}
+  @callback execute_query(identifier(), query(), opts :: Keyword.t()) ::
+              {:ok, [term()]} | {:error, :not_implemented} | {:error, term()}
 
   @doc """
   Optional callback to map query parameters from the original query context to the backend's expected format.

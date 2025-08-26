@@ -133,33 +133,39 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
   end
 
   @impl Logflare.Backends.Adaptor
-  def execute_query(%Backend{} = backend, query_string) when is_non_empty_binary(query_string) do
-    execute_query(backend, {query_string, [], %{}})
+  def execute_query(%Backend{} = backend, query_string, opts)
+      when is_non_empty_binary(query_string) and is_list(opts) do
+    execute_query(backend, {query_string, [], %{}}, opts)
   end
 
   def execute_query(
-        %Backend{user_id: user_id} = _backend,
-        {query_string, declared_params, input_params}
+        %Backend{user_id: user_id},
+        {query_string, declared_params, input_params},
+        opts
       )
-      when is_non_empty_binary(query_string) and is_list(declared_params) and is_map(input_params) do
-    execute_query_with_context(user_id, query_string, declared_params, input_params, nil)
+      when is_non_empty_binary(query_string) and is_list(declared_params) and is_map(input_params) and
+             is_list(opts) do
+    execute_query_with_context(user_id, query_string, declared_params, input_params, nil, opts)
   end
 
   def execute_query(
-        %Backend{user_id: user_id} = _backend,
-        {query_string, declared_params, input_params, endpoint_query}
+        %Backend{user_id: user_id},
+        {query_string, declared_params, input_params, endpoint_query},
+        opts
       )
-      when is_non_empty_binary(query_string) and is_list(declared_params) and is_map(input_params) do
+      when is_non_empty_binary(query_string) and is_list(declared_params) and is_map(input_params) and
+             is_list(opts) do
     execute_query_with_context(
       user_id,
       query_string,
       declared_params,
       input_params,
-      endpoint_query
+      endpoint_query,
+      opts
     )
   end
 
-  def execute_query(%Backend{} = _backend, %Ecto.Query{} = _query) do
+  def execute_query(%Backend{} = _backend, %Ecto.Query{} = _query, _opts) do
     {:error, :not_implemented}
   end
 
@@ -468,7 +474,8 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
          query_string,
          declared_params,
          input_params,
-         endpoint_query
+         endpoint_query,
+         opts
        ) do
     user = Users.get(user_id)
 
@@ -481,10 +488,11 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
         }
       end)
 
-    # Build query options with labels if endpoint_query is provided
     query_opts = [
       parameterMode: "NAMED",
-      location: user.bigquery_dataset_location
+      location: user.bigquery_dataset_location,
+      use_query_cache: Keyword.get(opts, :use_query_cache, true),
+      dryRun: Keyword.get(opts, :dry_run, false)
     ]
 
     query_opts =

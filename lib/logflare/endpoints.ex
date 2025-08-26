@@ -235,7 +235,8 @@ defmodule Logflare.Endpoints do
   Runs a an endpoint query
   """
   @spec run_query(Query.t(), params :: map(), opts :: Keyword.t()) :: run_query_return()
-  def run_query(%Query{} = endpoint_query, params \\ %{}, opts \\ []) do
+  def run_query(%Query{} = endpoint_query, params \\ %{}, opts \\ [])
+      when is_map(params) and is_list(opts) do
     %Query{query: query_string, user_id: user_id, sandboxable: sandboxable} = endpoint_query
     sql_param = Map.get(params, "sql")
 
@@ -292,11 +293,7 @@ defmodule Logflare.Endpoints do
   @spec run_query_string(User.t(), {language(), String.t()}, opts :: Keyword.t()) ::
           run_query_return()
   def run_query_string(user, {language, query_string}, opts \\ []) do
-    opts =
-      [sandboxable: false, use_query_cache: true, parsed_labels: %{}, params: %{}]
-      |> Keyword.merge(opts)
-
-    request_opts = opts |> Keyword.take([:use_query_cache, :dry_run])
+    params = Keyword.get(opts, :params, %{})
 
     source_mapping =
       user
@@ -307,14 +304,14 @@ defmodule Logflare.Endpoints do
     query = %Query{
       query: query_string,
       language: language,
-      sandboxable: opts[:sandboxable],
+      sandboxable: Keyword.get(opts, :sandboxable, false),
       user: user,
       user_id: user.id,
-      parsed_labels: opts[:parsed_labels],
+      parsed_labels: Keyword.get(opts, :parsed_labels, %{}),
       source_mapping: source_mapping
     }
 
-    run_query(query, opts[:params], request_opts)
+    run_query(query, params, opts)
   end
 
   @doc """
@@ -363,10 +360,10 @@ defmodule Logflare.Endpoints do
          transformed_query,
          declared_params,
          input_params,
-         _opts
+         opts
        )
        when sql_language in @valid_sql_languages and is_binary(transformed_query) and
-              is_list(declared_params) and is_map(input_params) do
+              is_list(declared_params) and is_map(input_params) and is_list(opts) do
     with {:ok, %Backend{} = backend} <- get_backend_for_query(endpoint_query),
          adaptor <- Backends.Adaptor.get_adaptor(backend) do
       # let the adaptor transform the query if needed
@@ -399,7 +396,7 @@ defmodule Logflare.Endpoints do
           {final_query, declared_params, input_params, endpoint_query}
         end
 
-      case adaptor.execute_query(backend, query_args) do
+      case adaptor.execute_query(backend, query_args, opts) do
         {:ok, rows} when is_list(rows) ->
           {:ok, %{rows: rows}}
 

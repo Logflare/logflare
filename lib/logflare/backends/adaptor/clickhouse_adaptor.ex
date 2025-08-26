@@ -83,11 +83,12 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
 
   @doc false
   @impl Logflare.Backends.Adaptor
-  def execute_query(%Backend{} = backend, query_string) when is_non_empty_binary(query_string) do
-    execute_query(backend, {query_string, []})
+  def execute_query(%Backend{} = backend, query_string, opts)
+      when is_non_empty_binary(query_string) and is_list(opts) do
+    execute_query(backend, {query_string, []}, opts)
   end
 
-  def execute_query(%Backend{} = backend, {query_string, params})
+  def execute_query(%Backend{} = backend, {query_string, params}, _opts)
       when is_non_empty_binary(query_string) and is_list(params) do
     case execute_ch_read_query(backend, query_string, params) do
       {:ok, result} -> {:ok, result}
@@ -95,20 +96,21 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
     end
   end
 
-  def execute_query(%Backend{} = backend, {query_string, declared_params, input_params})
+  def execute_query(%Backend{} = backend, {query_string, declared_params, input_params}, _opts)
       when is_non_empty_binary(query_string) and is_list(declared_params) and is_map(input_params) do
     execute_query_with_params(backend, query_string, declared_params, input_params)
   end
 
   def execute_query(
         %Backend{} = backend,
-        {query_string, declared_params, input_params, _endpoint_query}
+        {query_string, declared_params, input_params, _endpoint_query},
+        _opts
       )
       when is_non_empty_binary(query_string) and is_list(declared_params) and is_map(input_params) do
     execute_query_with_params(backend, query_string, declared_params, input_params)
   end
 
-  def execute_query(_backend, %Ecto.Query{} = _query) do
+  def execute_query(_backend, %Ecto.Query{} = _query, _opts) do
     {:error, :ecto_queries_not_supported}
   end
 

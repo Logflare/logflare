@@ -44,7 +44,7 @@ defmodule Logflare.Backends.Adaptor.S3Adaptor do
 
   @doc false
   @impl Adaptor
-  def execute_query(_ident, _query), do: {:error, :not_implemented}
+  def execute_query(_ident, _query, _opts), do: {:error, :not_implemented}
 
   @doc false
   @impl Adaptor
