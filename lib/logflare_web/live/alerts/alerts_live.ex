@@ -10,6 +10,7 @@ defmodule LogflareWeb.AlertsLive do
   alias Logflare.Alerting.AlertQuery
   alias Logflare.Backends
   alias Logflare.Endpoints
+  alias LogflareWeb.QueryComponents
 
   require Logger
 
@@ -44,6 +45,7 @@ defmodule LogflareWeb.AlertsLive do
       #  must be below user_id assign
       |> refresh()
       |> assign(:query_result_rows, nil)
+      |> assign(:total_bytes_processed, nil)
       |> assign(:alert, nil)
       # to be lazy loaded
       |> assign(:backend_options, [])
@@ -174,10 +176,11 @@ defmodule LogflareWeb.AlertsLive do
         _params,
         %{assigns: %{alert: %_{} = alert}} = socket
       ) do
-    with {:ok, result} <- Alerting.execute_alert_query(alert) do
+    with {:ok, result} <- Alerting.execute_alert_query(alert, use_query_cache: false) do
       {:noreply,
        socket
-       |> assign(:query_result_rows, result)
+       |> assign(:query_result_rows, result.rows)
+       |> assign(:total_bytes_processed, result.total_bytes_processed)
        |> put_flash(:info, "Alert has been triggered. Notifications sent!")}
     else
       {:error, :no_results} ->

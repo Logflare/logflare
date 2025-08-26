@@ -242,7 +242,13 @@ defmodule LogflareWeb.EndpointsLiveTest do
 
       GoogleApi.BigQuery.V2.Api.Jobs
       |> expect(:bigquery_jobs_query, 1, fn _conn, _proj_id, opts ->
-        send(pid, {:labels, opts[:body].labels})
+        assert [body: %_{useQueryCache: false}] = opts
+
+        send(
+          pid,
+          {:opts, %{useQueryCache: opts[:body].useQueryCache, labels: opts[:body].labels}}
+        )
+
         {:ok, TestUtils.gen_bq_response([%{"testing" => "results-123"}])}
       end)
 
@@ -263,7 +269,11 @@ defmodule LogflareWeb.EndpointsLiveTest do
         }
       }) =~ "results-123"
 
-      assert_received {:labels, %{"endpoint_id" => "nil", "managed_by" => "logflare"}}
+      assert_received {:opts,
+                       %{
+                         useQueryCache: false,
+                         labels: %{"endpoint_id" => "nil", "managed_by" => "logflare"}
+                       }}
 
       assert has_element?(view, "label", "Description")
       assert has_element?(view, "h5", "Caching")
@@ -272,6 +282,8 @@ defmodule LogflareWeb.EndpointsLiveTest do
       assert has_element?(view, "label", "Enable query sandboxing")
       assert has_element?(view, "label", "Max limit")
       assert has_element?(view, "label", "Enable authentication")
+
+      assert view |> render() =~ "1 byte processed"
 
       assert view
              |> element("form#endpoint")
@@ -335,7 +347,7 @@ defmodule LogflareWeb.EndpointsLiveTest do
 
       assert has_element?(view, "input[value='my_param_value']")
 
-      assert_received {:labels, labels = %{"test" => "my_param_value", "session_id" => "nil"}}
+      assert_received {:opts, %{labels: labels}}
       assert labels["endpoint_id"] == endpoint.id |> to_string()
     end
   end

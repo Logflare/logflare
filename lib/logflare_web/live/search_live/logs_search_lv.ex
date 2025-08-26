@@ -8,6 +8,7 @@ defmodule LogflareWeb.Source.SearchLV do
   import LogflareWeb.ModalLiveHelpers
   import LogflareWeb.SearchLV.Utils
   import LogflareWeb.SearchLive.TimezoneComponent
+  import LogflareWeb.QueryComponents, only: [humanize_bytes: 1]
 
   alias Logflare.Billing
   alias Logflare.Logs.SearchQueryExecutor
@@ -918,16 +919,12 @@ defmodule LogflareWeb.Source.SearchLV do
       {:ok, %{"error" => %{"message" => "Query exceeded limit for bytes billed:" <> rest}}} ->
         [limit | _] = String.split(rest, ".")
 
-        limit_gb =
-          limit
-          |> String.trim()
-          |> String.to_integer()
-          |> div(1_000_000_000)
+        {size, units} = limit |> String.trim() |> String.to_integer() |> humanize_bytes()
 
         socket
         |> put_flash(
           :error,
-          "Query halted: total bytes processed for this query is expected to be greater than #{limit_gb} GB"
+          "Query halted: total bytes processed for this query is expected to be greater than #{round(size)} #{units}"
         )
 
       _ ->
