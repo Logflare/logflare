@@ -180,16 +180,15 @@ defmodule Logflare.Logs.Vercel.NimbleLambdaMessageParser do
   defp build_map(maybe_json, message, tokens) do
     cleaned_json = String.replace(maybe_json, "\n", "")
 
-    with {:error, _} <- JSON.decode(cleaned_json),
-         {"lines", lines} <- maybe_parse_multiline_json_body(maybe_json) do
-      %{"multiline" => lines}
-    else
+    case JSON.decode(cleaned_json) do
       {:ok, json} ->
         %{"data" => json, "message" => message}
 
-      _ ->
-        fallback_message = Keyword.values(tokens) |> Enum.join("")
-        %{"message" => fallback_message}
+      {:error, _} ->
+        case maybe_parse_multiline_json_body(maybe_json) do
+          {"lines", lines} -> %{"multiline" => lines}
+          _ -> %{"message" => tokens |> Keyword.values() |> Enum.join("")}
+        end
     end
   end
 
