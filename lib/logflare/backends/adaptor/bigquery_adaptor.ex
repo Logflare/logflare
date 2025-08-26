@@ -518,7 +518,8 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
            query_opts
          ) do
       {:ok, result} ->
-        {:ok, result.rows}
+        # Return the full result with rows and metadata
+        {:ok, %{rows: result.rows, total_bytes_processed: result.total_bytes_processed}}
 
       {:error, %{body: body}} ->
         error = Jason.decode!(body)["error"] |> GenUtils.process_bq_errors(user.id)

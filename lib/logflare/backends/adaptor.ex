@@ -113,9 +113,12 @@ defmodule Logflare.Backends.Adaptor do
   Queries the backend using an endpoint query.
 
   The `opts` parameter can be used to include backend-specific options.
+
+  Depending on the backend, this will return a list of rows or
+  a map with rows and optional metadata (e.g., total_bytes_processed).
   """
   @callback execute_query(identifier(), query(), opts :: Keyword.t()) ::
-              {:ok, [term()]} | {:error, :not_implemented} | {:error, term()}
+              {:ok, [term()]} | {:ok, map()} | {:error, :not_implemented} | {:error, term()}
 
   @doc """
   Optional callback to map query parameters from the original query context to the backend's expected format.

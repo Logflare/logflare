@@ -683,7 +683,7 @@ defmodule Logflare.SqlTest do
 
       {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
       assert {:ok, transformed} = Sql.transform(:pg_sql, translated, user)
-      assert {:ok, [%{"count" => 1}]} = PostgresAdaptor.execute_query(backend, transformed)
+      assert {:ok, [%{"count" => 1}]} = PostgresAdaptor.execute_query(backend, transformed, [])
     end
 
     test "translate operator to numeric with between with 2 level nested field reference",
@@ -707,7 +707,7 @@ defmodule Logflare.SqlTest do
 
       {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
       assert {:ok, transformed} = Sql.transform(:pg_sql, translated, user)
-      assert {:ok, [%{"count" => 1}]} = PostgresAdaptor.execute_query(backend, transformed)
+      assert {:ok, [%{"count" => 1}]} = PostgresAdaptor.execute_query(backend, transformed, [])
     end
 
     test "CTE translation with cross join",
@@ -735,7 +735,7 @@ defmodule Logflare.SqlTest do
                 %{
                   "count" => 1
                 }
-              ]} = PostgresAdaptor.execute_query(backend, transformed)
+              ]} = PostgresAdaptor.execute_query(backend, transformed, [])
     end
   end
 
@@ -776,7 +776,7 @@ defmodule Logflare.SqlTest do
                   "path" => "/",
                   "status_code" => 200
                 }
-              ]} = PostgresAdaptor.execute_query(backend, transformed)
+              ]} = PostgresAdaptor.execute_query(backend, transformed, [])
     end
   end
 
@@ -819,7 +819,7 @@ defmodule Logflare.SqlTest do
       assert {:ok, transformed} = Sql.transform(:pg_sql, translated, user)
       # execute it on PG
       assert {:ok, [%{"test" => "data", "nested" => "value"}]} =
-               PostgresAdaptor.execute_query(backend, transformed)
+               PostgresAdaptor.execute_query(backend, transformed, [])
     end
 
     test "translate operator to numeric when nested field reference present", %{
@@ -843,7 +843,7 @@ defmodule Logflare.SqlTest do
       assert {:ok, transformed} = Sql.transform(:pg_sql, translated, user)
 
       assert {:ok, [%{"count" => 1}]} =
-               PostgresAdaptor.execute_query(backend, transformed)
+               PostgresAdaptor.execute_query(backend, transformed, [])
     end
 
     test "REGEXP_CONTAINS is translated", %{backend: backend, user: user} do
@@ -857,7 +857,7 @@ defmodule Logflare.SqlTest do
       assert {:ok, transformed} = Sql.transform(:pg_sql, translated, user)
 
       assert {:ok, [%{"has_substring" => true}]} =
-               PostgresAdaptor.execute_query(backend, transformed)
+               PostgresAdaptor.execute_query(backend, transformed, [])
     end
 
     test "REGEXP_CONTAINS is translated with field reference", %{backend: backend, user: user} do
@@ -871,7 +871,7 @@ defmodule Logflare.SqlTest do
       assert {:ok, transformed} = Sql.transform(:pg_sql, translated, user)
 
       assert {:ok, [%{"has_substring" => false}]} =
-               PostgresAdaptor.execute_query(backend, transformed)
+               PostgresAdaptor.execute_query(backend, transformed, [])
     end
 
     test "entities backtick to double quote" do

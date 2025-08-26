@@ -400,8 +400,9 @@ defmodule Logflare.Endpoints do
         {:ok, rows} when is_list(rows) ->
           {:ok, %{rows: rows}}
 
-        {:ok, %{rows: rows}} ->
-          {:ok, %{rows: rows}}
+        {:ok, %{rows: _} = result} ->
+          # Pass through the full result map with all metadata
+          {:ok, result}
 
         {:error, error} ->
           {:error, error}

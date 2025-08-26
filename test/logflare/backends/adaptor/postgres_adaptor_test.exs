@@ -56,14 +56,15 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptorTest do
       query = from(l in PostgresAdaptor.table_name(source), select: l.body)
 
       TestUtils.retry_assert(fn ->
-        assert {:ok, [%{"test" => "data"}]} = PostgresAdaptor.execute_query(backend, query)
+        assert {:ok, [%{"test" => "data"}]} = PostgresAdaptor.execute_query(backend, query, [])
       end)
 
       # query by string
       assert {:ok, [%{"body" => [%{"test" => "data"}]}]} =
                PostgresAdaptor.execute_query(
                  backend,
-                 "select body from #{PostgresAdaptor.table_name(source)}"
+                 "select body from #{PostgresAdaptor.table_name(source)}",
+                 []
                )
 
       # query by string with parameter
@@ -71,7 +72,8 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptorTest do
                PostgresAdaptor.execute_query(
                  backend,
                  {"select body ->> $1 as value from #{PostgresAdaptor.table_name(source)}",
-                  ["test"]}
+                  ["test"]},
+                 []
                )
     end
 
@@ -118,18 +120,19 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptorTest do
                 ]} =
                  PostgresAdaptor.execute_query(
                    backend,
-                   "select body from #{PostgresAdaptor.table_name(source)}"
+                   "select body from #{PostgresAdaptor.table_name(source)}",
+                   []
                  )
       end)
 
       # non map results are not impacted by metadata transformations
       query = from(l in PostgresAdaptor.table_name(source), select: count(l.id))
-      assert {:ok, [1]} = PostgresAdaptor.execute_query(backend, query)
+      assert {:ok, [1]} = PostgresAdaptor.execute_query(backend, query, [])
 
       # struct results are not impacted by metadata transformations
       query = from(l in PostgresAdaptor.table_name(source), select: l.timestamp)
 
-      assert {:ok, [%NaiveDateTime{}]} = PostgresAdaptor.execute_query(backend, query)
+      assert {:ok, [%NaiveDateTime{}]} = PostgresAdaptor.execute_query(backend, query, [])
     end
   end
 
@@ -185,7 +188,8 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptorTest do
       assert {:ok, [%{"schema_name" => "my_schema"}]} =
                PostgresAdaptor.execute_query(
                  backend,
-                 "select schema_name from information_schema.schemata where schema_name = 'my_schema'"
+                 "select schema_name from information_schema.schemata where schema_name = 'my_schema'",
+                 []
                )
 
       assert :ok = PostgresAdaptor.create_events_table({source, backend})
