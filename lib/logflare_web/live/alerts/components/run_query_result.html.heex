@@ -1,7 +1,14 @@
 <div :if={@query_result_rows != nil}>
-  <h5 class="tw-text-white">Results</h5>
-  <button class="btn btn-secondary" phx-click="clear-results">Clear results</button>
+  <div class="tw-flex tw-justify-between">
+    <div>
+      <h5 class="tw-text-white">Results</h5>
+      <button class="btn btn-secondary" phx-click="clear-results">Clear results</button>
+    </div>
+
+    <QueryComponents.query_cost bytes={@total_bytes_processed} />
+  </div>
 </div>
+
 <div :if={@query_result_rows}>
   <code class="tw-whitespace-pre tw-block tw-text-white tw-bg-zinc-800 tw-rounded tw-p-2 tw-text-xs"><%= Jason.encode!(@query_result_rows) |> Jason.Formatter.pretty_print() %></code>
 </div>

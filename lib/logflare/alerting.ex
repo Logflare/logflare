@@ -267,7 +267,7 @@ defmodule Logflare.Alerting do
     alert_query = alert_query |> preload_alert_query()
 
     case execute_alert_query(alert_query) do
-      {:ok, [_ | _] = results} ->
+      {:ok, %{rows: [_ | _] = results}} ->
         if alert_query.webhook_notification_url do
           send_webhook_notification(alert_query, results)
         end
@@ -292,7 +292,7 @@ defmodule Logflare.Alerting do
 
         :ok
 
-      {:ok, []} ->
+      {:ok, %{rows: []}} ->
         {:error, :no_results}
 
       other ->
@@ -380,11 +380,13 @@ defmodule Logflare.Alerting do
   {:ok, [%{"user_id" => "my-user-id"}]}
   ```
   """
-  @spec execute_alert_query(AlertQuery.t()) :: {:ok, [map()]}
-  def execute_alert_query(%AlertQuery{user: %User{}} = alert_query) do
+  @spec execute_alert_query(AlertQuery.t(), use_query_cache: boolean) ::
+          {:ok, Logflare.BqRepo.query_result()} | {:error, any}
+  def execute_alert_query(%AlertQuery{user: %User{}} = alert_query, opts \\ []) do
     Logger.debug("Executing AlertQuery | #{alert_query.name} | #{alert_query.id}")
 
     endpoints = Endpoints.list_endpoints_by(user_id: alert_query.user_id)
+    use_query_cache = Keyword.get(opts, :use_query_cache, true)
 
     alerts =
       list_alert_queries_by_user_id(alert_query.user_id)
@@ -398,7 +400,7 @@ defmodule Logflare.Alerting do
            ),
          {:ok, transformed_query} <-
            Logflare.Sql.transform(alert_query.language, expanded_query, alert_query.user_id),
-         {:ok, %{rows: rows}} <-
+         {:ok, result} <-
            Logflare.BqRepo.query_with_sql_and_params(
              alert_query.user,
              alert_query.user.bigquery_project_id || env_project_id(),
@@ -407,11 +409,12 @@ defmodule Logflare.Alerting do
              parameterMode: "NAMED",
              maxResults: 1000,
              location: alert_query.user.bigquery_dataset_location,
+             use_query_cache: use_query_cache,
              labels: %{
                "alert_id" => alert_query.id
              }
            ) do
-      {:ok, rows}
+      {:ok, result}
     else
       {:error, %Tesla.Env{body: body}} ->
         error =
