@@ -254,9 +254,8 @@ defmodule Logflare.Google.BigQuery.GenUtils do
     |> String.slice(0, 63)
   end
 
-  def format_value(nil), do: nil
   def format_value(v) when is_integer(v), do: v |> Integer.to_string() |> format_value()
-  def format_value(v) when is_atom_value(v), do: v |> Atom.to_string() |> format_value()
+  def format_value(v) when is_atom(v), do: v |> Atom.to_string() |> format_value()
 
   @doc """
   Processes BigQuery error messages to make them more user-friendly.
