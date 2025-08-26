@@ -86,3 +86,5 @@ examples/**/node_modules
 
 # dev worktree patterns
 dev-*
+# Rust binary artifacts
+/target/
