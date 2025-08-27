@@ -34,6 +34,7 @@ defmodule Logflare.ContextCache.Supervisor do
     list_caches() ++
       [
         ContextCache.TransactionBroadcaster,
+        {PartitionSupervisor, child_spec: CacheBusterWorker, name: CacheBusterWorker.Supervisor},
         ContextCache.CacheBuster
       ]
   end
