@@ -8,7 +8,7 @@ defmodule LogflareWeb.Source.SearchLV do
   import LogflareWeb.ModalLiveHelpers
   import LogflareWeb.SearchLV.Utils
   import LogflareWeb.SearchLive.TimezoneComponent
-  import LogflareWeb.QueryComponents, only: [humanize_bytes: 1]
+  alias LogflareWeb.Utils
 
   alias Logflare.Billing
   alias Logflare.Logs.SearchQueryExecutor
@@ -919,7 +919,7 @@ defmodule LogflareWeb.Source.SearchLV do
       {:ok, %{"error" => %{"message" => "Query exceeded limit for bytes billed:" <> rest}}} ->
         [limit | _] = String.split(rest, ".")
 
-        {size, units} = limit |> String.trim() |> String.to_integer() |> humanize_bytes()
+        {size, units} = limit |> String.trim() |> String.to_integer() |> Utils.humanize_bytes()
 
         socket
         |> put_flash(
