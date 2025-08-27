@@ -49,7 +49,7 @@ defmodule Logflare.ContextCache.CacheBusterWorker do
   defp maybe_do_cross_cluster_syncing({Rules, rule_id}) when is_integer(rule_id) do
     # sync rule
     Utils.Tasks.start_child(fn ->
-      Logflare.Cluster.Utils.rpc_multicall(Rules, :sync_rule, [rule_id])
+      Rules.sync_rule(rule_id)
     end)
   end
 
