@@ -54,7 +54,7 @@ defmodule Logflare.Source.Supervisor do
 
   def handle_cast({:stop, source_token}, state) do
     source = Sources.Cache.get_by(token: source_token)
-    do_terminate_source_sup(source)
+    stop_source_local(source)
     Counters.delete(source_token)
     {:noreply, state}
   end
@@ -62,7 +62,7 @@ defmodule Logflare.Source.Supervisor do
   def handle_cast({:restart, source_token}, state) do
     source = Sources.get_source_by_token(source_token)
 
-    do_terminate_source_sup(source)
+    stop_source_local(source)
     source_schema = SourceSchemas.get_source_schema_by(source_id: source.id)
 
     ContextCache.bust_keys([
@@ -143,6 +143,7 @@ defmodule Logflare.Source.Supervisor do
     GenServer.abcast(__MODULE__, {:stop, source_token})
     {:ok, source_token}
   end
+
 
   def reset_source(source_token) do
     unless do_pg_ops?() do
@@ -259,7 +260,7 @@ defmodule Logflare.Source.Supervisor do
   defp do_v2_lookup(source), do: Backends.lookup(Backends.SourceSup, source)
   defp do_v1_lookup(source), do: Backends.lookup(V1SourceSup, source)
 
-  defp do_terminate_source_sup(%Source{} = source) do
+  def stop_source_local(%Source{} = source) do
     with {:ok, pid} <- do_v2_lookup(source) do
       DynamicSupervisor.terminate_child(
         {:via, PartitionSupervisor, {Backends.SourcesSup, source.id}},
