@@ -52,49 +52,9 @@ defmodule Logflare.ContextCacheTest do
     end
   end
 
-  describe "ContextCache.Supervisor" do
-    setup do
-      ContextCache.Supervisor.remove_cainophile()
-
-      on_exit(fn ->
-        ContextCache.Supervisor.remove_cainophile()
-      end)
-
-      :ok
-    end
-
-    test "maybe_start_cainophile will attempt to start a cainophile child" do
-      assert {:ok, _pid} = ContextCache.Supervisor.maybe_start_cainophile()
-
-      assert {:error, {:already_started, _}} =
-               ContextCache.Supervisor.maybe_start_cainophile()
-
-      assert get_cainophile_child()
-    end
-
-    test "remove_cainophile/1 will remove cainophile child from tree" do
-      refute get_cainophile_child()
-      assert {:ok, _pid} = ContextCache.Supervisor.maybe_start_cainophile()
-      assert get_cainophile_child()
-      assert :ok = ContextCache.Supervisor.remove_cainophile()
-      refute get_cainophile_child()
-    end
-
-    test "TransactionBroadcaster will try to start cainophile " do
-      refute get_cainophile_child()
-      start_supervised!({ContextCache.TransactionBroadcaster, interval: 100})
-      :timer.sleep(500)
-      assert get_cainophile_child()
-    end
-  end
-
   describe "unboxed transaction" do
     setup do
-      ContextCache.Supervisor.remove_cainophile()
-
       on_exit(fn ->
-        ContextCache.Supervisor.remove_cainophile()
-
         Ecto.Adapters.SQL.Sandbox.unboxed_run(Logflare.Repo, fn ->
           for u <- Logflare.Repo.all(Logflare.User) do
             Logflare.Repo.delete(u)
@@ -117,15 +77,5 @@ defmodule Logflare.ContextCacheTest do
       :timer.sleep(500)
       assert_received %Cainophile.Changes.Transaction{}
     end
-  end
-
-  # describe "ContextCache"
-
-  defp get_cainophile_child do
-    for {Cainophile.Adapters.Postgres, _, _, _} = child <-
-          Supervisor.which_children(ContextCache.Supervisor) do
-      child
-    end
-    |> List.first()
   end
 end
