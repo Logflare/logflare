@@ -77,8 +77,7 @@ defmodule Logflare.Source.BigQuery.Schema do
   def handle_cast({:update, %LogEvent{body: body, id: event_id}}, state) do
     LogflareLogger.context(source_id: state.source_token, log_event_id: event_id)
 
-    source_schema =
-      SourceSchemas.Cache.get_source_schema_by(source_id: state.source_id)
+    source_schema = SourceSchemas.Cache.get_source_schema_by(source_id: state.source_id)
 
     db_schema =
       if source_schema,
@@ -87,79 +86,72 @@ defmodule Logflare.Source.BigQuery.Schema do
 
     schema = try_schema_update(body, db_schema)
 
-    if not same_schemas?(db_schema, schema) and
-         state.next_update <= System.system_time(:millisecond) and
-         !SingleTenant.postgres_backend?() do
-      case BigQuery.patch_table(
-             state.source_token,
-             schema,
-             state.bigquery_dataset_id,
-             state.bigquery_project_id
-           ) do
+    if schema_needs_update?(db_schema, schema, state) do
+      case patch_bigquery_table(state, schema) do
         {:ok, _table_info} ->
-          field_count = count_fields(schema)
-
-          persist(state.source_id, schema)
-
-          notify_maybe(state.source_token, schema, db_schema)
-
-          {:noreply,
-           %{
-             state
-             | field_count: field_count,
-               next_update: next_update()
-           }}
+          handle_successful_patch(state, schema, db_schema)
 
         {:error, response} ->
-          case BigQuery.GenUtils.get_tesla_error_message(response) do
-            "Provided Schema does not match Table" <> _tail = _message ->
-              case BigQuery.get_table(state.source_token) do
-                {:ok, table} ->
-                  schema = try_schema_update(body, table.schema)
-
-                  case BigQuery.patch_table(
-                         state.source_token,
-                         schema,
-                         state.bigquery_dataset_id,
-                         state.bigquery_project_id
-                       ) do
-                    {:ok, _table_info} ->
-                      field_count = count_fields(schema)
-
-                      persist(state.source_id, schema)
-
-                      {:noreply, %{state | field_count: field_count, next_update: next_update()}}
-
-                    {:error, response} ->
-                      Logger.warning("Source schema update error!",
-                        error_string: "Sample event: #{inspect(body)}",
-                        tesla_response: BigQuery.GenUtils.get_tesla_error_message(response)
-                      )
-
-                      {:noreply, %{state | next_update: next_update()}}
-                  end
-
-                {:error, response} ->
-                  Logger.warning("Source schema update error!",
-                    error_string: "Sample event: #{inspect(body)}",
-                    tesla_response: BigQuery.GenUtils.get_tesla_error_message(response)
-                  )
-
-                  {:noreply, %{state | next_update: next_update()}}
-              end
-
-            message ->
-              Logger.warning("Source schema update error!",
-                error_string: "Sample event: #{inspect(body)}",
-                tesla_response: message
-              )
-
-              {:noreply, %{state | next_update: next_update()}}
-          end
+          handle_patch_error(body, state, response)
       end
     else
       {:noreply, state}
     end
+  end
+
+  defp schema_needs_update?(db_schema, schema, state) do
+    not same_schemas?(db_schema, schema) and
+      state.next_update <= System.system_time(:millisecond) and
+      not SingleTenant.postgres_backend?()
+  end
+
+  defp patch_bigquery_table(state, schema) do
+    BigQuery.patch_table(
+      state.source_token,
+      schema,
+      state.bigquery_dataset_id,
+      state.bigquery_project_id
+    )
+  end
+
+  defp handle_successful_patch(state, schema, db_schema) do
+    persist(state.source_id, schema)
+    notify_maybe(state.source_token, schema, db_schema)
+
+    {:noreply, %{state | field_count: count_fields(schema), next_update: next_update()}}
+  end
+
+  defp handle_patch_error(body, state, response) do
+    case BigQuery.GenUtils.get_tesla_error_message(response) do
+      "Provided Schema does not match Table" <> _tail ->
+        handle_schema_mismatch(body, state)
+
+      message ->
+        log_error_and_update_state(body, state, message)
+    end
+  end
+
+  defp handle_schema_mismatch(body, state) do
+    with {:ok, table} <- BigQuery.get_table(state.source_token),
+         schema <- try_schema_update(body, table.schema),
+         {:ok, _table_info} <- patch_bigquery_table(state, schema) do
+      field_count = count_fields(schema)
+      persist(state.source_id, schema)
+      {:noreply, %{state | field_count: field_count, next_update: next_update()}}
+    else
+      {:error, response} ->
+        error_message = BigQuery.GenUtils.get_tesla_error_message(response)
+        log_error_and_update_state(body, state, error_message)
+    end
+  end
+
+  defp log_error_and_update_state(body, state, error_message) do
+    Logger.warning("Source schema update error!",
+      error_string: "Sample event: #{inspect(body)}",
+      tesla_response: error_message
+    )
+
+    {:noreply, %{state | next_update: next_update()}}
   end
 
   defp persist(source_id, new_schema) do
