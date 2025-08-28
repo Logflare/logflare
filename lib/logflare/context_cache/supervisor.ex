@@ -19,6 +19,7 @@ defmodule Logflare.ContextCache.Supervisor do
   alias Logflare.Repo
   alias Logflare.GenSingleton
 
+  require Logger
   def start_link(_) do
     Supervisor.start_link(__MODULE__, [], name: __MODULE__)
   end
