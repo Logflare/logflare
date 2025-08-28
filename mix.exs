@@ -126,7 +126,7 @@ defmodule Logflare.Mixfile do
 
       # Outbound Requests
       {:castore, "~> 1.0"},
-      {:finch, "~> 0.19.0"},
+      {:finch, "~> 0.20.0"},
       {:mint, "~> 1.0"},
       {:httpoison, "~> 1.4"},
       {:poison, "~> 5.0.0", override: true},
@@ -165,7 +165,7 @@ defmodule Logflare.Mixfile do
       {:ch, "~> 0.3.2"},
 
       # DataFrames
-      {:explorer, "~> 0.10.1"},
+      {:explorer, "~> 0.11.1"},
 
       # Telemetry & logging
       {:telemetry, "~> 1.0"},
@@ -208,7 +208,8 @@ defmodule Logflare.Mixfile do
       {:cainophile, github: "Logflare/cainophile", ref: "267999b"},
       {:open_api_spex, "~> 3.16"},
       {:grpc, "~> 0.9.0"},
-      {:protobuf, "~> 0.12"},
+      # otel_metric_exporter requires an update https://github.com/electric-sql/elixir-otel-metric-exporter/pull/13
+      {:protobuf, "~> 0.14.1", override: true},
       {:gun, "~> 2.0", override: true},
       {:cowlib, ">=2.12.0", override: true},
       {:phoenix_live_dashboard, "~> 0.8"},
@@ -233,7 +234,7 @@ defmodule Logflare.Mixfile do
       {:opentelemetry_exporter, "~> 1.6"},
       {:opentelemetry_phoenix, "~> 2.0.0-rc.2"},
       {:opentelemetry_bandit, "~> 0.2.0-rc.1"},
-      {:otel_metric_exporter, "~> 0.3.6"},
+      {:otel_metric_exporter, "~> 0.3.11"},
       {:live_monaco_editor, "~> 0.1"}
     ]
   end
