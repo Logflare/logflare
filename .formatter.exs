@@ -1,6 +1,6 @@
 # Used by "mix format"
 [
-  inputs: ["{mix,.formatter}.exs", "{config,lib}/**/*.{heex,ex,exs}"],
+  inputs: ["{mix,.formatter,.dialyzer_ignore}.exs", "{config,lib}/**/*.{heex,ex,exs}"],
   subdirectories: ["test", "priv/repo"],
   import_deps: [
     :ecto_sql,
