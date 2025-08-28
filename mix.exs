@@ -25,7 +25,9 @@ defmodule Logflare.Mixfile do
       ],
       dialyzer: [
         plt_local_path: "dialyzer",
-        plt_core_path: "dialyzer"
+        plt_core_path: "dialyzer",
+        plt_add_deps: :apps_tree,
+        plt_add_apps: [:ex_unit, :mix]
       ],
       test_coverage: [tool: ExCoveralls],
       releases: [
