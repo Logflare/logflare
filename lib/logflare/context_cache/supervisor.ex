@@ -5,6 +5,7 @@ defmodule Logflare.ContextCache.Supervisor do
 
   alias Logflare.Backends
   alias Logflare.ContextCache.CacheBuster
+  alias Logflare.ContextCache.CacheBusterWorker
   alias Logflare.Billing
   alias Logflare.ContextCache
   alias Logflare.Backends
@@ -16,6 +17,7 @@ defmodule Logflare.ContextCache.Supervisor do
   alias Logflare.Auth
   alias Logflare.Endpoints
   alias Logflare.Repo
+  alias Logflare.GenSingleton
 
   def start_link(_) do
     Supervisor.start_link(__MODULE__, [], name: __MODULE__)
@@ -34,6 +36,7 @@ defmodule Logflare.ContextCache.Supervisor do
     list_caches() ++
       [
         ContextCache.TransactionBroadcaster,
+        {GenSingleton, child_spec: cainophile_child_spec()},
         {PartitionSupervisor, child_spec: CacheBusterWorker, name: CacheBusterWorker.Supervisor},
         ContextCache.CacheBuster
       ]
@@ -59,21 +62,6 @@ defmodule Logflare.ContextCache.Supervisor do
   def publisher_name do
     {:via, :syn, {:core, Logflare.PgPublisher}}
     # {:global, Logflare.PgPublisher}
-  end
-
-  @doc """
-  Attempts to start a cainophile child in the ContextCache.Supervisor.
-  If it already exists, it will return with an error tuple.
-  """
-  def maybe_start_cainophile do
-    spec = cainophile_child_spec()
-    Supervisor.start_child(__MODULE__, spec)
-  end
-
-  def remove_cainophile do
-    Supervisor.terminate_child(__MODULE__, Cainophile.Adapters.Postgres)
-    Supervisor.delete_child(__MODULE__, Cainophile.Adapters.Postgres)
-    :ok
   end
 
   defp cainophile_child_spec do
@@ -104,11 +92,24 @@ defmodule Logflare.ContextCache.Supervisor do
                password: password,
                tcp_opts: socket_options
              },
+             fetch_current_wal_lsn: &fetch_current_wal_lsn/0,
+             wal_flush_timeout: 30_000,
              slot: slot,
              wal_position: {"0", "0"},
              publications: publications
            ]
          ]}
     }
+  end
+
+  defp fetch_current_wal_lsn() do
+    case Repo.query("SELECT pg_current_wal_lsn()::text", []) do
+      {:ok, %Postgrex.Result{rows: [[lsn]]}} ->
+        Cainophile.Adapters.Postgres.EpgsqlImplementation.parse_lsn_string(lsn)
+
+      {:error, err} ->
+        Logger.error("Error fetching current WAL LSN: #{inspect(err)}")
+        {:error, :no_result}
+    end
   end
 end
