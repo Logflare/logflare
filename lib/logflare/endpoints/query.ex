@@ -165,7 +165,8 @@ defmodule Logflare.Endpoints.Query do
       nil ->
         case get_field(changeset, :backend_id) do
           nil ->
-            changeset
+            # Default to BigQuery when no backend is selected
+            put_change(changeset, :language, :bq_sql)
 
           backend_id ->
             backend = Backends.get_backend(backend_id)

@@ -5,6 +5,7 @@ defmodule LogflareWeb.EndpointsLive do
 
   require Logger
 
+  alias Logflare.Backends
   alias Logflare.Endpoints
   alias Logflare.Users
   alias LogflareWeb.{QueryComponents, Utils}
@@ -57,6 +58,7 @@ defmodule LogflareWeb.EndpointsLive do
       |> assign(:declared_params, %{})
       |> assign(:alerts, alerts)
       |> assign_sources()
+      |> assign_backends()
       |> assign(:parsed_result, nil)
 
     {:ok, socket}
@@ -77,7 +79,7 @@ defmodule LogflareWeb.EndpointsLive do
         socket when endpoint != nil ->
           {:ok, parsed_result} =
             Endpoints.parse_query_string(
-              :bq_sql,
+              endpoint.language,
               endpoint.query,
               Enum.filter(socket.assigns.endpoints, &(&1.id != endpoint.id)),
               socket.assigns.alerts
@@ -172,7 +174,10 @@ defmodule LogflareWeb.EndpointsLive do
         "endpoint_id" => socket.assigns.endpoint_changeset.data.id
       })
 
-    case Endpoints.run_query_string(user, {:bq_sql, query_string},
+    endpoint_language =
+      Ecto.Changeset.get_field(socket.assigns.endpoint_changeset, :language, :bq_sql)
+
+    case Endpoints.run_query_string(user, {endpoint_language, query_string},
            params: query_params,
            parsed_labels: parsed_labels,
            use_query_cache: false
@@ -184,6 +189,15 @@ defmodule LogflareWeb.EndpointsLive do
          |> assign(:prev_params, query_params)
          |> assign(:query_result_rows, rows)
          |> assign(:total_bytes_processed, total_bytes_processed)}
+
+      {:ok, %{rows: rows}} ->
+        # non-BQ results
+        {:noreply,
+         socket
+         |> put_flash(:info, "Ran query successfully")
+         |> assign(:prev_params, query_params)
+         |> assign(:query_result_rows, rows)
+         |> assign(:total_bytes_processed, nil)}
 
       {:error, err} ->
         {:noreply,
@@ -204,15 +218,39 @@ defmodule LogflareWeb.EndpointsLive do
     {:noreply, socket}
   end
 
+  def handle_event("validate", %{"endpoint" => endpoint_params}, socket) do
+    # Handle language inference for any backend change
+    params =
+      case Map.get(endpoint_params, "backend_id") do
+        "" ->
+          endpoint_params
+          |> Map.put("backend_id", nil)
+          |> Map.put("language", nil)
+
+        _ ->
+          Map.put(endpoint_params, "language", nil)
+      end
+
+    changeset =
+      socket.assigns.endpoint_changeset.data
+      |> Endpoints.change_query(params)
+      |> Map.put(:action, :validate)
+
+    {:noreply, assign(socket, :endpoint_changeset, changeset)}
+  end
+
   def handle_event("validate", _params, socket) do
-    # noop
+    # noop for other validation events
     {:noreply, socket}
   end
 
   def handle_info({:query_string_updated, query_string}, socket) do
+    endpoint_language =
+      Ecto.Changeset.get_field(socket.assigns.endpoint_changeset, :language, :bq_sql)
+
     parsed_result =
       Endpoints.parse_query_string(
-        :bq_sql,
+        endpoint_language,
         query_string,
         socket.assigns.endpoints,
         socket.assigns.alerts
@@ -255,6 +293,14 @@ defmodule LogflareWeb.EndpointsLive do
     sources = Logflare.Sources.list_sources_by_user(user_id)
 
     assign(socket, sources: sources)
+  end
+
+  defp assign_backends(socket) do
+    %{user_id: user_id} = socket.assigns
+
+    backends = Backends.list_backends_by_user_id(user_id)
+
+    assign(socket, backends: backends)
   end
 
   defp upsert_query(show_endpoint, user, params) do
