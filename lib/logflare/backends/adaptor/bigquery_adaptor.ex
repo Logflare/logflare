@@ -1,26 +1,32 @@
 defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
   @moduledoc false
 
-  alias Logflare.Backends
-  alias Logflare.Backends.DynamicPipeline
-  alias Logflare.Backends.Backend
-  alias Logflare.Backends.IngestEventQueue
-  alias Logflare.Source.BigQuery.Pipeline
-  alias Logflare.Source.BigQuery.Schema
-  alias Logflare.Source.BigQuery.Pipeline
-  alias Logflare.Users
-  alias Logflare.Sources
-  alias Logflare.Billing
-  alias Logflare.Backends
-  alias Logflare.Google.BigQuery.GenUtils
-  alias Logflare.Google.CloudResourceManager
-  alias Logflare.Google
+  @behaviour Logflare.Backends.Adaptor
+
   use Supervisor
+
+  import Logflare.Utils.Guards
+
   require Logger
 
-  @behaviour Logflare.Backends.Adaptor
-  @service_account_prefix "logflare-managed"
+  alias Ecto.Changeset
+  alias Logflare.Backends
+  alias Logflare.Backends.Backend
+  alias Logflare.Backends.DynamicPipeline
+  alias Logflare.Backends.IngestEventQueue
+  alias Logflare.Billing
+  alias Logflare.BqRepo
+  alias Logflare.Google
+  alias Logflare.Google.BigQuery.GenUtils
+  alias Logflare.Google.CloudResourceManager
+  alias Logflare.Source.BigQuery.Pipeline
+  alias Logflare.Source.BigQuery.Schema
+  alias Logflare.Sources
+  alias Logflare.Users
+
   @managed_service_account_partition_count 5
+  @service_account_prefix "logflare-managed"
+
   @impl Logflare.Backends.Adaptor
   def start_link({source, backend} = source_backend) do
     Supervisor.start_link(__MODULE__, source_backend,
@@ -127,8 +133,41 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
   end
 
   @impl Logflare.Backends.Adaptor
-  def execute_query(_id, _query),
-    do: {:error, :not_implemented}
+  def execute_query(%Backend{} = backend, query_string, opts)
+      when is_non_empty_binary(query_string) and is_list(opts) do
+    execute_query(backend, {query_string, [], %{}}, opts)
+  end
+
+  def execute_query(
+        %Backend{user_id: user_id},
+        {query_string, declared_params, input_params},
+        opts
+      )
+      when is_non_empty_binary(query_string) and is_list(declared_params) and is_map(input_params) and
+             is_list(opts) do
+    execute_query_with_context(user_id, query_string, declared_params, input_params, nil, opts)
+  end
+
+  def execute_query(
+        %Backend{user_id: user_id},
+        {query_string, declared_params, input_params, endpoint_query},
+        opts
+      )
+      when is_non_empty_binary(query_string) and is_list(declared_params) and is_map(input_params) and
+             is_list(opts) do
+    execute_query_with_context(
+      user_id,
+      query_string,
+      declared_params,
+      input_params,
+      endpoint_query,
+      opts
+    )
+  end
+
+  def execute_query(%Backend{} = _backend, %Ecto.Query{} = _query, _opts) do
+    {:error, :not_implemented}
+  end
 
   @impl Logflare.Backends.Adaptor
   def supports_default_ingest?, do: true
@@ -136,7 +175,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
   @impl Logflare.Backends.Adaptor
   def cast_config(params) do
     {%{}, %{project_id: :string, dataset_id: :string}}
-    |> Ecto.Changeset.cast(params, [:project_id, :dataset_id])
+    |> Changeset.cast(params, [:project_id, :dataset_id])
   end
 
   @impl Logflare.Backends.Adaptor
@@ -179,41 +218,14 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
     iex> list_managed_service_accounts()
     [%GoogleApi.IAM.V1.Model.ServiceAccount{...}, ...]
 
-
     https://hexdocs.pm/google_api_iam/0.45.0/GoogleApi.IAM.V1.Model.ServiceAccount.html
   """
   @spec list_managed_service_accounts(String.t()) :: [GoogleApi.IAM.V1.Model.ServiceAccount.t()]
   def list_managed_service_accounts(project_id \\ nil) do
-    project_id = project_id || Application.get_env(:logflare, Logflare.Google)[:project_id]
+    project_id = project_id || env_project_id()
 
     get_next_page(project_id, nil)
     |> Enum.filter(&(&1.name =~ @service_account_prefix))
-  end
-
-  defp handle_response({:ok, response}, project_id) do
-    case response do
-      %{accounts: accounts, nextPageToken: nil} ->
-        accounts
-
-      %{accounts: accounts, nextPageToken: next_page_token} ->
-        get_next_page(project_id, next_page_token) ++ accounts
-    end
-    |> List.flatten()
-  end
-
-  defp handle_response({:error, error}, _project_id) do
-    Logger.error("Error listing managed service accounts: #{inspect(error)}")
-    []
-  end
-
-  # handles pagination for the IAM api
-  defp get_next_page(project_id, page_token) do
-    GenUtils.get_conn(:default)
-    |> GoogleApi.IAM.V1.Api.Projects.iam_projects_service_accounts_list("projects/#{project_id}",
-      pageSize: 100,
-      pageToken: page_token
-    )
-    |> handle_response(project_id)
   end
 
   @doc """
@@ -226,7 +238,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
           GoogleApi.IAM.V1.Model.ServiceAccount.t()
         ]
   def create_managed_service_accounts(project_id \\ nil) do
-    project_id = project_id || Application.get_env(:logflare, Logflare.Google)[:project_id]
+    project_id = project_id || env_project_id()
 
     # determine the ids of of service accounts to create, based on what service accounts already exist
     size =
@@ -253,22 +265,13 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
     {:ok, accounts}
   end
 
-  defp create_managed_service_account(project_id, service_account_index) do
-    GenUtils.get_conn(:default)
-    |> GoogleApi.IAM.V1.Api.Projects.iam_projects_service_accounts_create(
-      "projects/#{project_id}",
-      body: %GoogleApi.IAM.V1.Model.CreateServiceAccountRequest{
-        accountId: managed_service_account_id(service_account_index)
-      }
-    )
-  end
-
   @doc """
   Returns the size of the managed service account pool from configuration
 
     iex> managed_service_account_pool_size()
     5
   """
+  @spec managed_service_account_pool_size :: integer()
   def managed_service_account_pool_size do
     Application.get_env(:logflare, :bigquery_backend_adaptor)[:managed_service_account_pool_size]
   end
@@ -287,6 +290,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
     iex> managed_service_account_partition_count()
     #{@managed_service_account_partition_count}
   """
+  @spec managed_service_account_partition_count :: integer()
   def managed_service_account_partition_count, do: @managed_service_account_partition_count
 
   @doc """
@@ -295,8 +299,10 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
     iex> ingest_service_account_partition_count()
     5
   """
-  def ingest_service_account_partition_count,
-    do: max(managed_service_account_partition_count(), System.schedulers_online())
+  @spec ingest_service_account_partition_count :: integer()
+  def ingest_service_account_partition_count do
+    max(managed_service_account_partition_count(), System.schedulers_online())
+  end
 
   # Goth provisioning
 
@@ -368,8 +374,9 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
     iex> impersonated_goth_child_specs()
     [{PartitionSupervisor, ...}, ...]
   """
+  @spec impersonated_goth_child_specs :: [Supervisor.child_spec()]
   def impersonated_goth_child_specs do
-    project_id = Application.get_env(:logflare, Logflare.Google)[:project_id]
+    project_id = env_project_id()
     pool_size = managed_service_account_pool_size()
     json = Application.get_env(:goth, :json)
 
@@ -390,24 +397,13 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
     end
   end
 
-  # tell goth to use our finch pool
-  # https://github.com/peburrows/goth/blob/master/lib/goth/token.ex#L144
-  defp goth_finch_http_client(options) do
-    {method, options} = Keyword.pop!(options, :method)
-    {url, options} = Keyword.pop!(options, :url)
-    {headers, options} = Keyword.pop!(options, :headers)
-    {body, options} = Keyword.pop!(options, :body)
-
-    Finch.build(method, url, headers, body)
-    |> Finch.request(Logflare.FinchGoth, options)
-  end
-
   @doc """
   Updates the IAM policy for the project.
 
     iex> update_iam_policy()
     :ok
   """
+  @spec update_iam_policy :: :ok
   def update_iam_policy(user \\ nil) do
     CloudResourceManager.set_iam_policy(async: false)
 
@@ -421,6 +417,119 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
   defdelegate append_managed_sa_to_iam_policy(user), to: CloudResourceManager
   defdelegate append_managed_service_accounts(project_id, policy), to: CloudResourceManager
   defdelegate patch_dataset_access(user), to: Google.BigQuery
-
   defdelegate get_conn(conn_type), to: GenUtils
+
+  # handles pagination for the IAM api
+  defp get_next_page(project_id, page_token) do
+    GenUtils.get_conn(:default)
+    |> GoogleApi.IAM.V1.Api.Projects.iam_projects_service_accounts_list("projects/#{project_id}",
+      pageSize: 100,
+      pageToken: page_token
+    )
+    |> handle_api_response(project_id)
+  end
+
+  defp handle_api_response({:ok, response}, project_id) do
+    case response do
+      %{accounts: accounts, nextPageToken: nil} ->
+        accounts
+
+      %{accounts: accounts, nextPageToken: next_page_token} ->
+        get_next_page(project_id, next_page_token) ++ accounts
+    end
+    |> List.flatten()
+  end
+
+  defp handle_api_response({:error, error}, _project_id) do
+    Logger.error("Error listing managed service accounts: #{inspect(error)}")
+    []
+  end
+
+  @spec create_managed_service_account(project_id :: String.t(), service_account_index :: integer) ::
+          {:ok, String.t()} | {:error, String.t()}
+  defp create_managed_service_account(project_id, service_account_index) do
+    GenUtils.get_conn(:default)
+    |> GoogleApi.IAM.V1.Api.Projects.iam_projects_service_accounts_create(
+      "projects/#{project_id}",
+      body: %GoogleApi.IAM.V1.Model.CreateServiceAccountRequest{
+        accountId: managed_service_account_id(service_account_index)
+      }
+    )
+  end
+
+  # tell goth to use our finch pool
+  # https://github.com/peburrows/goth/blob/master/lib/goth/token.ex#L144
+  defp goth_finch_http_client(options) do
+    {method, options} = Keyword.pop!(options, :method)
+    {url, options} = Keyword.pop!(options, :url)
+    {headers, options} = Keyword.pop!(options, :headers)
+    {body, options} = Keyword.pop!(options, :body)
+
+    Finch.build(method, url, headers, body)
+    |> Finch.request(Logflare.FinchGoth, options)
+  end
+
+  defp execute_query_with_context(
+         user_id,
+         query_string,
+         declared_params,
+         input_params,
+         endpoint_query,
+         opts
+       ) do
+    user = Users.get(user_id)
+
+    bq_params =
+      Enum.map(declared_params, fn input_name ->
+        %{
+          name: input_name,
+          parameterValue: %{value: input_params[input_name]},
+          parameterType: %{type: "STRING"}
+        }
+      end)
+
+    query_opts = [
+      parameterMode: "NAMED",
+      location: user.bigquery_dataset_location,
+      use_query_cache: Keyword.get(opts, :use_query_cache, true),
+      dryRun: Keyword.get(opts, :dry_run, false)
+    ]
+
+    query_opts =
+      if endpoint_query do
+        query_opts ++
+          [
+            maxResults: endpoint_query.max_limit,
+            labels:
+              Map.merge(
+                %{"endpoint_id" => endpoint_query.id},
+                endpoint_query.parsed_labels || %{}
+              )
+          ]
+      else
+        query_opts
+      end
+
+    case BqRepo.query_with_sql_and_params(
+           user,
+           user.bigquery_project_id || env_project_id(),
+           query_string,
+           bq_params,
+           query_opts
+         ) do
+      {:ok, result} ->
+        # Return the full result with rows and metadata
+        {:ok, %{rows: result.rows, total_bytes_processed: result.total_bytes_processed}}
+
+      {:error, %{body: body}} ->
+        error = Jason.decode!(body)["error"] |> GenUtils.process_bq_errors(user.id)
+        {:error, error}
+
+      {:error, err} when is_atom(err) ->
+        {:error, GenUtils.process_bq_errors(err, user.id)}
+    end
+  end
+
+  @spec env_project_id :: String.t()
+  defp env_project_id, do: Application.get_env(:logflare, Logflare.Google)[:project_id]
 end

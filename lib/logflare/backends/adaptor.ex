@@ -45,46 +45,6 @@ defmodule Logflare.Backends.Adaptor do
     end
   end
 
-  @callback start_link(source_backend()) ::
-              {:ok, pid()} | :ignore | {:error, term()}
-
-  @doc """
-  Optional callback to transform a stored backend config before usage.
-  Example use cases: when an adaptor extends another adaptor by customizing the end configuration.
-  """
-  @callback transform_config(backend :: Backend.t()) :: map()
-
-  @doc """
-  Optional callback to manipulate log events before queueing.
-  """
-  @callback pre_ingest(Source.t(), Backend.t(), [LogEvent.t()]) :: [LogEvent.t()]
-
-  @doc """
-  Optional callback to manipulate a batch before it is sent. This is pipeline specific, and must be handled by the underlying pipeline.
-  """
-  @callback format_batch([LogEvent.t()]) :: map() | list(map())
-  @callback format_batch([LogEvent.t()], config :: map()) :: map() | list(map())
-
-  @doc """
-  Optional callback to test the underlying connection for an adaptor. May not be applicable for some adaptors.
-  """
-  @callback test_connection({Source.t(), Backend.t()} | Backend.t()) :: :ok | {:error, term()}
-
-  @doc """
-  Queries the backend using an endpoint query.
-  """
-  @callback execute_query(identifier(), query()) :: {:ok, [term()]} | {:error, :not_implemented}
-
-  @doc """
-  Typecasts config params.
-  """
-  @callback cast_config(param :: map()) :: Ecto.Changeset.t()
-
-  @doc """
-  Validates a given adaptor's configuration, using Ecto.Changeset functions. Accepts a chaangeset
-  """
-  @callback validate_config(changeset :: Ecto.Changeset.t()) :: Ecto.Changeset.t()
-
   @doc """
   Validate configuration for given adaptor implementation
   """
@@ -101,7 +61,7 @@ defmodule Logflare.Backends.Adaptor do
   Default to false.
   """
   @spec supports_default_ingest?(Backend.t()) :: boolean()
-  def supports_default_ingest?(backend) do
+  def supports_default_ingest?(%Backend{} = backend) do
     adaptor = get_adaptor(backend)
 
     if function_exported?(adaptor, :supports_default_ingest?, 0) do
@@ -110,6 +70,108 @@ defmodule Logflare.Backends.Adaptor do
       false
     end
   end
+
+  @doc """
+  Returns true if a provided `Backend` supports transforming queries.
+
+  Default to false.
+  """
+  @spec can_transform_query?(Backend.t()) :: boolean()
+  def can_transform_query?(%Backend{} = backend) do
+    backend
+    |> get_adaptor()
+    |> function_exported?(:transform_query, 3)
+  end
+
+  @doc """
+  Returns true if a provided `Backend` supports mapping of query parameters.
+
+  Default to false.
+  """
+  @spec can_map_query_parameters?(Backend.t()) :: boolean()
+  def can_map_query_parameters?(%Backend{} = backend) do
+    backend
+    |> get_adaptor()
+    |> function_exported?(:map_query_parameters, 4)
+  end
+
+  @callback start_link(source_backend()) ::
+              {:ok, pid()} | :ignore | {:error, term()}
+
+  @doc """
+  Optional callback to manipulate a batch before it is sent. This is pipeline specific, and must be handled by the underlying pipeline.
+  """
+  @callback format_batch([LogEvent.t()]) :: map() | list(map())
+  @callback format_batch([LogEvent.t()], config :: map()) :: map() | list(map())
+
+  @doc """
+  Typecasts config params.
+  """
+  @callback cast_config(param :: map()) :: Ecto.Changeset.t()
+
+  @doc """
+  Queries the backend using an endpoint query.
+
+  The `opts` parameter can be used to include backend-specific options.
+
+  Depending on the backend, this will return a list of rows or
+  a map with rows and optional metadata (e.g., total_bytes_processed).
+  """
+  @callback execute_query(identifier(), query(), opts :: Keyword.t()) ::
+              {:ok, [term()]} | {:ok, map()} | {:error, :not_implemented} | {:error, term()}
+
+  @doc """
+  Optional callback to map query parameters from the original query context to the backend's expected format.
+
+  This is useful for adaptors that need special parameter handling, such as PostgreSQL which needs
+  to map `@param` style parameters from the original BigQuery query to $1, $2, etc. style parameters
+  in the translated PostgreSQL query.
+
+  Returns a list of parameter values in the order expected by the transformed query.
+
+  ## Parameters
+    * `original_query` - The original query string before any translation
+    * `transformed_query` - The query string after translation/transformation
+    * `declared_params` - List of parameter names declared in the original query
+    * `input_params` - Map of parameter names to values provided by the user
+  """
+  @callback map_query_parameters(
+              original_query :: String.t(),
+              transformed_query :: String.t(),
+              declared_params :: [String.t()],
+              input_params :: map()
+            ) :: [term()]
+
+  @doc """
+  Optional callback to manipulate log events before queueing.
+  """
+  @callback pre_ingest(Source.t(), Backend.t(), [LogEvent.t()]) :: [LogEvent.t()]
+
+  @doc """
+  Optional callback to test the underlying connection for an adaptor. May not be applicable for some adaptors.
+  """
+  @callback test_connection({Source.t(), Backend.t()} | Backend.t()) :: :ok | {:error, term()}
+
+  @doc """
+  Optional callback to transform a stored backend config before usage.
+  Example use cases: when an adaptor extends another adaptor by customizing the end configuration.
+  """
+  @callback transform_config(backend :: Backend.t()) :: map()
+
+  @doc """
+  Optional callback to transform a query from one language/dialect to the backend's expected format.
+  This allows adaptors to handle query language transformations specific to their backend.
+
+  If this callback is not implemented or returns `{:error, :not_supported}`,
+  the query will be passed through unchanged.
+
+  ## Parameters
+    * `query` - The query string to transform
+    * `from_language` - The source query language (e.g., :bq_sql, :lql, :pg_sql)
+    * `context` - Additional context that might be needed for transformation (e.g., schema_prefix)
+  """
+  @callback transform_query(query :: String.t(), from_language :: atom(), context :: map()) ::
+              {:ok, String.t()} | {:error, term()}
 
   @doc """
   Sends an alert notification for a given backend.
@@ -121,11 +183,18 @@ defmodule Logflare.Backends.Adaptor do
   """
   @callback supports_default_ingest?() :: boolean()
 
-  @optional_callbacks pre_ingest: 3,
-                      transform_config: 1,
-                      format_batch: 1,
+  @doc """
+  Validates a given adaptor's configuration, using Ecto.Changeset functions. Accepts a chaangeset
+  """
+  @callback validate_config(changeset :: Ecto.Changeset.t()) :: Ecto.Changeset.t()
+
+  @optional_callbacks format_batch: 1,
                       format_batch: 2,
+                      map_query_parameters: 4,
+                      pre_ingest: 3,
                       test_connection: 1,
+                      transform_config: 1,
+                      transform_query: 3,
                       send_alert: 3,
                       supports_default_ingest?: 0
 end
