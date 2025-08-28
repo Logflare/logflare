@@ -27,8 +27,7 @@
     "react": "^16.11.0",
     "react-bootstrap": "^1.6.6",
     "react-dom": "^16.11.0",
-    "react-spinners": "^0.9.0",
-    "sql-formatter": "^2.3.3"
+    "react-spinners": "^0.9.0"
   },
   "devDependencies": {
     "autoprefixer": "^10.4.13",
