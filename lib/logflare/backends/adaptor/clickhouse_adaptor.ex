@@ -689,7 +689,6 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
       if MapSet.member?(allowed_set, param) do
         "{#{param}:String}"
       else
-        Logger.warning("SQL parameter `@#{param}` not in allowed list")
         match
       end
     end)
