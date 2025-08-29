@@ -474,4 +474,30 @@ defmodule Logflare.BigQuery.EctoQueryBQTest do
       refute sql =~ "IS NULL) OR NOT"
     end
   end
+
+  describe "transforming PG SQL to BigQuery SQL" do
+    test "subquery" do
+      query =
+        from(@bq_table_id)
+        |> select([:id])
+
+      {sql, _params} = EctoQueryBQ.SQL.to_sql_params(query)
+      assert sql == "SELECT s0.id FROM some-table AS s0", "table is unquoted"
+
+      subquery1 = from(t in @bq_table_id, select: %{id: t.id, name: t.name})
+      subquery2 = from(s in subquery(subquery1), select: %{count: fragment("COUNT(*)")})
+
+      query =
+        from(main in @bq_table_id,
+          join: sub in subquery(subquery2),
+          on: true,
+          select: [main.id, sub.count]
+        )
+
+      {sql, _params} = EctoQueryBQ.SQL.to_sql_params(query)
+
+      assert sql ==
+               "SELECT s0.id, s1.count FROM some-table AS s0 INNER JOIN (SELECT COUNT(*) AS count FROM (SELECT sss0.id AS id, sss0.name AS name FROM some-table AS sss0) AS ss0) AS s1 ON TRUE"
+    end
+  end
 end

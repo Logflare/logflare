@@ -116,6 +116,75 @@ defmodule Logflare.Logs.Search do
     end
   end
 
+  @doc """
+  Search for events before and after a selected event.
+  """
+  @spec search_event_context(SO.t(), String.t(), DateTime.t()) :: {:ok, SO.t()} | {:error, SO.t()}
+  def search_event_context(%SO{} = so, log_event_id, %DateTime{} = timestamp) do
+    so =
+      so
+      |> Logflare.Logs.Search.get_and_put_partition_by()
+
+    %{values: [min, max]} =
+      so.lql_rules
+      |> Logflare.Lql.Rules.get_timestamp_filters()
+      |> Enum.find(fn rule -> rule.operator == :range end)
+
+    fields = [:id, :timestamp, :event_message, :metadata]
+
+    base_query =
+      from(so.source.bq_table_id)
+      |> Logflare.Logs.LogEvents.partition_query([min, max], so.partition_by)
+      |> select([t], map(t, ^fields))
+      |> Logflare.Lql.apply_filter_rules(so.lql_rules)
+
+    before_query =
+      base_query
+      |> where(
+        [t],
+        t.timestamp < ^timestamp or (t.timestamp == ^timestamp and t.id <= ^log_event_id)
+      )
+      |> order_by([t], desc: t.timestamp, desc: t.id)
+      |> select_merge([t], %{
+        rank:
+          fragment("1 - ROW_NUMBER() OVER (ORDER BY ? DESC, ? DESC)", t.timestamp, t.id)
+          |> selected_as(:rank)
+      })
+      # include the target event and up to 50 following
+      |> limit(51)
+
+    after_query =
+      base_query
+      |> where(
+        [t],
+        t.timestamp > ^timestamp or (t.timestamp == ^timestamp and t.id > ^log_event_id)
+      )
+      |> order_by([t], asc: t.timestamp, asc: t.id)
+      |> select_merge([t], %{
+        rank:
+          over(fragment("ROW_NUMBER()"), order_by: [asc: t.timestamp, asc: t.id])
+          |> selected_as(:rank)
+      })
+      |> limit(50)
+
+    query =
+      before_query
+      |> subquery()
+      |> select([t], t)
+      |> union_all(^(after_query |> subquery() |> select([t], t)))
+      |> subquery()
+      |> select([t], map(t, ^fields))
+      |> select_merge([t], %{rank: t.rank})
+      |> order_by([t], asc: t.timestamp, asc: t.id)
+
+    with so <- %{so | query: query},
+         so = %{error: nil} <- do_query(so) do
+      {:ok, so}
+    else
+      so -> {:error, so}
+    end
+  end
+
   def query_source_streaming_buffer(%Source{} = source) do
     q =
       case Sources.get_table_partition_type(source) do
