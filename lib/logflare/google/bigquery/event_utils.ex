@@ -1,8 +1,12 @@
 defmodule Logflare.Google.BigQuery.EventUtils do
-  @moduledoc false
+  @moduledoc """
+  Event utils for BigQuery.
+  """
+
   @doc """
   Prepares an event for ingest into BigQuery
   """
+  @spec prepare_for_ingest(event :: map()) :: [map()]
   def prepare_for_ingest(event) do
     [wrap_fields(event)]
   end

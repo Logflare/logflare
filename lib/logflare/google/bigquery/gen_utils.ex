@@ -23,6 +23,7 @@ defmodule Logflare.Google.BigQuery.GenUtils do
   @doc """
   Returns the default TTL used (in days) for initializing the table.
   """
+  @spec default_table_ttl_days() :: number()
   def default_table_ttl_days do
     @table_ttl / :timer.hours(24)
   end
