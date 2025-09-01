@@ -1,5 +1,5 @@
 defmodule Logflare.TelemetryTest do
-  use Logflare.DataCase
+  use ExUnit.Case, async: false
   alias Logflare.Telemetry
 
   describe "process metrics" do
@@ -88,7 +88,7 @@ defmodule Logflare.TelemetryTest do
         nil
       )
 
-    ExUnit.Callbacks.on_exit(fn -> :telemetry.detach(id) end)
+    on_exit(fn -> :telemetry.detach(id) end)
     id
   end
 end
