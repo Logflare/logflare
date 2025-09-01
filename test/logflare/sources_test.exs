@@ -3,15 +3,15 @@ defmodule Logflare.SourcesTest do
 
   alias Logflare.Google.BigQuery
   alias Logflare.Google.BigQuery.GenUtils
-  alias Logflare.Source
+  alias Logflare.Sources.Source
   alias Logflare.Backends.RecentEventsTouch
   alias Logflare.Sources
   alias Logflare.SourceSchemas
-  alias Logflare.Source.V1SourceSup
+  alias Logflare.Sources.Source.V1SourceSup
   alias Logflare.Backends
   alias Logflare.Users
-  alias Logflare.Source.BigQuery.Schema
-  alias Logflare.Source.V1SourceDynSup
+  alias Logflare.Sources.Source.BigQuery.Schema
+  alias Logflare.Sources.Source.V1SourceDynSup
 
   describe "create_source/2" do
     setup do

@@ -9,18 +9,19 @@ defmodule Logflare.Logs.Processor do
 
   alias Logflare.Backends
   alias Logflare.Logs
+  alias Logflare.Sources.Source
 
   @doc """
   Translate `data` into format that will be used for storage.
   """
-  @callback handle_batch(data :: [map()], source :: Logflare.Source.t()) :: [map()]
+  @callback handle_batch(data :: [map()], source :: Logflare.Sources.Source.t()) :: [map()]
 
   @doc """
   Process `data` using `processor` to translate from incoming format to storage format.
   """
-  @spec ingest([map()], module(), Logflare.Source.t()) ::
+  @spec ingest([map()], module(), Logflare.Sources.Source.t()) ::
           :ok | {:ok, count :: pos_integer()} | {:error, term()}
-  def ingest(data, processor, %Logflare.Source{} = source)
+  def ingest(data, processor, %Source{} = source)
       when is_list(data) and is_atom(processor) do
     metadata = %{
       processor: processor,
@@ -52,11 +53,11 @@ defmodule Logflare.Logs.Processor do
     end)
   end
 
-  defp store(%Logflare.Source{v2_pipeline: true} = source, batch) do
+  defp store(%Source{v2_pipeline: true} = source, batch) do
     Backends.ensure_source_sup_started(source)
     Backends.ingest_logs(batch, source)
   end
 
-  defp store(%Logflare.Source{v2_pipeline: false} = source, batch),
+  defp store(%Source{v2_pipeline: false} = source, batch),
     do: Logs.ingest_logs(batch, source)
 end

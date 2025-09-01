@@ -4,14 +4,14 @@ defmodule Logflare.BackendsTest do
   alias Logflare.Backends
   alias Logflare.Backends.Backend
   alias Logflare.Backends.SourceSup
-  alias Logflare.Source
+  alias Logflare.Sources.Source
   alias Logflare.Sources
   alias Logflare.Backends.RecentEventsTouch
   alias Logflare.SystemMetrics.AllLogsLogged
-  alias Logflare.Source.ChannelTopics
+  alias Logflare.Sources.Source.ChannelTopics
   alias Logflare.Lql
   alias Logflare.Logs
-  alias Logflare.Source.V1SourceSup
+  alias Logflare.Sources.Source.V1SourceSup
   alias Logflare.PubSubRates
   alias Logflare.Logs.SourceRouting
   alias Logflare.PubSubRates
@@ -19,7 +19,7 @@ defmodule Logflare.BackendsTest do
   alias Logflare.Rules
   alias Logflare.Backends.IngestEventQueue
   alias Logflare.Backends.SourceSupWorker
-  alias Logflare.Source.BigQuery.Pipeline
+  alias Logflare.Sources.Source.BigQuery.Pipeline
   alias Logflare.Backends.DynamicPipeline
 
   setup do

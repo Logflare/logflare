@@ -1,21 +1,21 @@
-defmodule Logflare.Source.RateCounterServer do
+defmodule Logflare.Sources.Source.RateCounterServer do
   @moduledoc """
   Establishes requests per second per source table. Watches the counters for source tables and periodically pulls them to establish
   events per second. Also handles storing those in the database.
   """
-
   use GenServer
 
-  require Logger
-  alias Logflare.Source.RateCounterServer
+  alias Logflare.Backends
   alias Logflare.Google.BigQuery.GenUtils
-  alias Logflare.Source
-  alias Logflare.Source.Data
+  alias Logflare.PubSubRates
+  alias Logflare.SingleTenant
   alias Logflare.Sources
   alias Logflare.Sources.Counters
-  alias Logflare.PubSubRates
-  alias Logflare.Backends
-  alias Logflare.SingleTenant
+  alias Logflare.Sources.Source
+  alias Logflare.Sources.Source.Data
+  alias Logflare.Sources.Source.RateCounterServer
+
+  require Logger
 
   @default_bucket_width 60
   @ets_table_name :rate_counters
@@ -267,9 +267,9 @@ defmodule Logflare.Source.RateCounterServer do
 
   ## Examples
 
-      iex> Logflare.Source.RateCounterServer.stats([12,5,30,5,1000])
+      iex> Logflare.Sources.Source.RateCounterServer.stats([12,5,30,5,1000])
       %{avg: 211, sum: 1052}
-      iex> Logflare.Source.RateCounterServer.stats([])
+      iex> Logflare.Sources.Source.RateCounterServer.stats([])
       %{avg: 0, sum: 0}
 
   """

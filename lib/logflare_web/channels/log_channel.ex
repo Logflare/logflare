@@ -2,9 +2,11 @@ defmodule LogflareWeb.LogChannel do
   @moduledoc false
   use LogflareWeb, :channel
 
-  alias Logflare.{Logs, Sources, Source}
-  alias LogflareWeb.Router.Helpers, as: Routes
+  alias Logflare.Logs
+  alias Logflare.Sources
+  alias Logflare.Sources.Source
   alias LogflareWeb.Endpoint
+  alias LogflareWeb.Router.Helpers, as: Routes
 
   def join("logs:" <> source_uuid, _payload, socket),
     do: join(source_uuid, socket)

@@ -10,10 +10,10 @@ defmodule LogflareWeb.SourceController do
   alias Logflare.Logs.SearchUtils
   alias Logflare.Lql
   alias Logflare.Repo
-  alias Logflare.Source
-  alias Logflare.Source.SlackHookServer
-  alias Logflare.Source.WebhookNotificationServer
-  alias Logflare.Source.Supervisor
+  alias Logflare.Sources.Source
+  alias Logflare.Sources.Source.SlackHookServer
+  alias Logflare.Sources.Source.WebhookNotificationServer
+  alias Logflare.Sources.Source.Supervisor
   alias Logflare.Sources
   alias Logflare.SourceSchemas
   alias Logflare.Teams
@@ -43,7 +43,7 @@ defmodule LogflareWeb.SourceController do
 
     pipeline_counts =
       for source <- sources, into: %{} do
-        name = Backends.via_source(source.id, Logflare.Source.BigQuery.Pipeline, nil)
+        name = Backends.via_source(source.id, Logflare.Sources.Source.BigQuery.Pipeline, nil)
 
         count =
           if GenServer.whereis(name) do

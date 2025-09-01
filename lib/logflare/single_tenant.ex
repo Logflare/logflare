@@ -6,12 +6,12 @@ defmodule Logflare.SingleTenant do
   alias Logflare.Billing
   alias Logflare.Billing.Plan
   alias Logflare.Endpoints.Query
-  alias Logflare.Source
+  alias Logflare.Sources.Source
   alias Logflare.Sources
   alias Logflare.Endpoints
   alias Logflare.Repo
-  alias Logflare.Source.Supervisor
-  alias Logflare.Source.BigQuery.Schema
+  alias Logflare.Sources.Source.Supervisor
+  alias Logflare.Sources.Source.BigQuery.Schema
   alias Logflare.LogEvent
   alias Logflare.Backends
   alias Logflare.Backends.Backend
@@ -247,7 +247,7 @@ defmodule Logflare.SingleTenant do
 
   @doc """
   Starts supabase sources if present.
-  Note: not tested as `Logflare.Source.Supervisor` is a pain to mock.
+  Note: not tested as `Logflare.Sources.Source.Supervisor` is a pain to mock.
   TODO: add testing for v2
   """
   @spec ensure_supabase_sources_started() :: :ok

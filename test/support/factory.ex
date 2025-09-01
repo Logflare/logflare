@@ -15,7 +15,7 @@ defmodule Logflare.Factory do
   alias Logflare.OauthAccessTokens.OauthAccessToken
   alias Logflare.Partners.Partner
   alias Logflare.Rules.Rule
-  alias Logflare.Source
+  alias Logflare.Sources.Source
   alias Logflare.SourceSchemas.SourceSchema
   alias Logflare.Teams.Team
   alias Logflare.TeamUsers.TeamUser

@@ -21,7 +21,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
   alias Logflare.Backends.Backend
   alias Logflare.Backends.SourceRegistry
   alias Logflare.LogEvent
-  alias Logflare.Source
+  alias Logflare.Sources.Source
 
   @ingest_timeout 15_000
   @query_timeout 60_000

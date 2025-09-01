@@ -4,7 +4,7 @@ defmodule Logflare.LogEventTest do
   use ExUnitProperties
 
   alias Logflare.LogEvent
-  alias Logflare.Source
+  alias Logflare.Sources.Source
 
   @subject Logflare.LogEvent
 

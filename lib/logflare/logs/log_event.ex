@@ -5,7 +5,7 @@ defmodule Logflare.LogEvent do
   import LogflareWeb.Utils, only: [stringify_changeset_errors: 1]
 
   alias Logflare.Logs.Ingest.MetadataCleaner
-  alias Logflare.Source
+  alias Logflare.Sources.Source
   alias __MODULE__, as: LE
   alias Logflare.Logs.Validators.{EqDeepFieldTypes, BigQuerySchemaChange}
   alias Logflare.Logs.IngestTransformers

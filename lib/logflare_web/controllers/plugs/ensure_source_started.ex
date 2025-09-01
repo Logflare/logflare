@@ -6,7 +6,7 @@ defmodule LogflareWeb.Plugs.EnsureSourceStarted do
 
   require Logger
 
-  alias Logflare.Source.Supervisor
+  alias Logflare.Sources.Source.Supervisor
 
   def call(%{assigns: %{source: source}} = conn, _params) do
     :ok = Supervisor.ensure_started(source)

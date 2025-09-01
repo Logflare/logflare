@@ -30,7 +30,7 @@ defmodule Logflare.ContextCache.Supervisor do
 
   defp get_children(:test), do: list_caches()
 
-  defp get_children(_) do
+  defp get_children(_env) do
     list_caches() ++
       [
         ContextCache.TransactionBroadcaster,

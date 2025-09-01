@@ -2,7 +2,7 @@ defmodule LogflareWeb.Plugs.FetchResourceTest do
   @moduledoc false
   use LogflareWeb.ConnCase
   alias LogflareWeb.Plugs.FetchResource
-  alias Logflare.Source
+  alias Logflare.Sources.Source
   alias Logflare.Endpoints.Query
 
   setup do

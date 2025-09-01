@@ -3,7 +3,7 @@ defmodule Logflare.Backends.SourcesBackend do
   use TypedEctoSchema
 
   alias Logflare.Backends.Backend
-  alias Logflare.Source
+  alias Logflare.Sources.Source
 
   typed_schema "sources_backends" do
     belongs_to(:source, Source)

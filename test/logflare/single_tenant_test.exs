@@ -8,8 +8,8 @@ defmodule Logflare.SingleTenantTest do
   alias Logflare.Billing.Plan
   alias Logflare.Sources
   alias Logflare.Endpoints
-  alias Logflare.Source.BigQuery.Schema
-  alias Logflare.Source
+  alias Logflare.Sources.Source.BigQuery.Schema
+  alias Logflare.Sources.Source
   alias Logflare.Auth
   alias Logflare.Backends.Backend
   alias Logflare.Backends

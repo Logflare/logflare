@@ -3,10 +3,10 @@ alias Logflare.User
 alias Logflare.Users
 alias Logflare.Logs.Search
 alias Logflare.Logs.SearchOperations.SearchOperation, as: SO
-alias Logflare.Source.BigQuery.SchemaBuilder
+alias Logflare.Sources.Source.BigQuery.SchemaBuilder
 alias Logflare.Google.BigQuery
 alias Logflare.Google.BigQuery.GenUtils
-alias Logflare.Source.BigQuery.Pipeline
+alias Logflare.Sources.Source.BigQuery.Pipeline
 alias Logflare.Repo
 alias Logflare.LogEvent
 import Ecto.Query

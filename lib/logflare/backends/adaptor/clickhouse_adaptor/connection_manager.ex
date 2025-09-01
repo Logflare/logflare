@@ -13,7 +13,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.ConnectionManager do
 
   alias Logflare.Backends
   alias Logflare.Backends.Backend
-  alias Logflare.Source
+  alias Logflare.Sources.Source
 
   @type source_backend_tuple :: {Source.t(), Backend.t()}
   @type connection_type :: :ingest | :query

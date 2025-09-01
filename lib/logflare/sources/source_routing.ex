@@ -9,7 +9,7 @@ defmodule Logflare.Logs.SourceRouting do
   alias Logflare.Logs
   alias Logflare.Lql.Rules.FilterRule
   alias Logflare.Rules.Rule
-  alias Logflare.Source
+  alias Logflare.Sources.Source
   alias Logflare.Sources
 
   @spec route_to_sinks_and_ingest(LE.t()) :: LE.t()

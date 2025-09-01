@@ -4,7 +4,7 @@ defmodule Logflare.Backends.Adaptor.SlackAdaptor do
 
   alias __MODULE__.Client
 
-  alias Logflare.Source
+  alias Logflare.Sources.Source
   alias Logflare.Alerting.AlertQuery
 
   @doc """

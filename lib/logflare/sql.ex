@@ -760,7 +760,9 @@ defmodule Logflare.Sql do
     Regex.match?(regex, table_name)
   end
 
-  @spec source_mapping(sources :: [Logflare.Source.t()]) :: %{String.t() => Logflare.Source.t()}
+  @spec source_mapping(sources :: [Logflare.Sources.Source.t()]) :: %{
+          String.t() => Logflare.Sources.Source.t()
+        }
   defp source_mapping(sources) do
     for source <- sources, into: %{} do
       {source.name, source}

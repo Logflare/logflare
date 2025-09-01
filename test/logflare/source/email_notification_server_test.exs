@@ -1,8 +1,8 @@
-defmodule Logflare.Source.EmailNotificationServerTest do
+defmodule Logflare.Sources.Source.EmailNotificationServerTest do
   @moduledoc false
   use Logflare.DataCase
 
-  alias Logflare.Source.EmailNotificationServer
+  alias Logflare.Sources.Source.EmailNotificationServer
 
   setup do
     u1 = insert(:user)

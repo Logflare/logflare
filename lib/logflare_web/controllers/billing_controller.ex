@@ -4,7 +4,7 @@ defmodule LogflareWeb.BillingController do
   require Logger
 
   alias Logflare.Billing
-  alias Logflare.Source
+  alias Logflare.Sources.Source
   alias Logflare.{User, Users}
   alias Logflare.Billing.Stripe
 

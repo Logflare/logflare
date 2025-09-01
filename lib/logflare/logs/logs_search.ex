@@ -4,7 +4,7 @@ defmodule Logflare.Logs.Search do
   alias Logflare.Logs.SearchOperation, as: SO
   import Logflare.Logs.SearchOperations
   alias Logflare.Logs.SearchQueries
-  alias Logflare.Source
+  alias Logflare.Sources.Source
   alias Logflare.Sources
   alias Logflare.BqRepo
   alias Logflare.Utils.Tasks

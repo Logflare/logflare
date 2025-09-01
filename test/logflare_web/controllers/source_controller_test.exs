@@ -8,7 +8,7 @@ defmodule LogflareWeb.SourceControllerTest do
   alias Logflare.Logs.Validators
   alias Logflare.Logs.RejectedLogEvents
   alias Logflare.SingleTenant
-  alias Logflare.Source.V1SourceDynSup
+  alias Logflare.Sources.Source.V1SourceDynSup
   alias Logflare.Backends
   alias Logflare.Backends.SourceSup
   alias Logflare.SystemMetrics.AllLogsLogged

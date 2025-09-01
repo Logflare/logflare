@@ -1,20 +1,23 @@
 defmodule Logflare.Users do
-  require Logger
+  @moduledoc false
 
   import Ecto.Query
-  alias Logflare.Google.BigQuery
+
   alias Logflare.Backends.Adaptor.BigQueryAdaptor
+  alias Logflare.Google.BigQuery
   alias Logflare.Repo
-  alias Logflare.Source.Supervisor
+  alias Logflare.Sources.Source.Supervisor
   alias Logflare.Sources
+  alias Logflare.Sources.Source
   alias Logflare.TeamUsers.TeamUser
   alias Logflare.User
   alias Logflare.Users
   alias Logflare.Users.UserPreferences
 
+  require Logger
+
   @max_limit 100
 
-  @moduledoc false
   def user_changeset(user, attrs) do
     User.changeset(user, attrs)
   end
@@ -174,7 +177,7 @@ defmodule Logflare.Users do
   end
 
   def get_by_source(source_id) when is_atom(source_id) do
-    %Logflare.Source{user_id: user_id} = Sources.get_by(token: source_id)
+    %Source{user_id: user_id} = Sources.get_by(token: source_id)
     Users.get_by_and_preload(id: user_id)
   end
 

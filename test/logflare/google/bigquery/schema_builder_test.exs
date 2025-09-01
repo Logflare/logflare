@@ -2,7 +2,7 @@ defmodule Logflare.Google.BigQuery.SourceSchemaBuilderTest do
   @moduledoc false
   use ExUnit.Case, async: true
   alias Logflare.TestUtils
-  alias Logflare.Source.BigQuery.SchemaBuilder
+  alias Logflare.Sources.Source.BigQuery.SchemaBuilder
   alias GoogleApi.BigQuery.V2.Model.TableFieldSchema, as: TFS
   alias GoogleApi.BigQuery.V2.Model.TableSchema, as: TS
   @default_schema SchemaBuilder.initial_table_schema()

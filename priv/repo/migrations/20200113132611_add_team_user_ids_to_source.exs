@@ -3,7 +3,7 @@ defmodule Logflare.Repo.Migrations.AddTeamUserIdsToSource do
 
   def change do
     alter table(:sources) do
-      add :notifications, :map, default: %Logflare.Source.Notifications{}, null: false
+      add :notifications, :map, default: %Logflare.Sources.Source.Notifications{}, null: false
     end
   end
 

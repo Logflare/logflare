@@ -2,7 +2,7 @@ defmodule Logflare.Logs.SearchOperationsTest do
   use Logflare.DataCase, async: false
 
   alias Logflare.Logs.SearchOperations
-  alias Logflare.Source.BigQuery.Schema
+  alias Logflare.Sources.Source.BigQuery.Schema
 
   describe "unnesting metadata if present" do
     setup do

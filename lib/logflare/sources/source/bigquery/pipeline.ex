@@ -1,4 +1,4 @@
-defmodule Logflare.Source.BigQuery.Pipeline do
+defmodule Logflare.Sources.Source.BigQuery.Pipeline do
   @moduledoc false
   use Broadway
 
@@ -13,12 +13,12 @@ defmodule Logflare.Source.BigQuery.Pipeline do
   alias Logflare.Google.BigQuery.GenUtils
   alias Logflare.LogEvent, as: LE
   alias Logflare.Mailer
-  alias Logflare.Source
+  alias Logflare.Sources.Source
   alias Logflare.Sources
   alias Logflare.Backends.IngestEventQueue
   alias Logflare.Backends.BufferProducer
-  alias Logflare.Source.BigQuery.Schema
-  alias Logflare.Source.Supervisor
+  alias Logflare.Sources.Source.BigQuery.Schema
+  alias Logflare.Sources.Source.Supervisor
   alias Logflare.Sources
   alias Logflare.Users
   alias Logflare.PubSubRates

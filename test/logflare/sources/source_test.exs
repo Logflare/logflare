@@ -1,8 +1,10 @@
-defmodule Logflare.SourceTest do
-  @moduledoc false
-  alias Logflare.Google.BigQuery.GCPConfig
-  alias Logflare.{Source, Sources}
+defmodule Logflare.Sources.SourceTest do
   use Logflare.DataCase
+
+  alias Logflare.Google.BigQuery.GCPConfig
+  alias Logflare.Sources
+  alias Logflare.Sources.Source
+
   @moduletag :failing
 
   describe "Source" do

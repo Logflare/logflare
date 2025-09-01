@@ -19,8 +19,8 @@ defmodule Logflare.Sources do
   alias Logflare.Repo
   alias Logflare.SavedSearch
   alias Logflare.SingleTenant
-  alias Logflare.Source
-  alias Logflare.Source.BigQuery.SchemaBuilder
+  alias Logflare.Sources.Source
+  alias Logflare.Sources.Source.BigQuery.SchemaBuilder
   alias Logflare.SourceSchemas
   alias Logflare.User
   alias Logflare.Users
@@ -424,7 +424,7 @@ defmodule Logflare.Sources do
     if count == 0, do: 1, else: count
   end
 
-  @spec get_source_for_lv_param(binary | integer) :: Logflare.Source.t()
+  @spec get_source_for_lv_param(binary | integer) :: Logflare.Sources.Source.t()
   def get_source_for_lv_param(source_id) when is_binary(source_id) or is_integer(source_id) do
     get_by_and_preload(id: source_id)
     |> preload_saved_searches()
