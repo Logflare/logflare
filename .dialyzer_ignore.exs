@@ -56,7 +56,6 @@
   {"lib/logflare/endpoints.ex", :no_return},
   {"lib/logflare/endpoints.ex", :pattern_match},
   {"lib/logflare/endpoints.ex", :call},
-  {"lib/logflare/endpoints.ex", :pattern_match_cov},
   {"lib/logflare/endpoints.ex", :unknown_type},
   {"lib/logflare/endpoints/query.ex", :pattern_match},
   {"lib/logflare/endpoints/query.ex", :no_return},
