@@ -36,6 +36,9 @@ defmodule Logflare.Logs.SearchOperations do
 
   @timestamp_filter_with_tailing "Timestamp filters can't be used if live tail search is active"
 
+  @spec max_chart_ticks :: integer()
+  def max_chart_ticks, do: @default_max_n_chart_ticks
+
   @spec do_query(SO.t()) :: SO.t()
   def do_query(%SO{} = so) do
     bq_project_id = so.source.user.bigquery_project_id || GCPConfig.default_project_id()

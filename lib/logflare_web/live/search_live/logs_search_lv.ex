@@ -25,6 +25,7 @@ defmodule LogflareWeb.Source.SearchLV do
   alias LogflareWeb.Router.Helpers, as: Routes
   alias LogflareWeb.SearchView
   alias Logflare.Sources.Source.BigQuery.SchemaBuilder
+  alias Logflare.Utils.Chart, as: ChartUtils
 
   require Logger
 
@@ -368,7 +369,7 @@ defmodule LogflareWeb.Source.SearchLV do
       if period do
         Lql.Rules.put_chart_period(lql_list, String.to_existing_atom(period))
       else
-        lql_list
+        lql_list |> maybe_adjust_chart_period()
       end
 
     qs = Lql.encode!(lql_list)
@@ -708,6 +709,23 @@ defmodule LogflareWeb.Source.SearchLV do
     if assigns do
       SearchQueryExecutor.query(assigns.executor_pid, assigns)
       SearchQueryExecutor.query_agg(assigns.executor_pid, assigns)
+    end
+  end
+
+  @spec maybe_adjust_chart_period(Lql.Rules.t()) :: Lql.Rules.t()
+  def maybe_adjust_chart_period(lql_rules) do
+    max_ticks = Logflare.Logs.SearchOperations.max_chart_ticks()
+
+    with [%Lql.Rules.FilterRule{values: [min_ts, max_ts]}] <-
+           Lql.Rules.get_timestamp_filters(lql_rules),
+         %ChartRule{} = chart_rule <- Lql.Rules.get_chart_rule(lql_rules),
+         true <-
+           ChartUtils.get_number_of_chart_ticks(min_ts, max_ts, chart_rule.period) > max_ticks do
+      period = ChartUtils.calculate_minimum_required_period(min_ts, max_ts, max_ticks)
+
+      Lql.Rules.put_chart_period(lql_rules, period)
+    else
+      _ -> lql_rules
     end
   end
 

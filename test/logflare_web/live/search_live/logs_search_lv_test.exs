@@ -458,6 +458,35 @@ defmodule LogflareWeb.Source.SearchLVTest do
       assert html =~ "some event message"
     end
 
+    test "date picker adjusts chart display interval", %{conn: conn, source: source} do
+      query = "t:2025-08-01T00:00:00..2025-08-02T00:00:00"
+
+      {:ok, view, _html} =
+        live(conn, Routes.live_path(conn, SearchLV, source.id, tailing?: false))
+
+      assert view
+             |> has_element?("#search_chart_period option[selected]", "minute")
+
+      render_change(view, :datetime_update, %{
+        "querystring" => query
+      })
+
+      assert view
+             |> has_element?("#search_chart_period option[selected]", "hour")
+
+      # don't override explicit user choice of period
+      render_change(view, :form_update, %{
+        "search" => %{
+          @default_search_params
+          | "querystring" => query,
+            "chart_period" => "second"
+        }
+      })
+
+      assert view
+             |> has_element?(".alert", "Search halted")
+    end
+
     test "log event links", %{conn: conn, source: source} do
       stub(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, fn _conn, _proj_id, _opts ->
         {:ok,
