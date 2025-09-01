@@ -1,7 +1,6 @@
 import {
   activateClipboardForSelector
 } from "./utils"
-import sqlFormatter from "sql-formatter"
 import $ from "jquery"
 import _ from "lodash"
 import idle from "./vendor/idle"
@@ -38,7 +37,7 @@ hooks.SourceLogsSearchList = {
           }
         })
       })
-    
+
     const target = document.querySelector("#observer-target")
     observer.observe(target)
   },
@@ -49,23 +48,7 @@ hooks.SourceLogsSearchList = {
   },
 }
 
-const formatModal = ($modal) => {
-  if ($modal.data("modal-type") === "search-op-debug-modal") {
-    const $code = $modal.find(`code#search-op-sql-string`)
-    const fmtSql = sqlFormatter.format($code.text())
-    // replace with formatted sql
-    $code.text(fmtSql)
-    $modal.find("pre code").each((i, block) => {
-      hljs.highlightBlock(block)
-    })
-  }
-}
-
 hooks.ModalHook = {
-  updated() {
-    const $modal = $(this.el)
-    formatModal($modal)
-  },
   mounted() {
     const $modal = $(this.el)
 
@@ -80,8 +63,6 @@ hooks.ModalHook = {
         this.pushEvent("soft_play", {})
       }
     })
-
-    formatModal($modal)
 
     $modal.modal({
       backdrop: "static"

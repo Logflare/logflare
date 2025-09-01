@@ -3,12 +3,13 @@ defmodule Logflare.LiveView.Socket do
   The LiveView socket for Phoenix Endpoints.
   """
   use Phoenix.Socket, log: false
+
+  alias Phoenix.LiveView
+
   require Logger
 
-  if Version.match?(System.version(), ">= 1.8.0") do
-    @derive {Inspect,
-             only: [:id, :endpoint, :router, :view, :parent_pid, :root_pid, :assigns, :changed]}
-  end
+  @derive {Inspect,
+           only: [:id, :endpoint, :router, :view, :parent_pid, :root_pid, :assigns, :changed]}
 
   defstruct id: nil,
             endpoint: nil,
@@ -20,12 +21,12 @@ defmodule Logflare.LiveView.Socket do
             assigns: %{},
             changed: %{},
             private: %{},
-            fingerprints: Phoenix.LiveView.Diff.new_fingerprints(),
+            fingerprints: LiveView.Diff.new_fingerprints(),
             redirected: nil,
             host_uri: nil,
             connected?: false
 
-  @type assigns :: map | Phoenix.LiveView.Socket.AssignsNotInSocket.t()
+  @type assigns :: map | LiveView.Socket.AssignsNotInSocket.t()
   @type fingerprints :: {nil, map} | {binary, map}
 
   @type t :: %__MODULE__{
@@ -45,7 +46,7 @@ defmodule Logflare.LiveView.Socket do
           connected?: boolean()
         }
 
-  channel "lv:*", Phoenix.LiveView.Channel
+  channel "lv:*", LiveView.Channel
 
   @doc """
   Connects the Phoenix.Socket for a LiveView client.
