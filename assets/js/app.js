@@ -30,9 +30,6 @@ window.moment = moment;
 import "./vendor/daterangepicker.min.js";
 import "./vendor/daterangepicker.css";
 
-// interfaces
-import * as Interfaces from "./interfaces";
-
 let csrfToken = document
   .querySelector("meta[name='csrf-token']")
   .getAttribute("content");
@@ -40,7 +37,6 @@ let csrfToken = document
 const liveReactHooks = { LiveReact };
 
 window.Components = { LogEventsChart, Loader, AdminChart: Chart };
-window.Interfaces = Interfaces;
 window.Dashboard = Dashboard;
 window.Logs = Logs;
 window.Source = Source;
