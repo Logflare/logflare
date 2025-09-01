@@ -124,7 +124,7 @@ defmodule LogflareWeb.SearchLive.EventContextComponent do
           </:failed>
 
           <div :if={@is_truncated_before} class="tw-text-center tw-py-2 tw-uppercase tw-text-sm">
-            Limit 50 events before selection
+            Showing 50 events before selected event
           </div>
           <ul class="list-unstyled console-text" id="log-events" phx-update="stream">
             <.log_event
