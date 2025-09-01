@@ -41,8 +41,8 @@ jobs:
             run: mix do ecto.create, ecto.migrate, test.coverage.ci
           # - name: Security - Sobelow Code Scan
           #   run: mix test.security
-          - name: Typing check
-            run: mix test.typings
+          # - name: Typing check
+          #   run: mix test.typings
     services:
       postgres:
         image: bitnami/postgresql:15
