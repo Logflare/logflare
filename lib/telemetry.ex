@@ -40,7 +40,7 @@ defmodule Logflare.Telemetry do
               name: "Logflare",
               version: Application.spec(:logflare, :vsn) |> to_string()
             },
-            instance: inspect(Node.self()),
+            node: inspect(Node.self()),
             cluster: Application.get_env(:logflare, :metadata)[:cluster]
           })
           |> Keyword.update!(:otlp_headers, &Map.new/1)
