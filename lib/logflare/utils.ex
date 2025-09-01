@@ -6,9 +6,7 @@ defmodule Logflare.Utils do
   import Logflare.Utils.Guards, only: [is_atom_value: 1]
 
   @original_to_string String.Chars.impl_for(%Tesla.Env{})
-  @original_inspect Inspect.impl_for(%Tesla.Env{})
   def tesla_env_to_string(), do: @original_to_string
-  def tesla_env_inspect(), do: @original_inspect
 
   def cache_stats() do
     hook(module: Cachex.Stats)
@@ -239,40 +237,62 @@ defmodule Logflare.Utils do
   Redacts sensitive headers from a list of Tesla.Env headers. Used for automatic redaction
   """
   @spec redact_sensitive_headers(list(tuple())) :: list(tuple())
-  def redact_sensitive_headers(headers) do
-    for {key, value} <- headers do
-      if String.downcase(key) in ["authorization", "x-api-key"] do
-        {key, "REDACTED"}
-      else
-        {key, value}
-      end
+  def redact_sensitive_headers(%{} = value) do
+    value
+    |> Iteraptor.map(
+      fn
+        {[key | _], value}
+        when is_binary(value) and
+               key in ["authorization", "x-api-key", "Authorization", "X-API-Key"] ->
+          "REDACTED"
+
+        self ->
+          self
+      end,
+      keys: :reverse,
+      structs: :keep
+    )
+  end
+
+  @doc """
+  Receives the previous inspect function and performs redaction if it is a Tesla.Env.
+  Does nothing if it is not a Tesla.Env or Tesla.Client.
+  """
+  def inspect_fun(prev_fun, value, opts)
+      when is_struct(value, Tesla.Env) or is_struct(value, Tesla.Client) do
+    if Application.get_env(:logflare, :env) in [:test, :dev] do
+      prev_fun.(value, opts)
+    else
+      value = Logflare.Utils.redact_sensitive_headers(value)
+      prev_fun.(value, opts)
     end
   end
-end
 
-defimpl String.Chars, for: Tesla.Env do
-  def to_string(%Tesla.Env{headers: headers} = env) do
+  def inspect_fun(prev_fun, value, opts) do
+    prev_fun.(value, opts)
+  end
+
+  # helper function for custom String.Chars defimpl
+  @doc false
+  def stringify_tesla_struct(struct) do
     if Application.get_env(:logflare, :env) in [:test, :dev] do
-      apply(Logflare.Utils.tesla_env_to_string(), :to_string, [env])
+      apply(Logflare.Utils.tesla_env_to_string(), :to_string, [struct])
     else
-      redacted_headers = Logflare.Utils.redact_sensitive_headers(headers)
+      value = Logflare.Utils.redact_sensitive_headers(struct)
 
-      apply(Logflare.Utils.tesla_env_to_string(), :to_string, [%{env | headers: redacted_headers}])
+      apply(Logflare.Utils.tesla_env_to_string(), :to_string, [value])
     end
   end
-end
 
-defimpl Inspect, for: Tesla.Env do
-  def inspect(%Tesla.Env{headers: headers} = env, opts) do
-    if Application.get_env(:logflare, :env) in [:test, :dev] do
-      apply(Logflare.Utils.tesla_env_inspect(), :inspect, [env, opts])
-    else
-      redacted_headers = Logflare.Utils.redact_sensitive_headers(headers)
+  defimpl String.Chars, for: Tesla.Client do
+    def to_string(%{} = env) do
+      Logflare.Utils.stringify_tesla_struct(env)
+    end
+  end
 
-      apply(Logflare.Utils.tesla_env_inspect(), :inspect, [
-        %{env | headers: redacted_headers},
-        opts
-      ])
+  defimpl String.Chars, for: Tesla.Env do
+    def to_string(%{} = env) do
+      Logflare.Utils.stringify_tesla_struct(env)
     end
   end
 end

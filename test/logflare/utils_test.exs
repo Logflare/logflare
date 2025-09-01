@@ -33,7 +33,7 @@ defmodule Logflare.UtilsSyncTest do
       :ok
     end
 
-    test "Tesla.Env stringification should error" do
+    test "Tesla.Env.headers stringification should error" do
       assert Logflare.Utils.stringify(%Tesla.Env{headers: [{"authorization", "some token"}]}) =~
                "REDACTED"
 
@@ -42,6 +42,47 @@ defmodule Logflare.UtilsSyncTest do
 
       assert inspect(%Tesla.Env{headers: [{"authorization", "some token"}]}) =~ "REDACTED"
       assert inspect(%Tesla.Env{headers: [{"x-api-key", "some token"}]}) =~ "REDACTED"
+    end
+
+    test "Tesla.Env.opts stringification should error" do
+      assert Logflare.Utils.stringify(%Tesla.Env{
+               opts: [req_headers: [{"authorization", "some token"}]]
+             }) =~ "REDACTED"
+
+      assert Logflare.Utils.stringify(%Tesla.Env{
+               opts: [req_headers: [{"x-api-key", "some token"}]]
+             }) =~ "REDACTED"
+
+      assert inspect(%Tesla.Env{opts: [req_headers: [{"authorization", "some token"}]]}) =~
+               "REDACTED"
+
+      assert inspect(%Tesla.Env{opts: [req_headers: [{"x-api-key", "some token"}]]}) =~ "REDACTED"
+    end
+
+    test "Tesla.Client" do
+      assert Logflare.Utils.stringify(%Tesla.Client{
+               pre: [
+                 {Tesla.Middleware.Headers, [{"authorization", "some token"}]}
+               ]
+             }) =~ "REDACTED"
+
+      assert Logflare.Utils.stringify(%Tesla.Client{
+               pre: [
+                 {Tesla.Middleware.Headers, [{"x-api-key", "some token"}]}
+               ]
+             }) =~ "REDACTED"
+
+      assert inspect(%Tesla.Client{
+               pre: [
+                 {Tesla.Middleware.Headers, [{"authorization", "some token"}]}
+               ]
+             }) =~ "REDACTED"
+
+      assert inspect(%Tesla.Client{
+               pre: [
+                 {Tesla.Middleware.Headers, [{"x-api-key", "some token"}]}
+               ]
+             }) =~ "REDACTED"
     end
   end
 end
