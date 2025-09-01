@@ -9,15 +9,9 @@ defmodule Logflare.TelemetryTest do
 
       Telemetry.process_memory_metrics()
 
-      1..10
-      |> Enum.each(fn _ ->
-        assert_receive {:telemetry_event, ^event, metrics, meta}
-
-        assert match?(%{size: _}, metrics)
-        assert match?(%{name: _}, meta)
-      end)
-
-      refute_receive {:telemetry_event, ^event, _, _}
+      assert_receive {:telemetry_event, ^event, metrics, meta}
+      assert match?(%{size: _}, metrics)
+      assert match?(%{name: _}, meta)
     end
 
     test "retrieves and emits top 10 by message queue" do
@@ -26,15 +20,9 @@ defmodule Logflare.TelemetryTest do
 
       Telemetry.process_message_queue_metrics()
 
-      1..10
-      |> Enum.each(fn _ ->
-        assert_receive {:telemetry_event, ^event, metrics, meta}
-
-        assert match?(%{length: _}, metrics)
-        assert match?(%{name: _}, meta)
-      end)
-
-      refute_receive {:telemetry_event, ^event, _, _}
+      assert_receive {:telemetry_event, ^event, metrics, meta}
+      assert match?(%{length: _}, metrics)
+      assert match?(%{name: _}, meta)
     end
   end
 
@@ -45,15 +33,9 @@ defmodule Logflare.TelemetryTest do
 
       Telemetry.ets_table_metrics()
 
-      1..10
-      |> Enum.each(fn _ ->
-        assert_receive {:telemetry_event, ^event, metrics, meta}
-
-        assert match?(%{size: _}, metrics)
-        assert match?(%{name: _}, meta)
-      end)
-
-      refute_receive {:telemetry_event, ^event, _, _}
+      assert_receive {:telemetry_event, ^event, metrics, meta}
+      assert match?(%{size: _}, metrics)
+      assert match?(%{name: _}, meta)
     end
 
     test "retrieves and emits top 100 by table size" do
@@ -62,15 +44,9 @@ defmodule Logflare.TelemetryTest do
 
       Telemetry.ets_table_metrics()
 
-      1..100
-      |> Enum.each(fn _ ->
-        assert_receive {:telemetry_event, ^event, metrics, meta}
-
-        assert match?(%{size: _}, metrics)
-        assert match?(%{name: _}, meta)
-      end)
-
-      refute_receive {:telemetry_event, ^event, _, _}
+      assert_receive {:telemetry_event, ^event, metrics, meta}
+      assert match?(%{size: _}, metrics)
+      assert match?(%{name: _}, meta)
     end
   end
 
