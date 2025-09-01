@@ -5,7 +5,7 @@ defmodule LogflareWeb.EndpointsView do
     %{result: data}
   end
 
-  def render("query.json", %{errors: errors}) do
-    %{errors: errors}
+  def render("query.json", %{error: errors}) do
+    %{error: errors}
   end
 end
