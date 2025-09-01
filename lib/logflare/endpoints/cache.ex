@@ -22,7 +22,7 @@ defmodule Logflare.Endpoints.Cache do
                  Utils.cache_limit(100_000)
                ]
                |> Enum.reject(&is_nil/1),
-             expiration: Utils.cache_expiration_min()
+             expiration: Utils.cache_expiration_min(2, 1)
            ]
          ]}
     }
