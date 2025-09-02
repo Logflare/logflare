@@ -49,6 +49,7 @@ defmodule LogflareWeb.EndpointsLive do
       |> assign(:total_bytes_processed, nil)
       |> assign(:show_endpoint, nil)
       |> assign(:endpoint_changeset, Endpoints.change_query(%Endpoints.Query{}))
+      |> assign(:selected_backend_id, nil)
       |> assign(:allow_access, allow_access)
       |> assign(:base_url, LogflareWeb.Endpoint.url())
       |> assign(:parse_error_message, nil)
@@ -89,6 +90,7 @@ defmodule LogflareWeb.EndpointsLive do
           |> assign_updated_params_form(parsed_result.parameters, parsed_result.expanded_query)
           # set changeset
           |> assign(:endpoint_changeset, Endpoints.change_query(endpoint, %{}))
+          |> assign(:selected_backend_id, endpoint.backend_id)
           |> assign(:parsed_result, parsed_result)
 
         # index page
@@ -105,6 +107,7 @@ defmodule LogflareWeb.EndpointsLive do
             :endpoint_changeset,
             Endpoints.change_query(%Endpoints.Query{query: placeholder_sql()})
           )
+          |> assign(:selected_backend_id, nil)
           # reset test results
           |> assign(:query_result_rows, nil)
       end)
@@ -137,6 +140,7 @@ defmodule LogflareWeb.EndpointsLive do
           socket
           |> put_flash(:info, message)
           |> assign(:endpoint_changeset, changeset)
+          |> assign(:selected_backend_id, changeset.data.backend_id)
 
         {:noreply, socket}
     end
@@ -174,8 +178,7 @@ defmodule LogflareWeb.EndpointsLive do
         "endpoint_id" => socket.assigns.endpoint_changeset.data.id
       })
 
-    endpoint_language =
-      Ecto.Changeset.get_field(socket.assigns.endpoint_changeset, :language, :bq_sql)
+    endpoint_language = get_current_endpoint_language(socket)
 
     case Endpoints.run_query_string(user, {endpoint_language, query_string},
            params: query_params,
@@ -219,24 +222,19 @@ defmodule LogflareWeb.EndpointsLive do
   end
 
   def handle_event("validate", %{"endpoint" => endpoint_params}, socket) do
-    # Handle language inference for any backend change
-    params =
-      case Map.get(endpoint_params, "backend_id") do
-        "" ->
-          endpoint_params
-          |> Map.put("backend_id", nil)
-          |> Map.put("language", nil)
-
-        _ ->
-          Map.put(endpoint_params, "language", nil)
-      end
+    selected_backend_id = Map.get(endpoint_params, "backend_id")
 
     changeset =
       socket.assigns.endpoint_changeset.data
-      |> Endpoints.change_query(params)
+      |> Endpoints.change_query(endpoint_params)
       |> Map.put(:action, :validate)
 
-    {:noreply, assign(socket, :endpoint_changeset, changeset)}
+    socket =
+      socket
+      |> assign(:endpoint_changeset, changeset)
+      |> assign(:selected_backend_id, selected_backend_id)
+
+    {:noreply, socket}
   end
 
   def handle_event("validate", _params, socket) do
@@ -245,8 +243,7 @@ defmodule LogflareWeb.EndpointsLive do
   end
 
   def handle_info({:query_string_updated, query_string}, socket) do
-    endpoint_language =
-      Ecto.Changeset.get_field(socket.assigns.endpoint_changeset, :language, :bq_sql)
+    endpoint_language = get_current_endpoint_language(socket)
 
     parsed_result =
       Endpoints.parse_query_string(
@@ -296,11 +293,28 @@ defmodule LogflareWeb.EndpointsLive do
   end
 
   defp assign_backends(socket) do
-    %{user_id: user_id} = socket.assigns
+    %{user_id: user_id, user: user} = socket.assigns
+    flag_enabled? = Utils.flag("endpointBackendSelection", user)
 
-    backends = Backends.list_backends_by_user_id(user_id)
+    backends =
+      if flag_enabled? do
+        Backends.list_backends_by_user_id(user_id)
+      else
+        []
+      end
 
-    assign(socket, backends: backends)
+    show_backend_selection? = flag_enabled? and length(backends) > 0
+
+    socket
+    |> assign(:backends, backends)
+    |> assign(:show_backend_selection, show_backend_selection?)
+  end
+
+  defp get_current_endpoint_language(%{assigns: assigns}) do
+    case Map.get(assigns, :selected_backend_id) do
+      nil -> :bq_sql
+      backend_id -> Endpoints.derive_language_from_backend_id(backend_id)
+    end
   end
 
   defp upsert_query(show_endpoint, user, params) do

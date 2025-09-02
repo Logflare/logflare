@@ -33,7 +33,7 @@
       </small>
     </div>
 
-    <div class="form-group">
+    <div :if={@show_backend_selection} class="form-group">
       <%= label(f, :backend_id, "Backend (optional)") %>
       <%= select(f, :backend_id, [{"Default (BigQuery)", nil}] ++ Enum.map(@backends, fn backend -> {"#{backend.name} (#{backend.type})", backend.id} end),
         class: "form-control",

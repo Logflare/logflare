@@ -360,4 +360,92 @@ defmodule LogflareWeb.EndpointsLiveTest do
 
     result
   end
+
+  describe "backend selection" do
+    setup tags do
+      original_env = Application.get_env(:logflare, :env)
+      original_overrides = Application.get_env(:logflare, :feature_flag_override)
+
+      Application.put_env(:logflare, :env, tags[:env] || :test)
+
+      if tags[:feature_overrides] do
+        Application.put_env(:logflare, :feature_flag_override, tags[:feature_overrides])
+      end
+
+      on_exit(fn ->
+        Application.put_env(:logflare, :env, original_env)
+
+        if original_overrides do
+          Application.put_env(:logflare, :feature_flag_override, original_overrides)
+        else
+          Application.delete_env(:logflare, :feature_flag_override)
+        end
+      end)
+
+      :ok
+    end
+
+    setup %{user: user} do
+      backend = insert(:backend, user: user, type: :clickhouse, name: "Test ClickHouse")
+      {:ok, backend: backend}
+    end
+
+    test "shows backend selection when backends exist (flag enabled in test)", %{
+      conn: conn,
+      backend: _backend
+    } do
+      {:ok, view, _html} = live(conn, "/endpoints/new")
+
+      html = render(view)
+      assert html =~ "Backend (optional)"
+      assert html =~ "(clickhouse)"
+      assert html =~ "Default (BigQuery)"
+    end
+
+    @tag env: :prod, feature_overrides: %{"endpointBackendSelection" => "false"}
+    test "hides backend selection when flag is disabled", %{conn: conn, backend: _backend} do
+      {:ok, view, _html} = live(conn, "/endpoints/new")
+
+      html = render(view)
+      refute html =~ "Backend (optional)"
+      refute html =~ "Test ClickHouse"
+    end
+
+    test "hides backend selection when flag is enabled but no backends exist", %{
+      conn: conn,
+      backend: backend
+    } do
+      Logflare.Repo.delete(backend)
+
+      {:ok, view, _html} = live(conn, "/endpoints/new")
+
+      html = render(view)
+      refute html =~ "Backend (optional)"
+    end
+
+    test "language determination works correctly with backend selection", %{
+      conn: conn,
+      backend: backend
+    } do
+      {:ok, view, _html} = live(conn, "/endpoints/new")
+
+      view
+      |> element("form#endpoint")
+      |> render_change(%{
+        endpoint: %{
+          backend_id: backend.id,
+          name: "test endpoint",
+          query: "SELECT 1"
+        }
+      })
+
+      assigns = get_view_assigns(view)
+      assert assigns.selected_backend_id == to_string(backend.id)
+      assert Logflare.Endpoints.derive_language_from_backend_id(backend.id) == :ch_sql
+    end
+  end
+
+  defp get_view_assigns(view) do
+    :sys.get_state(view.pid).socket.assigns
+  end
 end
