@@ -5,7 +5,10 @@ defmodule Logflare.Utils do
   import Cachex.Spec
   import Logflare.Utils.Guards, only: [is_atom_value: 1]
 
-  def cache_stats do
+  @original_to_string String.Chars.impl_for(%Tesla.Env{})
+  def tesla_env_to_string(), do: @original_to_string
+
+  def cache_stats() do
     hook(module: Cachex.Stats)
   end
 
@@ -227,6 +230,69 @@ defmodule Logflare.Utils do
       {:ok, {_, _, _, _}} -> :inet
       {:ok, {_, _, _, _, _, _, _, _}} -> :inet6
       {:error, _} -> nil
+    end
+  end
+
+  @doc """
+  Redacts sensitive headers from a list of Tesla.Env headers. Used for automatic redaction
+  """
+  @spec redact_sensitive_headers(list(tuple())) :: list(tuple())
+  def redact_sensitive_headers(%{} = value) do
+    value
+    |> Iteraptor.map(
+      fn
+        {[key | _], value}
+        when is_binary(value) and
+               key in ["authorization", "x-api-key", "Authorization", "X-API-Key"] ->
+          "REDACTED"
+
+        self ->
+          self
+      end,
+      keys: :reverse,
+      structs: :keep
+    )
+  end
+
+  @doc """
+  Receives the previous inspect function and performs redaction if it is a Tesla.Env.
+  Does nothing if it is not a Tesla.Env or Tesla.Client.
+  """
+  def inspect_fun(prev_fun, value, opts)
+      when is_struct(value, Tesla.Env) or is_struct(value, Tesla.Client) do
+    if Application.get_env(:logflare, :env) in [:test, :dev] do
+      prev_fun.(value, opts)
+    else
+      value = Logflare.Utils.redact_sensitive_headers(value)
+      prev_fun.(value, opts)
+    end
+  end
+
+  def inspect_fun(prev_fun, value, opts) do
+    prev_fun.(value, opts)
+  end
+
+  # helper function for custom String.Chars defimpl
+  @doc false
+  def stringify_tesla_struct(struct) do
+    if Application.get_env(:logflare, :env) in [:test, :dev] do
+      apply(Logflare.Utils.tesla_env_to_string(), :to_string, [struct])
+    else
+      value = Logflare.Utils.redact_sensitive_headers(struct)
+
+      apply(Logflare.Utils.tesla_env_to_string(), :to_string, [value])
+    end
+  end
+
+  defimpl String.Chars, for: Tesla.Client do
+    def to_string(%{} = env) do
+      Logflare.Utils.stringify_tesla_struct(env)
+    end
+  end
+
+  defimpl String.Chars, for: Tesla.Env do
+    def to_string(%{} = env) do
+      Logflare.Utils.stringify_tesla_struct(env)
     end
   end
 end

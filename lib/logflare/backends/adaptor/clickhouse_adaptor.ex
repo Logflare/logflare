@@ -47,10 +47,6 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
   @type source_backend_tuple :: {Source.t(), Backend.t()}
   @type via_tuple :: {:via, Registry, {module(), {pos_integer(), {module(), pos_integer()}}}}
 
-  defguardp is_via_tuple(value)
-            when is_tuple(value) and elem(value, 0) == :via and elem(value, 1) == Registry and
-                   is_tuple(elem(value, 2))
-
   defdelegate connection_pool_via(arg), to: ConnectionManager
 
   defguardp is_list_or_map(value) when is_list(value) or is_map(value)
@@ -298,12 +294,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
         ) :: {:ok, Ch.Result.t()} | {:error, Exception.t()}
   def execute_ch_ingest_query(source_backend, statement, params \\ [], opts \\ [])
 
-  def execute_ch_ingest_query(
-        {%Source{}, %Backend{}} = source_backend,
-        statement,
-        params,
-        opts
-      )
+  def execute_ch_ingest_query({%Source{}, %Backend{}} = source_backend, statement, params, opts)
       when is_list(params) and is_list(opts) do
     ConnectionManager.ensure_pool_started(source_backend)
     ConnectionManager.notify_activity(source_backend)
@@ -368,31 +359,15 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
   def insert_log_event({%Source{} = source, %Backend{} = backend}, %LogEvent{} = le),
     do: insert_log_events({source, backend}, [le])
 
-  @spec insert_log_event(via_tuple(), Backend.t(), LogEvent.t()) ::
-          {:ok, Ch.Result.t()} | {:error, Exception.t()}
-  def insert_log_event(conn_via, %Backend{} = backend, %LogEvent{} = le)
-      when is_via_tuple(conn_via),
-      do: insert_log_events(conn_via, backend, [le])
-
   @doc """
   Inserts a list of `LogEvent` structs into a given source backend table.
-
-  Supports either a `{Source, Backend}` tuple or a via tuple to determine the ClickHouse connection to use.
 
   See `execute_ch_query/4` for additional details.
   """
   @spec insert_log_events(source_backend_tuple(), [LogEvent.t()]) ::
           {:ok, Ch.Result.t()} | {:error, Exception.t()}
-  def insert_log_events({%Source{}, %Backend{}} = source_backend, events) when is_list(events) do
-    source_backend
-    |> connection_pool_via()
-    |> insert_log_events(source_backend, events)
-  end
-
-  @spec insert_log_events(via_tuple(), source_backend_tuple(), [LogEvent.t()]) ::
-          {:ok, Ch.Result.t()} | {:error, Exception.t()}
-  def insert_log_events(conn_via, {%Source{} = source, _backend}, events)
-      when is_via_tuple(conn_via) and is_list(events) do
+  def insert_log_events({%Source{} = source, %Backend{}} = source_backend, events)
+      when is_list(events) do
     table_name = clickhouse_ingest_table_name(source)
 
     event_params =
@@ -415,8 +390,8 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
       types: ["UUID", "String", "String", "DateTime64(6)"]
     ]
 
-    Ch.query(
-      conn_via,
+    execute_ch_ingest_query(
+      source_backend,
       "INSERT INTO #{table_name} FORMAT RowBinaryWithNamesAndTypes",
       event_params,
       opts
@@ -505,7 +480,6 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
       backend_token: backend.token,
       source_token: source.token,
       source: source,
-      ingest_connection: ingest_pool_via,
       pipeline_name: pipeline_via({source, backend})
     }
 

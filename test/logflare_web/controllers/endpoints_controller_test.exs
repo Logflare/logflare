@@ -39,7 +39,7 @@ defmodule LogflareWeb.EndpointsControllerTest do
         |> json_response(200)
         |> assert_schema("EndpointQuery")
 
-      assert response.errors == %{"message" => "failed_request"}
+      assert response.error == %{"message" => "failed_request"}
       refute response.result
       refute conn.halted
 
@@ -73,7 +73,7 @@ defmodule LogflareWeb.EndpointsControllerTest do
                }
              ] = response.result
 
-      refute response.errors
+      refute response.error
       refute conn.halted
 
       reject(&GoogleApi.BigQuery.V2.Api.Jobs.bigquery_jobs_query/3)
@@ -95,7 +95,7 @@ defmodule LogflareWeb.EndpointsControllerTest do
                }
              ] = response.result
 
-      refute response.errors
+      refute response.error
 
       refute conn.halted
     end
@@ -126,7 +126,7 @@ defmodule LogflareWeb.EndpointsControllerTest do
                }
              ] = response.result
 
-      refute response.errors
+      refute response.error
       refute conn.halted
 
       GoogleApi.BigQuery.V2.Api.Jobs
@@ -153,7 +153,7 @@ defmodule LogflareWeb.EndpointsControllerTest do
                }
              ] = response.result
 
-      refute response.errors
+      refute response.error
       refute conn.halted
 
       GoogleApi.BigQuery.V2.Api.Jobs
@@ -180,7 +180,7 @@ defmodule LogflareWeb.EndpointsControllerTest do
                }
              ] = response.result
 
-      refute response.errors
+      refute response.error
       refute conn.halted
     end
 
@@ -231,7 +231,7 @@ defmodule LogflareWeb.EndpointsControllerTest do
                  }
                ] = response.result
 
-        refute response.errors
+        refute response.error
         refute conn.halted
       end
     end

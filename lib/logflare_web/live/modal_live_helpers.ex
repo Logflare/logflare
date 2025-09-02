@@ -5,6 +5,8 @@ defmodule LogflareWeb.ModalLiveHelpers do
   import Phoenix.Component, only: [assign: 3]
   import Phoenix.HTML.Link, only: [link: 2]
 
+  alias Phoenix.LiveView.JS
+
   defmacro __using__(_context) do
     quote do
       def handle_info(:hide_modal, socket) do
@@ -44,6 +46,7 @@ defmodule LogflareWeb.ModalLiveHelpers do
               view: view,
               title: title,
               id: id,
+              close: params["close"],
               return_to: params["return-to"]
             },
             params: params
@@ -54,6 +57,16 @@ defmodule LogflareWeb.ModalLiveHelpers do
     end
   end
 
+  @doc """
+  Creates a link to show a modal when clicked.
+
+  # Customize click behaviour
+  You can optionally assign a custom JS command to `click` which will be executed before showing the modal.
+
+  ```
+    <%= live_modal_show_link(component: LogflareWeb.MyComponent, click: JS.push("some_event"), ...) %>
+  ```
+  """
   def live_modal_show_link(content \\ [], opts)
 
   def live_modal_show_link(opts, do: block) when is_list(opts) do
@@ -69,10 +82,21 @@ defmodule LogflareWeb.ModalLiveHelpers do
     view = Keyword.get(opts, :view)
     return_to = Keyword.get(opts, :return_to)
 
+    click =
+      case Keyword.get(opts, :click) do
+        nil ->
+          :show_live_modal
+
+        js_command when is_struct(js_command, JS) ->
+          js_command
+          |> JS.push("show_live_modal")
+      end
+
     opts =
       [
         to: "#",
-        phx_click: :show_live_modal,
+        phx_click: click,
+        phx_value_close: Keyword.get(opts, :close),
         phx_value_module_or_template: module_or_template,
         phx_value_type: type,
         phx_value_id: id,
@@ -110,6 +134,7 @@ defmodule LogflareWeb.ModalLiveHelpers do
     modal_opts = %{
       module: LogflareWeb.ModalComponent,
       id: :"logflare-modal",
+      close: Keyword.get(opts, :close),
       return_to: path,
       component: component,
       opts: opts,
