@@ -11,8 +11,13 @@ defmodule Logflare.Application do
   alias Logflare.Sources.Counters
   alias Logflare.Sources.RateCounters
   alias Logflare.PubSubRates
+  alias Logflare.Utils
 
   def start(_type, _args) do
+    # set inspect function to redact sensitive information
+    prev = Inspect.Opts.default_inspect_fun()
+    Inspect.Opts.default_inspect_fun(&Utils.inspect_fun(prev, &1, &2))
+
     env = Application.get_env(:logflare, :env)
     # TODO: Set node status in GCP when sigterm is received
     :ok =

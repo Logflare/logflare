@@ -73,7 +73,7 @@ defmodule LogflareWeb.EndpointsController do
         render(conn, "query.json", result: result.rows)
 
       {:error, errors} ->
-        render(conn, "query.json", errors: errors)
+        render(conn, "query.json", error: errors)
     end
   end
 
