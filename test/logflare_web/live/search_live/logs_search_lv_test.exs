@@ -464,6 +464,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
       {:ok, view, _html} =
         live(conn, Routes.live_path(conn, SearchLV, source.id, tailing?: false))
 
+      # Increasing the chart period
       assert view
              |> has_element?("#search_chart_period option[selected]", "minute")
 
@@ -474,12 +475,20 @@ defmodule LogflareWeb.Source.SearchLVTest do
       assert view
              |> has_element?("#search_chart_period option[selected]", "hour")
 
-      # don't override explicit user choice of period
+      # Reducing the chart period
+      render_change(view, :datetime_update, %{
+        "querystring" => "t:last@15m"
+      })
+
+      assert view
+             |> has_element?("#search_chart_period option[selected]", "second")
+
+      # a chart period selected by the user is preserved, and search halted
       render_change(view, :form_update, %{
         "search" => %{
           @default_search_params
           | "querystring" => query,
-            "chart_period" => "second"
+            "chart_period" => "day"
         }
       })
 
