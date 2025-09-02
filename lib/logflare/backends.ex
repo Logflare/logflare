@@ -724,7 +724,11 @@ defmodule Logflare.Backends do
   Caches total buffer len. Includes ingested events that are awaiting cleanup.
   """
   @spec cache_local_buffer_lens(non_neg_integer(), non_neg_integer() | nil) ::
-          {:ok, %{len: non_neg_integer(), queues: map()}}
+          {:ok,
+           %{
+             len: non_neg_integer(),
+             queues: [{Logflare.Backends.IngestEventQueue.table_key(), non_neg_integer()}]
+           }}
   def cache_local_buffer_lens(source_id, backend_id \\ nil) do
     queues = IngestEventQueue.list_counts({source_id, backend_id})
 
@@ -737,9 +741,9 @@ defmodule Logflare.Backends do
   end
 
   @doc """
-  Get local pending buffer len of a source/backend combination
+  Get local pending buffer len of a source/backend combination.
   """
-  @spec cached_local_pending_buffer_len(Source.t(), Backend.t() | nil) :: non_neg_integer()
+  @spec cached_local_pending_buffer_len(Source.t(), Backend.t() | nil) :: map()
   def cached_local_pending_buffer_len(source_id, backend_id \\ nil) when is_integer(source_id) do
     PubSubRates.Cache.get_local_buffer(source_id, backend_id)
   end

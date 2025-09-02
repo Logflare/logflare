@@ -9,6 +9,7 @@
   {"lib/logflare/backends.ex", :pattern_match},
   # {"lib/logflare/backends.ex", :pattern_match_cov},
   {"lib/logflare/backends.ex", :invalid_contract},
+  {"lib/logflare/backends.ex", :unknown_type},
   {"lib/logflare/backends/adaptor.ex", :unknown_type},
   {"lib/logflare/backends/adaptor/bigquery_adaptor.ex", :no_return},
   {"lib/logflare/backends/adaptor/bigquery_adaptor.ex", :callback_arg_type_mismatch},
