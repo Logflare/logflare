@@ -158,7 +158,7 @@ defmodule LogflareWeb.SearchLive.EventContextComponent do
             </.log_event>
           </ul>
           <div :if={@is_truncated_after} class="tw-text-center tw-pt-2 tw-uppercase tw-text-sm">
-            Limit 50 events after selection
+            Showing 50 events after selected event
           </div>
         </.async_result>
       </div>
