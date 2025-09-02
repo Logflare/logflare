@@ -15,9 +15,9 @@ defmodule Logflare.Backends.IngestEventQueue do
   @ets_table_mapper :ingest_event_queue_mapping
   @ets_table :source_ingest_events
   @typep source_backend_pid ::
-           {Source.t() | non_neg_integer(), Backend.t() | nil | non_neg_integer(), nil | pid()}
-  @typep table_key :: {non_neg_integer(), nil | non_neg_integer(), nil | pid()}
-  @typep queues_key :: {non_neg_integer(), nil | non_neg_integer()}
+           {Source.t() | non_neg_integer(), Backend.t() | non_neg_integer() | nil, pid() | nil}
+  @typep table_key :: {non_neg_integer(), non_neg_integer() | nil, pid() | nil}
+  @typep queues_key :: {non_neg_integer(), non_neg_integer() | nil}
 
   ## Server
   def start_link(_args) do

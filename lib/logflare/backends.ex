@@ -809,20 +809,4 @@ defmodule Logflare.Backends do
       %{source_id: le.source.id, source_token: le.source.token}
     )
   end
-
-  defp do_telemetry(:buffer_full, le) do
-    :telemetry.execute(
-      [:logflare, :logs, :ingest_logs],
-      %{buffer_full: true},
-      %{source_id: le.source.id, source_token: le.source.token}
-    )
-  end
-
-  defp do_telemetry(:unknown_error, le) do
-    :telemetry.execute(
-      [:logflare, :logs, :ingest_logs],
-      %{unknown_error: true},
-      %{source_id: le.source.id, source_token: le.source.token}
-    )
-  end
 end
