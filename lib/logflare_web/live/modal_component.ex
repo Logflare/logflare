@@ -2,10 +2,27 @@ defmodule LogflareWeb.ModalComponent do
   @moduledoc false
   use LogflareWeb, :live_component
 
+  @doc """
+  Renders a modal component.
+
+  # Customize close behavior
+
+  An optional JS command can assigned to `close` to trigger an event when the user closed the modal.
+  You must append `JS.push("close")` to the command to close the modal, which is the default if `close` is not provided.
+
+  ```
+  <%= modal(close: JS.push("do_something") |> JS.push("close"), ...) %>
+  ```
+
+  """
   @impl true
   def render(assigns) do
+    assigns =
+      assigns
+      |> assign(:close, assigns[:close] || "close")
+
     ~H"""
-    <div id={@id} class="modal fade show" phx-hook="LiveModal" phx-click-away="close" phx-window-keydown="close" phx-key="escape" phx-target={"##{@id}"} phx-page-loading style="display: block;">
+    <div id={@id} class="modal fade show" phx-hook="LiveModal" phx-click-away={@close} phx-window-keydown={@close} phx-key="escape" phx-target={"##{@id}"} phx-page-loading style="display: block;">
       <div class="modal-dialog modal-xl" role="document">
         <div class="modal-content">
           <div class="modal-header lf-modal-header">
@@ -14,7 +31,7 @@ defmodule LogflareWeb.ModalComponent do
               <%= link(raw("&times;"),
                 to: "#",
                 class: "phx-modal-close",
-                phx_click: "close",
+                phx_click: @close,
                 phx_target: "##{@id}"
               ) %>
             </span>

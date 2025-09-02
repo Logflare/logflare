@@ -143,8 +143,11 @@ defmodule Logflare.AlertingTest do
                Alerting.update_alert_query(alert_query, @invalid_attrs)
 
       assert alert_query.updated_at == Alerting.get_alert_query!(alert_query.id).updated_at
-      job = Alerting.get_alert_job(alert_query.id)
-      assert job
+
+      TestUtils.retry_assert(fn ->
+        job = Alerting.get_alert_job(alert_query.id)
+        assert job
+      end)
     end
 
     test "delete_alert_query/1 deletes the alert_query", %{user: user} do
