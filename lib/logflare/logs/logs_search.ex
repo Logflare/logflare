@@ -132,53 +132,39 @@ defmodule Logflare.Logs.Search do
 
     fields = [:id, :timestamp, :event_message, :metadata]
 
-    base_query =
+    numbered_rows =
       from(so.source.bq_table_id)
       |> Logflare.Logs.LogEvents.partition_query([min, max], so.partition_by)
-      |> select([t], map(t, ^fields))
       |> Logflare.Lql.apply_filter_rules(so.lql_rules)
-
-    before_query =
-      base_query
-      |> where(
-        [t],
-        t.timestamp < ^timestamp or (t.timestamp == ^timestamp and t.id <= ^log_event_id)
-      )
-      |> order_by([t], desc: t.timestamp, desc: t.id)
+      |> where([t], t.timestamp >= ^min and t.timestamp <= ^max)
+      |> select([t], map(t, ^fields))
       |> select_merge([t], %{
-        rank:
-          fragment("1 - ROW_NUMBER() OVER (ORDER BY ? DESC, ? DESC)", t.timestamp, t.id)
-          |> selected_as(:rank)
+        row_num: fragment("ROW_NUMBER() OVER (ORDER BY ? ASC, ? ASC)", t.timestamp, t.id)
       })
-      # include the target event and up to 50 following
-      |> limit(51)
 
-    after_query =
-      base_query
-      |> where(
-        [t],
-        t.timestamp > ^timestamp or (t.timestamp == ^timestamp and t.id > ^log_event_id)
-      )
-      |> order_by([t], asc: t.timestamp, asc: t.id)
-      |> select_merge([t], %{
-        rank:
-          over(fragment("ROW_NUMBER()"), order_by: [asc: t.timestamp, asc: t.id])
-          |> selected_as(:rank)
-      })
-      |> limit(50)
+    target_position =
+      from(nr in subquery(numbered_rows))
+      |> where([nr], nr.id == ^log_event_id and nr.timestamp == ^timestamp)
+      |> select([nr], %{target_row_num: nr.row_num})
 
     query =
-      before_query
-      |> subquery()
-      |> select([t], t)
-      |> union_all(^(after_query |> subquery() |> select([t], t)))
-      |> subquery()
-      |> select([t], map(t, ^fields))
-      |> select_merge([t], %{rank: t.rank})
-      |> order_by([t], asc: t.timestamp, asc: t.id)
+      from(subquery(numbered_rows))
+      |> join(:cross, subquery(target_position))
+      |> where(
+        [nr, tp],
+        nr.row_num >= tp.target_row_num - 50 and nr.row_num <= tp.target_row_num + 50
+      )
+      |> order_by([nr, _], asc: nr.timestamp, asc: nr.id)
+      |> select([nr, tp], %{
+        id: nr.id,
+        timestamp: nr.timestamp,
+        event_message: nr.event_message,
+        metadata: nr.metadata,
+        rank: fragment("? - ?", nr.row_num, tp.target_row_num) |> selected_as(:rank)
+      })
 
     with so <- %{so | query: query},
-         so = %{error: nil} <- do_query(so) do
+         %{error: nil} = so <- do_query(so) do
       {:ok, so}
     else
       so -> {:error, so}
