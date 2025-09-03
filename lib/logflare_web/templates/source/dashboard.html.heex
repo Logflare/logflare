@@ -68,7 +68,7 @@
           </li>
         <% end %>
 
-        <%= if Enum.empty?(@team_users), do: "Other teams you are a member of will be listed here." %>
+        <%= if Enum.empty?(@teams), do: "Other teams you are a member of will be listed here." %>
 
         <%= for team_user <- @team_users do %>
           <%= if @team.id == team_user.team_id do %>
