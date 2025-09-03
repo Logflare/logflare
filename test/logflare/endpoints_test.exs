@@ -247,6 +247,59 @@ defmodule Logflare.EndpointsTest do
                Endpoints.run_query_string(user, {:bq_sql, query_string})
     end
 
+    test "run_query/1 applies PII redaction based on redact_pii flag" do
+      expect(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, 1, fn _conn, _proj_id, _opts ->
+        {:ok,
+         TestUtils.gen_bq_response([
+           %{"ip" => "192.168.1.1", "message" => "User 10.0.0.1 logged in"}
+         ])}
+      end)
+
+      user = insert(:user)
+
+      # test with redact_pii enabled
+      endpoint =
+        insert(:endpoint,
+          user: user,
+          query: "select ip, message from logs",
+          redact_pii: true
+        )
+
+      assert {:ok, %{rows: [%{"ip" => "REDACTED", "message" => "User REDACTED logged in"}]}} =
+               Endpoints.run_query(endpoint)
+
+      # test with redact_pii disabled
+      endpoint =
+        insert(:endpoint,
+          user: user,
+          query: "select ip, message from logs",
+          redact_pii: false
+        )
+
+      assert {:ok, %{rows: [%{"ip" => "192.168.1.1", "message" => "User 10.0.0.1 logged in"}]}} =
+               Endpoints.run_query(endpoint)
+    end
+
+    test "run_cached_query/2 applies PII redaction" do
+      expect(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, 1, fn _conn, _proj_id, _opts ->
+        {:ok, TestUtils.gen_bq_response([%{"ip" => "192.168.1.1"}])}
+      end)
+
+      user = insert(:user)
+
+      endpoint =
+        insert(:endpoint,
+          user: user,
+          query: "select ip from logs",
+          redact_pii: true,
+          # Disable caching to ensure fresh query
+          cache_duration_seconds: 0
+        )
+
+      assert {:ok, %{rows: [%{"ip" => "REDACTED"}]}} =
+               Endpoints.run_cached_query(endpoint, %{})
+    end
+
     test "run_cached_query/1" do
       expect(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, 1, fn _conn, _proj_id, _opts ->
         {:ok, TestUtils.gen_bq_response([%{"testing" => "123"}])}

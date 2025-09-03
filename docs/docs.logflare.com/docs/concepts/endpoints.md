@@ -171,3 +171,37 @@ In this case, the `@value` parameter will be required by the final endpoint as w
 ## Security
 
 Endpoints are unsecure by default. However, you can generate [access tokens](/concepts/access-tokens) to secure the API endpoints.
+
+## PII Redaction
+
+Logflare endpoints support automatic redaction of personally identifiable information (PII) from query results to help protect sensitive data. When enabled, the PII redaction feature will automatically replace IP addresses in query result values with "REDACTED".
+
+PII redaction can be enabled when checking the "Redact PII from query results" checkbox when configuring the endpoint.
+
+Currently, PII redaction targets:
+
+- IPv4 addresses
+- IPv6 addresses
+
+Redaction occurs post-query without affecting performance, only targets string values, and recursively processes nested structures for comprehensive PII protection.
+
+### Example
+
+**With PII redaction enabled:**
+
+```json
+{
+  "result": [
+    {
+      "user_id": 123,
+      "client_ip": "REDACTED",
+      "message": "User connected from REDACTED",
+      "metadata": {
+        "session_data": {
+          "origin_ip": "REDACTED"
+        }
+      }
+    }
+  ]
+}
+```

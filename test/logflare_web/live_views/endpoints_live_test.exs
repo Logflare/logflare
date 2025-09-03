@@ -67,6 +67,24 @@ defmodule LogflareWeb.EndpointsLiveTest do
       assert has_element?(view, "code", new_query)
     end
 
+    test "edit endpoint with redact_pii checkbox", %{conn: conn, endpoint: endpoint} do
+      {:ok, view, _html} = live(conn, "/endpoints/#{endpoint.id}/edit")
+
+      # Check that the redact_pii checkbox is present
+      assert has_element?(view, "input[type=checkbox][name=\"endpoint[redact_pii]\"]")
+
+      # Submit form with redact_pii enabled
+      view
+      |> element("form#endpoint")
+      |> render_submit(%{
+        endpoint: %{
+          redact_pii: true
+        }
+      })
+
+      assert render(view) =~ ~r/redact PII:.*enabled/
+    end
+
     test "delete endpoint from edit", %{conn: conn, endpoint: endpoint} do
       {:ok, view, _html} = live(conn, ~p"/endpoints/#{endpoint.id}/edit")
       assert view |> element("button", "Delete") |> render_click() =~ "has been deleted"
@@ -121,6 +139,27 @@ defmodule LogflareWeb.EndpointsLiveTest do
     path = assert_patch(view)
     assert path =~ ~r/\/endpoints\/\S+/
     assert render(view) =~ "some description"
+  end
+
+  test "new endpoint with redact_pii enabled", %{conn: conn} do
+    {:ok, view, _html} = live(conn, "/endpoints/new")
+    assert view |> has_element?("form#endpoint")
+
+    new_query = "select 'test' as test"
+
+    view
+    |> element("form#endpoint")
+    |> render_submit(%{
+      endpoint: %{
+        description: "some description with PII redaction",
+        name: "some query with pii",
+        query: new_query,
+        redact_pii: true,
+        language: "bq_sql"
+      }
+    }) =~ "created successfully"
+
+    assert render(view) =~ ~r/redact PII:.*enabled/
   end
 
   describe "parse queries on change" do
