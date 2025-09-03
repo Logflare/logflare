@@ -203,12 +203,18 @@ defmodule Logflare.Backends do
       {:ok, updated} ->
         updated = preload_sources(updated)
 
-        if default_ingest_modified? do
-          was_enabled = backend.default_ingest?
-          is_enabled = updated.default_ingest?
-          handle_default_ingest_associations(updated, source_id, was_enabled, is_enabled)
-          sync_backend_across_cluster(updated.id)
-        end
+        updated =
+          if default_ingest_modified? do
+            was_enabled? = backend.default_ingest?
+            is_enabled? = updated.default_ingest?
+            handle_default_ingest_associations(updated, source_id, was_enabled?, is_enabled?)
+            sync_backend_across_cluster(updated.id)
+
+            # force refresh after association changes
+            Repo.reload!(updated) |> preload_sources()
+          else
+            updated
+          end
 
         Enum.each(updated.sources, &restart_source_sup(&1))
 
@@ -262,7 +268,7 @@ defmodule Logflare.Backends do
           was_enabled :: boolean(),
           is_enabled :: boolean()
         ) :: :ok
-  defp handle_default_ingest_associations(backend, source_id, false, true)
+  defp handle_default_ingest_associations(backend, source_id, _was_enabled, true)
        when is_non_empty_binary(source_id) or is_integer(source_id) do
     source = Sources.get(source_id) |> Sources.preload_backends()
 

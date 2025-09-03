@@ -244,7 +244,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.ConnectionManager do
       {:ok, pid} ->
         Process.monitor(pid)
 
-        Logger.info("Started Clickhouse connection pool (#{state.pool_type})",
+        Logger.info("Started Clickhouse connection pool (#{state.pool_type} - #{source_id})",
           source_id: source_id,
           backend_id: state.backend.id
         )
@@ -256,7 +256,8 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.ConnectionManager do
         {:ok, new_state}
 
       {:error, reason} ->
-        Logger.error("Failed to start Clickhouse connection pool (#{state.pool_type})",
+        Logger.error(
+          "Failed to start Clickhouse connection pool (#{state.pool_type} - #{source_id}))",
           source_id: source_id,
           backend_id: state.backend.id,
           reason: reason
