@@ -1,6 +1,6 @@
-defmodule Logflare.Source.RateCounterServerTest do
+defmodule Logflare.Sources.Source.RateCounterServerTest do
   @moduledoc false
-  alias Logflare.Source.RateCounterServer
+  alias Logflare.Sources.Source.RateCounterServer
   use LogflareWeb.ConnCase
 
   test "get_rate/1, get_avg_rate/1 get_max_rate/1, get_rate_metrics/1, get_insert_count/1" do

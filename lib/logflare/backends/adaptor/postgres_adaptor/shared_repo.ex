@@ -9,7 +9,7 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor.SharedRepo do
 
   require Logger
 
-  alias Logflare.Source
+  alias Logflare.Sources.Source
   alias Logflare.Backends.Backend
 
   alias Logflare.Backends.Adaptor.PostgresAdaptor.Supervisor

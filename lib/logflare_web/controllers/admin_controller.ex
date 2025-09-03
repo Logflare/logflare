@@ -1,8 +1,14 @@
 defmodule LogflareWeb.AdminController do
   use LogflareWeb, :controller
+
   import Ecto.Query, only: [from: 2]
 
-  alias Logflare.{Repo, Source, Sources, User, Users, Admin}
+  alias Logflare.Admin
+  alias Logflare.Repo
+  alias Logflare.Sources
+  alias Logflare.Sources.Source
+  alias Logflare.User
+  alias Logflare.Users
   alias LogflareWeb.AuthController
 
   require Logger

@@ -6,9 +6,9 @@ defmodule Logflare.Logs.SourceRoutingTest do
   alias Logflare.Lql.Rules.FilterRule
   alias Logflare.Rules
   alias Logflare.Rules.Rule
-  alias Logflare.Source
-  alias Logflare.Source.BigQuery.Schema
-  alias Logflare.Source.BigQuery.SchemaBuilder
+  alias Logflare.Sources.Source
+  alias Logflare.Sources.Source.BigQuery.Schema
+  alias Logflare.Sources.Source.BigQuery.SchemaBuilder
   alias Logflare.Sources
   alias Logflare.Users
 

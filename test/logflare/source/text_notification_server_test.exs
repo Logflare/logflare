@@ -1,7 +1,7 @@
-defmodule Logflare.Source.TextNotificationServerTest do
+defmodule Logflare.Sources.Source.TextNotificationServerTest do
   @moduledoc false
   use Logflare.DataCase
-  alias Logflare.Source.TextNotificationServer
+  alias Logflare.Sources.Source.TextNotificationServer
 
   setup do
     u1 = insert(:user)

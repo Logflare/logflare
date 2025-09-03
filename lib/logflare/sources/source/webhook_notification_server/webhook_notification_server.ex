@@ -1,4 +1,4 @@
-defmodule Logflare.Source.WebhookNotificationServer do
+defmodule Logflare.Sources.Source.WebhookNotificationServer do
   @moduledoc false
   use GenServer
 

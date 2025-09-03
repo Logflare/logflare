@@ -4,9 +4,12 @@ defmodule LogflareWeb.UserController do
 
   plug LogflareWeb.Plugs.AuthMustBeOwner
 
-  alias Logflare.{User, Users, TeamUsers, Source.Supervisor, Billing.Stripe}
-
   alias Logflare.Backends.Adaptor.BigQueryAdaptor
+  alias Logflare.Billing.Stripe
+  alias Logflare.Sources.Source.Supervisor
+  alias Logflare.TeamUsers
+  alias Logflare.User
+  alias Logflare.Users
 
   defp env_service_account,
     do: Application.get_env(:logflare, Logflare.Google)[:service_account] || ""

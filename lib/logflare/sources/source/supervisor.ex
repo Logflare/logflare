@@ -1,20 +1,19 @@
-defmodule Logflare.Source.Supervisor do
+defmodule Logflare.Sources.Source.Supervisor do
   @moduledoc """
   Boots up a gen server per source table. Keeps a list of active tables in state.
   """
-
   use GenServer
 
+  alias Logflare.Backends
+  alias Logflare.ContextCache
+  alias Logflare.Google.BigQuery
   alias Logflare.Repo
-  alias Logflare.Source
+  alias Logflare.SourceSchemas
   alias Logflare.Sources
   alias Logflare.Sources.Counters
-  alias Logflare.Google.BigQuery
-  alias Logflare.Source.V1SourceDynSup
-  alias Logflare.Source.V1SourceSup
-  alias Logflare.ContextCache
-  alias Logflare.SourceSchemas
-  alias Logflare.Backends
+  alias Logflare.Sources.Source
+  alias Logflare.Sources.Source.V1SourceDynSup
+  alias Logflare.Sources.Source.V1SourceSup
   alias Logflare.Utils.Tasks
 
   require Logger

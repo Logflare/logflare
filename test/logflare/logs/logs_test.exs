@@ -4,7 +4,7 @@ defmodule Logflare.LogsTest do
 
   alias Logflare.Logs
   alias Logflare.Lql
-  alias Logflare.Source.V1SourceSup
+  alias Logflare.Sources.Source.V1SourceSup
   alias Logflare.SystemMetrics.AllLogsLogged
 
   def source_and_user(_context) do

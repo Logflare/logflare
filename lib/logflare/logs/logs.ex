@@ -7,7 +7,7 @@ defmodule Logflare.Logs do
   alias Logflare.Logs.RejectedLogEvents
   alias Logflare.Logs.SourceRouting
   alias Logflare.Rules.Rule
-  alias Logflare.Source
+  alias Logflare.Sources.Source
   alias Logflare.Sources
   alias Logflare.SystemMetrics
 

@@ -2,7 +2,7 @@ defmodule Logflare.SlackHookServerTest do
   @moduledoc false
   use Logflare.DataCase
 
-  alias Logflare.Source.SlackHookServer
+  alias Logflare.Sources.Source.SlackHookServer
   alias Logflare.Backends.Adaptor.SlackAdaptor
   alias Logflare.Backends.IngestEventQueue
   alias Logflare.Sources.Counters

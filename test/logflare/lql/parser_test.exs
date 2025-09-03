@@ -7,7 +7,7 @@ defmodule Logflare.Lql.ParserTest do
   alias Logflare.Lql.Parser
   alias Logflare.Lql.Rules.ChartRule
   alias Logflare.Lql.Rules.FilterRule
-  alias Logflare.Source.BigQuery.SchemaBuilder
+  alias Logflare.Sources.Source.BigQuery.SchemaBuilder
 
   @default_schema SchemaBuilder.initial_table_schema()
 

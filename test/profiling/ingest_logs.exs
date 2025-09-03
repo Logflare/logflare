@@ -15,7 +15,7 @@ source =
     s -> %{s | v2_pipeline: true}
   end
 
-:ok = Logflare.Source.Supervisor.ensure_started(source)
+:ok = Logflare.Sources.Source.Supervisor.ensure_started(source)
 
 batch = for _ <- 1..1000, do: %{message: "some message"}
 

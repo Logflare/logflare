@@ -1,9 +1,9 @@
-defmodule Logflare.Source.BillingWriterTest do
+defmodule Logflare.Sources.Source.BillingWriterTest do
   @moduledoc false
   use Logflare.DataCase
   alias Logflare.Billing.BillingCount
   alias Logflare.Repo
-  alias Logflare.Source.BillingWriter
+  alias Logflare.Sources.Source.BillingWriter
   alias Logflare.Sources.Counters
   alias Logflare.SystemMetrics.AllLogsLogged
 

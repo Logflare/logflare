@@ -15,7 +15,7 @@ defmodule Logflare.Backends.Adaptor.S3Adaptor do
   alias Logflare.Backends.Adaptor
   alias Logflare.Backends.Backend
   alias Logflare.LogEvent
-  alias Logflare.Source
+  alias Logflare.Sources.Source
   alias Logflare.Sources
 
   @behaviour Adaptor

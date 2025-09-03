@@ -113,7 +113,7 @@ defmodule LogflareWeb.UserControllerTest do
         {:ok, []}
       end)
 
-      expect(Logflare.Source.Supervisor, :reset_all_user_sources, fn user ->
+      expect(Logflare.Sources.Source.Supervisor, :reset_all_user_sources, fn user ->
         send(pid, {:user_id, user.id})
         :ok
       end)

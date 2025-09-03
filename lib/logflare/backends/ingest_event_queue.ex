@@ -6,7 +6,7 @@ defmodule Logflare.Backends.IngestEventQueue do
   """
   use GenServer
 
-  alias Logflare.Source
+  alias Logflare.Sources.Source
   alias Logflare.Backends.Backend
   alias Logflare.LogEvent
 

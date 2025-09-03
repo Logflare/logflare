@@ -8,7 +8,7 @@ defmodule Logflare.SavedSearches do
   alias Logflare.Lql.Rules.FilterRule
   alias Logflare.Repo
   alias Logflare.SavedSearch
-  alias Logflare.Source
+  alias Logflare.Sources.Source
 
   require Logger
 

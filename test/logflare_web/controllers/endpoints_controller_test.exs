@@ -3,7 +3,7 @@ defmodule LogflareWeb.EndpointsControllerTest do
 
   alias Logflare.SingleTenant
   alias Logflare.Backends
-  alias Logflare.Source
+  alias Logflare.Sources.Source
   alias Logflare.Sources
   alias Logflare.SystemMetrics.AllLogsLogged
   alias Logflare.Google.BigQuery.GenUtils

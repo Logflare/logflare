@@ -5,16 +5,16 @@ defmodule Logflare.Backends.SourceSup do
   alias Logflare.Backends.Backend
   alias Logflare.Backends.SourceSupWorker
   alias Logflare.Backends
-  alias Logflare.Source
+  alias Logflare.Sources.Source
   alias Logflare.Users
   alias Logflare.Billing
   alias Logflare.GenSingleton
-  alias Logflare.Source.RateCounterServer
-  alias Logflare.Source.EmailNotificationServer
-  alias Logflare.Source.TextNotificationServer
-  alias Logflare.Source.WebhookNotificationServer
-  alias Logflare.Source.SlackHookServer
-  alias Logflare.Source.BillingWriter
+  alias Logflare.Sources.Source.RateCounterServer
+  alias Logflare.Sources.Source.EmailNotificationServer
+  alias Logflare.Sources.Source.TextNotificationServer
+  alias Logflare.Sources.Source.WebhookNotificationServer
+  alias Logflare.Sources.Source.SlackHookServer
+  alias Logflare.Sources.Source.BillingWriter
   alias Logflare.Backends.RecentEventsTouch
   alias Logflare.Backends.RecentInsertsBroadcaster
   alias Logflare.Rules.Rule

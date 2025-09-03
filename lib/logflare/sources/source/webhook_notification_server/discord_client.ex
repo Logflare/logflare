@@ -1,4 +1,4 @@
-defmodule Logflare.Source.WebhookNotificationServer.DiscordClient do
+defmodule Logflare.Sources.Source.WebhookNotificationServer.DiscordClient do
   @moduledoc false
   require Logger
 

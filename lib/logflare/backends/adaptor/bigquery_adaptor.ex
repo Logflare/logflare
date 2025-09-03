@@ -20,8 +20,8 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
   alias Logflare.Google
   alias Logflare.Google.BigQuery.GenUtils
   alias Logflare.Google.CloudResourceManager
-  alias Logflare.Source.BigQuery.Pipeline
-  alias Logflare.Source.BigQuery.Schema
+  alias Logflare.Sources.Source.BigQuery.Pipeline
+  alias Logflare.Sources.Source.BigQuery.Schema
   alias Logflare.Sources
   alias Logflare.User
   alias Logflare.Users

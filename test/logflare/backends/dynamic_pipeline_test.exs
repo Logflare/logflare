@@ -3,7 +3,7 @@ defmodule Logflare.Backends.DynamicPipelineTest do
 
   alias Logflare.Backends.DynamicPipeline
   alias Logflare.Backends
-  alias Logflare.Source.BigQuery.Pipeline
+  alias Logflare.Sources.Source.BigQuery.Pipeline
   alias Logflare.PipelinesTest.StubPipeline
   alias Logflare.Backends.IngestEventQueue
   alias Logflare.Backends.IngestEventQueue

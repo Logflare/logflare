@@ -1,8 +1,9 @@
 defmodule Logflare.ContextCacheTest do
   use Logflare.DataCase, async: false
+
   alias Logflare.ContextCache
   alias Logflare.Sources
-  alias Logflare.Source
+  alias Logflare.Sources.Source
   alias Logflare.Backends
   alias Logflare.Backends.Backend
   alias Logflare.Auth

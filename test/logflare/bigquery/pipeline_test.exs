@@ -1,7 +1,7 @@
 defmodule Logflare.BigQuery.PipelineTest do
   @moduledoc false
   use Logflare.DataCase
-  alias Logflare.Source.BigQuery.Pipeline
+  alias Logflare.Sources.Source.BigQuery.Pipeline
   alias Logflare.LogEvent
   alias GoogleApi.BigQuery.V2.Model.TableDataInsertAllRequestRows
   alias Logflare.Backends.AdaptorSupervisor

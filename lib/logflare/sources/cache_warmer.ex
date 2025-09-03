@@ -1,6 +1,6 @@
 defmodule Logflare.Sources.CacheWarmer do
   alias Logflare.Repo
-  alias Logflare.Source
+  alias Logflare.Sources.Source
   import Ecto.Query
 
   use Cachex.Warmer

@@ -10,7 +10,7 @@ defmodule Logflare.Backends.Backend do
   alias Logflare.Backends.Backend
   alias Logflare.Endpoints.Query
   alias Logflare.Rules.Rule
-  alias Logflare.Source
+  alias Logflare.Sources.Source
   alias Logflare.User
 
   @adaptor_mapping %{

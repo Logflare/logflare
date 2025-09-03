@@ -10,7 +10,7 @@ defmodule LogflareWeb.Plugs.BufferLimiter do
   import Plug.Conn
 
   alias Logflare.Backends
-  alias Logflare.Source
+  alias Logflare.Sources.Source
 
   @type opts :: any()
 

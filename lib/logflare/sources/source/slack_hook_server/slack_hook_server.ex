@@ -1,4 +1,4 @@
-defmodule Logflare.Source.SlackHookServer do
+defmodule Logflare.Sources.Source.SlackHookServer do
   @moduledoc false
   use GenServer
 

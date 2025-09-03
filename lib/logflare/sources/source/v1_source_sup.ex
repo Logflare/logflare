@@ -1,21 +1,22 @@
-defmodule Logflare.Source.V1SourceSup do
+defmodule Logflare.Sources.Source.V1SourceSup do
   @moduledoc false
-  alias Logflare.Backends.RecentEventsTouch
-  alias Logflare.Backends.RecentInsertsBroadcaster
-  alias Logflare.Source.EmailNotificationServer
-  alias Logflare.Source.TextNotificationServer
-  alias Logflare.Source.WebhookNotificationServer
-  alias Logflare.Source.SlackHookServer
-  alias Logflare.Source.BillingWriter
-  alias Logflare.GenSingleton
-  alias Logflare.Source.RateCounterServer, as: RCS
-  alias Logflare.Users
+  use Supervisor
+
   alias Logflare.Backends
   alias Logflare.Backends.Backend
+  alias Logflare.Backends.RecentEventsTouch
+  alias Logflare.Backends.RecentInsertsBroadcaster
   alias Logflare.Billing
+  alias Logflare.GenSingleton
+  alias Logflare.Sources.Source.BillingWriter
+  alias Logflare.Sources.Source.EmailNotificationServer
+  alias Logflare.Sources.Source.RateCounterServer, as: RCS
+  alias Logflare.Sources.Source.SlackHookServer
+  alias Logflare.Sources.Source.TextNotificationServer
+  alias Logflare.Sources.Source.WebhookNotificationServer
+  alias Logflare.Users
 
   require Logger
-  use Supervisor
 
   def start_link(args) do
     source = Keyword.get(args, :source)

@@ -7,7 +7,7 @@ defmodule Logflare.Backends.RecentInsertsBroadcaster do
 
   alias Logflare.PubSubRates
   alias Logflare.Backends
-  alias Logflare.Source
+  alias Logflare.Sources.Source
   alias Logflare.Sources.Counters
 
   require Logger

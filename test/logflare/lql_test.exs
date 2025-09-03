@@ -6,7 +6,7 @@ defmodule Logflare.LqlTest do
   alias Logflare.Lql
   alias Logflare.Lql.Rules.FilterRule
   alias Logflare.Lql.Rules.SelectRule
-  alias Logflare.Source.BigQuery.SchemaBuilder
+  alias Logflare.Sources.Source.BigQuery.SchemaBuilder
 
   describe "apply_filter_rules/3" do
     test "applies filter rules to query using BigQuery backend transformer by default" do

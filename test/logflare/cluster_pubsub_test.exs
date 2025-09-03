@@ -2,7 +2,7 @@ defmodule Logflare.ClusterPubSubTest do
   @moduledoc false
   use Logflare.DataCase, async: false
 
-  alias Logflare.Source.ChannelTopics
+  alias Logflare.Sources.Source.ChannelTopics
   alias Logflare.PubSubRates
 
   defp flush_mailbox do

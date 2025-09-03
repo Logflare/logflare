@@ -1,4 +1,4 @@
-defmodule Logflare.Source.BigQuery.SchemaBuilder do
+defmodule Logflare.Sources.Source.BigQuery.SchemaBuilder do
   @moduledoc false
   require Logger
   alias GoogleApi.BigQuery.V2.Model

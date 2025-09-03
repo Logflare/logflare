@@ -1,13 +1,17 @@
 defmodule Logflare.AccountEmail do
   @moduledoc false
+
   import Swoosh.Email
 
-  require Logger
-
-  alias LogflareWeb.Router.Helpers, as: Routes
+  alias Logflare.Auth
+  alias Logflare.Sources.Source
+  alias Logflare.TeamUsers.TeamUser
+  alias Logflare.User
   alias LogflareWeb.Endpoint
   alias LogflareWeb.Helpers.BqSchema
-  alias Logflare.{Auth, User, Source, TeamUsers.TeamUser}
+  alias LogflareWeb.Router.Helpers, as: Routes
+
+  require Logger
 
   def welcome(user) do
     new()
