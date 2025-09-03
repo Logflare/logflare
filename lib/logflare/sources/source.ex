@@ -1,6 +1,5 @@
 defmodule Logflare.Sources.Source do
   @moduledoc false
-
   use TypedEctoSchema
 
   import Ecto.Changeset
@@ -39,7 +38,6 @@ defmodule Logflare.Sources.Source do
 
   defmodule Metrics do
     @moduledoc false
-
     use TypedEctoSchema
 
     @derive {Jason.Encoder,
@@ -72,8 +70,7 @@ defmodule Logflare.Sources.Source do
 
   defmodule Notifications do
     @moduledoc false
-
-    use Ecto.Schema
+    use TypedEctoSchema
 
     @primary_key false
     @derive {Jason.Encoder,
@@ -87,7 +84,7 @@ defmodule Logflare.Sources.Source do
                :team_user_ids_for_schema_updates
              ]}
 
-    embedded_schema do
+    typed_embedded_schema do
       field(:team_user_ids_for_email, {:array, :string}, default: [])
       field(:team_user_ids_for_sms, {:array, :string}, default: [])
       field(:other_email_notifications, :string)
@@ -111,58 +108,56 @@ defmodule Logflare.Sources.Source do
     end
   end
 
-  schema "sources" do
-    field(:name, :string)
-    field(:service_name, :string)
-    field(:token, Ecto.UUID.Atom, autogenerate: true)
-    field(:public_token, :string)
-    field(:favorite, :boolean, default: false)
-    field(:bigquery_table_ttl, :integer)
-    field(:api_quota, :integer, default: @default_source_api_quota)
-    field(:webhook_notification_url, :string)
-    field(:slack_hook_url, :string)
-    field(:metrics, :map, virtual: true)
-    field(:has_rejected_events, :boolean, default: false, virtual: true)
-    field(:bq_table_id, :string, virtual: true)
-    field(:bq_dataset_id, :string, virtual: true)
-    field(:bq_table_partition_type, Ecto.Enum, values: [:pseudo, :timestamp], default: :timestamp)
-    field(:custom_event_message_keys, :string)
-    field(:log_events_updated_at, :naive_datetime)
-    field(:notifications_every, :integer, default: :timer.hours(4))
-    field(:lock_schema, :boolean, default: false)
-    field(:validate_schema, :boolean, default: true)
-    field(:drop_lql_filters, Ecto.LqlRules, default: [])
-    field(:drop_lql_string, :string)
-    field(:v2_pipeline, :boolean, default: false)
-    field(:disable_tailing, :boolean, default: false)
-    field(:suggested_keys, :string, default: "")
-    field(:retention_days, :integer, virtual: true)
-    field(:transform_copy_fields, :string)
-    field(:bigquery_clustering_fields, :string)
+  typed_schema "sources" do
+    field :name, :string
+    field :service_name, :string
+    field :token, Ecto.UUID.Atom, autogenerate: true
+    field :public_token, :string
+    field :favorite, :boolean, default: false
+    field :bigquery_table_ttl, :integer
+    field :api_quota, :integer, default: @default_source_api_quota
+    field :webhook_notification_url, :string
+    field :slack_hook_url, :string
+    field :metrics, :map, virtual: true
+    field :has_rejected_events, :boolean, default: false, virtual: true
+    field :bq_table_id, :string, virtual: true
+    field :bq_dataset_id, :string, virtual: true
+    field :bq_table_partition_type, Ecto.Enum, values: [:pseudo, :timestamp], default: :timestamp
+    field :custom_event_message_keys, :string
+    field :log_events_updated_at, :naive_datetime
+    field :notifications_every, :integer, default: :timer.hours(4)
+    field :lock_schema, :boolean, default: false
+    field :validate_schema, :boolean, default: true
+    field :drop_lql_filters, Ecto.LqlRules, default: []
+    field :drop_lql_string, :string
+    field :v2_pipeline, :boolean, default: false
+    field :disable_tailing, :boolean, default: false
+    field :suggested_keys, :string, default: ""
+    field :retention_days, :integer, virtual: true
+    field :transform_copy_fields, :string
+    field :bigquery_clustering_fields, :string
 
-    field(:default_ingest_backend_enabled?, :boolean,
+    field :default_ingest_backend_enabled?, :boolean,
       source: :default_ingest_backend_enabled,
       default: false
-    )
 
     # Causes a shitstorm
     # field :bigquery_schema, Ecto.Term
 
-    belongs_to(:user, Logflare.User)
+    belongs_to :user, Logflare.User
 
-    has_many(:rules, Logflare.Rules.Rule)
+    has_many :rules, Logflare.Rules.Rule
 
-    many_to_many(:backends, Logflare.Backends.Backend,
+    many_to_many :backends, Logflare.Backends.Backend,
       join_through: "sources_backends",
       on_replace: :delete
-    )
 
-    has_many(:saved_searches, Logflare.SavedSearch)
-    has_many(:billing_counts, Logflare.Billing.BillingCount, on_delete: :nothing)
+    has_many :saved_searches, Logflare.SavedSearch
+    has_many :billing_counts, Logflare.Billing.BillingCount, on_delete: :nothing
 
-    embeds_one(:notifications, Notifications, on_replace: :update)
+    embeds_one :notifications, Notifications, on_replace: :update
 
-    has_one(:source_schema, Logflare.SourceSchemas.SourceSchema)
+    has_one :source_schema, Logflare.SourceSchemas.SourceSchema
 
     timestamps()
   end

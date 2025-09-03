@@ -2,13 +2,14 @@ defmodule Logflare.Billing.BillingCounts do
   @moduledoc """
   The sub-context for getting counts for metered billing.
   """
-  require Logger
+
   import Ecto.Query, warn: false
 
-  alias Timex.Parse.DateTime
   alias Logflare.Billing.BillingCount
   alias Logflare.Repo
   alias Logflare.User
+
+  require Logger
 
   @spec timeseries(Logflare.User.t(), DateTime.t(), DateTime.t()) :: [BillingCount.t()]
   def timeseries(%User{id: user_id}, start_date, end_date) do
