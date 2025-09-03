@@ -46,8 +46,7 @@ defmodule Logflare.ContextCache.TransactionBroadcaster do
 
   def handle_info(%Transaction{changes: _changes} = transaction, state) do
     Logger.debug("WAL record received from cainophile: #{inspect(transaction)}")
-    # broadcast it
-    Phoenix.PubSub.local_broadcast(Logflare.PubSub, "wal_transactions", transaction)
+    Phoenix.PubSub.broadcast(Logflare.PubSub, "wal_transactions", transaction)
     {:noreply, state}
   end
 
