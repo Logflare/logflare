@@ -41,7 +41,8 @@
       ) %>
       <%= error_tag(f, :backend_id) %>
       <small class="form-text text-muted">
-        Choose which backend to execute this endpoint query against. Defaults to BigQuery if no backend is selected.
+        Choose which backend to execute this endpoint query against. Defaults to BigQuery if no backend is selected. <br />
+        <strong>Query Language: <span id="query-language"><%= format_query_language(@determined_language) %></span></strong>
       </small>
     </div>
 

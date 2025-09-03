@@ -439,13 +439,7 @@ defmodule LogflareWeb.EndpointsLiveTest do
         }
       })
 
-      assigns = get_view_assigns(view)
-      assert assigns.selected_backend_id == to_string(backend.id)
-      assert Logflare.Endpoints.derive_language_from_backend_id(backend.id) == :ch_sql
+      assert has_element?(view, "#query-language", "ClickHouse SQL")
     end
-  end
-
-  defp get_view_assigns(view) do
-    :sys.get_state(view.pid).socket.assigns
   end
 end
