@@ -159,13 +159,20 @@ defmodule Logflare.Endpoints.Query do
 
   def update_source_mapping(changeset), do: changeset
 
+  @spec map_backend_to_language(Backend.t(), supabase_mode :: boolean()) ::
+          :bq_sql | :ch_sql | :pg_sql
+  def map_backend_to_language(%Backend{type: :clickhouse}, _supabase_mode), do: :ch_sql
+  def map_backend_to_language(%Backend{type: :postgres}, false), do: :pg_sql
+  def map_backend_to_language(_backend, _supabase_mode), do: :bq_sql
+
   @spec infer_language_from_backend(%Changeset{}) :: %Changeset{}
   defp infer_language_from_backend(%Changeset{} = changeset) do
     case get_change(changeset, :language) do
       nil ->
         case get_field(changeset, :backend_id) do
           nil ->
-            changeset
+            # Default to BigQuery when no backend is selected
+            put_change(changeset, :language, :bq_sql)
 
           backend_id ->
             backend = Backends.get_backend(backend_id)
@@ -194,9 +201,4 @@ defmodule Logflare.Endpoints.Query do
         q
     end
   end
-
-  @spec map_backend_to_language(Backend.t(), boolean()) :: :bq_sql | :ch_sql | :pg_sql
-  defp map_backend_to_language(%{type: :clickhouse}, _supabase_mode), do: :ch_sql
-  defp map_backend_to_language(%{type: :postgres}, false), do: :pg_sql
-  defp map_backend_to_language(_backend, _supabase_mode), do: :bq_sql
 end

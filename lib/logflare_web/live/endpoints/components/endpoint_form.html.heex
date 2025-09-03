@@ -33,6 +33,18 @@
       </small>
     </div>
 
+    <div :if={@show_backend_selection} class="form-group">
+      <%= label(f, :backend_id, "Backend (optional)") %>
+      <%= select(f, :backend_id, [{"Default (BigQuery)", nil}] ++ Enum.map(@backends, fn backend -> {"#{backend.name} (#{backend.type})", backend.id} end),
+        class: "form-control",
+        "phx-update": "ignore"
+      ) %>
+      <%= error_tag(f, :backend_id) %>
+      <small class="form-text text-muted">
+        Choose which backend to execute this endpoint query against. Defaults to BigQuery if no backend is selected.
+      </small>
+    </div>
+
     <.header_with_anchor text="Query" />
     <section class="tw-flex tw-flex-col">
       <div class="form-group">
@@ -69,7 +81,7 @@
         </div>
         <%= error_tag(f, :max_limit) %>
         <small class="form-text text-muted">
-          This option determines the maximium result size returned from BigQuery.
+          This option determines the maximum result size returned from the backend.
         </small>
       </div>
 
