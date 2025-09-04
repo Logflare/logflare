@@ -55,7 +55,6 @@
   {"lib/logflare/ecto/bigquery/bq_repo.ex", :call},
   {"lib/logflare/ecto/bigquery/bq_repo.ex", :unused_fun},
   {"lib/logflare/ecto/ecto_lql_rules_t.ex", :unknown_type},
-  {"lib/logflare/ecto/ecto_term_t.ex", :unknown_type},
   {"lib/logflare/endpoints.ex", :no_return},
   {"lib/logflare/endpoints.ex", :pattern_match},
   {"lib/logflare/endpoints.ex", :call},

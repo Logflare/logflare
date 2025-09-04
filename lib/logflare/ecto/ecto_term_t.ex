@@ -12,14 +12,14 @@ defmodule Ecto.Term do
     {:ok, value}
   end
 
-  @spec load(binary() | nil) :: {:ok, any()} | {:error, ArgumentError.t()}
+  @spec load(binary() | nil) :: {:ok, any()} | {:error, String.t()}
   def load(nil), do: {:ok, nil}
   def load(""), do: {:ok, ""}
 
   def load(value) do
     {:ok, :erlang.binary_to_term(value)}
   rescue
-    e in ArgumentError -> {:error, e}
+    e in ArgumentError -> {:error, e.message}
   end
 
   @spec dump(any()) :: {:ok, binary() | nil}
