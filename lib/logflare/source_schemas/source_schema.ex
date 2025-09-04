@@ -1,12 +1,12 @@
 defmodule Logflare.SourceSchemas.SourceSchema do
   @moduledoc false
-  use Ecto.Schema
+  use TypedEctoSchema
 
   import Ecto.Changeset
 
   alias Logflare.Utils
 
-  schema "source_schemas" do
+  typed_schema "source_schemas" do
     field :bigquery_schema, Ecto.Term
     field :schema_flat_map, Ecto.Term
 
