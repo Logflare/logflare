@@ -88,13 +88,23 @@ defmodule LogflareWeb.EndpointsLive do
               socket.assigns.alerts
             )
 
-          socket
-          |> assign_updated_params_form(parsed_result.parameters, parsed_result.expanded_query)
-          # set changeset
-          |> assign(:endpoint_changeset, Endpoints.change_query(endpoint, %{}))
-          |> assign(:selected_backend_id, endpoint.backend_id)
-          |> assign(:parsed_result, parsed_result)
-          |> assign(:redact_pii, endpoint.redact_pii || false)
+          socket =
+            socket
+            |> assign_updated_params_form(parsed_result.parameters, parsed_result.expanded_query)
+            # set changeset
+            |> assign(:endpoint_changeset, Endpoints.change_query(endpoint, %{}))
+            |> assign(:selected_backend_id, endpoint.backend_id)
+            |> assign(:parsed_result, parsed_result)
+            |> assign(:redact_pii, endpoint.redact_pii || false)
+
+          # Clear test results when navigating to edit page
+          if socket.assigns.live_action == :edit do
+            socket
+            |> assign(:query_result_rows, nil)
+            |> assign(:total_bytes_processed, nil)
+          else
+            socket
+          end
 
         # index page
         %{assigns: %{live_action: :index}} = socket ->
@@ -134,7 +144,9 @@ defmodule LogflareWeb.EndpointsLive do
          socket
          |> put_flash(:info, "Successfully #{verb} endpoint #{endpoint.name}")
          |> push_patch(to: ~p"/endpoints/#{endpoint.id}")
-         |> assign(:show_endpoint, endpoint)}
+         |> assign(:show_endpoint, endpoint)
+         |> assign(:query_result_rows, nil)
+         |> assign(:total_bytes_processed, nil)}
 
       {:error, %Ecto.Changeset{} = changeset} ->
         verb = if(show_endpoint, do: "update", else: "create")

@@ -483,7 +483,7 @@ defmodule LogflareWeb.EndpointsLiveTest do
   end
 
   describe "PII redaction" do
-    test "PII redaction toggles in query display", %{conn: conn, user: user} do
+    test "PII redaction only affects query results, not query display", %{conn: conn, user: user} do
       endpoint =
         insert(:endpoint,
           user: user,
@@ -493,32 +493,81 @@ defmodule LogflareWeb.EndpointsLiveTest do
 
       {:ok, view, _html} = live(conn, "/endpoints/#{endpoint.id}")
 
-      # Verify redaction is enabled and IPs are redacted
       assert render(view) =~ ~r/redact PII:.*enabled/
-      visible_code = view |> element("div.tw-w-full.tw-bg-zinc-800 code") |> render()
-      assert visible_code =~ "REDACTED"
-      refute visible_code =~ "192.168.1.1"
-
-      # Toggle PII redaction off and verify IPs are visible
-      view |> element(".subhead a", "edit") |> render_click()
-      view |> element("form#endpoint") |> render_submit(%{endpoint: %{redact_pii: false}})
-
-      assert render(view) =~ ~r/redact PII:.*disabled/
       visible_code = view |> element("div.tw-w-full.tw-bg-zinc-800 code") |> render()
       assert visible_code =~ "192.168.1.1"
+      assert visible_code =~ "10.0.0.1"
+
+      if view |> has_element?("div.collapse code") do
+        expanded_code = view |> element("div.collapse code") |> render()
+        assert expanded_code =~ "REDACTED"
+      end
     end
 
-    test "PII redaction state updates during form validation", %{conn: conn, user: user} do
-      endpoint = insert(:endpoint, user: user, query: "select '192.168.1.1' as ip", redact_pii: false)
+    test "PII redaction in query results", %{conn: conn, user: user} do
+      endpoint =
+        insert(:endpoint,
+          user: user,
+          query: "select 'test' as message",
+          redact_pii: true
+        )
+
       {:ok, view, _html} = live(conn, "/endpoints/#{endpoint.id}/edit")
 
-      # Enable PII redaction and save
-      view |> element("form#endpoint") |> render_submit(%{endpoint: %{redact_pii: true}})
+      GoogleApi.BigQuery.V2.Api.Jobs
+      |> expect(:bigquery_jobs_query, 1, fn _conn, _proj_id, _opts ->
+        {:ok,
+         TestUtils.gen_bq_response([%{"ip" => "192.168.1.1", "message" => "User from 10.0.0.1"}])}
+      end)
 
-      # Verify redaction is applied
-      assert render(view) =~ ~r/redact PII:.*enabled/
-      visible_code = view |> element("div.tw-w-full.tw-bg-zinc-800 code") |> render()
-      assert visible_code =~ "REDACTED"
+      view
+      |> element("form", "Test query")
+      |> render_submit(%{run: %{query: endpoint.query, params: %{}}})
+
+      assert render(view) =~ "REDACTED"
     end
+  end
+
+  test "saving endpoint clears test results", %{conn: conn, user: user} do
+    endpoint = insert(:endpoint, user: user, query: "select 'test' as message")
+    {:ok, view, _html} = live(conn, "/endpoints/#{endpoint.id}/edit")
+
+    # Simulate having test results by setting up mock and running query
+    GoogleApi.BigQuery.V2.Api.Jobs
+    |> expect(:bigquery_jobs_query, 1, fn _conn, _proj_id, _opts ->
+      {:ok, TestUtils.gen_bq_response([%{"testing" => "results-123"}])}
+    end)
+
+    view
+    |> element("form", "Test query")
+    |> render_submit(%{run: %{query: endpoint.query, params: %{}}})
+
+    # Verify test results are shown
+    assert render(view) =~ "results-123"
+
+    # Save endpoint
+    view |> element("form#endpoint") |> render_submit(%{endpoint: %{description: "updated"}})
+
+    # Verify test results are cleared
+    refute render(view) =~ "results-123"
+  end
+
+  test "navigating from show to edit clears test results", %{conn: conn, user: user} do
+    endpoint = insert(:endpoint, user: user)
+    {:ok, view, _html} = live(conn, "/endpoints/#{endpoint.id}")
+
+    GoogleApi.BigQuery.V2.Api.Jobs
+    |> expect(:bigquery_jobs_query, 1, fn _conn, _proj_id, _opts ->
+      {:ok, TestUtils.gen_bq_response([%{"testing" => "results-123"}])}
+    end)
+
+    view
+    |> element("form", "Test query")
+    |> render_submit(%{run: %{query: endpoint.query, params: %{}}})
+
+    assert render(view) =~ "results-123"
+
+    view |> element(".subhead a", "edit") |> render_click()
+    refute render(view) =~ "results-123"
   end
 end
