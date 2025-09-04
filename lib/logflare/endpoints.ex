@@ -451,10 +451,6 @@ defmodule Logflare.Endpoints do
     find_backend_by_type_or_default(user_id, backend_type)
   end
 
-  defp get_backend_for_query(%Query{user_id: user_id}) do
-    find_backend_by_type_or_default(user_id, nil)
-  end
-
   @spec language_to_backend_type(language()) :: atom() | nil
   defp language_to_backend_type(:pg_sql), do: :postgres
   defp language_to_backend_type(:ch_sql), do: :clickhouse
