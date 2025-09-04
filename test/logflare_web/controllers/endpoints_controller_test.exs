@@ -535,4 +535,81 @@ defmodule LogflareWeb.EndpointsControllerTest do
       assert conn.halted == false
     end
   end
+
+  describe "PII redaction" do
+    setup do
+      _plan = insert(:plan, name: "Free")
+      user = insert(:user)
+      {:ok, user: user}
+    end
+
+    test "redacts IP addresses when redact_pii is enabled", %{conn: init_conn, user: user} do
+      endpoint = insert(:endpoint, user: user, enable_auth: false, redact_pii: true)
+
+      GoogleApi.BigQuery.V2.Api.Jobs
+      |> expect(:bigquery_jobs_query, fn _conn, _proj_id, _opts ->
+        bq_response =
+          TestUtils.gen_bq_response([
+            %{"ip_address" => "192.168.1.1", "event_message" => "User 10.0.0.1 connected"}
+          ])
+
+        {:ok, bq_response}
+      end)
+
+      conn =
+        init_conn
+        |> get(~p"/endpoints/query/#{endpoint.token}")
+
+      response =
+        conn
+        |> json_response(200)
+        |> assert_schema("EndpointQuery")
+
+      assert [
+               %{
+                 "ip_address" => "REDACTED",
+                 "event_message" => "User REDACTED connected"
+               }
+             ] = response.result
+
+      refute response.error
+      refute conn.halted
+    end
+
+    test "does not redact IP addresses when redact_pii is disabled", %{
+      conn: init_conn,
+      user: user
+    } do
+      endpoint = insert(:endpoint, user: user, enable_auth: false, redact_pii: false)
+
+      GoogleApi.BigQuery.V2.Api.Jobs
+      |> expect(:bigquery_jobs_query, fn _conn, _proj_id, _opts ->
+        bq_response =
+          TestUtils.gen_bq_response([
+            %{"ip_address" => "192.168.1.1", "message" => "User 10.0.0.1 connected"}
+          ])
+
+        {:ok, bq_response}
+      end)
+
+      conn =
+        init_conn
+        |> get(~p"/endpoints/query/#{endpoint.token}")
+
+      response =
+        conn
+        |> json_response(200)
+        |> assert_schema("EndpointQuery")
+
+      assert [
+               %{
+                 "ip_address" => "192.168.1.1",
+                 "message" => "User 10.0.0.1 connected"
+               }
+             ] = response.result
+
+      refute response.error
+      refute conn.halted
+    end
+  end
 end

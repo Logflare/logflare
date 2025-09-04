@@ -30,7 +30,8 @@ defmodule Logflare.Endpoints.Query do
              :proactive_requerying_seconds,
              :max_limit,
              :enable_auth,
-             :labels
+             :labels,
+             :redact_pii
            ]}
   typed_schema "endpoint_queries" do
     field(:token, Ecto.UUID, autogenerate: true)
@@ -44,6 +45,7 @@ defmodule Logflare.Endpoints.Query do
     field(:proactive_requerying_seconds, :integer, default: 1_800)
     field(:max_limit, :integer, default: 1_000)
     field(:enable_auth, :boolean, default: true)
+    field(:redact_pii, :boolean, default: false)
     field(:labels, :string)
     field(:parsed_labels, :map, virtual: true)
     field(:metrics, :map, virtual: true)
@@ -75,6 +77,7 @@ defmodule Logflare.Endpoints.Query do
       :proactive_requerying_seconds,
       :max_limit,
       :enable_auth,
+      :redact_pii,
       :language,
       :description,
       :backend_id,
@@ -95,6 +98,7 @@ defmodule Logflare.Endpoints.Query do
       :proactive_requerying_seconds,
       :max_limit,
       :enable_auth,
+      :redact_pii,
       :language,
       :description,
       :backend_id,

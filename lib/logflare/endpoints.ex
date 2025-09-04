@@ -8,6 +8,7 @@ defmodule Logflare.Endpoints do
   alias Logflare.Alerting.Alert
   alias Logflare.Backends
   alias Logflare.Backends.Backend
+  alias Logflare.Endpoints.PiiRedactor
   alias Logflare.Endpoints.Query
   alias Logflare.Endpoints.Resolver
   alias Logflare.Endpoints.ResultsCache
@@ -423,11 +424,13 @@ defmodule Logflare.Endpoints do
 
       case adaptor.execute_query(backend, query_args, opts) do
         {:ok, rows} when is_list(rows) ->
-          {:ok, %{rows: rows}}
+          redacted_rows = PiiRedactor.redact_query_result(rows, endpoint_query.redact_pii)
+          {:ok, %{rows: redacted_rows}}
 
-        {:ok, %{rows: _} = result} ->
-          # Pass through the full result map with all metadata
-          {:ok, result}
+        {:ok, %{rows: rows} = result} ->
+          # Pass through the full result map with all metadata, but redact PII in rows
+          redacted_rows = PiiRedactor.redact_query_result(rows, endpoint_query.redact_pii)
+          {:ok, %{result | rows: redacted_rows}}
 
         {:error, error} ->
           {:error, error}

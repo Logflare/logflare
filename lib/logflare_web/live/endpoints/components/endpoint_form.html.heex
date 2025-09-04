@@ -110,6 +110,18 @@
           This restricts users of the endpoint to only query within the defined CTE result sets.
         </small>
       </div>
+
+      <div class="">
+        <%= checkbox(f, :redact_pii, id: "redact-pii-checkbox", class: "form-check-input") %>
+        <%= label(f, :redact_pii, "Redact PII from query results",
+          for: "redact-pii-checkbox",
+          class: "form-check-label"
+        ) %>
+        <%= error_tag(f, :redact_pii) %>
+        <small class="form-text text-muted">
+          When enabled, PII such as IP addresses in query results will be "REDACTED"
+        </small>
+      </div>
     </section>
 
     <.header_with_anchor text="Caching" />
