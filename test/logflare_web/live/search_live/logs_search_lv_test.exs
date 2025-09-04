@@ -494,6 +494,10 @@ defmodule LogflareWeb.Source.SearchLVTest do
 
       assert view
              |> has_element?(".alert", "Search halted")
+
+      assert view
+             |> render() =~
+               ~s|search?querystring=t%3Alast%4015minute+c%3Acount%28%2A%29+c%3Agroup_by%28t%3A%3Asecond%29&amp;tailing%3F=false">Set chart period to second</a>|
     end
 
     test "log event links", %{conn: conn, source: source} do

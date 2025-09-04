@@ -504,13 +504,10 @@ defmodule LogflareWeb.Source.SearchLV do
         :halted ->
           send(self(), :soft_pause)
 
-          {:halted, halted_message} = search_op.status
-          msg = "Search halted: " <> halted_message
-
           socket
           |> assign(loading: false)
           |> assign(chart_loading: false)
-          |> put_flash(:error, msg)
+          |> put_halt_flash_message(search_op)
 
         %Tesla.Env{status: 400} = err ->
           Logger.error("Backend search error for source: #{source.token}",
@@ -963,6 +960,36 @@ defmodule LogflareWeb.Source.SearchLV do
     |> put_flash(
       :error,
       "Backend error! Retry your query. Please contact support if this continues."
+    )
+  end
+
+  defp put_halt_flash_message(socket, search_op) do
+    {:halted, message} = search_op.status
+
+    msg =
+      if message =~ ~r/longer chart aggregation period.$/ or message =~ ~r/shorter chart period.$/ do
+        quickfix = quickfix_chart_period(socket.assigns.uri, search_op.lql_rules)
+        ["Search halted: ", message, quickfix]
+      else
+        "Search halted: " <> message
+      end
+
+    put_flash(socket, :error, msg)
+  end
+
+  defp quickfix_chart_period(uri, lql_rules) do
+    adjusted_lql = lql_rules |> maybe_adjust_chart_period()
+
+    params =
+      uri.query
+      |> URI.decode_query()
+      |> Map.put("querystring", Lql.encode!(adjusted_lql))
+
+    adjusted_period = Lql.Rules.get_chart_period(adjusted_lql)
+
+    link("Set chart period to #{adjusted_period}",
+      to: %{uri | query: URI.encode_query(params)},
+      class: "tw-block tw-pt-3"
     )
   end
 
