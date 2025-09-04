@@ -21,6 +21,7 @@ defmodule Logflare.BackendsTest do
   alias Logflare.Backends.SourceSupWorker
   alias Logflare.Sources.Source.BigQuery.Pipeline
   alias Logflare.Backends.DynamicPipeline
+  alias Logflare.User
 
   setup do
     start_supervised!(AllLogsLogged)
@@ -548,6 +549,26 @@ defmodule Logflare.BackendsTest do
                 len: 5,
                 queues: [_, _]
               }} = Backends.cache_local_buffer_lens(source_id)
+    end
+
+    test "emits telemetry events for backend ingestion", %{source: source} do
+      user = source.user_id |> then(&Repo.get(User, &1))
+      backend = insert(:backend, user: user, type: :postgres)
+      source = Sources.preload_backends(source)
+      {:ok, source} = Backends.update_source_backends(source, [backend])
+
+      TestUtils.attach_forwarder([:logflare, :backends, :ingest, :count])
+
+      log_count = 119
+
+      events = for _n <- 1..log_count, do: build(:log_event, source: source)
+      assert {:ok, ^log_count} = Backends.ingest_logs(events, source)
+
+      assert_receive {:telemetry_event, [:logflare, :backends, :ingest, :count],
+                      %{count: ^log_count}, telemetry_metadata}
+
+      assert telemetry_metadata.source_id == source.id
+      assert telemetry_metadata.backend_type == :postgres
     end
   end
 

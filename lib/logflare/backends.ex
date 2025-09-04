@@ -512,19 +512,55 @@ defmodule Logflare.Backends do
 
   # send to a specific backend
   defp dispatch_to_backends(source, %Backend{} = backend, log_events) do
-    log_events = maybe_pre_ingest(source, backend, log_events)
-    IngestEventQueue.add_to_table({source.id, backend.id}, log_events)
+    telemetry_metadata = %{
+      backend_type: backend.type,
+      source_id: source.id,
+      backend_id: backend.id
+    }
+
+    :telemetry.span([:logflare, :backends, :ingest, :dispatch], telemetry_metadata, fn ->
+      log_events = maybe_pre_ingest(source, backend, log_events)
+      IngestEventQueue.add_to_table({source.id, backend.id}, log_events)
+
+      :telemetry.execute(
+        [:logflare, :backends, :ingest, :count],
+        %{count: length(log_events)},
+        %{backend_type: backend.type, source_id: source.id}
+      )
+
+      {:ok, telemetry_metadata}
+    end)
   end
 
   defp dispatch_to_backends(source, nil, log_events) do
     backends = __MODULE__.Cache.list_backends(source_id: source.id)
 
     for backend <- [nil | backends] do
-      log_events =
-        if(backend, do: maybe_pre_ingest(source, backend, log_events), else: log_events)
+      if backend do
+        telemetry_metadata = %{
+          backend_type: backend.type,
+          source_id: source.id,
+          backend_id: backend.id
+        }
 
-      backend_id = Map.get(backend || %{}, :id)
-      IngestEventQueue.add_to_table({source.id, backend_id}, log_events)
+        :telemetry.span([:logflare, :backends, :ingest, :dispatch], telemetry_metadata, fn ->
+          log_events = maybe_pre_ingest(source, backend, log_events)
+          IngestEventQueue.add_to_table({source.id, backend.id}, log_events)
+
+          :telemetry.execute(
+            [:logflare, :backends, :ingest, :count],
+            %{count: length(log_events)},
+            %{backend_type: backend.type, source_id: source.id}
+          )
+
+          {:ok, telemetry_metadata}
+        end)
+      else
+        # Handle nil backend (system default)
+        log_events = log_events
+        backend_id = nil
+        IngestEventQueue.add_to_table({source.id, backend_id}, log_events)
+      end
     end
   end
 
