@@ -388,6 +388,7 @@ if System.get_env("LOGFLARE_OTEL_ENDPOINT") do
   config :opentelemetry,
     sdk_disabled: false,
     traces_exporter: :otlp,
+    resource: logflare_metadata,
     sampler:
       {:parent_based,
        %{
