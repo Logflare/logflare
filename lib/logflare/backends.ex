@@ -623,16 +623,14 @@ defmodule Logflare.Backends do
   end
 
   @doc """
-  Ensures that a the SourceSup is started. Only returns error tuple if not alreadt started
+  Ensures that a the SourceSup is started.
   """
-  @spec ensure_source_sup_started(Source.t()) :: :ok | {:error, term()}
+  @spec ensure_source_sup_started(Source.t()) :: :ok
   def ensure_source_sup_started(%Source{} = source) do
     if source_sup_started?(source) == false do
       case start_source_sup(source) do
         :ok -> :ok
-        {:ok, _pid} -> :ok
         {:error, :already_started} -> :ok
-        {:error, _} = err -> err
       end
     else
       :ok
@@ -726,7 +724,11 @@ defmodule Logflare.Backends do
   Caches total buffer len. Includes ingested events that are awaiting cleanup.
   """
   @spec cache_local_buffer_lens(non_neg_integer(), non_neg_integer() | nil) ::
-          {:ok, %{len: non_neg_integer(), queues: map()}}
+          {:ok,
+           %{
+             len: non_neg_integer(),
+             queues: [{Logflare.Backends.IngestEventQueue.table_key(), non_neg_integer()}]
+           }}
   def cache_local_buffer_lens(source_id, backend_id \\ nil) do
     queues = IngestEventQueue.list_counts({source_id, backend_id})
 
@@ -739,9 +741,9 @@ defmodule Logflare.Backends do
   end
 
   @doc """
-  Get local pending buffer len of a source/backend combination
+  Get local pending buffer len of a source/backend combination.
   """
-  @spec cached_local_pending_buffer_len(Source.t(), Backend.t() | nil) :: non_neg_integer()
+  @spec cached_local_pending_buffer_len(Source.t(), Backend.t() | nil) :: map()
   def cached_local_pending_buffer_len(source_id, backend_id \\ nil) when is_integer(source_id) do
     PubSubRates.Cache.get_local_buffer(source_id, backend_id)
   end
@@ -804,22 +806,6 @@ defmodule Logflare.Backends do
     :telemetry.execute(
       [:logflare, :logs, :ingest_logs],
       %{rejected: true},
-      %{source_id: le.source.id, source_token: le.source.token}
-    )
-  end
-
-  defp do_telemetry(:buffer_full, le) do
-    :telemetry.execute(
-      [:logflare, :logs, :ingest_logs],
-      %{buffer_full: true},
-      %{source_id: le.source.id, source_token: le.source.token}
-    )
-  end
-
-  defp do_telemetry(:unknown_error, le) do
-    :telemetry.execute(
-      [:logflare, :logs, :ingest_logs],
-      %{unknown_error: true},
       %{source_id: le.source.id, source_token: le.source.token}
     )
   end
