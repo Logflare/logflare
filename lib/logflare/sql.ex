@@ -89,7 +89,7 @@ defmodule Logflare.Sql do
           query :: input(),
           user_or_user_id :: User.t() | pos_integer() | nil
         ) ::
-          {:ok, String.t()}
+          {:ok, String.t()} | {:error, String.t()}
   def transform(lang, input, user_id) when is_integer(user_id) do
     user = Logflare.Users.get(user_id)
     transform(lang, input, user)
