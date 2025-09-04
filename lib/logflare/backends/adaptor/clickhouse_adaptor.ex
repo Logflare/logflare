@@ -520,15 +520,12 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
     # Only add the backend-based query pool if it's not already running
     # This is to cover for adding multiple default ingest sources to the same backend
     children =
-      case ConnectionManager.connection_pool_via(backend) do
-        {:via, Registry, {_, _}} = via ->
-          case GenServer.whereis(via) do
-            nil ->
-              [ConnectionManager.child_spec({backend, query_ch_opts}) | children]
-
-            _pid ->
-              children
-          end
+      with {:via, Registry, {_, _}} = via <- ConnectionManager.connection_pool_via(backend),
+           {:ok, _pid} <- GenServer.whereis(via) do
+        children
+      else
+        _ ->
+          [ConnectionManager.child_spec({backend, query_ch_opts}) | children]
       end
 
     Supervisor.init(children, strategy: :one_for_one)
