@@ -99,24 +99,11 @@ defmodule Logflare.ContextCache.Supervisor do
                password: password,
                tcp_opts: socket_options
              },
-             fetch_current_wal_lsn: &fetch_current_wal_lsn/0,
-             wal_flush_timeout: 30_000,
              slot: slot,
              wal_position: {"0", "0"},
              publications: publications
            ]
          ]}
     }
-  end
-
-  defp fetch_current_wal_lsn() do
-    case Repo.query("SELECT pg_current_wal_lsn()::text", []) do
-      {:ok, %Postgrex.Result{rows: [[lsn]]}} ->
-        Cainophile.Adapters.Postgres.EpgsqlImplementation.parse_lsn_string(lsn)
-
-      {:error, err} ->
-        Logger.error("Error fetching current WAL LSN: #{inspect(err)}")
-        {:error, :no_result}
-    end
   end
 end
