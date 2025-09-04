@@ -219,15 +219,15 @@ defmodule Logflare.Telemetry do
         description: "Top ETS tables by size, grouped by name"
       ),
       sum("logflare.backends.ingest.count",
-        tags: [:backend_type, :source_id],
+        tags: [:backend_type],
         description: "Ingest counts by backend type"
       ),
       sum("logflare.backends.clickhouse.ingest.count",
-        tags: [:source_id, :backend_id],
+        tags: [],
         description: "ClickHouse ingest counts by source id"
       ),
       distribution("logflare.backends.ingest.dispatch.stop.duration",
-        tags: [:backend_type, :source_id, :backend_id],
+        tags: [:backend_type],
         unit: {:native, :millisecond},
         description: "Ingest dispatch latency by backend type"
       )

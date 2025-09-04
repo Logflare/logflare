@@ -512,11 +512,7 @@ defmodule Logflare.Backends do
 
   # send to a specific backend
   defp dispatch_to_backends(source, %Backend{} = backend, log_events) do
-    telemetry_metadata = %{
-      backend_type: backend.type,
-      source_id: source.id,
-      backend_id: backend.id
-    }
+    telemetry_metadata = %{backend_type: backend.type}
 
     :telemetry.span([:logflare, :backends, :ingest, :dispatch], telemetry_metadata, fn ->
       log_events = maybe_pre_ingest(source, backend, log_events)
@@ -525,7 +521,7 @@ defmodule Logflare.Backends do
       :telemetry.execute(
         [:logflare, :backends, :ingest, :count],
         %{count: length(log_events)},
-        %{backend_type: backend.type, source_id: source.id}
+        %{backend_type: backend.type}
       )
 
       {:ok, telemetry_metadata}
@@ -537,11 +533,7 @@ defmodule Logflare.Backends do
 
     for backend <- [nil | backends] do
       if backend do
-        telemetry_metadata = %{
-          backend_type: backend.type,
-          source_id: source.id,
-          backend_id: backend.id
-        }
+        telemetry_metadata = %{backend_type: backend.type}
 
         :telemetry.span([:logflare, :backends, :ingest, :dispatch], telemetry_metadata, fn ->
           log_events = maybe_pre_ingest(source, backend, log_events)
@@ -550,7 +542,7 @@ defmodule Logflare.Backends do
           :telemetry.execute(
             [:logflare, :backends, :ingest, :count],
             %{count: length(log_events)},
-            %{backend_type: backend.type, source_id: source.id}
+            %{backend_type: backend.type}
           )
 
           {:ok, telemetry_metadata}

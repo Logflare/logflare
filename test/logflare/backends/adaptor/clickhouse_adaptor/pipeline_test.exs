@@ -104,10 +104,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.PipelineTest do
       assert result == messages
 
       assert_receive {:telemetry_event, [:logflare, :backends, :clickhouse, :ingest, :count],
-                      %{count: 2}, telemetry_metadata}
-
-      assert telemetry_metadata.source_id == source.id
-      assert telemetry_metadata.backend_id == backend.id
+                      %{count: 2}, %{}}
 
       Process.sleep(200)
 

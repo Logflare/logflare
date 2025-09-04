@@ -567,7 +567,6 @@ defmodule Logflare.BackendsTest do
       assert_receive {:telemetry_event, [:logflare, :backends, :ingest, :count],
                       %{count: ^log_count}, telemetry_metadata}
 
-      assert telemetry_metadata.source_id == source.id
       assert telemetry_metadata.backend_type == :postgres
     end
   end
