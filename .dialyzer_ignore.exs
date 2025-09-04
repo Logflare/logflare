@@ -64,7 +64,6 @@
   {"lib/logflare/endpoints/query.ex", :no_return},
   {"lib/logflare/google/bigquery/bigquery.ex", :no_return},
   {"lib/logflare/google/bigquery/bigquery.ex", :call},
-  {"lib/logflare/google/bigquery/gen_utils.ex", :unknown_type},
   {"lib/logflare/google/cloud_resource_manager.ex", :call},
   {"lib/logflare/google/cloud_resource_manager.ex", :pattern_match},
   {"lib/logflare/google/cloud_resource_manager.ex", :no_return},

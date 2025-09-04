@@ -317,7 +317,7 @@ defmodule Logflare.Google.BigQuery.GenUtils do
 
   # copy over runtime adapter building from Tesla.client/2
   # https://github.com/elixir-tesla/tesla/blob/v1.7.0/lib/tesla/builder.ex#L206
-  @spec build_tesla_adapter_call(term()) :: Tesla.Adapter.t()
+  @spec build_tesla_adapter_call(term()) :: Tesla.Env.runtime()
   defp build_tesla_adapter_call(:ingest) do
     Tesla.client(
       [],
