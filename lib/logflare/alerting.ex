@@ -5,9 +5,6 @@ defmodule Logflare.Alerting do
 
   import Ecto.Query, warn: false
 
-  require Logger
-  require OpenTelemetry.Tracer
-
   alias Logflare.Alerting.AlertQuery
   alias Logflare.Alerting.AlertsScheduler
   alias Logflare.Backends
@@ -20,6 +17,12 @@ defmodule Logflare.Alerting do
   alias Logflare.Repo
   alias Logflare.User
   alias Logflare.Utils
+
+  require Logger
+  require OpenTelemetry.Tracer
+
+  def to_job_name(%AlertQuery{id: id}), do: to_job_name(id)
+  def to_job_name(id) when is_integer(id), do: String.to_atom(Integer.to_string(id))
 
   @doc """
   Returns the list of alert_queries.
@@ -155,19 +158,19 @@ defmodule Logflare.Alerting do
   Retrieves a Job based on AlertQuery.
   Job shares the same id as AlertQuery, resulting in a 1-1 relationship.
   """
-  @spec get_alert_job(AlertQuery.t()) :: Citrine.Job.t()
+  @spec get_alert_job(AlertQuery.t()) :: Quantum.Job.t()
   def get_alert_job(%AlertQuery{id: id}), do: get_alert_job(id)
 
   def get_alert_job(id) do
     on_scheduler_node(fn ->
-      AlertsScheduler.find_job(Integer.to_string(id))
+      AlertsScheduler.find_job(to_job_name(id))
     end)
   end
 
   @doc """
-  Updates or creates a new Citrine.Job based on a given AlertQuery
+  Updates or creates a new Quantum.Job based on a given AlertQuery.
   """
-  @spec upsert_alert_job(AlertQuery.t()) :: {:ok, Citrine.Job.t()}
+  @spec upsert_alert_job(AlertQuery.t()) :: {:ok, Quantum.Job.t()}
   def upsert_alert_job(%AlertQuery{} = alert_query) do
     job = create_alert_job_struct(alert_query)
     :ok = on_scheduler_node(fn -> AlertsScheduler.add_job(job) end)
@@ -182,7 +185,7 @@ defmodule Logflare.Alerting do
     AlertsScheduler.new_job(run_strategy: Quantum.RunStrategy.Local)
     |> Quantum.Job.set_task({__MODULE__, :run_alert, [alert_query, :scheduled]})
     |> Quantum.Job.set_schedule(Crontab.CronExpression.Parser.parse!(alert_query.cron))
-    |> Quantum.Job.set_name(Integer.to_string(alert_query.id))
+    |> Quantum.Job.set_name(to_job_name(alert_query))
   end
 
   @doc """
@@ -225,7 +228,7 @@ defmodule Logflare.Alerting do
       {:ok, job}
     else
       # alert query does not exist, maybe remove from scheduler
-      job = AlertsScheduler.find_job(Integer.to_string(alert_id))
+      job = AlertsScheduler.find_job(to_job_name(alert_id))
 
       if job do
         AlertsScheduler.delete_job(job.name)
@@ -337,12 +340,13 @@ defmodule Logflare.Alerting do
   :ok
   ```
   """
-  @spec delete_alert_job(AlertQuery.t() | number()) :: :ok
+  @spec delete_alert_job(AlertQuery.t() | number()) ::
+          {:ok, Quantum.Job.t()} | {:error, :not_found}
   def delete_alert_job(%AlertQuery{id: id}), do: delete_alert_job(id)
 
   def delete_alert_job(alert_id) when is_integer(alert_id) do
     on_scheduler_node(fn ->
-      case AlertsScheduler.find_job(Integer.to_string(alert_id)) do
+      case AlertsScheduler.find_job(to_job_name(alert_id)) do
         %_{} = job ->
           AlertsScheduler.delete_job(job.name)
           {:ok, job}

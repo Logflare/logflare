@@ -6,6 +6,7 @@ defmodule Logflare.LqlTest do
   alias Logflare.Lql
   alias Logflare.Lql.Rules.FilterRule
   alias Logflare.Lql.Rules.SelectRule
+  alias Logflare.Lql.Rules.ChartRule
   alias Logflare.Sources.Source.BigQuery.SchemaBuilder
 
   describe "apply_filter_rules/3" do
@@ -260,6 +261,27 @@ defmodule Logflare.LqlTest do
       result_query = Lql.apply_rules(query, [])
 
       assert result_query == query
+    end
+  end
+
+  describe "chart rule parsing" do
+    alias Logflare.Lql.Parser
+
+    test "parses chart aggregations correctly" do
+      test_cases = [
+        {"c:count(host)", "host", :count, :minute},
+        {"c:group_by(t::minute)", "timestamp", :count, :minute},
+        {"c:count(host) c:group_by(t::minute)", "host", :count, :minute},
+        {"c:avg(m.latency) c:group_by(t::hour)", "metadata.latency", :avg, :hour},
+        {"c:sum(my_field.nested.value)", "my_field.nested.value", :sum, :minute},
+        {"c:max(request.headers.content_length) c:group_by(t::day)",
+         "request.headers.content_length", :max, :day}
+      ]
+
+      for {query, path, aggregate, period} <- test_cases do
+        {:ok, [rule]} = Parser.parse(query)
+        assert %ChartRule{path: ^path, aggregate: ^aggregate, period: ^period} = rule
+      end
     end
   end
 end

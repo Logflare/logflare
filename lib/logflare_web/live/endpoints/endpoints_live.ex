@@ -233,6 +233,7 @@ defmodule LogflareWeb.EndpointsLive do
       socket
       |> assign(:endpoint_changeset, changeset)
       |> assign(:selected_backend_id, selected_backend_id)
+      |> assign_determined_language()
 
     {:noreply, socket}
   end
@@ -304,10 +305,12 @@ defmodule LogflareWeb.EndpointsLive do
       end
 
     show_backend_selection? = flag_enabled? and length(backends) > 0
+    determined_language = get_current_endpoint_language(socket)
 
     socket
     |> assign(:backends, backends)
     |> assign(:show_backend_selection, show_backend_selection?)
+    |> assign(:determined_language, determined_language)
   end
 
   defp get_current_endpoint_language(%{assigns: assigns}) do
@@ -315,6 +318,11 @@ defmodule LogflareWeb.EndpointsLive do
       nil -> :bq_sql
       backend_id -> Endpoints.derive_language_from_backend_id(backend_id)
     end
+  end
+
+  defp assign_determined_language(socket) do
+    determined_language = get_current_endpoint_language(socket)
+    assign(socket, :determined_language, determined_language)
   end
 
   defp upsert_query(show_endpoint, user, params) do
@@ -328,4 +336,9 @@ defmodule LogflareWeb.EndpointsLive do
     do: """
     select timestamp, event_message from YourApp.SourceName
     """
+
+  defp format_query_language(:bq_sql), do: "BigQuery SQL"
+  defp format_query_language(:ch_sql), do: "ClickHouse SQL"
+  defp format_query_language(:pg_sql), do: "Postgres SQL"
+  defp format_query_language(language), do: language |> to_string() |> String.upcase()
 end

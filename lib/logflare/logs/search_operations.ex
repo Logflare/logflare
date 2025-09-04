@@ -98,16 +98,6 @@ defmodule Logflare.Logs.SearchOperations do
       ListUtils.at_least?(so.chart_rules, 2) ->
         SearchUtils.halt(so, "Only one chart rule can be used in a query")
 
-      match?([_], so.chart_rules) and
-        hd(so.chart_rules).value_type not in ~w[integer float]a and
-          hd(so.chart_rules).path != "timestamp" ->
-        chart_rule = hd(so.chart_rules)
-
-        msg =
-          "Can't aggregate on a non-numeric field type '#{chart_rule.value_type}' for path #{chart_rule.path}. Check the source schema for the field used with chart operator."
-
-        SearchUtils.halt(so, msg)
-
       Timex.diff(max_ts, min_ts, chart_period) == 0 and chart_period != :second ->
         msg =
           "Selected chart period #{chart_period} is longer than the timestamp filter interval. Please select a shorter chart period."
@@ -435,10 +425,19 @@ defmodule Logflare.Logs.SearchOperations do
             |> List.last()
             |> String.to_existing_atom()
 
+          # Only create UNNEST joins for nested fields (containing ".")
+          # Top-level fields should reference the base table directly
+          is_nested_field = String.contains?(p, ".")
+
           q =
-            query
-            |> Lql.handle_nested_field_access(p)
-            |> select_merge_agg_value(agg, last_chart_field)
+            if is_nested_field do
+              query
+              |> Lql.handle_nested_field_access(p)
+              |> select_merge_agg_value(agg, last_chart_field, :joined_table)
+            else
+              query
+              |> select_merge_agg_value(agg, last_chart_field, :base_table)
+            end
 
           Enum.reduce(filter_rules, q, fn
             %FilterRule{
