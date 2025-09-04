@@ -218,11 +218,11 @@ defmodule Logflare.Telemetry do
         tags: [:name],
         description: "Top ETS tables by size, grouped by name"
       ),
-      counter("logflare.backends.ingest.count",
+      sum("logflare.backends.ingest.count",
         tags: [:backend_type, :source_id],
         description: "Ingest counts by backend type"
       ),
-      counter("logflare.backends.clickhouse.ingest.count",
+      sum("logflare.backends.clickhouse.ingest.count",
         tags: [:source_id, :backend_id],
         description: "ClickHouse ingest counts by source id"
       ),
