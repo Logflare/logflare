@@ -248,7 +248,7 @@ defmodule Logflare.EndpointsTest do
     end
 
     test "run_query/1 applies PII redaction based on redact_pii flag" do
-      expect(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, 1, fn _conn, _proj_id, _opts ->
+      expect(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, 2, fn _conn, _proj_id, _opts ->
         {:ok,
          TestUtils.gen_bq_response([
            %{"ip" => "192.168.1.1", "message" => "User 10.0.0.1 logged in"}
@@ -261,7 +261,7 @@ defmodule Logflare.EndpointsTest do
       endpoint =
         insert(:endpoint,
           user: user,
-          query: "select ip, message from logs",
+          query: "select '1.2.3.4' as ip",
           redact_pii: true
         )
 
@@ -272,7 +272,7 @@ defmodule Logflare.EndpointsTest do
       endpoint =
         insert(:endpoint,
           user: user,
-          query: "select ip, message from logs",
+          query: "select 'test' as ip",
           redact_pii: false
         )
 
@@ -290,7 +290,7 @@ defmodule Logflare.EndpointsTest do
       endpoint =
         insert(:endpoint,
           user: user,
-          query: "select ip from logs",
+          query: "select '1.2.3.4' as ip",
           redact_pii: true,
           # Disable caching to ensure fresh query
           cache_duration_seconds: 0
