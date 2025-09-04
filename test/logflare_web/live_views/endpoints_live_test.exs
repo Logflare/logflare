@@ -481,4 +481,44 @@ defmodule LogflareWeb.EndpointsLiveTest do
       assert has_element?(view, "#query-language", "ClickHouse SQL")
     end
   end
+
+  describe "PII redaction" do
+    test "PII redaction toggles in query display", %{conn: conn, user: user} do
+      endpoint =
+        insert(:endpoint,
+          user: user,
+          query: "select '192.168.1.1' as ip, 'User from 10.0.0.1' as message",
+          redact_pii: true
+        )
+
+      {:ok, view, _html} = live(conn, "/endpoints/#{endpoint.id}")
+
+      # Verify redaction is enabled and IPs are redacted
+      assert render(view) =~ ~r/redact PII:.*enabled/
+      visible_code = view |> element("div.tw-w-full.tw-bg-zinc-800 code") |> render()
+      assert visible_code =~ "REDACTED"
+      refute visible_code =~ "192.168.1.1"
+
+      # Toggle PII redaction off and verify IPs are visible
+      view |> element(".subhead a", "edit") |> render_click()
+      view |> element("form#endpoint") |> render_submit(%{endpoint: %{redact_pii: false}})
+
+      assert render(view) =~ ~r/redact PII:.*disabled/
+      visible_code = view |> element("div.tw-w-full.tw-bg-zinc-800 code") |> render()
+      assert visible_code =~ "192.168.1.1"
+    end
+
+    test "PII redaction state updates during form validation", %{conn: conn, user: user} do
+      endpoint = insert(:endpoint, user: user, query: "select '192.168.1.1' as ip", redact_pii: false)
+      {:ok, view, _html} = live(conn, "/endpoints/#{endpoint.id}/edit")
+
+      # Enable PII redaction and save
+      view |> element("form#endpoint") |> render_submit(%{endpoint: %{redact_pii: true}})
+
+      # Verify redaction is applied
+      assert render(view) =~ ~r/redact PII:.*enabled/
+      visible_code = view |> element("div.tw-w-full.tw-bg-zinc-800 code") |> render()
+      assert visible_code =~ "REDACTED"
+    end
+  end
 end

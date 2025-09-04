@@ -75,7 +75,7 @@
     <div class="collapse" id="collapseExample">
       <div class="card card-body">
         <code class="tw-whitespace-pre-wrap">
-          <%= @parsed_result.expanded_query %>
+          <%= maybe_redact_query(@parsed_result.expanded_query, @redact_pii) %>
         </code>
       </div>
     </div>
