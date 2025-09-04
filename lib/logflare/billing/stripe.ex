@@ -214,7 +214,8 @@ defmodule Logflare.Billing.Stripe do
   end
 
   def list_payment_methods(id) do
-    Stripe.PaymentMethod.list(%{customer: id, type: :card})
+    # TODO: once we upgrade to v3 of :stripity_stripe we should revert the type to atom :card
+    Stripe.PaymentMethod.list(%{customer: id, type: "card"})
   end
 
   def delete_subscription(id) do

@@ -219,7 +219,7 @@ defmodule Logflare.Billing do
   end
 
   @doc "Deletes multiple payment_methods matching a keyword"
-  @spec delete_all_payment_methods_by(keyword()) :: {integer(), nil}
+  @spec delete_all_payment_methods_by(keyword()) :: {non_neg_integer(), nil}
   def delete_all_payment_methods_by(kv), do: Repo.delete_all(from pm in PaymentMethod, where: ^kv)
 
   @doc "Deletes PaymentMethod both in db and stripe. User must have minimally 1 payment method"
@@ -248,8 +248,9 @@ defmodule Logflare.Billing do
     PaymentMethod.changeset(payment_method, attrs)
   end
 
-  @doc "Syncs db PaymentMethod with stripe as a souce of truth"
-  @spec sync_payment_methods(String.t()) :: {:ok, [PaymentMethod.t()]}
+  @doc "Syncs db PaymentMethod with Stripe as a source of truth."
+  @spec sync_payment_methods(String.t()) ::
+          {:ok, [PaymentMethod.t()]} | {:error, Stripe.Error.t()}
   def sync_payment_methods(cust_id) do
     with {:ok, %Stripe.List{data: stripe_payment_methods}} <-
            Billing.Stripe.list_payment_methods(cust_id),

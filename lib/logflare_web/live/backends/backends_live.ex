@@ -317,10 +317,19 @@ defmodule LogflareWeb.BackendsLive do
         []
       end
 
+    # Calculate available sources for the dropdown (excluding already associated ones)
+    available_sources =
+      socket.assigns.sources
+      |> Enum.filter(& &1.default_ingest_backend_enabled?)
+      |> Enum.reject(fn source ->
+        Enum.any?(default_ingest_sources, &(&1.id == source.id))
+      end)
+
     socket
     |> assign(:backend, backend)
     |> assign(:form_type, Atom.to_string(backend.type))
     |> assign(:default_ingest_sources, default_ingest_sources)
+    |> assign(:available_sources, available_sources)
   end
 
   defp transform_params(params) do

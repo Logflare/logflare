@@ -1,14 +1,16 @@
 defmodule Logflare.Billing.BillingCount do
   @moduledoc false
-  use Ecto.Schema
+  use TypedEctoSchema
 
   import Ecto.Changeset
 
-  schema "billing_counts" do
+  typed_schema "billing_counts" do
     field :count, :integer
     field :node, :string
+
     belongs_to :user, Logflare.User
     belongs_to :source, Logflare.Sources.Source
+
     timestamps()
   end
 

@@ -34,7 +34,7 @@
     Sources configured to use this backend as a default ingest destination.
   </p>
 
-  <div>
+  <div :if={not Enum.empty?(@available_sources || [])}>
     <.button phx-click="toggle_default_ingest_form" variant="secondary">
       <%= if @show_default_ingest_form? do %>
         Cancel
@@ -47,7 +47,7 @@
   <.form :let={f} :if={@show_default_ingest_form?} id="default_ingest" for={%{}} as={:default_ingest} action="#" phx-submit="save_default_ingest">
     <div class="form-group">
       <%= label(f, :source_id, "Source") %>
-      <%= select(f, :source_id, Enum.filter(@sources, & &1.default_ingest_backend_enabled?) |> Enum.map(fn s -> {s.name, s.id} end),
+      <%= select(f, :source_id, Enum.map(@available_sources || [], fn s -> {s.name, s.id} end),
         class: "form-control",
         prompt: [key: "Choose a source"]
       ) %>
