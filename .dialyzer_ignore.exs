@@ -1,11 +1,6 @@
 [
-  {"lib/logflare/alerting.ex", :apply},
-  {"lib/logflare/alerting.ex", :pattern_match},
   {"lib/logflare/alerting.ex", :no_return},
-  {"lib/logflare/alerting.ex", :call},
   {"lib/logflare/alerting.ex", :unused_fun},
-  {"lib/logflare/alerting.ex", :unknown_type},
-  {"lib/logflare/alerting/alert_query.ex", :apply},
   {"lib/logflare/application.ex", :pattern_match_cov},
   {"lib/logflare/auth.ex", :unknown_type},
   {"lib/logflare/auth/cache.ex", :unknown_type},
