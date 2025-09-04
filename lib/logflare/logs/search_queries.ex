@@ -63,47 +63,92 @@ defmodule Logflare.Logs.SearchQueries do
   end
 
   @spec select_merge_agg_value(any, :avg | :count | :sum | :max, atom()) :: Ecto.Query.t()
+  @spec select_merge_agg_value(
+          any,
+          :avg | :count | :sum | :max,
+          atom(),
+          :base_table | :joined_table
+        ) :: Ecto.Query.t()
   def select_merge_agg_value(query, :count, :timestamp) do
     select_merge(query, [t, ...], %{
       value: fragment("COUNT(?) as value", t.timestamp)
     })
   end
 
-  def select_merge_agg_value(query, chart_aggregate, last_chart_field) do
-    case chart_aggregate do
-      :sum ->
+  # Chart aggregations - single function handling both table types
+  def select_merge_agg_value(query, chart_aggregate, last_chart_field, table_type) do
+    case {chart_aggregate, table_type} do
+      {:sum, :base_table} ->
+        select_merge(query, [t, ...], %{
+          value: fragment("SUM(?) as value", field(t, ^last_chart_field))
+        })
+
+      {:sum, :joined_table} ->
         select_merge(query, [..., l], %{
           value: fragment("SUM(?) as value", field(l, ^last_chart_field))
         })
 
-      :avg ->
+      {:avg, :base_table} ->
+        select_merge(query, [t, ...], %{
+          value: fragment("AVG(?) as value", field(t, ^last_chart_field))
+        })
+
+      {:avg, :joined_table} ->
         select_merge(query, [..., l], %{
           value: fragment("AVG(?) as value", field(l, ^last_chart_field))
         })
 
-      :count ->
+      {:count, :base_table} ->
+        select_merge(query, [t, ...], %{
+          value: fragment("COUNT(?) as value", field(t, ^last_chart_field))
+        })
+
+      {:count, :joined_table} ->
         select_merge(query, [..., l], %{
           value: fragment("COUNT(?) as value", field(l, ^last_chart_field))
         })
 
-      :max ->
+      {:max, :base_table} ->
+        select_merge(query, [t, ...], %{
+          value: fragment("MAX(?) as value", field(t, ^last_chart_field))
+        })
+
+      {:max, :joined_table} ->
         select_merge(query, [..., l], %{
           value: fragment("MAX(?) as value", field(l, ^last_chart_field))
         })
 
-      :p50 ->
+      {:p50, :base_table} ->
+        select_merge(query, [t, ...], %{
+          value:
+            fragment("APPROX_QUANTILES(?, 100)[OFFSET(50)] as value", field(t, ^last_chart_field))
+        })
+
+      {:p50, :joined_table} ->
         select_merge(query, [..., l], %{
           value:
             fragment("APPROX_QUANTILES(?, 100)[OFFSET(50)] as value", field(l, ^last_chart_field))
         })
 
-      :p95 ->
+      {:p95, :base_table} ->
+        select_merge(query, [t, ...], %{
+          value:
+            fragment("APPROX_QUANTILES(?, 100)[OFFSET(95)] as value", field(t, ^last_chart_field))
+        })
+
+      {:p95, :joined_table} ->
         select_merge(query, [..., l], %{
           value:
             fragment("APPROX_QUANTILES(?, 100)[OFFSET(95)] as value", field(l, ^last_chart_field))
         })
 
-      :p99 ->
+      {:p99, :base_table} ->
+        select_merge(query, [t, ...], %{
+          value:
+            fragment("APPROX_QUANTILES(?, 100)[OFFSET(99)] as value", field(t, ^last_chart_field))
+        })
+
+      {:p99, :joined_table} ->
         select_merge(query, [..., l], %{
           value:
             fragment("APPROX_QUANTILES(?, 100)[OFFSET(99)] as value", field(l, ^last_chart_field))

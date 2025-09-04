@@ -212,7 +212,11 @@ defmodule Logflare.Lql.Parser.Combinators do
     |> unwrap_and_tag(:aggregate)
     |> ignore(string("("))
     |> concat(
-      choice([string("*") |> replace("timestamp") |> unwrap_and_tag(:path), metadata_field()])
+      choice([
+        string("*") |> replace("timestamp") |> unwrap_and_tag(:path),
+        metadata_field(),
+        any_field()
+      ])
     )
     |> ignore(string(")"))
   end
