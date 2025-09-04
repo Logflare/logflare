@@ -40,13 +40,13 @@ npm-debug.log
 /config/secrets
 
 # Local secrets
-
 gcloud.json
 gcloud_staging.json
 gcloud_prod.json
-# IDEs
 
+# IDEs
 /.elixir_ls/
+/.expert/
 /.idea/
 /assets/.idea
 
