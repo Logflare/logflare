@@ -1,14 +1,16 @@
-defmodule Logflare.Source.EmailNotificationServer do
+defmodule Logflare.Sources.Source.EmailNotificationServer do
   @moduledoc false
   use GenServer
 
-  require Logger
-
-  alias Logflare.{Sources, Users, TeamUsers}
-  alias Logflare.Sources.Counters
   alias Logflare.AccountEmail
-  alias Logflare.Mailer
   alias Logflare.Backends
+  alias Logflare.Mailer
+  alias Logflare.Sources
+  alias Logflare.Sources.Counters
+  alias Logflare.TeamUsers
+  alias Logflare.Users
+
+  require Logger
 
   def start_link(args) do
     source = Keyword.get(args, :source)

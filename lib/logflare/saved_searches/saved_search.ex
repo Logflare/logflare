@@ -1,7 +1,7 @@
 defmodule Logflare.SavedSearch do
   @moduledoc false
   use TypedEctoSchema
-  alias Logflare.Source
+  alias Logflare.Sources.Source
   import Ecto.Changeset
 
   typed_schema "saved_searches" do

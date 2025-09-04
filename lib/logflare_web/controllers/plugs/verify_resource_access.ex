@@ -6,7 +6,7 @@ defmodule LogflareWeb.Plugs.VerifyResourceAccess do
   Also checks any API scopes that are set.
   If no resource is set, performs a passthrough.
   """
-  alias Logflare.Source
+  alias Logflare.Sources.Source
   alias Logflare.Endpoints.Query
   alias Logflare.User
   alias Logflare.Auth

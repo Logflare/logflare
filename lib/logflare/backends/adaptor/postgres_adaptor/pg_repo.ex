@@ -11,7 +11,7 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor.PgRepo do
   alias Logflare.Backends.Adaptor.PostgresAdaptor.PgLogEvent
   alias Logflare.Backends.Backend
   alias Logflare.LogEvent
-  alias Logflare.Source
+  alias Logflare.Sources.Source
   require Logger
 
   @doc """

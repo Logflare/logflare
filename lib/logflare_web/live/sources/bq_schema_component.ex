@@ -3,7 +3,7 @@ defmodule LogflareWeb.SourceBqSchemaComponent do
   use LogflareWeb, :live_component
   alias LogflareWeb.Helpers.BqSchema
   alias Logflare.SourceSchemas
-  alias Logflare.Source.BigQuery.SchemaBuilder
+  alias Logflare.Sources.Source.BigQuery.SchemaBuilder
 
   @impl true
   def render(%{source: source}) do

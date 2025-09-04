@@ -5,7 +5,7 @@ defmodule LogflareWeb.Auth.OauthController do
   plug Ueberauth
   require Logger
   alias Logflare.JSON
-  alias Logflare.Source
+  alias Logflare.Sources.Source
   alias Logflare.Repo
   alias LogflareWeb.AuthController
   alias Logflare.Alerting

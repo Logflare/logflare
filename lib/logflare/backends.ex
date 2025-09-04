@@ -21,7 +21,7 @@ defmodule Logflare.Backends do
   alias Logflare.PubSubRates
   alias Logflare.Repo
   alias Logflare.SingleTenant
-  alias Logflare.Source
+  alias Logflare.Sources.Source
   alias Logflare.Sources
   alias Logflare.Sources.Counters
   alias Logflare.SystemMetrics

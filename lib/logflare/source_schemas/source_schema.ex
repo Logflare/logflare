@@ -1,6 +1,7 @@
 defmodule Logflare.SourceSchemas.SourceSchema do
   @moduledoc false
   use Ecto.Schema
+
   import Ecto.Changeset
 
   alias Logflare.Utils
@@ -9,7 +10,7 @@ defmodule Logflare.SourceSchemas.SourceSchema do
     field :bigquery_schema, Ecto.Term
     field :schema_flat_map, Ecto.Term
 
-    belongs_to :source, Logflare.Source
+    belongs_to :source, Logflare.Sources.Source
 
     timestamps()
   end

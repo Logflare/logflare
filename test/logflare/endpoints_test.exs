@@ -441,4 +441,38 @@ defmodule Logflare.EndpointsTest do
       assert {:ok, %{rows: [%{"testing" => _}]}} = Endpoints.run_query(endpoint)
     end
   end
+
+  describe "derive_language_from_backend_id/1" do
+    test "returns `:bq_sql` for nil" do
+      assert Endpoints.derive_language_from_backend_id(nil) == :bq_sql
+    end
+
+    test "returns `:bq_sql` for empty string" do
+      assert Endpoints.derive_language_from_backend_id("") == :bq_sql
+    end
+
+    test "returns `:bq_sql` for invalid string" do
+      assert Endpoints.derive_language_from_backend_id("invalid") == :bq_sql
+    end
+
+    test "returns `:bq_sql` for non-existent backend id" do
+      assert Endpoints.derive_language_from_backend_id(999_999) == :bq_sql
+    end
+
+    test "returns correct language for an existing backend" do
+      user = insert(:user)
+      backend = insert(:backend, user: user, type: :clickhouse)
+
+      assert Endpoints.derive_language_from_backend_id(backend.id) == :ch_sql
+      assert Endpoints.derive_language_from_backend_id(to_string(backend.id)) == :ch_sql
+    end
+
+    test "returns correct language for postgres backend" do
+      user = insert(:user)
+      backend = insert(:backend, user: user, type: :postgres)
+
+      # In supabase mode, postgres should return :bq_sql
+      assert Endpoints.derive_language_from_backend_id(backend.id) == :pg_sql
+    end
+  end
 end

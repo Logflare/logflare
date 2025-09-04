@@ -4,7 +4,7 @@ defmodule LogflareWeb.LogControllerTest do
   alias Logflare.Backends.Adaptor.WebhookAdaptor
   alias Logflare.SingleTenant
   alias Logflare.Users
-  alias Logflare.Source.V1SourceSup
+  alias Logflare.Sources.Source.V1SourceSup
   alias Logflare.Sources
   alias Logflare.SystemMetrics.AllLogsLogged
 

@@ -23,7 +23,7 @@ defmodule Logflare.Google.BigQuery do
   alias Logflare.Billing
   alias Logflare.Billing.Plan
   alias Logflare.TeamUsers
-  alias Logflare.Source.BigQuery.SchemaBuilder
+  alias Logflare.Sources.Source.BigQuery.SchemaBuilder
   alias Logflare.Utils.Tasks
 
   @type ok_err_tup :: {:ok, term} | {:error, term}

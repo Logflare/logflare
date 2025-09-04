@@ -1,10 +1,10 @@
-defmodule Logflare.Source.BillingWriter do
+defmodule Logflare.Sources.Source.BillingWriter do
   @moduledoc false
   use GenServer
 
   alias Logflare.Billing.BillingCounts
   alias Logflare.Billing
-  alias Logflare.Source.Data
+  alias Logflare.Sources.Source.Data
   alias Logflare.Backends
   alias Logflare.Users
 

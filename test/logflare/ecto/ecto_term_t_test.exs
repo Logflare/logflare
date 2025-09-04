@@ -40,9 +40,11 @@ defmodule Ecto.TermTest do
     end
 
     test "returns error for invalid binary or non-binary input" do
-      assert {:error, %ArgumentError{}} = Term.load("not a term binary")
-      assert {:error, %ArgumentError{}} = Term.load(123)
-      assert {:error, %ArgumentError{}} = Term.load([1, 2, 3])
+      assert {:error, "errors were found at the given arguments:" <> _rest} =
+               Term.load("not a term binary")
+
+      assert {:error, "errors were found at the given arguments:" <> _rest} = Term.load(123)
+      assert {:error, "errors were found at the given arguments:" <> _rest} = Term.load([1, 2, 3])
     end
   end
 

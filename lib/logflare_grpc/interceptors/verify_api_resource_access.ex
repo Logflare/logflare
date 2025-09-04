@@ -5,7 +5,7 @@ defmodule LogflareGrpc.Interceptors.VerifyApiResourceAccess do
   Assigns `source` to the stream.
   """
 
-  alias Logflare.Source
+  alias Logflare.Sources.Source
   alias Logflare.Sources
 
   alias LogflareWeb.Plugs.VerifyApiAccess

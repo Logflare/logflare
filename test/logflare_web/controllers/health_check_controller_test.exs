@@ -4,7 +4,7 @@ defmodule LogflareWeb.HealthCheckControllerTest do
   """
   use LogflareWeb.ConnCase
   alias Logflare.SingleTenant
-  alias Logflare.Source
+  alias Logflare.Sources.Source
 
   setup do
     Logflare.Google.BigQuery

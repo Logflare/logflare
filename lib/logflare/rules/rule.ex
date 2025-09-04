@@ -4,7 +4,7 @@ defmodule Logflare.Rules.Rule do
 
   import Ecto.Changeset
 
-  alias Logflare.Source
+  alias Logflare.Sources.Source
   alias Logflare.Backends.Backend
   alias Logflare.Lql.Parser
 

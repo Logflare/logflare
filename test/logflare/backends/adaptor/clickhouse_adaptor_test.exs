@@ -2,7 +2,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptorTest do
   use Logflare.DataCase, async: false
 
   alias Logflare.Backends.Adaptor.ClickhouseAdaptor
-  alias Logflare.Source
+  alias Logflare.Sources.Source
 
   doctest ClickhouseAdaptor
 

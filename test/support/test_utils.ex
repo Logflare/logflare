@@ -7,7 +7,7 @@ defmodule Logflare.TestUtils do
   alias GoogleApi.BigQuery.V2.Model.TableSchema
 
   alias Logflare.SingleTenant
-  alias Logflare.Source.BigQuery.SchemaBuilder
+  alias Logflare.Sources.Source.BigQuery.SchemaBuilder
 
   @doc """
   Configures the following `:logflare` env keys:

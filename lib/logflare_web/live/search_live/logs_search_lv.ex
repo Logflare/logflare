@@ -24,7 +24,7 @@ defmodule LogflareWeb.Source.SearchLV do
   alias LogflareWeb.Helpers.BqSchema, as: BqSchemaHelpers
   alias LogflareWeb.Router.Helpers, as: Routes
   alias LogflareWeb.SearchView
-  alias Logflare.Source.BigQuery.SchemaBuilder
+  alias Logflare.Sources.Source.BigQuery.SchemaBuilder
 
   require Logger
 

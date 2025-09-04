@@ -347,10 +347,10 @@ defmodule Logflare.AlertingTest do
       Alerting.sync_alert_jobs()
 
       TestUtils.retry_assert(fn ->
-        str_id = Integer.to_string(alert_id)
+        job_name = Alerting.to_job_name(alert_id)
 
         assert %Quantum.Job{
-                 name: ^str_id,
+                 name: ^job_name,
                  task: {Logflare.Alerting, :run_alert, [%AlertQuery{id: ^alert_id}, :scheduled]}
                } = Alerting.get_alert_job(alert_id)
       end)

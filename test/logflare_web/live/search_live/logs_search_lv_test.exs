@@ -2,15 +2,15 @@ defmodule LogflareWeb.Source.SearchLVTest do
   @moduledoc false
   use LogflareWeb.ConnCase, async: false
 
-  alias Logflare.Source
+  import Phoenix.LiveViewTest
+
+  alias Logflare.Sources.Source
   alias Logflare.SingleTenant
-  alias Logflare.Source.BigQuery.Schema
+  alias Logflare.Sources.Source.BigQuery.Schema
   alias LogflareWeb.Source.SearchLV
   alias Logflare.Backends
-  alias Logflare.Source.V1SourceSup
+  alias Logflare.Sources.Source.V1SourceSup
   alias Logflare.SystemMetrics.AllLogsLogged
-
-  import Phoenix.LiveViewTest
 
   @endpoint LogflareWeb.Endpoint
   @default_search_params %{

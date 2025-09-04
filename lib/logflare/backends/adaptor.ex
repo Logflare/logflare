@@ -10,7 +10,7 @@ defmodule Logflare.Backends.Adaptor do
   alias Logflare.Endpoints.Query
   alias Logflare.Backends.Backend
   alias Logflare.Backends.AdaptorSupervisor
-  alias Logflare.Source
+  alias Logflare.Sources.Source
 
   @type t :: module()
   @type query :: Query.t() | Ecto.Query.t() | String.t() | {String.t(), [term()]}

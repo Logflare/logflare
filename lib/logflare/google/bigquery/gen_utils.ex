@@ -3,8 +3,6 @@ defmodule Logflare.Google.BigQuery.GenUtils do
   Generic utils for BigQuery.
   """
 
-  require Logger
-
   import Ecto.Query
   import Logflare.Utils.Guards
 
@@ -12,10 +10,12 @@ defmodule Logflare.Google.BigQuery.GenUtils do
   alias Logflare.Backends.Adaptor.BigQueryAdaptor
   alias Logflare.JSON
   alias Logflare.Repo
-  alias Logflare.Source
   alias Logflare.Sources
+  alias Logflare.Sources.Source
   alias Logflare.User
   alias Logflare.Users
+
+  require Logger
 
   @default_dataset_location "US"
   @table_ttl 604_800_000
@@ -147,7 +147,7 @@ defmodule Logflare.Google.BigQuery.GenUtils do
 
   @spec get_account_id(source_id :: atom()) :: String.t()
   def get_account_id(source_id) when is_atom_value(source_id) do
-    %Logflare.Source{user_id: account_id} = Sources.Cache.get_by(token: source_id)
+    %Source{user_id: account_id} = Sources.Cache.get_by(token: source_id)
     "#{account_id}"
   end
 
@@ -317,7 +317,7 @@ defmodule Logflare.Google.BigQuery.GenUtils do
 
   # copy over runtime adapter building from Tesla.client/2
   # https://github.com/elixir-tesla/tesla/blob/v1.7.0/lib/tesla/builder.ex#L206
-  @spec build_tesla_adapter_call(term()) :: Tesla.Adapter.t()
+  @spec build_tesla_adapter_call(term()) :: Tesla.Env.runtime()
   defp build_tesla_adapter_call(:ingest) do
     Tesla.client(
       [],

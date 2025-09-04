@@ -84,7 +84,11 @@ defmodule Logflare.Sql do
     {:ok, "..."}
   """
   @typep input :: String.t() | {String.t(), String.t()}
-  @spec transform(query_language(), input(), User.t() | pos_integer()) ::
+  @spec transform(
+          language :: query_language(),
+          query :: input(),
+          user_or_user_id :: User.t() | pos_integer() | nil
+        ) ::
           {:ok, String.t()}
   def transform(lang, input, user_id) when is_integer(user_id) do
     user = Logflare.Users.get(user_id)
@@ -141,6 +145,11 @@ defmodule Logflare.Sql do
       |> do_transform(data)
       |> Parser.to_string()
     end
+  end
+
+  # Handle nil user case (e.g., during form validation)
+  def transform(language, query, nil) when language in [:ch_sql, :pg_sql, :bq_sql, nil] do
+    {:ok, query}
   end
 
   @doc """
@@ -760,7 +769,9 @@ defmodule Logflare.Sql do
     Regex.match?(regex, table_name)
   end
 
-  @spec source_mapping(sources :: [Logflare.Source.t()]) :: %{String.t() => Logflare.Source.t()}
+  @spec source_mapping(sources :: [Logflare.Sources.Source.t()]) :: %{
+          String.t() => Logflare.Sources.Source.t()
+        }
   defp source_mapping(sources) do
     for source <- sources, into: %{} do
       {source.name, source}

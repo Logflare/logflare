@@ -16,12 +16,14 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
   alias Logflare.Backends.IngestEventQueue
   alias Logflare.Billing
   alias Logflare.BqRepo
+  alias Logflare.Endpoints.Query
   alias Logflare.Google
   alias Logflare.Google.BigQuery.GenUtils
   alias Logflare.Google.CloudResourceManager
-  alias Logflare.Source.BigQuery.Pipeline
-  alias Logflare.Source.BigQuery.Schema
+  alias Logflare.Sources.Source.BigQuery.Pipeline
+  alias Logflare.Sources.Source.BigQuery.Schema
   alias Logflare.Sources
+  alias Logflare.User
   alias Logflare.Users
 
   @managed_service_account_partition_count 5
@@ -469,47 +471,83 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
     |> Finch.request(Logflare.FinchGoth, options)
   end
 
+  @spec build_bq_params(declared_params :: list(String.t()), input_params :: map()) :: list(map())
+  defp build_bq_params(declared_params, input_params) do
+    Enum.map(declared_params, fn input_name ->
+      %{
+        name: input_name,
+        parameterValue: %{value: input_params[input_name]},
+        parameterType: %{type: "STRING"}
+      }
+    end)
+  end
+
+  @spec build_base_query_opts(user :: User.t(), opts :: Keyword.t()) :: Keyword.t()
+  defp build_base_query_opts(%User{bigquery_dataset_location: bigquery_dataset_location}, opts) do
+    [
+      parameterMode: "NAMED",
+      location: bigquery_dataset_location,
+      use_query_cache: Keyword.get(opts, :use_query_cache, true),
+      dryRun: Keyword.get(opts, :dry_run, false)
+    ]
+  end
+
+  @spec execute_query_with_context(
+          user_id :: integer(),
+          query_string :: String.t(),
+          declared_params :: [String.t()],
+          input_params :: map(),
+          nil | Query.t(),
+          opts :: Keyword.t()
+        ) :: {:ok, Query.t()} | {:error, any()}
+  defp execute_query_with_context(user_id, query_string, declared_params, input_params, nil, opts) do
+    user = Users.get(user_id)
+    bq_params = build_bq_params(declared_params, input_params)
+    query_opts = build_base_query_opts(user, opts)
+
+    execute_query(user, query_string, bq_params, query_opts)
+  end
+
+  @spec execute_query_with_context(
+          user_id :: integer(),
+          query_string :: String.t(),
+          declared_params :: [String.t()],
+          input_params :: map(),
+          endpoint_query :: Query.t(),
+          opts :: Keyword.t()
+        ) :: {:ok, Query.t()} | {:error, any()}
   defp execute_query_with_context(
          user_id,
          query_string,
          declared_params,
          input_params,
-         endpoint_query,
+         %Query{} = endpoint_query,
          opts
        ) do
     user = Users.get(user_id)
-
-    bq_params =
-      Enum.map(declared_params, fn input_name ->
-        %{
-          name: input_name,
-          parameterValue: %{value: input_params[input_name]},
-          parameterType: %{type: "STRING"}
-        }
-      end)
-
-    query_opts = [
-      parameterMode: "NAMED",
-      location: user.bigquery_dataset_location,
-      use_query_cache: Keyword.get(opts, :use_query_cache, true),
-      dryRun: Keyword.get(opts, :dry_run, false)
-    ]
+    bq_params = build_bq_params(declared_params, input_params)
 
     query_opts =
-      if endpoint_query do
-        query_opts ++
-          [
-            maxResults: endpoint_query.max_limit,
-            labels:
-              Map.merge(
-                %{"endpoint_id" => endpoint_query.id},
-                endpoint_query.parsed_labels || %{}
-              )
-          ]
-      else
-        query_opts
-      end
+      build_base_query_opts(user, opts) ++
+        [
+          maxResults: endpoint_query.max_limit,
+          labels:
+            Map.merge(
+              %{"endpoint_id" => endpoint_query.id},
+              endpoint_query.parsed_labels || %{}
+            )
+        ]
 
+    execute_query(user, query_string, bq_params, query_opts)
+  end
+
+  @spec execute_query(
+          user :: User.t(),
+          query_string :: String.t(),
+          bq_params :: [map()],
+          query_opts :: Keyword.t()
+        ) :: {:ok, %{rows: [map()], total_bytes_processed: integer()}} | {:error, any()}
+  defp execute_query(%User{} = user, query_string, bq_params, query_opts) do
     case BqRepo.query_with_sql_and_params(
            user,
            user.bigquery_project_id || env_project_id(),
@@ -518,7 +556,6 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
            query_opts
          ) do
       {:ok, result} ->
-        # Return the full result with rows and metadata
         {:ok, %{rows: result.rows, total_bytes_processed: result.total_bytes_processed}}
 
       {:error, %{body: body}} ->

@@ -1,22 +1,21 @@
 defmodule Logflare.Billing do
   @moduledoc false
-  require Logger
-  alias __MODULE__
+
   import Ecto.Query, warn: false
 
-  alias Logflare.{
-    Repo,
-    Users,
-    Source,
-    User,
-    Billing.Plan,
-    Billing.BillingAccount,
-    Billing.PaymentMethod
-  }
+  alias __MODULE__
 
+  alias Logflare.Billing.BillingAccount
+  alias Logflare.Billing.PaymentMethod
+  alias Logflare.Billing.Plan
   alias Logflare.Partners
+  alias Logflare.Repo
   alias Logflare.SingleTenant
+  alias Logflare.Sources.Source
+  alias Logflare.User
+  alias Logflare.Users
 
+  require Logger
   require Protocol
   Protocol.derive(Jason.Encoder, Stripe.List)
   Protocol.derive(Jason.Encoder, Stripe.Subscription)

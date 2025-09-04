@@ -3,7 +3,7 @@ defmodule LogflareWeb.Plugs.RateLimiterTest do
   use LogflareWeb.ConnCase
   alias Logflare.{Users, Sources}
   alias LogflareWeb.Plugs.RateLimiter
-  alias Logflare.Source.RateCounterServer
+  alias Logflare.Sources.Source.RateCounterServer
 
   @moduletag :skip
 

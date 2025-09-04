@@ -1,4 +1,4 @@
-defmodule Logflare.Source do
+defmodule Logflare.Sources.Source do
   @moduledoc false
 
   use TypedEctoSchema

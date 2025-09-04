@@ -1,8 +1,8 @@
-defmodule Logflare.Source.BigQuery.SchemaTest do
+defmodule Logflare.Sources.Source.BigQuery.SchemaTest do
   @moduledoc false
   use Logflare.DataCase
 
-  alias Logflare.Source.BigQuery.Schema
+  alias Logflare.Sources.Source.BigQuery.Schema
   alias Logflare.Google.BigQuery.SchemaUtils
 
   setup do

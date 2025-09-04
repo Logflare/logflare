@@ -1,8 +1,12 @@
 defmodule Logflare.Logs.SearchOperationsTest do
   use Logflare.DataCase, async: false
+  import Ecto.Query
 
   alias Logflare.Logs.SearchOperations
-  alias Logflare.Source.BigQuery.Schema
+  alias Logflare.Sources.Source.BigQuery.Schema
+  alias Logflare.Logs.SearchOperation, as: SO
+  alias Logflare.Lql.Rules.ChartRule
+  alias Logflare.Lql.Rules.FilterRule
 
   describe "unnesting metadata if present" do
     setup do
@@ -62,6 +66,73 @@ defmodule Logflare.Logs.SearchOperationsTest do
 
         assert sql =~ "UNNEST(t0.metadata)"
       end)
+    end
+  end
+
+  describe "chart aggregation query generation" do
+    setup do
+      insert(:plan)
+      source = insert(:source, user: insert(:user), bq_table_id: "test_table")
+
+      base_so = %SO{
+        source: source,
+        querystring: "",
+        chart_data_shape_id: nil,
+        tailing?: false,
+        partition_by: :timestamp,
+        type: :aggregates,
+        lql_ts_filters: [],
+        lql_meta_and_msg_filters: []
+      }
+
+      [base_so: base_so]
+    end
+
+    test "top-level field aggregation should reference base table, not joined table", %{
+      base_so: base_so
+    } do
+      chart_rule = %ChartRule{
+        path: "value",
+        aggregate: :max,
+        period: :minute,
+        value_type: :integer
+      }
+
+      nested_filter = %FilterRule{
+        path: "attributes.name",
+        operator: :"~",
+        value: "jose",
+        modifiers: %{}
+      }
+
+      so = %{
+        base_so
+        | chart_rules: [chart_rule],
+          lql_meta_and_msg_filters: [nested_filter],
+          query: from(base_so.source.bq_table_id)
+      }
+
+      so = SearchOperations.apply_numeric_aggs(so)
+      {sql, _} = Logflare.EctoQueryBQ.SQL.to_sql_params(so.query)
+
+      assert sql =~ "MAX(t0.value)"
+      refute sql =~ "MAX(f1.value)"
+    end
+
+    test "nested field aggregation should reference joined table correctly", %{base_so: base_so} do
+      chart_rule = %ChartRule{
+        path: "metadata.level",
+        aggregate: :count,
+        period: :minute,
+        value_type: :string
+      }
+
+      so = %{base_so | chart_rules: [chart_rule], query: from(base_so.source.bq_table_id)}
+      so = SearchOperations.apply_numeric_aggs(so)
+      {sql, _} = Logflare.EctoQueryBQ.SQL.to_sql_params(so.query)
+
+      assert sql =~ "UNNEST"
+      assert sql =~ "COUNT(f1.level)"
     end
   end
 end

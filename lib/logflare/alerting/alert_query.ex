@@ -1,7 +1,9 @@
 defmodule Logflare.Alerting.AlertQuery do
   @moduledoc false
   use TypedEctoSchema
+
   import Ecto.Changeset
+
   alias Logflare.Endpoints.Query
 
   @derive {Jason.Encoder,
@@ -19,13 +21,14 @@ defmodule Logflare.Alerting.AlertQuery do
   typed_schema "alert_queries" do
     field :name, :string
     field :description, :string
-    field(:language, Ecto.Enum, values: [:bq_sql, :pg_sql, :lql], default: :bq_sql)
+    field :language, Ecto.Enum, values: [:bq_sql, :pg_sql, :lql], default: :bq_sql
     field :query, :string
     field :cron, :string
     field :source_mapping, :map
     field :token, Ecto.UUID, autogenerate: true
     field :slack_hook_url, :string
     field :webhook_notification_url, :string
+
     belongs_to :user, Logflare.User
 
     many_to_many :backends, Logflare.Backends.Backend,
@@ -54,6 +57,7 @@ defmodule Logflare.Alerting.AlertQuery do
            true <- NaiveDateTime.diff(first, second, :minute) <= -15 do
         []
       else
+        [] -> [cron: "not enough run dates"]
         false -> [cron: "can only trigger up to 15 minute intervals"]
         {:error, msg} -> [cron: msg]
       end

@@ -93,6 +93,31 @@ defmodule Logflare.Endpoints do
     |> Query.update_by_user_changeset(attrs)
   end
 
+  @doc """
+  Derives the SQL language from a backend ID.
+
+  Returns `:bq_sql` if no backend ID is specified or if the backend ID is invalid.
+  """
+  @spec derive_language_from_backend_id(String.t() | integer() | nil) :: atom()
+  def derive_language_from_backend_id(backend_id) when is_non_empty_binary(backend_id) do
+    case Integer.parse(backend_id) do
+      {id, ""} -> derive_language_from_backend_id(id)
+      _ -> :bq_sql
+    end
+  end
+
+  def derive_language_from_backend_id(backend_id) when is_integer(backend_id) do
+    case Backends.get_backend(backend_id) do
+      %Backend{} = backend ->
+        Query.map_backend_to_language(backend, SingleTenant.supabase_mode?())
+
+      nil ->
+        :bq_sql
+    end
+  end
+
+  def derive_language_from_backend_id(_), do: :bq_sql
+
   @spec update_query(Query.t(), map()) :: {:ok, Query.t()} | {:error, any()}
   def update_query(%Query{} = query, params) when is_map(params) do
     with endpoint <- Repo.preload(query, :user),

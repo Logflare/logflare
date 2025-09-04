@@ -7,7 +7,7 @@ defmodule Logflare.Validator.BigQuerySchemaChangeTest do
   import Logflare.Google.BigQuery.SchemaUtils
 
   alias Logflare.LogEvent, as: LE
-  # alias Logflare.Source.BigQuery.SchemaBuilder
+  # alias Logflare.Sources.Source.BigQuery.SchemaBuilder
   alias Logflare.Google.BigQuery.SchemaFactory
   alias Logflare.Factory
   alias Logflare.Sources

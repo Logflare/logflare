@@ -13,7 +13,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.Provisioner do
 
   alias Logflare.Backends.Adaptor.ClickhouseAdaptor
   alias Logflare.Backends.Backend
-  alias Logflare.Source
+  alias Logflare.Sources.Source
 
   typedstruct do
     field(:source, Source.t())

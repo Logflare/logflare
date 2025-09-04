@@ -12,7 +12,7 @@ config :logflare,
 
 config :logflare, Logflare.Cluster.Utils, min_cluster_size: 1
 
-config :logflare, Logflare.Source.BigQuery.Schema, updates_per_minute: 900_000
+config :logflare, Logflare.Sources.Source.BigQuery.Schema, updates_per_minute: 900_000
 
 config :logflare, Logflare.Google,
   dataset_id_append: "_test",

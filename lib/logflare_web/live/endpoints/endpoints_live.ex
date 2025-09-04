@@ -5,6 +5,7 @@ defmodule LogflareWeb.EndpointsLive do
 
   require Logger
 
+  alias Logflare.Backends
   alias Logflare.Endpoints
   alias Logflare.Users
   alias LogflareWeb.{QueryComponents, Utils}
@@ -48,6 +49,7 @@ defmodule LogflareWeb.EndpointsLive do
       |> assign(:total_bytes_processed, nil)
       |> assign(:show_endpoint, nil)
       |> assign(:endpoint_changeset, Endpoints.change_query(%Endpoints.Query{}))
+      |> assign(:selected_backend_id, nil)
       |> assign(:allow_access, allow_access)
       |> assign(:base_url, LogflareWeb.Endpoint.url())
       |> assign(:parse_error_message, nil)
@@ -57,6 +59,7 @@ defmodule LogflareWeb.EndpointsLive do
       |> assign(:declared_params, %{})
       |> assign(:alerts, alerts)
       |> assign_sources()
+      |> assign_backends()
       |> assign(:parsed_result, nil)
 
     {:ok, socket}
@@ -77,7 +80,7 @@ defmodule LogflareWeb.EndpointsLive do
         socket when endpoint != nil ->
           {:ok, parsed_result} =
             Endpoints.parse_query_string(
-              :bq_sql,
+              endpoint.language,
               endpoint.query,
               Enum.filter(socket.assigns.endpoints, &(&1.id != endpoint.id)),
               socket.assigns.alerts
@@ -87,6 +90,7 @@ defmodule LogflareWeb.EndpointsLive do
           |> assign_updated_params_form(parsed_result.parameters, parsed_result.expanded_query)
           # set changeset
           |> assign(:endpoint_changeset, Endpoints.change_query(endpoint, %{}))
+          |> assign(:selected_backend_id, endpoint.backend_id)
           |> assign(:parsed_result, parsed_result)
 
         # index page
@@ -103,6 +107,7 @@ defmodule LogflareWeb.EndpointsLive do
             :endpoint_changeset,
             Endpoints.change_query(%Endpoints.Query{query: placeholder_sql()})
           )
+          |> assign(:selected_backend_id, nil)
           # reset test results
           |> assign(:query_result_rows, nil)
       end)
@@ -135,6 +140,7 @@ defmodule LogflareWeb.EndpointsLive do
           socket
           |> put_flash(:info, message)
           |> assign(:endpoint_changeset, changeset)
+          |> assign(:selected_backend_id, changeset.data.backend_id)
 
         {:noreply, socket}
     end
@@ -172,7 +178,9 @@ defmodule LogflareWeb.EndpointsLive do
         "endpoint_id" => socket.assigns.endpoint_changeset.data.id
       })
 
-    case Endpoints.run_query_string(user, {:bq_sql, query_string},
+    endpoint_language = get_current_endpoint_language(socket)
+
+    case Endpoints.run_query_string(user, {endpoint_language, query_string},
            params: query_params,
            parsed_labels: parsed_labels,
            use_query_cache: false
@@ -184,6 +192,15 @@ defmodule LogflareWeb.EndpointsLive do
          |> assign(:prev_params, query_params)
          |> assign(:query_result_rows, rows)
          |> assign(:total_bytes_processed, total_bytes_processed)}
+
+      {:ok, %{rows: rows}} ->
+        # non-BQ results
+        {:noreply,
+         socket
+         |> put_flash(:info, "Ran query successfully")
+         |> assign(:prev_params, query_params)
+         |> assign(:query_result_rows, rows)
+         |> assign(:total_bytes_processed, nil)}
 
       {:error, err} ->
         {:noreply,
@@ -204,15 +221,34 @@ defmodule LogflareWeb.EndpointsLive do
     {:noreply, socket}
   end
 
+  def handle_event("validate", %{"endpoint" => endpoint_params}, socket) do
+    selected_backend_id = Map.get(endpoint_params, "backend_id")
+
+    changeset =
+      socket.assigns.endpoint_changeset.data
+      |> Endpoints.change_query(endpoint_params)
+      |> Map.put(:action, :validate)
+
+    socket =
+      socket
+      |> assign(:endpoint_changeset, changeset)
+      |> assign(:selected_backend_id, selected_backend_id)
+      |> assign_determined_language()
+
+    {:noreply, socket}
+  end
+
   def handle_event("validate", _params, socket) do
-    # noop
+    # noop for other validation events
     {:noreply, socket}
   end
 
   def handle_info({:query_string_updated, query_string}, socket) do
+    endpoint_language = get_current_endpoint_language(socket)
+
     parsed_result =
       Endpoints.parse_query_string(
-        :bq_sql,
+        endpoint_language,
         query_string,
         socket.assigns.endpoints,
         socket.assigns.alerts
@@ -257,6 +293,38 @@ defmodule LogflareWeb.EndpointsLive do
     assign(socket, sources: sources)
   end
 
+  defp assign_backends(socket) do
+    %{user_id: user_id, user: user} = socket.assigns
+    flag_enabled? = Utils.flag("endpointBackendSelection", user)
+
+    backends =
+      if flag_enabled? do
+        Backends.list_backends_by_user_id(user_id)
+      else
+        []
+      end
+
+    show_backend_selection? = flag_enabled? and length(backends) > 0
+    determined_language = get_current_endpoint_language(socket)
+
+    socket
+    |> assign(:backends, backends)
+    |> assign(:show_backend_selection, show_backend_selection?)
+    |> assign(:determined_language, determined_language)
+  end
+
+  defp get_current_endpoint_language(%{assigns: assigns}) do
+    case Map.get(assigns, :selected_backend_id) do
+      nil -> :bq_sql
+      backend_id -> Endpoints.derive_language_from_backend_id(backend_id)
+    end
+  end
+
+  defp assign_determined_language(socket) do
+    determined_language = get_current_endpoint_language(socket)
+    assign(socket, :determined_language, determined_language)
+  end
+
   defp upsert_query(show_endpoint, user, params) do
     case show_endpoint do
       nil -> Endpoints.create_query(user, params)
@@ -268,4 +336,9 @@ defmodule LogflareWeb.EndpointsLive do
     do: """
     select timestamp, event_message from YourApp.SourceName
     """
+
+  defp format_query_language(:bq_sql), do: "BigQuery SQL"
+  defp format_query_language(:ch_sql), do: "ClickHouse SQL"
+  defp format_query_language(:pg_sql), do: "Postgres SQL"
+  defp format_query_language(language), do: language |> to_string() |> String.upcase()
 end

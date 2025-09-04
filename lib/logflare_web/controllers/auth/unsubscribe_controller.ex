@@ -1,8 +1,10 @@
 defmodule LogflareWeb.Auth.UnsubscribeController do
   use LogflareWeb, :controller
 
-  alias Logflare.{Source, Sources, TeamUsers}
   alias Logflare.Auth
+  alias Logflare.Sources
+  alias Logflare.Sources.Source
+  alias Logflare.TeamUsers
 
   @max_age 86_400
 

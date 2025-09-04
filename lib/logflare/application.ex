@@ -65,7 +65,7 @@ defmodule Logflare.Application do
          restart: :transient,
          max_restarts: 10,
          max_seconds: 60,
-         name: Logflare.Source.V1SourceDynSup},
+         name: Logflare.Sources.Source.V1SourceDynSup},
         LogflareWeb.Endpoint
       ]
   end
@@ -102,13 +102,13 @@ defmodule Logflare.Application do
         RateCounters,
         # Backends needs to be before Source.Supervisor
         Logflare.Backends,
-        Logflare.Source.Supervisor,
+        Logflare.Sources.Source.Supervisor,
         {DynamicSupervisor,
          strategy: :one_for_one,
          restart: :transient,
          max_restarts: 10,
          max_seconds: 60,
-         name: Logflare.Source.V1SourceDynSup},
+         name: Logflare.Sources.Source.V1SourceDynSup},
         LogflareWeb.Endpoint,
         # If we get a log event and the Source.Supervisor is not up it will 500
         {GRPC.Server.Supervisor,

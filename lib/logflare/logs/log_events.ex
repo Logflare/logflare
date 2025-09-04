@@ -8,7 +8,7 @@ defmodule Logflare.Logs.LogEvents do
   alias Logflare.Lql.Rules.FilterRule
   alias Logflare.SourceSchemas
   alias Logflare.Sources
-  alias Logflare.Source.BigQuery.SchemaBuilder
+  alias Logflare.Sources.Source.BigQuery.SchemaBuilder
 
   require Logflare.Ecto.BQQueryAPI
   import Logflare.Ecto.BQQueryAPI, only: [in_streaming_buffer: 0]

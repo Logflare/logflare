@@ -1,15 +1,15 @@
-defmodule Logflare.Source.ChannelTopics do
+defmodule Logflare.Sources.Source.ChannelTopics do
   @moduledoc """
   Broadcasts all source-related events to source-related topics
   """
-  require Logger
+  use TypedStruct
 
   alias Logflare.LogEvent, as: LE
-  alias Logflare.Source
+  alias Logflare.Sources.Source
   alias Logflare.Sources
   alias Number.Delimit
 
-  use TypedStruct
+  require Logger
 
   typedstruct do
     field :source_token, String.t(), enforce: true
