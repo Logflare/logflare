@@ -5,7 +5,7 @@ defmodule Logflare.Endpoints do
   import Logflare.Utils.Guards
 
   alias Logflare.Alerting
-  alias Logflare.Alerting.Alert
+  alias Logflare.Alerting.AlertQuery
   alias Logflare.Backends
   alias Logflare.Backends.Backend
   alias Logflare.Endpoints.PiiRedactor
@@ -163,7 +163,7 @@ defmodule Logflare.Endpoints do
           language :: :bq_sql | :ch_sql | :pg_sql,
           query_string :: String.t(),
           endpoint_queries :: [Query.t()],
-          alerts :: [Alert.t()]
+          alerts :: [AlertQuery.t()]
         ) ::
           {:ok, %{parameters: [String.t()], expanded_query: String.t()}} | {:error, any()}
   def parse_query_string(language, query_string, endpoint_queries, alerts)
@@ -298,7 +298,6 @@ defmodule Logflare.Endpoints do
 
           total_rows =
             case result do
-              {:ok, %{total_rows: total}} -> total
               {:ok, %{rows: rows}} -> length(rows)
               _ -> 0
             end
