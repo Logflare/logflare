@@ -203,12 +203,18 @@ defmodule Logflare.Backends do
       {:ok, updated} ->
         updated = preload_sources(updated)
 
-        if default_ingest_modified? do
-          was_enabled = backend.default_ingest?
-          is_enabled = updated.default_ingest?
-          handle_default_ingest_associations(updated, source_id, was_enabled, is_enabled)
-          sync_backend_across_cluster(updated.id)
-        end
+        updated =
+          if default_ingest_modified? do
+            was_enabled? = backend.default_ingest?
+            is_enabled? = updated.default_ingest?
+            handle_default_ingest_associations(updated, source_id, was_enabled?, is_enabled?)
+            sync_backend_across_cluster(updated.id)
+
+            # force refresh after association changes
+            Repo.reload!(updated) |> preload_sources()
+          else
+            updated
+          end
 
         Enum.each(updated.sources, &restart_source_sup(&1))
 
@@ -262,7 +268,7 @@ defmodule Logflare.Backends do
           was_enabled :: boolean(),
           is_enabled :: boolean()
         ) :: :ok
-  defp handle_default_ingest_associations(backend, source_id, false, true)
+  defp handle_default_ingest_associations(backend, source_id, _was_enabled, true)
        when is_non_empty_binary(source_id) or is_integer(source_id) do
     source = Sources.get(source_id) |> Sources.preload_backends()
 
@@ -506,19 +512,47 @@ defmodule Logflare.Backends do
 
   # send to a specific backend
   defp dispatch_to_backends(source, %Backend{} = backend, log_events) do
-    log_events = maybe_pre_ingest(source, backend, log_events)
-    IngestEventQueue.add_to_table({source.id, backend.id}, log_events)
+    telemetry_metadata = %{backend_type: backend.type}
+
+    :telemetry.span([:logflare, :backends, :ingest, :dispatch], telemetry_metadata, fn ->
+      log_events = maybe_pre_ingest(source, backend, log_events)
+      IngestEventQueue.add_to_table({source.id, backend.id}, log_events)
+
+      :telemetry.execute(
+        [:logflare, :backends, :ingest, :count],
+        %{count: length(log_events)},
+        %{backend_type: backend.type}
+      )
+
+      {:ok, telemetry_metadata}
+    end)
   end
 
   defp dispatch_to_backends(source, nil, log_events) do
     backends = __MODULE__.Cache.list_backends(source_id: source.id)
 
     for backend <- [nil | backends] do
-      log_events =
-        if(backend, do: maybe_pre_ingest(source, backend, log_events), else: log_events)
+      if backend do
+        telemetry_metadata = %{backend_type: backend.type}
 
-      backend_id = Map.get(backend || %{}, :id)
-      IngestEventQueue.add_to_table({source.id, backend_id}, log_events)
+        :telemetry.span([:logflare, :backends, :ingest, :dispatch], telemetry_metadata, fn ->
+          log_events = maybe_pre_ingest(source, backend, log_events)
+          IngestEventQueue.add_to_table({source.id, backend.id}, log_events)
+
+          :telemetry.execute(
+            [:logflare, :backends, :ingest, :count],
+            %{count: length(log_events)},
+            %{backend_type: backend.type}
+          )
+
+          {:ok, telemetry_metadata}
+        end)
+      else
+        # Handle nil backend (system default)
+        log_events = log_events
+        backend_id = nil
+        IngestEventQueue.add_to_table({source.id, backend_id}, log_events)
+      end
     end
   end
 
@@ -617,16 +651,14 @@ defmodule Logflare.Backends do
   end
 
   @doc """
-  Ensures that a the SourceSup is started. Only returns error tuple if not alreadt started
+  Ensures that a the SourceSup is started.
   """
-  @spec ensure_source_sup_started(Source.t()) :: :ok | {:error, term()}
+  @spec ensure_source_sup_started(Source.t()) :: :ok
   def ensure_source_sup_started(%Source{} = source) do
     if source_sup_started?(source) == false do
       case start_source_sup(source) do
         :ok -> :ok
-        {:ok, _pid} -> :ok
         {:error, :already_started} -> :ok
-        {:error, _} = err -> err
       end
     else
       :ok
@@ -720,7 +752,11 @@ defmodule Logflare.Backends do
   Caches total buffer len. Includes ingested events that are awaiting cleanup.
   """
   @spec cache_local_buffer_lens(non_neg_integer(), non_neg_integer() | nil) ::
-          {:ok, %{len: non_neg_integer(), queues: map()}}
+          {:ok,
+           %{
+             len: non_neg_integer(),
+             queues: [{Logflare.Backends.IngestEventQueue.table_key(), non_neg_integer()}]
+           }}
   def cache_local_buffer_lens(source_id, backend_id \\ nil) do
     queues = IngestEventQueue.list_counts({source_id, backend_id})
 
@@ -733,9 +769,9 @@ defmodule Logflare.Backends do
   end
 
   @doc """
-  Get local pending buffer len of a source/backend combination
+  Get local pending buffer len of a source/backend combination.
   """
-  @spec cached_local_pending_buffer_len(Source.t(), Backend.t() | nil) :: non_neg_integer()
+  @spec cached_local_pending_buffer_len(Source.t(), Backend.t() | nil) :: map()
   def cached_local_pending_buffer_len(source_id, backend_id \\ nil) when is_integer(source_id) do
     PubSubRates.Cache.get_local_buffer(source_id, backend_id)
   end
@@ -798,22 +834,6 @@ defmodule Logflare.Backends do
     :telemetry.execute(
       [:logflare, :logs, :ingest_logs],
       %{rejected: true},
-      %{source_id: le.source.id, source_token: le.source.token}
-    )
-  end
-
-  defp do_telemetry(:buffer_full, le) do
-    :telemetry.execute(
-      [:logflare, :logs, :ingest_logs],
-      %{buffer_full: true},
-      %{source_id: le.source.id, source_token: le.source.token}
-    )
-  end
-
-  defp do_telemetry(:unknown_error, le) do
-    :telemetry.execute(
-      [:logflare, :logs, :ingest_logs],
-      %{unknown_error: true},
       %{source_id: le.source.id, source_token: le.source.token}
     )
   end

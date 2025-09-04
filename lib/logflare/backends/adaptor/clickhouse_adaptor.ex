@@ -513,10 +513,20 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
 
     children = [
       ConnectionManager.child_spec({source, backend, ingest_ch_opts}),
-      ConnectionManager.child_spec({backend, query_ch_opts}),
       Provisioner.child_spec(args),
       Pipeline.child_spec(pipeline_state)
     ]
+
+    # Only add the backend-based query pool if it's not already running
+    # This is to cover for adding multiple default ingest sources to the same backend
+    children =
+      with {:via, Registry, {_, _}} = via <- ConnectionManager.connection_pool_via(backend),
+           {:ok, _pid} <- GenServer.whereis(via) do
+        children
+      else
+        _ ->
+          [ConnectionManager.child_spec({backend, query_ch_opts}) | children]
+      end
 
     Supervisor.init(children, strategy: :one_for_one)
   end

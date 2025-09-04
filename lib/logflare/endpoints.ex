@@ -5,9 +5,10 @@ defmodule Logflare.Endpoints do
   import Logflare.Utils.Guards
 
   alias Logflare.Alerting
-  alias Logflare.Alerting.Alert
+  alias Logflare.Alerting.AlertQuery
   alias Logflare.Backends
   alias Logflare.Backends.Backend
+  alias Logflare.Endpoints.PiiRedactor
   alias Logflare.Endpoints.Query
   alias Logflare.Endpoints.Resolver
   alias Logflare.Endpoints.ResultsCache
@@ -162,7 +163,7 @@ defmodule Logflare.Endpoints do
           language :: :bq_sql | :ch_sql | :pg_sql,
           query_string :: String.t(),
           endpoint_queries :: [Query.t()],
-          alerts :: [Alert.t()]
+          alerts :: [AlertQuery.t()]
         ) ::
           {:ok, %{parameters: [String.t()], expanded_query: String.t()}} | {:error, any()}
   def parse_query_string(language, query_string, endpoint_queries, alerts)
@@ -297,7 +298,6 @@ defmodule Logflare.Endpoints do
 
           total_rows =
             case result do
-              {:ok, %{total_rows: total}} -> total
               {:ok, %{rows: rows}} -> length(rows)
               _ -> 0
             end
@@ -423,11 +423,13 @@ defmodule Logflare.Endpoints do
 
       case adaptor.execute_query(backend, query_args, opts) do
         {:ok, rows} when is_list(rows) ->
-          {:ok, %{rows: rows}}
+          redacted_rows = PiiRedactor.redact_query_result(rows, endpoint_query.redact_pii)
+          {:ok, %{rows: redacted_rows}}
 
-        {:ok, %{rows: _} = result} ->
-          # Pass through the full result map with all metadata
-          {:ok, result}
+        {:ok, %{rows: rows} = result} ->
+          # Pass through the full result map with all metadata, but redact PII in rows
+          redacted_rows = PiiRedactor.redact_query_result(rows, endpoint_query.redact_pii)
+          {:ok, %{result | rows: redacted_rows}}
 
         {:error, error} ->
           {:error, error}
@@ -446,10 +448,6 @@ defmodule Logflare.Endpoints do
   defp get_backend_for_query(%Query{user_id: user_id, language: language}) do
     backend_type = language_to_backend_type(language)
     find_backend_by_type_or_default(user_id, backend_type)
-  end
-
-  defp get_backend_for_query(%Query{user_id: user_id}) do
-    find_backend_by_type_or_default(user_id, nil)
   end
 
   @spec language_to_backend_type(language()) :: atom() | nil

@@ -499,4 +499,26 @@ defmodule Logflare.TestUtils do
 
     html
   end
+
+  @doc """
+  Attaches a telemetry forwarder that sends events to the current test process.
+  """
+  @spec attach_forwarder(event_name :: [atom()], opts :: Keyword.t()) :: String.t()
+  def attach_forwarder(event_name, opts \\ []) do
+    test_pid = Keyword.get(opts, :pid, self())
+    id = "test-telemetry-" <> Base.encode16(:erlang.term_to_binary(make_ref()))
+
+    :ok =
+      :telemetry.attach(
+        id,
+        event_name,
+        fn ^event_name, measurements, metadata, _config ->
+          send(test_pid, {:telemetry_event, event_name, measurements, metadata})
+        end,
+        nil
+      )
+
+    ExUnit.Callbacks.on_exit(fn -> :telemetry.detach(id) end)
+    id
+  end
 end
