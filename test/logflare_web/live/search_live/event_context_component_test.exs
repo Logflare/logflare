@@ -1,7 +1,7 @@
 defmodule LogflareWeb.SearchLive.EventContextComponentTest do
   use LogflareWeb.ConnCase, async: false
 
-  alias Logflare.Source
+  alias Logflare.Sources.Source
   alias LogflareWeb.SearchLive.EventContextComponent
 
   @default_schema Source.BigQuery.SchemaBuilder.initial_table_schema()

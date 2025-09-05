@@ -3,8 +3,8 @@ defmodule LogflareWeb.SearchLive.EventContextComponent do
 
   alias Logflare.JSON
   alias Phoenix.LiveView.{AsyncResult, JS}
-  alias Logflare.{Lql, Logs, SourceSchemas, Source, Sources}
-  alias Logflare.Source.BigQuery.SchemaBuilder
+  alias Logflare.{Lql, Logs, SourceSchemas, Sources.Source, Sources}
+  alias Logflare.Sources.Source.BigQuery.SchemaBuilder
   import LogflareWeb.SearchLive.LogEventComponents, only: [log_event: 1]
 
   require Logger
