@@ -489,21 +489,26 @@ defmodule Logflare.Endpoints do
   @spec clear_all_endpoint_caches(Query.t()) :: :ok
   def clear_all_endpoint_caches(%Query{} = endpoint) do
     # Kill all ResultsCache processes
-    tasks = 
+    tasks =
       for pid <- Resolver.list_caches(endpoint) do
         Utils.Tasks.async(fn ->
           ResultsCache.invalidate(pid)
         end)
       end
-    
+
     Task.await_many(tasks, 30_000)
 
     # Clear Endpoints.Cache context cache entries
     Logflare.ContextCache.bust_keys([{__MODULE__, endpoint.id}])
-    
+
     # Clear cache entries by token and name if they exist
     Cachex.del(Logflare.Endpoints.Cache, {:get_by, [[token: endpoint.token]]})
-    Cachex.del(Logflare.Endpoints.Cache, {:get_by, [[name: endpoint.name, user_id: endpoint.user_id]]})
+
+    Cachex.del(
+      Logflare.Endpoints.Cache,
+      {:get_by, [[name: endpoint.name, user_id: endpoint.user_id]]}
+    )
+
     Cachex.del(Logflare.Endpoints.Cache, {:get_mapped_query_by_token, [endpoint.token]})
 
     :ok
