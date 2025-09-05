@@ -10,9 +10,11 @@
     search_op_log_aggregates: @search_op_log_aggregates,
     search_op_error: @search_op_error,
     team_user: @team_user,
+    close: @modal.body[:close],
     return_to: @modal.body.return_to
   ) %>
 <% end %>
+
 <div id="source-logs-search-control" class="subhead " phx-hook="SourceLogsSearch">
   <div class="container mx-auto">
     <h5>
@@ -77,7 +79,9 @@
       search_timezone: @search_timezone,
       loading: @loading,
       source: @source,
-      querystring: @querystring
+      tailing?: @tailing?,
+      querystring: @querystring,
+      user: @user
     ) %>
   </div>
   <div>

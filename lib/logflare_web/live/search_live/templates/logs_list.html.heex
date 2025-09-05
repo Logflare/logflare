@@ -3,9 +3,33 @@
     <%= if @loading do %>
       <div id="logs-list" class="blurred list-unstyled console-text-list"></div>
     <% else %>
-      <div id="logs-list" class="list-unstyled console-text-list">
-        <LogflareWeb.SearchLive.LogEventComponents.log_search_event :for={log <- @search_op_log_events.rows} source={@source} search_timezone={@search_timezone} log={log} query_string={@querystring} />
-      </div>
+      <ul id="logs-list" class="list-unstyled console-text-list">
+        <LogflareWeb.SearchLive.LogEventComponents.log_event :for={log <- @search_op_log_events.rows} timezone={@search_timezone} log_event={log}>
+          <%= log.body["event_message"] %>
+          <:actions phx-no-format>
+            <%= live_modal_show_link(component: LogflareWeb.Search.LogEventViewerComponent, class: "tw-text-[0.65rem]", modal_id: :log_event_viewer, title: "Log Event", phx_value_log_event_id: log.id, phx_value_log_event_timestamp: log.body["timestamp"], phx_value_lql: @querystring) do %><span>view</span><% end %>
+
+            <%= if LogflareWeb.Utils.flag("EventContext", @user) do  %>
+              <%= live_modal_show_link(component: LogflareWeb.SearchLive.EventContextComponent, click: JS.push("soft_pause"), close: if(@tailing?, do: JS.push("soft_play", target: "#source-logs-search-control") |> JS.push("close"), else: nil), class: "tw-text-[0.65rem]", modal_id: :log_event_context_viewer, title: "View Event Context", phx_value_log_event_id: log.id, phx_value_source_id: @source.id, phx_value_log_event_timestamp: log.body["timestamp"], phx_value_timezone: @search_timezone, phx_value_querystring: @querystring ) do %><span>context</span><% end %>
+            <% end %>
+
+            <.link
+              class="tw-text-[0.65rem] group-hover:tw-visible tw-invisible"
+              phx-click={
+                JS.dispatch("logflare:copy-to-clipboard",
+                  detail: %{
+                    text: "#{LogflareWeb.SearchLive.LogEventComponents.formatted_timestamp(log, assigns[:search_timezone])}    #{log.body["event_message"]}"
+                  }
+                )
+              }
+              data-toggle="tooltip"
+              data-placement="top"
+              title="Copy to clipboard"
+            >copy</.link>
+            <.log_event_permalink log_event_id={log.id} timestamp={log.body["timestamp"]} source={@source} lql={@querystring} class="tw-text-[0.65rem] group-hover:tw-visible tw-invisible" />
+          </:actions>
+        </LogflareWeb.SearchLive.LogEventComponents.log_event>
+      </ul>
     <% end %>
   </div>
 <% else %>
