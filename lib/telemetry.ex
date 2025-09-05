@@ -374,7 +374,7 @@ defmodule Logflare.Telemetry do
   defp get_ets_tables_info do
     :ets.all()
     |> Enum.map(&:ets.info/1)
-    |> Enum.reject(& &1 == :undefined)
+    |> Enum.reject(&(&1 == :undefined))
     |> Enum.sort_by(& &1[:size], :desc)
   end
 
