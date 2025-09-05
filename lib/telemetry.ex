@@ -348,10 +348,10 @@ defmodule Logflare.Telemetry do
   defp mfa_to_string({m, f, a}), do: "#{inspect(m)}.#{f}/#{a}"
 
   def ets_table_metrics do
-    tables = get_ets_tables_info()
+    top_100_tables = get_top_100_ets_tables_info()
 
     # send top 10
-    tables
+    top_100_tables
     |> Enum.take(10)
     |> Enum.each(fn table ->
       metrics = %{size: table[:size]}
@@ -361,8 +361,7 @@ defmodule Logflare.Telemetry do
     end)
 
     # send grouped top 100
-    tables
-    |> Enum.take(100)
+    top_100_tables
     |> Enum.each(fn table ->
       metrics = %{size: table[:size]}
       metadata = %{name: ets_table_base_name(table[:name])}
@@ -371,16 +370,20 @@ defmodule Logflare.Telemetry do
     end)
   end
 
-  defp get_ets_tables_info do
+  defp get_top_100_ets_tables_info do
     :ets.all()
-    |> Enum.map(&:ets.info/1)
-    |> Enum.reject(&(&1 == :undefined))
-    |> sort_ets_tables()
+    |> Stream.map(fn table ->
+      case :ets.info(table) do
+        :undefined -> nil
+        info -> {0, info[:size], info}
+      end
+    end)
+    |> Enum.filter(& &1)
+    |> sort_and_take_top_100()
   end
 
-  defp sort_ets_tables(tables_info) do
-    tables_info
-    |> Enum.map(&{0, &1[:size], &1})
+  defp sort_and_take_top_100(items) do
+    items
     |> :recon_lib.sublist_top_n_attrs(100)
     |> Enum.map(&elem(&1, 2))
   end
