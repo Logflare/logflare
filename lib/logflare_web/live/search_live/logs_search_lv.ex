@@ -25,6 +25,7 @@ defmodule LogflareWeb.Source.SearchLV do
   alias LogflareWeb.Router.Helpers, as: Routes
   alias LogflareWeb.SearchView
   alias Logflare.Sources.Source.BigQuery.SchemaBuilder
+  alias Logflare.Utils.Chart, as: ChartUtils
 
   require Logger
 
@@ -368,7 +369,7 @@ defmodule LogflareWeb.Source.SearchLV do
       if period do
         Lql.Rules.put_chart_period(lql_list, String.to_existing_atom(period))
       else
-        lql_list
+        lql_list |> maybe_adjust_chart_period()
       end
 
     qs = Lql.encode!(lql_list)
@@ -503,13 +504,10 @@ defmodule LogflareWeb.Source.SearchLV do
         :halted ->
           send(self(), :soft_pause)
 
-          {:halted, halted_message} = search_op.status
-          msg = "Search halted: " <> halted_message
-
           socket
           |> assign(loading: false)
           |> assign(chart_loading: false)
-          |> put_flash(:error, msg)
+          |> put_halt_flash_message(search_op)
 
         %Tesla.Env{status: 400} = err ->
           Logger.error("Backend search error for source: #{source.token}",
@@ -708,6 +706,31 @@ defmodule LogflareWeb.Source.SearchLV do
     if assigns do
       SearchQueryExecutor.query(assigns.executor_pid, assigns)
       SearchQueryExecutor.query_agg(assigns.executor_pid, assigns)
+    end
+  end
+
+  @doc """
+  Adjusts the chart period in LQL rules when the number of chart ticks would exceed the maximum or be zero.
+
+  Does nothing if the ChartRule is already valid, or if the ChartRule is not present.
+  """
+
+  @spec maybe_adjust_chart_period(Lql.Rules.t()) :: Lql.Rules.t()
+  def maybe_adjust_chart_period(lql_rules) do
+    max_ticks = Logflare.Logs.SearchOperations.max_chart_ticks()
+
+    with [%Lql.Rules.FilterRule{values: [min_ts, max_ts]}] <-
+           Lql.Rules.get_timestamp_filters(lql_rules),
+         %ChartRule{} = chart_rule <- Lql.Rules.get_chart_rule(lql_rules),
+         false <-
+           ChartUtils.get_number_of_chart_ticks(min_ts, max_ts, chart_rule.period) in [
+             1..max_ticks
+           ] do
+      period = ChartUtils.calculate_minimum_required_period(min_ts, max_ts, max_ticks)
+
+      Lql.Rules.put_chart_period(lql_rules, period)
+    else
+      _ -> lql_rules
     end
   end
 
@@ -937,6 +960,36 @@ defmodule LogflareWeb.Source.SearchLV do
     |> put_flash(
       :error,
       "Backend error! Retry your query. Please contact support if this continues."
+    )
+  end
+
+  defp put_halt_flash_message(socket, search_op) do
+    {:halted, message} = search_op.status
+
+    msg =
+      if message =~ ~r/longer chart aggregation period.$/ or message =~ ~r/shorter chart period.$/ do
+        quickfix = quickfix_chart_period(socket.assigns.uri, search_op.lql_rules)
+        ["Search halted: ", message, quickfix]
+      else
+        "Search halted: " <> message
+      end
+
+    put_flash(socket, :error, msg)
+  end
+
+  defp quickfix_chart_period(uri, lql_rules) do
+    adjusted_lql = lql_rules |> maybe_adjust_chart_period()
+
+    params =
+      uri.query
+      |> URI.decode_query()
+      |> Map.put("querystring", Lql.encode!(adjusted_lql))
+
+    adjusted_period = Lql.Rules.get_chart_period(adjusted_lql)
+
+    link("Set chart period to #{adjusted_period}",
+      to: %{uri | query: URI.encode_query(params)},
+      class: "tw-block tw-pt-3"
     )
   end
 

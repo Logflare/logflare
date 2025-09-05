@@ -5,6 +5,7 @@ defmodule Logflare.ContextCache.Supervisor do
 
   alias Logflare.Backends
   alias Logflare.ContextCache.CacheBuster
+  alias Logflare.ContextCache.CacheBusterWorker
   alias Logflare.Billing
   alias Logflare.ContextCache
   alias Logflare.Backends
@@ -16,6 +17,9 @@ defmodule Logflare.ContextCache.Supervisor do
   alias Logflare.Auth
   alias Logflare.Endpoints
   alias Logflare.Repo
+  alias Logflare.GenSingleton
+
+  require Logger
 
   def start_link(_) do
     Supervisor.start_link(__MODULE__, [], name: __MODULE__)
@@ -28,12 +32,19 @@ defmodule Logflare.ContextCache.Supervisor do
     Supervisor.init(get_children(@env), strategy: :one_for_one)
   end
 
-  defp get_children(:test), do: list_caches()
+  defp get_children(:test),
+    do:
+      list_caches() ++
+        [
+          {GenSingleton, child_spec: cainophile_child_spec()}
+        ]
 
   defp get_children(_env) do
     list_caches() ++
       [
         ContextCache.TransactionBroadcaster,
+        {GenSingleton, child_spec: cainophile_child_spec()},
+        {PartitionSupervisor, child_spec: CacheBusterWorker, name: CacheBusterWorker.Supervisor},
         ContextCache.CacheBuster
       ]
   end
@@ -58,21 +69,6 @@ defmodule Logflare.ContextCache.Supervisor do
   def publisher_name do
     {:via, :syn, {:core, Logflare.PgPublisher}}
     # {:global, Logflare.PgPublisher}
-  end
-
-  @doc """
-  Attempts to start a cainophile child in the ContextCache.Supervisor.
-  If it already exists, it will return with an error tuple.
-  """
-  def maybe_start_cainophile do
-    spec = cainophile_child_spec()
-    Supervisor.start_child(__MODULE__, spec)
-  end
-
-  def remove_cainophile do
-    Supervisor.terminate_child(__MODULE__, Cainophile.Adapters.Postgres)
-    Supervisor.delete_child(__MODULE__, Cainophile.Adapters.Postgres)
-    :ok
   end
 
   defp cainophile_child_spec do
