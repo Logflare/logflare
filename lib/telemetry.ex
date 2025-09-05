@@ -375,7 +375,14 @@ defmodule Logflare.Telemetry do
     :ets.all()
     |> Enum.map(&:ets.info/1)
     |> Enum.reject(&(&1 == :undefined))
-    |> Enum.sort_by(& &1[:size], :desc)
+    |> sort_ets_tables()
+  end
+
+  defp sort_ets_tables(tables_info) do
+    tables_info
+    |> Enum.map(&{0, &1[:size], &1})
+    |> :recon_lib.sublist_top_n_attrs(100)
+    |> Enum.map(&elem(&1, 2))
   end
 
   @number_suffix_regex ~r/(?=.*)(\d+)$/
