@@ -28,7 +28,7 @@
   </div>
 </section>
 
-<section :if={LogflareWeb.Utils.flag("multibackend", @user) == true and Logflare.Backends.Adaptor.supports_default_ingest?(@backend)} class="mx-auto container pt-3 tw-flex tw-flex-col tw-gap-4">
+<section :if={@flag_multibackend == true and Logflare.Backends.Adaptor.supports_default_ingest?(@backend)} class="mx-auto container pt-3 tw-flex tw-flex-col tw-gap-4">
   <h4>Default Ingest Sources</h4>
   <p>
     Sources configured to use this backend as a default ingest destination.

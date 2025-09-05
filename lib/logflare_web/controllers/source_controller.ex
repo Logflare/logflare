@@ -60,7 +60,8 @@ defmodule LogflareWeb.SourceController do
       pipeline_counts: pipeline_counts,
       home_team: home_team,
       team_users: team_users_with_teams,
-      current_node: Node.self()
+      current_node: Node.self(),
+      flag_multibackend: LogflareWeb.Utils.flag("multibackend", user)
     )
   end
 

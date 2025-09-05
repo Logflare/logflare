@@ -12,7 +12,7 @@
             <i class="fas fa-key"></i><span class="hide-on-mobile"> access tokens</span>
           <% end %>
         </li>
-        <%= if LogflareWeb.Utils.flag("multibackend", @user) do %>
+        <%= if @flag_multibackend do %>
           <li>
             <%= link to: ~p"/backends" do %>
               <i class="fas fa-database"></i><span class="hide-on-mobile"> backends</span>
