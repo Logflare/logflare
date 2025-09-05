@@ -385,9 +385,14 @@ if System.get_env("LOGFLARE_OTEL_ENDPOINT") do
     ingest_sample_ratio: ingest_sample_ratio,
     endpoint_sample_ratio: endpoint_sample_ratio
 
+  logflare_trace_metadata =
+    ["service.cluster": System.get_env("LOGFLARE_METADATA_CLUSTER")]
+    |> filter_nil_kv_pairs.()
+
   config :opentelemetry,
     sdk_disabled: false,
     traces_exporter: :otlp,
+    resource: logflare_trace_metadata,
     sampler:
       {:parent_based,
        %{
