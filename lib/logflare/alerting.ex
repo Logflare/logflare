@@ -241,8 +241,8 @@ defmodule Logflare.Alerting do
 
   Send notifications if necessary configurations are set. If no results are returned from the query execution, no alert is sent.
   """
-  @spec run_alert(AlertQuery.t(), :scheduled) :: :ok
-  @spec run_alert(AlertQuery.t()) :: :ok
+  @spec run_alert(AlertQuery.t(), :scheduled) ::
+          :ok | {:error, :not_enabled} | {:error, :below_min_cluster_size}
   def run_alert(%AlertQuery{} = alert_query, :scheduled) do
     # perform pre-run checks
     cfg = Application.get_env(:logflare, Logflare.Alerting)
@@ -267,6 +267,7 @@ defmodule Logflare.Alerting do
     end
   end
 
+  @spec run_alert(AlertQuery.t()) :: :ok | {:error, :no_results} | {:error, any()}
   def run_alert(%AlertQuery{} = alert_query) do
     alert_query = alert_query |> preload_alert_query()
 

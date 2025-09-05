@@ -333,7 +333,8 @@ defmodule Logflare.Endpoints do
       user: user,
       user_id: user.id,
       parsed_labels: Keyword.get(opts, :parsed_labels, %{}),
-      source_mapping: source_mapping
+      source_mapping: source_mapping,
+      redact_pii: Keyword.get(opts, :redact_pii, false)
     }
 
     run_query(query, params, opts)
