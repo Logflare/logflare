@@ -62,15 +62,12 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor.GoogleApiClient do
     GRPC.Stub.recv(stream)
     |> case do
       {:ok, responses} ->
-        Enum.each(responses, fn res ->
-          case res do
-            {:error, response} ->
-              Logger.warning("Storage Write API AppendRows response error - #{inspect(response)}")
-              :error
+        Enum.each(responses, fn
+          {:error, response} ->
+            Logger.warning("Storage Write API AppendRows response error - #{inspect(response)}")
 
-            _ ->
-              :ok
-          end
+          _ ->
+            :ok
         end)
 
         :ok
