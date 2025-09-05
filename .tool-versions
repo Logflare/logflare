@@ -1,5 +1,5 @@
 elixir 1.17.3-otp-27
 nodejs 22.9.0
-rust nightly
+rust 1.84.1
 erlang 27.1.2
 protoc 28.0
