@@ -116,7 +116,7 @@ defmodule Logflare.Lql do
   @doc """
   Creates a dynamic where clause using the appropriate backend transformer.
   """
-  @spec transform_filter_rule(term(), keyword()) :: Ecto.Query.DynamicExpr.t()
+  @spec transform_filter_rule(term(), keyword()) :: Ecto.Query.dynamic_expr()
   def transform_filter_rule(filter_rule, opts \\ []) do
     adapter = Keyword.get(opts, :adapter, :bigquery)
     transformer = BackendTransformer.for_dialect(adapter)
