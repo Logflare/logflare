@@ -315,6 +315,21 @@
     <%= submit if(@source.disable_tailing, do: "Enable search tailing", else: "Disable search tailing"), class: "btn btn-primary form-button" %>
   <% end %>
 
+  <%= if @source.v2_pipeline do %>
+    <%= section_header("Storage Write API Ingestion") %>
+    <%= form_for @changeset, Routes.source_path(@conn, :update, @source),fn f -> %>
+      <div class="form-group">
+        <%= @source.bq_storage_write_api %>
+        <%= label f, :bq_storage_write_api do %>
+          Toggle storage write API BigQuery ingestion for this source
+        <% end %>
+        <%= checkbox f, :bq_storage_write_api, checked: @source.bq_storage_write_api, value: @source.bq_storage_write_api  %>
+        <%= error_tag f, :bq_storage_write_api %>
+      </div>
+      <%= submit "Save", class: "btn btn-primary form-button" %>
+
+    <% end %>
+  <% end %>
 
   <%= if LogflareWeb.Utils.flag("multibackend", @user) == true do %>
     <%= section_header("Multi Backends") %>

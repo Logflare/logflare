@@ -1,7 +1,7 @@
 defmodule Opentelemetry.Proto.Collector.Trace.V1.ExportTraceServiceRequest do
   @moduledoc false
 
-  use Protobuf, syntax: :proto3, protoc_gen_elixir_version: "0.13.0"
+  use Protobuf, protoc_gen_elixir_version: "0.14.1", syntax: :proto3
 
   field :resource_spans, 1,
     repeated: true,
@@ -12,7 +12,7 @@ end
 defmodule Opentelemetry.Proto.Collector.Trace.V1.ExportTraceServiceResponse do
   @moduledoc false
 
-  use Protobuf, syntax: :proto3, protoc_gen_elixir_version: "0.13.0"
+  use Protobuf, protoc_gen_elixir_version: "0.14.1", syntax: :proto3
 
   field :partial_success, 1,
     type: Opentelemetry.Proto.Collector.Trace.V1.ExportTracePartialSuccess,
@@ -22,7 +22,7 @@ end
 defmodule Opentelemetry.Proto.Collector.Trace.V1.ExportTracePartialSuccess do
   @moduledoc false
 
-  use Protobuf, syntax: :proto3, protoc_gen_elixir_version: "0.13.0"
+  use Protobuf, protoc_gen_elixir_version: "0.14.1", syntax: :proto3
 
   field :rejected_spans, 1, type: :int64, json_name: "rejectedSpans"
   field :error_message, 2, type: :string, json_name: "errorMessage"
@@ -33,7 +33,7 @@ defmodule Opentelemetry.Proto.Collector.Trace.V1.TraceService.Service do
 
   use GRPC.Service,
     name: "opentelemetry.proto.collector.trace.v1.TraceService",
-    protoc_gen_elixir_version: "0.13.0"
+    protoc_gen_elixir_version: "0.14.1"
 
   rpc(
     :Export,

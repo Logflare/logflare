@@ -1,4 +1,5 @@
 defmodule Logflare.Backends.BigQueryAdaptorTest do
+  alias Explorer.DataFrame
   use Logflare.DataCase
   use ExUnitProperties
 
@@ -179,6 +180,150 @@ defmodule Logflare.Backends.BigQueryAdaptorTest do
                {{^source_id, ^backend_id, nil}, count} -> count
                _ -> nil
              end) == 0
+    end
+  end
+
+  describe "default bigquery backend - storage write api" do
+    test "can ingest into source without creating a BQ backend" do
+      user = insert(:user)
+      source = insert(:source, user: user, bq_storage_write_api: true)
+      start_supervised!({SourceSup, source})
+      log_event = build(:log_event, source: source)
+      pid = self()
+
+      Logflare.Backends.Adaptor.BigQueryAdaptor.GoogleApiClient
+      |> expect(:append_rows, fn {:arrow, dataframe}, _project, _dataset, _table_id ->
+        send(pid, :streamed)
+
+        assert {:ok, _} = DataFrame.dump_ipc(dataframe)
+        assert {:ok, _} = DataFrame.dump_ipc_record_batch(dataframe)
+        {:ok, %Google.Cloud.Bigquery.Storage.V1.AppendRowsResponse{}}
+      end)
+
+      assert {:ok, 1} = Backends.ingest_logs([log_event], source)
+
+      TestUtils.retry_assert(fn ->
+        assert_receive :streamed, 2500
+      end)
+    end
+
+    test "does not use LF managed BQ if legacy user BQ config is set" do
+      user = insert(:user, bigquery_project_id: "some-project", bigquery_dataset_id: "some-id")
+      source = insert(:source, user: user)
+      start_supervised!({SourceSup, source})
+      log_event = build(:log_event, source: source)
+
+      pid = self()
+
+      Logflare.Google.BigQuery
+      |> expect(:stream_batch!, fn arg, _ ->
+        assert arg.bigquery_project_id == "some-project"
+        assert arg.bigquery_dataset_id == "some-id"
+        send(pid, :ok)
+        {:ok, %GoogleApi.BigQuery.V2.Model.TableDataInsertAllResponse{insertErrors: nil}}
+      end)
+
+      assert {:ok, 1} = Backends.ingest_logs([log_event], source)
+
+      TestUtils.retry_assert(fn ->
+        assert_receive :ok, 2500
+      end)
+
+      :timer.sleep(1000)
+    end
+  end
+
+  describe "bq storage api benchmark" do
+    @describetag :benchmark
+
+    setup do
+      start_supervised!(BencheeAsync.Reporter)
+
+      Google.Cloud.Bigquery.Storage.V1.BigQueryWrite.Stub
+      |> stub(:append_rows, fn _channel ->
+        # simulate latency
+        :timer.sleep(10)
+        {:ok, %GRPC.Client.Stream{}}
+      end)
+
+      GRPC.Stub
+      |> stub(:connect, fn _url, _keywords ->
+        # simulate latency
+        :timer.sleep(20)
+        {:ok, %GRPC.Channel{}}
+      end)
+      |> stub(:send_request, fn stream, request ->
+        # simulate latency
+        :timer.sleep(10)
+
+        %{rows: {:arrow_rows, %{rows: %{serialized_record_batch: ipc_msg}}}} = request
+
+        BencheeAsync.Reporter.record(byte_size(ipc_msg))
+        {:ok, stream}
+      end)
+      |> stub(:end_stream, fn stream ->
+        {:ok, stream}
+      end)
+      |> stub(:recv, fn _stream ->
+        {:ok, []}
+      end)
+
+      user = insert(:user)
+      source = insert(:source, user: user, bq_storage_write_api: true)
+
+      start_supervised!({SourceSup, source})
+
+      [source: source]
+    end
+
+    test "defaults", %{source: source} do
+      # NOTE: It's important for us to create unique records
+      # if we use the same message it get's serialized into a single msg
+      # making this benchmark useless
+      batch_1 = [build(:log_event, source: source)]
+
+      batch_10 =
+        for _i <- 1..10 do
+          build(:log_event, source: source)
+        end
+
+      batch_100 =
+        for _i <- 1..100 do
+          build(:log_event, source: source)
+        end
+
+      batch_250 =
+        for _i <- 1..250 do
+          build(:log_event, source: source)
+        end
+
+      batch_500 =
+        for _i <- 1..500 do
+          build(:log_event, source: source)
+        end
+
+      BencheeAsync.run(
+        %{
+          "batch-1" => fn ->
+            Backends.ingest_logs(batch_1, source)
+          end,
+          "batch-10" => fn ->
+            Backends.ingest_logs(batch_10, source)
+          end,
+          "batch-100" => fn ->
+            Backends.ingest_logs(batch_100, source)
+          end,
+          "batch-250" => fn ->
+            Backends.ingest_logs(batch_250, source)
+          end,
+          "batch-500" => fn ->
+            Backends.ingest_logs(batch_500, source)
+          end
+        },
+        time: 3,
+        warmup: 1,
+        formatters: [{Benchee.Formatters.Console, extended_statistics: true}]
+      )
     end
   end
 

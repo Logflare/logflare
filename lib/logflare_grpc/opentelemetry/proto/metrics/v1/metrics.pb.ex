@@ -1,7 +1,7 @@
 defmodule Opentelemetry.Proto.Metrics.V1.AggregationTemporality do
   @moduledoc false
 
-  use Protobuf, enum: true, syntax: :proto3, protoc_gen_elixir_version: "0.13.0"
+  use Protobuf, enum: true, protoc_gen_elixir_version: "0.14.1", syntax: :proto3
 
   field :AGGREGATION_TEMPORALITY_UNSPECIFIED, 0
   field :AGGREGATION_TEMPORALITY_DELTA, 1
@@ -11,7 +11,7 @@ end
 defmodule Opentelemetry.Proto.Metrics.V1.DataPointFlags do
   @moduledoc false
 
-  use Protobuf, enum: true, syntax: :proto3, protoc_gen_elixir_version: "0.13.0"
+  use Protobuf, enum: true, protoc_gen_elixir_version: "0.14.1", syntax: :proto3
 
   field :DATA_POINT_FLAGS_DO_NOT_USE, 0
   field :DATA_POINT_FLAGS_NO_RECORDED_VALUE_MASK, 1
@@ -20,7 +20,7 @@ end
 defmodule Opentelemetry.Proto.Metrics.V1.MetricsData do
   @moduledoc false
 
-  use Protobuf, syntax: :proto3, protoc_gen_elixir_version: "0.13.0"
+  use Protobuf, protoc_gen_elixir_version: "0.14.1", syntax: :proto3
 
   field :resource_metrics, 1,
     repeated: true,
@@ -31,7 +31,7 @@ end
 defmodule Opentelemetry.Proto.Metrics.V1.ResourceMetrics do
   @moduledoc false
 
-  use Protobuf, syntax: :proto3, protoc_gen_elixir_version: "0.13.0"
+  use Protobuf, protoc_gen_elixir_version: "0.14.1", syntax: :proto3
 
   field :resource, 1, type: Opentelemetry.Proto.Resource.V1.Resource
 
@@ -46,7 +46,7 @@ end
 defmodule Opentelemetry.Proto.Metrics.V1.ScopeMetrics do
   @moduledoc false
 
-  use Protobuf, syntax: :proto3, protoc_gen_elixir_version: "0.13.0"
+  use Protobuf, protoc_gen_elixir_version: "0.14.1", syntax: :proto3
 
   field :scope, 1, type: Opentelemetry.Proto.Common.V1.InstrumentationScope
   field :metrics, 2, repeated: true, type: Opentelemetry.Proto.Metrics.V1.Metric
@@ -56,7 +56,7 @@ end
 defmodule Opentelemetry.Proto.Metrics.V1.Metric do
   @moduledoc false
 
-  use Protobuf, syntax: :proto3, protoc_gen_elixir_version: "0.13.0"
+  use Protobuf, protoc_gen_elixir_version: "0.14.1", syntax: :proto3
 
   oneof(:data, 0)
 
@@ -79,7 +79,7 @@ end
 defmodule Opentelemetry.Proto.Metrics.V1.Gauge do
   @moduledoc false
 
-  use Protobuf, syntax: :proto3, protoc_gen_elixir_version: "0.13.0"
+  use Protobuf, protoc_gen_elixir_version: "0.14.1", syntax: :proto3
 
   field :data_points, 1,
     repeated: true,
@@ -90,7 +90,7 @@ end
 defmodule Opentelemetry.Proto.Metrics.V1.Sum do
   @moduledoc false
 
-  use Protobuf, syntax: :proto3, protoc_gen_elixir_version: "0.13.0"
+  use Protobuf, protoc_gen_elixir_version: "0.14.1", syntax: :proto3
 
   field :data_points, 1,
     repeated: true,
@@ -108,7 +108,7 @@ end
 defmodule Opentelemetry.Proto.Metrics.V1.Histogram do
   @moduledoc false
 
-  use Protobuf, syntax: :proto3, protoc_gen_elixir_version: "0.13.0"
+  use Protobuf, protoc_gen_elixir_version: "0.14.1", syntax: :proto3
 
   field :data_points, 1,
     repeated: true,
@@ -124,7 +124,7 @@ end
 defmodule Opentelemetry.Proto.Metrics.V1.ExponentialHistogram do
   @moduledoc false
 
-  use Protobuf, syntax: :proto3, protoc_gen_elixir_version: "0.13.0"
+  use Protobuf, protoc_gen_elixir_version: "0.14.1", syntax: :proto3
 
   field :data_points, 1,
     repeated: true,
@@ -140,7 +140,7 @@ end
 defmodule Opentelemetry.Proto.Metrics.V1.Summary do
   @moduledoc false
 
-  use Protobuf, syntax: :proto3, protoc_gen_elixir_version: "0.13.0"
+  use Protobuf, protoc_gen_elixir_version: "0.14.1", syntax: :proto3
 
   field :data_points, 1,
     repeated: true,
@@ -151,7 +151,7 @@ end
 defmodule Opentelemetry.Proto.Metrics.V1.NumberDataPoint do
   @moduledoc false
 
-  use Protobuf, syntax: :proto3, protoc_gen_elixir_version: "0.13.0"
+  use Protobuf, protoc_gen_elixir_version: "0.14.1", syntax: :proto3
 
   oneof(:value, 0)
 
@@ -167,7 +167,7 @@ end
 defmodule Opentelemetry.Proto.Metrics.V1.HistogramDataPoint do
   @moduledoc false
 
-  use Protobuf, syntax: :proto3, protoc_gen_elixir_version: "0.13.0"
+  use Protobuf, protoc_gen_elixir_version: "0.14.1", syntax: :proto3
 
   field :attributes, 9, repeated: true, type: Opentelemetry.Proto.Common.V1.KeyValue
   field :start_time_unix_nano, 2, type: :fixed64, json_name: "startTimeUnixNano"
@@ -185,7 +185,7 @@ end
 defmodule Opentelemetry.Proto.Metrics.V1.ExponentialHistogramDataPoint.Buckets do
   @moduledoc false
 
-  use Protobuf, syntax: :proto3, protoc_gen_elixir_version: "0.13.0"
+  use Protobuf, protoc_gen_elixir_version: "0.14.1", syntax: :proto3
 
   field :offset, 1, type: :sint32
   field :bucket_counts, 2, repeated: true, type: :uint64, json_name: "bucketCounts"
@@ -194,7 +194,7 @@ end
 defmodule Opentelemetry.Proto.Metrics.V1.ExponentialHistogramDataPoint do
   @moduledoc false
 
-  use Protobuf, syntax: :proto3, protoc_gen_elixir_version: "0.13.0"
+  use Protobuf, protoc_gen_elixir_version: "0.14.1", syntax: :proto3
 
   field :attributes, 1, repeated: true, type: Opentelemetry.Proto.Common.V1.KeyValue
   field :start_time_unix_nano, 2, type: :fixed64, json_name: "startTimeUnixNano"
@@ -215,7 +215,7 @@ end
 defmodule Opentelemetry.Proto.Metrics.V1.SummaryDataPoint.ValueAtQuantile do
   @moduledoc false
 
-  use Protobuf, syntax: :proto3, protoc_gen_elixir_version: "0.13.0"
+  use Protobuf, protoc_gen_elixir_version: "0.14.1", syntax: :proto3
 
   field :quantile, 1, type: :double
   field :value, 2, type: :double
@@ -224,7 +224,7 @@ end
 defmodule Opentelemetry.Proto.Metrics.V1.SummaryDataPoint do
   @moduledoc false
 
-  use Protobuf, syntax: :proto3, protoc_gen_elixir_version: "0.13.0"
+  use Protobuf, protoc_gen_elixir_version: "0.14.1", syntax: :proto3
 
   field :attributes, 7, repeated: true, type: Opentelemetry.Proto.Common.V1.KeyValue
   field :start_time_unix_nano, 2, type: :fixed64, json_name: "startTimeUnixNano"
@@ -243,7 +243,7 @@ end
 defmodule Opentelemetry.Proto.Metrics.V1.Exemplar do
   @moduledoc false
 
-  use Protobuf, syntax: :proto3, protoc_gen_elixir_version: "0.13.0"
+  use Protobuf, protoc_gen_elixir_version: "0.14.1", syntax: :proto3
 
   oneof(:value, 0)
 

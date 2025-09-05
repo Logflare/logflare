@@ -10,10 +10,13 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
   require Logger
 
   alias Ecto.Changeset
+  alias Explorer.DataFrame
+  alias Logflare.Google.BigQuery.EventUtils
   alias Logflare.Backends
   alias Logflare.Backends.Backend
   alias Logflare.Backends.DynamicPipeline
   alias Logflare.Backends.IngestEventQueue
+  alias Logflare.Backends.Adaptor.BigQueryAdaptor.GoogleApiClient
   alias Logflare.Billing
   alias Logflare.BqRepo
   alias Logflare.Endpoints.Query
@@ -83,6 +86,34 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
     ]
 
     Supervisor.init(children, strategy: :one_for_one, max_restarts: 10)
+  end
+
+  def insert_log_events_via_storage_write_api(log_events, opts) do
+    # convert log events to table rows
+    opts =
+      Keyword.validate!(opts, [:project_id, :dataset_id, :source_token, :source_id, :source_token])
+
+    # get table id
+    table_id = format_table_name(opts[:source_token])
+
+    data_frames =
+      log_events
+      |> Enum.map(&log_event_to_df_struct(&1))
+      |> DataFrame.new()
+
+    # append rows
+    GoogleApiClient.append_rows(
+      {:arrow, data_frames},
+      opts[:project_id],
+      opts[:dataset_id],
+      table_id
+    )
+  end
+
+  @spec format_table_name(atom) :: String.t()
+  def format_table_name(source_token) when is_atom(source_token) do
+    Atom.to_string(source_token)
+    |> String.replace("-", "_")
   end
 
   @doc """
@@ -420,6 +451,8 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
   defdelegate append_managed_service_accounts(project_id, policy), to: CloudResourceManager
   defdelegate patch_dataset_access(user), to: Google.BigQuery
   defdelegate get_conn(conn_type), to: GenUtils
+
+  defdelegate log_event_to_df_struct(log_event), to: EventUtils
 
   # handles pagination for the IAM api
   defp get_next_page(project_id, page_token) do
