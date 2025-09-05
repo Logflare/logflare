@@ -193,7 +193,7 @@ defmodule Logflare.Mixfile do
       # Utils
       {:recase, "~> 0.7.0"},
       {:unicode, "~> 1.20"},
-      {:configcat, "~> 2.0.0"},
+      {:configcat, "~> 4.0.0"},
       {:ex2ms, "~> 1.7"},
 
       # Code quality
