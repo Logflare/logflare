@@ -2,7 +2,6 @@ defmodule Logflare.Logs.SearchOperation do
   @moduledoc """
   Logs search options and result
   """
-
   use TypedStruct
 
   alias Logflare.Lql.Rules, as: LqlRules
