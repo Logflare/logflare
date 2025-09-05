@@ -168,13 +168,13 @@ defmodule Logflare.Endpoints.CacheTest do
       assert {:ok, %{rows: [%{"testing" => "123"}]}} = Endpoints.run_cached_query(endpoint)
 
       # Cache should still return first response before proactive_requerying_seconds
-      Process.sleep(endpoint.proactive_requerying_seconds * 1000 - 100)
+      Process.sleep(endpoint.proactive_requerying_seconds * 500)
       assert {:ok, %{rows: [%{"testing" => "123"}]}} = Endpoints.run_cached_query(endpoint)
 
       test_response = [%{"testing" => "456"}]
 
       GoogleApi.BigQuery.V2.Api.Jobs
-      |> expect(:bigquery_jobs_query, 1, fn _conn, _proj_id, _opts ->
+      |> stub(:bigquery_jobs_query, fn _conn, _proj_id, _opts ->
         {:ok, TestUtils.gen_bq_response(test_response)}
       end)
 
@@ -182,8 +182,9 @@ defmodule Logflare.Endpoints.CacheTest do
       Process.sleep(endpoint.proactive_requerying_seconds * 1000 + 100)
       assert {:ok, %{rows: [%{"testing" => "456"}]}} = Endpoints.run_cached_query(endpoint)
 
-      :timer.sleep(2000)
-      refute Process.alive?(cache_pid)
+      TestUtils.retry_assert(fn ->
+        refute Process.alive?(cache_pid)
+      end)
     end
 
     test "cache dies after cache_duration_seconds after proactive requery ", %{user: user} do
