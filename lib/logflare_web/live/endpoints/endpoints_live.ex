@@ -88,14 +88,16 @@ defmodule LogflareWeb.EndpointsLive do
               socket.assigns.alerts
             )
 
-          socket =
-            socket
-            |> assign_updated_params_form(parsed_result.parameters, parsed_result.expanded_query)
-            # set changeset
-            |> assign(:endpoint_changeset, Endpoints.change_query(endpoint, %{}))
-            |> assign(:selected_backend_id, endpoint.backend_id)
-            |> assign(:parsed_result, parsed_result)
-            |> assign(:redact_pii, endpoint.redact_pii || false)
+          endpoint_with_metrics = Endpoints.calculate_endpoint_metrics(endpoint)
+
+          socket
+          |> assign_updated_params_form(parsed_result.parameters, parsed_result.expanded_query)
+          # set changeset
+          |> assign(:endpoint_changeset, Endpoints.change_query(endpoint, %{}))
+          |> assign(:selected_backend_id, endpoint.backend_id)
+          |> assign(:parsed_result, parsed_result)
+          |> assign(:show_endpoint, endpoint_with_metrics)
+          |> assign(:redact_pii, endpoint.redact_pii || false)
 
           # Clear test results when navigating to edit page
           if socket.assigns.live_action == :edit do
@@ -225,6 +227,29 @@ defmodule LogflareWeb.EndpointsLive do
          socket
          |> put_flash(:error, "Error occured when running query: #{inspect(err)}")}
     end
+  end
+
+  def handle_event(
+        "clear-endpoint-cache",
+        %{"endpoint-id" => endpoint_id},
+        socket
+      ) do
+    endpoint = Endpoints.get_endpoint_query(endpoint_id)
+    :ok = Endpoints.clear_all_endpoint_caches(endpoint)
+
+    # Recalculate metrics for show endpoint
+    updated_show_endpoint =
+      if socket.assigns.show_endpoint && socket.assigns.show_endpoint.id == endpoint.id do
+        Endpoints.calculate_endpoint_metrics(endpoint)
+      else
+        socket.assigns.show_endpoint
+      end
+
+    {:noreply,
+     socket
+     |> refresh_endpoints()
+     |> assign(:show_endpoint, updated_show_endpoint)
+     |> put_flash(:info, "Cache cleared successfully")}
   end
 
   def handle_event("apply-beta", _params, %{assigns: %{user: user}} = socket) do
