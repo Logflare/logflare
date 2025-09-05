@@ -3,7 +3,7 @@ defmodule Logflare.Google.BigQuery.EventUtils do
   Event utils for BigQuery.
   """
 
-  def log_event_to_struct(%Logflare.LogEvent{body: body}) do
+  def log_event_to_df_struct(%Logflare.LogEvent{body: body}) do
     {:ok, bq_timestamp} = DateTime.from_unix(body["timestamp"], :microsecond)
 
     for {k, v} <- body, into: %{} do

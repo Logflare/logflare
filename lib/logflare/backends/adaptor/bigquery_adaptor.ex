@@ -98,7 +98,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
 
     data_frames =
       log_events
-      |> Enum.map(&log_event_to_struct(&1))
+      |> Enum.map(&log_event_to_df_struct(&1))
       |> DataFrame.new()
 
     # append rows
@@ -452,7 +452,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
   defdelegate patch_dataset_access(user), to: Google.BigQuery
   defdelegate get_conn(conn_type), to: GenUtils
 
-  defdelegate log_event_to_struct(log_event), to: EventUtils
+  defdelegate log_event_to_df_struct(log_event), to: EventUtils
 
   # handles pagination for the IAM api
   defp get_next_page(project_id, page_token) do

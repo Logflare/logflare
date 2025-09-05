@@ -1,7 +1,7 @@
 defmodule Google.Rpc.Context.AuditContext do
   @moduledoc false
 
-  use Protobuf, syntax: :proto3, protoc_gen_elixir_version: "0.13.0"
+  use Protobuf, protoc_gen_elixir_version: "0.14.1", syntax: :proto3
 
   field :audit_log, 1, type: :bytes, json_name: "auditLog"
   field :scrubbed_request, 2, type: Google.Protobuf.Struct, json_name: "scrubbedRequest"

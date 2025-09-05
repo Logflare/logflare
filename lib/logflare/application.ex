@@ -182,6 +182,21 @@ defmodule Logflare.Application do
          ]
        }},
       {Finch,
+       name: Logflare.FinchBQStorage,
+       pools: %{
+         "https://bigquerystorage.googleapis.com" => [
+           protocols: [:http2],
+           count: max(base, 20) * 2,
+           start_pool_metrics?: true,
+           conn_opts: [
+             client_settings: [
+               initial_window_size: 8_000_000,
+               max_frame_size: 8_000_000
+             ]
+           ]
+         ]
+       }},
+      {Finch,
        name: Logflare.FinchDefault,
        pools: %{
          # default pool uses finch defaults

@@ -5,74 +5,22 @@ defmodule GRPC.Client.Adapters.Finch do
 
   alias Grpc.Client.Adapters.Finch.BidirectionalStream
   alias GRPC.Client.Adapters.Finch.StreamState
-  alias GRPC.Channel
-  alias GRPC.Credential
   alias Grpc.Client.Adapters.Finch.StreamRequestProcess
   alias Grpc.Client.Adapters.Finch.CustomStream
 
   @behaviour GRPC.Client.Adapter
 
-  @finch_instance_name Finch.GRPC
-  @default_conn_opts [
-    client_settings: [
-      initial_window_size: 8_000_000,
-      max_frame_size: 8_000_000
-    ]
-  ]
-
-  @doc """
-  Connects using Finch (Mint backend) based on the provided configs. Options
-    * `:conn_opts`: Defaults to `[client_settings: [initial_window_size: 8_000_000, max_frame_size: 8_000_000]]`, a larger default
-      window size ensures that the number of packages exchanges is smaller, thus speeding up the requests by reducing the
-      amount of networks round trip, with the cost of having larger packages reaching the server per connection.
-      Check [Mint.HTTP.connect()/4](https://hexdocs.pm/mint/Mint.HTTP.html#connect/4) for additional configs.
-  """
   @impl true
   def connect(channel, opts \\ []) do
-    # Added :config_options to facilitate testing.
-    {config_opts, opts} = Keyword.pop(opts, :config_options, [])
-    module_opts = Application.get_env(:grpc, __MODULE__, config_opts)
+    instance_name = Keyword.fetch!(opts, :instance_name)
 
-    {config_opts, _opts} = Keyword.pop(opts, :conn_opts, [])
-
-    opts = conn_opts(channel, config_opts)
-    pool_key = get_pool_key(channel)
-
-    Finch.start_link(
-      name: @finch_instance_name,
-      pools: %{
-        pool_key =>
-          [
-            protocols: [:http2],
-            conn_opts: opts
-          ]
-          |> Keyword.merge(module_opts)
-      }
-    )
-    |> case do
-      {:ok, pid} ->
-        {:ok, %{channel | adapter_payload: %{conn_pid: pid}}}
-
-      {:error, {:already_started, pid}} ->
-        {:ok, %{channel | adapter_payload: %{conn_pid: pid}}}
-
-      error ->
-        {:error, "Error while opening connection: #{inspect(error)}"}
-    end
+    {:ok, %{channel | adapter_payload: %{instance_name: instance_name}}}
   end
 
   @impl true
-  def disconnect(%{adapter_payload: %{conn_pid: pid}} = channel)
-      when is_pid(pid) do
-    pool_key = get_pool_key(channel)
-
-    Finch.stop_pool(@finch_instance_name, pool_key)
-
+  def disconnect(channel) do
+    # Function is not safe for Finch, we just forget about the payload
     {:ok, %{channel | adapter_payload: nil}}
-  end
-
-  def disconnect(%{adapter_payload: nil} = channel) do
-    {:ok, channel}
   end
 
   @impl true
@@ -92,7 +40,7 @@ defmodule GRPC.Client.Adapters.Finch do
   @impl true
   def receive_data(
         %{
-          channel: %{adapter_payload: %{conn_pid: _pid}}
+          channel: %{adapter_payload: %{instance_name: _instance_name}}
         } = stream,
         opts
       ) do
@@ -128,7 +76,7 @@ defmodule GRPC.Client.Adapters.Finch do
   @impl true
   def send_data(
         %{
-          channel: %{adapter_payload: %{conn_pid: _pid}},
+          channel: %{adapter_payload: %{instance_name: _instance_name}},
           payload: %{stream_state_pid: stream_state_pid}
         } = stream,
         message,
@@ -150,7 +98,7 @@ defmodule GRPC.Client.Adapters.Finch do
   @impl true
   def end_stream(
         %{
-          channel: %{adapter_payload: %{conn_pid: _pid}},
+          channel: %{adapter_payload: %{instance_name: _instance_name}},
           payload: %{stream_state_pid: stream_state_pid}
         } = stream
       ) do
@@ -161,13 +109,13 @@ defmodule GRPC.Client.Adapters.Finch do
   @impl true
   def cancel(stream) do
     %{
-      channel: %{adapter_payload: %{conn_pid: _conn_pid}},
+      channel: %{adapter_payload: %{instance_name: _instance_name}},
       payload: payload
     } = stream
 
     if payload[:stream_state_pid] do
       CustomStream.close(payload[:stream_state_pid])
-      GRPC.Client.Stream.put_payload(stream, :stream_state_pid, :closed)
+      GRPC.Client.Stream.put_payload(stream, :stream_state_pid, nil)
     end
 
     if payload[:stream_request_pid] do
@@ -176,25 +124,6 @@ defmodule GRPC.Client.Adapters.Finch do
 
     :ok
   end
-
-  defp conn_opts(%Channel{scheme: "https"} = channel, opts) do
-    %Credential{ssl: ssl} = Map.get(channel, :cred) || %Credential{}
-
-    Keyword.merge(@default_conn_opts, opts)
-    |> Keyword.update(:transport_opts, ssl, fn x ->
-      Keyword.merge(x, ssl)
-    end)
-  end
-
-  defp conn_opts(_channel, opts) do
-    Keyword.merge(@default_conn_opts, opts)
-  end
-
-  defp get_pool_key(%Channel{host: {:local, socket_path}, scheme: scheme, port: port}),
-    do: {scheme, {:local, socket_path}, port}
-
-  defp get_pool_key(%Channel{scheme: scheme, host: host, port: port}),
-    do: "#{scheme}://#{host}:#{port}"
 
   defp do_receive_data(
          stream,

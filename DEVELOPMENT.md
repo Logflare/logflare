@@ -128,6 +128,7 @@ make decrypt.{dev|staging|prod}
 make encrypt.{dev|staging|prod}
 make reset
 make grpc.protoc
+make grpc.protoc.bq
 make deploy.staging.{main|versioned}
 make deploy.prod.versioned
 make tag-versioned

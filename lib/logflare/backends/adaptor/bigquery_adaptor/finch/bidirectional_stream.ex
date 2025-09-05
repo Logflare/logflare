@@ -3,7 +3,7 @@ defmodule Grpc.Client.Adapters.Finch.BidirectionalStream do
   alias Grpc.Client.Adapters.Finch.RequestUtils
   use GenServer
 
-  @finch_instance_name Finch.GRPC
+  @finch_instance_name Logflare.FinchBQStorage
 
   def start_link(stream, path, opts, timeout) do
     GenServer.start_link(__MODULE__, [stream, path, opts, timeout])

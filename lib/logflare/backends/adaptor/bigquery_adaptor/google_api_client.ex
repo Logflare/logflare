@@ -7,6 +7,8 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor.GoogleApiClient do
   alias Google.Cloud.Bigquery.Storage.V1.ArrowRecordBatch
   require Logger
 
+  @finch_instance_name Logflare.FinchBQStorage
+
   def append_rows({:arrow, data_frame}, project, dataset, table) do
     partition_count = System.schedulers_online()
     partition = :erlang.phash2(self(), partition_count)
@@ -14,16 +16,9 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor.GoogleApiClient do
     {:ok, goth_token} = Goth.fetch({Logflare.Goth, partition})
 
     {:ok, channel} =
-      GRPC.Stub.connect("bigquerystorage.googleapis.com:443",
+      GRPC.Stub.connect("https://bigquerystorage.googleapis.com",
         adapter: GRPC.Client.Adapters.Finch,
-        cred:
-          GRPC.Credential.new(
-            ssl: [
-              customize_hostname_check: [
-                match_fun: :public_key.pkix_verify_hostname_match_fun(:https)
-              ]
-            ]
-          ),
+        adapter_opts: [instance_name: @finch_instance_name],
         headers: [
           {"Authorization", "Bearer #{goth_token.token}"}
         ]
@@ -35,47 +30,54 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor.GoogleApiClient do
 
     {:ok, batch_msgs} = DataFrame.dump_ipc_record_batch(data_frame)
 
-    Enum.each(batch_msgs, fn ipc_msg ->
-      arrow_record_batch = %ArrowRecordBatch{
-        serialized_record_batch: ipc_msg
-      }
+    stream = BigQueryWrite.Stub.append_rows(channel)
 
-      arrow_rows = %ArrowData{rows: arrow_record_batch, writer_schema: writer_schema}
+    task =
+      Task.async_stream(
+        batch_msgs,
+        fn ipc_msg ->
+          arrow_record_batch = %ArrowRecordBatch{
+            serialized_record_batch: ipc_msg
+          }
 
-      request =
-        %AppendRowsRequest{
-          write_stream:
-            "projects/#{project}/datasets/#{dataset}/tables/#{table}/streams/_default",
-          rows: {:arrow_rows, arrow_rows}
-        }
+          arrow_rows = %ArrowData{rows: arrow_record_batch, writer_schema: writer_schema}
 
-      stream = BigQueryWrite.Stub.append_rows(channel)
+          request =
+            %AppendRowsRequest{
+              write_stream:
+                "projects/#{project}/datasets/#{dataset}/tables/#{table}/streams/_default",
+              rows: {:arrow_rows, arrow_rows}
+            }
 
-      GRPC.Stub.send_request(stream, request, end_stream: true)
+          GRPC.Stub.send_request(stream, request)
+        end,
+        ordered: false,
+        max_concurrency: System.schedulers_online()
+      )
 
-      GRPC.Stub.recv(stream)
-      |> case do
-        {:ok, responses} ->
-          Enum.each(responses, fn res ->
-            case res do
-              {:error, response} ->
-                Logger.warning(
-                  "Storage Write API AppendRows response error - #{inspect(response)}"
-                )
+    Stream.run(task)
 
-                :error
+    GRPC.Stub.end_stream(stream)
 
-              _ ->
-                :ok
-            end
-          end)
+    GRPC.Stub.recv(stream)
+    |> case do
+      {:ok, responses} ->
+        Enum.each(responses, fn res ->
+          case res do
+            {:error, response} ->
+              Logger.warning("Storage Write API AppendRows response error - #{inspect(response)}")
+              :error
 
-          :ok
+            _ ->
+              :ok
+          end
+        end)
 
-        {:error, response} = err ->
-          Logger.warning("Storage Write API AppendRows  error - #{inspect(response)}")
-          err
-      end
-    end)
+        :ok
+
+      {:error, response} = err ->
+        Logger.warning("Storage Write API AppendRows  error - #{inspect(response)}")
+        err
+    end
   end
 end

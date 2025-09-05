@@ -1,7 +1,7 @@
 defmodule Google.Cloud.Bigquery.Storage.V1.TableFieldSchema.Type do
   @moduledoc false
 
-  use Protobuf, enum: true, syntax: :proto3, protoc_gen_elixir_version: "0.13.0"
+  use Protobuf, enum: true, protoc_gen_elixir_version: "0.14.1", syntax: :proto3
 
   field :TYPE_UNSPECIFIED, 0
   field :STRING, 1
@@ -25,7 +25,7 @@ end
 defmodule Google.Cloud.Bigquery.Storage.V1.TableFieldSchema.Mode do
   @moduledoc false
 
-  use Protobuf, enum: true, syntax: :proto3, protoc_gen_elixir_version: "0.13.0"
+  use Protobuf, enum: true, protoc_gen_elixir_version: "0.14.1", syntax: :proto3
 
   field :MODE_UNSPECIFIED, 0
   field :NULLABLE, 1
@@ -36,7 +36,7 @@ end
 defmodule Google.Cloud.Bigquery.Storage.V1.TableSchema do
   @moduledoc false
 
-  use Protobuf, syntax: :proto3, protoc_gen_elixir_version: "0.13.0"
+  use Protobuf, protoc_gen_elixir_version: "0.14.1", syntax: :proto3
 
   field :fields, 1, repeated: true, type: Google.Cloud.Bigquery.Storage.V1.TableFieldSchema
 end
@@ -44,7 +44,7 @@ end
 defmodule Google.Cloud.Bigquery.Storage.V1.TableFieldSchema.FieldElementType do
   @moduledoc false
 
-  use Protobuf, syntax: :proto3, protoc_gen_elixir_version: "0.13.0"
+  use Protobuf, protoc_gen_elixir_version: "0.14.1", syntax: :proto3
 
   field :type, 1,
     type: Google.Cloud.Bigquery.Storage.V1.TableFieldSchema.Type,
@@ -55,7 +55,7 @@ end
 defmodule Google.Cloud.Bigquery.Storage.V1.TableFieldSchema do
   @moduledoc false
 
-  use Protobuf, syntax: :proto3, protoc_gen_elixir_version: "0.13.0"
+  use Protobuf, protoc_gen_elixir_version: "0.14.1", syntax: :proto3
 
   field :name, 1, type: :string, deprecated: false
 
