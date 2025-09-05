@@ -124,30 +124,12 @@ defmodule Logflare.Endpoints do
     with endpoint <- Repo.preload(query, :user),
          changeset <- Query.update_by_user_changeset(endpoint, params),
          {:ok, endpoint} <- Repo.update(changeset) do
-      changed_keys = Map.keys(changeset.changes)
-
-      should_kill_caches? =
-        Enum.any?(changed_keys, fn key ->
-          key in [
-            :query,
-            :sandboxable,
-            :cache_duration_seconds,
-            :proactive_requerying_seconds,
-            :max_limit,
-            :enable_auth,
-            :labels
-          ]
+      for pid <- Resolver.list_caches(endpoint) do
+        Utils.Tasks.async(fn ->
+          ResultsCache.invalidate(pid)
         end)
-
-      if should_kill_caches? do
-        # kill all caches
-        for pid <- Resolver.list_caches(endpoint) do
-          Utils.Tasks.async(fn ->
-            ResultsCache.invalidate(pid)
-          end)
-        end
-        |> Task.await_many(30_000)
       end
+      |> Task.await_many(30_000)
 
       {:ok, endpoint}
     end
@@ -497,19 +479,6 @@ defmodule Logflare.Endpoints do
       end
 
     Task.await_many(tasks, 30_000)
-
-    # Clear Endpoints.Cache context cache entries
-    Logflare.ContextCache.bust_keys([{__MODULE__, endpoint.id}])
-
-    # Clear cache entries by token and name if they exist
-    Cachex.del(Logflare.Endpoints.Cache, {:get_by, [[token: endpoint.token]]})
-
-    Cachex.del(
-      Logflare.Endpoints.Cache,
-      {:get_by, [[name: endpoint.name, user_id: endpoint.user_id]]}
-    )
-
-    Cachex.del(Logflare.Endpoints.Cache, {:get_mapped_query_by_token, [endpoint.token]})
 
     :ok
   end

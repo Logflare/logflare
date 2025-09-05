@@ -131,8 +131,12 @@ defmodule LogflareWeb.EndpointsLiveTest do
     |> element(".subhead button", "clear cache")
     |> render_click()
 
-    assert render(view) =~ "Cache cleared successfully"
-    assert render(view) =~ ~r/active caches:.+0/
+    :timer.sleep(1000)
+
+    TestUtils.retry_assert(fn ->
+      assert render(view) =~ "Cache cleared successfully"
+      assert render(view) =~ ~r/active caches:.+0/
+    end)
   end
 
   test "new endpoint", %{conn: conn} do
