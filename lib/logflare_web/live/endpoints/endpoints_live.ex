@@ -57,7 +57,7 @@ defmodule LogflareWeb.EndpointsLive do
       |> assign(:query_string, nil)
       |> assign(:prev_params, %{})
       |> assign(:params_form, to_form(%{"query" => "", "params" => %{}}, as: "run"))
-      |> assign(:declared_params, %{})
+      |> assign(:declared_params, [])
       |> assign(:alerts, alerts)
       |> assign_sources()
       |> assign_backends()
@@ -90,7 +90,7 @@ defmodule LogflareWeb.EndpointsLive do
 
           endpoint_with_metrics = Endpoints.calculate_endpoint_metrics(endpoint)
 
-          socket
+          socket = socket
           |> assign_updated_params_form(parsed_result.parameters, parsed_result.expanded_query)
           # set changeset
           |> assign(:endpoint_changeset, Endpoints.change_query(endpoint, %{}))
