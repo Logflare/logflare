@@ -2,6 +2,8 @@ defmodule LogflareWeb.Helpers.Forms do
   @moduledoc false
   use LogflareWeb, :html
 
+  def section_header(%{text: text}) when is_binary(text), do: section_header(text)
+
   def section_header(text) do
     anchor = text |> String.downcase() |> String.replace(" ", "-")
 
