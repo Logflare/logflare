@@ -1,12 +1,11 @@
 defmodule LogflareWeb.DashboardLive do
   use LogflareWeb, :live_view
 
-  alias Logflare.{Repo, Sources, Teams, TeamUser, User, Users}
-  alias LogflareWeb.DashboardLive.DashboardComponents
+  alias Logflare.{Billing, Sources, Teams, TeamUser, User, Users}
+  alias LogflareWeb.DashboardLive.{DashboardComponents, DashboardSourceComponents}
+  alias LogflareWeb.Helpers.Forms
 
   def mount(_, %{"user_id" => user_id} = session, socket) do
-    session |> dbg
-
     user =
       Users.get_by_and_preload(id: user_id)
       |> Users.preload_sources()
@@ -14,9 +13,12 @@ defmodule LogflareWeb.DashboardLive do
 
     sources = Sources.preload_for_dashboard(user.sources)
 
+    plan = Billing.get_plan_by_user(user)
+
     socket =
       socket
       |> assign(:user, user)
+      |> assign(:plan, plan)
       |> assign_teams(session["team_user_id"])
       |> assign(:sources, sources)
 
@@ -45,23 +47,91 @@ defmodule LogflareWeb.DashboardLive do
     )
   end
 
+  @impl true
+  def handle_event("toggle_favorite", %{"id" => id}, socket) do
+    %{user: user} = socket.assigns
+
+    with source <- Sources.get_by_and_preload(id: id),
+         true <- LogflareWeb.Plugs.SetVerifySource.verify_source_for_user(source, user),
+         {:ok, source} <-
+           Sources.update_source_by_user(source, %{"favorite" => !source.favorite}) do
+      {:noreply, socket |> put_flash(:info, "Source updated!")}
+    else
+      _ -> {:noreply, socket |> put_flash(:error, "Something went wrong!")}
+    end
+  end
+
+  @impl true
   def render(assigns) do
     ~H"""
-    <div class="">
+    <div>
       <.subhead user={@user} />
-      <div class="tw-flex tw-mt-[50px] tw-mx-[40px] tw-px-4">
-        <div class="w-1/4 tw-px-4">
-          <.saved_searches sources={@sources} />
-          <DashboardComponents.teams current_team={@team} home_team={@user.team} team_users={@team_users} />
-          <DashboardComponents.members user={@user} team={@team} />
-        </div>
-        <div class="tw-grow">
-          sources
-        </div>
-        <div class="tw-w-1/4">
-          <DashboardComponents.integrations />
+      <div class="tw-max-w-[95%] tw-mx-auto">
+        <div class="tw-grid tw-grid-cols-12 tw-gap-8 tw-px-[15px] tw-mt-[50px]">
+          <div class="tw-col-span-3">
+            <.saved_searches sources={@sources} />
+            <DashboardComponents.teams current_team={@team} home_team={@user.team} team_users={@team_users} />
+            <DashboardComponents.members user={@user} team={@team} />
+          </div>
+          <div class="tw-col-span-7">
+            <.source_list sources={@sources} plan={@plan} />
+          </div>
+          <div class="tw-col-span-2">
+            <DashboardComponents.integrations />
+          </div>
         </div>
       </div>
+    </div>
+    """
+  end
+
+  def source_list(assigns) do
+    ~H"""
+    <div id="source-list" phx-hook="FormatTimestamps">
+      <div class="tw-mb-3 tw-flex tw-justify-end">
+        <.link href={~p"/query"} class="btn btn-primary btn-sm">
+          Run a query
+        </.link>
+        <.link href={~p"/sources/new"} class="btn btn-primary btn-sm">
+          New source
+        </.link>
+      </div>
+      <ul class="list-group">
+        <%= if Enum.empty?(@sources) do %>
+          <li class="list-group-item">You don't have any sources!</li>
+          <li class="list-group-item">Sources are where your log events go.</li>
+          <li class="list-group-item">Create one now!</li>
+        <% end %>
+        <%= for {service_name, sources} <- Enum.group_by(@sources, fn s -> s.service_name end) |> Enum.reverse() do %>
+          <li :if={service_name != nil} class="list-group-item !tw-pb-0"><%= Forms.section_header(service_name) %></li>
+          <li :if={service_name == nil} class="list-group-item">
+            <hr />
+          </li>
+          <li :for={source <- sources} class="list-group-item">
+            <div class="favorite float-left tw-cursor-pointer tw-text-yellow-200" phx-click="toggle_favorite" phx-value-id={source.id}>
+              <span>
+                <i class={[if(source.favorite, do: "fas", else: "far"), "fa-star "]} />
+              </span>
+            </div>
+            <div>
+              <div class="float-right">
+                <.link href={~p"/sources/#{source}/edit"} class="dashboard-links">
+                  <i class="fas fa-edit"></i>
+                </.link>
+              </div>
+              <div class="source-link word-break-all">
+                <.link href={~p"/sources/#{source}"} class="tw-text-white"><%= source.name %></.link>
+                <span id={source.token}>
+                  <small class="my-badge my-badge-info">
+                    <%= source.metrics.inserts_string %>
+                  </small>
+                </span>
+              </div>
+            </div>
+            <DashboardSourceComponents.source_metadata source={source} plan={@plan} />
+          </li>
+        <% end %>
+      </ul>
     </div>
     """
   end
@@ -119,10 +189,10 @@ defmodule LogflareWeb.DashboardLive do
     ~H"""
     <div>
       <h5 class="header-margin">Saved Searches</h5>
+      <%= if Enum.all?(@sources, &(Map.get(&1, :saved_searches) == [])) do %>
+        Your saved searches will show up here. Save some searches!
+      <% end %>
       <ul class="list-unstyled">
-        <%= if Enum.all?(@sources, &(Map.get(&1, :saved_searches) == [])) do %>
-          Your saved searches will show up here. Save some searches!
-        <% end %>
         <%= for source <- @sources, saved_search <- source.saved_searches do %>
           <li>
             <.link navigate={~p"/sources/#{source}/search?#{%{querystring: saved_search.querystring, tailing: saved_search.tailing}}"}>
