@@ -4,6 +4,7 @@ defmodule LogflareWeb.DashboardLive.DashboardComponents do
   use Phoenix.Component
 
   alias Logflare.Auth
+  alias Phoenix.LiveView.JS
 
   def integrations(assigns) do
     ~H"""
@@ -114,6 +115,57 @@ defmodule LogflareWeb.DashboardLive.DashboardComponents do
       <.link href={~p"/account/edit#team-members"}>
         Invite more team members.
       </.link>
+    </div>
+    """
+  end
+
+  attr :user, Logflare.User, required: true
+
+  def subhead(assigns) do
+    assigns =
+      assigns
+      |> assign(:flag_multibackend, LogflareWeb.Utils.flag("multibackend", assigns.user))
+
+    ~H"""
+    <div class="subhead ">
+      <div class="container mx-auto">
+        <h5>~/logs</h5>
+        <div class="log-settings">
+          <ul>
+            <li>
+              <i class="fa fa-info-circle" aria-hidden="true"></i>
+              <span>
+                ingest API key
+                <code class="pointer-cursor logflare-tooltip" id="api-key" phx-click={JS.dispatch("logflare:copy-to-clipboard", detail: %{text: @user.api_key})} data-showing-api-key="false" data-clipboard-text={@user.api_key} data-toggle="tooltip" data-placement="top" title="Copy this">
+                  CLICK ME
+                </code>
+              </span>
+            </li>
+            <li>
+              <.link href={~p"/access-tokens"}>
+                <i class="fas fa-key"></i><span class="hide-on-mobile"> access tokens</span>
+              </.link>
+            </li>
+            <li :if={@flag_multibackend}>
+              <.link href={~p"/backends"}>
+                <i class="fas fa-database"></i><span class="hide-on-mobile"> backends</span>
+              </.link>
+            </li>
+            <li>
+              <.link href={~p"/integrations/vercel/edit"}>
+                ▲<span class="hide-on-mobile"> vercel
+                  integration</span>
+              </.link>
+            </li>
+            <li>
+              <.link href={~p"/billing/edit"}>
+                <i class="fas fa-money-bill"></i><span class="hide-on-mobile"> billing</span>
+              </.link>
+            </li>
+            <li><a href="mailto:support@logflare.app?Subject=Logflare%20Help" target="_top"><i class="fas fa-question-circle"></i> <span class="hide-on-mobile">help</span></a></li>
+          </ul>
+        </div>
+      </div>
     </div>
     """
   end
