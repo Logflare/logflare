@@ -86,3 +86,7 @@ examples/**/node_modules
 
 # dev worktree patterns
 dev-*
+
+# ai stuff
+CLAUDE.md
+.cursorrules
