@@ -8,9 +8,11 @@ sidebar_position: 11
 ## Backends
 Logflare supports pluggable backends through adaptor modules. This guide helps you implement a new backend and submit it upstream.
 
+All existing adaptors can be seen [here](https://github.com/Logflare/logflare/tree/main/lib/logflare/backends/adaptor) as examples. 
+
 ## Architecture overview
 
-Backend adaptors live in `lib/logflare/backends/adaptor` and implement the `Logflare.Backends.Adaptor` behaviour. Required callbacks include `start_link/1`, `cast_config/1`, `validate_config/1`, and `execute_query/3`.
+Backend adaptors live in [`lib/logflare/backends/adaptor`](https://github.com/Logflare/logflare/blob/main/lib/logflare/backends/adaptor.ex) and implement the `Logflare.Backends.Adaptor` behaviour. Required callbacks include `start_link/1`, `cast_config/1`, `validate_config/1`, and `execute_query/3`.
 
 Each adaptor manages a dedicated Broadway pipeline for processing events. Pipelines may optionally scale dynamically using the `Logflare.DynamicPipeline` module.
 
