@@ -170,8 +170,8 @@ defmodule LogflareWeb.SearchLive.EventContextComponent do
     log_event.id == target_event_id
   end
 
-  @spec search_logs(String.t(), DateTime.t(), binary | integer, Lql.Rules.lql_rules()) ::
-          {:ok, map} | {:error, map}
+  @spec search_logs(String.t(), DateTime.t(), binary() | integer(), Lql.Rules.lql_rules()) ::
+          map()
   def search_logs(log_event_id, ts, source_id, lql_rules) do
     source = Sources.get_source_for_lv_param(source_id)
 

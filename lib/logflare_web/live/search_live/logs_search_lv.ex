@@ -716,7 +716,7 @@ defmodule LogflareWeb.Source.SearchLV do
   Does nothing if the ChartRule is already valid, or if the ChartRule is not present.
   """
 
-  @spec maybe_adjust_chart_period(Lql.Rules.t()) :: Lql.Rules.t()
+  @spec maybe_adjust_chart_period(Lql.Rules.lql_rules()) :: Lql.Rules.lql_rules()
   def maybe_adjust_chart_period(lql_rules) do
     max_ticks = Logflare.Logs.SearchOperations.max_chart_ticks()
 
