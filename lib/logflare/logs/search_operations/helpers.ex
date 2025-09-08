@@ -3,6 +3,7 @@ defmodule Logflare.Logs.SearchOperations.Helpers do
 
   alias Logflare.EctoQueryBQ
   alias Logflare.Google.BigQuery.GenUtils
+  alias Logflare.Logs.SearchOperations
   alias Logflare.Lql.Rules.FilterRule, as: FR
   alias Logflare.Sources.Source
 
@@ -110,7 +111,7 @@ defmodule Logflare.Logs.SearchOperations.Helpers do
   @spec get_number_of_chart_ticks(
           Date.t() | DateTime.t(),
           Date.t() | DateTime.t(),
-          SO.chart_period()
+          SearchOperations.chart_period()
         ) :: pos_integer
   def get_number_of_chart_ticks(min, max, period) do
     Timex.diff(max, min, period)

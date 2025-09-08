@@ -1,7 +1,7 @@
 defmodule Logflare.Backends.Backend do
   @moduledoc false
-
   use TypedEctoSchema
+
   import Ecto.Changeset
 
   alias Ecto.Changeset
@@ -26,26 +26,28 @@ defmodule Logflare.Backends.Backend do
   }
 
   typed_schema "backends" do
-    field(:name, :string)
-    field(:description, :string)
-    field(:token, Ecto.UUID, autogenerate: true)
-    field(:type, Ecto.Enum, values: Map.keys(@adaptor_mapping))
-    field(:config, :map, virtual: true)
-    field(:config_encrypted, Logflare.Ecto.EncryptedMap)
-    many_to_many(:sources, Source, join_through: "sources_backends")
-    belongs_to(:user, User)
-    has_many(:rules, Rule)
+    field :name, :string
+    field :description, :string
+    field :token, Ecto.UUID, autogenerate: true
+    field :type, Ecto.Enum, values: Map.keys(@adaptor_mapping)
+    field :config, :map, virtual: true
+    field :config_encrypted, Logflare.Ecto.EncryptedMap
 
-    many_to_many(:alert_queries, AlertQuery,
-      join_through: "alert_queries_backends",
-      on_replace: :delete
-    )
-
-    has_many(:endpoint_queries, Query)
-
-    field(:register_for_ingest, :boolean, virtual: true, default: true)
+    field :register_for_ingest, :boolean, virtual: true, default: true
     field :metadata, :map
     field :default_ingest?, :boolean, source: :default_ingest, default: false
+
+    belongs_to :user, User
+
+    has_many :rules, Rule
+    has_many :endpoint_queries, Query
+
+    many_to_many :sources, Source, join_through: "sources_backends"
+
+    many_to_many :alert_queries, AlertQuery,
+      join_through: "alert_queries_backends",
+      on_replace: :delete
+
     timestamps()
   end
 

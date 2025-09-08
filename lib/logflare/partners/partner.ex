@@ -1,9 +1,11 @@
 defmodule Logflare.Partners.Partner do
-  use Ecto.Schema
+  use TypedEctoSchema
+
   import Ecto.Changeset
+
   alias Logflare.User
 
-  schema "partners" do
+  typed_schema "partners" do
     field :name, :string
     field :token, Ecto.UUID, autogenerate: {Ecto.UUID, :generate, []}
 

@@ -336,9 +336,9 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
 
         {:error, "Error executing Clickhouse query"}
 
-      {:error, reason} when is_non_empty_binary(reason) ->
+      {:error, %{message: message}} when is_non_empty_binary(message) ->
         Logger.warning(
-          "ClickHouse query failed: #{inspect(reason)}",
+          "ClickHouse query failed: #{inspect(message)}",
           backend_id: backend.id
         )
 

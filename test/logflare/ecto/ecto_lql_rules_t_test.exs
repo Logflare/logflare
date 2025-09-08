@@ -22,7 +22,10 @@ defmodule Ecto.LqlRulesTest do
     test "handles edge cases and errors" do
       assert {:ok, nil} = LqlRules.load(nil)
       assert {:ok, ""} = LqlRules.load("")
-      assert {:error, %ArgumentError{}} = LqlRules.load("invalid")
+
+      assert {:error,
+              "errors were found at the given arguments:\n\n  * 1st argument: invalid external representation of a term\n"} =
+               LqlRules.load("invalid")
     end
 
     test "converts legacy `FilterRule` from actual error case" do
