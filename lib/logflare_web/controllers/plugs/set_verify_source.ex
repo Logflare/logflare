@@ -29,7 +29,7 @@ defmodule LogflareWeb.Plugs.SetVerifySource do
         |> render("404_page.html")
         |> halt()
 
-      source.user_id == user.id || user.admin ->
+      verify_source_for_user(source, user) ->
         assign(conn, :source, source)
 
       true ->
@@ -55,5 +55,9 @@ defmodule LogflareWeb.Plugs.SetVerifySource do
       source ->
         assign(conn, :source, source)
     end
+  end
+
+  def verify_source_for_user(source, user) do
+    source.user_id == user.id || user.admin
   end
 end
