@@ -14,6 +14,9 @@ defmodule LogflareWeb.DashboardLive do
 
     sources = Sources.preload_for_dashboard(user.sources)
 
+    grouped_sources =
+      Enum.group_by(sources, fn source -> source.service_name end) |> Enum.reverse()
+
     plan = Billing.get_plan_by_user(user)
 
     socket =
@@ -22,6 +25,7 @@ defmodule LogflareWeb.DashboardLive do
       |> assign(:plan, plan)
       |> assign_teams(session["team_user_id"])
       |> assign(:sources, sources)
+      |> assign(:grouped_sources, grouped_sources)
 
     {:ok, socket}
   end
@@ -75,7 +79,7 @@ defmodule LogflareWeb.DashboardLive do
             <DashboardComponents.members user={@user} team={@team} />
           </div>
           <div class="tw-col-span-7">
-            <.source_list sources={@sources} plan={@plan} />
+            <.source_list grouped_sources={@grouped_sources} plan={@plan} />
           </div>
           <div class="tw-col-span-2">
             <DashboardComponents.integrations />
@@ -98,13 +102,13 @@ defmodule LogflareWeb.DashboardLive do
         </.link>
       </div>
       <ul class="list-group">
-        <%= if Enum.empty?(@sources) do %>
+        <%= if Enum.empty?(@grouped_sources) do %>
           <li class="list-group-item">You don't have any sources!</li>
           <li class="list-group-item">Sources are where your log events go.</li>
           <li class="list-group-item">Create one now!</li>
         <% end %>
-        <%= for {service_name, sources} <- Enum.group_by(@sources, fn s -> s.service_name end) |> Enum.reverse() do %>
-          <li :if={service_name != nil} class="list-group-item !tw-pb-0"><%= Forms.section_header(service_name) %></li>
+        <%= for {service_name, sources} <- @grouped_sources  do %>
+          <li :if={service_name != nil} class="list-group-item !tw-pb-0"><Forms.section_header text={service_name} /></li>
           <li :if={service_name == nil} class="list-group-item">
             <hr />
           </li>
