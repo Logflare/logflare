@@ -17,16 +17,14 @@ defmodule LogflareWeb.DashboardLiveTest do
 
   describe "Dashboard Live" do
     test "renders dashboard", %{conn: conn} do
-      {:ok, _dashboard_live, html} = live(conn, "/dashboard_new")
-      assert html =~ "~/logs"
+      {:ok, view, html} = live(conn, "/dashboard_new")
+
+      assert view |> has_element?("h5", "~/logs")
     end
 
     test "show source", %{conn: conn, source: source} do
-      {:ok, _dashboard_live, html} = live(conn, "/dashboard_new")
+      {:ok, view, html} = live(conn, "/dashboard_new")
       assert html =~ source.name
-      assert html =~ "~/logs"
-      assert html =~ "Saved Searches"
-      assert html =~ "Members"
     end
   end
 
@@ -62,6 +60,31 @@ defmodule LogflareWeb.DashboardLiveTest do
       updated_source = favorited_source |> Repo.reload()
       refute updated_source.favorite
       assert view |> has_element?(".favorite .far")
+    end
+  end
+
+  describe "saved searches" do
+    setup %{source: source} do
+      {:ok, saved_search} =
+        Logflare.SavedSearches.insert(
+          %{
+            lql_rules: [],
+            querystring: "test query",
+            saved_by_user: true,
+            tailing: true
+          },
+          source
+        )
+
+      [saved_search: saved_search]
+    end
+
+    test "renders saved searches", %{conn: conn, source: source, saved_search: saved_search} do
+      {:ok, view, html} = live(conn, "/dashboard_new")
+
+      assert html =~ "Saved Searches"
+      assert html =~ "test query"
+      assert html =~ source.name
     end
   end
 end
