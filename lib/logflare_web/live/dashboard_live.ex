@@ -1,7 +1,8 @@
 defmodule LogflareWeb.DashboardLive do
+  alias Logflare.Repo
   use LogflareWeb, :live_view
 
-  alias Logflare.{Billing, Sources, Teams, TeamUser, User, Users}
+  alias Logflare.{Auth, Billing, Sources, Teams, TeamUser, User, Users}
   alias LogflareWeb.DashboardLive.{DashboardComponents, DashboardSourceComponents}
   alias LogflareWeb.Helpers.Forms
 
@@ -54,14 +55,18 @@ defmodule LogflareWeb.DashboardLive do
   end
 
   @impl true
-  def handle_event("toggle_favorite", %{"id" => id}, socket) do
+  def handle_event("toggle_favorite", %{"id" => id} = params, socket) do
     %{user: user} = socket.assigns
+    favorite = Map.has_key?(params, "favorite")
 
     with source <- Sources.get_by_and_preload(id: id),
          true <- LogflareWeb.Plugs.SetVerifySource.verify_source_for_user(source, user),
-         {:ok, _source} <-
-           Sources.update_source_by_user(source, %{"favorite" => !source.favorite}) do
-      {:noreply, socket |> put_flash(:info, "Source updated!")}
+         {:ok, _source} <- Sources.update_source_by_user(source, %{"favorite" => favorite}) do
+      sources =
+        Repo.reload(socket.assigns.sources)
+        |> Sources.preload_for_dashboard()
+
+      {:noreply, assign(socket, sources: sources)}
     else
       _ -> {:noreply, socket |> put_flash(:error, "Something went wrong!")}
     end
@@ -107,7 +112,7 @@ defmodule LogflareWeb.DashboardLive do
   end
 
   def update_source_metrics(socket, id, update_fn) when is_integer(id) do
-    case Enum.find(fn source -> source.id == id end) do
+    case Enum.find(socket.assigns.sources, fn source -> source.id == id end) do
       nil ->
         socket
 
@@ -116,7 +121,7 @@ defmodule LogflareWeb.DashboardLive do
     end
   end
 
-  def update_source_metrics(socket, token, update_fn) when is_struct(token, Ecto.UUID.Atom) do
+  def update_source_metrics(socket, token, update_fn) when is_atom(token) do
     sources =
       Enum.map(socket.assigns.sources, fn source ->
         if source.token == token do
@@ -176,8 +181,8 @@ defmodule LogflareWeb.DashboardLive do
           <li :if={service_name == nil} class="list-group-item">
             <hr />
           </li>
-          <li :for={source <- sources} class="list-group-item">
-            <div class="favorite float-left tw-cursor-pointer tw-text-yellow-200" phx-click="toggle_favorite" phx-value-id={source.id}>
+          <li :for={source <- sources} class="list-group-item" id={to_string(source.token)}>
+            <div class="favorite float-left tw-cursor-pointer tw-text-yellow-200" phx-click="toggle_favorite" phx-value-favorite={!source.favorite} phx-value-id={source.id}>
               <span>
                 <i class={[if(source.favorite, do: "fas", else: "far"), "fa-star "]} />
               </span>
@@ -191,7 +196,7 @@ defmodule LogflareWeb.DashboardLive do
               <div class="source-link word-break-all">
                 <.link href={~p"/sources/#{source}"} class="tw-text-white"><%= source.name %></.link>
                 <span>
-                  <small class="my-badge my-badge-info tw-transition-colors tw-ease-in" id={[source.id, "inserts", source.metrics.inserts_string]} phx-mounted={if(@fade_in, do: JS.transition("tw-bg-blue-500", time: 500))}>
+                  <small class="my-badge my-badge-info tw-transition-colors tw-ease-in" id={[to_string(source.id), "inserts", source.metrics.inserts_string]} phx-mounted={if(@fade_in, do: JS.transition("tw-bg-blue-500", time: 500))}>
                     <%= source.metrics.inserts_string %>
                   </small>
                 </span>
@@ -288,7 +293,7 @@ defmodule LogflareWeb.DashboardLive do
             <%= member.name || member.email %>
           </.link>
 
-          <.link href={~p"/profile/#{member.id}"} prompt="Delete member?" class="dashboard-links" method="delete">
+          <.link href={~p"/profile/#{member.id}"} data-confirm="Delete member?" class="dashboard-links" method="delete">
             <i class="fa fa-trash"></i>
           </.link>
         </li>
