@@ -345,56 +345,6 @@ mark {
   max-width: 90%;
 }
 
-.fade-in {
-  animation: fadeIn ease 1s;
-  -webkit-animation: fadeIn ease 1s;
-  -moz-animation: fadeIn ease 1s;
-  -o-animation: fadeIn ease 1s;
-  -ms-animation: fadeIn ease 1s;
-}
-
-@keyframes fadeIn {
-  0% {
-    background-color: #3787ff;
-  }
-
-  100% {}
-}
-
-@-moz-keyframes fadeIn {
-  0% {
-    color: white;
-    background-color: #3787ff;
-  }
-
-  100% {}
-}
-
-@-webkit-keyframes fadeIn {
-  0% {
-    background-color: #3787ff;
-  }
-
-  100% {}
-}
-
-@-o-keyframes fadeIn {
-  0% {
-    color: white;
-    background-color: #3787ff;
-  }
-
-  100% {}
-}
-
-@-ms-keyframes fadeIn {
-  0% {
-    color: white;
-    background-color: #3787ff;
-  }
-
-  100% {}
-}
 
 .flash-text {
   animation: flashText ease 1s;

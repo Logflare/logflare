@@ -14,10 +14,12 @@ defmodule LogflareWeb.DashboardLive do
 
     sources = Sources.preload_for_dashboard(user.sources)
 
-    grouped_sources =
-      Enum.group_by(sources, fn source -> source.service_name end) |> Enum.reverse()
-
     plan = Billing.get_plan_by_user(user)
+
+    if connected?(socket) do
+      # do something
+      sources |> Enum.each(&Logflare.Sources.Source.ChannelTopics.subscribe_dashboard(&1.token))
+    end
 
     socket =
       socket
@@ -25,7 +27,7 @@ defmodule LogflareWeb.DashboardLive do
       |> assign(:plan, plan)
       |> assign_teams(session["team_user_id"])
       |> assign(:sources, sources)
-      |> assign(:grouped_sources, grouped_sources)
+      |> assign(:fade_in, false)
 
     {:ok, socket}
   end
@@ -66,6 +68,80 @@ defmodule LogflareWeb.DashboardLive do
     end
   end
 
+  # msg #=> %Phoenix.Socket.Broadcast{
+  #   topic: "dashboard:1b47d21f-3854-4603-9927-c5f5b4516c9b",
+  #   event: "buffer",
+  #   payload: %{buffer: 0, backend_id: nil, source_id: 20}
+  # }
+
+  # [(logflare 1.21.0) lib/logflare_web/live/dashboard_live.ex:75: LogflareWeb.DashboardLive.handle_info/2]
+  # msg #=> %Phoenix.Socket.Broadcast{
+  #   topic: "dashboard:f84c10b1-76a2-47c4-8460-84fc96296618",
+  #   event: "log_count",
+  #   payload: %{
+  #     source_token: :"f84c10b1-76a2-47c4-8460-84fc96296618",
+  #     log_count: "1"
+  #   }
+  # }
+
+  # rate: rates.last_rate,
+  # latest: latest,
+  # avg: rates.average_rate,
+  # max: rates.max_rate,
+  # buffer: buffer,
+  # inserts_string: inserts_string,
+  # inserts: inserts,
+  # rejected: rejected_count,
+  # fields: fields
+  # #
+  def handle_info(%Phoenix.Socket.Broadcast{event: "rate"} = broadcast, socket) do
+    %{payload: payload} = broadcast
+
+    sources =
+      Enum.map(socket.assigns.sources, fn source ->
+        if source.token == payload.source_token do
+          metrics = %{
+            source.metrics
+            | avg: payload.average_rate,
+              max: payload.max_rate,
+              rate: payload.last_rate
+          }
+
+          %{source | metrics: metrics}
+        else
+          source
+        end
+      end)
+
+    {:noreply, assign(socket, sources: sources)}
+  end
+
+  def handle_info(%Phoenix.Socket.Broadcast{event: "log_count"} = broadcast, socket) do
+    %{payload: payload} = broadcast
+
+    sources =
+      Enum.map(socket.assigns.sources, fn source ->
+        if source.token == payload.source_token do
+          metrics = %{
+            source.metrics
+            | latest: DateTime.utc_now() |> DateTime.to_unix(:microsecond),
+              inserts_string: Number.Delimit.number_to_delimited(payload.log_count)
+          }
+
+          %{source | metrics: metrics}
+        else
+          source
+        end
+      end)
+
+    {:noreply, assign(socket, sources: sources, fade_in: true)}
+  end
+
+  def handle_info(%Phoenix.Socket.Broadcast{} = broadcast, socket) do
+    broadcast |> dbg
+    {:noreply, socket}
+  end
+
   @impl true
   def render(assigns) do
     ~H"""
@@ -79,7 +155,7 @@ defmodule LogflareWeb.DashboardLive do
             <DashboardComponents.members user={@user} team={@team} />
           </div>
           <div class="tw-col-span-7">
-            <.source_list grouped_sources={@grouped_sources} plan={@plan} />
+            <.source_list sources={@sources} plan={@plan} fade_in={@fade_in} />
           </div>
           <div class="tw-col-span-2">
             <DashboardComponents.integrations />
@@ -102,12 +178,12 @@ defmodule LogflareWeb.DashboardLive do
         </.link>
       </div>
       <ul class="list-group">
-        <%= if Enum.empty?(@grouped_sources) do %>
+        <%= if Enum.empty?(@sources) do %>
           <li class="list-group-item">You don't have any sources!</li>
           <li class="list-group-item">Sources are where your log events go.</li>
           <li class="list-group-item">Create one now!</li>
         <% end %>
-        <%= for {service_name, sources} <- @grouped_sources  do %>
+        <%= for {service_name, sources} <- grouped_sources(@sources) do %>
           <li :if={service_name != nil} class="list-group-item !tw-pb-0"><Forms.section_header text={service_name} /></li>
           <li :if={service_name == nil} class="list-group-item">
             <hr />
@@ -126,8 +202,8 @@ defmodule LogflareWeb.DashboardLive do
               </div>
               <div class="source-link word-break-all">
                 <.link href={~p"/sources/#{source}"} class="tw-text-white"><%= source.name %></.link>
-                <span id={source.token}>
-                  <small class="my-badge my-badge-info">
+                <span>
+                  <small class="my-badge my-badge-info tw-transition-colors tw-ease-in" id={[source.id, "inserts", source.metrics.inserts_string]} phx-mounted={if(@fade_in, do: JS.transition("tw-bg-blue-500", time: 500))}>
                     <%= source.metrics.inserts_string %>
                   </small>
                 </span>
@@ -139,6 +215,11 @@ defmodule LogflareWeb.DashboardLive do
       </ul>
     </div>
     """
+  end
+
+  # groups services by name, ungrouped sources last.
+  defp grouped_sources(sources) do
+    sources |> Enum.group_by(fn source -> source.service_name end) |> Enum.reverse()
   end
 
   def saved_searches(assigns) do
