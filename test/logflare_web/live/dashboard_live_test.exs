@@ -17,20 +17,21 @@ defmodule LogflareWeb.DashboardLiveTest do
 
   describe "Dashboard Live" do
     test "renders dashboard", %{conn: conn} do
-      {:ok, view, html} = live(conn, "/dashboard_new")
+      {:ok, view, html} = live(conn, "/dashboard")
 
       assert view |> has_element?("h5", "~/logs")
     end
 
     test "show source", %{conn: conn, source: source} do
-      {:ok, view, html} = live(conn, "/dashboard_new")
+      {:ok, view, html} = live(conn, "/dashboard")
+
       assert html =~ source.name
     end
   end
 
   describe "favoriting a source" do
     test "favorite a source", %{conn: conn, source: source} do
-      {:ok, view, _} = live(conn, "/dashboard_new")
+      {:ok, view, _} = live(conn, "/dashboard")
 
       refute source.favorite
       assert view |> element(".favorite .far") |> has_element?()
@@ -47,8 +48,7 @@ defmodule LogflareWeb.DashboardLiveTest do
 
     test "unfavorite a source", %{conn: conn, source: source} do
       {:ok, favorited_source} = source |> Logflare.Sources.update_source(%{favorite: true})
-
-      {:ok, view, _html} = live(conn, "/dashboard_new")
+      {:ok, view, _html} = live(conn, "/dashboard")
 
       assert favorited_source.favorite
       assert view |> element(".favorite .fas") |> has_element?()
@@ -80,7 +80,7 @@ defmodule LogflareWeb.DashboardLiveTest do
     end
 
     test "renders saved searches", %{conn: conn, source: source, saved_search: saved_search} do
-      {:ok, view, html} = live(conn, "/dashboard_new")
+      {:ok, _view, html} = live(conn, "/dashboard")
 
       assert html =~ "Saved Searches"
       assert html =~ "test query"

@@ -25,7 +25,7 @@
         <ul class="navbar-nav mr-auto">
             <%= if @user do %>
             <li class="nav-item">
-                <%= link "Dashboard", to: Routes.source_path(@conn, :dashboard), class: "nav-link" %>
+                <%= link "Dashboard", to: "/dashboard", class: "nav-link" %>
             </li>
             <li class="nav-item">
                 <%= link "Endpoints", to: Routes.endpoints_path(@conn, :index), class: "nav-link" %>
