@@ -2,6 +2,7 @@ defmodule Logflare.Telemetry do
   use Supervisor
 
   import Telemetry.Metrics
+  import Logflare.Utils, only: [ets_info: 1]
 
   def start_link(arg), do: Supervisor.start_link(__MODULE__, arg, name: __MODULE__)
 
@@ -375,7 +376,7 @@ defmodule Logflare.Telemetry do
   defp get_top_100_ets_tables_info do
     :ets.all()
     |> Stream.map(fn table ->
-      case :ets.info(table) do
+      case ets_info(table) do
         :undefined -> nil
         info -> {0, info[:size], info}
       end
