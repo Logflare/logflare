@@ -1,11 +1,12 @@
 defmodule Logflare.Vercel.Auth do
   @moduledoc false
-  use Ecto.Schema
+  use TypedEctoSchema
+
   import Ecto.Changeset
 
   alias Logflare.User
 
-  schema "vercel_auths" do
+  typed_schema "vercel_auths" do
     field :access_token, :string
     field :installation_id, :string
     field :team_id, :string
