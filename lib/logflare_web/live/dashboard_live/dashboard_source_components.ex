@@ -48,7 +48,7 @@ defmodule LogflareWeb.DashboardLive.DashboardSourceComponents do
       <.metric>
         latest: <span :if={@source.metrics.latest == 0}>not initialized</span>
         <span :if={@source.metrics.latest != 0} class="log-datestamp" id={metric_id(@source, "latest")} data-timestamp={@source.metrics.latest}>
-          <%= @source.metrics.latest %>
+          <span xclass="tw-sr-only tw-inline-block tw-invisible tw-w-24"><%= @source.metrics.latest %></span>
         </span>
       </.metric>
 
