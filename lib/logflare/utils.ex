@@ -299,7 +299,7 @@ defmodule Logflare.Utils do
   @doc """
   Returns information about the ets table as a list of tuples.
   This is just a wrapper of :ets.info/1 to enable mocking without having issues
-  from overwritting :ets module
+  from mocking the :ets module
   """
   def ets_info(table), do: :ets.info(table)
 end
