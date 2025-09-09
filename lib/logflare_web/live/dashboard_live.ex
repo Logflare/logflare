@@ -17,8 +17,7 @@ defmodule LogflareWeb.DashboardLive do
     plan = Billing.get_plan_by_user(user)
 
     if connected?(socket) do
-      # do something
-      sources |> Enum.each(&Logflare.Sources.Source.ChannelTopics.subscribe_dashboard(&1.token))
+      Enum.each(sources, &Logflare.Sources.Source.ChannelTopics.subscribe_dashboard(&1.token))
     end
 
     socket =
@@ -60,7 +59,7 @@ defmodule LogflareWeb.DashboardLive do
 
     with source <- Sources.get_by_and_preload(id: id),
          true <- LogflareWeb.Plugs.SetVerifySource.verify_source_for_user(source, user),
-         {:ok, source} <-
+         {:ok, _source} <-
            Sources.update_source_by_user(source, %{"favorite" => !source.favorite}) do
       {:noreply, socket |> put_flash(:info, "Source updated!")}
     else
@@ -68,78 +67,67 @@ defmodule LogflareWeb.DashboardLive do
     end
   end
 
-  # msg #=> %Phoenix.Socket.Broadcast{
-  #   topic: "dashboard:1b47d21f-3854-4603-9927-c5f5b4516c9b",
-  #   event: "buffer",
-  #   payload: %{buffer: 0, backend_id: nil, source_id: 20}
-  # }
+  def handle_info(%Phoenix.Socket.Broadcast{event: "buffer"} = broadcast, socket) do
+    %{payload: payload} = broadcast
 
-  # [(logflare 1.21.0) lib/logflare_web/live/dashboard_live.ex:75: LogflareWeb.DashboardLive.handle_info/2]
-  # msg #=> %Phoenix.Socket.Broadcast{
-  #   topic: "dashboard:f84c10b1-76a2-47c4-8460-84fc96296618",
-  #   event: "log_count",
-  #   payload: %{
-  #     source_token: :"f84c10b1-76a2-47c4-8460-84fc96296618",
-  #     log_count: "1"
-  #   }
-  # }
+    {:noreply,
+     update_source_metrics(socket, payload.source_id, fn metrics ->
+       %{metrics | buffer: payload.buffer}
+     end)}
+  end
 
-  # rate: rates.last_rate,
-  # latest: latest,
-  # avg: rates.average_rate,
-  # max: rates.max_rate,
-  # buffer: buffer,
-  # inserts_string: inserts_string,
-  # inserts: inserts,
-  # rejected: rejected_count,
-  # fields: fields
-  # #
   def handle_info(%Phoenix.Socket.Broadcast{event: "rate"} = broadcast, socket) do
     %{payload: payload} = broadcast
 
-    sources =
-      Enum.map(socket.assigns.sources, fn source ->
-        if source.token == payload.source_token do
-          metrics = %{
-            source.metrics
-            | avg: payload.average_rate,
-              max: payload.max_rate,
-              rate: payload.last_rate
-          }
-
-          %{source | metrics: metrics}
-        else
-          source
-        end
-      end)
-
-    {:noreply, assign(socket, sources: sources)}
+    {:noreply,
+     update_source_metrics(socket, payload.source_token, fn metrics ->
+       %{
+         metrics
+         | avg: payload.average_rate,
+           max: payload.max_rate,
+           rate: payload.last_rate
+       }
+     end)}
   end
 
   def handle_info(%Phoenix.Socket.Broadcast{event: "log_count"} = broadcast, socket) do
     %{payload: payload} = broadcast
 
+    socket =
+      update_source_metrics(socket, payload.source_token, fn metrics ->
+        %{
+          metrics
+          | latest: DateTime.utc_now() |> DateTime.to_unix(:microsecond),
+            inserts_string: Number.Delimit.number_to_delimited(payload.log_count)
+        }
+      end)
+      |> assign(fade_in: true)
+
+    {:noreply, socket}
+  end
+
+  def update_source_metrics(socket, id, update_fn) when is_integer(id) do
+    case Enum.find(fn source -> source.id == id end) do
+      nil ->
+        socket
+
+      source ->
+        update_source_metrics(socket, source.token, update_fn)
+    end
+  end
+
+  def update_source_metrics(socket, token, update_fn) when is_struct(token, Ecto.UUID.Atom) do
     sources =
       Enum.map(socket.assigns.sources, fn source ->
-        if source.token == payload.source_token do
-          metrics = %{
-            source.metrics
-            | latest: DateTime.utc_now() |> DateTime.to_unix(:microsecond),
-              inserts_string: Number.Delimit.number_to_delimited(payload.log_count)
-          }
-
+        if source.token == token do
+          metrics = update_fn.(source.metrics)
           %{source | metrics: metrics}
         else
           source
         end
       end)
 
-    {:noreply, assign(socket, sources: sources, fade_in: true)}
-  end
-
-  def handle_info(%Phoenix.Socket.Broadcast{} = broadcast, socket) do
-    broadcast |> dbg
-    {:noreply, socket}
+    assign(socket, sources: sources)
   end
 
   @impl true
