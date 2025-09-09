@@ -143,7 +143,7 @@ defmodule LogflareWeb.DashboardLive do
       <div class="tw-max-w-[95%] tw-mx-auto">
         <div class="tw-grid tw-grid-cols-12 tw-gap-8 tw-px-[15px] tw-mt-[50px]">
           <div class="tw-col-span-3">
-            <.saved_searches sources={@sources} />
+            <DashboardComponents.saved_searches sources={@sources} />
             <DashboardComponents.teams current_team={@team} home_team={@user.team} team_users={@team_users} />
             <DashboardComponents.members user={@user} team={@team} />
           </div>
@@ -177,7 +177,7 @@ defmodule LogflareWeb.DashboardLive do
           <li class="list-group-item">Create one now!</li>
         <% end %>
         <%= for {service_name, sources} <- grouped_sources(@sources) do %>
-          <li :if={service_name != nil} class="list-group-item !tw-pb-0"><Forms.section_header text={service_name} /></li>
+          <li :if={service_name != nil} class="list-group-item"><Forms.section_header text={service_name} /></li>
           <li :if={service_name == nil} class="list-group-item">
             <hr />
           </li>
@@ -213,95 +213,5 @@ defmodule LogflareWeb.DashboardLive do
   # groups services by name, ungrouped sources last.
   defp grouped_sources(sources) do
     sources |> Enum.group_by(fn source -> source.service_name end) |> Enum.reverse()
-  end
-
-  def saved_searches(assigns) do
-    ~H"""
-    <div>
-      <h5 class="header-margin">Saved Searches</h5>
-      <%= if Enum.all?(@sources, &(Map.get(&1, :saved_searches) == [])) do %>
-        Your saved searches will show up here. Save some searches!
-      <% end %>
-      <ul class="list-unstyled">
-        <%= for source <- @sources, saved_search <- source.saved_searches do %>
-          <li>
-            <.link navigate={~p"/sources/#{source}/search?#{%{querystring: saved_search.querystring, tailing: saved_search.tailing}}"}>
-              <%= source.name %>:<%= saved_search.querystring %>
-            </.link>
-            <.link href={~p"/sources/#{source}/saved-searches/#{saved_search}"} method="delete" class="dashboard-links">
-              <i class="fa fa-trash"></i>
-            </.link>
-          </li>
-        <% end %>
-      </ul>
-    </div>
-    """
-  end
-
-  def teams(assigns) do
-    ~H"""
-    <div>
-      current: <%= @current_team.name %>
-      <h5 class="header-margin">Teams</h5>
-      <ul class="list-unstyled">
-        <li :if={@home_team}>
-          <strong :if={@current_team.id == @home_team.id}><%= @home_team.name %></strong>
-          <.link :if={@current_team.id != @home_team.id} navigate={~p"/profile/switch?#{%{"user_id" => @home_team.user_id, "redirect_to" => "/dashboard_new"}}"}>
-            <%= @home_team.name %>
-          </.link>
-          <small>home team</small>
-        </li>
-
-        <li :if={@home_team == nil}>
-          <.link href={~p"/account"} method="post">
-            Create your own Logflare account.
-          </.link>
-        </li>
-
-        <%= if Enum.empty?(@team_users) do %>
-          Other teams you are a member of will be listed here.
-        <% end %>
-
-        <li :for={team_user <- @team_users} :if={team_user.team.id != @current_team.id}>
-          <li>
-            <span :if={team_user.team_id == @current_team.id}><%= team_user.team.name %></span>
-            <.link :if={team_user.team_id != @current_team.id} navigate={~p"/profile/switch?#{%{"user_id" => team_user.team.user_id, "team_user_id" => team_user.id, "redirect_to" => "/dashboard_new"}}"}>
-              <%= team_user.team.name %>
-            </.link>
-          </li>
-        </li>
-      </ul>
-    </div>
-    """
-  end
-
-  def members(assigns) do
-    ~H"""
-    <div>
-      <h5 class="header-margin">Members</h5>
-      <ul id="team-members" class="tw-mb-1 tw-list-none tw-p-0">
-        <li>
-          <img class="rounded-circle" width="35" height="35" src={@user.image || Auth.gen_gravatar_link(@user.email)} alt={@user.name || @user.email} />
-          <.link href={"mailto:#{@user.email}"}>
-            <%= @user.name || @user.email %>
-          </.link>
-          <small><%= if true, do: "owner", else: "owner, you" %></small>
-        </li>
-        <li :for={member <- @team.team_users} :if={member.id != @user.id}>
-          <img class="rounded-circle" width="35" height="35" src={member.image || Auth.gen_gravatar_link(member.email)} alt={member.name || member.email} />
-          <.link href={"mailto:#{member.email}"}>
-            <%= member.name || member.email %>
-          </.link>
-
-          <.link href={~p"/profile/#{member.id}"} data-confirm="Delete member?" class="dashboard-links" method="delete">
-            <i class="fa fa-trash"></i>
-          </.link>
-        </li>
-      </ul>
-      <.link href={~p"/account/edit#team-members"}>
-        Invite more team members.
-      </.link>
-    </div>
-    """
   end
 end
