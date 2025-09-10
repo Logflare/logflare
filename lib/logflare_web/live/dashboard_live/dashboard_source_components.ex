@@ -3,6 +3,8 @@ defmodule LogflareWeb.DashboardLive.DashboardSourceComponents do
   use LogflareWeb, :routes
   use Phoenix.Component
 
+  attr :source, Logflare.Sources.Source, required: true
+  attr :plan, :map, required: true
   def source_metadata(assigns) do
     ~H"""
     <div class="tw-ml-8">
@@ -58,10 +60,10 @@ defmodule LogflareWeb.DashboardLive.DashboardSourceComponents do
 
       <.metric>
         avg:
-        <.tooltip :if={rate_limit_warning?(@source, @rate_limit)} id={metric_id(@source, "avg-rate")} class="my-badge my-badge-warning" placement="left" title={"Source rate limit is avg #{@limit_source_rate_limit} events/sec! Upgrade for more."}>
+        <.tooltip :if={rate_limit_warning?(@source, @rate_limit)} id={metric_id(@source, "avg-rate")} class="my-badge my-badge-warning" placement="left" title={"Source rate limit is avg #{@rate_limit} events/sec! Upgrade for more."}>
           <%= @source.metrics.avg %>
         </.tooltip>
-        <span :if={not rate_limit_warning?(@source, 100)} id={metric_id(@source, "avg-rate")}><%= @source.metrics.avg %></span>
+        <span :if={not rate_limit_warning?(@source, @rate_limit)} id={metric_id(@source, "avg-rate")}><%= @source.metrics.avg %></span>
       </.metric>
 
       <.metric>
@@ -77,7 +79,7 @@ defmodule LogflareWeb.DashboardLive.DashboardSourceComponents do
 
       <.metric>
         fields:
-        <.tooltip :if={fields_limit_warning?(@source, @fields_limit)} placement="left" class="my-badge my-badge-warning" title={"Max #{@limit_source_fields_limit} fields per source! Data in new fields are ignored. Upgrade for more."}>
+        <.tooltip :if={fields_limit_warning?(@source, @fields_limit)} placement="left" class="my-badge my-badge-warning" title={"Max #{@fields_limit} fields per source! Data in new fields are ignored. Upgrade for more."}>
           <%= @source.metrics.fields %>
         </.tooltip>
         <span :if={not fields_limit_warning?(@source, @fields_limit)}><%= @source.metrics.fields %></span>
@@ -85,7 +87,7 @@ defmodule LogflareWeb.DashboardLive.DashboardSourceComponents do
 
       <.metric>
         rejected:
-        <.link :if={@source.metrics.rejected > 0} href={~p"/source/#{@source}/rejected"}>
+        <.link :if={@source.metrics.rejected > 0} href={~p"/source/#{@source.id}/rejected"}>
           <.tooltip class="my-badge my-badge-warning" placement="left" title="Some events didn't validate!"><%= @source.metrics.rejected %></.tooltip>
         </.link>
         <span :if={@source.metrics.rejected == 0} id={metric_id(@source, "rejected")}><%= @source.metrics.rejected %></span>
@@ -99,6 +101,7 @@ defmodule LogflareWeb.DashboardLive.DashboardSourceComponents do
   end
 
   attr :title, :string, required: true
+  attr :id, :string, required: false
   attr :placement, :string, default: "top"
   attr :class, :string, default: ""
   attr :rest, :global
@@ -106,7 +109,7 @@ defmodule LogflareWeb.DashboardLive.DashboardSourceComponents do
 
   def tooltip(assigns) do
     ~H"""
-    <span class={["logflare-tooltip", @class]} data-placement={@placement} title={@title} data-toggle="tooltip">
+    <span class={["logflare-tooltip", @class]} id={@id} data-placement={@placement} title={@title} data-toggle="tooltip">
       <%= render_slot(@inner_block) %>
     </span>
     """
@@ -123,8 +126,6 @@ defmodule LogflareWeb.DashboardLive.DashboardSourceComponents do
   end
 
   defp metric_id(source, key), do: [to_string(source.token), "-", key]
-
   defp rate_limit_warning?(source, limit), do: source.metrics.avg >= 0.80 * limit
-
   defp fields_limit_warning?(source, limit), do: source.metrics.fields > limit
 end
