@@ -141,7 +141,7 @@ defmodule LogflareWeb.DashboardLive do
     <div>
       <DashboardComponents.subhead user={@user} />
       <div class="tw-max-w-[95%] tw-mx-auto">
-        <div class="tw-grid tw-grid-cols-12 tw-gap-8 tw-px-[15px] tw-mt-[50px]">
+        <div class="lg:tw-grid tw-grid-cols-12 tw-gap-8 tw-px-[15px] tw-mt-[50px]">
           <div class="tw-col-span-3">
             <DashboardComponents.saved_searches sources={@sources} />
             <DashboardComponents.teams current_team={@team} home_team={@user.team} team_users={@team_users} />
