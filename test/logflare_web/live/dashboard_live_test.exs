@@ -3,6 +3,7 @@ defmodule LogflareWeb.DashboardLiveTest do
   use LogflareWeb.ConnCase
 
   alias Logflare.Repo
+  alias Logflare.Sources.Source
 
   setup %{conn: conn} do
     insert(:plan)
@@ -85,6 +86,65 @@ defmodule LogflareWeb.DashboardLiveTest do
       assert html =~ "Saved Searches"
       assert html =~ "test query"
       assert html =~ source.name
+    end
+  end
+  describe "displaying source metrics" do
+    test "renders source metrics ", %{conn: conn, source: source} do
+      {:ok, view, html} = live(conn, "/dashboard")
+
+      assert view |> has_element?("[id^=#{source.id}-inserts]", "0")
+      assert view |> has_element?("span[id=#{source.token}-rate]", "0/s")
+      assert view |> has_element?("span[id=#{source.token}-avg-rate]", "0")
+      assert view |> has_element?("span[id=#{source.token}-max-rate]", "0")
+      assert view |> has_element?("span[id=#{source.token}-rejected]", "0")
+      assert view |> element("li[id=#{source.token}] [title^=Pipelines]") |> render =~ "0"
+      assert view |> element("li[id=#{source.token}]") |> render =~ "ttl: 3 days"
+    end
+
+    test "updates source metrics", %{conn: conn, user: user, source: source} do
+      {:ok, view, html} = live(conn, "/dashboard")
+
+      buffer = :rand.uniform(100)
+      log_count = :rand.uniform(100)
+
+      rates_payload = %{
+        average_rate: :rand.uniform(100),
+        max_rate: :rand.uniform(100),
+        last_rate: :rand.uniform(100),
+        source_token: source.token
+      }
+
+      Source.ChannelTopics.local_broadcast_buffer(%{
+        buffer: buffer,
+        source_id: source.id,
+        backend_id: nil
+      })
+
+      Source.ChannelTopics.local_broadcast_log_count(%{
+        log_count: log_count,
+        source_token: source.token
+      })
+
+      Source.ChannelTopics.local_broadcast_rates(rates_payload)
+
+      assert view |> element("li[id=#{source.token}] [title^=Pipelines]") |> render =~
+               to_string(buffer)
+
+      assert view |> has_element?("span[id=#{source.token}-rate]", "#{rates_payload.last_rate}/s")
+
+      assert view
+             |> has_element?(
+               "span[id=#{source.token}-avg-rate]",
+               to_string(rates_payload.average_rate)
+             )
+
+      assert view
+             |> has_element?(
+               "span[id=#{source.token}-max-rate]",
+               to_string(rates_payload.max_rate)
+             )
+
+      assert view |> has_element?("[id^=#{source.id}-inserts]", to_string(log_count))
     end
   end
 end
