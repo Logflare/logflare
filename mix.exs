@@ -193,7 +193,7 @@ defmodule Logflare.Mixfile do
       # Utils
       {:recase, "~> 0.7.0"},
       {:unicode, "~> 1.20"},
-      {:configcat, "~> 2.0.0"},
+      {:configcat, "~> 4.0.0"},
       {:ex2ms, "~> 1.7"},
 
       # Code quality
@@ -205,7 +205,7 @@ defmodule Logflare.Mixfile do
       {:contex, "~> 0.3.0"},
 
       # Postgres Subscribe
-      {:cainophile, github: "Logflare/cainophile", ref: "267999b"},
+      {:cainophile, github: "Logflare/cainophile", ref: "f92a552"},
       {:open_api_spex, "~> 3.16"},
       {:grpc, "~> 0.9.0"},
       # otel_metric_exporter requires an update https://github.com/electric-sql/elixir-otel-metric-exporter/pull/13

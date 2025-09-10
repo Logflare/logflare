@@ -7,6 +7,7 @@ defmodule LogflareWeb.EndpointsLive do
 
   alias Logflare.Backends
   alias Logflare.Endpoints
+  alias Logflare.Endpoints.PiiRedactor
   alias Logflare.Users
   alias LogflareWeb.{QueryComponents, Utils}
 
@@ -41,7 +42,7 @@ defmodule LogflareWeb.EndpointsLive do
 
     socket =
       socket
-      |> assign(:user_id, user_id)
+      |> assign(:user_id, user.id)
       |> assign(:user, user)
       #  must be below user_id assign
       |> refresh_endpoints()
@@ -61,6 +62,7 @@ defmodule LogflareWeb.EndpointsLive do
       |> assign_sources()
       |> assign_backends()
       |> assign(:parsed_result, nil)
+      |> assign(:redact_pii, false)
 
     {:ok, socket}
   end
@@ -86,12 +88,23 @@ defmodule LogflareWeb.EndpointsLive do
               socket.assigns.alerts
             )
 
-          socket
-          |> assign_updated_params_form(parsed_result.parameters, parsed_result.expanded_query)
-          # set changeset
-          |> assign(:endpoint_changeset, Endpoints.change_query(endpoint, %{}))
-          |> assign(:selected_backend_id, endpoint.backend_id)
-          |> assign(:parsed_result, parsed_result)
+          socket =
+            socket
+            |> assign_updated_params_form(parsed_result.parameters, parsed_result.expanded_query)
+            # set changeset
+            |> assign(:endpoint_changeset, Endpoints.change_query(endpoint, %{}))
+            |> assign(:selected_backend_id, endpoint.backend_id)
+            |> assign(:parsed_result, parsed_result)
+            |> assign(:redact_pii, endpoint.redact_pii || false)
+
+          # Clear test results when navigating to edit page
+          if socket.assigns.live_action == :edit do
+            socket
+            |> assign(:query_result_rows, nil)
+            |> assign(:total_bytes_processed, nil)
+          else
+            socket
+          end
 
         # index page
         %{assigns: %{live_action: :index}} = socket ->
@@ -110,6 +123,7 @@ defmodule LogflareWeb.EndpointsLive do
           |> assign(:selected_backend_id, nil)
           # reset test results
           |> assign(:query_result_rows, nil)
+          |> assign(:redact_pii, false)
       end)
 
     {:noreply, socket}
@@ -130,7 +144,9 @@ defmodule LogflareWeb.EndpointsLive do
          socket
          |> put_flash(:info, "Successfully #{verb} endpoint #{endpoint.name}")
          |> push_patch(to: ~p"/endpoints/#{endpoint.id}")
-         |> assign(:show_endpoint, endpoint)}
+         |> assign(:show_endpoint, endpoint)
+         |> assign(:query_result_rows, nil)
+         |> assign(:total_bytes_processed, nil)}
 
       {:error, %Ecto.Changeset{} = changeset} ->
         verb = if(show_endpoint, do: "update", else: "create")
@@ -179,11 +195,13 @@ defmodule LogflareWeb.EndpointsLive do
       })
 
     endpoint_language = get_current_endpoint_language(socket)
+    redact_pii = socket.assigns.redact_pii
 
     case Endpoints.run_query_string(user, {endpoint_language, query_string},
            params: query_params,
            parsed_labels: parsed_labels,
-           use_query_cache: false
+           use_query_cache: false,
+           redact_pii: redact_pii
          ) do
       {:ok, %{rows: rows, total_bytes_processed: total_bytes_processed}} ->
         {:noreply,
@@ -223,6 +241,7 @@ defmodule LogflareWeb.EndpointsLive do
 
   def handle_event("validate", %{"endpoint" => endpoint_params}, socket) do
     selected_backend_id = Map.get(endpoint_params, "backend_id")
+    redact_pii = Map.get(endpoint_params, "redact_pii") == "true"
 
     changeset =
       socket.assigns.endpoint_changeset.data
@@ -233,6 +252,7 @@ defmodule LogflareWeb.EndpointsLive do
       socket
       |> assign(:endpoint_changeset, changeset)
       |> assign(:selected_backend_id, selected_backend_id)
+      |> assign(:redact_pii, redact_pii)
       |> assign_determined_language()
 
     {:noreply, socket}
@@ -341,4 +361,14 @@ defmodule LogflareWeb.EndpointsLive do
   defp format_query_language(:ch_sql), do: "ClickHouse SQL"
   defp format_query_language(:pg_sql), do: "Postgres SQL"
   defp format_query_language(language), do: language |> to_string() |> String.upcase()
+
+  defp maybe_redact_query(query, redact_pii) when is_binary(query) do
+    if redact_pii do
+      PiiRedactor.redact_pii_from_value(query)
+    else
+      query
+    end
+  end
+
+  defp maybe_redact_query(query, _redact_pii), do: query
 end

@@ -295,4 +295,11 @@ defmodule Logflare.Utils do
       Logflare.Utils.stringify_tesla_struct(env)
     end
   end
+
+  @doc """
+  Returns information about the ets table as a list of tuples.
+  This is just a wrapper of :ets.info/1 to enable mocking without having issues
+  from mocking the :ets module
+  """
+  def ets_info(table), do: :ets.info(table)
 end

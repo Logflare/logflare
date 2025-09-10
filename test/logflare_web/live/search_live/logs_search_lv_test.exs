@@ -458,6 +458,48 @@ defmodule LogflareWeb.Source.SearchLVTest do
       assert html =~ "some event message"
     end
 
+    test "date picker adjusts chart display interval", %{conn: conn, source: source} do
+      query = "t:2025-08-01T00:00:00..2025-08-02T00:00:00"
+
+      {:ok, view, _html} =
+        live(conn, Routes.live_path(conn, SearchLV, source.id, tailing?: false))
+
+      # Increasing the chart period
+      assert view
+             |> has_element?("#search_chart_period option[selected]", "minute")
+
+      render_change(view, :datetime_update, %{
+        "querystring" => query
+      })
+
+      assert view
+             |> has_element?("#search_chart_period option[selected]", "hour")
+
+      # Reducing the chart period
+      render_change(view, :datetime_update, %{
+        "querystring" => "t:last@15m"
+      })
+
+      assert view
+             |> has_element?("#search_chart_period option[selected]", "second")
+
+      # a chart period selected by the user is preserved, and search halted
+      render_change(view, :form_update, %{
+        "search" => %{
+          @default_search_params
+          | "querystring" => query,
+            "chart_period" => "day"
+        }
+      })
+
+      assert view
+             |> has_element?(".alert", "Search halted")
+
+      assert view
+             |> render() =~
+               ~s|search?querystring=t%3Alast%4015minute+c%3Acount%28%2A%29+c%3Agroup_by%28t%3A%3Asecond%29&amp;tailing%3F=false">Set chart period to second</a>|
+    end
+
     test "log event links", %{conn: conn, source: source} do
       stub(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, fn _conn, _proj_id, _opts ->
         {:ok,

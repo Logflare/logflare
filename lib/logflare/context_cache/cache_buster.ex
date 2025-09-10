@@ -7,58 +7,27 @@ defmodule Logflare.ContextCache.CacheBuster do
 
   require Logger
 
-  alias Logflare.ContextCache
   alias Cainophile.Changes.NewRecord
   alias Cainophile.Changes.UpdatedRecord
   alias Cainophile.Changes.DeletedRecord
   alias Cainophile.Changes.Transaction
-  alias Logflare.Alerting
   alias Logflare.Backends
   alias Logflare.Sources
   alias Logflare.SourceSchemas
   alias Logflare.TeamUsers
   alias Logflare.Users
-  alias Logflare.Rules
-  alias Logflare.Utils
   alias Logflare.PubSub
   alias Logflare.Auth
   alias Logflare.Billing
   alias Logflare.Endpoints
 
-  # worker process
-  defmodule Worker do
-    use GenServer
-    alias Logflare.ContextCache
-
-    def start_link(init_args) do
-      GenServer.start_link(__MODULE__, init_args)
-    end
-
-    def init(state) do
-      {:ok, state}
-    end
-
-    def handle_cast({:to_bust, context_pkeys}, state) do
-      ContextCache.bust_keys(context_pkeys)
-      {:noreply, state}
-    end
-  end
-
-  # main process
   def start_link(init_args) do
     GenServer.start_link(__MODULE__, init_args, name: __MODULE__)
   end
 
   def init(_state) do
     subscribe_to_transactions()
-
-    {:ok, _pid} =
-      PartitionSupervisor.start_link(
-        child_spec: __MODULE__.Worker,
-        name: __MODULE__.Supervisor
-      )
-
-    {:ok, %{partitions: System.schedulers_online()}}
+    {:ok, %{}}
   end
 
   def subscribe_to_transactions do
@@ -90,7 +59,6 @@ defmodule Logflare.ContextCache.CacheBuster do
     for record <- changes,
         record = handle_record(record),
         record != :noop do
-      maybe_do_cross_cluster_syncing(record)
       record
     end
     |> tap(fn
@@ -99,40 +67,15 @@ defmodule Logflare.ContextCache.CacheBuster do
 
       records ->
         :telemetry.execute([:logflare, :cache_buster, :to_bust], %{count: length(records)})
-    end)
-    |> then(fn records ->
-      GenServer.cast(
-        {:via, PartitionSupervisor, {__MODULE__.Supervisor, records}},
-        {:to_bust, records}
-      )
+
+        GenServer.cast(
+          {:via, PartitionSupervisor, {__MODULE__.Supervisor, records}},
+          {:to_bust, records}
+        )
     end)
 
     {:noreply, state}
   end
-
-  defp maybe_do_cross_cluster_syncing({Alerting, alert_id}) do
-    # sync alert job
-    Utils.Tasks.start_child(fn ->
-      Alerting.sync_alert_job(alert_id)
-    end)
-  end
-
-  defp maybe_do_cross_cluster_syncing({Backends, backend_id})
-       when is_integer(backend_id) do
-    # sync backend across cluster for v2 sources
-    Utils.Tasks.start_child(fn ->
-      Backends.sync_backend_across_cluster(backend_id)
-    end)
-  end
-
-  defp maybe_do_cross_cluster_syncing({Rules, rule_id}) do
-    # sync rule
-    Utils.Tasks.start_child(fn ->
-      Rules.sync_rule(rule_id)
-    end)
-  end
-
-  defp maybe_do_cross_cluster_syncing(_), do: :noop
 
   defp handle_record(%UpdatedRecord{
          relation: {_schema, "sources"},

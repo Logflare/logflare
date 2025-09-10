@@ -116,6 +116,61 @@ defmodule Logflare.Logs.Search do
     end
   end
 
+  @doc """
+  Search for events before and after a selected event.
+  """
+  @spec search_event_context(SO.t(), String.t(), DateTime.t()) :: {:ok, SO.t()} | {:error, SO.t()}
+  def search_event_context(%SO{} = so, log_event_id, %DateTime{} = timestamp) do
+    so =
+      so
+      |> Logflare.Logs.Search.get_and_put_partition_by()
+
+    %{values: [min, max]} =
+      so.lql_rules
+      |> Logflare.Lql.Rules.get_timestamp_filters()
+      |> Enum.find(fn rule -> rule.operator == :range end)
+
+    fields = [:id, :timestamp, :event_message, :metadata]
+
+    numbered_rows =
+      from(so.source.bq_table_id)
+      |> Logflare.Logs.LogEvents.partition_query([min, max], so.partition_by)
+      |> Logflare.Lql.apply_filter_rules(so.lql_rules)
+      |> where([t], t.timestamp >= ^min and t.timestamp <= ^max)
+      |> select([t], map(t, ^fields))
+      |> select_merge([t], %{
+        row_num: fragment("ROW_NUMBER() OVER (ORDER BY ? ASC, ? ASC)", t.timestamp, t.id)
+      })
+
+    target_position =
+      from(nr in subquery(numbered_rows))
+      |> where([nr], nr.id == ^log_event_id and nr.timestamp == ^timestamp)
+      |> select([nr], %{target_row_num: nr.row_num})
+
+    query =
+      from(subquery(numbered_rows))
+      |> join(:cross, subquery(target_position))
+      |> where(
+        [nr, tp],
+        nr.row_num >= tp.target_row_num - 50 and nr.row_num <= tp.target_row_num + 50
+      )
+      |> order_by([nr, _], asc: nr.timestamp, asc: nr.id)
+      |> select([nr, tp], %{
+        id: nr.id,
+        timestamp: nr.timestamp,
+        event_message: nr.event_message,
+        metadata: nr.metadata,
+        rank: fragment("? - ?", nr.row_num, tp.target_row_num) |> selected_as(:rank)
+      })
+
+    with so <- %{so | query: query},
+         %{error: nil} = so <- do_query(so) do
+      {:ok, so}
+    else
+      so -> {:error, so}
+    end
+  end
+
   def query_source_streaming_buffer(%Source{} = source) do
     q =
       case Sources.get_table_partition_type(source) do

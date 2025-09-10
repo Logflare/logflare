@@ -1,7 +1,9 @@
 defmodule Logflare.Backends.Adaptor.ClickhouseAdaptorTest do
   use Logflare.DataCase, async: false
 
+  alias Logflare.Backends
   alias Logflare.Backends.Adaptor.ClickhouseAdaptor
+  alias Logflare.Backends.Adaptor.ClickhouseAdaptor.ConnectionManager
   alias Logflare.Sources.Source
 
   doctest ClickhouseAdaptor
@@ -208,6 +210,56 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptorTest do
       result = ClickhouseAdaptor.execute_query(backend, "INVALID SQL SYNTAX", [])
 
       assert {:error, _error_message} = result
+    end
+  end
+
+  describe "connection pool collision handling" do
+    setup do
+      insert(:plan, name: "Free")
+      user = insert(:user)
+      source1 = insert(:source, user: user, default_ingest_backend_enabled?: true)
+      source2 = insert(:source, user: user, default_ingest_backend_enabled?: true)
+
+      {source1_with_backend, backend, cleanup_fn} =
+        setup_clickhouse_test(
+          source: source1,
+          user: user,
+          default_ingest?: true
+        )
+
+      on_exit(cleanup_fn)
+
+      {:ok, _pid} = ClickhouseAdaptor.start_link({source1_with_backend, backend})
+
+      [backend: backend, user: user, source1: source1_with_backend, source2: source2]
+    end
+
+    test "multiple default ingest sources with same backend do not crash", %{
+      backend: backend,
+      source2: source2
+    } do
+      assert :ok = ConnectionManager.ensure_pool_started(backend)
+
+      initial_manager_via = Backends.via_backend(backend, ConnectionManager)
+      initial_manager_pid = GenServer.whereis(initial_manager_via)
+
+      assert is_pid(initial_manager_pid)
+      assert Process.alive?(initial_manager_pid)
+      assert ConnectionManager.pool_active?(backend)
+
+      # start a second clickhouse adaptor with the same backend, but a different source
+      {:ok, source2} = Backends.update_source_backends(source2, [backend])
+      {:ok, ch_pid2} = ClickhouseAdaptor.start_link({source2, backend})
+
+      Process.sleep(200)
+
+      manager_via2 = Backends.via_backend(backend, ConnectionManager)
+      manager_pid2 = GenServer.whereis(manager_via2)
+
+      assert Process.alive?(ch_pid2)
+      assert is_pid(manager_pid2)
+      assert Process.alive?(manager_pid2)
+      assert ConnectionManager.pool_active?(backend)
     end
   end
 

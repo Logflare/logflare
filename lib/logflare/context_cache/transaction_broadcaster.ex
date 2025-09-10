@@ -52,26 +52,13 @@ defmodule Logflare.ContextCache.TransactionBroadcaster do
   end
 
   defp attempt_subscribe(state) do
-    cainophile_pid =
-      ContextCache.Supervisor.maybe_start_cainophile()
-      |> case do
-        {:ok, pid} ->
-          Logger.info(
-            "Successfully started cainophile on #{inspect(Node.self())}, pid: #{inspect(pid)}"
-          )
-
-          pid
-
-        {:error, {:already_started, pid}} ->
-          pid
-      end
+    name = ContextCache.Supervisor.publisher_name()
+    cainophile_pid = GenServer.whereis(name)
 
     if cainophile_pid != state.subscribed_pid do
-      ContextCache.Supervisor.publisher_name()
-      |> Cainophile.Adapters.Postgres.subscribe(self(), 15_000)
+      Cainophile.Adapters.Postgres.subscribe(cainophile_pid, self(), 15_000)
+      cainophile_pid
     end
-
-    cainophile_pid
   catch
     :exit, e ->
       Logger.warning("Could not subscribe to Cainophile, #{inspect(e)}")

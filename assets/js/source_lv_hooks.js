@@ -224,6 +224,22 @@ hooks.SourceLogsSearch = {
       }
     }, 250)
   },
-}
+};
 
-export default hooks
+/* Listens for a `scrollIntoView` event on the element
+
+  Example:
+
+  <div phx-mounted={JS.dispatch("scrollIntoView")}>
+    ...
+  </div>
+*/
+hooks.ScrollIntoView = {
+  mounted() {
+    this.el.addEventListener("scrollIntoView", (event) => {
+      event.target.scrollIntoView({ behavior: "instant" });
+    });
+  },
+};
+
+export default hooks;

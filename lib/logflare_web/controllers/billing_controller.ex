@@ -96,8 +96,9 @@ defmodule LogflareWeb.BillingController do
         %{assigns: %{user: %User{billing_account: billing_account} = user}} = conn,
         %{"stripe_id" => stripe_id, "mode" => "payment"}
       ) do
-    with plan <- Billing.get_plan_by(stripe_id: stripe_id),
-         false <- billing_accoount_has_subscription?(billing_account),
+    plan = Billing.get_plan_by(stripe_id: stripe_id)
+
+    with false <- billing_accoount_has_subscription?(billing_account),
          {:ok, session} <- Stripe.create_payment_session(user, plan) do
       conn
       |> put_session(:stripe_session, session)
