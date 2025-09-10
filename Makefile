@@ -251,13 +251,21 @@ grpc.protoc:
 # For google rpc protos (status, etc)
 	dir=$$(mktemp -d); \
 	trap 'rm -rf "$$dir"' EXIT; \
-	git clone https://github.com/googleapis/googleapis.git $$dir; \
+	git clone https://github.com/googleapis/googleapis.git --depth=1 $$dir; \
 	protoc -I=$$dir --elixir_out=plugins=grpc:$(PWD)/lib/logflare_grpc $$(find $$dir -path "*/rpc/*" -iname '*.proto')
 
 # Mock data for testing interceptors
 	dir=./priv/test_protobuf; \
 	protoc -I=$$dir --elixir_out=plugins=grpc:$(PWD)/test/support/test_protobuf/ $$(find $$dir -iname '*.proto')
 
+# For Google BigQuery
+# if you have encoding issues make sure to run the terminal as latin1
+# eg: LC_CTYPE=en_US.iso88591 luit make grpc.protoc.bq
+grpc.protoc.bq:
+	dir=$$(mktemp -d); \
+	trap 'rm -rf "$$dir"' EXIT; \
+	git clone https://github.com/googleapis/googleapis.git --depth=1 $$dir; \
+	protoc -I=$$dir --elixir_out=plugins=grpc:$(PWD)/lib/logflare_grpc $$(find $$dir -path "*/cloud/bigquery/storage/v1/*" -iname '*.proto')
 
 # manual deployment scripts
 
