@@ -265,7 +265,6 @@ defmodule LogflareWeb.Router do
     get("/:id/rejected", SourceController, :rejected_logs)
     live("/:source_id/search", Source.SearchLV)
     live("/:source_id/event", LogEventLive, :show)
-    get("/:id/favorite", SourceController, :favorite)
     get("/:id/clear", SourceController, :clear_logs)
     get("/:id/explore", SourceController, :explore)
     post("/:id/toggle-schema-lock", SourceController, :toggle_schema_lock)
