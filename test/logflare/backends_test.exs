@@ -738,7 +738,6 @@ defmodule Logflare.BackendsTest do
     end
   end
 
-
   describe "handle_resolve_count/3" do
     test "resolve_count will increase counts when queue size is above threshold" do
       check all pipeline_count <- integer(0..100),
@@ -873,7 +872,6 @@ defmodule Logflare.BackendsTest do
       end
     end
   end
-
 
   describe "ingestion with backend" do
     setup :set_mimic_global

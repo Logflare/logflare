@@ -520,7 +520,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
         DynamicPipeline,
         # soft limit before a new pipeline is created
         name: Backends.via_source(source, Pipeline, backend.id),
-        pipeline:  Pipeline,
+        pipeline: Pipeline,
         pipeline_args: pipeline_state,
         min_pipelines: 0,
         max_pipelines: System.schedulers_online(),

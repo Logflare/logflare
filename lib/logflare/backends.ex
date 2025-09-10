@@ -822,8 +822,6 @@ defmodule Logflare.Backends do
     |> Enum.take(-n)
   end
 
-
-
   @doc """
   Pipeline count resolution logic, for DynamicPipeline, shared across BigQuery and Clickhouse.
   """
@@ -883,8 +881,6 @@ defmodule Logflare.Backends do
         state.pipeline_count
     end
   end
-
-
 
   defp do_telemetry(:drop, le) do
     :telemetry.execute(
