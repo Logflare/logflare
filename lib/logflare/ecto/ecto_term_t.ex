@@ -5,6 +5,8 @@ defmodule Ecto.Term do
 
   @behaviour Ecto.Type
 
+  @type t :: term()
+
   @spec type :: :binary
   def type, do: :binary
 

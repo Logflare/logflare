@@ -119,7 +119,7 @@ defmodule Logflare.Sources do
   @doc """
   Retrieves a source by its uuid token
   """
-  @spec get_source_by_token(atom | Stringt.t()) :: Source.t() | nil
+  @spec get_source_by_token(atom | String.t()) :: Source.t() | nil
   def get_source_by_token(source_token) when is_atom(source_token) or is_binary(source_token) do
     get_by(token: source_token)
   end

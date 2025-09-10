@@ -8,6 +8,8 @@ defmodule Ecto.LqlRules do
 
   @behaviour Ecto.Type
 
+  @type t :: any()
+
   alias Logflare.Lql.Rules.ChartRule
   alias Logflare.Lql.Rules.FilterRule
   alias Logflare.Lql.Rules.SelectRule

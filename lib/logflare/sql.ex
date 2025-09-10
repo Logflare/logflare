@@ -9,7 +9,7 @@ defmodule Logflare.Sql do
 
   require Logger
 
-  alias Logflare.Alerts.Alert
+  alias Logflare.Alerting.AlertQuery
   alias Logflare.Endpoints
   alias Logflare.SingleTenant
   alias Logflare.Sources
@@ -46,7 +46,7 @@ defmodule Logflare.Sql do
   @spec expand_subqueries(
           query_language(),
           input :: String.t(),
-          queries :: [Alert.t() | Endpoints.Query.t()]
+          queries :: [AlertQuery.t() | Endpoints.Query.t()]
         ) ::
           {:ok, String.t()}
   def expand_subqueries(_language, input, []), do: {:ok, input}
