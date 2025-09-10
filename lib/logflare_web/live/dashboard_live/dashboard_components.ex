@@ -104,9 +104,13 @@ defmodule LogflareWeb.DashboardLive.DashboardComponents do
     """
   end
 
+  attr :home_team, Logflare.Teams.Team, required: false
+  attr :current_team, Logflare.Teams.Team, required: true
+  attr :team_users, :list, required: true
+
   def teams(assigns) do
     ~H"""
-    <div>
+    <div id="teams">
       <h5 class="header-margin">Teams</h5>
       <ul class="list-unstyled">
         <li :if={@home_team} class="tw-mb-2">
@@ -127,9 +131,9 @@ defmodule LogflareWeb.DashboardLive.DashboardComponents do
           Other teams you are a member of will be listed here.
         <% end %>
 
-        <li :for={team_user <- @team_users} :if={team_user.team.id != @current_team.id} class="tw-mb-2">
+        <li :for={team_user <- @team_users} :if={team_user.team.id != @home_team.id} class="tw-mb-2">
           <span :if={team_user.team_id == @current_team.id}><%= team_user.team.name %></span>
-          <.link :if={team_user.team_id != @current_team.id} href={~p"/profile/switch?#{%{"user_id" => team_user.team.user_id, "team_user_id" => team_user.id}}"} class="tw-text-white">
+          <.link :if={team_user.team_id != @current_team.id} href={~p"/profile/switch?#{%{user_id: team_user.team.user_id, team_user_id: team_user.id}}"} class="tw-text-white">
             <%= team_user.team.name %>
           </.link>
         </li>
@@ -138,9 +142,13 @@ defmodule LogflareWeb.DashboardLive.DashboardComponents do
     """
   end
 
+  attr :user, Logflare.User, required: true
+  attr :team, Logflare.Teams.Team, required: true
+  attr :team_user, Logflare.TeamUsers.TeamUser, default: nil
+
   def members(assigns) do
     ~H"""
-    <div>
+    <div id="members">
       <h5 class="header-margin">Members</h5>
       <ul id="team-members" class="tw-mb-4 tw-list-none tw-p-0">
         <li class="tw-mb-2">
@@ -148,7 +156,7 @@ defmodule LogflareWeb.DashboardLive.DashboardComponents do
           <.link href={"mailto:#{@user.email}"} class="tw-text-white">
             <%= @user.name || @user.email %>
           </.link>
-          <small><%= if true, do: "owner", else: "owner, you" %></small>
+          <small><%= if @team_user, do: "owner", else: "owner, you" %></small>
         </li>
         <li :for={member <- @team.team_users} :if={member.id != @user.id} class="tw-mb-2">
           <img class="rounded-circle" width="35" height="35" src={member.image || Auth.gen_gravatar_link(member.email)} alt={member.name || member.email} />
@@ -156,7 +164,8 @@ defmodule LogflareWeb.DashboardLive.DashboardComponents do
             <%= member.name || member.email %>
           </.link>
 
-          <.link href={~p"/profile/#{member.id}"} data-confirm="Delete member?" class="dashboard-links" method="delete">
+          <span :if={current_team_user?(member, @team_user)}>you</span>
+          <.link :if={not current_team_user?(member, @team_user)} href={~p"/profile/#{member}"} data-confirm="Delete member?" class="dashboard-links" method="delete">
             <i class="fa fa-trash"></i>
           </.link>
         </li>
@@ -167,6 +176,11 @@ defmodule LogflareWeb.DashboardLive.DashboardComponents do
     </div>
     """
   end
+
+  defp current_team_user?(_member, nil), do: false
+  defp current_team_user?(member, team_user), do: member.provider_uid == team_user.provider_uid
+
+  attr :sources, :list, required: true
 
   def saved_searches(assigns) do
     ~H"""
@@ -181,7 +195,7 @@ defmodule LogflareWeb.DashboardLive.DashboardComponents do
             <.link href={~p"/sources/#{source}/search?#{%{querystring: saved_search.querystring, tailing: saved_search.tailing}}"} class="tw-text-white">
               <%= source.name %>:<%= saved_search.querystring %>
             </.link>
-            <.link href={~p"/sources/#{source}/saved-searches/#{saved_search}"} method="delete" class="dashboard-links">
+            <.link href={~p"/sources/#{source}/saved-searches/#{saved_search}"} data-confirm="Delete saved search?" method="delete" class="dashboard-links">
               <i class="fa fa-trash"></i>
             </.link>
           </li>

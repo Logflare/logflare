@@ -2,55 +2,65 @@ defmodule LogflareWeb.DashboardLive do
   alias Logflare.Repo
   use LogflareWeb, :live_view
 
-  alias Logflare.{Auth, Billing, Sources, Teams, TeamUser, User, Users}
+  alias Logflare.{Billing, Sources, Teams, TeamUsers, Users}
   alias LogflareWeb.DashboardLive.{DashboardComponents, DashboardSourceComponents}
   alias LogflareWeb.Helpers.Forms
 
   @impl true
   def mount(_, %{"user_id" => user_id} = session, socket) do
-    user =
-      Users.get_by_and_preload(id: user_id)
-      |> Users.preload_sources()
-      |> Users.preload_team()
-
-    sources = Sources.preload_for_dashboard(user.sources)
-
-    plan = Billing.get_plan_by_user(user)
-
-    if connected?(socket) do
-      Enum.each(sources, &Logflare.Sources.Source.ChannelTopics.subscribe_dashboard(&1.token))
-    end
-
     socket =
       socket
-      |> assign(:user, user)
-      |> assign(:plan, plan)
+      |> assign(:user, Users.get_by_and_preload(id: user_id))
+      |> assign_new(:team, fn %{user: user} ->
+        Teams.get_team_by(user_id: user.id) |> Teams.preload_team_users()
+      end)
+      |> assign_new(:sources, fn %{user: user} ->
+        user
+        |> Sources.list_sources_by_user()
+        |> Sources.preload_for_dashboard()
+      end)
+      |> assign_new(:plan, fn %{user: user} -> Billing.get_plan_by_user(user) end)
       |> assign_teams(session["team_user_id"])
-      |> assign(:sources, sources)
       |> assign(:fade_in, false)
+
+    if connected?(socket) do
+      Enum.each(
+        socket.assigns.sources,
+        &Logflare.Sources.Source.ChannelTopics.subscribe_dashboard(&1.token)
+      )
+    end
 
     {:ok, socket}
   end
 
+  @doc """
+  Assigns teams and members.
+
+  If the user is signed in as `team_user` then `user` will be the team owner.
+  """
   def assign_teams(socket, nil) do
     %{user: user} = socket.assigns
 
-    # this is wrong I think
+    home_team = user.team |> Logflare.Repo.preload(:user)
     team_users = Logflare.TeamUsers.list_team_users_by_and_preload(email: user.email)
 
-    assign(socket, team: user.team |> Teams.preload_team_users(), team_users: team_users)
+    assign(socket,
+      home_team: home_team,
+      team_user: nil,
+      team_users: team_users
+    )
   end
 
   def assign_teams(socket, team_user_id) do
-    %{user: user} = socket.assigns
-
     team_user = TeamUsers.get_team_user_and_preload(team_user_id)
-    team_users = Logflare.TeamUsers.list_team_users_by_and_preload(email: user.email)
+    home_team = Teams.get_home_team(team_user)
+    team_users = TeamUsers.list_team_users_by_and_preload(provider_uid: team_user.provider_uid)
 
     socket
     |> assign(
-      team_users: team_users,
-      team: team_user.team |> Teams.preload_team_users()
+      home_team: home_team,
+      team_user: team_user,
+      team_users: team_users
     )
   end
 
@@ -144,8 +154,8 @@ defmodule LogflareWeb.DashboardLive do
         <div class="lg:tw-grid tw-grid-cols-12 tw-gap-8 tw-px-[15px] tw-mt-[50px]">
           <div class="tw-col-span-3">
             <DashboardComponents.saved_searches sources={@sources} />
-            <DashboardComponents.teams current_team={@team} home_team={@user.team} team_users={@team_users} />
-            <DashboardComponents.members user={@user} team={@team} />
+            <DashboardComponents.teams current_team={@team} home_team={@home_team} team_users={@team_users} />
+            <DashboardComponents.members user={@user} team={@team} team_user={@team_user} />
           </div>
           <div class="tw-col-span-7">
             <.source_list sources={@sources} plan={@plan} fade_in={@fade_in} />
