@@ -5,7 +5,7 @@
       </div>
     <% else %>
       <%= if @user do %>
-        <%= link to: Routes.source_path(@conn, :dashboard), class: "navbar-brand" do %>
+        <%= link to: ~p"/dashboard", class: "navbar-brand" do %>
           <%= render LogflareWeb.SharedView, "logo.html", assigns %>
         <% end %>
       <% else %>
