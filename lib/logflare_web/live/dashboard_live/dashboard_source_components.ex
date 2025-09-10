@@ -5,6 +5,7 @@ defmodule LogflareWeb.DashboardLive.DashboardSourceComponents do
 
   attr :source, Logflare.Sources.Source, required: true
   attr :plan, :map, required: true
+
   def source_metadata(assigns) do
     ~H"""
     <div class="tw-ml-8">
@@ -87,7 +88,7 @@ defmodule LogflareWeb.DashboardLive.DashboardSourceComponents do
 
       <.metric>
         rejected:
-        <.link :if={@source.metrics.rejected > 0} href={~p"/source/#{@source.id}/rejected"}>
+        <.link :if={@source.metrics.rejected > 0} href={~p"/sources/#{@source}/rejected"}>
           <.tooltip class="my-badge my-badge-warning" placement="left" title="Some events didn't validate!"><%= @source.metrics.rejected %></.tooltip>
         </.link>
         <span :if={@source.metrics.rejected == 0} id={metric_id(@source, "rejected")}><%= @source.metrics.rejected %></span>
