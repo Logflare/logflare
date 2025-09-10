@@ -568,6 +568,6 @@ defmodule LogflareWeb.SourceController do
   defp put_flash_and_redirect_to_dashboard(conn, flash_level, flash_message) do
     conn
     |> put_flash(flash_level, flash_message)
-    |> redirect(to: Routes.source_path(conn, :dashboard))
+    |> redirect(to: ~p"/dashboard")
   end
 end
