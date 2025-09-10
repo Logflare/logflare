@@ -3,6 +3,7 @@ defmodule LogflareWeb.Auth.VercelAuth do
   What we do when someone signs up and oauth's from the Vercel integration.
   """
   use LogflareWeb, :controller
+
   alias Logflare.Vercel
   alias LogflareWeb.Router.Helpers, as: Routes
 
