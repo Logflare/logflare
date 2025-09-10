@@ -196,7 +196,7 @@ defmodule LogflareWeb.DashboardLive do
               <div class="source-link word-break-all">
                 <.link href={~p"/sources/#{source}"} class="tw-text-white"><%= source.name %></.link>
                 <span>
-                  <small class="my-badge my-badge-info tw-transition-colors tw-ease-in" id={[to_string(source.id), "inserts", source.metrics.inserts_string]} phx-mounted={if(@fade_in, do: JS.transition("tw-bg-blue-500", time: 500))}>
+                  <small class="my-badge my-badge-info tw-transition-colors tw-ease-in" id={"#{source.id}-inserts-#{source.metrics.inserts_string}"} phx-mounted={if(@fade_in, do: JS.transition("tw-bg-blue-500", time: 500))}>
                     <%= source.metrics.inserts_string %>
                   </small>
                 </span>
