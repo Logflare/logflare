@@ -20,7 +20,7 @@
   <body class="experimental-ui">
     <nav class="navbar fixed-top navbar-expand-lg navbar-light bg-light">
       <%= if @conn.request_path != "/" do %>
-        <%= link to: Routes.source_path(@conn, :dashboard), class: "navbar-brand" do %>
+        <%= link to: ~p"/dashboard", class: "navbar-brand" do %>
           <div id="logo-box"><i class="fas fa-stream"></i></div> Logflare <small class="hide-on-mobile">v<%= List.to_string(Application.spec(:logflare, :vsn)) %></small>
         <% end %>
       <% else %>

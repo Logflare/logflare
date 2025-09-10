@@ -122,7 +122,7 @@ defmodule LogflareWeb.UserController do
 
         conn
         |> put_flash(:info, "API key restored!")
-        |> redirect(to: Routes.source_path(conn, :dashboard))
+        |> redirect(to: ~p"/dashboard")
 
       nil ->
         %{assigns: %{user: user}} = conn
@@ -137,7 +137,7 @@ defmodule LogflareWeb.UserController do
           "API key reset! ",
           link("Undo?", to: Routes.user_path(conn, :new_api_key, undo: true))
         ])
-        |> redirect(to: Routes.source_path(conn, :dashboard))
+        |> redirect(to: ~p"/dashboard")
     end
   end
 
