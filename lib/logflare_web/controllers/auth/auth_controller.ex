@@ -1,12 +1,15 @@
 defmodule LogflareWeb.AuthController do
   use LogflareWeb, :controller
 
-  alias Logflare.{Users, TeamUsers, Teams}
-  alias Logflare.Auth
   alias Logflare.AccountEmail
-  alias Logflare.Mailer
+  alias Logflare.Auth
   alias Logflare.Backends.Adaptor.BigQueryAdaptor
+  alias Logflare.Mailer
+  alias Logflare.TeamUsers
+  alias Logflare.Teams
+  alias Logflare.Users
   alias Logflare.Vercel
+
   require Logger
 
   @max_age 86_400

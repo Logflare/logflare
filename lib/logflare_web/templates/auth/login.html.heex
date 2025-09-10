@@ -8,21 +8,15 @@
   <div class="d-flex flex-row justify-content-center">
     <center>
       <%= if @conn.assigns[:team_user] do %>
-        <p><i class="fas fa-exclamation-circle"></i> You're currently signed in with your
-        <code><%= @team_user.provider %></code>
-        account <code><%= @team_user.email %></code>.</p>
+        <p><i class="fas fa-exclamation-circle"></i> You're currently signed in with your <code><%= @team_user.provider %></code> account <code><%= @team_user.email %></code>.</p>
       <% else %>
-       <%= if @user do %>
-         <p><i class="fas fa-exclamation-circle"></i> You're currently signed in with your
-         <code><%= @user.provider %></code>
-         account <code><%= @user.email %></code>.</p>
-       <% else %>
-         <%= if @last_login.provider do %>
-           <p><i class="fas fa-exclamation-circle"></i> You recently signed in with your
-           <code><%= @last_login.provider %></code>
-           account.</p>
-         <% end %>
-       <% end %>
+        <%= if @user do %>
+          <p><i class="fas fa-exclamation-circle"></i> You're currently signed in with your <code><%= @user.provider %></code> account <code><%= @user.email %></code>.</p>
+        <% else %>
+          <%= if @last_login.provider do %>
+            <p><i class="fas fa-exclamation-circle"></i> You recently signed in with your <code><%= @last_login.provider %></code> account.</p>
+          <% end %>
+        <% end %>
       <% end %>
     </center>
   </div>
@@ -31,22 +25,22 @@
       <ul class="list-group">
         <li class="list-group-item">
           <%= link to: Routes.oauth_path(@conn, :request, "google"), class: "nav-link" do %>
-          <span class="login-icon"><i class="fab fa-google"></span></i> Continue with Google
+            <span class="login-icon"><i class="fab fa-google"></i></span> Continue with Google
           <% end %>
         </li>
         <li class="list-group-item">
           <%= link to: Routes.oauth_path(@conn, :request, "github"), class: "nav-link" do %>
-          <span class="login-icon"><i class="fab fa-github"></span></i> Continue with Github
+            <span class="login-icon"><i class="fab fa-github"></i></span> Continue with Github
           <% end %>
         </li>
         <li class="list-group-item">
           <%= link to: ~s(https://slack.com/oauth/v2/authorize?client_id=#{Application.get_env(:ueberauth, Ueberauth.Strategy.SlackV2.OAuth)[:client_id]}&install_redirect=update-to-granular-scopes&scope=&user_scope=identity.basic,identity.avatar,identity.email,identity.team&redirect_uri=#{LogflareWeb.Endpoint.url() <> "/auth/slack/callback"}&state=), class: "nav-link" do %>
-          <span class="login-icon"><i class="fab fa-slack"></span></i> Continue with Slack
+            <span class="login-icon"><i class="fab fa-slack"></i></span> Continue with Slack
           <% end %>
         </li>
         <li class="list-group-item">
           <%= link to: Routes.email_path(@conn, :login), class: "nav-link" do %>
-          <span class="login-icon"><i class="fas fa-envelope"></span></i> Continue with email
+            <span class="login-icon"><i class="fas fa-envelope"></i></span> Continue with email
           <% end %>
         </li>
       </ul>
@@ -54,9 +48,9 @@
         <small>If you don't already have a Logflare account one will get created for you.</small>
       </p>
       <p class="text-center">
-        <small>Logflare is owned and operated by Supabase. When using the Logflare hosted service you agree to the Supabase
-          <%= link "terms of service", to: "https://supabase.com/terms", target: "_blank" %> and
-          <%= link "privacy policy", to: "https://supabase.com/privacy", target: "_blank" %>.</small>
+        <small>
+          Logflare is owned and operated by Supabase. When using the Logflare hosted service you agree to the Supabase <%= link("terms of service", to: "https://supabase.com/terms", target: "_blank") %> and <%= link("privacy policy", to: "https://supabase.com/privacy", target: "_blank") %>.
+        </small>
       </p>
     </div>
   </div>

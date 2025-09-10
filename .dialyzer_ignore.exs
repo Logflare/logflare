@@ -153,7 +153,6 @@
   {"lib/logflare_web/live/search_live/logs_search_lv.ex", :pattern_match},
   {"lib/logflare_web/live/search_live/logs_search_lv.ex", :call},
   {"lib/logflare_web/live/search_live/logs_search_lv.ex", :no_return},
-  {"lib/logflare_web/templates/phoenix_oauth2_provider/application/form.html.eex", :exact_eq},
   {"lib/logflare_web/views/source_view.ex", :opaque_match},
   {"lib/telemetry.ex", :no_return},
   {"test/support/test_utils.ex", :no_return},

@@ -18,11 +18,9 @@
   <small class="form-text text-muted">
     Use one line per URI.
   </small>
-  <%= unless is_nil(ExOauth2Provider.Config.native_redirect_uri) do %>
-    <small class="form-text text-muted">
-      Use <code><%= ExOauth2Provider.Config.native_redirect_uri %></code> for local tests.
-    </small>
-  <% end %>
+  <small class="form-text text-muted">
+    Use <code><%= ExOauth2Provider.Config.native_redirect_uri() %></code> for local tests.
+  </small>
   <%= error_tag f, :redirect_uri %>
 </div>
 <h5 id="rules-header">Scopes</h5>
