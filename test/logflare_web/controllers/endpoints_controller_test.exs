@@ -583,7 +583,7 @@ defmodule LogflareWeb.EndpointsControllerTest do
       |> expect(:bigquery_jobs_query, fn _conn, _proj_id, _opts ->
         bq_response =
           TestUtils.gen_bq_response([
-            %{"ip_address" => "192.168.1.1", "event_message" => "User 10.0.0.1 connected"}
+            %{"ip_address" => "192.168.1.1", "event_message" => "User 10.0.0.1 connected ::1"}
           ])
 
         {:ok, bq_response}
@@ -602,7 +602,7 @@ defmodule LogflareWeb.EndpointsControllerTest do
       assert [
                %{
                  "ip_address" => "REDACTED",
-                 "event_message" => "User REDACTED connected"
+                 "event_message" => "User REDACTED connected REDACTED"
                }
              ] = response.result
 

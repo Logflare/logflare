@@ -70,11 +70,12 @@ defmodule LogflareWeb.EndpointsController do
     override = get_req_header(conn, "lf-endpoint-redact-pii") |> List.first()
 
     redact_pii =
-      if override, do: String.downcase(override) in ["true", "1"], else: endpoint_query.redact_pii
+      if override, do: String.downcase(override) == "true", else: endpoint_query.redact_pii
 
     case Endpoints.run_cached_query(
-           %{endpoint_query | parsed_labels: parsed_labels, redact_pii: redact_pii},
-           params
+           %{endpoint_query | parsed_labels: parsed_labels},
+           params,
+           redact_pii: redact_pii
          ) do
       {:ok, result} ->
         Logger.debug("Endpoint cache result, #{inspect(result, pretty: true)}")

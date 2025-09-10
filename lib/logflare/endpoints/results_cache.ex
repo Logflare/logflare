@@ -12,6 +12,7 @@ defmodule Logflare.Endpoints.ResultsCache do
 
   defstruct query_tasks: [],
             params: %{},
+            opts: [],
             cached_result: nil,
             shutdown_timer: nil,
             refresh_timer: nil,
@@ -24,15 +25,16 @@ defmodule Logflare.Endpoints.ResultsCache do
           endpoint_query_token: String.t(),
           query_tasks: list(%Task{}),
           params: map(),
+          opts: list(),
           cached_result: binary(),
           shutdown_timer: reference(),
           refresh_timer: reference(),
           parsed_labels: map()
         }
 
-  def start_link({query, params}) do
+  def start_link({query, params, opts}) do
     name = name(query.id, params)
-    GenServer.start_link(__MODULE__, {query, params}, name: name, hibernate_after: 5_000)
+    GenServer.start_link(__MODULE__, {query, params, opts}, name: name, hibernate_after: 5_000)
   end
 
   @doc """
@@ -86,7 +88,7 @@ defmodule Logflare.Endpoints.ResultsCache do
     GenServer.call(cache, :invalidate)
   end
 
-  def init({query, params}) do
+  def init({query, params, opts}) do
     endpoints = endpoints_part(query.id)
     :syn.join(endpoints, query.id, self())
 
@@ -97,6 +99,7 @@ defmodule Logflare.Endpoints.ResultsCache do
         endpoint_query_id: query.id,
         endpoint_query_token: query.token,
         params: params,
+        opts: opts,
         shutdown_timer: timer,
         parsed_labels: query.parsed_labels
       }
@@ -188,7 +191,7 @@ defmodule Logflare.Endpoints.ResultsCache do
       Endpoints.Cache.get_mapped_query_by_token(state.endpoint_query_token)
       |> Map.put(:parsed_labels, state.parsed_labels)
 
-    Logflare.Endpoints.run_query(query, state.params)
+    Logflare.Endpoints.run_query(query, state.params, state.opts)
     |> Tuple.append(query)
   end
 
