@@ -48,7 +48,7 @@ RUN mix release  && \
 FROM ${RUNNER_IMAGE}
 
 # Required for the BeamVM to run
-RUN apt-get update -y && apt-get install -y curl libstdc++6 openssl libncurses5 locales \
+RUN apt-get update -y && apt-get install -y curl libstdc++6 openssl locales \
     && apt-get clean && rm -f /var/lib/apt/lists/*_*
 
 # Set the locale
