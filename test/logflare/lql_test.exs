@@ -38,6 +38,20 @@ defmodule Logflare.LqlTest do
       assert %Ecto.Query{} = result
     end
 
+    test "applies filter rules with ClickHouse adapter" do
+      query = from("test_table")
+
+      filter_rule = %FilterRule{
+        path: "event_message",
+        operator: :"~",
+        value: "error.*timeout",
+        modifiers: %{}
+      }
+
+      result = Lql.apply_filter_rules(query, [filter_rule], adapter: :clickhouse)
+      assert %Ecto.Query{} = result
+    end
+
     test "handles empty filter rules list" do
       query = from("test_table")
 
@@ -59,6 +73,14 @@ defmodule Logflare.LqlTest do
 
       result = Lql.handle_nested_field_access(query, "metadata.user.id", adapter: :bigquery)
       assert %Ecto.Query{} = result
+    end
+
+    test "handles nested field access with ClickHouse adapter" do
+      query = from("test_table")
+      result = Lql.handle_nested_field_access(query, "metadata.user.id", adapter: :clickhouse)
+
+      # ClickHouse handles nested fields natively, so query should be unchanged
+      assert result == query
     end
   end
 
@@ -84,6 +106,18 @@ defmodule Logflare.LqlTest do
       }
 
       result = Lql.transform_filter_rule(filter_rule, adapter: :bigquery)
+      assert %Ecto.Query.DynamicExpr{} = result
+    end
+
+    test "transforms filter rule with ClickHouse adapter" do
+      filter_rule = %FilterRule{
+        path: "event_message",
+        operator: :"~",
+        value: "server.*error",
+        modifiers: %{}
+      }
+
+      result = Lql.transform_filter_rule(filter_rule, adapter: :clickhouse)
       assert %Ecto.Query.DynamicExpr{} = result
     end
   end

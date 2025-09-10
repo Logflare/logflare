@@ -23,20 +23,17 @@ defmodule Logflare.Lql.BackendTransformer.BigQuery do
   def quote_style, do: "`"
 
   @impl true
-  def validate_transformation_data(data) do
-    # BigQuery doesn't require specific validation beyond the common schema
-    # Future implementations might validate BigQuery-specific fields
-    case data do
-      %{schema: _} -> :ok
-      _ -> {:error, "BigQuery transformer requires schema in transformation data"}
-    end
+  # BigQuery doesn't require specific validation beyond the common schema
+  # Future implementations might validate BigQuery-specific fields
+  def validate_transformation_data(%{schema: _}), do: :ok
+
+  def validate_transformation_data(_data) do
+    {:error, "BigQuery transformer requires schema in transformation data"}
   end
 
   @impl true
-  def build_transformation_data(base_data) do
-    # currently using the base transformation data as-is
-    base_data
-  end
+  # currently using the base transformation data as-is
+  def build_transformation_data(base_data), do: base_data
 
   @impl true
   def apply_select_rules_to_query(query, select_rules, _opts \\ [])
