@@ -19,9 +19,11 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
   alias Ecto.Changeset
   alias Logflare.Backends
   alias Logflare.Backends.Backend
+  alias Logflare.Backends.IngestEventQueue
   alias Logflare.Backends.SourceRegistry
   alias Logflare.LogEvent
   alias Logflare.Sources.Source
+  alias Logflare.Sources
 
   @ingest_timeout 15_000
   @query_timeout 60_000
@@ -514,7 +516,24 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
     children = [
       ConnectionManager.child_spec({source, backend, ingest_ch_opts}),
       Provisioner.child_spec(args),
-      Pipeline.child_spec(pipeline_state)
+      {
+        DynamicPipeline,
+        # soft limit before a new pipeline is created
+        name: Backends.via_source(source, Pipeline, backend.id),
+        pipeline:  Pipeline,
+        pipeline_args: pipeline_state,
+        min_pipelines: 0,
+        max_pipelines: System.schedulers_online(),
+        initial_count: 1,
+        resolve_interval: 2_500,
+        resolve_count: fn state ->
+          source = Sources.refresh_source_metrics_for_ingest(source)
+
+          lens = IngestEventQueue.list_pending_counts({source.id, backend.id})
+
+          Backends.handle_resolve_count(state, lens, source.metrics.avg)
+        end
+      }
     ]
 
     # Only add the backend-based connection manager if it is not already running

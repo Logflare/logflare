@@ -822,6 +822,70 @@ defmodule Logflare.Backends do
     |> Enum.take(-n)
   end
 
+
+
+  @doc """
+  Pipeline count resolution logic, for DynamicPipeline, shared across BigQuery and Clickhouse.
+  """
+  @spec handle_resolve_count(
+          %{
+            pipeline_count: non_neg_integer(),
+            max_pipelines: non_neg_integer(),
+            last_count_increase: NaiveDateTime.t() | nil,
+            last_count_decrease: NaiveDateTime.t() | nil
+          },
+          %{
+            {pos_integer(), pos_integer() | nil, reference() | nil} => non_neg_integer()
+          },
+          non_neg_integer()
+        ) :: non_neg_integer()
+  def handle_resolve_count(state, lens, avg_rate) do
+    startup_size =
+      Enum.find_value(lens, 0, fn
+        {{_sid, _bid, nil}, val} -> val
+        _ -> false
+      end)
+
+    lens_no_startup =
+      Enum.filter(lens, fn
+        {{_sid, _bid, nil}, _val} -> false
+        _ -> true
+      end)
+
+    lens_no_startup_values = Enum.map(lens_no_startup, fn {_, v} -> v end)
+    len = Enum.map(lens, fn {_, v} -> v end) |> Enum.sum()
+
+    last_decr = state.last_count_decrease || NaiveDateTime.utc_now()
+    sec_since_last_decr = NaiveDateTime.diff(NaiveDateTime.utc_now(), last_decr)
+
+    any_above_threshold? = Enum.any?(lens_no_startup_values, &(&1 >= 500))
+
+    cond do
+      # max out pipelines, overflow risk
+      startup_size > 0 ->
+        state.pipeline_count + ceil(startup_size / 500)
+
+      any_above_threshold? and len > 0 ->
+        state.pipeline_count + ceil(len / 500)
+
+      # gradual decrease
+      Enum.all?(lens_no_startup_values, &(&1 < 50)) and len < 500 and state.pipeline_count > 1 and
+          (sec_since_last_decr > 60 or state.last_count_decrease == nil) ->
+        state.pipeline_count - 1
+
+      len == 0 and avg_rate == 0 and
+        state.pipeline_count == 1 and
+          (sec_since_last_decr > 60 * 5 or state.last_count_decrease == nil) ->
+        # scale to zero only if no items for > 5m
+        0
+
+      true ->
+        state.pipeline_count
+    end
+  end
+
+
+
   defp do_telemetry(:drop, le) do
     :telemetry.execute(
       [:logflare, :logs, :ingest_logs],
