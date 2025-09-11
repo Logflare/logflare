@@ -18,6 +18,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
   alias __MODULE__.QueryTemplates
   alias Ecto.Changeset
   alias Logflare.Backends
+  alias Logflare.Backends.DynamicPipeline
   alias Logflare.Backends.Backend
   alias Logflare.Backends.IngestEventQueue
   alias Logflare.Backends.SourceRegistry
@@ -27,24 +28,6 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
 
   @ingest_timeout 15_000
   @query_timeout 60_000
-
-  typedstruct do
-    field(:config, %{
-      url: String.t(),
-      username: String.t(),
-      password: String.t(),
-      database: String.t(),
-      port: non_neg_integer(),
-      pool_size: non_neg_integer()
-    })
-
-    field(:source, Source.t())
-    field(:backend, Backend.t())
-    field(:backend_token, String.t())
-    field(:source_token, atom())
-    field(:ingest_connection, tuple())
-    field(:pipeline_name, tuple())
-  end
 
   @type source_backend_tuple :: {Source.t(), Backend.t()}
   @type via_tuple :: {:via, Registry, {module(), {pos_integer(), {module(), pos_integer()}}}}
@@ -476,15 +459,6 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
     ingest_pool_via = connection_pool_via({source, backend})
     query_pool_via = connection_pool_via(backend)
 
-    pipeline_state = %__MODULE__{
-      config: config,
-      backend: backend,
-      backend_token: backend.token,
-      source_token: source.token,
-      source: source,
-      pipeline_name: pipeline_via({source, backend})
-    }
-
     # Ingest connection pool opts
     ingest_ch_opts = [
       name: ingest_pool_via,
@@ -521,7 +495,10 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
         # soft limit before a new pipeline is created
         name: Backends.via_source(source, Pipeline, backend.id),
         pipeline: Pipeline,
-        pipeline_args: pipeline_state,
+        pipeline_args: [
+          source: source,
+          backend: backend
+        ],
         min_pipelines: 0,
         max_pipelines: System.schedulers_online(),
         initial_count: 1,
