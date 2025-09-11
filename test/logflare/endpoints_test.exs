@@ -314,7 +314,7 @@ defmodule Logflare.EndpointsTest do
           cache_duration_seconds: 4
         )
 
-      _pid = start_supervised!({Logflare.Endpoints.ResultsCache, {endpoint, %{}}})
+      _pid = start_supervised!({Logflare.Endpoints.ResultsCache, {endpoint, %{}, []}})
       assert {:ok, %{rows: [%{"testing" => _}]}} = Endpoints.run_cached_query(endpoint)
       # 2nd query should hit local cache
       assert {:ok, %{rows: [%{"testing" => _}]}} = Endpoints.run_cached_query(endpoint)
@@ -334,7 +334,7 @@ defmodule Logflare.EndpointsTest do
           cache_duration_seconds: 1
         )
 
-      _pid = start_supervised!({Logflare.Endpoints.ResultsCache, {endpoint, %{}}})
+      _pid = start_supervised!({Logflare.Endpoints.ResultsCache, {endpoint, %{}, []}})
       assert {:ok, %{rows: [%{"testing" => _}]}} = Endpoints.run_cached_query(endpoint)
       # 2nd query should hit local cache
       assert {:ok, %{rows: [%{"testing" => _}]}} = Endpoints.run_cached_query(endpoint)
@@ -375,7 +375,7 @@ defmodule Logflare.EndpointsTest do
 
         user = insert(:user)
         endpoint = insert(:endpoint, user: user, query: "select current_datetime() as testing")
-        cache_pid = start_supervised!({Logflare.Endpoints.ResultsCache, {endpoint, %{}}})
+        cache_pid = start_supervised!({Logflare.Endpoints.ResultsCache, {endpoint, %{}, []}})
         assert {:ok, %{rows: [%{"testing" => _}]}} = Endpoints.run_cached_query(endpoint)
 
         params =
@@ -454,7 +454,7 @@ defmodule Logflare.EndpointsTest do
              }
            } = Endpoints.calculate_endpoint_metrics(endpoint)
 
-    _pid = start_supervised!({Logflare.Endpoints.ResultsCache, {endpoint, %{}}})
+    _pid = start_supervised!({Logflare.Endpoints.ResultsCache, {endpoint, %{}, []}})
 
     assert %_{
              metrics: %Query.Metrics{
