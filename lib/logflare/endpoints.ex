@@ -344,7 +344,8 @@ defmodule Logflare.Endpoints do
   Runs a cached query.
   """
   @spec run_cached_query(query :: Query.t(), params :: map()) :: run_query_return()
-  def run_cached_query(%Query{} = query, params \\ %{} , opts \\ []) when is_map(params) and is_list(opts) do
+  def run_cached_query(%Query{} = query, params \\ %{}, opts \\ [])
+      when is_map(params) and is_list(opts) do
     if query.cache_duration_seconds > 0 do
       query
       |> Resolver.resolve(params, opts)
@@ -423,6 +424,7 @@ defmodule Logflare.Endpoints do
         end
 
       redact_pii = Keyword.get(opts, :redact_pii, endpoint_query.redact_pii)
+
       case adaptor.execute_query(backend, query_args, opts) do
         {:ok, rows} when is_list(rows) ->
           redacted_rows = PiiRedactor.redact_query_result(rows, redact_pii)
