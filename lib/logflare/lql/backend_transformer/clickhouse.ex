@@ -12,7 +12,6 @@ defmodule Logflare.Lql.BackendTransformer.ClickHouse do
   import Ecto.Query
 
   alias Ecto.Query
-  alias Ecto.Query.DynamicExpr
 
   @special_top_level ~w(event_message timestamp id)
 
@@ -191,7 +190,7 @@ defmodule Logflare.Lql.BackendTransformer.ClickHouse do
           operator :: atom(),
           value :: any(),
           modifiers :: map()
-        ) :: DynamicExpr.t()
+        ) :: Query.dynamic_expr()
   defp dynamic_where_filter_rule(field_path, operator, value, modifiers) do
     field_atom = String.to_atom(field_path)
 

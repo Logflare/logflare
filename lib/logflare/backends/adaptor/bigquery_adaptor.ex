@@ -219,9 +219,8 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
     iex> create_managed_service_accounts()
     :ok
   """
-  @spec create_managed_service_accounts(String.t()) :: [
-          GoogleApi.IAM.V1.Model.ServiceAccount.t()
-        ]
+  @spec create_managed_service_accounts(String.t()) ::
+          {:ok, [GoogleApi.IAM.V1.Model.ServiceAccount.t()]}
   def create_managed_service_accounts(project_id \\ nil) do
     project_id = project_id || env_project_id()
 
