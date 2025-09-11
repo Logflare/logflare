@@ -26,6 +26,12 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
   alias Logflare.Sources.Source
   alias Logflare.Sources
 
+  typedstruct do
+    field(:source, Source.t())
+    field(:backend, Backend.t())
+    field(:ingest_connection, tuple())
+  end
+
   @ingest_timeout 15_000
   @query_timeout 60_000
 
