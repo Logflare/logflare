@@ -8,6 +8,7 @@ defmodule Logflare.Logs.SearchOperation do
   alias Logflare.Lql.Rules.ChartRule
   alias Logflare.Lql.Rules.FilterRule
   alias Logflare.Lql.Rules.SelectRule
+  alias Logflare.Sources.Source
 
   typedstruct do
     field :source, Source.t()

@@ -4,10 +4,12 @@ defmodule Logflare.Auth.Cache do
   Cachex `expiration`.
   """
 
-  require Cachex.Spec
-
   alias Logflare.Auth
+  alias Logflare.OauthAccessTokens.OauthAccessToken
+  alias Logflare.User
   alias Logflare.Utils
+
+  require Cachex.Spec
 
   def child_spec(_) do
     stats = Application.get_env(:logflare, :cache_stats, false)

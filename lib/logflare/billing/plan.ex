@@ -1,9 +1,10 @@
 defmodule Logflare.Billing.Plan do
   @moduledoc false
   use TypedEctoSchema
+
   import Ecto.Changeset
 
-  schema "plans" do
+  typed_schema "plans" do
     field :name, :string, default: "Legacy"
     field :stripe_id, :string
     field :price, :integer, default: 0

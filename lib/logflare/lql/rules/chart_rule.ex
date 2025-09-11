@@ -60,8 +60,8 @@ defmodule Logflare.Lql.Rules.ChartRule do
   - Time periods determine chart granularity and data point density
   - Percentile functions are useful for performance monitoring and SLA tracking
   """
-
   use TypedEctoSchema
+
   import Ecto.Changeset
 
   alias Ecto.Changeset

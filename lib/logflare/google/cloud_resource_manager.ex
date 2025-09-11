@@ -178,10 +178,6 @@ defmodule Logflare.Google.CloudResourceManager do
     end
   end
 
-  defp handle_errors({:error, err}) do
-    Logger.error("Set IAM policy unknown error: #{inspect(err)}")
-  end
-
   defp get_service_accounts do
     managed_service_accounts =
       if BigQueryAdaptor.managed_service_accounts_enabled?() do

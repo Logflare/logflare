@@ -2,24 +2,23 @@ defmodule Logflare.ContextCache.CacheBuster do
   @moduledoc """
     Monitors our Postgres replication log and busts the cache accordingly.
   """
-
   use GenServer
 
-  require Logger
-
-  alias Cainophile.Changes.NewRecord
-  alias Cainophile.Changes.UpdatedRecord
   alias Cainophile.Changes.DeletedRecord
+  alias Cainophile.Changes.NewRecord
   alias Cainophile.Changes.Transaction
-  alias Logflare.Backends
-  alias Logflare.Sources
-  alias Logflare.SourceSchemas
-  alias Logflare.TeamUsers
-  alias Logflare.Users
-  alias Logflare.PubSub
+  alias Cainophile.Changes.UpdatedRecord
   alias Logflare.Auth
+  alias Logflare.Backends
   alias Logflare.Billing
   alias Logflare.Endpoints
+  alias Logflare.PubSub
+  alias Logflare.SourceSchemas
+  alias Logflare.Sources
+  alias Logflare.TeamUsers
+  alias Logflare.Users
+
+  require Logger
 
   def start_link(init_args) do
     GenServer.start_link(__MODULE__, init_args, name: __MODULE__)
@@ -42,7 +41,7 @@ defmodule Logflare.ContextCache.CacheBuster do
   iex> Logflare.ContextCache.CacheBuster.set_log_level(:debug)
   """
 
-  @spec set_log_level(Logger.levels()) :: :ok
+  @spec set_log_level(Logger.level()) :: :ok
   def set_log_level(level) when is_atom(level) do
     GenServer.call(__MODULE__, {:put_level, level})
   end

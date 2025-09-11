@@ -25,7 +25,7 @@ defmodule Logflare.ContextCache.TransactionBroadcaster do
   To debug wal records set process to level :debug and each transaction will be logged.
   """
 
-  @spec set_log_level(Logger.levels()) :: :ok
+  @spec set_log_level(Logger.level()) :: :ok
   def set_log_level(level) when is_atom(level) do
     GenServer.call(__MODULE__, {:put_level, level})
   end

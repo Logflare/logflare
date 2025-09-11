@@ -14,10 +14,10 @@ defmodule Logflare.Backends.IngestEventQueue do
 
   @ets_table_mapper :ingest_event_queue_mapping
   @ets_table :source_ingest_events
-  @typep source_backend_pid ::
-           {Source.t() | non_neg_integer(), Backend.t() | non_neg_integer() | nil, pid() | nil}
-  @typep table_key :: {non_neg_integer(), non_neg_integer() | nil, pid() | nil}
-  @typep queues_key :: {non_neg_integer(), non_neg_integer() | nil}
+  @type source_backend_pid ::
+          {Source.t() | non_neg_integer(), Backend.t() | non_neg_integer() | nil, pid() | nil}
+  @type table_key :: {non_neg_integer(), non_neg_integer() | nil, pid() | nil}
+  @type queues_key :: {non_neg_integer(), non_neg_integer() | nil}
 
   ## Server
   def start_link(_args) do
@@ -473,6 +473,8 @@ defmodule Logflare.Backends.IngestEventQueue do
     :ok
   end
 
+  @spec drop(source_backend_pid(), :all | :pending | :ingested, non_neg_integer()) ::
+          {:ok, non_neg_integer()} | {:error, :not_initialized}
   def drop({_, _, _} = sid_bid_pid, filter, n)
       when is_integer(n) and filter in [:pending, :all, :ingested] do
     # chunk over table and drop

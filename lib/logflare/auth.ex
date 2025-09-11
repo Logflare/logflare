@@ -1,5 +1,6 @@
 defmodule Logflare.Auth do
   @moduledoc "Authorization context"
+
   import Ecto.Query
 
   alias Ecto.Changeset

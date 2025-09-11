@@ -6,10 +6,11 @@ defmodule Logflare.Backends.Adaptor do
   The Adaptor should consume events from the IngestedEventQueue.
   """
 
-  alias Logflare.LogEvent
-  alias Logflare.Endpoints.Query
-  alias Logflare.Backends.Backend
+  alias Logflare.Alerting.AlertQuery
   alias Logflare.Backends.AdaptorSupervisor
+  alias Logflare.Backends.Backend
+  alias Logflare.Endpoints.Query
+  alias Logflare.LogEvent
   alias Logflare.Sources.Source
 
   @type t :: module()

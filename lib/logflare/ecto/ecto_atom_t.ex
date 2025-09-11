@@ -5,6 +5,8 @@ defmodule Ecto.Atom do
 
   @behaviour Ecto.Type
 
+  @type t :: atom()
+
   def type, do: :string
 
   def cast(value) when is_atom(value), do: {:ok, value}

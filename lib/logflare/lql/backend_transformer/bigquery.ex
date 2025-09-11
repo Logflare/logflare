@@ -12,7 +12,6 @@ defmodule Logflare.Lql.BackendTransformer.BigQuery do
   import Ecto.Query
 
   alias Ecto.Query
-  alias Ecto.Query.DynamicExpr
 
   @special_top_level ~w(_PARTITIONDATE _PARTITIONTIME event_message timestamp id)
 
@@ -239,7 +238,7 @@ defmodule Logflare.Lql.BackendTransformer.BigQuery do
           operator :: atom(),
           value :: any(),
           modifiers :: map()
-        ) :: DynamicExpr.t()
+        ) :: Query.dynamic_expr()
   defp dynamic_where_filter_rule(column, operator, value, modifiers) do
     clause =
       case operator do
