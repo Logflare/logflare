@@ -3,12 +3,14 @@ defmodule LogflareWeb.Auth.OauthController do
 
   plug :fix_port_callback_url
   plug Ueberauth
-  require Logger
-  alias Logflare.JSON
-  alias Logflare.Sources.Source
-  alias Logflare.Repo
-  alias LogflareWeb.AuthController
+
   alias Logflare.Alerting
+  alias Logflare.JSON
+  alias Logflare.Repo
+  alias Logflare.Sources.Source
+  alias LogflareWeb.AuthController
+
+  require Logger
 
   # configure callback port based on PHX_URL_* env vars
   # Ueberauth does not respect phoenix url configurations
