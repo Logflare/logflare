@@ -2,7 +2,7 @@ defmodule LogflareWeb.DashboardLive do
   alias Logflare.Repo
   use LogflareWeb, :live_view
 
-  alias Logflare.{Billing, Sources, Teams, TeamUsers, Users}
+  alias Logflare.{Billing, SavedSearches, Sources, Teams, TeamUsers, Users}
   alias LogflareWeb.DashboardLive.{DashboardComponents, DashboardSourceComponents}
   alias LogflareWeb.Helpers.Forms
 
@@ -80,6 +80,35 @@ defmodule LogflareWeb.DashboardLive do
     else
       _ -> {:noreply, socket |> put_flash(:error, "Something went wrong!")}
     end
+  end
+
+  def handle_event("delete_saved_search", %{"id" => search_id}, socket) do
+    %{user: user, sources: sources} = socket.assigns
+
+    socket =
+      with %Logflare.SavedSearch{source: source} = search <-
+             SavedSearches.get(search_id) |> Repo.preload(:source),
+           true <- LogflareWeb.Plugs.SetVerifySource.verify_source_for_user(source, user),
+           {:ok, _response} <- SavedSearches.delete_by_user(search) do
+        sources =
+          sources
+          |> Sources.preload_saved_searches(force: true)
+
+        socket
+        |> assign(sources: sources)
+        |> put_flash(:info, "Saved search deleted!")
+      else
+        nil ->
+          put_flash(socket, :error, "Saved search not found")
+
+        false ->
+          put_flash(socket, :error, "You don't have permission to delete this saved search")
+
+        _ ->
+          put_flash(socket, :error, "Something went wrong!")
+      end
+
+    {:noreply, socket}
   end
 
   def handle_info(%Phoenix.Socket.Broadcast{event: "buffer"} = broadcast, socket) do

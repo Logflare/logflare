@@ -256,7 +256,6 @@ defmodule LogflareWeb.Router do
         live("/rules", Sources.RulesLive)
       end
 
-      delete("/saved-searches/:id", SavedSearchesController, :delete)
     end
 
     get("/:id/test-alerts", SourceController, :test_alerts)
