@@ -6,6 +6,8 @@ import _ from "lodash"
 import idle from "./vendor/idle"
 import hljs from "highlight.js"
 import "highlight.js/styles/tomorrow-night-blue.css"
+import { applyToAllLogTimestamps } from "./logs";
+import { timestampNsToAgo } from "./formatters";
 
 let hooks = {}
 
@@ -239,6 +241,16 @@ hooks.ScrollIntoView = {
     this.el.addEventListener("scrollIntoView", (event) => {
       event.target.scrollIntoView({ behavior: "instant" });
     });
+  },
+};
+
+hooks.FormatTimestamps = {
+  mounted() {
+    applyToAllLogTimestamps(timestampNsToAgo);
+  },
+
+  updated() {
+    applyToAllLogTimestamps(timestampNsToAgo);
   },
 };
 

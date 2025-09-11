@@ -16,9 +16,6 @@ defmodule LogflareWeb.SourceController do
   alias Logflare.Sources.Source.Supervisor
   alias Logflare.Sources
   alias Logflare.SourceSchemas
-  alias Logflare.Teams
-  alias Logflare.TeamUsers
-  alias Logflare.Users
   alias LogflareWeb.AuthController
   alias Logflare.Backends
 
@@ -28,60 +25,6 @@ defmodule LogflareWeb.SourceController do
     do: Application.get_env(:logflare, Logflare.Google)[:dataset_id_append]
 
   @lql_dialect :routing
-
-  def dashboard(%{assigns: %{user: user, team: team}} = conn, _params) do
-    user = Users.preload_sources(user)
-    sources = Sources.preload_for_dashboard(user.sources)
-
-    {home_team, team_users_with_teams} =
-      if team_user = conn.assigns[:team_user] do
-        {Teams.get_home_team(team_user),
-         TeamUsers.list_team_users_by_and_preload(provider_uid: team_user.provider_uid)}
-      else
-        {team, TeamUsers.list_team_users_by_and_preload(email: user.email)}
-      end
-
-    pipeline_counts =
-      for source <- sources, into: %{} do
-        name = Backends.via_source(source.id, Logflare.Sources.Source.BigQuery.Pipeline, nil)
-
-        count =
-          if GenServer.whereis(name) do
-            Backends.DynamicPipeline.pipeline_count(name)
-          else
-            0
-          end
-
-        {source.id, count}
-      end
-
-    render(conn, "dashboard.html",
-      sources: sources,
-      pipeline_counts: pipeline_counts,
-      home_team: home_team,
-      team_users: team_users_with_teams,
-      current_node: Node.self(),
-      flag_multibackend: LogflareWeb.Utils.flag("multibackend", user)
-    )
-  end
-
-  def favorite(conn, _params) do
-    %{user: _user, source: source} = conn.assigns
-
-    {flash_key, message} =
-      source
-      |> Source.update_by_user_changeset(%{"favorite" => !source.favorite})
-      |> Repo.update()
-      |> case do
-        {:ok, _source} ->
-          {:info, "Source updated!"}
-
-        {:error, _changeset} ->
-          {:error, "Something went wrong!"}
-      end
-
-    put_flash_and_redirect_to_dashboard(conn, flash_key, message)
-  end
 
   def new(conn, _params) do
     changeset = Source.update_by_user_changeset(%Source{}, %{})
@@ -568,6 +511,6 @@ defmodule LogflareWeb.SourceController do
   defp put_flash_and_redirect_to_dashboard(conn, flash_level, flash_message) do
     conn
     |> put_flash(flash_level, flash_message)
-    |> redirect(to: Routes.source_path(conn, :dashboard))
+    |> redirect(to: ~p"/dashboard")
   end
 end
