@@ -28,7 +28,8 @@ defmodule LogflareWeb.EndpointsController do
       "Content-Length",
       "X-Requested-With",
       "X-API-Key",
-      "LF-ENDPOINT-LABELS"
+      "LF-ENDPOINT-LABELS",
+      "LF-ENDPOINT-REDACT-PII"
     ],
     methods: ["GET", "POST", "OPTIONS"],
     send_preflight_response?: true
@@ -66,8 +67,16 @@ defmodule LogflareWeb.EndpointsController do
       end
 
     parsed_labels = Endpoints.parse_labels(endpoint_query.labels, header_str, params)
+    override = get_req_header(conn, "lf-endpoint-redact-pii") |> List.first()
 
-    case Endpoints.run_cached_query(%{endpoint_query | parsed_labels: parsed_labels}, params) do
+    redact_pii =
+      if override, do: String.downcase(override) == "true", else: endpoint_query.redact_pii
+
+    case Endpoints.run_cached_query(
+           %{endpoint_query | parsed_labels: parsed_labels},
+           params,
+           redact_pii: redact_pii
+         ) do
       {:ok, result} ->
         Logger.debug("Endpoint cache result, #{inspect(result, pretty: true)}")
         render(conn, "query.json", result: result.rows)

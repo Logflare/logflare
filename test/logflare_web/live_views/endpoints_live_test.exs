@@ -110,7 +110,7 @@ defmodule LogflareWeb.EndpointsLiveTest do
 
   test "index - show cache count", %{conn: conn, user: user} do
     endpoint = insert(:endpoint, user: user)
-    _pid = start_supervised!({Logflare.Endpoints.ResultsCache, {endpoint, %{}}})
+    _pid = start_supervised!({Logflare.Endpoints.ResultsCache, {endpoint, %{}, []}})
 
     {:ok, view, _html} = live(conn, "/endpoints")
 

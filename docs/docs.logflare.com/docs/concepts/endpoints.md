@@ -176,7 +176,7 @@ Endpoints are unsecure by default. However, you can generate [access tokens](/co
 
 Logflare endpoints support automatic redaction of personally identifiable information (PII) from query results to help protect sensitive data. When enabled, the PII redaction feature will automatically replace IP addresses in query result values with "REDACTED".
 
-PII redaction can be enabled when checking the "Redact PII from query results" checkbox when configuring the endpoint.
+PII redaction can be enabled when checking the "Redact PII from query results" checkbox when configuring the endpoint. Override per request with `LF-ENDPOINT-REDACT-PII: true|false`; if omitted, the endpoint setting is used.
 
 Currently, PII redaction targets:
 

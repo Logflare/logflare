@@ -344,14 +344,15 @@ defmodule Logflare.Endpoints do
   Runs a cached query.
   """
   @spec run_cached_query(query :: Query.t(), params :: map()) :: run_query_return()
-  def run_cached_query(%Query{} = query, params \\ %{}) when is_map(params) do
+  def run_cached_query(%Query{} = query, params \\ %{}, opts \\ [])
+      when is_map(params) and is_list(opts) do
     if query.cache_duration_seconds > 0 do
       query
-      |> Resolver.resolve(params)
+      |> Resolver.resolve(params, opts)
       |> ResultsCache.query()
     else
       # execute the query directly
-      run_query(query, params)
+      run_query(query, params, opts)
     end
   end
 
@@ -422,14 +423,16 @@ defmodule Logflare.Endpoints do
           {final_query, declared_params, input_params, endpoint_query}
         end
 
+      redact_pii = Keyword.get(opts, :redact_pii, endpoint_query.redact_pii)
+
       case adaptor.execute_query(backend, query_args, opts) do
         {:ok, rows} when is_list(rows) ->
-          redacted_rows = PiiRedactor.redact_query_result(rows, endpoint_query.redact_pii)
+          redacted_rows = PiiRedactor.redact_query_result(rows, redact_pii)
           {:ok, %{rows: redacted_rows}}
 
         {:ok, %{rows: rows} = result} ->
           # Pass through the full result map with all metadata, but redact PII in rows
-          redacted_rows = PiiRedactor.redact_query_result(rows, endpoint_query.redact_pii)
+          redacted_rows = PiiRedactor.redact_query_result(rows, redact_pii)
           {:ok, %{result | rows: redacted_rows}}
 
         {:error, error} ->

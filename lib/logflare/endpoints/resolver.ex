@@ -21,7 +21,7 @@ defmodule Logflare.Endpoints.Resolver do
   Starts up or performs a lookup for an Endpoint.Cache process.
   Returns the resolved pid.
   """
-  def resolve(%Logflare.Endpoints.Query{id: id} = query, params) do
+  def resolve(%Logflare.Endpoints.Query{id: id} = query, params, opts) do
     attributes = %{
       "endpoint.id" => id,
       "endpoint.token" => query.token,
@@ -40,12 +40,12 @@ defmodule Logflare.Endpoints.Resolver do
         OpenTelemetry.Tracer.with_span "logflare.endpoints.results_cache.create", %{
           attributes: attributes
         } do
-          spec = {ResultsCache, {query, params}}
+          spec = {ResultsCache, {query, params, opts}}
           Logger.debug("Starting up Endpoint.Cache for Endpoint.Query id=#{id}", endpoint_id: id)
 
           via =
             {:via, PartitionSupervisor,
-             {Logflare.Endpoints.ResultsCache.PartitionSupervisor, {id, params}}}
+             {Logflare.Endpoints.ResultsCache.PartitionSupervisor, {id, params, opts}}}
 
           case DynamicSupervisor.start_child(via, spec) do
             {:ok, pid} ->

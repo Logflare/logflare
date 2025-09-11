@@ -101,5 +101,14 @@
       -H 'Content-Type: application/json; charset=utf-8' <span :if={length(@declared_params) > 0}>\</span>
       <span :if={length(@declared_params) > 0}>-G <%= Enum.map(@declared_params, fn p -> "-d \"#{p}=VALUE\"" end) |> Enum.join(" ") %></span>
     </code>
+
+    <code class="tw-whitespace-pre-line">
+      # With per-request PII redaction
+      curl "<%= "https://api.logflare.app" <> ~p"/api/endpoints/query/#{@show_endpoint.token}" %>" \
+      -H 'X-API-KEY: YOUR-ACCESS-TOKEN' \
+      -H 'LF-ENDPOINT-REDACT-PII: true' \
+      -H 'Content-Type: application/json; charset=utf-8' <span :if={length(@declared_params) > 0}>\</span>
+      <span :if={length(@declared_params) > 0}>-G <%= Enum.map(@declared_params, fn p -> "-d \"#{p}=VALUE\"" end) |> Enum.join(" ") %></span>
+    </code>
   </div>
 </section>
