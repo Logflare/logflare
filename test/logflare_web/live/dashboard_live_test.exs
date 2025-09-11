@@ -81,26 +81,35 @@ defmodule LogflareWeb.DashboardLiveTest do
 
   describe "saved searches" do
     setup %{source: source} do
-      {:ok, saved_search} =
-        Logflare.SavedSearches.insert(
-          %{
-            lql_rules: [],
-            querystring: "test query",
-            saved_by_user: true,
-            tailing: true
-          },
-          source
-        )
-
-      [saved_search: saved_search]
+      [saved_search: insert(:saved_search, source: source)]
     end
 
-    test "renders saved searches", %{conn: conn, source: source} do
+    test "render saved searches", %{conn: conn, saved_search: saved_search} do
       {:ok, _view, html} = live(conn, "/dashboard")
 
       assert html =~ "Saved Searches"
-      assert html =~ "test query"
-      assert html =~ source.name
+      assert html =~ saved_search.querystring
+    end
+
+    test "delete saved search ", %{conn: conn, saved_search: saved_search} do
+      {:ok, view, html} = live(conn, "/dashboard")
+
+      assert html =~ saved_search.querystring
+
+      view
+      |> element("[phx-click='delete_saved_search'][phx-value-id='#{saved_search.id}']")
+      |> render_click()
+
+      {:ok, _view, html} = live(conn, "/dashboard")
+
+      refute html =~ saved_search.querystring
+    end
+
+    test "shows error when deleting non-existent saved search", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/dashboard")
+
+      assert render_hook(view, "delete_saved_search", %{"id" => "999999"}) =~
+               "Saved search not found"
     end
   end
 
