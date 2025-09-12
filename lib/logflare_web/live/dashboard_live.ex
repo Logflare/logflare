@@ -36,10 +36,8 @@ defmodule LogflareWeb.DashboardLive do
       |> assign(:fade_in, false)
 
     if connected?(socket) do
-      Enum.each(
-        socket.assigns.sources,
-        &Logflare.Sources.Source.ChannelTopics.subscribe_dashboard(&1.token)
-      )
+      Logflare.Sources.UserMetricsPoller.subscribe_to_updates(self(), user_id)
+      Phoenix.PubSub.subscribe(Logflare.PubSub, "user_metrics:#{user_id}")
     end
 
     {:ok, socket}
@@ -161,13 +159,12 @@ defmodule LogflareWeb.DashboardLive do
       ) do
     %{payload: payload} = broadcast
 
-    socket =
-      socket
-      |> update_source_metrics(source_token, %{
-        latest: DateTime.utc_now() |> DateTime.to_unix(:microsecond),
-        inserts_string: payload.log_count
-      })
-      |> assign(fade_in: true)
+    socket
+    |> update_source_metrics(source_token, %{
+      latest: DateTime.utc_now() |> DateTime.to_unix(:microsecond),
+      inserts_string: payload.log_count
+    })
+    |> assign(fade_in: true)
 
     {:noreply, socket}
   end
