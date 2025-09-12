@@ -118,7 +118,7 @@ defmodule Logflare.Backends.Adaptor do
   Depending on the backend, this will return a list of rows or
   a map with rows and optional metadata (e.g., total_bytes_processed).
   """
-  @callback execute_query(identifier(), query(), opts :: Keyword.t()) ::
+  @callback execute_query(identifier() | struct(), query(), opts :: Keyword.t()) ::
               {:ok, [term()]} | {:ok, map()} | {:error, :not_implemented} | {:error, term()}
 
   @doc """
