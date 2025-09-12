@@ -6,7 +6,7 @@ defmodule LogflareWeb.Plugs.SetTeamUser do
   import Phoenix.Controller
 
   alias Logflare.TeamUsers
-  alias LogflareWeb.Router.Helpers, as: Routes
+  use LogflareWeb, :routes
 
   def init(_), do: nil
 
@@ -47,7 +47,7 @@ defmodule LogflareWeb.Plugs.SetTeamUser do
       :error,
       "Something went wrong. If this continues please contact support."
     )
-    |> redirect(to: Routes.source_path(conn, :dashboard))
+    |> redirect(to: ~p"/dashboard")
   end
 
   defp drop(conn) do

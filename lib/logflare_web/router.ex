@@ -189,7 +189,7 @@ defmodule LogflareWeb.Router do
   scope "/", LogflareWeb do
     pipe_through([:browser, :require_auth])
 
-    get("/dashboard", SourceController, :dashboard)
+    live("/dashboard", DashboardLive, :index)
     live("/access-tokens", AccessTokensLive, :index)
     live("/backends", BackendsLive, :index)
     live("/backends/new", BackendsLive, :new)
@@ -265,7 +265,6 @@ defmodule LogflareWeb.Router do
     get("/:id/rejected", SourceController, :rejected_logs)
     live("/:source_id/search", Source.SearchLV)
     live("/:source_id/event", LogEventLive, :show)
-    get("/:id/favorite", SourceController, :favorite)
     get("/:id/clear", SourceController, :clear_logs)
     get("/:id/explore", SourceController, :explore)
     post("/:id/toggle-schema-lock", SourceController, :toggle_schema_lock)

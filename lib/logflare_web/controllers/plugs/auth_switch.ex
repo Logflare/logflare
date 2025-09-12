@@ -9,7 +9,7 @@ defmodule LogflareWeb.Plugs.AuthSwitch do
 
   alias Logflare.Users
   alias Logflare.TeamUsers
-  alias LogflareWeb.Router.Helpers, as: Routes
+  use LogflareWeb, :routes
 
   def init(_), do: nil
 
@@ -80,7 +80,7 @@ defmodule LogflareWeb.Plugs.AuthSwitch do
   defp reject(conn, _opts) do
     conn
     |> put_flash(:error, "You can't do that!")
-    |> redirect(to: Routes.source_path(conn, :dashboard))
+    |> redirect(to: ~p"/dashboard")
     |> halt()
   end
 end
