@@ -124,30 +124,12 @@ defmodule Logflare.Endpoints do
     with endpoint <- Repo.preload(query, :user),
          changeset <- Query.update_by_user_changeset(endpoint, params),
          {:ok, endpoint} <- Repo.update(changeset) do
-      changed_keys = Map.keys(changeset.changes)
-
-      should_kill_caches? =
-        Enum.any?(changed_keys, fn key ->
-          key in [
-            :query,
-            :sandboxable,
-            :cache_duration_seconds,
-            :proactive_requerying_seconds,
-            :max_limit,
-            :enable_auth,
-            :labels
-          ]
+      for pid <- Resolver.list_caches(endpoint) do
+        Utils.Tasks.async(fn ->
+          ResultsCache.invalidate(pid)
         end)
-
-      if should_kill_caches? do
-        # kill all caches
-        for pid <- Resolver.list_caches(endpoint) do
-          Utils.Tasks.async(fn ->
-            ResultsCache.invalidate(pid)
-          end)
-        end
-        |> Task.await_many(30_000)
       end
+      |> Task.await_many(30_000)
 
       {:ok, endpoint}
     end
@@ -481,6 +463,24 @@ defmodule Logflare.Endpoints do
   defp get_default_backend_for_user(user_id) when is_integer(user_id) do
     user = Users.Cache.get(user_id)
     {:ok, Backends.get_default_backend(user)}
+  end
+
+  @doc """
+  Clears all caches for an endpoint, including ResultsCache processes and Endpoints.Cache entries.
+  """
+  @spec clear_all_endpoint_caches(Query.t()) :: :ok
+  def clear_all_endpoint_caches(%Query{} = endpoint) do
+    # Kill all ResultsCache processes
+    tasks =
+      for pid <- Resolver.list_caches(endpoint) do
+        Utils.Tasks.async(fn ->
+          ResultsCache.invalidate(pid)
+        end)
+      end
+
+    Task.await_many(tasks, 30_000)
+
+    :ok
   end
 
   @spec build_transformation_context(Backend.t()) :: map()
