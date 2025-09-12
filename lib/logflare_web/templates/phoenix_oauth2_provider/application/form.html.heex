@@ -11,11 +11,9 @@
   <%= textarea(f, :redirect_uri) %>
   <%= error_tag(f, :redirect_uri) %>
   <span class="help-block">Use one line per URI</span>
-  <%= unless is_nil(ExOauth2Provider.Config.native_redirect_uri([])) do %>
-    <span class="help-block">
-      Use <code><%= ExOauth2Provider.Config.native_redirect_uri([]) %></code> for local tests
-    </span>
-  <% end %>
+  <span class="help-block">
+    Use <code><%= ExOauth2Provider.Config.native_redirect_uri([]) %></code> for local tests
+  </span>
   <%= label(f, :scopes) %>
   <%= text_input(f, :scopes) %>
   <%= error_tag(f, :scopes) %>
