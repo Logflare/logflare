@@ -149,7 +149,9 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
     OpenTelemetry.Tracer.with_span :bigquery_pipeline, %{
       attributes: Map.new(attributes)
     } do
-      if context.bq_storage_write_api do
+      source = Sources.Cache.get_by_id(context.source_id)
+
+      if source.bq_storage_write_api do
         log_events = messages |> Enum.map(& &1.data)
 
         BigQueryAdaptor.insert_log_events_via_storage_write_api(log_events,

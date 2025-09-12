@@ -7,7 +7,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor.GoogleApiClient do
   alias Google.Cloud.Bigquery.Storage.V1.ArrowRecordBatch
   require Logger
 
-  @finch_instance_name Logflare.FinchBQStorage
+  @finch_instance_name Logflare.FinchBQStorageWrite
 
   def append_rows({:arrow, data_frame}, project, dataset, table) do
     partition_count = System.schedulers_online()
@@ -76,5 +76,9 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor.GoogleApiClient do
         Logger.warning("Storage Write API AppendRows  error - #{inspect(response)}")
         err
     end
+  end
+
+  def get_finch_instance_name() do
+    @finch_instance_name
   end
 end

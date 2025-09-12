@@ -207,6 +207,37 @@ defmodule Logflare.Backends.BigQueryAdaptorTest do
       end)
     end
 
+    test "can ingest logs with different schemas" do
+      user = insert(:user)
+      source = insert(:source, user: user, bq_storage_write_api: true)
+      start_supervised!({SourceSup, source})
+      log_event = build(:log_event, source: source)
+
+      log_event_body_updated =
+        Map.put(log_event.body, "new_field", %{"new" => "value"})
+
+      log_event = Map.put(log_event, :body, log_event_body_updated)
+
+      log_event_2 = build(:log_event, source: source)
+
+      pid = self()
+
+      Logflare.Backends.Adaptor.BigQueryAdaptor.GoogleApiClient
+      |> expect(:append_rows, fn {:arrow, dataframe}, _project, _dataset, _table_id ->
+        send(pid, :streamed)
+
+        assert {:ok, _} = DataFrame.dump_ipc(dataframe)
+        assert {:ok, _} = DataFrame.dump_ipc_record_batch(dataframe)
+        {:ok, %Google.Cloud.Bigquery.Storage.V1.AppendRowsResponse{}}
+      end)
+
+      assert {:ok, 2} = Backends.ingest_logs([log_event, log_event_2], source)
+
+      TestUtils.retry_assert(fn ->
+        assert_receive :streamed, 2500
+      end)
+    end
+
     test "does not use LF managed BQ if legacy user BQ config is set" do
       user = insert(:user, bigquery_project_id: "some-project", bigquery_dataset_id: "some-id")
       source = insert(:source, user: user)
