@@ -59,8 +59,8 @@ services:
       # - KIBANA_HOST=${KIBANA_HOST:-node1}
       # - ELASTICSEARCH_USERNAME=${ELASTICSEARCH_USERNAME:-elastic}
       # - ELASTICSEARCH_PASSWORD=${ELASTICSEARCH_PASSWORD:-changeme}
-    # disable strict permission checks
-    command: ["--strict.perms=false"]
+      # disable strict permission checks
+    command: [ "--strict.perms=false" ]
   loki:
     image: grafana/loki:3.1.0
     ports:
@@ -108,7 +108,7 @@ services:
     image: clickhouse/clickhouse-server:25.6
     ports:
       - "8123:8123" # HTTP interface
-      - "9000:9000"  # Native client interface
+      - "9000:9000" # Native client interface
     volumes:
       # Only mount config files, no data persistence
       - ./priv/clickhouse/clickhouse-config.xml:/etc/clickhouse-server/config.d/memory-settings.xml:ro
@@ -129,7 +129,6 @@ services:
           cpus: '1.0'
         reservations:
           memory: 512M
-    restart: unless-stopped
     shm_size: 256M
     ulimits:
       nofile:
