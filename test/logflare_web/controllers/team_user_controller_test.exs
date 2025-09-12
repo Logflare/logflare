@@ -70,60 +70,6 @@ defmodule LogflareWeb.TeamUserControllerTest do
     refute Logflare.TeamUsers.get_team_user(team_user.id)
   end
 
-  test "owner can delete a team member", %{conn: conn} do
-    owner = insert(:user)
-    team = insert(:team, user: owner)
-    member_user = insert(:user)
-    member_team_user = insert(:team_user, team: team, email: member_user.email)
-
-    expect(
-      GoogleApi.CloudResourceManager.V1.Api.Projects,
-      :cloudresourcemanager_projects_set_iam_policy,
-      fn _, _project_number, [body: _body] -> {:ok, ""} end
-    )
-
-    conn =
-      conn
-      |> login_user(owner)
-      |> delete(~p"/profile/#{member_team_user.id}")
-
-    assert redirected_to(conn, 302) == "/account/edit"
-    assert Phoenix.Flash.get(conn.assigns.flash, :info) == "Member profile deleted!"
-    refute Logflare.TeamUsers.get_team_user(member_team_user.id)
-  end
-
-  test "not authenticated user cannot see delete a team member", %{conn: conn} do
-    team_user = insert(:team_user)
-
-    assert conn
-           |> delete(~p"/profile/#{team_user.id}")
-           |> redirected_to(302) == ~p"/auth/login"
-  end
-
-  test "team member cannot delete another team member (not owner)", %{conn: conn} do
-    owner = insert(:user)
-    team = insert(:team, user: owner)
-    member1_user = insert(:user)
-    member1_team_user = insert(:team_user, team: team, email: member1_user.email)
-    member2_user = insert(:user)
-    member2_team_user = insert(:team_user, team: team, email: member2_user.email)
-
-    conn =
-      conn
-      |> login_user(member1_user)
-      |> put_session(:team_user_id, member1_team_user.id)
-      |> delete(~p"/profile/#{member2_team_user.id}")
-
-    assert redirected_to(conn, 302) == ~p"/dashboard"
-
-    assert Enum.any?(Phoenix.Flash.get(conn.assigns.flash, :error), fn
-             text when is_binary(text) -> text =~ "You're not the account owner"
-             _ -> false
-           end)
-
-    assert Logflare.TeamUsers.get_team_user!(member2_team_user.id)
-  end
-
   test "user switching between teams with team_user_id", %{conn: conn} do
     user = insert(:user)
     other_user = insert(:user)

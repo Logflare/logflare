@@ -165,9 +165,9 @@ defmodule LogflareWeb.DashboardLive.DashboardComponents do
           </.link>
 
           <span :if={current_team_user?(member, @team_user)}>you</span>
-          <.link :if={not current_team_user?(member, @team_user)} href={~p"/profile/#{member}"} data-confirm="Delete member?" class="dashboard-links" method="delete">
+          <span :if={not current_team_user?(member, @team_user)} phx-click="delete_team_member" phx-value-id={member.id} data-confirm="Delete member?" class="dashboard-links tw-cursor-pointer">
             <i class="fa fa-trash"></i>
-          </.link>
+          </span>
         </li>
       </ul>
       <.link href={~p"/account/edit#team-members"} class="tw-text-white tw-mt-2">

@@ -179,14 +179,45 @@ defmodule LogflareWeb.DashboardLiveTest do
     test "removes team member", %{conn: conn, member: member} do
       {:ok, view, _html} = live(conn, "/dashboard")
 
-      assert view
-             |> has_element?(~s|a[href="/profile/#{member.id}"][data-method="delete"]|)
+      expect(
+        GoogleApi.CloudResourceManager.V1.Api.Projects,
+        :cloudresourcemanager_projects_set_iam_policy,
+        fn _, _project_number, [body: _body] -> {:ok, ""} end
+      )
 
-      delete(conn, ~p"/profile/#{member.id}")
+      assert view |> has_element?("#members li", member.name)
 
-      {:ok, view, _html} = live(conn, "/dashboard")
+      view
+      |> element("[phx-click='delete_team_member'][phx-value-id='#{member.id}']")
+      |> render_click()
 
       refute view |> has_element?("#members li", "#{member.name}")
+      assert render(view) =~ "Member profile deleted"
+      refute Logflare.TeamUsers.get_team_user(member.id)
+    end
+
+    test "shows error when deleting non-existent team member", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/dashboard")
+
+      assert render_hook(view, "delete_team_member", %{"id" => "999999"}) =~
+               "Team member not found"
+    end
+
+    test "shows error when non-owner tries to delete team member", %{
+      conn: conn,
+      user: user,
+      member: member
+    } do
+      another_member = insert(:team_user, team: user.team)
+
+      # Sign in as team user
+      {:ok, view, _html} =
+        conn
+        |> put_session(:team_user_id, member.id)
+        |> live("/dashboard")
+
+      assert render_hook(view, "delete_team_member", %{"id" => "#{another_member.id}"}) =~
+               "not the account owner"
     end
   end
 

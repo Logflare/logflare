@@ -279,12 +279,6 @@ defmodule LogflareWeb.Router do
     delete("/", TeamUserController, :delete_self)
   end
 
-  scope "/profile/:id", LogflareWeb do
-    pipe_through([:browser, :require_auth])
-
-    delete("/", TeamUserController, :delete)
-  end
-
   scope "/profile/switch", LogflareWeb do
     pipe_through([:browser, :require_auth, :auth_switch])
 

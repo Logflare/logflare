@@ -161,6 +161,37 @@ defmodule Logflare.TeamUsers do
   end
 
   @doc """
+  Removes a team user, ensuring `user` is the team owner.
+
+  ## Examples
+
+      iex> remove_team_user(user, team_user_id)
+      {:ok, %TeamUser{}}
+
+      iex> remove_team_user(user, team_user_id)
+      {:error, :not_authorized}
+
+      iex> remove_team_user(user, team_user_id)
+      {:error, :not_found}
+
+  """
+  @spec remove_team_user(Logflare.User.t(), non_neg_integer()) ::
+          {:ok, TeamUser.t()} | {:error, :not_authorized | :not_found | Ecto.Changeset.t()}
+  def remove_team_user(current_user, team_user_id) do
+    with team_user when is_struct(team_user) <- get_team_user_and_preload(team_user_id),
+         true <- team_user.team.user_id == current_user.id,
+         {:ok, team_user} <- delete_team_user(team_user) do
+      Logflare.Backends.Adaptor.BigQueryAdaptor.update_iam_policy()
+      Logflare.Backends.Adaptor.BigQueryAdaptor.patch_dataset_access(current_user)
+      {:ok, team_user}
+    else
+      nil -> {:error, :not_found}
+      false -> {:error, :not_authorized}
+      error -> error
+    end
+  end
+
+  @doc """
   Deletes a TeamUser.
 
   ## Examples

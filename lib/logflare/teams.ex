@@ -35,8 +35,8 @@ defmodule Logflare.Teams do
   def preload_user(team), do: Repo.preload(team, :user)
 
   @doc "Preloads the `:team_users` assoc"
-  @spec preload_team_users(nil | Team.t()) :: Team.t() | nil
-  def preload_team_users(team), do: Repo.preload(team, :team_users)
+  @spec preload_team_users(nil | Team.t(), Keyword.t()) :: Team.t() | nil
+  def preload_team_users(team, opts \\ []), do: Repo.preload(team, :team_users, opts)
 
   @doc "Preloads given fields of a Team"
   @spec preload_fields(nil | Team.t(), list(keyword() | atom())) :: Team.t() | nil

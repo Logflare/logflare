@@ -49,6 +49,7 @@ defmodule LogflareWeb.DashboardLive do
 
   If the user is signed in as `team_user` then `user` will be the team owner.
   """
+  @spec assign_teams(Phoenix.LiveView.Socket.t(), integer() | nil) :: Phoenix.LiveView.Socket.t()
   def assign_teams(socket, nil) do
     %{user: user} = socket.assigns
 
@@ -93,16 +94,45 @@ defmodule LogflareWeb.DashboardLive do
     end
   end
 
-  def handle_info(
-        %Phoenix.Socket.Broadcast{topic: "dashboard:" <> source_token, event: "buffer"} =
-          broadcast,
-        socket
-      ) do
-    %{payload: payload} = broadcast
+  def handle_event("delete_team_member", _params, %{assigns: %{team_user: team_user}} = socket)
+      when not is_nil(team_user) do
+    %{user: user} = socket.assigns
+
+    {:noreply,
+     socket
+     |> put_flash(
+       :error,
+       [
+         "You're not the account owner. Please contact ",
+         Phoenix.HTML.Link.link(user.name || user.email, to: "mailto:#{user.email}"),
+         " for support."
+       ]
+     )}
+  end
+
+  def handle_event("delete_team_member", %{"id" => team_user_id}, socket) do
+    %{user: user, team: team} = socket.assigns
 
     socket =
-      socket
-      |> update_source_metrics(source_token, %{buffer: payload.buffer})
+      case TeamUsers.remove_team_user(user, team_user_id) do
+        {:ok, _team_user} ->
+          socket
+          |> assign(:team, team |> Teams.preload_team_users(force: true))
+          |> put_flash(:info, "Member profile deleted!")
+
+        {:error, :not_authorized} ->
+          put_flash(socket, :error, [
+            "You're not the account owner. Please contact ",
+            Phoenix.HTML.Link.link(user.name || user.email, to: "mailto:#{user.email}"),
+            " for support."
+          ])
+
+        {:error, :not_found} ->
+          put_flash(socket, :error, "Team member not found!")
+
+        _ ->
+          put_flash(socket, :error, "Something went wrong!")
+      end
 
     {:noreply, socket}
   end
@@ -120,6 +150,20 @@ defmodule LogflareWeb.DashboardLive do
         max: payload.max_rate,
         rate: payload.last_rate
       })
+
+    {:noreply, socket}
+  end
+
+  def handle_info(
+        %Phoenix.Socket.Broadcast{topic: "dashboard:" <> source_token, event: "buffer"} =
+          broadcast,
+        socket
+      ) do
+    %{payload: payload} = broadcast
+
+    socket =
+      socket
+      |> update_source_metrics(source_token, %{buffer: payload.buffer})
 
     {:noreply, socket}
   end
