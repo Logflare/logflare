@@ -4,7 +4,6 @@ defmodule Logflare.BqRepo do
   alias GoogleApi.BigQuery.V2.Model.QueryRequest
   alias Logflare.Google.BigQuery.GenUtils
   alias Logflare.Google.BigQuery.SchemaUtils
-  alias Logflare.EctoQueryBQ
   alias Logflare.Billing
   alias Logflare.Billing.Plan
   alias Logflare.User
@@ -89,22 +88,6 @@ defmodule Logflare.BqRepo do
 
       {:ok, response}
     end
-  end
-
-  @spec query(Logflare.User.t(), String.t(), Ecto.Query.t(), maybe_improper_list) ::
-          query_result()
-  def query(%User{} = user, project_id, %Ecto.Query{} = query, opts \\ [])
-      when not is_nil(project_id) and is_list(opts) do
-    {sql, params} = EctoQueryBQ.SQL.to_sql_params(query)
-
-    sql =
-      if opts[:dataset_id] do
-        EctoQueryBQ.SQL.substitute_dataset(sql, opts[:dataset_id])
-      else
-        sql
-      end
-
-    query_with_sql_and_params(user, project_id, sql, params, opts)
   end
 
   defp warn_if_cost_above_limit(

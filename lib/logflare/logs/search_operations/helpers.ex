@@ -1,11 +1,8 @@
 defmodule Logflare.Logs.SearchOperations.Helpers do
   @moduledoc false
 
-  alias Logflare.EctoQueryBQ
-  alias Logflare.Google.BigQuery.GenUtils
   alias Logflare.Logs.SearchOperations
   alias Logflare.Lql.Rules.FilterRule, as: FR
-  alias Logflare.Sources.Source
 
   @type minmax :: %{min: DateTime.t(), max: DateTime.t(), message: nil | String.t()}
   @default_open_interval_length 1_000
@@ -98,14 +95,6 @@ defmodule Logflare.Logs.SearchOperations.Helpers do
 
   def convert_timestamp_timezone(row, user_timezone) do
     Map.update!(row, "timestamp", &Timex.Timezone.convert(&1, user_timezone))
-  end
-
-  def ecto_query_to_sql(%Ecto.Query{} = query, %Source{} = source) do
-    %{bigquery_dataset_id: bq_dataset_id} = GenUtils.get_bq_user_info(source.token)
-    {sql, params} = EctoQueryBQ.SQL.to_sql_params(query)
-    sql_and_params = {EctoQueryBQ.SQL.substitute_dataset(sql, bq_dataset_id), params}
-    sql_string = EctoQueryBQ.SQL.sql_params_to_sql(sql_and_params)
-    %{sql_with_params: sql, params: params, sql_string: sql_string}
   end
 
   @spec get_number_of_chart_ticks(
