@@ -30,7 +30,7 @@ defmodule Logflare.Sources.UserMetricsPoller do
   end
 
   defp via_tuple(user_id) do
-    {:via, :syn, {:user_metrics_poller, user_id}}
+    {:via, :syn, {:core, user_id}}
   end
 
   # Server Implementation
@@ -46,7 +46,7 @@ defmodule Logflare.Sources.UserMetricsPoller do
     # Update source_ids when first subscriber joins
     source_ids =
       if MapSet.size(state.subscribers) == 0 do
-        Sources.list_sources_by_user(state.user_id) |> Enum.map(& &1.id)
+        Sources.list_sources_by_user(state.user_id) |> Enum.map(& &1.token)
       else
         state.source_ids
       end
@@ -66,6 +66,8 @@ defmodule Logflare.Sources.UserMetricsPoller do
   end
 
   def handle_info(:poll_metrics, state) do
+    IO.puts("Polling metrics")
+
     if MapSet.size(state.subscribers) > 0 do
       metrics = fetch_cluster_metrics(state.source_ids)
       broadcast_to_subscribers(state.subscribers, {:metrics_update, metrics})
@@ -92,24 +94,53 @@ defmodule Logflare.Sources.UserMetricsPoller do
 
   defp fetch_cluster_metrics(source_ids) do
     Enum.map(source_ids, fn source_id ->
-      source_atom = String.to_existing_atom("source_#{source_id}")
-
       {results, _bad_nodes} =
         Utils.rpc_multicall(
           Logflare.PubSubRates.Cache,
-          :get_rates,
-          [source_atom],
+          :get_local_rates,
+          [source_id],
           5_000
         )
 
-      nodes = Utils.node_list_all()
-      node_metrics = Enum.zip(nodes, results) |> Enum.into(%{})
-      {source_id, node_metrics}
+      aggregated_metrics = aggregate_node_metrics(results)
+      {source_id, aggregated_metrics}
     end)
     |> Enum.into(%{})
   end
 
+  defp aggregate_node_metrics(node_results) do
+    valid_results =
+      Enum.filter(node_results, fn
+        %{average_rate: _, last_rate: _, max_rate: _} -> true
+        _ -> false
+      end)
+
+    case valid_results do
+      [] ->
+        %{
+          average_rate: 0,
+          last_rate: 0,
+          max_rate: 0,
+          limiter_metrics: %{average: 0, duration: 60, sum: 0}
+        }
+
+      metrics_list ->
+        %{
+          average_rate: sum_field(metrics_list, :average_rate),
+          last_rate: sum_field(metrics_list, :last_rate),
+          max_rate: sum_field(metrics_list, :max_rate)
+        }
+    end
+  end
+
+  defp sum_field(metrics_list, field) do
+    Enum.reduce(metrics_list, 0, fn metrics, acc ->
+      acc + Map.get(metrics, field, 0)
+    end)
+  end
+
   defp broadcast_to_subscribers(subscribers, message) do
+    {:broadcast, message} |> dbg
     Enum.each(subscribers, fn pid ->
       send(pid, message)
     end)
