@@ -72,7 +72,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
 
           lens = IngestEventQueue.list_pending_counts({source.id, backend.id})
 
-          handle_resolve_count(state, lens, source.metrics.avg)
+          Backends.handle_resolve_count(state, lens, source.metrics.avg)
         end
       },
       {Schema,
@@ -114,55 +114,6 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
   def format_table_name(source_token) when is_atom(source_token) do
     Atom.to_string(source_token)
     |> String.replace("-", "_")
-  end
-
-  @doc """
-  Pipeline count resolution logic, separate to a different functino for easier testing.
-
-  """
-  def handle_resolve_count(state, lens, avg_rate) do
-    startup_size =
-      Enum.find_value(lens, 0, fn
-        {{_sid, _bid, nil}, val} -> val
-        _ -> false
-      end)
-
-    lens_no_startup =
-      Enum.filter(lens, fn
-        {{_sid, _bid, nil}, _val} -> false
-        _ -> true
-      end)
-
-    lens_no_startup_values = Enum.map(lens_no_startup, fn {_, v} -> v end)
-    len = Enum.map(lens, fn {_, v} -> v end) |> Enum.sum()
-
-    last_decr = state.last_count_decrease || NaiveDateTime.utc_now()
-    sec_since_last_decr = NaiveDateTime.diff(NaiveDateTime.utc_now(), last_decr)
-
-    any_above_threshold? = Enum.any?(lens_no_startup_values, &(&1 >= 500))
-
-    cond do
-      # max out pipelines, overflow risk
-      startup_size > 0 ->
-        state.pipeline_count + ceil(startup_size / 500)
-
-      any_above_threshold? and len > 0 ->
-        state.pipeline_count + ceil(len / 500)
-
-      # gradual decrease
-      Enum.all?(lens_no_startup_values, &(&1 < 50)) and len < 500 and state.pipeline_count > 1 and
-          (sec_since_last_decr > 60 or state.last_count_decrease == nil) ->
-        state.pipeline_count - 1
-
-      len == 0 and avg_rate == 0 and
-        state.pipeline_count == 1 and
-          (sec_since_last_decr > 60 * 5 or state.last_count_decrease == nil) ->
-        # scale to zero only if no items for > 5m
-        0
-
-      true ->
-        state.pipeline_count
-    end
   end
 
   @impl Logflare.Backends.Adaptor

@@ -22,6 +22,8 @@ defmodule Logflare.BackendsTest do
   alias Logflare.Sources.Source.BigQuery.Pipeline
   alias Logflare.Backends.DynamicPipeline
   alias Logflare.User
+  import StreamData
+  import ExUnitProperties
 
   setup do
     start_supervised!(AllLogsLogged)
@@ -733,6 +735,141 @@ defmodule Logflare.BackendsTest do
       rule = insert(:rule, lql_string: "testing", backend: backend, source_id: source.id)
       Repo.delete(source)
       refute Rules.get_rule(rule.id)
+    end
+  end
+
+  describe "handle_resolve_count/3" do
+    test "resolve_count will increase counts when queue size is above threshold" do
+      check all pipeline_count <- integer(0..100),
+                queue_size <- integer(505..10_000),
+                avg_rate <- integer(100..10_000),
+                last <- member_of([nil, NaiveDateTime.utc_now()]) do
+        state = %{
+          pipeline_count: pipeline_count,
+          max_pipelines: 101,
+          last_count_increase: last,
+          last_count_decrease: last
+        }
+
+        desired =
+          Backends.handle_resolve_count(
+            state,
+            %{
+              {1, 2, nil} => 0,
+              {1, 2, make_ref()} => queue_size
+            },
+            avg_rate
+          )
+
+        assert desired > pipeline_count
+      end
+    end
+
+    test "resolve_count will increase counts when startup queue is non-empty" do
+      check all pipeline_count <- integer(0..100),
+                queue_size <- integer(1..250),
+                startup_queue_size <- integer(5000..10_000),
+                avg_rate <- integer(100..10_000),
+                last <- member_of([nil, NaiveDateTime.utc_now()]) do
+        state = %{
+          pipeline_count: pipeline_count,
+          max_pipelines: 101,
+          last_count_increase: last,
+          last_count_decrease: last
+        }
+
+        desired =
+          Backends.handle_resolve_count(
+            state,
+            %{
+              {1, 2, nil} => startup_queue_size,
+              {1, 2, make_ref()} => queue_size
+            },
+            avg_rate
+          )
+
+        assert desired - pipeline_count > 5
+      end
+    end
+
+    test "resolve_count increases startup queue by 1 if less than 500 " do
+      check all pipeline_count <- constant(0),
+                startup_queue_size <- integer(1..444),
+                avg_rate <- integer(1..500) do
+        state = %{
+          pipeline_count: pipeline_count,
+          max_pipelines: 101,
+          last_count_increase: NaiveDateTime.utc_now(),
+          last_count_decrease: NaiveDateTime.utc_now()
+        }
+
+        desired =
+          Backends.handle_resolve_count(
+            state,
+            %{
+              {1, 2, nil} => startup_queue_size
+            },
+            avg_rate
+          )
+
+        assert desired - pipeline_count == 1
+      end
+    end
+
+    test "resolve_count will decrease counts" do
+      check all pipeline_count <- integer(2..100),
+                queue_size <- integer(0..49),
+                startup_queue_size <- constant(0),
+                avg_rate <- integer(0..10_000),
+                since <- integer(71..100) do
+        state = %{
+          pipeline_count: pipeline_count,
+          max_pipelines: 101,
+          last_count_increase: NaiveDateTime.utc_now(),
+          last_count_decrease: NaiveDateTime.utc_now() |> NaiveDateTime.add(-since)
+        }
+
+        desired =
+          Backends.handle_resolve_count(
+            state,
+            %{
+              {1, 2, nil} => startup_queue_size,
+              {1, 2, make_ref()} => queue_size
+            },
+            avg_rate
+          )
+
+        assert desired < pipeline_count
+        assert desired != 0
+      end
+    end
+
+    test "resolve_count scale to zero" do
+      check all pipeline_count <- constant(1),
+                queue_size <- constant(0),
+                startup_queue_size <- constant(0),
+                avg_rate <- constant(0),
+                since <- integer(360..1000) do
+        state = %{
+          pipeline_count: pipeline_count,
+          max_pipelines: 101,
+          last_count_increase: NaiveDateTime.utc_now(),
+          last_count_decrease: NaiveDateTime.utc_now() |> NaiveDateTime.add(-since)
+        }
+
+        desired =
+          Backends.handle_resolve_count(
+            state,
+            %{
+              {1, 2, nil} => startup_queue_size,
+              {1, 2, make_ref()} => queue_size
+            },
+            avg_rate
+          )
+
+        assert desired < pipeline_count
+        assert desired == 0
+      end
     end
   end
 

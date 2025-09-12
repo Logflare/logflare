@@ -18,31 +18,22 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
   alias __MODULE__.QueryTemplates
   alias Ecto.Changeset
   alias Logflare.Backends
+  alias Logflare.Backends.DynamicPipeline
   alias Logflare.Backends.Backend
+  alias Logflare.Backends.IngestEventQueue
   alias Logflare.Backends.SourceRegistry
   alias Logflare.LogEvent
   alias Logflare.Sources.Source
+  alias Logflare.Sources
+
+  typedstruct do
+    field(:source, Source.t())
+    field(:backend, Backend.t())
+    field(:ingest_connection, tuple())
+  end
 
   @ingest_timeout 15_000
   @query_timeout 60_000
-
-  typedstruct do
-    field(:config, %{
-      url: String.t(),
-      username: String.t(),
-      password: String.t(),
-      database: String.t(),
-      port: non_neg_integer(),
-      pool_size: non_neg_integer()
-    })
-
-    field(:source, Source.t())
-    field(:backend, Backend.t())
-    field(:backend_token, String.t())
-    field(:source_token, atom())
-    field(:ingest_connection, tuple())
-    field(:pipeline_name, tuple())
-  end
 
   @type source_backend_tuple :: {Source.t(), Backend.t()}
   @type via_tuple :: {:via, Registry, {module(), {pos_integer(), {module(), pos_integer()}}}}
@@ -474,15 +465,6 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
     ingest_pool_via = connection_pool_via({source, backend})
     query_pool_via = connection_pool_via(backend)
 
-    pipeline_state = %__MODULE__{
-      config: config,
-      backend: backend,
-      backend_token: backend.token,
-      source_token: source.token,
-      source: source,
-      pipeline_name: pipeline_via({source, backend})
-    }
-
     # Ingest connection pool opts
     ingest_ch_opts = [
       name: ingest_pool_via,
@@ -514,7 +496,27 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
     children = [
       ConnectionManager.child_spec({source, backend, ingest_ch_opts}),
       Provisioner.child_spec(args),
-      Pipeline.child_spec(pipeline_state)
+      {
+        DynamicPipeline,
+        # soft limit before a new pipeline is created
+        name: Backends.via_source(source, Pipeline, backend.id),
+        pipeline: Pipeline,
+        pipeline_args: [
+          source: source,
+          backend: backend
+        ],
+        min_pipelines: 0,
+        max_pipelines: System.schedulers_online(),
+        initial_count: 1,
+        resolve_interval: 2_500,
+        resolve_count: fn state ->
+          source = Sources.refresh_source_metrics_for_ingest(source)
+
+          lens = IngestEventQueue.list_pending_counts({source.id, backend.id})
+
+          Backends.handle_resolve_count(state, lens, source.metrics.avg)
+        end
+      }
     ]
 
     # Only add the backend-based connection manager if it is not already running

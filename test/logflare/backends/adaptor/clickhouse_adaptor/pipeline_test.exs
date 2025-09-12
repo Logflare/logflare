@@ -5,7 +5,6 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.PipelineTest do
   alias Logflare.Backends.Adaptor.ClickhouseAdaptor
   alias Logflare.Backends.Adaptor.ClickhouseAdaptor.ConnectionManager
   alias Logflare.Backends.Adaptor.ClickhouseAdaptor.Pipeline
-  alias Logflare.Backends.SourceRegistry
 
   setup do
     insert(:plan, name: "Free")
@@ -26,17 +25,15 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.PipelineTest do
     :ok = ConnectionManager.ensure_pool_started({source, backend})
     :ok = ConnectionManager.ensure_pool_started(backend)
 
-    adaptor_state = %ClickhouseAdaptor{
+    adaptor_state = %{
       source: source,
       backend: backend,
-      pipeline_name: {:via, Registry, {SourceRegistry, {source.id, backend.id, Pipeline}}},
       ingest_connection: ClickhouseAdaptor.connection_pool_via({source, backend})
     }
 
     context = %{
-      source: source,
-      backend: backend,
-      ingest_connection: adaptor_state.ingest_connection
+      source_id: source.id,
+      backend_id: backend.id
     }
 
     [

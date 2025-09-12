@@ -9,6 +9,8 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.Pipeline do
   alias Broadway.Message
   alias Logflare.Backends.Adaptor.ClickhouseAdaptor
   alias Logflare.Backends.BufferProducer
+  alias Logflare.Backends
+  alias Logflare.Sources
 
   @producer_concurrency 1
   @processor_concurrency 5
@@ -24,15 +26,17 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.Pipeline do
   end
 
   @doc false
-  @spec start_link(ClickhouseAdaptor.t()) ::
+  @spec start_link(list()) ::
           {:ok, pid()} | :ignore | {:error, {:already_started, pid()} | term()}
-  def start_link(%ClickhouseAdaptor{} = adaptor_state) do
+  def start_link(args) do
+    {name, args} = Keyword.pop(args, :name)
+    source = Keyword.get(args, :source)
+    backend = Keyword.get(args, :backend)
+
     Broadway.start_link(__MODULE__,
-      name: adaptor_state.pipeline_name,
+      name: name,
       producer: [
-        module:
-          {BufferProducer,
-           [source_id: adaptor_state.source.id, backend_id: adaptor_state.backend.id]},
+        module: {BufferProducer, [source_id: source.id, backend_id: backend.id]},
         transformer: {__MODULE__, :transform, []},
         concurrency: @producer_concurrency
       ],
@@ -42,7 +46,10 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.Pipeline do
       batchers: [
         ch: [concurrency: @batcher_concurrency, batch_size: @batch_size]
       ],
-      context: adaptor_state
+      context: %{
+        source_id: source.id,
+        backend_id: backend.id
+      }
     )
   end
 
@@ -56,7 +63,9 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.Pipeline do
     Message.put_batcher(message, :ch)
   end
 
-  def handle_batch(:ch, messages, _batch_info, %{source: source, backend: backend}) do
+  def handle_batch(:ch, messages, _batch_info, %{source_id: source_id, backend_id: backend_id}) do
+    source = Sources.Cache.get_by_id(source_id)
+    backend = Backends.Cache.get_backend(backend_id)
     events = for %{data: le} <- messages, do: le
 
     ClickhouseAdaptor.insert_log_events({source, backend}, events)
