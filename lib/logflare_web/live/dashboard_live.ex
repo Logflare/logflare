@@ -24,10 +24,13 @@ defmodule LogflareWeb.DashboardLive do
       |> assign(:fade_in, false)
 
     if connected?(socket) do
-      Enum.each(
-        socket.assigns.sources,
-        &Logflare.Sources.Source.ChannelTopics.subscribe_dashboard(&1.token)
-      )
+      {:ok, _} =
+        Logflare.GenSingleton.start_link(
+          child_spec: Logflare.Sources.UserMetricsPoller.child_spec(user_id)
+        )
+
+      Process.sleep(500)
+      Logflare.Sources.UserMetricsPoller.subscribe(user_id)
     end
 
     {:ok, socket}
@@ -82,41 +85,20 @@ defmodule LogflareWeb.DashboardLive do
     end
   end
 
-  def handle_info(%Phoenix.Socket.Broadcast{event: "buffer"} = broadcast, socket) do
-    %{payload: payload} = broadcast
-
-    {:noreply,
-     update_source_metrics(socket, payload.source_id, fn metrics ->
-       %{metrics | buffer: payload.buffer}
-     end)}
-  end
-
-  def handle_info(%Phoenix.Socket.Broadcast{event: "rate"} = broadcast, socket) do
-    %{payload: payload} = broadcast
-
-    {:noreply,
-     update_source_metrics(socket, payload.source_token, fn metrics ->
-       %{
-         metrics
-         | avg: payload.average_rate,
-           max: payload.max_rate,
-           rate: payload.last_rate
-       }
-     end)}
-  end
-
-  def handle_info(%Phoenix.Socket.Broadcast{event: "log_count"} = broadcast, socket) do
-    %{payload: payload} = broadcast
-
+  @impl true
+  def handle_info({:metrics_update, metrics}, socket) do
     socket =
-      update_source_metrics(socket, payload.source_token, fn metrics ->
-        %{
-          metrics
-          | latest: DateTime.utc_now() |> DateTime.to_unix(:microsecond),
-            inserts_string: Number.Delimit.number_to_delimited(payload.log_count)
-        }
+      metrics
+      |> Enum.reduce(socket, fn {source_token, payload}, socket ->
+        update_source_metrics(socket, source_token, fn metrics ->
+          %{
+            metrics
+            | avg: payload.average_rate,
+              max: payload.max_rate,
+              rate: payload.last_rate
+          }
+        end)
       end)
-      |> assign(fade_in: true)
 
     {:noreply, socket}
   end
