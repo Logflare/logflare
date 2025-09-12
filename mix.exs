@@ -23,13 +23,7 @@ defmodule Logflare.Mixfile do
         "coveralls.post": :test,
         "coveralls.html": :test
       ],
-      dialyzer: [
-        plt_local_path: "dialyzer",
-        plt_core_path: "dialyzer",
-        plt_add_deps: :apps_tree,
-        plt_add_apps: [:ex_unit, :mix],
-        ignore_warnings: ".dialyzer_ignore.exs"
-      ],
+      dialyzer: dialyzer(),
       test_coverage: [tool: ExCoveralls],
       releases: [
         logflare: [
@@ -63,6 +57,16 @@ defmodule Logflare.Mixfile do
         :crypto,
         :os_mon
       ]
+    ]
+  end
+
+  defp dialyzer do
+    [
+      plt_local_path: "dialyzer",
+      plt_core_path: "dialyzer",
+      plt_add_deps: :apps_tree,
+      plt_add_apps: [:ex_unit, :mix],
+      ignore_warnings: ".dialyzer_ignore.exs"
     ]
   end
 

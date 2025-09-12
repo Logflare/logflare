@@ -226,10 +226,12 @@ defmodule Logflare.Billing do
   @spec delete_payment_method_with_stripe(PaymentMethod.t()) ::
           {:ok, PaymentMethod.t()} | {:error, String.t()}
   def delete_payment_method_with_stripe(%PaymentMethod{} = payment_method) do
-    with methods <- list_payment_methods_by(customer_id: payment_method.customer_id),
-         count when count > 1 <- Enum.count(methods),
-         {:ok, _respons} <- Billing.Stripe.detach_payment_method(payment_method.stripe_id) do
-      delete_payment_method(payment_method)
+    methods = list_payment_methods_by(customer_id: payment_method.customer_id)
+
+    with count when count > 1 <- Enum.count(methods),
+         {:ok, _response} <- Billing.Stripe.detach_payment_method(payment_method.stripe_id),
+         {:ok, payment_method} <- delete_payment_method(payment_method) do
+      {:ok, payment_method}
     else
       {:error, %Stripe.Error{message: message}} ->
         {:error, message}
