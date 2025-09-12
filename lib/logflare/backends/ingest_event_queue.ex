@@ -41,7 +41,7 @@ defmodule Logflare.Backends.IngestEventQueue do
   @doc """
   Retrieves a private tid of a given source-backend combination.
   """
-  @spec get_tid(table_key()) :: reference() | nil
+  @spec get_tid(table_key()) :: :ets.tid() | nil
   def get_tid({sid, bid, pid}) do
     :ets.lookup_element(@ets_table_mapper, {sid, bid, pid}, 2, nil)
     # staleness check
@@ -50,15 +50,14 @@ defmodule Logflare.Backends.IngestEventQueue do
         nil
 
       tid ->
-        if(:ets.info(tid) != :undefined, do: tid)
+        if :ets.info(tid) != :undefined, do: tid
     end)
   end
 
   @doc """
   Creates or updates a private :ets table. The :ets table mapper is stored in #{@ets_table_mapper} .
   """
-  @spec upsert_tid(table_key()) ::
-          {:ok, reference()} | {:error, :already_exists, reference()}
+  @spec upsert_tid(table_key()) :: {:ok, :ets.tid()} | {:error, :already_exists, :ets.tid()}
   def upsert_tid({sid, bid, pid} = sid_bid_pid)
       when is_integer(sid) and (is_integer(bid) or is_nil(bid)) and (is_pid(pid) or is_nil(pid)) do
     case get_tid(sid_bid_pid) do
@@ -195,16 +194,19 @@ defmodule Logflare.Backends.IngestEventQueue do
   @doc """
   Marks records as ingested
   """
-  @spec mark_ingested(source_backend_pid(), [LogEvent.t()]) :: :ok | {:error, :not_initialized}
+  @spec mark_ingested(source_backend_pid(), [LogEvent.t()]) ::
+          {:ok, non_neg_integer()} | {:error, :not_initialized}
   def mark_ingested(sid_bid_pid, events) do
-    with tid when tid != nil <- get_tid(sid_bid_pid) do
+    tid = get_tid(sid_bid_pid)
+
+    if tid != nil do
       for event <- events do
         :ets.update_element(tid, event.id, {2, :ingested})
       end
 
       {:ok, Enum.count(events)}
     else
-      nil -> {:error, :not_initialized}
+      {:error, :not_initialized}
     end
   end
 
@@ -442,13 +444,14 @@ defmodule Logflare.Backends.IngestEventQueue do
   end
 
   def delete({_, _, _pid} = sid_bid_pid, %LogEvent{id: id}) do
-    with tid when tid != nil <- get_tid(sid_bid_pid) do
+    tid = get_tid(sid_bid_pid)
+
+    if tid != nil do
       :ets.delete(tid, id)
 
       :ok
     else
-      nil -> {:error, :not_initialized}
-      :"$end_of_table" -> :noop
+      {:error, :not_initialized}
     end
   end
 
