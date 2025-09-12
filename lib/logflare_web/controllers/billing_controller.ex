@@ -59,14 +59,14 @@ defmodule LogflareWeb.BillingController do
          {:ok, _response} <- Stripe.delete_customer(billing_account.stripe_customer) do
       conn
       |> put_flash(:info, "Billing account deleted!")
-      |> redirect(to: Routes.source_path(conn, :dashboard))
+      |> redirect(to: ~p"/dashboard")
     else
       err ->
         Logger.error("Billing error: #{inspect(err)}", %{billing: %{error_string: inspect(err)}})
 
         conn
         |> put_flash(:error, @default_error_message)
-        |> redirect(to: Routes.source_path(conn, :dashboard))
+        |> redirect(to: ~p"/dashboard")
     end
   end
 

@@ -323,12 +323,14 @@ defmodule Logflare.Sources do
     |> Repo.preload([:rules])
   end
 
-  def preload_saved_searches(source) do
+  @spec preload_saved_searches(Source.t() | [Source.t()], Keyword.t()) :: Source.t()
+  def preload_saved_searches(source, opts \\ []) do
     import Ecto.Query
 
     Repo.preload(
       source,
-      saved_searches: from(s in SavedSearch, where: s.saved_by_user)
+      [saved_searches: from(s in SavedSearch, where: s.saved_by_user)],
+      opts
     )
   end
 
