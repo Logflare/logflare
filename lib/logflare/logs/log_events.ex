@@ -1,7 +1,7 @@
 defmodule Logflare.Logs.LogEvents do
   @moduledoc false
 
-  alias Logflare.BqRepo
+  alias Logflare.Backends.Adaptor.BigQueryAdaptor
   alias Logflare.Google.BigQuery.GCPConfig
   alias Logflare.Google.BigQuery.GenUtils
   alias Logflare.Lql
@@ -49,8 +49,7 @@ defmodule Logflare.Logs.LogEvents do
       |> partition_query([min, max], partition_type)
       |> select([t], fragment("*"))
 
-    source.user
-    |> BqRepo.query(bq_project_id, query, dataset_id: dataset_id)
+    BigQueryAdaptor.execute_query({bq_project_id, dataset_id, source.user.id}, query, [])
     |> case do
       {:ok, %{rows: []}} ->
         {:error, :not_found}

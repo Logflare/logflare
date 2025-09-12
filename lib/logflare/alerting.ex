@@ -9,6 +9,7 @@ defmodule Logflare.Alerting do
   alias Logflare.Alerting.AlertsScheduler
   alias Logflare.Backends
   alias Logflare.Backends.Adaptor
+  alias Logflare.Backends.Adaptor.BigQueryAdaptor
   alias Logflare.Backends.Adaptor.SlackAdaptor
   alias Logflare.Backends.Adaptor.WebhookAdaptor
   alias Logflare.Cluster
@@ -387,7 +388,8 @@ defmodule Logflare.Alerting do
   ```
   """
   @spec execute_alert_query(AlertQuery.t(), use_query_cache: boolean) ::
-          {:ok, Logflare.BqRepo.query_result()} | {:error, any}
+          {:ok, %{rows: [map()], total_bytes_processed: integer(), total_rows: integer()}}
+          | {:error, any}
   def execute_alert_query(%AlertQuery{user: %User{}} = alert_query, opts \\ []) do
     Logger.debug("Executing AlertQuery | #{alert_query.name} | #{alert_query.id}")
 
@@ -407,11 +409,13 @@ defmodule Logflare.Alerting do
          {:ok, transformed_query} <-
            Logflare.Sql.transform(alert_query.language, expanded_query, alert_query.user_id),
          {:ok, result} <-
-           Logflare.BqRepo.query_with_sql_and_params(
-             alert_query.user,
-             alert_query.user.bigquery_project_id || env_project_id(),
-             transformed_query,
-             [],
+           BigQueryAdaptor.execute_query(
+             {
+               alert_query.user.bigquery_project_id || env_project_id(),
+               alert_query.user.bigquery_dataset_id,
+               alert_query.user.id
+             },
+             {transformed_query, []},
              parameterMode: "NAMED",
              maxResults: 1000,
              location: alert_query.user.bigquery_dataset_location,

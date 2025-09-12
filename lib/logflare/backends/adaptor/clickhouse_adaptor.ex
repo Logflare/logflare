@@ -20,6 +20,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
   alias Logflare.Backends
   alias Logflare.Backends.DynamicPipeline
   alias Logflare.Backends.Backend
+  alias Logflare.Backends.Ecto.SqlUtils
   alias Logflare.Backends.IngestEventQueue
   alias Logflare.Backends.SourceRegistry
   alias Logflare.LogEvent
@@ -68,6 +69,15 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
     |> Supervisor.which_children()
   end
 
+  @impl Logflare.Backends.Adaptor
+  def ecto_to_sql(%Ecto.Query{} = query, _opts) do
+    with {:ok, {pg_sql, pg_params}} <- SqlUtils.ecto_to_pg_sql(query) do
+      ch_sql = pg_sql_to_ch_sql(pg_sql)
+      ch_params = Enum.map(pg_params, &pg_param_to_ch_param/1)
+      {:ok, {ch_sql, ch_params}}
+    end
+  end
+
   @doc false
   @impl Logflare.Backends.Adaptor
   def execute_query(%Backend{} = backend, query_string, opts)
@@ -97,8 +107,10 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
     execute_query_with_params(backend, query_string, declared_params, input_params)
   end
 
-  def execute_query(_backend, %Ecto.Query{} = _query, _opts) do
-    {:error, :ecto_queries_not_supported}
+  def execute_query(%Backend{} = backend, %Ecto.Query{} = query, opts) when is_list(opts) do
+    with {:ok, {ch_sql, ch_params}} <- ecto_to_sql(query, opts) do
+      execute_query(backend, {ch_sql, ch_params}, opts)
+    end
   end
 
   @impl Logflare.Backends.Adaptor
@@ -678,4 +690,27 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
       end
     end)
   end
+
+  @spec pg_sql_to_ch_sql(sql :: String.t()) :: String.t()
+  defp pg_sql_to_ch_sql(sql) when is_non_empty_binary(sql) do
+    sql
+    |> SqlUtils.pg_params_to_question_marks()
+    |> String.replace(~r/"([^"]+)"/, "`\\1`")
+    |> String.replace(~r/(\w+|\`[^`]+\`)\s+~\s+'([^']+)'/, "match(\\1, '\\2')")
+    |> String.replace(
+      ~r/position\(\s*'([^']+)'\s+in\s+(\w+|\`[^`]+\`)\s*\)/,
+      "position(\\2, '\\1')"
+    )
+    |> String.replace(" ILIKE ", " LIKE ")
+    |> String.replace(" true", " 1")
+    |> String.replace(" false", " 0")
+    |> String.replace(~r/(\?|'[^']+')\s*=\s*ANY\(([^)]+)\)/, "has(\\2, \\1)")
+    |> String.replace(
+      ~r/([^@\s]+)\s*@>\s*(\?|'[^']+'|\[[^\]]*\])/,
+      "arrayExists(x -> x = \\2, \\1)"
+    )
+  end
+
+  @spec pg_param_to_ch_param(param :: any()) :: any()
+  defp pg_param_to_ch_param(param), do: SqlUtils.normalize_datetime_param(param)
 end

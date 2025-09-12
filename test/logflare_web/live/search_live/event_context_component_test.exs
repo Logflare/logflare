@@ -1,8 +1,11 @@
 defmodule LogflareWeb.SearchLive.EventContextComponentTest do
   use LogflareWeb.ConnCase, async: false
 
+  alias Logflare.Backends.Adaptor.BigQueryAdaptor
+  alias Logflare.BqRepo
   alias Logflare.Sources.Source
   alias LogflareWeb.SearchLive.EventContextComponent
+  alias Logflare.Users
 
   @default_schema Source.BigQuery.SchemaBuilder.initial_table_schema()
 
@@ -22,7 +25,39 @@ defmodule LogflareWeb.SearchLive.EventContextComponentTest do
       end
     end)
 
+    stub(BigQueryAdaptor, :execute_query, fn identifier, query, opts ->
+      handle_bigquery_execute_query(identifier, query, opts)
+    end)
+
     :ok
+  end
+
+  defp handle_bigquery_execute_query({project_id, dataset_id, user_id}, query, opts) do
+    user = Users.get(user_id)
+
+    with {:ok, {bq_sql, bq_params}} <- BigQueryAdaptor.ecto_to_sql(query, opts) do
+      bq_sql = String.replace(bq_sql, "$$__DEFAULT_DATASET__$$", dataset_id)
+
+      # Call BqRepo with our converted query - this will hit our GoogleApi mock
+      case BqRepo.query_with_sql_and_params(
+             user,
+             project_id,
+             bq_sql,
+             bq_params,
+             [dataset_id: dataset_id] ++ opts
+           ) do
+        {:ok, result} ->
+          {:ok,
+           %{
+             rows: result.rows,
+             total_bytes_processed: result.total_bytes_processed,
+             total_rows: result.total_rows
+           }}
+
+        error ->
+          error
+      end
+    end
   end
 
   defp on_exit_kill_tasks(_ctx) do
