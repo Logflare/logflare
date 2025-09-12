@@ -3,20 +3,32 @@ defmodule Grpc.Client.Adapters.Finch.RequestProcess do
 
   alias Grpc.Client.Adapters.Finch.StreamRequestProcess
 
-  @finch_instance_name Logflare.FinchBQStorage
-
-  def start_link(stream_request_pid, path, client_headers, data \\ nil, opts \\ []) do
-    GenServer.start_link(__MODULE__, [stream_request_pid, path, client_headers, data, opts])
+  def start_link(
+        stream_request_pid,
+        finch_instance_name,
+        path,
+        client_headers,
+        data \\ nil,
+        opts \\ []
+      ) do
+    GenServer.start_link(__MODULE__, [
+      stream_request_pid,
+      finch_instance_name,
+      path,
+      client_headers,
+      data,
+      opts
+    ])
   end
 
   @impl true
-  def init([stream_request_pid, path, client_headers, data, opts]) do
+  def init([stream_request_pid, finch_instance_name, path, client_headers, data, opts]) do
     timeout = Keyword.get(opts, :timeout, :infinity)
 
     req = Finch.build(:post, path, client_headers, data)
 
     stream_ref =
-      Finch.async_request(req, @finch_instance_name, receive_timeout: timeout)
+      Finch.async_request(req, finch_instance_name, receive_timeout: timeout)
 
     {:ok,
      %{

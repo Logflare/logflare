@@ -3,8 +3,6 @@ defmodule Grpc.Client.Adapters.Finch.BidirectionalStream do
   alias Grpc.Client.Adapters.Finch.RequestUtils
   use GenServer
 
-  @finch_instance_name Logflare.FinchBQStorage
-
   def start_link(stream, path, opts, timeout) do
     GenServer.start_link(__MODULE__, [stream, path, opts, timeout])
   end
@@ -84,7 +82,8 @@ defmodule Grpc.Client.Adapters.Finch.BidirectionalStream do
 
     req = Finch.build(:post, state.path, client_headers, request)
 
-    with {:ok, %{status: 200} = response} <- Finch.request(req, @finch_instance_name),
+    with {:ok, %{status: 200} = response} <-
+           Finch.request(req, stream.channel.adapter_payload.instance_name),
          state = %{
            state
            | grpc_stream: RequestUtils.check_compression(response.headers, state.grpc_stream)

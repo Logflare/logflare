@@ -3,8 +3,8 @@ defmodule Grpc.Client.Adapters.Finch.StreamRequestProcess do
 
   alias Grpc.Client.Adapters.Finch.RequestProcess
 
-  def start_link(path, client_headers, data \\ nil, opts \\ []) do
-    GenServer.start_link(__MODULE__, [path, client_headers, data, opts])
+  def start_link(finch_instance_name, path, client_headers, data \\ nil, opts \\ []) do
+    GenServer.start_link(__MODULE__, [finch_instance_name, path, client_headers, data, opts])
   end
 
   def close(pid) do
@@ -20,8 +20,9 @@ defmodule Grpc.Client.Adapters.Finch.StreamRequestProcess do
   end
 
   @impl true
-  def init([path, client_headers, data, opts]) do
-    {:ok, request_process} = RequestProcess.start_link(self(), path, client_headers, data, opts)
+  def init([finch_instance_name, path, client_headers, data, opts]) do
+    {:ok, request_process} =
+      RequestProcess.start_link(self(), finch_instance_name, path, client_headers, data, opts)
 
     {:ok,
      %{
