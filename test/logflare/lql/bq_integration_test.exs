@@ -1,6 +1,4 @@
-defmodule Logflare.BigQuery.EctoQueryBQTest do
-  @moduledoc false
-
+defmodule Logflare.Lql.BqIntegrationTest do
   use Logflare.DataCase
 
   alias GoogleApi.BigQuery.V2.Model.QueryParameter
@@ -18,7 +16,7 @@ defmodule Logflare.BigQuery.EctoQueryBQTest do
     {:ok, source: source, user: user}
   end
 
-  describe "apply_filter_rules for EctoQueryBQ.SQL" do
+  describe "`apply_filter_rules` for BigQuery SQL" do
     test "operators are translated correctly" do
       operator_cases =
         for operator <- [:=, :<, :<=, :>, :>=] do

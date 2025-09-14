@@ -88,6 +88,29 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptorTest do
 
       assert {:error, _reason} = BigQueryAdaptor.ecto_to_sql(invalid_query, [])
     end
+
+    test "converts subqueries correctly" do
+      query = from("some-table") |> select([:id])
+      {:ok, {sql, _params}} = BigQueryAdaptor.ecto_to_sql(query, [])
+      assert sql == "SELECT s0.id FROM some-table AS s0", "table is unquoted"
+
+      subquery1 = from(t in "some-table", select: %{id: t.id, name: t.name})
+      subquery2 = from(s in subquery(subquery1), select: %{count: fragment("COUNT(*)")})
+
+      query =
+        from(main in "some-table",
+          join: sub in subquery(subquery2),
+          on: true,
+          select: [main.id, sub.count]
+        )
+
+      {:ok, {sql, _params}} = BigQueryAdaptor.ecto_to_sql(query, [])
+
+      expected_sql =
+        "SELECT s0.id, s1.count FROM some-table AS s0 INNER JOIN (SELECT COUNT(*) AS count FROM (SELECT sss0.id AS id, sss0.name AS name FROM some-table AS sss0) AS ss0) AS s1 ON TRUE"
+
+      assert sql == expected_sql
+    end
   end
 
   describe "execute_query/3 with Ecto queries" do
