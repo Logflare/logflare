@@ -2,8 +2,13 @@ defmodule LogflareWeb.DashboardLive do
   alias Logflare.Repo
   use LogflareWeb, :live_view
 
-  alias Logflare.{Billing, Sources, Teams, TeamUsers, Users}
-  alias LogflareWeb.DashboardLive.{DashboardComponents, DashboardSourceComponents}
+  alias Logflare.Billing
+  alias Logflare.Sources
+  alias Logflare.Teams
+  alias Logflare.TeamUsers
+  alias Logflare.Users
+  alias LogflareWeb.DashboardLive.DashboardComponents
+  alias LogflareWeb.DashboardLive.DashboardSourceComponents
   alias LogflareWeb.Helpers.Forms
 
   @impl true
@@ -206,7 +211,7 @@ defmodule LogflareWeb.DashboardLive do
               <div class="source-link word-break-all">
                 <.link href={~p"/sources/#{source}"} class="tw-text-white"><%= source.name %></.link>
                 <span>
-                  <small class="my-badge my-badge-info tw-transition-colors tw-ease-in" id={"#{source.id}-inserts-#{source.metrics.inserts_string}"} phx-mounted={if(@fade_in, do: JS.transition("tw-bg-blue-500", time: 500))}>
+                  <small phx-update class="my-badge my-badge-info tw-transition-colors tw-ease-in" id={"#{source.id}-inserts-#{source.metrics.inserts_string}"} phx-mounted={if(@fade_in, do: JS.transition("tw-bg-blue-500", time: 500))}>
                     <%= source.metrics.inserts_string %>
                   </small>
                 </span>
