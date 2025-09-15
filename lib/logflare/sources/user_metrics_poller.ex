@@ -6,6 +6,22 @@ defmodule Logflare.Sources.UserMetricsPoller do
 
   @poll_interval :timer.seconds(5)
 
+  @moduledoc """
+  Polls and broadcasts source metrics for consumption by DashboardLive components.
+
+  When a dashboard is mounted, it calls `subscribe_to_updates/2` to start metrics polling for a specific user.
+  Each UserMetricsPoller instance is globally unique per user_id and automatically shuts down when there are
+  no longer any active dashboards tracking the monitored user_id.
+
+  ## Usage
+
+  - Dashboards subscribe via `subscribe_to_updates/2` which starts the poller, if not already started, and tracks the dashboard
+  - Metrics are polled at regular intervals and broadcast via PubSub
+  - The poller automatically stops when all dashboards disconnect or unmount
+  - Uses Phoenix.Tracker to monitor active dashboard subscriptions
+
+  """
+
   # Client API
   def start_link(user_id) when is_integer(user_id) do
     GenServer.start_link(__MODULE__, user_id, name: via_tuple(user_id))
@@ -19,14 +35,34 @@ defmodule Logflare.Sources.UserMetricsPoller do
     }
   end
 
-  @doc "Subscribe a dashboard LiveView to receive metrics updates"
-  def subscribe(user_id, dashboard_pid \\ self()) do
-    GenServer.call(via_tuple(user_id), {:subscribe, dashboard_pid})
+  def subscribe_to_updates(pid, user_id) do
+    track(pid, user_id)
+
+    {:ok, poller_pid} =
+      Logflare.GenSingleton.start_link(
+        child_spec: Logflare.Sources.UserMetricsPoller.child_spec(user_id)
+      )
+
+    {:ok, poller_pid}
   end
 
-  @doc "Unsubscribe a dashboard from metrics updates"
-  def unsubscribe(user_id, dashboard_pid \\ self()) do
-    GenServer.call(via_tuple(user_id), {:unsubscribe, dashboard_pid})
+  def track(pid, user_id) do
+    Phoenix.Tracker.track(
+      Logflare.ActiveUserTracker,
+      pid,
+      tracker_channel(user_id),
+      user_id,
+      %{}
+    )
+  end
+
+  def untrack(pid, user_id) do
+    Phoenix.Tracker.untrack(
+      Logflare.ActiveUserTracker,
+      pid,
+      tracker_channel(user_id),
+      user_id
+    )
   end
 
   defp via_tuple(user_id) do
@@ -35,56 +71,25 @@ defmodule Logflare.Sources.UserMetricsPoller do
 
   # Server Implementation
   def init(user_id) do
-    schedule_poll()
-    {:ok, %{user_id: user_id, subscribers: MapSet.new(), source_ids: []}}
+    source_ids = Sources.list_sources_by_user(user_id) |> Enum.map(& &1.token)
+    # send(self(), :poll_metrics)
+
+    {:ok, %{user_id: user_id, source_ids: source_ids}}
   end
 
-  def handle_call({:subscribe, pid}, _from, state) do
-    Process.monitor(pid)
-    new_subscribers = MapSet.put(state.subscribers, pid)
-
-    # Update source_ids when first subscriber joins
-    source_ids =
-      if MapSet.size(state.subscribers) == 0 do
-        Sources.list_sources_by_user(state.user_id) |> Enum.map(& &1.token)
-      else
-        state.source_ids
-      end
-
-    {:reply, :ok, %{state | subscribers: new_subscribers, source_ids: source_ids}}
-  end
-
-  def handle_call({:unsubscribe, pid}, _from, state) do
-    new_subscribers = MapSet.delete(state.subscribers, pid)
-
-    # Stop polling if no subscribers
-    if MapSet.size(new_subscribers) == 0 do
-      {:stop, :normal, :ok, state}
-    else
-      {:reply, :ok, %{state | subscribers: new_subscribers}}
-    end
+  def list_subscribers(user_id) do
+    Phoenix.Tracker.list(Logflare.ActiveUserTracker, tracker_channel(user_id))
   end
 
   def handle_info(:poll_metrics, state) do
-    IO.puts("Polling metrics")
-
-    if MapSet.size(state.subscribers) > 0 do
+    if Enum.any?(list_subscribers(state.user_id)) do
       metrics = fetch_cluster_metrics(state.source_ids)
-      broadcast_to_subscribers(state.subscribers, {:metrics_update, metrics})
+
+      broadcast(state.user_id, {:metrics_update, metrics})
       schedule_poll()
-    end
-
-    {:noreply, state}
-  end
-
-  def handle_info({:DOWN, _ref, :process, pid, _reason}, state) do
-    new_subscribers = MapSet.delete(state.subscribers, pid)
-
-    # Stop if no more subscribers
-    if MapSet.size(new_subscribers) == 0 do
-      {:stop, :normal, state}
+      {:noreply, state}
     else
-      {:noreply, %{state | subscribers: new_subscribers}}
+      {:stop, :normal, state}
     end
   end
 
@@ -95,12 +100,7 @@ defmodule Logflare.Sources.UserMetricsPoller do
   defp fetch_cluster_metrics(source_ids) do
     Enum.map(source_ids, fn source_id ->
       {results, _bad_nodes} =
-        Utils.rpc_multicall(
-          Logflare.PubSubRates.Cache,
-          :get_local_rates,
-          [source_id],
-          5_000
-        )
+        Utils.rpc_multicall(Logflare.PubSubRates.Cache, :get_local_rates, [source_id])
 
       aggregated_metrics = aggregate_node_metrics(results)
       {source_id, aggregated_metrics}
@@ -139,10 +139,9 @@ defmodule Logflare.Sources.UserMetricsPoller do
     end)
   end
 
-  defp broadcast_to_subscribers(subscribers, message) do
-    {:broadcast, message} |> dbg
-    Enum.each(subscribers, fn pid ->
-      send(pid, message)
-    end)
+  defp broadcast(user_id, message) do
+    Phoenix.PubSub.broadcast(Logflare.PubSub, "user_metrics:#{user_id}", message)
   end
+
+  defp tracker_channel(user_id), do: "dashboard_user_metrics:#{user_id}"
 end

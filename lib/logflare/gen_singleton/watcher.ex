@@ -59,7 +59,7 @@ defmodule Logflare.GenSingleton.Watcher do
   @impl true
   def handle_info({:DOWN, ref, :process, _pid, reason}, state)
       when ref == state.monitor_ref and reason in [:normal, :shutdown] do
-    {:stop, reason, state}
+    {:stop, :normal, state}
   end
 
   def handle_info({:DOWN, ref, :process, _pid, _reason}, state) when ref == state.monitor_ref do
