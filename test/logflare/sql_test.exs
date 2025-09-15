@@ -285,15 +285,21 @@ defmodule Logflare.SqlTest do
       user = insert(:user)
       insert(:source, user: user, name: "my_table")
 
-      input = {"with src as (select a from my_table) select c from src", "SHOW TABLES"}
+      query = "with src as (select a from my_table) select c from src"
+      sandboxed_query = "SHOW TABLES"
 
       logs =
         capture_log(fn ->
-          result = Sql.transform(:bq_sql, input, user)
+          result = Sql.transform(:bq_sql, {query, sandboxed_query}, user)
           assert {:error, "Only SELECT queries allowed in sandboxed queries"} = result
+
+          # Check that the `:query_string` metadata is set
+          metadata = Logger.metadata()
+          assert Keyword.get(metadata, :query_string) == query
         end)
 
-      assert logs =~ "Sandboxed query validation: would produce nil replacement_query"
+      assert logs =~
+               "Sandboxed query validation: would produce nil replacement query. Transform count:"
     end
   end
 

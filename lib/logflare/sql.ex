@@ -101,6 +101,8 @@ defmodule Logflare.Sql do
     sources = Sources.list_sources_by_user(user)
     source_mapping = source_mapping(sources)
 
+    Logger.metadata(query_string: query)
+
     with {:ok, statements} <- Parser.parse(sql_dialect, query) do
       statements
       |> do_transform(%{
@@ -111,10 +113,6 @@ defmodule Logflare.Sql do
         ast: statements
       })
       |> Parser.to_string()
-    else
-      error ->
-        Logger.warning("SQL transformation failed", error_string: query)
-        error
     end
   end
 
@@ -128,6 +126,8 @@ defmodule Logflare.Sql do
 
     sources = Sources.list_sources_by_user(user)
     source_mapping = source_mapping(sources)
+
+    Logger.metadata(query_string: query)
 
     with {:ok, statements} <- Parser.parse("bigquery", query),
          {:ok, sandboxed_query_ast} <- sandboxed_ast(sandboxed_query, "bigquery"),
@@ -148,10 +148,6 @@ defmodule Logflare.Sql do
       statements
       |> do_transform(data)
       |> Parser.to_string()
-    else
-      error ->
-        Logger.warning("SQL transformation failed", error_string: query)
-        error
     end
   end
 
@@ -545,10 +541,9 @@ defmodule Logflare.Sql do
         :ok
 
       {:error, transformed_statements} ->
-        Logger.warning("Sandboxed query validation: would produce nil replacement_query",
-          error_string: sandboxed_query,
-          ast_statements_count: length(transformed_statements),
-          first_statement: List.first(transformed_statements)
+        Logger.warning(
+          "Sandboxed query validation: would produce nil replacement query. Transform count: #{length(transformed_statements)}. First: #{inspect(List.first(transformed_statements))}",
+          error_string: sandboxed_query
         )
 
         {:error, "Only SELECT queries allowed in sandboxed queries"}
@@ -682,10 +677,9 @@ defmodule Logflare.Sql do
         {k, Map.merge(sandbox_query, Map.drop(replacement_query, ["with"]))}
 
       {:error, transformed_statements} ->
-        Logger.warning("Sandboxed query fallback triggered - validation should have caught this",
-          sandboxed_query: sandboxed_query,
-          ast_statements_count: length(transformed_statements),
-          first_statement: List.first(transformed_statements)
+        Logger.warning(
+          "Sandboxed query validation: would produce nil replacement query. Transform count: #{length(transformed_statements)}. First: #{inspect(List.first(transformed_statements))}",
+          error_string: sandboxed_query
         )
 
         {k, sandbox_query}
