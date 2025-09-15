@@ -53,7 +53,7 @@ defmodule LogflareWeb.DashboardLiveTest do
       assert view |> element(".favorite .far") |> has_element?()
 
       view
-      |> element("##{source.token} .favorite")
+      |> element("#source-#{source.token} .favorite")
       |> render_click()
 
       updated_source = source |> Repo.reload()
@@ -194,13 +194,16 @@ defmodule LogflareWeb.DashboardLiveTest do
     test "renders source metrics ", %{conn: conn, source: source} do
       {:ok, view, _html} = live(conn, "/dashboard")
 
-      assert view |> has_element?("[id^=#{source.id}-inserts]", "0")
+      assert view |> has_element?("[id^=source-#{source.token}-inserts]", "0")
       assert view |> has_element?("span[id=#{source.token}-rate]", "0/s")
       assert view |> has_element?("span[id=#{source.token}-avg-rate]", "0")
       assert view |> has_element?("span[id=#{source.token}-max-rate]", "0")
       assert view |> has_element?("span[id=#{source.token}-rejected]", "0")
-      assert view |> element("li[id=#{source.token}] [title^=Pipelines]") |> render =~ "0"
-      assert view |> element("li[id=#{source.token}]") |> render =~ "ttl: 3 days"
+
+      assert view |> element("li[id=source-#{source.token}] [title^=Pipelines]") |> render =~
+               "0"
+
+      assert view |> element("li[id=source-#{source.token}]") |> render =~ "ttl: 3 days"
     end
 
     test "updates source metrics", %{conn: conn, source: source} do
@@ -229,7 +232,7 @@ defmodule LogflareWeb.DashboardLiveTest do
 
       Source.ChannelTopics.local_broadcast_rates(rates_payload)
 
-      assert view |> element("li[id=#{source.token}] [title^=Pipelines]") |> render =~
+      assert view |> element("li[id=source-#{source.token}] [title^=Pipelines]") |> render =~
                to_string(buffer)
 
       assert view |> has_element?("span[id=#{source.token}-rate]", "#{rates_payload.last_rate}/s")
@@ -246,7 +249,7 @@ defmodule LogflareWeb.DashboardLiveTest do
                to_string(rates_payload.max_rate)
              )
 
-      assert view |> has_element?("[id^=#{source.id}-inserts]", to_string(log_count))
+      assert view |> has_element?("[id^=source-#{source.token}-inserts]", to_string(log_count))
     end
   end
 end

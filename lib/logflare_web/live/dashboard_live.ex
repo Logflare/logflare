@@ -24,6 +24,12 @@ defmodule LogflareWeb.DashboardLive do
         |> Sources.list_sources_by_user()
         |> Sources.preload_for_dashboard()
       end)
+      |> assign_new(:source_metrics, fn %{sources: sources} ->
+        sources
+        |> Enum.into(%{}, fn source ->
+          {to_string(source.token), %{metrics: source.metrics, updated_at: source.updated_at}}
+        end)
+      end)
       |> assign_new(:plan, fn %{user: user} -> Billing.get_plan_by_user(user) end)
       |> assign_teams(session["team_user_id"])
       |> assign(:fade_in, false)
@@ -87,67 +93,67 @@ defmodule LogflareWeb.DashboardLive do
     end
   end
 
-  def handle_info(%Phoenix.Socket.Broadcast{event: "buffer"} = broadcast, socket) do
-    %{payload: payload} = broadcast
-
-    {:noreply,
-     update_source_metrics(socket, payload.source_id, fn metrics ->
-       %{metrics | buffer: payload.buffer}
-     end)}
-  end
-
-  def handle_info(%Phoenix.Socket.Broadcast{event: "rate"} = broadcast, socket) do
-    %{payload: payload} = broadcast
-
-    {:noreply,
-     update_source_metrics(socket, payload.source_token, fn metrics ->
-       %{
-         metrics
-         | avg: payload.average_rate,
-           max: payload.max_rate,
-           rate: payload.last_rate
-       }
-     end)}
-  end
-
-  def handle_info(%Phoenix.Socket.Broadcast{event: "log_count"} = broadcast, socket) do
+  def handle_info(
+        %Phoenix.Socket.Broadcast{topic: "dashboard:" <> source_token, event: "buffer"} =
+          broadcast,
+        socket
+      ) do
     %{payload: payload} = broadcast
 
     socket =
-      update_source_metrics(socket, payload.source_token, fn metrics ->
-        %{
-          metrics
-          | latest: DateTime.utc_now() |> DateTime.to_unix(:microsecond),
-            inserts_string: Number.Delimit.number_to_delimited(payload.log_count)
-        }
-      end)
+      socket
+      |> update_source_metrics(source_token, %{buffer: payload.buffer})
+
+    {:noreply, socket}
+  end
+
+  def handle_info(
+        %Phoenix.Socket.Broadcast{topic: "dashboard:" <> source_token, event: "rate"} = broadcast,
+        socket
+      ) do
+    %{payload: payload} = broadcast
+
+    socket =
+      socket
+      |> update_source_metrics(source_token, %{
+        avg: payload.average_rate,
+        max: payload.max_rate,
+        rate: payload.last_rate
+      })
+
+    {:noreply, socket}
+  end
+
+  def handle_info(
+        %Phoenix.Socket.Broadcast{topic: "dashboard:" <> source_token, event: "log_count"} =
+          broadcast,
+        socket
+      ) do
+    %{payload: payload} = broadcast
+
+    socket =
+      socket
+      |> update_source_metrics(source_token, %{
+        latest: DateTime.utc_now() |> DateTime.to_unix(:microsecond),
+        inserts_string: payload.log_count
+      })
       |> assign(fade_in: true)
 
     {:noreply, socket}
   end
 
-  def update_source_metrics(socket, id, update_fn) when is_integer(id) do
-    case Enum.find(socket.assigns.sources, fn source -> source.id == id end) do
-      nil ->
-        socket
+  @spec update_source_metrics(Socket.t(), String.t(), map()) :: Socket.t()
+  def update_source_metrics(socket, token, attrs) do
+    source_metrics =
+      update_in(socket.assigns.source_metrics, [Access.key(token), :metrics], fn
+        nil ->
+          nil
 
-      source ->
-        update_source_metrics(socket, source.token, update_fn)
-    end
-  end
-
-  def update_source_metrics(socket, token, update_fn) when is_atom(token) do
-    sources =
-      Enum.map(socket.assigns.sources, fn source ->
-        if source.token == token do
-          metrics = update_fn.(source.metrics)
-          %{source | metrics: metrics}
-        else
-          source
-        end
+        metrics ->
+          Map.merge(metrics, attrs)
       end)
 
-    assign(socket, sources: sources)
+    assign(socket, source_metrics: source_metrics)
   end
 
   @impl true
@@ -163,7 +169,7 @@ defmodule LogflareWeb.DashboardLive do
             <DashboardComponents.members user={@user} team={@team} team_user={@team_user} />
           </div>
           <div class="tw-col-span-7">
-            <.source_list sources={@sources} plan={@plan} fade_in={@fade_in} />
+            <.source_list sources={@sources} source_metrics={@source_metrics} plan={@plan} fade_in={@fade_in} />
           </div>
           <div class="tw-col-span-2">
             <DashboardComponents.integrations />
@@ -196,29 +202,7 @@ defmodule LogflareWeb.DashboardLive do
           <li :if={service_name == nil} class="list-group-item">
             <hr />
           </li>
-          <li :for={source <- sources} class="list-group-item" id={to_string(source.token)}>
-            <div class="favorite float-left tw-cursor-pointer tw-text-yellow-200" phx-click="toggle_favorite" phx-value-favorite={!source.favorite} phx-value-id={source.id}>
-              <span>
-                <i class={[if(source.favorite, do: "fas", else: "far"), "fa-star "]} />
-              </span>
-            </div>
-            <div>
-              <div class="float-right">
-                <.link href={~p"/sources/#{source}/edit"} class="dashboard-links">
-                  <i class="fas fa-edit"></i>
-                </.link>
-              </div>
-              <div class="source-link word-break-all">
-                <.link href={~p"/sources/#{source}"} class="tw-text-white"><%= source.name %></.link>
-                <span>
-                  <small phx-update class="my-badge my-badge-info tw-transition-colors tw-ease-in" id={"#{source.id}-inserts-#{source.metrics.inserts_string}"} phx-mounted={if(@fade_in, do: JS.transition("tw-bg-blue-500", time: 500))}>
-                    <%= source.metrics.inserts_string %>
-                  </small>
-                </span>
-              </div>
-            </div>
-            <DashboardSourceComponents.source_metadata source={source} plan={@plan} />
-          </li>
+          <DashboardSourceComponents.source_item :for={source <- sources} source={source} plan={@plan} metrics={@source_metrics[to_string(source.token)][:metrics]} fade_in={@fade_in} />
         <% end %>
       </ul>
     </div>
