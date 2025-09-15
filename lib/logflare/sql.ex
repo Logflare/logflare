@@ -111,6 +111,10 @@ defmodule Logflare.Sql do
         ast: statements
       })
       |> Parser.to_string()
+    else
+      error ->
+        Logger.warning("SQL transformation failed", error_string: query)
+        error
     end
   end
 
@@ -144,6 +148,10 @@ defmodule Logflare.Sql do
       statements
       |> do_transform(data)
       |> Parser.to_string()
+    else
+      error ->
+        Logger.warning("SQL transformation failed", error_string: query)
+        error
     end
   end
 
@@ -790,7 +798,9 @@ defmodule Logflare.Sql do
   defp do_extract_parameters(_ast_node), do: :skip
 
   defp extract_all_from(ast) do
-    AstUtils.collect_from_ast(ast, &do_extract_from/1) |> List.flatten()
+    AstUtils.collect_from_ast(ast, &do_extract_from/1)
+    |> List.flatten()
+    |> Enum.reject(&is_nil/1)
   end
 
   defp do_extract_from({"from", from}) when is_list(from), do: {:collect, from}
