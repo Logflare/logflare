@@ -388,8 +388,7 @@ defmodule Logflare.Alerting do
   ```
   """
   @spec execute_alert_query(AlertQuery.t(), use_query_cache: boolean) ::
-          {:ok, %{rows: [map()], total_bytes_processed: integer(), total_rows: integer()}}
-          | {:error, any}
+          {:ok, Logflare.BqRepo.query_result()} | {:error, any()}
   def execute_alert_query(%AlertQuery{user: %User{}} = alert_query, opts \\ []) do
     Logger.debug("Executing AlertQuery | #{alert_query.name} | #{alert_query.id}")
 

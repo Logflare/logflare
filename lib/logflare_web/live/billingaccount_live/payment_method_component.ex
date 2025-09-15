@@ -103,22 +103,11 @@ defmodule LogflareWeb.BillingAccountLive.PaymentMethodComponent do
        |> push_patch(to: ~p"/billing/edit")}
     else
       {:error, message} ->
-        socket =
-          socket
-          |> clear_flash()
-          |> put_flash(:error, message)
-          |> push_patch(to: ~p"/billing/edit")
-
-        {:noreply, socket}
-
-      _err ->
-        socket =
-          socket
-          |> clear_flash()
-          |> put_flash(:error, "Something went wrong. Please contact support if this continues.")
-          |> push_patch(to: ~p"/billing/edit")
-
-        {:noreply, socket}
+        {:noreply,
+         socket
+         |> clear_flash()
+         |> put_flash(:error, message)
+         |> push_patch(to: ~p"/billing/edit")}
     end
   end
 
