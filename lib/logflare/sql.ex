@@ -357,7 +357,8 @@ defmodule Logflare.Sql do
   # applies only to the sandboed query
   defp maybe_validate_sandboxed_query_ast({cte_ast, ast}, data) when is_list(ast) do
     with :ok <- validate_query(ast, data),
-         :ok <- has_restricted_sources(cte_ast, ast) do
+         :ok <- has_restricted_sources(cte_ast, ast),
+         :ok <- validate_sandboxed_query_ast(ast, data) do
       :ok
     end
   end
@@ -530,6 +531,22 @@ defmodule Logflare.Sql do
     end
   end
 
+  defp validate_sandboxed_query_ast(ast, %{sandboxed_query: sandboxed_query} = data) do
+    case extract_replacement_query_from_ast(ast, data) do
+      {:ok, _replacement_query} ->
+        :ok
+
+      {:error, transformed_statements} ->
+        Logger.warning("Sandboxed query validation: would produce nil replacement_query",
+          error_string: sandboxed_query,
+          ast_statements_count: length(transformed_statements),
+          first_statement: List.first(transformed_statements)
+        )
+
+        {:error, "Only SELECT queries allowed in sandboxed queries"}
+    end
+  end
+
   defp has_wildcard_in_select(statement),
     do: has_wildcard_in_select(statement, :ok)
 
@@ -622,6 +639,23 @@ defmodule Logflare.Sql do
     AstUtils.transform_recursive(ast, data, &do_replace_sandboxed_query/2)
   end
 
+  @spec extract_replacement_query_from_ast(list(), map()) ::
+          {:ok, map()} | {:error, list()}
+  defp extract_replacement_query_from_ast(ast, data) do
+    transformed_statements = do_transform(ast, %{data | sandboxed_query: nil})
+
+    replacement_query =
+      transformed_statements
+      |> List.first()
+      |> get_in(["Query"])
+
+    if is_nil(replacement_query) do
+      {:error, transformed_statements}
+    else
+      {:ok, replacement_query}
+    end
+  end
+
   defp do_replace_sandboxed_query({"query", %{"body" => _}} = kv, _data), do: kv
 
   defp do_replace_sandboxed_query(
@@ -632,17 +666,21 @@ defmodule Logflare.Sql do
          %{sandboxed_query: sandboxed_query, sandboxed_query_ast: ast} = data
        )
        when is_non_empty_binary(sandboxed_query) do
-    sandboxed_statements = do_transform(ast, %{data | sandboxed_query: nil})
+    case extract_replacement_query_from_ast(ast, data) do
+      {:ok, %{"with" => with_clause} = replacement_query} when not is_nil(with_clause) ->
+        {k, Map.merge(sandbox_query, %{"body" => %{"Query" => replacement_query}})}
 
-    replacement_query =
-      sandboxed_statements
-      |> List.first()
-      |> get_in(["Query"])
+      {:ok, replacement_query} ->
+        {k, Map.merge(sandbox_query, Map.drop(replacement_query, ["with"]))}
 
-    if replacement_query["with"] do
-      {k, Map.merge(sandbox_query, %{"body" => %{"Query" => replacement_query}})}
-    else
-      {k, Map.merge(sandbox_query, Map.drop(replacement_query, ["with"]))}
+      {:error, transformed_statements} ->
+        Logger.warning("Sandboxed query fallback triggered - validation should have caught this",
+          sandboxed_query: sandboxed_query,
+          ast_statements_count: length(transformed_statements),
+          first_statement: List.first(transformed_statements)
+        )
+
+        {k, sandbox_query}
     end
   end
 
