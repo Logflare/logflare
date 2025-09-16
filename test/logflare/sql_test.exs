@@ -1,10 +1,13 @@
 defmodule Logflare.SqlTest do
-  @moduledoc false
   use Logflare.DataCase
+
+  import ExUnit.CaptureLog
+
   alias Logflare.SingleTenant
   alias Logflare.Sql
   alias Logflare.Backends.Adaptor.PostgresAdaptor
   alias Logflare.Backends.AdaptorSupervisor
+
   @logflare_project_id "logflare-project-id"
   @user_project_id "user-project-id"
   @user_dataset_id "user-dataset-id"
@@ -276,6 +279,27 @@ defmodule Logflare.SqlTest do
         assert String.downcase(err) =~ String.downcase(expected),
                "should error with '#{expected}'. input: #{inspect(input)}"
       end
+    end
+
+    test "verify logging works for nil replacement_query scenarios" do
+      user = insert(:user)
+      insert(:source, user: user, name: "my_table")
+
+      query = "with src as (select a from my_table) select c from src"
+      sandboxed_query = "SHOW TABLES"
+
+      logs =
+        capture_log(fn ->
+          result = Sql.transform(:bq_sql, {query, sandboxed_query}, user)
+          assert {:error, "Only SELECT queries allowed in sandboxed queries"} = result
+
+          # Check that the `:query_string` metadata is set
+          metadata = Logger.metadata()
+          assert Keyword.get(metadata, :query_string) == query
+        end)
+
+      assert logs =~
+               "Sandboxed query validation: would produce nil replacement query. Transform count:"
     end
   end
 

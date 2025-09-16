@@ -28,23 +28,23 @@ defmodule Logflare.TelemetryTest do
   end
 
   describe "ets_table_metrics/1" do
-    test "retrieves and emits top 10 by table size" do
+    test "retrieves and emits top 10 by memory usage" do
       event = [:logflare, :system, :top_ets_tables, :individual]
       TestUtils.attach_forwarder(event)
       Telemetry.ets_table_metrics()
 
       assert_receive {:telemetry_event, ^event, metrics, meta}
-      assert match?(%{size: _}, metrics)
+      assert match?(%{memory: _}, metrics)
       assert match?(%{name: _}, meta)
     end
 
-    test "retrieves and emits top 100 by table size" do
+    test "retrieves and emits top 100 by memory usage" do
       event = [:logflare, :system, :top_ets_tables, :grouped]
       TestUtils.attach_forwarder(event)
       Telemetry.ets_table_metrics()
 
       assert_receive {:telemetry_event, ^event, metrics, meta}
-      assert match?(%{size: _}, metrics)
+      assert match?(%{memory: _}, metrics)
       assert match?(%{name: _}, meta)
     end
 
