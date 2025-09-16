@@ -89,7 +89,7 @@ defmodule LogflareWeb.AuthController do
         |> put_session(:user_id, team.user.id)
         |> put_session(:team_user_id, team_user.id)
         |> put_session(:invite_token, nil)
-        |> redirect(to: Routes.source_path(conn, :dashboard))
+        |> redirect(to: ~p"/dashboard")
 
       {:error, :limit_reached} ->
         conn
@@ -142,7 +142,7 @@ defmodule LogflareWeb.AuthController do
         |> put_flash(:info, "Welcome back!")
         |> put_session(:user_id, user.id)
         |> put_session(:team_user_id, team_user.id)
-        |> redirect(to: Routes.source_path(conn, :dashboard))
+        |> redirect(to: ~p"/dashboard")
 
       {:error, _} ->
         conn
@@ -277,7 +277,7 @@ defmodule LogflareWeb.AuthController do
               })
           )
         else
-          redirect(conn, to: Routes.source_path(conn, :dashboard))
+          redirect(conn, to: ~p"/dashboard")
         end
     end
   end

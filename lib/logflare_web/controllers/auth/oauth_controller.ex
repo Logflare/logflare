@@ -147,7 +147,7 @@ defmodule LogflareWeb.Auth.OauthController do
   defp auth_error_redirect(conn) do
     conn
     |> put_flash(:error, "Authentication error! Please contact support if this continues.")
-    |> redirect(to: Routes.source_path(conn, :dashboard))
+    |> redirect(to: ~p"/dashboard")
   end
 
   defp generate_provider_uid(auth, :slack) do

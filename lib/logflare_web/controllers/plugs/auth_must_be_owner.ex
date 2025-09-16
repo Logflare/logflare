@@ -7,7 +7,7 @@ defmodule LogflareWeb.Plugs.AuthMustBeOwner do
   import Plug.Conn
   import Phoenix.Controller
 
-  alias LogflareWeb.Router.Helpers, as: Routes
+  use LogflareWeb, :routes
 
   def call(%{assigns: %{user: user, team_user: _team_user}} = conn, _params),
     do: reject(conn, user)
@@ -24,7 +24,7 @@ defmodule LogflareWeb.Plugs.AuthMustBeOwner do
         " for support."
       ]
     )
-    |> redirect(to: Routes.source_path(conn, :dashboard))
+    |> redirect(to: ~p"/dashboard")
     |> halt()
   end
 end
