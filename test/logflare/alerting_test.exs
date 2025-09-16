@@ -154,6 +154,7 @@ defmodule Logflare.AlertingTest do
       alert_query = alert_query_fixture(user)
 
       TestUtils.retry_assert(fn ->
+        :timer.sleep(500)
         assert {:ok, %AlertQuery{}} = Alerting.delete_alert_query(alert_query)
       end)
 
