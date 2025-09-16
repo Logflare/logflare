@@ -215,11 +215,11 @@ defmodule Logflare.Telemetry do
       ),
       last_value("logflare.system.top_ets_tables.individual.memory",
         tags: [:name],
-        description: "Top ETS individual tables by memory"
+        description: "Top ETS individual tables by memory usage"
       ),
       sum("logflare.system.top_ets_tables.grouped.memory",
         tags: [:name],
-        description: "Top ETS tables by memory, grouped by name"
+        description: "Top ETS tables by memory usage, grouped by name"
       ),
       sum("logflare.backends.ingest.count",
         tags: [:backend_type],
