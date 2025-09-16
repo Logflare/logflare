@@ -213,13 +213,13 @@ defmodule Logflare.Telemetry do
         description: "Top processes by memory usage",
         unit: {:byte, :megabyte}
       ),
-      last_value("logflare.system.top_ets_tables.individual.size",
+      last_value("logflare.system.top_ets_tables.individual.memory",
         tags: [:name],
-        description: "Top ETS individual tables by size"
+        description: "Top ETS individual tables by memory usage"
       ),
-      sum("logflare.system.top_ets_tables.grouped.size",
+      sum("logflare.system.top_ets_tables.grouped.memory",
         tags: [:name],
-        description: "Top ETS tables by size, grouped by name"
+        description: "Top ETS tables by memory usage, grouped by name"
       ),
       sum("logflare.backends.ingest.count",
         tags: [:backend_type],
@@ -357,7 +357,7 @@ defmodule Logflare.Telemetry do
     top_100_tables
     |> Enum.take(10)
     |> Enum.each(fn table ->
-      metrics = %{size: table[:size]}
+      metrics = %{memory: table[:memory]}
       metadata = %{name: table[:name]}
 
       :telemetry.execute([:logflare, :system, :top_ets_tables, :individual], metrics, metadata)
@@ -366,7 +366,7 @@ defmodule Logflare.Telemetry do
     # send grouped top 100
     top_100_tables
     |> Enum.each(fn table ->
-      metrics = %{size: table[:size]}
+      metrics = %{memory: table[:memory]}
       metadata = %{name: ets_table_base_name(table[:name])}
 
       :telemetry.execute([:logflare, :system, :top_ets_tables, :grouped], metrics, metadata)
@@ -378,7 +378,7 @@ defmodule Logflare.Telemetry do
     |> Stream.map(fn table ->
       case ets_info(table) do
         :undefined -> nil
-        info -> {0, info[:size], info}
+        info -> {0, info[:memory], info}
       end
     end)
     |> Enum.filter(& &1)
