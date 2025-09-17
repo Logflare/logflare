@@ -347,7 +347,7 @@ defmodule Logflare.Alerting do
   def delete_alert_job(%AlertQuery{id: id}), do: delete_alert_job(id)
 
   def delete_alert_job(alert_id) when is_integer(alert_id) do
-    on_scheduler_node(fn ->
+    __MODULE__.on_scheduler_node(fn ->
       case AlertsScheduler.find_job(to_job_name(alert_id)) do
         %_{} = job ->
           AlertsScheduler.delete_job(job.name)
@@ -368,10 +368,11 @@ defmodule Logflare.Alerting do
     end)
   end
 
-  defp on_scheduler_node(func) do
+  def on_scheduler_node(func) do
     with pid when is_pid(pid) <- GenServer.whereis(scheduler_name()) do
-      node = node(pid)
-      :erpc.call(node, func, 5000)
+      pid
+      |> node()
+      |> :erpc.call(func, 5000)
     end
   end
 
