@@ -37,7 +37,7 @@ defmodule LogflareWeb.DashboardLive do
 
     if connected?(socket) do
       Logflare.Sources.UserMetricsPoller.subscribe_to_updates(self(), user_id)
-      Phoenix.PubSub.subscribe(Logflare.PubSub, "user_metrics:#{user_id}")
+      Phoenix.PubSub.subscribe(Logflare.PubSub, "dashboard_user_metrics:#{user_id}")
     end
 
     {:ok, socket}

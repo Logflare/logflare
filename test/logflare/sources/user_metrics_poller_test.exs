@@ -3,7 +3,6 @@ defmodule Logflare.Sources.UserMetricsPollerTest do
   alias Logflare.Sources.UserMetricsPoller
 
   setup do
-    # Ecto.Adapters.SQL.Sandbox.allow(Logflare.Repo, self(), allow)
     _plan = insert(:plan)
     user = insert(:user)
     source = insert(:source, user: user)
@@ -11,19 +10,35 @@ defmodule Logflare.Sources.UserMetricsPollerTest do
   end
 
   describe "metrics polling and broadcasting" do
-    test "receives metrics updates from UserMetricsPoller", %{user: user, source: source} do
-      stub(Logflare.Cluster.Utils, :rpc_multicall, fn
+    setup do
+      Logflare.Cluster.Utils
+      |> stub(:rpc_multicall, fn
+        Logflare.PubSubRates.Cache, :get_local_buffer, [_source_id, nil] ->
+          {[%{len: 15}, %{len: 5}], []}
+
         Logflare.PubSubRates.Cache, :get_local_rates, [_source_id] ->
           {
-            [%{average_rate: 10, last_rate: 5, max_rate: 15}],
+            [
+              %{average_rate: 10, last_rate: 5, max_rate: 15},
+              %{average_rate: 10, last_rate: 5, max_rate: 15}
+            ],
             []
           }
+
+        Logflare.PubSubRates.Cache, :get_inserts, [_source_token] ->
+          {[
+             {:ok, %{"node" => %{bq_inserts: 123, node_inserts: 456}}}
+           ], []}
       end)
 
+      :ok
+    end
+
+    test "receives metrics updates from UserMetricsPoller", %{user: user, source: source} do
       UserMetricsPoller.track(self(), user.id)
       poller_pid = start_supervised!(UserMetricsPoller.child_spec(user.id))
 
-      Phoenix.PubSub.subscribe(Logflare.PubSub, "user_metrics:#{user.id}")
+      Phoenix.PubSub.subscribe(Logflare.PubSub, "dashboard_user_metrics:#{user.id}")
 
       send(poller_pid, :poll_metrics)
 
@@ -31,9 +46,11 @@ defmodule Logflare.Sources.UserMetricsPollerTest do
 
       assert Map.get(metrics, source.token) ==
                %{
-                 average_rate: 10,
-                 last_rate: 5,
-                 max_rate: 15
+                 avg: 20,
+                 rate: 10,
+                 max: 30,
+                 buffer: 20,
+                 inserts: 579
                }
     end
 
@@ -72,6 +89,28 @@ defmodule Logflare.Sources.UserMetricsPollerTest do
       assert_receive {:DOWN, ^ref, _, _, :normal}, 5000
 
       refute Process.alive?(poller_pid)
+    end
+
+    test "refreshes sources", %{user: user} do
+      UserMetricsPoller.track(self(), user.id)
+      poller_pid = start_supervised!(UserMetricsPoller.child_spec(user.id))
+      Phoenix.PubSub.subscribe(Logflare.PubSub, "dashboard_user_metrics:#{user.id}")
+
+      send(poller_pid, :poll_metrics)
+
+      assert_receive {:metrics_update, metrics}, 1000
+
+      assert Map.keys(metrics) ==
+               Logflare.Sources.list_sources_by_user(user.id) |> Enum.map(& &1.token)
+
+      _new_source = insert(:source, user: user)
+      send(poller_pid, :refresh_sources)
+      send(poller_pid, :poll_metrics)
+
+      assert_receive {:metrics_update, metrics}, 1000
+
+      assert Map.keys(metrics) ==
+               Logflare.Sources.list_sources_by_user(user.id) |> Enum.map(& &1.token)
     end
   end
 end
