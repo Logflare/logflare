@@ -47,22 +47,11 @@ defmodule Logflare.Sources.UserMetricsPoller do
   end
 
   def track(pid, user_id) do
-    Phoenix.Tracker.track(
-      Logflare.ActiveUserTracker,
-      pid,
-      tracker_channel(user_id),
-      user_id,
-      %{}
-    )
+    Phoenix.Tracker.track(Logflare.ActiveUserTracker, pid, channel(user_id), user_id, %{})
   end
 
   def untrack(pid, user_id) do
-    Phoenix.Tracker.untrack(
-      Logflare.ActiveUserTracker,
-      pid,
-      tracker_channel(user_id),
-      user_id
-    )
+    Phoenix.Tracker.untrack(Logflare.ActiveUserTracker, pid, channel(user_id), user_id)
   end
 
   defp via_tuple(user_id) do
@@ -83,7 +72,7 @@ defmodule Logflare.Sources.UserMetricsPoller do
   end
 
   def list_subscribers(user_id) do
-    Phoenix.Tracker.list(Logflare.ActiveUserTracker, tracker_channel(user_id))
+    Phoenix.Tracker.list(Logflare.ActiveUserTracker, channel(user_id))
   end
 
   def handle_info(:poll_metrics, state) do
@@ -167,8 +156,8 @@ defmodule Logflare.Sources.UserMetricsPoller do
   end
 
   defp broadcast(user_id, message) do
-    Phoenix.PubSub.broadcast(Logflare.PubSub, "user_metrics:#{user_id}", message)
+    Phoenix.PubSub.broadcast(Logflare.PubSub, channel(user_id), message)
   end
 
-  defp tracker_channel(user_id), do: "dashboard_user_metrics:#{user_id}"
+  defp channel(user_id), do: "dashboard_user_metrics:#{user_id}"
 end
