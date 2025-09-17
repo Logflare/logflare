@@ -7,7 +7,6 @@ defmodule LogflareWeb.SourceControllerTest do
   alias Logflare.LogEvent
   alias Logflare.Logs.Validators
   alias Logflare.Logs.RejectedLogEvents
-  alias Logflare.SingleTenant
   alias Logflare.Sources.Source.V1SourceDynSup
   alias Logflare.Backends
   alias Logflare.Backends.SourceSup
@@ -26,39 +25,6 @@ defmodule LogflareWeb.SourceControllerTest do
       source = insert(:source, user: user)
       user = Repo.preload(user, :sources)
       [source: source, team: team, conn: login_user(conn, user)]
-    end
-
-    test "renders dashboard", %{conn: conn, source: source, team: team} do
-      conn
-      |> visit(~p"/dashboard")
-      |> assert_has("li > a", text: "Dashboard", exact: true)
-      |> assert_has("h5", text: "Saved Searches", exact: true)
-      |> assert_has("a[href='#{~p"/sources/#{source}"}']", text: source.name)
-      |> assert_has("h5", text: "Teams")
-      |> assert_has("li", text: team.name)
-    end
-
-    test "renders dashboard when user is member of another team", %{conn: conn, source: source} do
-      user = conn.assigns.user
-      team_user = insert(:team_user, email: user.email, provider_uid: user.provider_uid)
-
-      conn
-      |> put_session(:team_user_id, team_user.id)
-      |> visit(~p"/dashboard")
-      |> assert_has("li > a", text: "Dashboard", exact: true)
-      |> assert_has("h5", text: "Saved Searches", exact: true)
-      |> assert_has("a[href='#{~p"/sources/#{source}"}']", text: source.name)
-      |> assert_has("h5", text: "Teams")
-      |> assert_has(
-        "a[href='#{~p"/profile/switch?#{%{"user_id" => team_user.team.user_id, "team_user_id" => team_user.id}}"}']",
-        text: team_user.team.name
-      )
-    end
-
-    test "renders default plan ttl correctly", %{conn: conn} do
-      conn
-      |> visit(~p"/dashboard")
-      |> assert_has("small", text: "ttl: 3 days")
     end
 
     test "show source", %{conn: conn, source: source} do
@@ -210,22 +176,6 @@ defmodule LogflareWeb.SourceControllerTest do
       assert Phoenix.Flash.get(conn.assigns.flash, :info) == "Source updated!"
 
       assert Sources.get_by(id: source.id).transform_copy_fields
-    end
-  end
-
-  describe "dashboard single tenant" do
-    TestUtils.setup_single_tenant(seed_user: true)
-
-    setup do
-      [user: SingleTenant.get_default_user()]
-    end
-
-    test "renders source in dashboard", %{conn: conn, user: user} do
-      source = insert(:source, user: user)
-
-      conn
-      |> visit(~p"/dashboard")
-      |> assert_has("a", text: source.name, href: ~p"/sources/#{source}")
     end
   end
 
@@ -477,23 +427,6 @@ defmodule LogflareWeb.SourceControllerTest do
              ]
 
       assert Phoenix.Flash.get(conn.assigns.flash, :error) === "Something went wrong!"
-    end
-  end
-
-  describe "favorite" do
-    setup [:create_plan, :old_setup]
-
-    test "returns 200 flipping the value", %{conn: conn, users: [u1 | _], sources: [s1 | _]} do
-      conn =
-        conn
-        |> login_user(u1)
-        |> get(~p"/sources/#{s1}/favorite")
-
-      new_s1 = Sources.get_by(id: s1.id)
-
-      assert Phoenix.Flash.get(conn.assigns.flash, :info) == "Source updated!"
-      assert redirected_to(conn, 302) =~ source_path(conn, :dashboard)
-      assert new_s1.favorite == not s1.favorite
     end
   end
 
