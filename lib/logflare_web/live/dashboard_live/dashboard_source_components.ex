@@ -28,7 +28,7 @@ defmodule LogflareWeb.DashboardLive.DashboardSourceComponents do
         <div class="source-link word-break-all">
           <.link href={~p"/sources/#{@source}"} class="tw-text-white"><%= @source.name %></.link>
           <span>
-            <.inserts_badge count={@metrics.inserts_string} source_token={@source.token} fade_in={@fade_in} />
+            <.inserts_badge count={@metrics.inserts} source_token={@source.token} fade_in={@fade_in} />
           </span>
         </div>
       </div>
@@ -147,7 +147,7 @@ defmodule LogflareWeb.DashboardLive.DashboardSourceComponents do
 
     ~H"""
     <small class="my-badge my-badge-info tw-transition-colors tw-ease-in" id={@id} phx-mounted={if(@fade_in, do: JS.transition("tw-bg-blue-500", time: 500))}>
-      <%= @count %>
+      <%= Number.Delimit.number_to_delimited(@count) %>
     </small>
     """
   end
