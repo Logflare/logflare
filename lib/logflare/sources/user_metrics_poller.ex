@@ -1,10 +1,10 @@
 defmodule Logflare.Sources.UserMetricsPoller do
   use GenServer
   alias Logflare.Cluster.Utils
-  alias Logflare.PubSubRates.Cache
   alias Logflare.Sources
 
   @poll_interval :timer.seconds(5)
+  @refresh_interval :timer.seconds(60)
 
   @moduledoc """
   Polls and broadcasts source metrics for consumption by DashboardLive components.
@@ -71,10 +71,15 @@ defmodule Logflare.Sources.UserMetricsPoller do
 
   # Server Implementation
   def init(user_id) do
-    source_ids = Sources.list_sources_by_user(user_id) |> Enum.map(& &1.token)
-    # send(self(), :poll_metrics)
+    sources = get_sources(user_id)
+    schedule_poll()
 
-    {:ok, %{user_id: user_id, source_ids: source_ids}}
+    {:ok, %{user_id: user_id, sources: sources}}
+  end
+
+  @spec get_sources(user_id :: integer) :: list(map)
+  def get_sources(user_id) do
+    Sources.list_sources_by_user(user_id) |> Enum.map(&Map.take(&1, [:id, :token]))
   end
 
   def list_subscribers(user_id) do
@@ -83,7 +88,7 @@ defmodule Logflare.Sources.UserMetricsPoller do
 
   def handle_info(:poll_metrics, state) do
     if Enum.any?(list_subscribers(state.user_id)) do
-      metrics = fetch_cluster_metrics(state.source_ids)
+      metrics = fetch_cluster_metrics(state.sources)
 
       broadcast(state.user_id, {:metrics_update, metrics})
       schedule_poll()
@@ -93,49 +98,71 @@ defmodule Logflare.Sources.UserMetricsPoller do
     end
   end
 
+  def handle_info(:refresh_sources, state) do
+    sources =
+      Sources.list_sources_by_user(state.user_id) |> Enum.map(&Map.take(&1, [:id, :token]))
+
+    schedule_sources_refresh()
+    {:noreply, %{state | sources: sources}}
+  end
+
+  defp schedule_sources_refresh do
+    Process.send_after(self(), :refresh_sources, @refresh_interval)
+  end
+
   defp schedule_poll do
     Process.send_after(self(), :poll_metrics, @poll_interval)
   end
 
-  defp fetch_cluster_metrics(source_ids) do
-    Enum.map(source_ids, fn source_id ->
-      {results, _bad_nodes} =
-        Utils.rpc_multicall(Logflare.PubSubRates.Cache, :get_local_rates, [source_id])
+  defp fetch_cluster_metrics(sources) do
+    Enum.map(sources, fn %{id: id, token: token} ->
+      {rate_results, _bad_nodes} =
+        Utils.rpc_multicall(Logflare.PubSubRates.Cache, :get_local_rates, [token])
 
-      aggregated_metrics = aggregate_node_metrics(results)
-      {source_id, aggregated_metrics}
+      {buffer_results, _bad_nodes} =
+        Utils.rpc_multicall(Logflare.PubSubRates.Cache, :get_local_buffer, [id, nil])
+
+      {[{:ok, inserts_results}], _bad_nodes} =
+        Utils.rpc_multicall(Logflare.PubSubRates.Cache, :get_inserts, [token])
+
+      aggregated_metrics =
+        aggregate_rates(rate_results)
+        |> Map.put(:buffer, aggregate_buffers(buffer_results))
+        |> Map.put(:inserts, aggregate_inserts(inserts_results))
+
+      {token, aggregated_metrics}
     end)
     |> Enum.into(%{})
   end
 
-  defp aggregate_node_metrics(node_results) do
-    valid_results =
-      Enum.filter(node_results, fn
-        %{average_rate: _, last_rate: _, max_rate: _} -> true
-        _ -> false
-      end)
-
-    case valid_results do
-      [] ->
+  defp aggregate_rates(node_results) do
+    node_results
+    |> Enum.reduce(%{avg: 0, rate: 0, max: 0}, fn
+      %{average_rate: avg, last_rate: rate, max_rate: max}, acc ->
         %{
-          average_rate: 0,
-          last_rate: 0,
-          max_rate: 0,
-          limiter_metrics: %{average: 0, duration: 60, sum: 0}
+          avg: acc.avg + avg,
+          rate: acc.rate + rate,
+          max: acc.max + max
         }
 
-      metrics_list ->
-        %{
-          average_rate: sum_field(metrics_list, :average_rate),
-          last_rate: sum_field(metrics_list, :last_rate),
-          max_rate: sum_field(metrics_list, :max_rate)
-        }
-    end
+      _, acc ->
+        acc
+    end)
   end
 
-  defp sum_field(metrics_list, field) do
-    Enum.reduce(metrics_list, 0, fn metrics, acc ->
-      acc + Map.get(metrics, field, 0)
+  defp aggregate_buffers(buffer_results) do
+    Enum.reduce(buffer_results, 0, fn buffer, acc ->
+      acc + Map.get(buffer, :len, 0)
+    end)
+  end
+
+  defp aggregate_inserts(nil), do: 0
+
+  defp aggregate_inserts(inserts_results) do
+    inserts_results
+    |> Enum.reduce(0, fn
+      {_, %{bq_inserts: bq, node_inserts: node}}, acc ->
+        acc + bq + node
     end)
   end
 
