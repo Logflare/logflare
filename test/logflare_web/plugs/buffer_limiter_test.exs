@@ -436,5 +436,56 @@ defmodule LogflareWeb.Plugs.BufferLimiterTest do
 
       assert conn.halted == false
     end
+
+    test "returns 429 when user-configured ClickHouse default backend is full but system default is not",
+         %{conn: conn} do
+      user = insert(:user)
+      source = insert(:source, user: user, default_ingest_backend_enabled?: true)
+
+      clickhouse_backend =
+        insert(:backend,
+          user: user,
+          type: :clickhouse,
+          config: %{
+            url: "http://localhost:8123",
+            username: "default",
+            password: "",
+            database: "test_db"
+          },
+          default_ingest?: true
+        )
+
+      {:ok, _} = Backends.update_source_backends(source, [clickhouse_backend])
+
+      # Keep system default queue under the limit
+      system_queue_key = {source.id, nil, self()}
+      IngestEventQueue.upsert_tid(system_queue_key)
+
+      for _ <- 1..100 do
+        le = build(:log_event)
+        IngestEventQueue.add_to_table(system_queue_key, [le])
+      end
+
+      # Fill CH backend queue over the limit
+      clickhouse_queue_key = {source.id, clickhouse_backend.id, self()}
+      IngestEventQueue.upsert_tid(clickhouse_queue_key)
+
+      for _ <- 1..(Backends.max_buffer_queue_len() + 500) do
+        le = build(:log_event)
+        IngestEventQueue.add_to_table(clickhouse_queue_key, [le])
+      end
+
+      # Cache buffer stats for both backends
+      Backends.cache_local_buffer_lens(source.id, nil)
+      Backends.cache_local_buffer_lens(source.id, clickhouse_backend.id)
+
+      conn =
+        conn
+        |> assign(:source, source)
+        |> BufferLimiter.call(%{})
+
+      assert conn.halted == true
+      assert conn.status == 429
+    end
   end
 end

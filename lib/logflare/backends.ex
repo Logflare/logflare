@@ -717,23 +717,13 @@ defmodule Logflare.Backends do
       |> Enum.filter(& &1.default_ingest?)
       |> MapSet.new(& &1.id)
 
-    case PubSubRates.Cache.get_local_buffer(source_id, nil) do
-      %{queues: [_ | _] = queues} ->
-        Enum.any?(queues, fn
-          {{_sid, nil, _pid}, count} ->
-            count > @max_pending_buffer_len_per_queue
+    # Check system default backend (nil backend_id)
+    system_default_full? = buffer_full_for_backend?(source_id, nil)
 
-          {{_sid, backend_id, _pid}, count} when is_integer(backend_id) ->
-            MapSet.member?(default_backend_ids, backend_id) &&
-              count > @max_pending_buffer_len_per_queue
+    # Check user-configured default backends
+    user_defaults_full? = Enum.any?(default_backend_ids, &buffer_full_for_backend?(source_id, &1))
 
-          {_key, count} ->
-            count > @max_pending_buffer_len_per_queue
-        end)
-
-      _ ->
-        false
-    end
+    system_default_full? || user_defaults_full?
   end
 
   def cached_local_pending_buffer_full?(%Source{id: source_id}) do
@@ -745,6 +735,23 @@ defmodule Logflare.Backends do
 
       queues ->
         Enum.all?(queues, fn {_key, v} -> v > @max_pending_buffer_len_per_queue end)
+    end
+  end
+
+  @spec buffer_full_for_backend?(
+          source_id :: non_neg_integer(),
+          backend_id :: non_neg_integer() | nil
+        ) ::
+          boolean()
+  defp buffer_full_for_backend?(source_id, backend_id) do
+    case PubSubRates.Cache.get_local_buffer(source_id, backend_id) do
+      %{queues: [_ | _] = queues} ->
+        Enum.any?(queues, fn {_key, count} ->
+          count > @max_pending_buffer_len_per_queue
+        end)
+
+      _ ->
+        false
     end
   end
 
