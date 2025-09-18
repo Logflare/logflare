@@ -194,11 +194,6 @@ defmodule LogflareWeb.DashboardLive do
     {:noreply, assign(socket, fade_in: true)}
   end
 
-  def handle_info({tracker_event, _user_id, %{phx_ref: _ref}}, socket)
-      when tracker_event in [:join, :leave] do
-    {:noreply, socket}
-  end
-
   @spec update_source_metrics(Phoenix.LiveView.Socket.t(), String.t(), map()) ::
           Phoenix.LiveView.Socket.t()
   def update_source_metrics(socket, token, attrs) when is_binary(token) do
