@@ -254,4 +254,21 @@ hooks.FormatTimestamps = {
   },
 };
 
+hooks.DocumentVisibility = {
+  mounted() {
+    document.addEventListener("visibilitychange", () => {
+      this.pushEvent("visibility_change", {
+        visibility: document.visibilityState,
+      });
+    });
+  },
+
+  destroyed() {
+    document.removeEventListener(
+      "visibilitychange",
+      this.handleVisibilityChange,
+    );
+  },
+};
+
 export default hooks;
