@@ -32,7 +32,8 @@ defmodule Logflare.User do
              :company,
              :token,
              :metadata,
-             :partner_upgraded
+             :partner_upgraded,
+             :system_monitoring
            ]}
 
   @default_user_api_quota 150
@@ -87,6 +88,7 @@ defmodule Logflare.User do
     field :metadata, :map
     embeds_one :preferences, UserPreferences
     field :partner_upgraded, :boolean, default: false
+    field :system_monitoring, :boolean, default: false
 
     has_many :billing_counts, Logflare.Billing.BillingCount
     has_many :sources, Source
@@ -117,7 +119,8 @@ defmodule Logflare.User do
     :valid_google_account,
     :provider_uid,
     :company,
-    :partner_upgraded
+    :partner_upgraded,
+    :system_monitoring
   ]
 
   @fields @user_allowed_fields ++
