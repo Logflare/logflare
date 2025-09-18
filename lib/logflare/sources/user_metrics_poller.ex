@@ -1,6 +1,7 @@
 defmodule Logflare.Sources.UserMetricsPoller do
   use GenServer
-  alias Logflare.Cluster.Utils
+
+  alias Logflare.Cluster
   alias Logflare.Sources
 
   @poll_interval :timer.seconds(5)
@@ -9,16 +10,20 @@ defmodule Logflare.Sources.UserMetricsPoller do
   @moduledoc """
   Polls and broadcasts source metrics for consumption by DashboardLive components.
 
-  When a dashboard is mounted, it calls `subscribe_to_updates/2` to start metrics polling for a specific user.
-  Each UserMetricsPoller instance is globally unique per user_id and automatically shuts down when there are
-  no longer any active dashboards tracking the monitored user_id.
+  When a dashboard is mounted, it calls `subscribe_to_updates/2` to start
+  metrics polling for a specific user. Each UserMetricsPoller instance is
+  globally unique per user_id and automatically shuts down when there are no
+  longer any active dashboards tracking the monitored user_id.
 
   ## Usage
 
-  - Dashboards subscribe via `subscribe_to_updates/2` which starts the poller, if not already started, and tracks the dashboard
+  - Dashboards subscribe via `track/2` which starts the poller, if not already
+    started, and tracks the dashboard
   - Metrics are polled at regular intervals and broadcast via PubSub
+  - Dashboards must also subscribe to updates via PubSub to receive updates
   - The poller automatically stops when all dashboards disconnect or unmount
-  - Uses Phoenix.Tracker to monitor active dashboard subscriptions
+  - The list of sources is refreshed periodically to ensure sources created
+    after the poller is started receives updates.
 
   """
 
@@ -35,18 +40,13 @@ defmodule Logflare.Sources.UserMetricsPoller do
     }
   end
 
-  def subscribe_to_updates(pid, user_id) do
-    track(pid, user_id)
-
-    {:ok, poller_pid} =
+  def track(pid, user_id) do
+    {:ok, _poller_pid} =
       Logflare.GenSingleton.start_link(
-        child_spec: Logflare.Sources.UserMetricsPoller.child_spec(user_id)
+        child_spec: __MODULE__.child_spec(user_id),
+        restart: :transient
       )
 
-    {:ok, poller_pid}
-  end
-
-  def track(pid, user_id) do
     Phoenix.Tracker.track(Logflare.ActiveUserTracker, pid, channel(user_id), user_id, %{})
   end
 
@@ -55,7 +55,7 @@ defmodule Logflare.Sources.UserMetricsPoller do
   end
 
   defp via_tuple(user_id) do
-    {:via, :syn, {:core, user_id}}
+    {:via, :syn, {:core, {__MODULE__, user_id}}}
   end
 
   # Server Implementation
@@ -77,9 +77,11 @@ defmodule Logflare.Sources.UserMetricsPoller do
 
   def handle_info(:poll_metrics, state) do
     if Enum.any?(list_subscribers(state.user_id)) do
-      metrics = fetch_cluster_metrics(state.sources)
+      Logflare.Utils.Tasks.start_child(fn ->
+        metrics = fetch_cluster_metrics(state.sources)
+        broadcast(state.user_id, {:metrics_update, metrics})
+      end)
 
-      broadcast(state.user_id, {:metrics_update, metrics})
       schedule_poll()
       {:noreply, state}
     else
@@ -106,13 +108,13 @@ defmodule Logflare.Sources.UserMetricsPoller do
   defp fetch_cluster_metrics(sources) do
     Enum.map(sources, fn %{id: id, token: token} ->
       {rate_results, _bad_nodes} =
-        Utils.rpc_multicall(Logflare.PubSubRates.Cache, :get_local_rates, [token])
+        Cluster.Utils.rpc_multicall(Logflare.PubSubRates.Cache, :get_local_rates, [token])
 
       {buffer_results, _bad_nodes} =
-        Utils.rpc_multicall(Logflare.PubSubRates.Cache, :get_local_buffer, [id, nil])
+        Cluster.Utils.rpc_multicall(Logflare.PubSubRates.Cache, :get_local_buffer, [id, nil])
 
       {[{:ok, inserts_results}], _bad_nodes} =
-        Utils.rpc_multicall(Logflare.PubSubRates.Cache, :get_inserts, [token])
+        Cluster.Utils.rpc_multicall(Logflare.PubSubRates.Cache, :get_inserts, [token])
 
       aggregated_metrics =
         aggregate_rates(rate_results)

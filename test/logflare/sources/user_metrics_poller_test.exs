@@ -77,8 +77,8 @@ defmodule Logflare.Sources.UserMetricsPollerTest do
     end
 
     test "shuts down when all subscribers unsubscribe", %{user: user} do
-      UserMetricsPoller.track(self(), user.id)
-      poller_pid = start_supervised!(UserMetricsPoller.child_spec(user.id))
+      {:ok, _} = UserMetricsPoller.track(self(), user.id)
+      {poller_pid, _} = :syn.lookup(:core, {UserMetricsPoller, user.id})
       ref = Process.monitor(poller_pid)
 
       UserMetricsPoller.untrack(self(), user.id)

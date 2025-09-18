@@ -35,7 +35,7 @@ defmodule LogflareWeb.DashboardLive do
       |> assign(:fade_in, false)
 
     if connected?(socket) do
-      Logflare.Sources.UserMetricsPoller.subscribe_to_updates(self(), user_id)
+      Logflare.Sources.UserMetricsPoller.track(self(), user_id)
       Phoenix.PubSub.subscribe(Logflare.PubSub, "dashboard_user_metrics:#{user_id}")
     end
 
@@ -91,6 +91,20 @@ defmodule LogflareWeb.DashboardLive do
     end
   end
 
+  def handle_event("visibility_change", %{"visibility" => "hidden"}, socket) do
+    %{user: user} = socket.assigns
+
+    Logflare.Sources.UserMetricsPoller.untrack(self(), user.id)
+    {:noreply, socket}
+  end
+
+  def handle_event("visibility_change", %{"visibility" => "visible"}, socket) do
+    %{user: user} = socket.assigns
+
+    Logflare.Sources.UserMetricsPoller.track(self(), user.id)
+    {:noreply, socket}
+  end
+
   @impl true
   def handle_info({:metrics_update, payload}, socket) do
     socket =
@@ -100,6 +114,11 @@ defmodule LogflareWeb.DashboardLive do
       end)
 
     {:noreply, assign(socket, fade_in: true)}
+  end
+
+  def handle_info({tracker_event, _user_id, %{phx_ref: _ref}}, socket)
+      when tracker_event in [:join, :leave] do
+    {:noreply, socket}
   end
 
   @spec update_source_metrics(Phoenix.LiveView.Socket.t(), String.t(), map()) ::
@@ -116,7 +135,7 @@ defmodule LogflareWeb.DashboardLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <div>
+    <div id="dashboard-container" phx-hook="DocumentVisibility">
       <DashboardComponents.subhead user={@user} />
       <div class="tw-max-w-[95%] tw-mx-auto">
         <div class="lg:tw-grid tw-grid-cols-12 tw-gap-8 tw-px-[15px] tw-mt-[50px]">
