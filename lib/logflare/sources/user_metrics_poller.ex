@@ -40,18 +40,24 @@ defmodule Logflare.Sources.UserMetricsPoller do
     }
   end
 
-  def track(pid, user_id) do
-    {:ok, _poller_pid} =
+  def track(subscriber_pid, user_id) do
+    {:ok, _pid} =
       Logflare.GenSingleton.start_link(
         child_spec: __MODULE__.child_spec(user_id),
         restart: :transient
       )
 
-    Phoenix.Tracker.track(Logflare.ActiveUserTracker, pid, channel(user_id), user_id, %{})
+    Phoenix.Tracker.track(
+      Logflare.ActiveUserTracker,
+      subscriber_pid,
+      channel(user_id),
+      user_id,
+      %{}
+    )
   end
 
-  def untrack(pid, user_id) do
-    Phoenix.Tracker.untrack(Logflare.ActiveUserTracker, pid, channel(user_id), user_id)
+  def untrack(subscriber_pid, user_id) do
+    Phoenix.Tracker.untrack(Logflare.ActiveUserTracker, subscriber_pid, channel(user_id), user_id)
   end
 
   defp via_tuple(user_id) do
