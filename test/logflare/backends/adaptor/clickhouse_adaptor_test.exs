@@ -2,6 +2,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptorTest do
   use Logflare.DataCase, async: false
 
   import Ecto.Query
+  import Logflare.Utils.Guards
 
   alias Logflare.Backends
   alias Logflare.Backends.Adaptor.ClickhouseAdaptor
@@ -298,22 +299,15 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptorTest do
 
       {:ok, {sql, params}} = ClickhouseAdaptor.ecto_to_sql(query, [])
 
-      assert is_binary(sql)
+      assert is_non_empty_binary(sql)
       assert is_list(params)
-
-      # Should convert PostgreSQL quoted identifiers to ClickHouse backticks
-      assert sql =~ "`"
-      refute sql =~ ~r/"[\w\.]+"/
-
-      # Should convert PostgreSQL parameters ($1) to ClickHouse question marks (?)
-      assert sql =~ "?"
-      refute sql =~ "$1"
 
       # Should contain basic query structure
       assert sql =~ "SELECT"
-      assert sql =~ "FROM `test_table`"
+      assert sql =~ "FROM \"test_table\""
       assert sql =~ "WHERE"
-      assert sql =~ "t0.`id` >"
+      assert sql =~ "t0.\"id\" >"
+      assert sql =~ "$0"
 
       # Parameters should be normalized
       assert length(params) == 1
@@ -336,6 +330,30 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptorTest do
 
       assert length(params) == 1
       assert params == ["pattern"]
+    end
+
+    test "converts datetime parameters correctly in ClickHouse SQL format" do
+      datetime = ~U[2023-12-25 10:30:45Z]
+
+      query =
+        from("test_table")
+        |> select([t], %{id: t.id, timestamp: t.timestamp})
+        |> where([t], t.timestamp > ^datetime)
+
+      {:ok, {sql, params}} = ClickhouseAdaptor.ecto_to_sql(query, [])
+
+      assert is_non_empty_binary(sql)
+      assert is_list(params)
+
+      # Should contain basic query structure
+      assert sql =~ "SELECT"
+      assert sql =~ "FROM \"test_table\""
+      assert sql =~ "WHERE"
+      assert sql =~ "t0.\"timestamp\" >"
+      assert sql =~ "$0"
+
+      # Parameters should be normalized
+      assert ["2023-12-25 10:30:45Z"] = params
     end
 
     test "handles query conversion errors gracefully" do

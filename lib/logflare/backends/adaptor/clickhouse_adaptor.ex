@@ -71,10 +71,14 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
 
   @impl Logflare.Backends.Adaptor
   def ecto_to_sql(%Ecto.Query{} = query, _opts) do
-    with {:ok, {pg_sql, pg_params}} <- SqlUtils.ecto_to_pg_sql(query) do
-      ch_sql = pg_sql_to_ch_sql(pg_sql)
-      ch_params = Enum.map(pg_params, &pg_param_to_ch_param/1)
+    try do
+      {ch_sql, ch_params} = Ecto.Adapters.ClickHouse.to_sql(:all, query)
+      ch_params = Enum.map(ch_params, &SqlUtils.normalize_datetime_param/1)
       {:ok, {ch_sql, ch_params}}
+    rescue
+      error ->
+        Logger.warning("Failed to convert Ecto query to ClickHouse SQL: #{inspect(error)}")
+        {:error, "Could not convert Ecto query: #{Exception.message(error)}"}
     end
   end
 
@@ -690,27 +694,4 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
       end
     end)
   end
-
-  @spec pg_sql_to_ch_sql(sql :: String.t()) :: String.t()
-  defp pg_sql_to_ch_sql(sql) when is_non_empty_binary(sql) do
-    sql
-    |> SqlUtils.pg_params_to_question_marks()
-    |> String.replace(~r/"([^"]+)"/, "`\\1`")
-    |> String.replace(~r/(\w+|\`[^`]+\`)\s+~\s+'([^']+)'/, "match(\\1, '\\2')")
-    |> String.replace(
-      ~r/position\(\s*'([^']+)'\s+in\s+(\w+|\`[^`]+\`)\s*\)/,
-      "position(\\2, '\\1')"
-    )
-    |> String.replace(" ILIKE ", " LIKE ")
-    |> String.replace(" true", " 1")
-    |> String.replace(" false", " 0")
-    |> String.replace(~r/(\?|'[^']+')\s*=\s*ANY\(([^)]+)\)/, "has(\\2, \\1)")
-    |> String.replace(
-      ~r/([^@\s]+)\s*@>\s*(\?|'[^']+'|\[[^\]]*\])/,
-      "arrayExists(x -> x = \\2, \\1)"
-    )
-  end
-
-  @spec pg_param_to_ch_param(param :: any()) :: any()
-  defp pg_param_to_ch_param(param), do: SqlUtils.normalize_datetime_param(param)
 end
