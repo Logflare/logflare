@@ -54,8 +54,7 @@ defmodule Logflare.AlertingTest do
     }
 
     setup do
-      start_supervised!(Alerting.Supervisor)
-      :ok
+      start_alerting_supervisor!()
     end
 
     def alert_query_fixture(user, attrs \\ %{}) do
@@ -152,8 +151,8 @@ defmodule Logflare.AlertingTest do
     test "delete_alert_query/1 deletes the alert_query", %{user: user} do
       alert_query = alert_query_fixture(user)
 
-      Logflare.Alerting
-      |> expect(:on_scheduler_node, fn func ->
+      Logflare.Cluster.Utils
+      |> expect(:erpc_call, 2, fn _node, func ->
         func.()
       end)
 
@@ -266,10 +265,7 @@ defmodule Logflare.AlertingTest do
 
   describe "quantum integration" do
     setup do
-      start_supervised!(Alerting.Supervisor)
-      # wait for scheduler init to finish
-      :timer.sleep(500)
-      :ok
+      start_alerting_supervisor!()
     end
 
     test "upsert_alert_job/1, get_alert_job/1, delete_alert_job/1, count_alert_jobs/0 retrieves alert job",
@@ -358,5 +354,11 @@ defmodule Logflare.AlertingTest do
                } = Alerting.get_alert_job(alert_id)
       end)
     end
+  end
+
+  defp start_alerting_supervisor! do
+    start_supervised!(Logflare.Alerting.Supervisor)
+    # wait for scheduler init to finish
+    :timer.sleep(500)
   end
 end

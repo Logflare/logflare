@@ -1,10 +1,10 @@
 defmodule Logflare.Alerting.Supervisor do
   @moduledoc false
+  use Supervisor
 
   alias Logflare.Alerting.AlertsScheduler
   alias Logflare.Alerting
   alias Logflare.GenSingleton
-  use Supervisor
 
   def start_link(args) do
     Supervisor.start_link(__MODULE__, args, name: __MODULE__)
