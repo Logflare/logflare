@@ -11,23 +11,29 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
 
   alias Ecto.Changeset
   alias Explorer.DataFrame
-  alias Logflare.Google.BigQuery.EventUtils
+  alias GoogleApi.BigQuery.V2.Model
   alias Logflare.Backends
+  alias Logflare.Backends.Adaptor.BigQueryAdaptor.GoogleApiClient
   alias Logflare.Backends.Backend
   alias Logflare.Backends.DynamicPipeline
+  alias Logflare.Backends.Ecto.SqlUtils
   alias Logflare.Backends.IngestEventQueue
-  alias Logflare.Backends.Adaptor.BigQueryAdaptor.GoogleApiClient
+  alias Logflare.BigQuery.SchemaTypes
   alias Logflare.Billing
   alias Logflare.BqRepo
   alias Logflare.Endpoints.Query
   alias Logflare.Google
+  alias Logflare.Google.BigQuery.EventUtils
   alias Logflare.Google.BigQuery.GenUtils
   alias Logflare.Google.CloudResourceManager
+  alias Logflare.Sources
   alias Logflare.Sources.Source.BigQuery.Pipeline
   alias Logflare.Sources.Source.BigQuery.Schema
-  alias Logflare.Sources
   alias Logflare.User
   alias Logflare.Users
+  alias Model.QueryParameter, as: Param
+  alias Model.QueryParameterType, as: Type
+  alias Model.QueryParameterValue, as: Value
 
   @managed_service_account_partition_count 5
   @service_account_prefix "logflare-managed"
@@ -118,6 +124,15 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
   end
 
   @impl Logflare.Backends.Adaptor
+  def ecto_to_sql(%Ecto.Query{} = query, _opts) do
+    with {:ok, {pg_sql, pg_params}} <- SqlUtils.ecto_to_pg_sql(query) do
+      bq_sql = pg_sql_to_bq_sql(pg_sql)
+      bq_params = Enum.map(pg_params, &pg_param_to_bq_param/1)
+      {:ok, {bq_sql, bq_params}}
+    end
+  end
+
+  @impl Logflare.Backends.Adaptor
   def execute_query(%Backend{} = backend, query_string, opts)
       when is_non_empty_binary(query_string) and is_list(opts) do
     execute_query(backend, {query_string, [], %{}}, opts)
@@ -150,8 +165,39 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
     )
   end
 
-  def execute_query(%Backend{} = _backend, %Ecto.Query{} = _query, _opts) do
-    {:error, :not_implemented}
+  def execute_query({project_id, dataset_id, user_id}, {sql_string, params}, opts)
+      when is_non_empty_binary(sql_string) and is_list(params) and is_list(opts) do
+    with %User{} = user <- Users.get(user_id) do
+      query_opts = build_base_query_opts(user, [dataset_id: dataset_id] ++ opts)
+      execute_user_query(user, project_id, sql_string, params, query_opts)
+    end
+  end
+
+  def execute_query({_project_id, dataset_id, user_id}, %Ecto.Query{} = query, opts)
+      when is_list(opts) do
+    with {:ok, {bq_sql, bq_params}} <- ecto_to_sql(query, opts),
+         %User{} = user <- Users.get(user_id) do
+      bq_sql = String.replace(bq_sql, "$$__DEFAULT_DATASET__$$", dataset_id)
+
+      execute_user_query(
+        user,
+        bq_sql,
+        bq_params,
+        build_base_query_opts(user, [dataset_id: dataset_id] ++ opts)
+      )
+    end
+  end
+
+  def execute_query(
+        %Backend{user_id: user_id, config: %{project_id: _project_id}},
+        %Ecto.Query{} = query,
+        opts
+      )
+      when is_list(opts) do
+    with {:ok, {bq_sql, bq_params}} <- ecto_to_sql(query, opts),
+         %User{} = user <- Users.get(user_id) do
+      execute_user_query(user, bq_sql, bq_params, build_base_query_opts(user, opts))
+    end
   end
 
   @impl Logflare.Backends.Adaptor
@@ -490,7 +536,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
     bq_params = build_bq_params(declared_params, input_params)
     query_opts = build_base_query_opts(user, opts)
 
-    execute_query(user, query_string, bq_params, query_opts)
+    execute_user_query(user, query_string, bq_params, query_opts)
   end
 
   @spec execute_query_with_context(
@@ -523,25 +569,53 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
             )
         ]
 
-    execute_query(user, query_string, bq_params, query_opts)
+    execute_user_query(user, query_string, bq_params, query_opts)
   end
 
-  @spec execute_query(
+  @spec execute_user_query(
           user :: User.t(),
           query_string :: String.t(),
           bq_params :: [map()],
           query_opts :: Keyword.t()
-        ) :: {:ok, %{rows: [map()], total_bytes_processed: integer()}} | {:error, any()}
-  defp execute_query(%User{} = user, query_string, bq_params, query_opts) do
+        ) ::
+          {:ok, %{rows: [map()], total_bytes_processed: integer(), total_rows: integer()}}
+          | {:error, any()}
+  defp execute_user_query(%User{} = user, query_string, bq_params, query_opts)
+       when is_non_empty_binary(query_string) and is_list(bq_params) and is_list(query_opts) do
+    execute_user_query(
+      user,
+      user.bigquery_project_id || env_project_id(),
+      query_string,
+      bq_params,
+      query_opts
+    )
+  end
+
+  @spec execute_user_query(
+          user :: User.t(),
+          project_id :: String.t(),
+          query_string :: String.t(),
+          bq_params :: [map()],
+          query_opts :: Keyword.t()
+        ) ::
+          {:ok, %{rows: [map()], total_bytes_processed: integer(), total_rows: integer()}}
+          | {:error, any()}
+  defp execute_user_query(%User{} = user, project_id, query_string, bq_params, query_opts)
+       when is_non_empty_binary(query_string) and is_list(bq_params) and is_list(query_opts) do
     case BqRepo.query_with_sql_and_params(
            user,
-           user.bigquery_project_id || env_project_id(),
+           project_id,
            query_string,
            bq_params,
            query_opts
          ) do
       {:ok, result} ->
-        {:ok, %{rows: result.rows, total_bytes_processed: result.total_bytes_processed}}
+        {:ok,
+         %{
+           rows: result.rows,
+           total_bytes_processed: result.total_bytes_processed,
+           total_rows: result.total_rows
+         }}
 
       {:error, %{body: body}} ->
         error = Jason.decode!(body)["error"] |> GenUtils.process_bq_errors(user.id)
@@ -549,7 +623,29 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
 
       {:error, err} when is_atom(err) ->
         {:error, GenUtils.process_bq_errors(err, user.id)}
+
+      {:error, err} ->
+        {:error, err}
     end
+  end
+
+  @spec pg_sql_to_bq_sql(sql :: String.t()) :: String.t()
+  defp pg_sql_to_bq_sql(sql) when is_non_empty_binary(sql) do
+    sql
+    |> SqlUtils.pg_params_to_question_marks()
+    |> String.replace(~r/\."([\w\.]+)"/, ".\\1")
+    |> String.replace(~r/FROM\s+"(.+?)"/, "FROM \\1")
+    |> String.replace(~r/AS\s+"(\w+)"/, "AS \\1")
+  end
+
+  @spec pg_param_to_bq_param(param :: any()) :: map()
+  defp pg_param_to_bq_param(param) do
+    param = SqlUtils.normalize_datetime_param(param)
+
+    %Param{
+      parameterType: %Type{type: SchemaTypes.to_schema_type(param)},
+      parameterValue: %Value{value: param}
+    }
   end
 
   @spec env_project_id :: String.t()

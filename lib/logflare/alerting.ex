@@ -9,6 +9,7 @@ defmodule Logflare.Alerting do
   alias Logflare.Alerting.AlertsScheduler
   alias Logflare.Backends
   alias Logflare.Backends.Adaptor
+  alias Logflare.Backends.Adaptor.BigQueryAdaptor
   alias Logflare.Backends.Adaptor.SlackAdaptor
   alias Logflare.Backends.Adaptor.WebhookAdaptor
   alias Logflare.Cluster
@@ -407,11 +408,13 @@ defmodule Logflare.Alerting do
          {:ok, transformed_query} <-
            Logflare.Sql.transform(alert_query.language, expanded_query, alert_query.user_id),
          {:ok, result} <-
-           Logflare.BqRepo.query_with_sql_and_params(
-             alert_query.user,
-             alert_query.user.bigquery_project_id || env_project_id(),
-             transformed_query,
-             [],
+           BigQueryAdaptor.execute_query(
+             {
+               alert_query.user.bigquery_project_id || env_project_id(),
+               alert_query.user.bigquery_dataset_id,
+               alert_query.user.id
+             },
+             {transformed_query, []},
              parameterMode: "NAMED",
              maxResults: 1000,
              location: alert_query.user.bigquery_dataset_location,

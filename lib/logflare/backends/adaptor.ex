@@ -16,6 +16,7 @@ defmodule Logflare.Backends.Adaptor do
   @type t :: module()
   @type query :: Query.t() | Ecto.Query.t() | String.t() | {String.t(), [term()]}
   @type source_backend :: {Source.t(), Backend.t()}
+  @type query_identifier :: identifier() | Backend.t() | tuple()
 
   def child_spec(%Source{} = source, %Backend{} = backend) do
     adaptor_module = get_adaptor(backend)
@@ -111,6 +112,12 @@ defmodule Logflare.Backends.Adaptor do
   @callback cast_config(param :: map()) :: Ecto.Changeset.t()
 
   @doc """
+  Optional callback to convert an Ecto query to the backend's native SQL format.
+  """
+  @callback ecto_to_sql(query :: Ecto.Query.t(), opts :: Keyword.t()) ::
+              {:ok, {String.t(), [term()]}} | {:error, term()}
+
+  @doc """
   Queries the backend using an endpoint query.
 
   The `opts` parameter can be used to include backend-specific options.
@@ -118,7 +125,7 @@ defmodule Logflare.Backends.Adaptor do
   Depending on the backend, this will return a list of rows or
   a map with rows and optional metadata (e.g., total_bytes_processed).
   """
-  @callback execute_query(identifier() | struct(), query(), opts :: Keyword.t()) ::
+  @callback execute_query(query_identifier(), query(), opts :: Keyword.t()) ::
               {:ok, [term()]} | {:ok, map()} | {:error, :not_implemented} | {:error, term()}
 
   @doc """
@@ -189,7 +196,8 @@ defmodule Logflare.Backends.Adaptor do
   """
   @callback validate_config(changeset :: Ecto.Changeset.t()) :: Ecto.Changeset.t()
 
-  @optional_callbacks format_batch: 1,
+  @optional_callbacks ecto_to_sql: 2,
+                      format_batch: 1,
                       format_batch: 2,
                       map_query_parameters: 4,
                       pre_ingest: 3,
