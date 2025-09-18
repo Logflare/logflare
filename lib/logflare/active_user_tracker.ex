@@ -11,19 +11,7 @@ defmodule Logflare.ActiveUserTracker do
     {:ok, %{pubsub_server: server, node_name: Phoenix.PubSub.node_name(server)}}
   end
 
-  def handle_diff(diff, state) do
-    for {topic, {joins, leaves}} <- diff do
-      for {key, meta} <- joins do
-        msg = {:join, key, meta}
-        Phoenix.PubSub.direct_broadcast!(state.node_name, state.pubsub_server, topic, msg)
-      end
-
-      for {key, meta} <- leaves do
-        msg = {:leave, key, meta}
-        Phoenix.PubSub.direct_broadcast!(state.node_name, state.pubsub_server, topic, msg)
-      end
-    end
-
+  def handle_diff(_diff, state) do
     {:ok, state}
   end
 end
