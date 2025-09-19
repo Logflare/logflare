@@ -6,8 +6,8 @@ defmodule Logflare.GenSingleton do
 
   If Watcher terminates abnormally, parent supervisor will restart all processes.
   """
-
   use Supervisor
+
   alias Logflare.GenSingleton
   alias Logflare.GenSingleton.Watcher
 

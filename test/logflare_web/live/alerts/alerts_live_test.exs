@@ -1,6 +1,6 @@
 defmodule LogflareWeb.AlertsLiveTest do
   use LogflareWeb.ConnCase
-  import Phoenix.LiveViewTest
+
   alias Logflare.Backends.Adaptor.WebhookAdaptor
   alias Logflare.Backends.Adaptor.SlackAdaptor
 

@@ -1,6 +1,5 @@
 defmodule Logflare.AlertingTest do
-  @moduledoc false
-  use Logflare.DataCase
+  use Logflare.DataCase, async: false
 
   alias Logflare.Alerting
   alias Logflare.Alerting.AlertQuery
@@ -55,8 +54,7 @@ defmodule Logflare.AlertingTest do
     }
 
     setup do
-      start_supervised!(Alerting.Supervisor)
-      :ok
+      start_alerting_supervisor!()
     end
 
     def alert_query_fixture(user, attrs \\ %{}) do
@@ -153,9 +151,13 @@ defmodule Logflare.AlertingTest do
     test "delete_alert_query/1 deletes the alert_query", %{user: user} do
       alert_query = alert_query_fixture(user)
 
-      TestUtils.retry_assert(fn ->
-        assert {:ok, %AlertQuery{}} = Alerting.delete_alert_query(alert_query)
+      Logflare.Cluster.Utils
+      |> expect(:erpc_call, 2, fn _node, func ->
+        func.()
       end)
+
+      :timer.sleep(500)
+      assert {:ok, %AlertQuery{}} = Alerting.delete_alert_query(alert_query)
 
       assert_raise Ecto.NoResultsError, fn -> Alerting.get_alert_query!(alert_query.id) end
       assert nil == Alerting.get_alert_job(alert_query.id)
@@ -263,10 +265,7 @@ defmodule Logflare.AlertingTest do
 
   describe "quantum integration" do
     setup do
-      start_supervised!(Alerting.Supervisor)
-      # wait for scheduler init to finish
-      :timer.sleep(500)
-      :ok
+      start_alerting_supervisor!()
     end
 
     test "upsert_alert_job/1, get_alert_job/1, delete_alert_job/1, count_alert_jobs/0 retrieves alert job",
@@ -355,5 +354,11 @@ defmodule Logflare.AlertingTest do
                } = Alerting.get_alert_job(alert_id)
       end)
     end
+  end
+
+  defp start_alerting_supervisor! do
+    start_supervised!(Logflare.Alerting.Supervisor)
+    # wait for scheduler init to finish
+    :timer.sleep(500)
   end
 end
