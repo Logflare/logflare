@@ -332,6 +332,7 @@ defmodule Logflare.Google.BigQuery do
     |> GenUtils.maybe_parse_google_api_result()
   end
 
+  @spec patch_dataset_labels(User.t()) :: {:ok, :patched} | {:error, :not_patched}
   def patch_dataset_labels(%User{} = user) do
     conn = GenUtils.get_conn()
     dataset_id = user.bigquery_dataset_id || Integer.to_string(user.id) <> env_dataset_id_append()
