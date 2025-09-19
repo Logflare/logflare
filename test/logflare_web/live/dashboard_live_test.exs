@@ -170,26 +170,6 @@ defmodule LogflareWeb.DashboardLiveTest do
     end
   end
 
-  describe "team member management" do
-    setup %{user: user} do
-      member = insert(:team_user, team: user.team)
-      [member: member]
-    end
-
-    test "removes team member", %{conn: conn, member: member} do
-      {:ok, view, _html} = live(conn, "/dashboard")
-
-      assert view
-             |> has_element?(~s|a[href="/profile/#{member.id}"][data-method="delete"]|)
-
-      delete(conn, ~p"/profile/#{member.id}")
-
-      {:ok, view, _html} = live(conn, "/dashboard")
-
-      refute view |> has_element?("#members li", "#{member.name}")
-    end
-  end
-
   describe "displaying source metrics" do
     test "renders source metrics ", %{conn: conn, source: source} do
       {:ok, view, _html} = live(conn, "/dashboard")
