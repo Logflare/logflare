@@ -262,13 +262,6 @@ hooks.DocumentVisibility = {
       });
     });
   },
-
-  destroyed() {
-    document.removeEventListener(
-      "visibilitychange",
-      this.handleVisibilityChange,
-    );
-  },
 };
 
 export default hooks;
