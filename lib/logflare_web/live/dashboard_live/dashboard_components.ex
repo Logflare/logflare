@@ -163,11 +163,7 @@ defmodule LogflareWeb.DashboardLive.DashboardComponents do
           <.link href={"mailto:#{member.email}"} class="tw-text-white">
             <%= member.name || member.email %>
           </.link>
-
           <span :if={current_team_user?(member, @team_user)}>you</span>
-          <.link :if={not current_team_user?(member, @team_user)} href={~p"/profile/#{member}"} data-confirm="Delete member?" class="dashboard-links" method="delete">
-            <i class="fa fa-trash"></i>
-          </.link>
         </li>
       </ul>
       <.link href={~p"/account/edit#team-members"} class="tw-text-white tw-mt-2">
