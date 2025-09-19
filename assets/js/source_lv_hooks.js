@@ -256,11 +256,19 @@ hooks.FormatTimestamps = {
 
 hooks.DocumentVisibility = {
   mounted() {
-    document.addEventListener("visibilitychange", () => {
+    this.handleVisibilityChange = () => {
       this.pushEvent("visibility_change", {
         visibility: document.visibilityState,
       });
-    });
+    };
+    document.addEventListener("visibilitychange", this.handleVisibilityChange);
+  },
+
+  destroyed() {
+    document.removeEventListener(
+      "visibilitychange",
+      this.handleVisibilityChange,
+    );
   },
 };
 
