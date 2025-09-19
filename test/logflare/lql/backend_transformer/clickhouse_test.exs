@@ -172,7 +172,7 @@ defmodule Logflare.Lql.BackendTransformer.ClickHouseTest do
       select_rule = %{path: "event_message", wildcard: false}
 
       result = ClickHouse.transform_select_rule(select_rule, %{})
-      assert result == {:field, :event_message, []}
+      assert result == {:field, "event_message", []}
     end
 
     test "transforms field select rule for nested field" do

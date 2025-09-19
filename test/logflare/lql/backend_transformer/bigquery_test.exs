@@ -268,7 +268,7 @@ defmodule Logflare.Lql.BackendTransformer.BigQueryTest do
 
       result = BigQuery.transform_select_rule(select_rule, %{})
 
-      assert result == {:field, :event_message, []}
+      assert result == {:field, "event_message", []}
     end
 
     test "transforms nested field select rule" do
@@ -284,7 +284,7 @@ defmodule Logflare.Lql.BackendTransformer.BigQueryTest do
 
       result = BigQuery.transform_select_rule(select_rule, %{})
 
-      assert result == {:field, :timestamp, []}
+      assert result == {:field, "timestamp", []}
     end
   end
 
