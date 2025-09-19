@@ -179,23 +179,32 @@ defmodule LogflareWeb.DashboardLive.DashboardComponents do
   attr :sources, :list, required: true
 
   def saved_searches(assigns) do
+    assigns =
+      assigns
+      |> assign(
+        :searches,
+        for(
+          source <- assigns.sources,
+          saved_search <- source.saved_searches,
+          do: {source, saved_search}
+        )
+      )
+
     ~H"""
     <div>
       <h5 class="header-margin">Saved Searches</h5>
-      <%= if Enum.all?(@sources, &(Map.get(&1, :saved_searches) == [])) do %>
+      <div :if={Enum.empty?(@searches)}>
         Your saved searches will show up here. Save some searches!
-      <% end %>
+      </div>
       <ul class="list-unstyled">
-        <%= for source <- @sources, saved_search <- source.saved_searches do %>
-          <li>
-            <.link href={~p"/sources/#{source}/search?#{%{querystring: saved_search.querystring, tailing: saved_search.tailing}}"} class="tw-text-white">
-              <%= source.name %>:<%= saved_search.querystring %>
-            </.link>
-            <.link href={~p"/sources/#{source}/saved-searches/#{saved_search}"} data-confirm="Delete saved search?" method="delete" class="dashboard-links">
-              <i class="fa fa-trash"></i>
-            </.link>
-          </li>
-        <% end %>
+        <li :for={{source, saved_search} <- @searches}>
+          <.link href={~p"/sources/#{source}/search?#{%{querystring: saved_search.querystring, tailing: saved_search.tailing}}"} class="tw-text-white">
+            <%= source.name %>:<%= saved_search.querystring %>
+          </.link>
+          <span phx-click="delete_saved_search" phx-value-id={saved_search.id} data-confirm="Delete saved search?" class="tw-text-xs tw-ml-1.5 tw-text-white tw-cursor-pointer">
+            <i class="fa fa-trash"></i>
+          </span>
+        </li>
       </ul>
     </div>
     """
