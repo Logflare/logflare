@@ -26,6 +26,19 @@ logflare_health =
   ]
   |> filter_nil_kv_pairs.()
 
+http_connection_pools =
+  case System.get_env("LOGFLARE_HTTP_CONNECTION_POOLS") do
+    nil ->
+      # Default behavior - include all providers
+      ["all"]
+
+    config when is_binary(config) ->
+      config
+      |> String.split(",")
+      |> Enum.map(&String.trim/1)
+      |> Enum.map(&String.downcase/1)
+  end
+
 config :logflare,
        Logflare.PubSub,
        [
@@ -51,7 +64,8 @@ config :logflare,
          encryption_key_default: System.get_env("LOGFLARE_DB_ENCRYPTION_KEY"),
          encryption_key_retired: System.get_env("LOGFLARE_DB_ENCRYPTION_KEY_RETIRED"),
          metadata: logflare_metadata,
-         health: logflare_health
+         health: logflare_health,
+         http_connection_pools: http_connection_pools
        ]
        |> filter_nil_kv_pairs.()
 
