@@ -17,6 +17,14 @@ defmodule Logflare.GenSingleton.Watcher do
     GenServer.start_link(__MODULE__, {self(), args}, [])
   end
 
+  def child_spec(args) do
+    %{
+      id: __MODULE__,
+      start: {__MODULE__, :start_link, [args]},
+      restart: Keyword.get(args, :restart, :permanent)
+    }
+  end
+
   @doc """
   Get the pid of the global singleton process. it will return the same pid for all nodes in cluster.
   """
@@ -49,6 +57,11 @@ defmodule Logflare.GenSingleton.Watcher do
   end
 
   @impl true
+  def handle_info({:DOWN, ref, :process, _pid, reason}, state)
+      when ref == state.monitor_ref and reason in [:normal, :shutdown] do
+    {:stop, reason, state}
+  end
+
   def handle_info({:DOWN, ref, :process, _pid, _reason}, state) when ref == state.monitor_ref do
     Logger.debug(
       "GenSingleton | monitor_pid DOWN received for #{inspect(state.monitor_pid)}, scheduling check..."
