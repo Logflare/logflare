@@ -161,12 +161,13 @@ defmodule Logflare.Mixfile do
       {:google_gax, github: "Logflare/elixir-google-gax", ref: "6772193", override: true},
 
       # Ecto
-      {:ecto, "~> 3.12"},
-      {:ecto_sql, "~> 3.12"},
+      {:ecto, "~> 3.13"},
+      {:ecto_sql, "~> 3.13"},
       {:typed_ecto_schema, "~> 0.4.3", runtime: false},
 
       # ClickHouse
-      {:ch, "~> 0.3.2"},
+      {:ch, "~> 0.5"},
+      {:ecto_ch, "~> 0.8"},
 
       # DataFrames
       {:explorer, "~> 0.11.1"},
