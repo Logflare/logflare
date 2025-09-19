@@ -75,7 +75,7 @@ defmodule Logflare.Lql.BackendTransformer.ClickHouse do
 
       dynamic(
         [l],
-        fragment("? BETWEEN ? AND ?", field(l, ^String.to_atom(field_path)), ^lvalue, ^rvalue)
+        fragment("? BETWEEN ? AND ?", field(l, ^field_path), ^lvalue, ^rvalue)
       )
     else
       dynamic_where_filter_rule(
@@ -102,7 +102,7 @@ defmodule Logflare.Lql.BackendTransformer.ClickHouse do
   def transform_select_rule(%{path: path} = _select_rule, _transformation_data)
       when is_binary(path) do
     if path in @special_top_level or not String.contains?(path, ".") do
-      {:field, String.to_atom(path), []}
+      {:field, path, []}
     else
       {:nested_field, path, []}
     end
@@ -175,7 +175,7 @@ defmodule Logflare.Lql.BackendTransformer.ClickHouse do
   defp where_match_filter_rule(query, rule) do
     if not is_nil(rule.values) and rule.operator == :range do
       [lvalue, rvalue] = rule.values
-      field_path = String.to_atom(rule.path)
+      field_path = rule.path
       where(query, [l], fragment("? BETWEEN ? AND ?", field(l, ^field_path), ^lvalue, ^rvalue))
     else
       where(
@@ -192,52 +192,50 @@ defmodule Logflare.Lql.BackendTransformer.ClickHouse do
           modifiers :: map()
         ) :: Query.dynamic_expr()
   defp dynamic_where_filter_rule(field_path, operator, value, modifiers) do
-    field_atom = String.to_atom(field_path)
-
     clause =
       case operator do
         :> ->
-          dynamic([l], field(l, ^field_atom) > ^value)
+          dynamic([l], field(l, ^field_path) > ^value)
 
         :>= ->
-          dynamic([l], field(l, ^field_atom) >= ^value)
+          dynamic([l], field(l, ^field_path) >= ^value)
 
         :< ->
-          dynamic([l], field(l, ^field_atom) < ^value)
+          dynamic([l], field(l, ^field_path) < ^value)
 
         :<= ->
-          dynamic([l], field(l, ^field_atom) <= ^value)
+          dynamic([l], field(l, ^field_path) <= ^value)
 
         := ->
           case value do
-            :NULL -> dynamic([l], fragment("? IS NULL", field(l, ^field_atom)))
-            _ -> dynamic([l], field(l, ^field_atom) == ^value)
+            :NULL -> dynamic([l], fragment("? IS NULL", field(l, ^field_path)))
+            _ -> dynamic([l], field(l, ^field_path) == ^value)
           end
 
         :"~" ->
           # ClickHouse uses match() function for regex
-          dynamic([l], fragment("match(?, ?)", field(l, ^field_atom), ^value))
+          dynamic([l], fragment("match(?, ?)", field(l, ^field_path), ^value))
 
         :string_contains ->
           # ClickHouse uses position() function for string search
-          dynamic([l], fragment("position(?, ?) > 0", field(l, ^field_atom), ^value))
+          dynamic([l], fragment("position(?, ?) > 0", field(l, ^field_path), ^value))
 
         :list_includes ->
           # ClickHouse uses has() function for array membership
-          dynamic([l], fragment("has(?, ?)", field(l, ^field_atom), ^value))
+          dynamic([l], fragment("has(?, ?)", field(l, ^field_path), ^value))
 
         :list_includes_regexp ->
           # ClickHouse uses arrayExists with lambda for regex matching in arrays
           dynamic(
             [l],
-            fragment("arrayExists(x -> match(x, ?), ?)", ^value, field(l, ^field_atom))
+            fragment("arrayExists(x -> match(x, ?), ?)", ^value, field(l, ^field_path))
           )
       end
 
     if negated?(modifiers) do
       case {operator, value} do
         {:=, :NULL} -> dynamic([l], not (^clause))
-        {_, _} -> dynamic([l], fragment("? IS NULL", field(l, ^field_atom)) or not (^clause))
+        {_, _} -> dynamic([l], fragment("? IS NULL", field(l, ^field_path)) or not (^clause))
       end
     else
       clause
@@ -250,8 +248,7 @@ defmodule Logflare.Lql.BackendTransformer.ClickHouse do
   @spec build_combined_select(Query.t(), select_rules :: [map()]) :: Query.t()
   defp build_combined_select(query, select_rules) do
     Enum.reduce(select_rules, query, fn %{path: path}, acc_query ->
-      field_atom = String.to_atom(path)
-      select_merge(acc_query, [l], %{^field_atom => field(l, ^field_atom)})
+      select_merge(acc_query, [l], %{^path => field(l, ^path)})
     end)
   end
 end
