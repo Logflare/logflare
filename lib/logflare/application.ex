@@ -201,40 +201,65 @@ defmodule Logflare.Application do
        }},
       {Finch,
        name: Logflare.FinchDefault,
-       pools: %{
-         # default pool uses finch defaults
-         :default => [protocols: [:http1]],
-         #  explicitly set http2 for other pools for multiplexing
-         "https://bigquery.googleapis.com" => [
-           protocols: [:http1],
-           size: 115,
-           count: http1_count,
-           start_pool_metrics?: true
-         ],
-         "https://http-intake.logs.datadoghq.com" => [
-           protocols: [:http1],
-           start_pool_metrics?: true
-         ],
-         "https://http-intake.logs.us3.datadoghq.com" => [
-           protocols: [:http1],
-           start_pool_metrics?: true
-         ],
-         "https://http-intake.logs.us5.datadoghq.com" => [
-           protocols: [:http1],
-           start_pool_metrics?: true
-         ],
-         "https://http-intake.logs.datadoghq.eu" => [
-           protocols: [:http1],
-           start_pool_metrics?: true
-         ],
-         "https://http-intake.logs.ap1.datadoghq.com" => [
-           protocols: [:http2],
-           start_pool_metrics?: true
-         ]
-       }},
+       pools:
+         %{
+           # default pool uses finch defaults
+           :default => [protocols: [:http1]],
+           #  explicitly set http2 for other pools for multiplexing
+           "https://bigquery.googleapis.com" => [
+             protocols: [:http1],
+             size: 115,
+             count: http1_count,
+             start_pool_metrics?: true
+           ]
+         }
+         |> Map.merge(datadog_connection_pools())},
       {Finch,
        name: Logflare.FinchDefaultHttp1, pools: %{default: [protocols: [:http1], size: 50]}}
     ]
+  end
+
+  def datadog_connection_pools do
+    providers = Application.get_env(:logflare, :http_connection_pools, ["all"])
+
+    cond do
+      "all" in providers ->
+        # Explicitly provision all DataDog pools
+        all_datadog_pools()
+
+      "datadog" in providers ->
+        # DataDog is explicitly listed
+        all_datadog_pools()
+
+      true ->
+        # DataDog not in the list, don't include DataDog pools
+        %{}
+    end
+  end
+
+  defp all_datadog_pools do
+    %{
+      "https://http-intake.logs.datadoghq.com" => [
+        protocols: [:http1],
+        start_pool_metrics?: true
+      ],
+      "https://http-intake.logs.us3.datadoghq.com" => [
+        protocols: [:http1],
+        start_pool_metrics?: true
+      ],
+      "https://http-intake.logs.us5.datadoghq.com" => [
+        protocols: [:http1],
+        start_pool_metrics?: true
+      ],
+      "https://http-intake.logs.datadoghq.eu" => [
+        protocols: [:http1],
+        start_pool_metrics?: true
+      ],
+      "https://http-intake.logs.ap1.datadoghq.com" => [
+        protocols: [:http2],
+        start_pool_metrics?: true
+      ]
+    }
   end
 
   def startup_tasks do
