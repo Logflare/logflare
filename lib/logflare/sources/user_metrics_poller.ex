@@ -68,6 +68,7 @@ defmodule Logflare.Sources.UserMetricsPoller do
   def init(user_id) do
     sources = get_sources(user_id)
     schedule_poll()
+    schedule_sources_refresh()
 
     {:ok, %{user_id: user_id, sources: sources}}
   end
