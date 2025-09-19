@@ -222,13 +222,25 @@ defmodule Logflare.Backends.BigQueryAdaptorTest do
 
       pid = self()
 
-      Logflare.Backends.Adaptor.BigQueryAdaptor.GoogleApiClient
-      |> expect(:append_rows, fn {:arrow, dataframe}, _project, _dataset, _table_id ->
+      Google.Cloud.Bigquery.Storage.V1.BigQueryWrite.Stub
+      |> stub(:append_rows, fn _channel ->
+        {:ok, %GRPC.Client.Stream{}}
+      end)
+
+      GRPC.Stub
+      |> stub(:connect, fn _url, _keywords ->
+        {:ok, %GRPC.Channel{}}
+      end)
+      |> stub(:send_request, fn stream, _request ->
+        {:ok, stream}
+      end)
+      |> stub(:end_stream, fn stream ->
+        {:ok, stream}
+      end)
+      |> stub(:recv, fn _stream ->
         send(pid, :streamed)
 
-        assert {:ok, _} = DataFrame.dump_ipc(dataframe)
-        assert {:ok, _} = DataFrame.dump_ipc_record_batch(dataframe)
-        {:ok, %Google.Cloud.Bigquery.Storage.V1.AppendRowsResponse{}}
+        {:ok, []}
       end)
 
       assert {:ok, 2} = Backends.ingest_logs([log_event, log_event_2], source)
