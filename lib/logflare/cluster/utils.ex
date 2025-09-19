@@ -26,8 +26,8 @@ defmodule Logflare.Cluster.Utils do
     :rpc.multicall(node_list_all(), mod, func, args, timeout)
   end
 
-  @spec erpc_call(node(), function(), non_neg_integer()) :: term()
-  def erpc_call(node, func, timeout \\ 5_000) do
+  @spec rpc_call(node(), function(), non_neg_integer()) :: term()
+  def rpc_call(node, func, timeout \\ 5_000) do
     :erpc.call(node, func, timeout)
   end
 end

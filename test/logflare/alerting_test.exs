@@ -152,7 +152,7 @@ defmodule Logflare.AlertingTest do
       alert_query = alert_query_fixture(user)
 
       Logflare.Cluster.Utils
-      |> expect(:erpc_call, 2, fn _node, func ->
+      |> expect(:rpc_call, 2, fn _node, func ->
         func.()
       end)
 
