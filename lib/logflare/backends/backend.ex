@@ -17,6 +17,7 @@ defmodule Logflare.Backends.Backend do
     webhook: Adaptor.WebhookAdaptor,
     elastic: Adaptor.ElasticAdaptor,
     datadog: Adaptor.DatadogAdaptor,
+    sentry: Adaptor.SentryAdaptor,
     postgres: Adaptor.PostgresAdaptor,
     bigquery: Adaptor.BigQueryAdaptor,
     loki: Adaptor.LokiAdaptor,
