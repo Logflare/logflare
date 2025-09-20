@@ -1,6 +1,5 @@
 %{
   "acceptor_pool": {:hex, :acceptor_pool, "1.0.0", "43c20d2acae35f0c2bcd64f9d2bde267e459f0f3fd23dab26485bf518c281b21", [:rebar3], [], "hexpm", "0cbcd83fdc8b9ad2eee2067ef8b91a14858a5883cb7cd800e6fcd5803e158788"},
-  "arrow": {:git, "https://github.com/treebee/elixir-arrow.git", "018a255de0f513f6da919176cb9e2265f17fca00", []},
   "atomic_map": {:hex, :atomic_map, "0.9.3", "3c7f1302e0590164732d08ca999708efbb2cd768abf2911cf140280ce2dc499d", [:mix], [], "hexpm", "c237babf301bd2435bd85b96cffc973022b4cbb7721537059ee0dd3bb74938d2"},
   "aws_signature": {:hex, :aws_signature, "0.4.0", "0dfc06d47f204ec13873d8f8fe6df38f3b0aa9ffdfd5764d66999e09c73a5eeb", [:rebar3], [], "hexpm", "1e02cc39234e84a083570e0a437ba301792f58928b677e8fd01a44ae8d5c6ee8"},
   "bandit": {:hex, :bandit, "1.5.7", "6856b1e1df4f2b0cb3df1377eab7891bec2da6a7fd69dc78594ad3e152363a50", [:mix], [{:hpax, "~> 1.0.0", [hex: :hpax, repo: "hexpm", optional: false]}, {:plug, "~> 1.14", [hex: :plug, repo: "hexpm", optional: false]}, {:telemetry, "~> 0.4 or ~> 1.0", [hex: :telemetry, repo: "hexpm", optional: false]}, {:thousand_island, "~> 1.0", [hex: :thousand_island, repo: "hexpm", optional: false]}, {:websock, "~> 0.5", [hex: :websock, repo: "hexpm", optional: false]}], "hexpm", "f2dd92ae87d2cbea2fa9aa1652db157b6cba6c405cb44d4f6dd87abba41371cd"},
@@ -142,7 +141,6 @@
   "scrivener_ecto": {:hex, :scrivener_ecto, "2.7.0", "cf64b8cb8a96cd131cdbcecf64e7fd395e21aaa1cb0236c42a7c2e34b0dca580", [:mix], [{:ecto, "~> 3.3", [hex: :ecto, repo: "hexpm", optional: false]}, {:scrivener, "~> 2.4", [hex: :scrivener, repo: "hexpm", optional: false]}], "hexpm", "e809f171687806b0031129034352f5ae44849720c48dd839200adeaf0ac3e260"},
   "scrivener_html": {:git, "https://github.com/Logflare/scrivener_html.git", "29767aa0e222b4c96bfe3eea1876497bdc5d7a3f", []},
   "scrivener_list": {:hex, :scrivener_list, "2.0.1", "2b3b5c6aaf21d13b76071e755af498b641f37a069e34e68585ba4c624095d719", [:mix], [{:scrivener_ecto, "~> 1.0 or ~> 2.0", [hex: :scrivener_ecto, repo: "hexpm", optional: false]}], "hexpm", "dc82a317268e24b29891b2de659cd82d15654f49ceee86846de2c96b3c4f4e5d"},
-  "serde_arrow": {:git, "https://github.com/Benjamin-Philip/serde_arrow.git", "36e61d2d43eea911bbc7f6bb7127adc2ed62e658", [branch: "main"]},
   "sleeplocks": {:hex, :sleeplocks, "1.1.3", "96a86460cc33b435c7310dbd27ec82ca2c1f24ae38e34f8edde97f756503441a", [:rebar3], [], "hexpm", "d3b3958552e6eb16f463921e70ae7c767519ef8f5be46d7696cc1ed649421321"},
   "sobelow": {:hex, :sobelow, "0.14.0", "dd82aae8f72503f924fe9dd97ffe4ca694d2f17ec463dcfd365987c9752af6ee", [:mix], [{:jason, "~> 1.0", [hex: :jason, repo: "hexpm", optional: false]}], "hexpm", "7ecf91e298acfd9b24f5d761f19e8f6e6ac585b9387fb6301023f1f2cd5eed5f"},
   "ssl_verify_fun": {:hex, :ssl_verify_fun, "1.1.7", "354c321cf377240c7b8716899e182ce4890c5938111a1296add3ec74cf1715df", [:make, :mix, :rebar3], [], "hexpm", "fe4c190e8f37401d30167c8c405eda19469f34577987c76dde613e838bbc67f8"},
