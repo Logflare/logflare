@@ -7,13 +7,12 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor.SharedRepo do
     otp_app: :logflare,
     adapter: Ecto.Adapters.Postgres
 
-  require Logger
-
-  alias Logflare.Sources.Source
-  alias Logflare.Backends.Backend
-
-  alias Logflare.Backends.Adaptor.PostgresAdaptor.Supervisor
   alias Logflare.Backends.Adaptor.PostgresAdaptor.Repo.Migrations
+  alias Logflare.Backends.Adaptor.PostgresAdaptor.Supervisor
+  alias Logflare.Backends.Backend
+  alias Logflare.Sources.Source
+
+  require Logger
 
   @doc """
   Start new repository for given backend definition
@@ -115,7 +114,7 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor.SharedRepo do
     :exit, {:noproc, _} -> {:error, :cannot_connect}
   end
 
-  @spec down!(Source.t()) :: :ok | {:error, term()}
+  @spec down!(Source.t()) :: Ecto.Adapters.SQL.query_result()
   def down!(%Source{} = source) do
     Migrations.down(source)
   end
