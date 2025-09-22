@@ -382,4 +382,15 @@ defmodule Logflare.Factory do
       language: :bq_sql
     }
   end
+
+  def saved_search_factory do
+    %Logflare.SavedSearch{
+      lql_filters: [],
+      lql_charts: [],
+      querystring: "test query #{TestUtils.random_string()}",
+      saved_by_user: true,
+      tailing: true,
+      source: build(:source)
+    }
+  end
 end
