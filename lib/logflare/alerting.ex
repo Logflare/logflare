@@ -372,7 +372,7 @@ defmodule Logflare.Alerting do
     with pid when is_pid(pid) <- GenServer.whereis(scheduler_name()) do
       pid
       |> node()
-      |> Cluster.Utils.erpc_call(func)
+      |> Cluster.Utils.rpc_call(func)
     end
   end
 
