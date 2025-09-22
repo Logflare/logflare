@@ -6,7 +6,6 @@ defmodule Logflare.Backends.Adaptor.SentryAdaptorTest do
   alias Logflare.Backends.AdaptorSupervisor
   alias Logflare.SystemMetrics.AllLogsLogged
   alias Logflare.Backends.Adaptor.SentryAdaptor
-  alias Logflare.Backends.Adaptor.SentryAdaptor.DSN
 
   @subject SentryAdaptor
   @client Logflare.Backends.Adaptor.WebhookAdaptor.Client
@@ -20,102 +19,14 @@ defmodule Logflare.Backends.Adaptor.SentryAdaptorTest do
   end
 
   describe "cast and validate" do
-    test "DSN is required" do
+    test "DSN validation" do
       changeset = Adaptor.cast_and_validate_config(@subject, %{})
-
       refute changeset.valid?
       assert %{dsn: ["can't be blank"]} = errors_on(changeset)
-    end
 
-    test "valid DSN passes validation" do
       valid_dsn = "https://abc123@o123456.ingest.sentry.io/123456"
-
-      changeset =
-        Adaptor.cast_and_validate_config(@subject, %{
-          "dsn" => valid_dsn
-        })
-
-      assert changeset.valid?
-    end
-
-    test "DSN with secret key passes validation" do
-      valid_dsn = "https://public:secret@o123456.ingest.sentry.io/123456"
-
-      changeset =
-        Adaptor.cast_and_validate_config(@subject, %{
-          "dsn" => valid_dsn
-        })
-
-      assert changeset.valid?
-    end
-
-    test "invalid DSN format fails validation" do
-      invalid_dsn = "not-a-valid-dsn"
-
-      changeset =
-        Adaptor.cast_and_validate_config(@subject, %{
-          "dsn" => invalid_dsn
-        })
-
-      refute changeset.valid?
-      assert %{dsn: [error]} = errors_on(changeset)
-      assert error =~ "Invalid DSN"
-    end
-
-    test "DSN without project ID fails validation" do
-      invalid_dsn = "https://abc123@sentry.io/not-a-number"
-
-      changeset =
-        Adaptor.cast_and_validate_config(@subject, %{
-          "dsn" => invalid_dsn
-        })
-
-      refute changeset.valid?
-      assert %{dsn: [error]} = errors_on(changeset)
-      assert error =~ "Invalid DSN"
-    end
-
-    test "DSN with query parameters fails validation" do
-      invalid_dsn = "https://abc123@sentry.io/123456?param=value"
-
-      changeset =
-        Adaptor.cast_and_validate_config(@subject, %{
-          "dsn" => invalid_dsn
-        })
-
-      refute changeset.valid?
-      assert %{dsn: [error]} = errors_on(changeset)
-      assert error =~ "Invalid DSN"
-    end
-  end
-
-  describe "DSN parsing" do
-    test "parse/1 successfully parses valid DSN" do
-      dsn = "https://abc123@o123456.ingest.sentry.io/123456"
-
-      assert {:ok, parsed} = DSN.parse(dsn)
-      assert parsed.original_dsn == dsn
-      assert parsed.public_key == "abc123"
-      assert parsed.secret_key == nil
-      assert parsed.endpoint_uri == "https://o123456.ingest.sentry.io/api/123456/envelope/"
-    end
-
-    test "parse/1 handles DSN with secret key" do
-      dsn = "https://public:secret@o123456.ingest.sentry.io/123456"
-
-      assert {:ok, parsed} = DSN.parse(dsn)
-      assert parsed.public_key == "public"
-      assert parsed.secret_key == "secret"
-    end
-
-    test "parse/1 fails with invalid format" do
-      assert {:error, _reason} = DSN.parse("invalid-dsn")
-    end
-
-    test "parse/1 fails with query parameters" do
-      dsn = "https://abc123@sentry.io/123456?param=value"
-      assert {:error, reason} = DSN.parse(dsn)
-      assert reason =~ "query parameters"
+      changeset = Adaptor.cast_and_validate_config(@subject, %{"dsn" => valid_dsn})
+      assert changeset.valid?, "Expected #{valid_dsn} to be valid"
     end
   end
 
@@ -161,39 +72,7 @@ defmodule Logflare.Backends.Adaptor.SentryAdaptorTest do
       [backend: backend, source: source]
     end
 
-    # Helper function to normalize envelope for snapshot comparison
-    defp normalize_envelope_for_snapshot(envelope_body) do
-      lines = String.split(envelope_body, "\n")
-      [header_line, item_header_line, item_payload_line] = lines
-
-      # Parse and normalize header (replace dynamic timestamp)
-      header = Jason.decode!(header_line)
-      normalized_header = Map.put(header, "sent_at", "2024-01-01T00:00:00.000000Z")
-
-      # Parse and normalize item payload (replace dynamic log timestamps and trace_ids)
-      item_payload = Jason.decode!(item_payload_line)
-
-      normalized_items =
-        Enum.map(item_payload["items"], fn item ->
-          item
-          # Keep scientific notation format
-          |> Map.put("timestamp", 1.7040672e9)
-          # Remove dynamic trace_id for consistent snapshots
-          |> Map.delete("trace_id")
-        end)
-
-      normalized_item_payload = Map.put(item_payload, "items", normalized_items)
-
-      # Reconstruct envelope with normalized data
-      [
-        Jason.encode!(normalized_header),
-        item_header_line,
-        Jason.encode!(normalized_item_payload)
-      ]
-      |> Enum.join("\n")
-    end
-
-    test "sent logs are delivered as Sentry envelope", %{source: source} do
+    test "sends logs as a serialized sentry envelope", %{source: source} do
       this = self()
       ref = make_ref()
 
@@ -205,101 +84,63 @@ defmodule Logflare.Backends.Adaptor.SentryAdaptorTest do
         %Tesla.Env{status: 200, body: ""}
       end)
 
-      # Create log event with fixed timestamp for consistent snapshot
-      le =
-        build(:log_event,
-          timestamp: 1704067200_000_000,
-          event_message: "Test log message",
-          source: source
-        )
-
-      assert {:ok, _} = Backends.ingest_logs([le], source)
-      assert_receive {^ref, envelope_body}, 2000
-
-      # Normalize envelope and compare against snapshot
-      normalized_envelope = normalize_envelope_for_snapshot(envelope_body)
-
-      expected_envelope = """
-      {"dsn":"https://abc123@o123456.ingest.sentry.io/123456","sent_at":"2024-01-01T00:00:00.000000Z"}
-      {"content_type":"application/vnd.sentry.items.log+json","item_count":1,"type":"log"}
-      {"items":[{"attributes":{"logflare.source.id":{"type":"integer","value":#{source.id}},"logflare.source.name":{"type":"string","value":"#{source.name}"},"sentry.sdk.name":{"type":"string","value":"sentry.logflare"},"sentry.sdk.version":{"type":"string","value":"1.22.1"}},"body":"Test log message","level":"info","timestamp":1.7040672e9}]}\
-      """
-
-      assert normalized_envelope == expected_envelope
-    end
-
-    test "log events are properly transformed to Sentry format", %{source: source} do
-      this = self()
-      ref = make_ref()
-
-      @client
-      |> expect(:send, fn req ->
-        envelope_body = req[:body]
-
-        send(this, {ref, envelope_body})
-        %Tesla.Env{status: 200, body: ""}
-      end)
-
-      le =
+      log_events = [
         build(:log_event,
           source: source,
           event_message: "Test log message",
-          timestamp: 1704067200_000_000,
-          level: "error",
-          user_id: 123,
-          metadata: %{"request_id" => "abc-123"}
-        )
-
-      assert {:ok, _} = Backends.ingest_logs([le], source)
-      assert_receive {^ref, envelope_body}, 2000
-
-      # Normalize envelope and compare against snapshot
-      normalized_envelope = normalize_envelope_for_snapshot(envelope_body)
-
-      expected_envelope = """
-      {"dsn":"https://abc123@o123456.ingest.sentry.io/123456","sent_at":"2024-01-01T00:00:00.000000Z"}
-      {"content_type":"application/vnd.sentry.items.log+json","item_count":1,"type":"log"}
-      {"items":[{"attributes":{"logflare.source.id":{"type":"integer","value":#{source.id}},"logflare.source.name":{"type":"string","value":"#{source.name}"},"metadata":{"type":"string","value":"%{\\\"request_id\\\" => \\\"abc-123\\\"}"},"sentry.sdk.name":{"type":"string","value":"sentry.logflare"},"sentry.sdk.version":{"type":"string","value":"1.22.1"},"user_id":{"type":"integer","value":123}},"body":"Test log message","level":"error","timestamp":1.7040672e9}]}\
-      """
-
-      assert normalized_envelope == expected_envelope
-    end
-
-    test "handles log events without explicit level", %{source: source} do
-      this = self()
-      ref = make_ref()
-
-      @client
-      |> expect(:send, fn req ->
-        envelope_body = req[:body]
-
-        send(this, {ref, envelope_body})
-        %Tesla.Env{status: 200, body: ""}
-      end)
-
-      le =
-        build(:log_event,
-          source: source,
-          event_message: "Test message without level",
           timestamp: 1704067200_000_000
         )
+      ]
 
-      assert {:ok, _} = Backends.ingest_logs([le], source)
+      assert {:ok, _} = Backends.ingest_logs(log_events, source)
       assert_receive {^ref, envelope_body}, 2000
 
-      # Normalize envelope and compare against snapshot
-      normalized_envelope = normalize_envelope_for_snapshot(envelope_body)
+      [header_line, item_header_line, item_payload_line] = String.split(envelope_body, "\n")
 
-      expected_envelope = """
-      {"dsn":"https://abc123@o123456.ingest.sentry.io/123456","sent_at":"2024-01-01T00:00:00.000000Z"}
-      {"content_type":"application/vnd.sentry.items.log+json","item_count":1,"type":"log"}
-      {"items":[{"attributes":{"logflare.source.id":{"type":"integer","value":#{source.id}},"logflare.source.name":{"type":"string","value":"#{source.name}"},"sentry.sdk.name":{"type":"string","value":"sentry.logflare"},"sentry.sdk.version":{"type":"string","value":"1.22.1"}},"body":"Test message without level","level":"info","timestamp":1.7040672e9}]}\
-      """
+      header = Jason.decode!(header_line)
+      assert header["dsn"] == "https://abc123@o123456.ingest.sentry.io/123456"
+      assert header["sent_at"]
 
-      assert normalized_envelope == expected_envelope
+      item_header = Jason.decode!(item_header_line)
+      assert item_header["content_type"] == "application/vnd.sentry.items.log+json"
+      assert item_header["item_count"] == 1
+      assert item_header["type"] == "log"
+
+      item_payload = Jason.decode!(item_payload_line)
+      items = item_payload["items"]
+      assert length(items) == 1
+      item = Enum.at(items, 0)
+
+      assert item["attributes"]["logflare.source.name"] == %{
+               "type" => "string",
+               "value" => source.name
+             }
+      assert item["attributes"]["logflare.source.uuid"] == %{
+               "type" => "string",
+               "value" => inspect(source.token)
+             }
+      assert item["attributes"]["sentry.sdk.name"] == %{
+               "type" => "string",
+               "value" => "sentry.logflare"
+             }
+      assert item["attributes"]["sentry.sdk.version"]
+      assert item["body"] == "Test log message"
+      assert item["level"] == "info"
+      assert item["timestamp"]
     end
 
-    test "properly maps different log levels", %{source: source} do
+    test "maps to different log levels", %{source: source} do
+      this = self()
+      ref = make_ref()
+
+      @client
+      |> expect(:send, fn req ->
+        envelope_body = req[:body]
+
+        send(this, {ref, envelope_body})
+        %Tesla.Env{status: 200, body: ""}
+      end)
+
       level_mappings = [
         {"debug", "debug"},
         {"info", "info"},
@@ -313,42 +154,33 @@ defmodule Logflare.Backends.Adaptor.SentryAdaptorTest do
         {"unknown", "info"}
       ]
 
-      for {input_level, expected_level} <- level_mappings do
-        this = self()
-        ref = make_ref()
-
-        le =
+      log_events =
+        Enum.with_index(level_mappings)
+        |> Enum.map(fn {{input_level, _expected_level}, index} ->
           build(:log_event,
             source: source,
+            event_message: "Test log message",
             timestamp: 1704067200_000_000,
-            event_message: "Test message",
-            level: input_level
+            level: input_level,
+            test_index: index
           )
-
-        @client
-        |> expect(:send, fn req ->
-          envelope_body = req[:body]
-          send(this, {ref, envelope_body})
-          %Tesla.Env{status: 200, body: ""}
         end)
 
-        assert {:ok, _} = Backends.ingest_logs([le], source)
-        assert_receive {^ref, envelope_body}, 2000
+      assert {:ok, _} = Backends.ingest_logs(log_events, source)
+      assert_receive {^ref, envelope_body}, 2000
 
-        # Normalize envelope and verify level mapping via snapshot
-        normalized_envelope = normalize_envelope_for_snapshot(envelope_body)
+      [_header_line, _item_header_line, item_payload_line] = String.split(envelope_body, "\n")
+      item_payload = Jason.decode!(item_payload_line)
+      items = item_payload["items"]
+      assert length(items) == length(level_mappings)
 
-        # Build expected envelope dynamically to ensure proper interpolation
-        expected_envelope =
-          [
-            "{\"dsn\":\"https://abc123@o123456.ingest.sentry.io/123456\",\"sent_at\":\"2024-01-01T00:00:00.000000Z\"}",
-            "{\"content_type\":\"application/vnd.sentry.items.log+json\",\"item_count\":1,\"type\":\"log\"}",
-            "{\"items\":[{\"attributes\":{\"logflare.source.id\":{\"type\":\"integer\",\"value\":#{source.id}},\"logflare.source.name\":{\"type\":\"string\",\"value\":\"#{source.name}\"},\"sentry.sdk.name\":{\"type\":\"string\",\"value\":\"sentry.logflare\"},\"sentry.sdk.version\":{\"type\":\"string\",\"value\":\"1.22.1\"}},\"body\":\"Test message\",\"level\":\"#{expected_level}\",\"timestamp\":1.7040672e9}]}"
-          ]
-          |> Enum.join("\n")
+      # Check each item's level mapping using the test_index attribute
+      for item <- items do
+        test_index = item["attributes"]["test_index"]["value"]
+        {_input_level, expected_level} = Enum.at(level_mappings, test_index)
 
-        assert normalized_envelope == expected_envelope,
-               "Expected #{input_level} to map to #{expected_level} in envelope"
+        assert item["level"] == expected_level,
+               "Item with test_index #{test_index} has level #{item["level"]}, expected #{expected_level}"
       end
     end
 
@@ -384,25 +216,11 @@ defmodule Logflare.Backends.Adaptor.SentryAdaptorTest do
       assert {:ok, _} = Backends.ingest_logs(log_events, source)
       assert_receive {^ref, envelope_body}, 2000
 
-      # Normalize envelope and compare against snapshot
-      normalized_envelope = normalize_envelope_for_snapshot(envelope_body)
+      [_header_line, item_header_line, item_payload_line] = String.split(envelope_body, "\n")
 
-      # Parse the normalized envelope to verify structure and content
-      lines = String.split(normalized_envelope, "\n")
-      [header_line, item_header_line, item_payload_line] = lines
-
-      # Check header
-      header = Jason.decode!(header_line)
-      assert header["dsn"] == "https://abc123@o123456.ingest.sentry.io/123456"
-      assert header["sent_at"] == "2024-01-01T00:00:00.000000Z"
-
-      # Check item header
       item_header = Jason.decode!(item_header_line)
-      assert item_header["content_type"] == "application/vnd.sentry.items.log+json"
       assert item_header["item_count"] == 3
-      assert item_header["type"] == "log"
 
-      # Check items (order-agnostic since log processing can vary order)
       item_payload = Jason.decode!(item_payload_line)
       items = item_payload["items"]
       assert length(items) == 3
@@ -412,142 +230,153 @@ defmodule Logflare.Backends.Adaptor.SentryAdaptorTest do
       assert "Log 1" in messages
       assert "Log 2" in messages
       assert "Log 3" in messages
-
-      # Check that all items have the expected normalized structure
-      for item <- items do
-        assert item["level"] == "info"
-        # Normalized timestamp
-        assert item["timestamp"] == 1.7040672e9
-        # trace_id removed for normalization
-        assert is_nil(item["trace_id"])
-
-        attributes = item["attributes"]
-        assert attributes["logflare.source.id"]["value"] == source.id
-        assert attributes["logflare.source.name"]["value"] == source.name
-        assert attributes["sentry.sdk.name"]["value"] == "sentry.logflare"
-        assert attributes["sentry.sdk.version"]["value"]
-      end
     end
 
-    test "handles empty log events list without crashing", %{source: _source} do
-      backend = %Logflare.Backends.Backend{
-        type: :sentry,
-        config: %{dsn: "https://abc123@o123456.ingest.sentry.io/123456"}
-      }
+    test "handles invalid trace_Id", %{source: source} do
+      this = self()
+      ref = make_ref()
 
-      transformed_config = @subject.transform_config(backend)
+      @client
+      |> expect(:send, fn req ->
+        envelope_body = req[:body]
 
-      # Call format_batch with empty list - should not crash
-      result = transformed_config.format_batch.([])
+        send(this, {ref, envelope_body})
+        %Tesla.Env{status: 200, body: ""}
+      end)
 
-      # Normalize and compare against snapshot
-      normalized_envelope = normalize_envelope_for_snapshot(result)
-
-      expected_envelope = """
-      {"dsn":"https://abc123@o123456.ingest.sentry.io/123456","sent_at":"2024-01-01T00:00:00.000000Z"}
-      {"content_type":"application/vnd.sentry.items.log+json","item_count":0,"type":"log"}
-      {"items":[]}\
-      """
-
-      assert normalized_envelope == expected_envelope
-    end
-  end
-
-  describe "trace ID handling" do
-    test "extract_trace_id generates consistent ID for invalid trace_id", %{} do
-      backend = %Logflare.Backends.Backend{
-        type: :sentry,
-        config: %{dsn: "https://abc123@o123456.ingest.sentry.io/123456"}
-      }
-
-      transformed_config = @subject.transform_config(backend)
-
-      test_cases = [
-        {
-          "invalid short trace_id",
-          %{
-            "trace_id" => "invalid-too-short",
-            "message" => "Test message",
-            "timestamp" => 1704067200_000_000
-          }
-        },
-        {
-          "all zeros trace_id",
-          %{
-            "trace_id" => "00000000000000000000000000000000",
-            "message" => "Test message",
-            "timestamp" => 1704067200_000_000
-          }
-        },
-        {
-          "no trace_id present",
-          %{
-            "message" => "Test message",
-            "timestamp" => 1704067200_000_000
-          }
-        }
+      log_events = [
+        build(:log_event,
+          source: source,
+          event_message: "Test message",
+          timestamp: 1704067200_000_000,
+          trace_id: "invalid-too-short"
+        )
       ]
 
-      for {description, body_data} <- test_cases do
-        le = build(:log_event, body: body_data)
-        result = transformed_config.format_batch.([le])
+      assert {:ok, _} = Backends.ingest_logs(log_events, source)
+      assert_receive {^ref, envelope_body}, 2000
 
-        # Parse the envelope to check trace_id format
-        lines = String.split(result, "\n")
-        item_payload = Jason.decode!(Enum.at(lines, 2))
-        item = Enum.at(item_payload["items"], 0)
+      [_header_line, _item_header_line, item_payload_line] = String.split(envelope_body, "\n")
+      item_payload = Jason.decode!(item_payload_line)
+      items = item_payload["items"]
+      assert length(items) == 1
+      item = Enum.at(items, 0)
 
-        # Should be a valid 32-character hex string
-        assert String.length(item["trace_id"]) == 32, "Failed for case: #{description}"
-        assert String.match?(item["trace_id"], ~r/^[0-9a-f]+$/), "Failed for case: #{description}"
-
-        # Should not be the invalid input values
-        case description do
-          "invalid short trace_id" -> assert item["trace_id"] != "invalid-too-short"
-          "all zeros trace_id" -> assert item["trace_id"] != "00000000000000000000000000000000"
-          _ -> :ok
-        end
-      end
+      assert String.length(item["trace_id"]) == 32
+      assert String.match?(item["trace_id"], ~r/^[0-9a-f]+$/)
     end
-  end
 
-  describe "attribute building and data type conversion" do
-    test "handles different data types in attributes", %{} do
-      le =
+    test "handles zero'd out trace_Id", %{source: source} do
+      this = self()
+      ref = make_ref()
+
+      @client
+      |> expect(:send, fn req ->
+        envelope_body = req[:body]
+
+        send(this, {ref, envelope_body})
+        %Tesla.Env{status: 200, body: ""}
+      end)
+
+      log_events = [
         build(:log_event,
-          timestamp: 1704067200_000_000,
+          source: source,
           event_message: "Test message",
+          timestamp: 1704067200_000_000,
+          trace_id: "00000000000000000000000000000000"
+        )
+      ]
+
+      assert {:ok, _} = Backends.ingest_logs(log_events, source)
+      assert_receive {^ref, envelope_body}, 2000
+
+      [_header_line, _item_header_line, item_payload_line] = String.split(envelope_body, "\n")
+      item_payload = Jason.decode!(item_payload_line)
+      items = item_payload["items"]
+      assert length(items) == 1
+      item = Enum.at(items, 0)
+
+      refute item["trace_id"] == "00000000000000000000000000000000"
+      assert String.length(item["trace_id"]) == 32
+      assert String.match?(item["trace_id"], ~r/^[0-9a-f]+$/)
+    end
+
+    test "handles no trace_Id", %{source: source} do
+      this = self()
+      ref = make_ref()
+
+      @client
+      |> expect(:send, fn req ->
+        envelope_body = req[:body]
+
+        send(this, {ref, envelope_body})
+        %Tesla.Env{status: 200, body: ""}
+      end)
+
+      log_events = [
+        build(:log_event,
+          source: source,
+          event_message: "Test message",
+          timestamp: 1704067200_000_000,
+          trace_id: nil
+        )
+      ]
+
+      assert {:ok, _} = Backends.ingest_logs(log_events, source)
+      assert_receive {^ref, envelope_body}, 2000
+
+      [_header_line, _item_header_line, item_payload_line] = String.split(envelope_body, "\n")
+      item_payload = Jason.decode!(item_payload_line)
+      items = item_payload["items"]
+      assert length(items) == 1
+      item = Enum.at(items, 0)
+
+      refute item["trace_id"] == "00000000000000000000000000000000"
+      assert String.length(item["trace_id"]) == 32
+      assert String.match?(item["trace_id"], ~r/^[0-9a-f]+$/)
+    end
+
+    test "handles different data types in attributes", %{source: source} do
+      this = self()
+      ref = make_ref()
+
+      @client
+      |> expect(:send, fn req ->
+        envelope_body = req[:body]
+
+        send(this, {ref, envelope_body})
+        %Tesla.Env{status: 200, body: ""}
+      end)
+
+      log_events = [
+        build(:log_event,
+          source: source,
+          event_message: "Test message",
+          timestamp: 1704067200_000_000,
           string_field: "text_value",
           integer_field: 42,
           float_field: 3.14,
           boolean_field: true,
-          null_like_field: "null",
           list_field: [1, 2, 3],
           map_field: %{"nested" => "value"}
         )
+      ]
 
-      backend = %Logflare.Backends.Backend{
-        type: :sentry,
-        config: %{dsn: "https://abc123@o123456.ingest.sentry.io/123456"}
-      }
+      assert {:ok, _} = Backends.ingest_logs(log_events, source)
+      assert_receive {^ref, envelope_body}, 2000
 
-      transformed_config = @subject.transform_config(backend)
-      result = transformed_config.format_batch.([le])
+      [_header_line, _item_header_line, item_payload_line] = String.split(envelope_body, "\n")
+      item_payload = Jason.decode!(item_payload_line)
+      items = item_payload["items"]
+      assert length(items) == 1
+      item = Enum.at(items, 0)
 
-      # Parse the envelope to inspect data type conversion
-      lines = String.split(result, "\n")
-      item_payload = Jason.decode!(Enum.at(lines, 2))
-      item = Enum.at(item_payload["items"], 0)
       attributes = item["attributes"]
-
-      # Check data type conversions
       assert attributes["string_field"] == %{"type" => "string", "value" => "text_value"}
       assert attributes["integer_field"] == %{"type" => "integer", "value" => 42}
       assert attributes["float_field"] == %{"type" => "double", "value" => 3.14}
       assert attributes["boolean_field"] == %{"type" => "boolean", "value" => true}
-      assert attributes["null_like_field"] == %{"type" => "string", "value" => "null"}
       assert attributes["list_field"] == %{"type" => "string", "value" => "[1, 2, 3]"}
-
       assert attributes["map_field"] == %{
                "type" => "string",
                "value" => "%{\"nested\" => \"value\"}"

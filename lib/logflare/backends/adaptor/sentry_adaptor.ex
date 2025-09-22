@@ -47,7 +47,11 @@ defmodule Logflare.Backends.Adaptor.SentryAdaptor do
           headers: %{"content-type" => @sentry_envelope_content_type},
           http: "http2",
           format_batch: fn log_events ->
-            build_envelope(log_events, parsed_dsn.original_dsn)
+            case log_events do
+              # If there are no log events, don't build an envelope
+              [] -> nil
+              _ -> build_envelope(log_events, parsed_dsn.original_dsn)
+            end
           end
         }
 
@@ -114,17 +118,17 @@ defmodule Logflare.Backends.Adaptor.SentryAdaptor do
     )
   end
 
-  defp translate_log_event(%Logflare.LogEvent{} = le) do
+  defp translate_log_event(%Logflare.LogEvent{} = log_event) do
     # Convert microsecond timestamp to seconds (with fractional part)
     # Use timestamp from outer body if available, fallback to nested body
-    timestamp_seconds = (le.body["timestamp"] || le.body["body"]["timestamp"]) / 1_000_000
+    timestamp_seconds = log_event.body["timestamp"] / 1_000_000
 
     # Extract message from the log event
-    message = le.body["event_message"] || ""
+    message = log_event.body["event_message"] || ""
 
     # Determine log level - check both body and nested body
     level =
-      case le.body["body"]["level"] || le.body["level"] do
+      case log_event.body["level"] do
         nil -> "info"
         level when is_binary(level) -> normalize_level(level)
         level when is_atom(level) -> normalize_level(Atom.to_string(level))
@@ -132,10 +136,10 @@ defmodule Logflare.Backends.Adaptor.SentryAdaptor do
       end
 
     # Extract or generate trace_id
-    trace_id = extract_trace_id(le)
+    trace_id = extract_trace_id(log_event)
 
     # Build attributes from log event metadata
-    attributes = build_attributes(le)
+    attributes = build_attributes(log_event)
 
     %{
       "timestamp" => timestamp_seconds,
@@ -146,30 +150,29 @@ defmodule Logflare.Backends.Adaptor.SentryAdaptor do
     }
   end
 
-  defp build_attributes(%Logflare.LogEvent{} = le) do
+  defp build_attributes(%Logflare.LogEvent{} = log_event) do
     base_attrs = %{
-      "sentry.sdk.name" => to_sentry_value(@sdk_name),
-      "sentry.sdk.version" => to_sentry_value(Application.spec(:logflare, :vsn) |> to_string()),
-      "logflare.source.id" => to_sentry_value(le.source.id),
-      "logflare.source.name" => to_sentry_value(le.source.name)
+      "sentry.sdk.name" => @sdk_name,
+      "sentry.sdk.version" => Application.spec(:logflare, :vsn) |> to_string(),
+      "logflare.source.name" => log_event.source.name,
+      "logflare.source.service_name" => log_event.source.service_name,
+      "logflare.source.uuid" => log_event.source.token
     }
 
     top_level_attrs =
-      le.body
+      log_event.body
       |> Map.drop([
         "timestamp",
-        "message",
         "event_message",
         "level",
         "trace_id",
         "trace.id",
-        "body",
-        "id"
       ])
-      |> Map.new(fn {k, v} -> {k, to_sentry_value(v)} end)
 
     base_attrs
     |> Map.merge(top_level_attrs)
+    |> Enum.filter(fn {_k, v} -> v != nil end)
+    |> Map.new(fn {k, v} -> {k, to_sentry_value(v)} end)
   end
 
   defp valid_trace_id?(trace_id) when is_binary(trace_id) do
@@ -186,12 +189,8 @@ defmodule Logflare.Backends.Adaptor.SentryAdaptor do
 
   defp valid_trace_id?(_), do: false
 
-  defp extract_trace_id(%Logflare.LogEvent{} = le) do
-    # Look for trace_id in nested body first, then outer body
-    nested_body = le.body["body"] || %{}
-
-    case nested_body["trace_id"] || nested_body["trace.id"] || le.body["trace_id"] ||
-           le.body["trace.id"] do
+  defp extract_trace_id(%Logflare.LogEvent{} = log_event) do
+    case log_event.body["trace_id"] || log_event.body["trace.id"] do
       nil ->
         generate_trace_id()
 
