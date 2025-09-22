@@ -59,12 +59,8 @@ defmodule Logflare.Logs.SearchQueriesTest do
     test "count aggregation for timestamp" do
       base_query = from("test_table")
 
-      query = SearchQueries.select_merge_agg_value(base_query, :count, :timestamp)
-
-      assert %Ecto.Query{} = query
-
-      # Verify select clause is added
-      assert query.select != nil
+      assert %Ecto.Query{select: select} = SearchQueries.select_merge_agg_value(base_query, :count, :timestamp)
+      assert select != nil
     end
   end
 
