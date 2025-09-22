@@ -422,7 +422,8 @@ defmodule Logflare.Alerting do
              use_query_cache: use_query_cache,
              labels: %{
                "alert_id" => alert_query.id
-             }
+             },
+             query_type: :alerts
            ) do
       {:ok, result}
     else

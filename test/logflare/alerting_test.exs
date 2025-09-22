@@ -171,12 +171,37 @@ defmodule Logflare.AlertingTest do
     test "execute_alert_query", %{user: user} do
       alert_query = insert(:alert, user: user) |> Logflare.Repo.preload([:user])
 
-      expect(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, 1, fn _conn, _proj_id, _opts ->
+      pid = self()
+
+      expect(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, 1, fn _conn, _proj_id, opts ->
+        send(pid, {:reservation, opts[:body].reservation})
         {:ok, TestUtils.gen_bq_response([%{"testing" => "123"}])}
       end)
 
       assert {:ok, %{rows: [%{"testing" => "123"}], total_bytes_processed: 1}} =
                Alerting.execute_alert_query(alert_query)
+
+      #  no reservation set by user
+      assert_receive {:reservation, nil}
+    end
+
+    test "execute_alert_query with reservation" do
+      user =
+        insert(:user, bigquery_reservation_alerts: "projects/1234567890/reservations/1234567890")
+
+      alert_query = insert(:alert, user: user) |> Logflare.Repo.preload([:user])
+      pid = self()
+
+      expect(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, 1, fn _conn, _proj_id, opts ->
+        send(pid, {:reservation, opts[:body].reservation})
+        {:ok, TestUtils.gen_bq_response([%{"testing" => "123"}])}
+      end)
+
+      assert {:ok, %{rows: [%{"testing" => "123"}], total_bytes_processed: 1}} =
+               Alerting.execute_alert_query(alert_query)
+
+      assert_receive {:reservation, reservation}
+      assert reservation == user.bigquery_reservation_alerts
     end
 
     test "execute_alert_query with query composition" do

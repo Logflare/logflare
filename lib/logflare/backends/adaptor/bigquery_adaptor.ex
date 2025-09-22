@@ -167,7 +167,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
 
   def execute_query({project_id, dataset_id, user_id}, {sql_string, params}, opts)
       when is_non_empty_binary(sql_string) and is_list(params) and is_list(opts) do
-    with %User{} = user <- Users.get(user_id) do
+    with %User{} = user <- Users.Cache.get(user_id) do
       query_opts = build_base_query_opts(user, [dataset_id: dataset_id] ++ opts)
       execute_user_query(user, project_id, sql_string, params, query_opts)
     end
@@ -176,7 +176,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
   def execute_query({_project_id, dataset_id, user_id}, %Ecto.Query{} = query, opts)
       when is_list(opts) do
     with {:ok, {bq_sql, bq_params}} <- ecto_to_sql(query, opts),
-         %User{} = user <- Users.get(user_id) do
+         %User{} = user <- Users.Cache.get(user_id) do
       bq_sql = String.replace(bq_sql, "$$__DEFAULT_DATASET__$$", dataset_id)
 
       execute_user_query(
@@ -195,7 +195,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
       )
       when is_list(opts) do
     with {:ok, {bq_sql, bq_params}} <- ecto_to_sql(query, opts),
-         %User{} = user <- Users.get(user_id) do
+         %User{} = user <- Users.Cache.get(user_id) do
       execute_user_query(user, bq_sql, bq_params, build_base_query_opts(user, opts))
     end
   end
@@ -514,12 +514,17 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
   end
 
   @spec build_base_query_opts(user :: User.t(), opts :: Keyword.t()) :: Keyword.t()
-  defp build_base_query_opts(%User{bigquery_dataset_location: bigquery_dataset_location}, opts) do
+  defp build_base_query_opts(%User{} = user, opts) do
     [
-      # parameterMode: "NAMED",
-      location: bigquery_dataset_location,
+      location: user.bigquery_dataset_location,
       use_query_cache: Keyword.get(opts, :use_query_cache, true),
-      dryRun: Keyword.get(opts, :dry_run, false)
+      dryRun: Keyword.get(opts, :dry_run, false),
+      reservation:
+        case Keyword.get(opts, :query_type) do
+          :search -> user.bigquery_reservation_search
+          :alerts -> user.bigquery_reservation_alerts
+          _ -> nil
+        end
     ]
   end
 
@@ -532,7 +537,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
           opts :: Keyword.t()
         ) :: {:ok, Query.t()} | {:error, any()}
   defp execute_query_with_context(user_id, query_string, declared_params, input_params, nil, opts) do
-    user = Users.get(user_id)
+    user = Users.Cache.get(user_id)
     bq_params = build_bq_params(declared_params, input_params)
     query_opts = build_base_query_opts(user, opts)
 
@@ -555,7 +560,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
          %Query{} = endpoint_query,
          opts
        ) do
-    user = Users.get(user_id)
+    user = Users.Cache.get(user_id)
     bq_params = build_bq_params(declared_params, input_params)
 
     query_opts =
