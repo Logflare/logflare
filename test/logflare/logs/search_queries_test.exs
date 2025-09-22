@@ -40,8 +40,8 @@ defmodule Logflare.Logs.SearchQueriesTest do
       value = "test_value"
 
       assert %Ecto.Query{
-        joins: [_, _]
-      } = SearchQueries.source_log_event_by_path(bq_table_id, path, value)
+               joins: [_, _]
+             } = SearchQueries.source_log_event_by_path(bq_table_id, path, value)
     end
 
     test "extracts last column name as string" do
@@ -57,7 +57,9 @@ defmodule Logflare.Logs.SearchQueriesTest do
     test "count aggregation for timestamp" do
       base_query = from("test_table")
 
-      assert %Ecto.Query{select: select} = SearchQueries.select_merge_agg_value(base_query, :count, :timestamp)
+      assert %Ecto.Query{select: select} =
+               SearchQueries.select_merge_agg_value(base_query, :count, :timestamp)
+
       assert select != nil
     end
   end
