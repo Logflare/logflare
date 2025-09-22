@@ -39,12 +39,9 @@ defmodule Logflare.Logs.SearchQueriesTest do
       path = "custom.field.name"
       value = "test_value"
 
-      query = SearchQueries.source_log_event_by_path(bq_table_id, path, value)
-
-      assert %Ecto.Query{} = query
-
-      # Verify joins for nested path
-      assert length(query.joins) == 2
+      assert %Ecto.Query{
+        joins: [_, _]
+      } = SearchQueries.source_log_event_by_path(bq_table_id, path, value)
     end
 
     test "extracts last column name as string" do
