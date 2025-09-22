@@ -31,7 +31,9 @@ defmodule Logflare.Backends.Adaptor.SentryAdaptor.DSN do
     uri = URI.parse(dsn)
 
     if uri.query do
-      throw("DSN with query parameters is not supported. Please remove query parameters from the DSN.")
+      throw(
+        "DSN with query parameters is not supported. Please remove query parameters from the DSN."
+      )
     end
 
     unless is_binary(uri.path) do
@@ -80,7 +82,8 @@ defmodule Logflare.Backends.Adaptor.SentryAdaptor.DSN do
         {:ok, {Enum.join(path, "/"), project_id}}
 
       _other ->
-        {:error, "expected the DSN path to end with an integer project ID, got: #{inspect(uri_path)}"}
+        {:error,
+         "expected the DSN path to end with an integer project ID, got: #{inspect(uri_path)}"}
     end
   end
 end

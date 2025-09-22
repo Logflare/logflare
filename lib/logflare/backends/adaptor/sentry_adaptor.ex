@@ -1,6 +1,5 @@
 defmodule Logflare.Backends.Adaptor.SentryAdaptor do
   @sdk_name "sentry.logflare"
-  @sdk_version "0.1.0"
   @sentry_envelope_content_type "application/x-sentry-envelope"
 
   @moduledoc """
@@ -56,7 +55,6 @@ defmodule Logflare.Backends.Adaptor.SentryAdaptor do
         raise ArgumentError, "Invalid Sentry DSN: #{reason}"
     end
   end
-
 
   @impl Logflare.Backends.Adaptor
   def execute_query(_ident, _query, _opts), do: {:error, :not_implemented}
@@ -122,7 +120,7 @@ defmodule Logflare.Backends.Adaptor.SentryAdaptor do
     timestamp_seconds = (le.body["timestamp"] || le.body["body"]["timestamp"]) / 1_000_000
 
     # Extract message from the log event
-    message = le.body["event_message"] || le.body["body"]["message"] || inspect(le.body)
+    message = le.body["event_message"] || ""
 
     # Determine log level - check both body and nested body
     level =
@@ -151,38 +149,26 @@ defmodule Logflare.Backends.Adaptor.SentryAdaptor do
   defp build_attributes(%Logflare.LogEvent{} = le) do
     base_attrs = %{
       "sentry.sdk.name" => to_sentry_value(@sdk_name),
-      "sentry.sdk.version" => to_sentry_value(@sdk_version),
-      "logflare.source.name" => to_sentry_value(le.source.name),
-      "logflare.source.id" => to_sentry_value(le.source.id)
+      "sentry.sdk.version" => to_sentry_value(Application.spec(:logflare, :vsn) |> to_string()),
+      "logflare.source.id" => to_sentry_value(le.source.id),
+      "logflare.source.name" => to_sentry_value(le.source.name)
     }
 
-    # Get the nested body data for metadata
-    nested_body = le.body["body"] || %{}
-
-    # Get direct metadata field as well
-    direct_metadata = le.body["metadata"] || %{}
-
-    # Add all metadata from the nested log event body, excluding standard fields
-    nested_attrs =
-      nested_body
-      |> Map.drop(["timestamp", "message", "event_message", "level", "trace_id", "trace.id"])
-      |> Map.new(fn {k, v} -> {k, to_sentry_value(v)} end)
-
-    # Add direct metadata attributes
-    metadata_attrs =
-      direct_metadata
-      |> Map.new(fn {k, v} -> {k, to_sentry_value(v)} end)
-
-    # Also process fields from the top-level body, excluding standard fields and LogEvent management fields
-    # This handles cases where fields are placed directly in le.body
     top_level_attrs =
       le.body
-      |> Map.drop(["timestamp", "message", "event_message", "level", "trace_id", "trace.id", "body", "metadata", "id", "valid", "drop", "sys_uint", "params", "ingested_at"])
+      |> Map.drop([
+        "timestamp",
+        "message",
+        "event_message",
+        "level",
+        "trace_id",
+        "trace.id",
+        "body",
+        "id"
+      ])
       |> Map.new(fn {k, v} -> {k, to_sentry_value(v)} end)
 
     base_attrs
-    |> Map.merge(nested_attrs)
-    |> Map.merge(metadata_attrs)
     |> Map.merge(top_level_attrs)
   end
 
@@ -204,11 +190,14 @@ defmodule Logflare.Backends.Adaptor.SentryAdaptor do
     # Look for trace_id in nested body first, then outer body
     nested_body = le.body["body"] || %{}
 
-    case nested_body["trace_id"] || nested_body["trace.id"] || le.body["trace_id"] || le.body["trace.id"] do
+    case nested_body["trace_id"] || nested_body["trace.id"] || le.body["trace_id"] ||
+           le.body["trace.id"] do
       nil ->
         generate_trace_id()
+
       trace_id when is_binary(trace_id) ->
         if valid_trace_id?(trace_id), do: trace_id, else: generate_trace_id()
+
       trace_id ->
         trace_id_string = to_string(trace_id)
         if valid_trace_id?(trace_id_string), do: trace_id_string, else: generate_trace_id()
@@ -246,5 +235,4 @@ defmodule Logflare.Backends.Adaptor.SentryAdaptor do
       v -> %{"value" => inspect(v), "type" => "string"}
     end
   end
-
 end

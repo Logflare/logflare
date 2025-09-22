@@ -172,12 +172,16 @@ defmodule Logflare.Backends.Adaptor.SentryAdaptorTest do
 
       # Parse and normalize item payload (replace dynamic log timestamps and trace_ids)
       item_payload = Jason.decode!(item_payload_line)
+
       normalized_items =
         Enum.map(item_payload["items"], fn item ->
           item
-          |> Map.put("timestamp", 1.7040672e9) # Keep scientific notation format
-          |> Map.delete("trace_id") # Remove dynamic trace_id for consistent snapshots
+          # Keep scientific notation format
+          |> Map.put("timestamp", 1.7040672e9)
+          # Remove dynamic trace_id for consistent snapshots
+          |> Map.delete("trace_id")
         end)
+
       normalized_item_payload = Map.put(item_payload, "items", normalized_items)
 
       # Reconstruct envelope with normalized data
@@ -202,13 +206,12 @@ defmodule Logflare.Backends.Adaptor.SentryAdaptorTest do
       end)
 
       # Create log event with fixed timestamp for consistent snapshot
-      le = build(:log_event,
-        source: source,
-        body: %{
-          "timestamp" => 1704067200_000_000, # 2024-01-01T00:00:00Z in microseconds
-          "message" => "Test log message"
-        }
-      )
+      le =
+        build(:log_event,
+          timestamp: 1704067200_000_000,
+          event_message: "Test log message",
+          source: source
+        )
 
       assert {:ok, _} = Backends.ingest_logs([le], source)
       assert_receive {^ref, envelope_body}, 2000
@@ -219,7 +222,7 @@ defmodule Logflare.Backends.Adaptor.SentryAdaptorTest do
       expected_envelope = """
       {"dsn":"https://abc123@o123456.ingest.sentry.io/123456","sent_at":"2024-01-01T00:00:00.000000Z"}
       {"content_type":"application/vnd.sentry.items.log+json","item_count":1,"type":"log"}
-      {"items":[{"attributes":{"logflare.source.id":{"type":"integer","value":#{source.id}},"logflare.source.name":{"type":"string","value":"#{source.name}"},"sentry.sdk.name":{"type":"string","value":"sentry.logflare"},"sentry.sdk.version":{"type":"string","value":"0.1.0"}},"body":"test-msg","level":"info","timestamp":1.7040672e9}]}\
+      {"items":[{"attributes":{"logflare.source.id":{"type":"integer","value":#{source.id}},"logflare.source.name":{"type":"string","value":"#{source.name}"},"sentry.sdk.name":{"type":"string","value":"sentry.logflare"},"sentry.sdk.version":{"type":"string","value":"1.22.1"}},"body":"Test log message","level":"info","timestamp":1.7040672e9}]}\
       """
 
       assert normalized_envelope == expected_envelope
@@ -240,14 +243,11 @@ defmodule Logflare.Backends.Adaptor.SentryAdaptorTest do
       le =
         build(:log_event,
           source: source,
-          message: "Test log message",
-          body: %{
-            "timestamp" => 1704067200_000_000, # Fixed timestamp for snapshot
-            "message" => "Test log message",
-            "level" => "error",
-            "user_id" => 123,
-            "metadata" => %{"request_id" => "abc-123"}
-          }
+          event_message: "Test log message",
+          timestamp: 1704067200_000_000,
+          level: "error",
+          user_id: 123,
+          metadata: %{"request_id" => "abc-123"}
         )
 
       assert {:ok, _} = Backends.ingest_logs([le], source)
@@ -259,7 +259,7 @@ defmodule Logflare.Backends.Adaptor.SentryAdaptorTest do
       expected_envelope = """
       {"dsn":"https://abc123@o123456.ingest.sentry.io/123456","sent_at":"2024-01-01T00:00:00.000000Z"}
       {"content_type":"application/vnd.sentry.items.log+json","item_count":1,"type":"log"}
-      {"items":[{"attributes":{"logflare.source.id":{"type":"integer","value":#{source.id}},"logflare.source.name":{"type":"string","value":"#{source.name}"},"metadata":{"type":"string","value":"%{\\\"request_id\\\" => \\\"abc-123\\\"}"},"sentry.sdk.name":{"type":"string","value":"sentry.logflare"},"sentry.sdk.version":{"type":"string","value":"0.1.0"},"user_id":{"type":"integer","value":123}},"body":"Test log message","level":"error","timestamp":1.7040672e9}]}\
+      {"items":[{"attributes":{"logflare.source.id":{"type":"integer","value":#{source.id}},"logflare.source.name":{"type":"string","value":"#{source.name}"},"metadata":{"type":"string","value":"%{\\\"request_id\\\" => \\\"abc-123\\\"}"},"sentry.sdk.name":{"type":"string","value":"sentry.logflare"},"sentry.sdk.version":{"type":"string","value":"1.22.1"},"user_id":{"type":"integer","value":123}},"body":"Test log message","level":"error","timestamp":1.7040672e9}]}\
       """
 
       assert normalized_envelope == expected_envelope
@@ -280,10 +280,8 @@ defmodule Logflare.Backends.Adaptor.SentryAdaptorTest do
       le =
         build(:log_event,
           source: source,
-          body: %{
-            "timestamp" => 1704067200_000_000, # Fixed timestamp for snapshot
-            "message" => "Test message without level"
-          }
+          event_message: "Test message without level",
+          timestamp: 1704067200_000_000
         )
 
       assert {:ok, _} = Backends.ingest_logs([le], source)
@@ -295,7 +293,7 @@ defmodule Logflare.Backends.Adaptor.SentryAdaptorTest do
       expected_envelope = """
       {"dsn":"https://abc123@o123456.ingest.sentry.io/123456","sent_at":"2024-01-01T00:00:00.000000Z"}
       {"content_type":"application/vnd.sentry.items.log+json","item_count":1,"type":"log"}
-      {"items":[{"attributes":{"logflare.source.id":{"type":"integer","value":#{source.id}},"logflare.source.name":{"type":"string","value":"#{source.name}"},"sentry.sdk.name":{"type":"string","value":"sentry.logflare"},"sentry.sdk.version":{"type":"string","value":"0.1.0"}},"body":"test-msg","level":"info","timestamp":1.7040672e9}]}\
+      {"items":[{"attributes":{"logflare.source.id":{"type":"integer","value":#{source.id}},"logflare.source.name":{"type":"string","value":"#{source.name}"},"sentry.sdk.name":{"type":"string","value":"sentry.logflare"},"sentry.sdk.version":{"type":"string","value":"1.22.1"}},"body":"Test message without level","level":"info","timestamp":1.7040672e9}]}\
       """
 
       assert normalized_envelope == expected_envelope
@@ -322,11 +320,9 @@ defmodule Logflare.Backends.Adaptor.SentryAdaptorTest do
         le =
           build(:log_event,
             source: source,
-            body: %{
-              "timestamp" => 1704067200_000_000, # Fixed timestamp for snapshot
-              "message" => "Test message",
-              "level" => input_level
-            }
+            timestamp: 1704067200_000_000,
+            event_message: "Test message",
+            level: input_level
           )
 
         @client
@@ -343,11 +339,13 @@ defmodule Logflare.Backends.Adaptor.SentryAdaptorTest do
         normalized_envelope = normalize_envelope_for_snapshot(envelope_body)
 
         # Build expected envelope dynamically to ensure proper interpolation
-        expected_envelope = [
-          "{\"dsn\":\"https://abc123@o123456.ingest.sentry.io/123456\",\"sent_at\":\"2024-01-01T00:00:00.000000Z\"}",
-          "{\"content_type\":\"application/vnd.sentry.items.log+json\",\"item_count\":1,\"type\":\"log\"}",
-          "{\"items\":[{\"attributes\":{\"logflare.source.id\":{\"type\":\"integer\",\"value\":#{source.id}},\"logflare.source.name\":{\"type\":\"string\",\"value\":\"#{source.name}\"},\"sentry.sdk.name\":{\"type\":\"string\",\"value\":\"sentry.logflare\"},\"sentry.sdk.version\":{\"type\":\"string\",\"value\":\"0.1.0\"}},\"body\":\"test-msg\",\"level\":\"#{expected_level}\",\"timestamp\":1.7040672e9}]}"
-        ] |> Enum.join("\n")
+        expected_envelope =
+          [
+            "{\"dsn\":\"https://abc123@o123456.ingest.sentry.io/123456\",\"sent_at\":\"2024-01-01T00:00:00.000000Z\"}",
+            "{\"content_type\":\"application/vnd.sentry.items.log+json\",\"item_count\":1,\"type\":\"log\"}",
+            "{\"items\":[{\"attributes\":{\"logflare.source.id\":{\"type\":\"integer\",\"value\":#{source.id}},\"logflare.source.name\":{\"type\":\"string\",\"value\":\"#{source.name}\"},\"sentry.sdk.name\":{\"type\":\"string\",\"value\":\"sentry.logflare\"},\"sentry.sdk.version\":{\"type\":\"string\",\"value\":\"1.22.1\"}},\"body\":\"Test message\",\"level\":\"#{expected_level}\",\"timestamp\":1.7040672e9}]}"
+          ]
+          |> Enum.join("\n")
 
         assert normalized_envelope == expected_envelope,
                "Expected #{input_level} to map to #{expected_level} in envelope"
@@ -368,27 +366,18 @@ defmodule Logflare.Backends.Adaptor.SentryAdaptorTest do
       log_events = [
         build(:log_event,
           source: source,
-          message: "Log 1",
-          body: %{
-            "timestamp" => 1704067200_000_000, # Fixed timestamp for snapshot
-            "message" => "Log 1"
-          }
+          event_message: "Log 1",
+          timestamp: 1704067200_000_000
         ),
         build(:log_event,
           source: source,
-          message: "Log 2",
-          body: %{
-            "timestamp" => 1704067200_000_000, # Fixed timestamp for snapshot
-            "message" => "Log 2"
-          }
+          event_message: "Log 2",
+          timestamp: 1704067200_000_000
         ),
         build(:log_event,
           source: source,
-          message: "Log 3",
-          body: %{
-            "timestamp" => 1704067200_000_000, # Fixed timestamp for snapshot
-            "message" => "Log 3"
-          }
+          event_message: "Log 3",
+          timestamp: 1704067200_000_000
         )
       ]
 
@@ -427,14 +416,16 @@ defmodule Logflare.Backends.Adaptor.SentryAdaptorTest do
       # Check that all items have the expected normalized structure
       for item <- items do
         assert item["level"] == "info"
-        assert item["timestamp"] == 1.7040672e9 # Normalized timestamp
-        assert is_nil(item["trace_id"]) # trace_id removed for normalization
+        # Normalized timestamp
+        assert item["timestamp"] == 1.7040672e9
+        # trace_id removed for normalization
+        assert is_nil(item["trace_id"])
 
         attributes = item["attributes"]
         assert attributes["logflare.source.id"]["value"] == source.id
         assert attributes["logflare.source.name"]["value"] == source.name
         assert attributes["sentry.sdk.name"]["value"] == "sentry.logflare"
-        assert attributes["sentry.sdk.version"]["value"] == "0.1.0"
+        assert attributes["sentry.sdk.version"]["value"]
       end
     end
 
@@ -522,17 +513,18 @@ defmodule Logflare.Backends.Adaptor.SentryAdaptorTest do
 
   describe "attribute building and data type conversion" do
     test "handles different data types in attributes", %{} do
-      le = build(:log_event, body: %{
-        "timestamp" => 1704067200_000_000,
-        "message" => "Test message",
-        "string_field" => "text_value",
-        "integer_field" => 42,
-        "float_field" => 3.14,
-        "boolean_field" => true,
-        "null_like_field" => "null",
-        "list_field" => [1, 2, 3],
-        "map_field" => %{"nested" => "value"}
-      })
+      le =
+        build(:log_event,
+          timestamp: 1704067200_000_000,
+          event_message: "Test message",
+          string_field: "text_value",
+          integer_field: 42,
+          float_field: 3.14,
+          boolean_field: true,
+          null_like_field: "null",
+          list_field: [1, 2, 3],
+          map_field: %{"nested" => "value"}
+        )
 
       backend = %Logflare.Backends.Backend{
         type: :sentry,
@@ -555,7 +547,11 @@ defmodule Logflare.Backends.Adaptor.SentryAdaptorTest do
       assert attributes["boolean_field"] == %{"type" => "boolean", "value" => true}
       assert attributes["null_like_field"] == %{"type" => "string", "value" => "null"}
       assert attributes["list_field"] == %{"type" => "string", "value" => "[1, 2, 3]"}
-      assert attributes["map_field"] == %{"type" => "string", "value" => "%{\"nested\" => \"value\"}"}
+
+      assert attributes["map_field"] == %{
+               "type" => "string",
+               "value" => "%{\"nested\" => \"value\"}"
+             }
     end
   end
 
