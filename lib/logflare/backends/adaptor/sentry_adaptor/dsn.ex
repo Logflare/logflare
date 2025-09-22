@@ -37,11 +37,11 @@ defmodule Logflare.Backends.Adaptor.SentryAdaptor.DSN do
     end
 
     unless is_binary(uri.path) do
-      throw("missing project ID at the end of the DSN URI: #{inspect(dsn)}")
+      throw("Configured DSN is missing project ID at the end of the DSN URI.")
     end
 
     unless is_binary(uri.userinfo) do
-      throw("missing user info in the DSN URI: #{inspect(dsn)}")
+      throw("Configured DSN is missing user info.")
     end
 
     {public_key, secret_key} =
