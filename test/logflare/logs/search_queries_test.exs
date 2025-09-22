@@ -49,9 +49,7 @@ defmodule Logflare.Logs.SearchQueriesTest do
       path = "some.nested.field"
       value = "test"
 
-      query = SearchQueries.source_log_event_by_path(bq_table_id, path, value)
-
-      assert %Ecto.Query{} = query
+      assert %Ecto.Query{} = SearchQueries.source_log_event_by_path(bq_table_id, path, value)
     end
   end
 
