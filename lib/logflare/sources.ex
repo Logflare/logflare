@@ -129,7 +129,7 @@ defmodule Logflare.Sources do
 
         %{
           user_id: user_id,
-          name: "#{type}-#{Ecto.UUID.generate()}",
+          name: "system.#{type}",
           system_source: true,
           system_source_type: type,
           token: Ecto.UUID.Atom.autogenerate(),
