@@ -516,7 +516,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
   @spec build_base_query_opts(user :: User.t(), opts :: Keyword.t()) :: Keyword.t()
   defp build_base_query_opts(%User{bigquery_dataset_location: bigquery_dataset_location}, opts) do
     [
-      parameterMode: "NAMED",
+      # parameterMode: "NAMED",
       location: bigquery_dataset_location,
       use_query_cache: Keyword.get(opts, :use_query_cache, true),
       dryRun: Keyword.get(opts, :dry_run, false)

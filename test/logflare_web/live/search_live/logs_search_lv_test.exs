@@ -333,7 +333,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
 
     test "lql filters", %{conn: conn, source: source} do
       {:ok, view, _html} = live(conn, Routes.live_path(conn, SearchLV, source.id))
-
+      pid = self()
       %{executor_pid: search_executor_pid} = get_view_assigns(view)
       Ecto.Adapters.SQL.Sandbox.allow(Logflare.Repo, self(), search_executor_pid)
 
@@ -350,6 +350,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
           assert Enum.any?(params, fn param -> param.parameterValue.value == "error" end)
         end
 
+        send(pid, {:query_request, opts[:body]})
         {:ok, TestUtils.gen_bq_response(%{"event_message" => "some error message"})}
       end)
 
@@ -375,6 +376,9 @@ defmodule LogflareWeb.Source.SearchLVTest do
 
       assert html =~ "some error message"
       refute html =~ "some event message"
+
+      assert_receive {:query_request,
+                      %_{jobCreationMode: "JOB_CREATION_OPTIONAL", parameterMode: "POSITIONAL"}}
     end
 
     test "bug: top-level key with nested key filters", %{conn: conn, source: source} do
