@@ -534,6 +534,7 @@ defmodule LogflareWeb.Source.SearchLV do
           socket
           |> assign(loading: false)
           |> assign(chart_loading: false)
+          |> put_flash_query_error(err)
       end
 
     {:noreply, socket}
