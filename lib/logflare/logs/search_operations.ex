@@ -47,7 +47,7 @@ defmodule Logflare.Logs.SearchOperations do
            BigQueryAdaptor.execute_query(
              {bq_project_id, dataset_id, so.source.user.id},
              so.query,
-             []
+             query_type: :search
            ) do
       so
       |> SearchUtils.put_result(:query_result, response)

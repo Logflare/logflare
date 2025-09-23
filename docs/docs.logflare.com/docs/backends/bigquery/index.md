@@ -153,6 +153,16 @@ Enabling this option will have the following effects:
 - BigQuery REST API requests made will be routed through multiple managed service accounts. Each managed service account has the `logflare-managed-` prefix followed by the index (for example `logflare-managed-0`).
 - IAM policy for this project will be completely managed by Logflare, and permissions for managed service accounts will be handled in a non-destructive manner.
 
+### BigQuery Reservations
+
+For high-volume workloads, you can configure BigQuery reservations to ensure predictable performance and cost control for your queries. Logflare supports separate reservation configurations for search queries and alert queries.
+
+Reservations requires the Logflare service account to be granted the `bigquery.reservations.use` on the reservation or its administration project.
+
+:::note
+Reservations are optional. If not configured, queries will run without any reservation set and will use the project's default reservation
+:::
+
 ## Querying in BigQuery
 
 You can directly execute SQL queries in BigQuery instead of through the Logflare UI. This would be helpful for generating reports that require aggregations, or to perform queries across multiple BigQuery tables.

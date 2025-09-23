@@ -185,7 +185,9 @@ defmodule Logflare.Logs.Search do
     bq_project_id = source.user.bigquery_project_id || GCPConfig.default_project_id()
     %{bigquery_dataset_id: dataset_id} = GenUtils.get_bq_user_info(source.token)
 
-    BigQueryAdaptor.execute_query({bq_project_id, dataset_id, source.user.id}, q, [])
+    BigQueryAdaptor.execute_query({bq_project_id, dataset_id, source.user.id}, q,
+      query_type: :search
+    )
   end
 
   def get_and_put_partition_by(%SO{} = so) do

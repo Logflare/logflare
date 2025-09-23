@@ -1080,6 +1080,71 @@ defmodule LogflareWeb.Source.SearchLVTest do
     end
   end
 
+  describe "bigquery reservation search" do
+    setup do
+      plan = insert(:plan)
+      [plan: plan]
+    end
+
+    test "when bigquery reservation search is not set, do not set reservation option", ctx do
+      user = insert(:user, bigquery_reservation_search: nil)
+      %{conn: conn} = setup_user_session(Map.put(ctx, :user, user)) |> Map.new()
+      source = insert(:source, user: user)
+      pid = self()
+
+      expect(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, fn _conn, _proj_id, opts ->
+        reservation = opts[:body].reservation
+        send(pid, {:reservation, reservation})
+
+        {:ok,
+         TestUtils.gen_bq_response(%{
+           "event_message" => "some modal message",
+           "testing" => "modal123",
+           "id" => "some-uuid"
+         })}
+      end)
+
+      {:ok, _view, _html} =
+        live(
+          conn,
+          ~p"/sources/#{source.id}/search?querystring=something123&tailing%3F=false"
+        )
+
+      assert_receive {:reservation, nil}
+    end
+
+    test "when bigquery reservation search is set, set job option to reservation", ctx do
+      user =
+        insert(:user, bigquery_reservation_search: "projects/1234567890/reservations/1234567890")
+
+      %{conn: conn} = setup_user_session(Map.put(ctx, :user, user)) |> Map.new()
+
+      source = insert(:source, user: user)
+      pid = self()
+
+      expect(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, fn _conn, _proj_id, opts ->
+        reservation = opts[:body].reservation
+        send(pid, {:reservation, reservation})
+
+        {:ok,
+         TestUtils.gen_bq_response(%{
+           "event_message" => "some modal message",
+           "testing" => "modal123",
+           "id" => "some-uuid"
+         })}
+      end)
+
+      {:ok, _view, _html} =
+        live(
+          conn,
+          ~p"/sources/#{source.id}/search?querystring=something123&tailing%3F=false"
+        )
+
+      assert_receive {:reservation, reservation}
+      assert reservation == user.bigquery_reservation_search
+    end
+  end
+
   defp get_view_assigns(view) do
     :sys.get_state(view.pid).socket.assigns
   end

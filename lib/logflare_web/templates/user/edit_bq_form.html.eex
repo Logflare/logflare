@@ -21,6 +21,21 @@
     <small class="form-text text-muted">
       Optional. Set the processed bytes limit for queries. Defaults to 10 GB (10000000000 bytes).
     </small>
+
+    <%= text_input e, :bigquery_reservation_search, placeholder: "projects/1234567890/reservations/1234567890", class: "form-control form-control-margin", readonly: true %>
+    <%= error_tag e, :bigquery_reservation_search %>
+    <small class="form-text text-muted">
+      Optional. Set the reservation for search queries.
+    </small>
+
+
+    <%= text_input e, :bigquery_reservation_alerts, placeholder: "projects/1234567890/reservations/1234567890", class: "form-control form-control-margin", readonly: true %>
+    <%= error_tag e, :bigquery_reservation_alerts %>
+    <small class="form-text text-muted">
+      Optional. Set the reservation for alerts queries.
+    </small>
+
+
     <div class="form-check">
       <%= checkbox e, :bigquery_enable_managed_service_accounts, class: "form-check-input" %>
       <%= label e, :bigquery_enable_managed_service_accounts, "Enable managed service accounts", class: "form-check-label" %>
@@ -58,6 +73,22 @@
     <small class="form-text text-muted">
       Optional. Defaults to `US`. Your preferred dataset location. See the BigQuery documention for a <%= link "list of supported regions", to: "https://cloud.google.com/bigquery/docs/locations" %>. Use `Region Name` or `Multi-Region Name`.
     </small>
+
+
+    <%= text_input e, :bigquery_reservation_search, placeholder: "projects/1234567890/reservations/1234567890", class: "form-control form-control-margin" %>
+    <%= error_tag e, :bigquery_reservation_search %>
+    <small class="form-text text-muted">
+      Optional. Set the reservation for search queries.
+    </small>
+
+
+    <%= text_input e, :bigquery_reservation_alerts, placeholder: "projects/1234567890/reservations/1234567890", class: "form-control form-control-margin" %>
+    <%= error_tag e, :bigquery_reservation_alerts %>
+    <small class="form-text text-muted">
+      Optional. Set the reservation for alerts queries.
+    </small>
+
+
     <%= text_input e, :bigquery_processed_bytes_limit, placeholder: "1000000000", class: "form-control form-control-margin" %>
     <%= error_tag e, :bigquery_dataset_location %>
     <small class="form-text text-muted">
