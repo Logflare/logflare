@@ -110,10 +110,7 @@ defmodule Logflare.Logs.SearchQueriesTest do
 
       query = SearchQueries.source_log_event_query(bq_table_id, id, timestamp)
 
-      assert %Ecto.Query{} = query
-
-      # Verify where clauses for id and timestamp
-      assert length(query.wheres) >= 1
+      assert %Ecto.Query{wheres: [_ | _ ]} = query
     end
   end
 
