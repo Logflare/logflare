@@ -68,6 +68,9 @@ defmodule Logflare.Sources do
       {:default_ingest_backend_enabled?, enabled}, q when is_boolean(enabled) ->
         where(q, [s], s.default_ingest_backend_enabled? == ^enabled)
 
+      {:system_monitoring, value}, q when is_boolean(value) ->
+        where(q, [s], s.system_monitoring == ^value)
+
       _, q ->
         q
     end)
@@ -114,6 +117,31 @@ defmodule Logflare.Sources do
     Source.Supervisor.start_source(source.token)
 
     {:ok, source}
+  end
+
+  @doc "
+  Create system sources for the user, if they don't exist yet
+  "
+  def create_user_system_sources(user_id) do
+    entries =
+      for type <- Source.system_source_types() do
+        now = NaiveDateTime.utc_now() |> NaiveDateTime.truncate(:second)
+
+        %{
+          user_id: user_id,
+          name: "#{type}-#{Ecto.UUID.generate()}",
+          system_source: true,
+          system_source_type: type,
+          token: Ecto.UUID.Atom.autogenerate(),
+          inserted_at: now,
+          updated_at: now
+        }
+      end
+
+    Repo.insert_all(Source, entries,
+      conflict_target: [:user_id, :system_source_type],
+      on_conflict: :nothing
+    )
   end
 
   @doc """
