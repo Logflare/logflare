@@ -110,7 +110,7 @@ defmodule Logflare.Logs.SearchQueriesTest do
 
       query = SearchQueries.source_log_event_query(bq_table_id, id, timestamp)
 
-      assert %Ecto.Query{wheres: [_ | _ ]} = query
+      assert %Ecto.Query{wheres: [_ | _]} = query
     end
   end
 
