@@ -1104,7 +1104,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
          })}
       end)
 
-      {:ok, view, _html} =
+      {:ok, _view, _html} =
         live(
           conn,
           ~p"/sources/#{source.id}/search?querystring=something123&tailing%3F=false"
@@ -1134,7 +1134,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
          })}
       end)
 
-      {:ok, view, _html} =
+      {:ok, _view, _html} =
         live(
           conn,
           ~p"/sources/#{source.id}/search?querystring=something123&tailing%3F=false"
