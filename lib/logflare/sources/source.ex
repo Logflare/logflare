@@ -108,6 +108,8 @@ defmodule Logflare.Sources.Source do
     end
   end
 
+  @system_source_types [:receted_events, :metrics, :logs]
+
   typed_schema "sources" do
     field :name, :string
     field :service_name, :string
@@ -137,6 +139,8 @@ defmodule Logflare.Sources.Source do
     field :retention_days, :integer, virtual: true
     field :transform_copy_fields, :string
     field :bigquery_clustering_fields, :string
+    field :system_source, :boolean, default: false
+    field :system_source_type, Ecto.Enum, values: @system_source_types
 
     field :default_ingest_backend_enabled?, :boolean,
       source: :default_ingest_backend_enabled,
@@ -299,4 +303,6 @@ defmodule Logflare.Sources.Source do
       changeset
     end
   end
+
+  def system_source_types, do: @system_source_types
 end

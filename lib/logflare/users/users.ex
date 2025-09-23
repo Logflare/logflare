@@ -188,10 +188,21 @@ defmodule Logflare.Users do
   end
 
   def update_user_allowed(user, params) do
-    user
-    |> User.user_allowed_changeset(params)
-    |> Repo.update()
+    Repo.transact(fn ->
+      user
+      |> User.user_allowed_changeset(params)
+      |> Repo.update()
+      |> maybe_create_system_monitoring_sources()
+    end)
   end
+
+  defp maybe_create_system_monitoring_sources({:ok, %{system_monitoring: true} = user}) do
+    Sources.create_user_system_sources(user.id)
+
+    {:ok, user}
+  end
+
+  defp maybe_create_system_monitoring_sources(result), do: result
 
   @spec insert_user(map()) :: {:ok, User.t()} | {:error, any()}
   def insert_user(params) do
