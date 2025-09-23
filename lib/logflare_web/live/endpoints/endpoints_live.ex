@@ -90,14 +90,15 @@ defmodule LogflareWeb.EndpointsLive do
 
           endpoint_with_metrics = Endpoints.calculate_endpoint_metrics(endpoint)
 
-          socket = socket
-          |> assign_updated_params_form(parsed_result.parameters, parsed_result.expanded_query)
-          # set changeset
-          |> assign(:endpoint_changeset, Endpoints.change_query(endpoint, %{}))
-          |> assign(:selected_backend_id, endpoint.backend_id)
-          |> assign(:parsed_result, parsed_result)
-          |> assign(:show_endpoint, endpoint_with_metrics)
-          |> assign(:redact_pii, endpoint.redact_pii || false)
+          socket =
+            socket
+            |> assign_updated_params_form(parsed_result.parameters, parsed_result.expanded_query)
+            # set changeset
+            |> assign(:endpoint_changeset, Endpoints.change_query(endpoint, %{}))
+            |> assign(:selected_backend_id, endpoint.backend_id)
+            |> assign(:parsed_result, parsed_result)
+            |> assign(:show_endpoint, endpoint_with_metrics)
+            |> assign(:redact_pii, endpoint.redact_pii || false)
 
           # Clear test results when navigating to edit page
           if socket.assigns.live_action == :edit do
