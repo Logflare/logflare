@@ -220,7 +220,8 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.ConnectionManager do
   def handle_info({:DOWN, _ref, :process, pid, _reason}, %__MODULE__{pool_pid: pid} = state)
       when is_pid(pid) do
     Logger.warning("Clickhouse connection pool died (#{state.pool_type})",
-      source_id: get_source_id_from_state(state),
+      source_token: get_source_token_from_state(state),
+      source_id: get_source_token_from_state(state),
       backend_id: state.backend.id
     )
 
@@ -238,14 +239,15 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.ConnectionManager do
 
   @spec start_pool(__MODULE__.t()) :: {:ok, __MODULE__.t()} | {:error, any()}
   defp start_pool(%__MODULE__{ch_opts: ch_opts} = state) do
-    source_id = get_source_id_from_state(state)
+    source_token = get_source_token_from_state(state)
 
     case Ch.start_link(ch_opts) do
       {:ok, pid} ->
         Process.monitor(pid)
 
-        Logger.info("Started Clickhouse connection pool (#{state.pool_type} - #{source_id})",
-          source_id: source_id,
+        Logger.info("Started Clickhouse connection pool (#{state.pool_type} - #{source_token})",
+          source_token: source_token,
+          source_id: get_source_id_from_state(state),
           backend_id: state.backend.id
         )
 
@@ -257,8 +259,9 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.ConnectionManager do
 
       {:error, reason} ->
         Logger.error(
-          "Failed to start Clickhouse connection pool (#{state.pool_type} - #{source_id}))",
-          source_id: source_id,
+          "Failed to start Clickhouse connection pool (#{state.pool_type} - #{source_token}))",
+          source_token: source_token,
+          source_id: source_token,
           backend_id: state.backend.id,
           reason: reason
         )
@@ -302,7 +305,8 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.ConnectionManager do
       GenServer.stop(pool_pid)
 
       Logger.info("Stopped Clickhouse connection pool due to inactivity",
-        source_id: get_source_id_from_state(state),
+        source_id: get_source_token_from_state(state),
+        source_token: get_source_token_from_state(state),
         backend_id: state.backend.id
       )
     end
@@ -310,9 +314,9 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.ConnectionManager do
     %__MODULE__{state | pool_pid: nil}
   end
 
-  @spec get_source_id_from_state(%__MODULE__{}) :: integer() | nil
-  defp get_source_id_from_state(%__MODULE__{source: %Source{id: id}}), do: id
-  defp get_source_id_from_state(%__MODULE__{}), do: nil
+  @spec get_source_token_from_state(%__MODULE__{}) :: atom() | nil
+  defp get_source_token_from_state(%__MODULE__{source: %Source{token: token}}), do: token
+  defp get_source_token_from_state(%__MODULE__{}), do: nil
 
   @spec connection_manager_via({Source.t(), Backend.t()} | Backend.t()) :: tuple()
   defp connection_manager_via({%Source{} = source, %Backend{} = backend}) do
