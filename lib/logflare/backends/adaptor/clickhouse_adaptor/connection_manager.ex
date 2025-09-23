@@ -247,7 +247,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.ConnectionManager do
 
         Logger.info("Started Clickhouse connection pool (#{state.pool_type} - #{source_token})",
           source_token: source_token,
-          source_id: get_source_id_from_state(state),
+          source_id: get_source_token_from_state(state),
           backend_id: state.backend.id
         )
 
