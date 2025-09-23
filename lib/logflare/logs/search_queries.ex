@@ -315,7 +315,7 @@ defmodule Logflare.Logs.SearchQueries do
 
   def source_log_event_by_path(bq_table_id, path, value)
       when is_binary(bq_table_id) and is_binary(path) do
-    last_column = String.split(path, ".") |> List.last() |> String.to_atom()
+    last_column = String.split(path, ".") |> List.last()
 
     from(bq_table_id)
     |> select([t], %{

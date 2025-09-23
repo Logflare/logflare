@@ -92,7 +92,6 @@ defmodule Logflare.Lql.BackendTransformer.BigQuery do
       filter_rule.path
       |> split_by_dots()
       |> List.last()
-      |> String.to_atom()
 
     if not is_nil(filter_rule.values) and filter_rule.operator == :range do
       [lvalue, rvalue] = filter_rule.values
@@ -122,7 +121,7 @@ defmodule Logflare.Lql.BackendTransformer.BigQuery do
   def transform_select_rule(%{path: path} = _select_rule, _transformation_data)
       when is_binary(path) do
     if path in @special_top_level or not String.contains?(path, ".") do
-      {:field, String.to_atom(path), []}
+      {:field, path, []}
     else
       nested_columns = split_by_dots(path)
       {:nested_field, nested_columns, unnest_paths_for_select(nested_columns)}
@@ -199,7 +198,7 @@ defmodule Logflare.Lql.BackendTransformer.BigQuery do
     |> Enum.slice(0..-2//1)
     |> Enum.with_index(1)
     |> Enum.reduce(query, fn {column, level}, acc_query ->
-      add_unnest_join(acc_query, join_type, String.to_atom(column), level)
+      add_unnest_join(acc_query, join_type, column, level)
     end)
   end
 
@@ -220,7 +219,6 @@ defmodule Logflare.Lql.BackendTransformer.BigQuery do
       rule.path
       |> split_by_dots()
       |> List.last()
-      |> String.to_atom()
 
     if not is_nil(rule.values) and rule.operator == :range do
       [lvalue, rvalue] = rule.values
@@ -231,7 +229,7 @@ defmodule Logflare.Lql.BackendTransformer.BigQuery do
   end
 
   @spec dynamic_where_filter_rule(
-          column :: atom(),
+          column :: String.t(),
           operator :: atom(),
           value :: any(),
           modifiers :: map()
@@ -293,14 +291,14 @@ defmodule Logflare.Lql.BackendTransformer.BigQuery do
   @spec build_combined_select(Query.t(), [map()]) :: Query.t()
   defp build_combined_select(query, select_rules) do
     Enum.reduce(select_rules, query, fn %{path: path}, acc_query ->
-      field_atom =
+      field_key =
         if path in @special_top_level or not String.contains?(path, ".") do
-          String.to_atom(path)
+          path
         else
-          String.replace(path, ".", "_") |> String.to_atom()
+          String.replace(path, ".", "_")
         end
 
-      select_merge(acc_query, [l], %{^field_atom => field(l, ^field_atom)})
+      select_merge(acc_query, [l], %{^field_key => field(l, ^field_key)})
     end)
   end
 
