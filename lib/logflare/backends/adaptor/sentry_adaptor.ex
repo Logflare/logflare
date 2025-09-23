@@ -166,7 +166,7 @@ defmodule Logflare.Backends.Adaptor.SentryAdaptor do
         "event_message",
         "level",
         "trace_id",
-        "trace.id",
+        "trace.id"
       ])
 
     base_attrs

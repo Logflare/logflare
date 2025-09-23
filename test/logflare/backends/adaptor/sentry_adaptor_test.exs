@@ -115,14 +115,17 @@ defmodule Logflare.Backends.Adaptor.SentryAdaptorTest do
                "type" => "string",
                "value" => source.name
              }
+
       assert item["attributes"]["logflare.source.uuid"] == %{
                "type" => "string",
                "value" => inspect(source.token)
              }
+
       assert item["attributes"]["sentry.sdk.name"] == %{
                "type" => "string",
                "value" => "sentry.logflare"
              }
+
       assert item["attributes"]["sentry.sdk.version"]
       assert item["body"] == "Test log message"
       assert item["level"] == "info"
@@ -377,6 +380,7 @@ defmodule Logflare.Backends.Adaptor.SentryAdaptorTest do
       assert attributes["float_field"] == %{"type" => "double", "value" => 3.14}
       assert attributes["boolean_field"] == %{"type" => "boolean", "value" => true}
       assert attributes["list_field"] == %{"type" => "string", "value" => "[1, 2, 3]"}
+
       assert attributes["map_field"] == %{
                "type" => "string",
                "value" => "%{\"nested\" => \"value\"}"
