@@ -151,6 +151,7 @@ defmodule Logflare.Backends.Adaptor.SentryAdaptorTest do
         {"warning", "warn"},
         {"warn", "warn"},
         {"error", "error"},
+        {"fatal", "fatal"},
         {"critical", "fatal"},
         {"alert", "fatal"},
         {"emergency", "fatal"},

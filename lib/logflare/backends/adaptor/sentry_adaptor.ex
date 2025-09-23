@@ -217,6 +217,7 @@ defmodule Logflare.Backends.Adaptor.SentryAdaptor do
       "warning" -> "warn"
       "warn" -> "warn"
       "error" -> "error"
+      "fatal" -> "fatal"
       "critical" -> "fatal"
       "alert" -> "fatal"
       "emergency" -> "fatal"
