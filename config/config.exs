@@ -36,8 +36,9 @@ config :logflare, Logflare.Sources.Source.BigQuery.Schema, updates_per_minute: 6
 config :logflare, LogflareWeb.Endpoint,
   adapter: Bandit.PhoenixAdapter,
   http: [
-    http_1_options: [max_request_line_length: 100_000],
-    http_options: [log_protocol_errors: false],
+    http_1_options: [max_request_line_length: 100_000, max_requests: 1_000_000],
+    http_2_options: [max_requests: 1_000_000],
+    http_options: [log_protocol_errors: :short, log_client_closures: false],
     thousand_island_options: [
       num_acceptors: 1000,
       # https://cloud.google.com/load-balancing/docs/https/#timeouts_and_retries
