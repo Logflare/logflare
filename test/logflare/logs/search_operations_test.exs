@@ -180,7 +180,7 @@ defmodule Logflare.Logs.SearchOperationsTest do
       assert is_integer(user_id)
       assert user_id == base_so.source.user.id
       assert %Ecto.Query{} = captured_query
-      assert captured_opts == []
+      assert captured_opts == [query_type: :search]
       assert result_so.rows == [%{"test" => "data"}]
       refute result_so.error
     end
