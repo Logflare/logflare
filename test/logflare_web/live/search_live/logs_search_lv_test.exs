@@ -4,13 +4,9 @@ defmodule LogflareWeb.Source.SearchLVTest do
 
   import Phoenix.LiveViewTest
 
-  alias Logflare.Sources.Source
   alias Logflare.SingleTenant
   alias Logflare.Sources.Source.BigQuery.Schema
   alias LogflareWeb.Source.SearchLV
-  alias Logflare.Backends
-  alias Logflare.Sources.Source.V1SourceSup
-  alias Logflare.SystemMetrics.AllLogsLogged
 
   @endpoint LogflareWeb.Endpoint
   @default_search_params %{
@@ -37,21 +33,6 @@ defmodule LogflareWeb.Source.SearchLVTest do
       Process.sleep(10)
 
       :ok
-    end)
-
-    :ok
-  end
-
-  # requires a source, and plan set
-  defp setup_source_processes(context) do
-    start_supervised!(AllLogsLogged)
-
-    Enum.each(context, fn
-      {_, %Source{} = source} ->
-        start_supervised!({V1SourceSup, source: source}, id: source.token)
-
-      _ ->
-        nil
     end)
 
     :ok
@@ -89,7 +70,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
       [user: user, source: source, plan: plan]
     end
 
-    setup [:setup_user_session, :setup_source_processes]
+    setup [:setup_user_session]
 
     test "subheader - default timezone is Etc/UTC", %{conn: conn, source: source} do
       {:ok, view, _html} = live(conn, ~p"/sources/#{source.id}/search")
@@ -165,7 +146,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
       [user: user, source: source, plan: plan]
     end
 
-    setup [:setup_user_session, :setup_source_processes]
+    setup [:setup_user_session]
 
     test "subheader - if no tz, will redirect to preference tz", %{conn: conn, source: source} do
       {:error, {:live_redirect, %{to: to}}} =
@@ -212,7 +193,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
       [user: user, source: source, plan: plan, team_user: team_user]
     end
 
-    setup [:setup_team_user_session, :setup_source_processes]
+    setup [:setup_team_user_session]
 
     test "subheader - if no tz, will redirect to preference tz", %{conn: conn, source: source} do
       {:error, {:live_redirect, %{to: to}}} =
@@ -244,7 +225,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
       [user: user, source: source, plan: plan]
     end
 
-    setup [:setup_mocks, :setup_user_session, :setup_source_processes]
+    setup [:setup_mocks, :setup_user_session]
 
     test "subheader - lql docs", %{conn: conn, source: source} do
       {:ok, view, _html} = live(conn, ~p"/sources/#{source.id}/search")
@@ -392,8 +373,16 @@ defmodule LogflareWeb.Source.SearchLVTest do
       le = build(:log_event, metadata: %{"nested" => "something"}, top: "level", source: source)
       :timer.sleep(100)
 
-      Backends.via_source(source, Schema, nil)
-      |> Schema.update(le)
+      # Backends.via_source(source, Schema, nil)
+      Schema.handle_cast({:update, le}, %{
+        source_id: source.id,
+        source_token: source.token,
+        bigquery_project_id: nil,
+        bigquery_dataset_id: nil,
+        field_count: 3,
+        field_count_limit: 500,
+        next_update: System.system_time(:millisecond)
+      })
 
       :timer.sleep(500)
       Cachex.clear(Logflare.SourceSchemas.Cache)
@@ -752,7 +741,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
       [user: user, source: source, plan: plan]
     end
 
-    setup [:setup_user_session, :setup_source_processes]
+    setup [:setup_user_session]
 
     test "run a query", %{conn: conn, source: source} do
       stub(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, fn conn, _proj_id, opts ->
@@ -808,7 +797,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
       }
     end
 
-    setup [:setup_user_session, :setup_source_processes]
+    setup [:setup_user_session]
 
     test "on source with suggestion fields, creates flash with link to force query", %{
       conn: conn,
@@ -881,7 +870,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
       %{user: user, plan: plan, source: source}
     end
 
-    setup [:setup_user_session, :setup_source_processes]
+    setup [:setup_user_session]
 
     test "on source with suggestion fields, creates flash with link to force query", %{
       conn: conn,
@@ -939,7 +928,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
       }
     end
 
-    setup [:setup_user_session, :setup_source_processes]
+    setup [:setup_user_session]
 
     test "on source load, do not auto-tail", %{
       conn: conn,
@@ -981,7 +970,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
       [user: user, source: source, plan: plan]
     end
 
-    setup [:setup_user_session, :setup_source_processes]
+    setup [:setup_user_session]
 
     test "when remember is checked timezone is set in user preferences",
          %{
