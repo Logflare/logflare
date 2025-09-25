@@ -86,8 +86,6 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.PipelineTest do
       source: source,
       backend: backend
     } do
-      TestUtils.attach_forwarder([:logflare, :backends, :clickhouse, :ingest, :count])
-
       log_event1 = build(:log_event, source: source, message: "Test message 1")
       log_event2 = build(:log_event, source: source, message: "Test message 2")
 
@@ -99,9 +97,6 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.PipelineTest do
       result = Pipeline.handle_batch(:ch, messages, %{}, context)
 
       assert result == messages
-
-      assert_receive {:telemetry_event, [:logflare, :backends, :clickhouse, :ingest, :count],
-                      %{count: 2}, %{}}
 
       Process.sleep(200)
 

@@ -559,17 +559,20 @@ defmodule Logflare.BackendsTest do
       source = Sources.preload_backends(source)
       {:ok, source} = Backends.update_source_backends(source, [backend])
 
-      TestUtils.attach_forwarder([:logflare, :backends, :ingest, :count])
+      TestUtils.attach_forwarder([:logflare, :backends, :ingest, :dispatch])
 
       log_count = 119
 
       events = for _n <- 1..log_count, do: build(:log_event, source: source)
       assert {:ok, ^log_count} = Backends.ingest_logs(events, source)
 
-      assert_receive {:telemetry_event, [:logflare, :backends, :ingest, :count],
-                      %{count: ^log_count}, telemetry_metadata}
+      # for specific backend
+      assert_receive {:telemetry_event, [:logflare, :backends, :ingest, :dispatch],
+                      %{count: ^log_count}, %{backend_type: :postgres}}
 
-      assert telemetry_metadata.backend_type == :postgres
+      # for system default
+      assert_receive {:telemetry_event, [:logflare, :backends, :ingest, :dispatch],
+                      %{count: ^log_count}, %{backend_type: :bigquery}}
     end
   end
 

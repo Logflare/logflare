@@ -134,21 +134,14 @@ defmodule Logflare.Telemetry do
         tags: [:processor],
         description: "Distribution of log request batch sizes ingested by processor"
       ),
-      distribution("logflare.logs.processor.ingest.store.stop.duration",
-        tags: [:processor],
-        unit: {:native, :millisecond}
+      distribution("logflare.backends.pipeline.handle_batch.batch_size",
+        tags: [:backend_type],
+        reporter_opts: batch_size_reporter_opts(),
+        description: "Distribution of batch sizes for broadway pipeline by backend type"
       ),
-      distribution("logflare.logs.processor.ingest.handle_batch.stop.duration",
-        tags: [:processor],
-        unit: {:native, :millisecond}
-      ),
-      distribution("logflare.ingest.pipeline.handle_batch.batch_size",
-        tags: [:pipeline],
-        reporter_opts: batch_size_reporter_opts()
-      ),
-      distribution("logflare.ingest.common_pipeline.handle_batch.batch_size",
-        tags: [:pipeline],
-        reporter_opts: batch_size_reporter_opts()
+      sum("logflare.backends.pipeline.handle_batch.batch_size",
+        tags: [:backend_type],
+        description: "Sum of batch sizes for broadway pipeline by backend type"
       ),
       counter("logflare.context_cache.busted.count", tags: [:schema, :table]),
       counter("logflare.context_cache.handle_record.count", tags: [:schema, :table]),
