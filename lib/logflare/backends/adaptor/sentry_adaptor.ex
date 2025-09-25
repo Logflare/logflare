@@ -47,11 +47,7 @@ defmodule Logflare.Backends.Adaptor.SentryAdaptor do
           headers: %{"content-type" => @sentry_envelope_content_type},
           http: "http2",
           format_batch: fn log_events ->
-            case log_events do
-              # If there are no log events, don't build an envelope
-              [] -> nil
-              _ -> build_envelope(log_events, parsed_dsn.original_dsn)
-            end
+            build_envelope(log_events, parsed_dsn.original_dsn)
           end
         }
 
@@ -76,21 +72,17 @@ defmodule Logflare.Backends.Adaptor.SentryAdaptor do
     |> validate_dsn()
   end
 
-  defp validate_dsn(changeset) do
-    case Ecto.Changeset.get_field(changeset, :dsn) do
-      nil ->
+  defp validate_dsn(%{changes: %{dsn: dsn}} = changeset) do
+    case DSN.parse(dsn) do
+      {:ok, _parsed_dsn} ->
         changeset
 
-      dsn ->
-        case DSN.parse(dsn) do
-          {:ok, _parsed_dsn} ->
-            changeset
-
-          {:error, reason} ->
-            Ecto.Changeset.add_error(changeset, :dsn, "Invalid DSN: #{reason}")
-        end
+      {:error, reason} ->
+        Ecto.Changeset.add_error(changeset, :dsn, "Invalid DSN: #{reason}")
     end
   end
+
+  defp validate_dsn(changeset), do: changeset
 
   defp build_envelope(log_events, original_dsn) do
     sentry_logs = Enum.map(log_events, &translate_log_event/1)
@@ -120,7 +112,6 @@ defmodule Logflare.Backends.Adaptor.SentryAdaptor do
 
   defp translate_log_event(%Logflare.LogEvent{} = log_event) do
     # Convert microsecond timestamp to seconds (with fractional part)
-    # Use timestamp from outer body if available, fallback to nested body
     timestamp_seconds = log_event.body["timestamp"] / 1_000_000
 
     # Extract message from the log event
@@ -135,18 +126,12 @@ defmodule Logflare.Backends.Adaptor.SentryAdaptor do
         _ -> "info"
       end
 
-    # Extract or generate trace_id
-    trace_id = extract_trace_id(log_event)
-
-    # Build attributes from log event metadata
-    attributes = build_attributes(log_event)
-
     %{
       "timestamp" => timestamp_seconds,
       "level" => level,
       "body" => message,
-      "trace_id" => trace_id,
-      "attributes" => attributes
+      "trace_id" => extract_trace_id(log_event),
+      "attributes" => build_attributes(log_event)
     }
   end
 
@@ -175,31 +160,16 @@ defmodule Logflare.Backends.Adaptor.SentryAdaptor do
     |> Map.new(fn {k, v} -> {k, to_sentry_value(v)} end)
   end
 
-  defp valid_trace_id?(trace_id) when is_binary(trace_id) do
-    # Valid trace ID should be 32 characters (128 bits) hex string
-    # and not be all zeros
-    with true <- String.length(trace_id) == 32,
-         true <- String.match?(trace_id, ~r/^[0-9a-fA-F]+$/),
-         false <- trace_id == String.duplicate("0", 32) do
-      true
-    else
-      _ -> false
-    end
-  end
-
-  defp valid_trace_id?(_), do: false
-
   defp extract_trace_id(%Logflare.LogEvent{} = log_event) do
     case log_event.body["trace_id"] || log_event.body["trace.id"] do
       nil ->
         generate_trace_id()
 
       trace_id when is_binary(trace_id) ->
-        if valid_trace_id?(trace_id), do: trace_id, else: generate_trace_id()
+        trace_id
 
       trace_id ->
-        trace_id_string = to_string(trace_id)
-        if valid_trace_id?(trace_id_string), do: trace_id_string, else: generate_trace_id()
+        to_string(trace_id)
     end
   end
 

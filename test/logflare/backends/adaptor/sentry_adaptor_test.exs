@@ -236,110 +236,6 @@ defmodule Logflare.Backends.Adaptor.SentryAdaptorTest do
       assert "Log 3" in messages
     end
 
-    test "handles invalid trace_Id", %{source: source} do
-      this = self()
-      ref = make_ref()
-
-      @client
-      |> expect(:send, fn req ->
-        envelope_body = req[:body]
-
-        send(this, {ref, envelope_body})
-        %Tesla.Env{status: 200, body: ""}
-      end)
-
-      log_events = [
-        build(:log_event,
-          source: source,
-          event_message: "Test message",
-          timestamp: 1704067200_000_000,
-          trace_id: "invalid-too-short"
-        )
-      ]
-
-      assert {:ok, _} = Backends.ingest_logs(log_events, source)
-      assert_receive {^ref, envelope_body}, 2000
-
-      [_header_line, _item_header_line, item_payload_line] = String.split(envelope_body, "\n")
-      item_payload = Jason.decode!(item_payload_line)
-      items = item_payload["items"]
-      assert length(items) == 1
-      item = Enum.at(items, 0)
-
-      assert String.length(item["trace_id"]) == 32
-      assert String.match?(item["trace_id"], ~r/^[0-9a-f]+$/)
-    end
-
-    test "handles zero'd out trace_Id", %{source: source} do
-      this = self()
-      ref = make_ref()
-
-      @client
-      |> expect(:send, fn req ->
-        envelope_body = req[:body]
-
-        send(this, {ref, envelope_body})
-        %Tesla.Env{status: 200, body: ""}
-      end)
-
-      log_events = [
-        build(:log_event,
-          source: source,
-          event_message: "Test message",
-          timestamp: 1704067200_000_000,
-          trace_id: "00000000000000000000000000000000"
-        )
-      ]
-
-      assert {:ok, _} = Backends.ingest_logs(log_events, source)
-      assert_receive {^ref, envelope_body}, 2000
-
-      [_header_line, _item_header_line, item_payload_line] = String.split(envelope_body, "\n")
-      item_payload = Jason.decode!(item_payload_line)
-      items = item_payload["items"]
-      assert length(items) == 1
-      item = Enum.at(items, 0)
-
-      refute item["trace_id"] == "00000000000000000000000000000000"
-      assert String.length(item["trace_id"]) == 32
-      assert String.match?(item["trace_id"], ~r/^[0-9a-f]+$/)
-    end
-
-    test "handles no trace_Id", %{source: source} do
-      this = self()
-      ref = make_ref()
-
-      @client
-      |> expect(:send, fn req ->
-        envelope_body = req[:body]
-
-        send(this, {ref, envelope_body})
-        %Tesla.Env{status: 200, body: ""}
-      end)
-
-      log_events = [
-        build(:log_event,
-          source: source,
-          event_message: "Test message",
-          timestamp: 1704067200_000_000,
-          trace_id: nil
-        )
-      ]
-
-      assert {:ok, _} = Backends.ingest_logs(log_events, source)
-      assert_receive {^ref, envelope_body}, 2000
-
-      [_header_line, _item_header_line, item_payload_line] = String.split(envelope_body, "\n")
-      item_payload = Jason.decode!(item_payload_line)
-      items = item_payload["items"]
-      assert length(items) == 1
-      item = Enum.at(items, 0)
-
-      refute item["trace_id"] == "00000000000000000000000000000000"
-      assert String.length(item["trace_id"]) == 32
-      assert String.match?(item["trace_id"], ~r/^[0-9a-f]+$/)
-    end
-
     test "handles different data types in attributes", %{source: source} do
       this = self()
       ref = make_ref()
@@ -356,6 +252,7 @@ defmodule Logflare.Backends.Adaptor.SentryAdaptorTest do
         build(:log_event,
           source: source,
           event_message: "Test message",
+          trace_id: "efdb9350effb47959d48bd0aaf395824",
           timestamp: 1704067200_000_000,
           string_field: "text_value",
           integer_field: 42,
@@ -374,6 +271,8 @@ defmodule Logflare.Backends.Adaptor.SentryAdaptorTest do
       items = item_payload["items"]
       assert length(items) == 1
       item = Enum.at(items, 0)
+
+      assert item["trace_id"] == "efdb9350effb47959d48bd0aaf395824"
 
       attributes = item["attributes"]
       assert attributes["string_field"] == %{"type" => "string", "value" => "text_value"}
