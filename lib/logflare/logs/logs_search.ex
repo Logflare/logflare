@@ -16,7 +16,7 @@ defmodule Logflare.Logs.Search do
     so
     |> get_and_put_partition_by()
     |> search_events()
-  |> case do
+    |> case do
       {:ok, events_so} ->
         {:ok, %{events: events_so}}
 

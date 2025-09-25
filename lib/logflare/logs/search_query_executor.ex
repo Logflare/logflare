@@ -17,9 +17,7 @@ defmodule Logflare.Logs.SearchQueryExecutor do
 
   # API
   def start_link(args) do
-    GenServer.start_link(__MODULE__, Keyword.put(args, :caller, self()),
-      hibernate_after: 5_000
-    )
+    GenServer.start_link(__MODULE__, Keyword.put(args, :caller, self()), hibernate_after: 5_000)
   end
 
   @impl true
