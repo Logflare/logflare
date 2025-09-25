@@ -384,7 +384,6 @@ defmodule Logflare.SingleTenant do
     single_tenant?() && url != nil
   end
 
-
   @doc """
   Returns the type of the default backend
   """

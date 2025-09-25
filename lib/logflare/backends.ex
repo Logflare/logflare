@@ -532,16 +532,19 @@ defmodule Logflare.Backends do
     backends = __MODULE__.Cache.list_backends(source_id: source.id)
 
     for backend <- [nil | backends] do
-      {backend_id, backend_type} = if backend do
-        {backend.id, backend.type}
-      else
-        {nil, SingleTenant.backend_type()}
-      end
+      {backend_id, backend_type} =
+        if backend do
+          {backend.id, backend.type}
+        else
+          {nil, SingleTenant.backend_type()}
+        end
 
       telemetry_metadata = %{backend_type: backend.type}
 
       :telemetry.span([:logflare, :backends, :ingest, :dispatch], telemetry_metadata, fn ->
-        log_events = if backend, do: maybe_pre_ingest(source, backend, log_events), else: log_events
+        log_events =
+          if backend, do: maybe_pre_ingest(source, backend, log_events), else: log_events
+
         IngestEventQueue.add_to_table({source.id, backend_id}, log_events)
 
         :telemetry.execute(
