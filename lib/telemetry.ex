@@ -241,6 +241,12 @@ defmodule Logflare.Telemetry do
         tags: [:backend_type],
         unit: {:native, :millisecond},
         description: "Ingest dispatch latency by backend type"
+      ),
+
+      distribution("logflare.backends.ingest.dispatch.stop.duration",
+        tags: [:backend_type],
+        unit: {:native, :millisecond},
+        description: "Ingest dispatch latency by backend type"
       )
     ]
 
