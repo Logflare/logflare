@@ -13,14 +13,11 @@ defmodule Logflare.Logs.SearchQueryExecutor do
   alias Logflare.Logs.SearchOperation, as: SO
   alias Logflare.Utils.Tasks
 
-  @query_timeout 60_000
+  @query_timeout 30_000
 
   # API
   def start_link(args) do
-    GenServer.start_link(__MODULE__, Keyword.put(args, :caller, self()),
-      spawn_opt: [fullsweep_after: 5_000],
-      hibernate_after: 5_000
-    )
+    GenServer.start_link(__MODULE__, Keyword.put(args, :caller, self()), hibernate_after: 5_000)
   end
 
   @impl true
