@@ -94,7 +94,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.PipelineTest do
         %Message{data: log_event2, acknowledger: {Pipeline, :ack_id, :ack_data}}
       ]
 
-      result = Pipeline.handle_batch(:ch, messages, %{}, context)
+      result = Pipeline.handle_batch(:ch, messages, %{size: 2, trigger: :flush}, context)
 
       assert result == messages
 
@@ -113,7 +113,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.PipelineTest do
     end
 
     test "handles empty messages list", %{context: context} do
-      result = Pipeline.handle_batch(:ch, [], %{}, context)
+      result = Pipeline.handle_batch(:ch, [], %{size: 0, trigger: :flush}, context)
       assert result == []
     end
 
@@ -151,7 +151,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.PipelineTest do
         %Message{data: log_event2, acknowledger: {Pipeline, :ack_id, :ack_data}}
       ]
 
-      result = Pipeline.handle_batch(:ch, messages, %{}, context)
+      result = Pipeline.handle_batch(:ch, messages, %{size: 2, trigger: :flush}, context)
       assert result == messages
 
       Process.sleep(200)
