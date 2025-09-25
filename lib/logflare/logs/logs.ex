@@ -32,22 +32,18 @@ defmodule Logflare.Logs do
     end
   end
 
-  @spec ingest(Logflare.LogEvent.t()) :: Logflare.LogEvent.t() | {:error, term}
+  @spec ingest(Logflare.LogEvent.t()) :: Logflare.LogEvent.t()
   def ingest(%LE{source: %Source{} = source} = le) do
-    with :ok <- Source.Supervisor.ensure_started(source),
-         # tests fail when we match on these for some reason
-         _ok <- Sources.Counters.increment(source.token),
-         _ok <- SystemMetrics.AllLogsLogged.increment(:total_logs_logged) do
-      # v1 only
-      IngestEventQueue.add_to_table({source.id, nil}, [le])
+    :ok = Source.Supervisor.ensure_started(source)
+    {:ok, _table} = Sources.Counters.increment(source.token)
+    {:ok, _metric} = SystemMetrics.AllLogsLogged.increment(:total_logs_logged)
 
+    # v1 only
+    with :ok <- IngestEventQueue.add_to_table({source.id, nil}, [le]) do
       le
     else
       {:error, _reason} = e ->
         e
-
-      e ->
-        {:error, e}
     end
   end
 
@@ -101,21 +97,6 @@ defmodule Logflare.Logs do
         RejectedLogEvents.ingest(le)
 
         le
-
-      {:error, :buffer_full} ->
-        :telemetry.execute(
-          [:logflare, :logs, :ingest_logs],
-          %{buffer_full: true},
-          %{source_id: le.source.id, source_token: le.source.token}
-        )
-
-        le
-        |> Map.put(:valid, false)
-        |> Map.put(:pipeline_error, %LE.PipelineError{
-          stage: "ingest",
-          type: "buffer_full",
-          message: "Source buffer full, please try again in a minute."
-        })
 
       e ->
         Logger.error("Unknown ingest error: " <> inspect(e))
