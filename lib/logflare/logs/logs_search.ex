@@ -8,40 +8,20 @@ defmodule Logflare.Logs.Search do
   alias Logflare.Logs.SearchQueries
   alias Logflare.Sources
   alias Logflare.Sources.Source
-  alias Logflare.Utils.Tasks
   import Ecto.Query
   import Logflare.Logs.SearchOperations
 
   @spec search(Logflare.Logs.SearchOperation.t()) :: {:error, any} | {:ok, %{events: any}}
   def search(%SO{} = so) do
-    so = get_and_put_partition_by(so)
-
-    tasks = [
-      Tasks.async(fn -> search_events(so) end)
-    ]
-
-    tasks_with_results = Task.yield_many(tasks, 30_000)
-
-    results =
-      tasks_with_results
-      |> Enum.map(fn {task, res} ->
-        res || Task.shutdown(task, :brutal_kill)
-      end)
-
-    [event_result] = results
-
-    case event_result do
-      {:ok, {:ok, events_so}} ->
+    so
+    |> get_and_put_partition_by()
+    |> search_events()
+  |> case do
+      {:ok, events_so} ->
         {:ok, %{events: events_so}}
-
-      {:ok, {:error, result_so}} ->
-        {:error, result_so}
 
       {:error, result_so} ->
         {:error, result_so}
-
-      nil ->
-        {:error, "Search task timeout"}
     end
   end
 
