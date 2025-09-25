@@ -122,9 +122,17 @@ defmodule Logflare.Telemetry do
         tags: [:processor],
         description: "Ingestion execution counts"
       ),
+      counter("bandit.request.stop.duration",
+        tags: [],
+        description: "Total HTTP requests"
+      ),
+      sum("logflare.logs.processor.ingest.logs.count",
+        tags: [:processor],
+        description: "Total raw events ingested by processor"
+      ),
       distribution("logflare.logs.processor.ingest.logs.count",
         tags: [:processor],
-        description: "Ingestion batch size"
+        description: "Distribution of log request batch sizes ingested by processor"
       ),
       distribution("logflare.logs.processor.ingest.store.stop.duration",
         tags: [:processor],
