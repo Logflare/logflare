@@ -539,7 +539,7 @@ defmodule Logflare.Backends do
           {nil, SingleTenant.backend_type()}
         end
 
-      telemetry_metadata = %{backend_type: backend.type}
+      telemetry_metadata = %{backend_type: backend_type}
 
       :telemetry.span([:logflare, :backends, :ingest, :dispatch], telemetry_metadata, fn ->
         log_events =
