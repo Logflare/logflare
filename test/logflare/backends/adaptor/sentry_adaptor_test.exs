@@ -88,7 +88,7 @@ defmodule Logflare.Backends.Adaptor.SentryAdaptorTest do
         build(:log_event,
           source: source,
           event_message: "Test log message",
-          timestamp: 1704067200_000_000
+          timestamp: 1_704_067_200_000_000
         )
       ]
 
@@ -164,7 +164,7 @@ defmodule Logflare.Backends.Adaptor.SentryAdaptorTest do
           build(:log_event,
             source: source,
             event_message: "Test log message",
-            timestamp: 1704067200_000_000,
+            timestamp: 1_704_067_200_000_000,
             level: input_level,
             test_index: index
           )
@@ -203,17 +203,17 @@ defmodule Logflare.Backends.Adaptor.SentryAdaptorTest do
         build(:log_event,
           source: source,
           event_message: "Log 1",
-          timestamp: 1704067200_000_000
+          timestamp: 1_704_067_200_000_000
         ),
         build(:log_event,
           source: source,
           event_message: "Log 2",
-          timestamp: 1704067200_000_000
+          timestamp: 1_704_067_200_000_000
         ),
         build(:log_event,
           source: source,
           event_message: "Log 3",
-          timestamp: 1704067200_000_000
+          timestamp: 1_704_067_200_000_000
         )
       ]
 
@@ -253,7 +253,7 @@ defmodule Logflare.Backends.Adaptor.SentryAdaptorTest do
           source: source,
           event_message: "Test message",
           trace_id: "efdb9350effb47959d48bd0aaf395824",
-          timestamp: 1704067200_000_000,
+          timestamp: 1_704_067_200_000_000,
           string_field: "text_value",
           integer_field: 42,
           float_field: 3.14,

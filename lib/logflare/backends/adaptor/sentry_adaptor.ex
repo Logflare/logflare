@@ -84,6 +84,7 @@ defmodule Logflare.Backends.Adaptor.SentryAdaptor do
 
   defp validate_dsn(changeset), do: changeset
 
+  # Based on https://develop.sentry.dev/sdk/data-model/envelopes/
   defp build_envelope(log_events, original_dsn) do
     sentry_logs = Enum.map(log_events, &translate_log_event/1)
 
@@ -110,14 +111,12 @@ defmodule Logflare.Backends.Adaptor.SentryAdaptor do
     )
   end
 
+  # https://develop.sentry.dev/sdk/telemetry/logs/#log-envelope-item-payload
   defp translate_log_event(%Logflare.LogEvent{} = log_event) do
-    # Convert microsecond timestamp to seconds (with fractional part)
     timestamp_seconds = log_event.body["timestamp"] / 1_000_000
 
-    # Extract message from the log event
     message = log_event.body["event_message"] || ""
 
-    # Determine log level - check both body and nested body
     level =
       case log_event.body["level"] do
         nil -> "info"
