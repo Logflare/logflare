@@ -548,7 +548,7 @@ defmodule Logflare.Backends do
         IngestEventQueue.add_to_table({source.id, backend_id}, log_events)
 
         :telemetry.execute(
-          [:logflare, :backends, :ingest, :count],
+          [:logflare, :backends, :ingest, :dispatch],
           %{count: length(log_events)},
           %{backend_type: backend_type}
         )

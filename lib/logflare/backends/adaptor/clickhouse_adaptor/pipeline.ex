@@ -70,12 +70,6 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.Pipeline do
 
     ClickhouseAdaptor.insert_log_events({source, backend}, events)
 
-    :telemetry.execute(
-      [:logflare, :backends, :clickhouse, :ingest, :count],
-      %{count: length(events)},
-      %{}
-    )
-
     messages
   end
 
