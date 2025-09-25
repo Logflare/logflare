@@ -126,7 +126,7 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
     |> Message.put_batcher(:bq)
   end
 
-  def handle_batch(:bq, messages, batch_info, %{source_token: token} = context) do
+  def handle_batch(:bq, messages, batch_info, context) do
     :telemetry.execute(
       [:logflare, :backends, :pipeline, :handle_batch],
       %{batch_size: batch_info.size, batch_trigger: batch_info.trigger},
