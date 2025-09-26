@@ -175,4 +175,5 @@
   "warpath": {:hex, :warpath, "0.5.0", "906ca2efe1bbd07f2dafc2159897e2cb3068e567210c81c2d9858addc172df50", [:mix], [{:jason, "~> 1.2", [hex: :jason, repo: "hexpm", optional: false]}], "hexpm", "a9b4f518bfce91818fd52bc8e7656259844167436f14c0c1a01a6ca7e061f671"},
   "websock": {:hex, :websock, "0.5.3", "2f69a6ebe810328555b6fe5c831a851f485e303a7c8ce6c5f675abeb20ebdadc", [:mix], [], "hexpm", "6105453d7fac22c712ad66fab1d45abdf049868f253cf719b625151460b8b453"},
   "websock_adapter": {:hex, :websock_adapter, "0.5.8", "3b97dc94e407e2d1fc666b2fb9acf6be81a1798a2602294aac000260a7c4a47d", [:mix], [{:bandit, ">= 0.6.0", [hex: :bandit, repo: "hexpm", optional: true]}, {:plug, "~> 1.14", [hex: :plug, repo: "hexpm", optional: false]}, {:plug_cowboy, "~> 2.6", [hex: :plug_cowboy, repo: "hexpm", optional: true]}, {:websock, "~> 0.5", [hex: :websock, repo: "hexpm", optional: false]}], "hexpm", "315b9a1865552212b5f35140ad194e67ce31af45bcee443d4ecb96b5fd3f3782"},
+  "ymlr": {:hex, :ymlr, "2.0.0", "7525b6da40250777c35456017ef44f7faec06da254eafcf9f9cfb0d65f4c8cb7", [:mix], [], "hexpm", "f9301ad7ea377213b506f6e58ddffd1a7743e24238bb70e572ee510bdc2d1d5a"},
 }
