@@ -122,25 +122,26 @@ defmodule Logflare.Telemetry do
         tags: [:processor],
         description: "Ingestion execution counts"
       ),
+      counter("bandit.request.stop.duration",
+        tags: [],
+        description: "Total HTTP requests"
+      ),
+      sum("logflare.logs.processor.ingest.logs.count",
+        tags: [:processor],
+        description: "Total raw events ingested by processor"
+      ),
       distribution("logflare.logs.processor.ingest.logs.count",
         tags: [:processor],
-        description: "Ingestion batch size"
+        description: "Distribution of log request batch sizes ingested by processor"
       ),
-      distribution("logflare.logs.processor.ingest.store.stop.duration",
-        tags: [:processor],
-        unit: {:native, :millisecond}
+      distribution("logflare.backends.pipeline.handle_batch.batch_size",
+        tags: [:backend_type],
+        reporter_opts: batch_size_reporter_opts(),
+        description: "Distribution of batch sizes for broadway pipeline by backend type"
       ),
-      distribution("logflare.logs.processor.ingest.handle_batch.stop.duration",
-        tags: [:processor],
-        unit: {:native, :millisecond}
-      ),
-      distribution("logflare.ingest.pipeline.handle_batch.batch_size",
-        tags: [:pipeline],
-        reporter_opts: batch_size_reporter_opts()
-      ),
-      distribution("logflare.ingest.common_pipeline.handle_batch.batch_size",
-        tags: [:pipeline],
-        reporter_opts: batch_size_reporter_opts()
+      sum("logflare.backends.pipeline.handle_batch.batch_size",
+        tags: [:backend_type],
+        description: "Sum of batch sizes for broadway pipeline by backend type"
       ),
       counter("logflare.context_cache.busted.count", tags: [:schema, :table]),
       counter("logflare.context_cache.handle_record.count", tags: [:schema, :table]),
@@ -221,13 +222,14 @@ defmodule Logflare.Telemetry do
         tags: [:name],
         description: "Top ETS tables by memory usage, grouped by name"
       ),
-      sum("logflare.backends.ingest.count",
+      sum("logflare.backends.ingest.dispatch.count",
         tags: [:backend_type],
         description: "Ingest counts by backend type"
       ),
-      sum("logflare.backends.clickhouse.ingest.count",
-        tags: [],
-        description: "ClickHouse ingest counts by source id"
+      distribution("logflare.backends.ingest.dispatch.stop.duration",
+        tags: [:backend_type],
+        unit: {:native, :millisecond},
+        description: "Ingest dispatch latency by backend type"
       ),
       distribution("logflare.backends.ingest.dispatch.stop.duration",
         tags: [:backend_type],

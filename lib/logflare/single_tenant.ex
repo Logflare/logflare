@@ -384,6 +384,18 @@ defmodule Logflare.SingleTenant do
     single_tenant?() && url != nil
   end
 
+  @doc """
+  Returns the type of the default backend
+  """
+  @spec backend_type :: :postgres | :bigquery
+  def backend_type do
+    if postgres_backend?() do
+      :postgres
+    else
+      :bigquery
+    end
+  end
+
   def supabase_mode_source_schemas_updated? do
     user = get_default_user()
 

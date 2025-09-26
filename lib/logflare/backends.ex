@@ -532,27 +532,29 @@ defmodule Logflare.Backends do
     backends = __MODULE__.Cache.list_backends(source_id: source.id)
 
     for backend <- [nil | backends] do
-      if backend do
-        telemetry_metadata = %{backend_type: backend.type}
+      {backend_id, backend_type} =
+        if backend do
+          {backend.id, backend.type}
+        else
+          {nil, SingleTenant.backend_type()}
+        end
 
-        :telemetry.span([:logflare, :backends, :ingest, :dispatch], telemetry_metadata, fn ->
-          log_events = maybe_pre_ingest(source, backend, log_events)
-          IngestEventQueue.add_to_table({source.id, backend.id}, log_events)
+      telemetry_metadata = %{backend_type: backend_type}
 
-          :telemetry.execute(
-            [:logflare, :backends, :ingest, :count],
-            %{count: length(log_events)},
-            %{backend_type: backend.type}
-          )
+      :telemetry.span([:logflare, :backends, :ingest, :dispatch], telemetry_metadata, fn ->
+        log_events =
+          if backend, do: maybe_pre_ingest(source, backend, log_events), else: log_events
 
-          {:ok, telemetry_metadata}
-        end)
-      else
-        # Handle nil backend (system default)
-        log_events = log_events
-        backend_id = nil
         IngestEventQueue.add_to_table({source.id, backend_id}, log_events)
-      end
+
+        :telemetry.execute(
+          [:logflare, :backends, :ingest, :dispatch],
+          %{count: length(log_events)},
+          %{backend_type: backend_type}
+        )
+
+        {:ok, telemetry_metadata}
+      end)
     end
   end
 

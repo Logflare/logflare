@@ -63,18 +63,20 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.Pipeline do
     Message.put_batcher(message, :ch)
   end
 
-  def handle_batch(:ch, messages, _batch_info, %{source_id: source_id, backend_id: backend_id}) do
+  def handle_batch(:ch, messages, batch_info, %{source_id: source_id, backend_id: backend_id}) do
+    :telemetry.execute(
+      [:logflare, :backends, :pipeline, :handle_batch],
+      %{batch_size: batch_info.size, batch_trigger: batch_info.trigger},
+      %{
+        backend_type: :clickhouse
+      }
+    )
+
     source = Sources.Cache.get_by_id(source_id)
     backend = Backends.Cache.get_backend(backend_id)
     events = for %{data: le} <- messages, do: le
 
     ClickhouseAdaptor.insert_log_events({source, backend}, events)
-
-    :telemetry.execute(
-      [:logflare, :backends, :clickhouse, :ingest, :count],
-      %{count: length(events)},
-      %{}
-    )
 
     messages
   end
