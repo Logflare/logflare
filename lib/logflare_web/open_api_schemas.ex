@@ -3,7 +3,7 @@ defmodule LogflareWeb.OpenApiSchemas do
 
   defmodule EndpointQuery do
     @properties %{
-      result: %Schema{type: :array, allOf: %Schema{type: :object}},
+      result: %Schema{type: :array, items: %Schema{type: :object}},
       error: %Schema{
         oneOf: [
           %Schema{type: :object},
@@ -33,28 +33,26 @@ defmodule LogflareWeb.OpenApiSchemas do
     @properties %{
       result: %Schema{type: :object},
       errors: %Schema{
-        required: false,
         oneOf: [
           %Schema{type: :object},
           %Schema{type: :string}
         ]
       }
     }
-    use LogflareWeb.OpenApi, properties: @properties, required: [:result, :errors]
+    use LogflareWeb.OpenApi, properties: @properties, required: [:result]
   end
 
   defmodule QueryResult do
     @properties %{
       result: %Schema{type: :object},
       errors: %Schema{
-        required: false,
         oneOf: [
           %Schema{type: :object},
           %Schema{type: :string}
         ]
       }
     }
-    use LogflareWeb.OpenApi, properties: @properties, required: [:result, :errors]
+    use LogflareWeb.OpenApi, properties: @properties, required: [:result]
   end
 
   defmodule EndpointApiSchema do
@@ -87,9 +85,9 @@ defmodule LogflareWeb.OpenApiSchemas do
 
   defmodule Notification do
     @properties %{
-      team_user_ids_for_email: %Schema{type: :array, allOf: %Schema{type: :string}},
-      team_user_ids_for_sms: %Schema{type: :array, allOf: %Schema{type: :string}},
-      team_user_ids_for_schema_updates: %Schema{type: :array, allOf: %Schema{type: :string}},
+      team_user_ids_for_email: %Schema{type: :array, items: %Schema{type: :string}},
+      team_user_ids_for_sms: %Schema{type: :array, items: %Schema{type: :string}},
+      team_user_ids_for_schema_updates: %Schema{type: :array, items: %Schema{type: :string}},
       other_email_notifications: %Schema{type: :string},
       user_email_notifications: %Schema{type: :boolean},
       user_text_notifications: %Schema{type: :boolean},

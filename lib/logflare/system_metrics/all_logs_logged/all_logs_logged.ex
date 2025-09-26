@@ -50,8 +50,8 @@ defmodule Logflare.SystemMetrics.AllLogsLogged do
     {:ok, metric}
   end
 
-  @spec increment(atom) :: {:ok, atom}
-  @spec increment(atom, non_neg_integer()) :: {:ok, atom}
+  @spec increment(atom()) :: {:ok, atom()}
+  @spec increment(atom(), non_neg_integer()) :: {:ok, atom()}
   def increment(metric, n \\ 1) do
     :ets.update_counter(@table, metric, {2, n}, {metric, 0, 0})
 
