@@ -172,7 +172,8 @@ defmodule LogflareWeb.DashboardLive do
     {:noreply, socket}
   end
 
-  @spec update_source_metrics(Socket.t(), String.t(), map()) :: Socket.t()
+  @spec update_source_metrics(Phoenix.LiveView.Socket.t(), String.t(), map()) ::
+          Phoenix.LiveView.Socket.t()
   def update_source_metrics(socket, token, attrs) do
     source_metrics =
       update_in(socket.assigns.source_metrics, [Access.key(token), :metrics], fn

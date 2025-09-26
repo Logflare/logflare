@@ -241,9 +241,8 @@ defmodule Logflare.Sql do
   iex> parameter_positions("select @test as testing")
   %{1 => "test"}
   """
-  @spec parameter_positions(query :: String.t(), opts :: Keyword.t()) :: %{
-          integer() => String.t()
-        }
+  @spec parameter_positions(query :: String.t(), opts :: Keyword.t()) ::
+          {:ok, %{integer() => String.t()}}
   def parameter_positions(query, opts \\ []) when is_non_empty_binary(query) and is_list(opts) do
     {:ok, parameters} = parameters(query, opts)
     {:ok, do_parameter_positions_mapping(query, parameters)}

@@ -6,12 +6,14 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor.PgRepo do
   be able to connect to the configured PSQL URL, run migrations and insert data.
   """
 
+  alias Logflare.Backends.Adaptor
   alias Logflare.Backends.Adaptor.PostgresAdaptor
-  alias Logflare.Backends.Adaptor.PostgresAdaptor.SharedRepo
   alias Logflare.Backends.Adaptor.PostgresAdaptor.PgLogEvent
+  alias Logflare.Backends.Adaptor.PostgresAdaptor.SharedRepo
   alias Logflare.Backends.Backend
   alias Logflare.LogEvent
   alias Logflare.Sources.Source
+
   require Logger
 
   @doc """

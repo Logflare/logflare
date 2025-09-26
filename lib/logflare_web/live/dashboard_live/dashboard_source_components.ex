@@ -3,10 +3,11 @@ defmodule LogflareWeb.DashboardLive.DashboardSourceComponents do
   use LogflareWeb, :routes
   use Phoenix.Component
 
+  alias Logflare.Sources.Source
   alias Phoenix.LiveView.JS
 
-  attr :source, Logflare.Sources.Source, required: true
-  attr :metrics, Logflare.Sources.Source.Metrics, required: true
+  attr :source, Source, required: true
+  attr :metrics, Source.Metrics, required: true
   attr :plan, :map, required: true
   attr :fade_in, :boolean, default: false
 
@@ -166,6 +167,7 @@ defmodule LogflareWeb.DashboardLive.DashboardSourceComponents do
     """
   end
 
+  @spec pipeline_count(Source.t()) :: non_neg_integer()
   def pipeline_count(source) do
     name = Logflare.Backends.via_source(source.id, Logflare.Sources.Source.BigQuery.Pipeline, nil)
 
