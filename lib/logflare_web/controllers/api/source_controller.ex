@@ -112,7 +112,7 @@ defmodule LogflareWeb.Api.SourceController do
 
   operation(:recent,
     summary: "Recent events in a source",
-    parameters: [token: [in: :path, description: "Source Token", type: :string]],
+    parameters: [source_token: [in: :path, description: "Source Token", type: :string]],
     responses: %{
       200 => List.response(Event),
       404 => NotFound.response()
@@ -178,7 +178,7 @@ defmodule LogflareWeb.Api.SourceController do
 
   operation(:show_schema,
     summary: "Show source schema",
-    parameters: [token: [in: :path, description: "Source Token", type: :string]],
+    parameters: [source_token: [in: :path, description: "Source Token", type: :string]],
     responses: %{
       200 => OpenApiSchemas.SourceSchema.response(),
       404 => NotFound.response()
