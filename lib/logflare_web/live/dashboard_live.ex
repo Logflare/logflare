@@ -135,54 +135,6 @@ defmodule LogflareWeb.DashboardLive do
     {:noreply, socket}
   end
 
-  def handle_info(
-        %Phoenix.Socket.Broadcast{topic: "dashboard:" <> source_token, event: "buffer"} =
-          broadcast,
-        socket
-      ) do
-    %{payload: payload} = broadcast
-
-    socket =
-      socket
-      |> update_source_metrics(source_token, %{buffer: payload.buffer})
-
-    {:noreply, socket}
-  end
-
-  def handle_info(
-        %Phoenix.Socket.Broadcast{topic: "dashboard:" <> source_token, event: "rate"} = broadcast,
-        socket
-      ) do
-    %{payload: payload} = broadcast
-
-    socket =
-      socket
-      |> update_source_metrics(source_token, %{
-        avg: payload.average_rate,
-        max: payload.max_rate,
-        rate: payload.last_rate
-      })
-
-    {:noreply, socket}
-  end
-
-  def handle_info(
-        %Phoenix.Socket.Broadcast{topic: "dashboard:" <> source_token, event: "log_count"} =
-          broadcast,
-        socket
-      ) do
-    %{payload: payload} = broadcast
-
-    socket
-    |> update_source_metrics(source_token, %{
-      latest: DateTime.utc_now() |> DateTime.to_unix(:microsecond),
-      inserts_string: payload.log_count
-    })
-    |> assign(fade_in: true)
-
-    {:noreply, socket}
-  end
-
   @impl true
   def handle_info({:metrics_update, payload}, socket) do
     socket =
