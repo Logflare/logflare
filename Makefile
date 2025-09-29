@@ -142,9 +142,17 @@ start.orange: __start__
 start.pink: ERL_NAME = pink
 start.pink: PORT = 4001
 start.pink: ENV_FILE = .dev.env
-# start.pink: ERL_COOKIE = pinkmonster
 start.pink: LOGFLARE_GRPC_PORT = 50052
 start.pink: __start__
+
+
+start.green: ERL_NAME = green
+start.green: PORT = 4002
+start.green: ERL_COOKIE = greenmonster
+start.green: ENV_FILE = .dev.env
+start.green: LOGFLARE_GRPC_PORT = 50053
+start.green: __start__
+
 
 # temp alias
 
@@ -181,7 +189,7 @@ migrate:
 	@env $$(cat .dev.env | xargs) mix ecto.migrate
 
 
-.PHONY: __start__ migrate start.sb.pg start.sb.bq start.st.pg start.st.bq start.orange start.pink
+.PHONY: __start__ migrate start.sb.pg start.sb.bq start.st.pg start.st.bq start.orange start.pink start.green
 
 # Encryption and decryption of secrets
 # Usage:
