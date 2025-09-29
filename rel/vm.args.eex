@@ -45,3 +45,8 @@
 
 ## Reduce net_ticktime from default 60 to 45 seconds for faster detection of disconnected nodes
 -kernel net_ticktime 45
+
+## Disable automatic connection to other nodes
+## Prevents automatic connection attempt between nodes on same network and uses libcluster instead
+## https://www.erlang.org/doc/apps/kernel/kernel_app#configuration
+-kernel dist_auto_connect never

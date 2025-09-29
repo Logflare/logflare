@@ -142,6 +142,7 @@ start.orange: __start__
 start.pink: ERL_NAME = pink
 start.pink: PORT = 4001
 start.pink: ENV_FILE = .dev.env
+# start.pink: ERL_COOKIE = pinkmonster
 start.pink: LOGFLARE_GRPC_PORT = 50052
 start.pink: __start__
 
@@ -172,7 +173,8 @@ __start__:
 	@if [ ! -f ${ENV_FILE} ]; then \
 		touch ${ENV_FILE}; \
 	fi
-	@env $$(cat ${ENV_FILE} .dev.env | xargs) PORT=${PORT} LOGFLARE_GRPC_PORT=${LOGFLARE_GRPC_PORT} LOGFLARE_SUPABASE_MODE=${LOGFLARE_SUPABASE_MODE} iex --sname ${ERL_NAME} --cookie ${ERL_COOKIE} -S mix phx.server
+# kernel options should match  vm.args.eex
+	@env $$(cat ${ENV_FILE} .dev.env | xargs) PORT=${PORT} LOGFLARE_GRPC_PORT=${LOGFLARE_GRPC_PORT} LOGFLARE_SUPABASE_MODE=${LOGFLARE_SUPABASE_MODE} iex --sname ${ERL_NAME} --cookie ${ERL_COOKIE} --erl "-kernel dist_auto_connect never" -S mix phx.server
 
 
 migrate:
