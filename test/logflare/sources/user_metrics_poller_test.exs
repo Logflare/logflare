@@ -2,6 +2,14 @@ defmodule Logflare.Sources.UserMetricsPollerTest do
   use Logflare.DataCase, async: false
   alias Logflare.Sources.UserMetricsPoller
 
+  def user_with_source(_) do
+    _plan = insert(:plan)
+    user = insert(:user)
+    source = insert(:source, user: user)
+
+    [user: user, source: source]
+  end
+
   def user_metrics_poller(%{user: user}) do
     UserMetricsPoller.track(self(), user.id)
 
@@ -28,41 +36,33 @@ defmodule Logflare.Sources.UserMetricsPollerTest do
     [poller_pid: poller_pid]
   end
 
-  def stub_rpc_multicall(_context) do
+  def stub_rpc_multicall(%{user: user}) do
     Logflare.Cluster.Utils
     |> stub(:rpc_multicall, fn
-      Logflare.PubSubRates.Cache, :get_local_buffer, [_source_id, nil] ->
-        {[%{len: 15}, %{len: 5}], []}
+      Logflare.PubSubRates.Cache, :get_all_local_metrics, [user_id] when user_id == user.id ->
+        sources = Logflare.Sources.list_sources_by_user(user_id)
 
-      Logflare.PubSubRates.Cache, :get_local_rates, [_source_id] ->
+        node_metrics =
+          Enum.reduce(sources, %{}, fn source, acc ->
+            Map.put(acc, source.token, %{
+              rates: %{average_rate: 10, last_rate: 5, max_rate: 15},
+              buffer: %{len: 15},
+              inserts: %{"node" => %{bq_inserts: 123, node_inserts: 456}}
+            })
+          end)
+
         {
-          [
-            %{average_rate: 10, last_rate: 5, max_rate: 15},
-            %{average_rate: 10, last_rate: 5, max_rate: 15}
-          ],
+          # two nodes rerurn results, zero bad nodes
+          [node_metrics, node_metrics],
           []
         }
-
-      Logflare.PubSubRates.Cache, :get_inserts, [_source_token] ->
-        {[
-           {:ok, %{"node" => %{bq_inserts: 123, node_inserts: 456}}}
-         ], []}
     end)
 
     :ok
   end
 
   describe "metrics polling and broadcasting" do
-    setup do
-      _plan = insert(:plan)
-      user = insert(:user)
-      source = insert(:source, user: user)
-
-      [user: user, source: source]
-    end
-
-    setup :stub_rpc_multicall
-    setup :user_metrics_poller
+    setup [:user_with_source, :stub_rpc_multicall, :user_metrics_poller]
 
     test "receives metrics updates from UserMetricsPoller", %{
       user: user,
@@ -75,18 +75,19 @@ defmodule Logflare.Sources.UserMetricsPollerTest do
 
       assert_receive {:metrics_update, metrics}, 1000
 
+      # two nodes return results, so all values are doubled
       assert Map.get(metrics, source.token) ==
                %{
-                 avg: 20,
-                 rate: 10,
-                 max: 30,
-                 buffer: 20,
-                 inserts: 579
+                 avg: 10 * 2,
+                 rate: 5 * 2,
+                 max: 15 * 2,
+                 buffer: 15 * 2,
+                 inserts: 579 * 2
                }
     end
 
     test "tracks subscribers", %{user: user} do
-      # UserMetricsPoller.track(self(), 1)
+      UserMetricsPoller.track(self(), 1)
       assert UserMetricsPoller.list_subscribers(user.id) |> length() == 1
 
       # Same process, so ignored as a duplicate
@@ -141,6 +142,35 @@ defmodule Logflare.Sources.UserMetricsPollerTest do
 
       assert Enum.sort(Map.keys(metrics)) ==
                Enum.sort(Logflare.Sources.list_sources_by_user(user.id) |> Enum.map(& &1.token))
+    end
+  end
+
+  describe "broadcasting metrics in batches" do
+    setup [:user_with_source]
+
+    setup %{user: user} do
+      # 55 sources in total
+      sources = for _i <- 1..54, do: insert(:source, user: user)
+
+      [user: user, sources: sources]
+    end
+
+    setup [:stub_rpc_multicall, :user_metrics_poller]
+
+    test "batches large metrics updates", %{user: user, poller_pid: poller_pid} do
+      Phoenix.PubSub.subscribe(Logflare.PubSub, "dashboard_user_metrics:#{user.id}")
+
+      send(poller_pid, :poll_metrics)
+
+      assert_receive {:metrics_update, first_batch}, 1000
+      assert Enum.count(first_batch) == 50
+
+      assert_receive {:metrics_update, second_batch}, 1000
+      assert Enum.count(second_batch) == 5
+
+      all_tokens = Map.keys(first_batch) ++ Map.keys(second_batch)
+      expected_tokens = Logflare.Sources.list_sources_by_user(user.id) |> Enum.map(& &1.token)
+      assert Enum.sort(all_tokens) == Enum.sort(expected_tokens)
     end
   end
 end

@@ -203,14 +203,22 @@ defmodule LogflareWeb.DashboardLiveTest do
 
       Logflare.Cluster.Utils
       |> stub(:rpc_multicall, fn
-        Logflare.PubSubRates.Cache, :get_local_buffer, [_source_id, nil] ->
-          {[%{len: buffer}], []}
+        Logflare.PubSubRates.Cache, :get_all_local_metrics, [user_id] when user_id == user.id ->
+          sources = Logflare.Sources.list_sources_by_user(user_id)
 
-        Logflare.PubSubRates.Cache, :get_local_rates, [_source_token] ->
-          {[%{average_rate: avg_rate, last_rate: last_rate, max_rate: max_rate}], []}
+          node_metrics =
+            Enum.reduce(sources, %{}, fn source, acc ->
+              Map.put(acc, source.token, %{
+                rates: %{average_rate: avg_rate, last_rate: last_rate, max_rate: max_rate},
+                buffer: %{len: buffer},
+                inserts: %{"node" => %{bq_inserts: log_count, node_inserts: 0}}
+              })
+            end)
 
-        Logflare.PubSubRates.Cache, :get_inserts, [_source_token] ->
-          {[{:ok, %{"node" => %{bq_inserts: log_count, node_inserts: 0}}}], []}
+          {
+            [node_metrics],
+            []
+          }
       end)
 
       {:ok, view, _html} = live(conn, "/dashboard")
