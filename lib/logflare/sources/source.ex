@@ -123,7 +123,7 @@ defmodule Logflare.Sources.Source do
     field :bq_table_id, :string, virtual: true
     field :bq_dataset_id, :string, virtual: true
     field :bq_table_partition_type, Ecto.Enum, values: [:pseudo, :timestamp], default: :timestamp
-    field(:bq_storage_write_api, :boolean, default: false)
+    field :bq_storage_write_api, :boolean, default: false
     field :custom_event_message_keys, :string
     field :log_events_updated_at, :naive_datetime
     field :notifications_every, :integer, default: :timer.hours(4)

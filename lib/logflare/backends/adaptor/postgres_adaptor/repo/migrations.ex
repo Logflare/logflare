@@ -1,6 +1,7 @@
 defmodule Logflare.Backends.Adaptor.PostgresAdaptor.Repo.Migrations do
   @moduledoc false
 
+  alias Logflare.Sources.Source
   alias Logflare.Backends.Adaptor.PostgresAdaptor.SharedRepo, as: Repo
   alias Logflare.Backends.Adaptor.PostgresAdaptor, as: Adaptor
 
@@ -24,27 +25,28 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor.Repo.Migrations do
   end
 
   def create_table(table_name) do
-    execute """
+    execute!("""
     CREATE TABLE IF NOT EXISTS #{table_name} (
       id TEXT PRIMARY KEY,
       body JSONB,
       event_message TEXT,
       timestamp TIMESTAMP
     )
-    """
+    """)
 
-    execute """
+    execute!("""
     CREATE INDEX IF NOT EXISTS #{table_name}_timestamp_brin_idx ON #{table_name} USING brin (timestamp)
-    """
+    """)
   end
 
+  @spec down(Source.t()) :: Ecto.Adapters.SQL.query_result()
   def down(source) do
     table_name = Adaptor.table_name(source)
 
-    execute "TRUNCATE #{table_name}"
+    execute!("TRUNCATE #{table_name}")
   end
 
-  defp execute(query) do
+  defp execute!(query) do
     Ecto.Adapters.SQL.query!(Repo.get_dynamic_repo(), query)
   end
 end
