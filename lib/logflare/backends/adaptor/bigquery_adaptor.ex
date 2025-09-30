@@ -183,7 +183,9 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
         user,
         bq_sql,
         bq_params,
-        build_base_query_opts(user, [dataset_id: dataset_id] ++ opts)
+        # ecto queries are always positional
+        build_base_query_opts(user, [dataset_id: dataset_id] ++ opts) ++
+          [parameterMode: "POSITIONAL"]
       )
     end
   end
@@ -539,7 +541,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
   defp execute_query_with_context(user_id, query_string, declared_params, input_params, nil, opts) do
     user = Users.Cache.get(user_id)
     bq_params = build_bq_params(declared_params, input_params)
-    query_opts = build_base_query_opts(user, opts)
+    query_opts = build_base_query_opts(user, opts) ++ [parameterMode: "NAMED"]
 
     execute_user_query(user, query_string, bq_params, query_opts)
   end
@@ -566,6 +568,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
     query_opts =
       build_base_query_opts(user, opts) ++
         [
+          parameterMode: "NAMED",
           maxResults: endpoint_query.max_limit,
           labels:
             Map.merge(
