@@ -165,7 +165,13 @@ defmodule Logflare.Logs.SearchOperationsTest do
         Process.put(:captured_query, query)
         Process.put(:captured_opts, opts)
 
-        {:ok, %{rows: [%{"test" => "data"}], total_rows: 1}}
+        {:ok,
+         %{
+           rows: [%{"test" => "data"}],
+           total_rows: 1,
+           query_string: "",
+           bq_params: []
+         }}
       end)
 
       result_so = SearchOperations.do_query(base_so)

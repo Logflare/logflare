@@ -52,10 +52,21 @@ defmodule Logflare.Logs.SearchOperations do
       so
       |> SearchUtils.put_result(:query_result, response)
       |> SearchUtils.put_result(:rows, response.rows)
+      |> put_sql_string_and_params(response)
     else
       {:error, err} ->
         SearchUtils.put_result(so, :error, err)
     end
+  end
+
+  @spec put_sql_string_and_params(SO.t(), %{query_string: String.t(), bq_params: list()}) ::
+          SO.t()
+  defp put_sql_string_and_params(%{sql_string: sql_string} = so, _response)
+       when is_binary(sql_string),
+       do: so
+
+  defp put_sql_string_and_params(so, %{query_string: query_string, bq_params: bq_params}) do
+    %{so | sql_string: query_string, sql_params: bq_params}
   end
 
   @spec apply_query_defaults(SO.t()) :: SO.t()

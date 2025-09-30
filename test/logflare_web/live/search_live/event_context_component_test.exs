@@ -51,7 +51,9 @@ defmodule LogflareWeb.SearchLive.EventContextComponentTest do
            %{
              rows: result.rows,
              total_bytes_processed: result.total_bytes_processed,
-             total_rows: result.total_rows
+             total_rows: result.total_rows,
+             query_string: bq_sql,
+             bq_params: bq_params
            }}
 
         error ->

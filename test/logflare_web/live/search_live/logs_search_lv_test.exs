@@ -251,7 +251,17 @@ defmodule LogflareWeb.Source.SearchLVTest do
              |> render_click()
 
       :timer.sleep(300)
-      assert render(view) =~ "Actual SQL query used when querying for results"
+      html = render(view)
+      assert html =~ "Actual SQL query used when querying for results"
+
+      formatted_sql =
+        """
+        SELECT
+          t0.timestamp
+        """
+        |> String.trim()
+
+      assert html =~ formatted_sql
     end
 
     test "subheader - aggregeate", %{conn: conn, source: source} do
@@ -265,7 +275,19 @@ defmodule LogflareWeb.Source.SearchLVTest do
              |> render_click()
 
       :timer.sleep(300)
-      assert render(view) =~ "Actual SQL query used when querying for results"
+      html = render(view)
+
+      assert html =~ "Actual SQL query used when querying for results"
+
+      formatted_sql =
+        """
+        SELECT
+          (
+            CASE
+        """
+        |> String.trim()
+
+      assert html =~ formatted_sql
     end
 
     test "load page", %{conn: conn, source: source} do
