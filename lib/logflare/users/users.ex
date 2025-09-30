@@ -182,9 +182,12 @@ defmodule Logflare.Users do
   end
 
   def update_user_all_fields(user, params) do
-    user
-    |> user_changeset(params)
-    |> Repo.update()
+    Repo.transact(fn ->
+      user
+      |> user_changeset(params)
+      |> Repo.update()
+      |> update_system_sources(user.system_monitoring)
+    end)
   end
 
   def update_user_allowed(user, params) do
@@ -192,17 +195,30 @@ defmodule Logflare.Users do
       user
       |> User.user_allowed_changeset(params)
       |> Repo.update()
-      |> maybe_create_system_monitoring_sources()
+      |> update_system_sources(user.system_monitoring)
     end)
   end
 
-  defp maybe_create_system_monitoring_sources({:ok, %{system_monitoring: true} = user}) do
-    Sources.create_user_system_sources(user.id)
+  defp update_system_sources({:ok, user}, original_system_monitoring) do
+    if user.system_monitoring != original_system_monitoring,
+      do: toggle_system_monitoring(user)
 
     {:ok, user}
   end
 
-  defp maybe_create_system_monitoring_sources(result), do: result
+  defp update_system_sources(result, _), do: result
+
+  defp toggle_system_monitoring(%{system_monitoring: true} = user) do
+    {_, sources} = Sources.create_user_system_sources(user.id)
+
+    Enum.each(sources, &Supervisor.reset_source/1)
+  end
+
+  defp toggle_system_monitoring(%{system_monitoring: false} = user) do
+    [user_id: user.id, system_source: true]
+    |> Sources.list_sources()
+    |> Enum.each(&Supervisor.stop_source/1)
+  end
 
   @spec insert_user(map()) :: {:ok, User.t()} | {:error, any()}
   def insert_user(params) do

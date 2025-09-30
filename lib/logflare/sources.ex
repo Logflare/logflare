@@ -68,8 +68,8 @@ defmodule Logflare.Sources do
       {:default_ingest_backend_enabled?, enabled}, q when is_boolean(enabled) ->
         where(q, [s], s.default_ingest_backend_enabled? == ^enabled)
 
-      {:system_monitoring, value}, q when is_boolean(value) ->
-        where(q, [s], s.system_monitoring == ^value)
+      {:system_source, value}, q when is_boolean(value) ->
+        where(q, [s], s.system_source == ^value)
 
       _, q ->
         q
@@ -139,9 +139,14 @@ defmodule Logflare.Sources do
       end
 
     Repo.insert_all(Source, entries,
+      returning: true,
       conflict_target: [:user_id, :system_source_type],
       on_conflict: :nothing
     )
+    |> case do
+      {_, []} -> {:ok, list_sources_by_user(user_id)}
+      {_, result} -> {:ok, result}
+    end
   end
 
   @doc """
