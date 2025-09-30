@@ -62,6 +62,54 @@ defmodule Logflare.Backends.BigQueryAdaptorTest do
 
       :timer.sleep(1000)
     end
+
+    test "can query with parameters" do
+      pid = self()
+      user = insert(:user)
+      backend = Backends.get_default_backend(user)
+
+      GoogleApi.BigQuery.V2.Api.Jobs
+      |> expect(:bigquery_jobs_query, fn _connection, _project_id, opts ->
+        assert opts[:body].parameterMode == "NAMED"
+        value = opts[:body].queryParameters |> hd() |> get_in([:parameterValue, :value])
+
+        {:ok, TestUtils.gen_bq_response([%{"test" => value}])}
+      end)
+
+      user = insert(:user)
+      source = insert(:source, user: user)
+      start_supervised!({SourceSup, source})
+      log_event = build(:log_event, source: source)
+
+      assert {:ok, %{rows: [%{"test" => "input_data"}]}} =
+               BigQueryAdaptor.execute_query(
+                 backend,
+                 {"SELECT @test", ["test"], %{"test" => "input_data"}},
+                 []
+               )
+    end
+
+    test "can query with no parameters" do
+      pid = self()
+      user = insert(:user)
+      backend = Backends.get_default_backend(user)
+
+      GoogleApi.BigQuery.V2.Api.Jobs
+      |> expect(:bigquery_jobs_query, fn _connection, _project_id, opts ->
+        assert opts[:body].parameterMode == "NAMED"
+        assert opts[:body].queryParameters |> length() == 0
+
+        {:ok, TestUtils.gen_bq_response([%{"test" => "1"}])}
+      end)
+
+      user = insert(:user)
+      source = insert(:source, user: user)
+      start_supervised!({SourceSup, source})
+      log_event = build(:log_event, source: source)
+
+      assert {:ok, %{rows: [%{"test" => "1"}]}} =
+               BigQueryAdaptor.execute_query(backend, "SELECT 1", [])
+    end
   end
 
   describe "custom bigquery backend" do
