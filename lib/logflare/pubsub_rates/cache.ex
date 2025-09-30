@@ -187,8 +187,12 @@ defmodule Logflare.PubSubRates.Cache do
   end
 
   def get_all_local_metrics(user_id) do
-    user_id
-    |> Logflare.Sources.list_sources_by_user()
+    %{sources: sources} =
+      user_id
+      |> Logflare.Users.Cache.get()
+      |> Logflare.Users.Cache.preload_sources()
+
+    sources
     |> Enum.map(fn source ->
       metrics = get_source_local_metrics(source.id, source.token)
       {source.token, metrics}

@@ -123,26 +123,6 @@ defmodule Logflare.Sources.UserMetricsPollerTest do
 
       refute Process.alive?(poller_pid)
     end
-
-    test "refreshes sources", %{user: user, poller_pid: poller_pid} do
-      Phoenix.PubSub.subscribe(Logflare.PubSub, "dashboard_user_metrics:#{user.id}")
-
-      send(poller_pid, :poll_metrics)
-
-      assert_receive {:metrics_update, metrics}, 1000
-
-      assert Enum.sort(Map.keys(metrics)) ==
-               Enum.sort(Logflare.Sources.list_sources_by_user(user.id) |> Enum.map(& &1.token))
-
-      _new_source = insert(:source, user: user)
-      send(poller_pid, :refresh_sources)
-      send(poller_pid, :poll_metrics)
-
-      assert_receive {:metrics_update, metrics}, 1000
-
-      assert Enum.sort(Map.keys(metrics)) ==
-               Enum.sort(Logflare.Sources.list_sources_by_user(user.id) |> Enum.map(& &1.token))
-    end
   end
 
   describe "broadcasting metrics in batches" do

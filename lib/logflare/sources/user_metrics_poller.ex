@@ -2,10 +2,8 @@ defmodule Logflare.Sources.UserMetricsPoller do
   use GenServer
 
   alias Logflare.Cluster
-  alias Logflare.Sources
 
   @poll_interval :timer.seconds(5)
-  @refresh_interval :timer.seconds(60)
   @batch_size 50
 
   @moduledoc """
@@ -23,8 +21,6 @@ defmodule Logflare.Sources.UserMetricsPoller do
   - Metrics are polled at regular intervals and broadcast via PubSub
   - Dashboards must also subscribe to updates via PubSub to receive updates
   - The poller automatically stops when all dashboards disconnect or unmount
-  - The list of sources is refreshed periodically to ensure sources created
-    after the poller is started receives updates.
 
   """
 
@@ -67,17 +63,9 @@ defmodule Logflare.Sources.UserMetricsPoller do
 
   # Server Implementation
   def init(user_id) do
-    sources = get_sources(user_id)
-
     schedule_poll()
-    schedule_sources_refresh()
 
-    {:ok, %{user_id: user_id, sources: sources}}
-  end
-
-  @spec get_sources(non_neg_integer()) :: list(map)
-  def get_sources(user_id) do
-    Sources.list_sources_by_user(user_id) |> Enum.map(&Map.take(&1, [:id, :token]))
+    {:ok, %{user_id: user_id}}
   end
 
   def list_subscribers(user_id) do
@@ -95,17 +83,6 @@ defmodule Logflare.Sources.UserMetricsPoller do
     else
       {:stop, :normal, state}
     end
-  end
-
-  def handle_info(:refresh_sources, state) do
-    sources = get_sources(state.user_id)
-
-    schedule_sources_refresh()
-    {:noreply, %{state | sources: sources}}
-  end
-
-  defp schedule_sources_refresh do
-    Process.send_after(self(), :refresh_sources, @refresh_interval)
   end
 
   defp schedule_poll do
