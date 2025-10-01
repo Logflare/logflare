@@ -46,11 +46,7 @@ defmodule Logflare.Backends.Adaptor.ElasticAdaptor do
 
   @impl Logflare.Backends.Adaptor
   def redact_config(config) do
-    if Map.get(config, :password) do
-      Map.put(config, :password, "REDACTED")
-    else
-      config
-    end
+    Map.replace_lazy(config, :password, fn _ -> "REDACTED" end)
   end
 
   @impl Logflare.Backends.Adaptor
