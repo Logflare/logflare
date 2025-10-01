@@ -278,7 +278,6 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
         _ ->
           1.0
       end
-      |> dbg()
 
     if :rand.uniform() <= probability do
       :ok =
