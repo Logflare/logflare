@@ -127,11 +127,11 @@ defmodule LogflareWeb.EndpointsLiveTest do
     assert has_element?(view, ".subhead button i.fas.fa-trash")
     assert render(view) =~ ~r/active caches:.+\d+/
 
-    view
-    |> element(".subhead button", "clear cache")
-    |> render_click()
+    TestUtils.retry_assert([sleep: 250], fn ->
+      view
+      |> element(".subhead button", "clear cache")
+      |> render_click()
 
-    TestUtils.retry_assert(fn ->
       assert render(view) =~ "Cache cleared successfully"
       assert render(view) =~ ~r/active caches:.+0/
     end)
