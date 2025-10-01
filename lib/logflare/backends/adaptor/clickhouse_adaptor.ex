@@ -82,6 +82,11 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
     end
   end
 
+  @impl Logflare.Backends.Adaptor
+  def redact_config(config) do
+    Map.put(config, :password, "REDACTED")
+  end
+
   @doc false
   @impl Logflare.Backends.Adaptor
   def execute_query(%Backend{} = backend, query_string, opts)

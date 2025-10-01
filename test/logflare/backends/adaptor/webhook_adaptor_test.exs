@@ -145,6 +145,25 @@ defmodule Logflare.Backends.WebhookAdaptorTest do
     assert {:ok, _} = EgressMiddleware.call(%Tesla.Env{}, [], metadata: nil)
   end
 
+  describe "redact_config/1" do
+    test "redacts Authorization header" do
+      config = %{
+        headers: %{
+          "Authorization" => "Bearer secret-token-123",
+          "Content-Type" => "application/json"
+        }
+      }
+
+      assert %{headers: %{"Authorization" => "REDACTED", "Content-Type" => "application/json"}} =
+               @subject.redact_config(config)
+    end
+
+    test "redacts authorization header case-insensitive" do
+      config = %{headers: %{"authorization" => "Basic dXNlcjpwYXNz"}}
+      assert %{headers: %{"authorization" => "REDACTED"}} = @subject.redact_config(config)
+    end
+  end
+
   describe "benchmark" do
     @describetag :benchmark
 

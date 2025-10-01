@@ -113,6 +113,8 @@ defmodule Logflare.Backends.Backend do
     def encode(value, opts) do
       type = value.type
 
+      adaptor = Logflare.Backends.Backend.adaptor_mapping()[type]
+
       values =
         value
         |> Map.put(:config, value.config_encrypted)
@@ -126,20 +128,12 @@ defmodule Logflare.Backends.Backend do
           :metadata,
           :default_ingest?
         ])
-        |> Map.update(:config, %{}, fn
-          config when type == :postgres ->
-            url = Map.get(config, :url) || Map.get(config, "url")
-            updated = String.replace(url, ~r/(.+):.+\@/, "\\g{1}:REDACTED@")
-            Map.put(config, :url, updated)
-
-          config when type == :datadog ->
-            Map.put(config, :api_key, "REDACTED")
-
-          %{password: pass} = config when pass != nil ->
-            Map.put(config, :password, "REDACTED")
-
-          cfg ->
-            cfg
+        |> Map.update(:config, %{}, fn config ->
+          if function_exported?(adaptor, :redact_config, 1) do
+            adaptor.redact_config(config)
+          else
+            config
+          end
         end)
 
       Jason.Encode.map(values, opts)

@@ -125,4 +125,13 @@ defmodule Logflare.Backends.Adaptor.LokiAdaptor do
       changeset
     end
   end
+
+  @impl Logflare.Backends.Adaptor
+  def redact_config(config) do
+    if Map.get(config, :password) do
+      Map.put(config, :password, "REDACTED")
+    else
+      config
+    end
+  end
 end

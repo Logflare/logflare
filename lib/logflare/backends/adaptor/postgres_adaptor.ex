@@ -189,6 +189,13 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor do
     end)
   end
 
+  @impl Logflare.Backends.Adaptor
+  def redact_config(config) do
+    url = Map.get(config, :url) || Map.get(config, "url")
+    updated = String.replace(url, ~r/(.+):.+\@/, "\\g{1}:REDACTED@")
+    Map.put(config, :url, updated)
+  end
+
   # expose PgRepo functions
   defdelegate create_repo(backend), to: PgRepo
   defdelegate table_name(source), to: PgRepo

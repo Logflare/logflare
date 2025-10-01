@@ -62,6 +62,20 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
     |> Ecto.Changeset.validate_inclusion(:http, ["http1", "http2"])
   end
 
+  @impl Logflare.Backends.Adaptor
+  def redact_config(config) do
+    config
+    |> Map.update(:headers, %{}, fn headers ->
+      for {key, value} <- headers, into: %{} do
+        if String.downcase(key) == "authorization" do
+          {key, "REDACTED"}
+        else
+          {key, value}
+        end
+      end
+    end)
+  end
+
   # HTTP Client
   defmodule Client do
     @moduledoc false

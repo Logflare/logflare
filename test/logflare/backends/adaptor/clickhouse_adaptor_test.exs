@@ -128,6 +128,13 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptorTest do
     end
   end
 
+  describe "redact_config/1" do
+    test "redacts password field" do
+      config = %{password: "secret123", database: "logs"}
+      assert %{password: "REDACTED"} = ClickhouseAdaptor.redact_config(config)
+    end
+  end
+
   describe "log event insertion and retrieval" do
     setup do
       insert(:plan, name: "Free")

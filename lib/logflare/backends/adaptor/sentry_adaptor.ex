@@ -72,6 +72,18 @@ defmodule Logflare.Backends.Adaptor.SentryAdaptor do
     |> validate_dsn()
   end
 
+  @impl Logflare.Backends.Adaptor
+  def redact_config(config) do
+    case Map.get(config, :dsn) || Map.get(config, "dsn") do
+      nil ->
+        config
+
+      dsn ->
+        redacted_dsn = String.replace(dsn, ~r/\/\/([^:]+):[^@]+@/, "//\\1:REDACTED@")
+        Map.put(config, :dsn, redacted_dsn)
+    end
+  end
+
   defp validate_dsn(%{changes: %{dsn: dsn}} = changeset) do
     case DSN.parse(dsn) do
       {:ok, _parsed_dsn} ->

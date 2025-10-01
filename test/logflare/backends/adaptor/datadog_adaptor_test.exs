@@ -40,6 +40,13 @@ defmodule Logflare.Backends.Adaptor.DatadogAdaptorTest do
     end
   end
 
+  describe "redact_config/1" do
+    test "redacts api_key field" do
+      config = %{api_key: "secret-api-key-123", region: "US1"}
+      assert %{api_key: "REDACTED"} = @subject.redact_config(config)
+    end
+  end
+
   describe "logs ingestion" do
     setup do
       user = insert(:user)

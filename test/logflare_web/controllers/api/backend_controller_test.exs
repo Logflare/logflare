@@ -110,6 +110,48 @@ defmodule LogflareWeb.Api.BackendControllerTest do
              } = json_response(conn, 201)
     end
 
+    test "creates a clickhouse backend for an authenticated user", %{conn: conn, user: user} do
+      name = TestUtils.random_string()
+
+      conn =
+        conn
+        |> add_access_token(user, "private")
+        |> post("/api/backends", %{
+          name: name,
+          type: "clickhouse",
+          config: %{
+            url: "http://localhost:8123",
+            username: "test_user",
+            password: "test_password",
+            database: "default",
+            port: 8123,
+            pool_size: 10
+          },
+          description: "some description",
+          metadata: %{
+            some: "data"
+          }
+        })
+
+      assert %{
+               "id" => _,
+               "token" => _,
+               "name" => ^name,
+               "description" => "some description",
+               "config" => %{
+                 "url" => "http://localhost:8123",
+                 "username" => "test_user",
+                 "password" => "REDACTED",
+                 "database" => "default",
+                 "port" => 8123,
+                 "pool_size" => 10
+               },
+               "metadata" => %{
+                 "some" => "data"
+               }
+             } = json_response(conn, 201)
+    end
+
     test "creates a datadog backend for an authenticated user", %{conn: conn, user: user} do
       name = TestUtils.random_string()
 
