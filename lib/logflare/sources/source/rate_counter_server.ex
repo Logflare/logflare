@@ -12,7 +12,6 @@ defmodule Logflare.Sources.Source.RateCounterServer do
   alias Logflare.Source.Data
   alias Logflare.Sources
   alias Logflare.Sources.Counters
-  alias Logflare.Sources.Source
   alias Logflare.Sources.Source.Data
   alias Logflare.Sources.Source.RateCounterServer
 
