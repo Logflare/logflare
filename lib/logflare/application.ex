@@ -67,7 +67,9 @@ defmodule Logflare.Application do
          max_restarts: 10,
          max_seconds: 60,
          name: Logflare.Sources.Source.V1SourceDynSup},
-        LogflareWeb.Endpoint
+        LogflareWeb.Endpoint,
+        {Logflare.ActiveUserTracker,
+         [name: Logflare.ActiveUserTracker, pubsub_server: Logflare.PubSub]}
       ]
   end
 
@@ -126,7 +128,11 @@ defmodule Logflare.Application do
         {Task, fn -> startup_tasks() end},
 
         # citrine scheduler for alerts
-        Logflare.Alerting.Supervisor
+        Logflare.Alerting.Supervisor,
+
+        # active users tracking for UserMetricsPoller
+        {Logflare.ActiveUserTracker,
+         [name: Logflare.ActiveUserTracker, pubsub_server: Logflare.PubSub]}
       ]
   end
 
