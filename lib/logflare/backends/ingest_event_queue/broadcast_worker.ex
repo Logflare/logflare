@@ -6,7 +6,6 @@ defmodule Logflare.Backends.IngestEventQueue.BroadcastWorker do
   Broadcasts local buffer length of a given queue globally.
   """
   use GenServer
-  alias Logflare.Sources.Source
   alias Logflare.PubSubRates
   alias Logflare.Backends
   require Logger
@@ -31,7 +30,7 @@ defmodule Logflare.Backends.IngestEventQueue.BroadcastWorker do
         if is_map_key(acc, {sid, bid}) do
           acc
         else
-          global_broadcast_producer_buffer_len({sid, bid})
+          local_broadcast_producer_buffer_len({sid, bid})
           Map.put(acc, {sid, bid}, true)
         end
       end,
@@ -53,7 +52,6 @@ defmodule Logflare.Backends.IngestEventQueue.BroadcastWorker do
         if is_map_key(acc, {sid, bid}) do
           acc
         else
-          local_broadcast_cluster_length({sid, bid})
           Map.put(acc, {sid, bid}, true)
         end
       end,
@@ -65,20 +63,10 @@ defmodule Logflare.Backends.IngestEventQueue.BroadcastWorker do
     {:noreply, state}
   end
 
-  defp global_broadcast_producer_buffer_len({source_id, backend_id})
+  defp local_broadcast_producer_buffer_len({source_id, backend_id})
        when is_integer(source_id) and (is_integer(backend_id) or is_nil(backend_id)) do
     {:ok, stats} = Backends.cache_local_buffer_lens(source_id, backend_id)
     local_buffer = %{Node.self() => stats}
-    PubSubRates.global_broadcast_rate({"buffers", source_id, backend_id, local_buffer})
-  end
-
-  defp local_broadcast_cluster_length({source_id, backend_id}) do
-    payload = %{
-      buffer: PubSubRates.Cache.get_cluster_buffers(source_id),
-      source_id: source_id,
-      backend_id: backend_id
-    }
-
-    Source.ChannelTopics.local_broadcast_buffer(payload)
+    PubSubRates.Cache.cache_buffers(source_id, backend_id, local_buffer)
   end
 end

@@ -9,6 +9,7 @@ defmodule Logflare.Sources.Source.RateCounterServer do
   alias Logflare.Google.BigQuery.GenUtils
   alias Logflare.PubSubRates
   alias Logflare.SingleTenant
+  alias Logflare.Source.Data
   alias Logflare.Sources
   alias Logflare.Sources.Counters
   alias Logflare.Sources.Source
@@ -247,13 +248,7 @@ defmodule Logflare.Sources.Source.RateCounterServer do
   def broadcast(%RateCounterServer{} = state) do
     local_rates = %{Node.self() => state_to_external(state)}
 
-    PubSubRates.global_broadcast_rate({"rates", state.source_id, local_rates})
-
-    cluster_rates =
-      PubSubRates.Cache.get_cluster_rates(state.source_id)
-      |> Map.put(:source_token, state.source_id)
-
-    Source.ChannelTopics.local_broadcast_rates(cluster_rates)
+    PubSubRates.Cache.cache_rates(state.source_id, local_rates)
   end
 
   @spec get_insert_count(atom) :: {:ok, non_neg_integer()}
