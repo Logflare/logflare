@@ -145,6 +145,13 @@ start.pink: ENV_FILE = .dev.env
 start.pink: LOGFLARE_GRPC_PORT = 50052
 start.pink: __start__
 
+start.green: ERL_NAME = green
+start.green: PORT = 4002
+start.green: ERL_COOKIE = greenmonster
+start.green: ENV_FILE = .dev.env
+start.green: LOGFLARE_GRPC_PORT = 50053
+start.green: __start__
+
 # temp alias
 
 start.sb.bq: LOGFLARE_SUPABASE_MODE = true
@@ -172,7 +179,7 @@ __start__:
 	@if [ ! -f ${ENV_FILE} ]; then \
 		touch ${ENV_FILE}; \
 	fi
-	@env $$(cat ${ENV_FILE} .dev.env | xargs) PORT=${PORT} LOGFLARE_GRPC_PORT=${LOGFLARE_GRPC_PORT} LOGFLARE_SUPABASE_MODE=${LOGFLARE_SUPABASE_MODE} iex --sname ${ERL_NAME} --cookie ${ERL_COOKIE} -S mix phx.server
+	@env $$(cat ${ENV_FILE} .dev.env | xargs) PORT=${PORT} LOGFLARE_GRPC_PORT=${LOGFLARE_GRPC_PORT} LOGFLARE_SUPABASE_MODE=${LOGFLARE_SUPABASE_MODE} iex --sname ${ERL_NAME}-${ERL_COOKIE} --cookie ${ERL_COOKIE} -S mix phx.server
 
 
 migrate:
