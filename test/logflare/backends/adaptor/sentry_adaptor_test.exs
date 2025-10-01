@@ -306,7 +306,7 @@ defmodule Logflare.Backends.Adaptor.SentryAdaptorTest do
       config = %{dsn: "https://abc123@o123456.ingest.sentry.io/123456"}
 
       assert %{dsn: "https://abc123@o123456.ingest.sentry.io/123456"} =
-                        @subject.redact_config(config)
+               @subject.redact_config(config)
     end
   end
 end
