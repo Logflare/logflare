@@ -30,7 +30,7 @@ defmodule Logflare.Backends.IngestEventQueue.BroadcastWorker do
         if is_map_key(acc, {sid, bid}) do
           acc
         else
-          local_broadcast_producer_buffer_len({sid, bid})
+          cache_local_buffer_len({sid, bid})
           Map.put(acc, {sid, bid}, true)
         end
       end,
@@ -63,7 +63,7 @@ defmodule Logflare.Backends.IngestEventQueue.BroadcastWorker do
     {:noreply, state}
   end
 
-  defp local_broadcast_producer_buffer_len({source_id, backend_id})
+  defp cache_local_buffer_len({source_id, backend_id})
        when is_integer(source_id) and (is_integer(backend_id) or is_nil(backend_id)) do
     {:ok, stats} = Backends.cache_local_buffer_lens(source_id, backend_id)
     local_buffer = %{Node.self() => stats}

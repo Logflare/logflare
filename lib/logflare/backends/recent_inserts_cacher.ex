@@ -1,4 +1,4 @@
-defmodule Logflare.Backends.RecentInsertsBroadcaster do
+defmodule Logflare.Backends.RecentInsertsCacher do
   @moduledoc """
   Performs periodic broadcasting of cluster insert counts
   """
@@ -42,8 +42,8 @@ defmodule Logflare.Backends.RecentInsertsBroadcaster do
      }}
   end
 
-  def handle_info(:broadcast, state) do
-    {:ok, total_cluster_inserts, inserts_since_boot} = broadcast_count(state)
+  def handle_info(:do_cache, state) do
+    {:ok, total_cluster_inserts, inserts_since_boot} = cache_count(state)
 
     prev_inserts_since_boot = Counters.get_inserts_since_boot(state.source_token)
     prev_last_cluster_inserts = Counters.get_total_cluster_inserts(state.source_token)
@@ -69,7 +69,7 @@ defmodule Logflare.Backends.RecentInsertsBroadcaster do
       )
     end
 
-    broadcast()
+    schedule_cache()
 
     {:noreply, state}
   end
@@ -91,7 +91,7 @@ defmodule Logflare.Backends.RecentInsertsBroadcaster do
 
   ## Private Functions
 
-  defp broadcast_count(%{source_token: source_token}) do
+  defp cache_count(%{source_token: source_token}) do
     current_inserts = Source.Data.get_node_inserts(source_token)
 
     if current_inserts > Counters.get_inserts_since_boot(source_token) do
@@ -106,7 +106,7 @@ defmodule Logflare.Backends.RecentInsertsBroadcaster do
     {:ok, current_cluster_inserts, current_inserts}
   end
 
-  defp broadcast do
-    Process.send_after(self(), :broadcast, @broadcast_every + :rand.uniform(1000))
+  defp schedule_cache do
+    Process.send_after(self(), :do_cache, @broadcast_every + :rand.uniform(1000))
   end
 end
