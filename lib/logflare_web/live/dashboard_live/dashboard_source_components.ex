@@ -107,7 +107,7 @@ defmodule LogflareWeb.DashboardLive.DashboardSourceComponents do
 
       <.metric>
         fields:
-        <.tooltip :if={fields_limit_warning?(@source, @fields_limit)} placement="left" class="my-badge my-badge-warning" title={"Max #{@fields_limit} fields per source! Data in new fields are ignored. Upgrade for more."}>
+        <.tooltip :if={fields_limit_warning?(@source, @fields_limit)} id={metric_id(@source, "fields")} placement="left" class="my-badge my-badge-warning" title={"Max #{@fields_limit} fields per source! Data in new fields are ignored. Upgrade for more."}>
           <%= @metrics.fields %>
         </.tooltip>
         <span :if={not fields_limit_warning?(@source, @fields_limit)}><%= @metrics.fields %></span>
@@ -153,7 +153,7 @@ defmodule LogflareWeb.DashboardLive.DashboardSourceComponents do
   end
 
   attr :title, :string, required: true
-  attr :id, :string, required: false
+  attr :id, :string, required: true
   attr :placement, :string, default: "top"
   attr :class, :string, default: ""
   attr :rest, :global
