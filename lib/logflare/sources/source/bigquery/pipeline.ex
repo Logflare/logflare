@@ -267,14 +267,17 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
     # these things a max of like 5 times and after that send them to the rejected pile.
 
     # random sample if local ingest rate is above a certain level
+    # dynamic calculation maintains ~1 schema update per second across all rate levels
     probability =
       case PubSubRates.Cache.get_local_rates(source.token) do
-        %{average_rate: avg} when avg > 10_000 -> 0.0001
-        %{average_rate: avg} when avg > 1000 -> 0.001
-        %{average_rate: avg} when avg > 100 -> 0.01
-        %{average_rate: avg} when avg > 10 -> 0.1
-        _ -> 1
+        %{average_rate: avg} when avg > 0 ->
+          # probability = 1.0 / avg with safety bounds
+          # supports rates up to 100K+/sec: at 100K/sec -> 0.00001 (samples ~1/sec)
+          min(1.0, max(0.00001, 1.0 / avg))
+        _ ->
+          1.0
       end
+      |> dbg()
 
     if :rand.uniform() <= probability do
       :ok =
