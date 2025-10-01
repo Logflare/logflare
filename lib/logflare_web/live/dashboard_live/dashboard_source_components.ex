@@ -116,7 +116,7 @@ defmodule LogflareWeb.DashboardLive.DashboardSourceComponents do
       <.metric>
         rejected:
         <.link :if={@metrics.rejected > 0} href={~p"/sources/#{@source}/rejected"}>
-          <.tooltip class="my-badge my-badge-warning" placement="left" title="Some events didn't validate!"><%= @metrics.rejected %></.tooltip>
+          <.tooltip class="my-badge my-badge-warning" id={metric_id(@source, "rejected")} placement="left" title="Some events didn't validate!"><%= @metrics.rejected %></.tooltip>
         </.link>
         <span :if={@metrics.rejected == 0} id={metric_id(@source, "rejected")}><%= @metrics.rejected %></span>
       </.metric>
