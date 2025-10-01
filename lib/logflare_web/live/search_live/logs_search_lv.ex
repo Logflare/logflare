@@ -77,7 +77,7 @@ defmodule LogflareWeb.Source.SearchLV do
       last_query_completed_at: nil,
       uri_params: nil,
       uri: nil,
-      lql_rules: [],
+    lql_rules: [],
       querystring: Map.get(params, "querystring", @default_qs),
       force_query: Map.get(params, "force", "false") == "true",
       search_history: [],
