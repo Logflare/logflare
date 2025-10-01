@@ -4,6 +4,8 @@ defmodule LogflareWeb.Search.QueryDebugComponent do
   """
   use LogflareWeb, :live_component
 
+  alias LogflareWeb.QueryComponents
+
   def update(assigns, socket) do
     {:ok, assign(socket, assigns)}
   end
@@ -17,7 +19,7 @@ defmodule LogflareWeb.Search.QueryDebugComponent do
       end)
 
     ~H"""
-    <div phx-hook="BigQuerySqlQueryFormatter" id="search-query-debug">
+    <div id="search-query-debug">
       <%= if @search_op do %>
         <div class="search-query-debug">
           <div>
@@ -28,7 +30,7 @@ defmodule LogflareWeb.Search.QueryDebugComponent do
                 Actual SQL query used when querying for results. Use it in the BigQuery console if you need to.
               </p>
               <li class="list-group-item">
-                <pre><code class="sql" id="search-op-sql-string"><%= @search_op.sql_string %></code></pre>
+                <QueryComponents.formatted_sql sql_string={@search_op.sql_string} params={@search_op.sql_params} />
               </li>
             </ul>
             <ul class="list-group list-group-horizontal">

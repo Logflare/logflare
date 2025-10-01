@@ -622,7 +622,9 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
          %{
            rows: result.rows,
            total_bytes_processed: result.total_bytes_processed,
-           total_rows: result.total_rows
+           total_rows: result.total_rows,
+           query_string: query_string,
+           bq_params: bq_params
          }}
 
       {:error, %{body: body}} ->
