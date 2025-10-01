@@ -64,7 +64,6 @@ defmodule Logflare.Backends.BigQueryAdaptorTest do
     end
 
     test "can query with parameters" do
-      pid = self()
       user = insert(:user)
       backend = Backends.get_default_backend(user)
 
@@ -79,7 +78,6 @@ defmodule Logflare.Backends.BigQueryAdaptorTest do
       user = insert(:user)
       source = insert(:source, user: user)
       start_supervised!({SourceSup, source})
-      log_event = build(:log_event, source: source)
 
       assert {:ok, %{rows: [%{"test" => "input_data"}]}} =
                BigQueryAdaptor.execute_query(
@@ -90,7 +88,6 @@ defmodule Logflare.Backends.BigQueryAdaptorTest do
     end
 
     test "can query with no parameters" do
-      pid = self()
       user = insert(:user)
       backend = Backends.get_default_backend(user)
 
@@ -105,7 +102,6 @@ defmodule Logflare.Backends.BigQueryAdaptorTest do
       user = insert(:user)
       source = insert(:source, user: user)
       start_supervised!({SourceSup, source})
-      log_event = build(:log_event, source: source)
 
       assert {:ok, %{rows: [%{"test" => "1"}]}} =
                BigQueryAdaptor.execute_query(backend, "SELECT 1", [])
