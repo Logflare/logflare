@@ -31,7 +31,7 @@ defmodule Logflare.Backends.RecentInsertsCacher do
 
     Process.flag(:trap_exit, true)
     Logger.metadata(source_id: source.token, source_token: source.token)
-    broadcast()
+    schedule_cache()
 
     Logger.debug("[#{__MODULE__}] Started")
 
