@@ -107,7 +107,7 @@ defmodule LogflareWeb.DashboardLive.DashboardSourceComponents do
 
       <.metric>
         fields:
-        <.tooltip :if={fields_limit_warning?(@source, @fields_limit)} placement="left" class="my-badge my-badge-warning" title={"Max #{@fields_limit} fields per source! Data in new fields are ignored. Upgrade for more."}>
+        <.tooltip :if={fields_limit_warning?(@source, @fields_limit)} id={metric_id(@source, "fields")} placement="left" class="my-badge my-badge-warning" title={"Max #{@fields_limit} fields per source! Data in new fields are ignored. Upgrade for more."}>
           <%= @metrics.fields %>
         </.tooltip>
         <span :if={not fields_limit_warning?(@source, @fields_limit)}><%= @metrics.fields %></span>
@@ -116,7 +116,7 @@ defmodule LogflareWeb.DashboardLive.DashboardSourceComponents do
       <.metric>
         rejected:
         <.link :if={@metrics.rejected > 0} href={~p"/sources/#{@source}/rejected"}>
-          <.tooltip class="my-badge my-badge-warning" placement="left" title="Some events didn't validate!"><%= @metrics.rejected %></.tooltip>
+          <.tooltip class="my-badge my-badge-warning" id={metric_id(@source, "rejected")} placement="left" title="Some events didn't validate!"><%= @metrics.rejected %></.tooltip>
         </.link>
         <span :if={@metrics.rejected == 0} id={metric_id(@source, "rejected")}><%= @metrics.rejected %></span>
       </.metric>
@@ -153,7 +153,7 @@ defmodule LogflareWeb.DashboardLive.DashboardSourceComponents do
   end
 
   attr :title, :string, required: true
-  attr :id, :string, required: false
+  attr :id, :string, required: true
   attr :placement, :string, default: "top"
   attr :class, :string, default: ""
   attr :rest, :global
