@@ -8,7 +8,10 @@ defmodule Logflare.GenSingleton.Watcher do
   use GenServer
 
   require Logger
-  @type option :: {:child_spec, Supervisor.child_spec()}
+
+  @type option ::
+          {:child_spec, Supervisor.child_spec()}
+          | {:restart, :permanent | :transient | :temporary}
   @type options :: [option()]
 
   @spec start_link(options()) :: {:ok, pid} | {:error, any}

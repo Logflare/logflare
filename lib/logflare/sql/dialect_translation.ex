@@ -78,7 +78,7 @@ defmodule Logflare.Sql.DialectTranslation do
   end
 
   @spec do_parameter_positions_mapping(query :: String.t(), params :: [String.t()]) :: %{
-          integer() => String.t()
+          pos_integer() => String.t()
         }
   defp do_parameter_positions_mapping(_query, []), do: %{}
 

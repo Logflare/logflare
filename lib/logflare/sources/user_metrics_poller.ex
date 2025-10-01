@@ -37,6 +37,7 @@ defmodule Logflare.Sources.UserMetricsPoller do
     }
   end
 
+  @spec track(pid(), pos_integer()) :: {:ok, ref :: binary()} | {:error, reason :: term()}
   def track(subscriber_pid, user_id) do
     {:ok, _pid} =
       Logflare.GenSingleton.start_link(

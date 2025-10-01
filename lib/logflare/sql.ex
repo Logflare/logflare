@@ -273,7 +273,7 @@ defmodule Logflare.Sql do
   """
   @spec source_mapping(
           query :: String.t(),
-          user :: User.t(),
+          user :: User.t() | pos_integer(),
           mapping :: map(),
           opts :: Keyword.t()
         ) ::
