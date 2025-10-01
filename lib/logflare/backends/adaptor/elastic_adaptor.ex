@@ -45,6 +45,15 @@ defmodule Logflare.Backends.Adaptor.ElasticAdaptor do
   end
 
   @impl Logflare.Backends.Adaptor
+  def redact_config(config) do
+    if Map.get(config, :password) do
+      Map.put(config, :password, "REDACTED")
+    else
+      config
+    end
+  end
+
+  @impl Logflare.Backends.Adaptor
   def execute_query(_ident, _query, _opts), do: {:error, :not_implemented}
 
   @impl Logflare.Backends.Adaptor

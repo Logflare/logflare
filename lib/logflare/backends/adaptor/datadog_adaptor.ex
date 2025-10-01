@@ -66,6 +66,11 @@ defmodule Logflare.Backends.Adaptor.DatadogAdaptor do
     |> Ecto.Changeset.validate_inclusion(:region, @regions)
   end
 
+  @impl Logflare.Backends.Adaptor
+  def redact_config(config) do
+    Map.put(config, :api_key, "REDACTED")
+  end
+
   defp translate_event(%Logflare.LogEvent{} = le) do
     formatted_ts =
       DateTime.from_unix!(le.body["timestamp"], :microsecond) |> DateTime.to_iso8601()

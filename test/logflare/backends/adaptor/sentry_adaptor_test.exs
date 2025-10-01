@@ -294,4 +294,19 @@ defmodule Logflare.Backends.Adaptor.SentryAdaptorTest do
       assert {:error, :not_implemented} = result
     end
   end
+
+  describe "redact_config/1" do
+    test "redacts DSN secret key" do
+      config = %{dsn: "https://public_key:secret_key@o123456.ingest.sentry.io/123456"}
+
+      assert %{dsn: "https://public_key:REDACTED@o123456.ingest.sentry.io/123456"} =
+               @subject.redact_config(config)
+
+      # no secret key
+      config = %{dsn: "https://abc123@o123456.ingest.sentry.io/123456"}
+
+      assert %{dsn: "https://abc123@o123456.ingest.sentry.io/123456"} =
+                        @subject.redact_config(config)
+    end
+  end
 end

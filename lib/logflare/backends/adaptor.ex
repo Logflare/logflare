@@ -196,6 +196,12 @@ defmodule Logflare.Backends.Adaptor do
   """
   @callback validate_config(changeset :: Ecto.Changeset.t()) :: Ecto.Changeset.t()
 
+  @doc """
+  Redacts a given adaptor's configuration. Return the config unchanged if there is no redaction needed.
+  Always works on atom keys.
+  """
+  @callback redact_config(config :: map()) :: map()
+
   @optional_callbacks ecto_to_sql: 2,
                       format_batch: 1,
                       format_batch: 2,
@@ -205,5 +211,6 @@ defmodule Logflare.Backends.Adaptor do
                       transform_config: 1,
                       transform_query: 3,
                       send_alert: 3,
-                      supports_default_ingest?: 0
+                      supports_default_ingest?: 0,
+                      redact_config: 1
 end

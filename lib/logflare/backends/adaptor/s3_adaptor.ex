@@ -80,6 +80,15 @@ defmodule Logflare.Backends.Adaptor.S3Adaptor do
   end
 
   @impl Adaptor
+  def redact_config(config) do
+    if config.secret_access_key do
+      Map.put(config, :secret_access_key, "REDACTED")
+    else
+      config
+    end
+  end
+
+  @impl Adaptor
   def transform_config(config) do
     config
   end

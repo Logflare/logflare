@@ -48,6 +48,13 @@ defmodule Logflare.Backends.Adaptor.IncidentioAdaptorTest do
     end
   end
 
+  describe "redact_config/1" do
+    test "redacts api_token field" do
+      config = %{api_token: "secret-api-token-123", alert_source_config_id: "config-123"}
+      assert %{api_token: "REDACTED"} = @subject.redact_config(config)
+    end
+  end
+
   describe "events ingestion as alert events" do
     setup do
       insert(:plan)

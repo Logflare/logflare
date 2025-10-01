@@ -100,4 +100,9 @@ defmodule Logflare.Backends.Adaptor.IncidentioAdaptor do
     changeset
     |> validate_required([:api_token, :alert_source_config_id])
   end
+
+  @impl Logflare.Backends.Adaptor
+  def redact_config(config) do
+    Map.put(config, :api_token, "REDACTED")
+  end
 end
