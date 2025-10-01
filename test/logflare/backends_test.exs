@@ -1085,7 +1085,7 @@ defmodule Logflare.BackendsTest do
           _ -> false
         end)
 
-      assert length(children) == 0
+      assert Enum.empty?(children)
 
       backend =
         insert(:backend,
@@ -1117,7 +1117,7 @@ defmodule Logflare.BackendsTest do
     end
 
     test "handles non-existent backend gracefully" do
-      non_existent_id = 99999
+      non_existent_id = 99_999
 
       reject(&Logflare.Cluster.Utils.rpc_multicast/3)
 
