@@ -274,6 +274,7 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
           # probability = 1.0 / avg with safety bounds
           # supports rates up to 100K+/sec: at 100K/sec -> 0.00001 (samples ~1/sec)
           min(1.0, max(0.00001, 1.0 / avg))
+
         _ ->
           1.0
       end
