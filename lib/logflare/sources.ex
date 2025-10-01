@@ -311,6 +311,7 @@ defmodule Logflare.Sources do
     end
   end
 
+  @spec preload_defaults(Source.t()) :: Source.t()
   def preload_defaults(source) do
     source
     |> Repo.preload([:user, :rules, :backends])
@@ -452,11 +453,9 @@ defmodule Logflare.Sources do
   end
 
   @doc "Checks if all ETS tables used for source ingestion are started"
+  @spec ingest_ets_tables_started?() :: boolean()
   def ingest_ets_tables_started? do
-    case {:ets.whereis(:rate_counters), :ets.whereis(:table_counters)} do
-      {a, b} when is_reference(a) and is_reference(b) -> true
-      _ -> false
-    end
+    :ets.whereis(:rate_counters) != :undefined and :ets.whereis(:table_counters) != :undefined
   end
 
   def put_retention_days(%Source{} = source) do

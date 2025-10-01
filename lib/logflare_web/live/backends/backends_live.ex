@@ -99,7 +99,6 @@ defmodule LogflareWeb.BackendsLive do
           |> push_patch(to: ~p"/backends/#{backend.id}")
 
         {:error, changeset} ->
-          # TODO: move this to a helper function
           message = stringify_changeset_errors(changeset)
 
           put_flash(socket, :error, "Encountered error when adding backend:\n#{message}")
