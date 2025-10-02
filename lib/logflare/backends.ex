@@ -428,10 +428,23 @@ defmodule Logflare.Backends do
     with %Backend{} = backend <- get_backend(backend_id) do
       sources = Sources.list_sources(backend_id: backend_id)
 
-      for source <- sources do
-        Cluster.Utils.rpc_multicall(SourceSup, :start_backend_child, [source, backend])
-        Cluster.Utils.rpc_multicall(__MODULE__, :clear_list_backends_cache, [source.id])
+      if length(sources) > 0 do
+        Cluster.Utils.rpc_multicast(__MODULE__, :sync_backends_local, [backend, sources])
       end
+    end
+
+    :ok
+  end
+
+  @doc """
+  Syncs a backend for local node for v2 pipeline sources.
+  expects the backend and sources to be loaded from the database.
+  """
+  @spec sync_backends_local(Backend.t(), [Source.t()]) :: :ok
+  def sync_backends_local(%Backend{} = backend, sources) do
+    for source <- sources do
+      SourceSup.start_backend_child(source, backend)
+      clear_list_backends_cache(source.id)
     end
 
     :ok
