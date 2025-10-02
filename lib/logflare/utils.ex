@@ -60,6 +60,7 @@ defmodule Logflare.Utils do
     %{"test" => "data"}
   """
   @spec stringify_keys(map()) :: map()
+  @spec stringify_keys(list(map())) :: list(map())
   def stringify_keys(%{} = map) do
     Map.new(map, fn
       {k, v} when is_atom(k) -> {Atom.to_string(k), stringify_keys(v)}
@@ -234,9 +235,9 @@ defmodule Logflare.Utils do
   end
 
   @doc """
-  Redacts sensitive headers from a list of Tesla.Env headers. Used for automatic redaction
+  Redacts sensitive headers from a list of Tesla.Env headers. Used for automatic redaction.
   """
-  @spec redact_sensitive_headers(list(tuple())) :: list(tuple())
+  @spec redact_sensitive_headers(map()) :: list(tuple())
   def redact_sensitive_headers(%{} = value) do
     value
     |> Iteraptor.map(

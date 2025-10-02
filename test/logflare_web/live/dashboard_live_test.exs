@@ -197,12 +197,7 @@ defmodule LogflareWeb.DashboardLiveTest do
       ]
     end
 
-    test "teams list", %{
-      conn: conn,
-      user: user,
-      other_team: other_team,
-      forbidden_team: forbidden_team
-    } do
+    test "teams list", %{conn: conn, other_team: other_team} do
       {:ok, view, _html} = live(conn, "/dashboard")
 
       assert view |> has_element?("#teams li", "#{other_team.name}")
