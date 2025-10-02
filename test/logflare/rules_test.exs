@@ -233,7 +233,7 @@ defmodule Logflare.RulesTest do
       start_supervised!({SourceSup, source})
     end
 
-    test "v2_pipeline=true when source is routed, should ensure that backend is started on the SourceSup",
+    test "when source is routed, should ensure that backend is started on the SourceSup",
          %{source: source, user: user} do
       start_supervised!(AllLogsLogged)
 

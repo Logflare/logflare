@@ -4,8 +4,8 @@ defmodule Logflare.LogsTest do
 
   alias Logflare.Logs
   alias Logflare.Lql
-  alias Logflare.Sources.Source.V1SourceSup
   alias Logflare.SystemMetrics.AllLogsLogged
+  alias Logflare.Backends.SourceSup
 
   def source_and_user(_context) do
     start_supervised!(AllLogsLogged)
@@ -15,8 +15,8 @@ defmodule Logflare.LogsTest do
     source = insert(:source, user: user)
     source_b = insert(:source, user: user)
 
-    start_supervised!({V1SourceSup, source: source}, id: :source)
-    start_supervised!({V1SourceSup, source: source_b}, id: :source_b)
+    start_supervised!({SourceSup, source}, id: :source)
+    start_supervised!({SourceSup, source_b}, id: :source_b)
 
     :timer.sleep(250)
     [source: source, source_b: source_b, user: user]
@@ -151,7 +151,7 @@ defmodule Logflare.LogsTest do
       source = source |> Repo.preload(:rules, force: true)
 
       Logs
-      |> expect(:broadcast, 3, fn le -> le end)
+      |> expect(:broadcast, 2, fn le -> le end)
 
       batch = [
         %{"event_message" => "not routed"},
@@ -182,7 +182,7 @@ defmodule Logflare.LogsTest do
       source = source |> Repo.preload(:rules, force: true)
 
       Logs
-      |> expect(:broadcast, 2, fn le -> le end)
+      |> expect(:broadcast, 1, fn le -> le end)
 
       assert :ok = Logs.ingest_logs([%{"event_message" => "testing 123"}], source)
     end

@@ -11,11 +11,12 @@ defmodule Logflare.Sources.Source.Supervisor do
   alias Logflare.SourceSchemas
   alias Logflare.Sources
   alias Logflare.Sources.Counters
-  alias Logflare.Sources.Source
-  alias Logflare.Sources.Source.V1SourceDynSup
-  alias Logflare.Sources.Source.V1SourceSup
+  alias Logflare.Google.BigQuery
+  alias Logflare.ContextCache
+  alias Logflare.SourceSchemas
+  alias Logflare.Backends
   alias Logflare.Utils.Tasks
-
+  alias Logflare.Sources.Source
   require Logger
 
   # TODO: Move all manager fns into a manager server so errors in manager fns don't kill the whole supervision tree
@@ -90,30 +91,6 @@ defmodule Logflare.Sources.Source.Supervisor do
     {:noreply, state}
   end
 
-  def handle_cast({:maybe_restart_mismatched_source_pipelines, source_token}, state) do
-    source = Sources.Cache.get_source_by_token(source_token)
-
-    %{
-      v1: do_v1_lookup(source),
-      v2: do_v2_lookup(source),
-      v2_pipeline: source.v2_pipeline
-    }
-    |> case do
-      %{v1: {:ok, _}, v2_pipeline: true} ->
-        # v2->v1, restart the source pipelines
-        reset_source(source_token)
-
-      %{v2: {:ok, _}, v2_pipeline: false} ->
-        # v1->v2 , restart the source pipelines
-        reset_source(source_token)
-
-      _ ->
-        :noop
-    end
-
-    {:noreply, state}
-  end
-
   def terminate(reason, state) do
     Logger.warning("Going Down - #{inspect(reason)} - #{__MODULE__} - last state: #{state}")
     reason
@@ -146,14 +123,6 @@ defmodule Logflare.Sources.Source.Supervisor do
   def reset_source(source_token) do
     unless do_pg_ops?() do
       GenServer.abcast(__MODULE__, {:restart, source_token})
-    end
-
-    {:ok, source_token}
-  end
-
-  def maybe_restart_mismatched_source_pipelines(source_token) do
-    unless do_pg_ops?() do
-      GenServer.abcast(__MODULE__, {:maybe_restart_mismatched_source_pipelines, source_token})
     end
 
     {:ok, source_token}
@@ -192,24 +161,12 @@ defmodule Logflare.Sources.Source.Supervisor do
     end
   end
 
-  @spec ensure_started(Source.t()) :: :ok
-  def ensure_started(%Source{token: source_token, v2_pipeline: v2_pipeline} = source) do
-    # maybe restart
-    %{
-      v1: do_v1_lookup(source),
-      v2: do_v2_lookup(source),
-      v2_pipeline: v2_pipeline
-    }
+  @spec ensure_started(atom) :: {:ok, :already_started | :started}
+  def ensure_started(%Source{token: source_token} = source) do
+    # Check if already running
+    do_lookup(source)
     |> case do
-      %{v1: {:ok, _}} when v2_pipeline == true ->
-        # v2->v1, restart the source pipelines
-        maybe_restart_mismatched_source_pipelines(source_token)
-
-      %{v2: {:ok, _}} when v2_pipeline == false ->
-        # v1->v2 , restart the source pipelines
-        maybe_restart_mismatched_source_pipelines(source_token)
-
-      %{v1: {:error, _}, v2: {:error, _}} ->
+      {:error, _} ->
         start_source(source_token)
 
       _ ->
@@ -242,32 +199,20 @@ defmodule Logflare.Sources.Source.Supervisor do
     :ok
   end
 
-  defp do_start_source_sup(%{v2_pipeline: true} = source) do
+  defp do_start_source_sup(source) do
     with :ok <- Backends.start_source_sup(source) do
       do_lookup(source)
     end
   end
 
-  defp do_start_source_sup(source) do
-    DynamicSupervisor.start_child(V1SourceDynSup, {V1SourceSup, source: source})
-  end
-
-  defp do_lookup(%Source{v2_pipeline: true} = source), do: do_v2_lookup(source)
-  defp do_lookup(%Source{v2_pipeline: false} = source), do: do_v1_lookup(source)
-
-  defp do_v2_lookup(source), do: Backends.lookup(Backends.SourceSup, source)
-  defp do_v1_lookup(source), do: Backends.lookup(V1SourceSup, source)
+  defp do_lookup(source), do: Backends.lookup(Backends.SourceSup, source)
 
   defp do_terminate_source_sup(%Source{} = source) do
-    with {:ok, pid} <- do_v2_lookup(source) do
+    with {:ok, pid} <- do_lookup(source) do
       DynamicSupervisor.terminate_child(
         {:via, PartitionSupervisor, {Backends.SourcesSup, source.id}},
         pid
       )
-    end
-
-    with {:ok, pid} <- do_v1_lookup(source) do
-      DynamicSupervisor.terminate_child(V1SourceDynSup, pid)
     end
 
     :ok

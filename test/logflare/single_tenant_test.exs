@@ -114,7 +114,7 @@ defmodule Logflare.SingleTenantTest do
       Logflare.Application.startup_tasks()
       %{id: user_id} = user = SingleTenant.get_default_user()
       assert {:ok, source} = Sources.create_source(%{name: TestUtils.random_string()}, user)
-      assert %Source{user_id: ^user_id, v2_pipeline: true} = source
+      assert %Source{user_id: ^user_id} = source
       assert [] == Logflare.Backends.list_backends(source_id: source.id)
       assert %Backend{type: :postgres, config: %{url: ^url}} = SingleTenant.get_default_backend()
       assert %Backend{type: :postgres, config: %{url: ^url}} = Backends.get_default_backend(user)
