@@ -1058,4 +1058,88 @@ defmodule Logflare.BackendsTest do
       print: [configuration: false]
     )
   end
+
+  describe "sync_backend_across_cluster/1" do
+    setup do
+      insert(:plan)
+      user = insert(:user)
+      source = insert(:source, user: user)
+
+      {:ok, user: user, source: source}
+    end
+
+    test "syncs backend across cluster for all associated sources", %{
+      source: source,
+      user: user
+    } do
+      # Start actual SourceSup process
+      start_supervised!({SourceSup, source})
+      :timer.sleep(500)
+
+      via = Backends.via_source(source, SourceSup)
+
+      children =
+        Supervisor.which_children(via)
+        |> Enum.filter(fn
+          {{mod, _, _}, _pid, _type, _sup} -> mod == Backends.Adaptor.WebhookAdaptor
+          _ -> false
+        end)
+
+      assert Enum.empty?(children)
+
+      backend =
+        insert(:backend,
+          user: user,
+          sources: [source],
+          type: :webhook,
+          config: %{url: "http://test.com"}
+        )
+
+      # Mock the cluster RPC calls
+      Logflare.Cluster.Utils
+      |> expect(:rpc_multicast, 1, fn
+        Backends, :sync_backends_local, [%_{}, [_]] = args ->
+          apply(Backends, :sync_backends_local, args)
+      end)
+
+      assert :ok = Backends.sync_backend_across_cluster(backend.id)
+
+      via = Backends.via_source(source, SourceSup)
+
+      children =
+        Supervisor.which_children(via)
+        |> Enum.filter(fn
+          {{mod, _, _}, _pid, _type, _sup} -> mod == Backends.Adaptor.WebhookAdaptor
+          _ -> false
+        end)
+
+      assert length(children) == 1
+    end
+
+    test "handles non-existent backend gracefully" do
+      non_existent_id = 99_999
+
+      reject(&Logflare.Cluster.Utils.rpc_multicast/3)
+
+      assert :ok = Backends.sync_backend_across_cluster(non_existent_id)
+    end
+
+    test "works with backend having no associated sources", %{user: user} do
+      # Backend has no associated sources
+      backend =
+        insert(:backend,
+          user: user,
+          sources: [],
+          default_ingest?: true,
+          type: :webhook,
+          config: %{url: "http://test.com"}
+        )
+
+      # Should not make any RPC calls
+
+      reject(&Logflare.Cluster.Utils.rpc_multicast/3)
+
+      assert :ok = Backends.sync_backend_across_cluster(backend.id)
+    end
+  end
 end
