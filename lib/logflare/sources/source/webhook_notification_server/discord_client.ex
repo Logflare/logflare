@@ -30,7 +30,7 @@ defmodule Logflare.Sources.Source.WebhookNotificationServer.DiscordClient do
   def post(client, source, rate, recent_events \\ []) do
     prepped_recent_events = prep_recent_events(recent_events, rate)
 
-    source_link = Endpoint.static_url() <> Routes.source_path(Endpoint, :show, source.id)
+    source_link = Endpoint.static_url() <> Routes.source_path(Endpoint, :show, source)
 
     payload = %{
       username: "Logflare",
