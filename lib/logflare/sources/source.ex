@@ -5,7 +5,6 @@ defmodule Logflare.Sources.Source do
   import Ecto.Changeset
 
   alias Logflare.Billing
-  alias Logflare.SingleTenant
   alias Logflare.Users
 
   @default_source_api_quota 25
@@ -131,7 +130,6 @@ defmodule Logflare.Sources.Source do
     field :validate_schema, :boolean, default: true
     field :drop_lql_filters, Ecto.LqlRules, default: []
     field :drop_lql_string, :string
-    field :v2_pipeline, :boolean, default: false
     field :disable_tailing, :boolean, default: false
     field :suggested_keys, :string, default: ""
     field :retention_days, :integer, virtual: true
@@ -190,7 +188,6 @@ defmodule Logflare.Sources.Source do
       :validate_schema,
       :drop_lql_filters,
       :drop_lql_string,
-      :v2_pipeline,
       :suggested_keys,
       :retention_days,
       :transform_copy_fields,
@@ -199,7 +196,6 @@ defmodule Logflare.Sources.Source do
       :bq_storage_write_api
     ])
     |> cast_embed(:notifications, with: &Notifications.changeset/2)
-    |> put_single_tenant_postgres_changes()
     |> default_validations(source)
   end
 
@@ -221,7 +217,6 @@ defmodule Logflare.Sources.Source do
       :validate_schema,
       :drop_lql_filters,
       :drop_lql_string,
-      :v2_pipeline,
       :suggested_keys,
       :retention_days,
       :transform_copy_fields,
@@ -230,7 +225,6 @@ defmodule Logflare.Sources.Source do
       :bq_storage_write_api
     ])
     |> cast_embed(:notifications, with: &Notifications.changeset/2)
-    |> put_single_tenant_postgres_changes()
     |> default_validations(source)
   end
 
@@ -290,13 +284,5 @@ defmodule Logflare.Sources.Source do
     source_token
     |> Atom.to_string()
     |> String.replace("-", "_")
-  end
-
-  defp put_single_tenant_postgres_changes(changeset) do
-    if SingleTenant.single_tenant?() do
-      put_change(changeset, :v2_pipeline, !!SingleTenant.postgres_backend_adapter_opts())
-    else
-      changeset
-    end
   end
 end

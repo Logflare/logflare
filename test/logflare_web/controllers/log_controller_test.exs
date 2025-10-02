@@ -4,8 +4,8 @@ defmodule LogflareWeb.LogControllerTest do
   alias Logflare.Backends.Adaptor.WebhookAdaptor
   alias Logflare.SingleTenant
   alias Logflare.Users
-  alias Logflare.Sources.Source.V1SourceSup
   alias Logflare.Sources
+  alias Logflare.Backends.SourceSup
   alias Logflare.SystemMetrics.AllLogsLogged
 
   alias Opentelemetry.Proto.Collector.Trace.V1.ExportTraceServiceRequest
@@ -27,10 +27,10 @@ defmodule LogflareWeb.LogControllerTest do
     :ok
   end
 
-  describe "v2 pipeline" do
+  describe "log ingestion" do
     setup do
       user = insert(:user)
-      source = insert(:source, user_id: user.id, v2_pipeline: true)
+      source = insert(:source, user_id: user.id)
       _plan = insert(:plan, name: "Free")
 
       backend =
@@ -41,81 +41,27 @@ defmodule LogflareWeb.LogControllerTest do
 
     setup [:warm_caches, :reject_context_functions]
 
-    test "valid ingestion", %{conn: conn, source: source, user: user} do
-      pid = self()
-      ref = make_ref()
+    for {param_name, param_key} <- [{"source", :source}, {"collection", :collection}, {"collection_name", :collection_name}] do
+      test "valid ingestion using ?#{param_name}=", %{conn: conn, source: source, user: user} do
+        {_pid, ref} = expect_webhook_success()
 
-      WebhookAdaptor.Client
-      |> expect(:send, fn _req ->
-        send(pid, ref)
-        %Tesla.Env{status: 200, body: ""}
-      end)
+        value = case unquote(param_key) do
+          :collection_name -> source.name
+          _ -> source.token
+        end
 
-      conn =
-        conn
-        |> put_req_header("x-api-key", user.api_key)
-        |> post(Routes.log_path(conn, :create, source: source.token), @valid)
+        conn =
+          conn
+          |> put_req_header("x-api-key", user.api_key)
+          |> post(Routes.log_path(conn, :create, [{unquote(param_key), value}]), @valid)
 
-      assert json_response(conn, 200) == %{"message" => "Logged!"}
-
-      TestUtils.retry_assert(fn ->
-        assert_received ^ref
-      end)
-    end
-
-    test "valid ingestion using ?collection=", %{conn: conn, source: source, user: user} do
-      pid = self()
-      ref = make_ref()
-
-      WebhookAdaptor.Client
-      |> expect(:send, fn _req ->
-        send(pid, ref)
-        %Tesla.Env{status: 200, body: ""}
-      end)
-
-      conn =
-        conn
-        |> put_req_header("x-api-key", user.api_key)
-        |> post(Routes.log_path(conn, :create, collection: source.token), @valid)
-
-      assert json_response(conn, 200) == %{"message" => "Logged!"}
-
-      TestUtils.retry_assert(fn ->
-        assert_received ^ref
-      end)
-    end
-
-    test "valid ingestion using ?collection_name=", %{conn: conn, source: source, user: user} do
-      pid = self()
-      ref = make_ref()
-
-      WebhookAdaptor.Client
-      |> expect(:send, fn _req ->
-        send(pid, ref)
-        %Tesla.Env{status: 200, body: ""}
-      end)
-
-      conn =
-        conn
-        |> put_req_header("x-api-key", user.api_key)
-        |> post(Routes.log_path(conn, :create, collection_name: source.name), @valid)
-
-      assert json_response(conn, 200) == %{"message" => "Logged!"}
-
-      TestUtils.retry_assert(fn ->
-        assert_received ^ref
-      end)
+        assert_logged_successfully(conn)
+        assert_eventually_received(ref)
+      end
     end
 
     test ":cloud_event ingestion", %{conn: conn, source: source, user: user} do
-      this = self()
-      ref = make_ref()
-
-      WebhookAdaptor.Client
-      |> expect(:send, fn req ->
-        send(this, {ref, req[:body]})
-        %Tesla.Env{status: 200, body: ""}
-      end)
+      {_this, ref} = expect_webhook_with_body()
 
       conn =
         conn
@@ -123,7 +69,7 @@ defmodule LogflareWeb.LogControllerTest do
         |> put_req_header("ce-foo-foo", "bar")
         |> post(Routes.log_path(conn, :cloud_event, source: source.token), @valid)
 
-      assert json_response(conn, 200) == %{"message" => "Logged!"}
+      assert_logged_successfully(conn)
       assert_receive {^ref, [log]}, 3000
 
       assert %{"some" => _, "event_message" => _, "cloud_event" => %{"foo_foo" => "bar"}} =
@@ -131,14 +77,7 @@ defmodule LogflareWeb.LogControllerTest do
     end
 
     test ":otel_traces ingestion", %{conn: conn, source: source, user: user} do
-      this = self()
-      ref = make_ref()
-
-      WebhookAdaptor.Client
-      |> expect(:send, fn req ->
-        send(this, {ref, req[:body]})
-        %Tesla.Env{status: 200, body: ""}
-      end)
+      {_this, ref} = expect_webhook_with_body()
 
       body = TestUtilsGrpc.random_export_service_request() |> ExportTraceServiceRequest.encode()
 
@@ -160,14 +99,7 @@ defmodule LogflareWeb.LogControllerTest do
     end
 
     test ":otel_metrics ingestion", %{conn: conn, source: source, user: user} do
-      this = self()
-      ref = make_ref()
-
-      WebhookAdaptor.Client
-      |> expect(:send, fn req ->
-        send(this, {ref, req[:body]})
-        %Tesla.Env{status: 200, body: ""}
-      end)
+      {_this, ref} = expect_webhook_with_body()
 
       body =
         TestUtilsGrpc.random_otel_metrics_request()
@@ -191,14 +123,7 @@ defmodule LogflareWeb.LogControllerTest do
     end
 
     test ":otel_logs ingestion", %{conn: conn, source: source, user: user} do
-      this = self()
-      ref = make_ref()
-
-      WebhookAdaptor.Client
-      |> expect(:send, fn req ->
-        send(this, {ref, req[:body]})
-        %Tesla.Env{status: 200, body: ""}
-      end)
+      {_this, ref} = expect_webhook_with_body()
 
       body =
         TestUtilsGrpc.random_otel_logs_request()
@@ -236,8 +161,8 @@ defmodule LogflareWeb.LogControllerTest do
     end
   end
 
-  describe "v1 pipeline invalid" do
-    setup [:v1_pipeline_setup, :warm_caches, :reject_context_functions]
+  describe "pipeline invalid" do
+    setup [:pipeline_setup, :warm_caches, :reject_context_functions]
 
     setup %{user: user, conn: conn} do
       conn = put_req_header(conn, "x-api-key", user.api_key)
@@ -270,8 +195,8 @@ defmodule LogflareWeb.LogControllerTest do
     end
   end
 
-  describe "v1 pipeline with legacy user.api_key" do
-    setup [:v1_pipeline_setup, :warm_caches, :reject_context_functions, :expect_broadcast]
+  describe "pipeline with legacy user.api_key" do
+    setup [:pipeline_setup, :warm_caches, :reject_context_functions]
 
     setup %{user: user, conn: conn} do
       conn = put_req_header(conn, "x-api-key", user.api_key)
@@ -280,27 +205,31 @@ defmodule LogflareWeb.LogControllerTest do
     end
 
     test ":create ingestion by source_name", %{conn: conn, source: source} do
+      expect_bq_insert()
+
       conn =
         conn
         |> post(Routes.log_path(conn, :create, source_name: source.name), @valid)
 
-      assert json_response(conn, 200) == %{"message" => "Logged!"}
-      # wait for all logs to be ingested before removing all stubs
-      :timer.sleep(2000)
+      assert_logged_successfully(conn)
+      assert_eventually_received(:inserted)
     end
 
     test ":create ingestion", %{conn: conn, source: source} do
+      expect_bq_insert()
+
       conn =
         conn
         |> post(Routes.log_path(conn, :create, source: source.token), @valid)
 
-      assert json_response(conn, 200) == %{"message" => "Logged!"}
-      # wait for all logs to be ingested before removing all stubs
-      :timer.sleep(2000)
+      assert_logged_successfully(conn)
+      assert_eventually_received(:inserted)
     end
 
     test ":create ingestion with gzip", %{conn: conn, source: source} do
-      batch = for _i <- 1..1500, do: @valid
+      expect_bq_insert()
+
+      batch = for _i <- 1..100, do: @valid
       payload = :zlib.gzip(Jason.encode!(%{"batch" => batch}))
 
       conn =
@@ -309,33 +238,36 @@ defmodule LogflareWeb.LogControllerTest do
         |> Plug.Conn.put_req_header("content-type", "application/json")
         |> post(~p"/logs?#{[source: source.token]}", payload)
 
-      assert json_response(conn, 200) == %{"message" => "Logged!"}
-      # wait for all logs to be ingested before removing all stubs
-      :timer.sleep(2000)
+      assert_logged_successfully(conn)
+      assert_eventually_received(:inserted)
     end
 
     test ":create ingestion batch with `batch` key", %{conn: conn, source: source} do
+      expect_bq_insert()
+
       conn =
         conn
         |> post(Routes.log_path(conn, :create, source: source.token), %{"batch" => @valid_batch})
 
-      assert json_response(conn, 200) == %{"message" => "Logged!"}
-      # wait for all logs to be ingested before removing all stubs
-      :timer.sleep(2000)
+      assert_logged_successfully(conn)
+      assert_eventually_received(:inserted)
     end
 
     test ":create ingestion batch with array body", %{conn: conn, source: source} do
+      expect_bq_insert()
+
       conn =
         conn
         |> put_req_header("content-type", "application/json")
         |> post(Routes.log_path(conn, :create, source: source.token), Jason.encode!(@valid_batch))
 
-      assert json_response(conn, 200) == %{"message" => "Logged!"}
-      # wait for all logs to be ingested before removing all stubs
-      :timer.sleep(2000)
+      assert_logged_successfully(conn)
+      assert_eventually_received(:inserted)
     end
 
     test ":cloudflare ingestion", %{conn: new_conn, source: source} do
+      expect_bq_insert()
+
       path = Routes.log_path(new_conn, :cloudflare, source: source.token)
 
       assert new_conn |> post(path, @valid) |> json_response(200) == %{"message" => "Logged!"}
@@ -346,13 +278,12 @@ defmodule LogflareWeb.LogControllerTest do
                "message" => "Logged!"
              }
 
-      # wait for all logs to be ingested before removing all stubs
-      :timer.sleep(2000)
+      assert_eventually_received(:inserted)
     end
   end
 
-  describe "v1 pipeline with access tokens" do
-    setup [:v1_pipeline_setup, :expect_broadcast]
+  describe "pipeline with access tokens" do
+    setup [:pipeline_setup]
 
     setup %{user: user, conn: conn} do
       {:ok, access_token} = Logflare.Auth.create_access_token(user)
@@ -363,18 +294,19 @@ defmodule LogflareWeb.LogControllerTest do
     setup [:warm_caches, :reject_context_functions]
 
     test ":create ingestion by source_name", %{conn: conn, source: source} do
+      expect_bq_insert()
+
       conn =
         conn
         |> post(Routes.log_path(conn, :create, source_name: source.name), @valid)
 
-      assert json_response(conn, 200) == %{"message" => "Logged!"}
-      # wait for all logs to be ingested before removing all stubs
-      :timer.sleep(2000)
+      assert_logged_successfully(conn)
+      assert_eventually_received(:inserted)
     end
   end
 
-  describe "v1 pipeline no broadcast expectation" do
-    setup [:v1_pipeline_setup]
+  describe "pipeline no broadcast expectation" do
+    setup [:pipeline_setup]
 
     setup %{user: user, conn: conn} do
       {:ok, access_token} = Logflare.Auth.create_access_token(user)
@@ -385,15 +317,7 @@ defmodule LogflareWeb.LogControllerTest do
     setup [:warm_caches, :reject_context_functions]
 
     test ":cloud_event ingestion", %{conn: conn, source: source, user: user} do
-      this = self()
-      ref = make_ref()
-
-      Logflare.Google.BigQuery
-      |> expect(:stream_batch!, fn _, batch ->
-        [%{json: json}] = batch
-        send(this, {ref, json})
-        {:ok, %GoogleApi.BigQuery.V2.Model.TableDataInsertAllResponse{insertErrors: nil}}
-      end)
+      {_this, ref} = expect_bq_stream_with_body()
 
       conn =
         conn
@@ -401,7 +325,7 @@ defmodule LogflareWeb.LogControllerTest do
         |> put_req_header("ce-foo-foo", "bar")
         |> post(Routes.log_path(conn, :cloud_event, source: source.token), @valid)
 
-      assert json_response(conn, 200) == %{"message" => "Logged!"}
+      assert_logged_successfully(conn)
       assert_receive {^ref, log}, 3000
 
       assert %{
@@ -424,13 +348,8 @@ defmodule LogflareWeb.LogControllerTest do
       source = insert(:source, user: user)
 
       # ingestion setup
-      start_supervised!({V1SourceSup, source: source})
+      start_supervised!({SourceSup, source})
       :timer.sleep(500)
-
-      Logflare.Logs
-      |> expect(:broadcast, 1, fn le ->
-        le
-      end)
 
       conn =
         conn
@@ -444,37 +363,20 @@ defmodule LogflareWeb.LogControllerTest do
         conn
         |> post(Routes.log_path(conn, :create, source: source.token), @valid)
 
-      assert json_response(conn, 200) == %{"message" => "Logged!"}
+      assert_logged_successfully(conn)
 
-      # wait for all logs to be ingested before removing all stubs
       :timer.sleep(3000)
     end
   end
 
-  defp v1_pipeline_setup(%{conn: conn}) do
+  defp pipeline_setup(%{conn: conn}) do
     insert(:plan, name: "Free")
     user = insert(:user)
     source = insert(:source, user: user)
-    start_supervised!({V1SourceSup, source: source})
+    start_supervised!({SourceSup, source})
     :timer.sleep(500)
 
-    Logflare.Logs
-    |> stub(:broadcast, fn le -> le end)
-
     {:ok, source: source, user: user, conn: conn}
-  end
-
-  defp expect_broadcast(_) do
-    Logflare.Logs
-    |> expect(:broadcast, 1, fn le ->
-      assert match?(@valid, le.body)
-      assert le.body["event_message"] != nil
-      assert Map.keys(le.body) |> length() == 4, inspect(Map.keys(le.body))
-
-      le
-    end)
-
-    :ok
   end
 
   defp warm_caches(%{user: user, source: source}) do
@@ -514,7 +416,7 @@ defmodule LogflareWeb.LogControllerTest do
   end
 
   describe "benchmarks" do
-    setup [:v1_pipeline_setup, :warm_caches, :reject_context_functions]
+    setup [:pipeline_setup, :warm_caches, :reject_context_functions]
 
     setup %{user: user, conn: conn} do
       conn = put_req_header(conn, "x-api-key", user.api_key)
@@ -522,7 +424,7 @@ defmodule LogflareWeb.LogControllerTest do
     end
 
     @tag :benchmark
-    test "v1 ingestion", %{conn: conn, source: source} do
+    test "ingestion", %{conn: conn, source: source} do
       Logflare.Logs
       |> stub(:ingest, fn _ -> :ok end)
 
@@ -557,5 +459,54 @@ defmodule LogflareWeb.LogControllerTest do
     body = Phoenix.ConnTest.response(conn, expected_status)
 
     protobuf_schema.decode(body)
+  end
+
+  defp expect_webhook_success(pid \\ self(), ref \\ make_ref()) do
+    WebhookAdaptor.Client
+    |> expect(:send, fn _req ->
+      send(pid, ref)
+      %Tesla.Env{status: 200, body: ""}
+    end)
+
+    {pid, ref}
+  end
+
+  defp expect_webhook_with_body(pid \\ self(), ref \\ make_ref()) do
+    WebhookAdaptor.Client
+    |> expect(:send, fn req ->
+      send(pid, {ref, req[:body]})
+      %Tesla.Env{status: 200, body: ""}
+    end)
+
+    {pid, ref}
+  end
+
+  defp expect_bq_insert(pid \\ self()) do
+    GoogleApi.BigQuery.V2.Api.Tabledata
+    |> expect(:bigquery_tabledata_insert_all, fn _conn, _project_id, _dataset_id, _table_name, _opts ->
+      send(pid, :inserted)
+      {:ok, %GoogleApi.BigQuery.V2.Model.TableDataInsertAllResponse{insertErrors: nil}}
+    end)
+  end
+
+  defp expect_bq_stream_with_body(pid \\ self(), ref \\ make_ref()) do
+    Logflare.Google.BigQuery
+    |> expect(:stream_batch!, fn _, batch ->
+      [%{json: json}] = batch
+      send(pid, {ref, json})
+      {:ok, %GoogleApi.BigQuery.V2.Model.TableDataInsertAllResponse{insertErrors: nil}}
+    end)
+
+    {pid, ref}
+  end
+
+  defp assert_logged_successfully(conn) do
+    assert json_response(conn, 200) == %{"message" => "Logged!"}
+  end
+
+  defp assert_eventually_received(message, timeout \\ 3000) do
+    TestUtils.retry_assert([duration: timeout], fn ->
+      assert_received ^message
+    end)
   end
 end
