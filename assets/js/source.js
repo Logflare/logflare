@@ -27,7 +27,6 @@ export async function main({
   })
 
   await initClipboards()
-  await initTooltips()
 
   if (avgEventsPerSecond < 25) {
     joinSourceChannel(sourceToken)
@@ -43,15 +42,6 @@ export async function main({
 async function initClipboards() {
   activateClipboardForSelector("#source-id", {
     container: document.getElementById('sourceHelpModal')
-  })
-}
-
-async function initTooltips() {
-  $(".logflare-tooltip").tooltip({
-    delay: {
-      show: 100,
-      hide: 200
-    }
   })
 }
 
@@ -190,4 +180,11 @@ export function scrollOverflowBottom() {
   if ($lastLog) {
     $lastLog.scrollIntoView()
   }
+}
+window.Source = {
+  main,
+  initLogsUiFunctions,
+  trackScroll,
+  scrollBottom,
+  scrollOverflowBottom
 }
