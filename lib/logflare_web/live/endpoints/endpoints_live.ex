@@ -324,7 +324,7 @@ defmodule LogflareWeb.EndpointsLive do
         []
       end
 
-    show_backend_selection? = flag_enabled? and length(backends) > 0
+    show_backend_selection? = flag_enabled? and backends != []
     determined_language = get_current_endpoint_language(socket)
 
     socket
