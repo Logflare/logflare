@@ -209,9 +209,9 @@ defmodule Logflare.Users do
   defp update_system_sources(result, _), do: result
 
   defp toggle_system_monitoring(%{system_monitoring: true} = user) do
-    {_, sources} = Sources.create_user_system_sources(user.id)
-
-    Enum.each(sources, &Supervisor.reset_source/1)
+    user.id
+    |> Sources.create_user_system_sources()
+    |> Enum.each(&Supervisor.reset_source/1)
   end
 
   defp toggle_system_monitoring(%{system_monitoring: false} = user) do

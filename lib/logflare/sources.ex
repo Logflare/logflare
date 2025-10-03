@@ -45,6 +45,18 @@ defmodule Logflare.Sources do
     |> Enum.map(&put_retention_days/1)
   end
 
+  @spec list_system_sources_by_user(User.t()) :: [Source.t()]
+  def list_system_sources_by_user(%User{id: user_id}), do: list_system_sources_by_user(user_id)
+
+  def list_system_sources_by_user(user_id) do
+    from(
+      s in Source,
+      where: s.user_id == ^user_id and s.system_source == true
+    )
+    |> Repo.all()
+    |> Enum.map(&put_retention_days/1)
+  end
+
   @doc """
   Lists sources based on provided filters.
   """
@@ -143,10 +155,22 @@ defmodule Logflare.Sources do
       conflict_target: [:user_id, :system_source_type],
       on_conflict: :nothing
     )
-    |> case do
-      {_, []} -> {:ok, list_sources_by_user(user_id)}
-      {_, result} -> {:ok, result}
-    end
+
+    list_system_sources_by_user(user_id)
+    |> warn_missing_system_sources(user_id)
+  end
+
+  defp warn_missing_system_sources(sources, user_id) do
+    created_sources_types = Enum.map(sources, & &1.system_source_type)
+
+    Source.system_source_types()
+    |> Enum.each(fn type ->
+      if type not in created_sources_types do
+        Logger.warning("System source `#{type}` for user #{user_id} was not created")
+      end
+    end)
+
+    sources
   end
 
   @doc """
