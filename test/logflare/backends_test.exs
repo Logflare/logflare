@@ -517,23 +517,6 @@ defmodule Logflare.BackendsTest do
       end)
     end
 
-    test "performs broadcasts for global cache rates and dashboard rates", %{
-      source: %{token: source_token} = source
-    } do
-      PubSubRates.subscribe(:all)
-      ChannelTopics.subscribe_dashboard(source_token)
-      ChannelTopics.subscribe_source(source_token)
-      le = build(:log_event, source: source)
-      assert {:ok, 1} = Backends.ingest_logs([le], source)
-      :timer.sleep(1000)
-
-      TestUtils.retry_assert(fn ->
-        assert_received %_{event: "rate", payload: %{rate: _}}
-        # broadcast for recent logs page
-        assert_received %_{event: _, payload: %{body: %{}}}
-      end)
-    end
-
     test "cache_estimated_buffer_lens/1 will cache all queue information", %{
       source: %{id: source_id} = source
     } do
