@@ -41,14 +41,19 @@ defmodule LogflareWeb.LogControllerTest do
 
     setup [:warm_caches, :reject_context_functions]
 
-    for {param_name, param_key} <- [{"source", :source}, {"collection", :collection}, {"collection_name", :collection_name}] do
+    for {param_name, param_key} <- [
+          {"source", :source},
+          {"collection", :collection},
+          {"collection_name", :collection_name}
+        ] do
       test "valid ingestion using ?#{param_name}=", %{conn: conn, source: source, user: user} do
         {_pid, ref} = expect_webhook_success()
 
-        value = case unquote(param_key) do
-          :collection_name -> source.name
-          _ -> source.token
-        end
+        value =
+          case unquote(param_key) do
+            :collection_name -> source.name
+            _ -> source.token
+          end
 
         conn =
           conn
@@ -483,7 +488,11 @@ defmodule LogflareWeb.LogControllerTest do
 
   defp expect_bq_insert(pid \\ self()) do
     GoogleApi.BigQuery.V2.Api.Tabledata
-    |> expect(:bigquery_tabledata_insert_all, fn _conn, _project_id, _dataset_id, _table_name, _opts ->
+    |> expect(:bigquery_tabledata_insert_all, fn _conn,
+                                                 _project_id,
+                                                 _dataset_id,
+                                                 _table_name,
+                                                 _opts ->
       send(pid, :inserted)
       {:ok, %GoogleApi.BigQuery.V2.Model.TableDataInsertAllResponse{insertErrors: nil}}
     end)
