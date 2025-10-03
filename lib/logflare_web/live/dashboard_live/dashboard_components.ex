@@ -131,7 +131,7 @@ defmodule LogflareWeb.DashboardLive.DashboardComponents do
           Other teams you are a member of will be listed here.
         <% end %>
 
-        <li :for={team_user <- @team_users} :if={@home_team && team_user.team.id != @home_team.id} class="tw-mb-2">
+        <li :for={team_user <- @team_users} class="tw-mb-2">
           <span :if={team_user.team_id == @current_team.id}><%= team_user.team.name %></span>
           <.link :if={team_user.team_id != @current_team.id} href={~p"/profile/switch?#{%{user_id: team_user.team.user_id, team_user_id: team_user.id}}"} class="tw-text-white">
             <%= team_user.team.name %>
@@ -158,7 +158,7 @@ defmodule LogflareWeb.DashboardLive.DashboardComponents do
           </.link>
           <small><%= if @team_user, do: "owner", else: "owner, you" %></small>
         </li>
-        <li :for={member <- @team.team_users} :if={member.id != @user.id} class="tw-mb-2">
+        <li :for={member <- @team.team_users} class="tw-mb-2">
           <img class="rounded-circle" width="35" height="35" src={member.image || Auth.gen_gravatar_link(member.email)} alt={member.name || member.email} />
           <.link href={"mailto:#{member.email}"} class="tw-text-white">
             <%= member.name || member.email %>
