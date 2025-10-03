@@ -494,12 +494,9 @@ defmodule Logflare.Backends do
           do_telemetry(:drop, le)
           {events, errors}
 
-        %{valid: false} = le ->
+        %{pipeline_error: %_{message: message}, valid: false} = le ->
           do_telemetry(:invalid, le)
-          {events, errors}
-
-        %{pipeline_error: err} = le when err != nil ->
-          {events, [le.pipeline_error.message | errors]}
+          {events, [message | errors]}
 
         le ->
           {[le | events], errors}
@@ -653,7 +650,6 @@ defmodule Logflare.Backends do
   """
   @spec start_source_sup(Source.t()) :: :ok | {:error, :already_started}
   def start_source_sup(%Source{} = source) do
-    # ensure that v1 pipeline source is already down
     case DynamicSupervisor.start_child(
            {:via, PartitionSupervisor, {SourcesSup, source.id}},
            {SourceSup, source}

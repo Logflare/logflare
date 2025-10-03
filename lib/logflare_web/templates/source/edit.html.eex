@@ -315,8 +315,8 @@
     <%= submit if(@source.disable_tailing, do: "Enable search tailing", else: "Disable search tailing"), class: "btn btn-primary form-button" %>
   <% end %>
 
-  <%= if @source.v2_pipeline do %>
-    <%= section_header("Storage Write API Ingestion") %>
+  <%= if LogflareWeb.Utils.flag("multibackend", @user) == true do %>
+     <%= section_header("Storage Write API Ingestion") %>
     <%= form_for @changeset, Routes.source_path(@conn, :update, @source),fn f -> %>
       <div class="form-group">
         <%= @source.bq_storage_write_api %>
@@ -329,20 +329,9 @@
       <%= submit "Save", class: "btn btn-primary form-button" %>
 
     <% end %>
-  <% end %>
-
-  <%= if LogflareWeb.Utils.flag("multibackend", @user) == true do %>
+    
     <%= section_header("Multi Backends") %>
     <%= form_for @changeset, Routes.source_path(@conn, :update, @source),fn f -> %>
-      <div class="form-group">
-        <%= @source.v2_pipeline %>
-        <%= label f, :v2_pipeline do %>
-          Toggle v2 pipeline for this source
-        <% end %>
-        <%= checkbox f, :v2_pipeline, checked: @source.v2_pipeline, value: @source.v2_pipeline  %>
-        <%= error_tag f, :v2_pipeline %>
-      </div>
-
       <div class="form-group">
         <%= label f, :default_ingest_backend_enabled? do %>
           Toggle Default Ingest Mode

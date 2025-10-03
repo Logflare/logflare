@@ -6,7 +6,6 @@ defmodule Logflare.Logs.SourceRouting do
   alias Logflare.Backends
   alias Logflare.Backends.SourceSup
   alias Logflare.LogEvent, as: LE
-  alias Logflare.Logs
   alias Logflare.Lql.Rules.FilterRule
   alias Logflare.Rules.Rule
   alias Logflare.Sources.Source
@@ -37,21 +36,14 @@ defmodule Logflare.Logs.SourceRouting do
     Backends.ingest_logs([le], source, backend)
   end
 
-  defp do_routing(%Rule{sink: sink} = rule, %LE{source: source} = le) when sink != nil do
+  defp do_routing(%Rule{sink: sink} = rule, %LE{} = le) when sink != nil do
     sink_source =
       Sources.Cache.get_by(token: rule.sink) |> Sources.refresh_source_metrics_for_ingest()
 
     le = %{le | source: sink_source, via_rule: rule}
 
-    if source.v2_pipeline do
-      Backends.ensure_source_sup_started(sink_source)
-      Backends.ingest_logs([le], sink_source)
-    else
-      le
-      |> LE.apply_custom_event_message()
-      |> tap(&Logs.ingest/1)
-      |> tap(&Logs.broadcast/1)
-    end
+    Backends.ensure_source_sup_started(sink_source)
+    Backends.ingest_logs([le], sink_source)
   end
 
   defp do_routing(%Rule{sink: nil}, _le) do
