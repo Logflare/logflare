@@ -835,12 +835,12 @@ defmodule Logflare.Backends do
   @doc """
   Lists latest recent logs of only the local cache.
   """
-  @spec list_recent_logs_local(Source.t()) :: [LogEvent.t()]
-  @spec list_recent_logs_local(Source.t(), n :: number()) :: [LogEvent.t()]
+  @spec list_recent_logs_local(Source.t() | pos_integer()) :: [LogEvent.t()]
+  @spec list_recent_logs_local(Source.t() | pos_integer(), n :: number()) :: [LogEvent.t()]
   def list_recent_logs_local(source, n \\ 100)
   def list_recent_logs_local(%Source{id: id}, n), do: list_recent_logs_local(id, n)
 
-  def list_recent_logs_local(source_id, n) do
+  def list_recent_logs_local(source_id, n) when is_integer(source_id) do
     {:ok, events} = IngestEventQueue.fetch_events({source_id, nil}, n)
 
     events
