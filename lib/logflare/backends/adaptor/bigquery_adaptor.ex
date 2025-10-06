@@ -629,14 +629,11 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
          }}
 
       {:error, %{body: body}} ->
-        error = Jason.decode!(body)["error"] |> GenUtils.process_bq_errors(user.id)
-        {:error, error}
-
-      {:error, err} when is_atom(err) ->
-        {:error, GenUtils.process_bq_errors(err, user.id)}
-
-      {:error, err} ->
-        {:error, err}
+        {:error,
+         body
+         |> Jason.decode!()
+         |> Map.get("error")
+         |> GenUtils.process_bq_errors(user.id)}
     end
   end
 

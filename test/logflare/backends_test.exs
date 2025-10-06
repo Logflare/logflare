@@ -1,26 +1,26 @@
 defmodule Logflare.BackendsTest do
   use Logflare.DataCase
 
-  alias Logflare.Backends
-  alias Logflare.Backends.Backend
-  alias Logflare.Backends.SourceSup
-  alias Logflare.Sources.Source
-  alias Logflare.Sources
-  alias Logflare.Backends.RecentEventsTouch
-  alias Logflare.SystemMetrics.AllLogsLogged
-  alias Logflare.Sources.Source.ChannelTopics
-  alias Logflare.Lql
-  alias Logflare.PubSubRates
-  alias Logflare.Logs.SourceRouting
-  alias Logflare.Repo
-  alias Logflare.Rules
-  alias Logflare.Backends.IngestEventQueue
-  alias Logflare.Backends.SourceSupWorker
-  alias Logflare.Sources.Source.BigQuery.Pipeline
-  alias Logflare.Backends.DynamicPipeline
-  alias Logflare.User
   import StreamData
   import ExUnitProperties
+
+  alias Logflare.Backends
+  alias Logflare.Backends.Backend
+  alias Logflare.Backends.DynamicPipeline
+  alias Logflare.Backends.IngestEventQueue
+  alias Logflare.Backends.RecentEventsTouch
+  alias Logflare.Backends.SourceSup
+  alias Logflare.Backends.SourceSupWorker
+  alias Logflare.Logs.SourceRouting
+  alias Logflare.Lql
+  alias Logflare.PubSubRates
+  alias Logflare.Repo
+  alias Logflare.Rules
+  alias Logflare.Sources
+  alias Logflare.Sources.Source
+  alias Logflare.Sources.Source.BigQuery.Pipeline
+  alias Logflare.SystemMetrics.AllLogsLogged
+  alias Logflare.User
 
   setup do
     start_supervised!(AllLogsLogged)
@@ -917,7 +917,7 @@ defmodule Logflare.BackendsTest do
     @tag :benchmark
     @tag :skip
     test "BQ - Backend ingestion", %{user: user} do
-      [source1, source2] = insert_pair(:source, user: user, rules: [])
+      [_source1, source2] = insert_pair(:source, user: user, rules: [])
       start_supervised!({SourceSup, source2})
 
       batch =
