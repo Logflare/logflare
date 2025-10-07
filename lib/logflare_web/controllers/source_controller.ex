@@ -239,12 +239,12 @@ defmodule LogflareWeb.SourceController do
           :error,
           "Webhook test failed! Response status code was #{response.status}."
         )
-        |> redirect(to: Routes.source_path(conn, :edit, source.id))
+        |> redirect(to: Routes.source_path(conn, :edit, source_id))
 
       {:error, response} ->
         conn
         |> put_flash(:error, "Webhook test failed! Error response: #{response}")
-        |> redirect(to: Routes.source_path(conn, :edit, source.id))
+        |> redirect(to: Routes.source_path(conn, :edit, source_id))
     end
   end
 
@@ -266,12 +266,12 @@ defmodule LogflareWeb.SourceController do
           :error,
           "Slack hook test failed! Response status code was #{response.status}."
         )
-        |> redirect(to: Routes.source_path(conn, :edit, source.id))
+        |> redirect(to: Routes.source_path(conn, :edit, source_id))
 
       {:error, response} ->
         conn
         |> put_flash(:error, "Slack hook test failed! Error response: #{response}")
-        |> redirect(to: Routes.source_path(conn, :edit, source.id))
+        |> redirect(to: Routes.source_path(conn, :edit, source_id))
     end
   end
 
