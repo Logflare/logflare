@@ -3,7 +3,8 @@ defmodule LogflareWeb.Api.TeamController do
   use OpenApiSpex.ControllerSpecs
 
   alias Logflare.Teams
-
+  alias Logflare.TeamUsers
+  alias Logflare.Backends.Adaptor.BigQueryAdaptor
   alias LogflareWeb.OpenApi.Accepted
   alias LogflareWeb.OpenApi.Created
   alias LogflareWeb.OpenApi.List
@@ -102,6 +103,64 @@ defmodule LogflareWeb.Api.TeamController do
   def delete(%{assigns: %{user: user}} = conn, %{"token" => token}) do
     with team when not is_nil(team) <- Teams.get_team_by(token: token, user_id: user.id),
          {:ok, _} <- Teams.delete_team(team) do
+      conn
+      |> Plug.Conn.send_resp(204, [])
+      |> Plug.Conn.halt()
+    end
+  end
+
+  operation(:add_member,
+    summary: "Add Team Member",
+    parameters: [
+      token: [in: :path, description: "Team Token", type: :string],
+      id: [in: :path, description: "User ID as an email", type: :string]
+    ],
+    responses: %{
+      204 => Accepted.response(),
+      404 => NotFound.response()
+    }
+  )
+
+  def add_member(%{assigns: %{user: user}} = conn, %{"token" => token, "id" => id}) do
+    auth_params = %{
+      email: id
+    }
+
+    with team when not is_nil(team) <- Teams.get_team_by(token: token, user_id: user.id),
+         {:ok, _} <- TeamUsers.insert_or_update_team_user(team, auth_params) do
+      BigQueryAdaptor.update_iam_policy()
+      BigQueryAdaptor.patch_dataset_access(team.user)
+
+      conn
+      |> Plug.Conn.send_resp(204, [])
+      |> Plug.Conn.halt()
+    end
+  end
+
+  operation(:delete_member,
+    summary: "Delete Team Member",
+    parameters: [
+      token: [in: :path, description: "Team Token", type: :string],
+      id: [in: :path, description: "User ID as an email", type: :string]
+    ],
+    responses: %{
+      204 => Accepted.response(),
+      404 => NotFound.response()
+    }
+  )
+
+  def delete_member(%{assigns: %{user: user}} = conn, %{"token" => token, "id" => id}) do
+    auth_params = %{
+      email: id
+    }
+
+    team_user = TeamUsers.get_team_user!(auth_params)
+
+    with team when not is_nil(team) <- Teams.get_team_by(token: token, user_id: user.id),
+         {:ok, _} <- TeamUsers.delete_team_user(team_user) do
+      BigQueryAdaptor.update_iam_policy()
+      BigQueryAdaptor.patch_dataset_access(team.user)
+
       conn
       |> Plug.Conn.send_resp(204, [])
       |> Plug.Conn.halt()
