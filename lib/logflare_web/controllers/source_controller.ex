@@ -222,60 +222,56 @@ defmodule LogflareWeb.SourceController do
   end
 
   def test_alerts(conn, %{"id" => source_id}) do
-    with source = %Source{} <- Sources.get_by_and_preload(id: source_id) do
-      case WebhookNotificationServer.test_post(source) do
-        {:ok, %Tesla.Env{} = _response} ->
-          conn
-          |> put_flash(:info, "Webhook test successful!")
-          |> redirect(to: Routes.source_path(conn, :edit, source.id))
-
-        {:error, %Tesla.Env{} = response} ->
-          conn
-          |> put_flash(
-            :error,
-            "Webhook test failed! Response status code was #{response.status}."
-          )
-          |> redirect(to: Routes.source_path(conn, :edit, source.id))
-
-        {:error, response} ->
-          conn
-          |> put_flash(:error, "Webhook test failed! Error response: #{response}")
-          |> redirect(to: Routes.source_path(conn, :edit, source.id))
-      end
+    with source = %Source{} <- Sources.get_by_and_preload(id: source_id),
+         {:ok, %Tesla.Env{} = _response} <- WebhookNotificationServer.test_post(source) do
+      conn
+      |> put_flash(:info, "Webhook test successful!")
+      |> redirect(to: Routes.source_path(conn, :edit, source.id))
     else
       nil ->
         conn
         |> put_flash(:error, "Source not found")
         |> redirect(to: Routes.source_path(conn, :index))
+
+      {:error, %Tesla.Env{} = response} ->
+        conn
+        |> put_flash(
+          :error,
+          "Webhook test failed! Response status code was #{response.status}."
+        )
+        |> redirect(to: Routes.source_path(conn, :edit, source.id))
+
+      {:error, response} ->
+        conn
+        |> put_flash(:error, "Webhook test failed! Error response: #{response}")
+        |> redirect(to: Routes.source_path(conn, :edit, source.id))
     end
   end
 
   def test_slack_hook(conn, %{"id" => source_id}) do
-    with source = %Source{} <- Sources.get_by_and_preload(id: source_id) do
-      case SlackHookServer.test_post(source) do
-        {:ok, %Tesla.Env{} = _response} ->
-          conn
-          |> put_flash(:info, "Slack hook test successful!")
-          |> redirect(to: Routes.source_path(conn, :edit, source.id))
-
-        {:error, %Tesla.Env{} = response} ->
-          conn
-          |> put_flash(
-            :error,
-            "Slack hook test failed! Response status code was #{response.status}."
-          )
-          |> redirect(to: Routes.source_path(conn, :edit, source.id))
-
-        {:error, response} ->
-          conn
-          |> put_flash(:error, "Slack hook test failed! Error response: #{response}")
-          |> redirect(to: Routes.source_path(conn, :edit, source.id))
-      end
+    with source = %Source{} <- Sources.get_by_and_preload(id: source_id),
+         {:ok, %Tesla.Env{} = _response} <- SlackHookServer.test_post(source) do
+      conn
+      |> put_flash(:info, "Slack hook test successful!")
+      |> redirect(to: Routes.source_path(conn, :edit, source.id))
     else
       nil ->
         conn
         |> put_flash(:error, "Source not found")
         |> redirect(to: Routes.source_path(conn, :index))
+
+      {:error, %Tesla.Env{} = response} ->
+        conn
+        |> put_flash(
+          :error,
+          "Slack hook test failed! Response status code was #{response.status}."
+        )
+        |> redirect(to: Routes.source_path(conn, :edit, source.id))
+
+      {:error, response} ->
+        conn
+        |> put_flash(:error, "Slack hook test failed! Error response: #{response}")
+        |> redirect(to: Routes.source_path(conn, :edit, source.id))
     end
   end
 

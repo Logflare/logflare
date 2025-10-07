@@ -447,11 +447,6 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
 
   defdelegate get_iam_policy(user), to: CloudResourceManager
 
-  @spec append_managed_sa_to_iam_policy(User.t()) ::
-          {:ok, GoogleApi.CloudResourceManager.V1.Model.Policy.t()}
-          | {:error, :no_project_id}
-          | {:error, :managed_service_accounts_disabled}
-          | {:error, term()}
   defdelegate append_managed_sa_to_iam_policy(user), to: CloudResourceManager
   defdelegate append_managed_service_accounts(project_id, policy), to: CloudResourceManager
   defdelegate patch_dataset_access(user), to: Google.BigQuery
