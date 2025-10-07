@@ -120,13 +120,8 @@ defmodule LogflareWeb.MonacoEditorComponent do
   end
 
   def handle_event("format-query", %{"value" => value}, socket) do
-    case SqlFmt.format_query(value) do
-      {:ok, formatted} ->
-        {:noreply, socket |> LiveMonacoEditor.set_value(formatted, to: "query_string")}
-
-      _ ->
-        {:noreply, socket}
-    end
+    {:ok, formatted} = SqlFmt.format_query(value)
+    {:noreply, socket |> LiveMonacoEditor.set_value(formatted, to: "query_string")}
   end
 
   def handle_event("parse-query", %{"value" => query}, socket) do

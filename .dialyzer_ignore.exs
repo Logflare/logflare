@@ -73,6 +73,7 @@
   {"lib/logflare_web/controllers/health_check_controller.ex", :pattern_match},
   {"lib/logflare_web/controllers/plugs/fetch_resource.ex", :guard_fail},
   {"lib/logflare_web/controllers/source_controller.ex", :call},
+  {"lib/logflare_web/controllers/source_controller.ex", :pattern_match},
   {"lib/logflare_web/controllers/stripe_controller.ex", :pattern_match},
   {"lib/logflare_web/controllers/stripe_controller.ex", :pattern_match_cov},
   {"lib/logflare_web/live/alerts/alerts_live.ex", :pattern_match},

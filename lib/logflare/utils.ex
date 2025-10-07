@@ -60,19 +60,18 @@ defmodule Logflare.Utils do
     %{"test" => "data"}
   """
   @spec stringify_keys(map()) :: map()
-  @spec stringify_keys(list(map())) :: list(map())
   def stringify_keys(%{} = map) do
-    Map.new(map, fn
-      {k, v} when is_atom(k) -> {Atom.to_string(k), stringify_keys(v)}
-      {k, v} when is_binary(k) -> {k, stringify_keys(v)}
-    end)
+    for {k, v} <- map, into: %{} do
+      {to_string_key(k), deep_stringify(v)}
+    end
   end
 
-  def stringify_keys([head | rest]) do
-    [stringify_keys(head) | stringify_keys(rest)]
-  end
+  defp deep_stringify(%{} = map), do: stringify_keys(map)
+  defp deep_stringify([_ | _] = list), do: Enum.map(list, &deep_stringify/1)
+  defp deep_stringify(v), do: v
 
-  def stringify_keys(not_a_map), do: not_a_map
+  defp to_string_key(k) when is_atom(k), do: Atom.to_string(k)
+  defp to_string_key(k) when is_binary(k), do: k
 
   @doc """
   Stringifies a term.
