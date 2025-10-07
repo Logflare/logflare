@@ -284,7 +284,7 @@ defmodule Logflare.Sql do
     source_mapping(query, user_id, mapping, opts)
   end
 
-  def source_mapping(query, user_id, mapping, opts) when is_list(opts) do
+  def source_mapping(query, user_id, mapping, opts) when is_list(opts) and is_integer(user_id) do
     dialect = Keyword.get(opts, :dialect, "bigquery")
     sources = Sources.list_sources_by_user(user_id)
 
