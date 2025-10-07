@@ -2,21 +2,20 @@ defmodule LogflareWeb.Api.TeamController do
   use LogflareWeb, :controller
   use OpenApiSpex.ControllerSpecs
 
+  require Logger
+
+  alias Logflare.Backends.Adaptor.BigQueryAdaptor
   alias Logflare.Teams
   alias Logflare.Teams.Team
   alias Logflare.TeamUsers
   alias Logflare.TeamUsers.TeamUser
   alias Logflare.User
   alias Logflare.Users
-  alias Logflare.Backends.Adaptor.BigQueryAdaptor
   alias LogflareWeb.OpenApi.Accepted
   alias LogflareWeb.OpenApi.Created
   alias LogflareWeb.OpenApi.List
   alias LogflareWeb.OpenApi.NotFound
   alias LogflareWeb.OpenApi.UnprocessableEntity
-
-  require Logger
-
   alias LogflareWeb.OpenApiSchemas.Team, as: TeamSchema
   alias LogflareWeb.OpenApiSchemas.TeamUser, as: TeamUserSchema
 
