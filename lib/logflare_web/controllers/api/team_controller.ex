@@ -4,6 +4,7 @@ defmodule LogflareWeb.Api.TeamController do
 
   alias Logflare.Teams
   alias Logflare.TeamUsers
+  alias Logflare.Users
   alias Logflare.Backends.Adaptor.BigQueryAdaptor
   alias LogflareWeb.OpenApi.Accepted
   alias LogflareWeb.OpenApi.Created
@@ -11,7 +12,10 @@ defmodule LogflareWeb.Api.TeamController do
   alias LogflareWeb.OpenApi.NotFound
   alias LogflareWeb.OpenApi.UnprocessableEntity
 
+  require Logger
+
   alias LogflareWeb.OpenApiSchemas.Team
+  alias LogflareWeb.OpenApiSchemas.TeamUser
 
   action_fallback(LogflareWeb.Api.FallbackController)
 
@@ -112,21 +116,33 @@ defmodule LogflareWeb.Api.TeamController do
   operation(:add_member,
     summary: "Add Team Member",
     parameters: [
-      token: [in: :path, description: "Team Token", type: :string],
-      id: [in: :path, description: "User ID as an email", type: :string]
+      token: [in: :path, description: "Team Token", type: :string]
     ],
+    request_body: TeamUser.params(),
     responses: %{
       204 => Accepted.response(),
       404 => NotFound.response()
     }
   )
 
-  def add_member(%{assigns: %{user: user}} = conn, %{"token" => token, "id" => id}) do
+  def add_member(
+        %{assigns: %{user: user}} = conn,
+        %{"team_token" => token, "email" => email}
+      ) do
     auth_params = %{
-      email: id
+      email: email,
+      provider_uid: user.provider_uid,
+      provider: user.provider
     }
 
-    with team when not is_nil(team) <- Teams.get_team_by(token: token, user_id: user.id),
+    u = Users.get_by(email: email)
+    # user must exist or be created
+    if is_nil(u) do
+      Users.insert_user(auth_params)
+      Logger.info("Created new user #{email}")
+    end
+
+    with team when not is_nil(team) <- Teams.get_team_by(token: token),
          {:ok, _} <- TeamUsers.insert_or_update_team_user(team, auth_params) do
       BigQueryAdaptor.update_iam_policy()
       BigQueryAdaptor.patch_dataset_access(team.user)
@@ -137,8 +153,8 @@ defmodule LogflareWeb.Api.TeamController do
     end
   end
 
-  operation(:delete_member,
-    summary: "Delete Team Member",
+  operation(:remove_member,
+    summary: "Remove Team Member",
     parameters: [
       token: [in: :path, description: "Team Token", type: :string],
       id: [in: :path, description: "User ID as an email", type: :string]
@@ -149,12 +165,8 @@ defmodule LogflareWeb.Api.TeamController do
     }
   )
 
-  def delete_member(%{assigns: %{user: user}} = conn, %{"token" => token, "id" => id}) do
-    auth_params = %{
-      email: id
-    }
-
-    team_user = TeamUsers.get_team_user!(auth_params)
+  def remove_member(%{assigns: %{user: user}} = conn, %{"team_token" => token, "id" => id}) do
+    team_user = TeamUsers.get_team_user_by(email: id)
 
     with team when not is_nil(team) <- Teams.get_team_by(token: token, user_id: user.id),
          {:ok, _} <- TeamUsers.delete_team_user(team_user) do
