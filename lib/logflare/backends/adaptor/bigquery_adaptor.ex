@@ -446,6 +446,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
   end
 
   defdelegate get_iam_policy(user), to: CloudResourceManager
+
   defdelegate append_managed_sa_to_iam_policy(user), to: CloudResourceManager
   defdelegate append_managed_service_accounts(project_id, policy), to: CloudResourceManager
   defdelegate patch_dataset_access(user), to: Google.BigQuery
@@ -481,7 +482,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
   end
 
   @spec create_managed_service_account(project_id :: String.t(), service_account_index :: integer) ::
-          {:ok, String.t()} | {:error, String.t()}
+          {:ok, GoogleApi.IAM.V1.Model.ServiceAccount.t()} | {:error, Tesla.Env.t() | String.t()}
   defp create_managed_service_account(project_id, service_account_index) do
     GenUtils.get_conn(:default)
     |> GoogleApi.IAM.V1.Api.Projects.iam_projects_service_accounts_create(

@@ -7,7 +7,7 @@ defmodule LogflareWeb.SourceView do
     url = Routes.log_url(LogflareWeb.Endpoint, route) |> URI.parse()
 
     case url do
-      %URI{authority: "logflare.app"} ->
+      %URI{host: "logflare.app"} ->
         url
         |> Map.put(:authority, "api.logflare.app")
         |> Map.put(:host, "api.logflare.app")

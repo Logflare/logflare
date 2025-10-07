@@ -42,6 +42,7 @@ defmodule Logflare.Backends.Adaptor.SlackAdaptor do
     Client.send(url, body)
   end
 
+  @spec send_message(Source.t(), [map()], pos_integer()) :: Tesla.Env.result()
   def send_message(%Source{slack_hook_url: url} = source, log_events, rate) do
     body = build_message(source, log_events, rate)
 
