@@ -73,6 +73,9 @@ defmodule LogflareWeb.QueryLive do
           }
         />
         <div class="tw-ml-auto">
+          <button type="button" class="btn btn-secondary" phx-click="format-query">
+            Format
+          </button>
           <%= submit("Run query", class: "btn btn-secondary") %>
         </div>
       </.form>
@@ -240,6 +243,16 @@ defmodule LogflareWeb.QueryLive do
   def handle_event("parse-query", %{"_target" => ["live_monaco_editor", _]}, socket) do
     # ignore change events from the editor field
     {:noreply, socket}
+  end
+
+  def handle_event("format-query", _params, socket) do
+    case SqlFmt.format_query(socket.assigns.query_string) do
+      {:ok, formatted} ->
+        {:noreply, LiveMonacoEditor.set_value(socket, formatted, to: "query")}
+
+      _ ->
+        {:noreply, socket}
+    end
   end
 
   defp run_query(socket, user, query_string) do
