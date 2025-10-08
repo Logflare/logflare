@@ -5,7 +5,7 @@ defmodule Logflare.Sources.Source.V1SourceSup do
   alias Logflare.Backends
   alias Logflare.Backends.Backend
   alias Logflare.Backends.RecentEventsTouch
-  alias Logflare.Backends.RecentInsertsBroadcaster
+  alias Logflare.Backends.RecentInsertsCacher
   alias Logflare.Billing
   alias Logflare.GenSingleton
   alias Logflare.Sources.Source.BillingWriter
@@ -43,7 +43,7 @@ defmodule Logflare.Sources.Source.V1SourceSup do
       {RCS, [source: source]},
       default_bigquery_spec,
       {GenSingleton, child_spec: {RecentEventsTouch, source: source}},
-      {RecentInsertsBroadcaster, [source: source]},
+      {RecentInsertsCacher, [source: source]},
       {EmailNotificationServer, [source: source]},
       {TextNotificationServer, [source: source, plan: plan]},
       {WebhookNotificationServer, [source: source]},
