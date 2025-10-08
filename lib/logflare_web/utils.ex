@@ -153,4 +153,28 @@ defmodule LogflareWeb.Utils do
 
     {Float.round(size, 2), unit}
   end
+
+  @doc """
+  Replaces positional placeholders in a BigQuery SQL string with their parameter values.
+
+  Parameters are expected to be `%GoogleApi.BigQuery.V2.Model.QueryParameter{}` structs.
+  Strings are wrapped in single quotes while numeric values are left as-is. All other
+  types fall back to Elixir's inspection.
+  """
+  @spec sql_params_to_sql(String.t(), list()) :: String.t()
+  def sql_params_to_sql(sql, params) when is_binary(sql) and is_list(params) do
+    Enum.reduce(params, sql, fn param, acc_sql ->
+      type = Map.get(param.parameterType, :type)
+      value = Map.get(param.parameterValue, :value)
+
+      replacement =
+        case type do
+          "STRING" -> "'#{value}'"
+          num when num in ["INTEGER", "FLOAT"] -> inspect(value)
+          _ -> inspect(value)
+        end
+
+      String.replace(acc_sql, "?", replacement, global: false)
+    end)
+  end
 end

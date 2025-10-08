@@ -753,6 +753,68 @@ defmodule LogflareWeb.Source.SearchLVTest do
     end
   end
 
+  describe "create from query" do
+    setup do
+      user = insert(:user)
+      team_user = insert(:team_user, preferences: build(:user_preferences, timezone: "NZ"))
+      source = insert(:source, user: user)
+      plan = insert(:plan)
+      [user: user, source: source, plan: plan, team_user: team_user]
+    end
+
+    setup [:setup_team_user_session]
+
+    test "create new query from search dropdown", %{conn: conn, source: source} do
+      {:ok, view, _html} =
+        live(
+          conn,
+          ~p"/sources/#{source.id}/search?querystring=something123&tailing%3F=&tz=Etc/UTC"
+        )
+
+      %{executor_pid: search_executor_pid} = get_view_assigns(view)
+      Ecto.Adapters.SQL.Sandbox.allow(Logflare.Repo, self(), search_executor_pid)
+      :timer.sleep(500)
+
+      assigns = get_view_assigns(view)
+      assert assigns.search_op_log_events
+
+      view
+      |> element(
+        "a[phx-click=\"create_new\"][phx-value-resource=\"query\"][phx-value-kind=\"events\"]"
+      )
+      |> render_click()
+
+      {redirect_path, _flash} = assert_redirect(view)
+      assert String.starts_with?(redirect_path, "/query?q=")
+    end
+
+    test "create new query from chart dropdown uses chart query", %{conn: conn, source: source} do
+      {:ok, view, _html} =
+        live(
+          conn,
+          ~p"/sources/#{source.id}/search?querystring=something123&tailing%3F=&tz=Etc/UTC"
+        )
+
+      %{executor_pid: search_executor_pid} = get_view_assigns(view)
+      Ecto.Adapters.SQL.Sandbox.allow(Logflare.Repo, self(), search_executor_pid)
+
+      TestUtils.retry_assert(fn ->
+        assigns = get_view_assigns(view)
+        assert assigns.search_op_log_aggregates
+        assert assigns.search_op_log_events
+      end)
+
+      view
+      |> element(
+        "a[phx-click=\"create_new\"][phx-value-resource=\"query\"][phx-value-kind=\"aggregates\"]"
+      )
+      |> render_click()
+
+      {redirect_path, _flash} = assert_redirect(view)
+      assert String.starts_with?(redirect_path, "/query?q=")
+    end
+  end
+
   describe "single tenant searching" do
     TestUtils.setup_single_tenant(seed_user: true)
 

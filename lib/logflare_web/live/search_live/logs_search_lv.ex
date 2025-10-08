@@ -8,7 +8,6 @@ defmodule LogflareWeb.Source.SearchLV do
   import LogflareWeb.ModalLiveHelpers
   import LogflareWeb.SearchLV.Utils
   import LogflareWeb.SearchLive.TimezoneComponent
-  alias LogflareWeb.Utils
 
   alias Logflare.Billing
   alias Logflare.Logs.SearchQueryExecutor
@@ -24,6 +23,8 @@ defmodule LogflareWeb.Source.SearchLV do
   alias LogflareWeb.Helpers.BqSchema, as: BqSchemaHelpers
   alias LogflareWeb.Router.Helpers, as: Routes
   alias LogflareWeb.SearchView
+  alias LogflareWeb.SearchLive.SearchComponents
+  alias LogflareWeb.Utils
   alias Logflare.Sources.Source.BigQuery.SchemaBuilder
   alias Logflare.Utils.Chart, as: ChartUtils
 
@@ -237,7 +238,7 @@ defmodule LogflareWeb.Source.SearchLV do
 
   def handle_event(
         "start_search",
-        %{"search" => %{"querystring" => qs}},
+        %{"search" => %{"querystring" => qs}} = _params,
         %{assigns: prev_assigns} = socket
       ) do
     maybe_cancel_tailing_timer(socket)
@@ -426,6 +427,52 @@ defmodule LogflareWeb.Source.SearchLV do
   def handle_event("reset_search", _, socket) do
     {:noreply, reset_search(socket)}
   end
+
+  def handle_event(
+        "create_new",
+        %{"kind" => kind, "resource" => resource},
+        %{assigns: assigns} = socket
+      ) do
+    %{source: source} = socket.assigns
+
+    search_op =
+      if kind == "aggregates",
+        do: assigns.search_op_log_aggregates,
+        else: assigns.search_op_log_events
+
+    sql = Utils.sql_params_to_sql(search_op.sql_string, search_op.sql_params)
+    display_sql = replace_table_with_source_name(sql, source)
+
+    destination =
+      case resource do
+        "endpoint" ->
+          ~p"/endpoints/new?#{%{query: display_sql, name: source.name}}"
+
+        "alert" ->
+          ~p"/alerts/new?#{%{query: display_sql, name: source.name}}"
+
+        "query" ->
+          ~p"/query?#{%{q: display_sql}}"
+      end
+
+    {:noreply, push_navigate(socket, to: destination)}
+  end
+
+  defp replace_table_with_source_name(sql, %{bq_table_id: table_id, name: name})
+       when is_binary(sql) and is_binary(table_id) and is_binary(name) do
+    quoted_name = "`#{name}`"
+
+    table_variants =
+      [table_id, String.replace(table_id, "`", "")]
+      |> Enum.filter(&(&1 != ""))
+      |> Enum.uniq()
+
+    Enum.reduce(table_variants, sql, fn variant, acc ->
+      String.replace(acc, variant, quoted_name)
+    end)
+  end
+
+  defp replace_table_with_source_name(sql, _source), do: sql
 
   def handle_info(:soft_pause = ev, socket) do
     soft_pause(ev, socket)

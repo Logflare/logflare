@@ -29,7 +29,7 @@ defmodule LogflareWeb.QueryComponents do
       assigns
       |> assign_new(:formatted_sql, fn ->
         {:ok, formatted} =
-          sql_params_to_sql(assigns.sql_string, assigns.params)
+          Utils.sql_params_to_sql(assigns.sql_string, assigns.params)
           |> SqlFmt.format_query()
 
         formatted
@@ -59,21 +59,4 @@ defmodule LogflareWeb.QueryComponents do
     """
   end
 
-  defp sql_params_to_sql(sql, params) do
-    Enum.reduce(params, sql, fn param, sql ->
-      type = param.parameterType.type
-      value = param.parameterValue.value
-
-      case type do
-        "STRING" ->
-          String.replace(sql, "?", "'#{value}'", global: false)
-
-        num when num in ~w(INTEGER FLOAT) ->
-          String.replace(sql, "?", inspect(value), global: false)
-
-        _ ->
-          String.replace(sql, "?", inspect(value), global: false)
-      end
-    end)
-  end
 end

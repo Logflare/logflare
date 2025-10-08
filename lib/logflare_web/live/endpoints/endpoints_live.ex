@@ -113,6 +113,20 @@ defmodule LogflareWeb.EndpointsLive do
           |> assign(:endpoint_changeset, nil)
           |> assign(:query_result_rows, nil)
 
+        %{assigns: %{live_action: :new}} = socket ->
+          params =
+            Map.replace_lazy(params, "query", fn sql ->
+              {:ok, formatted} = SqlFmt.format_query(sql)
+              formatted
+            end)
+
+          changeset =
+            %Endpoints.Query{}
+            |> Endpoints.change_query(params)
+
+          socket
+          |> assign(:endpoint_changeset, changeset)
+
         other ->
           other
           # reset the changeset
