@@ -246,13 +246,8 @@ defmodule LogflareWeb.QueryLive do
   end
 
   def handle_event("format-query", _params, socket) do
-    case SqlFmt.format_query(socket.assigns.query_string) do
-      {:ok, formatted} ->
-        {:noreply, LiveMonacoEditor.set_value(socket, formatted, to: "query")}
-
-      _ ->
-        {:noreply, socket}
-    end
+    {:ok, formatted} = SqlFmt.format_query(socket.assigns.query_string)
+    {:noreply, LiveMonacoEditor.set_value(socket, formatted, to: "query")}
   end
 
   defp run_query(socket, user, query_string) do

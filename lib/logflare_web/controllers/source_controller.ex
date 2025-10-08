@@ -267,11 +267,6 @@ defmodule LogflareWeb.SourceController do
           "Slack hook test failed! Response status code was #{response.status}."
         )
         |> redirect(to: Routes.source_path(conn, :edit, source_id))
-
-      {:error, response} ->
-        conn
-        |> put_flash(:error, "Slack hook test failed! Error response: #{response}")
-        |> redirect(to: Routes.source_path(conn, :edit, source_id))
     end
   end
 
