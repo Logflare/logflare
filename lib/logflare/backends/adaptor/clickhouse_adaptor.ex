@@ -638,7 +638,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
 
       {nil, rows} when is_list(rows) ->
         # No column names, return rows as-is
-        rows
+        convert_uuids(rows)
 
       {_columns, nil} ->
         # No rows
@@ -651,6 +651,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
           |> Enum.zip(row)
           |> Map.new()
         end
+        |> convert_uuids()
 
       {columns, rows} ->
         # Handle other formats - Ch.Result.rows can be iodata
@@ -699,4 +700,21 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
       end
     end)
   end
+
+  @spec convert_uuids(data :: map() | list() | binary()) :: map() | list() | binary()
+  defp convert_uuids(data) when is_struct(data), do: data
+
+  defp convert_uuids(data) when is_map(data) do
+    Map.new(data, fn {k, v} -> {k, convert_uuids(v)} end)
+  end
+
+  defp convert_uuids(data) when is_list(data) do
+    Enum.map(data, &convert_uuids/1)
+  end
+
+  defp convert_uuids(data) when is_non_empty_binary(data) and byte_size(data) == 16 do
+    Ecto.UUID.cast!(data)
+  end
+
+  defp convert_uuids(data), do: data
 end
