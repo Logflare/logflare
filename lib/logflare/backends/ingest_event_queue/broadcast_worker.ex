@@ -6,7 +6,6 @@ defmodule Logflare.Backends.IngestEventQueue.BroadcastWorker do
   Broadcasts local buffer length of a given queue globally.
   """
   use GenServer
-  alias Logflare.PubSubRates
   alias Logflare.Backends
   require Logger
   @ets_table_mapper :ingest_event_queue_mapping
