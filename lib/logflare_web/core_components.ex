@@ -5,6 +5,8 @@ defmodule LogflareWeb.CoreComponents do
   use LogflareWeb, :routes
   use Phoenix.Component
 
+  alias Phoenix.LiveView.JS
+
   @doc "Alert the user of something"
   attr :variant, :string,
     values: ["primary", "secondary", "success", "danger", "warning", "info", "light", "dark"]
@@ -49,10 +51,10 @@ defmodule LogflareWeb.CoreComponents do
 
     ~H"""
     <div class="tw-relative" id={@id}>
-      <button type="button" class="btn btn-primary" phx-click={Phoenix.LiveView.JS.toggle(to: "##{@id} ul")} disabled={@disabled}>
+      <button type="button" class="btn btn-primary" phx-click={JS.toggle(to: "##{@id} ul")} disabled={@disabled}>
         <%= render_slot(@inner_block) %>
       </button>
-      <ul style="display: none;" class="tw-absolute tw-left-0 tw-m-0 tw-px-0 tw-bottom-full tw-bg-white tw-rounded-md tw-border tw-border-gray-300 tw-shadow tw-py-2 tw-min-w-[11rem] tw-list-none tw-z-10">
+      <ul phx-click-away={JS.hide()} style="display: none;" class="tw-absolute tw-left-0 tw-m-0 tw-px-0 tw-bottom-full tw-bg-white tw-rounded-md tw-border tw-border-gray-300 tw-shadow tw-py-2 tw-min-w-[11rem] tw-list-none tw-z-10">
         <%= for menu_item <- @menu_item do %>
           <li :if={menu_item[:heading]} class="tw-mt-2 first:tw-mt-0 tw-border-0 tw-border-t first:tw-border-t-0 tw-border-solid tw-border-gray-200 tw-px-3 tw-pt-2 tw-pb-1 tw-text-xs tw-font-semibold tw-text-gray-500 tw-uppercase">
             <%= menu_item.heading %>
