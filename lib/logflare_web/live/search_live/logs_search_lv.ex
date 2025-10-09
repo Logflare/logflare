@@ -31,7 +31,7 @@ defmodule LogflareWeb.Source.SearchLV do
 
   embed_templates "templates/*"
 
-  @tail_search_interval 500
+  @tail_search_interval 1000
   @user_idle_interval :timer.minutes(2)
   @default_qs "c:count(*) c:group_by(t::minute)"
 
