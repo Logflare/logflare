@@ -176,7 +176,7 @@
           <% end %>
         </div>
         <div class="pr-2 pt-1 pb-1">
-          <SearchComponents.create_menu user={@user} disabled={is_nil(@search_op_log_events) || is_nil(@search_op_log_aggregates)} />
+          <LogflareWeb.SearchLive.SearchComponents.create_menu user={@user} disabled={is_nil(@search_op_log_events) || is_nil(@search_op_log_aggregates)} />
         </div>
       </div>
 

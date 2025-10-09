@@ -23,7 +23,6 @@ defmodule LogflareWeb.Source.SearchLV do
   alias LogflareWeb.Helpers.BqSchema, as: BqSchemaHelpers
   alias LogflareWeb.Router.Helpers, as: Routes
   alias LogflareWeb.SearchView
-  alias LogflareWeb.SearchLive.SearchComponents
   alias LogflareWeb.Utils
   alias Logflare.Sources.Source.BigQuery.SchemaBuilder
   alias Logflare.Utils.Chart, as: ChartUtils
