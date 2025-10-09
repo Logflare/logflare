@@ -429,7 +429,10 @@ defmodule LogflareWeb.Router do
     resources("/teams", Api.TeamController,
       param: "token",
       only: [:index, :show, :create, :update, :delete]
-    )
+    ) do
+      post "/members", Api.TeamController, :add_member
+      delete "/members/:id", Api.TeamController, :remove_member
+    end
 
     resources("/backends", Api.BackendController,
       param: "token",
