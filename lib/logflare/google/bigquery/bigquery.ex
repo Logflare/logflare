@@ -233,8 +233,8 @@ defmodule Logflare.Google.BigQuery do
   @doc """
   Creates dataset, accepts user_id, dataset_id, dataset_location, project_id
   """
-  @spec create_dataset(integer, binary, binary, binary) ::
-          {:error, Tesla.Env.t()} | {:ok, Model.Dataset.t()}
+  @spec create_dataset(String.t(), String.t(), String.t(), String.t()) ::
+          {:ok, Model.Dataset.t()} | {:error, Tesla.Env.t()}
   def create_dataset(user_id, dataset_id, dataset_location, project_id \\ env_project_id()) do
     conn = GenUtils.get_conn()
 
