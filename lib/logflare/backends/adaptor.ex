@@ -97,6 +97,16 @@ defmodule Logflare.Backends.Adaptor do
     |> function_exported?(:map_query_parameters, 4)
   end
 
+  @doc """
+  Returns true if a provided `Backend` supports executing queries.
+  """
+  @spec can_query?(Backend.t()) :: boolean()
+  def can_query?(%Backend{} = backend) do
+    backend
+    |> get_adaptor()
+    |> function_exported?(:execute_query, 3)
+  end
+
   @callback start_link(source_backend()) ::
               {:ok, pid()} | :ignore | {:error, term()}
 
@@ -205,6 +215,7 @@ defmodule Logflare.Backends.Adaptor do
   @optional_callbacks ecto_to_sql: 2,
                       format_batch: 1,
                       format_batch: 2,
+                      execute_query: 3,
                       map_query_parameters: 4,
                       pre_ingest: 3,
                       test_connection: 1,
