@@ -75,6 +75,9 @@
 <!-- Modal -->
 <%= render(LogflareWeb.SourceView, "no_logs_modal.html", user: @user, source: @source, conn: @conn) %>
 <div id="__phx-assigns__" data-source-token={@source.token} data-logs={Poison.encode!(@logs)}></div>
+<script src={Routes.static_path(@conn, "/js/source.js")}>
+</script>
+
 <script>
   document.addEventListener("DOMContentLoaded", async () => {
       await Source.main({scrollTracker: true}, {avgEventsPerSecond: <%= @source.metrics.avg %>})
