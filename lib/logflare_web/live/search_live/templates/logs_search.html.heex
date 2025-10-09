@@ -176,28 +176,7 @@
           <% end %>
         </div>
         <div class="pr-2 pt-1 pb-1">
-          <.button_dropdown id="create-menu">
-            <i class="fas fa-plus"></i>
-            Create new...
-            <:menu_item heading="Endpoint">
-              <a phx-click="create_new" phx-value-resource="endpoint" phx-value-kind="events" class="tw-block tw-text-gray-500 tw-no-underline" href="#">From search</a>
-            </:menu_item>
-            <:menu_item>
-              <a phx-click="create_new" phx-value-resource="endpoint" phx-value-kind="aggregates" class="tw-block tw-text-gray-500 tw-no-underline" href="#">From chart</a>
-            </:menu_item>
-            <:menu_item heading="Alert">
-              <a phx-click="create_new" phx-value-resource="alert" phx-value-kind="events" class="tw-block tw-text-gray-500 tw-no-underline" href="#">From search</a>
-            </:menu_item>
-            <:menu_item>
-              <a phx-click="create_new" phx-value-resource="alert" phx-value-kind="aggregates" class="tw-block tw-text-gray-500 tw-no-underline" href="#">From chart</a>
-            </:menu_item>
-            <:menu_item heading="Query">
-              <a phx-click="create_new" phx-value-resource="query" phx-value-kind="events" class="tw-block tw-text-gray-500 tw-no-underline" href="#">From search</a>
-            </:menu_item>
-            <:menu_item>
-              <a phx-click="create_new" phx-value-resource="query" phx-value-kind="aggregates" class="tw-block tw-text-gray-500 tw-no-underline" href="#">From chart</a>
-            </:menu_item>
-          </.button_dropdown>
+          <SearchComponents.create_menu user={@user} disabled={is_nil(@search_op_log_events) || is_nil(@search_op_log_aggregates)} />
         </div>
       </div>
 

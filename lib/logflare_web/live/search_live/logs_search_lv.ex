@@ -440,19 +440,20 @@ defmodule LogflareWeb.Source.SearchLV do
         do: assigns.search_op_log_aggregates,
         else: assigns.search_op_log_events
 
-    sql = Utils.sql_params_to_sql(search_op.sql_string, search_op.sql_params)
-    display_sql = replace_table_with_source_name(sql, source)
+    sql =
+      Utils.sql_params_to_sql(search_op.sql_string, search_op.sql_params)
+      |> replace_table_with_source_name(source)
 
     destination =
       case resource do
         "endpoint" ->
-          ~p"/endpoints/new?#{%{query: display_sql, name: source.name}}"
+          ~p"/endpoints/new?#{%{query: sql, name: source.name}}"
 
         "alert" ->
-          ~p"/alerts/new?#{%{query: display_sql, name: source.name}}"
+          ~p"/alerts/new?#{%{query: sql, name: source.name}}"
 
         "query" ->
-          ~p"/query?#{%{q: display_sql}}"
+          ~p"/query?#{%{q: sql}}"
       end
 
     {:noreply, push_navigate(socket, to: destination)}

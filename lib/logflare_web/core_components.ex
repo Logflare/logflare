@@ -37,6 +37,7 @@ defmodule LogflareWeb.CoreComponents do
   end
 
   attr :id, :string, required: false
+  attr :disabled, :boolean, default: false
   slot :inner_block, required: true
 
   slot :menu_item, required: true do
@@ -48,10 +49,10 @@ defmodule LogflareWeb.CoreComponents do
 
     ~H"""
     <div class="tw-relative" id={@id}>
-      <button type="button" class="btn btn-primary" phx-click={Phoenix.LiveView.JS.toggle(to: "##{@id} ul")}>
+      <button type="button" class="btn btn-primary" phx-click={Phoenix.LiveView.JS.toggle(to: "##{@id} ul")} disabled={@disabled}>
         <%= render_slot(@inner_block) %>
       </button>
-      <ul style="display: xnone;" class="tw-absolute tw-left-0 tw-m-0 tw-px-0 tw-bottom-full tw-bg-white tw-rounded-md tw-border tw-border-gray-300 tw-shadow tw-py-2 tw-min-w-[11rem] tw-list-none tw-z-10">
+      <ul style="display: none;" class="tw-absolute tw-left-0 tw-m-0 tw-px-0 tw-bottom-full tw-bg-white tw-rounded-md tw-border tw-border-gray-300 tw-shadow tw-py-2 tw-min-w-[11rem] tw-list-none tw-z-10">
         <%= for menu_item <- @menu_item do %>
           <li :if={menu_item[:heading]} class="tw-mt-2 first:tw-mt-0 tw-border-0 tw-border-t first:tw-border-t-0 tw-border-solid tw-border-gray-200 tw-px-3 tw-pt-2 tw-pb-1 tw-text-xs tw-font-semibold tw-text-gray-500 tw-uppercase">
             <%= menu_item.heading %>
