@@ -238,6 +238,9 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
               tesla_response: GenUtils.get_tesla_error_message(response)
             )
         end
+
+      {:error, response} ->
+        Logger.warning("Stream batch unknown error!", tesla_response: inspect(response))
     end
 
     {messages, %{}}
