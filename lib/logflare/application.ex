@@ -54,19 +54,9 @@ defmodule Logflare.Application do
         PubSubRates,
         Logs.RejectedLogEvents,
         Logflare.Backends,
-        {Registry,
-         name: Logflare.V1SourceRegistry,
-         keys: :unique,
-         partitions: max(round(System.schedulers_online() / 8), 1)},
         {PartitionSupervisor, child_spec: Task.Supervisor, name: Logflare.TaskSupervisors},
         {PartitionSupervisor,
          child_spec: DynamicSupervisor, name: Logflare.Endpoints.ResultsCache.PartitionSupervisor},
-        {DynamicSupervisor,
-         strategy: :one_for_one,
-         restart: :transient,
-         max_restarts: 10,
-         max_seconds: 60,
-         name: Logflare.Sources.Source.V1SourceDynSup},
         LogflareWeb.Endpoint,
         {Logflare.ActiveUserTracker,
          [name: Logflare.ActiveUserTracker, pubsub_server: Logflare.PubSub]}
@@ -93,12 +83,6 @@ defmodule Logflare.Application do
         ContextCache.Supervisor,
         Logs.LogEvents.Cache,
         PubSubRates,
-
-        # v1 ingest pipline
-        {Registry,
-         name: Logflare.V1SourceRegistry,
-         keys: :unique,
-         partitions: max(round(System.schedulers_online() / 8), 1)},
         Logs.RejectedLogEvents,
         # init Counters before Supervisof as Supervisor calls Counters through table create
         Counters,
@@ -106,12 +90,6 @@ defmodule Logflare.Application do
         # Backends needs to be before Source.Supervisor
         Logflare.Backends,
         Logflare.Sources.Source.Supervisor,
-        {DynamicSupervisor,
-         strategy: :one_for_one,
-         restart: :transient,
-         max_restarts: 10,
-         max_seconds: 60,
-         name: Logflare.Sources.Source.V1SourceDynSup},
         LogflareWeb.Endpoint,
         # If we get a log event and the Source.Supervisor is not up it will 500
         {GRPC.Server.Supervisor,

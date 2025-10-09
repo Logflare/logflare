@@ -10,11 +10,8 @@ defmodule Logflare.BackendsTest do
   alias Logflare.SystemMetrics.AllLogsLogged
   alias Logflare.Sources.Source.ChannelTopics
   alias Logflare.Lql
-  alias Logflare.Logs
-  alias Logflare.Sources.Source.V1SourceSup
   alias Logflare.PubSubRates
   alias Logflare.Logs.SourceRouting
-  alias Logflare.PubSubRates
   alias Logflare.Repo
   alias Logflare.Rules
   alias Logflare.Backends.IngestEventQueue
@@ -606,7 +603,7 @@ defmodule Logflare.BackendsTest do
       end)
     end
 
-    test "v1 pipeline: routing depth is max 1 level", %{user: user} do
+    test "routing depth is max 1 level (duplicate)", %{user: user} do
       [source, target] = insert_pair(:source, user: user)
       other_target = insert(:source, user: user)
       insert(:rule, lql_string: "testing", sink: target.token, source_id: source.id)
@@ -620,17 +617,14 @@ defmodule Logflare.BackendsTest do
       assert {:ok, 1} = Backends.ingest_logs([%{"event_message" => "testing 123"}], source)
 
       TestUtils.retry_assert(fn ->
-        # 1 events
         assert Backends.list_recent_logs_local(source) |> length() == 1
-        # 1 events
         assert Backends.list_recent_logs_local(target) |> length() == 1
-        # 0 events
         assert Backends.list_recent_logs_local(other_target) |> length() == 0
       end)
     end
 
-    test "v2 pipeline: routing depth is max 1 level", %{user: user} do
-      [source, target] = insert_pair(:source, user: user, v2_pipeline: true)
+    test "routing depth is max 1 level", %{user: user} do
+      [source, target] = insert_pair(:source, user: user)
       other_target = insert(:source, user: user)
       insert(:rule, lql_string: "testing", sink: target.token, source_id: source.id)
       insert(:rule, lql_string: "testing", sink: other_target.token, source_id: target.id)
@@ -920,12 +914,10 @@ defmodule Logflare.BackendsTest do
 
     # This benchmarks two areas:
     # - transformation of params to log events
-    # - BQ max insertion rate
     @tag :benchmark
     @tag :skip
-    test "BQ - v1 Logs vs v2 Logs vs v2 Backend", %{user: user} do
+    test "BQ - Backend ingestion", %{user: user} do
       [source1, source2] = insert_pair(:source, user: user, rules: [])
-      start_supervised!({V1SourceSup, source: source1})
       start_supervised!({SourceSup, source2})
 
       batch =
@@ -935,13 +927,7 @@ defmodule Logflare.BackendsTest do
 
       BencheeAsync.run(
         %{
-          "v1SourceSup BQ with Logs.ingest_logs/2" => fn ->
-            Logs.ingest_logs(batch, source1)
-          end,
-          "SourceSup v2 BQ with Logs.ingest_logs/2" => fn ->
-            Logs.ingest_logs(batch, source2)
-          end,
-          "SourceSup v2 BQ with Backends.ingest_logs/2" => fn ->
+          "SourceSup BQ with Backends.ingest_logs/2" => fn ->
             Backends.ingest_logs(batch, source2)
           end
         },
