@@ -441,7 +441,7 @@ defmodule LogflareWeb.Source.SearchLV do
 
     sql =
       Utils.sql_params_to_sql(search_op.sql_string, search_op.sql_params)
-      |> replace_table_with_source_name(source)
+      |> Utils.replace_table_with_source_name(source)
 
     destination =
       case resource do
@@ -457,22 +457,6 @@ defmodule LogflareWeb.Source.SearchLV do
 
     {:noreply, push_navigate(socket, to: destination)}
   end
-
-  defp replace_table_with_source_name(sql, %{bq_table_id: table_id, name: name})
-       when is_binary(sql) and is_binary(table_id) and is_binary(name) do
-    quoted_name = "`#{name}`"
-
-    table_variants =
-      [table_id, String.replace(table_id, "`", "")]
-      |> Enum.filter(&(&1 != ""))
-      |> Enum.uniq()
-
-    Enum.reduce(table_variants, sql, fn variant, acc ->
-      String.replace(acc, variant, quoted_name)
-    end)
-  end
-
-  defp replace_table_with_source_name(sql, _source), do: sql
 
   def handle_info(:soft_pause = ev, socket) do
     soft_pause(ev, socket)

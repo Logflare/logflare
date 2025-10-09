@@ -170,4 +170,24 @@ defmodule LogflareWeb.Utils do
       String.replace(acc_sql, "?", replacement, global: false)
     end)
   end
+
+  @spec replace_table_with_source_name(String.t(), %{
+          bq_table_id: String.t(),
+          name: String.t()
+        }) :: String.t()
+  def replace_table_with_source_name(sql, %{bq_table_id: table_id, name: name})
+      when is_binary(sql) and is_binary(table_id) and is_binary(name) do
+    quoted_name = "`#{name}`"
+
+    table_variants =
+      [table_id, String.replace(table_id, "`", "")]
+      |> Enum.filter(&(&1 != ""))
+      |> Enum.uniq()
+
+    Enum.reduce(table_variants, sql, fn variant, acc ->
+      String.replace(acc, variant, quoted_name)
+    end)
+  end
+
+  def replace_table_with_source_name(sql, _source), do: sql
 end

@@ -226,9 +226,10 @@ defmodule LogflareWeb.Source.SearchLVTest do
     end
 
     setup [:setup_mocks, :setup_user_session]
+    setup {TestUtils, :attach_wait_for_render}
 
     test "subheader - lql docs", %{conn: conn, source: source} do
-      {:ok, view, _html} = live(conn, ~p"/sources/#{source.id}/search")
+      {:ok, view, _html} = live(conn, ~p"/sources/#{source.id}/search?querystring=something123")
 
       assert view
              |> element("a", "LQL")
@@ -250,7 +251,9 @@ defmodule LogflareWeb.Source.SearchLVTest do
              |> element(".subhead a", "events")
              |> render_click()
 
-      :timer.sleep(300)
+      view
+      |> TestUtils.wait_for_render(".search-query-debug")
+
       html = render(view)
       assert html =~ "Actual SQL query used when querying for results"
 
@@ -262,6 +265,13 @@ defmodule LogflareWeb.Source.SearchLVTest do
         |> String.trim()
 
       assert html =~ formatted_sql
+
+      {:error, {:redirect, %{to: dest}}} =
+        view
+        |> element("a.btn.btn-primary", "Edit as query")
+        |> render_click()
+
+      assert dest =~ "/query?q=SELECT"
     end
 
     test "subheader - aggregeate", %{conn: conn, source: source} do

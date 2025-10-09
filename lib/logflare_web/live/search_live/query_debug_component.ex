@@ -4,6 +4,7 @@ defmodule LogflareWeb.Search.QueryDebugComponent do
   """
   use LogflareWeb, :live_component
 
+  alias LogflareWeb.Utils
   alias LogflareWeb.QueryComponents
 
   def update(assigns, socket) do
@@ -17,6 +18,14 @@ defmodule LogflareWeb.Search.QueryDebugComponent do
         %{id: :modal_debug_log_events_link} -> assigns.search_op_log_events
         %{id: :modal_debug_log_aggregates_link} -> assigns.search_op_log_aggregates
       end)
+      |> assign_new(:sql_query, fn
+        %{search_op: search_op} when not is_nil(search_op) ->
+          Utils.sql_params_to_sql(search_op.sql_string, search_op.sql_params)
+          |> Utils.replace_table_with_source_name(search_op.source)
+
+        _ ->
+          nil
+      end)
 
     ~H"""
     <div id="search-query-debug">
@@ -24,11 +33,19 @@ defmodule LogflareWeb.Search.QueryDebugComponent do
         <div class="search-query-debug">
           <div>
             <% stats = @search_op.stats %>
+
+            <div class="tw-flex tw-items-start tw-gap-4">
+              <div class="tw-flex-1">
+                <h5 class="header-margin">BigQuery Query</h5>
+                <p>
+                  Actual SQL query used when querying for results. Use it in the BigQuery console if you need to.
+                </p>
+              </div>
+              <.link :if={not is_nil(@sql_query)} href={~p"/query?#{%{q: @sql_query}}"} class="btn btn-primary tw-flex-shrink-0 tw-self-start tw-mt-4">
+                Edit as query
+              </.link>
+            </div>
             <ul class="list-group">
-              <h5 class="header-margin">BigQuery Query</h5>
-              <p>
-                Actual SQL query used when querying for results. Use it in the BigQuery console if you need to.
-              </p>
               <li class="list-group-item">
                 <QueryComponents.formatted_sql sql_string={@search_op.sql_string} params={@search_op.sql_params} />
               </li>
