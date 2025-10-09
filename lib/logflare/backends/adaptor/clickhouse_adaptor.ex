@@ -701,7 +701,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
     end)
   end
 
-  @spec convert_uuids(data :: map() | list() | binary()) :: map() | list() | binary()
+  @spec convert_uuids(data :: any()) :: any()
   defp convert_uuids(data) when is_struct(data), do: data
 
   defp convert_uuids(data) when is_map(data) do
