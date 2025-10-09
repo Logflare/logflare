@@ -58,5 +58,4 @@ defmodule LogflareWeb.QueryComponents do
     </div>
     """
   end
-
 end
