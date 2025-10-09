@@ -763,55 +763,107 @@ defmodule LogflareWeb.Source.SearchLVTest do
     end
 
     setup [:setup_team_user_session]
+    setup {TestUtils, :attach_wait_for_render}
 
-    test "create new query from search dropdown", %{conn: conn, source: source} do
+    test "create new query from search", %{conn: conn, source: source} do
       {:ok, view, _html} =
         live(
           conn,
           ~p"/sources/#{source.id}/search?querystring=something123&tailing%3F=&tz=Etc/UTC"
         )
 
-      %{executor_pid: search_executor_pid} = get_view_assigns(view)
-      Ecto.Adapters.SQL.Sandbox.allow(Logflare.Repo, self(), search_executor_pid)
-      :timer.sleep(500)
-
-      assigns = get_view_assigns(view)
-      assert assigns.search_op_log_events
+      # Wait until search has executed
+      view
+      |> TestUtils.wait_for_render("#create-menu button:not([disabled])")
 
       view
-      |> element(
-        "a[phx-click=\"create_new\"][phx-value-resource=\"query\"][phx-value-kind=\"events\"]"
-      )
+      |> element(~s|a[phx-value-resource="query"]|, "From search")
       |> render_click()
 
       {redirect_path, _flash} = assert_redirect(view)
-      assert String.starts_with?(redirect_path, "/query?q=")
+      assert redirect_path =~ "/query?q=SELECT"
+      assert redirect_path =~ "something123"
+      assert redirect_path =~ source.name
     end
 
-    test "create new query from chart dropdown uses chart query", %{conn: conn, source: source} do
+    test "create new alert, endpoint from search", %{conn: conn, source: source} do
+      ["alert", "endpoint"]
+      |> Enum.each(fn resource ->
+        {:ok, view, _html} =
+          live(
+            conn,
+            ~p"/sources/#{source.id}/search?querystring=something123&tailing%3F=&tz=Etc/UTC"
+          )
+
+        view
+        |> TestUtils.wait_for_render("#create-menu button:not([disabled])")
+
+        view
+        |> element(~s|a[phx-value-resource="#{resource}"]|, "From search")
+        |> render_click()
+
+        {redirect_path, _flash} = assert_redirect(view)
+        assert redirect_path =~ "/#{resource}s/new"
+
+        %{"query" => query, "name" => name} =
+          URI.new!(redirect_path) |> Map.get(:query) |> URI.decode_query()
+
+        assert query =~ "SELECT t0.timestamp, t0.id, t0.event_message FROM `#{source.name}`"
+        assert query =~ "something123"
+        assert query =~ source.name
+        assert name == source.name
+      end)
+    end
+
+    test "create new query from chart query", %{conn: conn, source: source} do
       {:ok, view, _html} =
         live(
           conn,
           ~p"/sources/#{source.id}/search?querystring=something123&tailing%3F=&tz=Etc/UTC"
         )
 
-      %{executor_pid: search_executor_pid} = get_view_assigns(view)
-      Ecto.Adapters.SQL.Sandbox.allow(Logflare.Repo, self(), search_executor_pid)
-
-      TestUtils.retry_assert(fn ->
-        assigns = get_view_assigns(view)
-        assert assigns.search_op_log_aggregates
-        assert assigns.search_op_log_events
-      end)
+      view
+      |> TestUtils.wait_for_render("#create-menu button:not([disabled])")
 
       view
-      |> element(
-        "a[phx-click=\"create_new\"][phx-value-resource=\"query\"][phx-value-kind=\"aggregates\"]"
-      )
+      |> element(~s|a[phx-value-resource="query"]|, "From chart")
       |> render_click()
 
       {redirect_path, _flash} = assert_redirect(view)
-      assert String.starts_with?(redirect_path, "/query?q=")
+      %{"q" => query} = URI.new!(redirect_path) |> Map.get(:query) |> URI.decode_query()
+
+      assert query =~ "SELECT (case\nwhen 'MINUTE' = 'DAY'"
+      assert query =~ "something123"
+      assert query =~ source.name
+    end
+
+    test "create new alert, endpoint from chart", %{conn: conn, source: source} do
+      ["alert", "endpoint"]
+      |> Enum.each(fn resource ->
+        {:ok, view, _html} =
+          live(
+            conn,
+            ~p"/sources/#{source.id}/search?querystring=something123&tailing%3F=&tz=Etc/UTC"
+          )
+
+        view
+        |> TestUtils.wait_for_render("#create-menu button:not([disabled])")
+
+        view
+        |> element(~s|a[phx-value-resource="#{resource}"]|, "From chart")
+        |> render_click()
+
+        {redirect_path, _flash} = assert_redirect(view)
+        assert redirect_path =~ "/#{resource}s/new"
+
+        %{"query" => query, "name" => name} =
+          URI.new!(redirect_path) |> Map.get(:query) |> URI.decode_query()
+
+        assert query =~ "SELECT (case\nwhen 'MINUTE' = 'DAY'"
+        assert query =~ "something123"
+        assert query =~ source.name
+        assert name == source.name
+      end)
     end
   end
 
