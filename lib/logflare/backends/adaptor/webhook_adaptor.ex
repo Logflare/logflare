@@ -159,7 +159,7 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
 
     # see the implementation for Backends.via_source/2 for how tuples are used to identify child processes
     def process_name({:via, module, {registry, identifier}}, base_name) do
-      new_identifier = Tuple.append(identifier, base_name)
+      new_identifier = Tuple.insert_at(identifier, tuple_size(identifier), base_name)
       {:via, module, {registry, new_identifier}}
     end
 
