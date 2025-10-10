@@ -51,9 +51,6 @@ defmodule Logflare.Backends.Adaptor.DatadogAdaptor do
   end
 
   @impl Logflare.Backends.Adaptor
-  def execute_query(_ident, _query, _opts), do: {:error, :not_implemented}
-
-  @impl Logflare.Backends.Adaptor
   def cast_config(params) do
     {%{}, %{api_key: :string, region: :string}}
     |> Ecto.Changeset.cast(params, [:api_key, :region])

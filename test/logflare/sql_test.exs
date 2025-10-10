@@ -439,6 +439,118 @@ defmodule Logflare.SqlTest do
 
       assert {:ok, %{1 => "company"}} = Sql.parameter_positions(ch_query, dialect: "clickhouse")
     end
+
+    test "sandboxed queries work with simple CTEs" do
+      user = insert(:user)
+      _source = insert(:source, user: user, name: "my_ch_table")
+
+      cte_query = "with src as (select a from my_ch_table) select a from src"
+      consumer_query = "select a from src where a > 5"
+
+      assert {:ok, result} = Sql.transform(:ch_sql, {cte_query, consumer_query}, user)
+      assert String.downcase(result) =~ "with src as"
+      assert String.downcase(result) =~ "select a from src where a > 5"
+    end
+
+    test "sandboxed queries with order by" do
+      user = insert(:user)
+      _source = insert(:source, user: user, name: "my_ch_table")
+
+      cte_query = "with src as (select a from my_ch_table) select a from src"
+      consumer_query = "select a from src order by a desc"
+
+      assert {:ok, result} = Sql.transform(:ch_sql, {cte_query, consumer_query}, user)
+      assert String.downcase(result) =~ "with src as"
+      assert String.downcase(result) =~ "order by a desc"
+    end
+
+    test "sandboxed queries with union all" do
+      user = insert(:user)
+      _source = insert(:source, user: user, name: "my_ch_table")
+
+      cte_query = """
+      with cte1 as (select a from my_ch_table),
+           cte2 as (select b from my_ch_table)
+      select a from cte1
+      """
+
+      consumer_query = "select a from cte1 union all select b from cte2"
+
+      assert {:ok, result} = Sql.transform(:ch_sql, {cte_query, consumer_query}, user)
+      assert String.downcase(result) =~ "union all"
+      assert String.downcase(result) =~ "select a from cte1"
+      assert String.downcase(result) =~ "select b from cte2"
+    end
+
+    test "sandboxed queries reject table references not in CTE" do
+      user = insert(:user)
+      _source = insert(:source, user: user, name: "my_ch_table")
+
+      cte_query = "with src as (select a from my_ch_table) select a from src"
+      consumer_query = "select a from my_ch_table"
+
+      assert {:error, err} = Sql.transform(:ch_sql, {cte_query, consumer_query}, user)
+      assert String.downcase(err) =~ "table not found in cte"
+    end
+
+    test "sandboxed queries reject wildcards" do
+      user = insert(:user)
+      _source = insert(:source, user: user, name: "my_ch_table")
+
+      cte_query = "with src as (select a from my_ch_table) select a from src"
+      consumer_query = "select * from src"
+
+      assert {:error, err} = Sql.transform(:ch_sql, {cte_query, consumer_query}, user)
+      assert String.downcase(err) =~ "restricted wildcard"
+    end
+
+    test "sandboxed queries reject DML operations" do
+      user = insert(:user)
+      _source = insert(:source, user: user, name: "my_ch_table")
+
+      cte_query = "with src as (select a from my_ch_table) select a from src"
+      consumer_query = "delete from src where a = 1"
+
+      assert {:error, err} = Sql.transform(:ch_sql, {cte_query, consumer_query}, user)
+      assert String.downcase(err) =~ "only select queries allowed"
+    end
+
+    test "rejects restricted functions" do
+      user = insert(:user)
+      _source = insert(:source, user: user, name: "my_ch_table")
+
+      restricted_functions = [
+        {"file", "select col1 from file('/etc/passwd', 'CSV')"},
+        {"url", "select col1 from url('http://example.com/data.csv', 'CSV')"},
+        {"s3", "select col1 from s3('s3://bucket/file.csv', 'CSV')"},
+        {"remote", "select col1 from remote('localhost', 'default', 'table')"},
+        {"mysql", "select col1 from mysql('localhost:3306', 'db', 'table', 'user', 'pass')"},
+        {"currentuser", "select currentUser()"}
+      ]
+
+      for {function_name, query} <- restricted_functions do
+        assert {:error, err} = Sql.transform(:ch_sql, query, user)
+        assert String.downcase(err) =~ "restricted function #{function_name}"
+      end
+    end
+
+    test "rejects restricted functions in sandboxed queries" do
+      user = insert(:user)
+      _source = insert(:source, user: user, name: "my_ch_table")
+
+      cte_query = "with src as (select a from my_ch_table) select a from src"
+
+      restricted_queries = [
+        {"url", "select col1 from url('http://example.com/data.csv', 'CSV')"},
+        {"s3", "select col1 from s3('s3://bucket/file.csv', 'CSV')"},
+        {"currentuser", "select currentUser()"}
+      ]
+
+      for {function_name, consumer_query} <- restricted_queries do
+        assert {:error, err} = Sql.transform(:ch_sql, {cte_query, consumer_query}, user)
+        assert String.downcase(err) =~ "restricted function #{function_name}"
+      end
+    end
   end
 
   test "sources/2 creates a source mapping present for sources present in the query" do

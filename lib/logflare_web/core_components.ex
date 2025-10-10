@@ -5,6 +5,8 @@ defmodule LogflareWeb.CoreComponents do
   use LogflareWeb, :routes
   use Phoenix.Component
 
+  alias Phoenix.LiveView.JS
+
   @doc "Alert the user of something"
   attr :variant, :string,
     values: ["primary", "secondary", "success", "danger", "warning", "info", "light", "dark"]
@@ -33,6 +35,36 @@ defmodule LogflareWeb.CoreComponents do
     <button class={"btn btn-#{@variant} #{@class}"} type="button" {@rest}>
       <%= render_slot(@inner_block) %>
     </button>
+    """
+  end
+
+  attr :id, :string, required: false
+  attr :disabled, :boolean, default: false
+  slot :inner_block, required: true
+
+  slot :menu_item, required: true do
+    attr :heading, :string
+  end
+
+  def button_dropdown(assigns) do
+    assigns = assigns |> assign_new(:id, fn -> "button-dropdown-#{UUID.uuid4()}" end)
+
+    ~H"""
+    <div class="tw-relative" id={@id}>
+      <button type="button" class="btn btn-primary" phx-click={JS.toggle(to: "##{@id} ul")} disabled={@disabled}>
+        <%= render_slot(@inner_block) %>
+      </button>
+      <ul phx-click-away={JS.hide()} style="display: none;" class="tw-absolute tw-left-0 tw-m-0 tw-px-0 tw-bottom-full tw-bg-white tw-rounded-md tw-border tw-border-gray-300 tw-shadow tw-py-2 tw-min-w-[11rem] tw-list-none tw-z-10">
+        <%= for menu_item <- @menu_item do %>
+          <li :if={menu_item[:heading]} class="tw-mt-2 first:tw-mt-0 tw-border-0 tw-border-t first:tw-border-t-0 tw-border-solid tw-border-gray-200 tw-px-3 tw-pt-2 tw-pb-1 tw-text-xs tw-font-semibold tw-text-gray-500 tw-uppercase">
+            <%= menu_item.heading %>
+          </li>
+          <li class="tw-block tw-px-3 tw-py-2 tw-text-gray-800 tw-no-underline hover:tw-bg-gray-100">
+            <%= render_slot(menu_item) %>
+          </li>
+        <% end %>
+      </ul>
+    </div>
     """
   end
 

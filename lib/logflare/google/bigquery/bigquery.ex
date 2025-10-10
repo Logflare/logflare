@@ -28,7 +28,8 @@ defmodule Logflare.Google.BigQuery do
 
   @type ok_err_tup :: {:ok, term} | {:error, term}
 
-  @spec init_table!(integer(), atom, String.t(), integer(), String.t(), String.t()) :: ok_err_tup
+  @spec init_table!(pos_integer(), atom(), String.t(), integer(), String.t(), String.t()) ::
+          ok_err_tup
   def init_table!(user_id, source, project_id, ttl, dataset_location, dataset_id)
       when is_integer(user_id) and is_atom(source) and is_binary(project_id) and is_integer(ttl) and
              is_binary(dataset_location) and is_binary(dataset_id) do
@@ -233,8 +234,8 @@ defmodule Logflare.Google.BigQuery do
   @doc """
   Creates dataset, accepts user_id, dataset_id, dataset_location, project_id
   """
-  @spec create_dataset(integer, binary, binary, binary) ::
-          {:error, Tesla.Env.t()} | {:ok, Model.Dataset.t()}
+  @spec create_dataset(String.t(), String.t(), String.t(), String.t()) ::
+          {:ok, Model.Dataset.t()} | {:error, Tesla.Env.t()}
   def create_dataset(user_id, dataset_id, dataset_location, project_id \\ env_project_id()) do
     conn = GenUtils.get_conn()
 

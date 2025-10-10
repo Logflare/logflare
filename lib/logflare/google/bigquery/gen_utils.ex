@@ -151,8 +151,8 @@ defmodule Logflare.Google.BigQuery.GenUtils do
     "#{account_id}"
   end
 
-  @spec maybe_parse_google_api_result({:ok, any()} | {:error, any()}) ::
-          {:ok, any()} | {:error, any()}
+  @spec maybe_parse_google_api_result({:ok, any()} | {:error, Tesla.Env.t()}) ::
+          {:ok, any()} | {:error, Tesla.Env.t()}
   def maybe_parse_google_api_result({:error, %Tesla.Env{} = teslaenv}) do
     {:error, teslaenv}
   end

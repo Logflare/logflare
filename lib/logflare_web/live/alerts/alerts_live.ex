@@ -61,6 +61,19 @@ defmodule LogflareWeb.AlertsLive do
     {:ok, socket}
   end
 
+  def handle_params(params, _uri, %{assigns: %{live_action: :new}} = socket) do
+    {:ok, formatted_query} =
+      Map.get(params, "query", "")
+      |> SqlFmt.format_query()
+
+    params = Map.put(params, "query", formatted_query)
+
+    changeset =
+      Alerting.change_alert_query(%AlertQuery{}, params)
+
+    {:noreply, assign(socket, :changeset, changeset)}
+  end
+
   def handle_params(params, _uri, socket) do
     alert_id = params["id"]
 

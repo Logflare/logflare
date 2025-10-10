@@ -172,8 +172,15 @@ defmodule LogflareWeb.QueryLive do
   def handle_params(params, _uri, socket) do
     q =
       case params["q"] do
-        "" -> nil
-        v -> v
+        "" ->
+          nil
+
+        nil ->
+          nil
+
+        v ->
+          {:ok, formatted} = SqlFmt.format_query(v)
+          formatted
       end
 
     query_string =

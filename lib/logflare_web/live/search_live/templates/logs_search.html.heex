@@ -81,8 +81,7 @@
       source: @source,
       tailing?: @tailing?,
       querystring: @querystring,
-      user: @user,
-      flag_event_context: @flag_event_context
+      user: @user
     ) %>
   </div>
   <div>
@@ -174,6 +173,9 @@
             <i class="fas fa-redo"></i>
             <span class="hide-on-mobile fas-in-button">Reset</span>
           <% end %>
+        </div>
+        <div class="pr-2 pt-1 pb-1">
+          <LogflareWeb.SearchLive.SearchComponents.create_menu user={@user} disabled={is_nil(@search_op_log_events) || is_nil(@search_op_log_aggregates)} />
         </div>
       </div>
 

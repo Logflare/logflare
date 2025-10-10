@@ -6,6 +6,7 @@ defmodule LogflareWeb.EndpointsLive do
   require Logger
 
   alias Logflare.Backends
+  alias Logflare.Backends.Adaptor
   alias Logflare.Endpoints
   alias Logflare.Endpoints.PiiRedactor
   alias Logflare.Users
@@ -112,6 +113,20 @@ defmodule LogflareWeb.EndpointsLive do
           |> refresh_endpoints()
           |> assign(:endpoint_changeset, nil)
           |> assign(:query_result_rows, nil)
+
+        %{assigns: %{live_action: :new}} = socket ->
+          params =
+            Map.replace_lazy(params, "query", fn sql ->
+              {:ok, formatted} = SqlFmt.format_query(sql)
+              formatted
+            end)
+
+          changeset =
+            %Endpoints.Query{}
+            |> Endpoints.change_query(params)
+
+          socket
+          |> assign(:endpoint_changeset, changeset)
 
         other ->
           other
@@ -320,6 +335,7 @@ defmodule LogflareWeb.EndpointsLive do
     backends =
       if flag_enabled? do
         Backends.list_backends_by_user_id(user_id)
+        |> Enum.filter(&Adaptor.can_query?/1)
       else
         []
       end
