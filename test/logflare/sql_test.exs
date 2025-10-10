@@ -486,6 +486,7 @@ defmodule Logflare.SqlTest do
     test "sandboxed queries cannot access sources outside CTE in ClickHouse" do
       user = insert(:user)
       source = insert(:source, user: user, name: "my_ch_table")
+      other_source = insert(:source, user: user, name: "other_ch_table")
 
       # setup local clickhouse for e2e test
       {source, backend, cleanup_fn} = setup_clickhouse_test(source: source, user: user)
@@ -521,10 +522,19 @@ defmodule Logflare.SqlTest do
       assert {:ok, results} = ClickhouseAdaptor.execute_query(backend, transformed, [])
       assert length(results) == 2
 
+      # cannot access the source table directly
       consumer_query_accessing_source = "select body from #{source.name}"
 
       assert {:error, err} =
                Sql.transform(:ch_sql, {cte_query, consumer_query_accessing_source}, user)
+
+      assert String.downcase(err) =~ "table not found in cte"
+
+      # cannot access another known source that exists but is not in the CTE
+      consumer_query_accessing_other_source = "select body from #{other_source.name}"
+
+      assert {:error, err} =
+               Sql.transform(:ch_sql, {cte_query, consumer_query_accessing_other_source}, user)
 
       assert String.downcase(err) =~ "table not found in cte"
     end
