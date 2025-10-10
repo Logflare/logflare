@@ -23,8 +23,65 @@ defmodule Logflare.Sql do
 
   @typep query_language :: :bq_sql | :ch_sql | :pg_sql
 
-  @bq_restricted_functions ~w(external_query session_user)
-  @ch_restricted_functions ~w(azureblobstorage cluster currentuser deltalake file gcs hdfs hudi iceberg jdbc mongodb mysql odbc postgresql redis remote remotesecure s3 sqlite url)
+  @bq_restricted_functions [
+    "external_query",
+    "session_user"
+  ]
+
+  @ch_restricted_functions [
+    "azureblobstorage",
+    "buildid",
+    "cluster",
+    "connectionid",
+    "currentdatabase",
+    "currentprofiles",
+    "currentroles",
+    "currentschemas",
+    "currentuser",
+    "defaultprofiles",
+    "defaultroles",
+    "deltalake",
+    "displayname",
+    "enabledprofiles",
+    "enabledroles",
+    "file",
+    "filesystemavailable",
+    "filesystemcapacity",
+    "filesystemunreserved",
+    "fqdn",
+    "gcs",
+    "getclienthttpheader",
+    "getmacro",
+    "getmergetreesetting",
+    "getoskernelversion",
+    "getserverport",
+    "getserversetting",
+    "getsetting",
+    "getsettingordefault",
+    "hasthreadfuzzer",
+    "hdfs",
+    "hostname",
+    "hudi",
+    "iceberg",
+    "jdbc",
+    "mongodb",
+    "mysql",
+    "odbc",
+    "postgresql",
+    "redis",
+    "remote",
+    "remotesecure",
+    "s3",
+    "showcertificate",
+    "sleep",
+    "sleepeachrow",
+    "sqlite",
+    "tcpport",
+    "uptime",
+    "url",
+    "version",
+    "zookeepersessionuptime"
+  ]
 
   @doc """
   Converts a language atom to its corresponding dialect.
