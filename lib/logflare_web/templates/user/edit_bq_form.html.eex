@@ -52,7 +52,10 @@
 <%= hidden_input e, :bigquery_project_id, value: nil %>
 <%= hidden_input e, :bigquery_dataset_id, value: nil %>
 <%= hidden_input e, :bigquery_dataset_location, value: nil %>
+<%= hidden_input e, :bigquery_reservation_search, value: nil %>
+<%= hidden_input e, :bigquery_reservation_alerts, value: nil %>
 <%= hidden_input e, :bigquery_processed_bytes_limit, value: 10_000_000_000 %>
+<%= hidden_input e, :bigquery_enable_managed_service_accounts, value: false %>
 <%= submit "Reset BigQuery settings", class: "btn btn-secondary form-button" %>
 <% end %>
 <% else %>
