@@ -81,8 +81,7 @@ defmodule LogflareWeb.Source.SearchLV do
       querystring: Map.get(params, "querystring", @default_qs),
       force_query: Map.get(params, "force", "false") == "true",
       search_history: [],
-      search_form: to_form(%{}, as: :search),
-      flag_event_context: LogflareWeb.Utils.flag("EventContext", user)
+      search_form: to_form(%{}, as: :search)
     )
     |> then(fn socket ->
       if connected?(socket) do
