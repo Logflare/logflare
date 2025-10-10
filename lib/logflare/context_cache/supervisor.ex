@@ -25,11 +25,11 @@ defmodule Logflare.ContextCache.Supervisor do
     Supervisor.start_link(__MODULE__, [], name: __MODULE__)
   end
 
-  @env Application.compile_env(:logflare, :env)
-
   @impl Supervisor
   def init(_) do
-    Supervisor.init(get_children(@env), strategy: :one_for_one)
+    Application.get_env(:logflare, :env)
+    |> get_children()
+    |> Supervisor.init(strategy: :one_for_one)
   end
 
   defp get_children(:test),

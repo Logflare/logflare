@@ -46,7 +46,7 @@ defmodule Logflare.Logs.Processor do
         Backends.ensure_source_sup_started(source)
         result = Backends.ingest_logs(batch, source)
 
-        new_meta = Map.merge(metadata, %{success: result == :ok})
+        new_meta = Map.merge(metadata, %{success: elem(result, 0) == :ok})
 
         {{result, new_meta}, new_meta}
       end)
