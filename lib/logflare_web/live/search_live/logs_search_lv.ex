@@ -429,10 +429,8 @@ defmodule LogflareWeb.Source.SearchLV do
   def handle_event(
         "create_new",
         %{"kind" => kind, "resource" => resource},
-        %{assigns: assigns} = socket
+        %{assigns: %{source: source} = assigns} = socket
       ) do
-    %{source: source} = socket.assigns
-
     search_op =
       if kind == "aggregates",
         do: assigns.search_op_log_aggregates,
