@@ -157,7 +157,7 @@ defmodule Logflare.Google.BigQuery.GenUtils do
     {:error, teslaenv}
   end
 
-  def maybe_parse_google_api_result({:ok, _} = x), do: x
+  def maybe_parse_google_api_result(x), do: x
 
   @spec get_tesla_error_message(:emfile | :timeout | :closed | Tesla.Env.t()) :: String.t()
   def get_tesla_error_message(%Tesla.Env{} = message) do
