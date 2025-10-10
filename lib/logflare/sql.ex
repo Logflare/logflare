@@ -138,7 +138,7 @@ defmodule Logflare.Sql do
   - Only SELECT statements are allowed (DML is blocked)
   - Single query only (no multiple statements)
   - No wildcard selects (`SELECT *`)
-  - No restricted functions (`SESSION_USER`, `EXTERNAL_QUERY`)
+  - No restricted functions (managed using module attributes `@bq_restricted_functions` and `@ch_restricted_functions`)
   - All referenced tables/sources exist
 
   ## Sandboxed Queries
