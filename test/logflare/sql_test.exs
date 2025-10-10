@@ -483,7 +483,7 @@ defmodule Logflare.SqlTest do
       assert String.downcase(result) =~ "select b from cte2"
     end
 
-    test "sandboxed queries cannot access sources outside CTE in ClickHouse" do
+    test "sandboxed queries cannot access sources/tables outside of CTE scope" do
       user = insert(:user)
       source = insert(:source, user: user, name: "my_ch_table")
       other_source = insert(:source, user: user, name: "other_ch_table")
