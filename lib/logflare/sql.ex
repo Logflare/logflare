@@ -23,8 +23,65 @@ defmodule Logflare.Sql do
 
   @typep query_language :: :bq_sql | :ch_sql | :pg_sql
 
-  @bq_restricted_functions ~w(external_query session_user)
-  @ch_restricted_functions ~w(azureblobstorage cluster currentuser deltalake file gcs hdfs hudi iceberg jdbc mongodb mysql odbc postgresql redis remote remotesecure s3 sqlite url)
+  @bq_restricted_functions [
+    "external_query",
+    "session_user"
+  ]
+
+  @ch_restricted_functions [
+    "azureblobstorage",
+    "buildid",
+    "cluster",
+    "connectionid",
+    "currentdatabase",
+    "currentprofiles",
+    "currentroles",
+    "currentschemas",
+    "currentuser",
+    "defaultprofiles",
+    "defaultroles",
+    "deltalake",
+    "displayname",
+    "enabledprofiles",
+    "enabledroles",
+    "file",
+    "filesystemavailable",
+    "filesystemcapacity",
+    "filesystemunreserved",
+    "fqdn",
+    "gcs",
+    "getclienthttpheader",
+    "getmacro",
+    "getmergetreesetting",
+    "getoskernelversion",
+    "getserverport",
+    "getserversetting",
+    "getsetting",
+    "getsettingordefault",
+    "hasthreadfuzzer",
+    "hdfs",
+    "hostname",
+    "hudi",
+    "iceberg",
+    "jdbc",
+    "mongodb",
+    "mysql",
+    "odbc",
+    "postgresql",
+    "redis",
+    "remote",
+    "remotesecure",
+    "s3",
+    "showcertificate",
+    "sleep",
+    "sleepeachrow",
+    "sqlite",
+    "tcpport",
+    "uptime",
+    "url",
+    "version",
+    "zookeepersessionuptime"
+  ]
 
   @doc """
   Converts a language atom to its corresponding dialect.
@@ -81,7 +138,7 @@ defmodule Logflare.Sql do
   - Only SELECT statements are allowed (DML is blocked)
   - Single query only (no multiple statements)
   - No wildcard selects (`SELECT *`)
-  - No restricted functions (`SESSION_USER`, `EXTERNAL_QUERY`)
+  - No restricted functions (managed using module attributes `@bq_restricted_functions` and `@ch_restricted_functions`)
   - All referenced tables/sources exist
 
   ## Sandboxed Queries
@@ -559,7 +616,7 @@ defmodule Logflare.Sql do
   defp has_restricted_functions({"Function", %{"name" => [%{"value" => _} | _] = names}}, :ok, %{
          dialect: dialect
        }) do
-    restricted_list = get_restricted_functions_for_dialect(dialect)
+    restricted_list = list_restricted_functions_for_dialect(dialect)
 
     found_restricted =
       for name <- names,
@@ -580,7 +637,7 @@ defmodule Logflare.Sql do
          :ok,
          %{dialect: dialect}
        ) do
-    restricted_list = get_restricted_functions_for_dialect(dialect)
+    restricted_list = list_restricted_functions_for_dialect(dialect)
     normalized = String.downcase(name)
 
     if normalized in restricted_list do
@@ -601,10 +658,10 @@ defmodule Logflare.Sql do
 
   defp has_restricted_functions(_kv, acc, _data), do: acc
 
-  @spec get_restricted_functions_for_dialect(String.t() | nil) :: [String.t()]
-  defp get_restricted_functions_for_dialect("bigquery"), do: @bq_restricted_functions
-  defp get_restricted_functions_for_dialect("clickhouse"), do: @ch_restricted_functions
-  defp get_restricted_functions_for_dialect(_), do: []
+  @spec list_restricted_functions_for_dialect(String.t()) :: [String.t()]
+  defp list_restricted_functions_for_dialect("bigquery"), do: @bq_restricted_functions
+  defp list_restricted_functions_for_dialect("clickhouse"), do: @ch_restricted_functions
+  defp list_restricted_functions_for_dialect(_), do: []
 
   defp has_restricted_sources(cte_ast, ast) when is_list(ast) do
     aliases =

@@ -58,7 +58,8 @@ defmodule LogflareWeb.QueryLive do
                 "scrollbar" => %{
                   "vertical" => "auto",
                   "horizontal" => "hidden",
-                  "verticalScrollbarSize" => 6
+                  "verticalScrollbarSize" => 6,
+                  "alwaysConsumeMouseWheel" => false
                 },
                 "lineNumbers" => "off",
                 "glyphMargin" => false,
