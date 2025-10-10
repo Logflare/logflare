@@ -70,9 +70,6 @@ defmodule Logflare.Backends.Adaptor.LokiAdaptor do
   end
 
   @impl Logflare.Backends.Adaptor
-  def execute_query(_ident, _query, _opts), do: {:error, :not_implemented}
-
-  @impl Logflare.Backends.Adaptor
   def transform_config(%_{config: config}) do
     basic_auth = Utils.encode_basic_auth(config)
 

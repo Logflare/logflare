@@ -6,6 +6,7 @@ defmodule LogflareWeb.EndpointsLive do
   require Logger
 
   alias Logflare.Backends
+  alias Logflare.Backends.Adaptor
   alias Logflare.Endpoints
   alias Logflare.Endpoints.PiiRedactor
   alias Logflare.Users
@@ -334,6 +335,7 @@ defmodule LogflareWeb.EndpointsLive do
     backends =
       if flag_enabled? do
         Backends.list_backends_by_user_id(user_id)
+        |> Enum.filter(&Adaptor.can_query?/1)
       else
         []
       end
