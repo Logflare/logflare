@@ -26,7 +26,7 @@ defmodule Logflare.Backends.SourceSup do
   end
 
   def init(source) do
-    ingest_backends = Backends.Cache.list_backends(source_id: source.id)
+    ingest_backends = Backends.Cache.list_dispatch_backends(source)
 
     rules_backends =
       Backends.Cache.list_backends(rules_source_id: source.id)

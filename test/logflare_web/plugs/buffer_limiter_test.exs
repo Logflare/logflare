@@ -1,5 +1,4 @@
 defmodule LogflareWeb.Plugs.BufferLimiterTest do
-  @moduledoc false
   use LogflareWeb.ConnCase
   alias LogflareWeb.Plugs.BufferLimiter
   alias Logflare.Backends.IngestEventQueue
@@ -122,7 +121,7 @@ defmodule LogflareWeb.Plugs.BufferLimiterTest do
   describe "default ingest feature" do
     setup do
       user = insert(:user)
-      source = insert(:source, user: user, default_ingest_backend_enabled?: true)
+      source = insert(:source, user: user)
 
       backend1 =
         insert(:backend,
@@ -206,10 +205,10 @@ defmodule LogflareWeb.Plugs.BufferLimiterTest do
       assert conn.status == 429
     end
 
-    test "falls back to regular buffer check when default_ingest_backend_enabled? is false", %{
+    test "falls back to regular buffer check when no default ingest backend exists", %{
       conn: conn
     } do
-      source = insert(:source, user: insert(:user), default_ingest_backend_enabled?: false)
+      source = insert(:source, user: insert(:user))
 
       table_key = {source.id, nil, self()}
       IngestEventQueue.upsert_tid(table_key)
@@ -330,7 +329,7 @@ defmodule LogflareWeb.Plugs.BufferLimiterTest do
       conn: conn
     } do
       user = insert(:user)
-      source = insert(:source, user: user, default_ingest_backend_enabled?: true)
+      source = insert(:source, user: user)
 
       unlinked_backend =
         insert(:backend,
@@ -358,11 +357,11 @@ defmodule LogflareWeb.Plugs.BufferLimiterTest do
       assert conn.halted == false
     end
 
-    test "returns 429 when system buffer is full, even if source has default ingest disabled", %{
+    test "returns 429 when system buffer is full, even with no default ingest backends", %{
       conn: conn
     } do
       user = insert(:user)
-      source = insert(:source, user: user, default_ingest_backend_enabled?: false)
+      source = insert(:source, user: user)
 
       backend =
         insert(:backend,
@@ -403,11 +402,11 @@ defmodule LogflareWeb.Plugs.BufferLimiterTest do
       assert conn.status == 429
     end
 
-    test "ignores backend buffers when source has default ingest disabled", %{
+    test "ignores backend buffers when no backends are linked to source", %{
       conn: conn
     } do
       user = insert(:user)
-      source = insert(:source, user: user, default_ingest_backend_enabled?: false)
+      source = insert(:source, user: user)
 
       backend =
         insert(:backend,
@@ -440,7 +439,7 @@ defmodule LogflareWeb.Plugs.BufferLimiterTest do
     test "returns 429 when user-configured ClickHouse default backend is full but system default is not",
          %{conn: conn} do
       user = insert(:user)
-      source = insert(:source, user: user, default_ingest_backend_enabled?: true)
+      source = insert(:source, user: user)
 
       clickhouse_backend =
         insert(:backend,

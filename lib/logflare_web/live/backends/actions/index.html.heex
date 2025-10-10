@@ -30,6 +30,7 @@
       </p>
       <div class="tw-flex tw-gap-2 tw-mt-1">
         <span class="badge badge-pill badge-secondary tw-leading-normal"><%= backend.type %></span>
+        <span :if={backend.default_ingest?} class="badge badge-pill badge-primary tw-leading-normal">default ingest</span>
         <span>drain rules: <%= Enum.count(backend.rules) %></span>
         <span :for={{k, v} when is_binary(v) <- backend.metadata || %{}} :if={backend.metadata}><%= k %>: <%= v %></span>
       </div>

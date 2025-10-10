@@ -29,47 +29,57 @@
 </section>
 
 <section :if={@flag_multibackend == true and Logflare.Backends.Adaptor.supports_default_ingest?(@backend)} class="mx-auto container pt-3 tw-flex tw-flex-col tw-gap-4">
-  <h4>Default Ingest Sources</h4>
-  <p>
-    Sources configured to use this backend as a default ingest destination.
-  </p>
+  <h4>Ingest Configuration</h4>
 
-  <div :if={not Enum.empty?(@available_sources || [])}>
-    <.button phx-click="toggle_default_ingest_form" variant="secondary">
-      <%= if @show_default_ingest_form? do %>
-        Cancel
-      <% else %>
-        Add a Source
-      <% end %>
-    </.button>
-  </div>
+  <%= if @backend.default_ingest? do %>
+    <div class="alert alert-info">
+      <i class="fas fa-info-circle"></i>
+      <strong>Ingest from all sources:</strong> This backend is configured to receive logs from ALL your sources automatically.
+      To limit this backend to specific sources, disable the "Ingest from all sources" option in the backend settings.
+    </div>
+  <% else %>
+    <p>
+      This backend only receives logs from sources explicitly configured below.
+      To make this backend receive logs from ALL your sources, enable the "Ingest from all sources" option in the backend settings.
+    </p>
 
-  <.form :let={f} :if={@show_default_ingest_form?} id="default_ingest" for={%{}} as={:default_ingest} action="#" phx-submit="save_default_ingest">
-    <div class="form-group">
-      <%= label(f, :source_id, "Source") %>
-      <%= select(f, :source_id, Enum.map(@available_sources || [], fn s -> {s.name, s.id} end),
-        class: "form-control",
-        prompt: [key: "Choose a source"]
-      ) %>
-      <small id="source_id" class="form-text text-muted">This source will use this backend as its default ingest destination. Only sources with default ingest backend support enabled are shown.</small>
+    <div :if={length(@available_sources || []) > 0}>
+      <.button phx-click="toggle_default_ingest_form" variant="secondary">
+        <%= if @show_default_ingest_form? do %>
+          Cancel
+        <% else %>
+          Add a Source
+        <% end %>
+      </.button>
     </div>
 
-    <%= hidden_input(f, :backend_id, value: @backend.id) %>
-    <%= submit("Save", class: "btn btn-primary") %>
-  </.form>
+    <.form :let={f} :if={@show_default_ingest_form?} id="default_ingest" for={%{}} as={:default_ingest} action="#" phx-submit="save_default_ingest">
+      <div class="form-group">
+        <%= label(f, :source_id, "Source") %>
+        <%= select(f, :source_id, Enum.map(@available_sources || [], fn s -> {s.name, s.id} end),
+          class: "form-control",
+          prompt: [key: "Choose a source"]
+        ) %>
+        <small id="source_id" class="form-text text-muted">Select a source to send its logs to this backend.</small>
+      </div>
 
-  <p :if={Enum.empty?(@default_ingest_sources || [])}>No sources configured for default ingest</p>
-  <ul :for={source <- @default_ingest_sources || []} class="tw-flex tw-flex-row tw-gap-4">
-    <li class="list-group-item tw-pointer-none tw-w-full tw-flex tw-flex-row tw-justify-between">
-      <span>
-        Source <code><%= source.name %></code> uses this backend as default ingest
-      </span>
+      <%= hidden_input(f, :backend_id, value: @backend.id) %>
+      <%= submit("Save", class: "btn btn-primary") %>
+    </.form>
 
-      <.button phx-click="remove_default_ingest" phx-value-source_id={source.id} variant="danger">
-        Remove
-      </.button>
-    </li>
-  </ul>
+    <p :if={Enum.empty?(@backend.sources || [])}>No sources configured yet</p>
+    <ul :for={source <- @backend.sources || []} class="tw-flex tw-flex-row tw-gap-4">
+      <li class="list-group-item tw-pointer-none tw-w-full tw-flex tw-flex-row tw-justify-between">
+        <span>
+          Source <code><%= source.name %></code> sends logs to this backend
+        </span>
+
+        <.button phx-click="remove_source" phx-value-source_id={source.id} variant="danger">
+          Remove
+        </.button>
+      </li>
+    </ul>
+  <% end %>
 </section>
 
 <section class="mx-auto container pt-3 tw-flex tw-flex-col tw-gap-4">

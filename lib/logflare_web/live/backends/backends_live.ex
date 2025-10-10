@@ -40,7 +40,6 @@ defmodule LogflareWeb.BackendsLive do
       |> assign(:alert_options, [])
       |> assign(:form_type, nil)
       |> assign(:show_default_ingest_form?, false)
-      |> assign(:default_ingest_sources, [])
       |> assign(:flag_multibackend, LogflareWeb.Utils.flag("multibackend", user))
       |> refresh_backends()
       |> refresh_backend(params["id"])
@@ -144,24 +143,33 @@ defmodule LogflareWeb.BackendsLive do
         socket
       ) do
     backend = socket.assigns.backend
+    source = Sources.get(source_id) |> Sources.preload_backends()
+
+    # Add backend to source's backends list
+    updated_backends =
+      if Enum.any?(source.backends, &(&1.id == backend.id)) do
+        source.backends
+      else
+        [backend | source.backends]
+      end
 
     socket =
-      case Backends.update_backend(backend, %{default_ingest?: true, source_id: source_id}) do
-        {:ok, _backend} ->
+      case Backends.update_source_backends(source, updated_backends) do
+        {:ok, _} ->
           socket
           |> refresh_backend(backend.id)
           |> assign(:show_default_ingest_form?, false)
-          |> put_flash(:info, "Successfully marked backend as default ingest for source")
+          |> put_flash(:info, "Successfully added source to backend")
 
         {:error, changeset} ->
           message = stringify_changeset_errors(changeset)
-          put_flash(socket, :error, "Error setting default ingest:\n#{message}")
+          put_flash(socket, :error, "Error adding source:\n#{message}")
       end
 
     {:noreply, socket}
   end
 
-  def handle_event("remove_default_ingest", %{"source_id" => source_id}, socket) do
+  def handle_event("remove_source", %{"source_id" => source_id}, socket) do
     backend = socket.assigns.backend
     source = Sources.get(source_id)
 
@@ -175,19 +183,12 @@ defmodule LogflareWeb.BackendsLive do
     socket =
       case Backends.update_source_backends(source, updated_backends) do
         {:ok, _} ->
-          # If no more sources are using this backend, disable default_ingest flag
-          remaining_sources = Sources.list_sources(backend_id: backend.id)
-
-          if Enum.empty?(remaining_sources) do
-            Backends.update_backend(backend, %{default_ingest?: false})
-          end
-
           socket
           |> refresh_backend(backend.id)
-          |> put_flash(:info, "Removed default ingest for source")
+          |> put_flash(:info, "Removed source from backend")
 
         {:error, _} ->
-          put_flash(socket, :error, "Error removing default ingest")
+          put_flash(socket, :error, "Error removing source")
       end
 
     {:noreply, socket}
@@ -307,28 +308,26 @@ defmodule LogflareWeb.BackendsLive do
   end
 
   defp refresh_backend(socket, id) do
-    backend = Backends.get_backend(id) |> Backends.preload_rules() |> Backends.preload_alerts()
+    backend =
+      Backends.get_backend(id)
+      |> Backends.preload_rules()
+      |> Backends.preload_alerts()
+      |> Backends.preload_sources()
 
-    # Load sources that use this backend as default ingest
-    default_ingest_sources =
-      if backend && backend.default_ingest? do
-        Sources.list_sources(backend_id: backend.id)
+    # Calculate available sources for the dropdown (excluding already associated ones)
+    available_sources =
+      if backend do
+        already_associated_ids = Enum.map(backend.sources || [], & &1.id)
+
+        socket.assigns.sources
+        |> Enum.reject(fn source -> source.id in already_associated_ids end)
       else
         []
       end
 
-    # Calculate available sources for the dropdown (excluding already associated ones)
-    available_sources =
-      socket.assigns.sources
-      |> Enum.filter(& &1.default_ingest_backend_enabled?)
-      |> Enum.reject(fn source ->
-        Enum.any?(default_ingest_sources, &(&1.id == source.id))
-      end)
-
     socket
     |> assign(:backend, backend)
-    |> assign(:form_type, Atom.to_string(backend.type))
-    |> assign(:default_ingest_sources, default_ingest_sources)
+    |> assign(:form_type, if(backend, do: Atom.to_string(backend.type), else: nil))
     |> assign(:available_sources, available_sources)
   end
 

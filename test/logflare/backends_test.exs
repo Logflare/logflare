@@ -11,6 +11,9 @@ defmodule Logflare.BackendsTest do
   alias Logflare.Backends.RecentEventsTouch
   alias Logflare.Backends.SourceSup
   alias Logflare.Backends.SourceSupWorker
+  alias Logflare.SystemMetrics.AllLogsLogged
+  alias Logflare.Lql
+  alias Logflare.PubSubRates
   alias Logflare.Logs.SourceRouting
   alias Logflare.Lql
   alias Logflare.PubSubRates
@@ -266,29 +269,13 @@ defmodule Logflare.BackendsTest do
       {:ok, user: user, backend: backend, source: source, config: clickhouse_config}
     end
 
-    test "requires source_id when enabling default_ingest?", %{backend: backend} do
-      assert {:error, changeset} =
+    test "enabling default_ingest? allows backend to receive logs from all sources", %{
+      backend: backend
+    } do
+      assert {:ok, updated} =
                Backends.update_backend(backend, %{default_ingest?: true})
 
-      assert "Please select a source when enabling default ingest" in errors_on(changeset).default_ingest?
-    end
-
-    test "creates source association when enabling default_ingest?", %{
-      backend: backend,
-      source: source
-    } do
-      {:ok, source} = Sources.update_source(source, %{default_ingest_backend_enabled?: true})
-
-      assert {:ok, updated} =
-               Backends.update_backend(backend, %{
-                 default_ingest?: true,
-                 source_id: to_string(source.id)
-               })
-
       assert updated.default_ingest? == true
-
-      source = Sources.get(source.id) |> Sources.preload_backends()
-      assert Enum.any?(source.backends, &(&1.id == backend.id))
     end
 
     test "removes source associations when disabling default_ingest?", %{
@@ -296,8 +283,6 @@ defmodule Logflare.BackendsTest do
       source: source,
       config: config
     } do
-      {:ok, source} = Sources.update_source(source, %{default_ingest_backend_enabled?: true})
-
       backend =
         insert(:backend, user: user, type: :clickhouse, default_ingest?: true, config: config)
 
@@ -312,37 +297,20 @@ defmodule Logflare.BackendsTest do
       assert Enum.empty?(source.backends)
     end
 
-    test "does not duplicate source associations", %{user: user, source: source, config: config} do
-      {:ok, source} = Sources.update_source(source, %{default_ingest_backend_enabled?: true})
-
-      backend =
-        insert(:backend, user: user, type: :clickhouse, default_ingest?: true, config: config)
-
-      assert {:ok, _} = Backends.update_source_backends(source, [backend])
-
-      assert {:ok, _updated} =
-               Backends.update_backend(backend, %{
-                 default_ingest?: true,
-                 source_id: to_string(source.id)
-               })
-
-      source = Sources.get(source.id) |> Sources.preload_backends()
-      backend_ids = Enum.map(source.backends, & &1.id)
-      assert length(backend_ids) == 1
-      assert backend.id in backend_ids
-    end
-
-    test "requires source to have default_ingest_backend_enabled?", %{
-      backend: backend,
-      source: source
+    test "toggling default_ingest? on and off works correctly", %{
+      backend: backend
     } do
-      assert {:error, changeset} =
-               Backends.update_backend(backend, %{
-                 default_ingest?: true,
-                 source_id: to_string(source.id)
-               })
+      # Enable default_ingest?
+      assert {:ok, updated} =
+               Backends.update_backend(backend, %{default_ingest?: true})
 
-      assert "Source must have default ingest backend support enabled" in errors_on(changeset).default_ingest?
+      assert updated.default_ingest? == true
+
+      # Disable default_ingest?
+      assert {:ok, updated} =
+               Backends.update_backend(updated, %{default_ingest?: false})
+
+      assert updated.default_ingest? == false
     end
   end
 
@@ -464,6 +432,264 @@ defmodule Logflare.BackendsTest do
       :timer.sleep(800)
       updated = Sources.get_by(id: source.id)
       assert updated.log_events_updated_at == source.log_events_updated_at
+    end
+  end
+
+  describe "list_dispatch_backends/1" do
+    setup do
+      insert(:plan)
+      user = insert(:user)
+      {:ok, user: user}
+    end
+
+    test "returns only source backends when no default_ingest backends exist", %{user: user} do
+      source = insert(:source, user: user)
+      backend1 = insert(:backend, user: user, type: :webhook, config: %{url: "http://test1.com"})
+      backend2 = insert(:backend, user: user, type: :webhook, config: %{url: "http://test2.com"})
+
+      assert {:ok, _} = Backends.update_source_backends(source, [backend1, backend2])
+
+      backends = Backends.list_dispatch_backends(source)
+      assert length(backends) == 2
+
+      backend_ids = Enum.map(backends, & &1.id) |> Enum.sort()
+      assert backend_ids == [backend1.id, backend2.id] |> Enum.sort()
+    end
+
+    test "returns only default_ingest backends when source has no explicit backends", %{
+      user: user
+    } do
+      source = insert(:source, user: user)
+
+      backend1 =
+        insert(:backend,
+          user: user,
+          type: :postgres,
+          config: %{url: "postgres://test"},
+          default_ingest?: true
+        )
+
+      backend2 =
+        insert(:backend,
+          user: user,
+          type: :bigquery,
+          config: %{project_id: "test", dataset_id: "test"},
+          default_ingest?: true
+        )
+
+      backends = Backends.list_dispatch_backends(source)
+      assert length(backends) == 2
+
+      backend_ids = Enum.map(backends, & &1.id) |> Enum.sort()
+      assert backend_ids == [backend1.id, backend2.id] |> Enum.sort()
+    end
+
+    test "combines and deduplicates source backends and default_ingest backends", %{user: user} do
+      source = insert(:source, user: user)
+
+      # Backend that is both associated with source AND has default_ingest = true
+      shared_backend =
+        insert(:backend,
+          user: user,
+          type: :clickhouse,
+          config: %{url: "http://ch", database: "test", port: 8123},
+          default_ingest?: true
+        )
+
+      # Backend only associated with source
+      source_backend =
+        insert(:backend,
+          user: user,
+          type: :webhook,
+          config: %{url: "http://test.com"},
+          default_ingest?: false
+        )
+
+      # Backend only with default_ingest = true
+      default_backend =
+        insert(:backend,
+          user: user,
+          type: :postgres,
+          config: %{url: "postgres://test"},
+          default_ingest?: true
+        )
+
+      assert {:ok, _} = Backends.update_source_backends(source, [shared_backend, source_backend])
+
+      backends = Backends.list_dispatch_backends(source)
+      assert length(backends) == 3
+
+      backend_ids = Enum.map(backends, & &1.id) |> Enum.sort()
+
+      assert backend_ids ==
+               [shared_backend.id, source_backend.id, default_backend.id] |> Enum.sort()
+    end
+
+    test "does not include default_ingest backends from other users", %{user: user} do
+      other_user = insert(:user)
+      source = insert(:source, user: user)
+
+      # Current user's backend
+      user_backend =
+        insert(:backend,
+          user: user,
+          type: :postgres,
+          config: %{url: "postgres://test"},
+          default_ingest?: true
+        )
+
+      # Other user's backend - should not be included
+      _other_backend =
+        insert(:backend,
+          user: other_user,
+          type: :webhook,
+          config: %{url: "http://test.com"},
+          default_ingest?: true
+        )
+
+      backends = Backends.list_dispatch_backends(source)
+      assert length(backends) == 1
+
+      assert [returned_backend] = backends
+      assert returned_backend.id == user_backend.id
+    end
+
+    test "returns empty list when source has no backends and no default_ingest backends", %{
+      user: user
+    } do
+      source = insert(:source, user: user)
+
+      # Create a backend with default_ingest = false
+      _backend =
+        insert(:backend,
+          user: user,
+          type: :webhook,
+          config: %{url: "http://test.com"},
+          default_ingest?: false
+        )
+
+      backends = Backends.list_dispatch_backends(source)
+      assert backends == []
+    end
+  end
+
+  describe "ingestion with default_ingest?" do
+    setup do
+      insert(:plan)
+      user = insert(:user)
+      {:ok, user: user}
+    end
+
+    test "dispatch_to_backends with default_ingest? = true dispatches to all user sources", %{
+      user: user
+    } do
+      # Create a backend with default_ingest? = true
+      _backend =
+        insert(:backend,
+          user: user,
+          type: :postgres,
+          config: %{url: "postgres://test"},
+          default_ingest?: true
+        )
+
+      # Create multiple sources for the user
+      source1 = insert(:source, user: user)
+      source2 = insert(:source, user: user)
+
+      start_supervised!({SourceSup, source1}, id: :source1)
+      start_supervised!({SourceSup, source2}, id: :source2)
+      :timer.sleep(500)
+
+      TestUtils.attach_forwarder([:logflare, :backends, :ingest, :dispatch])
+
+      # Ingest to source1
+      events1 = [build(:log_event, source: source1)]
+      assert {:ok, 1} = Backends.ingest_logs(events1, source1)
+
+      # Should dispatch to both system default and the default_ingest backend
+      assert_receive {:telemetry_event, [:logflare, :backends, :ingest, :dispatch], %{count: 1},
+                      %{backend_type: :postgres}}
+
+      # Ingest to source2
+      events2 = [build(:log_event, source: source2)]
+      assert {:ok, 1} = Backends.ingest_logs(events2, source2)
+
+      # Should also dispatch to the default_ingest backend
+      assert_receive {:telemetry_event, [:logflare, :backends, :ingest, :dispatch], %{count: 1},
+                      %{backend_type: :postgres}}
+    end
+
+    test "dispatch_to_backends with default_ingest? = false dispatches only to explicit sources",
+         %{user: user} do
+      # Create a backend with default_ingest? = false
+      backend =
+        insert(:backend,
+          user: user,
+          type: :webhook,
+          config: %{url: "http://test.com"},
+          default_ingest?: false
+        )
+
+      # Create two sources
+      source1 = insert(:source, user: user)
+      source2 = insert(:source, user: user)
+
+      # Only associate source1 with the backend
+      assert {:ok, _} = Backends.update_source_backends(source1, [backend])
+
+      start_supervised!({SourceSup, source1}, id: :source1)
+      start_supervised!({SourceSup, source2}, id: :source2)
+      :timer.sleep(500)
+
+      TestUtils.attach_forwarder([:logflare, :backends, :ingest, :dispatch])
+
+      # Ingest to source1 - should dispatch to webhook backend
+      events1 = [build(:log_event, source: source1)]
+      assert {:ok, 1} = Backends.ingest_logs(events1, source1)
+
+      assert_receive {:telemetry_event, [:logflare, :backends, :ingest, :dispatch], %{count: 1},
+                      %{backend_type: :webhook}}
+
+      # Ingest to source2 - should NOT dispatch to webhook backend
+      events2 = [build(:log_event, source: source2)]
+      assert {:ok, 1} = Backends.ingest_logs(events2, source2)
+
+      # Should only receive system default dispatch, not webhook
+      refute_receive {:telemetry_event, [:logflare, :backends, :ingest, :dispatch], %{count: 1},
+                      %{backend_type: :webhook}},
+                     1000
+    end
+
+    test "dispatch_to_backends deduplicates backends", %{user: user} do
+      # Create a backend with default_ingest? = true
+      backend =
+        insert(:backend,
+          user: user,
+          type: :clickhouse,
+          config: %{url: "http://ch", database: "test", port: 8123},
+          default_ingest?: true
+        )
+
+      # Create a source and explicitly associate it with the backend
+      source = insert(:source, user: user)
+      assert {:ok, _} = Backends.update_source_backends(source, [backend])
+
+      start_supervised!({SourceSup, source})
+      :timer.sleep(500)
+
+      TestUtils.attach_forwarder([:logflare, :backends, :ingest, :dispatch])
+
+      # Ingest to source
+      events = [build(:log_event, source: source)]
+      assert {:ok, 1} = Backends.ingest_logs(events, source)
+
+      # Should only receive one dispatch to clickhouse, not two
+      assert_receive {:telemetry_event, [:logflare, :backends, :ingest, :dispatch], %{count: 1},
+                      %{backend_type: :clickhouse}}
+
+      refute_receive {:telemetry_event, [:logflare, :backends, :ingest, :dispatch], %{count: 1},
+                      %{backend_type: :clickhouse}},
+                     500
     end
   end
 
@@ -864,11 +1090,11 @@ defmodule Logflare.BackendsTest do
       insert(:backend,
         type: :webhook,
         sources: [source],
-        config: %{url: "https://some-url.com"}
+        config: %{url: "https://some-url.com"},
+        user_id: user.id
       )
 
       start_supervised!({SourceSup, source})
-      :timer.sleep(500)
       {:ok, source: source}
     end
 
@@ -888,8 +1114,6 @@ defmodule Logflare.BackendsTest do
       TestUtils.retry_assert(fn ->
         assert_received {^ref, %{"event_message" => "some event"}}
       end)
-
-      :timer.sleep(1000)
     end
   end
 

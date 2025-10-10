@@ -2,7 +2,6 @@ defmodule Logflare.Backends do
   @moduledoc false
 
   import Ecto.Query
-  import Logflare.Utils.Guards
 
   alias Ecto.Changeset
   alias Logflare.Backends.Adaptor
@@ -185,12 +184,9 @@ defmodule Logflare.Backends do
     default_ingest_modified? =
       Map.has_key?(attrs, "default_ingest?") or Map.has_key?(attrs, :default_ingest?)
 
-    source_id = Map.get(attrs, "source_id") || Map.get(attrs, :source_id)
-
     changeset =
       backend
       |> Backend.changeset(attrs)
-      |> validate_default_ingest_source(source_id)
       |> then(fn changeset ->
         if alerts_modified do
           Changeset.put_assoc(changeset, :alert_queries, Map.get(attrs, :alert_queries))
@@ -207,7 +203,7 @@ defmodule Logflare.Backends do
           if default_ingest_modified? do
             was_enabled? = backend.default_ingest?
             is_enabled? = updated.default_ingest?
-            handle_default_ingest_associations(updated, source_id, was_enabled?, is_enabled?)
+            handle_default_ingest_flag_change(updated, was_enabled?, is_enabled?)
             sync_backend_across_cluster(updated.id)
 
             # force refresh after association changes
@@ -225,61 +221,20 @@ defmodule Logflare.Backends do
     end
   end
 
-  @spec validate_default_ingest_source(Changeset.t(), String.t() | integer() | nil) ::
-          Changeset.t()
-  defp validate_default_ingest_source(%{changes: %{default_ingest?: true}} = changeset, source_id)
-       when is_non_empty_binary(source_id) or is_integer(source_id) do
-    case Sources.get(source_id) do
-      %Source{default_ingest_backend_enabled?: true} ->
-        changeset
-
-      %Source{default_ingest_backend_enabled?: false} ->
-        Changeset.add_error(
-          changeset,
-          :default_ingest?,
-          "Source must have default ingest backend support enabled"
-        )
-
-      nil ->
-        Changeset.add_error(
-          changeset,
-          :default_ingest?,
-          "Source not found"
-        )
-    end
-  end
-
-  defp validate_default_ingest_source(
-         %Changeset{changes: %{default_ingest?: true}} = changeset,
-         _source_id
-       ) do
-    Changeset.add_error(
-      changeset,
-      :default_ingest?,
-      "Please select a source when enabling default ingest"
-    )
-  end
-
-  defp validate_default_ingest_source(changeset, _source_id), do: changeset
-
-  @spec handle_default_ingest_associations(
+  @spec handle_default_ingest_flag_change(
           Backend.t(),
-          source_id :: String.t() | integer() | nil,
           was_enabled :: boolean(),
           is_enabled :: boolean()
         ) :: :ok
-  defp handle_default_ingest_associations(backend, source_id, _was_enabled, true)
-       when is_non_empty_binary(source_id) or is_integer(source_id) do
-    source = Sources.get(source_id) |> Sources.preload_backends()
-
-    if not Enum.any?(source.backends, &(&1.id == backend.id)) do
-      update_source_backends(source, source.backends ++ [backend])
-    end
-
+  defp handle_default_ingest_flag_change(_backend, false, true) do
+    # When enabling default_ingest?, backend will now receive logs from all user sources
+    # No need to manage explicit source associations
     :ok
   end
 
-  defp handle_default_ingest_associations(backend, _source_id, true, false) do
+  defp handle_default_ingest_flag_change(backend, true, false) do
+    # When disabling default_ingest?, remove all source associations
+    # User can manually add specific sources later if needed
     backend_with_sources =
       backend
       |> Repo.reload!()
@@ -294,8 +249,7 @@ defmodule Logflare.Backends do
     :ok
   end
 
-  defp handle_default_ingest_associations(_backend, _source_id, _was_enabled, _is_enabled),
-    do: :ok
+  defp handle_default_ingest_flag_change(_backend, _was_enabled, _is_enabled), do: :ok
 
   @doc """
   Updates the backends of a source wholly. Does not work on partial data, all backends must be provided.
@@ -539,7 +493,7 @@ defmodule Logflare.Backends do
   end
 
   defp dispatch_to_backends(source, nil, log_events) do
-    backends = __MODULE__.Cache.list_backends(source_id: source.id)
+    backends = __MODULE__.Cache.list_dispatch_backends(source)
 
     for backend <- [nil | backends] do
       {backend_id, backend_type} =
@@ -714,43 +668,30 @@ defmodule Logflare.Backends do
 
   For sources with `default_ingest_backend_enabled? = true`:
     - Checks the system default backend queue
-    - Checks user-designated default backends
-    - Returns true if ANY of these are full
-    - Falls back to checking all queues if no user default backends are configured
+    - Checks all dispatch backends (including default_ingest backends)
+    - Returns true if ANY of these queues are full
 
   For normal sources:
     - Checks ALL backend queues
     - Returns true only if ALL queues are full
   """
   @spec cached_local_pending_buffer_full?(Source.t()) :: boolean()
-  def cached_local_pending_buffer_full?(%Source{
-        id: source_id,
-        default_ingest_backend_enabled?: true
-      }) do
-    default_backend_ids =
-      __MODULE__.Cache.list_backends(source_id: source_id)
-      |> Enum.filter(& &1.default_ingest?)
-      |> MapSet.new(& &1.id)
+  def cached_local_pending_buffer_full?(
+        %Source{
+          id: source_id
+        } = source
+      ) do
+    # Get all dispatch backends using direct query
+    dispatch_backends = __MODULE__.Cache.list_dispatch_backends(source)
+    backend_ids = Enum.map(dispatch_backends, & &1.id)
 
     # Check system default backend (nil backend_id)
     system_default_full? = buffer_full_for_backend?(source_id, nil)
 
-    # Check user-configured default backends
-    user_defaults_full? = Enum.any?(default_backend_ids, &buffer_full_for_backend?(source_id, &1))
+    # Check if ANY dispatch backend queue is full
+    any_backend_full? = Enum.any?(backend_ids, &buffer_full_for_backend?(source_id, &1))
 
-    system_default_full? || user_defaults_full?
-  end
-
-  def cached_local_pending_buffer_full?(%Source{id: source_id}) do
-    PubSubRates.Cache.get_local_buffer(source_id, nil)
-    |> Map.get(:queues, [])
-    |> case do
-      [] ->
-        false
-
-      queues ->
-        Enum.all?(queues, fn {_key, v} -> v > @max_pending_buffer_len_per_queue end)
-    end
+    system_default_full? || any_backend_full?
   end
 
   @spec buffer_full_for_backend?(
@@ -804,6 +745,21 @@ defmodule Logflare.Backends do
   @spec cached_pending_buffer_len(Source.t(), Backend.t() | nil) :: non_neg_integer()
   def cached_pending_buffer_len(%Source{} = source, backend \\ nil) do
     PubSubRates.Cache.get_cluster_buffers(source.id, Map.get(backend || %{}, :id))
+  end
+
+  @doc """
+  Lists all backends that should receive logs for a given source during dispatch.
+  This includes backends explicitly associated with the source and default ingest backends.
+  Uses a direct Ecto query to fetch from the backends table.
+  """
+  @spec list_dispatch_backends(Source.t()) :: [Backend.t()]
+  def list_dispatch_backends(%Source{id: source_id, user_id: user_id}) do
+    from(b in Backend,
+      left_join: sb in assoc(b, :sources),
+      where: (b.default_ingest? == true or sb.id == ^source_id) and b.user_id == ^user_id
+    )
+    |> Repo.all()
+    |> Enum.map(&typecast_config_string_map_to_atom_map/1)
   end
 
   @doc """

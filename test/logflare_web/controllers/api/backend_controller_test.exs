@@ -341,7 +341,7 @@ defmodule LogflareWeb.Api.BackendControllerTest do
 
     test "updates `default_ingest?` field", %{conn: conn, user: user} do
       backend = insert(:backend, user: user, type: :bigquery, default_ingest?: false)
-      source = insert(:source, user: user, default_ingest_backend_enabled?: true)
+      source = insert(:source, user: user)
 
       conn
       |> add_access_token(user, "private")

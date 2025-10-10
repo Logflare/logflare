@@ -363,10 +363,8 @@ defmodule LogflareWeb.BackendsLiveTest do
     test "shows default ingest section for supported backends", %{
       conn: conn,
       user: user,
-      source: source
+      source: _source
     } do
-      {:ok, _} = Sources.update_source(source, %{default_ingest_backend_enabled?: true})
-
       backend =
         insert(:backend,
           user: user,
@@ -381,7 +379,7 @@ defmodule LogflareWeb.BackendsLiveTest do
       {:ok, view, _html} = live(conn, ~p"/backends/#{backend.id}")
 
       html = render(view)
-      assert html =~ "Default Ingest Sources"
+      assert html =~ "Ingest Configuration"
       assert html =~ "Add a Source"
     end
 
@@ -393,14 +391,11 @@ defmodule LogflareWeb.BackendsLiveTest do
       {:ok, view, _html} = live(conn, ~p"/backends/#{backend.id}")
 
       html = render(view)
-      refute html =~ "Default Ingest Sources"
+      refute html =~ "Ingest Configuration"
       refute html =~ "Add a Source"
     end
 
     test "toggle form shows source selection", %{conn: conn, user: user, source: source} do
-      {:ok, source} =
-        Logflare.Sources.update_source(source, %{default_ingest_backend_enabled?: true})
-
       backend =
         insert(:backend,
           user: user,
@@ -424,9 +419,6 @@ defmodule LogflareWeb.BackendsLiveTest do
     end
 
     test "add source as default ingest", %{conn: conn, user: user, source: source} do
-      {:ok, source} =
-        Sources.update_source(source, %{default_ingest_backend_enabled?: true})
-
       backend =
         insert(:backend,
           user: user,
@@ -454,21 +446,18 @@ defmodule LogflareWeb.BackendsLiveTest do
           }
         })
 
-      assert html =~ "Successfully marked backend as default ingest for source"
+      assert html =~ "Successfully added source to backend"
       assert html =~ source.name
-      assert html =~ "uses this backend as default ingest"
+      assert html =~ "sends logs to this backend"
     end
 
     test "remove source from default ingest", %{conn: conn, user: user, source: source} do
-      {:ok, source} =
-        Sources.update_source(source, %{default_ingest_backend_enabled?: true})
-
       backend =
         insert(:backend,
           user: user,
           type: :clickhouse,
           config: %{url: "http://localhost", database: "test", port: 8123},
-          default_ingest?: true
+          default_ingest?: false
         )
 
       {:ok, _} = Logflare.Backends.update_source_backends(source, [backend])
@@ -476,33 +465,32 @@ defmodule LogflareWeb.BackendsLiveTest do
 
       html = render(view)
       assert html =~ source.name
-      assert html =~ "uses this backend as default ingest"
+      assert html =~ "sends logs to this backend"
 
       html =
         view
         |> element("button", "Remove")
         |> render_click()
 
-      assert html =~ "Removed default ingest for source"
-      refute html =~ "uses this backend as default ingest"
+      assert html =~ "Removed source from backend"
+      refute html =~ "sends logs to this backend"
     end
 
-    test "only shows sources with default_ingest_backend_enabled?", %{
+    test "shows all user sources in dropdown", %{
       conn: conn,
       user: user,
       source: source
     } do
-      {:ok, _enabled_source} =
+      {:ok, _source1} =
         Sources.update_source(source, %{
-          default_ingest_backend_enabled?: true,
-          name: "Enabled Source"
+          name: "Source 1"
         })
 
-      insert(:source,
-        user: user,
-        default_ingest_backend_enabled?: false,
-        name: "Disabled Source"
-      )
+      _source2 =
+        insert(:source,
+          user: user,
+          name: "Source 2"
+        )
 
       backend =
         insert(:backend,
@@ -523,18 +511,15 @@ defmodule LogflareWeb.BackendsLiveTest do
 
       html = render(view)
 
-      assert html =~ "Enabled Source"
-      refute html =~ "Disabled Source"
+      assert html =~ "Source 1"
+      assert html =~ "Source 2"
     end
 
-    test "hides 'Add a Source' button when no viable sources remain", %{
+    test "hides 'Add a Source' button when default_ingest is enabled", %{
       conn: conn,
       user: user,
-      source: source
+      source: _source
     } do
-      {:ok, source} =
-        Sources.update_source(source, %{default_ingest_backend_enabled?: true})
-
       backend =
         insert(:backend,
           user: user,
@@ -543,21 +528,20 @@ defmodule LogflareWeb.BackendsLiveTest do
           default_ingest?: true
         )
 
-      {:ok, _} = Logflare.Backends.update_source_backends(source, [backend])
       {:ok, view, _html} = live(conn, ~p"/backends/#{backend.id}")
 
       html = render(view)
 
       refute html =~ "Add a Source"
-      assert html =~ "Default Ingest Sources"
-      assert html =~ source.name
+      assert html =~ "Ingest from all sources"
+
+      assert html =~
+               "This backend is configured to receive logs from ALL your sources automatically"
     end
 
     test "can add multiple sources as default ingest", %{conn: conn, user: user, source: source} do
-      {:ok, source1} =
-        Sources.update_source(source, %{default_ingest_backend_enabled?: true})
-
-      source2 = insert(:source, user: user, default_ingest_backend_enabled?: true)
+      source1 = source
+      source2 = insert(:source, user: user)
 
       backend =
         insert(:backend,
@@ -578,7 +562,7 @@ defmodule LogflareWeb.BackendsLiveTest do
 
       html = render(view)
       assert html =~ source1.name
-      assert html =~ "uses this backend as default ingest"
+      assert html =~ "sends logs to this backend"
 
       assert html =~ "Add a Source"
 
@@ -593,8 +577,8 @@ defmodule LogflareWeb.BackendsLiveTest do
 
       assert html =~ source1.name
       assert html =~ source2.name
-      assert html =~ "uses this backend as default ingest"
-      assert length(String.split(html, "uses this backend as default ingest")) == 3
+      assert html =~ "sends logs to this backend"
+      assert length(String.split(html, "sends logs to this backend")) == 3
 
       # Now all sources are used, button should be hidden
       refute html =~ "Add a Source"
@@ -605,9 +589,6 @@ defmodule LogflareWeb.BackendsLiveTest do
       user: user,
       source: source
     } do
-      {:ok, source} =
-        Sources.update_source(source, %{default_ingest_backend_enabled?: true})
-
       backend =
         insert(:backend,
           user: user,
@@ -631,7 +612,7 @@ defmodule LogflareWeb.BackendsLiveTest do
 
       refute html =~ "Add a Source"
       assert html =~ source.name
-      assert html =~ "uses this backend as default ingest"
+      assert html =~ "sends logs to this backend"
     end
   end
 
