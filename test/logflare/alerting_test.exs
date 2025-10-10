@@ -289,7 +289,10 @@ defmodule Logflare.AlertingTest do
     test "upsert_alert_job/1, get_alert_job/1, delete_alert_job/1, count_alert_jobs/0 retrieves alert job",
          %{user: user} do
       %{id: alert_id} = alert = insert(:alert, user_id: user.id)
-      Alerting.sync_alert_jobs()
+      {:ok, pid} = Alerting.sync_alert_jobs()
+
+      ref = Process.monitor(pid)
+      assert_receive {:DOWN, ^ref, _, _, _}
 
       assert {:ok,
               %Quantum.Job{
