@@ -5,6 +5,7 @@ defmodule Logflare.SqlTest do
 
   alias Logflare.SingleTenant
   alias Logflare.Sql
+  alias Logflare.Backends.Adaptor.ClickhouseAdaptor
   alias Logflare.Backends.Adaptor.PostgresAdaptor
   alias Logflare.Backends.AdaptorSupervisor
 
@@ -480,6 +481,62 @@ defmodule Logflare.SqlTest do
       assert String.downcase(result) =~ "union all"
       assert String.downcase(result) =~ "select a from cte1"
       assert String.downcase(result) =~ "select b from cte2"
+    end
+
+    test "sandboxed queries cannot access sources/tables outside of CTE scope" do
+      user = insert(:user)
+      source = insert(:source, user: user, name: "my_ch_table")
+      other_source = insert(:source, user: user, name: "other_ch_table")
+
+      # setup local clickhouse for e2e test
+      {source, backend, cleanup_fn} = setup_clickhouse_test(source: source, user: user)
+      on_exit(cleanup_fn)
+
+      {:ok, _pid} = ClickhouseAdaptor.start_link({source, backend})
+      assert {:ok, _} = ClickhouseAdaptor.provision_ingest_table({source, backend})
+
+      log_events = [
+        build(:log_event,
+          source: source,
+          message: "Test message 1",
+          body: %{"value" => 10}
+        ),
+        build(:log_event,
+          source: source,
+          message: "Test message 2",
+          body: %{"value" => 20}
+        )
+      ]
+
+      assert {:ok, %Ch.Result{}} =
+               ClickhouseAdaptor.insert_log_events({source, backend}, log_events)
+
+      Process.sleep(200)
+
+      cte_query =
+        "with src as (select event_message from #{source.name}) select event_message from src"
+
+      consumer_query = "select event_message from src"
+
+      assert {:ok, transformed} = Sql.transform(:ch_sql, {cte_query, consumer_query}, user)
+      assert {:ok, results} = ClickhouseAdaptor.execute_query(backend, transformed, [])
+      assert length(results) == 2
+
+      # cannot access the source table directly
+      consumer_query_accessing_source = "select body from #{source.name}"
+
+      assert {:error, err} =
+               Sql.transform(:ch_sql, {cte_query, consumer_query_accessing_source}, user)
+
+      assert String.downcase(err) =~ "table not found in cte"
+
+      # cannot access another known source that exists but is not in the CTE
+      consumer_query_accessing_other_source = "select body from #{other_source.name}"
+
+      assert {:error, err} =
+               Sql.transform(:ch_sql, {cte_query, consumer_query_accessing_other_source}, user)
+
+      assert String.downcase(err) =~ "table not found in cte"
     end
 
     test "sandboxed queries reject table references not in CTE" do
