@@ -616,7 +616,7 @@ defmodule Logflare.Sql do
   defp has_restricted_functions({"Function", %{"name" => [%{"value" => _} | _] = names}}, :ok, %{
          dialect: dialect
        }) do
-    restricted_list = get_restricted_functions_for_dialect(dialect)
+    restricted_list = list_restricted_functions_for_dialect(dialect)
 
     found_restricted =
       for name <- names,
@@ -637,7 +637,7 @@ defmodule Logflare.Sql do
          :ok,
          %{dialect: dialect}
        ) do
-    restricted_list = get_restricted_functions_for_dialect(dialect)
+    restricted_list = list_restricted_functions_for_dialect(dialect)
     normalized = String.downcase(name)
 
     if normalized in restricted_list do
@@ -658,10 +658,10 @@ defmodule Logflare.Sql do
 
   defp has_restricted_functions(_kv, acc, _data), do: acc
 
-  @spec get_restricted_functions_for_dialect(String.t() | nil) :: [String.t()]
-  defp get_restricted_functions_for_dialect("bigquery"), do: @bq_restricted_functions
-  defp get_restricted_functions_for_dialect("clickhouse"), do: @ch_restricted_functions
-  defp get_restricted_functions_for_dialect(_), do: []
+  @spec list_restricted_functions_for_dialect(String.t()) :: [String.t()]
+  defp list_restricted_functions_for_dialect("bigquery"), do: @bq_restricted_functions
+  defp list_restricted_functions_for_dialect("clickhouse"), do: @ch_restricted_functions
+  defp list_restricted_functions_for_dialect(_), do: []
 
   defp has_restricted_sources(cte_ast, ast) when is_list(ast) do
     aliases =
