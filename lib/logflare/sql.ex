@@ -23,6 +23,9 @@ defmodule Logflare.Sql do
 
   @typep query_language :: :bq_sql | :ch_sql | :pg_sql
 
+  @bq_restricted_functions ~w(external_query session_user)
+  @ch_restricted_functions ~w(azureblobstorage cluster currentuser deltalake file gcs hdfs hudi iceberg jdbc mongodb mysql odbc postgresql redis remote remotesecure s3 sqlite url)
+
   @doc """
   Converts a language atom to its corresponding dialect.
 
@@ -66,22 +69,49 @@ defmodule Logflare.Sql do
   end
 
   @doc """
-  Transforms and validates an SQL query for querying with bigquery.any()
-  The resultant SQL is BigQuery compatible.
+  Transforms and validates a SQL query for the specified dialect,
+  which can be BigQuery (`:bq_sql`), ClickHouse (`:ch_sql`), or PostgreSQL (`:pg_sql`).
 
+  The query is parsed, validated, and transformed to include fully-qualified table names
+  appropriate for the target backend.
 
-  DML is blocked
-  - https://cloud.google.com/bigquery/docs/reference/standard-sql/dml-syntax
+  ## Validation Rules
 
-  ### Example
+  All queries are validated to ensure:
+  - Only SELECT statements are allowed (DML is blocked)
+  - Single query only (no multiple statements)
+  - No wildcard selects (`SELECT *`)
+  - No restricted functions (`SESSION_USER`, `EXTERNAL_QUERY`)
+  - All referenced tables/sources exist
 
-    iex> transform("select a from my_table", %User{...})
-    {:ok, "select a from `my_project.my_dataset.source_token`"}
+  ## Sandboxed Queries
 
-  With a sandboxed query
-    iex> cte = "..."
-    iex> transform({cte, "select a from my_alias"}, %User{...})
-    {:ok, "..."}
+  BigQuery and ClickHouse support sandboxed queries via tuple input `{cte_query, consumer_query}`.
+  This allows secure, parameterized endpoints where consumers can provide custom SQL while
+  being restricted to pre-defined data subsets via CTEs.
+
+  PostgreSQL does not currently support sandboxed queries.
+
+  ## Examples
+
+  Basic query transformation:
+
+      transform(:bq_sql, "select a from my_table", user)
+      # => {:ok, "select a from `my_project.my_dataset.source_token`"}
+
+      transform(:ch_sql, "select a from my_table", user)
+      # => {:ok, "select a from my_clickhouse_table"}
+
+  Sandboxed query (BigQuery and ClickHouse only):
+
+      cte = "with filtered as (select a from my_table where a > 0) select a from filtered"
+      consumer_query = "select a from filtered where a < 100"
+
+      transform(:bq_sql, {cte, consumer_query}, user)
+      # => {:ok, "with filtered as (select a from `project.dataset.token` where a > 0) select a from filtered where a < 100"}
+
+      transform(:ch_sql, {cte, consumer_query}, user)
+      # => {:ok, "with filtered as (select a from my_clickhouse_table where a > 0) select a from filtered where a < 100"}
   """
   @typep input :: String.t() | {String.t(), String.t()}
   @spec transform(
@@ -95,8 +125,44 @@ defmodule Logflare.Sql do
     transform(lang, input, user)
   end
 
-  # clickhouse and postgres
-  def transform(language, query, %User{} = user) when language in ~w(ch_sql pg_sql)a do
+  # clickhouse with sandboxed query support
+  def transform(:ch_sql = language, input, %User{} = user) do
+    {query, sandboxed_query} =
+      case input do
+        q when is_non_empty_binary(q) -> {q, nil}
+        other when is_tuple(other) -> other
+      end
+
+    sql_dialect = to_dialect(language)
+    sources = Sources.list_sources_by_user(user)
+    source_mapping = source_mapping(sources)
+
+    Logger.metadata(query_string: query)
+
+    with {:ok, statements} <- Parser.parse(sql_dialect, query),
+         {:ok, sandboxed_query_ast} <- sandboxed_ast(sandboxed_query, sql_dialect),
+         base_data = %{
+           sources: sources,
+           source_mapping: source_mapping,
+           source_names: Map.keys(source_mapping),
+           sandboxed_query: sandboxed_query,
+           sandboxed_query_ast: sandboxed_query_ast,
+           ast: statements,
+           dialect: sql_dialect
+         },
+         data = DialectTransformer.Clickhouse.build_transformation_data(user, base_data),
+         :ok <- validate_query(statements, data),
+         :ok <- maybe_validate_sandboxed_query_ast({statements, sandboxed_query_ast}, data) do
+      data = %{data | sandboxed_query_ast: sandboxed_query_ast}
+
+      statements
+      |> do_transform(data)
+      |> Parser.to_string()
+    end
+  end
+
+  # postgres (no sandboxed query support)
+  def transform(:pg_sql = language, query, %User{} = user) do
     sql_dialect = to_dialect(language)
     sources = Sources.list_sources_by_user(user)
     source_mapping = source_mapping(sources)
@@ -347,15 +413,21 @@ defmodule Logflare.Sql do
   defp sandboxed_ast(_, _), do: {:ok, nil}
 
   # applies to both ctes, sandboxed queries, and non-ctes
-  defp validate_query(ast, data) when is_list(ast) do
+  defp validate_query(ast, %{dialect: dialect} = data) when is_list(ast) do
     with :ok <- check_select_statement_only(ast),
          :ok <- check_single_query_only(ast),
-         :ok <- has_restricted_functions(ast),
+         :ok <- maybe_check_restricted_functions(ast, dialect, data),
          :ok <- has_wildcard_in_select(ast),
          :ok <- check_all_sources_allowed(ast, data) do
       :ok
     end
   end
+
+  defp maybe_check_restricted_functions(ast, dialect, data)
+       when dialect in ~w(bigquery clickhouse),
+       do: has_restricted_functions(ast, data)
+
+  defp maybe_check_restricted_functions(_ast, _dialect, _data), do: :ok
 
   # applies only to the sandboed query
   defp maybe_validate_sandboxed_query_ast({cte_ast, ast}, data) when is_list(ast) do
@@ -481,33 +553,58 @@ defmodule Logflare.Sql do
     end
   end
 
-  defp has_restricted_functions(ast) when is_list(ast), do: has_restricted_functions(ast, :ok)
+  defp has_restricted_functions(ast, data) when is_list(ast),
+    do: has_restricted_functions(ast, :ok, data)
 
-  defp has_restricted_functions({"Function", %{"name" => [%{"value" => _} | _] = names}}, :ok) do
-    restricted =
+  defp has_restricted_functions({"Function", %{"name" => [%{"value" => _} | _] = names}}, :ok, %{
+         dialect: dialect
+       }) do
+    restricted_list = get_restricted_functions_for_dialect(dialect)
+
+    found_restricted =
       for name <- names,
           normalized = String.downcase(name["value"]),
-          normalized in ["session_user", "external_query"] do
+          normalized in restricted_list do
         normalized
       end
 
-    if Enum.empty?(restricted) do
+    if Enum.empty?(found_restricted) do
       :ok
     else
-      {:error, "Restricted function #{Enum.join(restricted, ", ")}"}
+      {:error, "Restricted function #{Enum.join(found_restricted, ", ")}"}
     end
   end
 
-  defp has_restricted_functions(kv, :ok = acc) when is_list(kv) or is_map(kv) do
+  defp has_restricted_functions(
+         {"Table", %{"args" => [_ | _], "name" => [%{"value" => name} | _]}},
+         :ok,
+         %{dialect: dialect}
+       ) do
+    restricted_list = get_restricted_functions_for_dialect(dialect)
+    normalized = String.downcase(name)
+
+    if normalized in restricted_list do
+      {:error, "Restricted function #{normalized}"}
+    else
+      :ok
+    end
+  end
+
+  defp has_restricted_functions(kv, :ok = acc, data) when is_list(kv) or is_map(kv) do
     kv
-    |> Enum.reduce(acc, fn kv, nested_acc -> has_restricted_functions(kv, nested_acc) end)
+    |> Enum.reduce(acc, fn kv, nested_acc -> has_restricted_functions(kv, nested_acc, data) end)
   end
 
-  defp has_restricted_functions({_k, v}, :ok = acc) when is_list(v) or is_map(v) do
-    has_restricted_functions(v, acc)
+  defp has_restricted_functions({_k, v}, :ok = acc, data) when is_list(v) or is_map(v) do
+    has_restricted_functions(v, acc, data)
   end
 
-  defp has_restricted_functions(_kv, acc), do: acc
+  defp has_restricted_functions(_kv, acc, _data), do: acc
+
+  @spec get_restricted_functions_for_dialect(String.t() | nil) :: [String.t()]
+  defp get_restricted_functions_for_dialect("bigquery"), do: @bq_restricted_functions
+  defp get_restricted_functions_for_dialect("clickhouse"), do: @ch_restricted_functions
+  defp get_restricted_functions_for_dialect(_), do: []
 
   defp has_restricted_sources(cte_ast, ast) when is_list(ast) do
     aliases =

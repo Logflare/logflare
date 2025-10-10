@@ -59,6 +59,10 @@ Parameters that do not match any that are declared in the SQL template will be i
 
 You can create sandboxed queries by using a CTE within the query. It allows the Endpoint consumer to provide a custom SQL query through the `sql=` query parameter.
 
+:::note
+Sandboxed queries are supported for BigQuery and ClickHouse backends. PostgreSQL backends do not currently support this feature.
+:::
+
 For example, this sandboxed query creates a temporary result called `errors`, which limits the results to containing the `"ERROR"` string as well as being before the year `2020` .
 
 ```sql
