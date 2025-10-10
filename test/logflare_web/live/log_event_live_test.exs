@@ -1,6 +1,5 @@
 defmodule LogflareWeb.LogEventLiveTest do
   use LogflareWeb.ConnCase
-
   alias Logflare.Logs.LogEvents
 
   import ExUnit.CaptureLog
