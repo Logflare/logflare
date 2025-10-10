@@ -251,8 +251,8 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptorTest do
     setup do
       insert(:plan, name: "Free")
       user = insert(:user)
-      source1 = insert(:source, user: user, default_ingest_backend_enabled?: true)
-      source2 = insert(:source, user: user, default_ingest_backend_enabled?: true)
+      source1 = insert(:source, user: user)
+      source2 = insert(:source, user: user)
 
       {source1_with_backend, backend, cleanup_fn} =
         setup_clickhouse_test(

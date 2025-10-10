@@ -28,8 +28,7 @@ defmodule Logflare.Sources.Source do
              :backends,
              :retention_days,
              :transform_copy_fields,
-             :bigquery_clustering_fields,
-             :default_ingest_backend_enabled?
+             :bigquery_clustering_fields
            ]}
 
   defp env_dataset_id_append,
@@ -136,10 +135,6 @@ defmodule Logflare.Sources.Source do
     field :transform_copy_fields, :string
     field :bigquery_clustering_fields, :string
 
-    field :default_ingest_backend_enabled?, :boolean,
-      source: :default_ingest_backend_enabled,
-      default: false
-
     # Causes a shitstorm
     # field :bigquery_schema, Ecto.Term
 
@@ -192,7 +187,6 @@ defmodule Logflare.Sources.Source do
       :retention_days,
       :transform_copy_fields,
       :disable_tailing,
-      :default_ingest_backend_enabled?,
       :bq_storage_write_api
     ])
     |> cast_embed(:notifications, with: &Notifications.changeset/2)
@@ -221,7 +215,6 @@ defmodule Logflare.Sources.Source do
       :retention_days,
       :transform_copy_fields,
       :disable_tailing,
-      :default_ingest_backend_enabled?,
       :bq_storage_write_api
     ])
     |> cast_embed(:notifications, with: &Notifications.changeset/2)

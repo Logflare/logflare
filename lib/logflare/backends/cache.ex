@@ -31,6 +31,7 @@ defmodule Logflare.Backends.Cache do
   end
 
   def list_backends(arg), do: apply_repo_fun(__ENV__.function, [arg])
+  def list_dispatch_backends(arg), do: apply_repo_fun(__ENV__.function, [arg])
   def get_backend(arg), do: apply_repo_fun(__ENV__.function, [arg])
 
   defp apply_repo_fun(arg1, arg2) do

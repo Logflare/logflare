@@ -47,6 +47,17 @@
     <%= text_input(f, :description, class: "form-control") %>
   </div>
 
+  <div :if={@backend && Logflare.Backends.Adaptor.supports_default_ingest?(@backend)} class="form-group mt-2">
+    <div class="form-check">
+      <%= checkbox(f, :default_ingest?, class: "form-check-input") %>
+      <%= label(f, :default_ingest?, "Ingest from all sources", class: "form-check-label") %>
+    </div>
+    <small class="form-text text-muted">
+      When enabled, this backend will receive logs from ALL your sources automatically.
+      When disabled, you can manually select specific sources to send logs to this backend.
+    </small>
+  </div>
+
   <.inputs_for :let={f_config} field={f[:config]}>
     <div class="form-group mt-2">
       <%= case @form_type do %>

@@ -332,58 +332,6 @@ defmodule Logflare.SourcesTest do
       assert result_ids == expected_ids
     end
 
-    test "list_sources/1 with default_ingest_backend_enabled? filter", %{user: user} do
-      source1 = insert(:source, user: user, default_ingest_backend_enabled?: true)
-      _source2 = insert(:source, user: user, default_ingest_backend_enabled?: false)
-      source3 = insert(:source, user: user, default_ingest_backend_enabled?: true)
-
-      results = Sources.list_sources(default_ingest_backend_enabled?: true)
-      assert length(results) == 2
-
-      result_ids = Enum.map(results, & &1.id) |> Enum.sort()
-      expected_ids = [source1.id, source3.id] |> Enum.sort()
-      assert result_ids == expected_ids
-
-      assert Enum.all?(results, &(&1.default_ingest_backend_enabled? == true))
-    end
-
-    test "list_sources/1 with combined backend_id and default_ingest filters", %{user: user} do
-      backend = insert(:backend, user: user)
-
-      source1 =
-        insert(:source,
-          user: user,
-          default_ingest_backend_enabled?: true
-        )
-
-      source2 =
-        insert(:source,
-          user: user,
-          default_ingest_backend_enabled?: false
-        )
-
-      source3 =
-        insert(:source,
-          user: user,
-          default_ingest_backend_enabled?: true
-        )
-
-      {:ok, _} = Logflare.Backends.update_source_backends(source1, [backend])
-      {:ok, _} = Logflare.Backends.update_source_backends(source2, [backend])
-      {:ok, _} = Logflare.Backends.update_source_backends(source3, [backend])
-
-      results =
-        Sources.list_sources(
-          backend_id: backend.id,
-          default_ingest_backend_enabled?: true
-        )
-
-      assert length(results) == 2
-      result_ids = Enum.map(results, & &1.id) |> Enum.sort()
-      expected_ids = [source1.id, source3.id] |> Enum.sort()
-      assert result_ids == expected_ids
-    end
-
     test "list_sources/1 ignores unknown filters", %{user: user} do
       source1 = insert(:source, user: user)
       source2 = insert(:source, user: user)
