@@ -192,7 +192,7 @@ defmodule Logflare.Endpoints.ResultsCache do
       |> Map.put(:parsed_labels, state.parsed_labels)
 
     Logflare.Endpoints.run_query(query, state.params, state.opts)
-    |> Tuple.append(query)
+    |> then(&Tuple.insert_at(&1, tuple_size(&1), query))
   end
 
   def endpoints_part(query_id, params) do
