@@ -68,5 +68,22 @@ defmodule LogflareWeb.QueryComponentsTest do
 
       assert html =~ "3.14"
     end
+
+    test "ensures table names surrounded by backticks" do
+      [
+        "SELECT t0.timestamp, t0.id FROM `logflare-dev-464423.1_dev.9db56741_41ca_4fe8_8c05_051a76a4c5d6` AS t0",
+        "SELECT t0.timestamp, t0.id FROM `logflare-dev-464423`.1_dev.9db56741_41ca_4fe8_8c05_051a76a4c5d6 AS t0"
+      ]
+      |> Enum.each(fn sql_string ->
+        html =
+          render_component(&QueryComponents.formatted_sql/1, %{
+            sql_string: sql_string,
+            params: []
+          })
+
+        assert html =~
+                 "`logflare-dev-464423.1_dev.9db56741_41ca_4fe8_8c05_051a76a4c5d6`"
+      end)
+    end
   end
 end
