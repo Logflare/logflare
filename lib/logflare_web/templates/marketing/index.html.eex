@@ -1,6 +1,6 @@
 <div class="homepage">
 
-  <%# hero %>
+  <% # hero %>
   <div class="container-fluid hero">
     <div class="row hero-banner">
       <div class="col-lg-6 col-12 taglines">
@@ -11,7 +11,7 @@
         <%= render("homepage_cta.html", assigns) %>
       </div>
 
-    <%# example source %>
+    <% # example source %>
     <div class="row">
       <div class="col-md-12">
         <img src="images/marketing/homepage/heroimg11.png" class="imghero" alt="">
@@ -24,7 +24,7 @@
       </div>
     </div>
 
-    <%# metrics %>
+    <% # metrics %>
     <div class="row">
       <div class="col-lg-10 order-lg-1">
         <div class="row">
@@ -38,7 +38,7 @@
       <div class="col-lg-1"></div>
     </div>
 
-    <%# dashboard example %>
+    <% # dashboard example %>
     <div class="row paragraph">
       <div class="col-lg-10 order-lg-1">
         <div class="row">
@@ -67,7 +67,7 @@
 
 
 
-  <%# ingest logos %>
+  <% # ingest logos %>
   <div class="container ingest-logs">
     <div class="my-5">
       <h2 class="text-white text-center mb-4">Ingest</h2>
@@ -106,7 +106,7 @@
     </div>
   </div>
 
-  <%# pricing comparison %>
+  <% # pricing comparison %>
   <div class="container-fluid pricing">
     <div class="container d-flex flex-wrap">
         <div class="d-flex" style="background-image: url(images/marketing/homepage/bgoftable.png)">
@@ -172,7 +172,7 @@
     </div>
   </div>
 
-  <%# catch %>
+  <% # catch %>
   <div class="container-fluid catch">
     <div class="container-fluid">
       <div class="container">
@@ -208,7 +208,7 @@
     </div>
   </div>
 
-  <%# steps %>
+  <% # steps %>
   <div class="container-fluid steps">
     <div class="container">
       <div class="row">
@@ -279,7 +279,7 @@
       </div>
     </div>
   </div>
-  <%# features %>
+  <% # features %>
   <div class="container features">
     <div class="row">
       <div class="col-md-4">
@@ -453,7 +453,7 @@
   </div>
   <%= render LogflareWeb.SharedView, "footer.html", assigns %>
 
-<%# end of .homepage wrapper %>
+<% # end of .homepage wrapper %>
 </div>
 <script async src="https://platform.twitter.com/widgets.js" charset="utf-8"></script>
 <script async defer src="https://buttons.github.io/buttons.js"></script>
