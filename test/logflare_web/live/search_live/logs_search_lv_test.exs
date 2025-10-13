@@ -18,7 +18,11 @@ defmodule LogflareWeb.Source.SearchLVTest do
 
   defp setup_mocks(_ctx) do
     stub(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, fn _conn, _proj_id, _opts ->
-      {:ok, TestUtils.gen_bq_response()}
+      {:ok,
+       TestUtils.gen_bq_response(%{
+         "event_message" =>
+           Jason.encode!(%{"message" => "some event message", "user_id" => "123"})
+       })}
     end)
 
     :ok
@@ -312,7 +316,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
   describe "search tasks" do
     setup do
       user = insert(:user)
-      source = insert(:source, user: user)
+      source = insert(:source, user: user, bigquery_clustering_fields: "user_id")
       plan = insert(:plan)
       [user: user, source: source, plan: plan]
     end
@@ -376,7 +380,9 @@ defmodule LogflareWeb.Source.SearchLVTest do
              |> element(".subhead a", "aggregate")
              |> render_click()
 
-      :timer.sleep(300)
+      view
+      |> TestUtils.wait_for_render("#logflare-modal #search-query-debug p")
+
       html = render(view)
 
       assert html =~ "Actual SQL query used when querying for results"
@@ -401,8 +407,9 @@ defmodule LogflareWeb.Source.SearchLVTest do
       assert html =~ source.name
       assert html =~ "/search"
 
-      # wait for async search task to complete
-      :timer.sleep(1000)
+      view
+      |> TestUtils.wait_for_render("#logs-list-container li")
+
       html = view |> element("#logs-list-container") |> render()
       assert html =~ "some event message"
 
@@ -410,20 +417,21 @@ defmodule LogflareWeb.Source.SearchLVTest do
       assert html =~ "Elapsed since last query"
 
       assert view
-             |> element("#logs-list-container a", "permalink")
-             |> has_element?()
+             |> has_element?("#logs-list-container a", "permalink")
 
       # permalink should have timestamp query parameter
       assert view
              |> element("#logs-list-container a", ~r/permalink/)
 
       assert view
-             |> element("#logs-list-container a[href*='timestamp']", "permalink")
-             |> has_element?()
+             |> has_element?("#logs-list-container a[href*='timestamp']", "permalink")
 
       assert view
-             |> element("#logs-list-container a[href*='uuid']", "permalink")
-             |> has_element?()
+             |> has_element?("#logs-list-container a[href*='uuid']", "permalink")
+
+      # includes recommended fields in permalink
+      assert view |> element("#logs-list-container a[href]", "permalink") |> render =~
+               URI.encode_query(%{"lql" => "user_id:123 c:count(*) c:group_by(t::minute)"})
 
       # default input values
       assert find_selected_chart_period(html) == "minute"
@@ -445,7 +453,8 @@ defmodule LogflareWeb.Source.SearchLVTest do
       %{executor_pid: search_executor_pid} = get_view_assigns(view)
       Ecto.Adapters.SQL.Sandbox.allow(Logflare.Repo, self(), search_executor_pid)
 
-      :timer.sleep(1000)
+      view
+      |> TestUtils.wait_for_render("#logs-list-container")
 
       html = view |> element("#logs-list-container") |> render()
       assert html =~ "some event message"

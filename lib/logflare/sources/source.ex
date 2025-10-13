@@ -343,4 +343,21 @@ defmodule Logflare.Sources.Source do
   end
 
   def system_source_types, do: @system_source_types
+
+  @spec recommended_query_fields(%__MODULE__{}) :: [String.t()]
+  def recommended_query_fields(%__MODULE__{} = source) do
+    clustering_fields =
+      (source.bigquery_clustering_fields || "")
+      |> String.split(",")
+
+    suggested_keys =
+      source.suggested_keys
+      |> String.split(",")
+      |> Enum.map(fn
+        "m." <> suggested_field -> "metadata." <> suggested_field
+        suggested_field -> suggested_field
+      end)
+
+    clustering_fields ++ suggested_keys
+  end
 end
