@@ -8,6 +8,8 @@ defmodule LogflareWeb.SearchLive.LogEventComponents do
   import LogflareWeb.ModalLiveHelpers
 
   alias Logflare.DateTimeUtils
+  alias Logflare.Lql
+  alias Logflare.Sources.Source
   alias Phoenix.LiveView.JS
 
   @log_levels ~W(debug info warning error alert critical notice emergency)
@@ -19,6 +21,7 @@ defmodule LogflareWeb.SearchLive.LogEventComponents do
   attr :source, :map, required: true
   attr :tailing?, :boolean, default: false
   attr :querystring, :string, required: true
+  attr :lql_rules, :list, required: true
 
   def logs_list(assigns) do
     ~H"""
@@ -30,55 +33,7 @@ defmodule LogflareWeb.SearchLive.LogEventComponents do
           <.log_event :for={log <- @search_op_log_events.rows} timezone={@search_timezone} log_event={log}>
             <%= log.body["event_message"] %>
             <:actions>
-              <%= live_modal_show_link(
-                  component: LogflareWeb.Search.LogEventViewerComponent,
-                  class: "tw-text-[0.65rem]",
-                  modal_id: :log_event_viewer,
-                  title: "Log Event",
-                  phx_value_log_event_id: log.id,
-                  phx_value_log_event_timestamp: log.body["timestamp"],
-                  phx_value_lql: @querystring
-                ) do %>
-                <span>view</span>
-              <% end %>
-              <%= live_modal_show_link(
-                  component: LogflareWeb.SearchLive.EventContextComponent,
-                  click: JS.push("soft_pause"),
-                  close:
-                    if(@tailing?,
-                      do:
-                        JS.push("soft_play", target: "#source-logs-search-control")
-                        |> JS.push("close"),
-                      else: nil
-                    ),
-                  class: "tw-text-[0.65rem]",
-                  modal_id: :log_event_context_viewer,
-                  title: "View Event Context",
-                  phx_value_log_event_id: log.id,
-                  phx_value_source_id: @source.id,
-                  phx_value_log_event_timestamp: log.body["timestamp"],
-                  phx_value_timezone: @search_timezone,
-                  phx_value_querystring: @querystring
-                ) do %>
-                <span>context</span>
-              <% end %>
-
-              <.link
-                class="tw-text-[0.65rem] group-hover:tw-visible tw-invisible"
-                phx-click={
-                  JS.dispatch("logflare:copy-to-clipboard",
-                    detail: %{
-                      text: "#{formatted_timestamp(log, assigns[:search_timezone])}    #{log.body["event_message"]}"
-                    }
-                  )
-                }
-                data-toggle="tooltip"
-                data-placement="top"
-                title="Copy to clipboard"
-              >
-                copy
-              </.link>
-              <.log_event_permalink log_event_id={log.id} timestamp={log.body["timestamp"]} source={@source} lql={@querystring} class="tw-text-[0.65rem] group-hover:tw-visible tw-invisible" />
+              <.logs_list_actions log={log} recommended_query={lql_with_recommended_fields(@lql_rules, log, @source)} source={@source} tailing?={@tailing?} search_timezone={@search_timezone} querystring={@querystring} />
             </:actions>
           </.log_event>
         </ul>
@@ -86,6 +41,104 @@ defmodule LogflareWeb.SearchLive.LogEventComponents do
     </div>
     """
   end
+
+  attr :log, :any, required: true
+  attr :recommended_query, :any, required: true
+  attr :tailing?, :boolean, default: false
+  attr :source, :any, required: true
+  attr :search_timezone, :string, required: true
+  attr :querystring, :string, required: true
+
+  def logs_list_actions(assigns) do
+    ~H"""
+    <%= live_modal_show_link(
+        component: LogflareWeb.Search.LogEventViewerComponent,
+        class: "tw-text-[0.65rem]",
+        modal_id: :log_event_viewer,
+        title: "Log Event",
+        phx_value_log_event_id: @log.id,
+        phx_value_log_event_timestamp: @log.body["timestamp"],
+        phx_value_lql: @recommended_query
+      ) do %>
+      <span>view</span>
+    <% end %>
+    <%= live_modal_show_link(
+        component: LogflareWeb.SearchLive.EventContextComponent,
+        click: JS.push("soft_pause"),
+        close:
+          if(@tailing?,
+            do:
+              JS.push("soft_play", target: "#source-logs-search-control")
+              |> JS.push("close"),
+            else: nil
+          ),
+        class: "tw-text-[0.65rem]",
+        modal_id: :log_event_context_viewer,
+        title: "View Event Context",
+        phx_value_log_event_id: @log.id,
+        phx_value_source_id: @source.id,
+        phx_value_log_event_timestamp: @log.body["timestamp"],
+        phx_value_timezone: @search_timezone,
+        phx_value_querystring: @querystring
+      ) do %>
+      <span>context</span>
+    <% end %>
+
+    <.link
+      class="tw-text-[0.65rem] group-hover:tw-visible tw-invisible"
+      phx-click={
+        JS.dispatch("logflare:copy-to-clipboard",
+          detail: %{
+            text: "#{formatted_timestamp(@log, @search_timezone)}    #{@log.body["event_message"]}"
+          }
+        )
+      }
+      data-toggle="tooltip"
+      data-placement="top"
+      title="Copy to clipboard"
+    >
+      copy
+    </.link>
+    <.log_event_permalink log_event_id={@log.id} timestamp={@log.body["timestamp"]} source={@source} lql={@recommended_query} class="tw-text-[0.65rem] group-hover:tw-visible tw-invisible" />
+    """
+  end
+
+  @spec lql_with_recommended_fields(Lql.Rules.lql_rules(), Logflare.LogEvent.t(), Source.t()) ::
+          String.t()
+  def lql_with_recommended_fields(lql_rules, event, source) do
+    fields = Source.recommended_query_fields(source)
+
+    existing_filter_paths =
+      lql_rules
+      |> Lql.Rules.get_filter_rules()
+      |> Enum.map(& &1.path)
+      |> MapSet.new()
+
+    case Jason.decode(event.body["event_message"]) do
+      {:ok, event_message} ->
+        new_filter_rules =
+          fields
+          |> Enum.reject(&MapSet.member?(existing_filter_paths, &1))
+          |> Enum.filter(&Map.has_key?(event_message, strip_meta(&1)))
+          |> Enum.map(fn field_name ->
+            Lql.Rules.FilterRule.build(
+              path: field_name,
+              operator: :=,
+              value: Map.get(event_message, strip_meta(field_name))
+            )
+          end)
+
+        (new_filter_rules ++ lql_rules)
+        |> Lql.encode!()
+
+      _ ->
+        lql_rules
+        |> Lql.encode!()
+    end
+  end
+
+  defp strip_meta("metadata." <> k), do: k
+  defp strip_meta(k), do: k
 
   attr :log_event, Logflare.LogEvent, required: true
   attr :id, :string, required: false
