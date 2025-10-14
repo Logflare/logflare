@@ -17,8 +17,8 @@ defmodule Logflare.Lql do
   alias __MODULE__.Rules.FilterRule
   alias __MODULE__.Rules.SelectRule
   alias GoogleApi.BigQuery.V2.Model.TableSchema, as: TS
+  alias Logflare.Backends.Adaptor.BigQueryAdaptor
   alias Logflare.Backends.Adaptor.ClickhouseAdaptor
-  alias Logflare.Backends.Ecto.SqlUtils
 
   @default_dialect :bigquery
 
@@ -241,6 +241,22 @@ defmodule Logflare.Lql do
     end
   end
 
+  defmacrop bq_trunc_second(ts_field) do
+    quote do: fragment("TIMESTAMP_TRUNC(?, SECOND)", unquote(ts_field))
+  end
+
+  defmacrop bq_trunc_minute(ts_field) do
+    quote do: fragment("TIMESTAMP_TRUNC(?, MINUTE)", unquote(ts_field))
+  end
+
+  defmacrop bq_trunc_hour(ts_field) do
+    quote do: fragment("TIMESTAMP_TRUNC(?, HOUR)", unquote(ts_field))
+  end
+
+  defmacrop bq_trunc_day(ts_field) do
+    quote do: fragment("TIMESTAMP_TRUNC(?, DAY)", unquote(ts_field))
+  end
+
   @spec build_bigquery_chart_query(
           query :: Ecto.Query.t(),
           aggregate :: atom(),
@@ -249,65 +265,272 @@ defmodule Logflare.Lql do
           timestamp_field :: String.t()
         ) ::
           Ecto.Query.t()
-  defp build_bigquery_chart_query(query, aggregate, field_path, period, timestamp_field) do
-    case aggregate do
-      :count ->
-        query
-        |> select([t], %{
-          timestamp: fragment("TIMESTAMP_TRUNC(?, ?)", field(t, ^timestamp_field), ^period),
-          count: count(field(t, ^timestamp_field))
-        })
-        |> group_by([t], fragment("TIMESTAMP_TRUNC(?, ?)", field(t, ^timestamp_field), ^period))
-        |> order_by([t], fragment("TIMESTAMP_TRUNC(?, ?)", field(t, ^timestamp_field), ^period))
+  defp build_bigquery_chart_query(query, :count, _field_path, :second, timestamp_field) do
+    query
+    |> select([t], %{
+      timestamp: bq_trunc_second(field(t, ^timestamp_field)),
+      count: count(field(t, ^timestamp_field))
+    })
+    |> group_by([t], bq_trunc_second(field(t, ^timestamp_field)))
+    |> order_by([t], bq_trunc_second(field(t, ^timestamp_field)))
+  end
 
-      :avg ->
-        query
-        |> select([t], %{
-          timestamp: fragment("TIMESTAMP_TRUNC(?, ?)", field(t, ^timestamp_field), ^period),
-          count: avg(field(t, ^field_path))
-        })
-        |> group_by([t], fragment("TIMESTAMP_TRUNC(?, ?)", field(t, ^timestamp_field), ^period))
-        |> order_by([t], fragment("TIMESTAMP_TRUNC(?, ?)", field(t, ^timestamp_field), ^period))
+  defp build_bigquery_chart_query(query, :count, _field_path, :minute, timestamp_field) do
+    query
+    |> select([t], %{
+      timestamp: bq_trunc_minute(field(t, ^timestamp_field)),
+      count: count(field(t, ^timestamp_field))
+    })
+    |> group_by([t], bq_trunc_minute(field(t, ^timestamp_field)))
+    |> order_by([t], bq_trunc_minute(field(t, ^timestamp_field)))
+  end
 
-      :sum ->
-        query
-        |> select([t], %{
-          timestamp: fragment("TIMESTAMP_TRUNC(?, ?)", field(t, ^timestamp_field), ^period),
-          count: sum(field(t, ^field_path))
-        })
-        |> group_by([t], fragment("TIMESTAMP_TRUNC(?, ?)", field(t, ^timestamp_field), ^period))
-        |> order_by([t], fragment("TIMESTAMP_TRUNC(?, ?)", field(t, ^timestamp_field), ^period))
+  defp build_bigquery_chart_query(query, :count, _field_path, :hour, timestamp_field) do
+    query
+    |> select([t], %{
+      timestamp: bq_trunc_hour(field(t, ^timestamp_field)),
+      count: count(field(t, ^timestamp_field))
+    })
+    |> group_by([t], bq_trunc_hour(field(t, ^timestamp_field)))
+    |> order_by([t], bq_trunc_hour(field(t, ^timestamp_field)))
+  end
 
-      :max ->
-        query
-        |> select([t], %{
-          timestamp: fragment("TIMESTAMP_TRUNC(?, ?)", field(t, ^timestamp_field), ^period),
-          count: max(field(t, ^field_path))
-        })
-        |> group_by([t], fragment("TIMESTAMP_TRUNC(?, ?)", field(t, ^timestamp_field), ^period))
-        |> order_by([t], fragment("TIMESTAMP_TRUNC(?, ?)", field(t, ^timestamp_field), ^period))
+  defp build_bigquery_chart_query(query, :count, _field_path, :day, timestamp_field) do
+    query
+    |> select([t], %{
+      timestamp: bq_trunc_day(field(t, ^timestamp_field)),
+      count: count(field(t, ^timestamp_field))
+    })
+    |> group_by([t], bq_trunc_day(field(t, ^timestamp_field)))
+    |> order_by([t], bq_trunc_day(field(t, ^timestamp_field)))
+  end
 
-      percentile when percentile in [:p50, :p95, :p99] ->
-        percentile_value =
-          case percentile do
-            :p50 -> 0.5
-            :p95 -> 0.95
-            :p99 -> 0.99
-          end
+  defp build_bigquery_chart_query(query, :avg, field_path, :second, timestamp_field) do
+    query
+    |> select([t], %{
+      timestamp: bq_trunc_second(field(t, ^timestamp_field)),
+      count: avg(field(t, ^field_path))
+    })
+    |> group_by([t], bq_trunc_second(field(t, ^timestamp_field)))
+    |> order_by([t], bq_trunc_second(field(t, ^timestamp_field)))
+  end
 
-        query
-        |> select([t], %{
-          timestamp: fragment("TIMESTAMP_TRUNC(?, ?)", field(t, ^timestamp_field), ^period),
-          count:
-            fragment(
-              "APPROX_QUANTILES(?, 100)[OFFSET(?)]",
-              field(t, ^field_path),
-              ^trunc(percentile_value * 100)
-            )
-        })
-        |> group_by([t], fragment("TIMESTAMP_TRUNC(?, ?)", field(t, ^timestamp_field), ^period))
-        |> order_by([t], fragment("TIMESTAMP_TRUNC(?, ?)", field(t, ^timestamp_field), ^period))
-    end
+  defp build_bigquery_chart_query(query, :avg, field_path, :minute, timestamp_field) do
+    query
+    |> select([t], %{
+      timestamp: bq_trunc_minute(field(t, ^timestamp_field)),
+      count: avg(field(t, ^field_path))
+    })
+    |> group_by([t], bq_trunc_minute(field(t, ^timestamp_field)))
+    |> order_by([t], bq_trunc_minute(field(t, ^timestamp_field)))
+  end
+
+  defp build_bigquery_chart_query(query, :avg, field_path, :hour, timestamp_field) do
+    query
+    |> select([t], %{
+      timestamp: bq_trunc_hour(field(t, ^timestamp_field)),
+      count: avg(field(t, ^field_path))
+    })
+    |> group_by([t], bq_trunc_hour(field(t, ^timestamp_field)))
+    |> order_by([t], bq_trunc_hour(field(t, ^timestamp_field)))
+  end
+
+  defp build_bigquery_chart_query(query, :avg, field_path, :day, timestamp_field) do
+    query
+    |> select([t], %{
+      timestamp: bq_trunc_day(field(t, ^timestamp_field)),
+      count: avg(field(t, ^field_path))
+    })
+    |> group_by([t], bq_trunc_day(field(t, ^timestamp_field)))
+    |> order_by([t], bq_trunc_day(field(t, ^timestamp_field)))
+  end
+
+  defp build_bigquery_chart_query(query, :sum, field_path, :second, timestamp_field) do
+    query
+    |> select([t], %{
+      timestamp: bq_trunc_second(field(t, ^timestamp_field)),
+      count: sum(field(t, ^field_path))
+    })
+    |> group_by([t], bq_trunc_second(field(t, ^timestamp_field)))
+    |> order_by([t], bq_trunc_second(field(t, ^timestamp_field)))
+  end
+
+  defp build_bigquery_chart_query(query, :sum, field_path, :minute, timestamp_field) do
+    query
+    |> select([t], %{
+      timestamp: bq_trunc_minute(field(t, ^timestamp_field)),
+      count: sum(field(t, ^field_path))
+    })
+    |> group_by([t], bq_trunc_minute(field(t, ^timestamp_field)))
+    |> order_by([t], bq_trunc_minute(field(t, ^timestamp_field)))
+  end
+
+  defp build_bigquery_chart_query(query, :sum, field_path, :hour, timestamp_field) do
+    query
+    |> select([t], %{
+      timestamp: bq_trunc_hour(field(t, ^timestamp_field)),
+      count: sum(field(t, ^field_path))
+    })
+    |> group_by([t], bq_trunc_hour(field(t, ^timestamp_field)))
+    |> order_by([t], bq_trunc_hour(field(t, ^timestamp_field)))
+  end
+
+  defp build_bigquery_chart_query(query, :sum, field_path, :day, timestamp_field) do
+    query
+    |> select([t], %{
+      timestamp: bq_trunc_day(field(t, ^timestamp_field)),
+      count: sum(field(t, ^field_path))
+    })
+    |> group_by([t], bq_trunc_day(field(t, ^timestamp_field)))
+    |> order_by([t], bq_trunc_day(field(t, ^timestamp_field)))
+  end
+
+  defp build_bigquery_chart_query(query, :max, field_path, :second, timestamp_field) do
+    query
+    |> select([t], %{
+      timestamp: bq_trunc_second(field(t, ^timestamp_field)),
+      count: max(field(t, ^field_path))
+    })
+    |> group_by([t], bq_trunc_second(field(t, ^timestamp_field)))
+    |> order_by([t], bq_trunc_second(field(t, ^timestamp_field)))
+  end
+
+  defp build_bigquery_chart_query(query, :max, field_path, :minute, timestamp_field) do
+    query
+    |> select([t], %{
+      timestamp: bq_trunc_minute(field(t, ^timestamp_field)),
+      count: max(field(t, ^field_path))
+    })
+    |> group_by([t], bq_trunc_minute(field(t, ^timestamp_field)))
+    |> order_by([t], bq_trunc_minute(field(t, ^timestamp_field)))
+  end
+
+  defp build_bigquery_chart_query(query, :max, field_path, :hour, timestamp_field) do
+    query
+    |> select([t], %{
+      timestamp: bq_trunc_hour(field(t, ^timestamp_field)),
+      count: max(field(t, ^field_path))
+    })
+    |> group_by([t], bq_trunc_hour(field(t, ^timestamp_field)))
+    |> order_by([t], bq_trunc_hour(field(t, ^timestamp_field)))
+  end
+
+  defp build_bigquery_chart_query(query, :max, field_path, :day, timestamp_field) do
+    query
+    |> select([t], %{
+      timestamp: bq_trunc_day(field(t, ^timestamp_field)),
+      count: max(field(t, ^field_path))
+    })
+    |> group_by([t], bq_trunc_day(field(t, ^timestamp_field)))
+    |> order_by([t], bq_trunc_day(field(t, ^timestamp_field)))
+  end
+
+  defp build_bigquery_chart_query(query, percentile, field_path, :second, timestamp_field)
+       when percentile in [:p50, :p95, :p99] do
+    percentile_value =
+      case percentile do
+        :p50 -> 0.5
+        :p95 -> 0.95
+        :p99 -> 0.99
+      end
+
+    query
+    |> select([t], %{
+      timestamp: bq_trunc_second(field(t, ^timestamp_field)),
+      count:
+        fragment(
+          "APPROX_QUANTILES(?, 100)[OFFSET(?)]",
+          field(t, ^field_path),
+          ^trunc(percentile_value * 100)
+        )
+    })
+    |> group_by([t], bq_trunc_second(field(t, ^timestamp_field)))
+    |> order_by([t], bq_trunc_second(field(t, ^timestamp_field)))
+  end
+
+  defp build_bigquery_chart_query(query, percentile, field_path, :minute, timestamp_field)
+       when percentile in [:p50, :p95, :p99] do
+    percentile_value =
+      case percentile do
+        :p50 -> 0.5
+        :p95 -> 0.95
+        :p99 -> 0.99
+      end
+
+    query
+    |> select([t], %{
+      timestamp: bq_trunc_minute(field(t, ^timestamp_field)),
+      count:
+        fragment(
+          "APPROX_QUANTILES(?, 100)[OFFSET(?)]",
+          field(t, ^field_path),
+          ^trunc(percentile_value * 100)
+        )
+    })
+    |> group_by([t], bq_trunc_minute(field(t, ^timestamp_field)))
+    |> order_by([t], bq_trunc_minute(field(t, ^timestamp_field)))
+  end
+
+  defp build_bigquery_chart_query(query, percentile, field_path, :hour, timestamp_field)
+       when percentile in [:p50, :p95, :p99] do
+    percentile_value =
+      case percentile do
+        :p50 -> 0.5
+        :p95 -> 0.95
+        :p99 -> 0.99
+      end
+
+    query
+    |> select([t], %{
+      timestamp: bq_trunc_hour(field(t, ^timestamp_field)),
+      count:
+        fragment(
+          "APPROX_QUANTILES(?, 100)[OFFSET(?)]",
+          field(t, ^field_path),
+          ^trunc(percentile_value * 100)
+        )
+    })
+    |> group_by([t], bq_trunc_hour(field(t, ^timestamp_field)))
+    |> order_by([t], bq_trunc_hour(field(t, ^timestamp_field)))
+  end
+
+  defp build_bigquery_chart_query(query, percentile, field_path, :day, timestamp_field)
+       when percentile in [:p50, :p95, :p99] do
+    percentile_value =
+      case percentile do
+        :p50 -> 0.5
+        :p95 -> 0.95
+        :p99 -> 0.99
+      end
+
+    query
+    |> select([t], %{
+      timestamp: bq_trunc_day(field(t, ^timestamp_field)),
+      count:
+        fragment(
+          "APPROX_QUANTILES(?, 100)[OFFSET(?)]",
+          field(t, ^field_path),
+          ^trunc(percentile_value * 100)
+        )
+    })
+    |> group_by([t], bq_trunc_day(field(t, ^timestamp_field)))
+    |> order_by([t], bq_trunc_day(field(t, ^timestamp_field)))
+  end
+
+  defmacrop ch_interval_second(ts_field) do
+    quote do: fragment("toStartOfInterval(?, INTERVAL 1 second)", unquote(ts_field))
+  end
+
+  defmacrop ch_interval_minute(ts_field) do
+    quote do: fragment("toStartOfInterval(?, INTERVAL 1 minute)", unquote(ts_field))
+  end
+
+  defmacrop ch_interval_hour(ts_field) do
+    quote do: fragment("toStartOfInterval(?, INTERVAL 1 hour)", unquote(ts_field))
+  end
+
+  defmacrop ch_interval_day(ts_field) do
+    quote do: fragment("toStartOfInterval(?, INTERVAL 1 day)", unquote(ts_field))
   end
 
   @spec build_clickhouse_chart_query(
@@ -318,121 +541,242 @@ defmodule Logflare.Lql do
           timestamp_field :: String.t()
         ) ::
           Ecto.Query.t()
-  defp build_clickhouse_chart_query(query, aggregate, field_path, period, timestamp_field) do
-    interval = period_to_clickhouse_interval(period)
-
-    case aggregate do
-      :count ->
-        query
-        |> select([t], %{
-          timestamp:
-            fragment("toStartOfInterval(?, INTERVAL 1 ?)", field(t, ^timestamp_field), ^interval),
-          count: count(field(t, ^timestamp_field))
-        })
-        |> group_by(
-          [t],
-          fragment("toStartOfInterval(?, INTERVAL 1 ?)", field(t, ^timestamp_field), ^interval)
-        )
-        |> order_by(
-          [t],
-          fragment("toStartOfInterval(?, INTERVAL 1 ?)", field(t, ^timestamp_field), ^interval)
-        )
-
-      :avg ->
-        query
-        |> select([t], %{
-          timestamp:
-            fragment("toStartOfInterval(?, INTERVAL 1 ?)", field(t, ^timestamp_field), ^interval),
-          count: avg(field(t, ^field_path))
-        })
-        |> group_by(
-          [t],
-          fragment("toStartOfInterval(?, INTERVAL 1 ?)", field(t, ^timestamp_field), ^interval)
-        )
-        |> order_by(
-          [t],
-          fragment("toStartOfInterval(?, INTERVAL 1 ?)", field(t, ^timestamp_field), ^interval)
-        )
-
-      :sum ->
-        query
-        |> select([t], %{
-          timestamp:
-            fragment("toStartOfInterval(?, INTERVAL 1 ?)", field(t, ^timestamp_field), ^interval),
-          count: sum(field(t, ^field_path))
-        })
-        |> group_by(
-          [t],
-          fragment("toStartOfInterval(?, INTERVAL 1 ?)", field(t, ^timestamp_field), ^interval)
-        )
-        |> order_by(
-          [t],
-          fragment("toStartOfInterval(?, INTERVAL 1 ?)", field(t, ^timestamp_field), ^interval)
-        )
-
-      :max ->
-        query
-        |> select([t], %{
-          timestamp:
-            fragment("toStartOfInterval(?, INTERVAL 1 ?)", field(t, ^timestamp_field), ^interval),
-          count: max(field(t, ^field_path))
-        })
-        |> group_by(
-          [t],
-          fragment("toStartOfInterval(?, INTERVAL 1 ?)", field(t, ^timestamp_field), ^interval)
-        )
-        |> order_by(
-          [t],
-          fragment("toStartOfInterval(?, INTERVAL 1 ?)", field(t, ^timestamp_field), ^interval)
-        )
-
-      percentile when percentile in [:p50, :p95, :p99] ->
-        percentile_value =
-          case percentile do
-            :p50 -> 0.5
-            :p95 -> 0.95
-            :p99 -> 0.99
-          end
-
-        query
-        |> select([t], %{
-          timestamp:
-            fragment("toStartOfInterval(?, INTERVAL 1 ?)", field(t, ^timestamp_field), ^interval),
-          count: fragment("quantile(?)(?))", ^percentile_value, field(t, ^field_path))
-        })
-        |> group_by(
-          [t],
-          fragment("toStartOfInterval(?, INTERVAL 1 ?)", field(t, ^timestamp_field), ^interval)
-        )
-        |> order_by(
-          [t],
-          fragment("toStartOfInterval(?, INTERVAL 1 ?)", field(t, ^timestamp_field), ^interval)
-        )
-    end
+  defp build_clickhouse_chart_query(query, :count, _field_path, :second, timestamp_field) do
+    query
+    |> select([t], %{
+      timestamp: ch_interval_second(field(t, ^timestamp_field)),
+      count: count(field(t, ^timestamp_field))
+    })
+    |> group_by([t], ch_interval_second(field(t, ^timestamp_field)))
+    |> order_by([t], ch_interval_second(field(t, ^timestamp_field)))
   end
 
-  @spec period_to_clickhouse_interval(period()) :: String.t()
-  defp period_to_clickhouse_interval(:second), do: "second"
-  defp period_to_clickhouse_interval(:minute), do: "minute"
-  defp period_to_clickhouse_interval(:hour), do: "hour"
-  defp period_to_clickhouse_interval(:day), do: "day"
+  defp build_clickhouse_chart_query(query, :count, _field_path, :minute, timestamp_field) do
+    query
+    |> select([t], %{
+      timestamp: ch_interval_minute(field(t, ^timestamp_field)),
+      count: count(field(t, ^timestamp_field))
+    })
+    |> group_by([t], ch_interval_minute(field(t, ^timestamp_field)))
+    |> order_by([t], ch_interval_minute(field(t, ^timestamp_field)))
+  end
+
+  defp build_clickhouse_chart_query(query, :count, _field_path, :hour, timestamp_field) do
+    query
+    |> select([t], %{
+      timestamp: ch_interval_hour(field(t, ^timestamp_field)),
+      count: count(field(t, ^timestamp_field))
+    })
+    |> group_by([t], ch_interval_hour(field(t, ^timestamp_field)))
+    |> order_by([t], ch_interval_hour(field(t, ^timestamp_field)))
+  end
+
+  defp build_clickhouse_chart_query(query, :count, _field_path, :day, timestamp_field) do
+    query
+    |> select([t], %{
+      timestamp: ch_interval_day(field(t, ^timestamp_field)),
+      count: count(field(t, ^timestamp_field))
+    })
+    |> group_by([t], ch_interval_day(field(t, ^timestamp_field)))
+    |> order_by([t], ch_interval_day(field(t, ^timestamp_field)))
+  end
+
+  defp build_clickhouse_chart_query(query, :avg, field_path, :second, timestamp_field) do
+    query
+    |> select([t], %{
+      timestamp: ch_interval_second(field(t, ^timestamp_field)),
+      count: avg(field(t, ^field_path))
+    })
+    |> group_by([t], ch_interval_second(field(t, ^timestamp_field)))
+    |> order_by([t], ch_interval_second(field(t, ^timestamp_field)))
+  end
+
+  defp build_clickhouse_chart_query(query, :avg, field_path, :minute, timestamp_field) do
+    query
+    |> select([t], %{
+      timestamp: ch_interval_minute(field(t, ^timestamp_field)),
+      count: avg(field(t, ^field_path))
+    })
+    |> group_by([t], ch_interval_minute(field(t, ^timestamp_field)))
+    |> order_by([t], ch_interval_minute(field(t, ^timestamp_field)))
+  end
+
+  defp build_clickhouse_chart_query(query, :avg, field_path, :hour, timestamp_field) do
+    query
+    |> select([t], %{
+      timestamp: ch_interval_hour(field(t, ^timestamp_field)),
+      count: avg(field(t, ^field_path))
+    })
+    |> group_by([t], ch_interval_hour(field(t, ^timestamp_field)))
+    |> order_by([t], ch_interval_hour(field(t, ^timestamp_field)))
+  end
+
+  defp build_clickhouse_chart_query(query, :avg, field_path, :day, timestamp_field) do
+    query
+    |> select([t], %{
+      timestamp: ch_interval_day(field(t, ^timestamp_field)),
+      count: avg(field(t, ^field_path))
+    })
+    |> group_by([t], ch_interval_day(field(t, ^timestamp_field)))
+    |> order_by([t], ch_interval_day(field(t, ^timestamp_field)))
+  end
+
+  defp build_clickhouse_chart_query(query, :sum, field_path, :second, timestamp_field) do
+    query
+    |> select([t], %{
+      timestamp: ch_interval_second(field(t, ^timestamp_field)),
+      count: sum(field(t, ^field_path))
+    })
+    |> group_by([t], ch_interval_second(field(t, ^timestamp_field)))
+    |> order_by([t], ch_interval_second(field(t, ^timestamp_field)))
+  end
+
+  defp build_clickhouse_chart_query(query, :sum, field_path, :minute, timestamp_field) do
+    query
+    |> select([t], %{
+      timestamp: ch_interval_minute(field(t, ^timestamp_field)),
+      count: sum(field(t, ^field_path))
+    })
+    |> group_by([t], ch_interval_minute(field(t, ^timestamp_field)))
+    |> order_by([t], ch_interval_minute(field(t, ^timestamp_field)))
+  end
+
+  defp build_clickhouse_chart_query(query, :sum, field_path, :hour, timestamp_field) do
+    query
+    |> select([t], %{
+      timestamp: ch_interval_hour(field(t, ^timestamp_field)),
+      count: sum(field(t, ^field_path))
+    })
+    |> group_by([t], ch_interval_hour(field(t, ^timestamp_field)))
+    |> order_by([t], ch_interval_hour(field(t, ^timestamp_field)))
+  end
+
+  defp build_clickhouse_chart_query(query, :sum, field_path, :day, timestamp_field) do
+    query
+    |> select([t], %{
+      timestamp: ch_interval_day(field(t, ^timestamp_field)),
+      count: sum(field(t, ^field_path))
+    })
+    |> group_by([t], ch_interval_day(field(t, ^timestamp_field)))
+    |> order_by([t], ch_interval_day(field(t, ^timestamp_field)))
+  end
+
+  defp build_clickhouse_chart_query(query, :max, field_path, :second, timestamp_field) do
+    query
+    |> select([t], %{
+      timestamp: ch_interval_second(field(t, ^timestamp_field)),
+      count: max(field(t, ^field_path))
+    })
+    |> group_by([t], ch_interval_second(field(t, ^timestamp_field)))
+    |> order_by([t], ch_interval_second(field(t, ^timestamp_field)))
+  end
+
+  defp build_clickhouse_chart_query(query, :max, field_path, :minute, timestamp_field) do
+    query
+    |> select([t], %{
+      timestamp: ch_interval_minute(field(t, ^timestamp_field)),
+      count: max(field(t, ^field_path))
+    })
+    |> group_by([t], ch_interval_minute(field(t, ^timestamp_field)))
+    |> order_by([t], ch_interval_minute(field(t, ^timestamp_field)))
+  end
+
+  defp build_clickhouse_chart_query(query, :max, field_path, :hour, timestamp_field) do
+    query
+    |> select([t], %{
+      timestamp: ch_interval_hour(field(t, ^timestamp_field)),
+      count: max(field(t, ^field_path))
+    })
+    |> group_by([t], ch_interval_hour(field(t, ^timestamp_field)))
+    |> order_by([t], ch_interval_hour(field(t, ^timestamp_field)))
+  end
+
+  defp build_clickhouse_chart_query(query, :max, field_path, :day, timestamp_field) do
+    query
+    |> select([t], %{
+      timestamp: ch_interval_day(field(t, ^timestamp_field)),
+      count: max(field(t, ^field_path))
+    })
+    |> group_by([t], ch_interval_day(field(t, ^timestamp_field)))
+    |> order_by([t], ch_interval_day(field(t, ^timestamp_field)))
+  end
+
+  defp build_clickhouse_chart_query(query, percentile, field_path, :second, timestamp_field)
+       when percentile in [:p50, :p95, :p99] do
+    percentile_value =
+      case percentile do
+        :p50 -> 0.5
+        :p95 -> 0.95
+        :p99 -> 0.99
+      end
+
+    query
+    |> select([t], %{
+      timestamp: ch_interval_second(field(t, ^timestamp_field)),
+      count: fragment("quantile(?)(?))", ^percentile_value, field(t, ^field_path))
+    })
+    |> group_by([t], ch_interval_second(field(t, ^timestamp_field)))
+    |> order_by([t], ch_interval_second(field(t, ^timestamp_field)))
+  end
+
+  defp build_clickhouse_chart_query(query, percentile, field_path, :minute, timestamp_field)
+       when percentile in [:p50, :p95, :p99] do
+    percentile_value =
+      case percentile do
+        :p50 -> 0.5
+        :p95 -> 0.95
+        :p99 -> 0.99
+      end
+
+    query
+    |> select([t], %{
+      timestamp: ch_interval_minute(field(t, ^timestamp_field)),
+      count: fragment("quantile(?)(?))", ^percentile_value, field(t, ^field_path))
+    })
+    |> group_by([t], ch_interval_minute(field(t, ^timestamp_field)))
+    |> order_by([t], ch_interval_minute(field(t, ^timestamp_field)))
+  end
+
+  defp build_clickhouse_chart_query(query, percentile, field_path, :hour, timestamp_field)
+       when percentile in [:p50, :p95, :p99] do
+    percentile_value =
+      case percentile do
+        :p50 -> 0.5
+        :p95 -> 0.95
+        :p99 -> 0.99
+      end
+
+    query
+    |> select([t], %{
+      timestamp: ch_interval_hour(field(t, ^timestamp_field)),
+      count: fragment("quantile(?)(?))", ^percentile_value, field(t, ^field_path))
+    })
+    |> group_by([t], ch_interval_hour(field(t, ^timestamp_field)))
+    |> order_by([t], ch_interval_hour(field(t, ^timestamp_field)))
+  end
+
+  defp build_clickhouse_chart_query(query, percentile, field_path, :day, timestamp_field)
+       when percentile in [:p50, :p95, :p99] do
+    percentile_value =
+      case percentile do
+        :p50 -> 0.5
+        :p95 -> 0.95
+        :p99 -> 0.99
+      end
+
+    query
+    |> select([t], %{
+      timestamp: ch_interval_day(field(t, ^timestamp_field)),
+      count: fragment("quantile(?)(?))", ^percentile_value, field(t, ^field_path))
+    })
+    |> group_by([t], ch_interval_day(field(t, ^timestamp_field)))
+    |> order_by([t], ch_interval_day(field(t, ^timestamp_field)))
+  end
 
   @spec ecto_query_to_sql_string(Ecto.Query.t(), :bigquery | :clickhouse) ::
           {:ok, String.t()} | {:error, String.t()}
   defp ecto_query_to_sql_string(query, :bigquery) do
-    with {:ok, {pg_sql, _pg_params}} <- SqlUtils.ecto_to_pg_sql(query) do
-      # Convert PostgreSQL SQL to BigQuery SQL format
-      bq_sql =
-        pg_sql
-        # Remove PostgreSQL-style parameter placeholders ($1, $2, etc.)
-        |> String.replace(~r/\$\d+/, "?")
-        # Remove quotes around column names (BigQuery doesn't need them for simple identifiers)
-        |> String.replace(~r/\."([\w\.]+)"/, ".\\1")
-        # Remove quotes around table names
-        |> String.replace(~r/FROM\s+"(.+?)"/, "FROM \\1")
-        # Remove quotes around aliases
-        |> String.replace(~r/AS\s+"(\w+)"/, "AS \\1")
-
+    with {:ok, {bq_sql, _bq_params}} <- BigQueryAdaptor.ecto_to_sql(query, []) do
       {:ok, bq_sql}
     end
   end
