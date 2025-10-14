@@ -5,6 +5,8 @@ defmodule Logflare.Sources.SourceTest do
   alias Logflare.Sources
   alias Logflare.Sources.Source
 
+  doctest Logflare.Sources.Source, import: true
+
   @moduletag :failing
 
   describe "Source" do
