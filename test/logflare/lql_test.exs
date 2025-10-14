@@ -349,8 +349,7 @@ defmodule Logflare.LqlTest do
       assert String.downcase(sql) =~ "avg"
       assert String.downcase(sql) =~ "timestamp_trunc"
       assert String.downcase(sql) =~ "group by"
-      # Period is interpolated as ? in prepared statement
-      assert sql =~ "?"
+      assert String.downcase(sql) =~ "hour"
     end
 
     test "converts chart max aggregation to BigQuery SQL" do
@@ -359,8 +358,7 @@ defmodule Logflare.LqlTest do
 
       assert String.downcase(sql) =~ "max"
       assert String.downcase(sql) =~ "timestamp_trunc"
-      # Period is interpolated as ? in prepared statement
-      assert sql =~ "?"
+      assert String.downcase(sql) =~ "second"
     end
 
     test "converts chart sum aggregation to BigQuery SQL" do

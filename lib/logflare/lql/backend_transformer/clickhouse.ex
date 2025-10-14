@@ -10,10 +10,29 @@ defmodule Logflare.Lql.BackendTransformer.ClickHouse do
   @behaviour Logflare.Lql.BackendTransformer
 
   import Ecto.Query
+  import Logflare.Utils.Guards
 
   alias Ecto.Query
+  alias Logflare.Lql.Rules.ChartRule
 
   @special_top_level ~w(event_message timestamp id)
+
+  # macros used for generating Ecto query fragments
+  defmacrop ch_interval_second(ts_field) do
+    quote do: fragment("toStartOfInterval(?, INTERVAL 1 second)", unquote(ts_field))
+  end
+
+  defmacrop ch_interval_minute(ts_field) do
+    quote do: fragment("toStartOfInterval(?, INTERVAL 1 minute)", unquote(ts_field))
+  end
+
+  defmacrop ch_interval_hour(ts_field) do
+    quote do: fragment("toStartOfInterval(?, INTERVAL 1 hour)", unquote(ts_field))
+  end
+
+  defmacrop ch_interval_day(ts_field) do
+    quote do: fragment("toStartOfInterval(?, INTERVAL 1 day)", unquote(ts_field))
+  end
 
   @impl true
   def dialect, do: "clickhouse"
@@ -87,11 +106,230 @@ defmodule Logflare.Lql.BackendTransformer.ClickHouse do
     end
   end
 
+  @doc """
+  Transforms a ChartRule into a ClickHouse chart query with time-series aggregation.
+
+  This function creates an Ecto query with appropriate GROUP BY, aggregation,
+  and time truncation for the specified period and aggregate function.
+  """
   @impl true
-  def transform_chart_rule(_chart_rule, _transformation_data) do
-    # TODO: Implement chart rule transformation for ClickHouse
-    # This would handle aggregations, grouping, etc.
-    raise "Chart rule transformation not yet implemented for ClickHouse transformer"
+  @spec transform_chart_rule(
+          query :: Ecto.Query.t(),
+          aggregate :: atom(),
+          field_path :: String.t(),
+          period :: :second | :minute | :hour | :day,
+          timestamp_field :: String.t()
+        ) :: Ecto.Query.t()
+  def transform_chart_rule(query, :count, _field_path, :second, timestamp_field) do
+    query
+    |> select([t], %{
+      timestamp: ch_interval_second(field(t, ^timestamp_field)),
+      count: count(field(t, ^timestamp_field))
+    })
+    |> group_by([t], ch_interval_second(field(t, ^timestamp_field)))
+    |> order_by([t], ch_interval_second(field(t, ^timestamp_field)))
+  end
+
+  def transform_chart_rule(query, :count, _field_path, :minute, timestamp_field) do
+    query
+    |> select([t], %{
+      timestamp: ch_interval_minute(field(t, ^timestamp_field)),
+      count: count(field(t, ^timestamp_field))
+    })
+    |> group_by([t], ch_interval_minute(field(t, ^timestamp_field)))
+    |> order_by([t], ch_interval_minute(field(t, ^timestamp_field)))
+  end
+
+  def transform_chart_rule(query, :count, _field_path, :hour, timestamp_field) do
+    query
+    |> select([t], %{
+      timestamp: ch_interval_hour(field(t, ^timestamp_field)),
+      count: count(field(t, ^timestamp_field))
+    })
+    |> group_by([t], ch_interval_hour(field(t, ^timestamp_field)))
+    |> order_by([t], ch_interval_hour(field(t, ^timestamp_field)))
+  end
+
+  def transform_chart_rule(query, :count, _field_path, :day, timestamp_field) do
+    query
+    |> select([t], %{
+      timestamp: ch_interval_day(field(t, ^timestamp_field)),
+      count: count(field(t, ^timestamp_field))
+    })
+    |> group_by([t], ch_interval_day(field(t, ^timestamp_field)))
+    |> order_by([t], ch_interval_day(field(t, ^timestamp_field)))
+  end
+
+  def transform_chart_rule(query, :avg, field_path, :second, timestamp_field) do
+    query
+    |> select([t], %{
+      timestamp: ch_interval_second(field(t, ^timestamp_field)),
+      count: avg(field(t, ^field_path))
+    })
+    |> group_by([t], ch_interval_second(field(t, ^timestamp_field)))
+    |> order_by([t], ch_interval_second(field(t, ^timestamp_field)))
+  end
+
+  def transform_chart_rule(query, :avg, field_path, :minute, timestamp_field) do
+    query
+    |> select([t], %{
+      timestamp: ch_interval_minute(field(t, ^timestamp_field)),
+      count: avg(field(t, ^field_path))
+    })
+    |> group_by([t], ch_interval_minute(field(t, ^timestamp_field)))
+    |> order_by([t], ch_interval_minute(field(t, ^timestamp_field)))
+  end
+
+  def transform_chart_rule(query, :avg, field_path, :hour, timestamp_field) do
+    query
+    |> select([t], %{
+      timestamp: ch_interval_hour(field(t, ^timestamp_field)),
+      count: avg(field(t, ^field_path))
+    })
+    |> group_by([t], ch_interval_hour(field(t, ^timestamp_field)))
+    |> order_by([t], ch_interval_hour(field(t, ^timestamp_field)))
+  end
+
+  def transform_chart_rule(query, :avg, field_path, :day, timestamp_field) do
+    query
+    |> select([t], %{
+      timestamp: ch_interval_day(field(t, ^timestamp_field)),
+      count: avg(field(t, ^field_path))
+    })
+    |> group_by([t], ch_interval_day(field(t, ^timestamp_field)))
+    |> order_by([t], ch_interval_day(field(t, ^timestamp_field)))
+  end
+
+  def transform_chart_rule(query, :sum, field_path, :second, timestamp_field) do
+    query
+    |> select([t], %{
+      timestamp: ch_interval_second(field(t, ^timestamp_field)),
+      count: sum(field(t, ^field_path))
+    })
+    |> group_by([t], ch_interval_second(field(t, ^timestamp_field)))
+    |> order_by([t], ch_interval_second(field(t, ^timestamp_field)))
+  end
+
+  def transform_chart_rule(query, :sum, field_path, :minute, timestamp_field) do
+    query
+    |> select([t], %{
+      timestamp: ch_interval_minute(field(t, ^timestamp_field)),
+      count: sum(field(t, ^field_path))
+    })
+    |> group_by([t], ch_interval_minute(field(t, ^timestamp_field)))
+    |> order_by([t], ch_interval_minute(field(t, ^timestamp_field)))
+  end
+
+  def transform_chart_rule(query, :sum, field_path, :hour, timestamp_field) do
+    query
+    |> select([t], %{
+      timestamp: ch_interval_hour(field(t, ^timestamp_field)),
+      count: sum(field(t, ^field_path))
+    })
+    |> group_by([t], ch_interval_hour(field(t, ^timestamp_field)))
+    |> order_by([t], ch_interval_hour(field(t, ^timestamp_field)))
+  end
+
+  def transform_chart_rule(query, :sum, field_path, :day, timestamp_field) do
+    query
+    |> select([t], %{
+      timestamp: ch_interval_day(field(t, ^timestamp_field)),
+      count: sum(field(t, ^field_path))
+    })
+    |> group_by([t], ch_interval_day(field(t, ^timestamp_field)))
+    |> order_by([t], ch_interval_day(field(t, ^timestamp_field)))
+  end
+
+  def transform_chart_rule(query, :max, field_path, :second, timestamp_field) do
+    query
+    |> select([t], %{
+      timestamp: ch_interval_second(field(t, ^timestamp_field)),
+      count: max(field(t, ^field_path))
+    })
+    |> group_by([t], ch_interval_second(field(t, ^timestamp_field)))
+    |> order_by([t], ch_interval_second(field(t, ^timestamp_field)))
+  end
+
+  def transform_chart_rule(query, :max, field_path, :minute, timestamp_field) do
+    query
+    |> select([t], %{
+      timestamp: ch_interval_minute(field(t, ^timestamp_field)),
+      count: max(field(t, ^field_path))
+    })
+    |> group_by([t], ch_interval_minute(field(t, ^timestamp_field)))
+    |> order_by([t], ch_interval_minute(field(t, ^timestamp_field)))
+  end
+
+  def transform_chart_rule(query, :max, field_path, :hour, timestamp_field) do
+    query
+    |> select([t], %{
+      timestamp: ch_interval_hour(field(t, ^timestamp_field)),
+      count: max(field(t, ^field_path))
+    })
+    |> group_by([t], ch_interval_hour(field(t, ^timestamp_field)))
+    |> order_by([t], ch_interval_hour(field(t, ^timestamp_field)))
+  end
+
+  def transform_chart_rule(query, :max, field_path, :day, timestamp_field) do
+    query
+    |> select([t], %{
+      timestamp: ch_interval_day(field(t, ^timestamp_field)),
+      count: max(field(t, ^field_path))
+    })
+    |> group_by([t], ch_interval_day(field(t, ^timestamp_field)))
+    |> order_by([t], ch_interval_day(field(t, ^timestamp_field)))
+  end
+
+  def transform_chart_rule(query, percentile, field_path, :second, timestamp_field)
+      when is_percentile_aggregate(percentile) do
+    percentile_value = ChartRule.percentile_to_value(percentile)
+
+    query
+    |> select([t], %{
+      timestamp: ch_interval_second(field(t, ^timestamp_field)),
+      count: fragment("quantile(?)(?))", ^percentile_value, field(t, ^field_path))
+    })
+    |> group_by([t], ch_interval_second(field(t, ^timestamp_field)))
+    |> order_by([t], ch_interval_second(field(t, ^timestamp_field)))
+  end
+
+  def transform_chart_rule(query, percentile, field_path, :minute, timestamp_field)
+      when is_percentile_aggregate(percentile) do
+    percentile_value = ChartRule.percentile_to_value(percentile)
+
+    query
+    |> select([t], %{
+      timestamp: ch_interval_minute(field(t, ^timestamp_field)),
+      count: fragment("quantile(?)(?))", ^percentile_value, field(t, ^field_path))
+    })
+    |> group_by([t], ch_interval_minute(field(t, ^timestamp_field)))
+    |> order_by([t], ch_interval_minute(field(t, ^timestamp_field)))
+  end
+
+  def transform_chart_rule(query, percentile, field_path, :hour, timestamp_field)
+      when is_percentile_aggregate(percentile) do
+    percentile_value = ChartRule.percentile_to_value(percentile)
+
+    query
+    |> select([t], %{
+      timestamp: ch_interval_hour(field(t, ^timestamp_field)),
+      count: fragment("quantile(?)(?))", ^percentile_value, field(t, ^field_path))
+    })
+    |> group_by([t], ch_interval_hour(field(t, ^timestamp_field)))
+    |> order_by([t], ch_interval_hour(field(t, ^timestamp_field)))
+  end
+
+  def transform_chart_rule(query, percentile, field_path, :day, timestamp_field)
+      when is_percentile_aggregate(percentile) do
+    percentile_value = ChartRule.percentile_to_value(percentile)
+
+    query
+    |> select([t], %{
+      timestamp: ch_interval_day(field(t, ^timestamp_field)),
+      count: fragment("quantile(?)(?))", ^percentile_value, field(t, ^field_path))
+    })
+    |> group_by([t], ch_interval_day(field(t, ^timestamp_field)))
+    |> order_by([t], ch_interval_day(field(t, ^timestamp_field)))
   end
 
   @impl true
