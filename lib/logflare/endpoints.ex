@@ -12,6 +12,7 @@ defmodule Logflare.Endpoints do
   alias Logflare.Endpoints.Query
   alias Logflare.Endpoints.Resolver
   alias Logflare.Endpoints.ResultsCache
+  alias Logflare.Lql
   alias Logflare.Repo
   alias Logflare.SingleTenant
   alias Logflare.Sql
@@ -261,10 +262,11 @@ defmodule Logflare.Endpoints do
   Runs a an endpoint query
   """
   @spec run_query(Query.t(), params :: map(), opts :: Keyword.t()) :: run_query_return()
-  def run_query(%Query{} = endpoint_query, params \\ %{}, opts \\ [])
+  def run_query(%Query{language: query_language} = endpoint_query, params \\ %{}, opts \\ [])
       when is_map(params) and is_list(opts) do
     %Query{query: query_string, user_id: user_id, sandboxable: sandboxable} = endpoint_query
     sql_param = Map.get(params, "sql")
+    lql_param = Map.get(params, "lql")
 
     endpoints =
       list_endpoints_by(user_id: endpoint_query.user_id)
@@ -275,17 +277,22 @@ defmodule Logflare.Endpoints do
     with {:ok, declared_params} <- Sql.parameters(query_string),
          {:ok, expanded_query} <-
            Sql.expand_subqueries(
-             endpoint_query.language,
+             query_language,
              query_string,
              endpoints ++ alerts
            ),
+         {:ok, consumer_query} <-
+           maybe_convert_lql_to_sql(lql_param, sql_param, expanded_query, query_language),
          transform_input =
-           if(sandboxable && sql_param, do: {expanded_query, sql_param}, else: expanded_query),
+           if(sandboxable && consumer_query,
+             do: {expanded_query, consumer_query},
+             else: expanded_query
+           ),
          {:ok, transformed_query} <-
-           Sql.transform(endpoint_query.language, transform_input, user_id) do
+           Sql.transform(query_language, transform_input, user_id) do
       :telemetry.span(
         [:logflare, :endpoints, :run_query, :exec_query_on_backend],
-        %{endpoint_id: endpoint_query.id, language: endpoint_query.language},
+        %{endpoint_id: endpoint_query.id, language: query_language},
         fn ->
           result =
             exec_query_on_backend(
@@ -373,6 +380,36 @@ defmodule Logflare.Endpoints do
           cache_count: cache_count
         }
     }
+  end
+
+  @spec maybe_convert_lql_to_sql(
+          lql_param :: String.t() | nil,
+          sql_param :: String.t() | nil,
+          expanded_query :: String.t(),
+          language :: :bq_sql | :ch_sql | :pg_sql
+        ) :: {:ok, String.t() | nil} | {:error, String.t()}
+  # no sql_param provided, but lql_param is present
+  defp maybe_convert_lql_to_sql(lql_param, nil, expanded_query, language)
+       when is_non_empty_binary(lql_param) and language in [:bq_sql, :ch_sql] do
+    with {:ok, cte_names} <- Sql.extract_cte_aliases(expanded_query),
+         dialect <- Lql.language_to_dialect(language),
+         # For now, use the first CTE table name
+         # TODO: In the future, we could validate that the LQL references a valid CTE
+         cte_table_name <- List.first(cte_names) || "unknown_cte",
+         {:ok, sql_string} <- Lql.to_sandboxed_sql(lql_param, cte_table_name, dialect) do
+      {:ok, sql_string}
+    end
+  end
+
+  # If sql_param is provided, use it (takes precedence over lql_param)
+  defp maybe_convert_lql_to_sql(_lql_param, sql_param, _expanded_query, _language)
+       when is_non_empty_binary(sql_param) do
+    {:ok, sql_param}
+  end
+
+  # No lql or sql param, return nil
+  defp maybe_convert_lql_to_sql(_lql_param, _sql_param, _expanded_query, _language) do
+    {:ok, nil}
   end
 
   @spec exec_query_on_backend(
