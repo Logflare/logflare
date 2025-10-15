@@ -117,6 +117,26 @@ defmodule LogflareWeb.EndpointsLiveTest do
     assert render(view) =~ ~r/caches:.+1/
   end
 
+  test "show endpoint - clear cache button", %{conn: conn, user: user} do
+    endpoint = insert(:endpoint, user: user)
+    _pid = start_supervised!({Logflare.Endpoints.ResultsCache, {endpoint, %{}, []}})
+
+    {:ok, view, _html} = live(conn, "/endpoints/#{endpoint.id}")
+
+    assert has_element?(view, ".subhead button", "clear cache")
+    assert has_element?(view, ".subhead button i.fas.fa-trash")
+    assert render(view) =~ ~r/active caches:.+\d+/
+
+    TestUtils.retry_assert([sleep: 250], fn ->
+      view
+      |> element(".subhead button", "clear cache")
+      |> render_click()
+
+      assert render(view) =~ "Cache cleared successfully"
+      assert render(view) =~ ~r/active caches:.+0/
+    end)
+  end
+
   test "new endpoint", %{conn: conn} do
     {:ok, view, _html} = live(conn, "/endpoints/new")
     assert view |> has_element?("form#endpoint")

@@ -3,6 +3,9 @@
     ~/<.subheader_path_link live_patch to={~p"/endpoints"}>endpoints</.subheader_path_link>/<%= @show_endpoint.name %>
   </:path>
   <.subheader_link to={~p"/access-tokens"} text="access tokens" fa_icon="key" />
+  <button phx-click="clear-endpoint-cache" phx-value-endpoint-id={@show_endpoint.id} class="tw-text-black tw-p-1 tw-flex tw-gap-1 tw-items-center tw-justify-center tw-border-0 tw-bg-transparent">
+    <i class="inline-block h-3 w-3 fas fa-trash"></i><span> clear cache</span>
+  </button>
   <.subheader_link live_patch to={~p"/endpoints/#{@show_endpoint.id}/edit"} text="edit" fa_icon="edit" />
 </.subheader>
 <section class="mx-auto container pt-3 tw-flex tw-flex-col tw-gap-4">
@@ -62,6 +65,15 @@
       </li>
       <li :if={@show_endpoint.labels} class="list-group-item">
         <span><strong>labels:</strong> <%= @show_endpoint.labels %></span>
+      </li>
+    </ul>
+  </div>
+
+  <div>
+    <h4>Cache Statistics</h4>
+    <ul class="list-group tw-text-sm">
+      <li class="list-group-item">
+        <strong>active caches:</strong> <%= @show_endpoint.metrics.cache_count %>
       </li>
     </ul>
   </div>
