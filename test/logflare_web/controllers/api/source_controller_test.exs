@@ -101,36 +101,6 @@ defmodule LogflareWeb.Api.SourceControllerTest do
 
       assert resp == %{"errors" => %{"name" => ["is invalid"]}}
     end
-
-    test "creates a source with `default_ingest_backend_enabled?` true", %{conn: conn, user: user} do
-      name = TestUtils.random_string()
-
-      response =
-        conn
-        |> add_access_token(user, "private")
-        |> post("/api/sources", %{name: name, default_ingest_backend_enabled?: true})
-        |> json_response(201)
-
-      assert response["name"] == name
-      assert response["default_ingest_backend_enabled?"] == true
-    end
-
-    test "creates a source without `default_ingest_backend_enabled?` field (defaults to false)",
-         %{
-           conn: conn,
-           user: user
-         } do
-      name = TestUtils.random_string()
-
-      response =
-        conn
-        |> add_access_token(user, "private")
-        |> post("/api/sources", %{name: name})
-        |> json_response(201)
-
-      assert response["name"] == name
-      assert response["default_ingest_backend_enabled?"] == false
-    end
   end
 
   describe "update/2" do
@@ -184,25 +154,6 @@ defmodule LogflareWeb.Api.SourceControllerTest do
         |> json_response(422)
 
       assert resp == %{"errors" => %{"name" => ["is invalid"]}}
-    end
-
-    test "PATCH updates `default_ingest_backend_enabled?` field", %{
-      conn: conn,
-      user: user,
-      sources: [source | _]
-    } do
-      conn
-      |> add_access_token(user, "private")
-      |> patch("/api/sources/#{source.token}", %{default_ingest_backend_enabled?: true})
-      |> response(204)
-
-      response =
-        conn
-        |> add_access_token(user, "private")
-        |> get("/api/sources/#{source.token}")
-        |> json_response(200)
-
-      assert response["default_ingest_backend_enabled?"] == true
     end
   end
 

@@ -62,9 +62,6 @@ defmodule Logflare.Sources do
       {:user_id, user_id}, q when is_integer(user_id) ->
         where(q, [s], s.user_id == ^user_id)
 
-      {:default_ingest_backend_enabled?, enabled}, q when is_boolean(enabled) ->
-        where(q, [s], s.default_ingest_backend_enabled? == ^enabled)
-
       _, q ->
         q
     end)
