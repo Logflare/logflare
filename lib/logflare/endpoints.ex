@@ -382,6 +382,49 @@ defmodule Logflare.Endpoints do
     }
   end
 
+  @doc """
+  Returns the transformed query without executing it.
+
+  Useful for debugging and UI display of merged sandbox queries.
+  """
+  @spec get_transformed_query(Query.t(), params :: map()) ::
+          {:ok, String.t()} | {:error, String.t()}
+  def get_transformed_query(%Query{} = endpoint_query, params \\ %{}) when is_map(params) do
+    %Query{
+      query: query_string,
+      user_id: user_id,
+      sandboxable: sandboxable,
+      language: query_language
+    } =
+      endpoint_query
+
+    sql_param = Map.get(params, "sql")
+    lql_param = Map.get(params, "lql")
+
+    endpoints =
+      list_endpoints_by(user_id: endpoint_query.user_id)
+      |> Enum.filter(&(&1.id != endpoint_query.id))
+
+    alerts = Alerting.list_alert_queries_by_user_id(endpoint_query.user_id)
+
+    with {:ok, expanded_query} <-
+           Sql.expand_subqueries(
+             query_language,
+             query_string,
+             endpoints ++ alerts
+           ),
+         {:ok, consumer_query} <-
+           maybe_convert_lql_to_sql(lql_param, sql_param, expanded_query, query_language),
+         transform_input =
+           if(sandboxable && consumer_query,
+             do: {expanded_query, consumer_query},
+             else: expanded_query
+           ),
+         {:ok, transformed_query} <- Sql.transform(query_language, transform_input, user_id) do
+      {:ok, transformed_query}
+    end
+  end
+
   @spec maybe_convert_lql_to_sql(
           lql_param :: String.t() | nil,
           sql_param :: String.t() | nil,

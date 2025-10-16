@@ -1,5 +1,6 @@
 defmodule LogflareWeb.EndpointsLiveTest do
   @moduledoc false
+
   use LogflareWeb.ConnCase
 
   setup %{conn: conn} do
@@ -569,5 +570,261 @@ defmodule LogflareWeb.EndpointsLiveTest do
 
     view |> element(".subhead a", "edit") |> render_click()
     refute render(view) =~ "results-123"
+  end
+
+  describe "sandbox query testing UI" do
+    setup %{user: user} do
+      endpoint =
+        insert(:endpoint,
+          user: user,
+          sandboxable: true,
+          query: """
+          WITH errors AS (
+            SELECT 'test error' as err, 500 as code
+          )
+          SELECT err, code FROM errors
+          """
+        )
+
+      {:ok, endpoint: endpoint}
+    end
+
+    test "shows sandbox query form when sandboxable is true", %{conn: conn, endpoint: endpoint} do
+      {:ok, view, _html} = live(conn, "/endpoints/#{endpoint.id}")
+
+      assert has_element?(view, "h4", "Test Sandbox Query")
+      assert has_element?(view, "input[type=radio][value=sql]")
+      assert has_element?(view, "input[type=radio][value=lql]")
+      assert has_element?(view, "textarea[name='sandbox_form[sandbox_query]']")
+      assert has_element?(view, "input[type=checkbox][name='sandbox_form[show_transformed]']")
+      assert has_element?(view, "button", "Test Sandbox Query")
+    end
+
+    test "hides sandbox query form when sandboxable is false", %{conn: conn, user: user} do
+      endpoint = insert(:endpoint, user: user, sandboxable: false)
+      {:ok, view, _html} = live(conn, "/endpoints/#{endpoint.id}")
+
+      refute has_element?(view, "h4", "Test Sandbox Query")
+      refute has_element?(view, "textarea[name='sandbox_form[sandbox_query]']")
+    end
+
+    test "executes SQL sandbox query successfully", %{conn: conn, endpoint: endpoint} do
+      {:ok, view, _html} = live(conn, "/endpoints/#{endpoint.id}")
+
+      GoogleApi.BigQuery.V2.Api.Jobs
+      |> expect(:bigquery_jobs_query, 1, fn _conn, _proj_id, _opts ->
+        {:ok, TestUtils.gen_bq_response([%{"err" => "test error", "code" => "500"}])}
+      end)
+
+      view
+      |> element("form", "Test Sandbox Query")
+      |> render_submit(%{
+        sandbox_form: %{
+          query_mode: "sql",
+          sandbox_query: "SELECT err, code FROM errors",
+          params: %{},
+          show_transformed: "false"
+        }
+      })
+
+      assert render(view) =~ "Ran sandbox query successfully"
+      assert has_element?(view, "h5", "Sandbox Query Results")
+      assert render(view) =~ "test error"
+      assert render(view) =~ "500"
+    end
+
+    test "executes LQL sandbox query successfully", %{conn: conn, endpoint: endpoint} do
+      {:ok, view, _html} = live(conn, "/endpoints/#{endpoint.id}")
+
+      GoogleApi.BigQuery.V2.Api.Jobs
+      |> expect(:bigquery_jobs_query, 1, fn _conn, _proj_id, _opts ->
+        {:ok, TestUtils.gen_bq_response([%{"err" => "test error"}])}
+      end)
+
+      view
+      |> element("form", "Test Sandbox Query")
+      |> render_submit(%{
+        sandbox_form: %{
+          query_mode: "lql",
+          sandbox_query: "s:err",
+          params: %{},
+          show_transformed: "false"
+        }
+      })
+
+      assert render(view) =~ "Ran sandbox query successfully"
+      assert has_element?(view, "h5", "Sandbox Query Results")
+      assert render(view) =~ "test error"
+    end
+
+    test "displays error for invalid table reference in sandbox query", %{
+      conn: conn,
+      endpoint: endpoint
+    } do
+      {:ok, view, _html} = live(conn, "/endpoints/#{endpoint.id}")
+
+      view
+      |> element("form", "Test Sandbox Query")
+      |> render_submit(%{
+        sandbox_form: %{
+          query_mode: "sql",
+          sandbox_query: "SELECT * FROM unauthorized_table",
+          params: %{},
+          show_transformed: "false"
+        }
+      })
+
+      html = render(view)
+
+      assert html =~ "Error occurred when running sandbox query"
+      assert has_element?(view, ".alert-danger")
+    end
+
+    test "shows transformed query when checkbox is enabled", %{conn: conn, endpoint: endpoint} do
+      {:ok, view, _html} = live(conn, "/endpoints/#{endpoint.id}")
+
+      GoogleApi.BigQuery.V2.Api.Jobs
+      |> expect(:bigquery_jobs_query, 1, fn _conn, _proj_id, _opts ->
+        {:ok, TestUtils.gen_bq_response([%{"err" => "test error"}])}
+      end)
+
+      view
+      |> element("form", "Test Sandbox Query")
+      |> render_submit(%{
+        sandbox_form: %{
+          query_mode: "sql",
+          sandbox_query: "SELECT err FROM errors",
+          params: %{},
+          show_transformed: "true"
+        }
+      })
+
+      assert render(view) =~ "Ran sandbox query successfully"
+      assert has_element?(view, "summary", "Show Transformed Query")
+      assert render(view) =~ "WITH errors AS"
+    end
+
+    test "sandbox query works with parameters", %{conn: conn, user: user} do
+      endpoint =
+        insert(:endpoint,
+          user: user,
+          sandboxable: true,
+          query: """
+          WITH filtered AS (
+            SELECT 'test' as value
+          )
+          SELECT value FROM filtered
+          """
+        )
+
+      {:ok, view, _html} = live(conn, "/endpoints/#{endpoint.id}")
+
+      GoogleApi.BigQuery.V2.Api.Jobs
+      |> expect(:bigquery_jobs_query, 1, fn _conn, _proj_id, _opts ->
+        {:ok, TestUtils.gen_bq_response([%{"value" => "test"}])}
+      end)
+
+      view
+      |> element("form", "Test Sandbox Query")
+      |> render_submit(%{
+        sandbox_form: %{
+          query_mode: "sql",
+          sandbox_query: "SELECT value FROM filtered",
+          params: %{},
+          show_transformed: "false"
+        }
+      })
+
+      assert render(view) =~ "Ran sandbox query successfully"
+      assert render(view) =~ "test"
+    end
+
+    test "sandbox query displays query cost for BigQuery", %{conn: conn, endpoint: endpoint} do
+      {:ok, view, _html} = live(conn, "/endpoints/#{endpoint.id}")
+
+      GoogleApi.BigQuery.V2.Api.Jobs
+      |> expect(:bigquery_jobs_query, 1, fn _conn, _proj_id, _opts ->
+        response = TestUtils.gen_bq_response([%{"err" => "test"}])
+        # Override totalBytesProcessed to a larger value for testing cost display
+        {:ok, %{response | totalBytesProcessed: "1048576"}}
+      end)
+
+      view
+      |> element("form", "Test Sandbox Query")
+      |> render_submit(%{
+        sandbox_form: %{
+          query_mode: "sql",
+          sandbox_query: "SELECT err FROM errors",
+          params: %{},
+          show_transformed: "false"
+        }
+      })
+
+      assert render(view) =~ "Ran sandbox query successfully"
+      assert render(view) =~ "processed"
+    end
+
+    test "sandbox query handles LQL parsing errors gracefully", %{conn: conn, endpoint: endpoint} do
+      {:ok, view, _html} = live(conn, "/endpoints/#{endpoint.id}")
+
+      # Submit invalid LQL that will fail parsing
+      assert view
+             |> element("form", "Test Sandbox Query")
+             |> render_submit(%{
+               sandbox_form: %{
+                 query_mode: "lql",
+                 sandbox_query: "m.invalid:field:with:colons",
+                 params: %{},
+                 show_transformed: "false"
+               }
+             })
+
+      html = render(view)
+
+      assert html =~ "Error occurred when running sandbox query" or
+               has_element?(view, "h5", "Sandbox Query Error")
+    end
+
+    test "sandbox query section preserves query input on error", %{conn: conn, endpoint: endpoint} do
+      {:ok, view, _html} = live(conn, "/endpoints/#{endpoint.id}")
+
+      view
+      |> element("form", "Test Sandbox Query")
+      |> render_submit(%{
+        sandbox_form: %{
+          query_mode: "sql",
+          sandbox_query: "SELECT * FROM invalid_table",
+          params: %{},
+          show_transformed: "false"
+        }
+      })
+
+      assert render(view) =~ "Error occurred when running sandbox query"
+      assert render(view) =~ "SELECT * FROM invalid_table"
+    end
+
+    test "sandbox query mode toggle shows SQL and LQL options", %{conn: conn, endpoint: endpoint} do
+      {:ok, view, _html} = live(conn, "/endpoints/#{endpoint.id}")
+
+      html = render(view)
+      assert html =~ "Query Mode"
+      assert has_element?(view, "input[type=radio][value=sql]")
+      assert has_element?(view, "input[type=radio][value=lql]")
+      assert has_element?(view, "label", "SQL")
+      assert has_element?(view, "label", "LQL")
+    end
+
+    test "sandbox query UI shows help text about CTE restrictions", %{
+      conn: conn,
+      endpoint: endpoint
+    } do
+      {:ok, view, _html} = live(conn, "/endpoints/#{endpoint.id}")
+
+      html = render(view)
+      assert html =~ "Test how consumers can query your endpoint"
+      assert html =~ "?sql="
+      assert html =~ "?lql="
+      assert html =~ "restricted to the CTE tables"
+    end
   end
 end

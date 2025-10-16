@@ -64,6 +64,24 @@ defmodule LogflareWeb.EndpointsLive do
       |> assign_backends()
       |> assign(:parsed_result, nil)
       |> assign(:redact_pii, false)
+      |> assign(:sandbox_query, nil)
+      |> assign(:sandbox_query_result_rows, nil)
+      |> assign(:sandbox_total_bytes_processed, nil)
+      |> assign(:sandbox_error, nil)
+      |> assign(:show_transformed_query, false)
+      |> assign(:transformed_sandbox_query, nil)
+      |> assign(
+        :sandbox_form,
+        to_form(
+          %{
+            "query_mode" => "sql",
+            "sandbox_query" => "",
+            "params" => %{},
+            "show_transformed" => false
+          },
+          as: "sandbox_form"
+        )
+      )
 
     {:ok, socket}
   end
@@ -242,6 +260,49 @@ defmodule LogflareWeb.EndpointsLive do
     end
   end
 
+  def handle_event(
+        "run-sandbox-query",
+        %{"sandbox_form" => payload},
+        %{assigns: %{show_endpoint: endpoint}} = socket
+      ) do
+    show_transformed? = Map.get(payload, "show_transformed") == "true"
+    sandbox_query = Map.get(payload, "sandbox_query")
+    query_params = Map.get(payload, "params", %{})
+
+    sandbox_params =
+      case Map.get(payload, "query_mode", "sql") do
+        "sql" -> Map.put(query_params, "sql", sandbox_query)
+        "lql" -> Map.put(query_params, "lql", sandbox_query)
+        _ -> query_params
+      end
+
+    case Endpoints.run_query(endpoint, sandbox_params) do
+      {:ok, %{rows: rows} = result} ->
+        total_bytes_processed = Map.get(result, :total_bytes_processed)
+
+        socket =
+          socket
+          |> put_flash(:info, "Ran sandbox query successfully")
+          |> assign(:sandbox_query_result_rows, rows)
+          |> assign(:sandbox_total_bytes_processed, total_bytes_processed)
+          |> assign(:sandbox_error, nil)
+          |> assign(:show_transformed_query, show_transformed?)
+          |> assign(:sandbox_query, sandbox_query)
+          |> maybe_assign_transformed_query(show_transformed?, endpoint, sandbox_params)
+
+        {:noreply, socket}
+
+      {:error, error} ->
+        {:noreply,
+         socket
+         |> put_flash(:error, "Error occurred when running sandbox query")
+         |> assign(:sandbox_error, format_sandbox_error(error))
+         |> assign(:sandbox_query_result_rows, nil)
+         |> assign(:sandbox_total_bytes_processed, nil)
+         |> assign(:sandbox_query, sandbox_query)}
+    end
+  end
+
   def handle_event("apply-beta", _params, %{assigns: %{user: user}} = socket) do
     Logger.debug("Endpoints application submitted.", %{user: %{id: user.id, email: user.email}})
 
@@ -361,6 +422,15 @@ defmodule LogflareWeb.EndpointsLive do
     assign(socket, :determined_language, determined_language)
   end
 
+  defp maybe_assign_transformed_query(socket, false, _endpoint, _params), do: socket
+
+  defp maybe_assign_transformed_query(socket, true, endpoint, params) do
+    case Endpoints.get_transformed_query(endpoint, params) do
+      {:ok, transformed} -> assign(socket, :transformed_sandbox_query, transformed)
+      _ -> assign(socket, :transformed_sandbox_query, nil)
+    end
+  end
+
   defp upsert_query(show_endpoint, user, params) do
     case show_endpoint do
       nil -> Endpoints.create_query(user, params)
@@ -387,4 +457,7 @@ defmodule LogflareWeb.EndpointsLive do
   end
 
   defp maybe_redact_query(query, _redact_pii), do: query
+
+  defp format_sandbox_error(error) when is_binary(error), do: error
+  defp format_sandbox_error(error), do: inspect(error)
 end
