@@ -826,5 +826,44 @@ defmodule LogflareWeb.EndpointsLiveTest do
       assert html =~ "?lql="
       assert html =~ "restricted to the CTE tables"
     end
+
+    test "sandbox query errors do not expose Ecto query internals", %{
+      conn: conn,
+      user: user
+    } do
+      endpoint =
+        insert(:endpoint,
+          user: user,
+          sandboxable: true,
+          query: """
+          WITH event_logs AS (
+            SELECT timestamp, event_message FROM YourApp.SourceName
+          )
+          SELECT * FROM event_logs
+          """
+        )
+
+      {:ok, view, _html} = live(conn, "/endpoints/#{endpoint.id}")
+
+      view
+      |> element("form", "Test Sandbox Query")
+      |> render_submit(%{
+        sandbox_form: %{
+          query_mode: "lql",
+          sandbox_query: "c:avg(timestamp)",
+          params: %{},
+          show_transformed: "false"
+        }
+      })
+
+      # Should show error without exposing Ecto query internals
+      assert has_element?(view, ".alert-danger") or
+               has_element?(view, "h5", "Sandbox Query Error")
+
+      html = render(view)
+      refute html =~ "field(e0"
+      refute html =~ "from e0 in"
+      refute html =~ "%Ecto.Query{"
+    end
   end
 end

@@ -1,8 +1,7 @@
 <div :if={@sandbox_query_result_rows || @sandbox_error}>
   <%= if @sandbox_error do %>
     <div class="alert alert-danger tw-mt-4">
-      <h5 class="tw-text-white tw-mb-2">Sandbox Query Error</h5>
-      <pre class="tw-whitespace-pre-wrap tw-text-sm tw-mb-0"><%= @sandbox_error %></pre>
+      <p class="tw-mb-0"><%= @sandbox_error %></p>
     </div>
   <% else %>
     <div class="tw-mt-4">

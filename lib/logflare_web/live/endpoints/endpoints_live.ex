@@ -268,13 +268,26 @@ defmodule LogflareWeb.EndpointsLive do
     show_transformed? = Map.get(payload, "show_transformed") == "true"
     sandbox_query = Map.get(payload, "sandbox_query")
     query_params = Map.get(payload, "params", %{})
+    query_mode = Map.get(payload, "query_mode", "sql")
 
     sandbox_params =
-      case Map.get(payload, "query_mode", "sql") do
+      case query_mode do
         "sql" -> Map.put(query_params, "sql", sandbox_query)
         "lql" -> Map.put(query_params, "lql", sandbox_query)
         _ -> query_params
       end
+
+    # Update the form to preserve query mode and other inputs
+    updated_form =
+      to_form(
+        %{
+          "query_mode" => query_mode,
+          "sandbox_query" => sandbox_query,
+          "params" => query_params,
+          "show_transformed" => show_transformed?
+        },
+        as: "sandbox_form"
+      )
 
     case Endpoints.run_query(endpoint, sandbox_params) do
       {:ok, %{rows: rows} = result} ->
@@ -283,6 +296,7 @@ defmodule LogflareWeb.EndpointsLive do
         socket =
           socket
           |> put_flash(:info, "Ran sandbox query successfully")
+          |> assign(:sandbox_form, updated_form)
           |> assign(:sandbox_query_result_rows, rows)
           |> assign(:sandbox_total_bytes_processed, total_bytes_processed)
           |> assign(:sandbox_error, nil)
@@ -292,11 +306,12 @@ defmodule LogflareWeb.EndpointsLive do
 
         {:noreply, socket}
 
-      {:error, error} ->
+      {:error, _error} ->
         {:noreply,
          socket
          |> put_flash(:error, "Error occurred when running sandbox query")
-         |> assign(:sandbox_error, format_sandbox_error(error))
+         |> assign(:sandbox_form, updated_form)
+         |> assign(:sandbox_error, "Please verify your query syntax.")
          |> assign(:sandbox_query_result_rows, nil)
          |> assign(:sandbox_total_bytes_processed, nil)
          |> assign(:sandbox_query, sandbox_query)}
@@ -457,7 +472,4 @@ defmodule LogflareWeb.EndpointsLive do
   end
 
   defp maybe_redact_query(query, _redact_pii), do: query
-
-  defp format_sandbox_error(error) when is_binary(error), do: error
-  defp format_sandbox_error(error), do: inspect(error)
 end
