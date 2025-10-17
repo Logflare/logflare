@@ -120,6 +120,7 @@ defmodule LogflareWeb.AuthController do
       conn
       |> delete_session(:redirect_to)
       |> put_session(:user_id, user.id)
+      |> put_session(:current_email, user.email)
       |> redirect(to: redirect)
     else
       conn

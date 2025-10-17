@@ -60,7 +60,8 @@ defmodule LogflareWeb.Plugs.RequireAuth do
     end
   end
 
-  defp put_last_provider_cookie(%{assigns: %{user: _user, team_user: team_user}} = conn) do
+  defp put_last_provider_cookie(%{assigns: %{user: _user, team_user: team_user}} = conn)
+       when is_struct(team_user) do
     put_resp_cookie(
       conn,
       "_logflare_last_provider",
