@@ -71,14 +71,13 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
 
   @impl Logflare.Backends.Adaptor
   def ecto_to_sql(%Ecto.Query{} = query, _opts) do
-    try do
-      {ch_sql, ch_params} = Ecto.Adapters.ClickHouse.to_sql(:all, query)
-      ch_params = Enum.map(ch_params, &SqlUtils.normalize_datetime_param/1)
-      {:ok, {ch_sql, ch_params}}
-    rescue
-      error ->
-        Logger.warning("Failed to convert Ecto query to ClickHouse SQL: #{inspect(error)}")
-        {:error, "Could not convert Ecto query: #{Exception.message(error)}"}
+    case Logflare.Ecto.ClickHouse.to_sql(query) do
+      {:ok, {ch_sql, ch_params}} ->
+        ch_params = Enum.map(ch_params, &SqlUtils.normalize_datetime_param/1)
+        {:ok, {ch_sql, ch_params}}
+
+      {:error, _reason} = error ->
+        error
     end
   end
 

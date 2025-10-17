@@ -277,6 +277,12 @@ defmodule LogflareWeb.EndpointsLive do
         _ -> query_params
       end
 
+    Logger.metadata(
+      endpoint_id: endpoint.id,
+      backend_id: endpoint.backend_id,
+      sandbox_params: sandbox_params
+    )
+
     # Update the form to preserve query mode and other inputs
     updated_form =
       to_form(
@@ -306,7 +312,11 @@ defmodule LogflareWeb.EndpointsLive do
 
         {:noreply, socket}
 
-      {:error, _error} ->
+      {:error, error} ->
+        Logger.error(
+          "Sandbox query failed: '#{inspect(error)}', endpoint_id: #{endpoint.id}, backend_id: #{endpoint.backend_id}, sandbox_params: '#{inspect(sandbox_params)}'"
+        )
+
         {:noreply,
          socket
          |> put_flash(:error, "Error occurred when running sandbox query")
