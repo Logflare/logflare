@@ -376,6 +376,7 @@ defmodule LogflareWeb.Router do
     get("/login/email", Auth.EmailController, :login)
     post("/login/email", Auth.EmailController, :send_link)
     get("/login/email/verify", Auth.EmailController, :verify_token)
+    get("/login/single_tenant", AuthController, :single_tenant_signin)
     get("/logout", AuthController, :logout)
     get("/:provider", Auth.OauthController, :request)
     post("/login/email/verify", Auth.EmailController, :verify_token_form)

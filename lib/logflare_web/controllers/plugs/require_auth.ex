@@ -6,25 +6,26 @@ defmodule LogflareWeb.Plugs.RequireAuth do
 
   alias LogflareWeb.Router.Helpers, as: Routes
 
+  use LogflareWeb, :routes
+
   def init(_opts), do: nil
 
   def call(conn, _opts) do
-    assigns = conn.assigns
-    user = assigns[:user]
     is_single_tenant = SingleTenant.single_tenant?()
     user_id = get_session(conn, :user_id)
 
     cond do
-      user != nil and is_single_tenant ->
+      is_nil(user_id) and is_single_tenant ->
         conn
-        |> put_session(:user_id, user.id)
+        |> put_session(:redirect_to, conn.request_path)
+        |> redirect(to: ~p"/auth/login/single_tenant")
+        |> halt()
 
-      user && user_id ->
+      user_id ->
         referer = get_session(conn, :redirect_to)
 
         if referer do
           conn
-          |> put_session(:user_id, user_id)
           |> put_session(:redirect_to, nil)
           |> maybe_get_put_team_user_session()
           |> redirect(to: referer)
@@ -32,7 +33,6 @@ defmodule LogflareWeb.Plugs.RequireAuth do
         else
           conn
           |> put_last_provider_cookie()
-          |> put_session(:user_id, user_id)
           |> maybe_get_put_team_user_session()
         end
 
@@ -42,7 +42,7 @@ defmodule LogflareWeb.Plugs.RequireAuth do
         |> redirect(to: Routes.auth_path(conn, :login))
         |> halt()
 
-      is_nil(user) ->
+      is_nil(user_id) ->
         referer =
           case conn.query_string do
             "" ->
