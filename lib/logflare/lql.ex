@@ -199,10 +199,8 @@ defmodule Logflare.Lql do
   defp build_select_query(cte_table_name, select_rules, filter_rules, dialect) do
     query =
       if Enum.empty?(select_rules) or Rules.has_wildcard_selection?(select_rules) do
-        # Wildcard or no select rules - just select everything
-        from(t in cte_table_name, select: t)
+        from(t in cte_table_name, select: fragment("*"))
       else
-        # Build select with explicit fields as a map
         select_map =
           Enum.reduce(select_rules, %{}, fn %{path: path}, acc ->
             Map.put(acc, path, dynamic([t], field(t, ^path)))
@@ -243,7 +241,7 @@ defmodule Logflare.Lql do
         :clickhouse -> ClickhouseAdaptor
       end
 
-    with {:ok, {sql, _params}} <- adaptor.ecto_to_sql(query, []) do
+    with {:ok, {sql, _params}} <- adaptor.ecto_to_sql(query, inline_params: true) do
       {:ok, sql}
     end
   end

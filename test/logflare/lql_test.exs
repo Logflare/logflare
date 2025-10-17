@@ -412,5 +412,41 @@ defmodule Logflare.LqlTest do
         Lql.to_sandboxed_sql("s:*", "table", :invalid)
       end
     end
+
+    test "converts regex filter to ClickHouse SQL with inlined parameters" do
+      lql = "~another"
+      {:ok, sql} = Lql.to_sandboxed_sql(lql, "event_logs", :clickhouse)
+
+      assert String.downcase(sql) =~ "select"
+      assert String.downcase(sql) =~ "from"
+      assert String.downcase(sql) =~ "event_logs"
+      assert String.downcase(sql) =~ "match"
+
+      # Verify that the parameter is inlined (not using {$0:String} syntax)
+      refute sql =~ ~r/\{\$\d+:/
+
+      # Verify that the regex pattern is inlined as a string
+      assert sql =~ "'another'"
+    end
+
+    test "converts wildcard select to BigQuery SQL" do
+      lql = ""
+      {:ok, sql} = Lql.to_sandboxed_sql(lql, "my_table", :bigquery)
+
+      assert String.downcase(sql) =~ "select"
+      assert String.downcase(sql) =~ "*"
+      assert String.downcase(sql) =~ "from"
+      assert String.downcase(sql) =~ "my_table"
+    end
+
+    test "converts wildcard select to ClickHouse SQL" do
+      lql = ""
+      {:ok, sql} = Lql.to_sandboxed_sql(lql, "my_table", :clickhouse)
+
+      assert String.downcase(sql) =~ "select"
+      assert String.downcase(sql) =~ "*"
+      assert String.downcase(sql) =~ "from"
+      assert String.downcase(sql) =~ "my_table"
+    end
   end
 end

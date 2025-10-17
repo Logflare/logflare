@@ -475,8 +475,96 @@ defmodule Logflare.Ecto.ClickHouseTest do
       query = from(t in "logs", where: t.field1 == ^value or t.field2 == ^value, select: t)
 
       assert {:ok, {_sql, params}} = ClickHouse.to_sql(query)
+
       # Should have two separate parameter references
       assert params == [value, value]
+    end
+  end
+
+  describe "to_sql/2 with inline_params option" do
+    test "inlines string parameters when inline_params: true" do
+      query = from(t in "logs", where: t.message == ^"test", select: t)
+
+      assert {:ok, {sql, params}} = ClickHouse.to_sql(query, inline_params: true)
+
+      assert params == []
+      assert String.contains?(sql, "'test'")
+      refute String.contains?(sql, "{$")
+    end
+
+    test "inlines integer parameters when inline_params: true" do
+      query = from(t in "logs", where: t.count == ^42, select: t)
+
+      assert {:ok, {sql, params}} = ClickHouse.to_sql(query, inline_params: true)
+      assert params == []
+      assert String.contains?(sql, "42")
+      refute String.contains?(sql, "{$")
+    end
+
+    test "inlines boolean parameters when inline_params: true" do
+      query = from(t in "logs", where: t.active == ^true, select: t)
+
+      assert {:ok, {sql, params}} = ClickHouse.to_sql(query, inline_params: true)
+      assert params == []
+
+      # Boolean true should be inlined as 'true'
+      assert String.contains?(sql, "true")
+      refute String.contains?(sql, "{$")
+    end
+
+    test "inlines regex pattern parameters when inline_params: true" do
+      query =
+        from(t in "logs",
+          where: fragment("match(?, ?)", field(t, ^"event_message"), ^"error.*timeout"),
+          select: t
+        )
+
+      assert {:ok, {sql, params}} = ClickHouse.to_sql(query, inline_params: true)
+      assert params == []
+      assert String.contains?(sql, "'error.*timeout'")
+      refute String.contains?(sql, "{$")
+    end
+
+    test "inlines multiple parameters when inline_params: true" do
+      query =
+        from(t in "logs",
+          where: t.level == ^"error" and t.code > ^500,
+          select: t
+        )
+
+      assert {:ok, {sql, params}} = ClickHouse.to_sql(query, inline_params: true)
+      assert params == []
+      assert String.contains?(sql, "'error'")
+      assert String.contains?(sql, "500")
+      refute String.contains?(sql, "{$")
+    end
+
+    test "handles empty params list when inline_params: true" do
+      query = from(t in "logs", where: t.level == "error", select: t)
+
+      assert {:ok, {sql, params}} = ClickHouse.to_sql(query, inline_params: true)
+      assert params == []
+      refute String.contains?(sql, "{$")
+    end
+
+    test "uses parameter placeholders when inline_params: false (default)" do
+      query = from(t in "logs", where: t.message == ^"test", select: t)
+
+      assert {:ok, {sql, params}} = ClickHouse.to_sql(query, inline_params: false)
+      assert params == ["test"]
+      assert String.contains?(sql, "{$0:String}")
+      refute String.contains?(sql, "'test'")
+    end
+
+    test "escapes single quotes in inlined string parameters" do
+      query = from(t in "logs", where: t.message == ^"test's message", select: t)
+
+      assert {:ok, {sql, params}} = ClickHouse.to_sql(query, inline_params: true)
+      assert params == []
+
+      # Single quotes should be escaped by doubling them
+      assert String.contains?(sql, "'test''s message'")
+      refute String.contains?(sql, "{$")
     end
   end
 end

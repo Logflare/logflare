@@ -48,12 +48,20 @@ defmodule Logflare.Ecto.ClickHouse do
   Converts an Ecto query to ClickHouse SQL.
 
   Accepts either raw Ecto queries or pre-planned queries.
+
+  ## Options
+
+  - `:inline_params` - When `true`, inlines parameters directly into the SQL instead of using
+    ClickHouse's `{$N:Type}` parameter syntax. This is used for sandboxed queries.
+    Defaults to `false`.
   """
-  @spec to_sql(Queryable.t()) ::
+  @spec to_sql(Queryable.t(), opts :: Keyword.t()) ::
           {:ok, {sql :: String.t(), params :: list()}} | {:error, String.t()}
-  def to_sql(queryable) do
+  def to_sql(queryable, opts \\ []) do
     # credo:disable-for-next-line
     try do
+      inline_params? = Keyword.get(opts, :inline_params, false)
+
       query =
         queryable
         |> Queryable.to_query()
@@ -70,6 +78,14 @@ defmodule Logflare.Ecto.ClickHouse do
 
       sql_iodata = all(query, params)
       sql = IO.iodata_to_binary(sql_iodata)
+
+      {sql, params} =
+        if inline_params? and not Enum.empty?(params) do
+          {inline_parameters_in_sql(sql, params), []}
+        else
+          {sql, params}
+        end
+
       {:ok, {sql, params}}
     rescue
       e in [QueryError, ArgumentError] ->
@@ -1037,5 +1053,17 @@ defmodule Logflare.Ecto.ClickHouse do
       {%{aliases: %{^as => ix}}, sources} -> {ix, sources}
       {%{} = parent, _sources} -> get_parent_sources_ix(parent, as)
     end
+  end
+
+  @spec inline_parameters_in_sql(sql :: String.t(), params :: list()) :: String.t()
+  defp inline_parameters_in_sql(sql, params) when is_binary(sql) and is_list(params) do
+    params
+    |> Enum.with_index()
+    |> Enum.reduce(sql, fn {param_value, index}, acc_sql ->
+      # Match {$N:Type} pattern (case-insensitive for type)
+      pattern = ~r/\{\$#{index}:[^}]+\}/i
+      replacement = Params.inline_param(param_value) |> IO.iodata_to_binary()
+      String.replace(acc_sql, pattern, replacement, global: false)
+    end)
   end
 end

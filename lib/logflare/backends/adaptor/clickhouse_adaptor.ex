@@ -70,8 +70,8 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
   end
 
   @impl Logflare.Backends.Adaptor
-  def ecto_to_sql(%Ecto.Query{} = query, _opts) do
-    case Logflare.Ecto.ClickHouse.to_sql(query) do
+  def ecto_to_sql(%Ecto.Query{} = query, opts) do
+    case Logflare.Ecto.ClickHouse.to_sql(query, opts) do
       {:ok, {ch_sql, ch_params}} ->
         ch_params = Enum.map(ch_params, &SqlUtils.normalize_datetime_param/1)
         {:ok, {ch_sql, ch_params}}
