@@ -1,0 +1,54 @@
+<div class="tw-mt-4">
+  <h4 class="tw-text-white tw-mb-2">Test Sandbox Query</h4>
+  <p class="tw-text-sm tw-text-gray-400 tw-mb-4">
+    Test how consumers can query your endpoint using the <code class="tw-text-xs tw-bg-zinc-700 tw-px-1 tw-rounded">?sql=</code> or <code class="tw-text-xs tw-bg-zinc-700 tw-px-1 tw-rounded">?lql=</code> parameter.
+    Queries are restricted to the CTE tables defined in your endpoint query above.
+  </p>
+
+  <.form :let={f} for={@sandbox_form} phx-submit="run-sandbox-query">
+    <div class="tw-mb-4">
+      <label class="tw-text-white tw-text-sm tw-mb-2 tw-block">Query Mode</label>
+      <div class="tw-flex tw-gap-4">
+        <%= radio_button(f, :query_mode, "sql",
+          checked: true,
+          class: "tw-mr-1"
+        ) %>
+        <%= label(f, :query_mode_sql, "SQL", class: "tw-text-white tw-text-sm tw-mr-4") %>
+
+        <%= radio_button(f, :query_mode, "lql", class: "tw-mr-1") %>
+        <%= label(f, :query_mode_lql, "LQL", class: "tw-text-white tw-text-sm") %>
+      </div>
+    </div>
+
+    <div class="tw-mb-4">
+      <%= label(f, :sandbox_query, "Consumer Query", class: "tw-text-white tw-text-sm tw-mb-2 tw-block") %>
+      <%= textarea(f, :sandbox_query,
+        placeholder: "SELECT * FROM cte_name WHERE condition...",
+        rows: 6,
+        value: @sandbox_query || "",
+        class: "form-control tw-w-full tw-bg-zinc-900 tw-text-white tw-border-zinc-700 tw-rounded tw-p-2 tw-text-sm tw-font-mono"
+      ) %>
+    </div>
+
+    <.inputs_for :let={params_f} field={f[:params]}>
+      <div :if={@declared_params != []} class="tw-mb-4">
+        <label class="tw-text-white tw-text-sm tw-mb-2 tw-block">Parameters</label>
+        <div :for={key <- @declared_params} class="tw-mb-2">
+          <%= label(params_f, key, key, class: "tw-text-white tw-text-xs tw-mb-1 tw-block") %>
+          <%= text_input(params_f, key,
+            value: Map.get(@prev_params, key, ""),
+            class: "form-control tw-w-full tw-bg-zinc-900 tw-text-white tw-border-zinc-700 tw-rounded tw-p-2 tw-text-sm"
+          ) %>
+        </div>
+      </div>
+    </.inputs_for>
+
+    <div class="tw-flex tw-items-center tw-gap-4 tw-mb-4">
+      <%= submit("Test Sandbox Query", class: "btn btn-secondary") %>
+
+      <label class="tw-flex tw-items-center tw-text-white tw-text-sm">
+        <%= checkbox(f, :show_transformed, checked: false, class: "tw-mr-2") %> Show transformed query
+      </label>
+    </div>
+  </.form>
+</div>
