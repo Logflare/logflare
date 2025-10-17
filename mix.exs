@@ -167,7 +167,6 @@ defmodule Logflare.Mixfile do
 
       # ClickHouse
       {:ch, "~> 0.5"},
-      {:ecto_ch, "~> 0.8"},
 
       # DataFrames
       {:explorer, "~> 0.11.1"},

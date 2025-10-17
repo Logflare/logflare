@@ -512,7 +512,7 @@ defmodule Logflare.EndpointsTest do
       assert Endpoints.derive_language_from_backend_id(999_999) == :bq_sql
     end
 
-    test "returns correct language for an existing backend" do
+    test "returns correct language for clickhouse backend" do
       user = insert(:user)
       backend = insert(:backend, user: user, type: :clickhouse)
 

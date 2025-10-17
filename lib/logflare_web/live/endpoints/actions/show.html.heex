@@ -84,6 +84,11 @@
   <.run_query_form {assigns} />
   <.run_query_result {assigns} />
 
+  <div :if={@show_endpoint.sandboxable} class="tw-mt-8 tw-border-t tw-border-gray-700 tw-pt-8">
+    <.run_sandbox_query_form {assigns} />
+    <.run_sandbox_query_result {assigns} />
+  </div>
+
   <h3>Call your endpoint</h3>
   <div class="tw-bg-zinc-800 tw-rounded tw-p-2 tw-flex tw-flex-col tw-gap-2">
     <code class="tw-whitespace-pre-line">

@@ -356,6 +356,109 @@ defmodule LogflareWeb.EndpointsControllerTest do
       assert_received {:sql, sql}
       assert String.downcase(sql) =~ "select 2"
     end
+
+    test "LQL params in GET query string", %{conn: conn, user: user} do
+      pid = self()
+
+      GoogleApi.BigQuery.V2.Api.Jobs
+      |> stub(:bigquery_jobs_query, fn _conn, _proj_id, opts ->
+        send(pid, {:sql, opts[:body].query})
+
+        {:ok, TestUtils.gen_bq_response()}
+      end)
+
+      endpoint =
+        insert(:endpoint,
+          user: user,
+          enable_auth: true,
+          sandboxable: true,
+          query:
+            "with errors as (select 'test error' as err, 123 as code) select err, code from errors"
+        )
+
+      conn =
+        conn
+        |> put_req_header("x-api-key", user.api_key)
+        |> get(~p"/api/endpoints/query/#{endpoint.name}?lql=s:err")
+
+      response = json_response(conn, 200)
+
+      assert [%{"event_message" => "some event message"}] = response["result"]
+      assert conn.halted == false
+      assert_received {:sql, sql}
+      # Should contain the LQL-generated SQL selecting from the CTE
+      assert String.downcase(sql) =~ "select"
+      assert String.downcase(sql) =~ "err"
+    end
+
+    test "LQL params in POST body", %{conn: conn, user: user} do
+      pid = self()
+
+      GoogleApi.BigQuery.V2.Api.Jobs
+      |> stub(:bigquery_jobs_query, fn _conn, _proj_id, opts ->
+        send(pid, {:sql, opts[:body].query})
+
+        {:ok, TestUtils.gen_bq_response()}
+      end)
+
+      endpoint =
+        insert(:endpoint,
+          user: user,
+          enable_auth: true,
+          sandboxable: true,
+          query:
+            "with filtered_data as (select 1 as id, 20 as value union all select 2 as id, 30 as value) select id, value from filtered_data"
+        )
+
+      conn =
+        conn
+        |> put_req_header("x-api-key", user.api_key)
+        |> post(~p"/api/endpoints/query/#{endpoint.name}", %{lql: "s:id s:value"})
+
+      assert [%{"event_message" => "some event message"}] = json_response(conn, 200)["result"]
+      assert conn.halted == false
+      assert_received {:sql, sql}
+      assert String.downcase(sql) =~ "select"
+      assert String.downcase(sql) =~ "id"
+      assert String.downcase(sql) =~ "value"
+    end
+
+    test "LQL chart aggregation", %{conn: conn, user: user} do
+      pid = self()
+
+      GoogleApi.BigQuery.V2.Api.Jobs
+      |> stub(:bigquery_jobs_query, fn _conn, _proj_id, opts ->
+        send(pid, {:sql, opts[:body].query})
+
+        {:ok, TestUtils.gen_bq_response()}
+      end)
+
+      endpoint =
+        insert(:endpoint,
+          user: user,
+          enable_auth: true,
+          sandboxable: true,
+          query:
+            "with logs as (select current_timestamp() as timestamp, 100 as count) select timestamp, count from logs"
+        )
+
+      conn =
+        conn
+        |> put_req_header("x-api-key", user.api_key)
+        |> post(~p"/api/endpoints/query/#{endpoint.name}", %{
+          lql: "c:count(*) c:group_by(t::minute)"
+        })
+
+      response = json_response(conn, 200)
+
+      assert [%{"event_message" => "some event message"}] = response["result"]
+      assert conn.halted == false
+      assert_received {:sql, sql}
+      # Should contain GROUP BY and aggregation
+      assert String.downcase(sql) =~ "group by"
+      assert String.downcase(sql) =~ "count"
+      assert String.downcase(sql) =~ "timestamp"
+    end
   end
 
   describe "single tenant endpoint query" do

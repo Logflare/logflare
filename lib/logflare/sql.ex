@@ -379,10 +379,33 @@ defmodule Logflare.Sql do
     dialect = Keyword.get(opts, :dialect, "bigquery")
 
     with {:ok, ast} <- Parser.parse(dialect, query),
-         [_ | _] <- extract_cte_aliases(ast) do
+         [_ | _] <- do_extract_cte_aliases(ast) do
       true
     else
       _ -> false
+    end
+  end
+
+  @doc """
+  Extracts CTE (Common Table Expression) aliases from a SQL query.
+
+  Returns a list of CTE table names defined in the query's WITH clause.
+
+  ## Examples
+
+      iex> Logflare.Sql.extract_cte_aliases("WITH errors AS (SELECT * FROM logs) SELECT * FROM errors")
+      {:ok, ["errors"]}
+
+      iex> Logflare.Sql.extract_cte_aliases("SELECT * FROM logs")
+      {:ok, []}
+  """
+  @spec extract_cte_aliases(query :: String.t(), opts :: Keyword.t()) ::
+          {:ok, [String.t()]} | {:error, String.t()}
+  def extract_cte_aliases(query, opts \\ []) when is_non_empty_binary(query) and is_list(opts) do
+    dialect = Keyword.get(opts, :dialect, "bigquery")
+
+    with {:ok, ast} <- Parser.parse(dialect, query) do
+      {:ok, do_extract_cte_aliases(ast)}
     end
   end
 
@@ -510,10 +533,10 @@ defmodule Logflare.Sql do
          ast: ast
        })
        when is_list(name) do
-    cte_names = extract_cte_aliases(ast)
+    cte_names = do_extract_cte_aliases(ast)
 
     sandboxed_cte_names =
-      if sandboxed_query_ast, do: extract_cte_aliases(sandboxed_query_ast), else: []
+      if sandboxed_query_ast, do: do_extract_cte_aliases(sandboxed_query_ast), else: []
 
     qualified_name =
       Enum.map_join(name, ".", fn %{"value" => part} -> part end)
@@ -670,7 +693,7 @@ defmodule Logflare.Sql do
         table_alias
       end
 
-    sandboxed_cte_names = extract_cte_aliases(ast)
+    sandboxed_cte_names = do_extract_cte_aliases(ast)
 
     unknown_table_names =
       for statement <- ast,
@@ -848,7 +871,7 @@ defmodule Logflare.Sql do
          ast: ast
        })
        when is_list(name) do
-    cte_names = extract_cte_aliases(ast)
+    cte_names = do_extract_cte_aliases(ast)
 
     # Join qualified table name parts back together (e.g., ["a", "b", "c"] -> "a.b.c")
     qualified_name = Enum.map_join(name, ".", fn %{"value" => part} -> part end)
@@ -876,7 +899,7 @@ defmodule Logflare.Sql do
 
   defp find_all_source_names(_kv, acc, _data), do: acc
 
-  defp extract_cte_aliases(ast) do
+  defp do_extract_cte_aliases(ast) do
     for statement <- ast,
         %{"alias" => %{"name" => %{"value" => cte_name}}} <-
           get_in(statement, ["Query", "with", "cte_tables"]) || [] do

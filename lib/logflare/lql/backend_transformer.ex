@@ -9,7 +9,6 @@ defmodule Logflare.Lql.BackendTransformer do
   LQL `ChartRule`, `FilterRule`, and `SelectRule` structs.
   """
 
-  alias Logflare.Lql.Rules.ChartRule
   alias Logflare.Lql.Rules.FilterRule
   alias Logflare.Lql.Rules.SelectRule
   alias Logflare.Sources.Source
@@ -43,11 +42,15 @@ defmodule Logflare.Lql.BackendTransformer do
   @callback transform_filter_rule(FilterRule.t(), transformation_data()) :: term()
 
   @doc """
-  Transforms a single LQL `ChartRule` into a backend-specific aggregation query.
-
-  Converts LQL chart/aggregation rules into backend-specific query structures.
+  Transforms a `ChartRule` into a backend-specific chart query with time-series aggregation.
   """
-  @callback transform_chart_rule(ChartRule.t(), transformation_data()) :: term()
+  @callback transform_chart_rule(
+              query :: Ecto.Query.t(),
+              aggregate :: :count | :avg | :sum | :max | :p50 | :p95 | :p99,
+              field_path :: String.t(),
+              period :: :second | :minute | :hour | :day,
+              timestamp_field :: String.t()
+            ) :: Ecto.Query.t()
 
   @doc """
   Applies multiple LQL `FilterRules` to a query, returning the modified query.

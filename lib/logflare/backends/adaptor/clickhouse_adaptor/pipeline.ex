@@ -7,10 +7,11 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.Pipeline do
   """
 
   alias Broadway.Message
+  alias Logflare.Backends
   alias Logflare.Backends.Adaptor.ClickhouseAdaptor
   alias Logflare.Backends.BufferProducer
-  alias Logflare.Backends
   alias Logflare.Sources
+  alias Logflare.Utils
 
   @producer_concurrency 1
   @processor_concurrency 5
@@ -55,7 +56,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.Pipeline do
 
   # see the implementation for `Backends.via_source/2` for how tuples are used to identify child processes
   def process_name({:via, module, {registry, identifier}}, base_name) do
-    new_identifier = Tuple.insert_at(identifier, tuple_size(identifier), base_name)
+    new_identifier = Utils.append_to_tuple(identifier, base_name)
     {:via, module, {registry, new_identifier}}
   end
 

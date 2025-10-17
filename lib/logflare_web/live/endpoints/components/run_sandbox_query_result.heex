@@ -1,0 +1,28 @@
+<div :if={@sandbox_query_result_rows || @sandbox_error}>
+  <%= if @sandbox_error do %>
+    <div class="alert alert-danger tw-mt-4">
+      <p class="tw-mb-0"><%= @sandbox_error %></p>
+    </div>
+  <% else %>
+    <div class="tw-mt-4">
+      <div class="tw-flex tw-justify-between tw-mb-2">
+        <h5 class="tw-text-white">Sandbox Query Results</h5>
+
+        <QueryComponents.query_cost :if={@sandbox_total_bytes_processed} bytes={@sandbox_total_bytes_processed} />
+      </div>
+
+      <code class="tw-whitespace-pre-wrap tw-overflow-x-auto tw-block tw-text-white tw-bg-zinc-800 tw-rounded tw-p-2 tw-text-xs">
+        <%= Jason.encode!(@sandbox_query_result_rows) |> Jason.Formatter.pretty_print() %>
+      </code>
+
+      <details :if={@show_transformed_query && @transformed_sandbox_query} class="tw-mt-4">
+        <summary class="tw-cursor-pointer tw-text-sm tw-text-white tw-font-semibold">
+          Show Transformed Query
+        </summary>
+        <code class="tw-whitespace-pre-wrap tw-block tw-text-white tw-bg-zinc-900 tw-rounded tw-p-2 tw-text-xs tw-mt-2">
+          <%= @transformed_sandbox_query %>
+        </code>
+      </details>
+    </div>
+  <% end %>
+</div>

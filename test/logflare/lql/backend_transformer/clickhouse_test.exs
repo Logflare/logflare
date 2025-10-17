@@ -9,22 +9,37 @@ defmodule Logflare.Lql.BackendTransformer.ClickHouseTest do
   alias Logflare.Lql.Rules.SelectRule
 
   describe "behaviour implementation" do
-    test "dialect/0 returns 'clickhouse'" do
-      assert ClickHouse.dialect() == "clickhouse"
+    test "implements all required callbacks" do
+      assert function_exported?(ClickHouse, :transform_filter_rule, 2)
+      assert function_exported?(ClickHouse, :transform_chart_rule, 5)
+      assert function_exported?(ClickHouse, :transform_select_rule, 2)
+      assert function_exported?(ClickHouse, :apply_filter_rules_to_query, 3)
+      assert function_exported?(ClickHouse, :dialect, 0)
+      assert function_exported?(ClickHouse, :quote_style, 0)
+      assert function_exported?(ClickHouse, :validate_transformation_data, 1)
+      assert function_exported?(ClickHouse, :build_transformation_data, 1)
+      assert function_exported?(ClickHouse, :handle_nested_field_access, 2)
     end
 
-    test "quote_style/0 returns double quotes" do
+    test "returns correct dialect and quote style" do
+      assert ClickHouse.dialect() == "clickhouse"
       assert ClickHouse.quote_style() == "\""
     end
+  end
 
-    test "validate_transformation_data/1 requires schema" do
+  describe "validate_transformation_data/1" do
+    test "validates valid transformation data" do
       assert ClickHouse.validate_transformation_data(%{schema: %{}}) == :ok
+    end
 
+    test "rejects invalid transformation data" do
       assert ClickHouse.validate_transformation_data(%{}) ==
                {:error, "ClickHouse transformer requires schema in transformation data"}
     end
+  end
 
-    test "build_transformation_data/1 returns base data as-is" do
+  describe "build_transformation_data/1" do
+    test "passes through base data as-is" do
       data = %{test: "value"}
       assert ClickHouse.build_transformation_data(data) == data
     end
@@ -157,6 +172,64 @@ defmodule Logflare.Lql.BackendTransformer.ClickHouseTest do
 
       result = ClickHouse.transform_filter_rule(filter_rule, %{})
       assert %DynamicExpr{} = result
+    end
+  end
+
+  describe "transform_chart_rule/5" do
+    setup do
+      base_query = from("logs")
+      [base_query: base_query]
+    end
+
+    test "transforms count aggregation with minute period", %{base_query: base_query} do
+      result = ClickHouse.transform_chart_rule(base_query, :count, "*", :minute, "timestamp")
+
+      assert %Ecto.Query{} = result
+      assert result.group_bys != []
+      assert result.order_bys != []
+    end
+
+    test "transforms avg aggregation with hour period", %{base_query: base_query} do
+      result = ClickHouse.transform_chart_rule(base_query, :avg, "latency", :hour, "timestamp")
+
+      assert %Ecto.Query{} = result
+      assert result.group_bys != []
+    end
+
+    test "transforms sum aggregation with day period", %{base_query: base_query} do
+      result = ClickHouse.transform_chart_rule(base_query, :sum, "bytes", :day, "timestamp")
+
+      assert %Ecto.Query{} = result
+      assert result.group_bys != []
+    end
+
+    test "transforms max aggregation with second period", %{base_query: base_query} do
+      result =
+        ClickHouse.transform_chart_rule(base_query, :max, "response_time", :second, "timestamp")
+
+      assert %Ecto.Query{} = result
+      assert result.group_bys != []
+    end
+
+    test "transforms p50 percentile aggregation", %{base_query: base_query} do
+      result = ClickHouse.transform_chart_rule(base_query, :p50, "duration", :minute, "timestamp")
+
+      assert %Ecto.Query{} = result
+      assert result.group_bys != []
+    end
+
+    test "transforms p95 percentile aggregation", %{base_query: base_query} do
+      result = ClickHouse.transform_chart_rule(base_query, :p95, "latency", :hour, "timestamp")
+
+      assert %Ecto.Query{} = result
+      assert result.group_bys != []
+    end
+
+    test "transforms p99 percentile aggregation", %{base_query: base_query} do
+      result = ClickHouse.transform_chart_rule(base_query, :p99, "latency", :day, "timestamp")
+
+      assert %Ecto.Query{} = result
+      assert result.group_bys != []
     end
   end
 

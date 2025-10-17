@@ -64,6 +64,24 @@ defmodule LogflareWeb.EndpointsLive do
       |> assign_backends()
       |> assign(:parsed_result, nil)
       |> assign(:redact_pii, false)
+      |> assign(:sandbox_query, nil)
+      |> assign(:sandbox_query_result_rows, nil)
+      |> assign(:sandbox_total_bytes_processed, nil)
+      |> assign(:sandbox_error, nil)
+      |> assign(:show_transformed_query, false)
+      |> assign(:transformed_sandbox_query, nil)
+      |> assign(
+        :sandbox_form,
+        to_form(
+          %{
+            "query_mode" => "sql",
+            "sandbox_query" => "",
+            "params" => %{},
+            "show_transformed" => false
+          },
+          as: "sandbox_form"
+        )
+      )
 
     {:ok, socket}
   end
@@ -242,6 +260,74 @@ defmodule LogflareWeb.EndpointsLive do
     end
   end
 
+  def handle_event(
+        "run-sandbox-query",
+        %{"sandbox_form" => payload},
+        %{assigns: %{show_endpoint: endpoint}} = socket
+      ) do
+    show_transformed? = Map.get(payload, "show_transformed") == "true"
+    sandbox_query = Map.get(payload, "sandbox_query")
+    query_params = Map.get(payload, "params", %{})
+    query_mode = Map.get(payload, "query_mode", "sql")
+
+    sandbox_params =
+      case query_mode do
+        "sql" -> Map.put(query_params, "sql", sandbox_query)
+        "lql" -> Map.put(query_params, "lql", sandbox_query)
+        _ -> query_params
+      end
+
+    Logger.metadata(
+      endpoint_id: endpoint.id,
+      backend_id: endpoint.backend_id,
+      sandbox_params: sandbox_params
+    )
+
+    # Update the form to preserve query mode and other inputs
+    updated_form =
+      to_form(
+        %{
+          "query_mode" => query_mode,
+          "sandbox_query" => sandbox_query,
+          "params" => query_params,
+          "show_transformed" => show_transformed?
+        },
+        as: "sandbox_form"
+      )
+
+    case Endpoints.run_query(endpoint, sandbox_params) do
+      {:ok, %{rows: rows} = result} ->
+        total_bytes_processed = Map.get(result, :total_bytes_processed)
+
+        socket =
+          socket
+          |> put_flash(:info, "Ran sandbox query successfully")
+          |> assign(:sandbox_form, updated_form)
+          |> assign(:sandbox_query_result_rows, rows)
+          |> assign(:sandbox_total_bytes_processed, total_bytes_processed)
+          |> assign(:sandbox_error, nil)
+          |> assign(:show_transformed_query, show_transformed?)
+          |> assign(:sandbox_query, sandbox_query)
+          |> maybe_assign_transformed_query(show_transformed?, endpoint, sandbox_params)
+
+        {:noreply, socket}
+
+      {:error, error} ->
+        Logger.error(
+          "Sandbox query failed: '#{inspect(error)}', endpoint_id: #{endpoint.id}, backend_id: #{endpoint.backend_id}, sandbox_params: '#{inspect(sandbox_params)}'"
+        )
+
+        {:noreply,
+         socket
+         |> put_flash(:error, "Error occurred when running sandbox query")
+         |> assign(:sandbox_form, updated_form)
+         |> assign(:sandbox_error, "Please verify your query syntax.")
+         |> assign(:sandbox_query_result_rows, nil)
+         |> assign(:sandbox_total_bytes_processed, nil)
+         |> assign(:sandbox_query, sandbox_query)}
+    end
+  end
+
   def handle_event("apply-beta", _params, %{assigns: %{user: user}} = socket) do
     Logger.debug("Endpoints application submitted.", %{user: %{id: user.id, email: user.email}})
 
@@ -359,6 +445,15 @@ defmodule LogflareWeb.EndpointsLive do
   defp assign_determined_language(socket) do
     determined_language = get_current_endpoint_language(socket)
     assign(socket, :determined_language, determined_language)
+  end
+
+  defp maybe_assign_transformed_query(socket, false, _endpoint, _params), do: socket
+
+  defp maybe_assign_transformed_query(socket, true, endpoint, params) do
+    case Endpoints.get_transformed_query(endpoint, params) do
+      {:ok, transformed} -> assign(socket, :transformed_sandbox_query, transformed)
+      _ -> assign(socket, :transformed_sandbox_query, nil)
+    end
   end
 
   defp upsert_query(show_endpoint, user, params) do

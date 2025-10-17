@@ -97,6 +97,21 @@ defmodule Logflare.Utils do
   def stringify(v), do: inspect(v)
 
   @doc """
+  Appends a value to the end of a tuple.
+
+  ## Examples
+
+    iex> Logflare.Utils.append_to_tuple({:a, :b}, :c)
+    {:a, :b, :c}
+
+    iex> Logflare.Utils.append_to_tuple({}, :a)
+    {:a}
+  """
+  def append_to_tuple(tuple, value) do
+    Tuple.insert_at(tuple, tuple_size(tuple), value)
+  end
+
+  @doc """
   Sets the default ecto changeset field value if not set
 
   ## Examples

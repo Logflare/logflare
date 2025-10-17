@@ -45,4 +45,9 @@ defmodule Logflare.Utils.Guards do
   Guard that indicates if the value is a `NaiveDateTime` struct.
   """
   defguard is_naive_datetime(value) when is_struct(value, NaiveDateTime)
+
+  @doc """
+  Guard that indicates if the value is a valid percentile aggregate.
+  """
+  defguard is_percentile_aggregate(value) when value in [:p50, :p95, :p99]
 end

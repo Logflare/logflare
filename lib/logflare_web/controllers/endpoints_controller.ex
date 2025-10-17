@@ -86,13 +86,13 @@ defmodule LogflareWeb.EndpointsController do
     end
   end
 
-  # only parse body for get when ?sql= is empty and it is sandboxable
+  # only parse body for get when `?sql=` and `?lql=` are empty and it is sandboxable
   # passthrough for all other cases
   defp parse_get_body(
          %{method: "GET", assigns: %{endpoint: %_{sandboxable: true}}, query_params: qp} = conn,
          _opts
        )
-       when is_map_key(qp, "sql") == false do
+       when not is_map_key(qp, "sql") and not is_map_key(qp, "lql") do
     conn
     # Plug.Parsers only supports POST/PUT/PATCH
     |> Map.put(:method, "POST")
