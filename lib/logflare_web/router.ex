@@ -45,10 +45,10 @@ defmodule LogflareWeb.Router do
       "referrer-policy" => "same-origin"
     })
 
-    plug(LogflareWeb.Plugs.SetVerifyUser)
-    plug(LogflareWeb.Plugs.SetTeamIfNil)
+    # plug(LogflareWeb.Plugs.SetVerifyUser)
+    # plug(LogflareWeb.Plugs.SetTeamIfNil)
     plug(LogflareWeb.Plugs.SetTeamUser)
-    plug(LogflareWeb.Plugs.SetTeam)
+    # plug(LogflareWeb.Plugs.SetTeam)
     plug(LogflareWeb.Plugs.SetPlan)
     plug(LogflareWeb.Plugs.EnsureSourceStarted)
     plug(LogflareWeb.Plugs.SetHeaders)
