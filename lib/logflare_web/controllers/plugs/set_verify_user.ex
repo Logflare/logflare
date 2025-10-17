@@ -9,6 +9,7 @@ defmodule LogflareWeb.Plugs.SetVerifyUser do
 
   def init(_), do: nil
 
+  # Not sure this will ever be called
   def call(%{assigns: %{user: %User{}}} = conn, _opts), do: conn
 
   def call(conn, opts),

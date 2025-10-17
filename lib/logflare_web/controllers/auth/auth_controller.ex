@@ -9,6 +9,7 @@ defmodule LogflareWeb.AuthController do
   alias Logflare.Teams
   alias Logflare.Users
   alias Logflare.Vercel
+  alias LogflareWeb.ErrorView
 
   require Logger
 
@@ -108,6 +109,24 @@ defmodule LogflareWeb.AuthController do
         )
         |> put_session(:invite_token, nil)
         |> redirect(to: Routes.auth_path(conn, :login))
+    end
+  end
+
+  def single_tenant_signin(conn, _) do
+    if Logflare.SingleTenant.single_tenant?() do
+      user = Logflare.SingleTenant.get_default_user()
+      redirect = get_session(conn, :redirect_to, ~p"/dashboard")
+
+      conn
+      |> delete_session(:redirect_to)
+      |> put_session(:user_id, user.id)
+      |> redirect(to: redirect)
+    else
+      conn
+      |> put_status(:not_found)
+      |> put_view(ErrorView)
+      |> render("404.html")
+      |> halt()
     end
   end
 
