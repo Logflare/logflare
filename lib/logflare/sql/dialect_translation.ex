@@ -897,6 +897,7 @@ defmodule Logflare.Sql.DialectTranslation do
           else
             path = data.alias_path_mappings[head_val]
 
+            # credo:disable-for-next-line
             case cte_context do
               {table_alias, cte_fields} when cte_fields != [] ->
                 # Use the CTE field as the base
