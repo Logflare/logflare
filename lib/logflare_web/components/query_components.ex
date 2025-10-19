@@ -30,6 +30,7 @@ defmodule LogflareWeb.QueryComponents do
       |> assign_new(:formatted_sql, fn ->
         {:ok, formatted} =
           Utils.sql_params_to_sql(assigns.sql_string, assigns.params)
+          |> prepare_table_name()
           |> SqlFmt.format_query()
 
         formatted
@@ -57,5 +58,15 @@ defmodule LogflareWeb.QueryComponents do
       <pre class="tw-flex-grow"><code class="sql"><%= @formatted_sql %></code></pre>
     </div>
     """
+  end
+
+  defp prepare_table_name(sql) do
+    Regex.replace(
+      ~r/`([^`]+)`\.([^\s]+)/,
+      sql,
+      fn _, project, rest ->
+        "`#{project}.#{rest}`"
+      end
+    )
   end
 end

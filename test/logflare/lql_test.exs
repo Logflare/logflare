@@ -24,7 +24,7 @@ defmodule Logflare.LqlTest do
       assert %Ecto.Query{} = result
     end
 
-    test "applies filter rules with custom adapter option" do
+    test "applies filter rules for BigQuery dialect" do
       query = from("test_table")
 
       filter_rule = %FilterRule{
@@ -34,11 +34,11 @@ defmodule Logflare.LqlTest do
         modifiers: %{}
       }
 
-      result = Lql.apply_filter_rules(query, [filter_rule], adapter: :bigquery)
+      result = Lql.apply_filter_rules(query, [filter_rule], dialect: :bigquery)
       assert %Ecto.Query{} = result
     end
 
-    test "applies filter rules with ClickHouse adapter" do
+    test "applies filter rules for ClickHouse dialect" do
       query = from("test_table")
 
       filter_rule = %FilterRule{
@@ -48,7 +48,7 @@ defmodule Logflare.LqlTest do
         modifiers: %{}
       }
 
-      result = Lql.apply_filter_rules(query, [filter_rule], adapter: :clickhouse)
+      result = Lql.apply_filter_rules(query, [filter_rule], dialect: :clickhouse)
       assert %Ecto.Query{} = result
     end
 
@@ -68,16 +68,16 @@ defmodule Logflare.LqlTest do
       assert %Ecto.Query{} = result
     end
 
-    test "handles nested field access with custom adapter option" do
+    test "handles nested field access for BigQuery dialect" do
       query = from("test_table")
 
-      result = Lql.handle_nested_field_access(query, "metadata.user.id", adapter: :bigquery)
+      result = Lql.handle_nested_field_access(query, "metadata.user.id", dialect: :bigquery)
       assert %Ecto.Query{} = result
     end
 
-    test "handles nested field access with ClickHouse adapter" do
+    test "handles nested field access for ClickHouse dialect" do
       query = from("test_table")
-      result = Lql.handle_nested_field_access(query, "metadata.user.id", adapter: :clickhouse)
+      result = Lql.handle_nested_field_access(query, "metadata.user.id", dialect: :clickhouse)
 
       # ClickHouse handles nested fields natively, so query should be unchanged
       assert result == query
@@ -97,7 +97,7 @@ defmodule Logflare.LqlTest do
       assert %Ecto.Query.DynamicExpr{} = result
     end
 
-    test "transforms filter rule with custom adapter option" do
+    test "transforms filter rule for BigQuery dialect" do
       filter_rule = %FilterRule{
         path: "metadata.status",
         operator: :=,
@@ -105,11 +105,11 @@ defmodule Logflare.LqlTest do
         modifiers: %{}
       }
 
-      result = Lql.transform_filter_rule(filter_rule, adapter: :bigquery)
+      result = Lql.transform_filter_rule(filter_rule, dialect: :bigquery)
       assert %Ecto.Query.DynamicExpr{} = result
     end
 
-    test "transforms filter rule with ClickHouse adapter" do
+    test "transforms filter rule for ClickHouse dialect" do
       filter_rule = %FilterRule{
         path: "event_message",
         operator: :"~",
@@ -117,7 +117,7 @@ defmodule Logflare.LqlTest do
         modifiers: %{}
       }
 
-      result = Lql.transform_filter_rule(filter_rule, adapter: :clickhouse)
+      result = Lql.transform_filter_rule(filter_rule, dialect: :clickhouse)
       assert %Ecto.Query.DynamicExpr{} = result
     end
   end
@@ -316,6 +316,137 @@ defmodule Logflare.LqlTest do
         {:ok, [rule]} = Parser.parse(query)
         assert %ChartRule{path: ^path, aggregate: ^aggregate, period: ^period} = rule
       end
+    end
+  end
+
+  describe "to_sandboxed_sql/3" do
+    test "converts simple select LQL to BigQuery SQL" do
+      lql = "s:field1 s:field2"
+      {:ok, sql} = Lql.to_sandboxed_sql(lql, "my_cte", :bigquery)
+
+      assert String.downcase(sql) =~ "select"
+      assert String.downcase(sql) =~ "field1"
+      assert String.downcase(sql) =~ "field2"
+      assert String.downcase(sql) =~ "from my_cte"
+    end
+
+    test "converts chart count aggregation to BigQuery SQL" do
+      lql = "c:count(*) c:group_by(t::minute)"
+      {:ok, sql} = Lql.to_sandboxed_sql(lql, "events", :bigquery)
+
+      assert String.downcase(sql) =~ "select"
+      assert String.downcase(sql) =~ "timestamp_trunc"
+      assert String.downcase(sql) =~ "count"
+      assert String.downcase(sql) =~ "group by"
+      assert String.downcase(sql) =~ "order by"
+      assert String.downcase(sql) =~ "from events"
+    end
+
+    test "converts chart avg aggregation to BigQuery SQL" do
+      lql = "c:avg(m.latency) c:group_by(t::hour)"
+      {:ok, sql} = Lql.to_sandboxed_sql(lql, "metrics", :bigquery)
+
+      assert String.downcase(sql) =~ "avg"
+      assert String.downcase(sql) =~ "timestamp_trunc"
+      assert String.downcase(sql) =~ "group by"
+      assert String.downcase(sql) =~ "hour"
+    end
+
+    test "converts chart max aggregation to BigQuery SQL" do
+      lql = "c:max(m.response_time) c:group_by(t::second)"
+      {:ok, sql} = Lql.to_sandboxed_sql(lql, "requests", :bigquery)
+
+      assert String.downcase(sql) =~ "max"
+      assert String.downcase(sql) =~ "timestamp_trunc"
+      assert String.downcase(sql) =~ "second"
+    end
+
+    test "converts chart sum aggregation to BigQuery SQL" do
+      lql = "c:sum(m.bytes) c:group_by(t::day)"
+      {:ok, sql} = Lql.to_sandboxed_sql(lql, "traffic", :bigquery)
+
+      assert String.downcase(sql) =~ "sum"
+      assert String.downcase(sql) =~ "timestamp_trunc"
+      assert String.downcase(sql) =~ "group by"
+    end
+
+    test "converts chart p95 percentile to BigQuery SQL" do
+      lql = "c:p95(m.duration) c:group_by(t::minute)"
+      {:ok, sql} = Lql.to_sandboxed_sql(lql, "traces", :bigquery)
+
+      assert String.downcase(sql) =~ "approx_quantiles"
+      # Offset value is interpolated
+      assert sql =~ "OFFSET(?)"
+    end
+
+    test "converts chart p99 percentile to BigQuery SQL" do
+      lql = "c:p99(m.duration) c:group_by(t::minute)"
+      {:ok, sql} = Lql.to_sandboxed_sql(lql, "traces", :bigquery)
+
+      assert String.downcase(sql) =~ "approx_quantiles"
+      assert sql =~ "OFFSET(?)"
+    end
+
+    test "converts chart aggregation with filters to BigQuery SQL" do
+      lql = "c:count(*) c:group_by(t::minute) m.status:>500"
+      {:ok, sql} = Lql.to_sandboxed_sql(lql, "logs", :bigquery)
+
+      assert String.downcase(sql) =~ "where"
+      assert String.downcase(sql) =~ "group by"
+      assert String.downcase(sql) =~ "count"
+    end
+
+    test "converts combined select and filter to BigQuery SQL" do
+      lql = "s:timestamp s:message m.level:error"
+      {:ok, sql} = Lql.to_sandboxed_sql(lql, "logs", :bigquery)
+
+      assert String.downcase(sql) =~ "select"
+      assert String.downcase(sql) =~ "timestamp"
+      assert String.downcase(sql) =~ "message"
+      assert String.downcase(sql) =~ "where"
+    end
+
+    test "returns error for invalid dialect" do
+      # This should not compile due to guard, but testing the contract
+      assert_raise FunctionClauseError, fn ->
+        Lql.to_sandboxed_sql("s:*", "table", :invalid)
+      end
+    end
+
+    test "converts regex filter to ClickHouse SQL with inlined parameters" do
+      lql = "~another"
+      {:ok, sql} = Lql.to_sandboxed_sql(lql, "event_logs", :clickhouse)
+
+      assert String.downcase(sql) =~ "select"
+      assert String.downcase(sql) =~ "from"
+      assert String.downcase(sql) =~ "event_logs"
+      assert String.downcase(sql) =~ "match"
+
+      # Verify that the parameter is inlined (not using {$0:String} syntax)
+      refute sql =~ ~r/\{\$\d+:/
+
+      # Verify that the regex pattern is inlined as a string
+      assert sql =~ "'another'"
+    end
+
+    test "converts wildcard select to BigQuery SQL" do
+      lql = ""
+      {:ok, sql} = Lql.to_sandboxed_sql(lql, "my_table", :bigquery)
+
+      assert String.downcase(sql) =~ "select"
+      assert String.downcase(sql) =~ "*"
+      assert String.downcase(sql) =~ "from"
+      assert String.downcase(sql) =~ "my_table"
+    end
+
+    test "converts wildcard select to ClickHouse SQL" do
+      lql = ""
+      {:ok, sql} = Lql.to_sandboxed_sql(lql, "my_table", :clickhouse)
+
+      assert String.downcase(sql) =~ "select"
+      assert String.downcase(sql) =~ "*"
+      assert String.downcase(sql) =~ "from"
+      assert String.downcase(sql) =~ "my_table"
     end
   end
 end
