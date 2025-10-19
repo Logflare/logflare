@@ -872,17 +872,18 @@ defmodule Logflare.Sql.DialectTranslation do
          {"CompoundIdentifier" = k, [%{"value" => head_val}, tail] = v},
          data
        ) do
-     # Check if we're selecting from a CTE table
-     cte_context =
-     Enum.find_value(data.from_table_values, fn table_value ->
-       cte_fields = Map.get(data.cte_aliases, table_value, [])
+    # Check if we're selecting from a CTE table
+    cte_context =
+      Enum.find_value(data.from_table_values, fn table_value ->
+        cte_fields = Map.get(data.cte_aliases, table_value, [])
 
-       if cte_fields != [] do
-         # Find the table alias for this CTE
-         table_alias = Enum.at(data.from_table_aliases, 0)
-         {table_alias, cte_fields}
-       end
-     end)
+        if cte_fields != [] do
+          # Find the table alias for this CTE
+          table_alias = Enum.at(data.from_table_aliases, 0)
+          {table_alias, cte_fields}
+        end
+      end)
+
     cond do
       is_map_key(data.alias_path_mappings, head_val) and
         match?([_, _ | _], data.alias_path_mappings[head_val || []]) and
@@ -915,9 +916,8 @@ defmodule Logflare.Sql.DialectTranslation do
       # referencing a single-element unnest alias from a CTE context
       is_map_key(data.alias_path_mappings, head_val) and
         match?([_], data.alias_path_mappings[head_val]) and
-          data.in_cte_tables_tree == false and data.cte_aliases != %{} ->
+        data.in_cte_tables_tree == false and data.cte_aliases != %{} ->
         path = data.alias_path_mappings[head_val]
-
 
         case cte_context do
           {table_alias, cte_fields} when cte_fields != [] ->
@@ -977,7 +977,6 @@ defmodule Logflare.Sql.DialectTranslation do
       Enum.any?(data.from_table_values, fn from ->
         head_val in Map.get(data.cte_aliases, from, [])
       end) ->
-
         # referencing a cte field, pop and convert
         # metadata.key  into metadata -> 'key'
         convert_keys_to_json_query(%{k => [tail]}, data, head_val)
