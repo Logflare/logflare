@@ -28,7 +28,7 @@ defmodule LogflareWeb.UserControllerTest do
 
       conn =
         conn
-        |> put_session(:user_id, u1.id)
+        |> login_user(u1)
         |> put(
           ~p"/account/edit",
           %{
@@ -70,7 +70,7 @@ defmodule LogflareWeb.UserControllerTest do
 
       conn =
         conn
-        |> put_session(:user_id, u1.id)
+        |> login_user(u1)
         |> put(~p"/account/edit", %{"user" => new})
 
       comparable_keys = Map.keys(new) -- [:email, :email_preferred]
@@ -120,7 +120,7 @@ defmodule LogflareWeb.UserControllerTest do
 
       conn =
         conn
-        |> put_session(:user_id, u1.id)
+        |> login_user(u1)
         |> put(
           ~p"/account/edit",
           %{
