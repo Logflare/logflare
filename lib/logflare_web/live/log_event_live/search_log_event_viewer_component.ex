@@ -49,14 +49,8 @@ defmodule LogflareWeb.Search.LogEventViewerComponent do
   end
 
   @impl true
-  def handle_async(:load, {:ok, %Logflare.LogEvent{} = log_event}, socket) do
+  def handle_async(:load, {:ok, %LE{} = log_event}, socket) do
     {:noreply, assign(socket, :log_event, log_event)}
-  end
-
-  @impl true
-  def handle_async(:load, {:ok, %{} = bq_row}, socket) do
-    le = LE.make_from_db(bq_row, %{source: socket.assigns.source})
-    handle_async(:load, {:ok, le}, socket)
   end
 
   @impl true
