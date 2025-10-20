@@ -13,15 +13,9 @@ defmodule LogflareWeb.DashboardLive do
   alias LogflareWeb.Helpers.Forms
 
   @impl true
-  def mount(_, %{"user_id" => user_id} = session, socket) do
-    user = Users.get_by_and_preload(id: user_id)
-
+  def mount(_, session, socket) do
     socket =
       socket
-      |> assign(:user, user)
-      |> assign_new(:team, fn %{user: user} ->
-        Teams.get_team_by(user_id: user.id) |> Teams.preload_team_users()
-      end)
       |> assign_new(:sources, fn %{user: user} ->
         user
         |> Sources.list_sources_by_user()
@@ -34,10 +28,11 @@ defmodule LogflareWeb.DashboardLive do
         end)
       end)
       |> assign_new(:plan, fn %{user: user} -> Billing.get_plan_by_user(user) end)
-      |> assign_teams(session["team_user_id"])
+      |> assign_teams()
       |> assign(:fade_in, false)
 
     if connected?(socket) do
+      %{user: user} = socket.assigns
       Logflare.Sources.UserMetricsPoller.track(self(), user.id)
       Phoenix.PubSub.subscribe(Logflare.PubSub, "dashboard_user_metrics:#{user.id}")
     end
@@ -47,10 +42,19 @@ defmodule LogflareWeb.DashboardLive do
 
   @doc """
   Assigns teams and members.
-
-  If the user is signed in as `team_user` then `user` will be the team owner.
   """
-  def assign_teams(socket, nil) do
+  def assign_teams(%{assigns: %{team_user: team_user}} = socket) when is_struct(team_user) do
+    home_team = Teams.get_home_team(team_user) |> dbg
+    team_users = TeamUsers.list_team_users_by_and_preload(provider_uid: team_user.provider_uid)
+
+    socket
+    |> assign(
+      home_team: home_team,
+      team_users: team_users
+    )
+  end
+
+  def assign_teams(socket) do
     %{user: user} = socket.assigns
 
     home_team = user.team |> Logflare.Repo.preload(:user)
@@ -59,19 +63,6 @@ defmodule LogflareWeb.DashboardLive do
     assign(socket,
       home_team: home_team,
       team_user: nil,
-      team_users: team_users
-    )
-  end
-
-  def assign_teams(socket, team_user_id) do
-    team_user = TeamUsers.get_team_user_and_preload(team_user_id)
-    home_team = Teams.get_home_team(team_user)
-    team_users = TeamUsers.list_team_users_by_and_preload(provider_uid: team_user.provider_uid)
-
-    socket
-    |> assign(
-      home_team: home_team,
-      team_user: team_user,
       team_users: team_users
     )
   end

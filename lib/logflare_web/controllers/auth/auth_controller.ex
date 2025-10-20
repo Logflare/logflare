@@ -119,8 +119,7 @@ defmodule LogflareWeb.AuthController do
 
       conn
       |> delete_session(:redirect_to)
-      |> put_session(:user_id, user.id)
-      |> put_session(:current_email, user.email)
+      |> put_user_session(user)
       |> redirect(to: redirect)
     else
       conn
@@ -329,5 +328,11 @@ defmodule LogflareWeb.AuthController do
       true ->
         conn
     end
+  end
+
+  defp put_user_session(conn, user) do
+    conn
+    |> put_session(:user_id, user.id)
+    |> put_session(:user_email, user.email)
   end
 end
