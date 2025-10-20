@@ -1067,6 +1067,73 @@ defmodule Logflare.SqlTest do
                PostgresAdaptor.execute_query(backend, transformed, [])
     end
 
+    test "REGEXP_CONTAINS is translated with field reference with nested field", %{
+      backend: backend,
+      user: user
+    } do
+      bq_query =
+        ~s|select regexp_contains(m.nested, "val") as has_substring from `c.d.e` t cross join unnest(t.metadata) as m|
+
+      pg_query = ~s|select (body #>> '{metadata,nested}') ~ 'val' as has_substring from "c.d.e" t|
+
+      {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
+      assert Sql.Parser.parse("postgres", translated) == Sql.Parser.parse("postgres", pg_query)
+
+      assert {:ok, transformed} = Sql.transform(:pg_sql, translated, user)
+
+      assert {:ok, [%{"has_substring" => true}]} =
+               PostgresAdaptor.execute_query(backend, transformed, [])
+    end
+
+    test "REGEXP_CONTAINS is translated with field reference with nested field in where", %{
+      backend: backend,
+      user: user
+    } do
+      bq_query =
+        ~s|select m.nested as nested from `c.d.e` t cross join unnest(t.metadata) as m where regexp_contains(m.nested, "val")|
+
+      pg_query =
+        ~s|select (body #> '{metadata,nested}') as nested from "c.d.e" t where (body #>> '{metadata,nested}') ~ 'val'|
+
+      {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
+      assert Sql.Parser.parse("postgres", translated) == Sql.Parser.parse("postgres", pg_query)
+
+      assert {:ok, transformed} = Sql.transform(:pg_sql, translated, user)
+
+      assert {:ok, [%{"nested" => "value"}]} =
+               PostgresAdaptor.execute_query(backend, transformed, [])
+    end
+
+    test "REGEXP_CONTAINS is translated with field reference with nested field in where with cte",
+         %{backend: backend, user: user, source: source} do
+      # Insert test data with the required nested structure
+      log_event =
+        Logflare.LogEvent.make(
+          %{
+            "event_message" => "something",
+            "test" => "data",
+            "metadata" => %{"nested" => "value", "num" => 123, "deep" => %{"even" => "deeper"}}
+          },
+          %{source: source}
+        )
+
+      PostgresAdaptor.insert_log_event(source, backend, log_event)
+
+      bq_query =
+        ~s|with data as (select metadata from `c.d.e`) select d.even as nested from data t cross join unnest(t.deep) as d where regexp_contains(d.even, "deep")|
+
+      pg_query =
+        ~s|with data as (select (body -> 'metadata') as metadata from "c.d.e") select (t.metadata #>> '{deep,even}') as nested from data t where (t.metadata #>> '{deep,even}') ~ 'deep'|
+
+      {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
+      assert Sql.Parser.parse("postgres", translated) == Sql.Parser.parse("postgres", pg_query)
+
+      assert {:ok, transformed} = Sql.transform(:pg_sql, translated, user)
+
+      assert {:ok, [%{"nested" => "deeper"}]} =
+               PostgresAdaptor.execute_query(backend, transformed, [])
+    end
+
     test "entities backtick to double quote" do
       bq_query = """
       select test from `c.d.e`
