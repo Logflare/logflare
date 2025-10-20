@@ -17,11 +17,11 @@ defmodule LogflareWeb.Plugs.SetTeamUser do
         assign(conn, :user, nil)
 
       email ->
-        set_team_user_for_browser(conn, email)
+        set_team_user_for_browser(conn)
     end
   end
 
-  def set_team_user_for_browser(conn, email) do
+  def set_team_user_for_browser(conn) do
     current_email = get_session(conn, :current_email)
 
     conn =
@@ -35,31 +35,27 @@ defmodule LogflareWeb.Plugs.SetTeamUser do
         conn
         |> assign(:user, user)
         |> assign(:team, team)
-        |> assign(:team_user, team_user)
+        |> maybe_assign_team_user(team_user)
+
+      {:error, :missing_team} ->
+        user = Logflare.Users.Cache.get_by(email: current_email)
+
+        {:ok, team} =
+          Logflare.Teams.create_team(user, %{name: Logflare.Generators.team_name()})
+
+        conn
+        |> assign(:user, user)
+        |> assign(:team, team)
 
       {:error, _} ->
         conn
     end
   end
 
-  defp set_team_user(conn, team_user_id) do
-    case TeamUsers.get_team_user(team_user_id) do
-      nil ->
-        drop(conn)
+  defp maybe_assign_team_user(conn, team_user) when is_struct(team_user),
+    do: assign(conn, :team_user, team_user)
 
-      t ->
-        case TeamUsers.touch_team_user(t) do
-          {1, [team_user]} ->
-            team_user |> TeamUsers.preload_defaults()
-
-            conn
-            |> assign(:team_user, team_user)
-
-          _ ->
-            error(conn)
-        end
-    end
-  end
+  defp maybe_assign_team_user(conn, _team_user), do: conn
 
   defp error(conn) do
     conn
