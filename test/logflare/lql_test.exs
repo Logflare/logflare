@@ -421,30 +421,30 @@ defmodule Logflare.LqlTest do
       assert String.downcase(sql) =~ "from"
       assert String.downcase(sql) =~ "event_logs"
       assert String.downcase(sql) =~ "match"
-
-      # Verify that the parameter is inlined (not using {$0:String} syntax)
       refute sql =~ ~r/\{\$\d+:/
-
-      # Verify that the regex pattern is inlined as a string
       assert sql =~ "'another'"
+      assert String.downcase(sql) =~ "event_message"
+      refute sql =~ ~r/SELECT.*\*/i
     end
 
-    test "converts wildcard select to BigQuery SQL" do
+    test "converts empty/wildcard select to BigQuery SQL with default timestamp field" do
       lql = ""
       {:ok, sql} = Lql.to_sandboxed_sql(lql, "my_table", :bigquery)
 
       assert String.downcase(sql) =~ "select"
-      assert String.downcase(sql) =~ "*"
+      assert String.downcase(sql) =~ "timestamp"
+      refute sql =~ ~r/SELECT.*\*/i
       assert String.downcase(sql) =~ "from"
       assert String.downcase(sql) =~ "my_table"
     end
 
-    test "converts wildcard select to ClickHouse SQL" do
+    test "converts empty/wildcard select to ClickHouse SQL with default timestamp field" do
       lql = ""
       {:ok, sql} = Lql.to_sandboxed_sql(lql, "my_table", :clickhouse)
 
       assert String.downcase(sql) =~ "select"
-      assert String.downcase(sql) =~ "*"
+      assert String.downcase(sql) =~ "timestamp"
+      refute sql =~ ~r/SELECT.*\*/i
       assert String.downcase(sql) =~ "from"
       assert String.downcase(sql) =~ "my_table"
     end
