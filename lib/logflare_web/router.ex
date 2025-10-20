@@ -191,12 +191,14 @@ defmodule LogflareWeb.Router do
   scope "/", LogflareWeb do
     pipe_through([:browser, :require_auth])
 
-    live("/dashboard", DashboardLive, :index)
-    live("/access-tokens", AccessTokensLive, :index)
-    live("/backends", BackendsLive, :index)
-    live("/backends/new", BackendsLive, :new)
-    live("/backends/:id", BackendsLive, :show)
-    live("/backends/:id/edit", BackendsLive, :edit)
+    live_session :dashboard, on_mount: LogflareWeb.AuthLive do
+      live("/dashboard", DashboardLive, :index)
+      live("/access-tokens", AccessTokensLive, :index)
+      live("/backends", BackendsLive, :index)
+      live("/backends/new", BackendsLive, :new)
+      live("/backends/:id", BackendsLive, :show)
+      live("/backends/:id/edit", BackendsLive, :edit)
+    end
   end
 
   scope "/query", LogflareWeb do

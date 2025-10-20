@@ -23,15 +23,14 @@ defmodule LogflareWeb.Plugs.SetTeamUser do
 
   def set_team_user_for_browser(conn, email) do
     current_email = get_session(conn, :current_email)
-    user = Logflare.Users.Cache.get(user_id)
 
     conn =
       conn
       |> fetch_query_params()
 
-    team_id = Map.get(conn.params, "team_id", nil) |> dbg
+    team_id = Map.get(conn.params, "team_id", nil)
 
-    case TeamContext.resolve(user, team_id, current_email) do
+    case TeamContext.resolve(team_id, current_email) do
       {:ok, %{user: user, team: team, team_user: team_user}} ->
         conn
         |> assign(:user, user)
