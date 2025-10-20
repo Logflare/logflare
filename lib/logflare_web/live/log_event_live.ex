@@ -2,22 +2,19 @@ defmodule LogflareWeb.LogEventLive do
   @moduledoc """
   Handles all user interactions with a single event
   """
-  use LogflareWeb, :live_view
 
-  alias Logflare.Logs.LogEvents
-  alias Logflare.Sources
-  alias Logflare.Users
-  alias Logflare.TeamUsers
+  use LogflareWeb, :live_view
 
   require Logger
 
-  def mount(%{"source_id" => source_id} = params, session, socket) do
-    ts = Map.get(params, "timestamp")
+  alias Logflare.Logs.LogEvents
+  alias Logflare.Sources
+  alias Logflare.TeamUsers
+  alias Logflare.Users
 
+  def mount(%{"source_id" => source_id} = params, session, socket) do
     source =
       source_id |> String.to_integer() |> Sources.Cache.get_by_id()
-
-    token = source.token
 
     team_user =
       if team_user_id = session["team_user_id"] do
@@ -33,7 +30,25 @@ defmodule LogflareWeb.LogEventLive do
         nil
       end
 
-    {:ok, log_event} = LogEvents.Cache.get(token, params["uuid"])
+    timestamp =
+      if ts = Map.get(params, "timestamp") do
+        {:ok, dt, _} = DateTime.from_iso8601(ts)
+        dt
+      end
+
+    opts =
+      [
+        source: source,
+        user: user,
+        lql: params["lql"] || ""
+      ]
+      |> maybe_put_timestamp(timestamp)
+
+    log_event =
+      case LogEvents.get_event_with_fallback(source.token, params["uuid"], opts) do
+        {:ok, le} -> le
+        {:error, _} -> nil
+      end
 
     socket =
       socket
@@ -44,14 +59,7 @@ defmodule LogflareWeb.LogEventLive do
       |> assign(:origin, params["origin"])
       |> assign(:log_event_id, params["uuid"])
       |> assign(:lql, params["lql"])
-      |> case do
-        socket when ts != nil ->
-          {:ok, dt, _} = DateTime.from_iso8601(ts)
-          assign(socket, :timestamp, dt)
-
-        socket ->
-          socket
-      end
+      |> assign(:timestamp, timestamp)
 
     {:ok, socket}
   end
@@ -63,4 +71,8 @@ defmodule LogflareWeb.LogEventLive do
   def handle_info({:put_flash, type, msg}, socket) do
     {:noreply, socket |> put_flash(type, msg)}
   end
+
+  @spec maybe_put_timestamp(Keyword.t(), DateTime.t() | nil) :: Keyword.t()
+  defp maybe_put_timestamp(opts, nil), do: opts
+  defp maybe_put_timestamp(opts, timestamp), do: Keyword.put(opts, :timestamp, timestamp)
 end
