@@ -7,18 +7,13 @@ defmodule Logflare.Lql do
   with BigQuery-specific functions.
   """
 
-  import Ecto.Query
-
   alias __MODULE__.BackendTransformer
   alias __MODULE__.Encoder
   alias __MODULE__.Parser
   alias __MODULE__.Rules
-  alias __MODULE__.Rules.ChartRule
   alias __MODULE__.Rules.FilterRule
   alias __MODULE__.Rules.SelectRule
   alias GoogleApi.BigQuery.V2.Model.TableSchema, as: TS
-  alias Logflare.Backends.Adaptor.BigQueryAdaptor
-  alias Logflare.Backends.Adaptor.ClickhouseAdaptor
 
   @default_dialect :bigquery
 
@@ -161,88 +156,7 @@ defmodule Logflare.Lql do
   @doc """
   Converts an LQL query string to a SQL query string for use in sandboxed endpoints.
 
-  This function is designed for sandboxed query contexts where LQL needs to be converted
-  to SQL that operates on CTE tables. The generated SQL will select from the specified
-  `cte_table_name`.
+  Delegates to `Logflare.Lql.Sandboxed.to_sandboxed_sql/3`.
   """
-  @spec to_sandboxed_sql(
-          lql_string :: String.t(),
-          cte_table_name :: String.t(),
-          dialect :: dialect()
-        ) :: {:ok, String.t()} | {:error, String.t()}
-  def to_sandboxed_sql(lql_string, cte_table_name, dialect)
-      when is_binary(lql_string) and is_binary(cte_table_name) and
-             dialect in [:bigquery, :clickhouse] do
-    with {:ok, lql_rules} <- Parser.parse(lql_string) do
-      filter_rules = Rules.get_filter_rules(lql_rules)
-      chart_rule = Rules.get_chart_rule(lql_rules)
-
-      query =
-        if chart_rule do
-          build_chart_query(cte_table_name, chart_rule, filter_rules, dialect)
-        else
-          select_rules = Rules.get_select_rules(lql_rules)
-
-          build_select_query(cte_table_name, select_rules, filter_rules, dialect)
-        end
-
-      ecto_query_to_sql_string(query, dialect)
-    end
-  end
-
-  @spec build_select_query(
-          cte_table_name :: String.t(),
-          select_rules :: [SelectRule.t()],
-          filter_rules :: [FilterRule.t()],
-          dialect :: dialect()
-        ) :: Ecto.Query.t()
-  defp build_select_query(cte_table_name, select_rules, filter_rules, dialect) do
-    query =
-      if Enum.empty?(select_rules) or Rules.has_wildcard_selection?(select_rules) do
-        from(t in cte_table_name, select: fragment("*"))
-      else
-        select_map =
-          Enum.reduce(select_rules, %{}, fn %{path: path}, acc ->
-            Map.put(acc, path, dynamic([t], field(t, ^path)))
-          end)
-
-        from(t in cte_table_name, select: ^select_map)
-      end
-
-    apply_filter_rules(query, filter_rules, dialect: dialect)
-  end
-
-  @spec build_chart_query(
-          cte_table_name :: String.t(),
-          chart_rule :: ChartRule.t(),
-          filter_rules :: [FilterRule.t()],
-          dialect :: dialect()
-        ) :: Ecto.Query.t()
-  defp build_chart_query(
-         cte_table_name,
-         %ChartRule{aggregate: aggregate, path: path, period: period},
-         filter_rules,
-         dialect
-       ) do
-    query =
-      from(t in cte_table_name)
-      |> apply_filter_rules(filter_rules, dialect: dialect)
-
-    transformer = BackendTransformer.for_dialect(dialect)
-    transformer.transform_chart_rule(query, aggregate, path, period, "timestamp")
-  end
-
-  @spec ecto_query_to_sql_string(query :: Ecto.Query.t(), dialect :: dialect()) ::
-          {:ok, String.t()} | {:error, String.t()}
-  defp ecto_query_to_sql_string(query, dialect) do
-    adaptor =
-      case dialect do
-        :bigquery -> BigQueryAdaptor
-        :clickhouse -> ClickhouseAdaptor
-      end
-
-    with {:ok, {sql, _params}} <- adaptor.ecto_to_sql(query, inline_params: true) do
-      {:ok, sql}
-    end
-  end
+  defdelegate to_sandboxed_sql(lql_string, cte_table_name, dialect), to: Logflare.Lql.Sandboxed
 end
