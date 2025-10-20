@@ -1,16 +1,15 @@
 defmodule LogflareWeb.Search.LogEventViewerComponent do
   @moduledoc false
+
   use LogflareWeb, :live_component
 
-  alias Logflare.Billing
+  require Logger
+
   alias Logflare.LogEvent, as: LE
   alias Logflare.Logs.LogEvents
-  alias Logflare.Sources
   alias LogflareWeb.Helpers.BqSchema
   alias LogflareWeb.LogView
   alias LogflareWeb.SharedView
-
-  require Logger
 
   @impl true
   def update(_assigns, %{assigns: %{error: {:error, :not_found}}} = socket) do
@@ -50,21 +49,8 @@ defmodule LogflareWeb.Search.LogEventViewerComponent do
   end
 
   @impl true
-  def handle_async(:load, {:ok, %Logflare.LogEvent{} = log_event}, socket) do
+  def handle_async(:load, {:ok, %LE{} = log_event}, socket) do
     {:noreply, assign(socket, :log_event, log_event)}
-  end
-
-  @impl true
-  def handle_async(:load, {:ok, %{} = bq_row}, socket) do
-    le = LE.make_from_db(bq_row, %{source: socket.assigns.source})
-
-    LogEvents.Cache.put(
-      socket.assigns.source.token,
-      le.id,
-      le
-    )
-
-    handle_async(:load, {:ok, le}, socket)
   end
 
   @impl true
@@ -81,17 +67,17 @@ defmodule LogflareWeb.Search.LogEventViewerComponent do
   end
 
   def load_event(%{log_event_id: log_id, source: source} = params) do
-    range = get_partitions_range(params)
+    opts =
+      [
+        source: source,
+        user: params[:user],
+        lql: params[:lql] || ""
+      ]
+      |> maybe_put_timestamp(params[:timestamp])
 
-    case LogEvents.Cache.get(source.token, log_id) do
-      {:ok, %LE{} = le} ->
-        le
-
-      _ ->
-        LogEvents.Cache.fetch_event_by_id(source.token, log_id,
-          partitions_range: range,
-          lql: params.lql
-        )
+    case LogEvents.get_event_with_fallback(source.token, log_id, opts) do
+      {:ok, le} -> le
+      error -> error
     end
   end
 
@@ -149,22 +135,13 @@ defmodule LogflareWeb.Search.LogEventViewerComponent do
     |> assign(:error, nil)
   end
 
-  # timestamp is explicitly set, query around the range
-  defp get_partitions_range(%{timestamp: ts}) do
-    [Timex.shift(ts, hours: -1), Timex.shift(ts, hours: 1)]
-  end
-
-  # no timestamp is set, fallback to ttl
-  # to avoid this clause, parent should set the timestamp
-  defp get_partitions_range(%{source: source, user: user}) do
-    d = Date.utc_today()
-    plan = Billing.Cache.get_plan_by_user(user)
-    ttl = Sources.source_ttl_to_days(source, plan)
-
-    [Timex.shift(d, days: -min(ttl, 7)), Timex.shift(d, days: 1)]
-  end
-
   defp event_params(assigns) do
     assigns |> Map.take([:user, :source, :log_event_id, :timestamp])
   end
+
+  @spec maybe_put_timestamp(Keyword.t(), DateTime.t() | nil) :: Keyword.t()
+  defp maybe_put_timestamp(opts, nil) when is_list(opts), do: opts
+
+  defp maybe_put_timestamp(opts, timestamp) when is_list(opts),
+    do: Keyword.put(opts, :timestamp, timestamp)
 end
