@@ -435,7 +435,8 @@ defmodule Logflare.Ecto.ClickHouse do
   defp distinct(%{expr: exprs}, sources, params, query) when is_list(exprs) do
     [
       "DISTINCT ON (",
-      Helpers.intersperse_map(exprs, ?,, &order_by_expr(&1, sources, params, query)) | ") "
+      Helpers.intersperse_map(exprs, ?,, &order_by_expr(&1, sources, params, query)),
+      ") "
     ]
   end
 
@@ -606,23 +607,23 @@ defmodule Logflare.Ecto.ClickHouse do
   end
 
   defp order_by_expr({:desc, expr}, sources, params, query) do
-    [expr(expr, sources, params, query) | " DESC"]
+    [expr(expr, sources, params, query), " DESC"]
   end
 
   defp order_by_expr({:asc_nulls_first, expr}, sources, params, query) do
-    [expr(expr, sources, params, query) | " ASC NULLS FIRST"]
+    [expr(expr, sources, params, query), " ASC NULLS FIRST"]
   end
 
   defp order_by_expr({:desc_nulls_first, expr}, sources, params, query) do
-    [expr(expr, sources, params, query) | " DESC NULLS FIRST"]
+    [expr(expr, sources, params, query), " DESC NULLS FIRST"]
   end
 
   defp order_by_expr({:asc_nulls_last, expr}, sources, params, query) do
-    [expr(expr, sources, params, query) | " ASC NULLS LAST"]
+    [expr(expr, sources, params, query), " ASC NULLS LAST"]
   end
 
   defp order_by_expr({:desc_nulls_last, expr}, sources, params, query) do
-    [expr(expr, sources, params, query) | " DESC NULLS LAST"]
+    [expr(expr, sources, params, query), " DESC NULLS LAST"]
   end
 
   defp order_by_expr({dir, _expr}, _sources, _params, query) do
