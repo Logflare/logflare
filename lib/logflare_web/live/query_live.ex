@@ -173,10 +173,7 @@ defmodule LogflareWeb.QueryLive do
   def handle_params(params, _uri, socket) do
     q =
       case params["q"] do
-        "" ->
-          nil
-
-        nil ->
+        v when v in ["", nil] ->
           nil
 
         v ->
