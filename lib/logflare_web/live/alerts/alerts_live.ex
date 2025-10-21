@@ -40,7 +40,7 @@ defmodule LogflareWeb.AlertsLive do
 
     socket =
       socket
-      |> assign(:user_id, user_id)
+      |> assign(:user_id, user.id)
       |> assign(:user, user)
       #  must be below user_id assign
       |> refresh()

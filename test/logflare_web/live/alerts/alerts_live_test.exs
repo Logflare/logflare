@@ -35,6 +35,14 @@ defmodule LogflareWeb.AlertsLiveTest do
       :ok
     end
 
+    test "mounts successfully with user_id from session", %{conn: conn, user: user} do
+      # This reproduces a bug where list_sources_by_user/1 expects an integer
+      conn = Plug.Test.init_test_session(conn, %{"user_id" => Integer.to_string(user.id)})
+
+      assert {:ok, _view, html} = live(conn, Routes.alerts_path(conn, :index))
+      assert html =~ "Alerts"
+    end
+
     test "lists all alert_queries", %{conn: conn, alert_query: alert_query} do
       {:ok, view, html} = live(conn, Routes.alerts_path(conn, :index))
       assert html =~ alert_query.name
