@@ -7,13 +7,12 @@ defmodule LogflareWeb.DashboardLive do
   alias Logflare.Sources
   alias Logflare.Teams
   alias Logflare.TeamUsers
-  alias Logflare.Users
   alias LogflareWeb.DashboardLive.DashboardComponents
   alias LogflareWeb.DashboardLive.DashboardSourceComponents
   alias LogflareWeb.Helpers.Forms
 
   @impl true
-  def mount(_, session, socket) do
+  def mount(_, _session, socket) do
     socket =
       socket
       |> assign_new(:sources, fn %{user: user} ->
@@ -44,8 +43,10 @@ defmodule LogflareWeb.DashboardLive do
   Assigns teams and members.
   """
   def assign_teams(%{assigns: %{team_user: team_user}} = socket) when is_struct(team_user) do
-    home_team = Teams.get_home_team(team_user) |> dbg
-    team_users = TeamUsers.list_team_users_by_and_preload(provider_uid: team_user.provider_uid)
+    home_team = Teams.get_home_team(team_user)
+
+    team_users =
+      TeamUsers.list_team_users_by_and_preload(provider_uid: team_user.provider_uid)
 
     socket
     |> assign(
@@ -58,7 +59,9 @@ defmodule LogflareWeb.DashboardLive do
     %{user: user} = socket.assigns
 
     home_team = user.team |> Logflare.Repo.preload(:user)
-    team_users = Logflare.TeamUsers.list_team_users_by_and_preload(email: user.email)
+
+    team_users =
+      Logflare.TeamUsers.list_team_users_by_and_preload(email: user.email)
 
     assign(socket,
       home_team: home_team,
