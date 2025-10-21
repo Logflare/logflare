@@ -144,8 +144,10 @@ defmodule Logflare.Users do
     Repo.preload(user, team: [team_users: query])
   end
 
-  def preload_billing_account(user) do
-    Repo.preload(user, :billing_account)
+  def preload_billing_account(nil), do: nil
+
+  def preload_billing_account(user, opts \\ []) do
+    Repo.preload(user, :billing_account, opts)
   end
 
   def preload_vercel_auths(user) do
