@@ -12,28 +12,26 @@ defmodule LogflareWeb.Plugs.RequireAuth do
 
   def call(conn, _opts) do
     is_single_tenant = SingleTenant.single_tenant?()
-    user_id = get_session(conn, :user_id)
+    current_email = get_session(conn, :current_email)
 
     cond do
-      is_nil(user_id) and is_single_tenant ->
+      is_nil(current_email) and is_single_tenant ->
         conn
         |> put_session(:redirect_to, conn.request_path)
         |> redirect(to: ~p"/auth/login/single_tenant")
         |> halt()
 
-      user_id ->
+      current_email ->
         referer = get_session(conn, :redirect_to)
 
         if referer do
           conn
           |> put_session(:redirect_to, nil)
-          |> maybe_get_put_team_user_session()
           |> redirect(to: referer)
           |> halt()
         else
           conn
           |> put_last_provider_cookie()
-          |> maybe_get_put_team_user_session()
         end
 
       conn.request_path == "/oauth/authorize" ->
@@ -42,7 +40,7 @@ defmodule LogflareWeb.Plugs.RequireAuth do
         |> redirect(to: Routes.auth_path(conn, :login))
         |> halt()
 
-      is_nil(user_id) ->
+      true ->
         referer =
           case conn.query_string do
             "" ->
@@ -77,22 +75,5 @@ defmodule LogflareWeb.Plugs.RequireAuth do
       user.provider,
       max_age: 2_592_000
     )
-  end
-
-  def maybe_get_put_team_user_session(conn) do
-    team_user = conn.assigns[:team_user]
-
-    session_team_user_id = get_session(conn, :team_user_id)
-
-    cond do
-      team_user ->
-        put_session(conn, :team_user_id, team_user.id)
-
-      session_team_user_id ->
-        put_session(conn, :team_user_id, session_team_user_id)
-
-      true ->
-        conn
-    end
   end
 end
