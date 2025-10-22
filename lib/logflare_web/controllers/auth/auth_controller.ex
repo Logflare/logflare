@@ -87,8 +87,7 @@ defmodule LogflareWeb.AuthController do
 
         conn
         |> put_flash(:info, "Welcome to Logflare!")
-        |> put_session(:user_id, team.user.id)
-        |> put_session(:team_user_id, team_user.id)
+        |> put_session(:current_email, team_user.email)
         |> put_session(:invite_token, nil)
         |> redirect(to: ~p"/dashboard")
 
@@ -130,6 +129,7 @@ defmodule LogflareWeb.AuthController do
     end
   end
 
+  # This is never called.
   def create_and_sign_in(%{assigns: %{team_user: team_user}} = conn, _params) do
     {:ok, user} =
       team_user
@@ -159,8 +159,7 @@ defmodule LogflareWeb.AuthController do
 
         conn
         |> put_flash(:info, "Welcome back!")
-        |> put_session(:user_id, user.id)
-        |> put_session(:team_user_id, team_user.id)
+        |> put_session(:current_email, team_user.email)
         |> redirect(to: ~p"/dashboard")
 
       {:error, _} ->
@@ -214,8 +213,7 @@ defmodule LogflareWeb.AuthController do
           true ->
             conn
             |> put_flash(:info, "Welcome back!")
-            |> put_session(:user_id, user.id)
-            |> maybe_redirect_team_user()
+            |> put_session(:current_email, user.email)
         end
 
       {:error, reason} ->
@@ -332,7 +330,6 @@ defmodule LogflareWeb.AuthController do
 
   defp put_user_session(conn, user) do
     conn
-    |> put_session(:user_id, user.id)
-    |> put_session(:user_email, user.email)
+    |> put_session(:current_email, user.email)
   end
 end

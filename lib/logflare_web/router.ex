@@ -28,7 +28,7 @@ defmodule LogflareWeb.Router do
     plug(:protect_from_forgery)
 
     plug(:put_secure_browser_headers, %{
-      "content-security-policy" =>
+      "content-securety-policy" =>
         (fn ->
            """
            \
