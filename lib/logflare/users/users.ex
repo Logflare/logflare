@@ -211,13 +211,13 @@ defmodule Logflare.Users do
   defp toggle_system_monitoring(%{system_monitoring: true} = user) do
     user.id
     |> Sources.create_user_system_sources()
-    |> Enum.each(&Supervisor.reset_source/1)
+    |> Enum.each(&Supervisor.reset_source(&1.token))
   end
 
   defp toggle_system_monitoring(%{system_monitoring: false} = user) do
     [user_id: user.id, system_source: true]
     |> Sources.list_sources()
-    |> Enum.each(&Supervisor.stop_source/1)
+    |> Enum.each(&Supervisor.stop_source(&1.token))
   end
 
   @spec insert_user(map()) :: {:ok, User.t()} | {:error, any()}
