@@ -5,7 +5,7 @@ defmodule LogflareWeb.AccessTokensLiveTest do
   setup %{conn: conn} do
     insert(:plan)
     user = insert(:user)
-    conn = conn |> put_session(:user_id, user.id) |> assign(:user, user)
+    conn = conn |> login_user(user)
 
     {:ok, user: user, conn: conn}
   end

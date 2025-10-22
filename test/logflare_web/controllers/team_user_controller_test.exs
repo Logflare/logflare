@@ -16,8 +16,7 @@ defmodule LogflareWeb.TeamUserControllerTest do
     new_phone = "+1 (555) 123-4567"
 
     conn
-    |> login_user(user)
-    |> put_session(:team_user_id, team_user.id)
+    |> login_user(user, team_user)
     |> visit(~p"/profile/edit")
     |> assert_has("h5", text: "Profile Preferences", exact: true)
     |> fill_in("Name", with: new_name)
@@ -47,8 +46,7 @@ defmodule LogflareWeb.TeamUserControllerTest do
     team_user = insert(:team_user, team: team, email: user.email)
 
     conn
-    |> login_user(user)
-    |> put_session(:team_user_id, team_user.id)
+    |> login_user(user, team_user)
     |> visit(~p"/profile/edit")
     |> assert_has("h5", text: "Profile Preferences", exact: true)
     |> assert_has("a", text: "Leave now")
@@ -61,8 +59,7 @@ defmodule LogflareWeb.TeamUserControllerTest do
 
     conn =
       conn
-      |> login_user(user)
-      |> put_session(:team_user_id, team_user.id)
+      |> login_user(user, team_user)
       |> delete(~p"/profile")
 
     assert redirected_to(conn, 302) =~ "/login"
@@ -110,8 +107,7 @@ defmodule LogflareWeb.TeamUserControllerTest do
 
     conn =
       conn
-      |> login_user(member1_user)
-      |> put_session(:team_user_id, member1_team_user.id)
+      |> login_user(member1_user, member1_team_user)
       |> delete(~p"/profile/#{member2_team_user.id}")
 
     assert redirected_to(conn, 302) == ~p"/dashboard"
@@ -134,8 +130,7 @@ defmodule LogflareWeb.TeamUserControllerTest do
 
     conn =
       conn
-      |> login_user(user)
-      |> put_session(:team_user_id, team_user1.id)
+      |> login_user(user, team_user1)
       |> get(~p"/profile/switch", %{"user_id" => user.id, "team_user_id" => team_user2.id})
 
     assert redirected_to(conn, 302) =~ "/dashboard"
@@ -151,8 +146,7 @@ defmodule LogflareWeb.TeamUserControllerTest do
 
     conn =
       conn
-      |> login_user(user)
-      |> put_session(:team_user_id, team_user.id)
+      |> login_user(user, team_user)
       |> get(~p"/profile/switch", %{"user_id" => user.id})
 
     assert redirected_to(conn, 302) == ~p"/dashboard"
@@ -184,8 +178,7 @@ defmodule LogflareWeb.TeamUserControllerTest do
 
     conn =
       conn
-      |> login_user(user)
-      |> put_session(:team_user_id, team_user.id)
+      |> login_user(user, team_user)
       |> get(~p"/profile/switch", %{
         "user_id" => user.id,
         "team_user_id" => team_user.id,
@@ -212,8 +205,7 @@ defmodule LogflareWeb.TeamUserControllerTest do
 
     conn =
       conn
-      |> login_user(user)
-      |> put_session(:team_user_id, team_user1.id)
+      |> login_user(user, team_user1)
       |> get(~p"/profile/switch", %{"user_id" => user.id, "team_user_id" => team_user2.id})
 
     assert redirected_to(conn, 302) =~ "/dashboard"
@@ -229,8 +221,7 @@ defmodule LogflareWeb.TeamUserControllerTest do
 
     conn =
       conn
-      |> login_user(user)
-      |> put_session(:team_user_id, team_user.id)
+      |> login_user(user, team_user)
       |> get(~p"/profile/switch", %{"user_id" => user.id})
 
     assert redirected_to(conn, 302) == ~p"/dashboard"
