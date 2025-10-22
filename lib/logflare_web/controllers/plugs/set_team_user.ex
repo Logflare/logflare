@@ -17,7 +17,10 @@ defmodule LogflareWeb.Plugs.SetTeamUser do
         assign(conn, :user, nil)
 
       email ->
-        set_team_user_for_browser(conn)
+        conn = set_team_user_for_browser(conn)
+        user = Logflare.Users.Cache.get_by(email: email)
+        teams = Logflare.Teams.list_teams_by_user_access(user)
+        assign(conn, :teams, teams)
     end
   end
 
