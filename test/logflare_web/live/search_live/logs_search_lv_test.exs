@@ -180,28 +180,26 @@ defmodule LogflareWeb.Source.SearchLVTest do
 
   describe "preference timezone for team_user" do
     setup do
-      team = insert(:team)
+      %{user: user} = team = insert(:team)
 
       team_user =
-        insert(:team_user, preferences: build(:user_preferences, timezone: "NZ"), team: team)
+        insert(:team_user, team: team, preferences: build(:user_preferences, timezone: "NZ"))
 
-      source = insert(:source, user: team.user)
+      source = insert(:source, user: user)
       plan = insert(:plan)
-      [user: team.user, source: source, plan: plan, team_user: team_user]
+      [user: user, source: source, plan: plan, team_user: team_user]
     end
 
     setup [:setup_team_user_session]
 
     test "subheader - if no tz, will redirect to preference tz", %{
       conn: conn,
-      user: user,
       source: source,
       team_user: team_user
     } do
       {:error, {:live_redirect, %{to: to}}} =
-        conn
-        |> login_user(user, team_user)
-        |> live(
+        live(
+          conn,
           ~p"/sources/#{source.id}/search?team_id=#{team_user.team_id}&querystring=something123&tailing%3F="
         )
 
@@ -211,8 +209,8 @@ defmodule LogflareWeb.Source.SearchLVTest do
 
     test "subheader - if ?tz=, will use param tz", %{
       conn: conn,
-      team_user: team_user,
-      source: source
+      source: source,
+      team_user: team_user
     } do
       {:ok, view, _html} =
         live(
@@ -708,11 +706,11 @@ defmodule LogflareWeb.Source.SearchLVTest do
     end
 
     test "redirected for non-owner user", %{conn: conn, source: source} do
-      user = insert(:user)
+      non_owner_user = insert(:user)
 
       conn =
         conn
-        |> login_user(user)
+        |> login_user(non_owner_user)
         |> get(Routes.live_path(conn, SearchLV, source))
 
       assert html_response(conn, 403) =~ "Forbidden"
@@ -784,20 +782,20 @@ defmodule LogflareWeb.Source.SearchLVTest do
 
   describe "create from query" do
     setup do
-      team = insert(:team)
+      %{user: user} = team = insert(:team)
 
       team_user =
         insert(:team_user, team: team, preferences: build(:user_preferences, timezone: "NZ"))
 
-      source = insert(:source, user: team.user)
+      source = insert(:source, user: user)
       plan = insert(:plan)
-      [user: team.user, source: source, plan: plan, team_user: team_user]
+      [user: user, source: source, plan: plan, team_user: team_user]
     end
 
     setup [:setup_team_user_session]
     setup {TestUtils, :attach_wait_for_render}
 
-    test "create new query from search", %{conn: conn, team_user: team_user, source: source} do
+    test "create new query from search", %{conn: conn, source: source, team_user: team_user} do
       {:ok, view, _html} =
         live(
           conn,
@@ -820,8 +818,8 @@ defmodule LogflareWeb.Source.SearchLVTest do
 
     test "create new alert, endpoint from search", %{
       conn: conn,
-      team_user: team_user,
-      source: source
+      source: source,
+      team_user: team_user
     } do
       ["alert", "endpoint"]
       |> Enum.each(fn resource ->
@@ -851,7 +849,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
       end)
     end
 
-    test "create new query from chart query", %{conn: conn, team_user: team_user, source: source} do
+    test "create new query from chart query", %{conn: conn, source: source, team_user: team_user} do
       {:ok, view, _html} =
         live(
           conn,
@@ -875,8 +873,8 @@ defmodule LogflareWeb.Source.SearchLVTest do
 
     test "create new alert, endpoint from chart", %{
       conn: conn,
-      team_user: team_user,
-      source: source
+      source: source,
+      team_user: team_user
     } do
       ["alert", "endpoint"]
       |> Enum.each(fn resource ->

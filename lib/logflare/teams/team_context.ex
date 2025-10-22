@@ -20,7 +20,7 @@ defmodule Logflare.Teams.TeamContext do
           team_user: TeamUser.t() | nil
         }
 
-  @type error_reason :: :invalid_team_id | :not_authorized | :missing_team
+  @type error_reason :: :invalid_team_id | :not_authorized | :team_not_found
   @type resolve_result :: {:ok, t()} | {:error, error_reason()}
   @type team_id_param :: String.t() | non_neg_integer() | nil
 
@@ -89,6 +89,9 @@ defmodule Logflare.Teams.TeamContext do
       |> Teams.preload_user()
 
     cond do
+      is_nil(team) ->
+        {:error, :team_not_found}
+
       is_team_owner?(team, email) ->
         {:ok, team, team.user}
 

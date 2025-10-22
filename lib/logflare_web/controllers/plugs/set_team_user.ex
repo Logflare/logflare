@@ -31,7 +31,7 @@ defmodule LogflareWeb.Plugs.SetTeamUser do
 
     case TeamContext.resolve(team_id, current_email) do
       {:ok, %{user: user, team: team, team_user: team_user}} ->
-        teams = Logflare.Teams.list_teams_by_user_access(user)
+        teams = Logflare.Teams.list_teams_by_user_access(team_user || user)
 
         conn
         |> assign(:user, user)
