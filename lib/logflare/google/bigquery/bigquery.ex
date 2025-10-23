@@ -107,7 +107,7 @@ defmodule Logflare.Google.BigQuery do
     }
 
     clustering = %Model.Clustering{
-      fields: ["timestamp", "id"]
+      fields: ["timestamp"]
     }
 
     conn

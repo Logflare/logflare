@@ -179,7 +179,7 @@ defmodule Logflare.Sources do
          not SingleTenant.postgres_backend?() do
       user = Users.Cache.get(updated.user_id)
 
-      fields = String.split(updated.bigquery_clustering_fields || "", ",") ++ ["timestamp", "id"]
+      fields = String.split(updated.bigquery_clustering_fields || "", ",") ++ ["timestamp"]
 
       BigQuery.patch_table_clustering(
         updated.token,
