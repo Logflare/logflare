@@ -1,5 +1,5 @@
 defmodule LogflareWeb.Admin.PartnerLiveTest do
-  use LogflareWeb.ConnCase, async: true
+  use LogflareWeb.ConnCase
 
   setup %{conn: conn} do
     user = insert(:user, admin: true)
