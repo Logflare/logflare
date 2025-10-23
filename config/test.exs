@@ -4,7 +4,7 @@ import Config
 # you can enable the server option below.
 config :logflare, LogflareWeb.Endpoint,
   http: [port: 4001],
-  server: false
+  server: true
 
 config :logflare,
   env: :test,
@@ -56,4 +56,4 @@ config :logger,
 
 config :tesla, Logflare.Backends.Adaptor.WebhookAdaptor.Client, adapter: Tesla.Mock
 
-config :phoenix_test, :endpoint, LogflareWeb.Endpoint
+config :phoenix_test, otp_app: :logflare, endpoint: LogflareWeb.Endpoint

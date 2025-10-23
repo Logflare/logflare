@@ -49,15 +49,28 @@ defmodule Logflare.DataCase do
   end
 
   setup tags do
+    setup_sandbox(tags)
+    setup_mocking(tags)
+
+    :ok
+  end
+
+  @doc """
+  Sets up the sandbox based on the test tags.
+  """
+  def setup_sandbox(tags) do
     pid = Ecto.Adapters.SQL.Sandbox.start_owner!(Logflare.Repo, shared: not tags[:async])
     on_exit(fn -> Ecto.Adapters.SQL.Sandbox.stop_owner(pid) end)
+  end
 
-    unless tags[:async] do
+  @doc """
+  Sets up mocking configuration based on the test tags.
+  """
+  def setup_mocking(tags) do
+    if !tags[:async] do
       # for global Mimic mocks
       Mimic.set_mimic_global(tags)
     end
-
-    :ok
   end
 
   @doc """

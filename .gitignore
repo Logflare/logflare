@@ -76,6 +76,9 @@ gcloud_prod.json
 # DB ssl certs
 .*.*.pem
 
+# playwright screenshots
+/screenshots
+
 # google keys
 .*.gcloud.json
 
