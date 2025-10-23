@@ -40,16 +40,6 @@ defmodule LogflareWeb.Plugs.SetTeamUser do
         |> assign(:team, team)
         |> maybe_assign_team_user(team_user)
 
-      {:error, :missing_team} ->
-        user = Logflare.Users.Cache.get_by(email: current_email)
-
-        {:ok, team} =
-          Logflare.Teams.create_team(user, %{name: Logflare.Generators.team_name()})
-
-        conn
-        |> assign(:user, user)
-        |> assign(:team, team)
-
       {:error, _} ->
         conn
     end
