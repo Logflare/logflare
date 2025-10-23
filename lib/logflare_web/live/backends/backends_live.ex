@@ -7,7 +7,6 @@ defmodule LogflareWeb.BackendsLive do
   alias Logflare.Backends
   alias Logflare.Rules
   alias Logflare.Sources
-  alias Logflare.Users
 
   require Logger
 
@@ -19,14 +18,8 @@ defmodule LogflareWeb.BackendsLive do
   def render(%{live_action: :new} = assigns), do: new_action(assigns)
   def render(%{live_action: :edit} = assigns), do: edit_action(assigns)
 
-  def mount(params, %{"user_id" => user_id}, socket) do
-    {user_id, _} =
-      case user_id do
-        v when is_binary(v) -> Integer.parse(v)
-        _ -> {user_id, nil}
-      end
-
-    user = Users.get(user_id)
+  def mount(params, _session, socket) do
+    %{assigns: %{user: user}} = socket
 
     socket =
       socket
