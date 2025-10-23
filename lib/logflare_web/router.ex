@@ -218,10 +218,13 @@ defmodule LogflareWeb.Router do
 
   scope "/alerts", LogflareWeb do
     pipe_through([:browser, :require_auth])
-    live "/", AlertsLive, :index
-    live "/new", AlertsLive, :new
-    live "/:id", AlertsLive, :show
-    live "/:id/edit", AlertsLive, :edit
+
+    live_session :alerts, on_mount: LogflareWeb.AuthLive do
+      live "/", AlertsLive, :index
+      live "/new", AlertsLive, :new
+      live "/:id", AlertsLive, :show
+      live "/:id/edit", AlertsLive, :edit
+    end
   end
 
   scope "/sources", LogflareWeb do
@@ -256,7 +259,10 @@ defmodule LogflareWeb.Router do
     pipe_through([:browser, :require_auth, :set_source, :ensure_source_started])
 
     resources "/", SourceController, except: [:index, :new, :create, :delete] do
-      live_session(:rules, root_layout: {LogflareWeb.LayoutView, :root}) do
+      live_session(:rules,
+        on_mount: LogflareWeb.AuthLive,
+        root_layout: {LogflareWeb.LayoutView, :root}
+      ) do
         live("/rules", Sources.RulesLive)
       end
     end

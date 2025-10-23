@@ -151,14 +151,13 @@ defmodule LogflareWeb.AccessTokensLive do
     "scopes_query" => [],
     "scopes_main" => ["ingest"]
   }
-  def mount(_params, %{"user_id" => user_id}, socket) do
-    user = Logflare.Users.get(user_id)
+  def mount(_params, _session, socket) do
+    %{assigns: %{user: user}} = socket
     sources = Sources.list_sources_by_user(user)
     endpoints = Endpoints.list_endpoints_by(user_id: user.id)
 
     socket =
       socket
-      |> assign(:user, user)
       |> assign(:show_create_form, false)
       |> assign(:created_token, nil)
       |> assign(:sources, sources)

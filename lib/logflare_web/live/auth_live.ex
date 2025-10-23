@@ -15,7 +15,12 @@ defmodule LogflareWeb.AuthLive do
 
     case TeamContext.resolve(team_id, email) do
       {:ok, %TeamContext{team: team, user: user, team_user: team_user}} ->
-        {:cont, assign(socket, user: user, team: team, team_user: team_user)}
+        {:cont,
+         assign(socket,
+           user: Logflare.Users.preload_defaults(user),
+           team: Logflare.Teams.preload_team_users(team),
+           team_user: team_user
+         )}
 
       {:error, _reason} ->
         {:halt, socket}

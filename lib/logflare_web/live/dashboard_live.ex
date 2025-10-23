@@ -56,15 +56,13 @@ defmodule LogflareWeb.DashboardLive do
   end
 
   def assign_teams(socket) do
-    %{user: user} = socket.assigns
-
-    home_team = user.team |> Logflare.Repo.preload(:user)
+    %{user: user, team: team} = socket.assigns
 
     team_users =
       Logflare.TeamUsers.list_team_users_by_and_preload(email: user.email)
 
     assign(socket,
-      home_team: home_team,
+      home_team: team,
       team_user: nil,
       team_users: team_users
     )
