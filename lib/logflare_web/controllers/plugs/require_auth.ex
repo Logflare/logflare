@@ -21,7 +21,7 @@ defmodule LogflareWeb.Plugs.RequireAuth do
         |> redirect(to: ~p"/auth/login/single_tenant")
         |> halt()
 
-      current_email ->
+      conn.assigns[:user] ->
         referer = get_session(conn, :redirect_to)
 
         if referer do
