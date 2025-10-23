@@ -268,5 +268,6 @@ defmodule Logflare.Mixfile do
     ]
   end
 
-  defp version, do: File.read!(Path.join(__DIR__, "VERSION"))
+  defp version,
+    do: File.read!(Path.join(__DIR__, "VERSION")) |> String.replace("\n", "") |> String.trim()
 end
