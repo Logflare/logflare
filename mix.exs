@@ -79,7 +79,7 @@ defmodule Logflare.Mixfile do
     [
       # Phoenix stuff
       {:phoenix, "~> 1.7.14"},
-      {:phoenix_live_view, "~> 0.18"},
+      {:phoenix_live_view, "~> 1.0.0"},
       {:phoenix_view, "~> 2.0"},
       {:phoenix_pubsub, "~> 2.1"},
       {:phoenix_ecto, "~> 4.4"},
@@ -242,7 +242,7 @@ defmodule Logflare.Mixfile do
       {:opentelemetry_phoenix, "~> 2.0.0-rc.2"},
       {:opentelemetry_bandit, "~> 0.2.0-rc.1"},
       {:otel_metric_exporter, git: "https://github.com/supabase/elixir-otel-metric-exporter"},
-      {:live_monaco_editor, "~> 0.1"}
+      {:live_monaco_editor, "~> 0.2"}
     ]
   end
 
