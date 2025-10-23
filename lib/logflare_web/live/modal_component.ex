@@ -22,7 +22,7 @@ defmodule LogflareWeb.ModalComponent do
       |> assign(:close, assigns[:close] || "close")
 
     ~H"""
-    <div id={@id} class="modal fade show" phx-hook="LiveModal" phx-click-away={@close} phx-window-keydown={@close} phx-key="escape" phx-target={"##{@id}"} phx-page-loading style="display: block;">
+    <div id={@id} class="modal fade show" phx-hook="LiveModal" phx-click-away={@close} phx-window-keydown={@close} phx-key="escape" phx-target={"##{@id}"} style="display: block;">
       <div class="modal-dialog modal-xl" role="document">
         <div class="modal-content">
           <div class="modal-header lf-modal-header">
