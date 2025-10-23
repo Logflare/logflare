@@ -1,6 +1,10 @@
 defmodule Logflare.Teams.TeamContext do
   @moduledoc """
   Determine the current team context based on the user's selection.
+
+  Takes `email`, usually from the logged in session, and `team_id_param`, typically from the URL query params.
+
+  If `team_id_param` is nil or empty, the user's home team is used.
   """
 
   alias Logflare.TeamUsers
@@ -25,16 +29,17 @@ defmodule Logflare.Teams.TeamContext do
   @spec resolve(team_id_param(), String.t()) :: resolve_result()
   def resolve(team_id_param, email) when is_binary(email) do
     with {:ok, role} <- parse_team_id(team_id_param),
-         {:ok, team, role} <- verify_team(email, role),
-         {:ok, %__MODULE__{} = ctx} <- do_resolve(team, role, email) do
+         {:ok, team, user_or_team_user} <- verify_team_access(email, role),
+         {:ok, %__MODULE__{} = ctx} <- do_resolve(team, user_or_team_user) do
       {:ok, ctx}
     end
   end
 
-  @spec parse_team_id(String.t() | nil) ::
+  @spec parse_team_id(team_id_param()) ::
           {:ok, :owner} | {:ok, non_neg_integer()} | {:error, :invalid_team_id}
   def parse_team_id(nil), do: {:ok, :owner}
   def parse_team_id(""), do: {:ok, :owner}
+  def parse_team_id(team_id_param) when is_integer(team_id_param), do: {:ok, team_id_param}
 
   def parse_team_id(team_id_param) when is_binary(team_id_param) do
     case Integer.parse(team_id_param) do
@@ -43,84 +48,57 @@ defmodule Logflare.Teams.TeamContext do
     end
   end
 
-  def parse_team_id(team_id_param) when is_integer(team_id_param), do: {:ok, team_id_param}
-
   def parse_team_id(_), do: {:error, :invalid_team_id}
 
-  defp do_resolve(%Team{} = team, :owner, _email) do
-    team = Logflare.Teams.preload_user(team)
-    {:ok, %__MODULE__{user: team.user, team: team, team_user: nil}}
-  end
+  defp do_resolve(%Team{} = team, %TeamUser{} = team_user) do
+    case TeamUsers.touch_team_user(team_user) do
+      {1, [touched]} ->
+        touched =
+          touched
+          |> TeamUsers.preload_defaults()
 
-  defp do_resolve(_team, team_id, email) when is_integer(team_id) do
-    case TeamUsers.Cache.get_team_user_by(email: email, team_id: team_id) do
-      %TeamUser{} = team_user -> resolve_team_user(team_user)
-      _ -> {:error, :not_authorized}
-    end
-  end
-
-  defp verify_team(email, :owner) when is_binary(email) do
-    case Users.Cache.get_by_and_preload(email: email) do
-      %User{} = user ->
-        {:ok, user.team, :owner}
+        {:ok, %__MODULE__{user: team.user, team: team, team_user: touched}}
 
       _ ->
         {:error, :not_authorized}
     end
   end
 
-  defp verify_team(email, team_id) when is_binary(email) do
-    cond do
-      email_is_team_owner?(email, team_id) ->
-        verify_team(email, :owner)
+  defp do_resolve(%Team{} = team, %User{} = _user) do
+    {:ok, %__MODULE__{user: team.user, team: team, team_user: nil}}
+  end
 
-      team_user = fetch_team_user(email, team_id) ->
-        team_user = team_user |> TeamUsers.preload_defaults()
-        {:ok, team_user.team, team_id}
+  defp verify_team_access(email, :owner) when is_binary(email) do
+    case Users.Cache.get_by_and_preload(email: email) do
+      %User{} = user ->
+        team = user.team |> Teams.preload_user()
+        {:ok, team, user}
+
+      _ ->
+        {:error, :not_authorized}
+    end
+  end
+
+  defp verify_team_access(email, team_id) when is_binary(email) do
+    team =
+      Teams.get_team_by(id: team_id)
+      |> Teams.preload_user()
+
+    cond do
+      is_team_owner?(team, email) ->
+        {:ok, team, team.user}
+
+      team_user = fetch_team_user(team, email) ->
+        {:ok, team, team_user}
 
       true ->
         {:error, :not_authorized}
     end
   end
 
-  defp resolve_team_user(%TeamUser{} = team_user) do
-    case TeamUsers.touch_team_user(team_user) do
-      {1, [touched]} ->
-        touched
-        |> TeamUsers.preload_defaults()
-        |> build_member_context()
+  defp is_team_owner?(team, email), do: team.user.email == email
 
-      _ ->
-        {:error, :not_authorized}
-    end
-  end
-
-  defp build_member_context(%TeamUser{} = team_user) do
-    case Users.Cache.get_by_and_preload(id: team_user.team.user_id) do
-      %User{} = owner ->
-        {:ok,
-         %__MODULE__{
-           user: owner,
-           team: Teams.preload_team_users(team_user.team),
-           team_user: team_user
-         }}
-
-      _ ->
-        {:error, :not_authorized}
-    end
-  end
-
-  defp email_is_team_owner?(email, team_id) do
-    case Users.Cache.get_by_and_preload(email: email) do
-      %User{} = user ->
-        user.team.id == team_id
-
-      _ ->
-        false
-    end
-  end
-
-  defp fetch_team_user(email, team_id) do
-    TeamUsers.Cache.get_team_user_by(email: email, team_id: team_id)
+  defp fetch_team_user(team, email) do
+    TeamUsers.Cache.get_team_user_by(email: email, team_id: team.id)
   end
 end
