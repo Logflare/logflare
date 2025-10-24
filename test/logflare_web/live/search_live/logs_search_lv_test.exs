@@ -180,28 +180,44 @@ defmodule LogflareWeb.Source.SearchLVTest do
 
   describe "preference timezone for team_user" do
     setup do
-      user = insert(:user)
-      team_user = insert(:team_user, preferences: build(:user_preferences, timezone: "NZ"))
-      source = insert(:source, user: user)
+      team = insert(:team)
+
+      team_user =
+        insert(:team_user, preferences: build(:user_preferences, timezone: "NZ"), team: team)
+
+      source = insert(:source, user: team.user)
       plan = insert(:plan)
-      [user: user, source: source, plan: plan, team_user: team_user]
+      [user: team.user, source: source, plan: plan, team_user: team_user]
     end
 
     setup [:setup_team_user_session]
 
-    test "subheader - if no tz, will redirect to preference tz", %{conn: conn, source: source} do
+    test "subheader - if no tz, will redirect to preference tz", %{
+      conn: conn,
+      user: user,
+      source: source,
+      team_user: team_user
+    } do
       {:error, {:live_redirect, %{to: to}}} =
-        live(conn, ~p"/sources/#{source.id}/search?querystring=something123&tailing%3F=")
+        conn
+        |> login_user(user, team_user)
+        |> live(
+          ~p"/sources/#{source.id}/search?team_id=#{team_user.team_id}&querystring=something123&tailing%3F="
+        )
 
       assert to =~ "tz=NZ"
       assert to =~ "something123"
     end
 
-    test "subheader - if ?tz=, will use param tz", %{conn: conn, source: source} do
+    test "subheader - if ?tz=, will use param tz", %{
+      conn: conn,
+      team_user: team_user,
+      source: source
+    } do
       {:ok, view, _html} =
         live(
           conn,
-          ~p"/sources/#{source.id}/search?querystring=something123&tailing%3F=&tz=Singapore"
+          ~p"/sources/#{source.id}/search?team_id=#{team_user.team_id}&querystring=something123&tailing%3F=&tz=Singapore"
         )
 
       :timer.sleep(300)
@@ -692,9 +708,11 @@ defmodule LogflareWeb.Source.SearchLVTest do
     end
 
     test "redirected for non-owner user", %{conn: conn, source: source} do
+      user = insert(:user)
+
       conn =
         conn
-        |> assign(:user, insert(:user))
+        |> login_user(user)
         |> get(Routes.live_path(conn, SearchLV, source))
 
       assert html_response(conn, 403) =~ "Forbidden"
@@ -766,21 +784,24 @@ defmodule LogflareWeb.Source.SearchLVTest do
 
   describe "create from query" do
     setup do
-      user = insert(:user)
-      team_user = insert(:team_user, preferences: build(:user_preferences, timezone: "NZ"))
-      source = insert(:source, user: user)
+      team = insert(:team)
+
+      team_user =
+        insert(:team_user, team: team, preferences: build(:user_preferences, timezone: "NZ"))
+
+      source = insert(:source, user: team.user)
       plan = insert(:plan)
-      [user: user, source: source, plan: plan, team_user: team_user]
+      [user: team.user, source: source, plan: plan, team_user: team_user]
     end
 
     setup [:setup_team_user_session]
     setup {TestUtils, :attach_wait_for_render}
 
-    test "create new query from search", %{conn: conn, source: source} do
+    test "create new query from search", %{conn: conn, team_user: team_user, source: source} do
       {:ok, view, _html} =
         live(
           conn,
-          ~p"/sources/#{source.id}/search?querystring=something123&tailing%3F=&tz=Etc/UTC"
+          ~p"/sources/#{source.id}/search?team_id=#{team_user.team_id}&querystring=something123&tailing%3F=&tz=Etc/UTC"
         )
 
       # Wait until search has executed
@@ -797,13 +818,17 @@ defmodule LogflareWeb.Source.SearchLVTest do
       assert redirect_path =~ source.name
     end
 
-    test "create new alert, endpoint from search", %{conn: conn, source: source} do
+    test "create new alert, endpoint from search", %{
+      conn: conn,
+      team_user: team_user,
+      source: source
+    } do
       ["alert", "endpoint"]
       |> Enum.each(fn resource ->
         {:ok, view, _html} =
           live(
             conn,
-            ~p"/sources/#{source.id}/search?querystring=something123&tailing%3F=&tz=Etc/UTC"
+            ~p"/sources/#{source.id}/search?team_id=#{team_user.team_id}&querystring=something123&tailing%3F=&tz=Etc/UTC"
           )
 
         view
@@ -826,11 +851,11 @@ defmodule LogflareWeb.Source.SearchLVTest do
       end)
     end
 
-    test "create new query from chart query", %{conn: conn, source: source} do
+    test "create new query from chart query", %{conn: conn, team_user: team_user, source: source} do
       {:ok, view, _html} =
         live(
           conn,
-          ~p"/sources/#{source.id}/search?querystring=something123&tailing%3F=&tz=Etc/UTC"
+          ~p"/sources/#{source.id}/search?team_id=#{team_user.team_id}&querystring=something123&tailing%3F=&tz=Etc/UTC"
         )
 
       view
@@ -848,13 +873,17 @@ defmodule LogflareWeb.Source.SearchLVTest do
       assert query =~ source.name
     end
 
-    test "create new alert, endpoint from chart", %{conn: conn, source: source} do
+    test "create new alert, endpoint from chart", %{
+      conn: conn,
+      team_user: team_user,
+      source: source
+    } do
       ["alert", "endpoint"]
       |> Enum.each(fn resource ->
         {:ok, view, _html} =
           live(
             conn,
-            ~p"/sources/#{source.id}/search?querystring=something123&tailing%3F=&tz=Etc/UTC"
+            ~p"/sources/#{source.id}/search?team_id=#{team_user.team_id}&querystring=something123&tailing%3F=&tz=Etc/UTC"
           )
 
         view
