@@ -30,6 +30,7 @@ defmodule Logflare.Teams.TeamContext do
   def resolve(team_id_param, email) when is_binary(email) do
     with {:ok, role} <- parse_team_id(team_id_param),
          {:ok, team, user_or_team_user} <- verify_team_access(email, role),
+         team <- Teams.preload_team_users(team),
          {:ok, %__MODULE__{} = ctx} <- do_resolve(team, user_or_team_user) do
       {:ok, ctx}
     end
@@ -51,13 +52,15 @@ defmodule Logflare.Teams.TeamContext do
   def parse_team_id(_), do: {:error, :invalid_team_id}
 
   defp do_resolve(%Team{} = team, %TeamUser{} = team_user) do
+    user = team.user |> Logflare.Users.Cache.preload_defaults()
+
     case TeamUsers.touch_team_user(team_user) do
       {1, [touched]} ->
         touched =
           touched
           |> TeamUsers.preload_defaults()
 
-        {:ok, %__MODULE__{user: team.user, team: team, team_user: touched}}
+        {:ok, %__MODULE__{user: user, team: team, team_user: touched}}
 
       _ ->
         {:error, :not_authorized}
@@ -65,7 +68,8 @@ defmodule Logflare.Teams.TeamContext do
   end
 
   defp do_resolve(%Team{} = team, %User{} = _user) do
-    {:ok, %__MODULE__{user: team.user, team: team, team_user: nil}}
+    user = team.user |> Logflare.Users.Cache.preload_defaults()
+    {:ok, %__MODULE__{user: user, team: team, team_user: nil}}
   end
 
   defp verify_team_access(email, :owner) when is_binary(email) do

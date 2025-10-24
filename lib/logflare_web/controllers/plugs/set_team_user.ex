@@ -17,10 +17,7 @@ defmodule LogflareWeb.Plugs.SetTeamUser do
         assign(conn, :user, nil)
 
       email ->
-        conn = set_team_user_for_browser(conn)
-        user = Logflare.Users.Cache.get_by(email: email)
-        teams = Logflare.Teams.list_teams_by_user_access(user)
-        assign(conn, :teams, teams)
+        set_team_user_for_browser(conn)
     end
   end
 
@@ -35,9 +32,12 @@ defmodule LogflareWeb.Plugs.SetTeamUser do
 
     case TeamContext.resolve(team_id, current_email) do
       {:ok, %{user: user, team: team, team_user: team_user}} ->
+        teams = Logflare.Teams.list_teams_by_user_access(user)
+
         conn
         |> assign(:user, user)
         |> assign(:team, team)
+        |> assign(:teams, teams)
         |> maybe_assign_team_user(team_user)
 
       {:error, _} ->
