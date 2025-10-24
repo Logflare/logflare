@@ -5,10 +5,9 @@ defmodule LogflareWeb.QueryLive do
 
   require Logger
 
-  alias Logflare.Endpoints
   alias Logflare.Alerting
-  alias Logflare.Users
   alias Logflare.Backends
+  alias Logflare.Endpoints
   alias LogflareWeb.QueryComponents
 
   def render(assigns) do
