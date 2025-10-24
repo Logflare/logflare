@@ -51,22 +51,22 @@ defmodule LogflareWeb.AccessTokensLive do
               <div class="form-check tw-mr-2">
                 <input class="form-check-input" type="checkbox" name="scopes_main[]" id={["scopes", "main", value]} value={value} checked={value in @create_token_form["scopes_main"]} />
                 <label class="form-check-label tw-px-1" for={["scopes", "main", value]}>
-                  <%= String.capitalize(value) %>
-                  <small class="form-text text-muted"><%= description %></small>
+                  {String.capitalize(value)}
+                  <small class="form-text text-muted">{description}</small>
                   <select :for={input_n <- 0..2} :if={value == "ingest" and value in @create_token_form["scopes_main"]} id={["scopes", "ingest", input_n]} name="scopes_ingest[]" class="mt-1 form-control form-control-sm">
                     <option hidden value="">Ingest into a specific source...</option>
-                    <option :for={source <- @sources} selected={"ingest:source:#{source.id}" == Enum.at(@create_token_form["scopes_ingest"], input_n)} value={"ingest:source:#{source.id}"} }>Ingest into <%= source.name %> only</option>
+                    <option :for={source <- @sources} selected={"ingest:source:#{source.id}" == Enum.at(@create_token_form["scopes_ingest"], input_n)} value={"ingest:source:#{source.id}"} }>Ingest into {source.name} only</option>
                   </select>
                   <select :for={input_n <- 0..2} :if={value == "query" and value in @create_token_form["scopes_main"]} id={["scopes", "query", input_n]} name="scopes_query[]" class="mt-1 form-control form-control-sm">
                     <option hidden value="">Query a specific endpoint...</option>
-                    <option :for={endpoint <- @endpoints} value={"query:endpoint:#{endpoint.id}"} selected={"query:endpoint:#{endpoint.id}" == Enum.at(@create_token_form["scopes_query"], input_n)}>Query <%= endpoint.name %> only</option>
+                    <option :for={endpoint <- @endpoints} value={"query:endpoint:#{endpoint.id}"} selected={"query:endpoint:#{endpoint.id}" == Enum.at(@create_token_form["scopes_query"], input_n)}>Query {endpoint.name} only</option>
                   </select>
                 </label>
               </div>
             <% end %>
           </div>
           <button type="button" class="btn btn-secondary" phx-click="toggle-create-form" phx-value-show="false">Cancel</button>
-          <%= submit("Create", class: "btn btn-primary") %>
+          {submit("Create", class: "btn btn-primary")}
         </.form>
 
         <%= if @created_token do %>
@@ -109,7 +109,7 @@ defmodule LogflareWeb.AccessTokensLive do
               <td class="p-2">
                 <span class="tw-text-sm">
                   <%= if token.description do %>
-                    <%= token.description %>
+                    {token.description}
                   <% else %>
                     <span class="tw-italic">No description</span>
                   <% end %>
@@ -117,15 +117,15 @@ defmodule LogflareWeb.AccessTokensLive do
               </td>
               <td>
                 <span :for={scope <- String.split(token.scopes || "")} class="badge badge-secondary mr-1">
-                  <%= case scope do
+                  {case scope do
                     "ingest" <> _ -> get_ingest_label(assigns, scope)
                     "query" <> _ -> get_query_label(assigns, scope)
                     scope -> scope
-                  end %>
+                  end}
                 </span>
               </td>
               <td class="p-2 tw-text-sm">
-                <%= Calendar.strftime(token.inserted_at, "%d %b %Y, %I:%M:%S %p") %>
+                {Calendar.strftime(token.inserted_at, "%d %b %Y, %I:%M:%S %p")}
               </td>
 
               <td class="p-2">

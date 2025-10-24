@@ -10,7 +10,7 @@ defmodule LogflareWeb.AlertComponent do
     ~H"""
     <div class="message">
       <div class={"inner-message alert alert-#{@alert_class} tw-min-w-[350px]"} role="alert">
-        <p><%= render_slot(@inner_block) %></p>
+        <p>{render_slot(@inner_block)}</p>
         <a href="#" phx-click="close" phx-target={@myself} phx-value-flash_key={@key}>
           <button type="button" class="close">
             &times;

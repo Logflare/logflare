@@ -1,48 +1,48 @@
 <div class="tw-flex tw-my-10 tw-gap-2">
   <.form :let={f} for={@endpoint_changeset} as={:endpoint} id="endpoint" phx-change="validate" phx-submit="save-endpoint" class="tw-w-1/2 tw-border-r-1 pr-2 tw-border-l-0 tw-border-t-0 tw-border-b-0 tw-border-solid tw-border-gray-600">
-    <%= hidden_input(f, :language) %>
+    {hidden_input(f, :language)}
     <div class="tw-sticky tw-flex tw-justify-between tw-gap-4">
       <button :if={@show_endpoint} data-confirm="Are you sure? This cannot be undone" phx-click="delete-endpoint" phx-value-endpoint_id={@show_endpoint.id} class="btn btn-outline-danger" type="button">
         <i class="fas fa-trash"></i> Delete
       </button>
-      <%= submit("Save changes", class: "btn btn-primary") %>
+      {submit("Save changes", class: "btn btn-primary")}
     </div>
 
     <.header_with_anchor text="Endpoint Name" />
     <div class="form-group">
-      <%= text_input(f, :name,
+      {text_input(f, :name,
         placeholder: "YourApp.EndpointName",
         class: "form-control form-control-margin",
         "phx-update": "ignore"
-      ) %>
-      <%= error_tag(f, :name) %>
+      )}
+      {error_tag(f, :name)}
       <small class="form-text text-muted">
         This endpoint will can be queried at:<br />
-        <code><%= url(~p"/api/endpoints/query/YourApp.EndpointName") %></code>
+        <code>{url(~p"/api/endpoints/query/YourApp.EndpointName")}</code>
       </small>
     </div>
 
     <div class="form-group">
-      <%= label(f, :description, "Description") %>
+      {label(f, :description, "Description")}
       <div class="input-group">
-        <%= textarea(f, :description, class: "form-control", "phx-update": "ignore") %>
+        {textarea(f, :description, class: "form-control", "phx-update": "ignore")}
       </div>
-      <%= error_tag(f, :description) %>
+      {error_tag(f, :description)}
       <small class="form-text text-muted">
         Add a helpful description for what this endpoint is used for.
       </small>
     </div>
 
     <div :if={@show_backend_selection} class="form-group">
-      <%= label(f, :backend_id, "Backend (optional)") %>
-      <%= select(f, :backend_id, [{"Default (BigQuery)", nil}] ++ Enum.map(@backends, fn backend -> {"#{backend.name} (#{backend.type})", backend.id} end),
+      {label(f, :backend_id, "Backend (optional)")}
+      {select(f, :backend_id, [{"Default (BigQuery)", nil}] ++ Enum.map(@backends, fn backend -> {"#{backend.name} (#{backend.type})", backend.id} end),
         class: "form-control",
         "phx-update": "ignore"
-      ) %>
-      <%= error_tag(f, :backend_id) %>
+      )}
+      {error_tag(f, :backend_id)}
       <small class="form-text text-muted">
         Choose which backend to execute this endpoint query against. Defaults to BigQuery if no backend is selected. <br />
-        <strong>Query Language: <span id="query-language"><%= format_query_language(@determined_language) %></span></strong>
+        <strong>Query Language: <span id="query-language">{format_query_language(@determined_language)}</span></strong>
       </small>
     </div>
 
@@ -70,41 +70,41 @@
       </div>
 
       <div class="form-group">
-        <%= label(f, :max_limit, "Max limit") %>
+        {label(f, :max_limit, "Max limit")}
         <div class="input-group">
-          <%= text_input(f, :max_limit,
+          {text_input(f, :max_limit,
             placeholder: if(@show_endpoint, do: nil, else: 1000),
             class: "form-control"
-          ) %>
+          )}
           <div class="input-group-append">
             <span class="input-group-text">rows</span>
           </div>
         </div>
-        <%= error_tag(f, :max_limit) %>
+        {error_tag(f, :max_limit)}
         <small class="form-text text-muted">
           This option determines the maximum result size returned from the backend.
         </small>
       </div>
 
       <div class="form-group">
-        <%= checkbox(f, :enable_auth, id: "auth-checkbox", class: "form-check-input") %>
-        <%= label(f, :enable_auth, "Enable authentication",
+        {checkbox(f, :enable_auth, id: "auth-checkbox", class: "form-check-input")}
+        {label(f, :enable_auth, "Enable authentication",
           for: "auth-checkbox",
           class: "form-check-label"
-        ) %>
-        <%= error_tag(f, :enable_auth) %>
+        )}
+        {error_tag(f, :enable_auth)}
         <small class="form-text text-muted">
           Endpoints with authentication enabled will require an access token to be provided on each request.
         </small>
       </div>
 
       <div class="">
-        <%= checkbox(f, :sandboxable, id: "sandboxable-checkbox", class: "form-check-input") %>
-        <%= label(f, :sandboxable, "Enable query sandboxing",
+        {checkbox(f, :sandboxable, id: "sandboxable-checkbox", class: "form-check-input")}
+        {label(f, :sandboxable, "Enable query sandboxing",
           for: "sandboxable-checkbox",
           class: "form-check-label"
-        ) %>
-        <%= error_tag(f, :sandboxable) %>
+        )}
+        {error_tag(f, :sandboxable)}
         <small class="form-text text-muted">
           Endpoints with sandboxing enabled will accept an <code>?sql=</code> query parameter that will be inserted as the outer query of the defined CTE.
           This restricts users of the endpoint to only query within the defined CTE result sets.
@@ -112,12 +112,12 @@
       </div>
 
       <div class="">
-        <%= checkbox(f, :redact_pii, id: "redact-pii-checkbox", class: "form-check-input") %>
-        <%= label(f, :redact_pii, "Redact PII from query results",
+        {checkbox(f, :redact_pii, id: "redact-pii-checkbox", class: "form-check-input")}
+        {label(f, :redact_pii, "Redact PII from query results",
           for: "redact-pii-checkbox",
           class: "form-check-label"
-        ) %>
-        <%= error_tag(f, :redact_pii) %>
+        )}
+        {error_tag(f, :redact_pii)}
         <small class="form-text text-muted">
           When enabled, PII such as IP addresses in query results will be "REDACTED"
         </small>
@@ -127,46 +127,46 @@
     <.header_with_anchor text="Caching" />
     <section class="tw-flex tw-flex-col tw-gap-2 tw-w-full">
       <div>
-        <%= label(f, :cache_duration_seconds, "Cache TTL") %>
+        {label(f, :cache_duration_seconds, "Cache TTL")}
         <div class="input-group">
-          <%= text_input(f, :cache_duration_seconds,
+          {text_input(f, :cache_duration_seconds,
             placeholder: if(@show_endpoint, do: nil, else: 3600),
             class: "form-control"
-          ) %>
+          )}
           <div class="input-group-append">
             <span class="input-group-text">seconds</span>
           </div>
         </div>
-        <%= error_tag(f, :cache_duration_seconds) %>
+        {error_tag(f, :cache_duration_seconds)}
         <small class="form-text text-muted">
           Endpoint results are cached on a per-request basis. Set Cache TTL to <code>0</code> to disable caching completely.
         </small>
       </div>
       <div>
-        <%= label(f, :proactive_requerying_seconds, "Proactive Re-querying") %>
+        {label(f, :proactive_requerying_seconds, "Proactive Re-querying")}
         <div class="input-group">
-          <%= text_input(f, :proactive_requerying_seconds,
+          {text_input(f, :proactive_requerying_seconds,
             placeholder: if(@show_endpoint, do: nil, else: 1800),
             class: "form-control"
-          ) %>
+          )}
           <div class="input-group-append">
             <span class="input-group-text">seconds</span>
           </div>
         </div>
-        <%= error_tag(f, :proactive_requerying_seconds) %>
+        {error_tag(f, :proactive_requerying_seconds)}
         <small class="form-text text-muted">
           Cached results will be refreshed at this interval. Ignored if caching is disabled.
         </small>
       </div>
       <div>
-        <%= label(f, :labels, "Query Execution Labels") %>
+        {label(f, :labels, "Query Execution Labels")}
         <div class="input-group">
-          <%= text_input(f, :labels,
+          {text_input(f, :labels,
             placeholder: if(@show_endpoint, do: nil, else: ""),
             class: "form-control"
-          ) %>
+          )}
         </div>
-        <%= error_tag(f, :labels) %>
+        {error_tag(f, :labels)}
         <small class="form-text text-muted">
           A comma-separated allowlist of labels to be added to the query execution backend. To reference parameters, use the format <code>my_param=@my_param,my_other_field,meta</code>.
           Key value pairs will be added to the query execution backend using the <code>LF-ENDPOINT-LABELS: my_other_field=some-val,meta=123</code> request header.

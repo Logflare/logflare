@@ -1,7 +1,7 @@
 <div :if={@sandbox_query_result_rows || @sandbox_error}>
   <%= if @sandbox_error do %>
     <div class="alert alert-danger tw-mt-4">
-      <p class="tw-mb-0"><%= @sandbox_error %></p>
+      <p class="tw-mb-0">{@sandbox_error}</p>
     </div>
   <% else %>
     <div class="tw-mt-4">
@@ -12,7 +12,7 @@
       </div>
 
       <code class="tw-whitespace-pre-wrap tw-overflow-x-auto tw-block tw-text-white tw-bg-zinc-800 tw-rounded tw-p-2 tw-text-xs">
-        <%= Jason.encode!(@sandbox_query_result_rows) |> Jason.Formatter.pretty_print() %>
+        {Jason.encode!(@sandbox_query_result_rows) |> Jason.Formatter.pretty_print()}
       </code>
 
       <details :if={@show_transformed_query && @transformed_sandbox_query} class="tw-mt-4">
@@ -20,7 +20,7 @@
           Show Transformed Query
         </summary>
         <code class="tw-whitespace-pre-wrap tw-block tw-text-white tw-bg-zinc-900 tw-rounded tw-p-2 tw-text-xs tw-mt-2">
-          <%= @transformed_sandbox_query %>
+          {@transformed_sandbox_query}
         </code>
       </details>
     </div>

@@ -27,24 +27,24 @@
           Cancel
         </button>
       </.link>
-      <%= submit("Save changes", class: "btn btn-primary") %>
+      {submit("Save changes", class: "btn btn-primary")}
     </div>
   </div>
 
   <div :if={@live_action == :new}>
-    <%= select(f, :type, ["Select a backend type...", Webhook: :webhook, Postgres: :postgres, BigQuery: :bigquery, Datadog: :datadog, Elastic: :elastic, Loki: :loki, ClickHouse: :clickhouse, "Incident.io": :incidentio, S3: :s3],
+    {select(f, :type, ["Select a backend type...", Webhook: :webhook, Postgres: :postgres, BigQuery: :bigquery, Datadog: :datadog, Elastic: :elastic, Loki: :loki, ClickHouse: :clickhouse, "Incident.io": :incidentio, S3: :s3],
       phx_change: :change_form_type,
       class: "form-control form-control-margin",
       id: "type"
-    ) %>
+    )}
   </div>
 
   <div class="form-group mt-2">
-    <%= hidden_input(f, :user_id, value: @user.id) %>
-    <%= label(f, :name) %>
-    <%= text_input(f, :name, class: "form-control") %>
-    <%= label(f, :description) %>
-    <%= text_input(f, :description, class: "form-control") %>
+    {hidden_input(f, :user_id, value: @user.id)}
+    {label(f, :name)}
+    {text_input(f, :name, class: "form-control")}
+    {label(f, :description)}
+    {text_input(f, :description, class: "form-control")}
   </div>
 
   <.inputs_for :let={f_config} field={f[:config]}>
@@ -55,14 +55,14 @@
             <%= label f_config, :url do %>
               Websocket URL to send the ingested data
             <% end %>
-            <%= text_input(f_config, :url, class: "form-control") %>
+            {text_input(f_config, :url, class: "form-control")}
           </div>
         <% "postgres" -> %>
           <div class="form-group">
             <%= label f_config, :url do %>
               Postgres URL for the ingestion database
             <% end %>
-            <%= text_input(f_config, :url, class: "form-control") %>
+            {text_input(f_config, :url, class: "form-control")}
             <small class="form-text text-muted">
               Postgres URL with the following format, for example: <code>postgresql://user:password@host:port/database</code>
             </small>
@@ -71,51 +71,51 @@
             <%= label f_config, :username do %>
               Username
             <% end %>
-            <%= text_input(f_config, :username, class: "form-control") %>
+            {text_input(f_config, :username, class: "form-control")}
           </div>
           <div class="form-group">
             <%= label f_config, :password do %>
               Password
             <% end %>
-            <%= text_input(f_config, :password, class: "form-control") %>
+            {text_input(f_config, :password, class: "form-control")}
           </div>
           <div class="form-group">
             <%= label f_config, :hostname do %>
               Hostname
             <% end %>
-            <%= text_input(f_config, :hostname, class: "form-control") %>
+            {text_input(f_config, :hostname, class: "form-control")}
           </div>
           <div class="form-group">
             <%= label f_config, :port do %>
               Port
             <% end %>
-            <%= text_input(f_config, :port, class: "form-control") %>
+            {text_input(f_config, :port, class: "form-control")}
           </div>
           <div class="form-group">
             <%= label f_config, :database do %>
               Database
             <% end %>
-            <%= text_input(f_config, :database, class: "form-control") %>
+            {text_input(f_config, :database, class: "form-control")}
           </div>
           <div class="form-group">
             <%= label f_config, :pool_size do %>
               Connection pool size
             <% end %>
-            <%= text_input(f_config, :pool_size, class: "form-control", default: 1) %>
+            {text_input(f_config, :pool_size, class: "form-control", default: 1)}
           </div>
           <div class="form-group">
             <%= label f_config, :schema do %>
               Schema where data should be store, if blank the database defaults will be used
             <% end %>
-            <%= text_input(f_config, :schema, class: "form-control") %>
+            {text_input(f_config, :schema, class: "form-control")}
             <small class="form-text text-muted">
               Schema name, for example: <code>analytics</code>
             </small>
           </div>
         <% "bigquery" -> %>
           <div class="form-group">
-            <%= label(f_config, :project_id, "Google Cloud Project ID") %>
-            <%= text_input(f_config, :project_id, class: "form-control") %>
+            {label(f_config, :project_id, "Google Cloud Project ID")}
+            {text_input(f_config, :project_id, class: "form-control")}
             <small class="form-text text-muted">
               The Google Cloud project ID where the data is to be inserted into via BigQuery.
             </small>
@@ -125,15 +125,15 @@
             <%= label f_config, :dataset_id do %>
               Dataset ID
             <% end %>
-            <%= text_input(f_config, :dataset_id, class: "form-control") %>
+            {text_input(f_config, :dataset_id, class: "form-control")}
             <small class="form-text text-muted">
               A BigQuery Dataset ID where data will be stored.
             </small>
           </div>
         <% "datadog" -> %>
           <div class="form-group">
-            <%= label(f_config, :api_key, "API Key") %>
-            <%= text_input(f_config, :api_key, class: "form-control", type: "password") %>
+            {label(f_config, :api_key, "API Key")}
+            {text_input(f_config, :api_key, class: "form-control", type: "password")}
             <small class="form-text text-muted">
               The API Key obtained from the Datadog dashboard.
               https://us1.datadoghq.com/organization-settings/api-keys
@@ -141,109 +141,109 @@
           </div>
 
           <div class="form-group">
-            <%= label(f_config, :region, "Region") %>
-            <%= select(f_config, :region, ["Select a region..." | Logflare.Backends.Adaptor.DatadogAdaptor.regions()],
+            {label(f_config, :region, "Region")}
+            {select(f_config, :region, ["Select a region..." | Logflare.Backends.Adaptor.DatadogAdaptor.regions()],
               class: "form-control form-control-margin",
               id: "datadog-region"
-            ) %>
+            )}
             <small class="form-text text-muted">
               Region that the Datadog account is in.
             </small>
           </div>
         <% "elastic" -> %>
           <div class="form-group">
-            <%= label(f_config, :url, "Filebeat URL") %>
-            <%= text_input(f_config, :url, class: "form-control") %>
+            {label(f_config, :url, "Filebeat URL")}
+            {text_input(f_config, :url, class: "form-control")}
             <small class="form-text text-muted">
               The Filebeat HTTP(S) endpoint to send events.
             </small>
           </div>
           <div class="form-group">
-            <%= label(f_config, :username, "Basic Auth Username") %>
-            <%= text_input(f_config, :username, class: "form-control") %>
-            <%= label(f_config, :password, "Basic Auth Password") %>
-            <%= text_input(f_config, :password, class: "form-control", type: "password") %>
+            {label(f_config, :username, "Basic Auth Username")}
+            {text_input(f_config, :username, class: "form-control")}
+            {label(f_config, :password, "Basic Auth Password")}
+            {text_input(f_config, :password, class: "form-control", type: "password")}
             <small class="form-text text-muted">
               For basic auth, both username and password must be provided.
             </small>
           </div>
         <% "loki" -> %>
           <div class="form-group">
-            <%= label(f_config, :url, "Loki URL") %>
-            <%= text_input(f_config, :url, class: "form-control") %>
+            {label(f_config, :url, "Loki URL")}
+            {text_input(f_config, :url, class: "form-control")}
             <small class="form-text text-muted">
               The Loki HTTP(S) endpoint to send events.
             </small>
           </div>
 
           <div class="form-group">
-            <%= label(f_config, :username, "Basic Auth Username") %>
-            <%= text_input(f_config, :username, class: "form-control") %>
-            <%= label(f_config, :password, "Basic Auth Password") %>
-            <%= text_input(f_config, :password, class: "form-control", type: "password") %>
+            {label(f_config, :username, "Basic Auth Username")}
+            {text_input(f_config, :username, class: "form-control")}
+            {label(f_config, :password, "Basic Auth Password")}
+            {text_input(f_config, :password, class: "form-control", type: "password")}
             <small class="form-text text-muted">
               For basic auth, both username and password must be provided.
             </small>
           </div>
 
           <div class="form-group">
-            <%= label(f_config, :header1_key, "Header 1 Key") %>
-            <%= text_input(f_config, :header1_key, class: "form-control") %>
-            <%= label(f_config, :header1_value, "Header 1 Value") %>
-            <%= text_input(f_config, :header1_value, class: "form-control") %>
+            {label(f_config, :header1_key, "Header 1 Key")}
+            {text_input(f_config, :header1_key, class: "form-control")}
+            {label(f_config, :header1_value, "Header 1 Value")}
+            {text_input(f_config, :header1_value, class: "form-control")}
           </div>
         <% "clickhouse" -> %>
           <div class="form-group">
-            <%= label(f_config, :url, "ClickHouse URL") %>
-            <%= text_input(f_config, :url, class: "form-control") %>
+            {label(f_config, :url, "ClickHouse URL")}
+            {text_input(f_config, :url, class: "form-control")}
             <small class="form-text text-muted">
               Provide the ClickHouse hostname URL with the following format, for example: <code>https://hostname</code>
             </small>
           </div>
           <div class="form-group">
-            <%= label(f_config, :username, "ClickHouse Username") %>
-            <%= text_input(f_config, :username, class: "form-control") %>
-            <%= label(f_config, :password, "ClickHouse Password") %>
-            <%= text_input(f_config, :password, class: "form-control", type: "password") %>
+            {label(f_config, :username, "ClickHouse Username")}
+            {text_input(f_config, :username, class: "form-control")}
+            {label(f_config, :password, "ClickHouse Password")}
+            {text_input(f_config, :password, class: "form-control", type: "password")}
             <small class="form-text text-muted">
               Both username and password must be provided.
             </small>
           </div>
           <div class="form-group">
-            <%= label(f_config, :database, "Database Name") %>
-            <%= text_input(f_config, :database, class: "form-control", default: "default") %>
+            {label(f_config, :database, "Database Name")}
+            {text_input(f_config, :database, class: "form-control", default: "default")}
             <small class="form-text text-muted">
               The ClickHouse database name where events will be stored.
             </small>
           </div>
           <div class="form-group">
-            <%= label(f_config, :port, "Port") %>
-            <%= text_input(f_config, :port, class: "form-control", default: 8443) %>
+            {label(f_config, :port, "Port")}
+            {text_input(f_config, :port, class: "form-control", default: 8443)}
             <small class="form-text text-muted">
               The port number for the ClickHouse server.
             </small>
           </div>
           <div class="form-group">
-            <%= label(f_config, :port, "Connection pool size") %>
-            <%= text_input(f_config, :pool_size, class: "form-control", default: 1) %>
+            {label(f_config, :port, "Connection pool size")}
+            {text_input(f_config, :pool_size, class: "form-control", default: 1)}
           </div>
         <% "incidentio" -> %>
           <div class="form-group">
-            <%= label(f_config, :api_token, "API Token") %>
-            <%= text_input(f_config, :api_token, class: "form-control") %>
+            {label(f_config, :api_token, "API Token")}
+            {text_input(f_config, :api_token, class: "form-control")}
             <small class="form-text text-muted">
               The API Token used for authenticating with the incident.io API.
             </small>
           </div>
           <div class="form-group">
-            <%= label(f_config, :alert_source_config_id, "Alert Source Configuration ID") %>
-            <%= text_input(f_config, :alert_source_config_id, class: "form-control") %>
+            {label(f_config, :alert_source_config_id, "Alert Source Configuration ID")}
+            {text_input(f_config, :alert_source_config_id, class: "form-control")}
             <small class="form-text text-muted">
               Used for determining which alert source config produced the alert when the alert fires.
             </small>
           </div>
           <div class="form-group">
-            <%= label(f_config, :metadata, "Metadata") %>
+            {label(f_config, :metadata, "Metadata")}
             <% default_metadata_value =
               case input_value(f_config, :metadata) do
                 map when is_map(map) ->
@@ -257,42 +257,42 @@
                 _ ->
                   ""
               end %>
-            <%= text_input(f_config, :metadata,
+            {text_input(f_config, :metadata,
               class: "form-control",
               value: default_metadata_value,
               placeholder: "team=api,priority=high"
-            ) %>
+            )}
             <small class="form-text text-muted">
               Comma-separated key value pairs that will get merged into the JSON <code>metadata</code> key of the CreateHTTP Alert Event payload. See <a href="https://api-docs.incident.io/tag/Alert-Events-V2/">API docs</a> for more information.
             </small>
           </div>
         <% "s3" -> %>
           <div class="form-group">
-            <%= label(f_config, :access_key_id, "Access Key ID") %>
-            <%= text_input(f_config, :access_key_id, class: "form-control") %>
-            <%= label(f_config, :secret_access_key, "Secret Access Key") %>
-            <%= text_input(f_config, :secret_access_key, class: "form-control", type: "password") %>
+            {label(f_config, :access_key_id, "Access Key ID")}
+            {text_input(f_config, :access_key_id, class: "form-control")}
+            {label(f_config, :secret_access_key, "Secret Access Key")}
+            {text_input(f_config, :secret_access_key, class: "form-control", type: "password")}
             <small class="form-text text-muted">
               Credentials used to access to the S3 bucket.
             </small>
           </div>
           <div class="form-group">
-            <%= label(f_config, :s3_bucket, "S3 Bucket Name") %>
-            <%= text_input(f_config, :s3_bucket, class: "form-control") %>
+            {label(f_config, :s3_bucket, "S3 Bucket Name")}
+            {text_input(f_config, :s3_bucket, class: "form-control")}
             <small class="form-text text-muted">
               The S3 bucket name to where files will be stored.
             </small>
           </div>
           <div class="form-group">
-            <%= label(f_config, :storage_region, "Storage Region") %>
-            <%= text_input(f_config, :storage_region, class: "form-control", default: "us-west-2") %>
+            {label(f_config, :storage_region, "Storage Region")}
+            {text_input(f_config, :storage_region, class: "form-control", default: "us-west-2")}
             <small class="form-text text-muted">
               The region where the S3 bucket is located, for example: <code>us-west-2</code>
             </small>
           </div>
           <div class="form-group">
-            <%= label(f_config, :batch_timeout, "Batch Timeout") %>
-            <%= text_input(f_config, :batch_timeout, class: "form-control", type: "number", default: 5_000) %>
+            {label(f_config, :batch_timeout, "Batch Timeout")}
+            {text_input(f_config, :batch_timeout, class: "form-control", type: "number", default: 5_000)}
             <small class="form-text text-muted">
               The batch timeout in milliseconds.
             </small>

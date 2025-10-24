@@ -2,7 +2,7 @@
   <div class="container mx-auto">
     <h5>~/admin/cluster</h5>
     <div class="log-settings">
-      <%= render(LogflareWeb.AdminSharedView, "nav_links_live.html", socket: @socket) %>
+      {render(LogflareWeb.AdminSharedView, "nav_links_live.html", socket: @socket)}
     </div>
   </div>
 </div>
@@ -10,12 +10,12 @@
 <div class="content dashboard container mx-auto">
   <h1>Create Partner</h1>
   <.form :let={f} id="create-partner" for={@changeset} action="#" phx-submit="save">
-    <%= text_input(f, :name,
+    {text_input(f, :name,
       placeholder: "Partner Name",
       class: "form-control form-control-margin"
-    ) %>
-    <%= error_tag(f, :name) %>
-    <%= submit("Save", class: "btn btn-sm btn-secondary form-button") %>
+    )}
+    {error_tag(f, :name)}
+    {submit("Save", class: "btn btn-sm btn-secondary form-button")}
   </.form>
   <%= if @created_token do %>
     <div class="mt-4">
@@ -35,8 +35,8 @@
       <%= for %{name: name, token: token} <- @partners do %>
         <hr />
         <div>
-          <div class="pr-2">Name: <%= name %></div>
-          <div class="pr-2">Token: <%= token %></div>
+          <div class="pr-2">Name: {name}</div>
+          <div class="pr-2">Token: {token}</div>
           <button id={"delete-#{token}"} phx-click="delete" phx-value-token={token} class="btn btn-sm btn-secondary form-button">
             Delete
           </button>

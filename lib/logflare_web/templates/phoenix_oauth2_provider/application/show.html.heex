@@ -3,19 +3,19 @@
 <ul>
   <li>
     <strong>Name:</strong>
-    <%= @application.name %>
+    {@application.name}
   </li>
   <li>
     <strong>ID:</strong>
-    <%= @application.uid %>
+    {@application.uid}
   </li>
   <li>
     <strong>Secret:</strong>
-    <%= @application.secret %>
+    {@application.secret}
   </li>
   <li>
     <strong>Scopes:</strong>
-    <%= @application.scopes %>
+    {@application.scopes}
   </li>
   <li>
     <strong>Callback urls:</strong>
@@ -24,10 +24,10 @@
         <%= for redirect_uri <- String.split(@application.redirect_uri) do %>
           <tr>
             <td>
-              <code><%= redirect_uri %></code>
+              <code>{redirect_uri}</code>
             </td>
             <td>
-              <%= link("Authorize", to: Routes.oauth_authorization_path(@conn, :new, client_id: @application.uid, redirect_uri: redirect_uri, response_type: "code", scope: @application.scopes), target: "_blank") %>
+              {link("Authorize", to: Routes.oauth_authorization_path(@conn, :new, client_id: @application.uid, redirect_uri: redirect_uri, response_type: "code", scope: @application.scopes), target: "_blank")}
             </td>
           </tr>
         <% end %>
@@ -36,5 +36,5 @@
   </li>
 </ul>
 
-<span><%= link("Edit", to: Routes.oauth_application_path(@conn, :edit, @application)) %></span>
-<span><%= link("Back", to: Routes.oauth_application_path(@conn, :index)) %></span>
+<span>{link("Edit", to: Routes.oauth_application_path(@conn, :edit, @application))}</span>
+<span>{link("Back", to: Routes.oauth_application_path(@conn, :index))}</span>

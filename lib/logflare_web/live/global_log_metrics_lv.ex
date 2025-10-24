@@ -6,8 +6,8 @@ defmodule LogflareWeb.GlobalLogMetricsLV do
 
   def render(assigns) do
     ~H"""
-    <h3>That's <span><%= @log_count %></span> events logged to date</h3>
-    <h3>Counting <span><%= @per_second %></span> events per second</h3>
+    <h3>That's <span>{@log_count}</span> events logged to date</h3>
+    <h3>Counting <span>{@per_second}</span> events per second</h3>
     """
   end
 

@@ -15,11 +15,11 @@ defmodule LogflareWeb.SearchLive.TimezoneComponent do
         <div class="input-group-prepend tw-grow">
           <div class="input-group-text tw-py-0 tw-bg-transparent tw-text-black tw-text-xs">display timezone</div>
         </div>
-        <%= select(f, :search_timezone, build_timezones_select_form_options(), selected: @search_timezone, class: "form-control form-control-sm tw-w-64 tw-text-xs") %>
+        {select(f, :search_timezone, build_timezones_select_form_options(), selected: @search_timezone, class: "form-control form-control-sm tw-w-64 tw-text-xs")}
         <button type="button" class="btn btn-link tw-text-xs tw-py-0" phx-click="results-action-change" phx-value-search_timezone="Etc/UTC">UTC</button>
         <span :if={show_checkbox?(assigns)} class="tw-relative tw-align-text-bottom">
-          <%= checkbox(f, :remember_timezone, class: "tw-align-middle") %>
-          <%= label(f, :remember_timezone, "Remember", class: "tw-text-xs tw-my-0 tw-leading-3") %>
+          {checkbox(f, :remember_timezone, class: "tw-align-middle")}
+          {label(f, :remember_timezone, "Remember", class: "tw-text-xs tw-my-0 tw-leading-3")}
         </span>
       </div>
     </.form>

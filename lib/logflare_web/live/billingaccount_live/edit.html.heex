@@ -21,7 +21,7 @@
     <i class="fas fa-exclamation-circle"></i> All team members can now access the billing account. You can invite someone in accounting as a team member to subscribe to Logflare if needed.
   </p>
   <div class="sub-form">
-    <%= section_header("Summary") %>
+    {section_header("Summary")}
     <%= if @user.billing_account.lifetime_plan do %>
       <p>You're currently on the <u><%= @plan.name %> plan</u>. Thank you!</p>
     <% else %>
@@ -33,7 +33,7 @@
             </p>
           <% @plan.name != "Free" -> %>
             <p>
-              You're currently on the <u><%= @plan.name %> plan</u>. You have <u><%= count_for_billing(@user.sources) %> source(s)</u><sup>1</sup>
+              You're currently on the <u><%= @plan.name %> plan</u>. You have <u>{count_for_billing(@user.sources)} source(s)</u><sup>1</sup>
               added to your account. Each source is costing you <u><%= @plan.price |> Money.new(:USD) |> Money.to_string(fractional_unit: false) %> per <%= @plan.period %></u>.
               Your total estimated total cost is <u><%= count_for_billing(@user.sources) * @plan.price |> Money.new(:USD) |> Money.to_string(fractional_unit: false) %>
         per <%= @plan.period %></u>.
@@ -52,24 +52,24 @@
     <% end %>
   </div>
   <div class="sub-form">
-    <%= section_header("Usage") %>
+    {section_header("Usage")}
     <p>Your total log event count per day for the last 30 days.</p>
     <.form :let={f} id="usage-form" for={@usage_form} action="#" phx-change="usage_picker">
-      <%= select(f, :days, [{"30 days", 30}, {"60 days", 60}, {"90 days", 90}],
+      {select(f, :days, [{"30 days", 30}, {"60 days", 60}, {"90 days", 90}],
         class: "btn btn-secondary dropdown-toggle",
         type: "button",
         id: "dropdownMenuButton"
-      ) %>
+      )}
     </.form>
     <.live_component module={LogflareWeb.BillingAccountLive.ChartComponent} id="chart" user={@user} days={30} />
     <.live_component module={LogflareWeb.BillingAccountLive.EstimateUsageComponent} id="table" user={@user} plan={@plan} />
   </div>
   <div class="sub-form">
-    <%= section_header("Pricing") %>
-    <%= live_render(@socket, LogflareWeb.PlansLive, id: :plans) %>
+    {section_header("Pricing")}
+    {live_render(@socket, LogflareWeb.PlansLive, id: :plans)}
   </div>
   <div class="sub-form">
-    <%= section_header("Graduated Pricing Details") %>
+    {section_header("Graduated Pricing Details")}
     <p>
       Loglare metered plans are graduated. Your first million log events are always free. After which, they get less expensive the more you send.
     </p>
@@ -107,19 +107,19 @@
     </div>
   </div>
   <div class="sub-form">
-    <%= section_header("Payment Method") %>
+    {section_header("Payment Method")}
     <p>Manage your payment methods.</p>
     <.live_component module={LogflareWeb.BillingAccountLive.PaymentMethodComponent} id="payment_method" user={@user} />
   </div>
   <div class="sub-form">
-    <%= section_header("Custom Invoice Fields") %>
+    {section_header("Custom Invoice Fields")}
     <p>
       Add custom fields to your invoices. These changes will take effect when your next invoice gets created.
     </p>
     <.live_component module={LogflareWeb.BillingAccountLive.CustomFieldComponent} id="custom_fields" billing_account={@user.billing_account} />
   </div>
   <div class="sub-form">
-    <%= section_header("Subscriptions") %>
+    {section_header("Subscriptions")}
     <p>Details of your current Logflare subscription.</p>
     <div class="table-responsive">
       <table class="table table-dark">
@@ -137,29 +137,29 @@
             <%= for sub <- @user.billing_account.stripe_subscriptions["data"] do %>
               <tr>
                 <td>
-                  <%= sub["id"] %>
+                  {sub["id"]}
                 </td>
                 <td>
                   <%= if sub["current_period_end"] do %>
-                    <%= DateTime.from_unix!(sub["current_period_end"]) %>
+                    {DateTime.from_unix!(sub["current_period_end"])}
                   <% end %>
                 </td>
                 <td>
                   <%= if sub["trial_start"] do %>
-                    <%= DateTime.from_unix!(sub["trial_start"]) %>
+                    {DateTime.from_unix!(sub["trial_start"])}
                   <% end %>
                 </td>
                 <td>
                   <%= if sub["trial_end"] do %>
-                    <%= DateTime.from_unix!(sub["trial_end"]) %>
+                    {DateTime.from_unix!(sub["trial_end"])}
                   <% end %>
                 </td>
                 <td>
-                  <%= link("Unsubscribe",
+                  {link("Unsubscribe",
                     to: Routes.billing_path(@socket, :unsubscribe, id: sub["id"]),
                     method: :delete,
                     class: "btn btn-danger btn-small"
-                  ) %>
+                  )}
                 </td>
               </tr>
             <% end %>
@@ -169,7 +169,7 @@
     </div>
   </div>
   <div class="sub-form">
-    <%= section_header("Subscription Invoices") %>
+    {section_header("Subscription Invoices")}
     <p>View and download your invoices!</p>
     <div class="table-responsive">
       <table class="table table-dark">
@@ -186,21 +186,21 @@
             <%= for invoice <- @user.billing_account.stripe_invoices["data"] do %>
               <tr>
                 <td>
-                  <%= link("#{invoice["number"]}",
+                  {link("#{invoice["number"]}",
                     to: invoice["hosted_invoice_url"],
                     target: "_blank"
-                  ) %>
+                  )}
                 </td>
                 <td>
-                  <%= Money.to_string(
+                  {Money.to_string(
                     Money.new(
                       invoice["amount_due"],
                       String.upcase(invoice["currency"]) |> String.to_atom()
                     )
-                  ) %>
+                  )}
                 </td>
-                <td><%= invoice["status"] %></td>
-                <td><%= link("download", to: invoice["invoice_pdf"]) %></td>
+                <td>{invoice["status"]}</td>
+                <td>{link("download", to: invoice["invoice_pdf"])}</td>
               </tr>
             <% end %>
           <% end %>
@@ -209,33 +209,33 @@
     </div>
   </div>
   <div class="sub-form">
-    <%= section_header("Billing Account Portal") %>
+    {section_header("Billing Account Portal")}
     <p>Update your billing info and download your invoices in Stripe's new customer portal.</p>
-    <%= link("Go to portal",
+    {link("Go to portal",
       to: Routes.billing_path(@socket, :portal),
       method: :get,
       class: "btn btn-primary form-button"
-    ) %>
+    )}
   </div>
   <div class="sub-form">
-    <%= section_header("Sync Billing Account") %>
+    {section_header("Sync Billing Account")}
     <p>Sync your billing account with Stripe.</p>
-    <%= link("Sync billing account",
+    {link("Sync billing account",
       to: Routes.billing_path(@socket, :sync),
       class: "btn btn-primary form-button"
-    ) %>
+    )}
   </div>
   <div class="sub-form">
-    <%= section_header("Delete Billing Account") %>
+    {section_header("Delete Billing Account")}
     <p>
       If something goes terribly wrong you can delete and re-create your billing account. You will no longer be able to
       access any subscriptions or invoices listed here.
     </p>
-    <%= link("Delete billing account",
+    {link("Delete billing account",
       to: Routes.billing_path(@socket, :delete),
       method: :delete,
       class: "btn btn-danger form-button"
-    ) %>
+    )}
   </div>
   <script src="https://js.stripe.com/v3/">
   </script>

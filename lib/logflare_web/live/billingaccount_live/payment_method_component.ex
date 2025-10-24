@@ -169,12 +169,12 @@ defmodule LogflareWeb.BillingAccountLive.PaymentMethodComponent do
       <ul class="list-unstyled">
         <%= for p <- @payment_methods do %>
           <li>
-            <%= String.upcase(p.brand) %> ending in <%= p.last_four %> expires <%= p.exp_month %>/<%= p.exp_year %> <%= delete_link(
+            {String.upcase(p.brand)} ending in {p.last_four} expires {p.exp_month}/{p.exp_year} {delete_link(
               p,
               @myself
-            ) %> <%= if p.stripe_id == @user.billing_account.default_payment_method,
+            )} {if p.stripe_id == @user.billing_account.default_payment_method,
               do: nil,
-              else: make_default(p, @myself) %>
+              else: make_default(p, @myself)}
           </li>
         <% end %>
       </ul>

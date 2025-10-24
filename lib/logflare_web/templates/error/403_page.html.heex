@@ -12,7 +12,7 @@
           "tw-mx-auto tw-w-96"
         ]}
       >
-        <%= link(t.name,
+        {link(t.name,
           to:
             ~p"/profile/switch?#{cond do
               t.user_id == @user.id -> %{user_id: t.user_id, redirect_to: @conn.request_path}
@@ -23,7 +23,7 @@
                   %{user_id: t.user_id, redirect_to: @conn.request_path}
                 end
             end}"
-        ) %>
+        )}
         <small :if={t.id == @team.id} class="badge badge-secondary badge-pill">
           Current
         </small>

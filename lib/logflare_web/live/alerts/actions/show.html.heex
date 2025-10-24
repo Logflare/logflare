@@ -1,30 +1,30 @@
 <.subheader>
   <:path>
-    ~/<.subheader_path_link live_patch to={~p"/alerts"}>alerts</.subheader_path_link>/<%= @alert.name %>
+    ~/<.subheader_path_link live_patch to={~p"/alerts"}>alerts</.subheader_path_link>/{@alert.name}
   </:path>
   <.subheader_link to={~p"/access-tokens"} text="access tokens" fa_icon="key" />
   <.subheader_link live_patch to={~p"/alerts/#{@alert.id}/edit"} text="edit" fa_icon="edit" />
 </.subheader>
 <section class="mx-auto container pt-3 tw-flex tw-flex-col tw-gap-4">
   <h2>
-    <%= @alert.name %>
+    {@alert.name}
   </h2>
   <div>
-    id: <%= @alert.token %>
+    id: {@alert.token}
   </div>
 
-  <p class="text-muted tw-whitespace-pre-wrap tw-text-sm"><%= @alert.description %></p>
+  <p class="text-muted tw-whitespace-pre-wrap tw-text-sm">{@alert.description}</p>
 
   <div class="tw-w-full tw-bg-zinc-800 tw-p-4 tw-rounded-lg tw-min-h-[100px]">
     <span class="tw-block">
-      <%= case @alert.language do
+      {case @alert.language do
         :bq_sql -> "BigQuery SQL"
         :pg_sql -> "Postgres SQL"
         :lql -> "Logflare Query Language"
-      end %>
+      end}
     </span>
     <code class="tw-whitespace-pre-wrap tw-text-sm tw-text-white">
-      <%= @alert.query %>
+      {@alert.query}
     </code>
   </div>
 
@@ -36,7 +36,7 @@
   <div>
     <ul class="list-group tw-text-sm">
       <li class="list-group-item">
-        <span><strong>cron:</strong> <%= @alert.cron %></span>
+        <span><strong>cron:</strong> {@alert.cron}</span>
       </li>
     </ul>
 
@@ -55,8 +55,8 @@
       <div class="tw-flex tw-gap-3 tw-items-center tw-mt-3 tw-w-full">
         <span><strong>Add Backend:</strong></span>
         <.form :let={f} id="backend" for={%{}} as={:backend} action="#" phx-submit="add-backend" class="tw-flex tw-gap-2 tw-items-end tw-w-full">
-          <%= select(f, :backend_id, @backend_options, class: "form-control form-control-sm", prompt: [key: "Choose a backend"]) %>
-          <%= submit("Add backend", class: "btn btn-primary btn-sm") %>
+          {select(f, :backend_id, @backend_options, class: "form-control form-control-sm", prompt: [key: "Choose a backend"])}
+          {submit("Add backend", class: "btn btn-primary btn-sm")}
         </.form>
       </div>
     <% end %>
@@ -80,14 +80,14 @@
         </span>
       </li>
       <li class="list-group-item">
-        <span><strong>webhook:</strong> <%= @alert.webhook_notification_url %></span>
+        <span><strong>webhook:</strong> {@alert.webhook_notification_url}</span>
       </li>
 
       <li :for={backend <- @alert.backends} :if={@alert} class="list-group-item">
         <div class="tw-flex tw-items-center tw-gap-2">
-          <span class="badge badge-pill badge-secondary"><%= backend.type %></span>
+          <span class="badge badge-pill badge-secondary">{backend.type}</span>
           <.link patch={~p"/backends/#{backend.id}"} class="tw-no-underline ml-2">
-            <span><strong><%= backend.name %></strong></span>
+            <span><strong>{backend.name}</strong></span>
           </.link>
           <button phx-click="remove-backend" phx-value-backend_id={backend.id} class="btn btn-outline-danger btn-xs tw-text-xs p-1 ml-5">
             Remove backend

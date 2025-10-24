@@ -1,16 +1,16 @@
 <.subheader>
   <:path>
-    ~/<.subheader_path_link live_patch to={~p"/endpoints"}>endpoints</.subheader_path_link>/<%= @show_endpoint.name %>
+    ~/<.subheader_path_link live_patch to={~p"/endpoints"}>endpoints</.subheader_path_link>/{@show_endpoint.name}
   </:path>
   <.subheader_link to={~p"/access-tokens"} text="access tokens" fa_icon="key" />
   <.subheader_link live_patch to={~p"/endpoints/#{@show_endpoint.id}/edit"} text="edit" fa_icon="edit" />
 </.subheader>
 <section class="mx-auto container pt-3 tw-flex tw-flex-col tw-gap-4">
   <div>
-    id: <%= @show_endpoint.token %>
+    id: {@show_endpoint.token}
   </div>
 
-  <p class="text-muted tw-whitespace-pre-wrap tw-text-sm"><%= @show_endpoint.description %></p>
+  <p class="text-muted tw-whitespace-pre-wrap tw-text-sm">{@show_endpoint.description}</p>
 
   <div :if={@show_endpoint.enable_auth == false}>
     <.alert variant="warning">
@@ -24,44 +24,44 @@
 
   <div class="tw-w-full tw-bg-zinc-800 tw-p-4 tw-rounded-lg tw-min-h-[100px]">
     <span class="tw-block">
-      <%= case @show_endpoint.language do
+      {case @show_endpoint.language do
         :bq_sql -> "BigQuery SQL"
         :ch_sql -> "ClickHouse SQL"
         :pg_sql -> "Postgres SQL"
         :lql -> "Logflare Query Language"
-      end %>
+      end}
     </span>
     <code class="tw-whitespace-pre-wrap tw-text-sm tw-text-white">
-      <%= @show_endpoint.query %>
+      {@show_endpoint.query}
     </code>
   </div>
 
   <div>
     <ul class="list-group tw-text-sm">
       <li class="list-group-item">
-        <strong>max rows:</strong> <%= @show_endpoint.max_limit %>
+        <strong>max rows:</strong> {@show_endpoint.max_limit}
       </li>
       <li class="list-group-item">
-        <strong>caching:</strong> <%= if @show_endpoint.cache_duration_seconds ==
-                                           0,
-                                         do: "disabled",
-                                         else:
-                                           inspect(@show_endpoint.cache_duration_seconds) <>
-                                             " seconds" %>
+        <strong>caching:</strong> {if @show_endpoint.cache_duration_seconds ==
+                                        0,
+                                      do: "disabled",
+                                      else:
+                                        inspect(@show_endpoint.cache_duration_seconds) <>
+                                          " seconds"}
       </li>
       <li class="list-group-item">
         <span :if={@show_endpoint.cache_duration_seconds > 0}>
-          <strong>cache warming:</strong> <%= @show_endpoint.proactive_requerying_seconds %> seconds
+          <strong>cache warming:</strong> {@show_endpoint.proactive_requerying_seconds} seconds
         </span>
       </li>
       <li class="list-group-item">
-        <span><strong>query sandboxing:</strong> <%= if @show_endpoint.sandboxable, do: "enabled", else: "disabled" %></span>
+        <span><strong>query sandboxing:</strong> {if @show_endpoint.sandboxable, do: "enabled", else: "disabled"}</span>
       </li>
       <li class="list-group-item">
-        <span><strong>redact PII:</strong> <%= if @show_endpoint.redact_pii, do: "enabled", else: "disabled" %></span>
+        <span><strong>redact PII:</strong> {if @show_endpoint.redact_pii, do: "enabled", else: "disabled"}</span>
       </li>
       <li :if={@show_endpoint.labels} class="list-group-item">
-        <span><strong>labels:</strong> <%= @show_endpoint.labels %></span>
+        <span><strong>labels:</strong> {@show_endpoint.labels}</span>
       </li>
     </ul>
   </div>
@@ -75,7 +75,7 @@
     <div class="collapse" id="collapseExample">
       <div class="card card-body">
         <code class="tw-whitespace-pre-wrap">
-          <%= maybe_redact_query(@parsed_result.expanded_query, @redact_pii) %>
+          {maybe_redact_query(@parsed_result.expanded_query, @redact_pii)}
         </code>
       </div>
     </div>
@@ -93,27 +93,27 @@
   <div class="tw-bg-zinc-800 tw-rounded tw-p-2 tw-flex tw-flex-col tw-gap-2">
     <code class="tw-whitespace-pre-line">
       # By UUID
-      curl "<%= "https://api.logflare.app" <> ~p"/api/endpoints/query/#{@show_endpoint.token}" %>" \
+      curl "{"https://api.logflare.app" <> ~p"/api/endpoints/query/#{@show_endpoint.token}"}" \
       -H 'X-API-KEY: YOUR-ACCESS-TOKEN' \
       -H 'Content-Type: application/json; charset=utf-8' <span :if={@declared_params != []}>\</span>
-      <span :if={@declared_params != []}>-G <%= Enum.map(@declared_params, fn p -> "-d \"#{p}=VALUE\"" end) |> Enum.join(" ") %></span>
+      <span :if={@declared_params != []}>-G {Enum.map(@declared_params, fn p -> "-d \"#{p}=VALUE\"" end) |> Enum.join(" ")}</span>
     </code>
 
     <code :if={@show_endpoint.enable_auth} class="tw-whitespace-pre-line">
       # By name
-      curl "<%= "https://api.logflare.app" <> ~p"/api/endpoints/query/#{@show_endpoint.name}" %>" \
+      curl "{"https://api.logflare.app" <> ~p"/api/endpoints/query/#{@show_endpoint.name}"}" \
       -H 'X-API-KEY: YOUR-ACCESS-TOKEN' \
       -H 'Content-Type: application/json; charset=utf-8' <span :if={@declared_params != []}>\</span>
-      <span :if={@declared_params != []}>-G <%= Enum.map(@declared_params, fn p -> "-d \"#{p}=VALUE\"" end) |> Enum.join(" ") %></span>
+      <span :if={@declared_params != []}>-G {Enum.map(@declared_params, fn p -> "-d \"#{p}=VALUE\"" end) |> Enum.join(" ")}</span>
     </code>
 
     <code class="tw-whitespace-pre-line">
       # With per-request PII redaction
-      curl "<%= "https://api.logflare.app" <> ~p"/api/endpoints/query/#{@show_endpoint.token}" %>" \
+      curl "{"https://api.logflare.app" <> ~p"/api/endpoints/query/#{@show_endpoint.token}"}" \
       -H 'X-API-KEY: YOUR-ACCESS-TOKEN' \
       -H 'LF-ENDPOINT-REDACT-PII: true' \
       -H 'Content-Type: application/json; charset=utf-8' <span :if={@declared_params != []}>\</span>
-      <span :if={@declared_params != []}>-G <%= Enum.map(@declared_params, fn p -> "-d \"#{p}=VALUE\"" end) |> Enum.join(" ") %></span>
+      <span :if={@declared_params != []}>-G {Enum.map(@declared_params, fn p -> "-d \"#{p}=VALUE\"" end) |> Enum.join(" ")}</span>
     </code>
   </div>
 </section>

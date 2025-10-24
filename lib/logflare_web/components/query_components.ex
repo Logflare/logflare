@@ -16,7 +16,7 @@ defmodule LogflareWeb.QueryComponents do
 
     ~H"""
     <div :if={is_number(@bytes)} class="tw-text-sm">
-      <%= @size %> <%= @unit %> processed
+      {@size} {@unit} processed
     </div>
     """
   end

@@ -84,7 +84,7 @@ defmodule LogflareWeb.PlansLive do
               </ul>
               <div class="py-4">
                 <h2 class="text-white mb-1">$<span class="price">0</span></h2>
-                <small class="text-muted">per <%= @period %></small>
+                <small class="text-muted">per {@period}</small>
               </div>
               <div class="py-4">
                 <.link navigate={~p"/auth/login"} class="btn btn-dark text-white w-75 mr-0">Continue</.link>
@@ -114,7 +114,7 @@ defmodule LogflareWeb.PlansLive do
               </ul>
               <div class="py-4">
                 <h2 class="text-white">
-                  <%= Billing.find_plan(@plans, @period, "Metered").price |> Money.new(:USD) |> Money.to_string(fractional_unit: false) %>
+                  {Billing.find_plan(@plans, @period, "Metered").price |> Money.new(:USD) |> Money.to_string(fractional_unit: false)}
                 </h2>
                 <small class="text-muted">starts at</small>
                 <br />
@@ -122,11 +122,11 @@ defmodule LogflareWeb.PlansLive do
                 <br />
                 <small class="text-muted">after one million</small>
                 <br />
-                <small class="text-muted">paid <%= @period %>ly</small>
+                <small class="text-muted">paid {@period}ly</small>
               </div>
               <div class="py-4">
                 <div>
-                  <%= LogflareWeb.BillingHelpers.sub_button(@plan, @socket, @plans, @period, "Metered") %>
+                  {LogflareWeb.BillingHelpers.sub_button(@plan, @socket, @plans, @period, "Metered")}
                 </div>
                 <div>
                   <small class="text-muted">14-day trial</small>
@@ -157,7 +157,7 @@ defmodule LogflareWeb.PlansLive do
               </ul>
               <div class="py-4">
                 <h2 class="text-white">
-                  <%= Billing.find_plan(@plans, @period, "Metered BYOB").price |> Money.new(:USD) |> Money.to_string(fractional_unit: false) %>
+                  {Billing.find_plan(@plans, @period, "Metered BYOB").price |> Money.new(:USD) |> Money.to_string(fractional_unit: false)}
                 </h2>
                 <small class="text-muted">starts at</small>
                 <br />
@@ -165,11 +165,11 @@ defmodule LogflareWeb.PlansLive do
                 <br />
                 <small class="text-muted">after one million</small>
                 <br />
-                <small class="text-muted">paid <%= @period %>ly</small>
+                <small class="text-muted">paid {@period}ly</small>
               </div>
               <div class="py-4">
                 <div>
-                  <%= LogflareWeb.BillingHelpers.sub_button(@plan, @socket, @plans, @period, "Metered BYOB") %>
+                  {LogflareWeb.BillingHelpers.sub_button(@plan, @socket, @plans, @period, "Metered BYOB")}
                 </div>
                 <div>
                   <small class="text-muted">14-day trial</small>
