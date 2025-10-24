@@ -31,35 +31,35 @@ defmodule Logflare.Ecto.ClickHouse.Naming do
   @spec subquery_as_prefix(tuple()) :: list()
   def subquery_as_prefix(sources) do
     last_elem = :erlang.element(tuple_size(sources), sources)
-    if is_list(last_elem), do: [?s | last_elem], else: [?s]
+    if is_list(last_elem), do: [?s] ++ last_elem, else: [?s]
   end
 
   @doc """
   Creates a name tuple for a source at a given position.
   """
-  @spec create_name(tuple(), non_neg_integer(), list()) ::
-          {nil | iolist(), list(), nil | module()} | {iolist(), list(), module()}
+  @spec create_name(tuple(), non_neg_integer(), [any()]) ::
+          {nil | iolist(), iolist(), nil | module()} | {iolist(), iolist(), module()}
   def create_name(sources, pos, as_prefix) do
     case elem(sources, pos) do
       {:fragment, _, _} ->
-        {nil, as_prefix ++ [?f | Integer.to_string(pos)], nil}
+        {nil, as_prefix ++ [?f] ++ [Integer.to_string(pos)], nil}
 
       {:values, _, _} ->
-        {nil, as_prefix ++ [?v | Integer.to_string(pos)], nil}
+        {nil, as_prefix ++ [?v] ++ [Integer.to_string(pos)], nil}
 
       {table, schema, prefix} ->
-        name = as_prefix ++ [create_alias(table) | Integer.to_string(pos)]
+        name = as_prefix ++ [create_alias(table)] ++ [Integer.to_string(pos)]
         {quote_table(prefix, table), name, schema}
 
       %SubQuery{} ->
-        {nil, as_prefix ++ [?s | Integer.to_string(pos)], nil}
+        {nil, as_prefix ++ [?s] ++ [Integer.to_string(pos)], nil}
     end
   end
 
   @doc """
   Creates a single-character alias from a table name.
   """
-  @spec create_alias(binary()) :: char()
+  @spec create_alias(binary()) :: binary() | char()
   def create_alias(<<first, _rest::bytes>>)
       when first in ?a..?z
       when first in ?A..?Z do
@@ -99,7 +99,7 @@ defmodule Logflare.Ecto.ClickHouse.Naming do
 
     case source do
       nil -> quote_name(name)
-      _other -> [source, ?. | quote_name(name)]
+      _other -> [source, ?., quote_name(name)]
     end
   end
 
@@ -113,7 +113,7 @@ defmodule Logflare.Ecto.ClickHouse.Naming do
 
   def field_access(field, sources, ix) when is_binary(field) do
     {_, name, _} = elem(sources, ix)
-    [name, ?. | quote_name(field)]
+    [name, ?., quote_name(field)]
   end
 
   @doc """
@@ -150,7 +150,7 @@ defmodule Logflare.Ecto.ClickHouse.Naming do
   defp intersperse_map([elem], _separator, mapper), do: [mapper.(elem)]
 
   defp intersperse_map([elem | rest], separator, mapper) do
-    [mapper.(elem), separator | intersperse_map(rest, separator, mapper)]
+    [mapper.(elem), separator] ++ intersperse_map(rest, separator, mapper)
   end
 
   defp intersperse_map([], _separator, _mapper), do: []
