@@ -41,7 +41,7 @@ defmodule LogflareWeb.Plugs.SetTeamUser do
         |> maybe_assign_team_user(team_user)
 
       {:error, _} ->
-        conn
+        assign(conn, :user, nil)
     end
   end
 
