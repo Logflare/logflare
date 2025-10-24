@@ -16,7 +16,7 @@ defmodule LogflareWeb.Plugs.SetVerifySource do
     set_source_for_public(public_token, conn, opts)
   end
 
-  def call(%{assigns: %{user: user, teams: _teams}, params: params} = conn, _opts) do
+  def call(%{assigns: %{user: user}, params: params} = conn, _opts) do
     id = params["source_id"] || params["id"]
     source = Sources.get_by_and_preload(id: id)
 

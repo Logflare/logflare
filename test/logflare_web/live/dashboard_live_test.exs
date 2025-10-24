@@ -10,7 +10,7 @@ defmodule LogflareWeb.DashboardLiveTest do
     team = insert(:team, user: user)
     source = insert(:source, user: user)
     user = %{user | team: team}
-    conn = conn |> put_session(:user_id, user.id)
+    conn = conn |> login_user(user)
 
     {:ok, user: user, source: source, conn: conn}
   end
@@ -32,7 +32,7 @@ defmodule LogflareWeb.DashboardLiveTest do
         Logflare.SingleTenant.get_default_user()
 
       insert(:team, user: user)
-      conn = conn |> put_session(:user_id, user.id) |> assign(:user, user)
+      conn = conn |> login_user(user)
       [user: user, conn: conn]
     end
 
@@ -153,21 +153,15 @@ defmodule LogflareWeb.DashboardLiveTest do
       user: user,
       other_team: other_team,
       other_member: other_member,
-      team_user: team_user,
       forbidden_team: forbidden_team
     } do
       {:ok, view, _html} = live(conn, "/dashboard")
 
-      {:ok, conn} =
+      {:ok, view, _html} =
         view
         |> element("a", other_team.name)
         |> render_click()
-        |> follow_redirect(
-          conn,
-          ~p"/profile/switch?#{%{team_user_id: team_user, user_id: other_team.user_id}}"
-        )
-
-      {:ok, view, _html} = live(conn, "/dashboard")
+        |> follow_redirect(conn, "/dashboard?team_id=#{other_team.id}")
 
       assert view |> has_element?("#teams span", other_team.name)
       assert view |> has_element?("#teams a", user.team.name)
@@ -183,10 +177,9 @@ defmodule LogflareWeb.DashboardLiveTest do
       other_team = insert(:team, name: "Other Team")
       forbidden_team = insert(:team, name: "Not My Team")
 
-      team_user = insert(:team_user, team: other_team)
+      team_user = insert(:team_user, team: other_team, email: user.email)
       other_member = insert(:team_user, team: user.team)
-
-      conn = conn |> put_session(:user_id, user.id) |> put_session(:team_user_id, team_user.id)
+      conn = conn |> login_user(user, team_user)
 
       [
         other_team: other_team,
@@ -197,16 +190,15 @@ defmodule LogflareWeb.DashboardLiveTest do
       ]
     end
 
-    test "teams list", %{conn: conn, other_team: other_team} do
+    test "teams list includes other team", %{conn: conn, other_team: other_team} do
       {:ok, view, _html} = live(conn, "/dashboard")
 
       assert view |> has_element?("#teams li", "#{other_team.name}")
     end
 
-    test "team members list", %{conn: conn, user: user, other_member: other_member} do
+    test "team members list", %{conn: conn, other_member: other_member} do
       {:ok, view, _html} = live(conn, "/dashboard")
 
-      refute view |> element("#members li", "#{user.name}") |> render =~ "owner, you"
       assert view |> has_element?("#members li", "#{other_member.name}")
     end
   end

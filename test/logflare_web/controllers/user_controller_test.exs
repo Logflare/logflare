@@ -12,6 +12,10 @@ defmodule LogflareWeb.UserControllerTest do
     setup do
       u1 = insert(:user, bigquery_dataset_id: "test_dataset_id_1", billing_enabled: true)
       u2 = insert(:user, bigquery_dataset_id: "test_dataset_id_2")
+      t1 = insert(:team, user: u1)
+      t2 = insert(:team, user: u2)
+      u1 = %{u1 | team: t1}
+      u2 = %{u2 | team: t2}
 
       {:ok, users: [u1, u2]}
     end
@@ -28,7 +32,7 @@ defmodule LogflareWeb.UserControllerTest do
 
       conn =
         conn
-        |> put_session(:user_id, u1.id)
+        |> login_user(u1)
         |> put(
           ~p"/account/edit",
           %{
@@ -70,7 +74,7 @@ defmodule LogflareWeb.UserControllerTest do
 
       conn =
         conn
-        |> put_session(:user_id, u1.id)
+        |> login_user(u1)
         |> put(~p"/account/edit", %{"user" => new})
 
       comparable_keys = Map.keys(new) -- [:email, :email_preferred]
@@ -89,7 +93,7 @@ defmodule LogflareWeb.UserControllerTest do
       conn =
         conn
         |> recycle()
-        |> Plug.Test.init_test_session(%{user_id: u1.id})
+        |> Plug.Test.init_test_session(%{current_email: String.downcase(new_email)})
         |> get(~p"/account/edit")
 
       assert conn.assigns.user.email == String.downcase(new_email)
@@ -120,7 +124,7 @@ defmodule LogflareWeb.UserControllerTest do
 
       conn =
         conn
-        |> put_session(:user_id, u1.id)
+        |> login_user(u1)
         |> put(
           ~p"/account/edit",
           %{

@@ -7,19 +7,14 @@ defmodule LogflareWeb.DashboardLive do
   alias Logflare.Sources
   alias Logflare.Teams
   alias Logflare.TeamUsers
-  alias Logflare.Users
   alias LogflareWeb.DashboardLive.DashboardComponents
   alias LogflareWeb.DashboardLive.DashboardSourceComponents
   alias LogflareWeb.Helpers.Forms
 
   @impl true
-  def mount(_, %{"user_id" => user_id} = session, socket) do
+  def mount(_, _session, socket) do
     socket =
       socket
-      |> assign(:user, Users.get_by_and_preload(id: user_id))
-      |> assign_new(:team, fn %{user: user} ->
-        Teams.get_team_by(user_id: user.id) |> Teams.preload_team_users()
-      end)
       |> assign_new(:sources, fn %{user: user} ->
         user
         |> Sources.list_sources_by_user()
@@ -32,10 +27,11 @@ defmodule LogflareWeb.DashboardLive do
         end)
       end)
       |> assign_new(:plan, fn %{user: user} -> Billing.get_plan_by_user(user) end)
-      |> assign_teams(session["team_user_id"])
+      |> assign_teams()
       |> assign(:fade_in, false)
 
     if connected?(socket) do
+      user_id = socket.assigns.user.id
       Logflare.Sources.UserMetricsPoller.track(self(), user_id)
       Phoenix.PubSub.subscribe(Logflare.PubSub, "dashboard_user_metrics:#{user_id}")
     end
@@ -45,31 +41,29 @@ defmodule LogflareWeb.DashboardLive do
 
   @doc """
   Assigns teams and members.
-
-  If the user is signed in as `team_user` then `user` will be the team owner.
   """
-  def assign_teams(socket, nil) do
-    %{user: user} = socket.assigns
-
-    home_team = user.team |> Logflare.Repo.preload(:user)
-    team_users = Logflare.TeamUsers.list_team_users_by_and_preload(email: user.email)
-
-    assign(socket,
-      home_team: home_team,
-      team_user: nil,
-      team_users: team_users
-    )
-  end
-
-  def assign_teams(socket, team_user_id) do
-    team_user = TeamUsers.get_team_user_and_preload(team_user_id)
+  def assign_teams(%{assigns: %{team_user: team_user}} = socket) when is_struct(team_user) do
     home_team = Teams.get_home_team(team_user)
-    team_users = TeamUsers.list_team_users_by_and_preload(provider_uid: team_user.provider_uid)
+
+    team_users =
+      TeamUsers.list_team_users_by_and_preload(provider_uid: team_user.provider_uid)
 
     socket
     |> assign(
       home_team: home_team,
-      team_user: team_user,
+      team_users: team_users
+    )
+  end
+
+  def assign_teams(socket) do
+    %{user: user, team: team} = socket.assigns
+
+    team_users =
+      Logflare.TeamUsers.list_team_users_by_and_preload(email: user.email)
+
+    assign(socket,
+      home_team: team,
+      team_user: nil,
       team_users: team_users
     )
   end
