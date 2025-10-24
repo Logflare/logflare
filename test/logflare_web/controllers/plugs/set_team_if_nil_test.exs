@@ -47,10 +47,9 @@ defmodule LogflareWeb.Plugs.SetTeamIfNilTest do
 
       assert user.team.id == team.id
 
-      conn =
-        conn
-        |> login_user(user)
-        |> SetTeamIfNil.call(@opts)
+      conn
+      |> login_user(user)
+      |> SetTeamIfNil.call(@opts)
 
       assert Repo.preload(user, :team, force: true).team.id == team.id
     end
