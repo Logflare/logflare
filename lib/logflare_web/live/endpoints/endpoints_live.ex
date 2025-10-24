@@ -9,7 +9,6 @@ defmodule LogflareWeb.EndpointsLive do
   alias Logflare.Backends.Adaptor
   alias Logflare.Endpoints
   alias Logflare.Endpoints.PiiRedactor
-  alias Logflare.Users
   alias LogflareWeb.{QueryComponents, Utils}
 
   embed_templates("actions/*", suffix: "_action")
