@@ -5,7 +5,6 @@ defmodule LogflareWeb.AlertsLive do
 
   import LogflareWeb.Utils, only: [stringify_changeset_errors: 2]
 
-  alias Logflare.Users
   alias Logflare.Alerting
   alias Logflare.Alerting.AlertQuery
   alias Logflare.Backends

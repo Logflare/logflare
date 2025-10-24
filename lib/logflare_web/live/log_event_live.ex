@@ -9,12 +9,10 @@ defmodule LogflareWeb.LogEventLive do
 
   alias Logflare.Logs.LogEvents
   alias Logflare.Sources
-  alias Logflare.TeamUsers
-  alias Logflare.Users
 
   on_mount LogflareWeb.AuthLive
 
-  def mount(%{"source_id" => source_id} = params, session, socket) do
+  def mount(%{"source_id" => source_id} = params, _session, socket) do
     source =
       source_id |> String.to_integer() |> Sources.Cache.get_by_id()
 
