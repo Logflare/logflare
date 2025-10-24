@@ -1,5 +1,5 @@
 defmodule LogflareWeb.TeamUserControllerTest do
-  use LogflareWeb.ConnCase, async: true
+  use LogflareWeb.ConnCase
 
   setup do
     insert(:plan)

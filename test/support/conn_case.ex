@@ -88,13 +88,12 @@ defmodule LogflareWeb.ConnCase do
   def login_user(conn, user, team_user) do
     conn
     |> login_user(user)
-    |> Plug.Conn.put_session(:team_user_id, team_user.id)
+    |> Plug.Conn.put_session(:current_email, team_user.email)
   end
 
   def login_user(conn, user) do
     conn
     |> Plug.Test.init_test_session(%{current_email: user.email})
-    |> Plug.Conn.assign(:user, user)
   end
 
   # for api use
