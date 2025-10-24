@@ -8,6 +8,8 @@ defmodule LogflareWeb.AuthLive do
 
   import Phoenix.Component
 
+  use LogflareWeb, :routes
+
   alias Logflare.Teams.TeamContext
 
   def on_mount(:default, params, %{"current_email" => email}, socket) do
@@ -23,7 +25,10 @@ defmodule LogflareWeb.AuthLive do
          )}
 
       {:error, _reason} ->
-        {:halt, socket}
+        # Shouldn't ever actually thit this branch. Invalid credential will have been caught in the Plug pipeline.
+        {:halt,
+         socket
+         |> Phoenix.LiveView.redirect(to: ~p"/auth/login")}
     end
   end
 
