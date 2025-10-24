@@ -8,13 +8,13 @@
   <div class="d-flex flex-row justify-content-center">
     <center>
       <%= if @conn.assigns[:team_user] do %>
-        <p><i class="fas fa-exclamation-circle"></i> You're currently signed in with your <code><%= @team_user.provider %></code> account <code><%= @team_user.email %></code>.</p>
+        <p><i class="fas fa-exclamation-circle"></i> You're currently signed in with your <code>{@team_user.provider}</code> account <code><%= @team_user.email %></code>.</p>
       <% else %>
         <%= if @user do %>
-          <p><i class="fas fa-exclamation-circle"></i> You're currently signed in with your <code><%= @user.provider %></code> account <code><%= @user.email %></code>.</p>
+          <p><i class="fas fa-exclamation-circle"></i> You're currently signed in with your <code>{@user.provider}</code> account <code><%= @user.email %></code>.</p>
         <% else %>
           <%= if @last_login.provider do %>
-            <p><i class="fas fa-exclamation-circle"></i> You recently signed in with your <code><%= @last_login.provider %></code> account.</p>
+            <p><i class="fas fa-exclamation-circle"></i> You recently signed in with your <code>{@last_login.provider}</code> account.</p>
           <% end %>
         <% end %>
       <% end %>
@@ -49,7 +49,7 @@
       </p>
       <p class="text-center">
         <small>
-          Logflare is owned and operated by Supabase. When using the Logflare hosted service you agree to the Supabase <%= link("terms of service", to: "https://supabase.com/terms", target: "_blank") %> and <%= link("privacy policy", to: "https://supabase.com/privacy", target: "_blank") %>.
+          Logflare is owned and operated by Supabase. When using the Logflare hosted service you agree to the Supabase {link("terms of service", to: "https://supabase.com/terms", target: "_blank")} and {link("privacy policy", to: "https://supabase.com/privacy", target: "_blank")}.
         </small>
       </p>
     </div>

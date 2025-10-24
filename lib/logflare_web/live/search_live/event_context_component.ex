@@ -113,12 +113,12 @@ defmodule LogflareWeb.SearchLive.EventContextComponent do
     <div class="list-unstyled console-text-list -tw-mx-6 tw-relative">
       <div class="tw-flex tw-px-2 tw-py-4 tw-mb-4 tw-bg-gray-800 tw-items-baseline tw-sticky tw-w-full">
         <div class="tw-font-mono tw-text-white tw-text-sm tw-space-x-2">
-          <%= Lql.encode!(@lql_rules) %>
+          {Lql.encode!(@lql_rules)}
         </div>
       </div>
       <div class="tw-h-[calc(100vh-200px)] tw-overflow-y-auto tw-pr-2 tw-pl-5 -tw-ml-5" id="context_log_events" phx-hook="ScrollIntoView" phx-value-scroll-target={@target_event_id}>
         <.async_result assign={@logs}>
-          <:loading><%= live_react_component("Components.Loader", %{}, id: "shared-loader") %></:loading>
+          <:loading>{live_react_component("Components.Loader", %{}, id: "shared-loader")}</:loading>
           <:failed>
             <div id="context_log_events_error">An error occurred.</div>
           </:failed>
@@ -145,7 +145,7 @@ defmodule LogflareWeb.SearchLive.EventContextComponent do
               </span>
 
               <span class="tw-truncate tw-flex-1 tw-pr-1">
-                <%= log_event.body["event_message"] %>
+                {log_event.body["event_message"]}
               </span>
               <:actions>
                 <a class="metadata-link " data-toggle="collapse" href={"#metadata-" <> log_event.id} aria-expanded="false" class="tw-text-[0.65rem]">

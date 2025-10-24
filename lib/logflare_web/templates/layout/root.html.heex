@@ -6,7 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="description" content="Easily access your Cloudflare, Vercel & Elixir logs in a centralized web-based log management solution." />
     <meta name="author" content="" />
-    <title><%= page_title(assigns) %></title>
+    <title>{page_title(assigns)}</title>
     <link rel="stylesheet" href={Routes.static_path(@conn, "/js/app.css")} />
     <link rel="apple-touch-icon" sizes="57x57" href="/images/apple-icon-57x57.png" />
     <link rel="apple-touch-icon" sizes="60x60" href="/images/apple-icon-60x60.png" />
@@ -30,7 +30,7 @@
     <meta name="slack-app-id" content="AQEDJ7H7G" />
     <link rel="icon" href={Routes.static_path(@conn, "/images/favicon.ico")} />
     <link rel="stylesheet" href="https://use.fontawesome.com/releases/v5.9.0/css/all.css" />
-    <%= csrf_meta_tag() %>
+    {csrf_meta_tag()}
     <%= if @user do %>
       <script>
         window.userToken = "<%= Phoenix.Token.sign(LogflareWeb.Endpoint, @conn.secret_key_base, @user.id) %>";
@@ -38,13 +38,13 @@
     <% end %>
   </head>
   <body>
-    <%= render("navbar.html", assigns) %>
+    {render("navbar.html", assigns)}
 
     <%= if assigns[:banner] do %>
-      <%= render("banner.html", @banner) %>
+      {render("banner.html", @banner)}
     <% end %>
 
-    <%= @inner_content %>
+    {@inner_content}
     <script src={Routes.static_path(@conn, "/js/app.js")}>
     </script>
     <%= if Application.get_env(:logflare, :env) == :prod do %>

@@ -23,15 +23,15 @@
 <section class="mx-auto container">
   <ul :for={backend <- Enum.sort_by(@backends, & &1.name)} class="list-group">
     <li class="list-group-item">
-      <.link patch={~p"/backends/#{backend.id}"} class="tw-text-white"><%= backend.name %></.link>
-      <span class="tw-block tw-text-sm">uuid: <%= backend.token %></span>
+      <.link patch={~p"/backends/#{backend.id}"} class="tw-text-white">{backend.name}</.link>
+      <span class="tw-block tw-text-sm">uuid: {backend.token}</span>
       <p :if={backend.description} class="tw-pb-0 tw-mb-0 tw-text-sm text-muted">
-        <%= backend.description %>
+        {backend.description}
       </p>
       <div class="tw-flex tw-gap-2 tw-mt-1">
-        <span class="badge badge-pill badge-secondary tw-leading-normal"><%= backend.type %></span>
-        <span>drain rules: <%= Enum.count(backend.rules) %></span>
-        <span :for={{k, v} when is_binary(v) <- backend.metadata || %{}} :if={backend.metadata}><%= k %>: <%= v %></span>
+        <span class="badge badge-pill badge-secondary tw-leading-normal">{backend.type}</span>
+        <span>drain rules: {Enum.count(backend.rules)}</span>
+        <span :for={{k, v} when is_binary(v) <- backend.metadata || %{}} :if={backend.metadata}>{k}: {v}</span>
       </div>
     </li>
   </ul>

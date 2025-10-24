@@ -26,23 +26,23 @@ defmodule LogflareWeb.ModalComponent do
       <div class="modal-dialog modal-xl" role="document">
         <div class="modal-content">
           <div class="modal-header lf-modal-header">
-            <h5 class="modal-title"><%= @title %></h5>
+            <h5 class="modal-title">{@title}</h5>
             <span>
-              <%= link(raw("&times;"),
+              {link(raw("&times;"),
                 to: "#",
                 class: "phx-modal-close",
                 phx_click: @close,
                 phx_target: "##{@id}"
-              ) %>
+              )}
             </span>
           </div>
           <div class="modal-body">
             <div class="container">
               <%= if @is_template? do %>
-                <%= render(@view, @template, assigns) %>
+                {render(@view, @template, assigns)}
               <% else %>
                 <%= if assigns[:live_view] do %>
-                  <%= live_render(@socket, @live_view, @opts) %>
+                  {live_render(@socket, @live_view, @opts)}
                 <% else %>
                   <.live_component module={@component} {@opts} />
                 <% end %>
