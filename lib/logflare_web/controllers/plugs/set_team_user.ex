@@ -6,7 +6,6 @@ defmodule LogflareWeb.Plugs.SetTeamUser do
   import Phoenix.Controller
 
   alias Logflare.Teams.TeamContext
-  alias Logflare.TeamUsers
   use LogflareWeb, :routes
 
   def init(_), do: nil
@@ -16,7 +15,7 @@ defmodule LogflareWeb.Plugs.SetTeamUser do
       nil ->
         assign(conn, :user, nil)
 
-      email ->
+      _email ->
         set_team_user_for_browser(conn)
     end
   end
