@@ -24,6 +24,7 @@ defmodule Logflare.Backends.SourceSup do
   alias Logflare.Backends.AdaptorSupervisor
   alias Logflare.Logs
   alias Logflare.Logs.Processor
+  alias Logflare.Telemetry
   alias Opentelemetry.Proto.Collector.Metrics.V1.ExportMetricsServiceRequest
 
   def start_link(%Source{} = source) do
@@ -95,12 +96,8 @@ defmodule Logflare.Backends.SourceSup do
   defp system_metrics(source) do
     keeping_function = metric_keeping_function(source)
 
-    [
-      last_value("logflare.sources.test",
-        tags: [:source_id],
-        keep: keeping_function
-      )
-    ]
+    Telemetry.user_specific_metrics()
+    |> Enum.map(& %{&1 | keep: keeping_function})
   end
 
   defp metric_keeping_function(source) do

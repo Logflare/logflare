@@ -29,6 +29,8 @@ defmodule Logflare.Telemetry do
 
   @metrics_interval 30_000
 
+  @user_specific_tags [:source_id, :source_token, :backend_id]
+
   @impl true
   def init(_arg) do
     otel_exporter =
@@ -400,5 +402,12 @@ defmodule Logflare.Telemetry do
 
   defp batch_size_reporter_opts do
     [buckets: [0, 1, 5, 10, 50, 100, 150, 250, 500, 1000, 2000]]
+  end
+
+  def user_specific_metrics do
+    metrics()
+    |> Enum.filter(fn %{tags: tags} ->
+      Enum.any?(tags, & &1 in @user_specific_tags)
+    end)
   end
 end
