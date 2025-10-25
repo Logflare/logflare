@@ -104,11 +104,24 @@ defmodule Logflare.Backends.SourceSup do
   end
 
   defp metric_keeping_function(source) do
-    fn signal ->
-      source.id == signal[:backend_id] ||
-        source.id == signal[:source_id]
+    fn metadata ->
+      case get_entity_from_metadata(metadata) do
+        %{user_id: user_id} -> user_id == source.user_id
+        _ -> false
+      end
     end
   end
+
+  defp get_entity_from_metadata(%{source_id: source_id}),
+    do: Sources.Cache.get_by_id(source_id)
+
+  defp get_entity_from_metadata(%{source_token: token}),
+    do: Sources.Cache.get_source_by_token(token)
+
+  defp get_entity_from_metadata(%{backend_id: backend_id}),
+    do: Backends.Cache.get_backend(backend_id)
+
+  defp get_entity_from_metadata(_), do: nil
 
   defp generate_exporter_callback(source) do
     fn {:metrics, metrics}, _ ->
