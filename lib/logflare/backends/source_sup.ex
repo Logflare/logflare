@@ -2,6 +2,8 @@ defmodule Logflare.Backends.SourceSup do
   @moduledoc false
   use Supervisor
 
+  import Telemetry.Metrics
+
   alias Logflare.Backends.Backend
   alias Logflare.Backends.SourceSupWorker
   alias Logflare.Backends
@@ -20,6 +22,9 @@ defmodule Logflare.Backends.SourceSup do
   alias Logflare.Rules.Rule
   alias Logflare.Sources
   alias Logflare.Backends.AdaptorSupervisor
+  alias Logflare.Logs
+  alias Logflare.Logs.Processor
+  alias Opentelemetry.Proto.Collector.Metrics.V1.ExportMetricsServiceRequest
 
   def start_link(%Source{} = source) do
     Supervisor.start_link(__MODULE__, source, name: Backends.via_source(source, __MODULE__))
@@ -44,6 +49,8 @@ defmodule Logflare.Backends.SourceSup do
       |> Enum.map(&Backend.child_spec(source, &1))
       |> Enum.uniq()
 
+    otel_exporter = maybe_get_otel_exporter(source, user)
+
     children =
       [
         {RateCounterServer, [source: source]},
@@ -55,9 +62,67 @@ defmodule Logflare.Backends.SourceSup do
         {SlackHookServer, [source: source]},
         {BillingWriter, [source: source]},
         {SourceSupWorker, [source: source]}
-      ] ++ specs
+      ] ++ otel_exporter ++ specs
 
     Supervisor.init(children, strategy: :one_for_one)
+  end
+
+  #TODO: correctly start system sources on system start and
+  defp maybe_get_otel_exporter(%{system_source: true} = source, user) do
+    otel_exporter_opts =
+      [
+        metrics: system_metrics(source),
+        resource: %{
+          name: "Logflare",
+          service: %{
+            name: "Logflare",
+            version: Application.spec(:logflare, :vsn) |> to_string()
+          },
+          node: inspect(Node.self()),
+          cluster: Application.get_env(:logflare, :metadata)[:cluster]
+        },
+        export_callback: generate_exporter_callback(source),
+        name: :"#{source.name}-#{user.id}",
+        otlp_endpoint: ""
+      ]
+
+    [{OtelMetricExporter, otel_exporter_opts}]
+  end
+
+  defp maybe_get_otel_exporter(_, _),
+    do: []
+
+  defp system_metrics(source) do
+    keeping_function = metric_keeping_function(source)
+
+    [
+      last_value("logflare.sources.test",
+        tags: [:source_id],
+        keep: keeping_function
+      )
+    ]
+  end
+
+  defp metric_keeping_function(source) do
+    fn signal ->
+      source.id == signal[:backend_id] ||
+        source.id == signal[:source_id]
+    end
+  end
+
+  defp generate_exporter_callback(source) do
+    fn {:metrics, metrics}, _ ->
+      refreshed_source = Sources.refresh_source_metrics(source)
+
+      metrics
+      |> OtelMetricExporter.Protocol.build_metric_service_request()
+      |> Protobuf.encode()
+      |> Protobuf.decode(ExportMetricsServiceRequest)
+      |> Map.get(:resource_metrics)
+      |> Processor.ingest(Logs.OtelMetric, refreshed_source)
+
+      :ok
+    end
   end
 
   @doc """
