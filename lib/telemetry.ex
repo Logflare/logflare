@@ -4,6 +4,10 @@ defmodule Logflare.Telemetry do
   import Telemetry.Metrics
   import Logflare.Utils, only: [ets_info: 1]
 
+  alias Logflare.Sources
+  alias Logflare.Backends
+  alias Logflare.Users
+
   def start_link(arg), do: Supervisor.start_link(__MODULE__, arg, name: __MODULE__)
 
   @caches [
@@ -246,7 +250,34 @@ defmodule Logflare.Telemetry do
       broadway_metrics,
       application_metrics
     ])
+    |> put_keep_metric_function()
   end
+
+  defp put_keep_metric_function(metrics) do
+    for metric <- metrics do
+      if user_specific_metric?(metric),
+        do: %{metric | keep: &keep_metric_function/1},
+        else: metric
+    end
+  end
+
+  defp keep_metric_function(metadata) do
+    case get_entity_from_metadata(metadata) do
+      %{user_id: user_id} -> !Users.Cache.get(user_id).system_monitoring
+      _ -> true
+    end
+  end
+
+  defp get_entity_from_metadata(%{source_id: source_id}),
+    do: Sources.Cache.get_by_id(source_id)
+
+  defp get_entity_from_metadata(%{source_token: token}),
+    do: Sources.Cache.get_source_by_token(token)
+
+  defp get_entity_from_metadata(%{backend_id: backend_id}),
+    do: Backends.Cache.get_backend(backend_id)
+
+  defp get_entity_from_metadata(_), do: nil
 
   defp periodic_measurements do
     cache_stats? = Application.get_env(:logflare, :cache_stats, false)
@@ -267,6 +298,10 @@ defmodule Logflare.Telemetry do
 
     cachex_metrics ++ process_metrics
   end
+
+  def user_specific_metrics, do: metrics() |> Enum.filter(&user_specific_metric?/1)
+
+  defp user_specific_metric?(%{tags: tags}), do: Enum.any?(tags, & &1 in @user_specific_tags)
 
   def cachex_metrics do
     Enum.each(@caches, fn {cache, metric} ->
@@ -402,12 +437,5 @@ defmodule Logflare.Telemetry do
 
   defp batch_size_reporter_opts do
     [buckets: [0, 1, 5, 10, 50, 100, 150, 250, 500, 1000, 2000]]
-  end
-
-  def user_specific_metrics do
-    metrics()
-    |> Enum.filter(fn %{tags: tags} ->
-      Enum.any?(tags, & &1 in @user_specific_tags)
-    end)
   end
 end
