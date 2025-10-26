@@ -2,8 +2,6 @@ defmodule Logflare.Backends.SourceSup do
   @moduledoc false
   use Supervisor
 
-  import Telemetry.Metrics
-
   alias Logflare.Backends.Backend
   alias Logflare.Backends.SourceSupWorker
   alias Logflare.Backends
@@ -32,6 +30,8 @@ defmodule Logflare.Backends.SourceSup do
   end
 
   def init(source) do
+    source = Sources.Cache.preload_rules(source)
+
     ingest_backends = Backends.Cache.list_backends(source_id: source.id)
 
     rules_backends =
@@ -68,8 +68,7 @@ defmodule Logflare.Backends.SourceSup do
     Supervisor.init(children, strategy: :one_for_one)
   end
 
-  #TODO: correctly start system sources on system start and
-  defp maybe_get_otel_exporter(%{system_source: true} = source, user) do
+  defp maybe_get_otel_exporter(%{system_source_type: :metrics} = source, user) do
     otel_exporter_opts =
       [
         metrics: system_metrics(source),
@@ -94,13 +93,13 @@ defmodule Logflare.Backends.SourceSup do
     do: []
 
   defp system_metrics(source) do
-    keeping_function = metric_keeping_function(source)
+    keep_function = keep_metric_function(source)
 
     Telemetry.user_specific_metrics()
-    |> Enum.map(& %{&1 | keep: keeping_function})
+    |> Enum.map(& %{&1 | keep: keep_function})
   end
 
-  defp metric_keeping_function(source) do
+  defp keep_metric_function(source) do
     fn metadata ->
       case get_entity_from_metadata(metadata) do
         %{user_id: user_id} -> user_id == source.user_id
