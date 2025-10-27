@@ -77,7 +77,7 @@ defmodule LogflareWeb.QueryLive do
           <button type="button" class="btn btn-secondary" phx-click="format-query">
             Format
           </button>
-          <%= submit("Run query", class: "btn btn-secondary") %>
+          {submit("Run query", class: "btn btn-secondary")}
         </div>
       </.form>
 
@@ -85,7 +85,7 @@ defmodule LogflareWeb.QueryLive do
         <.alert variant="warning">
           <strong>SQL Parse error!</strong>
           <br />
-          <span><%= @parse_error_message %></span>
+          <span>{@parse_error_message}</span>
         </.alert>
       </div>
     </section>
@@ -105,7 +105,7 @@ defmodule LogflareWeb.QueryLive do
         <table class="table table-bordered table-dark table-sm table-hover table-responsive tw-overflow-x-auto  tw-w-[95vw] tw-font-mono tw-text-[0.7rem]">
           <thead>
             <tr>
-              <th :for={k <- keys} scope="col" class="tw-w-max-[50vw]"><%= k %></th>
+              <th :for={k <- keys} scope="col" class="tw-w-max-[50vw]">{k}</th>
             </tr>
           </thead>
           <tbody>
@@ -114,11 +114,11 @@ defmodule LogflareWeb.QueryLive do
                 <%= case value = Map.get(row, k) do %>
                   <% value when is_map(value) or is_list(value) -> %>
                     <button type="button" class="btn btn-link tw-truncate tw-text-ellipsis tw-w-32 tw-text-[0.7rem]" data-toggle="modal" data-target={"#modal-#{row_idx}-#{col_idx}"}>
-                      <%= Jason.encode!(value) |> String.slice(0..150) %>
+                      {Jason.encode!(value) |> String.slice(0..150)}
                     </button>
                   <% value -> %>
                     <span class="tw-max-w-[50vw]  tw-block tw-text-wrap">
-                      <%= value %>
+                      {value}
                     </span>
                 <% end %>
 
@@ -126,7 +126,7 @@ defmodule LogflareWeb.QueryLive do
                   <div class="modal-dialog modal-xl">
                     <div class="modal-content">
                       <div class="modal-header">
-                        <h5 class="modal-title" id="staticBackdropLabel"><%= k %></h5>
+                        <h5 class="modal-title" id="staticBackdropLabel">{k}</h5>
                         <button type="button" class="close" data-dismiss="modal" aria-label="Close">
                           <span aria-hidden="true">&times;</span>
                         </button>

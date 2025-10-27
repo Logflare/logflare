@@ -6,6 +6,6 @@
   </div>
 
   <code class="tw-whitespace-pre-wrap tw-overflow-x-auto tw-block tw-text-white tw-bg-zinc-800 tw-rounded tw-p-2 tw-text-xs">
-    <%= Jason.encode!(@query_result_rows) |> Jason.Formatter.pretty_print() %>
+    {Jason.encode!(@query_result_rows) |> Jason.Formatter.pretty_print()}
   </code>
 </div>

@@ -13,28 +13,28 @@ defmodule LogflareWeb.SourceBackendsLive do
     <div class="my-4">
       <div :if={not Enum.empty?(@backends)}>
         <h5>Backends</h5>
-        <small class="badge badge-pill badge-success">connected: <%= Enum.count(@attached_backend_ids) %></small>
+        <small class="badge badge-pill badge-success">connected: {Enum.count(@attached_backend_ids)}</small>
         <.form :let={f} as={:source} for={%{}} action="#" phx-submit="save">
           <% grouped = Enum.group_by(@backends, & &1.type) %>
           <%= for type <- [:bigquery, :postgres, :webhook, :datadog],
              backends = Map.get(grouped, type, []) do %>
             <div class="form-group">
               <strong>
-                <%= case type do
+                {case type do
                   :bigquery -> "BigQuery"
                   :postgres -> "PostgreSQL"
                   :webhook -> "Webhook"
                   :datadog -> "Datadog"
-                end %>
+                end}
               </strong>
 
               <div :if={type == :bigquery} class="form-row custom-control custom-switch">
-                <%= text_input(f, :backends, type: "checkbox", class: "custom-control-input", id: "backends-default", disabled: true, checked: true) %>
-                <%= label(f, :backends, "Logflare-managed BigQuery", class: "custom-control-label", for: "backends-default") %>
+                {text_input(f, :backends, type: "checkbox", class: "custom-control-input", id: "backends-default", disabled: true, checked: true)}
+                {label(f, :backends, "Logflare-managed BigQuery", class: "custom-control-label", for: "backends-default")}
               </div>
               <div :for={backend <- backends} class="form-row custom-control custom-switch">
-                <%= text_input(f, :backends, type: "checkbox", class: "custom-control-input", id: "backends-#{backend.id}", name: "source[backends][]", checked: backend.id in @attached_backend_ids, value: backend.id) %>
-                <%= label(f, :backends, backend.name, class: "custom-control-label", for: "backends-#{backend.id}") %>
+                {text_input(f, :backends, type: "checkbox", class: "custom-control-input", id: "backends-#{backend.id}", name: "source[backends][]", checked: backend.id in @attached_backend_ids, value: backend.id)}
+                {label(f, :backends, backend.name, class: "custom-control-label", for: "backends-#{backend.id}")}
               </div>
               <div :if={Enum.empty?(backends) and type !== :bigquery}>
                 <small class="text-muted">No backend created yet!</small>
@@ -42,7 +42,7 @@ defmodule LogflareWeb.SourceBackendsLive do
             </div>
           <% end %>
 
-          <%= submit("Save", class: "btn btn-primary form-button") %>
+          {submit("Save", class: "btn btn-primary form-button")}
         </.form>
       </div>
     </div>

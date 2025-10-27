@@ -10,7 +10,7 @@
 </div>
 
 <div :if={@query_result_rows}>
-  <code class="tw-whitespace-pre tw-block tw-text-white tw-bg-zinc-800 tw-rounded tw-p-2 tw-text-xs"><%= Jason.encode!(@query_result_rows) |> Jason.Formatter.pretty_print() %></code>
+  <code class="tw-whitespace-pre tw-block tw-text-white tw-bg-zinc-800 tw-rounded tw-p-2 tw-text-xs">{Jason.encode!(@query_result_rows) |> Jason.Formatter.pretty_print()}</code>
 </div>
 
 <div :if={@query_result_rows == []}>

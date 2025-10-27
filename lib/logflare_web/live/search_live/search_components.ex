@@ -46,7 +46,7 @@ defmodule LogflareWeb.SearchLive.SearchComponents do
       end)
 
     ~H"""
-    <a phx-click="create_new" phx-value-resource={@resource} phx-value-kind={@kind} class="tw-block tw-text-gray-500 tw-no-underline" href="#"><%= @label %></a>
+    <a phx-click="create_new" phx-value-resource={@resource} phx-value-kind={@kind} class="tw-block tw-text-gray-500 tw-no-underline" href="#">{@label}</a>
     """
   end
 end

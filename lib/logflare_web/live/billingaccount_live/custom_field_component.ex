@@ -111,25 +111,25 @@ defmodule LogflareWeb.BillingAccountLive.CustomFieldComponent do
       <%= if @billing_account.custom_invoice_fields do %>
         <ul class="list-unstyled">
           <%= for %{"name" => k, "value" => v} <- @billing_account.custom_invoice_fields do %>
-            <li><%= k %>: <%= v %> <%= delete_link(k, @myself) %></li>
+            <li>{k}: {v} {delete_link(k, @myself)}</li>
           <% end %>
         </ul>
       <% end %>
       <.form :let={f} for={@custom_fields_form} action="#" phx-change="validate" phx-submit="add" phx-target={@myself}>
         <div class="row">
           <div class="col-sm">
-            <%= label(f, :name, class: "label-padding") %>
-            <%= text_input(f, :name, class: "form-control form-control-margin") %>
-            <%= error_tag(f, :name) %>
+            {label(f, :name, class: "label-padding")}
+            {text_input(f, :name, class: "form-control form-control-margin")}
+            {error_tag(f, :name)}
           </div>
           <div class="col-md">
-            <%= label(f, :value, class: "label-padding") %>
-            <%= text_input(f, :value, class: "form-control form-control-margin") %>
-            <%= error_tag(f, :value) %>
+            {label(f, :value, class: "label-padding")}
+            {text_input(f, :value, class: "form-control form-control-margin")}
+            {error_tag(f, :value)}
           </div>
           <div class="col-md"></div>
         </div>
-        <%= submit("Add", phx_disable_with: "Adding...", class: "btn btn-primary form-button mt-4") %>
+        {submit("Add", phx_disable_with: "Adding...", class: "btn btn-primary form-button mt-4")}
       </.form>
     </div>
     """
