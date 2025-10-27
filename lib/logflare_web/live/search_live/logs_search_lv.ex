@@ -13,7 +13,9 @@ defmodule LogflareWeb.Source.SearchLV do
   alias Logflare.Logs.SearchQueryExecutor
   alias Logflare.Logs.SearchUtils
   alias Logflare.Lql
+  alias Logflare.Lql.Rules
   alias Logflare.Lql.Rules.ChartRule
+  alias Logflare.Lql.Rules.FromRule
   alias Logflare.SavedSearches
   alias Logflare.SourceSchemas
   alias Logflare.Sources
@@ -120,7 +122,8 @@ defmodule LogflareWeb.Source.SearchLV do
     socket =
       with {:ok, lql_rules} <-
              Lql.decode(qs, get_bigquery_schema(source)),
-           lql_rules = Lql.Rules.put_new_chart_rule(lql_rules, Lql.Rules.default_chart_rule()),
+           lql_rules = Rules.put_new_chart_rule(lql_rules, Rules.default_chart_rule()),
+           lql_rules = ensure_from_rule(lql_rules, source),
            {:ok, socket} <- check_suggested_keys(lql_rules, source, socket) do
         qs = Lql.encode!(lql_rules)
 
@@ -713,6 +716,19 @@ defmodule LogflareWeb.Source.SearchLV do
     |> Kernel.in([:integer, :float])
   end
 
+  defp ensure_from_rule(lql_rules, source) do
+    if Rules.has_from_rule?(lql_rules) do
+      lql_rules
+    else
+      from_rule = %FromRule{
+        table: source.token,
+        table_type: :source
+      }
+
+      Rules.put_from_rule(lql_rules, from_rule)
+    end
+  end
+
   defp adjust_timestamp_rules(timestamp_rules, search_timezone) do
     tz = Timex.Timezone.get(search_timezone)
 
@@ -951,13 +967,20 @@ defmodule LogflareWeb.Source.SearchLV do
 
     suggested_present =
       Enum.all?(suggested, fn suggested_field ->
-        Enum.find(lql_rules, fn %{path: path} -> path == suggested_field end)
+        Enum.find(lql_rules, fn
+          %{path: path} -> path == suggested_field
+          _ -> false
+        end)
       end)
 
     required_present =
       Enum.all?(required, fn required_field ->
         trimmed = String.trim_trailing(required_field, "!")
-        Enum.find(lql_rules, fn %{path: path} -> path == trimmed end)
+
+        Enum.find(lql_rules, fn
+          %{path: path} -> path == trimmed
+          _ -> false
+        end)
       end)
 
     cond do

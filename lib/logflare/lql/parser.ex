@@ -132,16 +132,24 @@ defmodule Logflare.Lql.Parser do
             _ -> false
           end)
 
-        {select_rule_tokens, other_rules} =
+        {select_rule_tokens, remaining_rules2} =
           remaining_rules
           |> Enum.split_with(fn
             {:select, _} -> true
             _ -> false
           end)
 
+        {from_rule_tokens, other_rules} =
+          remaining_rules2
+          |> Enum.split_with(fn
+            {:from, _} -> true
+            _ -> false
+          end)
+
         typemap = SchemaUtils.bq_schema_to_flat_typemap(schema)
 
         chart_rule = build_chart_rule(chart_rule_tokens, typemap, querystring)
+        from_rule = build_from_rule(from_rule_tokens)
 
         select_rules =
           select_rule_tokens
@@ -162,7 +170,7 @@ defmodule Logflare.Lql.Parser do
           end)
 
         rules =
-          ([chart_rule | select_rules] ++ rules)
+          ([from_rule, chart_rule | select_rules] ++ rules)
           |> List.flatten()
           |> Enum.reject(&is_nil/1)
 
