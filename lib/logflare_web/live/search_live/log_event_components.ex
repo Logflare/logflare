@@ -27,7 +27,7 @@ defmodule LogflareWeb.SearchLive.LogEventComponents do
     ~H"""
     <div id="source-logs-search-list" data-last-query-completed-at={@last_query_completed_at} phx-hook="SourceLogsSearchList" class="mt-4">
       <%= if @loading do %>
-        <div id="logs-list" class="blurred list-unstyled console-text-list"></div>
+        <div id="logs-list-loading" class="blurred list-unstyled console-text-list"></div>
       <% else %>
         <ul :if={@search_op_log_events} id="logs-list" class="list-unstyled console-text-list">
           <.log_event :for={log <- @search_op_log_events.rows} timezone={@search_timezone} log_event={log}>
