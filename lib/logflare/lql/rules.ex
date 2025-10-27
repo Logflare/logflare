@@ -11,9 +11,10 @@ defmodule Logflare.Lql.Rules do
 
   alias Logflare.Lql.Rules.ChartRule
   alias Logflare.Lql.Rules.FilterRule
+  alias Logflare.Lql.Rules.FromRule
   alias Logflare.Lql.Rules.SelectRule
 
-  @type lql_rule :: ChartRule.t() | FilterRule.t() | SelectRule.t()
+  @type lql_rule :: ChartRule.t() | FilterRule.t() | FromRule.t() | SelectRule.t()
   @type lql_rules :: [lql_rule()]
 
   # =============================================================================
@@ -50,6 +51,16 @@ defmodule Logflare.Lql.Rules do
   @spec get_chart_rule(lql_rules()) :: ChartRule.t() | nil
   def get_chart_rule(lql_rules) when is_list(lql_rules) do
     Enum.find(lql_rules, &match?(%ChartRule{}, &1))
+  end
+
+  @doc """
+  Finds the `FromRule` in the list, or returns nil if none exists.
+
+  Only one from rule is allowed per query, so this returns the first rule if more than one exists.
+  """
+  @spec get_from_rule(lql_rules()) :: FromRule.t() | nil
+  def get_from_rule(lql_rules) when is_list(lql_rules) do
+    Enum.find(lql_rules, &match?(%FromRule{}, &1))
   end
 
   # =============================================================================
@@ -162,6 +173,38 @@ defmodule Logflare.Lql.Rules do
       true -> lql_rules
       false -> [chart | lql_rules]
     end
+  end
+
+  # =============================================================================
+  # From Rule Helpers
+  # =============================================================================
+
+  @doc """
+  Checks if a `FromRule` is present in the rules list.
+  """
+  @spec has_from_rule?(lql_rules()) :: boolean()
+  def has_from_rule?(lql_rules) when is_list(lql_rules) do
+    Enum.any?(lql_rules, &match?(%FromRule{}, &1))
+  end
+
+  @doc """
+  Puts or replaces a `FromRule` in the rules list.
+
+  Removes any existing `FromRule` first to maintain the single from rule constraint.
+  """
+  @spec put_from_rule(lql_rules(), FromRule.t()) :: lql_rules()
+  def put_from_rule(lql_rules, %FromRule{} = from_rule) when is_list(lql_rules) do
+    lql_rules
+    |> remove_from_rule()
+    |> then(&[from_rule | &1])
+  end
+
+  @doc """
+  Removes a `FromRule`, if present.
+  """
+  @spec remove_from_rule(lql_rules()) :: lql_rules()
+  def remove_from_rule(lql_rules) when is_list(lql_rules) do
+    Enum.reject(lql_rules, &match?(%FromRule{}, &1))
   end
 
   # =============================================================================

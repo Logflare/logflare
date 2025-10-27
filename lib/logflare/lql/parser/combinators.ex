@@ -186,6 +186,36 @@ defmodule Logflare.Lql.Parser.Combinators do
   end
 
   # ============================================================================
+  # From Combinators
+  # ============================================================================
+
+  @doc """
+  Parses a from clause: `f:table_name` or `from:table_name`
+
+  The from clause specifies which table or source to query from.
+  In sandboxed queries, this references a CTE alias.
+  In standard queries, this references a source name or token.
+
+  ## Examples
+
+      iex> from_clause() |> NimbleParsec.parse("f:my_table")
+      {:ok, [from: [table: "my_table"]], "", %{}, {1, 0}, 10}
+
+      iex> from_clause() |> NimbleParsec.parse("from:errors")
+      {:ok, [from: [table: "errors"]], "", %{}, {1, 0}, 12}
+
+  """
+  def from_clause do
+    ignore(choice([string("from"), string("f")]))
+    |> ignore(ascii_char([?:]))
+    |> ascii_string([?a..?z, ?A..?Z, ?_, ?0..?9], min: 1)
+    |> reduce({List, :to_string, []})
+    |> unwrap_and_tag(:table)
+    |> label("from clause")
+    |> tag(:from)
+  end
+
+  # ============================================================================
   # Chart Combinators
   # ============================================================================
 

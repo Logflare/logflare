@@ -17,6 +17,7 @@ defmodule Logflare.Lql.Parser do
   alias Logflare.Lql.Rules
   alias Logflare.Lql.Rules.ChartRule
   alias Logflare.Lql.Rules.FilterRule
+  alias Logflare.Lql.Rules.FromRule
   alias Logflare.Lql.Rules.SelectRule
 
   defparsec(
@@ -24,6 +25,7 @@ defmodule Logflare.Lql.Parser do
     concat(
       optional(string("-") |> replace(:negate)),
       choice([
+        from_clause(),
         chart_clause(),
         select_clause(),
         timestamp_clause(),
@@ -53,9 +55,16 @@ defmodule Logflare.Lql.Parser do
       |> String.trim()
       |> do_parse()
 
-    {chart_rule_tokens, remaining_rules} =
+    {from_rule_tokens, remaining_rules} =
       rules
       |> List.flatten()
+      |> Enum.split_with(fn
+        {:from, _} -> true
+        _ -> false
+      end)
+
+    {chart_rule_tokens, remaining_rules} =
+      remaining_rules
       |> Enum.split_with(fn
         {:chart, _} -> true
         _ -> false
@@ -67,6 +76,8 @@ defmodule Logflare.Lql.Parser do
         {:select, _} -> true
         _ -> false
       end)
+
+    from_rule = build_from_rule(from_rule_tokens)
 
     chart_rule =
       if not Enum.empty?(chart_rule_tokens) do
@@ -94,7 +105,7 @@ defmodule Logflare.Lql.Parser do
       end)
 
     rules =
-      ([chart_rule | select_rules] ++ filter_rules)
+      ([from_rule, chart_rule | select_rules] ++ filter_rules)
       |> List.flatten()
       |> Enum.reject(&is_nil/1)
 
@@ -171,6 +182,18 @@ defmodule Logflare.Lql.Parser do
       {:error, err}
   end
 
+  @spec build_from_rule([{:from, Keyword.t()}]) :: FromRule.t() | nil
+  defp build_from_rule([]), do: nil
+
+  defp build_from_rule(from_tokens) when length(from_tokens) > 1 do
+    raise ArgumentError,
+          "Only one from rule (f:table) is allowed per query, found #{length(from_tokens)}"
+  end
+
+  defp build_from_rule([{:from, keyword_list}]) when is_list(keyword_list) do
+    FromRule.build(keyword_list)
+  end
+
   defp build_chart_rule(chart_rule_tokens, typemap, querystring) do
     if not Enum.empty?(chart_rule_tokens) do
       chart_rule =
@@ -214,6 +237,7 @@ defmodule Logflare.Lql.Parser do
   # cast without typing, best effort
   defp maybe_cast_value(%{value: "true"} = c), do: %{c | value: true}
   defp maybe_cast_value(%{value: "false"} = c), do: %{c | value: false}
+  defp maybe_cast_value(%{value: nil} = c), do: c
 
   defp maybe_cast_value(%{value: v} = c) do
     parsed =

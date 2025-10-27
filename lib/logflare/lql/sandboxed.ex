@@ -13,12 +13,16 @@ defmodule Logflare.Lql.Sandboxed do
   alias Logflare.Lql.Rules
   alias Logflare.Lql.Rules.ChartRule
   alias Logflare.Lql.Rules.FilterRule
+  alias Logflare.Lql.Rules.FromRule
   alias Logflare.Lql.Rules.SelectRule
 
   @typep dialect :: :bigquery | :clickhouse | :postgres
 
   @doc """
   Converts an LQL query string to a SQL query string for use in sandboxed endpoints.
+
+  If the LQL string contains a `FromRule` (e.g., `f:table_name`), that table name
+  will be used instead of the `cte_table_name` parameter.
   """
   @spec to_sandboxed_sql(
           lql_string :: String.t(),
@@ -29,16 +33,23 @@ defmodule Logflare.Lql.Sandboxed do
       when is_binary(lql_string) and is_non_empty_binary(cte_table_name) and
              dialect in [:bigquery, :clickhouse] do
     with {:ok, lql_rules} <- Parser.parse(lql_string) do
+      # Determine table name: use FromRule if present, otherwise use cte_table_name parameter
+      table_name =
+        case Rules.get_from_rule(lql_rules) do
+          %FromRule{table: table} -> table
+          nil -> cte_table_name
+        end
+
       filter_rules = Rules.get_filter_rules(lql_rules)
       chart_rule = Rules.get_chart_rule(lql_rules)
 
       query =
         if chart_rule do
-          build_chart_query(cte_table_name, chart_rule, filter_rules, dialect)
+          build_chart_query(table_name, chart_rule, filter_rules, dialect)
         else
           select_rules = Rules.get_select_rules(lql_rules)
 
-          build_select_query(cte_table_name, select_rules, filter_rules, dialect)
+          build_select_query(table_name, select_rules, filter_rules, dialect)
         end
 
       ecto_query_to_sql_string(query, dialect)

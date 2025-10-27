@@ -436,9 +436,9 @@ defmodule Logflare.Endpoints do
        when is_non_empty_binary(lql_param) and language in [:bq_sql, :ch_sql] do
     with {:ok, cte_names} <- Sql.extract_cte_aliases(expanded_query),
          dialect <- Lql.language_to_dialect(language),
-         # For now, use the first CTE table name
-         # TODO: In the future, we could validate that the LQL references a valid CTE
-         cte_table_name <- List.first(cte_names) || "unknown_cte",
+         # Use the _last_ CTE table name in the chain
+         # Can be overridden by specifying `f:table_name` in the LQL
+         cte_table_name <- List.last(cte_names) || "unknown_cte",
          {:ok, sql_string} <- Lql.to_sandboxed_sql(lql_param, cte_table_name, dialect) do
       {:ok, sql_string}
     end

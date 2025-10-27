@@ -235,6 +235,109 @@ defmodule LogflareWeb.EndpointsControllerTest do
         refute conn.halted
       end
     end
+
+    test "GET query with lql and multiple CTEs uses last CTE by default", %{
+      conn: init_conn,
+      user: user
+    } do
+      query = """
+      WITH
+        first_cte AS (SELECT 'a' as col1),
+        second_cte AS (SELECT 'b' as col2),
+        final_data AS (SELECT 'c' as col3)
+      SELECT col3 FROM final_data
+      """
+
+      endpoint =
+        insert(:endpoint, user: user, enable_auth: false, query: query, sandboxable: true)
+
+      GoogleApi.BigQuery.V2.Api.Jobs
+      |> expect(:bigquery_jobs_query, fn _conn, _proj_id, opts ->
+        # Verify the generated SQL queries from final_data
+        assert opts[:body].query =~ "final_data"
+        assert opts[:body].query =~ "col3"
+
+        {:ok, TestUtils.gen_bq_response([%{"col3" => "c"}])}
+      end)
+
+      conn =
+        init_conn
+        |> get(~p"/endpoints/query/#{endpoint.token}?lql=s:col3")
+
+      response =
+        conn
+        |> json_response(200)
+        |> assert_schema("EndpointQuery")
+
+      assert [%{"col3" => "c"}] = response.result
+      refute response.error
+    end
+
+    test "GET query with lql `f:table` overrides CTE fallback", %{
+      conn: init_conn,
+      user: user
+    } do
+      query = """
+      WITH
+        first_cte AS (SELECT 'a' as col1),
+        second_cte AS (SELECT 'b' as col2),
+        final_data AS (SELECT 'c' as col3)
+      SELECT col3 FROM final_data
+      """
+
+      endpoint =
+        insert(:endpoint, user: user, enable_auth: false, query: query, sandboxable: true)
+
+      GoogleApi.BigQuery.V2.Api.Jobs
+      |> expect(:bigquery_jobs_query, fn _conn, _proj_id, opts ->
+        # Verify the generated SQL queries from `second_cte` (not from `final_data`)
+        assert opts[:body].query =~ "FROM second_cte"
+        assert opts[:body].query =~ "col2"
+        refute opts[:body].query =~ "FROM final_data"
+
+        {:ok, TestUtils.gen_bq_response([%{"col2" => "b"}])}
+      end)
+
+      conn =
+        init_conn
+        |> get(~p"/endpoints/query/#{endpoint.token}?lql=f:second_cte s:col2")
+
+      response =
+        conn
+        |> json_response(200)
+        |> assert_schema("EndpointQuery")
+
+      assert [%{"col2" => "b"}] = response.result
+      refute response.error
+    end
+
+    test "GET query with lql and single CTE uses that CTE", %{conn: init_conn, user: user} do
+      query = """
+      WITH my_data AS (SELECT 'test' as value)
+      SELECT value FROM my_data
+      """
+
+      endpoint =
+        insert(:endpoint, user: user, enable_auth: false, query: query, sandboxable: true)
+
+      GoogleApi.BigQuery.V2.Api.Jobs
+      |> expect(:bigquery_jobs_query, fn _conn, _proj_id, opts ->
+        assert opts[:body].query =~ "my_data"
+        {:ok, TestUtils.gen_bq_response([%{"value" => "test"}])}
+      end)
+
+      conn =
+        init_conn
+        |> get(~p"/endpoints/query/#{endpoint.token}?lql=s:value")
+
+      response =
+        conn
+        |> json_response(200)
+        |> assert_schema("EndpointQuery")
+
+      assert [%{"value" => "test"}] = response.result
+      refute response.error
+    end
   end
 
   describe "bigquery with labels" do
