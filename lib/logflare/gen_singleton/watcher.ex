@@ -8,13 +8,24 @@ defmodule Logflare.GenSingleton.Watcher do
   use GenServer
 
   require Logger
-  @type option :: {:child_spec, Supervisor.child_spec()}
+
+  @type option ::
+          {:child_spec, Supervisor.child_spec()}
+          | {:restart, :permanent | :transient | :temporary}
   @type options :: [option()]
 
   @spec start_link(options()) :: {:ok, pid} | {:error, any}
 
   def start_link(args) do
     GenServer.start_link(__MODULE__, {self(), args}, [])
+  end
+
+  def child_spec(args) do
+    %{
+      id: __MODULE__,
+      start: {__MODULE__, :start_link, [args]},
+      restart: Keyword.get(args, :restart, :permanent)
+    }
   end
 
   @doc """
@@ -49,6 +60,11 @@ defmodule Logflare.GenSingleton.Watcher do
   end
 
   @impl true
+  def handle_info({:DOWN, ref, :process, _pid, reason}, state)
+      when ref == state.monitor_ref and reason in [:normal, :shutdown] do
+    {:stop, :normal, state}
+  end
+
   def handle_info({:DOWN, ref, :process, _pid, _reason}, state) when ref == state.monitor_ref do
     Logger.debug(
       "GenSingleton | monitor_pid DOWN received for #{inspect(state.monitor_pid)}, scheduling check..."

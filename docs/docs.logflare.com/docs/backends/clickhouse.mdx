@@ -3,7 +3,7 @@ sidebar_position: 7
 ---
 # ClickHouse
 
-The ClickHouse backend is **ingest-only** to a ClickHouse [HTTP](https://clickhouse.com/docs/interfaces/http) endpoint.
+The ClickHouse backend supports both **ingestion** and **querying** via a ClickHouse [HTTP](https://clickhouse.com/docs/interfaces/http) endpoint.
 
 ## Behavior and Configuration
 
@@ -50,3 +50,38 @@ The ingest table schema is as follows:
 By default, the ClickHouse backends will utilize the [`MergeTree` engine](https://clickhouse.com/docs/engines/table-engines/mergetree-family/mergetree).
 
 Note that when using ClickHouse Cloud, replication is handled automatically as mentioned in the [data replication documentaion](https://clickhouse.com/docs/engines/table-engines/mergetree-family/replication#creating-replicated-tables).
+
+## Querying
+
+ClickHouse backends support SQL querying through Logflare Endpoints and Alerts. The backend uses ClickHouse SQL dialect, which supports standard SQL features including:
+
+- Common Table Expressions (CTEs) with `WITH` clauses
+- Complex aggregations and window functions
+- Array and nested data type operations
+- ClickHouse-specific functions (e.g., `tuple()`, `arraySlice()`, `JSONExtractString()`)
+
+### Sandboxed Queries
+
+ClickHouse backends fully support [sandboxed queries](/concepts/endpoints#query-sandboxing) within Endpoints, allowing you to create secure, parameterized API endpoints where consumers can provide custom SQL while being restricted to pre-defined data subsets.
+
+Example sandboxed ClickHouse endpoint:
+
+```sql
+WITH filtered_logs AS (
+    SELECT id, event_message, timestamp
+    FROM my_clickhouse_source
+    WHERE timestamp > now() - interval 1 day
+)
+SELECT * FROM filtered_logs
+```
+
+Consumers can then query within the sandbox via the `sql=` parameter:
+
+```sql
+SELECT event_message, count(*) as count
+FROM filtered_logs
+GROUP BY event_message
+ORDER BY count DESC
+```
+
+See the [Endpoints documentation](/concepts/endpoints) for more details on sandboxed queries and security features.

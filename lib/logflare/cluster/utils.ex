@@ -1,5 +1,6 @@
 defmodule Logflare.Cluster.Utils do
   @moduledoc false
+
   require Logger
 
   @spec node_list_all() :: [Node.t()]
@@ -23,5 +24,15 @@ defmodule Logflare.Cluster.Utils do
   @spec rpc_multicall(module(), atom(), [term()], non_neg_integer()) :: term()
   def rpc_multicall(mod, func, args, timeout \\ 5_000) do
     :rpc.multicall(node_list_all(), mod, func, args, timeout)
+  end
+
+  @spec rpc_multicast(module(), atom(), [term()]) :: term()
+  def rpc_multicast(mod, func, args) do
+    :erpc.multicast(node_list_all(), mod, func, args)
+  end
+
+  @spec rpc_call(node(), function(), non_neg_integer()) :: term()
+  def rpc_call(node, func, timeout \\ 5_000) do
+    :erpc.call(node, func, timeout)
   end
 end

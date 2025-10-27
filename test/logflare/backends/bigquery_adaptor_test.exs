@@ -62,6 +62,50 @@ defmodule Logflare.Backends.BigQueryAdaptorTest do
 
       :timer.sleep(1000)
     end
+
+    test "can query with parameters" do
+      user = insert(:user)
+      backend = Backends.get_default_backend(user)
+
+      GoogleApi.BigQuery.V2.Api.Jobs
+      |> expect(:bigquery_jobs_query, fn _connection, _project_id, opts ->
+        assert opts[:body].parameterMode == "NAMED"
+        value = opts[:body].queryParameters |> hd() |> get_in([:parameterValue, :value])
+
+        {:ok, TestUtils.gen_bq_response([%{"test" => value}])}
+      end)
+
+      user = insert(:user)
+      source = insert(:source, user: user)
+      start_supervised!({SourceSup, source})
+
+      assert {:ok, %{rows: [%{"test" => "input_data"}]}} =
+               BigQueryAdaptor.execute_query(
+                 backend,
+                 {"SELECT @test", ["test"], %{"test" => "input_data"}},
+                 []
+               )
+    end
+
+    test "can query with no parameters" do
+      user = insert(:user)
+      backend = Backends.get_default_backend(user)
+
+      GoogleApi.BigQuery.V2.Api.Jobs
+      |> expect(:bigquery_jobs_query, fn _connection, _project_id, opts ->
+        assert opts[:body].parameterMode == "NAMED"
+        assert opts[:body].queryParameters |> length() == 0
+
+        {:ok, TestUtils.gen_bq_response([%{"test" => "1"}])}
+      end)
+
+      user = insert(:user)
+      source = insert(:source, user: user)
+      start_supervised!({SourceSup, source})
+
+      assert {:ok, %{rows: [%{"test" => "1"}]}} =
+               BigQueryAdaptor.execute_query(backend, "SELECT 1", [])
+    end
   end
 
   describe "custom bigquery backend" do
@@ -222,13 +266,25 @@ defmodule Logflare.Backends.BigQueryAdaptorTest do
 
       pid = self()
 
-      Logflare.Backends.Adaptor.BigQueryAdaptor.GoogleApiClient
-      |> expect(:append_rows, fn {:arrow, dataframe}, _project, _dataset, _table_id ->
+      Google.Cloud.Bigquery.Storage.V1.BigQueryWrite.Stub
+      |> stub(:append_rows, fn _channel ->
+        {:ok, %GRPC.Client.Stream{}}
+      end)
+
+      GRPC.Stub
+      |> stub(:connect, fn _url, _keywords ->
+        {:ok, %GRPC.Channel{}}
+      end)
+      |> stub(:send_request, fn stream, _request ->
+        {:ok, stream}
+      end)
+      |> stub(:end_stream, fn stream ->
+        {:ok, stream}
+      end)
+      |> stub(:recv, fn _stream ->
         send(pid, :streamed)
 
-        assert {:ok, _} = DataFrame.dump_ipc(dataframe)
-        assert {:ok, _} = DataFrame.dump_ipc_record_batch(dataframe)
-        {:ok, %Google.Cloud.Bigquery.Storage.V1.AppendRowsResponse{}}
+        {:ok, []}
       end)
 
       assert {:ok, 2} = Backends.ingest_logs([log_event, log_event_2], source)

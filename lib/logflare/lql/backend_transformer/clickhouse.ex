@@ -10,10 +10,29 @@ defmodule Logflare.Lql.BackendTransformer.ClickHouse do
   @behaviour Logflare.Lql.BackendTransformer
 
   import Ecto.Query
+  import Logflare.Utils.Guards
 
   alias Ecto.Query
+  alias Logflare.Lql.Rules.ChartRule
 
   @special_top_level ~w(event_message timestamp id)
+
+  # macros used for generating Ecto query fragments
+  defmacrop ch_interval_second(ts_field) do
+    quote do: fragment("toStartOfInterval(?, INTERVAL 1 second)", unquote(ts_field))
+  end
+
+  defmacrop ch_interval_minute(ts_field) do
+    quote do: fragment("toStartOfInterval(?, INTERVAL 1 minute)", unquote(ts_field))
+  end
+
+  defmacrop ch_interval_hour(ts_field) do
+    quote do: fragment("toStartOfInterval(?, INTERVAL 1 hour)", unquote(ts_field))
+  end
+
+  defmacrop ch_interval_day(ts_field) do
+    quote do: fragment("toStartOfInterval(?, INTERVAL 1 day)", unquote(ts_field))
+  end
 
   @impl true
   def dialect, do: "clickhouse"
@@ -75,7 +94,7 @@ defmodule Logflare.Lql.BackendTransformer.ClickHouse do
 
       dynamic(
         [l],
-        fragment("? BETWEEN ? AND ?", field(l, ^String.to_atom(field_path)), ^lvalue, ^rvalue)
+        fragment("? BETWEEN ? AND ?", field(l, ^field_path), ^lvalue, ^rvalue)
       )
     else
       dynamic_where_filter_rule(
@@ -87,11 +106,230 @@ defmodule Logflare.Lql.BackendTransformer.ClickHouse do
     end
   end
 
+  @doc """
+  Transforms a ChartRule into a ClickHouse chart query with time-series aggregation.
+
+  This function creates an Ecto query with appropriate GROUP BY, aggregation,
+  and time truncation for the specified period and aggregate function.
+  """
   @impl true
-  def transform_chart_rule(_chart_rule, _transformation_data) do
-    # TODO: Implement chart rule transformation for ClickHouse
-    # This would handle aggregations, grouping, etc.
-    raise "Chart rule transformation not yet implemented for ClickHouse transformer"
+  @spec transform_chart_rule(
+          query :: Ecto.Query.t(),
+          aggregate :: atom(),
+          field_path :: String.t(),
+          period :: :second | :minute | :hour | :day,
+          timestamp_field :: String.t()
+        ) :: Ecto.Query.t()
+  def transform_chart_rule(query, :count, _field_path, :second, timestamp_field) do
+    query
+    |> select([t], %{
+      timestamp: ch_interval_second(field(t, ^timestamp_field)),
+      count: count(field(t, ^timestamp_field))
+    })
+    |> group_by([t], ch_interval_second(field(t, ^timestamp_field)))
+    |> order_by([t], ch_interval_second(field(t, ^timestamp_field)))
+  end
+
+  def transform_chart_rule(query, :count, _field_path, :minute, timestamp_field) do
+    query
+    |> select([t], %{
+      timestamp: ch_interval_minute(field(t, ^timestamp_field)),
+      count: count(field(t, ^timestamp_field))
+    })
+    |> group_by([t], ch_interval_minute(field(t, ^timestamp_field)))
+    |> order_by([t], ch_interval_minute(field(t, ^timestamp_field)))
+  end
+
+  def transform_chart_rule(query, :count, _field_path, :hour, timestamp_field) do
+    query
+    |> select([t], %{
+      timestamp: ch_interval_hour(field(t, ^timestamp_field)),
+      count: count(field(t, ^timestamp_field))
+    })
+    |> group_by([t], ch_interval_hour(field(t, ^timestamp_field)))
+    |> order_by([t], ch_interval_hour(field(t, ^timestamp_field)))
+  end
+
+  def transform_chart_rule(query, :count, _field_path, :day, timestamp_field) do
+    query
+    |> select([t], %{
+      timestamp: ch_interval_day(field(t, ^timestamp_field)),
+      count: count(field(t, ^timestamp_field))
+    })
+    |> group_by([t], ch_interval_day(field(t, ^timestamp_field)))
+    |> order_by([t], ch_interval_day(field(t, ^timestamp_field)))
+  end
+
+  def transform_chart_rule(query, :avg, field_path, :second, timestamp_field) do
+    query
+    |> select([t], %{
+      timestamp: ch_interval_second(field(t, ^timestamp_field)),
+      count: avg(field(t, ^field_path))
+    })
+    |> group_by([t], ch_interval_second(field(t, ^timestamp_field)))
+    |> order_by([t], ch_interval_second(field(t, ^timestamp_field)))
+  end
+
+  def transform_chart_rule(query, :avg, field_path, :minute, timestamp_field) do
+    query
+    |> select([t], %{
+      timestamp: ch_interval_minute(field(t, ^timestamp_field)),
+      count: avg(field(t, ^field_path))
+    })
+    |> group_by([t], ch_interval_minute(field(t, ^timestamp_field)))
+    |> order_by([t], ch_interval_minute(field(t, ^timestamp_field)))
+  end
+
+  def transform_chart_rule(query, :avg, field_path, :hour, timestamp_field) do
+    query
+    |> select([t], %{
+      timestamp: ch_interval_hour(field(t, ^timestamp_field)),
+      count: avg(field(t, ^field_path))
+    })
+    |> group_by([t], ch_interval_hour(field(t, ^timestamp_field)))
+    |> order_by([t], ch_interval_hour(field(t, ^timestamp_field)))
+  end
+
+  def transform_chart_rule(query, :avg, field_path, :day, timestamp_field) do
+    query
+    |> select([t], %{
+      timestamp: ch_interval_day(field(t, ^timestamp_field)),
+      count: avg(field(t, ^field_path))
+    })
+    |> group_by([t], ch_interval_day(field(t, ^timestamp_field)))
+    |> order_by([t], ch_interval_day(field(t, ^timestamp_field)))
+  end
+
+  def transform_chart_rule(query, :sum, field_path, :second, timestamp_field) do
+    query
+    |> select([t], %{
+      timestamp: ch_interval_second(field(t, ^timestamp_field)),
+      count: sum(field(t, ^field_path))
+    })
+    |> group_by([t], ch_interval_second(field(t, ^timestamp_field)))
+    |> order_by([t], ch_interval_second(field(t, ^timestamp_field)))
+  end
+
+  def transform_chart_rule(query, :sum, field_path, :minute, timestamp_field) do
+    query
+    |> select([t], %{
+      timestamp: ch_interval_minute(field(t, ^timestamp_field)),
+      count: sum(field(t, ^field_path))
+    })
+    |> group_by([t], ch_interval_minute(field(t, ^timestamp_field)))
+    |> order_by([t], ch_interval_minute(field(t, ^timestamp_field)))
+  end
+
+  def transform_chart_rule(query, :sum, field_path, :hour, timestamp_field) do
+    query
+    |> select([t], %{
+      timestamp: ch_interval_hour(field(t, ^timestamp_field)),
+      count: sum(field(t, ^field_path))
+    })
+    |> group_by([t], ch_interval_hour(field(t, ^timestamp_field)))
+    |> order_by([t], ch_interval_hour(field(t, ^timestamp_field)))
+  end
+
+  def transform_chart_rule(query, :sum, field_path, :day, timestamp_field) do
+    query
+    |> select([t], %{
+      timestamp: ch_interval_day(field(t, ^timestamp_field)),
+      count: sum(field(t, ^field_path))
+    })
+    |> group_by([t], ch_interval_day(field(t, ^timestamp_field)))
+    |> order_by([t], ch_interval_day(field(t, ^timestamp_field)))
+  end
+
+  def transform_chart_rule(query, :max, field_path, :second, timestamp_field) do
+    query
+    |> select([t], %{
+      timestamp: ch_interval_second(field(t, ^timestamp_field)),
+      count: max(field(t, ^field_path))
+    })
+    |> group_by([t], ch_interval_second(field(t, ^timestamp_field)))
+    |> order_by([t], ch_interval_second(field(t, ^timestamp_field)))
+  end
+
+  def transform_chart_rule(query, :max, field_path, :minute, timestamp_field) do
+    query
+    |> select([t], %{
+      timestamp: ch_interval_minute(field(t, ^timestamp_field)),
+      count: max(field(t, ^field_path))
+    })
+    |> group_by([t], ch_interval_minute(field(t, ^timestamp_field)))
+    |> order_by([t], ch_interval_minute(field(t, ^timestamp_field)))
+  end
+
+  def transform_chart_rule(query, :max, field_path, :hour, timestamp_field) do
+    query
+    |> select([t], %{
+      timestamp: ch_interval_hour(field(t, ^timestamp_field)),
+      count: max(field(t, ^field_path))
+    })
+    |> group_by([t], ch_interval_hour(field(t, ^timestamp_field)))
+    |> order_by([t], ch_interval_hour(field(t, ^timestamp_field)))
+  end
+
+  def transform_chart_rule(query, :max, field_path, :day, timestamp_field) do
+    query
+    |> select([t], %{
+      timestamp: ch_interval_day(field(t, ^timestamp_field)),
+      count: max(field(t, ^field_path))
+    })
+    |> group_by([t], ch_interval_day(field(t, ^timestamp_field)))
+    |> order_by([t], ch_interval_day(field(t, ^timestamp_field)))
+  end
+
+  def transform_chart_rule(query, percentile, field_path, :second, timestamp_field)
+      when is_percentile_aggregate(percentile) do
+    percentile_value = ChartRule.percentile_to_value(percentile)
+
+    query
+    |> select([t], %{
+      timestamp: ch_interval_second(field(t, ^timestamp_field)),
+      count: fragment("quantile(?)(?))", ^percentile_value, field(t, ^field_path))
+    })
+    |> group_by([t], ch_interval_second(field(t, ^timestamp_field)))
+    |> order_by([t], ch_interval_second(field(t, ^timestamp_field)))
+  end
+
+  def transform_chart_rule(query, percentile, field_path, :minute, timestamp_field)
+      when is_percentile_aggregate(percentile) do
+    percentile_value = ChartRule.percentile_to_value(percentile)
+
+    query
+    |> select([t], %{
+      timestamp: ch_interval_minute(field(t, ^timestamp_field)),
+      count: fragment("quantile(?)(?))", ^percentile_value, field(t, ^field_path))
+    })
+    |> group_by([t], ch_interval_minute(field(t, ^timestamp_field)))
+    |> order_by([t], ch_interval_minute(field(t, ^timestamp_field)))
+  end
+
+  def transform_chart_rule(query, percentile, field_path, :hour, timestamp_field)
+      when is_percentile_aggregate(percentile) do
+    percentile_value = ChartRule.percentile_to_value(percentile)
+
+    query
+    |> select([t], %{
+      timestamp: ch_interval_hour(field(t, ^timestamp_field)),
+      count: fragment("quantile(?)(?))", ^percentile_value, field(t, ^field_path))
+    })
+    |> group_by([t], ch_interval_hour(field(t, ^timestamp_field)))
+    |> order_by([t], ch_interval_hour(field(t, ^timestamp_field)))
+  end
+
+  def transform_chart_rule(query, percentile, field_path, :day, timestamp_field)
+      when is_percentile_aggregate(percentile) do
+    percentile_value = ChartRule.percentile_to_value(percentile)
+
+    query
+    |> select([t], %{
+      timestamp: ch_interval_day(field(t, ^timestamp_field)),
+      count: fragment("quantile(?)(?))", ^percentile_value, field(t, ^field_path))
+    })
+    |> group_by([t], ch_interval_day(field(t, ^timestamp_field)))
+    |> order_by([t], ch_interval_day(field(t, ^timestamp_field)))
   end
 
   @impl true
@@ -102,7 +340,7 @@ defmodule Logflare.Lql.BackendTransformer.ClickHouse do
   def transform_select_rule(%{path: path} = _select_rule, _transformation_data)
       when is_binary(path) do
     if path in @special_top_level or not String.contains?(path, ".") do
-      {:field, String.to_atom(path), []}
+      {:field, path, []}
     else
       {:nested_field, path, []}
     end
@@ -175,7 +413,7 @@ defmodule Logflare.Lql.BackendTransformer.ClickHouse do
   defp where_match_filter_rule(query, rule) do
     if not is_nil(rule.values) and rule.operator == :range do
       [lvalue, rvalue] = rule.values
-      field_path = String.to_atom(rule.path)
+      field_path = rule.path
       where(query, [l], fragment("? BETWEEN ? AND ?", field(l, ^field_path), ^lvalue, ^rvalue))
     else
       where(
@@ -192,52 +430,50 @@ defmodule Logflare.Lql.BackendTransformer.ClickHouse do
           modifiers :: map()
         ) :: Query.dynamic_expr()
   defp dynamic_where_filter_rule(field_path, operator, value, modifiers) do
-    field_atom = String.to_atom(field_path)
-
     clause =
       case operator do
         :> ->
-          dynamic([l], field(l, ^field_atom) > ^value)
+          dynamic([l], field(l, ^field_path) > ^value)
 
         :>= ->
-          dynamic([l], field(l, ^field_atom) >= ^value)
+          dynamic([l], field(l, ^field_path) >= ^value)
 
         :< ->
-          dynamic([l], field(l, ^field_atom) < ^value)
+          dynamic([l], field(l, ^field_path) < ^value)
 
         :<= ->
-          dynamic([l], field(l, ^field_atom) <= ^value)
+          dynamic([l], field(l, ^field_path) <= ^value)
 
         := ->
           case value do
-            :NULL -> dynamic([l], fragment("? IS NULL", field(l, ^field_atom)))
-            _ -> dynamic([l], field(l, ^field_atom) == ^value)
+            :NULL -> dynamic([l], fragment("? IS NULL", field(l, ^field_path)))
+            _ -> dynamic([l], field(l, ^field_path) == ^value)
           end
 
         :"~" ->
           # ClickHouse uses match() function for regex
-          dynamic([l], fragment("match(?, ?)", field(l, ^field_atom), ^value))
+          dynamic([l], fragment("match(?, ?)", field(l, ^field_path), ^value))
 
         :string_contains ->
           # ClickHouse uses position() function for string search
-          dynamic([l], fragment("position(?, ?) > 0", field(l, ^field_atom), ^value))
+          dynamic([l], fragment("position(?, ?) > 0", field(l, ^field_path), ^value))
 
         :list_includes ->
           # ClickHouse uses has() function for array membership
-          dynamic([l], fragment("has(?, ?)", field(l, ^field_atom), ^value))
+          dynamic([l], fragment("has(?, ?)", field(l, ^field_path), ^value))
 
         :list_includes_regexp ->
           # ClickHouse uses arrayExists with lambda for regex matching in arrays
           dynamic(
             [l],
-            fragment("arrayExists(x -> match(x, ?), ?)", ^value, field(l, ^field_atom))
+            fragment("arrayExists(x -> match(x, ?), ?)", ^value, field(l, ^field_path))
           )
       end
 
     if negated?(modifiers) do
       case {operator, value} do
         {:=, :NULL} -> dynamic([l], not (^clause))
-        {_, _} -> dynamic([l], fragment("? IS NULL", field(l, ^field_atom)) or not (^clause))
+        {_, _} -> dynamic([l], fragment("? IS NULL", field(l, ^field_path)) or not (^clause))
       end
     else
       clause
@@ -250,8 +486,7 @@ defmodule Logflare.Lql.BackendTransformer.ClickHouse do
   @spec build_combined_select(Query.t(), select_rules :: [map()]) :: Query.t()
   defp build_combined_select(query, select_rules) do
     Enum.reduce(select_rules, query, fn %{path: path}, acc_query ->
-      field_atom = String.to_atom(path)
-      select_merge(acc_query, [l], %{^field_atom => field(l, ^field_atom)})
+      select_merge(acc_query, [l], %{^path => field(l, ^path)})
     end)
   end
 end

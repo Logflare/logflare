@@ -50,15 +50,21 @@ defmodule LogflareWeb.MonacoEditorComponent do
 
     ~H"""
     <div id={@id}>
-      <LiveMonacoEditor.code_editor value={@field.value} target={@myself} change="parse-query" path="query_string" id="query" opts={@editor_opts} />
-      <%= hidden_input(@field.form, :query, value: @query) %>
-      <%= error_tag(@field.form, :query) %>
+      <.support_scripts completions={@completions} id={@field.id <> "_completions"} />
+      <LiveMonacoEditor.code_editor value={@field.value} target={@myself} change="parse-query" path="query_string" phx-format={JS.hide()} id={"#{@id}_lme"} opts={@editor_opts} />
+      <div class="tw-flex tw-justify-end">
+        <button type="button" class="btn btn-secondary tw-mr-0 tw-mt-2" phx-click={JS.dispatch("editor:format", to: "#" <> @id)}>
+          Format
+        </button>
+      </div>
+
+      {hidden_input(@field.form, :query, value: @query)}
+      {error_tag(@field.form, :query)}
       <.alert :if={@parse_error_message} variant="warning">
         <strong>SQL Parse error!</strong>
         <br />
-        <span><%= @parse_error_message %></span>
+        <span>{@parse_error_message}</span>
       </.alert>
-      <.completions_script completions={@completions} id={@field.id <> "_completions"} />
     </div>
     """
   end
@@ -66,15 +72,21 @@ defmodule LogflareWeb.MonacoEditorComponent do
   attr :completions, :list, required: true, examples: [["source_name", "logs"]]
   attr :id, :string, required: true
 
-  def completions_script(assigns) do
+  def support_scripts(assigns) do
     ~H"""
     <script phx-update="ignore" id={@id}>
       window.addEventListener("lme:editor_mounted", (event) => {
+        const hook = event.detail.hook;
+        const editor = event.detail.editor.standalone_code_editor;
+
+        window.addEventListener("editor:format", ev => {
+          const value = editor.getValue();
+          hook.pushEventTo(ev.target, "format-query", { value: value });
+        })
+
         const completions = <%= Jason.encode!(@completions) |> raw() %>
 
         if (completions.length == 0) { return; }
-
-        const editor = event.detail.editor.standalone_code_editor;
 
         function createDependencyProposals(range) {
           return completions.map(function (name) {
@@ -105,6 +117,11 @@ defmodule LogflareWeb.MonacoEditorComponent do
       });
     </script>
     """
+  end
+
+  def handle_event("format-query", %{"value" => value}, socket) do
+    {:ok, formatted} = SqlFmt.format_query(value)
+    {:noreply, socket |> LiveMonacoEditor.set_value(formatted, to: "query_string")}
   end
 
   def handle_event("parse-query", %{"value" => query}, socket) do
@@ -184,7 +201,8 @@ defmodule LogflareWeb.MonacoEditorComponent do
         "scrollbar" => %{
           "vertical" => "auto",
           "horizontal" => "hidden",
-          "verticalScrollbarSize" => 6
+          "verticalScrollbarSize" => 6,
+          "alwaysConsumeMouseWheel" => false
         },
         "lineNumbers" => "off",
         "glyphMargin" => false,

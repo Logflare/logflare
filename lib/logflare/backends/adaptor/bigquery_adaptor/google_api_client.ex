@@ -32,30 +32,31 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor.GoogleApiClient do
 
     stream = BigQueryWrite.Stub.append_rows(channel)
 
-    task =
-      Task.async_stream(
-        batch_msgs,
-        fn ipc_msg ->
-          arrow_record_batch = %ArrowRecordBatch{
-            serialized_record_batch: ipc_msg
+    if length(batch_msgs) > 1 do
+      Logger.warning(
+        "Storage Write DataFrame.dump_ipc_record_batch produced more than one batch message"
+      )
+    end
+
+    Enum.each(
+      batch_msgs,
+      fn ipc_msg ->
+        arrow_record_batch = %ArrowRecordBatch{
+          serialized_record_batch: ipc_msg
+        }
+
+        arrow_rows = %ArrowData{rows: arrow_record_batch, writer_schema: writer_schema}
+
+        request =
+          %AppendRowsRequest{
+            write_stream:
+              "projects/#{project}/datasets/#{dataset}/tables/#{table}/streams/_default",
+            rows: {:arrow_rows, arrow_rows}
           }
 
-          arrow_rows = %ArrowData{rows: arrow_record_batch, writer_schema: writer_schema}
-
-          request =
-            %AppendRowsRequest{
-              write_stream:
-                "projects/#{project}/datasets/#{dataset}/tables/#{table}/streams/_default",
-              rows: {:arrow_rows, arrow_rows}
-            }
-
-          GRPC.Stub.send_request(stream, request)
-        end,
-        ordered: false,
-        max_concurrency: System.schedulers_online()
-      )
-
-    Stream.run(task)
+        GRPC.Stub.send_request(stream, request)
+      end
+    )
 
     GRPC.Stub.end_stream(stream)
 

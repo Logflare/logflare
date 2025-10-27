@@ -44,10 +44,6 @@ defmodule Logflare.Backends.Adaptor.S3Adaptor do
 
   @doc false
   @impl Adaptor
-  def execute_query(_ident, _query, _opts), do: {:error, :not_implemented}
-
-  @doc false
-  @impl Adaptor
   def cast_config(%{} = params) do
     {%{},
      %{
@@ -77,6 +73,15 @@ defmodule Logflare.Backends.Adaptor.S3Adaptor do
       greater_than_or_equal_to: @min_batch_timeout,
       less_than_or_equal_to: @max_batch_timeout
     )
+  end
+
+  @impl Adaptor
+  def redact_config(config) do
+    if config.secret_access_key do
+      Map.put(config, :secret_access_key, "REDACTED")
+    else
+      config
+    end
   end
 
   @impl Adaptor

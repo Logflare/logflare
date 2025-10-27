@@ -40,6 +40,18 @@ defmodule Logflare.Backends.Adaptor.ElasticAdaptorTest do
     end
   end
 
+  describe "redact_config/1" do
+    test "redacts password field when present" do
+      config = %{password: "secret123", url: "https://example.com"}
+      assert %{password: "REDACTED"} = @subject.redact_config(config)
+    end
+
+    test "leaves config unchanged when password is not present" do
+      config = %{url: "https://example.com"}
+      assert ^config = @subject.redact_config(config)
+    end
+  end
+
   describe "only url" do
     setup do
       user = insert(:user)

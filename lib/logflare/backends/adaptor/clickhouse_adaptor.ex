@@ -20,6 +20,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
   alias Logflare.Backends
   alias Logflare.Backends.DynamicPipeline
   alias Logflare.Backends.Backend
+  alias Logflare.Backends.Ecto.SqlUtils
   alias Logflare.Backends.IngestEventQueue
   alias Logflare.Backends.SourceRegistry
   alias Logflare.LogEvent
@@ -68,6 +69,23 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
     |> Supervisor.which_children()
   end
 
+  @impl Logflare.Backends.Adaptor
+  def ecto_to_sql(%Ecto.Query{} = query, opts) do
+    case Logflare.Ecto.ClickHouse.to_sql(query, opts) do
+      {:ok, {ch_sql, ch_params}} ->
+        ch_params = Enum.map(ch_params, &SqlUtils.normalize_datetime_param/1)
+        {:ok, {ch_sql, ch_params}}
+
+      {:error, _reason} = error ->
+        error
+    end
+  end
+
+  @impl Logflare.Backends.Adaptor
+  def redact_config(config) do
+    Map.put(config, :password, "REDACTED")
+  end
+
   @doc false
   @impl Logflare.Backends.Adaptor
   def execute_query(%Backend{} = backend, query_string, opts)
@@ -97,8 +115,10 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
     execute_query_with_params(backend, query_string, declared_params, input_params)
   end
 
-  def execute_query(_backend, %Ecto.Query{} = _query, _opts) do
-    {:error, :ecto_queries_not_supported}
+  def execute_query(%Backend{} = backend, %Ecto.Query{} = query, opts) when is_list(opts) do
+    with {:ok, {ch_sql, ch_params}} <- ecto_to_sql(query, opts) do
+      execute_query(backend, {ch_sql, ch_params}, opts)
+    end
   end
 
   @impl Logflare.Backends.Adaptor
@@ -617,7 +637,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
 
       {nil, rows} when is_list(rows) ->
         # No column names, return rows as-is
-        rows
+        convert_uuids(rows)
 
       {_columns, nil} ->
         # No rows
@@ -630,6 +650,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
           |> Enum.zip(row)
           |> Map.new()
         end
+        |> convert_uuids()
 
       {columns, rows} ->
         # Handle other formats - Ch.Result.rows can be iodata
@@ -678,4 +699,21 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
       end
     end)
   end
+
+  @spec convert_uuids(data :: any()) :: any()
+  defp convert_uuids(data) when is_struct(data), do: data
+
+  defp convert_uuids(data) when is_map(data) do
+    Map.new(data, fn {k, v} -> {k, convert_uuids(v)} end)
+  end
+
+  defp convert_uuids(data) when is_list(data) do
+    Enum.map(data, &convert_uuids/1)
+  end
+
+  defp convert_uuids(data) when is_non_empty_binary(data) and byte_size(data) == 16 do
+    Ecto.UUID.cast!(data)
+  end
+
+  defp convert_uuids(data), do: data
 end

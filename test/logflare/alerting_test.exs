@@ -1,6 +1,5 @@
 defmodule Logflare.AlertingTest do
-  @moduledoc false
-  use Logflare.DataCase
+  use Logflare.DataCase, async: false
 
   alias Logflare.Alerting
   alias Logflare.Alerting.AlertQuery
@@ -55,8 +54,7 @@ defmodule Logflare.AlertingTest do
     }
 
     setup do
-      start_supervised!(Alerting.Supervisor)
-      :ok
+      start_alerting_supervisor!()
     end
 
     def alert_query_fixture(user, attrs \\ %{}) do
@@ -152,10 +150,7 @@ defmodule Logflare.AlertingTest do
 
     test "delete_alert_query/1 deletes the alert_query", %{user: user} do
       alert_query = alert_query_fixture(user)
-
-      TestUtils.retry_assert(fn ->
-        assert {:ok, %AlertQuery{}} = Alerting.delete_alert_query(alert_query)
-      end)
+      assert {:ok, %AlertQuery{}} = Alerting.delete_alert_query(alert_query)
 
       assert_raise Ecto.NoResultsError, fn -> Alerting.get_alert_query!(alert_query.id) end
       assert nil == Alerting.get_alert_job(alert_query.id)
@@ -169,12 +164,37 @@ defmodule Logflare.AlertingTest do
     test "execute_alert_query", %{user: user} do
       alert_query = insert(:alert, user: user) |> Logflare.Repo.preload([:user])
 
-      expect(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, 1, fn _conn, _proj_id, _opts ->
+      pid = self()
+
+      expect(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, 1, fn _conn, _proj_id, opts ->
+        send(pid, {:reservation, opts[:body].reservation})
         {:ok, TestUtils.gen_bq_response([%{"testing" => "123"}])}
       end)
 
       assert {:ok, %{rows: [%{"testing" => "123"}], total_bytes_processed: 1}} =
                Alerting.execute_alert_query(alert_query)
+
+      #  no reservation set by user
+      assert_receive {:reservation, nil}
+    end
+
+    test "execute_alert_query with reservation" do
+      user =
+        insert(:user, bigquery_reservation_alerts: "projects/1234567890/reservations/1234567890")
+
+      alert_query = insert(:alert, user: user) |> Logflare.Repo.preload([:user])
+      pid = self()
+
+      expect(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, 1, fn _conn, _proj_id, opts ->
+        send(pid, {:reservation, opts[:body].reservation})
+        {:ok, TestUtils.gen_bq_response([%{"testing" => "123"}])}
+      end)
+
+      assert {:ok, %{rows: [%{"testing" => "123"}], total_bytes_processed: 1}} =
+               Alerting.execute_alert_query(alert_query)
+
+      assert_receive {:reservation, reservation}
+      assert reservation == user.bigquery_reservation_alerts
     end
 
     test "execute_alert_query with query composition" do
@@ -263,16 +283,16 @@ defmodule Logflare.AlertingTest do
 
   describe "quantum integration" do
     setup do
-      start_supervised!(Alerting.Supervisor)
-      # wait for scheduler init to finish
-      :timer.sleep(500)
-      :ok
+      start_alerting_supervisor!()
     end
 
     test "upsert_alert_job/1, get_alert_job/1, delete_alert_job/1, count_alert_jobs/0 retrieves alert job",
          %{user: user} do
       %{id: alert_id} = alert = insert(:alert, user_id: user.id)
-      Alerting.sync_alert_jobs()
+      {:ok, pid} = Alerting.sync_alert_jobs()
+
+      ref = Process.monitor(pid)
+      assert_receive {:DOWN, ^ref, _, _, _}
 
       assert {:ok,
               %Quantum.Job{
@@ -355,5 +375,11 @@ defmodule Logflare.AlertingTest do
                } = Alerting.get_alert_job(alert_id)
       end)
     end
+  end
+
+  defp start_alerting_supervisor! do
+    start_supervised!(Logflare.Alerting.Supervisor)
+    # wait for scheduler init to finish
+    :timer.sleep(500)
   end
 end

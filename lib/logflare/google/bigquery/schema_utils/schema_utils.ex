@@ -64,6 +64,7 @@ defmodule Logflare.Google.BigQuery.SchemaUtils do
   def convert_primitive("INTEGER", value), do: String.to_integer(value)
   def convert_primitive("DATE", value), do: value
   def convert_primitive("DATETIME", value), do: value
+  def convert_primitive("JSON", value), do: value
 
   def convert_primitive("TIMESTAMP", value) do
     trunc(String.to_float(value) * 1_000_000)

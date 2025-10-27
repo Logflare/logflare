@@ -8,7 +8,6 @@ defmodule LogflareWeb.Source.SearchLV do
   import LogflareWeb.ModalLiveHelpers
   import LogflareWeb.SearchLV.Utils
   import LogflareWeb.SearchLive.TimezoneComponent
-  alias LogflareWeb.Utils
 
   alias Logflare.Billing
   alias Logflare.Logs.SearchQueryExecutor
@@ -24,6 +23,7 @@ defmodule LogflareWeb.Source.SearchLV do
   alias LogflareWeb.Helpers.BqSchema, as: BqSchemaHelpers
   alias LogflareWeb.Router.Helpers, as: Routes
   alias LogflareWeb.SearchView
+  alias LogflareWeb.Utils
   alias Logflare.Sources.Source.BigQuery.SchemaBuilder
   alias Logflare.Utils.Chart, as: ChartUtils
 
@@ -31,7 +31,7 @@ defmodule LogflareWeb.Source.SearchLV do
 
   embed_templates "templates/*"
 
-  @tail_search_interval 500
+  @tail_search_interval 1000
   @user_idle_interval :timer.minutes(2)
   @default_qs "c:count(*) c:group_by(t::minute)"
 
@@ -81,8 +81,7 @@ defmodule LogflareWeb.Source.SearchLV do
       querystring: Map.get(params, "querystring", @default_qs),
       force_query: Map.get(params, "force", "false") == "true",
       search_history: [],
-      search_form: to_form(%{}, as: :search),
-      flag_event_context: LogflareWeb.Utils.flag("EventContext", user)
+      search_form: to_form(%{}, as: :search)
     )
     |> then(fn socket ->
       if connected?(socket) do
@@ -237,7 +236,7 @@ defmodule LogflareWeb.Source.SearchLV do
 
   def handle_event(
         "start_search",
-        %{"search" => %{"querystring" => qs}},
+        %{"search" => %{"querystring" => qs}} = _params,
         %{assigns: prev_assigns} = socket
       ) do
     maybe_cancel_tailing_timer(socket)
@@ -427,6 +426,35 @@ defmodule LogflareWeb.Source.SearchLV do
     {:noreply, reset_search(socket)}
   end
 
+  def handle_event(
+        "create_new",
+        %{"kind" => kind, "resource" => resource},
+        %{assigns: %{source: source} = assigns} = socket
+      ) do
+    search_op =
+      if kind == "aggregates",
+        do: assigns.search_op_log_aggregates,
+        else: assigns.search_op_log_events
+
+    sql =
+      Utils.sql_params_to_sql(search_op.sql_string, search_op.sql_params)
+      |> Utils.replace_table_with_source_name(source)
+
+    destination =
+      case resource do
+        "endpoint" ->
+          ~p"/endpoints/new?#{%{query: sql, name: source.name}}"
+
+        "alert" ->
+          ~p"/alerts/new?#{%{query: sql, name: source.name}}"
+
+        "query" ->
+          ~p"/query?#{%{q: sql}}"
+      end
+
+    {:noreply, push_navigate(socket, to: destination)}
+  end
+
   def handle_info(:soft_pause = ev, socket) do
     soft_pause(ev, socket)
   end
@@ -534,6 +562,7 @@ defmodule LogflareWeb.Source.SearchLV do
           socket
           |> assign(loading: false)
           |> assign(chart_loading: false)
+          |> put_flash_query_error(err)
       end
 
     {:noreply, socket}

@@ -51,9 +51,6 @@ defmodule Logflare.Backends.Adaptor.DatadogAdaptor do
   end
 
   @impl Logflare.Backends.Adaptor
-  def execute_query(_ident, _query, _opts), do: {:error, :not_implemented}
-
-  @impl Logflare.Backends.Adaptor
   def cast_config(params) do
     {%{}, %{api_key: :string, region: :string}}
     |> Ecto.Changeset.cast(params, [:api_key, :region])
@@ -64,6 +61,11 @@ defmodule Logflare.Backends.Adaptor.DatadogAdaptor do
     changeset
     |> Ecto.Changeset.validate_required([:api_key, :region])
     |> Ecto.Changeset.validate_inclusion(:region, @regions)
+  end
+
+  @impl Logflare.Backends.Adaptor
+  def redact_config(config) do
+    Map.put(config, :api_key, "REDACTED")
   end
 
   defp translate_event(%Logflare.LogEvent{} = le) do

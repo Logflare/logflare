@@ -33,6 +33,10 @@ defmodule Logflare.DataCase do
         stub(Logflare.Mailer)
         stub(Goth, :fetch, fn _mod -> {:ok, %Goth.Token{token: "auth-token"}} end)
 
+        stub(Logflare.Cluster.Utils, :rpc_call, fn _node, func ->
+          func.()
+        end)
+
         on_exit(fn ->
           Logflare.Backends.IngestEventQueue.delete_all_mappings()
           Logflare.PubSubRates.Cache.clear()

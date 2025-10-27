@@ -45,7 +45,9 @@ defmodule Logflare.Backends.Adaptor.ElasticAdaptor do
   end
 
   @impl Logflare.Backends.Adaptor
-  def execute_query(_ident, _query, _opts), do: {:error, :not_implemented}
+  def redact_config(config) do
+    Map.replace_lazy(config, :password, fn _ -> "REDACTED" end)
+  end
 
   @impl Logflare.Backends.Adaptor
   def cast_config(params) do

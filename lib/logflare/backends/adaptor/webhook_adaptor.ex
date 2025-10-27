@@ -23,6 +23,7 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
 
   alias Logflare.Backends
   alias Logflare.Backends.Adaptor.WebhookAdaptor.EgressMiddleware
+  alias Logflare.Utils
 
   @behaviour Logflare.Backends.Adaptor
 
@@ -52,14 +53,25 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
   end
 
   @impl Logflare.Backends.Adaptor
-  def execute_query(_ident, _query, _opts), do: {:error, :not_implemented}
-
-  @impl Logflare.Backends.Adaptor
   def validate_config(changeset) do
     changeset
     |> Ecto.Changeset.validate_required([:url])
     |> Ecto.Changeset.validate_format(:url, ~r/https?\:\/\/.+/)
     |> Ecto.Changeset.validate_inclusion(:http, ["http1", "http2"])
+  end
+
+  @impl Logflare.Backends.Adaptor
+  def redact_config(config) do
+    config
+    |> Map.update(:headers, %{}, fn headers ->
+      for {key, value} <- headers, into: %{} do
+        if String.downcase(key) == "authorization" do
+          {key, "REDACTED"}
+        else
+          {key, value}
+        end
+      end
+    end)
   end
 
   # HTTP Client
@@ -148,7 +160,7 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
 
     # see the implementation for Backends.via_source/2 for how tuples are used to identify child processes
     def process_name({:via, module, {registry, identifier}}, base_name) do
-      new_identifier = Tuple.append(identifier, base_name)
+      new_identifier = Utils.append_to_tuple(identifier, base_name)
       {:via, module, {registry, new_identifier}}
     end
 
@@ -157,7 +169,15 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
       |> Message.put_batcher(:http)
     end
 
-    def handle_batch(:http, messages, _batch_info, context) do
+    def handle_batch(:http, messages, batch_info, context) do
+      :telemetry.execute(
+        [:logflare, :backends, :pipeline, :handle_batch],
+        %{batch_size: batch_info.size, batch_trigger: batch_info.trigger},
+        %{
+          backend_type: :webhook
+        }
+      )
+
       %{metadata: backend_metadata} = backend = Backends.Cache.get_backend(context.backend_id)
       config = Backends.Adaptor.get_backend_config(backend)
 

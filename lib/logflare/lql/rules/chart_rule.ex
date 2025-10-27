@@ -126,6 +126,26 @@ defmodule Logflare.Lql.Rules.ChartRule do
   def get_aggregate(%__MODULE__{aggregate: aggregate}), do: aggregate
 
   @doc """
+  Converts a percentile aggregate atom to its numeric value.
+
+  ## Examples
+
+      iex> ChartRule.percentile_to_value(:p50)
+      0.5
+
+      iex> ChartRule.percentile_to_value(:p95)
+      0.95
+
+      iex> ChartRule.percentile_to_value(:p99)
+      0.99
+
+  """
+  @spec percentile_to_value(:p50 | :p95 | :p99) :: float()
+  def percentile_to_value(:p50), do: 0.5
+  def percentile_to_value(:p95), do: 0.95
+  def percentile_to_value(:p99), do: 0.99
+
+  @doc """
   Updates a `ChartRule` with the provided parameters map using changeset validation.
   """
   @spec update(__MODULE__.t(), map()) :: __MODULE__.t()

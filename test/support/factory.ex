@@ -382,4 +382,22 @@ defmodule Logflare.Factory do
       language: :bq_sql
     }
   end
+
+  def saved_search_factory(attrs \\ %{}) do
+    source = build(:source, user: build(:user))
+    %{bigquery_schema: schema} = build(:source_schema)
+
+    query = Map.get(attrs, :query, "test query #{TestUtils.random_string()}")
+    lql_rules = Logflare.Lql.decode!(query, schema)
+
+    %Logflare.SavedSearch{
+      lql_filters: Lql.Rules.get_filter_rules(lql_rules),
+      lql_charts: Lql.Rules.get_chart_rules(lql_rules),
+      querystring: query,
+      saved_by_user: true,
+      source: source,
+      tailing: true
+    }
+    |> merge_attributes(attrs)
+  end
 end

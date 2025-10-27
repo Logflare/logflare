@@ -25,7 +25,7 @@ defmodule Logflare.Sources.Counters do
     reason
   end
 
-  @spec create(atom) :: success_tuple
+  @spec create(atom) :: success_tuple()
   def create(table) do
     default = make_default(table)
     :ets.update_counter(@ets_table_name, table, {2, 0}, default)
@@ -36,14 +36,14 @@ defmodule Logflare.Sources.Counters do
     {:ok, table}
   end
 
-  @spec increment(atom) :: success_tuple
-  @spec increment(atom, non_neg_integer()) :: success_tuple
+  @spec increment(atom) :: success_tuple()
+  @spec increment(atom, non_neg_integer()) :: success_tuple()
   def increment(table, n \\ 1) do
     :ets.update_counter(@ets_table_name, table, {2, n}, make_default(table))
     {:ok, table}
   end
 
-  @spec increment_bq_count(atom, non_neg_integer) :: success_tuple
+  @spec increment_bq_count(atom, non_neg_integer) :: success_tuple()
   def increment_bq_count(table, count) do
     :ets.update_counter(@ets_table_name, table, {4, count}, make_default(table))
     {:ok, table}

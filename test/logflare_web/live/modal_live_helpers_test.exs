@@ -16,7 +16,7 @@ defmodule LogflareWeb.ModalLiveHelpersTest do
   describe "custom click commands" do
     test "live_modal_show_link" do
       opts = [
-        component: LogflareWeb.EventContextComponent,
+        component: LogflareWeb.SearchLive.EventContextComponent,
         modal_id: "1",
         title: "Test"
       ]

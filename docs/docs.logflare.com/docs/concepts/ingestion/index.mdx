@@ -162,7 +162,7 @@ metadata: {
 :::note
 On high ingestion volume, Logflare will sample incoming events instead of checking each event. The sample rate decreases as the ingestion rate increases. Ingestion rates are compared only on an individual local server that is performing the ingestion.
 
-From 10-100 events per second, sample rate is 0.1. From 100-1,000 events per second, sample rate is 0.01. From 1,000-10,000 events per second, sample rate is 0.001. Above 10,000 events per second, sample rate is 0.0001.
+The sample probability is dynamically calculated as `1.0 / average_rate` with safety bounds (minimum 0.00001, maximum 1.0), which maintains approximately 1 schema update per second across all rate levels. This supports rates up to 100,000+ events per second.
 :::
 
 ### Schema Changes

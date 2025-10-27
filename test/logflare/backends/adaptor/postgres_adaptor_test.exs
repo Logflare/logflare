@@ -33,6 +33,20 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptorTest do
     %{backend: backend, source: source, postgres_url: url}
   end
 
+  describe "redact_config/1" do
+    test "redacts password in URL" do
+      config = %{url: "postgresql://user:secret123@localhost:5432/dbname"}
+
+      assert %{url: "postgresql://user:REDACTED@localhost:5432/dbname"} =
+               PostgresAdaptor.redact_config(config)
+    end
+
+    test "handles URL without password" do
+      config = %{url: "postgresql://localhost:5432/dbname"}
+      assert ^config = PostgresAdaptor.redact_config(config)
+    end
+  end
+
   describe "with postgres repo" do
     setup %{backend: backend, source: source} do
       start_supervised!({AdaptorSupervisor, {source, backend}})

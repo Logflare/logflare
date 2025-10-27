@@ -79,12 +79,12 @@ defmodule Logflare.Mixfile do
     [
       # Phoenix stuff
       {:phoenix, "~> 1.7.14"},
-      {:phoenix_live_view, "~> 0.18"},
+      {:phoenix_live_view, "~> 1.0.0"},
       {:phoenix_view, "~> 2.0"},
       {:phoenix_pubsub, "~> 2.1"},
       {:phoenix_ecto, "~> 4.4"},
       {:phoenix_live_reload, "~> 1.4", only: :dev},
-      {:bandit, "~> 1.5.7"},
+      {:bandit, "~> 1.8"},
       {:plug_crypto, "~> 1.2.2"},
       {:cors_plug, "~> 2.0"},
       {:plug_caisson, "~> 0.2.1"},
@@ -161,12 +161,12 @@ defmodule Logflare.Mixfile do
       {:google_gax, github: "Logflare/elixir-google-gax", ref: "6772193", override: true},
 
       # Ecto
-      {:ecto, "~> 3.12"},
-      {:ecto_sql, "~> 3.12"},
+      {:ecto, "~> 3.13"},
+      {:ecto_sql, "~> 3.13"},
       {:typed_ecto_schema, "~> 0.4.3", runtime: false},
 
       # ClickHouse
-      {:ch, "~> 0.3.2"},
+      {:ch, "~> 0.5"},
 
       # DataFrames
       {:explorer, "~> 0.11.1"},
@@ -186,6 +186,7 @@ defmodule Logflare.Mixfile do
 
       # Frontend
       {:phoenix_live_react, "~> 0.4"},
+      {:sql_fmt, "~> 0.4.0"},
 
       # Dev
       {:dialyxir, "~> 1.1", only: [:dev, :test], runtime: false},
@@ -211,6 +212,8 @@ defmodule Logflare.Mixfile do
       # Postgres Subscribe
       {:cainophile, github: "Logflare/cainophile", ref: "f92a552"},
       {:open_api_spex, "~> 3.16"},
+      # required for yaml open api generation
+      {:ymlr, "~> 2.0"},
       {:grpc, "~> 0.9.0"},
       # otel_metric_exporter requires an update https://github.com/electric-sql/elixir-otel-metric-exporter/pull/13
       {:protobuf, "~> 0.14.1", override: true},
@@ -239,7 +242,7 @@ defmodule Logflare.Mixfile do
       {:opentelemetry_phoenix, "~> 2.0.0-rc.2"},
       {:opentelemetry_bandit, "~> 0.2.0-rc.1"},
       {:otel_metric_exporter, git: "https://github.com/supabase/elixir-otel-metric-exporter"},
-      {:live_monaco_editor, "~> 0.1"}
+      {:live_monaco_editor, "~> 0.2"}
     ]
   end
 
@@ -265,5 +268,6 @@ defmodule Logflare.Mixfile do
     ]
   end
 
-  defp version, do: File.read!(Path.join(__DIR__, "VERSION"))
+  defp version,
+    do: File.read!(Path.join(__DIR__, "VERSION")) |> String.replace("\n", "") |> String.trim()
 end

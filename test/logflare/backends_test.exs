@@ -1,29 +1,26 @@
 defmodule Logflare.BackendsTest do
   use Logflare.DataCase
 
+  import StreamData
+  import ExUnitProperties
+
   alias Logflare.Backends
   alias Logflare.Backends.Backend
-  alias Logflare.Backends.SourceSup
-  alias Logflare.Sources.Source
-  alias Logflare.Sources
+  alias Logflare.Backends.DynamicPipeline
+  alias Logflare.Backends.IngestEventQueue
   alias Logflare.Backends.RecentEventsTouch
-  alias Logflare.SystemMetrics.AllLogsLogged
-  alias Logflare.Sources.Source.ChannelTopics
-  alias Logflare.Lql
-  alias Logflare.Logs
-  alias Logflare.Sources.Source.V1SourceSup
-  alias Logflare.PubSubRates
+  alias Logflare.Backends.SourceSup
+  alias Logflare.Backends.SourceSupWorker
   alias Logflare.Logs.SourceRouting
+  alias Logflare.Lql
   alias Logflare.PubSubRates
   alias Logflare.Repo
   alias Logflare.Rules
-  alias Logflare.Backends.IngestEventQueue
-  alias Logflare.Backends.SourceSupWorker
+  alias Logflare.Sources
+  alias Logflare.Sources.Source
   alias Logflare.Sources.Source.BigQuery.Pipeline
-  alias Logflare.Backends.DynamicPipeline
+  alias Logflare.SystemMetrics.AllLogsLogged
   alias Logflare.User
-  import StreamData
-  import ExUnitProperties
 
   setup do
     start_supervised!(AllLogsLogged)
@@ -517,23 +514,6 @@ defmodule Logflare.BackendsTest do
       end)
     end
 
-    test "performs broadcasts for global cache rates and dashboard rates", %{
-      source: %{token: source_token} = source
-    } do
-      PubSubRates.subscribe(:all)
-      ChannelTopics.subscribe_dashboard(source_token)
-      ChannelTopics.subscribe_source(source_token)
-      le = build(:log_event, source: source)
-      assert {:ok, 1} = Backends.ingest_logs([le], source)
-      :timer.sleep(1000)
-
-      TestUtils.retry_assert(fn ->
-        assert_received %_{event: "rate", payload: %{rate: _}}
-        # broadcast for recent logs page
-        assert_received %_{event: _, payload: %{body: %{}}}
-      end)
-    end
-
     test "cache_estimated_buffer_lens/1 will cache all queue information", %{
       source: %{id: source_id} = source
     } do
@@ -559,17 +539,20 @@ defmodule Logflare.BackendsTest do
       source = Sources.preload_backends(source)
       {:ok, source} = Backends.update_source_backends(source, [backend])
 
-      TestUtils.attach_forwarder([:logflare, :backends, :ingest, :count])
+      TestUtils.attach_forwarder([:logflare, :backends, :ingest, :dispatch])
 
       log_count = 119
 
       events = for _n <- 1..log_count, do: build(:log_event, source: source)
       assert {:ok, ^log_count} = Backends.ingest_logs(events, source)
 
-      assert_receive {:telemetry_event, [:logflare, :backends, :ingest, :count],
-                      %{count: ^log_count}, telemetry_metadata}
+      # for specific backend
+      assert_receive {:telemetry_event, [:logflare, :backends, :ingest, :dispatch],
+                      %{count: ^log_count}, %{backend_type: :postgres}}
 
-      assert telemetry_metadata.backend_type == :postgres
+      # for system default
+      assert_receive {:telemetry_event, [:logflare, :backends, :ingest, :dispatch],
+                      %{count: ^log_count}, %{backend_type: :bigquery}}
     end
   end
 
@@ -620,7 +603,7 @@ defmodule Logflare.BackendsTest do
       end)
     end
 
-    test "v1 pipeline: routing depth is max 1 level", %{user: user} do
+    test "routing depth is max 1 level (duplicate)", %{user: user} do
       [source, target] = insert_pair(:source, user: user)
       other_target = insert(:source, user: user)
       insert(:rule, lql_string: "testing", sink: target.token, source_id: source.id)
@@ -634,17 +617,14 @@ defmodule Logflare.BackendsTest do
       assert {:ok, 1} = Backends.ingest_logs([%{"event_message" => "testing 123"}], source)
 
       TestUtils.retry_assert(fn ->
-        # 1 events
         assert Backends.list_recent_logs_local(source) |> length() == 1
-        # 1 events
         assert Backends.list_recent_logs_local(target) |> length() == 1
-        # 0 events
         assert Backends.list_recent_logs_local(other_target) |> length() == 0
       end)
     end
 
-    test "v2 pipeline: routing depth is max 1 level", %{user: user} do
-      [source, target] = insert_pair(:source, user: user, v2_pipeline: true)
+    test "routing depth is max 1 level", %{user: user} do
+      [source, target] = insert_pair(:source, user: user)
       other_target = insert(:source, user: user)
       insert(:rule, lql_string: "testing", sink: target.token, source_id: source.id)
       insert(:rule, lql_string: "testing", sink: other_target.token, source_id: target.id)
@@ -934,12 +914,10 @@ defmodule Logflare.BackendsTest do
 
     # This benchmarks two areas:
     # - transformation of params to log events
-    # - BQ max insertion rate
     @tag :benchmark
     @tag :skip
-    test "BQ - v1 Logs vs v2 Logs vs v2 Backend", %{user: user} do
-      [source1, source2] = insert_pair(:source, user: user, rules: [])
-      start_supervised!({V1SourceSup, source: source1})
+    test "BQ - Backend ingestion", %{user: user} do
+      [_source1, source2] = insert_pair(:source, user: user, rules: [])
       start_supervised!({SourceSup, source2})
 
       batch =
@@ -949,13 +927,7 @@ defmodule Logflare.BackendsTest do
 
       BencheeAsync.run(
         %{
-          "v1SourceSup BQ with Logs.ingest_logs/2" => fn ->
-            Logs.ingest_logs(batch, source1)
-          end,
-          "SourceSup v2 BQ with Logs.ingest_logs/2" => fn ->
-            Logs.ingest_logs(batch, source2)
-          end,
-          "SourceSup v2 BQ with Backends.ingest_logs/2" => fn ->
+          "SourceSup BQ with Backends.ingest_logs/2" => fn ->
             Backends.ingest_logs(batch, source2)
           end
         },
@@ -1054,5 +1026,89 @@ defmodule Logflare.BackendsTest do
       reduction_time: 3,
       print: [configuration: false]
     )
+  end
+
+  describe "sync_backend_across_cluster/1" do
+    setup do
+      insert(:plan)
+      user = insert(:user)
+      source = insert(:source, user: user)
+
+      {:ok, user: user, source: source}
+    end
+
+    test "syncs backend across cluster for all associated sources", %{
+      source: source,
+      user: user
+    } do
+      # Start actual SourceSup process
+      start_supervised!({SourceSup, source})
+      :timer.sleep(500)
+
+      via = Backends.via_source(source, SourceSup)
+
+      children =
+        Supervisor.which_children(via)
+        |> Enum.filter(fn
+          {{mod, _, _}, _pid, _type, _sup} -> mod == Backends.Adaptor.WebhookAdaptor
+          _ -> false
+        end)
+
+      assert Enum.empty?(children)
+
+      backend =
+        insert(:backend,
+          user: user,
+          sources: [source],
+          type: :webhook,
+          config: %{url: "http://test.com"}
+        )
+
+      # Mock the cluster RPC calls
+      Logflare.Cluster.Utils
+      |> expect(:rpc_multicast, 1, fn
+        Backends, :sync_backends_local, [%_{}, [_]] = args ->
+          apply(Backends, :sync_backends_local, args)
+      end)
+
+      assert :ok = Backends.sync_backend_across_cluster(backend.id)
+
+      via = Backends.via_source(source, SourceSup)
+
+      children =
+        Supervisor.which_children(via)
+        |> Enum.filter(fn
+          {{mod, _, _}, _pid, _type, _sup} -> mod == Backends.Adaptor.WebhookAdaptor
+          _ -> false
+        end)
+
+      assert length(children) == 1
+    end
+
+    test "handles non-existent backend gracefully" do
+      non_existent_id = 99_999
+
+      reject(&Logflare.Cluster.Utils.rpc_multicast/3)
+
+      assert :ok = Backends.sync_backend_across_cluster(non_existent_id)
+    end
+
+    test "works with backend having no associated sources", %{user: user} do
+      # Backend has no associated sources
+      backend =
+        insert(:backend,
+          user: user,
+          sources: [],
+          default_ingest?: true,
+          type: :webhook,
+          config: %{url: "http://test.com"}
+        )
+
+      # Should not make any RPC calls
+
+      reject(&Logflare.Cluster.Utils.rpc_multicast/3)
+
+      assert :ok = Backends.sync_backend_across_cluster(backend.id)
+    end
   end
 end

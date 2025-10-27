@@ -4,13 +4,9 @@ defmodule LogflareWeb.Source.SearchLVTest do
 
   import Phoenix.LiveViewTest
 
-  alias Logflare.Sources.Source
   alias Logflare.SingleTenant
   alias Logflare.Sources.Source.BigQuery.Schema
   alias LogflareWeb.Source.SearchLV
-  alias Logflare.Backends
-  alias Logflare.Sources.Source.V1SourceSup
-  alias Logflare.SystemMetrics.AllLogsLogged
 
   @endpoint LogflareWeb.Endpoint
   @default_search_params %{
@@ -42,26 +38,11 @@ defmodule LogflareWeb.Source.SearchLVTest do
     :ok
   end
 
-  # requires a source, and plan set
-  defp setup_source_processes(context) do
-    start_supervised!(AllLogsLogged)
-
-    Enum.each(context, fn
-      {_, %Source{} = source} ->
-        start_supervised!({V1SourceSup, source: source}, id: source.token)
-
-      _ ->
-        nil
-    end)
-
-    :ok
-  end
-
   # to simulate signed in user.
   defp setup_user_session(%{conn: conn, user: user, plan: plan}) do
     _billing_account = insert(:billing_account, user: user, stripe_plan_id: plan.stripe_id)
     user = user |> Logflare.Repo.preload(:billing_account)
-    conn = conn |> put_session(:user_id, user.id) |> assign(:user, user)
+    conn = conn |> login_user(user)
     [conn: conn]
   end
 
@@ -69,13 +50,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
     _billing_account = insert(:billing_account, user: user, stripe_plan_id: plan.stripe_id)
     user = user |> Logflare.Repo.preload(:billing_account)
 
-    conn =
-      conn
-      |> put_session(:team_user_id, team_user.id)
-      |> put_session(:user_id, user.id)
-      |> assign(:team_user, team_user)
-
-    [conn: conn]
+    [conn: login_user(conn, user, team_user)]
   end
 
   # do this for all tests
@@ -89,7 +64,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
       [user: user, source: source, plan: plan]
     end
 
-    setup [:setup_user_session, :setup_source_processes]
+    setup [:setup_user_session]
 
     test "subheader - default timezone is Etc/UTC", %{conn: conn, source: source} do
       {:ok, view, _html} = live(conn, ~p"/sources/#{source.id}/search")
@@ -165,7 +140,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
       [user: user, source: source, plan: plan]
     end
 
-    setup [:setup_user_session, :setup_source_processes]
+    setup [:setup_user_session]
 
     test "subheader - if no tz, will redirect to preference tz", %{conn: conn, source: source} do
       {:error, {:live_redirect, %{to: to}}} =
@@ -212,7 +187,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
       [user: user, source: source, plan: plan, team_user: team_user]
     end
 
-    setup [:setup_team_user_session, :setup_source_processes]
+    setup [:setup_team_user_session]
 
     test "subheader - if no tz, will redirect to preference tz", %{conn: conn, source: source} do
       {:error, {:live_redirect, %{to: to}}} =
@@ -244,10 +219,11 @@ defmodule LogflareWeb.Source.SearchLVTest do
       [user: user, source: source, plan: plan]
     end
 
-    setup [:setup_mocks, :setup_user_session, :setup_source_processes]
+    setup [:setup_mocks, :setup_user_session]
+    setup {TestUtils, :attach_wait_for_render}
 
     test "subheader - lql docs", %{conn: conn, source: source} do
-      {:ok, view, _html} = live(conn, ~p"/sources/#{source.id}/search")
+      {:ok, view, _html} = live(conn, ~p"/sources/#{source.id}/search?querystring=something123")
 
       assert view
              |> element("a", "LQL")
@@ -269,8 +245,27 @@ defmodule LogflareWeb.Source.SearchLVTest do
              |> element(".subhead a", "events")
              |> render_click()
 
-      :timer.sleep(300)
-      assert render(view) =~ "Actual SQL query used when querying for results"
+      view
+      |> TestUtils.wait_for_render(".search-query-debug")
+
+      html = render(view)
+      assert html =~ "Actual SQL query used when querying for results"
+
+      formatted_sql =
+        """
+        SELECT
+          t0.timestamp
+        """
+        |> String.trim()
+
+      assert html =~ formatted_sql
+
+      {:error, {:redirect, %{to: dest}}} =
+        view
+        |> element("a.btn.btn-primary", "Edit as query")
+        |> render_click()
+
+      assert dest =~ "/query?q=SELECT"
     end
 
     test "subheader - aggregeate", %{conn: conn, source: source} do
@@ -284,7 +279,19 @@ defmodule LogflareWeb.Source.SearchLVTest do
              |> render_click()
 
       :timer.sleep(300)
-      assert render(view) =~ "Actual SQL query used when querying for results"
+      html = render(view)
+
+      assert html =~ "Actual SQL query used when querying for results"
+
+      formatted_sql =
+        """
+        SELECT
+          (
+            CASE
+        """
+        |> String.trim()
+
+      assert html =~ formatted_sql
     end
 
     test "load page", %{conn: conn, source: source} do
@@ -333,7 +340,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
 
     test "lql filters", %{conn: conn, source: source} do
       {:ok, view, _html} = live(conn, Routes.live_path(conn, SearchLV, source.id))
-
+      pid = self()
       %{executor_pid: search_executor_pid} = get_view_assigns(view)
       Ecto.Adapters.SQL.Sandbox.allow(Logflare.Repo, self(), search_executor_pid)
 
@@ -350,6 +357,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
           assert Enum.any?(params, fn param -> param.parameterValue.value == "error" end)
         end
 
+        send(pid, {:query_request, opts[:body]})
         {:ok, TestUtils.gen_bq_response(%{"event_message" => "some error message"})}
       end)
 
@@ -375,6 +383,9 @@ defmodule LogflareWeb.Source.SearchLVTest do
 
       assert html =~ "some error message"
       refute html =~ "some event message"
+
+      assert_receive {:query_request,
+                      %_{jobCreationMode: "JOB_CREATION_OPTIONAL", parameterMode: "POSITIONAL"}}
     end
 
     test "bug: top-level key with nested key filters", %{conn: conn, source: source} do
@@ -388,8 +399,16 @@ defmodule LogflareWeb.Source.SearchLVTest do
       le = build(:log_event, metadata: %{"nested" => "something"}, top: "level", source: source)
       :timer.sleep(100)
 
-      Backends.via_source(source, Schema, nil)
-      |> Schema.update(le)
+      # Backends.via_source(source, Schema, nil)
+      Schema.handle_cast({:update, le}, %{
+        source_id: source.id,
+        source_token: source.token,
+        bigquery_project_id: nil,
+        bigquery_dataset_id: nil,
+        field_count: 3,
+        field_count_limit: 500,
+        next_update: System.system_time(:millisecond)
+      })
 
       :timer.sleep(500)
       Cachex.clear(Logflare.SourceSchemas.Cache)
@@ -738,6 +757,120 @@ defmodule LogflareWeb.Source.SearchLVTest do
     end
   end
 
+  describe "create from query" do
+    setup do
+      user = insert(:user)
+      team_user = insert(:team_user, preferences: build(:user_preferences, timezone: "NZ"))
+      source = insert(:source, user: user)
+      plan = insert(:plan)
+      [user: user, source: source, plan: plan, team_user: team_user]
+    end
+
+    setup [:setup_team_user_session]
+    setup {TestUtils, :attach_wait_for_render}
+
+    test "create new query from search", %{conn: conn, source: source} do
+      {:ok, view, _html} =
+        live(
+          conn,
+          ~p"/sources/#{source.id}/search?querystring=something123&tailing%3F=&tz=Etc/UTC"
+        )
+
+      # Wait until search has executed
+      view
+      |> TestUtils.wait_for_render("#create-menu button:not([disabled])")
+
+      view
+      |> element(~s|a[phx-value-resource="query"]|, "From search")
+      |> render_click()
+
+      {redirect_path, _flash} = assert_redirect(view)
+      assert redirect_path =~ "/query?q=SELECT"
+      assert redirect_path =~ "something123"
+      assert redirect_path =~ source.name
+    end
+
+    test "create new alert, endpoint from search", %{conn: conn, source: source} do
+      ["alert", "endpoint"]
+      |> Enum.each(fn resource ->
+        {:ok, view, _html} =
+          live(
+            conn,
+            ~p"/sources/#{source.id}/search?querystring=something123&tailing%3F=&tz=Etc/UTC"
+          )
+
+        view
+        |> TestUtils.wait_for_render("#create-menu button:not([disabled])")
+
+        view
+        |> element(~s|a[phx-value-resource="#{resource}"]|, "From search")
+        |> render_click()
+
+        {redirect_path, _flash} = assert_redirect(view)
+        assert redirect_path =~ "/#{resource}s/new"
+
+        %{"query" => query, "name" => name} =
+          URI.new!(redirect_path) |> Map.get(:query) |> URI.decode_query()
+
+        assert query =~ "SELECT t0.timestamp, t0.id, t0.event_message FROM `#{source.name}`"
+        assert query =~ "something123"
+        assert query =~ source.name
+        assert name == source.name
+      end)
+    end
+
+    test "create new query from chart query", %{conn: conn, source: source} do
+      {:ok, view, _html} =
+        live(
+          conn,
+          ~p"/sources/#{source.id}/search?querystring=something123&tailing%3F=&tz=Etc/UTC"
+        )
+
+      view
+      |> TestUtils.wait_for_render("#create-menu button:not([disabled])")
+
+      view
+      |> element(~s|a[phx-value-resource="query"]|, "From chart")
+      |> render_click()
+
+      {redirect_path, _flash} = assert_redirect(view)
+      %{"q" => query} = URI.new!(redirect_path) |> Map.get(:query) |> URI.decode_query()
+
+      assert query =~ "SELECT (case\nwhen 'MINUTE' = 'DAY'"
+      assert query =~ "something123"
+      assert query =~ source.name
+    end
+
+    test "create new alert, endpoint from chart", %{conn: conn, source: source} do
+      ["alert", "endpoint"]
+      |> Enum.each(fn resource ->
+        {:ok, view, _html} =
+          live(
+            conn,
+            ~p"/sources/#{source.id}/search?querystring=something123&tailing%3F=&tz=Etc/UTC"
+          )
+
+        view
+        |> TestUtils.wait_for_render("#create-menu button:not([disabled])")
+
+        view
+        |> element(~s|a[phx-value-resource="#{resource}"]|, "From chart")
+        |> render_click()
+
+        {redirect_path, _flash} = assert_redirect(view)
+        assert redirect_path =~ "/#{resource}s/new"
+
+        %{"query" => query, "name" => name} =
+          URI.new!(redirect_path) |> Map.get(:query) |> URI.decode_query()
+
+        assert query =~ "SELECT (case\nwhen 'MINUTE' = 'DAY'"
+        assert query =~ "something123"
+        assert query =~ source.name
+        assert name == source.name
+      end)
+    end
+  end
+
   describe "single tenant searching" do
     TestUtils.setup_single_tenant(seed_user: true)
 
@@ -748,7 +881,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
       [user: user, source: source, plan: plan]
     end
 
-    setup [:setup_user_session, :setup_source_processes]
+    setup [:setup_user_session]
 
     test "run a query", %{conn: conn, source: source} do
       stub(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, fn conn, _proj_id, opts ->
@@ -804,7 +937,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
       }
     end
 
-    setup [:setup_user_session, :setup_source_processes]
+    setup [:setup_user_session]
 
     test "on source with suggestion fields, creates flash with link to force query", %{
       conn: conn,
@@ -877,7 +1010,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
       %{user: user, plan: plan, source: source}
     end
 
-    setup [:setup_user_session, :setup_source_processes]
+    setup [:setup_user_session]
 
     test "on source with suggestion fields, creates flash with link to force query", %{
       conn: conn,
@@ -935,7 +1068,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
       }
     end
 
-    setup [:setup_user_session, :setup_source_processes]
+    setup [:setup_user_session]
 
     test "on source load, do not auto-tail", %{
       conn: conn,
@@ -977,7 +1110,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
       [user: user, source: source, plan: plan]
     end
 
-    setup [:setup_user_session, :setup_source_processes]
+    setup [:setup_user_session]
 
     test "when remember is checked timezone is set in user preferences",
          %{
@@ -1073,6 +1206,71 @@ defmodule LogflareWeb.Source.SearchLVTest do
 
       assert render(view) =~ "something123"
       assert view |> element(".subhead") |> render() =~ "(-07:00)"
+    end
+  end
+
+  describe "bigquery reservation search" do
+    setup do
+      plan = insert(:plan)
+      [plan: plan]
+    end
+
+    test "when bigquery reservation search is not set, do not set reservation option", ctx do
+      user = insert(:user, bigquery_reservation_search: nil)
+      %{conn: conn} = setup_user_session(Map.put(ctx, :user, user)) |> Map.new()
+      source = insert(:source, user: user)
+      pid = self()
+
+      expect(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, fn _conn, _proj_id, opts ->
+        reservation = opts[:body].reservation
+        send(pid, {:reservation, reservation})
+
+        {:ok,
+         TestUtils.gen_bq_response(%{
+           "event_message" => "some modal message",
+           "testing" => "modal123",
+           "id" => "some-uuid"
+         })}
+      end)
+
+      {:ok, _view, _html} =
+        live(
+          conn,
+          ~p"/sources/#{source.id}/search?querystring=something123&tailing%3F=false"
+        )
+
+      assert_receive {:reservation, nil}
+    end
+
+    test "when bigquery reservation search is set, set job option to reservation", ctx do
+      user =
+        insert(:user, bigquery_reservation_search: "projects/1234567890/reservations/1234567890")
+
+      %{conn: conn} = setup_user_session(Map.put(ctx, :user, user)) |> Map.new()
+
+      source = insert(:source, user: user)
+      pid = self()
+
+      expect(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, fn _conn, _proj_id, opts ->
+        reservation = opts[:body].reservation
+        send(pid, {:reservation, reservation})
+
+        {:ok,
+         TestUtils.gen_bq_response(%{
+           "event_message" => "some modal message",
+           "testing" => "modal123",
+           "id" => "some-uuid"
+         })}
+      end)
+
+      {:ok, _view, _html} =
+        live(
+          conn,
+          ~p"/sources/#{source.id}/search?querystring=something123&tailing%3F=false"
+        )
+
+      assert_receive {:reservation, reservation}
+      assert reservation == user.bigquery_reservation_search
     end
   end
 

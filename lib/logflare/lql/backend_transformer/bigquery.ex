@@ -10,10 +10,29 @@ defmodule Logflare.Lql.BackendTransformer.BigQuery do
   @behaviour Logflare.Lql.BackendTransformer
 
   import Ecto.Query
+  import Logflare.Utils.Guards
 
   alias Ecto.Query
+  alias Logflare.Lql.Rules.ChartRule
 
   @special_top_level ~w(_PARTITIONDATE _PARTITIONTIME event_message timestamp id)
+
+  # macros used for generating Ecto query fragments
+  defmacrop bq_trunc_second(ts_field) do
+    quote do: fragment("TIMESTAMP_TRUNC(?, SECOND)", unquote(ts_field))
+  end
+
+  defmacrop bq_trunc_minute(ts_field) do
+    quote do: fragment("TIMESTAMP_TRUNC(?, MINUTE)", unquote(ts_field))
+  end
+
+  defmacrop bq_trunc_hour(ts_field) do
+    quote do: fragment("TIMESTAMP_TRUNC(?, HOUR)", unquote(ts_field))
+  end
+
+  defmacrop bq_trunc_day(ts_field) do
+    quote do: fragment("TIMESTAMP_TRUNC(?, DAY)", unquote(ts_field))
+  end
 
   @impl true
   def dialect, do: "bigquery"
@@ -92,7 +111,6 @@ defmodule Logflare.Lql.BackendTransformer.BigQuery do
       filter_rule.path
       |> split_by_dots()
       |> List.last()
-      |> String.to_atom()
 
     if not is_nil(filter_rule.values) and filter_rule.operator == :range do
       [lvalue, rvalue] = filter_rule.values
@@ -107,11 +125,250 @@ defmodule Logflare.Lql.BackendTransformer.BigQuery do
     end
   end
 
+  @doc """
+  Transforms a ChartRule into a BigQuery chart query with time-series aggregation.
+
+  This function creates an Ecto query with appropriate GROUP BY, aggregation,
+  and time truncation for the specified period and aggregate function.
+  """
   @impl true
-  def transform_chart_rule(_chart_rule, _transformation_data) do
-    # TODO: Implement chart rule transformation for BigQuery
-    # This would handle aggregations, grouping, etc.
-    raise "Chart rule transformation not yet implemented for BigQuery transformer"
+  @spec transform_chart_rule(
+          query :: Ecto.Query.t(),
+          aggregate :: atom(),
+          field_path :: String.t(),
+          period :: :second | :minute | :hour | :day,
+          timestamp_field :: String.t()
+        ) :: Ecto.Query.t()
+  def transform_chart_rule(query, :count, _field_path, :second, timestamp_field) do
+    query
+    |> select([t], %{
+      timestamp: bq_trunc_second(field(t, ^timestamp_field)),
+      count: count(field(t, ^timestamp_field))
+    })
+    |> group_by([t], bq_trunc_second(field(t, ^timestamp_field)))
+    |> order_by([t], bq_trunc_second(field(t, ^timestamp_field)))
+  end
+
+  def transform_chart_rule(query, :count, _field_path, :minute, timestamp_field) do
+    query
+    |> select([t], %{
+      timestamp: bq_trunc_minute(field(t, ^timestamp_field)),
+      count: count(field(t, ^timestamp_field))
+    })
+    |> group_by([t], bq_trunc_minute(field(t, ^timestamp_field)))
+    |> order_by([t], bq_trunc_minute(field(t, ^timestamp_field)))
+  end
+
+  def transform_chart_rule(query, :count, _field_path, :hour, timestamp_field) do
+    query
+    |> select([t], %{
+      timestamp: bq_trunc_hour(field(t, ^timestamp_field)),
+      count: count(field(t, ^timestamp_field))
+    })
+    |> group_by([t], bq_trunc_hour(field(t, ^timestamp_field)))
+    |> order_by([t], bq_trunc_hour(field(t, ^timestamp_field)))
+  end
+
+  def transform_chart_rule(query, :count, _field_path, :day, timestamp_field) do
+    query
+    |> select([t], %{
+      timestamp: bq_trunc_day(field(t, ^timestamp_field)),
+      count: count(field(t, ^timestamp_field))
+    })
+    |> group_by([t], bq_trunc_day(field(t, ^timestamp_field)))
+    |> order_by([t], bq_trunc_day(field(t, ^timestamp_field)))
+  end
+
+  def transform_chart_rule(query, :avg, field_path, :second, timestamp_field) do
+    query
+    |> select([t], %{
+      timestamp: bq_trunc_second(field(t, ^timestamp_field)),
+      count: avg(field(t, ^field_path))
+    })
+    |> group_by([t], bq_trunc_second(field(t, ^timestamp_field)))
+    |> order_by([t], bq_trunc_second(field(t, ^timestamp_field)))
+  end
+
+  def transform_chart_rule(query, :avg, field_path, :minute, timestamp_field) do
+    query
+    |> select([t], %{
+      timestamp: bq_trunc_minute(field(t, ^timestamp_field)),
+      count: avg(field(t, ^field_path))
+    })
+    |> group_by([t], bq_trunc_minute(field(t, ^timestamp_field)))
+    |> order_by([t], bq_trunc_minute(field(t, ^timestamp_field)))
+  end
+
+  def transform_chart_rule(query, :avg, field_path, :hour, timestamp_field) do
+    query
+    |> select([t], %{
+      timestamp: bq_trunc_hour(field(t, ^timestamp_field)),
+      count: avg(field(t, ^field_path))
+    })
+    |> group_by([t], bq_trunc_hour(field(t, ^timestamp_field)))
+    |> order_by([t], bq_trunc_hour(field(t, ^timestamp_field)))
+  end
+
+  def transform_chart_rule(query, :avg, field_path, :day, timestamp_field) do
+    query
+    |> select([t], %{
+      timestamp: bq_trunc_day(field(t, ^timestamp_field)),
+      count: avg(field(t, ^field_path))
+    })
+    |> group_by([t], bq_trunc_day(field(t, ^timestamp_field)))
+    |> order_by([t], bq_trunc_day(field(t, ^timestamp_field)))
+  end
+
+  def transform_chart_rule(query, :sum, field_path, :second, timestamp_field) do
+    query
+    |> select([t], %{
+      timestamp: bq_trunc_second(field(t, ^timestamp_field)),
+      count: sum(field(t, ^field_path))
+    })
+    |> group_by([t], bq_trunc_second(field(t, ^timestamp_field)))
+    |> order_by([t], bq_trunc_second(field(t, ^timestamp_field)))
+  end
+
+  def transform_chart_rule(query, :sum, field_path, :minute, timestamp_field) do
+    query
+    |> select([t], %{
+      timestamp: bq_trunc_minute(field(t, ^timestamp_field)),
+      count: sum(field(t, ^field_path))
+    })
+    |> group_by([t], bq_trunc_minute(field(t, ^timestamp_field)))
+    |> order_by([t], bq_trunc_minute(field(t, ^timestamp_field)))
+  end
+
+  def transform_chart_rule(query, :sum, field_path, :hour, timestamp_field) do
+    query
+    |> select([t], %{
+      timestamp: bq_trunc_hour(field(t, ^timestamp_field)),
+      count: sum(field(t, ^field_path))
+    })
+    |> group_by([t], bq_trunc_hour(field(t, ^timestamp_field)))
+    |> order_by([t], bq_trunc_hour(field(t, ^timestamp_field)))
+  end
+
+  def transform_chart_rule(query, :sum, field_path, :day, timestamp_field) do
+    query
+    |> select([t], %{
+      timestamp: bq_trunc_day(field(t, ^timestamp_field)),
+      count: sum(field(t, ^field_path))
+    })
+    |> group_by([t], bq_trunc_day(field(t, ^timestamp_field)))
+    |> order_by([t], bq_trunc_day(field(t, ^timestamp_field)))
+  end
+
+  def transform_chart_rule(query, :max, field_path, :second, timestamp_field) do
+    query
+    |> select([t], %{
+      timestamp: bq_trunc_second(field(t, ^timestamp_field)),
+      count: max(field(t, ^field_path))
+    })
+    |> group_by([t], bq_trunc_second(field(t, ^timestamp_field)))
+    |> order_by([t], bq_trunc_second(field(t, ^timestamp_field)))
+  end
+
+  def transform_chart_rule(query, :max, field_path, :minute, timestamp_field) do
+    query
+    |> select([t], %{
+      timestamp: bq_trunc_minute(field(t, ^timestamp_field)),
+      count: max(field(t, ^field_path))
+    })
+    |> group_by([t], bq_trunc_minute(field(t, ^timestamp_field)))
+    |> order_by([t], bq_trunc_minute(field(t, ^timestamp_field)))
+  end
+
+  def transform_chart_rule(query, :max, field_path, :hour, timestamp_field) do
+    query
+    |> select([t], %{
+      timestamp: bq_trunc_hour(field(t, ^timestamp_field)),
+      count: max(field(t, ^field_path))
+    })
+    |> group_by([t], bq_trunc_hour(field(t, ^timestamp_field)))
+    |> order_by([t], bq_trunc_hour(field(t, ^timestamp_field)))
+  end
+
+  def transform_chart_rule(query, :max, field_path, :day, timestamp_field) do
+    query
+    |> select([t], %{
+      timestamp: bq_trunc_day(field(t, ^timestamp_field)),
+      count: max(field(t, ^field_path))
+    })
+    |> group_by([t], bq_trunc_day(field(t, ^timestamp_field)))
+    |> order_by([t], bq_trunc_day(field(t, ^timestamp_field)))
+  end
+
+  def transform_chart_rule(query, percentile, field_path, :second, timestamp_field)
+      when is_percentile_aggregate(percentile) do
+    percentile_value = ChartRule.percentile_to_value(percentile)
+
+    query
+    |> select([t], %{
+      timestamp: bq_trunc_second(field(t, ^timestamp_field)),
+      count:
+        fragment(
+          "APPROX_QUANTILES(?, 100)[OFFSET(?)]",
+          field(t, ^field_path),
+          ^trunc(percentile_value * 100)
+        )
+    })
+    |> group_by([t], bq_trunc_second(field(t, ^timestamp_field)))
+    |> order_by([t], bq_trunc_second(field(t, ^timestamp_field)))
+  end
+
+  def transform_chart_rule(query, percentile, field_path, :minute, timestamp_field)
+      when is_percentile_aggregate(percentile) do
+    percentile_value = ChartRule.percentile_to_value(percentile)
+
+    query
+    |> select([t], %{
+      timestamp: bq_trunc_minute(field(t, ^timestamp_field)),
+      count:
+        fragment(
+          "APPROX_QUANTILES(?, 100)[OFFSET(?)]",
+          field(t, ^field_path),
+          ^trunc(percentile_value * 100)
+        )
+    })
+    |> group_by([t], bq_trunc_minute(field(t, ^timestamp_field)))
+    |> order_by([t], bq_trunc_minute(field(t, ^timestamp_field)))
+  end
+
+  def transform_chart_rule(query, percentile, field_path, :hour, timestamp_field)
+      when is_percentile_aggregate(percentile) do
+    percentile_value = ChartRule.percentile_to_value(percentile)
+
+    query
+    |> select([t], %{
+      timestamp: bq_trunc_hour(field(t, ^timestamp_field)),
+      count:
+        fragment(
+          "APPROX_QUANTILES(?, 100)[OFFSET(?)]",
+          field(t, ^field_path),
+          ^trunc(percentile_value * 100)
+        )
+    })
+    |> group_by([t], bq_trunc_hour(field(t, ^timestamp_field)))
+    |> order_by([t], bq_trunc_hour(field(t, ^timestamp_field)))
+  end
+
+  def transform_chart_rule(query, percentile, field_path, :day, timestamp_field)
+      when is_percentile_aggregate(percentile) do
+    percentile_value = ChartRule.percentile_to_value(percentile)
+
+    query
+    |> select([t], %{
+      timestamp: bq_trunc_day(field(t, ^timestamp_field)),
+      count:
+        fragment(
+          "APPROX_QUANTILES(?, 100)[OFFSET(?)]",
+          field(t, ^field_path),
+          ^trunc(percentile_value * 100)
+        )
+    })
+    |> group_by([t], bq_trunc_day(field(t, ^timestamp_field)))
+    |> order_by([t], bq_trunc_day(field(t, ^timestamp_field)))
   end
 
   @impl true
@@ -122,7 +379,7 @@ defmodule Logflare.Lql.BackendTransformer.BigQuery do
   def transform_select_rule(%{path: path} = _select_rule, _transformation_data)
       when is_binary(path) do
     if path in @special_top_level or not String.contains?(path, ".") do
-      {:field, String.to_atom(path), []}
+      {:field, path, []}
     else
       nested_columns = split_by_dots(path)
       {:nested_field, nested_columns, unnest_paths_for_select(nested_columns)}
@@ -199,7 +456,7 @@ defmodule Logflare.Lql.BackendTransformer.BigQuery do
     |> Enum.slice(0..-2//1)
     |> Enum.with_index(1)
     |> Enum.reduce(query, fn {column, level}, acc_query ->
-      add_unnest_join(acc_query, join_type, String.to_atom(column), level)
+      add_unnest_join(acc_query, join_type, column, level)
     end)
   end
 
@@ -220,7 +477,6 @@ defmodule Logflare.Lql.BackendTransformer.BigQuery do
       rule.path
       |> split_by_dots()
       |> List.last()
-      |> String.to_atom()
 
     if not is_nil(rule.values) and rule.operator == :range do
       [lvalue, rvalue] = rule.values
@@ -231,7 +487,7 @@ defmodule Logflare.Lql.BackendTransformer.BigQuery do
   end
 
   @spec dynamic_where_filter_rule(
-          column :: atom(),
+          column :: String.t(),
           operator :: atom(),
           value :: any(),
           modifiers :: map()
@@ -293,14 +549,14 @@ defmodule Logflare.Lql.BackendTransformer.BigQuery do
   @spec build_combined_select(Query.t(), [map()]) :: Query.t()
   defp build_combined_select(query, select_rules) do
     Enum.reduce(select_rules, query, fn %{path: path}, acc_query ->
-      field_atom =
+      field_key =
         if path in @special_top_level or not String.contains?(path, ".") do
-          String.to_atom(path)
+          path
         else
-          String.replace(path, ".", "_") |> String.to_atom()
+          String.replace(path, ".", "_")
         end
 
-      select_merge(acc_query, [l], %{^field_atom => field(l, ^field_atom)})
+      select_merge(acc_query, [l], %{^field_key => field(l, ^field_key)})
     end)
   end
 

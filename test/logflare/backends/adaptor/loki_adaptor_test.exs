@@ -50,6 +50,18 @@ defmodule Logflare.Backends.Adaptor.LokiAdaptorTest do
     end
   end
 
+  describe "redact_config/1" do
+    test "redacts password field when present" do
+      config = %{password: "secret123", url: "https://loki.example.com"}
+      assert %{password: "REDACTED"} = @subject.redact_config(config)
+    end
+
+    test "leaves config unchanged when password is not present" do
+      config = %{url: "https://loki.example.com"}
+      assert ^config = @subject.redact_config(config)
+    end
+  end
+
   describe "logs ingestion" do
     setup do
       insert(:plan)

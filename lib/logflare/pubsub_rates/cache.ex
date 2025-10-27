@@ -186,6 +186,40 @@ defmodule Logflare.PubSubRates.Cache do
     end
   end
 
+  def get_all_local_metrics(user_id) do
+    %{sources: sources} =
+      user_id
+      |> Logflare.Users.Cache.get()
+      |> Logflare.Users.Cache.preload_sources()
+
+    sources
+    |> Enum.map(fn source ->
+      metrics = get_source_local_metrics(source.id, source.token)
+      {source.token, metrics}
+    end)
+    |> Enum.into(%{})
+  end
+
+  def get_source_local_metrics(source_id, source_token) do
+    rates = get_local_rates(source_token)
+    buffer = get_local_buffer(source_id, nil)
+
+    inserts =
+      case get_inserts(source_token) do
+        {:ok, inserts_map} when inserts_map != nil ->
+          inserts_map
+
+        _ ->
+          nil
+      end
+
+    %{
+      rates: rates,
+      buffer: buffer,
+      inserts: inserts
+    }
+  end
+
   def merge_buffers(node_buffers) do
     nodes = Cluster.Utils.node_list_all()
 

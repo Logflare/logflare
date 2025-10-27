@@ -86,8 +86,6 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.PipelineTest do
       source: source,
       backend: backend
     } do
-      TestUtils.attach_forwarder([:logflare, :backends, :clickhouse, :ingest, :count])
-
       log_event1 = build(:log_event, source: source, message: "Test message 1")
       log_event2 = build(:log_event, source: source, message: "Test message 2")
 
@@ -96,12 +94,9 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.PipelineTest do
         %Message{data: log_event2, acknowledger: {Pipeline, :ack_id, :ack_data}}
       ]
 
-      result = Pipeline.handle_batch(:ch, messages, %{}, context)
+      result = Pipeline.handle_batch(:ch, messages, %{size: 2, trigger: :flush}, context)
 
       assert result == messages
-
-      assert_receive {:telemetry_event, [:logflare, :backends, :clickhouse, :ingest, :count],
-                      %{count: 2}, %{}}
 
       Process.sleep(200)
 
@@ -118,7 +113,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.PipelineTest do
     end
 
     test "handles empty messages list", %{context: context} do
-      result = Pipeline.handle_batch(:ch, [], %{}, context)
+      result = Pipeline.handle_batch(:ch, [], %{size: 0, trigger: :flush}, context)
       assert result == []
     end
 
@@ -156,7 +151,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.PipelineTest do
         %Message{data: log_event2, acknowledger: {Pipeline, :ack_id, :ack_data}}
       ]
 
-      result = Pipeline.handle_batch(:ch, messages, %{}, context)
+      result = Pipeline.handle_batch(:ch, messages, %{size: 2, trigger: :flush}, context)
       assert result == messages
 
       Process.sleep(200)

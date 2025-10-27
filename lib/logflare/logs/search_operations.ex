@@ -5,9 +5,8 @@ defmodule Logflare.Logs.SearchOperations do
   import Logflare.Ecto.BQQueryAPI
   import Logflare.Logs.SearchQueries
 
-  alias Logflare.BqRepo
+  alias Logflare.Backends.Adaptor.BigQueryAdaptor
   alias Logflare.DateTimeUtils
-  alias Logflare.EctoQueryBQ
   alias Logflare.Google.BigQuery.GCPConfig
   alias Logflare.Google.BigQuery.GenUtils
   alias Logflare.Logs.SearchOperation, as: SO
@@ -45,14 +44,29 @@ defmodule Logflare.Logs.SearchOperations do
     %{bigquery_dataset_id: dataset_id} = GenUtils.get_bq_user_info(so.source.token)
 
     with {:ok, response} <-
-           BqRepo.query(so.source.user, bq_project_id, so.query, dataset_id: dataset_id) do
+           BigQueryAdaptor.execute_query(
+             {bq_project_id, dataset_id, so.source.user.id},
+             so.query,
+             query_type: :search
+           ) do
       so
       |> SearchUtils.put_result(:query_result, response)
       |> SearchUtils.put_result(:rows, response.rows)
+      |> put_sql_string_and_params(response)
     else
       {:error, err} ->
         SearchUtils.put_result(so, :error, err)
     end
+  end
+
+  @spec put_sql_string_and_params(SO.t(), %{query_string: String.t(), bq_params: list()}) ::
+          SO.t()
+  defp put_sql_string_and_params(%{sql_string: sql_string} = so, _response)
+       when is_binary(sql_string),
+       do: so
+
+  defp put_sql_string_and_params(so, %{query_string: query_string, bq_params: bq_params}) do
+    %{so | sql_string: query_string, sql_params: bq_params}
   end
 
   @spec apply_query_defaults(SO.t()) :: SO.t()
@@ -347,16 +361,6 @@ defmodule Logflare.Logs.SearchOperations do
     q = Lql.apply_filter_rules(q, so.lql_meta_and_msg_filters)
 
     %{so | query: q}
-  end
-
-  @spec apply_to_sql(SO.t()) :: SO.t()
-  def apply_to_sql(%SO{} = so) do
-    %{bigquery_dataset_id: bq_dataset_id} = GenUtils.get_bq_user_info(so.source.token)
-    {sql, params} = EctoQueryBQ.SQL.to_sql_params(so.query)
-    sql = EctoQueryBQ.SQL.substitute_dataset(sql, bq_dataset_id)
-    sql_and_params = {sql, params}
-    sql_with_params_string = EctoQueryBQ.SQL.sql_params_to_sql(sql_and_params)
-    %{so | sql_params: sql_and_params, sql_string: sql_with_params_string}
   end
 
   @spec apply_local_timestamp_correction(SO.t()) :: SO.t()

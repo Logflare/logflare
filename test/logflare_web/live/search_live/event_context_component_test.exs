@@ -1,8 +1,11 @@
 defmodule LogflareWeb.SearchLive.EventContextComponentTest do
   use LogflareWeb.ConnCase, async: false
 
+  alias Logflare.Backends.Adaptor.BigQueryAdaptor
+  alias Logflare.BqRepo
   alias Logflare.Sources.Source
   alias LogflareWeb.SearchLive.EventContextComponent
+  alias Logflare.Users
 
   @default_schema Source.BigQuery.SchemaBuilder.initial_table_schema()
 
@@ -22,7 +25,41 @@ defmodule LogflareWeb.SearchLive.EventContextComponentTest do
       end
     end)
 
+    stub(BigQueryAdaptor, :execute_query, fn identifier, query, opts ->
+      handle_bigquery_execute_query(identifier, query, opts)
+    end)
+
     :ok
+  end
+
+  defp handle_bigquery_execute_query({project_id, dataset_id, user_id}, query, opts) do
+    user = Users.get(user_id)
+
+    with {:ok, {bq_sql, bq_params}} <- BigQueryAdaptor.ecto_to_sql(query, opts) do
+      bq_sql = String.replace(bq_sql, "$$__DEFAULT_DATASET__$$", dataset_id)
+
+      # Call BqRepo with our converted query - this will hit our GoogleApi mock
+      case BqRepo.query_with_sql_and_params(
+             user,
+             project_id,
+             bq_sql,
+             bq_params,
+             [dataset_id: dataset_id] ++ opts
+           ) do
+        {:ok, result} ->
+          {:ok,
+           %{
+             rows: result.rows,
+             total_bytes_processed: result.total_bytes_processed,
+             total_rows: result.total_rows,
+             query_string: bq_sql,
+             bq_params: bq_params
+           }}
+
+        error ->
+          error
+      end
+    end
   end
 
   defp on_exit_kill_tasks(_ctx) do
@@ -40,22 +77,7 @@ defmodule LogflareWeb.SearchLive.EventContextComponentTest do
   end
 
   defp setup_user_session(%{conn: conn, user: user}) do
-    conn = conn |> put_session(:user_id, user.id) |> assign(:user, user)
-    [conn: conn]
-  end
-
-  def wait_for_render(view, selector, timeout \\ 5000) do
-    if view |> has_element?(selector) do
-      view
-    else
-      receive do
-        {:wait_for_render, _} ->
-          wait_for_render(view, selector)
-      after
-        timeout ->
-          raise "Timeout waiting for render"
-      end
-    end
+    [conn: login_user(conn, user)]
   end
 
   describe "construct context query" do
@@ -180,18 +202,7 @@ defmodule LogflareWeb.SearchLive.EventContextComponentTest do
       [source: insert(:source, user: user)]
     end
 
-    setup do
-      parent = self()
-
-      :telemetry.attach(
-        "wait-for-render-#{System.unique_integer()}",
-        [:phoenix, :live_view, :render, :stop],
-        fn _event, _measurements, metadata, _config ->
-          send(parent, {:wait_for_render, metadata.socket.assigns})
-        end,
-        nil
-      )
-    end
+    setup {TestUtils, :attach_wait_for_render}
 
     @tag bq_response:
            {:ok,
@@ -202,14 +213,14 @@ defmodule LogflareWeb.SearchLive.EventContextComponentTest do
 
       html =
         view
-        |> wait_for_render("#logs-list li:first-of-type a")
+        |> TestUtils.wait_for_render("#logs-list li:first-of-type a")
         |> element("#logs-list li:first-of-type a", "context")
         |> render_click()
 
       # Verify the context modal opens
       assert html =~ "View Event Context"
 
-      view |> wait_for_render("#context_log_events #log-events li:first-of-type")
+      view |> TestUtils.wait_for_render("#context_log_events #log-events li:first-of-type")
 
       assert view |> has_element?("#context_log_events #log-events li", "event message 1")
       assert view |> has_element?("#context_log_events #log-events li", "event message 10")
@@ -220,12 +231,12 @@ defmodule LogflareWeb.SearchLive.EventContextComponentTest do
       {:ok, view, _html} = live(conn, ~p"/sources/#{source.id}/search?tailing=false")
 
       view
-      |> wait_for_render("#logs-list li:first-of-type a")
+      |> TestUtils.wait_for_render("#logs-list li:first-of-type a")
       |> element("#logs-list li:first-of-type a", "context")
       |> render_click()
 
       view
-      |> wait_for_render("#context_log_events_error")
+      |> TestUtils.wait_for_render("#context_log_events_error")
 
       assert view |> has_element?("#context_log_events", "An error occurred")
     end

@@ -78,7 +78,7 @@ defmodule Logflare.Sql.DialectTranslation do
   end
 
   @spec do_parameter_positions_mapping(query :: String.t(), params :: [String.t()]) :: %{
-          integer() => String.t()
+          pos_integer() => String.t()
         }
   defp do_parameter_positions_mapping(_query, []), do: %{}
 
@@ -143,13 +143,25 @@ defmodule Logflare.Sql.DialectTranslation do
             %{"Identifier" => _arr} = identifier ->
               identifier
 
-            literal ->
-              update_in(literal, ["Value"], &%{"SingleQuotedString" => &1["DoubleQuotedString"]})
+            %{"Value" => %{"DoubleQuotedString" => value}} when is_non_empty_binary(value) ->
+              %{"Value" => %{"SingleQuotedString" => value}}
+
+            _ ->
+              %{"Value" => %{"SingleQuotedString" => ""}}
           end
 
         pattern =
           get_function_arg(v, 1)
-          |> update_in(["Value"], &%{"SingleQuotedString" => &1["DoubleQuotedString"]})
+          |> case do
+            %{"Value" => %{"DoubleQuotedString" => value}} when is_non_empty_binary(value) ->
+              %{"Value" => %{"SingleQuotedString" => value}}
+
+            %{"Value" => %{"SingleQuotedString" => value}} when is_non_empty_binary(value) ->
+              %{"Value" => %{"SingleQuotedString" => value}}
+
+            _ ->
+              %{"Value" => %{"SingleQuotedString" => ""}}
+          end
 
         {"BinaryOp", %{"left" => string, "op" => "PGRegexMatch", "right" => pattern}}
 
@@ -360,6 +372,11 @@ defmodule Logflare.Sql.DialectTranslation do
 
   # convert backticks to double quotes
   defp pg_traverse_final_pass({"quote_style" = k, "`"}), do: {k, "\""}
+
+  # ensure SingleQuotedString always has a string value, never null
+  defp pg_traverse_final_pass({"SingleQuotedString" = k, v}) when not is_binary(v) do
+    {k, ""}
+  end
 
   # drop cross join unnest
   defp pg_traverse_final_pass({"joins" = k, joins}) do
@@ -872,6 +889,18 @@ defmodule Logflare.Sql.DialectTranslation do
          {"CompoundIdentifier" = k, [%{"value" => head_val}, tail] = v},
          data
        ) do
+    # Check if we're selecting from a CTE table
+    cte_context =
+      Enum.find_value(data.from_table_values, fn table_value ->
+        cte_fields = Map.get(data.cte_aliases, table_value, [])
+
+        if cte_fields != [] do
+          # Find the table alias for this CTE
+          table_alias = Enum.at(data.from_table_aliases, 0)
+          {table_alias, cte_fields}
+        end
+      end)
+
     cond do
       is_map_key(data.alias_path_mappings, head_val) and
         match?([_, _ | _], data.alias_path_mappings[head_val || []]) and
@@ -883,15 +912,63 @@ defmodule Logflare.Sql.DialectTranslation do
             [base | arr_path] = data.alias_path_mappings[head_val]
             {base, arr_path}
           else
-            {"body", data.alias_path_mappings[head_val]}
-          end
+            path = data.alias_path_mappings[head_val]
 
-        # data.alias_path_mappings[head_val]
-        # arr_path = data.alias_path_mappings[head_val]
+            # credo:disable-for-next-line
+            case cte_context do
+              {table_alias, cte_fields} when cte_fields != [] ->
+                # Use the CTE field as the base
+                # Assumes the unnest path should be relative to the first CTE field
+                cte_field = List.first(cte_fields)
+                {[table_alias, cte_field], path}
+
+              _ ->
+                {"body", path}
+            end
+          end
 
         convert_keys_to_json_query(%{k => v}, data, {base, arr_path})
         |> Map.to_list()
         |> List.first()
+
+      # referencing a single-element unnest alias from a CTE context
+      is_map_key(data.alias_path_mappings, head_val) and
+        match?([_], data.alias_path_mappings[head_val]) and
+        data.in_cte_tables_tree == false and data.cte_aliases != %{} ->
+        path = data.alias_path_mappings[head_val]
+
+        case cte_context do
+          {table_alias, cte_fields} when cte_fields != [] ->
+            # Use the CTE field as the base
+            # Assumes the unnest path should be relative to the first CTE field
+            cte_field = List.first(cte_fields)
+            tail_value = tail["value"]
+            str_path = Enum.join(path ++ [tail_value], ",")
+            full_path = "{#{str_path}}"
+
+            # Always use HashLongArrow for CTE unnest references to return text
+            {"Nested",
+             %{
+               "BinaryOp" => %{
+                 "left" => %{
+                   "CompoundIdentifier" => [
+                     %{"quote_style" => nil, "value" => table_alias},
+                     %{"quote_style" => nil, "value" => cte_field}
+                   ]
+                 },
+                 "op" => "HashLongArrow",
+                 "right" => %{
+                   "Value" => %{"SingleQuotedString" => full_path}
+                 }
+               }
+             }}
+
+          _ ->
+            # Fallback to normal conversion
+            convert_keys_to_json_query(%{k => [tail]}, data, {"body", path})
+            |> Map.to_list()
+            |> List.first()
+        end
 
       # outside of a cte, referencing table alias
       # preserve as is

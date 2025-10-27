@@ -4,6 +4,9 @@ defmodule LogflareWeb.Search.QueryDebugComponent do
   """
   use LogflareWeb, :live_component
 
+  alias LogflareWeb.Utils
+  alias LogflareWeb.QueryComponents
+
   def update(assigns, socket) do
     {:ok, assign(socket, assigns)}
   end
@@ -15,31 +18,47 @@ defmodule LogflareWeb.Search.QueryDebugComponent do
         %{id: :modal_debug_log_events_link} -> assigns.search_op_log_events
         %{id: :modal_debug_log_aggregates_link} -> assigns.search_op_log_aggregates
       end)
+      |> assign_new(:sql_query, fn
+        %{search_op: search_op} when not is_nil(search_op) ->
+          Utils.sql_params_to_sql(search_op.sql_string, search_op.sql_params)
+          |> Utils.replace_table_with_source_name(search_op.source)
+
+        _ ->
+          nil
+      end)
 
     ~H"""
-    <div phx-hook="BigQuerySqlQueryFormatter" id="search-query-debug">
+    <div id="search-query-debug">
       <%= if @search_op do %>
         <div class="search-query-debug">
           <div>
             <% stats = @search_op.stats %>
+
+            <div class="tw-flex tw-items-start tw-gap-4">
+              <div class="tw-flex-1">
+                <h5 class="header-margin">BigQuery Query</h5>
+                <p>
+                  Actual SQL query used when querying for results. Use it in the BigQuery console if you need to.
+                </p>
+              </div>
+              <.link :if={not is_nil(@sql_query)} href={~p"/query?#{%{q: @sql_query}}"} class="btn btn-primary tw-flex-shrink-0 tw-self-start tw-mt-4">
+                Edit as query
+              </.link>
+            </div>
             <ul class="list-group">
-              <h5 class="header-margin">BigQuery Query</h5>
-              <p>
-                Actual SQL query used when querying for results. Use it in the BigQuery console if you need to.
-              </p>
               <li class="list-group-item">
-                <pre><code class="sql" id="search-op-sql-string"><%= @search_op.sql_string %></code></pre>
+                <QueryComponents.formatted_sql sql_string={@search_op.sql_string} params={@search_op.sql_params} />
               </li>
             </ul>
             <ul class="list-group list-group-horizontal">
               <li class="list-group-item flex-fill">
-                Total rows: <span class="my-badge my-badge-info"><%= stats[:total_rows] %></span>
+                Total rows: <span class="my-badge my-badge-info">{stats[:total_rows]}</span>
               </li>
               <li class="list-group-item flex-fill">
-                Total bytes processed: <span class="my-badge my-badge-info"><%= stats[:total_bytes_processed] %></span>
+                Total bytes processed: <span class="my-badge my-badge-info">{stats[:total_bytes_processed]}</span>
               </li>
               <li class="list-group-item flex-fill">
-                Total duration: <span class="my-badge my-badge-info"><%= stats[:total_duration] %>ms</span>
+                Total duration: <span class="my-badge my-badge-info">{stats[:total_duration]}ms</span>
               </li>
             </ul>
           </div>
@@ -49,7 +68,7 @@ defmodule LogflareWeb.Search.QueryDebugComponent do
             <ul class="list-group">
               <h5 class="header-margin">BigQuery</h5>
               <p>Viewable by Logflare admin only.</p>
-              <%= link("View BigQuery table",
+              {link("View BigQuery table",
                 to:
                   Logflare.Google.BigQuery.Debug.gen_bq_ui_url(
                     @user,
@@ -57,7 +76,7 @@ defmodule LogflareWeb.Search.QueryDebugComponent do
                   ),
                 class: "btn btn-primary",
                 target: "_blank"
-              ) %>
+              )}
             </ul>
             <ul class="list-group">
               <h5 class="header-margin">Ecto Query</h5>

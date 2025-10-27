@@ -1,5 +1,5 @@
 <%= if @show_modal do %>
-  <%= live_modal(@modal.body.module_or_template,
+  {live_modal(@modal.body.module_or_template,
     id: @modal.body.id,
     title: @modal.body.title,
     user: @user,
@@ -12,16 +12,16 @@
     team_user: @team_user,
     close: @modal.body[:close],
     return_to: @modal.body.return_to
-  ) %>
+  )}
 <% end %>
 
 <div id="source-logs-search-control" class="subhead " phx-hook="SourceLogsSearch">
   <div class="container mx-auto">
     <h5>
-      ~/logs/<%= link(@source.name,
+      ~/logs/{link(@source.name,
         to: Routes.source_path(@socket, :show, @source),
         class: "text-primary"
-      ) %>/search
+      )}/search
     </h5>
     <div class="log-settings tw-justify-between tw-mt-2">
       <.timezone user_preferences={@user.preferences} search_timezone={@search_timezone} />
@@ -34,10 +34,10 @@
           </a>
         </li>
         <li>
-          <%= LqlHelpers.lql_help_modal_link() %>
+          {LqlHelpers.lql_help_modal_link()}
         </li>
         <li>
-          <%= LqlHelpers.bq_source_schema_modal_link() %>
+          {LqlHelpers.bq_source_schema_modal_link()}
         </li>
         <li>
           <span id="search-uri-query" class="pointer-cursor" data-trigger="hover focus" data-delay="0" data-toggle="tooltip" data-placement="top" data-title="<span id=&quot;copy-tooltip&quot;>Copy uri</span>">
@@ -73,7 +73,7 @@
 </div>
 <div class="container source-logs-search-container console-text">
   <div id="logs-list-container">
-    <%= Phoenix.View.render(SearchView, "logs_list.html",
+    {Phoenix.View.render(SearchView, "logs_list.html",
       search_op_log_events: @search_op_log_events,
       last_query_completed_at: @last_query_completed_at,
       search_timezone: @search_timezone,
@@ -81,12 +81,11 @@
       source: @source,
       tailing?: @tailing?,
       querystring: @querystring,
-      user: @user,
-      flag_event_context: @flag_event_context
-    ) %>
+      user: @user
+    )}
   </div>
   <div>
-    <%= live_react_component(
+    {live_react_component(
       "Components.LogEventsChart",
       %{
         data: if(@search_op_log_aggregates, do: @search_op_log_aggregates.rows, else: []),
@@ -100,26 +99,26 @@
           )
       },
       id: "log-events-chart"
-    ) %>
+    )}
   </div>
   <div class="search-control">
     <.form :let={f} for={@search_form} action="#" phx-submit="start_search" phx-change="form_update" class="form-group">
       <div class="form-group form-text">
-        <%= text_input(f, :querystring,
+        {text_input(f, :querystring,
           phx_focus: :form_focus,
           phx_blur: :form_blur,
           value: @querystring,
           class: "form-control form-control-margin",
           list: "matches"
-        ) %>
-        <%= text_input(f, :search_timezone,
+        )}
+        {text_input(f, :search_timezone,
           class: "d-none",
           value: @search_timezone,
           id: "search-timezone"
-        ) %>
+        )}
         <datalist id="matches">
           <%= for s <- @search_history do %>
-            <option value={s.querystring}><%= s.querystring %></option>
+            <option value={s.querystring}>{s.querystring}</option>
           <% end %>
         </datalist>
       </div>
@@ -175,6 +174,9 @@
             <span class="hide-on-mobile fas-in-button">Reset</span>
           <% end %>
         </div>
+        <div class="pr-2 pt-1 pb-1">
+          <LogflareWeb.SearchLive.SearchComponents.create_menu user={@user} disabled={is_nil(@search_op_log_events) || is_nil(@search_op_log_aggregates)} />
+        </div>
       </div>
 
       <div class="d-flex flex-wrap align-items-center form-text pt-2">
@@ -182,33 +184,33 @@
           Chart period:
         </div>
         <div class="pr-3 pt-1 pb-1">
-          <%= select(f, :chart_period, ["day", "hour", "minute", "second"],
+          {select(f, :chart_period, ["day", "hour", "minute", "second"],
             selected: get_chart_period(@lql_rules, "minute"),
             class: "form-control form-control-sm"
-          ) %>
+          )}
         </div>
         <div class="pr-3 pt-1 pb-1 hide-on-mobile">
           Aggregate:
         </div>
         <div class="pr-3 pt-1 pb-1">
           <%= if @chart_aggregate_enabled? do %>
-            <%= select(
+            {select(
               f,
               :chart_aggregate,
               ["sum", "avg", "max", "p50", "p95", "p99", "count"],
               selected: get_chart_aggregate(@lql_rules, "count"),
               class: "form-control form-control-sm"
-            ) %>
+            )}
           <% else %>
             <span class="d-inline-block" tabindex="0" data-toggle="tooltip" title="Chart aggregate setting requires usage of chart: operator" trigger="hover click" delay="0">
-              <%= select(
+              {select(
                 f,
                 :chart_aggregate,
                 ["count"],
                 selected: "count",
                 class: "form-control form-control-sm",
                 style: "pointer-events: none;"
-              ) %>
+              )}
             </span>
           <% end %>
         </div>

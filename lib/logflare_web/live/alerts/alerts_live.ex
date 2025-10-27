@@ -40,7 +40,7 @@ defmodule LogflareWeb.AlertsLive do
 
     socket =
       socket
-      |> assign(:user_id, user_id)
+      |> assign(:user_id, user.id)
       |> assign(:user, user)
       #  must be below user_id assign
       |> refresh()
@@ -59,6 +59,19 @@ defmodule LogflareWeb.AlertsLive do
       |> assign_endpoints_and_sources()
 
     {:ok, socket}
+  end
+
+  def handle_params(params, _uri, %{assigns: %{live_action: :new}} = socket) do
+    {:ok, formatted_query} =
+      Map.get(params, "query", "")
+      |> SqlFmt.format_query()
+
+    params = Map.put(params, "query", formatted_query)
+
+    changeset =
+      Alerting.change_alert_query(%AlertQuery{}, params)
+
+    {:noreply, assign(socket, :changeset, changeset)}
   end
 
   def handle_params(params, _uri, socket) do

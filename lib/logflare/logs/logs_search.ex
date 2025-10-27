@@ -1,78 +1,40 @@
 defmodule Logflare.Logs.Search do
   @moduledoc false
 
-  alias Logflare.Logs.SearchOperation, as: SO
-  import Logflare.Logs.SearchOperations
-  alias Logflare.Logs.SearchQueries
-  alias Logflare.Sources.Source
-  alias Logflare.Sources
-  alias Logflare.BqRepo
-  alias Logflare.Utils.Tasks
+  alias Logflare.Backends.Adaptor.BigQueryAdaptor
   alias Logflare.Google.BigQuery.GCPConfig
+  alias Logflare.Google.BigQuery.GenUtils
+  alias Logflare.Logs.SearchOperation, as: SO
+  alias Logflare.Logs.SearchQueries
+  alias Logflare.Sources
+  alias Logflare.Sources.Source
   import Ecto.Query
+  import Logflare.Logs.SearchOperations
 
   @spec search(Logflare.Logs.SearchOperation.t()) :: {:error, any} | {:ok, %{events: any}}
   def search(%SO{} = so) do
-    so = get_and_put_partition_by(so)
-
-    tasks = [
-      Tasks.async(fn -> search_events(so) end)
-    ]
-
-    tasks_with_results = Task.yield_many(tasks, 30_000)
-
-    results =
-      tasks_with_results
-      |> Enum.map(fn {task, res} ->
-        res || Task.shutdown(task, :brutal_kill)
-      end)
-
-    [event_result] = results
-
-    case event_result do
-      {:ok, {:ok, events_so}} ->
+    so
+    |> get_and_put_partition_by()
+    |> search_events()
+    |> case do
+      {:ok, events_so} ->
         {:ok, %{events: events_so}}
-
-      {:ok, {:error, result_so}} ->
-        {:error, result_so}
 
       {:error, result_so} ->
         {:error, result_so}
-
-      nil ->
-        {:error, "Search task timeout"}
     end
   end
 
   def aggs(%SO{} = so) do
-    so = get_and_put_partition_by(so)
-
-    tasks = [
-      Tasks.async(fn -> search_result_aggregates(so) end)
-    ]
-
-    tasks_with_results = Task.yield_many(tasks, 30_000)
-
-    results =
-      tasks_with_results
-      |> Enum.map(fn {task, res} ->
-        res || Task.shutdown(task, :brutal_kill)
-      end)
-
-    [agg_result] = results
-
-    case agg_result do
-      {:ok, {:ok, agg_so}} ->
+    so
+    |> get_and_put_partition_by()
+    |> search_result_aggregates()
+    |> case do
+      {:ok, agg_so} ->
         {:ok, %{aggregates: agg_so}}
-
-      {:ok, {:error, result_so}} ->
-        {:error, result_so}
 
       {:error, result_so} ->
         {:error, result_so}
-
-      nil ->
-        {:error, "Search task timeout"}
     end
   end
 
@@ -86,7 +48,6 @@ defmodule Logflare.Logs.Search do
          %{error: nil} = so <- apply_timestamp_filter_rules(so),
          %{error: nil} = so <- apply_filters(so),
          %{error: nil} = so <- unnest_log_level(so),
-         %{error: nil} = so <- apply_to_sql(so),
          %{error: nil} = so <- do_query(so),
          %{error: nil} = so <- apply_warning_conditions(so),
          %{error: nil} = so <- put_stats(so) do
@@ -104,7 +65,6 @@ defmodule Logflare.Logs.Search do
          %{error: nil} = so <- apply_local_timestamp_correction(so),
          %{error: nil} = so <- apply_timestamp_filter_rules(so),
          %{error: nil} = so <- apply_numeric_aggs(so),
-         %{error: nil} = so <- apply_to_sql(so),
          %{error: nil} = so <- do_query(so),
          %{error: nil} = so <- process_query_result(so),
          %{error: nil} = so <- add_missing_agg_timestamps(so),
@@ -184,7 +144,11 @@ defmodule Logflare.Logs.Search do
       |> limit(100)
 
     bq_project_id = source.user.bigquery_project_id || GCPConfig.default_project_id()
-    BqRepo.query(source.user, bq_project_id, q)
+    %{bigquery_dataset_id: dataset_id} = GenUtils.get_bq_user_info(source.token)
+
+    BigQueryAdaptor.execute_query({bq_project_id, dataset_id, source.user.id}, q,
+      query_type: :search
+    )
   end
 
   def get_and_put_partition_by(%SO{} = so) do

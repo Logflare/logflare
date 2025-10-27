@@ -66,9 +66,6 @@ defmodule Logflare.Backends.Adaptor.IncidentioAdaptor do
   end
 
   @impl Logflare.Backends.Adaptor
-  def execute_query(_ident, _query, _opts), do: {:error, :not_implemented}
-
-  @impl Logflare.Backends.Adaptor
   def transform_config(%_{config: config} = backend) do
     url = "https://api.incident.io/v2/alert_events/http/#{config[:alert_source_config_id]}"
 
@@ -99,5 +96,10 @@ defmodule Logflare.Backends.Adaptor.IncidentioAdaptor do
 
     changeset
     |> validate_required([:api_token, :alert_source_config_id])
+  end
+
+  @impl Logflare.Backends.Adaptor
+  def redact_config(config) do
+    Map.put(config, :api_token, "REDACTED")
   end
 end

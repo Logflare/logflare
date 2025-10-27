@@ -9,6 +9,7 @@ defmodule Logflare.Alerting do
   alias Logflare.Alerting.AlertsScheduler
   alias Logflare.Backends
   alias Logflare.Backends.Adaptor
+  alias Logflare.Backends.Adaptor.BigQueryAdaptor
   alias Logflare.Backends.Adaptor.SlackAdaptor
   alias Logflare.Backends.Adaptor.WebhookAdaptor
   alias Logflare.Cluster
@@ -369,8 +370,9 @@ defmodule Logflare.Alerting do
 
   defp on_scheduler_node(func) do
     with pid when is_pid(pid) <- GenServer.whereis(scheduler_name()) do
-      node = node(pid)
-      :erpc.call(node, func, 5000)
+      pid
+      |> node()
+      |> Cluster.Utils.rpc_call(func)
     end
   end
 
@@ -407,18 +409,21 @@ defmodule Logflare.Alerting do
          {:ok, transformed_query} <-
            Logflare.Sql.transform(alert_query.language, expanded_query, alert_query.user_id),
          {:ok, result} <-
-           Logflare.BqRepo.query_with_sql_and_params(
-             alert_query.user,
-             alert_query.user.bigquery_project_id || env_project_id(),
-             transformed_query,
-             [],
+           BigQueryAdaptor.execute_query(
+             {
+               alert_query.user.bigquery_project_id || env_project_id(),
+               alert_query.user.bigquery_dataset_id,
+               alert_query.user.id
+             },
+             {transformed_query, []},
              parameterMode: "NAMED",
              maxResults: 1000,
              location: alert_query.user.bigquery_dataset_location,
              use_query_cache: use_query_cache,
              labels: %{
                "alert_id" => alert_query.id
-             }
+             },
+             query_type: :alerts
            ) do
       {:ok, result}
     else

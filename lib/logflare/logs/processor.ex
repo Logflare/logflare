@@ -8,7 +8,6 @@ defmodule Logflare.Logs.Processor do
   """
 
   alias Logflare.Backends
-  alias Logflare.Logs
   alias Logflare.Sources.Source
 
   @doc """
@@ -44,20 +43,13 @@ defmodule Logflare.Logs.Processor do
       )
 
       :telemetry.span([:logflare, :logs, :processor, :ingest, :store], metadata, fn ->
-        result = store(source, batch)
+        Backends.ensure_source_sup_started(source)
+        result = Backends.ingest_logs(batch, source)
 
-        new_meta = Map.merge(metadata, %{success: result == :ok})
+        new_meta = Map.merge(metadata, %{success: elem(result, 0) == :ok})
 
         {{result, new_meta}, new_meta}
       end)
     end)
   end
-
-  defp store(%Source{v2_pipeline: true} = source, batch) do
-    Backends.ensure_source_sup_started(source)
-    Backends.ingest_logs(batch, source)
-  end
-
-  defp store(%Source{v2_pipeline: false} = source, batch),
-    do: Logs.ingest_logs(batch, source)
 end

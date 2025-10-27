@@ -28,6 +28,8 @@ defmodule Logflare.User do
              :bigquery_project_id,
              :bigquery_dataset_location,
              :bigquery_dataset_id,
+             :bigquery_reservation_alerts,
+             :bigquery_reservation_search,
              :api_quota,
              :company,
              :token,
@@ -77,6 +79,8 @@ defmodule Logflare.User do
     field :bigquery_project_id, :string
     field :bigquery_dataset_location, :string
     field :bigquery_dataset_id, :string
+    field :bigquery_reservation_search, :string
+    field :bigquery_reservation_alerts, :string
     field :bigquery_processed_bytes_limit, :integer
     field :bigquery_enable_managed_service_accounts, :boolean, default: false
     field :api_quota, :integer, default: @default_user_api_quota
@@ -114,6 +118,8 @@ defmodule Logflare.User do
     :bigquery_project_id,
     :bigquery_dataset_location,
     :bigquery_dataset_id,
+    :bigquery_reservation_alerts,
+    :bigquery_reservation_search,
     :bigquery_processed_bytes_limit,
     :bigquery_enable_managed_service_accounts,
     :valid_google_account,
@@ -183,12 +189,6 @@ defmodule Logflare.User do
 
   defp add_api_key(changeset), do: changeset
 
-  def preferences_changeset(user, attrs) do
-    user
-    |> cast(attrs, [:preferences])
-    |> cast_embed([:preferences])
-  end
-
   def default_validations(changeset, user) do
     changeset
     |> validate_required([:email, :provider, :token, :provider_uid, :api_key])
@@ -210,7 +210,9 @@ defmodule Logflare.User do
         | bigquery_project_id: nil,
           bigquery_dataset_id: nil,
           bigquery_dataset_location: nil,
-          bigquery_processed_bytes_limit: nil
+          bigquery_processed_bytes_limit: nil,
+          bigquery_reservation_alerts: nil,
+          bigquery_reservation_search: nil
       }
     else
       user

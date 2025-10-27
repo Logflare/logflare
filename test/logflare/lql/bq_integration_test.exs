@@ -1,12 +1,10 @@
-defmodule Logflare.BigQuery.EctoQueryBQTest do
-  @moduledoc false
-
+defmodule Logflare.Lql.BqIntegrationTest do
   use Logflare.DataCase
 
   alias GoogleApi.BigQuery.V2.Model.QueryParameter
   alias GoogleApi.BigQuery.V2.Model.QueryParameterType
   alias GoogleApi.BigQuery.V2.Model.QueryParameterValue
-  alias Logflare.EctoQueryBQ
+  alias Logflare.Backends.Adaptor.BigQueryAdaptor
   alias Logflare.Lql
   alias Logflare.Lql.Rules.FilterRule
 
@@ -18,7 +16,7 @@ defmodule Logflare.BigQuery.EctoQueryBQTest do
     {:ok, source: source, user: user}
   end
 
-  describe "apply_filter_rules for EctoQueryBQ.SQL" do
+  describe "`apply_filter_rules` for BigQuery SQL" do
     test "operators are translated correctly" do
       operator_cases =
         for operator <- [:=, :<, :<=, :>, :>=] do
@@ -67,7 +65,7 @@ defmodule Logflare.BigQuery.EctoQueryBQTest do
           Ecto.Query.from(@bq_table_id, select: [:timestamp, :metadata])
           |> Lql.apply_filter_rules([rule])
 
-        {sql, params} = EctoQueryBQ.SQL.to_sql_params(query)
+        {:ok, {sql, params}} = BigQueryAdaptor.ecto_to_sql(query, [])
         assert sql =~ "SELECT s0.timestamp, s0.metadata"
         assert sql =~ "FROM #{@bq_table_id} AS s0"
 
@@ -110,7 +108,7 @@ defmodule Logflare.BigQuery.EctoQueryBQTest do
         |> select([:timestamp, :metadata])
         |> Lql.apply_filter_rules(filter_rules)
 
-      {sql, _params} = EctoQueryBQ.SQL.to_sql_params(query)
+      {:ok, {sql, _params}} = BigQueryAdaptor.ecto_to_sql(query, [])
       assert sql =~ "0.top = ?"
       assert sql =~ "1.nested = ?"
     end
@@ -129,7 +127,7 @@ defmodule Logflare.BigQuery.EctoQueryBQTest do
         |> select([:timestamp, :metadata])
         |> Lql.apply_filter_rules(filter_rules)
 
-      {sql, _params} = EctoQueryBQ.SQL.to_sql_params(query)
+      {:ok, {sql, _params}} = BigQueryAdaptor.ecto_to_sql(query, [])
 
       counts = (sql |> String.split("INNER JOIN UNNEST") |> length()) - 1
       assert counts > 5
@@ -154,7 +152,7 @@ defmodule Logflare.BigQuery.EctoQueryBQTest do
         |> select([:timestamp, :metadata])
         |> Lql.apply_filter_rules(filter_rules)
 
-      {sql, params} = EctoQueryBQ.SQL.to_sql_params(query)
+      {:ok, {sql, params}} = BigQueryAdaptor.ecto_to_sql(query, [])
       assert sql =~ "AND"
       assert length(params) == 2
     end
@@ -171,7 +169,7 @@ defmodule Logflare.BigQuery.EctoQueryBQTest do
         |> select([:timestamp, :metadata])
         |> Lql.apply_filter_rules([filter_rule])
 
-      {sql, params} = EctoQueryBQ.SQL.to_sql_params(query)
+      {:ok, {sql, params}} = BigQueryAdaptor.ecto_to_sql(query, [])
       assert sql =~ "BETWEEN ? AND ?"
       assert length(params) == 2
     end
@@ -188,7 +186,7 @@ defmodule Logflare.BigQuery.EctoQueryBQTest do
         |> select([:timestamp, :metadata])
         |> Lql.apply_filter_rules([filter_rule])
 
-      {sql, params} = EctoQueryBQ.SQL.to_sql_params(query)
+      {:ok, {sql, params}} = BigQueryAdaptor.ecto_to_sql(query, [])
       assert sql =~ "IS NULL"
       assert params == []
     end
@@ -205,7 +203,7 @@ defmodule Logflare.BigQuery.EctoQueryBQTest do
         |> select([:timestamp, :metadata])
         |> Lql.apply_filter_rules([filter_rule])
 
-      {sql, params} = EctoQueryBQ.SQL.to_sql_params(query)
+      {:ok, {sql, params}} = BigQueryAdaptor.ecto_to_sql(query, [])
       assert sql =~ "STRPOS(s0.event_message, ?) > 0"
       assert length(params) == 1
     end
@@ -222,7 +220,7 @@ defmodule Logflare.BigQuery.EctoQueryBQTest do
         |> select([:timestamp, :metadata])
         |> Lql.apply_filter_rules([filter_rule])
 
-      {sql, params} = EctoQueryBQ.SQL.to_sql_params(query)
+      {:ok, {sql, params}} = BigQueryAdaptor.ecto_to_sql(query, [])
       assert sql =~ "IN UNNEST(f1.tags)"
       assert length(params) == 1
     end
@@ -239,7 +237,7 @@ defmodule Logflare.BigQuery.EctoQueryBQTest do
         |> select([:timestamp, :metadata])
         |> Lql.apply_filter_rules([filter_rule])
 
-      {sql, params} = EctoQueryBQ.SQL.to_sql_params(query)
+      {:ok, {sql, params}} = BigQueryAdaptor.ecto_to_sql(query, [])
       assert sql =~ "EXISTS(SELECT * FROM UNNEST(f1.tags) AS x WHERE REGEXP_CONTAINS(x, ?))"
       assert length(params) == 1
     end
@@ -257,7 +255,7 @@ defmodule Logflare.BigQuery.EctoQueryBQTest do
         |> select([:timestamp, :metadata])
         |> Lql.apply_filter_rules([filter_rule])
 
-      {sql, params} = EctoQueryBQ.SQL.to_sql_params(query)
+      {:ok, {sql, params}} = BigQueryAdaptor.ecto_to_sql(query, [])
       assert sql =~ "NOT ("
       assert length(params) == 1
     end
@@ -286,7 +284,7 @@ defmodule Logflare.BigQuery.EctoQueryBQTest do
         |> select([:timestamp, :metadata])
         |> Lql.apply_filter_rules(filter_rules)
 
-      {sql, params} = EctoQueryBQ.SQL.to_sql_params(query)
+      {:ok, {sql, params}} = BigQueryAdaptor.ecto_to_sql(query, [])
 
       # Should not have UNNEST for top-level fields
       refute sql =~ "UNNEST(s0.event_message)"
@@ -325,7 +323,7 @@ defmodule Logflare.BigQuery.EctoQueryBQTest do
         |> select([:timestamp, :metadata])
         |> Lql.apply_filter_rules(filter_rules)
 
-      {sql, params} = EctoQueryBQ.SQL.to_sql_params(query)
+      {:ok, {sql, params}} = BigQueryAdaptor.ecto_to_sql(query, [])
 
       # Should have UNNEST for nested fields
       assert sql =~ "UNNEST(s0.metadata)"
@@ -350,7 +348,7 @@ defmodule Logflare.BigQuery.EctoQueryBQTest do
         |> select([:timestamp, :metadata])
         |> Lql.apply_filter_rules([filter_rule])
 
-      {sql, params} = EctoQueryBQ.SQL.to_sql_params(query)
+      {:ok, {sql, params}} = BigQueryAdaptor.ecto_to_sql(query, [])
 
       # Should have multiple UNNESTs
       assert sql =~ "UNNEST(s0.metadata) AS f1"
@@ -380,7 +378,7 @@ defmodule Logflare.BigQuery.EctoQueryBQTest do
         |> select([:timestamp, :metadata])
         |> Lql.apply_filter_rules(filter_rules)
 
-      {sql, params} = EctoQueryBQ.SQL.to_sql_params(query)
+      {:ok, {sql, params}} = BigQueryAdaptor.ecto_to_sql(query, [])
 
       # Should have UNNESTs for nested paths
       unnest_count = (sql |> String.split("UNNEST") |> length()) - 1
@@ -419,7 +417,7 @@ defmodule Logflare.BigQuery.EctoQueryBQTest do
         |> select([:timestamp, :metadata])
         |> Lql.apply_filter_rules(filter_rules)
 
-      {_sql, params} = EctoQueryBQ.SQL.to_sql_params(query)
+      {:ok, {_sql, params}} = BigQueryAdaptor.ecto_to_sql(query, [])
 
       assert length(params) == 4
 
@@ -447,7 +445,7 @@ defmodule Logflare.BigQuery.EctoQueryBQTest do
           |> select([:timestamp, :metadata])
           |> Lql.apply_filter_rules(filter_rules)
 
-        {sql, _params} = EctoQueryBQ.SQL.to_sql_params(query)
+        {:ok, {sql, _params}} = BigQueryAdaptor.ecto_to_sql(query, [])
 
         assert sql =~ "WHERE ((f1.a IS NULL) OR NOT (f1.a #{operator} ?))"
       end
@@ -468,7 +466,7 @@ defmodule Logflare.BigQuery.EctoQueryBQTest do
         |> select([:timestamp, :metadata])
         |> Lql.apply_filter_rules(filter_rules)
 
-      {sql, _params} = EctoQueryBQ.SQL.to_sql_params(query)
+      {:ok, {sql, _params}} = BigQueryAdaptor.ecto_to_sql(query, [])
 
       assert sql =~ "WHERE (NOT (f1.a IS NULL))"
       refute sql =~ "IS NULL) OR NOT"
@@ -481,7 +479,7 @@ defmodule Logflare.BigQuery.EctoQueryBQTest do
         from(@bq_table_id)
         |> select([:id])
 
-      {sql, _params} = EctoQueryBQ.SQL.to_sql_params(query)
+      {:ok, {sql, _params}} = BigQueryAdaptor.ecto_to_sql(query, [])
       assert sql == "SELECT s0.id FROM some-table AS s0", "table is unquoted"
 
       subquery1 = from(t in @bq_table_id, select: %{id: t.id, name: t.name})
@@ -494,7 +492,7 @@ defmodule Logflare.BigQuery.EctoQueryBQTest do
           select: [main.id, sub.count]
         )
 
-      {sql, _params} = EctoQueryBQ.SQL.to_sql_params(query)
+      {:ok, {sql, _params}} = BigQueryAdaptor.ecto_to_sql(query, [])
 
       assert sql ==
                "SELECT s0.id, s1.count FROM some-table AS s0 INNER JOIN (SELECT COUNT(*) AS count FROM (SELECT sss0.id AS id, sss0.name AS name FROM some-table AS sss0) AS ss0) AS s1 ON TRUE"

@@ -428,10 +428,23 @@ defmodule Logflare.Backends do
     with %Backend{} = backend <- get_backend(backend_id) do
       sources = Sources.list_sources(backend_id: backend_id)
 
-      for source <- sources do
-        Cluster.Utils.rpc_multicall(SourceSup, :start_backend_child, [source, backend])
-        Cluster.Utils.rpc_multicall(__MODULE__, :clear_list_backends_cache, [source.id])
+      if sources != [] do
+        Cluster.Utils.rpc_multicast(__MODULE__, :sync_backends_local, [backend, sources])
       end
+    end
+
+    :ok
+  end
+
+  @doc """
+  Syncs a backend for local node for v2 pipeline sources.
+  expects the backend and sources to be loaded from the database.
+  """
+  @spec sync_backends_local(Backend.t(), [Source.t()]) :: :ok
+  def sync_backends_local(%Backend{} = backend, sources) do
+    for source <- sources do
+      SourceSup.start_backend_child(source, backend)
+      clear_list_backends_cache(source.id)
     end
 
     :ok
@@ -481,12 +494,9 @@ defmodule Logflare.Backends do
           do_telemetry(:drop, le)
           {events, errors}
 
-        %{valid: false} = le ->
+        %{pipeline_error: %_{message: message}, valid: false} = le ->
           do_telemetry(:invalid, le)
-          {events, errors}
-
-        %{pipeline_error: err} = le when err != nil ->
-          {events, [le.pipeline_error.message | errors]}
+          {events, [message | errors]}
 
         le ->
           {[le | events], errors}
@@ -532,27 +542,29 @@ defmodule Logflare.Backends do
     backends = __MODULE__.Cache.list_backends(source_id: source.id)
 
     for backend <- [nil | backends] do
-      if backend do
-        telemetry_metadata = %{backend_type: backend.type}
+      {backend_id, backend_type} =
+        if backend do
+          {backend.id, backend.type}
+        else
+          {nil, SingleTenant.backend_type()}
+        end
 
-        :telemetry.span([:logflare, :backends, :ingest, :dispatch], telemetry_metadata, fn ->
-          log_events = maybe_pre_ingest(source, backend, log_events)
-          IngestEventQueue.add_to_table({source.id, backend.id}, log_events)
+      telemetry_metadata = %{backend_type: backend_type}
 
-          :telemetry.execute(
-            [:logflare, :backends, :ingest, :count],
-            %{count: length(log_events)},
-            %{backend_type: backend.type}
-          )
+      :telemetry.span([:logflare, :backends, :ingest, :dispatch], telemetry_metadata, fn ->
+        log_events =
+          if backend, do: maybe_pre_ingest(source, backend, log_events), else: log_events
 
-          {:ok, telemetry_metadata}
-        end)
-      else
-        # Handle nil backend (system default)
-        log_events = log_events
-        backend_id = nil
         IngestEventQueue.add_to_table({source.id, backend_id}, log_events)
-      end
+
+        :telemetry.execute(
+          [:logflare, :backends, :ingest, :dispatch],
+          %{count: length(log_events)},
+          %{backend_type: backend_type}
+        )
+
+        {:ok, telemetry_metadata}
+      end)
     end
   end
 
@@ -575,7 +587,11 @@ defmodule Logflare.Backends do
   iex> Backends.via_source(source, :buffer)
   """
   @spec via_source(Source.t(), term()) :: tuple()
-  @spec via_source(Source.t() | non_neg_integer(), module(), Backend.t() | non_neg_integer()) ::
+  @spec via_source(
+          Source.t() | non_neg_integer(),
+          module(),
+          Backend.t() | non_neg_integer() | nil
+        ) ::
           tuple()
   def via_source(%Source{id: sid}, mod, backend), do: via_source(sid, mod, backend)
   def via_source(source, mod, %Backend{id: bid}), do: via_source(source, mod, bid)
@@ -634,7 +650,6 @@ defmodule Logflare.Backends do
   """
   @spec start_source_sup(Source.t()) :: :ok | {:error, :already_started}
   def start_source_sup(%Source{} = source) do
-    # ensure that v1 pipeline source is already down
     case DynamicSupervisor.start_child(
            {:via, PartitionSupervisor, {SourcesSup, source.id}},
            {SourceSup, source}
@@ -816,12 +831,12 @@ defmodule Logflare.Backends do
   @doc """
   Lists latest recent logs of only the local cache.
   """
-  @spec list_recent_logs_local(Source.t()) :: [LogEvent.t()]
-  @spec list_recent_logs_local(Source.t(), n :: number()) :: [LogEvent.t()]
+  @spec list_recent_logs_local(Source.t() | pos_integer()) :: [LogEvent.t()]
+  @spec list_recent_logs_local(Source.t() | pos_integer(), n :: number()) :: [LogEvent.t()]
   def list_recent_logs_local(source, n \\ 100)
   def list_recent_logs_local(%Source{id: id}, n), do: list_recent_logs_local(id, n)
 
-  def list_recent_logs_local(source_id, n) do
+  def list_recent_logs_local(source_id, n) when is_integer(source_id) do
     {:ok, events} = IngestEventQueue.fetch_events({source_id, nil}, n)
 
     events

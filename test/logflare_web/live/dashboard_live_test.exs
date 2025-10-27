@@ -3,7 +3,6 @@ defmodule LogflareWeb.DashboardLiveTest do
   use LogflareWeb.ConnCase
 
   alias Logflare.Repo
-  alias Logflare.Sources.Source
 
   setup %{conn: conn} do
     insert(:plan)
@@ -11,7 +10,7 @@ defmodule LogflareWeb.DashboardLiveTest do
     team = insert(:team, user: user)
     source = insert(:source, user: user)
     user = %{user | team: team}
-    conn = conn |> put_session(:user_id, user.id)
+    conn = conn |> login_user(user)
 
     {:ok, user: user, source: source, conn: conn}
   end
@@ -33,7 +32,7 @@ defmodule LogflareWeb.DashboardLiveTest do
         Logflare.SingleTenant.get_default_user()
 
       insert(:team, user: user)
-      conn = conn |> put_session(:user_id, user.id) |> assign(:user, user)
+      conn = conn |> login_user(user)
       [user: user, conn: conn]
     end
 
@@ -81,30 +80,39 @@ defmodule LogflareWeb.DashboardLiveTest do
 
   describe "saved searches" do
     setup %{source: source} do
-      {:ok, saved_search} =
-        Logflare.SavedSearches.insert(
-          %{
-            lql_rules: [],
-            querystring: "test query",
-            saved_by_user: true,
-            tailing: true
-          },
-          source
-        )
-
-      [saved_search: saved_search]
+      [saved_search: insert(:saved_search, source: source)]
     end
 
-    test "renders saved searches", %{conn: conn, source: source} do
+    test "render saved searches", %{conn: conn, saved_search: saved_search} do
       {:ok, _view, html} = live(conn, "/dashboard")
 
       assert html =~ "Saved Searches"
-      assert html =~ "test query"
-      assert html =~ source.name
+      assert html =~ saved_search.querystring
+    end
+
+    test "delete saved search ", %{conn: conn, saved_search: saved_search} do
+      {:ok, view, html} = live(conn, "/dashboard")
+
+      assert html =~ saved_search.querystring
+
+      view
+      |> element("[phx-click='delete_saved_search'][phx-value-id='#{saved_search.id}']")
+      |> render_click()
+
+      {:ok, _view, html} = live(conn, "/dashboard")
+
+      refute html =~ saved_search.querystring
+    end
+
+    test "shows error when deleting non-existent saved search", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/dashboard")
+
+      assert render_hook(view, "delete_saved_search", %{"id" => "999999"}) =~
+               "Saved search not found"
     end
   end
 
-  describe "dashboard - home team" do
+  describe "dashboard - viewing home team as user" do
     setup %{user: user} do
       other_team = insert(:team, name: "Other Team")
       forbidden_team = insert(:team, name: "Not My Team")
@@ -170,23 +178,36 @@ defmodule LogflareWeb.DashboardLiveTest do
     end
   end
 
-  describe "team member management" do
-    setup %{user: user} do
-      member = insert(:team_user, team: user.team)
-      [member: member]
+  describe "dashboard - viewing home team as team member" do
+    setup %{user: user, conn: conn} do
+      other_team = insert(:team, name: "Other Team")
+      forbidden_team = insert(:team, name: "Not My Team")
+
+      team_user = insert(:team_user, team: other_team)
+      other_member = insert(:team_user, team: user.team)
+
+      conn = conn |> login_user(user, team_user)
+
+      [
+        other_team: other_team,
+        forbidden_team: forbidden_team,
+        other_member: other_member,
+        team_user: team_user,
+        conn: conn
+      ]
     end
 
-    test "removes team member", %{conn: conn, member: member} do
+    test "teams list", %{conn: conn, other_team: other_team} do
       {:ok, view, _html} = live(conn, "/dashboard")
 
-      assert view
-             |> has_element?(~s|a[href="/profile/#{member.id}"][data-method="delete"]|)
+      assert view |> has_element?("#teams li", "#{other_team.name}")
+    end
 
-      delete(conn, ~p"/profile/#{member.id}")
-
+    test "team members list", %{conn: conn, user: user, other_member: other_member} do
       {:ok, view, _html} = live(conn, "/dashboard")
 
-      refute view |> has_element?("#members li", "#{member.name}")
+      refute view |> element("#members li", "#{user.name}") |> render =~ "owner, you"
+      assert view |> has_element?("#members li", "#{other_member.name}")
     end
   end
 
@@ -206,47 +227,56 @@ defmodule LogflareWeb.DashboardLiveTest do
       assert view |> element("li[id=source-#{source.token}]") |> render =~ "ttl: 3 days"
     end
 
-    test "updates source metrics", %{conn: conn, source: source} do
-      {:ok, view, _html} = live(conn, "/dashboard")
-
+    test "updates source metrics", %{conn: conn, source: source, user: user} do
       buffer = :rand.uniform(100)
       log_count = :rand.uniform(100)
+      avg_rate = :rand.uniform(100)
+      max_rate = :rand.uniform(100)
+      last_rate = :rand.uniform(100)
 
-      rates_payload = %{
-        average_rate: :rand.uniform(100),
-        max_rate: :rand.uniform(100),
-        last_rate: :rand.uniform(100),
-        source_token: source.token
-      }
+      Logflare.Cluster.Utils
+      |> stub(:rpc_multicall, fn
+        Logflare.PubSubRates.Cache, :get_all_local_metrics, [user_id] when user_id == user.id ->
+          sources = Logflare.Sources.list_sources_by_user(user_id)
 
-      Source.ChannelTopics.local_broadcast_buffer(%{
-        buffer: buffer,
-        source_id: source.id,
-        backend_id: nil
-      })
+          node_metrics =
+            Enum.reduce(sources, %{}, fn source, acc ->
+              Map.put(acc, source.token, %{
+                rates: %{average_rate: avg_rate, last_rate: last_rate, max_rate: max_rate},
+                buffer: %{len: buffer},
+                inserts: %{"node" => %{bq_inserts: log_count, node_inserts: 0}}
+              })
+            end)
 
-      Source.ChannelTopics.local_broadcast_log_count(%{
-        log_count: log_count,
-        source_token: source.token
-      })
+          {
+            [node_metrics],
+            []
+          }
+      end)
 
-      Source.ChannelTopics.local_broadcast_rates(rates_payload)
+      {:ok, view, _html} = live(conn, "/dashboard")
+
+      assert {poller_pid, _} = :syn.lookup(:core, {Logflare.Sources.UserMetricsPoller, user.id})
+
+      send(poller_pid, :poll_metrics)
+      # wait for broadcast
+      Process.sleep(100)
 
       assert view |> element("li[id=source-#{source.token}] [title^=Pipelines]") |> render =~
                to_string(buffer)
 
-      assert view |> has_element?("span[id=#{source.token}-rate]", "#{rates_payload.last_rate}/s")
+      assert view |> has_element?("span[id=#{source.token}-rate]", "#{last_rate}/s")
 
       assert view
              |> has_element?(
                "span[id=#{source.token}-avg-rate]",
-               to_string(rates_payload.average_rate)
+               to_string(avg_rate)
              )
 
       assert view
              |> has_element?(
                "span[id=#{source.token}-max-rate]",
-               to_string(rates_payload.max_rate)
+               to_string(max_rate)
              )
 
       assert view |> has_element?("[id^=source-#{source.token}-inserts]", to_string(log_count))

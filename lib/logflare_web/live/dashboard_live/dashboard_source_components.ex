@@ -3,10 +3,11 @@ defmodule LogflareWeb.DashboardLive.DashboardSourceComponents do
   use LogflareWeb, :routes
   use Phoenix.Component
 
+  alias Logflare.Sources.Source
   alias Phoenix.LiveView.JS
 
-  attr :source, Logflare.Sources.Source, required: true
-  attr :metrics, Logflare.Sources.Source.Metrics, required: true
+  attr :source, Source, required: true
+  attr :metrics, Source.Metrics, required: true
   attr :plan, :map, required: true
   attr :fade_in, :boolean, default: false
 
@@ -25,9 +26,9 @@ defmodule LogflareWeb.DashboardLive.DashboardSourceComponents do
           </.link>
         </div>
         <div class="source-link word-break-all">
-          <.link href={~p"/sources/#{@source}"} class="tw-text-white"><%= @source.name %></.link>
+          <.link href={~p"/sources/#{@source}"} class="tw-text-white">{@source.name}</.link>
           <span>
-            <.inserts_badge count={@metrics.inserts_string} source_token={@source.token} fade_in={@fade_in} />
+            <.inserts_badge count={@metrics.inserts} source_token={@source.token} fade_in={@fade_in} />
           </span>
         </div>
       </div>
@@ -55,7 +56,7 @@ defmodule LogflareWeb.DashboardLive.DashboardSourceComponents do
             title="Copy this"
             id={String.replace(Atom.to_string(@source.token), ~r/[0-9]|-/, "")}
           >
-            <%= @source.token %>
+            {@source.token}
           </span>
         </small>
       </div>
@@ -77,51 +78,51 @@ defmodule LogflareWeb.DashboardLive.DashboardSourceComponents do
       <.metric>
         latest: <span :if={@metrics.latest == 0}>not initialized</span>
         <span :if={@metrics.latest != 0} class="log-datestamp" id={metric_id(@source, "latest")} data-timestamp={@metrics.latest}>
-          <span xclass="tw-sr-only tw-inline-block tw-invisible tw-w-24"><%= @metrics.latest %></span>
+          <span xclass="tw-sr-only tw-inline-block tw-invisible tw-w-24">{@metrics.latest}</span>
         </span>
       </.metric>
 
       <.metric>
-        rate: <span id={metric_id(@source, "rate")}><%= @metrics.rate %>/s</span>
+        rate: <span id={metric_id(@source, "rate")}>{@metrics.rate}/s</span>
       </.metric>
 
       <.metric>
         avg:
         <.tooltip :if={rate_limit_warning?(@source, @rate_limit)} id={metric_id(@source, "avg-rate")} class="my-badge my-badge-warning" placement="left" title={"Source rate limit is avg #{@rate_limit} events/sec! Upgrade for more."}>
-          <%= @metrics.avg %>
+          {@metrics.avg}
         </.tooltip>
-        <span :if={not rate_limit_warning?(@source, @rate_limit)} id={metric_id(@source, "avg-rate")}><%= @metrics.avg %></span>
+        <span :if={not rate_limit_warning?(@source, @rate_limit)} id={metric_id(@source, "avg-rate")}>{@metrics.avg}</span>
       </.metric>
 
       <.metric>
-        max: <span id={metric_id(@source, "max-rate")}><%= @metrics.max %></span>
+        max: <span id={metric_id(@source, "max-rate")}>{@metrics.max}</span>
       </.metric>
 
       <.metric>
         buffer:
         <.tooltip title={"Pipelines #{pipeline_count(@source)}"} id={metric_id(@source, "buffer")}>
-          <%= @metrics.buffer %>
+          {@metrics.buffer}
         </.tooltip>
       </.metric>
 
       <.metric>
         fields:
-        <.tooltip :if={fields_limit_warning?(@source, @fields_limit)} placement="left" class="my-badge my-badge-warning" title={"Max #{@fields_limit} fields per source! Data in new fields are ignored. Upgrade for more."}>
-          <%= @metrics.fields %>
+        <.tooltip :if={fields_limit_warning?(@source, @fields_limit)} id={metric_id(@source, "fields")} placement="left" class="my-badge my-badge-warning" title={"Max #{@fields_limit} fields per source! Data in new fields are ignored. Upgrade for more."}>
+          {@metrics.fields}
         </.tooltip>
-        <span :if={not fields_limit_warning?(@source, @fields_limit)}><%= @metrics.fields %></span>
+        <span :if={not fields_limit_warning?(@source, @fields_limit)}>{@metrics.fields}</span>
       </.metric>
 
       <.metric>
         rejected:
         <.link :if={@metrics.rejected > 0} href={~p"/sources/#{@source}/rejected"}>
-          <.tooltip class="my-badge my-badge-warning" placement="left" title="Some events didn't validate!"><%= @metrics.rejected %></.tooltip>
+          <.tooltip class="my-badge my-badge-warning" id={metric_id(@source, "rejected")} placement="left" title="Some events didn't validate!">{@metrics.rejected}</.tooltip>
         </.link>
-        <span :if={@metrics.rejected == 0} id={metric_id(@source, "rejected")}><%= @metrics.rejected %></span>
+        <span :if={@metrics.rejected == 0} id={metric_id(@source, "rejected")}>{@metrics.rejected}</span>
       </.metric>
 
       <.metric>
-        ttl: <%= @source.retention_days %> <%= if(@source.retention_days == 1, do: "day", else: "days") %>
+        ttl: {@source.retention_days} {if(@source.retention_days == 1, do: "day", else: "days")}
       </.metric>
     </div>
     """
@@ -132,7 +133,7 @@ defmodule LogflareWeb.DashboardLive.DashboardSourceComponents do
   def metric(assigns) do
     ~H"""
     <div class="tw-mr-3 tw-inline-block tw-text-sm">
-      <%= render_slot(@inner_block) %>
+      {render_slot(@inner_block)}
     </div>
     """
   end
@@ -146,13 +147,13 @@ defmodule LogflareWeb.DashboardLive.DashboardSourceComponents do
 
     ~H"""
     <small class="my-badge my-badge-info tw-transition-colors tw-ease-in" id={@id} phx-mounted={if(@fade_in, do: JS.transition("tw-bg-blue-500", time: 500))}>
-      <%= @count %>
+      {Number.Delimit.number_to_delimited(@count)}
     </small>
     """
   end
 
   attr :title, :string, required: true
-  attr :id, :string, required: false
+  attr :id, :string, required: true
   attr :placement, :string, default: "top"
   attr :class, :string, default: ""
   attr :rest, :global
@@ -161,11 +162,12 @@ defmodule LogflareWeb.DashboardLive.DashboardSourceComponents do
   def tooltip(assigns) do
     ~H"""
     <span class={["logflare-tooltip", @class]} id={@id} data-placement={@placement} title={@title} data-toggle="tooltip">
-      <%= render_slot(@inner_block) %>
+      {render_slot(@inner_block)}
     </span>
     """
   end
 
+  @spec pipeline_count(Source.t()) :: non_neg_integer()
   def pipeline_count(source) do
     name = Logflare.Backends.via_source(source.id, Logflare.Sources.Source.BigQuery.Pipeline, nil)
 

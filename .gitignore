@@ -87,10 +87,11 @@ examples/**/node_modules
 # dev worktree patterns
 dev-*
 
-
 # ai stuff
-CLAUDE.md
+!CLAUDE.md
+!AGENTS.md
 .cursorrules
+.claude
 
 # Rust binary artifacts
 /target/

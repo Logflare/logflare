@@ -16,15 +16,16 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor do
   import Ecto.Changeset
   import Logflare.Utils.Guards
 
-  require Logger
-
   alias Logflare.Backends
-  alias Logflare.Backends.Adaptor.PostgresAdaptor.Pipeline
   alias Logflare.Backends.Adaptor.PostgresAdaptor.PgRepo
+  alias Logflare.Backends.Adaptor.PostgresAdaptor.Pipeline
   alias Logflare.Backends.Adaptor.PostgresAdaptor.SharedRepo
   alias Logflare.Backends.Backend
   alias Logflare.SingleTenant
+  alias Logflare.Sources.Source
   alias Logflare.Sql
+
+  require Logger
 
   typedstruct do
     field(:config, %{
@@ -138,19 +139,13 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor do
 
   @impl Logflare.Backends.Adaptor
   def map_query_parameters(original_query, _transformed_query, _declared_params, input_params) do
-    positions = Sql.parameter_positions(original_query)
+    {:ok, params} = Sql.parameter_positions(original_query)
 
-    case positions do
-      {:ok, params} ->
-        params
-        |> Enum.sort_by(&elem(&1, 0))
-        |> Enum.map(fn {_pos, parameter} ->
-          Map.get(input_params, parameter)
-        end)
-
-      _ ->
-        []
-    end
+    params
+    |> Enum.sort_by(&elem(&1, 0))
+    |> Enum.map(fn {_pos, parameter} ->
+      Map.get(input_params, parameter)
+    end)
   end
 
   @impl Logflare.Backends.Adaptor
@@ -192,6 +187,13 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor do
         changeset
       end
     end)
+  end
+
+  @impl Logflare.Backends.Adaptor
+  def redact_config(config) do
+    url = Map.get(config, :url) || Map.get(config, "url")
+    updated = String.replace(url, ~r/(.+):.+\@/, "\\g{1}:REDACTED@")
+    Map.put(config, :url, updated)
   end
 
   # expose PgRepo functions

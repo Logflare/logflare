@@ -1,9 +1,13 @@
 defmodule Logflare.Backends.Adaptor.ClickhouseAdaptorTest do
   use Logflare.DataCase, async: false
 
+  import Ecto.Query
+  import Logflare.Utils.Guards
+
   alias Logflare.Backends
   alias Logflare.Backends.Adaptor.ClickhouseAdaptor
   alias Logflare.Backends.Adaptor.ClickhouseAdaptor.ConnectionManager
+  alias Logflare.Backends.Ecto.SqlUtils
   alias Logflare.Sources.Source
 
   doctest ClickhouseAdaptor
@@ -124,6 +128,13 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptorTest do
     end
   end
 
+  describe "redact_config/1" do
+    test "redacts password field" do
+      config = %{password: "secret123", database: "logs"}
+      assert %{password: "REDACTED"} = ClickhouseAdaptor.redact_config(config)
+    end
+  end
+
   describe "log event insertion and retrieval" do
     setup do
       insert(:plan, name: "Free")
@@ -211,6 +222,29 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptorTest do
 
       assert {:error, _error_message} = result
     end
+
+    test "converts Ecto queries to ClickHouse SQL format" do
+      query =
+        from(l in "logs",
+          where: fragment("? ~ ?", l.event_message, ^"error.*timeout") and l.level == ^"error",
+          select: l.event_message
+        )
+
+      {:ok, {pg_sql, pg_params}} = SqlUtils.ecto_to_pg_sql(query)
+
+      converted_param = SqlUtils.normalize_datetime_param("error.*timeout")
+
+      assert converted_param == "error.*timeout"
+
+      converted_sql = SqlUtils.pg_params_to_question_marks("SELECT * FROM logs WHERE level = $1")
+
+      assert converted_sql == "SELECT * FROM logs WHERE level = ?"
+
+      assert pg_sql =~ "SELECT "
+      assert is_list(pg_params)
+      assert "error.*timeout" in pg_params
+      assert "error" in pg_params
+    end
   end
 
   describe "connection pool collision handling" do
@@ -260,6 +294,80 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptorTest do
       assert is_pid(manager_pid2)
       assert Process.alive?(manager_pid2)
       assert ConnectionManager.pool_active?(backend)
+    end
+  end
+
+  describe "ecto_to_sql/2" do
+    test "converts Ecto query to ClickHouse SQL format" do
+      query =
+        from("test_table")
+        |> select([t], %{id: t.id, value: t.value})
+        |> where([t], t.id > ^1)
+
+      {:ok, {sql, params}} = ClickhouseAdaptor.ecto_to_sql(query, [])
+
+      assert is_non_empty_binary(sql)
+      assert is_list(params)
+
+      # Should contain basic query structure
+      assert sql =~ "SELECT"
+      assert sql =~ "FROM \"test_table\""
+      assert sql =~ "WHERE"
+      assert sql =~ "t0.\"id\" >"
+      assert sql =~ "$0"
+
+      # Parameters should be normalized
+      assert length(params) == 1
+      assert params == [1]
+    end
+
+    test "converts complex query with ClickHouse-specific transformations" do
+      query =
+        from("test_table")
+        |> select([t], %{id: t.id, name: t.name})
+        |> where([t], fragment("? ~ ?", t.name, ^"pattern"))
+
+      {:ok, {sql, params}} = ClickhouseAdaptor.ecto_to_sql(query, [])
+
+      assert is_binary(sql)
+      assert is_list(params)
+
+      # Should have the regex operator (transformation may not apply to fragment)
+      assert sql =~ "~"
+
+      assert length(params) == 1
+      assert params == ["pattern"]
+    end
+
+    test "converts datetime parameters correctly in ClickHouse SQL format" do
+      datetime = ~U[2023-12-25 10:30:45Z]
+
+      query =
+        from("test_table")
+        |> select([t], %{id: t.id, timestamp: t.timestamp})
+        |> where([t], t.timestamp > ^datetime)
+
+      {:ok, {sql, params}} = ClickhouseAdaptor.ecto_to_sql(query, [])
+
+      assert is_non_empty_binary(sql)
+      assert is_list(params)
+
+      # Should contain basic query structure
+      assert sql =~ "SELECT"
+      assert sql =~ "FROM \"test_table\""
+      assert sql =~ "WHERE"
+      assert sql =~ "t0.\"timestamp\" >"
+      assert sql =~ "$0"
+
+      # Parameters should be normalized
+      assert ["2023-12-25 10:30:45Z"] = params
+    end
+
+    test "handles query conversion errors gracefully" do
+      # Create an invalid query that should fail conversion
+      invalid_query = %Ecto.Query{from: nil}
+
+      assert {:error, _reason} = ClickhouseAdaptor.ecto_to_sql(invalid_query, [])
     end
   end
 

@@ -5,6 +5,7 @@ defmodule Logflare.Sources.Source.WebhookNotificationServer do
   require Logger
 
   alias Logflare.Sources
+  alias Logflare.Sources.Source
   alias Logflare.Sources.Counters
   alias Logflare.Backends
 
@@ -13,7 +14,9 @@ defmodule Logflare.Sources.Source.WebhookNotificationServer do
     GenServer.start_link(__MODULE__, args, name: Backends.via_source(source, __MODULE__))
   end
 
-  def test_post(source) do
+  @spec test_post(Source.t()) ::
+          {:ok, Tesla.Env.t()} | {:error, :bad_uri} | {:error, Tesla.Env.t()}
+  def test_post(%Source{} = source) when source.webhook_notification_url != nil do
     recent_events = Backends.list_recent_logs_local(source)
     uri = source.webhook_notification_url
 

@@ -3,6 +3,7 @@ defmodule LogflareWeb.DashboardLive do
   use LogflareWeb, :live_view
 
   alias Logflare.Billing
+  alias Logflare.SavedSearches
   alias Logflare.Sources
   alias Logflare.Teams
   alias Logflare.TeamUsers
@@ -35,10 +36,8 @@ defmodule LogflareWeb.DashboardLive do
       |> assign(:fade_in, false)
 
     if connected?(socket) do
-      Enum.each(
-        socket.assigns.sources,
-        &Logflare.Sources.Source.ChannelTopics.subscribe_dashboard(&1.token)
-      )
+      Logflare.Sources.UserMetricsPoller.track(self(), user_id)
+      Phoenix.PubSub.subscribe(Logflare.PubSub, "dashboard_user_metrics:#{user_id}")
     end
 
     {:ok, socket}
@@ -93,64 +92,66 @@ defmodule LogflareWeb.DashboardLive do
     end
   end
 
-  def handle_info(
-        %Phoenix.Socket.Broadcast{topic: "dashboard:" <> source_token, event: "buffer"} =
-          broadcast,
-        socket
-      ) do
-    %{payload: payload} = broadcast
+  def handle_event("delete_saved_search", %{"id" => search_id}, socket) do
+    %{user: user, sources: sources} = socket.assigns
 
     socket =
-      socket
-      |> update_source_metrics(source_token, %{buffer: payload.buffer})
+      with %Logflare.SavedSearch{source: source} = search <-
+             SavedSearches.get(search_id) |> Repo.preload(:source),
+           true <- LogflareWeb.Plugs.SetVerifySource.verify_source_for_user(source, user),
+           {:ok, _response} <- SavedSearches.delete_by_user(search) do
+        sources =
+          sources
+          |> Sources.preload_saved_searches(force: true)
 
-    {:noreply, socket}
-  end
-
-  def handle_info(
-        %Phoenix.Socket.Broadcast{topic: "dashboard:" <> source_token, event: "rate"} = broadcast,
         socket
-      ) do
-    %{payload: payload} = broadcast
-
-    socket =
-      socket
-      |> update_source_metrics(source_token, %{
-        avg: payload.average_rate,
-        max: payload.max_rate,
-        rate: payload.last_rate
-      })
-
-    {:noreply, socket}
-  end
-
-  def handle_info(
-        %Phoenix.Socket.Broadcast{topic: "dashboard:" <> source_token, event: "log_count"} =
-          broadcast,
-        socket
-      ) do
-    %{payload: payload} = broadcast
-
-    socket =
-      socket
-      |> update_source_metrics(source_token, %{
-        latest: DateTime.utc_now() |> DateTime.to_unix(:microsecond),
-        inserts_string: payload.log_count
-      })
-      |> assign(fade_in: true)
-
-    {:noreply, socket}
-  end
-
-  @spec update_source_metrics(Socket.t(), String.t(), map()) :: Socket.t()
-  def update_source_metrics(socket, token, attrs) do
-    source_metrics =
-      update_in(socket.assigns.source_metrics, [Access.key(token), :metrics], fn
+        |> assign(sources: sources)
+        |> put_flash(:info, "Saved search deleted!")
+      else
         nil ->
-          nil
+          put_flash(socket, :error, "Saved search not found")
 
-        metrics ->
-          Map.merge(metrics, attrs)
+        false ->
+          put_flash(socket, :error, "You don't have permission to delete this saved search")
+
+        _ ->
+          put_flash(socket, :error, "Something went wrong!")
+      end
+
+    {:noreply, socket}
+  end
+
+  def handle_event("visibility_change", %{"visibility" => "hidden"}, socket) do
+    %{user: user} = socket.assigns
+
+    Logflare.Sources.UserMetricsPoller.untrack(self(), user.id)
+    {:noreply, socket}
+  end
+
+  def handle_event("visibility_change", %{"visibility" => "visible"}, socket) do
+    %{user: user} = socket.assigns
+
+    Logflare.Sources.UserMetricsPoller.track(self(), user.id)
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_info({:metrics_update, payload}, socket) do
+    socket =
+      payload
+      |> Enum.reduce(socket, fn {token, metrics}, socket ->
+        update_source_metrics(socket, to_string(token), metrics)
+      end)
+
+    {:noreply, assign(socket, fade_in: true)}
+  end
+
+  @spec update_source_metrics(Phoenix.LiveView.Socket.t(), String.t(), map()) ::
+          Phoenix.LiveView.Socket.t()
+  def update_source_metrics(socket, token, attrs) when is_binary(token) do
+    source_metrics =
+      update_in(socket.assigns.source_metrics, [Access.key(token), :metrics], fn metrics ->
+        Map.merge(metrics, attrs)
       end)
 
     assign(socket, source_metrics: source_metrics)
@@ -159,7 +160,7 @@ defmodule LogflareWeb.DashboardLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <div>
+    <div id="dashboard-container" phx-hook="DocumentVisibility">
       <DashboardComponents.subhead user={@user} />
       <div class="tw-max-w-[95%] tw-mx-auto">
         <div class="lg:tw-grid tw-grid-cols-12 tw-gap-8 tw-px-[15px] tw-mt-[50px]">

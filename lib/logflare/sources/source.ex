@@ -5,7 +5,6 @@ defmodule Logflare.Sources.Source do
   import Ecto.Changeset
 
   alias Logflare.Billing
-  alias Logflare.SingleTenant
   alias Logflare.Users
 
   @default_source_api_quota 25
@@ -125,7 +124,7 @@ defmodule Logflare.Sources.Source do
     field :bq_table_id, :string, virtual: true
     field :bq_dataset_id, :string, virtual: true
     field :bq_table_partition_type, Ecto.Enum, values: [:pseudo, :timestamp], default: :timestamp
-    field(:bq_storage_write_api, :boolean, default: false)
+    field :bq_storage_write_api, :boolean, default: false
     field :custom_event_message_keys, :string
     field :log_events_updated_at, :naive_datetime
     field :notifications_every, :integer, default: :timer.hours(4)
@@ -133,7 +132,6 @@ defmodule Logflare.Sources.Source do
     field :validate_schema, :boolean, default: true
     field :drop_lql_filters, Ecto.LqlRules, default: []
     field :drop_lql_string, :string
-    field :v2_pipeline, :boolean, default: false
     field :disable_tailing, :boolean, default: false
     field :suggested_keys, :string, default: ""
     field :retention_days, :integer, virtual: true
@@ -194,7 +192,6 @@ defmodule Logflare.Sources.Source do
       :validate_schema,
       :drop_lql_filters,
       :drop_lql_string,
-      :v2_pipeline,
       :suggested_keys,
       :retention_days,
       :transform_copy_fields,
@@ -203,7 +200,6 @@ defmodule Logflare.Sources.Source do
       :bq_storage_write_api
     ])
     |> cast_embed(:notifications, with: &Notifications.changeset/2)
-    |> put_single_tenant_postgres_changes()
     |> default_validations(source)
   end
 
@@ -225,7 +221,6 @@ defmodule Logflare.Sources.Source do
       :validate_schema,
       :drop_lql_filters,
       :drop_lql_string,
-      :v2_pipeline,
       :suggested_keys,
       :retention_days,
       :transform_copy_fields,
@@ -234,7 +229,6 @@ defmodule Logflare.Sources.Source do
       :bq_storage_write_api
     ])
     |> cast_embed(:notifications, with: &Notifications.changeset/2)
-    |> put_single_tenant_postgres_changes()
     |> default_validations(source)
   end
 

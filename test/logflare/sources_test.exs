@@ -7,11 +7,9 @@ defmodule Logflare.SourcesTest do
   alias Logflare.Backends.RecentEventsTouch
   alias Logflare.Sources
   alias Logflare.SourceSchemas
-  alias Logflare.Sources.Source.V1SourceSup
   alias Logflare.Backends
   alias Logflare.Users
   alias Logflare.Sources.Source.BigQuery.Schema
-  alias Logflare.Sources.Source.V1SourceDynSup
 
   describe "create_source/2" do
     setup do
@@ -24,7 +22,7 @@ defmodule Logflare.SourcesTest do
     } do
       insert(:plan, name: "Free")
       assert {:ok, source} = Sources.create_source(%{name: TestUtils.random_string()}, user)
-      assert %Source{user_id: ^user_id, v2_pipeline: false} = source
+      assert %Source{user_id: ^user_id} = source
       assert SourceSchemas.get_source_schema_by(source_id: source.id)
     end
 
@@ -196,183 +194,111 @@ defmodule Logflare.SourcesTest do
     end
   end
 
-  for {prefix, flag, mod, dynsup} <- [
-        {:v1, false, V1SourceSup, V1SourceDynSup},
-        {:v2, true, Logflare.Backends.SourceSup, Logflare.Backends.SourcesSup}
-      ] do
-    describe "#{prefix} #{mod} - Source.Supervisor" do
-      setup do
-        Logflare.Google.BigQuery
-        |> stub(:init_table!, fn _, _, _, _, _, _ -> :ok end)
-
-        insert(:plan)
-
-        on_exit(fn ->
-          for {_id, child, _, _} <- DynamicSupervisor.which_children(unquote(dynsup)) do
-            DynamicSupervisor.terminate_child(unquote(dynsup), child)
-          end
-        end)
-
-        {:ok, user: insert(:user), mod: unquote(mod), flag: unquote(flag)}
-      end
-
-      test "start_source/1, lookup/2, delete_source/1", %{user: user, flag: flag, mod: mod} do
-        Logflare.Google.BigQuery
-        |> expect(:delete_table, fn _token -> :ok end)
-        |> expect(:init_table!, fn _, _, _, _, _, _ -> :ok end)
-
-        %{token: token} = insert(:source, user: user, v2_pipeline: flag)
-        start_supervised!(Source.Supervisor)
-        # TODO: cast should return :ok
-        assert {:ok, ^token} = Source.Supervisor.start_source(token)
-        :timer.sleep(500)
-        assert {:ok, _pid} = Backends.lookup(mod, token)
-        :timer.sleep(1_000)
-        assert {:ok, ^token} = Source.Supervisor.delete_source(token)
-        :timer.sleep(1000)
-        assert {:error, :not_started} = Backends.lookup(mod, token)
-      end
-
-      test "reset_source/1", %{user: user, mod: mod, flag: flag} do
-        %{token: token} = insert(:source, user: user, v2_pipeline: flag)
-        start_supervised!(Source.Supervisor)
-        # TODO: cast should return :ok
-        assert {:ok, ^token} = Source.Supervisor.start_source(token)
-        :timer.sleep(500)
-        assert {:ok, pid} = Backends.lookup(mod, token)
-        assert {:ok, ^token} = Source.Supervisor.reset_source(token)
-        :timer.sleep(1500)
-        assert {:ok, new_pid} = Backends.lookup(mod, token)
-        assert new_pid != pid
-      end
-
-      test "able to start supervision tree", %{user: user, mod: mod, flag: flag} do
-        source = insert(:source, user_id: user.id, v2_pipeline: flag)
-
-        start_supervised!(Source.Supervisor)
-        assert :ok = Source.Supervisor.ensure_started(source)
-        :timer.sleep(1000)
-        assert {:ok, _pid} = Backends.lookup(mod, source.token)
-        assert Backends.cached_pending_buffer_len(source) == 0
-      end
-
-      test "able to reset supervision tree", %{user: user, mod: mod, flag: flag} do
-        source = insert(:source, user_id: user.id, v2_pipeline: flag)
-
-        start_supervised!(Source.Supervisor)
-        assert :ok = Source.Supervisor.ensure_started(source)
-        :timer.sleep(1000)
-        assert {:ok, pid} = Backends.lookup(mod, source.token)
-        assert {:ok, _} = Source.Supervisor.reset_source(source.token)
-        assert {:ok, _} = Source.Supervisor.reset_source(source.token)
-        :timer.sleep(3000)
-        assert {:ok, new_pid} = Backends.lookup(RecentEventsTouch, source.token)
-        assert pid != new_pid
-        assert Backends.cached_pending_buffer_len(source) == 0
-      end
-
-      test "concurrent start attempts", %{user: user, mod: mod, flag: flag} do
-        source = insert(:source, user_id: user.id, v2_pipeline: flag)
-        start_supervised!(Source.Supervisor)
-        assert :ok = Source.Supervisor.ensure_started(source)
-
-        assert :ok = Source.Supervisor.ensure_started(source)
-        assert :ok = Source.Supervisor.ensure_started(source)
-        assert :ok = Source.Supervisor.ensure_started(source)
-        assert :ok = Source.Supervisor.ensure_started(source)
-        :timer.sleep(3000)
-        assert {:ok, _pid} = Backends.lookup(mod, source.token)
-        assert Backends.cached_pending_buffer_len(source) == 0
-      end
-
-      test "terminating Source.Supervisor does not bring everything down", %{
-        user: user,
-        mod: mod,
-        flag: flag
-      } do
-        source = insert(:source, user_id: user.id, v2_pipeline: flag)
-        pid = start_supervised!(Source.Supervisor)
-        assert :ok = Source.Supervisor.ensure_started(source)
-        :timer.sleep(3000)
-        assert {:ok, prev_pid} = Backends.lookup(mod, source.token)
-        Process.exit(pid, :kill)
-        assert {:ok, pid} = Backends.lookup(mod, source.token)
-        assert prev_pid == pid
-      end
-
-      test "should start broadcasting metrics on ingest", %{user: user, mod: mod, flag: flag} do
-        source = insert(:source, user_id: user.id, v2_pipeline: flag)
-        pid = start_supervised!(Source.Supervisor)
-        assert :ok = Source.Supervisor.ensure_started(source)
-        :timer.sleep(3000)
-        assert {:ok, prev_pid} = Backends.lookup(mod, source.token)
-        Process.exit(pid, :kill)
-        assert {:ok, pid} = Backends.lookup(mod, source.token)
-        assert prev_pid == pid
-      end
-    end
-  end
-
-  describe "Source.Supervisor v1-v2 interop" do
+  describe "Source.Supervisor" do
     setup do
       Logflare.Google.BigQuery
       |> stub(:init_table!, fn _, _, _, _, _, _ -> :ok end)
 
       insert(:plan)
-      start_supervised!(Source.Supervisor)
 
       on_exit(fn ->
-        for dynsup <- [V1SourceDynSup, Backends.SourcesSup],
-            {_id, child, _, _} <- DynamicSupervisor.which_children(dynsup) do
-          DynamicSupervisor.terminate_child(dynsup, child)
+        for {_id, child, _, _} <- DynamicSupervisor.which_children(Logflare.Backends.SourcesSup) do
+          DynamicSupervisor.terminate_child(Logflare.Backends.SourcesSup, child)
         end
       end)
 
       {:ok, user: insert(:user)}
     end
 
-    test "if initially v1 sup running, should seamlesssly transition to v2 source sup", %{
-      user: user
-    } do
-      source = insert(:source, user: user)
-      assert :ok = Source.Supervisor.ensure_started(source)
+    test "start_source/1, lookup/2, delete_source/1", %{user: user} do
+      Logflare.Google.BigQuery
+      |> expect(:delete_table, fn _token -> :ok end)
+      |> expect(:init_table!, fn _, _, _, _, _, _ -> :ok end)
+
+      %{token: token} = insert(:source, user: user)
+      start_supervised!(Source.Supervisor)
+      # TODO: cast should return :ok
+      assert {:ok, ^token} = Source.Supervisor.start_source(token)
       :timer.sleep(500)
-      assert {:ok, v1_pid} = Backends.lookup(V1SourceSup, source.token)
-      # v2 not started yet
-      assert {:error, _} = Backends.lookup(Backends.SourceSup, source.token)
-
-      # update to v2
-      assert {:ok, source} = Sources.update_source_by_user(source, %{v2_pipeline: true})
-      assert {:ok, _} = Source.Supervisor.reset_source(source.token)
-
-      :timer.sleep(600)
-      assert {:ok, v2_pid} = Backends.lookup(Backends.SourceSup, source.token)
-      # v1 not started
-      assert {:error, _} = Backends.lookup(V1SourceSup, source.token)
-      assert v1_pid != v2_pid
+      assert {:ok, _pid} = Backends.lookup(Logflare.Backends.SourceSup, token)
+      :timer.sleep(1_000)
+      assert {:ok, ^token} = Source.Supervisor.delete_source(token)
+      :timer.sleep(1000)
+      assert {:error, :not_started} = Backends.lookup(Logflare.Backends.SourceSup, token)
     end
 
-    test "if initially v2 sup running, should seamlessly transition to v1 source sup", %{
-      user: user
-    } do
-      source = insert(:source, user: user, v2_pipeline: true)
-      assert :ok = Source.Supervisor.ensure_started(source)
+    test "reset_source/1", %{user: user} do
+      %{token: token} = insert(:source, user: user)
+      start_supervised!(Source.Supervisor)
+      # TODO: cast should return :ok
+      assert {:ok, ^token} = Source.Supervisor.start_source(token)
       :timer.sleep(500)
-      assert {:ok, v2_pid} = Backends.lookup(Backends.SourceSup, source.token)
-      # v1 not started yet
-      assert {:error, _} = Backends.lookup(V1SourceSup, source.token)
+      assert {:ok, pid} = Backends.lookup(Logflare.Backends.SourceSup, token)
+      assert {:ok, ^token} = Source.Supervisor.reset_source(token)
+      :timer.sleep(1500)
+      assert {:ok, new_pid} = Backends.lookup(Logflare.Backends.SourceSup, token)
+      assert new_pid != pid
+    end
 
-      :timer.sleep(100)
+    test "able to start supervision tree", %{user: user} do
+      source = insert(:source, user_id: user.id)
 
-      # update to v1
-      assert {:ok, source} = Sources.update_source_by_user(source, %{v2_pipeline: false})
+      start_supervised!(Source.Supervisor)
+      assert :ok = Source.Supervisor.ensure_started(source)
+      :timer.sleep(1000)
+      assert {:ok, _pid} = Backends.lookup(Logflare.Backends.SourceSup, source.token)
+      assert Backends.cached_pending_buffer_len(source) == 0
+    end
+
+    test "able to reset supervision tree", %{user: user} do
+      source = insert(:source, user_id: user.id)
+
+      start_supervised!(Source.Supervisor)
+      assert :ok = Source.Supervisor.ensure_started(source)
+      :timer.sleep(1000)
+      assert {:ok, pid} = Backends.lookup(Logflare.Backends.SourceSup, source.token)
       assert {:ok, _} = Source.Supervisor.reset_source(source.token)
+      assert {:ok, _} = Source.Supervisor.reset_source(source.token)
+      :timer.sleep(3000)
+      assert {:ok, new_pid} = Backends.lookup(RecentEventsTouch, source.token)
+      assert pid != new_pid
+      assert Backends.cached_pending_buffer_len(source) == 0
+    end
 
-      :timer.sleep(600)
-      assert {:ok, v1_pid} = Backends.lookup(V1SourceSup, source.token)
-      # v2 should be killed
-      assert {:error, _} = Backends.lookup(Backends.SourceSup, source.token)
-      assert v1_pid != v2_pid
+    test "concurrent start attempts", %{user: user} do
+      source = insert(:source, user_id: user.id)
+      start_supervised!(Source.Supervisor)
+      assert :ok = Source.Supervisor.ensure_started(source)
+
+      assert :ok = Source.Supervisor.ensure_started(source)
+      assert :ok = Source.Supervisor.ensure_started(source)
+      assert :ok = Source.Supervisor.ensure_started(source)
+      assert :ok = Source.Supervisor.ensure_started(source)
+      :timer.sleep(3000)
+      assert {:ok, _pid} = Backends.lookup(Logflare.Backends.SourceSup, source.token)
+      assert Backends.cached_pending_buffer_len(source) == 0
+    end
+
+    test "terminating Source.Supervisor does not bring everything down", %{user: user} do
+      source = insert(:source, user_id: user.id)
+      pid = start_supervised!(Source.Supervisor)
+      assert :ok = Source.Supervisor.ensure_started(source)
+      :timer.sleep(3000)
+      assert {:ok, prev_pid} = Backends.lookup(Logflare.Backends.SourceSup, source.token)
+      Process.exit(pid, :kill)
+      assert {:ok, pid} = Backends.lookup(Logflare.Backends.SourceSup, source.token)
+      assert prev_pid == pid
+    end
+
+    test "should start broadcasting metrics on ingest", %{user: user} do
+      source = insert(:source, user_id: user.id)
+      pid = start_supervised!(Source.Supervisor)
+      assert :ok = Source.Supervisor.ensure_started(source)
+      :timer.sleep(3000)
+      assert {:ok, prev_pid} = Backends.lookup(Logflare.Backends.SourceSup, source.token)
+      Process.exit(pid, :kill)
+      assert {:ok, pid} = Backends.lookup(Logflare.Backends.SourceSup, source.token)
+      assert prev_pid == pid
     end
   end
 
@@ -390,9 +316,9 @@ defmodule Logflare.SourcesTest do
       backend1 = insert(:backend, user: user)
       backend2 = insert(:backend, user: user)
 
-      source1 = insert(:source, user: user, v2_pipeline: true)
-      source2 = insert(:source, user: user, v2_pipeline: true)
-      source3 = insert(:source, user: user, v2_pipeline: true)
+      source1 = insert(:source, user: user)
+      source2 = insert(:source, user: user)
+      source3 = insert(:source, user: user)
 
       {:ok, _} = Logflare.Backends.update_source_backends(source1, [backend1])
       {:ok, _} = Logflare.Backends.update_source_backends(source2, [backend2])
@@ -427,21 +353,18 @@ defmodule Logflare.SourcesTest do
       source1 =
         insert(:source,
           user: user,
-          v2_pipeline: true,
           default_ingest_backend_enabled?: true
         )
 
       source2 =
         insert(:source,
           user: user,
-          v2_pipeline: true,
           default_ingest_backend_enabled?: false
         )
 
       source3 =
         insert(:source,
           user: user,
-          v2_pipeline: true,
           default_ingest_backend_enabled?: true
         )
 
@@ -459,23 +382,6 @@ defmodule Logflare.SourcesTest do
       result_ids = Enum.map(results, & &1.id) |> Enum.sort()
       expected_ids = [source1.id, source3.id] |> Enum.sort()
       assert result_ids == expected_ids
-    end
-
-    test "list_sources/1 with v2_pipeline filter", %{user: user} do
-      source1 = insert(:source, user: user, v2_pipeline: true)
-      source2 = insert(:source, user: user, v2_pipeline: false)
-      source3 = insert(:source, user: user, v2_pipeline: true)
-
-      v2_results = Sources.list_sources(v2_pipeline: true)
-      assert length(v2_results) == 2
-
-      v2_ids = Enum.map(v2_results, & &1.id) |> Enum.sort()
-      expected_v2_ids = [source1.id, source3.id] |> Enum.sort()
-      assert v2_ids == expected_v2_ids
-
-      v1_results = Sources.list_sources(v2_pipeline: false)
-      assert length(v1_results) == 1
-      assert hd(v1_results).id == source2.id
     end
 
     test "list_sources/1 ignores unknown filters", %{user: user} do

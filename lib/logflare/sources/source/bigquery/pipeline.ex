@@ -126,12 +126,12 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
     |> Message.put_batcher(:bq)
   end
 
-  def handle_batch(:bq, messages, batch_info, %{source_token: token} = context) do
+  def handle_batch(:bq, messages, batch_info, context) do
     :telemetry.execute(
-      [:logflare, :ingest, :pipeline, :handle_batch],
+      [:logflare, :backends, :pipeline, :handle_batch],
       %{batch_size: batch_info.size, batch_trigger: batch_info.trigger},
       %{
-        source_token: token
+        backend_type: :bigquery
       }
     )
 
@@ -151,7 +151,7 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
     } do
       source = Sources.Cache.get_by_id(context.source_id)
 
-      if source.bq_storage_write_api do
+      if source && source.bq_storage_write_api do
         log_events = messages |> Enum.map(& &1.data)
 
         BigQueryAdaptor.insert_log_events_via_storage_write_api(log_events,
@@ -239,15 +239,6 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
             )
         end
 
-      {:error, :emfile = response} ->
-        Logger.error("Stream batch emfile error!", tesla_response: response)
-
-      {:error, :timeout = response} ->
-        Logger.warning("Stream batch timeout error!", tesla_response: response)
-
-      {:error, :checkout_timeout = response} ->
-        Logger.warning("Stream batch checkout_timeout error!", tesla_response: response)
-
       {:error, response} ->
         Logger.warning("Stream batch unknown error!", tesla_response: inspect(response))
     end
@@ -267,13 +258,16 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
     # these things a max of like 5 times and after that send them to the rejected pile.
 
     # random sample if local ingest rate is above a certain level
+    # dynamic calculation maintains ~1 schema update per second across all rate levels
     probability =
       case PubSubRates.Cache.get_local_rates(source.token) do
-        %{average_rate: avg} when avg > 10_000 -> 0.0001
-        %{average_rate: avg} when avg > 1000 -> 0.001
-        %{average_rate: avg} when avg > 100 -> 0.01
-        %{average_rate: avg} when avg > 10 -> 0.1
-        _ -> 1
+        %{average_rate: avg} when avg > 0 ->
+          # probability = 1.0 / avg with safety bounds
+          # supports rates up to 100K+/sec: at 100K/sec -> 0.00001 (samples ~1/sec)
+          min(1.0, max(0.00001, 1.0 / avg))
+
+        _ ->
+          1.0
       end
 
     if :rand.uniform() <= probability do

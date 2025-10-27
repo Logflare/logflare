@@ -1,6 +1,6 @@
 defmodule LogflareWeb.AlertsLiveTest do
   use LogflareWeb.ConnCase
-  import Phoenix.LiveViewTest
+
   alias Logflare.Backends.Adaptor.WebhookAdaptor
   alias Logflare.Backends.Adaptor.SlackAdaptor
 
@@ -33,6 +33,14 @@ defmodule LogflareWeb.AlertsLiveTest do
       |> stub(:add_job, fn _ -> :ok end)
 
       :ok
+    end
+
+    test "mounts successfully with user_id from session", %{conn: conn, user: user} do
+      # This reproduces a bug where list_sources_by_user/1 expects an integer
+      conn = Plug.Test.init_test_session(conn, %{"user_id" => Integer.to_string(user.id)})
+
+      assert {:ok, _view, html} = live(conn, Routes.alerts_path(conn, :index))
+      assert html =~ "Alerts"
     end
 
     test "lists all alert_queries", %{conn: conn, alert_query: alert_query} do
