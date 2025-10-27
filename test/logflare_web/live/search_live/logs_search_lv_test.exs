@@ -17,12 +17,21 @@ defmodule LogflareWeb.Source.SearchLVTest do
   }
 
   defp setup_mocks(_ctx) do
-    stub(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, fn _conn, _proj_id, _opts ->
-      {:ok,
-       TestUtils.gen_bq_response(%{
-         "event_message" =>
-           Jason.encode!(%{"message" => "some event message", "user_id" => "123"})
-       })}
+    stub(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, fn _conn, _proj_id, opts ->
+      query = opts[:body].query
+
+      response = %{
+        "event_message" => Jason.encode!(%{"message" => "some event message"})
+      }
+
+      response =
+        if query =~ "user_id" do
+          Map.put(response, "user_id", "123")
+        else
+          response
+        end
+
+      {:ok, TestUtils.gen_bq_response(response)}
     end)
 
     :ok
@@ -318,6 +327,15 @@ defmodule LogflareWeb.Source.SearchLVTest do
       user = insert(:user)
       source = insert(:source, user: user, bigquery_clustering_fields: "user_id")
       plan = insert(:plan)
+
+      bq_schema = TestUtils.build_bq_schema(%{"user_id" => "some_value"})
+
+      insert(:source_schema,
+        source: source,
+        bigquery_schema: bq_schema,
+        schema_flat_map: Logflare.Google.BigQuery.SchemaUtils.bq_schema_to_flat_typemap(bq_schema)
+      )
+
       [user: user, source: source, plan: plan]
     end
 

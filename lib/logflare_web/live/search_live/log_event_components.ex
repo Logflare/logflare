@@ -31,7 +31,7 @@ defmodule LogflareWeb.SearchLive.LogEventComponents do
       <% else %>
         <ul :if={@search_op_log_events} id="logs-list" class="list-unstyled console-text-list">
           <.log_event :for={log <- @search_op_log_events.rows} timezone={@search_timezone} log_event={log}>
-            <%= log.body["event_message"] %>
+            {log.body["event_message"]}
             <:actions>
               <.logs_list_actions log={log} recommended_query={lql_with_recommended_fields(@lql_rules, log, @source)} source={@source} tailing?={@tailing?} search_timezone={@search_timezone} querystring={@querystring} />
             </:actions>
@@ -114,27 +114,20 @@ defmodule LogflareWeb.SearchLive.LogEventComponents do
       |> Enum.map(& &1.path)
       |> MapSet.new()
 
-    case Jason.decode(event.body["event_message"]) do
-      {:ok, event_message} ->
-        new_filter_rules =
-          fields
-          |> Enum.reject(&MapSet.member?(existing_filter_paths, &1))
-          |> Enum.filter(&Map.has_key?(event_message, strip_meta(&1)))
-          |> Enum.map(fn field_name ->
-            Lql.Rules.FilterRule.build(
-              path: field_name,
-              operator: :=,
-              value: Map.get(event_message, strip_meta(field_name))
-            )
-          end)
+    new_filter_rules =
+      fields
+      |> Enum.reject(&MapSet.member?(existing_filter_paths, &1))
+      |> Enum.filter(&Map.has_key?(event.body, strip_meta(&1)))
+      |> Enum.map(fn field_name ->
+        Lql.Rules.FilterRule.build(
+          path: field_name,
+          operator: :=,
+          value: Map.get(event.body, strip_meta(field_name))
+        )
+      end)
 
-        (new_filter_rules ++ lql_rules)
-        |> Lql.encode!()
-
-      _ ->
-        lql_rules
-        |> Lql.encode!()
-    end
+    (new_filter_rules ++ lql_rules)
+    |> Lql.encode!()
   end
 
   defp strip_meta("metadata." <> k), do: k
