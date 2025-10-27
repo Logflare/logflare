@@ -247,6 +247,67 @@ defmodule Logflare.Sql.DialectTranslation do
 
   defp do_bq_to_pg_convert_functions(ast_node, _data), do: {:recurse, ast_node}
 
+  # Handle CAST to numeric types - add ::TEXT first for identifiers (fixes JSONB cast errors)
+  defp pg_traverse_final_pass(
+         {"Cast" = k,
+          %{
+            "expr" => %{"Identifier" => _} = identifier,
+            "data_type" => data_type
+          } = v}
+       )
+       when is_map_key(data_type, "BigInt") or is_map_key(data_type, "Int") or
+              is_map_key(data_type, "SmallInt") or is_map_key(data_type, "Numeric") or
+              is_map_key(data_type, "Decimal") or is_map_key(data_type, "Float") or
+              is_map_key(data_type, "Double") do
+    text_cast = %{
+      "Cast" => %{
+        "data_type" => %{"Text" => nil},
+        "expr" => identifier,
+        "format" => nil,
+        "kind" => "DoubleColon"
+      }
+    }
+
+    {k,
+     %{
+       "kind" => Map.get(v, "kind", "Cast"),
+       "expr" => text_cast,
+       "data_type" => data_type,
+       "format" => Map.get(v, "format")
+     }}
+  end
+
+  # Handle CAST to numeric types for CompoundIdentifiers
+  defp pg_traverse_final_pass(
+         {"Cast" = k,
+          %{
+            "expr" => %{"CompoundIdentifier" => _} = compound,
+            "data_type" => data_type
+          } = v}
+       )
+       when is_map_key(data_type, "BigInt") or is_map_key(data_type, "Int") or
+              is_map_key(data_type, "SmallInt") or is_map_key(data_type, "Numeric") or
+              is_map_key(data_type, "Decimal") or is_map_key(data_type, "Float") or
+              is_map_key(data_type, "Double") do
+    text_cast = %{
+      "Cast" => %{
+        "data_type" => %{"Text" => nil},
+        "expr" => compound,
+        "format" => nil,
+        "kind" => "DoubleColon"
+      }
+    }
+
+    {k,
+     %{
+       "kind" => Map.get(v, "kind", "Cast"),
+       "expr" => text_cast,
+       "data_type" => data_type,
+       "format" => Map.get(v, "format")
+     }}
+  end
+
+  # Handle other CAST expressions
   defp pg_traverse_final_pass({"Cast" = k, %{"expr" => expr, "data_type" => data_type} = v}) do
     processed_expr =
       case expr do
@@ -257,14 +318,33 @@ defmodule Logflare.Sql.DialectTranslation do
           pg_traverse_final_pass(other)
       end
 
-    updated_cast = %{
-      "kind" => Map.get(v, "kind", "Cast"),
-      "expr" => processed_expr,
-      "data_type" => data_type,
-      "format" => Map.get(v, "format")
-    }
+    # Convert INT64 to BigInt for PostgreSQL
+    converted_data_type =
+      case data_type do
+        "Int64" ->
+          %{"BigInt" => nil}
 
-    {k, updated_cast}
+        %{"Custom" => %{"ObjectName" => [%{"value" => "INT64"}]}} ->
+          %{"BigInt" => nil}
+
+        other ->
+          other
+      end
+
+    # Convert SafeCast to regular Cast (BigQuery SAFE_CAST to PostgreSQL CAST)
+    converted_kind =
+      case Map.get(v, "kind") do
+        "SafeCast" -> "Cast"
+        other -> other || "Cast"
+      end
+
+    {k,
+     %{
+       "kind" => converted_kind,
+       "expr" => processed_expr,
+       "data_type" => converted_data_type,
+       "format" => Map.get(v, "format")
+     }}
   end
 
   defp pg_traverse_final_pass({"Function" = k, %{"name" => [%{"value" => function_name}]} = v})
@@ -339,6 +419,18 @@ defmodule Logflare.Sql.DialectTranslation do
           |> cast_to_jsonb_double_colon()
           |> jsonb_to_text()
           |> cast_to_numeric()
+
+        is_regex_operator and identifier?(left) ->
+          # Cast identifiers to text for regex operations
+          # This handles CTE fields that might be JSONB
+          %{
+            "Cast" => %{
+              "data_type" => %{"Text" => nil},
+              "expr" => left,
+              "format" => nil,
+              "kind" => "DoubleColon"
+            }
+          }
 
         is_regex_operator and json_access?(left) ->
           # For regex operators, ensure JSONB accessors return text
@@ -417,10 +509,11 @@ defmodule Logflare.Sql.DialectTranslation do
     {k, ""}
   end
 
-  # clean up compound identifier containing null values - convert to identifier
-  defp pg_traverse_final_pass({"CompoundIdentifier" = _k, identifiers})
+  # Clean up CompoundIdentifier by filtering out null/empty values
+  # This prevents Rust NIF panics while preserving semantic meaning
+  defp pg_traverse_final_pass({"CompoundIdentifier" = k, identifiers})
        when is_list(identifiers) do
-    # Filter out any identifier parts with null values
+    # Filter out null or empty identifier parts
     valid_identifiers =
       Enum.filter(identifiers, fn
         %{"value" => nil} -> false
@@ -429,17 +522,13 @@ defmodule Logflare.Sql.DialectTranslation do
       end)
 
     case valid_identifiers do
-      # If only one identifier remains, convert to simple Identifier
-      [single] ->
-        {"Identifier", single}
+      # If we have valid identifiers, keep as CompoundIdentifier
+      [_ | _] = valid ->
+        {k, valid}
 
-      # If multiple valid identifiers, keep as CompoundIdentifier
-      [_ | _] = multiple ->
-        {"CompoundIdentifier", multiple}
-
-      # If no valid identifiers, create a placeholder (this _should_ not be happening)
+      # If no valid identifiers remain, this is an error case - use empty Identifier
       [] ->
-        {"Identifier", %{"quote_style" => nil, "value" => "unknown"}}
+        {"Identifier", %{"quote_style" => nil, "value" => ""}}
     end
   end
 
@@ -818,10 +907,20 @@ defmodule Logflare.Sql.DialectTranslation do
   defp process_unnest_join(_join, acc, _table_aliases), do: acc
 
   defp build_array_path_from_identifiers(identifiers, acc, table_aliases) do
-    for i <- identifiers, value = i["value"], value not in table_aliases do
-      if is_map_key(acc, value), do: acc[value], else: [value]
-    end
-    |> List.flatten()
+    identifiers
+    |> Enum.filter(&valid_identifier?(&1, table_aliases))
+    |> Enum.flat_map(&get_identifier_path(&1, acc))
+  end
+
+  defp valid_identifier?(%{"value" => value}, table_aliases)
+       when is_binary(value) and value != "" do
+    value not in table_aliases
+  end
+
+  defp valid_identifier?(_, _), do: false
+
+  defp get_identifier_path(%{"value" => value}, acc) do
+    Map.get(acc, value, [value])
   end
 
   defp build_array_path_from_expressions(array_exprs, acc, table_aliases) do
@@ -987,9 +1086,17 @@ defmodule Logflare.Sql.DialectTranslation do
             # credo:disable-for-next-line
             case cte_context do
               {table_alias, cte_fields} when cte_fields != [] ->
-                # Use the CTE field as the base
-                # Assumes the unnest path should be relative to the first CTE field
-                cte_field = List.first(cte_fields)
+                # Determine which CTE field to use:
+                # - If path contains a CTE field name, use it (e.g., UNNEST(metadata) AS metadata)
+                # - Otherwise use first CTE field (e.g., UNNEST(t.deep) where deep is nested in metadata)
+
+                # credo:disable-for-lines:4
+                cte_field =
+                  case Enum.find(path, fn p -> p in cte_fields end) do
+                    nil -> List.first(cte_fields)
+                    field -> field
+                  end
+
                 {[table_alias, cte_field], path}
 
               _ ->
@@ -1009,9 +1116,15 @@ defmodule Logflare.Sql.DialectTranslation do
 
         case cte_context do
           {table_alias, cte_fields} when cte_fields != [] ->
-            # Use the CTE field as the base
-            # Assumes the unnest path should be relative to the first CTE field
-            cte_field = List.first(cte_fields)
+            # Determine which CTE field to use:
+            # - If path contains a CTE field name, use it (e.g., UNNEST(metadata) AS metadata)
+            # - Otherwise use first CTE field (e.g., UNNEST(t.deep) where deep is nested in metadata)
+            cte_field =
+              case Enum.find(path, fn p -> p in cte_fields end) do
+                nil -> List.first(cte_fields)
+                field -> field
+              end
+
             tail_value = tail["value"]
             str_path = Enum.join(path ++ [tail_value], ",")
             full_path = "{#{str_path}}"

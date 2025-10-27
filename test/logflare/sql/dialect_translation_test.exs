@@ -155,4 +155,144 @@ defmodule Logflare.Sql.DialectTranslationTest do
     refute String.contains?(pg_query, "null.")
     refute String.contains?(pg_query, ".null")
   end
+
+  test "handles CTE with UNNEST metadata alias correctly" do
+    bq_query = """
+    WITH auth_logs AS (
+      SELECT t.timestamp, t.id, t.event_message, t.metadata
+      FROM `project.dataset.table` AS t
+      CROSS JOIN UNNEST(metadata) AS m
+      WHERE t.project = 'test'
+    )
+    SELECT
+      id,
+      auth_logs.timestamp,
+      event_message,
+      metadata.level,
+      metadata.status,
+      metadata.msg
+    FROM auth_logs
+    CROSS JOIN UNNEST(metadata) AS metadata
+    ORDER BY timestamp DESC
+    LIMIT 100
+    """
+
+    assert {:ok, pg_query} = DialectTranslation.translate_bq_to_pg(bq_query)
+    assert is_binary(pg_query)
+
+    # Should use metadata field for accessing nested properties, not timestamp
+    assert String.contains?(pg_query, "metadata")
+    refute String.contains?(pg_query, "timestamp #>>")
+    refute String.contains?(pg_query, "to_timestamp") and String.contains?(pg_query, "#>>")
+
+    # Should have proper JSONB path access for metadata.level
+    assert String.contains?(pg_query, "{") and String.contains?(pg_query, "level")
+  end
+
+  test "handles CROSS JOIN UNNEST being dropped from AST" do
+    bq_query = """
+    WITH data AS (
+      SELECT t.timestamp, t.metadata
+      FROM `table` AS t
+      CROSS JOIN UNNEST(t.metadata) AS m
+      WHERE m.project = 'test'
+    )
+    SELECT * FROM data
+    """
+
+    assert {:ok, pg_query} = DialectTranslation.translate_bq_to_pg(bq_query)
+    assert is_binary(pg_query)
+
+    # CROSS JOIN UNNEST should be removed
+    refute String.contains?(String.upcase(pg_query), "CROSS JOIN")
+    refute String.contains?(String.upcase(pg_query), "UNNEST")
+
+    # JSONB path operators should be present
+    assert String.contains?(pg_query, "#>>") or String.contains?(pg_query, "->>")
+  end
+
+  test "handles null CompoundIdentifier values" do
+    bq_query = """
+    SELECT t.field1, t.field2
+    FROM `table` AS t
+    CROSS JOIN UNNEST(t.metadata) AS m
+    WHERE m.nested_field = 'value'
+    """
+
+    assert {:ok, pg_query} = DialectTranslation.translate_bq_to_pg(bq_query)
+    assert is_binary(pg_query)
+
+    # Should produce valid PostgreSQL
+    assert String.contains?(pg_query, "body")
+    assert String.contains?(pg_query, "->") or String.contains?(pg_query, "->>")
+  end
+
+  test "casts CTE identifiers to text when used with regex operators" do
+    # This tests the fix for "operator does not exist: jsonb ~ unknown" when
+    # a CTE field (which is JSONB) is used in a regex comparison
+    bq_query = """
+    WITH postgres_logs AS (
+      SELECT t.timestamp, t.event_message
+      FROM `table` AS t
+      WHERE t.project = 'test'
+    )
+    SELECT event_message
+    FROM postgres_logs
+    WHERE REGEXP_CONTAINS(event_message, 'cron job')
+    """
+
+    assert {:ok, pg_query} = DialectTranslation.translate_bq_to_pg(bq_query)
+    assert is_binary(pg_query)
+
+    # Should cast event_message to text for regex comparison
+    # Look for either ::text or ->> (text extraction)
+    assert String.contains?(pg_query, "::text") or String.contains?(pg_query, "::TEXT")
+
+    # Should have the regex operator
+    assert String.contains?(pg_query, "~")
+  end
+
+  test "handles CAST to numeric types on CTE fields by adding ::TEXT first" do
+    # This tests the fix for "cannot cast type jsonb to bigint" errors
+    # when CTE fields (which are JSONB) are cast to numeric types
+    bq_query = """
+    WITH logs AS (
+      SELECT t.timestamp, t.id
+      FROM `table` AS t
+      WHERE t.project = 'test'
+    )
+    SELECT *
+    FROM logs
+    WHERE CAST(timestamp AS BIGINT) > 1000000
+    """
+
+    assert {:ok, pg_query} = DialectTranslation.translate_bq_to_pg(bq_query)
+    assert is_binary(pg_query)
+
+    # Should add ::TEXT before casting to BIGINT
+    # Pattern: CAST(timestamp::TEXT AS BIGINT) or CAST(CAST(timestamp AS TEXT) AS BIGINT)
+    assert String.contains?(pg_query, "::text") or String.contains?(pg_query, "::TEXT") or
+             String.contains?(pg_query, "AS TEXT")
+  end
+
+  test "converts SAFE_CAST and INT64 from BigQuery to PostgreSQL" do
+    # This tests conversion of BigQuery SAFE_CAST to PostgreSQL CAST
+    # and INT64 type to BIGINT
+    bq_query = """
+    SELECT SAFE_CAST(status AS INT64) as status_code
+    FROM logs
+    WHERE SAFE_CAST(code AS INT64) > 400
+    """
+
+    assert {:ok, pg_query} = DialectTranslation.translate_bq_to_pg(bq_query)
+    assert is_binary(pg_query)
+
+    # Should not contain SAFE_CAST or INT64
+    refute String.contains?(pg_query, "SAFE_CAST")
+    refute String.contains?(pg_query, "INT64")
+
+    # Should contain regular CAST and BIGINT
+    assert String.contains?(pg_query, "CAST")
+    assert String.contains?(pg_query, "BIGINT") or String.contains?(pg_query, "bigint")
+  end
 end
