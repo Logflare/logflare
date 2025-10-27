@@ -49,7 +49,7 @@ defmodule Logflare.Sql.DialectTranslation do
         |> String.replace(~r/\"([\w\_\-]*\.[\w\_\-]+)\.([\w_]{36})"/im, replacement_pattern)
 
       Logger.debug(
-        "Postgres translation is complete: #{query} | \n output: #{inspect(converted)}"
+        "Postgres translation is complete: #{query} | \n output: #{inspect(converted, limit: :infinity)}"
       )
 
       {:ok, converted}
@@ -324,36 +324,70 @@ defmodule Logflare.Sql.DialectTranslation do
        ) do
     # handle left/right numeric value comparisons
     is_numeric_comparison = numeric_value?(left) or numeric_value?(right)
+    # check if this is a regex operator - these require text on both sides
+    is_regex_operator =
+      operator in ["PGRegexMatch", "PGRegexIMatch", "PGRegexNotMatch", "PGRegexNotIMatch"]
 
-    [left, right] =
-      for expr <- [left, right] do
-        cond do
-          # skip if it is a value
-          match?(%{"Value" => _}, expr) ->
-            expr
+    # Process left side
+    processed_left =
+      cond do
+        match?(%{"Value" => _}, left) ->
+          left
 
-          # convert the identifier side to number
-          is_numeric_comparison and (identifier?(expr) or json_access?(expr)) ->
-            expr
-            |> cast_to_jsonb_double_colon()
-            |> jsonb_to_text()
-            |> cast_to_numeric()
+        is_numeric_comparison and (identifier?(left) or json_access?(left)) ->
+          left
+          |> cast_to_jsonb_double_colon()
+          |> jsonb_to_text()
+          |> cast_to_numeric()
 
-          timestamp_identifier?(expr) ->
-            at_time_zone(expr, :cast)
+        is_regex_operator and json_access?(left) ->
+          # For regex operators, ensure JSONB accessors return text
+          # Convert Arrow (->) to LongArrow (->>)
+          case left do
+            %{"Nested" => %{"BinaryOp" => %{"op" => "Arrow"} = bin_op}} ->
+              %{"Nested" => %{"BinaryOp" => %{bin_op | "op" => "LongArrow"}}}
 
-          identifier?(expr) and operator == "Eq" ->
-            # wrap with a cast to convert possible jsonb fields
-            expr
-            |> choose_cast_style()
-            |> jsonb_to_text()
+            other ->
+              pg_traverse_final_pass(other)
+          end
 
-          true ->
-            pg_traverse_final_pass(expr)
-        end
+        timestamp_identifier?(left) ->
+          at_time_zone(left, :cast)
+
+        identifier?(left) and operator == "Eq" ->
+          left
+          |> choose_cast_style()
+          |> jsonb_to_text()
+
+        true ->
+          pg_traverse_final_pass(left)
       end
 
-    {k, %{v | "left" => left, "right" => right} |> pg_traverse_final_pass()}
+    # Process right side
+    processed_right =
+      cond do
+        match?(%{"Value" => _}, right) ->
+          right
+
+        is_numeric_comparison and (identifier?(right) or json_access?(right)) ->
+          right
+          |> cast_to_jsonb_double_colon()
+          |> jsonb_to_text()
+          |> cast_to_numeric()
+
+        timestamp_identifier?(right) ->
+          at_time_zone(right, :cast)
+
+        identifier?(right) and operator == "Eq" ->
+          right
+          |> choose_cast_style()
+          |> jsonb_to_text()
+
+        true ->
+          pg_traverse_final_pass(right)
+      end
+
+    {k, %{v | "left" => processed_left, "right" => processed_right} |> pg_traverse_final_pass()}
   end
 
   # handle InList expressions - convert Arrow to LongArrow for text comparison
@@ -375,6 +409,42 @@ defmodule Logflare.Sql.DialectTranslation do
 
   # ensure SingleQuotedString always has a string value, never null
   defp pg_traverse_final_pass({"SingleQuotedString" = k, v}) when not is_binary(v) do
+    {k, ""}
+  end
+
+  # ensure DoubleQuotedString always has a string value, never null
+  defp pg_traverse_final_pass({"DoubleQuotedString" = k, v}) when not is_binary(v) do
+    {k, ""}
+  end
+
+  # clean up compound identifier containing null values - convert to identifier
+  defp pg_traverse_final_pass({"CompoundIdentifier" = _k, identifiers})
+       when is_list(identifiers) do
+    # Filter out any identifier parts with null values
+    valid_identifiers =
+      Enum.filter(identifiers, fn
+        %{"value" => nil} -> false
+        %{"value" => ""} -> false
+        _ -> true
+      end)
+
+    case valid_identifiers do
+      # If only one identifier remains, convert to simple Identifier
+      [single] ->
+        {"Identifier", single}
+
+      # If multiple valid identifiers, keep as CompoundIdentifier
+      [_ | _] = multiple ->
+        {"CompoundIdentifier", multiple}
+
+      # If no valid identifiers, create a placeholder (this _should_ not be happening)
+      [] ->
+        {"Identifier", %{"quote_style" => nil, "value" => "unknown"}}
+    end
+  end
+
+  # Ensure all identifier values are strings, never null
+  defp pg_traverse_final_pass({"value" = k, nil}) when is_atom(k) do
     {k, ""}
   end
 
