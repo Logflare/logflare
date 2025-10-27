@@ -33,10 +33,10 @@ defmodule LogflareWeb.SearchLive.LogEventComponents do
     ~H"""
     <li id={@id} {@rest}>
       <.metadata timestamp={@timestamp} log_level={@log_level}>
-        <%= format_timestamp(@timestamp, @timezone) %>
+        {format_timestamp(@timestamp, @timezone)}
       </.metadata>
-      <%= render_slot(@inner_block) || @message %>
-      <%= render_slot(@actions) %>
+      {render_slot(@inner_block) || @message}
+      {render_slot(@actions)}
     </li>
     """
   end
@@ -50,9 +50,9 @@ defmodule LogflareWeb.SearchLive.LogEventComponents do
   def metadata(assigns) do
     ~H"""
     <mark class={"log-#{@log_level} mr-2"} data-timestamp={@timestamp}>
-      <%= render_slot(@inner_block) %>
+      {render_slot(@inner_block)}
     </mark>
-    <mark :if={@log_level} class={"log-level-#{@log_level}"}><%= @log_level %></mark>
+    <mark :if={@log_level} class={"log-level-#{@log_level}"}>{@log_level}</mark>
     """
   end
 

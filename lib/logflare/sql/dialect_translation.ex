@@ -143,13 +143,25 @@ defmodule Logflare.Sql.DialectTranslation do
             %{"Identifier" => _arr} = identifier ->
               identifier
 
-            literal ->
-              update_in(literal, ["Value"], &%{"SingleQuotedString" => &1["DoubleQuotedString"]})
+            %{"Value" => %{"DoubleQuotedString" => value}} when is_non_empty_binary(value) ->
+              %{"Value" => %{"SingleQuotedString" => value}}
+
+            _ ->
+              %{"Value" => %{"SingleQuotedString" => ""}}
           end
 
         pattern =
           get_function_arg(v, 1)
-          |> update_in(["Value"], &%{"SingleQuotedString" => &1["DoubleQuotedString"]})
+          |> case do
+            %{"Value" => %{"DoubleQuotedString" => value}} when is_non_empty_binary(value) ->
+              %{"Value" => %{"SingleQuotedString" => value}}
+
+            %{"Value" => %{"SingleQuotedString" => value}} when is_non_empty_binary(value) ->
+              %{"Value" => %{"SingleQuotedString" => value}}
+
+            _ ->
+              %{"Value" => %{"SingleQuotedString" => ""}}
+          end
 
         {"BinaryOp", %{"left" => string, "op" => "PGRegexMatch", "right" => pattern}}
 
@@ -360,6 +372,11 @@ defmodule Logflare.Sql.DialectTranslation do
 
   # convert backticks to double quotes
   defp pg_traverse_final_pass({"quote_style" = k, "`"}), do: {k, "\""}
+
+  # ensure SingleQuotedString always has a string value, never null
+  defp pg_traverse_final_pass({"SingleQuotedString" = k, v}) when not is_binary(v) do
+    {k, ""}
+  end
 
   # drop cross join unnest
   defp pg_traverse_final_pass({"joins" = k, joins}) do

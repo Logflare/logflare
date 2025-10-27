@@ -42,7 +42,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
   defp setup_user_session(%{conn: conn, user: user, plan: plan}) do
     _billing_account = insert(:billing_account, user: user, stripe_plan_id: plan.stripe_id)
     user = user |> Logflare.Repo.preload(:billing_account)
-    conn = conn |> put_session(:user_id, user.id) |> assign(:user, user)
+    conn = conn |> login_user(user)
     [conn: conn]
   end
 
@@ -50,13 +50,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
     _billing_account = insert(:billing_account, user: user, stripe_plan_id: plan.stripe_id)
     user = user |> Logflare.Repo.preload(:billing_account)
 
-    conn =
-      conn
-      |> put_session(:team_user_id, team_user.id)
-      |> put_session(:user_id, user.id)
-      |> assign(:team_user, team_user)
-
-    [conn: conn]
+    [conn: login_user(conn, user, team_user)]
   end
 
   # do this for all tests

@@ -1,7 +1,7 @@
 <.subheader {assigns}>
   <:path>
     ~/<.subheader_path_link live_patch to={~p"/endpoints"}>endpoints</.subheader_path_link>/<.subheader_path_link live_patch to={~p"/endpoints/#{@show_endpoint.id}"}>
-      <%= @show_endpoint.name %>
+      {@show_endpoint.name}
     </.subheader_path_link>/edit
   </:path>
   <.subheader_link to="https://docs.logflare.app/concepts/endpoints#crafting-a-query" external={true} text="docs" fa_icon="book" />

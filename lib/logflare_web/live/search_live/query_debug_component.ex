@@ -52,13 +52,13 @@ defmodule LogflareWeb.Search.QueryDebugComponent do
             </ul>
             <ul class="list-group list-group-horizontal">
               <li class="list-group-item flex-fill">
-                Total rows: <span class="my-badge my-badge-info"><%= stats[:total_rows] %></span>
+                Total rows: <span class="my-badge my-badge-info">{stats[:total_rows]}</span>
               </li>
               <li class="list-group-item flex-fill">
-                Total bytes processed: <span class="my-badge my-badge-info"><%= stats[:total_bytes_processed] %></span>
+                Total bytes processed: <span class="my-badge my-badge-info">{stats[:total_bytes_processed]}</span>
               </li>
               <li class="list-group-item flex-fill">
-                Total duration: <span class="my-badge my-badge-info"><%= stats[:total_duration] %>ms</span>
+                Total duration: <span class="my-badge my-badge-info">{stats[:total_duration]}ms</span>
               </li>
             </ul>
           </div>
@@ -68,7 +68,7 @@ defmodule LogflareWeb.Search.QueryDebugComponent do
             <ul class="list-group">
               <h5 class="header-margin">BigQuery</h5>
               <p>Viewable by Logflare admin only.</p>
-              <%= link("View BigQuery table",
+              {link("View BigQuery table",
                 to:
                   Logflare.Google.BigQuery.Debug.gen_bq_ui_url(
                     @user,
@@ -76,7 +76,7 @@ defmodule LogflareWeb.Search.QueryDebugComponent do
                   ),
                 class: "btn btn-primary",
                 target: "_blank"
-              ) %>
+              )}
             </ul>
             <ul class="list-group">
               <h5 class="header-margin">Ecto Query</h5>
