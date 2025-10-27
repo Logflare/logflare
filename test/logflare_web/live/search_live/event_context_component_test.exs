@@ -77,8 +77,7 @@ defmodule LogflareWeb.SearchLive.EventContextComponentTest do
   end
 
   defp setup_user_session(%{conn: conn, user: user}) do
-    conn = conn |> put_session(:user_id, user.id) |> assign(:user, user)
-    [conn: conn]
+    [conn: login_user(conn, user)]
   end
 
   describe "construct context query" do

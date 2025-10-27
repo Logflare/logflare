@@ -10,7 +10,7 @@ defmodule LogflareWeb.DashboardLiveTest do
     team = insert(:team, user: user)
     source = insert(:source, user: user)
     user = %{user | team: team}
-    conn = conn |> put_session(:user_id, user.id)
+    conn = conn |> login_user(user)
 
     {:ok, user: user, source: source, conn: conn}
   end
@@ -32,7 +32,7 @@ defmodule LogflareWeb.DashboardLiveTest do
         Logflare.SingleTenant.get_default_user()
 
       insert(:team, user: user)
-      conn = conn |> put_session(:user_id, user.id) |> assign(:user, user)
+      conn = conn |> login_user(user)
       [user: user, conn: conn]
     end
 
@@ -186,7 +186,7 @@ defmodule LogflareWeb.DashboardLiveTest do
       team_user = insert(:team_user, team: other_team)
       other_member = insert(:team_user, team: user.team)
 
-      conn = conn |> put_session(:user_id, user.id) |> put_session(:team_user_id, team_user.id)
+      conn = conn |> login_user(user, team_user)
 
       [
         other_team: other_team,
