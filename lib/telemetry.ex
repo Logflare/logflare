@@ -41,7 +41,7 @@ defmodule Logflare.Telemetry do
       if Application.get_env(:logflare, :opentelemetry_enabled?) do
         otel_exporter_opts =
           Application.get_all_env(:opentelemetry_exporter)
-          |> Keyword.put(:metrics, metrics())
+          |> Keyword.put(:metrics, metrics() |> add_filters())
           |> Keyword.put(:resource, %{
             name: "Logflare",
             service: %{
@@ -250,21 +250,20 @@ defmodule Logflare.Telemetry do
       broadway_metrics,
       application_metrics
     ])
-    |> put_keep_metric_function()
   end
 
-  defp put_keep_metric_function(metrics) do
+  defp add_filters(metrics) do
     for metric <- metrics do
       if user_specific_metric?(metric),
-        do: %{metric | keep: &keep_metric_function/1},
+        do: %{metric | drop: &drop_metric_function/1},
         else: metric
     end
   end
 
-  defp keep_metric_function(metadata) do
+  defp drop_metric_function(metadata) do
     case get_entity_from_metadata(metadata) do
-      %{user_id: user_id} -> !Users.Cache.get(user_id).system_monitoring
-      _ -> true
+      %{user_id: user_id} -> Users.Cache.get(user_id).system_monitoring
+      _ -> false
     end
   end
 
