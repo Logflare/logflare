@@ -58,12 +58,12 @@ defmodule LogflareWeb.MonacoEditorComponent do
         </button>
       </div>
 
-      <%= hidden_input(@field.form, :query, value: @query) %>
-      <%= error_tag(@field.form, :query) %>
+      {hidden_input(@field.form, :query, value: @query)}
+      {error_tag(@field.form, :query)}
       <.alert :if={@parse_error_message} variant="warning">
         <strong>SQL Parse error!</strong>
         <br />
-        <span><%= @parse_error_message %></span>
+        <span>{@parse_error_message}</span>
       </.alert>
     </div>
     """

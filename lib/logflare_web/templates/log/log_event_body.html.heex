@@ -3,20 +3,20 @@
     <li class="list-group-item flex-fill">
       <div>
         <h6 class="header-margin">Timestamp</h6>
-        <div><%= Timex.to_datetime(@timestamp) %></div>
+        <div>{Timex.to_datetime(@timestamp)}</div>
         <div class="tw-text-xs">
           <.link href="#" phx-click={Phoenix.LiveView.JS.dispatch("logflare:copy-to-clipboard", detail: %{text: Timex.to_datetime(@timestamp)})} data-toggle="tooltip" data-placement="top" title="Copy to clipboard">
             copy
           </.link>
           <%= if @local_timezone do %>
-            <%= link("inspect",
+            {link("inspect",
               class: "tw-ml-4",
               to:
                 Routes.live_path(LogflareWeb.Endpoint, LogflareWeb.Source.SearchLV, @source,
                   querystring: "t:>#{Timex.format!(Timex.shift(@local_timestamp, seconds: -30), "{YYYY}-{0M}-{0D}T{h24}:{m}:{s}")} t:<#{Timex.format!(Timex.shift(@local_timestamp, seconds: 30), "{YYYY}-{0M}-{0D}T{h24}:{m}:{s}")} c:count(*) c:group_by(t::second)",
                   tailing?: false
                 )
-            ) %>
+            )}
           <% else %>
             <br />
           <% end %>
@@ -26,7 +26,7 @@
     <li class="list-group-item flex-fill">
       <h6 class="header-margin">UUID</h6>
 
-      <div><%= @id %></div>
+      <div>{@id}</div>
       <div class="tw-text-xs">
         <.link href="#" phx-click={Phoenix.LiveView.JS.dispatch("logflare:copy-to-clipboard", detail: %{text: @id})} data-toggle="tooltip" data-placement="top" title="Copy to clipboard">
           copy
@@ -38,7 +38,7 @@
   <ul class="list-group">
     <li class="list-group-item flex-fill tw-whitespace-pre-line">
       <h6 class="header-margin">Message</h6>
-      <%= @message %>
+      {@message}
     </li>
   </ul>
   <ul class="list-group" id="log-event-metadata">

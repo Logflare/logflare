@@ -11,7 +11,7 @@ defmodule LogflareWeb.AuthControllerTest do
 
     conn =
       conn
-      |> put_session(:user_id, user.id)
+      |> login_user(user)
       |> put_session(:some_data, "test")
       |> get("/auth/logout")
 
