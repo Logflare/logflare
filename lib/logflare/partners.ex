@@ -71,6 +71,16 @@ defmodule Logflare.Partners do
     Repo.one(query)
   end
 
+  @doc "Fetches a single user by uuid for a given partner. Returns {:ok, user} if found, {:error, :not_found} if not found"
+  @spec fetch_user_by_uuid(Partner.t(), binary()) :: {:ok, User.t()} | {:error, :not_found}
+  def fetch_user_by_uuid(%Partner{} = partner, user_uuid) do
+    if user = get_user_by_uuid(partner, user_uuid) do
+      {:ok, user}
+    else
+      {:error, :not_found}
+    end
+  end
+
   @doc """
   Deletes user if user was created by given partner
   """
