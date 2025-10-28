@@ -10,7 +10,7 @@ defmodule LogflareWeb.DashboardLiveTest do
     team = insert(:team, user: user)
     source = insert(:source, user: user)
     user = %{user | team: team}
-    conn = conn |> put_session(:user_id, user.id)
+    conn = conn |> login_user(user)
 
     {:ok, user: user, source: source, conn: conn}
   end
@@ -32,7 +32,7 @@ defmodule LogflareWeb.DashboardLiveTest do
         Logflare.SingleTenant.get_default_user()
 
       insert(:team, user: user)
-      conn = conn |> put_session(:user_id, user.id) |> assign(:user, user)
+      conn = conn |> login_user(user)
       [user: user, conn: conn]
     end
 
@@ -112,7 +112,7 @@ defmodule LogflareWeb.DashboardLiveTest do
     end
   end
 
-  describe "dashboard - home team" do
+  describe "dashboard - viewing home team as user" do
     setup %{user: user} do
       other_team = insert(:team, name: "Other Team")
       forbidden_team = insert(:team, name: "Not My Team")
@@ -175,6 +175,39 @@ defmodule LogflareWeb.DashboardLiveTest do
 
       assert view |> element("#members li", other_team.user.name) |> render =~ "owner"
       refute view |> has_element?("#members li", other_member.name)
+    end
+  end
+
+  describe "dashboard - viewing home team as team member" do
+    setup %{user: user, conn: conn} do
+      other_team = insert(:team, name: "Other Team")
+      forbidden_team = insert(:team, name: "Not My Team")
+
+      team_user = insert(:team_user, team: other_team)
+      other_member = insert(:team_user, team: user.team)
+
+      conn = conn |> login_user(user, team_user)
+
+      [
+        other_team: other_team,
+        forbidden_team: forbidden_team,
+        other_member: other_member,
+        team_user: team_user,
+        conn: conn
+      ]
+    end
+
+    test "teams list", %{conn: conn, other_team: other_team} do
+      {:ok, view, _html} = live(conn, "/dashboard")
+
+      assert view |> has_element?("#teams li", "#{other_team.name}")
+    end
+
+    test "team members list", %{conn: conn, user: user, other_member: other_member} do
+      {:ok, view, _html} = live(conn, "/dashboard")
+
+      refute view |> element("#members li", "#{user.name}") |> render =~ "owner, you"
+      assert view |> has_element?("#members li", "#{other_member.name}")
     end
   end
 

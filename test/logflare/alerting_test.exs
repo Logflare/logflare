@@ -150,13 +150,6 @@ defmodule Logflare.AlertingTest do
 
     test "delete_alert_query/1 deletes the alert_query", %{user: user} do
       alert_query = alert_query_fixture(user)
-
-      Logflare.Cluster.Utils
-      |> expect(:rpc_call, 2, fn _node, func ->
-        func.()
-      end)
-
-      :timer.sleep(500)
       assert {:ok, %AlertQuery{}} = Alerting.delete_alert_query(alert_query)
 
       assert_raise Ecto.NoResultsError, fn -> Alerting.get_alert_query!(alert_query.id) end
@@ -296,7 +289,10 @@ defmodule Logflare.AlertingTest do
     test "upsert_alert_job/1, get_alert_job/1, delete_alert_job/1, count_alert_jobs/0 retrieves alert job",
          %{user: user} do
       %{id: alert_id} = alert = insert(:alert, user_id: user.id)
-      Alerting.sync_alert_jobs()
+      {:ok, pid} = Alerting.sync_alert_jobs()
+
+      ref = Process.monitor(pid)
+      assert_receive {:DOWN, ^ref, _, _, _}
 
       assert {:ok,
               %Quantum.Job{

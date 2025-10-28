@@ -288,13 +288,6 @@ defmodule Logflare.Backends.Adaptor.SentryAdaptorTest do
     end
   end
 
-  describe "execute_query/3" do
-    test "returns not implemented error" do
-      result = @subject.execute_query(nil, "SELECT 1", [])
-      assert {:error, :not_implemented} = result
-    end
-  end
-
   describe "redact_config/1" do
     test "redacts DSN secret key" do
       config = %{dsn: "https://public_key:secret_key@o123456.ingest.sentry.io/123456"}

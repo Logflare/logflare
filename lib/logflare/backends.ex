@@ -428,7 +428,7 @@ defmodule Logflare.Backends do
     with %Backend{} = backend <- get_backend(backend_id) do
       sources = Sources.list_sources(backend_id: backend_id)
 
-      if length(sources) > 0 do
+      if sources != [] do
         Cluster.Utils.rpc_multicast(__MODULE__, :sync_backends_local, [backend, sources])
       end
     end
@@ -494,12 +494,9 @@ defmodule Logflare.Backends do
           do_telemetry(:drop, le)
           {events, errors}
 
-        %{valid: false} = le ->
+        %{pipeline_error: %_{message: message}, valid: false} = le ->
           do_telemetry(:invalid, le)
-          {events, errors}
-
-        %{pipeline_error: err} = le when err != nil ->
-          {events, [le.pipeline_error.message | errors]}
+          {events, [message | errors]}
 
         le ->
           {[le | events], errors}
@@ -653,7 +650,6 @@ defmodule Logflare.Backends do
   """
   @spec start_source_sup(Source.t()) :: :ok | {:error, :already_started}
   def start_source_sup(%Source{} = source) do
-    # ensure that v1 pipeline source is already down
     case DynamicSupervisor.start_child(
            {:via, PartitionSupervisor, {SourcesSup, source.id}},
            {SourceSup, source}
@@ -835,12 +831,12 @@ defmodule Logflare.Backends do
   @doc """
   Lists latest recent logs of only the local cache.
   """
-  @spec list_recent_logs_local(Source.t()) :: [LogEvent.t()]
-  @spec list_recent_logs_local(Source.t(), n :: number()) :: [LogEvent.t()]
+  @spec list_recent_logs_local(Source.t() | pos_integer()) :: [LogEvent.t()]
+  @spec list_recent_logs_local(Source.t() | pos_integer(), n :: number()) :: [LogEvent.t()]
   def list_recent_logs_local(source, n \\ 100)
   def list_recent_logs_local(%Source{id: id}, n), do: list_recent_logs_local(id, n)
 
-  def list_recent_logs_local(source_id, n) do
+  def list_recent_logs_local(source_id, n) when is_integer(source_id) do
     {:ok, events} = IngestEventQueue.fetch_events({source_id, nil}, n)
 
     events

@@ -34,9 +34,9 @@ defmodule LogflareWeb.BillingAccountLive.EstimateUsageComponent do
     <div class="my-3 w-auto">
       <div class="flex flex-col">
         <div>
-          Estimate usage between <%= @presentation_start_date %> and <%= @presentation_end_date %>:
+          Estimate usage between {@presentation_start_date} and {@presentation_end_date}:
         </div>
-        <div>Usage: <%= @usage %> inserts</div>
+        <div>Usage: {@usage} inserts</div>
       </div>
     </div>
     """

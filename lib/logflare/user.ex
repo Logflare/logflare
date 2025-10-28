@@ -186,12 +186,6 @@ defmodule Logflare.User do
 
   defp add_api_key(changeset), do: changeset
 
-  def preferences_changeset(user, attrs) do
-    user
-    |> cast(attrs, [:preferences])
-    |> cast_embed([:preferences])
-  end
-
   def default_validations(changeset, user) do
     changeset
     |> validate_required([:email, :provider, :token, :provider_uid, :api_key])

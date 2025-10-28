@@ -63,4 +63,21 @@ defmodule Logflare.Sql.DialectTransformer.ClickhouseTest do
       assert result == expected
     end
   end
+
+  describe "build_transformation_data/2" do
+    test "passes through base data unchanged" do
+      user = build(:user)
+
+      base_data = %{
+        sources: [],
+        dialect: "clickhouse",
+        ast: [],
+        sandboxed_query: nil
+      }
+
+      result = Clickhouse.build_transformation_data(user, base_data)
+
+      assert result == base_data
+    end
+  end
 end

@@ -6,6 +6,7 @@ defmodule Logflare.Sql.DialectTransformer.Clickhouse do
   @behaviour Logflare.Sql.DialectTransformer
 
   alias Logflare.Backends.Adaptor.ClickhouseAdaptor
+  alias Logflare.User
 
   @impl true
   def quote_style, do: nil
@@ -18,4 +19,12 @@ defmodule Logflare.Sql.DialectTransformer.Clickhouse do
     source = Enum.find(sources, fn s -> s.name == source_name end)
     ClickhouseAdaptor.clickhouse_ingest_table_name(source)
   end
+
+  @doc """
+  Builds transformation data for ClickHouse from a user and base data.
+
+  Since ClickHouse does not require project/dataset metadata, we can just pass through the base data.
+  """
+  @spec build_transformation_data(User.t(), map()) :: map()
+  def build_transformation_data(%User{}, base_data), do: base_data
 end

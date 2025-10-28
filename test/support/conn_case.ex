@@ -53,6 +53,10 @@ defmodule LogflareWeb.ConnCase do
         stub(ConfigCat, :get_value, fn _, _ -> true end)
         stub(Goth, :fetch, fn _mod -> {:ok, %Goth.Token{token: "auth-token"}} end)
 
+        stub(Logflare.Cluster.Utils, :rpc_call, fn _node, func ->
+          func.()
+        end)
+
         on_exit(fn ->
           Logflare.Backends.IngestEventQueue.delete_all_mappings()
           Logflare.PubSubRates.Cache.clear()
@@ -80,6 +84,12 @@ defmodule LogflareWeb.ConnCase do
   end
 
   # for browser use
+  def login_user(conn, user, team_user) do
+    conn
+    |> login_user(user)
+    |> Plug.Conn.put_session(:team_user_id, team_user.id)
+  end
+
   def login_user(conn, user) do
     conn
     |> Plug.Test.init_test_session(%{user_id: user.id})

@@ -6,7 +6,6 @@ defmodule Logflare.Lql.BackendTransformer.BigQueryTest do
   alias Ecto.Query
   alias Ecto.Query.BooleanExpr
   alias Logflare.Lql.BackendTransformer.BigQuery
-  alias Logflare.Lql.Rules.ChartRule
   alias Logflare.Lql.Rules.FilterRule
   alias Logflare.Lql.Rules.SelectRule
 
@@ -15,7 +14,7 @@ defmodule Logflare.Lql.BackendTransformer.BigQueryTest do
   describe "behavior implementation" do
     test "implements all required callbacks" do
       assert function_exported?(BigQuery, :transform_filter_rule, 2)
-      assert function_exported?(BigQuery, :transform_chart_rule, 2)
+      assert function_exported?(BigQuery, :transform_chart_rule, 5)
       assert function_exported?(BigQuery, :transform_select_rule, 2)
       assert function_exported?(BigQuery, :apply_filter_rules_to_query, 3)
       assert function_exported?(BigQuery, :dialect, 0)
@@ -239,18 +238,61 @@ defmodule Logflare.Lql.BackendTransformer.BigQueryTest do
     end
   end
 
-  describe "transform_chart_rule/2" do
-    test "raises error for unimplemented chart rule transformation" do
-      chart_rule = %ChartRule{
-        path: "timestamp",
-        aggregate: :count,
-        period: :minute,
-        value_type: :integer
-      }
+  describe "transform_chart_rule/5" do
+    setup do
+      base_query = from(@bq_table_id)
+      [base_query: base_query]
+    end
 
-      assert_raise RuntimeError, ~r/Chart rule transformation not yet implemented/, fn ->
-        BigQuery.transform_chart_rule(chart_rule, %{})
-      end
+    test "transforms count aggregation with minute period", %{base_query: base_query} do
+      result = BigQuery.transform_chart_rule(base_query, :count, "*", :minute, "timestamp")
+
+      assert %Query{} = result
+      assert result.group_bys != []
+      assert result.order_bys != []
+    end
+
+    test "transforms avg aggregation with hour period", %{base_query: base_query} do
+      result = BigQuery.transform_chart_rule(base_query, :avg, "latency", :hour, "timestamp")
+
+      assert %Query{} = result
+      assert result.group_bys != []
+    end
+
+    test "transforms sum aggregation with day period", %{base_query: base_query} do
+      result = BigQuery.transform_chart_rule(base_query, :sum, "bytes", :day, "timestamp")
+
+      assert %Query{} = result
+      assert result.group_bys != []
+    end
+
+    test "transforms max aggregation with second period", %{base_query: base_query} do
+      result =
+        BigQuery.transform_chart_rule(base_query, :max, "response_time", :second, "timestamp")
+
+      assert %Query{} = result
+      assert result.group_bys != []
+    end
+
+    test "transforms p50 percentile aggregation", %{base_query: base_query} do
+      result = BigQuery.transform_chart_rule(base_query, :p50, "duration", :minute, "timestamp")
+
+      assert %Query{} = result
+      assert result.group_bys != []
+    end
+
+    test "transforms p95 percentile aggregation", %{base_query: base_query} do
+      result = BigQuery.transform_chart_rule(base_query, :p95, "latency", :hour, "timestamp")
+
+      assert %Query{} = result
+      assert result.group_bys != []
+    end
+
+    test "transforms p99 percentile aggregation", %{base_query: base_query} do
+      result = BigQuery.transform_chart_rule(base_query, :p99, "latency", :day, "timestamp")
+
+      assert %Query{} = result
+      assert result.group_bys != []
     end
   end
 

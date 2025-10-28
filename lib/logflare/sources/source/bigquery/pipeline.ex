@@ -151,7 +151,7 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
     } do
       source = Sources.Cache.get_by_id(context.source_id)
 
-      if source.bq_storage_write_api do
+      if source && source.bq_storage_write_api do
         log_events = messages |> Enum.map(& &1.data)
 
         BigQueryAdaptor.insert_log_events_via_storage_write_api(log_events,
@@ -238,15 +238,6 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
               tesla_response: GenUtils.get_tesla_error_message(response)
             )
         end
-
-      {:error, :emfile = response} ->
-        Logger.error("Stream batch emfile error!", tesla_response: response)
-
-      {:error, :timeout = response} ->
-        Logger.warning("Stream batch timeout error!", tesla_response: response)
-
-      {:error, :checkout_timeout = response} ->
-        Logger.warning("Stream batch checkout_timeout error!", tesla_response: response)
 
       {:error, response} ->
         Logger.warning("Stream batch unknown error!", tesla_response: inspect(response))

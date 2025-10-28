@@ -5,7 +5,7 @@
 <% end %>
 <div class="subhead ">
   <div class="container mx-auto">
-    <h5>~/logs/<%= link(@source.name, to: Routes.source_path(@conn, :show, @source), class: "text-primary") %></h5>
+    <h5>~/logs/{link(@source.name, to: Routes.source_path(@conn, :show, @source), class: "text-primary")}</h5>
 
     <div class="log-settings">
       <ul>
@@ -40,7 +40,7 @@
 <div id="logs-list-stream-container" class="mt-4 container mx-auto console-text">
   <ul id="logs-list" class="list-unstyled console-text-list" hidden>
     <li :for={{log, inx} <- @logs |> Enum.with_index()} class="hover:tw-bg-gray-800">
-      <span class="tw-whitespace-pre-wrap"><mark class="log-datestamp" data-timestamp={log.body["timestamp"]}><%= log.body["timestamp"] %></mark> <mark :if={level = log.body["level"]} class={"log-level-#{level}"}><%= level %></mark> <%= log.body["event_message"] %></span>
+      <span class="tw-whitespace-pre-wrap"><mark class="log-datestamp" data-timestamp={log.body["timestamp"]}>{log.body["timestamp"]}</mark> <mark :if={level = log.body["level"]} class={"log-level-#{level}"}>{level}</mark> {log.body["event_message"]}</span>
       <a class="metadata-link" data-toggle="collapse" href={"#metadata-#{inx}"} aria-expanded="false" class="tw-text-[0.65rem]">
         event body
       </a>
@@ -59,8 +59,8 @@
   <div>
     <%= form_for @conn, Routes.live_path(@conn, LogflareWeb.Source.SearchLV, @source), [method: :get], fn f -> %>
       <div class="form-group form-text">
-        <%= text_input(f, :querystring, placeholder: "404", class: "form-control form-control-margin", autofocus: true) %>
-        <%= hidden_input(f, :tailing?, value: "true") %>
+        {text_input(f, :querystring, placeholder: "404", class: "form-control form-control-margin", autofocus: true)}
+        {hidden_input(f, :tailing?, value: "true")}
       </div>
       <div id="observer-target"></div>
       <%= submit class: "btn btn-primary form-button" do %>
@@ -68,12 +68,12 @@
       <% end %>
     <% end %>
     <small class="form-text text-muted">
-      random(tips): <%= @search_tip %>
+      random(tips): {@search_tip}
     </small>
   </div>
 </div>
 <!-- Modal -->
-<%= render(LogflareWeb.SourceView, "no_logs_modal.html", user: @user, source: @source, conn: @conn) %>
+{render(LogflareWeb.SourceView, "no_logs_modal.html", user: @user, source: @source, conn: @conn)}
 <div id="__phx-assigns__" data-source-token={@source.token} data-logs={Poison.encode!(@logs)}></div>
 <script src={Routes.static_path(@conn, "/js/source.js")}>
 </script>

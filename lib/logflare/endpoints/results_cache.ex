@@ -6,6 +6,7 @@ defmodule Logflare.Endpoints.ResultsCache do
   require Logger
 
   alias Logflare.Endpoints
+  alias Logflare.Utils
   alias Logflare.Utils.Tasks
 
   use GenServer, restart: :temporary
@@ -192,7 +193,7 @@ defmodule Logflare.Endpoints.ResultsCache do
       |> Map.put(:parsed_labels, state.parsed_labels)
 
     Logflare.Endpoints.run_query(query, state.params, state.opts)
-    |> Tuple.append(query)
+    |> Utils.append_to_tuple(query)
   end
 
   def endpoints_part(query_id, params) do

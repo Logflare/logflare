@@ -160,9 +160,6 @@ defmodule Logflare.Lql.Parser do
       {:ok, _rules, rest, _, {_, _}, _} ->
         {:error, "LQL parser doesn't know how to handle this part: #{rest}"}
 
-      {:error, err} ->
-        {:error, err}
-
       {:error, err, _, _, _, _} ->
         {:error, err}
     end

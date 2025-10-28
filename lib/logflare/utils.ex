@@ -61,17 +61,17 @@ defmodule Logflare.Utils do
   """
   @spec stringify_keys(map()) :: map()
   def stringify_keys(%{} = map) do
-    Map.new(map, fn
-      {k, v} when is_atom(k) -> {Atom.to_string(k), stringify_keys(v)}
-      {k, v} when is_binary(k) -> {k, stringify_keys(v)}
-    end)
+    for {k, v} <- map, into: %{} do
+      {to_string_key(k), deep_stringify(v)}
+    end
   end
 
-  def stringify_keys([head | rest]) do
-    [stringify_keys(head) | stringify_keys(rest)]
-  end
+  defp deep_stringify(%{} = map), do: stringify_keys(map)
+  defp deep_stringify([_ | _] = list), do: Enum.map(list, &deep_stringify/1)
+  defp deep_stringify(v), do: v
 
-  def stringify_keys(not_a_map), do: not_a_map
+  defp to_string_key(k) when is_atom(k), do: Atom.to_string(k)
+  defp to_string_key(k) when is_binary(k), do: k
 
   @doc """
   Stringifies a term.
@@ -95,6 +95,21 @@ defmodule Logflare.Utils do
   def stringify(v) when is_float(v), do: Float.to_string(v)
   def stringify(v) when is_integer(v), do: Integer.to_string(v)
   def stringify(v), do: inspect(v)
+
+  @doc """
+  Appends a value to the end of a tuple.
+
+  ## Examples
+
+    iex> Logflare.Utils.append_to_tuple({:a, :b}, :c)
+    {:a, :b, :c}
+
+    iex> Logflare.Utils.append_to_tuple({}, :a)
+    {:a}
+  """
+  def append_to_tuple(tuple, value) do
+    Tuple.insert_at(tuple, tuple_size(tuple), value)
+  end
 
   @doc """
   Sets the default ecto changeset field value if not set
@@ -234,9 +249,9 @@ defmodule Logflare.Utils do
   end
 
   @doc """
-  Redacts sensitive headers from a list of Tesla.Env headers. Used for automatic redaction
+  Redacts sensitive headers from a list of Tesla.Env headers. Used for automatic redaction.
   """
-  @spec redact_sensitive_headers(list(tuple())) :: list(tuple())
+  @spec redact_sensitive_headers(map()) :: list(tuple())
   def redact_sensitive_headers(%{} = value) do
     value
     |> Iteraptor.map(

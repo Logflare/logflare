@@ -468,6 +468,55 @@ defmodule Logflare.TestUtils do
   end
 
   @doc """
+  Wait for a render view state to complete.
+
+  Uses telemetry to listen to view render events and return when the given selector evaluates to true.
+  This may reduce execution test time compared to relying on sleep or other blocking mechanisms.
+
+  You must call `attach_wait_for_render/1` first.
+
+  ## Example
+
+      setup {TestUtils, :attach_wait_for_render}
+      test "hello", %{conn: conn} do
+        {_, view, _} = live(~p"/live")
+
+        view
+        |> TestUtils.wait_for_render(~p"div#complete")
+
+        # your assertions here
+      end
+
+  """
+  def wait_for_render(view, selector, timeout \\ 5000) do
+    if view |> Phoenix.LiveViewTest.has_element?(selector) do
+      view
+    else
+      receive do
+        {:wait_for_render, _} ->
+          wait_for_render(view, selector)
+      after
+        timeout ->
+          raise "Timeout waiting for render"
+      end
+    end
+  end
+
+  def attach_wait_for_render(_) do
+    parent = self()
+    name = "wait-for-render-#{System.unique_integer()}"
+
+    :telemetry.attach(
+      name,
+      [:phoenix, :live_view, :render, :stop],
+      fn _event, _measurements, metadata, _config ->
+        send(parent, {:wait_for_render, metadata.socket.assigns})
+      end,
+      nil
+    )
+  end
+
+  @doc """
   `Phoenix.LiveViewTest` has `open_browser/2` function that opens a browser with
   the given HTML content. This is kinda the same but for Phoenix static views.
 

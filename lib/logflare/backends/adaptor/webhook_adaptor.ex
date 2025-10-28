@@ -23,6 +23,7 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
 
   alias Logflare.Backends
   alias Logflare.Backends.Adaptor.WebhookAdaptor.EgressMiddleware
+  alias Logflare.Utils
 
   @behaviour Logflare.Backends.Adaptor
 
@@ -50,9 +51,6 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
     |> Logflare.Utils.default_field_value(:http, "http2")
     |> Logflare.Utils.default_field_value(:gzip, true)
   end
-
-  @impl Logflare.Backends.Adaptor
-  def execute_query(_ident, _query, _opts), do: {:error, :not_implemented}
 
   @impl Logflare.Backends.Adaptor
   def validate_config(changeset) do
@@ -162,7 +160,7 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
 
     # see the implementation for Backends.via_source/2 for how tuples are used to identify child processes
     def process_name({:via, module, {registry, identifier}}, base_name) do
-      new_identifier = Tuple.append(identifier, base_name)
+      new_identifier = Utils.append_to_tuple(identifier, base_name)
       {:via, module, {registry, new_identifier}}
     end
 

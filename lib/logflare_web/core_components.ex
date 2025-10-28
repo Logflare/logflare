@@ -5,6 +5,8 @@ defmodule LogflareWeb.CoreComponents do
   use LogflareWeb, :routes
   use Phoenix.Component
 
+  alias Phoenix.LiveView.JS
+
   @doc "Alert the user of something"
   attr :variant, :string,
     values: ["primary", "secondary", "success", "danger", "warning", "info", "light", "dark"]
@@ -15,7 +17,7 @@ defmodule LogflareWeb.CoreComponents do
   def alert(assigns) do
     ~H"""
     <div class={["alert alert-#{@variant}", @class]} role="alert">
-      <%= render_slot(@inner_block) %>
+      {render_slot(@inner_block)}
     </div>
     """
   end
@@ -31,8 +33,38 @@ defmodule LogflareWeb.CoreComponents do
   def button(assigns) do
     ~H"""
     <button class={"btn btn-#{@variant} #{@class}"} type="button" {@rest}>
-      <%= render_slot(@inner_block) %>
+      {render_slot(@inner_block)}
     </button>
+    """
+  end
+
+  attr :id, :string, required: false
+  attr :disabled, :boolean, default: false
+  slot :inner_block, required: true
+
+  slot :menu_item, required: true do
+    attr :heading, :string
+  end
+
+  def button_dropdown(assigns) do
+    assigns = assigns |> assign_new(:id, fn -> "button-dropdown-#{UUID.uuid4()}" end)
+
+    ~H"""
+    <div class="tw-relative" id={@id}>
+      <button type="button" class="btn btn-primary" phx-click={JS.toggle(to: "##{@id} ul")} disabled={@disabled}>
+        {render_slot(@inner_block)}
+      </button>
+      <ul phx-click-away={JS.hide()} style="display: none;" class="tw-absolute tw-left-0 tw-m-0 tw-px-0 tw-bottom-full tw-bg-white tw-rounded-md tw-border tw-border-gray-300 tw-shadow tw-py-2 tw-min-w-[11rem] tw-list-none tw-z-10">
+        <%= for menu_item <- @menu_item do %>
+          <li :if={menu_item[:heading]} class="tw-mt-2 first:tw-mt-0 tw-border-0 tw-border-t first:tw-border-t-0 tw-border-solid tw-border-gray-200 tw-px-3 tw-pt-2 tw-pb-1 tw-text-xs tw-font-semibold tw-text-gray-500 tw-uppercase">
+            {menu_item.heading}
+          </li>
+          <li class="tw-block tw-px-3 tw-py-2 tw-text-gray-800 tw-no-underline hover:tw-bg-gray-100">
+            {render_slot(menu_item)}
+          </li>
+        <% end %>
+      </ul>
+    </div>
     """
   end
 
@@ -45,9 +77,9 @@ defmodule LogflareWeb.CoreComponents do
     ~H"""
     <div class="subhead">
       <div class="container mx-auto tw-flex tw-flex-col tw-justify-between">
-        <h5><%= render_slot(@path) %></h5>
+        <h5>{render_slot(@path)}</h5>
         <div class="tw-flex  tw-flex-row tw-justify-end tw-gap-2">
-          <%= render_slot(@inner_block) %>
+          {render_slot(@inner_block)}
         </div>
       </div>
     </div>
@@ -64,7 +96,7 @@ defmodule LogflareWeb.CoreComponents do
   def subheader_path_link(assigns) do
     ~H"""
     <.dynamic_link to={@to} patch={@live_patch} class="tw-text-gray-600 tw-hover:text-black">
-      <%= render_slot(@inner_block) %>
+      {render_slot(@inner_block)}
     </.dynamic_link>
     """
   end
@@ -101,7 +133,7 @@ defmodule LogflareWeb.CoreComponents do
 
     ~H"""
     <h5 id={@anchor} class="tw-mb-2 tw-mt-4 tw-text-white scroll-margin">
-      <%= @text %> <%= Phoenix.HTML.Link.link("#", to: "#" <> @anchor) %>
+      {@text} {Phoenix.HTML.Link.link("#", to: "#" <> @anchor)}
     </h5>
     """
   end
@@ -116,7 +148,7 @@ defmodule LogflareWeb.CoreComponents do
     if assigns.external do
       ~H"""
       <a href={@to} target="_blank" rel="noopener noreferrer" {@attrs}>
-        <%= render_slot(@inner_block) %>
+        {render_slot(@inner_block)}
       </a>
       """
     else
@@ -130,7 +162,7 @@ defmodule LogflareWeb.CoreComponents do
       assigns = assign(assigns, :to, %{link_type => assigns.to})
 
       ~H"""
-      <.link {@to} {@attrs}><%= render_slot(@inner_block) %></.link>
+      <.link {@to} {@attrs}>{render_slot(@inner_block)}</.link>
       """
     end
   end
@@ -144,7 +176,7 @@ defmodule LogflareWeb.CoreComponents do
 
   def log_event_permalink(assigns) do
     ~H"""
-    <.link class={@class} target="_blank" href={~p"/sources/#{@source.id}/event?#{%{uuid: @log_event_id, timestamp: Logflare.Utils.iso_timestamp(@timestamp), lql: @lql}}"}><%= @label %></.link>
+    <.link class={@class} target="_blank" href={~p"/sources/#{@source.id}/event?#{%{uuid: @log_event_id, timestamp: Logflare.Utils.iso_timestamp(@timestamp), lql: @lql}}"}>{@label}</.link>
     """
   end
 end

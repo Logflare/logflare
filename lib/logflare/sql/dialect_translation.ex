@@ -49,7 +49,7 @@ defmodule Logflare.Sql.DialectTranslation do
         |> String.replace(~r/\"([\w\_\-]*\.[\w\_\-]+)\.([\w_]{36})"/im, replacement_pattern)
 
       Logger.debug(
-        "Postgres translation is complete: #{query} | \n output: #{inspect(converted)}"
+        "Postgres translation is complete: #{query} | \n output: #{inspect(converted, limit: :infinity)}"
       )
 
       {:ok, converted}
@@ -143,13 +143,25 @@ defmodule Logflare.Sql.DialectTranslation do
             %{"Identifier" => _arr} = identifier ->
               identifier
 
-            literal ->
-              update_in(literal, ["Value"], &%{"SingleQuotedString" => &1["DoubleQuotedString"]})
+            %{"Value" => %{"DoubleQuotedString" => value}} when is_non_empty_binary(value) ->
+              %{"Value" => %{"SingleQuotedString" => value}}
+
+            _ ->
+              %{"Value" => %{"SingleQuotedString" => ""}}
           end
 
         pattern =
           get_function_arg(v, 1)
-          |> update_in(["Value"], &%{"SingleQuotedString" => &1["DoubleQuotedString"]})
+          |> case do
+            %{"Value" => %{"DoubleQuotedString" => value}} when is_non_empty_binary(value) ->
+              %{"Value" => %{"SingleQuotedString" => value}}
+
+            %{"Value" => %{"SingleQuotedString" => value}} when is_non_empty_binary(value) ->
+              %{"Value" => %{"SingleQuotedString" => value}}
+
+            _ ->
+              %{"Value" => %{"SingleQuotedString" => ""}}
+          end
 
         {"BinaryOp", %{"left" => string, "op" => "PGRegexMatch", "right" => pattern}}
 
@@ -235,6 +247,67 @@ defmodule Logflare.Sql.DialectTranslation do
 
   defp do_bq_to_pg_convert_functions(ast_node, _data), do: {:recurse, ast_node}
 
+  # Handle CAST to numeric types - add ::TEXT first for identifiers (fixes JSONB cast errors)
+  defp pg_traverse_final_pass(
+         {"Cast" = k,
+          %{
+            "expr" => %{"Identifier" => _} = identifier,
+            "data_type" => data_type
+          } = v}
+       )
+       when is_map_key(data_type, "BigInt") or is_map_key(data_type, "Int") or
+              is_map_key(data_type, "SmallInt") or is_map_key(data_type, "Numeric") or
+              is_map_key(data_type, "Decimal") or is_map_key(data_type, "Float") or
+              is_map_key(data_type, "Double") do
+    text_cast = %{
+      "Cast" => %{
+        "data_type" => %{"Text" => nil},
+        "expr" => identifier,
+        "format" => nil,
+        "kind" => "DoubleColon"
+      }
+    }
+
+    {k,
+     %{
+       "kind" => Map.get(v, "kind", "Cast"),
+       "expr" => text_cast,
+       "data_type" => data_type,
+       "format" => Map.get(v, "format")
+     }}
+  end
+
+  # Handle CAST to numeric types for CompoundIdentifiers
+  defp pg_traverse_final_pass(
+         {"Cast" = k,
+          %{
+            "expr" => %{"CompoundIdentifier" => _} = compound,
+            "data_type" => data_type
+          } = v}
+       )
+       when is_map_key(data_type, "BigInt") or is_map_key(data_type, "Int") or
+              is_map_key(data_type, "SmallInt") or is_map_key(data_type, "Numeric") or
+              is_map_key(data_type, "Decimal") or is_map_key(data_type, "Float") or
+              is_map_key(data_type, "Double") do
+    text_cast = %{
+      "Cast" => %{
+        "data_type" => %{"Text" => nil},
+        "expr" => compound,
+        "format" => nil,
+        "kind" => "DoubleColon"
+      }
+    }
+
+    {k,
+     %{
+       "kind" => Map.get(v, "kind", "Cast"),
+       "expr" => text_cast,
+       "data_type" => data_type,
+       "format" => Map.get(v, "format")
+     }}
+  end
+
+  # Handle other CAST expressions
   defp pg_traverse_final_pass({"Cast" = k, %{"expr" => expr, "data_type" => data_type} = v}) do
     processed_expr =
       case expr do
@@ -245,14 +318,33 @@ defmodule Logflare.Sql.DialectTranslation do
           pg_traverse_final_pass(other)
       end
 
-    updated_cast = %{
-      "kind" => Map.get(v, "kind", "Cast"),
-      "expr" => processed_expr,
-      "data_type" => data_type,
-      "format" => Map.get(v, "format")
-    }
+    # Convert INT64 to BigInt for PostgreSQL
+    converted_data_type =
+      case data_type do
+        "Int64" ->
+          %{"BigInt" => nil}
 
-    {k, updated_cast}
+        %{"Custom" => %{"ObjectName" => [%{"value" => "INT64"}]}} ->
+          %{"BigInt" => nil}
+
+        other ->
+          other
+      end
+
+    # Convert SafeCast to regular Cast (BigQuery SAFE_CAST to PostgreSQL CAST)
+    converted_kind =
+      case Map.get(v, "kind") do
+        "SafeCast" -> "Cast"
+        other -> other || "Cast"
+      end
+
+    {k,
+     %{
+       "kind" => converted_kind,
+       "expr" => processed_expr,
+       "data_type" => converted_data_type,
+       "format" => Map.get(v, "format")
+     }}
   end
 
   defp pg_traverse_final_pass({"Function" = k, %{"name" => [%{"value" => function_name}]} = v})
@@ -312,36 +404,82 @@ defmodule Logflare.Sql.DialectTranslation do
        ) do
     # handle left/right numeric value comparisons
     is_numeric_comparison = numeric_value?(left) or numeric_value?(right)
+    # check if this is a regex operator - these require text on both sides
+    is_regex_operator =
+      operator in ["PGRegexMatch", "PGRegexIMatch", "PGRegexNotMatch", "PGRegexNotIMatch"]
 
-    [left, right] =
-      for expr <- [left, right] do
-        cond do
-          # skip if it is a value
-          match?(%{"Value" => _}, expr) ->
-            expr
+    # Process left side
+    processed_left =
+      cond do
+        match?(%{"Value" => _}, left) ->
+          left
 
-          # convert the identifier side to number
-          is_numeric_comparison and (identifier?(expr) or json_access?(expr)) ->
-            expr
-            |> cast_to_jsonb_double_colon()
-            |> jsonb_to_text()
-            |> cast_to_numeric()
+        is_numeric_comparison and (identifier?(left) or json_access?(left)) ->
+          left
+          |> cast_to_jsonb_double_colon()
+          |> jsonb_to_text()
+          |> cast_to_numeric()
 
-          timestamp_identifier?(expr) ->
-            at_time_zone(expr, :cast)
+        is_regex_operator and identifier?(left) ->
+          # Cast identifiers to text for regex operations
+          # This handles CTE fields that might be JSONB
+          %{
+            "Cast" => %{
+              "data_type" => %{"Text" => nil},
+              "expr" => left,
+              "format" => nil,
+              "kind" => "DoubleColon"
+            }
+          }
 
-          identifier?(expr) and operator == "Eq" ->
-            # wrap with a cast to convert possible jsonb fields
-            expr
-            |> choose_cast_style()
-            |> jsonb_to_text()
+        is_regex_operator and json_access?(left) ->
+          # For regex operators, ensure JSONB accessors return text
+          # Convert Arrow (->) to LongArrow (->>)
+          case left do
+            %{"Nested" => %{"BinaryOp" => %{"op" => "Arrow"} = bin_op}} ->
+              %{"Nested" => %{"BinaryOp" => %{bin_op | "op" => "LongArrow"}}}
 
-          true ->
-            pg_traverse_final_pass(expr)
-        end
+            other ->
+              pg_traverse_final_pass(other)
+          end
+
+        timestamp_identifier?(left) ->
+          at_time_zone(left, :cast)
+
+        identifier?(left) and operator == "Eq" ->
+          left
+          |> choose_cast_style()
+          |> jsonb_to_text()
+
+        true ->
+          pg_traverse_final_pass(left)
       end
 
-    {k, %{v | "left" => left, "right" => right} |> pg_traverse_final_pass()}
+    # Process right side
+    processed_right =
+      cond do
+        match?(%{"Value" => _}, right) ->
+          right
+
+        is_numeric_comparison and (identifier?(right) or json_access?(right)) ->
+          right
+          |> cast_to_jsonb_double_colon()
+          |> jsonb_to_text()
+          |> cast_to_numeric()
+
+        timestamp_identifier?(right) ->
+          at_time_zone(right, :cast)
+
+        identifier?(right) and operator == "Eq" ->
+          right
+          |> choose_cast_style()
+          |> jsonb_to_text()
+
+        true ->
+          pg_traverse_final_pass(right)
+      end
+
+    {k, %{v | "left" => processed_left, "right" => processed_right} |> pg_traverse_final_pass()}
   end
 
   # handle InList expressions - convert Arrow to LongArrow for text comparison
@@ -360,6 +498,44 @@ defmodule Logflare.Sql.DialectTranslation do
 
   # convert backticks to double quotes
   defp pg_traverse_final_pass({"quote_style" = k, "`"}), do: {k, "\""}
+
+  # ensure SingleQuotedString always has a string value, never null
+  defp pg_traverse_final_pass({"SingleQuotedString" = k, v}) when not is_binary(v) do
+    {k, ""}
+  end
+
+  # ensure DoubleQuotedString always has a string value, never null
+  defp pg_traverse_final_pass({"DoubleQuotedString" = k, v}) when not is_binary(v) do
+    {k, ""}
+  end
+
+  # Clean up CompoundIdentifier by filtering out null/empty values
+  # This prevents Rust NIF panics while preserving semantic meaning
+  defp pg_traverse_final_pass({"CompoundIdentifier" = k, identifiers})
+       when is_list(identifiers) do
+    # Filter out null or empty identifier parts
+    valid_identifiers =
+      Enum.filter(identifiers, fn
+        %{"value" => nil} -> false
+        %{"value" => ""} -> false
+        _ -> true
+      end)
+
+    case valid_identifiers do
+      # If we have valid identifiers, keep as CompoundIdentifier
+      [_ | _] = valid ->
+        {k, valid}
+
+      # If no valid identifiers remain, this is an error case - use empty Identifier
+      [] ->
+        {"Identifier", %{"quote_style" => nil, "value" => ""}}
+    end
+  end
+
+  # Ensure all identifier values are strings, never null
+  defp pg_traverse_final_pass({"value" = k, nil}) when is_atom(k) do
+    {k, ""}
+  end
 
   # drop cross join unnest
   defp pg_traverse_final_pass({"joins" = k, joins}) do
@@ -731,10 +907,20 @@ defmodule Logflare.Sql.DialectTranslation do
   defp process_unnest_join(_join, acc, _table_aliases), do: acc
 
   defp build_array_path_from_identifiers(identifiers, acc, table_aliases) do
-    for i <- identifiers, value = i["value"], value not in table_aliases do
-      if is_map_key(acc, value), do: acc[value], else: [value]
-    end
-    |> List.flatten()
+    identifiers
+    |> Enum.filter(&valid_identifier?(&1, table_aliases))
+    |> Enum.flat_map(&get_identifier_path(&1, acc))
+  end
+
+  defp valid_identifier?(%{"value" => value}, table_aliases)
+       when is_binary(value) and value != "" do
+    value not in table_aliases
+  end
+
+  defp valid_identifier?(_, _), do: false
+
+  defp get_identifier_path(%{"value" => value}, acc) do
+    Map.get(acc, value, [value])
   end
 
   defp build_array_path_from_expressions(array_exprs, acc, table_aliases) do
@@ -872,6 +1058,18 @@ defmodule Logflare.Sql.DialectTranslation do
          {"CompoundIdentifier" = k, [%{"value" => head_val}, tail] = v},
          data
        ) do
+    # Check if we're selecting from a CTE table
+    cte_context =
+      Enum.find_value(data.from_table_values, fn table_value ->
+        cte_fields = Map.get(data.cte_aliases, table_value, [])
+
+        if cte_fields != [] do
+          # Find the table alias for this CTE
+          table_alias = Enum.at(data.from_table_aliases, 0)
+          {table_alias, cte_fields}
+        end
+      end)
+
     cond do
       is_map_key(data.alias_path_mappings, head_val) and
         match?([_, _ | _], data.alias_path_mappings[head_val || []]) and
@@ -883,15 +1081,77 @@ defmodule Logflare.Sql.DialectTranslation do
             [base | arr_path] = data.alias_path_mappings[head_val]
             {base, arr_path}
           else
-            {"body", data.alias_path_mappings[head_val]}
-          end
+            path = data.alias_path_mappings[head_val]
 
-        # data.alias_path_mappings[head_val]
-        # arr_path = data.alias_path_mappings[head_val]
+            # credo:disable-for-next-line
+            case cte_context do
+              {table_alias, cte_fields} when cte_fields != [] ->
+                # Determine which CTE field to use:
+                # - If path contains a CTE field name, use it (e.g., UNNEST(metadata) AS metadata)
+                # - Otherwise use first CTE field (e.g., UNNEST(t.deep) where deep is nested in metadata)
+
+                # credo:disable-for-lines:4
+                cte_field =
+                  case Enum.find(path, fn p -> p in cte_fields end) do
+                    nil -> List.first(cte_fields)
+                    field -> field
+                  end
+
+                {[table_alias, cte_field], path}
+
+              _ ->
+                {"body", path}
+            end
+          end
 
         convert_keys_to_json_query(%{k => v}, data, {base, arr_path})
         |> Map.to_list()
         |> List.first()
+
+      # referencing a single-element unnest alias from a CTE context
+      is_map_key(data.alias_path_mappings, head_val) and
+        match?([_], data.alias_path_mappings[head_val]) and
+        data.in_cte_tables_tree == false and data.cte_aliases != %{} ->
+        path = data.alias_path_mappings[head_val]
+
+        case cte_context do
+          {table_alias, cte_fields} when cte_fields != [] ->
+            # Determine which CTE field to use:
+            # - If path contains a CTE field name, use it (e.g., UNNEST(metadata) AS metadata)
+            # - Otherwise use first CTE field (e.g., UNNEST(t.deep) where deep is nested in metadata)
+            cte_field =
+              case Enum.find(path, fn p -> p in cte_fields end) do
+                nil -> List.first(cte_fields)
+                field -> field
+              end
+
+            tail_value = tail["value"]
+            str_path = Enum.join(path ++ [tail_value], ",")
+            full_path = "{#{str_path}}"
+
+            # Always use HashLongArrow for CTE unnest references to return text
+            {"Nested",
+             %{
+               "BinaryOp" => %{
+                 "left" => %{
+                   "CompoundIdentifier" => [
+                     %{"quote_style" => nil, "value" => table_alias},
+                     %{"quote_style" => nil, "value" => cte_field}
+                   ]
+                 },
+                 "op" => "HashLongArrow",
+                 "right" => %{
+                   "Value" => %{"SingleQuotedString" => full_path}
+                 }
+               }
+             }}
+
+          _ ->
+            # Fallback to normal conversion
+            convert_keys_to_json_query(%{k => [tail]}, data, {"body", path})
+            |> Map.to_list()
+            |> List.first()
+        end
 
       # outside of a cte, referencing table alias
       # preserve as is

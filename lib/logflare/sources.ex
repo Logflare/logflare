@@ -5,8 +5,6 @@ defmodule Logflare.Sources do
 
   import Ecto.Query
 
-  require Logger
-
   alias Logflare.Backends
   alias Logflare.Billing
   alias Logflare.Billing.Plan
@@ -19,16 +17,18 @@ defmodule Logflare.Sources do
   alias Logflare.Repo
   alias Logflare.SavedSearch
   alias Logflare.SingleTenant
+  alias Logflare.SourceSchemas
   alias Logflare.Sources.Source
   alias Logflare.Sources.Source.BigQuery.SchemaBuilder
-  alias Logflare.SourceSchemas
   alias Logflare.User
   alias Logflare.Users
   alias Number.Delimit
 
+  require Logger
+
   @default_bucket_width 60
 
-  @spec count_sources_by_user(User.t() | integer()) :: integer()
+  @spec count_sources_by_user(User.t() | pos_integer()) :: non_neg_integer()
   def count_sources_by_user(%User{id: user_id}), do: count_sources_by_user(user_id)
 
   def count_sources_by_user(user_id) do
@@ -36,10 +36,10 @@ defmodule Logflare.Sources do
     |> Repo.aggregate(:count)
   end
 
-  @spec list_sources_by_user(User.t()) :: [Source.t()]
+  @spec list_sources_by_user(User.t() | pos_integer()) :: [Source.t()]
   def list_sources_by_user(%User{id: user_id}), do: list_sources_by_user(user_id)
 
-  def list_sources_by_user(user_id) do
+  def list_sources_by_user(user_id) when is_integer(user_id) do
     from(s in Source, where: s.user_id == ^user_id)
     |> Repo.all()
     |> Enum.map(&put_retention_days/1)
@@ -61,9 +61,6 @@ defmodule Logflare.Sources do
 
       {:user_id, user_id}, q when is_integer(user_id) ->
         where(q, [s], s.user_id == ^user_id)
-
-      {:v2_pipeline, v2_pipeline}, q when is_boolean(v2_pipeline) ->
-        where(q, [s], s.v2_pipeline == ^v2_pipeline)
 
       {:default_ingest_backend_enabled?, enabled}, q when is_boolean(enabled) ->
         where(q, [s], s.default_ingest_backend_enabled? == ^enabled)
@@ -182,7 +179,7 @@ defmodule Logflare.Sources do
          not SingleTenant.postgres_backend?() do
       user = Users.Cache.get(updated.user_id)
 
-      fields = String.split(updated.bigquery_clustering_fields || "", ",") ++ ["timestamp", "id"]
+      fields = String.split(updated.bigquery_clustering_fields || "", ",") ++ ["timestamp"]
 
       BigQuery.patch_table_clustering(
         updated.token,
@@ -458,6 +455,7 @@ defmodule Logflare.Sources do
     :ets.whereis(:rate_counters) != :undefined and :ets.whereis(:table_counters) != :undefined
   end
 
+  @spec put_retention_days(Source.t() | nil) :: Source.t() | nil
   def put_retention_days(%Source{} = source) do
     user = Users.Cache.get(source.user_id)
     plan = Billing.Cache.get_plan_by_user(user)

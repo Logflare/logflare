@@ -41,6 +41,11 @@ defmodule Logflare.Google.CloudResourceManager do
     )
   end
 
+  @spec append_managed_sa_to_iam_policy(User.t()) ::
+          {:ok, GoogleApi.CloudResourceManager.V1.Model.Policy.t()}
+          | {:error, :no_project_id}
+          | {:error, :managed_service_accounts_disabled}
+          | {:error, term()}
   def append_managed_sa_to_iam_policy(%User{bigquery_project_id: nil}),
     do: {:error, :no_project_id}
 

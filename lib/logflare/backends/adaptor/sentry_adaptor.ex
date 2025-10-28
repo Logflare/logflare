@@ -57,9 +57,6 @@ defmodule Logflare.Backends.Adaptor.SentryAdaptor do
   end
 
   @impl Logflare.Backends.Adaptor
-  def execute_query(_ident, _query, _opts), do: {:error, :not_implemented}
-
-  @impl Logflare.Backends.Adaptor
   def cast_config(params) do
     {%{}, %{dsn: :string}}
     |> Ecto.Changeset.cast(params, [:dsn])

@@ -58,7 +58,8 @@ defmodule LogflareWeb.QueryLive do
                 "scrollbar" => %{
                   "vertical" => "auto",
                   "horizontal" => "hidden",
-                  "verticalScrollbarSize" => 6
+                  "verticalScrollbarSize" => 6,
+                  "alwaysConsumeMouseWheel" => false
                 },
                 "lineNumbers" => "off",
                 "glyphMargin" => false,
@@ -73,7 +74,10 @@ defmodule LogflareWeb.QueryLive do
           }
         />
         <div class="tw-ml-auto">
-          <%= submit("Run query", class: "btn btn-secondary") %>
+          <button type="button" class="btn btn-secondary" phx-click="format-query">
+            Format
+          </button>
+          {submit("Run query", class: "btn btn-secondary")}
         </div>
       </.form>
 
@@ -81,7 +85,7 @@ defmodule LogflareWeb.QueryLive do
         <.alert variant="warning">
           <strong>SQL Parse error!</strong>
           <br />
-          <span><%= @parse_error_message %></span>
+          <span>{@parse_error_message}</span>
         </.alert>
       </div>
     </section>
@@ -101,7 +105,7 @@ defmodule LogflareWeb.QueryLive do
         <table class="table table-bordered table-dark table-sm table-hover table-responsive tw-overflow-x-auto  tw-w-[95vw] tw-font-mono tw-text-[0.7rem]">
           <thead>
             <tr>
-              <th :for={k <- keys} scope="col" class="tw-w-max-[50vw]"><%= k %></th>
+              <th :for={k <- keys} scope="col" class="tw-w-max-[50vw]">{k}</th>
             </tr>
           </thead>
           <tbody>
@@ -110,11 +114,11 @@ defmodule LogflareWeb.QueryLive do
                 <%= case value = Map.get(row, k) do %>
                   <% value when is_map(value) or is_list(value) -> %>
                     <button type="button" class="btn btn-link tw-truncate tw-text-ellipsis tw-w-32 tw-text-[0.7rem]" data-toggle="modal" data-target={"#modal-#{row_idx}-#{col_idx}"}>
-                      <%= Jason.encode!(value) |> String.slice(0..150) %>
+                      {Jason.encode!(value) |> String.slice(0..150)}
                     </button>
                   <% value -> %>
                     <span class="tw-max-w-[50vw]  tw-block tw-text-wrap">
-                      <%= value %>
+                      {value}
                     </span>
                 <% end %>
 
@@ -122,7 +126,7 @@ defmodule LogflareWeb.QueryLive do
                   <div class="modal-dialog modal-xl">
                     <div class="modal-content">
                       <div class="modal-header">
-                        <h5 class="modal-title" id="staticBackdropLabel"><%= k %></h5>
+                        <h5 class="modal-title" id="staticBackdropLabel">{k}</h5>
                         <button type="button" class="close" data-dismiss="modal" aria-label="Close">
                           <span aria-hidden="true">&times;</span>
                         </button>
@@ -169,8 +173,12 @@ defmodule LogflareWeb.QueryLive do
   def handle_params(params, _uri, socket) do
     q =
       case params["q"] do
-        "" -> nil
-        v -> v
+        v when v in ["", nil] ->
+          nil
+
+        v ->
+          {:ok, formatted} = SqlFmt.format_query(v)
+          formatted
       end
 
     query_string =
@@ -240,6 +248,11 @@ defmodule LogflareWeb.QueryLive do
   def handle_event("parse-query", %{"_target" => ["live_monaco_editor", _]}, socket) do
     # ignore change events from the editor field
     {:noreply, socket}
+  end
+
+  def handle_event("format-query", _params, socket) do
+    {:ok, formatted} = SqlFmt.format_query(socket.assigns.query_string)
+    {:noreply, LiveMonacoEditor.set_value(socket, formatted, to: "query")}
   end
 
   defp run_query(socket, user, query_string) do

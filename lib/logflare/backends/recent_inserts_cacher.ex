@@ -1,4 +1,4 @@
-defmodule Logflare.Backends.RecentInsertsBroadcaster do
+defmodule Logflare.Backends.RecentInsertsCacher do
   @moduledoc """
   Performs periodic broadcasting of cluster insert counts
   """
@@ -12,7 +12,7 @@ defmodule Logflare.Backends.RecentInsertsBroadcaster do
 
   require Logger
 
-  @broadcast_every if Application.compile_env(:logflare, :env) == :test, do: 100, else: 5_000
+  @cache_every if Application.compile_env(:logflare, :env) == :test, do: 100, else: 5_000
 
   ## Server
   def start_link(args) do
@@ -31,7 +31,7 @@ defmodule Logflare.Backends.RecentInsertsBroadcaster do
 
     Process.flag(:trap_exit, true)
     Logger.metadata(source_id: source.token, source_token: source.token)
-    broadcast()
+    schedule_cache()
 
     Logger.debug("[#{__MODULE__}] Started")
 
@@ -42,8 +42,8 @@ defmodule Logflare.Backends.RecentInsertsBroadcaster do
      }}
   end
 
-  def handle_info(:broadcast, state) do
-    {:ok, total_cluster_inserts, inserts_since_boot} = broadcast_count(state)
+  def handle_info(:do_cache, state) do
+    {:ok, total_cluster_inserts, inserts_since_boot} = cache_count(state)
 
     prev_inserts_since_boot = Counters.get_inserts_since_boot(state.source_token)
     prev_last_cluster_inserts = Counters.get_total_cluster_inserts(state.source_token)
@@ -69,7 +69,7 @@ defmodule Logflare.Backends.RecentInsertsBroadcaster do
       )
     end
 
-    broadcast()
+    schedule_cache()
 
     {:noreply, state}
   end
@@ -91,31 +91,22 @@ defmodule Logflare.Backends.RecentInsertsBroadcaster do
 
   ## Private Functions
 
-  defp broadcast_count(%{source_token: source_token}) do
+  defp cache_count(%{source_token: source_token}) do
     current_inserts = Source.Data.get_node_inserts(source_token)
 
     if current_inserts > Counters.get_inserts_since_boot(source_token) do
       bq_inserts = Source.Data.get_bq_inserts(source_token)
       inserts_payload = %{Node.self() => %{node_inserts: current_inserts, bq_inserts: bq_inserts}}
 
-      PubSubRates.global_broadcast_rate({"inserts", source_token, inserts_payload})
+      PubSubRates.Cache.cache_inserts(source_token, inserts_payload)
     end
 
     current_cluster_inserts = PubSubRates.Cache.get_cluster_inserts(source_token)
-    last_cluster_inserts = Counters.get_total_cluster_inserts(source_token)
-
-    if current_cluster_inserts > last_cluster_inserts do
-      payload = %{log_count: current_cluster_inserts, source_token: source_token}
-      Source.ChannelTopics.local_broadcast_log_count(payload)
-    end
 
     {:ok, current_cluster_inserts, current_inserts}
   end
 
-  defp broadcast do
-    # scale broadcasting interval to cluster size
-    cluster_size = Logflare.Cluster.Utils.actual_cluster_size()
-    broadcast_every = max(@broadcast_every, round(:rand.uniform(cluster_size * 200)))
-    Process.send_after(self(), :broadcast, broadcast_every)
+  defp schedule_cache do
+    Process.send_after(self(), :do_cache, @cache_every + :rand.uniform(1000))
   end
 end

@@ -77,22 +77,7 @@ defmodule LogflareWeb.SearchLive.EventContextComponentTest do
   end
 
   defp setup_user_session(%{conn: conn, user: user}) do
-    conn = conn |> put_session(:user_id, user.id) |> assign(:user, user)
-    [conn: conn]
-  end
-
-  def wait_for_render(view, selector, timeout \\ 5000) do
-    if view |> has_element?(selector) do
-      view
-    else
-      receive do
-        {:wait_for_render, _} ->
-          wait_for_render(view, selector)
-      after
-        timeout ->
-          raise "Timeout waiting for render"
-      end
-    end
+    [conn: login_user(conn, user)]
   end
 
   describe "construct context query" do
@@ -217,18 +202,7 @@ defmodule LogflareWeb.SearchLive.EventContextComponentTest do
       [source: insert(:source, user: user)]
     end
 
-    setup do
-      parent = self()
-
-      :telemetry.attach(
-        "wait-for-render-#{System.unique_integer()}",
-        [:phoenix, :live_view, :render, :stop],
-        fn _event, _measurements, metadata, _config ->
-          send(parent, {:wait_for_render, metadata.socket.assigns})
-        end,
-        nil
-      )
-    end
+    setup {TestUtils, :attach_wait_for_render}
 
     @tag bq_response:
            {:ok,
@@ -239,14 +213,14 @@ defmodule LogflareWeb.SearchLive.EventContextComponentTest do
 
       html =
         view
-        |> wait_for_render("#logs-list li:first-of-type a")
+        |> TestUtils.wait_for_render("#logs-list li:first-of-type a")
         |> element("#logs-list li:first-of-type a", "context")
         |> render_click()
 
       # Verify the context modal opens
       assert html =~ "View Event Context"
 
-      view |> wait_for_render("#context_log_events #log-events li:first-of-type")
+      view |> TestUtils.wait_for_render("#context_log_events #log-events li:first-of-type")
 
       assert view |> has_element?("#context_log_events #log-events li", "event message 1")
       assert view |> has_element?("#context_log_events #log-events li", "event message 10")
@@ -257,12 +231,12 @@ defmodule LogflareWeb.SearchLive.EventContextComponentTest do
       {:ok, view, _html} = live(conn, ~p"/sources/#{source.id}/search?tailing=false")
 
       view
-      |> wait_for_render("#logs-list li:first-of-type a")
+      |> TestUtils.wait_for_render("#logs-list li:first-of-type a")
       |> element("#logs-list li:first-of-type a", "context")
       |> render_click()
 
       view
-      |> wait_for_render("#context_log_events_error")
+      |> TestUtils.wait_for_render("#context_log_events_error")
 
       assert view |> has_element?("#context_log_events", "An error occurred")
     end

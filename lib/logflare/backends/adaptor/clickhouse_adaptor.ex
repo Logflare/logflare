@@ -70,15 +70,14 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
   end
 
   @impl Logflare.Backends.Adaptor
-  def ecto_to_sql(%Ecto.Query{} = query, _opts) do
-    try do
-      {ch_sql, ch_params} = Ecto.Adapters.ClickHouse.to_sql(:all, query)
-      ch_params = Enum.map(ch_params, &SqlUtils.normalize_datetime_param/1)
-      {:ok, {ch_sql, ch_params}}
-    rescue
-      error ->
-        Logger.warning("Failed to convert Ecto query to ClickHouse SQL: #{inspect(error)}")
-        {:error, "Could not convert Ecto query: #{Exception.message(error)}"}
+  def ecto_to_sql(%Ecto.Query{} = query, opts) do
+    case Logflare.Ecto.ClickHouse.to_sql(query, opts) do
+      {:ok, {ch_sql, ch_params}} ->
+        ch_params = Enum.map(ch_params, &SqlUtils.normalize_datetime_param/1)
+        {:ok, {ch_sql, ch_params}}
+
+      {:error, _reason} = error ->
+        error
     end
   end
 
@@ -638,7 +637,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
 
       {nil, rows} when is_list(rows) ->
         # No column names, return rows as-is
-        rows
+        convert_uuids(rows)
 
       {_columns, nil} ->
         # No rows
@@ -651,6 +650,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
           |> Enum.zip(row)
           |> Map.new()
         end
+        |> convert_uuids()
 
       {columns, rows} ->
         # Handle other formats - Ch.Result.rows can be iodata
@@ -699,4 +699,21 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
       end
     end)
   end
+
+  @spec convert_uuids(data :: any()) :: any()
+  defp convert_uuids(data) when is_struct(data), do: data
+
+  defp convert_uuids(data) when is_map(data) do
+    Map.new(data, fn {k, v} -> {k, convert_uuids(v)} end)
+  end
+
+  defp convert_uuids(data) when is_list(data) do
+    Enum.map(data, &convert_uuids/1)
+  end
+
+  defp convert_uuids(data) when is_non_empty_binary(data) and byte_size(data) == 16 do
+    Ecto.UUID.cast!(data)
+  end
+
+  defp convert_uuids(data), do: data
 end

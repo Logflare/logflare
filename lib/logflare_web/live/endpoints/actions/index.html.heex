@@ -28,11 +28,11 @@
   <ul :for={endpoint <- Enum.sort_by(@endpoints, & &1.name)} class="list-group">
     <li class="list-group-item">
       <.link patch={~p"/endpoints/#{endpoint.id}"} class="tw-text-white">
-        <%= endpoint.name %>
+        {endpoint.name}
       </.link>
-      <span class="tw-block tw-text-sm">uuid: <%= endpoint.token %></span>
+      <span class="tw-block tw-text-sm">uuid: {endpoint.token}</span>
       <p :if={endpoint.description} class="tw-pb-0 tw-mb-0 tw-text-sm text-muted">
-        <%= endpoint.description %>
+        {endpoint.description}
       </p>
       <div class="tw-text-sm">
         <span :if={endpoint.enable_auth} title="Auth enabled">
@@ -42,7 +42,7 @@
         <span :if={!endpoint.enable_auth} title="Auth disabled">
           <i class="fas fa-lock-open"></i>
         </span>
-        <span>caches: <%= endpoint.metrics.cache_count %></span>
+        <span>caches: {endpoint.metrics.cache_count}</span>
       </div>
     </li>
   </ul>

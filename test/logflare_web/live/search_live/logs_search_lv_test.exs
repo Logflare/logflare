@@ -42,7 +42,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
   defp setup_user_session(%{conn: conn, user: user, plan: plan}) do
     _billing_account = insert(:billing_account, user: user, stripe_plan_id: plan.stripe_id)
     user = user |> Logflare.Repo.preload(:billing_account)
-    conn = conn |> put_session(:user_id, user.id) |> assign(:user, user)
+    conn = conn |> login_user(user)
     [conn: conn]
   end
 
@@ -50,13 +50,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
     _billing_account = insert(:billing_account, user: user, stripe_plan_id: plan.stripe_id)
     user = user |> Logflare.Repo.preload(:billing_account)
 
-    conn =
-      conn
-      |> put_session(:team_user_id, team_user.id)
-      |> put_session(:user_id, user.id)
-      |> assign(:team_user, team_user)
-
-    [conn: conn]
+    [conn: login_user(conn, user, team_user)]
   end
 
   # do this for all tests
@@ -226,9 +220,10 @@ defmodule LogflareWeb.Source.SearchLVTest do
     end
 
     setup [:setup_mocks, :setup_user_session]
+    setup {TestUtils, :attach_wait_for_render}
 
     test "subheader - lql docs", %{conn: conn, source: source} do
-      {:ok, view, _html} = live(conn, ~p"/sources/#{source.id}/search")
+      {:ok, view, _html} = live(conn, ~p"/sources/#{source.id}/search?querystring=something123")
 
       assert view
              |> element("a", "LQL")
@@ -250,7 +245,9 @@ defmodule LogflareWeb.Source.SearchLVTest do
              |> element(".subhead a", "events")
              |> render_click()
 
-      :timer.sleep(300)
+      view
+      |> TestUtils.wait_for_render(".search-query-debug")
+
       html = render(view)
       assert html =~ "Actual SQL query used when querying for results"
 
@@ -262,6 +259,13 @@ defmodule LogflareWeb.Source.SearchLVTest do
         |> String.trim()
 
       assert html =~ formatted_sql
+
+      {:error, {:redirect, %{to: dest}}} =
+        view
+        |> element("a.btn.btn-primary", "Edit as query")
+        |> render_click()
+
+      assert dest =~ "/query?q=SELECT"
     end
 
     test "subheader - aggregeate", %{conn: conn, source: source} do
@@ -750,6 +754,120 @@ defmodule LogflareWeb.Source.SearchLVTest do
 
       assert get_view_assigns(view).querystring =~ "error"
       assert get_view_assigns(view).querystring =~ "t:2020-04-20T00:{01..02}:00"
+    end
+  end
+
+  describe "create from query" do
+    setup do
+      user = insert(:user)
+      team_user = insert(:team_user, preferences: build(:user_preferences, timezone: "NZ"))
+      source = insert(:source, user: user)
+      plan = insert(:plan)
+      [user: user, source: source, plan: plan, team_user: team_user]
+    end
+
+    setup [:setup_team_user_session]
+    setup {TestUtils, :attach_wait_for_render}
+
+    test "create new query from search", %{conn: conn, source: source} do
+      {:ok, view, _html} =
+        live(
+          conn,
+          ~p"/sources/#{source.id}/search?querystring=something123&tailing%3F=&tz=Etc/UTC"
+        )
+
+      # Wait until search has executed
+      view
+      |> TestUtils.wait_for_render("#create-menu button:not([disabled])")
+
+      view
+      |> element(~s|a[phx-value-resource="query"]|, "From search")
+      |> render_click()
+
+      {redirect_path, _flash} = assert_redirect(view)
+      assert redirect_path =~ "/query?q=SELECT"
+      assert redirect_path =~ "something123"
+      assert redirect_path =~ source.name
+    end
+
+    test "create new alert, endpoint from search", %{conn: conn, source: source} do
+      ["alert", "endpoint"]
+      |> Enum.each(fn resource ->
+        {:ok, view, _html} =
+          live(
+            conn,
+            ~p"/sources/#{source.id}/search?querystring=something123&tailing%3F=&tz=Etc/UTC"
+          )
+
+        view
+        |> TestUtils.wait_for_render("#create-menu button:not([disabled])")
+
+        view
+        |> element(~s|a[phx-value-resource="#{resource}"]|, "From search")
+        |> render_click()
+
+        {redirect_path, _flash} = assert_redirect(view)
+        assert redirect_path =~ "/#{resource}s/new"
+
+        %{"query" => query, "name" => name} =
+          URI.new!(redirect_path) |> Map.get(:query) |> URI.decode_query()
+
+        assert query =~ "SELECT t0.timestamp, t0.id, t0.event_message FROM `#{source.name}`"
+        assert query =~ "something123"
+        assert query =~ source.name
+        assert name == source.name
+      end)
+    end
+
+    test "create new query from chart query", %{conn: conn, source: source} do
+      {:ok, view, _html} =
+        live(
+          conn,
+          ~p"/sources/#{source.id}/search?querystring=something123&tailing%3F=&tz=Etc/UTC"
+        )
+
+      view
+      |> TestUtils.wait_for_render("#create-menu button:not([disabled])")
+
+      view
+      |> element(~s|a[phx-value-resource="query"]|, "From chart")
+      |> render_click()
+
+      {redirect_path, _flash} = assert_redirect(view)
+      %{"q" => query} = URI.new!(redirect_path) |> Map.get(:query) |> URI.decode_query()
+
+      assert query =~ "SELECT (case\nwhen 'MINUTE' = 'DAY'"
+      assert query =~ "something123"
+      assert query =~ source.name
+    end
+
+    test "create new alert, endpoint from chart", %{conn: conn, source: source} do
+      ["alert", "endpoint"]
+      |> Enum.each(fn resource ->
+        {:ok, view, _html} =
+          live(
+            conn,
+            ~p"/sources/#{source.id}/search?querystring=something123&tailing%3F=&tz=Etc/UTC"
+          )
+
+        view
+        |> TestUtils.wait_for_render("#create-menu button:not([disabled])")
+
+        view
+        |> element(~s|a[phx-value-resource="#{resource}"]|, "From chart")
+        |> render_click()
+
+        {redirect_path, _flash} = assert_redirect(view)
+        assert redirect_path =~ "/#{resource}s/new"
+
+        %{"query" => query, "name" => name} =
+          URI.new!(redirect_path) |> Map.get(:query) |> URI.decode_query()
+
+        assert query =~ "SELECT (case\nwhen 'MINUTE' = 'DAY'"
+        assert query =~ "something123"
+        assert query =~ source.name
+        assert name == source.name
+      end)
     end
   end
 
