@@ -13,6 +13,8 @@ defmodule Logflare.Endpoints do
   alias Logflare.Endpoints.Resolver
   alias Logflare.Endpoints.ResultsCache
   alias Logflare.Lql
+  alias Logflare.Lql.Rules
+  alias Logflare.Lql.Rules.FromRule
   alias Logflare.Repo
   alias Logflare.SingleTenant
   alias Logflare.Sql
@@ -282,7 +284,13 @@ defmodule Logflare.Endpoints do
              endpoints ++ alerts
            ),
          {:ok, consumer_query} <-
-           maybe_convert_lql_to_sql(lql_param, sql_param, expanded_query, query_language),
+           maybe_convert_lql_to_sql(
+             lql_param,
+             sql_param,
+             expanded_query,
+             query_language,
+             sandboxable
+           ),
          transform_input =
            if(sandboxable && consumer_query,
              do: {expanded_query, consumer_query},
@@ -414,7 +422,13 @@ defmodule Logflare.Endpoints do
              endpoints ++ alerts
            ),
          {:ok, consumer_query} <-
-           maybe_convert_lql_to_sql(lql_param, sql_param, expanded_query, query_language),
+           maybe_convert_lql_to_sql(
+             lql_param,
+             sql_param,
+             expanded_query,
+             query_language,
+             sandboxable
+           ),
          transform_input =
            if(sandboxable && consumer_query,
              do: {expanded_query, consumer_query},
@@ -429,30 +443,60 @@ defmodule Logflare.Endpoints do
           lql_param :: String.t() | nil,
           sql_param :: String.t() | nil,
           expanded_query :: String.t(),
-          language :: :bq_sql | :ch_sql | :pg_sql
+          language :: :bq_sql | :ch_sql | :pg_sql,
+          sandboxable :: boolean()
         ) :: {:ok, String.t() | nil} | {:error, String.t()}
-  # no sql_param provided, but lql_param is present
-  defp maybe_convert_lql_to_sql(lql_param, nil, expanded_query, language)
+  # no sql_param provided, but lql_param is present for SANDBOXED endpoint
+  defp maybe_convert_lql_to_sql(lql_param, nil, expanded_query, language, true)
        when is_non_empty_binary(lql_param) and language in [:bq_sql, :ch_sql] do
     with {:ok, cte_names} <- Sql.extract_cte_aliases(expanded_query),
+         {:ok, lql_rules} <- Lql.Parser.parse(lql_param),
+         from_rule <- Rules.get_from_rule(lql_rules),
+         {:ok, cte_table_name} <- validate_from_rule_for_sandbox(from_rule, cte_names),
          dialect <- Lql.language_to_dialect(language),
-         # Use the _last_ CTE table name in the chain
-         # Can be overridden by specifying `f:table_name` in the LQL
-         cte_table_name <- List.last(cte_names) || "unknown_cte",
          {:ok, sql_string} <- Lql.to_sandboxed_sql(lql_param, cte_table_name, dialect) do
       {:ok, sql_string}
     end
   end
 
   # If sql_param is provided, use it (takes precedence over lql_param)
-  defp maybe_convert_lql_to_sql(_lql_param, sql_param, _expanded_query, _language)
+  defp maybe_convert_lql_to_sql(_lql_param, sql_param, _expanded_query, _language, _sandboxable)
        when is_non_empty_binary(sql_param) do
     {:ok, sql_param}
   end
 
   # No lql or sql param, return nil
-  defp maybe_convert_lql_to_sql(_lql_param, _sql_param, _expanded_query, _language) do
+  defp maybe_convert_lql_to_sql(_lql_param, _sql_param, _expanded_query, _language, _sandboxable) do
     {:ok, nil}
+  end
+
+  # Multiple CTEs, no FromRule → ERROR (user must specify which CTE)
+  defp validate_from_rule_for_sandbox(nil, [_, _ | _] = cte_names) do
+    available = Enum.join(cte_names, ", ")
+
+    {:error,
+     "Multiple CTEs available (#{available}). You must specify which one to query using `f:name`"}
+  end
+
+  # Single CTE, no FromRule → Use that CTE
+  defp validate_from_rule_for_sandbox(nil, [cte_name]) do
+    {:ok, cte_name}
+  end
+
+  # No CTEs at all (edge case)
+  defp validate_from_rule_for_sandbox(nil, []) do
+    {:error, "No CTEs found in query"}
+  end
+
+  # FromRule specified, validate it exists in CTEs
+  defp validate_from_rule_for_sandbox(%FromRule{table: table}, cte_names)
+       when is_list(cte_names) do
+    if Enum.member?(cte_names, table) do
+      {:ok, table}
+    else
+      available = Enum.join(cte_names, ", ")
+      {:error, "Table '#{table}' not found in available CTEs: #{available}"}
+    end
   end
 
   @spec exec_query_on_backend(

@@ -1,12 +1,12 @@
 defmodule LogflareWeb.EndpointsControllerTest do
   use LogflareWeb.ConnCase, async: false
 
-  alias Logflare.SingleTenant
   alias Logflare.Backends
-  alias Logflare.Sources.Source
-  alias Logflare.Sources
-  alias Logflare.SystemMetrics.AllLogsLogged
   alias Logflare.Google.BigQuery.GenUtils
+  alias Logflare.SingleTenant
+  alias Logflare.Sources
+  alias Logflare.Sources.Source
+  alias Logflare.SystemMetrics.AllLogsLogged
 
   setup do
     start_supervised!(AllLogsLogged)
@@ -236,7 +236,7 @@ defmodule LogflareWeb.EndpointsControllerTest do
       end
     end
 
-    test "GET query with lql and multiple CTEs uses last CTE by default", %{
+    test "GET query with lql and multiple CTEs requires `FromRule`", %{
       conn: init_conn,
       user: user
     } do
@@ -251,15 +251,6 @@ defmodule LogflareWeb.EndpointsControllerTest do
       endpoint =
         insert(:endpoint, user: user, enable_auth: false, query: query, sandboxable: true)
 
-      GoogleApi.BigQuery.V2.Api.Jobs
-      |> expect(:bigquery_jobs_query, fn _conn, _proj_id, opts ->
-        # Verify the generated SQL queries from final_data
-        assert opts[:body].query =~ "final_data"
-        assert opts[:body].query =~ "col3"
-
-        {:ok, TestUtils.gen_bq_response([%{"col3" => "c"}])}
-      end)
-
       conn =
         init_conn
         |> get(~p"/endpoints/query/#{endpoint.token}?lql=s:col3")
@@ -269,8 +260,10 @@ defmodule LogflareWeb.EndpointsControllerTest do
         |> json_response(200)
         |> assert_schema("EndpointQuery")
 
-      assert [%{"col3" => "c"}] = response.result
-      refute response.error
+      assert response.error =~
+               "Multiple CTEs available (first_cte, second_cte, final_data). You must specify which one to query using `f:name`"
+
+      refute response.result
     end
 
     test "GET query with lql `f:table` overrides CTE fallback", %{
@@ -337,6 +330,63 @@ defmodule LogflareWeb.EndpointsControllerTest do
 
       assert [%{"value" => "test"}] = response.result
       refute response.error
+    end
+
+    test "GET query with lql and single CTE with explicit `from:table`", %{
+      conn: init_conn,
+      user: user
+    } do
+      query = """
+      WITH my_data AS (SELECT 'test' as value)
+      SELECT value FROM my_data
+      """
+
+      endpoint =
+        insert(:endpoint, user: user, enable_auth: false, query: query, sandboxable: true)
+
+      GoogleApi.BigQuery.V2.Api.Jobs
+      |> expect(:bigquery_jobs_query, fn _conn, _proj_id, opts ->
+        assert opts[:body].query =~ "my_data"
+        {:ok, TestUtils.gen_bq_response([%{"value" => "test"}])}
+      end)
+
+      conn =
+        init_conn
+        |> get(~p"/endpoints/query/#{endpoint.token}?lql=from:my_data s:value")
+
+      response =
+        conn
+        |> json_response(200)
+        |> assert_schema("EndpointQuery")
+
+      assert [%{"value" => "test"}] = response.result
+      refute response.error
+    end
+
+    test "GET query with lql `f:invalid_cte` returns error", %{conn: init_conn, user: user} do
+      query = """
+      WITH
+        first_cte AS (SELECT 'a' as col1),
+        second_cte AS (SELECT 'b' as col2)
+      SELECT col1 FROM first_cte
+      """
+
+      endpoint =
+        insert(:endpoint, user: user, enable_auth: false, query: query, sandboxable: true)
+
+      conn =
+        init_conn
+        |> get(~p"/endpoints/query/#{endpoint.token}?lql=f:nonexistent s:col1")
+
+      response =
+        conn
+        |> json_response(200)
+        |> assert_schema("EndpointQuery")
+
+      assert response.error =~
+               "Table 'nonexistent' not found in available CTEs: first_cte, second_cte"
+
+      refute response.result
     end
   end
 
