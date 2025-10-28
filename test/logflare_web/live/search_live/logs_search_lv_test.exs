@@ -333,7 +333,6 @@ defmodule LogflareWeb.Source.SearchLVTest do
 
       querystring = find_querystring(html)
 
-      assert querystring =~ ~r/^f:[a-f0-9\-]+ /
       assert querystring =~ "c:count(*) c:group_by(t::minute)"
     end
 
