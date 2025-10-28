@@ -330,7 +330,10 @@ defmodule LogflareWeb.Source.SearchLVTest do
       # default input values
       assert find_selected_chart_period(html) == "minute"
       assert find_chart_aggregate(html) == "count"
-      assert find_querystring(html) == "c:count(*) c:group_by(t::minute)"
+
+      querystring = find_querystring(html)
+
+      assert querystring =~ "c:count(*) c:group_by(t::minute)"
     end
 
     test "page title includes source name", %{conn: conn, source: source} do
@@ -514,9 +517,13 @@ defmodule LogflareWeb.Source.SearchLVTest do
       assert view
              |> has_element?(".alert", "Search halted")
 
-      assert view
-             |> render() =~
-               ~s|search?querystring=t%3Alast%4015minute+c%3Acount%28%2A%29+c%3Agroup_by%28t%3A%3Asecond%29&amp;tailing%3F=false">Set chart period to second</a>|
+      rendered = view |> render()
+
+      assert rendered =~ "t%3Alast%4015minute"
+      assert rendered =~ "c%3Acount%28%2A%29"
+      assert rendered =~ "c%3Agroup_by%28t%3A%3Asecond%29"
+      assert rendered =~ "tailing%3F=false"
+      assert rendered =~ "Set chart period to second</a>"
     end
 
     test "log event links", %{conn: conn, source: source} do

@@ -9,6 +9,7 @@ defmodule Logflare.Lql.Encoder do
   alias Logflare.Lql.Rules
   alias Logflare.Lql.Rules.ChartRule
   alias Logflare.Lql.Rules.FilterRule
+  alias Logflare.Lql.Rules.FromRule
   alias Logflare.Lql.Rules.SelectRule
 
   @date_periods ~w(year month day)a
@@ -21,19 +22,25 @@ defmodule Logflare.Lql.Encoder do
   def to_querystring(lql_rules) when is_list(lql_rules) do
     lql_rules
     |> Enum.group_by(fn
+      %FromRule{} -> :from
       %ChartRule{} -> :chart
       %SelectRule{} -> :select
       %FilterRule{} = f -> f.path
     end)
     |> Enum.sort_by(fn
-      {:select, _} -> 0
-      {:chart, _} -> 2
-      {_path, _} -> 1
+      {:from, _} -> 0
+      {:select, _} -> 1
+      {:chart, _} -> 3
+      {_path, _} -> 2
     end)
     |> Enum.reduce("", fn
       grouped_rules, qs ->
         append =
           case grouped_rules do
+            {:from, from_rules} ->
+              from_rules
+              |> Enum.map_join(" ", &to_fragment/1)
+
             {:select, select_rules} ->
               select_rules
               |> Enum.map_join(" ", &to_fragment/1)
@@ -83,86 +90,132 @@ defmodule Logflare.Lql.Encoder do
     "t:#{to_datetime_with_range(lv, rv)}"
   end
 
+  defp to_fragment(%FilterRule{path: "timestamp", operator: op, value: %Date{} = v}),
+    do: "t:#{op}#{v}"
+
   defp to_fragment(%FilterRule{path: "timestamp", operator: op, value: v}) do
     dtstring =
-      if match?(%Date{}, v) do
-        "#{v}"
-      else
-        v
-        |> DateTime.from_naive!("Etc/UTC")
-        |> Timex.format!("{ISO:Extended:Z}")
-        |> String.trim_trailing("Z")
-      end
+      v
+      |> DateTime.from_naive!("Etc/UTC")
+      |> Timex.format!("{ISO:Extended:Z}")
+      |> String.trim_trailing("Z")
 
     "t:#{op}#{dtstring}"
   end
 
-  defp to_fragment(%FilterRule{path: "event_message", value: v, modifiers: mods, operator: op}) do
-    op =
-      case op do
-        :string_contains -> ""
-        :"~" -> "~"
-        := -> ""
-      end
+  defp to_fragment(%FilterRule{
+         path: "event_message",
+         value: v,
+         modifiers: %{quoted_string: true},
+         operator: op
+       })
+       when op in [:string_contains, :=],
+       do: ~s|"#{v}"|
 
-    v =
-      if mods[:quoted_string] do
-        ~s|"#{v}"|
-      else
-        ~s|#{v}|
-      end
+  defp to_fragment(%FilterRule{path: "event_message", value: v, operator: op})
+       when op in [:string_contains, :=],
+       do: v
 
-    op <> v
-  end
+  defp to_fragment(%FilterRule{
+         path: "event_message",
+         value: v,
+         modifiers: %{quoted_string: true},
+         operator: :"~"
+       }),
+       do: ~s|~"#{v}"|
 
-  defp to_fragment(%FilterRule{path: path, operator: op, value: v, modifiers: mods} = fr) do
-    v =
-      if mods[:quoted_string] do
-        ~s|"#{v}"|
-      else
-        v
-      end
+  defp to_fragment(%FilterRule{path: "event_message", value: v, operator: :"~"}), do: "~#{v}"
 
-    case op do
-      :range ->
-        "#{path}:#{Enum.join(fr.values, "..")}"
-
-      := ->
-        "#{path}:#{v}"
-
-      :list_includes ->
-        "#{path}:@>#{v}"
-
-      :list_includes_regexp ->
-        "#{path}:@>~#{v}"
-
-      _ ->
-        "#{path}:#{op}#{v}"
-    end
+  defp to_fragment(%FilterRule{path: path, operator: :range, values: values}) do
+    "#{path}:#{Enum.join(values, "..")}"
     |> String.replace_leading("timestamp:", "t:")
     |> String.replace_leading("metadata.", "m.")
   end
 
-  defp to_fragment(%ChartRule{} = c) do
-    path =
-      case c.path do
-        "timestamp" -> "*"
-        x -> x
-      end
+  defp to_fragment(%FilterRule{
+         path: path,
+         operator: :=,
+         value: v,
+         modifiers: %{quoted_string: true}
+       }) do
+    ~s|#{path}:"#{v}"|
+    |> String.replace_leading("timestamp:", "t:")
+    |> String.replace_leading("metadata.", "m.")
+  end
 
-    qs = "c:#{c.aggregate}(#{path}) c:group_by(t::#{c.period})"
+  defp to_fragment(%FilterRule{path: path, operator: :=, value: v}) do
+    "#{path}:#{v}"
+    |> String.replace_leading("timestamp:", "t:")
+    |> String.replace_leading("metadata.", "m.")
+  end
+
+  defp to_fragment(%FilterRule{
+         path: path,
+         operator: :list_includes,
+         value: v,
+         modifiers: %{quoted_string: true}
+       }) do
+    ~s|#{path}:@>"#{v}"|
+    |> String.replace_leading("timestamp:", "t:")
+    |> String.replace_leading("metadata.", "m.")
+  end
+
+  defp to_fragment(%FilterRule{path: path, operator: :list_includes, value: v}) do
+    "#{path}:@>#{v}"
+    |> String.replace_leading("timestamp:", "t:")
+    |> String.replace_leading("metadata.", "m.")
+  end
+
+  defp to_fragment(%FilterRule{
+         path: path,
+         operator: :list_includes_regexp,
+         value: v,
+         modifiers: %{quoted_string: true}
+       }) do
+    ~s|#{path}:@>~"#{v}"|
+    |> String.replace_leading("timestamp:", "t:")
+    |> String.replace_leading("metadata.", "m.")
+  end
+
+  defp to_fragment(%FilterRule{path: path, operator: :list_includes_regexp, value: v}) do
+    "#{path}:@>~#{v}"
+    |> String.replace_leading("timestamp:", "t:")
+    |> String.replace_leading("metadata.", "m.")
+  end
+
+  defp to_fragment(%FilterRule{
+         path: path,
+         operator: op,
+         value: v,
+         modifiers: %{quoted_string: true}
+       }) do
+    ~s|#{path}:#{op}"#{v}"|
+    |> String.replace_leading("timestamp:", "t:")
+    |> String.replace_leading("metadata.", "m.")
+  end
+
+  defp to_fragment(%FilterRule{path: path, operator: op, value: v}) do
+    "#{path}:#{op}#{v}"
+    |> String.replace_leading("timestamp:", "t:")
+    |> String.replace_leading("metadata.", "m.")
+  end
+
+  defp to_fragment(%ChartRule{path: "timestamp", aggregate: agg, period: period}) do
+    qs = "c:#{agg}(*) c:group_by(t::#{period})"
     Regex.replace(~r/(?<=sum|avg|count|max|p50|p95|p99)\(metadata./, qs, "(m.")
   end
 
-  defp to_fragment(%SelectRule{} = s) do
-    path =
-      case s.path do
-        "*" -> "*"
-        x -> String.replace_leading(x, "metadata.", "m.")
-      end
-
-    "s:#{path}"
+  defp to_fragment(%ChartRule{path: path, aggregate: agg, period: period}) do
+    qs = "c:#{agg}(#{path}) c:group_by(t::#{period})"
+    Regex.replace(~r/(?<=sum|avg|count|max|p50|p95|p99)\(metadata./, qs, "(m.")
   end
+
+  defp to_fragment(%SelectRule{path: "*"}), do: "s:*"
+
+  defp to_fragment(%SelectRule{path: path}),
+    do: "s:#{String.replace_leading(path, "metadata.", "m.")}"
+
+  defp to_fragment(%FromRule{table: table}), do: "f:#{table}"
 
   def to_datetime_with_range(%Date{} = ldt, %Date{} = rdt) do
     mapper_fn = fn period -> timestamp_mapper(ldt, rdt, period) end
