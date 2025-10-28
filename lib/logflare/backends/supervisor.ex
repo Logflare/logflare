@@ -20,6 +20,7 @@ defmodule Logflare.Backends.Supervisor do
       Backends.IngestEventQueue.BroadcastWorker,
       Backends.IngestEventQueue.MapperJanitor,
       Backends.Adaptor.PostgresAdaptor.Supervisor,
+      Backends.Adaptor.ClickhouseAdaptor.QueryConnectionSup,
       {PartitionSupervisor, child_spec: DynamicSupervisor, name: Backends.SourcesSup},
       {Registry,
        name: Backends.SourceRegistry, keys: :unique, partitions: max(round(base / 8), 1)},

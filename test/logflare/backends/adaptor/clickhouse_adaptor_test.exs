@@ -272,7 +272,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptorTest do
       backend: backend,
       source2: source2
     } do
-      assert :ok = ConnectionManager.ensure_pool_started(backend)
+      {:ok, _} = ClickhouseAdaptor.execute_ch_read_query(backend, "SELECT 1")
 
       initial_manager_via = Backends.via_backend(backend, ConnectionManager)
       initial_manager_pid = GenServer.whereis(initial_manager_via)
@@ -294,6 +294,9 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptorTest do
       assert is_pid(manager_pid2)
       assert Process.alive?(manager_pid2)
       assert ConnectionManager.pool_active?(backend)
+
+      assert initial_manager_pid == manager_pid2,
+             "Both sources should share the same ConnectionManager"
     end
   end
 
@@ -368,6 +371,230 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptorTest do
       invalid_query = %Ecto.Query{from: nil}
 
       assert {:error, _reason} = ClickhouseAdaptor.ecto_to_sql(invalid_query, [])
+    end
+  end
+
+  describe "read query `ConnectionManager` automatic wake-up" do
+    setup do
+      insert(:plan, name: "Free")
+      {source, backend, cleanup_fn} = setup_clickhouse_test()
+      on_exit(cleanup_fn)
+
+      {:ok, _pid} = ClickhouseAdaptor.start_link({source, backend})
+
+      :ok = ClickhouseAdaptor.provision_all({source, backend})
+
+      Process.sleep(100)
+
+      [source: source, backend: backend]
+    end
+
+    test "read query starts `ConnectionManager` automatically without prior ingest", %{
+      backend: backend
+    } do
+      # Verify ConnectionManager is NOT running initially
+      via = Backends.via_backend(backend, ConnectionManager)
+      refute GenServer.whereis(via), "ConnectionManager should not be running initially"
+
+      result = ClickhouseAdaptor.execute_ch_read_query(backend, "SELECT 1 as result")
+
+      assert {:ok, [%{"result" => 1}]} = result
+
+      assert GenServer.whereis(via), "ConnectionManager should be running after read query"
+    end
+
+    test "`ConnectionManager` is supervised under `ClickhouseAdaptor.QueryConnectionSup`", %{
+      backend: backend
+    } do
+      {:ok, _} = ClickhouseAdaptor.execute_ch_read_query(backend, "SELECT 1")
+
+      via = Backends.via_backend(backend, ConnectionManager)
+      cm_pid = GenServer.whereis(via)
+      assert cm_pid, "ConnectionManager should be running"
+
+      children =
+        DynamicSupervisor.which_children(ClickhouseAdaptor.QueryConnectionSup.DynamicSupervisor)
+
+      assert Enum.any?(children, fn {_, pid, _, _} -> pid == cm_pid end),
+             "ConnectionManager should be supervised under ClickhouseAdaptor.QueryConnectionSup"
+    end
+
+    test "multiple concurrent read queries handle race conditions correctly", %{
+      backend: backend
+    } do
+      via = Backends.via_backend(backend, ConnectionManager)
+      refute GenServer.whereis(via), "ConnectionManager should not be running initially"
+
+      tasks =
+        for i <- 1..10 do
+          Task.async(fn ->
+            ClickhouseAdaptor.execute_ch_read_query(backend, "SELECT #{i} as result")
+          end)
+        end
+
+      results = Task.await_many(tasks, 5_000)
+
+      assert Enum.all?(results, fn result ->
+               match?({:ok, [%{"result" => _}]}, result)
+             end)
+
+      assert GenServer.whereis(via), "ConnectionManager should be running"
+
+      children =
+        DynamicSupervisor.which_children(ClickhouseAdaptor.QueryConnectionSup.DynamicSupervisor)
+
+      connection_managers =
+        Enum.filter(children, fn {_, pid, _, _} ->
+          pid == GenServer.whereis(via)
+        end)
+
+      assert length(connection_managers) == 1,
+             "Only one ConnectionManager should exist for this backend"
+    end
+
+    test "`ConnectionManager` restarts if it crashes", %{backend: backend} do
+      {:ok, _} = ClickhouseAdaptor.execute_ch_read_query(backend, "SELECT 1")
+
+      via = Backends.via_backend(backend, ConnectionManager)
+      original_pid = GenServer.whereis(via)
+      assert original_pid, "ConnectionManager should be running"
+
+      Process.exit(original_pid, :kill)
+
+      Process.sleep(100)
+
+      result = ClickhouseAdaptor.execute_ch_read_query(backend, "SELECT 2 as result")
+      assert {:ok, [%{"result" => 2}]} = result
+
+      new_pid = GenServer.whereis(via)
+      assert new_pid, "ConnectionManager should be running after crash"
+    end
+
+    test "read queries work even when source supervisor is not started", %{backend: backend} do
+      result = ClickhouseAdaptor.execute_ch_read_query(backend, "SELECT 42 as answer")
+
+      assert {:ok, [%{"answer" => 42}]} = result
+    end
+
+    test "`ConnectionManager` for different backends are independent", %{source: source} do
+      {_source2, backend2, cleanup_fn2} = setup_clickhouse_test(source: source)
+      on_exit(cleanup_fn2)
+
+      {:ok, _pid} = ClickhouseAdaptor.start_link({source, backend2})
+      :ok = ClickhouseAdaptor.provision_all({source, backend2})
+      Process.sleep(100)
+
+      {:ok, _} = ClickhouseAdaptor.execute_ch_read_query(backend2, "SELECT 1")
+
+      via1 = Backends.via_backend(backend2, ConnectionManager)
+      cm_pid1 = GenServer.whereis(via1)
+
+      assert cm_pid1, "First backend should have a ConnectionManager"
+
+      children =
+        DynamicSupervisor.which_children(ClickhouseAdaptor.QueryConnectionSup.DynamicSupervisor)
+
+      connection_manager_count =
+        Enum.count(children, fn
+          {_, _pid, :worker, [ConnectionManager]} -> true
+          _ -> false
+        end)
+
+      assert connection_manager_count >= 1,
+             "Each backend should have its own ConnectionManager"
+    end
+
+    test "ingest and read pools are truly independent", %{source: source, backend: backend} do
+      ingest_via = Backends.via_source(source, ConnectionManager, backend.id)
+      ingest_cm_pid = GenServer.whereis(ingest_via)
+      assert ingest_cm_pid, "Ingest ConnectionManager should be running from setup"
+
+      {:ok, _} = ClickhouseAdaptor.execute_ch_read_query(backend, "SELECT 1")
+      query_via = Backends.via_backend(backend, ConnectionManager)
+      query_cm_pid = GenServer.whereis(query_via)
+      assert query_cm_pid, "Query ConnectionManager should be running"
+
+      refute ingest_cm_pid == query_cm_pid,
+             "Ingest and query ConnectionManagers should be separate processes"
+
+      Process.exit(ingest_cm_pid, :kill)
+      Process.sleep(50)
+
+      assert Process.alive?(query_cm_pid),
+             "Query ConnectionManager should survive ingest ConnectionManager crash"
+
+      assert {:ok, [%{"result" => 2}]} =
+               ClickhouseAdaptor.execute_ch_read_query(backend, "SELECT 2 as result")
+    end
+
+    test "supervisor crash recovery maintains query `ConnectionManager`", %{backend: backend} do
+      {:ok, _} = ClickhouseAdaptor.execute_ch_read_query(backend, "SELECT 1")
+
+      via = Backends.via_backend(backend, ConnectionManager)
+      original_cm_pid = GenServer.whereis(via)
+      assert original_cm_pid, "ConnectionManager should be running"
+
+      # Kill the QueryConnections DynamicSupervisor (simulating supervisor crash)
+      query_sup_pid = Process.whereis(ClickhouseAdaptor.QueryConnectionSup.DynamicSupervisor)
+      assert query_sup_pid, "QueryConnections supervisor should be running"
+
+      Process.exit(original_cm_pid, :kill)
+      Process.sleep(50)
+
+      assert {:ok, [%{"result" => 3}]} =
+               ClickhouseAdaptor.execute_ch_read_query(backend, "SELECT 3 as result")
+
+      new_cm_pid = GenServer.whereis(via)
+      assert new_cm_pid, "New ConnectionManager should be running"
+      refute original_cm_pid == new_cm_pid, "Should be a new ConnectionManager instance"
+    end
+
+    test "verifies `ConnectionManager` pool lifecycle", %{backend: backend} do
+      {:ok, _} = ClickhouseAdaptor.execute_ch_read_query(backend, "SELECT 1")
+
+      via = Backends.via_backend(backend, ConnectionManager)
+      cm_pid = GenServer.whereis(via)
+      assert cm_pid, "ConnectionManager should be running"
+
+      assert ConnectionManager.pool_active?(backend),
+             "Connection pool should be active"
+
+      assert {:ok, [%{"v1" => 1}]} =
+               ClickhouseAdaptor.execute_ch_read_query(backend, "SELECT 1 as v1")
+
+      assert {:ok, [%{"v2" => 2}]} =
+               ClickhouseAdaptor.execute_ch_read_query(backend, "SELECT 2 as v2")
+
+      assert cm_pid == GenServer.whereis(via),
+             "ConnectionManager should be reused across queries"
+    end
+
+    test "monitoring and visibility of `ConnectionManager` procs", %{
+      source: source,
+      backend: backend
+    } do
+      initial_count = ClickhouseAdaptor.QueryConnectionSup.count_query_connection_managers()
+
+      {:ok, _} = ClickhouseAdaptor.execute_ch_read_query(backend, "SELECT 1")
+
+      assert ClickhouseAdaptor.QueryConnectionSup.count_query_connection_managers() ==
+               initial_count + 1
+
+      {_source2, backend2, cleanup_fn2} = setup_clickhouse_test(source: source)
+      on_exit(cleanup_fn2)
+
+      {:ok, _pid} = ClickhouseAdaptor.start_link({source, backend2})
+      :ok = ClickhouseAdaptor.provision_all({source, backend2})
+      Process.sleep(100)
+
+      {:ok, _} = ClickhouseAdaptor.execute_ch_read_query(backend2, "SELECT 1")
+
+      assert ClickhouseAdaptor.QueryConnectionSup.count_query_connection_managers() ==
+               initial_count + 2
+
+      count = ClickhouseAdaptor.QueryConnectionSup.count_query_connection_managers()
+      assert count >= 2, "Should have at least 2 ConnectionManagers"
+      assert count <= 1000, "Can monitor and ensure we don't exceed reasonable limits"
     end
   end
 
