@@ -123,7 +123,6 @@ defmodule LogflareWeb.Source.SearchLV do
       with {:ok, lql_rules} <-
              Lql.decode(qs, get_bigquery_schema(source)),
            lql_rules = Rules.put_new_chart_rule(lql_rules, Rules.default_chart_rule()),
-           lql_rules = ensure_from_rule(lql_rules, source),
            {:ok, socket} <- check_suggested_keys(lql_rules, source, socket) do
         qs = Lql.encode!(lql_rules)
 
@@ -716,18 +715,6 @@ defmodule LogflareWeb.Source.SearchLV do
     |> Kernel.in([:integer, :float])
   end
 
-  defp ensure_from_rule(lql_rules, source) do
-    if Rules.has_from_rule?(lql_rules) do
-      lql_rules
-    else
-      from_rule = %FromRule{
-        table: source.token,
-        table_type: :source
-      }
-
-      Rules.put_from_rule(lql_rules, from_rule)
-    end
-  end
 
   defp adjust_timestamp_rules(timestamp_rules, search_timezone) do
     tz = Timex.Timezone.get(search_timezone)

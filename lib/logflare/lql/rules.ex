@@ -180,26 +180,6 @@ defmodule Logflare.Lql.Rules do
   # =============================================================================
 
   @doc """
-  Checks if a `FromRule` is present in the rules list.
-  """
-  @spec has_from_rule?(lql_rules()) :: boolean()
-  def has_from_rule?(lql_rules) when is_list(lql_rules) do
-    Enum.any?(lql_rules, &match?(%FromRule{}, &1))
-  end
-
-  @doc """
-  Puts or replaces a `FromRule` in the rules list.
-
-  Removes any existing `FromRule` first to maintain the single from rule constraint.
-  """
-  @spec put_from_rule(lql_rules(), FromRule.t()) :: lql_rules()
-  def put_from_rule(lql_rules, %FromRule{} = from_rule) when is_list(lql_rules) do
-    lql_rules
-    |> remove_from_rule()
-    |> then(&[from_rule | &1])
-  end
-
-  @doc """
   Removes a `FromRule`, if present.
   """
   @spec remove_from_rule(lql_rules()) :: lql_rules()

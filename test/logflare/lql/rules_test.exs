@@ -354,54 +354,6 @@ defmodule Logflare.Lql.RulesTest do
     end
   end
 
-  describe "has_from_rule?/1" do
-    test "returns true when FromRule present" do
-      from_rule = %FromRule{table: "my_table", table_type: :cte}
-      filter_rule = %FilterRule{path: "message", operator: :=, value: "error"}
-
-      lql_rules = [filter_rule, from_rule]
-
-      assert Rules.has_from_rule?(lql_rules) == true
-    end
-
-    test "returns false when no FromRule present" do
-      filter_rule = %FilterRule{path: "message", operator: :=, value: "error"}
-      chart_rule = %ChartRule{aggregate: :count, path: "timestamp", period: :minute}
-
-      lql_rules = [filter_rule, chart_rule]
-
-      assert Rules.has_from_rule?(lql_rules) == false
-    end
-  end
-
-  describe "put_from_rule/2" do
-    test "adds FromRule when none exists" do
-      filter_rule = %FilterRule{path: "message", operator: :=, value: "error"}
-      from_rule = %FromRule{table: "my_table", table_type: :cte}
-
-      lql_rules = [filter_rule]
-
-      result = Rules.put_from_rule(lql_rules, from_rule)
-
-      assert length(result) == 2
-      assert Rules.get_from_rule(result) == from_rule
-    end
-
-    test "replaces existing FromRule" do
-      old_from_rule = %FromRule{table: "old_table", table_type: :cte}
-      new_from_rule = %FromRule{table: "new_table", table_type: :source}
-      filter_rule = %FilterRule{path: "message", operator: :=, value: "error"}
-
-      lql_rules = [filter_rule, old_from_rule]
-
-      result = Rules.put_from_rule(lql_rules, new_from_rule)
-
-      assert length(result) == 2
-      assert Rules.get_from_rule(result) == new_from_rule
-      refute Enum.member?(result, old_from_rule)
-    end
-  end
-
   describe "remove_from_rule/1" do
     test "removes FromRule when present" do
       from_rule = %FromRule{table: "my_table", table_type: :cte}
