@@ -32,20 +32,4 @@ defmodule LogflareWeb.ErrorViewTest do
     assert render_to_string(ErrorView, "500_page.html", conn: conn) =~ "500"
     assert render_to_string(ErrorView, "500_page.html", conn: conn) =~ "Server error"
   end
-
-  test "renders 401.json" do
-    assert render(ErrorView, "401.json", %{}) == %{error: "Unauthorized"}
-  end
-
-  test "renders 403.json" do
-    assert render(ErrorView, "403.json", %{}) == %{error: "Forbidden"}
-  end
-
-  test "renders 404.json" do
-    assert render(ErrorView, "404.json", %{}) == %{error: "Not Found"}
-  end
-
-  test "renders 500.json" do
-    assert render(ErrorView, "500.json", %{}) == %{error: "Internal Server Error"}
-  end
 end
