@@ -21,6 +21,22 @@ defmodule LogflareWeb.ErrorView do
     render("500_page.html", assigns)
   end
 
+  def render("401.json", _assigns) do
+    %{error: "Unauthorized"}
+  end
+
+  def render("403.json", _assigns) do
+    %{error: "Forbidden"}
+  end
+
+  def render("404.json", _assigns) do
+    %{error: "Not Found"}
+  end
+
+  def render("500.json", _assigns) do
+    %{error: "Internal Server Error"}
+  end
+
   def template_not_found(template, _assigns) do
     Phoenix.Controller.status_message_from_template(template)
   end
