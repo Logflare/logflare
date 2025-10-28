@@ -24,6 +24,20 @@ defmodule LogflareWeb.Api.FallbackController do
     |> halt()
   end
 
+  def call(conn, {:error, :too_many_requests}) do
+    conn
+    |> put_status(429)
+    |> json(%{error: "Too Many Requests"})
+    |> halt()
+  end
+
+  def call(conn, {:error, :too_many_requests, message}) when is_binary(message) do
+    conn
+    |> put_status(429)
+    |> json(%{error: message})
+    |> halt()
+  end
+
   def call(conn, {:error, :not_found}) do
     conn
     |> put_status(:not_found)

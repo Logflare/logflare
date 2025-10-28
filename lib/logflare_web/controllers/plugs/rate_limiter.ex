@@ -6,6 +6,7 @@ defmodule LogflareWeb.Plugs.RateLimiter do
   import Plug.Conn
 
   alias Logflare.Users
+  alias LogflareWeb.Api.FallbackController
 
   def init(_opts), do: nil
 
@@ -33,8 +34,7 @@ defmodule LogflareWeb.Plugs.RateLimiter do
 
         conn
         |> put_x_rate_limit_headers(metrics)
-        |> send_resp(429, message)
-        |> halt()
+        |> FallbackController.call({:error, :too_many_requests, message})
     end
   end
 

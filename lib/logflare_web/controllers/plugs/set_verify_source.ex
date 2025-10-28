@@ -9,6 +9,7 @@ defmodule LogflareWeb.Plugs.SetVerifySource do
 
   alias Logflare.Sources
   alias Logflare.Sources.Source
+  alias LogflareWeb.Api.FallbackController
 
   def call(%{assigns: %{source: %Source{}}} = conn, _opts), do: conn
 
@@ -22,23 +23,13 @@ defmodule LogflareWeb.Plugs.SetVerifySource do
 
     cond do
       is_nil(source) ->
-        conn
-        |> put_status(404)
-        |> put_layout(false)
-        |> put_view(LogflareWeb.ErrorView)
-        |> render("404_page.html")
-        |> halt()
+        FallbackController.call(conn, {:error, :not_found})
 
       verify_source_for_user(source, user) ->
         assign(conn, :source, source)
 
       true ->
-        conn
-        |> put_status(403)
-        |> put_layout(false)
-        |> put_view(LogflareWeb.ErrorView)
-        |> render("403_page.html", conn.assigns)
-        |> halt()
+        FallbackController.call(conn, {:error, :forbidden})
     end
   end
 
