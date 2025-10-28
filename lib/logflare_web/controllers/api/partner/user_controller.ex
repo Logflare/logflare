@@ -30,14 +30,14 @@ defmodule LogflareWeb.Api.Partner.UserController do
   end
 
   def get_user(%{assigns: %{partner: partner}} = conn, %{"user_token" => user_token}) do
-    with user when not is_nil(user) <- Partners.get_user_by_uuid(partner, user_token) do
+    with {:ok, user} <- Partners.fetch_user_by_uuid(partner, user_token) do
       allowed_response = sanitize_response(user)
       json(conn, allowed_response)
     end
   end
 
   def get_user_usage(%{assigns: %{partner: partner}} = conn, %{"user_token" => user_token}) do
-    with user when not is_nil(user) <- Partners.get_user_by_uuid(partner, user_token) do
+    with {:ok, user} <- Partners.fetch_user_by_uuid(partner, user_token) do
       end_date = DateTime.utc_now()
 
       start_date =
@@ -52,7 +52,7 @@ defmodule LogflareWeb.Api.Partner.UserController do
   end
 
   def delete_user(%{assigns: %{partner: partner}} = conn, %{"user_token" => user_token}) do
-    with user when not is_nil(user) <- Partners.get_user_by_uuid(partner, user_token),
+    with {:ok, user} <- Partners.fetch_user_by_uuid(partner, user_token),
          {:ok, user} <- Partners.delete_user(partner, user) do
       allowed_response = sanitize_response(user)
 
@@ -63,14 +63,14 @@ defmodule LogflareWeb.Api.Partner.UserController do
   end
 
   def upgrade(%{assigns: %{partner: partner}} = conn, %{"user_token" => user_token}) do
-    with user when not is_nil(user) <- Partners.get_user_by_uuid(partner, user_token),
+    with {:ok, user} <- Partners.fetch_user_by_uuid(partner, user_token),
          {:ok, %_{} = user} <- Partners.upgrade_user(user) do
       json(conn, Map.take(user, @allowed_fields))
     end
   end
 
   def downgrade(%{assigns: %{partner: partner}} = conn, %{"user_token" => user_token}) do
-    with user when not is_nil(user) <- Partners.get_user_by_uuid(partner, user_token),
+    with {:ok, user} <- Partners.fetch_user_by_uuid(partner, user_token),
          {:ok, %_{} = user} <- Partners.downgrade_user(user) do
       json(conn, Map.take(user, @allowed_fields))
     end

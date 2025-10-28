@@ -30,6 +30,16 @@ defmodule Logflare.Teams do
     end
   end
 
+  @doc "Fetches a single team by attribute. Returns {:ok, team} if found, {:error, :not_found} if not found"
+  @spec fetch_team_by(keyword()) :: {:ok, Team.t()} | {:error, :not_found}
+  def fetch_team_by(keyword) do
+    if team = get_team_by(keyword) do
+      {:ok, team}
+    else
+      {:error, :not_found}
+    end
+  end
+
   @doc "Preloads the `:user` assoc"
   @spec preload_user(nil | Team.t()) :: Team.t() | nil
   def preload_user(team), do: Repo.preload(team, :user)
@@ -106,5 +116,15 @@ defmodule Logflare.Teams do
       distinct: true,
       preload: [:user, :team_users],
       select: t
+  end
+
+  @doc "Fetches a single team with the given token from the list of teams he's part of. Returns {:ok, team} if found, {:error, :not_found} if not found"
+  @spec fetch_team_by_user_access(User.t(), binary()) :: {:ok, Team.t()} | {:error, :not_found}
+  def fetch_team_by_user_access(user, token) do
+    if team = get_team_by_user_access(user, token) do
+      {:ok, team}
+    else
+      {:error, :not_found}
+    end
   end
 end

@@ -6,11 +6,9 @@ defmodule LogflareWeb.Plugs.BufferLimiter do
   overload conditions. Supports default ingest backend filtering when
   enabled on the source.
   """
-
-  import Plug.Conn
-
   alias Logflare.Backends
   alias Logflare.Sources.Source
+  alias LogflareWeb.Api.FallbackController
 
   @type opts :: any()
 
@@ -24,9 +22,7 @@ defmodule LogflareWeb.Plugs.BufferLimiter do
   @spec call(Plug.Conn.t(), opts()) :: Plug.Conn.t()
   def call(%{assigns: %{source: %Source{} = source}} = conn, _opts) do
     if Backends.cached_local_pending_buffer_full?(source) do
-      conn
-      |> send_resp(429, "Buffer full: Too many requests")
-      |> halt()
+      FallbackController.call(conn, {:error, :buffer_full})
     else
       conn
     end
