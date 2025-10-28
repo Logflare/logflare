@@ -32,8 +32,8 @@ defmodule LogflareWeb.Plugs.BufferLimiterTest do
       |> assign(:source, source)
       |> BufferLimiter.call(%{})
 
-    assert conn.halted == true
-    assert conn.status == 429
+    assert conn.halted
+    assert json_response(conn, 429) == %{"error" => "Buffer Full: Too Many Requests"}
   end
 
   test "bug: buffer limiting is based on all queues", %{
@@ -75,8 +75,8 @@ defmodule LogflareWeb.Plugs.BufferLimiterTest do
       |> assign(:source, source)
       |> BufferLimiter.call(%{})
 
-    assert conn.halted == true
-    assert conn.status == 429
+    assert conn.halted
+    assert json_response(conn, 429)
   end
 
   test "200 if most events are ingested", %{conn: conn, source: source, table_key: table_key} do
@@ -202,8 +202,8 @@ defmodule LogflareWeb.Plugs.BufferLimiterTest do
         |> assign(:source, source)
         |> BufferLimiter.call(%{})
 
-      assert conn.halted == true
-      assert conn.status == 429
+      assert conn.halted
+      assert json_response(conn, 429)
     end
 
     test "falls back to regular buffer check when default_ingest_backend_enabled? is false", %{
@@ -226,8 +226,8 @@ defmodule LogflareWeb.Plugs.BufferLimiterTest do
         |> assign(:source, source)
         |> BufferLimiter.call(%{})
 
-      assert conn.halted == true
-      assert conn.status == 429
+      assert conn.halted
+      assert json_response(conn, 429)
     end
 
     test "returns 429 when system default queue is full even if user defaults are not", %{
@@ -259,8 +259,8 @@ defmodule LogflareWeb.Plugs.BufferLimiterTest do
         |> assign(:source, source)
         |> BufferLimiter.call(%{})
 
-      assert conn.halted == true
-      assert conn.status == 429
+      assert conn.halted
+      assert json_response(conn, 429)
     end
 
     test "returns 429 when user default queue is full even if system default is not", %{
@@ -290,8 +290,8 @@ defmodule LogflareWeb.Plugs.BufferLimiterTest do
         |> assign(:source, source)
         |> BufferLimiter.call(%{})
 
-      assert conn.halted == true
-      assert conn.status == 429
+      assert conn.halted
+      assert json_response(conn, 429)
     end
 
     test "allows request when both system and default ingest buffers have space", %{
@@ -323,7 +323,7 @@ defmodule LogflareWeb.Plugs.BufferLimiterTest do
         |> assign(:source, source)
         |> BufferLimiter.call(%{})
 
-      assert conn.halted == false
+      refute conn.halted
     end
 
     test "ignores unlinked backend buffers even if backend has default ingest enabled", %{
@@ -399,8 +399,8 @@ defmodule LogflareWeb.Plugs.BufferLimiterTest do
         |> assign(:source, source)
         |> BufferLimiter.call(%{})
 
-      assert conn.halted == true
-      assert conn.status == 429
+      assert conn.halted
+      assert json_response(conn, 429)
     end
 
     test "ignores backend buffers when source has default ingest disabled", %{
@@ -434,7 +434,7 @@ defmodule LogflareWeb.Plugs.BufferLimiterTest do
         |> assign(:source, source)
         |> BufferLimiter.call(%{})
 
-      assert conn.halted == false
+      refute conn.halted
     end
 
     test "returns 429 when user-configured ClickHouse default backend is full but system default is not",
@@ -484,8 +484,8 @@ defmodule LogflareWeb.Plugs.BufferLimiterTest do
         |> assign(:source, source)
         |> BufferLimiter.call(%{})
 
-      assert conn.halted == true
-      assert conn.status == 429
+      assert conn.halted
+      assert json_response(conn, 429)
     end
   end
 end
