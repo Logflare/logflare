@@ -301,6 +301,9 @@ defmodule Logflare.Alerting do
       {:ok, %{rows: []}} ->
         {:error, :no_results}
 
+      {:ok, %{rows: nil}} ->
+        {:error, :no_results}
+
       other ->
         other
     end
@@ -389,7 +392,7 @@ defmodule Logflare.Alerting do
   ```
   """
   @spec execute_alert_query(AlertQuery.t(), use_query_cache: boolean) ::
-          {:ok, Logflare.BqRepo.query_result()} | {:error, any()}
+          Logflare.BqRepo.query_result() | {:error, any()}
   def execute_alert_query(%AlertQuery{user: %User{}} = alert_query, opts \\ []) do
     Logger.debug("Executing AlertQuery | #{alert_query.name} | #{alert_query.id}")
 
