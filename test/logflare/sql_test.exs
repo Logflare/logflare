@@ -1451,7 +1451,7 @@ defmodule Logflare.SqlTest do
       pg_query = ~s"""
       with edge_logs as ( select (t.body -> 'timestamp') as timestamp from  "cloudflare.logs.prod" t )
       SELECT t.timestamp AS timestamp FROM edge_logs t
-      where (to_timestamp(CAST(t.timestamp AS BIGINT) / 1000000.0) AT TIME ZONE 'UTC') > '2023-08-05T09:00:00.000Z'
+      where (to_timestamp(CAST(t.timestamp::TEXT AS BIGINT) / 1000000.0) AT TIME ZONE 'UTC') > '2023-08-05T09:00:00.000Z'
       """
 
       {:ok, translated} = Sql.translate(:bq_sql, :pg_sql, bq_query)
