@@ -2,6 +2,8 @@ defmodule LogflareWeb.Api.TeamControllerTest do
   @moduledoc false
   use LogflareWeb.ConnCase
 
+  alias Logflare.TeamUsers
+
   setup do
     insert(:plan)
     user = insert(:user)
@@ -197,6 +199,102 @@ defmodule LogflareWeb.Api.TeamControllerTest do
       assert conn
              |> add_access_token(invalid_user, "private")
              |> delete(~p"/api/teams/#{main_team.token}")
+             |> json_response(404)
+             |> assert_schema("NotFoundResponse") == %{error: "Not Found"}
+    end
+  end
+
+  describe "add_member/2" do
+    test "adds an existing user to a team", %{
+      conn: conn,
+      user: user,
+      main_team: main_team
+    } do
+      new_member = insert(:user)
+
+      assert conn
+             |> add_access_token(user, "private")
+             |> post(~p"/api/teams/#{main_team.token}/members", %{email: new_member.email})
+             |> response(204)
+             |> assert_schema("AcceptedResponse") == ""
+
+      team_users = TeamUsers.list_team_users_by(team_id: main_team.id)
+
+      assert Enum.any?(team_users, fn tu ->
+               tu.email == String.downcase(new_member.email)
+             end)
+    end
+
+    test "creates a new team member when adding with non-existent email", %{
+      conn: conn,
+      user: user,
+      main_team: main_team
+    } do
+      new_email = "newuser@example.com"
+
+      assert conn
+             |> add_access_token(user, "private")
+             |> post(~p"/api/teams/#{main_team.token}/members", %{email: new_email})
+             |> response(204)
+             |> assert_schema("AcceptedResponse") == ""
+
+      team_users = TeamUsers.list_team_users_by(team_id: main_team.id)
+      assert Enum.any?(team_users, fn tu -> tu.email == String.downcase(new_email) end)
+    end
+
+    test "returns not found if doesn't own the team", %{conn: conn, main_team: main_team} do
+      invalid_user = insert(:user)
+      new_member = insert(:user)
+
+      assert conn
+             |> add_access_token(invalid_user, "private")
+             |> post(~p"/api/teams/#{main_team.token}/members", %{email: new_member.email})
+             |> json_response(404)
+             |> assert_schema("NotFoundResponse") == %{error: "Not Found"}
+    end
+  end
+
+  describe "remove_member/2" do
+    test "removes a member from a team", %{
+      conn: conn,
+      user: user,
+      main_team: main_team
+    } do
+      member_to_remove = insert(:user)
+      insert(:team_user, team: main_team, email: member_to_remove.email)
+
+      assert conn
+             |> add_access_token(user, "private")
+             |> delete(~p"/api/teams/#{main_team.token}/members/#{member_to_remove.email}")
+             |> response(204)
+             |> assert_schema("AcceptedResponse") == ""
+
+      team_users = TeamUsers.list_team_users_by(team_id: main_team.id)
+      refute Enum.any?(team_users, fn tu -> tu.email == member_to_remove.email end)
+    end
+
+    test "returns not found if doesn't own the team", %{conn: conn, main_team: main_team} do
+      invalid_user = insert(:user)
+      member = insert(:user)
+      insert(:team_user, team: main_team, email: member.email)
+
+      assert conn
+             |> add_access_token(invalid_user, "private")
+             |> delete(~p"/api/teams/#{main_team.token}/members/#{member.email}")
+             |> json_response(404)
+             |> assert_schema("NotFoundResponse") == %{error: "Not Found"}
+    end
+
+    test "returns not found if team member doesn't exist", %{
+      conn: conn,
+      user: user,
+      main_team: main_team
+    } do
+      non_existent_email = "nonexistent@example.com"
+
+      assert conn
+             |> add_access_token(user, "private")
+             |> delete(~p"/api/teams/#{main_team.token}/members/#{non_existent_email}")
              |> json_response(404)
              |> assert_schema("NotFoundResponse") == %{error: "Not Found"}
     end
