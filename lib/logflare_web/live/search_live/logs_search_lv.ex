@@ -715,7 +715,6 @@ defmodule LogflareWeb.Source.SearchLV do
     |> Kernel.in([:integer, :float])
   end
 
-
   defp adjust_timestamp_rules(timestamp_rules, search_timezone) do
     tz = Timex.Timezone.get(search_timezone)
 
