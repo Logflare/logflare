@@ -15,7 +15,6 @@ defmodule LogflareWeb.Source.SearchLV do
   alias Logflare.Lql
   alias Logflare.Lql.Rules
   alias Logflare.Lql.Rules.ChartRule
-  alias Logflare.Lql.Rules.FromRule
   alias Logflare.SavedSearches
   alias Logflare.SourceSchemas
   alias Logflare.Sources
