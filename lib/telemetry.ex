@@ -302,7 +302,7 @@ defmodule Logflare.Telemetry do
 
   def user_specific_metrics, do: metrics() |> Enum.filter(&user_specific_metric?/1)
 
-  defp user_specific_metric?(%{tags: tags}), do: Enum.any?(tags, & &1 in @user_specific_tags)
+  defp user_specific_metric?(%{tags: tags}), do: Enum.any?(tags, &(&1 in @user_specific_tags))
 
   def cachex_metrics do
     Enum.each(@caches, fn {cache, metric} ->

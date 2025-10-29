@@ -96,7 +96,7 @@ defmodule Logflare.Backends.SourceSup do
     keep_function = keep_metric_function(source)
 
     Telemetry.user_specific_metrics()
-    |> Enum.map(& %{&1 | keep: keep_function})
+    |> Enum.map(&%{&1 | keep: keep_function})
   end
 
   defp keep_metric_function(source) do
