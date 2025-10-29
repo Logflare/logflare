@@ -54,6 +54,49 @@ defmodule Logflare.Lql.ParserTest do
               ]} == Parser.parse(qs)
     end
 
+    test "parse string with special characters" do
+      for char <- [
+            ".",
+            "?",
+            "!",
+            "@",
+            "#",
+            "$",
+            "%",
+            "^",
+            "&",
+            "*",
+            "(",
+            ")",
+            "-",
+            "_",
+            "=",
+            "+",
+            "[",
+            "]",
+            "{",
+            "}",
+            "|",
+            "\\",
+            "/",
+            ";",
+            ",",
+            "<",
+            ">"
+          ] do
+        qs = ~s|my#{char}string|
+
+        assert {:ok,
+                [
+                  %FilterRule{
+                    operator: :string_contains,
+                    path: "event_message",
+                    value: "my#{char}string"
+                  }
+                ]} == Parser.parse(qs)
+      end
+    end
+
     test "chart period, chart aggregate" do
       qs = "c:sum(m.metric) c:group_by(t::minute)"
 
@@ -534,11 +577,6 @@ defmodule Logflare.Lql.ParserTest do
 
       assert err =~ "emailAddress"
       assert err =~ "metadata filter value"
-    end
-
-    test "returns error when parser cannot handle part of input" do
-      assert {:error, "LQL parser doesn't know how to handle this part: " <> _rest} =
-               Parser.parse("event_message:test ][=invalid syntax", @default_schema)
     end
 
     test "returns error for general parsing errors" do
