@@ -40,6 +40,7 @@ defmodule Logflare.DataCase do
         on_exit(fn ->
           Logflare.Backends.IngestEventQueue.delete_all_mappings()
           Logflare.PubSubRates.Cache.clear()
+          Logflare.Backends.Adaptor.ClickhouseAdaptor.QueryConnectionSup.terminate_all()
         end)
 
         :ok
@@ -116,11 +117,9 @@ defmodule Logflare.DataCase do
         type: :clickhouse,
         config: Map.merge(default_config, config),
         default_ingest?: default_ingest_backend?,
-        user: user
+        user: user,
+        sources: [source]
       )
-
-    source = Logflare.Repo.preload(source, :backends)
-    {:ok, source} = Logflare.Sources.update_source(source, %{backends: [backend]})
 
     cleanup_fn = fn -> cleanup_clickhouse_tables({source, backend}) end
 

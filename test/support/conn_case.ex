@@ -60,6 +60,7 @@ defmodule LogflareWeb.ConnCase do
         on_exit(fn ->
           Logflare.Backends.IngestEventQueue.delete_all_mappings()
           Logflare.PubSubRates.Cache.clear()
+          Logflare.Backends.Adaptor.ClickhouseAdaptor.QueryConnectionSup.terminate_all()
         end)
 
         :ok

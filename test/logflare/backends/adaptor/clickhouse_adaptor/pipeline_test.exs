@@ -23,7 +23,6 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.PipelineTest do
     Process.sleep(200)
 
     :ok = ConnectionManager.ensure_pool_started({source, backend})
-    :ok = ConnectionManager.ensure_pool_started(backend)
 
     adaptor_state = %{
       source: source,
