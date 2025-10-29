@@ -103,7 +103,7 @@ defmodule Logflare.TeamsTest do
   test "list_teams_by_user_access/1 lists all teams of a given user" do
     insert(:team, user: build(:user))
     user = insert(:user)
-    insert_list(2, :team_user, provider_uid: user.provider_uid)
+    insert_list(2, :team_user, email: user.email)
 
     # 2 items, :team_users preloaded
     assert [%{team_users: [_ | _]}, _] = Teams.list_teams_by_user_access(user)
@@ -112,9 +112,56 @@ defmodule Logflare.TeamsTest do
   test "get_team_by_user_access/2 gets a team for a given user and token" do
     user = insert(:user)
     team = insert(:team)
-    _team_user = insert(:team_user, provider_uid: user.provider_uid, team: team)
+    _team_user = insert(:team_user, email: user.email, team: team)
     insert_list(2, :team_user)
 
     assert team.id == Teams.get_team_by_user_access(user, team.token).id
+  end
+
+  test "list_teams_by_user_access/1 with TeamUser that has matching User (home team)" do
+    # Create a user with a home team
+    home_team = insert(:team)
+    user = insert(:user, team: home_team)
+
+    # Create teams where the email is a team_user
+    team1 = insert(:team)
+    team2 = insert(:team)
+    team_user = insert(:team_user, email: user.email, team: team1)
+    insert(:team_user, email: user.email, team: team2)
+
+    # Should return: home_team + team1 + team2 = 3 teams
+    teams = Teams.list_teams_by_user_access(team_user)
+    team_ids = Enum.map(teams, & &1.id) |> Enum.sort()
+
+    assert length(teams) == 3
+    assert home_team.id in team_ids
+    assert team1.id in team_ids
+    assert team2.id in team_ids
+  end
+
+  test "list_teams_by_user_access/1 with TeamUser that has no matching User" do
+    # Create a team_user without a matching user
+    team1 = insert(:team)
+    team2 = insert(:team)
+    team_user = insert(:team_user, team: team1)
+    insert(:team_user, email: team_user.email, team: team2)
+
+    # Should return only teams where team_user.email matches (no home team)
+    teams = Teams.list_teams_by_user_access(team_user)
+    team_ids = Enum.map(teams, & &1.id) |> Enum.sort()
+
+    assert length(teams) == 2
+    assert team1.id in team_ids
+    assert team2.id in team_ids
+  end
+
+  test "get_team_by_user_access/2 with TeamUser" do
+    team1 = insert(:team)
+    team2 = insert(:team)
+    team_user = insert(:team_user, email: "test@example.com", team: team1)
+    insert(:team_user, email: team_user.email, team: team2)
+
+    assert team1.id == Teams.get_team_by_user_access(team_user, team1.token).id
+    assert team2.id == Teams.get_team_by_user_access(team_user, team2.token).id
   end
 end
