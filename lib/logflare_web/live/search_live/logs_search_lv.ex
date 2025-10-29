@@ -140,7 +140,6 @@ defmodule LogflareWeb.Source.SearchLV do
           |> assign(:chart_loading, true)
           |> assign(:tailing_initial?, true)
           |> assign(:lql_rules, lql_rules)
-          |> assign(:querystring, qs)
           |> assign(:search_op_log_events, search_op_log_events)
           |> assign(chart_aggregate_enabled?: search_agg_controls_enabled?(lql_rules))
 
@@ -596,14 +595,12 @@ defmodule LogflareWeb.Source.SearchLV do
     case Lql.decode(qs, bq_table_schema) do
       {:ok, lql_rules} ->
         lql_rules = Lql.Rules.put_new_chart_rule(lql_rules, Lql.Rules.default_chart_rule())
-        qs = Lql.encode!(lql_rules)
 
         socket
         |> assign(:loading, true)
         |> assign(:tailing_initial?, true)
         |> clear_flash()
         |> assign(:lql_rules, lql_rules)
-        |> assign(:querystring, qs)
         |> push_patch_with_params(%{querystring: qs, tz: tz, tailing?: tailing?})
 
       {:error, error} ->
