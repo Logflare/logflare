@@ -37,8 +37,6 @@ defmodule Logflare.DataCase do
           func.()
         end)
 
-        ensure_clickhouse_query_connection_sup_started()
-
         on_exit(fn ->
           Logflare.Backends.IngestEventQueue.delete_all_mappings()
           Logflare.PubSubRates.Cache.clear()
@@ -184,20 +182,6 @@ defmodule Logflare.DataCase do
         # Process may not be running during cleanup :shrug:
         :exit, _ -> :ok
       end
-    end
-  end
-
-  @doc """
-  Ensures the ClickHouse `QueryConnectionSup` is started for tests.
-
-  This supervisor is required for read queries to work properly.
-  """
-  def ensure_clickhouse_query_connection_sup_started do
-    alias Logflare.Backends.Adaptor.ClickhouseAdaptor.QueryConnectionSup
-
-    case GenServer.whereis(QueryConnectionSup) do
-      nil -> ExUnit.Callbacks.start_supervised!(QueryConnectionSup)
-      _pid -> :ok
     end
   end
 end
