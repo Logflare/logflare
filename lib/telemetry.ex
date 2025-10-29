@@ -257,15 +257,15 @@ defmodule Logflare.Telemetry do
   defp add_filters(metrics) do
     for metric <- metrics do
       if user_specific_metric?(metric),
-        do: %{metric | drop: &drop_metric_function/1},
+        do: %{metric | keep: &keep_metric_function/1},
         else: metric
     end
   end
 
-  defp drop_metric_function(metadata) do
+  defp keep_metric_function(metadata) do
     case get_entity_from_metadata(metadata) do
-      %{user_id: user_id} -> Users.Cache.get(user_id).system_monitoring
-      _ -> false
+      %{user_id: user_id} -> !Users.Cache.get(user_id).system_monitoring
+      _ -> true
     end
   end
 
