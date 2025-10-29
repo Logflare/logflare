@@ -78,16 +78,16 @@ defmodule Logflare.Teams do
   def change_team(%Team{} = team), do: Team.changeset(team, %{})
 
   @doc """
-  Lists all the teams a given user is part of.
+  Lists all the teams a given user or team user is part of.
 
   ## Examples
   ### User is owner of a team and belongs another user team
   iex(1) > Logflare.Teams.list_teams_by_user_access(user, "token")
   [%Logflare.Team{}, %Logflare.Team{}]
   """
-  @spec list_teams_by_user_access(User.t()) :: [Team.t()]
-  def list_teams_by_user_access(user) do
-    user
+  @spec list_teams_by_user_access(User.t() | TeamUser.t()) :: [Team.t()]
+  def list_teams_by_user_access(user_or_team_user) do
+    user_or_team_user
     |> query_teams_by_user_access()
     |> Repo.all()
   end
@@ -100,19 +100,19 @@ defmodule Logflare.Teams do
   iex(1) > Logflare.Teams.get_team_by_user_access(user, "token")
   %Logflare.Team{}
   """
-  @spec get_team_by_user_access(User.t(), binary()) :: Team.t() | nil
-  def get_team_by_user_access(user, token) do
-    user
+  @spec get_team_by_user_access(User.t() | TeamUser.t(), binary()) :: Team.t() | nil
+  def get_team_by_user_access(user_or_team_user, token) do
+    user_or_team_user
     |> query_teams_by_user_access()
     |> where([t, tu], t.token == ^token or tu.token == ^token)
     |> Repo.one()
   end
 
-  defp query_teams_by_user_access(%User{id: id, provider_uid: uid}) do
+  defp query_teams_by_user_access(%User{id: id, email: email}) do
     from t in Team,
       left_join: tu in TeamUser,
       on: t.id == tu.team_id,
-      where: t.user_id == ^id or tu.provider_uid == ^uid,
+      where: t.user_id == ^id or tu.email == ^email,
       distinct: true,
       preload: [:user, :team_users],
       select: t
@@ -125,6 +125,30 @@ defmodule Logflare.Teams do
       {:ok, team}
     else
       {:error, :not_found}
+    end
+  end
+
+  defp query_teams_by_user_access(%TeamUser{email: email}) do
+    user = Users.get_by(email: email)
+
+    case user do
+      %User{id: user_id} ->
+        from t in Team,
+          left_join: tu in TeamUser,
+          on: t.id == tu.team_id,
+          where: t.user_id == ^user_id or tu.email == ^email,
+          distinct: true,
+          preload: [:user, :team_users],
+          select: t
+
+      nil ->
+        from t in Team,
+          left_join: tu in TeamUser,
+          on: t.id == tu.team_id,
+          where: tu.email == ^email,
+          distinct: true,
+          preload: [:user, :team_users],
+          select: t
     end
   end
 end
