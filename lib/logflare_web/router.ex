@@ -37,7 +37,7 @@ defmodule LogflareWeb.Router do
            script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net https://buttons.github.io https://platform.twitter.com https://cdnjs.cloudflare.com https://js.stripe.com;\
            style-src 'self' 'unsafe-inline' https://use.fontawesome.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://api.github.com;\
            img-src 'self' data: https://*.googleusercontent.com https://www.gravatar.com https://avatars.githubusercontent.com https://platform.slack-edge.com;\
-           font-src 'self' https://use.fontawesome.com;\
+           font-src 'self' data: https://use.fontawesome.com https://cdn.jsdelivr.net;\
            frame-src 'self' https://platform.twitter.com https://install.cloudflareapps.com https://datastudio.google.com https://js.stripe.com https://www.youtube.com https://lookerstudio.google.com/;\
            """
          end).(),
