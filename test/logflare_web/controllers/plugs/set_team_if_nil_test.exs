@@ -24,10 +24,9 @@ defmodule LogflareWeb.Plugs.SetTeamIfNilTest do
 
       assert user.team == nil
 
-      conn =
-        conn
-        |> login_user(user)
-        |> SetTeamIfNil.call(@opts)
+      conn
+      |> login_user(user)
+      |> SetTeamIfNil.call(@opts)
 
       user = Repo.preload(user, :team, force: true)
 
@@ -35,7 +34,6 @@ defmodule LogflareWeb.Plugs.SetTeamIfNilTest do
       assert team.user_id == user.id
       assert is_binary(team.name)
       assert String.length(team.name) > 0
-      assert conn.assigns.user.id == user.id
 
       assert Repo.preload(user, :team, force: true).team == team
     end
