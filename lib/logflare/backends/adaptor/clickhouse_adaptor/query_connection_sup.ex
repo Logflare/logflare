@@ -87,4 +87,18 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.QueryConnectionSup do
   end
 
   defp extract_backend_info(_child), do: nil
+
+  @doc """
+  Terminates all query `ConnectionManager` processes.
+  """
+  @spec terminate_all() :: :ok
+  def terminate_all do
+    @dynamic_sup_name
+    |> DynamicSupervisor.which_children()
+    |> Enum.each(fn {_id, pid, :worker, _modules} ->
+      DynamicSupervisor.terminate_child(@dynamic_sup_name, pid)
+    end)
+
+    :ok
+  end
 end
