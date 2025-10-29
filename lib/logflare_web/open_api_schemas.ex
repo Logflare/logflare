@@ -100,7 +100,7 @@ defmodule LogflareWeb.OpenApiSchemas do
     @properties %{
       name: %Schema{type: :string},
       token: %Schema{type: :string},
-      id: %Schema{},
+      id: %Schema{type: :integer},
       favorite: %Schema{type: :boolean},
       webhook_notification_url: %Schema{type: :string},
       api_quota: %Schema{type: :integer},
@@ -110,7 +110,7 @@ defmodule LogflareWeb.OpenApiSchemas do
       bq_table_id: %Schema{type: :string},
       has_rejected_events: %Schema{type: :boolean},
       metrics: %Schema{type: :object},
-      notifications: %Schema{type: :array, items: Notification},
+      notifications: %Schema{type: :object, items: Notification},
       custom_event_message_keys: %Schema{type: :string},
       default_ingest_backend_enabled?: %Schema{type: :boolean},
       inserted_at: %Schema{type: :string, format: :"date-time"},
