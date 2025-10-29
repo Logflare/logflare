@@ -468,31 +468,9 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
 
   @doc false
   @impl Supervisor
-  def init({%Source{} = source, %Backend{config: %{} = config} = backend} = args) do
-    default_pool_size = Application.fetch_env!(:logflare, :clickhouse_backend_adaptor)[:pool_size]
-    ingest_pool_size = Map.get(config, :pool_size, default_pool_size)
-
-    url = Map.get(config, :url)
-    {:ok, {scheme, hostname}} = extract_scheme_and_hostname(url)
-
-    ingest_pool_via = connection_pool_via({source, backend})
-
-    # Ingest connection pool opts
-    ingest_ch_opts = [
-      name: ingest_pool_via,
-      scheme: scheme,
-      hostname: hostname,
-      port: get_port_config(backend),
-      database: Map.get(config, :database),
-      username: Map.get(config, :username),
-      password: Map.get(config, :password),
-      pool_size: ingest_pool_size,
-      settings: [],
-      timeout: @ingest_timeout
-    ]
-
+  def init({%Source{} = source, %Backend{} = backend} = args) do
     children = [
-      ConnectionManager.child_spec({source, backend, ingest_ch_opts}),
+      ConnectionManager.child_spec({source, backend}),
       Provisioner.child_spec(args),
       {
         DynamicPipeline,
@@ -686,22 +664,24 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
   defp convert_uuids(data), do: data
 
   @spec ensure_query_connection_manager_started(Backend.t()) :: :ok | {:error, term()}
-  defp ensure_query_connection_manager_started(%Backend{} = backend) do
+  defp ensure_query_connection_manager_started(%Backend{id: backend_id} = backend) do
     via = Backends.via_backend(backend, ConnectionManager)
 
     via
     |> GenServer.whereis()
-    |> maybe_start_query_connection_manager(backend)
+    |> maybe_start_query_connection_manager(backend_id)
     |> case do
       :ok -> ensure_pool_and_notify(backend)
       error -> error
     end
   end
 
-  @spec maybe_start_query_connection_manager(pid() | nil, Backend.t()) :: :ok | {:error, term()}
-  defp maybe_start_query_connection_manager(nil, %Backend{} = backend) do
-    with {:ok, query_ch_opts} <- build_query_connection_opts(backend),
-         child_spec <- ConnectionManager.child_spec({backend, query_ch_opts}),
+  @spec maybe_start_query_connection_manager(pid() | nil, pos_integer()) :: :ok | {:error, term()}
+  defp maybe_start_query_connection_manager(nil, backend_id) when is_integer(backend_id) do
+    # Fetch fresh backend from cache
+    backend = Backends.Cache.get_backend(backend_id)
+
+    with child_spec <- ConnectionManager.child_spec(backend),
          {:ok, _pid} <- __MODULE__.QueryConnectionSup.start_connection_manager(child_spec) do
       Logger.info(
         "Started query ConnectionManager for ClickHouse backend",
@@ -717,7 +697,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
       {:error, reason} = error ->
         Logger.warning(
           "Failed to start query ConnectionManager for backend",
-          backend_id: backend.id,
+          backend_id: backend_id,
           reason: reason
         )
 
@@ -725,7 +705,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
     end
   end
 
-  defp maybe_start_query_connection_manager(_pid, %Backend{}), do: :ok
+  defp maybe_start_query_connection_manager(_pid, _backend_id), do: :ok
 
   @spec ensure_pool_and_notify(Backend.t()) :: :ok
   defp ensure_pool_and_notify(%Backend{} = backend) do
