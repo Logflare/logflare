@@ -108,6 +108,9 @@ defmodule Logflare.Application do
         # citrine scheduler for alerts
         Logflare.Alerting.Supervisor,
 
+        # quantum scheduler for periodic tasks
+        Logflare.Scheduler,
+
         # active users tracking for UserMetricsPoller
         {Logflare.ActiveUserTracker,
          [name: Logflare.ActiveUserTracker, pubsub_server: Logflare.PubSub]}

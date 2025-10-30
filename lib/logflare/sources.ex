@@ -18,6 +18,7 @@ defmodule Logflare.Sources do
   alias Logflare.SavedSearch
   alias Logflare.SingleTenant
   alias Logflare.SourceSchemas
+  alias Logflare.Sources.Cache
   alias Logflare.Sources.Source
   alias Logflare.Sources.Source.BigQuery.SchemaBuilder
   alias Logflare.User
@@ -480,5 +481,119 @@ defmodule Logflare.Sources do
       round(GenUtils.default_table_ttl_days()),
       round(ttl / :timer.hours(24))
     )
+  end
+
+  @doc """
+  Shuts down idle source supervisors across the cluster.
+
+  This function checks all running SourceSup processes and shuts down those that are idle
+  (no ingest activity and no pending items in their backend queues).
+  """
+  @spec shutdown_idle_sources() :: :ok
+  def shutdown_idle_sources do
+    Logger.info("Starting idle source cleanup")
+
+    # Get source IDs from Sources.Cache first (more efficient)
+    cached_source_ids =
+      Cache
+      |> Cachex.stream!()
+      |> Stream.filter(fn
+        # Filter for get_by calls that return a Source struct with an id
+        {{:get_by, _args}, {:cached, %Source{id: id}}} when is_integer(id) ->
+          Backends.source_sup_started?(id)
+
+        _ ->
+          false
+      end)
+      |> Stream.map(fn {{:get_by, _}, {:cached, %Source{id: id}}} -> id end)
+      |> Stream.uniq()
+      |> Enum.to_list()
+
+    # Fall back to Registry for sources not yet in cache
+    registry_source_ids =
+      Backends.SourceRegistry
+      |> Registry.select([{{:"$1", :"$2", :"$3"}, [], [{{:"$1", :"$2"}}]}])
+      |> Enum.filter(fn
+        {{_source_id, Backends.SourceSup}, _pid} -> true
+        _ -> false
+      end)
+      |> Enum.map(fn {{source_id, _}, _pid} -> source_id end)
+
+    # Combine and dedupe
+    source_ids = (cached_source_ids ++ registry_source_ids) |> Enum.uniq()
+
+    Logger.info("Found #{length(source_ids)} active sources to check")
+
+    # Process sources concurrently with controlled concurrency
+    source_ids
+    |> Task.async_stream(
+      fn source_id ->
+        check_and_shutdown_idle_source(source_id)
+      end,
+      max_concurrency: 3,
+      timeout: 30_000,
+      on_timeout: :kill_task
+    )
+    |> Stream.run()
+
+    Logger.info("Idle source cleanup completed")
+    :ok
+  end
+
+  @spec check_and_shutdown_idle_source(integer()) :: :ok | :skip
+  defp check_and_shutdown_idle_source(source_id) do
+    case Cache.get_by_id(source_id) do
+      nil ->
+        Logger.warning("Source #{source_id} not found in cache during idle check")
+        :skip
+
+      source ->
+        check_source_idle_and_shutdown(source, source_id)
+    end
+  end
+
+  @spec check_source_idle_and_shutdown(Source.t(), integer()) :: :ok | :skip
+  defp check_source_idle_and_shutdown(source, source_id) do
+    metrics = get_source_metrics_for_ingest(source)
+
+    if metrics.avg != 0 do
+      :skip
+    else
+      check_pending_and_shutdown(source, source_id)
+    end
+  end
+
+  @spec check_pending_and_shutdown(Source.t(), integer()) :: :ok | :skip
+  defp check_pending_and_shutdown(source, source_id) do
+    total_pending = calculate_total_pending(source)
+
+    if total_pending == 0 do
+      Logger.info("Shutting down idle source: #{source.name} (id: #{source_id})")
+      Source.Supervisor.stop_source_local(source)
+      :ok
+    else
+      Logger.debug(
+        "Source #{source.name} has no ingest but #{total_pending} pending items, skipping shutdown"
+      )
+
+      :skip
+    end
+  end
+
+  @spec calculate_total_pending(Source.t()) :: non_neg_integer()
+  defp calculate_total_pending(%Source{id: source_id} = source) do
+    # Get all backends for this source, including default backend
+    user = Users.Cache.get(source.user_id)
+    default_backend = Backends.get_default_backend(user)
+    ingest_backends = Backends.Cache.list_backends(source_id: source_id)
+
+    all_backends = [default_backend | ingest_backends] |> Enum.uniq_by(& &1.id)
+
+    # Sum pending items across all backends
+    all_backends
+    |> Enum.reduce(0, fn backend, acc ->
+      pending = Backends.IngestEventQueue.total_pending({source_id, backend.id})
+      acc + pending
+    end)
   end
 end

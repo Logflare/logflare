@@ -306,6 +306,49 @@ defmodule Logflare.SourcesTest do
     assert Sources.ingest_ets_tables_started?()
   end
 
+  describe "shutdown_idle_sources/0" do
+    setup do
+      insert(:plan)
+      user = insert(:user)
+      source = insert(:source, user: user)
+      {:ok, source: source, user: user}
+    end
+
+    test "shuts down sources with 0 avg rate and 0 pending items", %{source: source} do
+      :ok = Backends.start_source_sup(source)
+
+      TestUtils.retry_assert(fn ->
+        assert Backends.source_sup_started?(source)
+        assert Sources.get_source_metrics_for_ingest(source).avg == 0
+      end)
+
+      :ok = Sources.shutdown_idle_sources()
+
+      refute Backends.source_sup_started?(source)
+    end
+
+    test "does NOT shut down sources with active ingest", %{source: source} do
+      :ok = Backends.start_source_sup(source)
+
+      Logflare.Sources.Counters.increment(source.token, 1)
+      Logflare.Sources.Source.RateCounterServer.handle_info(:put_rate, source.token)
+
+      assert Sources.get_source_metrics_for_ingest(source).avg > 0
+
+      :ok = Sources.shutdown_idle_sources()
+      assert Backends.source_sup_started?(source)
+    end
+
+    test "does NOT shut down sources with pending items", %{source: source} do
+      :ok = Backends.start_source_sup(source)
+      event = build(:log_event, source: source)
+      Backends.IngestEventQueue.add_to_table({source.id, nil}, [event])
+      assert Backends.source_sup_started?(source)
+      :ok = Sources.shutdown_idle_sources()
+      assert Backends.source_sup_started?(source)
+    end
+  end
+
   describe "list_sources/1" do
     setup do
       insert(:plan)

@@ -20,7 +20,6 @@ defmodule Logflare.Backends.SourceSup do
   alias Logflare.Rules.Rule
   alias Logflare.Sources
   alias Logflare.Backends.AdaptorSupervisor
-  alias Logflare.Backends.SourceSupJanitor
 
   def start_link(%Source{} = source) do
     Supervisor.start_link(__MODULE__, source, name: Backends.via_source(source, __MODULE__))
@@ -55,8 +54,7 @@ defmodule Logflare.Backends.SourceSup do
         {WebhookNotificationServer, [source: source]},
         {SlackHookServer, [source: source]},
         {BillingWriter, [source: source]},
-        {SourceSupWorker, [source: source]},
-        {SourceSupJanitor, [source: source]}
+        {SourceSupWorker, [source: source]}
       ] ++ specs
 
     Supervisor.init(children, strategy: :one_for_one)
