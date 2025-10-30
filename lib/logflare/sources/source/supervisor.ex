@@ -120,7 +120,6 @@ defmodule Logflare.Sources.Source.Supervisor do
     {:ok, source_token}
   end
 
-
   def reset_source(source_token) do
     unless do_pg_ops?() do
       GenServer.abcast(__MODULE__, {:restart, source_token})
@@ -209,7 +208,7 @@ defmodule Logflare.Sources.Source.Supervisor do
   defp do_lookup(source), do: Backends.lookup(Backends.SourceSup, source)
 
   def stop_source_local(%Source{} = source) do
-    with {:ok, pid} <- do_v2_lookup(source) do
+    with {:ok, pid} <- do_lookup(source) do
       DynamicSupervisor.terminate_child(
         {:via, PartitionSupervisor, {Backends.SourcesSup, source.id}},
         pid
