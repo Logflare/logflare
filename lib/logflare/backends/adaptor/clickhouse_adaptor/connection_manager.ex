@@ -335,30 +335,25 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.ConnectionManager do
       url = Map.get(config, :url)
 
       with {:ok, {scheme, hostname}} <- extract_scheme_and_hostname(url) do
-        # Build the pool via tuple based on pool type
         pool_via =
           if is_nil(source_id) do
-            connection_pool_via(backend)
+            backend
           else
             source = Logflare.Sources.Cache.get_by_id(source_id)
-            connection_pool_via({source, backend})
+            {source, backend}
           end
+          |> connection_pool_via()
 
-        timeout =
-          if pool_type == :ingest do
-            :timer.seconds(15)
-          else
-            :timer.minutes(1)
-          end
+        timeout = if pool_type == :ingest, do: :timer.seconds(15), else: :timer.minutes(1)
 
         ch_opts = [
           name: pool_via,
           scheme: scheme,
           hostname: hostname,
           port: get_port_config(backend, config),
-          database: Map.get(config, :database),
-          username: Map.get(config, :username),
-          password: Map.get(config, :password),
+          database: config.database,
+          username: config.username,
+          password: config.password,
           pool_size: pool_size,
           settings: [],
           timeout: timeout
@@ -377,7 +372,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.ConnectionManager do
         {:ok, {scheme, hostname}}
 
       {:ok, %URI{}} ->
-        {:error, "Unable to extract scheme and hostname from URL '#{inspect(url)}'."}
+        {:error, "Unable to extract scheme and hostname from URL."}
 
       {:error, _err_msg} = error ->
         error
@@ -387,10 +382,8 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.ConnectionManager do
   defp extract_scheme_and_hostname(_url), do: {:error, "Unexpected URL value provided."}
 
   @spec get_port_config(Backend.t(), map()) :: non_neg_integer()
-  defp get_port_config(%Backend{}, %{port: port}) when is_integer(port) and port > 0, do: port
-
-  defp get_port_config(%Backend{}, %{port: port}) when is_binary(port) and byte_size(port) > 0,
-    do: String.to_integer(port)
+  defp get_port_config(_backend, %{port: port}) when is_integer(port), do: port
+  defp get_port_config(_backend, %{port: port}) when is_binary(port), do: String.to_integer(port)
 
   @spec connection_manager_via({Source.t(), Backend.t()} | Backend.t()) :: tuple()
   defp connection_manager_via({%Source{} = source, %Backend{} = backend}) do
