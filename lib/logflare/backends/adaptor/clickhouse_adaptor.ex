@@ -32,8 +32,6 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
     field(:backend, Backend.t())
     field(:ingest_connection, tuple())
   end
-
-  @ingest_timeout 15_000
   @query_timeout 60_000
 
   @type source_backend_tuple :: {Source.t(), Backend.t()}
@@ -552,12 +550,6 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
       name
     end
   end
-
-  @spec get_port_config(Backend.t()) :: non_neg_integer()
-  defp get_port_config(%Backend{config: %{port: port}}) when is_pos_integer(port), do: port
-
-  defp get_port_config(%Backend{config: %{port: port}}) when is_non_empty_binary(port),
-    do: String.to_integer(port)
 
   defp validate_user_pass(changeset) do
     user = Changeset.get_field(changeset, :username)
