@@ -33,9 +33,6 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
     field(:ingest_connection, tuple())
   end
 
-  @ingest_timeout 15_000
-  @query_timeout 60_000
-
   @type source_backend_tuple :: {Source.t(), Backend.t()}
   @type via_tuple :: {:via, Registry, {module(), {pos_integer(), {module(), pos_integer()}}}}
 
@@ -468,31 +465,9 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
 
   @doc false
   @impl Supervisor
-  def init({%Source{} = source, %Backend{config: %{} = config} = backend} = args) do
-    default_pool_size = Application.fetch_env!(:logflare, :clickhouse_backend_adaptor)[:pool_size]
-    ingest_pool_size = Map.get(config, :pool_size, default_pool_size)
-
-    url = Map.get(config, :url)
-    {:ok, {scheme, hostname}} = extract_scheme_and_hostname(url)
-
-    ingest_pool_via = connection_pool_via({source, backend})
-
-    # Ingest connection pool opts
-    ingest_ch_opts = [
-      name: ingest_pool_via,
-      scheme: scheme,
-      hostname: hostname,
-      port: get_port_config(backend),
-      database: Map.get(config, :database),
-      username: Map.get(config, :username),
-      password: Map.get(config, :password),
-      pool_size: ingest_pool_size,
-      settings: [],
-      timeout: @ingest_timeout
-    ]
-
+  def init({%Source{} = source, %Backend{} = backend} = args) do
     children = [
-      ConnectionManager.child_spec({source, backend, ingest_ch_opts}),
+      ConnectionManager.child_spec({source, backend}),
       Provisioner.child_spec(args),
       {
         DynamicPipeline,
@@ -538,23 +513,6 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
     end
   end
 
-  @spec extract_scheme_and_hostname(String.t()) ::
-          {:ok, {String.t(), String.t()}} | {:error, String.t()}
-  defp extract_scheme_and_hostname(url) when is_non_empty_binary(url) do
-    case URI.new(url) do
-      {:ok, %URI{scheme: scheme, host: hostname}} when scheme in ~w(http https) ->
-        {:ok, {scheme, hostname}}
-
-      {:ok, %URI{}} ->
-        {:error, "Unable to extract scheme and hostname from URL '#{inspect(url)}'."}
-
-      {:error, _err_msg} = error ->
-        error
-    end
-  end
-
-  defp extract_scheme_and_hostname(_url), do: {:error, "Unexpected URL value provided."}
-
   @spec clickhouse_source_token(Source.t()) :: String.t()
   defp clickhouse_source_token(%Source{token: token}) do
     token
@@ -574,12 +532,6 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
       name
     end
   end
-
-  @spec get_port_config(Backend.t()) :: non_neg_integer()
-  defp get_port_config(%Backend{config: %{port: port}}) when is_pos_integer(port), do: port
-
-  defp get_port_config(%Backend{config: %{port: port}}) when is_non_empty_binary(port),
-    do: String.to_integer(port)
 
   defp validate_user_pass(changeset) do
     user = Changeset.get_field(changeset, :username)
@@ -686,22 +638,24 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
   defp convert_uuids(data), do: data
 
   @spec ensure_query_connection_manager_started(Backend.t()) :: :ok | {:error, term()}
-  defp ensure_query_connection_manager_started(%Backend{} = backend) do
+  defp ensure_query_connection_manager_started(%Backend{id: backend_id} = backend) do
     via = Backends.via_backend(backend, ConnectionManager)
 
     via
     |> GenServer.whereis()
-    |> maybe_start_query_connection_manager(backend)
+    |> maybe_start_query_connection_manager(backend_id)
     |> case do
       :ok -> ensure_pool_and_notify(backend)
       error -> error
     end
   end
 
-  @spec maybe_start_query_connection_manager(pid() | nil, Backend.t()) :: :ok | {:error, term()}
-  defp maybe_start_query_connection_manager(nil, %Backend{} = backend) do
-    with {:ok, query_ch_opts} <- build_query_connection_opts(backend),
-         child_spec <- ConnectionManager.child_spec({backend, query_ch_opts}),
+  @spec maybe_start_query_connection_manager(pid() | nil, pos_integer()) :: :ok | {:error, term()}
+  defp maybe_start_query_connection_manager(nil, backend_id) when is_integer(backend_id) do
+    # Fetch fresh backend from cache
+    backend = Backends.Cache.get_backend(backend_id)
+
+    with child_spec <- ConnectionManager.child_spec(backend),
          {:ok, _pid} <- __MODULE__.QueryConnectionSup.start_connection_manager(child_spec) do
       Logger.info(
         "Started query ConnectionManager for ClickHouse backend",
@@ -717,7 +671,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
       {:error, reason} = error ->
         Logger.warning(
           "Failed to start query ConnectionManager for backend",
-          backend_id: backend.id,
+          backend_id: backend_id,
           reason: reason
         )
 
@@ -725,46 +679,12 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
     end
   end
 
-  defp maybe_start_query_connection_manager(_pid, %Backend{}), do: :ok
+  defp maybe_start_query_connection_manager(_pid, _backend_id), do: :ok
 
   @spec ensure_pool_and_notify(Backend.t()) :: :ok
   defp ensure_pool_and_notify(%Backend{} = backend) do
     ConnectionManager.ensure_pool_started(backend)
     ConnectionManager.notify_activity(backend)
     :ok
-  end
-
-  @spec build_query_connection_opts(Backend.t()) ::
-          {:ok, Keyword.t()} | {:error, term()}
-  defp build_query_connection_opts(%Backend{config: config} = backend) do
-    default_pool_size =
-      Application.fetch_env!(:logflare, :clickhouse_backend_adaptor)[:pool_size]
-
-    ingest_pool_size = Map.get(config, :pool_size, default_pool_size)
-
-    # set the query pool size to half of the write pool size, if larger than the default
-    query_pool_size =
-      ingest_pool_size
-      |> div(2)
-      |> max(default_pool_size)
-
-    url = Map.get(config, :url)
-
-    with {:ok, {scheme, hostname}} <- extract_scheme_and_hostname(url) do
-      query_ch_opts = [
-        name: connection_pool_via(backend),
-        scheme: scheme,
-        hostname: hostname,
-        port: get_port_config(backend),
-        database: Map.get(config, :database),
-        username: Map.get(config, :username),
-        password: Map.get(config, :password),
-        pool_size: query_pool_size,
-        settings: [],
-        timeout: @query_timeout
-      ]
-
-      {:ok, query_ch_opts}
-    end
   end
 end
