@@ -240,7 +240,7 @@ defmodule Logflare.Application do
         start_pool_metrics?: true
       ],
       "https://http-intake.logs.ap1.datadoghq.com" => [
-        protocols: [:http2],
+        protocols: [:http1],
         start_pool_metrics?: true
       ]
     }
