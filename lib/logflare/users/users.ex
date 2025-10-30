@@ -12,7 +12,7 @@ defmodule Logflare.Users do
   alias Logflare.TeamUsers.TeamUser
   alias Logflare.User
   alias Logflare.Users
-  alias Logflare.Users.UserPreferences
+  alias Logflare.Users.{Cache, UserPreferences}
 
   require Logger
 
@@ -182,26 +182,25 @@ defmodule Logflare.Users do
   end
 
   def update_user_all_fields(user, params) do
-    Repo.transact(fn ->
-      user
-      |> user_changeset(params)
-      |> Repo.update()
-      |> update_system_sources(user.system_monitoring)
-    end)
+    user
+    |> user_changeset(params)
+    |> Repo.update()
+    |> update_system_sources(user.system_monitoring)
   end
 
   def update_user_allowed(user, params) do
-    Repo.transact(fn ->
-      user
-      |> User.user_allowed_changeset(params)
-      |> Repo.update()
-      |> update_system_sources(user.system_monitoring)
-    end)
+    user
+    |> User.user_allowed_changeset(params)
+    |> Repo.update()
+    |> update_system_sources(user.system_monitoring)
   end
 
   defp update_system_sources({:ok, user}, original_system_monitoring) do
-    if user.system_monitoring != original_system_monitoring,
-      do: toggle_system_monitoring(user)
+    if user.system_monitoring != original_system_monitoring do
+      toggle_system_monitoring(user)
+
+      Cache.update(user)
+    end
 
     {:ok, user}
   end
