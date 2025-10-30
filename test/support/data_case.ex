@@ -163,9 +163,7 @@ defmodule Logflare.DataCase do
   """
   def cleanup_clickhouse_tables({source, backend}) do
     table_names = [
-      Logflare.Backends.Adaptor.ClickhouseAdaptor.clickhouse_ingest_table_name(source),
-      Logflare.Backends.Adaptor.ClickhouseAdaptor.clickhouse_key_count_table_name(source),
-      Logflare.Backends.Adaptor.ClickhouseAdaptor.clickhouse_materialized_view_name(source)
+      Logflare.Backends.Adaptor.ClickhouseAdaptor.clickhouse_ingest_table_name(source)
     ]
 
     for table_name <- table_names do

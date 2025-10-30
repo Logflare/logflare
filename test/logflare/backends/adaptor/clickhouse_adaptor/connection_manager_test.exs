@@ -257,10 +257,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.ConnectionManagerTest do
       [source: source, invalid_backend: invalid_backend]
     end
 
-    test "handles invalid database configuration", %{
-      source: source,
-      invalid_backend: invalid_backend
-    } do
+    test "handles invalid database configuration", %{invalid_backend: invalid_backend} do
       {:ok, _manager_pid} =
         ConnectionManager.start_link(invalid_backend)
 

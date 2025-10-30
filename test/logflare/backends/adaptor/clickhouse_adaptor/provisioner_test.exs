@@ -57,23 +57,11 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.ProvisionerTest do
       assert_receive {:DOWN, ^ref, :process, ^pid, :normal}, 5_000
 
       ingest_table = ClickhouseAdaptor.clickhouse_ingest_table_name(source)
-      key_count_table = ClickhouseAdaptor.clickhouse_key_count_table_name(source)
-      materialized_view = ClickhouseAdaptor.clickhouse_materialized_view_name(source)
 
       {:ok, ingest_exists} =
         ClickhouseAdaptor.execute_ch_read_query(backend, "EXISTS TABLE #{ingest_table}")
 
       assert [%{"result" => 1}] = ingest_exists
-
-      {:ok, key_count_exists} =
-        ClickhouseAdaptor.execute_ch_read_query(backend, "EXISTS TABLE #{key_count_table}")
-
-      assert [%{"result" => 1}] = key_count_exists
-
-      {:ok, view_exists} =
-        ClickhouseAdaptor.execute_ch_read_query(backend, "EXISTS TABLE #{materialized_view}")
-
-      assert [%{"result" => 1}] = view_exists
     end
   end
 
@@ -164,8 +152,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.ProvisionerTest do
 
       column_names = Enum.map(columns, & &1["name"])
       assert "id" in column_names
-      assert "event_message" in column_names
-      assert "body" in column_names
+      assert "payload" in column_names
       assert "timestamp" in column_names
 
       id_column = Enum.find(columns, &(&1["name"] == "id"))

@@ -514,9 +514,9 @@ defmodule Logflare.SqlTest do
       Process.sleep(200)
 
       cte_query =
-        "with src as (select event_message from #{source.name}) select event_message from src"
+        "with src as (select payload from #{source.name}) select payload from src"
 
-      consumer_query = "select event_message from src"
+      consumer_query = "select payload from src"
 
       assert {:ok, transformed} = Sql.transform(:ch_sql, {cte_query, consumer_query}, user)
       assert {:ok, results} = ClickhouseAdaptor.execute_query(backend, transformed, [])

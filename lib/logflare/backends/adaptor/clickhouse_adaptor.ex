@@ -268,28 +268,6 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
   end
 
   @doc """
-  Produces a unique key count table name for ClickHouse based on a provided `Source` struct.
-  """
-  @spec clickhouse_key_count_table_name(Source.t()) :: String.t()
-  def clickhouse_key_count_table_name(%Source{} = source) do
-    source
-    |> clickhouse_source_token()
-    |> then(&"#{QueryTemplates.default_key_type_counts_table_prefix()}_#{&1}")
-    |> check_clickhouse_resource_name_length(source)
-  end
-
-  @doc """
-  Produces a unique materialized view name for ClickHouse based on a provided `Source` struct.
-  """
-  @spec clickhouse_materialized_view_name(Source.t()) :: String.t()
-  def clickhouse_materialized_view_name(%Source{} = source) do
-    source
-    |> clickhouse_source_token()
-    |> then(&"#{QueryTemplates.default_key_type_counts_view_prefix()}_#{&1}")
-    |> check_clickhouse_resource_name_length(source)
-  end
-
-  @doc """
   Executes a raw ClickHouse query using the ingest connection pool.
 
   This function is for write operations like inserts, DDL statements, and provisioning.
@@ -379,22 +357,16 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
 
     event_params =
       Enum.map(events, fn %LogEvent{} = log_event ->
-        flattened_body =
-          log_event.body
-          |> Map.drop(["id", "event_message", "timestamp"])
-          |> Iteraptor.to_flatmap()
-
         [
           log_event.body["id"],
-          log_event.body["event_message"],
-          Jason.encode!(flattened_body),
+          Jason.encode!(log_event.body),
           DateTime.from_unix!(log_event.body["timestamp"], :microsecond)
         ]
       end)
 
     opts = [
-      names: ["id", "event_message", "body", "timestamp"],
-      types: ["UUID", "String", "String", "DateTime64(6)"]
+      names: ["id", "payload", "timestamp"],
+      types: ["UUID", "String", "DateTime64(6)"]
     ]
 
     execute_ch_ingest_query(
@@ -421,44 +393,11 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
   end
 
   @doc """
-  Attempts to provision a new key type counts table, if it does not already exist.
-  """
-  @spec provision_key_type_counts_table(source_backend_tuple()) ::
-          {:ok, Ch.Result.t()} | {:error, Exception.t()}
-  def provision_key_type_counts_table({%Source{} = source, %Backend{}} = args) do
-    with key_count_table_name <- clickhouse_key_count_table_name(source),
-         statement <-
-           QueryTemplates.create_key_type_counts_table_statement(table: key_count_table_name) do
-      execute_ch_ingest_query(args, statement)
-    end
-  end
-
-  @doc """
-  Attempts to provision a new materialized view, if it does not already exist.
-  """
-  @spec provision_materialized_view(source_backend_tuple()) ::
-          {:ok, Ch.Result.t()} | {:error, Exception.t()}
-  def provision_materialized_view({%Source{} = source, %Backend{}} = args) do
-    with source_table_name <- clickhouse_ingest_table_name(source),
-         view_name <- clickhouse_materialized_view_name(source),
-         key_count_table_name <- clickhouse_key_count_table_name(source),
-         statement <-
-           QueryTemplates.create_materialized_view_statement(source_table_name,
-             view_name: view_name,
-             key_table: key_count_table_name
-           ) do
-      execute_ch_ingest_query(args, statement)
-    end
-  end
-
-  @doc """
   Handles all provisioning tasks for a given `Source` and `Backend` pair.
   """
   @spec provision_all(source_backend_tuple()) :: :ok | {:error, term()}
   def provision_all({%Source{}, %Backend{}} = args) do
-    with {:ok, _} <- provision_ingest_table(args),
-         {:ok, _} <- provision_key_type_counts_table(args),
-         {:ok, _} <- provision_materialized_view(args) do
+    with {:ok, _} <- provision_ingest_table(args) do
       :ok
     end
   end
