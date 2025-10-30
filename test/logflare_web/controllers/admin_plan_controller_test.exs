@@ -132,7 +132,7 @@ defmodule LogflareWeb.AdminPlanControllerTest do
       conn
       |> login_user(admin)
       |> visit(~p"/admin/plans")
-      |> click_link("a[href=~p'/admin/plans/#{plan.id}/edit']", "Edit")
+      |> click_link("a[href='#{~p"/admin/plans/#{plan}/edit"}']", "Edit")
       |> assert_path(~p"/admin/plans/#{plan}/edit")
       |> assert_has("h1", text: "Edit Plan")
       |> assert_has("form")
