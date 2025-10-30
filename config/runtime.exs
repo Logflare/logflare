@@ -297,6 +297,17 @@ cond do
              socket_options: socket_options_for_url.(System.get_env("POSTGRES_BACKEND_URL", ""))
            )
 
+  System.get_env("LOGFLARE_SINGLE_TENANT", "false") == "true" &&
+      not is_nil(System.get_env("CLICKHOUSE_URL")) ->
+    config :logflare,
+           :clickhouse_backend_adapter,
+           filter_nil_kv_pairs.(
+             url: System.get_env("CLICKHOUSE_URL"),
+             database: System.get_env("CLICKHOUSE_DATABASE"),
+             username: System.get_env("CLICKHOUSE_USERNAME"),
+             password: System.get_env("CLICKHOUSE_PASSWORD")
+           )
+
   config_env() != :test ->
     if File.exists?("gcloud.json") do
       config :goth, json: File.read!("gcloud.json")

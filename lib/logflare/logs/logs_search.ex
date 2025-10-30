@@ -6,14 +6,17 @@ defmodule Logflare.Logs.Search do
   alias Logflare.Google.BigQuery.GenUtils
   alias Logflare.Logs.SearchOperation, as: SO
   alias Logflare.Logs.SearchQueries
+  alias Logflare.Repo
   alias Logflare.Sources
   alias Logflare.Sources.Source
+
   import Ecto.Query
   import Logflare.Logs.SearchOperations
 
   @spec search(Logflare.Logs.SearchOperation.t()) :: {:error, any} | {:ok, %{events: any}}
   def search(%SO{} = so) do
     so
+    |> get_and_put_backend()
     |> get_and_put_partition_by()
     |> search_events()
     |> case do
@@ -27,6 +30,7 @@ defmodule Logflare.Logs.Search do
 
   def aggs(%SO{} = so) do
     so
+    |> get_and_put_backend()
     |> get_and_put_partition_by()
     |> search_result_aggregates()
     |> case do
@@ -83,7 +87,8 @@ defmodule Logflare.Logs.Search do
   def search_event_context(%SO{} = so, log_event_id, %DateTime{} = timestamp) do
     so =
       so
-      |> Logflare.Logs.Search.get_and_put_partition_by()
+      |> get_and_put_backend()
+      |> get_and_put_partition_by()
 
     %{values: [min, max]} =
       so.lql_rules
@@ -131,24 +136,51 @@ defmodule Logflare.Logs.Search do
     end
   end
 
-  def query_source_streaming_buffer(%Source{} = source) do
-    q =
-      case Sources.get_table_partition_type(source) do
-        :pseudo ->
-          SearchQueries.source_table_streaming_buffer(source.bq_table_id)
+  def query_source_streaming_buffer(%Source{} = source, backend \\ nil) do
+    backend = backend || get_first_queryable_backend(source)
 
-        :timestamp ->
-          SearchQueries.source_table_last_1_minutes(source.bq_table_id)
-      end
-      |> order_by(desc: :timestamp)
-      |> limit(100)
+    # Only BigQuery supports streaming buffer queries
+    case backend do
+      %{type: :bigquery} ->
+        q =
+          case Sources.get_table_partition_type(source) do
+            :pseudo ->
+              SearchQueries.source_table_streaming_buffer(source.bq_table_id)
 
-    bq_project_id = source.user.bigquery_project_id || GCPConfig.default_project_id()
-    %{bigquery_dataset_id: dataset_id} = GenUtils.get_bq_user_info(source.token)
+            :timestamp ->
+              SearchQueries.source_table_last_1_minutes(source.bq_table_id)
+          end
+          |> order_by(desc: :timestamp)
+          |> limit(100)
 
-    BigQueryAdaptor.execute_query({bq_project_id, dataset_id, source.user.id}, q,
-      query_type: :search
-    )
+        bq_project_id = source.user.bigquery_project_id || GCPConfig.default_project_id()
+        %{bigquery_dataset_id: dataset_id} = GenUtils.get_bq_user_info(source.token)
+
+        BigQueryAdaptor.execute_query({bq_project_id, dataset_id, source.user.id}, q,
+          query_type: :search
+        )
+
+      _ ->
+        # ClickHouse and other backends don't support streaming buffer
+        {:ok, %{rows: []}}
+    end
+  end
+
+  defp get_first_queryable_backend(%Source{} = source) do
+    source =
+      source
+      |> Repo.preload(:backends)
+
+    # Get first backend that supports querying (BigQuery or ClickHouse)
+    # Return nil if no explicit backend is configured (single-tenant mode)
+    Enum.find(source.backends, fn backend ->
+      backend.type in [:bigquery, :clickhouse]
+    end)
+  end
+
+  def get_and_put_backend(%SO{} = so) do
+    backend = get_first_queryable_backend(so.source)
+    %{so | backend: backend}
   end
 
   def get_and_put_partition_by(%SO{} = so) do

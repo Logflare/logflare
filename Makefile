@@ -172,6 +172,15 @@ start.st.pg: ENV_FILE = .single_tenant_pg.env
 start.st.pg: LOGFLARE_GRPC_PORT = 50051
 start.st.pg: __start__
 
+start.sb.ch: LOGFLARE_SUPABASE_MODE = true
+start.sb.ch: start.st.ch
+
+start.st.ch: ERL_NAME = st_ch
+start.st.ch: PORT ?= 4000
+start.st.ch: ENV_FILE = .single_tenant_ch.env
+start.st.ch: LOGFLARE_GRPC_PORT = 50051
+start.st.ch: __start__
+
 observer:
 	erl -sname observer -hidden -setcookie ${ERL_COOKIE} -run observer
 
@@ -186,7 +195,7 @@ migrate:
 	@env $$(cat .dev.env | xargs) mix ecto.migrate
 
 
-.PHONY: __start__ migrate start.sb.pg start.sb.bq start.st.pg start.st.bq start.orange start.pink
+.PHONY: __start__ migrate start.sb.ch start.sb.pg start.sb.bq start.st.ch start.st.pg start.st.bq start.orange start.pink
 
 # Encryption and decryption of secrets
 # Usage:

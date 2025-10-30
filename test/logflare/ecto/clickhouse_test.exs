@@ -481,6 +481,87 @@ defmodule Logflare.Ecto.ClickHouseTest do
     end
   end
 
+  describe "map select with fragments containing AS aliases" do
+    test "does not duplicate AS when fragment already has alias" do
+      query =
+        from(t in "logs",
+          select: %{
+            value: fragment("COUNT(?) as value", t.timestamp)
+          }
+        )
+
+      assert {:ok, {sql, _params}} = ClickHouse.to_sql(query)
+
+      # Should have only one AS (from the fragment), not a duplicate
+      refute String.contains?(sql, "as value AS")
+      assert String.contains?(sql, "COUNT")
+      assert String.contains?(sql, "as value")
+    end
+
+    test "does not duplicate AS for aggregation with existing alias" do
+      query =
+        from(t in "logs",
+          select: %{
+            timestamp: fragment("TIMESTAMP_TRUNC(?, DAY) as timestamp", t.timestamp),
+            count: fragment("COUNT(*) as count")
+          }
+        )
+
+      assert {:ok, {sql, _params}} = ClickHouse.to_sql(query)
+
+      # Should not have duplicate AS clauses
+      refute String.contains?(sql, "as timestamp AS")
+      refute String.contains?(sql, "as count AS")
+      assert String.contains?(sql, "TIMESTAMP_TRUNC")
+      assert String.contains?(sql, "COUNT")
+    end
+
+    test "adds AS when fragment does not have alias" do
+      query =
+        from(t in "logs",
+          select: %{
+            value: fragment("COUNT(?)", t.timestamp)
+          }
+        )
+
+      assert {:ok, {sql, _params}} = ClickHouse.to_sql(query)
+
+      # Should add AS "value" since fragment doesn't have it
+      assert String.contains?(sql, ~s(AS "value"))
+      assert String.contains?(sql, "COUNT")
+    end
+  end
+
+  describe "list select handling" do
+    test "converts list select to multiple columns, not array literal" do
+      query = from(t in "logs", select: [t.timestamp, t.id, t.event_message])
+
+      assert {:ok, {sql, _params}} = ClickHouse.to_sql(query)
+
+      # Should be comma-separated columns
+      assert String.contains?(sql, ~s("timestamp"))
+      assert String.contains?(sql, ~s("id"))
+      assert String.contains?(sql, ~s("event_message"))
+
+      # Should NOT be wrapped in array brackets [...]
+      # The SELECT clause should have: field1, field2, field3
+      # Not: [field1, field2, field3]
+      refute Regex.match?(~r/SELECT\s+\[.*"timestamp".*,.*"id".*,.*"event_message".*\]/, sql)
+    end
+
+    test "list select with mixed field types" do
+      query = from(t in "logs", select: [t.timestamp, t.id, t.event_message, t.metadata])
+
+      assert {:ok, {sql, _params}} = ClickHouse.to_sql(query)
+
+      # All fields should be comma-separated
+      assert String.contains?(sql, ~s("timestamp"))
+      assert String.contains?(sql, ~s("id"))
+      assert String.contains?(sql, ~s("event_message"))
+      assert String.contains?(sql, ~s("metadata"))
+    end
+  end
+
   describe "to_sql/2 with inline_params option" do
     test "inlines string parameters when inline_params: true" do
       query = from(t in "logs", where: t.message == ^"test", select: t)

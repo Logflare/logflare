@@ -48,8 +48,14 @@ defmodule LogflareWeb.Helpers.BqSchema do
   end
 
   def format_timestamp(timestamp, search_timezone) do
+    timestamp =
+      if is_integer(timestamp) do
+        Timex.from_unix(timestamp, :microsecond)
+      else
+        timestamp
+      end
+
     timestamp
-    |> Timex.from_unix(:microsecond)
     |> Timex.Timezone.convert(search_timezone)
     |> Timex.format!(@fmt_string, :strftime)
   end

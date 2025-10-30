@@ -84,7 +84,7 @@ defmodule Logflare.Sources do
            |> Ecto.build_assoc(:sources)
            |> Source.update_by_user_changeset(source_params)
            |> Repo.insert() do
-      if !SingleTenant.postgres_backend?() do
+      if !SingleTenant.postgres_backend?() && !SingleTenant.clickhouse_backend?() do
         create_big_query_schema_and_start_source(source)
       end
 
@@ -164,7 +164,8 @@ defmodule Logflare.Sources do
     source = put_retention_days(source)
     updated = put_retention_days(updated)
 
-    if source.retention_days != updated.retention_days and not SingleTenant.postgres_backend?() do
+    if source.retention_days != updated.retention_days and not SingleTenant.postgres_backend?() and
+         not SingleTenant.clickhouse_backend?() do
       user = Users.Cache.get(updated.user_id)
 
       BigQuery.patch_table_ttl(
@@ -176,7 +177,7 @@ defmodule Logflare.Sources do
     end
 
     if source.bigquery_clustering_fields != updated.bigquery_clustering_fields and
-         not SingleTenant.postgres_backend?() do
+         not SingleTenant.postgres_backend?() and not SingleTenant.clickhouse_backend?() do
       user = Users.Cache.get(updated.user_id)
 
       fields = String.split(updated.bigquery_clustering_fields || "", ",") ++ ["timestamp"]

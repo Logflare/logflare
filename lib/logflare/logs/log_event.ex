@@ -13,6 +13,7 @@ defmodule Logflare.LogEvent do
   require Logger
 
   @validators [EqDeepFieldTypes, BigQuerySchemaChange]
+  @unix_epoch ~N[1970-01-01 00:00:00]
 
   @primary_key {:id, :binary_id, []}
   typed_embedded_schema do
@@ -133,6 +134,9 @@ defmodule Logflare.LogEvent do
             7 -> x * 1_000_000_000
             _ -> rounded
           end
+
+        naive_datetime = %NaiveDateTime{} ->
+          NaiveDateTime.diff(naive_datetime, @unix_epoch, :microsecond)
 
         nil ->
           System.system_time(:microsecond)

@@ -15,6 +15,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.ConnectionManager do
 
   alias Logflare.Backends
   alias Logflare.Backends.Backend
+  alias Logflare.SingleTenant
   alias Logflare.Sources.Source
 
   @type source_backend_tuple :: {Source.t(), Backend.t()}
@@ -174,6 +175,10 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.ConnectionManager do
   @impl true
   def handle_call(:ensure_pool, _from, %__MODULE__{pool_pid: pool_pid} = state)
       when is_pid(pool_pid) do
+    Logger.debug(
+      "[ClickHouse.ConnectionManager] ensure_pool called with existing pool_pid=#{inspect(pool_pid)} alive=#{Process.alive?(pool_pid)}, backend_id=#{inspect(state.backend_id)}, source_id=#{inspect(state.source_id)}"
+    )
+
     {result, new_state} =
       if Process.alive?(pool_pid) do
         {:ok, record_activity(state)}
@@ -185,6 +190,10 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.ConnectionManager do
   end
 
   def handle_call(:ensure_pool, _from, %__MODULE__{} = state) do
+    Logger.info(
+      "[ClickHouse.ConnectionManager] ensure_pool called without pool_pid, starting new pool. backend_id=#{inspect(state.backend_id)}, source_id=#{inspect(state.source_id)}"
+    )
+
     {result, new_state} = start_pool(state)
     {:reply, result, new_state}
   end
@@ -307,11 +316,76 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.ConnectionManager do
 
   @spec build_ch_opts(__MODULE__.t()) :: {:ok, Keyword.t()} | {:error, term()}
   defp build_ch_opts(%__MODULE__{
+         backend_id: nil,
+         source_id: source_id,
+         pool_type: pool_type
+       }) do
+    # Single-tenant mode: use config from environment
+    config = SingleTenant.clickhouse_backend_adapter_opts() || %{}
+
+    Logger.info(
+      "[ClickHouse.ConnectionManager] build_ch_opts for single tenant mode, source_id=#{inspect(source_id)}, pool_type=#{pool_type}, config=#{inspect(config)}"
+    )
+
+    default_pool_size =
+      Application.fetch_env!(:logflare, :clickhouse_backend_adaptor)[:pool_size]
+
+    pool_size = Keyword.get(config, :pool_size, default_pool_size)
+
+    # Adjust pool size for query pools
+    pool_size =
+      if pool_type == :query do
+        pool_size
+        |> div(2)
+        |> max(default_pool_size)
+      else
+        pool_size
+      end
+
+    url = Keyword.get(config, :url)
+
+    with {:ok, {scheme, hostname}} <- extract_scheme_and_hostname(url) do
+      # Create a virtual backend for pool naming
+      virtual_backend = %Backend{
+        id: nil,
+        type: :clickhouse,
+        config: Map.new(config)
+      }
+
+      pool_via =
+        if is_nil(source_id) do
+          virtual_backend
+        else
+          source = Logflare.Sources.Cache.get_by_id(source_id)
+          {source, virtual_backend}
+        end
+        |> connection_pool_via()
+
+      timeout = if pool_type == :ingest, do: :timer.seconds(15), else: :timer.minutes(1)
+
+      ch_opts = [
+        name: pool_via,
+        scheme: scheme,
+        hostname: hostname,
+        port: Keyword.get(config, :port, extract_port_from_url(url)),
+        database: Keyword.get(config, :database),
+        username: Keyword.get(config, :username),
+        password: Keyword.get(config, :password),
+        pool_size: pool_size,
+        settings: [],
+        timeout: timeout
+      ]
+
+      {:ok, ch_opts}
+    end
+  end
+
+  defp build_ch_opts(%__MODULE__{
          backend_id: backend_id,
          source_id: source_id,
          pool_type: pool_type
        }) do
-    # Fetch fresh backend from cache
+    # Multi-tenant mode: fetch fresh backend from cache
     backend = Backends.Cache.get_backend(backend_id)
 
     if is_nil(backend) do
@@ -365,6 +439,15 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.ConnectionManager do
       end
     end
   end
+
+  defp extract_port_from_url(url) when is_binary(url) do
+    case URI.parse(url) do
+      %URI{port: port} when is_integer(port) -> port
+      _ -> 8123
+    end
+  end
+
+  defp extract_port_from_url(_), do: 8123
 
   @spec extract_scheme_and_hostname(String.t()) ::
           {:ok, {String.t(), String.t()}} | {:error, String.t()}

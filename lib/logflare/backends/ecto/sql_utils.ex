@@ -26,11 +26,18 @@ defmodule Logflare.Backends.Ecto.SqlUtils do
   @doc """
   Normalizes date/datetime parameters to string format.
   """
-  @spec normalize_datetime_param(any()) :: any()
-  def normalize_datetime_param(%NaiveDateTime{} = param), do: to_string(param)
-  def normalize_datetime_param(%DateTime{} = param), do: to_string(param)
-  def normalize_datetime_param(%Date{} = param), do: to_string(param)
-  def normalize_datetime_param(param), do: param
+  @spec normalize_datetime_param(any(), :clickhouse | :bigquery) :: any()
+  def normalize_datetime_param(%NaiveDateTime{} = param, _backend), do: to_string(param)
+
+  # TODO: ClickHouse DateTime64(6) without timezone can't parse ISO8601 with 'Z' suffix.
+  # Consider using DateTime64(6, 'UTC') in schema instead to avoid this conversion.
+  def normalize_datetime_param(%DateTime{} = param, :clickhouse) do
+    param |> DateTime.to_naive() |> NaiveDateTime.to_string()
+  end
+
+  def normalize_datetime_param(%DateTime{} = param, _backend), do: to_string(param)
+  def normalize_datetime_param(%Date{} = param, _backend), do: to_string(param)
+  def normalize_datetime_param(param, _backend), do: param
 
   @doc """
   Converts PostgreSQL-style positional parameters ($1, $2, etc.) to question mark format.

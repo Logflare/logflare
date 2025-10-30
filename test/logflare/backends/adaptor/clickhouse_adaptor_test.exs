@@ -233,7 +233,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptorTest do
 
       {:ok, {pg_sql, pg_params}} = SqlUtils.ecto_to_pg_sql(query)
 
-      converted_param = SqlUtils.normalize_datetime_param("error.*timeout")
+      converted_param = SqlUtils.normalize_datetime_param("error.*timeout", :clickhouse)
 
       assert converted_param == "error.*timeout"
 

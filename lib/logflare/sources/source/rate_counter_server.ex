@@ -64,7 +64,7 @@ defmodule Logflare.Sources.Source.RateCounterServer do
     put_current_rate()
 
     bigquery_project_id =
-      if !SingleTenant.postgres_backend?() do
+      if !SingleTenant.postgres_backend?() && !SingleTenant.clickhouse_backend?() do
         GenUtils.get_project_id(source_token)
       end
 

@@ -8,6 +8,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.Pipeline do
 
   alias Broadway.Message
   alias Logflare.Backends
+  alias Logflare.Backends.Backend
   alias Logflare.Backends.Adaptor.ClickhouseAdaptor
   alias Logflare.Backends.BufferProducer
   alias Logflare.Sources
@@ -74,7 +75,15 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.Pipeline do
     )
 
     source = Sources.Cache.get_by_id(source_id)
-    backend = Backends.Cache.get_backend(backend_id)
+
+    backend =
+      if backend_id do
+        Backends.Cache.get_backend(backend_id)
+      else
+        # single tenant
+        %Backend{type: :clickhouse}
+      end
+
     events = for %{data: le} <- messages, do: le
 
     ClickhouseAdaptor.insert_log_events({source, backend}, events)

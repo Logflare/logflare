@@ -102,7 +102,8 @@ defmodule Logflare.Sources.Source.BigQuery.Schema do
   defp schema_needs_update?(db_schema, schema, state) do
     not same_schemas?(db_schema, schema) and
       state.next_update <= System.system_time(:millisecond) and
-      not SingleTenant.postgres_backend?()
+      not SingleTenant.postgres_backend?() and
+      not SingleTenant.clickhouse_backend?()
   end
 
   defp patch_bigquery_table(state, schema) do

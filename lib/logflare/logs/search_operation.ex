@@ -4,6 +4,7 @@ defmodule Logflare.Logs.SearchOperation do
   """
   use TypedStruct
 
+  alias Logflare.Backends.Backend
   alias Logflare.Lql.Rules, as: LqlRules
   alias Logflare.Lql.Rules.ChartRule
   alias Logflare.Lql.Rules.FilterRule
@@ -12,6 +13,7 @@ defmodule Logflare.Logs.SearchOperation do
 
   typedstruct do
     field :source, Source.t()
+    field :backend, Backend.t()
     field :source_token, atom()
     field :source_id, number()
     field :partition_by, :pseudo | :timestamp, enforce: true

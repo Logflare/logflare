@@ -165,6 +165,12 @@ defmodule Logflare.Ecto.ClickHouse do
     {select, acc} =
       if query.select, do: collect_from_expr_item(query.select, acc), else: {query.select, acc}
 
+    {limit_expr, acc} =
+      if query.limit, do: collect_from_expr_item(query.limit, acc), else: {query.limit, acc}
+
+    {offset_expr, acc} =
+      if query.offset, do: collect_from_expr_item(query.offset, acc), else: {query.offset, acc}
+
     acc =
       case query.with_ctes do
         %WithExpr{queries: queries} when is_list(queries) ->
@@ -191,7 +197,9 @@ defmodule Logflare.Ecto.ClickHouse do
         group_bys: group_bys,
         order_bys: order_bys,
         joins: joins,
-        select: select
+        select: select,
+        limit: limit_expr,
+        offset: offset_expr
     }
 
     query =
@@ -270,9 +278,11 @@ defmodule Logflare.Ecto.ClickHouse do
     {acc, transforms, offset + list_length}
   end
 
-  defp process_single_param(value, _type_or_field, _param_idx, acc, transforms, offset) do
+  defp process_single_param(value, _type_or_field, param_idx, acc, transforms, offset) do
     param_ix = acc.next_ix + offset
     acc = %{acc | values: Map.put(acc.values, param_ix, value)}
+    # Track the remapping from local param_idx to global param_ix
+    transforms = Map.put(transforms, param_idx, param_ix)
     {acc, transforms, offset + 1}
   end
 
@@ -280,6 +290,15 @@ defmodule Logflare.Ecto.ClickHouse do
     case Map.get(transforms, ix) do
       {new_ix, len} -> {:in, meta, [left, {:^, param_meta, [new_ix, len]}]}
       nil -> {:in, meta, [left, {:^, param_meta, [ix]}]}
+    end
+  end
+
+  # Transform simple parameter references {:^, [], [ix]} to use remapped index
+  defp transform_in_params({:^, meta, [ix]}, transforms) do
+    case Map.get(transforms, ix) do
+      new_ix when is_integer(new_ix) -> {:^, meta, [new_ix]}
+      {new_ix, _len} -> {:^, meta, [new_ix]}  # IN case, use first index
+      nil -> {:^, meta, [ix]}
     end
   end
 
@@ -414,7 +433,27 @@ defmodule Logflare.Ecto.ClickHouse do
 
       {:%{}, _, kv_pairs} ->
         Helpers.intersperse_map(kv_pairs, ?,, fn {k, v} ->
-          [expr(v, sources, params, query), " AS " | Naming.quote_name(k)]
+          # Generate the expression SQL
+          expr_sql = expr(v, sources, params, query)
+
+          # TODO: This is a workaround for fragments that already include an AS alias.
+          # BigQuery uses PostgreSQL's Ecto adapter which doesn't add AS for map selects,
+          # so fragments in shared code (like search_queries.ex) include "as fieldname".
+          # ClickHouse converter always adds AS, causing duplicates like "COUNT(...) as value AS \"value\"".
+          # This regex check prevents the duplicate, but ideally we should either:
+          # 1. Remove aliases from fragments and handle them consistently, or
+          # 2. Make BigQuery adapter also add AS so fragments don't need them
+          # Check if expression already contains an alias (case-insensitive "as ...")
+          expr_str = IO.iodata_to_binary(expr_sql)
+          has_alias = Regex.match?(~r/\s+as\s+\w+\s*$/i, String.trim(expr_str))
+
+          if has_alias do
+            # Expression already has an alias, don't add another
+            expr_sql
+          else
+            # Add AS clause for the map key
+            [expr_sql, " AS " | Naming.quote_name(k)]
+          end
         end)
 
       {:{}, _, exprs} ->
@@ -422,6 +461,16 @@ defmodule Logflare.Ecto.ClickHouse do
 
       {k, v} ->
         [expr(v, sources, params, query), " AS " | Naming.quote_name(k)]
+
+      v when is_list(v) ->
+        # TODO: Review this list handling in SELECT clause.
+        # Issue: select([t], [t.field1, t.field2, t.field3]) was being treated as an array literal
+        # by expr/4 (line 986), causing ClickHouse error:
+        # "There is no supertype for types DateTime64(6), UUID, String"
+        # This fix treats list selects as multiple columns (comma-separated), not array literals.
+        # However, we need to verify this doesn't break legitimate array literal selects.
+        # PostgreSQL/BigQuery Ecto adapter likely handles this differently.
+        Helpers.intersperse_map(v, ?,, &expr(&1, sources, params, query))
 
       v ->
         expr(v, sources, params, query)

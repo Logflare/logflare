@@ -15,18 +15,19 @@ defmodule LogflareWeb.Source.SearchLV do
   alias Logflare.Lql
   alias Logflare.Lql.Rules
   alias Logflare.Lql.Rules.ChartRule
+  alias Logflare.Repo
   alias Logflare.SavedSearches
   alias Logflare.SourceSchemas
   alias Logflare.Sources
+  alias Logflare.Sources.Source.BigQuery.SchemaBuilder
   alias Logflare.TeamUsers
   alias Logflare.User
   alias Logflare.Users
+  alias Logflare.Utils.Chart, as: ChartUtils
   alias LogflareWeb.Helpers.BqSchema, as: BqSchemaHelpers
   alias LogflareWeb.Router.Helpers, as: Routes
   alias LogflareWeb.SearchView
   alias LogflareWeb.Utils
-  alias Logflare.Sources.Source.BigQuery.SchemaBuilder
-  alias Logflare.Utils.Chart, as: ChartUtils
 
   require Logger
 
@@ -40,6 +41,9 @@ defmodule LogflareWeb.Source.SearchLV do
     source = Sources.get_source_for_lv_param(source_id)
     socket = assign(socket, :source, source)
     user = Users.get_by_and_preload(id: user_id)
+
+    # Get first queryable backend for this source
+    backend = get_first_queryable_backend(source)
 
     team_user =
       if team_user_id = session["team_user_id"] do
@@ -55,6 +59,7 @@ defmodule LogflareWeb.Source.SearchLV do
     |> assign(
       executor_pid: executor_pid,
       source: source,
+      backend: backend,
       user: user,
       team_user: team_user,
       search_tip: SearchUtils.gen_search_tip(),
@@ -467,6 +472,7 @@ defmodule LogflareWeb.Source.SearchLV do
   def handle_info({:search_result, %{aggregates: _aggs} = search_result}, socket) do
     log_aggregates =
       search_result.aggregates.rows
+      |> IO.inspect(label: :ICANT)
       |> Enum.reverse()
       |> Enum.map(fn la ->
         Map.update!(
@@ -475,6 +481,8 @@ defmodule LogflareWeb.Source.SearchLV do
           &BqSchemaHelpers.format_timestamp(&1, socket.assigns.search_timezone)
         )
       end)
+
+    Logger.info("Formatted log_aggregates: #{inspect(log_aggregates)}")
 
     aggs =
       search_result.aggregates
@@ -1031,11 +1039,28 @@ defmodule LogflareWeb.Source.SearchLV do
     )
   end
 
-  defp get_bigquery_schema(source) do
+  defp get_backend_schema(source, backend \\ nil) do
+    backend = backend || get_first_queryable_backend(source)
+
     if source_schema = SourceSchemas.Cache.get_source_schema_by(source_id: source.id) do
-      source_schema.bigquery_schema
+      case backend do
+        %{type: :bigquery} -> source_schema.bigquery_schema
+        %{type: :clickhouse} -> source_schema.bigquery_schema
+        _ -> source_schema.bigquery_schema
+      end
     else
       SchemaBuilder.initial_table_schema()
     end
+  end
+
+  # Keep old function for backwards compatibility, but delegate to new one
+  defp get_bigquery_schema(source), do: get_backend_schema(source)
+
+  defp get_first_queryable_backend(source) do
+    source = Repo.preload(source, :backends)
+
+    Enum.find(source.backends, fn backend ->
+      backend.type in [:bigquery, :clickhouse]
+    end)
   end
 end

@@ -7,6 +7,8 @@ defmodule Logflare.Logs.Processor do
   itself.
   """
 
+  require Logger
+
   alias Logflare.Backends
   alias Logflare.Sources.Source
 
@@ -29,10 +31,18 @@ defmodule Logflare.Logs.Processor do
     }
 
     :telemetry.span([:logflare, :logs, :processor, :ingest], metadata, fn ->
+      Logger.info(
+        "[Processor] Starting ingestion for source_id=#{source.id} token=#{source.token} with #{length(data)} raw events"
+      )
+
       batch =
         :telemetry.span([:logflare, :logs, :processor, :ingest, :handle_batch], metadata, fn ->
           {processor.handle_batch(data, source), metadata}
         end)
+
+      Logger.info(
+        "[Processor] Processed #{length(batch)} events for source_id=#{source.id}"
+      )
 
       :telemetry.execute(
         [:logflare, :logs, :processor, :ingest, :logs],
@@ -44,7 +54,16 @@ defmodule Logflare.Logs.Processor do
 
       :telemetry.span([:logflare, :logs, :processor, :ingest, :store], metadata, fn ->
         Backends.ensure_source_sup_started(source)
+
+        Logger.info(
+          "[Processor] Calling Backends.ingest_logs with #{length(batch)} events for source_id=#{source.id}"
+        )
+
         result = Backends.ingest_logs(batch, source)
+
+        Logger.info(
+          "[Processor] Backends.ingest_logs returned #{inspect(result)} for source_id=#{source.id}"
+        )
 
         new_meta = Map.merge(metadata, %{success: elem(result, 0) == :ok})
 

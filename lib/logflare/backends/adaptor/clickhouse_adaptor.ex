@@ -70,7 +70,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
   def ecto_to_sql(%Ecto.Query{} = query, opts) do
     case Logflare.Ecto.ClickHouse.to_sql(query, opts) do
       {:ok, {ch_sql, ch_params}} ->
-        ch_params = Enum.map(ch_params, &SqlUtils.normalize_datetime_param/1)
+        ch_params = Enum.map(ch_params, &SqlUtils.normalize_datetime_param(&1, :clickhouse))
         {:ok, {ch_sql, ch_params}}
 
       {:error, _reason} = error ->
@@ -302,14 +302,38 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
         ) :: {:ok, Ch.Result.t()} | {:error, Exception.t()}
   def execute_ch_ingest_query(source_backend, statement, params \\ [], opts \\ [])
 
-  def execute_ch_ingest_query({%Source{}, %Backend{}} = source_backend, statement, params, opts)
+  def execute_ch_ingest_query({%Source{} = source, %Backend{}} = source_backend, statement, params, opts)
       when is_list(params) and is_list(opts) do
+    require Logger
+
+    Logger.info(
+      "[ClickHouse.Adaptor] execute_ch_ingest_query for source_id=#{source.id}, statement=#{inspect(statement)}"
+    )
+
     ConnectionManager.ensure_pool_started(source_backend)
     ConnectionManager.notify_activity(source_backend)
 
-    source_backend
-    |> connection_pool_via()
-    |> Ch.query(statement, params, opts)
+    pool_via = connection_pool_via(source_backend)
+
+    Logger.info(
+      "[ClickHouse.Adaptor] Executing Ch.query with pool_via=#{inspect(pool_via)}, #{length(params)} params"
+    )
+
+    result = Ch.query(pool_via, statement, params, opts)
+
+    case result do
+      {:ok, _} ->
+        Logger.info(
+          "[ClickHouse.Adaptor] Ch.query succeeded for source_id=#{source.id}"
+        )
+
+      {:error, error} ->
+        Logger.error(
+          "[ClickHouse.Adaptor] Ch.query failed for source_id=#{source.id}: #{inspect(error)}"
+        )
+    end
+
+    result
   end
 
   @doc """
@@ -375,7 +399,13 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
           {:ok, Ch.Result.t()} | {:error, Exception.t()}
   def insert_log_events({%Source{} = source, %Backend{}} = source_backend, events)
       when is_list(events) do
+    require Logger
+
     table_name = clickhouse_ingest_table_name(source)
+
+    Logger.info(
+      "[ClickHouse.Adaptor] insert_log_events called with #{length(events)} events for source_id=#{source.id}, table=#{table_name}"
+    )
 
     event_params =
       Enum.map(events, fn %LogEvent{} = log_event ->
@@ -392,17 +422,28 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
         ]
       end)
 
+    Logger.info(
+      "[ClickHouse.Adaptor] Prepared #{length(event_params)} event params for insertion to #{table_name}"
+    )
+
     opts = [
       names: ["id", "event_message", "body", "timestamp"],
       types: ["UUID", "String", "String", "DateTime64(6)"]
     ]
 
-    execute_ch_ingest_query(
-      source_backend,
-      "INSERT INTO #{table_name} FORMAT RowBinaryWithNamesAndTypes",
-      event_params,
-      opts
+    result =
+      execute_ch_ingest_query(
+        source_backend,
+        "INSERT INTO #{table_name} FORMAT RowBinaryWithNamesAndTypes",
+        event_params,
+        opts
+      )
+
+    Logger.info(
+      "[ClickHouse.Adaptor] execute_ch_ingest_query returned #{inspect(result)} for #{table_name}"
     )
+
+    result
   end
 
   @doc """
