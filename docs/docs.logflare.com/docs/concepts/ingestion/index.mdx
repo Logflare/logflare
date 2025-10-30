@@ -16,6 +16,46 @@ These processed payloads will be inserted into **Sources**. A **Source** is made
 
 The Logflare service will insert into Logflare-managed BigQuery for users on the Free and Metered plan.
 
+## Creating a Source
+
+Before you can ingest logs, you need to create a source:
+
+1. Log into your [Logflare account](https://logflare.app/)
+2. Click the **"New Source"** button on the main dashboard
+3. Enter a unique name for your source
+4. Click **"Create"**
+
+After creating a source, click the **Setup** button to retrieve your **Source ID** (UUID) and **API Key** - you'll need these credentials to send log events.
+
+### Important: Configure Key Settings After Creation
+
+When you first create a source, it uses default settings that **may not be suitable for all use cases**. We strongly recommend reviewing these settings immediately:
+
+#### Backend TTL (Data Retention)
+
+The default TTL is typically **7 days on free plans**, which may be too short for audit logs or compliance requirements.
+
+**To configure**: Navigate to Source > Edit > Backend TTL
+
+:::warning Configure TTL Before Ingesting Production Data
+Once data exceeds the TTL period, it is **permanently deleted** and cannot be recovered. Always set an appropriate retention period before sending production logs, especially for audit trails.
+:::
+
+See [Backend TTL](#backend-time-to-live-ttl) below for more details.
+
+#### Schema Lock
+
+By default, Logflare automatically detects and adds new fields from incoming events ([Adaptive Schema](#adaptive-schema)). Once your schema is stable, consider **locking it** to prevent unwanted changes.
+
+**To configure**: Navigate to Source > Edit > Lock Schema
+
+#### Other Important Settings
+
+- **Suggested Search Keys**: Define fields that should be included in queries for optimal performance (useful with BigQuery clustering)
+- **Notifications**: Set up alerts for schema changes, errors, or specific log patterns
+
+All source settings can be accessed by clicking the **Edit** or **Settings** button on your source page.
+
 ## API Endpoints
 
 There are two ways in which you can ingest data into Logflare, via specifying the source UUID, or via the source's name.
@@ -175,7 +215,7 @@ Schema updates are additive and new columns cannot be removed through the UI. We
 
 ### Backend Time-To-Live (TTL)
 
-Backend TTL refers to how long data is retained wtihin a given backend. Logflare will manage the retention settings for each backend where available.
+Backend TTL refers to how long data is retained within a given backend. Logflare will manage the retention settings for each backend where available.
 
 :::warning Use Logflare for Retention Handling Only
 It is not advisable to manage the backend's retention settings directly without going through Logflare, as conflicts may arise.
