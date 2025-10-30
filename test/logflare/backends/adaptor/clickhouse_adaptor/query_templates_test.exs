@@ -23,7 +23,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.QueryTemplatesTest do
       statement = QueryTemplates.create_log_ingest_table_statement(table_name)
 
       assert statement =~ "CREATE TABLE IF NOT EXISTS #{table_name}"
-      assert statement =~ "TTL toDateTime(timestamp) + INTERVAL 3 DAY"
+      assert statement =~ "TTL toDateTime(timestamp) + INTERVAL 5 DAY"
     end
 
     test "prefixes the database name to the table name" do
@@ -32,7 +32,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.QueryTemplatesTest do
       statement = QueryTemplates.create_log_ingest_table_statement(table_name, database: database)
 
       assert statement =~ "CREATE TABLE IF NOT EXISTS #{database}.#{table_name}"
-      assert statement =~ "TTL toDateTime(timestamp) + INTERVAL 3 DAY"
+      assert statement =~ "TTL toDateTime(timestamp) + INTERVAL 5 DAY"
     end
 
     test "Defaults to using the `MergeTree` engine" do
@@ -53,10 +53,10 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.QueryTemplatesTest do
 
     test "Allows the TTL to be adjusted via opts" do
       table_name = "foo"
-      statement = QueryTemplates.create_log_ingest_table_statement(table_name, ttl_days: 5)
+      statement = QueryTemplates.create_log_ingest_table_statement(table_name, ttl_days: 10)
 
       assert statement =~ "CREATE TABLE IF NOT EXISTS #{table_name}"
-      assert statement =~ "TTL toDateTime(timestamp) + INTERVAL 5 DAY"
+      assert statement =~ "TTL toDateTime(timestamp) + INTERVAL 10 DAY"
     end
 
     test "Removes the TTL when `ttl_days` is set to nil" do
@@ -73,138 +73,6 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.QueryTemplatesTest do
 
       assert statement =~ "CREATE TABLE IF NOT EXISTS #{table_name}"
       refute statement =~ "TTL"
-    end
-  end
-
-  describe "create_key_type_counts_table_statement/1" do
-    test "Generates a valid statement when provided with no options" do
-      statement = QueryTemplates.create_key_type_counts_table_statement()
-
-      assert statement =~ "CREATE TABLE IF NOT EXISTS key_type_counts_per_min"
-    end
-
-    test "Will produce a more verbose statement when the `database` option is provided" do
-      statement = QueryTemplates.create_key_type_counts_table_statement(database: "foo")
-
-      assert statement =~ "CREATE TABLE IF NOT EXISTS foo.key_type_counts_per_min"
-    end
-
-    test "Allows the default table name to be changed when providing the `table` option" do
-      statement = QueryTemplates.create_key_type_counts_table_statement(table: "bla")
-
-      assert statement =~ "CREATE TABLE IF NOT EXISTS bla"
-    end
-
-    test "Supports a verbose `<database>.<table>` statement when providing options" do
-      statement =
-        QueryTemplates.create_key_type_counts_table_statement(database: "foo", table: "bar")
-
-      assert statement =~ "CREATE TABLE IF NOT EXISTS foo.bar"
-    end
-
-    test "Defaults to using the `MergeTree` engine" do
-      statement = QueryTemplates.create_key_type_counts_table_statement()
-
-      assert statement =~ "ENGINE = MergeTree"
-    end
-
-    test "Allows the engine to be adjusted via opts" do
-      custom_engine = "ReplacingMergeTree"
-
-      statement =
-        QueryTemplates.create_key_type_counts_table_statement(engine: custom_engine)
-
-      assert statement =~ "ENGINE = #{custom_engine}"
-    end
-  end
-
-  describe "create_materialized_view_statement/1" do
-    test "Generates a valid statement when provided with a source table name" do
-      statement = QueryTemplates.create_materialized_view_statement("source_table_123")
-
-      assert statement =~
-               "CREATE MATERIALIZED VIEW IF NOT EXISTS mv_key_type_counts_per_min TO key_type_counts_per_min"
-
-      assert statement =~ "FROM source_table_123"
-    end
-
-    test "Will produce a more verbose statement when the `database` option is provided" do
-      statement =
-        QueryTemplates.create_materialized_view_statement("source_table_123", database: "bla")
-
-      assert statement =~
-               "CREATE MATERIALIZED VIEW IF NOT EXISTS bla.mv_key_type_counts_per_min TO bla.key_type_counts_per_min"
-
-      assert statement =~ "FROM bla.source_table_123"
-    end
-
-    test "Allows the default view name to be modified" do
-      source_table = "source_table_321"
-      view_name = "custom_view_name"
-      database = "some_database"
-
-      statement =
-        QueryTemplates.create_materialized_view_statement(source_table,
-          view_name: view_name
-        )
-
-      assert statement =~
-               "CREATE MATERIALIZED VIEW IF NOT EXISTS #{view_name} TO key_type_counts_per_min"
-
-      assert statement =~ "FROM #{source_table}"
-
-      statement =
-        QueryTemplates.create_materialized_view_statement(source_table,
-          database: database,
-          view_name: view_name
-        )
-
-      assert statement =~
-               "CREATE MATERIALIZED VIEW IF NOT EXISTS #{database}.#{view_name} TO #{database}.key_type_counts_per_min"
-
-      assert statement =~ "FROM #{database}.#{source_table}"
-    end
-
-    test "Allows the key table name to be modified" do
-      source_table = "source_table_456"
-      key_table = "other_key_table_name"
-      database = "some_database"
-
-      statement =
-        QueryTemplates.create_materialized_view_statement(source_table,
-          key_table: key_table
-        )
-
-      assert statement =~
-               "CREATE MATERIALIZED VIEW IF NOT EXISTS mv_key_type_counts_per_min TO #{key_table}"
-
-      assert statement =~ "FROM #{source_table}"
-
-      statement =
-        QueryTemplates.create_materialized_view_statement(source_table,
-          database: database,
-          key_table: key_table
-        )
-
-      assert statement =~
-               "CREATE MATERIALIZED VIEW IF NOT EXISTS #{database}.mv_key_type_counts_per_min TO #{database}.#{key_table}"
-
-      assert statement =~ "FROM #{database}.#{source_table}"
-    end
-  end
-
-  describe "engine configuration" do
-    test "query template defaults to `MergeTree` when no engine option provided" do
-      statement = QueryTemplates.create_key_type_counts_table_statement()
-
-      assert statement =~ "ENGINE = MergeTree"
-    end
-
-    test "can override engine with explicit option" do
-      custom_engine = "ReplacingMergeTree"
-      statement = QueryTemplates.create_key_type_counts_table_statement(engine: custom_engine)
-
-      assert statement =~ "ENGINE = #{custom_engine}"
     end
   end
 end
