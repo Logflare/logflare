@@ -63,7 +63,6 @@ defmodule LogflareWeb.Plugs.VerifyResourceAccess do
     end
   end
 
-  # halts all others
   def call(%{assigns: assigns} = conn, _) when is_map_key(assigns, :resource_type) do
     FallbackController.call(conn, {:error, :unauthorized})
   end

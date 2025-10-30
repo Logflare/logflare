@@ -36,7 +36,7 @@ defmodule LogflareWeb.Api.TeamController do
   )
 
   def show(%{assigns: %{user: user}} = conn, %{"token" => token}) do
-    with team when not is_nil(team) <- Teams.get_team_by_user_access(user, token),
+    with {:ok, team} <- Teams.fetch_team_by_user_access(user, token),
          team <- Teams.preload_fields(team, [:user, :team_users]) do
       json(conn, team)
     end
@@ -74,7 +74,7 @@ defmodule LogflareWeb.Api.TeamController do
   )
 
   def update(%{assigns: %{user: user}} = conn, %{"token" => token} = params) do
-    with team when not is_nil(team) <- Teams.get_team_by(token: token, user_id: user.id),
+    with {:ok, team} <- Teams.fetch_team_by(token: token, user_id: user.id),
          {:ok, team} <- Teams.update_team(team, params),
          team <- Teams.preload_fields(team, [:user, :team_users]) do
       conn
@@ -100,7 +100,7 @@ defmodule LogflareWeb.Api.TeamController do
   )
 
   def delete(%{assigns: %{user: user}} = conn, %{"token" => token}) do
-    with team when not is_nil(team) <- Teams.get_team_by(token: token, user_id: user.id),
+    with {:ok, team} <- Teams.fetch_team_by(token: token, user_id: user.id),
          {:ok, _} <- Teams.delete_team(team) do
       conn
       |> Plug.Conn.send_resp(204, [])

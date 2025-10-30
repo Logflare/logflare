@@ -5,7 +5,6 @@ import "../css/tailwind.css";
 import "bootstrap";
 import ClipboardJS from "clipboard";
 import * as Dashboard from "./dashboard";
-import * as Source from "./source";
 import * as Logs from "./logs";
 import * as User from "./user";
 import BillingHooks from "./billing";
@@ -39,7 +38,6 @@ const liveReactHooks = { LiveReact };
 window.Components = { LogEventsChart, Loader, AdminChart: Chart };
 window.Dashboard = Dashboard;
 window.Logs = Logs;
-window.Source = Source;
 window.User = User;
 window.ClipboardJS = ClipboardJS;
 
@@ -94,9 +92,9 @@ let liveSocket = new LiveSocket("/live", Socket, {
     },
   },
 });
+liveSocket.enableDebug()
 
 liveSocket.connect();
-
 window.initLiveReact = initLiveReact;
 window.liveSocket = liveSocket;
 

@@ -1,4 +1,8 @@
 defmodule LogflareWeb.ErrorView do
+  @moduledoc """
+  Error view for LogflareWeb html templates only
+  All API errors are handled by the Api.FallbackController
+  """
   use LogflareWeb, :view
 
   def render_in(name, assigns \\ %{}, do: inner) do

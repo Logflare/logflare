@@ -39,6 +39,8 @@ defmodule LogflareWeb.Api.EndpointController do
   def show(%{assigns: %{user: user}} = conn, %{"token" => token}) do
     with query when not is_nil(query) <- Endpoints.get_by(token: token, user_id: user.id) do
       json(conn, query)
+    else
+      nil -> {:error, :not_found}
     end
   end
 
@@ -57,6 +59,9 @@ defmodule LogflareWeb.Api.EndpointController do
       conn
       |> put_status(201)
       |> json(query)
+    else
+      nil -> {:error, :not_found}
+      err -> err
     end
   end
 
@@ -87,6 +92,9 @@ defmodule LogflareWeb.Api.EndpointController do
           |> put_status(204)
           |> text("")
       end
+    else
+      nil -> {:error, :not_found}
+      err -> err
     end
   end
 
@@ -107,6 +115,8 @@ defmodule LogflareWeb.Api.EndpointController do
       conn
       |> put_status(204)
       |> text("")
+    else
+      nil -> {:error, :not_found}
     end
   end
 end

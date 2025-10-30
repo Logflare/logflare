@@ -38,7 +38,7 @@ defmodule LogflareWeb.Api.SourceController do
   )
 
   def show(%{assigns: %{user: user}} = conn, %{"token" => token}) do
-    with source when not is_nil(source) <- Sources.get_by(token: token, user_id: user.id) do
+    with {:ok, source} <- Sources.fetch_source_by(token: token, user_id: user.id) do
       source = Sources.preload_defaults(source)
       json(conn, source)
     end
@@ -75,7 +75,7 @@ defmodule LogflareWeb.Api.SourceController do
   )
 
   def update(%{assigns: %{user: user}} = conn, %{"token" => token} = params) do
-    with source when not is_nil(source) <- Sources.get_by(token: token, user_id: user.id),
+    with {:ok, source} <- Sources.fetch_source_by(token: token, user_id: user.id),
          {:ok, source} <- Sources.update_source_by_user(source, params) do
       source = Sources.preload_defaults(source)
 
@@ -102,7 +102,7 @@ defmodule LogflareWeb.Api.SourceController do
   )
 
   def delete(%{assigns: %{user: user}} = conn, %{"token" => token}) do
-    with source when not is_nil(source) <- Sources.get_by(token: token, user_id: user.id),
+    with {:ok, source} <- Sources.fetch_source_by(token: token, user_id: user.id),
          {:ok, _} <- Sources.delete_source(source) do
       conn
       |> Plug.Conn.send_resp(204, [])
@@ -120,7 +120,7 @@ defmodule LogflareWeb.Api.SourceController do
   )
 
   def recent(%{assigns: %{user: user}} = conn, %{"source_token" => token}) do
-    with source when not is_nil(source) <- Sources.get_by(token: token, user_id: user.id) do
+    with {:ok, source} <- Sources.fetch_source_by(token: token, user_id: user.id) do
       recent = for event <- Backends.list_recent_logs(source), do: event.body
 
       conn
@@ -186,7 +186,7 @@ defmodule LogflareWeb.Api.SourceController do
   )
 
   def show_schema(%{assigns: %{user: user}} = conn, %{"source_token" => token} = params) do
-    with source when not is_nil(source) <- Sources.get_by(token: token, user_id: user.id) do
+    with {:ok, source} <- Sources.fetch_source_by(token: token, user_id: user.id) do
       schema = SourceSchemas.Cache.get_source_schema_by(source_id: source.id)
 
       data =

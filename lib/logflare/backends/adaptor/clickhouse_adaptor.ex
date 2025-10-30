@@ -330,33 +330,32 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
 
   def execute_ch_read_query(%Backend{} = backend, statement, params, opts)
       when is_list_or_map(params) and is_list(opts) do
-    ConnectionManager.ensure_pool_started(backend)
-    ConnectionManager.notify_activity(backend)
+    with :ok <- ensure_query_connection_manager_started(backend) do
+      pool_via = connection_pool_via(backend)
 
-    pool_via = connection_pool_via(backend)
+      case Ch.query(pool_via, statement, params, opts) do
+        {:ok, %Ch.Result{} = result} ->
+          {:ok, convert_ch_result_to_rows(result)}
 
-    case Ch.query(pool_via, statement, params, opts) do
-      {:ok, %Ch.Result{} = result} ->
-        {:ok, convert_ch_result_to_rows(result)}
+        {:error, %Ch.Error{message: error_msg}} when is_non_empty_binary(error_msg) ->
+          Logger.warning(
+            "ClickHouse query failed: #{inspect(error_msg)}",
+            backend_id: backend.id
+          )
 
-      {:error, %Ch.Error{message: error_msg}} when is_non_empty_binary(error_msg) ->
-        Logger.warning(
-          "ClickHouse query failed: #{inspect(error_msg)}",
-          backend_id: backend.id
-        )
+          {:error, "Error executing Clickhouse query"}
 
-        {:error, "Error executing Clickhouse query"}
+        {:error, %{message: message}} when is_non_empty_binary(message) ->
+          Logger.warning(
+            "ClickHouse query failed: #{inspect(message)}",
+            backend_id: backend.id
+          )
 
-      {:error, %{message: message}} when is_non_empty_binary(message) ->
-        Logger.warning(
-          "ClickHouse query failed: #{inspect(message)}",
-          backend_id: backend.id
-        )
+          {:error, "Error executing Clickhouse query"}
 
-        {:error, "Error executing Clickhouse query"}
-
-      {:error, _} ->
-        {:error, "Error executing Clickhouse query"}
+        {:error, _} ->
+          {:error, "Error executing Clickhouse query"}
+      end
     end
   end
 
@@ -473,17 +472,10 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
     default_pool_size = Application.fetch_env!(:logflare, :clickhouse_backend_adaptor)[:pool_size]
     ingest_pool_size = Map.get(config, :pool_size, default_pool_size)
 
-    # set the query pool size to half of the write pool size, if larger than the default
-    query_pool_size =
-      ingest_pool_size
-      |> div(2)
-      |> max(default_pool_size)
-
     url = Map.get(config, :url)
     {:ok, {scheme, hostname}} = extract_scheme_and_hostname(url)
 
     ingest_pool_via = connection_pool_via({source, backend})
-    query_pool_via = connection_pool_via(backend)
 
     # Ingest connection pool opts
     ingest_ch_opts = [
@@ -497,20 +489,6 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
       pool_size: ingest_pool_size,
       settings: [],
       timeout: @ingest_timeout
-    ]
-
-    # Query (reads) connection pool opts
-    query_ch_opts = [
-      name: query_pool_via,
-      scheme: scheme,
-      hostname: hostname,
-      port: get_port_config(backend),
-      database: Map.get(config, :database),
-      username: Map.get(config, :username),
-      password: Map.get(config, :password),
-      pool_size: query_pool_size,
-      settings: [],
-      timeout: @query_timeout
     ]
 
     children = [
@@ -538,16 +516,6 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
         end
       }
     ]
-
-    # Only add the backend-based connection manager if it is not already running
-    # This is to cover for adding multiple default ingest sources to the same backend
-    children =
-      with {:via, Registry, {_, _}} = via <- Backends.via_backend(backend, ConnectionManager),
-           nil <- GenServer.whereis(via) do
-        [ConnectionManager.child_spec({backend, query_ch_opts}) | children]
-      else
-        _pid -> children
-      end
 
     Supervisor.init(children, strategy: :one_for_one)
   end
@@ -716,4 +684,87 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
   end
 
   defp convert_uuids(data), do: data
+
+  @spec ensure_query_connection_manager_started(Backend.t()) :: :ok | {:error, term()}
+  defp ensure_query_connection_manager_started(%Backend{} = backend) do
+    via = Backends.via_backend(backend, ConnectionManager)
+
+    via
+    |> GenServer.whereis()
+    |> maybe_start_query_connection_manager(backend)
+    |> case do
+      :ok -> ensure_pool_and_notify(backend)
+      error -> error
+    end
+  end
+
+  @spec maybe_start_query_connection_manager(pid() | nil, Backend.t()) :: :ok | {:error, term()}
+  defp maybe_start_query_connection_manager(nil, %Backend{} = backend) do
+    with {:ok, query_ch_opts} <- build_query_connection_opts(backend),
+         child_spec <- ConnectionManager.child_spec({backend, query_ch_opts}),
+         {:ok, _pid} <- __MODULE__.QueryConnectionSup.start_connection_manager(child_spec) do
+      Logger.info(
+        "Started query ConnectionManager for ClickHouse backend",
+        backend_id: backend.id
+      )
+
+      :ok
+    else
+      {:error, {:already_started, _pid}} ->
+        # Race condition / another process started it
+        :ok
+
+      {:error, reason} = error ->
+        Logger.warning(
+          "Failed to start query ConnectionManager for backend",
+          backend_id: backend.id,
+          reason: reason
+        )
+
+        error
+    end
+  end
+
+  defp maybe_start_query_connection_manager(_pid, %Backend{}), do: :ok
+
+  @spec ensure_pool_and_notify(Backend.t()) :: :ok
+  defp ensure_pool_and_notify(%Backend{} = backend) do
+    ConnectionManager.ensure_pool_started(backend)
+    ConnectionManager.notify_activity(backend)
+    :ok
+  end
+
+  @spec build_query_connection_opts(Backend.t()) ::
+          {:ok, Keyword.t()} | {:error, term()}
+  defp build_query_connection_opts(%Backend{config: config} = backend) do
+    default_pool_size =
+      Application.fetch_env!(:logflare, :clickhouse_backend_adaptor)[:pool_size]
+
+    ingest_pool_size = Map.get(config, :pool_size, default_pool_size)
+
+    # set the query pool size to half of the write pool size, if larger than the default
+    query_pool_size =
+      ingest_pool_size
+      |> div(2)
+      |> max(default_pool_size)
+
+    url = Map.get(config, :url)
+
+    with {:ok, {scheme, hostname}} <- extract_scheme_and_hostname(url) do
+      query_ch_opts = [
+        name: connection_pool_via(backend),
+        scheme: scheme,
+        hostname: hostname,
+        port: get_port_config(backend),
+        database: Map.get(config, :database),
+        username: Map.get(config, :username),
+        password: Map.get(config, :password),
+        pool_size: query_pool_size,
+        settings: [],
+        timeout: @query_timeout
+      ]
+
+      {:ok, query_ch_opts}
+    end
+  end
 end

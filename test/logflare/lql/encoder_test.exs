@@ -4,6 +4,7 @@ defmodule Logflare.Lql.EncoderTest do
   alias Logflare.Lql.Encoder
   alias Logflare.Lql.Rules.ChartRule
   alias Logflare.Lql.Rules.FilterRule
+  alias Logflare.Lql.Rules.FromRule
   alias Logflare.Lql.Rules.SelectRule
 
   describe "to_querystring/1" do
@@ -236,6 +237,60 @@ defmodule Logflare.Lql.EncoderTest do
 
       result = Encoder.to_querystring(lql_rules)
       assert result == "s:m.level error c:count(*) c:group_by(t::minute)"
+    end
+
+    test "encodes a from rule" do
+      lql_rules = [
+        %FromRule{table: "my_table"}
+      ]
+
+      result = Encoder.to_querystring(lql_rules)
+      assert result == "f:my_table"
+    end
+
+    test "encodes from rule with filter rules" do
+      lql_rules = [
+        %FromRule{table: "error_logs"},
+        %FilterRule{operator: :=, path: "m.status", value: "error"}
+      ]
+
+      result = Encoder.to_querystring(lql_rules)
+      assert result == "f:error_logs m.status:error"
+    end
+
+    test "encodes from rule with select rules" do
+      lql_rules = [
+        %FromRule{table: "application_logs"},
+        %SelectRule{path: "event_message", wildcard: false},
+        %SelectRule{path: "metadata.user_id", wildcard: false}
+      ]
+
+      result = Encoder.to_querystring(lql_rules)
+      assert result == "f:application_logs s:event_message s:m.user_id"
+    end
+
+    test "encodes from rule with chart rule" do
+      lql_rules = [
+        %FromRule{table: "metrics"},
+        %ChartRule{path: "timestamp", aggregate: :count, period: :hour}
+      ]
+
+      result = Encoder.to_querystring(lql_rules)
+      assert result == "f:metrics c:count(*) c:group_by(t::hour)"
+    end
+
+    test "encodes from rule with mixed rule types in correct order" do
+      lql_rules = [
+        %ChartRule{path: "timestamp", aggregate: :count, period: :minute},
+        %FilterRule{operator: :=, path: "m.level", value: "error"},
+        %FromRule{table: "system_logs"},
+        %SelectRule{path: "event_message", wildcard: false}
+      ]
+
+      result = Encoder.to_querystring(lql_rules)
+
+      assert result ==
+               "f:system_logs s:event_message m.level:error c:count(*) c:group_by(t::minute)"
     end
   end
 end

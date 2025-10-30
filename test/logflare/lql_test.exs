@@ -4,9 +4,11 @@ defmodule Logflare.LqlTest do
   import Ecto.Query
 
   alias Logflare.Lql
-  alias Logflare.Lql.Rules.FilterRule
-  alias Logflare.Lql.Rules.SelectRule
+  alias Logflare.Lql.Parser
   alias Logflare.Lql.Rules.ChartRule
+  alias Logflare.Lql.Rules.FilterRule
+  alias Logflare.Lql.Rules.FromRule
+  alias Logflare.Lql.Rules.SelectRule
   alias Logflare.Sources.Source.BigQuery.SchemaBuilder
 
   describe "apply_filter_rules/3" do
@@ -299,8 +301,6 @@ defmodule Logflare.LqlTest do
   end
 
   describe "chart rule parsing" do
-    alias Logflare.Lql.Parser
-
     test "parses chart aggregations correctly" do
       test_cases = [
         {"c:count(host)", "host", :count, :minute},
@@ -316,6 +316,87 @@ defmodule Logflare.LqlTest do
         {:ok, [rule]} = Parser.parse(query)
         assert %ChartRule{path: ^path, aggregate: ^aggregate, period: ^period} = rule
       end
+    end
+  end
+
+  describe "`FromRule` decode/encode" do
+    test "decodes simple `FromRule`" do
+      {:ok, rules} = Parser.parse("f:my_table")
+
+      assert length(rules) == 1
+      assert [%FromRule{table: "my_table"}] = rules
+    end
+
+    test "decodes `FromRule` with filters" do
+      {:ok, rules} = Parser.parse("f:logs m.status:error")
+
+      assert length(rules) == 2
+      assert %FromRule{table: "logs"} = Enum.find(rules, &match?(%FromRule{}, &1))
+
+      assert %FilterRule{path: "metadata.status", value: "error"} =
+               Enum.find(rules, &match?(%FilterRule{}, &1))
+    end
+
+    test "decodes `FromRule` with select rules" do
+      {:ok, rules} = Parser.parse("f:events s:timestamp s:event_message")
+
+      assert length(rules) == 3
+      assert %FromRule{table: "events"} = Enum.find(rules, &match?(%FromRule{}, &1))
+      select_rules = Enum.filter(rules, &match?(%SelectRule{}, &1))
+      assert length(select_rules) == 2
+    end
+
+    test "decodes `FromRule` with chart rule" do
+      {:ok, rules} = Parser.parse("f:metrics c:count(*) c:group_by(t::minute)")
+
+      assert length(rules) == 2
+      assert %FromRule{table: "metrics"} = Enum.find(rules, &match?(%FromRule{}, &1))
+      assert %ChartRule{aggregate: :count} = Enum.find(rules, &match?(%ChartRule{}, &1))
+    end
+
+    test "encodes `FromRule` to query string" do
+      rules = [%FromRule{table: "my_table"}]
+      {:ok, encoded} = Lql.encode(rules)
+
+      assert encoded == "f:my_table"
+    end
+
+    test "encodes `FromRule` with filters and maintains correct order" do
+      rules = [
+        %FilterRule{path: "metadata.level", operator: :=, value: "error", modifiers: %{}},
+        %FromRule{table: "application_logs"}
+      ]
+
+      {:ok, encoded} = Lql.encode(rules)
+
+      assert encoded == "f:application_logs m.level:error"
+    end
+
+    test "encodes `FromRule` with mixed rules in correct order" do
+      rules = [
+        %ChartRule{path: "timestamp", aggregate: :count, period: :hour},
+        %FilterRule{path: "metadata.status", operator: :=, value: "success", modifiers: %{}},
+        %FromRule{table: "requests"},
+        %SelectRule{path: "timestamp", wildcard: false}
+      ]
+
+      {:ok, encoded} = Lql.encode(rules)
+
+      # FromRule should come first, then select, then filters, then chart
+      assert encoded == "f:requests s:timestamp m.status:success c:count(*) c:group_by(t::hour)"
+    end
+
+    test "round-trip decode/encode preserves from rule" do
+      original = "f:my_source m.level:error s:event_message"
+      {:ok, rules} = Parser.parse(original)
+      {:ok, encoded} = Lql.encode(rules)
+
+      # Re-parse to verify structure is preserved
+      {:ok, rules2} = Parser.parse(encoded)
+
+      assert length(rules) == length(rules2)
+      assert Enum.find(rules, &match?(%FromRule{table: "my_source"}, &1))
+      assert Enum.find(rules2, &match?(%FromRule{table: "my_source"}, &1))
     end
   end
 
@@ -368,6 +449,57 @@ defmodule Logflare.LqlTest do
       assert String.downcase(sql) =~ "sum"
       assert String.downcase(sql) =~ "timestamp_trunc"
       assert String.downcase(sql) =~ "group by"
+    end
+
+    test "uses `FromRule` table name for select query instead of `cte_table_name` parameter" do
+      lql = "f:custom_table s:field1 s:field2"
+      {:ok, sql} = Lql.to_sandboxed_sql(lql, "ignored_table", :bigquery)
+
+      assert String.downcase(sql) =~ "select"
+      assert String.downcase(sql) =~ "field1"
+      assert String.downcase(sql) =~ "field2"
+      assert String.downcase(sql) =~ "from custom_table"
+      refute String.downcase(sql) =~ "from ignored_table"
+    end
+
+    test "uses `FromRule` table name for chart query instead of `cte_table_name` parameter" do
+      lql = "f:metrics_table c:count(*) c:group_by(t::minute)"
+      {:ok, sql} = Lql.to_sandboxed_sql(lql, "default_table", :bigquery)
+
+      assert String.downcase(sql) =~ "count"
+      assert String.downcase(sql) =~ "from metrics_table"
+      refute String.downcase(sql) =~ "from default_table"
+    end
+
+    test "uses `FromRule` with filters for BigQuery SQL" do
+      lql = "f:logs m.level:error s:event_message"
+      {:ok, sql} = Lql.to_sandboxed_sql(lql, "fallback", :bigquery)
+
+      assert String.downcase(sql) =~ "from logs"
+      assert String.downcase(sql) =~ "where"
+      refute String.downcase(sql) =~ "from fallback"
+    end
+
+    test "uses `FromRule` table name for ClickHouse SQL" do
+      lql = "f:clickhouse_logs s:event_message"
+      {:ok, sql} = Lql.to_sandboxed_sql(lql, "unused", :clickhouse)
+
+      assert String.downcase(sql) =~ ~s|from "clickhouse_logs"|
+      refute String.downcase(sql) =~ ~s|from "unused"|
+    end
+
+    test "falls back to `cte_table_name` parameter when no `FromRule` present" do
+      lql = "s:field1 m.level:info"
+      {:ok, sql} = Lql.to_sandboxed_sql(lql, "last_cte_in_chain", :bigquery)
+
+      assert String.downcase(sql) =~ "from last_cte_in_chain"
+    end
+
+    test "falls back to `cte_table_name` for chart queries when no `FromRule` present" do
+      lql = "c:count(*) c:group_by(t::hour)"
+      {:ok, sql} = Lql.to_sandboxed_sql(lql, "final_cte", :bigquery)
+
+      assert String.downcase(sql) =~ "from final_cte"
     end
 
     test "converts chart p95 percentile to BigQuery SQL" do
@@ -447,6 +579,17 @@ defmodule Logflare.LqlTest do
       refute sql =~ ~r/SELECT.*\*/i
       assert String.downcase(sql) =~ "from"
       assert String.downcase(sql) =~ "my_table"
+    end
+
+    test "`FromRule` overrides `cte_table_name` parameter" do
+      # When `f:second_cte` is specified, it should use `second_cte` even though default `cte_table_name` parameter is "final_data"
+      lql = "f:second_cte s:col2"
+      {:ok, sql} = Lql.to_sandboxed_sql(lql, "final_data", :bigquery)
+
+      assert String.downcase(sql) =~ "select"
+      assert String.downcase(sql) =~ "col2"
+      assert String.downcase(sql) =~ "from second_cte"
+      refute String.downcase(sql) =~ "from final_data"
     end
   end
 end

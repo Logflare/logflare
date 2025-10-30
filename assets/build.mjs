@@ -57,12 +57,12 @@ let sassPostcssPlugin = sassPlugin({
 
 const options = {
   logLevel: "info",
-  entryPoints: ["js/app.js"],
+  entryPoints: ["js/app.js", "js/source.js"],
   bundle: true,
   minify: watch ? false : true,
   sourcemap: true,
   loader: { ".svg": "file", ".png": "file" },
-  outfile: "../priv/static/js/app.js",
+  outdir: "../priv/static/js",
   plugins: [sassPostcssPlugin, externalizeCssImages, copyStatic],
   jsx: "automatic",
   treeShaking: watch ? false : true,

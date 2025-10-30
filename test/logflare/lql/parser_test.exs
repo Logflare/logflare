@@ -7,6 +7,7 @@ defmodule Logflare.Lql.ParserTest do
   alias Logflare.Lql.Parser
   alias Logflare.Lql.Rules.ChartRule
   alias Logflare.Lql.Rules.FilterRule
+  alias Logflare.Lql.Rules.FromRule
   alias Logflare.Sources.Source.BigQuery.SchemaBuilder
 
   @default_schema SchemaBuilder.initial_table_schema()
@@ -926,6 +927,71 @@ defmodule Logflare.Lql.ParserTest do
       basic_schema = SchemaBuilder.initial_table_schema()
       result = Parser.parse("m.new_field:value", basic_schema)
       assert match?({:error, :field_not_found, _, _}, result)
+    end
+  end
+
+  describe "from rule parsing" do
+    test "parses f: prefix" do
+      qs = "f:my_table"
+
+      assert {:ok, [%FromRule{table: "my_table", table_type: :unknown}]} == Parser.parse(qs)
+    end
+
+    test "parses from: prefix" do
+      qs = "from:errors"
+
+      assert {:ok, [%FromRule{table: "errors", table_type: :unknown}]} == Parser.parse(qs)
+    end
+
+    test "parses from clause with filters" do
+      qs = "f:my_table m.status:error"
+
+      assert {:ok,
+              [
+                %FromRule{table: "my_table", table_type: :unknown},
+                %FilterRule{operator: :=, path: "metadata.status", value: "error"}
+              ]} == Parser.parse(qs)
+    end
+
+    test "parses from clause with chart rule" do
+      qs = "f:errors c:count(*)"
+
+      assert {:ok,
+              [
+                %FromRule{table: "errors", table_type: :unknown},
+                %ChartRule{aggregate: :count, path: "timestamp", period: :minute}
+              ]} == Parser.parse(qs)
+    end
+
+    test "parses from clause with select rules" do
+      qs = "f:logs s:event_message s:m.user_id"
+
+      assert {:ok, rules} = Parser.parse(qs)
+      assert length(rules) == 3
+
+      assert Enum.any?(rules, &match?(%FromRule{table: "logs"}, &1))
+    end
+
+    test "parses table names with underscores" do
+      qs = "f:my_table_123"
+
+      assert {:ok, [%FromRule{table: "my_table_123"}]} == Parser.parse(qs)
+    end
+
+    test "parses table names starting with underscore" do
+      qs = "f:_private_table"
+
+      assert {:ok, [%FromRule{table: "_private_table"}]} == Parser.parse(qs)
+    end
+
+    test "parses from clause before other clauses" do
+      qs = "f:events m.level:error t:today"
+
+      assert {:ok, rules} = Parser.parse(qs)
+      assert length(rules) == 3
+
+      from_rule = Enum.find(rules, &match?(%FromRule{}, &1))
+      assert from_rule.table == "events"
     end
   end
 

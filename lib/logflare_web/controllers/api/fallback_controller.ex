@@ -17,8 +17,26 @@ defmodule LogflareWeb.Api.FallbackController do
     |> halt()
   end
 
-  # TODO: to remove and just use {:error, :not_found}
-  def call(conn, nil), do: call(conn, {:error, :not_found})
+  def call(conn, {:error, :buffer_full}) do
+    conn
+    |> put_status(429)
+    |> json(%{error: "Buffer Full: Too Many Requests"})
+    |> halt()
+  end
+
+  def call(conn, {:error, :too_many_requests}) do
+    conn
+    |> put_status(429)
+    |> json(%{error: "Too Many Requests"})
+    |> halt()
+  end
+
+  def call(conn, {:error, :too_many_requests, message}) when is_binary(message) do
+    conn
+    |> put_status(429)
+    |> json(%{error: message})
+    |> halt()
+  end
 
   def call(conn, {:error, :not_found}) do
     conn
