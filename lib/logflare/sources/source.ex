@@ -290,13 +290,5 @@ defmodule Logflare.Sources.Source do
     |> String.replace("-", "_")
   end
 
-  defp put_single_tenant_postgres_changes(changeset) do
-    if SingleTenant.single_tenant?() do
-      put_change(changeset, :v2_pipeline, !!SingleTenant.postgres_backend_adapter_opts())
-    else
-      changeset
-    end
-  end
-
   def system_source_types, do: @system_source_types
 end
