@@ -385,7 +385,9 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.ConnectionManager do
 
   @spec get_port_config(Backend.t(), map()) :: non_neg_integer()
   defp get_port_config(_backend, %{port: port}) when is_pos_integer(port), do: port
-  defp get_port_config(_backend, %{port: port}) when is_non_empty_binary(port), do: String.to_integer(port)
+
+  defp get_port_config(_backend, %{port: port}) when is_non_empty_binary(port),
+    do: String.to_integer(port)
 
   @spec connection_manager_via({Source.t(), Backend.t()} | Backend.t()) :: tuple()
   defp connection_manager_via({%Source{} = source, %Backend{} = backend}) do
