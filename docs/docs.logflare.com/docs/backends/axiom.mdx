@@ -1,0 +1,28 @@
+---
+sidebar_position: 9
+---
+
+# Axiom
+
+The Axiom backend is **ingest-only**, and sends the logs to Axiom.co via REST API
+
+It has support for connection testing.
+
+## Behaviour and configurations
+
+### Configuration
+
+The backend can be configured with following options:
+
+- `:api_token` (string, required) - An API token for ingestion, can be generated in `Settings->API Tokens`
+- `:dataset_name` (string, required) - Name of the dataset used for log ingest.
+  The dataset must be created in Axiom before starting the ingestion from Logflare.
+- `:domain` (string) - The domain specific to the region your account is using,
+    Defaults to the US domain (`api.axiom.co`)
+
+### Implementation Details
+
+Implementation is based on the [webhook backend](/backends/webhook).
+
+The timestamp of each log event is transformed into format recognized by axiom,
+otherwise the log events are forwarded without modifications.
