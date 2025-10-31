@@ -423,6 +423,9 @@ defmodule Logflare.Ecto.ClickHouse do
       {k, v} ->
         [expr(v, sources, params, query), " AS " | Naming.quote_name(k)]
 
+      v when is_list(v) ->
+        Helpers.intersperse_map(v, ?,, &expr(&1, sources, params, query))
+
       v ->
         expr(v, sources, params, query)
     end)
