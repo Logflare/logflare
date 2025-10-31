@@ -33,6 +33,7 @@ defmodule Logflare.Sources.Cache do
 
   # For ingest
   def get_by_and_preload_rules(kv), do: apply_repo_fun(__ENV__.function, [kv])
+  def preload_rules(kv), do: apply_repo_fun(__ENV__.function, [kv])
 
   def get_by_and_preload(kv), do: apply_repo_fun(__ENV__.function, [kv])
   def get_by_id_and_preload(arg) when is_integer(arg), do: get_by_and_preload(id: arg)

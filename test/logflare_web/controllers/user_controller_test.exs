@@ -63,7 +63,8 @@ defmodule LogflareWeb.UserControllerTest do
         name: TestUtils.random_string(),
         image: "https://#{TestUtils.random_string()}.com",
         email_me_product: true,
-        phone: "(555) 12345"
+        phone: "(555) 12345",
+        system_monitoring: true
       }
 
       reject(Users.Cache, :get_by, 1)
@@ -93,6 +94,8 @@ defmodule LogflareWeb.UserControllerTest do
         |> get(~p"/account/edit")
 
       assert conn.assigns.user.email == String.downcase(new_email)
+
+      assert conn.assigns.user.system_monitoring
     end
 
     test "of bigquery_project_id resets all user tables if premium user", %{

@@ -51,6 +51,16 @@ defmodule Logflare.ContextCache do
   end
 
   @doc """
+  Updates cache entry to the given value
+  """
+  def update(context, fun, args, value) when is_atom(fun) do
+    cache = cache_name(context)
+    cache_key = {fun, args}
+
+    Cachex.update(cache, cache_key, {:cached, value})
+  end
+
+  @doc """
   Busts cache entries based on context-primary-key pairs.
 
   It is intended for following a WAL for cache busting.When a new record comes in from the WAL, the CacheBuster process calls this function

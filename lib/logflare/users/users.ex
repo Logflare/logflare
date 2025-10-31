@@ -12,7 +12,7 @@ defmodule Logflare.Users do
   alias Logflare.TeamUsers.TeamUser
   alias Logflare.User
   alias Logflare.Users
-  alias Logflare.Users.UserPreferences
+  alias Logflare.Users.{Cache, UserPreferences}
 
   require Logger
 
@@ -185,12 +185,38 @@ defmodule Logflare.Users do
     user
     |> user_changeset(params)
     |> Repo.update()
+    |> update_system_sources(user.system_monitoring)
   end
 
   def update_user_allowed(user, params) do
     user
     |> User.user_allowed_changeset(params)
     |> Repo.update()
+    |> update_system_sources(user.system_monitoring)
+  end
+
+  defp update_system_sources({:ok, user}, original_system_monitoring) do
+    if user.system_monitoring != original_system_monitoring do
+      toggle_system_monitoring(user)
+
+      Cache.update(user)
+    end
+
+    {:ok, user}
+  end
+
+  defp update_system_sources(result, _), do: result
+
+  defp toggle_system_monitoring(%{system_monitoring: true} = user) do
+    user.id
+    |> Sources.create_user_system_sources()
+    |> Enum.each(&Supervisor.reset_source(&1.token))
+  end
+
+  defp toggle_system_monitoring(%{system_monitoring: false} = user) do
+    [user_id: user.id, system_source: true]
+    |> Sources.list_sources()
+    |> Enum.each(&Supervisor.stop_source(&1.token))
   end
 
   @spec insert_user(map()) :: {:ok, User.t()} | {:error, any()}

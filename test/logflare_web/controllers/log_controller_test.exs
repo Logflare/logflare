@@ -166,6 +166,23 @@ defmodule LogflareWeb.LogControllerTest do
     end
   end
 
+  describe "system sources" do
+    test "gets unauthorized message", %{conn: conn} do
+      user = insert(:user)
+      source = insert(:source, user: user, system_source: true)
+      insert(:plan, name: "Free")
+
+      conn =
+        conn
+        |> put_req_header("x-api-key", user.api_key)
+        |> put_req_header("x-source", Atom.to_string(source.token))
+        |> put_req_header("content-type", "application/x-protobuf")
+        |> post(Routes.log_path(conn, :otel_metrics), @valid)
+
+      assert json_response(conn, 401)
+    end
+  end
+
   describe "pipeline invalid" do
     setup [:pipeline_setup, :warm_caches, :reject_context_functions]
 

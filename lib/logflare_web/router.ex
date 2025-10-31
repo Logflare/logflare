@@ -146,6 +146,10 @@ defmodule LogflareWeb.Router do
     plug(LogflareWeb.Plugs.VerifyApiAccess, scopes: ~w(partner))
   end
 
+  pipeline :block_system_source do
+    plug(LogflareWeb.Plugs.BlockSystemSource)
+  end
+
   # Oauth2 Provider Routes
   scope "/" do
     pipe_through([:api, :oauth_public])
@@ -479,7 +483,7 @@ defmodule LogflareWeb.Router do
   end
 
   scope "/v1", LogflareWeb, assigns: %{resource_type: :source} do
-    pipe_through([:otlp_api, :require_ingest_api_auth])
+    pipe_through([:otlp_api, :require_ingest_api_auth, :block_system_source])
 
     post(
       "/traces",
@@ -505,7 +509,7 @@ defmodule LogflareWeb.Router do
 
   for path <- ["/logs", "/api/logs", "/api/events"] do
     scope path, LogflareWeb, assigns: %{resource_type: :source} do
-      pipe_through([:api, :require_ingest_api_auth])
+      pipe_through([:api, :require_ingest_api_auth, :block_system_source])
       post("/", LogController, :create)
       options("/", LogController, :create)
       post("/browser/reports", LogController, :browser_reports)
@@ -532,7 +536,7 @@ defmodule LogflareWeb.Router do
 
     # logpush
     scope "#{path}/cloudflare", LogflareWeb, assigns: %{resource_type: :source} do
-      pipe_through([:logpush, :api, :require_ingest_api_auth])
+      pipe_through([:logpush, :api, :require_ingest_api_auth, :block_system_source])
       post("/", LogController, :cloudflare)
     end
   end

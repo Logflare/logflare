@@ -4,6 +4,10 @@ defmodule Logflare.Telemetry do
   import Telemetry.Metrics
   import Logflare.Utils, only: [ets_info: 1]
 
+  alias Logflare.Sources
+  alias Logflare.Backends
+  alias Logflare.Users
+
   def start_link(arg), do: Supervisor.start_link(__MODULE__, arg, name: __MODULE__)
 
   @caches [
@@ -29,13 +33,15 @@ defmodule Logflare.Telemetry do
 
   @metrics_interval 30_000
 
+  @user_specific_tags [:source_id, :source_token, :backend_id]
+
   @impl true
   def init(_arg) do
     otel_exporter =
       if Application.get_env(:logflare, :opentelemetry_enabled?) do
         otel_exporter_opts =
           Application.get_all_env(:opentelemetry_exporter)
-          |> Keyword.put(:metrics, metrics())
+          |> Keyword.put(:metrics, metrics() |> add_filters())
           |> Keyword.put(:resource, %{
             name: "Logflare",
             service: %{
@@ -60,7 +66,13 @@ defmodule Logflare.Telemetry do
     Supervisor.init(children, strategy: :one_for_one)
   end
 
-  def metrics do
+  if Mix.env() == :test do
+    def metrics, do: metrics(:mocked)
+  else
+    def metrics, do: metrics(:normal)
+  end
+
+  defp metrics(:normal) do
     cache_stats? = Application.get_env(:logflare, :cache_stats, false)
 
     cache_metrics =
@@ -248,6 +260,55 @@ defmodule Logflare.Telemetry do
     ])
   end
 
+  defp metrics(:mocked) do
+    [
+      last_value("logflare.test.generic_metric.value",
+        description: "Default test metric"
+      ),
+      last_value("logflare.test.user_specific.value",
+        description: "To test how user specific metrics are handled by exporter",
+        tags: [:backend_id]
+      )
+    ]
+  end
+
+  defp add_filters(metrics) do
+    for metric <- metrics do
+      if user_specific_metric?(metric),
+        do: %{metric | keep: &keep_metric_function/1},
+        else: metric
+    end
+  end
+
+  defp keep_metric_function(metadata) do
+    case get_entity_from_metadata(metadata) do
+      %{user_id: user_id} -> !user_monitoring_metrics?(user_id)
+      _ -> true
+    end
+  end
+
+  defp get_entity_from_metadata(%{source_id: source_id}),
+    do: Sources.Cache.get_by_id(source_id)
+
+  defp get_entity_from_metadata(%{source_token: token}),
+    do: Sources.Cache.get_source_by_token(token)
+
+  defp get_entity_from_metadata(%{backend_id: backend_id}),
+    do: Backends.Cache.get_backend(backend_id)
+
+  defp get_entity_from_metadata(_), do: nil
+
+  defp user_monitoring_metrics?(user_id),
+    do: Users.Cache.get(user_id).system_monitoring and metric_monitor_sourcesup_up?(user_id)
+
+  defp metric_monitor_sourcesup_up?(user_id) do
+    Sources.Cache.get_by(user_id: user_id, system_source_type: :metrics)
+    |> case do
+      nil -> true
+      source -> Backends.source_sup_started?(source.id)
+    end
+  end
+
   defp periodic_measurements do
     cache_stats? = Application.get_env(:logflare, :cache_stats, false)
 
@@ -267,6 +328,10 @@ defmodule Logflare.Telemetry do
 
     cachex_metrics ++ process_metrics
   end
+
+  def user_specific_metrics, do: metrics() |> Enum.filter(&user_specific_metric?/1)
+
+  defp user_specific_metric?(%{tags: tags}), do: Enum.any?(tags, &(&1 in @user_specific_tags))
 
   def cachex_metrics do
     Enum.each(@caches, fn {cache, metric} ->

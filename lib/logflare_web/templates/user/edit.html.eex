@@ -10,6 +10,17 @@
   </div>
 </div>
 <div class="content container mx-auto">
+  <%= section_header("System monitoring") %>
+  <div class="sub-form">
+    <%= form_for @changeset, Routes.user_path(@conn, :update), fn owner -> %>
+      <div class="form-group">
+        <%= checkbox owner, :system_monitoring, onclick: "this.form.submit();" %>
+        <%= label owner, :system_monitoring, "Enable system monitoring for this account", class: "label-padding" %>
+      </div>
+    <% end %>
+  </div>
+</div>
+<div class="content container mx-auto">
   <h4 class="header-margin">Account Owner Preferences</h4>
   <p>Preferences for the Logflare account owner.</p>
   <div class="sub-form">
