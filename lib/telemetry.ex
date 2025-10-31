@@ -66,7 +66,13 @@ defmodule Logflare.Telemetry do
     Supervisor.init(children, strategy: :one_for_one)
   end
 
-  def metrics do
+  if Mix.env() == :test do
+    def metrics, do: metrics(:mocked)
+  else
+    def metrics, do: metrics(:normal)
+  end
+
+  defp metrics(:normal) do
     cache_stats? = Application.get_env(:logflare, :cache_stats, false)
 
     cache_metrics =
@@ -252,6 +258,18 @@ defmodule Logflare.Telemetry do
       broadway_metrics,
       application_metrics
     ])
+  end
+
+  defp metrics(:mocked) do
+    [
+      last_value("logflare.test.generic_metric.value",
+        description: "Default test metric"
+      ),
+      last_value("logflare.test.user_specific.value",
+        description: "To test how user specific metrics are handled by exporter",
+        tags: [:backend_id]
+      )
+    ]
   end
 
   defp add_filters(metrics) do
