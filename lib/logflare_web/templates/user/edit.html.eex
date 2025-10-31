@@ -103,13 +103,6 @@
   <%= section_header("BigQuery Backend") %>
   <p>Set your Google Cloud Platform project id to setup your own BigQuery tables. Make sure to add our service account (<code><%= @service_account %></code>) to IAM with BigQuery Data Owner and BigQuery Job User permissions. See <%= link "this guide", to: Routes.marketing_path(@conn, :big_query_setup) %> for more info.</p>
   <%= render(LogflareWeb.UserView, "edit_bq_form.html", conn: @conn, changeset: @changeset) %>
-  <%= section_header("System Monitoring") %>
-  <%= form_for @changeset, Routes.user_path(@conn, :update), fn owner -> %>
-    <div class="form-group">
-      <%= checkbox owner, :system_monitoring, onclick: "this.form.submit();" %>
-      <%= label owner, :email_me_product, "Enable system monitoring for this account", class: "label-padding" %>
-    </div>
-  <% end %>
   <%= section_header("Change Account Owner") %>
   <p>To change the main login of your Logflare account you must change the account owner. Add another team member first and then change the account owner here.</p>
   <div class="form-group">
