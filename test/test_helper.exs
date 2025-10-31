@@ -25,6 +25,7 @@ Mimic.copy(Stripe.Invoice)
 Mimic.copy(Stripe.PaymentMethod)
 Mimic.copy(Stripe.Subscription)
 Mimic.copy(Stripe.SubscriptionItem.Usage)
+Mimic.copy(Tesla.Adapter.Finch)
 
 Mimic.copy(Logflare.Admin)
 Mimic.copy(Logflare.Alerting.AlertsScheduler)
