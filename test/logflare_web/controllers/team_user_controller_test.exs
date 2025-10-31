@@ -7,17 +7,18 @@ defmodule LogflareWeb.TeamUserControllerTest do
   end
 
   test "user can edit their profile", %{conn: conn} do
-    user = insert(:user)
-    team = insert(:team, user: user)
-    team_user = insert(:team_user, team: team, email: user.email)
+    owner = insert(:user)
+    member_user = insert(:user)
+    team = insert(:team, user: owner)
+    team_user = insert(:team_user, team: team, email: member_user.email)
 
     new_name = "Avengers"
     new_email = "tony.stark@avengers.com"
     new_phone = "+1 (555) 123-4567"
 
     conn
-    |> login_user(user, team_user)
-    |> visit(~p"/profile/edit")
+    |> login_user(member_user, team_user)
+    |> visit(~p"/profile/edit?team_id=#{team.id}")
     |> assert_has("h5", text: "Profile Preferences", exact: true)
     |> fill_in("Name", with: new_name)
     |> fill_in("Preferred email", with: new_email)
