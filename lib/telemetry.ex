@@ -282,7 +282,7 @@ defmodule Logflare.Telemetry do
 
   defp keep_metric_function(metadata) do
     case get_entity_from_metadata(metadata) do
-      %{user_id: user_id} -> !Users.Cache.get(user_id).system_monitoring
+      %{user_id: user_id} -> !is_user_monitoring_metrics(user_id)
       _ -> true
     end
   end
@@ -297,6 +297,17 @@ defmodule Logflare.Telemetry do
     do: Backends.Cache.get_backend(backend_id)
 
   defp get_entity_from_metadata(_), do: nil
+
+  defp is_user_monitoring_metrics(user_id),
+    do: Users.Cache.get(user_id).system_monitoring and is_metric_monitor_sourcesup_up(user_id)
+
+  defp is_metric_monitor_sourcesup_up(user_id) do
+    Sources.Cache.get_by(user_id: user_id, system_source_type: :metrics)
+    |> case do
+      nil -> true
+      source -> Backends.source_sup_started?(source.id)
+    end
+  end
 
   defp periodic_measurements do
     cache_stats? = Application.get_env(:logflare, :cache_stats, false)

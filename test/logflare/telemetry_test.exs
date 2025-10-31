@@ -132,6 +132,29 @@ defmodule Logflare.TelemetryTest do
              )
     end
 
+    test "stay on the main exporter when flag is on, but SourceSup is not up", %{
+      user_1: user,
+      backend_1: %{id: backend_id}
+    } do
+      user |> Users.update_user_allowed(%{system_monitoring: true})
+
+      :telemetry.execute([:logflare, :test, :user_specific], %{value: 456}, %{
+        backend_id: backend_id
+      })
+
+      main_exporter_metrics =
+        OtelMetricExporter.MetricStore.get_metrics(:otel_metric_exporter)
+
+      assert match?(
+               %{
+                 {:last_value, "logflare.test.user_specific.value"} => %{
+                   %{backend_id: ^backend_id} => 456
+                 }
+               },
+               main_exporter_metrics
+             )
+    end
+
     test "dont get mixed between users", %{
       user_1: user_1,
       user_2: user_2,
