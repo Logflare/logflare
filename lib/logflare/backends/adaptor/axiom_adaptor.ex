@@ -106,9 +106,28 @@ defmodule Logflare.Backends.Adaptor.AxiomAdaptor do
     test_connection(backend)
   end
 
-  def test_connection(%{config: _config}) do
-    # TODO: implement
-    :ok
+  def test_connection(%{config: config}) do
+    url = config |> dataset_uri() |> URI.to_string()
+
+    result =
+      Tesla.client(
+        [
+          {Tesla.Middleware.BearerAuth, token: config.api_token},
+          Tesla.Middleware.JSON,
+          {Tesla.Middleware.CompressRequest, format: "gzip"},
+          Tesla.Middleware.Telemetry
+        ],
+        {Tesla.Adapter.Finch, name: Logflare.FinchDefault, receive_timeout: 5_000}
+      )
+      |> Tesla.get(url)
+
+    case result do
+      {:error, _reason} = err -> err
+      {:ok, %Tesla.Env{status: 403}} -> {:error, "Unauthorized: possibly invalid auth token"}
+      {:ok, %Tesla.Env{status: 404}} -> {:error, "Dataset #{config.dataset_name} doesn't exist"}
+      {:ok, %Tesla.Env{status: 200}} -> :ok
+      {:ok, env} -> {:error, "Unexpected response: #{env.status} #{inspect(env.body)}"}
+    end
   end
 
   defp dataset_uri(%{domain: domain, dataset_name: dataset_name}) do

@@ -9,6 +9,26 @@ defmodule Logflare.Backends.Adaptor.AxiomAdaptorTest do
 
   @subject Adaptor.AxiomAdaptor
 
+  defp backend_data(_ctx) do
+    user = insert(:user)
+    source = insert(:source, user: user)
+
+    api_token = "THE-API-KEY"
+    dataset_name = "logflare"
+    domain = "api.axiom.co"
+
+    config = %{api_token: api_token, dataset_name: dataset_name, domain: domain}
+
+    backend =
+      insert(:backend,
+        type: :axiom,
+        sources: [source],
+        config: config
+      )
+
+    [backend: backend, source: source, config: config]
+  end
+
   setup do
     start_supervised!(AllLogsLogged)
     insert(:plan)
@@ -88,31 +108,109 @@ defmodule Logflare.Backends.Adaptor.AxiomAdaptorTest do
     end
   end
 
-  describe "connection check" do
-    # TODO
+  describe "test_connection/1" do
+    @tesla_adapter Tesla.Adapter.Finch
+
+    setup :backend_data
+
+    test "succceeds on 200 response", ctx do
+      @tesla_adapter
+      |> expect(:call, 2, fn env, _opts ->
+        assert env.method == :get
+        assert env.url == "https://api.axiom.co/v1/datasets/#{ctx.config.dataset_name}"
+        assert Tesla.get_header(env, "authorization") == "Bearer #{ctx.config.api_token}"
+
+        {:ok,
+         %Tesla.Env{
+           status: 200,
+           body:
+             """
+             {
+               "created": "2022-07-20T02:35:14.137Z",
+               "description": "string",
+               "id": "string",
+               "kind": "axiom:events:v1",
+               "name": "string",
+               "who": "string"
+             }
+             """
+             |> Jason.decode!()
+         }}
+      end)
+
+      assert :ok = @subject.test_connection(ctx.backend)
+      assert :ok = @subject.test_connection({ctx.source, ctx.backend})
+    end
+
+    test "returns error on 403 response", ctx do
+      @tesla_adapter
+      |> expect(:call, fn _env, _opts ->
+        {:ok,
+         %Tesla.Env{
+           status: 403,
+           body:
+             """
+             {
+               "code": 403,
+               "message": "Forbidden"
+             }
+             """
+             |> Jason.decode!()
+         }}
+      end)
+
+      assert {:error, reason} = @subject.test_connection(ctx.backend)
+      assert reason =~ "auth"
+    end
+
+    test "returns error on 404 response", ctx do
+      @tesla_adapter
+      |> expect(:call, fn _env, _opts ->
+        {:ok,
+         %Tesla.Env{
+           status: 404,
+           body:
+             """
+             {
+               "code": 404,
+               "message": "Not found"
+             }
+             """
+             |> Jason.decode!()
+         }}
+      end)
+
+      assert {:error, reason} = @subject.test_connection(ctx.backend)
+      assert reason =~ ctx.config.dataset_name
+    end
+
+    test "returns error on 500 response", ctx do
+      @tesla_adapter
+      |> expect(:call, fn _env, _opts ->
+        {:ok, %Tesla.Env{status: 500, body: ""}}
+      end)
+
+      assert {:error, reason} = @subject.test_connection(ctx.backend)
+      assert is_binary(reason)
+    end
+
+    test "returns error on request error", ctx do
+      @tesla_adapter
+      |> expect(:call, fn _env, _opts ->
+        {:error, :nxdomain}
+      end)
+
+      assert {:error, :nxdomain} = @subject.test_connection(ctx.backend)
+    end
   end
 
   describe "logs ingestion" do
-    setup do
-      user = insert(:user)
-      source = insert(:source, user: user)
+    setup :backend_data
 
-      api_token = "THE-API-KEY"
-      dataset_name = "logflare"
-      domain = "api.axiom.co"
-
-      config = %{api_token: api_token, dataset_name: dataset_name, domain: domain}
-
-      backend =
-        insert(:backend,
-          type: :axiom,
-          sources: [source],
-          config: config
-        )
-
+    setup %{source: source, backend: backend} do
       start_supervised!({AdaptorSupervisor, {source, backend}})
-      :timer.sleep(500)
-      [backend: backend, source: source, config: config]
+      :timer.sleep(250)
+      :ok
     end
 
     test "sends logs via REST API", %{source: source, config: config} do
