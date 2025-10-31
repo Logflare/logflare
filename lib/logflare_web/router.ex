@@ -28,7 +28,7 @@ defmodule LogflareWeb.Router do
     plug(:protect_from_forgery)
 
     plug(:put_secure_browser_headers, %{
-      "content-security-policy" =>
+      "content-securety-policy" =>
         (fn ->
            """
            \
@@ -45,10 +45,8 @@ defmodule LogflareWeb.Router do
       "referrer-policy" => "same-origin"
     })
 
-    plug(LogflareWeb.Plugs.SetVerifyUser)
     plug(LogflareWeb.Plugs.SetTeamIfNil)
-    plug(LogflareWeb.Plugs.SetTeamUser)
-    plug(LogflareWeb.Plugs.SetTeam)
+    plug(LogflareWeb.Plugs.SetTeamContext)
     plug(LogflareWeb.Plugs.SetPlan)
     plug(LogflareWeb.Plugs.EnsureSourceStarted)
     plug(LogflareWeb.Plugs.SetHeaders)
@@ -190,35 +188,37 @@ defmodule LogflareWeb.Router do
   scope "/", LogflareWeb do
     pipe_through([:browser, :require_auth])
 
-    live("/dashboard", DashboardLive, :index)
-    live("/access-tokens", AccessTokensLive, :index)
-    live("/backends", BackendsLive, :index)
-    live("/backends/new", BackendsLive, :new)
-    live("/backends/:id", BackendsLive, :show)
-    live("/backends/:id/edit", BackendsLive, :edit)
-  end
-
-  scope "/query", LogflareWeb do
-    pipe_through([:browser, :require_auth])
-
-    live("/", QueryLive, :index)
+    live_session :dashboard, on_mount: LogflareWeb.AuthLive do
+      live("/dashboard", DashboardLive, :index)
+      live("/access-tokens", AccessTokensLive, :index)
+      live("/backends", BackendsLive, :index)
+      live("/backends/new", BackendsLive, :new)
+      live("/backends/:id", BackendsLive, :show)
+      live("/backends/:id/edit", BackendsLive, :edit)
+      live("/query", QueryLive, :index)
+    end
   end
 
   scope "/endpoints", LogflareWeb do
     pipe_through([:browser, :require_auth])
 
-    live("/", EndpointsLive, :index)
-    live("/new", EndpointsLive, :new)
-    live("/:id", EndpointsLive, :show)
-    live("/:id/edit", EndpointsLive, :edit)
+    live_session :endpoints, on_mount: LogflareWeb.AuthLive do
+      live("/", EndpointsLive, :index)
+      live("/new", EndpointsLive, :new)
+      live("/:id", EndpointsLive, :show)
+      live("/:id/edit", EndpointsLive, :edit)
+    end
   end
 
   scope "/alerts", LogflareWeb do
     pipe_through([:browser, :require_auth])
-    live "/", AlertsLive, :index
-    live "/new", AlertsLive, :new
-    live "/:id", AlertsLive, :show
-    live "/:id/edit", AlertsLive, :edit
+
+    live_session :alerts, on_mount: LogflareWeb.AuthLive do
+      live "/", AlertsLive, :index
+      live "/new", AlertsLive, :new
+      live "/:id", AlertsLive, :show
+      live "/:id/edit", AlertsLive, :edit
+    end
   end
 
   scope "/sources", LogflareWeb do
@@ -253,7 +253,10 @@ defmodule LogflareWeb.Router do
     pipe_through([:browser, :require_auth, :set_source, :ensure_source_started])
 
     resources "/", SourceController, except: [:index, :new, :create, :delete] do
-      live_session(:rules, root_layout: {LogflareWeb.LayoutView, :root}) do
+      live_session(:rules,
+        on_mount: LogflareWeb.AuthLive,
+        root_layout: {LogflareWeb.LayoutView, :root}
+      ) do
         live("/rules", Sources.RulesLive)
       end
     end
@@ -375,6 +378,7 @@ defmodule LogflareWeb.Router do
     get("/login/email", Auth.EmailController, :login)
     post("/login/email", Auth.EmailController, :send_link)
     get("/login/email/verify", Auth.EmailController, :verify_token)
+    get("/login/single_tenant", AuthController, :single_tenant_signin)
     get("/logout", AuthController, :logout)
     get("/:provider", Auth.OauthController, :request)
     post("/login/email/verify", Auth.EmailController, :verify_token_form)

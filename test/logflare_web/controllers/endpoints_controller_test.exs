@@ -647,12 +647,27 @@ defmodule LogflareWeb.EndpointsControllerTest do
 
     test "can view endpoints page", %{conn: conn} do
       conn = get(conn, ~p"/endpoints")
-      assert html_response(conn, 200) =~ ~p"/endpoints"
+
+      assert redirected_to(conn) =~ ~p"/auth/login/single_tenant"
+
+      conn =
+        conn
+        |> recycle()
+        |> get(~p"/auth/login/single_tenant")
+
+      assert redirected_to(conn) == ~p"/endpoints"
     end
 
     test "can make new endpoint", %{conn: conn} do
       conn = get(conn, ~p"/endpoints/new")
-      assert html_response(conn, 200) =~ ~p"/endpoints"
+      assert redirected_to(conn) =~ ~p"/auth/login/single_tenant"
+
+      conn =
+        conn
+        |> recycle()
+        |> get(~p"/auth/login/single_tenant")
+
+      assert redirected_to(conn) == ~p"/endpoints/new"
     end
   end
 

@@ -30,7 +30,7 @@ defmodule LogflareWeb.Endpoint do
     plug(Phoenix.CodeReloader)
   end
 
-  plug(Plug.Logger, log: :debug)
+  plug(Plug.Logger, log: :info)
 
   plug(Plug.Parsers,
     parsers: [:urlencoded, :multipart],

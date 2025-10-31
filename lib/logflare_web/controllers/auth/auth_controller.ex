@@ -9,6 +9,7 @@ defmodule LogflareWeb.AuthController do
   alias Logflare.Teams
   alias Logflare.Users
   alias Logflare.Vercel
+  alias LogflareWeb.ErrorView
 
   require Logger
 
@@ -86,8 +87,7 @@ defmodule LogflareWeb.AuthController do
 
         conn
         |> put_flash(:info, "Welcome to Logflare!")
-        |> put_session(:user_id, team.user.id)
-        |> put_session(:team_user_id, team_user.id)
+        |> put_session(:current_email, team_user.email)
         |> put_session(:invite_token, nil)
         |> redirect(to: ~p"/dashboard")
 
@@ -111,6 +111,25 @@ defmodule LogflareWeb.AuthController do
     end
   end
 
+  def single_tenant_signin(conn, _) do
+    if Logflare.SingleTenant.single_tenant?() do
+      user = Logflare.SingleTenant.get_default_user()
+      redirect = get_session(conn, :redirect_to, ~p"/dashboard")
+
+      conn
+      |> delete_session(:redirect_to)
+      |> put_user_session(user)
+      |> redirect(to: redirect)
+    else
+      conn
+      |> put_status(:not_found)
+      |> put_view(ErrorView)
+      |> render("404.html")
+      |> halt()
+    end
+  end
+
+  # This is never called.
   def create_and_sign_in(%{assigns: %{team_user: team_user}} = conn, _params) do
     {:ok, user} =
       team_user
@@ -140,8 +159,7 @@ defmodule LogflareWeb.AuthController do
 
         conn
         |> put_flash(:info, "Welcome back!")
-        |> put_session(:user_id, user.id)
-        |> put_session(:team_user_id, team_user.id)
+        |> put_session(:current_email, team_user.email)
         |> redirect(to: ~p"/dashboard")
 
       {:error, _} ->
@@ -195,8 +213,8 @@ defmodule LogflareWeb.AuthController do
           true ->
             conn
             |> put_flash(:info, "Welcome back!")
-            |> put_session(:user_id, user.id)
-            |> maybe_redirect_team_user()
+            |> put_session(:current_email, user.email)
+            |> redirect(to: ~p"/dashboard")
         end
 
       {:error, reason} ->
@@ -309,5 +327,10 @@ defmodule LogflareWeb.AuthController do
       true ->
         conn
     end
+  end
+
+  defp put_user_session(conn, user) do
+    conn
+    |> put_session(:current_email, user.email)
   end
 end

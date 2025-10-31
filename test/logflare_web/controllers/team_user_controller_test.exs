@@ -1,5 +1,5 @@
 defmodule LogflareWeb.TeamUserControllerTest do
-  use LogflareWeb.ConnCase, async: true
+  use LogflareWeb.ConnCase
 
   setup do
     insert(:plan)
@@ -17,7 +17,7 @@ defmodule LogflareWeb.TeamUserControllerTest do
 
     conn
     |> login_user(user, team_user)
-    |> visit(~p"/profile/edit")
+    |> visit(~p"/profile/edit?team_id=#{team.id}")
     |> assert_has("h5", text: "Profile Preferences", exact: true)
     |> fill_in("Name", with: new_name)
     |> fill_in("Preferred email", with: new_email)

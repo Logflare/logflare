@@ -14,13 +14,23 @@ defmodule LogflareWeb.Plugs.SetTeamIfNil do
 
   def init(_), do: []
 
-  def call(%{assigns: %{user: %User{team: nil} = user}} = conn, _opts) do
-    {:ok, team} = Teams.create_team(user, %{name: Logflare.Generators.team_name()})
+  def call(conn, _opts) do
+    with current_email when is_binary(current_email) <- get_session(conn, :current_email),
+         user = %User{team: nil} <- Logflare.Users.get_by_and_preload(email: current_email) do
+      {:ok, _team} = Teams.create_team(user, %{name: Logflare.Generators.team_name()})
 
-    conn
-    |> assign(:user, user)
-    |> assign(:team, team)
+      now =
+        DateTime.utc_now()
+        |> DateTime.truncate(:second)
+        |> DateTime.to_naive()
+
+      user
+      |> Ecto.Changeset.change(%{updated_at: now})
+      |> Logflare.Repo.update!()
+
+      conn
+    else
+      _ -> conn
+    end
   end
-
-  def call(conn, _opts), do: conn
 end
