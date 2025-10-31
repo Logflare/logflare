@@ -120,12 +120,12 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptorTest do
         build(:log_event,
           source: source,
           message: "Test message 1",
-          body: %{"level" => "info", "user_id" => 123}
+          metadata: %{"level" => "info", "user_id" => 123}
         ),
         build(:log_event,
           source: source,
           message: "Test message 2",
-          body: %{"level" => "error", "user_id" => 456}
+          metadata: %{"level" => "error", "user_id" => 456}
         )
       ]
 
@@ -139,13 +139,13 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptorTest do
       query_result =
         ClickhouseAdaptor.execute_ch_read_query(
           backend,
-          "SELECT payload FROM #{table_name} ORDER BY timestamp"
+          "SELECT body FROM #{table_name} ORDER BY timestamp"
         )
 
       assert {:ok, rows} = query_result
       assert length(rows) == 2
 
-      row_payloads = Enum.map(rows, &Jason.decode!(&1["payload"]))
+      row_payloads = Enum.map(rows, &Jason.decode!(&1["body"]))
 
       assert [%{"event_message" => "Test message 1"}, %{"event_message" => "Test message 2"}] =
                row_payloads

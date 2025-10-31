@@ -365,7 +365,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
       end)
 
     opts = [
-      names: ["id", "payload", "timestamp"],
+      names: ["id", "body", "timestamp"],
       types: ["UUID", "String", "DateTime64(6)"]
     ]
 

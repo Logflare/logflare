@@ -152,7 +152,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.ProvisionerTest do
 
       column_names = Enum.map(columns, & &1["name"])
       assert "id" in column_names
-      assert "payload" in column_names
+      assert "body" in column_names
       assert "timestamp" in column_names
 
       id_column = Enum.find(columns, &(&1["name"] == "id"))
