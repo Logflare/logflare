@@ -73,7 +73,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.QueryTemplates do
       """
       CREATE TABLE IF NOT EXISTS #{db_table_string} (
         `id` UUID,
-        `payload` String,
+        `body` String,
         `timestamp` DateTime64(6)
       )
       ENGINE = #{engine}

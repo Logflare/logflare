@@ -499,12 +499,12 @@ defmodule Logflare.SqlTest do
         build(:log_event,
           source: source,
           message: "Test message 1",
-          body: %{"value" => 10}
+          metadata: %{"value" => 10}
         ),
         build(:log_event,
           source: source,
           message: "Test message 2",
-          body: %{"value" => 20}
+          metadata: %{"value" => 20}
         )
       ]
 
@@ -514,9 +514,9 @@ defmodule Logflare.SqlTest do
       Process.sleep(200)
 
       cte_query =
-        "with src as (select payload from #{source.name}) select payload from src"
+        "with src as (select body from #{source.name}) select body from src"
 
-      consumer_query = "select payload from src"
+      consumer_query = "select body from src"
 
       assert {:ok, transformed} = Sql.transform(:ch_sql, {cte_query, consumer_query}, user)
       assert {:ok, results} = ClickhouseAdaptor.execute_query(backend, transformed, [])
