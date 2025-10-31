@@ -214,6 +214,7 @@ defmodule LogflareWeb.AuthController do
             conn
             |> put_flash(:info, "Welcome back!")
             |> put_session(:current_email, user.email)
+            |> redirect(to: ~p"/dashboard")
         end
 
       {:error, reason} ->
