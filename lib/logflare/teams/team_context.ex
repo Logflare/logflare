@@ -92,7 +92,7 @@ defmodule Logflare.Teams.TeamContext do
       is_nil(team) ->
         {:error, :team_not_found}
 
-      is_team_owner?(team, email) ->
+      team_owner?(team, email) ->
         {:ok, team, team.user}
 
       team_user = fetch_team_user(team, email) ->
@@ -103,7 +103,7 @@ defmodule Logflare.Teams.TeamContext do
     end
   end
 
-  defp is_team_owner?(team, email), do: team.user.email == email
+  defp team_owner?(team, email), do: team.user.email == email
 
   defp fetch_team_user(team, email) do
     TeamUsers.Cache.get_team_user_by(email: email, team_id: team.id)
