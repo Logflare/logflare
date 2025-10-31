@@ -80,22 +80,75 @@ defmodule Logflare.Logs.SearchOperations do
     %{so | query: query}
   end
 
-  def unnest_log_level(%_{source: %{id: source_id}} = so) do
-    source_schema = SourceSchemas.Cache.get_source_schema_by(source_id: source_id)
+  @doc """
+  Unnests and selects:
+
+  * recommended query fields (`bigquery_clustering_fields`, `suggested_keys`)
+  * `metadata.level`
+  """
+  @spec unnest_recommended_fields(SO.t()) :: SO.t()
+  def unnest_recommended_fields(%SO{source: source} = so) do
+    source_schema = SourceSchemas.Cache.get_source_schema_by(source_id: source.id)
     flatmap = Map.get(source_schema || %{}, :schema_flat_map)
 
-    if is_map_key(flatmap || %{}, "metadata.level") do
+    recommended_fields =
+      (Logflare.Sources.Source.recommended_query_fields(source) ++ ["metadata.level"])
+      |> Enum.uniq()
+
+    if Enum.empty?(recommended_fields) or is_nil(flatmap) do
+      so
+    else
+      {metadata_fields, top_level_fields} =
+        recommended_fields
+        |> Enum.filter(&Map.has_key?(flatmap, &1))
+        |> Enum.split_with(&String.starts_with?(&1, "metadata."))
+
+      metadata_field_atoms =
+        metadata_fields
+        |> Enum.map(fn "metadata." <> field -> String.to_atom(field) end)
+
+      top_level_field_atoms =
+        top_level_fields
+        |> Enum.map(&String.to_atom/1)
+
       query =
         so.query
-        |> join(:inner, [t], m in fragment("UNNEST(?)", t.metadata), on: true)
-        |> select_merge([..., m], %{
-          level: m.level
-        })
+        |> maybe_unnest_metadata(metadata_field_atoms)
+        |> maybe_select_top_level_fields(top_level_field_atoms)
 
       %{so | query: query}
-    else
-      so
     end
+  end
+
+  defp maybe_unnest_metadata(query, []), do: query
+
+  defp maybe_unnest_metadata(query, metadata_field_atoms) do
+    select_map = build_select_map(metadata_field_atoms, :metadata)
+
+    query
+    |> join(:inner, [t], m in fragment("UNNEST(?)", t.metadata), on: true)
+    |> select_merge([..., m], ^select_map)
+  end
+
+  defp maybe_select_top_level_fields(query, []), do: query
+
+  defp maybe_select_top_level_fields(query, top_level_field_atoms) do
+    select_map = build_select_map(top_level_field_atoms, :top_level)
+
+    query
+    |> select_merge([t], ^select_map)
+  end
+
+  defp build_select_map(field_atoms, :metadata) do
+    Enum.reduce(field_atoms, %{}, fn field, acc ->
+      Map.put(acc, field, dynamic([..., m], field(m, ^field)))
+    end)
+  end
+
+  defp build_select_map(field_atoms, :top_level) do
+    Enum.reduce(field_atoms, %{}, fn field, acc ->
+      Map.put(acc, field, dynamic([t], field(t, ^field)))
+    end)
   end
 
   @spec apply_halt_conditions(SO.t()) :: SO.t()
