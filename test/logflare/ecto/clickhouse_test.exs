@@ -479,6 +479,24 @@ defmodule Logflare.Ecto.ClickHouseTest do
       # Should have two separate parameter references
       assert params == [value, value]
     end
+
+    test "correctly remaps parameters with limit and offset" do
+      query =
+        from(t in "logs",
+          where: t.level == ^"error" and t.code > ^500,
+          limit: ^10,
+          offset: ^5,
+          select: t
+        )
+
+      assert {:ok, {sql, params}} = ClickHouse.to_sql(query)
+
+      assert params == ["error", 500, 10, 5]
+      assert String.contains?(sql, "{$0:String}")
+      assert String.contains?(sql, "{$1:Int64}")
+      assert String.contains?(sql, "LIMIT {$2:Int64}")
+      assert String.contains?(sql, "OFFSET {$3:Int64}")
+    end
   end
 
   describe "list select handling" do
