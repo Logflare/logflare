@@ -192,20 +192,4 @@ defmodule LogflareWeb.SearchLive.EventContextComponent do
         %{error: error, source: source}
     end
   end
-
-  defp required_fields(source) do
-    clustering_fields =
-      (source.bigquery_clustering_fields || "")
-      |> String.split(",")
-
-    suggested_keys =
-      (source.suggested_keys || "")
-      |> String.split(",")
-      |> Enum.map(fn
-        "m." <> suggested_field -> "metadata." <> suggested_field
-        suggested_field -> suggested_field
-      end)
-
-    clustering_fields ++ suggested_keys
-  end
 end
