@@ -165,6 +165,12 @@ defmodule Logflare.Ecto.ClickHouse do
     {select, acc} =
       if query.select, do: collect_from_expr_item(query.select, acc), else: {query.select, acc}
 
+    {limit_expr, acc} =
+      if query.limit, do: collect_from_expr_item(query.limit, acc), else: {query.limit, acc}
+
+    {offset_expr, acc} =
+      if query.offset, do: collect_from_expr_item(query.offset, acc), else: {query.offset, acc}
+
     acc =
       case query.with_ctes do
         %WithExpr{queries: queries} when is_list(queries) ->
@@ -191,7 +197,9 @@ defmodule Logflare.Ecto.ClickHouse do
         group_bys: group_bys,
         order_bys: order_bys,
         joins: joins,
-        select: select
+        select: select,
+        limit: limit_expr,
+        offset: offset_expr
     }
 
     query =
@@ -270,10 +278,19 @@ defmodule Logflare.Ecto.ClickHouse do
     {acc, transforms, offset + list_length}
   end
 
-  defp process_single_param(value, _type_or_field, _param_idx, acc, transforms, offset) do
+  defp process_single_param(value, _type_or_field, param_idx, acc, transforms, offset) do
     param_ix = acc.next_ix + offset
     acc = %{acc | values: Map.put(acc.values, param_ix, value)}
+    transforms = Map.put(transforms, param_idx, param_ix)
     {acc, transforms, offset + 1}
+  end
+
+  defp transform_in_params({:^, meta, [ix]}, transforms) do
+    case Map.get(transforms, ix) do
+      new_ix when is_integer(new_ix) -> {:^, meta, [new_ix]}
+      {new_ix, _len} -> {:^, meta, [new_ix]}
+      nil -> {:^, meta, [ix]}
+    end
   end
 
   defp transform_in_params({:in, meta, [left, {:^, param_meta, [ix]}]}, transforms) do
