@@ -48,7 +48,6 @@ defmodule Logflare.Logs.Search do
          %{error: nil} = so <- apply_timestamp_filter_rules(so),
          %{error: nil} = so <- apply_select_rules(so),
          %{error: nil} = so <- apply_filters(so),
-         %{error: nil} = so <- unnest_recommended_fields(so),
          %{error: nil} = so <- do_query(so),
          %{error: nil} = so <- apply_warning_conditions(so),
          %{error: nil} = so <- put_stats(so) do

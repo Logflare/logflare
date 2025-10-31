@@ -9,6 +9,7 @@ defmodule Logflare.Logs.SearchOperationsTest do
   alias Logflare.Logs.SearchOperations
   alias Logflare.Lql.Rules.ChartRule
   alias Logflare.Lql.Rules.FilterRule
+  alias Logflare.Lql.Rules.SelectRule
   alias Logflare.Sources.Source.BigQuery.Schema
 
   describe "unnesting metadata if present" do
@@ -22,6 +23,7 @@ defmodule Logflare.Logs.SearchOperationsTest do
           querystring: "SELECT * FROM test",
           chart_data_shape_id: nil,
           tailing?: false,
+          type: :events,
           partition_by: :timestamp
         }
       ]
@@ -31,7 +33,7 @@ defmodule Logflare.Logs.SearchOperationsTest do
       so =
         so
         |> SearchOperations.apply_query_defaults()
-        |> SearchOperations.unnest_recommended_fields()
+        |> SearchOperations.apply_select_rules()
 
       {:ok, {sql, _}} = BigQueryAdaptor.ecto_to_sql(so.query, [])
 
@@ -63,7 +65,7 @@ defmodule Logflare.Logs.SearchOperationsTest do
         so =
           so
           |> SearchOperations.apply_query_defaults()
-          |> SearchOperations.unnest_recommended_fields()
+          |> SearchOperations.apply_select_rules()
 
         {:ok, {sql, _}} = BigQueryAdaptor.ecto_to_sql(so.query, [])
 
@@ -136,6 +138,109 @@ defmodule Logflare.Logs.SearchOperationsTest do
 
       assert sql =~ "UNNEST"
       assert sql =~ "COUNT(f1.level)"
+    end
+  end
+
+  describe "apply_select_rules/1" do
+    setup do
+      insert(:plan)
+      source = insert(:source, user: insert(:user), bq_table_id: "test_table")
+
+      so = %SO{
+        source: source,
+        querystring: "",
+        query: from("test_table"),
+        chart_data_shape_id: nil,
+        tailing?: false,
+        partition_by: :timestamp,
+        type: :events,
+        lql_rules: [],
+        lql_ts_filters: [],
+        lql_meta_and_msg_filters: []
+      }
+
+      [so: so]
+    end
+
+    test "applies default SelectRules to query", %{so: so} do
+      so =
+        so
+        |> SearchOperations.apply_query_defaults()
+        |> SearchOperations.apply_select_rules()
+
+      {:ok, {sql, _}} = BigQueryAdaptor.ecto_to_sql(so.query, [])
+
+      assert sql =~ "t0.event_message"
+      assert sql =~ "t0.timestamp"
+      assert sql =~ "t0.id"
+      refute sql =~ "UNNEST"
+    end
+
+    test "applies suggested keys as SelectRules to query", %{so: so} do
+      GoogleApi.BigQuery.V2.Api.Tables
+      |> stub(:bigquery_tables_patch, fn _conn, _project_id, _dataset_id, _table_name, _opts ->
+        {:ok, %{}}
+      end)
+
+      source =
+        so.source
+        |> Ecto.Changeset.change(suggested_keys: "m.request_id, metadata.user_id")
+        |> Logflare.Repo.update!()
+
+      pid =
+        start_supervised!(
+          {Schema,
+           source: source,
+           bigquery_project_id: "some-project",
+           bigquery_dataset_id: "some-dataset"}
+        )
+
+      # Create schema with the suggested key fields as top-level fields
+      Schema.update(
+        pid,
+        build(:log_event, metadata: %{"request_id" => "req123", "user_id" => 123}),
+        so.source
+      )
+
+      Logflare.Mailer
+      |> expect(:deliver, 1, fn _ -> :ok end)
+
+      TestUtils.retry_assert(fn ->
+        Cachex.clear(Logflare.SourceSchemas.Cache)
+
+        so =
+          %{so | source: source}
+          |> SearchOperations.apply_query_defaults()
+          |> SearchOperations.apply_select_rules()
+
+        {:ok, {sql, _}} = BigQueryAdaptor.ecto_to_sql(so.query, [])
+
+        # Default fields should be present
+        assert sql =~ "t0.event_message"
+        assert sql =~ "t0.timestamp"
+        assert sql =~ "t0.id"
+
+        # Suggested keys should be selected
+        assert sql =~ "request_id"
+        assert sql =~ "user_id"
+      end)
+    end
+
+    test "applies user rules and default SelectRules to query", %{so: so} do
+      user_select_rule = %SelectRule{path: "user_id", wildcard: false}
+
+      so =
+        %{so | lql_rules: [user_select_rule]}
+        |> SearchOperations.apply_query_defaults()
+        |> SearchOperations.apply_select_rules()
+
+      {:ok, {sql, _}} = BigQueryAdaptor.ecto_to_sql(so.query, [])
+
+      assert sql =~ "t0.event_message"
+      assert sql =~ "t0.timestamp"
+      assert sql =~ "t0.id"
+      assert sql =~ "user_id"
+      refute sql =~ "UNNEST"
     end
   end
 
