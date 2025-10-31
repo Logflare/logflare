@@ -1,6 +1,6 @@
-defmodule LogflareWeb.Plugs.SetTeamUser do
+defmodule LogflareWeb.Plugs.SetTeamContext do
   @moduledoc """
-  Assigns team user if browser session is present in conn.
+  Assigns user and team if browser session is present in conn.
   """
   import Plug.Conn
   import Phoenix.Controller
@@ -22,11 +22,6 @@ defmodule LogflareWeb.Plugs.SetTeamUser do
 
   def set_team_user_for_browser(conn) do
     current_email = get_session(conn, :current_email)
-
-    conn =
-      conn
-      |> fetch_query_params()
-
     team_id = Map.get(conn.params, "team_id", nil)
 
     case TeamContext.resolve(team_id, current_email) do
@@ -39,8 +34,11 @@ defmodule LogflareWeb.Plugs.SetTeamUser do
         |> assign(:teams, teams)
         |> maybe_assign_team_user(team_user)
 
+      {:error, :team_not_found} ->
+        drop(conn)
+
       {:error, _} ->
-        assign(conn, :user, nil)
+        error(conn)
     end
   end
 
