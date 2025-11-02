@@ -299,13 +299,20 @@ defmodule Logflare.Telemetry do
   defp get_entity_from_metadata(_), do: nil
 
   defp user_monitoring_metrics?(user_id),
-    do: Users.Cache.get(user_id).system_monitoring and metric_monitor_sourcesup_up?(user_id)
+    do: Users.Cache.get(user_id).system_monitoring and user_metrics_source_sup_up?(user_id)
 
-  defp metric_monitor_sourcesup_up?(user_id) do
+  defp user_metrics_source_sup_up?(user_id) do
     Sources.Cache.get_by(user_id: user_id, system_source_type: :metrics)
     |> case do
-      nil -> true
-      source -> Backends.source_sup_started?(source.id)
+      nil ->
+        false
+
+      source ->
+        started? =  Backends.source_sup_started?(source)
+
+        unless started?, do: Backends.start_source_sup(source)
+
+        started?
     end
   end
 

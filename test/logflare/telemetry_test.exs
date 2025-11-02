@@ -4,7 +4,7 @@ defmodule Logflare.TelemetryTest do
 
   alias Logflare.Telemetry
   alias Logflare.TestUtils
-  alias Logflare.{Users, Sources}
+  alias Logflare.{Users, Sources, Backends}
   alias Logflare.Backends.SourceSup
 
   describe "process metrics" do
@@ -132,11 +132,16 @@ defmodule Logflare.TelemetryTest do
              )
     end
 
-    test "stay on the main exporter when flag is on, but SourceSup is not up", %{
-      user_1: user,
-      backend_1: %{id: backend_id}
-    } do
+    test "stay on the main exporter and starts SourceSup when flag is on, but SourceSup is not up",
+         %{
+           user_1: user,
+           backend_1: %{id: backend_id}
+         } do
       user |> Users.update_user_allowed(%{system_monitoring: true})
+
+      metrics_source = Sources.get_by(user_id: user.id, system_source_type: :metrics)
+
+      refute Backends.source_sup_started?(metrics_source)
 
       :telemetry.execute([:logflare, :test, :user_specific], %{value: 456}, %{
         backend_id: backend_id
@@ -153,6 +158,8 @@ defmodule Logflare.TelemetryTest do
                },
                main_exporter_metrics
              )
+
+      assert Backends.source_sup_started?(metrics_source)
     end
 
     test "dont get mixed between users", %{
