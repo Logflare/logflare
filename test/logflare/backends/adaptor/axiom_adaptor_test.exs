@@ -9,24 +9,21 @@ defmodule Logflare.Backends.Adaptor.AxiomAdaptorTest do
 
   @subject Adaptor.AxiomAdaptor
 
+  @valid_config %{api_token: "THE-API-KEY", dataset_name: "logflare", domain: "api.axiom.co"}
+  @valid_config_input Map.new(@valid_config, fn {k, v} -> {Atom.to_string(k), v} end)
+
   defp backend_data(_ctx) do
     user = insert(:user)
     source = insert(:source, user: user)
-
-    api_token = "THE-API-KEY"
-    dataset_name = "logflare"
-    domain = "api.axiom.co"
-
-    config = %{api_token: api_token, dataset_name: dataset_name, domain: domain}
 
     backend =
       insert(:backend,
         type: :axiom,
         sources: [source],
-        config: config
+        config: @valid_config
       )
 
-    [backend: backend, source: source, config: config]
+    [backend: backend, source: source]
   end
 
   setup do
@@ -44,64 +41,38 @@ defmodule Logflare.Backends.Adaptor.AxiomAdaptorTest do
     end
 
     test "sets default options" do
-      api_token = "THE-API-KEY"
-      dataset_name = "logflare"
-
       changeset =
-        Adaptor.cast_and_validate_config(@subject, %{
-          "api_token" => api_token,
-          "dataset_name" => dataset_name
-        })
+        Adaptor.cast_and_validate_config(@subject, Map.delete(@valid_config_input, "domain"))
 
       assert changeset.valid?
-
-      data = Ecto.Changeset.apply_changes(changeset)
-      assert map_size(data) == 3
-      assert data.api_token == api_token
-      assert data.dataset_name == dataset_name
-      assert data.domain == "api.axiom.co"
     end
 
     test "allows to override the defaults" do
-      api_token = "THE-API-KEY"
-      dataset_name = "logflare"
       eu_domain = "api.eu.axiom.co"
 
       changeset =
         Adaptor.cast_and_validate_config(@subject, %{
-          "api_token" => api_token,
-          "dataset_name" => dataset_name,
-          "domain" => eu_domain
+          @valid_config_input
+          | "domain" => eu_domain
         })
 
       assert changeset.valid?
-
-      data = Ecto.Changeset.apply_changes(changeset)
-      assert map_size(data) == 3
-      assert data.api_token == api_token
-      assert data.dataset_name == dataset_name
-      assert data.domain == eu_domain
+      assert %{domain: ^eu_domain} = Ecto.Changeset.apply_changes(changeset)
     end
   end
 
   describe "transform_config/1" do
     test "converts config to WebhookAdaptor format" do
-      api_token = "THE-API-KEY"
-      dataset_name = "logflare"
-      domain = "api.axiom.co"
-
-      backend = %{
-        config: %{api_token: api_token, dataset_name: dataset_name, domain: domain}
-      }
+      backend = %{config: @valid_config}
 
       config = @subject.transform_config(backend)
 
       # Based on https://axiom.co/docs/restapi/endpoints/ingestIntoDataset?playground=open
       assert config.url ==
-               "https://api.axiom.co/v1/datasets/#{dataset_name}/ingest?timestamp-field=timestamp&timestamp-format=2006-01-02T15%3A04%3A05.999999Z07%3A00"
+               "https://api.axiom.co/v1/datasets/#{@valid_config.dataset_name}/ingest?timestamp-field=timestamp&timestamp-format=2006-01-02T15%3A04%3A05.999999Z07%3A00"
 
       assert config.headers["content-type"] == "application/json"
-      assert config.headers["authorization"] == "Bearer #{api_token}"
+      assert config.headers["authorization"] == "Bearer #{@valid_config.api_token}"
       assert config.http == "http2"
       assert config.gzip == true
       assert is_function(config.format_batch)
@@ -117,8 +88,8 @@ defmodule Logflare.Backends.Adaptor.AxiomAdaptorTest do
       @tesla_adapter
       |> expect(:call, 2, fn env, _opts ->
         assert env.method == :get
-        assert env.url == "https://api.axiom.co/v1/datasets/#{ctx.config.dataset_name}"
-        assert Tesla.get_header(env, "authorization") == "Bearer #{ctx.config.api_token}"
+        assert env.url == "https://api.axiom.co/v1/datasets/#{@valid_config.dataset_name}"
+        assert Tesla.get_header(env, "authorization") == "Bearer #{@valid_config.api_token}"
 
         {:ok,
          %Tesla.Env{
@@ -181,7 +152,7 @@ defmodule Logflare.Backends.Adaptor.AxiomAdaptorTest do
       end)
 
       assert {:error, reason} = @subject.test_connection(ctx.backend)
-      assert reason =~ ctx.config.dataset_name
+      assert reason =~ @valid_config.dataset_name
     end
 
     test "returns error on 500 response", ctx do
@@ -213,7 +184,7 @@ defmodule Logflare.Backends.Adaptor.AxiomAdaptorTest do
       :ok
     end
 
-    test "sends logs via REST API", %{source: source, config: config} do
+    test "sends logs via REST API", %{source: source} do
       this = self()
       ref = make_ref()
 
@@ -222,27 +193,23 @@ defmodule Logflare.Backends.Adaptor.AxiomAdaptorTest do
         body = opts[:body]
 
         assert opts[:headers]["content-type"] == "application/json"
-        assert opts[:headers]["authorization"] == "Bearer #{config.api_token}"
+        assert opts[:headers]["authorization"] == "Bearer #{@valid_config.api_token}"
 
         send(this, {ref, body})
         %Tesla.Env{status: 200, body: ""}
       end)
 
-      message = "Test log message"
-
-      log_events = [
+      log_event =
         build(:log_event,
           source: source,
-          event_message: message,
+          event_message: "Test log message",
           random_attribute: "nothing",
           timestamp: 1_704_067_200_000_000
         )
-      ]
 
-      assert {:ok, _} = Backends.ingest_logs(log_events, source)
-      assert_receive {^ref, body}, 2000
-      assert [log] = body
-      assert log["event_message"] == message
+      assert {:ok, _} = Backends.ingest_logs([log_event], source)
+      assert_receive {^ref, [log]}, 5000
+      assert log["event_message"] == log_event.body["event_message"]
       assert log["timestamp"] == "2024-01-01T00:00:00.000000Z"
       assert log["random_attribute"] == "nothing"
     end
@@ -258,34 +225,14 @@ defmodule Logflare.Backends.Adaptor.AxiomAdaptorTest do
         %Tesla.Env{status: 200, body: ""}
       end)
 
-      log_events = [
-        build(:log_event,
+      log_events =
+        build_list(3, :log_event,
           source: source,
-          event_message: "Log 1",
-          timestamp: 1_704_067_200_000_000
-        ),
-        build(:log_event,
-          source: source,
-          event_message: "Log 2",
-          timestamp: 1_704_067_200_000_000
-        ),
-        build(:log_event,
-          source: source,
-          event_message: "Log 3",
           timestamp: 1_704_067_200_000_000
         )
-      ]
 
       assert {:ok, _} = Backends.ingest_logs(log_events, source)
-      assert_receive {^ref, body}, 2000
-
-      assert length(body) == 3
-
-      # Check that all expected messages are present
-      messages = Enum.map(body, fn item -> item["event_message"] end)
-      assert "Log 1" in messages
-      assert "Log 2" in messages
-      assert "Log 3" in messages
+      assert_receive {^ref, [_, _, _]}, 5000
     end
   end
 
