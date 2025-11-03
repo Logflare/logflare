@@ -311,6 +311,7 @@ defmodule Logflare.SourcesTest do
       insert(:plan)
       user = insert(:user)
       source = insert(:source, user: user)
+      Sources.Cache.get_by_id(source.id)
       {:ok, source: source, user: user}
     end
 
