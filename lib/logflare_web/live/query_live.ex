@@ -122,11 +122,11 @@ defmodule LogflareWeb.QueryLive do
                     </span>
                 <% end %>
 
-                <div class="modal fade" id={"modal-#{row_idx}-#{col_idx}"} data-backdrop="static" data-keyboard="false" tabindex="-1" aria-labelledby="staticBackdropLabel" aria-hidden="true">
+                <div class="modal fade" id={"modal-#{row_idx}-#{col_idx}"} data-backdrop="static" data-keyboard="false" tabindex="-1" aria-labelledby={"staticBackdropLabel-#{k}"} aria-hidden="true">
                   <div class="modal-dialog modal-xl">
                     <div class="modal-content">
                       <div class="modal-header">
-                        <h5 class="modal-title" id="staticBackdropLabel">{k}</h5>
+                        <h5 class="modal-title" id={"staticBackdropLabel-#{k}"}>{k}</h5>
                         <button type="button" class="close" data-dismiss="modal" aria-label="Close">
                           <span aria-hidden="true">&times;</span>
                         </button>
