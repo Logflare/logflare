@@ -302,14 +302,14 @@
             {label(f_config, :dataset_name, "Dataset name")}
             {text_input(f_config, :dataset_name, class: "form-control")}
             <small class="form-text text-muted">
-              The name of the Axiom's dataset used by the backend
+              The name of the Axiom's dataset to ingest into
             </small>
           </div>
           <div class="form-group">
             {label(f_config, :api_token, "API Token")}
             {text_input(f_config, :api_token, class: "form-control")}
             <small class="form-text text-muted">
-              Axiom API token used for authorization
+              Axiom API token used for authorization. Requires the dataset ingest capability.
             </small>
           </div>
           <div class="form-group">

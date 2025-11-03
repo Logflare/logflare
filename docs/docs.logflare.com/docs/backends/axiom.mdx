@@ -4,9 +4,8 @@ sidebar_position: 9
 
 # Axiom
 
-The Axiom backend is **ingest-only**, and sends the logs to Axiom.co via REST API
+The Axiom backend is **ingest-only**, and sends the logs to Axiom.co via their [HTTP API](https://axiom.co/docs/restapi/ingest)
 
-It has support for connection testing.
 
 ## Behaviour and configurations
 
@@ -24,5 +23,4 @@ The backend can be configured with following options:
 
 Implementation is based on the [webhook backend](/backends/webhook).
 
-The timestamp of each log event is transformed into format recognized by axiom,
-otherwise the log events are forwarded without modifications.
+The timestamp of each log event is transformed into format recognized by Axiom.
