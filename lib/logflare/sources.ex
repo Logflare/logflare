@@ -497,7 +497,7 @@ defmodule Logflare.Sources do
       # Filter for get_by calls that return a Source struct with an id
       {:entry, {:get_by, _args}, {:cached, %Source{id: id} = source}, _ts, _ttl}
       when is_integer(id) ->
-        Backends.source_sup_started?(id) and is_source_idle?(source)
+        Backends.source_sup_started?(id) and source_idle?(source)
 
       _val ->
         false
@@ -528,7 +528,7 @@ defmodule Logflare.Sources do
     :ok
   end
 
-  defp is_source_idle?(source) do
+  defp source_idle?(source) do
     metrics = get_source_metrics_for_ingest(source)
     total_pending = calculate_total_pending(source)
     metrics.avg == 0 and total_pending == 0
