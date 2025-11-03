@@ -27,18 +27,18 @@ defmodule Logflare.Logs.SearchOperationsTest do
       ]
     end
 
-    test "unnest_log_level/1", %{so: so} do
+    test "unnest_recommended_fields/1 without metadata.level", %{so: so} do
       so =
         so
         |> SearchOperations.apply_query_defaults()
-        |> SearchOperations.unnest_log_level()
+        |> SearchOperations.unnest_recommended_fields()
 
       {:ok, {sql, _}} = BigQueryAdaptor.ecto_to_sql(so.query, [])
 
       refute sql =~ "UNNEST(t0.metadata)"
     end
 
-    test "unnest_log_level/1 with metadata", %{so: so} do
+    test "unnest_recommended_fields/1 with metadata.level", %{so: so} do
       GoogleApi.BigQuery.V2.Api.Tables
       |> stub(:bigquery_tables_patch, fn _conn, _project_id, _dataset_id, _table_name, _opts ->
         {:ok, %{}}
@@ -63,7 +63,7 @@ defmodule Logflare.Logs.SearchOperationsTest do
         so =
           so
           |> SearchOperations.apply_query_defaults()
-          |> SearchOperations.unnest_log_level()
+          |> SearchOperations.unnest_recommended_fields()
 
         {:ok, {sql, _}} = BigQueryAdaptor.ecto_to_sql(so.query, [])
 
