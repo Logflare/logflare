@@ -491,52 +491,36 @@ defmodule Logflare.Sources do
   """
   @spec shutdown_idle_sources() :: :ok
   def shutdown_idle_sources do
-    Logger.info("Starting idle source cleanup")
+    Cache
+    |> Cachex.stream!()
+    |> Stream.filter(fn
+      # Filter for get_by calls that return a Source struct with an id
+      {{:get_by, _args}, {:cached, %Source{id: id}}} when is_integer(id) ->
+        Backends.source_sup_started?(id)
 
-    # Get source IDs from Sources.Cache first (more efficient)
-    cached_source_ids =
-      Cache
-      |> Cachex.stream!()
-      |> Stream.filter(fn
-        # Filter for get_by calls that return a Source struct with an id
-        {{:get_by, _args}, {:cached, %Source{id: id}}} when is_integer(id) ->
-          Backends.source_sup_started?(id)
+      _ ->
+        false
+    end)
+    |> Stream.map(fn {{:get_by, _}, {:cached, %Source{id: id}}} -> id end)
+    |> Stream.uniq()
+    |> Enum.to_list()
+    |> then(fn
+      [] ->
+        []
 
-        _ ->
-          false
-      end)
-      |> Stream.map(fn {{:get_by, _}, {:cached, %Source{id: id}}} -> id end)
-      |> Stream.uniq()
-      |> Enum.to_list()
+      source_ids ->
+        Logger.info("Shutting down #{Enum.count(source_ids)} idle sources")
 
-    # Fall back to Registry for sources not yet in cache
-    registry_source_ids =
-      Backends.SourceRegistry
-      |> Registry.select([{{:"$1", :"$2", :"$3"}, [], [{{:"$1", :"$2"}}]}])
-      |> Enum.filter(fn
-        {{_source_id, Backends.SourceSup}, _pid} -> true
-        _ -> false
-      end)
-      |> Enum.map(fn {{source_id, _}, _pid} -> source_id end)
-
-    # Combine and dedupe
-    source_ids = (cached_source_ids ++ registry_source_ids) |> Enum.uniq()
-
-    Logger.info("Found #{length(source_ids)} active sources to check")
-
-    # Process sources concurrently with controlled concurrency
-    source_ids
+        source_ids
+    end)
     |> Task.async_stream(
-      fn source_id ->
-        check_and_shutdown_idle_source(source_id)
-      end,
+      &check_and_shutdown_idle_source/1,
       max_concurrency: 3,
       timeout: 30_000,
       on_timeout: :kill_task
     )
     |> Stream.run()
 
-    Logger.info("Idle source cleanup completed")
     :ok
   end
 
