@@ -16,6 +16,7 @@ defmodule LogflareWeb.FeatureCase do
 
       @router LogflareWeb.Router
       @endpoint LogflareWeb.Endpoint
+      @moduletag :feature
 
       setup context do
         Mimic.verify_on_exit!(context)
