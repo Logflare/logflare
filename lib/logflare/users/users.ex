@@ -14,6 +14,7 @@ defmodule Logflare.Users do
   alias Logflare.User
   alias Logflare.Users
   alias Logflare.Users.{Cache, UserPreferences}
+  alias Logflare.Endpoints
 
   require Logger
 
@@ -184,9 +185,11 @@ defmodule Logflare.Users do
 
   def get_related_user_id(map) do
     case map do
+      %{user_id: user_id} -> %{user_id: user_id}
       %{source_id: source_id} -> Sources.Cache.get_by_id(source_id)
       %{source_token: token} -> Sources.Cache.get_source_by_token(token)
       %{backend_id: backend_id} -> Backends.Cache.get_backend(backend_id)
+      %{endpoint_id: endpoint_id} -> Endpoints.Cache.get_endpoint_query(endpoint_id)
       _ -> nil
     end
     |> case do

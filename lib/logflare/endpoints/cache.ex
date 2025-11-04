@@ -28,6 +28,7 @@ defmodule Logflare.Endpoints.Cache do
     }
   end
 
+  def get_endpoint_query(kw), do: apply_repo_fun(:get_endpoint_query, [kw])
   def get_by(kw), do: apply_repo_fun(:get_by, [kw])
   def get_mapped_query_by_token(token), do: apply_repo_fun(:get_mapped_query_by_token, [token])
 

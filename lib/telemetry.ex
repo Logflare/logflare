@@ -33,7 +33,7 @@ defmodule Logflare.Telemetry do
 
   @metrics_interval 30_000
 
-  @user_specific_tags [:source_id, :source_token, :backend_id]
+  @user_specific_tags [:user_id, :source_id, :source_token, :backend_id, :endpoint_id]
 
   @impl true
   def init(_arg) do
