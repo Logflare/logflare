@@ -288,22 +288,7 @@ defmodule Logflare.Telemetry do
   end
 
   defp user_monitoring_metrics?(user_id),
-    do: Users.Cache.get(user_id).system_monitoring and user_metrics_source_sup_up?(user_id)
-
-  defp user_metrics_source_sup_up?(user_id) do
-    Sources.Cache.get_by(user_id: user_id, system_source_type: :metrics)
-    |> case do
-      nil ->
-        false
-
-      source ->
-        started? = Backends.source_sup_started?(source)
-
-        unless started?, do: Backends.start_source_sup(source)
-
-        started?
-    end
-  end
+    do: Users.Cache.get(user_id).system_monitoring
 
   defp periodic_measurements do
     cache_stats? = Application.get_env(:logflare, :cache_stats, false)
