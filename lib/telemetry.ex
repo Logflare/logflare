@@ -4,8 +4,6 @@ defmodule Logflare.Telemetry do
   import Telemetry.Metrics
   import Logflare.Utils, only: [ets_info: 1]
 
-  alias Logflare.Sources
-  alias Logflare.Backends
   alias Logflare.Users
 
   def start_link(arg), do: Supervisor.start_link(__MODULE__, arg, name: __MODULE__)
