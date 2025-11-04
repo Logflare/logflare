@@ -9,6 +9,7 @@ defmodule Logflare.Users do
   alias Logflare.Sources.Source.Supervisor
   alias Logflare.Sources
   alias Logflare.Sources.Source
+  alias Logflare.Backends
   alias Logflare.TeamUsers.TeamUser
   alias Logflare.User
   alias Logflare.Users
@@ -179,6 +180,19 @@ defmodule Logflare.Users do
   def get_by_source(source_id) when is_atom(source_id) do
     %Source{user_id: user_id} = Sources.get_by(token: source_id)
     Users.get_by_and_preload(id: user_id)
+  end
+
+  def get_related_user_id(map) do
+    case map do
+      %{source_id: source_id} -> Sources.Cache.get_by_id(source_id)
+      %{source_token: token} -> Sources.Cache.get_source_by_token(token)
+      %{backend_id: backend_id} -> Backends.Cache.get_backend(backend_id)
+      _ -> nil
+    end
+    |> case do
+      %{user_id: user_id} -> user_id
+      _ -> nil
+    end
   end
 
   def update_user_all_fields(user, params) do

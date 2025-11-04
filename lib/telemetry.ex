@@ -66,10 +66,10 @@ defmodule Logflare.Telemetry do
     Supervisor.init(children, strategy: :one_for_one)
   end
 
-  if Mix.env() == :test do
-    def metrics, do: metrics(:mocked)
-  else
-    def metrics, do: metrics(:normal)
+  def metrics do
+    if Application.get_env(:logflare, :env) == :test,
+      do: metrics(:mocked),
+      else: metrics(:normal)
   end
 
   defp metrics(:normal) do
@@ -281,22 +281,11 @@ defmodule Logflare.Telemetry do
   end
 
   defp keep_metric_function(metadata) do
-    case get_entity_from_metadata(metadata) do
-      %{user_id: user_id} -> !user_monitoring_metrics?(user_id)
-      _ -> true
+    case Users.get_related_user_id(metadata) do
+      nil -> true
+      user_id -> !user_monitoring_metrics?(user_id)
     end
   end
-
-  defp get_entity_from_metadata(%{source_id: source_id}),
-    do: Sources.Cache.get_by_id(source_id)
-
-  defp get_entity_from_metadata(%{source_token: token}),
-    do: Sources.Cache.get_source_by_token(token)
-
-  defp get_entity_from_metadata(%{backend_id: backend_id}),
-    do: Backends.Cache.get_backend(backend_id)
-
-  defp get_entity_from_metadata(_), do: nil
 
   defp user_monitoring_metrics?(user_id),
     do: Users.Cache.get(user_id).system_monitoring and user_metrics_source_sup_up?(user_id)
@@ -308,7 +297,7 @@ defmodule Logflare.Telemetry do
         false
 
       source ->
-        started? =  Backends.source_sup_started?(source)
+        started? = Backends.source_sup_started?(source)
 
         unless started?, do: Backends.start_source_sup(source)
 

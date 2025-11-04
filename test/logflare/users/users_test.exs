@@ -121,7 +121,7 @@ defmodule Logflare.UsersTest do
     end
 
     test "can create system sources and update cache info", %{user: user} do
-      Users.update_user_allowed(user, %{"system_monitoring" => true})
+      {:ok, user} = Users.update_user_allowed(user, %{"system_monitoring" => true})
 
       system_sources = Sources.list_system_sources_by_user(user)
 
@@ -130,6 +130,10 @@ defmodule Logflare.UsersTest do
       assert Enum.any?(system_sources, &(&1.system_source_type == :rejected_events))
 
       assert Users.Cache.get(user.id).system_monitoring
+
+      Users.update_user_allowed(user, %{"system_monitoring" => false})
+
+      refute Users.Cache.get(user.id).system_monitoring
     end
   end
 
