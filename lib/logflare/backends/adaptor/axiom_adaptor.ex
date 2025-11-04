@@ -53,7 +53,6 @@ defmodule Logflare.Backends.Adaptor.AxiomAdaptor do
     url =
       config
       |> dataset_uri()
-      |> URI.append_path("/ingest")
       |> URI.append_query(URI.encode_query(query))
       |> URI.to_string()
 
@@ -119,14 +118,13 @@ defmodule Logflare.Backends.Adaptor.AxiomAdaptor do
         ],
         {Tesla.Adapter.Finch, name: Logflare.FinchDefault, receive_timeout: 5_000}
       )
-      |> Tesla.get(url)
+      |> Tesla.post(url, [])
 
     case result do
-      {:error, _reason} = err -> err
-      {:ok, %Tesla.Env{status: 403}} -> {:error, "Unauthorized: possibly invalid auth token"}
-      {:ok, %Tesla.Env{status: 404}} -> {:error, "Dataset #{config.dataset_name} doesn't exist"}
       {:ok, %Tesla.Env{status: 200}} -> :ok
+      {:ok, %Tesla.Env{body: %{"message" => message}}} -> {:error, message}
       {:ok, env} -> {:error, "Unexpected response: #{env.status} #{inspect(env.body)}"}
+      {:error, reason} -> {:error, "Request error: #{reason}"}
     end
   end
 
@@ -134,7 +132,7 @@ defmodule Logflare.Backends.Adaptor.AxiomAdaptor do
     %URI{
       scheme: "https",
       host: domain,
-      path: "/v1/datasets/" <> dataset_name
+      path: "/v1/datasets/#{dataset_name}/ingest"
     }
   end
 end

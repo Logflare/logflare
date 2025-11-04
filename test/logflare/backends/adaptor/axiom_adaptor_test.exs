@@ -87,25 +87,15 @@ defmodule Logflare.Backends.Adaptor.AxiomAdaptorTest do
     test "succceeds on 200 response", ctx do
       @tesla_adapter
       |> expect(:call, 2, fn env, _opts ->
-        assert env.method == :get
-        assert env.url == "https://api.axiom.co/v1/datasets/#{@valid_config.dataset_name}"
+        assert env.method == :post
+        assert env.url == "https://api.axiom.co/v1/datasets/#{@valid_config.dataset_name}/ingest"
         assert Tesla.get_header(env, "authorization") == "Bearer #{@valid_config.api_token}"
 
         {:ok,
          %Tesla.Env{
            status: 200,
            body:
-             """
-             {
-               "created": "2022-07-20T02:35:14.137Z",
-               "description": "string",
-               "id": "string",
-               "kind": "axiom:events:v1",
-               "name": "string",
-               "who": "string"
-             }
-             """
-             |> Jason.decode!()
+             ~s({"ingested":0,"failed":0,"failures":[],"processedBytes":2,"blocksCreated":0,"walLength":0})
          }}
       end)
 
@@ -113,65 +103,29 @@ defmodule Logflare.Backends.Adaptor.AxiomAdaptorTest do
       assert :ok = @subject.test_connection({ctx.source, ctx.backend})
     end
 
-    test "returns error on 403 response", ctx do
-      @tesla_adapter
-      |> expect(:call, fn _env, _opts ->
+    test "returns error on failure", ctx do
+      error_responses = [
+        {:ok,
+         %Tesla.Env{status: 401, body: ~s({"code":401,"message":"forbidden"})}
+         |> Tesla.put_header("content-type", "application/json")},
         {:ok,
          %Tesla.Env{
            status: 403,
-           body:
-             """
-             {
-               "code": 403,
-               "message": "Forbidden"
-             }
-             """
-             |> Jason.decode!()
-         }}
-      end)
-
-      assert {:error, reason} = @subject.test_connection(ctx.backend)
-      assert reason =~ "auth"
-    end
-
-    test "returns error on 404 response", ctx do
-      @tesla_adapter
-      |> expect(:call, fn _env, _opts ->
-        {:ok,
-         %Tesla.Env{
-           status: 404,
-           body:
-             """
-             {
-               "code": 404,
-               "message": "Not found"
-             }
-             """
-             |> Jason.decode!()
-         }}
-      end)
-
-      assert {:error, reason} = @subject.test_connection(ctx.backend)
-      assert reason =~ @valid_config.dataset_name
-    end
-
-    test "returns error on 500 response", ctx do
-      @tesla_adapter
-      |> expect(:call, fn _env, _opts ->
-        {:ok, %Tesla.Env{status: 500, body: ""}}
-      end)
-
-      assert {:error, reason} = @subject.test_connection(ctx.backend)
-      assert is_binary(reason)
-    end
-
-    test "returns error on request error", ctx do
-      @tesla_adapter
-      |> expect(:call, fn _env, _opts ->
+           body: ~s({"code":403,"message":"not allowed to ingest into dataset"})
+         }
+         |> Tesla.put_header("content-type", "application/json")},
         {:error, :nxdomain}
-      end)
+      ]
 
-      assert {:error, :nxdomain} = @subject.test_connection(ctx.backend)
+      for response <- error_responses do
+        @tesla_adapter
+        |> expect(:call, fn _env, _opts ->
+          response
+        end)
+
+        assert {:error, reason} = @subject.test_connection(ctx.backend)
+        assert is_binary(reason)
+      end
     end
   end
 
