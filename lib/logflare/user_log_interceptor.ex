@@ -7,14 +7,14 @@ defmodule Logflare.UserLogInterceptor do
   alias Logflare.Logs
   alias Logflare.Logs.Processor
 
-  def run(log, _) do
-    with %{meta: meta} <- log,
+  def run(log_event, _) do
+    with %{meta: meta} <- log_event,
          user_id when is_integer(user_id) <- Users.get_related_user_id(meta),
          %{system_monitoring: true} <- Users.Cache.get(user_id),
          %{} = source <- get_system_source(user_id) do
       LogflareLogger.Formatter.format(
-        log.level,
-        format_message(log),
+        log_event.level,
+        format_message(log_event),
         get_datetime(),
         meta
       )
