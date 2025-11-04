@@ -235,6 +235,9 @@ defmodule Logflare.Telemetry do
         tags: [:backend_type],
         unit: {:native, :millisecond},
         description: "Ingest dispatch latency by backend type"
+      ),
+      counter("thousand_island.acceptor.spawn_error",
+        description: "Count of client connection spawn errors"
       )
     ]
 
