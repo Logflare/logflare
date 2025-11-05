@@ -72,6 +72,7 @@ defmodule LogflareWeb.Router do
     plug(:accepts, ["json", "bert"])
     plug(LogflareWeb.Plugs.SetHeaders)
     plug(OpenApiSpex.Plug.PutApiSpec, module: LogflareWeb.ApiSpec)
+    plug(LogflareWeb.Plugs.BlockSystemSource)
   end
 
   pipeline :otlp_api do
@@ -86,6 +87,7 @@ defmodule LogflareWeb.Router do
 
     plug(:accepts, ["json", "protobuf"])
     plug(LogflareWeb.Plugs.SetHeaders)
+    plug(LogflareWeb.Plugs.BlockSystemSource)
   end
 
   pipeline :require_endpoint_auth do
@@ -144,10 +146,6 @@ defmodule LogflareWeb.Router do
 
   pipeline :partner_api do
     plug(LogflareWeb.Plugs.VerifyApiAccess, scopes: ~w(partner))
-  end
-
-  pipeline :block_system_source do
-    plug(LogflareWeb.Plugs.BlockSystemSource)
   end
 
   # Oauth2 Provider Routes
@@ -483,7 +481,7 @@ defmodule LogflareWeb.Router do
   end
 
   scope "/v1", LogflareWeb, assigns: %{resource_type: :source} do
-    pipe_through([:otlp_api, :require_ingest_api_auth, :block_system_source])
+    pipe_through([:otlp_api, :require_ingest_api_auth])
 
     post(
       "/traces",
@@ -509,7 +507,8 @@ defmodule LogflareWeb.Router do
 
   for path <- ["/logs", "/api/logs", "/api/events"] do
     scope path, LogflareWeb, assigns: %{resource_type: :source} do
-      pipe_through([:api, :require_ingest_api_auth, :block_system_source])
+      pipe_through([:api, :require_ingest_api_auth])
+
       post("/", LogController, :create)
       options("/", LogController, :create)
       post("/browser/reports", LogController, :browser_reports)
@@ -536,7 +535,7 @@ defmodule LogflareWeb.Router do
 
     # logpush
     scope "#{path}/cloudflare", LogflareWeb, assigns: %{resource_type: :source} do
-      pipe_through([:logpush, :api, :require_ingest_api_auth, :block_system_source])
+      pipe_through([:logpush, :api, :require_ingest_api_auth])
       post("/", LogController, :cloudflare)
     end
   end
