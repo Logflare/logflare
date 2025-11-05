@@ -40,10 +40,8 @@ config :logflare, LogflareWeb.Endpoint,
     http_2_options: [max_requests: 1_000_000],
     http_options: [log_protocol_errors: :short, log_client_closures: false],
     thousand_island_options: [
-      num_acceptors: 1000,
-      # https://cloud.google.com/load-balancing/docs/https/#timeouts_and_retries
-      # preserves idle keepalive connections up to load balancer max of 600s
-      read_timeout: 600_000,
+      num_acceptors: 2500,
+      read_timeout: 60_000,
       # transport options are passed wholly to :gen_tcp
       # https://github.com/mtrudel/thousand_island/blob/ae733332892b1bb2482a9cf4e97de03411fba2ad/lib/thousand_island/transports/tcp.ex#L61
       transport_options: [
