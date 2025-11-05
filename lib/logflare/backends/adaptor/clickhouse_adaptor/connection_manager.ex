@@ -22,6 +22,8 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.ConnectionManager do
 
   @inactivity_timeout :timer.minutes(5)
   @resolve_interval :timer.seconds(30)
+  @ch_ingest_conn_timeout :timer.minutes(1)
+  @ch_query_conn_timeout :timer.minutes(1)
 
   typedstruct do
     field :pool_type, connection_type(), enforce: true
@@ -346,7 +348,8 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.ConnectionManager do
           end
           |> connection_pool_via()
 
-        timeout = if pool_type == :ingest, do: :timer.seconds(15), else: :timer.minutes(1)
+        timeout =
+          if pool_type == :ingest, do: @ch_ingest_conn_timeout, else: @ch_query_conn_timeout
 
         ch_opts = [
           name: pool_via,
