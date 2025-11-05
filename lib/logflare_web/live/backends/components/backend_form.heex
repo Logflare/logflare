@@ -32,7 +32,7 @@
   </div>
 
   <div :if={@live_action == :new}>
-    {select(f, :type, ["Select a backend type...", Webhook: :webhook, Postgres: :postgres, BigQuery: :bigquery, Datadog: :datadog, Elastic: :elastic, Loki: :loki, ClickHouse: :clickhouse, "Incident.io": :incidentio, S3: :s3],
+    {select(f, :type, ["Select a backend type...", Webhook: :webhook, Postgres: :postgres, BigQuery: :bigquery, Datadog: :datadog, Elastic: :elastic, Loki: :loki, ClickHouse: :clickhouse, "Incident.io": :incidentio, S3: :s3, Axiom: :axiom],
       phx_change: :change_form_type,
       class: "form-control form-control-margin",
       id: "type"
@@ -295,6 +295,28 @@
             {text_input(f_config, :batch_timeout, class: "form-control", type: "number", value: 5_000)}
             <small class="form-text text-muted">
               The batch timeout in milliseconds.
+            </small>
+          </div>
+        <% "axiom" -> %>
+          <div class="form-group">
+            {label(f_config, :dataset_name, "Dataset name")}
+            {text_input(f_config, :dataset_name, class: "form-control")}
+            <small class="form-text text-muted">
+              The name of the Axiom's dataset to ingest into
+            </small>
+          </div>
+          <div class="form-group">
+            {label(f_config, :api_token, "API Token")}
+            {text_input(f_config, :api_token, class: "form-control")}
+            <small class="form-text text-muted">
+              Axiom API token used for authorization. Requires the dataset ingest capability.
+            </small>
+          </div>
+          <div class="form-group">
+            {label(f_config, :domain, "Axiom Domain")}
+            {text_input(f_config, :domain, class: "form-control", value: "api.axiom.co")}
+            <small class="form-text text-muted">
+              The regionalized Axiom domain, defaults to the domain for the US region
             </small>
           </div>
         <% _ -> %>
