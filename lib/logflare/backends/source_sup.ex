@@ -20,10 +20,7 @@ defmodule Logflare.Backends.SourceSup do
   alias Logflare.Rules.Rule
   alias Logflare.Sources
   alias Logflare.Backends.AdaptorSupervisor
-  alias Logflare.Logs
-  alias Logflare.Logs.Processor
-  alias Logflare.Telemetry
-  alias Opentelemetry.Proto.Collector.Metrics.V1.ExportMetricsServiceRequest
+  alias Logflare.Backends.UserMonitoring
 
   def start_link(%Source{} = source) do
     Supervisor.start_link(__MODULE__, source, name: Backends.via_source(source, __MODULE__))
@@ -68,60 +65,11 @@ defmodule Logflare.Backends.SourceSup do
     Supervisor.init(children, strategy: :one_for_one)
   end
 
-  defp maybe_get_otel_exporter(%{system_source_type: :metrics} = source, user) do
-    otel_exporter_opts =
-      [
-        metrics: system_metrics(source),
-        resource: %{
-          name: "Logflare",
-          service: %{
-            name: "Logflare",
-            version: Application.spec(:logflare, :vsn) |> to_string()
-          },
-          node: inspect(Node.self()),
-          cluster: Application.get_env(:logflare, :metadata)[:cluster]
-        },
-        export_callback: generate_exporter_callback(source),
-        name: :"#{source.name}-#{user.id}",
-        otlp_endpoint: ""
-      ]
-
-    [{OtelMetricExporter, otel_exporter_opts}]
-  end
+  defp maybe_get_otel_exporter(%{system_source_type: :metrics} = source, user),
+    do: UserMonitoring.get_otel_exporter(source, user)
 
   defp maybe_get_otel_exporter(_, _),
     do: []
-
-  defp system_metrics(source) do
-    keep_function = keep_metric_function(source)
-
-    Telemetry.user_specific_metrics()
-    |> Enum.map(&%{&1 | keep: keep_function})
-  end
-
-  defp keep_metric_function(source) do
-    fn metadata ->
-      case Users.get_related_user_id(metadata) do
-        nil -> false
-        user_id -> user_id == source.user_id
-      end
-    end
-  end
-
-  defp generate_exporter_callback(source) do
-    fn {:metrics, metrics}, _ ->
-      refreshed_source = Sources.refresh_source_metrics(source)
-
-      metrics
-      |> OtelMetricExporter.Protocol.build_metric_service_request()
-      |> Protobuf.encode()
-      |> Protobuf.decode(ExportMetricsServiceRequest)
-      |> Map.get(:resource_metrics)
-      |> Processor.ingest(Logs.OtelMetric, refreshed_source)
-
-      :ok
-    end
-  end
 
   @doc """
   Checks if a rule child is started for a given source/rule.

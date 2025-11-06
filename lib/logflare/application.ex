@@ -122,7 +122,10 @@ defmodule Logflare.Application do
     if Application.get_env(:logflare, :env) == :test do
       :ok
     else
-      :logger.add_primary_filter(:user_log_intercetor, {&Logflare.UserLogInterceptor.run/2, []})
+      :logger.add_primary_filter(
+        :user_log_intercetor,
+        {&Logflare.Backends.UserMonitoring.log_interceptor/2, []}
+      )
     end
   end
 

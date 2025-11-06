@@ -31,15 +31,13 @@ defmodule Logflare.Telemetry do
 
   @metrics_interval 30_000
 
-  @user_specific_tags [:user_id, :source_id, :source_token, :backend_id, :endpoint_id]
-
   @impl true
   def init(_arg) do
     otel_exporter =
       if Application.get_env(:logflare, :opentelemetry_enabled?) do
         otel_exporter_opts =
           Application.get_all_env(:opentelemetry_exporter)
-          |> Keyword.put(:metrics, metrics() |> add_filters())
+          |> Keyword.put(:metrics, metrics())
           |> Keyword.put(:resource, %{
             name: "Logflare",
             service: %{
@@ -265,28 +263,18 @@ defmodule Logflare.Telemetry do
       ),
       last_value("logflare.test.user_specific.value",
         description: "To test how user specific metrics are handled by exporter",
-        tags: [:backend_id]
+        tags: [:backend_id],
+        keep: &keep_metric_function/1
       )
     ]
-  end
-
-  defp add_filters(metrics) do
-    for metric <- metrics do
-      if user_specific_metric?(metric),
-        do: %{metric | keep: &keep_metric_function/1},
-        else: metric
-    end
   end
 
   defp keep_metric_function(metadata) do
     case Users.get_related_user_id(metadata) do
       nil -> true
-      user_id -> !user_monitoring_metrics?(user_id)
+      user_id -> !Users.Cache.get(user_id).system_monitoring
     end
   end
-
-  defp user_monitoring_metrics?(user_id),
-    do: Users.Cache.get(user_id).system_monitoring
 
   defp periodic_measurements do
     cache_stats? = Application.get_env(:logflare, :cache_stats, false)
@@ -307,10 +295,6 @@ defmodule Logflare.Telemetry do
 
     cachex_metrics ++ process_metrics
   end
-
-  def user_specific_metrics, do: metrics() |> Enum.filter(&user_specific_metric?/1)
-
-  defp user_specific_metric?(%{tags: tags}), do: Enum.any?(tags, &(&1 in @user_specific_tags))
 
   def cachex_metrics do
     Enum.each(@caches, fn {cache, metric} ->

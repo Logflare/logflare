@@ -233,7 +233,10 @@ defmodule Logflare.LogsTest do
 
     setup do
       :ok =
-        :logger.add_primary_filter(:user_log_intercetor, {&Logflare.UserLogInterceptor.run/2, []})
+        :logger.add_primary_filter(
+          :user_log_intercetor,
+          {&Logflare.Backends.UserMonitoring.log_interceptor/2, []}
+        )
 
       on_exit(fn ->
         :logger.remove_primary_filter(:user_log_intercetor)
