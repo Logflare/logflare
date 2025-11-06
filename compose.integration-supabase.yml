@@ -8,44 +8,60 @@ services:
 
   studio:
     depends_on: []
+    network_mode: "host"
     environment:
-      LOGFLARE_URL: http://host.docker.internal:4000
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
+      SUPABASE_URL: http://localhost:${KONG_HTTP_PORT}
+      # LOGFLARE_URL: http://host.docker.internal:4000
+      LOGFLARE_URL: http://localhost:4000
+    # extra_hosts:
+    #   - "host.docker.internal:host-gateway"
 
   kong:
+    network_mode: "host"
+    ports: []
     depends_on: []
 
   auth:
+    network_mode: "host"
     depends_on:
       db:
         # Disable this if you are using an external Postgres database
         condition: service_healthy
 
   rest:
+    network_mode: "host"
     depends_on:
       db:
         # Disable this if you are using an external Postgres database
         condition: service_healthy
 
   realtime:
+    network_mode: "host"
     depends_on:
       db:
         # Disable this if you are using an external Postgres database
         condition: service_healthy
 
   meta:
+    network_mode: "host"
     depends_on:
       db:
         # Disable this if you are using an external Postgres database
         condition: service_healthy
 
   functions:
-    depends_on:
-      analytics:
-        condition: service_healthy
+    network_mode: "host"
+    depends_on: []
+    environment:
+      SUPABASE_URL: http://localhost:${KONG_HTTP_PORT}
+
+  storage:
+    environment:
+      IMGPROXY_URL: http://localhost:5001
 
   supavisor:
+    network_mode: "host"
+    ports: []
     depends_on:
       db:
         # Disable this if you are using an external Postgres database
