@@ -82,7 +82,8 @@ gcloud_prod.json
 # google keys
 .*.gcloud.json
 
-supabase
+supabase/
+supabase-project/
 
 examples/**/.dev.vars
 examples/**/node_modules

@@ -1,0 +1,52 @@
+services:
+  analytics:
+    scale: 0
+
+  db:
+    ports:
+      - 7654:5432
+
+  studio:
+    depends_on: []
+    environment:
+      LOGFLARE_URL: http://host.docker.internal:4000
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  kong:
+    depends_on: []
+
+  auth:
+    depends_on:
+      db:
+        # Disable this if you are using an external Postgres database
+        condition: service_healthy
+
+  rest:
+    depends_on:
+      db:
+        # Disable this if you are using an external Postgres database
+        condition: service_healthy
+
+  realtime:
+    depends_on:
+      db:
+        # Disable this if you are using an external Postgres database
+        condition: service_healthy
+
+  meta:
+    depends_on:
+      db:
+        # Disable this if you are using an external Postgres database
+        condition: service_healthy
+
+  functions:
+    depends_on:
+      analytics:
+        condition: service_healthy
+
+  supavisor:
+    depends_on:
+      db:
+        # Disable this if you are using an external Postgres database
+        condition: service_healthy
