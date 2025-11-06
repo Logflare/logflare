@@ -78,9 +78,9 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.Ingester do
   @spec encode_row(LogEvent.t()) :: iodata()
   def encode_row(%LogEvent{body: body}) do
     [
-      encode_uuid(body["id"]),
-      encode_string(Jason.encode!(body)),
-      encode_datetime64(DateTime.from_unix!(body["timestamp"], :microsecond))
+      encode_as_uuid(body["id"]),
+      encode_as_string(Jason.encode_to_iodata!(body)),
+      encode_as_datetime64(DateTime.from_unix!(body["timestamp"], :microsecond))
     ]
   end
 
@@ -91,35 +91,34 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.Ingester do
   end
 
   @doc false
-  @spec encode_uuid(Ecto.UUID.t() | String.t()) :: binary()
-  def encode_uuid(uuid_string) when is_non_empty_binary(uuid_string) do
+  @spec encode_as_uuid(Ecto.UUID.t() | String.t()) :: binary()
+  def encode_as_uuid(uuid_string) when is_non_empty_binary(uuid_string) do
     uuid_string
     |> String.replace("-", "")
     |> Base.decode16!(case: :mixed)
   end
 
   @doc false
-  @spec encode_string(String.t()) :: binary()
-  def encode_string(value) when is_non_empty_binary(value) do
-    bytes = :unicode.characters_to_binary(value, :utf8)
-    length = byte_size(bytes)
-    <<encode_varint(length)::binary, bytes::binary>>
+  @spec encode_as_string(iodata()) :: iodata()
+  def encode_as_string(value) when is_list(value) do
+    length = IO.iodata_length(value)
+    [encode_as_varint(length), value]
   end
 
   @doc false
-  @spec encode_datetime64(DateTime.t()) :: binary()
-  def encode_datetime64(%DateTime{microsecond: {microsecond, _precision}} = value) do
+  @spec encode_as_datetime64(DateTime.t()) :: binary()
+  def encode_as_datetime64(%DateTime{microsecond: {microsecond, _precision}} = value) do
     timestamp_seconds = DateTime.to_unix(value, :second)
     timestamp_scaled = timestamp_seconds * 1_000_000 + microsecond
     <<timestamp_scaled::little-signed-64>>
   end
 
   @doc false
-  @spec encode_varint(non_neg_integer()) :: binary()
-  def encode_varint(n) when is_non_negative_integer(n) and n < 128, do: <<n>>
+  @spec encode_as_varint(non_neg_integer()) :: binary()
+  def encode_as_varint(n) when is_non_negative_integer(n) and n < 128, do: <<n>>
 
-  def encode_varint(n) when is_non_negative_integer(n),
-    do: <<1::1, n::7, encode_varint(n >>> 7)::binary>>
+  def encode_as_varint(n) when is_non_negative_integer(n),
+    do: <<1::1, n::7, encode_as_varint(n >>> 7)::binary>>
 
   @spec build_connection_opts(Backend.t()) :: {:ok, Keyword.t()} | {:error, String.t()}
   defp build_connection_opts(%Backend{
