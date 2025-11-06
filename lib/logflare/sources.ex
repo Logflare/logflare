@@ -141,6 +141,7 @@ defmodule Logflare.Sources do
           name: "system.#{type}",
           system_source: true,
           system_source_type: type,
+          favorite: true,
           token: Ecto.UUID.Atom.autogenerate(),
           inserted_at: now,
           updated_at: now
