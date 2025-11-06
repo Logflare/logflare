@@ -3,19 +3,11 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.Ingester do
   Simplified ingestion-only functionality for ClickHouse.
   """
 
-  use TypedStruct
-
   import Bitwise
   import Logflare.Utils.Guards
 
   alias Logflare.Backends.Backend
   alias Logflare.LogEvent
-
-  typedstruct module: Row do
-    field :id, Ecto.UUID.t()
-    field :body, String.t()
-    field :timestamp, DateTime.t()
-  end
 
   @finch_pool Logflare.FinchClickhouseIngest
 
@@ -32,49 +24,34 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.Ingester do
   @spec insert(
           Backend.t() | Keyword.t(),
           table :: String.t(),
-          rows :: [LogEvent.t()] | [__MODULE__.Row.t()],
+          log_events :: [LogEvent.t()],
           opts :: Keyword.t()
         ) ::
           :ok | {:error, String.t()}
-  def insert(backend_or_conn_opts, table, rows, opts \\ [])
+  def insert(backend_or_conn_opts, table, log_events, opts \\ [])
 
   def insert(_backend_or_conn_opts, _table, [], _opts), do: :ok
 
-  def insert(%Backend{} = backend, table, rows, opts) when is_list(rows) and is_list(opts) do
+  def insert(%Backend{} = backend, table, log_events, opts)
+      when is_list(log_events) and is_list(opts) do
     with {:ok, connection_opts} <- build_connection_opts(backend) do
-      insert(connection_opts, table, rows, opts)
+      insert(connection_opts, table, log_events, opts)
     end
   end
 
-  def insert(connection_opts, table, [%LogEvent{} | _] = rows, opts)
+  def insert(connection_opts, table, [%LogEvent{} | _] = log_events, opts)
       when is_list(connection_opts) and is_non_empty_binary(table) and is_list(opts) do
-    converted_rows =
-      rows
-      |> Enum.map(fn %LogEvent{} = log_event ->
-        %__MODULE__.Row{
-          id: log_event.body["id"],
-          body: Jason.encode!(log_event.body),
-          timestamp: DateTime.from_unix!(log_event.body["timestamp"], :microsecond)
-        }
-      end)
-
-    insert(connection_opts, table, converted_rows, opts)
-  end
-
-  def insert(connection_opts, table, [%__MODULE__.Row{} | _] = rows, opts)
-      when is_list(connection_opts) and is_non_empty_binary(table) and is_list(rows) and
-             is_list(opts) do
     compress = Keyword.get(opts, :compress, true)
     async = Keyword.get(opts, :async, true)
-    url = build_url(connection_opts, table, async)
-    body = encode_batch(rows)
+    url = build_request_url(connection_opts, table, async)
+    request_body = encode_batch(log_events)
 
-    {body, headers} =
+    {request_body, headers} =
       if compress do
-        compressed = :zlib.gzip(body)
+        compressed = :zlib.gzip(request_body)
         {compressed, [{"content-encoding", "gzip"}]}
       else
-        {body, []}
+        {request_body, []}
       end
 
     headers = [
@@ -83,31 +60,34 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.Ingester do
       | headers
     ]
 
-    request = Finch.build(:post, url, headers, body)
+    request = Finch.build(:post, url, headers, request_body)
 
     case Finch.request(request, @finch_pool) do
-      {:ok, %{status: 200}} -> :ok
-      {:ok, %{status: status, body: body}} -> {:error, "HTTP #{status}: #{body}"}
-      {:error, reason} -> {:error, reason}
+      {:ok, %{status: 200}} ->
+        :ok
+
+      {:ok, %{status: status, body: response_body}} ->
+        {:error, "HTTP #{status}: #{response_body}"}
+
+      {:error, reason} ->
+        {:error, reason}
     end
   end
 
   @doc false
-  @spec encode_row(__MODULE__.Row.t()) :: binary()
-  def encode_row(%__MODULE__.Row{id: id, body: body, timestamp: timestamp}) do
-    <<
-      encode_uuid(id)::binary,
-      encode_string(body)::binary,
-      encode_datetime64(timestamp)::binary
-    >>
+  @spec encode_row(LogEvent.t()) :: iodata()
+  def encode_row(%LogEvent{body: body}) do
+    [
+      encode_uuid(body["id"]),
+      encode_string(Jason.encode!(body)),
+      encode_datetime64(DateTime.from_unix!(body["timestamp"], :microsecond))
+    ]
   end
 
   @doc false
-  @spec encode_batch([__MODULE__.Row.t()]) :: binary()
-  def encode_batch([%__MODULE__.Row{} | _] = rows) do
-    rows
-    |> Enum.map(&encode_row/1)
-    |> :erlang.iolist_to_binary()
+  @spec encode_batch([LogEvent.t()]) :: iodata()
+  def encode_batch([%LogEvent{} | _] = rows) do
+    Enum.map(rows, &encode_row/1)
   end
 
   @doc false
@@ -165,9 +145,9 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.Ingester do
     {:error, "Unable to build connection options"}
   end
 
-  @spec build_url(connection_opts :: Keyword.t(), table :: String.t(), async :: boolean()) ::
+  @spec build_request_url(connection_opts :: Keyword.t(), table :: String.t(), async :: boolean()) ::
           String.t()
-  defp build_url(connection_opts, table, async) do
+  defp build_request_url(connection_opts, table, async) do
     base_url = Keyword.get(connection_opts, :url)
     database = Keyword.get(connection_opts, :database)
 

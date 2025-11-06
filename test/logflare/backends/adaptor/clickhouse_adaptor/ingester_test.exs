@@ -114,55 +114,39 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.IngesterTest do
   end
 
   describe "encode_row/1" do
-    test "encodes a row struct" do
-      row = %Ingester.Row{
-        id: "550e8400-e29b-41d4-a716-446655440000",
-        body: "test message",
-        timestamp: ~U[2024-01-01 00:00:00.000000Z]
-      }
+    test "encodes a LogEvent as iodata" do
+      log_event = build(:log_event, message: "test message")
 
-      encoded = Ingester.encode_row(row)
-      assert is_binary(encoded)
-      # UUID (16) + varint length (1+) + body + timestamp (8)
-      assert byte_size(encoded) >= 16 + 1 + 12 + 8
+      encoded = Ingester.encode_row(log_event)
+      assert is_list(encoded)
+      # UUID (16) + varint length (1+) + body (JSON) + timestamp (8)
+      assert IO.iodata_length(encoded) >= 16 + 1 + 10 + 8
     end
   end
 
   describe "encode_batch/1" do
-    test "encodes multiple rows" do
-      rows = [
-        %Ingester.Row{
-          id: "550e8400-e29b-41d4-a716-446655440000",
-          body: "first",
-          timestamp: ~U[2024-01-01 00:00:00.000000Z]
-        },
-        %Ingester.Row{
-          id: "550e8400-e29b-41d4-a716-446655440001",
-          body: "second",
-          timestamp: ~U[2024-01-01 00:00:01.000000Z]
-        }
+    test "encodes multiple LogEvents as iodata" do
+      log_events = [
+        build(:log_event, message: "first"),
+        build(:log_event, message: "second")
       ]
 
-      batch = Ingester.encode_batch(rows)
-      assert is_binary(batch)
+      batch = Ingester.encode_batch(log_events)
+      assert is_list(batch)
 
-      encoded_row1 = Ingester.encode_row(Enum.at(rows, 0))
-      encoded_row2 = Ingester.encode_row(Enum.at(rows, 1))
-      assert byte_size(batch) == byte_size(encoded_row1) + byte_size(encoded_row2)
+      encoded_row1 = Ingester.encode_row(Enum.at(log_events, 0))
+      encoded_row2 = Ingester.encode_row(Enum.at(log_events, 1))
+
+      assert IO.iodata_length(batch) ==
+               IO.iodata_length(encoded_row1) + IO.iodata_length(encoded_row2)
     end
 
-    test "handles single row" do
-      rows = [
-        %Ingester.Row{
-          id: "550e8400-e29b-41d4-a716-446655440000",
-          body: "only",
-          timestamp: ~U[2024-01-01 00:00:00.000000Z]
-        }
-      ]
+    test "handles single LogEvent as iodata" do
+      log_events = [build(:log_event, message: "only")]
 
-      batch = Ingester.encode_batch(rows)
-      single = Ingester.encode_row(Enum.at(rows, 0))
-      assert batch == single
+      batch = Ingester.encode_batch(log_events)
+      single = Ingester.encode_row(Enum.at(log_events, 0))
+      assert batch == [single]
     end
   end
 
@@ -286,63 +270,5 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.IngesterTest do
 
       assert [%{"count" => 1}] = result
     end
-  end
-
-  describe "insert/4 with Row structs and connection_opts" do
-    setup do
-      insert(:plan, name: "Free")
-      {source, backend, cleanup_fn} = setup_clickhouse_test()
-      on_exit(cleanup_fn)
-
-      {:ok, _supervisor_pid} = ClickhouseAdaptor.start_link({source, backend})
-
-      table_name = ClickhouseAdaptor.clickhouse_ingest_table_name(source)
-      connection_opts = build_connection_opts(backend)
-
-      Process.sleep(200)
-
-      [
-        source: source,
-        backend: backend,
-        table_name: table_name,
-        connection_opts: connection_opts
-      ]
-    end
-
-    test "inserts row structs directly with connection opts", %{
-      connection_opts: connection_opts,
-      table_name: table_name,
-      backend: backend
-    } do
-      rows = [
-        %Ingester.Row{
-          id: Ecto.UUID.generate(),
-          body: Jason.encode!(%{"message" => "Direct row insert"}),
-          timestamp: DateTime.utc_now()
-        }
-      ]
-
-      assert :ok = Ingester.insert(connection_opts, table_name, rows)
-
-      Process.sleep(@sleep_time_after_insert)
-
-      {:ok, result} =
-        ClickhouseAdaptor.execute_ch_query(
-          backend,
-          "SELECT count(*) as count FROM #{table_name}"
-        )
-
-      assert [%{"count" => 1}] = result
-    end
-  end
-
-  defp build_connection_opts(backend) do
-    [
-      url: backend.config.url,
-      port: backend.config.port,
-      database: backend.config.database,
-      username: backend.config.username,
-      password: backend.config.password
-    ]
   end
 end
