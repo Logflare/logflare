@@ -67,7 +67,7 @@ defmodule Logflare.TelemetryTest do
   describe "user specific metrics" do
     setup do
       setup_otel()
-      Telemetry.start_link(nil)
+      start_supervised!(Telemetry)
 
       insert(:plan)
 
@@ -156,7 +156,7 @@ defmodule Logflare.TelemetryTest do
       system_source =
         Sources.get_by(user_id: user.id, system_source_type: :metrics)
 
-      SourceSup.start_link(system_source)
+      start_supervised!({SourceSup, system_source})
 
       :telemetry.execute([:logflare, :test, :generic_metric], %{value: 123})
 
@@ -226,7 +226,7 @@ defmodule Logflare.TelemetryTest do
       system_source_1 =
         Sources.get_by(user_id: user_1.id, system_source_type: :metrics)
 
-      SourceSup.start_link(system_source_1)
+      start_supervised!({SourceSup, system_source_1}, id: {:source_sup, 1})
 
       # user 2 setup
 
@@ -235,7 +235,7 @@ defmodule Logflare.TelemetryTest do
       system_source_2 =
         Sources.get_by(user_id: user_2.id, system_source_type: :metrics)
 
-      SourceSup.start_link(system_source_2)
+      start_supervised!({SourceSup, system_source_2}, id: {:source_sup, 2})
 
       # sending signals related to both users
 
