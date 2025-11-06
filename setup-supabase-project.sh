@@ -22,6 +22,8 @@ cd $PROJECT_DIR || exit 1
 # sed -i 's/^POSTGRES_PORT=.*/POSTGRES_PORT=9432/' .env
 sed -i 's/^POSTGRES_HOST=.*/POSTGRES_HOST=localhost/' .env
 
+sed -i 's/analytics/localhost/g; s/studio/localhost/g' volumes/api/kong.yml
+
 # if [[ "$(uname)" == "Linux" ]]; then
 #       export HOST_IP=$(ip addr show docker0 | grep -Po 'inet \K[\d.]+')
 # fi
