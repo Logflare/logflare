@@ -10,14 +10,9 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.ConnectionManagerTest do
     {source, backend, ch_cleanup_fn} = setup_clickhouse_test()
     on_exit(ch_cleanup_fn)
 
-    ingest_opts = build_clickhouse_connection_opts(source, backend, :ingest)
-    query_opts = build_clickhouse_connection_opts(source, backend, :query)
-
     [
       source: source,
-      backend: backend,
-      ingest_opts: ingest_opts,
-      query_opts: query_opts
+      backend: backend
     ]
   end
 
@@ -26,46 +21,43 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.ConnectionManagerTest do
       context
     end
 
-    test "generates correct child spec for `{Source, Backend, ch_opts}`", %{
+    test "generates correct child spec for `{Source, Backend}`", %{
       source: source,
-      backend: backend,
-      ingest_opts: ingest_opts
+      backend: backend
     } do
-      child_spec = ConnectionManager.child_spec({source, backend, ingest_opts})
+      child_spec = ConnectionManager.child_spec({source, backend})
 
       assert %{
                id: {ConnectionManager, {source_id, backend_id}},
-               start: {ConnectionManager, :start_link, [{^source, ^backend, ^ingest_opts}]}
+               start: {ConnectionManager, :start_link, [{^source, ^backend}]}
              } = child_spec
 
       assert source_id == source.id
       assert backend_id == backend.id
     end
 
-    test "generates correct child spec for `{Backend, ch_opts}`", %{
-      backend: backend,
-      query_opts: query_opts
+    test "generates correct child spec for `Backend`", %{
+      backend: backend
     } do
-      child_spec = ConnectionManager.child_spec({backend, query_opts})
+      child_spec = ConnectionManager.child_spec(backend)
 
       assert %{
                id: {ConnectionManager, {backend_id}},
-               start: {ConnectionManager, :start_link, [{^backend, ^query_opts}]}
+               start: {ConnectionManager, :start_link, [^backend]}
              } = child_spec
 
       assert backend_id == backend.id
     end
 
     test "child specs have unique IDs for different sources with same backend", %{
-      backend: backend,
-      ingest_opts: ingest_opts
+      backend: backend
     } do
       user = insert(:user)
       source1 = insert(:source, user: user)
       source2 = insert(:source, user: user)
 
-      child_spec1 = ConnectionManager.child_spec({source1, backend, ingest_opts})
-      child_spec2 = ConnectionManager.child_spec({source2, backend, ingest_opts})
+      child_spec1 = ConnectionManager.child_spec({source1, backend})
+      child_spec2 = ConnectionManager.child_spec({source2, backend})
 
       assert child_spec1.id != child_spec2.id
       assert child_spec1.id == {ConnectionManager, {source1.id, backend.id}}
@@ -73,14 +65,13 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.ConnectionManagerTest do
     end
 
     test "child specs have unique IDs for different backends", %{
-      source: source,
-      ingest_opts: ingest_opts
+      source: source
     } do
       backend1 = insert(:backend, type: :clickhouse)
       backend2 = insert(:backend, type: :clickhouse)
 
-      child_spec1 = ConnectionManager.child_spec({source, backend1, ingest_opts})
-      child_spec2 = ConnectionManager.child_spec({source, backend2, ingest_opts})
+      child_spec1 = ConnectionManager.child_spec({source, backend1})
+      child_spec2 = ConnectionManager.child_spec({source, backend2})
 
       assert child_spec1.id != child_spec2.id
       assert child_spec1.id == {ConnectionManager, {source.id, backend1.id}}
@@ -89,10 +80,9 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.ConnectionManagerTest do
 
     test "child specs work with `Supervisor.start_link`", %{
       source: source,
-      backend: backend,
-      ingest_opts: ingest_opts
+      backend: backend
     } do
-      child_spec = ConnectionManager.child_spec({source, backend, ingest_opts})
+      child_spec = ConnectionManager.child_spec({source, backend})
 
       {:ok, sup} = Supervisor.start_link([child_spec], strategy: :one_for_one)
 
@@ -110,20 +100,18 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.ConnectionManagerTest do
   describe "connection manager lifecycle" do
     test "starts successfully when provided a source and backend", %{
       source: source,
-      backend: backend,
-      ingest_opts: ingest_opts
+      backend: backend
     } do
-      {:ok, manager_pid} = ConnectionManager.start_link({source, backend, ingest_opts})
+      {:ok, manager_pid} = ConnectionManager.start_link({source, backend})
 
       assert Process.alive?(manager_pid)
       refute ConnectionManager.pool_active?({source, backend})
     end
 
     test "starts successfully when provided just a backend", %{
-      backend: backend,
-      ingest_opts: ingest_opts
+      backend: backend
     } do
-      {:ok, manager_pid} = ConnectionManager.start_link({backend, ingest_opts})
+      {:ok, manager_pid} = ConnectionManager.start_link(backend)
 
       assert Process.alive?(manager_pid)
       refute ConnectionManager.pool_active?(backend)
@@ -133,7 +121,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.ConnectionManagerTest do
   describe "ingest pool connection management" do
     setup context do
       {:ok, manager_pid} =
-        ConnectionManager.start_link({context.source, context.backend, context.ingest_opts})
+        ConnectionManager.start_link({context.source, context.backend})
 
       assert Process.alive?(manager_pid)
 
@@ -166,7 +154,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.ConnectionManagerTest do
   describe "query pool connection management" do
     setup context do
       {:ok, _manager_pid} =
-        ConnectionManager.start_link({context.backend, context.ingest_opts})
+        ConnectionManager.start_link(context.backend)
 
       context
     end
@@ -195,7 +183,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.ConnectionManagerTest do
   describe "ingest activity tracking" do
     setup context do
       {:ok, _manager_pid} =
-        ConnectionManager.start_link({context.source, context.backend, context.ingest_opts})
+        ConnectionManager.start_link({context.source, context.backend})
 
       context
     end
@@ -208,7 +196,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.ConnectionManagerTest do
   describe "query activity tracking" do
     setup context do
       {:ok, _manager_pid} =
-        ConnectionManager.start_link({context.backend, context.query_opts})
+        ConnectionManager.start_link(context.backend)
 
       context
     end
@@ -239,18 +227,8 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.ConnectionManagerTest do
       source: source,
       invalid_backend: invalid_backend
     } do
-      invalid_ingest_opts = build_clickhouse_connection_opts(source, invalid_backend, :ingest)
-
-      invalid_ingest_opts =
-        Keyword.merge(invalid_ingest_opts,
-          hostname: "invalid-hostname",
-          port: 9999,
-          username: "invalid_user",
-          password: "invalid_pass"
-        )
-
       {:ok, _manager_pid} =
-        ConnectionManager.start_link({source, invalid_backend, invalid_ingest_opts})
+        ConnectionManager.start_link({source, invalid_backend})
 
       case ConnectionManager.ensure_pool_started({source, invalid_backend}) do
         :ok ->
@@ -279,22 +257,9 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.ConnectionManagerTest do
       [source: source, invalid_backend: invalid_backend]
     end
 
-    test "handles invalid database configuration", %{
-      source: source,
-      invalid_backend: invalid_backend
-    } do
-      invalid_query_opts = build_clickhouse_connection_opts(source, invalid_backend, :query)
-
-      invalid_query_opts =
-        Keyword.merge(invalid_query_opts,
-          hostname: "invalid-hostname",
-          port: 9999,
-          username: "invalid_user",
-          password: "invalid_pass"
-        )
-
+    test "handles invalid database configuration", %{invalid_backend: invalid_backend} do
       {:ok, _manager_pid} =
-        ConnectionManager.start_link({invalid_backend, invalid_query_opts})
+        ConnectionManager.start_link(invalid_backend)
 
       case ConnectionManager.ensure_pool_started(invalid_backend) do
         :ok ->

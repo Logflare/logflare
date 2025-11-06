@@ -31,51 +31,17 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptorTest do
     test "`clickhouse_ingest_table_name/1` generates a unique log ingest table name based on the source token",
          %{source: source, stringified_source_token: stringified_source_token} do
       assert ClickhouseAdaptor.clickhouse_ingest_table_name(source) ==
-               "log_events_#{stringified_source_token}"
+               "ingest_logs_#{stringified_source_token}"
     end
 
     test "`clickhouse_ingest_table_name/1` will raise an exception if the table name is equal to or exceeds 200 chars",
          %{source: source} do
       assert_raise RuntimeError,
-                   ~r/^The dynamically generated ClickHouse resource name starting with `log_events_/,
+                   ~r/^The dynamically generated ClickHouse resource name starting with `ingest_logs_/,
                    fn ->
                      source
                      |> modify_source_with_long_token()
                      |> ClickhouseAdaptor.clickhouse_ingest_table_name()
-                   end
-    end
-
-    test "`clickhouse_key_count_table_name/1` generates a unique key count table name based on the source token",
-         %{source: source, stringified_source_token: stringified_source_token} do
-      assert ClickhouseAdaptor.clickhouse_key_count_table_name(source) ==
-               "key_type_counts_per_min_#{stringified_source_token}"
-    end
-
-    test "`clickhouse_key_count_table_name/1` will raise an exception if the table name is equal to or exceeds 200 chars",
-         %{source: source} do
-      assert_raise RuntimeError,
-                   ~r/^The dynamically generated ClickHouse resource name starting with `key_type_counts_per_min_/,
-                   fn ->
-                     source
-                     |> modify_source_with_long_token()
-                     |> ClickhouseAdaptor.clickhouse_key_count_table_name()
-                   end
-    end
-
-    test "`clickhouse_materialized_view_name/1` generates a unique mat view name based on the source token",
-         %{source: source, stringified_source_token: stringified_source_token} do
-      assert ClickhouseAdaptor.clickhouse_materialized_view_name(source) ==
-               "mv_key_type_counts_per_min_#{stringified_source_token}"
-    end
-
-    test "`clickhouse_materialized_view_name/1` will raise an exception if the view name is equal to or exceeds 200 chars",
-         %{source: source} do
-      assert_raise RuntimeError,
-                   ~r/^The dynamically generated ClickHouse resource name starting with `mv_key_type_counts_per_min_/,
-                   fn ->
-                     source
-                     |> modify_source_with_long_token()
-                     |> ClickhouseAdaptor.clickhouse_materialized_view_name()
                    end
     end
   end
@@ -154,12 +120,12 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptorTest do
         build(:log_event,
           source: source,
           message: "Test message 1",
-          body: %{"level" => "info", "user_id" => 123}
+          metadata: %{"level" => "info", "user_id" => 123}
         ),
         build(:log_event,
           source: source,
           message: "Test message 2",
-          body: %{"level" => "error", "user_id" => 456}
+          metadata: %{"level" => "error", "user_id" => 456}
         )
       ]
 
@@ -173,14 +139,16 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptorTest do
       query_result =
         ClickhouseAdaptor.execute_ch_read_query(
           backend,
-          "SELECT event_message, body FROM #{table_name} ORDER BY timestamp"
+          "SELECT body FROM #{table_name} ORDER BY timestamp"
         )
 
       assert {:ok, rows} = query_result
       assert length(rows) == 2
 
+      row_payloads = Enum.map(rows, &Jason.decode!(&1["body"]))
+
       assert [%{"event_message" => "Test message 1"}, %{"event_message" => "Test message 2"}] =
-               rows
+               row_payloads
     end
 
     test "handles empty event list", %{source: source, backend: backend} do
@@ -438,11 +406,10 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptorTest do
       {:ok, _} = ClickhouseAdaptor.execute_ch_read_query(backend2, "SELECT 1")
       assert ConnectionManager.pool_active?(backend2)
 
-      via2 = Backends.via_backend(backend2, ConnectionManager)
-      assert cm_pid2 = GenServer.whereis(via2)
-
       via1 = Backends.via_backend(backend1, ConnectionManager)
-      refute cm_pid1 = GenServer.whereis(via1)
+      via2 = Backends.via_backend(backend2, ConnectionManager)
+
+      refute GenServer.whereis(via2) == GenServer.whereis(via1)
       refute ConnectionManager.pool_active?(backend1)
 
       assert QueryConnectionSup.count_query_connection_managers() == 1

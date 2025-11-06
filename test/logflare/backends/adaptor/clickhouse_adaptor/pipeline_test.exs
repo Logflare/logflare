@@ -160,10 +160,12 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.PipelineTest do
       {:ok, query_result} =
         ClickhouseAdaptor.execute_ch_read_query(
           backend,
-          "SELECT event_message FROM #{table_name} ORDER BY event_message"
+          "SELECT body FROM #{table_name} ORDER BY timestamp DESC"
         )
 
       assert length(query_result) == 2
+
+      query_result = Enum.map(query_result, &Jason.decode!(&1["body"]))
 
       [first_row, second_row] = query_result
       assert first_row["event_message"] == "Another message"

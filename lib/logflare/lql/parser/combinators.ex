@@ -45,7 +45,20 @@ defmodule Logflare.Lql.Parser.Combinators do
             ?(,
             ?),
             ?{,
-            ?}
+            ?},
+            ?#,
+            ?&,
+            ?*,
+            ?-,
+            ?/,
+            ?<,
+            ?=,
+            ?>,
+            ?@,
+            ?;,
+            ?,,
+            # ?|
+            124
           ])
         ]),
         min: 1
