@@ -184,6 +184,16 @@ defmodule Logflare.Application do
          ]
        }},
       {Finch,
+       name: Logflare.FinchClickhouseIngest,
+       pools: %{
+         default: [
+           protocols: [:http1],
+           size: max(base, 20),
+           count: http1_count,
+           start_pool_metrics?: true
+         ]
+       }},
+      {Finch,
        name: Logflare.FinchDefault,
        pools:
          %{
