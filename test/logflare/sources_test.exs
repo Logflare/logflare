@@ -457,7 +457,7 @@ defmodule Logflare.SourcesTest do
       assert {:ok, pid} = Backends.lookup(SourceSup, source)
       assert [{^pid, _}] = Registry.lookup(SourceRegistry, {source.id, SourceSup})
 
-      assert :ok = SourceSupervisor.stop_source_local(source)
+      assert :ok = Source.Supervisor.stop_source_local(source)
       Process.sleep(100)
 
       refute Process.alive?(pid)
