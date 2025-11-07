@@ -28,6 +28,8 @@ jobs:
     - uses: actions/setup-node@v4
       with:
         node-version: lts/*
+        cache: npm
+        cache-dependency-path: e2e/supabase/package-lock.json
 
     - name: Setup Supabase services
       run: bash ./setup-supabase-services.sh
