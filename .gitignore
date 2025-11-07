@@ -80,7 +80,7 @@ gcloud_prod.json
 .*.gcloud.json
 
 supabase/
-!e2e/supabase/
+!test/e2e/supabase/
 
 examples/**/.dev.vars
 examples/**/node_modules

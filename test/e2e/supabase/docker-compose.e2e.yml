@@ -2,7 +2,7 @@ services:
   analytics:
     image: supabase/logflare:local
     build:
-      context: ../../../..
+      context: ../../../../..
       dockerfile: ./Dockerfile
       tags:
         - "supabase/logflare:latest"
