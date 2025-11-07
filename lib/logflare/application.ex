@@ -104,13 +104,8 @@ defmodule Logflare.Application do
 
         # Startup tasks after v2 pipeline started
         {Task, fn -> startup_tasks() end},
-
-        # citrine scheduler for alerts
         Logflare.Alerting.Supervisor,
-
-        # quantum scheduler for periodic tasks
         Logflare.Scheduler,
-
         # active users tracking for UserMetricsPoller
         {Logflare.ActiveUserTracker,
          [name: Logflare.ActiveUserTracker, pubsub_server: Logflare.PubSub]}

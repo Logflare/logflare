@@ -153,11 +153,11 @@ config :logflare, Logflare.Alerting.AlertsScheduler,
   init_task: {Logflare.Alerting, :init_alert_jobs, []}
 
 config :logflare, Logflare.Scheduler,
+  run_strategy: Quantum.RunStrategy.Local,
   jobs: [
     source_cleanup: [
-      schedule: "*/15 * * * *",
-      task: {Logflare.Sources, :shutdown_idle_sources, []},
-      run_strategy: Quantum.RunStrategy.All
+      schedule: "* * * * *",
+      task: {Logflare.Sources, :shutdown_idle_sources, []}
     ]
   ]
 
