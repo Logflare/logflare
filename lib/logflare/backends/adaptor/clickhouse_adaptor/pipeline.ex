@@ -15,8 +15,8 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.Pipeline do
 
   @producer_concurrency 1
   @processor_concurrency 5
-  @batcher_concurrency 5
-  @batch_size 1_000
+  @batcher_concurrency 10
+  @batch_size 1_500
 
   @doc false
   def child_spec(arg) do
@@ -36,16 +36,20 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.Pipeline do
 
     Broadway.start_link(__MODULE__,
       name: name,
+        hibernate_after: 5_000,
+        spawn_opt: [
+        fullsweep_after: 15
+      ],
       producer: [
         module: {BufferProducer, [source_id: source.id, backend_id: backend.id]},
         transformer: {__MODULE__, :transform, []},
         concurrency: @producer_concurrency
       ],
       processors: [
-        default: [concurrency: @processor_concurrency, min_demand: 1]
+        default: [concurrency: @processor_concurrency, min_demand: 1, max_demand: 100]
       ],
       batchers: [
-        ch: [concurrency: @batcher_concurrency, batch_size: @batch_size]
+        ch: [concurrency: @batcher_concurrency, batch_size: @batch_size, batch_timeout: 1_500]
       ],
       context: %{
         source_id: source.id,
