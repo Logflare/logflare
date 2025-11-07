@@ -109,8 +109,10 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
   def ack({queue, source_token}, successful, _failed) do
     # TODO: re-queue failed
     metrics = Sources.get_source_metrics_for_ingest(source_token)
+    {_sid, bid, _tid} = queue
 
-    if metrics.avg > 100 do
+    # delete immediately if not default backend or if avg rate is above 100
+    if metrics.avg > 100 or bid != nil do
       for %{data: le} <- successful do
         IngestEventQueue.delete(queue, le)
       end
