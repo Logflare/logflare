@@ -58,7 +58,7 @@ jobs:
 
     - name: Run Playwright tests (all browsers)
       if: ${{ github.event_name != 'pull_request' }}
-      run: npx playwright test --project chromium --project firefox --project webkit
+      run: npx playwright test
 
     - name: Run Playwright tests (only Chromium)
       if: ${{ github.event_name == 'pull_request' }}

@@ -49,8 +49,11 @@ if [ ! -f ".env.example" ]; then
 fi
 cp .env.example .env
 
+log "Build logflare image..."
+docker compose -f docker-compose.yml -f ../../docker-compose.e2e.yml build analytics
+
 log "Starting Supabase stack (inside docker containers)..."
-docker compose -f docker-compose.yml -f ../../docker-compose.e2e.yml up --build -d
+docker compose -f docker-compose.yml -f ../../docker-compose.e2e.yml up -d
 
 log "Supabase stack is up! Access Supabase studio via ${CYAN}http://localhost:8000${RESET}"
 log "Run E2E tests with '${GREEN}npm run playwright:test${RESET}'"
