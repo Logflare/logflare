@@ -27,7 +27,6 @@ defmodule Logflare.Backends.UserMonitoringTest do
     [source: source, source_b: source_b, user: user]
   end
 
-
   describe "logs" do
     setup :source_and_user
 
