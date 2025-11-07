@@ -30,8 +30,8 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.ConnectionManager do
   Starts a ClickHouse connection manager process for query operations.
   """
   @spec start_link(Backend.t()) :: GenServer.on_start()
-  def start_link(%Backend{} = backend) do
-    GenServer.start_link(__MODULE__, backend, name: connection_manager_via(backend))
+  def start_link(%Backend{id: backend_id} = backend) do
+    GenServer.start_link(__MODULE__, backend_id, name: connection_manager_via(backend))
   end
 
   @doc false
@@ -90,7 +90,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.ConnectionManager do
   end
 
   @impl true
-  def init(%Backend{id: backend_id}) do
+  def init(backend_id) do
     resolve_timer_ref = Process.send_after(self(), :resolve_connections, @resolve_interval)
 
     initial_state = %__MODULE__{
