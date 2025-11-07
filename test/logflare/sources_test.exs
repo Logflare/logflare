@@ -10,6 +10,8 @@ defmodule Logflare.SourcesTest do
   alias Logflare.Backends
   alias Logflare.Users
   alias Logflare.Sources.Source.BigQuery.Schema
+  alias Logflare.Backends.SourceRegistry
+  alias Logflare.Backends.SourceSup
 
   describe "create_source/2" do
     setup do
@@ -439,6 +441,42 @@ defmodule Logflare.SourcesTest do
       result_ids = Enum.map(results, & &1.id) |> Enum.sort()
       expected_ids = [source1.id, source2.id] |> Enum.sort()
       assert result_ids == expected_ids
+    end
+  end
+
+  describe "stop_source_local/1" do
+    setup do
+      insert(:plan)
+      user = insert(:user)
+      source = insert(:source, user_id: user.id)
+      {:ok, source: source}
+    end
+
+    test "stops SourceSup and doesn't restart", %{source: source} do
+      assert :ok = Backends.start_source_sup(source)
+      assert {:ok, pid} = Backends.lookup(SourceSup, source)
+      assert [{^pid, _}] = Registry.lookup(SourceRegistry, {source.id, SourceSup})
+
+      assert :ok = SourceSupervisor.stop_source_local(source)
+      Process.sleep(100)
+
+      refute Process.alive?(pid)
+      assert [] = Registry.lookup(SourceRegistry, {source.id, SourceSup})
+      assert {:error, :not_started} = Backends.lookup(SourceSup, source)
+    end
+
+    test "abnormal exit restarts SourceSup", %{source: source} do
+      assert :ok = Backends.start_source_sup(source)
+      assert {:ok, pid} = Backends.lookup(SourceSup, source)
+
+      Logflare.Utils.try_to_stop_process(pid, :abnormal)
+
+      refute Process.alive?(pid)
+
+      TestUtils.retry_assert(fn ->
+        assert {:ok, pid2} = Backends.lookup(SourceSup, source)
+        assert pid != pid2
+      end)
     end
   end
 end

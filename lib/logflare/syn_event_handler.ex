@@ -45,7 +45,7 @@ defmodule Logflare.SynEventHandler do
         Logger.debug(message)
       end
 
-      try_to_stop_process(to_stop)
+      Logflare.Utils.try_to_stop_process(to_stop, :syn_resolve_kill)
     end
 
     original
@@ -72,17 +72,5 @@ defmodule Logflare.SynEventHandler do
     else
       {pid2, pid1}
     end
-  end
-
-  def try_to_stop_process(pid) do
-    GenServer.stop(pid)
-    :ok
-  rescue
-    _ ->
-      Process.exit(pid, :syn_resolve_kill)
-      :ok
-  catch
-    :exit, _ ->
-      :noop
   end
 end

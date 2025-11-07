@@ -652,7 +652,7 @@ defmodule Logflare.Backends do
   def start_source_sup(%Source{} = source) do
     case DynamicSupervisor.start_child(
            {:via, PartitionSupervisor, {SourcesSup, source.id}},
-           {SourceSup, source}
+           SourceSup.child_spec(source)
          ) do
       {:ok, _pid} ->
         :ok

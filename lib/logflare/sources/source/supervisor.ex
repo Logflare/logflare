@@ -209,10 +209,7 @@ defmodule Logflare.Sources.Source.Supervisor do
 
   def stop_source_local(%Source{} = source) do
     with {:ok, pid} <- do_lookup(source) do
-      DynamicSupervisor.terminate_child(
-        {:via, PartitionSupervisor, {Backends.SourcesSup, source.id}},
-        pid
-      )
+      Logflare.Utils.try_to_stop_process(pid, :shutdown)
     end
 
     :ok
