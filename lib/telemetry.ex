@@ -272,7 +272,7 @@ defmodule Logflare.Telemetry do
     ]
   end
 
-  defp keep_metric_function(metadata) do
+  def keep_metric_function(metadata) do
     case Users.get_related_user_id(metadata) do
       nil -> true
       user_id -> !Users.Cache.get(user_id).system_monitoring
