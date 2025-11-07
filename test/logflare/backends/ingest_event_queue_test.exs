@@ -273,6 +273,52 @@ defmodule Logflare.Backends.IngestEventQueueTest do
     assert IngestEventQueue.total_pending(table) == 0
   end
 
+  test "QueueJanitor leaves remainder of :ingested events if default backend" do
+    user = insert(:user)
+    source = insert(:source, user: user)
+    pid = self()
+
+    table = {source.id, nil, pid}
+
+    IngestEventQueue.upsert_tid(table)
+    le = build(:log_event, source: source)
+    IngestEventQueue.add_to_table(table, [le])
+    IngestEventQueue.mark_ingested(table, [le])
+    assert IngestEventQueue.get_table_size(table) == 1
+
+    start_supervised!(
+      {QueueJanitor,
+       source: source, backend: %Backends.Backend{id: nil}, interval: 50, remainder: 10}
+    )
+
+    :timer.sleep(550)
+    assert IngestEventQueue.get_table_size(table) == 1
+    assert IngestEventQueue.total_pending(table) == 0
+  end
+
+  test "QueueJanitor cleans up all :ingested events if not default backend" do
+    user = insert(:user)
+    source = insert(:source, user: user)
+    backend = insert(:backend, user: user)
+    pid = self()
+
+    table = {source.id, backend.id, pid}
+
+    IngestEventQueue.upsert_tid(table)
+    le = build(:log_event, source: source)
+    IngestEventQueue.add_to_table(table, [le])
+    IngestEventQueue.mark_ingested(table, [le])
+    assert IngestEventQueue.get_table_size(table) == 1
+
+    start_supervised!(
+      {QueueJanitor, source: source, backend: backend, interval: 50, remainder: 10}
+    )
+
+    :timer.sleep(550)
+    assert IngestEventQueue.get_table_size(table) == 0
+    assert IngestEventQueue.total_pending(table) == 0
+  end
+
   test "QueueJanitor purges if exceeds max" do
     user = insert(:user)
     source = insert(:source, user: user)
