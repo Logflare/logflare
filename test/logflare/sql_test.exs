@@ -508,8 +508,7 @@ defmodule Logflare.SqlTest do
         )
       ]
 
-      assert {:ok, %Ch.Result{}} =
-               ClickhouseAdaptor.insert_log_events({source, backend}, log_events)
+      assert :ok = ClickhouseAdaptor.insert_log_events({source, backend}, log_events)
 
       Process.sleep(200)
 

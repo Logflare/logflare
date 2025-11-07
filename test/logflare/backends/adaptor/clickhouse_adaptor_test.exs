@@ -73,23 +73,16 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptorTest do
       assert :ok = result
     end
 
-    test "can execute ingest queries", %{source: source, backend: backend} do
+    test "can execute queries", %{backend: backend} do
       result =
-        ClickhouseAdaptor.execute_ch_ingest_query({source, backend}, "SELECT 1 as test")
+        ClickhouseAdaptor.execute_ch_query(backend, "SELECT 1 as test")
 
-      assert {:ok, %Ch.Result{rows: [[1]]}} = result
-    end
-
-    test "can execute read queries", %{backend: backend} do
-      result =
-        ClickhouseAdaptor.execute_ch_read_query(backend, "SELECT 2 as test")
-
-      assert {:ok, [%{"test" => 2}]} = result
+      assert {:ok, [%{"test" => 1}]} = result
     end
 
     test "handles query errors", %{backend: backend} do
       result =
-        ClickhouseAdaptor.execute_ch_read_query(backend, "INVALID SQL QUERY")
+        ClickhouseAdaptor.execute_ch_query(backend, "INVALID SQL QUERY")
 
       assert {:error, _} = result
     end
@@ -130,14 +123,14 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptorTest do
       ]
 
       result = ClickhouseAdaptor.insert_log_events({source, backend}, log_events)
-      assert {:ok, %Ch.Result{}} = result
+      assert :ok = result
 
       Process.sleep(100)
 
       table_name = ClickhouseAdaptor.clickhouse_ingest_table_name(source)
 
       query_result =
-        ClickhouseAdaptor.execute_ch_read_query(
+        ClickhouseAdaptor.execute_ch_query(
           backend,
           "SELECT body FROM #{table_name} ORDER BY timestamp"
         )
@@ -153,7 +146,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptorTest do
 
     test "handles empty event list", %{source: source, backend: backend} do
       result = ClickhouseAdaptor.insert_log_events({source, backend}, [])
-      assert {:ok, %Ch.Result{}} = result
+      assert :ok = result
     end
   end
 
@@ -240,7 +233,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptorTest do
       backend: backend,
       source2: source2
     } do
-      {:ok, _} = ClickhouseAdaptor.execute_ch_read_query(backend, "SELECT 1")
+      {:ok, _} = ClickhouseAdaptor.execute_ch_query(backend, "SELECT 1")
 
       initial_manager_via = Backends.via_backend(backend, ConnectionManager)
       initial_manager_pid = GenServer.whereis(initial_manager_via)
@@ -357,12 +350,11 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptorTest do
       backend: backend
     } do
       via = Backends.via_backend(backend, ConnectionManager)
-      refute GenServer.whereis(via)
 
       results =
         for i <- 1..10 do
           Task.async(fn ->
-            ClickhouseAdaptor.execute_ch_read_query(backend, "SELECT #{i} as result")
+            ClickhouseAdaptor.execute_ch_query(backend, "SELECT #{i} as result")
           end)
         end
         |> Task.await_many(1_000)
@@ -377,7 +369,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptorTest do
     end
 
     test "`ConnectionManager` restarts if it crashes", %{backend: backend} do
-      {:ok, _} = ClickhouseAdaptor.execute_ch_read_query(backend, "SELECT 1")
+      {:ok, _} = ClickhouseAdaptor.execute_ch_query(backend, "SELECT 1")
 
       via = Backends.via_backend(backend, ConnectionManager)
       assert original_pid = GenServer.whereis(via)
@@ -386,7 +378,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptorTest do
 
       TestUtils.retry_assert(fn ->
         assert {:ok, [%{"result" => 2}]} =
-                 ClickhouseAdaptor.execute_ch_read_query(backend, "SELECT 2 as result")
+                 ClickhouseAdaptor.execute_ch_query(backend, "SELECT 2 as result")
 
         assert new_pid = GenServer.whereis(via)
         assert new_pid != original_pid
@@ -398,42 +390,18 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptorTest do
       source: source,
       backend: backend1
     } do
-      assert QueryConnectionSup.count_query_connection_managers() == 0
       {_source2, backend2, cleanup_fn2} = setup_clickhouse_test(source: source)
       on_exit(cleanup_fn2)
       start_supervised!({ClickhouseAdaptor, {source, backend2}}, id: :adaptor2)
 
-      {:ok, _} = ClickhouseAdaptor.execute_ch_read_query(backend2, "SELECT 1")
+      {:ok, _} = ClickhouseAdaptor.execute_ch_query(backend2, "SELECT 1")
       assert ConnectionManager.pool_active?(backend2)
 
       via1 = Backends.via_backend(backend1, ConnectionManager)
       via2 = Backends.via_backend(backend2, ConnectionManager)
 
       refute GenServer.whereis(via2) == GenServer.whereis(via1)
-      refute ConnectionManager.pool_active?(backend1)
-
-      assert QueryConnectionSup.count_query_connection_managers() == 1
-    end
-
-    test "ingest and read pools are truly independent", %{source: source, backend: backend} do
-      ingest_via = Backends.via_source(source, ConnectionManager, backend.id)
-      assert ingest_cm_pid = GenServer.whereis(ingest_via)
-
-      {:ok, _} = ClickhouseAdaptor.execute_ch_read_query(backend, "SELECT 1")
-      query_via = Backends.via_backend(backend, ConnectionManager)
-      assert query_cm_pid = GenServer.whereis(query_via)
-
-      refute ingest_cm_pid == query_cm_pid,
-             "Ingest and query ConnectionManagers should be separate processes"
-
-      Process.exit(ingest_cm_pid, :kill)
-
-      TestUtils.retry_assert(fn ->
-        assert Process.alive?(query_cm_pid)
-      end)
-
-      assert {:ok, [%{"result" => 2}]} =
-               ClickhouseAdaptor.execute_ch_read_query(backend, "SELECT 2 as result")
+      assert QueryConnectionSup.count_query_connection_managers() >= 1
     end
   end
 

@@ -13,6 +13,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
   require Logger
 
   alias __MODULE__.ConnectionManager
+  alias __MODULE__.Ingester
   alias __MODULE__.Pipeline
   alias __MODULE__.Provisioner
   alias __MODULE__.QueryTemplates
@@ -92,7 +93,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
 
   def execute_query(%Backend{} = backend, {query_string, params}, _opts)
       when is_non_empty_binary(query_string) and is_list(params) do
-    case execute_ch_read_query(backend, query_string, params) do
+    case execute_ch_query(backend, query_string, params) do
       {:ok, result} -> {:ok, result}
       error -> error
     end
@@ -163,11 +164,11 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
   def test_connection({%Source{} = source, %Backend{} = backend}) do
     sql_statement = QueryTemplates.grant_check_statement()
 
-    case execute_ch_ingest_query({source, backend}, sql_statement) do
-      {:ok, %Ch.Result{command: :check, rows: [[1]]}} ->
+    case execute_ch_query(backend, sql_statement) do
+      {:ok, [%{"result" => 1}]} ->
         :ok
 
-      {:ok, %Ch.Result{command: :check, rows: [[0]]}} ->
+      {:ok, [%{"result" => 0}]} ->
         Logger.warning(
           "ClickHouse GRANT check failed. Required: `CREATE TABLE`, `ALTER TABLE`, `INSERT`, `SELECT`, `DROP TABLE`, `CREATE VIEW`, `DROP VIEW`",
           source_token: source.token,
@@ -190,7 +191,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
   def test_connection(%Backend{} = backend) do
     sql_statement = QueryTemplates.grant_check_statement()
 
-    case execute_ch_read_query(backend, sql_statement) do
+    case execute_ch_query(backend, sql_statement) do
       {:ok, [%{"result" => 1}]} ->
         :ok
 
@@ -268,42 +269,19 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
   end
 
   @doc """
-  Executes a raw ClickHouse query using the ingest connection pool.
-
-  This function is for write operations like inserts, DDL statements, and provisioning.
-  """
-  @spec execute_ch_ingest_query(
-          source_backend_tuple(),
-          statement :: iodata(),
-          params :: map | [term] | [row :: [term]] | iodata | Enumerable.t(),
-          [Ch.query_option()]
-        ) :: {:ok, Ch.Result.t()} | {:error, Exception.t()}
-  def execute_ch_ingest_query(source_backend, statement, params \\ [], opts \\ [])
-
-  def execute_ch_ingest_query({%Source{}, %Backend{}} = source_backend, statement, params, opts)
-      when is_list(params) and is_list(opts) do
-    ConnectionManager.ensure_pool_started(source_backend)
-    ConnectionManager.notify_activity(source_backend)
-
-    source_backend
-    |> connection_pool_via()
-    |> Ch.query(statement, params, opts)
-  end
-
-  @doc """
   Executes a raw ClickHouse query using the query connection pool.
 
   This function is for read operations like SELECT queries and analytics.
   """
-  @spec execute_ch_read_query(
+  @spec execute_ch_query(
           Backend.t(),
           statement :: iodata(),
           params :: map | [term] | [row :: [term]] | iodata | Enumerable.t(),
           [Ch.query_option()]
         ) :: {:ok, Ch.Result.t()} | {:error, Exception.t()}
-  def execute_ch_read_query(backend, statement, params \\ [], opts \\ [])
+  def execute_ch_query(backend, statement, params \\ [], opts \\ [])
 
-  def execute_ch_read_query(%Backend{} = backend, statement, params, opts)
+  def execute_ch_query(%Backend{} = backend, statement, params, opts)
       when is_list_or_map(params) and is_list(opts) do
     with :ok <- ensure_query_connection_manager_started(backend) do
       pool_via = connection_pool_via(backend)
@@ -337,44 +315,22 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
   @doc """
   Inserts a single `LogEvent` struct into the given source backend table.
 
-  See `insert_log_events/2` and `insert_log_events/3` for additional details.
+  See `insert_log_events/2` for additional details.
   """
-  @spec insert_log_event(source_backend_tuple(), LogEvent.t()) ::
-          {:ok, Ch.Result.t()} | {:error, Exception.t()}
+  @spec insert_log_event(source_backend_tuple(), LogEvent.t()) :: :ok | {:error, String.t()}
   def insert_log_event({%Source{} = source, %Backend{} = backend}, %LogEvent{} = le),
     do: insert_log_events({source, backend}, [le])
 
   @doc """
   Inserts a list of `LogEvent` structs into a given source backend table.
-
-  See `execute_ch_query/4` for additional details.
   """
-  @spec insert_log_events(source_backend_tuple(), [LogEvent.t()]) ::
-          {:ok, Ch.Result.t()} | {:error, Exception.t()}
-  def insert_log_events({%Source{} = source, %Backend{}} = source_backend, events)
-      when is_list(events) do
+  @spec insert_log_events(source_backend_tuple(), [LogEvent.t()]) :: :ok | {:error, String.t()}
+  def insert_log_events({%Source{}, %Backend{}}, []), do: :ok
+
+  def insert_log_events({%Source{} = source, %Backend{} = backend}, [%LogEvent{} | _] = events) do
     table_name = clickhouse_ingest_table_name(source)
 
-    event_params =
-      Enum.map(events, fn %LogEvent{} = log_event ->
-        [
-          log_event.body["id"],
-          Jason.encode!(log_event.body),
-          DateTime.from_unix!(log_event.body["timestamp"], :microsecond)
-        ]
-      end)
-
-    opts = [
-      names: ["id", "body", "timestamp"],
-      types: ["UUID", "String", "DateTime64(6)"]
-    ]
-
-    execute_ch_ingest_query(
-      source_backend,
-      "INSERT INTO #{table_name} FORMAT RowBinaryWithNamesAndTypes",
-      event_params,
-      opts
-    )
+    Ingester.insert(backend, table_name, events)
   end
 
   @doc """
@@ -382,13 +338,13 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
   """
   @spec provision_ingest_table(source_backend_tuple()) ::
           {:ok, Ch.Result.t()} | {:error, Exception.t()}
-  def provision_ingest_table({%Source{} = source, %Backend{}} = args) do
+  def provision_ingest_table({%Source{} = source, %Backend{} = backend}) do
     with table_name <- clickhouse_ingest_table_name(source),
          statement <-
            QueryTemplates.create_log_ingest_table_statement(table_name,
              ttl_days: source.retention_days
            ) do
-      execute_ch_ingest_query(args, statement)
+      execute_ch_query(backend, statement)
     end
   end
 
@@ -406,7 +362,6 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
   @impl Supervisor
   def init({%Source{} = source, %Backend{} = backend} = args) do
     children = [
-      ConnectionManager.child_spec({source, backend}),
       Provisioner.child_spec(args),
       {
         DynamicPipeline,
@@ -537,7 +492,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
     converted_query = convert_query_params(query_string, declared_params)
     ch_params = Map.take(input_params, declared_params)
 
-    case execute_ch_read_query(backend, converted_query, ch_params) do
+    case execute_ch_query(backend, converted_query, ch_params) do
       {:ok, result} -> {:ok, result}
       error -> error
     end
