@@ -52,10 +52,13 @@ defmodule Logflare.Backends.UserMonitoring do
     fn metadata ->
       case Users.get_related_user_id(metadata) do
         nil -> false
-        user_id -> user_id == source.user_id
+        user_id -> user_id == source.user_id && user_monitoring?(user_id)
       end
     end
   end
+
+  defp user_monitoring?(user_id),
+    do: Users.Cache.get(user_id).system_monitoring
 
   defp generate_exporter_callback(source) do
     fn {:metrics, metrics}, config ->
