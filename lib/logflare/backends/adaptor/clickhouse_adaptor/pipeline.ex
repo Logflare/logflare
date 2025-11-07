@@ -36,8 +36,8 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.Pipeline do
 
     Broadway.start_link(__MODULE__,
       name: name,
-        hibernate_after: 5_000,
-        spawn_opt: [
+      hibernate_after: 5_000,
+      spawn_opt: [
         fullsweep_after: 15
       ],
       producer: [
