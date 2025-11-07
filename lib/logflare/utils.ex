@@ -317,4 +317,20 @@ defmodule Logflare.Utils do
   from mocking the :ets module
   """
   def ets_info(table), do: :ets.info(table)
+
+  @doc """
+  Tries to stop a process gracefully. If it fails, it sends a signal to the process.
+  """
+  @spec try_to_stop_process(pid(), atom()) :: :ok | :noop
+  def try_to_stop_process(pid, signal \\ :shutdown) do
+    GenServer.stop(pid, signal, 5_000)
+    :ok
+  rescue
+    _ ->
+      Process.exit(pid, signal)
+      :ok
+  catch
+    :exit, _ ->
+      :noop
+  end
 end
