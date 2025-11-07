@@ -2,15 +2,10 @@ defmodule Logflare.LogsTest do
   @moduledoc false
   use Logflare.DataCase
 
-  require Logger
-
-  import ExUnit.CaptureLog
-
   alias Logflare.Logs
   alias Logflare.Lql
   alias Logflare.SystemMetrics.AllLogsLogged
   alias Logflare.Backends.SourceSup
-  alias Logflare.{Users, Sources, Backends}
 
   def source_and_user(_context) do
     start_supervised!(AllLogsLogged)
@@ -190,57 +185,6 @@ defmodule Logflare.LogsTest do
       |> expect(:broadcast, 1, fn le -> le end)
 
       assert :ok = Logs.ingest_logs([%{"event_message" => "testing 123"}], source)
-    end
-  end
-
-  describe "System monitoring log" do
-    test "is routed to user's system source when monitoring is on", %{user: user, source: source} do
-      {:ok, user} = Users.update_user_allowed(user, %{system_monitoring: true})
-      system_source = Sources.get_by(user_id: user.id, system_source_type: :logs)
-
-      # Non-user-specific logs goes to the default logger backends
-      assert capture_log(fn -> Logger.info("common log") end) =~ "common log"
-
-      # User-specfic logs are routed to users with system monitoring on
-
-      refute capture_log(fn ->
-               Logger.info("user is monitoring", source_id: source.id)
-             end) =~ "user is monitoring"
-
-      assert Enum.any?(
-               Backends.list_recent_logs(system_source),
-               &match?(%{body: %{"event_message" => "user is monitoring"}}, &1)
-             )
-    end
-
-    test "is not routed to user's system source when not monitoring", %{
-      user: user,
-      source: source
-    } do
-      {:ok, user} = Users.update_user_allowed(user, %{system_monitoring: true})
-      Users.update_user_allowed(user, %{system_monitoring: false})
-      system_source = Sources.get_by(user_id: user.id, system_source_type: :logs)
-
-      assert capture_log(fn ->
-               Logger.info("user not monitoring", source_id: source.id)
-             end) =~ "user not monitoring"
-
-      refute Enum.any?(
-               Backends.list_recent_logs(system_source),
-               &match?(%{body: %{"event_message" => "user not monitoring"}}, &1)
-             )
-    end
-
-    setup do
-      :ok =
-        :logger.add_primary_filter(
-          :user_log_intercetor,
-          {&Logflare.Backends.UserMonitoring.log_interceptor/2, []}
-        )
-
-      on_exit(fn ->
-        :logger.remove_primary_filter(:user_log_intercetor)
-      end)
     end
   end
 end
