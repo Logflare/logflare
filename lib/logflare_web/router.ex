@@ -72,7 +72,6 @@ defmodule LogflareWeb.Router do
     plug(:accepts, ["json", "bert"])
     plug(LogflareWeb.Plugs.SetHeaders)
     plug(OpenApiSpex.Plug.PutApiSpec, module: LogflareWeb.ApiSpec)
-    plug(LogflareWeb.Plugs.BlockSystemSource)
   end
 
   pipeline :otlp_api do

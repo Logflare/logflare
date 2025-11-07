@@ -36,6 +36,8 @@ defmodule LogflareWeb.LogController do
     when action in [:browser_reports, :generic_json, :create]
   )
 
+  plug(LogflareWeb.Plugs.BlockSystemSource)
+
   @message "Logged!"
 
   operation(:create,
