@@ -188,7 +188,7 @@ defmodule Logflare.Application do
        pools: %{
          default: [
            protocols: [:http1],
-           size: max(base, 20),
+           size: max(base * 125, 150),
            count: http1_count,
            start_pool_metrics?: true
          ]
