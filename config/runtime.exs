@@ -22,7 +22,7 @@ logflare_metadata =
 logflare_health =
   [
     memory_utilization:
-      System.get_env("LOGFLARE_HEALTH_MAX_MEMORY_UTILIZATION", "0.95") |> String.to_float()
+      System.get_env("LOGFLARE_HEALTH_MAX_MEMORY_UTILIZATION", "0.80") |> String.to_float()
   ]
   |> filter_nil_kv_pairs.()
 
