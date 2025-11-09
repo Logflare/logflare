@@ -21,6 +21,14 @@ defmodule Logflare.Backends.SourceSup do
   alias Logflare.Sources
   alias Logflare.Backends.AdaptorSupervisor
 
+  def child_spec(%Source{id: id} = arg) do
+    %{
+      id: {__MODULE__, id},
+      start: {__MODULE__, :start_link, [arg]},
+      restart: :transient
+    }
+  end
+
   def start_link(%Source{} = source) do
     Supervisor.start_link(__MODULE__, source, name: Backends.via_source(source, __MODULE__))
   end

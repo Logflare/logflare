@@ -68,7 +68,7 @@ defmodule Logflare.Backends.RecentEventsTouch do
   end
 
   def terminate(reason, _state) do
-    Logger.info("[#{__MODULE__}] Going Down: #{inspect(reason)}")
+    Logger.debug("[#{__MODULE__}] Going Down: #{inspect(reason)}")
     reason
   end
 

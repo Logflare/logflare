@@ -168,8 +168,8 @@ defmodule Logflare.DataCase do
 
     for table_name <- table_names do
       try do
-        Logflare.Backends.Adaptor.ClickhouseAdaptor.execute_ch_ingest_query(
-          {source, backend},
+        Logflare.Backends.Adaptor.ClickhouseAdaptor.execute_ch_query(
+          backend,
           "DROP TABLE IF EXISTS #{table_name}"
         )
       rescue

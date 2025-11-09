@@ -152,6 +152,15 @@ config :logflare, Logflare.Cluster.Utils, min_cluster_size: 1
 config :logflare, Logflare.Alerting.AlertsScheduler,
   init_task: {Logflare.Alerting, :init_alert_jobs, []}
 
+config :logflare, Logflare.Scheduler,
+  run_strategy: Quantum.RunStrategy.Local,
+  jobs: [
+    source_cleanup: [
+      schedule: "*/5 * * * *",
+      task: {Logflare.Sources, :shutdown_idle_sources, []}
+    ]
+  ]
+
 config :opentelemetry,
   sdk_disabled: true,
   span_processor: :batch,

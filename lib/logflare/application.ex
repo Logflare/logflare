@@ -104,10 +104,8 @@ defmodule Logflare.Application do
 
         # Startup tasks after v2 pipeline started
         {Task, fn -> startup_tasks() end},
-
-        # citrine scheduler for alerts
         Logflare.Alerting.Supervisor,
-
+        Logflare.Scheduler,
         # active users tracking for UserMetricsPoller
         {Logflare.ActiveUserTracker,
          [name: Logflare.ActiveUserTracker, pubsub_server: Logflare.PubSub]}
@@ -181,6 +179,16 @@ defmodule Logflare.Application do
                max_frame_size: 8_000_000
              ]
            ]
+         ]
+       }},
+      {Finch,
+       name: Logflare.FinchClickhouseIngest,
+       pools: %{
+         default: [
+           protocols: [:http1],
+           size: max(base * 125, 150),
+           count: http1_count,
+           start_pool_metrics?: true
          ]
        }},
       {Finch,

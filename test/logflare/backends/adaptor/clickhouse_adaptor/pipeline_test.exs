@@ -3,7 +3,6 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.PipelineTest do
 
   alias Broadway.Message
   alias Logflare.Backends.Adaptor.ClickhouseAdaptor
-  alias Logflare.Backends.Adaptor.ClickhouseAdaptor.ConnectionManager
   alias Logflare.Backends.Adaptor.ClickhouseAdaptor.Pipeline
 
   setup do
@@ -22,12 +21,9 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.PipelineTest do
 
     Process.sleep(200)
 
-    :ok = ConnectionManager.ensure_pool_started({source, backend})
-
     adaptor_state = %{
       source: source,
-      backend: backend,
-      ingest_connection: ClickhouseAdaptor.connection_pool_via({source, backend})
+      backend: backend
     }
 
     context = %{
@@ -102,7 +98,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.PipelineTest do
       table_name = ClickhouseAdaptor.clickhouse_ingest_table_name(source)
 
       {:ok, query_result} =
-        ClickhouseAdaptor.execute_ch_read_query(
+        ClickhouseAdaptor.execute_ch_query(
           backend,
           "SELECT count(*) as count FROM #{table_name}"
         )
@@ -158,7 +154,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.PipelineTest do
       table_name = ClickhouseAdaptor.clickhouse_ingest_table_name(source)
 
       {:ok, query_result} =
-        ClickhouseAdaptor.execute_ch_read_query(
+        ClickhouseAdaptor.execute_ch_query(
           backend,
           "SELECT body FROM #{table_name} ORDER BY timestamp DESC"
         )

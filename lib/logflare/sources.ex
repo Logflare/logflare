@@ -18,6 +18,7 @@ defmodule Logflare.Sources do
   alias Logflare.SavedSearch
   alias Logflare.SingleTenant
   alias Logflare.SourceSchemas
+  alias Logflare.Sources
   alias Logflare.Sources.Source
   alias Logflare.Sources.Source.BigQuery.SchemaBuilder
   alias Logflare.User
@@ -480,5 +481,80 @@ defmodule Logflare.Sources do
       round(GenUtils.default_table_ttl_days()),
       round(ttl / :timer.hours(24))
     )
+  end
+
+  @doc """
+  Shuts down idle source supervisors across the cluster.
+
+  This function checks all running SourceSup processes and shuts down those that are idle
+  (no ingest activity and no pending items in their backend queues).
+  """
+  @spec shutdown_idle_sources() :: :ok
+  def shutdown_idle_sources do
+    Sources.Cache
+    |> Cachex.stream!()
+    |> Stream.filter(fn
+      # Filter for get_by calls that return a Source struct with an id
+      {:entry, {:get_by, _args}, {:cached, %Source{id: id} = source}, _ts, _ttl}
+      when is_integer(id) ->
+        Backends.source_sup_started?(id) and source_idle?(source)
+
+      _val ->
+        false
+    end)
+    |> Stream.map(fn {:entry, {:get_by, _}, {:cached, %Source{id: id}}, _ts, _ttl} -> id end)
+    |> Stream.uniq()
+    |> Enum.to_list()
+    |> then(fn
+      [] ->
+        []
+
+      source_ids ->
+        Logger.debug("Shutting down #{Enum.count(source_ids)} idle sources")
+
+        source_ids
+    end)
+    |> Task.async_stream(
+      fn source_id ->
+        source = Sources.Cache.get_by_id(source_id)
+        Source.Supervisor.stop_source_local(source)
+      end,
+      max_concurrency: 3,
+      timeout: 30_000,
+      on_timeout: :kill_task
+    )
+    |> Stream.run()
+
+    :ok
+  end
+
+  defp source_idle?(source) do
+    metrics = get_source_metrics_for_ingest(source)
+    total_pending = calculate_total_pending(source)
+    metrics.avg == 0 and total_pending == 0
+  end
+
+  @spec calculate_total_pending(Source.t()) :: non_neg_integer()
+  defp calculate_total_pending(%Source{id: source_id} = source) do
+    # Get all backends for this source, including default backend
+    user = Users.Cache.get(source.user_id)
+    default_backend = Backends.get_default_backend(user)
+
+    ingest_backends = Backends.Cache.list_backends(source_id: source.id)
+
+    rules_backends =
+      Backends.Cache.list_backends(rules_source_id: source.id)
+      |> Enum.map(&%{&1 | register_for_ingest: false})
+
+    all_backends = [default_backend | ingest_backends] ++ rules_backends
+
+    # Sum pending items across all backends
+    all_backends
+    |> Enum.reduce(0, fn backend, acc ->
+      case Backends.IngestEventQueue.total_pending({source_id, backend.id}) do
+        {:error, :not_initialized} -> acc
+        count -> acc + count
+      end
+    end)
   end
 end
