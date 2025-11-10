@@ -169,9 +169,6 @@ defmodule Logflare.Telemetry do
       last_value("logflare.backends.dynamic_pipeline.pipeline_count",
         tags: [:backend_id]
       ),
-      last_value("logflare.backends.ingest_event_queue.queue_janitor.length",
-        tags: [:backend_id]
-      ),
       distribution("logflare.ingest.pipeline.stream_batch.stop.duration",
         tags: [:source_token],
         unit: {:native, :millisecond}
