@@ -322,12 +322,12 @@ defmodule Logflare.Utils do
   Tries to stop a process gracefully. If it fails, it sends a signal to the process.
   """
   @spec try_to_stop_process(pid(), atom()) :: :ok | :noop
-  def try_to_stop_process(pid, signal \\ :shutdown) do
+  def try_to_stop_process(pid, signal \\ :shutdown, force_signal \\ :kill) do
     GenServer.stop(pid, signal, 5_000)
     :ok
   rescue
     _ ->
-      Process.exit(pid, signal)
+      Process.exit(pid, force_signal)
       :ok
   catch
     :exit, _ ->

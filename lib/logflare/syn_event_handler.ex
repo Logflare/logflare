@@ -45,7 +45,7 @@ defmodule Logflare.SynEventHandler do
         Logger.debug(message)
       end
 
-      Logflare.Utils.try_to_stop_process(to_stop, :syn_resolve_kill)
+      Logflare.Utils.try_to_stop_process(to_stop, :shutdown, :syn_resolve_kill)
     end
 
     original
