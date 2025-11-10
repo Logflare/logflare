@@ -9,8 +9,8 @@ defmodule Logflare.Backends.UserMonitoringTest do
   alias Logflare.Sources
   alias Logflare.Backends
   alias Logflare.Backends.SourceSup
+  alias Logflare.Backends.UserMonitoring
   alias Logflare.SystemMetrics.AllLogsLogged
-  alias Logflare.Telemetry
 
   def source_and_user(_context) do
     start_supervised!(AllLogsLogged)
@@ -71,7 +71,7 @@ defmodule Logflare.Backends.UserMonitoringTest do
       :ok =
         :logger.add_primary_filter(
           :user_log_intercetor,
-          {&Logflare.Backends.UserMonitoring.log_interceptor/2, []}
+          {&UserMonitoring.log_interceptor/2, []}
         )
 
       on_exit(fn ->
@@ -115,31 +115,26 @@ defmodule Logflare.Backends.UserMonitoringTest do
     } do
       user |> Users.update_user_allowed(%{system_monitoring: true})
       metadata = %{backend_id: backend_id}
+      keep_function = UserMonitoring.keep_metric_function(:main_exporter)
 
       # main exporter's metric keep function returns false
-      refute Telemetry.keep_metric_function(metadata)
+      refute keep_function.(metadata)
 
-      # user exporter keep user specific metrics, and only that
+      # user exporter keep user specific metrics
 
       system_source =
         Sources.get_by(user_id: user.id, system_source_type: :metrics)
 
       start_supervised!({SourceSup, system_source})
 
-      :telemetry.execute([:logflare, :test, :generic_metric], %{value: 123})
-      :telemetry.execute([:logflare, :test, :user_specific], %{value: 456}, metadata)
+      :telemetry.execute([:logflare, :backends, :ingest], %{event_count: 456}, metadata)
 
       user_exporter_metrics =
         OtelMetricExporter.MetricStore.get_metrics(:"system.metrics-#{user.id}")
 
-      refute match?(
-               %{{:last_value, "logflare.test.generic_metric.value"} => _},
-               user_exporter_metrics
-             )
-
       assert match?(
                %{
-                 {:last_value, "logflare.test.user_specific.value"} => %{
+                 {:sum, "logflare.backends.ingest.event_count"} => %{
                    %{backend_id: ^backend_id} => 456
                  }
                },
@@ -152,9 +147,10 @@ defmodule Logflare.Backends.UserMonitoringTest do
       backend_1: %{id: backend_id}
     } do
       metadata = %{backend_id: backend_id}
+      keep_function = UserMonitoring.keep_metric_function(:main_exporter)
 
       # main exporter's metric keep function returns true
-      assert Telemetry.keep_metric_function(metadata)
+      assert keep_function.(metadata)
 
       # if SourceSup is up, it stil won't ingest any metric
       system_source =
@@ -164,14 +160,14 @@ defmodule Logflare.Backends.UserMonitoringTest do
 
       start_supervised!({SourceSup, system_source})
 
-      :telemetry.execute([:logflare, :test, :user_specific], %{value: 456}, metadata)
+      :telemetry.execute([:logflare, :backends, :ingest], %{value: 456}, metadata)
 
       user_exporter_metrics =
         OtelMetricExporter.MetricStore.get_metrics(:"system.metrics-#{user.id}")
 
       refute match?(
                %{
-                 {:last_value, "logflare.test.user_specific.value"} => %{
+                 {:sum, "logflare.backends.ingest.event_count"} => %{
                    %{backend_id: ^backend_id} => 456
                  }
                },
@@ -204,11 +200,11 @@ defmodule Logflare.Backends.UserMonitoringTest do
 
       # sending signals related to both users
 
-      :telemetry.execute([:logflare, :test, :user_specific], %{value: 123}, %{
+      :telemetry.execute([:logflare, :backends, :ingest], %{event_count: 123}, %{
         backend_id: backend_1_id
       })
 
-      :telemetry.execute([:logflare, :test, :user_specific], %{value: 456}, %{
+      :telemetry.execute([:logflare, :backends, :ingest], %{event_count: 456}, %{
         backend_id: backend_2_id
       })
 
@@ -217,7 +213,7 @@ defmodule Logflare.Backends.UserMonitoringTest do
 
       assert match?(
                %{
-                 {:last_value, "logflare.test.user_specific.value"} => %{
+                 {:sum, "logflare.backends.ingest.event_count"} => %{
                    %{backend_id: ^backend_1_id} => 123
                  }
                },
@@ -226,7 +222,7 @@ defmodule Logflare.Backends.UserMonitoringTest do
 
       refute match?(
                %{
-                 {:last_value, "logflare.test.user_specific.value"} => %{
+                 {:sum, "logflare.backends.ingest.event_count"} => %{
                    %{backend_id: ^backend_2_id} => _
                  }
                },
@@ -238,7 +234,7 @@ defmodule Logflare.Backends.UserMonitoringTest do
 
       assert match?(
                %{
-                 {:last_value, "logflare.test.user_specific.value"} => %{
+                 {:sum, "logflare.backends.ingest.event_count"} => %{
                    %{backend_id: ^backend_2_id} => 456
                  }
                },
@@ -247,7 +243,7 @@ defmodule Logflare.Backends.UserMonitoringTest do
 
       refute match?(
                %{
-                 {:last_value, "logflare.test.user_specific.value"} => %{
+                 {:sum, "logflare.backends.ingest.event_count"} => %{
                    %{backend_id: ^backend_1_id} => _
                  }
                },

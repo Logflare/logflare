@@ -4,7 +4,7 @@ defmodule Logflare.Telemetry do
   import Telemetry.Metrics
   import Logflare.Utils, only: [ets_info: 1]
 
-  alias Logflare.Users
+  alias Logflare.Backends.UserMonitoring
 
   def start_link(arg), do: Supervisor.start_link(__MODULE__, arg, name: __MODULE__)
 
@@ -62,13 +62,7 @@ defmodule Logflare.Telemetry do
     Supervisor.init(children, strategy: :one_for_one)
   end
 
-  def metrics do
-    if Application.get_env(:logflare, :env) == :test,
-      do: metrics(:mocked),
-      else: metrics(:normal)
-  end
-
-  defp metrics(:normal) do
+  defp metrics do
     cache_stats? = Application.get_env(:logflare, :cache_stats, false)
 
     cache_metrics =
@@ -249,34 +243,17 @@ defmodule Logflare.Telemetry do
       )
     ]
 
+    user_specific_metrics = UserMonitoring.metrics(:main_exporter)
+
     Enum.concat([
       phoenix_metrics,
       database_metrics,
       vm_metrics,
       cache_metrics,
       broadway_metrics,
-      application_metrics
+      application_metrics,
+      user_specific_metrics
     ])
-  end
-
-  defp metrics(:mocked) do
-    [
-      last_value("logflare.test.generic_metric.value",
-        description: "Default test metric"
-      ),
-      last_value("logflare.test.user_specific.value",
-        description: "To test how user specific metrics are handled by exporter",
-        tags: [:backend_id],
-        keep: &keep_metric_function/1
-      )
-    ]
-  end
-
-  def keep_metric_function(metadata) do
-    case Users.get_related_user_id(metadata) do
-      nil -> true
-      user_id -> !Users.Cache.get(user_id).system_monitoring
-    end
   end
 
   defp periodic_measurements do
