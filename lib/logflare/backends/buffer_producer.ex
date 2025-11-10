@@ -165,6 +165,12 @@ defmodule Logflare.Backends.BufferProducer do
 
       {:ok, events} ->
         {:ok, _} = IngestEventQueue.mark_ingested(sid_bid_pid, events)
+
+        metrics = %{event_count: Enum.count(events)}
+        metadata = %{source_id: sid, backend_id: bid}
+
+        :telemetry.execute([:logflare, :backends, :ingest], metrics, metadata)
+
         events
     end
   end

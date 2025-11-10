@@ -9,10 +9,12 @@ defmodule Logflare.Users do
   alias Logflare.Sources.Source.Supervisor
   alias Logflare.Sources
   alias Logflare.Sources.Source
+  alias Logflare.Backends
   alias Logflare.TeamUsers.TeamUser
   alias Logflare.User
   alias Logflare.Users
-  alias Logflare.Users.UserPreferences
+  alias Logflare.Users.{Cache, UserPreferences}
+  alias Logflare.Endpoints
 
   require Logger
 
@@ -181,16 +183,57 @@ defmodule Logflare.Users do
     Users.get_by_and_preload(id: user_id)
   end
 
+  def get_related_user_id(map) do
+    case map do
+      %{user_id: user_id} -> %{user_id: user_id}
+      %{source_id: source_id} -> Sources.Cache.get_by_id(source_id)
+      %{source_token: token} -> Sources.Cache.get_source_by_token(token)
+      %{backend_id: backend_id} -> Backends.Cache.get_backend(backend_id)
+      %{endpoint_id: endpoint_id} -> Endpoints.Cache.get_endpoint_query(endpoint_id)
+      _ -> nil
+    end
+    |> case do
+      %{user_id: user_id} -> user_id
+      _ -> nil
+    end
+  end
+
   def update_user_all_fields(user, params) do
     user
     |> user_changeset(params)
     |> Repo.update()
+    |> update_system_sources(user.system_monitoring)
   end
 
   def update_user_allowed(user, params) do
     user
     |> User.user_allowed_changeset(params)
     |> Repo.update()
+    |> update_system_sources(user.system_monitoring)
+  end
+
+  defp update_system_sources({:ok, user}, original_system_monitoring) do
+    if user.system_monitoring != original_system_monitoring do
+      toggle_system_monitoring(user)
+
+      Cache.update(user)
+    end
+
+    {:ok, user}
+  end
+
+  defp update_system_sources(result, _), do: result
+
+  defp toggle_system_monitoring(%{system_monitoring: true} = user) do
+    user.id
+    |> Sources.create_user_system_sources()
+    |> Enum.each(&Supervisor.reset_source(&1.token))
+  end
+
+  defp toggle_system_monitoring(%{system_monitoring: false} = user) do
+    [user_id: user.id, system_source: true]
+    |> Sources.list_sources()
+    |> Enum.each(&Supervisor.stop_source(&1.token))
   end
 
   @spec insert_user(map()) :: {:ok, User.t()} | {:error, any()}

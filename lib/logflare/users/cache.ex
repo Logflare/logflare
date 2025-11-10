@@ -32,6 +32,9 @@ defmodule Logflare.Users.Cache do
     }
   end
 
+  def update(user),
+    do: Logflare.ContextCache.update(Users, :get, [user.id], user)
+
   def get(id), do: apply_repo_fun(__ENV__.function, [id])
 
   def get_by(keyword), do: apply_repo_fun(__ENV__.function, [keyword])

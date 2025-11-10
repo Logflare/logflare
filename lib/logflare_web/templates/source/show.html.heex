@@ -21,7 +21,9 @@
             <i class="fas fa-code-branch"></i><span class="hide-on-mobile"> rules</span>
           <% end %>
         </li>
-        <li><a href="#" data-toggle="modal" data-target="#sourceHelpModal"><i class="fas fa-info-circle"></i><span class="hide-on-mobile"> setup</span></a></li>
+        <%= unless @source.system_source do %>
+          <li><a href="#" data-toggle="modal" data-target="#sourceHelpModal"><i class="fas fa-info-circle"></i><span class="hide-on-mobile"> setup</span></a></li>
+        <% end %>
         <li>
           <%= link to: Routes.source_path(@conn, :clear_logs, @source) do %>
             <i class="fas fa-broom"></i><span class="hide-on-mobile"> clear cache</span>

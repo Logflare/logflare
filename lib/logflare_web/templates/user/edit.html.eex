@@ -10,6 +10,21 @@
   </div>
 </div>
 <div class="content container mx-auto">
+  <h4 class="header-margin">System monitoring</h4>
+  <div class="sub-form">
+    <%= form_for @changeset, Routes.user_path(@conn, :update), fn user -> %>
+      <div class="form-group">
+        <%= checkbox user, :system_monitoring %>
+        <%= label user, :system_monitoring, "Enable system monitoring", class: "label-padding" %>
+        <small class="form-text text-muted">
+          Events related to this account will be passed to dedicated system-provided sources.
+        </small>
+      </div>
+      <%= submit "Update preferences", class: "btn btn-primary form-button" %>
+    <% end %>
+  </div>
+</div>
+<div class="content container mx-auto">
   <h4 class="header-margin">Account Owner Preferences</h4>
   <p>Preferences for the Logflare account owner.</p>
   <div class="sub-form">

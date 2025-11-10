@@ -19,6 +19,8 @@ defmodule Logflare.Application do
     prev = Inspect.Opts.default_inspect_fun()
     Inspect.Opts.default_inspect_fun(&Utils.inspect_fun(prev, &1, &2))
 
+    start_user_log_interceptor()
+
     env = Application.get_env(:logflare, :env)
     # TODO: Set node status in GCP when sigterm is received
     :ok =
@@ -27,6 +29,8 @@ defmodule Logflare.Application do
         {:erl_signal_handler, []},
         {Logflare.SigtermHandler, []}
       )
+
+    # Routes user-specific logs to their respective system source, when appliable
 
     children = get_children(env)
 
@@ -110,6 +114,17 @@ defmodule Logflare.Application do
         {Logflare.ActiveUserTracker,
          [name: Logflare.ActiveUserTracker, pubsub_server: Logflare.PubSub]}
       ]
+  end
+
+  defp start_user_log_interceptor do
+    if Application.get_env(:logflare, :env) == :test do
+      :ok
+    else
+      :logger.add_primary_filter(
+        :user_log_intercetor,
+        {&Logflare.Backends.UserMonitoring.log_interceptor/2, []}
+      )
+    end
   end
 
   def goth_partition_count, do: 5
