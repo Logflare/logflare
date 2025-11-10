@@ -10,6 +10,9 @@ on:
       - 'lib/**'
       - 'priv/**'
       - 'mix.exs'
+      - 'mix.lock'
+      - 'Dockerfile'
+      - 'run.sh'
       - 'test/e2e/supabase/**'
       - '.github/workflows/integration-supabase.yml'
   pull_request:
@@ -21,6 +24,9 @@ on:
       - 'lib/**'
       - 'priv/**'
       - 'mix.exs'
+      - 'mix.lock'
+      - 'Dockerfile'
+      - 'run.sh'
       - 'test/e2e/supabase/**'
       - '.github/workflows/integration-supabase.yml'
 
