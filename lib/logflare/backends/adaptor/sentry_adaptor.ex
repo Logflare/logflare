@@ -205,12 +205,26 @@ defmodule Logflare.Backends.Adaptor.SentryAdaptor do
 
   defp to_sentry_value(value) do
     case value do
-      nil -> %{"value" => "", "type" => "string"}
-      v when is_binary(v) -> %{"value" => v, "type" => "string"}
-      v when is_boolean(v) -> %{"value" => v, "type" => "boolean"}
-      v when is_integer(v) -> %{"value" => v, "type" => "integer"}
-      v when is_float(v) -> %{"value" => v, "type" => "double"}
-      v -> %{"value" => inspect(v), "type" => "string"}
+      nil ->
+        %{"value" => "", "type" => "string"}
+
+      v when is_binary(v) ->
+        %{"value" => v, "type" => "string"}
+
+      v when is_boolean(v) ->
+        %{"value" => v, "type" => "boolean"}
+
+      v when is_integer(v) ->
+        %{"value" => v, "type" => "integer"}
+
+      v when is_float(v) ->
+        %{"value" => v, "type" => "double"}
+
+      v when is_map(v) or is_list(v) ->
+        %{"value" => Jason.encode!(v), "type" => "string"}
+
+      v ->
+        %{"value" => inspect(v), "type" => "string"}
     end
   end
 end
