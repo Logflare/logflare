@@ -127,7 +127,9 @@ defmodule Logflare.Backends.Backend do
           :id,
           :config,
           :metadata,
-          :default_ingest?
+          :default_ingest?,
+          :inserted_at,
+          :updated_at
         ])
         |> Map.update(:config, %{}, fn config ->
           if function_exported?(adaptor, :redact_config, 1) do

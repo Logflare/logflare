@@ -12,15 +12,13 @@ defmodule LogflareWeb.Api.BackendControllerTest do
   describe "index/2" do
     test "returns list of backends for given user", %{conn: conn, user: user} do
       insert(:backend)
-      backend = insert(:backend, user: user)
+      %_{id: id} = insert(:backend, user: user)
 
-      assert [result] =
+      assert [%{"id" => ^id, "inserted_at" => _, "updated_at" => _}] =
                conn
                |> add_access_token(user, "private")
                |> get(~p"/api/backends")
                |> json_response(200)
-
-      assert result["id"] == backend.id
     end
 
     test "can filter on metadata column", %{conn: conn, user: user} do
@@ -77,6 +75,8 @@ defmodule LogflareWeb.Api.BackendControllerTest do
 
       assert response["name"] == name
       assert response["config"]["url"] =~ "example.com"
+      assert response["inserted_at"]
+      assert response["updated_at"]
     end
 
     test "creates a postgres backend for an authenticated user", %{conn: conn, user: user} do
@@ -106,7 +106,9 @@ defmodule LogflareWeb.Api.BackendControllerTest do
                },
                "metadata" => %{
                  "some" => "data"
-               }
+               },
+               "inserted_at" => _,
+               "updated_at" => _
              } = json_response(conn, 201)
     end
 
