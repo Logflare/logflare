@@ -23,6 +23,7 @@ defmodule Logflare.Sources do
   alias Logflare.Sources.Source.BigQuery.SchemaBuilder
   alias Logflare.User
   alias Logflare.Users
+  alias Logflare.LogEvent
   alias Number.Delimit
 
   require Logger
@@ -589,7 +590,9 @@ defmodule Logflare.Sources do
   defp source_idle?(source) do
     metrics = get_source_metrics_for_ingest(source)
     total_pending = calculate_total_pending(source)
-    metrics.avg == 0 and total_pending == 0
+    has_recent_logs = has_recent_logs_within?(source, 5)
+
+    metrics.avg == 0 and total_pending == 0 and not has_recent_logs
   end
 
   @spec calculate_total_pending(Source.t()) :: non_neg_integer()
@@ -614,5 +617,18 @@ defmodule Logflare.Sources do
         count -> acc + count
       end
     end)
+  end
+
+  @spec has_recent_logs_within?(Source.t(), non_neg_integer()) :: boolean()
+  defp has_recent_logs_within?(%Source{} = source, minutes) when is_integer(minutes) do
+    cutoff_time = NaiveDateTime.utc_now() |> NaiveDateTime.add(-minutes * 60, :second)
+
+    case Backends.list_recent_logs_local(source, 1) do
+      [] ->
+        false
+
+      [%LogEvent{ingested_at: ingested_at} | _] ->
+        NaiveDateTime.compare(ingested_at, cutoff_time) == :gt
+    end
   end
 end
