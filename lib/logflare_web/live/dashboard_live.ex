@@ -161,16 +161,16 @@ defmodule LogflareWeb.DashboardLive do
   def render(assigns) do
     ~H"""
     <div id="dashboard-container" phx-hook="DocumentVisibility">
-      <DashboardComponents.subhead user={@user} />
+      <DashboardComponents.subhead team={@team} user={@user} />
       <div class="tw-max-w-[95%] tw-mx-auto">
         <div class="lg:tw-grid tw-grid-cols-12 tw-gap-8 tw-px-[15px] tw-mt-[50px]">
           <div class="tw-col-span-3">
-            <DashboardComponents.saved_searches sources={@sources} />
+            <DashboardComponents.saved_searches team={@team} sources={@sources} />
             <DashboardComponents.teams current_team={@team} home_team={@home_team} team_users={@team_users} />
             <DashboardComponents.members user={@user} team={@team} team_user={@team_user} />
           </div>
           <div class="tw-col-span-7">
-            <.source_list sources={@sources} source_metrics={@source_metrics} plan={@plan} fade_in={@fade_in} />
+            <.source_list sources={@sources} team={@team} source_metrics={@source_metrics} plan={@plan} fade_in={@fade_in} />
           </div>
           <div class="tw-col-span-2">
             <DashboardComponents.integrations />
@@ -181,16 +181,22 @@ defmodule LogflareWeb.DashboardLive do
     """
   end
 
+  attr :team, Teams.Team, required: true
+  attr :sources, :list, required: true
+  attr :source_metrics, :map, required: true
+  attr :plan, :map, required: true
+  attr :fade_in, :boolean, default: false
+
   def source_list(assigns) do
     ~H"""
     <div id="source-list" phx-hook="FormatTimestamps">
       <div class="tw-mb-3 tw-flex tw-justify-end">
-        <.link href={~p"/query"} class="btn btn-primary btn-sm">
+        <.team_link href={~p"/query"} team={@team} class="btn btn-primary btn-sm">
           Run a query
-        </.link>
-        <.link href={~p"/sources/new"} class="btn btn-primary btn-sm">
+        </.team_link>
+        <.team_link href={~p"/sources/new"} team={@team} class="btn btn-primary btn-sm">
           New source
-        </.link>
+        </.team_link>
       </div>
       <ul class="list-group">
         <%= if Enum.empty?(@sources) do %>
@@ -203,7 +209,7 @@ defmodule LogflareWeb.DashboardLive do
           <li :if={service_name == nil} class="list-group-item">
             <hr />
           </li>
-          <DashboardSourceComponents.source_item :for={source <- sources} source={source} plan={@plan} metrics={@source_metrics[to_string(source.token)][:metrics]} fade_in={@fade_in} />
+          <DashboardSourceComponents.source_item :for={source <- sources} team={@team} source={source} plan={@plan} metrics={@source_metrics[to_string(source.token)][:metrics]} fade_in={@fade_in} />
         <% end %>
       </ul>
     </div>

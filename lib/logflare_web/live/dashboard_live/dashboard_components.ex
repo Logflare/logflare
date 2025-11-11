@@ -7,6 +7,7 @@ defmodule LogflareWeb.DashboardLive.DashboardComponents do
   alias Phoenix.LiveView.JS
 
   attr :user, Logflare.User, required: true
+  attr :team, Logflare.Teams.Team, required: true
 
   def subhead(assigns) do
     assigns =
@@ -29,25 +30,25 @@ defmodule LogflareWeb.DashboardLive.DashboardComponents do
               </span>
             </li>
             <li>
-              <.link href={~p"/access-tokens"}>
+              <.team_link href={~p"/access-tokens"} team={@team}>
                 <i class="fas fa-key"></i><span class="hide-on-mobile"> access tokens</span>
-              </.link>
+              </.team_link>
             </li>
             <li :if={@flag_multibackend}>
-              <.link href={~p"/backends"}>
+              <.team_link href={~p"/backends"} team={@team}>
                 <i class="fas fa-database"></i><span class="hide-on-mobile"> backends</span>
-              </.link>
+              </.team_link>
             </li>
             <li>
-              <.link href={~p"/integrations/vercel/edit"}>
+              <.team_link href={~p"/integrations/vercel/edit"} team={@team}>
                 ▲<span class="hide-on-mobile"> vercel
                   integration</span>
-              </.link>
+              </.team_link>
             </li>
             <li>
-              <.link href={~p"/billing/edit"}>
+              <.team_link href={~p"/billing/edit"} team={@team}>
                 <i class="fas fa-money-bill"></i><span class="hide-on-mobile"> billing</span>
-              </.link>
+              </.team_link>
             </li>
             <li><a href="mailto:support@logflare.app?Subject=Logflare%20Help" target="_top"><i class="fas fa-question-circle"></i> <span class="hide-on-mobile">help</span></a></li>
           </ul>
@@ -115,9 +116,9 @@ defmodule LogflareWeb.DashboardLive.DashboardComponents do
       <ul class="list-unstyled">
         <li :if={@home_team} class="tw-mb-2">
           <strong :if={@current_team.id == @home_team.id}>{@home_team.name}</strong>
-          <.link :if={@current_team.id != @home_team.id} href={~p"/profile/switch?#{%{"user_id" => @home_team.user_id}}"} class="tw-text-white">
+          <.team_link :if={@current_team.id != @home_team.id} href={~p"/profile/switch?#{%{"user_id" => @home_team.user_id}}"} team={@home_team} class="tw-text-white">
             {@home_team.name}
-          </.link>
+          </.team_link>
           <small>home team</small>
         </li>
 
@@ -133,9 +134,9 @@ defmodule LogflareWeb.DashboardLive.DashboardComponents do
 
         <li :for={team_user <- @team_users} class="tw-mb-2">
           <span :if={team_user.team_id == @current_team.id}>{team_user.team.name}</span>
-          <.link :if={team_user.team_id != @current_team.id} href={~p"/profile/switch?#{%{user_id: team_user.team.user_id, team_user_id: team_user.id}}"} class="tw-text-white">
+          <.team_link :if={team_user.team_id != @current_team.id} href={~p"/profile/switch?#{%{user_id: team_user.team.user_id, team_user_id: team_user.id}}"} team={team_user.team} class="tw-text-white">
             {team_user.team.name}
-          </.link>
+          </.team_link>
         </li>
       </ul>
     </div>
@@ -166,9 +167,9 @@ defmodule LogflareWeb.DashboardLive.DashboardComponents do
           <span :if={current_team_user?(member, @team_user)}>you</span>
         </li>
       </ul>
-      <.link href={~p"/account/edit#team-members"} class="tw-text-white tw-mt-2">
+      <.team_link team={@team} href={~p"/account/edit#team-members"} class="tw-text-white tw-mt-2">
         Invite more team members.
-      </.link>
+      </.team_link>
     </div>
     """
   end
@@ -177,6 +178,7 @@ defmodule LogflareWeb.DashboardLive.DashboardComponents do
   defp current_team_user?(member, team_user), do: member.provider_uid == team_user.provider_uid
 
   attr :sources, :list, required: true
+  attr :team, Logflare.Teams.Team, required: true
 
   def saved_searches(assigns) do
     assigns =
@@ -198,9 +200,9 @@ defmodule LogflareWeb.DashboardLive.DashboardComponents do
       </div>
       <ul class="list-unstyled">
         <li :for={{source, saved_search} <- @searches}>
-          <.link href={~p"/sources/#{source}/search?#{%{querystring: saved_search.querystring, tailing: saved_search.tailing}}"} class="tw-text-white">
+          <.team_link team={@team} href={~p"/sources/#{source}/search?#{%{querystring: saved_search.querystring, tailing: saved_search.tailing}}"} class="tw-text-white">
             {source.name}:{saved_search.querystring}
-          </.link>
+          </.team_link>
           <span phx-click="delete_saved_search" phx-value-id={saved_search.id} data-confirm="Delete saved search?" class="tw-text-xs tw-ml-1.5 tw-text-white tw-cursor-pointer">
             <i class="fa fa-trash"></i>
           </span>

@@ -10,6 +10,7 @@ defmodule LogflareWeb.DashboardLive.DashboardSourceComponents do
   attr :metrics, Source.Metrics, required: true
   attr :plan, :map, required: true
   attr :fade_in, :boolean, default: false
+  attr :team, Logflare.Teams.Team, required: true
 
   def source_item(assigns) do
     ~H"""
@@ -21,12 +22,12 @@ defmodule LogflareWeb.DashboardLive.DashboardSourceComponents do
       </div>
       <div>
         <div class="float-right">
-          <.link href={~p"/sources/#{@source}/edit"} class="dashboard-links">
+          <.team_link href={~p"/sources/#{@source}/edit"} team={@team} class="dashboard-links">
             <i class="fas fa-edit"></i>
-          </.link>
+          </.team_link>
         </div>
         <div class="source-link word-break-all">
-          <.link href={~p"/sources/#{@source}"} class="tw-text-white">{@source.name}</.link>
+          <.team_link href={~p"/sources/#{@source}"} team={@team} class="tw-text-white">{@source.name}</.team_link>
           <span>
             <.inserts_badge count={@metrics.inserts} source_token={@source.token} fade_in={@fade_in} />
           </span>
