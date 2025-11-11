@@ -164,7 +164,7 @@ defmodule LogflareWeb.DashboardLive do
             <DashboardComponents.members user={@user} team={@team} team_user={@team_user} />
           </div>
           <div class="tw-col-span-7">
-            <.source_list sources={@sources} source_metrics={@source_metrics} plan={@plan} fade_in={@fade_in} />
+            <.source_list sources={@sources} source_metrics={@source_metrics} plan={@plan} fade_in={@fade_in} team={@team} />
           </div>
           <div class="tw-col-span-2">
             <DashboardComponents.integrations />
@@ -174,6 +174,11 @@ defmodule LogflareWeb.DashboardLive do
     </div>
     """
   end
+
+  attr :sources, :list, required: true
+  attr :source_metrics, :map, required: true
+  attr :plan, :map, required: true
+  attr :fade_in, :boolean, default: false
 
   def source_list(assigns) do
     ~H"""

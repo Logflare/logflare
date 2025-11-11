@@ -38,9 +38,15 @@ defmodule LogflareWeb.DashboardLiveTest do
 
     test "renders source in dashboard", %{conn: conn, user: user} do
       source = insert(:source, user: user)
+      user = Repo.preload(user, :team)
 
       {:ok, view, _} = live(conn, "/dashboard")
-      assert view |> has_element?(~s|a[href="/sources/#{source.id}"]|, source.name)
+
+      assert view
+             |> has_element?(
+               ~s|a[href="/sources/#{source.id}?team_id=#{user.team.id}"]|,
+               source.name
+             )
     end
   end
 
