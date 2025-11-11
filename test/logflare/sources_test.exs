@@ -357,7 +357,8 @@ defmodule Logflare.SourcesTest do
     test "does NOT shut down sources with recent logs within 5 minutes", %{source: source} do
       timestamp = System.os_time(:microsecond)
       event = build(:log_event, source: source, timestamp: timestamp)
-      Backends.IngestEventQueue.add_to_table({source.id, nil}, [event])
+      Backends.IngestEventQueue.add_to_table({source.id, nil, nil}, [event])
+      Backends.IngestEventQueue.mark_ingested({source.id, nil, nil}, [event])
 
       TestUtils.retry_assert(fn ->
         assert [_event] = Backends.list_recent_logs_local(source, 1)
