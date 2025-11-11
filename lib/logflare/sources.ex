@@ -23,6 +23,7 @@ defmodule Logflare.Sources do
   alias Logflare.Sources.Source.BigQuery.SchemaBuilder
   alias Logflare.User
   alias Logflare.Users
+  alias Logflare.LogEvent
   alias Number.Delimit
 
   require Logger
@@ -626,15 +627,8 @@ defmodule Logflare.Sources do
       [] ->
         false
 
-      [latest_event | _] ->
-        with timestamp_us when is_integer(timestamp_us) <- latest_event.body["timestamp"],
-             {:ok, event_datetime} <-
-               DateTime.from_unix(timestamp_us, :microsecond) do
-          event_naive = DateTime.to_naive(event_datetime)
-          NaiveDateTime.compare(event_naive, cutoff_time) == :gt
-        else
-          _ -> false
-        end
+      [%LogEvent{ingested_at: ingested_at} | _] ->
+        NaiveDateTime.compare(ingested_at, cutoff_time) == :gt
     end
   end
 end

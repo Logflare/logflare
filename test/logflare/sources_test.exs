@@ -320,8 +320,8 @@ defmodule Logflare.SourcesTest do
 
     test "shuts down sources with 0 avg rate and 0 pending items", %{source: source} do
       # Add a 10-minute old event
-      ten_minutes_ago = System.os_time(:microsecond) - 10 * 60 * 1_000_000
-      old_event = build(:log_event, source: source, timestamp: ten_minutes_ago)
+      ten_minutes_ago = DateTime.utc_now() |> DateTime.add(-10 * 60, :second)
+      old_event = build(:log_event, source: source, ingested_at: ten_minutes_ago)
       Backends.IngestEventQueue.add_to_table({source.id, nil, nil}, [old_event])
       Backends.IngestEventQueue.mark_ingested({source.id, nil, nil}, [old_event])
 
@@ -355,8 +355,7 @@ defmodule Logflare.SourcesTest do
     end
 
     test "does NOT shut down sources with recent logs within 5 minutes", %{source: source} do
-      timestamp = System.os_time(:microsecond)
-      event = build(:log_event, source: source, timestamp: timestamp)
+      event = build(:log_event, source: source, ingested_at: DateTime.utc_now())
       Backends.IngestEventQueue.add_to_table({source.id, nil, nil}, [event])
       Backends.IngestEventQueue.mark_ingested({source.id, nil, nil}, [event])
 
