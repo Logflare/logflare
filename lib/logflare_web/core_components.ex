@@ -179,4 +179,34 @@ defmodule LogflareWeb.CoreComponents do
     <.link class={@class} target="_blank" href={~p"/sources/#{@source.id}/event?#{%{uuid: @log_event_id, timestamp: Logflare.Utils.iso_timestamp(@timestamp), lql: @lql}}"}>{@label}</.link>
     """
   end
+
+  @doc """
+  Generate a link with a team_id param.
+
+  ## Examples
+
+      <.team_link href={~p"/dashboard"} team={@team}>Dashboard</.team_link>
+
+  """
+  attr :href, :string, default: nil
+  attr :navigate, :string, default: nil
+  attr :patch, :string, default: nil
+  attr :team, :any, default: nil
+  attr :rest, :global
+  slot :inner_block, required: true
+
+  def team_link(assigns) do
+    nav_attrs = [:navigate, :patch, :href]
+
+    nav_assign =
+      for key <- nav_attrs,
+          value = Map.get(assigns, key),
+          into: %{} do
+        {key, LogflareWeb.Utils.with_team_param(value, assigns.team)}
+      end
+
+    assigns
+    |> Map.merge(nav_assign)
+    |> link()
+  end
 end
