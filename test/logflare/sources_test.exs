@@ -314,15 +314,21 @@ defmodule Logflare.SourcesTest do
       user = insert(:user)
       source = insert(:source, user: user)
       Sources.Cache.get_by_id(source.id)
+      :ok = Backends.start_source_sup(source)
       {:ok, source: source, user: user}
     end
 
     test "shuts down sources with 0 avg rate and 0 pending items", %{source: source} do
-      :ok = Backends.start_source_sup(source)
+      # Add a 10-minute old event
+      ten_minutes_ago = System.os_time(:microsecond) - 10 * 60 * 1_000_000
+      old_event = build(:log_event, source: source, timestamp: ten_minutes_ago)
+      Backends.IngestEventQueue.add_to_table({source.id, nil, nil}, [old_event])
+      Backends.IngestEventQueue.mark_ingested({source.id, nil, nil}, [old_event])
 
       TestUtils.retry_assert(fn ->
         assert Backends.source_sup_started?(source)
         assert Sources.get_source_metrics_for_ingest(source).avg == 0
+        assert [_event] = Backends.list_recent_logs_local(source, 1)
       end)
 
       :ok = Sources.shutdown_idle_sources()
@@ -331,8 +337,6 @@ defmodule Logflare.SourcesTest do
     end
 
     test "does NOT shut down sources with active ingest", %{source: source} do
-      :ok = Backends.start_source_sup(source)
-
       Logflare.Sources.Counters.increment(source.token, 1)
       Logflare.Sources.Source.RateCounterServer.handle_info(:put_rate, source.token)
 
@@ -343,10 +347,22 @@ defmodule Logflare.SourcesTest do
     end
 
     test "does NOT shut down sources with pending items", %{source: source} do
-      :ok = Backends.start_source_sup(source)
       event = build(:log_event, source: source)
       Backends.IngestEventQueue.add_to_table({source.id, nil}, [event])
       assert Backends.source_sup_started?(source)
+      :ok = Sources.shutdown_idle_sources()
+      assert Backends.source_sup_started?(source)
+    end
+
+    test "does NOT shut down sources with recent logs within 5 minutes", %{source: source} do
+      timestamp = System.os_time(:microsecond)
+      event = build(:log_event, source: source, timestamp: timestamp)
+      Backends.IngestEventQueue.add_to_table({source.id, nil}, [event])
+
+      TestUtils.retry_assert(fn ->
+        assert [_event] = Backends.list_recent_logs_local(source, 1)
+      end)
+
       :ok = Sources.shutdown_idle_sources()
       assert Backends.source_sup_started?(source)
     end
