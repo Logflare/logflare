@@ -108,13 +108,34 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
   def ack({queue, source_token}, successful, _failed) do
     # TODO: re-queue failed
     metrics = Sources.get_source_metrics_for_ingest(source_token)
-    {_sid, bid, _tid} = queue
+    {sid, bid, _tid} = queue
 
-    # delete immediately if not default backend or if avg rate is above 100
-    if metrics.avg > 100 or bid != nil do
-      for %{data: le} <- successful do
+    backend_metadata =
+      if bid do
+        Backends.Cache.get_backend(bid).metadata || %{}
+      else
+        %{}
+      end
+
+    source = Sources.Cache.get_by_id(sid)
+
+    for %{data: le} <- successful do
+      # delete immediately if not default backend or if avg rate is above 100
+      if metrics.avg > 100 or bid != nil do
         IngestEventQueue.delete(queue, le)
       end
+
+      # emit telemetry on event
+      event_labels = Sources.get_labels_from_event(source, le)
+
+      metrics = %{ingested_bytes: :erlang.external_size(le.body)}
+
+      metadata =
+        %{"source_id" => sid, "backend_id" => bid}
+        |> Map.merge(event_labels)
+        |> Map.merge(backend_metadata)
+
+      :telemetry.execute([:logflare, :backends, :ingest], metrics, metadata)
     end
   end
 
