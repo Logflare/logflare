@@ -333,7 +333,9 @@ defmodule Logflare.SourcesTest do
 
       :ok = Sources.shutdown_idle_sources()
 
-      refute Backends.source_sup_started?(source)
+      TestUtils.retry_assert(fn ->
+        refute Backends.source_sup_started?(source)
+      end)
     end
 
     test "does NOT shut down sources with active ingest", %{source: source} do
