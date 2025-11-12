@@ -18,6 +18,8 @@ defmodule Logflare.Endpoints do
   alias Logflare.Repo
   alias Logflare.SingleTenant
   alias Logflare.Sql
+  alias Logflare.Teams
+  alias Logflare.TeamUsers.TeamUser
   alias Logflare.User
   alias Logflare.Users
   alias Logflare.Utils
@@ -50,6 +52,52 @@ defmodule Logflare.Endpoints do
       end
     end)
     |> Repo.all()
+  end
+
+  @doc """
+  Lists all endpoints a user has access to, including where the user is a team member.
+  """
+  @spec list_endpoints_by_user_access(User.t()) :: [Query.t()]
+  def list_endpoints_by_user_access(%User{} = user) do
+    Query
+    |> Teams.filter_by_user_access(user)
+    |> Repo.all()
+  end
+
+  @doc """
+  Gets an endpoint query by id that the user has access to.
+  Returns the endpoint query if the user owns it or is a team member, otherwise returns nil.
+
+  Supports both User and TeamUser structs.
+
+  ## Examples
+
+      iex> get_endpoint_query_by_user_access(user, 123)
+      %Query{id: 123}
+
+      iex> get_endpoint_query_by_user_access(user, 999)
+      nil
+
+  """
+  @spec get_endpoint_query_by_user_access(User.t() | TeamUser.t(), integer() | String.t()) ::
+          Query.t() | nil
+  def get_endpoint_query_by_user_access(%User{} = user, id)
+      when is_integer(id) or is_binary(id) do
+    Query
+    |> Teams.filter_by_user_access(user)
+    |> where([query], query.id == ^id)
+    |> Repo.one()
+  end
+
+  def get_endpoint_query_by_user_access(%TeamUser{email: email}, id)
+      when is_integer(id) or is_binary(id) do
+    case Users.get_by(email: email) do
+      %User{} = user ->
+        get_endpoint_query_by_user_access(user, id)
+
+      nil ->
+        nil
+    end
   end
 
   @doc """

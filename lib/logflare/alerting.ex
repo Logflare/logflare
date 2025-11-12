@@ -16,7 +16,10 @@ defmodule Logflare.Alerting do
   alias Logflare.Endpoints
   alias Logflare.Google.BigQuery.GenUtils
   alias Logflare.Repo
+  alias Logflare.Teams
+  alias Logflare.TeamUsers.TeamUser
   alias Logflare.User
+  alias Logflare.Users
   alias Logflare.Utils
 
   require Logger
@@ -45,6 +48,16 @@ defmodule Logflare.Alerting do
   end
 
   @doc """
+  Lists all alert queries a user has access to, including where the user is a team member.
+  """
+  @spec list_alert_queries_user_access(User.t()) :: [AlertQuery.t()]
+  def list_alert_queries_user_access(%User{} = user) do
+    AlertQuery
+    |> Teams.filter_by_user_access(user)
+    |> Repo.all()
+  end
+
+  @doc """
   Gets a single alert_query.
 
   Raises `Ecto.NoResultsError` if the Alert query does not exist.
@@ -62,6 +75,30 @@ defmodule Logflare.Alerting do
 
   def get_alert_query_by(kw) do
     Repo.get_by(AlertQuery, kw)
+  end
+
+  @doc """
+  Gets an alert query by id that the user has access to.
+  Returns the alert query if the user owns it or is a team member, otherwise returns nil.
+  """
+  @spec get_alert_query_by_user_access(User.t() | TeamUser.t(), integer() | String.t()) ::
+          AlertQuery.t() | nil
+  def get_alert_query_by_user_access(%User{} = user, id) when is_integer(id) or is_binary(id) do
+    AlertQuery
+    |> Teams.filter_by_user_access(user)
+    |> where([alert_query], alert_query.id == ^id)
+    |> Repo.one()
+  end
+
+  def get_alert_query_by_user_access(%TeamUser{email: email}, id)
+      when is_integer(id) or is_binary(id) do
+    case Users.get_by(email: email) do
+      %User{} = user ->
+        get_alert_query_by_user_access(user, id)
+
+      nil ->
+        nil
+    end
   end
 
   def preload_alert_query(alert) do

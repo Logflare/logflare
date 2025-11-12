@@ -95,6 +95,29 @@ defmodule Logflare.SourcesTest do
     end
   end
 
+  describe "list_sources_by_user_access/1" do
+    setup do
+      insert(:plan)
+      :ok
+    end
+
+    test "lists sources by user access" do
+      user = insert(:user)
+      team_user = insert(:team_user, email: user.email)
+
+      %Source{id: source_id} = insert(:source, user: user)
+      %Source{id: other_source_id} = insert(:source, user: team_user.team.user)
+      %Source{id: forbidden_source_id} = insert(:source, user: build(:user))
+
+      source_ids =
+        Sources.list_sources_by_user_access(user)
+        |> Enum.map(& &1.id)
+
+      assert [source_id, other_source_id] == source_ids
+      refute forbidden_source_id in source_ids
+    end
+  end
+
   describe "get_bq_schema/1" do
     setup do
       user = Users.get_by(email: System.get_env("LOGFLARE_TEST_USER_WITH_SET_IAM"))

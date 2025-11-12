@@ -15,6 +15,42 @@ defmodule Logflare.EndpointsTest do
     assert [%{id: ^id}] = Endpoints.list_endpoints_by(name: name)
   end
 
+  test "list_endpoints_by_user_access" do
+    user = insert(:user)
+    team_user = insert(:team_user, email: user.email)
+
+    %Query{id: endpoint_id} = insert(:endpoint, user: user)
+    %Query{id: other_endpoint_id} = insert(:endpoint, user: team_user.team.user)
+    %Query{id: forbidden_endpoint_id} = insert(:endpoint, user: build(:user))
+
+    endpoint_ids =
+      Endpoints.list_endpoints_by_user_access(user)
+      |> Enum.map(& &1.id)
+
+    assert [endpoint_id, other_endpoint_id] == endpoint_ids
+    refute forbidden_endpoint_id in endpoint_ids
+  end
+
+  test "get_endpoint_query_by_user_access/2" do
+    owner = insert(:user)
+    team_user = insert(:team_user, email: owner.email)
+    %Query{id: endpoint_id} = insert(:endpoint, user: owner)
+    %Query{id: other_endpoint_id} = insert(:endpoint, user: team_user.team.user)
+    %Query{id: forbidden_endpoint_id} = insert(:endpoint, user: build(:user))
+
+    assert %Query{id: ^endpoint_id} =
+             Endpoints.get_endpoint_query_by_user_access(owner, endpoint_id)
+
+    assert %Query{id: ^endpoint_id} =
+             Endpoints.get_endpoint_query_by_user_access(team_user, endpoint_id)
+
+    assert %Query{id: ^other_endpoint_id} =
+             Endpoints.get_endpoint_query_by_user_access(team_user, other_endpoint_id)
+
+    assert nil == Endpoints.get_endpoint_query_by_user_access(owner, forbidden_endpoint_id)
+    assert nil == Endpoints.get_endpoint_query_by_user_access(team_user, forbidden_endpoint_id)
+  end
+
   test "get_endpoint_query/1 retrieves endpoint" do
     %{id: id} = insert(:endpoint)
     assert %Query{id: ^id} = Endpoints.get_endpoint_query(id)

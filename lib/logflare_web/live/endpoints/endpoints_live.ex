@@ -86,15 +86,17 @@ defmodule LogflareWeb.EndpointsLive do
 
   def handle_params(params, _uri, socket) do
     endpoint_id = params["id"]
+    user = socket.assigns.team_user || socket.assigns.user
 
     endpoint =
       if endpoint_id do
-        Endpoints.get_by(id: endpoint_id, user_id: socket.assigns.user_id)
+        Endpoints.get_endpoint_query_by_user_access(user, endpoint_id)
       end
 
     socket =
       socket
       |> assign(:show_endpoint, endpoint)
+      |> LogflareWeb.AuthLive.assign_context_by_resource(endpoint, user.email)
       |> then(fn
         socket when endpoint != nil ->
           {:ok, parsed_result} =

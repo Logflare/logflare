@@ -30,7 +30,11 @@ defmodule LogflareWeb.Plugs.SetVerifySource do
         |> halt()
 
       verify_source_for_user(source, user) ->
-        assign(conn, :source, source)
+        team = Logflare.Teams.get_team_by(user_id: source.user_id)
+
+        conn
+        |> assign(:source, source)
+        |> assign(:team, team)
 
       true ->
         conn
@@ -58,6 +62,8 @@ defmodule LogflareWeb.Plugs.SetVerifySource do
   end
 
   def verify_source_for_user(source, user) do
-    source.user_id == user.id || user.admin
+    user
+    |> Logflare.Sources.list_sources_by_user_access()
+    |> Enum.find(&(&1.id == source.id))
   end
 end

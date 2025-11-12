@@ -20,11 +20,12 @@ defmodule Logflare.Backends do
   alias Logflare.PubSubRates
   alias Logflare.Repo
   alias Logflare.SingleTenant
-  alias Logflare.Sources.Source
   alias Logflare.Sources
   alias Logflare.Sources.Counters
+  alias Logflare.Sources.Source
   alias Logflare.SystemMetrics
   alias Logflare.Rules.Rule
+  alias Logflare.Teams
   alias Logflare.User
 
   defdelegate child_spec(arg), to: __MODULE__.Supervisor
@@ -95,6 +96,17 @@ defmodule Logflare.Backends do
   @spec list_backends_by_user_id(integer()) :: [Backend.t()]
   def list_backends_by_user_id(id) when is_integer(id) do
     from(b in Backend, where: b.user_id == ^id)
+    |> Repo.all()
+    |> Enum.map(fn sb -> typecast_config_string_map_to_atom_map(sb) end)
+  end
+
+  @doc """
+  Lists all backends a user has access to, including where the user is a team member.
+  """
+  @spec list_backends_by_user_access(User.t()) :: [Backend.t()]
+  def list_backends_by_user_access(%User{} = user) do
+    Backend
+    |> Teams.filter_by_user_access(user)
     |> Repo.all()
     |> Enum.map(fn sb -> typecast_config_string_map_to_atom_map(sb) end)
   end

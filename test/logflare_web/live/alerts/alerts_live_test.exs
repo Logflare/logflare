@@ -127,14 +127,15 @@ defmodule LogflareWeb.AlertsLiveTest do
       refute has_element?(view, backend.name)
     end
 
-    test "saves new alert_query", %{conn: conn} do
+    test "saves new alert_query", %{conn: conn, user: user} do
       {:ok, view, _html} = live(conn, Routes.alerts_path(conn, :index))
+      user = Logflare.Repo.preload(user, :team)
 
       assert view
              |> element("a", "New alert")
              |> render_click() =~ ~r/\~\/.+alerts.+\/new/
 
-      assert_patch(view, "/alerts/new")
+      assert_patch(view, "/alerts/new?t=#{user.team.id}")
 
       new_query = "select current_timestamp() as my_time"
 
@@ -158,14 +159,15 @@ defmodule LogflareWeb.AlertsLiveTest do
       assert html =~ new_query
     end
 
-    test "saves new alert_query with errors, shows flash message", %{conn: conn} do
+    test "saves new alert_query with errors, shows flash message", %{conn: conn, user: user} do
       {:ok, view, _html} = live(conn, Routes.alerts_path(conn, :index))
+      user = Logflare.Repo.preload(user, :team)
 
       assert view
              |> element("a", "New alert")
              |> render_click() =~ ~r/\~\/.+alerts.+\/new/
 
-      assert_patch(view, "/alerts/new")
+      assert_patch(view, "/alerts/new?t=#{user.team.id}")
 
       assert view
              |> element("form#alert")

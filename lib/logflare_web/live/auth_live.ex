@@ -25,7 +25,7 @@ defmodule LogflareWeb.AuthLive do
          )}
 
       {:error, _reason} ->
-        # Shouldn't ever actually thit this branch. Invalid credential will have been caught in the Plug pipeline.
+        # Shouldn't ever actually hit this branch. Invalid credential will have been caught in the Plug pipeline.
         {:halt,
          socket
          |> Phoenix.LiveView.redirect(to: ~p"/auth/login")}
@@ -34,4 +34,30 @@ defmodule LogflareWeb.AuthLive do
 
   def on_mount(:default, _params, _session, socket),
     do: {:halt, socket}
+
+  @doc """
+  Assigns the context for a resource.
+  Used for overriding the default context assignment when accessing  a resource.
+
+  Resource must have a user_id field.
+  Access should be verified first by the caller.
+
+  Raises  if the team context cannot be succesfully assigned for a given resource and user email.
+  """
+  def assign_context_by_resource(socket, resource, user_email)
+      when is_map_key(resource, :user_id) do
+    resource = Logflare.Repo.preload(resource, user: :team)
+
+    case TeamContext.resolve(resource.user.team.id, user_email) do
+      {:ok, %TeamContext{team: team, user: user, team_user: team_user}} ->
+        assign(socket,
+          user: Logflare.Users.preload_defaults(user),
+          team: Logflare.Teams.preload_team_users(team),
+          team_user: team_user
+        )
+
+      {:error, _reason} ->
+        socket
+    end
+  end
 end
