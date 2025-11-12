@@ -25,7 +25,7 @@ export default defineConfig({
   reporter: 'html',
   /* Shared settings for all the projects below. See https://playwright.dev/docs/api/class-testoptions. */
   use: {
-    baseURL: 'http://localhost:8000',
+    baseURL: process.env.SUPABASE_PUBLIC_URL,
 
     httpCredentials: {
       username: process.env.DASHBOARD_USERNAME!,
