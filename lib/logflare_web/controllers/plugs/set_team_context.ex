@@ -22,7 +22,7 @@ defmodule LogflareWeb.Plugs.SetTeamContext do
 
   def set_team_user_for_browser(conn) do
     current_email = get_session(conn, :current_email)
-    team_id = Map.get(conn.params, "team_id", nil)
+    team_id = Map.get(conn.params, "t", nil)
 
     case TeamContext.resolve(team_id, current_email) do
       {:ok, %{user: user, team: team, team_user: team_user}} ->

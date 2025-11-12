@@ -201,14 +201,14 @@ defmodule LogflareWeb.Utils do
   ## Examples
 
       iex> with_team_param("/dashboard", 123)
-      "/dashboard?team_id=123"
+      "/dashboard?t=123"
 
-      iex> with_team_param("/dashboard?team_id=999", 123)
-      "/dashboard?team_id=123"
+      iex> with_team_param("/dashboard?t=999", 123)
+      "/dashboard?t=123"
 
       iex> team = %Logflare.Teams.Team{id: 123}
       iex> with_team_param("/dashboard", team)
-      "/dashboard?team_id=123"
+      "/dashboard?t=123"
 
       iex> with_team_param("/dashboard", nil)
       "/dashboard"
@@ -240,7 +240,7 @@ defmodule LogflareWeb.Utils do
     query_params =
       (uri.query || "")
       |> URI.decode_query()
-      |> Map.put("team_id", team_id)
+      |> Map.put("t", team_id)
       |> URI.encode_query()
 
     %{uri | query: query_params}

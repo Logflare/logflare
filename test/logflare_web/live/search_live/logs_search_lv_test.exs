@@ -200,7 +200,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
       {:error, {:live_redirect, %{to: to}}} =
         live(
           conn,
-          ~p"/sources/#{source.id}/search?team_id=#{team_user.team_id}&querystring=something123&tailing%3F="
+          ~p"/sources/#{source.id}/search?t=#{team_user.team_id}&querystring=something123&tailing%3F="
         )
 
       assert to =~ "tz=NZ"
@@ -215,7 +215,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
       {:ok, view, _html} =
         live(
           conn,
-          ~p"/sources/#{source.id}/search?team_id=#{team_user.team_id}&querystring=something123&tailing%3F=&tz=Singapore"
+          ~p"/sources/#{source.id}/search?t=#{team_user.team_id}&querystring=something123&tailing%3F=&tz=Singapore"
         )
 
       :timer.sleep(300)
@@ -799,7 +799,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
       {:ok, view, _html} =
         live(
           conn,
-          ~p"/sources/#{source.id}/search?team_id=#{team_user.team_id}&querystring=something123&tailing%3F=&tz=Etc/UTC"
+          ~p"/sources/#{source.id}/search?t=#{team_user.team_id}&querystring=something123&tailing%3F=&tz=Etc/UTC"
         )
 
       # Wait until search has executed
@@ -826,7 +826,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
         {:ok, view, _html} =
           live(
             conn,
-            ~p"/sources/#{source.id}/search?team_id=#{team_user.team_id}&querystring=something123&tailing%3F=&tz=Etc/UTC"
+            ~p"/sources/#{source.id}/search?t=#{team_user.team_id}&querystring=something123&tailing%3F=&tz=Etc/UTC"
           )
 
         view
@@ -853,7 +853,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
       {:ok, view, _html} =
         live(
           conn,
-          ~p"/sources/#{source.id}/search?team_id=#{team_user.team_id}&querystring=something123&tailing%3F=&tz=Etc/UTC"
+          ~p"/sources/#{source.id}/search?t=#{team_user.team_id}&querystring=something123&tailing%3F=&tz=Etc/UTC"
         )
 
       view
@@ -881,7 +881,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
         {:ok, view, _html} =
           live(
             conn,
-            ~p"/sources/#{source.id}/search?team_id=#{team_user.team_id}&querystring=something123&tailing%3F=&tz=Etc/UTC"
+            ~p"/sources/#{source.id}/search?t=#{team_user.team_id}&querystring=something123&tailing%3F=&tz=Etc/UTC"
           )
 
         view

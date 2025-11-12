@@ -115,9 +115,9 @@ defmodule LogflareWeb.DashboardLive.DashboardComponents do
       <ul class="list-unstyled">
         <li :if={@home_team} class="tw-mb-2">
           <strong :if={@current_team.id == @home_team.id}>{@home_team.name}</strong>
-          <.link :if={@current_team.id != @home_team.id} navigate={~p"/dashboard?#{%{"team_id" => @home_team}}"} class="tw-text-white">
+          <.team_link :if={@current_team.id != @home_team.id} navigate={~p"/dashboard"} team={@home_team} class="tw-text-white">
             {@home_team.name}
-          </.link>
+          </.team_link>
           <small>home team</small>
         </li>
 
@@ -133,9 +133,9 @@ defmodule LogflareWeb.DashboardLive.DashboardComponents do
 
         <li :for={team_user <- @team_users} class="tw-mb-2">
           <span :if={team_user.team_id == @current_team.id}>{team_user.team.name}</span>
-          <.link :if={team_user.team_id != @current_team.id} navigate={~p"/dashboard?#{%{team_id: team_user.team}}"} class="tw-text-white">
+          <.team_link :if={team_user.team_id != @current_team.id} navigate={~p"/dashboard"} team={team_user.team} class="tw-text-white">
             {team_user.team.name}
-          </.link>
+          </.team_link>
         </li>
       </ul>
     </div>

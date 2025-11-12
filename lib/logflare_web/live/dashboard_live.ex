@@ -164,7 +164,7 @@ defmodule LogflareWeb.DashboardLive do
             <DashboardComponents.members user={@user} team={@team} team_user={@team_user} />
           </div>
           <div class="tw-col-span-7">
-            <.source_list sources={@sources} source_metrics={@source_metrics} plan={@plan} fade_in={@fade_in} team={@team} />
+            <.source_list sources={@sources} source_metrics={@source_metrics} plan={@plan} fade_in={@fade_in} />
           </div>
           <div class="tw-col-span-2">
             <DashboardComponents.integrations />
