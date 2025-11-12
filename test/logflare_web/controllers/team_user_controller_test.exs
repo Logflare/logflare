@@ -18,7 +18,7 @@ defmodule LogflareWeb.TeamUserControllerTest do
 
     conn
     |> login_user(member_user, team_user)
-    |> visit(~p"/profile/edit?team_id=#{team.id}")
+    |> visit(~p"/profile/edit?t=#{team.id}")
     |> assert_has("h5", text: "Profile Preferences", exact: true)
     |> fill_in("Name", with: new_name)
     |> fill_in("Preferred email", with: new_email)

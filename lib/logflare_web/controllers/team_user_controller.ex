@@ -19,7 +19,7 @@ defmodule LogflareWeb.TeamUserController do
       {:ok, _team_user} ->
         conn
         |> put_flash(:info, "Profile updated!")
-        |> redirect(to: Routes.team_user_path(conn, :edit, team_id: team_user.team_id))
+        |> redirect(to: Routes.team_user_path(conn, :edit, t: team_user.team_id))
 
       {:error, changeset} ->
         conn
