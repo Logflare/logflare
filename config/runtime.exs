@@ -426,7 +426,8 @@ if System.get_env("LOGFLARE_OTEL_ENDPOINT") do
     otlp_headers: [
       {"x-source", System.get_env("LOGFLARE_OTEL_SOURCE_UUID")},
       {"x-api-key", System.get_env("LOGFLARE_OTEL_ACCESS_TOKEN")}
-    ]
+    ],
+    max_batch_size: 250
 end
 
 syn_endpoints_partitions =
