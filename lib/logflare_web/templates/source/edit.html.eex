@@ -303,6 +303,22 @@
     <%= submit "Save", class: "btn btn-primary form-button" %>
   <% end %>
 
+
+  <% if @user.system_monitoring do %>
+    <%= section_header("Monitoring Labels") %>
+    <p>Set labels for this source, to be used for monitoring. Labels are used to group metrics together when system monitoring is enabled. Values of the labels will be determined at ingest time.</p>
+    <%= form_for @changeset, Routes.source_path(@conn, :update, @source),fn f -> %>
+      <div class="form-group">
+        <%= text_input f, :labels , class: "form-control form-control-margin" %>
+        <%= error_tag f, :labels %>
+      <small class="form-text text-muted">
+        Comma-separated. For example: <code>status=m.level,my_project=project.name</code>.
+      </small>
+      </div>
+      <%= submit "Save", class: "btn btn-primary form-button" %>
+    <% end %>
+  <% end %>
+
   <%= section_header("Search Tailing") %>
   <%= form_for @changeset, Routes.source_path(@conn, :update, @source),fn f -> %>
     <div class="form-group">

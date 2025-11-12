@@ -139,6 +139,7 @@ defmodule Logflare.Sources.Source do
     field :bigquery_clustering_fields, :string
     field :system_source, :boolean, default: false
     field :system_source_type, Ecto.Enum, values: @system_source_types
+    field :labels, :string
 
     field :default_ingest_backend_enabled?, :boolean,
       source: :default_ingest_backend_enabled,
@@ -197,7 +198,8 @@ defmodule Logflare.Sources.Source do
       :transform_copy_fields,
       :disable_tailing,
       :default_ingest_backend_enabled?,
-      :bq_storage_write_api
+      :bq_storage_write_api,
+      :labels
     ])
     |> cast_embed(:notifications, with: &Notifications.changeset/2)
     |> default_validations(source)
@@ -226,7 +228,8 @@ defmodule Logflare.Sources.Source do
       :transform_copy_fields,
       :disable_tailing,
       :default_ingest_backend_enabled?,
-      :bq_storage_write_api
+      :bq_storage_write_api,
+      :labels
     ])
     |> cast_embed(:notifications, with: &Notifications.changeset/2)
     |> default_validations(source)
