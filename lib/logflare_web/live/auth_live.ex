@@ -25,7 +25,7 @@ defmodule LogflareWeb.AuthLive do
          )}
 
       {:error, _reason} ->
-        # Shouldn't ever actually thit this branch. Invalid credential will have been caught in the Plug pipeline.
+        # Shouldn't ever actually hit this branch. Invalid credential will have been caught in the Plug pipeline.
         {:halt,
          socket
          |> Phoenix.LiveView.redirect(to: ~p"/auth/login")}

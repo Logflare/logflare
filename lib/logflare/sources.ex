@@ -21,6 +21,8 @@ defmodule Logflare.Sources do
   alias Logflare.Sources
   alias Logflare.Sources.Source
   alias Logflare.Sources.Source.BigQuery.SchemaBuilder
+  alias Logflare.Teams.Team
+  alias Logflare.TeamUsers.TeamUser
   alias Logflare.User
   alias Logflare.Users
   alias Logflare.LogEvent
@@ -55,6 +57,17 @@ defmodule Logflare.Sources do
       s in Source,
       where: s.user_id == ^user_id and s.system_source == true
     )
+    |> Repo.all()
+    |> Enum.map(&put_retention_days/1)
+  end
+
+  @doc """
+  Lists sources a user has access to, including where the user is a team member.
+  """
+  @spec list_sources_by_user_access(User.t()) :: [Source.t()]
+  def list_sources_by_user_access(%User{} = user) do
+    user
+    |> query_sources_by_user_access()
     |> Repo.all()
     |> Enum.map(&put_retention_days/1)
   end
@@ -630,5 +643,18 @@ defmodule Logflare.Sources do
       [%LogEvent{ingested_at: ingested_at} | _] ->
         NaiveDateTime.compare(ingested_at, cutoff_time) == :gt
     end
+  end
+
+  defp query_sources_by_user_access(%User{id: user_id, email: email}) do
+    from s in Source,
+      left_join: u in User,
+      on: s.user_id == u.id,
+      left_join: t in Team,
+      on: t.user_id == u.id,
+      left_join: tu in TeamUser,
+      on: t.id == tu.team_id,
+      where: s.user_id == ^user_id or tu.email == ^email,
+      distinct: true,
+      select: s
   end
 end
