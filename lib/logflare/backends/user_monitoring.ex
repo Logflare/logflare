@@ -46,7 +46,8 @@ defmodule Logflare.Backends.UserMonitoring do
     tags = Sources.get_labels_mapping(source) |> Map.keys()
 
     [
-      counter("logflare.backends.ingest.ingested_bytes",
+      counter("logflare.backends.ingest.ingested_count",
+        measurement: :ingested_bytes,
         tags: ["backend_id", "source_id"] ++ tags,
         keep: keep_function,
         description: "Count of events ingested by backend for a source"

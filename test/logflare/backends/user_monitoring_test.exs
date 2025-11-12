@@ -151,6 +151,26 @@ defmodule Logflare.Backends.UserMonitoringTest do
                  events,
                  &match?(%LogEvent{body: %{"attributes" => %{"my_label" => "test"}}}, &1)
                )
+
+        assert Enum.any?(
+                 events,
+                 &match?(
+                   %LogEvent{
+                     body: %{"event_message" => "logflare.backends.ingest.ingested_count"}
+                   },
+                   &1
+                 )
+               )
+
+        assert Enum.any?(
+                 events,
+                 &match?(
+                   %LogEvent{
+                     body: %{"event_message" => "logflare.backends.ingest.ingested_bytes"}
+                   },
+                   &1
+                 )
+               )
       end)
     end
 
