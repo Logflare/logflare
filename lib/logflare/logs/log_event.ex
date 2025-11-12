@@ -25,7 +25,7 @@ defmodule Logflare.LogEvent do
     field :params, :map
     field :origin_source_id, Ecto.UUID.Atom
     field :via_rule, :map
-
+    field :labels, :map
     embeds_one :source, Source
 
     embeds_one :pipeline_error, PipelineError do
