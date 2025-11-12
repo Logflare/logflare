@@ -10,7 +10,7 @@ defmodule LogflareWeb.AccessTokensLive do
     ~H"""
     <.subheader>
       <:path>
-        ~/accounts/<.subheader_path_link live_patch to={~p"/access-tokens"}>access tokens</.subheader_path_link>
+        ~/accounts/<.subheader_path_link live_patch to={~p"/access-tokens"} team={@team}>access tokens</.subheader_path_link>
       </:path>
       <.subheader_link to="https://docs.logflare.app/concepts/access-tokens/" external={true} text="docs" fa_icon="book" />
     </.subheader>

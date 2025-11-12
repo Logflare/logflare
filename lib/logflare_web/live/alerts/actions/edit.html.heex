@@ -1,6 +1,6 @@
 <.subheader {assigns}>
   <:path>
-    ~/<.subheader_path_link live_patch to={~p"/alerts"}>alerts</.subheader_path_link>/<.subheader_path_link live_patch to={~p"/alerts/#{@alert.id}"}>
+    ~/<.subheader_path_link live_patch to={~p"/alerts"} team={@team}>alerts</.subheader_path_link>/<.subheader_path_link live_patch to={~p"/alerts/#{@alert.id}"} team={@team}>
       {@alert.name}
     </.subheader_path_link>/edit
   </:path>

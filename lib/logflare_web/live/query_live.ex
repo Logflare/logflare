@@ -14,7 +14,7 @@ defmodule LogflareWeb.QueryLive do
     ~H"""
     <.subheader>
       <:path>
-        ~/<.subheader_path_link live_patch to={~p"/query"}>query</.subheader_path_link>
+        ~/<.subheader_path_link live_patch to={~p"/query"} team={@team}>query</.subheader_path_link>
       </:path>
     </.subheader>
 

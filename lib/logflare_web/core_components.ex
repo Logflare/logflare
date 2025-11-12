@@ -91,11 +91,12 @@ defmodule LogflareWeb.CoreComponents do
   """
   attr :to, :string
   attr :live_patch, :boolean, default: false
+  attr :team, Logflare.Teams.Team, default: nil
   slot :inner_block, required: true
 
   def subheader_path_link(assigns) do
     ~H"""
-    <.dynamic_link to={@to} patch={@live_patch} class="tw-text-gray-600 tw-hover:text-black">
+    <.dynamic_link to={LogflareWeb.Utils.with_team_param(@to, @team)} patch={@live_patch} class="tw-text-gray-600 tw-hover:text-black">
       {render_slot(@inner_block)}
     </.dynamic_link>
     """
