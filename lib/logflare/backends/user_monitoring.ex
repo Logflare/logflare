@@ -49,7 +49,7 @@ defmodule Logflare.Backends.UserMonitoring do
     fn metadata ->
       case Users.get_related_user_id(metadata) do
         nil -> false
-        user_id -> user_id == source.user_id && user_monitoring?(user_id)
+        user_id -> user_id == source.user_ id && user_monitoring?(user_id)
       end
     end
   end
