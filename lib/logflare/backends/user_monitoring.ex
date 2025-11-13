@@ -12,7 +12,7 @@ defmodule Logflare.Backends.UserMonitoring do
   alias Logflare.Logs.Processor
   alias Opentelemetry.Proto.Collector.Metrics.V1.ExportMetricsServiceRequest
 
-  def get_otel_exporter(source, user) do
+  def get_otel_exporter do
     export_period =
       case Application.get_env(:logflare, :env) do
         :test -> 100
@@ -21,7 +21,7 @@ defmodule Logflare.Backends.UserMonitoring do
 
     otel_exporter_opts =
       [
-        metrics: metrics(source),
+        metrics: metrics(),
         resource: %{
           name: "Logflare",
           service: %{
@@ -31,8 +31,8 @@ defmodule Logflare.Backends.UserMonitoring do
           node: inspect(Node.self()),
           cluster: Application.get_env(:logflare, :metadata)[:cluster]
         },
-        export_callback: generate_exporter_callback(source),
-        name: :"system-metrics-#{source.id}-#{user.id}",
+        export_callback: &exporter_callback/2,
+        name: :user_metrics_exporter,
         otlp_endpoint: "",
         export_period: export_period
       ]
@@ -40,57 +40,56 @@ defmodule Logflare.Backends.UserMonitoring do
     [{OtelMetricExporter, otel_exporter_opts}]
   end
 
-  def metrics(%Source{} = source) do
-    keep_function = keep_metric_function(source)
-
-    tags = Sources.get_labels_mapping(source) |> Map.keys()
-
+  def metrics do
     [
       counter("logflare.backends.ingest.ingested_count",
         measurement: :ingested_bytes,
-        tags: ["backend_id", "source_id"] ++ tags,
-        keep: keep_function,
+        tags: ["backend_id", "source_id"],
+        keep: &keep_metric_function/1,
         description: "Count of events ingested by backend for a source"
       ),
       sum("logflare.backends.ingest.ingested_bytes",
-        tags: ["backend_id", "source_id"] ++ tags,
-        keep: keep_function,
-        description: "Count of events ingested by backend for a source"
+        tags: ["backend_id", "source_id"],
+        keep: &keep_metric_function/1,
+        description: "Amount of bytes ingested by backend for a source"
       )
     ]
   end
 
-  def keep_metric_function(%Source{id: source_id} = source) do
-    fn
-      %{"source_id" => ^source_id} = metadata ->
-        case Users.get_related_user_id(metadata) do
-          nil -> false
-          user_id -> user_id == source.user_id && user_monitoring?(user_id)
-        end
-
-      _ ->
-        false
+  def keep_metric_function(metadata) do
+    case Users.get_related_user_id(metadata) do
+      nil -> false
+      user_id -> Users.Cache.get(user_id).system_monitoring
     end
   end
 
-  defp user_monitoring?(user_id),
-    do: Users.Cache.get(user_id).system_monitoring
-
-  defp generate_exporter_callback(source) do
-    metrics_source = get_system_source_metrics(source.user_id)
-
-    fn {:metrics, metrics}, config ->
-      refreshed_source = Sources.refresh_source_metrics(metrics_source)
-
+  defp exporter_callback({:metrics, metrics}, config) do
       metrics
-      |> OtelMetricExporter.Protocol.build_metric_service_request(config.resource)
-      |> Protobuf.encode()
-      |> Protobuf.decode(ExportMetricsServiceRequest)
-      |> Map.get(:resource_metrics)
-      |> Processor.ingest(Logs.OtelMetric, refreshed_source)
+      |> Enum.group_by(fn metric ->
+        metric
+        |> Protobuf.encode()
+        |> Protobuf.decode(Opentelemetry.Proto.Metrics.V1.Metric)
+        |> Map.get(:data)
+        |> Logflare.Logs.OtelMetric.handle_metric_data(%{})
+        |> hd()
+        |> Map.get("attributes")
+        |> Users.get_related_user_id()
+      end)
+      |> Enum.each(fn {user_id, user_metrics} ->
+        source =
+          Sources.Cache.get_by(user_id: user_id, system_source_type: :metrics)
+          |> Sources.Cache.preload_rules()
+          |> Sources.refresh_source_metrics()
+
+        user_metrics
+        |> OtelMetricExporter.Protocol.build_metric_service_request(config.resource)
+        |> Protobuf.encode()
+        |> Protobuf.decode(ExportMetricsServiceRequest)
+        |> Map.get(:resource_metrics)
+        |> Processor.ingest(Logs.OtelMetric, source)
+      end)
 
       :ok
-    end
   end
 
   @doc """
