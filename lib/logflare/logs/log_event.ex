@@ -7,12 +7,12 @@ defmodule Logflare.LogEvent do
   alias Logflare.Logs.Ingest.MetadataCleaner
   alias Logflare.Sources.Source
   alias __MODULE__, as: LE
-  alias Logflare.Logs.Validators.{EqDeepFieldTypes, BigQuerySchemaChange}
+  alias Logflare.Logs.Validators.BigQuerySchemaChange
   alias Logflare.Logs.IngestTransformers
 
   require Logger
 
-  @validators [EqDeepFieldTypes, BigQuerySchemaChange]
+  @validators [BigQuerySchemaChange]
 
   @primary_key {:id, :binary_id, []}
   typed_embedded_schema do
