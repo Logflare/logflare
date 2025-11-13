@@ -315,9 +315,7 @@ defmodule Logflare.LogEventTest do
 
     defp event_with_message(pattern, %LogEvent{} = le) do
       @subject.apply_custom_event_message(
-        %LogEvent{
-          le
-        },
+        le,
         %Source{custom_event_message_keys: pattern}
       )
     end
