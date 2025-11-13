@@ -184,7 +184,6 @@ defmodule LogflareWeb.SourceControllerTest do
     test "renders rejected logs page", %{conn: conn, users: [u1, _u2], sources: [s1, _s2 | _]} do
       RejectedLogEvents.ingest(%LogEvent{
         pipeline_error: %LogEvent.PipelineError{message: Validators.EqDeepFieldTypes.message()},
-        params: %{"no_log_entry" => true, "timestamp" => ""},
         source: s1,
         valid: false,
         ingested_at: NaiveDateTime.utc_now()
@@ -203,7 +202,6 @@ defmodule LogflareWeb.SourceControllerTest do
                    message:
                      "Validation error: values with the same field path must have the same type."
                  },
-                 params: %{"no_log_entry" => true, "timestamp" => ""},
                  ingested_at: _
                }
              ] = conn.assigns.logs

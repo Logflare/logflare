@@ -149,7 +149,7 @@ defmodule Logflare.Logs.SourceRoutingTest do
 
       rule = build_filter.(0)
 
-      params = %{"log_entry" => "ten three", "metadata" => %{"statusCode" => 200}}
+      params = %{"event_message" => "ten three", "metadata" => %{"statusCode" => 200}}
 
       le = Logflare.LogEvent.make(params, %{source: source})
 

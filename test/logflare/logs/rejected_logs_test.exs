@@ -23,12 +23,6 @@ defmodule Logflare.Logs.RejectedLogEventsTest do
       timestamp = System.system_time(:microsecond)
 
       log_event = %LogEvent{
-        params: %{
-          "message" => "test",
-          "metadata" => %{
-            "ip" => "0.0.0.0"
-          }
-        },
         pipeline_error: %LogEvent.PipelineError{message: validator.message()},
         source: source,
         ingested_at: timestamp,
@@ -103,13 +97,11 @@ defmodule Logflare.Logs.RejectedLogEventsTest do
                %LogEvent{
                  pipeline_error: %LogEvent.PipelineError{message: validator_message},
                  body: _,
-                 params: _,
                  ingested_at: _
                },
                %LogEvent{
                  pipeline_error: %LogEvent.PipelineError{message: validator_message},
                  body: _,
-                 params: _,
                  ingested_at: _
                }
              ] = result[source1.token]
@@ -118,7 +110,6 @@ defmodule Logflare.Logs.RejectedLogEventsTest do
                %LogEvent{
                  pipeline_error: %LogEvent.PipelineError{message: ^validator_message},
                  body: _,
-                 params: _,
                  ingested_at: _
                }
              ] = result[source2.token]

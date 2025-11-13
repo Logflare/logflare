@@ -16,7 +16,7 @@ defmodule Logflare.Logs.RejectedLogEvents do
           {"id": 1}
         ]
       },
-      "log_entry": "should be rejected",
+      "event_message": "should be rejected",
       "source": "1a5c639d-1e1c-4e2f-ae24-60af0c10e654"
     }'
   ```
