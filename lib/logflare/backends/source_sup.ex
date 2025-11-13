@@ -55,9 +55,6 @@ defmodule Logflare.Backends.SourceSup do
       |> Enum.map(&Backend.child_spec(source, &1))
       |> Enum.uniq()
 
-    otel_exporter =
-      if user.system_monitoring, do: UserMonitoring.get_otel_exporter(source, user), else: []
-
     children =
       [
         {RateCounterServer, [source: source]},
@@ -69,7 +66,7 @@ defmodule Logflare.Backends.SourceSup do
         {SlackHookServer, [source: source]},
         {BillingWriter, [source: source]},
         {SourceSupWorker, [source: source]}
-      ] ++ otel_exporter ++ specs
+      ] ++ specs
 
     Supervisor.init(children, strategy: :one_for_one)
   end
