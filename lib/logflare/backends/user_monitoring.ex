@@ -13,6 +13,12 @@ defmodule Logflare.Backends.UserMonitoring do
   alias Opentelemetry.Proto.Collector.Metrics.V1.ExportMetricsServiceRequest
 
   def get_otel_exporter(source, user) do
+    export_period =
+      case Application.get_env(:logflare, :env) do
+        :test -> 100
+        _ -> 60_000
+      end
+
     otel_exporter_opts =
       [
         metrics: metrics(source),
@@ -26,40 +32,44 @@ defmodule Logflare.Backends.UserMonitoring do
           cluster: Application.get_env(:logflare, :metadata)[:cluster]
         },
         export_callback: generate_exporter_callback(source),
-        name: :"#{source.name}-#{user.id}",
-        otlp_endpoint: ""
+        name: :"system-metrics-#{source.id}-#{user.id}",
+        otlp_endpoint: "",
+        export_period: export_period
       ]
 
     [{OtelMetricExporter, otel_exporter_opts}]
   end
 
-  def metrics(reference) do
-    keep_function = keep_metric_function(reference)
+  def metrics(%Source{} = source) do
+    keep_function = keep_metric_function(source)
+
+    tags = Sources.get_labels_mapping(source) |> Map.keys()
 
     [
-      sum("logflare.backends.ingest.event_count",
-        tags: [:backend_id, :source_id],
+      counter("logflare.backends.ingest.ingested_count",
+        measurement: :ingested_bytes,
+        tags: ["backend_id", "source_id"] ++ tags,
+        keep: keep_function,
+        description: "Count of events ingested by backend for a source"
+      ),
+      sum("logflare.backends.ingest.ingested_bytes",
+        tags: ["backend_id", "source_id"] ++ tags,
         keep: keep_function,
         description: "Count of events ingested by backend for a source"
       )
     ]
   end
 
-  def keep_metric_function(%Source{} = source) do
-    fn metadata ->
-      case Users.get_related_user_id(metadata) do
-        nil -> false
-        user_id -> user_id == source.user_id && user_monitoring?(user_id)
-      end
-    end
-  end
+  def keep_metric_function(%Source{id: source_id} = source) do
+    fn
+      %{"source_id" => ^source_id} = metadata ->
+        case Users.get_related_user_id(metadata) do
+          nil -> false
+          user_id -> user_id == source.user_id && user_monitoring?(user_id)
+        end
 
-  def keep_metric_function(:main_exporter) do
-    fn metadata ->
-      case Users.get_related_user_id(metadata) do
-        nil -> true
-        user_id -> !Users.Cache.get(user_id).system_monitoring
-      end
+      _ ->
+        false
     end
   end
 
@@ -67,8 +77,10 @@ defmodule Logflare.Backends.UserMonitoring do
     do: Users.Cache.get(user_id).system_monitoring
 
   defp generate_exporter_callback(source) do
+    metrics_source = get_system_source_metrics(source.user_id)
+
     fn {:metrics, metrics}, config ->
-      refreshed_source = Sources.refresh_source_metrics(source)
+      refreshed_source = Sources.refresh_source_metrics(metrics_source)
 
       metrics
       |> OtelMetricExporter.Protocol.build_metric_service_request(config.resource)
@@ -89,7 +101,7 @@ defmodule Logflare.Backends.UserMonitoring do
     with %{meta: meta} <- log_event,
          user_id when is_integer(user_id) <- Users.get_related_user_id(meta),
          %{system_monitoring: true} <- Users.Cache.get(user_id),
-         %{} = source <- get_system_source(user_id) do
+         %{} = source <- get_system_source_logs(user_id) do
       LogflareLogger.Formatter.format(
         log_event.level,
         format_message(log_event),
@@ -105,9 +117,15 @@ defmodule Logflare.Backends.UserMonitoring do
     end
   end
 
-  defp get_system_source(user_id),
+  defp get_system_source_logs(user_id),
     do:
       Sources.Cache.get_by(user_id: user_id, system_source_type: :logs)
+      |> Sources.refresh_source_metrics()
+      |> Sources.Cache.preload_rules()
+
+  defp get_system_source_metrics(user_id),
+    do:
+      Sources.Cache.get_by(user_id: user_id, system_source_type: :metrics)
       |> Sources.refresh_source_metrics()
       |> Sources.Cache.preload_rules()
 
