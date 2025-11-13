@@ -307,7 +307,9 @@ defmodule Logflare.LogEvent do
     determine_timestamp(%{"timestamp" => round(x)})
   end
 
-  defp default_timestamp do
+  defp determine_timestamp(_), do: default_timestamp()
+
+  defp default_timestamp() do
     System.system_time(:microsecond)
   end
 end

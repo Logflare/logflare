@@ -12,7 +12,8 @@ defmodule Logflare.Logs.Ingest.MetadataCleaner do
         acc
 
       x, acc when is_map(x) or is_list(x) ->
-        [deep_reject_nil_and_empty(x) | acc]
+        cleaned = deep_reject_nil_and_empty(x)
+        if nil_or_empty?(cleaned), do: acc, else: [cleaned | acc]
 
       x, acc ->
         [x | acc]
