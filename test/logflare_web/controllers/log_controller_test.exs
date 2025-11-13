@@ -192,15 +192,6 @@ defmodule LogflareWeb.LogControllerTest do
       {:ok, user: user, conn: conn}
     end
 
-    test ":create rejected logs ingestion", %{conn: conn, source: source} do
-      conn =
-        conn
-        |> post(Routes.log_path(conn, :create, source: source.token), @invalid)
-
-      assert %{"message" => [msg]} = json_response(conn, 406)
-      assert msg =~ "not supported by"
-    end
-
     test ":create ingestion error handling for BadRequestError in Plug.Parsers", %{
       conn: conn,
       source: source

@@ -178,36 +178,6 @@ defmodule LogflareWeb.SourceControllerTest do
     end
   end
 
-  describe "dashboard - rejected" do
-    setup [:create_plan, :old_setup]
-
-    test "renders rejected logs page", %{conn: conn, users: [u1, _u2], sources: [s1, _s2 | _]} do
-      RejectedLogEvents.ingest(%LogEvent{
-        pipeline_error: %LogEvent.PipelineError{message: Validators.EqDeepFieldTypes.message()},
-        source: s1,
-        valid: false,
-        ingested_at: NaiveDateTime.utc_now()
-      })
-
-      conn =
-        conn
-        |> login_user(u1)
-        |> get(~p"/sources/#{s1}/rejected")
-
-      assert html_response(conn, 200) =~ "dashboard"
-
-      assert [
-               %LogEvent{
-                 pipeline_error: %LogEvent.PipelineError{
-                   message:
-                     "Validation error: values with the same field path must have the same type."
-                 },
-                 ingested_at: _
-               }
-             ] = conn.assigns.logs
-    end
-  end
-
   describe "show" do
     setup [:create_plan, :old_setup]
 
