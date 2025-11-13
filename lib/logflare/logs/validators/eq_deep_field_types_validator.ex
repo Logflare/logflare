@@ -7,7 +7,7 @@ defmodule Logflare.Logs.Validators.EqDeepFieldTypes do
   """
 
   # Public
-  def validate(%LE{body: body}) do
+  def validate(%LE{body: body}, _source) do
     if valid?(body) do
       :ok
     else
@@ -34,7 +34,7 @@ defmodule Logflare.Logs.Validators.EqDeepFieldTypes do
       {:error, message()}
   end
 
-  def validate(%{log_event: %{body: _}}) do
+  def validate(%{log_event: %{body: _}}, _source) do
     :ok
   end
 

@@ -21,12 +21,11 @@ defmodule Logflare.LogEvent do
     field :drop, :boolean, default: false
     field :is_from_stale_query, :boolean
     field :ingested_at, :utc_datetime_usec
-    field :sys_uint, :integer
-    field :params, :map
     field :origin_source_id, Ecto.UUID.Atom
     field :via_rule, :map
 
     embeds_one :source, Source
+    field :source_id, :integer, default: nil
 
     embeds_one :pipeline_error, PipelineError do
       field :stage, :string
@@ -56,12 +55,11 @@ defmodule Logflare.LogEvent do
   Used to make log event from user-provided parameters, for ingestion.
   """
   @spec make(%{optional(String.t()) => term}, %{source: Source.t()}) :: LE.t()
-  def make(params, %{source: source}) do
+  def make(params, %{source: source}, _opts \\ []) do
+
     changeset =
       %__MODULE__{}
       |> cast(mapper(params), [:body, :valid])
-      |> cast_embed(:source, with: &Source.no_casting_changeset/1)
-      |> cast_embed(:pipeline_error, with: &pipeline_error_changeset/2)
       |> validate_required([:body])
 
     pipeline_error =
@@ -73,77 +71,36 @@ defmodule Logflare.LogEvent do
           message: stringify_changeset_errors(changeset)
         }
 
-    le_map =
-      changeset.changes
-      |> Map.put(:pipeline_error, pipeline_error)
-      |> Map.put(:source, source)
-      |> Map.put(:origin_source_id, source.token)
-      |> Map.put(:valid, changeset.valid?)
-      |> Map.put(:params, params)
-      |> Map.put(:ingested_at, NaiveDateTime.utc_now())
-      |> Map.put(:id, changeset.changes.body["id"])
-      |> Map.put(:sys_uint, System.unique_integer([:monotonic]))
+    le_map =  Map.merge(changeset.changes, %{
+      pipeline_error: pipeline_error,
+      source_id: source.id,
+      origin_source_id: source.token,
+      valid: changeset.valid?,
+      ingested_at: NaiveDateTime.utc_now(),
+      id: changeset.changes.body["id"],
+    })
 
     Logflare.LogEvent
     |> struct!(le_map)
-    |> transform()
-    |> validate()
+    |> transform(source)
+    |> validate(source)
   end
 
   # Parses input parameters and performs casting.
   defp mapper(params) do
-    # TODO: deprecate and remove `log_entry` and `message`
-    event_message = params["log_entry"] || params["message"] || params["event_message"]
+    # TODO: deprecate and remove `message`
+    event_message =  params["message"] || params["event_message"]
     id = id(params)
 
-    timestamp =
-      case params["timestamp"] do
-        x when is_binary(x) ->
-          case DateTime.from_iso8601(x) do
-            {:ok, udt, _} ->
-              DateTime.to_unix(udt, :microsecond)
-
-            {:error, _} ->
-              # Logger.warning(
-              #   "Malformed timesetamp. Using DateTime.utc_now/0. Expected iso8601. Got: #{inspect(x)}"
-              # )
-
-              System.system_time(:microsecond)
-          end
-
-        x when is_integer(x) ->
-          case Integer.digits(x) |> Enum.count() do
-            19 -> Kernel.round(x / 1_000)
-            16 -> x
-            13 -> x * 1_000
-            10 -> x * 1_000_000
-            7 -> x * 1_000_000_000
-            _ -> x
-          end
-
-        x when is_float(x) ->
-          rounded = round(x)
-          length = rounded |> Integer.digits() |> Enum.count()
-
-          case length do
-            19 -> round(rounded / 1_000)
-            16 -> rounded
-            13 -> x * 1_000
-            10 -> x * 1_000_000
-            7 -> x * 1_000_000_000
-            _ -> rounded
-          end
-
-        nil ->
-          System.system_time(:microsecond)
-      end
+    timestamp = determine_timestamp(params)
 
     body =
       params
+      |> MetadataCleaner.deep_reject_nil_and_empty()
       |> Map.merge(%{
         "event_message" => event_message,
         "timestamp" => timestamp,
-        "id" => id
+        "id" => id,
       })
       |> case do
         %{"message" => m, "event_message" => em} = map when m == em ->
@@ -154,19 +111,18 @@ defmodule Logflare.LogEvent do
       end
 
     %{
-      "body" => body,
+      "body" => body ,
       "id" => id
     }
-    |> MetadataCleaner.deep_reject_nil_and_empty()
   end
 
-  @spec validate(LE.t()) :: LE.t()
-  defp validate(%LE{valid: false} = le), do: le
+  @spec validate(LE.t(), Source.t()) :: LE.t()
+  defp validate(%LE{valid: false} = le, _source), do: le
 
-  defp validate(%LE{valid: true} = le) do
+  defp validate(%LE{valid: true} = le, source) do
     @validators
     |> Enum.reduce_while(true, fn validator, _acc ->
-      case validator.validate(le) do
+      case validator.validate(le, source) do
         :ok ->
           {:cont, %{le | valid: true, pipeline_error: nil}}
 
@@ -185,12 +141,12 @@ defmodule Logflare.LogEvent do
     end)
   end
 
-  @spec transform(LE.t()) :: LE.t()
-  defp transform(%LE{valid: false} = le), do: le
+  @spec transform(LE.t(), Source.t()) :: LE.t()
+  defp transform(%LE{valid: false} = le, source), do: le
 
-  defp transform(%LE{valid: true} = le) do
+  defp transform(%LE{valid: true} = le, %Source{} = source) do
     with {:ok, le} <- bigquery_spec(le),
-         {:ok, le} <- copy_fields(le) do
+         {:ok, le} <- copy_fields(le, source) do
       le
     else
       {:error, message} ->
@@ -211,9 +167,9 @@ defmodule Logflare.LogEvent do
     {:ok, %{le | body: new_body}}
   end
 
-  defp copy_fields(%LE{source: %Source{transform_copy_fields: nil}} = le), do: {:ok, le}
+  defp copy_fields(%LE{} = le, %Source{transform_copy_fields: nil}= source), do: {:ok, le}
 
-  defp copy_fields(le) do
+  defp copy_fields(le, source) do
     instructions = String.split(le.source.transform_copy_fields, ~r/\n/, trim: true)
 
     new_body =
@@ -248,9 +204,9 @@ defmodule Logflare.LogEvent do
 
   Configuration should be comma separated, and it accepts json query syntax.
   """
-  def apply_custom_event_message(%LE{drop: true} = le), do: le
+  def apply_custom_event_message(%LE{drop: true} = le, _source), do: le
 
-  def apply_custom_event_message(%LE{source: %Source{} = source} = le) do
+  def apply_custom_event_message(%LE{} = le, %Source{} = source) do
     message = make_message(le, source)
 
     Kernel.put_in(le.body["event_message"], message)
@@ -315,5 +271,32 @@ defmodule Logflare.LogEvent do
 
   defp id(params) do
     params["id"] || params[:id] || Ecto.UUID.generate()
+  end
+  defp determine_timestamp(params) when not is_map_key(params, "timestamp"), do: default_timestamp()
+  defp determine_timestamp(%{"timestamp" => x} = params) when is_binary(x) do
+    case DateTime.from_iso8601(x) do
+      {:ok, udt, _} ->
+        DateTime.to_unix(udt, :microsecond)
+      {:error, _} ->
+        default_timestamp()
+    end
+  end
+  defp determine_timestamp(%{"timestamp" => x}) when is_integer(x) do
+    case Integer.digits(x) |> Enum.count() do
+      19 -> Kernel.round(x / 1_000)
+      16 -> x
+      13 -> x * 1_000
+      10 -> x * 1_000_000
+      7 -> x * 1_000_000_000
+      _ -> x
+    end
+
+  end
+  defp determine_timestamp(%{"timestamp" => x}) when is_float(x) do
+    determine_timestamp(%{"timestamp" => round(x)})
+  end
+
+  defp default_timestamp do
+    System.system_time(:microsecond)
   end
 end

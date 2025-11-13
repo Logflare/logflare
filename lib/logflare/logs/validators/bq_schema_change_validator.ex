@@ -6,13 +6,13 @@ defmodule Logflare.Logs.Validators.BigQuerySchemaChange do
   alias Logflare.SourceSchemas
   alias Logflare.Sources.Source
 
-  @spec validate(LE.t()) :: :ok | {:error, String.t()}
-  def validate(%LE{body: _body, source: %Source{validate_schema: false}}) do
+  @spec validate(LE.t(), Source.t()) :: :ok | {:error, String.t()}
+  def validate(%LE{body: _body}, %Source{validate_schema: false}= source) do
     :ok
   end
 
-  @spec validate(LE.t()) :: :ok | {:error, String.t()}
-  def validate(%LE{body: body, source: %Source{} = source}) do
+  @spec validate(LE.t(), Source.t()) :: :ok | {:error, String.t()}
+  def validate(%LE{body: body}, %Source{} = source) do
     # Convert to a flat type map
     # We're missing the cache too much here.
     schema_flatmap =
