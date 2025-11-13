@@ -56,7 +56,6 @@ defmodule Logflare.LogEvent do
   """
   @spec make(%{optional(String.t()) => term}, %{source: Source.t()}) :: LE.t()
   def make(params, %{source: source}, _opts \\ []) do
-
     changeset =
       %__MODULE__{}
       |> cast(mapper(params), [:body, :valid])
@@ -71,14 +70,15 @@ defmodule Logflare.LogEvent do
           message: stringify_changeset_errors(changeset)
         }
 
-    le_map =  Map.merge(changeset.changes, %{
-      pipeline_error: pipeline_error,
-      source_id: source.id,
-      origin_source_id: source.token,
-      valid: changeset.valid?,
-      ingested_at: NaiveDateTime.utc_now(),
-      id: changeset.changes.body["id"],
-    })
+    le_map =
+      Map.merge(changeset.changes, %{
+        pipeline_error: pipeline_error,
+        source_id: source.id,
+        origin_source_id: source.token,
+        valid: changeset.valid?,
+        ingested_at: NaiveDateTime.utc_now(),
+        id: changeset.changes.body["id"]
+      })
 
     Logflare.LogEvent
     |> struct!(le_map)
@@ -89,7 +89,7 @@ defmodule Logflare.LogEvent do
   # Parses input parameters and performs casting.
   defp mapper(params) do
     # TODO: deprecate and remove `message`
-    event_message =  params["message"] || params["event_message"]
+    event_message = params["message"] || params["event_message"]
     id = id(params)
 
     timestamp = determine_timestamp(params)
@@ -100,7 +100,7 @@ defmodule Logflare.LogEvent do
       |> Map.merge(%{
         "event_message" => event_message,
         "timestamp" => timestamp,
-        "id" => id,
+        "id" => id
       })
       |> case do
         %{"message" => m, "event_message" => em} = map when m == em ->
@@ -111,7 +111,7 @@ defmodule Logflare.LogEvent do
       end
 
     %{
-      "body" => body ,
+      "body" => body,
       "id" => id
     }
   end
@@ -142,7 +142,7 @@ defmodule Logflare.LogEvent do
   end
 
   @spec transform(LE.t(), Source.t()) :: LE.t()
-  defp transform(%LE{valid: false} = le, source), do: le
+  defp transform(%LE{valid: false} = le, _source), do: le
 
   defp transform(%LE{valid: true} = le, %Source{} = source) do
     with {:ok, le} <- bigquery_spec(le),
@@ -167,10 +167,10 @@ defmodule Logflare.LogEvent do
     {:ok, %{le | body: new_body}}
   end
 
-  defp copy_fields(%LE{} = le, %Source{transform_copy_fields: nil}= source), do: {:ok, le}
+  defp copy_fields(%LE{} = le, %Source{transform_copy_fields: nil}), do: {:ok, le}
 
   defp copy_fields(le, source) do
-    instructions = String.split(le.source.transform_copy_fields, ~r/\n/, trim: true)
+    instructions = String.split(source.transform_copy_fields, ~r/\n/, trim: true)
 
     new_body =
       for instruction <- instructions, instruction = String.trim(instruction), reduce: le.body do
@@ -272,15 +272,20 @@ defmodule Logflare.LogEvent do
   defp id(params) do
     params["id"] || params[:id] || Ecto.UUID.generate()
   end
-  defp determine_timestamp(params) when not is_map_key(params, "timestamp"), do: default_timestamp()
-  defp determine_timestamp(%{"timestamp" => x} = params) when is_binary(x) do
+
+  defp determine_timestamp(params) when not is_map_key(params, "timestamp"),
+    do: default_timestamp()
+
+  defp determine_timestamp(%{"timestamp" => x}) when is_binary(x) do
     case DateTime.from_iso8601(x) do
       {:ok, udt, _} ->
         DateTime.to_unix(udt, :microsecond)
+
       {:error, _} ->
         default_timestamp()
     end
   end
+
   defp determine_timestamp(%{"timestamp" => x}) when is_integer(x) do
     case Integer.digits(x) |> Enum.count() do
       19 -> Kernel.round(x / 1_000)
@@ -290,8 +295,8 @@ defmodule Logflare.LogEvent do
       7 -> x * 1_000_000_000
       _ -> x
     end
-
   end
+
   defp determine_timestamp(%{"timestamp" => x}) when is_float(x) do
     determine_timestamp(%{"timestamp" => round(x)})
   end

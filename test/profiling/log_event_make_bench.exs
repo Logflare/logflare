@@ -39,7 +39,7 @@ Benchee.run(
   %{
     "100 fields with 5 level nesting" => fn ->
       LogEvent.make(deeply_nested_params, %{source: source})
-    end,
+    end
     # "100 fields with 5 level nesting (map_merge: true)" => fn ->
     #   LogEvent.make(deeply_nested_params, %{source: source}, map_merge: true)
     # end

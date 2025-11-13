@@ -7,7 +7,7 @@ defmodule Logflare.Logs.Validators.BigQuerySchemaChange do
   alias Logflare.Sources.Source
 
   @spec validate(LE.t(), Source.t()) :: :ok | {:error, String.t()}
-  def validate(%LE{body: _body}, %Source{validate_schema: false}= source) do
+  def validate(%LE{body: _body}, %Source{validate_schema: false}) do
     :ok
   end
 
