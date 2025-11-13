@@ -117,20 +117,15 @@ defmodule Logflare.Telemetry do
 
     application_metrics = [
       distribution("logflare.goth.fetch.stop.duration",
-        tags: [:partition],
         unit: {:native, :millisecond}
       ),
       distribution("logflare.logs.processor.ingest.stop.duration",
         tags: [:processor],
         unit: {:native, :millisecond}
       ),
-      counter("logflare.logs.processor.ingest.stop.duration",
-        tags: [:processor],
-        description: "Ingestion execution counts"
-      ),
-      counter("bandit.request.stop.duration",
-        tags: [],
-        description: "Total HTTP requests"
+      counter("logflare.total_http_requests",
+        measurement: :duration,
+        event_name: "bandit.request.stop.duration"
       ),
       sum("logflare.logs.processor.ingest.logs.count",
         tags: [:processor],
@@ -149,67 +144,27 @@ defmodule Logflare.Telemetry do
         tags: [:backend_type],
         description: "Sum of batch sizes for broadway pipeline by backend type"
       ),
-      counter("logflare.context_cache.busted.count", tags: [:schema, :table]),
-      counter("logflare.context_cache.handle_record.count", tags: [:schema, :table]),
+      counter("logflare.cache_buster.to_bust.count", tags: []),
       counter("logflare.logs.ingest_logs.drop",
-        tags: [],
         description: "Ingest drops"
       ),
       counter("logflare.logs.ingest_logs.rejected",
-        tags: [],
         description: "Ingest rejects"
       ),
       counter("logflare.logs.ingest_logs.buffer_full",
-        tags: [],
         description: "Ingest buffer fulls"
       ),
       counter("logflare.rate_limiter.rejected",
-        tags: [],
         description: "Rate limited API hits"
       ),
-      last_value("logflare.backends.egress.request_length", tags: [:backend_id]),
       last_value("logflare.system.finch.in_flight_requests", tags: [:pool, :url]),
-      last_value("logflare.google.set_iam_policy.members",
-        description: "Google IAM policy members count"
-      ),
-      last_value("logflare.backends.dynamic_pipeline.pipeline_count",
-        tags: [:backend_id]
-      ),
-      last_value("logflare.backends.ingest_event_queue.queue_janitor.length",
-        tags: [:backend_id]
-      ),
+      distribution("logflare.backends.dynamic_pipeline.pipeline_count"),
       distribution("logflare.ingest.pipeline.stream_batch.stop.duration",
-        tags: [:source_token],
         unit: {:native, :millisecond}
       ),
-      last_value("logflare.backends.dynamic_pipeline.increment.success_count",
-        tags: [:backend_id],
-        description: "Dynamic pipeline sucessfully increment count"
-      ),
-      last_value("logflare.backends.dynamic_pipeline.increment.error_count",
-        tags: [:backend_id],
-        description: "Dynamic pipeline failed increment count"
-      ),
-      last_value("logflare.backends.dynamic_pipeline.decrement.success_count",
-        tags: [:backend_id],
-        description: "Dynamic pipeline sucessfully decrement count"
-      ),
-      last_value("logflare.backends.dynamic_pipeline.decrement.error_count",
-        tags: [:backend_id],
-        description: "Dynamic pipeline failed decrement count"
-      ),
       distribution("logflare.endpoints.run_query.exec_query_on_backend.stop.duration",
-        tags: [:endpoint_id],
         unit: {:native, :millisecond},
         description: "Endpoint query execution duration"
-      ),
-      counter("logflare.endpoints.run_query.exec_query_on_backend.stop.duration",
-        tags: [:endpoint_id],
-        description: "Endpoint query execution counts"
-      ),
-      distribution("logflare.endpoints.run_query.exec_query_on_backend.total_rows",
-        tags: [:endpoint_id],
-        description: "Number of rows returned by endpoint query execution"
       ),
       last_value("logflare.system.top_processes.message_queue.length",
         tags: [:name],
