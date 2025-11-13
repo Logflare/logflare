@@ -212,6 +212,23 @@ defmodule LogflareWeb.DashboardLiveTest do
   end
 
   describe "displaying source metrics" do
+    test "starts UserMetricsPoller when session has string user_id", %{user: user} do
+      # Simulate what happens when session data is deserialized with string user_id
+      conn =
+        build_conn()
+        |> Plug.Test.init_test_session(%{user_id: "#{user.id}"})
+        |> Plug.Conn.assign(:user, user)
+
+      {:ok, _view, _html} = live(conn, "/dashboard")
+
+      # The UserMetricsPoller should be registered and running after mount
+      assert {poller_pid, _} = :syn.lookup(:core, {Logflare.Sources.UserMetricsPoller, user.id})
+      assert Process.alive?(poller_pid)
+
+      # Should have one subscriber (the LiveView process)
+      assert [_subscriber] = Logflare.Sources.UserMetricsPoller.list_subscribers(user.id)
+    end
+
     test "renders source metrics ", %{conn: conn, source: source} do
       {:ok, view, _html} = live(conn, "/dashboard")
 
