@@ -478,11 +478,11 @@ defmodule Logflare.Backends do
     |> Enum.reduce({[], []}, fn param, {events, errors} ->
       param
       |> case do
-        %LogEvent{source: %Source{}} = le ->
-          le
+        %LogEvent{source_id: nil} = le ->
+          %{le | source_id: source.id}
 
         %LogEvent{} = le ->
-          %{le | source: source}
+          le
 
         param ->
           LogEvent.make(param, %{source: source})
@@ -527,7 +527,7 @@ defmodule Logflare.Backends do
       Source.ChannelTopics.broadcast_new(log_events)
     end
 
-    SourceRouting.route_to_sinks_and_ingest(log_events)
+    SourceRouting.route_to_sinks_and_ingest(log_events, source)
 
     :ok
   end

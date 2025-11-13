@@ -25,6 +25,7 @@ defmodule Logflare.Logs.RejectedLogEvents do
   alias Logflare.Sources.Source
   alias Logflare.LogEvent, as: LE
   alias Logflare.Utils
+  alias Logflare.Sources
 
   @cache __MODULE__
 
@@ -79,9 +80,10 @@ defmodule Logflare.Logs.RejectedLogEvents do
   Expected to be called only in Logs context
   """
   @spec ingest(LE.t()) :: :ok
-  def ingest(%LE{source: %Source{token: token}, valid: false, id: id} = le) do
-    Cachex.put!(@cache, {token, id}, le)
-    Cachex.incr(@cache, counter_name(token))
+  def ingest(%LE{source_id: source_id, valid: false, id: id} = le) do
+    source = Sources.Cache.get_by_id(source_id)
+    Cachex.put!(@cache, {source.token, id}, le)
+    Cachex.incr(@cache, counter_name(source.token))
 
     :ok
   end

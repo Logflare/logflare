@@ -13,7 +13,6 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
   alias Logflare.Google.BigQuery.GenUtils
   alias Logflare.LogEvent, as: LE
   alias Logflare.Mailer
-  alias Logflare.Sources.Source
   alias Logflare.Sources
   alias Logflare.Backends.IngestEventQueue
   alias Logflare.Backends.BufferProducer
@@ -248,11 +247,9 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
     {messages, %{}}
   end
 
-  def process_data(%LE{source: %Source{lock_schema: true}} = log_event, _context) do
-    log_event
-  end
+  def process_data(%LE{source_id: source_id} = log_event, context) do
+    source = Sources.Cache.get_by_id(source_id)
 
-  def process_data(%LE{source: source} = log_event, context) do
     # TODO ... We use `ignoreUnknownValues: true` when we do `stream_batch!`. If we set that to `true`
     # then this makes BigQuery check the payloads for new fields. In the response we'll get a list of events that
     # didn't validate.
@@ -261,21 +258,23 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
 
     # random sample if local ingest rate is above a certain level
     # dynamic calculation maintains ~1 schema update per second across all rate levels
-    probability =
-      case PubSubRates.Cache.get_local_rates(source.token) do
-        %{average_rate: avg} when avg > 0 ->
-          # probability = 1.0 / avg with safety bounds
-          # supports rates up to 100K+/sec: at 100K/sec -> 0.00001 (samples ~1/sec)
-          min(1.0, max(0.00001, 1.0 / avg))
+    unless source.lock_schema do
+      probability =
+        case PubSubRates.Cache.get_local_rates(source.token) do
+          %{average_rate: avg} when avg > 0 ->
+            # probability = 1.0 / avg with safety bounds
+            # supports rates up to 100K+/sec: at 100K/sec -> 0.00001 (samples ~1/sec)
+            min(1.0, max(0.00001, 1.0 / avg))
 
-        _ ->
-          1.0
+          _ ->
+            1.0
+        end
+
+      if :rand.uniform() <= probability do
+        :ok =
+          Backends.via_source(source, {Schema, Map.get(context, :backend_id)})
+          |> Schema.update(log_event, source)
       end
-
-    if :rand.uniform() <= probability do
-      :ok =
-        Backends.via_source(source, {Schema, Map.get(context, :backend_id)})
-        |> Schema.update(log_event)
     end
 
     log_event

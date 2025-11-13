@@ -40,7 +40,7 @@ defmodule Logflare.Backends.Adaptor.SentryAdaptor do
   end
 
   @impl Logflare.Backends.Adaptor
-  def transform_config(%_{config: config}) do
+  def transform_config(%{config: config}) do
     case DSN.parse(config.dsn) do
       {:ok, parsed_dsn} ->
         %{

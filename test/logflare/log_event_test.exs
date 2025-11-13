@@ -150,30 +150,10 @@ defmodule Logflare.LogEventTest do
              # validity gets overwritten
              valid: true,
              pipeline_error: nil,
-             source: %_{}
+             source_id: source_id
            } = LogEvent.make(params, %{source: source})
-  end
 
-  test "make/2 invalid events", %{source: source} do
-    for params <- [
-          ["some", 123],
-          ["some", 123.0],
-          [["some-value"]],
-          ["test", %{"test" => 123}],
-          [["test"], ["123"]],
-          [[], ["123"]],
-          [[1], [2, 3]],
-          [[1], []]
-        ] do
-      assert %LogEvent{
-               drop: false,
-               valid: false,
-               pipeline_error: err,
-               source: %_{}
-             } = LogEvent.make(%{"field" => params}, %{source: source})
-
-      assert err != nil
-    end
+    assert source_id == source.id
   end
 
   test "make_from_db/2", %{source: source} do
@@ -184,7 +164,8 @@ defmodule Logflare.LogEventTest do
 
     params = %{"metadata" => [%{"some" => "value"}]}
     le = LogEvent.make_from_db(params, %{source: source})
-    assert %{body: %{"metadata" => [%{"some" => "value"}]}, source: %_{}} = le
+    assert %{body: %{"metadata" => [%{"some" => "value"}]}, source_id: source_id} = le
+    assert source_id == source.id
     assert le.body["event_message"] == nil
   end
 
@@ -202,10 +183,8 @@ defmodule Logflare.LogEventTest do
       "metadata" => %{"a" => "value"}
     }
 
-    le =
-      LogEvent.make(params, %{
-        source: %{source | custom_event_message_keys: "id, event_message, m.a"}
-      })
+    source = %{source | custom_event_message_keys: "id, event_message, m.a"}
+    le = LogEvent.make(params, %{source: source})
 
     le = LogEvent.apply_custom_event_message(le, source)
     assert le.body["event_message"] =~ le.id

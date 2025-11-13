@@ -251,7 +251,7 @@ defmodule Logflare.RulesTest do
 
       # route the source
       le = build(:log_event, source: source, message: "testing123")
-      SourceRouting.route_to_sinks_and_ingest(le)
+      SourceRouting.route_to_sinks_and_ingest(le, source)
 
       :timer.sleep(200)
       assert Supervisor.which_children(via) |> length() > prev_length

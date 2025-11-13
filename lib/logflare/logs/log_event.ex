@@ -24,7 +24,6 @@ defmodule Logflare.LogEvent do
     field :origin_source_id, Ecto.UUID.Atom
     field :via_rule, :map
 
-    embeds_one :source, Source
     field :source_id, :integer, default: nil
 
     embeds_one :pipeline_error, PipelineError do
@@ -45,10 +44,9 @@ defmodule Logflare.LogEvent do
 
     %__MODULE__{}
     |> cast(params, [:valid, :id, :body])
-    |> cast_embed(:source, with: &Source.no_casting_changeset/1)
     |> cast_embed(:pipeline_error, with: &pipeline_error_changeset/2)
     |> apply_changes()
-    |> Map.put(:source, source)
+    |> Map.put(:source_id, source.id)
   end
 
   @doc """
@@ -94,14 +92,22 @@ defmodule Logflare.LogEvent do
 
     timestamp = determine_timestamp(params)
 
+    base_merge = %{
+      "timestamp" => timestamp,
+      "id" => id
+    }
+
+    base_merge =
+      if event_message != nil do
+        Map.put(base_merge, "event_message", event_message)
+      else
+        base_merge
+      end
+
     body =
       params
       |> MetadataCleaner.deep_reject_nil_and_empty()
-      |> Map.merge(%{
-        "event_message" => event_message,
-        "timestamp" => timestamp,
-        "id" => id
-      })
+      |> Map.merge(base_merge)
       |> case do
         %{"message" => m, "event_message" => em} = map when m == em ->
           Map.delete(map, "message")
@@ -239,7 +245,7 @@ defmodule Logflare.LogEvent do
 
     case String.trim(key) do
       "id" ->
-        log_event.id
+        to_string(log_event.id)
 
       "message" ->
         message
@@ -262,7 +268,7 @@ defmodule Logflare.LogEvent do
   defp query_json(metadata, query) do
     case Warpath.query(metadata, query) do
       {:ok, v} ->
-        inspect(v)
+        Jason.encode!(v)
 
       {:error, _} ->
         "json_path_query_error"

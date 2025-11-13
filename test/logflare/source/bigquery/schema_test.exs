@@ -62,7 +62,7 @@ defmodule Logflare.Sources.Source.BigQuery.SchemaTest do
       )
 
     le = build(:log_event, source: source, metadata: %{"test" => 123})
-    assert :ok = Schema.update(pid, le)
+    assert :ok = Schema.update(pid, le, source)
 
     TestUtils.retry_assert(fn ->
       assert_received :ok
@@ -70,7 +70,7 @@ defmodule Logflare.Sources.Source.BigQuery.SchemaTest do
 
     # subsequent updates do not increase mock count
     le = build(:log_event, source: source, metadata: %{"change" => 123})
-    assert :ok = Schema.update(pid, le)
+    assert :ok = Schema.update(pid, le, source)
   end
 
   test "default notifications config" do
