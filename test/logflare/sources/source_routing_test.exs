@@ -1,16 +1,9 @@
 defmodule Logflare.Logs.SourceRoutingTest do
   use Logflare.DataCase
 
-  alias Logflare.LogEvent, as: LE
   alias Logflare.Logs.SourceRouting
   alias Logflare.Lql.Rules.FilterRule
-  alias Logflare.Rules
   alias Logflare.Rules.Rule
-  alias Logflare.Sources.Source
-  alias Logflare.Sources.Source.BigQuery.Schema
-  alias Logflare.Sources.Source.BigQuery.SchemaBuilder
-  alias Logflare.Sources
-  alias Logflare.Users
 
   describe "Source Routing LQL operator rules" do
     test "list_includes operator" do

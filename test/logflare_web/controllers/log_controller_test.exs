@@ -17,7 +17,6 @@ defmodule LogflareWeb.LogControllerTest do
 
   @valid %{"some" => "valid log entry", "event_message" => "hi!"}
   @valid_json Jason.encode!(@valid)
-  @invalid %{"some" => {123, "invalid"}, 123 => "hi!", 1 => :invalid}
   @valid_batch [
     %{"some" => "valid log entry", "event_message" => "hi!"},
     %{"some" => "valid log entry 2", "event_message" => "hi again!"}

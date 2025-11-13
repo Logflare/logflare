@@ -4,11 +4,8 @@ defmodule LogflareWeb.SourceControllerTest do
   alias Logflare.Teams
   alias Logflare.Sources
   alias Logflare.Repo
-  alias Logflare.LogEvent
-  alias Logflare.Logs.Validators
-  alias Logflare.Logs.RejectedLogEvents
-  alias Logflare.Backends
   alias Logflare.Backends.SourceSup
+  alias Logflare.Backends
   alias Logflare.SystemMetrics.AllLogsLogged
 
   setup do
