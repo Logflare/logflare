@@ -52,7 +52,7 @@ defmodule Logflare.Logs.OtelMetric do
     handle_metric_data(metric.data, base)
   end
 
-  defp handle_metric_data({:gauge, %{data_points: data_points}}, base) do
+  def handle_metric_data({:gauge, %{data_points: data_points}}, base) do
     base = Map.merge(base, %{"metric_type" => "gauge"})
 
     Enum.map(data_points, fn data_point ->
@@ -67,7 +67,7 @@ defmodule Logflare.Logs.OtelMetric do
     end)
   end
 
-  defp handle_metric_data({:sum, sum}, base) do
+  def handle_metric_data({:sum, sum}, base) do
     base =
       Map.merge(base, %{
         "metric_type" => "sum",
@@ -87,7 +87,7 @@ defmodule Logflare.Logs.OtelMetric do
     end)
   end
 
-  defp handle_metric_data({:histogram, histogram}, base) do
+  def handle_metric_data({:histogram, histogram}, base) do
     base =
       Map.merge(base, %{
         "metric_type" => "histogram",
@@ -109,7 +109,7 @@ defmodule Logflare.Logs.OtelMetric do
     end)
   end
 
-  defp handle_metric_data({:exponential_histogram, histogram}, base) do
+  def handle_metric_data({:exponential_histogram, histogram}, base) do
     base =
       Map.merge(base, %{
         "metric_type" => "exponential_histogram",
@@ -134,7 +134,7 @@ defmodule Logflare.Logs.OtelMetric do
     end)
   end
 
-  defp handle_metric_data({type, _}, _) do
+  def handle_metric_data({type, _}, _) do
     Logger.warning("Unsupported metric type #{inspect(type)}, dropping")
 
     []
