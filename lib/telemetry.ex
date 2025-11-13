@@ -33,6 +33,8 @@ defmodule Logflare.Telemetry do
 
   @impl true
   def init(_arg) do
+    base = System.schedulers_online()
+
     otel_exporter =
       if Application.get_env(:logflare, :opentelemetry_enabled?) do
         otel_exporter_opts =
@@ -48,6 +50,8 @@ defmodule Logflare.Telemetry do
             cluster: Application.get_env(:logflare, :metadata)[:cluster]
           })
           |> Keyword.update!(:otlp_headers, &Map.new/1)
+          # set finch pool to 100 size
+          |> Keyword.put(:otlp_concurrent_requests, max(base * 4, 50))
 
         [{OtelMetricExporter, otel_exporter_opts}]
       else
