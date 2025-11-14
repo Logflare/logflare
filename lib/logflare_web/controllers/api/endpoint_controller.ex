@@ -117,6 +117,7 @@ defmodule LogflareWeb.Api.EndpointController do
       |> text("")
     else
       nil -> {:error, :not_found}
+      {:error, _} = err -> err
     end
   end
 end

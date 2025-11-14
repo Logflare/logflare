@@ -35,7 +35,7 @@ defmodule Logflare.Validator.BigQuerySchemaChangeTest do
           %{source: s1}
         )
 
-      assert validate(le) === :ok
+      assert validate(le, s1) === :ok
     end
 
     test "correctly creates a typemap from schema" do

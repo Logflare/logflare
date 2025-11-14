@@ -5,7 +5,7 @@ defmodule Logflare.Backends.Adaptor.DatadogAdaptor do
   """
 
   alias Logflare.Backends.Adaptor.WebhookAdaptor
-
+  alias Logflare.Sources.Source
   # https://docs.datadoghq.com/api/latest/logs/#send-logs
   @api_url_mapping %{
     "US1" => "https://http-intake.logs.datadoghq.com/api/v2/logs",
@@ -46,8 +46,8 @@ defmodule Logflare.Backends.Adaptor.DatadogAdaptor do
   end
 
   @impl Logflare.Backends.Adaptor
-  def pre_ingest(_source, _backend, log_events) do
-    Enum.map(log_events, &translate_event/1)
+  def pre_ingest(source, _backend, log_events) do
+    Enum.map(log_events, &translate_event(source, &1))
   end
 
   @impl Logflare.Backends.Adaptor
@@ -68,7 +68,7 @@ defmodule Logflare.Backends.Adaptor.DatadogAdaptor do
     Map.put(config, :api_key, "REDACTED")
   end
 
-  defp translate_event(%Logflare.LogEvent{} = le) do
+  defp translate_event(%Source{} = source, %Logflare.LogEvent{} = le) do
     formatted_ts =
       DateTime.from_unix!(le.body["timestamp"], :microsecond) |> DateTime.to_iso8601()
 
@@ -79,7 +79,7 @@ defmodule Logflare.Backends.Adaptor.DatadogAdaptor do
       | body: %{
           "message" => formatted_message,
           "ddsource" => "Supabase",
-          "service" => le.source.service_name || le.source.name,
+          "service" => source.service_name || source.name,
           "data" => le.body
         }
     }

@@ -12,6 +12,7 @@ defmodule Logflare.Backends.Adaptor.LokiAdaptor do
 
   alias Logflare.Backends.Adaptor.WebhookAdaptor
   alias Logflare.Utils
+  alias Logflare.Sources
 
   @behaviour Logflare.Backends.Adaptor
 
@@ -33,8 +34,8 @@ defmodule Logflare.Backends.Adaptor.LokiAdaptor do
   def format_batch(log_events) do
     # split events
     stream_map =
-      for %_{source: %_{name: name, service_name: service_name, id: source_id}} = event <-
-            log_events,
+      for %_{source_id: source_id} = event <- log_events,
+          %_{name: name, service_name: service_name} = Sources.Cache.get_by_id(source_id),
           reduce: %{} do
         acc ->
           Map.update(acc, {source_id, service_name || name}, [event], fn prev ->
