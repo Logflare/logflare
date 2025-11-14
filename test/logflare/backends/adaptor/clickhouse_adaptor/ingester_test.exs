@@ -1,10 +1,12 @@
 defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.IngesterTest do
   use Logflare.DataCase, async: false
 
+  import Mimic
+
   alias Logflare.Backends.Adaptor.ClickhouseAdaptor
   alias Logflare.Backends.Adaptor.ClickhouseAdaptor.Ingester
 
-  @sleep_time_after_insert 100
+  setup :verify_on_exit!
 
   describe "encode_as_varint/1" do
     test "encodes zero" do
@@ -184,179 +186,175 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.IngesterTest do
       [source: source, backend: backend, table_name: table_name]
     end
 
-    test "inserts log event successfully with default async behavior", %{
+    test "sends `async_insert=1` by default", %{
       backend: backend,
       table_name: table_name,
       source: source
     } do
       log_event = build(:log_event, source: source, message: "Test via ingester")
 
+      Finch
+      |> expect(:request, fn request, _pool ->
+        url =
+          to_string(request.scheme) <>
+            "://" <>
+            request.host <>
+            ":" <>
+            to_string(request.port) <> request.path <> "?" <> request.query
+
+        assert url =~ "async_insert=1",
+               "Expected URL to contain async_insert=1 by default, got: #{url}"
+
+        {:ok, %Finch.Response{status: 200, body: ""}}
+      end)
+
       assert :ok = Ingester.insert(backend, table_name, [log_event])
-
-      Process.sleep(@sleep_time_after_insert)
-
-      {:ok, result} =
-        ClickhouseAdaptor.execute_ch_query(
-          backend,
-          "SELECT count(*) as count FROM #{table_name}"
-        )
-
-      assert [%{"count" => 1}] = result
     end
 
-    test "inserts multiple log events with default async behavior", %{
-      backend: backend,
-      table_name: table_name,
-      source: source
-    } do
-      log_events = [
-        build(:log_event, source: source, message: "First message"),
-        build(:log_event, source: source, message: "Second message"),
-        build(:log_event, source: source, message: "Third message")
-      ]
-
-      assert :ok = Ingester.insert(backend, table_name, log_events)
-
-      Process.sleep(@sleep_time_after_insert)
-
-      {:ok, result} =
-        ClickhouseAdaptor.execute_ch_query(
-          backend,
-          "SELECT count(*) as count FROM #{table_name}"
-        )
-
-      assert [%{"count" => 3}] = result
-    end
-
-    test "inserts synchronously when `async: false`", %{
+    test "sends `async_insert=0` when `async: false` option is provided", %{
       backend: backend,
       table_name: table_name,
       source: source
     } do
       log_event = build(:log_event, source: source, message: "Sync insert test")
 
+      Finch
+      |> expect(:request, fn request, _pool ->
+        url =
+          to_string(request.scheme) <>
+            "://" <>
+            request.host <>
+            ":" <>
+            to_string(request.port) <> request.path <> "?" <> request.query
+
+        assert url =~ "async_insert=0",
+               "Expected URL to contain async_insert=0, got: #{url}"
+
+        {:ok, %Finch.Response{status: 200, body: ""}}
+      end)
+
       assert :ok = Ingester.insert(backend, table_name, [log_event], async: false)
-
-      {:ok, result} =
-        ClickhouseAdaptor.execute_ch_query(
-          backend,
-          "SELECT count(*) as count FROM #{table_name}"
-        )
-
-      assert [%{"count" => 1}] = result
     end
 
-    test "handles compression with `compress: true`", %{
+    test "sends gzip-compressed body by default", %{
       backend: backend,
       table_name: table_name,
       source: source
     } do
-      log_event =
-        build(:log_event,
-          source: source,
-          message: "Compress test with a longer message to ensure compression doesn't fail!"
-        )
+      log_event = build(:log_event, source: source, message: "Test compression default")
 
-      assert :ok = Ingester.insert(backend, table_name, [log_event], compress: true)
+      Finch
+      |> expect(:request, fn request, _pool ->
+        headers = request.headers
+        assert {"content-encoding", "gzip"} in headers, "Expected gzip by default"
 
-      Process.sleep(@sleep_time_after_insert)
+        <<first_byte, second_byte, _rest::binary>> = IO.iodata_to_binary(request.body)
+        assert first_byte == 0x1F && second_byte == 0x8B, "Expected gzip compression by default"
 
-      {:ok, result} =
-        ClickhouseAdaptor.execute_ch_query(
-          backend,
-          "SELECT count(*) as count FROM #{table_name}"
-        )
+        {:ok, %Finch.Response{status: 200, body: ""}}
+      end)
 
-      assert [%{"count" => 1}] = result
+      assert :ok = Ingester.insert(backend, table_name, [log_event])
     end
 
-    test "handles no compression with `compress: false`", %{
+    test "sends uncompressed body when `compress: false`", %{
       backend: backend,
       table_name: table_name,
       source: source
     } do
-      log_event = build(:log_event, source: source, message: "No compression is used now...")
+      log_event = build(:log_event, source: source, message: "No compression")
+
+      Finch
+      |> expect(:request, fn request, _pool ->
+        headers = request.headers
+
+        refute Enum.any?(headers, fn {k, _v} -> k == "content-encoding" end),
+               "Expected no content-encoding header"
+
+        body_binary = IO.iodata_to_binary(request.body)
+        <<first_byte, second_byte, _rest::binary>> = body_binary
+
+        refute first_byte == 0x1F && second_byte == 0x8B,
+               "Body should not be gzip compressed"
+
+        {:ok, %Finch.Response{status: 200, body: ""}}
+      end)
 
       assert :ok = Ingester.insert(backend, table_name, [log_event], compress: false)
-
-      Process.sleep(@sleep_time_after_insert)
-
-      {:ok, result} =
-        ClickhouseAdaptor.execute_ch_query(
-          backend,
-          "SELECT count(*) as count FROM #{table_name}"
-        )
-
-      assert [%{"count" => 1}] = result
     end
 
-    test "respects `wait_for_async_insert: true` config", %{
+    test "sends `wait_for_async_insert=1` when config is true", %{
       backend: backend,
       table_name: table_name,
       source: source
     } do
       backend = %{backend | config: Map.put(backend.config, :wait_for_async_insert, true)}
+      log_event = build(:log_event, source: source, message: "Test")
 
-      log_event =
-        build(:log_event, source: source, message: "Insert with wait_for_async_insert=true")
+      Finch
+      |> expect(:request, fn request, _pool ->
+        # Extract URL from the request
+        url =
+          to_string(request.scheme) <>
+            "://" <>
+            request.host <> ":" <> to_string(request.port) <> request.path <> "?" <> request.query
+
+        assert url =~ "wait_for_async_insert=1",
+               "Expected URL to contain wait_for_async_insert=1, got: #{url}"
+
+        assert url =~ "async_insert=1"
+        {:ok, %Finch.Response{status: 200, body: ""}}
+      end)
 
       assert :ok = Ingester.insert(backend, table_name, [log_event])
-
-      Process.sleep(@sleep_time_after_insert)
-
-      {:ok, result} =
-        ClickhouseAdaptor.execute_ch_query(
-          backend,
-          "SELECT count(*) as count FROM #{table_name}"
-        )
-
-      assert [%{"count" => 1}] = result
     end
 
-    test "respects `wait_for_async_insert: false` config", %{
+    test "sends `wait_for_async_insert=0` when config is false", %{
       backend: backend,
       table_name: table_name,
       source: source
     } do
       backend = %{backend | config: Map.put(backend.config, :wait_for_async_insert, false)}
+      log_event = build(:log_event, source: source, message: "Test")
 
-      log_event =
-        build(:log_event, source: source, message: "Insert with wait_for_async_insert=false")
+      Finch
+      |> expect(:request, fn request, _pool ->
+        url =
+          to_string(request.scheme) <>
+            "://" <>
+            request.host <> ":" <> to_string(request.port) <> request.path <> "?" <> request.query
+
+        assert url =~ "wait_for_async_insert=0",
+               "Expected URL to contain wait_for_async_insert=0, got: #{url}"
+
+        {:ok, %Finch.Response{status: 200, body: ""}}
+      end)
 
       assert :ok = Ingester.insert(backend, table_name, [log_event])
-
-      Process.sleep(@sleep_time_after_insert)
-
-      {:ok, result} =
-        ClickhouseAdaptor.execute_ch_query(
-          backend,
-          "SELECT count(*) as count FROM #{table_name}"
-        )
-
-      assert [%{"count" => 1}] = result
     end
 
-    test "defaults to `wait_for_async_insert: true` when not configured", %{
+    test "defaults to `wait_for_async_insert=1` when not configured", %{
       backend: backend,
       table_name: table_name,
       source: source
     } do
       backend = %{backend | config: Map.delete(backend.config, :wait_for_async_insert)}
+      log_event = build(:log_event, source: source, message: "Test")
 
-      log_event =
-        build(:log_event, source: source, message: "Insert with default wait_for_async_insert")
+      Finch
+      |> expect(:request, fn request, _pool ->
+        url =
+          to_string(request.scheme) <>
+            "://" <>
+            request.host <> ":" <> to_string(request.port) <> request.path <> "?" <> request.query
+
+        assert url =~ "wait_for_async_insert=1",
+               "Expected URL to contain wait_for_async_insert=1 (default), got: #{url}"
+
+        {:ok, %Finch.Response{status: 200, body: ""}}
+      end)
 
       assert :ok = Ingester.insert(backend, table_name, [log_event])
-
-      Process.sleep(@sleep_time_after_insert)
-
-      {:ok, result} =
-        ClickhouseAdaptor.execute_ch_query(
-          backend,
-          "SELECT count(*) as count FROM #{table_name}"
-        )
-
-      assert [%{"count" => 1}] = result
     end
   end
 end
