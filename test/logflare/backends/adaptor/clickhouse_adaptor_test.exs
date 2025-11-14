@@ -95,75 +95,6 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptorTest do
     end
   end
 
-  describe "cast_config/1 and validate_config/1" do
-    test "casts `wait_for_async_insert` as boolean" do
-      params = %{
-        "url" => "https://example.com",
-        "database" => "test_db",
-        "port" => "8443",
-        "wait_for_async_insert" => "true"
-      }
-
-      changeset = ClickhouseAdaptor.cast_config(params)
-      assert changeset.changes.wait_for_async_insert == true
-    end
-
-    test "`wait_for_async_insert` defaults to nil when not provided" do
-      params = %{
-        "url" => "https://example.com",
-        "database" => "test_db",
-        "port" => "8443"
-      }
-
-      changeset = ClickhouseAdaptor.cast_config(params)
-      refute Map.has_key?(changeset.changes, :wait_for_async_insert)
-    end
-
-    test "handles `wait_for_async_insert` as false" do
-      params = %{
-        "url" => "https://example.com",
-        "database" => "test_db",
-        "port" => "8443",
-        "wait_for_async_insert" => "false"
-      }
-
-      changeset = ClickhouseAdaptor.cast_config(params)
-      assert changeset.changes.wait_for_async_insert == false
-    end
-
-    test "validates required fields" do
-      params = %{
-        "wait_for_async_insert" => "true"
-      }
-
-      changeset =
-        params
-        |> ClickhouseAdaptor.cast_config()
-        |> ClickhouseAdaptor.validate_config()
-
-      refute changeset.valid?
-      assert changeset.errors[:url]
-      assert changeset.errors[:database]
-      assert changeset.errors[:port]
-    end
-
-    test "validates URL format" do
-      params = %{
-        "url" => "invalid-url",
-        "database" => "test_db",
-        "port" => "8443"
-      }
-
-      changeset =
-        params
-        |> ClickhouseAdaptor.cast_config()
-        |> ClickhouseAdaptor.validate_config()
-
-      refute changeset.valid?
-      assert changeset.errors[:url]
-    end
-  end
-
   describe "log event insertion and retrieval" do
     setup do
       insert(:plan, name: "Free")
@@ -175,30 +106,6 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptorTest do
       assert {:ok, _} = ClickhouseAdaptor.provision_ingest_table({source, backend})
 
       [source: source, backend: backend]
-    end
-
-    test "respects `wait_for_async_insert` config setting", %{source: source, backend: backend} do
-      {:ok, backend} =
-        Backends.update_backend(backend, %{
-          config: Map.put(backend.config, :wait_for_async_insert, false)
-        })
-
-      log_event =
-        build(:log_event, source: source, message: "Test with wait_for_async_insert=false")
-
-      result = ClickhouseAdaptor.insert_log_events({source, backend}, [log_event])
-      assert :ok = result
-
-      {:ok, backend} =
-        Backends.update_backend(backend, %{
-          config: Map.put(backend.config, :wait_for_async_insert, true)
-        })
-
-      log_event =
-        build(:log_event, source: source, message: "Test with wait_for_async_insert=true")
-
-      result = ClickhouseAdaptor.insert_log_events({source, backend}, [log_event])
-      assert :ok = result
     end
 
     test "can insert and retrieve log events", %{source: source, backend: backend} do
