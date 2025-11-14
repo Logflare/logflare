@@ -8,7 +8,18 @@ defmodule Logflare.Networking do
     finch_pools(SingleTenant.postgres_backend?())
   end
 
-  defp finch_pools(true = _postgres_backend?), do: []
+  defp finch_pools(true = _postgres_backend?) do
+    [
+      {Finch,
+       name: Logflare.FinchDefault,
+       pools:
+         %{
+           # default pool uses finch defaults
+           :default => [protocols: [:http1]]
+         }
+         |> Map.merge(datadog_connection_pools())}
+    ]
+  end
 
   defp finch_pools(false = _postgres_backend?) do
     base = System.schedulers_online()

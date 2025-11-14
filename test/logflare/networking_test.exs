@@ -7,16 +7,54 @@ defmodule Logflare.NetworkingTest do
   describe "single tenant mode using Big Query" do
     TestUtils.setup_single_tenant()
 
-    test "returns non empty list" do
-      refute Networking.pools() == []
+    test "returns bigquery and clickhouse connection pools" do
+      assert Enum.map(Networking.pools(), fn {Finch, opts} ->
+               Keyword.get(opts, :name)
+             end) == [
+               Logflare.FinchGoth,
+               Logflare.FinchDefaultHttp1,
+               Logflare.FinchBQStorageWrite,
+               Logflare.FinchClickhouseIngest,
+               Logflare.FinchIngest,
+               Logflare.FinchQuery,
+               Logflare.FinchDefault
+             ]
     end
   end
 
   describe "single tenant mode using Postgres" do
     TestUtils.setup_single_tenant(backend_type: :postgres)
 
-    test "returns non empty list" do
-      assert Networking.pools() == []
+    test "returns only datadog connection pools" do
+      assert Networking.pools() == [
+               {Finch,
+                [
+                  name: Logflare.FinchDefault,
+                  pools: %{
+                    :default => [protocols: [:http1]],
+                    "https://http-intake.logs.ap1.datadoghq.com" => [
+                      protocols: [:http1],
+                      start_pool_metrics?: true
+                    ],
+                    "https://http-intake.logs.datadoghq.com" => [
+                      protocols: [:http1],
+                      start_pool_metrics?: true
+                    ],
+                    "https://http-intake.logs.datadoghq.eu" => [
+                      protocols: [:http1],
+                      start_pool_metrics?: true
+                    ],
+                    "https://http-intake.logs.us3.datadoghq.com" => [
+                      protocols: [:http1],
+                      start_pool_metrics?: true
+                    ],
+                    "https://http-intake.logs.us5.datadoghq.com" => [
+                      protocols: [:http1],
+                      start_pool_metrics?: true
+                    ]
+                  }
+                ]}
+             ]
     end
   end
 end
