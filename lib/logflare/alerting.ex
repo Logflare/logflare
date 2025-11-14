@@ -19,7 +19,6 @@ defmodule Logflare.Alerting do
   alias Logflare.Teams
   alias Logflare.TeamUsers.TeamUser
   alias Logflare.User
-  alias Logflare.Users
   alias Logflare.Utils
 
   require Logger
@@ -90,15 +89,12 @@ defmodule Logflare.Alerting do
     |> Repo.one()
   end
 
-  def get_alert_query_by_user_access(%TeamUser{email: email}, id)
+  def get_alert_query_by_user_access(%TeamUser{} = team_user, id)
       when is_integer(id) or is_binary(id) do
-    case Users.get_by(email: email) do
-      %User{} = user ->
-        get_alert_query_by_user_access(user, id)
-
-      nil ->
-        nil
-    end
+    AlertQuery
+    |> Teams.filter_by_user_access(team_user)
+    |> where([alert_query], alert_query.id == ^id)
+    |> Repo.one()
   end
 
   def preload_alert_query(alert) do

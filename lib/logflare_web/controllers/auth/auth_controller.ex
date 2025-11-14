@@ -129,7 +129,6 @@ defmodule LogflareWeb.AuthController do
     end
   end
 
-  # This is never called.
   def create_and_sign_in(%{assigns: %{team_user: team_user}} = conn, _params) do
     {:ok, user} =
       team_user

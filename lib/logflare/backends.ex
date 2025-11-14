@@ -28,7 +28,6 @@ defmodule Logflare.Backends do
   alias Logflare.Teams
   alias Logflare.TeamUsers.TeamUser
   alias Logflare.User
-  alias Logflare.Users
 
   defdelegate child_spec(arg), to: __MODULE__.Supervisor
 
@@ -127,15 +126,13 @@ defmodule Logflare.Backends do
     |> typecast_config_string_map_to_atom_map()
   end
 
-  def get_backend_by_user_access(%TeamUser{email: email}, id)
+  def get_backend_by_user_access(%TeamUser{} = team_user, id)
       when is_integer(id) or is_binary(id) do
-    case Users.get_by(email: email) do
-      %User{} = user ->
-        get_backend_by_user_access(user, id)
-
-      nil ->
-        nil
-    end
+    Backend
+    |> Teams.filter_by_user_access(team_user)
+    |> where([backend], backend.id == ^id)
+    |> Repo.one()
+    |> typecast_config_string_map_to_atom_map()
   end
 
   @doc """

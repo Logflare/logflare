@@ -89,15 +89,12 @@ defmodule Logflare.Endpoints do
     |> Repo.one()
   end
 
-  def get_endpoint_query_by_user_access(%TeamUser{email: email}, id)
+  def get_endpoint_query_by_user_access(%TeamUser{} = team_user, id)
       when is_integer(id) or is_binary(id) do
-    case Users.get_by(email: email) do
-      %User{} = user ->
-        get_endpoint_query_by_user_access(user, id)
-
-      nil ->
-        nil
-    end
+    Query
+    |> Teams.filter_by_user_access(team_user)
+    |> where([query], query.id == ^id)
+    |> Repo.one()
   end
 
   @doc """

@@ -37,9 +37,9 @@ defmodule Logflare.Teams.TeamContext do
   end
 
   @spec parse_team_id(team_id_param()) ::
-          {:ok, :owner} | {:ok, non_neg_integer()} | {:error, :invalid_team_id}
-  def parse_team_id(nil), do: {:ok, :owner}
-  def parse_team_id(""), do: {:ok, :owner}
+          {:ok, :home_team} | {:ok, non_neg_integer()} | {:error, :invalid_team_id}
+  def parse_team_id(nil), do: {:ok, :home_team}
+  def parse_team_id(""), do: {:ok, :home_team}
   def parse_team_id(team_id_param) when is_integer(team_id_param), do: {:ok, team_id_param}
 
   def parse_team_id(team_id_param) when is_binary(team_id_param) do
@@ -72,14 +72,25 @@ defmodule Logflare.Teams.TeamContext do
     {:ok, %__MODULE__{user: user, team: team, team_user: nil}}
   end
 
-  defp verify_team_access(email, :owner) when is_binary(email) do
+  # When no team id is provided, default to home team if available.
+  defp verify_team_access(email, :home_team) when is_binary(email) do
     case Users.Cache.get_by_and_preload(email: email) do
       %User{} = user ->
         team = user.team |> Teams.preload_user()
         {:ok, team, user}
 
-      _ ->
-        {:error, :not_authorized}
+      nil ->
+        case TeamUsers.Cache.get_team_user_by(email: email) do
+          %TeamUser{} = team_user ->
+            team =
+              Teams.get_team_by(id: team_user.team_id)
+              |> Teams.preload_user()
+
+            {:ok, team, team_user}
+
+          nil ->
+            {:error, :not_authorized}
+        end
     end
   end
 

@@ -148,7 +148,7 @@ defmodule Logflare.Teams do
   Returns a query that filters entities by direct user ownership or team membership.
   The queryable must have a `user_id` field.
   """
-  @spec filter_by_user_access(Ecto.Queryable.t(), User.t()) :: Ecto.Query.t()
+  @spec filter_by_user_access(Ecto.Queryable.t(), User.t() | TeamUser.t()) :: Ecto.Query.t()
   def filter_by_user_access(queryable, %User{id: user_id, email: email}) do
     from entity in queryable,
       left_join: u in User,
@@ -158,6 +158,16 @@ defmodule Logflare.Teams do
       left_join: tu in TeamUser,
       on: t.id == tu.team_id,
       where: entity.user_id == ^user_id or tu.email == ^email,
+      distinct: true
+  end
+
+  def filter_by_user_access(queryable, %TeamUser{team_id: team_id}) do
+    from entity in queryable,
+      left_join: u in User,
+      on: entity.user_id == u.id,
+      left_join: t in Team,
+      on: t.user_id == u.id,
+      where: t.id == ^team_id,
       distinct: true
   end
 

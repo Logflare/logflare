@@ -60,4 +60,6 @@ defmodule LogflareWeb.AuthLive do
         socket
     end
   end
+
+  def assign_context_by_resource(socket, nil, _user_email), do: socket
 end
