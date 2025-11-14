@@ -403,7 +403,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
       :timer.sleep(100)
 
       # Backends.via_source(source, Schema, nil)
-      Schema.handle_cast({:update, le}, %{
+      Schema.handle_cast({:update, le, source}, %{
         source_id: source.id,
         source_token: source.token,
         bigquery_project_id: nil,

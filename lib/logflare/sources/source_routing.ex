@@ -11,21 +11,21 @@ defmodule Logflare.Logs.SourceRouting do
   alias Logflare.Sources.Source
   alias Logflare.Sources
 
-  @spec route_to_sinks_and_ingest(LE.t()) :: LE.t()
-  def route_to_sinks_and_ingest(events) when is_list(events),
-    do: Enum.map(events, &route_to_sinks_and_ingest/1)
+  @spec route_to_sinks_and_ingest(LE.t(), Source.t()) :: LE.t()
+  def route_to_sinks_and_ingest(events, source) when is_list(events),
+    do: Enum.map(events, &route_to_sinks_and_ingest(&1, source))
 
-  def route_to_sinks_and_ingest(%LE{via_rule: %Rule{}} = le), do: le
+  def route_to_sinks_and_ingest(%LE{via_rule: %Rule{}} = le, _source), do: le
 
-  def route_to_sinks_and_ingest(%LE{source: %Source{rules: rules}, via_rule: nil} = le) do
+  def route_to_sinks_and_ingest(%LE{via_rule: nil} = le, %Source{rules: rules} = source) do
     for %Rule{lql_filters: [_ | _]} = rule <- rules, route_with_lql_rules?(le, rule) do
-      do_routing(rule, le)
+      do_routing(rule, le, source)
     end
 
     le
   end
 
-  defp do_routing(%Rule{backend_id: backend_id} = rule, %LE{source: %Source{} = source} = le)
+  defp do_routing(%Rule{backend_id: backend_id} = rule, %LE{} = le, source)
        when backend_id != nil do
     # route to a backend
     backend = Backends.Cache.get_backend(backend_id)
@@ -36,17 +36,17 @@ defmodule Logflare.Logs.SourceRouting do
     Backends.ingest_logs([le], source, backend)
   end
 
-  defp do_routing(%Rule{sink: sink} = rule, %LE{} = le) when sink != nil do
+  defp do_routing(%Rule{sink: sink} = rule, %LE{} = le, _source) when sink != nil do
     sink_source =
       Sources.Cache.get_by(token: rule.sink) |> Sources.refresh_source_metrics_for_ingest()
 
-    le = %{le | source: sink_source, via_rule: rule}
+    le = %{le | source_id: sink_source.id, via_rule: rule}
 
     Backends.ensure_source_sup_started(sink_source)
     Backends.ingest_logs([le], sink_source)
   end
 
-  defp do_routing(%Rule{sink: nil}, _le) do
+  defp do_routing(%Rule{sink: nil}, _le, _source) do
     {:error, :no_sink}
   end
 

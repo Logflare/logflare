@@ -5,7 +5,7 @@ defmodule Logflare.Sources.Source.ChannelTopics do
   use TypedStruct
 
   alias Logflare.LogEvent, as: LE
-  alias Logflare.Sources.Source
+  alias Logflare.Sources
 
   require Logger
 
@@ -23,8 +23,10 @@ defmodule Logflare.Sources.Source.ChannelTopics do
   """
   def broadcast_new(events) when is_list(events), do: Enum.map(events, &broadcast_new/1)
 
-  def broadcast_new(%LE{source: %Source{token: token}, body: body} = le) do
-    maybe_broadcast("source:#{token}", "source:#{token}:new", %{
+  def broadcast_new(%LE{source_id: source_id, body: body} = le) do
+    source = Sources.Cache.get_by_id(source_id)
+
+    maybe_broadcast("source:#{source.token}", "source:#{source.token}:new", %{
       body: body,
       via_rule: le.via_rule && Map.take(le.via_rule, [:regex]),
       origin_source_id: le.origin_source_id

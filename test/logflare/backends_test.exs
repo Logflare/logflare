@@ -969,10 +969,10 @@ defmodule Logflare.BackendsTest do
       Benchee.run(
         %{
           "with rules" => fn ->
-            SourceRouting.route_to_sinks_and_ingest(batch1)
+            SourceRouting.route_to_sinks_and_ingest(batch1, source1)
           end,
           "100 rules" => fn ->
-            SourceRouting.route_to_sinks_and_ingest(batch2)
+            SourceRouting.route_to_sinks_and_ingest(batch2, source2)
           end
         },
         time: 3,

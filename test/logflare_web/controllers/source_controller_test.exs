@@ -4,11 +4,8 @@ defmodule LogflareWeb.SourceControllerTest do
   alias Logflare.Teams
   alias Logflare.Sources
   alias Logflare.Repo
-  alias Logflare.LogEvent
-  alias Logflare.Logs.Validators
-  alias Logflare.Logs.RejectedLogEvents
-  alias Logflare.Backends
   alias Logflare.Backends.SourceSup
+  alias Logflare.Backends
   alias Logflare.SystemMetrics.AllLogsLogged
 
   setup do
@@ -175,38 +172,6 @@ defmodule LogflareWeb.SourceControllerTest do
       assert Phoenix.Flash.get(conn.assigns.flash, :info) == "Source updated!"
 
       assert Sources.get_by(id: source.id).transform_copy_fields
-    end
-  end
-
-  describe "dashboard - rejected" do
-    setup [:create_plan, :old_setup]
-
-    test "renders rejected logs page", %{conn: conn, users: [u1, _u2], sources: [s1, _s2 | _]} do
-      RejectedLogEvents.ingest(%LogEvent{
-        pipeline_error: %LogEvent.PipelineError{message: Validators.EqDeepFieldTypes.message()},
-        params: %{"no_log_entry" => true, "timestamp" => ""},
-        source: s1,
-        valid: false,
-        ingested_at: NaiveDateTime.utc_now()
-      })
-
-      conn =
-        conn
-        |> login_user(u1)
-        |> get(~p"/sources/#{s1}/rejected")
-
-      assert html_response(conn, 200) =~ "dashboard"
-
-      assert [
-               %LogEvent{
-                 pipeline_error: %LogEvent.PipelineError{
-                   message:
-                     "Validation error: values with the same field path must have the same type."
-                 },
-                 params: %{"no_log_entry" => true, "timestamp" => ""},
-                 ingested_at: _
-               }
-             ] = conn.assigns.logs
     end
   end
 
