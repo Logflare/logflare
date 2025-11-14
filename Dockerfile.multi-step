@@ -1,10 +1,6 @@
-ARG DEBIAN_VERSION=trixie-20250908-slim
-
-ARG RUNNER_IMAGE="debian:${DEBIAN_VERSION}"
-
 FROM supabase/logflare:base AS builder
 
-ENV MIX_ENV prod
+ENV MIX_ENV=prod
 
 WORKDIR /app
 
