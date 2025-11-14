@@ -122,13 +122,14 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.Ingester do
 
   @spec build_connection_opts(Backend.t()) :: {:ok, Keyword.t()} | {:error, String.t()}
   defp build_connection_opts(%Backend{
-         config: %{
-           url: url,
-           port: port,
-           database: database,
-           username: username,
-           password: password
-         }
+         config:
+           %{
+             url: url,
+             port: port,
+             database: database,
+             username: username,
+             password: password
+           } = config
        }) do
     {:ok,
      [
@@ -136,7 +137,8 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.Ingester do
        port: port,
        database: database,
        username: username,
-       password: password
+       password: password,
+       wait_for_async_insert: Map.get(config, :wait_for_async_insert, true)
      ]}
   end
 
@@ -149,6 +151,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.Ingester do
   defp build_request_url(connection_opts, table, async) do
     base_url = Keyword.get(connection_opts, :url)
     database = Keyword.get(connection_opts, :database)
+    wait_for_async_insert = Keyword.get(connection_opts, :wait_for_async_insert)
 
     uri = URI.parse(base_url)
     scheme = uri.scheme || "http"
@@ -161,7 +164,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.Ingester do
       URI.encode_query(%{
         "query" => query,
         "async_insert" => if(async, do: "1", else: "0"),
-        "wait_for_async_insert" => "0"
+        "wait_for_async_insert" => if(wait_for_async_insert, do: "1", else: "0")
       })
 
     "#{scheme}://#{host}:#{port}/?#{params}"

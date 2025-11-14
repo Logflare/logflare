@@ -289,5 +289,74 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.IngesterTest do
 
       assert [%{"count" => 1}] = result
     end
+
+    test "respects `wait_for_async_insert: true` config", %{
+      backend: backend,
+      table_name: table_name,
+      source: source
+    } do
+      backend = %{backend | config: Map.put(backend.config, :wait_for_async_insert, true)}
+
+      log_event =
+        build(:log_event, source: source, message: "Insert with wait_for_async_insert=true")
+
+      assert :ok = Ingester.insert(backend, table_name, [log_event])
+
+      Process.sleep(@sleep_time_after_insert)
+
+      {:ok, result} =
+        ClickhouseAdaptor.execute_ch_query(
+          backend,
+          "SELECT count(*) as count FROM #{table_name}"
+        )
+
+      assert [%{"count" => 1}] = result
+    end
+
+    test "respects `wait_for_async_insert: false` config", %{
+      backend: backend,
+      table_name: table_name,
+      source: source
+    } do
+      backend = %{backend | config: Map.put(backend.config, :wait_for_async_insert, false)}
+
+      log_event =
+        build(:log_event, source: source, message: "Insert with wait_for_async_insert=false")
+
+      assert :ok = Ingester.insert(backend, table_name, [log_event])
+
+      Process.sleep(@sleep_time_after_insert)
+
+      {:ok, result} =
+        ClickhouseAdaptor.execute_ch_query(
+          backend,
+          "SELECT count(*) as count FROM #{table_name}"
+        )
+
+      assert [%{"count" => 1}] = result
+    end
+
+    test "defaults to `wait_for_async_insert: true` when not configured", %{
+      backend: backend,
+      table_name: table_name,
+      source: source
+    } do
+      backend = %{backend | config: Map.delete(backend.config, :wait_for_async_insert)}
+
+      log_event =
+        build(:log_event, source: source, message: "Insert with default wait_for_async_insert")
+
+      assert :ok = Ingester.insert(backend, table_name, [log_event])
+
+      Process.sleep(@sleep_time_after_insert)
+
+      {:ok, result} =
+        ClickhouseAdaptor.execute_ch_query(
+          backend,
+          "SELECT count(*) as count FROM #{table_name}"
+        )
+
+      assert [%{"count" => 1}] = result
+    end
   end
 end
