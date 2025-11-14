@@ -1,6 +1,7 @@
 defmodule Logflare.Backends.Adaptor.WebhookAdaptor.EgressMiddleware do
   @moduledoc false
 
+  alias Logflare.Utils
   require OpenTelemetry.Tracer
 
   @behaviour Tesla.Middleware
@@ -38,6 +39,17 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor.EgressMiddleware do
 
     OpenTelemetry.Tracer.with_span :http_egress, %{attributes: attributes} do
     end
+
+    str_meta =
+      for {k, v} <- meta_kw, is_binary(k), into: %{} do
+        {Utils.stringify(k), v}
+      end
+
+    :telemetry.execute(
+      [:logflare, :backends, :ingest, :egress],
+      %{request_bytes: body_len + headers_len},
+      str_meta
+    )
 
     with {:ok, env} <- Tesla.run(env, next) do
       {:ok, env}
