@@ -53,7 +53,11 @@ log "Build logflare image..."
 docker compose -f docker-compose.yml -f ../../docker-compose.e2e.yml build analytics
 
 log "Starting Supabase stack (inside docker containers)..."
-docker compose -f docker-compose.yml -f ../../docker-compose.e2e.yml up -d
+if ! docker compose -f docker-compose.yml -f ../../docker-compose.e2e.yml up -d; then
+  error "Failed to start containers!"
+  docker compose -f docker-compose.yml -f ../../docker-compose.e2e.yml logs
+  exit 1
+fi
 
 log "Supabase stack is up! Access Supabase studio via ${CYAN}http://localhost:8000${RESET}"
 log "Run E2E tests with '${GREEN}npm run playwright:test${RESET}'"
