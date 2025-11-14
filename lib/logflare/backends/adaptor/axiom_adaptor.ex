@@ -14,7 +14,7 @@ defmodule Logflare.Backends.Adaptor.AxiomAdaptor do
   """
 
   alias Logflare.Backends.Adaptor
-  alias Logflare.Backends.Adaptor.WebhookAdaptor
+  alias Logflare.Backends.Adaptor.HttpBased
 
   @behaviour Adaptor
 
@@ -27,45 +27,7 @@ defmodule Logflare.Backends.Adaptor.AxiomAdaptor do
 
   @impl Adaptor
   def start_link({source, backend}) do
-    backend = %{backend | config: transform_config(backend)}
-    WebhookAdaptor.start_link({source, backend})
-  end
-
-  @impl Adaptor
-  def format_batch(log_events) do
-    for %{body: body} <- log_events do
-      Map.update!(body, "timestamp", fn timestamp ->
-        timestamp
-        |> DateTime.from_unix!(:microsecond)
-        |> DateTime.to_iso8601()
-      end)
-    end
-  end
-
-  @impl Adaptor
-  def transform_config(%{config: config}) do
-    # Endpoint docs: https://axiom.co/docs/restapi/endpoints/ingestIntoDataset
-    query = %{
-      "timestamp-field" => "timestamp",
-      "timestamp-format" => "2006-01-02T15:04:05.999999Z07:00"
-    }
-
-    url =
-      config
-      |> dataset_uri()
-      |> URI.append_query(URI.encode_query(query))
-      |> URI.to_string()
-
-    %{
-      url: url,
-      headers: %{
-        "content-type" => "application/json",
-        "authorization" => "Bearer #{config.api_token}"
-      },
-      http: "http2",
-      gzip: true,
-      format_batch: &format_batch/1
-    }
+    HttpBased.Pipeline.start_link(source, backend, __MODULE__.Client)
   end
 
   @impl Adaptor
@@ -106,33 +68,67 @@ defmodule Logflare.Backends.Adaptor.AxiomAdaptor do
   end
 
   def test_connection(%{config: config}) do
-    url = config |> dataset_uri() |> URI.to_string()
-
-    result =
-      Tesla.client(
-        [
-          {Tesla.Middleware.BearerAuth, token: config.api_token},
-          Tesla.Middleware.JSON,
-          {Tesla.Middleware.CompressRequest, format: "gzip"},
-          Tesla.Middleware.Telemetry
-        ],
-        {Tesla.Adapter.Finch, name: Logflare.FinchDefault, receive_timeout: 5_000}
-      )
-      |> Tesla.post(url, [])
-
-    case result do
-      {:ok, %Tesla.Env{status: 200}} -> :ok
-      {:ok, %Tesla.Env{body: %{"message" => message}}} -> {:error, message}
-      {:ok, env} -> {:error, "Unexpected response: #{env.status} #{inspect(env.body)}"}
-      {:error, reason} -> {:error, "Request error: #{reason}"}
-    end
+    __MODULE__.Client.test_connection(config)
   end
 
-  defp dataset_uri(%{domain: domain, dataset_name: dataset_name}) do
-    %URI{
-      scheme: "https",
-      host: domain,
-      path: "/v1/datasets/#{dataset_name}/ingest"
-    }
+  @doc false
+  @spec transform_timestamp(map()) :: map()
+  def transform_timestamp(log_event_body) do
+    Map.update!(log_event_body, "timestamp", fn timestamp ->
+      timestamp
+      |> DateTime.from_unix!(:microsecond)
+      |> DateTime.to_iso8601()
+    end)
+  end
+
+  defmodule Client do
+    @moduledoc false
+    alias Logflare.Backends.Adaptor.AxiomAdaptor
+    alias Logflare.Backends.Adaptor.HttpBased
+
+    @behaviour HttpBased.Client
+
+    @impl HttpBased.Client
+    def send_logs(config, log_events, metadata) do
+      # TODO: Log failures
+      config
+      |> new()
+      |> Tesla.post("", log_events, opts: [metadata: metadata])
+
+      :ok
+    end
+
+    @impl HttpBased.Client
+    def test_connection(config) do
+      case config |> new() |> Tesla.post("", []) do
+        {:ok, %Tesla.Env{status: 200}} -> :ok
+        {:ok, %Tesla.Env{body: %{"message" => message}}} -> {:error, message}
+        {:ok, env} -> {:error, "Unexpected response: #{env.status} #{inspect(env.body)}"}
+        {:error, reason} -> {:error, "Request error: #{reason}"}
+      end
+    end
+
+    defp new(config) do
+      url =
+        %URI{
+          scheme: "https",
+          host: config.domain,
+          path: "/v1/datasets/#{config.dataset_name}/ingest"
+        }
+        |> URI.to_string()
+
+      query = [
+        {"timestamp-field", "timestamp"},
+        {"timestamp-format", "2006-01-02T15:04:05.999999Z07:00"}
+      ]
+
+      HttpBased.Client.new(
+        formatter: {HttpBased.LogEventTransformer, map: &AxiomAdaptor.transform_timestamp/1},
+        gzip: true,
+        url: url,
+        query: query,
+        token: config.api_token
+      )
+    end
   end
 end

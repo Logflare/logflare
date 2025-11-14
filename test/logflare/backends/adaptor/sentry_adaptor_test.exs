@@ -8,7 +8,7 @@ defmodule Logflare.Backends.Adaptor.SentryAdaptorTest do
   alias Logflare.Backends.Adaptor.SentryAdaptor
 
   @subject SentryAdaptor
-  @client Logflare.Backends.Adaptor.WebhookAdaptor.Client
+  @tesla_adapter Tesla.Adapter.Finch
 
   doctest @subject
 
@@ -27,31 +27,6 @@ defmodule Logflare.Backends.Adaptor.SentryAdaptorTest do
       valid_dsn = "https://abc123@o123456.ingest.sentry.io/123456"
       changeset = Adaptor.cast_and_validate_config(@subject, %{"dsn" => valid_dsn})
       assert changeset.valid?, "Expected #{valid_dsn} to be valid"
-    end
-  end
-
-  describe "transform_config/1" do
-    test "converts DSN to webhook configuration" do
-      backend = %{
-        config: %{dsn: "https://abc123@o123456.ingest.sentry.io/123456"}
-      }
-
-      config = @subject.transform_config(backend)
-
-      assert config.url == "https://o123456.ingest.sentry.io/api/123456/envelope/"
-      assert config.headers == %{"content-type" => "application/x-sentry-envelope"}
-      assert config.http == "http2"
-      assert is_function(config.format_batch)
-    end
-
-    test "raises error with invalid DSN" do
-      backend = %{
-        config: %{dsn: "invalid-dsn"}
-      }
-
-      assert_raise ArgumentError, ~r/Invalid Sentry DSN/, fn ->
-        @subject.transform_config(backend)
-      end
     end
   end
 
@@ -76,12 +51,15 @@ defmodule Logflare.Backends.Adaptor.SentryAdaptorTest do
       this = self()
       ref = make_ref()
 
-      @client
-      |> expect(:send, fn req ->
-        envelope_body = req[:body]
+      @tesla_adapter
+      |> expect(:call, fn env, _opts ->
+        assert env.method == :post
+        assert Tesla.build_url(env) == "https://o123456.ingest.sentry.io/api/123456/envelope/"
+        assert Tesla.get_header(env, "content-type") == "application/x-sentry-envelope"
+        envelope_body = env.body
 
         send(this, {ref, envelope_body})
-        %Tesla.Env{status: 200, body: ""}
+        {:ok, %Tesla.Env{status: 200, body: ""}}
       end)
 
       log_events = [
@@ -136,12 +114,10 @@ defmodule Logflare.Backends.Adaptor.SentryAdaptorTest do
       this = self()
       ref = make_ref()
 
-      @client
-      |> expect(:send, fn req ->
-        envelope_body = req[:body]
-
-        send(this, {ref, envelope_body})
-        %Tesla.Env{status: 200, body: ""}
+      @tesla_adapter
+      |> expect(:call, fn env, _opts ->
+        send(this, {ref, env.body})
+        {:ok, %Tesla.Env{status: 200, body: ""}}
       end)
 
       level_mappings = [
@@ -192,11 +168,10 @@ defmodule Logflare.Backends.Adaptor.SentryAdaptorTest do
       this = self()
       ref = make_ref()
 
-      @client
-      |> expect(:send, fn req ->
-        envelope_body = req[:body]
-        send(this, {ref, envelope_body})
-        %Tesla.Env{status: 200, body: ""}
+      @tesla_adapter
+      |> expect(:call, fn env, _opts ->
+        send(this, {ref, env.body})
+        {:ok, %Tesla.Env{status: 200, body: ""}}
       end)
 
       log_events = [
@@ -240,12 +215,10 @@ defmodule Logflare.Backends.Adaptor.SentryAdaptorTest do
       this = self()
       ref = make_ref()
 
-      @client
-      |> expect(:send, fn req ->
-        envelope_body = req[:body]
-
-        send(this, {ref, envelope_body})
-        %Tesla.Env{status: 200, body: ""}
+      @tesla_adapter
+      |> expect(:call, fn env, _opts ->
+        send(this, {ref, env.body})
+        {:ok, %Tesla.Env{status: 200, body: ""}}
       end)
 
       log_events = [
