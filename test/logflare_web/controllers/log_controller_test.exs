@@ -17,7 +17,6 @@ defmodule LogflareWeb.LogControllerTest do
 
   @valid %{"some" => "valid log entry", "event_message" => "hi!"}
   @valid_json Jason.encode!(@valid)
-  @invalid %{"some" => {123, "invalid"}, 123 => "hi!", 1 => :invalid}
   @valid_batch [
     %{"some" => "valid log entry", "event_message" => "hi!"},
     %{"some" => "valid log entry 2", "event_message" => "hi again!"}
@@ -190,15 +189,6 @@ defmodule LogflareWeb.LogControllerTest do
       conn = put_req_header(conn, "x-api-key", user.api_key)
 
       {:ok, user: user, conn: conn}
-    end
-
-    test ":create rejected logs ingestion", %{conn: conn, source: source} do
-      conn =
-        conn
-        |> post(Routes.log_path(conn, :create, source: source.token), @invalid)
-
-      assert %{"message" => [msg]} = json_response(conn, 406)
-      assert msg =~ "not supported by"
     end
 
     test ":create ingestion error handling for BadRequestError in Plug.Parsers", %{

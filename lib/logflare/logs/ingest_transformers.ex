@@ -2,6 +2,8 @@ defmodule Logflare.Logs.IngestTransformers do
   @moduledoc false
   import Logflare.EnumDeepUpdate, only: [update_all_keys_deep: 2]
 
+  @alphanumeric_regex ~r/\W/
+
   @spec transform(map, list(atom) | atom) :: map
   def transform(log_params, :to_bigquery_column_spec) when is_map(log_params) do
     transform(log_params, [
@@ -31,8 +33,8 @@ defmodule Logflare.Logs.IngestTransformers do
   defp do_transform(log_params, :alphanumeric_only) when is_map(log_params) do
     update_all_keys_deep(log_params, fn
       key when is_binary(key) ->
-        case Regex.match?(~r/\W/, key) do
-          true -> "_" <> String.replace(key, ~r/\W/, "_")
+        case Regex.match?(@alphanumeric_regex, key) do
+          true -> "_" <> String.replace(key, @alphanumeric_regex, "_")
           false -> key
         end
 

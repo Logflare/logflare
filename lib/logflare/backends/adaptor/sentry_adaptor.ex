@@ -22,6 +22,7 @@ defmodule Logflare.Backends.Adaptor.SentryAdaptor do
 
   alias Logflare.Backends.Adaptor.WebhookAdaptor
   alias Logflare.Backends.Adaptor.SentryAdaptor.DSN
+  alias Logflare.Sources
 
   @behaviour Logflare.Backends.Adaptor
 
@@ -143,13 +144,15 @@ defmodule Logflare.Backends.Adaptor.SentryAdaptor do
     }
   end
 
-  defp build_attributes(%Logflare.LogEvent{} = log_event) do
+  defp build_attributes(%Logflare.LogEvent{source_id: source_id} = log_event) do
+    source = Sources.Cache.get_by_id(source_id)
+
     base_attrs = %{
       "sentry.sdk.name" => @sdk_name,
       "sentry.sdk.version" => Application.spec(:logflare, :vsn) |> to_string(),
-      "logflare.source.name" => log_event.source.name,
-      "logflare.source.service_name" => log_event.source.service_name,
-      "logflare.source.uuid" => log_event.source.token
+      "logflare.source.name" => source.name,
+      "logflare.source.service_name" => source.service_name,
+      "logflare.source.uuid" => source.token
     }
 
     top_level_attrs =

@@ -2,7 +2,7 @@ defmodule LogflareWeb.LogChannel do
   @moduledoc false
   use LogflareWeb, :channel
 
-  alias Logflare.Logs
+  alias Logflare.Backends
   alias Logflare.Sources
   alias Logflare.Sources.Source
   alias LogflareWeb.Endpoint
@@ -58,8 +58,8 @@ defmodule LogflareWeb.LogChannel do
   def handle_in("batch", %{"batch" => batch}, socket) when is_list(batch) do
     source = socket.assigns.source |> Sources.refresh_source_metrics_for_ingest()
 
-    case Logs.ingest_logs(batch, source) do
-      :ok ->
+    case Backends.ingest_logs(batch, source) do
+      {:ok, _count} ->
         push(socket, "batch", %{message: "Handled batch"})
         {:noreply, socket}
 

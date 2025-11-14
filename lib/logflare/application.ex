@@ -165,7 +165,7 @@ defmodule Logflare.Application do
          :default => [size: 50],
          "https://bigquery.googleapis.com" => [
            protocols: [:http1],
-           size: max(base * 125, 150),
+           size: max(base * 150, 150),
            count: http1_count,
            start_pool_metrics?: true
          ]
