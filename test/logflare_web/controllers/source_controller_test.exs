@@ -87,7 +87,12 @@ defmodule LogflareWeb.SourceControllerTest do
 
     other_user = insert(:user)
     other_team = insert(:team, user: other_user)
-    insert(:team_user, team: main_team, provider_uid: other_user.provider_uid)
+
+    insert(:team_user,
+      team: main_team,
+      provider_uid: other_user.provider_uid,
+      email: other_user.email
+    )
 
     # main team has 2 users now
     html =

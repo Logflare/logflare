@@ -9,26 +9,12 @@ defmodule LogflareWeb.LogEventLive do
 
   alias Logflare.Logs.LogEvents
   alias Logflare.Sources
-  alias Logflare.TeamUsers
-  alias Logflare.Users
 
-  def mount(%{"source_id" => source_id} = params, session, socket) do
+  on_mount LogflareWeb.AuthLive
+
+  def mount(%{"source_id" => source_id} = params, _session, socket) do
     source =
       source_id |> String.to_integer() |> Sources.Cache.get_by_id()
-
-    team_user =
-      if team_user_id = session["team_user_id"] do
-        TeamUsers.get_team_user_by(id: team_user_id)
-      else
-        nil
-      end
-
-    user =
-      if user_id = session["user_id"] do
-        Users.get_by(id: user_id)
-      else
-        nil
-      end
 
     timestamp =
       if ts = Map.get(params, "timestamp") do
@@ -39,7 +25,7 @@ defmodule LogflareWeb.LogEventLive do
     opts =
       [
         source: source,
-        user: user,
+        user: socket.assigns.user,
         lql: params["lql"] || ""
       ]
       |> maybe_put_timestamp(timestamp)
@@ -53,8 +39,6 @@ defmodule LogflareWeb.LogEventLive do
     socket =
       socket
       |> assign(:source, source)
-      |> assign(:user, user)
-      |> assign(:team_user, team_user)
       |> assign(:log_event, log_event)
       |> assign(:origin, params["origin"])
       |> assign(:log_event_id, params["uuid"])

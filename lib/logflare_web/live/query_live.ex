@@ -5,10 +5,9 @@ defmodule LogflareWeb.QueryLive do
 
   require Logger
 
-  alias Logflare.Endpoints
   alias Logflare.Alerting
-  alias Logflare.Users
   alias Logflare.Backends
+  alias Logflare.Endpoints
   alias LogflareWeb.QueryComponents
 
   def render(assigns) do
@@ -150,16 +149,15 @@ defmodule LogflareWeb.QueryLive do
     """
   end
 
-  def mount(%{}, %{"user_id" => user_id}, socket) do
-    user = Users.get(user_id)
+  def mount(%{}, _session, socket) do
+    %{assigns: %{user: user}} = socket
 
     endpoints = Endpoints.list_endpoints_by(user_id: user.id)
     alerts = Alerting.list_alert_queries_by_user_id(user.id)
 
     socket =
       socket
-      |> assign(:user_id, user_id)
-      |> assign(:user, user)
+      |> assign(:user_id, user.id)
       |> assign(:query_result_rows, nil)
       |> assign(:total_bytes_processed, nil)
       |> assign(:parse_error_message, nil)

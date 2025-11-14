@@ -9,7 +9,6 @@ defmodule LogflareWeb.EndpointsLive do
   alias Logflare.Backends.Adaptor
   alias Logflare.Endpoints
   alias Logflare.Endpoints.PiiRedactor
-  alias Logflare.Users
   alias LogflareWeb.{QueryComponents, Utils}
 
   embed_templates("actions/*", suffix: "_action")
@@ -34,8 +33,8 @@ defmodule LogflareWeb.EndpointsLive do
     """
   end
 
-  def mount(%{}, %{"user_id" => user_id}, socket) do
-    user = Users.get(user_id)
+  def mount(%{}, _session, socket) do
+    %{assigns: %{user: user}} = socket
 
     allow_access = Enum.any?([Utils.flag("endpointsOpenBeta"), user.endpoints_beta])
 
@@ -44,7 +43,6 @@ defmodule LogflareWeb.EndpointsLive do
     socket =
       socket
       |> assign(:user_id, user.id)
-      |> assign(:user, user)
       #  must be below user_id assign
       |> refresh_endpoints()
       |> assign(:query_result_rows, nil)

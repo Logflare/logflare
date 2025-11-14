@@ -190,4 +190,60 @@ defmodule LogflareWeb.Utils do
   end
 
   def replace_table_with_source_name(sql, _source), do: sql
+
+  @doc """
+  Add a team_id param to a URI.
+  Team id can be passed as an integer, a conn with a team_id param, or nil (no team_id will be set)
+  An existing team_id param will be overwritten.
+
+  Use team_link/1 in HEEx templates.
+
+  ## Examples
+
+      iex> with_team_param("/dashboard", 123)
+      "/dashboard?t=123"
+
+      iex> with_team_param("/dashboard?t=999", 123)
+      "/dashboard?t=123"
+
+      iex> team = %Logflare.Teams.Team{id: 123}
+      iex> with_team_param("/dashboard", team)
+      "/dashboard?t=123"
+
+      iex> with_team_param("/dashboard", nil)
+      "/dashboard"
+
+      iex> with_team_param("/dashboard", nil)
+      "/dashboard"
+
+  """
+  @spec with_team_param(String.t(), nil | integer() | Phoenix.Param.t()) :: String.t()
+  def with_team_param(uri, nil), do: uri
+
+  def with_team_param(uri, team) when is_struct(team),
+    do: with_team_param(uri, Phoenix.Param.to_param(team))
+
+  def with_team_param(uri, team_id) when is_binary(team_id) do
+    case Integer.parse(team_id) do
+      {int_team_id, ""} -> with_team_param(uri, int_team_id)
+      _ -> uri
+    end
+  end
+
+  def with_team_param(uri, team_id) when is_integer(team_id) do
+    uri
+    |> URI.parse()
+    |> set_team_id_param(team_id)
+  end
+
+  defp set_team_id_param(uri, team_id) do
+    query_params =
+      (uri.query || "")
+      |> URI.decode_query()
+      |> Map.put("t", team_id)
+      |> URI.encode_query()
+
+    %{uri | query: query_params}
+    |> URI.to_string()
+  end
 end
