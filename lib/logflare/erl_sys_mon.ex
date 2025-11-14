@@ -6,6 +6,7 @@ defmodule Logflare.ErlSysMon do
   """
 
   use GenServer
+  alias Logflare.Utils.Tasks
 
   require Logger
 
@@ -48,20 +49,22 @@ defmodule Logflare.ErlSysMon do
   end
 
   def handle_info({:monitor, pid, _type, _meta} = msg, state) when is_pid(pid) do
-    pid_info =
-      pid
-      |> Process.info(:dictionary)
-      |> case do
-        {:dictionary, dict} when is_list(dict) ->
-          Keyword.take(dict, [:"$ancestors", :"$initial_call"])
+    Tasks.async(fn ->
+      pid_info =
+        pid
+        |> Process.info(:dictionary)
+        |> case do
+          {:dictionary, dict} when is_list(dict) ->
+            Keyword.take(dict, [:"$ancestors", :"$initial_call"])
 
-        other ->
-          other
-      end
+          other ->
+            other
+        end
 
-    Logger.warning(
-      "#{__MODULE__} message: " <> inspect(msg) <> "|\n process info: #{inspect(pid_info)}"
-    )
+      Logger.warning(
+        "#{__MODULE__} message: " <> inspect(msg) <> "|\n process info: #{inspect(pid_info)}"
+      )
+    end)
 
     {:noreply, state}
   end

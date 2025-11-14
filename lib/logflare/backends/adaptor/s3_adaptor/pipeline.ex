@@ -36,6 +36,10 @@ defmodule Logflare.Backends.Adaptor.S3Adaptor.Pipeline do
          batch_timeout <- Keyword.fetch!(args, :batch_timeout) do
       Broadway.start_link(__MODULE__,
         name: pipeline_name,
+        hibernate_after: 5_000,
+        spawn_opt: [
+          fullsweep_after: 10
+        ],
         producer: [
           module: {BufferProducer, [source_id: source_id, backend_id: backend_id]},
           transformer: {__MODULE__, :transform, []},

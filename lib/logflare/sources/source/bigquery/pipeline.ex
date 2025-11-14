@@ -42,7 +42,7 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
           # top-level will apply to all children
           hibernate_after: 5_000,
           spawn_opt: [
-            fullsweep_after: 15
+            fullsweep_after: 10
           ],
           producer: [
             module:
