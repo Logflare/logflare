@@ -15,6 +15,7 @@ defmodule LogflareWeb.DashboardLive do
   @impl true
   def mount(_, %{"user_id" => user_id} = session, socket) do
     user = Users.get_by_and_preload(id: user_id)
+
     socket =
       socket
       |> assign(:user, user)
