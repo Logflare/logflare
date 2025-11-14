@@ -448,7 +448,7 @@ defmodule Logflare.Endpoints do
         ) :: {:ok, String.t() | nil} | {:error, String.t()}
   # no sql_param provided, but lql_param is present for SANDBOXED endpoint
   defp maybe_convert_lql_to_sql(lql_param, nil, expanded_query, language, true)
-       when is_non_empty_binary(lql_param) and language in [:bq_sql, :ch_sql] do
+       when is_non_empty_binary(lql_param) and language in [:bq_sql, :ch_sql, :pg_sql] do
     with {:ok, cte_names} <- Sql.extract_cte_aliases(expanded_query),
          {:ok, lql_rules} <- Lql.Parser.parse(lql_param),
          from_rule <- Rules.get_from_rule(lql_rules),
