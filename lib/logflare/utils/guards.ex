@@ -50,4 +50,9 @@ defmodule Logflare.Utils.Guards do
   Guard that indicates if the value is a valid percentile aggregate.
   """
   defguard is_percentile_aggregate(value) when value in [:p50, :p95, :p99]
+
+  @doc """
+  Guard that indicates if the value is a list or map.
+  """
+  defguard is_list_or_map(value) when is_list(value) or is_map(value)
 end

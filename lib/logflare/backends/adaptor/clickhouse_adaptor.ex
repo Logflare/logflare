@@ -39,8 +39,6 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
 
   defdelegate connection_pool_via(arg), to: ConnectionManager
 
-  defguardp is_list_or_map(value) when is_list(value) or is_map(value)
-
   @doc false
   def child_spec(arg) do
     %{

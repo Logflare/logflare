@@ -55,8 +55,6 @@ defmodule Logflare.Backends.SourceSup do
       |> Enum.map(&Backend.child_spec(source, &1))
       |> Enum.uniq()
 
-    otel_exporter = maybe_get_otel_exporter(source, user)
-
     children =
       [
         {RateCounterServer, [source: source]},
@@ -68,16 +66,10 @@ defmodule Logflare.Backends.SourceSup do
         {SlackHookServer, [source: source]},
         {BillingWriter, [source: source]},
         {SourceSupWorker, [source: source]}
-      ] ++ otel_exporter ++ specs
+      ] ++ specs
 
     Supervisor.init(children, strategy: :one_for_one)
   end
-
-  defp maybe_get_otel_exporter(%{system_source_type: :metrics} = source, user),
-    do: UserMonitoring.get_otel_exporter(source, user)
-
-  defp maybe_get_otel_exporter(_, _),
-    do: []
 
   @doc """
   Checks if a rule child is started for a given source/rule.

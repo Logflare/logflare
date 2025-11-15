@@ -4,8 +4,6 @@ defmodule Logflare.Telemetry do
   import Telemetry.Metrics
   import Logflare.Utils, only: [ets_info: 1]
 
-  alias Logflare.Backends.UserMonitoring
-
   def start_link(arg), do: Supervisor.start_link(__MODULE__, arg, name: __MODULE__)
 
   @caches [
@@ -202,16 +200,13 @@ defmodule Logflare.Telemetry do
       )
     ]
 
-    user_specific_metrics = UserMonitoring.metrics(:main_exporter)
-
     Enum.concat([
       phoenix_metrics,
       database_metrics,
       vm_metrics,
       cache_metrics,
       broadway_metrics,
-      application_metrics,
-      user_specific_metrics
+      application_metrics
     ])
   end
 
