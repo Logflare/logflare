@@ -14,10 +14,10 @@ defmodule Logflare.NetworkingTest do
                Logflare.FinchGoth,
                Logflare.FinchDefaultHttp1,
                Logflare.FinchBQStorageWrite,
-               Logflare.FinchClickhouseIngest,
                Logflare.FinchIngest,
                Logflare.FinchQuery,
-               Logflare.FinchDefault
+               Logflare.FinchDefault,
+               Logflare.FinchClickhouseIngest
              ]
     end
   end
@@ -26,7 +26,7 @@ defmodule Logflare.NetworkingTest do
     TestUtils.setup_single_tenant(backend_type: :postgres)
 
     test "returns only datadog connection pools" do
-      assert Networking.pools() == [
+      assert [
                {Finch,
                 [
                   name: Logflare.FinchDefault,
@@ -53,8 +53,13 @@ defmodule Logflare.NetworkingTest do
                       start_pool_metrics?: true
                     ]
                   }
-                ]}
-             ]
+                ]},
+               {Finch,
+                name: Logflare.FinchClickhouseIngest,
+                pools: %{
+                  :default => _config
+                }}
+             ] = Networking.pools()
     end
   end
 end

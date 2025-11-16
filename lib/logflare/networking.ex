@@ -18,6 +18,7 @@ defmodule Logflare.Networking do
            :default => [protocols: [:http1]]
          }
          |> Map.merge(datadog_connection_pools())}
+      | base_finch_pools()
     ]
   end
 
@@ -45,16 +46,6 @@ defmodule Logflare.Networking do
                max_frame_size: 8_000_000
              ]
            ]
-         ]
-       }},
-      {Finch,
-       name: Logflare.FinchClickhouseIngest,
-       pools: %{
-         default: [
-           protocols: [:http1],
-           size: max(base * 125, 150),
-           count: http1_count,
-           start_pool_metrics?: true
          ]
        }},
       {Finch,
@@ -92,6 +83,25 @@ defmodule Logflare.Networking do
            ]
          }
          |> Map.merge(datadog_connection_pools())}
+      | base_finch_pools()
+    ]
+  end
+
+  defp base_finch_pools do
+    base = System.schedulers_online()
+    http1_count = max(div(base, 4), 1)
+
+    [
+      {Finch,
+       name: Logflare.FinchClickhouseIngest,
+       pools: %{
+         default: [
+           protocols: [:http1],
+           size: max(base * 125, 150),
+           count: http1_count,
+           start_pool_metrics?: true
+         ]
+       }}
     ]
   end
 
