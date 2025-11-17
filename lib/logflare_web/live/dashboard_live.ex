@@ -73,8 +73,7 @@ defmodule LogflareWeb.DashboardLive do
     %{user: user} = socket.assigns
     favorite = Map.has_key?(params, "favorite")
 
-    with source <- Sources.get_by_and_preload(id: id),
-         true <- LogflareWeb.Plugs.SetVerifySource.verify_source_for_user(source, user),
+    with source <- Sources.Cache.get_by_and_preload(id: id, user_id: user.id),
          {:ok, _source} <- Sources.update_source_by_user(source, %{"favorite" => favorite}) do
       sources =
         Repo.reload(socket.assigns.sources)
