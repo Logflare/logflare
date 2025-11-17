@@ -14,9 +14,11 @@ defmodule LogflareWeb.DashboardLive do
 
   @impl true
   def mount(_, %{"user_id" => user_id} = session, socket) do
+    user = Users.get_by_and_preload(id: user_id)
+
     socket =
       socket
-      |> assign(:user, Users.get_by_and_preload(id: user_id))
+      |> assign(:user, user)
       |> assign_new(:team, fn %{user: user} ->
         Teams.get_team_by(user_id: user.id) |> Teams.preload_team_users()
       end)
@@ -36,8 +38,8 @@ defmodule LogflareWeb.DashboardLive do
       |> assign(:fade_in, false)
 
     if connected?(socket) do
-      Logflare.Sources.UserMetricsPoller.track(self(), user_id)
-      Phoenix.PubSub.subscribe(Logflare.PubSub, "dashboard_user_metrics:#{user_id}")
+      Logflare.Sources.UserMetricsPoller.track(self(), user.id)
+      Phoenix.PubSub.subscribe(Logflare.PubSub, "dashboard_user_metrics:#{user.id}")
     end
 
     {:ok, socket}
