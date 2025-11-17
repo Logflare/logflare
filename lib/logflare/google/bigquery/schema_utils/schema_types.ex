@@ -35,6 +35,11 @@ defmodule Logflare.BigQuery.SchemaTypes do
   def bq_type_to_ex("ARRAY"), do: :list
   def bq_type_to_ex("FLOAT"), do: :float
 
+  # fix to handle array types that could be serialized from legacy schemas
+  def bq_type_to_ex({"ARRAY", inner_type}) do
+    {:list, bq_type_to_ex(inner_type)}
+  end
+
   def bq_type_to_ex("ARRAY" <> inner_type) do
     {:list, bq_type_to_ex(String.replace(inner_type, ~r/<|>/, ""))}
   end
