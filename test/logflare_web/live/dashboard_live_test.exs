@@ -206,10 +206,10 @@ defmodule LogflareWeb.DashboardLiveTest do
   end
 
   describe "displaying source metrics" do
-    test "starts UserMetricsPoller when session has string user_id", %{user: user} do
+    test "starts UserMetricsPoller when session has string user_id", %{user: user, conn: conn} do
       # Simulate what happens when session data is deserialized with string user_id
       conn =
-        build_conn()
+        conn
         |> Plug.Test.init_test_session(%{user_id: "#{user.id}"})
         |> Plug.Conn.assign(:user, user)
 
