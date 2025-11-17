@@ -130,7 +130,7 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
         name: Backends.via_source(args.source, __MODULE__, args.backend),
         hibernate_after: 5_000,
         spawn_opt: [
-          fullsweep_after: 100
+          fullsweep_after: 10
         ],
         producer: [
           module:

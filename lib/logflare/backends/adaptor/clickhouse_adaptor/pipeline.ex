@@ -38,7 +38,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.Pipeline do
       name: name,
       hibernate_after: 5_000,
       spawn_opt: [
-        fullsweep_after: 15
+        fullsweep_after: 10
       ],
       producer: [
         module: {BufferProducer, [source_id: source.id, backend_id: backend.id]},
