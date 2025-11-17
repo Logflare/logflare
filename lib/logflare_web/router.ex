@@ -197,6 +197,10 @@ defmodule LogflareWeb.Router do
       live("/backends/:id", BackendsLive, :show)
       live("/backends/:id/edit", BackendsLive, :edit)
       live("/query", QueryLive, :index)
+
+      scope "/integrations" do
+        live("/vercel/edit", VercelLogDrainsLive, :edit)
+      end
     end
   end
 
@@ -308,12 +312,6 @@ defmodule LogflareWeb.Router do
     delete("/", UserController, :delete)
     get("/edit/api-key", UserController, :new_api_key)
     put("/edit/owner", UserController, :change_owner)
-  end
-
-  scope "/integrations", LogflareWeb do
-    pipe_through([:browser, :require_auth])
-
-    live("/vercel/edit", VercelLogDrainsLive, :edit)
   end
 
   scope "/billing", LogflareWeb do

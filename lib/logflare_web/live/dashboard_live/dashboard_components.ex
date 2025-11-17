@@ -7,6 +7,7 @@ defmodule LogflareWeb.DashboardLive.DashboardComponents do
   alias Phoenix.LiveView.JS
 
   attr :user, Logflare.User, required: true
+  attr :team, Logflare.Teams.Team, required: true
 
   def subhead(assigns) do
     assigns =
@@ -29,20 +30,20 @@ defmodule LogflareWeb.DashboardLive.DashboardComponents do
               </span>
             </li>
             <li>
-              <.link href={~p"/access-tokens"}>
+              <.team_link team={@team} href={~p"/access-tokens"}>
                 <i class="fas fa-key"></i><span class="hide-on-mobile"> access tokens</span>
-              </.link>
+              </.team_link>
             </li>
             <li :if={@flag_multibackend}>
-              <.link href={~p"/backends"}>
+              <.team_link team={@team} navigate={~p"/backends"}>
                 <i class="fas fa-database"></i><span class="hide-on-mobile"> backends</span>
-              </.link>
+              </.team_link>
             </li>
             <li>
-              <.link href={~p"/integrations/vercel/edit"}>
+              <.team_link team={@team} navigate={~p"/integrations/vercel/edit"}>
                 ▲<span class="hide-on-mobile"> vercel
                   integration</span>
-              </.link>
+              </.team_link>
             </li>
             <li>
               <.link href={~p"/billing/edit"}>

@@ -154,7 +154,7 @@ defmodule LogflareWeb.DashboardLive do
   def render(assigns) do
     ~H"""
     <div id="dashboard-container" phx-hook="DocumentVisibility">
-      <DashboardComponents.subhead user={@user} />
+      <DashboardComponents.subhead user={@user} team={@team} />
       <div class="tw-max-w-[95%] tw-mx-auto">
         <div class="lg:tw-grid tw-grid-cols-12 tw-gap-8 tw-px-[15px] tw-mt-[50px]">
           <div class="tw-col-span-3">

@@ -10,17 +10,14 @@ defmodule LogflareWeb.VercelLogDrainsLive do
   alias Logflare.Vercel
 
   @impl true
-  def mount(_params, %{"user_id" => user_id}, socket) do
+  def mount(_params, _, socket) do
     if connected?(socket) do
       # Subscribe to Vercel webhook here.
     end
 
-    socket =
-      socket
-      |> assign_user(user_id)
-      |> assign_auths()
-
-    {:ok, socket}
+    {:ok,
+     socket
+     |> assign_auths()}
   end
 
   @impl true
@@ -367,7 +364,10 @@ defmodule LogflareWeb.VercelLogDrainsLive do
   end
 
   defp assign_auths(socket) do
-    user = socket.assigns.user
+    user =
+      socket.assigns.user
+      |> Users.preload_vercel_auths()
+
     auths = user.vercel_auths |> Enum.sort_by(& &1.inserted_at, {:desc, NaiveDateTime})
 
     assign(socket, :auths, auths)
