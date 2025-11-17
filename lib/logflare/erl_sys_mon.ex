@@ -6,7 +6,6 @@ defmodule Logflare.ErlSysMon do
   """
 
   use GenServer
-  alias Logflare.Utils.Tasks
 
   require Logger
 
