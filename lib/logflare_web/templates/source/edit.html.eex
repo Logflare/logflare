@@ -207,14 +207,16 @@
   <%= section_header("Schema Lock") %>
   <p>Lock this source schema to keep it from updating automatically. Any new fields encountered during ingest will be ignored.
   </p>
-  <%= form_for @changeset, Routes.source_path(@conn, :toggle_schema_lock, @source), [method: :post], fn _f -> %>
+  <%= form_for @changeset, ~p"/sources/#{@source}/#schema-lock", [method: :patch], fn f -> %>
+    <%= hidden_input f, :lock_schema, value: !@source.lock_schema %>
     <%= submit "#{if @source.lock_schema, do: "Unlock", else: "Lock"} schema", class: "btn btn-primary form-button" %>
   <% end %>
 
   <%= section_header("Schema Validation") %>
   <p>Disable schema validation on ingest. Use this for high volume sources. Typically schema validation should be disabled for sources seeing >1,000 log events per second.
   </p>
-  <%= form_for @changeset, Routes.source_path(@conn, :toggle_schema_validation, @source), [method: :post], fn _f -> %>
+  <%= form_for @changeset, ~p"/sources/#{@source}/#schema-validation", [method: :patch], fn f -> %>
+    <%= hidden_input f, :validate_schema, value: !@source.validate_schema %>
     <%= submit "#{if @source.validate_schema, do: "Disable", else: "Enable"} schema validation", class: "btn btn-primary form-button" %>
   <% end %>
 
