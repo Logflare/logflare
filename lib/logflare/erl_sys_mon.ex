@@ -10,7 +10,11 @@ defmodule Logflare.ErlSysMon do
   require Logger
 
   def start_link(args) do
-    GenServer.start_link(__MODULE__, args, name: __MODULE__)
+    GenServer.start_link(__MODULE__, args,
+      name: __MODULE__,
+      hibernate_after: 5_000,
+      spawn_opt: [fullsweep_after: 10_000]
+    )
   end
 
   def init(_args) do
@@ -48,19 +52,9 @@ defmodule Logflare.ErlSysMon do
   end
 
   def handle_info({:monitor, pid, _type, _meta} = msg, state) when is_pid(pid) do
-    pid_info =
-      pid
-      |> Process.info(:dictionary)
-      |> case do
-        {:dictionary, dict} when is_list(dict) ->
-          Keyword.take(dict, [:"$ancestors", :"$initial_call"])
-
-        other ->
-          other
-      end
-
     Logger.warning(
-      "#{__MODULE__} message: " <> inspect(msg) <> "|\n process info: #{inspect(pid_info)}"
+      "#{__MODULE__} message: " <>
+        inspect(msg) <> "|\n process info: " <> inspect(get_process_info(pid))
     )
 
     {:noreply, state}
@@ -71,5 +65,17 @@ defmodule Logflare.ErlSysMon do
     Logger.warning("#{__MODULE__} message: #{inspect(msg)}")
 
     {:noreply, state}
+  end
+
+  defp get_process_info(pid) do
+    pid
+    |> Process.info(:dictionary)
+    |> case do
+      {:dictionary, dict} when is_list(dict) ->
+        Keyword.take(dict, [:"$ancestors", :"$initial_call"])
+
+      other ->
+        other
+    end
   end
 end

@@ -227,6 +227,16 @@
             {label(f_config, :port, "Connection pool size")}
             {text_input(f_config, :pool_size, class: "form-control", value: 1)}
           </div>
+          <div class="form-group">
+            <div class="form-check">
+              {hidden_input(f_config, :wait_for_async_insert, value: "false")}
+              {checkbox(f_config, :wait_for_async_insert, class: "form-check-input", checked: input_value(f_config, :wait_for_async_insert) != "false")}
+              {label(f_config, :wait_for_async_insert, "Wait for async insert", class: "form-check-label")}
+            </div>
+            <small class="form-text text-muted">
+              When enabled, ClickHouse will wait for the async insert to complete before responding.
+            </small>
+          </div>
         <% "incidentio" -> %>
           <div class="form-group">
             {label(f_config, :api_token, "API Token")}

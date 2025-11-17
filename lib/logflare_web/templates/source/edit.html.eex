@@ -207,12 +207,18 @@
   <%= section_header("Schema Lock") %>
   <p>Lock this source schema to keep it from updating automatically. Any new fields encountered during ingest will be ignored.
   </p>
-  <%= button "#{if @source.lock_schema, do: "Unlock", else: "Lock"} schema", to: Routes.source_path(@conn, :toggle_schema_lock, @source), class: "btn btn-primary form-button" %>
+  <%= form_for @changeset, ~p"/sources/#{@source}/#schema-lock", [method: :patch], fn f -> %>
+    <%= hidden_input f, :lock_schema, value: !@source.lock_schema %>
+    <%= submit "#{if @source.lock_schema, do: "Unlock", else: "Lock"} schema", class: "btn btn-primary form-button" %>
+  <% end %>
 
   <%= section_header("Schema Validation") %>
   <p>Disable schema validation on ingest. Use this for high volume sources. Typically schema validation should be disabled for sources seeing >1,000 log events per second.
   </p>
-  <%= button "#{if @source.validate_schema, do: "Disable", else: "Enable"} schema validation", to: Routes.source_path(@conn, :toggle_schema_validation, @source), class: "btn btn-primary form-button" %>
+  <%= form_for @changeset, ~p"/sources/#{@source}/#schema-validation", [method: :patch], fn f -> %>
+    <%= hidden_input f, :validate_schema, value: !@source.validate_schema %>
+    <%= submit "#{if @source.validate_schema, do: "Disable", else: "Enable"} schema validation", class: "btn btn-primary form-button" %>
+  <% end %>
 
 
   <hr/>
@@ -329,7 +335,7 @@
       <%= submit "Save", class: "btn btn-primary form-button" %>
 
     <% end %>
-    
+
     <%= section_header("Multi Backends") %>
     <%= form_for @changeset, Routes.source_path(@conn, :update, @source),fn f -> %>
       <div class="form-group">
@@ -349,9 +355,11 @@
   <% end %>
 
   <%= section_header("Delete Source") %>
-  <%= button to: Routes.source_path(@conn, :delete, @source), method: :delete, class: "btn btn-outline-danger form-button", data: [confirm: "Are you sure? This cannot be undone"] do %>
-     <i class="fas fa-trash"></i>
-    Delete Source
+  <%= form_for @changeset, Routes.source_path(@conn, :delete, @source), [method: :delete], fn _f -> %>
+    <%= submit class: "btn btn-outline-danger form-button", data: [confirm: "Are you sure? This cannot be undone"] do %>
+      <i class="fas fa-trash"></i>
+      Delete Source
+    <% end %>
   <% end %>
 
   <script>
