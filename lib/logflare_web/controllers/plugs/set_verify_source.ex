@@ -9,6 +9,8 @@ defmodule LogflareWeb.Plugs.SetVerifySource do
 
   alias Logflare.Sources
   alias Logflare.Sources.Source
+  alias Logflare.User
+  alias LogflareWeb.Plugs.SetTeamContext
 
   def call(%{assigns: %{source: %Source{}}} = conn, _opts), do: conn
 
@@ -16,28 +18,34 @@ defmodule LogflareWeb.Plugs.SetVerifySource do
     set_source_for_public(public_token, conn, opts)
   end
 
-  def call(%{assigns: %{user: user}, params: params} = conn, _opts) do
+  def call(%{assigns: %{user: %User{admin: true}}, params: params} = conn, _opts) do
     id = params["source_id"] || params["id"]
     source = Sources.get_by_and_preload(id: id)
 
-    cond do
-      is_nil(source) ->
+    assign(conn, :source, source)
+  end
+
+  def call(%{assigns: %{user: user}, params: params} = conn, _opts) do
+    id = params["source_id"] || params["id"]
+    current_email = get_session(conn, :current_email)
+
+    case Sources.get_by_user_access(user, id) do
+      source = %Source{} ->
+        source =
+          source
+          |> Sources.preload_defaults()
+          |> Sources.put_retention_days()
+
+        conn
+        |> assign(:source, source)
+        |> SetTeamContext.set_team_context(source.user.team.id, current_email)
+
+      nil ->
         conn
         |> put_status(404)
         |> put_layout(false)
         |> put_view(LogflareWeb.ErrorView)
         |> render("404_page.html")
-        |> halt()
-
-      verify_source_for_user(source, user) ->
-        assign(conn, :source, source)
-
-      true ->
-        conn
-        |> put_status(403)
-        |> put_layout(false)
-        |> put_view(LogflareWeb.ErrorView)
-        |> render("403_page.html", conn.assigns)
         |> halt()
     end
   end
@@ -55,9 +63,5 @@ defmodule LogflareWeb.Plugs.SetVerifySource do
       source ->
         assign(conn, :source, source)
     end
-  end
-
-  def verify_source_for_user(source, user) do
-    source.user_id == user.id || user.admin
   end
 end

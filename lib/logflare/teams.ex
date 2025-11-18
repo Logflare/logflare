@@ -161,13 +161,13 @@ defmodule Logflare.Teams do
       distinct: true
   end
 
-  def filter_by_user_access(queryable, %TeamUser{team_id: team_id}) do
+  def filter_by_user_access(queryable, %TeamUser{team_id: team_id, email: email}) do
     from entity in queryable,
       left_join: u in User,
       on: entity.user_id == u.id,
       left_join: t in Team,
       on: t.user_id == u.id,
-      where: t.id == ^team_id,
+      where: t.id == ^team_id or u.email == ^email,
       distinct: true
   end
 

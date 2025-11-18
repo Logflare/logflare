@@ -24,7 +24,11 @@ defmodule LogflareWeb.Plugs.SetTeamContext do
     current_email = get_session(conn, :current_email)
     team_id = Map.get(conn.params, "t", nil)
 
-    case TeamContext.resolve(team_id, current_email) do
+    set_team_context(conn, team_id, current_email)
+  end
+
+  def set_team_context(conn, team_id, email) do
+    case TeamContext.resolve(team_id, email) do
       {:ok, %{user: user, team: team, team_user: team_user}} ->
         teams = Logflare.Teams.list_teams_by_user_access(team_user || user)
 

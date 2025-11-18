@@ -95,26 +95,26 @@ defmodule Logflare.SourcesTest do
     end
   end
 
-  describe "list_sources_by_user_access/1" do
-    setup do
+  describe "get_source_by_user_access_and_preload/2" do
+    test "get_source_by_user_access_and_preload/2" do
       insert(:plan)
-      :ok
-    end
-
-    test "lists sources by user access" do
-      user = insert(:user)
-      team_user = insert(:team_user, email: user.email)
-
-      %Source{id: source_id} = insert(:source, user: user)
+      owner = insert(:user)
+      team_user = insert(:team_user, email: owner.email)
+      %Source{id: source_id} = insert(:source, user: owner)
       %Source{id: other_source_id} = insert(:source, user: team_user.team.user)
       %Source{id: forbidden_source_id} = insert(:source, user: build(:user))
 
-      source_ids =
-        Sources.list_sources_by_user_access(user)
-        |> Enum.map(& &1.id)
+      assert %Source{id: ^source_id} =
+               Sources.get_by_user_access(owner, source_id)
 
-      assert [source_id, other_source_id] == source_ids
-      refute forbidden_source_id in source_ids
+      assert %Source{id: ^source_id} =
+               Sources.get_by_user_access(team_user, source_id)
+
+      assert %Source{id: ^other_source_id} =
+               Sources.get_by_user_access(team_user, other_source_id)
+
+      assert nil == Sources.get_by_user_access(owner, forbidden_source_id)
+      assert nil == Sources.get_by_user_access(team_user, forbidden_source_id)
     end
   end
 

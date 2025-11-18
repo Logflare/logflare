@@ -21,7 +21,7 @@ defmodule Logflare.Sources do
   alias Logflare.Sources
   alias Logflare.Sources.Source
   alias Logflare.Sources.Source.BigQuery.SchemaBuilder
-  alias Logflare.Teams
+  alias Logflare.TeamUsers.TeamUser
   alias Logflare.User
   alias Logflare.Users
   alias Logflare.LogEvent
@@ -56,17 +56,6 @@ defmodule Logflare.Sources do
       s in Source,
       where: s.user_id == ^user_id and s.system_source == true
     )
-    |> Repo.all()
-    |> Enum.map(&put_retention_days/1)
-  end
-
-  @doc """
-  Lists sources a user has access to, including where the user is a team member.
-  """
-  @spec list_sources_by_user_access(User.t()) :: [Source.t()]
-  def list_sources_by_user_access(%User{} = user) do
-    Source
-    |> Teams.filter_by_user_access(user)
     |> Repo.all()
     |> Enum.map(&put_retention_days/1)
   end
@@ -331,6 +320,14 @@ defmodule Logflare.Sources do
     |> put_retention_days()
   end
 
+  @spec get_by_user_access(User.t() | TeamUser.t(), atom()) :: Source.t() | nil
+  def get_by_user_access(user, id) do
+    Source
+    |> Logflare.Teams.filter_by_user_access(user)
+    |> where([query], query.id == ^id)
+    |> Logflare.Repo.one()
+  end
+
   def get_rate_limiter_metrics(source, bucket: :default) do
     cluster_size = Cluster.Utils.cluster_size()
     node_metrics = get_node_rate_limiter_metrics(source, bucket: :default)
@@ -383,7 +380,7 @@ defmodule Logflare.Sources do
   @spec preload_defaults(Source.t()) :: Source.t()
   def preload_defaults(source) do
     source
-    |> Repo.preload([:user, :rules, :backends])
+    |> Repo.preload([:rules, :backends, [user: :team]])
     |> refresh_source_metrics()
     |> put_bq_table_id()
   end

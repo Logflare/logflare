@@ -66,45 +66,15 @@ defmodule LogflareWeb.SourceControllerTest do
       html =
         conn
         |> get(~p"/sources/#{other_source}")
-        |> html_response(403)
+        |> html_response(404)
 
       # main nav
       assert html =~ "Sign out"
       refute html =~ "Sign in"
       # error content
-      assert html =~ "403"
-      assert html =~ "Forbidden"
+      assert html =~ "404"
+      assert html =~ "not found"
     end
-  end
-
-  test "prompt to switch team if not found and part of many teams", %{conn: conn} do
-    hidden_team = insert(:team, user: build(:user))
-
-    insert(:plan)
-    user = insert(:user)
-    source = insert(:source, user: user)
-    main_team = insert(:team, user: user)
-
-    other_user = insert(:user)
-    other_team = insert(:team, user: other_user)
-
-    insert(:team_user,
-      team: main_team,
-      provider_uid: other_user.provider_uid,
-      email: other_user.email
-    )
-
-    # main team has 2 users now
-    html =
-      conn
-      |> login_user(other_user)
-      |> get(~p"/sources/#{source.id}")
-      |> html_response(403)
-
-    assert html =~ other_team.name
-    assert html =~ main_team.name
-    refute html =~ hidden_team.name
-    assert html =~ "You may need to switch teams"
   end
 
   describe "Premium only features" do
@@ -183,7 +153,7 @@ defmodule LogflareWeb.SourceControllerTest do
   describe "show" do
     setup [:create_plan, :old_setup]
 
-    test "returns 403 for a source not owned by the user", %{
+    test "returns 404 for a source not owned by the user", %{
       conn: conn,
       users: [_u1, u2 | _],
       sources: [s1 | _]
@@ -193,17 +163,21 @@ defmodule LogflareWeb.SourceControllerTest do
         |> login_user(u2)
         |> get(~p"/sources/#{s1}")
 
-      assert html_response(conn, 403) =~ "Forbidden"
+      assert html_response(conn, 404) =~ "not found"
     end
   end
 
   describe "new" do
     setup [:create_plan]
 
-    test "logged user can create a new source", %{conn: conn} do
+    setup do
       user = insert(:user)
-      Teams.create_team(user, %{name: "Test Team"})
 
+      team = insert(:team, user: user)
+      [user: user, team: team]
+    end
+
+    test "logged user can create a new source", %{conn: conn, user: user} do
       conn
       |> login_user(user)
       |> visit(~p"/dashboard")
@@ -214,6 +188,23 @@ defmodule LogflareWeb.SourceControllerTest do
       |> fill_in("Source Name", with: "MyApp.Logs")
       |> submit()
       |> assert_path(~p"/sources/*", query_params: %{new: true})
+    end
+
+    test "team user can create a new source", %{conn: conn, user: user} do
+      team = insert(:team, name: "Team1")
+      team_user = insert(:team_user, email: user.email, team: team)
+
+      conn
+      |> login_user(team.user, team_user)
+      |> visit(~p"/dashboard?t=#{team.id}")
+      |> click_link("New source")
+      |> assert_path(~p"/sources/new", query_params: %{t: team.id})
+      |> assert_has("h5", text: "~/logs/new")
+      |> assert_has("form")
+      |> fill_in("Source Name", with: "MyApp.Logs")
+      |> submit()
+      |> assert_path(~p"/sources/*", query_params: %{new: true})
+      |> assert_has("a", href: ~p"/dashboard?t=#{team.id}")
     end
 
     test "returns 403 for a user not logged in", %{conn: conn} do
@@ -318,7 +309,7 @@ defmodule LogflareWeb.SourceControllerTest do
       assert redirected_to(conn, 302) =~ source_path(conn, :edit, s1.id)
     end
 
-    test "returns 403 when user is not an owner of source", %{
+    test "returns 404 when user is not an owner of source", %{
       conn: conn,
       users: [u1, _u2],
       sources: [s1, _s2, u2s1 | _]
@@ -339,7 +330,7 @@ defmodule LogflareWeb.SourceControllerTest do
 
       refute s1_new.name === "it's mine now!"
       assert conn.halted === true
-      assert html_response(conn, 403) =~ "Forbidden"
+      assert html_response(conn, 404) =~ "not found"
     end
   end
 

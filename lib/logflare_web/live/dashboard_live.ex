@@ -91,7 +91,7 @@ defmodule LogflareWeb.DashboardLive do
     socket =
       with %Logflare.SavedSearch{source: source} = search <-
              SavedSearches.get(search_id) |> Repo.preload(:source),
-           true <- LogflareWeb.Plugs.SetVerifySource.verify_source_for_user(source, user),
+           true <- Sources.get_by_user_access(user, source.id) |> is_struct(),
            {:ok, _response} <- SavedSearches.delete_by_user(search) do
         sources =
           sources
@@ -163,7 +163,7 @@ defmodule LogflareWeb.DashboardLive do
             <DashboardComponents.members user={@user} team={@team} team_user={@team_user} />
           </div>
           <div class="tw-col-span-7">
-            <.source_list sources={@sources} source_metrics={@source_metrics} plan={@plan} fade_in={@fade_in} />
+            <.source_list sources={@sources} source_metrics={@source_metrics} team={@team} plan={@plan} fade_in={@fade_in} />
           </div>
           <div class="tw-col-span-2">
             <DashboardComponents.integrations />
@@ -176,6 +176,7 @@ defmodule LogflareWeb.DashboardLive do
 
   attr :sources, :list, required: true
   attr :source_metrics, :map, required: true
+  attr :team, Teams.Team, required: true
   attr :plan, :map, required: true
   attr :fade_in, :boolean, default: false
 
@@ -183,12 +184,12 @@ defmodule LogflareWeb.DashboardLive do
     ~H"""
     <div id="source-list" phx-hook="FormatTimestamps">
       <div class="tw-mb-3 tw-flex tw-justify-end">
-        <.link href={~p"/query"} class="btn btn-primary btn-sm">
+        <.team_link team={@team} href={~p"/query"} class="btn btn-primary btn-sm">
           Run a query
-        </.link>
-        <.link href={~p"/sources/new"} class="btn btn-primary btn-sm">
+        </.team_link>
+        <.team_link team={@team} href={~p"/sources/new"} class="btn btn-primary btn-sm">
           New source
-        </.link>
+        </.team_link>
       </div>
       <ul class="list-group">
         <%= if Enum.empty?(@sources) do %>
