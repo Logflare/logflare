@@ -10,9 +10,6 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.Ingester do
   alias Logflare.LogEvent
 
   @finch_pool Logflare.FinchClickhouseIngest
-  @async_insert true
-  @wait_for_async_insert true
-  @gzip_compression true
 
   @doc """
   Inserts a list of `LogEvent` structs into ClickHouse.
@@ -35,12 +32,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.Ingester do
     request_body = encode_batch(log_events)
 
     {request_body, headers} =
-      if @gzip_compression do
-        compressed = :zlib.gzip(request_body)
-        {compressed, [{"content-encoding", "gzip"}]}
-      else
-        {request_body, []}
-      end
+      {:zlib.gzip(request_body), [{"content-encoding", "gzip"}]}
 
     headers = [
       {"content-type", "application/octet-stream"},
@@ -147,8 +139,8 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.Ingester do
     params =
       URI.encode_query(%{
         "query" => query,
-        "async_insert" => if(@async_insert, do: "1", else: "0"),
-        "wait_for_async_insert" => if(@wait_for_async_insert, do: "1", else: "0")
+        "async_insert" => "1",
+        "wait_for_async_insert" => "1"
       })
 
     "#{scheme}://#{host}:#{port}/?#{params}"
