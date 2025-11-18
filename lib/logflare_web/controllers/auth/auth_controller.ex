@@ -184,7 +184,7 @@ defmodule LogflareWeb.AuthController do
 
         conn
         |> put_flash(:info, "Thanks for signing up! Now create a source!")
-        |> put_session(:user_id, user.id)
+        |> put_session(:current_email, user.email)
         |> redirect(to: Routes.source_path(conn, :new, signup: true))
 
       {:ok_found_user, user} ->

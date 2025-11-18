@@ -15,16 +15,10 @@ defmodule LogflareWeb.Plugs.SetTeamContext do
       nil ->
         assign(conn, :user, nil)
 
-      _email ->
-        set_team_user_for_browser(conn)
+      email ->
+        team_id = Map.get(conn.params, "t", nil)
+        set_team_context(conn, team_id, email)
     end
-  end
-
-  def set_team_user_for_browser(conn) do
-    current_email = get_session(conn, :current_email)
-    team_id = Map.get(conn.params, "t", nil)
-
-    set_team_context(conn, team_id, current_email)
   end
 
   def set_team_context(conn, team_id, email) do
@@ -39,7 +33,7 @@ defmodule LogflareWeb.Plugs.SetTeamContext do
         |> maybe_assign_team_user(team_user)
 
       {:error, :team_not_found} ->
-        drop(conn)
+        forbidden(conn, email)
 
       {:error, _} ->
         error(conn)
@@ -60,9 +54,23 @@ defmodule LogflareWeb.Plugs.SetTeamContext do
     |> redirect(to: ~p"/dashboard")
   end
 
-  defp drop(conn) do
+  defp forbidden(conn, email) do
+    user = Logflare.Users.get_by_and_preload(email: email)
+    # if signed in as a team_user then user may be nil
+    team = if user, do: user.team, else: nil
+
+    conn =
+      conn
+      |> put_status(403)
+      |> put_layout(false)
+      |> put_view(LogflareWeb.ErrorView)
+      |> assign(:user, user)
+      |> assign(:team, team)
+      |> LogflareWeb.Plugs.SetPlan.call([])
+      |> halt()
+
     conn
-    |> configure_session(drop: true)
-    |> redirect(to: Routes.auth_path(conn, :login, team_user_deleted: true))
+    |> render("403_page.html", conn.assigns)
+    |> halt()
   end
 end
