@@ -35,8 +35,11 @@ defmodule LogflareWeb.Plugs.SetTeamContext do
       {:error, :team_not_found} ->
         forbidden(conn, email)
 
-      {:error, _} ->
-        error(conn)
+      {:error, :invalid_team_id} ->
+        drop_team_param(conn)
+
+      {:error, :not_authorized} ->
+        forbidden(conn, email)
     end
   end
 
@@ -44,15 +47,6 @@ defmodule LogflareWeb.Plugs.SetTeamContext do
     do: assign(conn, :team_user, team_user)
 
   defp maybe_assign_team_user(conn, _team_user), do: conn
-
-  defp error(conn) do
-    conn
-    |> put_flash(
-      :error,
-      "Something went wrong. If this continues please contact support."
-    )
-    |> redirect(to: ~p"/dashboard")
-  end
 
   defp forbidden(conn, email) do
     user = Logflare.Users.get_by_and_preload(email: email)
@@ -72,5 +66,22 @@ defmodule LogflareWeb.Plugs.SetTeamContext do
     conn
     |> render("403_page.html", conn.assigns)
     |> halt()
+  end
+
+  defp drop_team_param(conn) do
+    params =
+      conn.query_params
+      |> Map.drop(["t"])
+
+    path =
+      if params == %{} do
+        conn.request_path
+      else
+        conn.request_path <> "?" <> Plug.Conn.Query.encode(params)
+      end
+
+    conn
+    |> redirect(to: path)
+    |> halt
   end
 end
