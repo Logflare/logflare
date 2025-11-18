@@ -6,6 +6,8 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.Pipeline do
   source backend and inserting them into the configured database.
   """
 
+  require OpenTelemetry.Tracer
+
   alias Broadway.Message
   alias Logflare.Backends
   alias Logflare.Backends.Adaptor.ClickhouseAdaptor
@@ -53,6 +55,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.Pipeline do
       ],
       context: %{
         source_id: source.id,
+        source_token: source.token,
         backend_id: backend.id
       }
     )
@@ -68,7 +71,11 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.Pipeline do
     Message.put_batcher(message, :ch)
   end
 
-  def handle_batch(:ch, messages, batch_info, %{source_id: source_id, backend_id: backend_id}) do
+  def handle_batch(:ch, messages, batch_info, %{
+        source_id: source_id,
+        source_token: source_token,
+        backend_id: backend_id
+      }) do
     :telemetry.execute(
       [:logflare, :backends, :pipeline, :handle_batch],
       %{batch_size: batch_info.size, batch_trigger: batch_info.trigger},
@@ -77,11 +84,26 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.Pipeline do
       }
     )
 
-    source = Sources.Cache.get_by_id(source_id)
-    backend = Backends.Cache.get_backend(backend_id)
-    events = for %{data: le} <- messages, do: le
+    attributes =
+      for {k, v} <- [
+            source_id: source_id,
+            source_token: source_token,
+            backend_id: backend_id,
+            ingest_batch_size: batch_info.size,
+            ingest_batch_trigger: batch_info.trigger
+          ],
+          v != nil,
+          do: {k, v}
 
-    ClickhouseAdaptor.insert_log_events({source, backend}, events)
+    OpenTelemetry.Tracer.with_span :clickhouse_pipeline, %{
+      attributes: Map.new(attributes)
+    } do
+      source = Sources.Cache.get_by_id(source_id)
+      backend = Backends.Cache.get_backend(backend_id)
+      events = for %{data: le} <- messages, do: le
+
+      ClickhouseAdaptor.insert_log_events({source, backend}, events)
+    end
 
     messages
   end
