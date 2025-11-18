@@ -27,7 +27,7 @@ defmodule Logflare.Backends.Adaptor.HttpBased.Client do
                | {:gzip, true}
                | {:headers, Tesla.Env.headers()}
                | {:basic_auth, [username: binary(), password: binary()]}
-               | {:formatter, module()}
+               | {:formatter, Tesla.Client.middleware()}
                | {:pool_name, atom()}
                | {:http2, boolean()}
   def new(opts \\ []) do

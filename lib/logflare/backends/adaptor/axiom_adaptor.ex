@@ -15,6 +15,7 @@ defmodule Logflare.Backends.Adaptor.AxiomAdaptor do
 
   alias Logflare.Backends.Adaptor
   alias Logflare.Backends.Adaptor.HttpBased
+  alias Logflare.Backends.Backend
 
   @behaviour Adaptor
 
@@ -67,7 +68,7 @@ defmodule Logflare.Backends.Adaptor.AxiomAdaptor do
     test_connection(backend)
   end
 
-  def test_connection(%{config: config}) do
+  def test_connection(%Backend{config: config}) do
     __MODULE__.Client.test_connection(config)
   end
 

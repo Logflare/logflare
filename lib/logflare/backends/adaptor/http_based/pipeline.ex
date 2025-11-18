@@ -6,9 +6,12 @@ defmodule Logflare.Backends.Adaptor.HttpBased.Pipeline do
   use Broadway
   alias Broadway.Message
   alias Logflare.Backends
+  alias Logflare.Backends.Backend
   alias Logflare.Backends.BufferProducer
+  alias Logflare.Sources.Source
   alias Logflare.Utils
 
+  @spec start_link(Source.t(), Backend.t(), module()) :: Broadway.on_start()
   def start_link(source, backend, client) do
     Broadway.start_link(__MODULE__,
       name: Backends.via_source(source.id, __MODULE__, backend.id),

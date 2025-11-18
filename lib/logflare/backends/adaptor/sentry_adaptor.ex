@@ -84,6 +84,8 @@ defmodule Logflare.Backends.Adaptor.SentryAdaptor do
       config
       |> new()
       |> Tesla.post("", log_events, opts: [metadata: metadata])
+
+      :ok
     end
 
     defp new(config) do
