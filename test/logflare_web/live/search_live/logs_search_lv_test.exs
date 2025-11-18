@@ -713,7 +713,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
         |> login_user(non_owner_user)
         |> get(Routes.live_path(conn, SearchLV, source))
 
-      assert html_response(conn, 403) =~ "Forbidden"
+      assert html_response(conn, 404) =~ "not found"
     end
 
     test "redirected for anonymous user", %{conn: conn, source: source} do
