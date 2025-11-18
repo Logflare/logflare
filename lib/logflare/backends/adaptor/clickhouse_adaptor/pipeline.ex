@@ -6,12 +6,14 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.Pipeline do
   source backend and inserting them into the configured database.
   """
 
+  require Logger
   require OpenTelemetry.Tracer
 
   alias Broadway.Message
   alias Logflare.Backends
   alias Logflare.Backends.Adaptor.ClickhouseAdaptor
   alias Logflare.Backends.BufferProducer
+  alias Logflare.Backends.IngestEventQueue
   alias Logflare.Sources
   alias Logflare.Utils
 
@@ -19,6 +21,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.Pipeline do
   @processor_concurrency 5
   @batcher_concurrency 10
   @batch_size 1_500
+  @max_retries 3
 
   @doc false
   def child_spec(arg) do
@@ -44,7 +47,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.Pipeline do
       ],
       producer: [
         module: {BufferProducer, [source_id: source.id, backend_id: backend.id]},
-        transformer: {__MODULE__, :transform, []},
+        transformer: {__MODULE__, :transform, [[source_id: source.id, backend_id: backend.id]]},
         concurrency: @producer_concurrency
       ],
       processors: [
@@ -95,27 +98,61 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.Pipeline do
           v != nil,
           do: {k, v}
 
-    OpenTelemetry.Tracer.with_span :clickhouse_pipeline, %{
-      attributes: Map.new(attributes)
-    } do
-      source = Sources.Cache.get_by_id(source_id)
-      backend = Backends.Cache.get_backend(backend_id)
-      events = for %{data: le} <- messages, do: le
+    result =
+      OpenTelemetry.Tracer.with_span :clickhouse_pipeline, %{
+        attributes: Map.new(attributes)
+      } do
+        source = Sources.Cache.get_by_id(source_id)
+        backend = Backends.Cache.get_backend(backend_id)
+        events = for %{data: le} <- messages, do: le
 
-      ClickhouseAdaptor.insert_log_events({source, backend}, events)
+        ClickhouseAdaptor.insert_log_events({source, backend}, events)
+      end
+
+    case result do
+      :ok ->
+        messages
+
+      {:error, reason} ->
+        Enum.map(messages, &Message.failed(&1, reason))
     end
-
-    messages
   end
 
-  def transform(event, _opts) do
+  def transform(event, opts) do
     %Message{
       data: event,
-      acknowledger: {__MODULE__, :ack_id, :ack_data}
+      acknowledger:
+        {__MODULE__, :ack_id, %{source_id: opts[:source_id], backend_id: opts[:backend_id]}}
     }
   end
 
-  def ack(_ack_ref, _successful, _failed) do
-    # TODO: re-queue failed
+  def ack(_ack_ref, _successful, []), do: :ok
+
+  def ack(_ack_ref, _successful, failed) do
+    failed
+    |> Enum.group_by(fn %{acknowledger: {_, _, ack_data}} -> ack_data end)
+    |> Enum.each(fn {%{source_id: source_id, backend_id: backend_id}, messages} ->
+      {retriable, exhausted} =
+        Enum.split_with(messages, fn %{data: event} ->
+          (event.retries || 0) < @max_retries
+        end)
+
+      if exhausted != [] do
+        Logger.warning(
+          "Dropping #{length(exhausted)} ClickHouse events after #{@max_retries} retries",
+          source_id: source_id,
+          backend_id: backend_id
+        )
+      end
+
+      if retriable != [] do
+        events =
+          for %{data: event} <- retriable do
+            %{event | retries: (event.retries || 0) + 1}
+          end
+
+        IngestEventQueue.add_to_table({source_id, backend_id}, events)
+      end
+    end)
   end
 end
