@@ -132,8 +132,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
        password: :string,
        database: :string,
        port: :integer,
-       pool_size: :integer,
-       wait_for_async_insert: :boolean
+       pool_size: :integer
      }}
     |> Changeset.cast(params, [
       :url,
@@ -141,8 +140,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
       :password,
       :database,
       :port,
-      :pool_size,
-      :wait_for_async_insert
+      :pool_size
     ])
   end
 
