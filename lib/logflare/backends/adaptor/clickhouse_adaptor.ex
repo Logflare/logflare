@@ -132,8 +132,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
        password: :string,
        database: :string,
        port: :integer,
-       pool_size: :integer,
-       wait_for_async_insert: :boolean
+       pool_size: :integer
      }}
     |> Changeset.cast(params, [
       :url,
@@ -141,8 +140,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
       :password,
       :database,
       :port,
-      :pool_size,
-      :wait_for_async_insert
+      :pool_size
     ])
   end
 
@@ -330,9 +328,19 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
   def insert_log_events({%Source{}, %Backend{}}, []), do: :ok
 
   def insert_log_events({%Source{} = source, %Backend{} = backend}, [%LogEvent{} | _] = events) do
+    Logger.metadata(source_id: source.id, source_token: source.token, backend_id: backend.id)
+
     table_name = clickhouse_ingest_table_name(source)
 
-    Ingester.insert(backend, table_name, events)
+    case Ingester.insert(backend, table_name, events) do
+      :ok ->
+        :ok
+
+      {:error, reason} ->
+        Logger.warning("Clickhouse insert errors.", error_string: inspect(reason))
+
+        {:error, reason}
+    end
   end
 
   @doc """

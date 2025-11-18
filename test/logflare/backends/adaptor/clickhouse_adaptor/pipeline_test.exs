@@ -28,6 +28,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.PipelineTest do
 
     context = %{
       source_id: source.id,
+      source_token: source.token,
       backend_id: backend.id
     }
 
