@@ -52,7 +52,7 @@ defmodule Logflare.Teams.TeamContext do
   def parse_team_id(_), do: {:error, :invalid_team_id}
 
   defp do_resolve(%Team{} = team, %TeamUser{} = team_user) do
-    user = team.user |> Logflare.Users.Cache.preload_defaults()
+    user = team.user |> Logflare.Users.preload_defaults()
 
     case TeamUsers.touch_team_user(team_user) do
       {1, [touched]} ->
@@ -68,19 +68,19 @@ defmodule Logflare.Teams.TeamContext do
   end
 
   defp do_resolve(%Team{} = team, %User{} = _user) do
-    user = team.user |> Logflare.Users.Cache.preload_defaults()
+    user = team.user |> Logflare.Users.preload_defaults()
     {:ok, %__MODULE__{user: user, team: team, team_user: nil}}
   end
 
   # When no team id is provided, default to home team if available.
   defp verify_team_access(email, :home_team) when is_binary(email) do
-    case Users.Cache.get_by_and_preload(email: email) do
+    case Users.get_by_and_preload(email: email) do
       %User{} = user ->
         team = user.team |> Teams.preload_user()
         {:ok, team, user}
 
       nil ->
-        case TeamUsers.Cache.get_team_user_by(email: email) do
+        case TeamUsers.get_team_user_by(email: email) do
           %TeamUser{} = team_user ->
             team =
               Teams.get_team_by(id: team_user.team_id)
@@ -117,6 +117,6 @@ defmodule Logflare.Teams.TeamContext do
   defp team_owner?(team, email), do: team.user.email == email
 
   defp fetch_team_user(team, email) do
-    TeamUsers.Cache.get_team_user_by(email: email, team_id: team.id)
+    TeamUsers.get_team_user_by(email: email, team_id: team.id)
   end
 end

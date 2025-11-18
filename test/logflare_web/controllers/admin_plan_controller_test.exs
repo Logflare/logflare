@@ -1,5 +1,5 @@
 defmodule LogflareWeb.AdminPlanControllerTest do
-  use LogflareWeb.ConnCase
+  use LogflareWeb.ConnCase, async: true
 
   alias Logflare.Billing
 

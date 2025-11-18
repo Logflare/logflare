@@ -1,5 +1,5 @@
 defmodule LogflareWeb.BillingAccountLive.EditTest do
-  use LogflareWeb.ConnCase
+  use LogflareWeb.ConnCase, async: true
 
   describe "when user is logged in and billing account is created" do
     setup [:create_plans, :log_in_user, :create_billing_account]
