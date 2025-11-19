@@ -121,7 +121,8 @@ defmodule Logflare.Backends.IngestEventQueue do
 
   The record will be marked as :pending.
   """
-  @spec add_to_table(source_backend_pid(), [LogEvent.t()]) :: :ok | {:error, :not_initialized}
+  @spec add_to_table(source_backend_pid() | queues_key(), [LogEvent.t()]) ::
+          :ok | {:error, :not_initialized}
   def add_to_table({sid, bid} = sid_bid, batch) when is_integer(sid) do
     proc_counts =
       list_counts(sid_bid)
@@ -429,7 +430,8 @@ defmodule Logflare.Backends.IngestEventQueue do
   Deletes a specific event from the table.
   If already deleted, it is a :noop.
   """
-  @spec delete(source_backend_pid(), LogEvent.t()) :: :ok | :noop | {:erorr, :not_initialized}
+  @spec delete(source_backend_pid() | queues_key(), LogEvent.t()) ::
+          :ok | :noop | {:error, :not_initialized}
 
   def delete({_, _} = sid_bid, %LogEvent{id: id}) do
     traverse_queues(sid_bid, fn objs, acc ->
