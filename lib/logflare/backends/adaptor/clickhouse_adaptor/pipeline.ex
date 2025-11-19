@@ -133,24 +133,47 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.Pipeline do
           (event.retries || 0) < @max_retries
         end)
 
-      if exhausted != [] do
-        source = Sources.Cache.get_by_id(source_id)
-
-        Logger.warning(
-          "Dropping #{length(exhausted)} ClickHouse events after #{@max_retries} retries",
-          source_token: source.token,
-          backend_id: backend_id
-        )
-      end
-
-      if retriable != [] do
-        events =
-          for %{data: %LogEvent{} = event} <- retriable do
-            %{event | retries: (event.retries || 0) + 1}
-          end
-
-        IngestEventQueue.add_to_table({source_id, backend_id}, events)
-      end
+      drop_exhausted_messages(exhausted, source_id, backend_id)
+      requeue_retriable_messages(retriable, source_id, backend_id)
     end)
+  end
+
+  @spec drop_exhausted_messages(
+          [Message.t()],
+          source_id :: pos_integer(),
+          backend_id :: pos_integer()
+        ) :: :ok
+  defp drop_exhausted_messages([], _source_id, _backend_id), do: :ok
+
+  defp drop_exhausted_messages(exhausted, source_id, backend_id) do
+    source = Sources.Cache.get_by_id(source_id)
+
+    Logger.warning(
+      "Dropping #{length(exhausted)} ClickHouse events after #{@max_retries} retries",
+      source_token: source.token,
+      backend_id: backend_id
+    )
+
+    Enum.each(exhausted, fn %{data: %LogEvent{} = event} ->
+      IngestEventQueue.delete({source_id, backend_id}, event)
+    end)
+  end
+
+  @spec requeue_retriable_messages(
+          [Message.t()],
+          source_id :: pos_integer(),
+          backend_id :: pos_integer()
+        ) ::
+          :ok
+  defp requeue_retriable_messages([], _source_id, _backend_id), do: :ok
+
+  defp requeue_retriable_messages(retriable, source_id, backend_id) do
+    events =
+      Enum.map(retriable, fn %{data: %LogEvent{} = event} ->
+        IngestEventQueue.delete({source_id, backend_id}, event)
+        %LogEvent{event | retries: (event.retries || 0) + 1}
+      end)
+
+    IngestEventQueue.add_to_table({source_id, backend_id}, events)
   end
 end
