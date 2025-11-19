@@ -546,17 +546,33 @@ defmodule Logflare.Lql.BackendTransformer.BigQuery do
   @spec negated?(map()) :: boolean()
   defp negated?(modifiers), do: Map.get(modifiers, :negate)
 
-  @spec build_combined_select(Query.t(), [map()]) :: Query.t()
+  @spec build_combined_select(Query.t(), [Logflare.Lql.Rules.SelectRule.t()]) :: Query.t()
   defp build_combined_select(query, select_rules) do
-    Enum.reduce(select_rules, query, fn %{path: path}, acc_query ->
-      field_key =
-        if path in @special_top_level or not String.contains?(path, ".") do
-          path
-        else
-          String.replace(path, ".", "_")
-        end
+    select_rules
+    |> Enum.reduce(query, fn %{path: path, alias: alias}, acc_query ->
+      is_nested = path not in @special_top_level and String.contains?(path, ".")
+      field_name = path |> split_by_dots |> List.last()
 
-      select_merge(acc_query, [l], %{^field_key => field(l, ^field_key)})
+      cond do
+        is_nested ->
+          name = if is_binary(alias), do: alias, else: String.replace(path, ".", "_")
+
+          acc_query
+          |> handle_nested_field_access(path)
+          |> select_merge([..., t], %{
+            ^name => fragment("? AS ?", field(t, ^field_name), identifier(^name))
+          })
+
+        is_binary(alias) ->
+          acc_query
+          |> select_merge([t], %{
+            ^alias => fragment("? AS ?", field(t, ^field_name), identifier(^alias))
+          })
+
+        is_nil(alias) ->
+          acc_query
+          |> select_merge([t], %{^path => field(t, ^field_name)})
+      end
     end)
   end
 

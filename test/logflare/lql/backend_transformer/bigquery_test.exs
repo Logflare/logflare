@@ -369,7 +369,8 @@ defmodule Logflare.Lql.BackendTransformer.BigQueryTest do
 
       result = BigQuery.apply_select_rules_to_query(base_query, select_rules, [])
 
-      assert %Query{} = result
+      assert %Query{select: %{expr: expr}} = result
+      assert expr |> Macro.to_string() =~ "event_message"
       refute result == base_query
     end
 
@@ -387,7 +388,8 @@ defmodule Logflare.Lql.BackendTransformer.BigQueryTest do
       select_rules = [%SelectRule{path: "user.profile.name", wildcard: false}]
       result = BigQuery.apply_select_rules_to_query(base_query, select_rules, [])
 
-      assert %Query{} = result
+      assert %Query{select: %{expr: expr}} = result
+      assert expr |> Macro.to_string() =~ "user_profile_name"
       refute result == base_query
     end
 

@@ -46,6 +46,7 @@ defmodule Logflare.Logs.Search do
          %{error: nil} = so <- apply_halt_conditions(so),
          %{error: nil} = so <- apply_local_timestamp_correction(so),
          %{error: nil} = so <- apply_timestamp_filter_rules(so),
+         %{error: nil} = so <- apply_select_rules(so),
          %{error: nil} = so <- apply_filters(so),
          %{error: nil} = so <- unnest_log_level(so),
          %{error: nil} = so <- do_query(so),

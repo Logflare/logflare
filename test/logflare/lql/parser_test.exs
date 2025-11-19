@@ -8,6 +8,7 @@ defmodule Logflare.Lql.ParserTest do
   alias Logflare.Lql.Rules.ChartRule
   alias Logflare.Lql.Rules.FilterRule
   alias Logflare.Lql.Rules.FromRule
+  alias Logflare.Lql.Rules.SelectRule
   alias Logflare.Sources.Source.BigQuery.SchemaBuilder
 
   @default_schema SchemaBuilder.initial_table_schema()
@@ -1008,6 +1009,21 @@ defmodule Logflare.Lql.ParserTest do
       assert length(rules) == 3
 
       assert Enum.any?(rules, &match?(%FromRule{table: "logs"}, &1))
+    end
+
+    test "parses select aliases" do
+      qs = "s:metadata.user.id@user_id"
+
+      assert {:ok, rules} = Parser.parse(qs)
+
+      assert [%SelectRule{alias: "user_id", path: "metadata.user.id"}] =
+               Enum.filter(rules, &match?(%SelectRule{}, &1))
+    end
+
+    test "rejects select with blank alias" do
+      qs = "s:m.qty@"
+
+      assert {:error, _} = Parser.parse(qs)
     end
 
     test "parses table names with underscores" do

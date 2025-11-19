@@ -491,7 +491,9 @@ defmodule LogflareWeb.Source.SearchLV do
     {:noreply, socket}
   end
 
-  def handle_info({:search_result, %{events: _events} = search_result}, socket) do
+  def handle_info({:search_result, %{events: events} = search_result}, socket) do
+    events |> dbg
+
     tailing_timer =
       if socket.assigns.tailing? do
         Process.send_after(self(), :schedule_tail_search, @tail_search_interval)

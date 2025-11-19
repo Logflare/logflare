@@ -262,11 +262,12 @@ defmodule Logflare.Lql.EncoderTest do
       lql_rules = [
         %FromRule{table: "application_logs"},
         %SelectRule{path: "event_message", wildcard: false},
-        %SelectRule{path: "metadata.user_id", wildcard: false}
+        %SelectRule{path: "metadata.user_id", wildcard: false},
+        %SelectRule{path: "metadata.qty", alias: "quantity", wildcard: false}
       ]
 
       result = Encoder.to_querystring(lql_rules)
-      assert result == "f:application_logs s:event_message s:m.user_id"
+      assert result == "f:application_logs s:event_message s:m.user_id s:m.qty@quantity"
     end
 
     test "encodes from rule with chart rule" do

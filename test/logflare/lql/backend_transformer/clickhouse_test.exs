@@ -293,6 +293,39 @@ defmodule Logflare.Lql.BackendTransformer.ClickHouseTest do
       result = ClickHouse.apply_select_rules_to_query(query, [select_rule], [])
       assert result == query
     end
+
+    test "applies select rule to query" do
+      query = from(l in "logs")
+      select_rule = %SelectRule{path: "metadata.user.id"}
+
+      result = ClickHouse.apply_select_rules_to_query(query, [select_rule], [])
+
+      assert %Ecto.Query{select: %{expr: expr}} = result
+      assert expr |> Macro.to_string() =~ "metadata_user_id"
+    end
+  end
+
+  describe "apply_select_rules_to_query/3 with aliases" do
+    test "applies top-level field with alias" do
+      query = from(l in "logs")
+      select_rule = %SelectRule{path: "event_message", alias: "msg"}
+
+      result = ClickHouse.apply_select_rules_to_query(query, [select_rule], [])
+
+      assert %Ecto.Query{select: %{expr: expr}} = result
+      assert expr |> Macro.to_string() =~ "msg"
+    end
+
+    test "applies nested field with alias" do
+      query = from(l in "logs")
+
+      select_rule = %SelectRule{path: "metadata.user.id", alias: "user_id"}
+
+      result = ClickHouse.apply_select_rules_to_query(query, [select_rule], [])
+
+      assert %Ecto.Query{select: %{expr: expr}} = result
+      assert expr |> Macro.to_string() =~ "user_id"
+    end
   end
 
   describe "handle_nested_field_access/2" do

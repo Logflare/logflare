@@ -295,7 +295,28 @@ defmodule Logflare.Lql.Parser.Combinators do
       metadata_field(),
       any_field()
     ])
+    |> concat(
+      choice([
+        select_alias(),
+        invalid_blank_select_alias(),
+        empty()
+      ])
+    )
+    |> map({:check_for_invalid_blank_select_alias, []})
     |> tag(:select)
+  end
+
+  def select_alias do
+    ignore(string("@"))
+    |> ascii_string([?a..?z, ?A..?Z, ?_, ?0..?9], min: 1)
+    |> reduce({List, :to_string, []})
+    |> unwrap_and_tag(:alias)
+    |> label("select alias")
+  end
+
+  defp invalid_blank_select_alias do
+    string("@")
+    |> unwrap_and_tag(:invalid_blank_select_alias)
   end
 
   # ============================================================================
