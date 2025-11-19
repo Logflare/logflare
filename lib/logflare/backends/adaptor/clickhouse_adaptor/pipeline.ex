@@ -14,6 +14,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.Pipeline do
   alias Logflare.Backends.Adaptor.ClickhouseAdaptor
   alias Logflare.Backends.BufferProducer
   alias Logflare.Backends.IngestEventQueue
+  alias Logflare.LogEvent
   alias Logflare.Sources
   alias Logflare.Utils
 
@@ -147,7 +148,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.Pipeline do
 
       if retriable != [] do
         events =
-          for %{data: event} <- retriable do
+          for %{data: %LogEvent{} = event} <- retriable do
             %{event | retries: (event.retries || 0) + 1}
           end
 
