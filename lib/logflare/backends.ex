@@ -118,18 +118,9 @@ defmodule Logflare.Backends do
   """
   @spec get_backend_by_user_access(User.t() | TeamUser.t(), integer() | String.t()) ::
           Backend.t() | nil
-  def get_backend_by_user_access(%User{} = user, id) when is_integer(id) or is_binary(id) do
+  def get_backend_by_user_access(user_or_team_user, id) when is_integer(id) or is_binary(id) do
     Backend
-    |> Teams.filter_by_user_access(user)
-    |> where([backend], backend.id == ^id)
-    |> Repo.one()
-    |> typecast_config_string_map_to_atom_map()
-  end
-
-  def get_backend_by_user_access(%TeamUser{} = team_user, id)
-      when is_integer(id) or is_binary(id) do
-    Backend
-    |> Teams.filter_by_user_access(team_user)
+    |> Teams.filter_by_user_access(user_or_team_user)
     |> where([backend], backend.id == ^id)
     |> Repo.one()
     |> typecast_config_string_map_to_atom_map()

@@ -82,17 +82,10 @@ defmodule Logflare.Alerting do
   """
   @spec get_alert_query_by_user_access(User.t() | TeamUser.t(), integer() | String.t()) ::
           AlertQuery.t() | nil
-  def get_alert_query_by_user_access(%User{} = user, id) when is_integer(id) or is_binary(id) do
-    AlertQuery
-    |> Teams.filter_by_user_access(user)
-    |> where([alert_query], alert_query.id == ^id)
-    |> Repo.one()
-  end
-
-  def get_alert_query_by_user_access(%TeamUser{} = team_user, id)
+  def get_alert_query_by_user_access(user_or_team_user, id)
       when is_integer(id) or is_binary(id) do
     AlertQuery
-    |> Teams.filter_by_user_access(team_user)
+    |> Teams.filter_by_user_access(user_or_team_user)
     |> where([alert_query], alert_query.id == ^id)
     |> Repo.one()
   end

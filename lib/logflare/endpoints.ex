@@ -67,32 +67,13 @@ defmodule Logflare.Endpoints do
   @doc """
   Gets an endpoint query by id that the user has access to.
   Returns the endpoint query if the user owns it or is a team member, otherwise returns nil.
-
-  Supports both User and TeamUser structs.
-
-  ## Examples
-
-      iex> get_endpoint_query_by_user_access(user, 123)
-      %Query{id: 123}
-
-      iex> get_endpoint_query_by_user_access(user, 999)
-      nil
-
   """
   @spec get_endpoint_query_by_user_access(User.t() | TeamUser.t(), integer() | String.t()) ::
           Query.t() | nil
-  def get_endpoint_query_by_user_access(%User{} = user, id)
+  def get_endpoint_query_by_user_access(user_or_team_user, id)
       when is_integer(id) or is_binary(id) do
     Query
-    |> Teams.filter_by_user_access(user)
-    |> where([query], query.id == ^id)
-    |> Repo.one()
-  end
-
-  def get_endpoint_query_by_user_access(%TeamUser{} = team_user, id)
-      when is_integer(id) or is_binary(id) do
-    Query
-    |> Teams.filter_by_user_access(team_user)
+    |> Teams.filter_by_user_access(user_or_team_user)
     |> where([query], query.id == ^id)
     |> Repo.one()
   end
