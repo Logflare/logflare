@@ -138,7 +138,6 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.Pipeline do
 
         Logger.warning(
           "Dropping #{length(exhausted)} ClickHouse events after #{@max_retries} retries",
-          source_id: source_id,
           source_token: source.token,
           backend_id: backend_id
         )
