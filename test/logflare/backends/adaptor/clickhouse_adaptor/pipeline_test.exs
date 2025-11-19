@@ -213,8 +213,8 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.PipelineTest do
       expected_source_id = source.id
       expected_backend_id = backend.id
 
-      Mimic.expect(Logflare.Backends.IngestEventQueue, :delete, fn {sid, bid}, deleted_event ->
-        send(test_pid, {:deleted, sid, bid, deleted_event})
+      Mimic.expect(Logflare.Backends.IngestEventQueue, :delete_batch, fn {sid, bid}, events ->
+        send(test_pid, {:deleted_batch, sid, bid, events})
         :ok
       end)
 
@@ -225,7 +225,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.PipelineTest do
 
       Pipeline.ack(:ack_ref, [], [failed_message])
 
-      assert_receive {:deleted, ^expected_source_id, ^expected_backend_id, _deleted_event}
+      assert_receive {:deleted_batch, ^expected_source_id, ^expected_backend_id, [_deleted_event]}
       assert_receive {:requeued, ^expected_source_id, ^expected_backend_id, [requeued_event]}
       assert requeued_event.retries == 1
     end
@@ -244,7 +244,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.PipelineTest do
 
       test_pid = self()
 
-      Mimic.expect(Logflare.Backends.IngestEventQueue, :delete, fn {_sid, _bid}, _event ->
+      Mimic.expect(Logflare.Backends.IngestEventQueue, :delete_batch, fn {_sid, _bid}, _events ->
         :ok
       end)
 
@@ -273,8 +273,8 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.PipelineTest do
 
       test_pid = self()
 
-      Mimic.expect(Logflare.Backends.IngestEventQueue, :delete, fn {sid, bid}, deleted_event ->
-        send(test_pid, {:deleted, sid, bid, deleted_event})
+      Mimic.expect(Logflare.Backends.IngestEventQueue, :delete_batch, fn {sid, bid}, events ->
+        send(test_pid, {:deleted_batch, sid, bid, events})
         :ok
       end)
 
@@ -286,7 +286,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.PipelineTest do
         end)
 
       assert log =~ "Dropping 1 ClickHouse events after 3 retries"
-      assert_receive {:deleted, _source_id, _backend_id, deleted_event}
+      assert_receive {:deleted_batch, _source_id, _backend_id, [deleted_event]}
       assert deleted_event.id == event.id
     end
 
@@ -315,8 +315,9 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.PipelineTest do
 
       test_pid = self()
 
-      Mimic.expect(Logflare.Backends.IngestEventQueue, :delete, 2, fn {_sid, _bid}, event ->
-        send(test_pid, {:deleted, event.id})
+      Mimic.expect(Logflare.Backends.IngestEventQueue, :delete_batch, 2, fn {_sid, _bid},
+                                                                            events ->
+        send(test_pid, {:deleted_batch, Enum.map(events, & &1.id)})
         :ok
       end)
 
@@ -330,9 +331,9 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.PipelineTest do
           Pipeline.ack(:ack_ref, [], failed_messages)
         end)
 
-      # Both events should be deleted (one retriable, one exhausted)
-      assert_receive {:deleted, _id1}
-      assert_receive {:deleted, _id2}
+      # Both batches should be deleted (one for exhausted, one for retriable)
+      assert_receive {:deleted_batch, [_exhausted_id]}
+      assert_receive {:deleted_batch, [_retriable_id]}
 
       # Only the retriable event should be requeued
       assert_receive {:requeued, [requeued_event]}

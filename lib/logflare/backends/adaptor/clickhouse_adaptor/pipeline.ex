@@ -154,9 +154,8 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.Pipeline do
       backend_id: backend_id
     )
 
-    Enum.each(exhausted, fn %{data: %LogEvent{} = event} ->
-      IngestEventQueue.delete({source_id, backend_id}, event)
-    end)
+    events = Enum.map(exhausted, fn %{data: %LogEvent{} = event} -> event end)
+    IngestEventQueue.delete_batch({source_id, backend_id}, events)
   end
 
   @spec requeue_retriable_messages(
@@ -170,10 +169,10 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.Pipeline do
   defp requeue_retriable_messages(retriable, source_id, backend_id) do
     events =
       Enum.map(retriable, fn %{data: %LogEvent{} = event} ->
-        IngestEventQueue.delete({source_id, backend_id}, event)
         %LogEvent{event | retries: (event.retries || 0) + 1}
       end)
 
+    IngestEventQueue.delete_batch({source_id, backend_id}, events)
     IngestEventQueue.add_to_table({source_id, backend_id}, events)
   end
 end

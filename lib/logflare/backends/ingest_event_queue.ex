@@ -458,6 +458,26 @@ defmodule Logflare.Backends.IngestEventQueue do
   end
 
   @doc """
+  Deletes multiple events from the table.
+  """
+  @spec delete_batch(source_backend_pid() | queues_key(), [LogEvent.t()]) :: :ok
+  def delete_batch(_sid_bid, []), do: :ok
+
+  def delete_batch({_, _} = sid_bid, events) when is_list(events) do
+    ids = Enum.map(events, & &1.id)
+
+    traverse_queues(sid_bid, fn objs, acc ->
+      for {_sid_bid_pid, tid} <- objs, id <- ids do
+        :ets.delete(tid, id)
+      end
+
+      acc
+    end)
+
+    :ok
+  end
+
+  @doc """
   Drop events from the ingest event table.
   """
   @spec drop(source_backend_pid(), :all | :pending | :ingested, non_neg_integer()) :: :ok
