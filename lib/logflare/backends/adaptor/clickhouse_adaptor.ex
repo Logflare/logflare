@@ -328,7 +328,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
   def insert_log_events({%Source{}, %Backend{}}, []), do: :ok
 
   def insert_log_events({%Source{} = source, %Backend{} = backend}, [%LogEvent{} | _] = events) do
-    Logger.metadata(source_id: source.id, source_token: source.token, backend_id: backend.id)
+    Logger.metadata(source_token: source.token, backend_id: backend.id)
 
     table_name = clickhouse_ingest_table_name(source)
 
