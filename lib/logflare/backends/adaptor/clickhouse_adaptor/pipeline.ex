@@ -127,14 +127,21 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.Pipeline do
   def ack(_ack_ref, _successful, failed) do
     failed
     |> Enum.group_by(fn %{acknowledger: {_, _, ack_data}} -> ack_data end)
-    |> Enum.each(fn {%{source_id: source_id, backend_id: backend_id}, messages} ->
-      {retriable, exhausted} =
-        Enum.split_with(messages, fn %{data: event} ->
-          (event.retries || 0) < @max_retries
-        end)
+    |> Enum.each(fn
+      {%{source_id: source_id, backend_id: backend_id}, messages}
+      when is_integer(source_id) and is_integer(backend_id) ->
+        {retriable, exhausted} =
+          Enum.split_with(messages, fn %{data: event} ->
+            (event.retries || 0) < @max_retries
+          end)
 
-      drop_exhausted_messages(exhausted, source_id, backend_id)
-      requeue_retriable_messages(retriable, source_id, backend_id)
+        drop_exhausted_messages(exhausted, source_id, backend_id)
+        requeue_retriable_messages(retriable, source_id, backend_id)
+
+      {_ack_data, messages} ->
+        Logger.warning(
+          "Dropping #{length(messages)} ClickHouse events with invalid acknowledger data"
+        )
     end)
   end
 
