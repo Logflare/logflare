@@ -167,7 +167,7 @@ defmodule LogflareWeb.DashboardLive.DashboardComponents do
           <span :if={current_team_user?(member, @team_user)}>you</span>
         </li>
       </ul>
-      <.link href={~p"/account/edit#team-members"} class="tw-text-white tw-mt-2">
+      <.link :if={is_nil(@team_user)} href={~p"/account/edit#team-members"} class="tw-text-white tw-mt-2">
         Invite more team members.
       </.link>
     </div>

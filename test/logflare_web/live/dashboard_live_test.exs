@@ -148,6 +148,9 @@ defmodule LogflareWeb.DashboardLiveTest do
 
       assert view |> element("#members li", "#{user.name}") |> render =~ "owner, you"
       assert view |> has_element?("#members li", "#{other_member.name}")
+
+      assert view
+             |> has_element?("a[href='/account/edit#team-members']", "Invite more team members")
     end
 
     test "sign in to other team", %{
@@ -175,33 +178,45 @@ defmodule LogflareWeb.DashboardLiveTest do
   end
 
   describe "dashboard - viewing home team as team member" do
-    setup %{user: user, conn: conn} do
+    setup %{conn: conn} do
       other_team = insert(:team, name: "Other Team")
       forbidden_team = insert(:team, name: "Not My Team")
 
-      team_user = insert(:team_user, team: other_team, email: user.email)
-      other_member = insert(:team_user, team: user.team)
-      conn = conn |> login_user(user, team_user)
+      team_user = insert(:team_user, team: other_team)
+      another_member = insert(:team_user, team: other_team)
+
+      # Login as the team_user (using unique email from factory)
+      conn =
+        conn
+        |> Plug.Test.init_test_session(%{current_email: team_user.email})
 
       [
         other_team: other_team,
         forbidden_team: forbidden_team,
-        other_member: other_member,
+        another_member: another_member,
         team_user: team_user,
         conn: conn
       ]
     end
 
-    test "teams list includes other team", %{conn: conn, other_team: other_team} do
+    test "teams list shows other team", %{conn: conn, other_team: other_team} do
       {:ok, view, _html} = live(conn, "/dashboard")
 
       assert view |> has_element?("#teams li", "#{other_team.name}")
     end
 
-    test "team members list", %{conn: conn, other_member: other_member} do
+    test "team members list", %{
+      conn: conn,
+      other_team: other_team,
+      another_member: another_member
+    } do
       {:ok, view, _html} = live(conn, "/dashboard")
 
-      assert view |> has_element?("#members li", "#{other_member.name}")
+      assert view |> has_element?("#members li", "#{other_team.user.name}")
+      assert view |> has_element?("#members li", "#{another_member.name}")
+
+      refute view
+             |> has_element?("a[href='/account/edit#team-members']", "Invite more team members")
     end
   end
 
