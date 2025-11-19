@@ -88,20 +88,15 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.Pipeline do
       }
     )
 
-    attributes =
-      for {k, v} <- [
-            source_id: source_id,
-            source_token: source_token,
-            backend_id: backend_id,
-            ingest_batch_size: batch_info.size,
-            ingest_batch_trigger: batch_info.trigger
-          ],
-          v != nil,
-          do: {k, v}
-
     result =
       OpenTelemetry.Tracer.with_span :clickhouse_pipeline, %{
-        attributes: Map.new(attributes)
+        attributes: %{
+          source_id: source_id,
+          source_token: source_token,
+          backend_id: backend_id,
+          ingest_batch_size: batch_info.size,
+          ingest_batch_trigger: batch_info.trigger
+        }
       } do
         source = Sources.Cache.get_by_id(source_id)
         backend = Backends.Cache.get_backend(backend_id)
