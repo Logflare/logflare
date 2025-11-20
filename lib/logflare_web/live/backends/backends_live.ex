@@ -35,6 +35,7 @@ defmodule LogflareWeb.BackendsLive do
       |> assign(:show_default_ingest_form?, false)
       |> assign(:default_ingest_sources, [])
       |> assign(:flag_multibackend, LogflareWeb.Utils.flag("multibackend", user))
+      |> assign_backend_types()
       |> refresh_backends()
       |> refresh_backend(params["id"])
 
@@ -284,6 +285,23 @@ defmodule LogflareWeb.BackendsLive do
     {:noreply, socket}
   end
 
+  defp assign_backend_types(socket) do
+    socket
+    |> assign(:backend_types, [
+      {"Webhook", :webhook},
+      {"Postgres", :postgres},
+      {"BigQuery", :bigquery},
+      {"Datadog", :datadog},
+      {"Elastic", :elastic},
+      {"Loki", :loki},
+      {"ClickHouse", :clickhouse},
+      {"Incident.io", :incidentio},
+      {"S3", :s3},
+      {"Axiom", :axiom},
+      {"OTLP", :otlp}
+    ])
+  end
+
   defp refresh_backends(socket) do
     backends =
       Backends.list_backends_by_user_id(socket.assigns.user.id)
@@ -329,10 +347,23 @@ defmodule LogflareWeb.BackendsLive do
     type = params["type"]
 
     Map.update(params, "config", nil, fn config ->
-      {key, config} = Map.pop(config, "header1_key")
-      {value, config} = Map.pop(config, "header1_value")
+      headers_form_keys =
+        for i <- 1..2 do
+          ["header#{i}_key", "header#{i}_value"]
+        end
 
-      Map.put(config, "headers", %{key => value})
+      {headers, config} = Map.split(config, List.flatten(headers_form_keys))
+
+      headers =
+        for [form_key, form_value] <- headers_form_keys,
+            key = headers[form_key],
+            key != "",
+            value = headers[form_value],
+            into: %{} do
+          {key, value}
+        end
+
+      Map.put(config, "headers", headers)
       |> case do
         %{"metadata" => metadata_str} = config
         when is_binary(metadata_str) and type == "incidentio" ->

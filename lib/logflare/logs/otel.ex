@@ -111,4 +111,6 @@ defmodule Logflare.Logs.Otel do
     |> DateTime.from_unix!(:nanosecond)
     |> DateTime.to_iso8601()
   end
+
+  # TODO: Maybe move helpers here
 end

@@ -24,7 +24,8 @@ defmodule Logflare.Backends.Backend do
     clickhouse: Adaptor.ClickHouseAdaptor,
     incidentio: Adaptor.IncidentioAdaptor,
     s3: Adaptor.S3Adaptor,
-    axiom: Adaptor.AxiomAdaptor
+    axiom: Adaptor.AxiomAdaptor,
+    otlp: Adaptor.OtlpAdaptor
   }
 
   typed_schema "backends" do
