@@ -18,47 +18,25 @@ defmodule Logflare.Backends.IngestEventQueue.BroadcastWorker do
 
   def init(opts) do
     state = %{interval: Keyword.get(opts, :interval, @default_interval)}
-    Process.send_after(self(), :global_broadcast, state.interval)
-    Process.send_after(self(), :local_broadcast, state.interval)
+    Process.send_after(self(), :cache_buffer_lens, state.interval)
     {:ok, state}
   end
 
-  def handle_info(:global_broadcast, state) do
+  def handle_info(:cache_buffer_lens, state) do
     :ets.foldl(
-      fn {{sid, bid, _pid}, _tid}, acc ->
-        if is_map_key(acc, {sid, bid}) do
+      fn
+        {{sid, bid, _pid}, _tid}, acc when is_map_key(acc, {sid, bid}) ->
           acc
-        else
+
+        {{sid, bid, _pid}, _tid}, acc ->
           Backends.cache_local_buffer_lens(sid, bid)
           Map.put(acc, {sid, bid}, true)
-        end
       end,
       %{},
       @ets_table_mapper
     )
 
-    # scale broadcasting interval to cluster size
-    cluster_size = Logflare.Cluster.Utils.actual_cluster_size()
-    broadcast_interval = max(state.interval, round(:rand.uniform(cluster_size * 100)))
-
-    Process.send_after(self(), :global_broadcast, broadcast_interval)
-    {:noreply, state}
-  end
-
-  def handle_info(:local_broadcast, state) do
-    :ets.foldl(
-      fn {{sid, bid, _pid}, _tid}, acc ->
-        if is_map_key(acc, {sid, bid}) do
-          acc
-        else
-          Map.put(acc, {sid, bid}, true)
-        end
-      end,
-      %{},
-      @ets_table_mapper
-    )
-
-    Process.send_after(self(), :local_broadcast, state.interval)
+    Process.send_after(self(), :cache_buffer_lens, state.interval)
     {:noreply, state}
   end
 end
