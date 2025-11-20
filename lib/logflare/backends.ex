@@ -638,7 +638,7 @@ defmodule Logflare.Backends do
   @spec via_backend(Backend.t() | non_neg_integer(), module()) :: tuple()
   def via_backend(%Backend{id: id}, mod), do: via_backend(id, mod)
 
-  def via_backend(backend_id, mod) when is_number(backend_id) do
+  def via_backend(backend_id, mod) when is_number(backend_id) or is_nil(backend_id) do
     {:via, Registry, {BackendRegistry, {mod, backend_id}}}
   end
 

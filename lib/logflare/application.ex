@@ -145,7 +145,31 @@ defmodule Logflare.Application do
         config_cat_key -> [{ConfigCat, [sdk_key: config_cat_key]}]
       end
 
-    goth ++ config_cat
+    # Single-tenant ClickHouse connection manager
+    clickhouse_conn_manager =
+      if SingleTenant.clickhouse_backend?() do
+        [single_tenant_clickhouse_connection_manager_spec()]
+      else
+        []
+      end
+
+    goth ++ config_cat ++ clickhouse_conn_manager
+  end
+
+  defp single_tenant_clickhouse_connection_manager_spec do
+    # Create a virtual backend for single-tenant mode
+    virtual_backend = %Logflare.Backends.Backend{
+      id: nil,
+      type: :clickhouse
+    }
+
+    %{
+      id: Logflare.SingleTenantClickHouseConnectionManager,
+      start:
+        {Logflare.Backends.Adaptor.ClickhouseAdaptor.ConnectionManager, :start_link,
+         [virtual_backend]},
+      restart: :permanent
+    }
   end
 
   def config_change(changed, _new, removed) do

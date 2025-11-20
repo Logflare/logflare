@@ -137,10 +137,6 @@ defmodule Logflare.Sources.Source.Supervisor do
     |> Enum.each(fn s -> reset_source(s.token) end)
   end
 
-  defp do_pg_ops? do
-    SingleTenant.postgres_backend?()
-  end
-
   defp use_bigquery? do
     not SingleTenant.postgres_backend?() and not SingleTenant.clickhouse_backend?()
   end

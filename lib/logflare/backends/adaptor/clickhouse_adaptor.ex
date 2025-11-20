@@ -541,7 +541,6 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
 
   defp convert_uuids(data), do: data
 
-  @spec ensure_query_connection_manager_started(Backend.t()) :: :ok | {:error, term()}
   defp ensure_query_connection_manager_started(%Backend{id: backend_id} = backend) do
     via = Backends.via_backend(backend, ConnectionManager)
 

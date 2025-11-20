@@ -304,7 +304,8 @@ defmodule Logflare.Ecto.ClickHouse do
   defp transform_in_params({:^, meta, [ix]}, transforms) do
     case Map.get(transforms, ix) do
       new_ix when is_integer(new_ix) -> {:^, meta, [new_ix]}
-      {new_ix, _len} -> {:^, meta, [new_ix]}  # IN case, use first index
+      # IN case, use first index
+      {new_ix, _len} -> {:^, meta, [new_ix]}
       nil -> {:^, meta, [ix]}
     end
   end

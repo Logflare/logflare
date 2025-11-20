@@ -40,9 +40,7 @@ defmodule Logflare.Logs.Processor do
           {processor.handle_batch(data, source), metadata}
         end)
 
-      Logger.info(
-        "[Processor] Processed #{length(batch)} events for source_id=#{source.id}"
-      )
+      Logger.info("[Processor] Processed #{length(batch)} events for source_id=#{source.id}")
 
       :telemetry.execute(
         [:logflare, :logs, :processor, :ingest, :logs],

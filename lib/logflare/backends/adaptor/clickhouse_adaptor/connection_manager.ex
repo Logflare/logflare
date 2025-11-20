@@ -46,8 +46,15 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.ConnectionManager do
 
   @doc """
   Generates a unique ClickHouse connection pool via tuple based on a `Backend`.
+
+  For single-tenant mode (backend.id == nil), returns a simple atom name.
   """
-  @spec connection_pool_via(Backend.t()) :: tuple()
+  @spec connection_pool_via(Backend.t()) :: tuple() | atom()
+  def connection_pool_via(%Backend{id: nil}) do
+    # Single-tenant mode: use simple atom name
+    Logflare.SingleTenantCHReadPool
+  end
+
   def connection_pool_via(%Backend{} = backend) do
     Backends.via_backend(backend, CHReadPool)
   end
@@ -357,7 +364,11 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.ConnectionManager do
   defp get_port_config(_backend, %{port: port}) when is_non_empty_binary(port),
     do: String.to_integer(port)
 
-  @spec connection_manager_via(Backend.t()) :: tuple()
+  @spec connection_manager_via(Backend.t()) :: tuple() | atom()
+  defp connection_manager_via(%Backend{id: nil}) do
+    Logflare.SingleTenantCHConnectionManager
+  end
+
   defp connection_manager_via(%Backend{} = backend) do
     Backends.via_backend(backend, __MODULE__)
   end

@@ -354,7 +354,7 @@ defmodule Logflare.Logs.SearchOperations do
   def apply_query_defaults(%SO{} = so) do
     query =
       from(get_table_name(so))
-      |> select([t], [t.timestamp, t.id, t.event_message])
+      |> select([t], [t.timestamp, t.id, t.body])
       |> order_by([t], desc: t.timestamp)
       |> limit(@default_limit)
 
