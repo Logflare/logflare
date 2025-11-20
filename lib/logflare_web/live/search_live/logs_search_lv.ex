@@ -472,7 +472,6 @@ defmodule LogflareWeb.Source.SearchLV do
   def handle_info({:search_result, %{aggregates: _aggs} = search_result}, socket) do
     log_aggregates =
       search_result.aggregates.rows
-      |> IO.inspect(label: :ICANT)
       |> Enum.reverse()
       |> Enum.map(fn la ->
         Map.update!(
@@ -481,8 +480,6 @@ defmodule LogflareWeb.Source.SearchLV do
           &BqSchemaHelpers.format_timestamp(&1, socket.assigns.search_timezone)
         )
       end)
-
-    Logger.info("Formatted log_aggregates: #{inspect(log_aggregates)}")
 
     aggs =
       search_result.aggregates
@@ -506,6 +503,10 @@ defmodule LogflareWeb.Source.SearchLV do
   end
 
   def handle_info({:search_result, %{events: _events} = search_result}, socket) do
+    # WORKAROUND: ClickHouse stores body as JSON string, decode it here for display
+    # TODO: Handle this more elegantly at the adapter or LogEvent level
+    events = decode_clickhouse_body_strings(search_result.events)
+
     tailing_timer =
       if socket.assigns.tailing? do
         Process.send_after(self(), :schedule_tail_search, @tail_search_interval)
@@ -514,7 +515,7 @@ defmodule LogflareWeb.Source.SearchLV do
     socket =
       socket
       |> assign(:search_op_error, nil)
-      |> assign(:search_op_log_events, search_result.events)
+      |> assign(:search_op_log_events, events)
       |> assign(:tailing_timer, tailing_timer)
       |> assign(:loading, false)
       |> assign(:tailing_initial?, false)
@@ -1063,4 +1064,27 @@ defmodule LogflareWeb.Source.SearchLV do
       backend.type in [:bigquery, :clickhouse]
     end)
   end
+
+  defp decode_clickhouse_body_strings(%{rows: rows} = events) do
+    decoded_rows =
+      Enum.map(rows, fn log_event ->
+        case log_event.body do
+          %{"body" => body_string} when is_binary(body_string) ->
+            case Jason.decode(body_string) do
+              {:ok, decoded} ->
+                %{log_event | body: Map.merge(log_event.body, decoded)}
+
+              {:error, _} ->
+                log_event
+            end
+
+          _ ->
+            log_event
+        end
+      end)
+
+    %{events | rows: decoded_rows}
+  end
+
+  defp decode_clickhouse_body_strings(events), do: events
 end

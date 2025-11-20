@@ -337,7 +337,10 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
         :ok
 
       {:error, reason} ->
-        Logger.warning("Clickhouse insert errors.", error_string: inspect(reason))
+        # Logger.warning("Clickhouse insert errors.", error_string: inspect(reason))
+        Logger.warning(
+          "ClickHouse insert failed for source_token=#{source.token} backend_id=#{backend.id} table=#{table_name}: #{inspect(reason)}"
+        )
 
         {:error, reason}
     end

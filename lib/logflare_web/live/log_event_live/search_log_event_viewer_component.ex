@@ -33,9 +33,16 @@ defmodule LogflareWeb.Search.LogEventViewerComponent do
         do: String.to_integer(timestamp) |> DateTime.from_unix!(:microsecond),
         else: timestamp
 
+    backend =
+      case assigns.params["backend-id"] do
+        nil -> nil
+        backend_id when is_binary(backend_id) -> Logflare.Backends.get_backend(backend_id)
+        backend_id when is_integer(backend_id) -> Logflare.Backends.get_backend(backend_id)
+      end
+
     params =
       event_params(assigns)
-      |> Map.merge(%{log_event_id: id, timestamp: d})
+      |> Map.merge(%{log_event_id: id, timestamp: d, backend: backend})
       |> Map.put(:lql, assigns.params["lql"] || "")
 
     socket =
@@ -67,17 +74,32 @@ defmodule LogflareWeb.Search.LogEventViewerComponent do
   end
 
   def load_event(%{log_event_id: log_id, source: source} = params) do
+    backend = params[:backend] || get_default_backend(source)
+
     opts =
       [
         source: source,
         user: params[:user],
-        lql: params[:lql] || ""
+        lql: params[:lql] || "",
+        backend: backend
       ]
       |> maybe_put_timestamp(params[:timestamp])
 
     case LogEvents.get_event_with_fallback(source.token, log_id, opts) do
       {:ok, le} -> le
       error -> error
+    end
+  end
+
+  defp get_default_backend(source) do
+    if Logflare.SingleTenant.single_tenant?() do
+      case Logflare.SingleTenant.backend_type() do
+        :clickhouse -> %Logflare.Backends.Backend{id: nil, type: :clickhouse}
+        :bigquery -> %Logflare.Backends.Backend{id: nil, type: :bigquery}
+        _ -> nil
+      end
+    else
+      Enum.find(source.backends, fn b -> b.type in [:bigquery, :clickhouse] end)
     end
   end
 

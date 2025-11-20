@@ -8,6 +8,8 @@ defmodule Logflare.Logs.LogEvents do
   import Logflare.Utils.Guards
 
   alias Logflare.Backends.Adaptor.BigQueryAdaptor
+  alias Logflare.Backends.Adaptor.ClickhouseAdaptor
+  alias Logflare.Backends.Backend
   alias Logflare.Billing
   alias Logflare.Google.BigQuery.GCPConfig
   alias Logflare.Google.BigQuery.GenUtils
@@ -20,17 +22,26 @@ defmodule Logflare.Logs.LogEvents do
   alias Logflare.Sources.Source.BigQuery.SchemaBuilder
 
   @doc """
-  Fetches a log event from BigQuery by ID with partition and LQL filtering.
+  Fetches a log event by ID with partition and LQL filtering.
   """
-  @spec fetch_event_by_id(source_token :: atom(), id :: binary(), opts :: Keyword.t()) ::
+  @spec fetch_event_by_id(
+          backend :: map() | nil,
+          source_token :: atom(),
+          id :: binary(),
+          opts :: Keyword.t()
+        ) ::
           map() | {:error, any()}
-  def fetch_event_by_id(source_token, id, opts)
+  def fetch_event_by_id(backend, source_token, id, opts)
       when is_atom_value(source_token) and is_non_empty_binary(id) and is_list(opts) do
     [min, max] = Keyword.get(opts, :partitions_range, [])
     source = Sources.Cache.get_by_and_preload(token: source_token)
+
+    fetch_event_by_backend(backend, source, id, [min, max], opts)
+  end
+
+  defp fetch_event_by_backend(%{type: :bigquery}, source, id, [min, max], opts) do
     source_schema = SourceSchemas.Cache.get_source_schema_by(source_id: source.id)
     partition_type = Sources.get_table_partition_type(source)
-
     lql = Keyword.get(opts, :lql, "")
 
     {:ok, lql_rules} =
@@ -76,6 +87,51 @@ defmodule Logflare.Logs.LogEvents do
     end
   end
 
+  defp fetch_event_by_backend(%Backend{type: :clickhouse} = backend, source, id, _range, opts) do
+    source_schema = SourceSchemas.Cache.get_source_schema_by(source_id: source.id)
+    lql = Keyword.get(opts, :lql, "")
+
+    {:ok, lql_rules} =
+      Lql.decode(
+        lql,
+        Map.get(source_schema || %{}, :bigquery_schema, SchemaBuilder.initial_table_schema())
+      )
+
+    lql_rules =
+      lql_rules
+      |> Enum.filter(fn
+        %FilterRule{path: "timestamp"} -> false
+        %FilterRule{} -> true
+        _ -> false
+      end)
+
+    table_name = ClickhouseAdaptor.clickhouse_ingest_table_name(source)
+
+    query =
+      from(table_name)
+      |> Lql.apply_filter_rules(lql_rules, dialect: :clickhouse)
+      |> where([t], t.id == ^id)
+      |> select([t], %{id: t.id, body: t.body, timestamp: t.timestamp})
+
+    case ClickhouseAdaptor.execute_query(backend, query, query_type: :search) do
+      {:ok, []} ->
+        {:error, :not_found}
+
+      {:ok, [row]} ->
+        row
+
+      {:ok, _rows} ->
+        {:error, "Multiple rows returned, expected one"}
+
+      {:error, error} ->
+        {:error, error}
+    end
+  end
+
+  defp fetch_event_by_backend(nil, _source, _id, _range, _opts) do
+    {:error, "No queryable backend configured"}
+  end
+
   @doc """
   Retrieves a log event by ID from cache with fallback to BigQuery.
 
@@ -95,16 +151,17 @@ defmodule Logflare.Logs.LogEvents do
         {:ok, le}
 
       _ ->
+        source =
+          Keyword.get(opts, :source) || Sources.Cache.get_by_and_preload(token: source_token)
+
+        backend = Keyword.get(opts, :backend)
         range = calculate_partition_range(opts)
 
-        case LogEvents.Cache.fetch_event_by_id(source_token, log_id,
+        case LogEvents.Cache.fetch_event_by_id(backend, source_token, log_id,
                partitions_range: range,
                lql: Keyword.get(opts, :lql, "")
              ) do
           %{} = bq_row ->
-            source =
-              Keyword.get(opts, :source) || Sources.Cache.get_by_and_preload(token: source_token)
-
             le = LE.make_from_db(bq_row, %{source: source})
 
             LogEvents.Cache.put(source_token, le.id, le)

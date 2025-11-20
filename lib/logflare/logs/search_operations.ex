@@ -5,8 +5,6 @@ defmodule Logflare.Logs.SearchOperations do
   import Logflare.Ecto.BQQueryAPI
   import Logflare.Logs.SearchQueries
 
-  require Logger
-
   alias Logflare.Backends.Adaptor
   alias Logflare.Backends.Adaptor.BigQueryAdaptor
   alias Logflare.Backends.Adaptor.ClickhouseAdaptor
@@ -123,152 +121,25 @@ defmodule Logflare.Logs.SearchOperations do
     end
   end
 
-  # Direct ClickHouse execution for single-tenant mode (bypasses connection manager)
   defp execute_clickhouse_single_tenant_query(%SO{} = so) do
-    with {:ok, {ch_sql, ch_params}} <-
-           ClickhouseAdaptor.ecto_to_sql(so.query, query_type: :search),
-         _ <- Logger.info("ClickHouse query: #{ch_sql} | Params: #{inspect(ch_params)}"),
-         {:ok, pool_name} <- ensure_clickhouse_pool_started(),
-         {:ok, %Ch.Result{} = result} <- Ch.query(pool_name, ch_sql, ch_params) do
-      rows = convert_ch_result_to_rows(result)
-      Logger.info("ClickHouse result: #{length(rows)} rows | Data: #{inspect(rows)}")
+    backend = %Logflare.Backends.Backend{type: :clickhouse}
 
-      {:ok,
-       %{
-         rows: rows,
-         total_bytes_processed: 0,
-         total_rows: length(rows),
-         query_string: ch_sql,
-         bq_params: ch_params
-       }}
-    else
-      {:error, %Ch.Error{message: error_msg}} ->
-        Logger.error("ClickHouse single-tenant query failed: #{inspect(error_msg)}")
-        {:error, "Error executing ClickHouse query: #{error_msg}"}
+    case ClickhouseAdaptor.execute_query(backend, so.query, query_type: :search) do
+      {:ok, rows} when is_list(rows) ->
+        {:ok,
+         %{
+           rows: rows,
+           total_bytes_processed: 0,
+           total_rows: length(rows),
+           query_string: "",
+           bq_params: []
+         }}
 
-      {:error, reason} = error ->
-        Logger.error("ClickHouse single-tenant query failed: #{inspect(reason)}")
+      error ->
         error
     end
   end
 
-  @single_tenant_pool_name Logflare.ClickHouse.SingleTenantPool
-
-  # Ensures the single-tenant ClickHouse pool is started and returns its name
-  defp ensure_clickhouse_pool_started do
-    case GenServer.whereis(@single_tenant_pool_name) do
-      nil ->
-        # Pool not started, start it
-        start_clickhouse_pool()
-
-      pid when is_pid(pid) ->
-        # Pool already started
-        {:ok, @single_tenant_pool_name}
-    end
-  end
-
-  defp start_clickhouse_pool do
-    case SingleTenant.clickhouse_backend_adapter_opts() do
-      nil ->
-        {:error, "ClickHouse backend not configured"}
-
-      opts ->
-        with {:ok, {scheme, hostname}} <- extract_scheme_and_hostname(opts[:url]) do
-          ch_opts = [
-            name: @single_tenant_pool_name,
-            scheme: scheme,
-            hostname: hostname,
-            port: opts[:port] || extract_port_from_url(opts[:url]),
-            database: opts[:database],
-            username: opts[:username],
-            password: opts[:password],
-            pool_size: 5,
-            settings: [],
-            timeout: :timer.minutes(1)
-          ]
-
-          case Ch.start_link(ch_opts) do
-            {:ok, _pid} ->
-              Logger.info("Started ClickHouse single-tenant connection pool")
-              {:ok, @single_tenant_pool_name}
-
-            {:error, {:already_started, _pid}} ->
-              {:ok, @single_tenant_pool_name}
-
-            {:error, reason} = error ->
-              Logger.error("Failed to start ClickHouse pool: #{inspect(reason)}")
-              error
-          end
-        end
-    end
-  end
-
-  defp extract_scheme_and_hostname(url) when is_binary(url) do
-    case URI.new(url) do
-      {:ok, %URI{scheme: scheme, host: hostname}} when scheme in ~w(http https) ->
-        {:ok, {scheme, hostname}}
-
-      {:ok, %URI{}} ->
-        {:error, "Invalid URL scheme or missing hostname"}
-
-      {:error, _} ->
-        {:error, "Failed to parse URL"}
-    end
-  end
-
-  defp extract_port_from_url(url) when is_binary(url) do
-    case URI.parse(url) do
-      %URI{port: port} when is_integer(port) -> port
-      _ -> 8123
-    end
-  end
-
-  # Copied from ClickhouseAdaptor - converts Ch.Result to list of maps
-  defp convert_ch_result_to_rows(%Ch.Result{} = result) do
-    case {result.columns, result.rows} do
-      {nil, nil} ->
-        []
-
-      {nil, rows} when is_list(rows) ->
-        convert_uuids(rows)
-
-      {_columns, nil} ->
-        []
-
-      {columns, rows} when is_list(columns) and is_list(rows) ->
-        for row <- rows do
-          columns
-          |> Enum.zip(row)
-          |> Map.new()
-        end
-        |> convert_uuids()
-
-      {columns, rows} ->
-        Logger.warning(
-          "Unexpected ClickHouse result format: columns=#{inspect(columns)}, rows=#{inspect(rows)}"
-        )
-
-        []
-    end
-  end
-
-  defp convert_uuids(data) when is_struct(data), do: data
-
-  defp convert_uuids(data) when is_map(data) do
-    Map.new(data, fn {k, v} -> {k, convert_uuids(v)} end)
-  end
-
-  defp convert_uuids(data) when is_list(data) do
-    Enum.map(data, &convert_uuids/1)
-  end
-
-  defp convert_uuids(data) when is_binary(data) and byte_size(data) == 16 do
-    Ecto.UUID.cast!(data)
-  end
-
-  defp convert_uuids(data), do: data
-
-  # Returns the correct table name based on backend type
   defp get_table_name(%SO{backend: %{type: :bigquery}, source: source}), do: source.bq_table_id
 
   defp get_table_name(%SO{backend: %{type: :clickhouse}, source: source}) do

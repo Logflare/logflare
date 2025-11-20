@@ -33,14 +33,12 @@ defmodule Logflare.Logs.LogEvents.Cache do
     }
   end
 
-  @fetch_event_by_id {:fetch_event_by_id, 2}
-  @spec fetch_event_by_id(atom, binary(), Keyword.t()) :: {:ok, LE.t() | nil} | {:error, map()}
-  def fetch_event_by_id(source_token, id) when is_atom(source_token) and is_binary(id) do
-    ContextCache.apply_fun(LogEvents, @fetch_event_by_id, [source_token, id])
-  end
-
-  def fetch_event_by_id(source_token, id, opts) when is_atom(source_token) and is_binary(id) do
-    ContextCache.apply_fun(LogEvents, @fetch_event_by_id, [source_token, id, opts])
+  @fetch_event_by_id {:fetch_event_by_id, 4}
+  @spec fetch_event_by_id(map() | nil, atom, binary(), Keyword.t()) ::
+          {:ok, LE.t() | nil} | {:error, map()}
+  def fetch_event_by_id(backend, source_token, id, opts)
+      when is_atom(source_token) and is_binary(id) do
+    ContextCache.apply_fun(LogEvents, @fetch_event_by_id, [backend, source_token, id, opts])
   end
 
   @spec put(atom(), String.t(), LE.t()) :: {:error, boolean} | {:ok, boolean}

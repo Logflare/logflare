@@ -114,7 +114,8 @@ defmodule Logflare.Application do
         # active users tracking for UserMetricsPoller
         {Logflare.ActiveUserTracker,
          [name: Logflare.ActiveUserTracker, pubsub_server: Logflare.PubSub]}
-      ]
+      ] ++
+      clickhouse_conn_manager_children()
   end
 
   defp start_user_log_interceptor do
@@ -145,15 +146,15 @@ defmodule Logflare.Application do
         config_cat_key -> [{ConfigCat, [sdk_key: config_cat_key]}]
       end
 
-    # Single-tenant ClickHouse connection manager
-    clickhouse_conn_manager =
-      if SingleTenant.clickhouse_backend?() do
-        [single_tenant_clickhouse_connection_manager_spec()]
-      else
-        []
-      end
+    goth ++ config_cat
+  end
 
-    goth ++ config_cat ++ clickhouse_conn_manager
+  defp clickhouse_conn_manager_children do
+    if SingleTenant.clickhouse_backend?() do
+      [single_tenant_clickhouse_connection_manager_spec()]
+    else
+      []
+    end
   end
 
   defp single_tenant_clickhouse_connection_manager_spec do
