@@ -185,8 +185,87 @@ defmodule Logflare.Sql.DialectTranslationTest do
     refute String.contains?(pg_query, "timestamp #>>")
     refute String.contains?(pg_query, "to_timestamp") and String.contains?(pg_query, "#>>")
 
-    # Should have proper JSONB path access for metadata.level
-    assert String.contains?(pg_query, "{") and String.contains?(pg_query, "level")
+    # Should have proper JSONB access for metadata.level (direct access, not doubled path)
+    assert String.contains?(pg_query, "metadata -> 'level'") or
+             String.contains?(pg_query, "metadata ->> 'level'")
+  end
+
+  test "translates three-part CTE column access to JSON operators" do
+    bq_query = """
+    WITH logs AS (
+      SELECT t.metadata FROM `table` AS t
+    )
+    SELECT logs.metadata.msg, logs.metadata.level FROM logs
+    """
+
+    assert {:ok, pg_query} = DialectTranslation.translate_bq_to_pg(bq_query)
+    assert is_binary(pg_query)
+
+    refute String.match?(pg_query, ~r/logs\.metadata\.msg(?!\s*->)/)
+    assert String.contains?(pg_query, "logs.metadata ->")
+    assert String.contains?(pg_query, "'msg'")
+    assert String.contains?(pg_query, "'level'")
+  end
+
+  test "translates deeply nested CTE column access to JSON path operators" do
+    bq_query = """
+    WITH logs AS (
+      SELECT t.metadata FROM `table` AS t
+    )
+    SELECT logs.metadata.nested.deep FROM logs
+    """
+
+    assert {:ok, pg_query} = DialectTranslation.translate_bq_to_pg(bq_query)
+    assert is_binary(pg_query)
+
+    assert String.contains?(pg_query, "logs.metadata")
+    assert String.contains?(pg_query, "#>") or String.contains?(pg_query, "#>>")
+    assert String.contains?(pg_query, "{nested,deep}")
+  end
+
+  test "handles missing UNNEST alias gracefully without crashing" do
+    bq_query = """
+    WITH logs AS (
+      SELECT t.metadata
+      FROM `table` AS t
+      CROSS JOIN UNNEST(t.metadata) AS m
+    )
+    SELECT m.field FROM logs
+    """
+
+    assert {:ok, pg_query} = DialectTranslation.translate_bq_to_pg(bq_query)
+    assert is_binary(pg_query)
+    assert String.contains?(pg_query, "->")
+  end
+
+  test "handles UNNEST alias matching CTE column name without doubling path" do
+    bq_query = """
+    WITH logs AS (
+      SELECT t.timestamp, t.id, t.event_message, t.metadata
+      FROM `table` AS t
+      CROSS JOIN UNNEST(t.metadata) AS m
+      WHERE t.project = @project
+    )
+    SELECT id, logs.timestamp, event_message,
+           metadata.level, metadata.status, metadata.msg as msg
+    FROM logs
+    CROSS JOIN UNNEST(metadata) AS metadata
+    ORDER BY timestamp DESC
+    LIMIT 100
+    """
+
+    assert {:ok, pg_query} = DialectTranslation.translate_bq_to_pg(bq_query, "_analytics")
+    assert is_binary(pg_query)
+
+    refute String.contains?(pg_query, "{metadata,level}")
+    refute String.contains?(pg_query, "{metadata,status}")
+    refute String.contains?(pg_query, "{metadata,msg}")
+
+    assert String.contains?(pg_query, "metadata -> 'level'") or
+             String.contains?(pg_query, "metadata ->> 'level'")
+
+    assert String.contains?(pg_query, "metadata -> 'msg'") or
+             String.contains?(pg_query, "metadata ->> 'msg'")
   end
 
   test "handles CROSS JOIN UNNEST being dropped from AST" do

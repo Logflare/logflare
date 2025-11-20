@@ -175,4 +175,7 @@ config :mime, :types, %{
   "application/x-protobuf" => ["protobuf"]
 }
 
+# use legacy artifacts for users on older CPUs or virtualized environments without advanced CPU features
+config :explorer, use_legacy_artifacts: true
+
 import_config "#{Mix.env()}.exs"
