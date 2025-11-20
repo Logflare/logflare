@@ -1,3 +1,8 @@
+==> explorer
+Compiling 29 files (.ex)
+
+12:22:09.322 [debug] Copying NIF from cache and extracting to /Users/amokan/development/logflare/logflare/_build/dev/lib/explorer/priv/native/libexplorer-v0.11.1-nif-2.15-aarch64-apple-darwin.so.tar.gz
+Generated explorer app
 # This file is responsible for configuring your application
 # and its dependencies with the aid of the Mix.Config module.
 #
@@ -176,6 +181,7 @@ config :mime, :types, %{
 }
 
 # use legacy artifacts for users on older CPUs or virtualized environments without advanced CPU features
+# test
 config :explorer, use_legacy_artifacts: true
 
 import_config "#{Mix.env()}.exs"
