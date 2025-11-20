@@ -181,7 +181,6 @@ config :mime, :types, %{
 }
 
 # use legacy artifacts for users on older CPUs or virtualized environments without advanced CPU features
-# test
 config :explorer, use_legacy_artifacts: true
 
 import_config "#{Mix.env()}.exs"
