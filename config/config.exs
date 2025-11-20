@@ -177,5 +177,6 @@ config :mime, :types, %{
 
 # use legacy artifacts for users on older CPUs or virtualized environments without advanced CPU features
 config :explorer, use_legacy_artifacts: true
+config :rustler_precompiled, :force_build, explorer: true
 
 import_config "#{Mix.env()}.exs"
