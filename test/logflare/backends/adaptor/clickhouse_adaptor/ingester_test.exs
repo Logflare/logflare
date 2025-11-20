@@ -1,10 +1,12 @@
 defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.IngesterTest do
   use Logflare.DataCase, async: false
 
+  import Mimic
+
   alias Logflare.Backends.Adaptor.ClickhouseAdaptor
   alias Logflare.Backends.Adaptor.ClickhouseAdaptor.Ingester
 
-  @sleep_time_after_insert 100
+  setup :verify_on_exit!
 
   describe "encode_as_varint/1" do
     test "encodes zero" do
@@ -184,110 +186,54 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.IngesterTest do
       [source: source, backend: backend, table_name: table_name]
     end
 
-    test "inserts log event successfully with default async behavior", %{
+    test "sends gzip-compressed body and content encoding in headers", %{
       backend: backend,
       table_name: table_name,
       source: source
     } do
-      log_event = build(:log_event, source: source, message: "Test via ingester")
+      log_event = build(:log_event, source: source, message: "Test compression default")
+
+      Finch
+      |> expect(:request, fn request, _pool ->
+        headers = request.headers
+
+        assert {"content-encoding", "gzip"} in headers,
+               "Expected gzip content encoding in headers"
+
+        <<first_byte, second_byte, _rest::binary>> = IO.iodata_to_binary(request.body)
+        assert first_byte == 0x1F && second_byte == 0x8B, "Expected gzip compression in body"
+
+        {:ok, %Finch.Response{status: 200, body: ""}}
+      end)
 
       assert :ok = Ingester.insert(backend, table_name, [log_event])
-
-      Process.sleep(@sleep_time_after_insert)
-
-      {:ok, result} =
-        ClickhouseAdaptor.execute_ch_query(
-          backend,
-          "SELECT count(*) as count FROM #{table_name}"
-        )
-
-      assert [%{"count" => 1}] = result
     end
 
-    test "inserts multiple log events with default async behavior", %{
+    test "sends `async_insert=1` and `wait_for_async_insert=1` in URL", %{
       backend: backend,
       table_name: table_name,
       source: source
     } do
-      log_events = [
-        build(:log_event, source: source, message: "First message"),
-        build(:log_event, source: source, message: "Second message"),
-        build(:log_event, source: source, message: "Third message")
-      ]
+      log_event = build(:log_event, source: source, message: "Test")
 
-      assert :ok = Ingester.insert(backend, table_name, log_events)
+      Finch
+      |> expect(:request, fn request, _pool ->
+        # Extract URL from the request
+        url =
+          to_string(request.scheme) <>
+            "://" <>
+            request.host <> ":" <> to_string(request.port) <> request.path <> "?" <> request.query
 
-      Process.sleep(@sleep_time_after_insert)
+        assert url =~ ~r/[?&]async_insert=1/,
+               "Expected URL to contain `async_insert=1`, got: #{url}"
 
-      {:ok, result} =
-        ClickhouseAdaptor.execute_ch_query(
-          backend,
-          "SELECT count(*) as count FROM #{table_name}"
-        )
+        assert url =~ "wait_for_async_insert=1",
+               "Expected URL to contain `wait_for_async_insert=1`, got: #{url}"
 
-      assert [%{"count" => 3}] = result
-    end
+        {:ok, %Finch.Response{status: 200, body: ""}}
+      end)
 
-    test "inserts synchronously when `async: false`", %{
-      backend: backend,
-      table_name: table_name,
-      source: source
-    } do
-      log_event = build(:log_event, source: source, message: "Sync insert test")
-
-      assert :ok = Ingester.insert(backend, table_name, [log_event], async: false)
-
-      {:ok, result} =
-        ClickhouseAdaptor.execute_ch_query(
-          backend,
-          "SELECT count(*) as count FROM #{table_name}"
-        )
-
-      assert [%{"count" => 1}] = result
-    end
-
-    test "handles compression with `compress: true`", %{
-      backend: backend,
-      table_name: table_name,
-      source: source
-    } do
-      log_event =
-        build(:log_event,
-          source: source,
-          message: "Compress test with a longer message to ensure compression doesn't fail!"
-        )
-
-      assert :ok = Ingester.insert(backend, table_name, [log_event], compress: true)
-
-      Process.sleep(@sleep_time_after_insert)
-
-      {:ok, result} =
-        ClickhouseAdaptor.execute_ch_query(
-          backend,
-          "SELECT count(*) as count FROM #{table_name}"
-        )
-
-      assert [%{"count" => 1}] = result
-    end
-
-    test "handles no compression with `compress: false`", %{
-      backend: backend,
-      table_name: table_name,
-      source: source
-    } do
-      log_event = build(:log_event, source: source, message: "No compression is used now...")
-
-      assert :ok = Ingester.insert(backend, table_name, [log_event], compress: false)
-
-      Process.sleep(@sleep_time_after_insert)
-
-      {:ok, result} =
-        ClickhouseAdaptor.execute_ch_query(
-          backend,
-          "SELECT count(*) as count FROM #{table_name}"
-        )
-
-      assert [%{"count" => 1}] = result
+      assert :ok = Ingester.insert(backend, table_name, [log_event])
     end
   end
 end

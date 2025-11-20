@@ -12,47 +12,27 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.Ingester do
   @finch_pool Logflare.FinchClickhouseIngest
 
   @doc """
-  Handles inserting of a list of `LogEvent` structs into ClickHouse.
+  Inserts a list of `LogEvent` structs into ClickHouse.
 
   Not intended for direct use. Use `Logflare.Backends.Adaptor.ClickhouseAdaptor.insert_log_events/2` instead.
-
-  ## Options
-
-  - `compress`: Boolean indicating whether to gzip compress the body before sending it to ClickHouse. Defaults to `true`.
-  - `async`: Boolean indicating whether to use ClickHouse's async insert mechanism. Defaults to `true`.
   """
-  @spec insert(
-          Backend.t() | Keyword.t(),
-          table :: String.t(),
-          log_events :: [LogEvent.t()],
-          opts :: Keyword.t()
-        ) ::
+  @spec insert(Backend.t() | Keyword.t(), table :: String.t(), log_events :: [LogEvent.t()]) ::
           :ok | {:error, String.t()}
-  def insert(backend_or_conn_opts, table, log_events, opts \\ [])
+  def insert(_backend_or_conn_opts, _table, []), do: :ok
 
-  def insert(_backend_or_conn_opts, _table, [], _opts), do: :ok
-
-  def insert(%Backend{} = backend, table, log_events, opts)
-      when is_list(log_events) and is_list(opts) do
+  def insert(%Backend{} = backend, table, log_events) when is_list(log_events) do
     with {:ok, connection_opts} <- build_connection_opts(backend) do
-      insert(connection_opts, table, log_events, opts)
+      insert(connection_opts, table, log_events)
     end
   end
 
-  def insert(connection_opts, table, [%LogEvent{} | _] = log_events, opts)
-      when is_list(connection_opts) and is_non_empty_binary(table) and is_list(opts) do
-    compress = Keyword.get(opts, :compress, true)
-    async = Keyword.get(opts, :async, true)
-    url = build_request_url(connection_opts, table, async)
+  def insert(connection_opts, table, [%LogEvent{} | _] = log_events)
+      when is_list(connection_opts) and is_non_empty_binary(table) do
+    url = build_request_url(connection_opts, table)
     request_body = encode_batch(log_events)
 
     {request_body, headers} =
-      if compress do
-        compressed = :zlib.gzip(request_body)
-        {compressed, [{"content-encoding", "gzip"}]}
-      else
-        {request_body, []}
-      end
+      {:zlib.gzip(request_body), [{"content-encoding", "gzip"}]}
 
     headers = [
       {"content-type", "application/octet-stream"},
@@ -144,9 +124,8 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.Ingester do
     {:error, "Unable to build connection options"}
   end
 
-  @spec build_request_url(connection_opts :: Keyword.t(), table :: String.t(), async :: boolean()) ::
-          String.t()
-  defp build_request_url(connection_opts, table, async) do
+  @spec build_request_url(connection_opts :: Keyword.t(), table :: String.t()) :: String.t()
+  defp build_request_url(connection_opts, table) do
     base_url = Keyword.get(connection_opts, :url)
     database = Keyword.get(connection_opts, :database)
 
@@ -160,8 +139,8 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.Ingester do
     params =
       URI.encode_query(%{
         "query" => query,
-        "async_insert" => if(async, do: "1", else: "0"),
-        "wait_for_async_insert" => "0"
+        "async_insert" => "1",
+        "wait_for_async_insert" => "1"
       })
 
     "#{scheme}://#{host}:#{port}/?#{params}"
