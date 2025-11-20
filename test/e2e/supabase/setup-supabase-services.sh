@@ -16,10 +16,21 @@ SUPABASE_REPO="https://github.com/supabase/supabase"
 BRANCH="master"
 SPARSE_PATH="docker"
 SUPABASE_DIR="supabase"
+GITHUB_ACTIONS="${GITHUB_ACTIONS:-false}"
 
-log() { echo -e "${GREY}[$(date +"%Y-%m-%d %H:%M:%S")]${RESET} ${PINK}[+]${RESET} $1"; }
+compose() {
+  docker compose -f docker-compose.yml -f ../../docker-compose.e2e.yml "$@"
+}
+
+endgroup() {
+  [ "$GITHUB_ACTIONS" = "true" ] && echo "::endgroup::" || true
+}
+log() {
+  [ "$GITHUB_ACTIONS" = "true" ] && echo -n "::group::" || true
+  echo -e "${GREY}[$(date +"%Y-%m-%d %H:%M:%S")]${RESET} ${PINK}[+]${RESET} $1"
+}
 warn() { echo -e "${GREY}[$(date +"%Y-%m-%d %H:%M:%S")]${RESET} ${YELLOW}[!]${RESET} $1"; }
-error() { echo -e "${GREY}[$(date +"%Y-%m-%d %H:%M:%S")]${RESET} ${RED}[✗]${RESET} $1" >&2; }
+error() { echo -e "${GREY}[$(date +"%Y-%m-%d %H:%M:%S")]${RESET} ${RED}[✗]${RESET} $1"; }
 
 log "Cloning Supabase repository..."
 if [ -d "$SUPABASE_DIR" ]; then
@@ -31,14 +42,17 @@ if [ -d "$SUPABASE_DIR" ]; then
 fi
 
 git clone --filter=blob:none --no-checkout "$SUPABASE_REPO" "$SUPABASE_DIR"
+endgroup
 
 cd "$SUPABASE_DIR"
 
 log "Enabling sparse-checkout (cone mode)..."
 git sparse-checkout set --cone "$SPARSE_PATH"
+endgroup
 
 log "Checking out $BRANCH..."
 git checkout "$BRANCH"
+endgroup
 
 cd "$SPARSE_PATH"
 
@@ -48,16 +62,28 @@ if [ ! -f ".env.example" ]; then
   exit 1
 fi
 cp .env.example .env
+endgroup
 
 log "Build logflare image..."
-docker compose -f docker-compose.yml -f ../../docker-compose.e2e.yml build analytics
+compose build analytics
+endgroup
+
+log "Pulling docker images..."
+compose pull
+endgroup
 
 log "Starting Supabase stack (inside docker containers)..."
-if ! docker compose -f docker-compose.yml -f ../../docker-compose.e2e.yml up -d; then
+if ! compose up -d; then
+  if [ "$GITHUB_ACTIONS" = "true" ]; then
+    endgroup
+    echo -n "::group::"
+  fi
   error "Failed to start containers!"
-  docker compose -f docker-compose.yml -f ../../docker-compose.e2e.yml logs
+  compose logs --no-log-prefix analytics
+  endgroup
   exit 1
 fi
+endgroup
 
 log "Supabase stack is up! Access Supabase studio via ${CYAN}http://localhost:8000${RESET}"
 log "Run E2E tests with '${GREEN}npm run playwright:test${RESET}'"
