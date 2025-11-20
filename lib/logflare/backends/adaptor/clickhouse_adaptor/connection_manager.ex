@@ -46,15 +46,8 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.ConnectionManager do
 
   @doc """
   Generates a unique ClickHouse connection pool via tuple based on a `Backend`.
-
-  For single-tenant mode (backend.id == nil), returns a simple atom name.
   """
   @spec connection_pool_via(Backend.t()) :: tuple() | atom()
-  def connection_pool_via(%Backend{id: nil}) do
-    # Single-tenant mode: use simple atom name
-    Logflare.SingleTenantCHReadPool
-  end
-
   def connection_pool_via(%Backend{} = backend) do
     Backends.via_backend(backend, CHReadPool)
   end
@@ -241,9 +234,9 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.ConnectionManager do
     %__MODULE__{state | pool_pid: nil}
   end
 
+  # Single-tenant mode: use config from environment
   @spec build_ch_opts(__MODULE__.t()) :: {:ok, Keyword.t()} | {:error, term()}
   defp build_ch_opts(%__MODULE__{backend_id: nil}) do
-    # Single-tenant mode: use config from environment
     config = SingleTenant.clickhouse_backend_adapter_opts() || []
 
     default_pool_size =
@@ -258,12 +251,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.ConnectionManager do
     url = Keyword.get(config, :url)
 
     with {:ok, {scheme, hostname}} <- extract_scheme_and_hostname(url) do
-      # Create a virtual backend for pool naming
-      virtual_backend = %Backend{
-        id: nil,
-        type: :clickhouse,
-        config: Map.new(config)
-      }
+      virtual_backend = %Backend{type: :clickhouse, config: Map.new(config)}
 
       pool_via = connection_pool_via(virtual_backend)
 
@@ -291,8 +279,8 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.ConnectionManager do
     end
   end
 
+  # Multi-tenant mode: fetch backend from cache
   defp build_ch_opts(%__MODULE__{backend_id: backend_id}) do
-    # Multi-tenant mode: fetch fresh backend from cache
     backend = Backends.Cache.get_backend(backend_id)
 
     if is_nil(backend) do
@@ -363,11 +351,6 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.ConnectionManager do
 
   defp get_port_config(_backend, %{port: port}) when is_non_empty_binary(port),
     do: String.to_integer(port)
-
-  @spec connection_manager_via(Backend.t()) :: tuple() | atom()
-  defp connection_manager_via(%Backend{id: nil}) do
-    Logflare.SingleTenantCHConnectionManager
-  end
 
   defp connection_manager_via(%Backend{} = backend) do
     Backends.via_backend(backend, __MODULE__)

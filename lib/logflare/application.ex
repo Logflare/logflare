@@ -157,11 +157,7 @@ defmodule Logflare.Application do
   end
 
   defp single_tenant_clickhouse_connection_manager_spec do
-    # Create a virtual backend for single-tenant mode
-    virtual_backend = %Logflare.Backends.Backend{
-      id: nil,
-      type: :clickhouse
-    }
+    virtual_backend = %Logflare.Backends.Backend{type: :clickhouse}
 
     %{
       id: Logflare.SingleTenantClickHouseConnectionManager,
@@ -181,7 +177,7 @@ defmodule Logflare.Application do
     # if single tenant, insert enterprise user
     Logger.info("Executing startup tasks")
 
-    if !SingleTenant.postgres_backend?() && !SingleTenant.clickhouse_backend?() do
+    if !(SingleTenant.postgres_backend?() || SingleTenant.clickhouse_backend?()) do
       BigQueryAdaptor.create_managed_service_accounts()
       BigQueryAdaptor.update_iam_policy()
     end
@@ -198,7 +194,7 @@ defmodule Logflare.Application do
       SingleTenant.create_supabase_endpoints()
       SingleTenant.ensure_supabase_sources_started()
 
-      unless SingleTenant.postgres_backend?() || SingleTenant.clickhouse_backend?() do
+      if !(SingleTenant.postgres_backend?() || SingleTenant.clickhouse_backend?()) do
         # buffer time for all sources to init and create tables
         # in case of latency.
         :timer.sleep(3_000)
