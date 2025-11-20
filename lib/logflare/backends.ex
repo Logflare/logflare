@@ -144,34 +144,46 @@ defmodule Logflare.Backends do
   end
 
   def get_default_backend(%User{} = user) do
-    if SingleTenant.single_tenant?() and SingleTenant.postgres_backend?() do
-      opts = SingleTenant.postgres_backend_adapter_opts()
+    cond do
+      SingleTenant.single_tenant?() and SingleTenant.clickhouse_backend?() ->
+        opts = SingleTenant.clickhouse_backend_adapter_opts()
 
-      %Backend{
-        type: :postgres,
-        config: Map.new(opts),
-        user_id: user.id,
-        name: "Default postgres backend"
-      }
-    else
-      {project_id, dataset_id} =
-        if user.bigquery_project_id do
-          {user.bigquery_project_id, user.bigquery_dataset_id}
-        else
-          project_id = User.bq_project_id()
-          dataset_id = User.generate_bq_dataset_id(user.id)
-          {project_id, dataset_id}
-        end
+        %Backend{
+          type: :clickhouse,
+          config: Map.new(opts),
+          user_id: user.id,
+          name: "Default clickhouse backend"
+        }
 
-      %Backend{
-        type: :bigquery,
-        config: %{
-          project_id: project_id,
-          dataset_id: dataset_id
-        },
-        user_id: user.id,
-        name: "Default bigquery backend"
-      }
+      SingleTenant.single_tenant?() and SingleTenant.postgres_backend?() ->
+        opts = SingleTenant.postgres_backend_adapter_opts()
+
+        %Backend{
+          type: :postgres,
+          config: Map.new(opts),
+          user_id: user.id,
+          name: "Default postgres backend"
+        }
+
+      true ->
+        {project_id, dataset_id} =
+          if user.bigquery_project_id do
+            {user.bigquery_project_id, user.bigquery_dataset_id}
+          else
+            project_id = User.bq_project_id()
+            dataset_id = User.generate_bq_dataset_id(user.id)
+            {project_id, dataset_id}
+          end
+
+        %Backend{
+          type: :bigquery,
+          config: %{
+            project_id: project_id,
+            dataset_id: dataset_id
+          },
+          user_id: user.id,
+          name: "Default bigquery backend"
+        }
     end
   end
 
@@ -623,10 +635,10 @@ defmodule Logflare.Backends do
   @doc """
   Registers a unique backend-related process on the backend registry.
   """
-  @spec via_backend(Backend.t() | non_neg_integer(), module()) :: tuple()
+  @spec via_backend(Backend.t() | non_neg_integer() | nil, module()) :: tuple()
   def via_backend(%Backend{id: id}, mod), do: via_backend(id, mod)
 
-  def via_backend(backend_id, mod) when is_number(backend_id) do
+  def via_backend(backend_id, mod) when is_number(backend_id) or is_nil(backend_id) do
     {:via, Registry, {BackendRegistry, {mod, backend_id}}}
   end
 

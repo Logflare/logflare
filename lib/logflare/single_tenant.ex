@@ -256,7 +256,7 @@ defmodule Logflare.SingleTenant do
 
     if user do
       for source <- Sources.list_sources_by_user(user) do
-        if postgres_backend?() do
+        if postgres_backend?() or clickhouse_backend?() do
           Backends.start_source_sup(source)
         else
           Supervisor.ensure_started(source)
@@ -302,6 +302,14 @@ defmodule Logflare.SingleTenant do
   def postgres_backend_adapter_opts do
     if single_tenant?() do
       Application.get_env(:logflare, :postgres_backend_adapter)
+    end
+  end
+
+  @doc "Returns clickhouse backend adapter configurations if single tenant and env is set"
+  @spec clickhouse_backend_adapter_opts :: Keyword.t() | nil
+  def clickhouse_backend_adapter_opts do
+    if single_tenant?() do
+      Application.get_env(:logflare, :clickhouse_backend_adapter)
     end
   end
 
@@ -359,6 +367,7 @@ defmodule Logflare.SingleTenant do
     source_schemas_updated =
       cond do
         postgres_backend?() -> :ok
+        clickhouse_backend?() -> :ok
         # for mocking, use full qualified function name
         __MODULE__.supabase_mode_source_schemas_updated?() -> :ok
         true -> nil
@@ -385,14 +394,25 @@ defmodule Logflare.SingleTenant do
   end
 
   @doc """
+  Returns true if clickhouse backend is enabled for single tenant
+  """
+  @spec clickhouse_backend? :: boolean()
+  def clickhouse_backend? do
+    opts = clickhouse_backend_adapter_opts() || []
+
+    url = Keyword.get(opts, :url)
+    single_tenant?() && url != nil
+  end
+
+  @doc """
   Returns the type of the default backend
   """
-  @spec backend_type :: :postgres | :bigquery
+  @spec backend_type :: :clickhouse | :postgres | :bigquery
   def backend_type do
-    if postgres_backend?() do
-      :postgres
-    else
-      :bigquery
+    cond do
+      clickhouse_backend?() -> :clickhouse
+      postgres_backend?() -> :postgres
+      true -> :bigquery
     end
   end
 

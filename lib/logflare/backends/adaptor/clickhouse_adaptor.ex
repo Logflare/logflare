@@ -71,7 +71,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
   def ecto_to_sql(%Ecto.Query{} = query, opts) do
     case Logflare.Ecto.ClickHouse.to_sql(query, opts) do
       {:ok, {ch_sql, ch_params}} ->
-        ch_params = Enum.map(ch_params, &SqlUtils.normalize_datetime_param/1)
+        ch_params = Enum.map(ch_params, &SqlUtils.normalize_datetime_param(&1, :clickhouse))
         {:ok, {ch_sql, ch_params}}
 
       {:error, _reason} = error ->
@@ -337,7 +337,12 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
         :ok
 
       {:error, reason} ->
-        Logger.warning("Clickhouse insert errors.", error_string: inspect(reason))
+        Logger.warning("ClickHouse insert error",
+          source_token: source.token,
+          backend_id: backend.id,
+          table: table_name,
+          error_string: inspect(reason)
+        )
 
         {:error, reason}
     end

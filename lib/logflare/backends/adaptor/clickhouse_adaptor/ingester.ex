@@ -101,6 +101,24 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.Ingester do
     do: <<1::1, n::7, encode_as_varint(n >>> 7)::binary>>
 
   @spec build_connection_opts(Backend.t()) :: {:ok, Keyword.t()} | {:error, String.t()}
+  defp build_connection_opts(%Backend{id: nil}) do
+    opts = Logflare.SingleTenant.clickhouse_backend_adapter_opts() || []
+    url = Keyword.get(opts, :url)
+    database = Keyword.get(opts, :database)
+    username = Keyword.get(opts, :username)
+    password = Keyword.get(opts, :password)
+    port = Keyword.get(opts, :port) || extract_port_from_url(url)
+
+    {:ok,
+     [
+       url: url,
+       port: port,
+       database: database,
+       username: username,
+       password: password
+     ]}
+  end
+
   defp build_connection_opts(%Backend{
          config: %{
            url: url,
@@ -156,4 +174,12 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.Ingester do
 
   defp default_port("https"), do: 8443
   defp default_port(_), do: 8123
+
+  @spec extract_port_from_url(String.t() | nil) :: integer()
+  defp extract_port_from_url(nil), do: 8123
+
+  defp extract_port_from_url(url) when is_binary(url) do
+    uri = URI.parse(url)
+    uri.port || default_port(uri.scheme)
+  end
 end

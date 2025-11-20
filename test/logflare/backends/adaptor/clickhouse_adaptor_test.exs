@@ -323,8 +323,8 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptorTest do
       assert sql =~ "t0.\"timestamp\" >"
       assert sql =~ "$0"
 
-      # Parameters should be normalized
-      assert ["2023-12-25 10:30:45Z"] = params
+      # Parameters should be normalized for ClickHouse (Z suffix stripped)
+      assert ["2023-12-25 10:30:45"] = params
     end
 
     test "handles query conversion errors gracefully" do

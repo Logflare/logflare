@@ -10,7 +10,6 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.Pipeline do
   require OpenTelemetry.Tracer
 
   alias Broadway.Message
-  alias Logflare.Backends
   alias Logflare.Backends.Adaptor.ClickhouseAdaptor
   alias Logflare.Backends.BufferProducer
   alias Logflare.Backends.IngestEventQueue
@@ -60,7 +59,8 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.Pipeline do
       context: %{
         source_id: source.id,
         source_token: source.token,
-        backend_id: backend.id
+        backend_id: backend.id,
+        backend: backend
       }
     )
   end
@@ -78,7 +78,8 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.Pipeline do
   def handle_batch(:ch, messages, batch_info, %{
         source_id: source_id,
         source_token: source_token,
-        backend_id: backend_id
+        backend_id: backend_id,
+        backend: backend
       }) do
     :telemetry.execute(
       [:logflare, :backends, :pipeline, :handle_batch],
@@ -99,7 +100,6 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.Pipeline do
         }
       } do
         source = Sources.Cache.get_by_id(source_id)
-        backend = Backends.Cache.get_backend(backend_id)
         events = for %{data: le} <- messages, do: le
 
         ClickhouseAdaptor.insert_log_events({source, backend}, events)

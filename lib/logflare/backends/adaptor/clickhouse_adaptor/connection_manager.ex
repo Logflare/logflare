@@ -46,7 +46,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.ConnectionManager do
   @doc """
   Generates a unique ClickHouse connection pool via tuple based on a `Backend`.
   """
-  @spec connection_pool_via(Backend.t()) :: tuple()
+  @spec connection_pool_via(Backend.t()) :: tuple() | atom()
   def connection_pool_via(%Backend{} = backend) do
     Backends.via_backend(backend, CHReadPool)
   end
@@ -234,7 +234,45 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.ConnectionManager do
   end
 
   @spec build_ch_opts(__MODULE__.t()) :: {:ok, Keyword.t()} | {:error, term()}
-  defp build_ch_opts(%__MODULE__{backend_id: backend_id}) do
+  defp build_ch_opts(%__MODULE__{backend_id: nil}) do
+    # Single-tenant mode with virtual backend
+    opts = Logflare.SingleTenant.clickhouse_backend_adapter_opts() || []
+
+    url = Keyword.get(opts, :url)
+    database = Keyword.get(opts, :database)
+    username = Keyword.get(opts, :username)
+    password = Keyword.get(opts, :password)
+    port = Keyword.get(opts, :port) || extract_port_from_url(url)
+
+    default_pool_size =
+      Application.fetch_env!(:logflare, :clickhouse_backend_adaptor)[:pool_size]
+
+    pool_size = default_pool_size |> div(2) |> max(default_pool_size)
+
+    # Create virtual backend for pool naming
+    backend = %Logflare.Backends.Backend{id: nil, type: :clickhouse}
+
+    with {:ok, {scheme, hostname}} <- extract_scheme_and_hostname(url) do
+      pool_via = connection_pool_via(backend)
+
+      ch_opts = [
+        name: pool_via,
+        scheme: scheme,
+        hostname: hostname,
+        port: port,
+        database: database,
+        username: username,
+        password: password,
+        pool_size: pool_size,
+        settings: [],
+        timeout: @ch_query_conn_timeout
+      ]
+
+      {:ok, ch_opts}
+    end
+  end
+
+  defp build_ch_opts(%__MODULE__{backend_id: backend_id}) when not is_nil(backend_id) do
     # Fetch fresh backend from cache
     backend = Backends.Cache.get_backend(backend_id)
 
@@ -301,5 +339,17 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.ConnectionManager do
   @spec connection_manager_via(Backend.t()) :: tuple()
   defp connection_manager_via(%Backend{} = backend) do
     Backends.via_backend(backend, __MODULE__)
+  end
+
+  @spec extract_port_from_url(String.t() | nil) :: integer()
+  defp extract_port_from_url(nil), do: 8123
+
+  defp extract_port_from_url(url) when is_binary(url) do
+    case URI.parse(url) do
+      %URI{port: port} when not is_nil(port) -> port
+      %URI{scheme: "https"} -> 8443
+      %URI{scheme: "http"} -> 8123
+      _ -> 8123
+    end
   end
 end

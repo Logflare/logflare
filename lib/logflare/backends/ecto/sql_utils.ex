@@ -25,12 +25,21 @@ defmodule Logflare.Backends.Ecto.SqlUtils do
 
   @doc """
   Normalizes date/datetime parameters to string format.
+
+  For ClickHouse, strips the 'Z' suffix from DateTime strings because
+  ClickHouse DateTime64(6) without timezone cannot parse ISO8601 'Z' suffix.
+  TODO: Consider using DateTime64(6, 'UTC') in ClickHouse schema instead.
   """
-  @spec normalize_datetime_param(any()) :: any()
-  def normalize_datetime_param(%NaiveDateTime{} = param), do: to_string(param)
-  def normalize_datetime_param(%DateTime{} = param), do: to_string(param)
-  def normalize_datetime_param(%Date{} = param), do: to_string(param)
-  def normalize_datetime_param(param), do: param
+  @spec normalize_datetime_param(any(), :clickhouse | :bigquery) :: any()
+  def normalize_datetime_param(%NaiveDateTime{} = param, _backend), do: to_string(param)
+
+  def normalize_datetime_param(%DateTime{} = param, :clickhouse) do
+    param |> to_string() |> String.replace_suffix("Z", "")
+  end
+
+  def normalize_datetime_param(%DateTime{} = param, _backend), do: to_string(param)
+  def normalize_datetime_param(%Date{} = param, _backend), do: to_string(param)
+  def normalize_datetime_param(param, _backend), do: param
 
   @doc """
   Converts PostgreSQL-style positional parameters ($1, $2, etc.) to question mark format.
