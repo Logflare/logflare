@@ -25,9 +25,9 @@ jobs:
     strategy:
       matrix:
         include:
-          - runner: [self-hosted, X64]
+          - runner: ubuntu-latest
             arch: amd64
-          - runner: arm-runner
+          - runner: ubuntu-24.04-arm
             arch: arm64
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 30
