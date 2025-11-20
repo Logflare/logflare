@@ -2,7 +2,7 @@ defmodule Logflare.Backends.IngestEventQueueTest do
   use Logflare.DataCase
 
   alias Logflare.PubSubRates
-  alias Logflare.Backends.IngestEventQueue.BroadcastWorker
+  alias Logflare.Backends.IngestEventQueue.BufferCacheWorker
   alias Logflare.Backends.IngestEventQueue.QueueJanitor
   alias Logflare.Backends.IngestEventQueue.MapperJanitor
   alias Logflare.Backends
@@ -227,7 +227,7 @@ defmodule Logflare.Backends.IngestEventQueueTest do
     end
   end
 
-  test "BroadcastWorker broadcasts every n seconds" do
+  test "BufferCacheWorker broadcasts every n seconds" do
     user = insert(:user)
     source = insert(:source, user: user)
     backend = insert(:backend, user: user)
@@ -238,7 +238,7 @@ defmodule Logflare.Backends.IngestEventQueueTest do
 
     IngestEventQueue.upsert_tid(table)
     IngestEventQueue.upsert_tid(other_table)
-    start_supervised!({BroadcastWorker, interval: 100})
+    start_supervised!({BufferCacheWorker, interval: 100})
 
     le = build(:log_event, source: source)
     IngestEventQueue.add_to_table(table, [le])
