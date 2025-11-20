@@ -23,6 +23,7 @@ defmodule Logflare.LogEvent do
     field :ingested_at, :utc_datetime_usec
     field :origin_source_id, Ecto.UUID.Atom
     field :via_rule, :map
+    field :retries, :integer, default: 0
 
     field :source_id, :integer, default: nil
 

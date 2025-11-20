@@ -523,7 +523,7 @@ defmodule Logflare.Backends do
   end
 
   defp maybe_broadcast_and_route(source, log_events) do
-    if source.metrics.avg < 5 do
+    if source.metrics.avg < 2 do
       Source.ChannelTopics.broadcast_new(log_events)
     end
 

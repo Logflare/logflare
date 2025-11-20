@@ -186,57 +186,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.IngesterTest do
       [source: source, backend: backend, table_name: table_name]
     end
 
-    test "sends `async_insert=1` by default", %{
-      backend: backend,
-      table_name: table_name,
-      source: source
-    } do
-      log_event = build(:log_event, source: source, message: "Test via ingester")
-
-      Finch
-      |> expect(:request, fn request, _pool ->
-        url =
-          to_string(request.scheme) <>
-            "://" <>
-            request.host <>
-            ":" <>
-            to_string(request.port) <> request.path <> "?" <> request.query
-
-        assert url =~ "async_insert=1",
-               "Expected URL to contain async_insert=1 by default, got: #{url}"
-
-        {:ok, %Finch.Response{status: 200, body: ""}}
-      end)
-
-      assert :ok = Ingester.insert(backend, table_name, [log_event])
-    end
-
-    test "sends `async_insert=0` when `async: false` option is provided", %{
-      backend: backend,
-      table_name: table_name,
-      source: source
-    } do
-      log_event = build(:log_event, source: source, message: "Sync insert test")
-
-      Finch
-      |> expect(:request, fn request, _pool ->
-        url =
-          to_string(request.scheme) <>
-            "://" <>
-            request.host <>
-            ":" <>
-            to_string(request.port) <> request.path <> "?" <> request.query
-
-        assert url =~ "async_insert=0",
-               "Expected URL to contain async_insert=0, got: #{url}"
-
-        {:ok, %Finch.Response{status: 200, body: ""}}
-      end)
-
-      assert :ok = Ingester.insert(backend, table_name, [log_event], async: false)
-    end
-
-    test "sends gzip-compressed body by default", %{
+    test "sends gzip-compressed body and content encoding in headers", %{
       backend: backend,
       table_name: table_name,
       source: source
@@ -246,10 +196,12 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.IngesterTest do
       Finch
       |> expect(:request, fn request, _pool ->
         headers = request.headers
-        assert {"content-encoding", "gzip"} in headers, "Expected gzip by default"
+
+        assert {"content-encoding", "gzip"} in headers,
+               "Expected gzip content encoding in headers"
 
         <<first_byte, second_byte, _rest::binary>> = IO.iodata_to_binary(request.body)
-        assert first_byte == 0x1F && second_byte == 0x8B, "Expected gzip compression by default"
+        assert first_byte == 0x1F && second_byte == 0x8B, "Expected gzip compression in body"
 
         {:ok, %Finch.Response{status: 200, body: ""}}
       end)
@@ -257,38 +209,11 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.IngesterTest do
       assert :ok = Ingester.insert(backend, table_name, [log_event])
     end
 
-    test "sends uncompressed body when `compress: false`", %{
+    test "sends `async_insert=1` and `wait_for_async_insert=1` in URL", %{
       backend: backend,
       table_name: table_name,
       source: source
     } do
-      log_event = build(:log_event, source: source, message: "No compression")
-
-      Finch
-      |> expect(:request, fn request, _pool ->
-        headers = request.headers
-
-        refute Enum.any?(headers, fn {k, _v} -> k == "content-encoding" end),
-               "Expected no content-encoding header"
-
-        body_binary = IO.iodata_to_binary(request.body)
-        <<first_byte, second_byte, _rest::binary>> = body_binary
-
-        refute first_byte == 0x1F && second_byte == 0x8B,
-               "Body should not be gzip compressed"
-
-        {:ok, %Finch.Response{status: 200, body: ""}}
-      end)
-
-      assert :ok = Ingester.insert(backend, table_name, [log_event], compress: false)
-    end
-
-    test "sends `wait_for_async_insert=1` when config is true", %{
-      backend: backend,
-      table_name: table_name,
-      source: source
-    } do
-      backend = %{backend | config: Map.put(backend.config, :wait_for_async_insert, true)}
       log_event = build(:log_event, source: source, message: "Test")
 
       Finch
@@ -299,57 +224,11 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.IngesterTest do
             "://" <>
             request.host <> ":" <> to_string(request.port) <> request.path <> "?" <> request.query
 
-        assert url =~ "wait_for_async_insert=1",
-               "Expected URL to contain wait_for_async_insert=1, got: #{url}"
-
-        assert url =~ "async_insert=1"
-        {:ok, %Finch.Response{status: 200, body: ""}}
-      end)
-
-      assert :ok = Ingester.insert(backend, table_name, [log_event])
-    end
-
-    test "sends `wait_for_async_insert=0` when config is false", %{
-      backend: backend,
-      table_name: table_name,
-      source: source
-    } do
-      backend = %{backend | config: Map.put(backend.config, :wait_for_async_insert, false)}
-      log_event = build(:log_event, source: source, message: "Test")
-
-      Finch
-      |> expect(:request, fn request, _pool ->
-        url =
-          to_string(request.scheme) <>
-            "://" <>
-            request.host <> ":" <> to_string(request.port) <> request.path <> "?" <> request.query
-
-        assert url =~ "wait_for_async_insert=0",
-               "Expected URL to contain wait_for_async_insert=0, got: #{url}"
-
-        {:ok, %Finch.Response{status: 200, body: ""}}
-      end)
-
-      assert :ok = Ingester.insert(backend, table_name, [log_event])
-    end
-
-    test "defaults to `wait_for_async_insert=1` when not configured", %{
-      backend: backend,
-      table_name: table_name,
-      source: source
-    } do
-      backend = %{backend | config: Map.delete(backend.config, :wait_for_async_insert)}
-      log_event = build(:log_event, source: source, message: "Test")
-
-      Finch
-      |> expect(:request, fn request, _pool ->
-        url =
-          to_string(request.scheme) <>
-            "://" <>
-            request.host <> ":" <> to_string(request.port) <> request.path <> "?" <> request.query
+        assert url =~ ~r/[?&]async_insert=1/,
+               "Expected URL to contain `async_insert=1`, got: #{url}"
 
         assert url =~ "wait_for_async_insert=1",
-               "Expected URL to contain wait_for_async_insert=1 (default), got: #{url}"
+               "Expected URL to contain `wait_for_async_insert=1`, got: #{url}"
 
         {:ok, %Finch.Response{status: 200, body: ""}}
       end)

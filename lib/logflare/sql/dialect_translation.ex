@@ -773,20 +773,37 @@ defmodule Logflare.Sql.DialectTranslation do
          data,
          base
        ) do
-    str_path = Enum.join(data.alias_path_mappings[join_alias], ",")
-    path = "{#{str_path},#{key}}"
-
-    %{
-      "Nested" => %{
-        "BinaryOp" => %{
-          "left" => %{"Identifier" => %{"quote_style" => nil, "value" => base}},
-          "op" => select_json_operator(data, true),
-          "right" => %{
-            "Value" => %{"SingleQuotedString" => path}
+    case data.alias_path_mappings[join_alias] do
+      nil ->
+        # alias not found in mappings - return simple JSON access
+        %{
+          "Nested" => %{
+            "BinaryOp" => %{
+              "left" => %{"Identifier" => %{"quote_style" => nil, "value" => base}},
+              "op" => select_json_operator(data, false),
+              "right" => %{
+                "Value" => %{"SingleQuotedString" => key}
+              }
+            }
           }
         }
-      }
-    }
+
+      alias_path ->
+        str_path = Enum.join(alias_path, ",")
+        path = "{#{str_path},#{key}}"
+
+        %{
+          "Nested" => %{
+            "BinaryOp" => %{
+              "left" => %{"Identifier" => %{"quote_style" => nil, "value" => base}},
+              "op" => select_json_operator(data, true),
+              "right" => %{
+                "Value" => %{"SingleQuotedString" => path}
+              }
+            }
+          }
+        }
+    end
   end
 
   defp convert_keys_to_json_query(
@@ -1126,10 +1143,20 @@ defmodule Logflare.Sql.DialectTranslation do
               end
 
             tail_value = tail["value"]
-            str_path = Enum.join(path ++ [tail_value], ",")
-            full_path = "{#{str_path}}"
 
-            # Always use HashLongArrow for CTE unnest references to return text
+            # When UNNEST alias matches a CTE field (e.g., UNNEST(metadata) AS metadata),
+            # the CTE already extracted that field, so don't include path in the JSON path.
+            # Just use the tail value directly.
+            {full_path, op} =
+              if path == [cte_field] do
+                # Direct access - just the nested key
+                {tail_value, select_json_operator(data, false)}
+              else
+                # Nested path
+                str_path = Enum.join(path ++ [tail_value], ",")
+                {"{#{str_path}}", "HashLongArrow"}
+              end
+
             {"Nested",
              %{
                "BinaryOp" => %{
@@ -1139,7 +1166,7 @@ defmodule Logflare.Sql.DialectTranslation do
                      %{"quote_style" => nil, "value" => cte_field}
                    ]
                  },
-                 "op" => "HashLongArrow",
+                 "op" => op,
                  "right" => %{
                    "Value" => %{"SingleQuotedString" => full_path}
                  }
@@ -1202,6 +1229,64 @@ defmodule Logflare.Sql.DialectTranslation do
       {k, v}
     else
       do_normal_compount_identifier_convert({k, v}, data)
+    end
+  end
+
+  # Handle three-part+ CompoundIdentifiers accessing CTE column nested fields
+  # e.g., auth_logs.metadata.msg -> (auth_logs.metadata -> 'msg')
+  defp traverse_convert_identifiers(
+         {"CompoundIdentifier" = _k,
+          [%{"value" => cte_name}, %{"value" => field}, %{"value" => nested_key} | rest]},
+         %{in_cte_tables_tree: false, cte_aliases: cte_aliases} = data
+       )
+       when cte_aliases != %{} do
+    cte_fields = Map.get(cte_aliases, cte_name, [])
+
+    if field in cte_fields do
+      path_parts = [nested_key | Enum.map(rest, & &1["value"])]
+
+      if length(path_parts) == 1 do
+        # Single nested key - use Arrow operator
+        {"Nested",
+         %{
+           "BinaryOp" => %{
+             "left" => %{
+               "CompoundIdentifier" => [
+                 %{"quote_style" => nil, "value" => cte_name},
+                 %{"quote_style" => nil, "value" => field}
+               ]
+             },
+             "op" => select_json_operator(data, false),
+             "right" => %{
+               "Value" => %{"SingleQuotedString" => nested_key}
+             }
+           }
+         }}
+      else
+        # Multiple nested keys - use HashArrow with path
+        str_path = Enum.join(path_parts, ",")
+        full_path = "{#{str_path}}"
+
+        {"Nested",
+         %{
+           "BinaryOp" => %{
+             "left" => %{
+               "CompoundIdentifier" => [
+                 %{"quote_style" => nil, "value" => cte_name},
+                 %{"quote_style" => nil, "value" => field}
+               ]
+             },
+             "op" => select_json_operator(data, true),
+             "right" => %{
+               "Value" => %{"SingleQuotedString" => full_path}
+             }
+           }
+         }}
+      end
+    else
+      # Field is not a CTE field, leave as is
+      {"CompoundIdentifier",
+       [%{"value" => cte_name}, %{"value" => field}, %{"value" => nested_key} | rest]}
     end
   end
 

@@ -5,5 +5,5 @@ services:
       context: ../../../../..
       dockerfile: ./Dockerfile
       tags:
-        - "supabase/logflare:latest"
         - "supabase/logflare:local"
+    pull_policy: never
