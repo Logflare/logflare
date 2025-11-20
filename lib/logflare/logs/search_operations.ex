@@ -222,10 +222,23 @@ defmodule Logflare.Logs.SearchOperations do
   end
 
   @spec apply_query_defaults(SO.t()) :: SO.t()
-  def apply_query_defaults(%SO{} = so) do
+  def apply_query_defaults(%SO{backend: backend} = so) do
+    backend_type =
+      if backend do
+        backend.type
+      else
+        SingleTenant.backend_type()
+      end
+
+    select_fields =
+      case backend_type do
+        :clickhouse -> dynamic([t], [t.timestamp, t.id, t.body])
+        _ -> dynamic([t], [t.timestamp, t.id, t.event_message])
+      end
+
     query =
       from(get_table_name(so))
-      |> select([t], [t.timestamp, t.id, t.body])
+      |> select([t], ^select_fields)
       |> order_by([t], desc: t.timestamp)
       |> limit(@default_limit)
 

@@ -300,16 +300,6 @@ defmodule Logflare.Ecto.ClickHouse do
     end
   end
 
-  # Transform simple parameter references {:^, [], [ix]} to use remapped index
-  defp transform_in_params({:^, meta, [ix]}, transforms) do
-    case Map.get(transforms, ix) do
-      new_ix when is_integer(new_ix) -> {:^, meta, [new_ix]}
-      # IN case, use first index
-      {new_ix, _len} -> {:^, meta, [new_ix]}
-      nil -> {:^, meta, [ix]}
-    end
-  end
-
   defp transform_in_params(tuple, transforms) when is_tuple(tuple) do
     tuple
     |> Tuple.to_list()

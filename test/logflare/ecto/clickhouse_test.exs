@@ -499,19 +499,6 @@ defmodule Logflare.Ecto.ClickHouseTest do
     end
   end
 
-  describe "list select handling" do
-    test "converts list select to multiple columns, not array literal" do
-      query = from(t in "logs", select: [t.timestamp, t.id, t.event_message])
-
-      assert {:ok, {sql, _params}} = ClickHouse.to_sql(query)
-
-      assert String.contains?(sql, ~s("timestamp"))
-      assert String.contains?(sql, ~s("id"))
-      assert String.contains?(sql, ~s("event_message"))
-      refute Regex.match?(~r/SELECT\s+\[.*"timestamp".*,.*"id".*,.*"event_message".*\]/, sql)
-    end
-  end
-
   describe "map select with fragments containing AS aliases" do
     test "does not duplicate AS when fragment already has alias" do
       query =

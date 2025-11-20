@@ -99,7 +99,13 @@ defmodule LogflareWeb.Search.LogEventViewerComponent do
         _ -> nil
       end
     else
-      Enum.find(source.backends, fn b -> b.type in [:bigquery, :clickhouse] end)
+      first_backend =
+        source
+        |> Logflare.Repo.preload(:backends)
+        |> Map.get(:backends)
+        |> Enum.find(fn b -> b.type in [:bigquery, :clickhouse] end)
+
+      first_backend || %Logflare.Backends.Backend{id: nil, type: :bigquery}
     end
   end
 

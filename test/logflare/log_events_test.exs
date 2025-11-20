@@ -27,7 +27,7 @@ defmodule Logflare.LogEventsTest do
     insert(:source_schema, source: source)
 
     assert %{"event_message" => "some message"} =
-             LogEvents.fetch_event_by_id(source.token, le.id,
+             LogEvents.fetch_event_by_id(%{type: :bigquery}, source.token, le.id,
                partitions_range: [
                  DateTime.utc_now() |> DateTime.to_string(),
                  DateTime.utc_now() |> DateTime.to_string()
@@ -57,7 +57,7 @@ defmodule Logflare.LogEventsTest do
     insert(:source_schema, source: source)
 
     assert %{"event_message" => "pseudo partition message"} =
-             LogEvents.fetch_event_by_id(source.token, le.id,
+             LogEvents.fetch_event_by_id(%{type: :bigquery}, source.token, le.id,
                partitions_range: [DateTime.utc_now(), DateTime.utc_now()]
              )
 
