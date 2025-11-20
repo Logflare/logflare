@@ -48,7 +48,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.Pipeline do
       ],
       producer: [
         module: {BufferProducer, [source_id: source.id, backend_id: backend.id]},
-        transformer: {__MODULE__, :transform, [[source_id: source.id, backend_id: backend.id]]},
+        transformer: {__MODULE__, :transform, [source_id: source.id, backend_id: backend.id]},
         concurrency: @producer_concurrency
       ],
       processors: [
@@ -137,11 +137,6 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.Pipeline do
 
         drop_exhausted_messages(exhausted, source_id, backend_id)
         requeue_retriable_messages(retriable, source_id, backend_id)
-
-      {nil, messages} ->
-        Logger.warning(
-          "Dropping #{length(messages)} ClickHouse events with nil acknowledger data"
-        )
 
       {ack_data, messages} ->
         Logger.warning(
