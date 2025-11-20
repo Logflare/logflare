@@ -145,7 +145,8 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.Pipeline do
 
       {ack_data, messages} ->
         Logger.warning(
-          "Dropping #{length(messages)} ClickHouse events with invalid acknowledger data - ack_data: '#{inspect(ack_data)}'"
+          "Dropping #{length(messages)} ClickHouse events with unexpected acknowledger data",
+          error_string: inspect(ack_data)
         )
     end)
   end
