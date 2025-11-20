@@ -138,10 +138,14 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.Pipeline do
         drop_exhausted_messages(exhausted, source_id, backend_id)
         requeue_retriable_messages(retriable, source_id, backend_id)
 
+      {nil, messages} ->
+        Logger.warning(
+          "Dropping #{length(messages)} ClickHouse events with nil acknowledger data"
+        )
+
       {ack_data, messages} ->
         Logger.warning(
-          "Dropping #{length(messages)} ClickHouse events with invalid acknowledger data",
-          ack_data: inspect(ack_data)
+          "Dropping #{length(messages)} ClickHouse events with invalid acknowledger data - ack_data: '#{inspect(ack_data)}'"
         )
     end)
   end
