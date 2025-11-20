@@ -227,7 +227,7 @@ defmodule Logflare.Backends.IngestEventQueueTest do
     end
   end
 
-  test "BufferCacheWorker broadcasts every n seconds" do
+  test "BufferCacheWorker caches buffer lengths every n seconds" do
     user = insert(:user)
     source = insert(:source, user: user)
     backend = insert(:backend, user: user)
@@ -244,8 +244,8 @@ defmodule Logflare.Backends.IngestEventQueueTest do
     IngestEventQueue.add_to_table(table, [le])
     IngestEventQueue.add_to_table(other_table, [le])
     :timer.sleep(300)
-    assert {:ok, %{len: 1}} = Backends.cache_local_buffer_lens(source.id)
-    assert {:ok, %{len: 1}} = Backends.cache_local_buffer_lens(source.id, backend.id)
+
+    # Verify worker cached the values automatically (without manual cache calls)
     assert PubSubRates.Cache.get_cluster_buffers(source.id, backend.id) == 1
     assert PubSubRates.Cache.get_cluster_buffers(source.id, nil) == 1
   end
