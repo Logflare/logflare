@@ -430,28 +430,8 @@ defmodule Logflare.Ecto.ClickHouse do
         source
 
       {:%{}, _, kv_pairs} ->
-        Helpers.intersperse_map(kv_pairs, ?,, fn {k, v} ->
-          # Generate the expression SQL
-          expr_sql = expr(v, sources, params, query)
-
-          # TODO: This is a workaround for fragments that already include an AS alias.
-          # BigQuery uses PostgreSQL's Ecto adapter which doesn't add AS for map selects,
-          # so fragments in shared code (like search_queries.ex) include "as fieldname".
-          # ClickHouse converter always adds AS, causing duplicates like "COUNT(...) as value AS \"value\"".
-          # This regex check prevents the duplicate, but ideally we should either:
-          # 1. Remove aliases from fragments and handle them consistently, or
-          # 2. Make BigQuery adapter also add AS so fragments don't need them
-          # Check if expression already contains an alias (case-insensitive "as ...")
-          expr_str = IO.iodata_to_binary(expr_sql)
-          has_alias = Regex.match?(~r/\s+as\s+\w+\s*$/i, String.trim(expr_str))
-
-          if has_alias do
-            # Expression already has an alias, don't add another
-            expr_sql
-          else
-            # Add AS clause for the map key
-            [expr_sql, " AS " | Naming.quote_name(k)]
-          end
+        Helpers.intersperse_map(kv_pairs, ?,, fn {_k, v} ->
+          expr(v, sources, params, query)
         end)
 
       {:{}, _, exprs} ->
