@@ -337,7 +337,7 @@ defmodule Logflare.SingleTenant do
             log_event = LogEvent.make(event, %{source: source})
 
             Backends.via_source(source, Schema)
-            |> Schema.update(log_event)
+            |> Schema.update(log_event, source)
           end)
         end
 

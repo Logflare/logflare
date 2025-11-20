@@ -459,41 +459,6 @@ defmodule LogflareWeb.SourceController do
     render(conn, "show_rejected.html", logs: rejected_logs, source: source)
   end
 
-  def toggle_schema_lock(%{assigns: %{source: source}} = conn, _params) do
-    case Sources.update_source(source, %{lock_schema: !source.lock_schema}) do
-      {:ok, source} ->
-        msg = if source.lock_schema, do: "Schema locked!", else: "Schema unlocked!"
-
-        conn
-        |> put_flash(:info, msg)
-        |> redirect(to: Routes.source_path(conn, :edit, source.id))
-
-      {:error, _changeset} ->
-        conn
-        |> put_flash(:error, "Something went wrong. Please contact support if this continues!")
-        |> redirect(to: Routes.source_path(conn, :edit, source.id))
-    end
-  end
-
-  def toggle_schema_validation(%{assigns: %{source: source}} = conn, _params) do
-    case Sources.update_source(source, %{validate_schema: !source.validate_schema}) do
-      {:ok, source} ->
-        msg =
-          if source.validate_schema,
-            do: "Schema validation enabled!",
-            else: "Schema validation disabled!"
-
-        conn
-        |> put_flash(:info, msg)
-        |> redirect(to: Routes.source_path(conn, :edit, source.id))
-
-      {:error, _changeset} ->
-        conn
-        |> put_flash(:error, "Something went wrong. Please contact support if this continues!")
-        |> redirect(to: Routes.source_path(conn, :edit, source.id))
-    end
-  end
-
   defp get_and_encode_logs(%Source{} = source) do
     log_events = Backends.list_recent_logs(source)
 

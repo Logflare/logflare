@@ -150,6 +150,23 @@ defmodule LogflareWeb.SearchLive.EventContextComponentTest do
                }
              ] = EventContextComponent.prepare_lql_rules(source, "user_id:1", timestamp)
     end
+
+    test "prepare_lql_rules/1 handles nil suggested_keys", %{
+      user: user,
+      schema: schema,
+      timestamp: timestamp
+    } do
+      source = insert(:source, user: user, suggested_keys: nil)
+      insert(:source_schema, source: source, bigquery_schema: schema)
+
+      assert [
+               %Logflare.Lql.Rules.FilterRule{
+                 path: "timestamp",
+                 operator: :range,
+                 values: [~U[2025-08-19 02:33:51Z], ~U[2025-08-21 02:33:51Z]]
+               }
+             ] = EventContextComponent.prepare_lql_rules(source, "", timestamp)
+    end
   end
 
   describe "supports legacy  partition types" do

@@ -23,7 +23,8 @@ defmodule Logflare.Backends.Backend do
     loki: Adaptor.LokiAdaptor,
     clickhouse: Adaptor.ClickhouseAdaptor,
     incidentio: Adaptor.IncidentioAdaptor,
-    s3: Adaptor.S3Adaptor
+    s3: Adaptor.S3Adaptor,
+    axiom: Adaptor.AxiomAdaptor
   }
 
   typed_schema "backends" do
@@ -126,7 +127,9 @@ defmodule Logflare.Backends.Backend do
           :id,
           :config,
           :metadata,
-          :default_ingest?
+          :default_ingest?,
+          :inserted_at,
+          :updated_at
         ])
         |> Map.update(:config, %{}, fn config ->
           if function_exported?(adaptor, :redact_config, 1) do

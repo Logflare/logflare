@@ -32,7 +32,7 @@
   </div>
 
   <div :if={@live_action == :new}>
-    {select(f, :type, ["Select a backend type...", Webhook: :webhook, Postgres: :postgres, BigQuery: :bigquery, Datadog: :datadog, Elastic: :elastic, Loki: :loki, ClickHouse: :clickhouse, "Incident.io": :incidentio, S3: :s3],
+    {select(f, :type, ["Select a backend type...", Webhook: :webhook, Postgres: :postgres, BigQuery: :bigquery, Datadog: :datadog, Elastic: :elastic, Loki: :loki, ClickHouse: :clickhouse, "Incident.io": :incidentio, S3: :s3, Axiom: :axiom],
       phx_change: :change_form_type,
       class: "form-control form-control-margin",
       id: "type"
@@ -101,7 +101,7 @@
             <%= label f_config, :pool_size do %>
               Connection pool size
             <% end %>
-            {text_input(f_config, :pool_size, class: "form-control", default: 1)}
+            {text_input(f_config, :pool_size, class: "form-control", value: 1)}
           </div>
           <div class="form-group">
             <%= label f_config, :schema do %>
@@ -211,21 +211,21 @@
           </div>
           <div class="form-group">
             {label(f_config, :database, "Database Name")}
-            {text_input(f_config, :database, class: "form-control", default: "default")}
+            {text_input(f_config, :database, class: "form-control", value: "default")}
             <small class="form-text text-muted">
               The ClickHouse database name where events will be stored.
             </small>
           </div>
           <div class="form-group">
             {label(f_config, :port, "Port")}
-            {text_input(f_config, :port, class: "form-control", default: 8443)}
+            {text_input(f_config, :port, class: "form-control", value: 8443)}
             <small class="form-text text-muted">
               The port number for the ClickHouse server.
             </small>
           </div>
           <div class="form-group">
             {label(f_config, :port, "Connection pool size")}
-            {text_input(f_config, :pool_size, class: "form-control", default: 1)}
+            {text_input(f_config, :pool_size, class: "form-control", value: 1)}
           </div>
         <% "incidentio" -> %>
           <div class="form-group">
@@ -285,16 +285,38 @@
           </div>
           <div class="form-group">
             {label(f_config, :storage_region, "Storage Region")}
-            {text_input(f_config, :storage_region, class: "form-control", default: "us-west-2")}
+            {text_input(f_config, :storage_region, class: "form-control", value: "us-west-2")}
             <small class="form-text text-muted">
               The region where the S3 bucket is located, for example: <code>us-west-2</code>
             </small>
           </div>
           <div class="form-group">
             {label(f_config, :batch_timeout, "Batch Timeout")}
-            {text_input(f_config, :batch_timeout, class: "form-control", type: "number", default: 5_000)}
+            {text_input(f_config, :batch_timeout, class: "form-control", type: "number", value: 5_000)}
             <small class="form-text text-muted">
               The batch timeout in milliseconds.
+            </small>
+          </div>
+        <% "axiom" -> %>
+          <div class="form-group">
+            {label(f_config, :dataset_name, "Dataset name")}
+            {text_input(f_config, :dataset_name, class: "form-control")}
+            <small class="form-text text-muted">
+              The name of the Axiom's dataset to ingest into
+            </small>
+          </div>
+          <div class="form-group">
+            {label(f_config, :api_token, "API Token")}
+            {text_input(f_config, :api_token, class: "form-control")}
+            <small class="form-text text-muted">
+              Axiom API token used for authorization. Requires the dataset ingest capability.
+            </small>
+          </div>
+          <div class="form-group">
+            {label(f_config, :domain, "Axiom Domain")}
+            {text_input(f_config, :domain, class: "form-control", value: "api.axiom.co")}
+            <small class="form-text text-muted">
+              The regionalized Axiom domain, defaults to the domain for the US region
             </small>
           </div>
         <% _ -> %>

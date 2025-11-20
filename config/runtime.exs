@@ -22,7 +22,7 @@ logflare_metadata =
 logflare_health =
   [
     memory_utilization:
-      System.get_env("LOGFLARE_HEALTH_MAX_MEMORY_UTILIZATION", "0.95") |> String.to_float()
+      System.get_env("LOGFLARE_HEALTH_MAX_MEMORY_UTILIZATION", "0.80") |> String.to_float()
   ]
   |> filter_nil_kv_pairs.()
 
@@ -437,7 +437,8 @@ if System.get_env("LOGFLARE_OTEL_ENDPOINT") do
     otlp_headers: [
       {"x-source", System.get_env("LOGFLARE_OTEL_SOURCE_UUID")},
       {"x-api-key", System.get_env("LOGFLARE_OTEL_ACCESS_TOKEN")}
-    ]
+    ],
+    max_batch_size: 250
 end
 
 syn_endpoints_partitions =

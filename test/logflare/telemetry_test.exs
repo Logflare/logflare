@@ -1,6 +1,5 @@
 defmodule Logflare.TelemetryTest do
-  use ExUnit.Case, async: false
-  use Mimic
+  use Logflare.DataCase, async: false
 
   alias Logflare.Telemetry
   alias Logflare.TestUtils

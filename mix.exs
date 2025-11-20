@@ -144,7 +144,7 @@ defmodule Logflare.Mixfile do
 
       # Test
       {:mix_test_watch, "~> 1.0", only: [:dev, :test], runtime: false},
-      {:phoenix_test, "~> 0.7.0", only: :test, runtime: false},
+      {:phoenix_test, "~> 0.8.0", only: :test, runtime: false},
       {:mimic, "~> 2.0", only: [:dev, :test]},
       {:stream_data, "~> 1.2.0", only: [:dev, :test]},
 
@@ -241,7 +241,8 @@ defmodule Logflare.Mixfile do
       {:opentelemetry_exporter, "~> 1.6"},
       {:opentelemetry_phoenix, "~> 2.0.0-rc.2"},
       {:opentelemetry_bandit, "~> 0.2.0-rc.1"},
-      {:otel_metric_exporter, git: "https://github.com/supabase/elixir-otel-metric-exporter"},
+      {:otel_metric_exporter,
+       git: "https://github.com/supabase/elixir-otel-metric-exporter", ref: "61e2d37"},
       {:live_monaco_editor, "~> 0.2"}
     ]
   end

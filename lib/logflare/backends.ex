@@ -16,7 +16,6 @@ defmodule Logflare.Backends do
   alias Logflare.ContextCache
   alias Logflare.Cluster
   alias Logflare.LogEvent
-  alias Logflare.Logs
   alias Logflare.Logs.SourceRouting
   alias Logflare.PubSubRates
   alias Logflare.Repo
@@ -25,6 +24,7 @@ defmodule Logflare.Backends do
   alias Logflare.Sources
   alias Logflare.Sources.Counters
   alias Logflare.SystemMetrics
+  alias Logflare.Rules.Rule
   alias Logflare.User
 
   defdelegate child_spec(arg), to: __MODULE__.Supervisor
@@ -490,30 +490,42 @@ defmodule Logflare.Backends do
     |> Enum.reduce({[], []}, fn param, {events, errors} ->
       param
       |> case do
-        %LogEvent{source: %Source{}} = le ->
-          le
+        %LogEvent{source_id: nil} = le ->
+          %{le | source_id: source.id}
 
         %LogEvent{} = le ->
-          %{le | source: source}
+          le
 
         param ->
           LogEvent.make(param, %{source: source})
       end
-      |> Logs.maybe_mark_le_dropped_by_lql()
-      |> LogEvent.apply_custom_event_message()
+      |> maybe_mark_le_dropped_by_lql(source)
+      |> LogEvent.apply_custom_event_message(source)
       |> case do
-        %{drop: true} = le ->
-          do_telemetry(:drop, le)
+        %{drop: true} ->
+          do_telemetry(:drop, source)
           {events, errors}
 
-        %{pipeline_error: %_{message: message}, valid: false} = le ->
-          do_telemetry(:invalid, le)
+        %{pipeline_error: %_{message: message}, valid: false} ->
+          do_telemetry(:invalid, source)
           {events, [message | errors]}
 
         le ->
           {[le | events], errors}
       end
     end)
+  end
+
+  defp maybe_mark_le_dropped_by_lql(%LogEvent{} = le, %Source{drop_lql_string: nil}), do: le
+  defp maybe_mark_le_dropped_by_lql(%LogEvent{} = le, %Source{drop_lql_string: ""}), do: le
+  defp maybe_mark_le_dropped_by_lql(%LogEvent{} = le, %Source{drop_lql_filters: []}), do: le
+
+  defp maybe_mark_le_dropped_by_lql(%LogEvent{} = le, %Source{drop_lql_filters: filters}) do
+    if SourceRouting.route_with_lql_rules?(le, %Rule{lql_filters: filters}) do
+      %{le | drop: true}
+    else
+      le
+    end
   end
 
   defp increment_counters(source, count) do
@@ -527,7 +539,7 @@ defmodule Logflare.Backends do
       Source.ChannelTopics.broadcast_new(log_events)
     end
 
-    SourceRouting.route_to_sinks_and_ingest(log_events)
+    SourceRouting.route_to_sinks_and_ingest(log_events, source)
 
     :ok
   end
@@ -664,7 +676,7 @@ defmodule Logflare.Backends do
   def start_source_sup(%Source{} = source) do
     case DynamicSupervisor.start_child(
            {:via, PartitionSupervisor, {SourcesSup, source.id}},
-           {SourceSup, source}
+           SourceSup.child_spec(source)
          ) do
       {:ok, _pid} ->
         :ok
@@ -916,19 +928,19 @@ defmodule Logflare.Backends do
     end
   end
 
-  defp do_telemetry(:drop, le) do
+  defp do_telemetry(:drop, source) do
     :telemetry.execute(
       [:logflare, :logs, :ingest_logs],
       %{drop: true},
-      %{source_id: le.source.id, source_token: le.source.token}
+      %{source_id: source.id, source_token: source.token}
     )
   end
 
-  defp do_telemetry(:invalid, le) do
+  defp do_telemetry(:invalid, source) do
     :telemetry.execute(
       [:logflare, :logs, :ingest_logs],
       %{rejected: true},
-      %{source_id: le.source.id, source_token: le.source.token}
+      %{source_id: source.id, source_token: source.token}
     )
   end
 end

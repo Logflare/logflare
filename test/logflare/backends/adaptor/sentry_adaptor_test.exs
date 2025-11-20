@@ -259,7 +259,15 @@ defmodule Logflare.Backends.Adaptor.SentryAdaptorTest do
           float_field: 3.14,
           boolean_field: true,
           list_field: [1, 2, 3],
-          map_field: %{"nested" => "value"}
+          metadata: %{
+            "project" => "testing_123",
+            "level" => "info",
+            "region" => "us-west-1",
+            "context" => %{
+              "application" => "realtime",
+              "module" => "Elixir.Realtime.Telemetry.Logger"
+            }
+          }
         )
       ]
 
@@ -279,11 +287,12 @@ defmodule Logflare.Backends.Adaptor.SentryAdaptorTest do
       assert attributes["integer_field"] == %{"type" => "integer", "value" => 42}
       assert attributes["float_field"] == %{"type" => "double", "value" => 3.14}
       assert attributes["boolean_field"] == %{"type" => "boolean", "value" => true}
-      assert attributes["list_field"] == %{"type" => "string", "value" => "[1, 2, 3]"}
+      assert attributes["list_field"] == %{"type" => "string", "value" => "[1,2,3]"}
 
-      assert attributes["map_field"] == %{
+      assert attributes["metadata"] == %{
                "type" => "string",
-               "value" => "%{\"nested\" => \"value\"}"
+               "value" =>
+                 "{\"context\":{\"application\":\"realtime\",\"module\":\"Elixir.Realtime.Telemetry.Logger\"},\"level\":\"info\",\"project\":\"testing_123\",\"region\":\"us-west-1\"}"
              }
     end
   end

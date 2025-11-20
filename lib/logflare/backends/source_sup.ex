@@ -20,12 +20,23 @@ defmodule Logflare.Backends.SourceSup do
   alias Logflare.Rules.Rule
   alias Logflare.Sources
   alias Logflare.Backends.AdaptorSupervisor
+  alias Logflare.Backends.UserMonitoring
+
+  def child_spec(%Source{id: id} = arg) do
+    %{
+      id: {__MODULE__, id},
+      start: {__MODULE__, :start_link, [arg]},
+      restart: :transient
+    }
+  end
 
   def start_link(%Source{} = source) do
     Supervisor.start_link(__MODULE__, source, name: Backends.via_source(source, __MODULE__))
   end
 
   def init(source) do
+    source = Sources.Cache.preload_rules(source)
+
     ingest_backends = Backends.Cache.list_backends(source_id: source.id)
 
     rules_backends =
@@ -44,6 +55,8 @@ defmodule Logflare.Backends.SourceSup do
       |> Enum.map(&Backend.child_spec(source, &1))
       |> Enum.uniq()
 
+    otel_exporter = maybe_get_otel_exporter(source, user)
+
     children =
       [
         {RateCounterServer, [source: source]},
@@ -55,10 +68,16 @@ defmodule Logflare.Backends.SourceSup do
         {SlackHookServer, [source: source]},
         {BillingWriter, [source: source]},
         {SourceSupWorker, [source: source]}
-      ] ++ specs
+      ] ++ otel_exporter ++ specs
 
     Supervisor.init(children, strategy: :one_for_one)
   end
+
+  defp maybe_get_otel_exporter(%{system_source_type: :metrics} = source, user),
+    do: UserMonitoring.get_otel_exporter(source, user)
+
+  defp maybe_get_otel_exporter(_, _),
+    do: []
 
   @doc """
   Checks if a rule child is started for a given source/rule.

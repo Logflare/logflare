@@ -163,15 +163,13 @@ defmodule Logflare.DataCase do
   """
   def cleanup_clickhouse_tables({source, backend}) do
     table_names = [
-      Logflare.Backends.Adaptor.ClickhouseAdaptor.clickhouse_ingest_table_name(source),
-      Logflare.Backends.Adaptor.ClickhouseAdaptor.clickhouse_key_count_table_name(source),
-      Logflare.Backends.Adaptor.ClickhouseAdaptor.clickhouse_materialized_view_name(source)
+      Logflare.Backends.Adaptor.ClickhouseAdaptor.clickhouse_ingest_table_name(source)
     ]
 
     for table_name <- table_names do
       try do
-        Logflare.Backends.Adaptor.ClickhouseAdaptor.execute_ch_ingest_query(
-          {source, backend},
+        Logflare.Backends.Adaptor.ClickhouseAdaptor.execute_ch_query(
+          backend,
           "DROP TABLE IF EXISTS #{table_name}"
         )
       rescue

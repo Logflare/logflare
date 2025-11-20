@@ -18,10 +18,12 @@ defmodule Logflare.Sources do
   alias Logflare.SavedSearch
   alias Logflare.SingleTenant
   alias Logflare.SourceSchemas
+  alias Logflare.Sources
   alias Logflare.Sources.Source
   alias Logflare.Sources.Source.BigQuery.SchemaBuilder
   alias Logflare.User
   alias Logflare.Users
+  alias Logflare.LogEvent
   alias Number.Delimit
 
   require Logger
@@ -45,6 +47,18 @@ defmodule Logflare.Sources do
     |> Enum.map(&put_retention_days/1)
   end
 
+  @spec list_system_sources_by_user(User.t()) :: [Source.t()]
+  def list_system_sources_by_user(%User{id: user_id}), do: list_system_sources_by_user(user_id)
+
+  def list_system_sources_by_user(user_id) do
+    from(
+      s in Source,
+      where: s.user_id == ^user_id and s.system_source == true
+    )
+    |> Repo.all()
+    |> Enum.map(&put_retention_days/1)
+  end
+
   @doc """
   Lists sources based on provided filters.
   """
@@ -64,6 +78,9 @@ defmodule Logflare.Sources do
 
       {:default_ingest_backend_enabled?, enabled}, q when is_boolean(enabled) ->
         where(q, [s], s.default_ingest_backend_enabled? == ^enabled)
+
+      {:system_source, value}, q when is_boolean(value) ->
+        where(q, [s], s.system_source == ^value)
 
       _, q ->
         q
@@ -111,6 +128,49 @@ defmodule Logflare.Sources do
     Source.Supervisor.start_source(source.token)
 
     {:ok, source}
+  end
+
+  @doc "
+  Create system sources for the user, if they don't exist yet
+  "
+  def create_user_system_sources(user_id) do
+    entries =
+      for type <- Source.system_source_types() do
+        now = NaiveDateTime.utc_now() |> NaiveDateTime.truncate(:second)
+
+        %{
+          user_id: user_id,
+          name: "system.#{type}",
+          system_source: true,
+          system_source_type: type,
+          favorite: true,
+          token: Ecto.UUID.Atom.autogenerate(),
+          inserted_at: now,
+          updated_at: now
+        }
+      end
+
+    Repo.insert_all(Source, entries,
+      returning: true,
+      conflict_target: [:user_id, :system_source_type],
+      on_conflict: :nothing
+    )
+
+    list_system_sources_by_user(user_id)
+    |> warn_missing_system_sources(user_id)
+  end
+
+  defp warn_missing_system_sources(sources, user_id) do
+    created_sources_types = Enum.map(sources, & &1.system_source_type)
+
+    Source.system_source_types()
+    |> Enum.each(fn type ->
+      if type not in created_sources_types do
+        Logger.warning("System source `#{type}` for user #{user_id} was not created")
+      end
+    end)
+
+    sources
   end
 
   @doc """
@@ -481,5 +541,95 @@ defmodule Logflare.Sources do
       round(GenUtils.default_table_ttl_days()),
       round(ttl / :timer.hours(24))
     )
+  end
+
+  @doc """
+  Shuts down idle source supervisors across the cluster.
+
+  This function checks all running SourceSup processes and shuts down those that are idle
+  (no ingest activity and no pending items in their backend queues).
+  """
+  @spec shutdown_idle_sources() :: :ok
+  def shutdown_idle_sources do
+    Sources.Cache
+    |> Cachex.stream!()
+    |> Stream.filter(fn
+      # Filter for get_by calls that return a Source struct with an id
+      {:entry, {:get_by, _args}, {:cached, %Source{id: id} = source}, _ts, _ttl}
+      when is_integer(id) ->
+        Backends.source_sup_started?(id) and source_idle?(source)
+
+      _val ->
+        false
+    end)
+    |> Stream.map(fn {:entry, {:get_by, _}, {:cached, %Source{id: id}}, _ts, _ttl} -> id end)
+    |> Stream.uniq()
+    |> Enum.to_list()
+    |> then(fn
+      [] ->
+        []
+
+      source_ids ->
+        Logger.debug("Shutting down #{Enum.count(source_ids)} idle sources")
+
+        source_ids
+    end)
+    |> Task.async_stream(
+      fn source_id ->
+        source = Sources.Cache.get_by_id(source_id)
+        Source.Supervisor.stop_source_local(source)
+      end,
+      max_concurrency: 3,
+      timeout: 30_000,
+      on_timeout: :kill_task
+    )
+    |> Stream.run()
+
+    :ok
+  end
+
+  defp source_idle?(source) do
+    metrics = get_source_metrics_for_ingest(source)
+    total_pending = calculate_total_pending(source)
+    has_recent_logs = has_recent_logs_within?(source, 5)
+
+    metrics.avg == 0 and total_pending == 0 and not has_recent_logs
+  end
+
+  @spec calculate_total_pending(Source.t()) :: non_neg_integer()
+  defp calculate_total_pending(%Source{id: source_id} = source) do
+    # Get all backends for this source, including default backend
+    user = Users.Cache.get(source.user_id)
+    default_backend = Backends.get_default_backend(user)
+
+    ingest_backends = Backends.Cache.list_backends(source_id: source.id)
+
+    rules_backends =
+      Backends.Cache.list_backends(rules_source_id: source.id)
+      |> Enum.map(&%{&1 | register_for_ingest: false})
+
+    all_backends = [default_backend | ingest_backends] ++ rules_backends
+
+    # Sum pending items across all backends
+    all_backends
+    |> Enum.reduce(0, fn backend, acc ->
+      case Backends.IngestEventQueue.total_pending({source_id, backend.id}) do
+        {:error, :not_initialized} -> acc
+        count -> acc + count
+      end
+    end)
+  end
+
+  @spec has_recent_logs_within?(Source.t(), non_neg_integer()) :: boolean()
+  defp has_recent_logs_within?(%Source{} = source, minutes) when is_integer(minutes) do
+    cutoff_time = NaiveDateTime.utc_now() |> NaiveDateTime.add(-minutes * 60, :second)
+
+    case Backends.list_recent_logs_local(source, 1) do
+      [] ->
+        false
+
+      [%LogEvent{ingested_at: ingested_at} | _] ->
+        NaiveDateTime.compare(ingested_at, cutoff_time) == :gt
+    end
   end
 end

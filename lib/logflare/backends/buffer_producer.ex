@@ -165,6 +165,7 @@ defmodule Logflare.Backends.BufferProducer do
 
       {:ok, events} ->
         {:ok, _} = IngestEventQueue.mark_ingested(sid_bid_pid, events)
+
         events
     end
   end

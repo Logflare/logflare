@@ -198,7 +198,7 @@ defmodule LogflareWeb.SearchLive.EventContextComponent do
       |> String.split(",")
 
     suggested_keys =
-      source.suggested_keys
+      (source.suggested_keys || "")
       |> String.split(",")
       |> Enum.map(fn
         "m." <> suggested_field -> "metadata." <> suggested_field

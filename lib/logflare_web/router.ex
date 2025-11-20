@@ -86,6 +86,7 @@ defmodule LogflareWeb.Router do
 
     plug(:accepts, ["json", "protobuf"])
     plug(LogflareWeb.Plugs.SetHeaders)
+    plug(LogflareWeb.Plugs.BlockSystemSource)
   end
 
   pipeline :require_endpoint_auth do
@@ -506,6 +507,7 @@ defmodule LogflareWeb.Router do
   for path <- ["/logs", "/api/logs", "/api/events"] do
     scope path, LogflareWeb, assigns: %{resource_type: :source} do
       pipe_through([:api, :require_ingest_api_auth])
+
       post("/", LogController, :create)
       options("/", LogController, :create)
       post("/browser/reports", LogController, :browser_reports)

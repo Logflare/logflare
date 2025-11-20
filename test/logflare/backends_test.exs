@@ -969,10 +969,10 @@ defmodule Logflare.BackendsTest do
       Benchee.run(
         %{
           "with rules" => fn ->
-            SourceRouting.route_to_sinks_and_ingest(batch1)
+            SourceRouting.route_to_sinks_and_ingest(batch1, source1)
           end,
           "100 rules" => fn ->
-            SourceRouting.route_to_sinks_and_ingest(batch2)
+            SourceRouting.route_to_sinks_and_ingest(batch2, source2)
           end
         },
         time: 3,
@@ -995,7 +995,7 @@ defmodule Logflare.BackendsTest do
     user = insert(:user)
     source = insert(:source, user: user)
     backend = insert(:backend, user: user)
-    {:ok, tid} = IngestEventQueue.upsert_tid({source.id, backend.id})
+    {:ok, tid} = IngestEventQueue.upsert_tid({source.id, backend.id, nil})
     sb = {source.id, backend.id}
 
     Benchee.run(

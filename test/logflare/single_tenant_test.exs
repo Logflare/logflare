@@ -140,7 +140,7 @@ defmodule Logflare.SingleTenantTest do
     TestUtils.setup_single_tenant(seed_user: true, supabase_mode: true)
 
     setup do
-      stub(Schema, :update, fn _token, _le -> :ok end)
+      stub(Schema, :update, fn _token, _le, _source -> :ok end)
       :ok
     end
 
@@ -154,7 +154,7 @@ defmodule Logflare.SingleTenantTest do
     end
 
     test "startup tasks inserts log sources/endpoints" do
-      expect(Schema, :update, 9, fn _source_token, _log_event -> :ok end)
+      expect(Schema, :update, 9, fn _source_token, _log_event, _source -> :ok end)
 
       SingleTenant.create_supabase_sources()
       SingleTenant.create_supabase_endpoints()
@@ -237,7 +237,7 @@ defmodule Logflare.SingleTenantTest do
     )
 
     setup do
-      stub(Schema, :update, fn _token, _le -> :ok end)
+      stub(Schema, :update, fn _token, _le, _source -> :ok end)
       :ok
     end
 
@@ -251,7 +251,7 @@ defmodule Logflare.SingleTenantTest do
     end
 
     test "startup tasks inserts log sources/endpoints" do
-      expect(Schema, :update, 9, fn _source_token, _log_event -> :ok end)
+      expect(Schema, :update, 9, fn _source_token, _log_event, _source -> :ok end)
 
       SingleTenant.create_supabase_sources()
       SingleTenant.create_supabase_endpoints()

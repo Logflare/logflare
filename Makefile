@@ -409,4 +409,7 @@ $(addprefix ssl.,${envs}): ssl.%:
 		-nodes -subj "/C=US/ST=DE/O=Supabase/OU=Logflare/CN=$(CERT_DOMAIN)"
 
 
-.PHONY: $(addprefix ssl.,${envs})
+docker.multi-step:
+	docker-compose build base runner
+
+.PHONY: $(addprefix ssl.,${envs}) docker.build.multistep

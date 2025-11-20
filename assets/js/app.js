@@ -1,4 +1,6 @@
 import "../css/app.scss";
+import "phoenix"
+import "phoenix_html"
 import { Socket } from "phoenix";
 import "../css/tailwind.css";
 

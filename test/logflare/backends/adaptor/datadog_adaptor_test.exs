@@ -51,17 +51,25 @@ defmodule Logflare.Backends.Adaptor.DatadogAdaptorTest do
     setup do
       user = insert(:user)
       source = insert(:source, user: user)
+      source_with_service_name = insert(:source, user: user, service_name: "some name")
 
       backend =
         insert(:backend,
           type: :datadog,
-          sources: [source],
+          sources: [source, source_with_service_name],
           config: %{api_key: "foo-bar", region: "US1"}
         )
 
-      start_supervised!({AdaptorSupervisor, {source, backend}})
+      start_supervised!({AdaptorSupervisor, {source, backend}}, id: :source1)
+      start_supervised!({AdaptorSupervisor, {source_with_service_name, backend}}, id: :source2)
       :timer.sleep(500)
-      [backend: backend, source: source]
+
+      [
+        backend: backend,
+        source: source,
+        source_with_service_name: source_with_service_name,
+        user: user
+      ]
     end
 
     test "sent logs are delivered", %{source: source} do
@@ -96,7 +104,7 @@ defmodule Logflare.Backends.Adaptor.DatadogAdaptorTest do
       assert_receive ^ref, 2000
     end
 
-    test "service field is set to source.service_name", %{source: source} do
+    test "service field is set to source.service_name", %{source_with_service_name: source} do
       this = self()
       ref = make_ref()
 
@@ -106,11 +114,11 @@ defmodule Logflare.Backends.Adaptor.DatadogAdaptorTest do
         %Tesla.Env{status: 200, body: ""}
       end)
 
-      le = build(:log_event, source: %{source | service_name: "some name"})
+      le = build(:log_event, source: source)
 
       assert {:ok, _} = Backends.ingest_logs([le], source)
       assert_receive {^ref, [log_entry]}, 2000
-      assert log_entry["service"] == "some name"
+      assert log_entry["service"] == source.service_name
     end
 
     test "service field falls back to source name", %{source: source} do

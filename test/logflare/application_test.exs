@@ -15,7 +15,7 @@ defmodule Logflare.ApplicationTest do
       end)
     end
 
-    defp get_pools, do: apply(Logflare.Application, :datadog_connection_pools, [])
+    defp get_pools, do: apply(Logflare.Networking, :datadog_connection_pools, [])
 
     test "returns all datadog pools for default and 'all' configs" do
       for config <- [nil, ["all"]] do

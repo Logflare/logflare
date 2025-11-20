@@ -1,0 +1,39 @@
+ARG ELIXIR_VERSION=1.17.3
+ARG OTP_VERSION=27.3.4.3
+ARG DEBIAN_VERSION=trixie-20250908-slim
+
+ARG BUILDER_IMAGE="hexpm/elixir:${ELIXIR_VERSION}-erlang-${OTP_VERSION}-debian-${DEBIAN_VERSION}"
+
+FROM ${BUILDER_IMAGE} AS builder
+
+ENV MIX_ENV=prod
+
+WORKDIR /app
+
+# install build dependencies
+RUN apt-get update -y && apt-get install -y curl bash build-essential git gcc make && \
+    # install nodejs
+    curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && \
+    apt-get install -y nodejs && \
+    # install rust
+    curl https://sh.rustup.rs -sSf | bash -s -- -y && \
+    # cleanup
+    apt-get clean && rm -f /var/lib/apt/lists/*_*
+
+# app dependencies
+COPY ./VERSION mix.exs mix.lock ./
+RUN mix do local.rebar --force, local.hex --force, deps.get, deps.compile
+
+COPY assets/package.json assets/package-lock.json assets/
+RUN npm --prefix assets ci
+
+COPY config/config.exs config/
+COPY config/prod.exs config/
+COPY config/runtime.exs config/
+COPY . ./
+
+# rust bin path
+ENV PATH="/root/.cargo/bin:${PATH}"
+
+# check installed correctly
+RUN cargo version

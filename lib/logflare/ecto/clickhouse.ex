@@ -281,9 +281,16 @@ defmodule Logflare.Ecto.ClickHouse do
   defp process_single_param(value, _type_or_field, param_idx, acc, transforms, offset) do
     param_ix = acc.next_ix + offset
     acc = %{acc | values: Map.put(acc.values, param_ix, value)}
-    # Track the remapping from local param_idx to global param_ix
     transforms = Map.put(transforms, param_idx, param_ix)
     {acc, transforms, offset + 1}
+  end
+
+  defp transform_in_params({:^, meta, [ix]}, transforms) do
+    case Map.get(transforms, ix) do
+      new_ix when is_integer(new_ix) -> {:^, meta, [new_ix]}
+      {new_ix, _len} -> {:^, meta, [new_ix]}
+      nil -> {:^, meta, [ix]}
+    end
   end
 
   defp transform_in_params({:in, meta, [left, {:^, param_meta, [ix]}]}, transforms) do
@@ -463,13 +470,6 @@ defmodule Logflare.Ecto.ClickHouse do
         [expr(v, sources, params, query), " AS " | Naming.quote_name(k)]
 
       v when is_list(v) ->
-        # TODO: Review this list handling in SELECT clause.
-        # Issue: select([t], [t.field1, t.field2, t.field3]) was being treated as an array literal
-        # by expr/4 (line 986), causing ClickHouse error:
-        # "There is no supertype for types DateTime64(6), UUID, String"
-        # This fix treats list selects as multiple columns (comma-separated), not array literals.
-        # However, we need to verify this doesn't break legitimate array literal selects.
-        # PostgreSQL/BigQuery Ecto adapter likely handles this differently.
         Helpers.intersperse_map(v, ?,, &expr(&1, sources, params, query))
 
       v ->

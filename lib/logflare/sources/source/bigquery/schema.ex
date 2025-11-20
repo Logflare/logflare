@@ -24,12 +24,17 @@ defmodule Logflare.Sources.Source.BigQuery.Schema do
   def start_link(args) when is_list(args) do
     {name, args} = Keyword.pop(args, :name)
 
-    GenServer.start_link(__MODULE__, args, name: name, hibernate_after: 5_000)
+    GenServer.start_link(__MODULE__, args,
+      name: name,
+      hibernate_after: 5_000,
+      spawn_opt: [fullsweep_after: 500]
+    )
   end
 
-  @spec update(atom(), LogEvent.t()) :: :ok
-  def update(pid, %LogEvent{} = log_event) when is_pid(pid) or is_tuple(pid) do
-    GenServer.cast(pid, {:update, log_event})
+  @spec update(atom(), LogEvent.t(), Source.t()) :: :ok
+  def update(pid, %LogEvent{} = log_event, %Source{} = source)
+      when is_pid(pid) or is_tuple(pid) do
+    GenServer.cast(pid, {:update, log_event, source})
   end
 
   # GenServer callbacks
@@ -62,19 +67,19 @@ defmodule Logflare.Sources.Source.BigQuery.Schema do
   end
 
   def handle_cast(
-        {:update, %LogEvent{source: %Source{lock_schema: true}}},
+        {:update, %LogEvent{}, %Source{lock_schema: true}},
         state
       ),
       do: {:noreply, state}
 
   def handle_cast(
-        {:update, %LogEvent{}},
+        {:update, %LogEvent{}, _source},
         %{field_count: fc, field_count_limit: limit} = state
       )
       when fc > limit,
       do: {:noreply, state}
 
-  def handle_cast({:update, %LogEvent{body: body, id: event_id}}, state) do
+  def handle_cast({:update, %LogEvent{body: body, id: event_id}, _source}, state) do
     LogflareLogger.context(source_id: state.source_token, log_event_id: event_id)
 
     source_schema = SourceSchemas.Cache.get_source_schema_by(source_id: state.source_id)

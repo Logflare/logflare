@@ -68,6 +68,7 @@ defmodule LogflareWeb.Api.AccessTokenController do
       {:get, nil} -> {:error, :not_found}
       # don't reveal that the token exists
       {:owner, false} -> {:error, :not_found}
+      {:error, _} = err -> err
     end
   end
 

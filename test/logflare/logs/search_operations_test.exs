@@ -55,7 +55,7 @@ defmodule Logflare.Logs.SearchOperationsTest do
            bigquery_dataset_id: "some-dataset"}
         )
 
-      Schema.update(pid, build(:log_event, metadata: %{"level" => "value"}))
+      Schema.update(pid, build(:log_event, metadata: %{"level" => "value"}), so.source)
 
       TestUtils.retry_assert(fn ->
         Cachex.clear(Logflare.SourceSchemas.Cache)

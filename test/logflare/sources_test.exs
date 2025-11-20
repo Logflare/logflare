@@ -10,6 +10,8 @@ defmodule Logflare.SourcesTest do
   alias Logflare.Backends
   alias Logflare.Users
   alias Logflare.Sources.Source.BigQuery.Schema
+  alias Logflare.Backends.SourceRegistry
+  alias Logflare.Backends.SourceSup
 
   describe "create_source/2" do
     setup do
@@ -306,6 +308,68 @@ defmodule Logflare.SourcesTest do
     assert Sources.ingest_ets_tables_started?()
   end
 
+  describe "shutdown_idle_sources/0" do
+    setup do
+      insert(:plan)
+      user = insert(:user)
+      source = insert(:source, user: user)
+      Sources.Cache.get_by_id(source.id)
+      :ok = Backends.start_source_sup(source)
+      {:ok, source: source, user: user}
+    end
+
+    test "shuts down sources with 0 avg rate and 0 pending items", %{source: source} do
+      # Add a 10-minute old event
+      ten_minutes_ago = DateTime.utc_now() |> DateTime.add(-10 * 60, :second)
+      old_event = build(:log_event, source: source, ingested_at: ten_minutes_ago)
+      Backends.IngestEventQueue.add_to_table({source.id, nil, nil}, [old_event])
+      Backends.IngestEventQueue.mark_ingested({source.id, nil, nil}, [old_event])
+
+      TestUtils.retry_assert(fn ->
+        assert Backends.source_sup_started?(source)
+        assert Sources.get_source_metrics_for_ingest(source).avg == 0
+        assert [_event] = Backends.list_recent_logs_local(source, 1)
+      end)
+
+      :ok = Sources.shutdown_idle_sources()
+
+      TestUtils.retry_assert(fn ->
+        refute Backends.source_sup_started?(source)
+      end)
+    end
+
+    test "does NOT shut down sources with active ingest", %{source: source} do
+      Logflare.Sources.Counters.increment(source.token, 1)
+      Logflare.Sources.Source.RateCounterServer.handle_info(:put_rate, source.token)
+
+      assert Sources.get_source_metrics_for_ingest(source).avg > 0
+
+      :ok = Sources.shutdown_idle_sources()
+      assert Backends.source_sup_started?(source)
+    end
+
+    test "does NOT shut down sources with pending items", %{source: source} do
+      event = build(:log_event, source: source)
+      Backends.IngestEventQueue.add_to_table({source.id, nil}, [event])
+      assert Backends.source_sup_started?(source)
+      :ok = Sources.shutdown_idle_sources()
+      assert Backends.source_sup_started?(source)
+    end
+
+    test "does NOT shut down sources with recent logs within 5 minutes", %{source: source} do
+      event = build(:log_event, source: source, ingested_at: DateTime.utc_now())
+      Backends.IngestEventQueue.add_to_table({source.id, nil, nil}, [event])
+      Backends.IngestEventQueue.mark_ingested({source.id, nil, nil}, [event])
+
+      TestUtils.retry_assert(fn ->
+        assert [_event] = Backends.list_recent_logs_local(source, 1)
+      end)
+
+      :ok = Sources.shutdown_idle_sources()
+      assert Backends.source_sup_started?(source)
+    end
+  end
+
   describe "list_sources/1" do
     setup do
       insert(:plan)
@@ -395,6 +459,42 @@ defmodule Logflare.SourcesTest do
       result_ids = Enum.map(results, & &1.id) |> Enum.sort()
       expected_ids = [source1.id, source2.id] |> Enum.sort()
       assert result_ids == expected_ids
+    end
+  end
+
+  describe "stop_source_local/1" do
+    setup do
+      insert(:plan)
+      user = insert(:user)
+      source = insert(:source, user_id: user.id)
+      {:ok, source: source}
+    end
+
+    test "stops SourceSup and doesn't restart", %{source: source} do
+      assert :ok = Backends.start_source_sup(source)
+      assert {:ok, pid} = Backends.lookup(SourceSup, source)
+      assert [{^pid, _}] = Registry.lookup(SourceRegistry, {source.id, SourceSup})
+
+      assert :ok = Source.Supervisor.stop_source_local(source)
+      Process.sleep(100)
+
+      refute Process.alive?(pid)
+      assert [] = Registry.lookup(SourceRegistry, {source.id, SourceSup})
+      assert {:error, :not_started} = Backends.lookup(SourceSup, source)
+    end
+
+    test "abnormal exit restarts SourceSup", %{source: source} do
+      assert :ok = Backends.start_source_sup(source)
+      assert {:ok, pid} = Backends.lookup(SourceSup, source)
+
+      Logflare.Utils.try_to_stop_process(pid, :abnormal)
+
+      refute Process.alive?(pid)
+
+      TestUtils.retry_assert(fn ->
+        assert {:ok, pid2} = Backends.lookup(SourceSup, source)
+        assert pid != pid2
+      end)
     end
   end
 end

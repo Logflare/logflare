@@ -1,0 +1,78 @@
+name: Integration Tests with Supabase
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'config/**'
+      - 'assets/**'
+      - 'lib/**'
+      - 'priv/**'
+      - 'mix.exs'
+      - 'mix.lock'
+      - 'Dockerfile'
+      - 'run.sh'
+      - 'test/e2e/supabase/**'
+      - '.github/workflows/integration-supabase.yml'
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'config/**'
+      - 'assets/**'
+      - 'lib/**'
+      - 'priv/**'
+      - 'mix.exs'
+      - 'mix.lock'
+      - 'Dockerfile'
+      - 'run.sh'
+      - 'test/e2e/supabase/**'
+      - '.github/workflows/integration-supabase.yml'
+
+# Cancel old builds on new commit for same workflow + branch/PR
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    working-directory: test/e2e/supabase
+
+jobs:
+  test:
+    timeout-minutes: 15
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+    - uses: actions/setup-node@v4
+      with:
+        node-version: lts/*
+        cache: npm
+        cache-dependency-path: test/e2e/supabase/package-lock.json
+
+    - name: Setup Supabase services
+      run: bash ./setup-supabase-services.sh
+
+    - name: Install dependencies
+      run: npm ci
+
+    - name: Install Playwright Browsers
+      run: npx playwright install --with-deps
+
+    - name: Run Playwright tests (all browsers)
+      if: ${{ github.event_name != 'pull_request' }}
+      run: npx playwright test
+
+    - name: Run Playwright tests (only Chromium)
+      if: ${{ github.event_name == 'pull_request' }}
+      run: npx playwright test --project chromium
+
+    - uses: actions/upload-artifact@v4
+      if: ${{ !cancelled() }}
+      with:
+        name: playwright-report
+        path: playwright-report/
+        retention-days: 30

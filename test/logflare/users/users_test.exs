@@ -119,6 +119,22 @@ defmodule Logflare.UsersTest do
       {:ok, _user} = Users.update_user_allowed(user, %{"email_preferred" => nil})
       assert Users.get_by(api_key: u1.api_key).email_preferred == nil
     end
+
+    test "can create system sources and update cache info", %{user: user} do
+      {:ok, user} = Users.update_user_allowed(user, %{"system_monitoring" => true})
+
+      system_sources = Sources.list_system_sources_by_user(user)
+
+      assert Enum.any?(system_sources, &(&1.system_source_type == :metrics))
+      assert Enum.any?(system_sources, &(&1.system_source_type == :logs))
+      assert Enum.any?(system_sources, &(&1.system_source_type == :rejected_events))
+
+      assert Users.Cache.get(user.id).system_monitoring
+
+      Users.update_user_allowed(user, %{"system_monitoring" => false})
+
+      refute Users.Cache.get(user.id).system_monitoring
+    end
   end
 
   describe "insert_user/1" do

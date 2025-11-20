@@ -1,0 +1,111 @@
+name: Docker Base Runner Daily Build
+
+on:
+  schedule:
+    - cron: '0 2 * * *'  # Daily at 2 AM UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  settings:
+    runs-on: ubuntu-latest
+    outputs:
+      short_sha: ${{steps.env.outputs.short_sha}}
+    steps:
+      - uses: actions/checkout@v3
+      - name: Setup outputs
+        id: env
+        run: |
+          echo "short_sha=$(git rev-parse --short=7 HEAD)" >> "$GITHUB_OUTPUT"
+
+  build_base:
+    needs: settings
+    strategy:
+      matrix:
+        include:
+          - runner: [self-hosted, X64]
+            arch: amd64
+          - runner: arm-runner
+            arch: arm64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v3
+      - run: docker context create builders
+      - uses: docker/setup-buildx-action@v2
+        with:
+          endpoint: builders
+      - name: Login to DockerHub
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - id: build
+        uses: docker/build-push-action@v3
+        with:
+          file: ./Dockerfile.base
+          push: true
+          tags: supabase/logflare:base-${{ needs.settings.outputs.short_sha }}-${{ matrix.arch }}
+          platforms: linux/${{ matrix.arch }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  build_runner:
+    needs: settings
+    strategy:
+      matrix:
+        include:
+          - runner: [self-hosted, X64]
+            arch: amd64
+          - runner: arm-runner
+            arch: arm64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v3
+      - run: docker context create builders
+      - uses: docker/setup-buildx-action@v2
+        with:
+          endpoint: builders
+      - name: Login to DockerHub
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - id: build
+        uses: docker/build-push-action@v3
+        with:
+          file: ./Dockerfile.runner
+          push: true
+          tags: supabase/logflare:runner-${{ needs.settings.outputs.short_sha }}-${{ matrix.arch }}
+          platforms: linux/${{ matrix.arch }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  merge_publish:
+    needs:
+      - settings
+      - build_base
+      - build_runner
+    runs-on: ubuntu-latest
+    steps:
+      - uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - name: Setup tags
+        run: |
+          echo "base_tag_amd64=supabase/logflare:base-amd64" >> "$GITHUB_ENV"
+          echo "base_tag_arm64=supabase/logflare:base-arm64" >> "$GITHUB_ENV"
+          echo "runner_tag_amd64=supabase/logflare:runner-amd64" >> "$GITHUB_ENV"
+          echo "runner_tag_arm64=supabase/logflare:runner-arm64" >> "$GITHUB_ENV"
+      - name: Merge multi-arch manifests for base image
+        run: |
+          docker buildx imagetools create -t supabase/logflare:base \
+          ${{ env.base_tag_amd64 }} ${{ env.base_tag_arm64 }}
+      - name: Merge multi-arch manifests for runner image
+        run: |
+          docker buildx imagetools create -t supabase/logflare:runner \
+          ${{ env.runner_tag_amd64 }} ${{ env.runner_tag_arm64 }}

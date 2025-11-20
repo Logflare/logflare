@@ -61,10 +61,10 @@ defmodule Logflare.Backends.IngestEventQueue.QueueJanitor do
       %{source_id: state.source_id, backend_id: state.backend_id}
     )
 
-    for {_sid, _bid, pid} = sid_bid_pid <- queues,
+    for {_sid, bid, pid} = sid_bid_pid <- queues,
         size = IngestEventQueue.get_table_size(sid_bid_pid),
         is_integer(size) do
-      if metrics.avg > 100 do
+      if metrics.avg > 100 or bid != nil do
         IngestEventQueue.truncate_table(sid_bid_pid, :ingested, 0)
       else
         IngestEventQueue.truncate_table(sid_bid_pid, :ingested, state.remainder)

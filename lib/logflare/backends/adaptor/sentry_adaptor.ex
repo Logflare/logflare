@@ -22,6 +22,7 @@ defmodule Logflare.Backends.Adaptor.SentryAdaptor do
 
   alias Logflare.Backends.Adaptor.WebhookAdaptor
   alias Logflare.Backends.Adaptor.SentryAdaptor.DSN
+  alias Logflare.Sources
 
   @behaviour Logflare.Backends.Adaptor
 
@@ -143,13 +144,15 @@ defmodule Logflare.Backends.Adaptor.SentryAdaptor do
     }
   end
 
-  defp build_attributes(%Logflare.LogEvent{} = log_event) do
+  defp build_attributes(%Logflare.LogEvent{source_id: source_id} = log_event) do
+    source = Sources.Cache.get_by_id(source_id)
+
     base_attrs = %{
       "sentry.sdk.name" => @sdk_name,
       "sentry.sdk.version" => Application.spec(:logflare, :vsn) |> to_string(),
-      "logflare.source.name" => log_event.source.name,
-      "logflare.source.service_name" => log_event.source.service_name,
-      "logflare.source.uuid" => log_event.source.token
+      "logflare.source.name" => source.name,
+      "logflare.source.service_name" => source.service_name,
+      "logflare.source.uuid" => source.token
     }
 
     top_level_attrs =
@@ -205,12 +208,26 @@ defmodule Logflare.Backends.Adaptor.SentryAdaptor do
 
   defp to_sentry_value(value) do
     case value do
-      nil -> %{"value" => "", "type" => "string"}
-      v when is_binary(v) -> %{"value" => v, "type" => "string"}
-      v when is_boolean(v) -> %{"value" => v, "type" => "boolean"}
-      v when is_integer(v) -> %{"value" => v, "type" => "integer"}
-      v when is_float(v) -> %{"value" => v, "type" => "double"}
-      v -> %{"value" => inspect(v), "type" => "string"}
+      nil ->
+        %{"value" => "", "type" => "string"}
+
+      v when is_binary(v) ->
+        %{"value" => v, "type" => "string"}
+
+      v when is_boolean(v) ->
+        %{"value" => v, "type" => "boolean"}
+
+      v when is_integer(v) ->
+        %{"value" => v, "type" => "integer"}
+
+      v when is_float(v) ->
+        %{"value" => v, "type" => "double"}
+
+      v when is_map(v) or is_list(v) ->
+        %{"value" => Jason.encode!(v), "type" => "string"}
+
+      v ->
+        %{"value" => inspect(v), "type" => "string"}
     end
   end
 end
