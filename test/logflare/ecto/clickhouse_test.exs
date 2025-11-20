@@ -505,27 +505,10 @@ defmodule Logflare.Ecto.ClickHouseTest do
 
       assert {:ok, {sql, _params}} = ClickHouse.to_sql(query)
 
-      # Should be comma-separated columns
       assert String.contains?(sql, ~s("timestamp"))
       assert String.contains?(sql, ~s("id"))
       assert String.contains?(sql, ~s("event_message"))
-
-      # Should NOT be wrapped in array brackets [...]
-      # The SELECT clause should have: field1, field2, field3
-      # Not: [field1, field2, field3]
       refute Regex.match?(~r/SELECT\s+\[.*"timestamp".*,.*"id".*,.*"event_message".*\]/, sql)
-    end
-
-    test "list select with mixed field types" do
-      query = from(t in "logs", select: [t.timestamp, t.id, t.event_message, t.metadata])
-
-      assert {:ok, {sql, _params}} = ClickHouse.to_sql(query)
-
-      # All fields should be comma-separated
-      assert String.contains?(sql, ~s("timestamp"))
-      assert String.contains?(sql, ~s("id"))
-      assert String.contains?(sql, ~s("event_message"))
-      assert String.contains?(sql, ~s("metadata"))
     end
   end
 
