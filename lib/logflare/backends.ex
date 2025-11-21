@@ -413,7 +413,7 @@ defmodule Logflare.Backends do
   @spec get_backend(integer() | nil) :: Backend.t() | nil
   def get_backend(nil), do: get_single_tenant_backend()
 
-  def get_backend(id) when is_integer(id) do
+  def get_backend(id) do
     backend = Repo.get(Backend, id)
 
     typecast_config_string_map_to_atom_map(backend)
