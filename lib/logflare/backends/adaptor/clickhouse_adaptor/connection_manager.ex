@@ -237,6 +237,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.ConnectionManager do
   @spec build_ch_opts(__MODULE__.t()) :: {:ok, Keyword.t()} | {:error, term()}
   defp build_ch_opts(%__MODULE__{backend_id: nil}) do
     # Single-tenant mode with virtual backend
+    name = connection_pool_via(%Logflare.Backends.Backend{type: :clickhouse})
     opts = Logflare.SingleTenant.clickhouse_backend_adapter_opts() || []
 
     url = Keyword.get(opts, :url)
@@ -248,23 +249,16 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.ConnectionManager do
     default_pool_size =
       Application.fetch_env!(:logflare, :clickhouse_backend_adaptor)[:pool_size]
 
-    pool_size = default_pool_size |> div(2) |> max(default_pool_size)
-
-    # Create virtual backend for pool naming
-    backend = %Logflare.Backends.Backend{id: nil, type: :clickhouse}
-
     with {:ok, {scheme, hostname}} <- extract_scheme_and_hostname(url) do
-      pool_via = connection_pool_via(backend)
-
       ch_opts = [
-        name: pool_via,
+        name: name,
         scheme: scheme,
         hostname: hostname,
         port: port,
         database: database,
         username: username,
         password: password,
-        pool_size: pool_size,
+        pool_size: default_pool_size,
         settings: [],
         timeout: @ch_query_conn_timeout
       ]
