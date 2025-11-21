@@ -4,19 +4,17 @@ defmodule Logflare.Backends.Adaptor.HttpBased.LogEventTransformer do
 
   Assumes that following middlewares (e.g. `Tesla.Middleware.JSON`) can handle conversion of maps to `t:iodata/0`.
 
-  ## Options
-
-  - `:map` - a mapping function, transforming the LogEvent's body
+  Accepts optional argument `:transform_fn` - a mapping function, transforming each LogEvent's body
   """
   alias Logflare.LogEvent
   @behaviour Tesla.Middleware
 
   @impl true
   def call(env, next, opts) do
-    mapper = opts[:map]
+    transform_fn = opts[:transform_fn]
 
     env
-    |> Tesla.put_body(transform(env.body, mapper))
+    |> Tesla.put_body(transform(env.body, transform_fn))
     |> Tesla.run(next)
   end
 
@@ -24,9 +22,9 @@ defmodule Logflare.Backends.Adaptor.HttpBased.LogEventTransformer do
     for %LogEvent{body: body} <- req_body, do: body
   end
 
-  defp transform([%LogEvent{} | _] = req_body, mapper) when is_function(mapper) do
-    for %LogEvent{body: body} <- req_body, do: mapper.(body)
+  defp transform([%LogEvent{} | _] = req_body, transform_fn) when is_function(transform_fn) do
+    for %LogEvent{body: body} <- req_body, do: transform_fn.(body)
   end
 
-  defp transform(term, _mapper), do: term
+  defp transform(term, _transform_fn), do: term
 end

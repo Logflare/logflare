@@ -17,11 +17,14 @@ defmodule Logflare.Backends.Adaptor.SentryAdaptor do
       https://abc123@o123456.ingest.sentry.io/123456
   """
 
+  alias Logflare.Backends.Backend
   alias Logflare.Backends.Adaptor
   alias Logflare.Backends.Adaptor.HttpBased
   alias Logflare.Backends.Adaptor.SentryAdaptor.DSN
+  alias Logflare.Backends.Adaptor.SentryAdaptor.EnvelopeBuilder
 
   @behaviour Adaptor
+  @behaviour HttpBased.Client
 
   def child_spec(arg) do
     %{
@@ -32,7 +35,7 @@ defmodule Logflare.Backends.Adaptor.SentryAdaptor do
 
   @impl Adaptor
   def start_link({source, backend}) do
-    HttpBased.Pipeline.start_link(source, backend, __MODULE__.Client)
+    HttpBased.Pipeline.start_link(source, backend, __MODULE__)
   end
 
   @impl Adaptor
@@ -72,33 +75,14 @@ defmodule Logflare.Backends.Adaptor.SentryAdaptor do
 
   defp validate_dsn(changeset), do: changeset
 
-  defmodule Client do
-    alias Logflare.Backends.Adaptor.HttpBased
-    alias Logflare.Backends.Adaptor.SentryAdaptor.DSN
-    alias Logflare.Backends.Adaptor.SentryAdaptor.EnvelopeBuilder
+  @impl HttpBased.Client
+  def client_opts(%Backend{config: config}) do
+    dsn =
+      case DSN.parse(config.dsn) do
+        {:ok, parsed_dsn} -> parsed_dsn
+        {:error, reason} -> raise ArgumentError, "Invalid Sentry DSN: #{reason}"
+      end
 
-    @behaviour HttpBased.Client
-
-    @impl HttpBased.Client
-    def send_logs(config, log_events, metadata) do
-      config
-      |> new()
-      |> Tesla.post("", log_events, opts: [metadata: metadata])
-
-      :ok
-    end
-
-    defp new(config) do
-      dsn =
-        case DSN.parse(config.dsn) do
-          {:ok, parsed_dsn} -> parsed_dsn
-          {:error, reason} -> raise ArgumentError, "Invalid Sentry DSN: #{reason}"
-        end
-
-      HttpBased.Client.new(
-        formatter: {EnvelopeBuilder, dsn: dsn.original_dsn},
-        url: dsn.endpoint_uri
-      )
-    end
+    [formatter: {EnvelopeBuilder, dsn: dsn.original_dsn}, url: dsn.endpoint_uri]
   end
 end

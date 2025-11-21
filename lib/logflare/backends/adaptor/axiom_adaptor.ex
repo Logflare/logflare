@@ -18,6 +18,7 @@ defmodule Logflare.Backends.Adaptor.AxiomAdaptor do
   alias Logflare.Backends.Backend
 
   @behaviour Adaptor
+  @behaviour HttpBased.Client
 
   def child_spec(init_arg) do
     %{
@@ -28,7 +29,7 @@ defmodule Logflare.Backends.Adaptor.AxiomAdaptor do
 
   @impl Adaptor
   def start_link({source, backend}) do
-    HttpBased.Pipeline.start_link(source, backend, __MODULE__.Client)
+    HttpBased.Pipeline.start_link(source, backend, __MODULE__)
   end
 
   @impl Adaptor
@@ -68,68 +69,44 @@ defmodule Logflare.Backends.Adaptor.AxiomAdaptor do
     test_connection(backend)
   end
 
-  def test_connection(%Backend{config: config}) do
-    __MODULE__.Client.test_connection(config)
+  def test_connection(%Backend{} = backend) do
+    case HttpBased.Client.send_events(__MODULE__, backend, []) do
+      {:ok, %Tesla.Env{status: 200}} -> :ok
+      {:ok, %Tesla.Env{body: %{"message" => message}}} -> {:error, message}
+      {:ok, env} -> {:error, "Unexpected response: #{env.status} #{inspect(env.body)}"}
+      {:error, reason} -> {:error, "Request error: #{reason}"}
+    end
   end
 
-  @doc false
-  @spec transform_timestamp(map()) :: map()
-  def transform_timestamp(log_event_body) do
+  @impl HttpBased.Client
+  def client_opts(%Backend{config: config}) do
+    url =
+      %URI{
+        scheme: "https",
+        host: config.domain,
+        path: "/v1/datasets/#{config.dataset_name}/ingest"
+      }
+      |> URI.to_string()
+
+    query = [
+      {"timestamp-field", "timestamp"},
+      {"timestamp-format", "2006-01-02T15:04:05.999999Z07:00"}
+    ]
+
+    [
+      formatter: {HttpBased.LogEventTransformer, transform_fn: &transform_timestamp/1},
+      gzip: true,
+      url: url,
+      query: query,
+      token: config.api_token
+    ]
+  end
+
+  defp transform_timestamp(log_event_body) do
     Map.update!(log_event_body, "timestamp", fn timestamp ->
       timestamp
       |> DateTime.from_unix!(:microsecond)
       |> DateTime.to_iso8601()
     end)
-  end
-
-  defmodule Client do
-    @moduledoc false
-    alias Logflare.Backends.Adaptor.AxiomAdaptor
-    alias Logflare.Backends.Adaptor.HttpBased
-
-    @behaviour HttpBased.Client
-
-    @impl HttpBased.Client
-    def send_logs(config, log_events, metadata) do
-      # TODO: Log failures
-      config
-      |> new()
-      |> Tesla.post("", log_events, opts: [metadata: metadata])
-
-      :ok
-    end
-
-    @impl HttpBased.Client
-    def test_connection(config) do
-      case config |> new() |> Tesla.post("", []) do
-        {:ok, %Tesla.Env{status: 200}} -> :ok
-        {:ok, %Tesla.Env{body: %{"message" => message}}} -> {:error, message}
-        {:ok, env} -> {:error, "Unexpected response: #{env.status} #{inspect(env.body)}"}
-        {:error, reason} -> {:error, "Request error: #{reason}"}
-      end
-    end
-
-    defp new(config) do
-      url =
-        %URI{
-          scheme: "https",
-          host: config.domain,
-          path: "/v1/datasets/#{config.dataset_name}/ingest"
-        }
-        |> URI.to_string()
-
-      query = [
-        {"timestamp-field", "timestamp"},
-        {"timestamp-format", "2006-01-02T15:04:05.999999Z07:00"}
-      ]
-
-      HttpBased.Client.new(
-        formatter: {HttpBased.LogEventTransformer, map: &AxiomAdaptor.transform_timestamp/1},
-        gzip: true,
-        url: url,
-        query: query,
-        token: config.api_token
-      )
-    end
   end
 end

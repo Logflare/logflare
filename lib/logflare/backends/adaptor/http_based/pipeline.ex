@@ -4,6 +4,7 @@ defmodule Logflare.Backends.Adaptor.HttpBased.Pipeline do
   """
 
   use Broadway
+  alias Logflare.Backends.Adaptor.HttpBased
   alias Broadway.Message
   alias Logflare.Backends
   alias Logflare.Backends.Backend
@@ -65,15 +66,8 @@ defmodule Logflare.Backends.Adaptor.HttpBased.Pipeline do
       }
     )
 
-    %{metadata: backend_metadata} = backend = Backends.Cache.get_backend(context.backend_id)
-    config = Backends.Adaptor.get_backend_config(backend)
-
+    backend = Backends.Cache.get_backend(context.backend_id)
     events = for %{data: le} <- messages, do: le
-
-    backend_meta =
-      for {k, v} <- backend_metadata || %{}, into: %{} do
-        {"backend.#{k}", v}
-      end
 
     metadata =
       %{
@@ -82,9 +76,8 @@ defmodule Logflare.Backends.Adaptor.HttpBased.Pipeline do
         "backend_id" => context[:backend_id],
         "backend_uuid" => context[:backend_token]
       }
-      |> Map.merge(backend_meta)
 
-    context.client.send_logs(config, events, metadata)
+    HttpBased.Client.send_events(context.client, backend, events, metadata)
 
     messages
   end
