@@ -11,7 +11,7 @@ defmodule Logflare.Logs.Ingest.MetadataCleaner do
       x, acc when nil_or_empty(x) ->
         acc
 
-      x, acc when is_non_struct_map(x) or is_list(x) ->
+      x, acc when is_map(x) or is_list(x) ->
         cleaned = deep_reject_nil_and_empty(x)
         if nil_or_empty?(cleaned), do: acc, else: [cleaned | acc]
 
@@ -22,12 +22,12 @@ defmodule Logflare.Logs.Ingest.MetadataCleaner do
   end
 
   @spec deep_reject_nil_and_empty(map) :: map
-  def deep_reject_nil_and_empty(map) when is_non_struct_map(map) do
+  def deep_reject_nil_and_empty(map) when is_map(map) do
     Enum.reduce(map, %{}, fn
       {_, v}, acc when nil_or_empty(v) ->
         acc
 
-      {k, v}, acc when is_non_struct_map(v) or is_list(v) ->
+      {k, v}, acc when is_map(v) or is_list(v) ->
         cleaned = deep_reject_nil_and_empty(v)
         if nil_or_empty?(cleaned), do: acc, else: Map.put(acc, k, cleaned)
 
