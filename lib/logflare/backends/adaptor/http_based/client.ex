@@ -49,15 +49,6 @@ defmodule Logflare.Backends.Adaptor.HttpBased.Client do
   """
   @spec new(opts()) :: t()
   def new(opts \\ []) do
-    headers_middleware =
-      case opts[:headers] do
-        nil -> nil
-        [] -> nil
-        [_ | _] = headers -> {Tesla.Middleware.Headers, headers}
-        %{} = map when map_size(map) == 0 -> nil
-        %{} = headers -> {Tesla.Middleware.Headers, Enum.to_list(headers)}
-      end
-
     Tesla.client(
       [
         Tesla.Middleware.Telemetry,
@@ -65,7 +56,7 @@ defmodule Logflare.Backends.Adaptor.HttpBased.Client do
         opts[:query] && {Tesla.Middleware.Query, opts[:query]},
         opts[:token] && {Tesla.Middleware.BearerAuth, token: opts[:token]},
         opts[:basic_auth] && {Tesla.Middleware.BasicAuth, opts[:basic_auth]},
-        headers_middleware,
+        headers_middleware(opts[:headers]),
         Keyword.get(opts, :formatter, LogEventTransformer),
         Keyword.get(opts, :json, true) && Tesla.Middleware.JSON,
         opts[:gzip] && {Tesla.Middleware.CompressRequest, format: "gzip"},
@@ -75,6 +66,14 @@ defmodule Logflare.Backends.Adaptor.HttpBased.Client do
       adapter_config(Keyword.get(opts, :http2, true), opts[:pool_name])
     )
   end
+
+  def headers_middleware(nil), do: nil
+  def headers_middleware([]), do: nil
+
+  def headers_middleware(headers) when is_map(headers),
+    do: headers_middleware(Map.to_list(headers))
+
+  def headers_middleware(headers), do: {Tesla.Middleware.Headers, headers}
 
   defp adapter_config(http2?, pool_name) do
     cond do
