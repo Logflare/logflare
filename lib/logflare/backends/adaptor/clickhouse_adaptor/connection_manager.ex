@@ -273,7 +273,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.ConnectionManager do
     end
   end
 
-  defp build_ch_opts(%__MODULE__{backend_id: backend_id}) when not is_nil(backend_id) do
+  defp build_ch_opts(%__MODULE__{backend_id: backend_id}) do
     # Fetch fresh backend from cache
     backend = Backends.Cache.get_backend(backend_id)
 
