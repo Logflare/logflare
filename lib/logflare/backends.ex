@@ -143,15 +143,22 @@ defmodule Logflare.Backends do
     end
   end
 
-  def get_default_backend(%User{} = user) do
+  @doc """
+  Returns the single-tenant backend configuration.
+
+  Used in single-tenant mode for ClickHouse or Postgres backends.
+  Returns a virtual backend with id: nil and no user_id.
+  """
+  @spec get_single_tenant_backend() :: Backend.t() | nil
+  def get_single_tenant_backend do
     cond do
       SingleTenant.single_tenant?() and SingleTenant.clickhouse_backend?() ->
         opts = SingleTenant.clickhouse_backend_adapter_opts()
 
         %Backend{
+          id: nil,
           type: :clickhouse,
           config: Map.new(opts),
-          user_id: user.id,
           name: "Default clickhouse backend"
         }
 
@@ -159,13 +166,23 @@ defmodule Logflare.Backends do
         opts = SingleTenant.postgres_backend_adapter_opts()
 
         %Backend{
+          id: nil,
           type: :postgres,
           config: Map.new(opts),
-          user_id: user.id,
           name: "Default postgres backend"
         }
 
       true ->
+        nil
+    end
+  end
+
+  def get_default_backend(%User{} = user) do
+    case get_single_tenant_backend() do
+      %Backend{} = backend ->
+        %{backend | user_id: user.id}
+
+      nil ->
         {project_id, dataset_id} =
           if user.bigquery_project_id do
             {user.bigquery_project_id, user.bigquery_dataset_id}
@@ -390,9 +407,13 @@ defmodule Logflare.Backends do
 
   @doc """
   Retrieves a Backend by id.
+
+  For single-tenant mode, when id is nil, returns the virtual single-tenant backend.
   """
-  @spec get_backend(integer()) :: Backend.t() | nil
-  def get_backend(id) do
+  @spec get_backend(integer() | nil) :: Backend.t() | nil
+  def get_backend(nil), do: get_single_tenant_backend()
+
+  def get_backend(id) when is_integer(id) do
     backend = Repo.get(Backend, id)
 
     typecast_config_string_map_to_atom_map(backend)

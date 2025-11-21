@@ -153,20 +153,18 @@ defmodule Logflare.Application do
 
   def clickhouse_conn_manager_children do
     if SingleTenant.clickhouse_backend?() do
-      [single_tenant_clickhouse_connection_manager_spec()]
+      [
+        %{
+          id: Logflare.SingleTenantClickHouseConnectionManager,
+          start:
+            {Logflare.Backends.Adaptor.ClickhouseAdaptor.ConnectionManager, :start_link,
+             [%Logflare.Backends.Backend{type: :clickhouse}]},
+          restart: :permanent
+        }
+      ]
     else
       []
     end
-  end
-
-  def single_tenant_clickhouse_connection_manager_spec do
-    %{
-      id: Logflare.SingleTenantClickHouseConnectionManager,
-      start:
-        {Logflare.Backends.Adaptor.ClickhouseAdaptor.ConnectionManager, :start_link,
-         [%Logflare.Backends.Backend{type: :clickhouse}]},
-      restart: :permanent
-    }
   end
 
   def config_change(changed, _new, removed) do

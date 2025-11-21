@@ -71,7 +71,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
   def ecto_to_sql(%Ecto.Query{} = query, opts) do
     case Logflare.Ecto.ClickHouse.to_sql(query, opts) do
       {:ok, {ch_sql, ch_params}} ->
-        ch_params = Enum.map(ch_params, &SqlUtils.normalize_datetime_param(&1, :clickhouse))
+        ch_params = Enum.map(ch_params, &SqlUtils.normalize_datetime_param/1)
         {:ok, {ch_sql, ch_params}}
 
       {:error, _reason} = error ->
@@ -337,12 +337,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
         :ok
 
       {:error, reason} ->
-        Logger.warning("ClickHouse insert error",
-          source_token: source.token,
-          backend_id: backend.id,
-          table: table_name,
-          error_string: inspect(reason)
-        )
+        Logger.warning("Clickhouse insert errors.", error_string: inspect(reason))
 
         {:error, reason}
     end
@@ -596,4 +591,23 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
     ConnectionManager.notify_activity(backend)
     :ok
   end
+
+  @doc """
+  Extracts the port from a ClickHouse URL or returns the default port based on the scheme.
+  """
+  @spec extract_port_from_url(String.t() | nil) :: integer()
+  def extract_port_from_url(nil), do: 8123
+
+  def extract_port_from_url(url) when is_binary(url) do
+    uri = URI.parse(url)
+    uri.port || default_port_for_scheme(uri.scheme)
+  end
+
+  @doc """
+  Returns the default ClickHouse port for a given URL scheme.
+  """
+  @spec default_port_for_scheme(String.t() | nil) :: integer()
+  def default_port_for_scheme("https"), do: 8443
+  def default_port_for_scheme("http"), do: 8123
+  def default_port_for_scheme(_), do: 8123
 end

@@ -6,6 +6,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.Ingester do
   import Bitwise
   import Logflare.Utils.Guards
 
+  alias Logflare.Backends.Adaptor.ClickhouseAdaptor
   alias Logflare.Backends.Backend
   alias Logflare.LogEvent
 
@@ -107,7 +108,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.Ingester do
     database = Keyword.get(opts, :database)
     username = Keyword.get(opts, :username)
     password = Keyword.get(opts, :password)
-    port = Keyword.get(opts, :port) || extract_port_from_url(url)
+    port = Keyword.get(opts, :port) || ClickhouseAdaptor.extract_port_from_url(url)
 
     {:ok,
      [
@@ -150,7 +151,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.Ingester do
     uri = URI.parse(base_url)
     scheme = uri.scheme || "http"
     host = uri.host
-    port = Keyword.get(connection_opts, :port, default_port(scheme))
+    port = Keyword.get(connection_opts, :port, ClickhouseAdaptor.default_port_for_scheme(scheme))
 
     query = "INSERT INTO #{database}.#{table} FORMAT RowBinary"
 
@@ -170,16 +171,5 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.Ingester do
     password = Keyword.get(connection_opts, :password)
     credentials = Base.encode64("#{username}:#{password}")
     {"authorization", "Basic #{credentials}"}
-  end
-
-  defp default_port("https"), do: 8443
-  defp default_port(_), do: 8123
-
-  @spec extract_port_from_url(String.t() | nil) :: integer()
-  defp extract_port_from_url(nil), do: 8123
-
-  defp extract_port_from_url(url) when is_binary(url) do
-    uri = URI.parse(url)
-    uri.port || default_port(uri.scheme)
   end
 end

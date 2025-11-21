@@ -651,7 +651,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
 
   @spec pg_param_to_bq_param(param :: any()) :: map()
   defp pg_param_to_bq_param(param) do
-    param = SqlUtils.normalize_datetime_param(param, :bigquery)
+    param = SqlUtils.normalize_datetime_param(param)
 
     %Param{
       parameterType: %Type{type: SchemaTypes.to_schema_type(param)},
