@@ -245,4 +245,86 @@ defmodule Logflare.Backends.UserMonitoringTest do
       end)
     end
   end
+
+  describe "benchmark" do
+    @describetag :benchmark
+
+    setup do
+      start_supervised!(AllLogsLogged)
+      start_supervised!(BencheeAsync.Reporter)
+
+      insert(:plan)
+
+      user = insert(:user, system_monitoring: true) |> Users.preload_defaults()
+
+      source = insert(:source, user: user)
+
+      {:ok, user: user, source: source}
+    end
+
+    test "log interceptor", %{user: user, source: source} do
+      logs_source = insert(:source, user: user, system_source_type: :logs)
+
+      start_supervised!({SourceSup, logs_source}, id: :logs_source)
+
+      log_event = %{level: :info, msg: {:string, "test"}, meta: %{source_id: source.id}}
+
+      # execute once to start cache and prevent interference on statistics
+      UserMonitoring.log_interceptor(log_event, nil)
+
+      BencheeAsync.run(
+        %{
+          "UserMonitoring.log_interceptor/2" => fn ->
+            UserMonitoring.log_interceptor(log_event, nil)
+            BencheeAsync.Reporter.record()
+          end
+        },
+        time: 3,
+        warmup: 1,
+        print: [configuration: false],
+        formatters: [{Benchee.Formatters.Console, extended_statistics: true}]
+      )
+    end
+
+    test "keep metric function", %{user: user, source: source} do
+      metrics_source = insert(:source, user: user, system_source_type: :metrics)
+
+      start_supervised!({SourceSup, metrics_source}, id: :metrics_source)
+
+      metadata = %{"source_id" => source.id}
+
+      # execute once to start cache and prevent interference on statistics
+      UserMonitoring.keep_metric_function(metadata)
+
+      BencheeAsync.run(
+        %{
+          "UserMonitoring.keep_metric_function/1" => fn ->
+            UserMonitoring.keep_metric_function(metadata)
+            BencheeAsync.Reporter.record()
+          end
+        },
+        time: 3,
+        warmup: 1,
+        print: [configuration: false],
+        formatters: [{Benchee.Formatters.Console, extended_statistics: true}]
+      )
+    end
+
+    test "tags extraction" do
+      metadata = %{source_id: 1, backend_id: 1, label: "123", etc: "etc"}
+
+      BencheeAsync.run(
+        %{
+          "UserMonitoring.extract_tags/2" => fn ->
+            UserMonitoring.extract_tags(%{}, metadata)
+            BencheeAsync.Reporter.record()
+          end
+        },
+        time: 3,
+        warmup: 1,
+        print: [configuration: false],
+        formatters: [{Benchee.Formatters.Console, extended_statistics: true}]
+      )
+    end
+  end
 end

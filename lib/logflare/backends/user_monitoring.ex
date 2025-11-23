@@ -7,7 +7,6 @@ defmodule Logflare.Backends.UserMonitoring do
   import Logflare.Utils.Guards
   alias Logflare.Users
   alias Logflare.Sources
-  alias Logflare.Sources.Source
   alias Logflare.Logs
   alias Logflare.Logs.Processor
   alias Opentelemetry.Proto.Collector.Metrics.V1.ExportMetricsServiceRequest
@@ -68,7 +67,8 @@ defmodule Logflare.Backends.UserMonitoring do
   end
 
   # take all metadata string keys and non-nested values
-  defp extract_tags(metric, metadata) do
+  # made public to enable benchmarking
+  def extract_tags(_metric, metadata) do
     for {key, value} <- metadata,
         is_binary(key) and !is_list_or_map(value) and value != nil,
         into: %{} do
@@ -113,7 +113,7 @@ defmodule Logflare.Backends.UserMonitoring do
     with %{meta: meta} <- log_event,
          user_id when is_integer(user_id) <- Users.get_related_user_id(meta),
          %{system_monitoring: true} <- Users.Cache.get(user_id),
-         %{} = source <- get_system_source_logs(user_id) do
+         %{} = source <- get_logs_system_source(user_id) do
       LogflareLogger.Formatter.format(
         log_event.level,
         format_message(log_event),
@@ -129,15 +129,9 @@ defmodule Logflare.Backends.UserMonitoring do
     end
   end
 
-  defp get_system_source_logs(user_id),
+  defp get_logs_system_source(user_id),
     do:
       Sources.Cache.get_by(user_id: user_id, system_source_type: :logs)
-      |> Sources.refresh_source_metrics()
-      |> Sources.Cache.preload_rules()
-
-  defp get_system_source_metrics(user_id),
-    do:
-      Sources.Cache.get_by(user_id: user_id, system_source_type: :metrics)
       |> Sources.refresh_source_metrics()
       |> Sources.Cache.preload_rules()
 

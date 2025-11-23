@@ -497,4 +497,35 @@ defmodule Logflare.SourcesTest do
       end)
     end
   end
+
+  describe "benchmark" do
+    @describetag :benchmark
+
+    setup do
+      start_supervised!(BencheeAsync.Reporter)
+
+      insert(:plan)
+
+      user = insert(:user, system_monitoring: true) |> Users.preload_defaults()
+
+      source = insert(:source, user: user, labels: "my_label=m.value,label2=test")
+
+      {:ok, user: user, source: source}
+    end
+
+    test "labels mapping", %{source: source} do
+      BencheeAsync.run(
+        %{
+          "Sources.get_labels_mapping/1" => fn ->
+            Sources.get_labels_mapping(source)
+            BencheeAsync.Reporter.record()
+          end
+        },
+        time: 3,
+        warmup: 1,
+        print: [configuration: false],
+        formatters: [{Benchee.Formatters.Console, extended_statistics: true}]
+      )
+    end
+  end
 end
