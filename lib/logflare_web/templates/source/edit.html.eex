@@ -304,7 +304,7 @@
   <% end %>
 
 
-  <% if @user.system_monitoring do %>
+  <%= if @user.system_monitoring do %>
     <%= section_header("Monitoring Labels") %>
     <p>Set labels for this source, to be used for monitoring. Labels are used to group metrics together when system monitoring is enabled. Values of the labels will be determined at ingest time.</p>
     <%= form_for @changeset, Routes.source_path(@conn, :update, @source),fn f -> %>
@@ -345,7 +345,7 @@
       <%= submit "Save", class: "btn btn-primary form-button" %>
 
     <% end %>
-    
+
     <%= section_header("Multi Backends") %>
     <%= form_for @changeset, Routes.source_path(@conn, :update, @source),fn f -> %>
       <div class="form-group">
