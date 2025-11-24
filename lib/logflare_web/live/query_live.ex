@@ -274,7 +274,7 @@ defmodule LogflareWeb.QueryLive do
 
       {:error, err} ->
         socket
-        |> put_flash(:error, "Error occured when running query: #{inspect(err)}")
+        |> put_flash(:error, "Error occurred when running query: #{inspect(err)}")
     end
   end
 end
