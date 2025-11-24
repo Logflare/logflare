@@ -1,0 +1,18 @@
+---
+sidebar_position: 10
+---
+
+# OTLP
+
+The OTLP backend is **ingest-only**, and exports the logs via [OTLP](https://opentelemetry.io/docs/specs/otlp/) to any tool or service that supports it.
+
+## Behaviour and configurations
+
+### Configuration
+
+The backend can be configured with the following options:
+
+- `:endpoint` (string, required) - The URL of the OTLP endpoint.
+- `:protocol` (string) - The protocol to use for sending logs: `"grpc"` or `"http/protobuf"`. Defaults to `"http/protobuf"`.
+- `:gzip` (boolean) - Enables gzip compression for the request. Defaults to `true`.
+- `:headers` (map) - A map of additional headers to set when making the HTTP request. Defaults to an empty map.
