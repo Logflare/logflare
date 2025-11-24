@@ -7,7 +7,6 @@ defmodule Logflare.Backends.UserMonitoring do
   import Logflare.Utils.Guards
   alias Logflare.Users
   alias Logflare.Sources
-  alias Logflare.Sources.Source
   alias Logflare.Logs
   alias Logflare.Logs.Processor
   alias Opentelemetry.Proto.Collector.Metrics.V1.ExportMetricsServiceRequest
@@ -43,14 +42,18 @@ defmodule Logflare.Backends.UserMonitoring do
 
   def metrics do
     [
+      sum("logflare.backends.ingest.ingested_bytes",
+        keep: &keep_metric_function/1,
+        description: "Amount of bytes ingested by backend for a source"
+      ),
+      # sum("logflare.endpoints.query.scanned_bytes",
+      #   keep: &keep_metric_function/1,
+      #   description: "Amount of bytes scanned by a Logflare Endpoint"
+      # ),
       counter("logflare.backends.ingest.ingested_count",
         measurement: :ingested_bytes,
         keep: &keep_metric_function/1,
         description: "Count of events ingested by backend for a source"
-      ),
-      sum("logflare.backends.ingest.ingested_bytes",
-        keep: &keep_metric_function/1,
-        description: "Amount of bytes ingested by backend for a source"
       ),
       sum("logflare.backends.ingest.egress.request_bytes",
         keep: &keep_metric_function/1,
@@ -68,7 +71,7 @@ defmodule Logflare.Backends.UserMonitoring do
   end
 
   # take all metadata string keys and non-nested values
-  defp extract_tags(metric, metadata) do
+  defp extract_tags(_metric, metadata) do
     for {key, value} <- metadata,
         is_binary(key) and !is_list_or_map(value) and value != nil,
         into: %{} do
@@ -78,30 +81,27 @@ defmodule Logflare.Backends.UserMonitoring do
 
   defp exporter_callback({:metrics, metrics}, config) do
     metrics
-    |> Enum.group_by(fn metric ->
-      metric
-      |> Protobuf.encode()
-      |> Protobuf.decode(Opentelemetry.Proto.Metrics.V1.Metric)
-      |> Map.get(:data)
-      |> Logflare.Logs.OtelMetric.handle_metric_data(%{})
-      |> hd()
+
+    |> OtelMetricExporter.Protocol.build_metric_service_request(config.resource)
+    |> Protobuf.encode()
+    |> Protobuf.decode(ExportMetricsServiceRequest)
+    |> Map.get(:resource_metrics)
+    |> Logs.OtelMetric.handle_batch(%{})
+    |> List.flatten()
+    |> Enum.group_by(fn event ->
+      event
       |> Map.get("attributes")
       |> Users.get_related_user_id()
     end)
-    |> Enum.each(fn {user_id, user_metrics} ->
+    |> Enum.each(fn {user_id, user_events} ->
       source =
         Sources.Cache.get_by(user_id: user_id, system_source_type: :metrics)
         |> Sources.Cache.preload_rules()
         |> Sources.refresh_source_metrics()
 
-      user_metrics
-      |> OtelMetricExporter.Protocol.build_metric_service_request(config.resource)
-      |> Protobuf.encode()
-      |> Protobuf.decode(ExportMetricsServiceRequest)
-      |> Map.get(:resource_metrics)
-      |> Processor.ingest(Logs.OtelMetric, source)
-    end)
+        Processor.ingest(user_events, Logs.Raw, source)
 
+    end)
     :ok
   end
 
@@ -132,12 +132,6 @@ defmodule Logflare.Backends.UserMonitoring do
   defp get_system_source_logs(user_id),
     do:
       Sources.Cache.get_by(user_id: user_id, system_source_type: :logs)
-      |> Sources.refresh_source_metrics()
-      |> Sources.Cache.preload_rules()
-
-  defp get_system_source_metrics(user_id),
-    do:
-      Sources.Cache.get_by(user_id: user_id, system_source_type: :metrics)
       |> Sources.refresh_source_metrics()
       |> Sources.Cache.preload_rules()
 

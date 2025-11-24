@@ -20,7 +20,6 @@ defmodule Logflare.Backends.SourceSup do
   alias Logflare.Rules.Rule
   alias Logflare.Sources
   alias Logflare.Backends.AdaptorSupervisor
-  alias Logflare.Backends.UserMonitoring
 
   def child_spec(%Source{id: id} = arg) do
     %{

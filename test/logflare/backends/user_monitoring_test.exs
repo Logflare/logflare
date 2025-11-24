@@ -28,6 +28,12 @@ defmodule Logflare.Backends.UserMonitoringTest do
     [source: source, source_b: source_b, user: user]
   end
 
+  def start_otel_exporter(_context) do
+    [spec] = UserMonitoring.get_otel_exporter()
+    start_supervised!(spec)
+    :ok
+  end
+
   describe "logs" do
     setup do
       :ok =
@@ -81,44 +87,16 @@ defmodule Logflare.Backends.UserMonitoringTest do
     end
   end
 
-  describe "metrics" do
-    setup do
-      insert(:plan)
-
-      user_1 = insert(:user)
-      user_1 = Users.preload_defaults(user_1)
-
-      backend_1 =
-        insert(:backend,
-          user: user_1,
-          type: :webhook,
-          config: %{url: "http://test.com"},
-          default_ingest?: false
-        )
-
-      user_2 = insert(:user)
-      user_2 = Users.preload_defaults(user_2)
-
-      backend_2 =
-        insert(:backend,
-          user: user_2,
-          type: :webhook,
-          config: %{url: "http://test.com"},
-          default_ingest?: false
-        )
-
-      {:ok, user_1: user_1, user_2: user_2, backend_1: backend_1, backend_2: backend_2}
-    end
-  end
 
   describe "system monitoring labels" do
+    setup :start_otel_exporter
     setup do
       start_supervised!(AllLogsLogged)
       insert(:plan)
       :ok
     end
 
-    test "applies to backend metrics" do
+test "backends.ingest.ingested_bytes and backends.ingest.ingested_count" do
       GoogleApi.BigQuery.V2.Api.Tabledata
       |> stub(:bigquery_tabledata_insert_all, fn _conn,
                                                  _project_id,
@@ -175,14 +153,7 @@ defmodule Logflare.Backends.UserMonitoringTest do
     end
 
     test "other users metrics" do
-      GoogleApi.BigQuery.V2.Api.Tabledata
-      |> stub(:bigquery_tabledata_insert_all, fn _conn,
-                                                 _project_id,
-                                                 _dataset_id,
-                                                 _table_name,
-                                                 _opts ->
-        {:ok, %GoogleApi.BigQuery.V2.Model.TableDataInsertAllResponse{insertErrors: nil}}
-      end)
+      pid = self()
 
       user =
         insert(:user, system_monitoring: true)
@@ -190,59 +161,52 @@ defmodule Logflare.Backends.UserMonitoringTest do
       other_user =
         insert(:user, system_monitoring: true)
 
-      %{id: source_id} = source = insert(:source, user: user, labels: "my_label=m.value")
+      source = insert(:source, user: user, labels: "my_label=m.value")
 
-      %{id: other_source_id} =
-        other_source = insert(:source, user: other_user, labels: "my_label=m.value")
+      other_source = insert(:source, user: other_user, labels: "my_label=m.value")
 
       metrics_source = insert(:source, user: user, system_source_type: :metrics)
       other_metrics_source = insert(:source, user: other_user, system_source_type: :metrics)
-      start_supervised!({SourceSup, metrics_source}, id: :metrics_source)
       start_supervised!({SourceSup, source}, id: :source)
       start_supervised!({SourceSup, other_source}, id: :other_source)
+      start_supervised!({SourceSup, metrics_source}, id: :metrics_source)
       start_supervised!({SourceSup, other_metrics_source}, id: :other_metrics_source)
+      GoogleApi.BigQuery.V2.Api.Tabledata
+      |> stub(:bigquery_tabledata_insert_all, fn _conn,
+                                                 _project_id,
+                                                 dataset_id,
+                                                 _table_name,
+                                                 opts ->
+                                                  if String.starts_with?(dataset_id, "#{other_user.id}") do
+                                                    send(pid, {:insert_all, opts[:body].rows})
+                                                  end
+                                                  {:ok, %GoogleApi.BigQuery.V2.Model.TableDataInsertAllResponse{insertErrors: nil}}
+      end)
 
-      :timer.sleep(1000)
+      :timer.sleep(500)
+
 
       assert {:ok, _} = Backends.ingest_logs([%{"metadata" => %{"value" => "test"}}], source)
 
       assert {:ok, _} =
-               Backends.ingest_logs([%{"metadata" => %{"value" => "test"}}], other_source)
+               Backends.ingest_logs([%{"metadata" => %{"value" => "different"}}], other_source)
+               :timer.sleep(1500)
 
-      TestUtils.retry_assert(fn ->
-        assert [_] = Backends.list_recent_logs_local(source)
-        assert [_] = Backends.list_recent_logs_local(other_source)
+      source_id = source.id
+      other_source_id = other_source.id
+      metrics_source_id = metrics_source.id
+      other_metrics_source_id = other_metrics_source.id
+      assert_receive {:insert_all, [%{json: %{"attributes" => _}} | _]= rows}, 5_000
 
-        assert [
-                 _ | _
-               ] = events = Backends.list_recent_logs_local(metrics_source)
+      rows = for row <- rows, do: row.json
 
-        assert Enum.all?(
-                 events,
-                 &match?(
-                   %LogEvent{
-                     body: %{"attributes" => %{"my_label" => "test", "source_id" => ^source_id}}
-                   },
-                   &1
-                 )
-               )
+      assert Enum.all?(rows, &match?(%{"attributes" => [%{"my_label" => "different"}]}, &1))
+      for row <- rows, attr <- row["attributes"] do
+        assert attr["source_id"] in [other_source_id, other_metrics_source_id]
+        refute attr["source_id"] in [source_id, metrics_source_id]
+      refute attr["my_label"] == "test"
+      end
 
-        assert [
-                 _ | _
-               ] = events = Backends.list_recent_logs_local(other_metrics_source)
-
-        assert Enum.all?(
-                 events,
-                 &match?(
-                   %LogEvent{
-                     body: %{
-                       "attributes" => %{"my_label" => "test", "source_id" => ^other_source_id}
-                     }
-                   },
-                   &1
-                 )
-               )
-      end)
     end
   end
 end
