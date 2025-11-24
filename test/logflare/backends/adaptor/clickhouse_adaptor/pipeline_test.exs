@@ -274,7 +274,12 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.PipelineTest do
         source: source,
         backend: backend
       } do
-        event = build(:log_event, source: source, message: "Test") |> Map.put(:retries, 2)
+        max_retries = Pipeline.max_retries()
+        # Use max_retries - 1 so the event is still retriable
+        initial_retries = max_retries - 1
+
+        event =
+          build(:log_event, source: source, message: "Test") |> Map.put(:retries, initial_retries)
 
         failed_message = %Message{
           data: event,
@@ -297,7 +302,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.PipelineTest do
         Pipeline.ack(:ack_ref, [], [failed_message])
 
         assert_receive {:requeued, [requeued_event]}
-        assert requeued_event.retries == 3
+        assert requeued_event.retries == initial_retries + 1
       end
 
       test "handles mixed retriable and exhausted messages", %{
@@ -307,7 +312,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.PipelineTest do
         max_retries = Pipeline.max_retries()
 
         retriable_event =
-          build(:log_event, source: source, message: "Retriable") |> Map.put(:retries, 1)
+          build(:log_event, source: source, message: "Retriable") |> Map.put(:retries, 0)
 
         exhausted_event =
           build(:log_event, source: source, message: "Exhausted")
@@ -350,7 +355,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.PipelineTest do
 
         # Only the retriable event should be requeued
         assert_receive {:requeued, [requeued_event]}
-        assert requeued_event.retries == 2
+        assert requeued_event.retries == 1
         assert requeued_event.body["event_message"] == "Retriable"
         assert log =~ "Dropping 1 ClickHouse events after #{max_retries} retries"
       end
