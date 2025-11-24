@@ -63,7 +63,8 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.Ingester do
        should_retry: &retriable?/1}
     ]
 
-    adapter = {Tesla.Adapter.Finch, name: @finch_pool, receive_timeout: 60_000}
+    adapter =
+      {Tesla.Adapter.Finch, name: @finch_pool, pool_timeout: 4_000, receive_timeout: 8_000}
 
     Tesla.client(middleware, adapter)
   end
