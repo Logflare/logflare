@@ -17,7 +17,7 @@ defmodule Logflare.Backends.Supervisor do
 
     children = [
       Backends.IngestEventQueue,
-      Backends.IngestEventQueue.BroadcastWorker,
+      Backends.IngestEventQueue.BufferCacheWorker,
       Backends.IngestEventQueue.MapperJanitor,
       Backends.Adaptor.PostgresAdaptor.Supervisor,
       Backends.Adaptor.ClickhouseAdaptor.QueryConnectionSup,
