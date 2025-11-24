@@ -187,6 +187,8 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.PipelineTest do
                acknowledger: {Pipeline, :ack_id, %{source_id: source_id, backend_id: backend_id}}
              } = result
 
+      assert is_integer(source_id)
+      assert is_integer(backend_id)
       assert source_id == source.id
       assert backend_id == backend.id
     end

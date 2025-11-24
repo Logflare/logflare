@@ -48,7 +48,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.Pipeline do
       ],
       producer: [
         module: {BufferProducer, [source_id: source.id, backend_id: backend.id]},
-        transformer: {__MODULE__, :transform, [[source_id: source.id, backend_id: backend.id]]},
+        transformer: {__MODULE__, :transform, [source_id: source.id, backend_id: backend.id]},
         concurrency: @producer_concurrency
       ],
       processors: [
@@ -138,9 +138,10 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.Pipeline do
         drop_exhausted_messages(exhausted, source_id, backend_id)
         requeue_retriable_messages(retriable, source_id, backend_id)
 
-      {_ack_data, messages} ->
+      {ack_data, messages} ->
         Logger.warning(
-          "Dropping #{length(messages)} ClickHouse events with invalid acknowledger data"
+          "Dropping #{length(messages)} ClickHouse events with unexpected acknowledger data",
+          error_string: inspect(ack_data)
         )
     end)
   end
@@ -174,10 +175,18 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.Pipeline do
   defp requeue_retriable_messages([], _source_id, _backend_id), do: :ok
 
   defp requeue_retriable_messages(retriable, source_id, backend_id) do
+    source = Sources.Cache.get_by_id(source_id)
+
     events =
       Enum.map(retriable, fn %{data: %LogEvent{} = event} ->
         %LogEvent{event | retries: (event.retries || 0) + 1}
       end)
+
+    Logger.info(
+      "Requeuing #{length(events)} ClickHouse events for retry",
+      source_token: source.token,
+      backend_id: backend_id
+    )
 
     IngestEventQueue.delete_batch({source_id, backend_id}, events)
     IngestEventQueue.add_to_table({source_id, backend_id}, events)
