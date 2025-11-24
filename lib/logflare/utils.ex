@@ -238,8 +238,11 @@ defmodule Logflare.Utils do
 
   iex> ip_version("not_an_address")
   nil
+
+  iex> ip_version(nil)
+  nil
   """
-  @spec ip_version(String.t()) :: :inet | :inet6 | nil
+  @spec ip_version(String.t() | nil) :: :inet | :inet6 | nil
   def ip_version(address) when is_binary(address) do
     case :inet.parse_address(String.to_charlist(address)) do
       {:ok, {_, _, _, _}} -> :inet
@@ -247,6 +250,8 @@ defmodule Logflare.Utils do
       {:error, _} -> nil
     end
   end
+
+  def ip_version(_address), do: nil
 
   @doc """
   Redacts sensitive headers from a list of Tesla.Env headers. Used for automatic redaction.
