@@ -46,10 +46,10 @@ defmodule Logflare.Backends.UserMonitoring do
         keep: &keep_metric_function/1,
         description: "Amount of bytes ingested by backend for a source"
       ),
-      # sum("logflare.endpoints.query.scanned_bytes",
-      #   keep: &keep_metric_function/1,
-      #   description: "Amount of bytes scanned by a Logflare Endpoint"
-      # ),
+      sum("logflare.endpoints.query.total_bytes_processed",
+        keep: &keep_metric_function/1,
+        description: "Amount of bytes processed by a Logflare Endpoint"
+      ),
       counter("logflare.backends.ingest.ingested_count",
         measurement: :ingested_bytes,
         keep: &keep_metric_function/1,
@@ -81,7 +81,6 @@ defmodule Logflare.Backends.UserMonitoring do
 
   defp exporter_callback({:metrics, metrics}, config) do
     metrics
-
     |> OtelMetricExporter.Protocol.build_metric_service_request(config.resource)
     |> Protobuf.encode()
     |> Protobuf.decode(ExportMetricsServiceRequest)
@@ -99,9 +98,9 @@ defmodule Logflare.Backends.UserMonitoring do
         |> Sources.Cache.preload_rules()
         |> Sources.refresh_source_metrics()
 
-        Processor.ingest(user_events, Logs.Raw, source)
-
+      Processor.ingest(user_events, Logs.Raw, source)
     end)
+
     :ok
   end
 

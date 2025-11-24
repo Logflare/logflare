@@ -328,22 +328,31 @@ defmodule Logflare.Endpoints do
         [:logflare, :endpoints, :run_query, :exec_query_on_backend],
         %{endpoint_id: endpoint_query.id, language: query_language},
         fn ->
-          result =
-            exec_query_on_backend(
-              endpoint_query,
-              transformed_query,
-              declared_params,
-              params,
-              opts
-            )
+          exec_query_on_backend(
+            endpoint_query,
+            transformed_query,
+            declared_params,
+            params,
+            opts
+          )
+          |> then(fn
+            {:ok, data} = result ->
+              measurements = %{
+                total_bytes_processed: Map.get(data, :total_bytes_processed, 0)
+              }
 
-          total_rows =
-            case result do
-              {:ok, %{rows: rows}} -> length(rows)
-              _ -> 0
-            end
+              metadata =
+                Map.merge(endpoint_query.parsed_labels || %{}, %{
+                  "endpoint_id" => endpoint_query.id
+                })
 
-          {result, %{total_rows: total_rows}}
+              :telemetry.execute([:logflare, :endpoints, :query], measurements, metadata)
+
+              {result, %{}}
+
+            result ->
+              {result, %{}}
+          end)
         end
       )
     end

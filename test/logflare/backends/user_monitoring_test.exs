@@ -12,6 +12,7 @@ defmodule Logflare.Backends.UserMonitoringTest do
   alias Logflare.Backends.UserMonitoring
   alias Logflare.SystemMetrics.AllLogsLogged
   alias Logflare.LogEvent
+  alias Logflare.Endpoints
 
   def source_and_user(_context) do
     start_supervised!(AllLogsLogged)
@@ -87,16 +88,16 @@ defmodule Logflare.Backends.UserMonitoringTest do
     end
   end
 
-
   describe "system monitoring labels" do
     setup :start_otel_exporter
+
     setup do
       start_supervised!(AllLogsLogged)
       insert(:plan)
       :ok
     end
 
-test "backends.ingest.ingested_bytes and backends.ingest.ingested_count" do
+    test "backends.ingest.ingested_bytes and backends.ingest.ingested_count" do
       GoogleApi.BigQuery.V2.Api.Tabledata
       |> stub(:bigquery_tabledata_insert_all, fn _conn,
                                                  _project_id,
@@ -171,42 +172,101 @@ test "backends.ingest.ingested_bytes and backends.ingest.ingested_count" do
       start_supervised!({SourceSup, other_source}, id: :other_source)
       start_supervised!({SourceSup, metrics_source}, id: :metrics_source)
       start_supervised!({SourceSup, other_metrics_source}, id: :other_metrics_source)
+
       GoogleApi.BigQuery.V2.Api.Tabledata
       |> stub(:bigquery_tabledata_insert_all, fn _conn,
                                                  _project_id,
                                                  dataset_id,
                                                  _table_name,
                                                  opts ->
-                                                  if String.starts_with?(dataset_id, "#{other_user.id}") do
-                                                    send(pid, {:insert_all, opts[:body].rows})
-                                                  end
-                                                  {:ok, %GoogleApi.BigQuery.V2.Model.TableDataInsertAllResponse{insertErrors: nil}}
+        if String.starts_with?(dataset_id, "#{other_user.id}") do
+          send(pid, {:insert_all, opts[:body].rows})
+        end
+
+        {:ok, %GoogleApi.BigQuery.V2.Model.TableDataInsertAllResponse{insertErrors: nil}}
       end)
 
       :timer.sleep(500)
-
 
       assert {:ok, _} = Backends.ingest_logs([%{"metadata" => %{"value" => "test"}}], source)
 
       assert {:ok, _} =
                Backends.ingest_logs([%{"metadata" => %{"value" => "different"}}], other_source)
-               :timer.sleep(1500)
+
+      :timer.sleep(1500)
 
       source_id = source.id
       other_source_id = other_source.id
       metrics_source_id = metrics_source.id
       other_metrics_source_id = other_metrics_source.id
-      assert_receive {:insert_all, [%{json: %{"attributes" => _}} | _]= rows}, 5_000
+      assert_receive {:insert_all, [%{json: %{"attributes" => _}} | _] = rows}, 5_000
 
       rows = for row <- rows, do: row.json
 
       assert Enum.all?(rows, &match?(%{"attributes" => [%{"my_label" => "different"}]}, &1))
+
       for row <- rows, attr <- row["attributes"] do
         assert attr["source_id"] in [other_source_id, other_metrics_source_id]
         refute attr["source_id"] in [source_id, metrics_source_id]
-      refute attr["my_label"] == "test"
+        refute attr["my_label"] == "test"
       end
+    end
+  end
 
+  describe "endpoints" do
+    setup :start_otel_exporter
+
+    setup do
+      start_supervised!(AllLogsLogged)
+      insert(:plan)
+      :ok
+    end
+
+    test "endpoints.query.total_processed_bytes" do
+      pid = self()
+
+      GoogleApi.BigQuery.V2.Api.Tabledata
+      |> stub(:bigquery_tabledata_insert_all, fn _conn,
+                                                 _project_id,
+                                                 dataset_id,
+                                                 _table_name,
+                                                 opts ->
+        send(pid, {:insert_all, opts[:body].rows})
+        {:ok, %GoogleApi.BigQuery.V2.Model.TableDataInsertAllResponse{insertErrors: nil}}
+      end)
+
+      expect(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, 1, fn _conn, _proj_id, opts ->
+        {:ok, TestUtils.gen_bq_response([%{"result" => "1"}])}
+      end)
+
+      user = insert(:user, system_monitoring: true)
+      source = insert(:source, user: user, system_source_type: :metrics)
+      start_supervised!({SourceSup, source}, id: :source)
+      # execute a query on the endpoint
+      endpoint =
+        insert(:endpoint,
+          user: user,
+          query: "SELECT 1",
+          labels: "my_label=some_value",
+          parsed_labels: %{"my_label" => "some_value"}
+        )
+
+      assert {:ok, _} = Endpoints.run_query(endpoint)
+      :timer.sleep(1000)
+      endpoint_id = endpoint.id
+
+      assert_receive {:insert_all,
+                      [
+                        %{
+                          json: %{
+                            "attributes" => [
+                              %{"my_label" => "some_value", "endpoint_id" => ^endpoint_id}
+                            ]
+                          }
+                        }
+                        | _
+                      ]},
+                     5_000
     end
   end
 end
