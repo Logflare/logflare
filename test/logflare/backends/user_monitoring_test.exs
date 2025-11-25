@@ -261,7 +261,10 @@ defmodule Logflare.Backends.UserMonitoringTest do
       rows = for row <- rows, do: row.json
 
       egress_row =
-        Enum.find(rows, &match?(%{"event_message" => "logflare.backends.ingest.egress.request_bytes"}, &1))
+        Enum.find(
+          rows,
+          &match?(%{"event_message" => "logflare.backends.ingest.egress.request_bytes"}, &1)
+        )
 
       assert egress_row, "Expected egress metric to be present"
 
