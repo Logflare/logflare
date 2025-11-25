@@ -194,7 +194,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.IngesterTest do
       log_event = build(:log_event, source: source, message: "Test compression default")
 
       Finch
-      |> expect(:request, fn request, _pool ->
+      |> expect(:request, fn request, _pool, _opts ->
         headers = request.headers
 
         assert {"content-encoding", "gzip"} in headers,
@@ -217,7 +217,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.IngesterTest do
       log_event = build(:log_event, source: source, message: "Test")
 
       Finch
-      |> expect(:request, fn request, _pool ->
+      |> expect(:request, fn request, _pool, _opts ->
         # Extract URL from the request
         url =
           to_string(request.scheme) <>
