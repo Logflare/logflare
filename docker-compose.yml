@@ -147,5 +147,12 @@ services:
       nofile:
         soft: 262144
         hard: 262144
+  telegraf:
+    image: telegraf:latest
+    volumes:
+      - ./priv/telegraf/telegraf.conf:/etc/telegraf/telegraf.conf:ro
+      - ./db/telegraf_output:/tmp/telegraf_output
+    ports:
+      - 6514:6514
 volumes:
   pg-data:

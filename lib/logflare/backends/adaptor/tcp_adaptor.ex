@@ -1,10 +1,11 @@
 defmodule Logflare.Backends.Adaptor.TCPAdaptor do
+  @moduledoc """
+  TCP backend adaptor that sends out Syslog-formatted messages.
+  """
+
   use TypedStruct
-
   import Ecto.Changeset
-
-  alias Logflare.Backends.Adaptor.TCPAdaptor.Pool
-  alias Logflare.Backends.Adaptor.TCPAdaptor.Syslog
+  alias Logflare.Backends.Adaptor.TCPAdaptor.{Pool, Syslog}
 
   @behaviour Logflare.Backends.Adaptor
 
@@ -14,31 +15,32 @@ defmodule Logflare.Backends.Adaptor.TCPAdaptor do
     field(:port, non_neg_integer())
   end
 
-  @impl true
+  @impl Logflare.Backends.Adaptor
+  def supports_default_ingest?, do: true
+
+  @impl Logflare.Backends.Adaptor
   def start_link({_source, backend}) do
     Pool.start_link(backend.config)
   end
 
-  @impl true
+  @impl Logflare.Backends.Adaptor
   def cast_config(params) do
     {%{}, %{tls: :bool, host: :string, port: :integer}}
     |> cast(params, [:tls, :host, :port])
   end
 
-  @impl true
+  @impl Logflare.Backends.Adaptor
   def validate_config(changeset) do
-    changeset
-    # Port is at most max(u16)
-    |> validate_inclusion(:port, 0..0xFFFF)
+    validate_inclusion(changeset, :port, 0..65535)
   end
 
-  @impl true
-  def ingest(pool, log_events, _opts) do
-    content = Enum.map(log_events, &Syslog.format(&1, []))
-
+  def ingest(pool, log_events) do
+    content = log_events |> List.wrap() |> Enum.map(&Syslog.format/1)
     Pool.send(pool, content)
   end
 
-  @impl true
-  def execute_query(_id, _query), do: {:error, :not_implemented}
+  @impl Logflare.Backends.Adaptor
+  def execute_query(_id, _query, _opts) do
+    {:error, :not_implemented}
+  end
 end

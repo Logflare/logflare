@@ -10,72 +10,79 @@ defmodule Logflare.Backends.Adaptor.TCPAdaptor.Syslog do
 
   alias Logflare.LogEvent
 
-  # TODO: Change it to real value
-  @pen 62137
+  def format(log_event) do
+    %LogEvent{body: body} = log_event
 
-  def format(%LogEvent{} = le, options) do
+    level = get_in(body["body"]["level"]) || body["level"] || "info"
+    severity_code = severity_code(level)
+
+    timestamp =
+      body
+      |> Map.fetch!("timestamp")
+      |> DateTime.from_unix!(:microsecond)
+      |> DateTime.truncate(:millisecond)
+      |> DateTime.to_iso8601()
+
+    # TODO
+    hostname = "hostname"
+    app_name = "app_name"
+    procid = "procid"
+    id = "msgid"
+
     msg = [
-      header(le, options),
-      " ",
-      structured_data(le, options),
-      " ",
-      Jason.encode!(le.body),
-      "\n"
+      # PRI VERSION SP
+      "<#{16 * 8 + severity_code}>1 ",
+      # TIMESTAMP
+      timestamp,
+      # SP
+      ?\s,
+      # HOSTNAME
+      hostname,
+      # SP
+      ?\s,
+      # APP-NAME
+      app_name,
+      # SP
+      ?\s,
+      # PROCID
+      procid,
+      # SP
+      ?\s,
+      # MSGID
+      id,
+      # SP
+      ?\s,
+      # STRUCTURED-DATA
+      ?-,
+      # SP
+      ?\s
+      # MSG
+      | Jason.encode_to_iodata!(body)
     ]
 
-    # TODO: Add support for non-transparent framing
-    [to_string(IO.iodata_length(msg)), ?\s, msg]
+    [Integer.to_string(IO.iodata_length(msg)), ?\s | msg]
   end
 
-  defp header(%LogEvent{} = le, options) do
-    level = to_level(le.body["level"] || le.body["metadata"]["level"])
-    facility = options[:facility] || 16
-
-    ingested_at = DateTime.from_naive!(le.ingested_at, "Etc/UTC")
-
-    id = Ecto.UUID.dump!(le.id) |> Base.encode32(case: :lower, padding: false)
-
-    [
-      # Level and facility
-      "<#{facility * 8 + level}>1 ",
-      DateTime.to_iso8601(ingested_at),
-      # XXX: Unknown hostname?
-      " -",
-      " ",
-      le.source.name,
-      # Unknown procname
-      " -",
-      " ",
-      id
-    ]
-  end
-
-  defp structured_data(%LogEvent{} = le, _options) do
-    [
-      "[source@#{@pen} name=#{inspect(le.source.name)} id=\"#{le.source.id}\"]"
-    ]
-  end
-
-  @levels Map.new(
-            Enum.with_index(~w[emergency alert critical error warning notice informational debug])
-          )
-  @shorhands %{
-    "emer" => @levels["emergency"],
-    "crit" => @levels["critical"],
-    "err" => @levels["error"],
-    "warn" => @levels["warning"],
-    "info" => @levels["informational"]
+  @levels %{
+    "emergency" => 0,
+    "emer" => 0,
+    "alert" => 1,
+    "critical" => 2,
+    "crit" => 2,
+    "error" => 3,
+    "err" => 3,
+    "warning" => 4,
+    "warn" => 4,
+    "notice" => 5,
+    "informational" => 6,
+    "info" => 6,
+    "debug" => 7
   }
 
-  @default @levels["notice"]
+  defp severity_code(level) when level in 0..7, do: level
 
-  defp to_level(level) when level in 0..7, do: level
-
-  defp to_level(str) when is_binary(str) do
+  defp severity_code(str) when is_binary(str) do
     str = String.downcase(str)
-    # Unquote there to force compile time evaluation
-    @levels[str] || @shorhands[str] || @default
+    Map.fetch!(@levels, str)
   end
-
-  defp to_level(_), do: @default
 end

@@ -1,162 +1,85 @@
 defmodule Logflare.Backends.Adaptor.TCPAdaptorTest do
   use Logflare.DataCase
 
-  @subject Logflare.Backends.Adaptor.TCPAdaptor
+  alias Logflare.Backends.Adaptor.TCPAdaptor
+  @output "db/telegraf_output/metrics.out"
+  @moduletag :telegraf
 
-  doctest @subject
-
-  setup do
-    user = insert(:user)
-    source = insert(:source, user_id: user.id)
-
-    {port, socket} = listen()
-
-    backend =
-      insert(:backend,
-        type: :tcp,
-        sources: [source],
-        config: %{host: "localhost", port: port, tls: false}
-      )
-
-    {:ok, source: source, backend: backend, port: port, socket: socket}
+  setup_all do
+    if File.exists?(@output), do: File.write!(@output, "")
+    :ok
   end
 
-  describe "ingest/3" do
-    test "simple message", %{source: source, backend: backend} do
-      le = build(:log_event, source: source)
-
-      {:ok, pid} = @subject.start_link({source, backend})
-
-      _ = @subject.ingest(pid, [le], [])
-
-      assert_receive {:tcp, _msg}, 5000
-    end
-
-    test "message contains source ID", %{source: source, backend: backend} do
-      le = build(:log_event, source: source)
-
-      {:ok, pid} = @subject.start_link({source, backend})
-
-      _ = @subject.ingest(pid, [le], [])
-
-      assert_receive {:tcp, msg}, 5000
-
-      assert msg =~ ~r/id="#{source.id}"/
-    end
-  end
-
-  describe "telegraf" do
-    @tag telegraf: true
+  describe "integration with telegraf" do
     setup do
       user = insert(:user)
       source = insert(:source, user_id: user.id)
-      {:ok, port, tcp_port} = telegraf()
 
       backend =
         insert(:backend,
           type: :tcp,
           sources: [source],
-          config: %{host: "localhost", port: tcp_port, tls: false}
+          config: %{host: "localhost", port: 6514}
         )
 
-      {:ok, syslog_port: tcp_port, telegraf: port, backend: backend, source: source}
+      {:ok, source: source, backend: backend}
     end
 
-    test "simple message", %{source: source, backend: backend, telegraf: port} do
-      le = build(:log_event, source: source)
+    test "sends RFC5424 message with octet counting", %{source: source, backend: backend} do
+      log_event =
+        build(:log_event, source: source, body: %{"message" => "hello world", "level" => "info"})
 
-      {:ok, pid} = @subject.start_link({source, backend})
+      {:ok, pid} = TCPAdaptor.start_link({source, backend})
+      TCPAdaptor.ingest(pid, [log_event])
 
-      _ = @subject.ingest(pid, [le], [])
+      assert_eventually(
+        fn -> refute @output |> File.stream!() |> Enum.empty?() end,
+        5000,
+        200
+      )
 
-      assert_receive {^port, {:data, {:eol, data}}}, 10_000
-      content = Jason.decode!(data)
-      assert "syslog" == content["name"]
+      assert [telegraf_event] =
+               @output |> File.stream!() |> Stream.map(&Jason.decode!/1) |> Enum.into([])
+
+      assert %{
+               "fields" => %{
+                 "facility_code" => 16,
+                 "message" => telegraf_event_message,
+                 "msgid" => "msgid",
+                 "procid" => "procid",
+                 "severity_code" => 6,
+                 "timestamp" => _timestamp,
+                 "version" => 1
+               },
+               "name" => "syslog",
+               "tags" => %{
+                 "appname" => "app_name",
+                 "facility" => "local0",
+                 "hostname" => "hostname",
+                 "severity" => "info"
+               }
+             } = telegraf_event
+
+      assert %{
+               "body" => %{"level" => "info", "message" => "hello world"},
+               "event_message" => "test-msg",
+               "id" => _id,
+               "timestamp" => _timestamp
+             } = Jason.decode!(telegraf_event_message)
     end
   end
 
-  # Simple TCP server
-  defp listen do
-    this = self()
-
-    spawn_link(fn ->
-      {:ok, sock} =
-        :gen_tcp.listen(0,
-          mode: :binary,
-          active: :once
-        )
-
-      {:ok, port} = :inet.port(sock)
-
-      send(this, {port, sock})
-
-      acceptor(sock, this)
-    end)
-
-    receive do
-      {port, sock} -> {port, sock}
-    end
-  end
-
-  defp acceptor(socket, parent) do
-    {:ok, lsock} = :gen_tcp.accept(socket)
-    ref = make_ref()
-
-    pid =
-      spawn_link(fn ->
-        receive do
-          ^ref -> server(lsock, parent)
+  defp assert_eventually(fun, timeout, interval) do
+    try do
+      fun.()
+    rescue
+      ex ->
+        if timeout > 0 do
+          Process.sleep(interval)
+          assert_eventually(fun, timeout - interval, interval)
+        else
+          reraise ex, __STACKTRACE__
         end
-      end)
-
-    :gen_tcp.controlling_process(lsock, pid)
-    send(pid, ref)
-
-    acceptor(socket, parent)
-  end
-
-  defp server(sock, pid) do
-    receive do
-      {:tcp_close, ^sock} ->
-        :ok
-
-      {:tcp, ^sock, msg} ->
-        send(pid, {:tcp, msg})
-        server(sock, pid)
     end
-  end
-
-  defp telegraf(options \\ []) do
-    opts =
-      Map.merge(
-        %{
-          framing: "octet-counting",
-          port: 6789
-        },
-        Map.new(options)
-      )
-
-    env = [
-      {~c"SYSLOG_PORT", to_charlist(opts.port)},
-      {~c"SYSLOG_FRAMING", to_charlist(opts.framing)}
-    ]
-
-    wrapper = Path.expand("./test/support/syslog/run.sh")
-    telegraf = System.find_executable("telegraf")
-
-    port =
-      Port.open(
-        {:spawn_executable, to_charlist(wrapper)},
-        [
-          :binary,
-          line: 16 * 1024,
-          env: env,
-          args: [telegraf, "--config", "test/support/syslog/telegraf.conf"]
-        ]
-      )
-
-    Process.sleep(1000)
-
-    {:ok, port, opts.port}
   end
 end

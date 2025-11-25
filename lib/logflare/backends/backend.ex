@@ -20,14 +20,12 @@ defmodule Logflare.Backends.Backend do
     sentry: Adaptor.SentryAdaptor,
     postgres: Adaptor.PostgresAdaptor,
     bigquery: Adaptor.BigQueryAdaptor,
-
     loki: Adaptor.LokiAdaptor,
     clickhouse: Adaptor.ClickhouseAdaptor,
     incidentio: Adaptor.IncidentioAdaptor,
     s3: Adaptor.S3Adaptor,
     axiom: Adaptor.AxiomAdaptor,
     tcp: Adaptor.TCPAdaptor
-
   }
 
   typed_schema "backends" do

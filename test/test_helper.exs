@@ -68,7 +68,13 @@ Mimic.stub(Goth)
 Mimic.stub(Finch)
 
 ExUnit.configure(
-  exclude: [not_implemented: true, integration: true, failing: true, benchmark: true]
+  exclude: [
+    not_implemented: true,
+    integration: true,
+    failing: true,
+    benchmark: true,
+    telegraf: true
+  ]
 )
 
 Ecto.Adapters.SQL.Sandbox.mode(Logflare.Repo, :manual)

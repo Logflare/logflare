@@ -3,7 +3,7 @@ name: Elixir CI
 on:
   workflow_dispatch:
   schedule:
-    - cron: '0 0 * * SUN'
+    - cron: "0 0 * * SUN"
   pull_request:
     branches: ["**"]
     paths:
