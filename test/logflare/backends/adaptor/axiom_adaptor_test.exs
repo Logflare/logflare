@@ -4,6 +4,7 @@ defmodule Logflare.Backends.Adaptor.AxiomAdaptorTest do
   alias Logflare.Backends
   alias Logflare.Backends.Adaptor
   alias Logflare.Backends.AdaptorSupervisor
+  alias Logflare.Backends.Adaptor.HttpBased
   alias Logflare.SystemMetrics.AllLogsLogged
 
   @subject Adaptor.AxiomAdaptor
@@ -65,8 +66,7 @@ defmodule Logflare.Backends.Adaptor.AxiomAdaptorTest do
     setup :backend_data
 
     test "succceeds on 200 response", ctx do
-      @tesla_adapter
-      |> expect(:call, 2, fn env, _opts ->
+      mock_adapter(2, fn env ->
         assert env.method == :post
         assert env.url == "https://api.axiom.co/v1/datasets/#{@valid_config.dataset_name}/ingest"
         assert Tesla.get_header(env, "authorization") == "Bearer #{@valid_config.api_token}"
@@ -98,10 +98,7 @@ defmodule Logflare.Backends.Adaptor.AxiomAdaptorTest do
       ]
 
       for response <- error_responses do
-        @tesla_adapter
-        |> expect(:call, fn _env, _opts ->
-          response
-        end)
+        mock_adapter(fn _env -> response end)
 
         assert {:error, reason} = @subject.test_connection(ctx.backend)
         assert is_binary(reason)
@@ -122,8 +119,7 @@ defmodule Logflare.Backends.Adaptor.AxiomAdaptorTest do
       this = self()
       ref = make_ref()
 
-      @tesla_adapter
-      |> expect(:call, fn env, _opts ->
+      mock_adapter(fn env ->
         # Based on https://axiom.co/docs/restapi/endpoints/ingestIntoDataset?playground=open
         assert Tesla.build_url(env) ==
                  "https://api.axiom.co/v1/datasets/#{@valid_config.dataset_name}/ingest?timestamp-field=timestamp&timestamp-format=2006-01-02T15%3A04%3A05.999999Z07%3A00"
@@ -158,8 +154,7 @@ defmodule Logflare.Backends.Adaptor.AxiomAdaptorTest do
       this = self()
       ref = make_ref()
 
-      @tesla_adapter
-      |> expect(:call, fn env, _opts ->
+      mock_adapter(fn env ->
         send(this, {ref, env.body})
         {:ok, %Tesla.Env{status: 200, body: ""}}
       end)
@@ -186,5 +181,16 @@ defmodule Logflare.Backends.Adaptor.AxiomAdaptorTest do
       refute redacted_token == token
       assert redacted_token == "REDACTED"
     end
+  end
+
+  defp mock_adapter(calls_num \\ 1, function) do
+    stub(@tesla_adapter)
+
+    HttpBased.Client
+    |> expect(:new, calls_num, fn opts ->
+      HttpBased.Client
+      |> Mimic.call_original(:new, [opts])
+      |> Logflare.Tesla.MockAdapter.replace(function)
+    end)
   end
 end

@@ -95,9 +95,10 @@ defmodule Logflare.Backends.Adaptor.HttpBased.Client do
       |> Map.new(fn {k, v} -> {"backend.#{k}", v} end)
       |> Map.merge(metadata)
 
+    # Ensure remote call to new/0 to allow mocking
     backend
     |> module.client_opts()
-    |> new()
+    |> __MODULE__.new()
     |> Tesla.request(method: :post, url: "", body: events, opts: [metadata: metadata])
   end
 

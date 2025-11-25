@@ -1,11 +1,12 @@
 defmodule Logflare.Backends.Adaptor.SentryAdaptorTest do
   use Logflare.DataCase, async: false
 
-  alias Logflare.Backends.Adaptor
   alias Logflare.Backends
+  alias Logflare.Backends.Adaptor
   alias Logflare.Backends.AdaptorSupervisor
-  alias Logflare.SystemMetrics.AllLogsLogged
+  alias Logflare.Backends.Adaptor.HttpBased
   alias Logflare.Backends.Adaptor.SentryAdaptor
+  alias Logflare.SystemMetrics.AllLogsLogged
 
   @subject SentryAdaptor
   @tesla_adapter Tesla.Adapter.Finch
@@ -51,8 +52,7 @@ defmodule Logflare.Backends.Adaptor.SentryAdaptorTest do
       this = self()
       ref = make_ref()
 
-      @tesla_adapter
-      |> expect(:call, fn env, _opts ->
+      mock_adapter(fn env ->
         assert env.method == :post
         assert Tesla.build_url(env) == "https://o123456.ingest.sentry.io/api/123456/envelope/"
         assert Tesla.get_header(env, "content-type") == "application/x-sentry-envelope"
@@ -114,8 +114,7 @@ defmodule Logflare.Backends.Adaptor.SentryAdaptorTest do
       this = self()
       ref = make_ref()
 
-      @tesla_adapter
-      |> expect(:call, fn env, _opts ->
+      mock_adapter(fn env ->
         send(this, {ref, env.body})
         {:ok, %Tesla.Env{status: 200, body: ""}}
       end)
@@ -168,8 +167,7 @@ defmodule Logflare.Backends.Adaptor.SentryAdaptorTest do
       this = self()
       ref = make_ref()
 
-      @tesla_adapter
-      |> expect(:call, fn env, _opts ->
+      mock_adapter(fn env ->
         send(this, {ref, env.body})
         {:ok, %Tesla.Env{status: 200, body: ""}}
       end)
@@ -215,8 +213,7 @@ defmodule Logflare.Backends.Adaptor.SentryAdaptorTest do
       this = self()
       ref = make_ref()
 
-      @tesla_adapter
-      |> expect(:call, fn env, _opts ->
+      mock_adapter(fn env ->
         send(this, {ref, env.body})
         {:ok, %Tesla.Env{status: 200, body: ""}}
       end)
@@ -283,5 +280,16 @@ defmodule Logflare.Backends.Adaptor.SentryAdaptorTest do
       assert %{dsn: "https://abc123@o123456.ingest.sentry.io/123456"} =
                @subject.redact_config(config)
     end
+  end
+
+  defp mock_adapter(function) do
+    stub(@tesla_adapter)
+
+    HttpBased.Client
+    |> expect(:new, fn opts ->
+      HttpBased.Client
+      |> Mimic.call_original(:new, [opts])
+      |> Logflare.Tesla.MockAdapter.replace(function)
+    end)
   end
 end
