@@ -144,25 +144,14 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
 
       assert [
                %{
-                 "body" => %{
-                   "event_message" => "Test message 1",
-                   "id" => "550e8400-e29b-41d4-a716-446655440000",
-                   "metadata" => %{"level" => "info", "user_id" => 123},
-                   "timestamp" => 1_764_101_442_962_651
-                 },
-                 "id" => "550e8400-e29b-41d4-a716-446655440000"
+                 "id" => "550e8400-e29b-41d4-a716-446655440000",
+                 "body" => %{"event_message" => "Test message 1"}
                },
                %{
-                 "body" => %{
-                   "event_message" => "Test message 2",
-                   "id" => "9bc07845-9859-4163-bfe5-a74c1a1443a2",
-                   "metadata" => %{"level" => "error", "user_id" => 456},
-                   "timestamp" => 1_764_101_442_973_523
-                 },
-                 "id" => "9bc07845-9859-4163-bfe5-a74c1a1443a2"
+                 "id" => "9bc07845-9859-4163-bfe5-a74c1a1443a2",
+                 "body" => %{"event_message" => "Test message 2"}
                }
-             ] =
-               row_payloads
+             ] = row_payloads
     end
 
     test "handles empty event list", %{source: source, backend: backend} do
