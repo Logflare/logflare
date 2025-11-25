@@ -37,7 +37,7 @@ defmodule Logflare.Sql.DialectTransformer do
   """
   @spec for_dialect(dialects() | String.t()) :: module()
   def for_dialect("bigquery"), do: __MODULE__.BigQuery
-  def for_dialect("clickhouse"), do: __MODULE__.Clickhouse
+  def for_dialect("clickhouse"), do: __MODULE__.ClickHouse
   def for_dialect("postgres"), do: __MODULE__.Postgres
   def for_dialect(value) when is_atom_value(value), do: value |> to_dialect() |> for_dialect()
 

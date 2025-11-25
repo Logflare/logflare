@@ -1,4 +1,4 @@
-defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.Ingester do
+defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
   @moduledoc """
   Simplified ingestion-only functionality for ClickHouse.
   """
@@ -9,7 +9,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.Ingester do
   alias Logflare.Backends.Backend
   alias Logflare.LogEvent
 
-  @finch_pool Logflare.FinchClickhouseIngest
+  @finch_pool Logflare.FinchClickHouseIngest
   @max_retries 3
   @initial_delay 500
   @max_delay 4_000
@@ -17,7 +17,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.Ingester do
   @doc """
   Inserts a list of `LogEvent` structs into ClickHouse.
 
-  Not intended for direct use. Use `Logflare.Backends.Adaptor.ClickhouseAdaptor.insert_log_events/2` instead.
+  Not intended for direct use. Use `Logflare.Backends.Adaptor.ClickHouseAdaptor.insert_log_events/2` instead.
   """
   @spec insert(Backend.t() | Keyword.t(), table :: String.t(), log_events :: [LogEvent.t()]) ::
           :ok | {:error, String.t()}

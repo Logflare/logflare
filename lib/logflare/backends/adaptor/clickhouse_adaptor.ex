@@ -1,4 +1,4 @@
-defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
+defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   @moduledoc """
   ClickHouse backend adaptor that relies on the `:ch` library.
   """
@@ -296,7 +296,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
             backend_id: backend.id
           )
 
-          {:error, "Error executing Clickhouse query"}
+          {:error, "Error executing ClickHouse query"}
 
         {:error, %{message: message}} when is_non_empty_binary(message) ->
           Logger.warning(
@@ -304,10 +304,10 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
             backend_id: backend.id
           )
 
-          {:error, "Error executing Clickhouse query"}
+          {:error, "Error executing ClickHouse query"}
 
         {:error, _} ->
-          {:error, "Error executing Clickhouse query"}
+          {:error, "Error executing ClickHouse query"}
       end
     end
   end
@@ -337,7 +337,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
         :ok
 
       {:error, reason} ->
-        Logger.warning("Clickhouse insert errors.", error_string: inspect(reason))
+        Logger.warning("ClickHouse insert errors.", error_string: inspect(reason))
 
         {:error, reason}
     end

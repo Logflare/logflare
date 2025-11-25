@@ -1,4 +1,4 @@
-defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.QueryConnectionSup do
+defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryConnectionSup do
   @moduledoc """
   This supervisor only manages read/query `ConnectionManager` instances. It does not handle
   write/ingest `ConnectionManager` instances, which are supervised per-source under `Logflare.Backends.SourceSup`.
