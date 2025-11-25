@@ -344,14 +344,14 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
   end
 
   @doc """
-  Attempts to provision a new log ingest table, if it does not already exist.
+  Attempts to provision a new ingest table for a particular source, if it does not already exist.
   """
   @spec provision_ingest_table(source_backend_tuple()) ::
           {:ok, Ch.Result.t()} | {:error, Exception.t()}
   def provision_ingest_table({%Source{} = source, %Backend{} = backend}) do
     with table_name <- clickhouse_ingest_table_name(source),
          statement <-
-           QueryTemplates.create_log_ingest_table_statement(table_name,
+           QueryTemplates.create_ingest_table_statement(table_name,
              ttl_days: source.retention_days
            ) do
       execute_ch_query(backend, statement)
