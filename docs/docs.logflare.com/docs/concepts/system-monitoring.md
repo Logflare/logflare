@@ -8,7 +8,6 @@ System Monitoring collects metrics and logs about your sources, backends, and en
 
 - **`system.metrics`** - OpenTelemetry metrics for ingestion, queries, and egress
 - **`system.logs`** - Application logs for your sources and backends
-- **`system.rejected_events`** - Rejected events from validation failures
 
 System sources behave like regular sources. Query, search, and monitor them with standard Logflare tools. They appear as favorites by default.
 
@@ -36,10 +35,6 @@ Metrics are collected every 60 seconds.
 ### system.logs
 
 Contains application logs related to your sources, backends, and endpoints.
-
-### system.rejected_events
-
-Contains events rejected during ingestion due to validation failures or backend insertion failures.
 
 ## Metrics Collected
 
