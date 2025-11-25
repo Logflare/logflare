@@ -25,7 +25,7 @@ defmodule Logflare.SystemMetrics.Schedulers.Poller do
       Schedulers.scheduler_utilization(last_scheduler_metrics, current_scheduler_metrics)
 
     if Application.get_env(:logflare, :env) == :prod do
-      Logger.debug("Scheduler metrics!", scheduler_metrics: scheduler_metrics)
+      Logger.info("Scheduler metrics!", scheduler_metrics: scheduler_metrics)
     end
 
     poll_metrics()
