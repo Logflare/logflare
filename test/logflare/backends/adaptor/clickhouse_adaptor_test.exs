@@ -150,7 +150,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptorTest do
                    "metadata" => %{"level" => "info", "user_id" => 123},
                    "timestamp" => 1_764_101_442_962_651
                  },
-                 "id" => "d4419be2-0084-0e55-0000-4455664416a7"
+                 "id" => "550e8400-e29b-41d4-a716-446655440000"
                },
                %{
                  "body" => %{
@@ -159,7 +159,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptorTest do
                    "metadata" => %{"level" => "error", "user_id" => 456},
                    "timestamp" => 1_764_101_442_973_523
                  },
-                 "id" => "63415998-4578-c09b-a243-141a4ca7e5bf"
+                 "id" => "9bc07845-9859-4163-bfe5-a74c1a1443a2"
                }
              ] =
                row_payloads
