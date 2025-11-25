@@ -99,6 +99,7 @@ defmodule Logflare.Networking do
            protocols: [:http1],
            size: max(base * 125, 150),
            count: http1_count,
+           conn_max_idle_time: 9_000,
            start_pool_metrics?: true
          ]
        }}
