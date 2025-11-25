@@ -111,11 +111,13 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
     test "can insert and retrieve log events", %{source: source, backend: backend} do
       log_events = [
         build(:log_event,
+          id: "550e8400-e29b-41d4-a716-446655440000",
           source: source,
           message: "Test message 1",
           metadata: %{"level" => "info", "user_id" => 123}
         ),
         build(:log_event,
+          id: "9bc07845-9859-4163-bfe5-a74c1a1443a2",
           source: source,
           message: "Test message 2",
           metadata: %{"level" => "error", "user_id" => 456}
@@ -132,16 +134,26 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       query_result =
         ClickHouseAdaptor.execute_ch_query(
           backend,
-          "SELECT body FROM #{table_name} ORDER BY timestamp"
+          "SELECT id, body, timestamp FROM #{table_name} ORDER BY timestamp"
         )
 
       assert {:ok, rows} = query_result
       assert length(rows) == 2
 
-      row_payloads = Enum.map(rows, &Jason.decode!(&1["body"]))
+      row_payloads = Enum.map(rows, fn row -> Map.update!(row, "body", &Jason.decode!/1) end)
 
-      assert [%{"event_message" => "Test message 1"}, %{"event_message" => "Test message 2"}] =
-               row_payloads
+      assert [
+               %{
+                 "id" => "550e8400-e29b-41d4-a716-446655440000",
+                 "body" => %{"event_message" => "Test message 1"},
+                 "timestamp" => _
+               },
+               %{
+                 "id" => "9bc07845-9859-4163-bfe5-a74c1a1443a2",
+                 "body" => %{"event_message" => "Test message 2"},
+                 "timestamp" => _
+               }
+             ] = row_payloads
     end
 
     test "handles empty event list", %{source: source, backend: backend} do
