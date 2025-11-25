@@ -617,7 +617,7 @@ defmodule Logflare.Sources do
     (source.labels || "")
     |> String.split(",")
     |> Enum.map(fn label ->
-      String.split(label, "=")
+      String.split(label, "=", parts: 2)
       |> then(fn
         [label, "m." <> path] -> {label, ["metadata" | String.split(path, ".")]}
         [label, path] -> {label, String.split(path, ".")}
