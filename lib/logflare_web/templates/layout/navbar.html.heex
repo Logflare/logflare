@@ -1,0 +1,94 @@
+<nav class="navbar  navbar-expand-lg navbar-light bg-light">
+  <%= if Plug.Conn.get_session(@conn, :vercel_setup) do %>
+    <div class="navbar-brand">
+      {render(LogflareWeb.SharedView, "logo.html", assigns)}
+    </div>
+  <% else %>
+    <%= if @user do %>
+      <.team_link href={~p"/dashboard"} team={@team} class="navbar-brand">
+        {render(LogflareWeb.SharedView, "logo.html", assigns)}
+      </.team_link>
+    <% else %>
+      <a href="/" class="navbar-brand">
+        {render(LogflareWeb.SharedView, "logo.html", assigns)}
+      </a>
+    <% end %>
+  <% end %>
+
+  <%= if !Plug.Conn.get_session(@conn, :vercel_setup) do %>
+    <button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#navbarSupportedContent" aria-controls="navbarSupportedContent" aria-expanded="false" aria-label="Toggle navigation">
+      <span class="navbar-toggler-icon"></span>
+    </button>
+  <% end %>
+  <div class="collapse navbar-collapse" id="navbarSupportedContent">
+    <ul class="navbar-nav mr-auto">
+      <%= if @user do %>
+        <li class="nav-item">
+          <.team_link href="/dashboard" team={@team} class="nav-link">Dashboard</.team_link>
+        </li>
+        <li class="nav-item">
+          <.team_link href={Routes.endpoints_path(@conn, :index)} team={@team} class="nav-link">Endpoints</.team_link>
+        </li>
+        <%= if LogflareWeb.Utils.flag("alerts", @user) do %>
+          <li class="nav-item">
+            <.team_link href={Routes.alerts_path(@conn, :index)} team={@team} class="nav-link">Alerts</.team_link>
+          </li>
+        <% end %>
+        <li class="nav-item">
+          <.team_link href="https://docs.logflare.app" team={@team} class="nav-link">Docs</.team_link>
+        </li>
+        <%= if Map.get(@conn.assigns, :team_user) do %>
+          <li class="nav-item">
+            <.team_link href={Routes.team_user_path(@conn, :edit)} team={@team} class="nav-link">Profile</.team_link>
+          </li>
+        <% else %>
+          <li class="nav-item">
+            <.team_link href={Routes.user_path(@conn, :edit)} team={@team} class="nav-link">Account</.team_link>
+          </li>
+        <% end %>
+        <li class="nav-item">
+          <.team_link href={Routes.auth_path(@conn, :logout)} team={@team} class="nav-link">Sign out</.team_link>
+        </li>
+        <li class="nav-item">
+          <.link href={Routes.marketing_path(@conn, :index)} class="nav-link">logflare.app</.link>
+        </li>
+        <%= if @user.admin do %>
+          <li class="nav-item">
+            <.link href={Routes.admin_path(@conn, :dashboard)} class="nav-link">Admin</.link>
+          </li>
+        <% end %>
+      <% else %>
+        <li class="nav-item">
+          <.link href="https://docs.logflare.app" class="nav-link">Docs</.link>
+        </li>
+        <li class="nav-item">
+          <.link href={Routes.marketing_path(@conn, :pricing)} class="nav-link">Pricing</.link>
+        </li>
+        <li class="nav-item">
+          <.link href={Routes.marketing_path(@conn, :contact)} class="nav-link">Contact us</.link>
+        </li>
+        <li class="nav-item">
+          <.link href={Routes.oauth_path(@conn, :request, "github")} class="nav-link">Continue with Github</.link>
+        </li>
+        <li class="nav-item">
+          <.link href={Routes.oauth_path(@conn, :request, "google")} class="nav-link">Continue with Google</.link>
+        </li>
+      <% end %>
+    </ul>
+    <%= if @user do %>
+      <ul class="navbar-nav ml-auto">
+        <%= if @plan.name == "Free" || @plan.name == "Legacy" do %>
+          <li class="nav-item active">
+            <.team_link href={~p"/billing/edit"} team={@team} class="nav-link btn btn-dark text-white" style="min-width: 8em;">Upgrade</.team_link>
+          </li>
+        <% end %>
+      </ul>
+    <% else %>
+      <ul class="navbar-nav ml-auto">
+        <li class="nav-item active">
+          <.link href={Routes.auth_path(@conn, :login)} class="nav-link btn btn-dark text-white" style="min-width: 8em;">Sign in</.link>
+        </li>
+      </ul>
+    <% end %>
+  </div>
+</nav>

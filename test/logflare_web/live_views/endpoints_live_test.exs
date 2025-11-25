@@ -866,4 +866,42 @@ defmodule LogflareWeb.EndpointsLiveTest do
       refute html =~ "%Ecto.Query{"
     end
   end
+
+  describe "resolving team context" do
+    setup %{user: user} do
+      team = insert(:team, user: user)
+      team_user = insert(:team_user, team: team)
+      endpoint = insert(:endpoint, user: user)
+
+      [user: user, team: team, team_user: team_user, endpoint: endpoint]
+    end
+
+    test "team user can list endpoints", %{
+      conn: conn,
+      user: user,
+      team_user: team_user,
+      endpoint: endpoint
+    } do
+      {:ok, _view, html} =
+        conn
+        |> login_user(user, team_user)
+        |> live(~p"/endpoints?t=#{team_user.team_id}")
+
+      assert html =~ endpoint.name
+    end
+
+    test "team user can view endpoint without t= param", %{
+      conn: conn,
+      user: user,
+      team_user: team_user,
+      endpoint: endpoint
+    } do
+      {:ok, _view, html} =
+        conn
+        |> login_user(user, team_user)
+        |> live(~p"/endpoints/#{endpoint.id}")
+
+      assert html =~ endpoint.name
+    end
+  end
 end

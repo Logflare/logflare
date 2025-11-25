@@ -1,4 +1,4 @@
-defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.Ingester do
+defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
   @moduledoc """
   Simplified ingestion-only functionality for ClickHouse.
   """
@@ -9,12 +9,15 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.Ingester do
   alias Logflare.Backends.Backend
   alias Logflare.LogEvent
 
-  @finch_pool Logflare.FinchClickhouseIngest
+  @finch_pool Logflare.FinchClickHouseIngest
+  @max_retries 3
+  @initial_delay 500
+  @max_delay 4_000
 
   @doc """
   Inserts a list of `LogEvent` structs into ClickHouse.
 
-  Not intended for direct use. Use `Logflare.Backends.Adaptor.ClickhouseAdaptor.insert_log_events/2` instead.
+  Not intended for direct use. Use `Logflare.Backends.Adaptor.ClickHouseAdaptor.insert_log_events/2` instead.
   """
   @spec insert(Backend.t() | Keyword.t(), table :: String.t(), log_events :: [LogEvent.t()]) ::
           :ok | {:error, String.t()}
@@ -28,31 +31,49 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.Ingester do
 
   def insert(connection_opts, table, [%LogEvent{} | _] = log_events)
       when is_list(connection_opts) and is_non_empty_binary(table) do
+    client = build_client(connection_opts)
     url = build_request_url(connection_opts, table)
-    request_body = encode_batch(log_events)
+    request_body = encode_batch(log_events) |> :zlib.gzip()
 
-    {request_body, headers} =
-      {:zlib.gzip(request_body), [{"content-encoding", "gzip"}]}
-
-    headers = [
-      {"content-type", "application/octet-stream"},
-      build_auth_header(connection_opts)
-      | headers
-    ]
-
-    request = Finch.build(:post, url, headers, request_body)
-
-    case Finch.request(request, @finch_pool) do
-      {:ok, %{status: 200}} ->
+    case Tesla.post(client, url, request_body) do
+      {:ok, %Tesla.Env{status: 200}} ->
         :ok
 
-      {:ok, %{status: status, body: response_body}} ->
+      {:ok, %Tesla.Env{status: status, body: response_body}} ->
         {:error, "HTTP #{status}: #{response_body}"}
 
       {:error, reason} ->
         {:error, reason}
     end
   end
+
+  @spec build_client(Keyword.t()) :: Tesla.Client.t()
+  defp build_client(connection_opts) do
+    middleware = [
+      {Tesla.Middleware.Headers,
+       [
+         {"content-type", "application/octet-stream"},
+         {"content-encoding", "gzip"},
+         build_auth_header(connection_opts)
+       ]},
+      {Tesla.Middleware.Retry,
+       delay: @initial_delay,
+       max_retries: @max_retries,
+       max_delay: @max_delay,
+       should_retry: &retriable?/1}
+    ]
+
+    adapter =
+      {Tesla.Adapter.Finch, name: @finch_pool, pool_timeout: 4_000, receive_timeout: 8_000}
+
+    Tesla.client(middleware, adapter)
+  end
+
+  @spec retriable?({:ok, Tesla.Env.t()} | {:error, term()}) :: boolean()
+  defp retriable?({:ok, %Tesla.Env{status: status}}) when status >= 500, do: true
+  defp retriable?({:ok, %Tesla.Env{status: 429}}), do: true
+  defp retriable?({:ok, _env}), do: false
+  defp retriable?({:error, _reason}), do: true
 
   @doc false
   @spec encode_row(LogEvent.t()) :: iodata()

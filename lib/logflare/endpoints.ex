@@ -18,6 +18,8 @@ defmodule Logflare.Endpoints do
   alias Logflare.Repo
   alias Logflare.SingleTenant
   alias Logflare.Sql
+  alias Logflare.Teams
+  alias Logflare.TeamUsers.TeamUser
   alias Logflare.User
   alias Logflare.Users
   alias Logflare.Utils
@@ -50,6 +52,30 @@ defmodule Logflare.Endpoints do
       end
     end)
     |> Repo.all()
+  end
+
+  @doc """
+  Lists all endpoints a user has access to, including where the user is a team member.
+  """
+  @spec list_endpoints_by_user_access(User.t()) :: [Query.t()]
+  def list_endpoints_by_user_access(%User{} = user) do
+    Query
+    |> Teams.filter_by_user_access(user)
+    |> Repo.all()
+  end
+
+  @doc """
+  Gets an endpoint query by id that the user has access to.
+  Returns the endpoint query if the user owns it or is a team member, otherwise returns nil.
+  """
+  @spec get_endpoint_query_by_user_access(User.t() | TeamUser.t(), integer() | String.t()) ::
+          Query.t() | nil
+  def get_endpoint_query_by_user_access(user_or_team_user, id)
+      when is_integer(id) or is_binary(id) do
+    Query
+    |> Teams.filter_by_user_access(user_or_team_user)
+    |> where([query], query.id == ^id)
+    |> Repo.one()
   end
 
   @doc """
@@ -448,7 +474,7 @@ defmodule Logflare.Endpoints do
         ) :: {:ok, String.t() | nil} | {:error, String.t()}
   # no sql_param provided, but lql_param is present for SANDBOXED endpoint
   defp maybe_convert_lql_to_sql(lql_param, nil, expanded_query, language, true)
-       when is_non_empty_binary(lql_param) and language in [:bq_sql, :ch_sql] do
+       when is_non_empty_binary(lql_param) and language in [:bq_sql, :ch_sql, :pg_sql] do
     with {:ok, cte_names} <- Sql.extract_cte_aliases(expanded_query),
          {:ok, lql_rules} <- Lql.Parser.parse(lql_param),
          from_rule <- Rules.get_from_rule(lql_rules),

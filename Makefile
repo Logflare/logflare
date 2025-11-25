@@ -120,7 +120,7 @@ setup: check-tools check-version-manager setup.node
 setup.node:
 	@echo -e "$(BOLD)$(BLUE)📦 Installing Node.js dependencies...$(NC)"
 	@echo ""
-	npm --prefix ./assets install
+	npm --prefix ./assets ci 
 	@echo ""
 
 reset:

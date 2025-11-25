@@ -1,6 +1,6 @@
-defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.Pipeline do
+defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
   @moduledoc """
-  Pipeline for `ClickhouseAdaptor`
+  Pipeline for `ClickHouseAdaptor`
 
   This pipeline is responsible for taking log events from the
   source backend and inserting them into the configured database.
@@ -11,7 +11,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.Pipeline do
 
   alias Broadway.Message
   alias Logflare.Backends
-  alias Logflare.Backends.Adaptor.ClickhouseAdaptor
+  alias Logflare.Backends.Adaptor.ClickHouseAdaptor
   alias Logflare.Backends.BufferProducer
   alias Logflare.Backends.IngestEventQueue
   alias Logflare.LogEvent
@@ -22,7 +22,10 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.Pipeline do
   @processor_concurrency 5
   @batcher_concurrency 10
   @batch_size 1_500
-  @max_retries 3
+  @max_retries 0
+
+  @doc false
+  def max_retries, do: @max_retries
 
   @doc false
   def child_spec(arg) do
@@ -48,7 +51,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.Pipeline do
       ],
       producer: [
         module: {BufferProducer, [source_id: source.id, backend_id: backend.id]},
-        transformer: {__MODULE__, :transform, [[source_id: source.id, backend_id: backend.id]]},
+        transformer: {__MODULE__, :transform, [source_id: source.id, backend_id: backend.id]},
         concurrency: @producer_concurrency
       ],
       processors: [
@@ -102,7 +105,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.Pipeline do
         backend = Backends.Cache.get_backend(backend_id)
         events = for %{data: le} <- messages, do: le
 
-        ClickhouseAdaptor.insert_log_events({source, backend}, events)
+        ClickHouseAdaptor.insert_log_events({source, backend}, events)
       end
 
     case result do
@@ -140,8 +143,8 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.Pipeline do
 
       {ack_data, messages} ->
         Logger.warning(
-          "Dropping #{length(messages)} ClickHouse events with invalid acknowledger data",
-          ack_data: inspect(ack_data)
+          "Dropping #{length(messages)} ClickHouse events with unexpected acknowledger data",
+          error_string: inspect(ack_data)
         )
     end)
   end

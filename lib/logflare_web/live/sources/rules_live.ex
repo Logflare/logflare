@@ -20,8 +20,8 @@ defmodule LogflareWeb.Sources.RulesLive do
   @lql_string ""
 
   @impl true
-  def mount(%{"source_id" => source_id}, %{"user_id" => user_id}, socket) do
-    user = Users.get_by_and_preload(id: user_id)
+  def mount(%{"source_id" => source_id}, _session, socket) do
+    %{assigns: %{user: user}} = socket
     source = Sources.get_by_and_preload(id: source_id)
 
     user =

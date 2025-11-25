@@ -36,15 +36,11 @@ defmodule LogflareWeb.Source.SearchLV do
   @user_idle_interval :timer.minutes(2)
   @default_qs "c:count(*) c:group_by(t::minute)"
 
-  def mount(%{"source_id" => source_id} = params, %{"user_id" => user_id} = session, socket) do
-    source = Sources.get_source_for_lv_param(source_id)
-    socket = assign(socket, :source, source)
-    user = Users.get_by_and_preload(id: user_id)
+  on_mount LogflareWeb.AuthLive
 
-    team_user =
-      if team_user_id = session["team_user_id"] do
-        TeamUsers.get_team_user_and_preload(team_user_id)
-      end
+  def mount(%{"source_id" => source_id} = params, _session, socket) do
+    %{assigns: %{user: user, team_user: team_user}} = socket
+    source = Sources.get_source_for_lv_param(source_id)
 
     tailing? =
       if source.disable_tailing, do: false, else: Map.get(params, "tailing?", "true") == "true"
@@ -55,8 +51,6 @@ defmodule LogflareWeb.Source.SearchLV do
     |> assign(
       executor_pid: executor_pid,
       source: source,
-      user: user,
-      team_user: team_user,
       search_tip: SearchUtils.gen_search_tip(),
       user_timezone_from_connect_params: nil,
       search_timezone: Map.get(params, "tz", "Etc/UTC"),

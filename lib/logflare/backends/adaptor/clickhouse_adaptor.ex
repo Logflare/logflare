@@ -1,4 +1,4 @@
-defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
+defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   @moduledoc """
   ClickHouse backend adaptor that relies on the `:ch` library.
   """
@@ -296,7 +296,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
             backend_id: backend.id
           )
 
-          {:error, "Error executing Clickhouse query"}
+          {:error, "Error executing ClickHouse query"}
 
         {:error, %{message: message}} when is_non_empty_binary(message) ->
           Logger.warning(
@@ -304,10 +304,10 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
             backend_id: backend.id
           )
 
-          {:error, "Error executing Clickhouse query"}
+          {:error, "Error executing ClickHouse query"}
 
         {:error, _} ->
-          {:error, "Error executing Clickhouse query"}
+          {:error, "Error executing ClickHouse query"}
       end
     end
   end
@@ -337,21 +337,21 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor do
         :ok
 
       {:error, reason} ->
-        Logger.warning("Clickhouse insert errors.", error_string: inspect(reason))
+        Logger.warning("ClickHouse insert errors.", error_string: inspect(reason))
 
         {:error, reason}
     end
   end
 
   @doc """
-  Attempts to provision a new log ingest table, if it does not already exist.
+  Attempts to provision a new ingest table for a particular source, if it does not already exist.
   """
   @spec provision_ingest_table(source_backend_tuple()) ::
           {:ok, Ch.Result.t()} | {:error, Exception.t()}
   def provision_ingest_table({%Source{} = source, %Backend{} = backend}) do
     with table_name <- clickhouse_ingest_table_name(source),
          statement <-
-           QueryTemplates.create_log_ingest_table_statement(table_name,
+           QueryTemplates.create_ingest_table_statement(table_name,
              ttl_days: source.retention_days
            ) do
       execute_ch_query(backend, statement)

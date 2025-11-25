@@ -1,23 +1,23 @@
-defmodule Logflare.Sql.DialectTransformer.ClickhouseTest do
+defmodule Logflare.Sql.DialectTransformer.ClickHouseTest do
   use Logflare.DataCase
 
-  alias Logflare.Sql.DialectTransformer.Clickhouse
-  alias Logflare.Backends.Adaptor.ClickhouseAdaptor
+  alias Logflare.Sql.DialectTransformer.ClickHouse
+  alias Logflare.Backends.Adaptor.ClickHouseAdaptor
 
   describe "quote_style/0" do
     test "returns nil for ClickHouse" do
-      assert Clickhouse.quote_style() == nil
+      assert ClickHouse.quote_style() == nil
     end
   end
 
   describe "dialect/0" do
     test "returns clickhouse string" do
-      assert Clickhouse.dialect() == "clickhouse"
+      assert ClickHouse.dialect() == "clickhouse"
     end
   end
 
   describe "transform_source_name/2" do
-    test "delegates to ClickhouseAdaptor.clickhouse_ingest_table_name/1" do
+    test "delegates to ClickHouseAdaptor.clickhouse_ingest_table_name/1" do
       user = build(:user)
       source = build(:source, name: "test_source", user: user)
 
@@ -26,8 +26,8 @@ defmodule Logflare.Sql.DialectTransformer.ClickhouseTest do
         dialect: "clickhouse"
       }
 
-      result = Clickhouse.transform_source_name("test_source", data)
-      expected = ClickhouseAdaptor.clickhouse_ingest_table_name(source)
+      result = ClickHouse.transform_source_name("test_source", data)
+      expected = ClickHouseAdaptor.clickhouse_ingest_table_name(source)
 
       assert result == expected
     end
@@ -42,8 +42,8 @@ defmodule Logflare.Sql.DialectTransformer.ClickhouseTest do
         dialect: "clickhouse"
       }
 
-      result = Clickhouse.transform_source_name("source_two", data)
-      expected = ClickhouseAdaptor.clickhouse_ingest_table_name(source2)
+      result = ClickHouse.transform_source_name("source_two", data)
+      expected = ClickHouseAdaptor.clickhouse_ingest_table_name(source2)
 
       assert result == expected
     end
@@ -57,8 +57,8 @@ defmodule Logflare.Sql.DialectTransformer.ClickhouseTest do
         dialect: "clickhouse"
       }
 
-      result = Clickhouse.transform_source_name("special_source", data)
-      expected = ClickhouseAdaptor.clickhouse_ingest_table_name(source)
+      result = ClickHouse.transform_source_name("special_source", data)
+      expected = ClickHouseAdaptor.clickhouse_ingest_table_name(source)
 
       assert result == expected
     end
@@ -75,7 +75,7 @@ defmodule Logflare.Sql.DialectTransformer.ClickhouseTest do
         sandboxed_query: nil
       }
 
-      result = Clickhouse.build_transformation_data(user, base_data)
+      result = ClickHouse.build_transformation_data(user, base_data)
 
       assert result == base_data
     end

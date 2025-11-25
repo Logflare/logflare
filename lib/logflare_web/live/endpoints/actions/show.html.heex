@@ -1,6 +1,6 @@
 <.subheader>
   <:path>
-    ~/<.subheader_path_link live_patch to={~p"/endpoints"}>endpoints</.subheader_path_link>/{@show_endpoint.name}
+    ~/<.subheader_path_link live_patch to={~p"/endpoints"} team={@team}>endpoints</.subheader_path_link>/{@show_endpoint.name}
   </:path>
   <.subheader_link to={~p"/access-tokens"} text="access tokens" fa_icon="key" />
   <.subheader_link live_patch to={~p"/endpoints/#{@show_endpoint.id}/edit"} text="edit" fa_icon="edit" />

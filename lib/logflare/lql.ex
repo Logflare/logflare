@@ -25,6 +25,7 @@ defmodule Logflare.Lql do
   @spec language_to_dialect(:bq_sql | :ch_sql | :pg_sql) :: dialect()
   def language_to_dialect(:bq_sql), do: :bigquery
   def language_to_dialect(:ch_sql), do: :clickhouse
+  def language_to_dialect(:pg_sql), do: :postgres
   def language_to_dialect(_), do: :bigquery
 
   @doc """
