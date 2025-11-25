@@ -21,6 +21,7 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor do
   alias Logflare.Backends.Adaptor.PostgresAdaptor.Pipeline
   alias Logflare.Backends.Adaptor.PostgresAdaptor.SharedRepo
   alias Logflare.Backends.Backend
+  alias Logflare.Backends.Ecto.SqlUtils
   alias Logflare.SingleTenant
   alias Logflare.Sources.Source
   alias Logflare.Sql
@@ -135,6 +136,11 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor do
       when is_non_empty_binary(query_string) and is_list(declared_params) and is_map(input_params) and
              is_list(opts) do
     execute_query(backend, {query_string, declared_params, input_params}, opts)
+  end
+
+  @impl Logflare.Backends.Adaptor
+  def ecto_to_sql(%Ecto.Query{} = query, _opts) do
+    SqlUtils.ecto_to_pg_sql(query)
   end
 
   @impl Logflare.Backends.Adaptor
