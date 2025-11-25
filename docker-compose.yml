@@ -148,9 +148,9 @@ services:
         soft: 262144
         hard: 262144
   telegraf:
-    image: telegraf:latest
+    image: telegraf:1.36
     volumes:
-      - ./priv/telegraf/telegraf.conf:/etc/telegraf/telegraf.conf:ro
+      - ./priv/telegraf:/etc/telegraf:ro
       - ./db/telegraf_output:/tmp/telegraf_output
     ports:
       - 6514:6514

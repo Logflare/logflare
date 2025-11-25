@@ -6,11 +6,15 @@ defmodule Logflare.Backends.Adaptor.TCPAdaptor.Pool do
   end
 
   def send(pool, message) do
-    NimblePool.checkout!(pool, :send, fn _from, socket ->
-      result = :gen_tcp.send(socket, message)
+    result =
+      NimblePool.checkout!(pool, :send, fn _from, socket ->
+        {:gen_tcp.send(socket, message), socket}
+      end)
 
-      {result, result}
-    end)
+    case result do
+      :ok -> :ok
+      {:error, reason} -> raise "Failed to send message to TCP backend - #{inspect(reason)}"
+    end
   end
 
   @impl NimblePool
@@ -19,13 +23,25 @@ defmodule Logflare.Backends.Adaptor.TCPAdaptor.Pool do
 
     # TODO: Add SSL support there
     async = fn ->
-      {:ok, socket} =
+      connect_result =
         :gen_tcp.connect(to_charlist(host), port,
           mode: :binary,
           nodelay: true
         )
 
-      :gen_tcp.controlling_process(socket, this)
+      socket =
+        case connect_result do
+          {:ok, socket} ->
+            socket
+
+          {:error, reason} ->
+            raise "Failed to connect to TCP backend at #{host}:#{port} - #{inspect(reason)}"
+        end
+
+      case :gen_tcp.controlling_process(socket, this) do
+        :ok -> :ok
+        {:error, reason} -> raise "Failed to set controlling process - #{inspect(reason)}"
+      end
 
       socket
     end
@@ -39,14 +55,15 @@ defmodule Logflare.Backends.Adaptor.TCPAdaptor.Pool do
   end
 
   @impl NimblePool
-  # Ignore any data sent over the socket
-  def handle_info({:tcp, socket, _}, socket),
-    do: {:ok, socket}
-
-  def handle_info({:tcp_closed, socket}, socket),
-    do: {:remove, "connection closed"}
-
-  def handle_info(_other, socket) do
+  def handle_info({:tcp, socket, _}, socket) do
     {:ok, socket}
+  end
+
+  def handle_info({:tcp_closed, socket}, socket) do
+    {:remove, :closed}
+  end
+
+  def handle_info(unexpected_message, _socket) do
+    raise "Unexpected message in TCPAdaptor: #{inspect(unexpected_message)}"
   end
 end
