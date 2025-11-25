@@ -26,7 +26,7 @@ defmodule LogflareWeb.Sources.RulesLiveTest do
       |> login_user(user)
       |> get(~p"/sources/#{source}/rules")
 
-    assert html_response(conn, 403) =~ "Forbidden"
+    assert html_response(conn, 404) =~ "not found"
   end
 
   describe "Authenticated User" do

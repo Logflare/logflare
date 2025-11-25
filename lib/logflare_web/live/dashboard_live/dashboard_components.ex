@@ -7,6 +7,7 @@ defmodule LogflareWeb.DashboardLive.DashboardComponents do
   alias Phoenix.LiveView.JS
 
   attr :user, Logflare.User, required: true
+  attr :team, Logflare.Teams.Team, required: true
 
   def subhead(assigns) do
     assigns =
@@ -29,20 +30,20 @@ defmodule LogflareWeb.DashboardLive.DashboardComponents do
               </span>
             </li>
             <li>
-              <.link href={~p"/access-tokens"}>
+              <.team_link team={@team} href={~p"/access-tokens"}>
                 <i class="fas fa-key"></i><span class="hide-on-mobile"> access tokens</span>
-              </.link>
+              </.team_link>
             </li>
             <li :if={@flag_multibackend}>
-              <.link href={~p"/backends"}>
+              <.team_link team={@team} navigate={~p"/backends"}>
                 <i class="fas fa-database"></i><span class="hide-on-mobile"> backends</span>
-              </.link>
+              </.team_link>
             </li>
             <li>
-              <.link href={~p"/integrations/vercel/edit"}>
+              <.team_link team={@team} navigate={~p"/integrations/vercel/edit"}>
                 ▲<span class="hide-on-mobile"> vercel
                   integration</span>
-              </.link>
+              </.team_link>
             </li>
             <li>
               <.link href={~p"/billing/edit"}>
@@ -115,9 +116,9 @@ defmodule LogflareWeb.DashboardLive.DashboardComponents do
       <ul class="list-unstyled">
         <li :if={@home_team} class="tw-mb-2">
           <strong :if={@current_team.id == @home_team.id}>{@home_team.name}</strong>
-          <.link :if={@current_team.id != @home_team.id} href={~p"/profile/switch?#{%{"user_id" => @home_team.user_id}}"} class="tw-text-white">
+          <.team_link :if={@current_team.id != @home_team.id} navigate={~p"/dashboard"} team={@home_team} class="tw-text-white">
             {@home_team.name}
-          </.link>
+          </.team_link>
           <small>home team</small>
         </li>
 
@@ -133,9 +134,9 @@ defmodule LogflareWeb.DashboardLive.DashboardComponents do
 
         <li :for={team_user <- @team_users} class="tw-mb-2">
           <span :if={team_user.team_id == @current_team.id}>{team_user.team.name}</span>
-          <.link :if={team_user.team_id != @current_team.id} href={~p"/profile/switch?#{%{user_id: team_user.team.user_id, team_user_id: team_user.id}}"} class="tw-text-white">
+          <.team_link :if={team_user.team_id != @current_team.id} navigate={~p"/dashboard"} team={team_user.team} class="tw-text-white">
             {team_user.team.name}
-          </.link>
+          </.team_link>
         </li>
       </ul>
     </div>
@@ -166,7 +167,7 @@ defmodule LogflareWeb.DashboardLive.DashboardComponents do
           <span :if={current_team_user?(member, @team_user)}>you</span>
         </li>
       </ul>
-      <.link href={~p"/account/edit#team-members"} class="tw-text-white tw-mt-2">
+      <.link :if={is_nil(@team_user)} href={~p"/account/edit#team-members"} class="tw-text-white tw-mt-2">
         Invite more team members.
       </.link>
     </div>

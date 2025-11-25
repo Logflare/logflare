@@ -91,11 +91,12 @@ defmodule LogflareWeb.CoreComponents do
   """
   attr :to, :string
   attr :live_patch, :boolean, default: false
+  attr :team, Logflare.Teams.Team, default: nil
   slot :inner_block, required: true
 
   def subheader_path_link(assigns) do
     ~H"""
-    <.dynamic_link to={@to} patch={@live_patch} class="tw-text-gray-600 tw-hover:text-black">
+    <.dynamic_link to={LogflareWeb.Utils.with_team_param(@to, @team)} patch={@live_patch} class="tw-text-gray-600 tw-hover:text-black">
       {render_slot(@inner_block)}
     </.dynamic_link>
     """
@@ -178,5 +179,35 @@ defmodule LogflareWeb.CoreComponents do
     ~H"""
     <.link class={@class} target="_blank" href={~p"/sources/#{@source.id}/event?#{%{uuid: @log_event_id, timestamp: Logflare.Utils.iso_timestamp(@timestamp), lql: @lql}}"}>{@label}</.link>
     """
+  end
+
+  @doc """
+  Generate a link with a team_id param.
+
+  ## Examples
+
+      <.team_link href={~p"/dashboard"} team={@team}>Dashboard</.team_link>
+
+  """
+  attr :href, :string, default: nil
+  attr :navigate, :string, default: nil
+  attr :patch, :string, default: nil
+  attr :team, :any, required: true
+  attr :rest, :global
+  slot :inner_block, required: true
+
+  def team_link(assigns) do
+    nav_attrs = [:navigate, :patch, :href]
+
+    nav_assign =
+      for key <- nav_attrs,
+          value = Map.get(assigns, key),
+          into: %{} do
+        {key, LogflareWeb.Utils.with_team_param(value, assigns.team)}
+      end
+
+    assigns
+    |> Map.merge(nav_assign)
+    |> link()
   end
 end

@@ -127,14 +127,15 @@ defmodule LogflareWeb.AlertsLiveTest do
       refute has_element?(view, backend.name)
     end
 
-    test "saves new alert_query", %{conn: conn} do
+    test "saves new alert_query", %{conn: conn, user: user} do
       {:ok, view, _html} = live(conn, Routes.alerts_path(conn, :index))
+      user = Logflare.Repo.preload(user, :team)
 
       assert view
              |> element("a", "New alert")
              |> render_click() =~ ~r/\~\/.+alerts.+\/new/
 
-      assert_patch(view, "/alerts/new")
+      assert_patch(view, "/alerts/new?t=#{user.team.id}")
 
       new_query = "select current_timestamp() as my_time"
 
@@ -158,14 +159,15 @@ defmodule LogflareWeb.AlertsLiveTest do
       assert html =~ new_query
     end
 
-    test "saves new alert_query with errors, shows flash message", %{conn: conn} do
+    test "saves new alert_query with errors, shows flash message", %{conn: conn, user: user} do
       {:ok, view, _html} = live(conn, Routes.alerts_path(conn, :index))
+      user = Logflare.Repo.preload(user, :team)
 
       assert view
              |> element("a", "New alert")
              |> render_click() =~ ~r/\~\/.+alerts.+\/new/
 
-      assert_patch(view, "/alerts/new")
+      assert_patch(view, "/alerts/new?t=#{user.team.id}")
 
       assert view
              |> element("form#alert")
@@ -327,6 +329,44 @@ defmodule LogflareWeb.AlertsLiveTest do
       assert view
              |> element("button", "Run query")
              |> render_click() =~ "No rows returned"
+    end
+  end
+
+  describe "resolving team context" do
+    setup %{user: user} do
+      team = insert(:team, user: user)
+      team_user = insert(:team_user, team: team)
+      alert_query = insert(:alert, user_id: user.id)
+
+      [team: team, team_user: team_user, alert_query: alert_query]
+    end
+
+    test "team user can list alerts", %{
+      conn: conn,
+      user: user,
+      team_user: team_user,
+      alert_query: alert_query
+    } do
+      {:ok, _view, html} =
+        conn
+        |> login_user(user, team_user)
+        |> live(~p"/alerts?t=#{team_user.team_id}")
+
+      assert html =~ alert_query.name
+    end
+
+    test "team user can view alert without t= param", %{
+      conn: conn,
+      user: user,
+      team_user: team_user,
+      alert_query: alert_query
+    } do
+      {:ok, _view, html} =
+        conn
+        |> login_user(user, team_user)
+        |> live(~p"/alerts/#{alert_query.id}")
+
+      assert html =~ alert_query.name
     end
   end
 end

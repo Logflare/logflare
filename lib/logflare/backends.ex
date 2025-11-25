@@ -20,11 +20,13 @@ defmodule Logflare.Backends do
   alias Logflare.PubSubRates
   alias Logflare.Repo
   alias Logflare.SingleTenant
-  alias Logflare.Sources.Source
   alias Logflare.Sources
   alias Logflare.Sources.Counters
+  alias Logflare.Sources.Source
   alias Logflare.SystemMetrics
   alias Logflare.Rules.Rule
+  alias Logflare.Teams
+  alias Logflare.TeamUsers.TeamUser
   alias Logflare.User
 
   defdelegate child_spec(arg), to: __MODULE__.Supervisor
@@ -97,6 +99,31 @@ defmodule Logflare.Backends do
     from(b in Backend, where: b.user_id == ^id)
     |> Repo.all()
     |> Enum.map(fn sb -> typecast_config_string_map_to_atom_map(sb) end)
+  end
+
+  @doc """
+  Lists all backends a user has access to, including where the user is a team member.
+  """
+  @spec list_backends_by_user_access(User.t()) :: [Backend.t()]
+  def list_backends_by_user_access(%User{} = user) do
+    Backend
+    |> Teams.filter_by_user_access(user)
+    |> Repo.all()
+    |> Enum.map(fn sb -> typecast_config_string_map_to_atom_map(sb) end)
+  end
+
+  @doc """
+  Gets a backend by id that the user has access to.
+  Returns the backend if the user owns it or is a team member, otherwise returns nil.
+  """
+  @spec get_backend_by_user_access(User.t() | TeamUser.t(), integer() | String.t()) ::
+          Backend.t() | nil
+  def get_backend_by_user_access(user_or_team_user, id) when is_integer(id) or is_binary(id) do
+    Backend
+    |> Teams.filter_by_user_access(user_or_team_user)
+    |> where([backend], backend.id == ^id)
+    |> Repo.one()
+    |> typecast_config_string_map_to_atom_map()
   end
 
   @doc """

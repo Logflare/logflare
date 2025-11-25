@@ -9,6 +9,7 @@ defmodule LogflareWeb.AuthController do
   alias Logflare.Teams
   alias Logflare.Users
   alias Logflare.Vercel
+  alias LogflareWeb.ErrorView
 
   require Logger
 
@@ -86,8 +87,7 @@ defmodule LogflareWeb.AuthController do
 
         conn
         |> put_flash(:info, "Welcome to Logflare!")
-        |> put_session(:user_id, team.user.id)
-        |> put_session(:team_user_id, team_user.id)
+        |> put_session(:current_email, team_user.email)
         |> put_session(:invite_token, nil)
         |> redirect(to: ~p"/dashboard")
 
@@ -108,6 +108,24 @@ defmodule LogflareWeb.AuthController do
         )
         |> put_session(:invite_token, nil)
         |> redirect(to: Routes.auth_path(conn, :login))
+    end
+  end
+
+  def single_tenant_signin(conn, _) do
+    if Logflare.SingleTenant.single_tenant?() do
+      user = Logflare.SingleTenant.get_default_user()
+      redirect = get_session(conn, :redirect_to, ~p"/dashboard")
+
+      conn
+      |> delete_session(:redirect_to)
+      |> put_user_session(user)
+      |> redirect(to: redirect)
+    else
+      conn
+      |> put_status(:not_found)
+      |> put_view(ErrorView)
+      |> render("404.html")
+      |> halt()
     end
   end
 
@@ -140,8 +158,7 @@ defmodule LogflareWeb.AuthController do
 
         conn
         |> put_flash(:info, "Welcome back!")
-        |> put_session(:user_id, user.id)
-        |> put_session(:team_user_id, team_user.id)
+        |> put_session(:current_email, team_user.email)
         |> redirect(to: ~p"/dashboard")
 
       {:error, _} ->
@@ -167,7 +184,7 @@ defmodule LogflareWeb.AuthController do
 
         conn
         |> put_flash(:info, "Thanks for signing up! Now create a source!")
-        |> put_session(:user_id, user.id)
+        |> put_session(:current_email, user.email)
         |> redirect(to: Routes.source_path(conn, :new, signup: true))
 
       {:ok_found_user, user} ->
@@ -195,8 +212,8 @@ defmodule LogflareWeb.AuthController do
           true ->
             conn
             |> put_flash(:info, "Welcome back!")
-            |> put_session(:user_id, user.id)
-            |> maybe_redirect_team_user()
+            |> put_session(:current_email, user.email)
+            |> redirect(to: ~p"/dashboard")
         end
 
       {:error, reason} ->
@@ -239,49 +256,6 @@ defmodule LogflareWeb.AuthController do
     )
   end
 
-  defp maybe_redirect_team_user(conn) do
-    last_team = conn.cookies["_logflare_last_team"]
-    user_id = get_session(conn, :user_id)
-
-    case last_team && user_id do
-      team_id when is_binary(team_id) ->
-        # Find the team_user for this user's email and team combination
-        user = Users.get(user_id)
-
-        case user &&
-               TeamUsers.get_team_user_by(email: user.email, team_id: String.to_integer(team_id)) do
-          nil ->
-            redirect(conn, to: ~p"/dashboard")
-
-          team_user ->
-            redirect(conn,
-              to:
-                Routes.team_user_path(conn, :change_team, %{
-                  "user_id" => user_id,
-                  "team_user_id" => team_user.id
-                })
-            )
-        end
-
-      _ ->
-        # Fallback to old cookie behavior if no last_team cookie
-        team_user_id = conn.cookies["_logflare_team_user_id"]
-        user_id = conn.cookies["_logflare_user_id"]
-
-        if team_user_id && user_id do
-          redirect(conn,
-            to:
-              Routes.team_user_path(conn, :change_team, %{
-                "user_id" => user_id,
-                "team_user_id" => team_user_id
-              })
-          )
-        else
-          redirect(conn, to: ~p"/dashboard")
-        end
-    end
-  end
-
   defp maybe_flash_account_deleted(conn) do
     cond do
       conn.params["user_deleted"] ->
@@ -309,5 +283,10 @@ defmodule LogflareWeb.AuthController do
       true ->
         conn
     end
+  end
+
+  defp put_user_session(conn, user) do
+    conn
+    |> put_session(:current_email, user.email)
   end
 end

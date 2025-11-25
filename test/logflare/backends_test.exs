@@ -148,6 +148,41 @@ defmodule Logflare.BackendsTest do
                Backends.list_backends(user_id: user.id) |> Backends.preload_alerts()
     end
 
+    test "list_backends/1 by user access", %{user: user} do
+      team_user = insert(:team_user, email: user.email)
+
+      %Backend{id: backend_id} = insert(:backend, user: user)
+      %Backend{id: other_backend_id} = insert(:backend, user: team_user.team.user)
+      %Backend{id: forbidden_backend_id} = insert(:backend, user: build(:user))
+
+      backend_ids =
+        Backends.list_backends_by_user_access(user)
+        |> Enum.map(& &1.id)
+
+      assert [backend_id, other_backend_id] == backend_ids
+      refute forbidden_backend_id in backend_ids
+    end
+
+    test "get_backend_by_user_access/2" do
+      owner = insert(:user)
+      team_user = insert(:team_user, email: owner.email)
+      %Backend{id: backend_id} = insert(:backend, user: owner)
+      %Backend{id: other_backend_id} = insert(:backend, user: team_user.team.user)
+      %Backend{id: forbidden_backend_id} = insert(:backend, user: build(:user))
+
+      assert %Backend{id: ^backend_id} =
+               Backends.get_backend_by_user_access(owner, backend_id)
+
+      assert %Backend{id: ^backend_id} =
+               Backends.get_backend_by_user_access(team_user, backend_id)
+
+      assert %Backend{id: ^other_backend_id} =
+               Backends.get_backend_by_user_access(team_user, other_backend_id)
+
+      assert nil == Backends.get_backend_by_user_access(owner, forbidden_backend_id)
+      assert nil == Backends.get_backend_by_user_access(team_user, forbidden_backend_id)
+    end
+
     test "fetch_latest_timestamp/1 without SourceSup returns 0", %{source: source} do
       assert 0 == Backends.fetch_latest_timestamp(source)
     end

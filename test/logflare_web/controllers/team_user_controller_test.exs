@@ -1,5 +1,5 @@
 defmodule LogflareWeb.TeamUserControllerTest do
-  use LogflareWeb.ConnCase, async: true
+  use LogflareWeb.ConnCase
 
   setup do
     insert(:plan)
@@ -7,17 +7,18 @@ defmodule LogflareWeb.TeamUserControllerTest do
   end
 
   test "user can edit their profile", %{conn: conn} do
-    user = insert(:user)
-    team = insert(:team, user: user)
-    team_user = insert(:team_user, team: team, email: user.email)
+    owner = insert(:user)
+    member_user = insert(:user)
+    team = insert(:team, user: owner)
+    team_user = insert(:team_user, team: team, email: member_user.email)
 
     new_name = "Avengers"
     new_email = "tony.stark@avengers.com"
     new_phone = "+1 (555) 123-4567"
 
     conn
-    |> login_user(user, team_user)
-    |> visit(~p"/profile/edit")
+    |> login_user(member_user, team_user)
+    |> visit(~p"/profile/edit?t=#{team.id}")
     |> assert_has("h5", text: "Profile Preferences", exact: true)
     |> fill_in("Name", with: new_name)
     |> fill_in("Preferred email", with: new_email)
@@ -118,131 +119,5 @@ defmodule LogflareWeb.TeamUserControllerTest do
            end)
 
     assert Logflare.TeamUsers.get_team_user!(member2_team_user.id)
-  end
-
-  test "user switching between teams with team_user_id", %{conn: conn} do
-    user = insert(:user)
-    other_user = insert(:user)
-    team1 = insert(:team, user: user)
-    team_user1 = insert(:team_user, team: team1, email: user.email)
-    team2 = insert(:team, user: other_user)
-    team_user2 = insert(:team_user, team: team2, email: user.email)
-
-    conn =
-      conn
-      |> login_user(user, team_user1)
-      |> get(~p"/profile/switch", %{"user_id" => user.id, "team_user_id" => team_user2.id})
-
-    assert redirected_to(conn, 302) =~ "/dashboard"
-    assert Phoenix.Flash.get(conn.assigns.flash, :info) == "Welcome to this Logflare team!"
-    assert get_session(conn, :user_id) == to_string(user.id)
-    assert get_session(conn, :team_user_id) == to_string(team_user2.id)
-  end
-
-  test "user switching to personal account", %{conn: conn} do
-    user = insert(:user)
-    team = insert(:team, user: user)
-    team_user = insert(:team_user, team: team, email: user.email)
-
-    conn =
-      conn
-      |> login_user(user, team_user)
-      |> get(~p"/profile/switch", %{"user_id" => user.id})
-
-    assert redirected_to(conn, 302) == ~p"/dashboard"
-    assert Phoenix.Flash.get(conn.assigns.flash, :info) == "Welcome to this Logflare team!"
-    assert get_session(conn, :user_id) == to_string(user.id)
-    assert get_session(conn, :team_user_id) == nil
-  end
-
-  test "user can switch from personal (no team_user_id) to team account", %{conn: conn} do
-    user = insert(:user)
-    team = insert(:team, user: user)
-    team_user = insert(:team_user, team: team, email: user.email)
-
-    conn =
-      conn
-      |> login_user(user)
-      |> get(~p"/profile/switch", %{"user_id" => user.id, "team_user_id" => team_user.id})
-
-    assert redirected_to(conn, 302) == ~p"/dashboard"
-    assert Phoenix.Flash.get(conn.assigns.flash, :info) == "Welcome to this Logflare team!"
-    assert get_session(conn, :user_id) == to_string(user.id)
-    assert get_session(conn, :team_user_id) == to_string(team_user.id)
-  end
-
-  test "when user switches team is redirected using redirect_to param", %{conn: conn} do
-    user = insert(:user)
-    team = insert(:team, user: user)
-    team_user = insert(:team_user, team: team, email: user.email)
-
-    conn =
-      conn
-      |> login_user(user, team_user)
-      |> get(~p"/profile/switch", %{
-        "user_id" => user.id,
-        "team_user_id" => team_user.id,
-        "redirect_to" => "/sources"
-      })
-
-    assert redirected_to(conn, 302) =~ ~p"/sources"
-    assert Phoenix.Flash.get(conn.assigns.flash, :info) == "Welcome to this Logflare team!"
-  end
-
-  test "not authenticated user cannot switch teams", %{conn: conn} do
-    assert conn
-           |> delete(~p"/profile/switch")
-           |> redirected_to(302) == ~p"/auth/login"
-  end
-
-  test "switching teams sets last team cookie with team_id for team_user", %{conn: conn} do
-    user = insert(:user)
-    other_user = insert(:user)
-    team1 = insert(:team, user: user)
-    team_user1 = insert(:team_user, team: team1, email: user.email)
-    team2 = insert(:team, user: other_user)
-    team_user2 = insert(:team_user, team: team2, email: user.email)
-
-    conn =
-      conn
-      |> login_user(user, team_user1)
-      |> get(~p"/profile/switch", %{"user_id" => user.id, "team_user_id" => team_user2.id})
-
-    assert redirected_to(conn, 302) =~ "/dashboard"
-    cookies = Map.get(conn.resp_cookies, "_logflare_last_team", %{})
-    assert cookies.value == "#{team2.id}"
-    assert cookies.max_age == 2_592_000
-  end
-
-  test "switching to personal account sets last team cookie with user's team_id", %{conn: conn} do
-    user = insert(:user)
-    team = insert(:team, user: user)
-    team_user = insert(:team_user, team: team, email: user.email)
-
-    conn =
-      conn
-      |> login_user(user, team_user)
-      |> get(~p"/profile/switch", %{"user_id" => user.id})
-
-    assert redirected_to(conn, 302) == ~p"/dashboard"
-    cookies = Map.get(conn.resp_cookies, "_logflare_last_team", %{})
-    assert cookies.value == "#{team.id}"
-    assert cookies.max_age == 2_592_000
-  end
-
-  test "switching from personal to team account sets last team cookie", %{conn: conn} do
-    user = insert(:user)
-    team = insert(:team, user: user)
-    team_user = insert(:team_user, team: team, email: user.email)
-
-    conn =
-      conn
-      |> login_user(user)
-      |> get(~p"/profile/switch", %{"user_id" => user.id, "team_user_id" => team_user.id})
-
-    assert redirected_to(conn, 302) == ~p"/dashboard"
-    cookies = Map.get(conn.resp_cookies, "_logflare_last_team", %{})
-    assert cookies.value == "#{team.id}"
-    assert cookies.max_age == 2_592_000
   end
 end
