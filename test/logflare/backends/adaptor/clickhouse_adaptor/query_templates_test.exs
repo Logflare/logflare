@@ -1,7 +1,7 @@
-defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.QueryTemplatesTest do
+defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryTemplatesTest do
   use Logflare.DataCase, async: false
 
-  alias Logflare.Backends.Adaptor.ClickhouseAdaptor.QueryTemplates
+  alias Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryTemplates
 
   doctest QueryTemplates
 

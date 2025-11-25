@@ -16,7 +16,7 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
   This adaptor performs a merge on config that will prevent you from leveraging a dynamically generated URL configuration at runtime.
   To bypass this behavior, you can use the optional `:url_override` attribute.
 
-  See the `Logflare.Backends.Adaptor.ClickhouseWebhookAdaptor` for an example that utilizes this.
+  See the `Logflare.Backends.Adaptor.ClickHouseWebhookAdaptor` for an example that utilizes this.
   """
 
   use GenServer

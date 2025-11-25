@@ -1,11 +1,11 @@
-defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.PipelineTest do
+defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
   use Logflare.DataCase, async: false
 
   import ExUnit.CaptureLog
 
   alias Broadway.Message
-  alias Logflare.Backends.Adaptor.ClickhouseAdaptor
-  alias Logflare.Backends.Adaptor.ClickhouseAdaptor.Pipeline
+  alias Logflare.Backends.Adaptor.ClickHouseAdaptor
+  alias Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline
 
   setup do
     insert(:plan, name: "Free")
@@ -13,7 +13,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.PipelineTest do
     {source, backend, cleanup_fn} = setup_clickhouse_test()
     on_exit(cleanup_fn)
 
-    {:ok, supervisor_pid} = ClickhouseAdaptor.start_link({source, backend})
+    {:ok, supervisor_pid} = ClickHouseAdaptor.start_link({source, backend})
 
     on_exit(fn ->
       if Process.alive?(supervisor_pid) do
@@ -98,10 +98,10 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.PipelineTest do
 
       Process.sleep(200)
 
-      table_name = ClickhouseAdaptor.clickhouse_ingest_table_name(source)
+      table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(source)
 
       {:ok, query_result} =
-        ClickhouseAdaptor.execute_ch_query(
+        ClickHouseAdaptor.execute_ch_query(
           backend,
           "SELECT count(*) as count FROM #{table_name}"
         )
@@ -154,10 +154,10 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.PipelineTest do
 
       Process.sleep(200)
 
-      table_name = ClickhouseAdaptor.clickhouse_ingest_table_name(source)
+      table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(source)
 
       {:ok, query_result} =
-        ClickhouseAdaptor.execute_ch_query(
+        ClickHouseAdaptor.execute_ch_query(
           backend,
           "SELECT body FROM #{table_name} ORDER BY timestamp DESC"
         )
@@ -377,7 +377,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.PipelineTest do
         }
       ]
 
-      Mimic.expect(ClickhouseAdaptor, :insert_log_events, fn {_source, _backend}, _events ->
+      Mimic.expect(ClickHouseAdaptor, :insert_log_events, fn {_source, _backend}, _events ->
         {:error, "Connection timeout"}
       end)
 

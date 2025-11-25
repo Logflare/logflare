@@ -17,7 +17,7 @@ defmodule Logflare.NetworkingTest do
                Logflare.FinchIngest,
                Logflare.FinchQuery,
                Logflare.FinchDefault,
-               Logflare.FinchClickhouseIngest
+               Logflare.FinchClickHouseIngest
              ]
     end
   end
@@ -55,7 +55,7 @@ defmodule Logflare.NetworkingTest do
                   }
                 ]},
                {Finch,
-                name: Logflare.FinchClickhouseIngest,
+                name: Logflare.FinchClickHouseIngest,
                 pools: %{
                   :default => _config
                 }}

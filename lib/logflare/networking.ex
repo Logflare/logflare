@@ -93,7 +93,7 @@ defmodule Logflare.Networking do
 
     [
       {Finch,
-       name: Logflare.FinchClickhouseIngest,
+       name: Logflare.FinchClickHouseIngest,
        pools: %{
          default: [
            protocols: [:http1],

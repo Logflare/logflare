@@ -1,10 +1,10 @@
-defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.IngesterTest do
+defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.IngesterTest do
   use Logflare.DataCase, async: false
 
   import Mimic
 
-  alias Logflare.Backends.Adaptor.ClickhouseAdaptor
-  alias Logflare.Backends.Adaptor.ClickhouseAdaptor.Ingester
+  alias Logflare.Backends.Adaptor.ClickHouseAdaptor
+  alias Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester
 
   setup :verify_on_exit!
 
@@ -177,9 +177,9 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.IngesterTest do
       {source, backend, cleanup_fn} = setup_clickhouse_test()
       on_exit(cleanup_fn)
 
-      {:ok, _supervisor_pid} = ClickhouseAdaptor.start_link({source, backend})
+      {:ok, _supervisor_pid} = ClickHouseAdaptor.start_link({source, backend})
 
-      table_name = ClickhouseAdaptor.clickhouse_ingest_table_name(source)
+      table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(source)
 
       Process.sleep(200)
 

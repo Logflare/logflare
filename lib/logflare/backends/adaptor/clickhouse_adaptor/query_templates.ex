@@ -1,6 +1,6 @@
-defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.QueryTemplates do
+defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryTemplates do
   @moduledoc """
-  Common query templates utilized by the `ClickhouseAdaptor`.
+  Common query templates utilized by the `ClickHouseAdaptor`.
   """
 
   import Logflare.Utils.Guards
