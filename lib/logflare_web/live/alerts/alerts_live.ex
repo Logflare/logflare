@@ -5,12 +5,14 @@ defmodule LogflareWeb.AlertsLive do
 
   import LogflareWeb.Utils, only: [stringify_changeset_errors: 2]
 
-  alias Logflare.Users
   alias Logflare.Alerting
   alias Logflare.Alerting.AlertQuery
   alias Logflare.Backends
   alias Logflare.Endpoints
+  alias Logflare.Repo
+  alias LogflareWeb.AuthLive
   alias LogflareWeb.QueryComponents
+  alias LogflareWeb.Utils
 
   require Logger
 
@@ -35,13 +37,12 @@ defmodule LogflareWeb.AlertsLive do
     """
   end
 
-  def mount(%{}, %{"user_id" => user_id}, socket) do
-    user = Users.get(user_id)
+  def mount(%{}, _session, socket) do
+    %{assigns: %{user: user}} = socket
 
     socket =
       socket
       |> assign(:user_id, user.id)
-      |> assign(:user, user)
       #  must be below user_id assign
       |> refresh()
       |> assign(:query_result_rows, nil)
@@ -74,37 +75,28 @@ defmodule LogflareWeb.AlertsLive do
     {:noreply, assign(socket, :changeset, changeset)}
   end
 
-  def handle_params(params, _uri, socket) do
-    alert_id = params["id"]
-
-    alert =
-      if alert_id do
-        Alerting.get_alert_query_by(id: alert_id, user_id: socket.assigns.user_id)
-        |> case do
-          nil -> nil
-          alert -> Alerting.preload_alert_query(alert)
-        end
-      end
-
-    socket = assign(socket, :alert, alert)
-
+  def handle_params(%{"id" => id}, _uri, socket) do
     socket =
-      if socket.assigns.live_action == :edit and alert != nil do
-        assign(socket, :changeset, Alerting.change_alert_query(alert))
+      with user <- socket.assigns.team_user || socket.assigns.user,
+           alert when is_struct(alert) <- Alerting.get_alert_query_by_user_access(user, id),
+           alert <- Alerting.preload_alert_query(alert),
+           alert <- Repo.preload(alert, user: :team) do
+        socket
+        |> assign(:alert, alert)
+        |> assign(:changeset, Alerting.change_alert_query(alert))
+        |> AuthLive.assign_context_by_resource(alert, user.email)
       else
-        assign(socket, :changeset, nil)
+        nil ->
+          socket
+          |> put_flash(:info, "Alert not found!")
+          |> push_navigate(to: ~p"/alerts" |> Utils.with_team_param(socket.assigns.team))
       end
 
-    if alert_id != nil and alert == nil do
-      socket =
-        socket
-        |> put_flash(:info, "Alert not found!")
-        |> push_navigate(to: ~p"/alerts")
+    {:noreply, socket}
+  end
 
-      {:noreply, socket}
-    else
-      {:noreply, socket}
-    end
+  def handle_params(_params, _uri, socket) do
+    {:noreply, socket}
   end
 
   def handle_event(

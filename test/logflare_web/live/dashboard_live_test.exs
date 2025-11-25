@@ -40,7 +40,9 @@ defmodule LogflareWeb.DashboardLiveTest do
       source = insert(:source, user: user)
 
       {:ok, view, _} = live(conn, "/dashboard")
-      assert view |> has_element?(~s|a[href="/sources/#{source.id}"]|, source.name)
+
+      assert view
+             |> has_element?(~s|a[href="/sources/#{source.id}"]|, source.name)
     end
   end
 
@@ -146,6 +148,9 @@ defmodule LogflareWeb.DashboardLiveTest do
 
       assert view |> element("#members li", "#{user.name}") |> render =~ "owner, you"
       assert view |> has_element?("#members li", "#{other_member.name}")
+
+      assert view
+             |> has_element?("a[href='/account/edit#team-members']", "Invite more team members")
     end
 
     test "sign in to other team", %{
@@ -153,21 +158,15 @@ defmodule LogflareWeb.DashboardLiveTest do
       user: user,
       other_team: other_team,
       other_member: other_member,
-      team_user: team_user,
       forbidden_team: forbidden_team
     } do
       {:ok, view, _html} = live(conn, "/dashboard")
 
-      {:ok, conn} =
+      {:ok, view, _html} =
         view
         |> element("a", other_team.name)
         |> render_click()
-        |> follow_redirect(
-          conn,
-          ~p"/profile/switch?#{%{team_user_id: team_user, user_id: other_team.user_id}}"
-        )
-
-      {:ok, view, _html} = live(conn, "/dashboard")
+        |> follow_redirect(conn, "/dashboard?t=#{other_team.id}")
 
       assert view |> has_element?("#teams span", other_team.name)
       assert view |> has_element?("#teams a", user.team.name)
@@ -179,43 +178,53 @@ defmodule LogflareWeb.DashboardLiveTest do
   end
 
   describe "dashboard - viewing home team as team member" do
-    setup %{user: user, conn: conn} do
+    setup %{conn: conn} do
       other_team = insert(:team, name: "Other Team")
       forbidden_team = insert(:team, name: "Not My Team")
 
       team_user = insert(:team_user, team: other_team)
-      other_member = insert(:team_user, team: user.team)
+      another_member = insert(:team_user, team: other_team)
 
-      conn = conn |> login_user(user, team_user)
+      # Login as the team_user (using unique email from factory)
+      conn =
+        conn
+        |> Plug.Test.init_test_session(%{current_email: team_user.email})
 
       [
         other_team: other_team,
         forbidden_team: forbidden_team,
-        other_member: other_member,
+        another_member: another_member,
         team_user: team_user,
         conn: conn
       ]
     end
 
-    test "teams list", %{conn: conn, other_team: other_team} do
+    test "teams list shows other team", %{conn: conn, other_team: other_team} do
       {:ok, view, _html} = live(conn, "/dashboard")
 
       assert view |> has_element?("#teams li", "#{other_team.name}")
     end
 
-    test "team members list", %{conn: conn, user: user, other_member: other_member} do
+    test "team members list", %{
+      conn: conn,
+      other_team: other_team,
+      another_member: another_member
+    } do
       {:ok, view, _html} = live(conn, "/dashboard")
 
-      refute view |> element("#members li", "#{user.name}") |> render =~ "owner, you"
-      assert view |> has_element?("#members li", "#{other_member.name}")
+      assert view |> has_element?("#members li", "#{other_team.user.name}")
+      assert view |> has_element?("#members li", "#{another_member.name}")
+
+      refute view
+             |> has_element?("a[href='/account/edit#team-members']", "Invite more team members")
     end
   end
 
   describe "displaying source metrics" do
-    test "starts UserMetricsPoller when session has string user_id", %{user: user} do
+    test "starts UserMetricsPoller when session has string user_id", %{user: user, conn: conn} do
       # Simulate what happens when session data is deserialized with string user_id
       conn =
-        build_conn()
+        conn
         |> Plug.Test.init_test_session(%{user_id: "#{user.id}"})
         |> Plug.Conn.assign(:user, user)
 

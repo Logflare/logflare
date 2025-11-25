@@ -95,6 +95,29 @@ defmodule Logflare.SourcesTest do
     end
   end
 
+  describe "get_source_by_user_access_and_preload/2" do
+    test "get_source_by_user_access_and_preload/2" do
+      insert(:plan)
+      owner = insert(:user)
+      team_user = insert(:team_user, email: owner.email)
+      %Source{id: source_id} = insert(:source, user: owner)
+      %Source{id: other_source_id} = insert(:source, user: team_user.team.user)
+      %Source{id: forbidden_source_id} = insert(:source, user: build(:user))
+
+      assert %Source{id: ^source_id} =
+               Sources.get_by_user_access(owner, source_id)
+
+      assert %Source{id: ^source_id} =
+               Sources.get_by_user_access(team_user, source_id)
+
+      assert %Source{id: ^other_source_id} =
+               Sources.get_by_user_access(team_user, other_source_id)
+
+      assert nil == Sources.get_by_user_access(owner, forbidden_source_id)
+      assert nil == Sources.get_by_user_access(team_user, forbidden_source_id)
+    end
+  end
+
   describe "get_bq_schema/1" do
     setup do
       user = Users.get_by(email: System.get_env("LOGFLARE_TEST_USER_WITH_SET_IAM"))
