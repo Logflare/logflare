@@ -31,13 +31,13 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
     test "`clickhouse_ingest_table_name/1` generates a unique log ingest table name based on the source token",
          %{source: source, stringified_source_token: stringified_source_token} do
       assert ClickHouseAdaptor.clickhouse_ingest_table_name(source) ==
-               "ingest_logs_#{stringified_source_token}"
+               "ingest_#{stringified_source_token}"
     end
 
     test "`clickhouse_ingest_table_name/1` will raise an exception if the table name is equal to or exceeds 200 chars",
          %{source: source} do
       assert_raise RuntimeError,
-                   ~r/^The dynamically generated ClickHouse resource name starting with `ingest_logs_/,
+                   ~r/^The dynamically generated ClickHouse resource name starting with `ingest_/,
                    fn ->
                      source
                      |> modify_source_with_long_token()

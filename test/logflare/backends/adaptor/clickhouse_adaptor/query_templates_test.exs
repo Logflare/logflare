@@ -17,10 +17,10 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryTemplatesTest do
     end
   end
 
-  describe "create_log_ingest_table_statement/2" do
+  describe "create_ingest_table_statement/2" do
     test "Generates a valid statement when given a table name" do
       table_name = "foo"
-      statement = QueryTemplates.create_log_ingest_table_statement(table_name)
+      statement = QueryTemplates.create_ingest_table_statement(table_name)
 
       assert statement =~ "CREATE TABLE IF NOT EXISTS #{table_name}"
       assert statement =~ "TTL toDateTime(timestamp) + INTERVAL 5 DAY"
@@ -29,14 +29,14 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryTemplatesTest do
     test "prefixes the database name to the table name" do
       database = "bar"
       table_name = "foo"
-      statement = QueryTemplates.create_log_ingest_table_statement(table_name, database: database)
+      statement = QueryTemplates.create_ingest_table_statement(table_name, database: database)
 
       assert statement =~ "CREATE TABLE IF NOT EXISTS #{database}.#{table_name}"
       assert statement =~ "TTL toDateTime(timestamp) + INTERVAL 5 DAY"
     end
 
     test "Defaults to using the `MergeTree` engine" do
-      statement = QueryTemplates.create_log_ingest_table_statement("foo")
+      statement = QueryTemplates.create_ingest_table_statement("foo")
 
       assert statement =~ "ENGINE = MergeTree"
     end
@@ -46,14 +46,14 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryTemplatesTest do
       custom_engine = "ReplacingMergeTree"
 
       statement =
-        QueryTemplates.create_log_ingest_table_statement(table_name, engine: custom_engine)
+        QueryTemplates.create_ingest_table_statement(table_name, engine: custom_engine)
 
       assert statement =~ "ENGINE = #{custom_engine}"
     end
 
     test "Allows the TTL to be adjusted via opts" do
       table_name = "foo"
-      statement = QueryTemplates.create_log_ingest_table_statement(table_name, ttl_days: 10)
+      statement = QueryTemplates.create_ingest_table_statement(table_name, ttl_days: 10)
 
       assert statement =~ "CREATE TABLE IF NOT EXISTS #{table_name}"
       assert statement =~ "TTL toDateTime(timestamp) + INTERVAL 10 DAY"
@@ -61,7 +61,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryTemplatesTest do
 
     test "Removes the TTL when `ttl_days` is set to nil" do
       table_name = "foo"
-      statement = QueryTemplates.create_log_ingest_table_statement(table_name, ttl_days: nil)
+      statement = QueryTemplates.create_ingest_table_statement(table_name, ttl_days: nil)
 
       assert statement =~ "CREATE TABLE IF NOT EXISTS #{table_name}"
       refute statement =~ "TTL"
@@ -69,7 +69,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryTemplatesTest do
 
     test "Removes the TTL when `ttl_days` is set to something other than a positive integer" do
       table_name = "foo"
-      statement = QueryTemplates.create_log_ingest_table_statement(table_name, ttl_days: "pizza")
+      statement = QueryTemplates.create_ingest_table_statement(table_name, ttl_days: "pizza")
 
       assert statement =~ "CREATE TABLE IF NOT EXISTS #{table_name}"
       refute statement =~ "TTL"
