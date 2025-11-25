@@ -9,9 +9,9 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.QueryTemplates do
   @default_ttl_days 5
 
   @doc """
-  Default naming prefix for the log ingest table.
+  Default naming prefix for ingest tables.
   """
-  def default_table_name_prefix, do: "ingest_logs"
+  def default_table_name_prefix, do: "ingest"
 
   @doc """
   Generates a ClickHouse query statement to check that the user GRANTs include the needed permissions.
@@ -41,7 +41,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.QueryTemplates do
   end
 
   @doc """
-  Generates a ClickHouse query statement to provision an ingest table for logs.
+  Generates a ClickHouse query statement to provision an ingest table.
 
   ###Options
 
@@ -50,8 +50,8 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.QueryTemplates do
   - `:ttl_days` - (Optional) Will add a TTL statement to the table creation query. Defaults to `5`. `nil` will disable the TTL.
 
   """
-  @spec create_log_ingest_table_statement(table :: String.t(), opts :: Keyword.t()) :: String.t()
-  def create_log_ingest_table_statement(table, opts \\ [])
+  @spec create_ingest_table_statement(table :: String.t(), opts :: Keyword.t()) :: String.t()
+  def create_ingest_table_statement(table, opts \\ [])
       when is_non_empty_binary(table) and is_list(opts) do
     database = Keyword.get(opts, :database)
     engine = Keyword.get(opts, :engine, @default_table_engine)
