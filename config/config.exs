@@ -157,7 +157,7 @@ config :logflare, Logflare.Scheduler,
   run_strategy: Quantum.RunStrategy.Local,
   jobs: [
     source_cleanup: [
-      schedule: "*/15 * * * *",
+      schedule: "*/30 * * * *",
       task: {Logflare.Sources, :shutdown_idle_sources, []}
     ]
   ]
