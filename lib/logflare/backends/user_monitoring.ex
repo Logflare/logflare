@@ -86,7 +86,6 @@ defmodule Logflare.Backends.UserMonitoring do
     |> Protobuf.decode(ExportMetricsServiceRequest)
     |> Map.get(:resource_metrics)
     |> Logs.OtelMetric.handle_batch(%{})
-    |> List.flatten()
     |> Enum.group_by(fn event ->
       event
       |> Map.get("attributes")
