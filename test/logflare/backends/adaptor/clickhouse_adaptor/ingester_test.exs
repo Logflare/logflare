@@ -38,7 +38,9 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.IngesterTest do
 
       assert byte_size(encoded) == 16
 
-      assert encoded == <<212, 65, 155, 226, 0, 132, 14, 85, 0, 0, 68, 85, 102, 68, 22, 167>>
+      assert encoded ==
+               <<0xD4, 0x41, 0x9B, 0xE2, 0x00, 0x84, 0x0E, 0x55, 0x00, 0x00, 0x44, 0x55, 0x66,
+                 0x44, 0x16, 0xA7>>
     end
 
     test "raises an exception for invalid UUIDs" do
