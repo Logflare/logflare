@@ -4,7 +4,7 @@ sidebar_position: 6
 
 # System Monitoring
 
-System Monitoring collects metrics and logs about your sources, backends, and endpoints. Three dedicated system sources capture operational data:
+System Monitoring collects metrics and logs about your sources, backends, and endpoints. Dedicated system sources are provisioned to capture such operational data:
 
 - **`system.metrics`** - OpenTelemetry metrics for ingestion, queries, and egress
 - **`system.logs`** - Application logs for your sources and backends
