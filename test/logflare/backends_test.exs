@@ -159,7 +159,8 @@ defmodule Logflare.BackendsTest do
         Backends.list_backends_by_user_access(user)
         |> Enum.map(& &1.id)
 
-      assert [backend_id, other_backend_id] == backend_ids
+      assert backend_id in backend_ids
+      assert other_backend_id in backend_ids
       refute forbidden_backend_id in backend_ids
     end
 

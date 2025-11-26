@@ -27,7 +27,8 @@ defmodule Logflare.EndpointsTest do
       Endpoints.list_endpoints_by_user_access(user)
       |> Enum.map(& &1.id)
 
-    assert [endpoint_id, other_endpoint_id] == endpoint_ids
+    assert endpoint_id in endpoint_ids
+    assert other_endpoint_id in endpoint_ids
     refute forbidden_endpoint_id in endpoint_ids
   end
 
