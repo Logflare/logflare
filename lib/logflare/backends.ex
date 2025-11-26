@@ -625,13 +625,13 @@ defmodule Logflare.Backends do
   iex> Backends.via_source(source,  __MODULE__, backend.id)
   iex> Backends.via_source(source, :buffer)
   """
-  @spec via_source(Source.t(), term()) :: tuple()
+  @spec via_source(Source.t() | non_neg_integer(), term()) :: {:via, module(), term()}
   @spec via_source(
           Source.t() | non_neg_integer(),
           module(),
           Backend.t() | non_neg_integer() | nil
         ) ::
-          tuple()
+          {:via, module(), term()}
   def via_source(%Source{id: sid}, mod, backend), do: via_source(sid, mod, backend)
   def via_source(source, mod, %Backend{id: bid}), do: via_source(source, mod, bid)
   def via_source(source_id, mod, backend_id), do: via_source(source_id, {mod, backend_id})
@@ -650,7 +650,7 @@ defmodule Logflare.Backends do
   @doc """
   Registers a unique backend-related process on the backend registry.
   """
-  @spec via_backend(Backend.t() | non_neg_integer(), module()) :: tuple()
+  @spec via_backend(Backend.t() | non_neg_integer(), module()) :: {:via, module(), term()}
   def via_backend(%Backend{id: id}, mod), do: via_backend(id, mod)
 
   def via_backend(backend_id, mod) when is_number(backend_id) do
@@ -893,9 +893,12 @@ defmodule Logflare.Backends do
             last_count_increase: NaiveDateTime.t() | nil,
             last_count_decrease: NaiveDateTime.t() | nil
           },
-          %{
-            {pos_integer(), pos_integer() | nil, reference() | nil} => non_neg_integer()
-          },
+          [
+            {
+              {pos_integer(), pos_integer() | nil, reference() | nil},
+              non_neg_integer()
+            }
+          ],
           non_neg_integer()
         ) :: non_neg_integer()
   def handle_resolve_count(state, lens, avg_rate) do
