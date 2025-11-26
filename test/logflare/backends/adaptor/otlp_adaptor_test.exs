@@ -3,6 +3,7 @@ defmodule Logflare.Backends.Adaptor.OtlpAdaptorTest do
 
   alias Logflare.Backends
   alias Logflare.Backends.Adaptor
+  alias Logflare.Backends.Adaptor.HttpBased
   alias Logflare.Backends.AdaptorSupervisor
   alias Logflare.SystemMetrics.AllLogsLogged
   alias Opentelemetry.Proto.Collector.Logs.V1.ExportLogsPartialSuccess
@@ -86,8 +87,7 @@ defmodule Logflare.Backends.Adaptor.OtlpAdaptorTest do
         |> Enum.map(&Protobuf.encode/1)
 
       for response_body <- response_bodies do
-        @tesla_adapter
-        |> expect(:call, 2, fn env, _opts ->
+        mock_adapter(2, fn env ->
           assert env.method == :post
           assert env.url == "http://localhost:4318/v1/logs"
 
@@ -111,11 +111,7 @@ defmodule Logflare.Backends.Adaptor.OtlpAdaptorTest do
       ]
 
       for response <- error_responses do
-        @tesla_adapter
-        |> expect(:call, fn _env, _opts ->
-          response
-        end)
-
+        mock_adapter(fn _env -> response end)
         assert {:error, reason} = @subject.test_connection(ctx.backend)
         assert reason != nil
       end
@@ -135,8 +131,7 @@ defmodule Logflare.Backends.Adaptor.OtlpAdaptorTest do
       this = self()
       ref = make_ref()
 
-      @tesla_adapter
-      |> expect(:call, fn env, _opts ->
+      mock_adapter(fn env ->
         assert Tesla.build_url(env) == "http://localhost:4318/v1/logs"
 
         assert env.method == :post
@@ -171,8 +166,7 @@ defmodule Logflare.Backends.Adaptor.OtlpAdaptorTest do
       this = self()
       ref = make_ref()
 
-      @tesla_adapter
-      |> expect(:call, fn env, _opts ->
+      mock_adapter(fn env ->
         send(this, {ref, IO.iodata_to_binary(env.body)})
         {:ok, %Tesla.Env{status: 200, body: ""}}
       end)
@@ -209,5 +203,16 @@ defmodule Logflare.Backends.Adaptor.OtlpAdaptorTest do
       assert redacted_config.headers["x-auth-token"] == "REDACTED"
       assert redacted_config.headers["x-custom-header"] == "not-a-secret"
     end
+  end
+
+  defp mock_adapter(calls_num \\ 1, function) do
+    stub(@tesla_adapter)
+
+    HttpBased.Client
+    |> expect(:new, calls_num, fn opts ->
+      HttpBased.Client
+      |> Mimic.call_original(:new, [opts])
+      |> Logflare.Tesla.MockAdapter.replace(function)
+    end)
   end
 end
