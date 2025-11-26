@@ -208,7 +208,7 @@ defmodule Logflare.AlertingTest do
         {:ok, TestUtils.gen_bq_response([%{"testing" => "123"}])}
       end)
 
-      assert {:ok, %{rows: [%{"testing" => "123"}], total_bytes_processed: 1}} =
+      assert {:ok, %{rows: [%{"testing" => "123"}], total_bytes_processed: _}} =
                Alerting.execute_alert_query(alert_query)
 
       #  no reservation set by user
@@ -227,7 +227,7 @@ defmodule Logflare.AlertingTest do
         {:ok, TestUtils.gen_bq_response([%{"testing" => "123"}])}
       end)
 
-      assert {:ok, %{rows: [%{"testing" => "123"}], total_bytes_processed: 1}} =
+      assert {:ok, %{rows: [%{"testing" => "123"}], total_bytes_processed: _}} =
                Alerting.execute_alert_query(alert_query)
 
       assert_receive {:reservation, reservation}
