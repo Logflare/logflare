@@ -302,9 +302,10 @@ defmodule Logflare.Sources.Source do
           end
         end)
         |> then(fn {normalized, errors} ->
-          changeset
+          errors
+          |> Enum.uniq()
+          |> Enum.reduce(changeset, fn {k, v}, cs -> add_error(cs, k, v) end)
           |> put_change(:labels, normalized |> Enum.reverse() |> Enum.join(","))
-          |> then(&Enum.reduce(Enum.uniq(errors), &1, fn {k, v}, cs -> add_error(cs, k, v) end))
         end)
     end
   end
