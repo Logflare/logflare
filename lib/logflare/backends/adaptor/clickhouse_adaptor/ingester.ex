@@ -94,9 +94,18 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
   @doc false
   @spec encode_as_uuid(Ecto.UUID.t() | String.t()) :: binary()
   def encode_as_uuid(uuid_string) when is_non_empty_binary(uuid_string) do
-    uuid_string
-    |> String.replace("-", "")
-    |> Base.decode16!(case: :mixed)
+    uuid_raw =
+      uuid_string
+      |> String.replace("-", "")
+      |> Base.decode16!(case: :mixed)
+
+    case uuid_raw do
+      <<u1::64, u2::64>> ->
+        <<u1::64-little, u2::64-little>>
+
+      _other ->
+        raise "invalid uuid when trying to encode for ClickHouse: #{inspect(uuid_string)}"
+    end
   end
 
   @doc false

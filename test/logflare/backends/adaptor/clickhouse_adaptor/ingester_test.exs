@@ -39,8 +39,16 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.IngesterTest do
       assert byte_size(encoded) == 16
 
       assert encoded ==
-               <<0x55, 0x0E, 0x84, 0x00, 0xE2, 0x9B, 0x41, 0xD4, 0xA7, 0x16, 0x44, 0x66, 0x55,
-                 0x44, 0x00, 0x00>>
+               <<0xD4, 0x41, 0x9B, 0xE2, 0x00, 0x84, 0x0E, 0x55, 0x00, 0x00, 0x44, 0x55, 0x66,
+                 0x44, 0x16, 0xA7>>
+    end
+
+    test "raises an exception for invalid UUIDs" do
+      assert_raise RuntimeError,
+                   "invalid uuid when trying to encode for ClickHouse: \"6E6F6F626172\"",
+                   fn ->
+                     Ingester.encode_as_uuid("6E6F6F626172")
+                   end
     end
 
     test "handles uppercase UUIDs" do
