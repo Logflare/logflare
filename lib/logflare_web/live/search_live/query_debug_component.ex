@@ -17,6 +17,15 @@ defmodule LogflareWeb.Search.QueryDebugComponent do
       assign_new(assigns, :team, fn
         %{team_user: team_user} ->
           Teams.get_team!(team_user.team_id)
+
+        %{team: team} ->
+          team
+
+        %{user: user} ->
+          Teams.get_team!(user.team_id)
+
+        _ ->
+          nil
       end)
       |> assign_new(:search_op, fn
         %{id: :modal_debug_error_link} -> assigns.search_op_error
