@@ -15,14 +15,14 @@ defmodule LogflareWeb.Search.QueryDebugComponent do
   def render(assigns) do
     assigns =
       assign_new(assigns, :team, fn
-        %{team_user: team_user} ->
+        %{team_user: team_user} when not is_nil(team_user) ->
           Teams.get_team!(team_user.team_id)
 
         %{team: team} ->
           team
 
-        %{user: user} ->
-          Teams.get_team!(user.team_id)
+        %{user: %{team: team}} when not is_nil(team) ->
+          team
 
         _ ->
           nil
