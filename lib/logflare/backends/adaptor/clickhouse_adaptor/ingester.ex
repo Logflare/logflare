@@ -1,4 +1,4 @@
-defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.Ingester do
+defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
   @moduledoc """
   Simplified ingestion-only functionality for ClickHouse.
   """
@@ -9,7 +9,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.Ingester do
   alias Logflare.Backends.Backend
   alias Logflare.LogEvent
 
-  @finch_pool Logflare.FinchClickhouseIngest
+  @finch_pool Logflare.FinchClickHouseIngest
   @max_retries 3
   @initial_delay 500
   @max_delay 4_000
@@ -17,7 +17,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.Ingester do
   @doc """
   Inserts a list of `LogEvent` structs into ClickHouse.
 
-  Not intended for direct use. Use `Logflare.Backends.Adaptor.ClickhouseAdaptor.insert_log_events/2` instead.
+  Not intended for direct use. Use `Logflare.Backends.Adaptor.ClickHouseAdaptor.insert_log_events/2` instead.
   """
   @spec insert(Backend.t() | Keyword.t(), table :: String.t(), log_events :: [LogEvent.t()]) ::
           :ok | {:error, String.t()}
@@ -94,9 +94,18 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.Ingester do
   @doc false
   @spec encode_as_uuid(Ecto.UUID.t() | String.t()) :: binary()
   def encode_as_uuid(uuid_string) when is_non_empty_binary(uuid_string) do
-    uuid_string
-    |> String.replace("-", "")
-    |> Base.decode16!(case: :mixed)
+    uuid_raw =
+      uuid_string
+      |> String.replace("-", "")
+      |> Base.decode16!(case: :mixed)
+
+    case uuid_raw do
+      <<u1::64, u2::64>> ->
+        <<u1::64-little, u2::64-little>>
+
+      _other ->
+        raise "invalid uuid when trying to encode for ClickHouse: #{inspect(uuid_string)}"
+    end
   end
 
   @doc false

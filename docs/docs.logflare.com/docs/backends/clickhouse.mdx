@@ -41,9 +41,13 @@ The ClickHouse backend will automatically attempt to provision required tables a
 The ingest table schema is as follows:
 
 - `id`: The log event `UUID`.
-- `event_message`: The provided or generated event message of the log event, stored as `String`
 - `body`: The processed log event, stored as serialized JSON in a `String` column.
 - `timestamp`: Unix microsecond, stored as `DateTime64(6)`
+
+### Ingestion Settings
+
+Logflare writes logs to ClickHouse asynchronously by setting `async_insert = 1` and `wait_for_async_insert = 1` on each insert operation.
+Gzip compression is also applied to the data before sending to ClickHouse.
 
 ### Table Engine
 

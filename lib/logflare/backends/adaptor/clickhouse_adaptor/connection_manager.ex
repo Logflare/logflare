@@ -1,4 +1,4 @@
-defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.ConnectionManager do
+defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager do
   @moduledoc """
   Manages a ClickHouse connection pool lifecycle for query/read operations.
 
@@ -148,7 +148,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.ConnectionManager do
   @impl true
   def handle_info({:DOWN, _ref, :process, pid, _reason}, %__MODULE__{pool_pid: pid} = state)
       when is_pid(pid) do
-    Logger.warning("Clickhouse connection pool died",
+    Logger.warning("ClickHouse connection pool died",
       backend_id: state.backend_id
     )
 
@@ -170,7 +170,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.ConnectionManager do
          {:ok, pid} <- Ch.start_link(ch_opts) do
       Process.monitor(pid)
 
-      Logger.info("Started Clickhouse connection pool",
+      Logger.info("Started ClickHouse connection pool",
         backend_id: state.backend_id
       )
 
@@ -182,7 +182,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.ConnectionManager do
     else
       {:error, reason} ->
         Logger.error(
-          "Failed to start Clickhouse connection pool",
+          "Failed to start ClickHouse connection pool",
           backend_id: state.backend_id,
           reason: reason
         )
@@ -225,7 +225,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.ConnectionManager do
     if Process.alive?(pool_pid) do
       GenServer.stop(pool_pid)
 
-      Logger.info("Stopped Clickhouse connection pool due to inactivity",
+      Logger.info("Stopped ClickHouse connection pool due to inactivity",
         backend_id: state.backend_id
       )
     end

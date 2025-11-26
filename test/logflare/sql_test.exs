@@ -5,7 +5,7 @@ defmodule Logflare.SqlTest do
 
   alias Logflare.SingleTenant
   alias Logflare.Sql
-  alias Logflare.Backends.Adaptor.ClickhouseAdaptor
+  alias Logflare.Backends.Adaptor.ClickHouseAdaptor
   alias Logflare.Backends.Adaptor.PostgresAdaptor
   alias Logflare.Backends.AdaptorSupervisor
 
@@ -492,8 +492,8 @@ defmodule Logflare.SqlTest do
       {source, backend, cleanup_fn} = setup_clickhouse_test(source: source, user: user)
       on_exit(cleanup_fn)
 
-      {:ok, _pid} = ClickhouseAdaptor.start_link({source, backend})
-      assert {:ok, _} = ClickhouseAdaptor.provision_ingest_table({source, backend})
+      {:ok, _pid} = ClickHouseAdaptor.start_link({source, backend})
+      assert {:ok, _} = ClickHouseAdaptor.provision_ingest_table({source, backend})
 
       log_events = [
         build(:log_event,
@@ -508,7 +508,7 @@ defmodule Logflare.SqlTest do
         )
       ]
 
-      assert :ok = ClickhouseAdaptor.insert_log_events({source, backend}, log_events)
+      assert :ok = ClickHouseAdaptor.insert_log_events({source, backend}, log_events)
 
       Process.sleep(200)
 
@@ -518,7 +518,7 @@ defmodule Logflare.SqlTest do
       consumer_query = "select body from src"
 
       assert {:ok, transformed} = Sql.transform(:ch_sql, {cte_query, consumer_query}, user)
-      assert {:ok, results} = ClickhouseAdaptor.execute_query(backend, transformed, [])
+      assert {:ok, results} = ClickHouseAdaptor.execute_query(backend, transformed, [])
       assert length(results) == 2
 
       # cannot access the source table directly

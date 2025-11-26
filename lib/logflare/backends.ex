@@ -884,7 +884,7 @@ defmodule Logflare.Backends do
   end
 
   @doc """
-  Pipeline count resolution logic, for DynamicPipeline, shared across BigQuery and Clickhouse.
+  Pipeline count resolution logic, for DynamicPipeline, shared across BigQuery and ClickHouse.
   """
   @spec handle_resolve_count(
           %{

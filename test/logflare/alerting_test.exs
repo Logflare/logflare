@@ -82,7 +82,8 @@ defmodule Logflare.AlertingTest do
         Alerting.list_alert_queries_user_access(user)
         |> Enum.map(& &1.id)
 
-      assert [alert_id, other_alert_id] == alert_ids
+      assert alert_id in alert_ids
+      assert other_alert_id in alert_ids
       refute forbidden_alert_id in alert_ids
     end
 

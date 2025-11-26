@@ -7,7 +7,7 @@ defmodule Logflare.Lql.Sandboxed do
   import Logflare.Utils.Guards
 
   alias Logflare.Backends.Adaptor.BigQueryAdaptor
-  alias Logflare.Backends.Adaptor.ClickhouseAdaptor
+  alias Logflare.Backends.Adaptor.ClickHouseAdaptor
   alias Logflare.Backends.Adaptor.PostgresAdaptor
   alias Logflare.Lql.BackendTransformer
   alias Logflare.Lql.Parser
@@ -146,7 +146,7 @@ defmodule Logflare.Lql.Sandboxed do
     adaptor =
       case dialect do
         :bigquery -> BigQueryAdaptor
-        :clickhouse -> ClickhouseAdaptor
+        :clickhouse -> ClickHouseAdaptor
         :postgres -> PostgresAdaptor
       end
 
