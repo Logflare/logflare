@@ -22,7 +22,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
   @processor_concurrency 5
   @batcher_concurrency 10
   @batch_size 1_500
-  @max_retries 0
+  @max_retries 1
 
   @doc false
   def max_retries, do: @max_retries
