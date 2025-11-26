@@ -548,35 +548,36 @@ defmodule Logflare.Lql.BackendTransformer.BigQuery do
 
   @spec build_combined_select(Query.t(), [Logflare.Lql.Rules.SelectRule.t()]) :: Query.t()
   defp build_combined_select(query, select_rules) do
-    select_rules
-    |> Enum.reduce(query, fn %{path: path, alias: alias}, acc_query ->
+    Enum.reduce(select_rules, query, fn %{path: path, alias: alias}, acc_query ->
       is_nested = path not in @special_top_level and String.contains?(path, ".")
-      field_name = path |> split_by_dots |> List.last()
-
-      cond do
-        is_nested ->
-          name = if is_binary(alias), do: alias, else: String.replace(path, ".", "_")
-
-          acc_query
-          |> handle_nested_field_access(path)
-          |> select_merge([..., t], %{
-            ^name => fragment("? AS ?", field(t, ^field_name), identifier(^name))
-          })
-
-        is_binary(alias) ->
-          acc_query
-          |> select_merge([t], %{
-            ^alias => fragment("? AS ?", field(t, ^field_name), identifier(^alias))
-          })
-
-        is_nil(alias) ->
-          acc_query
-          |> select_merge([t], %{^path => field(t, ^field_name)})
-      end
+      field_name = path |> split_by_dots() |> List.last()
+      add_select_for_field(acc_query, path, field_name, alias, is_nested)
     end)
   end
 
-  @spec unnest_paths_for_select([String.t()]) :: [String.t()]
+  @spec add_select_for_field(Query.t(), String.t(), String.t(), String.t() | nil, boolean()) ::
+          Query.t()
+  defp add_select_for_field(query, path, field_name, alias, true = _is_nested) do
+    name = if is_binary(alias), do: alias, else: String.replace(path, ".", "_")
+
+    query
+    |> handle_nested_field_access(path)
+    |> select_merge([..., t], %{
+      ^name => fragment("? AS ?", field(t, ^field_name), identifier(^name))
+    })
+  end
+
+  defp add_select_for_field(query, _path, field_name, alias, false = _is_nested)
+       when is_binary(alias) do
+    select_merge(query, [t], %{
+      ^alias => fragment("? AS ?", field(t, ^field_name), identifier(^alias))
+    })
+  end
+
+  defp add_select_for_field(query, path, field_name, nil = _alias, false = _is_nested) do
+    select_merge(query, [t], %{^path => field(t, ^field_name)})
+  end
+
   defp unnest_paths_for_select(nested_columns) when length(nested_columns) <= 1, do: []
 
   defp unnest_paths_for_select(nested_columns) do
