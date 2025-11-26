@@ -3,6 +3,7 @@ defmodule Logflare.Backends.Adaptor.Last9AdaptorTest do
 
   alias Logflare.Backends
   alias Logflare.Backends.Adaptor
+  alias Logflare.Backends.Adaptor.HttpBased
   alias Logflare.Backends.AdaptorSupervisor
   alias Logflare.SystemMetrics.AllLogsLogged
   alias Opentelemetry.Proto.Collector.Logs.V1.ExportLogsServiceRequest
@@ -74,8 +75,7 @@ defmodule Logflare.Backends.Adaptor.Last9AdaptorTest do
         %ExportLogsServiceResponse{partial_success: nil}
         |> Protobuf.encode()
 
-      @tesla_adapter
-      |> expect(:call, 2, fn env, _opts ->
+      mock_adapter(2, fn env ->
         assert env.method == :post
         assert env.url == "https://otlp.last9.io/v1/logs"
         assert Tesla.get_header(env, "authorization") == "Basic dGVzdHVzZXI6dGVzdHBhc3N3b3Jk"
@@ -99,11 +99,7 @@ defmodule Logflare.Backends.Adaptor.Last9AdaptorTest do
       ]
 
       for response <- error_responses do
-        @tesla_adapter
-        |> expect(:call, fn _env, _opts ->
-          response
-        end)
-
+        mock_adapter(fn _env -> response end)
         assert {:error, _reason} = @subject.test_connection(ctx.backend)
       end
     end
@@ -122,8 +118,7 @@ defmodule Logflare.Backends.Adaptor.Last9AdaptorTest do
       this = self()
       ref = make_ref()
 
-      @tesla_adapter
-      |> expect(:call, fn env, _opts ->
+      mock_adapter(fn env ->
         assert Tesla.build_url(env) == "https://otlp.last9.io/v1/logs"
         assert env.method == :post
         assert Tesla.get_header(env, "content-type") == "application/x-protobuf"
@@ -147,5 +142,16 @@ defmodule Logflare.Backends.Adaptor.Last9AdaptorTest do
       redacted_config = @subject.redact_config(@valid_config)
       assert redacted_config.password == "REDACTED"
     end
+  end
+
+  defp mock_adapter(calls_num \\ 1, function) do
+    stub(@tesla_adapter)
+
+    HttpBased.Client
+    |> expect(:new, calls_num, fn opts ->
+      HttpBased.Client
+      |> Mimic.call_original(:new, [opts])
+      |> Logflare.Tesla.MockAdapter.replace(function)
+    end)
   end
 end
