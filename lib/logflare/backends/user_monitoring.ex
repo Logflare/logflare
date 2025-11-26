@@ -93,12 +93,13 @@ defmodule Logflare.Backends.UserMonitoring do
     end)
     |> Enum.each(fn {user_id, user_events} ->
       with %Sources.Source{} = source <-
-             Sources.Cache.get_by(user_id: user_id, system_source_type: :metrics)
-             |> Sources.Cache.preload_rules()
-             |> Sources.refresh_source_metrics() do
+             Sources.Cache.get_by(user_id: user_id, system_source_type: :metrics) do
+        source =
+          source
+          |> Sources.Cache.preload_rules()
+          |> Sources.refresh_source_metrics()
+
         Processor.ingest(user_events, Logs.Raw, source)
-      else
-        other -> other
       end
     end)
 
