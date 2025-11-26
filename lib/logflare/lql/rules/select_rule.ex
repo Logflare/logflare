@@ -27,6 +27,7 @@ defmodule Logflare.Lql.Rules.SelectRule do
   typed_embedded_schema do
     field :path, :string, virtual: true
     field :wildcard, :boolean, virtual: true, default: false
+    field :alias, :string, virtual: true
   end
 
   @spec changeset(any(), __MODULE__.t()) :: Changeset.t()

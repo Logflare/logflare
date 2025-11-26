@@ -485,8 +485,9 @@ defmodule Logflare.Lql.BackendTransformer.ClickHouse do
 
   @spec build_combined_select(Query.t(), select_rules :: [map()]) :: Query.t()
   defp build_combined_select(query, select_rules) do
-    Enum.reduce(select_rules, query, fn %{path: path}, acc_query ->
-      select_merge(acc_query, [l], %{^path => field(l, ^path)})
+    Enum.reduce(select_rules, query, fn %{path: path, alias: alias}, acc_query ->
+      path_or_alias = if is_binary(alias), do: alias, else: String.replace(path, ".", "_")
+      select_merge(acc_query, [l], %{^path_or_alias => field(l, ^path)})
     end)
   end
 end

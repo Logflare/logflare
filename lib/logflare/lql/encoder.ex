@@ -212,8 +212,11 @@ defmodule Logflare.Lql.Encoder do
 
   defp to_fragment(%SelectRule{path: "*"}), do: "s:*"
 
-  defp to_fragment(%SelectRule{path: path}),
+  defp to_fragment(%SelectRule{path: path, alias: nil}),
     do: "s:#{String.replace_leading(path, "metadata.", "m.")}"
+
+  defp to_fragment(%SelectRule{path: path, alias: alias_name}) when is_binary(alias_name),
+    do: "s:#{String.replace_leading(path, "metadata.", "m.")}@#{alias_name}"
 
   defp to_fragment(%FromRule{table: table}), do: "f:#{table}"
 

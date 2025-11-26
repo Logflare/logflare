@@ -425,4 +425,26 @@ defmodule Logflare.Lql.BackendTransformer.PostgresTest do
       assert result == query
     end
   end
+
+  describe "apply_select_rules_to_query/3 with aliases" do
+    test "applies top-level field with alias" do
+      query = from(l in "logs")
+      select_rule = %SelectRule{path: "event_message", alias: "msg"}
+
+      result = Postgres.apply_select_rules_to_query(query, [select_rule], [])
+
+      assert %Ecto.Query{select: %{expr: expr}} = result
+      assert expr |> Macro.to_string() =~ "msg"
+    end
+
+    test "applies nested field with alias" do
+      query = from(l in "logs")
+      select_rule = %SelectRule{path: "metadata.user.id", alias: "user_id"}
+
+      result = Postgres.apply_select_rules_to_query(query, [select_rule], [])
+
+      assert %Ecto.Query{select: %{expr: expr}} = result
+      assert expr |> Macro.to_string() =~ "user_id"
+    end
+  end
 end
