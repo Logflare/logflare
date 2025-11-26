@@ -546,7 +546,7 @@ defmodule Logflare.Lql.BackendTransformer.BigQuery do
   @spec negated?(map()) :: boolean()
   defp negated?(modifiers), do: Map.get(modifiers, :negate)
 
-  @spec build_combined_select(Query.t(), [Logflare.Lql.Rules.SelectRule.t()]) :: Query.t()
+  @spec build_combined_select(Query.t(), [map()]) :: Query.t()
   defp build_combined_select(query, select_rules) do
     Enum.reduce(select_rules, query, fn %{path: path, alias: alias}, acc_query ->
       is_nested = path not in @special_top_level and String.contains?(path, ".")
