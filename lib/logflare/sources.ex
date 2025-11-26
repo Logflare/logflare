@@ -596,6 +596,37 @@ defmodule Logflare.Sources do
     :ok
   end
 
+  @doc """
+  Parses source labels from an event, for monitoring.
+
+
+  """
+  @spec get_labels_from_event(Source.t(), LogEvent.t()) :: map()
+  def get_labels_from_event(source, log_event) do
+    mapping = get_labels_mapping(source)
+
+    for {label, path} <- mapping, into: %{} do
+      {label, get_in(log_event.body, path)}
+    end
+  end
+
+  def get_labels_mapping(%{labels: nil}), do: %{}
+  def get_labels_mapping(%{labels: ""}), do: %{}
+
+  def get_labels_mapping(source) do
+    (source.labels || "")
+    |> String.split(",")
+    |> Enum.map(fn label ->
+      String.split(label, "=", parts: 2)
+      |> then(fn
+        [label, "m." <> path] -> {label, ["metadata" | String.split(path, ".")]}
+        [label, path] -> {label, String.split(path, ".")}
+        [label] -> {label, [label]}
+      end)
+    end)
+    |> Map.new()
+  end
+
   defp source_idle?(source) do
     metrics = get_source_metrics_for_ingest(source)
     total_pending = calculate_total_pending(source)

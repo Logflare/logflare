@@ -139,6 +139,7 @@ defmodule Logflare.Sources.Source do
     field :bigquery_clustering_fields, :string
     field :system_source, :boolean, default: false
     field :system_source_type, Ecto.Enum, values: @system_source_types
+    field :labels, :string
 
     field :default_ingest_backend_enabled?, :boolean,
       source: :default_ingest_backend_enabled,
@@ -197,7 +198,8 @@ defmodule Logflare.Sources.Source do
       :transform_copy_fields,
       :disable_tailing,
       :default_ingest_backend_enabled?,
-      :bq_storage_write_api
+      :bq_storage_write_api,
+      :labels
     ])
     |> cast_embed(:notifications, with: &Notifications.changeset/2)
     |> default_validations(source)
@@ -226,7 +228,8 @@ defmodule Logflare.Sources.Source do
       :transform_copy_fields,
       :disable_tailing,
       :default_ingest_backend_enabled?,
-      :bq_storage_write_api
+      :bq_storage_write_api,
+      :labels
     ])
     |> cast_embed(:notifications, with: &Notifications.changeset/2)
     |> default_validations(source)
@@ -240,6 +243,7 @@ defmodule Logflare.Sources.Source do
     |> unique_constraint(:public_token)
     |> put_source_ttl_change()
     |> validate_source_ttl(source)
+    |> normalize_and_validate_labels()
   end
 
   defp put_source_ttl_change(changeset) do
@@ -269,6 +273,45 @@ defmodule Logflare.Sources.Source do
     else
       changeset
     end
+  end
+
+  defp normalize_and_validate_labels(changeset) do
+    {normalized, errors} =
+      case get_change(changeset, :labels) do
+        value when value in [nil, ""] ->
+          {[], []}
+
+        labels ->
+          get_normalized_and_errors(labels)
+      end
+
+    errors
+    |> Enum.uniq()
+    |> Enum.reduce(changeset, fn {k, v}, cs -> add_error(cs, k, v) end)
+    |> put_change(:labels, normalized |> Enum.reverse() |> Enum.join(","))
+  end
+
+  defp get_normalized_and_errors(labels) do
+    labels
+    |> String.split(",", trim: true)
+    |> Enum.reduce({[], []}, fn pair, {normalized, errors} ->
+      case pair |> String.trim() |> String.split("=") do
+        [k, v] when k != "" and v != "" ->
+          {["#{String.trim(k)}=#{String.trim(v)}" | normalized], errors}
+
+        [_, ""] ->
+          {normalized, [{:labels, "each label must have a non-empty value"} | errors]}
+
+        ["", _] ->
+          {normalized, [{:labels, "each label must have a non-empty key"} | errors]}
+
+        [_] ->
+          {normalized, [{:labels, "each label must be in key=value format"} | errors]}
+
+        _ ->
+          {normalized, [{:labels, "each label must have exactly one '=' sign"} | errors]}
+      end
+    end)
   end
 
   def generate_bq_table_id(%__MODULE__{} = source) do

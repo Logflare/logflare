@@ -5,6 +5,7 @@ defmodule Logflare.Backends.Adaptor.HttpBased.EgressTracer do
   Should be used as last middleware called before the `Tesla.Adapter`
   """
 
+  alias Logflare.Utils
   require OpenTelemetry.Tracer
 
   @behaviour Tesla.Middleware
@@ -39,6 +40,17 @@ defmodule Logflare.Backends.Adaptor.HttpBased.EgressTracer do
         headers_length: headers_len,
         request_length: body_len + headers_len
       ] ++ meta_kw
+
+    str_meta =
+      for {k, v} <- meta_kw, is_binary(k), into: %{} do
+        {Utils.stringify(k), v}
+      end
+
+    :telemetry.execute(
+      [:logflare, :backends, :ingest, :egress],
+      %{request_bytes: body_len + headers_len},
+      str_meta
+    )
 
     OpenTelemetry.Tracer.with_span :http_egress, %{attributes: attributes} do
       Tesla.run(env, next)

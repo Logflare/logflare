@@ -6,6 +6,7 @@ defmodule Logflare.Application do
 
   alias Logflare.Networking
   alias Logflare.Backends.Adaptor.BigQueryAdaptor
+  alias Logflare.Backends.UserMonitoring
   alias Logflare.ContextCache
   alias Logflare.Logs
   alias Logflare.SingleTenant
@@ -78,6 +79,7 @@ defmodule Logflare.Application do
     # set goth early in the supervision tree
     Networking.pools() ++
       conditional_children() ++
+      UserMonitoring.get_otel_exporter() ++
       [
         Logflare.ErlSysMon,
         {PartitionSupervisor, child_spec: Task.Supervisor, name: Logflare.TaskSupervisors},
@@ -123,7 +125,7 @@ defmodule Logflare.Application do
     else
       :logger.add_primary_filter(
         :user_log_intercetor,
-        {&Logflare.Backends.UserMonitoring.log_interceptor/2, []}
+        {&UserMonitoring.log_interceptor/2, []}
       )
     end
   end
