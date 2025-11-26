@@ -276,38 +276,42 @@ defmodule Logflare.Sources.Source do
   end
 
   defp normalize_and_validate_labels(changeset) do
-    case get_change(changeset, :labels) do
-      value when value in [nil, ""] ->
-        changeset
+    {normalized, errors} =
+      case get_change(changeset, :labels) do
+        value when value in [nil, ""] ->
+          {[], []}
 
-      labels ->
-        labels
-        |> String.split(",", trim: true)
-        |> Enum.reduce({[], []}, fn pair, {normalized, errors} ->
-          case pair |> String.trim() |> String.split("=") do
-            [k, v] when k != "" and v != "" ->
-              {["#{String.trim(k)}=#{String.trim(v)}" | normalized], errors}
+        labels ->
+          get_normalized_and_errors(labels)
+      end
 
-            [_, ""] ->
-              {normalized, [{:labels, "each label must have a non-empty value"} | errors]}
+    errors
+    |> Enum.uniq()
+    |> Enum.reduce(changeset, fn {k, v}, cs -> add_error(cs, k, v) end)
+    |> put_change(:labels, normalized |> Enum.reverse() |> Enum.join(","))
+  end
 
-            ["", _] ->
-              {normalized, [{:labels, "each label must have a non-empty key"} | errors]}
+  defp get_normalized_and_errors(labels) do
+    labels
+    |> String.split(",", trim: true)
+    |> Enum.reduce({[], []}, fn pair, {normalized, errors} ->
+      case pair |> String.trim() |> String.split("=") do
+        [k, v] when k != "" and v != "" ->
+          {["#{String.trim(k)}=#{String.trim(v)}" | normalized], errors}
 
-            [_] ->
-              {normalized, [{:labels, "each label must be in key=value format"} | errors]}
+        [_, ""] ->
+          {normalized, [{:labels, "each label must have a non-empty value"} | errors]}
 
-            _ ->
-              {normalized, [{:labels, "each label must have exactly one '=' sign"} | errors]}
-          end
-        end)
-        |> then(fn {normalized, errors} ->
-          errors
-          |> Enum.uniq()
-          |> Enum.reduce(changeset, fn {k, v}, cs -> add_error(cs, k, v) end)
-          |> put_change(:labels, normalized |> Enum.reverse() |> Enum.join(","))
-        end)
-    end
+        ["", _] ->
+          {normalized, [{:labels, "each label must have a non-empty key"} | errors]}
+
+        [_] ->
+          {normalized, [{:labels, "each label must be in key=value format"} | errors]}
+
+        _ ->
+          {normalized, [{:labels, "each label must have exactly one '=' sign"} | errors]}
+      end
+    end)
   end
 
   def generate_bq_table_id(%__MODULE__{} = source) do
