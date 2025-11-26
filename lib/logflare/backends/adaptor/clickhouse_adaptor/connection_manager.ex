@@ -13,6 +13,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager do
   require Logger
 
   alias Logflare.Backends
+  alias Logflare.Backends.Adaptor.ClickhouseAdaptor
   alias Logflare.Backends.Backend
 
   @inactivity_timeout :timer.minutes(5)
@@ -234,6 +235,38 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager do
   end
 
   @spec build_ch_opts(__MODULE__.t()) :: {:ok, Keyword.t()} | {:error, term()}
+  defp build_ch_opts(%__MODULE__{backend_id: nil}) do
+    # Single-tenant mode with virtual backend
+    name = connection_pool_via(%Logflare.Backends.Backend{type: :clickhouse})
+    opts = Logflare.SingleTenant.clickhouse_backend_adapter_opts() || []
+
+    url = Keyword.get(opts, :url)
+    database = Keyword.get(opts, :database)
+    username = Keyword.get(opts, :username)
+    password = Keyword.get(opts, :password)
+    port = Keyword.get(opts, :port) || ClickhouseAdaptor.extract_port_from_url(url)
+
+    default_pool_size =
+      Application.fetch_env!(:logflare, :clickhouse_backend_adaptor)[:pool_size]
+
+    with {:ok, {scheme, hostname}} <- extract_scheme_and_hostname(url) do
+      ch_opts = [
+        name: name,
+        scheme: scheme,
+        hostname: hostname,
+        port: port,
+        database: database,
+        username: username,
+        password: password,
+        pool_size: default_pool_size,
+        settings: [],
+        timeout: @ch_query_conn_timeout
+      ]
+
+      {:ok, ch_opts}
+    end
+  end
+
   defp build_ch_opts(%__MODULE__{backend_id: backend_id}) do
     # Fetch fresh backend from cache
     backend = Backends.Cache.get_backend(backend_id)

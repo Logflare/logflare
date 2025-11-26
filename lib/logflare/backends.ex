@@ -170,35 +170,64 @@ defmodule Logflare.Backends do
     end
   end
 
+  @doc """
+  Returns the single-tenant backend configuration.
+
+  Used in single-tenant mode for ClickHouse or Postgres backends.
+  Returns a virtual backend with id: nil and no user_id.
+  """
+  @spec get_single_tenant_backend() :: Backend.t() | nil
+  def get_single_tenant_backend do
+    cond do
+      SingleTenant.single_tenant?() and SingleTenant.clickhouse_backend?() ->
+        opts = SingleTenant.clickhouse_backend_adapter_opts()
+
+        %Backend{
+          id: nil,
+          type: :clickhouse,
+          config: Map.new(opts),
+          name: "Default clickhouse backend"
+        }
+
+      SingleTenant.single_tenant?() and SingleTenant.postgres_backend?() ->
+        opts = SingleTenant.postgres_backend_adapter_opts()
+
+        %Backend{
+          id: nil,
+          type: :postgres,
+          config: Map.new(opts),
+          name: "Default postgres backend"
+        }
+
+      true ->
+        nil
+    end
+  end
+
   def get_default_backend(%User{} = user) do
-    if SingleTenant.single_tenant?() and SingleTenant.postgres_backend?() do
-      opts = SingleTenant.postgres_backend_adapter_opts()
+    case get_single_tenant_backend() do
+      %Backend{} = backend ->
+        %{backend | user_id: user.id}
 
-      %Backend{
-        type: :postgres,
-        config: Map.new(opts),
-        user_id: user.id,
-        name: "Default postgres backend"
-      }
-    else
-      {project_id, dataset_id} =
-        if user.bigquery_project_id do
-          {user.bigquery_project_id, user.bigquery_dataset_id}
-        else
-          project_id = User.bq_project_id()
-          dataset_id = User.generate_bq_dataset_id(user.id)
-          {project_id, dataset_id}
-        end
+      nil ->
+        {project_id, dataset_id} =
+          if user.bigquery_project_id do
+            {user.bigquery_project_id, user.bigquery_dataset_id}
+          else
+            project_id = User.bq_project_id()
+            dataset_id = User.generate_bq_dataset_id(user.id)
+            {project_id, dataset_id}
+          end
 
-      %Backend{
-        type: :bigquery,
-        config: %{
-          project_id: project_id,
-          dataset_id: dataset_id
-        },
-        user_id: user.id,
-        name: "Default bigquery backend"
-      }
+        %Backend{
+          type: :bigquery,
+          config: %{
+            project_id: project_id,
+            dataset_id: dataset_id
+          },
+          user_id: user.id,
+          name: "Default bigquery backend"
+        }
     end
   end
 
@@ -405,8 +434,12 @@ defmodule Logflare.Backends do
 
   @doc """
   Retrieves a Backend by id.
+
+  For single-tenant mode, when id is nil, returns the virtual single-tenant backend.
   """
-  @spec get_backend(integer()) :: Backend.t() | nil
+  @spec get_backend(integer() | nil) :: Backend.t() | nil
+  def get_backend(nil), do: get_single_tenant_backend()
+
   def get_backend(id) do
     backend = Repo.get(Backend, id)
 
@@ -650,10 +683,10 @@ defmodule Logflare.Backends do
   @doc """
   Registers a unique backend-related process on the backend registry.
   """
-  @spec via_backend(Backend.t() | non_neg_integer(), module()) :: tuple()
+  @spec via_backend(Backend.t() | non_neg_integer() | nil, module()) :: tuple()
   def via_backend(%Backend{id: id}, mod), do: via_backend(id, mod)
 
-  def via_backend(backend_id, mod) when is_number(backend_id) do
+  def via_backend(backend_id, mod) when is_number(backend_id) or is_nil(backend_id) do
     {:via, Registry, {BackendRegistry, {mod, backend_id}}}
   end
 

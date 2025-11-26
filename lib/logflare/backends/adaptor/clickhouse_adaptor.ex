@@ -591,4 +591,23 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
     ConnectionManager.notify_activity(backend)
     :ok
   end
+
+  @doc """
+  Extracts the port from a ClickHouse URL or returns the default port based on the scheme.
+  """
+  @spec extract_port_from_url(String.t() | nil) :: integer()
+  def extract_port_from_url(nil), do: 8123
+
+  def extract_port_from_url(url) when is_binary(url) do
+    uri = URI.parse(url)
+    uri.port || default_port_for_scheme(uri.scheme)
+  end
+
+  @doc """
+  Returns the default ClickHouse port for a given URL scheme.
+  """
+  @spec default_port_for_scheme(String.t() | nil) :: integer()
+  def default_port_for_scheme("https"), do: 8443
+  def default_port_for_scheme("http"), do: 8123
+  def default_port_for_scheme(_), do: 8123
 end

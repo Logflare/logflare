@@ -6,6 +6,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
   import Bitwise
   import Logflare.Utils.Guards
 
+  alias Logflare.Backends.Adaptor.ClickhouseAdaptor
   alias Logflare.Backends.Backend
   alias Logflare.LogEvent
 
@@ -131,6 +132,24 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
     do: <<1::1, n::7, encode_as_varint(n >>> 7)::binary>>
 
   @spec build_connection_opts(Backend.t()) :: {:ok, Keyword.t()} | {:error, String.t()}
+  defp build_connection_opts(%Backend{id: nil}) do
+    opts = Logflare.SingleTenant.clickhouse_backend_adapter_opts() || []
+    url = Keyword.get(opts, :url)
+    database = Keyword.get(opts, :database)
+    username = Keyword.get(opts, :username)
+    password = Keyword.get(opts, :password)
+    port = Keyword.get(opts, :port) || ClickhouseAdaptor.extract_port_from_url(url)
+
+    {:ok,
+     [
+       url: url,
+       port: port,
+       database: database,
+       username: username,
+       password: password
+     ]}
+  end
+
   defp build_connection_opts(%Backend{
          config: %{
            url: url,
@@ -162,7 +181,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
     uri = URI.parse(base_url)
     scheme = uri.scheme || "http"
     host = uri.host
-    port = Keyword.get(connection_opts, :port, default_port(scheme))
+    port = Keyword.get(connection_opts, :port, ClickhouseAdaptor.default_port_for_scheme(scheme))
 
     query = "INSERT INTO #{database}.#{table} FORMAT RowBinary"
 
@@ -183,7 +202,4 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
     credentials = Base.encode64("#{username}:#{password}")
     {"authorization", "Basic #{credentials}"}
   end
-
-  defp default_port("https"), do: 8443
-  defp default_port(_), do: 8123
 end

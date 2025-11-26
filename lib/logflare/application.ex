@@ -93,7 +93,10 @@ defmodule Logflare.Application do
         Counters,
         RateCounters,
         # Backends needs to be before Source.Supervisor
-        Logflare.Backends,
+        Logflare.Backends
+      ] ++
+      clickhouse_conn_manager_children() ++
+      [
         Logflare.Sources.Source.Supervisor,
         LogflareWeb.Endpoint,
         # If we get a log event and the Source.Supervisor is not up it will 500
@@ -148,6 +151,22 @@ defmodule Logflare.Application do
     goth ++ config_cat
   end
 
+  def clickhouse_conn_manager_children do
+    if SingleTenant.clickhouse_backend?() do
+      [
+        %{
+          id: Logflare.SingleTenantClickHouseConnectionManager,
+          start:
+            {Logflare.Backends.Adaptor.ClickhouseAdaptor.ConnectionManager, :start_link,
+             [%Logflare.Backends.Backend{type: :clickhouse}]},
+          restart: :permanent
+        }
+      ]
+    else
+      []
+    end
+  end
+
   def config_change(changed, _new, removed) do
     LogflareWeb.Endpoint.config_change(changed, removed)
     :ok
@@ -157,7 +176,7 @@ defmodule Logflare.Application do
     # if single tenant, insert enterprise user
     Logger.info("Executing startup tasks")
 
-    if !SingleTenant.postgres_backend?() do
+    if !SingleTenant.postgres_backend?() and !SingleTenant.clickhouse_backend?() do
       BigQueryAdaptor.create_managed_service_accounts()
       BigQueryAdaptor.update_iam_policy()
     end
@@ -174,7 +193,7 @@ defmodule Logflare.Application do
       SingleTenant.create_supabase_endpoints()
       SingleTenant.ensure_supabase_sources_started()
 
-      unless SingleTenant.postgres_backend?() do
+      unless SingleTenant.postgres_backend?() or SingleTenant.clickhouse_backend?() do
         # buffer time for all sources to init and create tables
         # in case of latency.
         :timer.sleep(3_000)
