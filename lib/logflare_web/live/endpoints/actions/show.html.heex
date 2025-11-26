@@ -2,8 +2,8 @@
   <:path>
     ~/<.subheader_path_link live_patch to={~p"/endpoints"} team={@team}>endpoints</.subheader_path_link>/{@show_endpoint.name}
   </:path>
-  <.subheader_link to={~p"/access-tokens"} text="access tokens" fa_icon="key" />
-  <.subheader_link live_patch to={~p"/endpoints/#{@show_endpoint.id}/edit"} text="edit" fa_icon="edit" />
+  <.subheader_link team={@team} to={~p"/access-tokens"} text="access tokens" fa_icon="key" />
+  <.subheader_link team={@team} live_patch to={~p"/endpoints/#{@show_endpoint.id}/edit"} text="edit" fa_icon="edit" />
 </.subheader>
 <section class="mx-auto container pt-3 tw-flex tw-flex-col tw-gap-4">
   <div>

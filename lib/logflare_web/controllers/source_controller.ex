@@ -78,7 +78,8 @@ defmodule LogflareWeb.SourceController do
       logs: get_and_encode_logs(source),
       source: source,
       public_token: source.public_token,
-      search_tip: search_tip
+      search_tip: search_tip,
+      team: Map.get(conn.assigns, :team)
     )
   end
 
@@ -109,7 +110,8 @@ defmodule LogflareWeb.SourceController do
       logs: get_and_encode_logs(source),
       source: source,
       public_token: source.public_token,
-      search_tip: search_tip
+      search_tip: search_tip,
+      team: Map.get(conn.assigns, :team)
     )
   end
 

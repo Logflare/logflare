@@ -441,6 +441,68 @@ defmodule LogflareWeb.SourceControllerTest do
     end
   end
 
+  describe "team context links" do
+    setup %{conn: conn} do
+      user = insert(:user)
+      insert(:plan, name: "Free")
+      team = insert(:team, user: user)
+      team_user = insert(:team_user, team: team, email: user.email)
+      source = insert(:source, user: user)
+
+      [
+        conn: login_user(conn, user, team_user),
+        user: user,
+        team: team,
+        team_user: team_user,
+        source: source
+      ]
+    end
+
+    test "source show page links include team query param", %{
+      conn: conn,
+      source: source,
+      team_user: team_user
+    } do
+      html =
+        conn
+        |> get(~p"/sources/#{source}?t=#{team_user.team_id}")
+        |> html_response(200)
+
+      for path <- ~w(explore rules clear edit) do
+        assert html =~
+                 ~r/href="[^"]*\/sources\/#{source.id}\/#{path}[^"]*[?&]t=#{team_user.team_id}/
+      end
+    end
+
+    test "source search form includes team query param", %{
+      conn: conn,
+      source: source,
+      team_user: team_user
+    } do
+      html =
+        conn
+        |> get(~p"/sources/#{source}?t=#{team_user.team_id}")
+        |> html_response(200)
+
+      # Check search form has hidden input with team param
+      assert html =~ ~r/<input[^>]*name="t"/
+    end
+
+    test "source edit page has Rules link with team query param", %{
+      conn: conn,
+      source: source,
+      team_user: team_user
+    } do
+      html =
+        conn
+        |> get(~p"/sources/#{source}/edit?t=#{team_user.team_id}")
+        |> html_response(200)
+
+      assert html =~ ~r/sources\/#{source.id}\/rules/ or html =~ ~r/RulesLive/
+      assert html =~ "?t=#{team_user.team_id}" or html =~ "&amp;t=#{team_user.team_id}"
+    end
+  end
+
   defp create_plan(_) do
     insert(:plan, name: "Free")
 

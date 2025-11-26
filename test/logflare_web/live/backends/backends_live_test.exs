@@ -672,6 +672,25 @@ defmodule LogflareWeb.BackendsLiveTest do
 
       assert html =~ backend.name
     end
+
+    test "backend links include team query param on index", %{
+      conn: conn,
+      user: user,
+      team_user: team_user,
+      backend: backend
+    } do
+      {:ok, view, _html} =
+        conn
+        |> login_user(user, team_user)
+        |> live(~p"/backends?t=#{team_user.team_id}")
+
+      # Check that "New backend" link includes team param
+      html = render(view)
+      assert html =~ ~r/href="[^"]*\/backends\/new[^"]*[?&]t=#{team_user.team_id}/
+
+      # Check that backend name link includes team param
+      assert html =~ ~r/href="[^"]*\/backends\/#{backend.id}[^"]*[?&]t=#{team_user.team_id}/
+    end
   end
 
   test "redirects to login page when not logged in", %{conn: conn} do

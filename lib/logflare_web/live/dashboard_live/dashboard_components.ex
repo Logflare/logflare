@@ -46,9 +46,9 @@ defmodule LogflareWeb.DashboardLive.DashboardComponents do
               </.team_link>
             </li>
             <li>
-              <.link href={~p"/billing/edit"}>
+              <.team_link team={@team} href={~p"/billing/edit"}>
                 <i class="fas fa-money-bill"></i><span class="hide-on-mobile"> billing</span>
-              </.link>
+              </.team_link>
             </li>
             <li><a href="mailto:support@logflare.app?Subject=Logflare%20Help" target="_top"><i class="fas fa-question-circle"></i> <span class="hide-on-mobile">help</span></a></li>
           </ul>
@@ -167,9 +167,9 @@ defmodule LogflareWeb.DashboardLive.DashboardComponents do
           <span :if={current_team_user?(member, @team_user)}>you</span>
         </li>
       </ul>
-      <.link :if={is_nil(@team_user)} href={~p"/account/edit#team-members"} class="tw-text-white tw-mt-2">
+      <.team_link :if={is_nil(@team_user)} team={@team} href={~p"/account/edit#team-members"} class="tw-text-white tw-mt-2">
         Invite more team members.
-      </.link>
+      </.team_link>
     </div>
     """
   end
@@ -178,6 +178,7 @@ defmodule LogflareWeb.DashboardLive.DashboardComponents do
   defp current_team_user?(member, team_user), do: member.provider_uid == team_user.provider_uid
 
   attr :sources, :list, required: true
+  attr :team, Logflare.Teams.Team, required: true
 
   def saved_searches(assigns) do
     assigns =
@@ -199,9 +200,9 @@ defmodule LogflareWeb.DashboardLive.DashboardComponents do
       </div>
       <ul class="list-unstyled">
         <li :for={{source, saved_search} <- @searches}>
-          <.link href={~p"/sources/#{source}/search?#{%{querystring: saved_search.querystring, tailing: saved_search.tailing}}"} class="tw-text-white">
+          <.team_link team={@team} href={~p"/sources/#{source}/search?#{%{querystring: saved_search.querystring, tailing: saved_search.tailing}}"} class="tw-text-white">
             {source.name}:{saved_search.querystring}
-          </.link>
+          </.team_link>
           <span phx-click="delete_saved_search" phx-value-id={saved_search.id} data-confirm="Delete saved search?" class="tw-text-xs tw-ml-1.5 tw-text-white tw-cursor-pointer">
             <i class="fa fa-trash"></i>
           </span>

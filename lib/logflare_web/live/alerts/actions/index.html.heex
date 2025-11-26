@@ -26,7 +26,7 @@
 <section class="mx-auto container">
   <ul :for={alert <- Enum.sort_by(@alerts, & &1.name)} class="list-group">
     <li class="list-group-item">
-      <.link patch={~p"/alerts/#{alert.id}"} class="tw-text-white">{alert.name}</.link>
+      <.team_link team={@team} patch={~p"/alerts/#{alert.id}"} class="tw-text-white">{alert.name}</.team_link>
       <span class="tw-block tw-text-sm">uuid: {alert.token}</span>
       <p :if={alert.description} class="tw-pb-0 tw-mb-0 tw-text-sm text-muted">
         {alert.description}

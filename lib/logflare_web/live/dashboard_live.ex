@@ -158,7 +158,7 @@ defmodule LogflareWeb.DashboardLive do
       <div class="tw-max-w-[95%] tw-mx-auto">
         <div class="lg:tw-grid tw-grid-cols-12 tw-gap-8 tw-px-[15px] tw-mt-[50px]">
           <div class="tw-col-span-3">
-            <DashboardComponents.saved_searches sources={@sources} />
+            <DashboardComponents.saved_searches sources={@sources} team={@team} />
             <DashboardComponents.teams current_team={@team} home_team={@home_team} team_users={@team_users} />
             <DashboardComponents.members user={@user} team={@team} team_user={@team_user} />
           </div>
@@ -202,7 +202,7 @@ defmodule LogflareWeb.DashboardLive do
           <li :if={service_name == nil} class="list-group-item">
             <hr />
           </li>
-          <DashboardSourceComponents.source_item :for={source <- sources} source={source} plan={@plan} metrics={@source_metrics[to_string(source.token)][:metrics]} fade_in={@fade_in} />
+          <DashboardSourceComponents.source_item :for={source <- sources} source={source} plan={@plan} metrics={@source_metrics[to_string(source.token)][:metrics]} fade_in={@fade_in} team={@team} />
         <% end %>
       </ul>
     </div>

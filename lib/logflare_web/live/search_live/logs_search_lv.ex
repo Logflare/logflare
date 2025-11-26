@@ -446,6 +446,7 @@ defmodule LogflareWeb.Source.SearchLV do
         "query" ->
           ~p"/query?#{%{q: sql}}"
       end
+      |> LogflareWeb.Utils.with_team_param(assigns[:team])
 
     {:noreply, push_navigate(socket, to: destination)}
   end
@@ -987,7 +988,7 @@ defmodule LogflareWeb.Source.SearchLV do
     end
   end
 
-  defp put_flash_query_error(socket, _) do
+  defp put_flash_query_error(socket, _response) do
     socket
     |> put_flash(
       :error,
