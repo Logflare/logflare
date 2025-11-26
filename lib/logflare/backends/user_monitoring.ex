@@ -97,6 +97,8 @@ defmodule Logflare.Backends.UserMonitoring do
              |> Sources.Cache.preload_rules()
              |> Sources.refresh_source_metrics() do
         Processor.ingest(user_events, Logs.Raw, source)
+      else
+        other -> other
       end
     end)
 
