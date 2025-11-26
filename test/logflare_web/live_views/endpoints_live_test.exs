@@ -6,8 +6,9 @@ defmodule LogflareWeb.EndpointsLiveTest do
   setup %{conn: conn} do
     insert(:plan)
     user = insert(:user)
+    team = insert(:team, user: user)
     conn = login_user(conn, user)
-    {:ok, user: user, conn: conn}
+    {:ok, user: user, team: team, conn: conn}
   end
 
   describe "with existing endpoint" do
@@ -15,7 +16,7 @@ defmodule LogflareWeb.EndpointsLiveTest do
       {:ok, endpoint: insert(:endpoint, user: user)}
     end
 
-    test "list endpoints", %{conn: conn, endpoint: endpoint} do
+    test "list endpoints", %{conn: conn, endpoint: endpoint, team: team} do
       {:ok, view, _html} = live(conn, "/endpoints")
 
       # intro message and link to docs
@@ -34,11 +35,11 @@ defmodule LogflareWeb.EndpointsLiveTest do
       |> element("ul li a", endpoint.name)
       |> render_click()
 
-      assert_patched(view, "/endpoints/#{endpoint.id}")
+      assert_patched(view, "/endpoints/#{endpoint.id}?t=#{team.id}")
       assert has_element?(view, "code", endpoint.query)
     end
 
-    test "show endpoint", %{conn: conn, endpoint: endpoint} do
+    test "show endpoint", %{conn: conn, endpoint: endpoint, team: team} do
       {:ok, view, _html} = live(conn, "/endpoints/#{endpoint.id}")
       assert has_element?(view, "h1,h2,h3,h4,h5", endpoint.name)
       assert has_element?(view, "code", endpoint.query)
@@ -46,7 +47,7 @@ defmodule LogflareWeb.EndpointsLiveTest do
 
       # link to edit
       assert element(view, ".subhead a", "edit") |> render_click() =~ "/edit"
-      assert_patched(view, "/endpoints/#{endpoint.id}/edit")
+      assert_patched(view, "/endpoints/#{endpoint.id}/edit?t=#{team.id}")
     end
 
     test "show endpoint -> edit endpoint", %{conn: conn, endpoint: endpoint} do
@@ -99,14 +100,14 @@ defmodule LogflareWeb.EndpointsLiveTest do
     end
   end
 
-  test "index -> new endpoint", %{conn: conn} do
+  test "index -> new endpoint", %{conn: conn, team: team} do
     {:ok, view, _html} = live(conn, "/endpoints")
 
     assert view
            |> element("a", "New endpoint")
            |> render_click() =~ ~r/\~\/.+endpoints.+\/new/
 
-    assert_patch(view, "/endpoints/new")
+    assert_patch(view, "/endpoints/new?t=#{team.id}")
   end
 
   test "index - show cache count", %{conn: conn, user: user} do
@@ -118,7 +119,7 @@ defmodule LogflareWeb.EndpointsLiveTest do
     assert render(view) =~ ~r/caches:.+1/
   end
 
-  test "new endpoint", %{conn: conn} do
+  test "new endpoint", %{conn: conn, team: team} do
     {:ok, view, _html} = live(conn, "/endpoints/new")
     assert view |> has_element?("form#endpoint")
 
@@ -138,7 +139,7 @@ defmodule LogflareWeb.EndpointsLiveTest do
     assert has_element?(view, "h1,h2,h3,h4,h5", "some query")
     assert has_element?(view, "code", new_query)
     path = assert_patch(view)
-    assert path =~ ~r/\/endpoints\/\S+/
+    assert path =~ ~r/\/endpoints\/\S+\?t=#{team.id}/
     assert render(view) =~ "some description"
   end
 
@@ -168,7 +169,12 @@ defmodule LogflareWeb.EndpointsLiveTest do
       [valid_query: "select current_timestamp() as my_time", invalid_query: "bad_query"]
     end
 
-    test "new endpoint", %{conn: conn, valid_query: valid_query, invalid_query: invalid_query} do
+    test "new endpoint", %{
+      conn: conn,
+      valid_query: valid_query,
+      invalid_query: invalid_query,
+      team: team
+    } do
       {:ok, view, _html} = live(conn, "/endpoints/new")
 
       # triggering event handler directly since Monaco does this via JavaScript
@@ -202,10 +208,10 @@ defmodule LogflareWeb.EndpointsLiveTest do
              }) =~ "select @my_param as valid"
 
       path = assert_patch(view)
-      assert path =~ ~r/\/endpoints\/\S+/
+      assert path =~ ~r/\/endpoints\/\S+\?t=#{team.id}/
     end
 
-    test "edit endpoint", %{conn: conn, user: user} do
+    test "edit endpoint", %{conn: conn, user: user, team: team} do
       endpoint = insert(:endpoint, user: user, query: "select @other as initial")
       {:ok, view, _html} = live(conn, "/endpoints/#{endpoint.id}/edit")
 
@@ -220,7 +226,7 @@ defmodule LogflareWeb.EndpointsLiveTest do
 
       assert has_element?(view, "code", "select @my_param as valid")
 
-      assert_patched(view, "/endpoints/#{endpoint.id}")
+      assert_patched(view, "/endpoints/#{endpoint.id}?t=#{team.id}")
       # no longer has the initail query string
       refute render(view) =~ endpoint.query
       refute render(view) =~ "@other"
@@ -295,7 +301,7 @@ defmodule LogflareWeb.EndpointsLiveTest do
       :ok
     end
 
-    test "new endpoint", %{conn: conn} do
+    test "new endpoint", %{conn: conn, team: team} do
       {:ok, view, _html} = live(conn, "/endpoints/new")
 
       refute render(view) =~ "results-123"
@@ -333,6 +339,9 @@ defmodule LogflareWeb.EndpointsLiveTest do
                  query: "select current_datetime() as saved"
                }
              }) =~ "saved"
+
+      path = assert_patch(view)
+      assert path =~ ~r/\/endpoints\/\S+\?t=#{team.id}/
     end
 
     test "edit endpoint", %{conn: conn, user: user} do
@@ -868,8 +877,7 @@ defmodule LogflareWeb.EndpointsLiveTest do
   end
 
   describe "resolving team context" do
-    setup %{user: user} do
-      team = insert(:team, user: user)
+    setup %{user: user, team: team} do
       team_user = insert(:team_user, team: team)
       endpoint = insert(:endpoint, user: user)
 
@@ -902,6 +910,36 @@ defmodule LogflareWeb.EndpointsLiveTest do
         |> live(~p"/endpoints/#{endpoint.id}")
 
       assert html =~ endpoint.name
+    end
+
+    test "endpoints links preserve team param", %{
+      conn: conn,
+      user: user,
+      team_user: team_user,
+      endpoint: endpoint
+    } do
+      {:ok, _view, html} =
+        conn |> login_user(user, team_user) |> live(~p"/endpoints?t=#{team_user.team_id}")
+
+      for path <- ["endpoints/new", "endpoints/#{endpoint.id}"] do
+        assert html =~ ~r/#{path}[^"<]*t=#{team_user.team_id}/
+      end
+    end
+
+    test "endpoint show links preserve team param", %{
+      conn: conn,
+      user: user,
+      team_user: team_user,
+      endpoint: endpoint
+    } do
+      {:ok, _view, html} =
+        conn
+        |> login_user(user, team_user)
+        |> live(~p"/endpoints/#{endpoint}?t=#{team_user.team_id}")
+
+      for path <- ["endpoints/#{endpoint.id}/edit", "access-tokens"] do
+        assert html =~ ~r/#{path}[^"<]*t=#{team_user.team_id}/
+      end
     end
   end
 end

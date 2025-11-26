@@ -29,7 +29,7 @@ defmodule LogflareWeb.EndpointsLive do
 
   defp render_access_tokens_link(assigns) do
     ~H"""
-    <.subheader_link to={~p"/access-tokens"} text="access tokens" fa_icon="key" />
+    <.subheader_link team={@team} to={~p"/access-tokens"} text="access tokens" fa_icon="key" />
     """
   end
 
@@ -165,7 +165,7 @@ defmodule LogflareWeb.EndpointsLive do
   def handle_event(
         "save-endpoint",
         %{"endpoint" => params},
-        %{assigns: %{user: user, show_endpoint: show_endpoint}} = socket
+        %{assigns: %{user: user, show_endpoint: show_endpoint, team: team}} = socket
       ) do
     Logger.debug("Saving endpoint", params: params)
 
@@ -176,7 +176,7 @@ defmodule LogflareWeb.EndpointsLive do
         {:noreply,
          socket
          |> put_flash(:info, "Successfully #{verb} endpoint #{endpoint.name}")
-         |> push_patch(to: ~p"/endpoints/#{endpoint.id}")
+         |> push_patch(to: Utils.with_team_param(~p"/endpoints/#{endpoint.id}", team))
          |> assign(:show_endpoint, endpoint)
          |> assign(:query_result_rows, nil)
          |> assign(:total_bytes_processed, nil)}

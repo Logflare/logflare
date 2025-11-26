@@ -16,9 +16,10 @@ defmodule LogflareWeb.AlertsLiveTest do
   setup %{conn: conn} do
     insert(:plan, name: "Free")
     user = insert(:user)
+    team = insert(:team, user: user)
     conn = login_user(conn, user)
     start_supervised!(Logflare.Alerting.Supervisor)
-    [user: user, conn: conn]
+    [user: user, team: team, conn: conn]
   end
 
   defp create_alert_query(%{user: user}) do
@@ -43,7 +44,7 @@ defmodule LogflareWeb.AlertsLiveTest do
       assert html =~ "Alerts"
     end
 
-    test "lists all alert_queries", %{conn: conn, alert_query: alert_query} do
+    test "lists all alert_queries", %{conn: conn, alert_query: alert_query, team: team} do
       {:ok, view, html} = live(conn, Routes.alerts_path(conn, :index))
       assert html =~ alert_query.name
       assert html =~ "Alerts"
@@ -52,7 +53,7 @@ defmodule LogflareWeb.AlertsLiveTest do
       |> element("ul li a", alert_query.name)
       |> render_click()
 
-      assert_patched(view, "/alerts/#{alert_query.id}")
+      assert_patched(view, "/alerts/#{alert_query.id}?t=#{team.id}")
       assert has_element?(view, "h1,h2,h3,h4,h5", alert_query.name)
       assert has_element?(view, "p", alert_query.description)
       assert has_element?(view, "code", alert_query.query)
@@ -61,6 +62,7 @@ defmodule LogflareWeb.AlertsLiveTest do
     test "can attach new backend to the alert query", %{
       conn: conn,
       user: user,
+      team: team,
       alert_query: alert_query
     } do
       backend = insert(:backend, user: user)
@@ -86,7 +88,7 @@ defmodule LogflareWeb.AlertsLiveTest do
       |> element("a", backend.name)
       |> render_click()
 
-      assert_patched(view, ~p"/backends/#{backend.id}")
+      assert_patched(view, ~p"/backends/#{backend.id}?t=#{team.id}")
       assert render(view) =~ alert_query.name
     end
 
@@ -333,12 +335,11 @@ defmodule LogflareWeb.AlertsLiveTest do
   end
 
   describe "resolving team context" do
-    setup %{user: user} do
-      team = insert(:team, user: user)
+    setup %{user: user, team: team} do
       team_user = insert(:team_user, team: team)
       alert_query = insert(:alert, user_id: user.id)
 
-      [team: team, team_user: team_user, alert_query: alert_query]
+      [team_user: team_user, alert_query: alert_query]
     end
 
     test "team user can list alerts", %{
@@ -367,6 +368,34 @@ defmodule LogflareWeb.AlertsLiveTest do
         |> live(~p"/alerts/#{alert_query.id}")
 
       assert html =~ alert_query.name
+    end
+
+    test "alerts links preserve team param", %{
+      conn: conn,
+      user: user,
+      team_user: team_user,
+      alert_query: alert_query
+    } do
+      {:ok, _view, html} =
+        conn |> login_user(user, team_user) |> live(~p"/alerts?t=#{team_user.team_id}")
+
+      assert html =~ ~r/alerts\/#{alert_query.id}[^"<]*t=#{team_user.team_id}/
+    end
+
+    test "alert show links preserve team param", %{
+      conn: conn,
+      user: user,
+      team_user: team_user,
+      alert_query: alert_query
+    } do
+      {:ok, _view, html} =
+        conn
+        |> login_user(user, team_user)
+        |> live(~p"/alerts/#{alert_query}?t=#{team_user.team_id}")
+
+      for path <- ["alerts/#{alert_query.id}/edit", "access-tokens"] do
+        assert html =~ ~r/#{path}[^"<]*t=#{team_user.team_id}/
+      end
     end
   end
 end

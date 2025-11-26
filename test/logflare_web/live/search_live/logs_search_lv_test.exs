@@ -1308,6 +1308,40 @@ defmodule LogflareWeb.Source.SearchLVTest do
     end
   end
 
+  describe "team query param preservation in search page" do
+    setup [:on_exit_kill_tasks, :setup_mocks]
+
+    setup %{conn: conn} do
+      plan = insert(:plan)
+      user = insert(:user)
+      source = insert(:source, user: user)
+      team = insert(:team, user: user)
+      team_user = insert(:team_user, team: team, email: user.email)
+
+      _billing_account = insert(:billing_account, user: user, stripe_plan_id: plan.stripe_id)
+      user = user |> Logflare.Repo.preload(:billing_account)
+      conn = login_user(conn, user, team_user)
+
+      [team: team, team_user: team_user, conn: conn, source: source, user: user, plan: plan]
+    end
+
+    test "search page links preserve team param", %{
+      conn: conn,
+      source: source,
+      team_user: team_user
+    } do
+      {:ok, _view, html} =
+        live(
+          conn,
+          ~p"/sources/#{source}/search?querystring=test&tailing%3F=false&t=#{team_user.team_id}"
+        )
+
+      for path <- ["sources/#{source.id}"] do
+        assert html =~ ~r/#{path}[^"<]*t=#{team_user.team_id}/
+      end
+    end
+  end
+
   defp get_view_assigns(view) do
     :sys.get_state(view.pid).socket.assigns
   end

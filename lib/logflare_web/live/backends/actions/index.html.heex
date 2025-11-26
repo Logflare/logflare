@@ -12,18 +12,18 @@
 
   <div class="tw-flex tw-gap-4 tw-items-center">
     <a href="https://docs.logflare.app/backends" target="_blank">Documentation</a>
-    <.link patch={~p"/backends/new"}>
+    <.team_link patch={~p"/backends/new"} team={@team}>
       <.button variant="primary">
         New backend
       </.button>
-    </.link>
+    </.team_link>
   </div>
 </div>
 
 <section class="mx-auto container">
   <ul :for={backend <- Enum.sort_by(@backends, & &1.name)} class="list-group">
     <li class="list-group-item">
-      <.link patch={~p"/backends/#{backend.id}"} class="tw-text-white">{backend.name}</.link>
+      <.team_link patch={~p"/backends/#{backend.id}"} team={@team} class="tw-text-white">{backend.name}</.team_link>
       <span class="tw-block tw-text-sm">uuid: {backend.token}</span>
       <p :if={backend.description} class="tw-pb-0 tw-mb-0 tw-text-sm text-muted">
         {backend.description}

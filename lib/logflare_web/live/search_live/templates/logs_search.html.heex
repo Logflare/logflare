@@ -18,10 +18,7 @@
 <div id="source-logs-search-control" class="subhead " phx-hook="SourceLogsSearch">
   <div class="container mx-auto">
     <h5>
-      ~/logs/{link(@source.name,
-        to: Routes.source_path(@socket, :show, @source),
-        class: "text-primary"
-      )}/search
+      ~/logs/<.team_link team={@team} href={~p"/sources/#{@source}"} class="text-primary">{@source.name}</.team_link>/search
     </h5>
     <div class="log-settings tw-justify-between tw-mt-2">
       <.timezone user_preferences={@user.preferences} search_timezone={@search_timezone} />

@@ -33,7 +33,7 @@ defmodule LogflareWeb.AlertsLive do
 
   defp render_access_tokens_link(assigns) do
     ~H"""
-    <.subheader_link to={~p"/access-tokens"} text="access tokens" fa_icon="key" />
+    <.subheader_link team={@team} to={~p"/access-tokens"} text="access tokens" fa_icon="key" />
     """
   end
 
@@ -114,7 +114,9 @@ defmodule LogflareWeb.AlertsLive do
          socket
          |> assign(:alert, updated_alert |> Alerting.preload_alert_query())
          |> put_flash(:info, "Successfully #{verb} alert #{updated_alert.name}")
-         |> push_patch(to: ~p"/alerts/#{updated_alert.id}")}
+         |> push_patch(
+           to: ~p"/alerts/#{updated_alert.id}" |> Utils.with_team_param(socket.assigns.team)
+         )}
 
       {:error, %Ecto.Changeset{} = changeset} ->
         verb = if alert, do: "update", else: "create"

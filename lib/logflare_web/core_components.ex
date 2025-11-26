@@ -111,10 +111,11 @@ defmodule LogflareWeb.CoreComponents do
   attr :fa_icon, :string
   attr :live_patch, :boolean, default: false
   attr :external, :boolean, default: false
+  attr :team, :any, default: nil
 
   def subheader_link(assigns) do
     ~H"""
-    <.dynamic_link to={@to} patch={@live_patch} external={@external} class="tw-text-black tw-p-1 tw-flex tw-gap-1 tw-items-center tw-justify-center">
+    <.dynamic_link to={@to} patch={@live_patch} external={@external} team={@team} class="tw-text-black tw-p-1 tw-flex tw-gap-1 tw-items-center tw-justify-center">
       <i :if={@fa_icon} class={"inline-block h-3 w-3 fas fa-#{@fa_icon}"}></i><span> <%= @text %></span>
     </.dynamic_link>
     """
@@ -144,6 +145,7 @@ defmodule LogflareWeb.CoreComponents do
   attr :attrs, :global
   slot :inner_block, required: true
   attr :external, :boolean, default: false
+  attr :team, :any, default: nil
 
   defp dynamic_link(assigns) do
     if assigns.external do
@@ -160,7 +162,8 @@ defmodule LogflareWeb.CoreComponents do
           :navigate
         end
 
-      assigns = assign(assigns, :to, %{link_type => assigns.to})
+      to_with_team = LogflareWeb.Utils.with_team_param(assigns.to, assigns.team)
+      assigns = assign(assigns, :to, %{link_type => to_with_team})
 
       ~H"""
       <.link {@to} {@attrs}>{render_slot(@inner_block)}</.link>

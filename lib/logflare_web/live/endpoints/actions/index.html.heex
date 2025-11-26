@@ -16,20 +16,20 @@
 
   <div class="tw-flex tw-gap-4 tw-items-center">
     <a href="https://docs.logflare.app/concepts/endpoints" target="_blank">Documentation</a>
-    <.link patch={~p"/endpoints/new"}>
+    <.team_link team={@team} patch={~p"/endpoints/new"}>
       <.button variant="primary">
         New endpoint
       </.button>
-    </.link>
+    </.team_link>
   </div>
 </div>
 
 <section class="mx-auto container">
   <ul :for={endpoint <- Enum.sort_by(@endpoints, & &1.name)} class="list-group">
     <li class="list-group-item">
-      <.link patch={~p"/endpoints/#{endpoint.id}"} class="tw-text-white">
+      <.team_link team={@team} patch={~p"/endpoints/#{endpoint.id}"} class="tw-text-white">
         {endpoint.name}
-      </.link>
+      </.team_link>
       <span class="tw-block tw-text-sm">uuid: {endpoint.token}</span>
       <p :if={endpoint.description} class="tw-pb-0 tw-mb-0 tw-text-sm text-muted">
         {endpoint.description}
