@@ -13,6 +13,6 @@ The OTLP backend is **ingest-only**, and exports the logs via [OTLP](https://ope
 The backend can be configured with the following options:
 
 - `:endpoint` (string, required) - The URL of the OTLP endpoint.
-- `:protocol` (string) - The protocol to use for sending logs: `"grpc"` or `"http/protobuf"`. Defaults to `"http/protobuf"`.
+- `:protocol` (string) - The protocol to use for sending logs. For now, only `"http/protobuf"` is supported and it is a default value.
 - `:gzip` (boolean) - Enables gzip compression for the request. Defaults to `true`.
 - `:headers` (map) - A map of additional headers to set when making the HTTP request. Defaults to an empty map.

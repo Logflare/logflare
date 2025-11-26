@@ -1,13 +1,6 @@
 defmodule Logflare.Backends.Adaptor.OtlpAdaptor do
   @moduledoc """
   Adaptor sending logs to ingest compatible with [OTLP](https://opentelemetry.io/docs/specs/otlp/#protocol-details)
-  This adaptor is **ingest-only**
-
-  ## Configuration
-  - `:endpoint` - URL of OTLP Endpoint
-  - `:protocol` - Protocol used for sending logs. Currently supported is "http/protobuf", with "grpc" coming soon.
-  - `:gzip` - Enables gzip compression of request
-  - `:headers` - A map of additional headers to set when making an HTTP request
   """
 
   alias Logflare.Backends.Adaptor
@@ -90,7 +83,7 @@ defmodule Logflare.Backends.Adaptor.OtlpAdaptor do
   end
 
   def test_connection(%Backend{} = backend) do
-    case HttpBased.Client.send_events(__MODULE__, backend, []) do
+    case HttpBased.Client.send_events(__MODULE__, [], backend) do
       {:ok, %Tesla.Env{status: 200, body: %{partial_success: nil}}} -> :ok
       {:ok, %Tesla.Env{status: 200, body: %{partial_success: %{error_message: ""}}}} -> :ok
       {:ok, env} -> {:error, env}
@@ -101,7 +94,7 @@ defmodule Logflare.Backends.Adaptor.OtlpAdaptor do
   @impl HttpBased.Client
   def client_opts(%Backend{config: config}) do
     [
-      url: Path.join(config.endpoint, "/v1/logs"),
+      url: config.endpoint,
       formatter: ProtobufFormatter,
       gzip: config.gzip,
       json: false,

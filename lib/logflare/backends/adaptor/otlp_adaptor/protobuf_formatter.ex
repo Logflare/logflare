@@ -19,12 +19,12 @@ defmodule Logflare.Backends.Adaptor.OtlpAdaptor.ProtobufFormatter do
 
   @impl true
   def call(env, next, opts) do
-    metadata = opts[:metadata] || %{}
+    source = opts[:source] || %{}
 
     response =
       env
       |> Tesla.put_header("content-type", @protobuf_content_type)
-      |> Tesla.put_body(transform_batch(env.body, metadata))
+      |> Tesla.put_body(transform_batch(env.body, source))
       |> Tesla.run(next)
 
     with {:ok, %{status: 200} = env} <- response do
@@ -37,14 +37,12 @@ defmodule Logflare.Backends.Adaptor.OtlpAdaptor.ProtobufFormatter do
     end
   end
 
-  defp transform_batch(events, metadata) do
-    attributes = for {k, v} <- metadata, do: {"logflare.#{k}", v}
-
+  defp transform_batch(events, source) do
     %ExportLogsServiceRequest{
       resource_logs: [
         %ResourceLogs{
-          resource: build_resource(attributes),
-          scope_logs: build_scope_logs(events),
+          resource: build_resource(),
+          scope_logs: build_scope_logs(source, events),
           schema_url: "https://opentelemetry.io/schemas/1.26.0"
         }
       ]
@@ -52,14 +50,28 @@ defmodule Logflare.Backends.Adaptor.OtlpAdaptor.ProtobufFormatter do
     |> Protobuf.encode_to_iodata()
   end
 
-  defp build_resource(kv) do
-    %Resource{attributes: Enum.map(kv, &make_key_value/1)}
+  defp build_resource() do
+    attributes =
+      [
+        name: "Logflare",
+        service: %{
+          name: "Logflare",
+          version: Application.spec(:logflare, :vsn) |> to_string()
+        },
+        node: inspect(Node.self()),
+        cluster: Application.get_env(:logflare, :metadata)[:cluster] || ""
+      ]
+      |> Enum.map(&make_key_value/1)
+
+    %Resource{attributes: attributes}
   end
 
-  defp build_scope_logs(logs) do
+  defp build_scope_logs(source, logs) do
+    name = source[:service_name] || source[:name] || "Logflare"
+
     [
       %ScopeLogs{
-        scope: %InstrumentationScope{name: "logflare"},
+        scope: %InstrumentationScope{name: name},
         log_records: Enum.map(logs, &build_log_record/1)
       }
     ]

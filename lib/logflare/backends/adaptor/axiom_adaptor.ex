@@ -70,7 +70,7 @@ defmodule Logflare.Backends.Adaptor.AxiomAdaptor do
   end
 
   def test_connection(%Backend{} = backend) do
-    case HttpBased.Client.send_events(__MODULE__, backend, []) do
+    case HttpBased.Client.send_events(__MODULE__, [], backend) do
       {:ok, %Tesla.Env{status: 200}} -> :ok
       {:ok, %Tesla.Env{body: %{"message" => message}}} -> {:error, message}
       {:ok, env} -> {:error, "Unexpected response: #{env.status} #{inspect(env.body)}"}

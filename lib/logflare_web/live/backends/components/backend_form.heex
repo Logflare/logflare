@@ -322,7 +322,7 @@
         <% "otlp" -> %>
           <div class="form-group">
             {label(f_config, :endpoint, "Endpoint")}
-            {text_input(f_config, :endpoint, class: "form-control")}
+            {text_input(f_config, :endpoint, class: "form-control", value: "https://otlp-endpoint.com/v1/logs")}
             <small class="form-text text-muted">
               Address of the OTLP Endpoint
             </small>
