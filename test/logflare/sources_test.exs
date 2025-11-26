@@ -520,4 +520,45 @@ defmodule Logflare.SourcesTest do
       end)
     end
   end
+
+
+  describe "labels validation and normalization" do
+    setup do
+      insert(:plan)
+      user = insert(:user)
+      %{source: insert(:source, user_id: user.id)}
+    end
+
+    test "normalizes whitespace around commas and equals", %{source: source} do
+      for {input, expected} <- [
+            {"key1=value1 , key2=value2", "key1=value1,key2=value2"},
+            {"key1 = value1,key2= value2", "key1=value1,key2=value2"},
+            {"  key1=value1 , key2=value2  ", "key1=value1,key2=value2"},
+            {"key1=value1,,key2=value2,", "key1=value1,key2=value2"}
+          ] do
+        assert %_{valid?: true} = changeset = Source.changeset(source, %{labels: input})
+        assert get_change(changeset, :labels) == expected
+      end
+    end
+
+    test "accepts valid formats and empty string", %{source: source} do
+      assert Source.changeset(source, %{labels: ""}).valid?
+      assert Source.changeset(source, %{labels: "status=m.level,project=name"}).valid?
+    end
+
+    test "rejects invalid label formats", %{source: source} do
+      invalid_cases = [
+        {"no_equals", "each label must be in key=value format"},
+        {"=value", "each label must have a non-empty key"},
+        {"key=", "each label must have a non-empty value"},
+        {"key=val=extra", "each label must have exactly one '=' sign"},
+        {"valid=ok,invalid", "each label must be in key=value format"}
+      ]
+
+      for {input, expected_error} <- invalid_cases do
+        assert %_{valid?: false} = changeset = Source.changeset(source, %{labels: input})
+        assert expected_error in errors_on(changeset).labels
+      end
+    end
+  end
 end

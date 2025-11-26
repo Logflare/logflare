@@ -243,6 +243,7 @@ defmodule Logflare.Sources.Source do
     |> unique_constraint(:public_token)
     |> put_source_ttl_change()
     |> validate_source_ttl(source)
+    |> normalize_and_validate_labels()
   end
 
   defp put_source_ttl_change(changeset) do
@@ -271,6 +272,40 @@ defmodule Logflare.Sources.Source do
       end)
     else
       changeset
+    end
+  end
+
+  defp normalize_and_validate_labels(changeset) do
+    case get_change(changeset, :labels) do
+      value when value in [nil, ""] ->
+        changeset
+
+      labels ->
+        labels
+        |> String.split(",", trim: true)
+        |> Enum.reduce({[], []}, fn pair, {normalized, errors} ->
+          case pair |> String.trim() |> String.split("=") do
+            [k, v] when k != "" and v != "" ->
+              {["#{String.trim(k)}=#{String.trim(v)}" | normalized], errors}
+
+            [_, ""] ->
+              {normalized, [{:labels, "each label must have a non-empty value"} | errors]}
+
+            ["", _] ->
+              {normalized, [{:labels, "each label must have a non-empty key"} | errors]}
+
+            [_] ->
+              {normalized, [{:labels, "each label must be in key=value format"} | errors]}
+
+            _ ->
+              {normalized, [{:labels, "each label must have exactly one '=' sign"} | errors]}
+          end
+        end)
+        |> then(fn {normalized, errors} ->
+          changeset
+          |> put_change(:labels, normalized |> Enum.reverse() |> Enum.join(","))
+          |> then(&Enum.reduce(Enum.uniq(errors), &1, fn {k, v}, cs -> add_error(cs, k, v) end))
+        end)
     end
   end
 
