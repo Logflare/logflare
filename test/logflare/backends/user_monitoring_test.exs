@@ -286,7 +286,7 @@ defmodule Logflare.Backends.UserMonitoringTest do
       :ok
     end
 
-    test "endpoints.query.total_processed_bytes" do
+    test "endpoints.query.total_bytes_processed" do
       pid = self()
 
       GoogleApi.BigQuery.V2.Api.Tabledata
