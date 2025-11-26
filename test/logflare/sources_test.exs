@@ -521,7 +521,6 @@ defmodule Logflare.SourcesTest do
     end
   end
 
-
   describe "labels validation and normalization" do
     setup do
       insert(:plan)
