@@ -31,9 +31,9 @@
     <link rel="icon" href={Routes.static_path(@conn, "/images/favicon.ico")} />
     <link rel="stylesheet" href="https://use.fontawesome.com/releases/v5.9.0/css/all.css" />
     {csrf_meta_tag()}
-    <%= if @user do %>
+    <%= if assigns[:user] do %>
       <script>
-        window.userToken = "<%= Phoenix.Token.sign(LogflareWeb.Endpoint, @conn.secret_key_base, @user.id) %>";
+        window.userToken = "<%= Phoenix.Token.sign(LogflareWeb.Endpoint, @conn.secret_key_base, assigns[:user].id) %>";
       </script>
     <% end %>
   </head>
