@@ -175,7 +175,7 @@ defmodule Logflare.Mixfile do
       {:telemetry, "~> 1.0"},
       {:telemetry_metrics, "~> 1.0"},
       {:telemetry_poller, "~> 1.1"},
-      {:logflare_logger_backend, "~> 0.11.4"},
+      {:logflare_logger_backend, github: "Logflare/logflare_logger_backend", branch: "master"},
       {:logger_json, "~> 5.1"},
 
       # HTML

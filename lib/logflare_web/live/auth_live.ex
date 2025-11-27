@@ -11,6 +11,7 @@ defmodule LogflareWeb.AuthLive do
   use LogflareWeb, :routes
 
   alias Logflare.Teams.TeamContext
+  require Logger
 
   def on_mount(:default, params, %{"current_email" => email}, socket) do
     team_id = Map.get(params, "t")
@@ -24,7 +25,11 @@ defmodule LogflareWeb.AuthLive do
            team_user: team_user
          )}
 
-      {:error, _reason} ->
+      {:error, _reason} = error ->
+        Logger.warning(
+          "Error resolving team context for email #{email}, team_id #{team_id}: #{inspect(error)}"
+        )
+
         # Shouldn't ever actually hit this branch. Invalid credential will have been caught in the Plug pipeline.
         {:halt,
          socket
@@ -32,8 +37,13 @@ defmodule LogflareWeb.AuthLive do
     end
   end
 
-  def on_mount(:default, _params, _session, socket),
-    do: {:halt, socket}
+  def on_mount(:default, _params, session, socket) do
+    Logger.warning(
+      "No current_email in session during LiveView mount, session keys: #{inspect(Map.keys(session))}"
+    )
+
+    {:halt, Phoenix.LiveView.redirect(socket, to: ~p"/auth/login")}
+  end
 
   @doc """
   Assigns the context for a resource.
