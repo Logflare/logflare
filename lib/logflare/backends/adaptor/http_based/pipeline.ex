@@ -9,6 +9,7 @@ defmodule Logflare.Backends.Adaptor.HttpBased.Pipeline do
   alias Logflare.Backends
   alias Logflare.Backends.Backend
   alias Logflare.Backends.BufferProducer
+  alias Logflare.Sources
   alias Logflare.Sources.Source
   alias Logflare.Utils
 
@@ -68,6 +69,7 @@ defmodule Logflare.Backends.Adaptor.HttpBased.Pipeline do
 
     backend = Backends.Cache.get_backend(context.backend_id)
     events = for %{data: le} <- messages, do: le
+    source = Sources.Cache.get_by_id(context.source_id)
 
     metadata =
       %{
@@ -77,7 +79,7 @@ defmodule Logflare.Backends.Adaptor.HttpBased.Pipeline do
         "backend_uuid" => context[:backend_token]
       }
 
-    HttpBased.Client.send_events(context.client, backend, events, metadata)
+    HttpBased.Client.send_events(context.client, events, backend, source, metadata)
 
     messages
   end

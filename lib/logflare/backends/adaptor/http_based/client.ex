@@ -8,6 +8,7 @@ defmodule Logflare.Backends.Adaptor.HttpBased.Client do
   alias Logflare.Backends.Adaptor.HttpBased.EgressTracer
   alias Logflare.Backends.Adaptor.HttpBased.LogEventTransformer
   alias Logflare.Backends.Backend
+  alias Logflare.Sources.Source
 
   @type t() :: Tesla.Client.t()
 
@@ -88,8 +89,9 @@ defmodule Logflare.Backends.Adaptor.HttpBased.Client do
     end
   end
 
-  @spec send_events(module(), Backend.t(), [LogEvent.t()], map()) :: Tesla.Env.result()
-  def send_events(module, backend, events, metadata \\ %{}) do
+  @spec send_events(module(), [LogEvent.t()], Backend.t(), Source.t() | nil, map()) ::
+          Tesla.Env.result()
+  def send_events(module, events, backend, source \\ nil, metadata \\ %{}) do
     metadata =
       (backend.metadata || %{})
       |> Map.new(fn {k, v} -> {"backend.#{k}", v} end)
@@ -99,7 +101,12 @@ defmodule Logflare.Backends.Adaptor.HttpBased.Client do
     backend
     |> module.client_opts()
     |> __MODULE__.new()
-    |> Tesla.request(method: :post, url: "", body: events, opts: [metadata: metadata])
+    |> Tesla.request(
+      method: :post,
+      url: "",
+      body: events,
+      opts: [metadata: metadata, source: source]
+    )
   end
 
   @doc """

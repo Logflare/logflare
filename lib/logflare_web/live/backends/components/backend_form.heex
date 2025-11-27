@@ -32,7 +32,7 @@
   </div>
 
   <div :if={@live_action == :new}>
-    {select(f, :type, ["Select a backend type...", Webhook: :webhook, Postgres: :postgres, BigQuery: :bigquery, Datadog: :datadog, Elastic: :elastic, Loki: :loki, ClickHouse: :clickhouse, "Incident.io": :incidentio, S3: :s3, Axiom: :axiom],
+    {select(f, :type, ["Select a backend type..." | @backend_types],
       phx_change: :change_form_type,
       class: "form-control form-control-margin",
       id: "type"
@@ -317,6 +317,45 @@
             {text_input(f_config, :domain, class: "form-control", value: "api.axiom.co")}
             <small class="form-text text-muted">
               The regionalized Axiom domain, defaults to the domain for the US region
+            </small>
+          </div>
+        <% "otlp" -> %>
+          <div class="form-group">
+            {label(f_config, :endpoint, "Endpoint")}
+            {text_input(f_config, :endpoint, class: "form-control", value: "https://otlp-endpoint.com/v1/logs")}
+            <small class="form-text text-muted">
+              Address of the OTLP Endpoint
+            </small>
+          </div>
+          <% headers_number = 2
+          # TODO: Adjust number of entries dynamically
+          fields =
+            (input_value(f_config, :headers) || %{})
+            |> Stream.concat(Stream.repeatedly(fn -> {"", ""} end))
+            |> Enum.take(headers_number) %>
+          <%= for {{key, val}, i} <- Enum.with_index(fields, 1) do %>
+            <div class="form-group">
+              {label(f_config, "header#{i}_key", "Custom header #{i} - Key")}
+              {text_input(f_config, "header#{i}_key", value: key, class: "form-control")}
+              {label(f_config, "header#{i}_value", "Custom header #{i} - Value")}
+              {text_input(f_config, "header#{i}_value", value: val, class: "form-control")}
+            </div>
+          <% end %>
+          <div class="form-group">
+            {label(f_config, :gzip, "Gzip")}
+            {checkbox(f_config, :gzip, id: "gzip")}
+            <small class="form-text text-muted">
+              Enable "gzip" compression in sent requests
+            </small>
+          </div>
+          <div class="form-group">
+            {label(f_config, :protocol, "Protocol")}
+            {select(f_config, :protocol, Logflare.Backends.Adaptor.OtlpAdaptor.protocols(),
+              class: "form-control form-control-margin",
+              id: "otlp-protocol"
+            )}
+            <small class="form-text text-muted">
+              Transport protocol used for OTLP
             </small>
           </div>
         <% _ -> %>
