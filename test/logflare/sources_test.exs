@@ -542,7 +542,6 @@ defmodule Logflare.SourcesTest do
         assert String.starts_with?(source.name, "system.")
       end
     end
-
   end
 
   describe "labels validation and normalization" do
