@@ -521,6 +521,29 @@ defmodule Logflare.SourcesTest do
     end
   end
 
+  describe "create_user_system_sources/1" do
+    setup do
+      insert(:plan)
+      user = insert(:user)
+      %{user: user}
+    end
+
+    test "creates system sources with correct partition type", %{user: user} do
+      sources = Sources.create_user_system_sources(user.id)
+
+      assert length(sources) == length(Source.system_source_types())
+
+      for source <- sources do
+        assert source.system_source == true
+        assert source.system_source_type in Source.system_source_types()
+        assert source.favorite == true
+        assert source.bq_table_partition_type == :timestamp
+        assert source.user_id == user.id
+        assert String.starts_with?(source.name, "system.")
+      end
+    end
+  end
+
   describe "labels validation and normalization" do
     setup do
       insert(:plan)

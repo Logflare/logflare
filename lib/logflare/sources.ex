@@ -135,27 +135,21 @@ defmodule Logflare.Sources do
   Create system sources for the user, if they don't exist yet
   "
   def create_user_system_sources(user_id) do
-    entries =
-      for type <- Source.system_source_types() do
-        now = NaiveDateTime.utc_now() |> NaiveDateTime.truncate(:second)
+    user = Users.get(user_id)
 
-        %{
-          user_id: user_id,
-          name: "system.#{type}",
-          system_source: true,
-          system_source_type: type,
-          favorite: true,
-          token: Ecto.UUID.Atom.autogenerate(),
-          inserted_at: now,
-          updated_at: now
-        }
-      end
+    for type <- Source.system_source_types() do
+      attrs = %{
+        name: "system.#{type}",
+        system_source: true,
+        system_source_type: type,
+        favorite: true
+      }
 
-    Repo.insert_all(Source, entries,
-      returning: true,
-      conflict_target: [:user_id, :system_source_type],
-      on_conflict: :nothing
-    )
+      user
+      |> Ecto.build_assoc(:sources)
+      |> Source.changeset(attrs)
+      |> Repo.insert(on_conflict: :nothing, conflict_target: [:user_id, :system_source_type])
+    end
 
     list_system_sources_by_user(user_id)
     |> warn_missing_system_sources(user_id)

@@ -199,7 +199,9 @@ defmodule Logflare.Sources.Source do
       :disable_tailing,
       :default_ingest_backend_enabled?,
       :bq_storage_write_api,
-      :labels
+      :labels,
+      :system_source,
+      :system_source_type
     ])
     |> cast_embed(:notifications, with: &Notifications.changeset/2)
     |> default_validations(source)
