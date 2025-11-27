@@ -1,11 +1,8 @@
 <%= render_in "error_container.html", assigns do %>
   <div class="col-lg-7">
-    <h1>500 Server error!</h1>
-    <h2>Oops, something went wrong. We've been notified. It's likely temporary. Please try again in a minute.</h2>
-    <h2>If this error persists please contact us at <a href="mailto:support@logflare.app">support@logflare.app</a></h2>
-  </div>
-  <div class="col-lg-5">
-    <h2>Looking for something else?</h2>
-    <%= render(LogflareWeb.SharedView, "logflare_services_list.html") %>
+    <h1>500</h1>
+    <h2 class="text-white mb-3">Server error!</h2>
+    <p>Oops, something went wrong. We've been notified. It's likely temporary. Please try again in a minute.</p>
+    <p>If this error persists please contact us at <a href="mailto:support@logflare.app">support@logflare.app</a></p>
   </div>
 <% end %>
