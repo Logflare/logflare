@@ -331,7 +331,7 @@ defmodule LogflareWeb.Router do
   end
 
   scope "/admin", LogflareWeb do
-    pipe_through([:browser, :check_admin])
+    pipe_through([:browser, :require_auth, :check_admin])
 
     get("/dashboard", AdminController, :dashboard)
     get("/sources", AdminController, :sources)
