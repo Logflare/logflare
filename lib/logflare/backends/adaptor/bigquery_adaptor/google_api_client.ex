@@ -1,6 +1,7 @@
 defmodule Logflare.Backends.Adaptor.BigQueryAdaptor.GoogleApiClient do
   @moduledoc false
-  alias Explorer.DataFrame
+  # alias Explorer.DataFrame
+  alias Logflare.Backends.Adaptor.BigQueryAdaptor.ArrowIPC
   alias Google.Cloud.Bigquery.Storage.V1.BigQueryWrite
   alias Google.Cloud.Bigquery.Storage.V1.AppendRowsRequest
   alias Google.Cloud.Bigquery.Storage.V1.AppendRowsRequest.ArrowData
@@ -24,39 +25,28 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor.GoogleApiClient do
         ]
       )
 
-    {:ok, arrow_schema} = DataFrame.dump_ipc_schema(data_frame)
+    {arrow_schema, ipc_msg} =
+      data_frame
+      |> Jason.encode!()
+      |> ArrowIPC.get_ipc_bytes()
 
     writer_schema = %Google.Cloud.Bigquery.Storage.V1.ArrowSchema{serialized_schema: arrow_schema}
 
-    {:ok, batch_msgs} = DataFrame.dump_ipc_record_batch(data_frame)
-
     stream = BigQueryWrite.Stub.append_rows(channel)
 
-    if length(batch_msgs) > 1 do
-      Logger.warning(
-        "Storage Write DataFrame.dump_ipc_record_batch produced more than one batch message"
-      )
-    end
+    arrow_record_batch = %ArrowRecordBatch{
+      serialized_record_batch: ipc_msg
+    }
 
-    Enum.each(
-      batch_msgs,
-      fn ipc_msg ->
-        arrow_record_batch = %ArrowRecordBatch{
-          serialized_record_batch: ipc_msg
-        }
+    arrow_rows = %ArrowData{rows: arrow_record_batch, writer_schema: writer_schema}
 
-        arrow_rows = %ArrowData{rows: arrow_record_batch, writer_schema: writer_schema}
+    request =
+      %AppendRowsRequest{
+        write_stream: "projects/#{project}/datasets/#{dataset}/tables/#{table}/streams/_default",
+        rows: {:arrow_rows, arrow_rows}
+      }
 
-        request =
-          %AppendRowsRequest{
-            write_stream:
-              "projects/#{project}/datasets/#{dataset}/tables/#{table}/streams/_default",
-            rows: {:arrow_rows, arrow_rows}
-          }
-
-        GRPC.Stub.send_request(stream, request)
-      end
-    )
+    GRPC.Stub.send_request(stream, request)
 
     GRPC.Stub.end_stream(stream)
 
@@ -78,6 +68,78 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor.GoogleApiClient do
         err
     end
   end
+
+  # def append_rows({:arrow, data_frame}, project, dataset, table) do
+  #   partition_count = System.schedulers_online()
+  #   partition = :erlang.phash2(self(), partition_count)
+
+  #   {:ok, goth_token} = Goth.fetch({Logflare.Goth, partition})
+
+  #   {:ok, channel} =
+  #     GRPC.Stub.connect("https://bigquerystorage.googleapis.com",
+  #       adapter: GRPC.Client.Adapters.Finch,
+  #       adapter_opts: [instance_name: @finch_instance_name],
+  #       headers: [
+  #         {"Authorization", "Bearer #{goth_token.token}"}
+  #       ]
+  #     )
+
+  #   {:ok, arrow_schema} = DataFrame.dump_ipc_schema(data_frame)
+
+  #   writer_schema = %Google.Cloud.Bigquery.Storage.V1.ArrowSchema{serialized_schema: arrow_schema}
+
+  #   {:ok, batch_msgs} = DataFrame.dump_ipc_record_batch(data_frame)
+
+  #   {arrow_schema, batch_msgs} |> IO.inspect()
+
+  #   stream = BigQueryWrite.Stub.append_rows(channel)
+
+  #   if length(batch_msgs) > 1 do
+  #     Logger.warning(
+  #       "Storage Write DataFrame.dump_ipc_record_batch produced more than one batch message"
+  #     )
+  #   end
+
+  #   Enum.each(
+  #     batch_msgs,
+  #     fn ipc_msg ->
+  #       arrow_record_batch = %ArrowRecordBatch{
+  #         serialized_record_batch: ipc_msg
+  #       }
+
+  #       arrow_rows = %ArrowData{rows: arrow_record_batch, writer_schema: writer_schema}
+
+  #       request =
+  #         %AppendRowsRequest{
+  #           write_stream:
+  #             "projects/#{project}/datasets/#{dataset}/tables/#{table}/streams/_default",
+  #           rows: {:arrow_rows, arrow_rows}
+  #         }
+
+  #       GRPC.Stub.send_request(stream, request)
+  #     end
+  #   )
+
+  #   GRPC.Stub.end_stream(stream)
+
+  #   GRPC.Stub.recv(stream)
+  #   |> case do
+  #     {:ok, responses} ->
+  #       Enum.each(responses, fn
+  #         {:error, response} ->
+  #           Logger.warning("Storage Write API AppendRows response error - #{inspect(response)}")
+
+  #         _ ->
+  #           :ok
+  #       end)
+
+  #       :ok
+
+  #     {:error, response} = err ->
+  #       Logger.warning("Storage Write API AppendRows  error - #{inspect(response)}")
+  #       err
+  #   end
+  # end
 
   def get_finch_instance_name() do
     @finch_instance_name

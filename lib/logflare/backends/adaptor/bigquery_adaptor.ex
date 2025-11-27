@@ -10,7 +10,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
   require Logger
 
   alias Ecto.Changeset
-  alias Explorer.DataFrame
+  # alias Explorer.DataFrame
   alias GoogleApi.BigQuery.V2.Model
   alias Logflare.Backends
   alias Logflare.Backends.Adaptor.BigQueryAdaptor.GoogleApiClient
@@ -106,7 +106,6 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
       log_events
       |> Enum.map(&log_event_to_df_struct(&1))
       |> normalize_df_struct_fields()
-      |> DataFrame.new()
 
     # append rows
     GoogleApiClient.append_rows(
