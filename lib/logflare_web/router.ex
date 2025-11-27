@@ -2,9 +2,6 @@ defmodule LogflareWeb.Router do
   @moduledoc false
   use LogflareWeb, :router
   use PhoenixOauth2Provider.Router, otp_app: :logflare
-  use Plug.ErrorHandler
-
-  require Logger
 
   import Phoenix.LiveDashboard.Router
   import Phoenix.LiveView.Router
@@ -554,24 +551,5 @@ defmodule LogflareWeb.Router do
       _type ->
         conn
     end
-  end
-
-  @api_path_prefixes ~w(/api/ /logs/ /v1/ /webhooks/ /health/)
-
-  @impl Plug.ErrorHandler
-  def handle_errors(conn, %{kind: kind, reason: reason, stack: stack}) do
-    status = conn.status || 500
-
-    if status >= 500 and ui_route?(conn.request_path) do
-      Logger.error("""
-      [HTTP #{status}] #{kind}: #{Exception.format(kind, reason)}
-      Stacktrace:
-      #{Exception.format_stacktrace(stack)}
-      """)
-    end
-  end
-
-  defp ui_route?(path) do
-    not Enum.any?(@api_path_prefixes, &String.starts_with?(path, &1))
   end
 end
