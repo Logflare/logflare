@@ -37,8 +37,13 @@ defmodule LogflareWeb.AuthLive do
     end
   end
 
-  def on_mount(:default, _params, _session, socket),
-    do: {:halt, socket}
+  def on_mount(:default, _params, session, socket) do
+    Logger.warning(
+      "No current_email in session during LiveView mount, session keys: #{inspect(Map.keys(session))}"
+    )
+
+    {:halt, Phoenix.LiveView.redirect(socket, to: ~p"/auth/login")}
+  end
 
   @doc """
   Assigns the context for a resource.
