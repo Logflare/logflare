@@ -434,7 +434,7 @@ defmodule Logflare.Lql.BackendTransformer.PostgresTest do
       result = Postgres.apply_select_rules_to_query(query, [select_rule], [])
 
       assert %Ecto.Query{select: %{expr: expr}} = result
-      assert expr |> Macro.to_string() =~ "msg"
+      assert expr |> Macro.to_string() |> String.downcase() =~ "as msg"
     end
 
     test "applies nested field with alias" do
@@ -444,7 +444,7 @@ defmodule Logflare.Lql.BackendTransformer.PostgresTest do
       result = Postgres.apply_select_rules_to_query(query, [select_rule], [])
 
       assert %Ecto.Query{select: %{expr: expr}} = result
-      assert expr |> Macro.to_string() =~ "user_id"
+      assert expr |> Macro.to_string() |> String.downcase() =~ "as user_id"
     end
   end
 end
