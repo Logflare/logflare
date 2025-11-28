@@ -259,11 +259,89 @@ defmodule Logflare.Backends.Adaptor.SentryAdaptorTest do
       assert attributes["boolean_field"] == %{"type" => "boolean", "value" => true}
       assert attributes["list_field"] == %{"type" => "string", "value" => "[1,2,3]"}
 
-      assert attributes["metadata"] == %{
+      assert attributes["metadata.project"] == %{"type" => "string", "value" => "testing_123"}
+      assert attributes["metadata.level"] == %{"type" => "string", "value" => "info"}
+      assert attributes["metadata.region"] == %{"type" => "string", "value" => "us-west-1"}
+
+      assert attributes["metadata.context"] == %{
                "type" => "string",
                "value" =>
-                 "{\"context\":{\"application\":\"realtime\",\"module\":\"Elixir.Realtime.Telemetry.Logger\"},\"level\":\"info\",\"project\":\"testing_123\",\"region\":\"us-west-1\"}"
+                 "{\"application\":\"realtime\",\"module\":\"Elixir.Realtime.Telemetry.Logger\"}"
              }
+
+      refute Map.has_key?(attributes, "metadata")
+    end
+
+    test "falls back to metadata.level when level is not set", %{source: source} do
+      this = self()
+      ref = make_ref()
+
+      mock_adapter(fn env ->
+        send(this, {ref, env.body})
+        {:ok, %Tesla.Env{status: 200, body: ""}}
+      end)
+
+      log_events = [
+        build(:log_event,
+          source: source,
+          event_message: "Test message from legacy client",
+          timestamp: 1_704_067_200_000_000,
+          metadata: %{
+            "level" => "warning",
+            "project" => "legacy_project"
+          }
+        )
+      ]
+
+      assert {:ok, _} = Backends.ingest_logs(log_events, source)
+      assert_receive {^ref, envelope_body}, 2000
+
+      [_header_line, _item_header_line, item_payload_line] = String.split(envelope_body, "\n")
+      item_payload = Jason.decode!(item_payload_line)
+      items = item_payload["items"]
+      assert length(items) == 1
+      item = Enum.at(items, 0)
+
+      assert item["level"] == "warn"
+
+      assert item["attributes"]["metadata.project"] == %{
+               "type" => "string",
+               "value" => "legacy_project"
+             }
+
+      assert item["attributes"]["metadata.level"] == %{"type" => "string", "value" => "warning"}
+    end
+
+    test "prefers top-level level over metadata.level", %{source: source} do
+      this = self()
+      ref = make_ref()
+
+      mock_adapter(fn env ->
+        send(this, {ref, env.body})
+        {:ok, %Tesla.Env{status: 200, body: ""}}
+      end)
+
+      log_events = [
+        build(:log_event,
+          source: source,
+          event_message: "Test message",
+          timestamp: 1_704_067_200_000_000,
+          level: "error",
+          metadata: %{
+            "level" => "debug"
+          }
+        )
+      ]
+
+      assert {:ok, _} = Backends.ingest_logs(log_events, source)
+      assert_receive {^ref, envelope_body}, 2000
+
+      [_header_line, _item_header_line, item_payload_line] = String.split(envelope_body, "\n")
+      item_payload = Jason.decode!(item_payload_line)
+      items = item_payload["items"]
+      item = Enum.at(items, 0)
+
+      assert item["level"] == "error"
     end
   end
 

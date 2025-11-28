@@ -7,6 +7,7 @@ defmodule Logflare.Backends.Adaptor.SentryAdaptor.EnvelopeBuilder do
 
   @sdk_name "sentry.logflare"
   @sentry_envelope_content_type "application/x-sentry-envelope"
+  @base_fields_to_drop ["timestamp", "event_message", "level", "trace_id", "trace.id"]
 
   @behaviour Tesla.Middleware
 
@@ -55,16 +56,16 @@ defmodule Logflare.Backends.Adaptor.SentryAdaptor.EnvelopeBuilder do
     message = log_event.body["event_message"] || ""
 
     level =
-      case log_event.body["level"] do
+      case log_event.body["level"] || get_in(log_event.body, ["metadata", "level"]) do
         nil -> "info"
-        level when is_binary(level) -> normalize_level(level)
-        level when is_atom(level) -> normalize_level(Atom.to_string(level))
+        level when is_binary(level) -> level
+        level when is_atom(level) -> Atom.to_string(level)
         _ -> "info"
       end
 
     %{
       "timestamp" => timestamp_seconds,
-      "level" => level,
+      "level" => normalize_level(level),
       "body" => message,
       "trace_id" => extract_trace_id(log_event),
       "attributes" => build_attributes(log_event)
@@ -82,21 +83,23 @@ defmodule Logflare.Backends.Adaptor.SentryAdaptor.EnvelopeBuilder do
       "logflare.source.uuid" => source.token
     }
 
-    top_level_attrs =
-      log_event.body
-      |> Map.drop([
-        "timestamp",
-        "event_message",
-        "level",
-        "trace_id",
-        "trace.id"
-      ])
+    {metadata_attrs, extra_fields_to_drop} = unfurl_metadata(log_event.body["metadata"])
+
+    top_level_attrs = Map.drop(log_event.body, @base_fields_to_drop ++ extra_fields_to_drop)
 
     base_attrs
     |> Map.merge(top_level_attrs)
+    |> Map.merge(metadata_attrs)
     |> Enum.filter(fn {_k, v} -> v != nil end)
     |> Map.new(fn {k, v} -> {k, to_sentry_value(v)} end)
   end
+
+  defp unfurl_metadata(metadata) when is_map(metadata) do
+    unfurled = Map.new(metadata, fn {k, v} -> {"metadata.#{k}", v} end)
+    {unfurled, ["metadata"]}
+  end
+
+  defp unfurl_metadata(_), do: {%{}, []}
 
   defp extract_trace_id(%Logflare.LogEvent{} = log_event) do
     case log_event.body["trace_id"] || log_event.body["trace.id"] do
