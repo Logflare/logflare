@@ -96,3 +96,6 @@ dev-*
 
 # Rust binary artifacts
 /target/
+
+# Rust binary artifacts
+/target/
