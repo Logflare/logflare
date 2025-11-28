@@ -31,6 +31,7 @@ All browser authentication will be disabled when in single-tenant mode.
 | `PHX_HTTP_IP`                                  | String, defaults to `nil`                                               | Allows configuration of the HTTP server IP to bind to. Specifying an IPv6 like `::` will enable IPv6.                                                                                                                                                                |
 | `PHX_HTTP_PORT`                                | Integer, defaults to `4000`                                             | Allows configuration of the HTTP server port.                                                                                                                                                                                                                        |
 | `DB_SCHEMA`                                    | String, defaults to `nil`                                               | Allows configuration of the database schema to scope Logflare operations.                                                                                                                                                                                            |
+| `DB_SSL`                                       | Boolean, defaults to `false`                                            | Enables SSL/TLS connection to the internal Logflare database. Requires certificate files when enabled. See [Database SSL Configuration](#database-ssl-configuration).                                                                                                |
 | `LOGFLARE_LOG_LEVEL`                           | String, defaults to `info`. <br/>Options: `error`,`warning`, `info`     | Allows runtime configuration of log level.                                                                                                                                                                                                                           |
 | `LOGFLARE_NODE_HOST`                           | string, defaults to `127.0.0.1`                                         | Sets node host on startup, which affects the node name `logflare@<host>`                                                                                                                                                                                             |
 | `LOGFLARE_METADATA_CLUSTER`                    | string, defaults to `nil`                                               | Sets global logging/tracing metadata for the cluster name and affects the release node name (e.g., `logflare-production@<host>`). Useful for filtering logs by cluster name and distinguishing nodes in multi-cluster setups. See the [metadata](#Metadata) section. |
@@ -116,6 +117,32 @@ Without these two additional permissions, the managed service accounts feature w
 | ------------------------- | -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
 | `POSTGRES_BACKEND_URL`    | string, required                       | PostgreSQL connection string, for connecting to the database. User must have sufficient permssions to manage the schema. |
 | `POSTGRES_BACKEND_SCHEMA` | string, optional, defaults to `public` | Specifies the database schema to scope all operations.                                                                   |
+
+## Database SSL Configuration
+
+Logflare supports secure SSL/TLS connections to its internal database (not the PostgreSQL backend). This is configured using the `DB_SSL` environment variable and certificate files.
+
+### Requirements
+
+To enable SSL for the internal Logflare database:
+
+1. Set `DB_SSL=true` environment variable
+2. Provide three certificate files in the working directory on server startup:
+   - `db-server-ca.pem` - Server CA certificate
+   - `db-client-cert.pem` - Client certificate
+   - `db-client-key.pem` - Client private key
+
+All three files must be present for SSL to be enabled.
+
+### Configuration Details
+
+The SSL connection is configured with:
+
+- **Peer verification**: Enabled (`verify: :verify_peer`)
+- **TLS version**: TLS 1.2
+- **Wildcard support**: Enabled via `public_key.pkix_verify_hostname_match_fun(:https)`
+
+The configuration follows the [Erlang Security Working Group recommendations](https://erlef.github.io/security-wg/secure_coding_and_deployment_hardening/ssl).
 
 ## Database Encryption
 
@@ -206,6 +233,7 @@ services:
       - DB_PORT=5432
       - DB_PASSWORD=postgres
       - DB_USERNAME=postgres
+      - DB_SSL=true # Optional: enable SSL for internal database
       - LOGFLARE_SINGLE_TENANT=true
       - LOGFLARE_API_KEY=my-cool-api-key
 
@@ -225,6 +253,19 @@ services:
       - type: bind
         source: ${PWD}/gcloud.json
         target: /opt/app/rel/logflare/bin/gcloud.json
+        read_only: true
+      # Optional: SSL certificate files for internal database
+      - type: bind
+        source: ${PWD}/db-server-ca.pem
+        target: /opt/app/rel/logflare/bin/db-server-ca.pem
+        read_only: true
+      - type: bind
+        source: ${PWD}/db-client-cert.pem
+        target: /opt/app/rel/logflare/bin/db-client-cert.pem
+        read_only: true
+      - type: bind
+        source: ${PWD}/db-client-key.pem
+        target: /opt/app/rel/logflare/bin/db-client-key.pem
         read_only: true
     depends_on:
       - db
