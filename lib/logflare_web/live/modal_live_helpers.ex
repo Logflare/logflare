@@ -144,4 +144,54 @@ defmodule LogflareWeb.ModalLiveHelpers do
 
     Phoenix.Component.live_component(modal_opts)
   end
+
+  @doc """
+  Component version of live_modal_show_link for use in HEEx templates.
+
+  ## Example
+
+      <.modal_link component={LogflareWeb.MyComponent} modal_id={:my_modal} title="My Modal">
+        <span>Open Modal</span>
+      </.modal_link>
+  """
+  attr :component, :atom, default: nil
+  attr :live_view, :atom, default: nil
+  attr :template, :string, default: nil
+  attr :modal_id, :atom, required: true
+  attr :title, :string, required: true
+  attr :view, :atom, default: nil
+  attr :return_to, :string, default: nil
+  attr :click, JS, default: nil
+  attr :close, JS, default: nil
+  attr :class, :string, default: nil
+  attr :rest, :global
+  slot :inner_block, required: true
+
+  def modal_link(assigns) do
+    {type, module_or_template} =
+      cond do
+        assigns.component -> {:component, assigns.component}
+        assigns.live_view -> {:live_view, assigns.live_view}
+        assigns.template -> {:template, assigns.template}
+        true -> raise "Must provide one of :component, :live_view, or :template"
+      end
+
+    click =
+      case assigns.click do
+        nil -> JS.push("show_live_modal")
+        js_command when is_struct(js_command, JS) -> JS.push(js_command, "show_live_modal")
+      end
+
+    assigns =
+      assigns
+      |> Phoenix.Component.assign(:type, type)
+      |> Phoenix.Component.assign(:module_or_template, module_or_template)
+      |> Phoenix.Component.assign(:phx_click, click)
+
+    ~H"""
+    <.link href="#" class={@class} phx-click={@phx_click} phx-value-close={@close} phx-value-module-or-template={@module_or_template} phx-value-type={@type} phx-value-id={@modal_id} phx-value-title={@title} phx-value-return-to={@return_to} phx-value-view={@view} {@rest}>
+      {render_slot(@inner_block)}
+    </.link>
+    """
+  end
 end
