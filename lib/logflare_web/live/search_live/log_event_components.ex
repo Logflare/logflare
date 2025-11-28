@@ -8,17 +8,28 @@ defmodule LogflareWeb.SearchLive.LogEventComponents do
   import LogflareWeb.ModalLiveHelpers, only: [modal_link: 1]
 
   alias Logflare.DateTimeUtils
+  alias Logflare.Lql
   alias Phoenix.LiveView.JS
 
   @log_levels ~W(debug info warning error alert critical notice emergency)
 
+  attr :search_op_log_events, :map, default: nil
+  attr :last_query_completed_at, :any, default: nil
+  attr :loading, :boolean, required: true
+  attr :search_timezone, :string, required: true
+  attr :tailing?, :boolean, required: true
+  attr :querystring, :string, required: true
+  attr :search_op, Logflare.Logs.SearchOperation
+
   def results_list(assigns) do
+    assigns = assign(assigns, :select_fields, build_select_fields(assigns.search_op))
+
     ~H"""
     <div :if={@search_op_log_events} id="source-logs-search-list" data-last-query-completed-at={@last_query_completed_at} phx-hook="SourceLogsSearchList" class="mt-4">
-       <ul id="logs-list" class={["list-unstyled console-text-list", if(@loading, do: "blurred", else: nil)]}>
+      <ul id="logs-list" class={["list-unstyled console-text-list", if(@loading, do: "blurred", else: nil)]}>
         <.log_event :for={log <- @search_op_log_events.rows} timezone={@search_timezone} log_event={log} select_fields={build_select_fields(@search_op)}>
-           {log.body["event_message"]}
-           <:actions phx-no-format>
+          {log.body["event_message"]}
+          <:actions phx-no-format>
                 <.modal_link
                   component={LogflareWeb.Search.LogEventViewerComponent}
                   class="tw-text-[0.65rem]"
@@ -38,7 +49,7 @@ defmodule LogflareWeb.SearchLive.LogEventComponents do
                   modal_id={:log_event_context_viewer}
                   title="View Event Context"
                   phx-value-log-event-id={log.id}
-                  phx-value-source-id={@source.id}
+                  phx-value-source-id={@search_op.source.id}
                   phx-value-log-event-timestamp={log.body["timestamp"]}
                   phx-value-timezone={@search_timezone}
                   phx-value-querystring={@querystring}
@@ -59,11 +70,10 @@ defmodule LogflareWeb.SearchLive.LogEventComponents do
                   data-placement="top"
                   title="Copy to clipboard"
                 >copy</.link>
-                <.log_event_permalink log_event_id={log.id} timestamp={log.body["timestamp"]} source={@source} lql={@querystring} class="tw-text-[0.65rem] group-hover:tw-visible tw-invisible" />
+                <.log_event_permalink log_event_id={log.id} timestamp={log.body["timestamp"]} source={@search_op.source} lql={@querystring} class="tw-text-[0.65rem] group-hover:tw-visible tw-invisible" />
               </:actions>
-          </LogflareWeb.SearchLive.LogEventComponents.log_event>
-        </ul>
-      <% end %>
+        </.log_event>
+      </ul>
     </div>
     <div :if={@search_op_log_events == nil}></div>
     """
@@ -72,6 +82,7 @@ defmodule LogflareWeb.SearchLive.LogEventComponents do
   attr :log_event, Logflare.LogEvent, required: true
   attr :id, :string, required: false
   attr :timezone, :string, required: true
+  attr :select_fields, :list, default: []
   attr :rest, :global, default: %{class: "tw-group"}
   slot :inner_block
   slot :actions
@@ -96,6 +107,7 @@ defmodule LogflareWeb.SearchLive.LogEventComponents do
       </.metadata>
       {render_slot(@inner_block) || @message}
       {render_slot(@actions)}
+      <.selected_fields :if={@select_fields != []} log_event={@log_event} select_fields={@select_fields} />
     </li>
     """
   end
@@ -123,38 +135,38 @@ defmodule LogflareWeb.SearchLive.LogEventComponents do
     format_timestamp(log_event.body["timestamp"], timezone) <> tz_part
   end
 
-   attr :log_event, Logflare.LogEvent, required: true
-   attr :select_fields, :list, required: true
+  attr :log_event, Logflare.LogEvent, required: true
+  attr :select_fields, :list, required: true
 
-   def selected_fields(assigns) do
-     ~H"""
-     <div>
-       <%= for field <- @select_fields do %>
-         <div class="tw-text-neutral-200 tw-ml-52 last:tw-mb-2">
-           <span class="">{field.display}:</span>
-           <span class="tw-text-white">{get_field_value(@log_event.body, field.key)}</span>
-         </div>
-       <% end %>
-     </div>
-     """
-   end
+  def selected_fields(assigns) do
+    ~H"""
+    <div>
+      <%= for field <- @select_fields do %>
+        <div class="tw-text-neutral-200 tw-ml-52 last:tw-mb-2">
+          <span class="">{field.display}:</span>
+          <span class="tw-text-white">{get_field_value(@log_event.body, field.key)}</span>
+        </div>
+      <% end %>
+    </div>
+    """
+  end
 
-   defp get_field_value(body, field_key) when is_binary(field_key) do
-     Map.get(body, field_key)
-     |> format_field_value()
-   end
+  defp get_field_value(body, field_key) when is_binary(field_key) do
+    Map.get(body, field_key)
+    |> format_field_value()
+  end
 
-   defp format_field_value(nil), do: "null"
-   defp format_field_value(value) when is_binary(value), do: value
-   defp format_field_value(value) when is_number(value), do: to_string(value)
-   defp format_field_value(value) when is_boolean(value), do: to_string(value)
-   defp format_field_value(value) when is_list(value), do: Jason.encode!(value)
-   defp format_field_value(value) when is_map(value), do: Jason.encode!(value)
-   defp format_field_value(value), do: inspect(value)
+  defp format_field_value(nil), do: "null"
+  defp format_field_value(value) when is_binary(value), do: value
+  defp format_field_value(value) when is_number(value), do: to_string(value)
+  defp format_field_value(value) when is_boolean(value), do: to_string(value)
+  defp format_field_value(value) when is_list(value), do: Jason.encode!(value)
+  defp format_field_value(value) when is_map(value), do: Jason.encode!(value)
+  defp format_field_value(value), do: inspect(value)
 
-   defp build_select_fields(%{lql_rules: lql_rules}) do
-     lql_rules
-     |> Lql.Rules.get_select_rules()
+  defp build_select_fields(%{lql_rules: lql_rules}) do
+    lql_rules
+    |> Lql.Rules.get_select_rules()
     |> Enum.map(fn
       %{path: path, alias: nil} ->
         key = String.replace(path, ".", "_")
@@ -162,7 +174,7 @@ defmodule LogflareWeb.SearchLive.LogEventComponents do
 
       %{path: path, alias: alias} ->
         %{display: alias, key: alias}
-     end)
-     |> Enum.reject(fn field -> is_nil(field.display) end)
-   end
+    end)
+    |> Enum.reject(fn field -> is_nil(field.display) end)
+  end
 end
