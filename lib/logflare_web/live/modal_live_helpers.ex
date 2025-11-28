@@ -2,7 +2,8 @@ defmodule LogflareWeb.ModalLiveHelpers do
   @moduledoc """
   Modal helpers to be imported where modals may be called
   """
-  import Phoenix.Component, only: [assign: 3]
+  use Phoenix.Component
+
   import Phoenix.HTML.Link, only: [link: 2]
 
   alias Phoenix.LiveView.JS

@@ -10,36 +10,75 @@ defmodule LogflareWeb.SearchLive.LogEventComponents do
   alias Logflare.DateTimeUtils
   alias Logflare.Lql
   alias Logflare.Sources.Source
+  alias Logflare.Lql
   alias Phoenix.LiveView.JS
 
   @log_levels ~W(debug info warning error alert critical notice emergency)
   @default_empty_event_message "(empty event message)"
 
-  attr :search_op_log_events, :any, required: false, default: nil
-  attr :last_query_completed_at, :any, required: false
-  attr :loading, :boolean, default: false
+  attr :search_op_log_events, :map, default: nil
+  attr :last_query_completed_at, :any, default: nil
+  attr :loading, :boolean, required: true
   attr :search_timezone, :string, required: true
-  attr :source, :map, required: true
-  attr :tailing?, :boolean, default: false
+  attr :tailing?, :boolean, required: true
   attr :querystring, :string, required: true
   attr :lql_rules, :list, required: true
   attr :empty_event_message_placeholder, :string, default: @default_empty_event_message
+  attr :search_op, Logflare.Logs.SearchOperation
 
-  def logs_list(assigns) do
+  def results_list(assigns) do
+    assigns = assign(assigns, :select_fields, build_select_fields(assigns.search_op))
+
     ~H"""
-    <div id="source-logs-search-list" data-last-query-completed-at={@last_query_completed_at} phx-hook="SourceLogsSearchList" class="mt-4">
-      <%= if @loading do %>
-        <div id="logs-list-loading" class="blurred list-unstyled console-text-list"></div>
-      <% else %>
-        <ul :if={@search_op_log_events} id="logs-list" class="list-unstyled console-text-list">
-          <.log_event :for={log <- @search_op_log_events.rows} timezone={@search_timezone} log_event={log}>
-            {log.body["event_message"]}
-            <:actions>
-              <.logs_list_actions log={log} recommended_query={lql_with_recommended_fields(@lql_rules, log, @source)} source={@source} tailing?={@tailing?} search_timezone={@search_timezone} querystring={@querystring} />
-            </:actions>
-          </.log_event>
-        </ul>
-      <% end %>
+    <div :if={@search_op_log_events} id="source-logs-search-list" data-last-query-completed-at={@last_query_completed_at} phx-hook="SourceLogsSearchList" class="mt-4">
+      <ul id="logs-list" class={["list-unstyled console-text-list", if(@loading, do: "blurred", else: nil)]}>
+        <.log_event :for={log <- @search_op_log_events.rows} timezone={@search_timezone} log_event={log} select_fields={build_select_fields(@search_op)}>
+          {log.body["event_message"]}
+          <:actions phx-no-format>
+                 <.modal_link
+                   component={LogflareWeb.Search.LogEventViewerComponent}
+                   class="tw-text-[0.65rem]"
+                   modal_id={:log_event_viewer}
+                   title="Log Event"
+                   phx-value-log-event-id={log.id}
+                   phx-value-log-event-timestamp={log.body["timestamp"]}
+                   phx-value-lql={@querystring}
+                 >
+                   <span>view</span>
+                 </.modal_link>
+                 <.modal_link
+                   component={LogflareWeb.SearchLive.EventContextComponent}
+                   click={JS.push("soft_pause")}
+                   close={if(@tailing?, do: JS.push("soft_play", target: "#source-logs-search-control") |> JS.push("close"), else: nil)}
+                   class="tw-text-[0.65rem]"
+                   modal_id={:log_event_context_viewer}
+                   title="View Event Context"
+                   phx-value-log-event-id={log.id}
+                  phx-value-source-id={@search_op.source.id}
+                   phx-value-log-event-timestamp={log.body["timestamp"]}
+                   phx-value-timezone={@search_timezone}
+                   phx-value-querystring={@querystring}
+                 >
+                   <span>context</span>
+                 </.modal_link>
+
+                 <.link
+                   class="tw-text-[0.65rem] group-hover:tw-visible tw-invisible"
+                   phx-click={
+                     JS.dispatch("logflare:copy-to-clipboard",
+                       detail: %{
+                         text: "#{LogflareWeb.SearchLive.LogEventComponents.formatted_timestamp(log, assigns[:search_timezone])}    #{log.body["event_message"]}"
+                       }
+                     )
+                   }
+                   data-toggle="tooltip"
+                   data-placement="top"
+                   title="Copy to clipboard"
+                 >copy</.link>
+                <.log_event_permalink log_event_id={log.id} timestamp={log.body["timestamp"]} source={@search_op.source} lql={@querystring} class="tw-text-[0.65rem] group-hover:tw-visible tw-invisible" />
+               </:actions>
+        </.log_event>
+      </ul>
     </div>
     """
   end
@@ -140,6 +179,7 @@ defmodule LogflareWeb.SearchLive.LogEventComponents do
   attr :id, :string, required: false
   attr :timezone, :string, required: true
   attr :empty_event_message_placeholder, :string, default: @default_empty_event_message
+  attr :select_fields, :list, default: []
   attr :rest, :global, default: %{class: "tw-group"}
   slot :inner_block
   slot :actions
@@ -170,6 +210,7 @@ defmodule LogflareWeb.SearchLive.LogEventComponents do
         <span class="tw-italic tw-text-gray-500">{@empty_event_message_placeholder}</span>
       <% end %>
       {render_slot(@actions)}
+      <.selected_fields :if={@select_fields != []} log_event={@log_event} select_fields={@select_fields} />
     </li>
     """
   end

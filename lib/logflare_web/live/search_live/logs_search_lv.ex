@@ -236,7 +236,7 @@ defmodule LogflareWeb.Source.SearchLV do
     </.subheader>
     <div class="container source-logs-search-container console-text">
       <div id="logs-list-container">
-        <SearchLive.LogEventComponents.results_list search_op_log_events={@search_op_log_events} last_query_completed_at={@last_query_completed_at} search_timezone={@search_timezone} loading={@loading} source={@source} tailing?={@tailing?} querystring={@querystring} />
+        <SearchLive.LogEventComponents.results_list search_op={@search_op} search_op_log_events={@search_op_log_events} last_query_completed_at={@last_query_completed_at} search_timezone={@search_timezone} loading={@loading} tailing?={@tailing?} querystring={@querystring} />
       </div>
       <div>
         {live_react_component(
@@ -587,14 +587,17 @@ defmodule LogflareWeb.Source.SearchLV do
     {:noreply, socket}
   end
 
-  def handle_info({:search_result, %{events: _events} = search_result}, socket) do
+  def handle_info({:search_result, %{events: events_op} = search_result}, socket) do
     tailing_timer =
       if socket.assigns.tailing? do
         Process.send_after(self(), :schedule_tail_search, @tail_search_interval)
       end
 
+    events_op |> dbg
+
     socket =
       socket
+      |> assign(:search_op, events_op)
       |> assign(:search_op_error, nil)
       |> assign(:search_op_log_events, search_result.events)
       |> assign(:tailing_timer, tailing_timer)
@@ -619,6 +622,8 @@ defmodule LogflareWeb.Source.SearchLV do
   end
 
   def handle_info({:search_error, search_op}, %{assigns: %{source: source}} = socket) do
+    search_op.error |> dbg
+
     socket =
       case search_op.error do
         :halted ->
