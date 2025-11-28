@@ -33,6 +33,7 @@ defmodule LogflareWeb.SearchLive.EventContextComponent do
      |> assign(target_event_id: log_event_id, timezone: timezone)
      |> assign(is_truncated_before: false)
      |> assign(is_truncated_after: false)
+     |> assign(source: Sources.get_source_for_lv_param(source_id))
      |> assign(:logs, AsyncResult.loading())
      |> start_async(:logs, fn ->
        search_logs(log_event_id, event_timestamp, source_id, lql_rules)
@@ -59,7 +60,7 @@ defmodule LogflareWeb.SearchLive.EventContextComponent do
         ]
       )
 
-    required_fields = required_fields(source)
+    required_fields = Source.recommended_query_fields(source)
 
     lql_rules
     |> Logflare.Lql.Rules.get_filter_rules()
@@ -190,21 +191,5 @@ defmodule LogflareWeb.SearchLive.EventContextComponent do
       {:error, %{error: error}} ->
         %{error: error, source: source}
     end
-  end
-
-  defp required_fields(source) do
-    clustering_fields =
-      (source.bigquery_clustering_fields || "")
-      |> String.split(",")
-
-    suggested_keys =
-      (source.suggested_keys || "")
-      |> String.split(",")
-      |> Enum.map(fn
-        "m." <> suggested_field -> "metadata." <> suggested_field
-        suggested_field -> suggested_field
-      end)
-
-    clustering_fields ++ suggested_keys
   end
 end
