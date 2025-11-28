@@ -78,17 +78,8 @@ defmodule Logflare.Backends.Adaptor.OtlpAdaptor do
   end
 
   @impl Adaptor
-  def test_connection({_source, backend}) do
-    test_connection(backend)
-  end
-
-  def test_connection(%Backend{} = backend) do
-    case HttpBased.Client.send_events(__MODULE__, [], backend) do
-      {:ok, %Tesla.Env{status: 200, body: %{partial_success: nil}}} -> :ok
-      {:ok, %Tesla.Env{status: 200, body: %{partial_success: %{error_message: ""}}}} -> :ok
-      {:ok, env} -> {:error, env}
-      {:error, _reason} = err -> err
-    end
+  def test_connection(args) do
+    __MODULE__.Common.test_connection(__MODULE__, args)
   end
 
   @impl HttpBased.Client
