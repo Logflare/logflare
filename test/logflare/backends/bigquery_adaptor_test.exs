@@ -339,7 +339,7 @@ defmodule Logflare.Backends.BigQueryAdaptorTest do
         # :timer.sleep(20)
         {:ok, %GRPC.Channel{}}
       end)
-      |> stub(:send_request, fn stream, request ->
+      |> stub(:send_request, fn stream, _request ->
         # simulate latency
         # :timer.sleep(10)
 

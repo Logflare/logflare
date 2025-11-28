@@ -25,7 +25,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor.GoogleApiClient do
         ]
       )
 
-    {arrow_schema, ipc_msg} =
+    {arrow_schema, batch_msgs} =
       data_frame
       |> Jason.encode!()
       |> ArrowIPC.get_ipc_bytes()
@@ -34,19 +34,29 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor.GoogleApiClient do
 
     stream = BigQueryWrite.Stub.append_rows(channel)
 
-    arrow_record_batch = %ArrowRecordBatch{
-      serialized_record_batch: ipc_msg
-    }
+    if length(batch_msgs) > 1 do
+      Logger.warning("Storage Write ArrowIPC.get_ipc_bytes produced more than one batch message")
+    end
 
-    arrow_rows = %ArrowData{rows: arrow_record_batch, writer_schema: writer_schema}
+    Enum.each(
+      batch_msgs,
+      fn ipc_msg ->
+        arrow_record_batch = %ArrowRecordBatch{
+          serialized_record_batch: ipc_msg
+        }
 
-    request =
-      %AppendRowsRequest{
-        write_stream: "projects/#{project}/datasets/#{dataset}/tables/#{table}/streams/_default",
-        rows: {:arrow_rows, arrow_rows}
-      }
+        arrow_rows = %ArrowData{rows: arrow_record_batch, writer_schema: writer_schema}
 
-    GRPC.Stub.send_request(stream, request)
+        request =
+          %AppendRowsRequest{
+            write_stream:
+              "projects/#{project}/datasets/#{dataset}/tables/#{table}/streams/_default",
+            rows: {:arrow_rows, arrow_rows}
+          }
+
+        GRPC.Stub.send_request(stream, request)
+      end
+    )
 
     GRPC.Stub.end_stream(stream)
 
@@ -55,7 +65,15 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor.GoogleApiClient do
       {:ok, responses} ->
         Enum.each(responses, fn
           {:error, response} ->
+            IO.inspect(response, label: :responses_error)
             Logger.warning("Storage Write API AppendRows response error - #{inspect(response)}")
+
+          {:ok, %{response: {:error, %{message: msg}}}} ->
+            Logger.warning(
+              "Storage Write API AppendRows response with error msg - #{inspect(msg)}"
+            )
+
+            :ok
 
           _ ->
             :ok
@@ -128,6 +146,11 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor.GoogleApiClient do
   #       Enum.each(responses, fn
   #         {:error, response} ->
   #           Logger.warning("Storage Write API AppendRows response error - #{inspect(response)}")
+
+  #         {:ok, %{response: {:error, %{message: msg}}}} ->
+  #           Logger.warning(
+  #             "Storage Write API AppendRows response with error msg - #{inspect(msg)}"
+  #           )
 
   #         _ ->
   #           :ok
