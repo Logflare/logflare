@@ -185,6 +185,39 @@ defmodule LogflareWeb.CoreComponents do
   end
 
   @doc """
+  Team switcher dropdown for the navbar.
+
+  Displays the current team and allows switching between teams.
+
+  ## Examples
+
+      <.team_switcher teams={@teams} team_context={team_context} current_path={@conn.request_path}  />
+
+  """
+  attr :team_context, Logflare.Teams.TeamContext, required: true
+  attr :teams, :list, required: true
+  attr :current_path, :string, required: true
+
+  def team_switcher(assigns) do
+    ~H"""
+    <li class="nav-item ">
+      <a class="nav-link dropdown-toggle tw-font-medium" href="#" id="teamDropdown" role="button" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+        {@team_context.team.name}
+      </a>
+      <div class="dropdown-menu dropdown-menu-right" aria-labelledby="teamDropdown">
+        <%= for team <- @teams |> dbg do %>
+          <.team_link team={team} href={@current_path} class={["dropdown-item tw-flex tw-items-center tw-gap-2", if(team.id == @team_context.team.id, do: "active")]}>
+            <i class={"fas fa-check #{if team.id == @team_context.team.id, do: "tw-visible", else: "tw-invisible"}"}></i>
+            <span>{team.name}</span>
+            <span :if={Logflare.Teams.TeamContext.home_team?(team, @team_context)} class="tw-text-gray-500 tw-text-sm tw-self-end">home team</span>
+          </.team_link>
+        <% end %>
+      </div>
+    </li>
+    """
+  end
+
+  @doc """
   Generate a link with a team_id param.
 
   ## Examples
