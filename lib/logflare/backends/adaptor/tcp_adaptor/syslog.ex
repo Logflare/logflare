@@ -11,10 +11,10 @@ defmodule Logflare.Backends.Adaptor.TCPAdaptor.Syslog do
   alias Logflare.LogEvent
 
   def format(log_event) do
-    %LogEvent{body: body} = log_event
+    %LogEvent{id: id, body: body} = log_event
 
     level = get_in(body["body"]["level"]) || body["level"] || "info"
-    severity_code = severity_code(level)
+    pri = 16 * 8 + severity_code(level)
 
     timestamp =
       body
@@ -23,36 +23,36 @@ defmodule Logflare.Backends.Adaptor.TCPAdaptor.Syslog do
       |> DateTime.truncate(:millisecond)
       |> DateTime.to_iso8601()
 
-    # TODO
-    hostname = "hostname"
-    app_name = "app_name"
-    procid = "procid"
-    id = "msgid"
+    metadata = body["metadata"]
+    hostname = get_in(metadata["host"]) || body["host"]
+    app_name = get_in(metadata["app_name"]) || body["app_name"] || "logflare"
+    procid = get_in(metadata["pid"]) || body["pid"]
+    msgid = id |> Ecto.UUID.dump!() |> Base.encode32(padding: false)
 
     msg = [
       # PRI VERSION SP
-      "<#{16 * 8 + severity_code}>1 ",
+      "<#{pri}>1 ",
       # TIMESTAMP
       timestamp,
       # SP
       ?\s,
       # HOSTNAME
-      hostname,
+      format_header_value(hostname, 255),
       # SP
       ?\s,
       # APP-NAME
-      app_name,
+      format_header_value(app_name, 48),
       # SP
       ?\s,
       # PROCID
-      procid,
+      format_header_value(procid, 128),
       # SP
       ?\s,
       # MSGID
-      id,
+      format_header_value(msgid, 32),
       # SP
       ?\s,
-      # STRUCTURED-DATA
+      # STRUCTURED-DATA (empty for now)
       ?-,
       # SP
       ?\s
@@ -84,5 +84,16 @@ defmodule Logflare.Backends.Adaptor.TCPAdaptor.Syslog do
   defp severity_code(str) when is_binary(str) do
     str = String.downcase(str)
     Map.fetch!(@levels, str)
+  end
+
+  defp format_header_value(nil, _length), do: ?-
+
+  defp format_header_value(value, length) when is_binary(value) do
+    value = value |> String.replace(~r/[^\x21-\x7E]/, "_") |> String.slice(0, length)
+    if value == "", do: ?-, else: value
+  end
+
+  defp format_header_value(value, length) do
+    value |> to_string() |> format_header_value(length)
   end
 end

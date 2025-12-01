@@ -28,7 +28,7 @@ defmodule Logflare.Backends.Adaptor.TCPAdaptorTest do
 
     test "sends RFC5424 message with octet counting", %{source: source, tcp_adapter: tcp_adapter} do
       body = %{"message" => "hello world", "level" => "info"}
-      log_event = build(:log_event, source: source, body: body)
+      %{id: log_event_id} = log_event = build(:log_event, source: source, body: body)
 
       :ok = TCPAdaptor.ingest(tcp_adapter, [log_event])
 
@@ -38,20 +38,20 @@ defmodule Logflare.Backends.Adaptor.TCPAdaptorTest do
                "fields" => %{
                  "facility_code" => 16,
                  "message" => telegraf_event_message,
-                 "msgid" => "msgid",
-                 "procid" => "procid",
+                 "msgid" => msgid,
                  "severity_code" => 6,
                  "timestamp" => _timestamp,
                  "version" => 1
                },
                "name" => "syslog",
                "tags" => %{
-                 "appname" => "app_name",
+                 "appname" => "logflare",
                  "facility" => "local0",
-                 "hostname" => "hostname",
                  "severity" => "info"
                }
              } = telegraf_event
+
+      assert Base.decode32!(msgid, padding: false) == Ecto.UUID.dump!(log_event_id)
 
       assert %{
                "body" => %{"level" => "info", "message" => "hello world"},
