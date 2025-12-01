@@ -194,4 +194,47 @@ defmodule LogflareWeb.SearchLive.LogEventComponents do
 
     format_timestamp(log_event.body["timestamp"], timezone) <> tz_part
   end
+
+  attr :log_event, Logflare.LogEvent, required: true
+  attr :select_fields, :list, required: true
+
+  def selected_fields(assigns) do
+    ~H"""
+    <div>
+      <%= for field <- @select_fields do %>
+        <div class="tw-text-neutral-200 tw-ml-52 last:tw-mb-2">
+          <span class="">{field.display}:</span>
+          <span class="tw-text-white">{get_field_value(@log_event.body, field.key)}</span>
+        </div>
+      <% end %>
+    </div>
+    """
+  end
+
+  defp get_field_value(body, field_key) when is_binary(field_key) do
+    Map.get(body, field_key)
+    |> format_field_value()
+  end
+
+  defp format_field_value(nil), do: "null"
+  defp format_field_value(value) when is_binary(value), do: value
+  defp format_field_value(value) when is_number(value), do: to_string(value)
+  defp format_field_value(value) when is_boolean(value), do: to_string(value)
+  defp format_field_value(value) when is_list(value), do: Jason.encode!(value)
+  defp format_field_value(value) when is_map(value), do: Jason.encode!(value)
+  defp format_field_value(value), do: inspect(value)
+
+  defp build_select_fields(%{lql_rules: lql_rules}) do
+    lql_rules
+    |> Lql.Rules.get_select_rules()
+    |> Enum.map(fn
+      %{path: path, alias: nil} ->
+        key = String.replace(path, ".", "_")
+        %{display: path, key: key}
+
+      %{path: path, alias: alias} ->
+        %{display: alias, key: alias}
+    end)
+    |> Enum.reject(fn field -> is_nil(field.display) end)
+  end
 end
