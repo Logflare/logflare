@@ -1,8 +1,15 @@
 defmodule Logflare.Backends.Adaptor.TCPAdaptor.Pool do
+  @moduledoc false
   @behaviour NimblePool
 
-  def start_link(config) do
-    NimblePool.start_link(worker: {__MODULE__, config}, lazy: true)
+  def start_link(opts) do
+    config = Keyword.fetch!(opts, :config)
+    name = Keyword.fetch!(opts, :name)
+    NimblePool.start_link(worker: {__MODULE__, config}, lazy: true, name: name)
+  end
+
+  def child_spec(opts) do
+    %{id: __MODULE__, start: {__MODULE__, :start_link, [opts]}}
   end
 
   def send(pool, message) do

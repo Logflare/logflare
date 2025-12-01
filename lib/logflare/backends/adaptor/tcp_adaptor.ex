@@ -3,10 +3,10 @@ defmodule Logflare.Backends.Adaptor.TCPAdaptor do
   TCP backend adaptor that sends out Syslog-formatted messages.
   """
 
+  use Supervisor
   use TypedStruct
   import Ecto.Changeset
-  alias Logflare.Backends.Adaptor.TCPAdaptor.{Pool, Syslog}
-
+  alias Logflare.Backends.Adaptor.TCPAdaptor.{Pool, Pipeline, Syslog}
   @behaviour Logflare.Backends.Adaptor
 
   typedstruct enforce: true do
@@ -19,8 +19,22 @@ defmodule Logflare.Backends.Adaptor.TCPAdaptor do
   def supports_default_ingest?, do: true
 
   @impl Logflare.Backends.Adaptor
-  def start_link({_source, backend}) do
-    Pool.start_link(backend.config)
+  def start_link({source, backend}) do
+    name = Logflare.Backends.via_source(source, __MODULE__, backend)
+    Supervisor.start_link(__MODULE__, {source, backend}, name: name)
+  end
+
+  @impl Supervisor
+  def init({source, backend}) do
+    pool_name = Logflare.Backends.via_source(source, Pool, backend)
+    pipeline_name = Logflare.Backends.via_source(source, Pipeline, backend)
+
+    children = [
+      {Pool, config: backend.config, name: pool_name},
+      {Pipeline, source: source, backend: backend, pool: pool_name, name: pipeline_name}
+    ]
+
+    Supervisor.init(children, strategy: :rest_for_one)
   end
 
   @impl Logflare.Backends.Adaptor

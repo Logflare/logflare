@@ -29,7 +29,11 @@ defmodule Logflare.Backends.Adaptor.TCPAdaptor.Syslog do
     procid = get_in(metadata["pid"]) || body["pid"]
     msgid = id |> Ecto.UUID.dump!() |> Base.encode32(padding: false)
 
-    msg = [
+    msg = Jason.encode_to_iodata!(body)
+    # msg = if cipher_key, do: encrypt(msg, cipher_key), else: msg
+
+    # https://datatracker.ietf.org/doc/html/rfc5424#section-6
+    syslog_msg = [
       # PRI VERSION SP
       "<#{pri}>1 ",
       # TIMESTAMP
@@ -57,10 +61,10 @@ defmodule Logflare.Backends.Adaptor.TCPAdaptor.Syslog do
       # SP
       ?\s
       # MSG
-      | Jason.encode_to_iodata!(body)
+      | msg
     ]
 
-    [Integer.to_string(IO.iodata_length(msg)), ?\s | msg]
+    [Integer.to_string(IO.iodata_length(syslog_msg)), ?\s | syslog_msg]
   end
 
   @levels %{
@@ -96,4 +100,10 @@ defmodule Logflare.Backends.Adaptor.TCPAdaptor.Syslog do
   defp format_header_value(value, length) do
     value |> to_string() |> format_header_value(length)
   end
+
+  # defp encrypt(data, key) do
+  #   iv = :crypto.strong_rand_bytes(12)
+  #   {ciphertext, tag} = :crypto.crypto_one_time_aead(:aes_256_gcm, key, iv, data, "syslog", true)
+  #   Base.encode64(iv <> tag <> ciphertext)
+  # end
 end

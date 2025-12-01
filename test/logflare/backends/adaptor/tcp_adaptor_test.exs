@@ -1,7 +1,16 @@
 defmodule Logflare.Backends.Adaptor.TCPAdaptorTest do
   use Logflare.DataCase, async: false
-  alias Logflare.Backends.Adaptor.TCPAdaptor
   @moduletag :telegraf
+
+  setup do
+    start_supervised!(Logflare.SystemMetrics.AllLogsLogged)
+    :ok
+  end
+
+  setup do
+    insert(:plan)
+    :ok
+  end
 
   setup do
     telegraf_output_path = "db/telegraf_output/metrics.out"
@@ -14,23 +23,19 @@ defmodule Logflare.Backends.Adaptor.TCPAdaptorTest do
     :ok
   end
 
-  setup do
-    {:ok, source: insert(:source, user: build(:user))}
-  end
-
-  describe "plain TCP" do
-    setup %{source: source} do
+  describe "telegraf + tcp_adapter with basic config" do
+    setup do
       config = %{host: "localhost", port: 6514}
+      source = insert(:source, user: build(:user))
       backend = insert(:backend, type: :tcp, sources: [source], config: config)
-      {:ok, tcp_adaptor} = TCPAdaptor.start_link({source, backend})
-      {:ok, backend: backend, tcp_adapter: tcp_adaptor}
+      start_supervised!({Logflare.Backends.AdaptorSupervisor, {source, backend}})
+      {:ok, source: source}
     end
 
-    test "sends RFC5424 message with octet counting", %{source: source, tcp_adapter: tcp_adapter} do
+    test "sends RFC5424 message with octet counting", %{source: source} do
       body = %{"message" => "hello world", "level" => "info"}
       %{id: log_event_id} = log_event = build(:log_event, source: source, body: body)
-
-      :ok = TCPAdaptor.ingest(tcp_adapter, [log_event])
+      assert {:ok, 1} = Logflare.Backends.ingest_logs([log_event], source)
 
       assert_receive {:telegraf, telegraf_event}, to_timeout(second: 5)
 
