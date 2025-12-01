@@ -67,7 +67,7 @@ services:
       - ./test/filebeat.yml:/usr/share/filebeat/filebeat.yml
       # - filebeat:/usr/share/filebeat/data
       # - /var/log/audit/:/var/log/audit/:ro
-    # environment:
+      # environment:
       # - ELASTICSEARCH_HOST=${ELASTICSEARCH_HOST:-node1}
       # - KIBANA_HOST=${KIBANA_HOST:-node1}
       # - ELASTICSEARCH_USERNAME=${ELASTICSEARCH_USERNAME:-elastic}
@@ -151,8 +151,10 @@ services:
     image: telegraf:1.36
     volumes:
       - ./priv/telegraf:/etc/telegraf:ro
+      - ./priv/keys:/etc/telegraf_keys:ro
       - ./db/telegraf_output:/tmp/telegraf_output
     ports:
       - 6514:6514
+      - 6515:6515
 volumes:
   pg-data:

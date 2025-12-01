@@ -70,20 +70,45 @@ defmodule Logflare.Backends.Adaptor.TCPAdaptorTest do
   end
 
   describe "mTLS" do
-    # setup %{source: source} do
-    #   _backend =
-    #     insert(:backend,
-    #       type: :tcp,
-    #       sources: [source],
-    #       config: %{
-    #         host: "localhost",
-    #         port: 6515,
-    #         ca_cert: read_cert("ca.crt"),
-    #         client_cert: read_cert("client.crt"),
-    #         client_key: read_cert("client.key")
-    #       }
-    #     )
-    # end
+    setup do
+      port = 6515
+      ca_cert = File.read!("priv/keys/ca.crt")
+      client_cert = File.read!("priv/keys/client.crt")
+      client_key = File.read!("priv/keys/client.key")
+
+      config = %{
+        host: "localhost",
+        port: port,
+        tls: true,
+        ca_cert: ca_cert,
+        client_cert: client_cert,
+        client_key: client_key
+      }
+
+      source = insert(:source, user: build(:user))
+      backend = insert(:backend, type: :tcp, sources: [source], config: config)
+      start_supervised!({Logflare.Backends.AdaptorSupervisor, {source, backend}})
+
+      {:ok, source: source}
+    end
+
+    test "sends message over mTLS", %{source: source} do
+      body = %{"message" => "hello world", "level" => "info"}
+      %{id: log_event_id} = log_event = build(:log_event, source: source, body: body)
+      assert {:ok, 1} = Logflare.Backends.ingest_logs([log_event], source)
+
+      assert_receive {:telegraf, telegraf_event}, to_timeout(second: 5)
+
+      assert %{
+               "fields" => %{
+                 "message" => telegraf_event_message,
+                 "msgid" => msgid
+               }
+             } = telegraf_event
+
+      assert Base.decode32!(msgid, padding: false) == Ecto.UUID.dump!(log_event_id)
+      assert %{"body" => %{"message" => "hello world"}} = Jason.decode!(telegraf_event_message)
+    end
   end
 
   describe "encryption" do

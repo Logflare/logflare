@@ -14,6 +14,9 @@ defmodule Logflare.Backends.Adaptor.TCPAdaptor do
     field(:host, String.t())
     field(:port, non_neg_integer())
     field(:cipher_key, binary())
+    field(:ca_cert, String.t())
+    field(:client_cert, String.t())
+    field(:client_key, String.t())
   end
 
   @impl Logflare.Backends.Adaptor
@@ -40,8 +43,17 @@ defmodule Logflare.Backends.Adaptor.TCPAdaptor do
 
   @impl Logflare.Backends.Adaptor
   def cast_config(params) do
-    {%{}, %{tls: :bool, host: :string, port: :integer, cipher_key: :string}}
-    |> cast(params, [:tls, :host, :port, :cipher_key])
+    {%{},
+     %{
+       tls: :boolean,
+       host: :string,
+       port: :integer,
+       cipher_key: :string,
+       ca_cert: :string,
+       client_cert: :string,
+       client_key: :string
+     }}
+    |> cast(params, [:tls, :host, :port, :cipher_key, :ca_cert, :client_cert, :client_key])
   end
 
   @impl Logflare.Backends.Adaptor

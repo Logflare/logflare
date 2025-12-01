@@ -15,7 +15,14 @@ defmodule Logflare.Backends.Adaptor.TCPAdaptor.Pool do
   def send(pool, message) do
     result =
       NimblePool.checkout!(pool, :send, fn _from, socket ->
-        {:gen_tcp.send(socket, message), socket}
+        res =
+          if is_port(socket) do
+            :gen_tcp.send(socket, message)
+          else
+            :ssl.send(socket, message)
+          end
+
+        {res, socket}
       end)
 
     case result do
@@ -28,13 +35,26 @@ defmodule Logflare.Backends.Adaptor.TCPAdaptor.Pool do
   def init_worker(%{host: host, port: port} = state) do
     this = self()
 
-    # TODO: Add SSL support there
     async = fn ->
       connect_result =
-        :gen_tcp.connect(to_charlist(host), port,
-          mode: :binary,
-          nodelay: true
-        )
+        if state[:tls] do
+          opts = [
+            mode: :binary,
+            nodelay: true,
+            verify: :verify_peer,
+            depth: 3,
+            cacerts: decode_cacerts(state[:ca_cert]),
+            cert: decode_cert(state[:client_cert]),
+            key: decode_key(state[:client_key])
+          ]
+
+          :ssl.connect(to_charlist(host), port, opts)
+        else
+          :gen_tcp.connect(to_charlist(host), port,
+            mode: :binary,
+            nodelay: true
+          )
+        end
 
       socket =
         case connect_result do
@@ -45,7 +65,7 @@ defmodule Logflare.Backends.Adaptor.TCPAdaptor.Pool do
             raise "Failed to connect to TCP backend at #{host}:#{port} - #{inspect(reason)}"
         end
 
-      case :gen_tcp.controlling_process(socket, this) do
+      case set_controlling_process(socket, this, state[:tls]) do
         :ok -> :ok
         {:error, reason} -> raise "Failed to set controlling process - #{inspect(reason)}"
       end
@@ -72,5 +92,29 @@ defmodule Logflare.Backends.Adaptor.TCPAdaptor.Pool do
 
   def handle_info(unexpected_message, _socket) do
     raise "Unexpected message in TCPAdaptor: #{inspect(unexpected_message)}"
+  end
+
+  defp set_controlling_process(socket, pid, true), do: :ssl.controlling_process(socket, pid)
+  defp set_controlling_process(socket, pid, _), do: :gen_tcp.controlling_process(socket, pid)
+
+  defp decode_cacerts(nil), do: []
+
+  defp decode_cacerts(pem) do
+    :public_key.pem_decode(pem)
+    |> Enum.map(fn {_, der, _} -> der end)
+  end
+
+  defp decode_cert(nil), do: nil
+
+  defp decode_cert(pem) do
+    [{_, der, _}] = :public_key.pem_decode(pem)
+    der
+  end
+
+  defp decode_key(nil), do: nil
+
+  defp decode_key(pem) do
+    [{type, der, _}] = :public_key.pem_decode(pem)
+    {type, der}
   end
 end
