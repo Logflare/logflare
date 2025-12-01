@@ -557,22 +557,26 @@ defmodule LogflareWeb.Router do
 
   @impl Plug.ErrorHandler
   def handle_errors(conn, %{kind: kind, reason: reason, stack: stack}) do
-    if !String.starts_with?(conn.request_path, "/logs") and
-         !String.starts_with?(conn.request_path, "/api") do
+    if should_log_error?(conn) do
+      message = Map.get(reason, :message, inspect(reason))
+
       Logger.error(
-        "[#{conn.method} #{conn.request_path}] #{kind} - #{inspect(reason)}\n#{Exception.format_stacktrace(stack)}"
+        "[#{conn.method} #{conn.request_path}] #{kind} - #{message}\n\n#{Exception.format_stacktrace(stack)}"
       )
     end
 
     conn
-    |> maybe_put_status(kind, reason)
   end
 
-  defp maybe_put_status(conn, _kind, reason) do
-    if conn.status == nil do
-      Plug.Conn.put_status(conn, Plug.Exception.status(reason))
-    else
-      conn
+  defp should_log_error?(conn) do
+    !String.starts_with?(conn.request_path, "/logs") and
+      !String.starts_with?(conn.request_path, "/api") and http_request?(conn)
+  end
+
+  defp http_request?(conn) do
+    case Plug.Conn.get_req_header(conn, "accept") do
+      [accept | _] -> String.contains?(accept, "text/html")
+      _ -> false
     end
   end
 end
