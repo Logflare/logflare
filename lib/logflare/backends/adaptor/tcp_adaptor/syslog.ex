@@ -10,7 +10,7 @@ defmodule Logflare.Backends.Adaptor.TCPAdaptor.Syslog do
 
   alias Logflare.LogEvent
 
-  def format(log_event) do
+  def format(log_event, cipher_key \\ nil) do
     %LogEvent{id: id, body: body} = log_event
 
     level = get_in(body["body"]["level"]) || body["level"] || "info"
@@ -30,7 +30,7 @@ defmodule Logflare.Backends.Adaptor.TCPAdaptor.Syslog do
     msgid = id |> Ecto.UUID.dump!() |> Base.encode32(padding: false)
 
     msg = Jason.encode_to_iodata!(body)
-    # msg = if cipher_key, do: encrypt(msg, cipher_key), else: msg
+    msg = if cipher_key, do: encrypt(msg, cipher_key), else: msg
 
     # https://datatracker.ietf.org/doc/html/rfc5424#section-6
     syslog_msg = [
@@ -101,9 +101,9 @@ defmodule Logflare.Backends.Adaptor.TCPAdaptor.Syslog do
     value |> to_string() |> format_header_value(length)
   end
 
-  # defp encrypt(data, key) do
-  #   iv = :crypto.strong_rand_bytes(12)
-  #   {ciphertext, tag} = :crypto.crypto_one_time_aead(:aes_256_gcm, key, iv, data, "syslog", true)
-  #   Base.encode64(iv <> tag <> ciphertext)
-  # end
+  defp encrypt(data, key) do
+    iv = :crypto.strong_rand_bytes(12)
+    {ciphertext, tag} = :crypto.crypto_one_time_aead(:aes_256_gcm, key, iv, data, "syslog", true)
+    Base.encode64(iv <> tag <> ciphertext)
+  end
 end

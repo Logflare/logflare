@@ -86,6 +86,40 @@ defmodule Logflare.Backends.Adaptor.TCPAdaptorTest do
     # end
   end
 
+  describe "encryption" do
+    setup do
+      key = :crypto.strong_rand_bytes(32)
+      base64_key = Base.encode64(key)
+      config = %{host: "localhost", port: 6514, cipher_key: base64_key}
+      source = insert(:source, user: build(:user))
+      backend = insert(:backend, type: :tcp, sources: [source], config: config)
+      start_supervised!({Logflare.Backends.AdaptorSupervisor, {source, backend}})
+      {:ok, source: source, key: key}
+    end
+
+    test "sends encrypted message", %{source: source, key: key} do
+      body = %{"message" => "hello world", "level" => "info"}
+      %{id: _log_event_id} = log_event = build(:log_event, source: source, body: body)
+      assert {:ok, 1} = Logflare.Backends.ingest_logs([log_event], source)
+
+      assert_receive {:telegraf, telegraf_event}, to_timeout(second: 5)
+
+      message = telegraf_event["fields"]["message"]
+
+      # Verify it is not JSON
+      assert {:error, _} = Jason.decode(message)
+
+      # Verify we can decrypt it
+      assert {:ok, decoded_msg} = Base.decode64(message)
+      <<iv::binary-12, tag::binary-16, ciphertext::binary>> = decoded_msg
+
+      plaintext =
+        :crypto.crypto_one_time_aead(:aes_256_gcm, key, iv, ciphertext, "syslog", tag, false)
+
+      assert %{"body" => %{"message" => "hello world"}} = Jason.decode!(plaintext)
+    end
+  end
+
   defp spawn_link_telegraf_watcher(path) do
     test = self()
     spawn_link(fn -> watch_telegraf(path, _offset = 0, test) end)

@@ -13,6 +13,7 @@ defmodule Logflare.Backends.Adaptor.TCPAdaptor do
     field(:tls, boolean())
     field(:host, String.t())
     field(:port, non_neg_integer())
+    field(:cipher_key, binary())
   end
 
   @impl Logflare.Backends.Adaptor
@@ -39,17 +40,24 @@ defmodule Logflare.Backends.Adaptor.TCPAdaptor do
 
   @impl Logflare.Backends.Adaptor
   def cast_config(params) do
-    {%{}, %{tls: :bool, host: :string, port: :integer}}
-    |> cast(params, [:tls, :host, :port])
+    {%{}, %{tls: :bool, host: :string, port: :integer, cipher_key: :string}}
+    |> cast(params, [:tls, :host, :port, :cipher_key])
   end
 
   @impl Logflare.Backends.Adaptor
   def validate_config(changeset) do
-    validate_inclusion(changeset, :port, 0..65535)
+    changeset
+    |> validate_inclusion(:port, 0..65535)
+    |> validate_change(:cipher_key, fn :cipher_key, key ->
+      case Base.decode64(key) do
+        {:ok, decoded} when byte_size(decoded) == 32 -> []
+        :error -> [cipher_key: "must be a base64 encoded 32 byte key"]
+      end
+    end)
   end
 
-  def ingest(pool, log_events) do
-    content = log_events |> List.wrap() |> Enum.map(&Syslog.format/1)
+  def ingest(pool, log_events, cipher_key \\ nil) do
+    content = log_events |> List.wrap() |> Enum.map(&Syslog.format(&1, cipher_key))
     Pool.send(pool, content)
   end
 

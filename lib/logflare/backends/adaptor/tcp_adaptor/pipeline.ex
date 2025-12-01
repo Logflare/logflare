@@ -14,6 +14,11 @@ defmodule Logflare.Backends.Adaptor.TCPAdaptor.Pipeline do
     pool = Keyword.fetch!(opts, :pool)
     name = Keyword.fetch!(opts, :name)
 
+    cipher_key =
+      if cipher_key = backend.config[:cipher_key] do
+        Base.decode64!(cipher_key)
+      end
+
     Broadway.start_link(__MODULE__,
       name: name,
       producer: [
@@ -29,7 +34,8 @@ defmodule Logflare.Backends.Adaptor.TCPAdaptor.Pipeline do
       context: %{
         source_id: source.id,
         backend_id: backend.id,
-        pool: pool
+        pool: pool,
+        cipher_key: cipher_key
       }
     )
   end
@@ -42,8 +48,9 @@ defmodule Logflare.Backends.Adaptor.TCPAdaptor.Pipeline do
 
   @impl Broadway
   def handle_batch(:tcp, messages, _batch_info, context) do
+    %{pool: pool, cipher_key: cipher_key} = context
     events = for %{data: le} <- messages, do: le
-    TCPAdaptor.ingest(context.pool, events)
+    TCPAdaptor.ingest(pool, events, cipher_key)
     messages
   end
 
