@@ -67,7 +67,7 @@ services:
       - ./test/filebeat.yml:/usr/share/filebeat/filebeat.yml
       # - filebeat:/usr/share/filebeat/data
       # - /var/log/audit/:/var/log/audit/:ro
-      # environment:
+    # environment:
       # - ELASTICSEARCH_HOST=${ELASTICSEARCH_HOST:-node1}
       # - KIBANA_HOST=${KIBANA_HOST:-node1}
       # - ELASTICSEARCH_USERNAME=${ELASTICSEARCH_USERNAME:-elastic}
