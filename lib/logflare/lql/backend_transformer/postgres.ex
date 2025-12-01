@@ -668,16 +668,23 @@ defmodule Logflare.Lql.BackendTransformer.Postgres do
   @spec build_combined_select(Query.t(), select_rules :: [map()]) :: Query.t()
   defp build_combined_select(query, select_rules) do
     Enum.reduce(select_rules, query, fn %{path: path, alias: alias_name}, acc_query ->
-      path_or_alias =
-        if is_binary(alias_name), do: alias_name, else: String.replace(path, ".", "_")
-
-      case build_jsonb_path_expression(path) do
-        {:top_level, field} ->
-          select_merge(acc_query, [l], %{^path_or_alias => field(l, ^field)})
-
-        {:jsonb, jsonb_path_expr} ->
+      case {build_jsonb_path_expression(path), alias_name} do
+        {{:top_level, field}, alias} when is_binary(alias) ->
           select_merge(acc_query, [l], %{
-            ^path_or_alias => fragment("?", ^jsonb_path_expr)
+            ^alias => fragment("? AS ?", field(l, ^field), identifier(^alias))
+          })
+
+        {{:jsonb, jsonb_path_expr}, alias} when is_binary(alias) ->
+          select_merge(acc_query, [l], %{
+            ^alias => fragment("? AS ?", ^jsonb_path_expr, identifier(^alias))
+          })
+
+        {{:top_level, field}, nil} ->
+          select_merge(acc_query, [l], %{^path => field(l, ^field)})
+
+        {{:jsonb, jsonb_path_expr}, nil} ->
+          select_merge(acc_query, [l], %{
+            ^path => fragment("?", ^jsonb_path_expr)
           })
       end
     end)
