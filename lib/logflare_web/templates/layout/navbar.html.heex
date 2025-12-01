@@ -1,5 +1,5 @@
 <nav class="navbar  navbar-expand-lg navbar-light bg-light">
-  <%= if Plug.Conn.get_session(@conn, :vercel_setup) do %>
+  <%= if safe_get_session(@conn, :vercel_setup) do %>
     <div class="navbar-brand">
       {render(LogflareWeb.SharedView, "logo.html", assigns)}
     </div>
@@ -14,8 +14,7 @@
       </a>
     <% end %>
   <% end %>
-
-  <%= if !Plug.Conn.get_session(@conn, :vercel_setup) do %>
+  <%= if !safe_get_session(@conn, :vercel_setup) do %>
     <button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#navbarSupportedContent" aria-controls="navbarSupportedContent" aria-expanded="false" aria-label="Toggle navigation">
       <span class="navbar-toggler-icon"></span>
     </button>
