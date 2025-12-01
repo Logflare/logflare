@@ -1,7 +1,6 @@
 defmodule LogflareWeb.Router do
   @moduledoc false
   use LogflareWeb, :router
-  use Plug.ErrorHandler
   use PhoenixOauth2Provider.Router, otp_app: :logflare
 
   import Phoenix.LiveDashboard.Router
@@ -17,7 +16,6 @@ defmodule LogflareWeb.Router do
   alias Opentelemetry.Proto.Collector.Metrics.V1.ExportMetricsServiceRequest
   alias Opentelemetry.Proto.Collector.Logs.V1.ExportLogsServiceRequest
 
-  require Logger
   # TODO: move plug calls in SourceController and RuleController into here
 
   pipeline :browser do
@@ -552,31 +550,6 @@ defmodule LogflareWeb.Router do
 
       _type ->
         conn
-    end
-  end
-
-  @impl Plug.ErrorHandler
-  def handle_errors(conn, %{kind: kind, reason: reason, stack: stack}) do
-    if should_log_error?(conn) do
-      message = Map.get(reason, :message, inspect(reason))
-
-      Logger.error(
-        "[#{conn.method} #{conn.request_path}] #{kind} - #{message}\n\n#{Exception.format_stacktrace(stack)}"
-      )
-    end
-
-    conn
-  end
-
-  defp should_log_error?(conn) do
-    !String.starts_with?(conn.request_path, "/logs") and
-      !String.starts_with?(conn.request_path, "/api") and http_request?(conn)
-  end
-
-  defp http_request?(conn) do
-    case Plug.Conn.get_req_header(conn, "accept") do
-      [accept | _] -> String.contains?(accept, "text/html")
-      _ -> false
     end
   end
 end
