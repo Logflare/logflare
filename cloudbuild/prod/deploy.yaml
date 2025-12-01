@@ -13,7 +13,7 @@ steps:
       - --zone=europe-west3-c
       - --type=proactive
       - --max-surge=3
-      - --max-unavailable=3
+      - --max-unavailable=1
       - --min-ready=60
       - --minimal-action=replace
       - --most-disruptive-allowed-action=replace
