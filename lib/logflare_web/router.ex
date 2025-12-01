@@ -557,7 +557,7 @@ defmodule LogflareWeb.Router do
 
   @impl Plug.ErrorHandler
   def handle_errors(conn, %{kind: kind, reason: reason, stack: stack}) do
-    if !String.starts_with?(conn.request_path, "/logs") or
+    if !String.starts_with?(conn.request_path, "/logs") and
          !String.starts_with?(conn.request_path, "/api") do
       Logger.error(
         "[#{conn.method} #{conn.request_path}] #{kind} - #{inspect(reason)}\n#{Exception.format_stacktrace(stack)}"
@@ -565,5 +565,14 @@ defmodule LogflareWeb.Router do
     end
 
     conn
+    |> maybe_put_status(kind, reason)
+  end
+
+  defp maybe_put_status(conn, _kind, reason) do
+    if conn.status == nil do
+      Plug.Conn.put_status(conn, Plug.Exception.status(reason))
+    else
+      conn
+    end
   end
 end
