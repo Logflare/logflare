@@ -12,7 +12,7 @@ steps:
       - --project=logflare-232118
       - --zone=europe-west3-c
       - --type=proactive
-      - --max-surge=5
+      - --max-surge=4
       - --max-unavailable=1
       - --min-ready=60
       - --minimal-action=replace
