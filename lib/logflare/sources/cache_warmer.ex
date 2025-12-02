@@ -18,13 +18,14 @@ defmodule Logflare.Sources.CacheWarmer do
 
     get_kv =
       for s <- sources do
+        value = {:cached, s}
+
         [
-          {{:get_by, [id: s.id]}, s},
-          {{:get_by, [token: s.token]}, s},
-          {{:get_by_and_preload_rules, [id: s.id, user_id: s.user_id]}, s},
-          {{:get_by_and_preload_rules, [token: s.token]}, s}
+          {{:get_by, [id: s.id]}, value},
+          {{:get_by, [token: s.token]}, value},
+          {{:get_by_and_preload_rules, [id: s.id, user_id: s.user_id]}, value},
+          {{:get_by_and_preload_rules, [token: s.token]}, value}
         ]
-        |> Enum.map(&{:cached, &1})
       end
 
     {:ok, List.flatten(get_kv)}

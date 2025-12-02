@@ -47,7 +47,6 @@
   {"lib/logflare/sources/source/bigquery/schema_builder.ex", :call},
   {"lib/logflare/sources/source/slack_hook_server/slack_hook_server.ex", :no_return},
   {"lib/logflare/sources/source/slack_hook_server/slack_hook_server.ex", :unused_fun},
-  {"lib/logflare/sources/source/supervisor.ex", :invalid_contract},
   {"lib/logflare/sources/source/supervisor.ex", :pattern_match},
   {"lib/logflare/sources/source/supervisor.ex", :pattern_match_cov},
   {"lib/logflare/sources/source/supervisor.ex", :no_return},
