@@ -80,15 +80,15 @@ defmodule Logflare.Teams.TeamContext do
         {:ok, team, user}
 
       nil ->
-        case TeamUsers.get_team_user_by(email: email) do
-          %TeamUser{} = team_user ->
+        case TeamUsers.list_team_users_by(email: email) |> Enum.sort_by(& &1.inserted_at) do
+          [%TeamUser{} = team_user] ->
             team =
               Teams.get_team_by(id: team_user.team_id)
               |> Teams.preload_user()
 
             {:ok, team, team_user}
 
-          nil ->
+          _ ->
             {:error, :not_authorized}
         end
     end
