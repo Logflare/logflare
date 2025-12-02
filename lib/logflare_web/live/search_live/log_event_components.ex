@@ -273,9 +273,11 @@ defmodule LogflareWeb.SearchLive.LogEventComponents do
         key = String.replace(path, ".", "_")
         %{display: path, key: key}
 
-      %{path: path, alias: alias} ->
+      %{path: _path, alias: alias} ->
         %{display: alias, key: alias}
     end)
     |> Enum.reject(fn field -> is_nil(field.display) end)
   end
+
+  defp build_select_fields(_), do: []
 end

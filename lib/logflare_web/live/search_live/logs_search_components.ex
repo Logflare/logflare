@@ -87,16 +87,18 @@ defmodule LogflareWeb.SearchLive.LogsSearchComponents do
   attr :last_query_completed_at, :any, default: nil
 
   def query_timing(assigns) do
+    assigns =
+      assigns
+      |> assign_new(:timestamp, fn ->
+        if assigns.last_query_completed_at,
+          do: Timex.to_unix(assigns.last_query_completed_at),
+          else: false
+      end)
+
     ~H"""
-    <%= if @last_query_completed_at do %>
-      <small class="form-text text-muted" id="last-query-completed-at" data-timestamp={Timex.to_unix(@last_query_completed_at)}>
-        Elapsed since last query: <span id="elapsed" phx-update="ignore"> 0.0 </span> seconds
-      </small>
-    <% else %>
-      <small class="form-text text-muted">
-        Elapsed since last query: 0.0 seconds
-      </small>
-    <% end %>
+    <small class="form-text text-muted" id="last-query-completed-at" data-timestamp={@timestamp}>
+      Elapsed since last query: <span id="elapsed" phx-update="ignore"> 0.0 </span> seconds
+    </small>
     """
   end
 

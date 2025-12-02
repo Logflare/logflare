@@ -593,8 +593,6 @@ defmodule LogflareWeb.Source.SearchLV do
         Process.send_after(self(), :schedule_tail_search, @tail_search_interval)
       end
 
-    events_op |> dbg
-
     socket =
       socket
       |> assign(:search_op, events_op)
@@ -622,8 +620,6 @@ defmodule LogflareWeb.Source.SearchLV do
   end
 
   def handle_info({:search_error, search_op}, %{assigns: %{source: source}} = socket) do
-    search_op.error |> dbg
-
     socket =
       case search_op.error do
         :halted ->
