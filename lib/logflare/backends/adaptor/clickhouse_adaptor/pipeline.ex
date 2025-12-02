@@ -24,6 +24,9 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
   @batch_size 1_500
   @max_retries 1
 
+  # 72 hour max event age, based on timestamp
+  @max_event_age_us 72 * 3_600 * 1_000_000
+
   @doc false
   def max_retries, do: @max_retries
 
@@ -103,7 +106,13 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
       } do
         source = Sources.Cache.get_by_id(source_id)
         backend = Backends.Cache.get_backend(backend_id)
-        events = for %{data: le} <- messages, do: le
+        cutoff_us = System.system_time(:microsecond) - @max_event_age_us
+
+        # only include events that are within our cutoff threshold
+        events =
+          for %{data: le} <- messages,
+              le.body["timestamp"] >= cutoff_us,
+              do: le
 
         ClickHouseAdaptor.insert_log_events({source, backend}, events)
       end
