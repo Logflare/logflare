@@ -59,7 +59,7 @@ defmodule Logflare.Backends.Adaptor.TCPAdaptor do
   @impl Logflare.Backends.Adaptor
   def validate_config(changeset) do
     changeset
-    |> validate_inclusion(:port, 0..65535)
+    |> validate_inclusion(:port, 0..65_535)
     |> validate_change(:cipher_key, fn :cipher_key, key ->
       case Base.decode64(key) do
         {:ok, decoded} when byte_size(decoded) == 32 -> []
