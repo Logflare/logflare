@@ -20,7 +20,7 @@ defmodule LogflareWeb.Plugs.SetVerifySource do
 
   def call(%{assigns: %{user: %User{admin: true}}, params: params} = conn, _opts) do
     id = params["source_id"] || params["id"]
-    source = Sources.get_by_and_preload(id: id)
+    source = Sources.get_by_and_preload(id: id) |> Sources.preload_rules()
 
     assign(conn, :source, source)
   end

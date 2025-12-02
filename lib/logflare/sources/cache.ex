@@ -1,7 +1,10 @@
 defmodule Logflare.Sources.Cache do
   @moduledoc false
 
+  alias Logflare.Repo
+  alias Logflare.Rules
   alias Logflare.Sources
+  alias Logflare.Sources.Source
   alias Logflare.Utils
 
   import Cachex.Spec
@@ -32,8 +35,17 @@ defmodule Logflare.Sources.Cache do
   end
 
   # For ingest
-  def get_by_and_preload_rules(kv), do: apply_repo_fun(__ENV__.function, [kv])
-  def preload_rules(kv), do: apply_repo_fun(__ENV__.function, [kv])
+  def get_by_and_preload_rules(kv) do
+    case get_by(kv) do
+      nil -> nil
+      %Source{} = source -> preload_rules(source)
+    end
+  end
+
+  def preload_rules(%Source{} = source) do
+    source
+    |> Repo.preload(rules: fn [id] -> Rules.Cache.list_by_source_id(id) end)
+  end
 
   def get_by_and_preload(kv), do: apply_repo_fun(__ENV__.function, [kv])
   def get_by_id_and_preload(arg) when is_integer(arg), do: get_by_and_preload(id: arg)
