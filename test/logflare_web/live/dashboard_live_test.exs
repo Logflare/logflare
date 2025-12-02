@@ -165,12 +165,14 @@ defmodule LogflareWeb.DashboardLiveTest do
     } do
       {:ok, view, _html} = live(conn, "/dashboard")
 
-      {:ok, view, _html} =
-        view
-        |> element("a", other_team.name)
-        |> render_click()
-        |> follow_redirect(conn, "/dashboard?t=#{other_team.id}")
+      redirect_path = "/dashboard?t=#{other_team.id}"
 
+      assert {:error, {:redirect, %{to: ^redirect_path}}} =
+               view
+               |> element("a", other_team.name)
+               |> render_click()
+
+      {:ok, view, _html} = live(conn, redirect_path)
       assert view |> has_element?("#teams span", other_team.name)
       assert view |> has_element?("#teams a", user.team.name)
       refute view |> has_element?("#teams a", forbidden_team.name)
