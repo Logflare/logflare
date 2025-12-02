@@ -94,6 +94,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
       }
     )
 
+    message_count = length(messages)
+
     result =
       OpenTelemetry.Tracer.with_span :clickhouse_pipeline, %{
         attributes: %{
@@ -108,11 +110,20 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
         backend = Backends.Cache.get_backend(backend_id)
         cutoff_us = System.system_time(:microsecond) - @max_event_age_us
 
-        # only include events that are within our cutoff threshold
         events =
           for %{data: le} <- messages,
               le.body["timestamp"] >= cutoff_us,
               do: le
+
+        event_count = length(events)
+
+        if event_count < message_count do
+          Logger.warning(
+            "Dropping #{message_count - event_count} of #{message_count} ClickHouse event(s) older than 72 hours",
+            source_token: source_token,
+            backend_id: backend_id
+          )
+        end
 
         ClickHouseAdaptor.insert_log_events({source, backend}, events)
       end
