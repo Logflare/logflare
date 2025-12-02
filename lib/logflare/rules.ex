@@ -16,12 +16,17 @@ defmodule Logflare.Rules do
   Lists rules for a given Source or Backend
   """
   @spec list_rules(Source.t() | Backend.t()) :: [Backend.t()]
-  def list_rules(%Source{id: source_id}) do
+  def list_rules(%Source{id: source_id}), do: list_by_source_id(source_id)
+
+  def list_rules(%Backend{id: backend_id}), do: list_by_backend_id(backend_id)
+
+  # Cache friendly getters
+  def list_by_source_id(source_id) do
     from(r in Rule, where: r.source_id == ^source_id)
     |> Repo.all()
   end
 
-  def list_rules(%Backend{id: backend_id}) do
+  def list_by_backend_id(backend_id) do
     from(r in Rule, where: r.backend_id == ^backend_id)
     |> Repo.all()
   end
