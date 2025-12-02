@@ -11,6 +11,8 @@ defmodule Logflare.Backends.UserMonitoringTest do
   alias Logflare.Backends.SourceSup
   alias Logflare.Backends.UserMonitoring
   alias Logflare.SystemMetrics.AllLogsLogged
+  alias Logflare.LogEvent
+  alias Logflare.Endpoints
 
   def source_and_user(_context) do
     start_supervised!(AllLogsLogged)
@@ -27,7 +29,25 @@ defmodule Logflare.Backends.UserMonitoringTest do
     [source: source, source_b: source_b, user: user]
   end
 
+  def start_otel_exporter(_context) do
+    [spec] = UserMonitoring.get_otel_exporter()
+    start_supervised!(spec)
+    :ok
+  end
+
   describe "logs" do
+    setup do
+      :ok =
+        :logger.add_primary_filter(
+          :user_log_intercetor,
+          {&UserMonitoring.log_interceptor/2, []}
+        )
+
+      on_exit(fn ->
+        :logger.remove_primary_filter(:user_log_intercetor)
+      end)
+    end
+
     setup :source_and_user
 
     test "are routed to user's system source when monitoring is on", %{user: user, source: source} do
@@ -66,189 +86,251 @@ defmodule Logflare.Backends.UserMonitoringTest do
                &match?(%{body: %{"event_message" => "user not monitoring"}}, &1)
              )
     end
+  end
+
+  describe "system monitoring labels" do
+    setup :start_otel_exporter
 
     setup do
-      :ok =
-        :logger.add_primary_filter(
-          :user_log_intercetor,
-          {&UserMonitoring.log_interceptor/2, []}
-        )
+      start_supervised!(AllLogsLogged)
+      insert(:plan)
+      :ok
+    end
 
-      on_exit(fn ->
-        :logger.remove_primary_filter(:user_log_intercetor)
+    test "backends.ingest.ingested_bytes and backends.ingest.ingested_count" do
+      GoogleApi.BigQuery.V2.Api.Tabledata
+      |> stub(:bigquery_tabledata_insert_all, fn _conn,
+                                                 _project_id,
+                                                 _dataset_id,
+                                                 _table_name,
+                                                 _opts ->
+        {:ok, %GoogleApi.BigQuery.V2.Model.TableDataInsertAllResponse{insertErrors: nil}}
       end)
+
+      user =
+        insert(:user, system_monitoring: true)
+
+      source = insert(:source, user: user, labels: "my_label=m.value")
+      metrics_source = insert(:source, user: user, system_source_type: :metrics)
+      start_supervised!({SourceSup, metrics_source}, id: :metrics_source)
+      start_supervised!({SourceSup, source}, id: :source)
+
+      :timer.sleep(1000)
+
+      assert {:ok, _} = Backends.ingest_logs([%{"metadata" => %{"value" => "test"}}], source)
+
+      TestUtils.retry_assert(fn ->
+        assert [_] = Backends.list_recent_logs_local(source)
+
+        assert [
+                 _ | _
+               ] = events = Backends.list_recent_logs_local(metrics_source)
+
+        assert Enum.any?(
+                 events,
+                 &match?(%LogEvent{body: %{"attributes" => %{"my_label" => "test"}}}, &1)
+               )
+
+        assert Enum.any?(
+                 events,
+                 &match?(
+                   %LogEvent{
+                     body: %{"event_message" => "logflare.backends.ingest.ingested_count"}
+                   },
+                   &1
+                 )
+               )
+
+        assert Enum.any?(
+                 events,
+                 &match?(
+                   %LogEvent{
+                     body: %{"event_message" => "logflare.backends.ingest.ingested_bytes"}
+                   },
+                   &1
+                 )
+               )
+      end)
+    end
+
+    test "other users metrics" do
+      pid = self()
+
+      user =
+        insert(:user, system_monitoring: true)
+
+      other_user =
+        insert(:user, system_monitoring: true)
+
+      source = insert(:source, user: user, labels: "my_label=m.value")
+
+      other_source = insert(:source, user: other_user, labels: "my_label=m.value")
+
+      metrics_source = insert(:source, user: user, system_source_type: :metrics)
+      other_metrics_source = insert(:source, user: other_user, system_source_type: :metrics)
+      start_supervised!({SourceSup, source}, id: :source)
+      start_supervised!({SourceSup, other_source}, id: :other_source)
+      start_supervised!({SourceSup, metrics_source}, id: :metrics_source)
+      start_supervised!({SourceSup, other_metrics_source}, id: :other_metrics_source)
+
+      GoogleApi.BigQuery.V2.Api.Tabledata
+      |> stub(:bigquery_tabledata_insert_all, fn _conn,
+                                                 _project_id,
+                                                 dataset_id,
+                                                 _table_name,
+                                                 opts ->
+        if String.starts_with?(dataset_id, "#{other_user.id}") do
+          send(pid, {:insert_all, opts[:body].rows})
+        end
+
+        {:ok, %GoogleApi.BigQuery.V2.Model.TableDataInsertAllResponse{insertErrors: nil}}
+      end)
+
+      :timer.sleep(500)
+
+      assert {:ok, _} = Backends.ingest_logs([%{"metadata" => %{"value" => "test"}}], source)
+
+      assert {:ok, _} =
+               Backends.ingest_logs([%{"metadata" => %{"value" => "different"}}], other_source)
+
+      :timer.sleep(1500)
+
+      source_id = source.id
+      other_source_id = other_source.id
+      metrics_source_id = metrics_source.id
+      other_metrics_source_id = other_metrics_source.id
+      assert_receive {:insert_all, [%{json: %{"attributes" => _}} | _] = rows}, 5_000
+
+      rows = for row <- rows, do: row.json
+
+      assert Enum.all?(rows, &match?(%{"attributes" => [%{"my_label" => "different"}]}, &1))
+
+      for row <- rows, attr <- row["attributes"] do
+        assert attr["source_id"] in [other_source_id, other_metrics_source_id]
+        refute attr["source_id"] in [source_id, metrics_source_id]
+        refute attr["my_label"] == "test"
+      end
     end
   end
 
-  describe "metrics" do
+  describe "egress" do
+    setup :start_otel_exporter
+
     setup do
+      start_supervised!(AllLogsLogged)
       insert(:plan)
+      :ok
+    end
 
-      user_1 = insert(:user)
-      user_1 = Users.preload_defaults(user_1)
+    test "backends.ingest.egress.request_bytes includes backend metadata" do
+      pid = self()
 
-      backend_1 =
+      GoogleApi.BigQuery.V2.Api.Tabledata
+      |> stub(:bigquery_tabledata_insert_all, fn _, _, _, _, opts ->
+        send(pid, {:insert_all, opts[:body].rows})
+        {:ok, %GoogleApi.BigQuery.V2.Model.TableDataInsertAllResponse{insertErrors: nil}}
+      end)
+
+      user = insert(:user, system_monitoring: true)
+      metrics_source = insert(:source, user: user, system_source_type: :metrics)
+
+      webhook_backend =
         insert(:backend,
-          user: user_1,
+          user: user,
           type: :webhook,
-          config: %{url: "http://test.com"},
-          default_ingest?: false
+          config: %{url: "http://127.0.0.1:9999/webhook"},
+          metadata: %{"environment" => "test", "region" => "us-west"}
         )
 
-      user_2 = insert(:user)
-      user_2 = Users.preload_defaults(user_2)
+      source = insert(:source, user: user)
 
-      backend_2 =
-        insert(:backend,
-          user: user_2,
-          type: :webhook,
-          config: %{url: "http://test.com"},
-          default_ingest?: false
+      start_supervised!({SourceSup, metrics_source}, id: :metrics_source)
+      start_supervised!({SourceSup, source}, id: :source)
+
+      {:ok, _} = Backends.update_source_backends(source, [webhook_backend])
+      Backends.Cache.get_backend(webhook_backend.id)
+
+      :timer.sleep(1000)
+
+      assert {:ok, _} = Backends.ingest_logs([%{"message" => "test webhook egress"}], source)
+
+      :timer.sleep(2500)
+
+      assert_receive {:insert_all, [%{json: %{"attributes" => _}} | _] = rows}, 5_000
+
+      rows = for row <- rows, do: row.json
+
+      egress_row =
+        Enum.find(
+          rows,
+          &match?(%{"event_message" => "logflare.backends.ingest.egress.request_bytes"}, &1)
         )
 
-      {:ok, user_1: user_1, user_2: user_2, backend_1: backend_1, backend_2: backend_2}
+      assert egress_row, "Expected egress metric to be present"
+
+      [attributes] = egress_row["attributes"]
+
+      assert attributes["source_id"] == source.id
+      assert attributes["backend_id"] == webhook_backend.id
+      assert attributes["_backend_environment"] == "test"
+      assert attributes["_backend_region"] == "us-west"
+    end
+  end
+
+  describe "endpoints" do
+    setup :start_otel_exporter
+
+    setup do
+      start_supervised!(AllLogsLogged)
+      insert(:plan)
+      :ok
     end
 
-    test "are routed to user's system source when flag is true", %{
-      user_1: user,
-      backend_1: %{id: backend_id}
-    } do
-      user |> Users.update_user_allowed(%{system_monitoring: true})
-      metadata = %{backend_id: backend_id}
-      keep_function = UserMonitoring.keep_metric_function(:main_exporter)
+    test "endpoints.query.total_bytes_processed" do
+      pid = self()
 
-      # main exporter's metric keep function returns false
-      refute keep_function.(metadata)
+      GoogleApi.BigQuery.V2.Api.Tabledata
+      |> stub(:bigquery_tabledata_insert_all, fn _conn,
+                                                 _project_id,
+                                                 _dataset_id,
+                                                 _table_name,
+                                                 opts ->
+        send(pid, {:insert_all, opts[:body].rows})
+        {:ok, %GoogleApi.BigQuery.V2.Model.TableDataInsertAllResponse{insertErrors: nil}}
+      end)
 
-      # user exporter keep user specific metrics
+      expect(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, 1, fn _conn, _proj_id, _opts ->
+        {:ok, TestUtils.gen_bq_response([%{"result" => "1"}])}
+      end)
 
-      system_source =
-        Sources.get_by(user_id: user.id, system_source_type: :metrics)
+      user = insert(:user, system_monitoring: true)
+      source = insert(:source, user: user, system_source_type: :metrics)
+      start_supervised!({SourceSup, source}, id: :source)
+      # execute a query on the endpoint
+      endpoint =
+        insert(:endpoint,
+          user: user,
+          query: "SELECT 1",
+          labels: "my_label=some_value",
+          parsed_labels: %{"my_label" => "some_value"}
+        )
 
-      start_supervised!({SourceSup, system_source})
+      assert {:ok, _} = Endpoints.run_query(endpoint)
+      :timer.sleep(1000)
+      endpoint_id = endpoint.id
 
-      :telemetry.execute([:logflare, :backends, :ingest], %{event_count: 456}, metadata)
-
-      user_exporter_metrics =
-        OtelMetricExporter.MetricStore.get_metrics(:"system.metrics-#{user.id}")
-
-      assert match?(
-               %{
-                 {:sum, "logflare.backends.ingest.event_count"} => %{
-                   %{backend_id: ^backend_id} => 456
-                 }
-               },
-               user_exporter_metrics
-             )
-    end
-
-    test "stay on main exporter when flag is false", %{
-      user_1: user,
-      backend_1: %{id: backend_id}
-    } do
-      metadata = %{backend_id: backend_id}
-      keep_function = UserMonitoring.keep_metric_function(:main_exporter)
-
-      # main exporter's metric keep function returns true
-      assert keep_function.(metadata)
-
-      # if SourceSup is up, it stil won't ingest any metric
-      system_source =
-        user.id
-        |> Sources.create_user_system_sources()
-        |> Enum.find(&(&1.system_source_type == :metrics))
-
-      start_supervised!({SourceSup, system_source})
-
-      :telemetry.execute([:logflare, :backends, :ingest], %{value: 456}, metadata)
-
-      user_exporter_metrics =
-        OtelMetricExporter.MetricStore.get_metrics(:"system.metrics-#{user.id}")
-
-      refute match?(
-               %{
-                 {:sum, "logflare.backends.ingest.event_count"} => %{
-                   %{backend_id: ^backend_id} => 456
-                 }
-               },
-               user_exporter_metrics
-             )
-    end
-
-    test "dont get mixed between users", %{
-      user_1: user_1,
-      user_2: user_2,
-      backend_1: %{id: backend_1_id},
-      backend_2: %{id: backend_2_id}
-    } do
-      # user 1 setup
-      user_1 |> Users.update_user_allowed(%{system_monitoring: true})
-
-      system_source_1 =
-        Sources.get_by(user_id: user_1.id, system_source_type: :metrics)
-
-      start_supervised!({SourceSup, system_source_1}, id: {:source_sup, 1})
-
-      # user 2 setup
-
-      user_2 |> Users.update_user_allowed(%{system_monitoring: true})
-
-      system_source_2 =
-        Sources.get_by(user_id: user_2.id, system_source_type: :metrics)
-
-      start_supervised!({SourceSup, system_source_2}, id: {:source_sup, 2})
-
-      # sending signals related to both users
-
-      :telemetry.execute([:logflare, :backends, :ingest], %{event_count: 123}, %{
-        backend_id: backend_1_id
-      })
-
-      :telemetry.execute([:logflare, :backends, :ingest], %{event_count: 456}, %{
-        backend_id: backend_2_id
-      })
-
-      user_1_exporter_metrics =
-        OtelMetricExporter.MetricStore.get_metrics(:"system.metrics-#{user_1.id}")
-
-      assert match?(
-               %{
-                 {:sum, "logflare.backends.ingest.event_count"} => %{
-                   %{backend_id: ^backend_1_id} => 123
-                 }
-               },
-               user_1_exporter_metrics
-             )
-
-      refute match?(
-               %{
-                 {:sum, "logflare.backends.ingest.event_count"} => %{
-                   %{backend_id: ^backend_2_id} => _
-                 }
-               },
-               user_1_exporter_metrics
-             )
-
-      user_2_exporter_metrics =
-        OtelMetricExporter.MetricStore.get_metrics(:"system.metrics-#{user_2.id}")
-
-      assert match?(
-               %{
-                 {:sum, "logflare.backends.ingest.event_count"} => %{
-                   %{backend_id: ^backend_2_id} => 456
-                 }
-               },
-               user_2_exporter_metrics
-             )
-
-      refute match?(
-               %{
-                 {:sum, "logflare.backends.ingest.event_count"} => %{
-                   %{backend_id: ^backend_1_id} => _
-                 }
-               },
-               user_2_exporter_metrics
-             )
+      assert_receive {:insert_all,
+                      [
+                        %{
+                          json: %{
+                            "attributes" => [
+                              %{"my_label" => "some_value", "endpoint_id" => ^endpoint_id}
+                            ]
+                          }
+                        }
+                        | _
+                      ]},
+                     5_000
     end
   end
 end

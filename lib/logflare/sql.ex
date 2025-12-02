@@ -207,7 +207,7 @@ defmodule Logflare.Sql do
            ast: statements,
            dialect: sql_dialect
          },
-         data = DialectTransformer.Clickhouse.build_transformation_data(user, base_data),
+         data = DialectTransformer.ClickHouse.build_transformation_data(user, base_data),
          :ok <- validate_query(statements, data),
          :ok <- maybe_validate_sandboxed_query_ast({statements, sandboxed_query_ast}, data) do
       data = %{data | sandboxed_query_ast: sandboxed_query_ast}

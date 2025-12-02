@@ -176,7 +176,7 @@ defmodule Logflare.Mixfile do
       {:telemetry, "~> 1.0"},
       {:telemetry_metrics, "~> 1.0"},
       {:telemetry_poller, "~> 1.1"},
-      {:logflare_logger_backend, "~> 0.11.4"},
+      {:logflare_logger_backend, github: "Logflare/logflare_logger_backend", ref: "b257399"},
       {:logger_json, "~> 5.1"},
 
       # HTML
@@ -243,7 +243,7 @@ defmodule Logflare.Mixfile do
       {:opentelemetry_phoenix, "~> 2.0.0-rc.2"},
       {:opentelemetry_bandit, "~> 0.2.0-rc.1"},
       {:otel_metric_exporter,
-       git: "https://github.com/supabase/elixir-otel-metric-exporter", ref: "61e2d37"},
+       git: "https://github.com/supabase/elixir-otel-metric-exporter", ref: "e44bc0e"},
       {:live_monaco_editor, "~> 0.2"}
     ]
   end

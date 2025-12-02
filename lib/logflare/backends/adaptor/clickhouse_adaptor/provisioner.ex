@@ -1,9 +1,9 @@
-defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.Provisioner do
+defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Provisioner do
   @moduledoc """
-  Short-lived process that kicks off when spinning up a `ClickhouseAdaptor`.
+  Short-lived process that kicks off when spinning up a `ClickHouseAdaptor`.
   Used to provision resources (tables/views) within ClickHouse.
 
-  It is assumed that the `ClickhouseAdaptor` is running _before_ starting this process.
+  It is assumed that the `ClickHouseAdaptor` is running _before_ starting this process.
   """
 
   use GenServer
@@ -11,7 +11,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.Provisioner do
 
   require Logger
 
-  alias Logflare.Backends.Adaptor.ClickhouseAdaptor
+  alias Logflare.Backends.Adaptor.ClickHouseAdaptor
   alias Logflare.Backends.Backend
   alias Logflare.Sources.Source
 
@@ -30,7 +30,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.Provisioner do
   end
 
   @doc false
-  @spec start_link(ClickhouseAdaptor.source_backend_tuple()) :: GenServer.on_start()
+  @spec start_link(ClickHouseAdaptor.source_backend_tuple()) :: GenServer.on_start()
   def start_link({%Source{}, %Backend{}} = args) do
     GenServer.start_link(__MODULE__, args)
   end
@@ -54,7 +54,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.Provisioner do
         :test_connection,
         %__MODULE__{source: %Source{} = source, backend: %Backend{} = backend} = state
       ) do
-    with :ok <- ClickhouseAdaptor.test_connection({source, backend}) do
+    with :ok <- ClickHouseAdaptor.test_connection({source, backend}) do
       {:noreply, state, {:continue, :provision_all}}
     else
       {:error, reason} = error ->
@@ -72,7 +72,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.Provisioner do
         :provision_all,
         %__MODULE__{source: %Source{} = source, backend: %Backend{} = backend} = state
       ) do
-    with :ok <- ClickhouseAdaptor.provision_all({source, backend}) do
+    with :ok <- ClickHouseAdaptor.provision_all({source, backend}) do
       {:noreply, state, {:continue, :close_process}}
     else
       {:error, reason} = error ->

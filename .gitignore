@@ -93,6 +93,6 @@ dev-*
 !AGENTS.md
 .cursorrules
 .claude
-
+.treq
 # Rust binary artifacts
 /target/

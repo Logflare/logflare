@@ -30,7 +30,7 @@ defmodule LogflareWeb.QueryLiveTest do
       |> element("form")
       |> render_submit(%{}) =~ "Ran query successfully"
 
-      assert view |> render() =~ "1 byte processed"
+      assert view |> render() =~ ~r/1 .+ processed/
 
       assert_patch(view) =~ ~r/current_timestamp/
       assert render(view) =~ "some-data"

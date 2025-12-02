@@ -73,7 +73,7 @@ defmodule Logflare.Logs.SearchOperations do
   def apply_query_defaults(%SO{} = so) do
     query =
       from(so.source.bq_table_id)
-      |> select([t], [t.timestamp, t.id, t.event_message])
+      |> select(%{})
       |> order_by([t], desc: t.timestamp)
       |> limit(@default_limit)
 
@@ -356,6 +356,23 @@ defmodule Logflare.Logs.SearchOperations do
   defp to_value_unit(average) when average < 100, do: {6, "HOUR"}
   defp to_value_unit(average) when average < 200, do: {1, "HOUR"}
   defp to_value_unit(_average), do: {1, "MINUTE"}
+
+  @spec apply_select_rules(SO.t()) :: SO.t()
+  def apply_select_rules(%SO{type: :events, query: q} = so) do
+    default_rules = [
+      Lql.Rules.SelectRule.build(path: "timestamp"),
+      Lql.Rules.SelectRule.build(path: "id"),
+      Lql.Rules.SelectRule.build(path: "event_message")
+    ]
+
+    select_rules =
+      so.lql_rules
+      |> Lql.Rules.get_select_rules()
+      |> Kernel.++(default_rules)
+
+    q = Lql.apply_select_rules(q, select_rules)
+    %{so | query: q}
+  end
 
   def apply_filters(%SO{type: :events, query: q} = so) do
     q = Lql.apply_filter_rules(q, so.lql_meta_and_msg_filters)

@@ -21,10 +21,11 @@ defmodule Logflare.Backends.Backend do
     postgres: Adaptor.PostgresAdaptor,
     bigquery: Adaptor.BigQueryAdaptor,
     loki: Adaptor.LokiAdaptor,
-    clickhouse: Adaptor.ClickhouseAdaptor,
+    clickhouse: Adaptor.ClickHouseAdaptor,
     incidentio: Adaptor.IncidentioAdaptor,
     s3: Adaptor.S3Adaptor,
     axiom: Adaptor.AxiomAdaptor,
+    otlp: Adaptor.OtlpAdaptor,
     tcp: Adaptor.TCPAdaptor
   }
 

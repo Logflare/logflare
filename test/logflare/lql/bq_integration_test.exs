@@ -7,6 +7,7 @@ defmodule Logflare.Lql.BqIntegrationTest do
   alias Logflare.Backends.Adaptor.BigQueryAdaptor
   alias Logflare.Lql
   alias Logflare.Lql.Rules.FilterRule
+  alias Logflare.Lql.Rules.SelectRule
 
   @bq_table_id "some-table"
 
@@ -496,6 +497,107 @@ defmodule Logflare.Lql.BqIntegrationTest do
 
       assert sql ==
                "SELECT s0.id, s1.count FROM some-table AS s0 INNER JOIN (SELECT COUNT(*) AS count FROM (SELECT sss0.id AS id, sss0.name AS name FROM some-table AS sss0) AS ss0) AS s1 ON TRUE"
+    end
+  end
+
+  describe "apply_select_rules for BigQuery SQL" do
+    test "wildcard select returns all fields" do
+      select_rules = [
+        %SelectRule{
+          path: "*",
+          wildcard: true
+        }
+      ]
+
+      query =
+        from(@bq_table_id, select: [:timestamp, :metadata])
+        |> Lql.apply_select_rules(select_rules)
+
+      {:ok, {sql, _params}} = BigQueryAdaptor.ecto_to_sql(query, [])
+
+      assert sql =~ "FROM #{@bq_table_id}"
+      assert sql =~ "SELECT"
+    end
+
+    test "single top-level field selection" do
+      select_rules = [
+        %SelectRule{
+          path: "event_message",
+          wildcard: false
+        }
+      ]
+
+      query =
+        from(@bq_table_id, select: [:timestamp, :metadata])
+        |> Lql.apply_select_rules(select_rules)
+
+      {:ok, {sql, _params}} = BigQueryAdaptor.ecto_to_sql(query, [])
+
+      assert sql =~ "SELECT"
+      assert sql =~ "event_message"
+      assert sql =~ "FROM #{@bq_table_id}"
+    end
+
+    test "nested field selection" do
+      select_rules = [
+        %SelectRule{
+          path: "metadata.request.headers.authorization",
+          wildcard: false
+        }
+      ]
+
+      query =
+        from(@bq_table_id, select: [:timestamp, :metadata])
+        |> Lql.apply_select_rules(select_rules)
+
+      {:ok, {sql, _params}} = BigQueryAdaptor.ecto_to_sql(query, [])
+
+      assert sql =~ "UNNEST"
+      assert sql =~ "metadata"
+      assert sql =~ "request"
+      assert sql =~ "headers"
+      assert sql =~ "authorization"
+      refute sql =~ "metadata.request.headers.authorization"
+    end
+
+    test "aliased field selection" do
+      select_rules = [
+        %SelectRule{
+          path: "event_message",
+          wildcard: false,
+          alias: "description"
+        }
+      ]
+
+      query =
+        from(@bq_table_id, select: [:timestamp, :metadata])
+        |> Lql.apply_select_rules(select_rules)
+
+      {:ok, {sql, _params}} = BigQueryAdaptor.ecto_to_sql(query, [])
+
+      assert sql =~ "event_message AS description"
+      assert sql =~ "SELECT"
+      assert sql =~ "FROM #{@bq_table_id}"
+    end
+
+    test "nested field with alias" do
+      select_rules = [
+        %SelectRule{
+          path: "metadata.user_id",
+          wildcard: false,
+          alias: "user"
+        }
+      ]
+
+      query =
+        from(@bq_table_id, select: [:timestamp, :metadata])
+        |> Lql.apply_select_rules(select_rules)
+
+      {:ok, {sql, _params}} = BigQueryAdaptor.ecto_to_sql(query, [])
+
+      assert sql =~ "UNNEST"
+      assert sql =~ "metadata"
+      assert sql =~ "user_id AS user"
     end
   end
 end

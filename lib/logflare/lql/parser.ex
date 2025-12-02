@@ -110,6 +110,9 @@ defmodule Logflare.Lql.Parser do
       |> Enum.reject(&is_nil/1)
 
     {:ok, rules}
+  catch
+    err ->
+      {:error, err}
   end
 
   def parse("", _schema) do

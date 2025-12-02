@@ -635,6 +635,64 @@ defmodule LogflareWeb.BackendsLiveTest do
     end
   end
 
+  describe "resolving team context" do
+    setup %{conn: conn} do
+      user = insert(:user)
+      team = insert(:team, user: user)
+      team_user = insert(:team_user, team: team)
+      backend = insert(:backend, user: user)
+
+      [conn: conn, user: user, team: team, team_user: team_user, backend: backend]
+    end
+
+    test "team user can list backends", %{
+      conn: conn,
+      user: user,
+      team_user: team_user,
+      backend: backend
+    } do
+      {:ok, _view, html} =
+        conn
+        |> login_user(user, team_user)
+        |> live(~p"/backends?t=#{team_user.team_id}")
+
+      assert html =~ backend.name
+    end
+
+    test "team user can view backend without t= param", %{
+      conn: conn,
+      user: user,
+      team_user: team_user,
+      backend: backend
+    } do
+      {:ok, _view, html} =
+        conn
+        |> login_user(user, team_user)
+        |> live(~p"/backends/#{backend.id}")
+
+      assert html =~ backend.name
+    end
+
+    test "backend links include team query param on index", %{
+      conn: conn,
+      user: user,
+      team_user: team_user,
+      backend: backend
+    } do
+      {:ok, view, _html} =
+        conn
+        |> login_user(user, team_user)
+        |> live(~p"/backends?t=#{team_user.team_id}")
+
+      # Check that "New backend" link includes team param
+      html = render(view)
+      assert html =~ ~r/href="[^"]*\/backends\/new[^"]*[?&]t=#{team_user.team_id}/
+
+      # Check that backend name link includes team param
+      assert html =~ ~r/href="[^"]*\/backends\/#{backend.id}[^"]*[?&]t=#{team_user.team_id}/
+    end
+  end
+
   test "redirects to login page when not logged in", %{conn: conn} do
     assert conn
            |> get(~p"/backends")

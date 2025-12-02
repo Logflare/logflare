@@ -1,6 +1,6 @@
 <.subheader>
   <:path>
-    ~/<.subheader_path_link live_patch to={~p"/alerts"}>alerts</.subheader_path_link>
+    ~/<.subheader_path_link live_patch to={~p"/alerts"} team={@team}>alerts</.subheader_path_link>
   </:path>
   <.render_docs_link {assigns} />
   <.render_access_tokens_link {assigns} />
@@ -15,18 +15,18 @@
 
   <div class="tw-flex tw-gap-4 tw-items-center">
     <a href="https://docs.logflare.app/alerts" target="_blank">Documentation</a>
-    <.link patch={~p"/alerts/new"}>
+    <.team_link patch={~p"/alerts/new"} team={@team}>
       <.button variant="primary">
         New alert
       </.button>
-    </.link>
+    </.team_link>
   </div>
 </div>
 
 <section class="mx-auto container">
   <ul :for={alert <- Enum.sort_by(@alerts, & &1.name)} class="list-group">
     <li class="list-group-item">
-      <.link patch={~p"/alerts/#{alert.id}"} class="tw-text-white">{alert.name}</.link>
+      <.team_link team={@team} patch={~p"/alerts/#{alert.id}"} class="tw-text-white">{alert.name}</.team_link>
       <span class="tw-block tw-text-sm">uuid: {alert.token}</span>
       <p :if={alert.description} class="tw-pb-0 tw-mb-0 tw-text-sm text-muted">
         {alert.description}

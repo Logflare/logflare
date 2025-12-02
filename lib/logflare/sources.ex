@@ -21,6 +21,7 @@ defmodule Logflare.Sources do
   alias Logflare.Sources
   alias Logflare.Sources.Source
   alias Logflare.Sources.Source.BigQuery.SchemaBuilder
+  alias Logflare.TeamUsers.TeamUser
   alias Logflare.User
   alias Logflare.Users
   alias Logflare.LogEvent
@@ -134,27 +135,21 @@ defmodule Logflare.Sources do
   Create system sources for the user, if they don't exist yet
   "
   def create_user_system_sources(user_id) do
-    entries =
-      for type <- Source.system_source_types() do
-        now = NaiveDateTime.utc_now() |> NaiveDateTime.truncate(:second)
+    user = Users.get(user_id)
 
-        %{
-          user_id: user_id,
-          name: "system.#{type}",
-          system_source: true,
-          system_source_type: type,
-          favorite: true,
-          token: Ecto.UUID.Atom.autogenerate(),
-          inserted_at: now,
-          updated_at: now
-        }
-      end
+    for type <- Source.system_source_types() do
+      attrs = %{
+        name: "system.#{type}",
+        system_source: true,
+        system_source_type: type,
+        favorite: true
+      }
 
-    Repo.insert_all(Source, entries,
-      returning: true,
-      conflict_target: [:user_id, :system_source_type],
-      on_conflict: :nothing
-    )
+      user
+      |> Ecto.build_assoc(:sources)
+      |> Source.changeset(attrs)
+      |> Repo.insert(on_conflict: :nothing, conflict_target: [:user_id, :system_source_type])
+    end
 
     list_system_sources_by_user(user_id)
     |> warn_missing_system_sources(user_id)
@@ -319,6 +314,14 @@ defmodule Logflare.Sources do
     |> put_retention_days()
   end
 
+  @spec get_by_user_access(User.t() | TeamUser.t(), atom()) :: Source.t() | nil
+  def get_by_user_access(user, id) do
+    Source
+    |> Logflare.Teams.filter_by_user_access(user)
+    |> where([query], query.id == ^id)
+    |> Logflare.Repo.one()
+  end
+
   def get_rate_limiter_metrics(source, bucket: :default) do
     cluster_size = Cluster.Utils.cluster_size()
     node_metrics = get_node_rate_limiter_metrics(source, bucket: :default)
@@ -371,7 +374,7 @@ defmodule Logflare.Sources do
   @spec preload_defaults(Source.t()) :: Source.t()
   def preload_defaults(source) do
     source
-    |> Repo.preload([:user, :rules, :backends])
+    |> Repo.preload([:rules, :backends, [user: :team]])
     |> refresh_source_metrics()
     |> put_bq_table_id()
   end
@@ -585,6 +588,37 @@ defmodule Logflare.Sources do
     |> Stream.run()
 
     :ok
+  end
+
+  @doc """
+  Parses source labels from an event, for monitoring.
+
+
+  """
+  @spec get_labels_from_event(Source.t(), LogEvent.t()) :: map()
+  def get_labels_from_event(source, log_event) do
+    mapping = get_labels_mapping(source)
+
+    for {label, path} <- mapping, into: %{} do
+      {label, get_in(log_event.body, path)}
+    end
+  end
+
+  def get_labels_mapping(%{labels: nil}), do: %{}
+  def get_labels_mapping(%{labels: ""}), do: %{}
+
+  def get_labels_mapping(source) do
+    (source.labels || "")
+    |> String.split(",")
+    |> Enum.map(fn label ->
+      String.split(label, "=", parts: 2)
+      |> then(fn
+        [label, "m." <> path] -> {label, ["metadata" | String.split(path, ".")]}
+        [label, path] -> {label, String.split(path, ".")}
+        [label] -> {label, [label]}
+      end)
+    end)
+    |> Map.new()
   end
 
   defp source_idle?(source) do

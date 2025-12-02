@@ -433,6 +433,9 @@ end
 syn_endpoints_partitions =
   for n <- 0..System.schedulers_online(), do: "endpoints_#{n}" |> String.to_atom()
 
+syn_recent_touch_partitions =
+  for n <- 0..System.schedulers_online(), do: "recent_touch_#{n}" |> String.to_atom()
+
 config :syn,
-  scopes: [:core, :alerting] ++ syn_endpoints_partitions,
+  scopes: [:core, :alerting] ++ syn_endpoints_partitions ++ syn_recent_touch_partitions,
   event_handler: Logflare.SynEventHandler

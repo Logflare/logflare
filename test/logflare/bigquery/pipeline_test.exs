@@ -13,6 +13,7 @@ defmodule Logflare.BigQuery.PipelineTest do
   @pipeline_name :test_pipeline
   describe "pipeline" do
     setup do
+      insert(:plan)
       user = insert(:user)
       source = insert(:source, user_id: user.id)
       {:ok, source: source}

@@ -9,7 +9,6 @@ defmodule LogflareWeb.EndpointsLive do
   alias Logflare.Backends.Adaptor
   alias Logflare.Endpoints
   alias Logflare.Endpoints.PiiRedactor
-  alias Logflare.Users
   alias LogflareWeb.{QueryComponents, Utils}
 
   embed_templates("actions/*", suffix: "_action")
@@ -30,12 +29,12 @@ defmodule LogflareWeb.EndpointsLive do
 
   defp render_access_tokens_link(assigns) do
     ~H"""
-    <.subheader_link to={~p"/access-tokens"} text="access tokens" fa_icon="key" />
+    <.subheader_link team={@team} to={~p"/access-tokens"} text="access tokens" fa_icon="key" />
     """
   end
 
-  def mount(%{}, %{"user_id" => user_id}, socket) do
-    user = Users.get(user_id)
+  def mount(%{}, _session, socket) do
+    %{assigns: %{user: user}} = socket
 
     allow_access = Enum.any?([Utils.flag("endpointsOpenBeta"), user.endpoints_beta])
 
@@ -44,7 +43,6 @@ defmodule LogflareWeb.EndpointsLive do
     socket =
       socket
       |> assign(:user_id, user.id)
-      |> assign(:user, user)
       #  must be below user_id assign
       |> refresh_endpoints()
       |> assign(:query_result_rows, nil)
@@ -88,15 +86,17 @@ defmodule LogflareWeb.EndpointsLive do
 
   def handle_params(params, _uri, socket) do
     endpoint_id = params["id"]
+    user = socket.assigns.team_user || socket.assigns.user
 
     endpoint =
       if endpoint_id do
-        Endpoints.get_by(id: endpoint_id, user_id: socket.assigns.user_id)
+        Endpoints.get_endpoint_query_by_user_access(user, endpoint_id)
       end
 
     socket =
       socket
       |> assign(:show_endpoint, endpoint)
+      |> LogflareWeb.AuthLive.assign_context_by_resource(endpoint, user.email)
       |> then(fn
         socket when endpoint != nil ->
           {:ok, parsed_result} =
@@ -165,7 +165,7 @@ defmodule LogflareWeb.EndpointsLive do
   def handle_event(
         "save-endpoint",
         %{"endpoint" => params},
-        %{assigns: %{user: user, show_endpoint: show_endpoint}} = socket
+        %{assigns: %{user: user, show_endpoint: show_endpoint, team: team}} = socket
       ) do
     Logger.debug("Saving endpoint", params: params)
 
@@ -176,7 +176,7 @@ defmodule LogflareWeb.EndpointsLive do
         {:noreply,
          socket
          |> put_flash(:info, "Successfully #{verb} endpoint #{endpoint.name}")
-         |> push_patch(to: ~p"/endpoints/#{endpoint.id}")
+         |> push_patch(to: Utils.with_team_param(~p"/endpoints/#{endpoint.id}", team))
          |> assign(:show_endpoint, endpoint)
          |> assign(:query_result_rows, nil)
          |> assign(:total_bytes_processed, nil)}

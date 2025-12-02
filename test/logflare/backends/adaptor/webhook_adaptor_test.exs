@@ -140,11 +140,6 @@ defmodule Logflare.Backends.WebhookAdaptorTest do
              })
   end
 
-  test "EgressMiddleware" do
-    assert {:ok, _} = EgressMiddleware.call(%Tesla.Env{}, [], [])
-    assert {:ok, _} = EgressMiddleware.call(%Tesla.Env{}, [], metadata: nil)
-  end
-
   describe "redact_config/1" do
     test "redacts Authorization header" do
       config = %{

@@ -43,9 +43,11 @@ defmodule Logflare.GenSingletonTest do
           id: :second
         )
 
-      assert GenServer.whereis(__MODULE__.TestGenserver)
-      assert GenSingleton.get_pid(pid1)
-      assert GenSingleton.get_pid(pid1) == GenSingleton.get_pid(pid2)
+      TestUtils.retry_assert(fn ->
+        assert GenServer.whereis(__MODULE__.TestGenserver)
+        assert GenSingleton.get_pid(pid1)
+        assert GenSingleton.get_pid(pid1) == GenSingleton.get_pid(pid2)
+      end)
 
       Process.exit(pid1, :kill)
       refute Process.alive?(pid1)

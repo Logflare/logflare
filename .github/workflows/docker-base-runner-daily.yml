@@ -2,7 +2,7 @@ name: Docker Base Runner Daily Build
 
 on:
   schedule:
-    - cron: '0 2 * * *'  # Daily at 2 AM UTC
+    - cron: "0 2 * * *" # Daily at 2 AM UTC
   workflow_dispatch:
 
 permissions:
@@ -57,9 +57,9 @@ jobs:
     strategy:
       matrix:
         include:
-          - runner: [self-hosted, X64]
+          - runner: blacksmith-4vcpu-ubuntu-2404
             arch: amd64
-          - runner: arm-runner
+          - runner: blacksmith-4vcpu-ubuntu-2404-arm
             arch: arm64
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 30

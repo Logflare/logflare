@@ -57,7 +57,11 @@ config :logflare, LogflareWeb.Endpoint,
   ],
   url: [host: "localhost", scheme: "http", port: 4000],
   secret_key_base: "DSzZYeAgGaXlfRXPQqMOPiA8hJOYSImhnR2lO8lREOE2vWDmkGn1XWHxoCZoASlP",
-  render_errors: [view: LogflareWeb.ErrorView, accepts: ~w(html json)],
+  render_errors: [
+    view: LogflareWeb.ErrorView,
+    accepts: ~w(html json),
+    root_layout: {LogflareWeb.LayoutView, :root}
+  ],
   pubsub_server: Logflare.PubSub,
   live_view: [signing_salt: "Fvo_-oQi4bjPfQLh"]
 
@@ -157,7 +161,7 @@ config :logflare, Logflare.Scheduler,
   run_strategy: Quantum.RunStrategy.Local,
   jobs: [
     source_cleanup: [
-      schedule: "*/15 * * * *",
+      schedule: "*/30 * * * *",
       task: {Logflare.Sources, :shutdown_idle_sources, []}
     ]
   ]

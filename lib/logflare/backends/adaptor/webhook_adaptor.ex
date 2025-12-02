@@ -16,13 +16,12 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
   This adaptor performs a merge on config that will prevent you from leveraging a dynamically generated URL configuration at runtime.
   To bypass this behavior, you can use the optional `:url_override` attribute.
 
-  See the `Logflare.Backends.Adaptor.ClickhouseWebhookAdaptor` for an example that utilizes this.
+  See the `Logflare.Backends.Adaptor.ClickHouseWebhookAdaptor` for an example that utilizes this.
   """
 
   use GenServer
 
   alias Logflare.Backends
-  alias Logflare.Backends.Adaptor.WebhookAdaptor.EgressMiddleware
   alias Logflare.Utils
 
   @behaviour Logflare.Backends.Adaptor
@@ -77,6 +76,7 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
   # HTTP Client
   defmodule Client do
     @moduledoc false
+    alias Logflare.Backends.Adaptor.HttpBased.EgressTracer
     use Tesla, docs: false
 
     defguardp is_possible_pool(value)
@@ -108,7 +108,7 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
           Tesla.Middleware.Telemetry,
           Tesla.Middleware.JSON,
           if(opts[:gzip], do: {Tesla.Middleware.CompressRequest, format: "gzip"}),
-          {EgressMiddleware, metadata: opts[:metadata]}
+          EgressTracer
         ]
         |> Enum.filter(& &1),
         adaptor
@@ -207,15 +207,17 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
         body: payload,
         headers: config[:headers] || %{},
         gzip: Map.get(config, :gzip, true),
-        # metadata map will get set as OTEL attributes in EgressMiddleware
-        metadata:
-          %{
-            "source_id" => context[:source_id],
-            "source_uuid" => context[:source_token],
-            "backend_id" => context[:backend_id],
-            "backend_uuid" => context[:backend_token]
-          }
-          |> Map.merge(backend_meta),
+        opts: [
+          # metadata map will get set as OTEL attributes in EgressTracer
+          metadata:
+            %{
+              "source_id" => context[:source_id],
+              "source_uuid" => context[:source_token],
+              "backend_id" => context[:backend_id],
+              "backend_uuid" => context[:backend_token]
+            }
+            |> Map.merge(backend_meta)
+        ],
         http: config[:http]
       )
     end

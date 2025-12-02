@@ -1,8 +1,8 @@
-defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.ConnectionManagerTest do
+defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManagerTest do
   use Logflare.DataCase, async: false
 
-  alias Logflare.Backends.Adaptor.ClickhouseAdaptor
-  alias Logflare.Backends.Adaptor.ClickhouseAdaptor.ConnectionManager
+  alias Logflare.Backends.Adaptor.ClickHouseAdaptor
+  alias Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager
 
   setup do
     insert(:plan, name: "Free")
@@ -124,7 +124,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.ConnectionManagerTest do
 
       case ConnectionManager.ensure_pool_started(invalid_backend) do
         :ok ->
-          assert {:error, _reason} = ClickhouseAdaptor.test_connection(invalid_backend)
+          assert {:error, _reason} = ClickHouseAdaptor.test_connection(invalid_backend)
 
         {:error, _reason} ->
           refute ConnectionManager.pool_active?(invalid_backend)

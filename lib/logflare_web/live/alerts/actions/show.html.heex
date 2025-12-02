@@ -1,9 +1,9 @@
 <.subheader>
   <:path>
-    ~/<.subheader_path_link live_patch to={~p"/alerts"}>alerts</.subheader_path_link>/{@alert.name}
+    ~/<.subheader_path_link live_patch to={~p"/alerts"} team={@team}>alerts</.subheader_path_link>/{@alert.name}
   </:path>
-  <.subheader_link to={~p"/access-tokens"} text="access tokens" fa_icon="key" />
-  <.subheader_link live_patch to={~p"/alerts/#{@alert.id}/edit"} text="edit" fa_icon="edit" />
+  <.subheader_link team={@team} to={~p"/access-tokens"} text="access tokens" fa_icon="key" />
+  <.subheader_link team={@team} live_patch to={~p"/alerts/#{@alert.id}/edit"} text="edit" fa_icon="edit" />
 </.subheader>
 <section class="mx-auto container pt-3 tw-flex tw-flex-col tw-gap-4">
   <h2>
@@ -86,9 +86,9 @@
       <li :for={backend <- @alert.backends} :if={@alert} class="list-group-item">
         <div class="tw-flex tw-items-center tw-gap-2">
           <span class="badge badge-pill badge-secondary">{backend.type}</span>
-          <.link patch={~p"/backends/#{backend.id}"} class="tw-no-underline ml-2">
+          <.team_link team={@team} patch={~p"/backends/#{backend.id}"} class="tw-no-underline ml-2">
             <span><strong>{backend.name}</strong></span>
-          </.link>
+          </.team_link>
           <button phx-click="remove-backend" phx-value-backend_id={backend.id} class="btn btn-outline-danger btn-xs tw-text-xs p-1 ml-5">
             Remove backend
           </button>

@@ -4,10 +4,11 @@ defmodule Logflare.Backends.Adaptor.AxiomAdaptorTest do
   alias Logflare.Backends
   alias Logflare.Backends.Adaptor
   alias Logflare.Backends.AdaptorSupervisor
-  alias Logflare.Backends.Adaptor.WebhookAdaptor.Client
+  alias Logflare.Backends.Adaptor.HttpBased
   alias Logflare.SystemMetrics.AllLogsLogged
 
   @subject Adaptor.AxiomAdaptor
+  @tesla_adapter Tesla.Adapter.Finch
 
   @valid_config %{api_token: "THE-API-KEY", dataset_name: "logflare", domain: "api.axiom.co"}
   @valid_config_input Map.new(@valid_config, fn {k, v} -> {Atom.to_string(k), v} end)
@@ -61,32 +62,11 @@ defmodule Logflare.Backends.Adaptor.AxiomAdaptorTest do
     end
   end
 
-  describe "transform_config/1" do
-    test "converts config to WebhookAdaptor format" do
-      backend = %{config: @valid_config}
-
-      config = @subject.transform_config(backend)
-
-      # Based on https://axiom.co/docs/restapi/endpoints/ingestIntoDataset?playground=open
-      assert config.url ==
-               "https://api.axiom.co/v1/datasets/#{@valid_config.dataset_name}/ingest?timestamp-field=timestamp&timestamp-format=2006-01-02T15%3A04%3A05.999999Z07%3A00"
-
-      assert config.headers["content-type"] == "application/json"
-      assert config.headers["authorization"] == "Bearer #{@valid_config.api_token}"
-      assert config.http == "http2"
-      assert config.gzip == true
-      assert is_function(config.format_batch)
-    end
-  end
-
   describe "test_connection/1" do
-    @tesla_adapter Tesla.Adapter.Finch
-
     setup :backend_data
 
     test "succceeds on 200 response", ctx do
-      @tesla_adapter
-      |> expect(:call, 2, fn env, _opts ->
+      mock_adapter(2, fn env ->
         assert env.method == :post
         assert env.url == "https://api.axiom.co/v1/datasets/#{@valid_config.dataset_name}/ingest"
         assert Tesla.get_header(env, "authorization") == "Bearer #{@valid_config.api_token}"
@@ -118,10 +98,7 @@ defmodule Logflare.Backends.Adaptor.AxiomAdaptorTest do
       ]
 
       for response <- error_responses do
-        @tesla_adapter
-        |> expect(:call, fn _env, _opts ->
-          response
-        end)
+        mock_adapter(fn _env -> response end)
 
         assert {:error, reason} = @subject.test_connection(ctx.backend)
         assert is_binary(reason)
@@ -142,15 +119,18 @@ defmodule Logflare.Backends.Adaptor.AxiomAdaptorTest do
       this = self()
       ref = make_ref()
 
-      Client
-      |> expect(:send, fn opts ->
-        body = opts[:body]
+      mock_adapter(fn env ->
+        # Based on https://axiom.co/docs/restapi/endpoints/ingestIntoDataset?playground=open
+        assert Tesla.build_url(env) ==
+                 "https://api.axiom.co/v1/datasets/#{@valid_config.dataset_name}/ingest?timestamp-field=timestamp&timestamp-format=2006-01-02T15%3A04%3A05.999999Z07%3A00"
 
-        assert opts[:headers]["content-type"] == "application/json"
-        assert opts[:headers]["authorization"] == "Bearer #{@valid_config.api_token}"
+        assert env.method == :post
+        assert Tesla.get_header(env, "content-type") == "application/json"
+        assert Tesla.get_header(env, "authorization") == "Bearer #{@valid_config.api_token}"
+        assert Tesla.get_header(env, "content-encoding") == "gzip"
 
-        send(this, {ref, body})
-        %Tesla.Env{status: 200, body: ""}
+        send(this, {ref, env.body})
+        {:ok, %Tesla.Env{status: 200, body: ""}}
       end)
 
       log_event =
@@ -162,7 +142,9 @@ defmodule Logflare.Backends.Adaptor.AxiomAdaptorTest do
         )
 
       assert {:ok, _} = Backends.ingest_logs([log_event], source)
-      assert_receive {^ref, [log]}, 5000
+      assert_receive {^ref, gzipped}, 5000
+      assert json = :zlib.gunzip(gzipped)
+      assert [log] = Jason.decode!(json)
       assert log["event_message"] == log_event.body["event_message"]
       assert log["timestamp"] == "2024-01-01T00:00:00.000000Z"
       assert log["random_attribute"] == "nothing"
@@ -172,11 +154,9 @@ defmodule Logflare.Backends.Adaptor.AxiomAdaptorTest do
       this = self()
       ref = make_ref()
 
-      Client
-      |> expect(:send, fn req ->
-        body = req[:body]
-        send(this, {ref, body})
-        %Tesla.Env{status: 200, body: ""}
+      mock_adapter(fn env ->
+        send(this, {ref, env.body})
+        {:ok, %Tesla.Env{status: 200, body: ""}}
       end)
 
       log_events =
@@ -186,7 +166,9 @@ defmodule Logflare.Backends.Adaptor.AxiomAdaptorTest do
         )
 
       assert {:ok, _} = Backends.ingest_logs(log_events, source)
-      assert_receive {^ref, [_, _, _]}, 5000
+      assert_receive {^ref, gzipped}, 5000
+      assert json = :zlib.gunzip(gzipped)
+      assert [_, _, _] = Jason.decode!(json)
     end
   end
 
@@ -199,5 +181,16 @@ defmodule Logflare.Backends.Adaptor.AxiomAdaptorTest do
       refute redacted_token == token
       assert redacted_token == "REDACTED"
     end
+  end
+
+  defp mock_adapter(calls_num \\ 1, function) do
+    stub(@tesla_adapter)
+
+    HttpBased.Client
+    |> expect(:new, calls_num, fn opts ->
+      HttpBased.Client
+      |> Mimic.call_original(:new, [opts])
+      |> Logflare.Tesla.MockAdapter.replace(function)
+    end)
   end
 end

@@ -70,6 +70,43 @@ defmodule Logflare.AlertingTest do
       assert [_] = Alerting.list_alert_queries(user)
     end
 
+    test "list_alert_queries_user_access" do
+      user = insert(:user)
+      team_user = insert(:team_user, email: user.email)
+
+      %AlertQuery{id: alert_id} = insert(:alert, user: user)
+      %AlertQuery{id: other_alert_id} = insert(:alert, user: team_user.team.user)
+      %AlertQuery{id: forbidden_alert_id} = insert(:alert, user: build(:user))
+
+      alert_ids =
+        Alerting.list_alert_queries_user_access(user)
+        |> Enum.map(& &1.id)
+
+      assert alert_id in alert_ids
+      assert other_alert_id in alert_ids
+      refute forbidden_alert_id in alert_ids
+    end
+
+    test "get_alert_query_by_user_access/2" do
+      owner = insert(:user)
+      team_user = insert(:team_user, email: owner.email)
+      %AlertQuery{id: alert_id} = insert(:alert, user: owner)
+      %AlertQuery{id: other_alert_id} = insert(:alert, user: team_user.team.user)
+      %AlertQuery{id: forbidden_alert_id} = insert(:alert, user: build(:user))
+
+      assert %AlertQuery{id: ^alert_id} =
+               Alerting.get_alert_query_by_user_access(owner, alert_id)
+
+      assert %AlertQuery{id: ^alert_id} =
+               Alerting.get_alert_query_by_user_access(team_user, alert_id)
+
+      assert %AlertQuery{id: ^other_alert_id} =
+               Alerting.get_alert_query_by_user_access(team_user, other_alert_id)
+
+      assert nil == Alerting.get_alert_query_by_user_access(owner, forbidden_alert_id)
+      assert nil == Alerting.get_alert_query_by_user_access(team_user, forbidden_alert_id)
+    end
+
     test "get_alert_query!/1 returns the alert_query with given id", %{user: user} do
       alert_query = alert_query_fixture(user)
       alert_query_fixture(insert(:user))
@@ -171,7 +208,7 @@ defmodule Logflare.AlertingTest do
         {:ok, TestUtils.gen_bq_response([%{"testing" => "123"}])}
       end)
 
-      assert {:ok, %{rows: [%{"testing" => "123"}], total_bytes_processed: 1}} =
+      assert {:ok, %{rows: [%{"testing" => "123"}], total_bytes_processed: _}} =
                Alerting.execute_alert_query(alert_query)
 
       #  no reservation set by user
@@ -190,7 +227,7 @@ defmodule Logflare.AlertingTest do
         {:ok, TestUtils.gen_bq_response([%{"testing" => "123"}])}
       end)
 
-      assert {:ok, %{rows: [%{"testing" => "123"}], total_bytes_processed: 1}} =
+      assert {:ok, %{rows: [%{"testing" => "123"}], total_bytes_processed: _}} =
                Alerting.execute_alert_query(alert_query)
 
       assert_receive {:reservation, reservation}

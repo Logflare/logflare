@@ -12,7 +12,7 @@ defmodule LogflareWeb.DashboardLiveTest do
     user = %{user | team: team}
     conn = conn |> login_user(user)
 
-    {:ok, user: user, source: source, conn: conn}
+    {:ok, user: user, source: source, conn: conn, team: team}
   end
 
   describe "Dashboard Live" do
@@ -31,16 +31,18 @@ defmodule LogflareWeb.DashboardLiveTest do
       user =
         Logflare.SingleTenant.get_default_user()
 
-      insert(:team, user: user)
+      team = insert(:team, user: user)
       conn = conn |> login_user(user)
-      [user: user, conn: conn]
+      [user: user, conn: conn, team: team]
     end
 
-    test "renders source in dashboard", %{conn: conn, user: user} do
+    test "renders source in dashboard", %{conn: conn, user: user, team: team} do
       source = insert(:source, user: user)
 
-      {:ok, view, _} = live(conn, "/dashboard")
-      assert view |> has_element?(~s|a[href="/sources/#{source.id}"]|, source.name)
+      {:ok, _view, html} = live(conn, "/dashboard")
+
+      assert html =~ source.name
+      assert html =~ ~r/sources\/#{source.id}[^"<]*t=#{team.id}/
     end
   end
 
@@ -141,11 +143,17 @@ defmodule LogflareWeb.DashboardLiveTest do
       refute view |> has_element?("#teams a", forbidden_team.name)
     end
 
-    test "team members list", %{conn: conn, user: user, other_member: other_member} do
+    test "team members list", %{conn: conn, user: user, other_member: other_member, team: team} do
       {:ok, view, _html} = live(conn, "/dashboard")
 
       assert view |> element("#members li", "#{user.name}") |> render =~ "owner, you"
       assert view |> has_element?("#members li", "#{other_member.name}")
+
+      assert view
+             |> has_element?(
+               "a[href='/account/edit?t=#{team.id}#team-members']",
+               "Invite more team members"
+             )
     end
 
     test "sign in to other team", %{
@@ -153,21 +161,15 @@ defmodule LogflareWeb.DashboardLiveTest do
       user: user,
       other_team: other_team,
       other_member: other_member,
-      team_user: team_user,
       forbidden_team: forbidden_team
     } do
       {:ok, view, _html} = live(conn, "/dashboard")
 
-      {:ok, conn} =
+      {:ok, view, _html} =
         view
         |> element("a", other_team.name)
         |> render_click()
-        |> follow_redirect(
-          conn,
-          ~p"/profile/switch?#{%{team_user_id: team_user, user_id: other_team.user_id}}"
-        )
-
-      {:ok, view, _html} = live(conn, "/dashboard")
+        |> follow_redirect(conn, "/dashboard?t=#{other_team.id}")
 
       assert view |> has_element?("#teams span", other_team.name)
       assert view |> has_element?("#teams a", user.team.name)
@@ -179,43 +181,53 @@ defmodule LogflareWeb.DashboardLiveTest do
   end
 
   describe "dashboard - viewing home team as team member" do
-    setup %{user: user, conn: conn} do
+    setup %{conn: conn} do
       other_team = insert(:team, name: "Other Team")
       forbidden_team = insert(:team, name: "Not My Team")
 
       team_user = insert(:team_user, team: other_team)
-      other_member = insert(:team_user, team: user.team)
+      another_member = insert(:team_user, team: other_team)
 
-      conn = conn |> login_user(user, team_user)
+      # Login as the team_user (using unique email from factory)
+      conn =
+        conn
+        |> Plug.Test.init_test_session(%{current_email: team_user.email})
 
       [
         other_team: other_team,
         forbidden_team: forbidden_team,
-        other_member: other_member,
+        another_member: another_member,
         team_user: team_user,
         conn: conn
       ]
     end
 
-    test "teams list", %{conn: conn, other_team: other_team} do
+    test "teams list shows other team", %{conn: conn, other_team: other_team} do
       {:ok, view, _html} = live(conn, "/dashboard")
 
       assert view |> has_element?("#teams li", "#{other_team.name}")
     end
 
-    test "team members list", %{conn: conn, user: user, other_member: other_member} do
+    test "team members list", %{
+      conn: conn,
+      other_team: other_team,
+      another_member: another_member
+    } do
       {:ok, view, _html} = live(conn, "/dashboard")
 
-      refute view |> element("#members li", "#{user.name}") |> render =~ "owner, you"
-      assert view |> has_element?("#members li", "#{other_member.name}")
+      assert view |> has_element?("#members li", "#{other_team.user.name}")
+      assert view |> has_element?("#members li", "#{another_member.name}")
+
+      refute view
+             |> has_element?("a[href='/account/edit#team-members']", "Invite more team members")
     end
   end
 
   describe "displaying source metrics" do
-    test "starts UserMetricsPoller when session has string user_id", %{user: user} do
+    test "starts UserMetricsPoller when session has string user_id", %{user: user, conn: conn} do
       # Simulate what happens when session data is deserialized with string user_id
       conn =
-        build_conn()
+        conn
         |> Plug.Test.init_test_session(%{user_id: "#{user.id}"})
         |> Plug.Conn.assign(:user, user)
 
@@ -297,6 +309,58 @@ defmodule LogflareWeb.DashboardLiveTest do
              )
 
       assert view |> has_element?("[id^=source-#{source.token}-inserts]", to_string(log_count))
+    end
+  end
+
+  describe "team query param preservation" do
+    setup %{conn: conn} do
+      user = insert(:user)
+      team = insert(:team, user: user)
+      team_user = insert(:team_user, team: team, email: user.email)
+      source = insert(:source, user: user)
+      saved_search = insert(:saved_search, source: source)
+
+      conn = login_user(conn, user, team_user)
+
+      [
+        user: user,
+        team: team,
+        team_user: team_user,
+        source: source,
+        saved_search: saved_search,
+        conn: conn
+      ]
+    end
+
+    test "dashboard links preserve team param for home team", %{
+      conn: conn,
+      source: source,
+      team: team
+    } do
+      {:ok, _view, html} = live(conn, ~p"/dashboard?t=#{team.id}")
+
+      for path <- ["sources/#{source.id}", "sources/#{source.id}/edit", "billing/edit", "account"] do
+        assert html =~ ~r/t=#{team.id}/
+        assert html =~ "/#{path}"
+      end
+    end
+
+    test "dashboard links preserve team param", %{
+      conn: conn,
+      team_user: team_user,
+      source: source
+    } do
+      {:ok, _view, html} = live(conn, ~p"/dashboard?t=#{team_user.team_id}")
+
+      for path <- [
+            "sources/#{source.id}",
+            "sources/#{source.id}/edit",
+            "sources/#{source.id}/search",
+            "billing/edit",
+            "account"
+          ] do
+        assert html =~ ~r/#{path}[^"<]*t=#{team_user.team_id}/
+      end
     end
   end
 end

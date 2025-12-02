@@ -20,11 +20,13 @@ defmodule Logflare.Backends do
   alias Logflare.PubSubRates
   alias Logflare.Repo
   alias Logflare.SingleTenant
-  alias Logflare.Sources.Source
   alias Logflare.Sources
   alias Logflare.Sources.Counters
+  alias Logflare.Sources.Source
   alias Logflare.SystemMetrics
   alias Logflare.Rules.Rule
+  alias Logflare.Teams
+  alias Logflare.TeamUsers.TeamUser
   alias Logflare.User
 
   defdelegate child_spec(arg), to: __MODULE__.Supervisor
@@ -97,6 +99,31 @@ defmodule Logflare.Backends do
     from(b in Backend, where: b.user_id == ^id)
     |> Repo.all()
     |> Enum.map(fn sb -> typecast_config_string_map_to_atom_map(sb) end)
+  end
+
+  @doc """
+  Lists all backends a user has access to, including where the user is a team member.
+  """
+  @spec list_backends_by_user_access(User.t()) :: [Backend.t()]
+  def list_backends_by_user_access(%User{} = user) do
+    Backend
+    |> Teams.filter_by_user_access(user)
+    |> Repo.all()
+    |> Enum.map(fn sb -> typecast_config_string_map_to_atom_map(sb) end)
+  end
+
+  @doc """
+  Gets a backend by id that the user has access to.
+  Returns the backend if the user owns it or is a team member, otherwise returns nil.
+  """
+  @spec get_backend_by_user_access(User.t() | TeamUser.t(), integer() | String.t()) ::
+          Backend.t() | nil
+  def get_backend_by_user_access(user_or_team_user, id) when is_integer(id) or is_binary(id) do
+    Backend
+    |> Teams.filter_by_user_access(user_or_team_user)
+    |> where([backend], backend.id == ^id)
+    |> Repo.one()
+    |> typecast_config_string_map_to_atom_map()
   end
 
   @doc """
@@ -598,13 +625,13 @@ defmodule Logflare.Backends do
   iex> Backends.via_source(source,  __MODULE__, backend.id)
   iex> Backends.via_source(source, :buffer)
   """
-  @spec via_source(Source.t(), term()) :: tuple()
+  @spec via_source(Source.t() | non_neg_integer(), term()) :: {:via, module(), term()}
   @spec via_source(
           Source.t() | non_neg_integer(),
           module(),
           Backend.t() | non_neg_integer() | nil
         ) ::
-          tuple()
+          {:via, module(), term()}
   def via_source(%Source{id: sid}, mod, backend), do: via_source(sid, mod, backend)
   def via_source(source, mod, %Backend{id: bid}), do: via_source(source, mod, bid)
   def via_source(source_id, mod, backend_id), do: via_source(source_id, {mod, backend_id})
@@ -613,17 +640,23 @@ defmodule Logflare.Backends do
 
   def via_source(id, RecentEventsTouch) when is_number(id) do
     ts = DateTime.utc_now() |> DateTime.to_unix(:nanosecond)
-    {:via, :syn, {:core, {RecentEventsTouch, id}, %{timestamp: ts}}}
+    partition = recent_touch_partition(id)
+    {:via, :syn, {partition, {RecentEventsTouch, id}, %{timestamp: ts}}}
   end
 
   def via_source(id, process_id) when is_number(id) do
     {:via, Registry, {SourceRegistry, {id, process_id}}}
   end
 
+  defp recent_touch_partition(source_id) when is_integer(source_id) do
+    part = :erlang.phash2(source_id, System.schedulers_online())
+    "recent_touch_#{part}" |> String.to_existing_atom()
+  end
+
   @doc """
   Registers a unique backend-related process on the backend registry.
   """
-  @spec via_backend(Backend.t() | non_neg_integer(), module()) :: tuple()
+  @spec via_backend(Backend.t() | non_neg_integer(), module()) :: {:via, module(), term()}
   def via_backend(%Backend{id: id}, mod), do: via_backend(id, mod)
 
   def via_backend(backend_id, mod) when is_number(backend_id) do
@@ -857,7 +890,7 @@ defmodule Logflare.Backends do
   end
 
   @doc """
-  Pipeline count resolution logic, for DynamicPipeline, shared across BigQuery and Clickhouse.
+  Pipeline count resolution logic, for DynamicPipeline, shared across BigQuery and ClickHouse.
   """
   @spec handle_resolve_count(
           %{
@@ -866,9 +899,12 @@ defmodule Logflare.Backends do
             last_count_increase: NaiveDateTime.t() | nil,
             last_count_decrease: NaiveDateTime.t() | nil
           },
-          %{
-            {pos_integer(), pos_integer() | nil, reference() | nil} => non_neg_integer()
-          },
+          [
+            {
+              {pos_integer(), pos_integer() | nil, reference() | nil},
+              non_neg_integer()
+            }
+          ],
           non_neg_integer()
         ) :: non_neg_integer()
   def handle_resolve_count(state, lens, avg_rate) do

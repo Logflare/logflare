@@ -95,6 +95,29 @@ defmodule Logflare.SourcesTest do
     end
   end
 
+  describe "get_source_by_user_access_and_preload/2" do
+    test "get_source_by_user_access_and_preload/2" do
+      insert(:plan)
+      owner = insert(:user)
+      team_user = insert(:team_user, email: owner.email)
+      %Source{id: source_id} = insert(:source, user: owner)
+      %Source{id: other_source_id} = insert(:source, user: team_user.team.user)
+      %Source{id: forbidden_source_id} = insert(:source, user: build(:user))
+
+      assert %Source{id: ^source_id} =
+               Sources.get_by_user_access(owner, source_id)
+
+      assert %Source{id: ^source_id} =
+               Sources.get_by_user_access(team_user, source_id)
+
+      assert %Source{id: ^other_source_id} =
+               Sources.get_by_user_access(team_user, other_source_id)
+
+      assert nil == Sources.get_by_user_access(owner, forbidden_source_id)
+      assert nil == Sources.get_by_user_access(team_user, forbidden_source_id)
+    end
+  end
+
   describe "get_bq_schema/1" do
     setup do
       user = Users.get_by(email: System.get_env("LOGFLARE_TEST_USER_WITH_SET_IAM"))
@@ -495,6 +518,69 @@ defmodule Logflare.SourcesTest do
         assert {:ok, pid2} = Backends.lookup(SourceSup, source)
         assert pid != pid2
       end)
+    end
+  end
+
+  describe "create_user_system_sources/1" do
+    setup do
+      insert(:plan)
+      user = insert(:user)
+      %{user: user}
+    end
+
+    test "creates system sources with correct partition type", %{user: user} do
+      sources = Sources.create_user_system_sources(user.id)
+
+      assert length(sources) == length(Source.system_source_types())
+
+      for source <- sources do
+        assert source.system_source == true
+        assert source.system_source_type in Source.system_source_types()
+        assert source.favorite == true
+        assert source.bq_table_partition_type == :timestamp
+        assert source.user_id == user.id
+        assert String.starts_with?(source.name, "system.")
+      end
+    end
+  end
+
+  describe "labels validation and normalization" do
+    setup do
+      insert(:plan)
+      user = insert(:user)
+      %{source: insert(:source, user_id: user.id)}
+    end
+
+    test "normalizes whitespace around commas and equals", %{source: source} do
+      for {input, expected} <- [
+            {"key1=value1 , key2=value2", "key1=value1,key2=value2"},
+            {"key1 = value1,key2= value2", "key1=value1,key2=value2"},
+            {"  key1=value1 , key2=value2  ", "key1=value1,key2=value2"},
+            {"key1=value1,,key2=value2,", "key1=value1,key2=value2"}
+          ] do
+        assert %_{valid?: true} = changeset = Source.changeset(source, %{labels: input})
+        assert get_change(changeset, :labels) == expected
+      end
+    end
+
+    test "accepts valid formats and empty string", %{source: source} do
+      assert Source.changeset(source, %{labels: ""}).valid?
+      assert Source.changeset(source, %{labels: "status=m.level,project=name"}).valid?
+    end
+
+    test "rejects invalid label formats", %{source: source} do
+      invalid_cases = [
+        {"no_equals", "each label must be in key=value format"},
+        {"=value", "each label must have a non-empty key"},
+        {"key=", "each label must have a non-empty value"},
+        {"key=val=extra", "each label must have exactly one '=' sign"},
+        {"valid=ok,invalid", "each label must be in key=value format"}
+      ]
+
+      for {input, expected_error} <- invalid_cases do
+        assert %_{valid?: false} = changeset = Source.changeset(source, %{labels: input})
+        assert expected_error in errors_on(changeset).labels
+      end
     end
   end
 end

@@ -202,7 +202,7 @@ defmodule Logflare.TestUtils do
       rows: rows,
       schema: schema,
       # Simple result length as test value
-      totalBytesProcessed: length(rows) |> to_string(),
+      totalBytesProcessed: (length(rows) * 1024) |> to_string(),
       totalRows: inspect(length(results))
     }
   end

@@ -40,7 +40,7 @@ defmodule Logflare.DataCase do
         on_exit(fn ->
           Logflare.Backends.IngestEventQueue.delete_all_mappings()
           Logflare.PubSubRates.Cache.clear()
-          Logflare.Backends.Adaptor.ClickhouseAdaptor.QueryConnectionSup.terminate_all()
+          Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryConnectionSup.terminate_all()
         end)
 
         :ok
@@ -130,7 +130,7 @@ defmodule Logflare.DataCase do
   Builds ClickHouse connection options for testing.
   """
   def build_clickhouse_connection_opts(source, backend, type) when type in [:ingest, :query] do
-    alias Logflare.Backends.Adaptor.ClickhouseAdaptor
+    alias Logflare.Backends.Adaptor.ClickHouseAdaptor
 
     base_opts = [
       scheme: "http",
@@ -149,8 +149,8 @@ defmodule Logflare.DataCase do
 
     connection_name =
       case type do
-        :ingest -> ClickhouseAdaptor.connection_pool_via({source, backend})
-        :query -> ClickhouseAdaptor.connection_pool_via(backend)
+        :ingest -> ClickHouseAdaptor.connection_pool_via({source, backend})
+        :query -> ClickHouseAdaptor.connection_pool_via(backend)
       end
 
     base_opts
@@ -163,12 +163,12 @@ defmodule Logflare.DataCase do
   """
   def cleanup_clickhouse_tables({source, backend}) do
     table_names = [
-      Logflare.Backends.Adaptor.ClickhouseAdaptor.clickhouse_ingest_table_name(source)
+      Logflare.Backends.Adaptor.ClickHouseAdaptor.clickhouse_ingest_table_name(source)
     ]
 
     for table_name <- table_names do
       try do
-        Logflare.Backends.Adaptor.ClickhouseAdaptor.execute_ch_query(
+        Logflare.Backends.Adaptor.ClickHouseAdaptor.execute_ch_query(
           backend,
           "DROP TABLE IF EXISTS #{table_name}"
         )

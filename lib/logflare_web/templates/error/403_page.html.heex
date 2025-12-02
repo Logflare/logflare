@@ -2,32 +2,6 @@
   <div class="col-lg-7">
     <h1>403</h1>
     <h2 class="text-white mb-3">Forbidden</h2>
-    <p>You may need to switch teams to access this resource</p>
-    <ul class="list-group">
-      <li
-        :for={t <- assigns[:teams] || []}
-        class={[
-          "list-group-item d-flex justify-content-between align-items-center",
-          if(t.id == @team.id, do: "active"),
-          "tw-mx-auto tw-w-96"
-        ]}
-      >
-        {link(t.name,
-          to:
-            ~p"/profile/switch?#{cond do
-              t.user_id == @user.id -> %{user_id: t.user_id, redirect_to: @conn.request_path}
-              true -> tu = Enum.find(t.team_users, &(&1.provider_uid == @user.provider_uid))
-                if tu do
-                  %{user_id: t.user_id, team_user_id: tu.id, redirect_to: @conn.request_path}
-                else
-                  %{user_id: t.user_id, redirect_to: @conn.request_path}
-                end
-            end}"
-        )}
-        <small :if={t.id == @team.id} class="badge badge-secondary badge-pill">
-          Current
-        </small>
-      </li>
-    </ul>
+    <p>You don't have access to this resource</p>
   </div>
 <% end %>

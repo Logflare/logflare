@@ -1,8 +1,8 @@
-defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.ProvisionerTest do
+defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ProvisionerTest do
   use Logflare.DataCase, async: false
 
-  alias Logflare.Backends.Adaptor.ClickhouseAdaptor
-  alias Logflare.Backends.Adaptor.ClickhouseAdaptor.Provisioner
+  alias Logflare.Backends.Adaptor.ClickHouseAdaptor
+  alias Logflare.Backends.Adaptor.ClickHouseAdaptor.Provisioner
 
   setup do
     insert(:plan, name: "Free")
@@ -10,7 +10,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.ProvisionerTest do
     {source, backend, cleanup_fn} = setup_clickhouse_test()
     on_exit(cleanup_fn)
 
-    {:ok, supervisor_pid} = ClickhouseAdaptor.start_link({source, backend})
+    {:ok, supervisor_pid} = ClickHouseAdaptor.start_link({source, backend})
 
     on_exit(fn ->
       if Process.alive?(supervisor_pid) do
@@ -39,10 +39,10 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.ProvisionerTest do
 
       assert_receive {:DOWN, ^ref, :process, ^pid, :normal}, 5_000
 
-      table_name = ClickhouseAdaptor.clickhouse_ingest_table_name(source)
+      table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(source)
 
       {:ok, result} =
-        ClickhouseAdaptor.execute_ch_query(
+        ClickHouseAdaptor.execute_ch_query(
           backend,
           "EXISTS TABLE #{table_name}"
         )
@@ -56,10 +56,10 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.ProvisionerTest do
 
       assert_receive {:DOWN, ^ref, :process, ^pid, :normal}, 5_000
 
-      ingest_table = ClickhouseAdaptor.clickhouse_ingest_table_name(source)
+      ingest_table = ClickHouseAdaptor.clickhouse_ingest_table_name(source)
 
       {:ok, ingest_exists} =
-        ClickhouseAdaptor.execute_ch_query(backend, "EXISTS TABLE #{ingest_table}")
+        ClickHouseAdaptor.execute_ch_query(backend, "EXISTS TABLE #{ingest_table}")
 
       assert [%{"result" => 1}] = ingest_exists
     end
@@ -81,7 +81,7 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.ProvisionerTest do
 
       {:ok, pid} =
         Task.start(fn ->
-          ClickhouseAdaptor.start_link({source, invalid_backend})
+          ClickHouseAdaptor.start_link({source, invalid_backend})
         end)
 
       ref = Process.monitor(pid)
@@ -99,10 +99,10 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.ProvisionerTest do
       ref2 = Process.monitor(pid2)
       assert_receive {:DOWN, ^ref2, :process, ^pid2, :normal}, 5_000
 
-      table_name = ClickhouseAdaptor.clickhouse_ingest_table_name(source)
+      table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(source)
 
       {:ok, result} =
-        ClickhouseAdaptor.execute_ch_query(
+        ClickHouseAdaptor.execute_ch_query(
           backend,
           "SELECT count(*) as count FROM #{table_name}"
         )
@@ -125,14 +125,14 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.ProvisionerTest do
       assert_receive {:DOWN, ^ref, :process, ^pid, :normal}, 5_000
 
       log_event = build(:log_event, source: source, message: "Test after provisioning")
-      :ok = ClickhouseAdaptor.insert_log_events({source, backend}, [log_event])
+      :ok = ClickHouseAdaptor.insert_log_events({source, backend}, [log_event])
 
       Process.sleep(100)
 
-      table_name = ClickhouseAdaptor.clickhouse_ingest_table_name(source)
+      table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(source)
 
       {:ok, result} =
-        ClickhouseAdaptor.execute_ch_query(
+        ClickHouseAdaptor.execute_ch_query(
           backend,
           "SELECT count(*) as count FROM #{table_name}"
         )
@@ -147,10 +147,10 @@ defmodule Logflare.Backends.Adaptor.ClickhouseAdaptor.ProvisionerTest do
       ref = Process.monitor(pid)
       assert_receive {:DOWN, ^ref, :process, ^pid, :normal}, 5_000
 
-      table_name = ClickhouseAdaptor.clickhouse_ingest_table_name(source)
+      table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(source)
 
       {:ok, columns} =
-        ClickhouseAdaptor.execute_ch_query(backend, "DESCRIBE TABLE #{table_name}")
+        ClickHouseAdaptor.execute_ch_query(backend, "DESCRIBE TABLE #{table_name}")
 
       column_names = Enum.map(columns, & &1["name"])
       assert "id" in column_names

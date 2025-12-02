@@ -328,4 +328,14 @@ defmodule Logflare.Lql.Parser.Helpers do
   end
 
   def check_for_no_invalid_metadata_field_values(rule, _), do: rule
+
+  @spec check_for_invalid_blank_select_alias(Keyword.t() | {atom(), any()}) ::
+          Keyword.t() | {atom(), any()} | no_return()
+  def check_for_invalid_blank_select_alias({:invalid_blank_select_alias, "@"}) do
+    throw(
+      "Error while parsing select clause: select alias cannot be blank, expected alias name after @"
+    )
+  end
+
+  def check_for_invalid_blank_select_alias(args), do: args
 end
