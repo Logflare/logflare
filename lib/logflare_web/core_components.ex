@@ -6,6 +6,7 @@ defmodule LogflareWeb.CoreComponents do
   use Phoenix.Component
 
   alias Phoenix.LiveView.JS
+  alias Logflare.Teams.TeamContext
 
   @doc "Alert the user of something"
   attr :variant, :string,
@@ -186,7 +187,6 @@ defmodule LogflareWeb.CoreComponents do
 
   @doc """
   Team switcher dropdown for the navbar.
-
   Displays the current team and allows switching between teams.
 
   ## Examples
@@ -194,22 +194,31 @@ defmodule LogflareWeb.CoreComponents do
       <.team_switcher teams={@teams} team_context={team_context} current_path={@conn.request_path}  />
 
   """
-  attr :team_context, Logflare.Teams.TeamContext, required: true
+  attr :team_context, TeamContext, required: true
   attr :teams, :list, required: true
   attr :current_path, :string, required: true
 
   def team_switcher(assigns) do
+    assigns =
+      assigns
+      |> assign(:has_multiple_teams, length(assigns.teams) > 1)
+      |> assign(:selected_class, fn team_id ->
+        if team_id == assigns.team_context.team.id, do: "tw-font-bold tw-text-neutral-900/45"
+      end)
+
     ~H"""
     <li class="nav-item ">
-      <a class="nav-link dropdown-toggle tw-font-medium" href="#" id="teamDropdown" role="button" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+      <span :if={not @has_multiple_teams} class="tw-font-medium tw-text-black/50">
+        {@team_context.team.name}
+      </span>
+      <a :if={@has_multiple_teams} class="tw-font-medium nav-link dropdown-toggle" href="#" id="teamDropdown" role="button" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
         {@team_context.team.name}
       </a>
-      <div class="dropdown-menu dropdown-menu-right" aria-labelledby="teamDropdown">
-        <%= for team <- @teams |> dbg do %>
-          <.team_link team={team} href={@current_path} class={["dropdown-item tw-flex tw-items-center tw-gap-2", if(team.id == @team_context.team.id, do: "active")]}>
-            <i class={"fas fa-check #{if team.id == @team_context.team.id, do: "tw-visible", else: "tw-invisible"}"}></i>
+      <div :if={@has_multiple_teams} class="dropdown-menu dropdown-menu-right" aria-labelledby="teamDropdown">
+        <%= for team <- @teams do %>
+          <.team_link team={team} href={@current_path} class={["dropdown-item tw-flex tw-items-center tw-gap-2", @selected_class.(team.id)]}>
             <span>{team.name}</span>
-            <span :if={Logflare.Teams.TeamContext.home_team?(team, @team_context)} class="tw-text-gray-500 tw-text-sm tw-self-end">home team</span>
+            <span :if={TeamContext.home_team?(team, @team_context)} class="tw-text-sm tw-self-end">home team</span>
           </.team_link>
         <% end %>
       </div>
