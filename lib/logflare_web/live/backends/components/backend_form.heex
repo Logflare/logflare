@@ -358,6 +358,26 @@
               Transport protocol used for OTLP
             </small>
           </div>
+        <% "last9" -> %>
+          <div class="form-group">
+            {label(f_config, :username, "Otel integration Username")}
+            {text_input(f_config, :username, class: "form-control")}
+            {label(f_config, :password, "Otel integration Password")}
+            {text_input(f_config, :password, class: "form-control", type: "password")}
+            <small class="form-text text-muted">
+              Auth data obtained via <a href="https://app.last9.io/integrations?integration=OpenTelemetry">Last9 OTel integration panel</a>
+            </small>
+          </div>
+          <div class="form-group">
+            {label(f_config, :region, "Region")}
+            {select(f_config, :region, Logflare.Backends.Adaptor.Last9Adaptor.regions(),
+              class: "form-control form-control-margin",
+              id: "last9-region"
+            )}
+            <small class="form-text text-muted">
+              Region of your cluster
+            </small>
+          </div>
         <% _ -> %>
           <div>Select a Backend Type</div>
       <% end %>
