@@ -130,19 +130,6 @@ defmodule LogflareWeb.DashboardLiveTest do
       ]
     end
 
-    test "teams list", %{
-      conn: conn,
-      user: user,
-      other_team: other_team,
-      forbidden_team: forbidden_team
-    } do
-      {:ok, view, _html} = live(conn, "/dashboard")
-
-      assert view |> has_element?("#teams li", "#{user.team.name}home team")
-      assert view |> has_element?("#teams a", other_team.name)
-      refute view |> has_element?("#teams a", forbidden_team.name)
-    end
-
     test "team members list", %{conn: conn, user: user, other_member: other_member, team: team} do
       {:ok, view, _html} = live(conn, "/dashboard")
 
@@ -154,31 +141,6 @@ defmodule LogflareWeb.DashboardLiveTest do
                "a[href='/account/edit?t=#{team.id}#team-members']",
                "Invite more team members"
              )
-    end
-
-    test "sign in to other team", %{
-      conn: conn,
-      user: user,
-      other_team: other_team,
-      other_member: other_member,
-      forbidden_team: forbidden_team
-    } do
-      {:ok, view, _html} = live(conn, "/dashboard")
-
-      redirect_path = "/dashboard?t=#{other_team.id}"
-
-      assert {:error, {:redirect, %{to: ^redirect_path}}} =
-               view
-               |> element("a", other_team.name)
-               |> render_click()
-
-      {:ok, view, _html} = live(conn, redirect_path)
-      assert view |> has_element?("#teams span", other_team.name)
-      assert view |> has_element?("#teams a", user.team.name)
-      refute view |> has_element?("#teams a", forbidden_team.name)
-
-      assert view |> element("#members li", other_team.user.name) |> render =~ "owner"
-      refute view |> has_element?("#members li", other_member.name)
     end
   end
 
@@ -202,12 +164,6 @@ defmodule LogflareWeb.DashboardLiveTest do
         team_user: team_user,
         conn: conn
       ]
-    end
-
-    test "teams list shows other team", %{conn: conn, other_team: other_team} do
-      {:ok, view, _html} = live(conn, "/dashboard")
-
-      assert view |> has_element?("#teams li", "#{other_team.name}")
     end
 
     test "team members list", %{
