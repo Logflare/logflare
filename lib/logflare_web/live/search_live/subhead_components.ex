@@ -30,10 +30,10 @@ defmodule LogflareWeb.SearchLive.SubheadComponents do
           </a>
         </li>
         <li>
-          {LqlHelpers.lql_help_modal_link()}
+          <.lql_help_modal_link />
         </li>
         <li>
-          {LqlHelpers.bq_source_schema_modal_link()}
+          <.bq_source_schema_modal_link />
         </li>
         <li>
           <span id="search-uri-query" class="pointer-cursor" data-trigger="hover focus" data-delay="0" data-toggle="tooltip" data-placement="top" data-title="<span id=&quot;copy-tooltip&quot;>Copy uri</span>">
