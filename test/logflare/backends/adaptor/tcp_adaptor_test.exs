@@ -111,6 +111,27 @@ defmodule Logflare.Backends.Adaptor.TCPAdaptorTest do
     end
   end
 
+  test "validates PEM configuration" do
+    config = %{
+      tls: true,
+      ca_cert: "invalid-pem",
+      client_cert: "invalid-pem",
+      client_key: "invalid-pem"
+    }
+
+    assert %Ecto.Changeset{valid?: false} =
+             changeset =
+             config
+             |> Logflare.Backends.Adaptor.TCPAdaptor.cast_config()
+             |> Logflare.Backends.Adaptor.TCPAdaptor.validate_config()
+
+    assert %{
+             ca_cert: ["must be a valid PEM encoded string"],
+             client_cert: ["must be a valid PEM encoded string"],
+             client_key: ["must be a valid PEM encoded string"]
+           } = errors_on(changeset)
+  end
+
   describe "encryption" do
     setup do
       key = :crypto.strong_rand_bytes(32)

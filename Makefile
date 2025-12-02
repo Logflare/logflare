@@ -399,6 +399,18 @@ $(addprefix ssl.,${envs}): ssl.%:
 	@openssl req -x509 -newkey rsa:2048 -keyout .$*.cert.key -out .$*.cert.pem -days 3650 \
 		-nodes -subj "/C=US/ST=DE/O=Supabase/OU=Logflare/CN=$(CERT_DOMAIN)"
 
+ssl.telegraf:
+	@echo "Generating test keys in priv/keys..."
+	@mkdir -p priv/keys
+	@openssl genrsa -out priv/keys/ca.key 2048
+	@openssl req -new -x509 -days 3650 -key priv/keys/ca.key -subj "/C=US/ST=DE/O=Supabase/OU=Logflare/CN=Test CA" -out priv/keys/ca.crt
+	@openssl genrsa -out priv/keys/server.key 2048
+	@openssl req -new -key priv/keys/server.key -subj "/C=US/ST=DE/O=Supabase/OU=Logflare/CN=localhost" -out priv/keys/server.csr
+	@openssl x509 -req -days 3650 -in priv/keys/server.csr -CA priv/keys/ca.crt -CAkey priv/keys/ca.key -set_serial 01 -out priv/keys/server.crt
+	@openssl genrsa -out priv/keys/client.key 2048
+	@openssl req -new -key priv/keys/client.key -subj "/C=US/ST=DE/O=Supabase/OU=Logflare/CN=client" -out priv/keys/client.csr
+	@openssl x509 -req -days 3650 -in priv/keys/client.csr -CA priv/keys/ca.crt -CAkey priv/keys/ca.key -set_serial 02 -out priv/keys/client.crt
+	@echo "Telegraf test keys generated."
 
 docker.multi-step:
 	docker-compose build base runner

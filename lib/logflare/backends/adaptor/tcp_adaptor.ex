@@ -6,7 +6,7 @@ defmodule Logflare.Backends.Adaptor.TCPAdaptor do
   use Supervisor
   use TypedStruct
   import Ecto.Changeset
-  alias Logflare.Backends.Adaptor.TCPAdaptor.{Pool, Pipeline, Syslog}
+  alias Logflare.Backends.Adaptor.TCPAdaptor.{Pool, Pipeline}
   @behaviour Logflare.Backends.Adaptor
 
   typedstruct enforce: true do
@@ -66,11 +66,16 @@ defmodule Logflare.Backends.Adaptor.TCPAdaptor do
         :error -> [cipher_key: "must be a base64 encoded 32 byte key"]
       end
     end)
+    |> validate_change(:ca_cert, &validate_pem/2)
+    |> validate_change(:client_cert, &validate_pem/2)
+    |> validate_change(:client_key, &validate_pem/2)
   end
 
-  def ingest(pool, log_events, cipher_key \\ nil) do
-    content = log_events |> List.wrap() |> Enum.map(&Syslog.format(&1, cipher_key))
-    Pool.send(pool, content)
+  defp validate_pem(field, value) do
+    case :public_key.pem_decode(value) do
+      [] -> [{field, "must be a valid PEM encoded string"}]
+      _ -> []
+    end
   end
 
   @impl Logflare.Backends.Adaptor

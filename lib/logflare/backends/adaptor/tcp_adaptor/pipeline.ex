@@ -6,7 +6,7 @@ defmodule Logflare.Backends.Adaptor.TCPAdaptor.Pipeline do
 
   alias Broadway.Message
   alias Logflare.Backends
-  alias Logflare.Backends.Adaptor.TCPAdaptor
+  alias Logflare.Backends.Adaptor.TCPAdaptor.{Pool, Syslog}
 
   def start_link(opts) do
     backend = Keyword.fetch!(opts, :backend)
@@ -42,15 +42,19 @@ defmodule Logflare.Backends.Adaptor.TCPAdaptor.Pipeline do
 
   @impl Broadway
   def handle_message(_processor_name, message, _context) do
-    message
-    |> Message.put_batcher(:tcp)
+    Message.put_batcher(message, :tcp)
   end
 
   @impl Broadway
   def handle_batch(:tcp, messages, _batch_info, context) do
     %{pool: pool, cipher_key: cipher_key} = context
-    events = for %{data: le} <- messages, do: le
-    TCPAdaptor.ingest(pool, events, cipher_key)
+
+    content =
+      for %Broadway.Message{data: log_event} <- messages do
+        Syslog.format(log_event, cipher_key)
+      end
+
+    Pool.send(pool, content)
     messages
   end
 
