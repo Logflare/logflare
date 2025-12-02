@@ -21,7 +21,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
   @producer_concurrency 1
   @processor_concurrency 5
   @batcher_concurrency 10
-  @batch_size 1_500
+  @batch_size 5_000
+  @batch_timeout 3_000
   @max_retries 1
 
   # 72 hour max event age, based on timestamp
@@ -61,7 +62,11 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
         default: [concurrency: @processor_concurrency, min_demand: 1, max_demand: 100]
       ],
       batchers: [
-        ch: [concurrency: @batcher_concurrency, batch_size: @batch_size, batch_timeout: 1_500]
+        ch: [
+          concurrency: @batcher_concurrency,
+          batch_size: @batch_size,
+          batch_timeout: @batch_timeout
+        ]
       ],
       context: %{
         source_id: source.id,
