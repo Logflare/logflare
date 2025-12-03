@@ -298,7 +298,8 @@ defmodule LogflareWeb.BackendsLive do
       {"Incident.io", :incidentio},
       {"S3", :s3},
       {"Axiom", :axiom},
-      {"OTLP", :otlp}
+      {"OTLP", :otlp},
+      {"TCP", :tcp}
     ])
   end
 
