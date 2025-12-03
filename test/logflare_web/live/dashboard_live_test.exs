@@ -236,7 +236,7 @@ defmodule LogflareWeb.DashboardLiveTest do
       {:ok, _view, _html} = live(conn, "/dashboard")
 
       # The UserMetricsPoller should be registered and running after mount
-      assert {poller_pid, _} = :syn.lookup(:core, {Logflare.Sources.UserMetricsPoller, user.id})
+      assert {poller_pid, _} = :syn.lookup(:ui, {Logflare.Sources.UserMetricsPoller, user.id})
       assert Process.alive?(poller_pid)
 
       # Should have one subscriber (the LiveView process)
@@ -287,7 +287,7 @@ defmodule LogflareWeb.DashboardLiveTest do
 
       {:ok, view, _html} = live(conn, "/dashboard")
 
-      assert {poller_pid, _} = :syn.lookup(:core, {Logflare.Sources.UserMetricsPoller, user.id})
+      assert {poller_pid, _} = :syn.lookup(:ui, {Logflare.Sources.UserMetricsPoller, user.id})
 
       send(poller_pid, :poll_metrics)
       # wait for broadcast

@@ -10,6 +10,6 @@ defmodule Logflare.Scheduler do
   def scheduler_name do
     ts = DateTime.utc_now() |> DateTime.to_unix(:nanosecond)
     # add nanosecond resolution for timestamp comparison
-    {:via, :syn, {:scheduler, __MODULE__, %{timestamp: ts}}}
+    {:via, :syn, {:core, __MODULE__, %{timestamp: ts}}}
   end
 end
