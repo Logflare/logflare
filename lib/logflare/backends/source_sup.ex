@@ -8,7 +8,6 @@ defmodule Logflare.Backends.SourceSup do
   alias Logflare.Sources.Source
   alias Logflare.Users
   alias Logflare.Billing
-  alias Logflare.GenSingleton
   alias Logflare.Sources.Source.RateCounterServer
   alias Logflare.Sources.Source.EmailNotificationServer
   alias Logflare.Sources.Source.TextNotificationServer

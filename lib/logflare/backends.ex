@@ -641,11 +641,6 @@ defmodule Logflare.Backends do
     {:via, Registry, {SourceRegistry, {id, process_id}}}
   end
 
-  defp recent_touch_partition(source_id) when is_integer(source_id) do
-    part = :erlang.phash2(source_id, System.schedulers_online())
-    "recent_touch_#{part}" |> String.to_existing_atom()
-  end
-
   @doc """
   Registers a unique backend-related process on the backend registry.
   """
