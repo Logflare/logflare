@@ -112,7 +112,8 @@ defmodule Logflare.Application do
         # Startup tasks after v2 pipeline started
         {Task, fn -> startup_tasks() end},
         Logflare.Alerting.Supervisor,
-        Logflare.Scheduler,
+        {GenSingleton,
+         child_spec: {Logflare.Scheduler, name: Logflare.Scheduler.scheduler_name()}},
         # active users tracking for UserMetricsPoller
         {Logflare.ActiveUserTracker,
          [name: Logflare.ActiveUserTracker, pubsub_server: Logflare.PubSub]}

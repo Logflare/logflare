@@ -15,7 +15,6 @@ defmodule Logflare.Backends.SourceSup do
   alias Logflare.Sources.Source.WebhookNotificationServer
   alias Logflare.Sources.Source.SlackHookServer
   alias Logflare.Sources.Source.BillingWriter
-  alias Logflare.Backends.RecentEventsTouch
   alias Logflare.Backends.RecentInsertsCacher
   alias Logflare.Rules.Rule
   alias Logflare.Sources
@@ -57,7 +56,6 @@ defmodule Logflare.Backends.SourceSup do
     children =
       [
         {RateCounterServer, [source: source]},
-        {GenSingleton, child_spec: {RecentEventsTouch, source: source}},
         {RecentInsertsCacher, [source: source]},
         {EmailNotificationServer, [source: source]},
         {TextNotificationServer, [source: source, plan: plan]},

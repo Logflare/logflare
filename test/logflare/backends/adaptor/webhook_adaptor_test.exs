@@ -9,7 +9,6 @@ defmodule Logflare.Backends.WebhookAdaptorTest do
   alias Logflare.Backends.Backend
   alias Logflare.SystemMetrics.AllLogsLogged
   alias Logflare.Backends.SourceSup
-  alias Logflare.Backends.Adaptor.WebhookAdaptor.EgressMiddleware
   @subject Logflare.Backends.Adaptor.WebhookAdaptor
 
   setup do
