@@ -714,6 +714,34 @@ defmodule LogflareWeb.Source.SearchLVTest do
       assert link =~ ~r/phx-value-lql="\w+/
     end
 
+    test "log event selected fields", %{conn: conn, source: source} do
+      stub(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, fn _conn, _proj_id, _opts ->
+        {:ok,
+         TestUtils.gen_bq_response(%{
+           "event_message" => "some event message",
+           "testing" => "modal123",
+           "user_id" => "user-abc-123",
+           "id" => "some-uuid"
+         })}
+      end)
+
+      {:ok, view, _html} =
+        live(conn, ~p"/sources/#{source.id}/search?#{%{querystring: "s:user.id"}}")
+
+      %{executor_pid: search_executor_pid} = get_view_assigns(view)
+      Ecto.Adapters.SQL.Sandbox.allow(Logflare.Repo, self(), search_executor_pid)
+
+      view
+      |> TestUtils.wait_for_render("#logs-list")
+
+      assert view |> element("#logs-list-container") |> render() =~
+               "some event message"
+
+      html = view |> element("#logs-list-container #log-some-uuid-selected-fields") |> render()
+      assert html =~ "user.id:"
+      assert html =~ "user-abc-123"
+    end
+
     test "log event modal", %{conn: conn, user: user} do
       schema = TestUtils.build_bq_schema(%{"testing" => "string"})
       source = insert(:source, user: user)

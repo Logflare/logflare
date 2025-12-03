@@ -241,7 +241,7 @@ defmodule LogflareWeb.SearchLive.LogEventComponents do
 
   def selected_fields(assigns) do
     ~H"""
-    <div>
+    <div id={["log-", @log_event.id, "-selected-fields"]}>
       <%= for field <- @select_fields do %>
         <div class="tw-text-neutral-200 tw-ml-52 last:tw-mb-2">
           <span class="">{field.display}:</span>
