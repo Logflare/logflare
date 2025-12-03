@@ -207,7 +207,7 @@ defmodule LogflareWeb.CoreComponents do
       end)
 
     ~H"""
-    <li class="nav-item ">
+    <li class="nav-item" id="team-switcher" >
       <span :if={not @has_multiple_teams} class="tw-font-medium tw-text-black/50">
         {@team_context.team.name}
       </span>
