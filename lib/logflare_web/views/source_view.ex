@@ -1,6 +1,7 @@
 defmodule LogflareWeb.SourceView do
   import LogflareWeb.Helpers.Forms
   alias LogflareWeb.Router.Helpers, as: Routes
+  alias LogflareWeb.Utils
   use LogflareWeb, :view
 
   def log_url(route) do

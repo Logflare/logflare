@@ -1,12 +1,12 @@
 <div class="subhead">
   <div class="container mx-auto">
-    <h5>~/logs/<.team_link href={Routes.source_path(@conn, :show, @source)} team={@team} class="text-primary">{@source.name}</.team_link>/edit</h5>
+    <h5>~/logs/<%= link @source.name, to: Routes.source_path(@conn, :show, @source) |> Utils.with_team_param(@team), class:  "text-primary" %>/edit</h5>
     <div class="log-settings">
       <ul>
         <li>
-          <.team_link navigate={Routes.source_live_path(@conn, LogflareWeb.Sources.RulesLive, @source.id)} team={@team}>
+          <%= link to: Routes.source_live_path(@conn, LogflareWeb.Sources.RulesLive, @source.id) |> Utils.with_team_param(@team) do %>
             <i class="fas fa-code-branch"></i><span class="hide-on-mobile"> rules</span>
-          </.team_link>
+        <% end %>
         </li>
         <li><a href="mailto:support@logflare.app?Subject=Logflare%20Help" target="_top"><i
               class="fas fa-question-circle"></i> <span class="hide-on-mobile">help</a></span></li>
@@ -19,7 +19,7 @@
   <%= section_header("Source Name") %>
   <p>For example, <code>YourApp</code> would be good for all logs from your app. <code>YourApp.bots</code> would be a
     good place to keep all bot logs. Route logs with LQL rules using
-    <.team_link navigate={Routes.source_live_path(@conn, LogflareWeb.Sources.RulesLive, @source.id)} team={@team}>rules</.team_link>.</p>
+    <%= link "rules", to: Routes.source_live_path(@conn, LogflareWeb.Sources.RulesLive, @source.id) |> Utils.with_team_param(@team) %>.</p>
   <%= form_for @changeset, Routes.source_path(@conn, :update, @source), fn a -> %>
   <div class="form-group">
     <%= text_input a, :name, placeholder: "YourApp.SourceName", class: "form-control form-control-margin" %>
