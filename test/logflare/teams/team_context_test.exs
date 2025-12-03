@@ -50,14 +50,27 @@ defmodule Logflare.Teams.TeamContextTest do
   end
 
   describe "team context: multiple teams for same email" do
-    test "bug: does not raise Ecto.MultipleResultsError when user is invited to multiple teams and no team_id is provided" do
+    test "bug: does not raise Ecto.MultipleResultsError when user is invited to multiple teams and no team_id is provided and user has no home team" do
       [team1, team2] = insert_pair(:team)
       shared_email = "user@example.com"
 
       insert(:team_user, email: shared_email, team: team1)
       insert(:team_user, email: shared_email, team: team2)
 
-      assert {:error, :not_authorized} = TeamContext.resolve(nil, shared_email)
+      assert {:ok, %{team: team, team_user: team_user}} = TeamContext.resolve(nil, shared_email)
+      assert team.id == team1.id
+      assert team_user.team_id == team1.id
+    end
+
+    test "user is invited to one team and no team_id is provided and user has no home team" do
+      [team1, _team2] = insert_pair(:team)
+      shared_email = "user@example.com"
+
+      insert(:team_user, email: shared_email, team: team1)
+
+      assert {:ok, %{team: team, team_user: team_user}} = TeamContext.resolve(nil, shared_email)
+      assert team.id == team1.id
+      assert team_user.team_id == team1.id
     end
   end
 
