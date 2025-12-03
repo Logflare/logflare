@@ -42,6 +42,8 @@ defmodule Logflare.Sources.Cache do
     end
   end
 
+  def preload_rules(nil), do: nil
+
   def preload_rules(%Source{} = source) do
     source
     |> Repo.preload(rules: fn [id] -> Rules.Cache.list_by_source_id(id) end)
