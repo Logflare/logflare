@@ -672,7 +672,7 @@ defmodule Logflare.Sources do
   """
   @spec recent_events_touch(NaiveDateTime.t()) :: {:ok, non_neg_integer()} | {:error, any()}
   def recent_events_touch(timestamp \\ NaiveDateTime.utc_now()) do
-    threshold = timestamp |> NaiveDateTime.add(-1, :hour) |> dbg()
+    threshold = timestamp |> NaiveDateTime.add(-1, :hour)
     base_query = from(s in Source, where: s.log_events_updated_at <= ^threshold)
 
     filter = {:==, {:is_map, {:element, 2, :value}}, true}
