@@ -58,11 +58,10 @@ defmodule Logflare.ContextCache.CacheBuster do
     Logger.debug("WAL record received from pubsub: #{inspect(transaction)}")
 
     for record <- changes,
-        actions = handle_record(record),
-        actions != :noop do
-      List.wrap(actions)
+        record = handle_record(record),
+        record != :noop do
+      record
     end
-    |> List.flatten()
     |> tap(fn
       [] ->
         nil
@@ -92,7 +91,7 @@ defmodule Logflare.ContextCache.CacheBuster do
          record: record,
          old_record: old_record
        }) do
-    Enum.map([record, old_record], &handle_rule_record/1)
+    {Rules, handle_rule_record(record) ++ handle_rule_record(old_record)}
   end
 
   defp handle_record(%UpdatedRecord{
@@ -197,7 +196,7 @@ defmodule Logflare.ContextCache.CacheBuster do
          relation: {_schema, "rules"},
          record: record
        }) do
-    handle_rule_record(record)
+    {Rules, handle_rule_record(record)}
   end
 
   defp handle_record(%NewRecord{
@@ -285,7 +284,7 @@ defmodule Logflare.ContextCache.CacheBuster do
          old_record: record
        }) do
     # Must do `alter table rules replica identity full` to get full records on deletes otherwise all fields are null
-    handle_rule_record(record)
+    {Rules, handle_rule_record(record)}
   end
 
   defp handle_record(%DeletedRecord{
@@ -311,11 +310,8 @@ defmodule Logflare.ContextCache.CacheBuster do
   end
 
   defp handle_rule_record(record) do
-    kw =
-      for {k, v} <- Map.take(record, ["source_id", "backend_id"]), is_binary(v) do
-        {String.to_existing_atom(k), String.to_integer(v)}
-      end
-
-    {Rules, kw}
+    for {k, v} <- Map.take(record, ["source_id", "backend_id"]), is_binary(v) do
+      {String.to_existing_atom(k), String.to_integer(v)}
+    end
   end
 end
