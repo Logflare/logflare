@@ -147,12 +147,12 @@ defmodule Logflare.AlertingTest do
       assert {:error, %Ecto.Changeset{}} =
                Alerting.create_alert_query(user, %{@valid_attrs | cron: "something"})
 
-      # less than 15 mins
+      # less than 5 mins
       assert {:error, %Ecto.Changeset{}} =
                Alerting.create_alert_query(user, %{@valid_attrs | cron: "* * * * *"})
 
       assert {:error, %Ecto.Changeset{}} =
-               Alerting.create_alert_query(user, %{@valid_attrs | cron: "*/10 * * * *"})
+               Alerting.create_alert_query(user, %{@valid_attrs | cron: "*/3 * * * *"})
 
       # second precision extended syntax
       assert {:error, %Ecto.Changeset{}} =
