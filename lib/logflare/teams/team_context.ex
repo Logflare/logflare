@@ -81,7 +81,7 @@ defmodule Logflare.Teams.TeamContext do
 
       nil ->
         case TeamUsers.list_team_users_by(email: email) |> Enum.sort_by(& &1.inserted_at) do
-          [%TeamUser{} = team_user] ->
+          [%TeamUser{} = team_user | _] ->
             team =
               Teams.get_team_by(id: team_user.team_id)
               |> Teams.preload_user()
