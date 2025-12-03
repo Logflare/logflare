@@ -163,7 +163,7 @@ config :logflare, Logflare.Scheduler,
   jobs: [
     source_cleanup: [
       run_strategy: {Quantum.RunStrategy.All, :cluster},
-      schedule: "*/20 * * * *",
+      schedule: "* * * * *",
       task: {Logflare.Sources, :shutdown_idle_sources, []}
     ],
     recent_events_touch: [
