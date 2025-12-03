@@ -4,6 +4,7 @@ defmodule Logflare.ContextCache.CacheBuster do
   """
   use GenServer
 
+  alias Logflare.ContextCache.CacheBusterWorker
   alias Cainophile.Changes.DeletedRecord
   alias Cainophile.Changes.NewRecord
   alias Cainophile.Changes.Transaction
@@ -70,7 +71,7 @@ defmodule Logflare.ContextCache.CacheBuster do
         :telemetry.execute([:logflare, :cache_buster, :to_bust], %{count: length(records)})
 
         GenServer.cast(
-          {:via, PartitionSupervisor, {__MODULE__.Supervisor, records}},
+          {:via, PartitionSupervisor, {CacheBusterWorker.Supervisor, records}},
           {:to_bust, records}
         )
     end)
