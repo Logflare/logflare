@@ -25,6 +25,17 @@ defmodule Logflare.Backends.Adaptor.TCPAdaptor.Pool do
     end)
   end
 
+  # @impl NimblePool
+  # def init_pool(config) do
+  #   %{} = config
+
+  #   pool_state = %{
+  #     connect_failures: :atomics.new(1, signed: false)
+  #   }
+
+  #   {:ok, pool_state}
+  # end
+
   @impl NimblePool
   def init_worker(pool_state) do
     protocol = if pool_state[:tls], do: :ssl, else: :tcp
