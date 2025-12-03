@@ -15,6 +15,7 @@ defmodule Logflare.Application do
   alias Logflare.Sources.RateCounters
   alias Logflare.PubSubRates
   alias Logflare.Utils
+  alias Logflare.GenSingleton
 
   def start(_type, _args) do
     # set inspect function to redact sensitive information
