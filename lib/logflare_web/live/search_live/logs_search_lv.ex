@@ -23,7 +23,9 @@ defmodule LogflareWeb.Source.SearchLV do
   alias LogflareWeb.AuthLive
   alias LogflareWeb.Helpers.BqSchema, as: BqSchemaHelpers
   alias LogflareWeb.Router.Helpers, as: Routes
-  alias LogflareWeb.SearchLive
+  alias LogflareWeb.SearchLive.FormComponents
+  alias LogflareWeb.SearchLive.SubheadComponents
+  alias LogflareWeb.SearchLive.LogEventComponents
   alias LogflareWeb.Utils
   alias Logflare.Sources.Source.BigQuery.SchemaBuilder
   alias Logflare.Utils.Chart, as: ChartUtils
@@ -232,11 +234,11 @@ defmodule LogflareWeb.Source.SearchLV do
       <:path>
         ~/logs/<.team_link team={@team} href={~p"/sources/#{@source}"} class="text-primary">{@source.name}</.team_link>/search
       </:path>
-      <SearchLive.SubheadComponents.subhead_actions user={@user} search_timezone={@search_timezone} search_op_error={@search_op_error} search_op_log_events={@search_op_log_events} search_op_log_aggregates={@search_op_log_aggregates} />
+      <SubheadComponents.subhead_actions user={@user} search_timezone={@search_timezone} search_op_error={@search_op_error} search_op_log_events={@search_op_log_events} search_op_log_aggregates={@search_op_log_aggregates} />
     </.subheader>
     <div class="container source-logs-search-container console-text">
       <div id="logs-list-container">
-        <SearchLive.LogEventComponents.results_list search_op={@search_op} search_op_log_events={@search_op_log_events} last_query_completed_at={@last_query_completed_at} search_timezone={@search_timezone} loading={@loading} tailing?={@tailing?} querystring={@querystring} />
+        <LogEventComponents.results_list search_op={@search_op} search_op_log_events={@search_op_log_events} last_query_completed_at={@last_query_completed_at} search_timezone={@search_timezone} loading={@loading} tailing?={@tailing?} querystring={@querystring} />
       </div>
       <div>
         {live_react_component(
@@ -255,7 +257,7 @@ defmodule LogflareWeb.Source.SearchLV do
           id: "log-events-chart"
         )}
       </div>
-      <SearchLive.LogsSearchComponents.search_controls
+      <FormComponents.search_controls
         search_form={@search_form}
         querystring={@querystring}
         search_history={@search_history}

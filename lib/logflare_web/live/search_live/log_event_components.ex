@@ -35,7 +35,7 @@ defmodule LogflareWeb.SearchLive.LogEventComponents do
         <.log_event :for={log <- @search_op_log_events.rows} timezone={@search_timezone} log_event={log} select_fields={build_select_fields(@search_op)}>
           {log.body["event_message"]}
           <:actions phx-no-format>
-                 <.modal_link
+          <.modal_link
                    component={LogflareWeb.Search.LogEventViewerComponent}
                    class="tw-text-[0.65rem]"
                    modal_id={:log_event_viewer}
