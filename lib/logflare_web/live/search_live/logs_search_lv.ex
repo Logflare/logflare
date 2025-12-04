@@ -21,6 +21,7 @@ defmodule LogflareWeb.Source.SearchLV do
   alias Logflare.TeamUsers
   alias Logflare.User
   alias Logflare.Users
+  alias LogflareWeb.AuthLive
   alias LogflareWeb.Helpers.BqSchema, as: BqSchemaHelpers
   alias LogflareWeb.Router.Helpers, as: Routes
   alias LogflareWeb.SearchView
@@ -40,10 +41,36 @@ defmodule LogflareWeb.Source.SearchLV do
 
   def mount(%{"source_id" => source_id} = params, _session, socket) do
     %{assigns: %{user: user, team_user: team_user}} = socket
-    source = Sources.get_source_for_lv_param(source_id)
+    effective_user = team_user || user
+
+    source =
+      if user && user.admin do
+        Sources.get_source_for_lv_param(source_id)
+      else
+        Sources.get_by_user_access(effective_user, source_id)
+        |> maybe_preload_source_for_lv()
+      end
+
+    case source do
+      nil ->
+        {:ok,
+         socket
+         |> put_flash(:error, "Source not found")
+         |> redirect(to: ~p"/dashboard" |> Utils.with_team_param(socket.assigns[:team]))}
+
+      source ->
+        {:ok, mount_with_source(socket, source, params, effective_user)}
+    end
+  end
+
+  defp mount_with_source(socket, source, params, effective_user) do
+    socket = AuthLive.assign_context_by_resource(socket, source, effective_user.email)
+    %{assigns: %{user: user, team_user: team_user}} = socket
 
     tailing? =
-      if source.disable_tailing, do: false, else: Map.get(params, "tailing?", "true") == "true"
+      if source.disable_tailing,
+        do: false,
+        else: Map.get(params, "tailing?", "true") == "true"
 
     {:ok, executor_pid} = SearchQueryExecutor.start_link(source: source)
 
@@ -78,22 +105,29 @@ defmodule LogflareWeb.Source.SearchLV do
       search_history: [],
       search_form: to_form(%{}, as: :search)
     )
-    |> then(fn socket ->
-      if connected?(socket) do
-        user_tz = Map.get(get_connect_params(socket), "user_timezone")
-        socket = assign(socket, :user_timezone_from_connect_params, user_tz)
-        assign_new_user_timezone(socket, team_user, user)
-      else
-        socket
-      end
-    end)
-    |> then(fn socket ->
-      if user && (user.admin or source.user_id == user.id) do
-        {:ok, socket}
-      else
-        {:ok, redirect(socket, to: "/")}
-      end
-    end)
+    |> maybe_assign_user_timezone(team_user, user)
+  end
+
+  defp maybe_assign_user_timezone(socket, team_user, user) do
+    if connected?(socket) do
+      user_tz = Map.get(get_connect_params(socket), "user_timezone")
+
+      socket
+      |> assign(:user_timezone_from_connect_params, user_tz)
+      |> assign_new_user_timezone(team_user, user)
+    else
+      socket
+    end
+  end
+
+  defp maybe_preload_source_for_lv(nil), do: nil
+
+  defp maybe_preload_source_for_lv(source) do
+    source
+    |> Sources.preload_defaults()
+    |> Sources.preload_saved_searches()
+    |> Sources.put_bq_table_id()
+    |> Sources.put_bq_dataset_id()
   end
 
   def handle_params(%{"querystring" => qs} = params, uri, socket) do
