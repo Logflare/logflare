@@ -108,8 +108,6 @@ defmodule LogflareWeb.AlertsLive do
 
   defp verify_resource_access(_socket), do: :ok
 
-
-
   def handle_event(
         "save",
         %{"alert" => params},
