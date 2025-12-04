@@ -160,15 +160,17 @@ config :logflare, Logflare.Alerting.AlertsScheduler,
 
 # global scheduler, only 1 per cluster
 config :logflare, Logflare.Scheduler,
+  include_task_supervisor: false,
+  task_supervisor_name: Logflare.Scheduler.TaskSupervisor,
   jobs: [
     source_cleanup: [
       run_strategy: {Quantum.RunStrategy.All, :cluster},
-      schedule: "* * * * *",
+      schedule: "*/1 * * * *",
       task: {Logflare.Sources, :shutdown_idle_sources, []}
     ],
     recent_events_touch: [
       run_strategy: Quantum.RunStrategy.Local,
-      schedule: "*/5 * * * *",
+      schedule: "*/2 * * * *",
       task: {Logflare.Sources, :recent_events_touch, []}
     ]
   ]
