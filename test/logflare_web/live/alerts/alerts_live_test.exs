@@ -27,17 +27,17 @@ defmodule LogflareWeb.AlertsLiveTest do
   end
 
   describe "unauthorized" do
-    test "returns 404 for backend that doesn't belong to user", %{conn: conn} do
+    test "redirects when accessing alert that doesn't belong to user", %{conn: conn} do
       user = insert(:user)
       other_user = insert(:user)
       alert = insert(:alert, user: other_user)
 
-      assert_raise LogflareWeb.ErrorsLive.InvalidResourceError, fn ->
+      conn =
         conn
         |> login_user(user)
         |> get(~p"/alerts/#{alert.id}")
-        |> response(404)
-      end
+
+      assert redirected_to(conn, 302) =~ "/alerts"
     end
   end
 
