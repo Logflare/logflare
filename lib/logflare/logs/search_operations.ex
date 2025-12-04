@@ -14,6 +14,7 @@ defmodule Logflare.Logs.SearchOperations do
   alias Logflare.Logs.SearchUtils
   alias Logflare.Lql
   alias Logflare.Lql.BackendTransformer.BigQuery, as: BigQueryTransformer
+  alias Logflare.Lql.Rules
   alias Logflare.Lql.Rules.ChartRule
   alias Logflare.Lql.Rules.FilterRule
   alias Logflare.SourceSchemas
@@ -23,6 +24,9 @@ defmodule Logflare.Logs.SearchOperations do
 
   @type chart_period :: :day | :hour | :minute | :second
   @type dt_or_ndt :: DateTime.t() | NaiveDateTime.t()
+
+  @default_select_rules "s:timestamp s:id s:event_message"
+  @log_level_select_rule "s:metadata.level@level"
 
   @default_limit 100
   @default_max_n_chart_ticks 1_000
@@ -78,24 +82,6 @@ defmodule Logflare.Logs.SearchOperations do
       |> limit(@default_limit)
 
     %{so | query: query}
-  end
-
-  def unnest_log_level(%_{source: %{id: source_id}} = so) do
-    source_schema = SourceSchemas.Cache.get_source_schema_by(source_id: source_id)
-    flatmap = Map.get(source_schema || %{}, :schema_flat_map)
-
-    if is_map_key(flatmap || %{}, "metadata.level") do
-      query =
-        so.query
-        |> join(:inner, [t], m in fragment("UNNEST(?)", t.metadata), on: true)
-        |> select_merge([..., m], %{
-          level: m.level
-        })
-
-      %{so | query: query}
-    else
-      so
-    end
   end
 
   @spec apply_halt_conditions(SO.t()) :: SO.t()
@@ -358,19 +344,22 @@ defmodule Logflare.Logs.SearchOperations do
   defp to_value_unit(_average), do: {1, "MINUTE"}
 
   @spec apply_select_rules(SO.t()) :: SO.t()
+  def apply_select_rules(%SO{type: :events, query: _q, lql_rules: nil} = so) do
+    %{so | lql_rules: []}
+    |> apply_select_rules()
+  end
+
   def apply_select_rules(%SO{type: :events, query: q} = so) do
-    default_rules = [
-      Lql.Rules.SelectRule.build(path: "timestamp"),
-      Lql.Rules.SelectRule.build(path: "id"),
-      Lql.Rules.SelectRule.build(path: "event_message")
-    ]
+    default_rules = system_select_rules(so)
 
     select_rules =
       so.lql_rules
       |> Lql.Rules.get_select_rules()
       |> Kernel.++(default_rules)
+      |> Rules.SelectRule.normalize()
 
     q = Lql.apply_select_rules(q, select_rules)
+
     %{so | query: q}
   end
 
@@ -378,6 +367,46 @@ defmodule Logflare.Logs.SearchOperations do
     q = Lql.apply_filter_rules(q, so.lql_meta_and_msg_filters)
 
     %{so | query: q}
+  end
+
+  @doc """
+  Returns a list of SelectRules to be applied to all search queries.
+  """
+  @spec system_select_rules(SO.t()) :: [Lql.Rules.SelectRule.t()]
+  def system_select_rules(%SO{source: source}) do
+    source_schema = SourceSchemas.Cache.get_source_schema_by(source_id: source.id)
+
+    flatmap =
+      Map.get(source_schema || %{}, :schema_flat_map)
+
+    if flatmap == nil do
+      {:ok, rules} =
+        @default_select_rules
+        |> Lql.Parser.parse()
+
+      rules
+    else
+      recommended_rules =
+        Sources.Source.recommended_query_fields(source)
+        |> Enum.map(&recommended_field_to_lql_query/1)
+
+      {:ok, rules} =
+        [@default_select_rules, @log_level_select_rule, recommended_rules]
+        |> List.flatten()
+        |> Enum.join(" ")
+        |> Lql.Parser.parse()
+
+      rules
+      |> Enum.filter(&Map.has_key?(flatmap, &1.path))
+    end
+  end
+
+  # converts "m.user_id" to "s:m.user_id@user_id"
+  defp recommended_field_to_lql_query(field) when is_binary(field) do
+    field = String.trim(field)
+    field_name = field |> String.split(".") |> List.last()
+
+    "s:#{field}@#{field_name}"
   end
 
   @spec apply_local_timestamp_correction(SO.t()) :: SO.t()
