@@ -64,7 +64,6 @@
   {"lib/logflare_web/controllers/source_controller.ex", :pattern_match},
   {"lib/logflare_web/controllers/stripe_controller.ex", :pattern_match},
   {"lib/logflare_web/controllers/stripe_controller.ex", :pattern_match_cov},
-  {"lib/logflare_web/live/backends/backends_live.ex", :call},
   {"lib/logflare_web/live/billingaccount_live/payment_method_component.ex", :call},
   {"lib/logflare_web/live/monaco_editor_component.ex", :pattern_match},
   {"lib/logflare_web/live/query_live.ex", :pattern_match},

@@ -33,6 +33,8 @@ defmodule Logflare.Backends do
 
   @max_pending_buffer_len_per_queue 15_000
 
+  @type one_or_list_or_nil :: Backend.t() | [Backend.t()] | nil
+
   @doc """
   Retrieves the hardcoded max pending buffer length of an individual queue
   """
@@ -129,7 +131,7 @@ defmodule Logflare.Backends do
   @doc """
   Preload rules for a given backend
   """
-  @spec preload_rules([Backend.t()]) :: [Backend.t()]
+  @spec preload_rules(one_or_list_or_nil()) :: one_or_list_or_nil()
   def preload_rules(backends) do
     Repo.preload(backends, rules: [:source])
   end
@@ -137,7 +139,7 @@ defmodule Logflare.Backends do
   @doc """
   Preload alerts key for a given backend
   """
-  @spec preload_alerts([Backend.t()]) :: [Backend.t()]
+  @spec preload_alerts(one_or_list_or_nil()) :: one_or_list_or_nil()
   def preload_alerts(backends) do
     Repo.preload(backends, [:alert_queries])
   end
@@ -145,7 +147,7 @@ defmodule Logflare.Backends do
   @doc """
   Preload sources for a given backend or list of backends
   """
-  @spec preload_sources(Backend.t() | [Backend.t()]) :: Backend.t() | [Backend.t()]
+  @spec preload_sources(one_or_list_or_nil()) :: one_or_list_or_nil()
   def preload_sources(backend_or_backends) do
     Repo.preload(backend_or_backends, :sources)
   end
