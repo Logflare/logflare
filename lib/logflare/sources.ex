@@ -682,16 +682,16 @@ defmodule Logflare.Sources do
 
     Sources.Cache
     |> Cachex.stream!(query)
-    |> Stream.map(fn
+    |> Stream.flat_map(fn
       {:cached, %Source{id: id, log_events_updated_at: log_events_updated_at}} ->
         if log_events_updated_at < threshold do
-          id
+          [id]
         else
-          nil
+          []
         end
 
       _val ->
-        nil
+        []
     end)
     |> Stream.uniq()
     |> Stream.take(500)

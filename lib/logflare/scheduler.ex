@@ -8,7 +8,7 @@ defmodule Logflare.Scheduler do
   Returns the scheduler :via name used for syn registry.
   """
   def scheduler_name do
-    ts = DateTime.utc_now() |> DateTime.to_unix(:nanosecond)
+    ts = System.os_time(:nanosecond)
     # add nanosecond resolution for timestamp comparison
     {:via, :syn, {:core, __MODULE__, %{timestamp: ts}}}
   end
