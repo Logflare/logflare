@@ -15,6 +15,7 @@ defmodule Logflare.Application do
   alias Logflare.Sources.RateCounters
   alias Logflare.PubSubRates
   alias Logflare.Utils
+  alias Logflare.GenSingleton
 
   def start(_type, _args) do
     # set inspect function to redact sensitive information
@@ -112,7 +113,9 @@ defmodule Logflare.Application do
         # Startup tasks after v2 pipeline started
         {Task, fn -> startup_tasks() end},
         Logflare.Alerting.Supervisor,
-        Logflare.Scheduler,
+        {Task.Supervisor, name: Logflare.Scheduler.TaskSupervisor},
+        {GenSingleton,
+         child_spec: {Logflare.Scheduler, name: Logflare.Scheduler.scheduler_name()}},
         # active users tracking for UserMetricsPoller
         {Logflare.ActiveUserTracker,
          [name: Logflare.ActiveUserTracker, pubsub_server: Logflare.PubSub]}

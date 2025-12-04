@@ -8,7 +8,6 @@ defmodule Logflare.BackendsTest do
   alias Logflare.Backends.Backend
   alias Logflare.Backends.DynamicPipeline
   alias Logflare.Backends.IngestEventQueue
-  alias Logflare.Backends.RecentEventsTouch
   alias Logflare.Backends.SourceSup
   alias Logflare.Backends.SourceSupWorker
   alias Logflare.Logs.SourceRouting
@@ -441,7 +440,6 @@ defmodule Logflare.BackendsTest do
       start_supervised!({SourceSup, source})
       :timer.sleep(1000)
       assert true == Backends.source_sup_started?(source)
-      assert {:ok, _pid} = Backends.lookup(RecentEventsTouch, source.token)
     end
 
     test "start_source_sup/1, stop_source_sup/1, restart_source_sup/1", %{source: source} do
@@ -465,41 +463,6 @@ defmodule Logflare.BackendsTest do
       TestUtils.retry_assert(fn ->
         assert SourceSup.rule_child_started?(rule)
       end)
-    end
-  end
-
-  describe "RecentEventsTocuh" do
-    setup do
-      insert(:plan)
-      user = insert(:user)
-      timestamp = NaiveDateTime.utc_now()
-      source = insert(:source, user_id: user.id, log_events_updated_at: timestamp)
-      {:ok, _tid} = IngestEventQueue.upsert_tid({source.id, nil, nil})
-      {:ok, source: source, timestamp: timestamp}
-    end
-
-    test "RecentEventsTouch updates source.log_events_updated_at", %{
-      source: source
-    } do
-      le = build(:log_event, ingested_at: NaiveDateTime.utc_now() |> NaiveDateTime.add(200))
-      IngestEventQueue.add_to_table({source.id, nil, nil}, [le])
-      start_supervised!({RecentEventsTouch, source: source, touch_every: 100})
-      :timer.sleep(800)
-      updated = Sources.get_by(id: source.id)
-      assert updated.log_events_updated_at != source.log_events_updated_at
-      assert updated.log_events_updated_at == le.ingested_at |> NaiveDateTime.truncate(:second)
-    end
-
-    test "RecentEventsTouch does not update source.log_events_updated_at if already updated", %{
-      source: source,
-      timestamp: timestamp
-    } do
-      le = build(:log_event, ingested_at: timestamp)
-      IngestEventQueue.add_to_table({source.id, nil, nil}, [le])
-      start_supervised!({RecentEventsTouch, source: source, touch_every: 100})
-      :timer.sleep(800)
-      updated = Sources.get_by(id: source.id)
-      assert updated.log_events_updated_at == source.log_events_updated_at
     end
   end
 

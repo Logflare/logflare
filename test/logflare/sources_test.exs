@@ -4,7 +4,6 @@ defmodule Logflare.SourcesTest do
   alias Logflare.Google.BigQuery
   alias Logflare.Google.BigQuery.GenUtils
   alias Logflare.Sources.Source
-  alias Logflare.Backends.RecentEventsTouch
   alias Logflare.Sources
   alias Logflare.SourceSchemas
   alias Logflare.Backends
@@ -245,11 +244,11 @@ defmodule Logflare.SourcesTest do
       # TODO: cast should return :ok
       assert {:ok, ^token} = Source.Supervisor.start_source(token)
       :timer.sleep(500)
-      assert {:ok, _pid} = Backends.lookup(Logflare.Backends.SourceSup, token)
+      assert {:ok, _pid} = Backends.lookup(SourceSup, token)
       :timer.sleep(1_000)
       assert {:ok, ^token} = Source.Supervisor.delete_source(token)
       :timer.sleep(1000)
-      assert {:error, :not_started} = Backends.lookup(Logflare.Backends.SourceSup, token)
+      assert {:error, :not_started} = Backends.lookup(SourceSup, token)
     end
 
     test "reset_source/1", %{user: user} do
@@ -258,10 +257,10 @@ defmodule Logflare.SourcesTest do
       # TODO: cast should return :ok
       assert {:ok, ^token} = Source.Supervisor.start_source(token)
       :timer.sleep(500)
-      assert {:ok, pid} = Backends.lookup(Logflare.Backends.SourceSup, token)
+      assert {:ok, pid} = Backends.lookup(SourceSup, token)
       assert {:ok, ^token} = Source.Supervisor.reset_source(token)
       :timer.sleep(1500)
-      assert {:ok, new_pid} = Backends.lookup(Logflare.Backends.SourceSup, token)
+      assert {:ok, new_pid} = Backends.lookup(SourceSup, token)
       assert new_pid != pid
     end
 
@@ -271,7 +270,7 @@ defmodule Logflare.SourcesTest do
       start_supervised!(Source.Supervisor)
       assert :ok = Source.Supervisor.ensure_started(source)
       :timer.sleep(1000)
-      assert {:ok, _pid} = Backends.lookup(Logflare.Backends.SourceSup, source.token)
+      assert {:ok, _pid} = Backends.lookup(SourceSup, source.token)
       assert Backends.cached_pending_buffer_len(source) == 0
     end
 
@@ -280,12 +279,12 @@ defmodule Logflare.SourcesTest do
 
       start_supervised!(Source.Supervisor)
       assert :ok = Source.Supervisor.ensure_started(source)
-      :timer.sleep(1000)
-      assert {:ok, pid} = Backends.lookup(Logflare.Backends.SourceSup, source.token)
+      :timer.sleep(3000)
+      assert {:ok, pid} = Backends.lookup(SourceSup, source.token)
       assert {:ok, _} = Source.Supervisor.reset_source(source.token)
       assert {:ok, _} = Source.Supervisor.reset_source(source.token)
       :timer.sleep(3000)
-      assert {:ok, new_pid} = Backends.lookup(RecentEventsTouch, source.token)
+      assert {:ok, new_pid} = Backends.lookup(SourceSup, source.token)
       assert pid != new_pid
       assert Backends.cached_pending_buffer_len(source) == 0
     end
@@ -300,7 +299,7 @@ defmodule Logflare.SourcesTest do
       assert :ok = Source.Supervisor.ensure_started(source)
       assert :ok = Source.Supervisor.ensure_started(source)
       :timer.sleep(3000)
-      assert {:ok, _pid} = Backends.lookup(Logflare.Backends.SourceSup, source.token)
+      assert {:ok, _pid} = Backends.lookup(SourceSup, source.token)
       assert Backends.cached_pending_buffer_len(source) == 0
     end
 
@@ -309,9 +308,9 @@ defmodule Logflare.SourcesTest do
       pid = start_supervised!(Source.Supervisor)
       assert :ok = Source.Supervisor.ensure_started(source)
       :timer.sleep(3000)
-      assert {:ok, prev_pid} = Backends.lookup(Logflare.Backends.SourceSup, source.token)
+      assert {:ok, prev_pid} = Backends.lookup(SourceSup, source.token)
       Process.exit(pid, :kill)
-      assert {:ok, pid} = Backends.lookup(Logflare.Backends.SourceSup, source.token)
+      assert {:ok, pid} = Backends.lookup(SourceSup, source.token)
       assert prev_pid == pid
     end
 
@@ -320,9 +319,9 @@ defmodule Logflare.SourcesTest do
       pid = start_supervised!(Source.Supervisor)
       assert :ok = Source.Supervisor.ensure_started(source)
       :timer.sleep(3000)
-      assert {:ok, prev_pid} = Backends.lookup(Logflare.Backends.SourceSup, source.token)
+      assert {:ok, prev_pid} = Backends.lookup(SourceSup, source.token)
       Process.exit(pid, :kill)
-      assert {:ok, pid} = Backends.lookup(Logflare.Backends.SourceSup, source.token)
+      assert {:ok, pid} = Backends.lookup(SourceSup, source.token)
       assert prev_pid == pid
     end
   end
@@ -581,6 +580,39 @@ defmodule Logflare.SourcesTest do
         assert %_{valid?: false} = changeset = Source.changeset(source, %{labels: input})
         assert expected_error in errors_on(changeset).labels
       end
+    end
+  end
+
+  describe "recent events touch" do
+    setup do
+      insert(:plan)
+      user = insert(:user)
+      {:ok, user: user}
+    end
+
+    test "updates source.log_events_updated_at", %{
+      user: user
+    } do
+      timestamp =
+        NaiveDateTime.utc_now() |> NaiveDateTime.add(-2, :hour) |> NaiveDateTime.truncate(:second)
+
+      source = insert(:source, user_id: user.id, log_events_updated_at: timestamp)
+      Sources.Cache.get_by_id(source.id)
+      start_supervised!({SourceSup, source})
+      :timer.sleep(800)
+      timestamp = NaiveDateTime.utc_now() |> NaiveDateTime.truncate(:second)
+      assert {:ok, 1} = Sources.recent_events_touch(timestamp)
+      updated = Sources.get_by(id: source.id)
+      assert updated.log_events_updated_at == timestamp
+
+      # does not update again if recently updated
+      Sources.Cache.get_by_id(source.id)
+      :timer.sleep(1_000)
+      timestamp = NaiveDateTime.utc_now() |> NaiveDateTime.truncate(:second)
+      assert {:ok, 0} = Sources.recent_events_touch(timestamp)
+
+      updated = Sources.get_by(id: source.id)
+      assert updated.log_events_updated_at != timestamp
     end
   end
 end

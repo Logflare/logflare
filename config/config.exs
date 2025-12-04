@@ -154,15 +154,24 @@ config :open_api_spex, :cache_adapter, OpenApiSpex.Plug.PersistentTermCache
 
 config :logflare, Logflare.Cluster.Utils, min_cluster_size: 1
 
+# global scheduler, only 1 per cluster
 config :logflare, Logflare.Alerting.AlertsScheduler,
   init_task: {Logflare.Alerting, :init_alert_jobs, []}
 
+# global scheduler, only 1 per cluster
 config :logflare, Logflare.Scheduler,
-  run_strategy: Quantum.RunStrategy.Local,
+  include_task_supervisor: false,
+  task_supervisor_name: Logflare.Scheduler.TaskSupervisor,
   jobs: [
     source_cleanup: [
+      run_strategy: {Quantum.RunStrategy.All, :cluster},
       schedule: "*/30 * * * *",
       task: {Logflare.Sources, :shutdown_idle_sources, []}
+    ],
+    recent_events_touch: [
+      run_strategy: Quantum.RunStrategy.Local,
+      schedule: "*/15 * * * *",
+      task: {Logflare.Sources, :recent_events_touch, []}
     ]
   ]
 
