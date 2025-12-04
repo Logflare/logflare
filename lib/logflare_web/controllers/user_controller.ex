@@ -149,40 +149,47 @@ defmodule LogflareWeb.UserController do
 
   def change_owner(%{assigns: %{user: user}} = conn, %{"user" => %{"team_user_id" => id}}) do
     team_user = TeamUsers.get_team_user(id)
+    user = Users.preload_team(user)
 
-    with {:ok, new_owner} <- Users.change_owner(team_user, user),
-         {:ok, _resp} <- TeamUsers.delete_team_user(team_user) do
-      if user.billing_account do
-        Stripe.update_customer(user.billing_account.stripe_customer, %{email: new_owner.email})
-      end
-
+    if is_nil(team_user) or team_user.team_id != user.team.id do
       conn
-      |> put_flash(:info, "Owner successfully changed!")
-      |> redirect(to: Routes.user_path(conn, :edit) <> "#team-members")
+      |> put_flash(:error, "Not authorized to transfer ownership to this team member")
+      |> redirect(to: Routes.user_path(conn, :edit) <> "#change-account-owner")
     else
-      {:error, changeset} ->
-        case List.first(changeset.errors) do
-          {:email, {"has already been taken", _data}} ->
-            conn
-            |> put_flash(
-              :error,
-              "This email address is associated with a Logflare account already. Login with this user and delete the `Account` then try again."
-            )
-            |> redirect(to: Routes.user_path(conn, :edit) <> "#change-account-owner")
-
-          _ ->
-            conn
-            |> put_flash(
-              :error,
-              "Something went wrong. Please contact support if this continues."
-            )
-            |> redirect(to: Routes.user_path(conn, :edit) <> "#change-account-owner")
+      with {:ok, new_owner} <- Users.change_owner(team_user, user),
+           {:ok, _resp} <- TeamUsers.delete_team_user(team_user) do
+        if user.billing_account do
+          Stripe.update_customer(user.billing_account.stripe_customer, %{email: new_owner.email})
         end
 
-      _err ->
         conn
-        |> put_flash(:error, "Something went wrong. Please contact support if this continues.")
-        |> redirect(to: Routes.user_path(conn, :edit) <> "#change-account-owner")
+        |> put_flash(:info, "Owner successfully changed!")
+        |> redirect(to: Routes.user_path(conn, :edit) <> "#team-members")
+      else
+        {:error, changeset} ->
+          case List.first(changeset.errors) do
+            {:email, {"has already been taken", _data}} ->
+              conn
+              |> put_flash(
+                :error,
+                "This email address is associated with a Logflare account already. Login with this user and delete the `Account` then try again."
+              )
+              |> redirect(to: Routes.user_path(conn, :edit) <> "#change-account-owner")
+
+            _ ->
+              conn
+              |> put_flash(
+                :error,
+                "Something went wrong. Please contact support if this continues."
+              )
+              |> redirect(to: Routes.user_path(conn, :edit) <> "#change-account-owner")
+          end
+
+        _err ->
+          conn
+          |> put_flash(:error, "Something went wrong. Please contact support if this continues.")
+          |> redirect(to: Routes.user_path(conn, :edit) <> "#change-account-owner")
+      end
     end
   end
 end
