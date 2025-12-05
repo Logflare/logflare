@@ -289,6 +289,28 @@ defmodule LogflareWeb.SourceControllerTest do
       assert conn.assigns.source.name == new_name
     end
 
+    test "able to update labels", %{conn: conn, users: [u1, _u2], sources: [s1, _s2 | _]} do
+      new_name = TestUtils.random_string()
+
+      params = %{
+        "id" => s1.id,
+        "source" => %{
+          "labels" => "test=some_label"
+        }
+      }
+
+      conn =
+        conn
+        |> login_user(u1)
+        |> patch(~p"/sources/#{s1}", params)
+
+      s1_new = Sources.get_by(token: s1.token)
+
+      assert html_response(conn, 302) =~ "redirected"
+      assert Phoenix.Flash.get(conn.assigns.flash, :info) == "Source updated!"
+      assert s1_new.labels == "test=some_label"
+    end
+
     test "returns 406 with invalid params", %{
       conn: conn,
       users: [u1, _u2],

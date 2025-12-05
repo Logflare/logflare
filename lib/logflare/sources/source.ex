@@ -290,7 +290,14 @@ defmodule Logflare.Sources.Source do
     errors
     |> Enum.uniq()
     |> Enum.reduce(changeset, fn {k, v}, cs -> add_error(cs, k, v) end)
-    |> put_change(:labels, normalized |> Enum.reverse() |> Enum.join(","))
+    |> then(fn
+      changeset when normalized == [] ->
+        changeset
+
+      changeset ->
+        changeset
+        |> put_change(:labels, normalized |> Enum.reverse() |> Enum.join(","))
+    end)
   end
 
   defp get_normalized_and_errors(labels) do
