@@ -37,7 +37,7 @@ defmodule Logflare.Utils do
 
   @doc """
   Builds a short Cachex expiration spec
-  Defaults to 50 sec with 20 sec cleanup intervals
+  Defaults to 60 sec with 20 sec cleanup intervals
   """
   @spec cache_expiration_sec(non_neg_integer(), non_neg_integer()) :: Cachex.Spec.expiration()
   def cache_expiration_sec(default \\ 60, interval \\ 20) do

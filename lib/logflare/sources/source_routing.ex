@@ -17,7 +17,9 @@ defmodule Logflare.Logs.SourceRouting do
 
   def route_to_sinks_and_ingest(%LE{via_rule: %Rule{}} = le, _source), do: le
 
-  def route_to_sinks_and_ingest(%LE{via_rule: nil} = le, %Source{rules: rules} = source) do
+  def route_to_sinks_and_ingest(%LE{via_rule: nil} = le, source) do
+    %Source{rules: rules} = Sources.Cache.preload_rules(source)
+
     for %Rule{lql_filters: [_ | _]} = rule <- rules, route_with_lql_rules?(le, rule) do
       do_routing(rule, le, source)
     end

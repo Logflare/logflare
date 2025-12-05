@@ -13,14 +13,28 @@ defmodule Logflare.ContextCache.CacheBusterWorker do
   alias Logflare.Utils
   alias Logflare.ContextCache
 
+  @supervisor_name __MODULE__.Supervisor
+
+  @spec supervisor_spec() :: Supervisor.module_spec()
+  def supervisor_spec() do
+    {PartitionSupervisor, child_spec: __MODULE__, name: @supervisor_name}
+  end
+
+  @spec cast_to_bust([{context, args}]) :: :ok when context: module(), args: term()
+  def cast_to_bust(records) do
+    GenServer.cast({:via, PartitionSupervisor, {@supervisor_name, records}}, {:to_bust, records})
+  end
+
   def start_link(init_args) do
     GenServer.start_link(__MODULE__, init_args)
   end
 
+  @impl true
   def init(state) do
     {:ok, state}
   end
 
+  @impl true
   def handle_cast({:to_bust, context_pkeys}, state) do
     ContextCache.bust_keys(context_pkeys)
 

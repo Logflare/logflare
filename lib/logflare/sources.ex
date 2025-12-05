@@ -374,7 +374,7 @@ defmodule Logflare.Sources do
   @spec preload_defaults(Source.t()) :: Source.t()
   def preload_defaults(source) do
     source
-    |> Repo.preload([:rules, :backends, [user: :team]])
+    |> Repo.preload([:backends, [user: :team]])
     |> refresh_source_metrics()
     |> put_bq_table_id()
   end

@@ -50,6 +50,14 @@ config :logflare,
        ]
        |> filter_nil_kv_pairs.()
 
+cache_stats =
+  case System.get_env("LOGFLARE_CACHE_STATS") do
+    # Keep the compile time value
+    nil -> nil
+    "false" -> false
+    "true" -> true
+  end
+
 config :logflare,
        [
          node_shutdown_code: System.get_env("LOGFLARE_NODE_SHUTDOWN_CODE"),
@@ -60,7 +68,7 @@ config :logflare,
          public_access_token:
            System.get_env("LOGFLARE_PUBLIC_ACCESS_TOKEN") || System.get_env("LOGFLARE_API_KEY"),
          private_access_token: System.get_env("LOGFLARE_PRIVATE_ACCESS_TOKEN"),
-         cache_stats: System.get_env("LOGFLARE_CACHE_STATS", "false") == "true",
+         cache_stats: cache_stats,
          encryption_key_default: System.get_env("LOGFLARE_DB_ENCRYPTION_KEY"),
          encryption_key_retired: System.get_env("LOGFLARE_DB_ENCRYPTION_KEY_RETIRED"),
          metadata: logflare_metadata,
