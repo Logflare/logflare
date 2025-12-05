@@ -19,6 +19,7 @@ defmodule Logflare.ContextCache.CacheBuster do
   alias Logflare.Sources
   alias Logflare.TeamUsers
   alias Logflare.Users
+  alias Logflare.ContextCache.CacheBusterWorker
 
   require Logger
 

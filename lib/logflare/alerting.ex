@@ -479,7 +479,7 @@ defmodule Logflare.Alerting do
   Returns the alerts scheduler :via name used for syn registry.
   """
   def scheduler_name do
-    ts = DateTime.utc_now() |> DateTime.to_unix(:nanosecond)
+    ts = System.os_time(:nanosecond)
     # add nanosecond resolution for timestamp comparison
     {:via, :syn, {:alerting, Logflare.Alerting.AlertsScheduler, %{timestamp: ts}}}
   end

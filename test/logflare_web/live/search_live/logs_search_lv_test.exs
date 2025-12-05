@@ -56,6 +56,90 @@ defmodule LogflareWeb.Source.SearchLVTest do
   # do this for all tests
   setup [:setup_mocks, :on_exit_kill_tasks]
 
+  describe "resource switching for team_users" do
+    setup %{conn: conn} do
+      plan = insert(:plan)
+      [user1, user2] = insert_pair(:user)
+      _billing_account = insert(:billing_account, user: user1, stripe_plan_id: plan.stripe_id)
+      _billing_account = insert(:billing_account, user: user2, stripe_plan_id: plan.stripe_id)
+      user1 = user1 |> Logflare.Repo.preload(:billing_account)
+      user2 = user2 |> Logflare.Repo.preload(:billing_account)
+      team1 = insert(:team, user: user1)
+      team2 = insert(:team, user: user2)
+
+      # person is invited to both teams
+      email = "test@example.com"
+      team_user1 = insert(:team_user, team: team1, email: email)
+      team_user2 = insert(:team_user, team: team2, email: email)
+
+      [
+        conn: conn,
+        user1: user1,
+        user2: user2,
+        plan: plan,
+        team_user1: team_user1,
+        team_user2: team_user2
+      ]
+    end
+
+    test "invited team user can view source", %{
+      conn: conn,
+      user1: user1,
+      team_user1: team_user1,
+      team_user2: _team_user2
+    } do
+      source = insert(:source, user: user1)
+      # set session for team_user1
+      conn = conn |> login_user(team_user1.team.user, team_user1)
+      {:ok, view, _html} = live(conn, ~p"/sources/#{source.id}/search")
+      assert view |> element(".subhead") |> render() =~ source.name
+    end
+
+    test "switches team automatically if viewing", %{
+      conn: conn,
+      user1: user1,
+      team_user1: team_user1,
+      team_user2: team_user2
+    } do
+      source = insert(:source, user: user1)
+      # set session for team_user1
+      conn = conn |> login_user(team_user1.team.user, team_user2)
+      {:ok, view, _html} = live(conn, ~p"/sources/#{source.id}/search")
+      assert view |> element(".subhead") |> render() =~ source.name
+    end
+
+    test "uninvited user cannot view source", %{
+      conn: conn,
+      user1: user1,
+      user2: user2,
+      team_user1: _team_user1,
+      team_user2: _team_user2
+    } do
+      # other_user = insert(:user)
+      # other_team_user = insert(:team_user, team: team_user2.team, email: other_user.email)
+      source = insert(:source, user: user1)
+      # set session for team_user2
+      conn = conn |> login_user(user2)
+      assert conn |> get(~p"/sources/#{source.id}/search") |> html_response(404)
+    end
+
+    test "uninvited team user cannot view source", %{
+      conn: conn,
+      user1: user1,
+      user2: _user2,
+      team_user1: _team_user1,
+      team_user2: _team_user2
+    } do
+      other_user = insert(:user)
+      other_team = insert(:team, user: other_user)
+      other_team_user = insert(:team_user, team: other_team)
+      source = insert(:source, user: user1)
+      # set session for team_user2
+      conn = conn |> login_user(other_user, other_team_user)
+      assert conn |> get(~p"/sources/#{source.id}/search") |> html_response(404)
+    end
+  end
+
   describe "no timezone preference for user" do
     setup do
       user = insert(:user)

@@ -53,18 +53,8 @@ defmodule Logflare.Teams.TeamContext do
 
   defp do_resolve(%Team{} = team, %TeamUser{} = team_user) do
     user = team.user |> Logflare.Users.preload_defaults()
-
-    case TeamUsers.touch_team_user(team_user) do
-      {1, [touched]} ->
-        touched =
-          touched
-          |> TeamUsers.preload_defaults()
-
-        {:ok, %__MODULE__{user: user, team: team, team_user: touched}}
-
-      _ ->
-        {:error, :not_authorized}
-    end
+    team_user = TeamUsers.preload_defaults(team_user)
+    {:ok, %__MODULE__{user: user, team: team, team_user: team_user}}
   end
 
   defp do_resolve(%Team{} = team, %User{} = _user) do

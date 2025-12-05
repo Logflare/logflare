@@ -17,7 +17,7 @@ defmodule Logflare.Sources.UserMetricsPollerTest do
     Process.sleep(100)
 
     poller_pid =
-      case :syn.lookup(:core, {UserMetricsPoller, user.id}) do
+      case :syn.lookup(:ui, {UserMetricsPoller, user.id}) do
         {poller_pid, _} ->
           poller_pid
 

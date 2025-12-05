@@ -9,7 +9,6 @@ defmodule Logflare.Backends do
   alias Logflare.Backends.Backend
   alias Logflare.Backends.BackendRegistry
   alias Logflare.Backends.IngestEventQueue
-  alias Logflare.Backends.RecentEventsTouch
   alias Logflare.Backends.SourceRegistry
   alias Logflare.Backends.SourcesSup
   alias Logflare.Backends.SourceSup
@@ -640,19 +639,8 @@ defmodule Logflare.Backends do
 
   def via_source(%Source{id: id}, process_id), do: via_source(id, process_id)
 
-  def via_source(id, RecentEventsTouch) when is_number(id) do
-    ts = DateTime.utc_now() |> DateTime.to_unix(:nanosecond)
-    partition = recent_touch_partition(id)
-    {:via, :syn, {partition, {RecentEventsTouch, id}, %{timestamp: ts}}}
-  end
-
   def via_source(id, process_id) when is_number(id) do
     {:via, Registry, {SourceRegistry, {id, process_id}}}
-  end
-
-  defp recent_touch_partition(source_id) when is_integer(source_id) do
-    part = :erlang.phash2(source_id, System.schedulers_online())
-    "recent_touch_#{part}" |> String.to_existing_atom()
   end
 
   @doc """

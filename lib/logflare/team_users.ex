@@ -155,11 +155,6 @@ defmodule Logflare.TeamUsers do
     |> Repo.update()
   end
 
-  def touch_team_user(%TeamUser{} = team_user) do
-    from(t in TeamUser, select: t, where: t.id == ^team_user.id)
-    |> Repo.update_all(set: [updated_at: DateTime.utc_now()])
-  end
-
   @doc """
   Deletes a TeamUser.
 

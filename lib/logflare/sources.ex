@@ -665,4 +665,48 @@ defmodule Logflare.Sources do
         NaiveDateTime.compare(ingested_at, cutoff_time) == :gt
     end
   end
+
+  @doc """
+  Updates the source.log_events_updated_at timestamp to the given timestamp.
+  If no timestamp is provided, the current UTC time is used.
+  """
+  @spec recent_events_touch(NaiveDateTime.t()) :: {:ok, non_neg_integer()} | {:error, any()}
+  def recent_events_touch(timestamp \\ NaiveDateTime.utc_now()) do
+    threshold = timestamp |> NaiveDateTime.add(-1, :hour)
+    base_query = from(s in Source, where: s.log_events_updated_at <= ^threshold)
+
+    filter = {:==, {:is_map, {:element, 2, :value}}, true}
+
+    query =
+      Cachex.Query.build(where: filter, output: :value)
+
+    Sources.Cache
+    |> Cachex.stream!(query)
+    |> Stream.flat_map(fn
+      {:cached, %Source{id: id, log_events_updated_at: log_events_updated_at}} ->
+        if log_events_updated_at < threshold do
+          [id]
+        else
+          []
+        end
+
+      _val ->
+        []
+    end)
+    |> Stream.uniq()
+    |> Stream.take(500)
+    |> Enum.chunk_every(100)
+    |> Enum.map(fn ids ->
+      new_query = where(base_query, [s], s.id in ^ids)
+      {count, _} = Repo.update_all(new_query, set: [log_events_updated_at: timestamp])
+      # give the db a break and let the transactions propagate via cainophile
+      :timer.sleep(500)
+      count
+    end)
+    |> Enum.sum()
+    |> then(fn count ->
+      Logger.debug("recent events touch: updated #{count} active sources")
+      {:ok, count}
+    end)
+  end
 end
