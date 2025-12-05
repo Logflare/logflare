@@ -72,9 +72,9 @@ defmodule Logflare.Backends.Adaptor.TCPAdaptorTest do
   describe "mTLS" do
     setup do
       port = 6515
-      ca_cert = File.read!("priv/keys/ca.crt")
-      client_cert = File.read!("priv/keys/client.crt")
-      client_key = File.read!("priv/keys/client.key")
+      ca_cert = File.read!("priv/telegraf/ca.crt")
+      client_cert = File.read!("priv/telegraf/client.crt")
+      client_key = File.read!("priv/telegraf/client.key")
 
       config = %{
         host: "localhost",

@@ -63,7 +63,7 @@ defmodule Logflare.Backends.Adaptor.TCPAdaptor do
     |> validate_change(:cipher_key, fn :cipher_key, key ->
       case Base.decode64(key) do
         {:ok, decoded} when byte_size(decoded) == 32 -> []
-        :error -> [cipher_key: "must be a base64 encoded 32 byte key"]
+        _ -> [cipher_key: "must be a base64 encoded 32 byte key"]
       end
     end)
     |> validate_change(:ca_cert, &validate_pem/2)
