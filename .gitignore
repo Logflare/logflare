@@ -94,5 +94,6 @@ dev-*
 .cursorrules
 .claude
 .treq
+
 # Rust binary artifacts
 /target/
