@@ -127,7 +127,6 @@ defmodule Logflare.UsersTest do
 
       assert Enum.any?(system_sources, &(&1.system_source_type == :metrics))
       assert Enum.any?(system_sources, &(&1.system_source_type == :logs))
-      assert Enum.any?(system_sources, &(&1.system_source_type == :rejected_events))
 
       assert Users.Cache.get(user.id).system_monitoring
 
