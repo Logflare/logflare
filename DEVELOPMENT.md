@@ -132,7 +132,7 @@ make grpc.protoc.bq
 make deploy.staging.{main|versioned}
 make deploy.prod.versioned
 make tag-versioned
-make ssl.{prod|staging}
+make ssl.{prod|staging|telegraf}
 ```
 
 ## Release Management
