@@ -73,8 +73,7 @@ ExUnit.configure(
     not_implemented: true,
     integration: true,
     failing: true,
-    benchmark: true,
-    telegraf: true
+    benchmark: true
   ]
 )
 

@@ -3,7 +3,7 @@ name: Elixir CI
 on:
   workflow_dispatch:
   schedule:
-    - cron: '0 0 * * SUN'
+    - cron: "0 0 * * SUN"
   pull_request:
     branches: ["**"]
     paths:
@@ -107,5 +107,7 @@ jobs:
           restore-keys: ${{ runner.os }}-mix--dialyzer
       - name: Install dependencies
         run: mix do deps.get, deps.compile
+      - name: Start Telegraf
+        run: docker compose up -d telegraf
       - name: Run ${{ matrix.commands.name }}
         run: ${{ matrix.commands.run }}
