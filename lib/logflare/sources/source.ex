@@ -107,7 +107,7 @@ defmodule Logflare.Sources.Source do
     end
   end
 
-  @system_source_types [:rejected_events, :metrics, :logs]
+  @system_source_types [:metrics, :logs]
 
   typed_schema "sources" do
     field :name, :string
