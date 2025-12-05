@@ -77,42 +77,41 @@ defmodule Logflare.Backends.Adaptor.TCPAdaptor do
 
   defp validate_certificate(changeset, field) do
     validate_change(changeset, field, fn field, value ->
-      certs = :public_key.pem_decode(value)
+      case :public_key.pem_decode(value) do
+        [] ->
+          [{field, "must be a valid PEM encoded string"}]
 
-      cert_errors =
-        Enum.flat_map(certs, fn
-          {:Certificate, _der, :not_encrypted} ->
-            []
+        entries ->
+          Enum.flat_map(entries, fn
+            {:Certificate, _der, :not_encrypted} ->
+              []
 
-          {:Certificate, _der, cipher} ->
-            [{field, "expected not encrypted, got: #{inspect(cipher)}"}]
+            {:Certificate, _der, _cipher} ->
+              [{field, "PEM entries must not be encrypted"}]
 
-          {type, _der, _cipher} ->
-            [{field, "expected certificate, got: #{inspect(type)}"}]
-        end)
-
-      if certs == [] do
-        [{field, "must be a valid PEM encoded string"}]
-      else
-        cert_errors
+            {type, _der, _cipher} ->
+              [{field, "PEM entries must all be certificates, got: #{inspect(type)}"}]
+          end)
       end
     end)
   end
 
+  @valid_key_types [:RSAPrivateKey, :DSAPrivateKey, :ECPrivateKey, :PrivateKeyInfo]
+
   defp validate_private_key(changeset, field) do
     validate_change(changeset, field, fn field, value ->
       case :public_key.pem_decode(value) do
-        [{:PrivateKeyInfo, _der, :not_encrypted}] ->
+        [{type, _der, :not_encrypted}] when type in @valid_key_types ->
           []
 
-        [{:PrivateKeyInfo, _der, cipher}] ->
-          [{field, "expected not encrypted, got: #{inspect(cipher)}"}]
+        [{type, _der, _cipher}] when type in @valid_key_types ->
+          [{field, "PEM entry must not be encrypted"}]
 
         [{type, _der, _cipher}] ->
-          [{field, "expected private key, got: #{inspect(type)}"}]
+          [{field, "unsupported key type: #{inspect(type)}"}]
 
         [_ | _] = entries ->
-          [{field, "expected one private key, got #{length(entries)}"}]
+          [{field, "expected one PEM entry, got #{length(entries)} entries"}]
 
         [] ->
           [{field, "must be a valid PEM encoded string"}]
