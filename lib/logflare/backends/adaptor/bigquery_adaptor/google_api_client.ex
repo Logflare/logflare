@@ -1,17 +1,22 @@
 defmodule Logflare.Backends.Adaptor.BigQueryAdaptor.GoogleApiClient do
   @moduledoc false
-  alias Explorer.DataFrame
+  alias Google.Rpc.DebugInfo
+  alias Google.Cloud.Bigquery.Storage.V1.StorageError
   alias Google.Cloud.Bigquery.Storage.V1.BigQueryWrite
   alias Google.Cloud.Bigquery.Storage.V1.AppendRowsRequest
   alias Google.Cloud.Bigquery.Storage.V1.AppendRowsRequest.ArrowData
   alias Google.Cloud.Bigquery.Storage.V1.ArrowRecordBatch
+  alias Logflare.Backends.Adaptor.BigQueryAdaptor.ArrowIPC
   require Logger
 
   @finch_instance_name Logflare.FinchBQStorageWrite
 
-  def append_rows({:arrow, data_frame}, project, dataset, table) do
+  def append_rows({:arrow, data_frame}, context, table) do
     partition_count = System.schedulers_online()
     partition = :erlang.phash2(self(), partition_count)
+
+    project = context[:project_id]
+    dataset = context[:dataset_id]
 
     {:ok, goth_token} = Goth.fetch({Logflare.Goth, partition})
 
@@ -24,18 +29,17 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor.GoogleApiClient do
         ]
       )
 
-    {:ok, arrow_schema} = DataFrame.dump_ipc_schema(data_frame)
+    {arrow_schema, batch_msgs} =
+      data_frame
+      |> Jason.encode!()
+      |> ArrowIPC.get_ipc_bytes()
 
     writer_schema = %Google.Cloud.Bigquery.Storage.V1.ArrowSchema{serialized_schema: arrow_schema}
-
-    {:ok, batch_msgs} = DataFrame.dump_ipc_record_batch(data_frame)
 
     stream = BigQueryWrite.Stub.append_rows(channel)
 
     if length(batch_msgs) > 1 do
-      Logger.warning(
-        "Storage Write DataFrame.dump_ipc_record_batch produced more than one batch message"
-      )
+      Logger.warning("Storage Write ArrowIPC.get_ipc_bytes produced more than one batch message")
     end
 
     Enum.each(
@@ -66,6 +70,13 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor.GoogleApiClient do
         Enum.each(responses, fn
           {:error, response} ->
             Logger.warning("Storage Write API AppendRows response error - #{inspect(response)}")
+
+          {:ok, %{response: {:error, %{message: msg}}}} ->
+            Logger.warning(
+              "Storage Write API AppendRows response with error msg - #{inspect(msg)}"
+            )
+
+            :ok
 
           _ ->
             :ok

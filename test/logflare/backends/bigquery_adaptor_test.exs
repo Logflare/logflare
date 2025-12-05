@@ -328,24 +328,15 @@ defmodule Logflare.Backends.BigQueryAdaptorTest do
 
       Google.Cloud.Bigquery.Storage.V1.BigQueryWrite.Stub
       |> stub(:append_rows, fn _channel ->
-        # simulate latency
-        :timer.sleep(10)
         {:ok, %GRPC.Client.Stream{}}
       end)
 
       GRPC.Stub
       |> stub(:connect, fn _url, _keywords ->
-        # simulate latency
-        :timer.sleep(20)
         {:ok, %GRPC.Channel{}}
       end)
-      |> stub(:send_request, fn stream, request ->
-        # simulate latency
-        :timer.sleep(10)
-
-        %{rows: {:arrow_rows, %{rows: %{serialized_record_batch: ipc_msg}}}} = request
-
-        BencheeAsync.Reporter.record(byte_size(ipc_msg))
+      |> stub(:send_request, fn stream, _request ->
+        BencheeAsync.Reporter.record()
         {:ok, stream}
       end)
       |> stub(:end_stream, fn stream ->
@@ -361,6 +352,35 @@ defmodule Logflare.Backends.BigQueryAdaptorTest do
       start_supervised!({SourceSup, source})
 
       [source: source]
+    end
+
+    test "ipc encoding", %{source: source} do
+      batch_1 = [build(:log_event, source: source)]
+
+      Benchee.run(
+        %{
+          "arrow-rs" => fn ->
+            {_, _} =
+              batch_1
+              |> Enum.map(&BigQueryAdaptor.log_event_to_df_struct(&1))
+              |> BigQueryAdaptor.normalize_df_struct_fields()
+              |> Jason.encode!()
+              |> BigQueryAdaptor.ArrowIPC.get_ipc_bytes()
+          end,
+          "Explorer" => fn ->
+            df =
+              batch_1
+              |> Enum.map(&BigQueryAdaptor.log_event_to_df_struct(&1))
+              |> BigQueryAdaptor.normalize_df_struct_fields()
+              |> DataFrame.new()
+
+            {:ok, _arrow_schema} = DataFrame.dump_ipc_schema(df)
+            {:ok, _batch_msgs} = DataFrame.dump_ipc_record_batch(df)
+          end
+        },
+        formatters: [{Benchee.Formatters.Console, extended_statistics: true}],
+        profile_after: :tprof
+      )
     end
 
     test "defaults", %{source: source} do
