@@ -1,7 +1,5 @@
 defmodule Logflare.Backends.Adaptor.BigQueryAdaptor.GoogleApiClient do
   @moduledoc false
-  alias Google.Rpc.DebugInfo
-  alias Google.Cloud.Bigquery.Storage.V1.StorageError
   alias Google.Cloud.Bigquery.Storage.V1.BigQueryWrite
   alias Google.Cloud.Bigquery.Storage.V1.AppendRowsRequest
   alias Google.Cloud.Bigquery.Storage.V1.AppendRowsRequest.ArrowData
