@@ -358,6 +358,36 @@
               Transport protocol used for OTLP
             </small>
           </div>
+        <% "tcp" -> %>
+          <div class="form-group">
+            {label(f_config, :host, "Host")}
+            {text_input(f_config, :host, class: "form-control", placeholder: "127.0.0.1")}
+          </div>
+          <div class="form-group">
+            {label(f_config, :port, "Port")}
+            {number_input(f_config, :port, class: "form-control", placeholder: "6515")}
+          </div>
+          <div class="form-group">
+            {label(f_config, :cipher_key, "Cipher Key (Base64-encoded)")}
+            {text_input(f_config, :cipher_key, class: "form-control", placeholder: "IHBQBF1xUGhebXSR4tAJ2oDdZmYhlKQP7z5vBwJNcPo=")}
+          </div>
+          <div class="form-group">
+            {label(f_config, :tls, "Use TLS?")}
+            {checkbox(f_config, :tls, id: "tls")}
+            <small class="form-text text-muted">Connect using TLS</small>
+          </div>
+          <div class="form-group">
+            {label(f_config, :ca_cert, "CA Certificate (PEM)")}
+            {textarea(f_config, :ca_cert, class: "form-control")}
+          </div>
+          <div class="form-group">
+            {label(f_config, :client_cert, "Client Certificate (PEM)")}
+            {textarea(f_config, :client_cert, class: "form-control")}
+          </div>
+          <div class="form-group">
+            {label(f_config, :client_key, "Client Key (PEM)")}
+            {textarea(f_config, :client_key, class: "form-control")}
+          </div>
         <% _ -> %>
           <div>Select a Backend Type</div>
       <% end %>

@@ -60,22 +60,64 @@ defmodule Logflare.Backends.Adaptor.TCPAdaptor do
   def validate_config(changeset) do
     changeset
     |> validate_inclusion(:port, 0..65_535)
-    |> validate_change(:cipher_key, fn :cipher_key, key ->
+    |> validate_cipher()
+    |> validate_certificate(:ca_cert)
+    |> validate_certificate(:client_cert)
+    |> validate_private_key(:client_key)
+  end
+
+  defp validate_cipher(changeset) do
+    validate_change(changeset, :cipher_key, fn :cipher_key, key ->
       case Base.decode64(key) do
         {:ok, decoded} when byte_size(decoded) == 32 -> []
         _ -> [cipher_key: "must be a base64 encoded 32 byte key"]
       end
     end)
-    |> validate_change(:ca_cert, &validate_pem/2)
-    |> validate_change(:client_cert, &validate_pem/2)
-    |> validate_change(:client_key, &validate_pem/2)
   end
 
-  defp validate_pem(field, value) do
-    case :public_key.pem_decode(value) do
-      [] -> [{field, "must be a valid PEM encoded string"}]
-      _ -> []
-    end
+  defp validate_certificate(changeset, field) do
+    validate_change(changeset, field, fn field, value ->
+      certs = :public_key.pem_decode(value)
+
+      cert_errors =
+        Enum.flat_map(certs, fn
+          {:Certificate, _der, :not_encrypted} ->
+            []
+
+          {:Certificate, _der, cipher} ->
+            [{field, "expected not encrypted, got: #{inspect(cipher)}"}]
+
+          {type, _der, _cipher} ->
+            [{field, "expected certificate, got: #{inspect(type)}"}]
+        end)
+
+      if certs == [] do
+        [{field, "must be a valid PEM encoded string"}]
+      else
+        cert_errors
+      end
+    end)
+  end
+
+  defp validate_private_key(changeset, field) do
+    validate_change(changeset, field, fn field, value ->
+      case :public_key.pem_decode(value) do
+        [{:PrivateKeyInfo, _der, :not_encrypted}] ->
+          []
+
+        [{:PrivateKeyInfo, _der, cipher}] ->
+          [{field, "expected not encrypted, got: #{inspect(cipher)}"}]
+
+        [{type, _der, _cipher}] ->
+          [{field, "expected private key, got: #{inspect(type)}"}]
+
+        [_ | _] = entries ->
+          [{field, "expected one private key, got #{length(entries)}"}]
+
+        [] ->
+          [{field, "must be a valid PEM encoded string"}]
+      end
+    end)
   end
 
   @impl Logflare.Backends.Adaptor
