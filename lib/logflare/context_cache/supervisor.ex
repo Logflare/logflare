@@ -44,10 +44,15 @@ defmodule Logflare.ContextCache.Supervisor do
     list_caches() ++
       [
         ContextCache.TransactionBroadcaster,
-        {GenSingleton, child_spec: cainophile_child_spec()},
-        {PartitionSupervisor, child_spec: CacheBusterWorker, name: CacheBusterWorker.Supervisor},
-        ContextCache.CacheBuster
-      ]
+        {GenSingleton, child_spec: cainophile_child_spec()}
+      ] ++ buster_specs()
+  end
+
+  def buster_specs do
+    [
+      CacheBusterWorker.supervisor_spec(),
+      ContextCache.CacheBuster
+    ]
   end
 
   def list_caches do

@@ -16,7 +16,7 @@ defmodule Logflare.Rules.CacheTest do
     source = insert(:source, user: user)
     [r1, r2] = insert_list(2, :rule, source: source, backend: backend)
 
-    {:ok, source: source, backend: backend, rule_ids: [r1.id, r2.id]}
+    [source: source, backend: backend, rule_ids: [r1.id, r2.id]]
   end
 
   describe "rules cache" do

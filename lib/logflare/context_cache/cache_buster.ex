@@ -69,10 +69,7 @@ defmodule Logflare.ContextCache.CacheBuster do
       records ->
         :telemetry.execute([:logflare, :cache_buster, :to_bust], %{count: length(records)})
 
-        GenServer.cast(
-          {:via, PartitionSupervisor, {CacheBusterWorker.Supervisor, records}},
-          {:to_bust, records}
-        )
+        CacheBusterWorker.cast_to_bust(records)
     end)
 
     {:noreply, state}
