@@ -87,6 +87,8 @@ jobs:
       COVERALLS_SERVICE_JOB_ID: ${{ github.sha }}-${{ strategy.job-index }}-${{ github.run_id }}
     steps:
       - uses: actions/checkout@v3
+      - name: Start Telegraf
+        run: docker compose up -d telegraf
       - name: Set up Elixir
         uses: erlef/setup-beam@v1
         with:
@@ -107,7 +109,5 @@ jobs:
           restore-keys: ${{ runner.os }}-mix--dialyzer
       - name: Install dependencies
         run: mix do deps.get, deps.compile
-      - name: Start Telegraf
-        run: docker compose up -d telegraf
       - name: Run ${{ matrix.commands.name }}
         run: ${{ matrix.commands.run }}
