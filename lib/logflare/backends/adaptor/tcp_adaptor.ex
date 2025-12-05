@@ -96,7 +96,7 @@ defmodule Logflare.Backends.Adaptor.TCPAdaptor do
     end)
   end
 
-  @valid_key_types [:RSAPrivateKey, :DSAPrivateKey, :ECPrivateKey, :PrivateKeyInfo]
+  @valid_key_types [:RSAPrivateKey, :ECPrivateKey, :PrivateKeyInfo]
 
   defp validate_private_key(changeset, field) do
     validate_change(changeset, field, fn field, value ->
