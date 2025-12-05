@@ -25,11 +25,12 @@ defmodule LogflareWeb.Plugs.SetVerifySource do
     assign(conn, :source, source)
   end
 
-  def call(%{assigns: %{user: user}, params: params} = conn, _opts) do
+  def call(%{assigns: assigns, params: params} = conn, _opts) do
     id = params["source_id"] || params["id"]
     current_email = get_session(conn, :current_email)
+    effective_user = assigns[:team_user] || assigns[:user]
 
-    case Sources.get_by_user_access(user, id) do
+    case Sources.get_by_user_access(effective_user, id) do
       source = %Source{} ->
         source =
           source
