@@ -17,6 +17,7 @@ defmodule Logflare.ContextCache.CacheBuster do
   alias Logflare.Sources
   alias Logflare.TeamUsers
   alias Logflare.Users
+  alias Logflare.ContextCache.CacheBusterWorker
 
   require Logger
 
@@ -68,7 +69,7 @@ defmodule Logflare.ContextCache.CacheBuster do
         :telemetry.execute([:logflare, :cache_buster, :to_bust], %{count: length(records)})
 
         GenServer.cast(
-          {:via, PartitionSupervisor, {__MODULE__.Supervisor, records}},
+          {:via, PartitionSupervisor, {CacheBusterWorker.Supervisor, records}},
           {:to_bust, records}
         )
     end)

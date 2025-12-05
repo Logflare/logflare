@@ -33,7 +33,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
       when is_list(connection_opts) and is_non_empty_binary(table) do
     client = build_client(connection_opts)
     url = build_request_url(connection_opts, table)
-    request_body = encode_batch(log_events) |> :zlib.gzip()
+    request_body = log_events |> encode_batch() |> :zlib.gzip()
 
     case Tesla.post(client, url, request_body) do
       {:ok, %Tesla.Env{status: 200}} ->
@@ -51,11 +51,12 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
   defp build_client(connection_opts) do
     middleware = [
       {Tesla.Middleware.Headers,
-       [
-         {"content-type", "application/octet-stream"},
-         {"content-encoding", "gzip"},
-         build_auth_header(connection_opts)
-       ]},
+       [{"content-type", "application/octet-stream"}, {"content-encoding", "gzip"}]},
+      {Tesla.Middleware.BasicAuth,
+       %{
+         username: Keyword.get(connection_opts, :username),
+         password: Keyword.get(connection_opts, :password)
+       }},
       {Tesla.Middleware.Retry,
        delay: @initial_delay,
        max_retries: @max_retries,
@@ -174,14 +175,6 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
       })
 
     "#{scheme}://#{host}:#{port}/?#{params}"
-  end
-
-  @spec build_auth_header(Keyword.t()) :: {String.t(), String.t()}
-  defp build_auth_header(connection_opts) when is_list(connection_opts) do
-    username = Keyword.get(connection_opts, :username)
-    password = Keyword.get(connection_opts, :password)
-    credentials = Base.encode64("#{username}:#{password}")
-    {"authorization", "Basic #{credentials}"}
   end
 
   defp default_port("https"), do: 8443

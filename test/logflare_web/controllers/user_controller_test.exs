@@ -172,6 +172,44 @@ defmodule LogflareWeb.UserControllerTest do
     end
   end
 
+  describe "UserController change_owner" do
+    test "owner cannot transfer ownership to team member from another team", %{conn: conn} do
+      owner_a = insert(:user)
+      _team_a = insert(:team, user: owner_a)
+
+      owner_b = insert(:user)
+      team_b = insert(:team, user: owner_b)
+      victim_team_user = insert(:team_user, team: team_b, email: "victim@example.com")
+
+      conn =
+        conn
+        |> login_user(owner_a)
+        |> put(~p"/account/edit/owner", %{"user" => %{"team_user_id" => victim_team_user.id}})
+
+      assert redirected_to(conn, 302) =~ "/account/edit"
+
+      assert Phoenix.Flash.get(conn.assigns.flash, :error) ==
+               "Not authorized to transfer ownership to this team member"
+
+      assert Logflare.TeamUsers.get_team_user!(victim_team_user.id)
+    end
+
+    test "owner can transfer ownership to their own team member", %{conn: conn} do
+      owner = insert(:user)
+      team = insert(:team, user: owner)
+      team_user = insert(:team_user, team: team, email: "member@example.com")
+
+      conn =
+        conn
+        |> login_user(owner)
+        |> put(~p"/account/edit/owner", %{"user" => %{"team_user_id" => team_user.id}})
+
+      assert redirected_to(conn, 302) =~ "/account/edit"
+      assert Phoenix.Flash.get(conn.assigns.flash, :info) == "Owner successfully changed!"
+      refute Logflare.TeamUsers.get_team_user(team_user.id)
+    end
+  end
+
   describe "partner-provisioned user" do
     setup %{conn: conn} do
       user = insert(:user)

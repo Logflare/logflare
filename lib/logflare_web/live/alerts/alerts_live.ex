@@ -72,6 +72,7 @@ defmodule LogflareWeb.AlertsLive do
     changeset =
       Alerting.change_alert_query(%AlertQuery{}, params)
 
+    verify_resource_access(socket)
     {:noreply, assign(socket, :changeset, changeset)}
   end
 
@@ -98,6 +99,14 @@ defmodule LogflareWeb.AlertsLive do
   def handle_params(_params, _uri, socket) do
     {:noreply, socket}
   end
+
+  defp verify_resource_access(%{assigns: %{user: user, alert: alert}}) when alert != nil do
+    if alert.user_id != user.id do
+      raise LogflareWeb.ErrorsLive.InvalidResourceError
+    end
+  end
+
+  defp verify_resource_access(_socket), do: :ok
 
   def handle_event(
         "save",

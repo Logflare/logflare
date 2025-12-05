@@ -21,8 +21,12 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
   @producer_concurrency 1
   @processor_concurrency 5
   @batcher_concurrency 10
-  @batch_size 1_500
+  @batch_size 5_000
+  @batch_timeout 3_000
   @max_retries 1
+
+  # 72 hour max event age, based on timestamp
+  @max_event_age_us 72 * 3_600 * 1_000_000
 
   @doc false
   def max_retries, do: @max_retries
@@ -58,7 +62,11 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
         default: [concurrency: @processor_concurrency, min_demand: 1, max_demand: 100]
       ],
       batchers: [
-        ch: [concurrency: @batcher_concurrency, batch_size: @batch_size, batch_timeout: 1_500]
+        ch: [
+          concurrency: @batcher_concurrency,
+          batch_size: @batch_size,
+          batch_timeout: @batch_timeout
+        ]
       ],
       context: %{
         source_id: source.id,
@@ -103,7 +111,25 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
       } do
         source = Sources.Cache.get_by_id(source_id)
         backend = Backends.Cache.get_backend(backend_id)
-        events = for %{data: le} <- messages, do: le
+        cutoff_us = System.system_time(:microsecond) - @max_event_age_us
+
+        {events, message_count, discarded_events} =
+          for %{data: le} <- messages, reduce: {[], 0, 0} do
+            {events, n, discarded_events} ->
+              if le.body["timestamp"] >= cutoff_us do
+                {[le | events], n + 1, discarded_events}
+              else
+                {events, n + 1, discarded_events + 1}
+              end
+          end
+
+        if discarded_events > 0 do
+          Logger.warning(
+            "Dropping #{discarded_events} of #{message_count} ClickHouse event(s) older than 72 hours",
+            source_token: source_token,
+            backend_id: backend_id
+          )
+        end
 
         ClickHouseAdaptor.insert_log_events({source, backend}, events)
       end

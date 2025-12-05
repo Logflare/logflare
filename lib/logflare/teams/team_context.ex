@@ -53,18 +53,8 @@ defmodule Logflare.Teams.TeamContext do
 
   defp do_resolve(%Team{} = team, %TeamUser{} = team_user) do
     user = team.user |> Logflare.Users.preload_defaults()
-
-    case TeamUsers.touch_team_user(team_user) do
-      {1, [touched]} ->
-        touched =
-          touched
-          |> TeamUsers.preload_defaults()
-
-        {:ok, %__MODULE__{user: user, team: team, team_user: touched}}
-
-      _ ->
-        {:error, :not_authorized}
-    end
+    team_user = TeamUsers.preload_defaults(team_user)
+    {:ok, %__MODULE__{user: user, team: team, team_user: team_user}}
   end
 
   defp do_resolve(%Team{} = team, %User{} = _user) do
@@ -80,15 +70,15 @@ defmodule Logflare.Teams.TeamContext do
         {:ok, team, user}
 
       nil ->
-        case TeamUsers.get_team_user_by(email: email) do
-          %TeamUser{} = team_user ->
+        case TeamUsers.list_team_users_by(email: email) |> Enum.sort_by(& &1.inserted_at) do
+          [%TeamUser{} = team_user | _] ->
             team =
               Teams.get_team_by(id: team_user.team_id)
               |> Teams.preload_user()
 
             {:ok, team, team_user}
 
-          nil ->
+          _ ->
             {:error, :not_authorized}
         end
     end

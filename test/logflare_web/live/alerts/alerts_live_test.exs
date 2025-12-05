@@ -26,6 +26,21 @@ defmodule LogflareWeb.AlertsLiveTest do
     %{alert_query: insert(:alert, user_id: user.id)}
   end
 
+  describe "unauthorized" do
+    test "redirects when accessing alert that doesn't belong to user", %{conn: conn} do
+      user = insert(:user)
+      other_user = insert(:user)
+      alert = insert(:alert, user: other_user)
+
+      conn =
+        conn
+        |> login_user(user)
+        |> get(~p"/alerts/#{alert.id}")
+
+      assert redirected_to(conn, 302) =~ "/alerts"
+    end
+  end
+
   describe "Index" do
     setup [:create_alert_query]
 

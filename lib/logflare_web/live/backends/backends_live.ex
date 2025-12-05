@@ -39,6 +39,7 @@ defmodule LogflareWeb.BackendsLive do
       |> refresh_backends()
       |> refresh_backend(params["id"])
 
+    verify_resource_access(socket)
     {:ok, socket, layout: {LogflareWeb.LayoutView, :inline_live}}
   end
 
@@ -48,8 +49,18 @@ defmodule LogflareWeb.BackendsLive do
       |> refresh_backends()
       |> refresh_backend(params["id"])
 
+    verify_resource_access(socket)
+
     {:noreply, socket}
   end
+
+  defp verify_resource_access(%{assigns: %{user: user, backend: backend}}) when backend != nil do
+    if backend.user_id != user.id do
+      raise LogflareWeb.ErrorsLive.InvalidResourceError
+    end
+  end
+
+  defp verify_resource_access(_socket), do: :ok
 
   def handle_event(
         "save_backend",
@@ -299,6 +310,7 @@ defmodule LogflareWeb.BackendsLive do
       {"S3", :s3},
       {"Axiom", :axiom},
       {"OTLP", :otlp},
+      {"Last9", :last9},
       {"TCP", :tcp}
     ])
   end

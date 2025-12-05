@@ -224,8 +224,8 @@ defmodule Logflare.Mixfile do
       {:plug_cowboy, "~> 2.0"},
 
       # alerts feature
-      {:quantum, github: "Logflare/quantum-core", branch: "feat/string-job-names"},
-      {:crontab, "~> 1.1"},
+      {:quantum, github: "Logflare/quantum-core", ref: "5882e82"},
+      {:crontab, "~> 1.2"},
 
       # benchmarking
       {:benchee, "~> 1.0", only: [:dev, :test]},

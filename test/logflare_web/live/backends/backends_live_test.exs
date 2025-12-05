@@ -16,6 +16,21 @@ defmodule LogflareWeb.BackendsLiveTest do
     %{conn: login_user(conn, user), user: user, source: source}
   end
 
+  describe "unauthorized" do
+    test "returns 404 for backend that doesn't belong to user", %{conn: conn} do
+      user = insert(:user)
+      other_user = insert(:user)
+      backend = insert(:backend, user: other_user)
+
+      assert_raise LogflareWeb.ErrorsLive.InvalidResourceError, fn ->
+        conn
+        |> login_user(user)
+        |> get(~p"/backends/#{backend.id}")
+        |> response(404)
+      end
+    end
+  end
+
   describe "index" do
     setup :log_in_user_with_source
 
@@ -297,8 +312,8 @@ defmodule LogflareWeb.BackendsLiveTest do
       assert html =~ "some description"
     end
 
-    test "will show correct config inputs", %{conn: conn} do
-      backend = insert(:backend, type: :webhook)
+    test "will show correct config inputs", %{conn: conn, user: user} do
+      backend = insert(:backend, type: :webhook, user: user)
       assert {:ok, view, _html} = live(conn, ~p"/backends/#{backend.id}/edit")
 
       assert render(view) =~ "URL"
@@ -306,8 +321,8 @@ defmodule LogflareWeb.BackendsLiveTest do
       refute view |> element("select#type") |> has_element?()
     end
 
-    test "cancel will nav back to show", %{conn: conn} do
-      backend = insert(:backend, type: :webhook)
+    test "cancel will nav back to show", %{conn: conn, user: user} do
+      backend = insert(:backend, type: :webhook, user: user)
       assert {:ok, view, _html} = live(conn, ~p"/backends/#{backend.id}/edit")
 
       view

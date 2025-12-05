@@ -35,12 +35,12 @@ defmodule LogflareWeb.DashboardLive.DashboardComponents do
               </.team_link>
             </li>
             <li :if={@flag_multibackend}>
-              <.team_link team={@team} navigate={~p"/backends"}>
+              <.team_link team={@team} href={~p"/backends"}>
                 <i class="fas fa-database"></i><span class="hide-on-mobile"> backends</span>
               </.team_link>
             </li>
             <li>
-              <.team_link team={@team} navigate={~p"/integrations/vercel/edit"}>
+              <.team_link team={@team} href={~p"/integrations/vercel/edit"}>
                 ▲<span class="hide-on-mobile"> vercel
                   integration</span>
               </.team_link>
@@ -116,7 +116,7 @@ defmodule LogflareWeb.DashboardLive.DashboardComponents do
       <ul class="list-unstyled">
         <li :if={@home_team} class="tw-mb-2">
           <strong :if={@current_team.id == @home_team.id}>{@home_team.name}</strong>
-          <.team_link :if={@current_team.id != @home_team.id} navigate={~p"/dashboard"} team={@home_team} class="tw-text-white">
+          <.team_link :if={@current_team.id != @home_team.id} href={~p"/dashboard"} team={@home_team} class="tw-text-white">
             {@home_team.name}
           </.team_link>
           <small>home team</small>
@@ -134,7 +134,7 @@ defmodule LogflareWeb.DashboardLive.DashboardComponents do
 
         <li :for={team_user <- @team_users} class="tw-mb-2">
           <span :if={team_user.team_id == @current_team.id}>{team_user.team.name}</span>
-          <.team_link :if={team_user.team_id != @current_team.id} navigate={~p"/dashboard"} team={team_user.team} class="tw-text-white">
+          <.team_link :if={team_user.team_id != @current_team.id} href={~p"/dashboard"} team={team_user.team} class="tw-text-white">
             {team_user.team.name}
           </.team_link>
         </li>

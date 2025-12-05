@@ -85,11 +85,6 @@ defmodule Logflare.Backends.Adaptor.S3Adaptor do
   end
 
   @impl Adaptor
-  def transform_config(config) do
-    config
-  end
-
-  @impl Adaptor
   def supports_default_ingest?, do: true
 
   @doc """

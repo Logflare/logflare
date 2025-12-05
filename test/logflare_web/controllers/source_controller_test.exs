@@ -13,6 +13,46 @@ defmodule LogflareWeb.SourceControllerTest do
     :ok
   end
 
+  describe "dashboard" do
+    setup do
+      insert(:plan, name: "Free")
+      user = insert(:user)
+      home_team = insert(:team, user: user)
+
+      [invited_team1, invited_team2] = insert_pair(:team)
+      team_user1 = insert(:team_user, email: user.email, team: invited_team1)
+      team_user2 = insert(:team_user, email: user.email, team: invited_team2)
+
+      {:ok,
+       user: user,
+       home_team: home_team,
+       invited_team1: invited_team1,
+       invited_team2: invited_team2,
+       team_user1: team_user1,
+       team_user2: team_user2}
+    end
+
+    test "navigating between teams results in correct query params being set", %{
+      conn: conn,
+      user: user,
+      invited_team1: invited_team1
+    } do
+      conn
+      |> login_user(user)
+      |> visit(~p"/dashboard")
+      |> click_link(invited_team1.name)
+      |> then(fn session ->
+        html = Floki.parse_document!(session.conn.resp_body)
+
+        links =
+          html
+          |> Floki.find("a[href*='?t=#{invited_team1.id}']")
+
+        assert Enum.find(links, fn elem -> Floki.text(elem) =~ "Dashboard" end)
+      end)
+    end
+  end
+
   describe "list" do
     setup %{conn: conn} do
       user = insert(:user)
@@ -247,6 +287,28 @@ defmodule LogflareWeb.SourceControllerTest do
         |> get(~p"/sources/#{s1}")
 
       assert conn.assigns.source.name == new_name
+    end
+
+    test "able to update labels", %{conn: conn, users: [u1, _u2], sources: [s1, _s2 | _]} do
+      new_name = TestUtils.random_string()
+
+      params = %{
+        "id" => s1.id,
+        "source" => %{
+          "labels" => "test=some_label"
+        }
+      }
+
+      conn =
+        conn
+        |> login_user(u1)
+        |> patch(~p"/sources/#{s1}", params)
+
+      s1_new = Sources.get_by(token: s1.token)
+
+      assert html_response(conn, 302) =~ "redirected"
+      assert Phoenix.Flash.get(conn.assigns.flash, :info) == "Source updated!"
+      assert s1_new.labels == "test=some_label"
     end
 
     test "returns 406 with invalid params", %{
