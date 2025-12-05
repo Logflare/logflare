@@ -26,6 +26,7 @@ defmodule Logflare.Backends.Backend do
     s3: Adaptor.S3Adaptor,
     axiom: Adaptor.AxiomAdaptor,
     otlp: Adaptor.OtlpAdaptor,
+    last9: Adaptor.Last9Adaptor,
     tcp: Adaptor.TCPAdaptor
   }
 
