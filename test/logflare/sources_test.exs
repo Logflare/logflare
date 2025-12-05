@@ -12,6 +12,21 @@ defmodule Logflare.SourcesTest do
   alias Logflare.Backends.SourceRegistry
   alias Logflare.Backends.SourceSup
 
+  describe "changesets" do
+    test "update_by_user_changeset" do
+      insert(:plan)
+      source = insert(:source, user: insert(:user), labels: "initial=label")
+
+      assert %Ecto.Changeset{changes: changes} = Source.update_by_user_changeset(source, %{})
+      assert changes == %{}
+
+      assert %Ecto.Changeset{changes: changes} =
+               Source.update_by_user_changeset(source, %{labels: "test=some_label"})
+
+      assert changes == %{labels: "test=some_label"}
+    end
+  end
+
   describe "create_source/2" do
     setup do
       user = insert(:user)
