@@ -25,21 +25,62 @@ defmodule Logflare.Backends.Adaptor.TCPAdaptor.Pool do
     end)
   end
 
-  # @impl NimblePool
-  # def init_pool(config) do
-  #   %{} = config
+  @impl NimblePool
+  def init_pool(config) do
+    host = Map.fetch!(config, :host)
+    port = Map.fetch!(config, :port)
+    transport = if Map.get(config, :tls), do: :ssl, else: :gen_tcp
 
-  #   pool_state = %{
-  #     connect_failures: :atomics.new(1, signed: false)
-  #   }
+    extra_connect_opts =
+      if transport == :ssl do
+        cacerts =
+          if ca_cert = Map.get(config, :ca_cert) do
+            ca_cert
+            |> :public_key.pem_decode()
+            |> Enum.map(fn {_, der, _} -> der end)
+          else
+            :public_key.cacerts_get()
+          end
 
-  #   {:ok, pool_state}
-  # end
+        opts = [cacerts: cacerts]
+
+        opts =
+          if client_cert = Map.get(config, :client_cert) do
+            [{_, der, _}] = :public_key.pem_decode(client_cert)
+            [{:cert, der} | opts]
+          else
+            opts
+          end
+
+        opts =
+          if client_key = Map.get(config, :client_key) do
+            [{type, der, _}] = :public_key.pem_decode(client_key)
+            [{:key, {type, der}} | opts]
+          else
+            opts
+          end
+
+        SSL.opts(host, opts)
+      else
+        []
+      end
+
+    connect_opts = [mode: :binary, active: false, nodelay: true] ++ extra_connect_opts
+
+    pool_state = %{
+      host: String.to_charlist(host),
+      port: port,
+      transport: transport,
+      connect_opts: connect_opts,
+      connect_failures: :atomics.new(1, signed: false)
+    }
+
+    {:ok, pool_state}
+  end
 
   @impl NimblePool
   def init_worker(pool_state) do
-    protocol = if pool_state[:tls], do: :ssl, else: :tcp
-    {:async, async_connect(protocol, pool_state, self()), pool_state}
+    {:async, async_connect(pool_state, self()), pool_state}
   end
 
   @impl NimblePool
@@ -62,76 +103,30 @@ defmodule Logflare.Backends.Adaptor.TCPAdaptor.Pool do
     {:ok, pool_state}
   end
 
-  @default_tcp_opts [mode: :binary, active: false, nodelay: true]
+  @connect_timeout to_timeout(second: 15)
 
-  defp async_connect(:tcp, config, owner) do
-    %{host: host, port: port} = config
+  defp async_connect(pool_state, owner) do
+    %{
+      host: host,
+      port: port,
+      transport: transport,
+      connect_opts: connect_opts,
+      connect_failures: connect_failures
+    } = pool_state
 
     fn ->
-      timeout = to_timeout(second: 15)
-      connect(:tcp, host, port, @default_tcp_opts, timeout, owner)
-    end
-  end
+      failure_count = :atomics.get(connect_failures, 1)
+      if failure_count > 0, do: delay_connect(failure_count)
 
-  defp async_connect(:ssl, config, owner) do
-    %{host: host, port: port} = config
-
-    cacerts =
-      if ca_cert = config[:ca_cert] do
-        ca_cert
-        |> :public_key.pem_decode()
-        |> Enum.map(fn {_, der, _} -> der end)
+      with {:ok, socket} <- transport.connect(host, port, connect_opts, @connect_timeout),
+           :ok <- transport.controlling_process(socket, owner) do
+        :atomics.put(connect_failures, 1, 0)
+        socket
       else
-        []
+        {:error, reason} ->
+          :atomics.add(connect_failures, 1, 1)
+          raise "Failed to connect to TCP backend at tcp://#{host}:port - #{inspect(reason)}"
       end
-
-    cert =
-      if client_cert = config[:client_cert] do
-        [{_, der, _}] = :public_key.pem_decode(client_cert)
-        der
-      end
-
-    key =
-      if client_key = config[:client_key] do
-        [{type, der, _}] = :public_key.pem_decode(client_key)
-        {type, der}
-      end
-
-    fn ->
-      ssl_opts = @default_tcp_opts ++ [cacerts: cacerts, cert: cert, key: key]
-      opts = SSL.opts(host, ssl_opts)
-      timeout = to_timeout(second: 15)
-      connect(:ssl, host, port, opts, timeout, owner)
-    end
-  end
-
-  defp connect(:tcp, host, port, opts, timeout, owner) do
-    host = String.to_charlist(host)
-
-    case :gen_tcp.connect(host, port, opts, timeout) do
-      {:ok, socket} ->
-        case :gen_tcp.controlling_process(socket, owner) do
-          :ok -> socket
-          {:error, reason} -> raise "Failed to set controlling process - #{inspect(reason)}"
-        end
-
-      {:error, reason} ->
-        raise "Failed to connect to TCP backend at tcp://#{host}:#{port} - #{inspect(reason)}"
-    end
-  end
-
-  defp connect(:ssl, host, port, opts, timeout, owner) do
-    host = String.to_charlist(host)
-
-    case :ssl.connect(host, port, opts, timeout) do
-      {:ok, socket} ->
-        case :ssl.controlling_process(socket, owner) do
-          :ok -> socket
-          {:error, reason} -> raise "Failed to set controlling process - #{inspect(reason)}"
-        end
-
-      {:error, reason} ->
-        raise "Failed to connect to TCP backend at tls://#{host}:#{port} - #{inspect(reason)}"
     end
   end
 
@@ -140,4 +135,14 @@ defmodule Logflare.Backends.Adaptor.TCPAdaptor.Pool do
 
   defp close(socket) when is_port(socket), do: :gen_tcp.close(socket)
   defp close(socket), do: :ssl.close(socket)
+
+  @backoff_base to_timeout(millisecond: 100)
+  @backoff_max to_timeout(second: 5)
+
+  defp delay_connect(failure_count) do
+    factor = Integer.pow(2, failure_count)
+    max_sleep = min(@backoff_max, @backoff_base * factor)
+    sleep_for = :rand.uniform(max_sleep)
+    Process.sleep(sleep_for)
+  end
 end
