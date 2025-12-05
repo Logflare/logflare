@@ -6,7 +6,6 @@ defmodule LogflareWeb.DashboardLive do
   alias Logflare.SavedSearches
   alias Logflare.Sources
   alias Logflare.Teams
-  alias Logflare.TeamUsers
   alias LogflareWeb.DashboardLive.DashboardComponents
   alias LogflareWeb.DashboardLive.DashboardSourceComponents
   alias LogflareWeb.Helpers.Forms
@@ -27,7 +26,6 @@ defmodule LogflareWeb.DashboardLive do
         end)
       end)
       |> assign_new(:plan, fn %{user: user} -> Billing.get_plan_by_user(user) end)
-      |> assign_teams()
       |> assign(:fade_in, false)
 
     if connected?(socket) do
@@ -37,35 +35,6 @@ defmodule LogflareWeb.DashboardLive do
     end
 
     {:ok, socket}
-  end
-
-  @doc """
-  Assigns teams and members.
-  """
-  def assign_teams(%{assigns: %{team_user: team_user}} = socket) when is_struct(team_user) do
-    home_team = Teams.get_home_team(team_user)
-
-    team_users =
-      TeamUsers.list_team_users_by_and_preload(provider_uid: team_user.provider_uid)
-
-    socket
-    |> assign(
-      home_team: home_team,
-      team_users: team_users
-    )
-  end
-
-  def assign_teams(socket) do
-    %{user: user, team: team} = socket.assigns
-
-    team_users =
-      Logflare.TeamUsers.list_team_users_by_and_preload(email: user.email)
-
-    assign(socket,
-      home_team: team,
-      team_user: nil,
-      team_users: team_users
-    )
   end
 
   @impl true
@@ -159,7 +128,6 @@ defmodule LogflareWeb.DashboardLive do
         <div class="lg:tw-grid tw-grid-cols-12 tw-gap-8 tw-px-[15px] tw-mt-[50px]">
           <div class="tw-col-span-3">
             <DashboardComponents.saved_searches sources={@sources} team={@team} />
-            <DashboardComponents.teams current_team={@team} home_team={@home_team} team_users={@team_users} />
             <DashboardComponents.members user={@user} team={@team} team_user={@team_user} />
           </div>
           <div class="tw-col-span-7">

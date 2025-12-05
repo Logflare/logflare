@@ -109,4 +109,14 @@ defmodule Logflare.Teams.TeamContext do
   defp fetch_team_user(team, email) do
     TeamUsers.get_team_user_by(email: email, team_id: team.id)
   end
+
+  def build(assigns) do
+    %__MODULE__{user: assigns.user, team: assigns.team, team_user: assigns[:team_user]}
+  end
+
+  def home_team?(team, %__MODULE__{team_user: team_user}) when is_struct(team_user),
+    do: team_owner?(team, team_user.email)
+
+  def home_team?(team, %__MODULE__{user: user}) when is_struct(user),
+    do: team_owner?(team, user.email)
 end
