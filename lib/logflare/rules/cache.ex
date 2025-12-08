@@ -34,7 +34,7 @@ defmodule Logflare.Rules.Cache do
     }
   end
 
-  @spec list_rules(Source.t() | Backend.t()) :: [Rule.t()]
+  @spec list_rules(Source.t() | Backend.t()) :: [Rules.Rule.t()]
   def list_rules(%Source{id: source_id}), do: list_by_source_id(source_id)
   def list_rules(%Backend{id: backend_id}), do: list_by_backend_id(backend_id)
 
