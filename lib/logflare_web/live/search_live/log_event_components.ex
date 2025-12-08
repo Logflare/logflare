@@ -35,6 +35,14 @@ defmodule LogflareWeb.SearchLive.LogEventComponents do
         <.log_event :for={log <- @search_op_log_events.rows} timezone={@search_timezone} log_event={log} select_fields={build_select_fields(@search_op)}>
           {log.body["event_message"]}
           <:actions phx-no-format>
+          <.link phx-click="show_modal"
+          phx-value-event-id={log.id}
+          class="tw-text-[0.65rem]"
+          phx-value-log-event-timestamp={log.body["timestamp"]}
+          phx-value-lql={@querystring}
+          >
+          <span>view2</span>
+          </.link>
           <.modal_link
                    component={LogflareWeb.Search.LogEventViewerComponent}
                    class="tw-text-[0.65rem]"
@@ -175,6 +183,24 @@ defmodule LogflareWeb.SearchLive.LogEventComponents do
   defp strip_meta("metadata." <> k), do: k
   defp strip_meta(k), do: k
 
+  def formatted_for_clipboard(log, search_op) do
+    select_fields =
+      search_op
+      |> build_select_fields()
+      |> Enum.map(fn %{display: display, key: key} ->
+        value = get_field_value(log.body, key)
+        separator = if String.length(value) > 64, do: "\n", else: " "
+        [display, ":", separator, value, "\n"]
+      end)
+      |> Enum.join("\n")
+
+    """
+    #{LogflareWeb.SearchLive.LogEventComponents.formatted_timestamp(log, search_op.search_timezone)}    #{log.body["event_message"]}
+
+    #{select_fields}
+    """
+  end
+
   attr :log_event, Logflare.LogEvent, required: true
   attr :id, :string, required: false
   attr :timezone, :string, required: true
@@ -206,11 +232,12 @@ defmodule LogflareWeb.SearchLive.LogEventComponents do
       </.metadata>
       <%= if @message do %>
         {render_slot(@inner_block) || @message}
+        <.selected_fields :if={@select_fields != []} log_event={@log_event} select_fields={@select_fields} />
       <% else %>
         <span class="tw-italic tw-text-gray-500">{@empty_event_message_placeholder}</span>
       <% end %>
+       {render_slot(@inner_block) || @message}
       {render_slot(@actions)}
-      <.selected_fields :if={@select_fields != []} log_event={@log_event} select_fields={@select_fields} />
     </li>
     """
   end
@@ -243,8 +270,10 @@ defmodule LogflareWeb.SearchLive.LogEventComponents do
     ~H"""
     <div id={["log-", @log_event.id, "-selected-fields"]}>
       <%= for field <- @select_fields do %>
-        <div class="tw-text-neutral-200 tw-ml-52 last:tw-mb-2">
-          <span class="">{field.display}:</span>
+        <div class="tw-text-neutral-200 tw-flex tw-leading-6">
+          <div class="tw-w-[13rem] tw-text-right ">
+            <span class="tw-w-fit tw-px-1 tw-py-0.5 tw-bg-neutral-500/50 tw-text-white tw-mr-2">{field.display}</span>
+          </div>
           <span class="tw-text-white">{get_field_value(@log_event.body, field.key)}</span>
         </div>
       <% end %>
