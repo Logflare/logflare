@@ -11,7 +11,7 @@ defmodule LogflareWeb.AdminController do
 
   require Logger
 
-  @page_size 5
+  @page_size 50
   @accounts_sort_options [
     :inserted_at,
     :updated_at
