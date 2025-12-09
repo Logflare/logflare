@@ -13,7 +13,7 @@ defmodule Logflare.Rules.CacheTest do
     insert(:plan)
     user = insert(:user)
     backend = insert(:backend)
-    source = insert(:source, user: user)
+    source = insert(:source, user: user, log_events_updated_at: DateTime.utc_now())
     [r1, r2] = insert_list(2, :rule, source: source, backend: backend)
 
     [source: source, backend: backend, rule_ids: [r1.id, r2.id]]
@@ -69,19 +69,24 @@ defmodule Logflare.Rules.CacheTest do
       assert [_r1, _r2] = @subject.list_rules(backend)
       assert %{hits: 2} = Cachex.stats!(@subject)
     end
-  end
 
-  test "key busting", %{source: source, backend: backend, rule_ids: rule_ids} do
-    assert [_r1, _r2] = @subject.list_rules(source)
-    assert [_r1, _r2] = @subject.list_rules(backend)
-    assert %{misses: 2, writes: 2} = Cachex.stats!(@subject)
+    test "key busting", %{source: source, backend: backend} do
+      assert [_r1, _r2] = @subject.list_rules(source)
+      assert [_r1, _r2] = @subject.list_rules(backend)
+      assert %{misses: 2, writes: 2} = Cachex.stats!(@subject)
 
-    assert {:ok, 1} = @subject.bust_by(source_id: source.id)
-    assert [_r1, _r2] = @subject.list_rules(source)
-    assert %{misses: 3, writes: 3} = Cachex.stats!(@subject)
+      assert {:ok, 1} = @subject.bust_by(source_id: source.id)
+      assert [_r1, _r2] = @subject.list_rules(source)
+      assert %{misses: 3, writes: 3} = Cachex.stats!(@subject)
 
-    assert {:ok, 1} = @subject.bust_by(backend_id: backend.id)
-    assert [_r1, _r2] = @subject.list_rules(backend)
-    assert %{misses: 4, writes: 4} = Cachex.stats!(@subject)
+      assert {:ok, 1} = @subject.bust_by(backend_id: backend.id)
+      assert [_r1, _r2] = @subject.list_rules(backend)
+      assert %{misses: 4, writes: 4} = Cachex.stats!(@subject)
+    end
+
+    test "cache warming" do
+      assert Cachex.warm!(@subject, wait: true) == [Logflare.Rules.CacheWarmer]
+      assert Cachex.size!(@subject) == 1
+    end
   end
 end

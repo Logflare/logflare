@@ -26,7 +26,6 @@ defmodule Logflare.ContextCache do
   In the case functions don't return a response with a primary key, or something else we can
   bust the cache on, it will get reverse indexed with `select_key/1` as `:unknown`.
   """
-  alias Logflare.Rules
 
   require Logger
   require Ex2ms
@@ -83,8 +82,9 @@ defmodule Logflare.ContextCache do
     {:ok, busted}
   end
 
-  defp bust_key({Rules, kw}) do
-    Rules.Cache.bust_by(kw)
+  defp bust_key({context, kw}) when is_list(kw) do
+    context_cache = cache_name(context)
+    context_cache.bust_by(kw)
   end
 
   defp bust_key({context, pkey}) do

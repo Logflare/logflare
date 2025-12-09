@@ -10,9 +10,9 @@ defmodule Logflare.Rules.CacheWarmer do
   def execute(_state) do
     sources =
       from(s in Source,
-        where: s.log_events_updated_at >= ago(1, "day"),
+        where: s.log_events_updated_at >= ago(2, "hour"),
         order_by: {:desc, s.log_events_updated_at},
-        limit: 250,
+        limit: 500,
         preload: :rules
       )
       |> Repo.all()
