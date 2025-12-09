@@ -1,6 +1,5 @@
 defmodule LogflareWeb.UserController do
   use LogflareWeb, :controller
-  use Phoenix.HTML
 
   plug LogflareWeb.Plugs.AuthMustBeOwner
 
@@ -34,7 +33,7 @@ defmodule LogflareWeb.UserController do
       }) do
     message = [
       "Please ",
-      Phoenix.HTML.Link.link("upgrade to a paid plan",
+      PhoenixHTMLHelpers.Link.link("upgrade to a paid plan",
         to: ~p"/billing/edit"
       ),
       " to setup your own BigQuery backend."
@@ -135,7 +134,9 @@ defmodule LogflareWeb.UserController do
         conn
         |> put_flash(:info, [
           "API key reset! ",
-          link("Undo?", to: Routes.user_path(conn, :new_api_key, undo: true))
+          PhoenixHTMLHelpers.Link.link("Undo?",
+            to: Routes.user_path(conn, :new_api_key, undo: true)
+          )
         ])
         |> redirect(to: ~p"/dashboard")
     end
