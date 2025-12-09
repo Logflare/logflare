@@ -1,5 +1,5 @@
 defmodule LogflareWeb.AdminView do
   @moduledoc false
   use LogflareWeb, :view
-  import Scrivener.HTML
+  alias LogflareWeb.PaginationComponents
 end
