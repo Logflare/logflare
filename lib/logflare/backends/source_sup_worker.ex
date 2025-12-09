@@ -33,12 +33,14 @@ defmodule Logflare.Backends.SourceSupWorker do
 
   defp do_check(source) do
     backends = Backends.list_backends(source_id: source.id)
-    rules = Rules.Cache.list_rules(source)
+    rules = Rules.list_rules_with_backend(source)
 
     # start rules source-backends
-    for rule <- rules, rule.backend_id do
-      SourceSup.start_rule_child(rule)
-    end
+    rules_backend_ids =
+      for rule <- rules, into: MapSet.new() do
+        SourceSup.start_rule_child(rule)
+        rule.backend_id
+      end
 
     # start attached source-backends
     for backend <- backends do
@@ -48,13 +50,9 @@ defmodule Logflare.Backends.SourceSupWorker do
     via = Backends.via_source(source, Backends.SourceSup)
 
     # stop stale rule source-backends
-    attached_backend_ids = for backend <- backends, do: backend.id
+    attached_backend_ids = MapSet.new(backends, fn backend -> backend.id end)
 
-    backend_ids =
-      Enum.map(rules, & &1.backend_id)
-      |> Enum.filter(& &1)
-      |> Enum.concat(attached_backend_ids)
-      |> Enum.uniq()
+    backend_ids = MapSet.union(rules_backend_ids, attached_backend_ids)
 
     for {{_mod, _source_id, backend_id}, _, _, _} <- Supervisor.which_children(via),
         backend_id not in backend_ids,

@@ -31,6 +31,14 @@ defmodule Logflare.Rules do
   end
 
   @doc """
+  Lists rules that are related to some backend.
+  """
+  def list_rules_with_backend(%Source{id: source_id}) do
+    from(r in Rule, where: r.source_id == ^source_id, where: not is_nil(r.backend_id))
+    |> Repo.all()
+  end
+
+  @doc """
   Creates a rule based on a given attr map.
   If it is a drain rule with an associated backend, it will attempt to start the backend child on SourceSup if it is running.
   """
