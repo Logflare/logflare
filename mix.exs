@@ -180,12 +180,14 @@ defmodule Logflare.Mixfile do
 
       # HTML
       {:floki, "~> 0.38.0", only: [:test]},
+      {:phoenix_html, "~> 4.0.0"},
+      {:phoenix_html_helpers, "~> 1.0"},
 
       # Rust NIFs
       {:rustler, "~> 0.36.2", override: true},
 
       # Frontend
-      {:phoenix_live_react, "~> 0.4"},
+      {:phoenix_live_react, "~> 0.6"},
       {:sql_fmt, "~> 0.4.0"},
 
       # Dev

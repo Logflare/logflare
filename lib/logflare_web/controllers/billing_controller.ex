@@ -36,7 +36,7 @@ defmodule LogflareWeb.BillingController do
       :error,
       [
         "Please ",
-        Phoenix.HTML.Link.link("create a billing account",
+        PhoenixHTMLHelpers.Link.link("create a billing account",
           to: Routes.billing_path(conn, :create),
           method: :post
         ),

@@ -132,7 +132,9 @@ defmodule LogflareWeb do
 
   defp view_helpers do
     quote do
-      use Phoenix.HTML
+      import Phoenix.HTML
+      import Phoenix.HTML.Form
+      use PhoenixHTMLHelpers
 
       import Phoenix.LiveView.Helpers
       import PhoenixLiveReact, only: [live_react_component: 2, live_react_component: 3]
