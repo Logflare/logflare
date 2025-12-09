@@ -70,16 +70,17 @@ defmodule Logflare.Backends.UserMonitoring do
     end
   end
 
+  @doc false
   # take all metadata string keys and non-nested values
-  defp extract_tags(_metric, metadata) do
-    for {key, value} <- metadata,
-        is_binary(key) and !is_list_or_map(value) and value != nil,
+  def extract_tags(_metric, metadata) when is_map(metadata) do
+    for {key, value} when is_binary(key) and not is_nil(value) and not is_list(value) and not is_map(value) <- metadata,
         into: %{} do
       {key, value}
     end
   end
 
-  defp exporter_callback({:metrics, metrics}, config) do
+  @doc false
+  def exporter_callback({:metrics, metrics}, config) do
     metrics
     |> OtelMetricExporter.Protocol.build_metric_service_request(config.resource)
     |> Protobuf.encode()
