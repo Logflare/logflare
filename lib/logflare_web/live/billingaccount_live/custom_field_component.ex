@@ -4,7 +4,6 @@ defmodule LogflareWeb.BillingAccountLive.CustomFieldComponent do
   """
 
   use LogflareWeb, :live_component
-  use Phoenix.HTML
   import LogflareWeb.ErrorHelpers
 
   alias Logflare.Billing

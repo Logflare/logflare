@@ -2,8 +2,6 @@ defmodule LogflareWeb.SearchLV.Utils do
   @moduledoc """
   Various utility functions for logs search LiveViews.
   """
-  use Phoenix.HTML
-
   require Logger
 
   def maybe_cancel_tailing_timer(socket) do

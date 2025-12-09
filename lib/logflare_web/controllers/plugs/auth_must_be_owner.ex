@@ -24,7 +24,7 @@ defmodule LogflareWeb.Plugs.AuthMustBeOwner do
       :error,
       [
         "You're not the account owner. Please contact ",
-        Phoenix.HTML.Link.link(user.name || user.email, to: "mailto:#{user.email}"),
+        PhoenixHTMLHelpers.Link.link(user.name || user.email, to: "mailto:#{user.email}"),
         " for support."
       ]
     )
