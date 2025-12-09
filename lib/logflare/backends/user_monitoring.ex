@@ -73,7 +73,9 @@ defmodule Logflare.Backends.UserMonitoring do
   @doc false
   # take all metadata string keys and non-nested values
   def extract_tags(_metric, metadata) when is_map(metadata) do
-    for {key, value} when is_binary(key) and not is_nil(value) and not is_list(value) and not is_map(value) <- metadata,
+    for {key, value}
+        when is_binary(key) and not is_nil(value) and not is_list(value) and not is_map(value) <-
+          metadata,
         into: %{} do
       {key, value}
     end
