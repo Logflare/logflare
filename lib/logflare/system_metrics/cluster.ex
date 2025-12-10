@@ -33,7 +33,8 @@ defmodule Logflare.SystemMetrics.Cluster do
           Logflare.FinchDefault,
           Logflare.FinchIngest,
           Logflare.FinchQuery
-        ] do
+        ],
+        GenServer.whereis(pool) != nil do
       case Finch.get_pool_status(pool, url) do
         {:ok, metrics} ->
           counts =
