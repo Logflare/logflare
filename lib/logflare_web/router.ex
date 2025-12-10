@@ -143,8 +143,12 @@ defmodule LogflareWeb.Router do
     plug(LogflareWeb.Plugs.VerifyResourceAccess)
   end
 
-  pipeline :require_mgmt_api_auth do
+  pipeline :require_private_api_auth do
     plug(LogflareWeb.Plugs.VerifyApiAccess, scopes: ~w(private))
+  end
+
+  pipeline :require_admin_api_auth do
+    plug(LogflareWeb.Plugs.VerifyApiAccess, scopes: ~w(private:admin))
   end
 
   pipeline :require_auth do
@@ -442,9 +446,9 @@ defmodule LogflareWeb.Router do
     get("/", HealthCheckController, :check)
   end
 
-  # Account management API.
+  # Account resource API
   scope "/api", LogflareWeb do
-    pipe_through([:api, :require_mgmt_api_auth])
+    pipe_through([:api, :require_private_api_auth])
 
     get("/account", UserController, :api_show)
     get("/query", Api.QueryController, :query)
@@ -482,7 +486,16 @@ defmodule LogflareWeb.Router do
 
     resources("/teams", Api.TeamController,
       param: "token",
-      only: [:index, :show, :create, :update, :delete]
+      only: [:index, :show]
+    )
+  end
+
+  scope "/api", LogflareWeb do
+    pipe_through([:api, :require_admin_api_auth])
+
+    resources("/teams", Api.TeamController,
+      param: "token",
+      only: [:create, :update, :delete]
     )
 
     scope "/backends" do
