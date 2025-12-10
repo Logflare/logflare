@@ -2,10 +2,13 @@ defmodule Logflare.Rules.Cache do
   @moduledoc false
 
   alias Logflare.Backends.Backend
+  alias Logflare.ContextCache
   alias Logflare.Rules
   alias Logflare.Sources.Source
   alias Logflare.Utils
   import Cachex.Spec
+
+  @behaviour ContextCache
 
   def child_spec(_) do
     stats = Application.get_env(:logflare, :cache_stats, false)
@@ -41,6 +44,7 @@ defmodule Logflare.Rules.Cache do
   def list_by_source_id(id), do: apply_repo_fun(__ENV__.function, [id])
   def list_by_backend_id(id), do: apply_repo_fun(__ENV__.function, [id])
 
+  @impl ContextCache
   def bust_by(kw) do
     kw
     |> Enum.map(fn
