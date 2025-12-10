@@ -565,4 +565,156 @@ defmodule Logflare.EndpointsTest do
       assert Endpoints.derive_language_from_backend_id(backend.id) == :pg_sql
     end
   end
+
+  describe "endpoint-level bigquery reservations" do
+    test "run_query/1 uses single endpoint reservation" do
+      pid = self()
+
+      expect(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, 1, fn _conn, _proj_id, opts ->
+        send(pid, {:reservation, opts[:body].reservation})
+        {:ok, TestUtils.gen_bq_response([%{"testing" => "123"}])}
+      end)
+
+      user = insert(:user)
+      reservation = "projects/123/locations/us/reservations/my-endpoint-res"
+
+      endpoint =
+        insert(:endpoint,
+          user: user,
+          query: "select current_datetime() as testing",
+          bigquery_reservations: reservation
+        )
+
+      assert {:ok, %{rows: [%{"testing" => _}]}} = Endpoints.run_query(endpoint)
+
+      assert_receive {:reservation, ^reservation}
+    end
+
+    test "run_query/1 selects from multiple endpoint reservations" do
+      pid = self()
+
+      expect(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, 1, fn _conn, _proj_id, opts ->
+        send(pid, {:reservation, opts[:body].reservation})
+        {:ok, TestUtils.gen_bq_response([%{"testing" => "123"}])}
+      end)
+
+      user = insert(:user)
+
+      reservations =
+        "projects/123/locations/us/reservations/res1\nprojects/123/locations/us/reservations/res2"
+
+      endpoint =
+        insert(:endpoint,
+          user: user,
+          query: "select current_datetime() as testing",
+          bigquery_reservations: reservations
+        )
+
+      assert {:ok, %{rows: [%{"testing" => _}]}} = Endpoints.run_query(endpoint)
+
+      # Verify one of the configured reservations is used
+      assert_receive {:reservation, res}
+
+      assert res in [
+               "projects/123/locations/us/reservations/res1",
+               "projects/123/locations/us/reservations/res2"
+             ]
+    end
+
+    test "run_query/1 ignores empty lines in reservations" do
+      pid = self()
+
+      expect(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, 1, fn _conn, _proj_id, opts ->
+        send(pid, {:reservation, opts[:body].reservation})
+        {:ok, TestUtils.gen_bq_response([%{"testing" => "123"}])}
+      end)
+
+      user = insert(:user)
+
+      # Reservations with empty lines and whitespace
+      reservations = """
+      projects/123/locations/us/reservations/valid-res
+
+
+      """
+
+      endpoint =
+        insert(:endpoint,
+          user: user,
+          query: "select current_datetime() as testing",
+          bigquery_reservations: reservations
+        )
+
+      assert {:ok, %{rows: [%{"testing" => _}]}} = Endpoints.run_query(endpoint)
+
+      # Should use the only valid reservation
+      assert_receive {:reservation, "projects/123/locations/us/reservations/valid-res"}
+    end
+
+    test "run_query/1 does not set reservation when bigquery_reservations is nil" do
+      pid = self()
+
+      expect(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, 1, fn _conn, _proj_id, opts ->
+        send(pid, {:reservation, opts[:body].reservation})
+        {:ok, TestUtils.gen_bq_response([%{"testing" => "123"}])}
+      end)
+
+      user = insert(:user)
+
+      endpoint =
+        insert(:endpoint,
+          user: user,
+          query: "select current_datetime() as testing",
+          bigquery_reservations: nil
+        )
+
+      assert {:ok, %{rows: [%{"testing" => _}]}} = Endpoints.run_query(endpoint)
+
+      assert_receive {:reservation, nil}
+    end
+
+    test "run_query/1 does not set reservation when bigquery_reservations is empty string" do
+      pid = self()
+
+      expect(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, 1, fn _conn, _proj_id, opts ->
+        send(pid, {:reservation, opts[:body].reservation})
+        {:ok, TestUtils.gen_bq_response([%{"testing" => "123"}])}
+      end)
+
+      user = insert(:user)
+
+      endpoint =
+        insert(:endpoint,
+          user: user,
+          query: "select current_datetime() as testing",
+          bigquery_reservations: ""
+        )
+
+      assert {:ok, %{rows: [%{"testing" => _}]}} = Endpoints.run_query(endpoint)
+
+      assert_receive {:reservation, nil}
+    end
+
+    test "run_query/1 does not set reservation when bigquery_reservations contains only whitespace" do
+      pid = self()
+
+      expect(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, 1, fn _conn, _proj_id, opts ->
+        send(pid, {:reservation, opts[:body].reservation})
+        {:ok, TestUtils.gen_bq_response([%{"testing" => "123"}])}
+      end)
+
+      user = insert(:user)
+
+      endpoint =
+        insert(:endpoint,
+          user: user,
+          query: "select current_datetime() as testing",
+          bigquery_reservations: "   \n  \n   "
+        )
+
+      assert {:ok, %{rows: [%{"testing" => _}]}} = Endpoints.run_query(endpoint)
+
+      assert_receive {:reservation, nil}
+    end
+  end
 end

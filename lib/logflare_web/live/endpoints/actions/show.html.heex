@@ -63,6 +63,10 @@
       <li :if={@show_endpoint.labels} class="list-group-item">
         <span><strong>labels:</strong> {@show_endpoint.labels}</span>
       </li>
+      <li :if={@show_endpoint.language == :bq_sql && @show_endpoint.bigquery_reservations && @show_endpoint.bigquery_reservations != ""} class="list-group-item">
+        <span><strong>BigQuery reservations:</strong></span>
+        <pre class="tw-whitespace-pre-wrap tw-text-sm tw-mt-1 tw-mb-0 tw-bg-transparent tw-border-0 tw-p-0">{@show_endpoint.bigquery_reservations}</pre>
+      </li>
     </ul>
   </div>
 

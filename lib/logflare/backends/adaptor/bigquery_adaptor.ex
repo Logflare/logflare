@@ -531,6 +531,22 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
     ]
   end
 
+  @spec parse_and_select_reservation(String.t() | nil) :: String.t() | nil
+  defp parse_and_select_reservation(nil), do: nil
+  defp parse_and_select_reservation(""), do: nil
+
+  defp parse_and_select_reservation(reservations_string) when is_binary(reservations_string) do
+    reservations_string
+    |> String.split("\n")
+    |> Enum.map(&String.trim/1)
+    |> Enum.reject(&(&1 == ""))
+    |> case do
+      [] -> nil
+      [single] -> single
+      reservations -> Enum.random(reservations)
+    end
+  end
+
   @spec execute_query_with_context(
           user_id :: integer(),
           query_string :: String.t(),
@@ -577,6 +593,16 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
               endpoint_query.parsed_labels || %{}
             )
         ]
+
+    # At API query time, select endpoint-level reservation if configured
+    endpoint_reservation = parse_and_select_reservation(endpoint_query.bigquery_reservations)
+
+    query_opts =
+      if endpoint_reservation do
+        Keyword.put(query_opts, :reservation, endpoint_reservation)
+      else
+        query_opts
+      end
 
     execute_user_query(user, query_string, bq_params, query_opts)
   end

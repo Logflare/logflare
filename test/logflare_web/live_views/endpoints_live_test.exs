@@ -942,4 +942,156 @@ defmodule LogflareWeb.EndpointsLiveTest do
       end
     end
   end
+
+  describe "bigquery reservations field" do
+    test "shows BigQuery reservations field for BigQuery endpoints", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/endpoints/new")
+
+      html = render(view)
+      assert html =~ "BigQuery Reservations (optional)"
+      assert html =~ "bigquery_reservations"
+    end
+
+    test "hides BigQuery reservations field for non-BigQuery backends", %{conn: conn, user: user} do
+      backend = insert(:backend, user: user, type: :clickhouse, name: "Test ClickHouse")
+      {:ok, view, _html} = live(conn, "/endpoints/new")
+
+      # Select ClickHouse backend
+      view
+      |> element("form#endpoint")
+      |> render_change(%{
+        endpoint: %{
+          backend_id: backend.id,
+          name: "test endpoint",
+          query: "SELECT 1"
+        }
+      })
+
+      html = render(view)
+      refute html =~ "BigQuery Reservations"
+    end
+
+    test "creates endpoint with BigQuery reservations and displays them on show page", %{
+      conn: conn
+    } do
+      {:ok, view, _html} = live(conn, "/endpoints/new")
+
+      reservations =
+        "projects/123/locations/us/reservations/res1\nprojects/123/locations/us/reservations/res2"
+
+      view
+      |> element("form#endpoint")
+      |> render_submit(%{
+        endpoint: %{
+          name: "endpoint-with-reservations",
+          query: "select current_timestamp() as ts",
+          language: "bq_sql",
+          bigquery_reservations: reservations
+        }
+      })
+
+      assert has_element?(view, "h1,h2,h3,h4,h5", "endpoint-with-reservations")
+
+      # Verify the reservation was saved in database
+      endpoint = Logflare.Endpoints.get_by(name: "endpoint-with-reservations")
+      assert endpoint.bigquery_reservations == reservations
+
+      # Verify reservations are displayed in the show view with whitespace preserved
+      html = render(view)
+      assert html =~ "BigQuery reservations:"
+      assert html =~ "projects/123/locations/us/reservations/res1"
+      assert html =~ "projects/123/locations/us/reservations/res2"
+    end
+
+    test "updates endpoint with BigQuery reservations and displays them on show page", %{
+      conn: conn,
+      user: user
+    } do
+      endpoint = insert(:endpoint, user: user, bigquery_reservations: nil)
+      {:ok, view, _html} = live(conn, "/endpoints/#{endpoint.id}/edit")
+
+      reservations =
+        "projects/456/locations/eu/reservations/my-res-1\nprojects/456/locations/eu/reservations/my-res-2"
+
+      view
+      |> element("form#endpoint")
+      |> render_submit(%{
+        endpoint: %{
+          bigquery_reservations: reservations
+        }
+      })
+
+      # Verify the reservation was updated in database
+      updated_endpoint = Logflare.Endpoints.get_endpoint_query(endpoint.id)
+      assert updated_endpoint.bigquery_reservations == reservations
+
+      # Verify reservations are displayed in the show view with whitespace preserved
+      html = render(view)
+      assert html =~ "BigQuery reservations:"
+      assert html =~ "projects/456/locations/eu/reservations/my-res-1"
+      assert html =~ "projects/456/locations/eu/reservations/my-res-2"
+    end
+
+    test "shows existing reservations when editing endpoint", %{conn: conn, user: user} do
+      reservations = "projects/789/locations/us/reservations/existing-res"
+      endpoint = insert(:endpoint, user: user, bigquery_reservations: reservations)
+
+      {:ok, view, _html} = live(conn, "/endpoints/#{endpoint.id}/edit")
+
+      html = render(view)
+      assert html =~ "existing-res"
+    end
+
+    test "displays reservations on endpoint show page with whitespace preserved", %{
+      conn: conn,
+      user: user
+    } do
+      reservations =
+        "projects/111/locations/us/reservations/first\nprojects/222/locations/eu/reservations/second\nprojects/333/locations/asia/reservations/third"
+
+      endpoint = insert(:endpoint, user: user, bigquery_reservations: reservations)
+
+      {:ok, view, _html} = live(conn, "/endpoints/#{endpoint.id}")
+
+      html = render(view)
+
+      # Verify all reservations are displayed
+      assert html =~ "BigQuery reservations:"
+      assert html =~ "projects/111/locations/us/reservations/first"
+      assert html =~ "projects/222/locations/eu/reservations/second"
+      assert html =~ "projects/333/locations/asia/reservations/third"
+    end
+
+    test "does not show reservations section when no reservations configured", %{
+      conn: conn,
+      user: user
+    } do
+      endpoint = insert(:endpoint, user: user, bigquery_reservations: nil)
+
+      {:ok, view, _html} = live(conn, "/endpoints/#{endpoint.id}")
+
+      html = render(view)
+      refute html =~ "BigQuery reservations:"
+    end
+
+    test "does not show reservations section for non-BigQuery endpoints", %{
+      conn: conn,
+      user: user
+    } do
+      backend = insert(:backend, user: user, type: :clickhouse, name: "CH Backend")
+
+      endpoint =
+        insert(:endpoint,
+          user: user,
+          backend: backend,
+          language: :ch_sql,
+          bigquery_reservations: "projects/123/reservations/should-not-show"
+        )
+
+      {:ok, view, _html} = live(conn, "/endpoints/#{endpoint.id}")
+
+      html = render(view)
+      refute html =~ "BigQuery reservations:"
+    end
+  end
 end
