@@ -738,7 +738,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
                "some event message"
 
       html = view |> element("#logs-list-container #log-some-uuid-selected-fields") |> render()
-      assert html =~ "user.id:"
+      assert html =~ "id"
       assert html =~ "user-abc-123"
     end
 

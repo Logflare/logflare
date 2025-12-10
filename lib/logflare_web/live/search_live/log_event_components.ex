@@ -8,7 +8,6 @@ defmodule LogflareWeb.SearchLive.LogEventComponents do
   import LogflareWeb.ModalLiveHelpers
 
   alias Logflare.DateTimeUtils
-  alias Logflare.Lql
   alias Logflare.Sources.Source
   alias Logflare.Lql
   alias Phoenix.LiveView.JS
@@ -35,14 +34,7 @@ defmodule LogflareWeb.SearchLive.LogEventComponents do
         <.log_event :for={log <- @search_op_log_events.rows} timezone={@search_timezone} log_event={log} select_fields={build_select_fields(@search_op)}>
           {log.body["event_message"]}
           <:actions phx-no-format>
-          <.link phx-click="show_modal"
-          phx-value-event-id={log.id}
-          class="tw-text-[0.65rem]"
-          phx-value-log-event-timestamp={log.body["timestamp"]}
-          phx-value-lql={@querystring}
-          >
-          <span>view2</span>
-          </.link>
+          <div class={if(Enum.any?(@select_fields), do: "tw-ml-[13rem] tw-pb-1.5", else: "tw-inline")}>
           <.modal_link
                    component={LogflareWeb.Search.LogEventViewerComponent}
                    class="tw-text-[0.65rem]"
@@ -62,7 +54,7 @@ defmodule LogflareWeb.SearchLive.LogEventComponents do
                    modal_id={:log_event_context_viewer}
                    title="View Event Context"
                    phx-value-log-event-id={log.id}
-                  phx-value-source-id={@search_op.source.id}
+                   phx-value-source-id={@search_op.source.id}
                    phx-value-log-event-timestamp={log.body["timestamp"]}
                    phx-value-timezone={@search_timezone}
                    phx-value-querystring={@querystring}
@@ -75,7 +67,7 @@ defmodule LogflareWeb.SearchLive.LogEventComponents do
                    phx-click={
                      JS.dispatch("logflare:copy-to-clipboard",
                        detail: %{
-                         text: "#{LogflareWeb.SearchLive.LogEventComponents.formatted_timestamp(log, assigns[:search_timezone])}    #{log.body["event_message"]}"
+                         text: formatted_for_clipboard(log, @search_op)
                        }
                      )
                    }
@@ -83,73 +75,12 @@ defmodule LogflareWeb.SearchLive.LogEventComponents do
                    data-placement="top"
                    title="Copy to clipboard"
                  >copy</.link>
-                <.log_event_permalink log_event_id={log.id} timestamp={log.body["timestamp"]} source={@search_op.source} lql={@querystring} class="tw-text-[0.65rem] group-hover:tw-visible tw-invisible" />
+                <.log_event_permalink log_event_id={log.id} timestamp={log.body["timestamp"]} source={@search_op.source} lql={lql_with_recommended_fields(@search_op.lql_rules, log, @search_op.source)} class="tw-text-[0.65rem] group-hover:tw-visible tw-invisible" />
+                </div>
                </:actions>
         </.log_event>
       </ul>
     </div>
-    """
-  end
-
-  attr :log, :any, required: true
-  attr :recommended_query, :any, required: true
-  attr :tailing?, :boolean, default: false
-  attr :source, :any, required: true
-  attr :search_timezone, :string, required: true
-  attr :querystring, :string, required: true
-  attr :empty_event_message_placeholder, :string, default: @default_empty_event_message
-
-  def logs_list_actions(assigns) do
-    ~H"""
-    <%= live_modal_show_link(
-        component: LogflareWeb.Search.LogEventViewerComponent,
-        class: "tw-text-[0.65rem]",
-        modal_id: :log_event_viewer,
-        title: "Log Event",
-        phx_value_log_event_id: @log.id,
-        phx_value_log_event_timestamp: @log.body["timestamp"],
-        phx_value_lql: @recommended_query
-      ) do %>
-      <span>view</span>
-    <% end %>
-    <%= live_modal_show_link(
-        component: LogflareWeb.SearchLive.EventContextComponent,
-        click: JS.push("soft_pause"),
-        close:
-          if(@tailing?,
-            do:
-              JS.push("soft_play", target: "#source-logs-search-control")
-              |> JS.push("close"),
-            else: nil
-          ),
-        class: "tw-text-[0.65rem]",
-        modal_id: :log_event_context_viewer,
-        title: "View Event Context",
-        phx_value_log_event_id: @log.id,
-        phx_value_source_id: @source.id,
-        phx_value_log_event_timestamp: @log.body["timestamp"],
-        phx_value_timezone: @search_timezone,
-        phx_value_querystring: @querystring
-      ) do %>
-      <span>context</span>
-    <% end %>
-
-    <.link
-      class="tw-text-[0.65rem] group-hover:tw-visible tw-invisible"
-      phx-click={
-        JS.dispatch("logflare:copy-to-clipboard",
-          detail: %{
-            text: "#{formatted_timestamp(@log, @search_timezone)}    #{@log.body["event_message"] || @empty_event_message_placeholder}"
-          }
-        )
-      }
-      data-toggle="tooltip"
-      data-placement="top"
-      title="Copy to clipboard"
-    >
-      copy
-    </.link>
-    <.log_event_permalink log_event_id={@log.id} timestamp={@log.body["timestamp"]} source={@source} lql={@recommended_query} class="tw-text-[0.65rem] group-hover:tw-visible tw-invisible" />
     """
   end
 
@@ -236,7 +167,6 @@ defmodule LogflareWeb.SearchLive.LogEventComponents do
       <% else %>
         <span class="tw-italic tw-text-gray-500">{@empty_event_message_placeholder}</span>
       <% end %>
-       {render_slot(@inner_block) || @message}
       {render_slot(@actions)}
     </li>
     """
@@ -272,7 +202,7 @@ defmodule LogflareWeb.SearchLive.LogEventComponents do
       <%= for field <- @select_fields do %>
         <div class="tw-text-neutral-200 tw-flex tw-leading-6">
           <div class="tw-w-[13rem] tw-text-right ">
-            <span class="tw-w-fit tw-px-1 tw-py-0.5 tw-bg-neutral-500/50 tw-text-white tw-mr-2">{field.display}</span>
+            <span class="tw-whitespace-nowrap tw-w-fit tw-px-1 tw-py-0.5 tw-bg-neutral-600 tw-text-white tw-mr-2">{truncate_display(field.display)}</span>
           </div>
           <span class="tw-text-white">{get_field_value(@log_event.body, field.key)}</span>
         </div>
@@ -300,7 +230,8 @@ defmodule LogflareWeb.SearchLive.LogEventComponents do
     |> Enum.map(fn
       %{path: path, alias: nil} ->
         key = String.replace(path, ".", "_")
-        %{display: path, key: key}
+        display = path |> String.split(".") |> List.last()
+        %{display: display, key: key}
 
       %{path: _path, alias: alias} ->
         %{display: alias, key: alias}
@@ -309,4 +240,12 @@ defmodule LogflareWeb.SearchLive.LogEventComponents do
   end
 
   defp build_select_fields(_), do: []
+
+  defp truncate_display(display) when is_binary(display) do
+    if String.length(display) > 23 do
+      (String.slice(display, 0, 23) <> "&hellip;") |> raw()
+    else
+      display
+    end
+  end
 end
