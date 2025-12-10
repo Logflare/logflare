@@ -4,7 +4,6 @@ defmodule Logflare.Backends.UserMonitoring do
   """
 
   import Telemetry.Metrics
-  import Logflare.Utils.Guards
   alias Logflare.Users
   alias Logflare.Sources
   alias Logflare.Logs
