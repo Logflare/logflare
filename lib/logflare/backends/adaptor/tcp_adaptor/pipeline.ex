@@ -29,7 +29,7 @@ defmodule Logflare.Backends.Adaptor.TCPAdaptor.Pipeline do
         default: [min_demand: 1]
       ],
       batchers: [
-        tcp: [concurrency: 1, batch_size: 50]
+        tcp: [concurrency: 5, batch_size: 50]
       ],
       context: %{
         source_id: source.id,
