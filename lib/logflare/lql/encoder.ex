@@ -202,12 +202,12 @@ defmodule Logflare.Lql.Encoder do
 
   defp to_fragment(%ChartRule{path: "timestamp", aggregate: agg, period: period}) do
     qs = "c:#{agg}(*) c:group_by(t::#{period})"
-    Regex.replace(~r/(?<=sum|avg|count|max|p50|p95|p99)\(metadata./, qs, "(m.")
+    Regex.replace(~r/(?<=sum|avg|countd?|max|p50|p95|p99)\(metadata./, qs, "(m.")
   end
 
   defp to_fragment(%ChartRule{path: path, aggregate: agg, period: period}) do
     qs = "c:#{agg}(#{path}) c:group_by(t::#{period})"
-    Regex.replace(~r/(?<=sum|avg|count|max|p50|p95|p99)\(metadata./, qs, "(m.")
+    Regex.replace(~r/(?<=sum|avg|countd?|max|p50|p95|p99)\(metadata./, qs, "(m.")
   end
 
   defp to_fragment(%SelectRule{path: "*"}), do: "s:*"
