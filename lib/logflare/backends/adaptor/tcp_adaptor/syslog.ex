@@ -13,7 +13,7 @@ defmodule Logflare.Backends.Adaptor.TCPAdaptor.Syslog do
   def format(log_event, cipher_key \\ nil) do
     %LogEvent{id: id, body: body} = log_event
 
-    level = get_in(body["body"]["level"]) || body["level"] || "info"
+    level = get_in(body["metadata"]["level"]) || body["level"] || "info"
     pri = 16 * 8 + severity_code(level)
 
     timestamp =
