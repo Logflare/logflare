@@ -68,15 +68,19 @@ Logflare provides a fully featured [querying interface](./concepts/ingestion#que
 
    Replace `YOUR-SOURCE-ID-HERE` and `YOUR-API-KEY-HERE` placeholders with the values from step 2.
 
-   ```bash
-   curl -X "POST" "https://api.logflare.app/logs/json?source=YOUR-SOURCE-ID-HERE" \
-           -H 'Content-Type: application/json; charset=utf-8' \
-           -H 'X-API-KEY: YOUR-API-KEY-HERE' \
-           -d $'[{
-           "message": "This is the main event message",
-           "metadata": {"some": "log event"}
-       }]'
-   ```
+    ```bash
+    curl -X "POST" "https://api.logflare.app/logs/json?source=YOUR-SOURCE-ID-HERE" \
+            -H 'Content-Type: application/json; charset=utf-8' \
+            -H 'LF-API-KEY: YOUR-API-KEY-HERE' \
+            -d $'[{ 
+            "message": "This is the main event message",
+            "metadata": {"some": "log event"}
+        }]'
+    ```
+
+:::warning Header prefix update
+`X-API-KEY` remains available for backwards compatibility but is deprecated and will be removed in the next major version. Prefer the `LF-API-KEY` header going forward.
+:::
 
 4. **Check the Source**
 

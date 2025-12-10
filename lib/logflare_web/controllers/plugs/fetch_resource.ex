@@ -104,7 +104,8 @@ defmodule LogflareWeb.Plugs.FetchResource do
   defp uuid?(_), do: false
 
   def get_source_from_headers(conn) do
-    (Plug.Conn.get_req_header(conn, "x-source") ||
+    (Plug.Conn.get_req_header(conn, "lf-source") ||
+       Plug.Conn.get_req_header(conn, "x-source") ||
        Plug.Conn.get_req_header(conn, "x-collection"))
     |> case do
       [value] -> value

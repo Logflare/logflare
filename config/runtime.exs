@@ -424,11 +424,11 @@ if System.get_env("LOGFLARE_OTEL_ENDPOINT") do
     otlp_endpoint: System.get_env("LOGFLARE_OTEL_ENDPOINT"),
     otlp_compression: :gzip,
     otlp_headers: [
-      {"x-source", System.get_env("LOGFLARE_OTEL_SOURCE_UUID")},
-      {"x-api-key", System.get_env("LOGFLARE_OTEL_ACCESS_TOKEN")}
+      {"lf-source", System.get_env("LOGFLARE_OTEL_SOURCE_UUID")},
+      {"lf-api-key", System.get_env("LOGFLARE_OTEL_ACCESS_TOKEN")}
     ],
     max_batch_size: 250
-end
+  end
 
 syn_endpoints_partitions =
   for n <- 0..System.schedulers_online(), do: "endpoints_#{n}" |> String.to_atom()
