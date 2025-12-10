@@ -215,7 +215,9 @@ defmodule Logflare.SourcesTest do
     end
 
     test "preloads only the required fields", %{user: user} do
-      sources = insert_list(3, :source, %{user: user})
+      sources = insert_list(3, :source, %{user_id: user.id})
+      assocs = Sources.Source.__schema__(:associations)
+      sources = Enum.map(sources, &Ecto.reset_fields(&1, assocs))
       sources = Sources.preload_for_dashboard(sources)
 
       assert Enum.all?(sources, &Ecto.assoc_loaded?(&1.user))

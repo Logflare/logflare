@@ -8,8 +8,6 @@ defmodule Logflare.Rules.CacheTest do
   @subject Rules.Cache
 
   setup do
-    Cachex.reset(@subject)
-    on_exit(fn -> Cachex.reset!(@subject) end)
     insert(:plan)
     user = insert(:user)
     backend = insert(:backend)
