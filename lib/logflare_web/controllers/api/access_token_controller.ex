@@ -26,7 +26,7 @@ defmodule LogflareWeb.Api.AccessTokenController do
   end
 
   operation(:create,
-    summary: "Create source",
+    summary: "Create access token",
     request_body: AccessToken.params(),
     responses: %{
       201 => Created.response(AccessToken),
@@ -35,17 +35,33 @@ defmodule LogflareWeb.Api.AccessTokenController do
     }
   )
 
-  def create(%{assigns: %{user: user}} = conn, params) do
-    scopes_input = Map.get(params, "scopes", "")
+  def create(%{assigns: %{user: user, access_token: current_token}} = conn, params) do
+    scopes_list =
+      Map.get(params, "scopes", "")
+      |> String.split()
 
-    with {:scopes, true} <- {:scopes, "partner" not in String.split(scopes_input)},
+    with :ok <- verify_create_scopes(scopes_list, current_token),
          {:ok, access_token} <- Auth.create_access_token(user, params) do
       conn
       |> put_status(201)
       |> json(access_token)
     else
-      {:scopes, false} -> {:error, :unauthorized}
+      {:partner_scope, false} -> {:error, :unauthorized}
+      {:admin_scope, false} -> {:error, :unauthorized}
       {:error, _} = err -> err
+    end
+  end
+
+  defp verify_create_scopes(scopes, token) do
+    cond do
+      "partner" in scopes ->
+        {:partner_scope, false}
+
+      Auth.admin_scope() in scopes ->
+        if Auth.can_create_admin_token?(token), do: :ok, else: {:admin_scope, false}
+
+      true ->
+        :ok
     end
   end
 

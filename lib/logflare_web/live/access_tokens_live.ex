@@ -3,10 +3,31 @@ defmodule LogflareWeb.AccessTokensLive do
   use LogflareWeb, :live_view
   require Logger
   alias Logflare.Auth
-  alias Logflare.Sources
   alias Logflare.Endpoints
+  alias Logflare.Sources
+  alias Logflare.Teams.TeamContext
 
   def render(assigns) do
+    assigns =
+      assigns
+      |> assign(:scopes, [
+        {
+          "ingest",
+          "For ingestion into a source. Allows ingest into all sources if no specific source is selected."
+        },
+        {
+          "query",
+          "For querying an endpoint. Allows querying of all endpoints if no specific endpoint is selected"
+        },
+        {
+          "private",
+          "Create and modify account resources"
+        },
+        if(Auth.can_create_admin_token?(assigns.team_context),
+          do: {Auth.admin_scope(), "Private access, as well as modify account and team users."}
+        )
+      ])
+
     ~H"""
     <.subheader>
       <:path>
@@ -38,32 +59,7 @@ defmodule LogflareWeb.AccessTokensLive do
 
           <div class="form-group ">
             <label name="scopes" class="tw-mr-3">Scope</label>
-            <%= for %{value: value, description: description} <- [%{
-              value: "ingest",
-              description: "For ingestion into a source. Allows ingest into all sources if no specific source is selected."
-            }, %{
-              value: "query",
-              description: "For querying an endpoint. Allows querying of all endpoints if no specific endpoint is selected"
-            },%{
-              value: "private",
-              description: "For account management, has all privileges"
-            }] do %>
-              <div class="form-check tw-mr-2">
-                <input class="form-check-input" type="checkbox" name="scopes_main[]" id={["scopes", "main", value]} value={value} checked={value in @create_token_form["scopes_main"]} />
-                <label class="form-check-label tw-px-1" for={["scopes", "main", value]}>
-                  {String.capitalize(value)}
-                  <small class="form-text text-muted">{description}</small>
-                  <select :for={input_n <- 0..2} :if={value == "ingest" and value in @create_token_form["scopes_main"]} id={["scopes", "ingest", input_n]} name="scopes_ingest[]" class="mt-1 form-control form-control-sm">
-                    <option hidden value="">Ingest into a specific source...</option>
-                    <option :for={source <- @sources} selected={"ingest:source:#{source.id}" == Enum.at(@create_token_form["scopes_ingest"], input_n)} value={"ingest:source:#{source.id}"} }>Ingest into {source.name} only</option>
-                  </select>
-                  <select :for={input_n <- 0..2} :if={value == "query" and value in @create_token_form["scopes_main"]} id={["scopes", "query", input_n]} name="scopes_query[]" class="mt-1 form-control form-control-sm">
-                    <option hidden value="">Query a specific endpoint...</option>
-                    <option :for={endpoint <- @endpoints} value={"query:endpoint:#{endpoint.id}"} selected={"query:endpoint:#{endpoint.id}" == Enum.at(@create_token_form["scopes_query"], input_n)}>Query {endpoint.name} only</option>
-                  </select>
-                </label>
-              </div>
-            <% end %>
+            <.scope_input :for={{value, description} <- @scopes} endpoints={@endpoints} sources={@sources} value={value} description={description} form={@create_token_form} />
           </div>
           <button type="button" class="btn btn-secondary" phx-click="toggle-create-form" phx-value-show="false">Cancel</button>
           {submit("Create", class: "btn btn-primary")}
@@ -144,6 +140,39 @@ defmodule LogflareWeb.AccessTokensLive do
     """
   end
 
+  attr :sources, :list
+  attr :endpoints, :list
+  attr :value, :string
+  attr :description, :string
+  attr :form, Phoenix.HTML.Form
+
+  def scope_input(assigns) do
+    assigns =
+      assigns
+      |> assign_new(:title, fn
+        %{value: "private:admin"} -> "Admin"
+        %{value: value} -> String.capitalize(value)
+      end)
+
+    ~H"""
+    <div class="form-check tw-mr-2">
+      <input class="form-check-input" type="checkbox" name="scopes_main[]" id={["scopes", "main", @value]} value={@value} checked={@value in @form["scopes_main"]} />
+      <label class="form-check-label tw-px-1" for={["scopes", "main", @value]}>
+        {@title}
+        <small class="form-text text-muted">{@description}</small>
+        <select :for={input_n <- 0..2} :if={@value == "ingest" and @value in @form["scopes_main"]} id={["scopes", "ingest", input_n]} name="scopes_ingest[]" class="mt-1 form-control form-control-sm">
+          <option hidden value="">Ingest into a specific source...</option>
+          <option :for={source <- @sources} selected={"ingest:source:#{source.id}" == Enum.at(@form["scopes_ingest"], input_n)} value={"ingest:source:#{source.id}"} }>Ingest into {source.name} only</option>
+        </select>
+        <select :for={input_n <- 0..2} :if={@value == "query" and @value in @form["scopes_main"]} id={["scopes", "query", input_n]} name="scopes_query[]" class="mt-1 form-control form-control-sm">
+          <option hidden value="">Query a specific endpoint...</option>
+          <option :for={endpoint <- @endpoints} value={"query:endpoint:#{endpoint.id}"} selected={"query:endpoint:#{endpoint.id}" == Enum.at(@form["scopes_query"], input_n)}>Query {endpoint.name} only</option>
+        </select>
+      </label>
+    </div>
+    """
+  end
+
   @default_create_form %{
     "description" => "",
     "scopes" => [],
@@ -155,6 +184,7 @@ defmodule LogflareWeb.AccessTokensLive do
     %{assigns: %{user: user}} = socket
     sources = Sources.list_sources_by_user(user)
     endpoints = Endpoints.list_endpoints_by(user_id: user.id)
+    team_context = struct(TeamContext, socket.assigns)
 
     socket =
       socket
@@ -165,6 +195,7 @@ defmodule LogflareWeb.AccessTokensLive do
       |> assign(scopes_ingest_sources: %{})
       |> assign(scopes_query_endpoints: %{})
       |> assign(create_token_form: @default_create_form)
+      |> assign(:team_context, team_context)
       |> do_refresh()
 
     {:ok, socket}
