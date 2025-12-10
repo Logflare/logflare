@@ -611,6 +611,14 @@ defmodule Logflare.LqlTest do
       assert String.downcase(sql) =~ "group by"
     end
 
+    test "converts chart count distinct query to ClickHouse SQL" do
+      lql = "c:countd(m.user_id) c:group_by(t::minute)"
+      {:ok, sql} = Lql.to_sandboxed_sql(lql, "events", :clickhouse)
+
+      assert String.downcase(sql) =~ "count(distinct"
+      assert String.downcase(sql) =~ "group by"
+    end
+
     test "converts chart avg query to Postgres SQL" do
       lql = "c:avg(m.latency) c:group_by(t::hour)"
       {:ok, sql} = Lql.to_sandboxed_sql(lql, "metrics", :postgres)
