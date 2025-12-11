@@ -1,14 +1,19 @@
 defmodule LogflareWeb.Endpoint do
   use Phoenix.Endpoint, otp_app: :logflare
+
   @session_options [store: :cookie, key: "_logflare_key", signing_salt: "INPMyhPE"]
 
   socket("/socket", LogflareWeb.UserSocket, websocket: [compress: true])
 
   socket("/logs", LogflareWeb.LogSocket, websocket: [compress: true])
 
-  socket("/live", Phoenix.LiveView.Socket,
-    websocket: [connect_info: [session: @session_options], compress: true]
+  socket("/live", Logflare.LiveView.Socket,
+    websocket: [connect_info: [:user_agent, session: @session_options], compress: true]
   )
+
+  if Application.compile_env(:logflare, :sql_sandbox) do
+    plug Phoenix.Ecto.SQL.Sandbox
+  end
 
   # Serve at "/" the static files from "priv/static" directory.
   #

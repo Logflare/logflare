@@ -90,6 +90,10 @@ defmodule LogflareWeb do
 
       use Phoenix.LiveView, opts
 
+      if Application.compile_env(:logflare, :sql_sandbox) do
+        on_mount LogflareWeb.Hooks.LiveAcceptance
+      end
+
       import PhoenixLiveReact, only: [live_react_component: 2, live_react_component: 3]
       import LogflareWeb.CoreComponents
 

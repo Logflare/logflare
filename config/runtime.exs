@@ -1,5 +1,23 @@
 import Config
+
 alias Logflare.Utils
+
+if config_env() == :test do
+  active? = fn key ->
+    System.get_env(key, "false") in ["t", "true", "1", "yes"]
+  end
+
+  config :phoenix_test,
+    playwright: [
+      browser: :chromium,
+      executable_path: System.get_env("PLAYWRIGHT_CHROMIUM_PATH", ""),
+      trace: active?.("PW_TRACE"),
+      screenshot: active?.("PW_SCREENSHOT"),
+      js_logger: if(active?.("PW_JS_LOGGER"), do: :default, else: false),
+      timeout: :timer.seconds(40),
+      browser_launch_timeout: 10_000
+    ]
+end
 
 filter_nil_kv_pairs = fn pairs when is_list(pairs) ->
   Enum.filter(pairs, fn {_k, v} -> v !== nil end)
