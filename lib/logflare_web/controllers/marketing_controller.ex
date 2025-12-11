@@ -4,6 +4,7 @@ defmodule LogflareWeb.MarketingController do
   alias Logflare.SystemMetrics.AllLogsLogged
   alias Number.Delimit
   alias Logflare.SingleTenant
+
   @system_counter :total_logs_logged
   @announcement %{
     message: "Logflare is now part of Supabase.",
