@@ -1,4 +1,4 @@
-defmodule Logflare.Backends.Adaptor.TCPAdaptor.Pipeline do
+defmodule Logflare.Backends.Adaptor.Syslog.Pipeline do
   @moduledoc false
   use Broadway
 
@@ -6,7 +6,7 @@ defmodule Logflare.Backends.Adaptor.TCPAdaptor.Pipeline do
 
   alias Broadway.Message
   alias Logflare.Backends
-  alias Logflare.Backends.Adaptor.TCPAdaptor.{Pool, Syslog}
+  alias Logflare.Backends.Adaptor.Syslog.{Pool, Syslog}
 
   def start_link(opts) do
     backend = Keyword.fetch!(opts, :backend)

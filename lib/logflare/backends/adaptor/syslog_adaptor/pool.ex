@@ -1,4 +1,4 @@
-defmodule Logflare.Backends.Adaptor.TCPAdaptor.Pool do
+defmodule Logflare.Backends.Adaptor.SyslogAdaptor.Pool do
   @moduledoc false
   import Kernel, except: [send: 2]
   @behaviour NimblePool

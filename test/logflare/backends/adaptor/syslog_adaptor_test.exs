@@ -1,4 +1,4 @@
-defmodule Logflare.Backends.Adaptor.TCPAdaptorTest do
+defmodule Logflare.Backends.Adaptor.SyslogAdaptorTest do
   use Logflare.DataCase, async: false
   @moduletag :telegraf
 
@@ -23,7 +23,7 @@ defmodule Logflare.Backends.Adaptor.TCPAdaptorTest do
     :ok
   end
 
-  describe "telegraf + tcp_adapter with basic config" do
+  describe "telegraf + syslog_adapter with basic config" do
     setup do
       config = %{host: "localhost", port: 6514}
       source = insert(:source, user: build(:user))
@@ -122,8 +122,8 @@ defmodule Logflare.Backends.Adaptor.TCPAdaptorTest do
     assert %Ecto.Changeset{valid?: false} =
              changeset =
              config
-             |> Logflare.Backends.Adaptor.TCPAdaptor.cast_config()
-             |> Logflare.Backends.Adaptor.TCPAdaptor.validate_config()
+             |> Logflare.Backends.Adaptor.Syslogdaptor.cast_config()
+             |> Logflare.Backends.Adaptor.SyslogAdaptor.validate_config()
 
     assert %{
              ca_cert: ["must be a valid PEM encoded string"],

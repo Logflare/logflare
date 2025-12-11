@@ -1,6 +1,6 @@
-defmodule Logflare.Backends.Adaptor.TCPAdaptor.Syslog do
+defmodule Logflare.Backends.Adaptor.SyslogAdaptor.Syslog do
   @moduledoc """
-  Implementation of [RFC5424 The Syslog Protocol][]
+  Implementation of [RFC5424][] The Syslog Protocol
 
   It uses [octet-counting framing][].
 
