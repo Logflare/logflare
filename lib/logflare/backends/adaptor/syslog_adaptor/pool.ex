@@ -16,10 +16,10 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.Pool do
   @spec send(NimblePool.pool(), iodata) :: :ok | {:error, error_reason}
         when error_reason: :closed | :inet.posix() | :ssl.reason()
   def send(pool, message) do
-    NimblePool.checkout!(pool, :checkout, fn _from, socket ->
+    NimblePool.checkout!(pool, :send, fn _from, socket ->
       case send_data(socket, message) do
         :ok -> {:ok, :ok}
-        {:error, _reason} = error -> {error, :close}
+        {:error, reason} = error -> {error, {:remove, reason}}
       end
     end)
   end
@@ -64,7 +64,7 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.Pool do
   end
 
   @impl NimblePool
-  def handle_checkout(:checkout, _from, socket, pool_state) do
+  def handle_checkout(:send, _from, socket, pool_state) do
     {:ok, socket, socket, pool_state}
   end
 
@@ -73,8 +73,8 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.Pool do
     {:ok, socket, pool_state}
   end
 
-  def handle_checkin(:close, _from, _socket, pool_state) do
-    {:remove, :closed, pool_state}
+  def handle_checkin({:remove, reason}, _from, _socket, pool_state) do
+    {:remove, reason, pool_state}
   end
 
   # NOTE: handle_info is O(N) (it calls the function for every worker in the pool for every message received).
@@ -82,11 +82,6 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.Pool do
   # The only expected messages are tcp_closed / tcp_error, which are rare.
   @impl NimblePool
   def handle_info(message, socket)
-
-  # swallow unexpected data
-  def handle_info({tag, socket, _data}, socket) when tag in [:tcp, :ssl] do
-    {:ok, socket}
-  end
 
   # close and remove sockets on any error
   def handle_info({tag, socket, reason}, socket) when tag in [:tcp_error, :ssl_error] do
