@@ -41,11 +41,8 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.Pool do
         nodelay: true,
         # don't hang the worker if the inet driver queue fills up
         send_timeout: to_timeout(second: 5),
-        send_timeout_close: true,
-        # enables `{:tcp_error | :ssl_error, socket, :econnreset}` messages for RST, might help in observability later;
-        # gemini says "Syslog servers (like Logstash or Fluentd) often send an RST if they are overloaded or if their input buffer is full and they crash."
-        show_econnreset: true
-        # NOTE: we might also want to add :inet6 later or reduce :recbuf to save memory or :linger
+        send_timeout_close: true
+        # NOTE: we might also want to add :inet6, :recbuf, :linder, :show_econnreset, etc.
       ]
       |> maybe_enable_keepalive()
       |> maybe_configure_ssl(transport, config, host)
@@ -80,6 +77,9 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.Pool do
     {:remove, :closed, pool_state}
   end
 
+  # NOTE: handle_info is O(N) (it calls the function for every worker in the pool for every message received).
+  # Since Syslog is typically a "write-only" protocol where we don't expect return traffic, this is probably fine.
+  # The only expected messages are tcp_closed / tcp_error, which are rare.
   @impl NimblePool
   def handle_info(message, socket)
 
@@ -95,6 +95,7 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.Pool do
     {:remove, reason}
   end
 
+  # handle normal closure
   def handle_info({tag, socket}, socket) when tag in [:tcp_closed, :ssl_closed] do
     {:remove, :closed}
   end
