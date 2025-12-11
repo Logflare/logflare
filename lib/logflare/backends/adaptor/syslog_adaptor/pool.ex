@@ -77,7 +77,7 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.Pool do
     {:remove, reason, pool_state}
   end
 
-  # NOTE: handle_info is O(N) (it calls the function for every worker in the pool for every message received).
+  # NOTE: handle_info is called for every socket in the pool for every message received.
   # Since Syslog is typically a "write-only" protocol where we don't expect return traffic, this is probably fine.
   # The only expected messages are tcp_closed / tcp_error, which are rare.
   @impl NimblePool
