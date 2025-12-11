@@ -67,6 +67,31 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptorTest do
 
       refute_received _anything_else
     end
+
+    test "handles opentelemetry metadata", %{source: source} do
+      body = %{
+        "message" => "hello from opentelemetry",
+        "level" => "debug",
+        "resource" => %{
+          "cluster" => "versioned",
+          "name" => "Logflare (from resource.name)",
+          "node" => ":\"logflare-versioned@10.0.0.123\"",
+          "service" => %{"name" => "Logflare", "version" => "1.26.25"}
+        }
+      }
+
+      log_event = build(:log_event, source: source, body: body)
+      assert {:ok, 1} = Logflare.Backends.ingest_logs([log_event], source)
+
+      assert_receive {:telegraf, telegraf_event}, to_timeout(second: 5)
+
+      assert %{
+               "tags" => %{
+                 "appname" => "Logflare_(from_resource.name)",
+                 "hostname" => ":\"logflare-versioned@10.0.0.123\""
+               }
+             } = telegraf_event
+    end
   end
 
   describe "mTLS" do

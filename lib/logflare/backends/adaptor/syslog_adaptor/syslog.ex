@@ -31,25 +31,40 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.Syslog do
   @default_level Map.fetch!(@levels, "info")
 
   def format(log_event, cipher_key \\ nil) do
-    %LogEvent{id: id, body: body} = log_event
+    %LogEvent{id: id, body: root_body} = log_event
 
-    level = get_in(body["metadata"]["level"]) || body["level"]
+    body = root_body["body"]
+    metadata = get_in(body["metadata"]) || root_body["metadata"]
+    # resource comes from opentelemetry
+    resource = get_in(body["resource"]) || root_body["resource"]
+    level = get_in(metadata["level"]) || get_in(body["level"]) || root_body["level"]
     pri = 16 * 8 + severity_code(level)
 
     timestamp =
-      body
+      root_body
       |> Map.fetch!("timestamp")
       |> DateTime.from_unix!(:microsecond)
       |> DateTime.truncate(:millisecond)
       |> DateTime.to_iso8601()
 
-    metadata = body["metadata"]
-    hostname = get_in(metadata["host"]) || body["host"]
-    app_name = get_in(metadata["app_name"]) || body["app_name"] || "logflare"
-    procid = get_in(metadata["pid"]) || body["pid"]
+    hostname =
+      get_in(metadata["host"]) ||
+        get_in(resource["node"]) ||
+        get_in(body["host"]) ||
+        root_body["host"]
+
+    # we default to `"logflare"` since telegraf rejects events without APP-NAME
+    app_name =
+      get_in(metadata["app_name"]) ||
+        get_in(resource["name"]) ||
+        get_in(body["app_name"]) ||
+        root_body["app_name"] ||
+        "logflare"
+
+    procid = get_in(metadata["procid"]) || get_in(body["procid"]) || root_body["procid"]
     msgid = id |> Ecto.UUID.dump!() |> Base.encode32(padding: false)
 
-    msg = Jason.encode_to_iodata!(body)
+    msg = Jason.encode_to_iodata!(root_body)
     msg = if cipher_key, do: encrypt(msg, cipher_key), else: msg
 
     # https://datatracker.ietf.org/doc/html/rfc5424#section-6
