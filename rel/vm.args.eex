@@ -27,6 +27,9 @@
 +swtdcpu very_low
 +swtdio very_low
 
+## Pin scheduler threads to cores, when available
+## Use db strategy (default bind)
++stbt db
 
 ## Set distribution buffer limit - default is 1024
 +zdbbl 1028000
@@ -39,7 +42,7 @@
 ## https://www.erlang.org/doc/apps/erts/erts_alloc.html
 +Mdai max
 
-## Disable overlapping partitions
+## Disable overlapping partitions prevention
 ## https://github.com/erlang/otp/issues/6470#issuecomment-1337421210 
 -kernel prevent_overlapping_partitions false
 
