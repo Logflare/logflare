@@ -343,4 +343,31 @@ defmodule Logflare.Sources.Source do
   end
 
   def system_source_types, do: @system_source_types
+
+  @doc """
+  Returns a combined list of BigQuery clustering fields
+  and suggested keys to be used for query optimization.
+
+  ## Examples
+
+      iex> source = %Source{bigquery_clustering_fields: "id,timestamp", suggested_keys: "m.user_id,status"}
+      iex> recommended_query_fields(source)
+      ["id", "timestamp", "m.user_id", "status"]
+
+      iex> source = %Source{bigquery_clustering_fields: nil, suggested_keys: ""}
+      iex> recommended_query_fields(source)
+      []
+  """
+  @spec recommended_query_fields(%__MODULE__{}) :: [String.t()]
+  def recommended_query_fields(%__MODULE__{} = source) do
+    clustering_fields =
+      (source.bigquery_clustering_fields || "")
+      |> String.split(",", trim: true)
+
+    suggested_keys =
+      (source.suggested_keys || "")
+      |> String.split(",", trim: true)
+
+    clustering_fields ++ suggested_keys
+  end
 end
