@@ -29,11 +29,11 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptorTest do
              }
            ] =
              ingest_syslog(
-               [build(:log_event, body: %{"message" => "basic unicode message ✍️"})],
+               [build(:log_event, message: "basic unicode message ✍️")],
                backend_config
              )
 
-    assert %{"body" => %{"message" => "basic unicode message ✍️"}} =
+    assert %{"event_message" => "basic unicode message ✍️"} =
              Jason.decode!(telegraf_message)
   end
 
@@ -51,14 +51,12 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptorTest do
              ingest_syslog(
                [
                  build(:log_event,
-                   body: %{
-                     "message" => "hello from opentelemetry",
-                     "resource" => %{
-                       "cluster" => "versioned",
-                       "name" => "Logflare (from resource.name)",
-                       "node" => ":\"logflare-versioned@10.0.0.123\"",
-                       "service" => %{"name" => "Logflare", "version" => "1.26.25"}
-                     }
+                   message: "hello from opentelemetry",
+                   resource: %{
+                     "cluster" => "versioned",
+                     "name" => "Logflare (from resource.name)",
+                     "node" => ":\"logflare-versioned@10.0.0.123\"",
+                     "service" => %{"name" => "Logflare", "version" => "1.26.25"}
                    }
                  )
                ],
@@ -75,10 +73,8 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptorTest do
            ] =
              ingest_syslog(
                [
-                 build(:log_event, body: %{"level" => "debug", "message" => "eh"}),
-                 build(:log_event,
-                   body: %{"metadata" => %{"level" => "error"}, "message" => "eh"}
-                 )
+                 build(:log_event, level: "debug", message: "eh"),
+                 build(:log_event, metadata: %{"level" => "error"}, message: "eh")
                ],
                backend_config
              )
@@ -93,8 +89,8 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptorTest do
            ] =
              ingest_syslog(
                [
-                 build(:log_event, body: %{"message" => "no level"}),
-                 build(:log_event, body: %{"message" => "bad level", "level" => "bad"})
+                 build(:log_event, message: "no level"),
+                 build(:log_event, message: "bad level", level: "bad")
                ],
                backend_config
              )
@@ -112,12 +108,11 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptorTest do
 
     assert [%{"fields" => %{"message" => telegraf_event_message}}] =
              ingest_syslog(
-               [build(:log_event, body: %{"message" => "hello world over tls"})],
+               [build(:log_event, message: "hello world over tls")],
                backend_config
              )
 
-    assert %{"body" => %{"message" => "hello world over tls"}} =
-             Jason.decode!(telegraf_event_message)
+    assert %{"event_message" => "hello world over tls"} = Jason.decode!(telegraf_event_message)
   end
 
   test "validates PEM configuration" do
@@ -147,7 +142,7 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptorTest do
 
     assert [%{"fields" => %{"message" => encrypted_message}}] =
              ingest_syslog(
-               [build(:log_event, body: %{"message" => "hello cipher"})],
+               [build(:log_event, message: "hello cipher")],
                backend_config
              )
 
@@ -157,7 +152,7 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptorTest do
     plaintext =
       :crypto.crypto_one_time_aead(:aes_256_gcm, key, iv, ciphertext, "syslog", tag, false)
 
-    assert %{"body" => %{"message" => "hello cipher"}} = Jason.decode!(plaintext)
+    assert %{"event_message" => "hello cipher"} = Jason.decode!(plaintext)
   end
 
   defp ingest_syslog(log_events, backend_config, timeout \\ to_timeout(second: 5)) do
