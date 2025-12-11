@@ -10,10 +10,28 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.Syslog do
 
   alias Logflare.LogEvent
 
+  @empty ?-
+
+  @levels %{
+    "emergency" => 0,
+    "emer" => 0,
+    "alert" => 1,
+    "critical" => 2,
+    "crit" => 2,
+    "error" => 3,
+    "err" => 3,
+    "warning" => 4,
+    "warn" => 4,
+    "notice" => 5,
+    "informational" => 6,
+    "info" => 6,
+    "debug" => 7
+  }
+
   def format(log_event, cipher_key \\ nil) do
     %LogEvent{id: id, body: body} = log_event
 
-    level = get_in(body["metadata"]["level"]) || body["level"] || "info"
+    level = get_in(body["metadata"]["level"]) || body["level"]
     pri = 16 * 8 + severity_code(level)
 
     timestamp =
@@ -57,7 +75,7 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.Syslog do
       # SP
       ?\s,
       # STRUCTURED-DATA (empty for now)
-      ?-,
+      @empty,
       # SP
       ?\s
       # MSG
@@ -67,34 +85,18 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.Syslog do
     [Integer.to_string(IO.iodata_length(syslog_msg)), ?\s | syslog_msg]
   end
 
-  @levels %{
-    "emergency" => 0,
-    "emer" => 0,
-    "alert" => 1,
-    "critical" => 2,
-    "crit" => 2,
-    "error" => 3,
-    "err" => 3,
-    "warning" => 4,
-    "warn" => 4,
-    "notice" => 5,
-    "informational" => 6,
-    "info" => 6,
-    "debug" => 7
-  }
-
   defp severity_code(level) when level in 0..7, do: level
 
   defp severity_code(str) when is_binary(str) do
     str = String.downcase(str)
-    Map.fetch!(@levels, str)
+    Map.get(@levels, str, _info = 6)
   end
 
-  defp format_header_value(nil, _length), do: ?-
+  defp format_header_value(nil, _length), do: @empty
 
   defp format_header_value(value, length) when is_binary(value) do
     value = value |> String.replace(~r/[^\x21-\x7E]/, "_") |> String.slice(0, length)
-    if value == "", do: ?-, else: value
+    if value == "", do: @empty, else: value
   end
 
   defp format_header_value(value, length) do
