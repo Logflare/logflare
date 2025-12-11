@@ -54,8 +54,16 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.Pipeline do
         Syslog.format(log_event, cipher_key)
       end
 
-    Pool.send(pool, content)
-    messages
+    case Pool.send(pool, content) do
+      :ok -> messages
+      {:error, reason} -> fail_batch(messages, reason)
+    end
+  end
+
+  defp fail_batch(messages, reason) do
+    Enum.map(messages, fn message ->
+      Broadway.Message.failed(message, reason)
+    end)
   end
 
   @impl Broadway

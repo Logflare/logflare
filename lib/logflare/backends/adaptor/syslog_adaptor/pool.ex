@@ -13,6 +13,8 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.Pool do
     %{id: __MODULE__, start: {__MODULE__, :start_link, [opts]}}
   end
 
+  @spec send(NimblePool.pool(), iodata) :: :ok | {:error, error_reason}
+        when error_reason: :closed | :inet.posix() | :ssl.reason()
   def send(pool, message) do
     NimblePool.checkout!(pool, :checkout, fn _from, socket ->
       case send_data(socket, message) do
