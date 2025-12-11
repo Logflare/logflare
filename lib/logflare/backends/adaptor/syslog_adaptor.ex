@@ -1,4 +1,4 @@
-defmodule Logflare.Backends.Adaptor.Syslog do
+defmodule Logflare.Backends.Adaptor.SyslogAdaptor do
   @moduledoc """
   TCP backend adaptor that sends out Syslog-formatted messages.
   """
@@ -6,7 +6,7 @@ defmodule Logflare.Backends.Adaptor.Syslog do
   use Supervisor
   use TypedStruct
   import Ecto.Changeset
-  alias Logflare.Backends.Adaptor.Syslog.{Pool, Pipeline}
+  alias Logflare.Backends.Adaptor.SyslogAdaptor.{Pool, Pipeline}
   @behaviour Logflare.Backends.Adaptor
 
   typedstruct enforce: true do

@@ -1,4 +1,4 @@
-defmodule Logflare.Backends.Adaptor.Syslog.Pipeline do
+defmodule Logflare.Backends.Adaptor.SyslogAdaptor.Pipeline do
   @moduledoc false
   use Broadway
 
@@ -29,7 +29,7 @@ defmodule Logflare.Backends.Adaptor.Syslog.Pipeline do
         default: [min_demand: 1]
       ],
       batchers: [
-        tcp: [concurrency: 5, batch_size: 50]
+        syslog: [concurrency: 5, batch_size: 50]
       ],
       context: %{
         source_id: source.id,
@@ -42,11 +42,11 @@ defmodule Logflare.Backends.Adaptor.Syslog.Pipeline do
 
   @impl Broadway
   def handle_message(_processor_name, message, _context) do
-    Message.put_batcher(message, :tcp)
+    Message.put_batcher(message, :syslog)
   end
 
   @impl Broadway
-  def handle_batch(:tcp, messages, _batch_info, context) do
+  def handle_batch(:syslog, messages, _batch_info, context) do
     %{pool: pool, cipher_key: cipher_key} = context
 
     content =

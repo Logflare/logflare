@@ -28,6 +28,8 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.Syslog do
     "debug" => 7
   }
 
+  @default_level Map.fetch!(@levels, "info")
+
   def format(log_event, cipher_key \\ nil) do
     %LogEvent{id: id, body: body} = log_event
 
@@ -86,10 +88,11 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.Syslog do
   end
 
   defp severity_code(level) when level in 0..7, do: level
+  defp severity_code(nil), do: @default_level
 
   defp severity_code(str) when is_binary(str) do
     str = String.downcase(str)
-    Map.get(@levels, str, _info = 6)
+    Map.get(@levels, str, @default_level)
   end
 
   defp format_header_value(nil, _length), do: @empty

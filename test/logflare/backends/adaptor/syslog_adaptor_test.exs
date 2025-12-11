@@ -27,7 +27,7 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptorTest do
     setup do
       config = %{host: "localhost", port: 6514}
       source = insert(:source, user: build(:user))
-      backend = insert(:backend, type: :tcp, sources: [source], config: config)
+      backend = insert(:backend, type: :syslog, sources: [source], config: config)
       start_supervised!({Logflare.Backends.AdaptorSupervisor, {source, backend}})
       {:ok, source: source}
     end
@@ -86,7 +86,7 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptorTest do
       }
 
       source = insert(:source, user: build(:user))
-      backend = insert(:backend, type: :tcp, sources: [source], config: config)
+      backend = insert(:backend, type: :syslog, sources: [source], config: config)
       start_supervised!({Logflare.Backends.AdaptorSupervisor, {source, backend}})
 
       {:ok, source: source}
@@ -122,7 +122,7 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptorTest do
     assert %Ecto.Changeset{valid?: false} =
              changeset =
              config
-             |> Logflare.Backends.Adaptor.Syslogdaptor.cast_config()
+             |> Logflare.Backends.Adaptor.SyslogAdaptor.cast_config()
              |> Logflare.Backends.Adaptor.SyslogAdaptor.validate_config()
 
     assert %{
@@ -138,7 +138,7 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptorTest do
       base64_key = Base.encode64(key)
       config = %{host: "localhost", port: 6514, cipher_key: base64_key}
       source = insert(:source, user: build(:user))
-      backend = insert(:backend, type: :tcp, sources: [source], config: config)
+      backend = insert(:backend, type: :syslog, sources: [source], config: config)
       start_supervised!({Logflare.Backends.AdaptorSupervisor, {source, backend}})
       {:ok, source: source, key: key}
     end
