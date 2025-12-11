@@ -6,7 +6,7 @@ defmodule Logflare.Backends.Adaptor.Syslog.Pipeline do
 
   alias Broadway.Message
   alias Logflare.Backends
-  alias Logflare.Backends.Adaptor.Syslog.{Pool, Syslog}
+  alias Logflare.Backends.Adaptor.SyslogAdaptor.{Pool, Syslog}
 
   def start_link(opts) do
     backend = Keyword.fetch!(opts, :backend)
