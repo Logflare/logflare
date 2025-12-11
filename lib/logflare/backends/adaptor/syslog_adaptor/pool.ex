@@ -90,7 +90,7 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.Pool do
 
   # close and remove sockets on any error
   def handle_info({tag, socket, reason}, socket) when tag in [:tcp_error, :ssl_error] do
-    # Mint closes on error so do we: https://github.com/elixir-mint/mint/blob/e28c85aad15d1f0cfcb1d5e4f4abada5f37f0f11/lib/mint/http1.ex#L533-L535
+    # mint closes on error, so do we: https://github.com/elixir-mint/mint/blob/e28c85aad15d1f0cfcb1d5e4f4abada5f37f0f11/lib/mint/http1.ex#L533-L535
     close(socket)
     {:remove, reason}
   end
@@ -127,7 +127,7 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.Pool do
       failure_count = :atomics.get(connect_failures, 1)
       if failure_count > 0, do: delay_connect(failure_count)
 
-      # we need to try/catch since gen_tcp sometimes raises (e.g, on bad options)
+      # we need to try/catch since gen_tcp sometimes raises (e.g, on bad connect_opts)
       # and we don't want to exit without incrementing connect failures
       result =
         try do
