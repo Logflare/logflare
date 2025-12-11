@@ -31,7 +31,8 @@ defmodule Logflare.Endpoints.Query do
              :max_limit,
              :enable_auth,
              :labels,
-             :redact_pii
+             :redact_pii,
+             :bigquery_reservations
            ]}
   typed_schema "endpoint_queries" do
     field(:token, Ecto.UUID, autogenerate: true)
@@ -47,6 +48,7 @@ defmodule Logflare.Endpoints.Query do
     field(:enable_auth, :boolean, default: true)
     field(:redact_pii, :boolean, default: false)
     field(:labels, :string)
+    field(:bigquery_reservations, :string)
     field(:parsed_labels, :map, virtual: true)
     field(:metrics, :map, virtual: true)
 
@@ -81,7 +83,8 @@ defmodule Logflare.Endpoints.Query do
       :language,
       :description,
       :backend_id,
-      :labels
+      :labels,
+      :bigquery_reservations
     ])
     |> infer_language_from_backend()
     |> validate_required([:name, :query, :language])
@@ -102,7 +105,8 @@ defmodule Logflare.Endpoints.Query do
       :language,
       :description,
       :backend_id,
-      :labels
+      :labels,
+      :bigquery_reservations
     ])
     |> infer_language_from_backend()
     |> validate_query(:query)
