@@ -33,17 +33,18 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.Syslog do
   def format(log_event, cipher_key \\ nil) do
     %LogEvent{id: id, body: body} = log_event
 
-    metadata = body["metadata"]
-    # resource comes from opentelemetry
-    resource = body["resource"]
-    level = get_in(metadata["level"]) || body["level"]
-
     timestamp =
       body
       |> Map.fetch!("timestamp")
       |> DateTime.from_unix!(:microsecond)
       |> DateTime.truncate(:millisecond)
       |> DateTime.to_iso8601()
+
+    metadata = body["metadata"]
+    level = get_in(metadata["level"]) || body["level"]
+
+    # resource comes from opentelemetry
+    resource = body["resource"]
 
     hostname =
       get_in(metadata["host"]) ||
