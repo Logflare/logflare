@@ -51,6 +51,11 @@ defmodule Logflare.Teams.TeamContext do
 
   def parse_team_id(_), do: {:error, :invalid_team_id}
 
+  def is_team_owner?(%__MODULE__{team: team, user: user, team_user: nil}),
+    do: team_owner?(team, user.email)
+
+  def is_team_owner?(%__MODULE__{}), do: false
+
   defp do_resolve(%Team{} = team, %TeamUser{} = team_user) do
     user = team.user |> Logflare.Users.preload_defaults()
     team_user = TeamUsers.preload_defaults(team_user)
