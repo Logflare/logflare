@@ -38,7 +38,6 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.Syslog do
     # resource comes from opentelemetry
     resource = get_in(body["resource"]) || root_body["resource"]
     level = get_in(metadata["level"]) || get_in(body["level"]) || root_body["level"]
-    pri = 16 * 8 + severity_code(level)
 
     timestamp =
       root_body
@@ -68,6 +67,8 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.Syslog do
     msg = if cipher_key, do: encrypt(msg, cipher_key), else: msg
 
     # https://datatracker.ietf.org/doc/html/rfc5424#section-6
+    pri = 16 * 8 + severity_code(level)
+
     syslog_msg = [
       # PRI VERSION SP
       "<#{pri}>1 ",

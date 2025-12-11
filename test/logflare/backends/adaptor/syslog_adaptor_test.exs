@@ -2,51 +2,23 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptorTest do
   use Logflare.DataCase, async: false
   @moduletag :telegraf
 
-  setup do
-    start_supervised!(Logflare.SystemMetrics.AllLogsLogged)
-    :ok
+  @telegraf_output_path "db/telegraf_output/metrics.out"
+
+  setup_all do
+    on_exit(fn ->
+      if File.exists?(@telegraf_output_path) do
+        File.write!(@telegraf_output_path, _empty = "")
+      end
+    end)
   end
 
-  setup do
-    insert(:plan)
-    :ok
-  end
+  test "basic fields check" do
+    backend_config = %{host: "localhost", port: 6514}
 
-  setup do
-    telegraf_output_path = "db/telegraf_output/metrics.out"
-
-    if File.exists?(telegraf_output_path) do
-      File.write!(telegraf_output_path, _empty = "")
-    end
-
-    _pid = spawn_link_telegraf_watcher(telegraf_output_path)
-    :ok
-  end
-
-  describe "telegraf + syslog_adapter with basic config" do
-    setup do
-      config = %{host: "localhost", port: 6514}
-      source = insert(:source, user: build(:user))
-      backend = insert(:backend, type: :syslog, sources: [source], config: config)
-      start_supervised!({Logflare.Backends.AdaptorSupervisor, {source, backend}})
-      {:ok, source: source}
-    end
-
-    test "sends RFC5424 message with octet counting", %{source: source} do
-      body = %{"message" => "hello world", "level" => "info"}
-      %{id: log_event_id} = log_event = build(:log_event, source: source, body: body)
-      assert {:ok, 1} = Logflare.Backends.ingest_logs([log_event], source)
-
-      assert_receive {:telegraf, telegraf_event}, to_timeout(second: 5)
-
-      assert %{
+    assert [
+             %{
                "fields" => %{
-                 "facility_code" => 16,
-                 "message" => telegraf_event_message,
-                 "msgid" => msgid,
-                 "severity_code" => 6,
-                 "timestamp" => _timestamp,
-                 "version" => 1
+                 "message" => telegraf_message
                },
                "name" => "syslog",
                "tags" => %{
@@ -54,86 +26,98 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptorTest do
                  "facility" => "local0",
                  "severity" => "info"
                }
-             } = telegraf_event
+             }
+           ] =
+             ingest_syslog(
+               [build(:log_event, body: %{"message" => "basic unicode message ✍️"})],
+               backend_config
+             )
 
-      assert Base.decode32!(msgid, padding: false) == Ecto.UUID.dump!(log_event_id)
+    assert %{"body" => %{"message" => "basic unicode message ✍️"}} =
+             Jason.decode!(telegraf_message)
+  end
 
-      assert %{
-               "body" => %{"level" => "info", "message" => "hello world"},
-               "event_message" => "test-msg",
-               "id" => _id,
-               "timestamp" => _timestamp
-             } = Jason.decode!(telegraf_event_message)
+  test "handles opentelemetry metadata" do
+    backend_config = %{host: "localhost", port: 6514}
 
-      refute_received _anything_else
-    end
-
-    test "handles opentelemetry metadata", %{source: source} do
-      body = %{
-        "message" => "hello from opentelemetry",
-        "level" => "debug",
-        "resource" => %{
-          "cluster" => "versioned",
-          "name" => "Logflare (from resource.name)",
-          "node" => ":\"logflare-versioned@10.0.0.123\"",
-          "service" => %{"name" => "Logflare", "version" => "1.26.25"}
-        }
-      }
-
-      log_event = build(:log_event, source: source, body: body)
-      assert {:ok, 1} = Logflare.Backends.ingest_logs([log_event], source)
-
-      assert_receive {:telegraf, telegraf_event}, to_timeout(second: 5)
-
-      assert %{
+    assert [
+             %{
                "tags" => %{
                  "appname" => "Logflare_(from_resource.name)",
                  "hostname" => ":\"logflare-versioned@10.0.0.123\""
                }
-             } = telegraf_event
-    end
+             }
+           ] =
+             ingest_syslog(
+               [
+                 build(:log_event,
+                   body: %{
+                     "message" => "hello from opentelemetry",
+                     "resource" => %{
+                       "cluster" => "versioned",
+                       "name" => "Logflare (from resource.name)",
+                       "node" => ":\"logflare-versioned@10.0.0.123\"",
+                       "service" => %{"name" => "Logflare", "version" => "1.26.25"}
+                     }
+                   }
+                 )
+               ],
+               backend_config
+             )
   end
 
-  describe "mTLS" do
-    setup do
-      port = 6515
-      ca_cert = File.read!("priv/telegraf/ca.crt")
-      client_cert = File.read!("priv/telegraf/client.crt")
-      client_key = File.read!("priv/telegraf/client.key")
+  test "extracts level from input" do
+    backend_config = %{host: "localhost", port: 6514}
 
-      config = %{
-        host: "localhost",
-        port: port,
-        tls: true,
-        ca_cert: ca_cert,
-        client_cert: client_cert,
-        client_key: client_key
-      }
+    assert [
+             %{"tags" => %{"severity" => "debug"}},
+             %{"tags" => %{"severity" => "err"}}
+           ] =
+             ingest_syslog(
+               [
+                 build(:log_event, body: %{"level" => "debug", "message" => "eh"}),
+                 build(:log_event,
+                   body: %{"metadata" => %{"level" => "error"}, "message" => "eh"}
+                 )
+               ],
+               backend_config
+             )
+  end
 
-      source = insert(:source, user: build(:user))
-      backend = insert(:backend, type: :syslog, sources: [source], config: config)
-      start_supervised!({Logflare.Backends.AdaptorSupervisor, {source, backend}})
+  test "replaces invalid or empty log level with `info` severity code" do
+    backend_config = %{host: "localhost", port: 6514}
 
-      {:ok, source: source}
-    end
+    assert [
+             %{"tags" => %{"severity" => "info"}},
+             %{"tags" => %{"severity" => "info"}}
+           ] =
+             ingest_syslog(
+               [
+                 build(:log_event, body: %{"message" => "no level"}),
+                 build(:log_event, body: %{"message" => "bad level", "level" => "bad"})
+               ],
+               backend_config
+             )
+  end
 
-    test "sends message over mTLS", %{source: source} do
-      body = %{"message" => "hello world", "level" => "info"}
-      %{id: log_event_id} = log_event = build(:log_event, source: source, body: body)
-      assert {:ok, 1} = Logflare.Backends.ingest_logs([log_event], source)
+  test "sends message over mTLS" do
+    backend_config = %{
+      host: "localhost",
+      port: 6515,
+      tls: true,
+      ca_cert: File.read!("priv/telegraf/ca.crt"),
+      client_cert: File.read!("priv/telegraf/client.crt"),
+      client_key: File.read!("priv/telegraf/client.key")
+    }
 
-      assert_receive {:telegraf, telegraf_event}, to_timeout(second: 5)
+    assert [%{"fields" => %{"message" => telegraf_event_message}}] =
+             ingest_syslog(
+               [build(:log_event, body: %{"message" => "hello world over tls"})],
+               backend_config
+             )
 
-      assert %{
-               "fields" => %{
-                 "message" => telegraf_event_message,
-                 "msgid" => msgid
-               }
-             } = telegraf_event
-
-      assert Base.decode32!(msgid, padding: false) == Ecto.UUID.dump!(log_event_id)
-      assert %{"body" => %{"message" => "hello world"}} = Jason.decode!(telegraf_event_message)
-    end
+    assert %{"body" => %{"message" => "hello world over tls"}} =
+             Jason.decode!(telegraf_event_message)
   end
 
   test "validates PEM configuration" do
@@ -157,54 +141,109 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptorTest do
            } = errors_on(changeset)
   end
 
-  describe "encryption" do
-    setup do
-      key = :crypto.strong_rand_bytes(32)
-      base64_key = Base.encode64(key)
-      config = %{host: "localhost", port: 6514, cipher_key: base64_key}
-      source = insert(:source, user: build(:user))
-      backend = insert(:backend, type: :syslog, sources: [source], config: config)
-      start_supervised!({Logflare.Backends.AdaptorSupervisor, {source, backend}})
-      {:ok, source: source, key: key}
-    end
+  test "can send encrypted message" do
+    key = :crypto.strong_rand_bytes(32)
+    backend_config = %{host: "localhost", port: 6514, cipher_key: Base.encode64(key)}
 
-    test "sends encrypted message", %{source: source, key: key} do
-      body = %{"message" => "hello world", "level" => "info"}
-      %{id: _log_event_id} = log_event = build(:log_event, source: source, body: body)
-      assert {:ok, 1} = Logflare.Backends.ingest_logs([log_event], source)
+    assert [%{"fields" => %{"message" => encrypted_message}}] =
+             ingest_syslog(
+               [build(:log_event, body: %{"message" => "hello cipher"})],
+               backend_config
+             )
 
-      assert_receive {:telegraf, telegraf_event}, to_timeout(second: 5)
+    assert <<iv::12-bytes, tag::16-bytes, ciphertext::bytes>> =
+             Base.decode64!(encrypted_message)
 
-      message = telegraf_event["fields"]["message"]
+    plaintext =
+      :crypto.crypto_one_time_aead(:aes_256_gcm, key, iv, ciphertext, "syslog", tag, false)
 
-      # Verify it is not JSON
-      assert {:error, _} = Jason.decode(message)
-
-      # Verify we can decrypt it
-      assert {:ok, decoded_msg} = Base.decode64(message)
-      <<iv::binary-12, tag::binary-16, ciphertext::binary>> = decoded_msg
-
-      plaintext =
-        :crypto.crypto_one_time_aead(:aes_256_gcm, key, iv, ciphertext, "syslog", tag, false)
-
-      assert %{"body" => %{"message" => "hello world"}} = Jason.decode!(plaintext)
-    end
+    assert %{"body" => %{"message" => "hello cipher"}} = Jason.decode!(plaintext)
   end
 
-  defp spawn_link_telegraf_watcher(path) do
-    test = self()
-    spawn_link(fn -> watch_telegraf(path, _offset = 0, test) end)
+  defp ingest_syslog(log_events, backend_config, timeout \\ to_timeout(second: 5)) do
+    deadline = System.monotonic_time(:millisecond) + timeout
+    source = lookup_source(backend_config) || create_source(backend_config)
+
+    log_events =
+      log_events
+      |> List.wrap()
+      |> Enum.map(fn log_event -> %{log_event | source_id: source.id} end)
+
+    {:ok, _count} = Logflare.Backends.ingest_logs(log_events, source)
+    collect_telegraf_logs(log_events, deadline)
   end
 
-  defp watch_telegraf(path, offset, test) do
-    new_lines = path |> File.stream!() |> Enum.drop(offset)
-    new_offset = offset + length(new_lines)
+  defp lookup_source(backend_config) do
+    Process.get(syslog_source_key(backend_config))
+  end
 
-    Enum.each(new_lines, fn line ->
-      send(test, {:telegraf, Jason.decode!(line)})
-    end)
+  defp create_source(backend_config) do
+    start_supervised!(Logflare.SystemMetrics.AllLogsLogged)
+    insert(:plan)
 
-    Process.sleep(100)
-    watch_telegraf(path, new_offset, test)
+    source = insert(:source, user: build(:user))
+    Process.put(syslog_source_key(backend_config), source)
+
+    backend = insert(:backend, type: :syslog, sources: [source], config: backend_config)
+    start_supervised!({Logflare.Backends.AdaptorSupervisor, {source, backend}})
+
+    source
+  end
+
+  defp syslog_source_key(backend_config) do
+    {:syslog_source, backend_config}
+  end
+
+  defp collect_telegraf_logs(log_events, deadline) do
+    # extract msgids to match them with telegraf output
+    syslog_msgids =
+      Enum.map(log_events, fn log_event ->
+        # uuid -> base32 is what we do in syslog formatter to fit in MSGID size limits
+        log_event.id |> Ecto.UUID.dump!() |> Base.encode32(padding: false)
+      end)
+
+    telegraf_logs =
+      @telegraf_output_path
+      |> File.stream!()
+      |> Stream.map(fn line ->
+        case Jason.decode(line) do
+          {:ok, json} ->
+            json
+
+          {:error, reason} ->
+            raise """
+            Failed to parse telegraf line (from #{@telegraf_output_path}) as JSON.
+            Line: #{inspect(line)}
+            Error: #{Exception.format(:error, reason)}
+            """
+        end
+      end)
+      |> Enum.filter(fn %{"fields" => %{"msgid" => msgid}} ->
+        msgid in syslog_msgids
+      end)
+
+    cond do
+      length(log_events) == length(telegraf_logs) ->
+        telegraf_logs_lookup =
+          Map.new(telegraf_logs, fn %{"fields" => %{"msgid" => syslog_msg_id}} = log ->
+            log_event_id = syslog_msg_id |> Base.decode32!(padding: false) |> Ecto.UUID.load!()
+            {log_event_id, log}
+          end)
+
+        # now we match "output" telegraf logs with "input" log events
+        Enum.map(log_events, fn log_event ->
+          Map.fetch!(telegraf_logs_lookup, log_event.id)
+        end)
+
+      System.monotonic_time(:millisecond) < deadline ->
+        Process.sleep(100)
+        collect_telegraf_logs(log_events, deadline)
+
+      true ->
+        raise """
+        Failed to collect all #{length(log_events)} telegraf logs (from #{@telegraf_output_path}) before deadline.
+        Collected #{length(telegraf_logs)} logs: #{inspect(telegraf_logs)}
+        """
+    end
   end
 end
