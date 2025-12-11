@@ -166,13 +166,14 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.Pool do
     Process.sleep(sleep_for)
   end
 
+  # gen_tcp:connect raises badarg if keepidle and co. are used on a mac, so we keep it linux-only
   defp maybe_enable_keepalive(opts) do
     case :os.type() do
       {:unix, :linux} ->
         Keyword.merge(opts,
           keepalive: true,
           # seconds of silence before sending a probe;
-          # we need to set it since the default on linux is tcp_keepalive_time=7200, i.e. 2 hours
+          # we need to set it since the default on linux is tcp_keepalive_time=7200 (2 hours)
           keepidle: 15,
           # seconds between probes
           keepintvl: 5,
