@@ -30,8 +30,24 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.Pool do
     port = Map.fetch!(config, :port)
     transport = if Map.get(config, :tls), do: :ssl, else: :gen_tcp
 
+    # see https://www.erlang.org/doc/apps/kernel/inet#setopts/2 for details
     connect_opts =
-      [mode: :binary, active: false, nodelay: true]
+      [
+        mode: :binary,
+        packet: :raw,
+        # enable async messages to catch closed sockets early
+        active: true,
+        # disable Nagle's algorithm for lower latency
+        nodelay: true,
+        # don't hang the worker if the inet driver queue fills up
+        send_timeout: to_timeout(second: 5),
+        send_timeout_close: true,
+        # enables `{:tcp_error | :ssl_error, socket, :econnreset}` messages for RST, might help in observability later;
+        # gemini says "Syslog servers (like Logstash or Fluentd) often send an RST if they are overloaded or if their input buffer is full and they crash."
+        show_econnreset: true
+        # NOTE: we might also want to add :inet6 later or reduce :recbuf to save memory or :linger
+      ]
+      |> maybe_enable_keepalive()
       |> maybe_configure_ssl(transport, config, host)
 
     pool_state = %{
@@ -65,6 +81,29 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.Pool do
   end
 
   @impl NimblePool
+  def handle_info(message, socket)
+
+  # swallow unexpected data
+  def handle_info({tag, socket, _data}, socket) when tag in [:tcp, :ssl] do
+    {:ok, socket}
+  end
+
+  # close and remove sockets on any error
+  def handle_info({tag, socket, reason}, socket) when tag in [:tcp_error, :ssl_error] do
+    # Mint closes on error so do we: https://github.com/elixir-mint/mint/blob/e28c85aad15d1f0cfcb1d5e4f4abada5f37f0f11/lib/mint/http1.ex#L533-L535
+    close(socket)
+    {:remove, reason}
+  end
+
+  def handle_info({tag, socket}, socket) when tag in [:tcp_closed, :ssl_closed] do
+    {:remove, :closed}
+  end
+
+  def handle_info(_message, socket) do
+    {:ok, socket}
+  end
+
+  @impl NimblePool
   def terminate_worker(_reason, socket, pool_state) do
     close(socket)
     {:ok, pool_state}
@@ -87,14 +126,28 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.Pool do
       failure_count = :atomics.get(connect_failures, 1)
       if failure_count > 0, do: delay_connect(failure_count)
 
-      with {:ok, socket} <- transport.connect(host, port, connect_opts, @connect_timeout),
-           :ok <- transport.controlling_process(socket, owner) do
-        :atomics.put(connect_failures, 1, 0)
-        socket
-      else
+      # we need to try/catch since gen_tcp sometimes raises (e.g, on bad options)
+      # and we don't want to exit without incrementing connect failures
+      result =
+        try do
+          with {:ok, socket} = ok <-
+                 transport.connect(host, port, connect_opts, @connect_timeout),
+               :ok <- transport.controlling_process(socket, owner) do
+            ok
+          end
+        catch
+          _kind, reason -> {:error, reason}
+        end
+
+      case result do
+        {:ok, socket} ->
+          :atomics.put(connect_failures, 1, 0)
+          socket
+
         {:error, reason} ->
           :atomics.add(connect_failures, 1, 1)
-          raise "failed to connect to TCP backend at tcp://#{host}:#{port} - #{inspect(reason)}"
+
+          raise "failed to connect to Syslog backend at #{host}:#{port}, reason: #{inspect(reason)}"
       end
     end
   end
@@ -110,6 +163,25 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.Pool do
     max_sleep = min(@backoff_max, @backoff_base * factor)
     sleep_for = :rand.uniform(max_sleep)
     Process.sleep(sleep_for)
+  end
+
+  defp maybe_enable_keepalive(opts) do
+    case :os.type() do
+      {:unix, :linux} ->
+        Keyword.merge(opts,
+          keepalive: true,
+          # seconds of silence before sending a probe;
+          # we need to set it since the default on linux is tcp_keepalive_time=7200, i.e. 2 hours
+          keepidle: 15,
+          # seconds between probes
+          keepintvl: 5,
+          # number of failed probes before killing the socket
+          keepcnt: 3
+        )
+
+      _other ->
+        opts
+    end
   end
 
   defp maybe_configure_ssl(opts, :gen_tcp, _config, _host), do: opts
