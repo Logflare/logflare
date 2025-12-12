@@ -1182,5 +1182,17 @@ defmodule Logflare.BackendsTest do
 
       assert {:ok, 1} = Backends.ingest_logs(params, source)
     end
+
+    test "handles batch where all events are filtered out", %{source: source} do
+      now_us = System.system_time(:microsecond)
+
+      params = [
+        %{"message" => "old event 1", "timestamp" => now_us - 73 * 3_600 * 1_000_000},
+        %{"message" => "old event 2", "timestamp" => now_us - 100 * 3_600 * 1_000_000},
+        %{"message" => "future event", "timestamp" => now_us + 2 * 3_600 * 1_000_000}
+      ]
+
+      assert {:ok, 0} = Backends.ingest_logs(params, source)
+    end
   end
 end
