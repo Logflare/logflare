@@ -2,6 +2,13 @@ defmodule Logflare.Admin do
   @moduledoc false
   require Logger
 
+  alias Logflare.Repo
+  alias Logflare.Users
+  alias Logflare.User
+  alias Logflare.Teams.Team
+  alias Logflare.TeamUsers.TeamUser
+  import Ecto.Query
+
   @doc """
   Shuts down a given node asynchronously in a separate process.
 
@@ -19,4 +26,22 @@ defmodule Logflare.Admin do
 
     {:ok, task}
   end
+
+  def is_admin?(email) when is_binary(email) do
+    from(u in User,
+      left_join: t in Team,
+      on: t.user_id == u.id,
+      left_join: tu in TeamUser,
+      on: tu.team_id == t.id,
+      where: (u.email == ^email or tu.email == ^email) and u.admin == true,
+      limit: 1
+    )
+    |> Repo.one()
+    |> case do
+      nil -> false
+      %User{} -> true
+    end
+  end
+
+  def is_admin?(_), do: false
 end
