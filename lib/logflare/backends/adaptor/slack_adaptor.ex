@@ -152,14 +152,12 @@ defmodule Logflare.Backends.Adaptor.SlackAdaptor do
 
   def to_rich_text_preformatted(%{} = row) do
     row
+    |> Enum.reject(fn {_k, v} -> is_nil(v) end)
     |> Enum.sort_by(fn {k, _} -> k end)
     |> Enum.map_intersperse([line_break()], fn {k, v} ->
       v_str = stringify(v)
 
       cond do
-        v == nil ->
-          []
-
         is_number(v) and String.length(v_str) == 16 ->
           # convert to timestamp
           {:ok, dt} = DateTime.from_unix(v, :microsecond)
@@ -195,6 +193,9 @@ defmodule Logflare.Backends.Adaptor.SlackAdaptor do
     %{type: "text", text: v}
   end
 
+  defp stringify(nil), do: nil
+  defp stringify(v) when is_binary(v), do: v
+
   defp stringify(v) when is_integer(v) do
     Integer.to_string(v)
   end
@@ -204,5 +205,5 @@ defmodule Logflare.Backends.Adaptor.SlackAdaptor do
   end
 
   defp stringify(%{} = v), do: Jason.encode!(v)
-  defp stringify(v), do: v
+  defp stringify(v), do: inspect(v)
 end
