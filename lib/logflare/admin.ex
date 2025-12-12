@@ -3,7 +3,6 @@ defmodule Logflare.Admin do
   require Logger
 
   alias Logflare.Repo
-  alias Logflare.Users
   alias Logflare.User
   alias Logflare.Teams.Team
   alias Logflare.TeamUsers.TeamUser
@@ -27,7 +26,8 @@ defmodule Logflare.Admin do
     {:ok, task}
   end
 
-  def is_admin?(email) when is_binary(email) do
+  @spec admin?(String.t() | nil) :: boolean()
+  def admin?(email) when is_binary(email) do
     from(u in User,
       left_join: t in Team,
       on: t.user_id == u.id,
@@ -43,5 +43,5 @@ defmodule Logflare.Admin do
     end
   end
 
-  def is_admin?(_), do: false
+  def admin?(_), do: false
 end

@@ -13,7 +13,7 @@ defmodule LogflareWeb.Plugs.CheckAdmin do
   def call(conn, _params) do
     email = Plug.Conn.get_session(conn, :current_email)
 
-    if Admin.is_admin?(email) do
+    if Admin.admin?(email) do
       conn
       |> assign(:admin, true)
     else
