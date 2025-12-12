@@ -236,11 +236,16 @@ defmodule Logflare.Backends.BigQueryAdaptorTest do
       pid = self()
 
       Logflare.Backends.Adaptor.BigQueryAdaptor.GoogleApiClient
-      |> expect(:append_rows, fn {:arrow, dataframe}, _project, _dataset, _table_id ->
+      |> expect(:append_rows, fn {:arrow, dataframe}, _context, _table_id ->
         send(pid, :streamed)
 
-        assert {:ok, _} = DataFrame.dump_ipc(dataframe)
-        assert {:ok, _} = DataFrame.dump_ipc_record_batch(dataframe)
+        {_arrow_schema, _batch_msgs} =
+          dataframe
+          |> Jason.encode!()
+          |> String.slice(1..-2//1)
+          |> String.replace("},{", "}\n{")
+          |> BigQueryAdaptor.ArrowIPC.get_ipc_bytes()
+
         {:ok, %Google.Cloud.Bigquery.Storage.V1.AppendRowsResponse{}}
       end)
 
