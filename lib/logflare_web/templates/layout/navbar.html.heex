@@ -53,7 +53,7 @@
         </li>
         <%= if assigns[:user].admin do %>
           <li class="nav-item">
-            <.link href={Routes.admin_path(@conn, :dashboard)} class="nav-link">Admin</.link>
+            <.team_link href={Routes.admin_path(@conn, :dashboard)} team={assigns[:team]} class="nav-link">Admin</.team_link>
           </li>
         <% end %>
       <% else %>
