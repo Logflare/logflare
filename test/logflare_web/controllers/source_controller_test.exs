@@ -290,8 +290,6 @@ defmodule LogflareWeb.SourceControllerTest do
     end
 
     test "able to update labels", %{conn: conn, users: [u1, _u2], sources: [s1, _s2 | _]} do
-      new_name = TestUtils.random_string()
-
       params = %{
         "id" => s1.id,
         "source" => %{
