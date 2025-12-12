@@ -558,7 +558,7 @@ defmodule Logflare.Backends do
     if dropped_future > 0 do
       Logger.warning(
         "Dropping #{dropped_future} of #{total} event(s) with timestamp more than 1 hour in the future",
-        source_id: source.id,
+        source_id: source.token,
         source_token: source.token
       )
     end
