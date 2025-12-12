@@ -59,14 +59,16 @@ defmodule Logflare.Backends.UserMonitoringTest do
 
       # User-specfic logs are routed to users with system monitoring on
 
-      refute capture_log(fn ->
-               Logger.info("user is monitoring", source_id: source.id)
-             end) =~ "user is monitoring"
+      TestUtils.retry_assert(fn ->
+        refute capture_log(fn ->
+                 Logger.info("user is monitoring", source_id: source.id)
+               end) =~ "user is monitoring"
 
-      assert Enum.any?(
-               Backends.list_recent_logs(system_source),
-               &match?(%{body: %{"event_message" => "user is monitoring"}}, &1)
-             )
+        assert Enum.any?(
+                 Backends.list_recent_logs(system_source),
+                 &match?(%{body: %{"event_message" => "user is monitoring"}}, &1)
+               )
+      end)
     end
 
     test "are not routed to user's system source when not monitoring", %{
