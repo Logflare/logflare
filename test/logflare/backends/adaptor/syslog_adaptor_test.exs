@@ -141,13 +141,9 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptorTest do
     backend_config = %{host: "localhost", port: 6514, cipher_key: Base.encode64(key)}
 
     assert [%{"fields" => %{"message" => encrypted_message}}] =
-             ingest_syslog(
-               [build(:log_event, message: "hello cipher")],
-               backend_config
-             )
+             ingest_syslog([build(:log_event, message: "hello cipher")], backend_config)
 
-    assert <<iv::12-bytes, tag::16-bytes, ciphertext::bytes>> =
-             Base.decode64!(encrypted_message)
+    assert <<iv::12-bytes, tag::16-bytes, ciphertext::bytes>> = Base.decode64!(encrypted_message)
 
     plaintext =
       :crypto.crypto_one_time_aead(:aes_256_gcm, key, iv, ciphertext, "syslog", tag, false)
@@ -155,9 +151,43 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptorTest do
     assert %{"event_message" => "hello cipher"} = Jason.decode!(plaintext)
   end
 
+  test "handles backend config change" do
+    backend_config = %{host: "localhost", port: 6514}
+
+    assert [_, _] =
+             ingest_syslog(
+               [build(:log_event, message: "one"), build(:log_event, message: "two")],
+               backend_config
+             )
+
+    key = :crypto.strong_rand_bytes(32)
+
+    assert {:ok, _backend} =
+             Logflare.Backends.update_backend(lookup_backend(), %{
+               "config" => %{
+                 "cipher_key" => Base.encode64(key),
+                 "port" => 6415,
+                 "tls" => true,
+                 "ca_cert" => File.read!("priv/telegraf/ca.crt"),
+                 "client_cert" => File.read!("priv/telegraf/client.crt"),
+                 "client_key" => File.read!("priv/telegraf/client.key")
+               }
+             })
+
+    assert [%{"fields" => %{"message" => encrypted_message}}] =
+             ingest_syslog([build(:log_event, message: "three")], nil)
+
+    assert <<iv::12-bytes, tag::16-bytes, ciphertext::bytes>> = Base.decode64!(encrypted_message)
+
+    plaintext =
+      :crypto.crypto_one_time_aead(:aes_256_gcm, key, iv, ciphertext, "syslog", tag, false)
+
+    assert %{"event_message" => "three"} = Jason.decode!(plaintext)
+  end
+
   defp ingest_syslog(log_events, backend_config, timeout \\ to_timeout(second: 5)) do
     deadline = System.monotonic_time(:millisecond) + timeout
-    source = lookup_source(backend_config) || create_source(backend_config)
+    source = lookup_source() || create_source(backend_config)
 
     log_events =
       log_events
@@ -168,25 +198,29 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptorTest do
     collect_telegraf_logs(log_events, deadline)
   end
 
-  defp lookup_source(backend_config) do
-    Process.get(syslog_source_key(backend_config))
+  defp lookup_source do
+    Process.get(:syslog_source)
   end
 
   defp create_source(backend_config) do
     start_supervised!(Logflare.SystemMetrics.AllLogsLogged)
     insert(:plan)
 
-    source = insert(:source, user: build(:user))
-    Process.put(syslog_source_key(backend_config), source)
+    user = insert(:user)
+    source = insert(:source, user: user)
+    Process.put(:syslog_source, source)
 
-    backend = insert(:backend, type: :syslog, sources: [source], config: backend_config)
+    backend =
+      insert(:backend, type: :syslog, sources: [source], config: backend_config, user: user)
+
+    Process.put(:syslog_backend, backend)
     start_supervised!({Logflare.Backends.AdaptorSupervisor, {source, backend}})
 
     source
   end
 
-  defp syslog_source_key(backend_config) do
-    {:syslog_source, backend_config}
+  defp lookup_backend do
+    Process.get(:syslog_backend)
   end
 
   defp collect_telegraf_logs(log_events, deadline) do

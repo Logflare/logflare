@@ -34,7 +34,7 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor do
     pipeline_name = Logflare.Backends.via_source(source, Pipeline, backend)
 
     children = [
-      {Pool, config: backend.config, name: pool_name},
+      {Pool, backend_id: backend.id, name: pool_name},
       {Pipeline, source: source, backend: backend, pool: pool_name, name: pipeline_name}
     ]
 
@@ -64,6 +64,23 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor do
     |> validate_certificate(:ca_cert)
     |> validate_certificate(:client_cert)
     |> validate_private_key(:client_key)
+  end
+
+  @impl Logflare.Backends.Adaptor
+  def redact_config(config) do
+    config
+    |> redact_config_field(:ca_cert)
+    |> redact_config_field(:client_cert)
+    |> redact_config_field(:client_key)
+    |> redact_config_field(:cipher_key)
+  end
+
+  defp redact_config_field(config, field) do
+    if Map.has_key?(config, field) do
+      Map.replace!(config, field, "REDACTED")
+    else
+      config
+    end
   end
 
   defp validate_cipher(changeset) do
