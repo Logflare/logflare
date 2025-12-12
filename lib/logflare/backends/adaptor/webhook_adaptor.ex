@@ -153,7 +153,8 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
           source_id: args.source.id,
           backend_id: Map.get(args.backend || %{}, :id),
           source_token: args.source.token,
-          backend_token: Map.get(args.backend || %{}, :token)
+          backend_token: Map.get(args.backend || %{}, :token),
+          user_id: args.source.user_id
         }
       )
     end
@@ -214,7 +215,8 @@ defmodule Logflare.Backends.Adaptor.WebhookAdaptor do
               "source_id" => context[:source_id],
               "source_uuid" => context[:source_token],
               "backend_id" => context[:backend_id],
-              "backend_uuid" => context[:backend_token]
+              "backend_uuid" => context[:backend_token],
+              "user_id" => context[:user_id]
             }
             |> Map.merge(backend_meta)
         ],
