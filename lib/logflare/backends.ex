@@ -536,7 +536,7 @@ defmodule Logflare.Backends do
     if dropped_old > 0 do
       Logger.warning(
         "Dropping #{dropped_old} of #{total} event(s) with timestamp older than 72 hours",
-        source_id: source.id,
+        source_id: source.token,
         source_token: source.token
       )
     end
