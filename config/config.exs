@@ -163,11 +163,11 @@ config :logflare, Logflare.Scheduler,
   include_task_supervisor: false,
   task_supervisor_name: Logflare.Scheduler.TaskSupervisor,
   jobs: [
-    source_cleanup: [
-      run_strategy: {Quantum.RunStrategy.All, :cluster},
-      schedule: "*/30 * * * *",
-      task: {Logflare.Sources, :shutdown_idle_sources, []}
-    ],
+    # source_cleanup: [
+    #   run_strategy: {Quantum.RunStrategy.All, :cluster},
+    #   schedule: "*/30 * * * *",
+    #   task: {Logflare.Sources, :shutdown_idle_sources, []}
+    # ],
     recent_events_touch: [
       run_strategy: Quantum.RunStrategy.Local,
       schedule: "*/15 * * * *",
