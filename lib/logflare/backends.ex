@@ -533,19 +533,15 @@ defmodule Logflare.Backends do
           end
       end
 
-    if dropped_old > 0 do
-      Logger.warning(
-        "Dropping #{dropped_old} of #{total} event(s) with timestamp older than 72 hours",
-        source_id: source.token,
-        source_token: source.token
-      )
-    end
+    dropped_total = dropped_old + dropped_future
 
-    if dropped_future > 0 do
+    if dropped_total > 0 do
       Logger.warning(
-        "Dropping #{dropped_future} of #{total} event(s) with timestamp more than 1 hour in the future",
+        "Dropping #{dropped_total} of #{total} event(s): timestamps outside [-72h, +1h] window",
         source_id: source.token,
-        source_token: source.token
+        old_events_dropped: dropped_old,
+        future_events_dropped: dropped_future,
+        total_event_count: total
       )
     end
 

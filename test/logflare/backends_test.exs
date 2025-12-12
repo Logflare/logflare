@@ -1,8 +1,9 @@
 defmodule Logflare.BackendsTest do
   use Logflare.DataCase
 
-  import StreamData
+  import ExUnit.CaptureLog
   import ExUnitProperties
+  import StreamData
 
   alias Logflare.Backends
   alias Logflare.Backends.Backend
@@ -1193,6 +1194,43 @@ defmodule Logflare.BackendsTest do
       ]
 
       assert {:ok, 0} = Backends.ingest_logs(params, source)
+    end
+
+    test "logs consolidated warning with structured metadata when events are filtered", %{
+      source: source
+    } do
+      now_us = System.system_time(:microsecond)
+
+      params = [
+        %{"message" => "valid event", "timestamp" => now_us},
+        %{"message" => "old event 1", "timestamp" => now_us - 73 * 3_600 * 1_000_000},
+        %{"message" => "old event 2", "timestamp" => now_us - 100 * 3_600 * 1_000_000},
+        %{"message" => "future event", "timestamp" => now_us + 2 * 3_600 * 1_000_000}
+      ]
+
+      log =
+        capture_log([level: :warning], fn ->
+          assert {:ok, 1} = Backends.ingest_logs(params, source)
+        end)
+
+      assert log =~ "Dropping 3 of 4 event(s): timestamps outside [-72h, +1h] window"
+    end
+
+    test "does not log when no events are filtered", %{source: source} do
+      now_us = System.system_time(:microsecond)
+
+      params = [
+        %{"message" => "valid event 1", "timestamp" => now_us},
+        %{"message" => "valid event 2", "timestamp" => now_us - 1 * 3_600 * 1_000_000}
+      ]
+
+      log =
+        capture_log(fn ->
+          assert {:ok, 2} = Backends.ingest_logs(params, source)
+        end)
+
+      refute log =~ "Dropping"
+      refute log =~ "timestamps outside"
     end
   end
 end
