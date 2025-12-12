@@ -162,17 +162,21 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptorTest do
 
     key = :crypto.strong_rand_bytes(32)
 
-    assert {:ok, _backend} =
+    assert {:ok, backend} =
              Logflare.Backends.update_backend(lookup_backend(), %{
                "config" => %{
+                 "host" => "localhost",
+                 "port" => 6515,
                  "cipher_key" => Base.encode64(key),
-                 "port" => 6415,
                  "tls" => true,
                  "ca_cert" => File.read!("priv/telegraf/ca.crt"),
                  "client_cert" => File.read!("priv/telegraf/client.crt"),
                  "client_key" => File.read!("priv/telegraf/client.key")
                }
              })
+
+    # simulate cache bust
+    Logflare.ContextCache.bust_keys([{Logflare.Backends, backend.id}])
 
     assert [%{"fields" => %{"message" => encrypted_message}}] =
              ingest_syslog([build(:log_event, message: "three")], nil)

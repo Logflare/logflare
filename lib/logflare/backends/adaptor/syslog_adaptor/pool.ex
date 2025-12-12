@@ -10,7 +10,7 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.Pool do
   @typep socket :: :gen_tcp.socket() | :ssl.sslsocket()
 
   @typep connect_args :: %{
-           host: charlist,
+           host: :inet.hostname(),
            port: :inet.port_number(),
            transport: :gen_tcp | :ssl,
            opts: [:gen_tcp.connect_option()] | [:ssl.tls_client_option()]

@@ -14,11 +14,6 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.Pipeline do
     pool = Keyword.fetch!(opts, :pool)
     name = Keyword.fetch!(opts, :name)
 
-    cipher_key =
-      if cipher_key = backend.config[:cipher_key] do
-        Base.decode64!(cipher_key)
-      end
-
     Broadway.start_link(__MODULE__,
       name: name,
       producer: [
@@ -34,8 +29,7 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.Pipeline do
       context: %{
         source_id: source.id,
         backend_id: backend.id,
-        pool: pool,
-        cipher_key: cipher_key
+        pool: pool
       }
     )
   end
@@ -47,7 +41,8 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.Pipeline do
 
   @impl Broadway
   def handle_batch(:syslog, messages, _batch_info, context) do
-    %{pool: pool, cipher_key: cipher_key} = context
+    %{pool: pool, backend_id: backend_id} = context
+    cipher_key = lookup_cipher_key(backend_id)
 
     content =
       for %Broadway.Message{data: log_event} <- messages do
@@ -78,5 +73,14 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.Pipeline do
   @doc false
   def transform(event, _opts) do
     %Message{data: event, acknowledger: {__MODULE__, _ref = nil, _meta = []}}
+  end
+
+  defp lookup_cipher_key(backend_id) do
+    backend =
+      Logflare.Backends.Cache.get_backend(backend_id) || raise "missing backend #{backend_id}"
+
+    if cipher_key = backend.config[:cipher_key] do
+      Base.decode64!(cipher_key)
+    end
   end
 end
