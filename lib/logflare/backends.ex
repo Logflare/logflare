@@ -511,7 +511,7 @@ defmodule Logflare.Backends do
     {events, errors, total, dropped_old, dropped_future} =
       for param <- event_params, reduce: {[], [], 0, 0, 0} do
         {events, errors, total, dropped_old, dropped_future} ->
-          case param_to_log_event(param) do
+          case param_to_log_event(param, source) do
             %{drop: true} ->
               do_telemetry(:drop, source)
               {events, errors, total + 1, dropped_old, dropped_future}
@@ -550,6 +550,25 @@ defmodule Logflare.Backends do
     end
 
     {events, errors}
+  end
+
+  @spec param_to_log_event(LogEvent.t() | map(), Source.t()) :: LogEvent.t()
+  defp param_to_log_event(%LogEvent{source_id: nil} = le, source) do
+    %{le | source_id: source.id}
+    |> maybe_mark_le_dropped_by_lql(source)
+    |> LogEvent.apply_custom_event_message(source)
+  end
+
+  defp param_to_log_event(%LogEvent{} = le, source) do
+    le
+    |> maybe_mark_le_dropped_by_lql(source)
+    |> LogEvent.apply_custom_event_message(source)
+  end
+
+  defp param_to_log_event(param, source) do
+    LogEvent.make(param, %{source: source})
+    |> maybe_mark_le_dropped_by_lql(source)
+    |> LogEvent.apply_custom_event_message(source)
   end
 
   defp maybe_mark_le_dropped_by_lql(%LogEvent{} = le, %Source{drop_lql_string: nil}), do: le
