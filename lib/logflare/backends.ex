@@ -4,6 +4,8 @@ defmodule Logflare.Backends do
   import Ecto.Query
   import Logflare.Utils.Guards
 
+  require Logger
+
   alias Ecto.Changeset
   alias Logflare.Backends.Adaptor
   alias Logflare.Backends.Backend
@@ -18,12 +20,12 @@ defmodule Logflare.Backends do
   alias Logflare.Logs.SourceRouting
   alias Logflare.PubSubRates
   alias Logflare.Repo
+  alias Logflare.Rules.Rule
   alias Logflare.SingleTenant
   alias Logflare.Sources
   alias Logflare.Sources.Counters
   alias Logflare.Sources.Source
   alias Logflare.SystemMetrics
-  alias Logflare.Rules.Rule
   alias Logflare.Teams
   alias Logflare.TeamUsers.TeamUser
   alias Logflare.User
@@ -31,6 +33,8 @@ defmodule Logflare.Backends do
   defdelegate child_spec(arg), to: __MODULE__.Supervisor
 
   @max_pending_buffer_len_per_queue 15_000
+  @max_event_age_us 72 * 3_600 * 1_000_000
+  @max_future_event_us 1 * 3_600 * 1_000_000
 
   @doc """
   Retrieves the hardcoded max pending buffer length of an individual queue
@@ -500,34 +504,67 @@ defmodule Logflare.Backends do
   end
 
   defp split_valid_events(source, event_params) do
-    event_params
-    |> Enum.reduce({[], []}, fn param, {events, errors} ->
-      param
-      |> case do
-        %LogEvent{source_id: nil} = le ->
-          %{le | source_id: source.id}
+    now_us = System.system_time(:microsecond)
+    min_allowed = now_us - @max_event_age_us
+    max_allowed = now_us + @max_future_event_us
 
-        %LogEvent{} = le ->
-          le
+    {events, errors, total, dropped_old, dropped_future} =
+      for param <- event_params, reduce: {[], [], 0, 0, 0} do
+        {events, errors, total, dropped_old, dropped_future} ->
+          case param_to_log_event(param, source) do
+            %{drop: true} ->
+              do_telemetry(:drop, source)
+              {events, errors, total + 1, dropped_old, dropped_future}
 
-        param ->
-          LogEvent.make(param, %{source: source})
+            %{pipeline_error: %_{message: message}, valid: false} ->
+              do_telemetry(:invalid, source)
+              {events, [message | errors], total + 1, dropped_old, dropped_future}
+
+            %{body: %{"timestamp" => timestamp}} when timestamp < min_allowed ->
+              do_telemetry(:drop, source)
+              {events, errors, total + 1, dropped_old + 1, dropped_future}
+
+            %{body: %{"timestamp" => timestamp}} when timestamp > max_allowed ->
+              do_telemetry(:drop, source)
+              {events, errors, total + 1, dropped_old, dropped_future + 1}
+
+            le ->
+              {[le | events], errors, total + 1, dropped_old, dropped_future}
+          end
       end
-      |> maybe_mark_le_dropped_by_lql(source)
-      |> LogEvent.apply_custom_event_message(source)
-      |> case do
-        %{drop: true} ->
-          do_telemetry(:drop, source)
-          {events, errors}
 
-        %{pipeline_error: %_{message: message}, valid: false} ->
-          do_telemetry(:invalid, source)
-          {events, [message | errors]}
+    dropped_total = dropped_old + dropped_future
 
-        le ->
-          {[le | events], errors}
-      end
-    end)
+    if dropped_total > 0 do
+      Logger.warning(
+        "Dropping #{dropped_total} of #{total} event(s): timestamps outside [-72h, +1h] window",
+        source_id: source.token,
+        old_events_dropped: dropped_old,
+        future_events_dropped: dropped_future,
+        total_event_count: total
+      )
+    end
+
+    {events, errors}
+  end
+
+  @spec param_to_log_event(LogEvent.t() | map(), Source.t()) :: LogEvent.t()
+  defp param_to_log_event(%LogEvent{source_id: nil} = le, source) do
+    %{le | source_id: source.id}
+    |> maybe_mark_le_dropped_by_lql(source)
+    |> LogEvent.apply_custom_event_message(source)
+  end
+
+  defp param_to_log_event(%LogEvent{} = le, source) do
+    le
+    |> maybe_mark_le_dropped_by_lql(source)
+    |> LogEvent.apply_custom_event_message(source)
+  end
+
+  defp param_to_log_event(param, source) do
+    LogEvent.make(param, %{source: source})
+    |> maybe_mark_le_dropped_by_lql(source)
+    |> LogEvent.apply_custom_event_message(source)
   end
 
   defp maybe_mark_le_dropped_by_lql(%LogEvent{} = le, %Source{drop_lql_string: nil}), do: le
