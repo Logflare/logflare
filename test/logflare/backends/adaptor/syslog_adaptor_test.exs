@@ -13,7 +13,7 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptorTest do
   end
 
   test "basic fields check" do
-    backend_config = %{host: "localhost", port: 6514}
+    {source, _backend} = start_syslog(%{host: "localhost", port: 6514})
 
     assert [
              %{
@@ -30,7 +30,7 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptorTest do
            ] =
              ingest_syslog(
                [build(:log_event, message: "basic unicode message ✍️")],
-               backend_config
+               source
              )
 
     assert %{"event_message" => "basic unicode message ✍️"} =
@@ -38,7 +38,7 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptorTest do
   end
 
   test "handles opentelemetry metadata" do
-    backend_config = %{host: "localhost", port: 6514}
+    {source, _backend} = start_syslog(%{host: "localhost", port: 6514})
 
     assert [
              %{
@@ -60,12 +60,12 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptorTest do
                    }
                  )
                ],
-               backend_config
+               source
              )
   end
 
   test "extracts level from input" do
-    backend_config = %{host: "localhost", port: 6514}
+    {source, _backend} = start_syslog(%{host: "localhost", port: 6514})
 
     assert [
              %{"tags" => %{"severity" => "debug"}},
@@ -76,12 +76,12 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptorTest do
                  build(:log_event, level: "debug", message: "eh"),
                  build(:log_event, metadata: %{"level" => "error"}, message: "eh")
                ],
-               backend_config
+               source
              )
   end
 
   test "replaces invalid or empty log level with `info` severity code" do
-    backend_config = %{host: "localhost", port: 6514}
+    {source, _backend} = start_syslog(%{host: "localhost", port: 6514})
 
     assert [
              %{"tags" => %{"severity" => "info"}},
@@ -92,24 +92,25 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptorTest do
                  build(:log_event, message: "no level"),
                  build(:log_event, message: "bad level", level: "bad")
                ],
-               backend_config
+               source
              )
   end
 
   test "sends message over mTLS" do
-    backend_config = %{
-      host: "localhost",
-      port: 6515,
-      tls: true,
-      ca_cert: File.read!("priv/telegraf/ca.crt"),
-      client_cert: File.read!("priv/telegraf/client.crt"),
-      client_key: File.read!("priv/telegraf/client.key")
-    }
+    {source, _backend} =
+      start_syslog(%{
+        host: "localhost",
+        port: 6515,
+        tls: true,
+        ca_cert: File.read!("priv/telegraf/ca.crt"),
+        client_cert: File.read!("priv/telegraf/client.crt"),
+        client_key: File.read!("priv/telegraf/client.key")
+      })
 
     assert [%{"fields" => %{"message" => telegraf_event_message}}] =
              ingest_syslog(
                [build(:log_event, message: "hello world over tls")],
-               backend_config
+               source
              )
 
     assert %{"event_message" => "hello world over tls"} = Jason.decode!(telegraf_event_message)
@@ -138,10 +139,12 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptorTest do
 
   test "can send encrypted message" do
     key = :crypto.strong_rand_bytes(32)
-    backend_config = %{host: "localhost", port: 6514, cipher_key: Base.encode64(key)}
+
+    {source, _backend} =
+      start_syslog(%{host: "localhost", port: 6514, cipher_key: Base.encode64(key)})
 
     assert [%{"fields" => %{"message" => encrypted_message}}] =
-             ingest_syslog([build(:log_event, message: "hello cipher")], backend_config)
+             ingest_syslog([build(:log_event, message: "hello cipher")], source)
 
     assert <<iv::12-bytes, tag::16-bytes, ciphertext::bytes>> = Base.decode64!(encrypted_message)
 
@@ -152,18 +155,19 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptorTest do
   end
 
   test "handles backend config change" do
-    backend_config = %{host: "localhost", port: 6514}
+    initial_backend_config = %{host: "localhost", port: 6514}
+    {source, backend} = start_syslog(initial_backend_config)
 
     assert [_, _] =
              ingest_syslog(
                [build(:log_event, message: "one"), build(:log_event, message: "two")],
-               backend_config
+               source
              )
 
     key = :crypto.strong_rand_bytes(32)
 
-    assert {:ok, backend} =
-             Logflare.Backends.update_backend(lookup_backend(), %{
+    assert {:ok, _updated_backend} =
+             Logflare.Backends.update_backend(backend, %{
                "config" => %{
                  "host" => "localhost",
                  "port" => 6515,
@@ -179,7 +183,7 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptorTest do
     Logflare.ContextCache.bust_keys([{Logflare.Backends, backend.id}])
 
     assert [%{"fields" => %{"message" => encrypted_message}}] =
-             ingest_syslog([build(:log_event, message: "three")], nil)
+             ingest_syslog([build(:log_event, message: "three")], source)
 
     assert <<iv::12-bytes, tag::16-bytes, ciphertext::bytes>> = Base.decode64!(encrypted_message)
 
@@ -189,42 +193,25 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptorTest do
     assert %{"event_message" => "three"} = Jason.decode!(plaintext)
   end
 
-  defp ingest_syslog(log_events, backend_config, timeout \\ to_timeout(second: 5)) do
+  defp ingest_syslog(log_events, source, timeout \\ to_timeout(second: 5)) do
     deadline = System.monotonic_time(:millisecond) + timeout
-    source = lookup_source() || create_source(backend_config)
-
-    log_events =
-      log_events
-      |> List.wrap()
-      |> Enum.map(fn log_event -> %{log_event | source_id: source.id} end)
-
     {:ok, _count} = Logflare.Backends.ingest_logs(log_events, source)
     collect_telegraf_logs(log_events, deadline)
   end
 
-  defp lookup_source do
-    Process.get(:syslog_source)
-  end
-
-  defp create_source(backend_config) do
+  defp start_syslog(backend_config) do
     start_supervised!(Logflare.SystemMetrics.AllLogsLogged)
     insert(:plan)
 
     user = insert(:user)
     source = insert(:source, user: user)
-    Process.put(:syslog_source, source)
 
     backend =
       insert(:backend, type: :syslog, sources: [source], config: backend_config, user: user)
 
-    Process.put(:syslog_backend, backend)
     start_supervised!({Logflare.Backends.AdaptorSupervisor, {source, backend}})
 
-    source
-  end
-
-  defp lookup_backend do
-    Process.get(:syslog_backend)
+    {source, backend}
   end
 
   defp collect_telegraf_logs(log_events, deadline) do
