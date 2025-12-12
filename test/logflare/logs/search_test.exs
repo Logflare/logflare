@@ -27,11 +27,6 @@ defmodule Logflare.Logs.SearchTest do
 
   describe "search_events/1" do
     test "with nested and top-level field filters", %{source: source} do
-      GoogleApi.BigQuery.V2.Api.Tables
-      |> stub(:bigquery_tables_patch, fn _conn, _project_id, _dataset_id, _table_name, _opts ->
-        {:ok, %{}}
-      end)
-
       now = DateTime.utc_now()
       one_hour_ago = DateTime.add(now, -3600, :second)
 
