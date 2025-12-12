@@ -365,6 +365,8 @@ defmodule Logflare.Backends.BigQueryAdaptorTest do
               |> Enum.map(&BigQueryAdaptor.log_event_to_df_struct(&1))
               |> BigQueryAdaptor.normalize_df_struct_fields()
               |> Jason.encode!()
+              |> String.slice(1..-2//1)
+              |> String.replace("},{", "}\n{")
               |> BigQueryAdaptor.ArrowIPC.get_ipc_bytes()
           end,
           "Explorer" => fn ->

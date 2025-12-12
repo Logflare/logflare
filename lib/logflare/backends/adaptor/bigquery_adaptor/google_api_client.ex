@@ -30,6 +30,7 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor.GoogleApiClient do
     {arrow_schema, batch_msgs} =
       data_frame
       |> Jason.encode!()
+      |> get_ndjson()
       |> ArrowIPC.get_ipc_bytes()
 
     writer_schema = %Google.Cloud.Bigquery.Storage.V1.ArrowSchema{serialized_schema: arrow_schema}
@@ -90,5 +91,11 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor.GoogleApiClient do
 
   def get_finch_instance_name() do
     @finch_instance_name
+  end
+
+  defp get_ndjson(json) do
+    json
+    |> String.slice(1..-2//1)
+    |> String.replace("},{", "}\n{")
   end
 end

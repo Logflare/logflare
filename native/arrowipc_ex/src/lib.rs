@@ -9,13 +9,6 @@ use rustler::{Binary, Env, NewBinary, NifResult, OwnedBinary};
 
 #[rustler::nif(schedule = "DirtyIo")]
 fn get_ipc_bytes(env: Env, dataframe_json: String) -> NifResult<(Binary, Vec<Binary>)> {
-    // convert to Newline delimited JSON (the reader only accepts this format)
-    // remove the [] brackets
-    let mut json_chars = dataframe_json.chars();
-    json_chars.next();
-    json_chars.next_back();
-    // replace comma separators to new line
-    let dataframe_json = json_chars.as_str().replace("},{", "}\n{");
     let byte_data = dataframe_json.as_bytes();
 
     let inferred_schema = {
@@ -70,7 +63,7 @@ fn get_ipc_bytes(env: Env, dataframe_json: String) -> NifResult<(Binary, Vec<Bin
     // See: https://cloud.google.com/bigquery/docs/reference/storage/rpc/google.cloud.bigquery.storage.v1#appendrowsrequest
     const max_request_bytes: usize = {
         let base: usize = 2;
-        10 * base.pow(20) // 10 MB
+        8 * base.pow(20) // 8 MB
     };
 
     let json_reader = ReaderBuilder::new(inferred_schema.clone())
