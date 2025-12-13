@@ -912,6 +912,21 @@ defmodule LogflareWeb.EndpointsLiveTest do
       assert html =~ endpoint.name
     end
 
+    test "endpoint show without t= param assigns team context and preserves it in links", %{
+      conn: conn,
+      user: user,
+      team_user: team_user,
+      endpoint: endpoint
+    } do
+      {:ok, view, html} =
+        conn
+        |> login_user(user, team_user)
+        |> live(~p"/endpoints/#{endpoint.id}")
+
+      assert html =~ endpoint.name
+      assert view |> has_element?(~s|a[href="/access-tokens?t=#{team_user.team.id}"]|)
+    end
+
     test "endpoints links preserve team param", %{
       conn: conn,
       user: user,

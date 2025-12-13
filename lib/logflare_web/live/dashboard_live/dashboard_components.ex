@@ -105,44 +105,6 @@ defmodule LogflareWeb.DashboardLive.DashboardComponents do
     """
   end
 
-  attr :home_team, Logflare.Teams.Team, required: false
-  attr :current_team, Logflare.Teams.Team, required: true
-  attr :team_users, :list, required: true
-
-  def teams(assigns) do
-    ~H"""
-    <div id="teams">
-      <h5 class="header-margin">Teams</h5>
-      <ul class="list-unstyled">
-        <li :if={@home_team} class="tw-mb-2">
-          <strong :if={@current_team.id == @home_team.id}>{@home_team.name}</strong>
-          <.team_link :if={@current_team.id != @home_team.id} href={~p"/dashboard"} team={@home_team} class="tw-text-white">
-            {@home_team.name}
-          </.team_link>
-          <small>home team</small>
-        </li>
-
-        <li :if={@home_team == nil} class="tw-mb-2">
-          <.link href={~p"/account"} method="post" class="tw-text-white">
-            Create your own Logflare account.
-          </.link>
-        </li>
-
-        <%= if Enum.empty?(@team_users) do %>
-          Other teams you are a member of will be listed here.
-        <% end %>
-
-        <li :for={team_user <- @team_users} class="tw-mb-2">
-          <span :if={team_user.team_id == @current_team.id}>{team_user.team.name}</span>
-          <.team_link :if={team_user.team_id != @current_team.id} href={~p"/dashboard"} team={team_user.team} class="tw-text-white">
-            {team_user.team.name}
-          </.team_link>
-        </li>
-      </ul>
-    </div>
-    """
-  end
-
   attr :user, Logflare.User, required: true
   attr :team, Logflare.Teams.Team, required: true
   attr :team_user, Logflare.TeamUsers.TeamUser, default: nil
