@@ -161,7 +161,7 @@ defmodule Logflare.Sources.Source.Supervisor do
     end
   end
 
-  @spec ensure_started(atom) :: {:ok, :already_started | :started}
+  @spec ensure_started(Source.t()) :: :ok
   def ensure_started(%Source{token: source_token} = source) do
     # Check if already running
     do_lookup(source)
