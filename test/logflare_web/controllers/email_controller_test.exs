@@ -1,5 +1,4 @@
-defmodule LogflareWeb.EmailControllerTests do
-  @moduledoc false
+defmodule LogflareWeb.EmailControllerTest do
   use LogflareWeb.ConnCase
 
   test "GET email login", %{conn: conn} do
