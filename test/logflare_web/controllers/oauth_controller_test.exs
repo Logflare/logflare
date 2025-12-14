@@ -1,6 +1,6 @@
-defmodule LogflareWeb.OAuthControllerTests do
-  @moduledoc false
+defmodule LogflareWeb.OAuthControllerTest do
   use LogflareWeb.ConnCase
+
   alias LogflareWeb.Auth.OauthController
 
   test "unrecognized provider handling", %{conn: conn} do
