@@ -214,13 +214,16 @@ defmodule Logflare.SourcesTest do
       [user: insert(:user)]
     end
 
-    test "preloads required fields", %{user: user} do
-      sources = insert_list(3, :source, %{user: user})
+    test "preloads only the required fields", %{user: user} do
+      sources = insert_list(3, :source, %{user_id: user.id})
+      assocs = Sources.Source.__schema__(:associations)
+      sources = Enum.map(sources, &Ecto.reset_fields(&1, assocs))
       sources = Sources.preload_for_dashboard(sources)
 
       assert Enum.all?(sources, &Ecto.assoc_loaded?(&1.user))
-      assert Enum.all?(sources, &Ecto.assoc_loaded?(&1.rules))
       assert Enum.all?(sources, &Ecto.assoc_loaded?(&1.saved_searches))
+
+      refute Enum.any?(sources, &Ecto.assoc_loaded?(&1.rules))
     end
 
     test "sorts data by name and favorite flag", %{user: user} do

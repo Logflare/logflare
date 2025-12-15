@@ -59,14 +59,16 @@ defmodule Logflare.Backends.UserMonitoringTest do
 
       # User-specfic logs are routed to users with system monitoring on
 
-      refute capture_log(fn ->
-               Logger.info("user is monitoring", source_id: source.id)
-             end) =~ "user is monitoring"
+      TestUtils.retry_assert(fn ->
+        refute capture_log(fn ->
+                 Logger.info("user is monitoring", source_id: source.id)
+               end) =~ "user is monitoring"
 
-      assert Enum.any?(
-               Backends.list_recent_logs(system_source),
-               &match?(%{body: %{"event_message" => "user is monitoring"}}, &1)
-             )
+        assert Enum.any?(
+                 Backends.list_recent_logs(system_source),
+                 &match?(%{body: %{"event_message" => "user is monitoring"}}, &1)
+               )
+      end)
     end
 
     test "are not routed to user's system source when not monitoring", %{
@@ -128,14 +130,11 @@ defmodule Logflare.Backends.UserMonitoringTest do
 
         assert Enum.any?(
                  events,
-                 &match?(%LogEvent{body: %{"attributes" => %{"my_label" => "test"}}}, &1)
-               )
-
-        assert Enum.any?(
-                 events,
                  &match?(
                    %LogEvent{
-                     body: %{"event_message" => "logflare.backends.ingest.ingested_count"}
+                     body: %{
+                       "attributes" => %{"my_label" => "test", "user_id" => _, "source_uuid" => _}
+                     }
                    },
                    &1
                  )
@@ -145,7 +144,23 @@ defmodule Logflare.Backends.UserMonitoringTest do
                  events,
                  &match?(
                    %LogEvent{
-                     body: %{"event_message" => "logflare.backends.ingest.ingested_bytes"}
+                     body: %{
+                       "event_message" => "logflare.backends.ingest.ingested_count",
+                       "attributes" => %{"user_id" => _, "source_uuid" => _}
+                     }
+                   },
+                   &1
+                 )
+               )
+
+        assert Enum.any?(
+                 events,
+                 &match?(
+                   %LogEvent{
+                     body: %{
+                       "event_message" => "logflare.backends.ingest.ingested_bytes",
+                       "attributes" => %{"user_id" => _, "source_uuid" => _}
+                     }
                    },
                    &1
                  )
@@ -271,6 +286,8 @@ defmodule Logflare.Backends.UserMonitoringTest do
       [attributes] = egress_row["attributes"]
 
       assert attributes["source_id"] == source.id
+      assert attributes["user_id"] == user.id
+      assert attributes["source_uuid"] == Atom.to_string(source.token)
       assert attributes["backend_id"] == webhook_backend.id
       assert attributes["_backend_environment"] == "test"
       assert attributes["_backend_region"] == "us-west"
@@ -324,7 +341,12 @@ defmodule Logflare.Backends.UserMonitoringTest do
                         %{
                           json: %{
                             "attributes" => [
-                              %{"my_label" => "some_value", "endpoint_id" => ^endpoint_id}
+                              %{
+                                "my_label" => "some_value",
+                                "endpoint_id" => ^endpoint_id,
+                                "user_id" => _,
+                                "endpoint_uuid" => _
+                              }
                             ]
                           }
                         }

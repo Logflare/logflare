@@ -1,8 +1,9 @@
 defmodule Logflare.BackendsTest do
   use Logflare.DataCase
 
-  import StreamData
+  import ExUnit.CaptureLog
   import ExUnitProperties
+  import StreamData
 
   alias Logflare.Backends
   alias Logflare.Backends.Backend
@@ -1108,6 +1109,128 @@ defmodule Logflare.BackendsTest do
       reject(&Logflare.Cluster.Utils.rpc_multicast/3)
 
       assert :ok = Backends.sync_backend_across_cluster(backend.id)
+    end
+  end
+
+  describe "ingest_logs/2 event age filtering" do
+    setup do
+      insert(:plan)
+      user = insert(:user)
+      source = insert(:source, user: user)
+      start_supervised!({SourceSup, source})
+      :timer.sleep(500)
+
+      {:ok, source: source}
+    end
+
+    test "drops events older than 72 hours", %{source: source} do
+      now_us = System.system_time(:microsecond)
+      old_timestamp = now_us - 73 * 3_600 * 1_000_000
+
+      params = [%{"message" => "old event", "timestamp" => old_timestamp}]
+
+      assert {:ok, 0} = Backends.ingest_logs(params, source)
+    end
+
+    test "drops events more than 1 hour in the future", %{source: source} do
+      now_us = System.system_time(:microsecond)
+      future_timestamp = now_us + 2 * 3_600 * 1_000_000
+
+      params = [%{"message" => "future event", "timestamp" => future_timestamp}]
+
+      assert {:ok, 0} = Backends.ingest_logs(params, source)
+    end
+
+    test "accepts events within valid time range", %{source: source} do
+      now_us = System.system_time(:microsecond)
+
+      params = [
+        %{"message" => "current event", "timestamp" => now_us},
+        %{"message" => "recent past", "timestamp" => now_us - 1 * 3_600 * 1_000_000},
+        %{"message" => "near future", "timestamp" => now_us + 30 * 60 * 1_000_000}
+      ]
+
+      assert {:ok, 3} = Backends.ingest_logs(params, source)
+    end
+
+    test "filters mixed batch of valid and invalid timestamps", %{source: source} do
+      now_us = System.system_time(:microsecond)
+
+      params = [
+        %{"message" => "valid now", "timestamp" => now_us},
+        %{"message" => "too old", "timestamp" => now_us - 73 * 3_600 * 1_000_000},
+        %{"message" => "too future", "timestamp" => now_us + 2 * 3_600 * 1_000_000},
+        %{"message" => "valid past", "timestamp" => now_us - 24 * 3_600 * 1_000_000}
+      ]
+
+      assert {:ok, 2} = Backends.ingest_logs(params, source)
+    end
+
+    test "accepts events at exact boundary (72 hours ago)", %{source: source} do
+      now_us = System.system_time(:microsecond)
+      boundary_timestamp = now_us - (71 * 3_600 + 59 * 60) * 1_000_000
+
+      params = [%{"message" => "boundary event", "timestamp" => boundary_timestamp}]
+
+      assert {:ok, 1} = Backends.ingest_logs(params, source)
+    end
+
+    test "accepts events at exact boundary (1 hour in future)", %{source: source} do
+      now_us = System.system_time(:microsecond)
+      boundary_timestamp = now_us + 59 * 60 * 1_000_000
+
+      params = [%{"message" => "boundary event", "timestamp" => boundary_timestamp}]
+
+      assert {:ok, 1} = Backends.ingest_logs(params, source)
+    end
+
+    test "handles batch where all events are filtered out", %{source: source} do
+      now_us = System.system_time(:microsecond)
+
+      params = [
+        %{"message" => "old event 1", "timestamp" => now_us - 73 * 3_600 * 1_000_000},
+        %{"message" => "old event 2", "timestamp" => now_us - 100 * 3_600 * 1_000_000},
+        %{"message" => "future event", "timestamp" => now_us + 2 * 3_600 * 1_000_000}
+      ]
+
+      assert {:ok, 0} = Backends.ingest_logs(params, source)
+    end
+
+    test "logs consolidated warning with structured metadata when events are filtered", %{
+      source: source
+    } do
+      now_us = System.system_time(:microsecond)
+
+      params = [
+        %{"message" => "valid event", "timestamp" => now_us},
+        %{"message" => "old event 1", "timestamp" => now_us - 73 * 3_600 * 1_000_000},
+        %{"message" => "old event 2", "timestamp" => now_us - 100 * 3_600 * 1_000_000},
+        %{"message" => "future event", "timestamp" => now_us + 2 * 3_600 * 1_000_000}
+      ]
+
+      log =
+        capture_log([level: :warning], fn ->
+          assert {:ok, 1} = Backends.ingest_logs(params, source)
+        end)
+
+      assert log =~ "Dropping 3 of 4 event(s): timestamps outside [-72h, +1h] window"
+    end
+
+    test "does not log when no events are filtered", %{source: source} do
+      now_us = System.system_time(:microsecond)
+
+      params = [
+        %{"message" => "valid event 1", "timestamp" => now_us},
+        %{"message" => "valid event 2", "timestamp" => now_us - 1 * 3_600 * 1_000_000}
+      ]
+
+      log =
+        capture_log(fn ->
+          assert {:ok, 2} = Backends.ingest_logs(params, source)
+        end)
+
+      refute log =~ "Dropping"
+      refute log =~ "timestamps outside"
     end
   end
 end

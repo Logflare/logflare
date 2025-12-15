@@ -343,7 +343,9 @@ defmodule Logflare.Endpoints do
 
               metadata =
                 Map.merge(endpoint_query.parsed_labels || %{}, %{
-                  "endpoint_id" => endpoint_query.id
+                  "endpoint_id" => endpoint_query.id,
+                  "endpoint_uuid" => Utils.stringify(endpoint_query.token),
+                  "user_id" => endpoint_query.user_id
                 })
 
               :telemetry.execute([:logflare, :endpoints, :query], measurements, metadata)

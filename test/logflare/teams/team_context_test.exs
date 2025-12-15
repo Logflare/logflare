@@ -74,6 +74,31 @@ defmodule Logflare.Teams.TeamContextTest do
     end
   end
 
+  describe "team context for members of superadmin team" do
+    test "should resolve to superadmin team even when user has a home team" do
+      admin = insert(:user, admin: true)
+      admin_team = insert(:team, user: admin)
+      user = insert(:user)
+      home_team = insert(:team, user: user)
+      admin_team_user = insert(:team_user, email: user.email, team: admin_team)
+
+      # if no query param, resolve to home team
+      assert {:ok, %TeamContext{user: user, team: team, team_user: team_user}} =
+               TeamContext.resolve(nil, user.email)
+
+      assert team.id == home_team.id
+      assert team_user == nil
+      assert user.admin == false
+      # if admin_team query param, resolve to admin team
+      assert {:ok, %TeamContext{user: user, team: team, team_user: team_user}} =
+               TeamContext.resolve(admin_team.id, user.email)
+
+      assert team.id == admin_team.id
+      assert user.admin
+      assert team_user.id == admin_team_user.id
+    end
+  end
+
   describe "team context: user with home team and invited to multiple teams" do
     setup do
       user = insert(:user)

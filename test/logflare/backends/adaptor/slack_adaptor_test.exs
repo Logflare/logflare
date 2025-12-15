@@ -206,6 +206,16 @@ defmodule Logflare.Backends.SlackAdaptorTest do
     assert [] = SlackAdaptor.to_rich_text_preformatted(%{"123" => nil})
   end
 
+  test "to_rich_text_preformatted/1 skips nil event values" do
+    assert [%{text: "message:"}, %{text: " "}, %{text: "ok"}] =
+             SlackAdaptor.to_rich_text_preformatted(%{"message" => "ok", "status" => nil})
+  end
+
+  test "to_rich_text_preformatted/1 with non-string values" do
+    assert [%{text: "status:"}, %{text: " "}, %{text: ":ok"}] =
+             SlackAdaptor.to_rich_text_preformatted(%{"status" => :ok})
+  end
+
   test "to_rich_text_preformatted/1 with maps" do
     assert [%{text: "123:"}, %{text: " "}, %{text: "{\"test\":\"test\"}"}] =
              SlackAdaptor.to_rich_text_preformatted(%{"123" => %{"test" => "test"}})

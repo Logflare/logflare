@@ -53,6 +53,75 @@ defmodule LogflareWeb.SourceControllerTest do
     end
   end
 
+  describe "dashboard admin link in navbar" do
+    setup do
+      insert(:plan, name: "Free")
+      user = insert(:user, admin: true)
+      admin_team = insert(:team, user: user)
+
+      # user1 has home team
+      user1 = insert(:user)
+      insert(:team, user: user1)
+      team_user1 = insert(:team_user, email: user1.email, team: admin_team)
+
+      # user2 has no home tema
+      team_user2 = insert(:team_user, email: "some@email.com", team: admin_team)
+
+      {:ok, user: user, admin_team: admin_team, team_user1: team_user1, team_user2: team_user2}
+    end
+
+    defp nav_and_assert_admin_link(conn, team_name, team_id) do
+      conn
+      |> visit(~p"/dashboard")
+      |> then(fn session ->
+        try do
+          click_link(session, team_name)
+        rescue
+          _ -> session
+        end
+      end)
+      |> then(fn session ->
+        html = Floki.parse_document!(session.conn.resp_body)
+
+        links =
+          html
+          |> Floki.find("a[href*='?t=#{team_id}']")
+
+        assert Enum.find(links, fn elem -> Floki.text(elem) =~ "Admin" end)
+      end)
+    end
+
+    test "viewing as invited team_user - no home team", %{
+      conn: conn,
+      user: user,
+      team_user2: team_user,
+      admin_team: admin_team
+    } do
+      conn
+      |> login_user(user, team_user)
+      |> nav_and_assert_admin_link(admin_team.name, admin_team.id)
+    end
+
+    test "viewing as invited team_user - with home team", %{
+      conn: conn,
+      user: user,
+      team_user1: team_user,
+      admin_team: admin_team
+    } do
+      conn
+      |> login_user(user, team_user)
+      |> nav_and_assert_admin_link(admin_team.name, admin_team.id)
+    end
+
+    test "viewing as admin user", %{
+      conn: conn,
+      user: user,
+      admin_team: admin_team
+    } do
+      conn |> login_user(user) |> nav_and_assert_admin_link(admin_team.name, admin_team.id)
+    end
+  end
+
   describe "list" do
     setup %{conn: conn} do
       user = insert(:user)
@@ -290,8 +359,6 @@ defmodule LogflareWeb.SourceControllerTest do
     end
 
     test "able to update labels", %{conn: conn, users: [u1, _u2], sources: [s1, _s2 | _]} do
-      new_name = TestUtils.random_string()
-
       params = %{
         "id" => s1.id,
         "source" => %{
