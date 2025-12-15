@@ -1,8 +1,9 @@
 defmodule Logflare.TeamUsers.TeamUser do
   @moduledoc false
   import Ecto.Changeset
-  alias Logflare.Users.UserPreferences
   alias Logflare.Teams.Team
+  alias Logflare.TeamUsers.TeamRole
+  alias Logflare.Users.UserPreferences
   use TypedEctoSchema
   @derive {Jason.Encoder, only: [:email, :name]}
 
@@ -22,6 +23,7 @@ defmodule Logflare.TeamUsers.TeamUser do
     embeds_one :preferences, UserPreferences
 
     belongs_to :team, Team
+    has_one :team_role, TeamRole, foreign_key: :team_user_id, on_replace: :update
 
     timestamps()
   end
@@ -52,6 +54,13 @@ defmodule Logflare.TeamUsers.TeamUser do
     |> cast(attrs, [:name, :email_preferred, :image, :email_me_product, :phone])
     |> validate_required([:email, :provider, :provider_uid])
     |> downcase_emails()
+  end
+
+  @doc false
+  def role_changeset(team_user, attrs) do
+    team_user
+    |> cast(attrs, [])
+    |> cast_assoc(:team_role)
   end
 
   def downcase_emails(changeset) do
