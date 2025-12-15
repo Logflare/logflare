@@ -654,7 +654,6 @@ defmodule Logflare.Sources do
     all_backends
     |> Enum.reduce(0, fn backend, acc ->
       case Backends.IngestEventQueue.total_pending({source_id, backend.id}) do
-        {:error, :not_initialized} -> acc
         count -> acc + count
       end
     end)
