@@ -259,10 +259,12 @@ defmodule Logflare.Auth do
   Token must have the `private:admin` scope.
 
   ## LiveView Context (with TeamContext)
-  User must be signed in as team owner.
+  User must be signed in as team owner or team_user with role 'admin'.
   """
   @spec can_create_admin_token?(OauthAccessToken.t() | TeamContext.t()) ::
           boolean()
+  def can_create_admin_token?(%TeamContext{team_user: %{team_role: %{role: :admin}}}), do: true
+
   def can_create_admin_token?(%TeamContext{} = team_context),
     do: TeamContext.team_owner?(team_context)
 

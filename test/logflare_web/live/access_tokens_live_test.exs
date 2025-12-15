@@ -123,6 +123,51 @@ defmodule LogflareWeb.AccessTokensLiveTest do
     assert html =~ "private"
   end
 
+  describe "team_user with admin role" do
+    setup %{conn: conn} do
+      team = insert(:team)
+      team_user = insert(:team_user, team: team, team_role: %{role: :admin})
+      conn = conn |> login_user(team.user, team_user)
+
+      {:ok, team: team, team_user: team_user, conn: conn}
+    end
+
+    test "can create private:admin token", %{conn: conn} do
+      {:ok, view, html} = live(conn, ~p"/access-tokens")
+
+      assert html =~ "Admin"
+      assert html =~ "Create and modify account resources and team users."
+
+      do_ui_create_token(view, "private:admin")
+
+      html = view |> element("table") |> render()
+      assert html =~ "some description"
+      assert html =~ "private:admin"
+    end
+  end
+
+  describe "team_user with user role" do
+    setup %{conn: conn} do
+      team = insert(:team)
+      team_user = insert(:team_user, team: team, team_role: %{role: :user})
+      conn = conn |> login_user(team.user, team_user)
+
+      {:ok, team: team, team_user: team_user, conn: conn}
+    end
+
+    test "cannot see admin scope option", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/access-tokens")
+
+      assert view
+             |> element("button", "Create access token")
+             |> render_click()
+
+      html = render(view)
+      refute html =~ "Admin"
+      refute html =~ "Create and modify account resources and team users."
+    end
+  end
+
   # returns the rendered table html
   defp do_ui_create_token(view, scopes) do
     assert view

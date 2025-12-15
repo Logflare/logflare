@@ -9,6 +9,8 @@ defmodule Logflare.TeamUsers do
   alias Logflare.Repo
   alias Logflare.TeamUsers.TeamUser
 
+  @default_preloads ~w(team team_role)a
+
   @doc """
   Returns the list of team_users.
 
@@ -27,7 +29,7 @@ defmodule Logflare.TeamUsers do
       from t in TeamUser,
         where: ^kv,
         select: t,
-        preload: [:team]
+        preload: ^@default_preloads
 
     Repo.all(query)
   end
@@ -109,13 +111,13 @@ defmodule Logflare.TeamUsers do
         nil
 
       team_user ->
-        Repo.preload(team_user, :team)
+        Repo.preload(team_user, @default_preloads)
     end
   end
 
   def preload_defaults(team_user) do
     team_user
-    |> Repo.preload(:team)
+    |> Repo.preload(@default_preloads)
   end
 
   @doc """
@@ -182,5 +184,14 @@ defmodule Logflare.TeamUsers do
   """
   def change_team_user(%TeamUser{} = team_user) do
     TeamUser.changeset(team_user, %{})
+  end
+
+  @spec update_team_role(TeamUser.t(), map()) ::
+          {:ok, TeamUser.t()} | {:error, Ecto.Changeset.t()}
+  def update_team_role(%TeamUser{} = team_user, attrs) do
+    team_user
+    |> Repo.preload(:team_role)
+    |> TeamUser.role_changeset(%{team_role: attrs})
+    |> Repo.update()
   end
 end
