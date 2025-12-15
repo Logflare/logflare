@@ -23,7 +23,10 @@ defmodule Logflare.Logs.OtelMetric do
     |> List.flatten()
   end
 
-  def handle_resource_metrics(%_resource_metrics{resource: resource, scope_metrics: scope_metrics}) do
+  def handle_resource_metrics(%_resource_metrics{
+        resource: resource,
+        scope_metrics: scope_metrics
+      }) do
     resource = Otel.handle_resource(resource)
     Enum.map(scope_metrics, &handle_scope_metric(&1, resource))
   end
