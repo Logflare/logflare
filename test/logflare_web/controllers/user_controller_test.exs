@@ -230,4 +230,26 @@ defmodule LogflareWeb.UserControllerTest do
       assert redirected_to(conn, 302) =~ ~p"/auth/login"
     end
   end
+
+  describe "UserController edit page display" do
+    test "shows admin label for team members with admin role", %{conn: conn} do
+      owner = insert(:user)
+      team = insert(:team, user: owner)
+      admin_team_member = insert(:team_user, team: team, team_role: %{role: :admin})
+      regular_team_member = insert(:team_user, team: team)
+
+      conn =
+        conn
+        |> login_user(owner)
+        |> get(~p"/account/edit")
+
+      html = html_response(conn, 200)
+
+      assert html =~ admin_team_member.name
+      assert html =~ ~r/#{admin_team_member.name}.*?admin/s
+
+      assert html =~ regular_team_member.name
+      refute html =~ ~r/#{regular_team_member.name}.*?admin/s
+    end
+  end
 end

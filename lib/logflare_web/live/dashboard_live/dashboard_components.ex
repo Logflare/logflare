@@ -4,6 +4,7 @@ defmodule LogflareWeb.DashboardLive.DashboardComponents do
   use Phoenix.Component
 
   alias Logflare.Auth
+  alias Logflare.TeamUsers.TeamUser
   alias Phoenix.LiveView.JS
 
   attr :user, Logflare.User, required: true
@@ -126,7 +127,7 @@ defmodule LogflareWeb.DashboardLive.DashboardComponents do
           <.link href={"mailto:#{member.email}"} class="tw-text-white">
             {member.name || member.email}
           </.link>
-          <span :if={current_team_user?(member, @team_user)}>you</span>
+          <.team_user_description team_user={member} current={@team_user} />
         </li>
       </ul>
       <.team_link :if={is_nil(@team_user)} team={@team} href={~p"/account/edit#team-members"} class="tw-text-white tw-mt-2">
@@ -136,8 +137,25 @@ defmodule LogflareWeb.DashboardLive.DashboardComponents do
     """
   end
 
-  defp current_team_user?(_member, nil), do: false
-  defp current_team_user?(member, team_user), do: member.provider_uid == team_user.provider_uid
+  attr :team_user, TeamUser
+  attr :current, TeamUser
+
+  defp team_user_description(%{team_user: team_user, current: current} = assigns) do
+    assigns =
+      assigns
+      |> assign(
+        :description,
+        [
+          if(team_user.team_role.role == :admin, do: "admin"),
+          if(current && current.provider_uid == team_user.provider_uid, do: "you")
+        ]
+        |> Enum.filter(& &1)
+      )
+
+    ~H"""
+    <small :if={Enum.any?(@description)}>{Enum.join(@description, ", ")}</small>
+    """
+  end
 
   attr :saved_searches, :list, required: true
   attr :team, Logflare.Teams.Team, required: true
