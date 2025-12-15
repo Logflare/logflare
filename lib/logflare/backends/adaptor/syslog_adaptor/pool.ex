@@ -7,23 +7,13 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.Pool do
   @backoff_base to_timeout(millisecond: 100)
   @backoff_max to_timeout(second: 5)
 
+  # see https://www.erlang.org/doc/apps/kernel/inet#setopts/2 for details
+  @default_transport_opts mode: :binary, packet: :raw, active: true, nodelay: true
+
   @typep socket :: :gen_tcp.socket() | :ssl.sslsocket()
-
-  @typep connect_args :: %{
-           host: :inet.hostname(),
-           port: :inet.port_number(),
-           transport: :gen_tcp | :ssl,
-           opts: [:gen_tcp.connect_option()] | [:ssl.tls_client_option()]
-         }
-
-  @typep worker_state :: {socket, connect_args}
-
+  @typep worker_state :: {socket, backend_config :: map}
   @typep backend_id :: pos_integer
-
-  @typep pool_state :: %{
-           backend_id: backend_id,
-           connect_failures: :atomics.atomics_ref()
-         }
+  @typep pool_state :: %{backend_id: backend_id, connect_failures: :atomics.atomics_ref()}
 
   def start_link(opts) do
     backend_id = Keyword.fetch!(opts, :backend_id)
@@ -67,13 +57,14 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.Pool do
   @spec handle_checkout(:send, NimblePool.from(), worker_state, pool_state) ::
           {:ok, socket, worker_state, pool_state} | {:remove, reason :: term, pool_state}
   def handle_checkout(:send, _from, worker_state, pool_state) do
-    {socket, connect_args} = worker_state
-    %{backend_id: backend_id} = pool_state
+    {socket, backend_config} = worker_state
 
-    if connect_args == current_connect_args(backend_id) do
+    # if current backend config is the same as what it was when socket was opened,
+    # return socket, otherwise remove it and try another one
+    if backend_config == current_backend_config(pool_state.backend_id) do
       {:ok, socket, worker_state, pool_state}
     else
-      {:remove, :stale, pool_state}
+      {:remove, :stale_config, pool_state}
     end
   end
 
@@ -100,7 +91,7 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.Pool do
   def handle_info(message, worker_state)
 
   # close and remove sockets on any error
-  def handle_info({tag, socket, reason}, {socket, _connect_args})
+  def handle_info({tag, socket, reason}, {socket, _backend_config})
       when tag in [:tcp_error, :ssl_error] do
     # mint closes on error, so do we: https://github.com/elixir-mint/mint/blob/e28c85aad15d1f0cfcb1d5e4f4abada5f37f0f11/lib/mint/http1.ex#L533-L535
     close(socket)
@@ -108,7 +99,7 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.Pool do
   end
 
   # handle normal closure
-  def handle_info({tag, socket}, {socket, _connect_args})
+  def handle_info({tag, socket}, {socket, _backend_config})
       when tag in [:tcp_closed, :ssl_closed] do
     {:remove, :closed}
   end
@@ -119,7 +110,7 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.Pool do
 
   @impl NimblePool
   @spec terminate_worker(reason :: term, worker_state, pool_state) :: {:ok, pool_state}
-  def terminate_worker(_reason, {socket, _connect_args}, pool_state) do
+  def terminate_worker(_reason, {socket, _backend_config}, pool_state) do
     close(socket)
     {:ok, pool_state}
   end
@@ -128,40 +119,38 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.Pool do
     %{backend_id: backend_id, connect_failures: connect_failures} = pool_state
 
     fn ->
-      %{
-        host: host,
-        port: port,
-        transport: transport,
-        opts: connect_opts
-      } = connect_args = current_connect_args(backend_id)
-
       failure_count = :atomics.get(connect_failures, 1)
       if failure_count > 0, do: delay_connect(failure_count)
 
-      # we need to try/catch since gen_tcp sometimes raises (e.g, on bad connect_opts)
-      # and we don't want to exit without incrementing connect failures
-      result =
-        try do
-          with {:ok, socket} = ok <-
-                 transport.connect(host, port, connect_opts, @connect_timeout),
-               :ok <- transport.controlling_process(socket, owner) do
-            ok
-          end
-        catch
-          _kind, reason -> {:error, reason}
-        end
+      backend_config = current_backend_config(backend_id)
 
-      case result do
+      case connect(backend_config, owner) do
         {:ok, socket} ->
           :atomics.put(connect_failures, 1, 0)
-          {socket, connect_args}
+          {socket, backend_config}
 
         {:error, reason} ->
           :atomics.add(connect_failures, 1, 1)
+          redacted_config = Logflare.Backends.Adaptor.SyslogAdaptor.redact_config(backend_config)
 
-          raise "failed to connect to Syslog backend at #{host}:#{port}, reason: #{inspect(reason)}"
+          raise "failed to connect to Syslog (#{inspect(redacted_config)}), reason: #{inspect(reason)}"
       end
     end
+  end
+
+  defp connect(backend_config, owner) do
+    host = Map.fetch!(backend_config, :host)
+    port = Map.fetch!(backend_config, :port)
+    transport = if Map.get(backend_config, :tls), do: :ssl, else: :gen_tcp
+    opts = maybe_configure_ssl(@default_transport_opts, transport, backend_config, host)
+    host = String.to_charlist(host)
+
+    with {:ok, socket} = ok <- transport.connect(host, port, opts, @connect_timeout),
+         :ok <- transport.controlling_process(socket, owner) do
+      ok
+    end
+  catch
+    :exit, :badarg -> {:error, :badarg}
   end
 
   defp send_data(socket, data) when is_port(socket), do: :gen_tcp.send(socket, data)
@@ -177,36 +166,12 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.Pool do
     Process.sleep(sleep_for)
   end
 
-  defp current_connect_args(backend_id) do
+  defp current_backend_config(backend_id) do
     if backend = Logflare.Backends.Cache.get_backend(backend_id) do
-      build_connect_args(backend.config)
+      backend.config
     else
       raise "missing backend #{backend_id}"
     end
-  end
-
-  defp build_connect_args(backend_config) do
-    host = Map.fetch!(backend_config, :host)
-    port = Map.fetch!(backend_config, :port)
-    transport = if Map.get(backend_config, :tls), do: :ssl, else: :gen_tcp
-
-    # see https://www.erlang.org/doc/apps/kernel/inet#setopts/2 for details
-    opts =
-      [
-        mode: :binary,
-        packet: :raw,
-        # enable async messages to catch closed sockets early
-        active: true,
-        # disable Nagle's algorithm for lower latency
-        nodelay: true,
-        # don't hang the worker if the inet driver queue fills up
-        send_timeout: to_timeout(second: 5),
-        send_timeout_close: true
-        # NOTE: we might also want to add :inet6, :recbuf, :linder, :show_econnreset, etc.
-      ]
-      |> maybe_configure_ssl(transport, backend_config, host)
-
-    %{host: String.to_charlist(host), port: port, transport: transport, opts: opts}
   end
 
   defp maybe_configure_ssl(opts, :gen_tcp, _config, _host), do: opts
