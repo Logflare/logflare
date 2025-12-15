@@ -142,11 +142,6 @@ config :number,
     separator: "."
   ]
 
-config :scrivener_html,
-  routes_helper: LogflareWeb.Router.Helpers,
-  # If you use a single view style everywhere, you can configure it here. See View Styles below for more info.
-  view_style: :bootstrap_v4
-
 config :logflare, Logflare.ContextCache.CacheBuster,
   replication_slot: :temporary,
   publications: ["logflare_pub"]

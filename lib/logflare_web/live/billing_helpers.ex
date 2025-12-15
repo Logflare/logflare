@@ -1,6 +1,6 @@
 defmodule LogflareWeb.BillingHelpers do
   @moduledoc false
-  use Phoenix.HTML
+  use PhoenixHTMLHelpers
 
   alias Logflare.Billing
   alias LogflareWeb.Router.Helpers, as: Routes
