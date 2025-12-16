@@ -8,6 +8,9 @@
       <li>
         <img class="rounded-circle" width=35 height=35 src="<%= member.image || Logflare.Auth.gen_gravatar_link(member.email) %>" alt="<%= member.name || member.email %>">
         <%= link(member.name || member.email, to: "mailto:#{member.email}")%>
+        <%= if member.team_role.role == :admin do %>
+          <small>admin</small>
+        <% end %>
         <%= if assigns[:team_user] do %>
           <%= if member.provider_uid == @team_user.provider_uid do %>
             <small>you</small>

@@ -1,8 +1,9 @@
 defmodule Logflare.TeamUsers.TeamUser do
   @moduledoc false
   import Ecto.Changeset
-  alias Logflare.Users.UserPreferences
   alias Logflare.Teams.Team
+  alias Logflare.TeamUsers.TeamRole
+  alias Logflare.Users.UserPreferences
   use TypedEctoSchema
   @derive {Jason.Encoder, only: [:email, :name]}
 
@@ -22,6 +23,7 @@ defmodule Logflare.TeamUsers.TeamUser do
     embeds_one :preferences, UserPreferences
 
     belongs_to :team, Team
+    has_one :team_role, TeamRole
 
     timestamps()
   end
