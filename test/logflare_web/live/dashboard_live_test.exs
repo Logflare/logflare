@@ -101,8 +101,9 @@ defmodule LogflareWeb.DashboardLiveTest do
       |> element("[phx-click='delete_saved_search'][phx-value-id='#{saved_search.id}']")
       |> render_click()
 
-      {:ok, _view, html} = live(conn, "/dashboard")
+      Cachex.clear(Logflare.SavedSearches.Cache)
 
+      {:ok, _view, html} = live(conn, "/dashboard")
       refute html =~ saved_search.querystring
     end
 
