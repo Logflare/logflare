@@ -139,31 +139,20 @@ defmodule LogflareWeb.DashboardLive.DashboardComponents do
   defp current_team_user?(_member, nil), do: false
   defp current_team_user?(member, team_user), do: member.provider_uid == team_user.provider_uid
 
-  attr :sources, :list, required: true
+  attr :saved_searches, :list, required: true
   attr :team, Logflare.Teams.Team, required: true
 
   def saved_searches(assigns) do
-    assigns =
-      assigns
-      |> assign(
-        :searches,
-        for(
-          source <- assigns.sources,
-          saved_search <- source.saved_searches,
-          do: {source, saved_search}
-        )
-      )
-
     ~H"""
     <div>
       <h5 class="header-margin">Saved Searches</h5>
-      <div :if={Enum.empty?(@searches)}>
+      <div :if={Enum.empty?(@saved_searches)}>
         Your saved searches will show up here. Save some searches!
       </div>
       <ul class="list-unstyled">
-        <li :for={{source, saved_search} <- @searches}>
-          <.team_link team={@team} href={~p"/sources/#{source}/search?#{%{querystring: saved_search.querystring, tailing: saved_search.tailing}}"} class="tw-text-white">
-            {source.name}:{saved_search.querystring}
+        <li :for={saved_search <- @saved_searches}>
+          <.team_link team={@team} href={~p"/sources/#{saved_search.source}/search?#{%{querystring: saved_search.querystring, tailing: saved_search.tailing}}"} class="tw-text-white">
+            {saved_search.source.name}:{saved_search.querystring}
           </.team_link>
           <span phx-click="delete_saved_search" phx-value-id={saved_search.id} data-confirm="Delete saved search?" class="tw-text-xs tw-ml-1.5 tw-text-white tw-cursor-pointer">
             <i class="fa fa-trash"></i>
