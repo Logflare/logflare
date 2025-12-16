@@ -1,5 +1,5 @@
 defmodule Logflare.GenSingletonTest do
-  use Logflare.DataCase, async: false
+  use Logflare.DataCase, async: true
   alias Logflare.GenSingleton
 
   defmodule TestGenserver do

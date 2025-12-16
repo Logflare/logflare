@@ -1,5 +1,5 @@
 defmodule LogflareWeb.AuthControllerTest do
-  use LogflareWeb.ConnCase, async: false
+  use LogflareWeb.ConnCase, async: true
 
   setup do
     insert(:plan)
