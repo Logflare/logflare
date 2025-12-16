@@ -51,15 +51,6 @@ defmodule Logflare.SavedSearches do
   end
 
   @doc """
-  Completely deletes a saved search.
-  TODO: remove, unused.
-  """
-  @spec delete(SavedSearch.t()) :: {:ok, SavedSearch.t()}
-  def delete(search) do
-    Repo.delete(search)
-  end
-
-  @doc """
   Marks a SavedSearch as not saved (i.e. user will not see in dashboard)
   """
   @spec delete_by_user(SavedSearch.t()) :: {:ok, SavedSearch.t()}

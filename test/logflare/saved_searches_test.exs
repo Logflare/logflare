@@ -1,6 +1,6 @@
 defmodule Logflare.SavedSearchesTest do
   use Logflare.DataCase
-  alias Logflare.{SavedSearches, SavedSearch}
+  alias Logflare.{SavedSearches, SavedSearch, Repo}
 
   setup do
     user = insert(:user)
@@ -13,7 +13,7 @@ defmodule Logflare.SavedSearchesTest do
     assert {:ok, %SavedSearch{} = saved_search} = SavedSearches.insert(@valid_attrs, source)
     assert saved_search == SavedSearches.get(saved_search.id)
     assert saved_search == SavedSearches.get_by_qs_source_id(saved_search.querystring, source.id)
-    assert {:ok, %SavedSearch{}} = SavedSearches.delete(saved_search)
+    assert {:ok, %SavedSearch{}} = Repo.delete(saved_search)
     assert nil == SavedSearches.get(saved_search.id)
   end
 
