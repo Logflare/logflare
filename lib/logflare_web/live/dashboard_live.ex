@@ -12,23 +12,22 @@ defmodule LogflareWeb.DashboardLive do
 
   @impl true
   def mount(_, _session, socket) do
+    %{user: user} = socket.assigns
+
     socket =
       socket
-      |> assign_new(:sources, fn %{user: user} ->
-        user
-        |> Sources.list_sources_by_user()
-        |> Sources.preload_for_dashboard()
-      end)
+      |> assign(
+        :sources,
+        user |> Sources.list_sources_by_user() |> Sources.preload_for_dashboard()
+      )
       |> assign_new(:source_metrics, fn %{sources: sources} ->
         sources
         |> Enum.into(%{}, fn source ->
           {to_string(source.token), %{metrics: source.metrics, updated_at: source.updated_at}}
         end)
       end)
-      |> assign_new(:saved_searches, fn %{user: user} ->
-        SavedSearches.list_saved_searches_by_user(user.id)
-      end)
-      |> assign_new(:plan, fn %{user: user} -> Billing.get_plan_by_user(user) end)
+      |> assign(:saved_searches, SavedSearches.Cache.list_saved_searches_by_user(user.id))
+      |> assign(:plan, Billing.get_plan_by_user(user))
       |> assign(:fade_in, false)
 
     if connected?(socket) do
