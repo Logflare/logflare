@@ -6,12 +6,9 @@ defmodule Logflare.Backends.UserMonitoring do
   import Telemetry.Metrics
   alias Logflare.Logs
   alias Logflare.Logs.OtelMetric
-  alias Logflare.Logs.Otel
   alias Logflare.Logs.Processor
   alias Logflare.Sources
   alias Logflare.Users
-
-  @flow_threshold 500
 
   def get_otel_exporter do
     export_period =
@@ -85,20 +82,20 @@ defmodule Logflare.Backends.UserMonitoring do
 
   # @doc false
   def exporter_callback({:metrics, metrics}, config, opts \\ []) do
-    if Keyword.get(opts, :flow, false) do
+    if Keyword.get(opts, :flow, true) do
       metrics
       |> Stream.flat_map(fn metric ->
         OtelMetric.handle_metric(metric, config.resource, %{})
       end)
       |> Flow.from_enumerable(max_demand: 500, stages: System.schedulers_online())
       |> Flow.map(fn event ->
-        user_id = Users.get_related_user_id(Map.get(event, "attributes"))
-        {user_id, event}
+        {get_in(event, ["attributes", "user_id"]), event}
       end)
+      |> Flow.reject(fn {user_id, _} -> is_nil(user_id) end)
       |> Flow.group_by_key()
-      |> Flow.emit(:state)
       |> Flow.stream()
-      |> Enum.to_list()
+      |> Stream.each(&ingest_grouped_metrics/1)
+      |> Stream.run()
     else
       metrics
       |> Enum.reduce(%{}, &metric_reducer(&1, &2, config.resource))
@@ -116,16 +113,18 @@ defmodule Logflare.Backends.UserMonitoring do
     end
   end
 
-  defp ingest_grouped_metrics(grouped_events) do
+  defp ingest_grouped_metrics(grouped_events)
+       when is_list(grouped_events) or is_map(grouped_events) do
     Enum.each(grouped_events, fn {user_id, user_events} ->
-      with %Sources.Source{} = source <-
-             Sources.Cache.get_by(user_id: user_id, system_source_type: :metrics) do
-        source
-        |> Sources.Cache.preload_rules()
-        |> Sources.refresh_source_metrics()
-        |> then(&Processor.ingest(user_events, Logs.Raw, &1))
-      end
+      ingest_grouped_metrics({user_id, user_events})
     end)
+  end
+
+  defp ingest_grouped_metrics({user_id, user_events}) do
+    with %Sources.Source{} = source <-
+           Sources.Cache.get_by(user_id: user_id, system_source_type: :metrics) do
+      Processor.ingest(user_events, Logs.Raw, source)
+    end
   end
 
   @doc """

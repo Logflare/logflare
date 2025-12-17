@@ -46,48 +46,6 @@ Sources.Cache.get_by_id(source_monitored.id)
 Sources.Cache.get_source_by_token(source_monitored.token)
 Sources.Cache.get_by(user_id: user_with_monitoring.id, system_source_type: :logs)
 Sources.Cache.get_by(user_id: user_with_monitoring.id, system_source_type: :metrics)
-
-IO.puts("Test data setup complete.\n")
-
-# ============================================================================
-# Build test inputs for extract_tags
-# ============================================================================
-
-extract_tags_small = %{
-  "source_id" => 123,
-  "user_id" => 456,
-  "backend_id" => 789
-}
-
-extract_tags_medium = %{
-  "source_id" => 123,
-  "user_id" => 456,
-  "backend_id" => 789,
-  "environment" => "production",
-  "region" => "us-west-1",
-  "service" => "api",
-  "version" => "1.0.0",
-  "host" => "server-01",
-  "nested_map" => %{"should" => "be_filtered"},
-  "nested_list" => [1, 2, 3]
-}
-
-extract_tags_large =
-  Map.merge(
-    extract_tags_medium,
-    for i <- 1..50, into: %{} do
-      {"tag_#{i}", "value_#{i}"}
-    end
-  )
-
-extract_tags_with_nils = %{
-  "source_id" => 123,
-  "nil_value" => nil,
-  "user_id" => 456,
-  "another_nil" => nil,
-  "backend_id" => 789
-}
-
 # Dummy metric (first arg is ignored)
 dummy_metric = :ignored
 
@@ -106,7 +64,12 @@ defmodule OtelMetricBuilder do
 
   @default_datapoints_per_metric 100
 
-  def build_metrics(count, source_id, datapoints_per_metric \\ @default_datapoints_per_metric) do
+  def build_metrics(
+        count,
+        source_id,
+        user_id,
+        datapoints_per_metric \\ @default_datapoints_per_metric
+      ) do
     for i <- 1..count do
       %Metric{
         name: "logflare.backends.ingest.ingested_bytes",
@@ -115,7 +78,7 @@ defmodule OtelMetricBuilder do
         data:
           {:sum,
            %Sum{
-             data_points: build_datapoints(datapoints_per_metric, source_id, i),
+             data_points: build_datapoints(datapoints_per_metric, source_id, user_id, i),
              aggregation_temporality: :AGGREGATION_TEMPORALITY_CUMULATIVE,
              is_monotonic: true
            }}
@@ -123,7 +86,7 @@ defmodule OtelMetricBuilder do
     end
   end
 
-  defp build_datapoints(count, source_id, metric_index) do
+  defp build_datapoints(count, source_id, user_id, metric_index) do
     base_time = System.system_time(:nanosecond)
 
     for j <- 1..count do
@@ -135,6 +98,10 @@ defmodule OtelMetricBuilder do
           %KeyValue{
             key: "source_id",
             value: %AnyValue{value: {:int_value, source_id}}
+          },
+          %KeyValue{
+            key: "user_id",
+            value: %AnyValue{value: {:int_value, user_id}}
           },
           %KeyValue{
             key: "datapoint_index",
@@ -158,35 +125,14 @@ exporter_config = %{
   }
 }
 
-metrics_1 = OtelMetricBuilder.build_metrics(1, source_monitored.id)
-metrics_50 = OtelMetricBuilder.build_metrics(50, source_monitored.id)
-metrics_500 = OtelMetricBuilder.build_metrics(500, source_monitored.id)
-metrics_1k = OtelMetricBuilder.build_metrics(1_000, source_monitored.id)
-metrics_5k = OtelMetricBuilder.build_metrics(5_000, source_monitored.id)
-metrics_10k = OtelMetricBuilder.build_metrics(10_000, source_monitored.id)
+metrics_1 = OtelMetricBuilder.build_metrics(1, source_monitored.id, user_with_monitoring.id)
+metrics_50 = OtelMetricBuilder.build_metrics(50, source_monitored.id, user_with_monitoring.id)
+metrics_500 = OtelMetricBuilder.build_metrics(500, source_monitored.id, user_with_monitoring.id)
+metrics_1k = OtelMetricBuilder.build_metrics(1_000, source_monitored.id, user_with_monitoring.id)
+metrics_5k = OtelMetricBuilder.build_metrics(5_000, source_monitored.id, user_with_monitoring.id)
 
-# ============================================================================
-# Benchmark: extract_tags/2
-# ============================================================================
-IO.puts("=" |> String.duplicate(70))
-IO.puts("Benchmarking extract_tags/2")
-IO.puts("=" |> String.duplicate(70))
-
-Benchee.run(
-  %{
-    "extract_tags" => fn metadata ->
-      UserMonitoring.extract_tags(dummy_metric, metadata)
-    end
-  },
-  inputs: %{
-    "small (3 keys)" => extract_tags_small,
-    "medium (10 keys, mixed)" => extract_tags_medium,
-    "large (60 keys)" => extract_tags_large,
-    "with nils (5 keys)" => extract_tags_with_nils
-  },
-  time: 3,
-  warmup: 1
-)
+metrics_10k =
+  OtelMetricBuilder.build_metrics(10_000, source_monitored.id, user_with_monitoring.id)
 
 # ============================================================================
 # Benchmark: exporter_callback/2
@@ -197,12 +143,11 @@ IO.puts(String.duplicate("=", 70))
 
 Benchee.run(
   %{
-    "exporter_callback" => fn {metrics, config} ->
-      try do
-        UserMonitoring.exporter_callback({:metrics, metrics}, config)
-      rescue
-        _ -> :skip
-      end
+    "exporter_callback - no flow`" => fn {metrics, config} ->
+      UserMonitoring.exporter_callback({:metrics, metrics}, config, flow: false)
+    end,
+    "exporter_callback - flow" => fn {metrics, config} ->
+      UserMonitoring.exporter_callback({:metrics, metrics}, config, flow: true)
     end
   },
   inputs: %{
