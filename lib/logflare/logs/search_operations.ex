@@ -411,10 +411,14 @@ defmodule Logflare.Logs.SearchOperations do
         %SO{query: query, chart_rules: chart_rules, lql_meta_and_msg_filters: filter_rules} = so
       ) do
     chart_period = hd(so.chart_rules).period
+    chart_path = hd(chart_rules).path
+
+    non_chart_filters =
+      Enum.reject(filter_rules, fn %FilterRule{path: path} -> path == chart_path end)
 
     query =
       query
-      |> Lql.apply_filter_rules(so.lql_meta_and_msg_filters)
+      |> Lql.apply_filter_rules(non_chart_filters)
       |> order_by([t, ...], desc: 1)
 
     query = select_timestamp(query, chart_period)
@@ -534,7 +538,8 @@ defmodule Logflare.Logs.SearchOperations do
 
         %{
           "timestamp" => ts,
-          "datetime" => dt
+          "datetime" => dt,
+          "value" => 0
         }
       end)
 
