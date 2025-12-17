@@ -33,7 +33,8 @@ defmodule Logflare.Backends.UserMonitoring do
         extract_tags: &extract_tags/2,
         name: :user_metrics_exporter,
         otlp_endpoint: "",
-        export_period: export_period
+        export_period: export_period,
+        max_concurrency: System.schedulers_online()
       ]
 
     [{OtelMetricExporter, otel_exporter_opts}]
