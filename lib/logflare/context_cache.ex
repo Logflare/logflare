@@ -82,6 +82,11 @@ defmodule Logflare.ContextCache do
     {:ok, busted}
   end
 
+  defp bust_key({context, kw}) when is_list(kw) do
+    context_cache = cache_name(context)
+    context_cache.bust_by(kw)
+  end
+
   defp bust_key({context, pkey}) do
     context_cache = cache_name(context)
 

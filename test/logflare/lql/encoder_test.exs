@@ -2,6 +2,7 @@ defmodule Logflare.Lql.EncoderTest do
   use ExUnit.Case, async: true
 
   alias Logflare.Lql.Encoder
+  alias Logflare.Lql.Parser
   alias Logflare.Lql.Rules.ChartRule
   alias Logflare.Lql.Rules.FilterRule
   alias Logflare.Lql.Rules.FromRule
@@ -111,6 +112,28 @@ defmodule Logflare.Lql.EncoderTest do
     test "encodes empty list" do
       result = Encoder.to_querystring([])
       assert result == ""
+    end
+
+    test "quotes values with special characters for parser compatibility" do
+      for {value, expected} <- [
+            {"prod-c", ~s|cluster:"prod-c"|},
+            {"hello world", ~s|cluster:"hello world"|},
+            {"test@example", ~s|cluster:"test@example"|},
+            {"foo/bar", ~s|cluster:"foo/bar"|},
+            {"simple", "cluster:simple"}
+          ] do
+        lql_rules = [%FilterRule{operator: :=, path: "cluster", value: value}]
+        assert Encoder.to_querystring(lql_rules) == expected
+      end
+    end
+
+    test "encoded values with special characters can be parsed back" do
+      for value <- ["prod-c", "prod-a", "hello-world", "test@domain", "path/to/thing", "canary"] do
+        lql_rules = [%FilterRule{operator: :=, path: "cluster", value: value}]
+        encoded = Encoder.to_querystring(lql_rules)
+
+        assert {:ok, [%FilterRule{path: "cluster", value: ^value}]} = Parser.parse(encoded)
+      end
     end
   end
 

@@ -11,20 +11,18 @@ defmodule Logflare.Sources.CacheWarmer do
       from(s in Source,
         where: s.log_events_updated_at >= ago(1, "day"),
         order_by: {:desc, s.log_events_updated_at},
-        limit: 1_000,
-        preload: [:rules]
+        limit: 1_000
       )
       |> Repo.all()
 
     get_kv =
       for s <- sources do
+        value = {:cached, s}
+
         [
-          {{:get_by, [id: s.id]}, s},
-          {{:get_by, [token: s.token]}, s},
-          {{:get_by_and_preload_rules, [id: s.id, user_id: s.user_id]}, s},
-          {{:get_by_and_preload_rules, [token: s.token]}, s}
+          {{:get_by, [id: s.id]}, value},
+          {{:get_by, [token: s.token]}, value}
         ]
-        |> Enum.map(&{:cached, &1})
       end
 
     {:ok, List.flatten(get_kv)}

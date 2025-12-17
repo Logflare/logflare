@@ -144,7 +144,9 @@ defmodule Logflare.Lql.Encoder do
   end
 
   defp to_fragment(%FilterRule{path: path, operator: :=, value: v}) do
-    "#{path}:#{v}"
+    value = maybe_quote(v)
+
+    "#{path}:#{value}"
     |> String.replace_leading("timestamp:", "t:")
     |> String.replace_leading("metadata.", "m.")
   end
@@ -161,7 +163,9 @@ defmodule Logflare.Lql.Encoder do
   end
 
   defp to_fragment(%FilterRule{path: path, operator: :list_includes, value: v}) do
-    "#{path}:@>#{v}"
+    value = maybe_quote(v)
+
+    "#{path}:@>#{value}"
     |> String.replace_leading("timestamp:", "t:")
     |> String.replace_leading("metadata.", "m.")
   end
@@ -178,7 +182,9 @@ defmodule Logflare.Lql.Encoder do
   end
 
   defp to_fragment(%FilterRule{path: path, operator: :list_includes_regexp, value: v}) do
-    "#{path}:@>~#{v}"
+    value = maybe_quote(v)
+
+    "#{path}:@>~#{value}"
     |> String.replace_leading("timestamp:", "t:")
     |> String.replace_leading("metadata.", "m.")
   end
@@ -195,7 +201,9 @@ defmodule Logflare.Lql.Encoder do
   end
 
   defp to_fragment(%FilterRule{path: path, operator: op, value: v}) do
-    "#{path}:#{op}#{v}"
+    value = maybe_quote(v)
+
+    "#{path}:#{op}#{value}"
     |> String.replace_leading("timestamp:", "t:")
     |> String.replace_leading("metadata.", "m.")
   end
@@ -219,6 +227,13 @@ defmodule Logflare.Lql.Encoder do
     do: "s:#{String.replace_leading(path, "metadata.", "m.")}@#{alias_name}"
 
   defp to_fragment(%FromRule{table: table}), do: "f:#{table}"
+
+  @spec maybe_quote(term()) :: String.t()
+  defp maybe_quote(v) when is_non_empty_binary(v) do
+    if Regex.match?(~r/^[a-zA-Z_0-9]+$/, v), do: v, else: ~s|"#{v}"|
+  end
+
+  defp maybe_quote(v), do: to_string(v)
 
   def to_datetime_with_range(%Date{} = ldt, %Date{} = rdt) do
     mapper_fn = fn period -> timestamp_mapper(ldt, rdt, period) end

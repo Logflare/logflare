@@ -115,45 +115,6 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
       assert result == []
     end
 
-    test "filters out events older than 72 hours", %{
-      context: context,
-      source: source,
-      backend: backend
-    } do
-      old_timestamp = System.system_time(:microsecond) - 73 * 3_600 * 1_000_000
-      recent_timestamp = System.system_time(:microsecond) - 1 * 3_600 * 1_000_000
-
-      old_event =
-        build(:log_event, source: source, message: "Old event", timestamp: old_timestamp)
-
-      recent_event =
-        build(:log_event, source: source, message: "Recent event", timestamp: recent_timestamp)
-
-      messages = [
-        %Message{data: old_event, acknowledger: {Pipeline, :ack_id, :ack_data}},
-        %Message{data: recent_event, acknowledger: {Pipeline, :ack_id, :ack_data}}
-      ]
-
-      result = Pipeline.handle_batch(:ch, messages, %{size: 2, trigger: :flush}, context)
-
-      assert result == messages
-
-      Process.sleep(200)
-
-      table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(source)
-
-      {:ok, query_result} =
-        ClickHouseAdaptor.execute_ch_query(
-          backend,
-          "SELECT body FROM #{table_name}"
-        )
-
-      assert length(query_result) == 1
-      [row] = query_result
-      body = Jason.decode!(row["body"])
-      assert body["event_message"] == "Recent event"
-    end
-
     test "handles log events with different field types", %{
       context: context,
       source: source,

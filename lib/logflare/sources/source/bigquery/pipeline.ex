@@ -22,7 +22,7 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
   alias Logflare.Users
   alias Logflare.PubSubRates
   alias Logflare.Backends.Adaptor.BigQueryAdaptor
-
+  alias Logflare.Utils
   require OpenTelemetry.Tracer
 
   # BQ max is 10MB
@@ -131,7 +131,12 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
       metrics = %{ingested_bytes: :erlang.external_size(le.body)}
 
       metadata =
-        %{"source_id" => sid, "backend_id" => bid}
+        %{
+          "source_id" => sid,
+          "backend_id" => bid,
+          "source_uuid" => Utils.stringify(source.token),
+          "user_id" => source.user_id
+        }
         |> Map.merge(event_labels)
         |> Map.merge(backend_metadata)
 

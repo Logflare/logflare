@@ -174,7 +174,7 @@ defmodule Logflare.Backends.Adaptor.OtlpAdaptorTest do
       log_events =
         build_list(3, :log_event,
           source: source,
-          timestamp: 1_704_067_200_000_000_000
+          timestamp: System.system_time(:microsecond)
         )
 
       assert {:ok, _} = Backends.ingest_logs(log_events, source)

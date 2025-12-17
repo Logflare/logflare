@@ -24,7 +24,6 @@ defmodule LogflareWeb.Source.SearchLV do
   alias LogflareWeb.AuthLive
   alias LogflareWeb.Helpers.BqSchema, as: BqSchemaHelpers
   alias LogflareWeb.Router.Helpers, as: Routes
-  alias LogflareWeb.SearchView
   alias LogflareWeb.Utils
   alias Logflare.Sources.Source.BigQuery.SchemaBuilder
   alias Logflare.Utils.Chart, as: ChartUtils
@@ -63,8 +62,7 @@ defmodule LogflareWeb.Source.SearchLV do
     end
   end
 
-  defp mount_with_source(socket, source, params, effective_user) do
-    socket = AuthLive.assign_context_by_resource(socket, source, effective_user.email)
+  defp mount_with_source(socket, source, %{"t" => _team_id} = params, _effective_user) do
     %{assigns: %{user: user, team_user: team_user}} = socket
 
     tailing? =
@@ -106,6 +104,13 @@ defmodule LogflareWeb.Source.SearchLV do
       search_form: to_form(%{}, as: :search)
     )
     |> maybe_assign_user_timezone(team_user, user)
+  end
+
+  defp mount_with_source(socket, source, params, effective_user) do
+    socket = AuthLive.assign_context_by_resource(socket, source, effective_user.email)
+    params = Map.put(params, "t", socket.assigns.team.id)
+
+    mount_with_source(socket, source, params, effective_user)
   end
 
   defp maybe_assign_user_timezone(socket, team_user, user) do

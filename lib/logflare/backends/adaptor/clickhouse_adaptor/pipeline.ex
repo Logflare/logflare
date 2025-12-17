@@ -25,9 +25,6 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
   @batch_timeout 4_000
   @max_retries 1
 
-  # 72 hour max event age, based on timestamp
-  @max_event_age_us 72 * 3_600 * 1_000_000
-
   @doc false
   def max_retries, do: @max_retries
 
@@ -111,25 +108,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
       } do
         source = Sources.Cache.get_by_id(source_id)
         backend = Backends.Cache.get_backend(backend_id)
-        cutoff_us = System.system_time(:microsecond) - @max_event_age_us
-
-        {events, message_count, discarded_events} =
-          for %{data: le} <- messages, reduce: {[], 0, 0} do
-            {events, n, discarded_events} ->
-              if le.body["timestamp"] >= cutoff_us do
-                {[le | events], n + 1, discarded_events}
-              else
-                {events, n + 1, discarded_events + 1}
-              end
-          end
-
-        if discarded_events > 0 do
-          Logger.warning(
-            "Dropping #{discarded_events} of #{message_count} ClickHouse event(s) older than 72 hours",
-            source_token: source_token,
-            backend_id: backend_id
-          )
-        end
+        events = Enum.map(messages, & &1.data)
 
         ClickHouseAdaptor.insert_log_events({source, backend}, events)
       end
