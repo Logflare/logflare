@@ -15,6 +15,7 @@ defmodule Logflare.ContextCache.CacheBuster do
   alias Logflare.Endpoints
   alias Logflare.PubSub
   alias Logflare.Rules
+  alias Logflare.SavedSearches
   alias Logflare.SourceSchemas
   alias Logflare.Sources
   alias Logflare.TeamUsers
@@ -156,6 +157,13 @@ defmodule Logflare.ContextCache.CacheBuster do
     {Endpoints, String.to_integer(id)}
   end
 
+  defp handle_record(%UpdatedRecord{
+         relation: {_schema, "saved_searches"},
+         record: %{"source_id" => source_id}
+       }) do
+    {SavedSearches, [source_id: String.to_integer(source_id)]}
+  end
+
   defp handle_record(%NewRecord{
          relation: {_schema, "billing_accounts"},
          record: %{"id" => _id}
@@ -227,6 +235,13 @@ defmodule Logflare.ContextCache.CacheBuster do
        }) do
     # When new records are created they were previously cached as `nil` so we need to bust the :not_found keys
     {Auth, :not_found}
+  end
+
+  defp handle_record(%NewRecord{
+         relation: {_schema, "saved_searches"},
+         record: %{"source_id" => source_id}
+       }) do
+    {SavedSearches, [source_id: String.to_integer(source_id)]}
   end
 
   defp handle_record(%DeletedRecord{
@@ -301,6 +316,13 @@ defmodule Logflare.ContextCache.CacheBuster do
        when is_binary(id) do
     # Must do `alter table rules replica identity full` to get full records on deletes otherwise all fields are null
     {Auth, String.to_integer(id)}
+  end
+
+  defp handle_record(%DeletedRecord{
+         relation: {_schema, "saved_searches"},
+         old_record: %{"source_id" => source_id}
+       }) do
+    {SavedSearches, [source_id: String.to_integer(source_id)]}
   end
 
   defp handle_record(_record) do

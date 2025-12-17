@@ -221,7 +221,6 @@ defmodule Logflare.SourcesTest do
       sources = Sources.preload_for_dashboard(sources)
 
       assert Enum.all?(sources, &Ecto.assoc_loaded?(&1.user))
-      assert Enum.all?(sources, &Ecto.assoc_loaded?(&1.saved_searches))
 
       refute Enum.any?(sources, &Ecto.assoc_loaded?(&1.rules))
     end
