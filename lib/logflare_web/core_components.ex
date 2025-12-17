@@ -203,15 +203,15 @@ defmodule LogflareWeb.CoreComponents do
       assigns
       |> assign(:has_multiple_teams, length(assigns.teams) > 1)
       |> assign(:selected_class, fn team_id ->
-        if team_id == assigns.team_context.team.id, do: "tw-font-bold tw-text-neutral-900/45"
+        if team_id == assigns.team_context.team.id, do: "tw-font-bold tw-text-neutral-900/60"
       end)
 
     ~H"""
     <li class="nav-item" id="team-switcher">
-      <span :if={not @has_multiple_teams} class="tw-font-medium tw-text-black/50">
+      <span :if={not @has_multiple_teams} class="tw-font-bold tw-text-black/60">
         {@team_context.team.name}
       </span>
-      <a :if={@has_multiple_teams} class="tw-font-medium nav-link dropdown-toggle" href="#" id="teamDropdown" role="button" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+      <a :if={@has_multiple_teams} class="tw-font-bold tw-text-neutral-900/60 nav-link dropdown-toggle" href="#" id="teamDropdown" role="button" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
         {@team_context.team.name}
       </a>
       <div :if={@has_multiple_teams} class="dropdown-menu dropdown-menu-right" aria-labelledby="teamDropdown">
