@@ -268,7 +268,7 @@ defmodule Logflare.Logs.SearchOperations do
       so.chart_rules
       |> hd()
       |> Map.get(:period)
-      |> Logflare.Ecto.BQQueryAPI.to_bq_interval_token()
+      |> to_bq_interval_token()
 
     tick_count =
       so.chart_rules
@@ -384,7 +384,7 @@ defmodule Logflare.Logs.SearchOperations do
         @default_select_rules
         |> Lql.Parser.parse()
 
-      rules
+      Rules.get_select_rules(rules)
     else
       recommended_rules =
         Sources.Source.recommended_query_fields(source)
@@ -397,13 +397,19 @@ defmodule Logflare.Logs.SearchOperations do
         |> Lql.Parser.parse()
 
       rules
+      |> Rules.get_select_rules()
       |> Enum.filter(&Map.has_key?(flatmap, &1.path))
     end
   end
 
   # converts "m.user_id" to "s:m.user_id@user_id"
+  # strips trailing "!" which marks required keys in suggested_keys config
   defp recommended_field_to_lql_query(field) when is_binary(field) do
-    field = String.trim(field)
+    field =
+      field
+      |> String.trim()
+      |> String.trim_trailing("!")
+
     field_name = field |> String.split(".") |> List.last()
 
     "s:#{field}@#{field_name}"
