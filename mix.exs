@@ -118,6 +118,7 @@ defmodule Logflare.Mixfile do
       {:map_keys, "~> 0.1.0"},
       {:observer_cli, "~> 1.5"},
       {:cloak_ecto, github: "logflare/cloak_ecto"},
+      {:flow, "~> 1.0"},
 
       # Parsing
       {:bertex, ">= 0.0.0"},

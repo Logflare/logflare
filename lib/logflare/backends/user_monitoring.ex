@@ -4,11 +4,14 @@ defmodule Logflare.Backends.UserMonitoring do
   """
 
   import Telemetry.Metrics
-  alias Logflare.Users
-  alias Logflare.Sources
   alias Logflare.Logs
+  alias Logflare.Logs.OtelMetric
+  alias Logflare.Logs.Otel
   alias Logflare.Logs.Processor
-  alias Opentelemetry.Proto.Collector.Metrics.V1.ExportMetricsServiceRequest
+  alias Logflare.Sources
+  alias Logflare.Users
+
+  @flow_threshold 500
 
   def get_otel_exporter do
     export_period =
@@ -80,49 +83,61 @@ defmodule Logflare.Backends.UserMonitoring do
     end
   end
 
-  @doc false
-  def exporter_callback({:metrics, metrics}, config) do
-    metrics
-    |> OtelMetricExporter.Protocol.build_metric_service_request(config.resource)
-    |> Protobuf.encode()
-    |> Protobuf.decode(ExportMetricsServiceRequest)
-    |> Map.get(:resource_metrics)
-    |> Logs.OtelMetric.handle_batch(%{})
-    |> Enum.group_by(fn event ->
-      event
-      |> Map.get("attributes")
-      |> Users.get_related_user_id()
-    end)
-    |> Enum.each(fn {user_id, user_events} ->
-      with %Sources.Source{} = source <-
-             Sources.Cache.get_by(user_id: user_id, system_source_type: :metrics) do
-        source =
-          source
-          |> Sources.Cache.preload_rules()
-          |> Sources.refresh_source_metrics()
-
-        Processor.ingest(user_events, Logs.Raw, source)
-      end
-    end)
+  # @doc false
+  def exporter_callback({:metrics, metrics}, config, opts \\ []) do
+    if Keyword.get(opts, :flow, false) do
+      metrics
+      |> Stream.flat_map(fn metric ->
+        OtelMetric.handle_metric(metric, config.resource, %{})
+      end)
+      |> Flow.from_enumerable(max_demand: 500, stages: System.schedulers_online())
+      |> Flow.map(fn event ->
+        user_id = Users.get_related_user_id(Map.get(event, "attributes"))
+        {user_id, event}
+      end)
+      |> Flow.group_by_key()
+      |> Flow.emit(:state)
+      |> Flow.stream()
+      |> Enum.to_list()
+    else
+      metrics
+      |> Enum.reduce(%{}, &metric_reducer(&1, &2, config.resource))
+      |> ingest_grouped_metrics()
+    end
 
     :ok
+  end
+
+  defp metric_reducer(metric, acc, resource) do
+    for event <- OtelMetric.handle_metric(metric, resource, %{}), reduce: acc do
+      acc ->
+        user_id = Users.get_related_user_id(Map.get(event, "attributes"))
+        Map.update(acc, user_id, [event], &[event | &1])
+    end
+  end
+
+  defp ingest_grouped_metrics(grouped_events) do
+    Enum.each(grouped_events, fn {user_id, user_events} ->
+      with %Sources.Source{} = source <-
+             Sources.Cache.get_by(user_id: user_id, system_source_type: :metrics) do
+        source
+        |> Sources.Cache.preload_rules()
+        |> Sources.refresh_source_metrics()
+        |> then(&Processor.ingest(user_events, Logs.Raw, &1))
+      end
+    end)
   end
 
   @doc """
   Intercepts Logger messages related to specific users, and send them to the respective
   System Source when the user has activated it
   """
-  def log_interceptor(log_event, _) do
-    with %{meta: meta} <- log_event,
-         user_id when is_integer(user_id) <- Users.get_related_user_id(meta),
+  def log_interceptor(%{meta: meta} = log_event, _) do
+    with user_id when is_integer(user_id) <- Users.get_related_user_id(meta),
          %{system_monitoring: true} <- Users.Cache.get(user_id),
-         %{} = source <- get_system_source_logs(user_id) do
-      LogflareLogger.Formatter.format(
-        log_event.level,
-        format_message(log_event),
-        get_datetime(),
-        meta
-      )
+         %Sources.Source{} = source <- get_system_source_logs(user_id) do
+      log_event.level
+      |> LogflareLogger.Formatter.format(format_message(log_event), get_datetime(), meta)
       |> List.wrap()
       |> Processor.ingest(Logs.Raw, source)
 
@@ -132,20 +147,28 @@ defmodule Logflare.Backends.UserMonitoring do
     end
   end
 
-  defp get_system_source_logs(user_id),
-    do:
-      Sources.Cache.get_by(user_id: user_id, system_source_type: :logs)
-      |> Sources.refresh_source_metrics()
-      |> Sources.Cache.preload_rules()
+  def log_interceptor(_, _), do: :ignore
 
-  defp format_message(event),
-    do:
-      :logger_formatter.format(event, %{single_line: true, template: [:msg]})
-      |> IO.iodata_to_binary()
+  defp get_system_source_logs(user_id) do
+    Sources.Cache.get_by_and_preload_rules(user_id: user_id, system_source_type: :logs)
+    |> Sources.refresh_source_metrics_for_ingest()
+  end
+
+  defp format_message(%{msg: {:string, msg}}), do: msg
+  defp format_message(%{msg: {:report, report}}), do: inspect(report)
+
+  defp format_message(%{msg: {format, args}}) when is_list(args),
+    do: :io_lib.format(format, args) |> IO.iodata_to_binary()
+
+  defp format_message(event) do
+    event
+    |> :logger_formatter.format(%{single_line: true, template: [:msg]})
+    |> IO.iodata_to_binary()
+  end
 
   defp get_datetime do
-    dt = NaiveDateTime.utc_now()
-    {date, {hour, minute, second}} = NaiveDateTime.to_erl(dt)
-    {date, {hour, minute, second, dt.microsecond}}
+    us = System.system_time(:microsecond)
+    {date, {h, m, s}} = :calendar.system_time_to_universal_time(div(us, 1_000_000), :second)
+    {date, {h, m, s, {rem(us, 1_000_000), 6}}}
   end
 end
