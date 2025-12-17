@@ -140,7 +140,8 @@ defmodule Logflare.Backends.UserMonitoring do
       |> List.wrap()
       |> Processor.ingest(Logs.Raw, source)
 
-      :stop
+      # do not block the event from being shipped.
+      :ignore
     else
       _ -> :ignore
     end
