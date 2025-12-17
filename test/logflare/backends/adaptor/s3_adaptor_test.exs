@@ -1,5 +1,5 @@
 defmodule Logflare.Backends.Adaptor.S3AdaptorTest do
-  use Logflare.DataCase, async: false
+  use Logflare.DataCase, async: true
 
   alias Logflare.Backends.Adaptor.S3Adaptor
 

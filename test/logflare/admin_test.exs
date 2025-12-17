@@ -1,5 +1,5 @@
 defmodule Logflare.AdminTest do
-  use Logflare.DataCase, async: false
+  use Logflare.DataCase, async: true
 
   alias Logflare.Admin
 

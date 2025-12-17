@@ -1,5 +1,5 @@
 defmodule Logflare.Logs.SearchTest do
-  use Logflare.DataCase, async: false
+  use Logflare.DataCase, async: true
 
   alias Logflare.Backends.Adaptor.BigQueryAdaptor
   alias Logflare.Logs.Search
