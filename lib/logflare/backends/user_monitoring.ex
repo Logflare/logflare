@@ -34,7 +34,8 @@ defmodule Logflare.Backends.UserMonitoring do
         name: :user_metrics_exporter,
         otlp_endpoint: "",
         export_period: export_period,
-        max_concurrency: System.schedulers_online()
+        max_concurrency: System.schedulers_online(),
+        max_batch_size: 2500
       ]
 
     [{OtelMetricExporter, otel_exporter_opts}]
