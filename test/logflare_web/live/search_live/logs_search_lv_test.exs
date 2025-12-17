@@ -489,6 +489,35 @@ defmodule LogflareWeb.Source.SearchLVTest do
                       %_{jobCreationMode: "JOB_CREATION_OPTIONAL", parameterMode: "POSITIONAL"}}
     end
 
+    test "count distinct aggregation", %{conn: conn, source: source} do
+      pid = self()
+
+      stub(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, fn _conn, _proj_id, opts ->
+        if opts[:body].query =~ "COUNT(DISTINCT" do
+          send(pid, {:ok, :countd})
+        end
+
+        {:ok, TestUtils.gen_bq_response(%{"event_message" => "test message"})}
+      end)
+
+      {:ok, view, _html} = live(conn, Routes.live_path(conn, SearchLV, source.id))
+
+      render_change(view, :start_search, %{
+        "search" => %{
+          @default_search_params
+          | "querystring" => "c:countd(event_message) c:group_by(t::hour)",
+            "chart_aggregate" => "countd",
+            "chart_period" => "hour"
+        }
+      })
+
+      TestUtils.retry_assert(fn ->
+        html = view |> element("#logs-list-container") |> render()
+        assert html =~ "test message"
+        assert_receive {:ok, :countd}
+      end)
+    end
+
     test "bug: top-level key with nested key filters", %{conn: conn, source: source} do
       # ref https://www.notion.so/supabase/Backend-Search-Error-187112eabd094dcc8042c6952f4f5fac
 
