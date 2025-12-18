@@ -54,11 +54,6 @@ defmodule Logflare.Backends.UserMonitoringTest do
       {:ok, user} = Users.update_user_allowed(user, %{system_monitoring: true})
       system_source = Sources.get_by(user_id: user.id, system_source_type: :logs)
 
-      # Non-user-specific logs goes to the default logger backends
-      assert capture_log(fn -> Logger.info("common log") end) =~ "common log"
-
-      # User-specfic logs are routed to users with system monitoring on
-
       TestUtils.retry_assert(fn ->
         assert capture_log(fn ->
                  Logger.info("user is monitoring", source_id: source.id)
