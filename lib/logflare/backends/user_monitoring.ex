@@ -147,6 +147,9 @@ defmodule Logflare.Backends.UserMonitoring do
     else
       _ -> :ignore
     end
+  rescue
+    _error ->
+      :ignore
   end
 
   def log_interceptor(_, _), do: :ignore

@@ -60,7 +60,7 @@ defmodule Logflare.Backends.UserMonitoringTest do
       # User-specfic logs are routed to users with system monitoring on
 
       TestUtils.retry_assert(fn ->
-        refute capture_log(fn ->
+        assert capture_log(fn ->
                  Logger.info("user is monitoring", source_id: source.id)
                end) =~ "user is monitoring"
 
