@@ -51,13 +51,16 @@ defmodule Logflare.Rules.Cache do
       {:source_id, source_id} -> {:list_by_source_id, [source_id]}
       {:backend_id, backend_id} -> {:list_by_backend_id, [backend_id]}
     end)
-    |> Enum.reduce(0, fn key, acc ->
-      case Cachex.take(__MODULE__, key) do
-        {:ok, nil} -> acc
-        {:ok, _value} -> acc + 1
-      end
+    |> then(fn entries ->
+      Cachex.execute(Rules.Cache, fn worker ->
+        Enum.reduce(entries, 0, fn k, acc ->
+          case Cachex.take(worker, k) do
+            {:ok, nil} -> acc
+            {:ok, _value} -> acc + 1
+          end
+        end)
+      end)
     end)
-    |> then(&{:ok, &1})
   end
 
   defp apply_repo_fun(fun, args) do
