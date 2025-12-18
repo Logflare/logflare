@@ -334,11 +334,11 @@ defmodule Logflare.AlertingTest do
       assert {:ok,
               %Quantum.Job{
                 run_strategy: %Quantum.RunStrategy.Local{},
-                task: {Logflare.Alerting, :run_alert, [%AlertQuery{id: ^alert_id}, :scheduled]}
+                task: {Logflare.Alerting, :run_alert, [^alert_id, :scheduled]}
               }} = Alerting.upsert_alert_job(alert)
 
       assert %Quantum.Job{
-               task: {Logflare.Alerting, :run_alert, [%AlertQuery{id: ^alert_id}, :scheduled]}
+               task: {Logflare.Alerting, :run_alert, [^alert_id, :scheduled]}
              } = Alerting.get_alert_job(alert_id)
 
       assert {:ok, _} = Alerting.delete_alert_job(alert)
@@ -361,7 +361,7 @@ defmodule Logflare.AlertingTest do
       Alerting.upsert_alert_job(alert)
       original_job = Alerting.get_alert_job(alert.id)
       assert Alerting.get_alert_job(alert.id)
-      new_alert = %{alert | query: "select 1"}
+      new_alert = %{alert | cron: "0 0 2 * *"}
       Alerting.upsert_alert_job(new_alert)
       assert original_job != Alerting.get_alert_job(alert.id)
     end
@@ -371,7 +371,7 @@ defmodule Logflare.AlertingTest do
 
       assert [
                %Quantum.Job{
-                 task: {Logflare.Alerting, :run_alert, [%AlertQuery{id: ^alert_id}, :scheduled]}
+                 task: {Logflare.Alerting, :run_alert, [^alert_id, :scheduled]}
                }
              ] = Alerting.init_alert_jobs()
 
@@ -408,7 +408,7 @@ defmodule Logflare.AlertingTest do
 
         assert %Quantum.Job{
                  name: ^job_name,
-                 task: {Logflare.Alerting, :run_alert, [%AlertQuery{id: ^alert_id}, :scheduled]}
+                 task: {Logflare.Alerting, :run_alert, [^alert_id, :scheduled]}
                } = Alerting.get_alert_job(alert_id)
       end)
     end
