@@ -16,8 +16,6 @@ import Logflare.Factory
 Mimic.copy(Logflare.Logs.Processor)
 Mimic.stub(Processor, :ingest, fn _, _, _ -> :ok end)
 
-IO.puts("Setting up test data...")
-
 # Create users with different monitoring states
 user_with_monitoring = insert(:user, system_monitoring: true)
 user_without_monitoring = insert(:user, system_monitoring: false)
@@ -56,8 +54,6 @@ Sources.Cache.get_by(user_id: user_with_monitoring.id, system_source_type: :metr
 Logflare.Backends.Cache.get_backend(backend.id)
 Logflare.Endpoints.Cache.get_endpoint_query(endpoint.id)
 
-IO.puts("Test data setup complete.\n")
-
 # ============================================================================
 # Build test inputs
 # ============================================================================
@@ -74,9 +70,6 @@ keep_metric_no_user = %{"unrelated_key" => "value"}
 # ============================================================================
 # Benchmark: keep_metric_function/1
 # ============================================================================
-IO.puts("=" |> String.duplicate(70))
-IO.puts("Benchmarking keep_metric_function/1")
-IO.puts("=" |> String.duplicate(70))
 
 Benchee.run(
   %{
@@ -97,5 +90,3 @@ Benchee.run(
   time: 3,
   warmup: 1
 )
-
-IO.puts("\nBenchmark complete!")

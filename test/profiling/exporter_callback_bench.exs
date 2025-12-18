@@ -17,8 +17,6 @@ import Logflare.Factory
 Mimic.copy(Logflare.Logs.Processor)
 Mimic.stub(Processor, :ingest, fn _, _, _ -> :ok end)
 
-IO.puts("Setting up test data...")
-
 # Create users with different monitoring states
 user_with_monitoring = insert(:user, system_monitoring: true)
 
@@ -137,9 +135,6 @@ metrics_10k =
 # ============================================================================
 # Benchmark: exporter_callback/2
 # ============================================================================
-IO.puts("\n" <> String.duplicate("=", 70))
-IO.puts("Benchmarking exporter_callback/2")
-IO.puts(String.duplicate("=", 70))
 
 Benchee.run(
   %{
@@ -161,5 +156,3 @@ Benchee.run(
   time: 3,
   warmup: 1
 )
-
-IO.puts("\nBenchmarks complete!")
