@@ -3,10 +3,9 @@ defmodule Logflare.Logs.Otel do
   Shared functionality between OtelMetrics and OtelTraces.
   """
 
-  alias Opentelemetry.Proto.Common.V1.KeyValue
   alias Opentelemetry.Proto.Common.V1.AnyValue
-  alias Opentelemetry.Proto.Common.V1.ArrayValue
   alias Opentelemetry.Proto.Common.V1.InstrumentationScope
+  alias Opentelemetry.Proto.Common.V1.KeyValue
   alias Opentelemetry.Proto.Resource.V1.Resource
 
   @doc """
@@ -29,13 +28,15 @@ defmodule Logflare.Logs.Otel do
     end)
   end
 
+  def handle_resource(resource) when is_map(resource), do: %{}
+
   @doc """
   Extracts the project name from the *handled* resource
 
   By convention, that's the service name.
   """
   def resource_project(handled_resource) when is_non_struct_map(handled_resource) do
-    handled_resource["service"]["name"]
+    handled_resource["service"]["name"] || handled_resource["service.name"]
   end
 
   @doc """
@@ -56,12 +57,9 @@ defmodule Logflare.Logs.Otel do
   Transforms a KeyValue struct into a tuple
   """
   @spec extract_key_value(KeyValue.t()) :: {String.t(), term()}
-  def extract_key_value(%KeyValue{key: key, value: nil}), do: {key, nil}
+  def extract_key_value(%{key: key, value: nil}), do: {key, nil}
 
-  def extract_key_value(%KeyValue{
-        key: key,
-        value: value
-      }) do
+  def extract_key_value(%{key: key, value: value}) do
     {key, extract_value(value)}
   end
 
@@ -85,7 +83,7 @@ defmodule Logflare.Logs.Otel do
       123
   """
   @spec extract_value(AnyValue.t() | nil | term()) :: term()
-  def extract_value(%AnyValue{value: {:array_value, %ArrayValue{values: values}}}) do
+  def extract_value(%{value: {:array_value, %{values: values}}}) do
     Enum.map(values, &extract_value/1)
   end
 

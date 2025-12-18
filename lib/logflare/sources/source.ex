@@ -354,6 +354,14 @@ defmodule Logflare.Sources.Source do
       iex> recommended_query_fields(source)
       ["id", "timestamp", "m.user_id", "status"]
 
+
+    with trailing `!` for `:suggested_keys`:
+
+      iex> source = %Source{bigquery_clustering_fields: "id,timestamp", suggested_keys: "m.user_id!,status"}
+      iex> recommended_query_fields(source)
+      ["id", "timestamp", "m.user_id", "status"]
+
+
       iex> source = %Source{bigquery_clustering_fields: nil, suggested_keys: ""}
       iex> recommended_query_fields(source)
       []
@@ -367,6 +375,7 @@ defmodule Logflare.Sources.Source do
     suggested_keys =
       (source.suggested_keys || "")
       |> String.split(",", trim: true)
+      |> Enum.map(fn key -> key |> String.trim() |> String.trim_trailing("!") end)
 
     clustering_fields ++ suggested_keys
   end

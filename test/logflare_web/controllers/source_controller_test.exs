@@ -71,7 +71,7 @@ defmodule LogflareWeb.SourceControllerTest do
 
     defp nav_and_assert_admin_link(conn, team_name, team_id) do
       conn
-      |> visit(~p"/dashboard")
+      |> visit(~p"/")
       |> then(fn session ->
         try do
           click_link(session, team_name)
