@@ -1,5 +1,5 @@
 defmodule Logflare.Google.BigQuery.GenUtilsTest do
-  use Logflare.DataCase, async: false
+  use Logflare.DataCase, async: true
 
   alias Logflare.Google.BigQuery.GenUtils
 

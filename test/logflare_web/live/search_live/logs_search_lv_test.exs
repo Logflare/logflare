@@ -1451,6 +1451,21 @@ defmodule LogflareWeb.Source.SearchLVTest do
         assert html =~ ~r/#{path}[^"<]*t=#{team_user.team_id}/
       end
     end
+
+    test "search page without t= param assigns team context and preserves it in links", %{
+      conn: conn,
+      source: source,
+      team_user: team_user
+    } do
+      {:ok, view, html} =
+        live(
+          conn,
+          ~p"/sources/#{source}/search?querystring=test&tailing%3F=false"
+        )
+
+      assert html =~ source.name
+      assert view |> has_element?(~s|a[href="/sources/#{source.id}?t=#{team_user.team_id}"]|)
+    end
   end
 
   defp get_view_assigns(view) do

@@ -1,6 +1,6 @@
 defmodule Logflare.ApplicationTest do
   @moduledoc false
-  use ExUnit.Case, async: false
+  use ExUnit.Case, async: true
 
   describe "datadog_connection_pools/0" do
     setup do

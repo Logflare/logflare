@@ -75,7 +75,8 @@
       <% end %>
     </ul>
     <%= if assigns[:user] do %>
-      <ul class="navbar-nav ml-auto">
+      <ul class="navbar-nav ml-auto tw-flex tw-gap-2">
+        <.team_switcher :if={assigns[:teams]} team_context={Logflare.Teams.TeamContext.build(assigns)} teams={assigns[:teams]} current_path={@conn.request_path <> "?" <> @conn.query_string} />
         <%= if assigns[:plan] && (assigns[:plan].name == "Free" || assigns[:plan].name == "Legacy") do %>
           <li class="nav-item active">
             <.team_link href={~p"/billing/edit"} team={assigns[:team]} class="nav-link btn btn-dark text-white" style="min-width: 8em;">Upgrade</.team_link>

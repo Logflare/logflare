@@ -1,5 +1,5 @@
 defmodule Logflare.TelemetryTest do
-  use Logflare.DataCase, async: false
+  use Logflare.DataCase, async: true
 
   alias Logflare.Telemetry
   alias Logflare.TestUtils

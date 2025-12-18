@@ -96,7 +96,7 @@ defmodule LogflareWeb.EndpointsLive do
     socket =
       socket
       |> assign(:show_endpoint, endpoint)
-      |> LogflareWeb.AuthLive.assign_context_by_resource(endpoint, user.email)
+      |> maybe_assign_team_context(params, endpoint)
       |> then(fn
         socket when endpoint != nil ->
           {:ok, parsed_result} =
@@ -229,12 +229,14 @@ defmodule LogflareWeb.EndpointsLive do
 
     endpoint_language = get_current_endpoint_language(socket)
     redact_pii = socket.assigns.redact_pii
+    backend_id = Ecto.Changeset.get_field(socket.assigns.endpoint_changeset, :backend_id)
 
     case Endpoints.run_query_string(user, {endpoint_language, query_string},
            params: query_params,
            parsed_labels: parsed_labels,
            use_query_cache: false,
-           redact_pii: redact_pii
+           redact_pii: redact_pii,
+           backend_id: backend_id
          ) do
       {:ok, %{rows: rows, total_bytes_processed: total_bytes_processed}} ->
         {:noreply,
@@ -482,4 +484,10 @@ defmodule LogflareWeb.EndpointsLive do
   end
 
   defp maybe_redact_query(query, _redact_pii), do: query
+
+  defp maybe_assign_team_context(socket, %{"t" => _team_id}, _endpoint), do: socket
+
+  defp maybe_assign_team_context(socket, _params, endpoint) do
+    LogflareWeb.AuthLive.assign_context_by_resource(socket, endpoint, socket.assigns.user.email)
+  end
 end
