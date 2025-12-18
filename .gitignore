@@ -96,3 +96,7 @@ dev-*
 .treq
 # Rust binary artifacts
 /target/
+
+# Added by Treq
+.jj/
+.treq/
