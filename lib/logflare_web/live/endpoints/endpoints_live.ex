@@ -229,12 +229,14 @@ defmodule LogflareWeb.EndpointsLive do
 
     endpoint_language = get_current_endpoint_language(socket)
     redact_pii = socket.assigns.redact_pii
+    backend_id = Ecto.Changeset.get_field(socket.assigns.endpoint_changeset, :backend_id)
 
     case Endpoints.run_query_string(user, {endpoint_language, query_string},
            params: query_params,
            parsed_labels: parsed_labels,
            use_query_cache: false,
-           redact_pii: redact_pii
+           redact_pii: redact_pii,
+           backend_id: backend_id
          ) do
       {:ok, %{rows: rows, total_bytes_processed: total_bytes_processed}} ->
         {:noreply,
