@@ -7,6 +7,7 @@ defmodule Logflare.Logs.SearchOperationsTest do
   alias Logflare.Backends.Adaptor.BigQueryAdaptor
   alias Logflare.Logs.SearchOperation, as: SO
   alias Logflare.Logs.SearchOperations
+  alias Logflare.Lql.Parser
   alias Logflare.Lql.Rules.ChartRule
   alias Logflare.Lql.Rules.FilterRule
   alias Logflare.Lql.Rules.SelectRule
@@ -223,6 +224,56 @@ defmodule Logflare.Logs.SearchOperationsTest do
         # Suggested keys should be selected
         assert sql =~ "request_id"
         assert sql =~ "user_id"
+      end)
+    end
+
+    test "strips trailing exclamation point when working with `suggested_keys`", %{so: so} do
+      GoogleApi.BigQuery.V2.Api.Tables
+      |> stub(:bigquery_tables_patch, fn _conn, _project_id, _dataset_id, _table_name, _opts ->
+        {:ok, %{}}
+      end)
+
+      source =
+        so.source
+        |> Ecto.Changeset.change(suggested_keys: "project!")
+        |> Logflare.Repo.update!()
+
+      pid =
+        start_supervised!(
+          {Schema,
+           source: source,
+           bigquery_project_id: "some-project",
+           bigquery_dataset_id: "some-dataset"}
+        )
+
+      Schema.update(
+        pid,
+        build(:log_event, project: "my-project"),
+        so.source
+      )
+
+      Logflare.Mailer
+      |> expect(:deliver, 1, fn _ -> :ok end)
+
+      TestUtils.retry_assert(fn ->
+        Cachex.clear(Logflare.SourceSchemas.Cache)
+
+        schema = TestUtils.build_bq_schema(%{"project" => "my-project"})
+        {:ok, lql_rules} = Parser.parse("-project:NULL", schema)
+
+        so =
+          %{so | source: source, lql_rules: lql_rules}
+          |> SearchOperations.apply_query_defaults()
+          |> SearchOperations.apply_select_rules()
+
+        {:ok, {sql, _}} = BigQueryAdaptor.ecto_to_sql(so.query, [])
+
+        assert sql =~ "t0.event_message"
+        assert sql =~ "t0.timestamp"
+        assert sql =~ "t0.id"
+
+        assert sql =~ "project"
+        refute sql =~ "project!"
       end)
     end
 
