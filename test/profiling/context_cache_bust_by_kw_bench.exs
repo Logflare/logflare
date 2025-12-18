@@ -16,37 +16,11 @@ make_input = fn sources_num, rules_num ->
   end
 end
 
-defmodule FakeRules.Cache do
-  @behaviour Logflare.ContextCache
-
-  @impl true
-  def bust_by(kw) do
-    kw
-    |> Enum.map(fn
-      {:source_id, source_id} -> {:list_by_source_id, [source_id]}
-      {:backend_id, backend_id} -> {:list_by_backend_id, [backend_id]}
-    end)
-    |> then(fn entries ->
-      Cachex.execute(Rules.Cache, fn worker ->
-        Enum.reduce(entries, 0, fn k, acc ->
-          case Cachex.take(worker, k) do
-            {:ok, nil} -> acc
-            {:ok, _value} -> acc + 1
-          end
-        end)
-      end)
-    end)
-  end
-end
-
 Benchee.run(
   %{
     "bust_keys by primary key" => fn [{_source, rule} | _] ->
       pkey = rule.id
       ContextCache.bust_keys([{Rules, pkey}])
-    end,
-    "bust_keys by relation key with Cachex.execute" => fn [{source, _rule} | _] ->
-      ContextCache.bust_keys([{FakeRules, source_id: source.id}])
     end,
     "bust_keys by relation key" => fn [{source, _rule} | _] ->
       ContextCache.bust_keys([{Rules, source_id: source.id}])
@@ -68,3 +42,18 @@ Benchee.run(
   time: 4,
   memory_time: 2
 )
+
+##### With input 1K sources with 20 rules #####
+# Name                                ips        average  deviation         median         99th %
+# bust_keys by relation key      207.70 K     0.00481 ms    ±67.05%     0.00396 ms      0.0247 ms
+# bust_keys by primary key        0.186 K        5.36 ms     ±8.86%        5.26 ms        8.34 ms
+
+# Comparison:
+# bust_keys by relation key      207.70 K
+# bust_keys by primary key        0.186 K - 1113.70x slower +5.36 ms
+
+# Memory usage statistics:
+
+# Name                         Memory usage
+# bust_keys by relation key       0.0229 MB
+# bust_keys by primary key         19.18 MB - 839.47x memory usage +19.16 MB
