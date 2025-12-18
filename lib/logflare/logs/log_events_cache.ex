@@ -8,8 +8,6 @@ defmodule Logflare.Logs.LogEvents.Cache do
   @cache __MODULE__
 
   def child_spec(_) do
-    stats = Application.get_env(:logflare, :cache_stats, false)
-
     %{
       id: __MODULE__,
       name: __MODULE__,
@@ -21,7 +19,7 @@ defmodule Logflare.Logs.LogEvents.Cache do
           [
             hooks:
               [
-                if(stats, do: Utils.cache_stats()),
+                Utils.cache_stats(),
                 Utils.cache_limit(15_000)
               ]
               |> Enum.filter(& &1),

@@ -30,8 +30,6 @@ defmodule Logflare.Logs.RejectedLogEvents do
   @cache __MODULE__
 
   def child_spec(_) do
-    stats = Application.get_env(:logflare, :cache_stats, false)
-
     %{
       id: @cache,
       start:
@@ -42,7 +40,7 @@ defmodule Logflare.Logs.RejectedLogEvents do
              expiration: Utils.cache_expiration_min(60),
              hooks:
                [
-                 if(stats, do: Utils.cache_stats()),
+                 Utils.cache_stats(),
                  Utils.cache_limit(10_000)
                ]
                |> Enum.filter(& &1)

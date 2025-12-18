@@ -65,23 +65,21 @@ defmodule Logflare.Telemetry do
   end
 
   defp metrics do
-    cache_stats? = Application.get_env(:logflare, :cache_stats, false)
-
     cache_metrics =
-      if cache_stats? do
-        Enum.flat_map(@caches, fn {_cache, metric} ->
-          [
-            last_value("cachex.#{metric}.purge"),
-            last_value("cachex.#{metric}.stats"),
-            last_value("cachex.#{metric}.evictions"),
-            last_value("cachex.#{metric}.expirations"),
-            last_value("cachex.#{metric}.operations"),
-            last_value("cachex.#{metric}.total_heap_size", unit: {:byte, :megabyte})
-          ]
-        end)
-      else
-        []
-      end
+      Enum.flat_map(@caches, fn {_cache, metric} ->
+        [
+          last_value("cachex.#{metric}.purge"),
+          last_value("cachex.#{metric}.stats"),
+          last_value("cachex.#{metric}.evictions"),
+          last_value("cachex.#{metric}.expirations"),
+          last_value("cachex.#{metric}.operations"),
+          last_value("cachex.#{metric}.total_heap_size", unit: {:byte, :megabyte}),
+          last_value("cachex.#{metric}.hits"),
+          last_value("cachex.#{metric}.misses"),
+          last_value("cachex.#{metric}.hit_rate"),
+          last_value("cachex.#{metric}.miss_rate")
+        ]
+      end)
 
     phoenix_metrics = [
       distribution("phoenix.endpoint.stop.duration", unit: {:native, :millisecond}),
@@ -103,7 +101,11 @@ defmodule Logflare.Telemetry do
       last_value("vm.total_run_queue_lengths.total"),
       last_value("vm.total_run_queue_lengths.cpu"),
       last_value("vm.total_run_queue_lengths.io"),
-      last_value("logflare.system.observer.metrics.total_active_tasks")
+      last_value("logflare.system.observer.metrics.total_active_tasks"),
+      last_value("logflare.system.scheduler.utilization",
+        tags: [:name, :type],
+        unit: {:percent, :none}
+      )
     ]
 
     broadway_metrics = [
@@ -211,14 +213,7 @@ defmodule Logflare.Telemetry do
   end
 
   defp periodic_measurements do
-    cache_stats? = Application.get_env(:logflare, :cache_stats, false)
-
-    cachex_metrics =
-      if cache_stats? do
-        [{__MODULE__, :cachex_metrics, []}]
-      else
-        []
-      end
+    cachex_metrics = [{__MODULE__, :cachex_metrics, []}]
 
     process_metrics =
       [
@@ -245,6 +240,10 @@ defmodule Logflare.Telemetry do
         evictions: Map.get(stats, :evictions),
         expirations: Map.get(stats, :expirations),
         operations: Map.get(stats, :operations),
+        hits: Map.get(stats, :hits),
+        misses: Map.get(stats, :misses),
+        hit_rate: Map.get(stats, :hit_rate),
+        miss_rate: Map.get(stats, :miss_rate),
         total_heap_size: total_heap_size
       }
 

@@ -7,8 +7,6 @@ defmodule Logflare.Endpoints.Cache do
   alias Logflare.Utils
 
   def child_spec(_) do
-    stats = Application.get_env(:logflare, :cache_stats, false)
-
     %{
       id: __MODULE__,
       start:
@@ -18,7 +16,7 @@ defmodule Logflare.Endpoints.Cache do
            [
              hooks:
                [
-                 if(stats, do: Utils.cache_stats()),
+                 Utils.cache_stats(),
                  Utils.cache_limit(100_000)
                ]
                |> Enum.reject(&is_nil/1),

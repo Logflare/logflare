@@ -18,7 +18,7 @@ defmodule Logflare.SystemMetricsSup do
       SystemMetrics.AllLogsLogged,
       SystemMetrics.AllLogsLogged.Poller,
       SystemMetrics.Schedulers.Poller,
-      SystemMetrics.Cachex.Poller,
+      # SystemMetrics.Cachex.Poller,
       # telemetry poller
       {
         :telemetry_poller,
