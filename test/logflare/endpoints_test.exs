@@ -1,9 +1,10 @@
 defmodule Logflare.EndpointsTest do
   use Logflare.DataCase
 
+  alias Logflare.Backends.Adaptor.ClickHouseAdaptor
+  alias Logflare.Backends.Adaptor.PostgresAdaptor
   alias Logflare.Endpoints
   alias Logflare.Endpoints.Query
-  alias Logflare.Backends.Adaptor.PostgresAdaptor
 
   setup do
     insert(:plan)
@@ -282,6 +283,53 @@ defmodule Logflare.EndpointsTest do
 
       assert {:ok, %{rows: [%{"testing" => _}]}} =
                Endpoints.run_query_string(user, {:bq_sql, query_string})
+    end
+
+    test "run_query_string/3 uses specified backend_id when provided" do
+      user = insert(:user)
+      insert(:source, user: user, name: "c")
+
+      # Create two ClickHouse backends for the same user
+      _backend1 = insert(:backend, user: user, type: :clickhouse)
+      backend2 = insert(:backend, user: user, type: :clickhouse)
+
+      test_pid = self()
+
+      expect(ClickHouseAdaptor, :execute_query, fn backend, _query, _opts ->
+        send(test_pid, {:backend_used, backend.id})
+        {:ok, [%{"testing" => "123"}]}
+      end)
+
+      query_string = "SELECT 1 as testing"
+
+      assert {:ok, %{rows: [%{"testing" => "123"}]}} =
+               Endpoints.run_query_string(user, {:ch_sql, query_string}, backend_id: backend2.id)
+
+      assert_received {:backend_used, backend_id}
+      assert backend_id == backend2.id
+    end
+
+    test "run_query_string/3 falls back to first backend of type when backend_id is nil" do
+      user = insert(:user)
+      insert(:source, user: user, name: "c")
+
+      backend = insert(:backend, user: user, type: :clickhouse)
+
+      test_pid = self()
+
+      expect(ClickHouseAdaptor, :execute_query, fn backend, _query, _opts ->
+        send(test_pid, {:backend_used, backend.id})
+        {:ok, [%{"testing" => "123"}]}
+      end)
+
+      query_string = "SELECT 1 as testing"
+
+      # When backend_id is not specified, it should fall back to finding by type
+      assert {:ok, %{rows: [%{"testing" => "123"}]}} =
+               Endpoints.run_query_string(user, {:ch_sql, query_string})
+
+      assert_received {:backend_used, backend_id}
+      assert backend_id == backend.id
     end
 
     test "run_query/1 applies PII redaction based on redact_pii flag" do

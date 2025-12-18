@@ -588,13 +588,15 @@ defmodule Logflare.Backends do
   end
 
   defp maybe_broadcast_and_route(source, log_events) do
-    if source.metrics.avg < 2 do
-      Source.ChannelTopics.broadcast_new(log_events)
+    case source.metrics do
+      %{avg: avg} when avg < 2 ->
+        Source.ChannelTopics.broadcast_new(log_events)
+
+      _ ->
+        :ok
     end
 
     SourceRouting.route_to_sinks_and_ingest(log_events, source)
-
-    :ok
   end
 
   # send to a specific backend
