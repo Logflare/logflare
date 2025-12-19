@@ -20,22 +20,14 @@ defmodule Logflare.Backends.UserMonitoring do
     otel_exporter_opts =
       [
         metrics: metrics(),
-        resource: %{
-          name: "Logflare",
-          service: %{
-            name: "Logflare",
-            version: Application.spec(:logflare, :vsn) |> to_string()
-          },
-          node: inspect(Node.self()),
-          cluster: Application.get_env(:logflare, :metadata)[:cluster]
-        },
+        resource: %{},
         export_callback: &exporter_callback/2,
         extract_tags: &extract_tags/2,
         name: :user_metrics_exporter,
         otlp_endpoint: "",
         export_period: export_period,
         max_concurrency: System.schedulers_online(),
-        max_batch_size: 2500
+        max_batch_size: 500
       ]
 
     [{OtelMetricExporter, otel_exporter_opts}]
@@ -84,7 +76,7 @@ defmodule Logflare.Backends.UserMonitoring do
 
   # @doc false
   def exporter_callback({:metrics, metrics}, config, opts \\ []) do
-    if Keyword.get(opts, :flow, true) do
+    if Keyword.get(opts, :flow, false) do
       metrics
       |> Stream.flat_map(fn metric ->
         OtelMetric.handle_metric(metric, config.resource, %{})
