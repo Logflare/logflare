@@ -14,7 +14,7 @@ defmodule Logflare.Backends.UserMonitoring do
     export_period =
       case Application.get_env(:logflare, :env) do
         :test -> 100
-        _ -> 60_000
+        _ -> 60_000 * 2
       end
 
     otel_exporter_opts =
@@ -27,7 +27,8 @@ defmodule Logflare.Backends.UserMonitoring do
         otlp_endpoint: "",
         export_period: export_period,
         max_concurrency: System.schedulers_online(),
-        max_batch_size: 500
+        max_batch_size: 500,
+        spawn_opt: [fullsweep_after: 10_000]
       ]
 
     [{OtelMetricExporter, otel_exporter_opts}]
