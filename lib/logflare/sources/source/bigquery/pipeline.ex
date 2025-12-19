@@ -227,8 +227,15 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
     }
   end
 
-  def stream_batch(%{source_token: source_token, system_source: system_source} = context, messages) do
-    Logger.metadata(source_id: source_token, source_token: source_token, system_source: system_source)
+  def stream_batch(
+        %{source_token: source_token, system_source: system_source} = context,
+        messages
+      ) do
+    Logger.metadata(
+      source_id: source_token,
+      source_token: source_token,
+      system_source: system_source
+    )
 
     :telemetry.span(
       [:logflare, :ingest, :pipeline, :stream_batch],
