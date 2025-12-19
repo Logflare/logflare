@@ -64,6 +64,8 @@ defmodule Logflare.Backends.UserMonitoring do
     ]
   end
 
+  def keep_metric_function(%{"system_source" => true}), do: false
+
   def keep_metric_function(metadata) do
     case Users.get_related_user_id(metadata) do
       nil -> false
@@ -133,6 +135,8 @@ defmodule Logflare.Backends.UserMonitoring do
   Intercepts Logger messages related to specific users, and send them to the respective
   System Source when the user has activated it
   """
+  def log_interceptor(%{meta: %{system_source: true}}, _), do: :ignore
+
   def log_interceptor(%{meta: meta} = log_event, _) do
     with user_id when is_integer(user_id) <- Users.get_related_user_id(meta),
          %{system_monitoring: true} <- Users.Cache.get(user_id),
