@@ -19,8 +19,7 @@ defmodule Logflare.Logs.OtelMetric do
 
   def handle_batch(resource_metrics, _source) when is_list(resource_metrics) do
     resource_metrics
-    |> Enum.map(&handle_resource_metrics/1)
-    |> List.flatten()
+    |> Enum.flat_map(&handle_resource_metrics/1)
   end
 
   def handle_resource_metrics(%_resource_metrics{
