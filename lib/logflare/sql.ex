@@ -340,6 +340,25 @@ defmodule Logflare.Sql do
   end
 
   @doc """
+  Extracts the raw table names found in a SQL query.
+
+  Useful for determining which sources are referenced before having a full source mapping.
+
+  ### Example
+
+      iex> extract_table_names("SELECT * FROM `my.source` WHERE id = 1")
+      {:ok, ["my.source"]}
+  """
+  @spec extract_table_names(String.t(), Keyword.t()) :: {:ok, [String.t()]} | {:error, String.t()}
+  def extract_table_names(query, opts \\ []) when is_list(opts) do
+    dialect = Keyword.get(opts, :dialect, "bigquery")
+
+    with {:ok, ast} <- Parser.parse(dialect, query) do
+      {:ok, find_all_source_names(ast)}
+    end
+  end
+
+  @doc """
   Extract out parameters from the SQL string.
 
   ### Example
