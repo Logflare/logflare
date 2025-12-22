@@ -42,7 +42,8 @@ defmodule Logflare.Backends.Adaptor.HttpBased.Pipeline do
         backend_id: backend.id,
         source_token: source.token,
         backend_token: backend.token,
-        client: client
+        client: client,
+        system_source: source.system_source
       }
     )
   end
@@ -76,7 +77,8 @@ defmodule Logflare.Backends.Adaptor.HttpBased.Pipeline do
         "source_id" => context[:source_id],
         "source_uuid" => context[:source_token],
         "backend_id" => context[:backend_id],
-        "backend_uuid" => context[:backend_token]
+        "backend_uuid" => context[:backend_token],
+        "system_source" => context[:system_source]
       }
 
     HttpBased.Client.send_events(context.client, events, backend, source, metadata)
