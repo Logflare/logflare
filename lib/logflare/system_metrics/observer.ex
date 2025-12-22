@@ -6,11 +6,6 @@ defmodule Logflare.SystemMetrics.Observer do
     observer_metrics = get_metrics()
     mem_metrics = get_memory()
 
-    Logger.info("Observer metrics!",
-      observer_metrics: observer_metrics,
-      observer_memory: mem_metrics
-    )
-
     :telemetry.execute([:logflare, :system, :observer, :metrics], observer_metrics)
     :telemetry.execute([:logflare, :system, :observer, :memory], mem_metrics)
   end
