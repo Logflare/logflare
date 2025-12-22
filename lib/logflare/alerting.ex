@@ -210,7 +210,7 @@ defmodule Logflare.Alerting do
   @spec create_alert_job_struct(AlertQuery.t()) :: Quantum.Job.t()
   def create_alert_job_struct(%AlertQuery{} = alert_query) do
     AlertsScheduler.new_job(run_strategy: Quantum.RunStrategy.Local)
-    |> Quantum.Job.set_task({__MODULE__, :run_alert, [alert_query, :scheduled]})
+    |> Quantum.Job.set_task({__MODULE__, :run_alert, [alert_query.id, :scheduled]})
     |> Quantum.Job.set_schedule(Crontab.CronExpression.Parser.parse!(alert_query.cron))
     |> Quantum.Job.set_name(to_job_name(alert_query))
   end
@@ -268,8 +268,17 @@ defmodule Logflare.Alerting do
 
   Send notifications if necessary configurations are set. If no results are returned from the query execution, no alert is sent.
   """
-  @spec run_alert(AlertQuery.t(), :scheduled) ::
+  @spec run_alert(AlertQuery.t() | integer(), :scheduled) ::
           :ok | {:error, :not_enabled} | {:error, :below_min_cluster_size}
+  def run_alert(alert_id, :scheduled) when is_integer(alert_id) do
+    # sync the alert job for the next run
+    sync_alert_job(alert_id)
+
+    if alert_query = get_alert_query_by(id: alert_id) do
+      run_alert(alert_query, :scheduled)
+    end
+  end
+
   def run_alert(%AlertQuery{} = alert_query, :scheduled) do
     # perform pre-run checks
     cfg = Application.get_env(:logflare, Logflare.Alerting)

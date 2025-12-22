@@ -173,6 +173,11 @@ config :logflare, Logflare.Scheduler,
       run_strategy: Quantum.RunStrategy.Local,
       schedule: "*/15 * * * *",
       task: {Logflare.Sources, :recent_events_touch, []}
+    ],
+    alerts_scheduler_sync: [
+      run_strategy: Quantum.RunStrategy.Local,
+      schedule: "0 * * * *",
+      task: {Logflare.Alerting, :sync_alert_jobs, []}
     ]
   ]
 
