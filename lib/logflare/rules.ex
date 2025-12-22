@@ -30,6 +30,11 @@ defmodule Logflare.Rules do
     |> Repo.all()
   end
 
+  def ruleset_by_source_id(id) do
+    rules = list_by_source_id(id)
+    RuleSet.make(rules)
+  end
+
   @doc """
   Lists rules that are related to some backend.
   """

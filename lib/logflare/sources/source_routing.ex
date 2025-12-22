@@ -7,24 +7,31 @@ defmodule Logflare.Logs.SourceRouting do
   alias Logflare.Backends.SourceSup
   alias Logflare.LogEvent, as: LE
   alias Logflare.Lql.Rules.FilterRule
+  alias Logflare.Rules
   alias Logflare.Rules.Rule
-  alias Logflare.Sources.Source
   alias Logflare.Sources
+  alias Logflare.Sources.Source
 
-  @spec route_to_sinks_and_ingest(LE.t(), Source.t()) :: LE.t()
+  @spec route_to_sinks_and_ingest(LE.t() | [LE.t()], Source.t()) :: LE.t()
   def route_to_sinks_and_ingest(events, source) when is_list(events),
     do: Enum.map(events, &route_to_sinks_and_ingest(&1, source))
 
   def route_to_sinks_and_ingest(%LE{via_rule: %Rule{}} = le, _source), do: le
 
   def route_to_sinks_and_ingest(%LE{via_rule: nil} = le, source) do
-    %Source{rules: rules} = Sources.Cache.preload_rules(source)
-
-    for %Rule{lql_filters: [_ | _]} = rule <- rules, route_with_lql_rules?(le, rule) do
+    for rule <- matching_rules(le, source) do
       do_routing(rule, le, source)
     end
 
     le
+  end
+
+  def matching_rules(le, source) do
+    rules = Rules.Cache.list_rules(source)
+
+    for %Rule{lql_filters: [_ | _]} = rule <- rules, route_with_lql_rules?(le, rule) do
+      rule
+    end
   end
 
   defp do_routing(%Rule{backend_id: backend_id} = rule, %LE{} = le, source)

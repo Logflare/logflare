@@ -44,6 +44,8 @@ defmodule Logflare.Rules.Cache do
   def list_by_source_id(id), do: apply_repo_fun(__ENV__.function, [id])
   def list_by_backend_id(id), do: apply_repo_fun(__ENV__.function, [id])
 
+  def ruleset_by_source_id(id), do: apply_repo_fun(__ENV__.function, [id])
+
   @impl ContextCache
   def bust_by(kw) do
     kw
