@@ -25,6 +25,40 @@ defmodule Logflare.SqlTest do
     end)
   end
 
+  describe "extract_table_names/2" do
+    test "extracts simple table names" do
+      assert {:ok, ["my_table"]} = Sql.extract_table_names("SELECT * FROM my_table")
+    end
+
+    test "extracts quoted table names" do
+      assert {:ok, ["my.source"]} = Sql.extract_table_names("SELECT * FROM `my.source`")
+    end
+
+    test "extracts multiple table names" do
+      query = "SELECT * FROM table1 JOIN table2 ON table1.id = table2.id"
+      {:ok, names} = Sql.extract_table_names(query)
+
+      assert "table1" in names
+      assert "table2" in names
+    end
+
+    test "extracts table names from CTE queries" do
+      query = """
+      WITH cte AS (SELECT * FROM source_table)
+      SELECT * FROM cte
+      """
+
+      {:ok, names} = Sql.extract_table_names(query)
+
+      assert "source_table" in names
+      refute "cte" in names
+    end
+
+    test "returns error for invalid SQL" do
+      assert {:error, _} = Sql.extract_table_names("INVALID SQL QUERY!!!")
+    end
+  end
+
   describe "bigquery dialect" do
     test "parser can handle struct definitions" do
       user = insert(:user)

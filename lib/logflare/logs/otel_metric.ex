@@ -15,10 +15,6 @@ defmodule Logflare.Logs.OtelMetric do
 
   alias Logflare.Logs.Otel
 
-  alias Opentelemetry.Proto.Metrics.V1.ResourceMetrics
-  alias Opentelemetry.Proto.Metrics.V1.ScopeMetrics
-  alias Opentelemetry.Proto.Metrics.V1.Metric
-
   @behaviour Logflare.Logs.Processor
 
   def handle_batch(resource_metrics, _source) when is_list(resource_metrics) do
@@ -27,29 +23,27 @@ defmodule Logflare.Logs.OtelMetric do
     |> List.flatten()
   end
 
-  defp handle_resource_metrics(%ResourceMetrics{resource: resource, scope_metrics: scope_metrics}) do
+  def handle_resource_metrics(%_resource_metrics{resource: resource, scope_metrics: scope_metrics}) do
     resource = Otel.handle_resource(resource)
     Enum.map(scope_metrics, &handle_scope_metric(&1, resource))
   end
 
-  defp handle_scope_metric(%ScopeMetrics{scope: scope, metrics: metrics}, resource) do
+  def handle_scope_metric(%_scope_metrics{scope: scope, metrics: metrics}, resource) do
     scope = Otel.handle_scope(scope)
     Enum.map(metrics, &handle_metric(&1, resource, scope))
   end
 
-  defp handle_metric(%Metric{} = metric, resource, scope) do
-    metadata = %{"type" => "metric"}
-
+  def handle_metric(%_metric{name: name, unit: unit, data: data}, resource, scope) do
     base = %{
-      "event_message" => metric.name,
-      "unit" => metric.unit,
-      "metadata" => metadata,
+      "event_message" => name,
+      "unit" => unit,
+      "metadata" => %{"type" => "metric"},
       "scope" => scope,
       "resource" => resource,
       "project" => Otel.resource_project(resource)
     }
 
-    handle_metric_data(metric.data, base)
+    handle_metric_data(data, base)
   end
 
   defp handle_metric_data({:gauge, %{data_points: data_points}}, base) do
