@@ -30,7 +30,7 @@ defmodule Logflare.Backends.IngestEventQueue do
       :public,
       :named_table,
       :set,
-      {:write_concurrency, false},
+      {:write_concurrency, :auto},
       {:read_concurrency, false},
       {:decentralized_counters, false}
     ])
@@ -68,7 +68,7 @@ defmodule Logflare.Backends.IngestEventQueue do
             :public,
             :set,
             {:decentralized_counters, false},
-            {:write_concurrency, true},
+            {:write_concurrency, :auto},
             {:read_concurrency, true}
           ])
 

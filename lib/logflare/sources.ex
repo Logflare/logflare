@@ -322,6 +322,14 @@ defmodule Logflare.Sources do
     |> Logflare.Repo.one()
   end
 
+  @spec get_by_name_and_user_access(User.t() | TeamUser.t(), String.t()) :: Source.t() | nil
+  def get_by_name_and_user_access(user, name) when is_binary(name) do
+    Source
+    |> Logflare.Teams.filter_by_user_access(user)
+    |> where([query], query.name == ^name)
+    |> Logflare.Repo.one()
+  end
+
   def get_rate_limiter_metrics(source, bucket: :default) do
     cluster_size = Cluster.Utils.cluster_size()
     node_metrics = get_node_rate_limiter_metrics(source, bucket: :default)

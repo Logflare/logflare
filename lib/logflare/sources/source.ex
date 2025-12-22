@@ -375,7 +375,7 @@ defmodule Logflare.Sources.Source do
     suggested_keys =
       (source.suggested_keys || "")
       |> String.split(",", trim: true)
-      |> Enum.map(fn key -> String.trim_trailing(key, "!") end)
+      |> Enum.map(fn key -> key |> String.trim() |> String.trim_trailing("!") end)
 
     clustering_fields ++ suggested_keys
   end
