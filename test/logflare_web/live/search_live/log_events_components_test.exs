@@ -128,5 +128,71 @@ defmodule LogflareWeb.SearchLive.LogEventsComponentsTest do
       # Assert logs list ul is NOT rendered when search_op_log_events is nil
       refute html =~ ~s|id="logs-list"|
     end
+
+    test "renders placeholder for log events with nil event_message", %{
+      source: source,
+      lql_rules: lql_rules
+    } do
+      log_event_without_message = %Logflare.LogEvent{
+        id: Ecto.UUID.generate(),
+        body: %{
+          "timestamp" => System.system_time(:microsecond),
+          "id" => Ecto.UUID.generate(),
+          "metadata" => %{"user_id" => 456}
+        },
+        source_id: source.id,
+        valid: true
+      }
+
+      search_op_log_events = %{rows: [log_event_without_message]}
+
+      html =
+        render_component(&LogEventComponents.logs_list/1, %{
+          @default_attrs
+          | lql_rules: lql_rules,
+            source: source,
+            search_op_log_events: search_op_log_events
+        })
+
+      assert html =~ "(empty event message)"
+      assert html =~ "tw-italic"
+      assert html =~ "tw-text-gray-500"
+    end
+
+    test "renders both normal and nil event_message log events", %{
+      source: source,
+      lql_rules: lql_rules
+    } do
+      normal_log_event =
+        build(:log_event,
+          message: "Normal log message",
+          metadata: %{user_id: 123},
+          source: source
+        )
+
+      log_event_without_message = %Logflare.LogEvent{
+        id: Ecto.UUID.generate(),
+        body: %{
+          "timestamp" => System.system_time(:microsecond),
+          "id" => Ecto.UUID.generate(),
+          "metadata" => %{"user_id" => 789}
+        },
+        source_id: source.id,
+        valid: true
+      }
+
+      search_op_log_events = %{rows: [normal_log_event, log_event_without_message]}
+
+      html =
+        render_component(&LogEventComponents.logs_list/1, %{
+          @default_attrs
+          | lql_rules: lql_rules,
+            source: source,
+            search_op_log_events: search_op_log_events
+        })
+
+      assert html =~ "Normal log message"
+      assert html =~ "(empty event message)"
+    end
   end
 end
