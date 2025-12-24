@@ -35,6 +35,7 @@ defmodule Logflare.Lql.Rules.ChartRule do
 
   ## Supported Aggregation Functions:
   - `:count` - count of events (works with `*` or any field)
+  - `:countd` - count of distinct values
   - `:avg` - arithmetic mean of numeric values
   - `:sum` - sum of numeric values
   - `:max` - maximum value

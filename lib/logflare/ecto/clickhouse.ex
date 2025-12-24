@@ -924,7 +924,7 @@ defmodule Logflare.Ecto.ClickHouse do
   end
 
   defp expr({:count, _, [expr, :distinct]}, sources, params, query) do
-    ["countDistinct(", expr(expr, sources, params, query), ?)]
+    ["count(distinct ", expr(expr, sources, params, query), ?)]
   end
 
   defp expr({:datetime_add, _, [datetime, count, interval]}, sources, params, query) do

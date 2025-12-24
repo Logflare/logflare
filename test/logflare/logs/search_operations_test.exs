@@ -140,6 +140,38 @@ defmodule Logflare.Logs.SearchOperationsTest do
       assert sql =~ "UNNEST"
       assert sql =~ "COUNT(f1.level)"
     end
+
+    test "text filter with count aggregation on event_message generates only one where clause",
+         %{base_so: base_so} do
+      text_filter = %FilterRule{
+        path: "event_message",
+        operator: :string_contains,
+        value: "metrics",
+        modifiers: %{}
+      }
+
+      chart_rule = %ChartRule{
+        path: "event_message",
+        aggregate: :count,
+        period: :hour,
+        value_type: :string
+      }
+
+      so = %{
+        base_so
+        | chart_rules: [chart_rule],
+          lql_meta_and_msg_filters: [text_filter],
+          query: from(base_so.source.bq_table_id)
+      }
+
+      so = SearchOperations.apply_numeric_aggs(so)
+      {:ok, {sql, _}} = BigQueryAdaptor.ecto_to_sql(so.query, [])
+
+      strpos_matches = Regex.scan(~r/STRPOS\([^,)]*event_message/i, sql)
+      assert length(strpos_matches) == 1, "SQL: #{sql}"
+
+      assert [%{params: [{"metrics", :any}]}] = so.query.wheres
+    end
   end
 
   describe "apply_select_rules/1" do

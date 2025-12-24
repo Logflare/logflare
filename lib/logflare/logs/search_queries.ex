@@ -62,10 +62,11 @@ defmodule Logflare.Logs.SearchQueries do
     })
   end
 
-  @spec select_merge_agg_value(any, :avg | :count | :sum | :max, atom()) :: Ecto.Query.t()
+  @spec select_merge_agg_value(any, :avg | :count | :countd | :sum | :max, atom()) ::
+          Ecto.Query.t()
   @spec select_merge_agg_value(
           any,
-          :avg | :count | :sum | :max,
+          :avg | :count | :countd | :sum | :max,
           atom(),
           :base_table | :joined_table
         ) :: Ecto.Query.t()
@@ -106,6 +107,16 @@ defmodule Logflare.Logs.SearchQueries do
       {:count, :joined_table} ->
         select_merge(query, [..., l], %{
           value: fragment("COUNT(?) as value", field(l, ^last_chart_field))
+        })
+
+      {:countd, :base_table} ->
+        select_merge(query, [t, ...], %{
+          value: fragment("COUNT(DISTINCT ?) as value", field(t, ^last_chart_field))
+        })
+
+      {:countd, :joined_table} ->
+        select_merge(query, [..., l], %{
+          value: fragment("COUNT(DISTINCT ?) as value", field(l, ^last_chart_field))
         })
 
       {:max, :base_table} ->
