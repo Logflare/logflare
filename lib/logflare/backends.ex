@@ -32,9 +32,9 @@ defmodule Logflare.Backends do
 
   defdelegate child_spec(arg), to: __MODULE__.Supervisor
 
-  @max_pending_buffer_len_per_queue 15_000
   @max_event_age_us 72 * 3_600 * 1_000_000
   @max_future_event_us 1 * 3_600 * 1_000_000
+  @max_pending_buffer_len_per_queue IngestEventQueue.max_queue_size()
 
   @type one_or_list_or_nil :: Backend.t() | [Backend.t()] | nil
 

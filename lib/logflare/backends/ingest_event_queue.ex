@@ -14,10 +14,14 @@ defmodule Logflare.Backends.IngestEventQueue do
 
   @ets_table_mapper :ingest_event_queue_mapping
   @ets_table :source_ingest_events
+  @max_queue_size 15_000
+
   @type source_backend_pid ::
           {Source.t() | pos_integer(), Backend.t() | pos_integer() | nil, pid() | nil}
   @type table_key :: {pos_integer(), pos_integer() | nil, pid() | nil}
   @type queues_key :: {pos_integer(), pos_integer() | nil}
+
+  def max_queue_size, do: @max_queue_size
 
   ## Server
   def start_link(_args) do
@@ -124,29 +128,27 @@ defmodule Logflare.Backends.IngestEventQueue do
   @spec add_to_table(source_backend_pid() | queues_key(), [LogEvent.t()]) ::
           :ok | {:error, :not_initialized}
   def add_to_table({sid, bid} = sid_bid, batch) when is_integer(sid) do
-    proc_counts =
-      list_counts(sid_bid)
-      |> Enum.sort_by(fn {_key, count} -> count end, :asc)
-      |> Enum.filter(fn
-        # exclude startup queue
-        {{_, _, nil}, _} -> false
-        {{_, _, _}, _} -> true
-      end)
+    startup_queue = {sid, bid, nil}
 
-    procs = Enum.map(proc_counts, fn {key, _count} -> key end)
-
-    if procs == [] do
-      # not yet started, add to startup queue
-      add_to_table({sid, bid, nil}, batch)
-    else
+    with all = [_ | _] <- list_counts(sid_bid),
+         available_queues = [_ | _] <-
+           Enum.reduce(all, [], fn
+             {{_, _, nil}, _}, acc -> acc
+             {_key, count}, acc when count >= @max_queue_size -> acc
+             {key, _count}, acc -> [key | acc]
+           end) do
       Logflare.Utils.chunked_round_robin(
         batch,
-        procs,
-        50,
+        available_queues,
+        100,
         fn chunk, target ->
           add_to_table(target, chunk)
         end
       )
+    else
+      _ ->
+        # no available queues, add to startup queue
+        add_to_table(startup_queue, batch)
     end
 
     :ok
