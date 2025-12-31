@@ -22,7 +22,7 @@ Logflare creates the three system sources and starts collecting data every 60 se
 
 ## System Sources
 
-To prevent infinite looping behaviour, system sources **do not** collect metrics or logs about themselves. Ingestion metrics about system sources will not be stored within a user's `system.metrics`, and logs relating to system sources will not be stored in a user's `system.logs`. These metrics and logs will be present within the server metrics and logs.
+To prevent infinite looping behaviour, system sources **do not** collect metrics or logs about themselves. Ingestion metrics about system sources will not be stored within a user's `system.metrics`, and logs relating to system sources will not be stored in a user's `system.logs`. These metrics and logs will be present within the server metrics and logs when self-hosting.
 
 ### system.metrics
 
