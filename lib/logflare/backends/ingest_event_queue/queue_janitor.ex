@@ -53,7 +53,7 @@ defmodule Logflare.Backends.IngestEventQueue.QueueJanitor do
   def do_drop(state, metrics) do
     sid_bid = {state.source_id, state.backend_id}
     # safety measure, drop all if still exceed
-    for {{_sid, bid, pid} = sid_bid_pid, size} <- IngestEventQueue.list_counts(sid_bid) do
+    for {_sid, bid, pid} = sid_bid_pid <- IngestEventQueue.list_queues(sid_bid) do
       if metrics.avg > 100 or bid != nil do
         IngestEventQueue.truncate_table(sid_bid_pid, :ingested, 0)
       else
