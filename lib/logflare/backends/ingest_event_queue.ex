@@ -123,6 +123,10 @@ defmodule Logflare.Backends.IngestEventQueue do
   Adds a record to a given source-backend's table queue.
 
   The record will be marked as :pending.
+
+  ## Options
+  - `:legacy` - When `true`, uses the pre-98e61fa47 implementation with chunk size 50
+    and multi-pass filtering. Defaults to `false`.
   """
   @spec add_to_table(source_backend_pid() | queues_key(), [LogEvent.t()], Keyword.t()) ::
           :ok | {:error, :not_initialized}
