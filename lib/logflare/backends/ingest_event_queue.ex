@@ -123,10 +123,6 @@ defmodule Logflare.Backends.IngestEventQueue do
   Adds a record to a given source-backend's table queue.
 
   The record will be marked as :pending.
-
-  ## Options
-  - `:legacy` - When `true`, uses the pre-98e61fa47 implementation with chunk size 50
-    and multi-pass filtering. Defaults to `false`.
   """
   @spec add_to_table(source_backend_pid() | queues_key(), [LogEvent.t()], Keyword.t()) ::
           :ok | {:error, :not_initialized}
@@ -138,12 +134,42 @@ defmodule Logflare.Backends.IngestEventQueue do
     check_queue_size = Keyword.get(opts, :check_queue_size, true)
     startup_queue = {sid, bid, nil}
 
+<<<<<<< HEAD
     reducer =
       if check_queue_size do
         fn
           {{{_, _, nil}, _tid}, _}, acc -> acc
           {_obj, count}, acc when count >= @max_queue_size -> acc
           {obj, _count}, acc -> [obj | acc]
+||||||| parent of 8a7db9205 (perf: update queue janitor to use new list_counts)
+    with all = [_ | _] <- list_counts(sid_bid, legacy: false),
+         available_queues = [_ | _] <-
+           Enum.reduce(all, [], fn
+             {{_, _, nil}, _}, acc -> acc
+             {_key, count}, acc when count >= @max_queue_size -> acc
+             {key, _count}, acc -> [key | acc]
+           end) do
+      Logflare.Utils.chunked_round_robin(
+        batch,
+        available_queues,
+        100,
+        fn chunk, target ->
+          add_to_table(target, chunk)
+=======
+    with all = [_ | _] <- list_counts(sid_bid),
+         available_queues = [_ | _] <-
+           Enum.reduce(all, [], fn
+             {{_, _, nil}, _}, acc -> acc
+             {_key, count}, acc when count >= @max_queue_size -> acc
+             {key, _count}, acc -> [key | acc]
+           end) do
+      Logflare.Utils.chunked_round_robin(
+        batch,
+        available_queues,
+        100,
+        fn chunk, target ->
+          add_to_table(target, chunk)
+>>>>>>> 8a7db9205 (perf: update queue janitor to use new list_counts)
         end
       else
         fn
@@ -312,28 +338,10 @@ defmodule Logflare.Backends.IngestEventQueue do
   """
   @spec list_counts(queues_key(), keyword()) :: [{table_key(), non_neg_integer()}]
   def list_counts(sid_bid, opts \\ []) do
-    if Keyword.get(opts, :legacy) == false do
-      for {queue, tid} <- list_queues_with_tids(sid_bid),
-          size = :ets.info(tid, :size),
-          is_integer(size) do
-        {queue, size}
-      end
-    else
-      traverse_queues(
-        sid_bid,
-        fn objs, acc ->
-          items =
-            for {sid_bid_pid, _tid} <- objs,
-                size = get_table_size(sid_bid_pid),
-                is_integer(size) do
-              {sid_bid_pid, size}
-            end
-
-          items ++ acc
-        end,
-        [],
-        opts
-      )
+    for {queue, tid} <- list_queues_with_tids(sid_bid),
+        size = :ets.info(tid, :size),
+        is_integer(size) do
+      {queue, size}
     end
   end
 
@@ -665,52 +673,21 @@ defmodule Logflare.Backends.IngestEventQueue do
 
   Startup queue is included.
 
-  ## Options
-  - `:legacy` - When `true`, uses the pre-optimization implementation. Defaults to `false`.
   """
-  def traverse_queues({sid, bid}, func, acc \\ nil, opts \\ []) do
-    legacy = Keyword.get(opts, :legacy, false)
-
+  def traverse_queues({sid, bid}, func, acc \\ nil) do
     :ets.safe_fixtable(@ets_table_mapper, true)
 
-    res =
-      if legacy do
-        mapper_ms =
-          Ex2ms.fun do
-            {{^sid, ^bid, _pid}, tid} = obj -> obj
-          end
-
-        :ets.select(@ets_table_mapper, mapper_ms, 100)
-        |> select_traverse(func, acc)
-      else
-        mapper_ms =
-          Ex2ms.fun do
-            {{^sid, ^bid, _pid}, _tid} -> true
-          end
-
-        :ets.match(@ets_table_mapper, mapper_ms, 250)
-        |> select_traverse(func, acc)
+    mapper_ms =
+      Ex2ms.fun do
+        {{^sid, ^bid, _pid}, _tid} -> true
       end
+
+    res =
+      :ets.match(@ets_table_mapper, mapper_ms, 250)
+      |> match_traverse(func, acc)
 
     :ets.safe_fixtable(@ets_table_mapper, false)
     res
-  end
-
-  defp select_traverse(res, func, acc)
-
-  defp select_traverse(:"$end_of_table", _func, acc) do
-    acc
-  end
-
-  defp select_traverse({selected, cont}, func, acc) do
-    case func.(selected, acc) do
-      {:stop, acc} ->
-        acc
-
-      acc ->
-        :ets.select(cont)
-        |> select_traverse(func, acc)
-    end
   end
 
   defp match_traverse(res, func, acc)
