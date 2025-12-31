@@ -128,7 +128,8 @@ defmodule Logflare.Backends.UserMonitoring do
   Intercepts Logger messages related to specific users, and send them to the respective
   System Source when the user has activated it
   """
-  def log_interceptor(%{meta: %{system_source: true}} , _), do: :ignore
+  def log_interceptor(%{meta: %{system_source: true}}, _), do: :ignore
+
   def log_interceptor(%{meta: %{user_id: user_id} = meta} = log_event, _)
       when is_integer(user_id) do
     with %{system_monitoring: true} <- Users.Cache.get(user_id),

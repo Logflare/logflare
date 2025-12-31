@@ -40,9 +40,16 @@ defmodule Logflare.Sources.Source.BigQuery.Schema do
   # GenServer callbacks
 
   def init(args) do
-    %Source{id: source_id, token: source_token, user_id: user_id, system_source: system_source} = Keyword.get(args, :source)
+    %Source{id: source_id, token: source_token, user_id: user_id, system_source: system_source} =
+      Keyword.get(args, :source)
 
-    Logger.metadata(source_id: source_token, source_token: source_token, user_id: user_id, system_source: system_source)
+    Logger.metadata(
+      source_id: source_token,
+      source_token: source_token,
+      user_id: user_id,
+      system_source: system_source
+    )
+
     Process.flag(:trap_exit, true)
 
     state = %{
