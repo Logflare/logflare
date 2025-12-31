@@ -74,7 +74,7 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
             bq_storage_write_api: source.bq_storage_write_api,
             source_id: source.id,
             backend_id: Map.get(backend || %{}, :id),
-            system_source: source.system_source
+            user_id: source.user_id
           }
         ],
         opts
@@ -151,7 +151,7 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
     Logger.metadata(
       source_id: context.source_token,
       source_token: context.source_token,
-      system_source: context.system_source
+      user_id: context.user_id
     )
 
     message
@@ -228,13 +228,13 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
   end
 
   def stream_batch(
-        %{source_token: source_token, system_source: system_source} = context,
+        %{source_token: source_token, user_id: user_id} = context,
         messages
       ) do
     Logger.metadata(
       source_id: source_token,
       source_token: source_token,
-      system_source: system_source
+      user_id: user_id
     )
 
     :telemetry.span(
