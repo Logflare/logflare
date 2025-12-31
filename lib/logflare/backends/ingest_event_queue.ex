@@ -604,18 +604,28 @@ defmodule Logflare.Backends.IngestEventQueue do
   - `:legacy` - When `true`, uses the pre-optimization implementation. Defaults to `false`.
   """
   def traverse_queues({sid, bid}, func, acc \\ nil, opts \\ []) do
-    _legacy = Keyword.get(opts, :legacy, false)
+    legacy = Keyword.get(opts, :legacy, false)
 
     :ets.safe_fixtable(@ets_table_mapper, true)
 
-    mapper_ms =
-      Ex2ms.fun do
-        {{^sid, ^bid, _pid}, tid} = obj -> obj
-      end
-
     res =
-      :ets.select(@ets_table_mapper, mapper_ms, 100)
-      |> select_traverse(func, acc)
+      if legacy do
+        mapper_ms =
+          Ex2ms.fun do
+            {{^sid, ^bid, _pid}, tid} = obj -> obj
+          end
+
+        :ets.select(@ets_table_mapper, mapper_ms, 100)
+        |> select_traverse(func, acc)
+      else
+        mapper_ms =
+          Ex2ms.fun do
+            {{^sid, ^bid, _pid}, _tid} -> true
+          end
+
+        :ets.match(@ets_table_mapper, mapper_ms, 250)
+        |> select_traverse(func, acc)
+      end
 
     :ets.safe_fixtable(@ets_table_mapper, false)
     res
@@ -635,6 +645,23 @@ defmodule Logflare.Backends.IngestEventQueue do
       acc ->
         :ets.select(cont)
         |> select_traverse(func, acc)
+    end
+  end
+
+  defp match_traverse(res, func, acc)
+
+  defp match_traverse(:"$end_of_table", _func, acc) do
+    acc
+  end
+
+  defp match_traverse({selected, cont}, func, acc) do
+    case func.(selected, acc) do
+      {:stop, acc} ->
+        acc
+
+      acc ->
+        :ets.match(cont)
+        |> match_traverse(func, acc)
     end
   end
 end
