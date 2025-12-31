@@ -53,38 +53,29 @@ defmodule Logflare.Backends.IngestEventQueue.QueueJanitor do
   def do_drop(state, metrics) do
     sid_bid = {state.source_id, state.backend_id}
     # safety measure, drop all if still exceed
-    queues = IngestEventQueue.list_queues(sid_bid)
+    queues =
+      for {sid_bid_pid, size} <- IngestEventQueue.list_counts(sid_bid) do
+        if metrics.avg > 100 or bid != nil do
+          IngestEventQueue.truncate_table(sid_bid_pid, :ingested, 0)
+        else
+          IngestEventQueue.truncate_table(sid_bid_pid, :ingested, state.remainder)
+        end
 
-    :telemetry.execute(
-      [:logflare, :backends, :ingest_event_queue, :queue_janitor],
-      %{length: length(queues)},
-      %{source_id: state.source_id, backend_id: state.backend_id}
-    )
+        size = IngestEventQueue.get_table_size(sid_bid_pid)
 
-    for {_sid, bid, pid} = sid_bid_pid <- queues,
-        size = IngestEventQueue.get_table_size(sid_bid_pid),
-        is_integer(size) do
-      if metrics.avg > 100 or bid != nil do
-        IngestEventQueue.truncate_table(sid_bid_pid, :ingested, 0)
-      else
-        IngestEventQueue.truncate_table(sid_bid_pid, :ingested, state.remainder)
+        if size > state.max and pid != nil and is_integer(size) do
+          to_drop = round(state.purge_ratio * size)
+          IngestEventQueue.drop(sid_bid_pid, :pending, to_drop)
+
+          Logger.warning(
+            "IngestEventQueue private :ets buffer exceeded max for source id=#{state.source_id}, dropping #{to_drop} events",
+            backend_id: state.backend_id,
+            source_id: state.source_token,
+            source_token: state.source_token,
+            ingest_drop_count: to_drop
+          )
+        end
       end
-
-      size = IngestEventQueue.get_table_size(sid_bid_pid)
-
-      if size > state.max and pid != nil and is_integer(size) do
-        to_drop = round(state.purge_ratio * size)
-        IngestEventQueue.drop(sid_bid_pid, :pending, to_drop)
-
-        Logger.warning(
-          "IngestEventQueue private :ets buffer exceeded max for source id=#{state.source_id}, dropping #{to_drop} events",
-          backend_id: state.backend_id,
-          source_id: state.source_token,
-          source_token: state.source_token,
-          ingest_drop_count: to_drop
-        )
-      end
-    end
   end
 
   # schedule work based on rps
