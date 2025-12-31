@@ -269,23 +269,6 @@ defmodule Logflare.Backends.IngestEventQueue do
   end
 
   @doc """
-  Returns a list of table keys for a source-backend combination.
-  Startup queue is included.
-  """
-  @spec list_queues(queues_key()) :: [table_key()]
-  def list_queues(sid_bid) do
-    traverse_queues(
-      sid_bid,
-      fn objs, acc ->
-        for {key, _tid} <- objs, reduce: acc do
-          acc -> [key | acc]
-        end
-      end,
-      []
-    )
-  end
-
-  @doc """
   Deletes the queue associated with the given source-backend-pid.
   """
   @spec delete_queue(source_backend_pid()) :: :ok | {:error, :not_initialized}
@@ -327,20 +310,31 @@ defmodule Logflare.Backends.IngestEventQueue do
   First element is table key.
   Second element is the size of the table.
   """
-  @spec list_counts(queues_key()) :: [{table_key(), non_neg_integer()}]
-  def list_counts(sid_bid) do
-    traverse_queues(
-      sid_bid,
-      fn objs, acc ->
-        items =
-          for {sid_bid_pid, _tid} <- objs, size = get_table_size(sid_bid_pid), is_integer(size) do
-            {sid_bid_pid, size}
-          end
+  @spec list_counts(queues_key(), keyword()) :: [{table_key(), non_neg_integer()}]
+  def list_counts(sid_bid, opts \\ []) do
+    if Keyword.get(opts, :legacy) == false do
+      for {queue, tid} <- list_queues_with_tids(sid_bid),
+          size = :ets.info(tid, :size),
+          is_integer(size) do
+        {queue, size}
+      end
+    else
+      traverse_queues(
+        sid_bid,
+        fn objs, acc ->
+          items =
+            for {sid_bid_pid, _tid} <- objs,
+                size = get_table_size(sid_bid_pid),
+                is_integer(size) do
+              {sid_bid_pid, size}
+            end
 
-        items ++ acc
-      end,
-      []
-    )
+          items ++ acc
+        end,
+        [],
+        opts
+      )
+    end
   end
 
   @spec list_counts_with_tids(queues_key()) :: [{table_obj(), non_neg_integer()}]
@@ -633,11 +627,50 @@ defmodule Logflare.Backends.IngestEventQueue do
   end
 
   @doc """
+  Select queues by source-backend combination.
+  """
+  @spec list_queues(queues_key()) :: [table_key()]
+  def list_queues({sid, bid}) do
+    ms =
+      Ex2ms.fun do
+        {{^sid, ^bid, pid}, _tid} -> {^sid, ^bid, pid}
+      end
+
+    with {queues, _cont} <- :ets.select(@ets_table_mapper, ms, 1000) do
+      queues
+    else
+      :"$end_of_table" -> []
+    end
+  end
+
+  @doc """
+  Select queues by source-backend combination with their :ets.tid().
+  """
+  @spec list_queues_with_tids(queues_key()) :: [{table_key(), :ets.tid()}]
+  def list_queues_with_tids({sid, bid}) do
+    ms =
+      Ex2ms.fun do
+        {{^sid, ^bid, _pid}, _tid} -> true
+      end
+
+    with {queues, _cont} <- :ets.match(@ets_table_mapper, ms, 1000) do
+      queues
+    else
+      :"$end_of_table" -> []
+    end
+  end
+
+  @doc """
   Performs a reduce across all queues of a source-backend combination.
 
   Startup queue is included.
+
+  ## Options
+  - `:legacy` - When `true`, uses the pre-optimization implementation. Defaults to `false`.
   """
-  def traverse_queues({sid, bid}, func, acc \\ nil) do
+  def traverse_queues({sid, bid}, func, acc \\ nil, opts \\ []) do
+    _legacy = Keyword.get(opts, :legacy, false)
+
     :ets.safe_fixtable(@ets_table_mapper, true)
 
     mapper_ms =

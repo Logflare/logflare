@@ -53,7 +53,7 @@ Benchee.run(
 # Historical results:
 # Run with: mix run test/profiling/add_to_table_bench.exs
 #
-# 2025-01-01 - Benchmarking commit 98e61fa47 changes
+# 2026-01-01 - Benchmarking commit 98e61fa47 changes
 #
 ##### With input 1000 events #####
 # Name                      ips        average  deviation         median         99th %
@@ -102,3 +102,42 @@ Benchee.run(
 # Name            Reduction count
 # old (legacy)             3.89 K
 # new (optimized)          3.36 K - 0.86x reduction count -0.53300 K
+
+
+# ------------------------------------------------------------------------------------------------
+# 2026-01-01 - With list_counts optimized
+# ------------------------------------------------------------------------------------------------
+
+# ##### With input 1000 events #####
+# Name                      ips        average  deviation         median         99th %
+# new (optimized)       49.54 K       20.19 μs    ±40.72%       17.08 μs       33.54 μs
+
+# Memory usage statistics:
+
+# Name               Memory usage
+# new (optimized)        62.66 KB
+
+# **All measurements for memory usage were the same**
+
+# Reduction count statistics:
+
+# Name            Reduction count
+# new (optimized)          3.04 K
+
+# **All measurements for reduction count were the same**
+
+# ##### With input 250 events #####
+# Name                      ips        average  deviation         median         99th %
+# new (optimized)      197.99 K        5.05 μs    ±41.47%        4.75 μs       10.92 μs
+
+# Memory usage statistics:
+
+# Name               Memory usage
+# new (optimized)        15.78 KB
+
+# **All measurements for memory usage were the same**
+
+# Reduction count statistics:
+
+# Name            Reduction count
+# new (optimized)          4.12 K
