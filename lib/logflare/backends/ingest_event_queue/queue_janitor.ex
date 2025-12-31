@@ -59,6 +59,21 @@ defmodule Logflare.Backends.IngestEventQueue.QueueJanitor do
       else
         IngestEventQueue.truncate_table(sid_bid_pid, :ingested, state.remainder)
       end
+
+      size = IngestEventQueue.get_table_size(sid_bid_pid)
+
+      if size > state.max and pid != nil and is_integer(size) do
+        to_drop = round(state.purge_ratio * size)
+        IngestEventQueue.drop(sid_bid_pid, :pending, to_drop)
+
+        Logger.warning(
+          "IngestEventQueue private :ets buffer exceeded max for source id=#{state.source_id}, dropping #{to_drop} events",
+          backend_id: state.backend_id,
+          source_id: state.source_token,
+          source_token: state.source_token,
+          ingest_drop_count: to_drop
+        )
+      end
     end
   end
 

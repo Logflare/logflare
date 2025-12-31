@@ -140,3 +140,41 @@ Benchee.run(
 
 # Name            Reduction count
 # new (optimized)          4.12 K
+
+# ------------------------------------------------------------------------------------------------
+# 2026-01-01 - With list_counts_with_tids optimized
+# ------------------------------------------------------------------------------------------------
+
+# ##### With input 1000 events #####
+# Name                      ips        average  deviation         median         99th %
+# new (optimized)        1.30 M      770.47 ns   ±138.59%         667 ns     3583.88 ns
+
+# Memory usage statistics:
+
+# Name               Memory usage
+# new (optimized)           160 B
+
+# **All measurements for memory usage were the same**
+
+# Reduction count statistics:
+
+# Name            Reduction count
+# new (optimized)              19
+
+# **All measurements for reduction count were the same**
+
+# ##### With input 250 events #####
+# Name                      ips        average  deviation         median         99th %
+# new (optimized)        1.35 M      740.87 ns   ±100.36%         667 ns     3419.87 ns
+
+# Memory usage statistics:
+
+# Name               Memory usage
+# new (optimized)           160 B
+
+# **All measurements for memory usage were the same**
+
+# Reduction count statistics:
+
+# Name            Reduction count
+# new (optimized)              19

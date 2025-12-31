@@ -134,42 +134,12 @@ defmodule Logflare.Backends.IngestEventQueue do
     check_queue_size = Keyword.get(opts, :check_queue_size, true)
     startup_queue = {sid, bid, nil}
 
-<<<<<<< HEAD
     reducer =
       if check_queue_size do
         fn
           {{{_, _, nil}, _tid}, _}, acc -> acc
           {_obj, count}, acc when count >= @max_queue_size -> acc
           {obj, _count}, acc -> [obj | acc]
-||||||| parent of 8a7db9205 (perf: update queue janitor to use new list_counts)
-    with all = [_ | _] <- list_counts(sid_bid, legacy: false),
-         available_queues = [_ | _] <-
-           Enum.reduce(all, [], fn
-             {{_, _, nil}, _}, acc -> acc
-             {_key, count}, acc when count >= @max_queue_size -> acc
-             {key, _count}, acc -> [key | acc]
-           end) do
-      Logflare.Utils.chunked_round_robin(
-        batch,
-        available_queues,
-        100,
-        fn chunk, target ->
-          add_to_table(target, chunk)
-=======
-    with all = [_ | _] <- list_counts(sid_bid),
-         available_queues = [_ | _] <-
-           Enum.reduce(all, [], fn
-             {{_, _, nil}, _}, acc -> acc
-             {_key, count}, acc when count >= @max_queue_size -> acc
-             {key, _count}, acc -> [key | acc]
-           end) do
-      Logflare.Utils.chunked_round_robin(
-        batch,
-        available_queues,
-        100,
-        fn chunk, target ->
-          add_to_table(target, chunk)
->>>>>>> 8a7db9205 (perf: update queue janitor to use new list_counts)
         end
       else
         fn
@@ -241,14 +211,18 @@ defmodule Logflare.Backends.IngestEventQueue do
         {id, :pending, event}
       end
 
+    :ets.insert(tid, objects)
+    :ok
+  end
+
+  def add_to_table(sid_bid_pid, batch) do
     get_tid(sid_bid_pid)
     |> case do
       nil ->
         {:error, :not_initialized}
 
       tid ->
-        :ets.insert(tid, objects)
-        :ok
+        add_to_table({sid_bid_pid, tid}, batch)
     end
   end
 
@@ -336,8 +310,8 @@ defmodule Logflare.Backends.IngestEventQueue do
   First element is table key.
   Second element is the size of the table.
   """
-  @spec list_counts(queues_key(), keyword()) :: [{table_key(), non_neg_integer()}]
-  def list_counts(sid_bid, opts \\ []) do
+  @spec list_counts(queues_key()) :: [{table_key(), non_neg_integer()}]
+  def list_counts(sid_bid) do
     for {queue, tid} <- list_queues_with_tids(sid_bid),
         size = :ets.info(tid, :size),
         is_integer(size) do
