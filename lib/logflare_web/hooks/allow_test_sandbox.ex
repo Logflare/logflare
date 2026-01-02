@@ -1,4 +1,4 @@
-defmodule LogflareWeb.Hooks.LiveAcceptance do
+defmodule LogflareWeb.Hooks.AllowTestSandbox do
   import Phoenix.LiveView
   import Phoenix.Component
 
