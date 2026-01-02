@@ -17,7 +17,6 @@ defmodule Logflare.Backends do
   alias Logflare.ContextCache
   alias Logflare.Cluster
   alias Logflare.LogEvent
-  alias Logflare.Logs.SourceRouting
   alias Logflare.PubSubRates
   alias Logflare.Repo
   alias Logflare.Rules.Rule
@@ -25,6 +24,7 @@ defmodule Logflare.Backends do
   alias Logflare.Sources
   alias Logflare.Sources.Counters
   alias Logflare.Sources.Source
+  alias Logflare.Sources.SourceRouter
   alias Logflare.SystemMetrics
   alias Logflare.Teams
   alias Logflare.TeamUsers.TeamUser
@@ -596,7 +596,7 @@ defmodule Logflare.Backends do
         :ok
     end
 
-    SourceRouting.route_to_sinks_and_ingest(log_events, source)
+    SourceRouter.route_to_sinks_and_ingest(log_events, source)
   end
 
   # send to a specific backend

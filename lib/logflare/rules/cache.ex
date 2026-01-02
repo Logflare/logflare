@@ -41,6 +41,8 @@ defmodule Logflare.Rules.Cache do
   def list_rules(%Source{id: source_id}), do: list_by_source_id(source_id)
   def list_rules(%Backend{id: backend_id}), do: list_by_backend_id(backend_id)
 
+  def get_rule(id), do: apply_repo_fun(__ENV__.function, [id])
+
   def list_by_source_id(id), do: apply_repo_fun(__ENV__.function, [id])
   def list_by_backend_id(id), do: apply_repo_fun(__ENV__.function, [id])
 
@@ -50,6 +52,7 @@ defmodule Logflare.Rules.Cache do
   def bust_by(kw) do
     kw
     |> Enum.map(fn
+      # FIXME: new caches
       {:source_id, source_id} -> {:list_by_source_id, [source_id]}
       {:backend_id, backend_id} -> {:list_by_backend_id, [backend_id]}
     end)
