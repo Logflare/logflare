@@ -4,7 +4,7 @@ alias Logflare.Utils
 
 if config_env() == :test do
   active? = fn key ->
-    System.get_env(key, "false") in ["t", "true", "1", "yes"]
+    System.get_env(key, "false") in ["true", "1"]
   end
 
   config :phoenix_test,

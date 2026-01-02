@@ -101,3 +101,8 @@ dev-*
 # Added by Treq
 .jj/
 .treq/
+
+# nix related functionality
+.envrc
+flake.nix
+flake.lock

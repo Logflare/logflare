@@ -7,7 +7,7 @@ defmodule LogflareWeb.Endpoint do
 
   socket("/logs", LogflareWeb.LogSocket, websocket: [compress: true])
 
-  socket("/live", Logflare.LiveView.Socket,
+  socket("/live", Phoenix.LiveView.Socket,
     websocket: [connect_info: [:user_agent, session: @session_options], compress: true]
   )
 

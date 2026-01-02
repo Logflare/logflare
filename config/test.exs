@@ -9,7 +9,7 @@ config :logflare,
 config :logflare, LogflareWeb.Endpoint,
   url: [host: "localhost", scheme: "http", port: 4001],
   http: [port: 4001],
-  server: true
+  server: false
 
 config :logflare, Logflare.Cluster.Utils, min_cluster_size: 1
 
