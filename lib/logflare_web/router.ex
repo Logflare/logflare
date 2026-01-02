@@ -17,7 +17,7 @@ defmodule LogflareWeb.Router do
   alias Opentelemetry.Proto.Collector.Logs.V1.ExportLogsServiceRequest
 
   @common_on_mount_hooks if Application.compile_env(:logflare, :sql_sandbox),
-                           do: [LogflareWeb.Hooks.LiveAcceptance],
+                           do: [LogflareWeb.Hooks.AllowTestSandbox],
                            else: []
 
   # TODO: move plug calls in SourceController and RuleController into here
