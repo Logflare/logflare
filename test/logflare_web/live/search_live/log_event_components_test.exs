@@ -1,5 +1,5 @@
 defmodule LogflareWeb.SearchLive.LogEventComponentsTest do
-  use LogflareWeb.ConnCase, async: false
+  use LogflareWeb.ConnCase, async: true
 
   import Phoenix.LiveViewTest
   import Phoenix.Component
