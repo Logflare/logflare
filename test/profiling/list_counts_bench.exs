@@ -67,12 +67,21 @@ inputs = %{
 
 Benchee.run(
   %{
-    "legacy" => fn sid_bid ->
-      IngestEventQueue.list_counts(sid_bid, legacy: true)
+    "list_counts" => fn sid_bid ->
+      IngestEventQueue.list_counts(sid_bid)
     end,
-    "new" => fn sid_bid ->
-      IngestEventQueue.list_counts(sid_bid, legacy: false)
-    end
+    "list_counts_with_tids" => fn sid_bid ->
+      IngestEventQueue.list_counts_with_tids(sid_bid)
+    end,
+    "list_queues_with_tids" => fn sid_bid ->
+      IngestEventQueue.list_queues_with_tids(sid_bid)
+    end,
+    "list_queues" => fn sid_bid ->
+      IngestEventQueue.list_queues(sid_bid)
+    end,
+    # "new" => fn sid_bid ->
+    #   IngestEventQueue.list_counts(sid_bid, legacy: false)
+    # end
   },
   inputs: inputs,
   before_scenario: fn {sources_count, backends_count, queues_per_combo} = input ->
@@ -96,29 +105,33 @@ Benchee.run(
 )
 
 # Historical results:
-# Run with: mix run test/profiling/list_counts_bench.exs
-
-# 1st jan 2026
-
 # ##### With input 25 sources, 3 backends, 30 queues each #####
-# Name             ips        average  deviation         median         99th %
-# new           3.25 M        0.31 μs  ±6820.99%        0.29 μs        0.42 μs
-# legacy      0.0152 M       65.72 μs     ±8.57%       64.54 μs          76 μs
+# Name                            ips        average  deviation         median         99th %
+# list_queues                 17.46 K       57.29 μs    ±10.44%       56.63 μs       68.17 μs
+# list_queues_with_tids       17.26 K       57.94 μs     ±9.71%       57.21 μs          70 μs
+# list_counts_with_tids       16.91 K       59.13 μs    ±12.89%       58.29 μs       72.14 μs
+# list_counts                 16.84 K       59.39 μs    ±20.62%       58.33 μs       74.88 μs
 
 # Comparison:
-# new           3.25 M
-# legacy      0.0152 M - 213.40x slower +65.41 μs
+# list_queues                 17.46 K
+# list_queues_with_tids       17.26 K - 1.01x slower +0.65 μs
+# list_counts_with_tids       16.91 K - 1.03x slower +1.84 μs
+# list_counts                 16.84 K - 1.04x slower +2.10 μs
 
 # Memory usage statistics:
 
-# Name      Memory usage
-# new           0.102 KB
-# legacy        22.01 KB - 216.69x memory usage +21.91 KB
+# Name                     Memory usage
+# list_queues                   1.70 KB
+# list_queues_with_tids         2.10 KB - 1.23x memory usage +0.40 KB
+# list_counts_with_tids         3.57 KB - 2.10x memory usage +1.87 KB
+# list_counts                   3.98 KB - 2.34x memory usage +2.28 KB
 
 # **All measurements for memory usage were the same**
 
 # Reduction count statistics:
 
-# Name   Reduction count
-# new           0.0140 K
-# legacy          8.75 K - 624.93x reduction count +8.73 K
+# Name                  Reduction count
+# list_queues                    8.31 K
+# list_queues_with_tids          8.35 K - 1.00x reduction count +0.0330 K
+# list_counts_with_tids          8.49 K - 1.02x reduction count +0.178 K
+# list_counts                    8.48 K - 1.02x reduction count +0.164 K

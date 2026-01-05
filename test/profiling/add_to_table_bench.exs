@@ -22,7 +22,7 @@ queues = [{source.id, nil, nil} | queues]
 
 # Generate test events with different batch sizes
 inputs = %{
-  "250 events" => for(_ <- 1..250, do: Logflare.Factory.build(:log_event)),
+  # "250 events" => for(_ <- 1..250, do: Logflare.Factory.build(:log_event)),
   "1000 events" => for(_ <- 1..1_000, do: Logflare.Factory.build(:log_event))
 }
 
