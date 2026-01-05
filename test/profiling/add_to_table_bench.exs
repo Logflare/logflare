@@ -104,77 +104,20 @@ Benchee.run(
 # new (optimized)          3.36 K - 0.86x reduction count -0.53300 K
 
 # ------------------------------------------------------------------------------------------------
-# 2026-01-01 - With list_counts optimized
+# 2026-01-05 - bugfixes
 # ------------------------------------------------------------------------------------------------
-
 # ##### With input 1000 events #####
 # Name                      ips        average  deviation         median         99th %
-# new (optimized)       49.54 K       20.19 μs    ±40.72%       17.08 μs       33.54 μs
+# new (optimized)        3.11 K      321.58 μs     ±6.50%      318.75 μs      376.42 μs
 
 # Memory usage statistics:
 
 # Name               Memory usage
-# new (optimized)        62.66 KB
+# new (optimized)        99.35 KB
 
 # **All measurements for memory usage were the same**
 
 # Reduction count statistics:
 
 # Name            Reduction count
-# new (optimized)          3.04 K
-
-# **All measurements for reduction count were the same**
-
-# ##### With input 250 events #####
-# Name                      ips        average  deviation         median         99th %
-# new (optimized)      197.99 K        5.05 μs    ±41.47%        4.75 μs       10.92 μs
-
-# Memory usage statistics:
-
-# Name               Memory usage
-# new (optimized)        15.78 KB
-
-# **All measurements for memory usage were the same**
-
-# Reduction count statistics:
-
-# Name            Reduction count
-# new (optimized)          4.12 K
-
-# ------------------------------------------------------------------------------------------------
-# 2026-01-01 - With list_counts_with_tids optimized
-# ------------------------------------------------------------------------------------------------
-
-# ##### With input 1000 events #####
-# Name                      ips        average  deviation         median         99th %
-# new (optimized)        1.30 M      770.47 ns   ±138.59%         667 ns     3583.88 ns
-
-# Memory usage statistics:
-
-# Name               Memory usage
-# new (optimized)           160 B
-
-# **All measurements for memory usage were the same**
-
-# Reduction count statistics:
-
-# Name            Reduction count
-# new (optimized)              19
-
-# **All measurements for reduction count were the same**
-
-# ##### With input 250 events #####
-# Name                      ips        average  deviation         median         99th %
-# new (optimized)        1.35 M      740.87 ns   ±100.36%         667 ns     3419.87 ns
-
-# Memory usage statistics:
-
-# Name               Memory usage
-# new (optimized)           160 B
-
-# **All measurements for memory usage were the same**
-
-# Reduction count statistics:
-
-# Name            Reduction count
-# new (optimized)              19
+# new (optimized)          5.72 K

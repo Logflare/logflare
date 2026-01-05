@@ -588,7 +588,7 @@ defmodule Logflare.Backends.IngestEventQueue do
   Startup queue is included.
 
   """
-  def traverse_queues({sid, bid}, func, acc \\ nil, opts \\ [match: true]) do
+  def traverse_queues({sid, bid}, func, acc \\ nil, opts \\ [match_object: true]) do
     :ets.safe_fixtable(@ets_table_mapper, true)
 
     res =
@@ -605,11 +605,6 @@ defmodule Logflare.Backends.IngestEventQueue do
 
           :ets.select(@ets_table_mapper, ms, 250)
           |> select_traverse(func, acc)
-
-        true ->
-          :ets.match(@ets_table_mapper, {{sid, bid, :"$1"}, :"$2"}, 250)
-          |> match_traverse(func, acc)
-          |> Enum.map(fn [ref, tid] -> {{sid, bid, ref}, tid} end)
       end
 
     :ets.safe_fixtable(@ets_table_mapper, false)
@@ -630,23 +625,6 @@ defmodule Logflare.Backends.IngestEventQueue do
       acc ->
         :ets.match_object(cont)
         |> match_object_traverse(func, acc)
-    end
-  end
-
-  defp match_traverse(res, func, acc)
-
-  defp match_traverse(:"$end_of_table", _func, acc) do
-    acc
-  end
-
-  defp match_traverse({selected, cont}, func, acc) do
-    case func.(selected, acc) do
-      {:stop, acc} ->
-        acc
-
-      acc ->
-        :ets.match(cont)
-        |> match_traverse(func, acc)
     end
   end
 

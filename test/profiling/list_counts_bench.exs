@@ -78,7 +78,7 @@ Benchee.run(
     end,
     "list_queues" => fn sid_bid ->
       IngestEventQueue.list_queues(sid_bid)
-    end,
+    end
     # "new" => fn sid_bid ->
     #   IngestEventQueue.list_counts(sid_bid, legacy: false)
     # end
