@@ -630,12 +630,7 @@ defmodule Logflare.Backends.IngestEventQueue do
   """
   @spec list_queues_with_tids(queues_key()) :: [{table_key(), :ets.tid()}]
   def list_queues_with_tids({sid, bid}) do
-    ms =
-      Ex2ms.fun do
-        {{^sid, ^bid, _pid}, _tid} -> true
-      end
-
-    with {queues, _cont} <- :ets.match(@ets_table_mapper, ms, 1000) do
+    with {queues, _cont} <- :ets.match_object(@ets_table_mapper, {{sid, bid, :_}, :_}, 1000) do
       queues
     else
       :"$end_of_table" -> []
@@ -648,20 +643,49 @@ defmodule Logflare.Backends.IngestEventQueue do
   Startup queue is included.
 
   """
-  def traverse_queues({sid, bid}, func, acc \\ nil) do
+  def traverse_queues({sid, bid}, func, acc \\ nil, opts \\ [match: true]) do
     :ets.safe_fixtable(@ets_table_mapper, true)
 
-    mapper_ms =
-      Ex2ms.fun do
-        {{^sid, ^bid, _pid}, _tid} -> true
-      end
-
     res =
-      :ets.match(@ets_table_mapper, mapper_ms, 250)
-      |> match_traverse(func, acc)
+      cond do
+        opts[:match_object] ->
+          :ets.match_object(@ets_table_mapper, {{sid, bid, :_}, :_}, 250)
+          |> match_object_traverse(func, acc)
+
+        opts[:select] ->
+          ms =
+            Ex2ms.fun do
+              {{^sid, ^bid, _pid}, _tid} = obj -> obj
+            end
+
+          :ets.select(@ets_table_mapper, ms, 250)
+          |> select_traverse(func, acc)
+
+        true ->
+          :ets.match(@ets_table_mapper, {{sid, bid, :"$1"}, :"$2"}, 250)
+          |> match_traverse(func, acc)
+          |> Enum.map(fn [ref, tid] -> {{sid, bid, ref}, tid} end)
+      end
 
     :ets.safe_fixtable(@ets_table_mapper, false)
     res
+  end
+
+  defp match_object_traverse(res, func, acc)
+
+  defp match_object_traverse(:"$end_of_table", _func, acc) do
+    acc
+  end
+
+  defp match_object_traverse({selected, cont}, func, acc) do
+    case func.(selected, acc) do
+      {:stop, acc} ->
+        acc
+
+      acc ->
+        :ets.match_object(cont)
+        |> match_object_traverse(func, acc)
+    end
   end
 
   defp match_traverse(res, func, acc)
@@ -678,6 +702,23 @@ defmodule Logflare.Backends.IngestEventQueue do
       acc ->
         :ets.match(cont)
         |> match_traverse(func, acc)
+    end
+  end
+
+  defp select_traverse(res, func, acc)
+
+  defp select_traverse(:"$end_of_table", _func, acc) do
+    acc
+  end
+
+  defp select_traverse({selected, cont}, func, acc) do
+    case func.(selected, acc) do
+      {:stop, acc} ->
+        acc
+
+      acc ->
+        :ets.select(cont)
+        |> select_traverse(func, acc)
     end
   end
 end
