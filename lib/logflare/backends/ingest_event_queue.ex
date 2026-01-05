@@ -138,7 +138,7 @@ defmodule Logflare.Backends.IngestEventQueue do
       if check_queue_size do
         fn
           {{{_, _, nil}, _tid}, _}, acc -> acc
-          {obj, count}, acc when count >= @max_queue_size -> acc
+          {_obj, count}, acc when count >= @max_queue_size -> acc
           {obj, _count}, acc -> [obj | acc]
         end
       else
