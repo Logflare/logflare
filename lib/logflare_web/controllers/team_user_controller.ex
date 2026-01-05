@@ -2,7 +2,7 @@ defmodule LogflareWeb.TeamUserController do
   use LogflareWeb, :controller
   use Phoenix.HTML
 
-  plug LogflareWeb.Plugs.AuthMustBeOwner when action in [:delete]
+  plug LogflareWeb.Plugs.AuthMustBeTeamAdmin when action in [:delete, :update_role]
 
   alias Logflare.Backends.Adaptor.BigQueryAdaptor
   alias Logflare.TeamUsers
