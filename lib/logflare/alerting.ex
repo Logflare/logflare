@@ -212,7 +212,7 @@ defmodule Logflare.Alerting do
     %AlertQuery{id: alert_query_id, cron: cron} = alert_query
 
     if not alert_query_id do
-      raise "AlertQuery is missing `id`"
+      raise ArgumentError, "AlertQuery is missing id: #{inspect(alert_query)}"
     end
 
     AlertsScheduler.new_job(run_strategy: Quantum.RunStrategy.Local)
