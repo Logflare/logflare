@@ -32,7 +32,7 @@ defmodule Logflare.Backends.IngestEventQueue do
     :ets.new(@ets_table_mapper, [
       :public,
       :named_table,
-      :set,
+      :bag,
       {:write_concurrency, :auto},
       {:read_concurrency, false},
       {:decentralized_counters, false}
@@ -46,14 +46,13 @@ defmodule Logflare.Backends.IngestEventQueue do
   """
   @spec get_tid(table_key()) :: :ets.tid() | nil
   def get_tid({sid, bid, pid}) do
-    :ets.lookup_element(@ets_table_mapper, {sid, bid, pid}, 2, nil)
+    :ets.match(@ets_table_mapper, {{sid, bid}, pid, :"$1"}, 1)
     # staleness check
     |> then(fn
-      nil ->
-        nil
-
-      tid ->
+      {[[tid]], _cont} ->
         if :ets.info(tid) != :undefined, do: tid
+
+      _ -> nil
     end)
   end
 
@@ -75,7 +74,7 @@ defmodule Logflare.Backends.IngestEventQueue do
             {:read_concurrency, true}
           ])
 
-        :ets.insert(@ets_table_mapper, {sid_bid_pid, tid})
+        :ets.insert(@ets_table_mapper, {{sid, bid}, pid, tid})
         {:ok, tid}
 
       tid ->
@@ -215,7 +214,7 @@ defmodule Logflare.Backends.IngestEventQueue do
     :ok
   end
 
-  def add_to_table(sid_bid_pid, batch) do
+  def add_to_table({_, _, _} = sid_bid_pid, batch) do
     get_tid(sid_bid_pid)
     |> case do
       nil ->
@@ -272,10 +271,10 @@ defmodule Logflare.Backends.IngestEventQueue do
   Deletes the queue associated with the given source-backend-pid.
   """
   @spec delete_queue(source_backend_pid()) :: :ok | {:error, :not_initialized}
-  def delete_queue(sid_bid_pid) do
+  def delete_queue({sid, bid, pid} = sid_bid_pid) do
     with tid when tid != nil <- get_tid(sid_bid_pid) do
       :ets.delete(tid)
-      :ets.delete(@ets_table_mapper, sid_bid_pid)
+      :ets.delete_object(@ets_table_mapper, {{sid, bid}, pid, tid})
       :ok
     else
       nil -> {:error, :not_initialized}
@@ -598,13 +597,13 @@ defmodule Logflare.Backends.IngestEventQueue do
   defp next_and_cleanup(:"$end_of_table"), do: :ok
 
   defp next_and_cleanup({to_check, cont}) do
-    for {key, tid} <- to_check do
+    for {{sid, bid}, pid, tid} <- to_check do
       if :ets.info(tid) == :undefined do
-        :ets.delete(@ets_table_mapper, key)
+        :ets.delete_object(@ets_table_mapper, {{sid, bid}, pid, tid})
       end
     end
 
-    :ets.select(cont)
+    :ets.match_object(cont)
     |> next_and_cleanup()
   end
 
@@ -615,7 +614,7 @@ defmodule Logflare.Backends.IngestEventQueue do
   def list_queues({sid, bid}) do
     ms =
       Ex2ms.fun do
-        {{^sid, ^bid, pid}, _tid} -> {^sid, ^bid, pid}
+        {{^sid, ^bid}, pid, _tid} -> {^sid, ^bid, pid}
       end
 
     with {queues, _cont} <- :ets.select(@ets_table_mapper, ms, 1000) do
@@ -630,10 +629,10 @@ defmodule Logflare.Backends.IngestEventQueue do
   """
   @spec list_queues_with_tids(queues_key()) :: [{table_key(), :ets.tid()}]
   def list_queues_with_tids({sid, bid}) do
-    with {queues, _cont} <- :ets.match_object(@ets_table_mapper, {{sid, bid, :_}, :_}, 1000) do
-      queues
+    with {queues, _cont} <- :ets.match(@ets_table_mapper, {{sid, bid}, :"$1", :"$2"}, 1000) do
+      Enum.map(queues, fn [pid, tid] -> {{sid, bid, pid}, tid} end)
     else
-      :"$end_of_table" -> []
+      _ -> []
     end
   end
 
@@ -646,41 +645,14 @@ defmodule Logflare.Backends.IngestEventQueue do
   def traverse_queues({sid, bid}, func, acc \\ nil, opts \\ [match_object: true]) do
     :ets.safe_fixtable(@ets_table_mapper, true)
 
-    res =
-      cond do
-        opts[:match_object] ->
-          :ets.match_object(@ets_table_mapper, {{sid, bid, :_}, :_}, 250)
-          |> match_object_traverse(func, acc)
-
-        opts[:select] ->
-          ms =
-            Ex2ms.fun do
-              {{^sid, ^bid, _pid}, _tid} = obj -> obj
-            end
-
-          :ets.select(@ets_table_mapper, ms, 250)
-          |> select_traverse(func, acc)
-      end
+    ms = Ex2ms.fun do
+      {{^sid, ^bid}, pid, tid} -> {{^sid, ^bid, pid}, tid}
+    end
+    res = :ets.select(@ets_table_mapper, ms, 250)
+    |> select_traverse(func, acc)
 
     :ets.safe_fixtable(@ets_table_mapper, false)
     res
-  end
-
-  defp match_object_traverse(res, func, acc)
-
-  defp match_object_traverse(:"$end_of_table", _func, acc) do
-    acc
-  end
-
-  defp match_object_traverse({selected, cont}, func, acc) do
-    case func.(selected, acc) do
-      {:stop, acc} ->
-        acc
-
-      acc ->
-        :ets.match_object(cont)
-        |> match_object_traverse(func, acc)
-    end
   end
 
   defp select_traverse(res, func, acc)
