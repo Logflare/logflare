@@ -5,7 +5,7 @@ defmodule LogflareWeb.UserController do
 
   require Logger
 
-  plug LogflareWeb.Plugs.AuthMustBeOwner
+  plug LogflareWeb.Plugs.AuthMustBeTeamAdmin
 
   alias Logflare.Backends.Adaptor.BigQueryAdaptor
   alias Logflare.Billing.Stripe
