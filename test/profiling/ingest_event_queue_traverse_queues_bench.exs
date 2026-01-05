@@ -70,7 +70,7 @@ Benchee.run(
   %{
     "old" => fn sid_bid ->
       IngestEventQueue.traverse_queues(sid_bid, traverse_func, [])
-    end,
+    end
   },
   inputs: inputs,
   before_scenario: fn {sources_count, backends_count, queues_per_combo} = input ->
