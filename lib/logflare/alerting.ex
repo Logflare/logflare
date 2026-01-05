@@ -209,9 +209,15 @@ defmodule Logflare.Alerting do
   """
   @spec create_alert_job_struct(AlertQuery.t()) :: Quantum.Job.t()
   def create_alert_job_struct(%AlertQuery{} = alert_query) do
+    %AlertQuery{id: alert_query_id, cron: cron} = alert_query
+
+    if not alert_query_id do
+      raise "AlertQuery is missing `id`"
+    end
+
     AlertsScheduler.new_job(run_strategy: Quantum.RunStrategy.Local)
-    |> Quantum.Job.set_task({__MODULE__, :run_alert, [alert_query.id, :scheduled]})
-    |> Quantum.Job.set_schedule(Crontab.CronExpression.Parser.parse!(alert_query.cron))
+    |> Quantum.Job.set_task({__MODULE__, :run_alert, [alert_query_id, :scheduled]})
+    |> Quantum.Job.set_schedule(Crontab.CronExpression.Parser.parse!(cron))
     |> Quantum.Job.set_name(to_job_name(alert_query))
   end
 
