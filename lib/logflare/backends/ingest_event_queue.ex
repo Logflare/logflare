@@ -123,7 +123,9 @@ defmodule Logflare.Backends.IngestEventQueue do
   """
   @spec add_to_table(source_backend_pid() | queues_key(), [LogEvent.t()], Keyword.t()) ::
           :ok | {:error, :not_initialized}
-  def add_to_table({sid, bid} = sid_bid, batch, opts \\ []) when is_integer(sid) do
+  def add_to_table(sid_bid_or_sid_bid_pid, batch, opts \\ [])
+
+  def add_to_table({sid, bid} = sid_bid, batch, opts) when is_integer(sid) do
     chunk_size = Keyword.get(opts, :chunk_size, 100)
 
     proc_counts =
