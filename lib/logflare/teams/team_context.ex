@@ -110,7 +110,14 @@ defmodule Logflare.Teams.TeamContext do
 
   def team_owner?(%__MODULE__{}), do: false
 
+  @spec team_admin?(t()) :: boolean()
+  def team_admin?(%__MODULE__{} = team_context),
+    do: team_owner?(team_context) or team_user_admin?(team_context)
+
   defp team_owner?(team, email), do: team.user.email == email
+
+  defp team_user_admin?(%__MODULE__{team_user: %{team_role: %{role: :admin}}}), do: true
+  defp team_user_admin?(%__MODULE__{}), do: false
 
   defp fetch_team_user(team, email) do
     TeamUsers.get_team_user_by(email: email, team_id: team.id)
