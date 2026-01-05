@@ -14,8 +14,8 @@ defmodule Logflare.Backends.IngestEventQueue.QueueJanitor do
   require Logger
   @default_interval 1_000
   @default_remainder 100
-  @default_max Logflare.Backends.max_buffer_queue_len()
   @default_purge_ratio 0.05
+  @default_max round(Logflare.Backends.max_buffer_queue_len() * 1.2)
 
   def start_link(opts) do
     GenServer.start_link(__MODULE__, opts)
