@@ -121,9 +121,11 @@ defmodule Logflare.Backends.IngestEventQueue do
 
   The record will be marked as :pending.
   """
-  @spec add_to_table(source_backend_pid() | queues_key(), [LogEvent.t()]) ::
+  @spec add_to_table(source_backend_pid() | queues_key(), [LogEvent.t()], Keyword.t()) ::
           :ok | {:error, :not_initialized}
-  def add_to_table({sid, bid} = sid_bid, batch) when is_integer(sid) do
+  def add_to_table({sid, bid} = sid_bid, batch, opts \\ []) when is_integer(sid) do
+    chunk_size = Keyword.get(opts, :chunk_size, 100)
+
     proc_counts =
       list_counts(sid_bid)
       |> Enum.sort_by(fn {_key, count} -> count end, :asc)
@@ -142,7 +144,7 @@ defmodule Logflare.Backends.IngestEventQueue do
       Logflare.Utils.chunked_round_robin(
         batch,
         procs,
-        50,
+        chunk_size,
         fn chunk, target ->
           add_to_table(target, chunk)
         end
@@ -152,7 +154,7 @@ defmodule Logflare.Backends.IngestEventQueue do
     :ok
   end
 
-  def add_to_table(sid_bid_pid, batch) do
+  def add_to_table(sid_bid_pid, batch, _) do
     objects =
       for %{id: id} = event <- batch do
         {id, :pending, event}
