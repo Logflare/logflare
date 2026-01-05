@@ -70,12 +70,12 @@ Benchee.run(
     "list_counts" => fn sid_bid ->
       IngestEventQueue.list_counts(sid_bid)
     end,
-    # "list_counts_with_tids" => fn sid_bid ->
-    #   IngestEventQueue.list_counts_with_tids(sid_bid)
-    # end,
-    # "list_queues_with_tids" => fn sid_bid ->
-    #   IngestEventQueue.list_queues_with_tids(sid_bid)
-    # end,
+    "list_counts_with_tids" => fn sid_bid ->
+      IngestEventQueue.list_counts_with_tids(sid_bid)
+    end,
+    "list_queues_with_tids" => fn sid_bid ->
+      IngestEventQueue.list_queues_with_tids(sid_bid)
+    end,
     "list_queues" => fn sid_bid ->
       IngestEventQueue.list_queues(sid_bid)
     end
@@ -127,3 +127,37 @@ Benchee.run(
 # Name        Reduction count
 # list_queues          8.46 K
 # list_counts          8.74 K - 1.03x reduction count +0.29 K
+
+##############################################################
+#### With bag
+##############################################################
+# ##### With input 25 sources, 3 backends, 30 queues each #####
+# Name                            ips        average  deviation         median         99th %
+# list_queues               1312.02 K        0.76 μs   ±651.54%        0.71 μs        0.96 μs
+# list_queues_with_tids      864.53 K        1.16 μs   ±409.17%        1.04 μs        1.42 μs
+# list_counts_with_tids      578.32 K        1.73 μs   ±262.55%        1.58 μs        2.38 μs
+# list_counts                567.97 K        1.76 μs   ±302.75%        1.58 μs        2.38 μs
+
+# Comparison:
+# list_queues               1312.02 K
+# list_queues_with_tids      864.53 K - 1.52x slower +0.39 μs
+# list_counts_with_tids      578.32 K - 2.27x slower +0.97 μs
+# list_counts                567.97 K - 2.31x slower +1.00 μs
+
+# Memory usage statistics:
+
+# Name                     Memory usage
+# list_queues                   1.59 KB
+# list_queues_with_tids         1.59 KB - 1.00x memory usage +0 KB
+# list_counts_with_tids         3.29 KB - 2.06x memory usage +1.70 KB
+# list_counts                   3.29 KB - 2.06x memory usage +1.70 KB
+
+# **All measurements for memory usage were the same**
+
+# Reduction count statistics:
+
+# Name                  Reduction count
+# list_queues                        52
+# list_queues_with_tids              71 - 1.37x reduction count +19
+# list_counts_with_tids             202 - 3.88x reduction count +150
+# list_counts                       202 - 3.88x reduction count +150

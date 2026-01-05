@@ -52,7 +52,8 @@ defmodule Logflare.Backends.IngestEventQueue do
       {[[tid]], _cont} ->
         if :ets.info(tid) != :undefined, do: tid
 
-      _ -> nil
+      _ ->
+        nil
     end)
   end
 
@@ -195,16 +196,7 @@ defmodule Logflare.Backends.IngestEventQueue do
     :ok
   end
 
-  def add_to_table({sid_bid_pid, tid}, batch, _) when is_tuple(sid_bid_pid) do
-    objects =
-      for %{id: id} = event <- batch do
-        {id, :pending, event}
-      end
-
-    :ets.insert(tid, objects)
-  end
-
-  def add_to_table(sid_bid_pid, batch, _) do
+  def add_to_table({sid_bid_pid, tid}, batch, _opts) when is_tuple(sid_bid_pid) do
     objects =
       for %{id: id} = event <- batch do
         {id, :pending, event}
@@ -214,7 +206,7 @@ defmodule Logflare.Backends.IngestEventQueue do
     :ok
   end
 
-  def add_to_table({_, _, _} = sid_bid_pid, batch) do
+  def add_to_table({_, _, _} = sid_bid_pid, batch, _opts) do
     get_tid(sid_bid_pid)
     |> case do
       nil ->
@@ -311,27 +303,20 @@ defmodule Logflare.Backends.IngestEventQueue do
   """
   @spec list_counts(queues_key()) :: [{table_key(), non_neg_integer()}]
   def list_counts(sid_bid) do
-    for {queue, tid} <- list_queues_with_tids(sid_bid),
+    for {{sid, bid, pid}, tid} <- list_queues_with_tids(sid_bid),
         size = :ets.info(tid, :size),
         is_integer(size) do
-      {queue, size}
+      {{sid, bid, pid}, size}
     end
   end
 
   @spec list_counts_with_tids(queues_key()) :: [{table_obj(), non_neg_integer()}]
   def list_counts_with_tids(sid_bid) do
-    traverse_queues(
-      sid_bid,
-      fn objs, acc ->
-        for {sid_bid_pid, tid} <- objs,
-            size = :ets.info(tid, :size),
-            is_integer(size),
-            into: acc do
-          {{sid_bid_pid, tid}, size}
-        end
-      end,
-      []
-    )
+    for {{sid, bid, pid}, tid} <- list_queues_with_tids(sid_bid),
+        size = :ets.info(tid, :size),
+        is_integer(size) do
+      {{sid, bid, pid}, size}
+    end
   end
 
   @doc """
@@ -629,10 +614,15 @@ defmodule Logflare.Backends.IngestEventQueue do
   """
   @spec list_queues_with_tids(queues_key()) :: [{table_key(), :ets.tid()}]
   def list_queues_with_tids({sid, bid}) do
-    with {queues, _cont} <- :ets.match(@ets_table_mapper, {{sid, bid}, :"$1", :"$2"}, 1000) do
-      Enum.map(queues, fn [pid, tid] -> {{sid, bid, pid}, tid} end)
+    ms =
+      Ex2ms.fun do
+        {{^sid, ^bid}, pid, tid} -> {{^sid, ^bid, pid}, tid}
+      end
+
+    with {queues, _cont} <- :ets.select(@ets_table_mapper, ms, 1000) do
+      queues
     else
-      _ -> []
+      :"$end_of_table" -> []
     end
   end
 
@@ -642,14 +632,17 @@ defmodule Logflare.Backends.IngestEventQueue do
   Startup queue is included.
 
   """
-  def traverse_queues({sid, bid}, func, acc \\ nil, opts \\ [match_object: true]) do
+  def traverse_queues({sid, bid}, func, acc \\ nil, _opts \\ []) do
     :ets.safe_fixtable(@ets_table_mapper, true)
 
-    ms = Ex2ms.fun do
-      {{^sid, ^bid}, pid, tid} -> {{^sid, ^bid, pid}, tid}
-    end
-    res = :ets.select(@ets_table_mapper, ms, 250)
-    |> select_traverse(func, acc)
+    ms =
+      Ex2ms.fun do
+        {{^sid, ^bid}, pid, tid} -> {{^sid, ^bid, pid}, tid}
+      end
+
+    res =
+      :ets.select(@ets_table_mapper, ms, 250)
+      |> select_traverse(func, acc)
 
     :ets.safe_fixtable(@ets_table_mapper, false)
     res

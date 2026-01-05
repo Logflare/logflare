@@ -34,27 +34,27 @@ Benchee.run(
     # "add_to_table - 50 chunk size" => fn events ->
     #   IngestEventQueue.add_to_table({source_id, backend_id}, events, chunk_size: 50)
     # end,
-    "add_to_table - 100 chunk size, no_get_tid=false, check_queue_size=false" => fn events ->
-      IngestEventQueue.add_to_table({source_id, backend_id}, events,
-        chunk_size: 100,
-        no_get_tid: false,
-        check_queue_size: false
-      )
-    end,
-    "add_to_table - 100 chunk, no_get_tid=true, check_queue_size=true" => fn events ->
+    # "add_to_table - 100 chunk size, no_get_tid=false, check_queue_size=false" => fn events ->
+    #   IngestEventQueue.add_to_table({source_id, backend_id}, events,
+    #     chunk_size: 100,
+    #     no_get_tid: false,
+    #     check_queue_size: false
+    #   )
+    # end,
+    "add_to_table - 100 chunk, no_get_tid=true, check_queue_size=true, bag" => fn events ->
       IngestEventQueue.add_to_table({source_id, backend_id}, events,
         chunk_size: 100,
         no_get_tid: true,
         check_queue_size: true
       )
-    end,
-    "add_to_table - 100 chunk, no_get_tid=true, check_queue_size=false" => fn events ->
-      IngestEventQueue.add_to_table({source_id, backend_id}, events,
-        chunk_size: 100,
-        no_get_tid: true,
-        check_queue_size: false
-      )
     end
+    # "add_to_table - 100 chunk, no_get_tid=true, check_queue_size=false" => fn events ->
+    #   IngestEventQueue.add_to_table({source_id, backend_id}, events,
+    #     chunk_size: 100,
+    #     no_get_tid: true,
+    #     check_queue_size: false
+    #   )
+    # end
     # "add_to_table - 250 chunk size" => fn events ->
     #   IngestEventQueue.add_to_table({source_id, backend_id}, events, chunk_size: 250)
     # end,
