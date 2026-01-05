@@ -282,7 +282,8 @@ defmodule LogflareWeb.EndpointsLive do
     Logger.metadata(
       endpoint_id: endpoint.id,
       backend_id: endpoint.backend_id,
-      sandbox_params: sandbox_params
+      sandbox_params: sandbox_params,
+      user_id: endpoint.user_id
     )
 
     # Update the form to preserve query mode and other inputs
