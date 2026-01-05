@@ -68,9 +68,6 @@ end
 
 Benchee.run(
   %{
-    "match" => fn sid_bid ->
-      IngestEventQueue.traverse_queues(sid_bid, traverse_func, [], match_object: false)
-    end,
     "match_object" => fn sid_bid ->
       IngestEventQueue.traverse_queues(sid_bid, traverse_func, [], match_object: true)
     end,
@@ -100,27 +97,25 @@ Benchee.run(
 )
 
 # Historical results:
-# Run with: mix run test/profiling/traverse_queues_bench.exs
-
-# ##### With input 10 sources, 3 backends, 10 queues each #####
-# Name             ips        average  deviation         median         99th %
-# new           2.38 M        0.42 μs  ±4133.28%        0.38 μs        0.50 μs
-# legacy       0.121 M        8.28 μs    ±80.49%        8.08 μs       10.08 μs
+##### With input 10 sources, 3 backends, 10 queues each #####
+# Name                   ips        average  deviation         median         99th %
+# match_object      122.50 K        8.16 μs    ±95.41%        7.96 μs        9.92 μs
+# select            120.72 K        8.28 μs   ±124.19%        8.04 μs       10.17 μs
 
 # Comparison:
-# new           2.38 M
-# legacy       0.121 M - 19.67x slower +7.86 μs
+# match_object      122.50 K
+# select            120.72 K - 1.01x slower +0.120 μs
 
 # Memory usage statistics:
 
-# Name      Memory usage
-# new           0.102 KB
-# legacy         1.47 KB - 14.46x memory usage +1.37 KB
+# Name            Memory usage
+# match_object         1.45 KB
+# select               1.47 KB - 1.01x memory usage +0.0156 KB
 
 # **All measurements for memory usage were the same**
 
 # Reduction count statistics:
 
-# Name   Reduction count
-# new                 11
-# legacy             392 - 35.64x reduction count +381
+# Name         Reduction count
+# match_object             393
+# select                   397 - 1.01x reduction count +4
