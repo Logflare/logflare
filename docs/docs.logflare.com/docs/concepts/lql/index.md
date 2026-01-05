@@ -59,15 +59,16 @@ Timestamps will be automatically converted to UTC if Logflare is set to display 
 
 Chart aggregations rules will display the aggregated trends in the chart. Chart rules use the special prefix `c`
 
-| Field | Aggregation | Example            |
-| ----- | ----------- | ------------------ |
-| c     | `count`     | `c:count(*)`       |
-| c     | `avg`       | `c:avg(m.latency)` |
-| c     | `sum`       | `c:sum(m.latency)` |
-| c     | `max`       | `c:max(m.latency)` |
-| c     | `p50`       | `c:p50(m.latency)` |
-| c     | `p95`       | `c:p95(m.latency)` |
-| c     | `p99`       | `c:p99(m.latency)` |
+| Field | Aggregation                 | Example            |
+| ----- | --------------------------- | ------------------ |
+| c     | `count`                     | `c:count(*)`       |
+| c     | `countd` _(count distinct)_ | `c:countd(*)`      |
+| c     | `avg`                       | `c:avg(m.latency)` |
+| c     | `sum`                       | `c:sum(m.latency)` |
+| c     | `max`                       | `c:max(m.latency)` |
+| c     | `p50`                       | `c:p50(m.latency)` |
+| c     | `p95`                       | `c:p95(m.latency)` |
+| c     | `p99`                       | `c:p99(m.latency)` |
 
 ## Beyond LQL
 
