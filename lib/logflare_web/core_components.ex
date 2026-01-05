@@ -178,10 +178,14 @@ defmodule LogflareWeb.CoreComponents do
   attr :lql, :string
   attr :label, :string, default: "permalink"
   attr :class, :string, default: "group-hover:tw-visible tw-invisible"
+  attr :icon, :string, default: nil
 
   def log_event_permalink(assigns) do
     ~H"""
-    <.link class={@class} target="_blank" href={~p"/sources/#{@source.id}/event?#{%{uuid: @log_event_id, timestamp: Logflare.Utils.iso_timestamp(@timestamp), lql: @lql}}"}>{@label}</.link>
+    <.link class={@class} target="_blank" href={~p"/sources/#{@source.id}/event?#{%{uuid: @log_event_id, timestamp: Logflare.Utils.iso_timestamp(@timestamp), lql: @lql}}"}>
+      <i :if={@icon} class={@icon <> " tw-mr-1 tw-w-2"}></i>
+      {@label}
+    </.link>
     """
   end
 
