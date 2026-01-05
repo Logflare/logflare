@@ -243,16 +243,17 @@ defmodule Logflare.Alerting do
   Syncs a specific alert job by alert_id.
   Upserts the job if it doesn't exist, otherwise deletes the existing job.
   """
-  @spec sync_alert_job(number()) :: :ok | {:error, :not_found}
+  @spec sync_alert_job(integer) :: :ok | {:error, :not_found}
   def sync_alert_job(alert_id) when is_integer(alert_id) do
     on_scheduler_node(fn -> do_sync_alert_job(alert_id) end)
   end
 
+  @spec do_sync_alert_job(integer) :: :ok | {:error, :not_found}
   defp do_sync_alert_job(alert_id) do
     if alert_query = get_alert_query_by(id: alert_id) do
       job = create_alert_job_struct(alert_query)
       AlertsScheduler.add_job(job)
-      {:ok, job}
+      :ok
     else
       # alert query does not exist, maybe remove from scheduler
       job = AlertsScheduler.find_job(to_job_name(alert_id))
@@ -260,6 +261,8 @@ defmodule Logflare.Alerting do
       if job do
         AlertsScheduler.delete_job(job.name)
       end
+
+      {:error, :not_found}
     end
   end
 
@@ -269,13 +272,14 @@ defmodule Logflare.Alerting do
   Send notifications if necessary configurations are set. If no results are returned from the query execution, no alert is sent.
   """
   @spec run_alert(AlertQuery.t() | integer(), :scheduled) ::
-          :ok | {:error, :not_enabled} | {:error, :below_min_cluster_size}
+          :ok | {:error, :not_enabled | :not_found | :no_results | :below_min_cluster_size | any}
   def run_alert(alert_id, :scheduled) when is_integer(alert_id) do
-    # sync the alert job for the next run
     sync_alert_job(alert_id)
 
     if alert_query = get_alert_query_by(id: alert_id) do
       run_alert(alert_query, :scheduled)
+    else
+      {:error, :not_found}
     end
   end
 
@@ -406,11 +410,20 @@ defmodule Logflare.Alerting do
     end)
   end
 
+  @spec on_scheduler_node((-> func_ret)) :: func_ret | {:error, :not_found}
+        when func_ret: term
   defp on_scheduler_node(func) do
-    with pid when is_pid(pid) <- GenServer.whereis(scheduler_name()) do
-      pid
-      |> node()
-      |> Cluster.Utils.rpc_call(func)
+    case GenServer.whereis(scheduler_name()) do
+      pid when is_pid(pid) ->
+        pid
+        |> node()
+        |> Cluster.Utils.rpc_call(func)
+
+      {_name, node} ->
+        Cluster.Utils.rpc_call(node, func)
+
+      nil ->
+        {:error, :not_found}
     end
   end
 
