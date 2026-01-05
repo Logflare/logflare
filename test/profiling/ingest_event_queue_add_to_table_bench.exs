@@ -28,7 +28,7 @@ inputs = %{
 
 Benchee.run(
   %{
-    "add_to_table" => fn events ->
+    "new (optimized)" => fn events ->
       IngestEventQueue.add_to_table({source_id, backend_id}, events)
     end
     # "old (legacy)" => fn events ->
@@ -52,18 +52,18 @@ Benchee.run(
 
 # Historical results:
 # Run with: mix run test/profiling/add_to_table_bench.exs
-# ##### With input 1000 events #####
-# Name                   ips        average  deviation         median         99th %
-# add_to_table        4.26 K      234.86 μs    ±12.01%      231.88 μs      305.10 μs
+##### With input 1000 events #####
+# Name                      ips        average  deviation         median         99th %
+# new (optimized)        4.53 K      220.96 μs     ±6.22%      220.50 μs      259.67 μs
 
 # Memory usage statistics:
 
-# Name            Memory usage
-# add_to_table       135.13 KB
+# Name               Memory usage
+# new (optimized)       135.13 KB
 
 # **All measurements for memory usage were the same**
 
 # Reduction count statistics:
 
-# Name         Reduction count
-# add_to_table          7.19 K
+# Name            Reduction count
+# new (optimized)          7.19 K
