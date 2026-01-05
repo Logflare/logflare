@@ -139,8 +139,8 @@ defmodule LogflareWeb.Router do
     plug(LogflareWeb.Plugs.CheckAdmin)
   end
 
-  pipeline :check_owner do
-    plug(LogflareWeb.Plugs.AuthMustBeOwner)
+  pipeline :check_team_admin do
+    plug(LogflareWeb.Plugs.AuthMustBeTeamAdmin)
   end
 
   pipeline :check_team_user do
@@ -316,7 +316,7 @@ defmodule LogflareWeb.Router do
   end
 
   scope "/account", LogflareWeb do
-    pipe_through([:browser, :require_auth, :check_owner])
+    pipe_through([:browser, :require_auth, :check_team_admin])
 
     get("/edit", UserController, :edit)
     put("/edit", UserController, :update)
