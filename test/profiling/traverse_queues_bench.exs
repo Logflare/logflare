@@ -68,11 +68,14 @@ end
 
 Benchee.run(
   %{
-    "legacy" => fn sid_bid ->
-      IngestEventQueue.traverse_queues(sid_bid, traverse_func, [], legacy: true)
+    "match" => fn sid_bid ->
+      IngestEventQueue.traverse_queues(sid_bid, traverse_func, [], match_object: false)
     end,
-    "new" => fn sid_bid ->
-      IngestEventQueue.traverse_queues(sid_bid, traverse_func, [])
+    "match_object" => fn sid_bid ->
+      IngestEventQueue.traverse_queues(sid_bid, traverse_func, [], match_object: true)
+    end,
+    "select" => fn sid_bid ->
+      IngestEventQueue.traverse_queues(sid_bid, traverse_func, [], select: true)
     end
   },
   inputs: inputs,
