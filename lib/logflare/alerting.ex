@@ -211,7 +211,7 @@ defmodule Logflare.Alerting do
   def create_alert_job_struct(%AlertQuery{} = alert_query) do
     %AlertQuery{id: alert_query_id, cron: cron} = alert_query
 
-    if not alert_query_id do
+    if is_nil(alert_query_id) do
       raise ArgumentError, "AlertQuery is missing id: #{inspect(alert_query)}"
     end
 
