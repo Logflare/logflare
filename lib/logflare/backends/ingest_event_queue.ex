@@ -134,21 +134,23 @@ defmodule Logflare.Backends.IngestEventQueue do
     check_queue_size = Keyword.get(opts, :check_queue_size, true)
     startup_queue = {sid, bid, nil}
 
+    reducer =
+      if check_queue_size do
+        fn
+          {{{_, _, nil}, _tid}, _}, acc -> acc
+          {obj, _count}, acc when count >= @max_queue_size -> acc
+          {obj, _count}, acc -> [obj | acc]
+        end
+      else
+        fn
+          {{{_, _, nil}, _tid}, _}, acc -> acc
+          {obj, _count}, acc -> [obj | acc]
+        end
+      end
+
     if no_get_tid do
       with all = [_ | _] <- list_counts_with_tids(sid_bid),
-           available_queues = [_ | _] <-
-             (if check_queue_size do
-                Enum.reduce(all, [], fn
-                  {{{_, _, nil}, _tid}, _}, acc -> acc
-                  {_obj, count}, acc when count >= @max_queue_size -> acc
-                  {obj, _count}, acc -> [obj | acc]
-                end)
-              else
-                Enum.reduce(all, [], fn
-                  {{{_, _, nil}, _tid}, _}, acc -> acc
-                  {obj, _count}, acc -> [obj | acc]
-                end)
-              end) do
+           available_queues = [_ | _] <- Enum.reduce(all, [], reducer) do
         Logflare.Utils.chunked_round_robin(
           batch,
           available_queues,
@@ -174,6 +176,10 @@ defmodule Logflare.Backends.IngestEventQueue do
 
       procs = Enum.map(proc_counts, fn {key, _count} -> key end)
 
+      chunking_func = fn chunk, target ->
+        add_to_table(target, chunk)
+      end
+
       if procs == [] do
         # not yet started, add to startup queue
         add_to_table({sid, bid, nil}, batch)
@@ -182,9 +188,7 @@ defmodule Logflare.Backends.IngestEventQueue do
           batch,
           procs,
           chunk_size,
-          fn chunk, target ->
-            add_to_table(target, chunk)
-          end
+          chunking_func
         )
       end
     end
