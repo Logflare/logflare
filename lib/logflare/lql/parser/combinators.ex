@@ -245,6 +245,7 @@ defmodule Logflare.Lql.Parser.Combinators do
   def chart_aggregate do
     choice([
       string("avg") |> replace(:avg),
+      string("countd") |> replace(:countd),
       string("count") |> replace(:count),
       string("sum") |> replace(:sum),
       string("max") |> replace(:max),

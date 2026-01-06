@@ -12,20 +12,22 @@ defmodule LogflareWeb.DashboardLive do
 
   @impl true
   def mount(_, _session, socket) do
+    %{user: user} = socket.assigns
+
     socket =
       socket
-      |> assign_new(:sources, fn %{user: user} ->
-        user
-        |> Sources.list_sources_by_user()
-        |> Sources.preload_for_dashboard()
-      end)
+      |> assign(
+        :sources,
+        user |> Sources.list_sources_by_user() |> Sources.preload_for_dashboard()
+      )
       |> assign_new(:source_metrics, fn %{sources: sources} ->
         sources
         |> Enum.into(%{}, fn source ->
           {to_string(source.token), %{metrics: source.metrics, updated_at: source.updated_at}}
         end)
       end)
-      |> assign_new(:plan, fn %{user: user} -> Billing.get_plan_by_user(user) end)
+      |> assign(:saved_searches, SavedSearches.Cache.list_saved_searches_by_user(user.id))
+      |> assign(:plan, Billing.get_plan_by_user(user))
       |> assign(:fade_in, false)
 
     if connected?(socket) do
@@ -55,19 +57,17 @@ defmodule LogflareWeb.DashboardLive do
   end
 
   def handle_event("delete_saved_search", %{"id" => search_id}, socket) do
-    %{user: user, sources: sources} = socket.assigns
+    %{user: user} = socket.assigns
 
     socket =
       with %Logflare.SavedSearch{source: source} = search <-
              SavedSearches.get(search_id) |> Repo.preload(:source),
            true <- Sources.get_by_user_access(user, source.id) |> is_struct(),
            {:ok, _response} <- SavedSearches.delete_by_user(search) do
-        sources =
-          sources
-          |> Sources.preload_saved_searches(force: true)
+        saved_searches = SavedSearches.list_saved_searches_by_user(user.id)
 
         socket
-        |> assign(sources: sources)
+        |> assign(saved_searches: saved_searches)
         |> put_flash(:info, "Saved search deleted!")
       else
         nil ->
@@ -127,7 +127,7 @@ defmodule LogflareWeb.DashboardLive do
       <div class="tw-max-w-[95%] tw-mx-auto">
         <div class="lg:tw-grid tw-grid-cols-12 tw-gap-8 tw-px-[15px] tw-mt-[50px]">
           <div class="tw-col-span-3">
-            <DashboardComponents.saved_searches sources={@sources} team={@team} />
+            <DashboardComponents.saved_searches saved_searches={@saved_searches} team={@team} />
             <DashboardComponents.members user={@user} team={@team} team_user={@team_user} />
           </div>
           <div class="tw-col-span-7">

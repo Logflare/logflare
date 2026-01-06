@@ -32,7 +32,7 @@ defmodule Logflare.Backends do
 
   defdelegate child_spec(arg), to: __MODULE__.Supervisor
 
-  @max_pending_buffer_len_per_queue 15_000
+  @max_pending_buffer_len_per_queue IngestEventQueue.max_queue_size()
   @max_event_age_us 72 * 3_600 * 1_000_000
   @max_future_event_us 1 * 3_600 * 1_000_000
 
@@ -816,15 +816,7 @@ defmodule Logflare.Backends do
   end
 
   def cached_local_pending_buffer_full?(%Source{id: source_id}) do
-    PubSubRates.Cache.get_local_buffer(source_id, nil)
-    |> Map.get(:queues, [])
-    |> case do
-      [] ->
-        false
-
-      queues ->
-        Enum.all?(queues, fn {_key, v} -> v > @max_pending_buffer_len_per_queue end)
-    end
+    buffer_full_for_backend?(source_id, nil)
   end
 
   @spec buffer_full_for_backend?(
@@ -835,7 +827,7 @@ defmodule Logflare.Backends do
   defp buffer_full_for_backend?(source_id, backend_id) do
     case PubSubRates.Cache.get_local_buffer(source_id, backend_id) do
       %{queues: [_ | _] = queues} ->
-        Enum.any?(queues, fn {_key, count} ->
+        Enum.all?(queues, fn {_key, count} ->
           count > @max_pending_buffer_len_per_queue
         end)
 

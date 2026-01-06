@@ -13,6 +13,7 @@ defmodule LogflareWeb.SearchLive.LogEventComponents do
   alias Phoenix.LiveView.JS
 
   @log_levels ~W(debug info warning error alert critical notice emergency)
+  @default_empty_event_message "(empty event message)"
 
   attr :search_op_log_events, :any, required: false, default: nil
   attr :last_query_completed_at, :any, required: false
@@ -22,6 +23,7 @@ defmodule LogflareWeb.SearchLive.LogEventComponents do
   attr :tailing?, :boolean, default: false
   attr :querystring, :string, required: true
   attr :lql_rules, :list, required: true
+  attr :empty_event_message_placeholder, :string, default: @default_empty_event_message
 
   def logs_list(assigns) do
     ~H"""
@@ -48,6 +50,7 @@ defmodule LogflareWeb.SearchLive.LogEventComponents do
   attr :source, :any, required: true
   attr :search_timezone, :string, required: true
   attr :querystring, :string, required: true
+  attr :empty_event_message_placeholder, :string, default: @default_empty_event_message
 
   def logs_list_actions(assigns) do
     ~H"""
@@ -89,7 +92,7 @@ defmodule LogflareWeb.SearchLive.LogEventComponents do
       phx-click={
         JS.dispatch("logflare:copy-to-clipboard",
           detail: %{
-            text: "#{formatted_timestamp(@log, @search_timezone)}    #{@log.body["event_message"]}"
+            text: "#{formatted_timestamp(@log, @search_timezone)}    #{@log.body["event_message"] || @empty_event_message_placeholder}"
           }
         )
       }
@@ -136,14 +139,17 @@ defmodule LogflareWeb.SearchLive.LogEventComponents do
   attr :log_event, Logflare.LogEvent, required: true
   attr :id, :string, required: false
   attr :timezone, :string, required: true
+  attr :empty_event_message_placeholder, :string, default: @default_empty_event_message
   attr :rest, :global, default: %{class: "tw-group"}
   slot :inner_block
   slot :actions
 
-  def log_event(%{log_event: %{body: body}} = assigns) when is_map_key(body, "event_message") do
+  def log_event(%{log_event: %{body: body}} = assigns) do
+    message = body["event_message"]
+
     assigns =
       assigns
-      |> assign(timestamp: body["timestamp"], message: body["event_message"])
+      |> assign(timestamp: body["timestamp"], message: message)
       |> assign(
         :log_level,
         if(body["level"] in @log_levels, do: body["level"], else: nil)
@@ -158,13 +164,15 @@ defmodule LogflareWeb.SearchLive.LogEventComponents do
       <.metadata timestamp={@timestamp} log_level={@log_level}>
         {format_timestamp(@timestamp, @timezone)}
       </.metadata>
-      {render_slot(@inner_block) || @message}
+      <%= if @message do %>
+        {render_slot(@inner_block) || @message}
+      <% else %>
+        <span class="tw-italic tw-text-gray-500">{@empty_event_message_placeholder}</span>
+      <% end %>
       {render_slot(@actions)}
     </li>
     """
   end
-
-  def log_event(assigns), do: ~H""
 
   attr :log_level, :string, default: nil
   attr :timestamp, :string

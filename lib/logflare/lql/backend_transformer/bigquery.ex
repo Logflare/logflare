@@ -149,11 +149,31 @@ defmodule Logflare.Lql.BackendTransformer.BigQuery do
     |> order_by([t], bq_trunc_second(field(t, ^timestamp_field)))
   end
 
+  def transform_chart_rule(query, :countd, field_path, :second, timestamp_field) do
+    query
+    |> select([t], %{
+      timestamp: bq_trunc_second(field(t, ^timestamp_field)),
+      count: count(field(t, ^field_path), :distinct)
+    })
+    |> group_by([t], bq_trunc_second(field(t, ^timestamp_field)))
+    |> order_by([t], bq_trunc_second(field(t, ^timestamp_field)))
+  end
+
   def transform_chart_rule(query, :count, _field_path, :minute, timestamp_field) do
     query
     |> select([t], %{
       timestamp: bq_trunc_minute(field(t, ^timestamp_field)),
       count: count(field(t, ^timestamp_field))
+    })
+    |> group_by([t], bq_trunc_minute(field(t, ^timestamp_field)))
+    |> order_by([t], bq_trunc_minute(field(t, ^timestamp_field)))
+  end
+
+  def transform_chart_rule(query, :countd, field_path, :minute, timestamp_field) do
+    query
+    |> select([t], %{
+      timestamp: bq_trunc_minute(field(t, ^timestamp_field)),
+      count: count(field(t, ^field_path), :distinct)
     })
     |> group_by([t], bq_trunc_minute(field(t, ^timestamp_field)))
     |> order_by([t], bq_trunc_minute(field(t, ^timestamp_field)))
@@ -169,11 +189,31 @@ defmodule Logflare.Lql.BackendTransformer.BigQuery do
     |> order_by([t], bq_trunc_hour(field(t, ^timestamp_field)))
   end
 
+  def transform_chart_rule(query, :countd, field_path, :hour, timestamp_field) do
+    query
+    |> select([t], %{
+      timestamp: bq_trunc_hour(field(t, ^timestamp_field)),
+      count: count(field(t, ^field_path), :distinct)
+    })
+    |> group_by([t], bq_trunc_hour(field(t, ^timestamp_field)))
+    |> order_by([t], bq_trunc_hour(field(t, ^timestamp_field)))
+  end
+
   def transform_chart_rule(query, :count, _field_path, :day, timestamp_field) do
     query
     |> select([t], %{
       timestamp: bq_trunc_day(field(t, ^timestamp_field)),
       count: count(field(t, ^timestamp_field))
+    })
+    |> group_by([t], bq_trunc_day(field(t, ^timestamp_field)))
+    |> order_by([t], bq_trunc_day(field(t, ^timestamp_field)))
+  end
+
+  def transform_chart_rule(query, :countd, field_path, :day, timestamp_field) do
+    query
+    |> select([t], %{
+      timestamp: bq_trunc_day(field(t, ^timestamp_field)),
+      count: count(field(t, ^field_path), :distinct)
     })
     |> group_by([t], bq_trunc_day(field(t, ^timestamp_field)))
     |> order_by([t], bq_trunc_day(field(t, ^timestamp_field)))
