@@ -263,14 +263,12 @@ defmodule Logflare.Auth do
   """
   @spec can_create_admin_token?(OauthAccessToken.t() | TeamContext.t()) ::
           boolean()
-  def can_create_admin_token?(%TeamContext{team_user: %{team_role: %{role: :admin}}}), do: true
-
   def can_create_admin_token?(%TeamContext{} = team_context),
-    do: TeamContext.team_owner?(team_context)
+    do: TeamContext.team_admin?(team_context)
 
   def can_create_admin_token?(%OauthAccessToken{scopes: scopes}) when is_binary(scopes) do
     @admin_scope in String.split(scopes)
   end
 
-  def can_create_admin_token?(%OauthAccessToken{scopes: nil}), do: false
+  def can_create_admin_token?(_), do: false
 end
