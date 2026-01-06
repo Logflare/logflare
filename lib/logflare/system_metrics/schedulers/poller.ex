@@ -24,9 +24,16 @@ defmodule Logflare.SystemMetrics.Schedulers.Poller do
     scheduler_metrics =
       Schedulers.scheduler_utilization(last_scheduler_metrics, current_scheduler_metrics)
 
-    if Application.get_env(:logflare, :env) == :prod do
-      Logger.info("Scheduler metrics!", scheduler_metrics: scheduler_metrics)
-    end
+    Enum.each(scheduler_metrics, fn metric ->
+      :telemetry.execute(
+        [:logflare, :system, :scheduler, :utilization],
+        %{
+          utilization: metric.utilization,
+          utilization_percentage: metric.utilization_percentage
+        },
+        %{name: metric.name, type: metric.type}
+      )
+    end)
 
     poll_metrics()
     {:noreply, current_scheduler_metrics}
