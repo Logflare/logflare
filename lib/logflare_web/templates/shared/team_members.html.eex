@@ -1,29 +1,58 @@
-<ul id="team-members" class="list-unstyled">
-  <li>
-    <img class="rounded-circle" width=35 height=35 src="<%= @user.image || Logflare.Auth.gen_gravatar_link(@user.email) %>" alt="<%= @user.name || @user.email %>">
-    <%= link(@user.name || @user.email, to: "mailto:#{@user.email}") %>
-    <small><%= if assigns[:team_user], do: "owner", else: "owner, you" %></small>
-    </li>
-    <%= for member <- @team.team_users do %>
-      <li>
-        <img class="rounded-circle" width=35 height=35 src="<%= member.image || Logflare.Auth.gen_gravatar_link(member.email) %>" alt="<%= member.name || member.email %>">
-        <%= link(member.name || member.email, to: "mailto:#{member.email}")%>
-        <%= if member.team_role.role == :admin do %>
-          <small>admin</small>
+<%
+  # Show controls for owners or admin team members
+  can_manage? = Logflare.Teams.TeamContext.team_admin?(assigns.team_context)
+%>
+<div id="team-members">
+  <table class="tw-table tw-max-w-[60%]">
+    <thead>
+      <tr>
+        <th class="tw-px-4 tw-pb-2">Member</th>
+        <%= if can_manage? do %>
+          <th class="tw-px-4 tw-pb-2">Admin</th>
+          <th class="tw-px-4 tw-pb-2"></th>
         <% end %>
-        <%= if assigns[:team_user] do %>
-          <%= if member.provider_uid == @team_user.provider_uid do %>
-            <small>you</small>
-          <% else %>
-            <%= link to: Routes.team_user_path(@conn, :delete, member.id), class: "dashboard-links", method: :delete do %>
-              <i class="fa fa-trash"></i>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td class="tw-px-4">
+          <img class="rounded-circle" width=35 height=35 src="<%= @user.image || Logflare.Auth.gen_gravatar_link(@user.email) %>" alt="<%= @user.name || @user.email %>">
+          <%= link(@user.name || @user.email, to: "mailto:#{@user.email}") %>
+          <small>owner<%= unless assigns[:team_user], do: ", you" %></small>
+        </td>
+        <%= if can_manage? do %>
+          <td class="tw-px-4 tw-text-center">
+            <input type="checkbox" checked="checked" disabled="disabled" />
+          </td>
+          <td class="tw-px-4"></td>
+        <% end %>
+      </tr>
+      <%= for member <- @team.team_users |> Enum.sort_by(&(&1), :asc) do %>
+        <tr>
+          <td class="tw-px-4">
+            <img class="rounded-circle" width=35 height=35 src="<%= member.image || Logflare.Auth.gen_gravatar_link(member.email) %>" alt="<%= member.name || member.email %>">
+            <%= link(member.name || member.email, to: "mailto:#{member.email}")%>
+            <%= if assigns[:team_user] && member.provider_uid == @team_user.provider_uid do %>
+              <small>you</small>
             <% end %>
+          </td>
+          <%= if can_manage? do %>
+            <td class="tw-px-4 tw-text-center">
+              <%= form_for :team_role, Routes.team_user_path(@conn, :update_role, member.id, t: assigns.team_context.team.id), [method: :patch, class: "d-inline"], fn f -> %>
+                <%= checkbox f, :is_admin, checked: member.team_role.role == :admin, onchange: "this.form.submit()", class: "" %>
+              <% end %>
+            </td>
+            <td class="tw-px-4">
+              <%= unless assigns[:team_user] && member.provider_uid == @team_user.provider_uid do %>
+                <%= link to: Routes.team_user_path(@conn, :delete, member.id, t: assigns.team_context.team.id), class: "dashboard-links", method: :delete do %>
+                  <i class="fa fa-trash"></i>
+                  Delete
+                <% end %>
+              <% end %>
+            </td>
           <% end %>
-        <% else %>
-          <%= link to: Routes.team_user_path(@conn, :delete, member.id), class: "dashboard-links", method: :delete do %>
-            <i class="fa fa-trash"></i>
-          <% end %>
-        <% end %>
-      </li>
-    <% end %>
-  </ul>
+        </tr>
+      <% end %>
+    </tbody>
+  </table>
+</div>
