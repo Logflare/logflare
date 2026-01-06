@@ -43,6 +43,7 @@
               <%= form_for :team_role, Routes.team_user_path(@conn, :update_role, member.id, t: assigns.team_context.team.id),
                 [
                   method: :patch,
+                  id: "team-admin-id-#{member.id}",
                   class: "d-inline"
                 ],
                 fn f -> %>
@@ -52,6 +53,7 @@
                   class: "",
                   data_self_admin: is_current_team_user
                 %>
+               <%= label f, :is_admin, "admin", class: "tw-hidden" %>
               <% end %>
             </td>
             <td class="tw-px-4">
