@@ -307,6 +307,7 @@ defmodule LogflareWeb.Router do
     pipe_through([:browser, :require_auth])
 
     delete("/", TeamUserController, :delete)
+    patch("/role", TeamUserController, :update_role)
   end
 
   scope "/account", LogflareWeb do
