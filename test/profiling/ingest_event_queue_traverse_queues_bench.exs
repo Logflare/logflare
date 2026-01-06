@@ -68,7 +68,7 @@ end
 
 Benchee.run(
   %{
-    "traverse_queues" => fn sid_bid ->
+    "old" => fn sid_bid ->
       IngestEventQueue.traverse_queues(sid_bid, traverse_func, [])
     end
   },
@@ -94,18 +94,18 @@ Benchee.run(
 )
 
 # Historical results:
-# ##### With input 10 sources, 3 backends, 10 queues each #####
-# Name                      ips        average  deviation         median         99th %
-# traverse_queues      170.18 K        5.88 μs   ±102.66%        5.71 μs        7.46 μs
+##### With input 10 sources, 3 backends, 10 queues each #####
+# Name           ips        average  deviation         median         99th %
+# old       173.06 K        5.78 μs    ±97.22%        5.67 μs        7.42 μs
 
 # Memory usage statistics:
 
-# Name               Memory usage
-# traverse_queues         1.50 KB
+# Name    Memory usage
+# old          1.50 KB
 
 # **All measurements for memory usage were the same**
 
 # Reduction count statistics:
 
-# Name            Reduction count
-# traverse_queues             389
+# Name Reduction count
+# old              389
