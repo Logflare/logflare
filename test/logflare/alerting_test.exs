@@ -412,6 +412,58 @@ defmodule Logflare.AlertingTest do
                } = Alerting.get_alert_job(alert_id)
       end)
     end
+
+    test "run_alert/2 uses fresh data from DB", %{user: user} do
+      # ensure config allows execution
+      old_config = Application.get_env(:logflare, Logflare.Alerting)
+      Application.put_env(:logflare, Logflare.Alerting, min_cluster_size: 0, enabled: true)
+      on_exit(fn -> Application.put_env(:logflare, Logflare.Alerting, old_config) end)
+
+      {:ok, alert} =
+        Alerting.create_alert_query(user, %{
+          name: "Original Name",
+          cron: "0 0 1 * *",
+          query: "select 1"
+        })
+
+      Alerting.sync_alert_job(alert.id)
+
+      {:ok, _updated_alert} =
+        Alerting.update_alert_query(alert, %{query: "select 'unique_fresh_data_check'"})
+
+      expect(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, 1, fn _conn, _proj_id, opts ->
+        assert opts[:body].query =~ "unique_fresh_data_check"
+        {:ok, TestUtils.gen_bq_response([%{"testing" => "123"}])}
+      end)
+
+      Alerting.run_alert(alert.id, :scheduled)
+    end
+
+    test "run_alert/2 unschedules job if alert is missing", %{user: user} do
+      {:ok, alert} =
+        Alerting.create_alert_query(user, %{
+          name: "To Delete",
+          cron: "0 0 1 * *",
+          query: "select 1"
+        })
+
+      Alerting.sync_alert_job(alert.id)
+
+      # verify job exists
+      assert Alerting.get_alert_job(alert.id)
+
+      # simulate "external" deletion / stale state
+      Repo.delete(alert)
+
+      # expect NO BQ execution
+      GoogleApi.BigQuery.V2.Api.Jobs
+      |> reject(:bigquery_jobs_query, 3)
+
+      Alerting.run_alert(alert.id, :scheduled)
+
+      # verify job removed
+      refute Alerting.get_alert_job(alert.id)
+    end
   end
 
   defp start_alerting_supervisor! do
