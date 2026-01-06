@@ -413,7 +413,7 @@ defmodule Logflare.AlertingTest do
       end)
     end
 
-    test "run_alert/2 uses fresh data from DB", %{user: user} do
+    test "run_alert/2 uses fresh alert query data", %{user: user} do
       # ensure config allows execution
       old_config = Application.get_env(:logflare, Logflare.Alerting)
       Application.put_env(:logflare, Logflare.Alerting, min_cluster_size: 0, enabled: true)
