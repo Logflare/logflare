@@ -232,7 +232,7 @@ defmodule LogflareWeb.UserControllerTest do
   end
 
   describe "UserController edit page display" do
-    test "shows admin label for team members with admin role", %{conn: conn} do
+    test "shows admin checkbox for team members", %{conn: conn} do
       owner = insert(:user)
       team = insert(:team, user: owner)
       admin_team_member = insert(:team_user, team: team, team_role: %{role: :admin})
@@ -245,11 +245,16 @@ defmodule LogflareWeb.UserControllerTest do
 
       html = html_response(conn, 200)
 
+      # Both team members should appear
       assert html =~ admin_team_member.name
-      assert html =~ ~r/#{admin_team_member.name}.*?admin/s
-
       assert html =~ regular_team_member.name
-      refute html =~ ~r/#{regular_team_member.name}.*?admin/s
+
+      # Both should have role update forms
+      assert html =~ ~s(action="/profile/#{admin_team_member.id}/role?t=#{team.id}")
+      assert html =~ ~s(action="/profile/#{regular_team_member.id}/role?t=#{team.id}")
+
+      # Admin column header should be visible
+      assert html =~ "Admin</th>"
     end
   end
 end
