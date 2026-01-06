@@ -142,8 +142,8 @@ defmodule LogflareWeb.TeamUserControllerTest do
     assert Logflare.TeamUsers.get_team_user!(member2_team_user.id)
   end
 
-  describe "admin team member management" do
-    test "admin team member can promote another team member to admin", %{conn: conn} do
+  describe "team member management as team admin" do
+    test "can grant and revoke admin role", %{conn: conn} do
       owner = insert(:user)
       team = insert(:team, user: owner)
       admin_user = insert(:user)
@@ -156,21 +156,51 @@ defmodule LogflareWeb.TeamUserControllerTest do
 
       assert regular_team_user.team_role.role == :user
 
-      conn =
+      session =
         conn
-        |> login_user(admin_user, admin_team_user)
-        |> patch(~p"/profile/#{regular_team_user.id}/role?t=#{team.id}", %{
-          "team_role" => %{"is_admin" => "true"}
-        })
+        |> login_user(admin_team_user)
+        |> visit(~p"/profile/edit?t=#{team.id}")
 
-      assert redirected_to(conn, 302) =~ "/profile/edit?t=#{team.id}#team-members"
-      assert Phoenix.Flash.get(conn.assigns.flash, :info) =~ "role updated"
+      session
+      |> within("#team-admin-id-#{regular_team_user.id}", fn session ->
+        session
+        |> check("admin")
+        |> submit()
+        |> assert_path("/profile/edit", query_params: %{t: team.id})
+        |> unwrap(fn conn ->
+          assert Phoenix.Flash.get(conn.assigns.flash, :info) ==
+                   "#{regular_team_user.email} role updated."
 
-      regular_team_user = Logflare.TeamUsers.get_team_user_and_preload(regular_team_user.id)
-      assert regular_team_user.team_role.role == :admin
+          conn
+        end)
+
+        regular_team_user = Logflare.TeamUsers.get_team_user_and_preload(regular_team_user.id)
+        assert regular_team_user.team_role.role == :admin
+
+        session
+      end)
+
+      session
+      |> within("#team-admin-id-#{admin_team_user.id}", fn session ->
+        session
+        |> uncheck("admin")
+        |> submit()
+        |> assert_path("/profile/edit", query_params: %{t: team.id})
+        |> unwrap(fn conn ->
+          assert Phoenix.Flash.get(conn.assigns.flash, :info) ==
+                   "#{admin_team_user.email} role updated."
+
+          conn
+        end)
+
+        admin_team_user = Logflare.TeamUsers.get_team_user_and_preload(admin_team_user.id)
+        refute admin_team_user.team_role.role == :admin
+
+        session
+      end)
     end
 
-    test "admin team member can delete another team member", %{conn: conn} do
+    test "can delete another team member", %{conn: conn} do
       owner = insert(:user)
       team = insert(:team, user: owner)
       admin_user = insert(:user)
@@ -187,81 +217,27 @@ defmodule LogflareWeb.TeamUserControllerTest do
         fn _, _project_number, [body: _body] -> {:ok, ""} end
       )
 
-      conn =
+      session =
         conn
         |> login_user(admin_user, admin_team_user)
-        |> delete(~p"/profile/#{regular_team_user.id}?t=#{team.id}")
+        |> visit(~p"/profile/edit?t=#{team.id}")
+        |> click_link("a[href='#{~p"/profile/#{regular_team_user.id}?t=#{team.id}"}']", "Delete")
+        |> assert_path("/profile/edit", query_params: %{t: team.id})
 
-      assert redirected_to(conn, 302) =~ "/profile/edit?t=#{team.id}#team-members"
-      assert Phoenix.Flash.get(conn.assigns.flash, :info) == "Member profile deleted!"
+      session
+      |> unwrap(fn conn ->
+        assert Phoenix.Flash.get(conn.assigns.flash, :info) ==
+                 "Member profile deleted!"
+
+        conn
+      end)
+
       refute Logflare.TeamUsers.get_team_user(regular_team_user.id)
     end
   end
 
-  describe "update_role" do
-    test "owner can promote team member to admin", %{conn: conn} do
-      owner = insert(:user)
-      team = insert(:team, user: owner)
-      team_user = insert(:team_user, team: team)
-
-      assert team_user.team_role.role == :user
-
-      conn =
-        conn
-        |> login_user(owner)
-        |> patch(~p"/profile/#{team_user.id}/role", %{"team_role" => %{"is_admin" => "true"}})
-
-      assert redirected_to(conn, 302) =~ "/account/edit"
-      assert Phoenix.Flash.get(conn.assigns.flash, :info) =~ "role updated"
-
-      team_user = Logflare.TeamUsers.get_team_user_and_preload(team_user.id)
-      assert team_user.team_role.role == :admin
-    end
-
-    test "owner can demote admin to user", %{conn: conn} do
-      owner = insert(:user)
-      team = insert(:team, user: owner)
-      team_user = insert(:team_user, team: team, team_role: %{role: :admin})
-
-      assert team_user.team_role.role == :admin
-
-      conn =
-        conn
-        |> login_user(owner)
-        |> patch(~p"/profile/#{team_user.id}/role", %{"team_role" => %{}})
-
-      assert redirected_to(conn, 302) =~ "/account/edit"
-      assert Phoenix.Flash.get(conn.assigns.flash, :info) =~ "role updated"
-
-      team_user = Logflare.TeamUsers.get_team_user_and_preload(team_user.id)
-      assert team_user.team_role.role == :user
-    end
-
-    test "owner cannot update role for team member from another team", %{conn: conn} do
-      owner_a = insert(:user)
-      _team_a = insert(:team, user: owner_a)
-
-      owner_b = insert(:user)
-      team_b = insert(:team, user: owner_b)
-      victim_team_user = insert(:team_user, team: team_b)
-
-      conn =
-        conn
-        |> login_user(owner_a)
-        |> patch(~p"/profile/#{victim_team_user.id}/role", %{
-          "team_role" => %{"is_admin" => "true"}
-        })
-
-      assert redirected_to(conn, 302) =~ "/account/edit"
-
-      assert Phoenix.Flash.get(conn.assigns.flash, :error) =~
-               "Not authorized to update this team member's role"
-
-      victim_team_user = Logflare.TeamUsers.get_team_user_and_preload(victim_team_user.id)
-      assert victim_team_user.team_role.role == :user
-    end
-
-    test "team member cannot update another team member's role", %{conn: conn} do
+  describe "team member management without admin role" do
+    test "cannot update another team member's role", %{conn: conn} do
       owner = insert(:user)
       team = insert(:team, user: owner)
       member1_user = insert(:user)
@@ -271,6 +247,13 @@ defmodule LogflareWeb.TeamUserControllerTest do
       conn =
         conn
         |> login_user(member1_user, member1_team_user)
+
+      conn
+      |> visit(~p"/profile/edit?t=#{team.id}")
+      |> refute_has("form#team-admin-id-#{member2_team_user.id}")
+
+      conn =
+        conn
         |> patch(~p"/profile/#{member2_team_user.id}/role", %{
           "team_role" => %{"is_admin" => "true"}
         })
@@ -278,7 +261,7 @@ defmodule LogflareWeb.TeamUserControllerTest do
       assert redirected_to(conn, 302) == ~p"/dashboard"
 
       assert Enum.any?(Phoenix.Flash.get(conn.assigns.flash, :error), fn
-               text when is_binary(text) -> text =~ "You're not the account owner"
+               text when is_binary(text) -> text =~ "You're not the account owner or an admin"
                _ -> false
              end)
 

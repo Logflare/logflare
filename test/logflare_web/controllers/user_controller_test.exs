@@ -231,30 +231,82 @@ defmodule LogflareWeb.UserControllerTest do
     end
   end
 
-  describe "UserController edit page display" do
-    test "shows admin checkbox for team members", %{conn: conn} do
+  describe "UserController edit team members" do
+    setup do
       owner = insert(:user)
       team = insert(:team, user: owner)
-      admin_team_member = insert(:team_user, team: team, team_role: %{role: :admin})
-      regular_team_member = insert(:team_user, team: team)
+      team_user = insert(:team_user, team: team)
+
+      {:ok, owner: owner, team: team, team_user: team_user}
+    end
+
+    test "owner can promote team member to admin", %{
+      conn: conn,
+      owner: owner,
+      team: team,
+      team_user: team_user
+    } do
+      assert team_user.team_role.role == :user
+
+      conn
+      |> login_user(owner)
+      |> visit(~p"/account/edit?t=#{team.id}")
+      |> within("#team-admin-id-#{team_user.id}", fn session ->
+        session
+        |> check("admin")
+        |> submit()
+        |> assert_path("/account/edit", query_params: %{t: team.id})
+
+        session
+      end)
+
+      team_user = Logflare.TeamUsers.get_team_user_and_preload(team_user.id)
+      assert team_user.team_role.role == :admin
+    end
+
+    test "owner can demote admin to user", %{conn: conn, owner: owner, team: team} do
+      team_user = insert(:team_user, team: team, team_role: %{role: :admin})
+
+      assert team_user.team_role.role == :admin
+
+      conn
+      |> login_user(owner)
+      |> visit(~p"/account/edit?t=#{team.id}")
+      |> within("#team-admin-id-#{team_user.id}", fn session ->
+        session
+        |> uncheck("admin")
+        |> submit()
+        |> assert_path("/account/edit", query_params: %{t: team.id})
+
+        session
+      end)
+
+      team_user = Logflare.TeamUsers.get_team_user_and_preload(team_user.id)
+      assert team_user.team_role.role == :user
+    end
+
+    test "owner cannot update role for team member from another team", %{conn: conn} do
+      owner_a = insert(:user)
+      team_a = insert(:team, user: owner_a)
+
+      owner_b = insert(:user)
+      team_b = insert(:team, user: owner_b)
+      victim_team_user = insert(:team_user, team: team_b)
 
       conn =
         conn
-        |> login_user(owner)
-        |> get(~p"/account/edit")
+        |> login_user(owner_a)
+        |> patch(~p"/profile/#{victim_team_user.id}/role?t=#{team_a.id}", %{
+          "team_role" => %{"is_admin" => "true"}
+        })
 
-      html = html_response(conn, 200)
+      assert redirected_to(conn, 302) == "/account/edit?t=#{team_a.id}#team-members"
 
-      # Both team members should appear
-      assert html =~ admin_team_member.name
-      assert html =~ regular_team_member.name
+      assert Phoenix.Flash.get(conn.assigns.flash, :error) =~
+               "Not authorized to update this team member's role"
 
-      # Both should have role update forms
-      assert html =~ ~s(action="/profile/#{admin_team_member.id}/role?t=#{team.id}")
-      assert html =~ ~s(action="/profile/#{regular_team_member.id}/role?t=#{team.id}")
-
-      # Admin column header should be visible
-      assert html =~ "Admin</th>"
+      victim_team_user = Logflare.TeamUsers.get_team_user_and_preload(victim_team_user.id)
+      assert victim_team_user.team_role.role == :user
     end
   end
 end
