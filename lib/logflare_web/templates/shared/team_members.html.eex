@@ -1,5 +1,4 @@
 <%
-  # Show controls for owners or admin team members
   can_manage? = Logflare.Teams.TeamContext.team_admin?(assigns.team_context)
 %>
 <div id="team-members">
@@ -28,18 +27,31 @@
         <% end %>
       </tr>
       <%= for member <- @team.team_users |> Enum.sort_by(&(&1), :asc) do %>
+        <%
+          is_current_team_user = assigns[:team_user] && member.id == @team_user.id
+        %>
         <tr>
           <td class="tw-px-4">
             <img class="rounded-circle" width=35 height=35 src="<%= member.image || Logflare.Auth.gen_gravatar_link(member.email) %>" alt="<%= member.name || member.email %>">
             <%= link(member.name || member.email, to: "mailto:#{member.email}")%>
-            <%= if assigns[:team_user] && member.provider_uid == @team_user.provider_uid do %>
+            <%= if is_current_team_user do %>
               <small>you</small>
             <% end %>
           </td>
           <%= if can_manage? do %>
             <td class="tw-px-4 tw-text-center">
-              <%= form_for :team_role, Routes.team_user_path(@conn, :update_role, member.id, t: assigns.team_context.team.id), [method: :patch, class: "d-inline"], fn f -> %>
-                <%= checkbox f, :is_admin, checked: member.team_role.role == :admin, onchange: "this.form.submit()", class: "" %>
+              <%= form_for :team_role, Routes.team_user_path(@conn, :update_role, member.id, t: assigns.team_context.team.id),
+                [
+                  method: :patch,
+                  class: "d-inline"
+                ],
+                fn f -> %>
+                <%= checkbox f, :is_admin,
+                  checked: member.team_role.role == :admin,
+                  onchange: "confirmSubmit(this)",
+                  class: "",
+                  data_self_admin: is_current_team_user
+                %>
               <% end %>
             </td>
             <td class="tw-px-4">
@@ -56,3 +68,20 @@
     </tbody>
   </table>
 </div>
+
+<script>
+  function confirmSubmit(checkbox) {
+    if (!checkbox) {
+      return;
+    }
+
+    if (checkbox.hasAttribute("data-self-admin")) {
+      if (!confirm("Remove your own admin role?")) {
+        checkbox.checked = true;
+        return;
+      }
+    }
+
+    checkbox.form.submit();
+  }
+</script>
