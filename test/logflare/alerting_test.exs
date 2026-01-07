@@ -412,13 +412,17 @@ defmodule Logflare.AlertingTest do
                } = Alerting.get_alert_job(alert_id)
       end)
     end
+  end
 
-    test "run_alert/2 uses fresh alert query data", %{user: user} do
-      # ensure config allows execution
+  describe "scheduled run_alert/1" do
+    setup do
+      start_alerting_supervisor!()
       old_config = Application.get_env(:logflare, Logflare.Alerting)
       Application.put_env(:logflare, Logflare.Alerting, min_cluster_size: 0, enabled: true)
       on_exit(fn -> Application.put_env(:logflare, Logflare.Alerting, old_config) end)
+    end
 
+    test "uses fresh alert query data", %{user: user} do
       {:ok, alert} =
         Alerting.create_alert_query(user, %{
           name: "Original Name",
@@ -426,7 +430,7 @@ defmodule Logflare.AlertingTest do
           query: "select 1"
         })
 
-      Alerting.sync_alert_job(alert.id)
+      :ok = Alerting.sync_alert_job(alert.id)
 
       {:ok, _updated_alert} =
         Alerting.update_alert_query(alert, %{query: "select 'unique_fresh_data_check'"})
@@ -436,10 +440,10 @@ defmodule Logflare.AlertingTest do
         {:ok, TestUtils.gen_bq_response([%{"testing" => "123"}])}
       end)
 
-      Alerting.run_alert(alert.id, :scheduled)
+      assert :ok = Alerting.run_alert(alert.id, :scheduled)
     end
 
-    test "run_alert/2 unschedules job if alert is missing", %{user: user} do
+    test "unschedules job if alert is missing", %{user: user} do
       {:ok, alert} =
         Alerting.create_alert_query(user, %{
           name: "To Delete",
@@ -447,21 +451,20 @@ defmodule Logflare.AlertingTest do
           query: "select 1"
         })
 
-      Alerting.sync_alert_job(alert.id)
+      :ok = Alerting.sync_alert_job(alert.id)
 
       # verify job exists
-      assert Alerting.get_alert_job(alert.id)
+      assert %Quantum.Job{} = Alerting.get_alert_job(alert.id)
 
       # simulate "external" deletion / stale state
-      Repo.delete(alert)
+      Repo.delete!(alert)
 
       # expect NO BQ execution
       GoogleApi.BigQuery.V2.Api.Jobs
       |> reject(:bigquery_jobs_query, 3)
 
-      Alerting.run_alert(alert.id, :scheduled)
-
-      # verify job removed
+      # verify job is removed
+      assert {:error, :not_found} = Alerting.run_alert(alert.id, :scheduled)
       refute Alerting.get_alert_job(alert.id)
     end
   end
