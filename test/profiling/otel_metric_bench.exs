@@ -242,7 +242,7 @@ Benchee.run(
   %{
     "handle_batch" => fn resource_metrics ->
       OtelMetric.handle_batch(resource_metrics, source)
-    end,
+    end
   },
   inputs: %{
     "mixed (5 each x 1kdp)" => mixed_5m_1kdp
