@@ -2,7 +2,7 @@ defmodule LogflareWeb.UserController do
   use LogflareWeb, :controller
   use Phoenix.HTML
 
-  plug LogflareWeb.Plugs.AuthMustBeOwner
+  plug LogflareWeb.Plugs.AuthMustBeTeamAdmin
 
   alias Logflare.Backends.Adaptor.BigQueryAdaptor
   alias Logflare.Billing.Stripe
