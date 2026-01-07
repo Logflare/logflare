@@ -254,20 +254,12 @@ defmodule Logflare.Alerting do
     on_scheduler_node(fn -> do_sync_alert_job(alert_id) end)
   end
 
-  @spec do_sync_alert_job(integer) :: :ok | {:error, :not_found}
   defp do_sync_alert_job(alert_id) do
     if alert_query = get_alert_query_by(id: alert_id) do
       job = create_alert_job_struct(alert_query)
       AlertsScheduler.add_job(job)
-      :ok
     else
-      # alert query does not exist, maybe remove from scheduler
-      job = AlertsScheduler.find_job(to_job_name(alert_id))
-
-      if job do
-        AlertsScheduler.delete_job(job.name)
-      end
-
+      AlertsScheduler.delete_job(to_job_name(alert_id))
       {:error, :not_found}
     end
   end
@@ -280,11 +272,10 @@ defmodule Logflare.Alerting do
   @spec run_alert(AlertQuery.t() | integer(), :scheduled) ::
           :ok | {:error, :not_enabled | :not_found | :no_results | :below_min_cluster_size | any}
   def run_alert(alert_id, :scheduled) when is_integer(alert_id) do
-    sync_alert_job(alert_id)
-
     if alert_query = get_alert_query_by(id: alert_id) do
       run_alert(alert_query, :scheduled)
     else
+      AlertsScheduler.delete_job(to_job_name(alert_id))
       {:error, :not_found}
     end
   end
