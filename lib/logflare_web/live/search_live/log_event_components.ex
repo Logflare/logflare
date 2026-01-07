@@ -21,7 +21,6 @@ defmodule LogflareWeb.SearchLive.LogEventComponents do
   attr :search_timezone, :string, required: true
   attr :tailing?, :boolean, required: true
   attr :querystring, :string, required: true
-  attr :lql_rules, :list, required: true
   attr :empty_event_message_placeholder, :string, default: @default_empty_event_message
   attr :search_op, Logflare.Logs.SearchOperation
 
