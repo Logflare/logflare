@@ -416,8 +416,7 @@ defmodule Logflare.Alerting do
     end)
   end
 
-  @spec on_scheduler_node((-> func_ret)) :: func_ret | {:error, :not_found}
-        when func_ret: term
+  @spec on_scheduler_node((-> func_ret)) :: func_ret when func_ret: term
   defp on_scheduler_node(func) do
     case GenServer.whereis(scheduler_name()) do
       pid when is_pid(pid) ->
@@ -429,7 +428,7 @@ defmodule Logflare.Alerting do
         Cluster.Utils.rpc_call(node, func)
 
       nil ->
-        {:error, :not_found}
+        raise "Alerting scheduler node not found"
     end
   end
 
