@@ -257,7 +257,7 @@ defmodule Logflare.Alerting do
   defp do_sync_alert_job(alert_id) do
     if alert_query = get_alert_query_by(id: alert_id) do
       job = create_alert_job_struct(alert_query)
-      AlertsScheduler.add_job(job)
+      :ok = AlertsScheduler.add_job(job)
     else
       AlertsScheduler.delete_job(to_job_name(alert_id))
       {:error, :not_found}
