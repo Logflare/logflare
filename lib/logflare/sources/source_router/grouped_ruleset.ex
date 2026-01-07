@@ -10,7 +10,7 @@ defmodule Logflare.Sources.SourceRouter.GroupedRuleset do
 
     matching_rule_ids(event, rule_set)
     |> Enum.flat_map(fn
-      {id, 0} -> [id]
+      {id, 0} -> [Rules.Cache.get_rule(id)]
       {_id, _matches_left} -> []
     end)
   end
