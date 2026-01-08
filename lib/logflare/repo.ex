@@ -24,7 +24,7 @@ defmodule Logflare.Repo do
           Decimal.round(uptime, 0, :ceiling)
         end
 
-      {:error, _err} = err ->
+      {:error, err} ->
         Logger.warning("Could not get Postgres uptime, error: #{err}")
         0
     end
