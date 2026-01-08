@@ -268,7 +268,7 @@ defmodule Logflare.Logs.SearchOperations do
       so.chart_rules
       |> hd()
       |> Map.get(:period)
-      |> Logflare.Ecto.BQQueryAPI.to_bq_interval_token()
+      |> to_bq_interval_token()
 
     tick_count =
       so.chart_rules
@@ -384,7 +384,7 @@ defmodule Logflare.Logs.SearchOperations do
         @default_select_rules
         |> Lql.Parser.parse()
 
-      rules
+      Rules.get_select_rules(rules)
     else
       recommended_rules =
         Sources.Source.recommended_query_fields(source)
@@ -397,13 +397,14 @@ defmodule Logflare.Logs.SearchOperations do
         |> Lql.Parser.parse()
 
       rules
+      |> Rules.get_select_rules()
       |> Enum.filter(&Map.has_key?(flatmap, &1.path))
     end
   end
 
   # converts "m.user_id" to "s:m.user_id@user_id"
+  # strips trailing "!" which marks required keys in suggested_keys config
   defp recommended_field_to_lql_query(field) when is_binary(field) do
-    field = String.trim(field)
     field_name = field |> String.split(".") |> List.last()
 
     "s:#{field}@#{field_name}"
@@ -440,10 +441,14 @@ defmodule Logflare.Logs.SearchOperations do
         %SO{query: query, chart_rules: chart_rules, lql_meta_and_msg_filters: filter_rules} = so
       ) do
     chart_period = hd(so.chart_rules).period
+    chart_path = hd(chart_rules).path
+
+    non_chart_filters =
+      Enum.reject(filter_rules, fn %FilterRule{path: path} -> path == chart_path end)
 
     query =
       query
-      |> Lql.apply_filter_rules(so.lql_meta_and_msg_filters)
+      |> Lql.apply_filter_rules(non_chart_filters)
       |> order_by([t, ...], desc: 1)
 
     query = select_timestamp(query, chart_period)
@@ -563,7 +568,8 @@ defmodule Logflare.Logs.SearchOperations do
 
         %{
           "timestamp" => ts,
-          "datetime" => dt
+          "datetime" => dt,
+          "value" => 0
         }
       end)
 

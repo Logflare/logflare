@@ -46,7 +46,7 @@ defmodule Logflare.Lql.BackendTransformer do
   """
   @callback transform_chart_rule(
               query :: Ecto.Query.t(),
-              aggregate :: :count | :avg | :sum | :max | :p50 | :p95 | :p99,
+              aggregate :: :count | :countd | :avg | :sum | :max | :p50 | :p95 | :p99,
               field_path :: String.t(),
               period :: :second | :minute | :hour | :day,
               timestamp_field :: String.t()

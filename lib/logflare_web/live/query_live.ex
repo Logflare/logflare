@@ -8,6 +8,9 @@ defmodule LogflareWeb.QueryLive do
   alias Logflare.Alerting
   alias Logflare.Backends
   alias Logflare.Endpoints
+  alias Logflare.Sources
+  alias Logflare.Sql
+  alias LogflareWeb.AuthLive
   alias LogflareWeb.QueryComponents
 
   def render(assigns) do
@@ -179,6 +182,18 @@ defmodule LogflareWeb.QueryLive do
           formatted
       end
 
+    socket = maybe_assign_team_context(socket, params, q)
+
+    %{assigns: %{user: user}} = socket
+    endpoints = Endpoints.list_endpoints_by(user_id: user.id)
+    alerts = Alerting.list_alert_queries_by_user_id(user.id)
+
+    socket =
+      socket
+      |> assign(:user_id, user.id)
+      |> assign(:endpoints, endpoints)
+      |> assign(:alerts, alerts)
+
     query_string =
       if q != nil and socket.assigns.query_string == nil do
         q
@@ -191,6 +206,22 @@ defmodule LogflareWeb.QueryLive do
     end
 
     {:noreply, assign(socket, :query_string, query_string)}
+  end
+
+  defp maybe_assign_team_context(socket, %{"t" => _team_id}, _query), do: socket
+
+  defp maybe_assign_team_context(socket, _params, nil), do: socket
+
+  defp maybe_assign_team_context(socket, _params, query_string) do
+    effective_user = socket.assigns[:team_user] || socket.assigns.user
+
+    with {:ok, [source_name | _]} <- Sql.extract_table_names(query_string),
+         %Sources.Source{} = source <-
+           Sources.get_by_name_and_user_access(effective_user, source_name) do
+      AuthLive.assign_context_by_resource(socket, source, socket.assigns.user.email)
+    else
+      _ -> socket
+    end
   end
 
   def handle_info(:parse_query, socket) do
@@ -220,8 +251,11 @@ defmodule LogflareWeb.QueryLive do
   def handle_event(
         "run-query",
         _params,
-        %{assigns: %{user: user, query_string: query_string}} = socket
+        %{assigns: %{query_string: query_string}} = socket
       ) do
+    socket = maybe_assign_team_context(socket, %{}, query_string)
+    %{assigns: %{user: user}} = socket
+
     socket =
       run_query(socket, user, query_string)
       |> push_patch(to: ~p"/query?#{%{q: query_string}}")

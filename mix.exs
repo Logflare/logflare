@@ -10,19 +10,6 @@ defmodule Logflare.Mixfile do
       start_permanent: Mix.env() == :prod,
       aliases: aliases(),
       deps: deps(),
-      preferred_cli_env: [
-        lint: :test,
-        "lint.diff": :test,
-        "test.only": :test,
-        "test.format": :test,
-        "test.compile": :test,
-        "test.security": :test,
-        "test.typings": :test,
-        coveralls: :test,
-        "coveralls.detail": :test,
-        "coveralls.post": :test,
-        "coveralls.html": :test
-      ],
       dialyzer: dialyzer(),
       test_coverage: [tool: ExCoveralls],
       releases: [
@@ -36,6 +23,24 @@ defmodule Logflare.Mixfile do
             opentelemetry: :temporary
           ]
         ]
+      ]
+    ]
+  end
+
+  def cli do
+    [
+      preferred_envs: [
+        lint: :test,
+        "lint.diff": :test,
+        "test.only": :test,
+        "test.format": :test,
+        "test.compile": :test,
+        "test.security": :test,
+        "test.typings": :test,
+        coveralls: :test,
+        "coveralls.detail": :test,
+        "coveralls.post": :test,
+        "coveralls.html": :test
       ]
     ]
   end
@@ -118,6 +123,7 @@ defmodule Logflare.Mixfile do
       {:map_keys, "~> 0.1.0"},
       {:observer_cli, "~> 1.5"},
       {:cloak_ecto, github: "logflare/cloak_ecto"},
+      {:flow, "~> 1.0"},
 
       # Parsing
       {:bertex, ">= 0.0.0"},
@@ -144,7 +150,7 @@ defmodule Logflare.Mixfile do
 
       # Test
       {:mix_test_watch, "~> 1.0", only: [:dev, :test], runtime: false},
-      {:phoenix_test, "~> 0.8.0", only: :test, runtime: false},
+      {:phoenix_test, "~> 0.9.1", only: :test, runtime: false},
       {:mimic, "~> 2.0", only: [:dev, :test]},
       {:stream_data, "~> 1.2.0", only: [:dev, :test]},
 
@@ -216,7 +222,7 @@ defmodule Logflare.Mixfile do
       {:ymlr, "~> 2.0"},
       {:grpc, "~> 0.9.0"},
       # otel_metric_exporter requires an update https://github.com/electric-sql/elixir-otel-metric-exporter/pull/13
-      {:protobuf, "~> 0.14.1", override: true},
+      {:protobuf, "~> 0.15.0", override: true},
       {:gun, "~> 2.0", override: true},
       {:cowlib, ">=2.12.0", override: true},
       {:phoenix_live_dashboard, "~> 0.8"},
@@ -242,7 +248,7 @@ defmodule Logflare.Mixfile do
       {:opentelemetry_phoenix, "~> 2.0.0-rc.2"},
       {:opentelemetry_bandit, "~> 0.2.0-rc.1"},
       {:otel_metric_exporter,
-       git: "https://github.com/supabase/elixir-otel-metric-exporter", ref: "e44bc0e"},
+       git: "https://github.com/supabase/elixir-otel-metric-exporter", ref: "f21149a"},
       {:live_monaco_editor, "~> 0.2"}
     ]
   end

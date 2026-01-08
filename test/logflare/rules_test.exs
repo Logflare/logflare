@@ -22,6 +22,17 @@ defmodule Logflare.RulesTest do
     assert [_] = Rules.list_rules(backend)
   end
 
+  test "list_rules_with_backend" do
+    user = insert(:user)
+    source = insert(:source, user: user)
+    backend = insert(:backend, user: user)
+    insert(:rule, source: source)
+    assert [] = Rules.list_rules_with_backend(source)
+
+    insert(:rule, source: source, backend: backend)
+    assert [_] = Rules.list_rules_with_backend(source)
+  end
+
   test "create_rule/1 from attrs" do
     user = insert(:user)
     source = insert(:source, user: user)

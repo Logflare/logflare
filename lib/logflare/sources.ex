@@ -322,6 +322,14 @@ defmodule Logflare.Sources do
     |> Logflare.Repo.one()
   end
 
+  @spec get_by_name_and_user_access(User.t() | TeamUser.t(), String.t()) :: Source.t() | nil
+  def get_by_name_and_user_access(user, name) when is_binary(name) do
+    Source
+    |> Logflare.Teams.filter_by_user_access(user)
+    |> where([query], query.name == ^name)
+    |> Logflare.Repo.one()
+  end
+
   def get_rate_limiter_metrics(source, bucket: :default) do
     cluster_size = Cluster.Utils.cluster_size()
     node_metrics = get_node_rate_limiter_metrics(source, bucket: :default)
@@ -374,7 +382,7 @@ defmodule Logflare.Sources do
   @spec preload_defaults(Source.t()) :: Source.t()
   def preload_defaults(source) do
     source
-    |> Repo.preload([:rules, :backends, [user: :team]])
+    |> Repo.preload([:backends, [user: :team]])
     |> refresh_source_metrics()
     |> put_bq_table_id()
   end
@@ -507,7 +515,6 @@ defmodule Logflare.Sources do
   def preload_for_dashboard(sources) do
     sources
     |> Enum.map(&preload_defaults/1)
-    |> Enum.map(&preload_saved_searches/1)
     |> Enum.map(&put_schema_field_count/1)
     |> Enum.sort_by(&{!&1.favorite, &1.name})
   end
@@ -647,7 +654,6 @@ defmodule Logflare.Sources do
     all_backends
     |> Enum.reduce(0, fn backend, acc ->
       case Backends.IngestEventQueue.total_pending({source_id, backend.id}) do
-        {:error, :not_initialized} -> acc
         count -> acc + count
       end
     end)

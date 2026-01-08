@@ -263,10 +263,12 @@ defmodule LogflareWeb.Plugs.BufferLimiterTest do
       assert json_response(conn, 429)
     end
 
-    test "returns 429 when user default queue is full even if system default is not", %{
-      conn: conn,
-      source: source
-    } do
+    test "returns 429 when user's backend default ingest queue is full even if system queue is not",
+         %{
+           conn: conn,
+           source: source,
+           backend1: backend1
+         } do
       system_queue_key = {source.id, nil, spawn(fn -> :ok end)}
       IngestEventQueue.upsert_tid(system_queue_key)
 
@@ -275,7 +277,7 @@ defmodule LogflareWeb.Plugs.BufferLimiterTest do
         IngestEventQueue.add_to_table(system_queue_key, [le])
       end
 
-      user_queue_key = {source.id, nil, self()}
+      user_queue_key = {source.id, backend1.id, spawn(fn -> :ok end)}
       IngestEventQueue.upsert_tid(user_queue_key)
 
       for _ <- 1..(Backends.max_buffer_queue_len() + 500) do
@@ -284,6 +286,7 @@ defmodule LogflareWeb.Plugs.BufferLimiterTest do
       end
 
       Backends.cache_local_buffer_lens(source.id, nil)
+      Backends.cache_local_buffer_lens(source.id, backend1.id)
 
       conn =
         conn

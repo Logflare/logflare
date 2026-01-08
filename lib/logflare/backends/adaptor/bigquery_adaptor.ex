@@ -54,7 +54,12 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
     project_id = backend.config.project_id
     dataset_id = backend.config.dataset_id
     # TODO: remove source_id metadata to reduce confusion
-    Logger.metadata(source_id: source.token, source_token: source.token)
+    Logger.metadata(
+      source_id: source.token,
+      source_token: source.token,
+      user_id: user.id,
+      system_source: source.system_source
+    )
 
     children = [
       {

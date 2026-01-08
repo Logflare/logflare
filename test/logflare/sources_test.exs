@@ -214,13 +214,15 @@ defmodule Logflare.SourcesTest do
       [user: insert(:user)]
     end
 
-    test "preloads required fields", %{user: user} do
-      sources = insert_list(3, :source, %{user: user})
+    test "preloads only the required fields", %{user: user} do
+      sources = insert_list(3, :source, %{user_id: user.id})
+      assocs = Sources.Source.__schema__(:associations)
+      sources = Enum.map(sources, &Ecto.reset_fields(&1, assocs))
       sources = Sources.preload_for_dashboard(sources)
 
       assert Enum.all?(sources, &Ecto.assoc_loaded?(&1.user))
-      assert Enum.all?(sources, &Ecto.assoc_loaded?(&1.rules))
-      assert Enum.all?(sources, &Ecto.assoc_loaded?(&1.saved_searches))
+
+      refute Enum.any?(sources, &Ecto.assoc_loaded?(&1.rules))
     end
 
     test "sorts data by name and favorite flag", %{user: user} do
@@ -628,6 +630,55 @@ defmodule Logflare.SourcesTest do
 
       updated = Sources.get_by(id: source.id)
       assert updated.log_events_updated_at != timestamp
+    end
+  end
+
+  describe "get_by_name_and_user_access/2" do
+    test "returns source when user owns it" do
+      insert(:plan)
+      user = insert(:user)
+      source = insert(:source, user: user, name: "my_source")
+
+      result = Sources.get_by_name_and_user_access(user, "my_source")
+
+      assert %Logflare.Sources.Source{id: id} = result
+      assert id == source.id
+    end
+
+    test "returns source when team_user has access" do
+      insert(:plan)
+      team_owner = insert(:user)
+      team = insert(:team, user: team_owner)
+      source = insert(:source, user: team_owner, name: "team_source")
+
+      team_user = insert(:team_user, email: "member@example.com", team: team)
+
+      result = Sources.get_by_name_and_user_access(team_user, "team_source")
+
+      assert %Logflare.Sources.Source{id: id} = result
+      assert id == source.id
+    end
+
+    test "returns nil when user does not have access" do
+      insert(:plan)
+      user1 = insert(:user)
+      user2 = insert(:user)
+      insert(:source, user: user1, name: "private_source")
+
+      result = Sources.get_by_name_and_user_access(user2, "private_source")
+
+      assert is_nil(result),
+             "Expected nil when user2 does not have access to user1's source, got: #{inspect(result)}"
+    end
+
+    test "returns nil when source does not exist" do
+      insert(:plan)
+      user = insert(:user)
+
+      result = Sources.get_by_name_and_user_access(user, "nonexistent_source_name")
+
+      assert is_nil(result),
+             "Expected nil when querying for non-existent source name, got: #{inspect(result)}"
     end
   end
 end

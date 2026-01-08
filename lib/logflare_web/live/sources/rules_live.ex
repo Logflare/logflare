@@ -12,7 +12,6 @@ defmodule LogflareWeb.Sources.RulesLive do
   alias Logflare.SourceSchemas
   alias Logflare.Sources
   alias Logflare.Users
-  alias LogflareWeb.LqlHelpers
 
   require Logger
 
@@ -22,7 +21,7 @@ defmodule LogflareWeb.Sources.RulesLive do
   @impl true
   def mount(%{"source_id" => source_id}, _session, socket) do
     %{assigns: %{user: user}} = socket
-    source = Sources.get_by_and_preload(id: source_id)
+    source = Sources.get_by_and_preload(id: source_id) |> Sources.preload_rules()
 
     user =
       if user.admin do
@@ -106,7 +105,7 @@ defmodule LogflareWeb.Sources.RulesLive do
       |> Rules.get_rule()
       |> Rules.delete_rule()
 
-    source = Sources.get_by_and_preload(token: source.token)
+    source = Sources.get_by_and_preload(token: source.token) |> Sources.preload_rules()
 
     socket =
       socket

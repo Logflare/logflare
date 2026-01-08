@@ -1,5 +1,5 @@
 defmodule LogflareWeb.Sources.RulesLiveTest do
-  use LogflareWeb.ConnCase, async: false
+  use LogflareWeb.ConnCase, async: true
 
   alias Logflare.Rules
 
@@ -54,7 +54,7 @@ defmodule LogflareWeb.Sources.RulesLiveTest do
     test "displays empty rules list initially", %{conn: conn, source: source} do
       conn
       |> visit(~p"/sources/#{source}/rules")
-      |> assert_has("h5", text: "~/logs/#{source.name}/rules")
+      |> assert_has(".subhead h5 a", text: source.name)
       |> assert_has("a[href='/sources/#{source.id}']", text: source.name)
       |> assert_has("h5", text: "Source Routing Rules")
       |> assert_has("li.list-group-item", text: "No rules yet...")

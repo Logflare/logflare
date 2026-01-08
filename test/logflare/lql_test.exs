@@ -338,6 +338,7 @@ defmodule Logflare.LqlTest do
     test "parses chart aggregations correctly" do
       test_cases = [
         {"c:count(host)", "host", :count, :minute},
+        {"c:countd(host)", "host", :countd, :minute},
         {"c:group_by(t::minute)", "timestamp", :count, :minute},
         {"c:count(host) c:group_by(t::minute)", "host", :count, :minute},
         {"c:avg(m.latency) c:group_by(t::hour)", "metadata.latency", :avg, :hour},
@@ -455,6 +456,14 @@ defmodule Logflare.LqlTest do
       assert String.downcase(sql) =~ "group by"
       assert String.downcase(sql) =~ "order by"
       assert String.downcase(sql) =~ "from events"
+    end
+
+    test "converts chart count distinct aggregation to BigQuery SQL" do
+      lql = "c:countd(host) c:group_by(t::hour)"
+      {:ok, sql} = Lql.to_sandboxed_sql(lql, "events", :bigquery)
+
+      assert String.downcase(sql) =~ "count(distinct"
+      assert String.downcase(sql) =~ "group by"
     end
 
     test "converts chart avg aggregation to BigQuery SQL" do
@@ -592,6 +601,22 @@ defmodule Logflare.LqlTest do
       assert String.downcase(sql) =~ "count"
       assert String.downcase(sql) =~ "group by"
       assert String.downcase(sql) =~ "minute"
+    end
+
+    test "converts chart count distinct query to Postgres SQL" do
+      lql = "c:countd(m.user_id) c:group_by(t::minute)"
+      {:ok, sql} = Lql.to_sandboxed_sql(lql, "events", :postgres)
+
+      assert String.downcase(sql) =~ "count(distinct"
+      assert String.downcase(sql) =~ "group by"
+    end
+
+    test "converts chart count distinct query to ClickHouse SQL" do
+      lql = "c:countd(m.user_id) c:group_by(t::minute)"
+      {:ok, sql} = Lql.to_sandboxed_sql(lql, "events", :clickhouse)
+
+      assert String.downcase(sql) =~ "count(distinct"
+      assert String.downcase(sql) =~ "group by"
     end
 
     test "converts chart avg query to Postgres SQL" do

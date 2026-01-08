@@ -516,6 +516,35 @@ defmodule LogflareWeb.Source.SearchLVTest do
                       %_{jobCreationMode: "JOB_CREATION_OPTIONAL", parameterMode: "POSITIONAL"}}
     end
 
+    test "count distinct aggregation", %{conn: conn, source: source} do
+      pid = self()
+
+      stub(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, fn _conn, _proj_id, opts ->
+        if opts[:body].query =~ "COUNT(DISTINCT" do
+          send(pid, {:ok, :countd})
+        end
+
+        {:ok, TestUtils.gen_bq_response(%{"event_message" => "test message"})}
+      end)
+
+      {:ok, view, _html} = live(conn, Routes.live_path(conn, SearchLV, source.id))
+
+      render_change(view, :start_search, %{
+        "search" => %{
+          @default_search_params
+          | "querystring" => "c:countd(event_message) c:group_by(t::hour)",
+            "chart_aggregate" => "countd",
+            "chart_period" => "hour"
+        }
+      })
+
+      TestUtils.retry_assert(fn ->
+        html = view |> element("#logs-list-container") |> render()
+        assert html =~ "test message"
+        assert_receive {:ok, :countd}
+      end)
+    end
+
     test "bug: top-level key with nested key filters", %{conn: conn, source: source} do
       # ref https://www.notion.so/supabase/Backend-Search-Error-187112eabd094dcc8042c6952f4f5fac
 
@@ -683,6 +712,34 @@ defmodule LogflareWeb.Source.SearchLVTest do
 
       assert link =~ ~r/phx-value-log-event-timestamp="\d+/
       assert link =~ ~r/phx-value-lql="\w+/
+    end
+
+    test "log event selected fields", %{conn: conn, source: source} do
+      stub(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, fn _conn, _proj_id, _opts ->
+        {:ok,
+         TestUtils.gen_bq_response(%{
+           "event_message" => "some event message",
+           "testing" => "modal123",
+           "user_id" => "user-abc-123",
+           "id" => "some-uuid"
+         })}
+      end)
+
+      {:ok, view, _html} =
+        live(conn, ~p"/sources/#{source.id}/search?#{%{querystring: "s:user.id"}}")
+
+      %{executor_pid: search_executor_pid} = get_view_assigns(view)
+      Ecto.Adapters.SQL.Sandbox.allow(Logflare.Repo, self(), search_executor_pid)
+
+      view
+      |> TestUtils.wait_for_render("#logs-list")
+
+      assert view |> element("#logs-list-container") |> render() =~
+               "some event message"
+
+      html = view |> element("#logs-list-container #log-some-uuid-selected-fields") |> render()
+      assert html =~ "id"
+      assert html =~ "user-abc-123"
     end
 
     test "log event modal", %{conn: conn, user: user} do
@@ -1450,6 +1507,21 @@ defmodule LogflareWeb.Source.SearchLVTest do
       for path <- ["sources/#{source.id}"] do
         assert html =~ ~r/#{path}[^"<]*t=#{team_user.team_id}/
       end
+    end
+
+    test "search page without t= param assigns team context and preserves it in links", %{
+      conn: conn,
+      source: source,
+      team_user: team_user
+    } do
+      {:ok, view, html} =
+        live(
+          conn,
+          ~p"/sources/#{source}/search?querystring=test&tailing%3F=false"
+        )
+
+      assert html =~ source.name
+      assert view |> has_element?(~s|a[href="/sources/#{source.id}?t=#{team_user.team_id}"]|)
     end
   end
 

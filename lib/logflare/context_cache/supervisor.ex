@@ -9,10 +9,12 @@ defmodule Logflare.ContextCache.Supervisor do
   alias Logflare.Billing
   alias Logflare.ContextCache
   alias Logflare.Backends
+  alias Logflare.SavedSearches
   alias Logflare.Sources
   alias Logflare.SourceSchemas
   alias Logflare.Users
   alias Logflare.TeamUsers
+  alias Logflare.Rules
   alias Logflare.Partners
   alias Logflare.Auth
   alias Logflare.Endpoints
@@ -43,10 +45,15 @@ defmodule Logflare.ContextCache.Supervisor do
     list_caches() ++
       [
         ContextCache.TransactionBroadcaster,
-        {GenSingleton, child_spec: cainophile_child_spec()},
-        {PartitionSupervisor, child_spec: CacheBusterWorker, name: CacheBusterWorker.Supervisor},
-        ContextCache.CacheBuster
-      ]
+        {GenSingleton, child_spec: cainophile_child_spec()}
+      ] ++ buster_specs()
+  end
+
+  def buster_specs do
+    [
+      CacheBusterWorker.supervisor_spec(),
+      ContextCache.CacheBuster
+    ]
   end
 
   def list_caches do
@@ -59,7 +66,9 @@ defmodule Logflare.ContextCache.Supervisor do
       Billing.Cache,
       SourceSchemas.Cache,
       Auth.Cache,
-      Endpoints.Cache
+      Endpoints.Cache,
+      Rules.Cache,
+      SavedSearches.Cache
     ]
   end
 

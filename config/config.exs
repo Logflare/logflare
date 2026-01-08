@@ -15,6 +15,7 @@ config :logflare,
   # preemtible is 30 seconds from shutdown to sigterm
   # normal instances can be more than 90 seconds
   sigterm_shutdown_grace_period_ms: 15_000,
+  cache_stats: false,
   encryption_key_fallback: hardcoded_encryption_key,
   encryption_key_default: hardcoded_encryption_key
 
@@ -163,11 +164,11 @@ config :logflare, Logflare.Scheduler,
   include_task_supervisor: false,
   task_supervisor_name: Logflare.Scheduler.TaskSupervisor,
   jobs: [
-    source_cleanup: [
-      run_strategy: {Quantum.RunStrategy.All, :cluster},
-      schedule: "*/30 * * * *",
-      task: {Logflare.Sources, :shutdown_idle_sources, []}
-    ],
+    # source_cleanup: [
+    #   run_strategy: {Quantum.RunStrategy.All, :cluster},
+    #   schedule: "*/30 * * * *",
+    #   task: {Logflare.Sources, :shutdown_idle_sources, []}
+    # ],
     recent_events_touch: [
       run_strategy: Quantum.RunStrategy.Local,
       schedule: "*/15 * * * *",
