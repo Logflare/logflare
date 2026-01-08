@@ -1,12 +1,13 @@
-defmodule Logflare.Sources.SourceRouter.GroupedRuleset do
+defmodule Logflare.Sources.SourceRouter.RulesTree do
   @moduledoc false
   alias Logflare.Rules
+  alias Logflare.Lql.Rules.FilterRule
 
   @behaviour Logflare.Sources.SourceRouter
 
   @impl true
   def matching_rules(event, source) do
-    rule_set = Rules.Cache.ruleset_by_source_id(source.id)
+    rule_set = Rules.Cache.rules_tree_by_source_id(source.id)
 
     matching_rule_ids(event, rule_set)
     |> Enum.flat_map(fn
@@ -47,8 +48,6 @@ defmodule Logflare.Sources.SourceRouter.GroupedRuleset do
     check_op(operator, le_value, expected)
     |> match_cond(rule_ids, acc)
   end
-
-  defp match_rule(_le_value, {_op, _value}, {:route, _rule_ids}, acc), do: acc
 
   defp check_op(operator, le_value, expected) do
     case operator do
@@ -101,10 +100,8 @@ defmodule Logflare.Sources.SourceRouter.GroupedRuleset do
   defp stringify(v) when is_binary(v), do: v
   defp stringify(v), do: inspect(v)
 
-  alias Logflare.Lql.Rules.FilterRule
-
   # Groups all the rules associated with source by path in a tree
-  def make_ruleset(rules) do
+  def build(rules) do
     for rule <- rules, filters_num = length(rule.lql_filters), filter <- rule.lql_filters do
       target = {rule.id, filters_num}
 
@@ -119,7 +116,7 @@ defmodule Logflare.Sources.SourceRouter.GroupedRuleset do
   end
 
   defp to_command(%FilterRule{modifiers: %{negate: true}} = rule) do
-    {:not, to_command(%{rule | negate: false})}
+    {:not, to_command(%{rule | modifiers: %{rule.modifiers | negate: false}})}
   end
 
   defp to_command(%FilterRule{operator: :range, values: [l_val, r_val]}) do

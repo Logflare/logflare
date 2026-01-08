@@ -7,7 +7,7 @@ defmodule Logflare.Rules do
   alias Logflare.Repo
   alias Logflare.Rules.Rule
   alias Logflare.Sources.Source
-  alias Logflare.Sources.SourceRouter.GroupedRuleset
+  alias Logflare.Sources.SourceRouter.RulesTree
   alias Logflare.SourceSchemas
   alias Logflare.Backends.Backend
   alias Logflare.Backends.SourceSup
@@ -31,9 +31,9 @@ defmodule Logflare.Rules do
     |> Repo.all()
   end
 
-  def ruleset_by_source_id(id) do
+  def rules_tree_by_source_id(id) do
     rules = list_by_source_id(id)
-    GroupedRuleset.make_ruleset(rules)
+    RulesTree.build(rules)
   end
 
   @doc """

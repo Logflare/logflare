@@ -574,7 +574,7 @@ defmodule Logflare.Backends do
   defp maybe_mark_le_dropped_by_lql(%LogEvent{} = le, %Source{drop_lql_filters: []}), do: le
 
   defp maybe_mark_le_dropped_by_lql(%LogEvent{} = le, %Source{drop_lql_filters: filters}) do
-    if SourceRouting.route_with_lql_rules?(le, %Rule{lql_filters: filters}) do
+    if SourceRouter.Sequential.route_with_lql_rules?(le, %Rule{lql_filters: filters}) do
       %{le | drop: true}
     else
       le

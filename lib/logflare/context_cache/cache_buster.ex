@@ -330,7 +330,7 @@ defmodule Logflare.ContextCache.CacheBuster do
   end
 
   defp handle_rule_record(record) do
-    for {k, v} <- Map.take(record, ["source_id", "backend_id"]), is_binary(v) do
+    for {k, v} <- Map.take(record, ["id", "source_id", "backend_id"]), is_binary(v) do
       {String.to_existing_atom(k), String.to_integer(v)}
     end
   end
