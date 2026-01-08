@@ -30,8 +30,6 @@ defmodule Logflare.SavedSearches.Cache do
 
   def list_saved_searches_by_source(source_id), do: apply_repo_fun(__ENV__.function, [source_id])
 
-  def list_saved_searches_by_user(user_id), do: apply_repo_fun(__ENV__.function, [user_id])
-
   @impl Logflare.ContextCache
   def bust_by(kw) do
     entries =
