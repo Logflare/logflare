@@ -10,9 +10,10 @@ defmodule Logflare.Sources.SourceRouter.GroupedRuleset do
 
     matching_rule_ids(event, rule_set)
     |> Enum.flat_map(fn
-      {id, 0} -> [Rules.Cache.get_rule(id)]
+      {id, 0} -> [id]
       {_id, _matches_left} -> []
     end)
+    |> Rules.Cache.get_rules()
   end
 
   def matching_rule_ids(le, rule_set) do
@@ -103,6 +104,14 @@ defmodule Logflare.Sources.SourceRouter.GroupedRuleset do
   defp stringify(v), do: inspect(v)
 
   alias Logflare.Lql.Rules.FilterRule
+
+  # Cached data structure
+  # def make_cache(rules) do
+  #   target_cache =
+  #   for rule <- rules do
+  #     {rule.id, target}
+  #   end
+  # end
 
   # Groups all the rules associated with source by path in a tree
   def make_ruleset(rules) do

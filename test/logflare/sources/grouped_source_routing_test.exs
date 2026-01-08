@@ -153,7 +153,7 @@ defmodule Logflare.Logs.GroupedSourceRoutingTest do
                    {:get, "subfield"} => %{{:equal, "debug"} => {:route, 1}}
                  },
                  {:get, "field3"} => %{
-                   {:equal, 0} => {:route, [0, 1]}
+                   {:equal, 0} => {:route, [1, 0]}
                  }
                }
              }
