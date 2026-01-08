@@ -3,7 +3,6 @@ defmodule LogflareWeb.DashboardLive do
   use LogflareWeb, :live_view
 
   alias Logflare.Billing
-  alias Logflare.SavedSearches
   alias Logflare.Sources
   alias Logflare.Teams
   alias LogflareWeb.DashboardLive.DashboardComponents
@@ -26,7 +25,6 @@ defmodule LogflareWeb.DashboardLive do
           {to_string(source.token), %{metrics: source.metrics, updated_at: source.updated_at}}
         end)
       end)
-      |> assign(:saved_searches, SavedSearches.Cache.list_saved_searches_by_user(user.id))
       |> assign(:plan, Billing.get_plan_by_user(user))
       |> assign(:fade_in, false)
 
@@ -54,33 +52,6 @@ defmodule LogflareWeb.DashboardLive do
     else
       _ -> {:noreply, socket |> put_flash(:error, "Something went wrong!")}
     end
-  end
-
-  def handle_event("delete_saved_search", %{"id" => search_id}, socket) do
-    %{user: user} = socket.assigns
-
-    socket =
-      with %Logflare.SavedSearch{source: source} = search <-
-             SavedSearches.get(search_id) |> Repo.preload(:source),
-           true <- Sources.get_by_user_access(user, source.id) |> is_struct(),
-           {:ok, _response} <- SavedSearches.delete_by_user(search) do
-        saved_searches = SavedSearches.list_saved_searches_by_user(user.id)
-
-        socket
-        |> assign(saved_searches: saved_searches)
-        |> put_flash(:info, "Saved search deleted!")
-      else
-        nil ->
-          put_flash(socket, :error, "Saved search not found")
-
-        false ->
-          put_flash(socket, :error, "You don't have permission to delete this saved search")
-
-        _ ->
-          put_flash(socket, :error, "Something went wrong!")
-      end
-
-    {:noreply, socket}
   end
 
   def handle_event("visibility_change", %{"visibility" => "hidden"}, socket) do
@@ -127,7 +98,6 @@ defmodule LogflareWeb.DashboardLive do
       <div class="tw-max-w-[95%] tw-mx-auto">
         <div class="lg:tw-grid tw-grid-cols-12 tw-gap-8 tw-px-[15px] tw-mt-[50px]">
           <div class="tw-col-span-3">
-            <DashboardComponents.saved_searches saved_searches={@saved_searches} team={@team} />
             <DashboardComponents.members user={@user} team={@team} team_user={@team_user} />
           </div>
           <div class="tw-col-span-7">

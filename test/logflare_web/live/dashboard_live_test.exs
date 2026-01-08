@@ -80,41 +80,6 @@ defmodule LogflareWeb.DashboardLiveTest do
     end
   end
 
-  describe "saved searches" do
-    setup %{source: source} do
-      [saved_search: insert(:saved_search, source: source)]
-    end
-
-    test "render saved searches", %{conn: conn, saved_search: saved_search} do
-      {:ok, _view, html} = live(conn, "/dashboard")
-
-      assert html =~ "Saved Searches"
-      assert html =~ saved_search.querystring
-    end
-
-    test "delete saved search ", %{conn: conn, saved_search: saved_search} do
-      {:ok, view, html} = live(conn, "/dashboard")
-
-      assert html =~ saved_search.querystring
-
-      view
-      |> element("[phx-click='delete_saved_search'][phx-value-id='#{saved_search.id}']")
-      |> render_click()
-
-      Cachex.clear(Logflare.SavedSearches.Cache)
-
-      {:ok, _view, html} = live(conn, "/dashboard")
-      refute html =~ saved_search.querystring
-    end
-
-    test "shows error when deleting non-existent saved search", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/dashboard")
-
-      assert render_hook(view, "delete_saved_search", %{"id" => "999999"}) =~
-               "Saved search not found"
-    end
-  end
-
   describe "dashboard - viewing home team as user" do
     setup %{user: user} do
       other_team = insert(:team, name: "Other Team")
