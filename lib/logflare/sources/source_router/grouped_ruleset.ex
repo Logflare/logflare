@@ -51,8 +51,6 @@ defmodule Logflare.Sources.SourceRouter.GroupedRuleset do
   defp match_rule(_le_value, {_op, _value}, {:route, _rule_ids}, acc), do: acc
 
   defp check_op(operator, le_value, expected) do
-    le_str_value = stringify(le_value)
-
     case operator do
       nil ->
         false
@@ -65,16 +63,16 @@ defmodule Logflare.Sources.SourceRouter.GroupedRuleset do
         le_value == expected
 
       :list_includes_regexp ->
-        le_str_value =~ ~r/#{expected}/u
+        stringify(le_value) =~ ~r/#{expected}/u
 
       :string_contains ->
-        String.contains?(le_str_value, stringify(expected))
+        String.contains?(stringify(le_value), stringify(expected))
 
       := ->
         le_value == expected
 
       :"~" ->
-        le_str_value =~ ~r/#{expected}/u
+        stringify(le_value) =~ ~r/#{expected}/u
 
       op when op in [:<=, :<, :>=, :>] ->
         apply(Kernel, operator, [le_value, expected])
@@ -104,14 +102,6 @@ defmodule Logflare.Sources.SourceRouter.GroupedRuleset do
   defp stringify(v), do: inspect(v)
 
   alias Logflare.Lql.Rules.FilterRule
-
-  # Cached data structure
-  # def make_cache(rules) do
-  #   target_cache =
-  #   for rule <- rules do
-  #     {rule.id, target}
-  #   end
-  # end
 
   # Groups all the rules associated with source by path in a tree
   def make_ruleset(rules) do

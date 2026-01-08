@@ -163,17 +163,19 @@ Benchee.run(
     "source with 1000 rules and one matching" => one_matching.(1000),
     "source with 1000 rules and all matching" => all_matching.(1000)
   },
+  # save: [path: Path.join(__DIR__, "source_routing.benchee")],
   pre_check: :all_same,
   # profile_after: :tprof,
-  time: 10,
+  time: 5,
   memory_time: 2
 )
 
 # Exclude warmup when profiling
 # input_100 = {_, source} = few_matching.(100)
 # warmup.(source)
-# input_1000 = {_, source} = few_matching.(100)
+# input_1000 = {_, source} = few_matching.(1000)
 # warmup.(source)
+#
 # Benchee.run(
 #   %{
 #     "Reference" => fn {event, source} ->
@@ -188,7 +190,7 @@ Benchee.run(
 #     "source with 1000 rules and few matching" => input_1000
 #   },
 #   profile_after: :tprof,
-#   time: 0,
+#   time: 1,
 #   memory_time: 0
 # )
 
