@@ -405,7 +405,9 @@ defmodule Logflare.Backends do
         |> Changeset.apply_changes()
       end)
 
-    Map.put(updated, :config, updated.config_encrypted)
+    updated
+    |> Map.put(:config, updated.config_encrypted)
+    |> Map.put(:consolidated_ingest?, Adaptor.consolidated_ingest?(backend))
   end
 
   @doc """
