@@ -1,6 +1,7 @@
 defmodule LogflareWeb.ModalLiveHelpersTest do
   use ExUnit.Case, async: true
   import Phoenix.LiveViewTest
+  import Phoenix.Component
 
   alias LogflareWeb.ModalLiveHelpers
   alias Phoenix.LiveView.JS
@@ -15,20 +16,22 @@ defmodule LogflareWeb.ModalLiveHelpersTest do
 
   describe "custom click commands" do
     test "live_modal_show_link" do
-      opts = [
+      assigns = %{
         component: LogflareWeb.SearchLive.EventContextComponent,
         modal_id: "1",
         title: "Test"
-      ]
+      }
 
-      assert ModalLiveHelpers.live_modal_show_link("test", opts)
-             |> rendered_to_string() =~ ~s|phx-click="show_live_modal"|
+      assert rendered_to_string(~H"""
+             <ModalLiveHelpers.modal_link {assigns}>test</ModalLiveHelpers.modal_link>
+             """) =~
+               ~s|phx-click="show_live_modal"|
 
-      assert ModalLiveHelpers.live_modal_show_link(
-               "test",
-               opts ++ [click: JS.push("custom_event")]
-             )
-             |> rendered_to_string() =~ ~r/phx-click=.*custom_event.*show_live_modal/
+      assert rendered_to_string(~H"""
+             <ModalLiveHelpers.modal_link
+             click={JS.push("custom_event")} {assigns}>test</ModalLiveHelpers.modal_link>
+             """) =~
+               ~r/phx-click=.*custom_event.*show_live_modal/
     end
 
     test "render the modal with close action" do

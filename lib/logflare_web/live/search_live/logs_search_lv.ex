@@ -7,7 +7,6 @@ defmodule LogflareWeb.Source.SearchLV do
   import Logflare.Lql.Rules
   import LogflareWeb.ModalLiveHelpers
   import LogflareWeb.SearchLV.Utils
-  import LogflareWeb.SearchLive.TimezoneComponent
 
   alias Logflare.Billing
   alias Logflare.Logs.SearchQueryExecutor
@@ -24,13 +23,14 @@ defmodule LogflareWeb.Source.SearchLV do
   alias LogflareWeb.AuthLive
   alias LogflareWeb.Helpers.BqSchema, as: BqSchemaHelpers
   alias LogflareWeb.Router.Helpers, as: Routes
+  alias LogflareWeb.SearchLive.FormComponents
+  alias LogflareWeb.SearchLive.SubheadComponents
+  alias LogflareWeb.SearchLive.LogEventComponents
   alias LogflareWeb.Utils
   alias Logflare.Sources.Source.BigQuery.SchemaBuilder
   alias Logflare.Utils.Chart, as: ChartUtils
 
   require Logger
-
-  embed_templates "templates/*"
 
   @tail_search_interval 1000
   @user_idle_interval :timer.minutes(2)
@@ -91,7 +91,6 @@ defmodule LogflareWeb.Source.SearchLV do
       search_op_error: nil,
       search_op_log_events: nil,
       search_op_log_aggregates: nil,
-      chart_aggregate_enabled?: nil,
       user_idle_interval: @user_idle_interval,
       show_modal: nil,
       last_query_completed_at: nil,
@@ -175,7 +174,6 @@ defmodule LogflareWeb.Source.SearchLV do
           |> assign(:lql_rules, lql_rules)
           |> assign(:querystring, qs)
           |> assign(:search_op_log_events, search_op_log_events)
-          |> assign(chart_aggregate_enabled?: search_agg_controls_enabled?(lql_rules))
 
         if connected?(socket) do
           kickoff_queries(source.token, socket.assigns)
@@ -215,7 +213,67 @@ defmodule LogflareWeb.Source.SearchLV do
   end
 
   def render(assigns) do
-    logs_search(assigns)
+    ~H"""
+    <%= if @show_modal do %>
+      {live_modal(@modal.body.module_or_template,
+        id: @modal.body.id,
+        title: @modal.body.title,
+        user: @user,
+        params: @modal.params,
+        view: @modal.body[:view],
+        source: @source,
+        search_op_log_events: @search_op_log_events,
+        search_op_log_aggregates: @search_op_log_aggregates,
+        search_op_error: @search_op_error,
+        team_user: @team_user,
+        close: @modal.body[:close],
+        return_to: @modal.body.return_to
+      )}
+    <% end %>
+    <.subheader>
+      <:path>
+        ~/logs/<.team_link team={@team} href={~p"/sources/#{@source}"} class="text-primary">{@source.name}</.team_link>/search
+      </:path>
+      <SubheadComponents.subhead_actions user={@user} search_timezone={@search_timezone} search_op_error={@search_op_error} search_op_log_events={@search_op_log_events} search_op_log_aggregates={@search_op_log_aggregates} />
+    </.subheader>
+    <div class="container source-logs-search-container console-text">
+      <div id="logs-list-container">
+        <LogEventComponents.results_list search_op={@search_op} search_op_log_events={@search_op_log_events} last_query_completed_at={@last_query_completed_at} search_timezone={@search_timezone} loading={@loading} tailing?={@tailing?} querystring={@querystring} />
+      </div>
+      <div>
+        {live_react_component(
+          "Components.LogEventsChart",
+          %{
+            data: if(@search_op_log_aggregates, do: @search_op_log_aggregates.rows, else: []),
+            loading: @chart_loading,
+            display_timezone: @search_timezone || "Etc/UTC",
+            chart_period: get_chart_period(@lql_rules, "minute"),
+            chart_data_shape_id:
+              if(@search_op_log_aggregates,
+                do: @search_op_log_aggregates.chart_data_shape_id,
+                else: nil
+              )
+          },
+          id: "log-events-chart"
+        )}
+      </div>
+      <FormComponents.search_controls
+        search_form={@search_form}
+        querystring={@querystring}
+        search_history={@search_history}
+        search_timezone={@search_timezone}
+        loading={@loading}
+        tailing?={@tailing?}
+        uri_params={@uri_params}
+        lql_rules={@lql_rules}
+        user={@user}
+        has_results?={[@search_op_log_events, @search_op_log_aggregates] |> Enum.any?()}
+        source={@source}
+        last_query_completed_at={@last_query_completed_at}
+      />
+      <div id="user-idle" phx-click="user_idle" class="d-none" data-user-idle-interval={@user_idle_interval}></div>
+    </div>
+    """
   end
 
   def handle_event(
@@ -531,7 +589,7 @@ defmodule LogflareWeb.Source.SearchLV do
     {:noreply, socket}
   end
 
-  def handle_info({:search_result, %{events: _events} = search_result}, socket) do
+  def handle_info({:search_result, %{events: events_op} = search_result}, socket) do
     tailing_timer =
       if socket.assigns.tailing? do
         Process.send_after(self(), :schedule_tail_search, @tail_search_interval)
@@ -539,6 +597,7 @@ defmodule LogflareWeb.Source.SearchLV do
 
     socket =
       socket
+      |> assign(:search_op, events_op)
       |> assign(:search_op_error, nil)
       |> assign(:search_op_log_events, search_result.events)
       |> assign(:tailing_timer, tailing_timer)
@@ -739,13 +798,6 @@ defmodule LogflareWeb.Source.SearchLV do
       true ->
         nil
     end
-  end
-
-  defp search_agg_controls_enabled?(lql_rules) do
-    lql_rules
-    |> Enum.find(%{}, &match?(%ChartRule{}, &1))
-    |> Map.get(:value_type)
-    |> Kernel.in([:integer, :float])
   end
 
   defp adjust_timestamp_rules(timestamp_rules, search_timezone) do

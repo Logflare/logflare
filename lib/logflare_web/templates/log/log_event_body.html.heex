@@ -3,22 +3,24 @@
     <li class="list-group-item flex-fill">
       <div>
         <h6 class="header-margin">Timestamp</h6>
-        <div>{Timex.to_datetime(@timestamp)}</div>
-        <div class="tw-text-xs">
+        <div>
+          <span>
+            {Timex.to_datetime(@timestamp)}
+          </span>
           <.link href="#" phx-click={Phoenix.LiveView.JS.dispatch("logflare:copy-to-clipboard", detail: %{text: Timex.to_datetime(@timestamp)})} data-toggle="tooltip" data-placement="top" title="Copy to clipboard">
-            copy
+            <i class="fas fa-copy"></i>
           </.link>
+        </div>
+        <div class="tw-text-xs">
           <%= if @local_timezone do %>
-            {link("inspect",
-              class: "tw-ml-4",
-              to:
-                Routes.live_path(LogflareWeb.Endpoint, LogflareWeb.Source.SearchLV, @source,
-                  querystring: "t:>#{Timex.format!(Timex.shift(@local_timestamp, seconds: -30), "{YYYY}-{0M}-{0D}T{h24}:{m}:{s}")} t:<#{Timex.format!(Timex.shift(@local_timestamp, seconds: 30), "{YYYY}-{0M}-{0D}T{h24}:{m}:{s}")} c:count(*) c:group_by(t::second)",
-                  tailing?: false
-                )
-            )}
-          <% else %>
-            <br />
+            <.link to={
+              Routes.live_path(LogflareWeb.Endpoint, LogflareWeb.Source.SearchLV, @source,
+                querystring: "t:>#{Timex.format!(Timex.shift(@local_timestamp, seconds: -30), "{YYYY}-{0M}-{0D}T{h24}:{m}:{s}")} t:<#{Timex.format!(Timex.shift(@local_timestamp, seconds: 30), "{YYYY}-{0M}-{0D}T{h24}:{m}:{s}")} c:count(*) c:group_by(t::second)",
+                tailing?: false
+              )
+            }>
+              <i class="fas fa-search tw-mr-1 tw-w-2"></i> inspect
+            </.link>
           <% end %>
         </div>
       </div>
@@ -26,12 +28,23 @@
     <li class="list-group-item flex-fill">
       <h6 class="header-margin">UUID</h6>
 
-      <div>{@id}</div>
-      <div class="tw-text-xs">
-        <.link href="#" phx-click={Phoenix.LiveView.JS.dispatch("logflare:copy-to-clipboard", detail: %{text: @id})} data-toggle="tooltip" data-placement="top" title="Copy to clipboard">
-          copy
+      <div class="tw-flex tw-items-center tw-gap-1">
+        <span>{@id}</span>
+        <.link href="#" class="tw-ml-2" phx-click={Phoenix.LiveView.JS.dispatch("logflare:copy-to-clipboard", detail: %{text: @id})} data-toggle="tooltip" data-placement="top" title="Copy UUID to clipboard">
+          <i class="fas fa-copy"></i>
         </.link>
-        <.log_event_permalink log_event_id={@id} timestamp={@body["timestamp"]} source={@source} lql={@lql} class="" />
+      </div>
+      <div class="tw-text-xs tw-flex tw-items-center tw-gap-4">
+        <.link
+          href="#"
+          phx-click={Phoenix.LiveView.JS.dispatch("logflare:copy-to-clipboard", detail: %{text: "#{LogflareWeb.Endpoint.url()}/sources/#{@source.id}/event?uuid=#{@id}&timestamp=#{Logflare.Utils.iso_timestamp(@body["timestamp"])}&lql=#{@lql}"})}
+          data-toggle="tooltip"
+          data-placement="top"
+          title="Copy permalink to clipboard"
+        >
+          <i class="fas fa-copy tw-mr-1 tw-w-2"></i> copy link
+        </.link>
+        <.log_event_permalink log_event_id={@id} timestamp={@body["timestamp"]} source={@source} lql={@lql} icon="fas fa-external-link-alt" class="" />
       </div>
     </li>
   </ul>

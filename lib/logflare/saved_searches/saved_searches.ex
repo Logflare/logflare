@@ -51,15 +51,6 @@ defmodule Logflare.SavedSearches do
   end
 
   @doc """
-  Completely deletes a saved search.
-  TODO: remove, unused.
-  """
-  @spec delete(SavedSearch.t()) :: {:ok, SavedSearch.t()}
-  def delete(search) do
-    Repo.delete(search)
-  end
-
-  @doc """
   Marks a SavedSearch as not saved (i.e. user will not see in dashboard)
   """
   @spec delete_by_user(SavedSearch.t()) :: {:ok, SavedSearch.t()}
@@ -117,6 +108,17 @@ defmodule Logflare.SavedSearches do
     |> where([s], s.source_id == ^source_id)
     |> order_by([s], desc: s.inserted_at)
     |> limit([s], 10)
+    |> Repo.all()
+  end
+
+  @spec list_saved_searches_by_user(number()) :: [SavedSearch.t()]
+  def list_saved_searches_by_user(user_id) do
+    SavedSearch
+    |> where([s], s.saved_by_user == true)
+    |> join(:inner, [s], src in Source, on: s.source_id == src.id)
+    |> where([s, src], src.user_id == ^user_id)
+    |> order_by([s, src], asc: src.name, asc: s.inserted_at)
+    |> preload([s, src], source: src)
     |> Repo.all()
   end
 end

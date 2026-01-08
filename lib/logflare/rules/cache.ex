@@ -71,22 +71,26 @@ defmodule Logflare.Rules.Cache do
 
   @impl ContextCache
   def bust_by(kw) do
-    kw
-    |> Enum.map(fn
-      # FIXME: new caches
-      {:source_id, source_id} -> {:list_by_source_id, [source_id]}
-      {:backend_id, backend_id} -> {:list_by_backend_id, [backend_id]}
-    end)
-    |> then(fn entries ->
-      Cachex.execute(Rules.Cache, fn worker ->
-        Enum.reduce(entries, 0, fn k, acc ->
-          case Cachex.take(worker, k) do
-            {:ok, nil} -> acc
-            {:ok, _value} -> acc + 1
-          end
-        end)
+    entries =
+      kw
+      |> Enum.map(fn
+        # FIXME: new caches
+        {:source_id, source_id} -> {:list_by_source_id, [source_id]}
+        {:backend_id, backend_id} -> {:list_by_backend_id, [backend_id]}
+      end)
+
+    Cachex.execute(Rules.Cache, fn worker ->
+      Enum.reduce(entries, 0, fn k, acc ->
+        acc + delete_and_count(worker, k)
       end)
     end)
+  end
+
+  defp delete_and_count(cache, key) do
+    case Cachex.take(cache, key) do
+      {:ok, nil} -> 0
+      {:ok, _value} -> 1
+    end
   end
 
   defp apply_repo_fun(fun, args) do

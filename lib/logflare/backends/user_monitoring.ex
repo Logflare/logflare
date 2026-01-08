@@ -14,28 +14,21 @@ defmodule Logflare.Backends.UserMonitoring do
     export_period =
       case Application.get_env(:logflare, :env) do
         :test -> 100
-        _ -> 60_000
+        _ -> 60_000 * 2
       end
 
     otel_exporter_opts =
       [
         metrics: metrics(),
-        resource: %{
-          name: "Logflare",
-          service: %{
-            name: "Logflare",
-            version: Application.spec(:logflare, :vsn) |> to_string()
-          },
-          node: inspect(Node.self()),
-          cluster: Application.get_env(:logflare, :metadata)[:cluster]
-        },
+        resource: %{},
         export_callback: &exporter_callback/2,
         extract_tags: &extract_tags/2,
         name: :user_metrics_exporter,
         otlp_endpoint: "",
         export_period: export_period,
         max_concurrency: System.schedulers_online(),
-        max_batch_size: 2500
+        max_batch_size: 500,
+        spawn_opt: [fullsweep_after: 10_000]
       ]
 
     [{OtelMetricExporter, otel_exporter_opts}]
@@ -64,6 +57,8 @@ defmodule Logflare.Backends.UserMonitoring do
     ]
   end
 
+  def keep_metric_function(%{"system_source" => true}), do: false
+
   def keep_metric_function(metadata) do
     case Users.get_related_user_id(metadata) do
       nil -> false
@@ -84,7 +79,7 @@ defmodule Logflare.Backends.UserMonitoring do
 
   # @doc false
   def exporter_callback({:metrics, metrics}, config, opts \\ []) do
-    if Keyword.get(opts, :flow, true) do
+    if Keyword.get(opts, :flow, false) do
       metrics
       |> Stream.flat_map(fn metric ->
         OtelMetric.handle_metric(metric, config.resource, %{})
@@ -133,9 +128,11 @@ defmodule Logflare.Backends.UserMonitoring do
   Intercepts Logger messages related to specific users, and send them to the respective
   System Source when the user has activated it
   """
-  def log_interceptor(%{meta: meta} = log_event, _) do
-    with user_id when is_integer(user_id) <- Users.get_related_user_id(meta),
-         %{system_monitoring: true} <- Users.Cache.get(user_id),
+  def log_interceptor(%{meta: %{system_source: true}}, _), do: :ignore
+
+  def log_interceptor(%{meta: %{user_id: user_id} = meta} = log_event, _)
+      when is_integer(user_id) do
+    with %{system_monitoring: true} <- Users.Cache.get(user_id),
          %Sources.Source{} = source <- get_system_source_logs(user_id) do
       log_event.level
       |> LogflareLogger.Formatter.format(format_message(log_event), get_datetime(), meta)

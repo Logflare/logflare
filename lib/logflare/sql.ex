@@ -194,7 +194,7 @@ defmodule Logflare.Sql do
     sources = Sources.list_sources_by_user(user)
     source_mapping = source_mapping(sources)
 
-    Logger.metadata(query_string: query)
+    Logger.metadata(query_string: query, user_id: user.id)
 
     with {:ok, statements} <- Parser.parse(sql_dialect, query),
          {:ok, sandboxed_query_ast} <- sandboxed_ast(sandboxed_query, sql_dialect),
@@ -224,7 +224,7 @@ defmodule Logflare.Sql do
     sources = Sources.list_sources_by_user(user)
     source_mapping = source_mapping(sources)
 
-    Logger.metadata(query_string: query)
+    Logger.metadata(query_string: query, user_id: user.id)
 
     with {:ok, statements} <- Parser.parse(sql_dialect, query) do
       statements
@@ -250,7 +250,7 @@ defmodule Logflare.Sql do
     sources = Sources.list_sources_by_user(user)
     source_mapping = source_mapping(sources)
 
-    Logger.metadata(query_string: query)
+    Logger.metadata(query_string: query, user_id: user.id)
 
     with {:ok, statements} <- Parser.parse("bigquery", query),
          {:ok, sandboxed_query_ast} <- sandboxed_ast(sandboxed_query, "bigquery"),
