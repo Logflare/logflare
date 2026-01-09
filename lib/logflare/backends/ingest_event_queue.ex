@@ -15,6 +15,7 @@ defmodule Logflare.Backends.IngestEventQueue do
   @ets_table_mapper :ingest_event_queue_mapping
   @ets_table :source_ingest_events
   @max_queue_size 30_000
+  @type source_backend :: {Source.t() | pos_integer(), Backend.t() | pos_integer() | nil}
   @type source_backend_pid ::
           {Source.t() | pos_integer(), Backend.t() | pos_integer() | nil, pid() | nil}
   @type table_key :: {pos_integer(), pos_integer() | nil, pid() | nil}
@@ -322,6 +323,7 @@ defmodule Logflare.Backends.IngestEventQueue do
   @doc """
   Counts pending items from a given table
   """
+  @spec total_pending(source_backend()) :: integer()
   @spec total_pending(source_backend_pid()) :: integer() | {:error, :not_initialized}
   def total_pending({_, _} = sid_bid) do
     # iterate over each matching source-backend queue and sum the totals
