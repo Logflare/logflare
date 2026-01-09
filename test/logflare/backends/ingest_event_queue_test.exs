@@ -116,6 +116,101 @@ defmodule Logflare.Backends.IngestEventQueueTest do
     end
   end
 
+  describe "consolidated keys" do
+    setup do
+      user = insert(:user)
+      [backend: insert(:backend, user: user)]
+    end
+
+    test "consolidated_key?/1 returns true for consolidated queue keys" do
+      assert IngestEventQueue.consolidated_key?({:consolidated, 123})
+      assert IngestEventQueue.consolidated_key?({:consolidated, 123, nil})
+      assert IngestEventQueue.consolidated_key?({:consolidated, 123, self()})
+    end
+
+    test "consolidated_key?/1 returns false for regular keys" do
+      refute IngestEventQueue.consolidated_key?({1, 2})
+      refute IngestEventQueue.consolidated_key?({1, 2, nil})
+      refute IngestEventQueue.consolidated_key?({1, 2, self()})
+      refute IngestEventQueue.consolidated_key?(:other)
+    end
+
+    test "upsert_tid/1 and get_tid/1 work with consolidated keys", %{backend: backend} do
+      key = {:consolidated, backend.id, self()}
+      assert {:ok, tid} = IngestEventQueue.upsert_tid(key)
+      assert ^tid = IngestEventQueue.get_tid(key)
+    end
+
+    test "upsert_tid/1 returns error if tid already exists for consolidated key", %{
+      backend: backend
+    } do
+      key = {:consolidated, backend.id, self()}
+      assert {:ok, tid} = IngestEventQueue.upsert_tid(key)
+      assert {:error, :already_exists, ^tid} = IngestEventQueue.upsert_tid(key)
+    end
+
+    test "list_queues/1 returns consolidated queues", %{backend: backend} do
+      IngestEventQueue.upsert_tid({:consolidated, backend.id, :erlang.list_to_pid(~c"<0.12.34>")})
+      IngestEventQueue.upsert_tid({:consolidated, backend.id, :erlang.list_to_pid(~c"<0.12.35>")})
+
+      queues = IngestEventQueue.list_queues({:consolidated, backend.id})
+      assert length(queues) == 2
+
+      assert Enum.all?(queues, fn
+               {:consolidated, bid, pid} when is_integer(bid) and is_pid(pid) -> true
+               _ -> false
+             end)
+    end
+
+    test "list_pending_counts/1 returns counts for consolidated queues", %{backend: backend} do
+      key = {:consolidated, backend.id, self()}
+      IngestEventQueue.upsert_tid(key)
+      le = build(:log_event)
+      IngestEventQueue.add_to_table(key, [le])
+
+      assert [{^key, 1}] = IngestEventQueue.list_pending_counts({:consolidated, backend.id})
+    end
+
+    test "add_to_table/2 works with consolidated queue key", %{backend: backend} do
+      key = {:consolidated, backend.id, self()}
+      IngestEventQueue.upsert_tid(key)
+      le = build(:log_event)
+
+      assert :ok = IngestEventQueue.add_to_table(key, [le])
+      assert {:ok, [^le]} = IngestEventQueue.take_pending(key, 1)
+    end
+
+    test "add_to_table/2 distributes to startup queue when no active queues", %{backend: backend} do
+      startup_key = {:consolidated, backend.id, nil}
+      IngestEventQueue.upsert_tid(startup_key)
+      le = build(:log_event)
+
+      assert :ok = IngestEventQueue.add_to_table({:consolidated, backend.id}, [le])
+      assert IngestEventQueue.total_pending(startup_key) == 1
+    end
+
+    test "queues_pending_size/1 returns total for consolidated queues", %{backend: backend} do
+      key1 = {:consolidated, backend.id, :erlang.list_to_pid(~c"<0.12.34>")}
+      key2 = {:consolidated, backend.id, :erlang.list_to_pid(~c"<0.12.35>")}
+      IngestEventQueue.upsert_tid(key1)
+      IngestEventQueue.upsert_tid(key2)
+
+      IngestEventQueue.add_to_table(key1, [build(:log_event)])
+      IngestEventQueue.add_to_table(key2, [build(:log_event), build(:log_event)])
+
+      assert IngestEventQueue.queues_pending_size({:consolidated, backend.id}) == 3
+    end
+
+    test "delete_queue/1 works with consolidated keys", %{backend: backend} do
+      key = {:consolidated, backend.id, self()}
+      IngestEventQueue.upsert_tid(key)
+      IngestEventQueue.add_to_table(key, [build(:log_event)])
+
+      assert :ok = IngestEventQueue.delete_queue(key)
+      assert is_nil(IngestEventQueue.get_tid(key))
+    end
+  end
+
   describe "startup queue" do
     setup do
       user = insert(:user)
