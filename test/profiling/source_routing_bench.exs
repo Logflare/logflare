@@ -90,6 +90,12 @@ few_matching = fn rules_num ->
       %Rule{
         lql_filters: [
           %FilterRule{
+            path: "metadata.type",
+            operator: :string_contains,
+            value: "log",
+            modifiers: %{}
+          },
+          %FilterRule{
             path: "severity_number",
             operator: :>,
             value: i,

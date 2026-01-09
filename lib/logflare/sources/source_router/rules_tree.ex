@@ -3,6 +3,8 @@ defmodule Logflare.Sources.SourceRouter.RulesTree do
   alias Logflare.Rules
   alias Logflare.Lql.Rules.FilterRule
 
+  import Logflare.Utils, only: [stringify: 1]
+
   @behaviour Logflare.Sources.SourceRouter
 
   @impl true
@@ -11,7 +13,7 @@ defmodule Logflare.Sources.SourceRouter.RulesTree do
 
     matching_rule_ids(event, rule_set)
     |> Enum.flat_map(fn
-      {id, 0} -> [id]
+      {id, matches_left} when matches_left <= 0 -> [id]
       {_id, _matches_left} -> []
     end)
     |> Rules.Cache.get_rules()
@@ -23,6 +25,15 @@ defmodule Logflare.Sources.SourceRouter.RulesTree do
     end
   end
 
+  # Handle maps nested in lists
+  defp match_rule([], {:get, _key}, _ops, acc), do: acc
+
+  defp match_rule([event_part | tail], {:get, _key} = op, ops, acc) do
+    acc = match_rule(event_part, op, ops, acc)
+    match_rule(tail, op, ops, acc)
+  end
+
+  # No such key
   defp match_rule(event_part, {:get, key}, _ops, acc)
        when not is_map(event_part) or not is_map_key(event_part, key) do
     acc
@@ -59,7 +70,7 @@ defmodule Logflare.Sources.SourceRouter.RulesTree do
         le_value >= lvalue and le_value <= rvalue
 
       :list_includes ->
-        le_value == expected
+        expected in le_value
 
       :list_includes_regexp ->
         stringify(le_value) =~ ~r/#{expected}/u
@@ -88,17 +99,6 @@ defmodule Logflare.Sources.SourceRouter.RulesTree do
     do: %{acc | rule_id => acc[rule_id] - 1}
 
   defp accumulate({rule_id, filters_num}, acc), do: Map.put(acc, rule_id, filters_num - 1)
-
-  defp stringify(v) when is_integer(v) do
-    Integer.to_string(v)
-  end
-
-  defp stringify(v) when is_float(v) do
-    Float.to_string(v)
-  end
-
-  defp stringify(v) when is_binary(v), do: v
-  defp stringify(v), do: inspect(v)
 
   # Groups all the rules associated with source by path in a tree
   def build(rules) do
