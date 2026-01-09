@@ -145,7 +145,7 @@ Benchee.run(
     "Reference" => fn {event, source} ->
       SourceRouter.Sequential.matching_rules(event, source) |> MapSet.new()
     end,
-    "GroupedRuleset" => fn {event, source} ->
+    "RulesTree" => fn {event, source} ->
       SourceRouter.RulesTree.matching_rules(event, source) |> MapSet.new()
     end
   },
