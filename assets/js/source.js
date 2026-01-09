@@ -186,5 +186,6 @@ window.Source = {
   initLogsUiFunctions,
   trackScroll,
   scrollBottom,
-  scrollOverflowBottom
+  scrollOverflowBottom,
+  switchDateFormat
 }
