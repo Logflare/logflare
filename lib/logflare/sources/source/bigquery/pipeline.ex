@@ -193,7 +193,8 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
           project_id: context.bigquery_project_id,
           dataset_id: context.bigquery_dataset_id,
           source_id: context.source_id,
-          source_token: context.source_token
+          source_token: context.source_token,
+          backend_id: context.backend_id
         )
 
         messages
