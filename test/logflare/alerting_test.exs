@@ -463,7 +463,7 @@ defmodule Logflare.AlertingTest do
       GoogleApi.BigQuery.V2.Api.Jobs
       |> reject(:bigquery_jobs_query, 3)
 
-      # verify job is NOT removed by run_alert
+      # verify job is NOT run by stale run_alert
       assert {:error, :not_found} = Alerting.run_alert(alert.id, :scheduled)
     end
   end
@@ -527,9 +527,7 @@ defmodule Logflare.AlertingTest do
 
       new_job = Alerting.get_alert_job(alert.id)
 
-      # Since we don't have direct access to Quantum's internal ID/Ref easily,
-      # we assume that if the schedule object is identical, it's correct.
-      assert new_job.schedule == original_job.schedule
+      assert new_job == original_job
     end
   end
 
