@@ -240,9 +240,27 @@ defmodule Logflare.Alerting do
   end
 
   defp do_sync_alert_jobs do
-    init_alert_jobs()
-    |> tap(fn _ -> AlertsScheduler.delete_all_jobs() end)
-    |> Enum.each(&AlertsScheduler.add_job/1)
+    wanted_jobs = init_alert_jobs()
+    current_jobs = AlertsScheduler.jobs()
+
+    wanted_jobs_lookup = Map.new(wanted_jobs, &{&1.name, &1})
+    current_jobs_lookup = Map.new(current_jobs, &{&1.name, &1})
+
+    # Delete jobs that are no longer in the DB
+    Enum.each(current_jobs_lookup, fn {name, _job} ->
+      if not Map.has_key?(wanted_jobs_lookup, name) do
+        AlertsScheduler.delete_job(name)
+      end
+    end)
+
+    # Upsert jobs (only if missing or changed)
+    Enum.each(wanted_jobs_lookup, fn {name, job} ->
+      existing_job = Map.get(current_jobs_lookup, name)
+
+      if is_nil(existing_job) or job.schedule != existing_job.schedule do
+        AlertsScheduler.add_job(job)
+      end
+    end)
   end
 
   @doc """
@@ -275,7 +293,6 @@ defmodule Logflare.Alerting do
     if alert_query = get_alert_query_by(id: alert_id) do
       run_alert(alert_query, :scheduled)
     else
-      AlertsScheduler.delete_job(to_job_name(alert_id))
       {:error, :not_found}
     end
   end

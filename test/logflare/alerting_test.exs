@@ -443,7 +443,7 @@ defmodule Logflare.AlertingTest do
       assert :ok = Alerting.run_alert(alert.id, :scheduled)
     end
 
-    test "unschedules job if alert is missing", %{user: user} do
+    test "run_alert/1 no-ops if alert is missing", %{user: user} do
       {:ok, alert} =
         Alerting.create_alert_query(user, %{
           name: "To Delete",
@@ -456,16 +456,39 @@ defmodule Logflare.AlertingTest do
       # verify job exists
       assert %Quantum.Job{} = Alerting.get_alert_job(alert.id)
 
-      # simulate "external" deletion / stale state
+      # simulate "external" unsynced deletion / stale state
       Repo.delete!(alert)
 
       # expect NO BQ execution
       GoogleApi.BigQuery.V2.Api.Jobs
       |> reject(:bigquery_jobs_query, 3)
 
-      # verify job is removed
+      # verify job is NOT removed by run_alert
       assert {:error, :not_found} = Alerting.run_alert(alert.id, :scheduled)
-      refute Alerting.get_alert_job(alert.id)
+    end
+
+    test "sync_alert_job updates schedule if changed", %{user: user} do
+      {:ok, alert} =
+        Alerting.create_alert_query(user, %{
+          name: "Schedule Test",
+          # Daily
+          cron: "0 0 1 * *",
+          query: "select 1"
+        })
+
+      Alerting.sync_alert_job(alert.id)
+      original_job = Alerting.get_alert_job(alert.id)
+      assert original_job.schedule != nil
+
+      # Update alert with new cron
+      # 5 minutes
+      {:ok, _updated} = Alerting.update_alert_query(alert, %{cron: "*/5 * * * *"})
+
+      # Sync
+      Alerting.sync_alert_job(alert.id)
+      new_job = Alerting.get_alert_job(alert.id)
+
+      assert new_job.schedule != original_job.schedule
     end
   end
 
