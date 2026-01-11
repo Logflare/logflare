@@ -357,7 +357,7 @@ defmodule Logflare.AlertingTest do
     end
 
     test "upsert job with new values will replace existing job", %{user: user} do
-      alert = insert(:alert, user_id: user.id, query: "select 3")
+      alert = insert(:alert, user_id: user.id, cron: "0 0 1 * *")
       Alerting.upsert_alert_job(alert)
       original_job = Alerting.get_alert_job(alert.id)
       assert Alerting.get_alert_job(alert.id)
