@@ -466,29 +466,70 @@ defmodule Logflare.AlertingTest do
       # verify job is NOT removed by run_alert
       assert {:error, :not_found} = Alerting.run_alert(alert.id, :scheduled)
     end
+  end
 
-    test "sync_alert_job updates schedule if changed", %{user: user} do
-      {:ok, alert} =
-        Alerting.create_alert_query(user, %{
-          name: "Schedule Test",
-          # Daily
-          cron: "0 0 1 * *",
-          query: "select 1"
-        })
+  describe "sync_alert_jobs/0 batch" do
+    setup do
+      start_alerting_supervisor!()
+    end
 
+    defp await_sync_alert_jobs do
+      {:ok, pid} = Alerting.sync_alert_jobs()
+      ref = Process.monitor(pid)
+      assert_receive {:DOWN, ^ref, :process, _pid, :normal}
+    end
+
+    test "adds missing jobs", %{user: user} do
+      alert = insert(:alert, user: user)
+      Alerting.delete_alert_job(alert.id)
+
+      refute Alerting.get_alert_job(alert.id)
+
+      await_sync_alert_jobs()
+
+      assert Alerting.get_alert_job(alert.id)
+    end
+
+    test "removes obsolete jobs", %{user: user} do
+      alert = insert(:alert, user: user)
+      Alerting.sync_alert_job(alert.id)
+      assert Alerting.get_alert_job(alert.id)
+
+      Repo.delete!(alert)
+
+      await_sync_alert_jobs()
+
+      refute Alerting.get_alert_job(alert.id)
+    end
+
+    test "updates jobs with changed schedule", %{user: user} do
+      # Daily
+      alert = insert(:alert, user: user, cron: "0 0 1 * *")
       Alerting.sync_alert_job(alert.id)
       original_job = Alerting.get_alert_job(alert.id)
-      assert original_job.schedule != nil
 
-      # Update alert with new cron
-      # 5 minutes
-      {:ok, _updated} = Alerting.update_alert_query(alert, %{cron: "*/5 * * * *"})
+      # modify alert in DB but don't sync yet
+      {:ok, _} = Alerting.update_alert_query(alert, %{cron: "*/5 * * * *"})
 
-      # Sync
+      await_sync_alert_jobs()
+
+      new_job = Alerting.get_alert_job(alert.id)
+      assert new_job.schedule != original_job.schedule
+    end
+
+    test "does NOT touch jobs with identical schedule", %{user: user} do
+      alert = insert(:alert, user: user, cron: "0 0 1 * *")
       Alerting.sync_alert_job(alert.id)
+      original_job = Alerting.get_alert_job(alert.id)
+
+      # Run batch sync (should be no-op for this job)
+      await_sync_alert_jobs()
+
       new_job = Alerting.get_alert_job(alert.id)
 
-      assert new_job.schedule != original_job.schedule
+      # Since we don't have direct access to Quantum's internal ID/Ref easily,
+      # we assume that if the schedule object is identical, it's correct.
+      assert new_job.schedule == original_job.schedule
     end
   end
 

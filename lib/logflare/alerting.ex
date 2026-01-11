@@ -244,7 +244,7 @@ defmodule Logflare.Alerting do
     current_jobs = AlertsScheduler.jobs()
 
     wanted_jobs_lookup = Map.new(wanted_jobs, &{&1.name, &1})
-    current_jobs_lookup = Map.new(current_jobs, &{&1.name, &1})
+    current_jobs_lookup = Map.new(current_jobs)
 
     # Delete jobs that are no longer in the DB
     Enum.each(current_jobs_lookup, fn {name, _job} ->
