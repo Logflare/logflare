@@ -254,9 +254,6 @@ defmodule Logflare.Alerting do
     end)
 
     # Upsert jobs (only if missing or schedule is changed)
-    # We prioritize schedule stability: re-adding a job in Quantum resets its timer/process,
-    # potentially postponing execution if done frequently. We avoid this by only
-    # updating if the schedule actually changes.
     Enum.each(wanted_jobs_lookup, fn {name, job} ->
       existing_job = Map.get(current_jobs_lookup, name)
 
@@ -278,9 +275,6 @@ defmodule Logflare.Alerting do
   defp do_sync_alert_job(alert_id) do
     if alert_query = get_alert_query_by(id: alert_id) do
       job = create_alert_job_struct(alert_query)
-      # Note: add_job/1 resets the job timer in Quantum (it removes and re-adds the job).
-      # If this function is called frequently (e.g. high-frequency updates),
-      # it may postpone the job execution indefinitely.
       :ok = AlertsScheduler.add_job(job)
     else
       AlertsScheduler.delete_job(to_job_name(alert_id))

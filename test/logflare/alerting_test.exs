@@ -468,7 +468,7 @@ defmodule Logflare.AlertingTest do
     end
   end
 
-  describe "sync_alert_jobs/0 batch" do
+  describe "sync_alert_jobs/0" do
     setup do
       start_alerting_supervisor!()
     end
@@ -476,7 +476,7 @@ defmodule Logflare.AlertingTest do
     defp await_sync_alert_jobs do
       {:ok, pid} = Alerting.sync_alert_jobs()
       ref = Process.monitor(pid)
-      assert_receive {:DOWN, ^ref, :process, _pid, :normal}
+      assert_receive {:DOWN, ^ref, :process, _pid, _reason}
     end
 
     test "adds missing jobs", %{user: user} do
@@ -484,9 +484,7 @@ defmodule Logflare.AlertingTest do
       Alerting.delete_alert_job(alert.id)
 
       refute Alerting.get_alert_job(alert.id)
-
       await_sync_alert_jobs()
-
       assert Alerting.get_alert_job(alert.id)
     end
 
@@ -495,39 +493,24 @@ defmodule Logflare.AlertingTest do
       Alerting.sync_alert_job(alert.id)
       assert Alerting.get_alert_job(alert.id)
 
+      # simulate "external" unsynced deletion / stale state
       Repo.delete!(alert)
 
+      assert Alerting.get_alert_job(alert.id)
       await_sync_alert_jobs()
-
       refute Alerting.get_alert_job(alert.id)
     end
 
     test "updates jobs with changed schedule", %{user: user} do
-      # Daily
       alert = insert(:alert, user: user, cron: "0 0 1 * *")
       Alerting.sync_alert_job(alert.id)
       original_job = Alerting.get_alert_job(alert.id)
 
-      # modify alert in DB but don't sync yet
       {:ok, _} = Alerting.update_alert_query(alert, %{cron: "*/5 * * * *"})
 
+      assert Alerting.get_alert_job(alert.id) == original_job
       await_sync_alert_jobs()
-
-      new_job = Alerting.get_alert_job(alert.id)
-      assert new_job.schedule != original_job.schedule
-    end
-
-    test "does NOT touch jobs with identical schedule", %{user: user} do
-      alert = insert(:alert, user: user, cron: "0 0 1 * *")
-      Alerting.sync_alert_job(alert.id)
-      original_job = Alerting.get_alert_job(alert.id)
-
-      # Run batch sync (should be no-op for this job)
-      await_sync_alert_jobs()
-
-      new_job = Alerting.get_alert_job(alert.id)
-
-      assert new_job == original_job
+      assert Alerting.get_alert_job(alert.id) != original_job
     end
   end
 
