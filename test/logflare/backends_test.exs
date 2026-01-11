@@ -6,6 +6,7 @@ defmodule Logflare.BackendsTest do
   import StreamData
 
   alias Logflare.Backends
+  alias Logflare.Backends.Adaptor
   alias Logflare.Backends.Backend
   alias Logflare.Backends.DynamicPipeline
   alias Logflare.Backends.IngestEventQueue
@@ -39,6 +40,42 @@ defmodule Logflare.BackendsTest do
              ] = Repo.all(from b in "backends", select: [:config, :config_encrypted])
 
       assert is_binary(encrypted)
+    end
+  end
+
+  describe "Adaptor.consolidated_ingest?/1" do
+    test "returns false for backends that do not implement the callback" do
+      backend = %Backend{type: :webhook}
+      refute Adaptor.consolidated_ingest?(backend)
+    end
+
+    test "returns false for bigquery backend" do
+      backend = %Backend{type: :bigquery}
+      refute Adaptor.consolidated_ingest?(backend)
+    end
+
+    test "returns false for postgres backend" do
+      backend = %Backend{type: :postgres}
+      refute Adaptor.consolidated_ingest?(backend)
+    end
+
+    test "returns false for s3 backend" do
+      backend = %Backend{type: :s3}
+      refute Adaptor.consolidated_ingest?(backend)
+    end
+  end
+
+  describe "typecast_config_string_map_to_atom_map/1" do
+    test "sets consolidated_ingest? virtual field based on adaptor callback" do
+      backend = insert(:backend, type: :webhook, config: %{url: "https://example.com"})
+
+      result = Backends.typecast_config_string_map_to_atom_map(backend)
+
+      assert result.consolidated_ingest? == false
+    end
+
+    test "returns nil for nil input" do
+      assert Backends.typecast_config_string_map_to_atom_map(nil) == nil
     end
   end
 

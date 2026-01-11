@@ -17,7 +17,7 @@ defmodule Logflare.SavedSearches.Cache do
              hooks:
                [
                  if(stats, do: Utils.cache_stats()),
-                 Utils.cache_limit(100_000)
+                 Utils.cache_limit(10_000)
                ]
                |> Enum.filter(& &1),
              expiration: Utils.cache_expiration_min()

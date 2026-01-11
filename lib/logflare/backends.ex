@@ -32,9 +32,9 @@ defmodule Logflare.Backends do
 
   defdelegate child_spec(arg), to: __MODULE__.Supervisor
 
-  @max_pending_buffer_len_per_queue IngestEventQueue.max_queue_size()
   @max_event_age_us 72 * 3_600 * 1_000_000
   @max_future_event_us 1 * 3_600 * 1_000_000
+  @max_pending_buffer_len_per_queue IngestEventQueue.max_queue_size()
 
   @type one_or_list_or_nil :: Backend.t() | [Backend.t()] | nil
 
@@ -405,7 +405,9 @@ defmodule Logflare.Backends do
         |> Changeset.apply_changes()
       end)
 
-    Map.put(updated, :config, updated.config_encrypted)
+    updated
+    |> Map.put(:config, updated.config_encrypted)
+    |> Map.put(:consolidated_ingest?, Adaptor.consolidated_ingest?(backend))
   end
 
   @doc """

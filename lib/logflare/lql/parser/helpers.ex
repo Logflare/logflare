@@ -333,7 +333,7 @@ defmodule Logflare.Lql.Parser.Helpers do
           Keyword.t() | {atom(), any()} | no_return()
   def check_for_invalid_blank_select_alias({:invalid_blank_select_alias, "@"}) do
     throw(
-      "Error while parsing select clause: select alias cannot be blank, expected alias name after @"
+      "Error while parsing select clause: select alias cannot be blank, expected alias name after @. For example, s:my_field@my_alias"
     )
   end
 

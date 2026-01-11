@@ -15,6 +15,7 @@ defmodule Logflare.Backends.IngestEventQueue do
   @ets_table_mapper :ingest_event_queue_mapping
   @ets_table :source_ingest_events
   @max_queue_size 30_000
+  @type source_backend :: {Source.t() | pos_integer(), Backend.t() | pos_integer() | nil}
   @type source_backend_pid ::
           {Source.t() | pos_integer(), Backend.t() | pos_integer() | nil, pid() | nil}
   @type table_key :: {pos_integer(), pos_integer() | nil, pid() | nil}
@@ -32,7 +33,7 @@ defmodule Logflare.Backends.IngestEventQueue do
     :ets.new(@ets_table_mapper, [
       :public,
       :named_table,
-      :set,
+      :bag,
       {:write_concurrency, :auto},
       {:read_concurrency, false},
       {:decentralized_counters, false}
@@ -46,14 +47,14 @@ defmodule Logflare.Backends.IngestEventQueue do
   """
   @spec get_tid(table_key()) :: :ets.tid() | nil
   def get_tid({sid, bid, pid}) do
-    :ets.lookup_element(@ets_table_mapper, {sid, bid, pid}, 2, nil)
+    :ets.match(@ets_table_mapper, {{sid, bid}, pid, :"$1"}, 1)
     # staleness check
     |> then(fn
-      nil ->
-        nil
-
-      tid ->
+      {[[tid]], _cont} ->
         if :ets.info(tid) != :undefined, do: tid
+
+      _ ->
+        nil
     end)
   end
 
@@ -75,7 +76,7 @@ defmodule Logflare.Backends.IngestEventQueue do
             {:read_concurrency, true}
           ])
 
-        :ets.insert(@ets_table_mapper, {sid_bid_pid, tid})
+        :ets.insert(@ets_table_mapper, {{sid, bid}, pid, tid})
         {:ok, tid}
 
       tid ->
@@ -196,29 +197,24 @@ defmodule Logflare.Backends.IngestEventQueue do
     :ok
   end
 
-  def add_to_table({sid_bid_pid, tid}, batch, _) when is_tuple(sid_bid_pid) do
+  def add_to_table({sid_bid_pid, tid}, batch, _opts) when is_tuple(sid_bid_pid) do
     objects =
       for %{id: id} = event <- batch do
         {id, :pending, event}
       end
 
     :ets.insert(tid, objects)
+    :ok
   end
 
-  def add_to_table(sid_bid_pid, batch, _) do
-    objects =
-      for %{id: id} = event <- batch do
-        {id, :pending, event}
-      end
-
+  def add_to_table({_, _, _} = sid_bid_pid, batch, _opts) do
     get_tid(sid_bid_pid)
     |> case do
       nil ->
         {:error, :not_initialized}
 
       tid ->
-        :ets.insert(tid, objects)
-        :ok
+        add_to_table({sid_bid_pid, tid}, batch)
     end
   end
 
@@ -265,30 +261,13 @@ defmodule Logflare.Backends.IngestEventQueue do
   end
 
   @doc """
-  Returns a list of table keys for a source-backend combination.
-  Startup queue is included.
-  """
-  @spec list_queues(queues_key()) :: [table_key()]
-  def list_queues(sid_bid) do
-    traverse_queues(
-      sid_bid,
-      fn objs, acc ->
-        for {key, _tid} <- objs, reduce: acc do
-          acc -> [key | acc]
-        end
-      end,
-      []
-    )
-  end
-
-  @doc """
   Deletes the queue associated with the given source-backend-pid.
   """
   @spec delete_queue(source_backend_pid()) :: :ok | {:error, :not_initialized}
-  def delete_queue(sid_bid_pid) do
+  def delete_queue({sid, bid, pid} = sid_bid_pid) do
     with tid when tid != nil <- get_tid(sid_bid_pid) do
       :ets.delete(tid)
-      :ets.delete(@ets_table_mapper, sid_bid_pid)
+      :ets.delete_object(@ets_table_mapper, {{sid, bid}, pid, tid})
       :ok
     else
       nil -> {:error, :not_initialized}
@@ -325,39 +304,26 @@ defmodule Logflare.Backends.IngestEventQueue do
   """
   @spec list_counts(queues_key()) :: [{table_key(), non_neg_integer()}]
   def list_counts(sid_bid) do
-    traverse_queues(
-      sid_bid,
-      fn objs, acc ->
-        items =
-          for {sid_bid_pid, _tid} <- objs, size = get_table_size(sid_bid_pid), is_integer(size) do
-            {sid_bid_pid, size}
-          end
-
-        items ++ acc
-      end,
-      []
-    )
+    for {{sid, bid, pid}, tid} <- list_queues_with_tids(sid_bid),
+        size = :ets.info(tid, :size),
+        is_integer(size) do
+      {{sid, bid, pid}, size}
+    end
   end
 
   @spec list_counts_with_tids(queues_key()) :: [{table_obj(), non_neg_integer()}]
   def list_counts_with_tids(sid_bid) do
-    traverse_queues(
-      sid_bid,
-      fn objs, acc ->
-        for {sid_bid_pid, tid} <- objs,
-            size = :ets.info(tid, :size),
-            is_integer(size),
-            into: acc do
-          {{sid_bid_pid, tid}, size}
-        end
-      end,
-      []
-    )
+    for {{sid, bid, pid}, tid} <- list_queues_with_tids(sid_bid),
+        size = :ets.info(tid, :size),
+        is_integer(size) do
+      {{sid, bid, pid}, size}
+    end
   end
 
   @doc """
   Counts pending items from a given table
   """
+  @spec total_pending(source_backend()) :: integer()
   @spec total_pending(source_backend_pid()) :: integer() | {:error, :not_initialized}
   def total_pending({_, _} = sid_bid) do
     # iterate over each matching source-backend queue and sum the totals
@@ -618,31 +584,66 @@ defmodule Logflare.Backends.IngestEventQueue do
   defp next_and_cleanup(:"$end_of_table"), do: :ok
 
   defp next_and_cleanup({to_check, cont}) do
-    for {key, tid} <- to_check do
+    for {{sid, bid}, pid, tid} <- to_check do
       if :ets.info(tid) == :undefined do
-        :ets.delete(@ets_table_mapper, key)
+        :ets.delete_object(@ets_table_mapper, {{sid, bid}, pid, tid})
       end
     end
 
-    :ets.select(cont)
+    :ets.match_object(cont)
     |> next_and_cleanup()
+  end
+
+  @doc """
+  Select queues by source-backend combination.
+  """
+  @spec list_queues(queues_key()) :: [table_key()]
+  def list_queues({sid, bid}) do
+    ms =
+      Ex2ms.fun do
+        {{^sid, ^bid}, pid, _tid} -> {^sid, ^bid, pid}
+      end
+
+    with {queues, _cont} <- :ets.select(@ets_table_mapper, ms, 1000) do
+      queues
+    else
+      :"$end_of_table" -> []
+    end
+  end
+
+  @doc """
+  Select queues by source-backend combination with their :ets.tid().
+  """
+  @spec list_queues_with_tids(queues_key()) :: [{table_key(), :ets.tid()}]
+  def list_queues_with_tids({sid, bid}) do
+    ms =
+      Ex2ms.fun do
+        {{^sid, ^bid}, pid, tid} -> {{^sid, ^bid, pid}, tid}
+      end
+
+    with {queues, _cont} <- :ets.select(@ets_table_mapper, ms, 1000) do
+      queues
+    else
+      :"$end_of_table" -> []
+    end
   end
 
   @doc """
   Performs a reduce across all queues of a source-backend combination.
 
   Startup queue is included.
+
   """
-  def traverse_queues({sid, bid}, func, acc \\ nil) do
+  def traverse_queues({sid, bid}, func, acc \\ nil, _opts \\ []) do
     :ets.safe_fixtable(@ets_table_mapper, true)
 
-    mapper_ms =
+    ms =
       Ex2ms.fun do
-        {{^sid, ^bid, _pid}, tid} = obj -> obj
+        {{^sid, ^bid}, pid, tid} -> {{^sid, ^bid, pid}, tid}
       end
 
     res =
-      :ets.select(@ets_table_mapper, mapper_ms, 100)
+      :ets.select(@ets_table_mapper, ms, 250)
       |> select_traverse(func, acc)
 
     :ets.safe_fixtable(@ets_table_mapper, false)
