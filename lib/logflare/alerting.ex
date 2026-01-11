@@ -253,13 +253,9 @@ defmodule Logflare.Alerting do
       end
     end)
 
-    # Upsert jobs (only if missing or schedule is changed)
+    # Upsert all wanted jobs
     Enum.each(wanted_jobs_lookup, fn {name, job} ->
-      existing_job = Map.get(current_jobs_lookup, name)
-
-      if is_nil(existing_job) or job.schedule != existing_job.schedule do
-        AlertsScheduler.add_job(job)
-      end
+      AlertsScheduler.add_job(job)
     end)
   end
 
