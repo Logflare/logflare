@@ -132,7 +132,7 @@ defmodule Logflare.Backends.IngestEventQueue do
   @doc """
   Retrieves the table size of a given tid
   """
-  @spec get_table_size(table_key()) :: integer() | nil
+  @spec get_table_size(table_key() | consolidated_table_key()) :: integer() | nil
   def get_table_size(sid_bid_pid) do
     with tid when tid != nil <- get_tid(sid_bid_pid),
          num when is_integer(num) <- :ets.info(tid, :size) do
@@ -694,7 +694,11 @@ defmodule Logflare.Backends.IngestEventQueue do
     :ok
   end
 
-  @spec drop(source_backend_pid(), :all | :pending | :ingested, non_neg_integer()) ::
+  @spec drop(
+          source_backend_pid() | consolidated_table_key(),
+          :all | :pending | :ingested,
+          non_neg_integer()
+        ) ::
           {:ok, non_neg_integer()} | {:error, :not_initialized}
   def drop({_, _, _} = sid_bid_pid, filter, n)
       when is_integer(n) and filter in [:pending, :all, :ingested] do
