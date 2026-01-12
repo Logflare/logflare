@@ -22,6 +22,7 @@ defmodule Logflare.Endpoints do
   alias Logflare.OauthAccessTokens.OauthAccessToken
   alias Logflare.Repo
   alias Logflare.SingleTenant
+  alias Logflare.Sources
   alias Logflare.Sql
   alias Logflare.Teams
   alias Logflare.TeamUsers.TeamUser
@@ -474,6 +475,7 @@ defmodule Logflare.Endpoints do
         fn ->
           exec_query_on_backend(
             endpoint_query,
+            expanded_query,
             transformed_query,
             declared_params,
             params,
@@ -689,6 +691,7 @@ defmodule Logflare.Endpoints do
 
   @spec exec_query_on_backend(
           endpoint_query :: EndpointQuery.t(),
+          expanded_query :: String.t(),
           transformed_query :: String.t(),
           declared_params :: [String.t()],
           input_params :: map(),
@@ -696,6 +699,7 @@ defmodule Logflare.Endpoints do
         ) :: run_query_return()
   defp exec_query_on_backend(
          %EndpointQuery{language: sql_language} = endpoint_query,
+         expanded_query,
          transformed_query,
          declared_params,
          input_params,
@@ -704,6 +708,7 @@ defmodule Logflare.Endpoints do
        when sql_language in @valid_sql_languages and is_binary(transformed_query) and
               is_list(declared_params) and is_map(input_params) and is_list(opts) do
     with {:ok, %Backend{} = backend} <- get_backend_for_query(endpoint_query),
+         :ok <- validate_backend_sources(endpoint_query, backend, expanded_query),
          adaptor <- Backends.Adaptor.get_adaptor(backend) do
       # let the adaptor transform the query if needed
       final_query = maybe_transform_query(backend, adaptor, transformed_query, sql_language)
@@ -777,6 +782,51 @@ defmodule Logflare.Endpoints do
   defp get_backend_for_query(%EndpointQuery{user_id: user_id, language: language}) do
     backend_type = language_to_backend_type(language)
     find_backend_by_type_or_default(user_id, backend_type)
+  end
+
+  @spec validate_backend_sources(Query.t(), Backend.t(), String.t()) :: :ok | {:error, String.t()}
+  defp validate_backend_sources(%Query{backend_id: nil}, _backend, _query_string), do: :ok
+
+  defp validate_backend_sources(
+         %Query{user_id: user_id, language: language},
+         backend,
+         query_string
+       )
+       when is_integer(user_id) and language in @valid_sql_languages do
+    user = Users.Cache.get(user_id)
+    sources_by_name = user |> Sources.list_sources_by_user() |> Map.new(&{&1.name, &1})
+    dialect = Sql.to_dialect(language)
+
+    with {:ok, names} <- Sql.extract_table_names(query_string, dialect: dialect) do
+      unattached =
+        names
+        |> Enum.uniq()
+        |> Enum.filter(&source_missing_backend?(sources_by_name, &1, backend))
+
+      if unattached == [] do
+        :ok
+      else
+        {:error, "Backend #{backend.name} is not configured for: #{Enum.join(unattached, ", ")}"}
+      end
+    else
+      _ -> :ok
+    end
+  end
+
+  defp validate_backend_sources(%Query{}, _backend, _query_string), do: :ok
+
+  @spec source_missing_backend?(map(), String.t(), Backend.t()) :: boolean()
+  defp source_missing_backend?(sources_by_name, name, backend) do
+    case Map.get(sources_by_name, name) do
+      nil -> false
+      source -> not backend_attached_to_source?(source, backend)
+    end
+  end
+
+  @spec backend_attached_to_source?(Sources.Source.t(), Backend.t()) :: boolean()
+  defp backend_attached_to_source?(%Sources.Source{} = source, %Backend{} = backend) do
+    source_backends = Backends.Cache.list_backends(source_id: source.id)
+    Enum.any?(source_backends, &(&1.id == backend.id))
   end
 
   @spec language_to_backend_type(language()) :: atom() | nil
