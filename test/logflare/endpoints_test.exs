@@ -483,6 +483,65 @@ defmodule Logflare.EndpointsTest do
     end
   end
 
+  describe "backend source validation" do
+    setup do
+      user = insert(:user)
+      source = insert(:source, user: user, name: "my_source")
+      %{user: user, source: source}
+    end
+
+    test "run_query/1 succeeds when backend is configured for source", %{user: user, source: source} do
+      backend = insert(:backend, user: user, type: :clickhouse, sources: [source])
+
+      endpoint =
+        insert(:endpoint,
+          user: user,
+          query: "SELECT 1 FROM my_source",
+          language: :ch_sql,
+          backend_id: backend.id
+        )
+
+      expect(ClickHouseAdaptor, :execute_query, fn _backend, _query, _opts ->
+        {:ok, [%{"1" => 1}]}
+      end)
+
+      assert {:ok, %{rows: _}} = Endpoints.run_query(endpoint)
+    end
+
+    test "run_query/1 fails when backend is not configured for source", %{user: user, source: source} do
+      backend = insert(:backend, user: user, type: :clickhouse, sources: [])
+
+      endpoint =
+        insert(:endpoint,
+          user: user,
+          query: "SELECT 1 FROM #{source.name}",
+          language: :ch_sql,
+          backend_id: backend.id
+        )
+
+      assert {:error, msg} = Endpoints.run_query(endpoint)
+      assert msg =~ "Backend #{backend.name} is not configured for"
+      assert msg =~ "my_source"
+    end
+
+    test "run_query/1 skips validation when backend_id is nil", %{user: user} do
+      expect(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, 1, fn _conn, _proj_id, _opts ->
+        {:ok, TestUtils.gen_bq_response([%{"result" => "123"}])}
+      end)
+
+      endpoint =
+        insert(:endpoint,
+          user: user,
+          query: "SELECT 1 as result FROM my_source",
+          language: :bq_sql,
+          backend_id: nil
+        )
+
+      assert {:ok, %{rows: _}} = Endpoints.run_query(endpoint)
+    end
+
+  end
+
   describe "running queries in postgres backends" do
     setup do
       cfg = Application.get_env(:logflare, Logflare.Repo)
