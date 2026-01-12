@@ -75,31 +75,33 @@ defmodule LogflareWeb.SearchLive.SavedSearchesModalComponent do
 
   defp saved_searches_list(assigns) do
     ~H"""
-    <ul class="list-unstyled tw-mb-0" id="saved-searches-list">
-      <li :for={saved_search <- @saved_searches} id={"saved-search-#{saved_search.id}"} class="tw-flex tw-items-center tw-justify-between tw-py-2">
-        <.link
-          patch={
-            LogflareWeb.Utils.with_team_param(
-              ~p"/sources/#{@source}/search?#{%{querystring: saved_search.querystring, tailing?: saved_search.tailing}}",
-              @team
-            )
-          }
-          class="tw-text-white tw-text-sm"
-        >
-          {saved_search.querystring}
-        </.link>
-        <button
-          type="button"
-          phx-click={JS.add_class("tw-hidden", to: "#saved-search-#{saved_search.id}") |> JS.push("delete_saved_search", target: @myself)}
-          phx-value-id={saved_search.id}
-          phx-target={@myself}
-          phx-confirm="Delete saved search?"
-          class="tw-text-xs tw-ml-2 tw-text-white tw-bg-transparent tw-border-none"
-        >
-          <i class="fa fa-trash"></i>
-        </button>
-      </li>
-    </ul>
+    <div class="tw-max-h-[70vh] tw-overflow-y-auto tw-pr-2">
+      <ul class="list-unstyled tw-mb-0" id="saved-searches-list">
+        <li :for={saved_search <- @saved_searches} id={"saved-search-#{saved_search.id}"} class="tw-flex tw-items-center tw-justify-between tw-py-2">
+          <.link
+            patch={
+              LogflareWeb.Utils.with_team_param(
+                ~p"/sources/#{@source}/search?#{%{querystring: saved_search.querystring, tailing?: saved_search.tailing}}",
+                @team
+              )
+            }
+            class="tw-text-white tw-text-sm"
+          >
+            {saved_search.querystring}
+          </.link>
+          <button
+            type="button"
+            phx-click={JS.add_class("tw-hidden", to: "#saved-search-#{saved_search.id}") |> JS.push("delete_saved_search", target: @myself)}
+            phx-value-id={saved_search.id}
+            phx-target={@myself}
+            phx-confirm="Delete saved search?"
+            class="tw-text-xs tw-ml-2 tw-text-white tw-bg-transparent tw-border-none"
+          >
+            <i class="fa fa-trash"></i>
+          </button>
+        </li>
+      </ul>
+    </div>
     """
   end
 
