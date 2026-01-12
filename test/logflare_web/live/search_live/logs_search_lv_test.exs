@@ -433,6 +433,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
 
       saved_search = insert(:saved_search, %{source: source})
 
+      _ = Logflare.SavedSearches.Cache.bust_by(source_id: saved_search.source_id)
       {:ok, view, _html} = live(conn, ~p"/sources/#{source.id}/search")
 
       assert view
@@ -441,6 +442,9 @@ defmodule LogflareWeb.Source.SearchLVTest do
 
       view
       |> TestUtils.wait_for_render("#logflare-modal")
+
+      view
+      |> TestUtils.wait_for_render("#logflare-modal #saved-searches-list")
 
       assert view
              |> has_element?("#logflare-modal #saved-searches-list", saved_search.querystring)
