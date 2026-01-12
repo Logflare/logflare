@@ -419,7 +419,7 @@ defmodule LogflareWeb.EndpointsLive do
 
   defp assign_backends(socket) do
     %{user_id: user_id, user: user} = socket.assigns
-    flag_enabled? = Utils.flag("endpointBackendSelection", user)
+    flag_enabled? = true || Utils.flag("endpointBackendSelection", user)
 
     backends =
       if flag_enabled? do
