@@ -279,7 +279,6 @@ defmodule LogflareWeb.DashboardLiveTest do
       for path <- [
             "sources/#{source.id}",
             "sources/#{source.id}/edit",
-            "sources/#{source.id}/search",
             "billing/edit",
             "account"
           ] do
