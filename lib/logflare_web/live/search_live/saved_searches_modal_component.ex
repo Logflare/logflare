@@ -38,9 +38,6 @@ defmodule LogflareWeb.SearchLive.SavedSearchesModalComponent do
             self(),
             {:set_flash, {:error, "You don't have permission to delete this saved search"}}
           )
-
-        _ ->
-          send(self(), {:set_flash, {:error, "Something went wrong!"}})
       end
 
     {:noreply, socket}
