@@ -48,5 +48,4 @@ defmodule Logflare.SavedSearchesTest do
     assert [saved_search] == SavedSearches.suggest_saved_searches("test", source.id)
     assert [] == SavedSearches.suggest_saved_searches("other", source.id)
   end
-
 end
