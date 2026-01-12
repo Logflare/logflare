@@ -488,6 +488,39 @@ defmodule Logflare.Backends.IngestEventQueue do
     end
   end
 
+  @doc """
+  Pops pending events from a given table, removing them atomically.
+
+  Unlike `take_pending/2`, this function removes the events from the queue
+  immediately rather than leaving them with a `:pending` status.
+  Use this for consolidated queues where events should be re-added on failure.
+  """
+  @spec pop_pending(table_key() | consolidated_table_key(), integer()) ::
+          {:ok, [LogEvent.t()]} | {:error, :not_initialized}
+  def pop_pending(_, 0), do: {:ok, []}
+
+  def pop_pending(sid_bid_pid, n) when is_integer(n) do
+    select_ms =
+      Ex2ms.fun do
+        {event_id, :pending, event} -> {event_id, event}
+      end
+
+    with tid when tid != nil <- get_tid(sid_bid_pid),
+         size when is_integer(size) <- :ets.info(tid, :size),
+         {selected, _cont} <- :ets.select(tid, select_ms, min(n, max(size, 1))) do
+      events =
+        for {event_id, event} <- selected do
+          :ets.delete(tid, event_id)
+          event
+        end
+
+      {:ok, events}
+    else
+      nil -> {:error, :not_initialized}
+      :"$end_of_table" -> {:ok, []}
+    end
+  end
+
   @spec fetch_events(source_backend_pid(), integer()) ::
           {:ok, [LogEvent.t()]} | {:error, :not_initialized}
   def fetch_events({_, _, _} = sid_bid_pid, n) do
@@ -531,11 +564,23 @@ defmodule Logflare.Backends.IngestEventQueue do
   @doc """
   Truncates a given table
   """
-  @spec truncate_table(source_backend_pid(), :all | :pending | :ingested, integer()) :: :ok
+  @spec truncate_table(
+          source_backend_pid() | consolidated_table_key(),
+          :all | :pending | :ingested,
+          integer()
+        ) ::
+          :ok | {:error, :not_initialized}
 
-  def truncate_table({sid, _bid, _pid} = sid_bid_pid, :all, 0) when is_integer(sid) do
-    # drop all objects
-    with tid when tid != nil <- get_tid(sid_bid_pid) do
+  def truncate_table({:consolidated, _bid, _pid} = key, status, n)
+      when status in [:all, :pending, :ingested],
+      do: do_truncate_table(key, status, n)
+
+  def truncate_table({sid, _bid, _pid} = key, status, n)
+      when is_integer(sid) and status in [:all, :pending, :ingested],
+      do: do_truncate_table(key, status, n)
+
+  defp do_truncate_table(key, :all, 0) do
+    with tid when tid != nil <- get_tid(key) do
       :ets.delete_all_objects(tid)
       :ok
     else
@@ -543,10 +588,7 @@ defmodule Logflare.Backends.IngestEventQueue do
     end
   end
 
-  def truncate_table({sid, _bid, _pid} = sid_bid_pid, status, n)
-      when is_integer(sid) and status in [:all, :pending, :ingested] do
-    # drop all objects
-
+  defp do_truncate_table(key, status, n) do
     ms =
       Ex2ms.fun do
         {_event_id, _event_status, event} = obj when ^status == :all -> obj
@@ -559,7 +601,7 @@ defmodule Logflare.Backends.IngestEventQueue do
         {_event_id, event_status, event} = obj when event_status == ^status -> true
       end
 
-    with tid when tid != nil <- get_tid(sid_bid_pid),
+    with tid when tid != nil <- get_tid(key),
          size when is_integer(size) <- :ets.info(tid, :size) do
       to_insert =
         if n == 0 do
