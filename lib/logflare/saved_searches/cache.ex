@@ -40,12 +40,16 @@ defmodule Logflare.SavedSearches.Cache do
 
     Cachex.execute(__MODULE__, fn cache ->
       Enum.reduce(entries, 0, fn key, acc ->
-        case Cachex.take(cache, key) do
-          {:ok, nil} -> acc
-          {:ok, _value} -> acc + 1
-        end
+        acc + delete_and_count(cache, key)
       end)
     end)
+  end
+
+  defp delete_and_count(cache, key) do
+    case Cachex.take(cache, key) do
+      {:ok, nil} -> 0
+      {:ok, _value} -> 1
+    end
   end
 
   defp apply_repo_fun(arg1, arg2) do

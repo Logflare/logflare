@@ -24,6 +24,7 @@ defmodule LogflareWeb.SearchLive.SavedSearchesModalComponent do
       with %Logflare.SavedSearch{} = saved_search <- SavedSearches.get(saved_search_id),
            true <- Sources.get_by_user_access(user, saved_search.source_id) |> is_struct(),
            {:ok, _response} <- SavedSearches.delete_by_user(saved_search) do
+        _ = SavedSearches.Cache.bust_by(source_id: saved_search.source_id)
         send(self(), {:set_flash, {:info, "Saved search deleted"}})
 
         update(%{saved_searches: nil}, socket)
