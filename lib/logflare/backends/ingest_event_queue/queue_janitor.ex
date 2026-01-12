@@ -78,8 +78,14 @@ defmodule Logflare.Backends.IngestEventQueue.QueueJanitor do
     end
   end
 
-  @spec drop_queue(map(), tuple(), pid() | nil, boolean(), :consolidated | :source) ::
-          :ok | nil
+  @spec drop_queue(
+          map(),
+          {pos_integer(), pos_integer() | nil, pid() | nil}
+          | {:consolidated, pos_integer(), pid() | nil},
+          pid() | nil,
+          boolean(),
+          :consolidated | :source
+        ) :: :ok | nil
   defp drop_queue(state, table_key, pid, truncate_all?, queue_type) do
     if truncate_all? do
       IngestEventQueue.truncate_table(table_key, :ingested, 0)
