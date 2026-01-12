@@ -116,6 +116,7 @@ defmodule Logflare.Sources.SourceRouter.RulesTree do
       end)
     end
     |> Enum.reduce(&deep_merge/2)
+    |> deep_to_list()
   end
 
   defp to_command(%FilterRule{modifiers: %{negate: true}} = rule) do
@@ -145,6 +146,14 @@ defmodule Logflare.Sources.SourceRouter.RulesTree do
   defp merger(_k, val_a, val_b) when is_tuple(val_a) and is_tuple(val_b) do
     [val_a, val_b]
   end
+
+  defp deep_to_list(kv) when is_map(kv) do
+    for {k, v} <- kv do
+      {k, deep_to_list(v)}
+    end
+  end
+
+  defp deep_to_list(val), do: val
 
   @doc """
   Builds a bitwise registry of matched filters.

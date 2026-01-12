@@ -37,12 +37,13 @@ defmodule Logflare.Sources.SourceRouter.RulesTreeTest do
       ]
 
       assert @subject.build(rules) ==
-               %{
-                 "metadata" => %{
-                   "field1" => %{{:=, 0} => {:route, {0, 0b0}}},
-                   "field2" => %{{:=, "sth"} => {:route, {1, 0b0}}}
-                 }
-               }
+               [
+                 {"metadata",
+                  [
+                    {"field1", [{{:=, 0}, {:route, {0, 0b0}}}]},
+                    {"field2", [{{:=, "sth"}, {:route, {1, 0b0}}}]}
+                  ]}
+               ]
     end
 
     test "rules with the same filters" do
@@ -54,13 +55,18 @@ defmodule Logflare.Sources.SourceRouter.RulesTreeTest do
 
       rules = [%Rule{id: 0, lql_filters: [filter]}, %Rule{id: 1, lql_filters: [filter]}]
 
-      assert %{
-               "metadata" => %{
-                 "field1" => %{
-                   {:=, 0} => {:route, targets}
-                 }
-               }
-             } = @subject.build(rules)
+      assert [
+               {"metadata",
+                [
+                  {"field1",
+                   [
+                     {
+                       {:=, 0},
+                       {:route, targets}
+                     }
+                   ]}
+                ]}
+             ] = @subject.build(rules)
 
       assert {0, 0b0} in targets
       assert {1, 0b0} in targets
@@ -78,15 +84,16 @@ defmodule Logflare.Sources.SourceRouter.RulesTreeTest do
         %Rule{id: 1, lql_filters: [filter]}
       ]
 
-      assert @subject.build(rules) ==
-               %{
-                 "metadata" => %{
-                   "field1" => %{
-                     {:=, 0} => {:route, {0, 0b0}},
-                     {:=, 1} => {:route, {1, 0b0}}
-                   }
-                 }
-               }
+      assert [
+               {"metadata",
+                [
+                  {"field1",
+                   [
+                     {{:=, 0}, {:route, {0, 0b0}}},
+                     {{:=, 1}, {:route, {1, 0b0}}}
+                   ]}
+                ]}
+             ] = @subject.build(rules)
     end
   end
 
