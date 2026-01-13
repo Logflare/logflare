@@ -79,7 +79,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryTemplates do
       )
       ENGINE = #{engine}
       PARTITION BY toYYYYMMDD(timestamp)
-      ORDER BY (timestamp)
+      ORDER BY (source_id, timestamp)
       """,
       if is_pos_integer(ttl_days) do
         """
