@@ -40,7 +40,7 @@ defmodule Logflare.Sources.SourceRouter.RulesTree do
   end
 
   defp match_rule(event_part, <<key::binary>>, ops, acc)
-       when is_map_key(event_part, key) and is_map(ops) do
+       when is_map_key(event_part, key) and is_list(ops) do
     sub_part = Map.get(event_part, key)
 
     for {op, nested_ops} <- ops, reduce: acc do
