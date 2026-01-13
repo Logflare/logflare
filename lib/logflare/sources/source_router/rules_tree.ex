@@ -1,63 +1,88 @@
 defmodule Logflare.Sources.SourceRouter.RulesTree do
   @moduledoc false
+  alias Logflare.LogEvent
   alias Logflare.Rules
+  alias Logflare.Rules.Rule
   alias Logflare.Lql.Rules.FilterRule
 
   import Logflare.Utils, only: [stringify: 1]
 
   @behaviour Logflare.Sources.SourceRouter
 
+  @type t() :: [entry()]
+  @type entry() :: {key(), [entry()]} | {operator(), [route()]}
+  @type route() :: {:route, target() | [target()]}
+  @type target() :: {Rule.id(), filter_set()}
+  @type key() :: binary()
+  @type operator() :: {atom(), any()}
+
+  @type filter_set() :: non_neg_integer()
+
   @impl true
   def matching_rules(event, source) do
     rule_set = Rules.Cache.rules_tree_by_source_id(source.id)
 
     matching_rule_ids(event, rule_set)
+    |> Rules.Cache.get_rules()
+  end
+
+  @doc """
+  Finds ids of matching rules.
+
+  The algorithm iterates over rules tree, traversing the log event along with tree nodes.
+
+  For a rule to match, all the filters must match, so the implementation
+  accumulates rule ids as keys in a map. As a value, an integer serving as bitwise flag registry
+  is stored (see `build_filter_flagset/1`).
+  """
+  @spec matching_rule_ids(LogEvent.t(), t()) :: [Rule.id()]
+  def matching_rule_ids(le, rules_tree) do
+    for {op, nested_ops} <- rules_tree, reduce: %{} do
+      acc -> find_matches(le.body, op, nested_ops, acc)
+    end
     |> Enum.flat_map(fn
       {id, matches_left} when matches_left <= 0 -> [id]
       {_id, _matches_left} -> []
     end)
-    |> Rules.Cache.get_rules()
   end
 
-  def matching_rule_ids(le, rule_set) do
-    for {op, nested_ops} <- rule_set, reduce: %{} do
-      acc -> match_rule(le.body, op, nested_ops, acc)
-    end
+  # Find matches: find key in log event
+  ## Handle maps nested in lists in log event
+  defp find_matches([], <<_key::binary>>, _ops, acc), do: acc
+
+  defp find_matches([event_part | tail], <<key::binary>>, ops, acc) do
+    # Find matches inside head entry
+    acc = find_matches(event_part, key, ops, acc)
+    # Iterate over log event on the same level
+    find_matches(tail, key, ops, acc)
   end
 
-  # Handle maps nested in lists
-  defp match_rule([], <<_key::binary>>, _ops, acc), do: acc
-
-  defp match_rule([event_part | tail], <<key::binary>>, ops, acc) do
-    acc = match_rule(event_part, key, ops, acc)
-    match_rule(tail, key, ops, acc)
-  end
-
-  # No such key
-  defp match_rule(event_part, <<key::binary>>, _ops, acc)
+  ## No such key in log event, break traversal
+  defp find_matches(event_part, <<key::binary>>, _ops, acc)
        when not is_map(event_part) or not is_map_key(event_part, key) do
     acc
   end
 
-  defp match_rule(event_part, <<key::binary>>, ops, acc)
+  ## Key present, go one level deeper in log event and rules tree
+  defp find_matches(event_part, <<key::binary>>, ops, acc)
        when is_map_key(event_part, key) and is_list(ops) do
     sub_part = Map.get(event_part, key)
 
     for {op, nested_ops} <- ops, reduce: acc do
-      acc -> match_rule(sub_part, op, nested_ops, acc)
+      acc -> find_matches(sub_part, op, nested_ops, acc)
     end
   end
 
-  # Handle operators
-  defp match_rule(le_value, {:not, {operator, expected}}, {:route, rule_ids}, acc) do
+  # Handle operators. Only route should be left in ops.
+  defp find_matches(le_value, {:not, {operator, expected}}, {:route, rule_ids}, acc) do
     check_op(operator, le_value, expected)
     |> Kernel.not()
-    |> match_cond(rule_ids, acc)
+    |> accumulate_if(rule_ids, acc)
   end
 
-  defp match_rule(le_value, {operator, expected}, {:route, rule_ids}, acc) do
+  defp find_matches(le_value, {operator, expected}, {:route, rule_ids}, acc) do
     check_op(operator, le_value, expected)
-    |> match_cond(rule_ids, acc)
+    |> accumulate_if(rule_ids, acc)
   end
 
   defp check_op(operator, le_value, expected) do
@@ -89,19 +114,68 @@ defmodule Logflare.Sources.SourceRouter.RulesTree do
     end
   end
 
-  defp match_cond(true, rule_ids, acc), do: accumulate(rule_ids, acc)
-  defp match_cond(false, _rule_ids, acc), do: acc
+  defp accumulate_if(true, rule_ids, acc), do: accumulate(rule_ids, acc)
+  defp accumulate_if(false, _rule_ids, acc), do: acc
 
+  # Accumulate: handle list of rule ids
   defp accumulate([], acc), do: acc
   defp accumulate([h | tail], acc), do: accumulate(tail, accumulate(h, acc))
 
+  # Accumulate: handle rule id already present in accumulator
   defp accumulate({rule_id, bitmask}, acc) when is_map_key(acc, rule_id),
     do: %{acc | rule_id => apply_filter_bitmask(acc[rule_id], bitmask)}
 
+  # Accumulate: handle rule id not present in accumulator
   defp accumulate({rule_id, bitmask}, acc),
     do: Map.put(acc, rule_id, bitmask)
 
-  # Groups all the rules associated with source by path in a tree
+  @doc """
+  Creates a data structure grouping all the rules and their filters associated with a source by a path in a tree.
+
+  You can think of it as of decision tree built with operators - each node is an action taken on ingested log event.
+  The operators are:
+  - a binary key - a traversal of log event structure by getting that key from a map
+  - `{operator, compared_value}` - an operator testing log event value, as in #{inspect(FilterRule)}, always followed by route(s)
+  - `{:not, {operator, compared_value}` - negated operator (prevents the need to store modifiers from #{inspect(FilterRule)})
+  - `{:route, target}` - always under an operator, indicates where the rule_id that should be used for routing if the operator succeeds
+
+  Such structure allows to access each key inside the log event structure at most once.
+
+  For performance reasons, the whole structure is kept using lists instead of maps.
+
+  ### Example
+  For a source with two rules and one filter rule for each:
+  `"m.field1:8"` (for rule id `0`) and `"m.field2:~sth"` (rule id `1`)
+  The tree conceptually looks like this:
+
+  ```
+  |
+  |- "metadata"
+     |- "field1"
+        |- {:=, 8}
+           |- {route, rule(0)}
+     |- "field2"
+        |- {:~, "sth}
+           |- {route, rule(1)}
+  ```
+  where `rule(id)` is a tuple of rule ID and integer filter bitflag
+  (see `build_filter_flagset/1` for details).
+
+  The representation in Elixir terms is:
+
+  ```
+  [
+    {"metadata",
+      [
+        {"field1", [{{:=, 8}, {:route, {0, 0b0}}}]},
+        {"field2", [{{:~, "sth"}, {:route, {1, 0b0}}}]}
+      ]}
+  ]
+  ```
+
+  You can find more examples by looking at `rules_tree_test.exs`
+  """
+  @spec build([Rule.t()]) :: t()
   def build(rules) do
     for rule <- rules,
         filters_num = length(rule.lql_filters),
@@ -110,8 +184,9 @@ defmodule Logflare.Sources.SourceRouter.RulesTree do
 
       reverse_path = String.split(filter.path, ".") |> Enum.reverse()
 
+      # Generates nested map: #{"key1" => %{"key2" => %{operator => route}}}
       reverse_path
-      |> Enum.reduce(%{to_command(filter) => {:route, target}}, fn k, acc ->
+      |> Enum.reduce(%{to_operator(filter) => {:route, target}}, fn k, acc ->
         %{k => acc}
       end)
     end
@@ -119,18 +194,19 @@ defmodule Logflare.Sources.SourceRouter.RulesTree do
     |> deep_to_list()
   end
 
-  defp to_command(%FilterRule{modifiers: %{negate: true}} = rule) do
-    {:not, to_command(%{rule | modifiers: %{rule.modifiers | negate: false}})}
+  defp to_operator(%FilterRule{modifiers: %{negate: true}} = rule) do
+    {:not, to_operator(%{rule | modifiers: %{rule.modifiers | negate: false}})}
   end
 
-  defp to_command(%FilterRule{operator: :range, values: [l_val, r_val]}) do
+  defp to_operator(%FilterRule{operator: :range, values: [l_val, r_val]}) do
     {:range, {l_val, r_val}}
   end
 
-  defp to_command(%FilterRule{operator: op, value: value}) do
+  defp to_operator(%FilterRule{operator: op, value: value}) do
     {op, value}
   end
 
+  # Merges maps at all levels
   defp deep_merge(a, b) do
     Map.merge(a, b, &merger/3)
   end
@@ -141,10 +217,6 @@ defmodule Logflare.Sources.SourceRouter.RulesTree do
 
   defp merger(_k, {:route, a}, {:route, b}) do
     {:route, List.wrap(a) ++ List.wrap(b)}
-  end
-
-  defp merger(_k, val_a, val_b) when is_tuple(val_a) and is_tuple(val_b) do
-    [val_a, val_b]
   end
 
   defp deep_to_list(kv) when is_map(kv) do
