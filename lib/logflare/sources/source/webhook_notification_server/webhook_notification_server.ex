@@ -15,11 +15,11 @@ defmodule Logflare.Sources.Source.WebhookNotificationServer do
   end
 
   @spec test_post(Source.t()) ::
-          {:ok, Tesla.Env.t()} | {:error, :bad_uri} | {:error, Tesla.Env.t()}
-  def test_post(%Source{} = source) when source.webhook_notification_url != nil do
-    recent_events = Backends.list_recent_logs_local(source)
-    uri = source.webhook_notification_url
+          {:ok, Tesla.Env.t()} | {:error, :no_url} | {:error, :bad_uri} | {:error, Tesla.Env.t()}
+  def test_post(%Source{webhook_notification_url: nil}), do: {:error, :no_url}
 
+  def test_post(%Source{webhook_notification_url: uri} = source) do
+    recent_events = Backends.list_recent_logs_local(source)
     post(uri, source, 0, recent_events)
   end
 

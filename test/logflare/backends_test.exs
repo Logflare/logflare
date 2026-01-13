@@ -683,6 +683,26 @@ defmodule Logflare.BackendsTest do
       end)
     end
 
+    test "list_recent_logs_local returns empty for consolidated backends", %{user: user} do
+      source = insert(:source, user: user)
+
+      backend =
+        insert(:backend, type: :webhook, config: %{url: "https://example.com"}, user: user)
+
+      Mimic.stub(Logflare.Backends.Adaptor, :consolidated_ingest?, fn
+        %{id: id} when id == backend.id -> true
+        _ -> false
+      end)
+
+      consolidated_key = {:consolidated, backend.id, self()}
+      Backends.IngestEventQueue.upsert_tid(consolidated_key)
+
+      events = for _ <- 1..5, do: build(:log_event, source: source)
+      Backends.IngestEventQueue.add_to_table(consolidated_key, events)
+
+      assert [] = Backends.list_recent_logs_local(source, backend)
+    end
+
     test "route to backend", %{user: user} do
       pid = self()
       ref = make_ref()
