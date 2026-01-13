@@ -148,8 +148,23 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.IngesterTest do
 
       encoded = Ingester.encode_row(log_event)
       assert is_list(encoded)
-      # UUID (16) + varint length (1+) + body (JSON) + timestamp (8)
-      assert IO.iodata_length(encoded) >= 16 + 1 + 10 + 8
+      # UUID (16) + source_id UUID (16) + varint length (1+) + body (JSON) + timestamp (8)
+      assert IO.iodata_length(encoded) >= 16 + 16 + 1 + 10 + 8
+    end
+
+    test "encodes origin_source_id as source_id UUID" do
+      source = build(:source)
+      log_event = build(:log_event, source: source, message: "test")
+
+      encoded = Ingester.encode_row(log_event)
+      binary = IO.iodata_to_binary(encoded)
+
+      source_id_str = Atom.to_string(log_event.origin_source_id)
+      expected_source_id_bytes = Ingester.encode_as_uuid(source_id_str)
+
+      # source_id UUID is the second 16 bytes (after id UUID)
+      <<_id::binary-size(16), source_id_bytes::binary-size(16), _rest::binary>> = binary
+      assert source_id_bytes == expected_source_id_bytes
     end
   end
 
@@ -185,9 +200,9 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.IngesterTest do
       {source, backend, cleanup_fn} = setup_clickhouse_test()
       on_exit(cleanup_fn)
 
-      {:ok, _supervisor_pid} = ClickHouseAdaptor.start_link({source, backend})
+      {:ok, _supervisor_pid} = ClickHouseAdaptor.start_link(backend)
 
-      table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(source)
+      table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(backend)
 
       Process.sleep(200)
 
@@ -217,7 +232,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.IngesterTest do
       assert :ok = Ingester.insert(backend, table_name, [log_event])
     end
 
-    test "sends `async_insert=1` and `wait_for_async_insert=1` in URL", %{
+    test "uses synchronous inserts (no async parameters in URL)", %{
       backend: backend,
       table_name: table_name,
       source: source
@@ -226,17 +241,16 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.IngesterTest do
 
       Finch
       |> expect(:request, fn request, _pool, _opts ->
-        # Extract URL from the request
         url =
           to_string(request.scheme) <>
             "://" <>
             request.host <> ":" <> to_string(request.port) <> request.path <> "?" <> request.query
 
-        assert url =~ ~r/[?&]async_insert=1/,
-               "Expected URL to contain `async_insert=1`, got: #{url}"
+        assert url =~ "query=INSERT",
+               "Expected URL to contain INSERT query, got: #{url}"
 
-        assert url =~ "wait_for_async_insert=1",
-               "Expected URL to contain `wait_for_async_insert=1`, got: #{url}"
+        refute url =~ "async_insert",
+               "Expected URL to NOT contain async_insert parameter, got: #{url}"
 
         {:ok, %Finch.Response{status: 200, body: ""}}
       end)

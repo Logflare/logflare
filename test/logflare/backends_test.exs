@@ -65,6 +65,92 @@ defmodule Logflare.BackendsTest do
     end
   end
 
+  describe "consolidated pipeline hooks" do
+    setup do
+      insert(:plan, name: "Free")
+      user = insert(:user)
+
+      [user: user]
+    end
+
+    test "create_backend/1 starts consolidated pipeline for clickhouse backend", %{user: user} do
+      attrs = %{
+        type: :clickhouse,
+        user_id: user.id,
+        name: "Test ClickHouse",
+        config: %{
+          url: "http://localhost",
+          port: 8123,
+          database: "test_db",
+          username: "user",
+          password: "pass"
+        }
+      }
+
+      assert {:ok, backend} = Backends.create_backend(attrs)
+      assert Backends.ConsolidatedSup.pipeline_running?(backend)
+
+      Backends.ConsolidatedSup.stop_pipeline(backend)
+    end
+
+    test "create_backend/1 does not start pipeline for non-consolidated backend", %{user: user} do
+      attrs = %{
+        type: :webhook,
+        user_id: user.id,
+        name: "Test Webhook",
+        config: %{url: "https://example.com"}
+      }
+
+      assert {:ok, backend} = Backends.create_backend(attrs)
+
+      refute Backends.ConsolidatedSup.pipeline_running?(backend)
+    end
+
+    test "delete_backend/1 stops consolidated pipeline", %{user: user} do
+      attrs = %{
+        type: :clickhouse,
+        user_id: user.id,
+        name: "Test ClickHouse",
+        config: %{
+          url: "http://localhost",
+          port: 8123,
+          database: "test_db",
+          username: "user",
+          password: "pass"
+        }
+      }
+
+      assert {:ok, backend} = Backends.create_backend(attrs)
+      assert Backends.ConsolidatedSup.pipeline_running?(backend)
+
+      assert {:ok, _} = Backends.delete_backend(backend)
+      refute Backends.ConsolidatedSup.pipeline_running?(backend.id)
+    end
+
+    test "update_backend/2 keeps consolidated pipeline running", %{user: user} do
+      attrs = %{
+        type: :clickhouse,
+        user_id: user.id,
+        name: "Test ClickHouse",
+        config: %{
+          url: "http://localhost",
+          port: 8123,
+          database: "test_db",
+          username: "user",
+          password: "pass"
+        }
+      }
+
+      assert {:ok, backend} = Backends.create_backend(attrs)
+      assert Backends.ConsolidatedSup.pipeline_running?(backend)
+
+      assert {:ok, updated} = Backends.update_backend(backend, %{name: "Updated Name"})
+      assert Backends.ConsolidatedSup.pipeline_running?(updated)
+
+      Backends.ConsolidatedSup.stop_pipeline(updated)
+    end
+  end
+
   describe "typecast_config_string_map_to_atom_map/1" do
     test "sets consolidated_ingest? virtual field based on adaptor callback" do
       backend = insert(:backend, type: :webhook, config: %{url: "https://example.com"})

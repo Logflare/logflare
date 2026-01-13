@@ -106,4 +106,111 @@ defmodule Logflare.Backends.BufferProducerTest do
     Regex.scan(regex, string)
     |> length()
   end
+
+  describe "consolidated mode" do
+    setup do
+      user = insert(:user)
+      source = insert(:source, user: user)
+
+      backend =
+        insert(:backend,
+          user: user,
+          type: :clickhouse,
+          config: %{url: "http://localhost:8123", database: "test", port: 8123}
+        )
+
+      [user: user, source: source, backend: backend]
+    end
+
+    test "pulls events from consolidated queue", %{source: source, backend: backend} do
+      startup_key = {:consolidated, backend.id, nil}
+      IngestEventQueue.upsert_tid(startup_key)
+
+      buffer_producer_pid =
+        start_supervised!(
+          {BufferProducer, backend_id: backend.id, consolidated: true, interval: 100}
+        )
+
+      consolidated_key = {:consolidated, backend.id, buffer_producer_pid}
+      :timer.sleep(150)
+
+      le = build(:log_event, source: source)
+      :ok = IngestEventQueue.add_to_table(consolidated_key, [le])
+
+      [event] =
+        GenStage.stream([{buffer_producer_pid, max_demand: 1}])
+        |> Enum.take(1)
+
+      assert event.id == le.id
+      assert IngestEventQueue.total_pending(consolidated_key) == 0
+    end
+
+    test "pulls events from consolidated startup queue", %{source: source, backend: backend} do
+      startup_key = {:consolidated, backend.id, nil}
+      IngestEventQueue.upsert_tid(startup_key)
+
+      le = build(:log_event, source: source)
+      :ok = IngestEventQueue.add_to_table(startup_key, [le])
+
+      buffer_producer_pid =
+        start_supervised!(
+          {BufferProducer, backend_id: backend.id, consolidated: true, interval: 100}
+        )
+
+      consolidated_key = {:consolidated, backend.id, buffer_producer_pid}
+
+      [event] =
+        GenStage.stream([{buffer_producer_pid, max_demand: 1}])
+        |> Enum.take(1)
+
+      assert event.id == le.id
+      assert IngestEventQueue.total_pending(consolidated_key) == 0
+    end
+
+    test "moves events back to startup queue on termination", %{source: source, backend: backend} do
+      startup_key = {:consolidated, backend.id, nil}
+      IngestEventQueue.upsert_tid(startup_key)
+
+      buffer_producer_pid =
+        start_supervised!(
+          {BufferProducer, backend_id: backend.id, consolidated: true, interval: 100}
+        )
+
+      consolidated_key = {:consolidated, backend.id, buffer_producer_pid}
+      :timer.sleep(150)
+
+      le = build(:log_event, source: source)
+      :ok = IngestEventQueue.add_to_table(consolidated_key, [le])
+
+      Process.exit(buffer_producer_pid, :normal)
+      :timer.sleep(200)
+
+      assert IngestEventQueue.total_pending(startup_key) == 1
+      assert IngestEventQueue.total_pending(consolidated_key) == 0
+    end
+
+    test "format_discarded logs backend_id for consolidated mode", %{backend: backend} do
+      startup_key = {:consolidated, backend.id, nil}
+      IngestEventQueue.upsert_tid(startup_key)
+
+      pid =
+        start_supervised!(
+          {BufferProducer,
+           backend_id: backend.id, consolidated: true, interval: 100, buffer_size: 10}
+        )
+
+      le = build(:log_event)
+      items = for _ <- 1..100, do: le
+
+      captured =
+        capture_log(fn ->
+          send(pid, {:add_to_buffer, items})
+          :timer.sleep(100)
+          send(pid, {:add_to_buffer, items})
+          :timer.sleep(100)
+        end)
+
+      assert captured =~ "Consolidated GenStage producer has discarded"
+    end
+  end
 end

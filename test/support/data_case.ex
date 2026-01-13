@@ -124,7 +124,7 @@ defmodule Logflare.DataCase do
         sources: [source]
       )
 
-    cleanup_fn = fn -> cleanup_clickhouse_tables({source, backend}) end
+    cleanup_fn = fn -> cleanup_clickhouse_tables(backend) end
 
     {source, backend, cleanup_fn}
   end
@@ -162,26 +162,22 @@ defmodule Logflare.DataCase do
   end
 
   @doc """
-  Cleanup ClickHouse tables for a given `Source` and `Backend`.
+  Cleanup ClickHouse tables for a given `Backend`.
   """
-  def cleanup_clickhouse_tables({source, backend}) do
-    table_names = [
-      Logflare.Backends.Adaptor.ClickHouseAdaptor.clickhouse_ingest_table_name(source)
-    ]
+  def cleanup_clickhouse_tables(backend) do
+    table_name = Logflare.Backends.Adaptor.ClickHouseAdaptor.clickhouse_ingest_table_name(backend)
 
-    for table_name <- table_names do
-      try do
-        Logflare.Backends.Adaptor.ClickHouseAdaptor.execute_ch_query(
-          backend,
-          "DROP TABLE IF EXISTS #{table_name}"
-        )
-      rescue
-        # Ignore cleanup errors
-        _ -> :ok
-      catch
-        # Process may not be running during cleanup :shrug:
-        :exit, _ -> :ok
-      end
+    try do
+      Logflare.Backends.Adaptor.ClickHouseAdaptor.execute_ch_query(
+        backend,
+        "DROP TABLE IF EXISTS #{table_name}"
+      )
+    rescue
+      # Ignore cleanup errors
+      _ -> :ok
+    catch
+      # Process may not be running during cleanup :shrug:
+      :exit, _ -> :ok
     end
   end
 end
