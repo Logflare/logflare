@@ -42,14 +42,9 @@ defmodule Logflare.Logs.OtelTraceTest do
       assert le_span["parent_span_id"] == Base.encode16(span.parent_span_id, case: :lower)
       assert le_span["event_message"] == span.name
 
-      assert elem(DateTime.from_iso8601(le_span["timestamp"]), 1) ==
-               DateTime.from_unix!(span.start_time_unix_nano, :nanosecond)
-
-      assert elem(DateTime.from_iso8601(le_span["start_time"]), 1) ==
-               elem(DateTime.from_unix(span.start_time_unix_nano, :nanosecond), 1)
-
-      assert elem(DateTime.from_iso8601(le_span["end_time"]), 1) ==
-               elem(DateTime.from_unix(span.end_time_unix_nano, :nanosecond), 1)
+      assert le_span["timestamp"] == span.start_time_unix_nano
+      assert le_span["start_time"] == span.start_time_unix_nano
+      assert le_span["end_time"] == span.end_time_unix_nano
 
       event = hd(span.events)
       le_event = Enum.find(batch, fn params -> params["metadata"]["type"] == "event" end)
@@ -57,8 +52,7 @@ defmodule Logflare.Logs.OtelTraceTest do
       assert le_event["event_message"] == event.name
       assert le_event["parent_span_id"] == Base.encode16(span.span_id)
 
-      assert elem(DateTime.from_iso8601(le_event["timestamp"]), 1) ==
-               DateTime.from_unix!(event.time_unix_nano, :nanosecond)
+      assert le_event["timestamp"] == event.time_unix_nano
     end
 
     test "json parsable log event body", %{
@@ -67,6 +61,20 @@ defmodule Logflare.Logs.OtelTraceTest do
     } do
       [params | _] = resource_spans |> OtelTrace.handle_batch(source)
       assert {:ok, _} = Jason.encode(params)
+    end
+
+    test "timestamps are unix nanoseconds", %{
+      resource_spans: resource_spans,
+      source: source
+    } do
+      [params | _] = OtelTrace.handle_batch(resource_spans, source)
+
+      assert is_integer(params["timestamp"])
+      assert is_integer(params["start_time"])
+      assert is_integer(params["end_time"])
+      assert Integer.digits(params["timestamp"]) |> length() == 19
+      assert Integer.digits(params["start_time"]) |> length() == 19
+      assert Integer.digits(params["end_time"]) |> length() == 19
     end
 
     test "correctly parses resource spans", %{

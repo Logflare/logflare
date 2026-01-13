@@ -235,6 +235,7 @@ end
 
 # Mixed metric types
 mixed_5m_1kdp = OtelMetricBenchBuilder.build_mixed_resource_metrics(5, 1000)
+sum_5m_1kdp = OtelMetricBenchBuilder.build_resource_metrics(5, 1000, :sum)
 
 IO.puts("\n=== Benchmark: handle_batch/2 - Metric types comparison ===\n")
 
@@ -245,7 +246,8 @@ Benchee.run(
     end
   },
   inputs: %{
-    "mixed (5 each x 1kdp)" => mixed_5m_1kdp
+    "mixed (5 each x 1kdp)" => mixed_5m_1kdp,
+    "sum (5 each x 1kdp)" => sum_5m_1kdp
   },
   time: 5,
   warmup: 2,
