@@ -1,0 +1,13 @@
+[package]
+name = "arrowipc_ex"
+version = "0.1.0"
+authors = []
+edition = "2021"
+
+[lib]
+name = "arrowipc_ex"
+crate-type = ["cdylib"]
+
+[dependencies]
+arrow = { version = "56.2.0", features = ["ipc", "json"] }
+rustler = "0.37.0"
