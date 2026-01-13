@@ -54,14 +54,9 @@ defmodule Logflare.Backends.UserMonitoringTest do
       {:ok, user} = Users.update_user_allowed(user, %{system_monitoring: true})
       system_source = Sources.get_by(user_id: user.id, system_source_type: :logs)
 
-      # Non-user-specific logs goes to the default logger backends
-      assert capture_log(fn -> Logger.info("common log") end) =~ "common log"
-
-      # User-specfic logs are routed to users with system monitoring on
-
       TestUtils.retry_assert(fn ->
-        refute capture_log(fn ->
-                 Logger.info("user is monitoring", source_id: source.id)
+        assert capture_log(fn ->
+                 Logger.info("user is monitoring", source_token: source.token, user_id: user.id)
                end) =~ "user is monitoring"
 
         assert Enum.any?(
@@ -80,7 +75,7 @@ defmodule Logflare.Backends.UserMonitoringTest do
       system_source = Sources.get_by(user_id: user.id, system_source_type: :logs)
 
       assert capture_log(fn ->
-               Logger.info("user not monitoring", source_id: source.id)
+               Logger.info("user not monitoring", source_token: source.token, user_id: user.id)
              end) =~ "user not monitoring"
 
       refute Enum.any?(

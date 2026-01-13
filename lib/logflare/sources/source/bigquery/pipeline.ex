@@ -73,7 +73,9 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
             source_token: source.token,
             bq_storage_write_api: source.bq_storage_write_api,
             source_id: source.id,
-            backend_id: Map.get(backend || %{}, :id)
+            backend_id: Map.get(backend || %{}, :id),
+            user_id: source.user_id,
+            system_source: source.system_source
           }
         ],
         opts
@@ -135,7 +137,8 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
           "source_id" => sid,
           "backend_id" => bid,
           "source_uuid" => Utils.stringify(source.token),
-          "user_id" => source.user_id
+          "user_id" => source.user_id,
+          "system_source" => source.system_source
         }
         |> Map.merge(event_labels)
         |> Map.merge(backend_metadata)
@@ -146,7 +149,12 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
 
   @spec handle_message(any, Broadway.Message.t(), any) :: Broadway.Message.t()
   def handle_message(_processor_name, message, context) do
-    Logger.metadata(source_id: context.source_token, source_token: context.source_token)
+    Logger.metadata(
+      source_id: context.source_token,
+      source_token: context.source_token,
+      user_id: context.user_id,
+      system_source: context.system_source
+    )
 
     message
     |> Message.update_data(&process_data(&1, context))
@@ -185,7 +193,8 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
           project_id: context.bigquery_project_id,
           dataset_id: context.bigquery_dataset_id,
           source_id: context.source_id,
-          source_token: context.source_token
+          source_token: context.source_token,
+          backend_id: context.backend_id
         )
 
         messages
@@ -221,8 +230,16 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
     }
   end
 
-  def stream_batch(%{source_token: source_token} = context, messages) do
-    Logger.metadata(source_id: source_token, source_token: source_token)
+  def stream_batch(
+        %{source_token: source_token, user_id: user_id, system_source: system_source} = context,
+        messages
+      ) do
+    Logger.metadata(
+      source_id: source_token,
+      source_token: source_token,
+      user_id: user_id,
+      system_source: system_source
+    )
 
     :telemetry.span(
       [:logflare, :ingest, :pipeline, :stream_batch],

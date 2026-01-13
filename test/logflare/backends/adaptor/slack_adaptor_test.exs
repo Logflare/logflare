@@ -1,5 +1,5 @@
 defmodule Logflare.Backends.SlackAdaptorTest do
-  use Logflare.DataCase, async: false
+  use Logflare.DataCase, async: true
 
   alias Logflare.Backends.Adaptor.SlackAdaptor
 

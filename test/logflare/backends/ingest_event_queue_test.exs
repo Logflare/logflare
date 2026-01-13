@@ -116,6 +116,101 @@ defmodule Logflare.Backends.IngestEventQueueTest do
     end
   end
 
+  describe "consolidated keys" do
+    setup do
+      user = insert(:user)
+      [backend: insert(:backend, user: user)]
+    end
+
+    test "consolidated_key?/1 returns true for consolidated queue keys" do
+      assert IngestEventQueue.consolidated_key?({:consolidated, 123})
+      assert IngestEventQueue.consolidated_key?({:consolidated, 123, nil})
+      assert IngestEventQueue.consolidated_key?({:consolidated, 123, self()})
+    end
+
+    test "consolidated_key?/1 returns false for regular keys" do
+      refute IngestEventQueue.consolidated_key?({1, 2})
+      refute IngestEventQueue.consolidated_key?({1, 2, nil})
+      refute IngestEventQueue.consolidated_key?({1, 2, self()})
+      refute IngestEventQueue.consolidated_key?(:other)
+    end
+
+    test "upsert_tid/1 and get_tid/1 work with consolidated keys", %{backend: backend} do
+      key = {:consolidated, backend.id, self()}
+      assert {:ok, tid} = IngestEventQueue.upsert_tid(key)
+      assert ^tid = IngestEventQueue.get_tid(key)
+    end
+
+    test "upsert_tid/1 returns error if tid already exists for consolidated key", %{
+      backend: backend
+    } do
+      key = {:consolidated, backend.id, self()}
+      assert {:ok, tid} = IngestEventQueue.upsert_tid(key)
+      assert {:error, :already_exists, ^tid} = IngestEventQueue.upsert_tid(key)
+    end
+
+    test "list_queues/1 returns consolidated queues", %{backend: backend} do
+      IngestEventQueue.upsert_tid({:consolidated, backend.id, :erlang.list_to_pid(~c"<0.12.34>")})
+      IngestEventQueue.upsert_tid({:consolidated, backend.id, :erlang.list_to_pid(~c"<0.12.35>")})
+
+      queues = IngestEventQueue.list_queues({:consolidated, backend.id})
+      assert length(queues) == 2
+
+      assert Enum.all?(queues, fn
+               {:consolidated, bid, pid} when is_integer(bid) and is_pid(pid) -> true
+               _ -> false
+             end)
+    end
+
+    test "list_pending_counts/1 returns counts for consolidated queues", %{backend: backend} do
+      key = {:consolidated, backend.id, self()}
+      IngestEventQueue.upsert_tid(key)
+      le = build(:log_event)
+      IngestEventQueue.add_to_table(key, [le])
+
+      assert [{^key, 1}] = IngestEventQueue.list_pending_counts({:consolidated, backend.id})
+    end
+
+    test "add_to_table/2 works with consolidated queue key", %{backend: backend} do
+      key = {:consolidated, backend.id, self()}
+      IngestEventQueue.upsert_tid(key)
+      le = build(:log_event)
+
+      assert :ok = IngestEventQueue.add_to_table(key, [le])
+      assert {:ok, [^le]} = IngestEventQueue.take_pending(key, 1)
+    end
+
+    test "add_to_table/2 distributes to startup queue when no active queues", %{backend: backend} do
+      startup_key = {:consolidated, backend.id, nil}
+      IngestEventQueue.upsert_tid(startup_key)
+      le = build(:log_event)
+
+      assert :ok = IngestEventQueue.add_to_table({:consolidated, backend.id}, [le])
+      assert IngestEventQueue.total_pending(startup_key) == 1
+    end
+
+    test "queues_pending_size/1 returns total for consolidated queues", %{backend: backend} do
+      key1 = {:consolidated, backend.id, :erlang.list_to_pid(~c"<0.12.34>")}
+      key2 = {:consolidated, backend.id, :erlang.list_to_pid(~c"<0.12.35>")}
+      IngestEventQueue.upsert_tid(key1)
+      IngestEventQueue.upsert_tid(key2)
+
+      IngestEventQueue.add_to_table(key1, [build(:log_event)])
+      IngestEventQueue.add_to_table(key2, [build(:log_event), build(:log_event)])
+
+      assert IngestEventQueue.queues_pending_size({:consolidated, backend.id}) == 3
+    end
+
+    test "delete_queue/1 works with consolidated keys", %{backend: backend} do
+      key = {:consolidated, backend.id, self()}
+      IngestEventQueue.upsert_tid(key)
+      IngestEventQueue.add_to_table(key, [build(:log_event)])
+
+      assert :ok = IngestEventQueue.delete_queue(key)
+      assert is_nil(IngestEventQueue.get_tid(key))
+    end
+  end
+
   describe "startup queue" do
     setup do
       user = insert(:user)
@@ -224,6 +319,85 @@ defmodule Logflare.Backends.IngestEventQueueTest do
       assert IngestEventQueue.total_pending(sbp) == 50
       assert :ok = IngestEventQueue.truncate_table(sbp, :pending, 0)
       assert IngestEventQueue.total_pending(sbp) == 0
+    end
+  end
+
+  describe "pop_pending/2" do
+    setup do
+      user = insert(:user)
+      source = insert(:source, user: user)
+      backend = insert(:backend, user: user)
+      key = {source.id, backend.id, self()}
+      IngestEventQueue.upsert_tid(key)
+      [key: key, source: source, backend: backend]
+    end
+
+    test "returns events and removes them from the queue", %{key: key} do
+      events = for _ <- 1..5, do: build(:log_event)
+      :ok = IngestEventQueue.add_to_table(key, events)
+
+      assert IngestEventQueue.get_table_size(key) == 5
+      assert IngestEventQueue.total_pending(key) == 5
+
+      assert {:ok, popped} = IngestEventQueue.pop_pending(key, 3)
+      assert length(popped) == 3
+
+      assert IngestEventQueue.get_table_size(key) == 2
+      assert IngestEventQueue.total_pending(key) == 2
+    end
+
+    test "returns empty list when no pending events", %{key: key} do
+      assert {:ok, []} = IngestEventQueue.pop_pending(key, 10)
+    end
+
+    test "returns error when queue not initialized" do
+      assert {:error, :not_initialized} = IngestEventQueue.pop_pending({999, 999, self()}, 5)
+    end
+
+    test "returns all events when requesting more than available", %{key: key} do
+      events = for _ <- 1..3, do: build(:log_event)
+      :ok = IngestEventQueue.add_to_table(key, events)
+
+      assert {:ok, popped} = IngestEventQueue.pop_pending(key, 10)
+      assert length(popped) == 3
+      assert IngestEventQueue.get_table_size(key) == 0
+    end
+
+    test "only pops pending events, not ingested", %{key: key} do
+      pending_events = for _ <- 1..3, do: build(:log_event)
+      ingested_events = for _ <- 1..2, do: build(:log_event)
+
+      :ok = IngestEventQueue.add_to_table(key, pending_events ++ ingested_events)
+      {:ok, _} = IngestEventQueue.mark_ingested(key, ingested_events)
+
+      assert IngestEventQueue.get_table_size(key) == 5
+      assert IngestEventQueue.total_pending(key) == 3
+
+      assert {:ok, popped} = IngestEventQueue.pop_pending(key, 10)
+      assert length(popped) == 3
+
+      assert IngestEventQueue.get_table_size(key) == 2
+      assert IngestEventQueue.total_pending(key) == 0
+    end
+
+    test "works with consolidated keys", %{backend: backend} do
+      consolidated_key = {:consolidated, backend.id, self()}
+      IngestEventQueue.upsert_tid(consolidated_key)
+
+      events = for _ <- 1..5, do: build(:log_event)
+      :ok = IngestEventQueue.add_to_table(consolidated_key, events)
+
+      assert {:ok, popped} = IngestEventQueue.pop_pending(consolidated_key, 3)
+      assert length(popped) == 3
+      assert IngestEventQueue.get_table_size(consolidated_key) == 2
+    end
+
+    test "pop_pending with 0 returns empty list", %{key: key} do
+      events = for _ <- 1..5, do: build(:log_event)
+      :ok = IngestEventQueue.add_to_table(key, events)
+
+      assert {:ok, []} = IngestEventQueue.pop_pending(key, 0)
+      assert IngestEventQueue.get_table_size(key) == 5
     end
   end
 
@@ -353,6 +527,69 @@ defmodule Logflare.Backends.IngestEventQueueTest do
 
     :timer.sleep(550)
     assert IngestEventQueue.get_table_size({source.id, backend.id, pid}) == 50
+  end
+
+  describe "QueueJanitor with consolidated keys" do
+    test "handles consolidated queue keys" do
+      user = insert(:user)
+      backend = insert(:backend, user: user)
+      source = insert(:source, user: user)
+      pid = self()
+
+      consolidated_key = {:consolidated, backend.id, pid}
+      IngestEventQueue.upsert_tid(consolidated_key)
+
+      events = for _ <- 1..5, do: build(:log_event, source: source)
+      IngestEventQueue.add_to_table(consolidated_key, events)
+      {:ok, _} = IngestEventQueue.mark_ingested(consolidated_key, events)
+
+      assert IngestEventQueue.get_table_size(consolidated_key) == 5
+
+      start_supervised!(
+        {QueueJanitor,
+         source: source,
+         backend: backend,
+         interval: 50,
+         remainder: 0,
+         consolidated: true,
+         consolidated_key: {:consolidated, backend.id}}
+      )
+
+      :timer.sleep(550)
+      assert IngestEventQueue.get_table_size(consolidated_key) == 0
+    end
+
+    test "uses larger max threshold for consolidated queues" do
+      user = insert(:user)
+      backend = insert(:backend, user: user)
+      source = insert(:source, user: user)
+      pid = self()
+
+      consolidated_key = {:consolidated, backend.id, pid}
+      IngestEventQueue.upsert_tid(consolidated_key)
+
+      # 150 events exceeds base max of 100, but consolidated uses 10x multiplier
+      # so effective max is 1000, and 150 events should NOT trigger a purge
+      batch = for _ <- 1..150, do: build(:log_event, source: source)
+      IngestEventQueue.add_to_table(consolidated_key, batch)
+
+      assert IngestEventQueue.get_table_size(consolidated_key) == 150
+
+      start_supervised!(
+        {QueueJanitor,
+         source: source,
+         backend: backend,
+         interval: 50,
+         max: 100,
+         purge_ratio: 1.0,
+         consolidated: true,
+         consolidated_key: {:consolidated, backend.id}}
+      )
+
+      :timer.sleep(550)
+      # Events should remain because 150 < 1000 (consolidated max = 100 * 10)
+      assert IngestEventQueue.get_table_size(consolidated_key) == 150
+    end
   end
 
   test "MapperJanitor cleans up stale tids" do

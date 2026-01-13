@@ -10,7 +10,6 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
   require Logger
 
   alias Ecto.Changeset
-  alias Explorer.DataFrame
   alias GoogleApi.BigQuery.V2.Model
   alias Logflare.Backends
   alias Logflare.Backends.Adaptor.BigQueryAdaptor.GoogleApiClient
@@ -55,7 +54,12 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
     project_id = backend.config.project_id
     dataset_id = backend.config.dataset_id
     # TODO: remove source_id metadata to reduce confusion
-    Logger.metadata(source_id: source.token, source_token: source.token)
+    Logger.metadata(
+      source_id: source.token,
+      source_token: source.token,
+      user_id: user.id,
+      system_source: source.system_source
+    )
 
     children = [
       {
@@ -96,8 +100,15 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
 
   def insert_log_events_via_storage_write_api(log_events, opts) do
     # convert log events to table rows
-    opts =
-      Keyword.validate!(opts, [:project_id, :dataset_id, :source_token, :source_id, :source_token])
+    context =
+      Keyword.validate!(opts, [
+        :project_id,
+        :dataset_id,
+        :source_token,
+        :source_id,
+        :source_token,
+        :backend_id
+      ])
 
     # get table id
     table_id = format_table_name(opts[:source_token])
@@ -106,13 +117,11 @@ defmodule Logflare.Backends.Adaptor.BigQueryAdaptor do
       log_events
       |> Enum.map(&log_event_to_df_struct(&1))
       |> normalize_df_struct_fields()
-      |> DataFrame.new()
 
     # append rows
     GoogleApiClient.append_rows(
       {:arrow, data_frames},
-      opts[:project_id],
-      opts[:dataset_id],
+      context,
       table_id
     )
   end

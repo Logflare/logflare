@@ -1,5 +1,5 @@
 defmodule Logflare.Lql.Parser.HelpersTest do
-  use ExUnit.Case, async: false
+  use ExUnit.Case, async: true
   use Mimic
 
   alias Logflare.Lql.Parser.Helpers

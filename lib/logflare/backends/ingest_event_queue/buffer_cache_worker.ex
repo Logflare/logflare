@@ -24,10 +24,10 @@ defmodule Logflare.Backends.IngestEventQueue.BufferCacheWorker do
   def handle_info(:cache_buffer_lens, state) do
     :ets.foldl(
       fn
-        {{sid, bid, _pid}, _tid}, acc when is_map_key(acc, {sid, bid}) ->
+        {{sid, bid}, _pid, _tid}, acc when is_map_key(acc, {sid, bid}) ->
           acc
 
-        {{sid, bid, _pid}, _tid}, acc ->
+        {{sid, bid}, _pid, _tid}, acc ->
           Backends.cache_local_buffer_lens(sid, bid)
           Map.put(acc, {sid, bid}, true)
       end,

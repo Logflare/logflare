@@ -32,9 +32,9 @@ defmodule Logflare.Backends do
 
   defdelegate child_spec(arg), to: __MODULE__.Supervisor
 
-  @max_pending_buffer_len_per_queue 15_000
   @max_event_age_us 72 * 3_600 * 1_000_000
   @max_future_event_us 1 * 3_600 * 1_000_000
+  @max_pending_buffer_len_per_queue IngestEventQueue.max_queue_size()
 
   @type one_or_list_or_nil :: Backend.t() | [Backend.t()] | nil
 
@@ -405,7 +405,9 @@ defmodule Logflare.Backends do
         |> Changeset.apply_changes()
       end)
 
-    Map.put(updated, :config, updated.config_encrypted)
+    updated
+    |> Map.put(:config, updated.config_encrypted)
+    |> Map.put(:consolidated_ingest?, Adaptor.consolidated_ingest?(backend))
   end
 
   @doc """
@@ -588,13 +590,15 @@ defmodule Logflare.Backends do
   end
 
   defp maybe_broadcast_and_route(source, log_events) do
-    if source.metrics.avg < 2 do
-      Source.ChannelTopics.broadcast_new(log_events)
+    case source.metrics do
+      %{avg: avg} when avg < 2 ->
+        Source.ChannelTopics.broadcast_new(log_events)
+
+      _ ->
+        :ok
     end
 
     SourceRouting.route_to_sinks_and_ingest(log_events, source)
-
-    :ok
   end
 
   # send to a specific backend
@@ -814,15 +818,7 @@ defmodule Logflare.Backends do
   end
 
   def cached_local_pending_buffer_full?(%Source{id: source_id}) do
-    PubSubRates.Cache.get_local_buffer(source_id, nil)
-    |> Map.get(:queues, [])
-    |> case do
-      [] ->
-        false
-
-      queues ->
-        Enum.all?(queues, fn {_key, v} -> v > @max_pending_buffer_len_per_queue end)
-    end
+    buffer_full_for_backend?(source_id, nil)
   end
 
   @spec buffer_full_for_backend?(
@@ -833,7 +829,7 @@ defmodule Logflare.Backends do
   defp buffer_full_for_backend?(source_id, backend_id) do
     case PubSubRates.Cache.get_local_buffer(source_id, backend_id) do
       %{queues: [_ | _] = queues} ->
-        Enum.any?(queues, fn {_key, count} ->
+        Enum.all?(queues, fn {_key, count} ->
           count > @max_pending_buffer_len_per_queue
         end)
 
@@ -902,13 +898,27 @@ defmodule Logflare.Backends do
 
   @doc """
   Lists latest recent logs of only the local cache.
+
+  For consolidated backends, returns an empty list since filtering by source
+  in a consolidated queue would require scanning all events and is expensive.
   """
   @spec list_recent_logs_local(Source.t() | pos_integer()) :: [LogEvent.t()]
   @spec list_recent_logs_local(Source.t() | pos_integer(), n :: number()) :: [LogEvent.t()]
+  @spec list_recent_logs_local(Source.t(), Backend.t()) :: [LogEvent.t()]
   def list_recent_logs_local(source, n \\ 100)
-  def list_recent_logs_local(%Source{id: id}, n), do: list_recent_logs_local(id, n)
 
-  def list_recent_logs_local(source_id, n) when is_integer(source_id) do
+  def list_recent_logs_local(%Source{id: id}, n) when is_number(n),
+    do: list_recent_logs_local(id, n)
+
+  def list_recent_logs_local(%Source{} = source, %Backend{} = backend) do
+    if Adaptor.consolidated_ingest?(backend) do
+      []
+    else
+      list_recent_logs_local(source)
+    end
+  end
+
+  def list_recent_logs_local(source_id, n) when is_integer(source_id) and is_number(n) do
     {:ok, events} = IngestEventQueue.fetch_events({source_id, nil}, n)
 
     events

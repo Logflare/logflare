@@ -1,5 +1,5 @@
 defmodule Logflare.Logs.SearchQueriesTest do
-  use Logflare.DataCase, async: false
+  use Logflare.DataCase, async: true
 
   import Ecto.Query
 

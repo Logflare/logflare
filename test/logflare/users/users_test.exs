@@ -1,5 +1,5 @@
 defmodule Logflare.UsersTest do
-  use Logflare.DataCase, async: false
+  use Logflare.DataCase, async: true
 
   alias Logflare.Sources
   alias Logflare.User

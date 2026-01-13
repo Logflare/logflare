@@ -12,7 +12,6 @@ defmodule LogflareWeb.Sources.RulesLive do
   alias Logflare.SourceSchemas
   alias Logflare.Sources
   alias Logflare.Users
-  alias LogflareWeb.LqlHelpers
 
   require Logger
 

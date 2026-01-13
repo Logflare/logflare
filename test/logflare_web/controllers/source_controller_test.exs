@@ -39,8 +39,7 @@ defmodule LogflareWeb.SourceControllerTest do
     } do
       conn
       |> login_user(user)
-      |> visit(~p"/dashboard")
-      |> click_link(invited_team1.name)
+      |> visit(~p"/dashboard?t=#{invited_team1.id}")
       |> then(fn session ->
         html = Floki.parse_document!(session.conn.resp_body)
 
@@ -72,7 +71,7 @@ defmodule LogflareWeb.SourceControllerTest do
 
     defp nav_and_assert_admin_link(conn, team_name, team_id) do
       conn
-      |> visit(~p"/dashboard")
+      |> visit(~p"/")
       |> then(fn session ->
         try do
           click_link(session, team_name)
