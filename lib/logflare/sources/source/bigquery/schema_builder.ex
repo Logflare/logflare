@@ -126,13 +126,14 @@ defmodule Logflare.Sources.Source.BigQuery.SchemaBuilder do
 
   def build_table_schema(params, %{fields: old_fields}) do
     protected_keys = Enum.map(initial_table_schema().fields, & &1.name)
+    is_otel = is_otel_data?(params)
 
     new_fields =
       for param_key <- Map.keys(params),
           param_key not in protected_keys do
         prev_field_schema = Enum.find(old_fields, &(&1.name == param_key)) || %{}
         param_value = Map.get(params, param_key)
-        new_field_schema = build_fields_schemas({param_key, param_value})
+        new_field_schema = build_fields_schemas({param_key, param_value}, is_otel)
 
         prev_field_schema
         |> DeepMerge.deep_merge(new_field_schema)
@@ -178,34 +179,36 @@ defmodule Logflare.Sources.Source.BigQuery.SchemaBuilder do
     }
   end
 
-  defp build_fields_schemas({params_key, params_val}) when is_map(params_val) do
+  defp build_fields_schemas({params_key, params_val}, _is_otel) when is_map(params_val) do
     %TFS{
       description: nil,
       mode: "REPEATED",
       name: params_key,
       type: "RECORD",
-      fields: Enum.map(params_val, &build_fields_schemas/1)
+      fields: Enum.map(params_val, &build_fields_schemas(&1, false))
     }
   end
 
-  defp build_fields_schemas(maps) when is_list(maps) do
+  defp build_fields_schemas(maps, _is_otel) when is_list(maps) do
     maps
     |> Enum.reduce(%{}, &DeepMerge.deep_merge/2)
     |> Enum.reject(fn
       {_, v} when v == [] when v == %{} when v == [[]] -> true
       _ -> false
     end)
-    |> Enum.map(&build_fields_schemas/1)
+    |> Enum.map(&build_fields_schemas(&1, false))
   end
 
-  defp build_fields_schemas({params_key, params_value}) do
-    case SchemaTypes.to_schema_type(params_value) do
+  defp build_fields_schemas({params_key, params_value}, is_otel) do
+    type = determine_type(params_key, params_value, is_otel)
+
+    case type do
       {"ARRAY", "RECORD"} ->
         %TFS{
           name: params_key,
           type: "RECORD",
           mode: "REPEATED",
-          fields: build_fields_schemas(params_value)
+          fields: build_fields_schemas(params_value, false)
         }
 
       {"ARRAY", inner_type} ->
@@ -222,6 +225,20 @@ defmodule Logflare.Sources.Source.BigQuery.SchemaBuilder do
           mode: "NULLABLE"
         }
     end
+  end
+
+  defp determine_type(field_name, value, is_otel) do
+    base_type = SchemaTypes.to_schema_type(value)
+
+    if is_otel and field_name in ["start_time", "end_time"] and base_type == "INTEGER" do
+      "TIMESTAMP"
+    else
+      base_type
+    end
+  end
+
+  defp is_otel_data?(params) do
+    Map.has_key?(params, "resource") and Map.has_key?(params, "scope")
   end
 
   defimpl DeepMerge.Resolver, for: Model.TableFieldSchema do
