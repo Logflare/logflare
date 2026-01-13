@@ -15,14 +15,29 @@ defmodule Logflare.Backends.IngestEventQueue do
   @ets_table_mapper :ingest_event_queue_mapping
   @ets_table :source_ingest_events
   @max_queue_size 30_000
+
   @type source_backend :: {Source.t() | pos_integer(), Backend.t() | pos_integer() | nil}
   @type source_backend_pid ::
           {Source.t() | pos_integer(), Backend.t() | pos_integer() | nil, pid() | nil}
   @type table_key :: {pos_integer(), pos_integer() | nil, pid() | nil}
   @type table_obj :: {table_key(), :ets.tid()}
   @type queues_key :: {pos_integer(), pos_integer() | nil}
+  @type consolidated_queues_key :: {:consolidated, pos_integer()}
+  @type consolidated_table_key :: {:consolidated, pos_integer(), pid() | nil}
+
+  defguardp is_pid_or_nil(value) when is_pid(value) or is_nil(value)
 
   def max_queue_size, do: @max_queue_size
+
+  @doc """
+  Returns true if the key is a consolidated queue key.
+  """
+  @spec consolidated_key?(consolidated_queues_key() | consolidated_table_key() | term()) ::
+          boolean()
+  def consolidated_key?({:consolidated, _}), do: true
+  def consolidated_key?({:consolidated, _, _}), do: true
+  def consolidated_key?(_), do: false
+
   ## Server
   def start_link(_args) do
     GenServer.start_link(__MODULE__, [], name: __MODULE__, hibernate_after: 1_000)
@@ -43,12 +58,22 @@ defmodule Logflare.Backends.IngestEventQueue do
   end
 
   @doc """
-  Retrieves a private tid of a given source-backend combination.
+  Retrieves a private tid of a given source-backend combination or consolidated queue.
   """
-  @spec get_tid(table_key()) :: :ets.tid() | nil
+  @spec get_tid(table_key() | consolidated_table_key()) :: :ets.tid() | nil
+  def get_tid({:consolidated, bid, pid}) when is_integer(bid) do
+    :ets.match(@ets_table_mapper, {{:consolidated, bid}, pid, :"$1"}, 1)
+    |> then(fn
+      {[[tid]], _cont} ->
+        if :ets.info(tid) != :undefined, do: tid
+
+      _ ->
+        nil
+    end)
+  end
+
   def get_tid({sid, bid, pid}) do
     :ets.match(@ets_table_mapper, {{sid, bid}, pid, :"$1"}, 1)
-    # staleness check
     |> then(fn
       {[[tid]], _cont} ->
         if :ets.info(tid) != :undefined, do: tid
@@ -61,12 +86,32 @@ defmodule Logflare.Backends.IngestEventQueue do
   @doc """
   Creates or updates a private :ets table. The :ets table mapper is stored in #{@ets_table_mapper} .
   """
-  @spec upsert_tid(table_key()) :: {:ok, :ets.tid()} | {:error, :already_exists, :ets.tid()}
+  @spec upsert_tid(table_key() | consolidated_table_key()) ::
+          {:ok, :ets.tid()} | {:error, :already_exists, :ets.tid()}
+  def upsert_tid({:consolidated, bid, pid} = key) when is_integer(bid) and is_pid_or_nil(pid) do
+    case get_tid(key) do
+      nil ->
+        tid =
+          :ets.new(@ets_table, [
+            :public,
+            :set,
+            {:decentralized_counters, false},
+            {:write_concurrency, :auto},
+            {:read_concurrency, true}
+          ])
+
+        :ets.insert(@ets_table_mapper, {{:consolidated, bid}, pid, tid})
+        {:ok, tid}
+
+      tid ->
+        {:error, :already_exists, tid}
+    end
+  end
+
   def upsert_tid({sid, bid, pid} = sid_bid_pid)
-      when is_integer(sid) and (is_integer(bid) or is_nil(bid)) and (is_pid(pid) or is_nil(pid)) do
+      when is_integer(sid) and (is_integer(bid) or is_nil(bid)) and is_pid_or_nil(pid) do
     case get_tid(sid_bid_pid) do
       nil ->
-        # create and insert
         tid =
           :ets.new(@ets_table, [
             :public,
@@ -87,7 +132,7 @@ defmodule Logflare.Backends.IngestEventQueue do
   @doc """
   Retrieves the table size of a given tid
   """
-  @spec get_table_size(table_key()) :: integer() | nil
+  @spec get_table_size(table_key() | consolidated_table_key()) :: integer() | nil
   def get_table_size(sid_bid_pid) do
     with tid when tid != nil <- get_tid(sid_bid_pid),
          num when is_integer(num) <- :ets.info(tid, :size) do
@@ -98,12 +143,12 @@ defmodule Logflare.Backends.IngestEventQueue do
   end
 
   @doc """
-  Returns the sum of all pending events across all queues of a source-backend combination.
+  Returns the sum of all pending events across all queues of a source-backend combination or consolidated queue.
   """
-  @spec queues_pending_size(queues_key()) :: integer() | nil
-  def queues_pending_size({sid, bid}) do
-    list_pending_counts({sid, bid})
-    |> Enum.reduce(0, fn {_sid_bid_tid, count}, acc ->
+  @spec queues_pending_size(queues_key() | consolidated_queues_key()) :: integer() | nil
+  def queues_pending_size(key) do
+    list_pending_counts(key)
+    |> Enum.reduce(0, fn {_table_key, count}, acc ->
       acc + count
     end)
   end
@@ -125,9 +170,80 @@ defmodule Logflare.Backends.IngestEventQueue do
 
   The record will be marked as :pending.
   """
-  @spec add_to_table(source_backend_pid() | queues_key(), [LogEvent.t()], Keyword.t()) ::
-          :ok | {:error, :not_initialized}
+  @spec add_to_table(
+          source_backend_pid()
+          | queues_key()
+          | consolidated_queues_key()
+          | consolidated_table_key(),
+          [LogEvent.t()],
+          Keyword.t()
+        ) :: :ok | {:error, :not_initialized}
   def add_to_table(sid_bid_or_sid_bid_pid, batch, opts \\ [])
+
+  def add_to_table({:consolidated, bid} = key, batch, opts) when is_integer(bid) do
+    chunk_size = Keyword.get(opts, :chunk_size, 100)
+    no_get_tid = Keyword.get(opts, :no_get_tid, true)
+    check_queue_size = Keyword.get(opts, :check_queue_size, true)
+    startup_queue = {:consolidated, bid, nil}
+
+    reducer =
+      if check_queue_size do
+        fn
+          {{{:consolidated, _, nil}, _tid}, _}, acc -> acc
+          {_obj, count}, acc when count >= @max_queue_size -> acc
+          {obj, _count}, acc -> [obj | acc]
+        end
+      else
+        fn
+          {{{:consolidated, _, nil}, _tid}, _}, acc -> acc
+          {obj, _count}, acc -> [obj | acc]
+        end
+      end
+
+    if no_get_tid do
+      with all = [_ | _] <- list_counts_with_tids(key),
+           available_queues = [_ | _] <- Enum.reduce(all, [], reducer) do
+        Logflare.Utils.chunked_round_robin(
+          batch,
+          available_queues,
+          chunk_size,
+          fn chunk, target ->
+            add_to_table(target, chunk)
+          end
+        )
+      else
+        _ ->
+          add_to_table(startup_queue, batch)
+      end
+    else
+      proc_counts =
+        list_counts(key)
+        |> Enum.sort_by(fn {_key, count} -> count end, :asc)
+        |> Enum.filter(fn
+          {{:consolidated, _, nil}, _} -> false
+          {{:consolidated, _, _}, _} -> true
+        end)
+
+      procs = Enum.map(proc_counts, fn {proc_key, _count} -> proc_key end)
+
+      chunking_func = fn chunk, target ->
+        add_to_table(target, chunk)
+      end
+
+      if procs == [] do
+        add_to_table({:consolidated, bid, nil}, batch)
+      else
+        Logflare.Utils.chunked_round_robin(
+          batch,
+          procs,
+          chunk_size,
+          chunking_func
+        )
+      end
+    end
+
+    :ok
+  end
 
   def add_to_table({sid, bid} = sid_bid, batch, opts) when is_integer(sid) do
     chunk_size = Keyword.get(opts, :chunk_size, 100)
@@ -279,10 +395,11 @@ defmodule Logflare.Backends.IngestEventQueue do
   First element is the table key.
   Second element is the pending count.
   """
-  @spec list_pending_counts(queues_key()) :: [{table_key(), non_neg_integer()}]
-  def list_pending_counts(sid_bid) do
+  @spec list_pending_counts(queues_key() | consolidated_queues_key()) ::
+          [{table_key() | consolidated_table_key(), non_neg_integer()}]
+  def list_pending_counts(key) do
     traverse_queues(
-      sid_bid,
+      key,
       fn objs, acc ->
         items =
           for {sid_bid_pid, _tid} <- objs,
@@ -302,21 +419,23 @@ defmodule Logflare.Backends.IngestEventQueue do
   First element is table key.
   Second element is the size of the table.
   """
-  @spec list_counts(queues_key()) :: [{table_key(), non_neg_integer()}]
-  def list_counts(sid_bid) do
-    for {{sid, bid, pid}, tid} <- list_queues_with_tids(sid_bid),
+  @spec list_counts(queues_key() | consolidated_queues_key()) ::
+          [{table_key() | consolidated_table_key(), non_neg_integer()}]
+  def list_counts(key) do
+    for {table_key, tid} <- list_queues_with_tids(key),
         size = :ets.info(tid, :size),
         is_integer(size) do
-      {{sid, bid, pid}, size}
+      {table_key, size}
     end
   end
 
-  @spec list_counts_with_tids(queues_key()) :: [{table_obj(), non_neg_integer()}]
-  def list_counts_with_tids(sid_bid) do
-    for {{sid, bid, pid}, tid} <- list_queues_with_tids(sid_bid),
+  @spec list_counts_with_tids(queues_key() | consolidated_queues_key()) ::
+          [{table_key() | consolidated_table_key(), non_neg_integer()}]
+  def list_counts_with_tids(key) do
+    for {table_key, tid} <- list_queues_with_tids(key),
         size = :ets.info(tid, :size),
         is_integer(size) do
-      {{sid, bid, pid}, size}
+      {table_key, size}
     end
   end
 
@@ -369,6 +488,39 @@ defmodule Logflare.Backends.IngestEventQueue do
     end
   end
 
+  @doc """
+  Pops pending events from a given table, removing them atomically.
+
+  Unlike `take_pending/2`, this function removes the events from the queue
+  immediately rather than leaving them with a `:pending` status.
+  Use this for consolidated queues where events should be re-added on failure.
+  """
+  @spec pop_pending(table_key() | consolidated_table_key(), integer()) ::
+          {:ok, [LogEvent.t()]} | {:error, :not_initialized}
+  def pop_pending(_, 0), do: {:ok, []}
+
+  def pop_pending(sid_bid_pid, n) when is_integer(n) do
+    select_ms =
+      Ex2ms.fun do
+        {event_id, :pending, event} -> {event_id, event}
+      end
+
+    with tid when tid != nil <- get_tid(sid_bid_pid),
+         size when is_integer(size) <- :ets.info(tid, :size),
+         {selected, _cont} <- :ets.select(tid, select_ms, min(n, max(size, 1))) do
+      events =
+        for {event_id, event} <- selected do
+          :ets.delete(tid, event_id)
+          event
+        end
+
+      {:ok, events}
+    else
+      nil -> {:error, :not_initialized}
+      :"$end_of_table" -> {:ok, []}
+    end
+  end
+
   @spec fetch_events(source_backend_pid(), integer()) ::
           {:ok, [LogEvent.t()]} | {:error, :not_initialized}
   def fetch_events({_, _, _} = sid_bid_pid, n) do
@@ -412,11 +564,23 @@ defmodule Logflare.Backends.IngestEventQueue do
   @doc """
   Truncates a given table
   """
-  @spec truncate_table(source_backend_pid(), :all | :pending | :ingested, integer()) :: :ok
+  @spec truncate_table(
+          source_backend_pid() | consolidated_table_key(),
+          :all | :pending | :ingested,
+          integer()
+        ) ::
+          :ok | {:error, :not_initialized}
 
-  def truncate_table({sid, _bid, _pid} = sid_bid_pid, :all, 0) when is_integer(sid) do
-    # drop all objects
-    with tid when tid != nil <- get_tid(sid_bid_pid) do
+  def truncate_table({:consolidated, _bid, _pid} = key, status, n)
+      when status in [:all, :pending, :ingested],
+      do: do_truncate_table(key, status, n)
+
+  def truncate_table({sid, _bid, _pid} = key, status, n)
+      when is_integer(sid) and status in [:all, :pending, :ingested],
+      do: do_truncate_table(key, status, n)
+
+  defp do_truncate_table(key, :all, 0) do
+    with tid when tid != nil <- get_tid(key) do
       :ets.delete_all_objects(tid)
       :ok
     else
@@ -424,10 +588,7 @@ defmodule Logflare.Backends.IngestEventQueue do
     end
   end
 
-  def truncate_table({sid, _bid, _pid} = sid_bid_pid, status, n)
-      when is_integer(sid) and status in [:all, :pending, :ingested] do
-    # drop all objects
-
+  defp do_truncate_table(key, status, n) do
     ms =
       Ex2ms.fun do
         {_event_id, _event_status, event} = obj when ^status == :all -> obj
@@ -440,7 +601,7 @@ defmodule Logflare.Backends.IngestEventQueue do
         {_event_id, event_status, event} = obj when event_status == ^status -> true
       end
 
-    with tid when tid != nil <- get_tid(sid_bid_pid),
+    with tid when tid != nil <- get_tid(key),
          size when is_integer(size) <- :ets.info(tid, :size) do
       to_insert =
         if n == 0 do
@@ -533,7 +694,11 @@ defmodule Logflare.Backends.IngestEventQueue do
     :ok
   end
 
-  @spec drop(source_backend_pid(), :all | :pending | :ingested, non_neg_integer()) ::
+  @spec drop(
+          source_backend_pid() | consolidated_table_key(),
+          :all | :pending | :ingested,
+          non_neg_integer()
+        ) ::
           {:ok, non_neg_integer()} | {:error, :not_initialized}
   def drop({_, _, _} = sid_bid_pid, filter, n)
       when is_integer(n) and filter in [:pending, :all, :ingested] do
@@ -595,9 +760,23 @@ defmodule Logflare.Backends.IngestEventQueue do
   end
 
   @doc """
-  Select queues by source-backend combination.
+  Select queues by source-backend combination or consolidated queue.
   """
-  @spec list_queues(queues_key()) :: [table_key()]
+  @spec list_queues(queues_key() | consolidated_queues_key()) ::
+          [table_key() | consolidated_table_key()]
+  def list_queues({:consolidated, bid}) when is_integer(bid) do
+    ms =
+      Ex2ms.fun do
+        {{:consolidated, ^bid}, pid, _tid} -> {:consolidated, ^bid, pid}
+      end
+
+    with {queues, _cont} <- :ets.select(@ets_table_mapper, ms, 1000) do
+      queues
+    else
+      :"$end_of_table" -> []
+    end
+  end
+
   def list_queues({sid, bid}) do
     ms =
       Ex2ms.fun do
@@ -612,9 +791,23 @@ defmodule Logflare.Backends.IngestEventQueue do
   end
 
   @doc """
-  Select queues by source-backend combination with their :ets.tid().
+  Select queues by source-backend combination or consolidated queue with their :ets.tid().
   """
-  @spec list_queues_with_tids(queues_key()) :: [{table_key(), :ets.tid()}]
+  @spec list_queues_with_tids(queues_key() | consolidated_queues_key()) ::
+          [{table_key() | consolidated_table_key(), :ets.tid()}]
+  def list_queues_with_tids({:consolidated, bid}) when is_integer(bid) do
+    ms =
+      Ex2ms.fun do
+        {{:consolidated, ^bid}, pid, tid} -> {{:consolidated, ^bid, pid}, tid}
+      end
+
+    with {queues, _cont} <- :ets.select(@ets_table_mapper, ms, 1000) do
+      queues
+    else
+      :"$end_of_table" -> []
+    end
+  end
+
   def list_queues_with_tids({sid, bid}) do
     ms =
       Ex2ms.fun do
@@ -629,12 +822,30 @@ defmodule Logflare.Backends.IngestEventQueue do
   end
 
   @doc """
-  Performs a reduce across all queues of a source-backend combination.
+  Performs a reduce across all queues of a source-backend combination or consolidated queue.
 
   Startup queue is included.
 
   """
-  def traverse_queues({sid, bid}, func, acc \\ nil, _opts \\ []) do
+  def traverse_queues(key, func, acc \\ nil, opts \\ [])
+
+  def traverse_queues({:consolidated, bid}, func, acc, _opts) when is_integer(bid) do
+    :ets.safe_fixtable(@ets_table_mapper, true)
+
+    ms =
+      Ex2ms.fun do
+        {{:consolidated, ^bid}, pid, tid} -> {{:consolidated, ^bid, pid}, tid}
+      end
+
+    res =
+      :ets.select(@ets_table_mapper, ms, 250)
+      |> select_traverse(func, acc)
+
+    :ets.safe_fixtable(@ets_table_mapper, false)
+    res
+  end
+
+  def traverse_queues({sid, bid}, func, acc, _opts) do
     :ets.safe_fixtable(@ets_table_mapper, true)
 
     ms =
