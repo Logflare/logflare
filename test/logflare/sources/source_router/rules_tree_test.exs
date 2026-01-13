@@ -125,4 +125,129 @@ defmodule Logflare.Sources.SourceRouter.RulesTreeTest do
 
     assert set == 0
   end
+
+  describe "Benchmark" do
+    @describetag :benchmark
+    @describetag timeout: :infinity
+
+    test "RulesTree building" do
+      rules_gen = fn rules_num ->
+        for i <- 1..rules_num do
+          %Rule{
+            lql_filters: [
+              %FilterRule{
+                path: "metadata.rule_id",
+                operator: :=,
+                value: "rule-#{i}",
+                modifiers: %{}
+              },
+              %FilterRule{
+                path: "severity_number",
+                operator: :>,
+                value: 8,
+                modifiers: %{}
+              }
+            ],
+            backend_id: i
+          }
+        end
+      end
+
+      Benchee.run(
+        %{
+          "build" => fn rules ->
+            RulesTree.build(rules)
+          end
+        },
+        inputs: %{
+          "100" => rules_gen.(100),
+          "1k" => rules_gen.(1000),
+          "10k" => rules_gen.(10_000)
+        },
+        time: 3,
+        warmup: 2,
+        memory_time: 3,
+        reduction_time: 3,
+        print: [configuration: false],
+        # use extended_statistics to view units of work done
+        formatters: [{Benchee.Formatters.Console, extended_statistics: true}]
+      )
+
+      # Benchmarking build with input 100 ...
+      # Benchmarking build with input 10k ...
+      # Benchmarking build with input 1k ...
+      # Calculating statistics...
+      # Formatting results...
+
+      # ##### With input 100 #####
+      # Name            ips        average  deviation         median         99th %
+      # build       13.81 K       72.43 μs    ±15.56%       69.67 μs      108.21 μs
+
+      # Extended statistics:
+
+      # Name          minimum        maximum    sample size                     mode
+      # build        56.58 μs      746.38 μs        41.31 K                 65.75 μs
+
+      # Memory usage statistics:
+
+      # Name     Memory usage
+      # build       160.88 KB
+
+      # **All measurements for memory usage were the same**
+
+      # Reduction count statistics:
+
+      # Name  Reduction count
+      # build         18.86 K
+
+      # **All measurements for reduction count were the same**
+
+      # ##### With input 10k #####
+      # Name            ips        average  deviation         median         99th %
+      # build        116.31        8.60 ms     ±8.72%        8.29 ms       10.94 ms
+
+      # Extended statistics:
+
+      # Name          minimum        maximum    sample size                     mode
+      # build         7.50 ms       11.65 ms            349                  8.53 ms
+
+      # Memory usage statistics:
+
+      # Name     Memory usage
+      # build        17.29 MB
+
+      # **All measurements for memory usage were the same**
+
+      # Reduction count statistics:
+
+      # Name          average  deviation         median         99th %
+      # build          1.68 M     ±0.04%         1.68 M         1.68 M
+
+      # Extended statistics:
+
+      # Name          minimum        maximum    sample size                     mode
+      # build          1.68 M         1.68 M            266                   1.68 M
+
+      # ##### With input 1k #####
+      # Name            ips        average  deviation         median         99th %
+      # build        1.29 K      772.40 μs     ±9.72%      752.29 μs      992.98 μs
+
+      # Extended statistics:
+
+      # Name          minimum        maximum    sample size                     mode
+      # build       580.88 μs     1155.17 μs         3.88 K                730.33 μs
+
+      # Memory usage statistics:
+
+      # Name     Memory usage
+      # build         1.60 MB
+
+      # **All measurements for memory usage were the same**
+
+      # Reduction count statistics:
+
+      # Name  Reduction count
+      # build        172.99 K
+    end
+  end
 end
