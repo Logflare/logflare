@@ -16,6 +16,7 @@ defmodule Logflare.Backends.Adaptor do
   @type t :: module()
   @type query :: Query.t() | Ecto.Query.t() | String.t() | {String.t(), [term()]}
   @type source_backend :: {Source.t(), Backend.t()}
+  @type start_link_arg :: source_backend() | Backend.t()
   @type query_identifier :: identifier() | Backend.t() | tuple()
 
   def child_spec(%Source{} = source, %Backend{} = backend) do
@@ -123,7 +124,7 @@ defmodule Logflare.Backends.Adaptor do
     |> function_exported?(:execute_query, 3)
   end
 
-  @callback start_link(source_backend()) ::
+  @callback start_link(start_link_arg()) ::
               {:ok, pid()} | :ignore | {:error, term()}
 
   @doc """

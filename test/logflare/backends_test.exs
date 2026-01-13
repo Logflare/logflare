@@ -65,6 +65,104 @@ defmodule Logflare.BackendsTest do
     end
   end
 
+  describe "consolidated pipeline hooks" do
+    defmodule FakeConsolidatedAdaptor do
+      use GenServer
+
+      def child_spec(%Backends.Backend{} = backend) do
+        %{
+          id: __MODULE__,
+          start: {__MODULE__, :start_link, [backend]},
+          type: :supervisor
+        }
+      end
+
+      def start_link(%Backends.Backend{} = backend) do
+        GenServer.start_link(__MODULE__, backend, name: Backends.via_backend(backend, __MODULE__))
+      end
+
+      @impl GenServer
+      def init(backend) do
+        {:ok, %{backend: backend}}
+      end
+    end
+
+    setup do
+      insert(:plan, name: "Free")
+      user = insert(:user)
+
+      [user: user]
+    end
+
+    test "create_backend/1 starts consolidated pipeline when adaptor supports it", %{user: user} do
+      stub(Adaptor, :get_adaptor, fn _backend -> FakeConsolidatedAdaptor end)
+      stub(Adaptor, :consolidated_ingest?, fn _backend -> true end)
+
+      attrs = %{
+        type: :webhook,
+        user_id: user.id,
+        name: "Test Consolidated",
+        config: %{url: "https://example.com"}
+      }
+
+      assert {:ok, backend} = Backends.create_backend(attrs)
+      assert Backends.ConsolidatedSup.pipeline_running?(backend)
+
+      Backends.ConsolidatedSup.stop_pipeline(backend)
+    end
+
+    test "create_backend/1 does not start pipeline for non-consolidated backend", %{user: user} do
+      attrs = %{
+        type: :webhook,
+        user_id: user.id,
+        name: "Test Webhook",
+        config: %{url: "https://example.com"}
+      }
+
+      assert {:ok, backend} = Backends.create_backend(attrs)
+
+      refute Backends.ConsolidatedSup.pipeline_running?(backend)
+    end
+
+    test "delete_backend/1 stops consolidated pipeline", %{user: user} do
+      stub(Adaptor, :get_adaptor, fn _backend -> FakeConsolidatedAdaptor end)
+      stub(Adaptor, :consolidated_ingest?, fn _backend -> true end)
+
+      attrs = %{
+        type: :webhook,
+        user_id: user.id,
+        name: "Test Consolidated",
+        config: %{url: "https://example.com"}
+      }
+
+      assert {:ok, backend} = Backends.create_backend(attrs)
+      assert Backends.ConsolidatedSup.pipeline_running?(backend)
+
+      assert {:ok, _} = Backends.delete_backend(backend)
+      refute Backends.ConsolidatedSup.pipeline_running?(backend.id)
+    end
+
+    test "update_backend/2 keeps consolidated pipeline running", %{user: user} do
+      stub(Adaptor, :get_adaptor, fn _backend -> FakeConsolidatedAdaptor end)
+      stub(Adaptor, :consolidated_ingest?, fn _backend -> true end)
+
+      attrs = %{
+        type: :webhook,
+        user_id: user.id,
+        name: "Test Consolidated",
+        config: %{url: "https://example.com"}
+      }
+
+      assert {:ok, backend} = Backends.create_backend(attrs)
+      assert Backends.ConsolidatedSup.pipeline_running?(backend)
+
+      assert {:ok, updated} = Backends.update_backend(backend, %{name: "Updated Name"})
+      assert Backends.ConsolidatedSup.pipeline_running?(updated)
+
+      Backends.ConsolidatedSup.stop_pipeline(updated)
+    end
+  end
+
   describe "typecast_config_string_map_to_atom_map/1" do
     test "sets consolidated_ingest? virtual field based on adaptor callback" do
       backend = insert(:backend, type: :webhook, config: %{url: "https://example.com"})
