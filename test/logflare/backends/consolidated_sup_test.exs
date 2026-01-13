@@ -1,31 +1,17 @@
 defmodule Logflare.Backends.ConsolidatedSupTest do
   use Logflare.DataCase, async: false
 
-  alias Logflare.Backends.Adaptor
   alias Logflare.Backends.ConsolidatedSup
   alias Logflare.Backends.IngestEventQueue
-  alias Logflare.TestSupport.FakeConsolidatedAdaptor
 
   describe "ConsolidatedSup" do
     setup do
       insert(:plan, name: "Free")
-      user = insert(:user)
 
-      backend =
-        insert(:backend,
-          type: :webhook,
-          user: user,
-          config: %{url: "http://example.com"}
-        )
+      {_source, backend, cleanup_fn} = setup_clickhouse_test()
+      on_exit(cleanup_fn)
 
-      stub(Adaptor, :get_adaptor, fn _backend -> FakeConsolidatedAdaptor end)
-      stub(Adaptor, :consolidated_ingest?, fn _backend -> true end)
-
-      on_exit(fn ->
-        ConsolidatedSup.stop_pipeline(backend.id)
-      end)
-
-      [backend: backend, user: user]
+      [backend: backend]
     end
 
     test "start_pipeline/1 starts a consolidated pipeline for a backend", %{backend: backend} do
@@ -91,58 +77,55 @@ defmodule Logflare.Backends.ConsolidatedSupTest do
   describe "consolidated queue integration" do
     setup do
       insert(:plan, name: "Free")
-      user = insert(:user)
 
-      backend =
-        insert(:backend,
-          type: :webhook,
-          user: user,
-          config: %{url: "http://example.com"}
-        )
-
-      source = insert(:source, user: user, backends: [backend])
-
-      stub(Adaptor, :get_adaptor, fn _backend -> FakeConsolidatedAdaptor end)
-      stub(Adaptor, :consolidated_ingest?, fn _backend -> true end)
+      {source, backend, cleanup_fn} = setup_clickhouse_test()
+      on_exit(cleanup_fn)
 
       IngestEventQueue.upsert_tid({:consolidated, backend.id, nil})
-
-      on_exit(fn ->
-        ConsolidatedSup.stop_pipeline(backend.id)
-      end)
 
       [source: source, backend: backend]
     end
 
-    test "consolidated queue accepts events", %{source: source, backend: backend} do
-      events = build_list(5, :log_event, source: source)
+    test "pipeline processes events from consolidated queue", %{
+      source: source,
+      backend: backend
+    } do
+      assert {:ok, _pid} = ConsolidatedSup.start_pipeline(backend)
+
+      events = for _ <- 1..5, do: build(:log_event, source: source)
       IngestEventQueue.add_to_table({:consolidated, backend.id}, events)
 
-      pending_counts = IngestEventQueue.list_pending_counts({:consolidated, backend.id})
-      total_pending = Enum.reduce(pending_counts, 0, fn {_key, count}, acc -> acc + count end)
-      assert total_pending == 5
+      TestUtils.retry_assert(fn ->
+        pending_counts = IngestEventQueue.list_pending_counts({:consolidated, backend.id})
+        total_pending = Enum.reduce(pending_counts, 0, fn {_key, count}, acc -> acc + count end)
+        assert total_pending < 5
+      end)
     end
   end
 
-  describe "multi-source consolidated queue" do
+  describe "multi-source consolidated ingestion" do
     setup do
       insert(:plan, name: "Free")
       user = insert(:user)
 
-      backend =
-        insert(:backend,
-          type: :webhook,
-          user: user,
-          config: %{url: "http://example.com"}
-        )
+      {:ok, backend} =
+        Logflare.Backends.create_backend(%{
+          type: :clickhouse,
+          user_id: user.id,
+          name: "Multi-Source Test Backend",
+          config: %{
+            url: "http://localhost",
+            port: 8123,
+            database: "test_db",
+            username: "user",
+            password: "pass"
+          }
+        })
 
       sources =
-        for i <- 1..3 do
+        for i <- 1..10 do
           insert(:source, name: "source_#{i}", user: user, backends: [backend])
         end
-
-      stub(Adaptor, :get_adaptor, fn _backend -> FakeConsolidatedAdaptor end)
-      stub(Adaptor, :consolidated_ingest?, fn _backend -> true end)
 
       IngestEventQueue.upsert_tid({:consolidated, backend.id, nil})
 
@@ -153,10 +136,40 @@ defmodule Logflare.Backends.ConsolidatedSupTest do
       [backend: backend, sources: sources, user: user]
     end
 
-    test "events from different sources have distinct origin_source_ids", %{sources: sources} do
+    test "consolidates events from 10 sources into single pipeline", %{
+      backend: backend,
+      sources: sources
+    } do
+      assert ConsolidatedSup.pipeline_running?(backend)
+
+      events_per_source = 50
+      total_events = length(sources) * events_per_source
+
+      all_events =
+        Enum.flat_map(sources, fn source ->
+          for _ <- 1..events_per_source, do: build(:log_event, source: source)
+        end)
+
+      assert length(all_events) == total_events
+
+      source_ids = all_events |> Enum.map(& &1.origin_source_id) |> Enum.uniq()
+      assert length(source_ids) == 10
+
+      IngestEventQueue.add_to_table({:consolidated, backend.id}, all_events)
+
+      TestUtils.retry_assert(fn ->
+        pending_counts = IngestEventQueue.list_pending_counts({:consolidated, backend.id})
+        total_pending = Enum.reduce(pending_counts, 0, fn {_key, count}, acc -> acc + count end)
+        assert total_pending < total_events
+      end)
+    end
+
+    test "events from different sources have distinct origin_source_ids", %{
+      sources: sources
+    } do
       events =
         Enum.flat_map(sources, fn source ->
-          build_list(5, :log_event, source: source)
+          for _ <- 1..20, do: build(:log_event, source: source)
         end)
 
       origin_ids_by_source =
@@ -164,11 +177,11 @@ defmodule Logflare.Backends.ConsolidatedSupTest do
         |> Enum.group_by(& &1.origin_source_id)
         |> Map.keys()
 
-      assert length(origin_ids_by_source) == 3
+      assert length(origin_ids_by_source) == 10
 
       Enum.each(sources, fn source ->
         matching_events = Enum.filter(events, &(&1.origin_source_id == source.token))
-        assert length(matching_events) == 5
+        assert length(matching_events) == 20
       end)
     end
 

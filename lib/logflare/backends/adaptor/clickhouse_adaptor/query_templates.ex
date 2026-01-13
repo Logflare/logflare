@@ -73,6 +73,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryTemplates do
       """
       CREATE TABLE IF NOT EXISTS #{db_table_string} (
         `id` UUID,
+        `source_id` UUID,
         `body` String,
         `timestamp` DateTime64(6)
       )

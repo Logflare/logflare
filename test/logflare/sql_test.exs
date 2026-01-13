@@ -439,7 +439,9 @@ defmodule Logflare.SqlTest do
 
     test "parser can handle sandboxed CTEs with union all" do
       user = insert(:user)
-      insert(:source, user: user, name: "my_ch_table")
+      source = insert(:source, user: user, name: "my_ch_table")
+      backend = insert(:backend, type: :clickhouse, user: user, sources: [source])
+      _backend = backend
 
       # valid CTE queries with UNION ALL
       input = """
@@ -477,7 +479,9 @@ defmodule Logflare.SqlTest do
 
     test "sandboxed queries work with simple CTEs" do
       user = insert(:user)
-      _source = insert(:source, user: user, name: "my_ch_table")
+      source = insert(:source, user: user, name: "my_ch_table")
+      backend = insert(:backend, type: :clickhouse, user: user, sources: [source])
+      _backend = backend
 
       cte_query = "with src as (select a from my_ch_table) select a from src"
       consumer_query = "select a from src where a > 5"
@@ -489,7 +493,9 @@ defmodule Logflare.SqlTest do
 
     test "sandboxed queries with order by" do
       user = insert(:user)
-      _source = insert(:source, user: user, name: "my_ch_table")
+      source = insert(:source, user: user, name: "my_ch_table")
+      backend = insert(:backend, type: :clickhouse, user: user, sources: [source])
+      _backend = backend
 
       cte_query = "with src as (select a from my_ch_table) select a from src"
       consumer_query = "select a from src order by a desc"
@@ -501,7 +507,9 @@ defmodule Logflare.SqlTest do
 
     test "sandboxed queries with union all" do
       user = insert(:user)
-      _source = insert(:source, user: user, name: "my_ch_table")
+      source = insert(:source, user: user, name: "my_ch_table")
+      backend = insert(:backend, type: :clickhouse, user: user, sources: [source])
+      _backend = backend
 
       cte_query = """
       with cte1 as (select a from my_ch_table),
@@ -526,8 +534,8 @@ defmodule Logflare.SqlTest do
       {source, backend, cleanup_fn} = setup_clickhouse_test(source: source, user: user)
       on_exit(cleanup_fn)
 
-      {:ok, _pid} = ClickHouseAdaptor.start_link({source, backend})
-      assert {:ok, _} = ClickHouseAdaptor.provision_ingest_table({source, backend})
+      {:ok, _pid} = ClickHouseAdaptor.start_link(backend)
+      assert {:ok, _} = ClickHouseAdaptor.provision_ingest_table(backend)
 
       log_events = [
         build(:log_event,
@@ -542,7 +550,7 @@ defmodule Logflare.SqlTest do
         )
       ]
 
-      assert :ok = ClickHouseAdaptor.insert_log_events({source, backend}, log_events)
+      assert :ok = ClickHouseAdaptor.insert_log_events(backend, log_events)
 
       Process.sleep(200)
 
@@ -574,7 +582,9 @@ defmodule Logflare.SqlTest do
 
     test "sandboxed queries reject table references not in CTE" do
       user = insert(:user)
-      _source = insert(:source, user: user, name: "my_ch_table")
+      source = insert(:source, user: user, name: "my_ch_table")
+      backend = insert(:backend, type: :clickhouse, user: user, sources: [source])
+      _backend = backend
 
       cte_query = "with src as (select a from my_ch_table) select a from src"
       consumer_query = "select a from my_ch_table"
@@ -585,7 +595,9 @@ defmodule Logflare.SqlTest do
 
     test "sandboxed queries reject wildcards" do
       user = insert(:user)
-      _source = insert(:source, user: user, name: "my_ch_table")
+      source = insert(:source, user: user, name: "my_ch_table")
+      backend = insert(:backend, type: :clickhouse, user: user, sources: [source])
+      _backend = backend
 
       cte_query = "with src as (select a from my_ch_table) select a from src"
       consumer_query = "select * from src"
@@ -596,7 +608,9 @@ defmodule Logflare.SqlTest do
 
     test "sandboxed queries reject DML operations" do
       user = insert(:user)
-      _source = insert(:source, user: user, name: "my_ch_table")
+      source = insert(:source, user: user, name: "my_ch_table")
+      backend = insert(:backend, type: :clickhouse, user: user, sources: [source])
+      _backend = backend
 
       cte_query = "with src as (select a from my_ch_table) select a from src"
       consumer_query = "delete from src where a = 1"
@@ -607,7 +621,9 @@ defmodule Logflare.SqlTest do
 
     test "rejects restricted functions" do
       user = insert(:user)
-      _source = insert(:source, user: user, name: "my_ch_table")
+      source = insert(:source, user: user, name: "my_ch_table")
+      backend = insert(:backend, type: :clickhouse, user: user, sources: [source])
+      _backend = backend
 
       restricted_functions = [
         {"file", "select col1 from file('/etc/passwd', 'CSV')"},
@@ -626,7 +642,9 @@ defmodule Logflare.SqlTest do
 
     test "rejects restricted functions in sandboxed queries" do
       user = insert(:user)
-      _source = insert(:source, user: user, name: "my_ch_table")
+      source = insert(:source, user: user, name: "my_ch_table")
+      backend = insert(:backend, type: :clickhouse, user: user, sources: [source])
+      _backend = backend
 
       cte_query = "with src as (select a from my_ch_table) select a from src"
 

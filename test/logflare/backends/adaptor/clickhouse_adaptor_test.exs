@@ -8,8 +8,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryConnectionSup
+  alias Logflare.Backends.Backend
   alias Logflare.Backends.Ecto.SqlUtils
-  alias Logflare.Sources.Source
 
   doctest ClickHouseAdaptor
 
@@ -20,27 +20,26 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       {source, backend, cleanup_fn} = setup_clickhouse_test()
       on_exit(cleanup_fn)
 
-      stringified_source_token =
-        source.token
-        |> Atom.to_string()
+      stringified_backend_token =
+        backend.token
         |> String.replace("-", "_")
 
-      [source: source, backend: backend, stringified_source_token: stringified_source_token]
+      [source: source, backend: backend, stringified_backend_token: stringified_backend_token]
     end
 
-    test "`clickhouse_ingest_table_name/1` generates a unique log ingest table name based on the source token",
-         %{source: source, stringified_source_token: stringified_source_token} do
-      assert ClickHouseAdaptor.clickhouse_ingest_table_name(source) ==
-               "ingest_#{stringified_source_token}"
+    test "`clickhouse_ingest_table_name/1` generates a unique log ingest table name based on the backend token",
+         %{backend: backend, stringified_backend_token: stringified_backend_token} do
+      assert ClickHouseAdaptor.clickhouse_ingest_table_name(backend) ==
+               "ingest_#{stringified_backend_token}"
     end
 
     test "`clickhouse_ingest_table_name/1` will raise an exception if the table name is equal to or exceeds 200 chars",
-         %{source: source} do
+         %{backend: backend} do
       assert_raise RuntimeError,
                    ~r/^The dynamically generated ClickHouse resource name starting with `ingest_/,
                    fn ->
-                     source
-                     |> modify_source_with_long_token()
+                     backend
+                     |> modify_backend_with_long_token()
                      |> ClickHouseAdaptor.clickhouse_ingest_table_name()
                    end
     end
@@ -53,17 +52,9 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       {source, backend, cleanup_fn} = setup_clickhouse_test()
       on_exit(cleanup_fn)
 
-      start_supervised!({ClickHouseAdaptor, {source, backend}})
+      start_supervised!({ClickHouseAdaptor, backend})
 
       [source: source, backend: backend]
-    end
-
-    test "can test connection using a `{source, backend}` tuple", %{
-      source: source,
-      backend: backend
-    } do
-      result = ClickHouseAdaptor.test_connection({source, backend})
-      assert :ok = result
     end
 
     test "can test connection using a `backend` struct", %{
@@ -102,8 +93,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       {source, backend, cleanup_fn} = setup_clickhouse_test()
       on_exit(cleanup_fn)
 
-      start_supervised!({ClickHouseAdaptor, {source, backend}})
-      assert {:ok, _} = ClickHouseAdaptor.provision_ingest_table({source, backend})
+      start_supervised!({ClickHouseAdaptor, backend})
+      assert {:ok, _} = ClickHouseAdaptor.provision_ingest_table(backend)
 
       [source: source, backend: backend]
     end
@@ -124,17 +115,17 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
         )
       ]
 
-      result = ClickHouseAdaptor.insert_log_events({source, backend}, log_events)
+      result = ClickHouseAdaptor.insert_log_events(backend, log_events)
       assert :ok = result
 
       Process.sleep(100)
 
-      table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(source)
+      table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(backend)
 
       query_result =
         ClickHouseAdaptor.execute_ch_query(
           backend,
-          "SELECT id, body, timestamp FROM #{table_name} ORDER BY timestamp"
+          "SELECT id, source_id, body, timestamp FROM #{table_name} ORDER BY timestamp"
         )
 
       assert {:ok, rows} = query_result
@@ -145,19 +136,25 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       assert [
                %{
                  "id" => "550e8400-e29b-41d4-a716-446655440000",
+                 "source_id" => source_id1,
                  "body" => %{"event_message" => "Test message 1"},
                  "timestamp" => _
                },
                %{
                  "id" => "9bc07845-9859-4163-bfe5-a74c1a1443a2",
+                 "source_id" => source_id2,
                  "body" => %{"event_message" => "Test message 2"},
                  "timestamp" => _
                }
              ] = row_payloads
+
+      expected_source_id = Atom.to_string(source.token)
+      assert source_id1 == expected_source_id
+      assert source_id2 == expected_source_id
     end
 
-    test "handles empty event list", %{source: source, backend: backend} do
-      result = ClickHouseAdaptor.insert_log_events({source, backend}, [])
+    test "handles empty event list", %{backend: backend} do
+      result = ClickHouseAdaptor.insert_log_events(backend, [])
       assert :ok = result
     end
   end
@@ -169,7 +166,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       {source, backend, cleanup_fn} = setup_clickhouse_test()
       on_exit(cleanup_fn)
 
-      start_supervised!({ClickHouseAdaptor, {source, backend}})
+      start_supervised!({ClickHouseAdaptor, backend})
 
       [source: source, backend: backend]
     end
@@ -236,12 +233,12 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
         )
 
       on_exit(cleanup_fn)
-      start_supervised!({ClickHouseAdaptor, {source1_with_backend, backend}})
+      start_supervised!({ClickHouseAdaptor, backend})
 
       [backend: backend, user: user, source1: source1_with_backend, source2: source2]
     end
 
-    test "multiple default ingest sources with same backend do not crash", %{
+    test "multiple sources with same backend share the connection manager", %{
       backend: backend,
       source2: source2
     } do
@@ -254,16 +251,13 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       assert Process.alive?(initial_manager_pid)
       assert ConnectionManager.pool_active?(backend)
 
-      # start a second clickhouse adaptor with the same backend, but a different source
-      {:ok, source2} = Backends.update_source_backends(source2, [backend])
-      ch_pid2 = start_supervised!({ClickHouseAdaptor, {source2, backend}}, id: :adaptor2)
+      # Associate source2 with the backend
+      {:ok, _source2} = Backends.update_source_backends(source2, [backend])
 
-      Process.sleep(200)
-
+      # The connection manager should still be the same
       manager_via2 = Backends.via_backend(backend, ConnectionManager)
       manager_pid2 = GenServer.whereis(manager_via2)
 
-      assert Process.alive?(ch_pid2)
       assert is_pid(manager_pid2)
       assert Process.alive?(manager_pid2)
       assert ConnectionManager.pool_active?(backend)
@@ -353,7 +347,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       {source, backend, cleanup_fn} = setup_clickhouse_test()
       on_exit(cleanup_fn)
 
-      start_supervised!({ClickHouseAdaptor, {source, backend}})
+      start_supervised!({ClickHouseAdaptor, backend})
       Process.sleep(100)
       [source: source, backend: backend]
     end
@@ -404,7 +398,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
     } do
       {_source2, backend2, cleanup_fn2} = setup_clickhouse_test(source: source)
       on_exit(cleanup_fn2)
-      start_supervised!({ClickHouseAdaptor, {source, backend2}}, id: :adaptor2)
+      start_supervised!({ClickHouseAdaptor, backend2}, id: :adaptor2)
 
       {:ok, _} = ClickHouseAdaptor.execute_ch_query(backend2, "SELECT 1")
       assert ConnectionManager.pool_active?(backend2)
@@ -417,11 +411,11 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
     end
   end
 
-  defp modify_source_with_long_token(%Source{} = source) do
-    long_token = random_string(200) |> String.to_atom()
+  defp modify_backend_with_long_token(%Backend{} = backend) do
+    long_token = random_string(200)
 
-    %Source{
-      source
+    %Backend{
+      backend
       | token: long_token
     }
   end
