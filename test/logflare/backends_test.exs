@@ -564,7 +564,7 @@ defmodule Logflare.BackendsTest do
       start_supervised!({SourceSup, source})
       :timer.sleep(500)
 
-      assert :skip = SourceSup.start_backend_child(source, backend)
+      assert :noop = SourceSup.start_backend_child(source, backend)
     end
   end
 
