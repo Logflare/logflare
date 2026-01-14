@@ -6,6 +6,7 @@ defmodule LogflareWeb.SearchLive.SavedSearchesModalComponent do
 
   alias Logflare.SavedSearches
   alias Logflare.Sources
+  alias Phoenix.LiveView.AsyncResult
   alias Phoenix.LiveView.JS
 
   @spec update(map(), Phoenix.LiveView.Socket.t()) :: {:ok, Phoenix.LiveView.Socket.t()}
@@ -18,17 +19,19 @@ defmodule LogflareWeb.SearchLive.SavedSearchesModalComponent do
   @spec handle_event(String.t(), map(), Phoenix.LiveView.Socket.t()) ::
           {:noreply, Phoenix.LiveView.Socket.t()}
   def handle_event("delete_saved_search", %{"id" => saved_search_id}, socket) do
-    user = socket.assigns.user
+    %{user: user, source: source} = socket.assigns
 
     socket =
       with %Logflare.SavedSearch{} = saved_search <- SavedSearches.get(saved_search_id),
            true <- Sources.get_by_user_access(user, saved_search.source_id) |> is_struct(),
            {:ok, _response} <- SavedSearches.delete_by_user(saved_search) do
-        _ = SavedSearches.Cache.bust_by(source_id: saved_search.source_id)
         send(self(), {:set_flash, {:info, "Saved search deleted"}})
 
-        update(%{saved_searches: nil}, socket)
-        |> elem(1)
+        updated_searches =
+          SavedSearches.list_saved_searches_by_source(source.id)
+          |> AsyncResult.ok()
+
+        assign(socket, :saved_searches, updated_searches)
       else
         nil ->
           send(self(), {:set_flash, {:error, "Saved search not found"}})
