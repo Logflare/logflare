@@ -1,31 +1,10 @@
 defmodule Logflare.Backends.ConsolidatedSupTest do
   use Logflare.DataCase, async: false
 
-  alias Logflare.Backends
   alias Logflare.Backends.Adaptor
   alias Logflare.Backends.ConsolidatedSup
   alias Logflare.Backends.IngestEventQueue
-
-  defmodule FakeAdaptor do
-    use GenServer
-
-    def child_spec(%Backends.Backend{} = backend) do
-      %{
-        id: __MODULE__,
-        start: {__MODULE__, :start_link, [backend]},
-        type: :supervisor
-      }
-    end
-
-    def start_link(%Backends.Backend{} = backend) do
-      GenServer.start_link(__MODULE__, backend, name: Backends.via_backend(backend, __MODULE__))
-    end
-
-    @impl GenServer
-    def init(backend) do
-      {:ok, %{backend: backend}}
-    end
-  end
+  alias Logflare.TestSupport.FakeConsolidatedAdaptor
 
   describe "ConsolidatedSup" do
     setup do
@@ -39,7 +18,7 @@ defmodule Logflare.Backends.ConsolidatedSupTest do
           config: %{url: "http://example.com"}
         )
 
-      stub(Adaptor, :get_adaptor, fn _backend -> FakeAdaptor end)
+      stub(Adaptor, :get_adaptor, fn _backend -> FakeConsolidatedAdaptor end)
       stub(Adaptor, :consolidated_ingest?, fn _backend -> true end)
 
       on_exit(fn ->
@@ -123,7 +102,7 @@ defmodule Logflare.Backends.ConsolidatedSupTest do
 
       source = insert(:source, user: user, backends: [backend])
 
-      stub(Adaptor, :get_adaptor, fn _backend -> FakeAdaptor end)
+      stub(Adaptor, :get_adaptor, fn _backend -> FakeConsolidatedAdaptor end)
       stub(Adaptor, :consolidated_ingest?, fn _backend -> true end)
 
       IngestEventQueue.upsert_tid({:consolidated, backend.id, nil})
@@ -162,7 +141,7 @@ defmodule Logflare.Backends.ConsolidatedSupTest do
           insert(:source, name: "source_#{i}", user: user, backends: [backend])
         end
 
-      stub(Adaptor, :get_adaptor, fn _backend -> FakeAdaptor end)
+      stub(Adaptor, :get_adaptor, fn _backend -> FakeConsolidatedAdaptor end)
       stub(Adaptor, :consolidated_ingest?, fn _backend -> true end)
 
       IngestEventQueue.upsert_tid({:consolidated, backend.id, nil})

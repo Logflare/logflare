@@ -21,6 +21,7 @@ defmodule Logflare.BackendsTest do
   alias Logflare.Sources.Source
   alias Logflare.Sources.Source.BigQuery.Pipeline
   alias Logflare.SystemMetrics.AllLogsLogged
+  alias Logflare.TestSupport.FakeConsolidatedAdaptor
   alias Logflare.User
 
   setup do
@@ -66,27 +67,6 @@ defmodule Logflare.BackendsTest do
   end
 
   describe "consolidated pipeline hooks" do
-    defmodule FakeConsolidatedAdaptor do
-      use GenServer
-
-      def child_spec(%Backends.Backend{} = backend) do
-        %{
-          id: __MODULE__,
-          start: {__MODULE__, :start_link, [backend]},
-          type: :supervisor
-        }
-      end
-
-      def start_link(%Backends.Backend{} = backend) do
-        GenServer.start_link(__MODULE__, backend, name: Backends.via_backend(backend, __MODULE__))
-      end
-
-      @impl GenServer
-      def init(backend) do
-        {:ok, %{backend: backend}}
-      end
-    end
-
     setup do
       insert(:plan, name: "Free")
       user = insert(:user)
