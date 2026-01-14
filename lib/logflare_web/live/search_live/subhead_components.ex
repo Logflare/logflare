@@ -29,7 +29,7 @@ defmodule LogflareWeb.SearchLive.SubheadComponents do
         </li>
         <li>
           <.modal_link component={LogflareWeb.SearchLive.SavedSearchesModalComponent} modal_id={:saved_searches_link} title="Saved Searches">
-            <i class="fas fa-bookmark"></i><span class="hide-on-mobile"> saved searches </span>
+            <i class="fas fa-bookmark"></i><span class="hide-on-mobile tw-pl-1">saved</span>
           </.modal_link>
         </li>
         <li>

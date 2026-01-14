@@ -422,7 +422,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
       Ecto.Adapters.SQL.Sandbox.allow(Logflare.Repo, self(), search_executor_pid)
 
       assert view
-             |> element(".subhead a", "saved searches")
+             |> element(".subhead a", "saved")
              |> render_click()
 
       view
@@ -437,7 +437,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
       {:ok, view, _html} = live(conn, ~p"/sources/#{source.id}/search")
 
       assert view
-             |> element(".subhead a", "saved searches")
+             |> element(".subhead a", "saved")
              |> render_click()
 
       view
