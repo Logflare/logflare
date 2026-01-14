@@ -27,6 +27,9 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   alias Logflare.Backends.IngestEventQueue
   alias Logflare.LogEvent
 
+  @min_pipelines 1
+  @max_pipelines 2
+  @resolve_interval 10_000
   @scaling_threshold 5_000
 
   defdelegate connection_pool_via(arg), to: ConnectionManager
@@ -271,10 +274,10 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
         name: Backends.via_backend(backend, Pipeline),
         pipeline: Pipeline,
         pipeline_args: [backend: backend],
-        min_pipelines: 1,
-        max_pipelines: 2,
-        initial_count: 1,
-        resolve_interval: 10_000,
+        min_pipelines: @min_pipelines,
+        max_pipelines: @max_pipelines,
+        initial_count: @min_pipelines,
+        resolve_interval: @resolve_interval,
         resolve_count: fn state ->
           lens = IngestEventQueue.list_pending_counts({:consolidated, backend.id})
 
