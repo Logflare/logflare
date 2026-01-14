@@ -189,13 +189,13 @@ defmodule Logflare.Backends.IngestEventQueue do
     reducer =
       if check_queue_size do
         fn
-          {{{:consolidated, _, nil}, _tid}, _}, acc -> acc
+          {{:consolidated, _, nil}, _}, acc -> acc
           {_obj, count}, acc when count >= @max_queue_size -> acc
           {obj, _count}, acc -> [obj | acc]
         end
       else
         fn
-          {{{:consolidated, _, nil}, _tid}, _}, acc -> acc
+          {{:consolidated, _, nil}, _}, acc -> acc
           {obj, _count}, acc -> [obj | acc]
         end
       end
@@ -254,13 +254,13 @@ defmodule Logflare.Backends.IngestEventQueue do
     reducer =
       if check_queue_size do
         fn
-          {{{_, _, nil}, _tid}, _}, acc -> acc
+          {{_, _, nil}, _}, acc -> acc
           {_obj, count}, acc when count >= @max_queue_size -> acc
           {obj, _count}, acc -> [obj | acc]
         end
       else
         fn
-          {{{_, _, nil}, _tid}, _}, acc -> acc
+          {{_, _, nil}, _}, acc -> acc
           {obj, _count}, acc -> [obj | acc]
         end
       end
