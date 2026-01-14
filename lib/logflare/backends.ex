@@ -602,29 +602,18 @@ defmodule Logflare.Backends do
   end
 
   # send to a specific backend
-  defp dispatch_to_backends(source, %Backend{consolidated_ingest?: true} = backend, log_events) do
-    telemetry_metadata = %{backend_type: backend.type}
-
-    :telemetry.span([:logflare, :backends, :ingest, :dispatch], telemetry_metadata, fn ->
-      log_events = maybe_pre_ingest(source, backend, log_events)
-      IngestEventQueue.add_to_table({:consolidated, backend.id}, log_events)
-
-      :telemetry.execute(
-        [:logflare, :backends, :ingest, :count],
-        %{count: length(log_events)},
-        %{backend_type: backend.type}
-      )
-
-      {:ok, telemetry_metadata}
-    end)
-  end
-
   defp dispatch_to_backends(source, %Backend{} = backend, log_events) do
     telemetry_metadata = %{backend_type: backend.type}
 
     :telemetry.span([:logflare, :backends, :ingest, :dispatch], telemetry_metadata, fn ->
       log_events = maybe_pre_ingest(source, backend, log_events)
-      IngestEventQueue.add_to_table({source.id, backend.id}, log_events)
+
+      queue_key =
+        if backend.consolidated_ingest?,
+          do: {:consolidated, backend.id},
+          else: {source.id, backend.id}
+
+      IngestEventQueue.add_to_table(queue_key, log_events)
 
       :telemetry.execute(
         [:logflare, :backends, :ingest, :count],
