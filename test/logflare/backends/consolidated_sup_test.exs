@@ -115,7 +115,7 @@ defmodule Logflare.Backends.ConsolidatedSupTest do
     end
 
     test "consolidated queue accepts events", %{source: source, backend: backend} do
-      events = for _ <- 1..5, do: build(:log_event, source: source)
+      events = build_list(5, :log_event, source: source)
       IngestEventQueue.add_to_table({:consolidated, backend.id}, events)
 
       pending_counts = IngestEventQueue.list_pending_counts({:consolidated, backend.id})
@@ -156,7 +156,7 @@ defmodule Logflare.Backends.ConsolidatedSupTest do
     test "events from different sources have distinct origin_source_ids", %{sources: sources} do
       events =
         Enum.flat_map(sources, fn source ->
-          for _ <- 1..5, do: build(:log_event, source: source)
+          build_list(5, :log_event, source: source)
         end)
 
       origin_ids_by_source =

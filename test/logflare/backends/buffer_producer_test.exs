@@ -84,7 +84,7 @@ defmodule Logflare.Backends.BufferProducerTest do
       start_supervised!({BufferProducer, backend_id: nil, source_id: source.id, buffer_size: 10})
 
     le = build(:log_event)
-    items = for _ <- 1..100, do: le
+    items = List.duplicate(le, 100)
 
     captured =
       capture_log(fn ->
@@ -200,7 +200,7 @@ defmodule Logflare.Backends.BufferProducerTest do
         )
 
       le = build(:log_event)
-      items = for _ <- 1..100, do: le
+      items = List.duplicate(le, 100)
 
       captured =
         capture_log(fn ->
