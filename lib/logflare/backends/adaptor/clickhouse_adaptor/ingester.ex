@@ -13,6 +13,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
   @max_retries 3
   @initial_delay 500
   @max_delay 4_000
+  @pool_timeout 8_000
+  @receive_timeout 15_000
 
   @doc """
   Inserts a list of `LogEvent` structs into ClickHouse.
@@ -65,7 +67,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
     ]
 
     adapter =
-      {Tesla.Adapter.Finch, name: @finch_pool, pool_timeout: 4_000, receive_timeout: 8_000}
+      {Tesla.Adapter.Finch,
+       name: @finch_pool, pool_timeout: @pool_timeout, receive_timeout: @receive_timeout}
 
     Tesla.client(middleware, adapter)
   end

@@ -27,6 +27,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   alias Logflare.Backends.IngestEventQueue
   alias Logflare.LogEvent
 
+  @scaling_threshold 5_000
+
   defdelegate connection_pool_via(arg), to: ConnectionManager
 
   @doc false
@@ -262,8 +264,6 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   @doc false
   @impl Supervisor
   def init(%Backend{} = backend) do
-    min_pipelines = max(div(System.schedulers_online(), 4), 2)
-
     children = [
       Provisioner.child_spec(backend),
       {
@@ -271,19 +271,63 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
         name: Backends.via_backend(backend, Pipeline),
         pipeline: Pipeline,
         pipeline_args: [backend: backend],
-        min_pipelines: min_pipelines,
-        max_pipelines: System.schedulers_online(),
-        initial_count: min_pipelines,
-        resolve_interval: 2_500,
+        min_pipelines: 1,
+        max_pipelines: 2,
+        initial_count: 1,
+        resolve_interval: 10_000,
         resolve_count: fn state ->
           lens = IngestEventQueue.list_pending_counts({:consolidated, backend.id})
 
-          Backends.handle_resolve_count(state, lens, 0)
+          resolve_pipeline_count(state, lens)
         end
       }
     ]
 
     Supervisor.init(children, strategy: :one_for_one)
+  end
+
+  # produce fewer, larger batches for ClickHouse efficiency
+  @spec resolve_pipeline_count(map(), [{term(), non_neg_integer()}]) :: non_neg_integer()
+  defp resolve_pipeline_count(state, lens) do
+    startup_size =
+      Enum.find_value(lens, 0, fn
+        {{:consolidated, _bid, nil}, val} -> val
+        _ -> false
+      end)
+
+    lens_no_startup =
+      Enum.filter(lens, fn
+        {{:consolidated, _bid, nil}, _val} -> false
+        _ -> true
+      end)
+
+    lens_no_startup_values = Enum.map(lens_no_startup, fn {_, v} -> v end)
+    len = Enum.map(lens, fn {_, v} -> v end) |> Enum.sum()
+
+    last_decr = state.last_count_decrease || NaiveDateTime.utc_now()
+    sec_since_last_decr = NaiveDateTime.diff(NaiveDateTime.utc_now(), last_decr)
+
+    # Higher threshold (5,000) to allow more buffering before scaling
+    any_above_threshold? = Enum.any?(lens_no_startup_values, &(&1 >= @scaling_threshold))
+
+    cond do
+      # Scale up if startup queue has events (pipeline not yet ready)
+      startup_size > 0 ->
+        state.pipeline_count + ceil(startup_size / @scaling_threshold)
+
+      # Scale up if any queue exceeds threshold
+      any_above_threshold? and len > 0 ->
+        state.pipeline_count + ceil(len / @scaling_threshold)
+
+      # Gradual decrease when queues are low
+      Enum.all?(lens_no_startup_values, &(&1 < div(@scaling_threshold, 10))) and
+        len < @scaling_threshold and state.pipeline_count > 1 and
+          (sec_since_last_decr > 60 or state.last_count_decrease == nil) ->
+        state.pipeline_count - 1
+
+      true ->
+        state.pipeline_count
+    end
   end
 
   defp validate_user_pass(changeset) do

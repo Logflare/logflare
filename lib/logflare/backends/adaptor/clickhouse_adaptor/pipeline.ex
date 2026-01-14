@@ -19,10 +19,10 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
   alias Logflare.Utils
 
   @producer_concurrency 1
-  @processor_concurrency 5
-  @batcher_concurrency 10
-  @batch_size 10_000
-  @batch_timeout 4_000
+  @processor_concurrency 2
+  @batcher_concurrency 1
+  @batch_size 50_000
+  @batch_timeout 4_500
   @max_retries 1
 
   @doc false
