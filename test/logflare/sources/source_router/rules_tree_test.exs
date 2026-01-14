@@ -12,6 +12,10 @@ defmodule Logflare.Sources.SourceRouter.RulesTreeTest do
       [user: insert(:user)]
     end
 
+    test "No rules" do
+      assert @subject.build([]) == []
+    end
+
     test "Two simple rules" do
       rules = [
         %Rule{

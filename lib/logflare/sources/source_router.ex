@@ -6,7 +6,7 @@ defmodule Logflare.Sources.SourceRouter do
   alias Logflare.Sources
   alias Logflare.Sources.Source
 
-  @default_router Logflare.Sources.SourceRouter.Sequential
+  @default_router Logflare.Sources.SourceRouter.RulesTree
 
   @doc """
   An algorithm returning Rules that match provided LogEvent

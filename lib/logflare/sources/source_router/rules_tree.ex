@@ -190,8 +190,7 @@ defmodule Logflare.Sources.SourceRouter.RulesTree do
         %{k => acc}
       end)
     end
-    |> Enum.reduce(&deep_merge/2)
-    |> deep_to_list()
+    |> deep_group_keys()
   end
 
   defp to_operator(%FilterRule{modifiers: %{negate: true}} = rule) do
@@ -205,6 +204,9 @@ defmodule Logflare.Sources.SourceRouter.RulesTree do
   defp to_operator(%FilterRule{operator: op, value: value}) do
     {op, value}
   end
+
+  defp deep_group_keys([]), do: []
+  defp deep_group_keys(entries), do: Enum.reduce(entries, &deep_merge/2) |> deep_to_list()
 
   # Merges maps at all levels
   defp deep_merge(a, b) do
