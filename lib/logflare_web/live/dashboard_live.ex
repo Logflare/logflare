@@ -8,6 +8,7 @@ defmodule LogflareWeb.DashboardLive do
   alias LogflareWeb.DashboardLive.DashboardComponents
   alias LogflareWeb.DashboardLive.DashboardSourceComponents
   alias LogflareWeb.Helpers.Forms
+  alias LogflareWeb.ModalLiveHelpers
 
   @impl true
   def mount(_, _session, socket) do
@@ -27,6 +28,7 @@ defmodule LogflareWeb.DashboardLive do
       end)
       |> assign(:plan, Billing.get_plan_by_user(user))
       |> assign(:fade_in, false)
+      |> assign(:show_modal, false)
 
     if connected?(socket) do
       %{user: user} = socket.assigns
@@ -69,6 +71,11 @@ defmodule LogflareWeb.DashboardLive do
   end
 
   @impl true
+  def handle_info({:set_flash, {type, message}}, socket) do
+    {:noreply, put_flash(socket, type, message)}
+  end
+
+  @impl true
   def handle_info({:metrics_update, payload}, socket) do
     socket =
       payload
@@ -93,6 +100,17 @@ defmodule LogflareWeb.DashboardLive do
   @impl true
   def render(assigns) do
     ~H"""
+    <%= if @show_modal do %>
+      {ModalLiveHelpers.live_modal(@modal.body.module_or_template,
+        id: @modal.body.id,
+        title: @modal.body.title,
+        params: @modal.params,
+        user: @user,
+        team: @team,
+        close: @modal.body[:close],
+        return_to: @modal.body.return_to
+      )}
+    <% end %>
     <div id="dashboard-container" phx-hook="DocumentVisibility">
       <DashboardComponents.subhead user={@user} team={@team} />
       <div class="tw-max-w-[95%] tw-mx-auto">

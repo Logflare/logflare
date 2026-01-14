@@ -234,7 +234,7 @@ defmodule LogflareWeb.Source.SearchLV do
       <:path>
         ~/logs/<.team_link team={@team} href={~p"/sources/#{@source}"} class="text-primary">{@source.name}</.team_link>/search
       </:path>
-      <SubheadComponents.subhead_actions user={@user} search_timezone={@search_timezone} search_op_error={@search_op_error} search_op_log_events={@search_op_log_events} search_op_log_aggregates={@search_op_log_aggregates} />
+      <SubheadComponents.subhead_actions user={@user} source={@source} search_timezone={@search_timezone} search_op_error={@search_op_error} search_op_log_events={@search_op_log_events} search_op_log_aggregates={@search_op_log_aggregates} />
     </.subheader>
     <div class="container source-logs-search-container console-text">
       <div id="logs-list-container">

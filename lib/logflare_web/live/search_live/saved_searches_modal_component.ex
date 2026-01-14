@@ -11,7 +11,12 @@ defmodule LogflareWeb.SearchLive.SavedSearchesModalComponent do
 
   @spec update(map(), Phoenix.LiveView.Socket.t()) :: {:ok, Phoenix.LiveView.Socket.t()}
   def update(assigns, socket) do
-    socket = assign(socket, assigns)
+    source_id = assigns.params["source-id"] |> String.to_integer()
+
+    socket =
+      socket
+      |> assign(source_id: source_id)
+      |> assign(user: assigns.user)
 
     {:ok, assign_saved_searches(socket)}
   end
@@ -19,7 +24,7 @@ defmodule LogflareWeb.SearchLive.SavedSearchesModalComponent do
   @spec handle_event(String.t(), map(), Phoenix.LiveView.Socket.t()) ::
           {:noreply, Phoenix.LiveView.Socket.t()}
   def handle_event("delete_saved_search", %{"id" => saved_search_id}, socket) do
-    %{user: user, source: source} = socket.assigns
+    %{user: user, source_id: source_id} = socket.assigns
 
     socket =
       with %Logflare.SavedSearch{} = saved_search <- SavedSearches.get(saved_search_id),
@@ -28,7 +33,7 @@ defmodule LogflareWeb.SearchLive.SavedSearchesModalComponent do
         send(self(), {:set_flash, {:info, "Saved search deleted"}})
 
         updated_searches =
-          SavedSearches.list_saved_searches_by_source(source.id)
+          SavedSearches.list_saved_searches_by_source(source_id)
           |> AsyncResult.ok()
 
         assign(socket, :saved_searches, updated_searches)
@@ -62,14 +67,14 @@ defmodule LogflareWeb.SearchLive.SavedSearchesModalComponent do
           </div>
         </:failed>
         <.saved_searches_empty :if={Enum.empty?(saved_searches)} />
-        <.saved_searches_list :if={Enum.any?(saved_searches)} saved_searches={saved_searches} source={@source} team={@team} myself={@myself} />
+        <.saved_searches_list :if={Enum.any?(saved_searches)} saved_searches={saved_searches} source_id={@source_id} team={@team} myself={@myself} />
       </.async_result>
     </div>
     """
   end
 
   attr :saved_searches, :list, required: true
-  attr :source, Logflare.Sources.Source, required: true
+  attr :source_id, :any, required: true
   attr :team, :any, default: nil
   attr :myself, :any, required: true
 
@@ -81,7 +86,7 @@ defmodule LogflareWeb.SearchLive.SavedSearchesModalComponent do
           <.link
             patch={
               LogflareWeb.Utils.with_team_param(
-                ~p"/sources/#{@source}/search?#{%{querystring: saved_search.querystring, tailing?: saved_search.tailing}}",
+                ~p"/sources/#{@source_id}/search?#{%{querystring: saved_search.querystring, tailing?: saved_search.tailing}}",
                 @team
               )
             }
@@ -115,7 +120,8 @@ defmodule LogflareWeb.SearchLive.SavedSearchesModalComponent do
 
   @spec assign_saved_searches(Phoenix.LiveView.Socket.t()) :: Phoenix.LiveView.Socket.t()
   defp assign_saved_searches(socket) do
-    source_id = socket.assigns.source.id
+    source_id =
+      socket.assigns.source_id
 
     socket
     |> assign_async(

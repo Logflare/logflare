@@ -16,11 +16,27 @@ defmodule LogflareWeb.DashboardLiveTest do
   end
 
   describe "Dashboard Live" do
+    setup {TestUtils, :attach_wait_for_render}
+
     test "renders dashboard", %{conn: conn, source: source} do
       {:ok, view, html} = live(conn, "/dashboard")
 
       assert view |> has_element?("h5", "~/logs")
       assert html =~ source.name
+    end
+
+    test "sources have a saved searches modal", %{conn: conn, source: source} do
+      {:ok, view, _html} = live(conn, "/dashboard")
+
+      refute view |> has_element?("#saved-searches-modal")
+
+      view
+      |> element("#source-#{source.token} a[phx-click='show_live_modal']")
+      |> render_click()
+
+      Logflare.TestUtils.wait_for_render(view, "#saved-searches-modal")
+
+      assert view |> has_element?(".modal-title", "Saved Searches")
     end
   end
 

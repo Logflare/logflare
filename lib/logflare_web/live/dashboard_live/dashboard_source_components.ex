@@ -4,6 +4,8 @@ defmodule LogflareWeb.DashboardLive.DashboardSourceComponents do
   use Phoenix.Component
 
   alias Logflare.Sources.Source
+  alias LogflareWeb.ModalLiveHelpers
+  alias LogflareWeb.SearchLive.SavedSearchesModalComponent
   alias Phoenix.LiveView.JS
 
   attr :source, Source, required: true
@@ -22,6 +24,9 @@ defmodule LogflareWeb.DashboardLive.DashboardSourceComponents do
       </div>
       <div>
         <div class="float-right">
+          <ModalLiveHelpers.modal_link component={SavedSearchesModalComponent} modal_id={:"saved-searches-#{@source.id}"} title="Saved Searches" class="dashboard-links tw-mr-2" phx-value-source-id={@source.id}>
+            <i class="fas fa-bookmark"></i>
+          </ModalLiveHelpers.modal_link>
           <.team_link href={~p"/sources/#{@source}/edit"} team={@team} class="dashboard-links">
             <i class="fas fa-edit"></i>
           </.team_link>
