@@ -607,7 +607,13 @@ defmodule Logflare.Backends do
 
     :telemetry.span([:logflare, :backends, :ingest, :dispatch], telemetry_metadata, fn ->
       log_events = maybe_pre_ingest(source, backend, log_events)
-      IngestEventQueue.add_to_table({source.id, backend.id}, log_events)
+
+      queue_key =
+        if backend.consolidated_ingest?,
+          do: {:consolidated, backend.id},
+          else: {source.id, backend.id}
+
+      IngestEventQueue.add_to_table(queue_key, log_events)
 
       :telemetry.execute(
         [:logflare, :backends, :ingest, :count],
@@ -623,11 +629,16 @@ defmodule Logflare.Backends do
     backends = __MODULE__.Cache.list_backends(source_id: source.id)
 
     for backend <- [nil | backends] do
-      {backend_id, backend_type} =
-        if backend do
-          {backend.id, backend.type}
-        else
-          {nil, SingleTenant.backend_type()}
+      {queue_key, backend_type} =
+        case backend do
+          nil ->
+            {{source.id, nil}, SingleTenant.backend_type()}
+
+          %Backend{consolidated_ingest?: true} ->
+            {{:consolidated, backend.id}, backend.type}
+
+          %Backend{} ->
+            {{source.id, backend.id}, backend.type}
         end
 
       telemetry_metadata = %{backend_type: backend_type}
@@ -636,7 +647,7 @@ defmodule Logflare.Backends do
         log_events =
           if backend, do: maybe_pre_ingest(source, backend, log_events), else: log_events
 
-        IngestEventQueue.add_to_table({source.id, backend_id}, log_events)
+        IngestEventQueue.add_to_table(queue_key, log_events)
 
         :telemetry.execute(
           [:logflare, :backends, :ingest, :dispatch],
