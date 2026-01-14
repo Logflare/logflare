@@ -208,16 +208,11 @@ defmodule Logflare.Alerting do
   Creates an alert job struct (but does not insert it into the scheduler.)
   """
   @spec create_alert_job_struct(AlertQuery.t()) :: Quantum.Job.t()
-  def create_alert_job_struct(%AlertQuery{} = alert_query) do
-    %AlertQuery{id: alert_query_id, cron: cron} = alert_query
-
-    if is_nil(alert_query_id) do
-      raise ArgumentError, "AlertQuery is missing id: #{inspect(alert_query)}"
-    end
-
+  def create_alert_job_struct(%AlertQuery{id: alert_query_id} = alert_query)
+      when not is_nil(alert_query_id) do
     AlertsScheduler.new_job(run_strategy: Quantum.RunStrategy.Local)
     |> Quantum.Job.set_task({__MODULE__, :run_alert, [alert_query_id, :scheduled]})
-    |> Quantum.Job.set_schedule(Crontab.CronExpression.Parser.parse!(cron))
+    |> Quantum.Job.set_schedule(Crontab.CronExpression.Parser.parse!(alert_query.cron))
     |> Quantum.Job.set_name(to_job_name(alert_query))
   end
 
@@ -426,9 +421,6 @@ defmodule Logflare.Alerting do
 
       {_name, node} ->
         Cluster.Utils.rpc_call(node, func)
-
-      nil ->
-        raise "Alerting scheduler node not found"
     end
   end
 

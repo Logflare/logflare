@@ -635,7 +635,13 @@ defmodule Logflare.Backends do
 
     :telemetry.span([:logflare, :backends, :ingest, :dispatch], telemetry_metadata, fn ->
       log_events = maybe_pre_ingest(source, backend, log_events)
-      IngestEventQueue.add_to_table({source.id, backend.id}, log_events)
+
+      queue_key =
+        if backend.consolidated_ingest?,
+          do: {:consolidated, backend.id},
+          else: {source.id, backend.id}
+
+      IngestEventQueue.add_to_table(queue_key, log_events)
 
       :telemetry.execute(
         [:logflare, :backends, :ingest, :count],

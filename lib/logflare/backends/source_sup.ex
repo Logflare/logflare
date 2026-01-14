@@ -91,7 +91,7 @@ defmodule Logflare.Backends.SourceSup do
 
   This allows for zero-downtime ingestion, as we don't restart the SourceSup supervision tree.
   """
-  @spec start_rule_child(Rule.t()) :: Supervisor.on_start_child() | :skip
+  @spec start_rule_child(Rule.t()) :: Supervisor.on_start_child() | :noop
   def start_rule_child(%Rule{backend_id: backend_id} = rule) do
     backend = Backends.Cache.get_backend(backend_id) |> Map.put(:register_for_ingest, false)
     source = Sources.Cache.get_by_id(rule.source_id)
@@ -104,8 +104,8 @@ defmodule Logflare.Backends.SourceSup do
 
   Consolidated backends are excluded.
   """
-  @spec start_backend_child(Source.t(), Backend.t()) :: Supervisor.on_start_child() | :skip
-  def start_backend_child(%Source{}, %Backend{consolidated_ingest?: true}), do: :skip
+  @spec start_backend_child(Source.t(), Backend.t()) :: Supervisor.on_start_child() | :noop
+  def start_backend_child(%Source{}, %Backend{consolidated_ingest?: true}), do: :noop
 
   def start_backend_child(%Source{} = source, %Backend{} = backend) do
     via = Backends.via_source(source, __MODULE__)
