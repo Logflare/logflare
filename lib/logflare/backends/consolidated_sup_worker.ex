@@ -89,17 +89,12 @@ defmodule Logflare.Backends.ConsolidatedSupWorker do
   end
 
   defp stop_pipeline(backend_id) do
-    case Backends.Cache.get_backend(backend_id) do
-      nil ->
-        Logger.info("Stopping orphaned consolidated pipeline: backend no longer exists",
-          backend_id: backend_id
-        )
+    reason =
+      if Backends.Cache.get_backend(backend_id),
+        do: "no longer supports consolidated ingest",
+        else: "backend no longer exists"
 
-        ConsolidatedSup.stop_pipeline(backend_id)
-
-      _backend ->
-        Logger.info("Stopping stale consolidated pipeline", backend_id: backend_id)
-        ConsolidatedSup.stop_pipeline(backend_id)
-    end
+    Logger.info("Stopping consolidated pipeline: #{reason}", backend_id: backend_id)
+    ConsolidatedSup.stop_pipeline(backend_id)
   end
 end
