@@ -865,14 +865,9 @@ defmodule Logflare.Backends do
   """
   @spec maybe_stop_consolidated_pipeline(Backend.t()) :: :ok
   def maybe_stop_consolidated_pipeline(%Backend{} = backend) do
-    if Adaptor.consolidated_ingest?(backend) do
-      case ConsolidatedSup.stop_pipeline(backend) do
-        :ok ->
-          Logger.info("Stopped consolidated pipeline", backend_id: backend.id)
-
-        {:error, :not_found} ->
-          :ok
-      end
+    with true <- Adaptor.consolidated_ingest?(backend),
+         :ok <- ConsolidatedSup.stop_pipeline(backend) do
+      Logger.info("Stopped consolidated pipeline", backend_id: backend.id)
     end
 
     :ok
