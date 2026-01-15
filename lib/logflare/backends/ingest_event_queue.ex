@@ -656,7 +656,9 @@ defmodule Logflare.Backends.IngestEventQueue do
   @doc """
   Deletes multiple events from the table.
   """
-  @spec delete_batch(source_backend_pid() | queues_key(), [LogEvent.t()]) :: :ok
+  @spec delete_batch(source_backend_pid() | queues_key() | consolidated_queues_key(), [
+          LogEvent.t()
+        ]) :: :ok
   def delete_batch(_sid_bid, []), do: :ok
 
   def delete_batch({_, _} = sid_bid, events) when is_list(events) do

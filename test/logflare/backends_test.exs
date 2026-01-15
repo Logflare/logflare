@@ -21,6 +21,7 @@ defmodule Logflare.BackendsTest do
   alias Logflare.Sources.Source
   alias Logflare.Sources.Source.BigQuery.Pipeline
   alias Logflare.SystemMetrics.AllLogsLogged
+  alias Logflare.TestSupport.FakeConsolidatedAdaptor
   alias Logflare.User
 
   setup do
@@ -62,6 +63,83 @@ defmodule Logflare.BackendsTest do
     test "returns false for s3 backend" do
       backend = %Backend{type: :s3}
       refute Adaptor.consolidated_ingest?(backend)
+    end
+  end
+
+  describe "consolidated pipeline hooks" do
+    setup do
+      insert(:plan, name: "Free")
+      user = insert(:user)
+
+      [user: user]
+    end
+
+    test "create_backend/1 starts consolidated pipeline when adaptor supports it", %{user: user} do
+      stub(Adaptor, :get_adaptor, fn _backend -> FakeConsolidatedAdaptor end)
+      stub(Adaptor, :consolidated_ingest?, fn _backend -> true end)
+
+      attrs = %{
+        type: :webhook,
+        user_id: user.id,
+        name: "Test Consolidated",
+        config: %{url: "https://example.com"}
+      }
+
+      assert {:ok, backend} = Backends.create_backend(attrs)
+      assert Backends.ConsolidatedSup.pipeline_running?(backend)
+
+      Backends.ConsolidatedSup.stop_pipeline(backend)
+    end
+
+    test "create_backend/1 does not start pipeline for non-consolidated backend", %{user: user} do
+      attrs = %{
+        type: :webhook,
+        user_id: user.id,
+        name: "Test Webhook",
+        config: %{url: "https://example.com"}
+      }
+
+      assert {:ok, backend} = Backends.create_backend(attrs)
+
+      refute Backends.ConsolidatedSup.pipeline_running?(backend)
+    end
+
+    test "delete_backend/1 stops consolidated pipeline", %{user: user} do
+      stub(Adaptor, :get_adaptor, fn _backend -> FakeConsolidatedAdaptor end)
+      stub(Adaptor, :consolidated_ingest?, fn _backend -> true end)
+
+      attrs = %{
+        type: :webhook,
+        user_id: user.id,
+        name: "Test Consolidated",
+        config: %{url: "https://example.com"}
+      }
+
+      assert {:ok, backend} = Backends.create_backend(attrs)
+      assert Backends.ConsolidatedSup.pipeline_running?(backend)
+
+      assert {:ok, _} = Backends.delete_backend(backend)
+      refute Backends.ConsolidatedSup.pipeline_running?(backend.id)
+    end
+
+    test "update_backend/2 keeps consolidated pipeline running", %{user: user} do
+      stub(Adaptor, :get_adaptor, fn _backend -> FakeConsolidatedAdaptor end)
+      stub(Adaptor, :consolidated_ingest?, fn _backend -> true end)
+
+      attrs = %{
+        type: :webhook,
+        user_id: user.id,
+        name: "Test Consolidated",
+        config: %{url: "https://example.com"}
+      }
+
+      assert {:ok, backend} = Backends.create_backend(attrs)
+      assert Backends.ConsolidatedSup.pipeline_running?(backend)
+
+      assert {:ok, updated} = Backends.update_backend(backend, %{name: "Updated Name"})
+      assert Backends.ConsolidatedSup.pipeline_running?(updated)
+
+      Backends.ConsolidatedSup.stop_pipeline(updated)
     end
   end
 
