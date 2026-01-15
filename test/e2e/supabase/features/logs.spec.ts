@@ -1,14 +1,13 @@
 import { test, expect, Page } from '@playwright/test';
+import supabase from '../lib/supabase';
 
 test.beforeAll(async ({ request }) => {
-  await request.get('/api/platform/organizations');
+  await supabase.auth.signUp({ email: 'example@email.com', password: 'example-password' })
 
-  await request.post('/api/platform/storage/default/buckets', { data: {id: "bucket", type: "STANDARD", public: false}});
-  await request.post('/storage/v1/object/bucket/folder/.emptyFolderPlaceholder');
+  await supabase.storage.createBucket('avatars')
+  await supabase.storage.deleteBucket('avatars')
 
-  await request.post('/api/platform/auth/default/users', { data: {email: "test_user@gmail.com", password: "password", email_confirm: true}});
-
-  await request.post('/functions/v1/hello-world', { data: { name: "Functions" }});
+  await supabase.functions.invoke('hello', { body: { name: 'Functions' } })
 
   // PostgRest
   await request.post('/api/platform/pg-meta/default/query?key=table-create-with-columns', { data: {
@@ -32,23 +31,9 @@ test.beforeAll(async ({ request }) => {
 
 test('receives logs from API Gateway', async ({ page }) => {
   await page.goto('/project/default/logs/edge-logs');
-  await searchLogs(page, '/api/platform/organizations');
+  await searchLogs(page, '/functions/v1/hello');
 
-  await expect(page.getByRole('table')).toContainText('/api/platform/organizations');
-});
-
-test('receives logs from Storage', async ({ page }) => {
-  await page.goto('/project/default/logs/storage-logs');
-  await searchLogs(page, 'folder');
-
-  await expect(page.getByRole('table')).toContainText('/object/bucket/folder/.emptyFolderPlaceholder');
-});
-
-test('receives logs from Auth', async ({ page }) => {
-  await page.goto('/project/default/logs/auth-logs');
-  await searchLogs(page, 'test_user@gmail.com');
-
-  await expect(page.getByRole('table')).toContainText('/admin/users | request completed');
+  await expect(page.getByRole('table')).toContainText('/functions/v1/hello');
 });
 
 test('receives logs from PostgREST', async ({ page }) => {
@@ -58,10 +43,24 @@ test('receives logs from PostgREST', async ({ page }) => {
   await expect(page.getByRole('table')).toContainText('Schema cache loaded 12 Relations');
 });
 
+test('receives logs from Auth', async ({ page }) => {
+  await page.goto('/project/default/logs/auth-logs');
+  await searchLogs(page, 'example@email.com');
+
+  await expect(page.getByRole('table')).toContainText('/signup | request completed');
+});
+
+test('receives logs from Storage', async ({ page }) => {
+  await page.goto('/project/default/logs/storage-logs');
+  await searchLogs(page, '/bucket/avatars');
+
+  await expect(page.getByRole('table')).toContainText('/bucket/avatars');
+});
+
 test('receives logs from Edge Functions', async ({ page }) => {
   await page.goto('/project/default/logs/edge-functions-logs');
 
-  await expect(page.getByRole('table')).toContainText('serving the request with /home/deno/functions/hello-world');
+  await expect(page.getByRole('table')).toContainText('serving the request with /home/deno/functions/hello');
 });
 
 test('receives logs from Cron', async ({ page }) => {
