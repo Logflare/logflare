@@ -838,9 +838,8 @@ defmodule Logflare.Backends do
           :ok
 
         {:error, reason} ->
-          Logger.warning("Failed to start consolidated pipeline",
-            backend_id: backend.id,
-            reason: inspect(reason)
+          Logger.warning("Failed to start consolidated pipeline: #{inspect(reason)}",
+            backend_id: backend.id
           )
       end
     end
