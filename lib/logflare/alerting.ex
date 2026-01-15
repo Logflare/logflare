@@ -208,9 +208,10 @@ defmodule Logflare.Alerting do
   Creates an alert job struct (but does not insert it into the scheduler.)
   """
   @spec create_alert_job_struct(AlertQuery.t()) :: Quantum.Job.t()
-  def create_alert_job_struct(%AlertQuery{} = alert_query) do
+  def create_alert_job_struct(%AlertQuery{id: alert_query_id} = alert_query)
+      when not is_nil(alert_query_id) do
     AlertsScheduler.new_job(run_strategy: Quantum.RunStrategy.Local)
-    |> Quantum.Job.set_task({__MODULE__, :run_alert, [alert_query, :scheduled]})
+    |> Quantum.Job.set_task({__MODULE__, :run_alert, [alert_query_id, :scheduled]})
     |> Quantum.Job.set_schedule(Crontab.CronExpression.Parser.parse!(alert_query.cron))
     |> Quantum.Job.set_name(to_job_name(alert_query))
   end
@@ -234,16 +235,26 @@ defmodule Logflare.Alerting do
   end
 
   defp do_sync_alert_jobs do
-    init_alert_jobs()
-    |> tap(fn _ -> AlertsScheduler.delete_all_jobs() end)
-    |> Enum.each(&AlertsScheduler.add_job/1)
+    wanted_jobs = init_alert_jobs()
+    wanted_jobs_set = MapSet.new(wanted_jobs, & &1.name)
+    current_jobs = AlertsScheduler.jobs()
+
+    # Delete jobs that are no longer wanted
+    Enum.each(current_jobs, fn {name, _job} ->
+      if not MapSet.member?(wanted_jobs_set, name) do
+        AlertsScheduler.delete_job(name)
+      end
+    end)
+
+    # Upsert all wanted jobs
+    Enum.each(wanted_jobs, &AlertsScheduler.add_job/1)
   end
 
   @doc """
   Syncs a specific alert job by alert_id.
   Upserts the job if it doesn't exist, otherwise deletes the existing job.
   """
-  @spec sync_alert_job(number()) :: :ok | {:error, :not_found}
+  @spec sync_alert_job(integer) :: :ok | {:error, :not_found}
   def sync_alert_job(alert_id) when is_integer(alert_id) do
     on_scheduler_node(fn -> do_sync_alert_job(alert_id) end)
   end
@@ -251,15 +262,10 @@ defmodule Logflare.Alerting do
   defp do_sync_alert_job(alert_id) do
     if alert_query = get_alert_query_by(id: alert_id) do
       job = create_alert_job_struct(alert_query)
-      AlertsScheduler.add_job(job)
-      {:ok, job}
+      :ok = AlertsScheduler.add_job(job)
     else
-      # alert query does not exist, maybe remove from scheduler
-      job = AlertsScheduler.find_job(to_job_name(alert_id))
-
-      if job do
-        AlertsScheduler.delete_job(job.name)
-      end
+      AlertsScheduler.delete_job(to_job_name(alert_id))
+      {:error, :not_found}
     end
   end
 
@@ -268,8 +274,16 @@ defmodule Logflare.Alerting do
 
   Send notifications if necessary configurations are set. If no results are returned from the query execution, no alert is sent.
   """
-  @spec run_alert(AlertQuery.t(), :scheduled) ::
-          :ok | {:error, :not_enabled} | {:error, :below_min_cluster_size}
+  @spec run_alert(AlertQuery.t() | integer(), :scheduled) ::
+          :ok | {:error, :not_enabled | :not_found | :no_results | :below_min_cluster_size | any}
+  def run_alert(alert_id, :scheduled) when is_integer(alert_id) do
+    if alert_query = get_alert_query_by(id: alert_id) do
+      run_alert(alert_query, :scheduled)
+    else
+      {:error, :not_found}
+    end
+  end
+
   def run_alert(%AlertQuery{} = alert_query, :scheduled) do
     # perform pre-run checks
     cfg = Application.get_env(:logflare, Logflare.Alerting)
@@ -397,11 +411,16 @@ defmodule Logflare.Alerting do
     end)
   end
 
+  @spec on_scheduler_node((-> func_ret)) :: func_ret when func_ret: term
   defp on_scheduler_node(func) do
-    with pid when is_pid(pid) <- GenServer.whereis(scheduler_name()) do
-      pid
-      |> node()
-      |> Cluster.Utils.rpc_call(func)
+    case GenServer.whereis(scheduler_name()) do
+      pid when is_pid(pid) ->
+        pid
+        |> node()
+        |> Cluster.Utils.rpc_call(func)
+
+      {_name, node} ->
+        Cluster.Utils.rpc_call(node, func)
     end
   end
 

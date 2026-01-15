@@ -38,6 +38,7 @@ defmodule Logflare.Backends.Backend do
     field :config_encrypted, Logflare.Ecto.EncryptedMap
 
     field :register_for_ingest, :boolean, virtual: true, default: true
+    field :consolidated_ingest?, :boolean, virtual: true, default: false
     field :metadata, :map
     field :default_ingest?, :boolean, source: :default_ingest, default: false
 

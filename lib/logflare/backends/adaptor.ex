@@ -74,6 +74,22 @@ defmodule Logflare.Backends.Adaptor do
   end
 
   @doc """
+  Returns true if a given `Backend` supports consolidated ingestion.
+
+  Defaults to false.
+  """
+  @spec consolidated_ingest?(Backend.t()) :: boolean()
+  def consolidated_ingest?(%Backend{} = backend) do
+    adaptor = get_adaptor(backend)
+
+    if function_exported?(adaptor, :consolidated_ingest?, 0) do
+      adaptor.consolidated_ingest?()
+    else
+      false
+    end
+  end
+
+  @doc """
   Returns true if a provided `Backend` supports transforming queries.
 
   Default to false.
@@ -202,6 +218,14 @@ defmodule Logflare.Backends.Adaptor do
   @callback supports_default_ingest?() :: boolean()
 
   @doc """
+  Indicates if this adaptor uses consolidated ingestion.
+
+  When true, all sources using backends of this type will share a single ingestion
+  pipeline keyed by `backend_id` only, enabling larger batch sizes.
+  """
+  @callback consolidated_ingest?() :: boolean()
+
+  @doc """
   Validates a given adaptor's configuration, using Ecto.Changeset functions. Accepts a chaangeset
   """
   @callback validate_config(changeset :: Ecto.Changeset.t()) :: Ecto.Changeset.t()
@@ -223,5 +247,6 @@ defmodule Logflare.Backends.Adaptor do
                       transform_query: 3,
                       send_alert: 3,
                       supports_default_ingest?: 0,
+                      consolidated_ingest?: 0,
                       redact_config: 1
 end

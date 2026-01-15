@@ -334,11 +334,11 @@ defmodule Logflare.AlertingTest do
       assert {:ok,
               %Quantum.Job{
                 run_strategy: %Quantum.RunStrategy.Local{},
-                task: {Logflare.Alerting, :run_alert, [%AlertQuery{id: ^alert_id}, :scheduled]}
+                task: {Logflare.Alerting, :run_alert, [^alert_id, :scheduled]}
               }} = Alerting.upsert_alert_job(alert)
 
       assert %Quantum.Job{
-               task: {Logflare.Alerting, :run_alert, [%AlertQuery{id: ^alert_id}, :scheduled]}
+               task: {Logflare.Alerting, :run_alert, [^alert_id, :scheduled]}
              } = Alerting.get_alert_job(alert_id)
 
       assert {:ok, _} = Alerting.delete_alert_job(alert)
@@ -357,11 +357,11 @@ defmodule Logflare.AlertingTest do
     end
 
     test "upsert job with new values will replace existing job", %{user: user} do
-      alert = insert(:alert, user_id: user.id, query: "select 3")
+      alert = insert(:alert, user_id: user.id, cron: "0 0 1 * *")
       Alerting.upsert_alert_job(alert)
       original_job = Alerting.get_alert_job(alert.id)
       assert Alerting.get_alert_job(alert.id)
-      new_alert = %{alert | query: "select 1"}
+      new_alert = %{alert | cron: "0 0 2 * *"}
       Alerting.upsert_alert_job(new_alert)
       assert original_job != Alerting.get_alert_job(alert.id)
     end
@@ -371,7 +371,7 @@ defmodule Logflare.AlertingTest do
 
       assert [
                %Quantum.Job{
-                 task: {Logflare.Alerting, :run_alert, [%AlertQuery{id: ^alert_id}, :scheduled]}
+                 task: {Logflare.Alerting, :run_alert, [^alert_id, :scheduled]}
                }
              ] = Alerting.init_alert_jobs()
 
@@ -408,9 +408,109 @@ defmodule Logflare.AlertingTest do
 
         assert %Quantum.Job{
                  name: ^job_name,
-                 task: {Logflare.Alerting, :run_alert, [%AlertQuery{id: ^alert_id}, :scheduled]}
+                 task: {Logflare.Alerting, :run_alert, [^alert_id, :scheduled]}
                } = Alerting.get_alert_job(alert_id)
       end)
+    end
+  end
+
+  describe "scheduled run_alert/1" do
+    setup do
+      start_alerting_supervisor!()
+      old_config = Application.get_env(:logflare, Logflare.Alerting)
+      Application.put_env(:logflare, Logflare.Alerting, min_cluster_size: 0, enabled: true)
+      on_exit(fn -> Application.put_env(:logflare, Logflare.Alerting, old_config) end)
+    end
+
+    test "uses fresh alert query data", %{user: user} do
+      {:ok, alert} =
+        Alerting.create_alert_query(user, %{
+          name: "Original Name",
+          cron: "0 0 1 * *",
+          query: "select 1"
+        })
+
+      :ok = Alerting.sync_alert_job(alert.id)
+
+      {:ok, _updated_alert} =
+        Alerting.update_alert_query(alert, %{query: "select 'unique_fresh_data_check'"})
+
+      expect(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, 1, fn _conn, _proj_id, opts ->
+        assert opts[:body].query =~ "unique_fresh_data_check"
+        {:ok, TestUtils.gen_bq_response([%{"testing" => "123"}])}
+      end)
+
+      assert :ok = Alerting.run_alert(alert.id, :scheduled)
+    end
+
+    test "run_alert/1 no-ops if alert is missing", %{user: user} do
+      {:ok, alert} =
+        Alerting.create_alert_query(user, %{
+          name: "To Delete",
+          cron: "0 0 1 * *",
+          query: "select 1"
+        })
+
+      :ok = Alerting.sync_alert_job(alert.id)
+
+      # verify job exists
+      assert %Quantum.Job{} = Alerting.get_alert_job(alert.id)
+
+      # simulate "external" unsynced deletion / stale state
+      Repo.delete!(alert)
+
+      # expect NO BQ execution
+      GoogleApi.BigQuery.V2.Api.Jobs
+      |> reject(:bigquery_jobs_query, 3)
+
+      # verify job is NOT run by stale run_alert
+      assert {:error, :not_found} = Alerting.run_alert(alert.id, :scheduled)
+    end
+  end
+
+  describe "sync_alert_jobs/0" do
+    setup do
+      start_alerting_supervisor!()
+    end
+
+    defp await_sync_alert_jobs do
+      {:ok, pid} = Alerting.sync_alert_jobs()
+      ref = Process.monitor(pid)
+      assert_receive {:DOWN, ^ref, :process, _pid, _reason}
+    end
+
+    test "adds missing jobs", %{user: user} do
+      alert = insert(:alert, user: user)
+      Alerting.delete_alert_job(alert.id)
+
+      refute Alerting.get_alert_job(alert.id)
+      await_sync_alert_jobs()
+      assert Alerting.get_alert_job(alert.id)
+    end
+
+    test "removes obsolete jobs", %{user: user} do
+      alert = insert(:alert, user: user)
+      Alerting.sync_alert_job(alert.id)
+      assert Alerting.get_alert_job(alert.id)
+
+      # simulate "external" unsynced deletion / stale state
+      Repo.delete!(alert)
+
+      assert Alerting.get_alert_job(alert.id)
+      await_sync_alert_jobs()
+      refute Alerting.get_alert_job(alert.id)
+    end
+
+    test "updates jobs with changed schedule", %{user: user} do
+      alert = insert(:alert, user: user, cron: "0 0 1 * *")
+      Alerting.sync_alert_job(alert.id)
+      original_job = Alerting.get_alert_job(alert.id)
+
+      {:ok, _} = Alerting.update_alert_query(alert, %{cron: "*/5 * * * *"})
+
+      assert Alerting.get_alert_job(alert.id) == original_job
+      await_sync_alert_jobs()
+      assert Alerting.get_alert_job(alert.id) != original_job
     end
   end
 

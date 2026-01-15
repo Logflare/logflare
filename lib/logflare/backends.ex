@@ -405,7 +405,9 @@ defmodule Logflare.Backends do
         |> Changeset.apply_changes()
       end)
 
-    Map.put(updated, :config, updated.config_encrypted)
+    updated
+    |> Map.put(:config, updated.config_encrypted)
+    |> Map.put(:consolidated_ingest?, Adaptor.consolidated_ingest?(backend))
   end
 
   @doc """
@@ -605,7 +607,13 @@ defmodule Logflare.Backends do
 
     :telemetry.span([:logflare, :backends, :ingest, :dispatch], telemetry_metadata, fn ->
       log_events = maybe_pre_ingest(source, backend, log_events)
-      IngestEventQueue.add_to_table({source.id, backend.id}, log_events)
+
+      queue_key =
+        if backend.consolidated_ingest?,
+          do: {:consolidated, backend.id},
+          else: {source.id, backend.id}
+
+      IngestEventQueue.add_to_table(queue_key, log_events)
 
       :telemetry.execute(
         [:logflare, :backends, :ingest, :count],
@@ -621,11 +629,16 @@ defmodule Logflare.Backends do
     backends = __MODULE__.Cache.list_backends(source_id: source.id)
 
     for backend <- [nil | backends] do
-      {backend_id, backend_type} =
-        if backend do
-          {backend.id, backend.type}
-        else
-          {nil, SingleTenant.backend_type()}
+      {queue_key, backend_type} =
+        case backend do
+          nil ->
+            {{source.id, nil}, SingleTenant.backend_type()}
+
+          %Backend{consolidated_ingest?: true} ->
+            {{:consolidated, backend.id}, backend.type}
+
+          %Backend{} ->
+            {{source.id, backend.id}, backend.type}
         end
 
       telemetry_metadata = %{backend_type: backend_type}
@@ -634,7 +647,7 @@ defmodule Logflare.Backends do
         log_events =
           if backend, do: maybe_pre_ingest(source, backend, log_events), else: log_events
 
-        IngestEventQueue.add_to_table({source.id, backend_id}, log_events)
+        IngestEventQueue.add_to_table(queue_key, log_events)
 
         :telemetry.execute(
           [:logflare, :backends, :ingest, :dispatch],
@@ -896,13 +909,27 @@ defmodule Logflare.Backends do
 
   @doc """
   Lists latest recent logs of only the local cache.
+
+  For consolidated backends, returns an empty list since filtering by source
+  in a consolidated queue would require scanning all events and is expensive.
   """
   @spec list_recent_logs_local(Source.t() | pos_integer()) :: [LogEvent.t()]
   @spec list_recent_logs_local(Source.t() | pos_integer(), n :: number()) :: [LogEvent.t()]
+  @spec list_recent_logs_local(Source.t(), Backend.t()) :: [LogEvent.t()]
   def list_recent_logs_local(source, n \\ 100)
-  def list_recent_logs_local(%Source{id: id}, n), do: list_recent_logs_local(id, n)
 
-  def list_recent_logs_local(source_id, n) when is_integer(source_id) do
+  def list_recent_logs_local(%Source{id: id}, n) when is_number(n),
+    do: list_recent_logs_local(id, n)
+
+  def list_recent_logs_local(%Source{} = source, %Backend{} = backend) do
+    if Adaptor.consolidated_ingest?(backend) do
+      []
+    else
+      list_recent_logs_local(source)
+    end
+  end
+
+  def list_recent_logs_local(source_id, n) when is_integer(source_id) and is_number(n) do
     {:ok, events} = IngestEventQueue.fetch_events({source_id, nil}, n)
 
     events
