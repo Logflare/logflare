@@ -9,7 +9,11 @@ defmodule Logflare.Backends.ConsolidatedSupWorkerTest do
       insert(:plan, name: "Free")
 
       {_source, backend, cleanup_fn} = setup_clickhouse_test()
-      on_exit(cleanup_fn)
+
+      on_exit(fn ->
+        ConsolidatedSup.stop_pipeline(backend.id)
+        cleanup_fn.()
+      end)
 
       ConsolidatedSup.stop_pipeline(backend)
 
