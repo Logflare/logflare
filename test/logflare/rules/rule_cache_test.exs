@@ -18,7 +18,7 @@ defmodule Logflare.Rules.CacheTest do
   end
 
   describe "rules cache" do
-    test "get rules", %{source: source, rule_ids: rule_ids} do
+    test "get rules", %{rule_ids: rule_ids} do
       assert rules = @subject.get_rules(rule_ids)
 
       for %Rule{id: id} <- rules do
@@ -88,7 +88,7 @@ defmodule Logflare.Rules.CacheTest do
       assert %{hits: 2} = Cachex.stats!(@subject)
     end
 
-    test "source id key busting", %{source: source, backend: backend} do
+    test "source id key busting", %{source: source} do
       assert [_r1, _r2] = @subject.list_rules(source)
       assert _ = @subject.rules_tree_by_source_id(source.id)
       assert %{misses: 2, writes: 2} = Cachex.stats!(@subject)
@@ -101,7 +101,7 @@ defmodule Logflare.Rules.CacheTest do
       assert %{misses: 4, writes: 4} = Cachex.stats!(@subject)
     end
 
-    test "backend id key busting", %{source: source, backend: backend} do
+    test "backend id key busting", %{backend: backend} do
       assert [_r1, _r2] = @subject.list_rules(backend)
       assert %{misses: 1, writes: 1} = Cachex.stats!(@subject)
 

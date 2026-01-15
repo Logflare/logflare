@@ -12,7 +12,6 @@ defmodule Logflare.BackendsTest do
   alias Logflare.Backends.IngestEventQueue
   alias Logflare.Backends.SourceSup
   alias Logflare.Backends.SourceSupWorker
-  alias Logflare.Logs.SourceRouter
   alias Logflare.Lql
   alias Logflare.PubSubRates
   alias Logflare.Repo
@@ -20,6 +19,7 @@ defmodule Logflare.BackendsTest do
   alias Logflare.Sources
   alias Logflare.Sources.Source
   alias Logflare.Sources.Source.BigQuery.Pipeline
+  alias Logflare.Sources.SourceRouter
   alias Logflare.SystemMetrics.AllLogsLogged
   alias Logflare.User
 

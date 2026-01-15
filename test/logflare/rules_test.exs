@@ -6,7 +6,7 @@ defmodule Logflare.RulesTest do
   alias Logflare.Sources
   alias Logflare.Backends
   alias Logflare.Backends.SourceSup
-  alias Logflare.Logs.SourceRouter
+  alias Logflare.Sources.SourceRouter
   alias Logflare.SystemMetrics.AllLogsLogged
   alias GoogleApi.BigQuery.V2.Model.{TableSchema, TableFieldSchema}
 
