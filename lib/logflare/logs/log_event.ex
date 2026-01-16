@@ -294,14 +294,7 @@ defmodule Logflare.LogEvent do
   end
 
   defp determine_timestamp(%{"timestamp" => x}) when is_integer(x) do
-    case Integer.digits(x) |> Enum.count() do
-      19 -> Kernel.round(x / 1_000)
-      16 -> x
-      13 -> x * 1_000
-      10 -> x * 1_000_000
-      7 -> x * 1_000_000_000
-      _ -> x
-    end
+    Logflare.Utils.to_microseconds(x)
   end
 
   defp determine_timestamp(%{"timestamp" => x}) when is_float(x) do
