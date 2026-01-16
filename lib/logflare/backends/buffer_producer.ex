@@ -234,7 +234,7 @@ defmodule Logflare.Backends.BufferProducer do
 
     case IngestEventQueue.pop_pending(key, n) do
       {:error, :not_initialized} ->
-        Logger.warning(
+        Logger.error(
           "IngestEventQueue not initialized for consolidated queue",
           backend_id: bid
         )
