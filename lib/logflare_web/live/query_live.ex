@@ -6,7 +6,6 @@ defmodule LogflareWeb.QueryLive do
 
   alias Logflare.Alerting
   alias Logflare.Backends
-  alias Logflare.Backends.Backend
   alias Logflare.Endpoints
   alias Logflare.Repo
   alias Logflare.Teams.TeamContext
@@ -39,14 +38,10 @@ defmodule LogflareWeb.QueryLive do
       </p>
     </section>
     <section class="mx-auto container pt-3 tw-flex tw-flex-col tw-gap-4">
-      <.form :let={f} for={%{"backend_id" => nil}} id="query-form" phx-submit="run-query" class="tw-min-h-[80px] tw-flex tw-flex-col tw-gap-4">
-        Choose which backend to execute this query against.
-        <select id={f[:backend_id].id} name={f[:backend_id].name} class="form-control" phx-change="set_backend">
-          {backend_options_for_select(@backends, @selected_backend)}
-        </select>
-        <div>
-          <strong>Query Language: <span id="query-language">{query_language(@selected_backend)}</span></strong>
-        </div>
+      <.form for={@form} id="query-form" phx-submit="run-query" phx-change="set_backend" class="tw-min-h-[80px] tw-flex tw-flex-col tw-gap-4">
+        <QueryComponents.backend_select :if={Enum.any?(@backends)} backends={@backends} form={@form}>
+          <:help>Choose which backend to execute this query against.</:help>
+        </QueryComponents.backend_select>
         <LiveMonacoEditor.code_editor
           value={@query_string}
           change="parse-query"
@@ -161,16 +156,6 @@ defmodule LogflareWeb.QueryLive do
     """
   end
 
-  def backend_options_for_select(backends, selected_backend \\ nil) do
-    selected_id = if is_nil(selected_backend), do: nil, else: selected_backend.id
-
-    ([{"Default (BigQuery)", nil}] ++
-       Enum.map(backends, fn backend ->
-         {"#{backend.name} (#{backend.type})", backend.id}
-       end))
-    |> options_for_select(selected_id)
-  end
-
   def mount(%{}, _session, socket) do
     %{assigns: %{user: user}} = socket
 
@@ -187,6 +172,7 @@ defmodule LogflareWeb.QueryLive do
       |> assign(:endpoints, endpoints)
       |> assign(:alerts, alerts)
       |> assign_backends()
+      |> assign_form(%{})
 
     {:ok, socket}
   end
@@ -211,14 +197,12 @@ defmodule LogflareWeb.QueryLive do
       |> assign(:user_id, user.id)
       |> assign(:endpoints, endpoints)
       |> assign(:alerts, alerts)
-      |> assign_selected_backend(params["backend_id"])
+      |> assign_form(params)
 
     query_string =
-      if q != nil and socket.assigns.query_string == nil do
-        q
-      else
-        "SELECT id, timestamp, metadata, event_message \nFROM FantasticApp \nWHERE timestamp > '#{DateTime.utc_now() |> DateTime.to_iso8601()}'"
-      end
+      q ||
+        socket.assigns.query_string ||
+        "SELECT id, timestamp, metadata, event_message \nFROM YourSource \nWHERE timestamp > '#{DateTime.utc_now() |> DateTime.to_iso8601()}'"
 
     if query_string != nil do
       send(self(), :parse_query)
@@ -239,18 +223,25 @@ defmodule LogflareWeb.QueryLive do
     |> assign(:backends, backends)
   end
 
-  defp assign_selected_backend(socket, backend_id) do
-    backend =
-      case parse_backend_id(backend_id) do
-        id when is_number(id) ->
-          socket.assigns.backends |> Enum.find(&(&1.id == id))
+  defp assign_form(socket, params) do
+    form =
+      params
+      |> Map.take(["backend_id"])
+      |> to_form(as: :backend)
 
-        _ ->
-          nil
-      end
+    assign(socket, :form, form)
+  end
 
-    socket
-    |> assign(:selected_backend, backend)
+  defp get_selected_backend(socket) do
+    backend_id = Phoenix.HTML.Form.input_value(socket.assigns.form, :backend_id)
+
+    case parse_backend_id(backend_id) do
+      id when is_integer(id) ->
+        Enum.find(socket.assigns.backends, &(&1.id == id))
+
+      _ ->
+        nil
+    end
   end
 
   defp assign_team_context_for_query(socket, nil), do: socket
@@ -276,19 +267,21 @@ defmodule LogflareWeb.QueryLive do
 
   def handle_event(
         "run-query",
-        _params,
+        params,
         %{assigns: %{query_string: query_string}} = socket
       ) do
     socket = assign_team_context_for_query(socket, query_string)
     %{assigns: %{user: user}} = socket
 
-    params = build_params(socket, %{q: query_string})
+    patch_params =
+      socket
+      |> build_params(params["backend"])
 
     socket =
       socket
       |> assign(:user_id, user.id)
       |> run_query(user, query_string)
-      |> push_patch(to: ~p"/query?#{params}")
+      |> push_patch(to: ~p"/query?#{patch_params}")
 
     {:noreply, socket}
   end
@@ -315,18 +308,18 @@ defmodule LogflareWeb.QueryLive do
     {:noreply, LiveMonacoEditor.set_value(socket, formatted, to: "query")}
   end
 
-  def handle_event("set_backend", %{"backend_id" => backend_id}, socket) do
-    {:noreply, assign_selected_backend(socket, backend_id)}
+  def handle_event("set_backend", %{"backend" => params}, socket) do
+    {:noreply, assign_form(socket, params)}
   end
 
   defp run_query(socket, user, query_string) do
-    language =
-      Logflare.Endpoints.EndpointQuery.map_backend_to_language(socket.assigns.selected_backend, false)
+    backend = get_selected_backend(socket)
+    language = Logflare.Endpoints.EndpointQuery.map_backend_to_language(backend, false)
 
     case Endpoints.run_query_string(user, {language, query_string},
            params: %{},
            use_query_cache: false,
-           backend_id: socket.assigns.selected_backend && socket.assigns.selected_backend.id
+           backend_id: backend && backend.id
          ) do
       {:ok, %{rows: rows} = result} ->
         total_bytes_processed = Map.get(result, :total_bytes_processed)
@@ -351,15 +344,12 @@ defmodule LogflareWeb.QueryLive do
   end
 
   defp build_params(%{assigns: assigns} = _socket, params) do
-    base_params = %{
-      q: assigns.query_string,
-      t: assigns.team.id,
-      backend_id: if(assigns.selected_backend, do: assigns.selected_backend.id, else: nil)
+    %{
+      "q" => assigns.query_string,
+      "t" => assigns.team.id,
+      "backend_id" => params["backend_id"]
     }
-
-    base_params
-    |> Map.merge(params)
-    |> Map.reject(fn {_key, value} -> is_nil(value) end)
+    |> Map.reject(fn {_key, value} -> value in [nil, ""] end)
   end
 
   @spec parse_backend_id(String.t() | nil) :: integer() | nil
@@ -379,8 +369,8 @@ defmodule LogflareWeb.QueryLive do
   end
 
   defp parse_query(socket) do
-    language =
-      Logflare.Endpoints.EndpointQuery.map_backend_to_language(socket.assigns.selected_backend, false)
+    backend = get_selected_backend(socket)
+    language = Logflare.Endpoints.EndpointQuery.map_backend_to_language(backend, false)
 
     case Endpoints.parse_query_string(
            language,
@@ -398,8 +388,4 @@ defmodule LogflareWeb.QueryLive do
         assign(socket, :parse_error_message, inspect(err))
     end
   end
-
-  defp query_language(%Backend{type: :clickhouse}), do: "ClickHouse SQL"
-  defp query_language(%Backend{type: :postgres}), do: "Postgres SQL"
-  defp query_language(_), do: "BigQuery SQL"
 end
