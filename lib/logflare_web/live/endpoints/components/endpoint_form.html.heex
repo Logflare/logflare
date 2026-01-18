@@ -33,18 +33,9 @@
       </small>
     </div>
 
-    <div :if={@show_backend_selection} class="form-group">
-      {label(f, :backend_id, "Backend (optional)")}
-      {select(f, :backend_id, [{"Default (BigQuery)", nil}] ++ Enum.map(@backends, fn backend -> {"#{backend.name} (#{backend.type})", backend.id} end),
-        class: "form-control",
-        "phx-update": "ignore"
-      )}
-      {error_tag(f, :backend_id)}
-      <small class="form-text text-muted">
-        Choose which backend to execute this endpoint query against. Defaults to BigQuery if no backend is selected. <br />
-        <strong>Query Language: <span id="query-language">{format_query_language(@determined_language)}</span></strong>
-      </small>
-    </div>
+    <QueryComponents.backend_select :if={@show_backend_selection} backends={@backends} form={f} label="Backend (optional)">
+      <:help>Choose which backend to execute this endpoint query against. Defaults to BigQuery if no backend is selected.</:help>
+    </QueryComponents.backend_select>
 
     <.header_with_anchor text="Query" />
     <section class="tw-flex tw-flex-col">

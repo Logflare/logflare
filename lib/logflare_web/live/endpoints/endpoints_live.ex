@@ -471,11 +471,6 @@ defmodule LogflareWeb.EndpointsLive do
     select timestamp, event_message from YourApp.SourceName
     """
 
-  defp format_query_language(:bq_sql), do: "BigQuery SQL"
-  defp format_query_language(:ch_sql), do: "ClickHouse SQL"
-  defp format_query_language(:pg_sql), do: "Postgres SQL"
-  defp format_query_language(language), do: language |> to_string() |> String.upcase()
-
   defp maybe_redact_query(query, redact_pii) when is_binary(query) do
     if redact_pii do
       PiiRedactor.redact_pii_from_value(query)
