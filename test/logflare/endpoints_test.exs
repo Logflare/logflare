@@ -490,7 +490,10 @@ defmodule Logflare.EndpointsTest do
       %{user: user, source: source}
     end
 
-    test "run_query/1 succeeds when backend is configured for source", %{user: user, source: source} do
+    test "run_query/1 succeeds when backend is configured for source", %{
+      user: user,
+      source: source
+    } do
       backend = insert(:backend, user: user, type: :clickhouse, sources: [source])
 
       endpoint =
@@ -508,7 +511,10 @@ defmodule Logflare.EndpointsTest do
       assert {:ok, %{rows: _}} = Endpoints.run_query(endpoint)
     end
 
-    test "run_query/1 fails when backend is not configured for source", %{user: user, source: source} do
+    test "run_query/1 fails when backend is not configured for source", %{
+      user: user,
+      source: source
+    } do
       backend = insert(:backend, user: user, type: :clickhouse, sources: [])
 
       endpoint =
@@ -539,7 +545,6 @@ defmodule Logflare.EndpointsTest do
 
       assert {:ok, %{rows: _}} = Endpoints.run_query(endpoint)
     end
-
   end
 
   describe "running queries in postgres backends" do
