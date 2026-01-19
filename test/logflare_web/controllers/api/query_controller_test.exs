@@ -1,6 +1,7 @@
 defmodule LogflareWeb.Api.QueryControllerTest do
   use LogflareWeb.ConnCase
 
+  alias Logflare.Backends.Adaptor.ClickHouseAdaptor
   alias Logflare.Backends.Adaptor.PostgresAdaptor
 
   setup do
@@ -124,6 +125,118 @@ defmodule LogflareWeb.Api.QueryControllerTest do
         |> json_response(200)
 
       assert %{"result" => [%{"my_time" => _}]} = response
+    end
+
+    test "?sql= with backend_id infers pg_sql language", %{
+      conn: conn,
+      user: user
+    } do
+      backend = Logflare.Backends.list_backends_by_user_id(user.id) |> hd()
+      query = ~S|select now() as "my_time"|
+
+      response =
+        conn
+        |> add_access_token(user, ~w(private))
+        |> get(~p"/api/query?#{[sql: query, backend_id: backend.id]}")
+        |> json_response(200)
+
+      assert %{"result" => [%{"my_time" => _}]} = response
+    end
+  end
+
+  describe "backend_id parameter" do
+    test "?sql= with backend_id uses backend's language", %{conn: conn, user: user} do
+      backend = insert(:backend, user: user, type: :clickhouse)
+
+      expect(ClickHouseAdaptor, :execute_query, fn _backend, query, _opts ->
+        assert {~S|SELECT now() AS "my_time"|, _, _, %{language: :ch_sql}} = query
+
+        {:ok, [%{"my_time" => "123"}]}
+      end)
+
+      query = ~S|select now() as "my_time"|
+
+      response =
+        conn
+        |> add_access_token(user, ~w(private))
+        |> get(~p"/api/query?#{[sql: query, backend_id: backend.id]}")
+        |> json_response(200)
+
+      assert %{"result" => [%{"my_time" => "123"}]} = response
+    end
+
+    test "?ch_sql= with backend_id", %{conn: conn, user: user} do
+      backend = insert(:backend, user: user, type: :clickhouse)
+
+      expect(ClickHouseAdaptor, :execute_query, fn _backend, query, _opts ->
+        assert {~S|SELECT now() AS "my_time"|, _, _, %{language: :ch_sql}} = query
+
+        {:ok, [%{"my_time" => "123"}]}
+      end)
+
+      query = ~S|select now() as "my_time"|
+
+      response =
+        conn
+        |> add_access_token(user, ~w(private))
+        |> get(~p"/api/query?#{[ch_sql: query, backend_id: backend.id]}")
+        |> json_response(200)
+
+      assert %{"result" => [%{"my_time" => "123"}]} = response
+    end
+
+    test "invalid backend_id returns error", %{conn: conn, user: user} do
+      query = ~S|select now() as "my_time"|
+
+      response =
+        conn
+        |> add_access_token(user, ~w(private))
+        |> get(~p"/api/query?#{[sql: query, backend_id: "invalid"]}")
+        |> json_response(400)
+
+      assert %{"error" => msg} = response
+      assert msg =~ "Invalid backend_id"
+    end
+
+    test "non-existent backend_id returns error", %{conn: conn, user: user} do
+      query = ~S|select now() as "my_time"|
+
+      response =
+        conn
+        |> add_access_token(user, ~w(private))
+        |> get(~p"/api/query?#{[sql: query, backend_id: 999_999]}")
+        |> json_response(400)
+
+      assert %{"error" => "Backend not found"} = response
+    end
+
+    test "backend belonging to another user returns error", %{conn: conn, user: user} do
+      other_user = insert(:user)
+      backend = insert(:backend, user: other_user, type: :clickhouse)
+
+      query = ~S|select now() as "my_time"|
+
+      response =
+        conn
+        |> add_access_token(user, ~w(private))
+        |> get(~p"/api/query?#{[sql: query, backend_id: backend.id]}")
+        |> json_response(400)
+
+      assert %{"error" => "Backend not found"} = response
+    end
+
+    test "backend that cannot be queried returns error", %{conn: conn, user: user} do
+      backend = insert(:backend, user: user, type: :webhook)
+
+      query = ~S|select now() as "my_time"|
+
+      response =
+        conn
+        |> add_access_token(user, ~w(private))
+        |> get(~p"/api/query?#{[sql: query, backend_id: backend.id]}")
+        |> json_response(400)
+
+      assert %{"error" => "Backend does not support querying"} = response
     end
   end
 end
