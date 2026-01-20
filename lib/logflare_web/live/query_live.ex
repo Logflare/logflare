@@ -171,7 +171,6 @@ defmodule LogflareWeb.QueryLive do
       |> assign(:endpoints, endpoints)
       |> assign(:alerts, alerts)
       |> assign_backends()
-      |> assign_form(%{})
 
     {:ok, socket}
   end
