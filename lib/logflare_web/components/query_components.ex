@@ -43,7 +43,7 @@ defmodule LogflareWeb.QueryComponents do
   defp format_query_language(nil, _backends), do: "BigQuery SQL"
 
   defp format_query_language(backend_id, backends) do
-    backend = Enum.find(backends, &(to_string(&1.id) == backend_id))
+    backend = Enum.find(backends, &(to_string(&1.id) == to_string(backend_id)))
     format_backend_language(backend)
   end
 
