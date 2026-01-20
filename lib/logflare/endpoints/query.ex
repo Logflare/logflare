@@ -163,7 +163,7 @@ defmodule Logflare.Endpoints.Query do
 
   def update_source_mapping(changeset), do: changeset
 
-  @spec map_backend_to_language(Backend.t(), supabase_mode :: boolean()) ::
+  @spec map_backend_to_language(Backend.t() | nil, supabase_mode :: boolean()) ::
           :bq_sql | :ch_sql | :pg_sql
   def map_backend_to_language(%Backend{type: :clickhouse}, _supabase_mode), do: :ch_sql
   def map_backend_to_language(%Backend{type: :postgres}, false), do: :pg_sql

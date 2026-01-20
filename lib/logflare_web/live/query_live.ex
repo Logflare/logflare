@@ -233,6 +233,7 @@ defmodule LogflareWeb.QueryLive do
     assign(socket, :form, form)
   end
 
+  @spec get_selected_backend(Phoenix.LiveView.Socket.t()) :: Backends.Backend.t() | nil
   defp get_selected_backend(socket) do
     backend_id = Phoenix.HTML.Form.input_value(socket.assigns.form, :backend_id)
 
@@ -380,11 +381,8 @@ defmodule LogflareWeb.QueryLive do
       {:ok, _} ->
         assign(socket, :parse_error_message, nil)
 
-      {:error, err} when is_binary(err) ->
-        assign(socket, :parse_error_message, err)
-
       {:error, err} ->
-        assign(socket, :parse_error_message, inspect(err))
+        assign(socket, :parse_error_message, err)
     end
   end
 end
