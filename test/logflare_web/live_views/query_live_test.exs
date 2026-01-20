@@ -2,6 +2,8 @@ defmodule LogflareWeb.QueryLiveTest do
   @moduledoc false
   use LogflareWeb.ConnCase
 
+  alias Logflare.Backends.Adaptor.ClickHouseAdaptor
+
   setup %{conn: conn} do
     insert(:plan)
     user = insert(:user)
@@ -187,6 +189,77 @@ defmodule LogflareWeb.QueryLiveTest do
 
       assert html =~ "can&#39;t find source nonexistent_source",
              "Expected error 'can't find source nonexistent_source' after running query. Got: #{String.slice(html, 0, 2000)}"
+    end
+  end
+
+  describe "backend selection" do
+    test "displays only queryable backends in dropdown", %{conn: conn, user: user} do
+      bq_backend = insert(:backend, user: user, type: :bigquery)
+      ch_backend = insert(:backend, user: user, type: :clickhouse)
+      webhook = insert(:backend, user: user, type: :webhook)
+
+      {:ok, view, _html} = live(conn, "/query")
+
+      html = render(view)
+
+      assert html =~ bq_backend.name
+      assert html =~ ch_backend.name
+
+      refute html =~ webhook.name
+
+      assert html =~ "Default (BigQuery)"
+    end
+
+    test "runs query against selected ClickHouse backend", %{conn: conn, user: user} do
+      backend = insert(:backend, user: user, type: :clickhouse)
+
+      expect(ClickHouseAdaptor, :execute_query, fn _backend, _query, _opts ->
+        {:ok, [%{"ts" => "ch-data"}]}
+      end)
+
+      {:ok, view, _html} = live(conn, "/query")
+
+      view
+      |> element("form#query-form")
+      |> render_change(%{backend: %{backend_id: backend.id}})
+
+      view |> render_hook("parse-query", %{value: "SELECT now() as ts"})
+
+      html =
+        view
+        |> element("form#query-form")
+        |> render_submit(%{backend: %{backend_id: backend.id}})
+
+      assert_patch(view) =~ "backend_id=#{backend.id}"
+
+      assert html =~ "Ran query successfully"
+      assert render(view) =~ "ch-data"
+    end
+
+    test "backend selectd by URL param", %{conn: conn, user: user} do
+      backend = insert(:backend, user: user, type: :clickhouse)
+
+      {:ok, view, _html} = live(conn, "/query?backend_id=#{backend.id}")
+      html = render(view)
+
+      assert html =~ ~s(selected="selected" value="#{backend.id}")
+      assert html =~ backend.name
+    end
+
+    test "defaults to BigQuery when no backend selected", %{conn: conn} do
+      GoogleApi.BigQuery.V2.Api.Jobs
+      |> expect(:bigquery_jobs_query, 1, fn _conn, _proj_id, _opts ->
+        {:ok, TestUtils.gen_bq_response([%{"ts" => "bq-data"}])}
+      end)
+
+      {:ok, view, _html} = live(conn, "/query")
+
+      view |> render_hook("parse-query", %{value: "SELECT current_timestamp() as ts"})
+
+      html = view |> element("form#query-form") |> render_submit(%{})
+
+      assert html =~ "Ran query successfully"
+      assert render(view) =~ "bq-data"
     end
   end
 end
