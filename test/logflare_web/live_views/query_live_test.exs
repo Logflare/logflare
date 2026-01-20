@@ -246,6 +246,18 @@ defmodule LogflareWeb.QueryLiveTest do
       assert html =~ backend.name
     end
 
+    test "shows selected backend language in label when backend_id is set", %{
+      conn: conn,
+      user: user
+    } do
+      backend = insert(:backend, user: user, type: :clickhouse)
+
+      {:ok, view, _html} = live(conn, "/query?backend_id=#{backend.id}")
+      html = render(view)
+
+      assert html =~ "Query Language: <span id=\"query-language\">ClickHouse SQL</span>"
+    end
+
     test "defaults to BigQuery when no backend selected", %{conn: conn} do
       GoogleApi.BigQuery.V2.Api.Jobs
       |> expect(:bigquery_jobs_query, 1, fn _conn, _proj_id, _opts ->
