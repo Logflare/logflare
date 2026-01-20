@@ -4,7 +4,6 @@ defmodule LogflareWeb.BillingAccountLive.ChartComponent do
   """
 
   use LogflareWeb, :live_component
-  use Phoenix.HTML
 
   alias Contex.{Plot, Dataset, BarChart}
   alias Logflare.Billing.BillingCounts
