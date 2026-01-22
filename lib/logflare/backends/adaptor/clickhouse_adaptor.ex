@@ -315,16 +315,16 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
     cond do
       # Scale up if startup queue has events (pipeline not yet ready)
       startup_size > 0 ->
-        state.pipeline_count + ceil(startup_size / @scaling_threshold)
+        state.pipeline_count + 1
 
       # Scale up if any queue exceeds threshold
       any_above_threshold? and len > 0 ->
-        state.pipeline_count + ceil(len / @scaling_threshold)
+        state.pipeline_count + 1
 
-      # Gradual decrease when queues are low
+      # Faster decrease when queues are low
       Enum.all?(lens_no_startup_values, &(&1 < div(@scaling_threshold, 10))) and
         len < @scaling_threshold and state.pipeline_count > 1 and
-          (sec_since_last_decr > 60 or state.last_count_decrease == nil) ->
+          (sec_since_last_decr > 30 or state.last_count_decrease == nil) ->
         state.pipeline_count - 1
 
       true ->
