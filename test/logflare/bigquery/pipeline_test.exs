@@ -81,6 +81,68 @@ defmodule Logflare.BigQuery.PipelineTest do
     end
   end
 
+  describe "le_to_bq_row/1 OpenTelemetry timestamp conversion" do
+    setup do
+      insert(:plan)
+      user = insert(:user)
+      source = insert(:source, user_id: user.id)
+      {:ok, source: source}
+    end
+
+    @start_ns System.system_time(:nanosecond)
+    @end_ns System.system_time(:nanosecond) + 1_000_000
+
+    defp make_le(source, attrs) do
+      build(:log_event, [source: source, message: "test"] ++ attrs)
+    end
+
+    defp bq_json(le), do: Pipeline.le_to_bq_row(le).json
+
+    test "converts OTel timestamps from nanoseconds to microseconds", %{source: source} do
+      json =
+        make_le(source,
+          resource: %{"service.name" => "svc"},
+          scope: %{"name" => "scope"},
+          start_time: @start_ns,
+          end_time: @end_ns
+        )
+        |> bq_json()
+
+      assert %DateTime{} = json["end_time"]
+      assert %DateTime{} = json["start_time"]
+    end
+
+    test "converts only start_time when end_time is missing", %{source: source} do
+      json =
+        make_le(source,
+          resource: %{"service.name" => "svc"},
+          scope: %{"name" => "scope"},
+          start_time: @start_ns
+        )
+        |> bq_json()
+
+      assert is_nil(json["end_time"])
+      assert %DateTime{} = json["start_time"]
+    end
+
+    test "does not convert timestamps without both resource and scope", %{source: source} do
+      for attrs <- [
+            [
+              scope: %{"name" => "scope"}
+            ],
+            [
+              resource: %{"service.name" => "svc"}
+            ]
+          ],
+          attrs = attrs ++ [start_time: @start_ns, end_time: @end_ns] do
+        json = make_le(source, attrs) |> bq_json()
+        # should not be converted to microseconds
+        refute match?(%DateTime{}, json["start_time"])
+        refute match?(%DateTime{}, json["end_time"])
+      end
+    end
+  end
+
   describe "bq_batch_size_splitter/2" do
     property "fallback inspect_payload/1 usage always overstates json encoded length" do
       check all payload <-

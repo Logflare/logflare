@@ -52,7 +52,7 @@ defmodule Logflare.Logs.OtelLog do
       "severity_text" => log_record.severity_text,
       "trace_id" => Base.encode16(log_record.trace_id, case: :lower),
       "span_id" => Base.encode16(log_record.span_id, case: :lower),
-      "timestamp" => Otel.nano_to_iso8601(log_record.time_unix_nano)
+      "timestamp" => log_record.time_unix_nano
     })
   end
 
