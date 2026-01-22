@@ -2,10 +2,15 @@ import Config
 
 alias Logflare.Utils
 
-if config_env() == :test do
-  active? = fn key ->
-    System.get_env(key, "false") in ["true", "1"]
-  end
+active? = fn key ->
+  System.get_env(key, "false") in ["true", "1"]
+end
+
+if config_env() == :test and active?.("E2E") do
+  # This configuration file is loaded only for the
+  # end-to-end test environment and is executed
+  # at runtime.
+  config :logflare, LogflareWeb.Endpoint, server: true
 
   config :phoenix_test,
     playwright: [
