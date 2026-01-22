@@ -181,6 +181,14 @@ defmodule Logflare.ContextCache.CacheBuster do
   end
 
   defp handle_record(%NewRecord{
+         relation: {_schema, "saved_searches"},
+         record: %{"source_id" => source_id}
+       })
+       when is_binary(source_id) do
+    {SavedSearches, [source_id: String.to_integer(source_id)]}
+  end
+
+  defp handle_record(%NewRecord{
          relation: {_schema, "source_schemas"},
          record: %{"id" => _id}
        }) do

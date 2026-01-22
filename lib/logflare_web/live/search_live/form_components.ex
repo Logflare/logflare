@@ -191,7 +191,7 @@ defmodule LogflareWeb.SearchLive.FormComponents do
     ~H"""
     <div class="pr-2 pt-1 pb-1">
       <a href="#" phx-click="save_search" class="btn btn-primary">
-        <i class="fas fa-save"></i>
+        <i class="fas fa-bookmark"></i>
         <span class="fas-in-button hide-on-mobile">Save</span>
       </a>
     </div>

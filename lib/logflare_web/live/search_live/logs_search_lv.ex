@@ -129,7 +129,6 @@ defmodule LogflareWeb.Source.SearchLV do
   defp maybe_preload_source_for_lv(source) do
     source
     |> Sources.preload_defaults()
-    |> Sources.preload_saved_searches()
     |> Sources.put_bq_table_id()
     |> Sources.put_bq_dataset_id()
   end
@@ -226,6 +225,7 @@ defmodule LogflareWeb.Source.SearchLV do
         search_op_log_aggregates: @search_op_log_aggregates,
         search_op_error: @search_op_error,
         team_user: @team_user,
+        team: @team,
         close: @modal.body[:close],
         return_to: @modal.body.return_to
       )}
@@ -234,7 +234,7 @@ defmodule LogflareWeb.Source.SearchLV do
       <:path>
         ~/logs/<.team_link team={@team} href={~p"/sources/#{@source}"} class="text-primary">{@source.name}</.team_link>/search
       </:path>
-      <SubheadComponents.subhead_actions user={@user} search_timezone={@search_timezone} search_op_error={@search_op_error} search_op_log_events={@search_op_log_events} search_op_log_aggregates={@search_op_log_aggregates} />
+      <SubheadComponents.subhead_actions user={@user} source={@source} search_timezone={@search_timezone} search_op_error={@search_op_error} search_op_log_events={@search_op_log_events} search_op_log_aggregates={@search_op_log_aggregates} />
     </.subheader>
     <div class="container source-logs-search-container console-text">
       <div id="logs-list-container">
@@ -487,7 +487,7 @@ defmodule LogflareWeb.Source.SearchLV do
 
     %Billing.Plan{limit_saved_search_limit: limit} = Billing.get_plan_by_user(user)
 
-    if Enum.count(source.saved_searches) < limit do
+    if SavedSearches.list_saved_searches_by_source(source.id) |> Enum.count() < limit do
       case SavedSearches.save_by_user(qs, lql_rules, source, tailing?) do
         {:ok, _saved_search} ->
           socket =
@@ -676,6 +676,10 @@ defmodule LogflareWeb.Source.SearchLV do
     end
 
     {:noreply, socket}
+  end
+
+  def handle_info({:set_flash, {type, message}}, socket) do
+    {:noreply, put_flash(socket, type, message)}
   end
 
   defp assign_new_search_with_qs(socket, params, bq_table_schema) do
