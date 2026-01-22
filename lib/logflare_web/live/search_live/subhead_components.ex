@@ -11,6 +11,7 @@ defmodule LogflareWeb.SearchLive.SubheadComponents do
   alias Logflare.DateTimeUtils
 
   attr :user, Logflare.User, required: true
+  attr :source, Logflare.Sources.Source, required: true
   attr :search_timezone, :string, required: true
   attr :search_op_error, :any, default: nil
   attr :search_op_log_events, :any, default: nil
@@ -26,6 +27,11 @@ defmodule LogflareWeb.SearchLive.SubheadComponents do
             <span id="scroll-down"><i class="fas fa-chevron-circle-down"></i></span>
             <span class="hide-on-mobile">scroll down</span>
           </a>
+        </li>
+        <li>
+          <.modal_link component={LogflareWeb.SearchLive.SavedSearchesModalComponent} modal_id={:saved_searches_link} title="Saved Searches" phx-value-source-id={@source.id}>
+            <i class="fas fa-bookmark"></i><span class="hide-on-mobile tw-pl-1">saved</span>
+          </.modal_link>
         </li>
         <li>
           <.lql_help_modal_link />

@@ -16,11 +16,27 @@ defmodule LogflareWeb.DashboardLiveTest do
   end
 
   describe "Dashboard Live" do
+    setup {TestUtils, :attach_wait_for_render}
+
     test "renders dashboard", %{conn: conn, source: source} do
       {:ok, view, html} = live(conn, "/dashboard")
 
       assert view |> has_element?("h5", "~/logs")
       assert html =~ source.name
+    end
+
+    test "sources have a saved searches modal", %{conn: conn, source: source} do
+      {:ok, view, _html} = live(conn, "/dashboard")
+
+      refute view |> has_element?("#saved-searches-modal")
+
+      view
+      |> element("#source-#{source.token} a[phx-click='show_live_modal']")
+      |> render_click()
+
+      Logflare.TestUtils.wait_for_render(view, "#saved-searches-modal")
+
+      assert view |> has_element?(".modal-title", "Saved Searches")
     end
   end
 
@@ -77,41 +93,6 @@ defmodule LogflareWeb.DashboardLiveTest do
       updated_source = favorited_source |> Repo.reload()
       refute updated_source.favorite
       assert view |> has_element?(".favorite .far")
-    end
-  end
-
-  describe "saved searches" do
-    setup %{source: source} do
-      [saved_search: insert(:saved_search, source: source)]
-    end
-
-    test "render saved searches", %{conn: conn, saved_search: saved_search} do
-      {:ok, _view, html} = live(conn, "/dashboard")
-
-      assert html =~ "Saved Searches"
-      assert html =~ saved_search.querystring
-    end
-
-    test "delete saved search ", %{conn: conn, saved_search: saved_search} do
-      {:ok, view, html} = live(conn, "/dashboard")
-
-      assert html =~ saved_search.querystring
-
-      view
-      |> element("[phx-click='delete_saved_search'][phx-value-id='#{saved_search.id}']")
-      |> render_click()
-
-      Cachex.clear(Logflare.SavedSearches.Cache)
-
-      {:ok, _view, html} = live(conn, "/dashboard")
-      refute html =~ saved_search.querystring
-    end
-
-    test "shows error when deleting non-existent saved search", %{conn: conn} do
-      {:ok, view, _html} = live(conn, "/dashboard")
-
-      assert render_hook(view, "delete_saved_search", %{"id" => "999999"}) =~
-               "Saved search not found"
     end
   end
 
@@ -314,7 +295,6 @@ defmodule LogflareWeb.DashboardLiveTest do
       for path <- [
             "sources/#{source.id}",
             "sources/#{source.id}/edit",
-            "sources/#{source.id}/search",
             "billing/edit",
             "account"
           ] do
