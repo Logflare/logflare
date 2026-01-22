@@ -6,7 +6,6 @@ defmodule LogflareWeb.PaginationComponents do
 
   ## Examples
 
-      <.pagination_links page={@sources} path={~p"/admin/sources"} params={[sort_by: "recent"]} />
       <.pagination_links page={@accounts} path={~p"/admin/accounts"} distance={3} />
   """
   attr :page, :map, required: true, doc: "%Scrivener.Page{} struct with pagination info"
