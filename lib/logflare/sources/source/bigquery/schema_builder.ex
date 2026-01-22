@@ -126,7 +126,7 @@ defmodule Logflare.Sources.Source.BigQuery.SchemaBuilder do
 
   def build_table_schema(params, %{fields: old_fields}) do
     protected_keys = Enum.map(initial_table_schema().fields, & &1.name)
-    is_otel = is_otel_data?(params)
+    is_otel = otel_data?(params)
 
     new_fields =
       for param_key <- Map.keys(params),
@@ -237,7 +237,7 @@ defmodule Logflare.Sources.Source.BigQuery.SchemaBuilder do
     end
   end
 
-  defp is_otel_data?(params) do
+  defp otel_data?(params) do
     Map.has_key?(params, "resource") and Map.has_key?(params, "scope")
   end
 

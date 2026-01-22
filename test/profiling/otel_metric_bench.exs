@@ -237,8 +237,6 @@ end
 mixed_5m_1kdp = OtelMetricBenchBuilder.build_mixed_resource_metrics(5, 1000)
 sum_5m_1kdp = OtelMetricBenchBuilder.build_resource_metrics(5, 1000, :sum)
 
-IO.puts("\n=== Benchmark: handle_batch/2 - Metric types comparison ===\n")
-
 Benchee.run(
   %{
     "handle_batch" => fn resource_metrics ->
