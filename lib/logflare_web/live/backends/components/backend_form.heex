@@ -408,6 +408,13 @@
             {label(f_config, :client_key, "Client Key (PEM)")}
             {textarea(f_config, :client_key, class: "form-control")}
           </div>
+          <div class="form-group">
+            {label(f_config, :structured_data, "Structured Data (RFC5424)")}
+            {textarea(f_config, :structured_data, class: "form-control", placeholder: "[logtail@11993 source_token=\"SOURCE_TOKEN\"]")}
+            <small class="form-text text-muted">
+              Optional Structured Data element. Must match RFC5424 format, e.g. <code>[SD-ID key="value"]</code>
+            </small>
+          </div>
         <% _ -> %>
           <div>Select a Backend Type</div>
       <% end %>

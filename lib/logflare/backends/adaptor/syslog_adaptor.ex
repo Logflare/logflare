@@ -6,6 +6,8 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor do
   use Supervisor
   use TypedStruct
   import Ecto.Changeset
+  import NimbleParsec
+  import Logflare.Logs.SyslogParser.Helpers
   alias Logflare.Backends.Adaptor.SyslogAdaptor.{Pool, Pipeline}
   @behaviour Logflare.Backends.Adaptor
 
@@ -17,6 +19,7 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor do
     field(:ca_cert, String.t())
     field(:client_cert, String.t())
     field(:client_key, String.t())
+    field(:structured_data, String.t())
   end
 
   @impl Logflare.Backends.Adaptor
@@ -51,9 +54,19 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor do
        cipher_key: :string,
        ca_cert: :string,
        client_cert: :string,
-       client_key: :string
+       client_key: :string,
+       structured_data: :string
      }}
-    |> cast(params, [:tls, :host, :port, :cipher_key, :ca_cert, :client_cert, :client_key])
+    |> cast(params, [
+      :tls,
+      :host,
+      :port,
+      :cipher_key,
+      :ca_cert,
+      :client_cert,
+      :client_key,
+      :structured_data
+    ])
   end
 
   @impl Logflare.Backends.Adaptor
@@ -65,6 +78,7 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor do
     |> validate_certificate(:ca_cert)
     |> validate_certificate(:client_cert)
     |> validate_private_key(:client_key)
+    |> validate_structured_data()
   end
 
   @impl Logflare.Backends.Adaptor
@@ -133,6 +147,23 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor do
 
         [] ->
           [{field, "must be a valid PEM encoded string"}]
+      end
+    end)
+  end
+
+  defparsecp(:parse_structured_data, sd_element())
+
+  defp validate_structured_data(changeset) do
+    validate_change(changeset, :structured_data, fn :structured_data, value ->
+      case parse_structured_data(value) do
+        {:ok, _tokens, "", _, _, _} ->
+          []
+
+        {:ok, _tokens, _extra, _, _, _} ->
+          [structured_data: "invalid format"]
+
+        {:error, _, _, _, _, _} ->
+          [structured_data: "invalid format"]
       end
     end)
   end

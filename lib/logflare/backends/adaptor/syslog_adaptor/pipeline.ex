@@ -42,11 +42,11 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.Pipeline do
   @impl Broadway
   def handle_batch(:syslog, messages, _batch_info, context) do
     %{pool: pool, backend_id: backend_id} = context
-    cipher_key = lookup_cipher_key(backend_id)
+    config = lookup_backend_config(backend_id)
 
     content =
       for %Broadway.Message{data: log_event} <- messages do
-        Syslog.format(log_event, cipher_key)
+        Syslog.format(log_event, config)
       end
 
     case Pool.send(pool, content) do
@@ -75,12 +75,14 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.Pipeline do
     %Message{data: event, acknowledger: {__MODULE__, _ref = nil, _meta = []}}
   end
 
-  defp lookup_cipher_key(backend_id) do
-    backend =
+  defp lookup_backend_config(backend_id) do
+    %{config: config} =
       Logflare.Backends.Cache.get_backend(backend_id) || raise "missing backend #{backend_id}"
 
-    if cipher_key = backend.config[:cipher_key] do
-      Base.decode64!(cipher_key)
+    if cipher_key = config[:cipher_key] do
+      Map.put(config, :cipher_key, Base.decode64!(cipher_key))
+    else
+      config
     end
   end
 end

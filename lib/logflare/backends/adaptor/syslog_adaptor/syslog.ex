@@ -30,7 +30,9 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.Syslog do
 
   @default_level Map.fetch!(@levels, "info")
 
-  def format(log_event, cipher_key \\ nil) do
+  def format(log_event, config) do
+    cipher_key = config[:cipher_key]
+    structured_data = config[:structured_data]
     %LogEvent{id: id, body: body} = log_event
 
     timestamp =
@@ -64,6 +66,8 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.Syslog do
     msg = Jason.encode_to_iodata!(body)
     msg = if cipher_key, do: encrypt(msg, cipher_key), else: msg
 
+    structured_data = if structured_data, do: structured_data, else: @empty
+
     # https://datatracker.ietf.org/doc/html/rfc5424#section-6
     pri = 16 * 8 + severity_code(level)
 
@@ -90,8 +94,8 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.Syslog do
       format_header_value(msgid, 32),
       # SP
       ?\s,
-      # STRUCTURED-DATA (empty for now)
-      @empty,
+      # STRUCTURED-DATA
+      structured_data,
       # SP
       ?\s
       # MSG

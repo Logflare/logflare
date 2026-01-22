@@ -116,27 +116,6 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptorTest do
     assert %{"event_message" => "hello world over tls"} = Jason.decode!(telegraf_event_message)
   end
 
-  test "validates PEM configuration" do
-    config = %{
-      tls: true,
-      ca_cert: "invalid-pem",
-      client_cert: "invalid-pem",
-      client_key: "invalid-pem"
-    }
-
-    assert %Ecto.Changeset{valid?: false} =
-             changeset =
-             config
-             |> Logflare.Backends.Adaptor.SyslogAdaptor.cast_config()
-             |> Logflare.Backends.Adaptor.SyslogAdaptor.validate_config()
-
-    assert %{
-             ca_cert: ["must be a valid PEM encoded string"],
-             client_cert: ["must be a valid PEM encoded string"],
-             client_key: ["must be a valid PEM encoded string"]
-           } = errors_on(changeset)
-  end
-
   test "can send encrypted message" do
     key = :crypto.strong_rand_bytes(32)
 
@@ -152,6 +131,21 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptorTest do
       :crypto.crypto_one_time_aead(:aes_256_gcm, key, iv, ciphertext, "syslog", tag, false)
 
     assert %{"event_message" => "hello cipher"} = Jason.decode!(plaintext)
+  end
+
+  test "formats message with structured data" do
+    {source, _backend} =
+      start_syslog(%{
+        host: "localhost",
+        port: 6514,
+        structured_data: "[logtail@11993 source_token=\"123\"]"
+      })
+
+    assert [%{"fields" => %{"logtail@11993_source_token" => "123"}}] =
+             ingest_syslog(
+               [build(:log_event, message: "hello world over tls")],
+               source
+             )
   end
 
   test "handles backend config change" do
@@ -265,5 +259,73 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptorTest do
         Collected #{length(telegraf_logs)} logs: #{inspect(telegraf_logs)}
         """
     end
+  end
+
+  describe "config validation" do
+    test "rejects invalid structured data" do
+      bad_examples = [
+        "invalid",
+        # Example 3 from https://datatracker.ietf.org/doc/html/rfc5424#section-6.3.5
+        "[exampleSDID@32473 iut=\"3\" eventSource=\"Application\" eventID=\"1011\"] [examplePriority@32473 class=\"high\"]",
+        # Example 4 from https://datatracker.ietf.org/doc/html/rfc5424#section-6.3.5
+        "[ exampleSDID@32473 iut=\"3\" eventSource=\"Application\" eventID=\"1011\"][examplePriority@32473 class=\"high\"]"
+      ]
+
+      for structured_data <- bad_examples do
+        changeset =
+          syslog_changeset(%{
+            host: "localhost",
+            port: 6514,
+            structured_data: structured_data
+          })
+
+        refute changeset.valid?
+        assert %{structured_data: ["invalid format"]} = errors_on(changeset)
+      end
+    end
+
+    test "allows valid structured data" do
+      rfc_examples = [
+        # Example 1 https://datatracker.ietf.org/doc/html/rfc5424#section-6.3.5
+        "[exampleSDID@32473 iut=\"3\" eventSource=\"Application\" eventID=\"1011\"]",
+        # Example 2 https://datatracker.ietf.org/doc/html/rfc5424#section-6.3.5
+        "[exampleSDID@32473 iut=\"3\" eventSource=\"Application\" eventID=\"1011\"][examplePriority@32473 class=\"high\"]"
+      ]
+
+      for structured_data <- rfc_examples do
+        changeset =
+          syslog_changeset(%{
+            host: "localhost",
+            port: 6514,
+            structured_data: structured_data
+          })
+
+        assert changeset.valid?
+      end
+    end
+
+    test "rejects invalid PEM configuration" do
+      changeset =
+        syslog_changeset(%{
+          tls: true,
+          ca_cert: "invalid-pem",
+          client_cert: "invalid-pem",
+          client_key: "invalid-pem"
+        })
+
+      refute changeset.valid?
+
+      assert %{
+               ca_cert: ["must be a valid PEM encoded string"],
+               client_cert: ["must be a valid PEM encoded string"],
+               client_key: ["must be a valid PEM encoded string"]
+             } = errors_on(changeset)
+    end
+  end
+
+  defp syslog_changeset(backend_config) do
+    backend_config
+    |> Logflare.Backends.Adaptor.SyslogAdaptor.cast_config()
+    |> Logflare.Backends.Adaptor.SyslogAdaptor.validate_config()
   end
 end
