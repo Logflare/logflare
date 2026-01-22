@@ -482,7 +482,7 @@ defmodule Logflare.TestUtils do
         {_, view, _} = live(~p"/live")
 
         view
-        |> TestUtils.wait_for_render(~p"div#complete")
+        |> TestUtils.wait_for_render("div#complete")
 
         # your assertions here
       end

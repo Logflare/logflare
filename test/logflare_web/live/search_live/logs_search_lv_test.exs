@@ -416,6 +416,40 @@ defmodule LogflareWeb.Source.SearchLVTest do
       assert html =~ formatted_sql
     end
 
+    test "subheader - saved searches", %{conn: conn, source: source} do
+      {:ok, view, _html} = live(conn, ~p"/sources/#{source.id}/search")
+      %{executor_pid: search_executor_pid} = get_view_assigns(view)
+      Ecto.Adapters.SQL.Sandbox.allow(Logflare.Repo, self(), search_executor_pid)
+
+      assert view
+             |> element(".subhead a", "saved")
+             |> render_click()
+
+      view
+      |> TestUtils.wait_for_render("#logflare-modal")
+
+      assert view
+             |> has_element?("#logflare-modal #saved-searches-empty")
+
+      saved_search = insert(:saved_search, %{source: source})
+
+      _ = Logflare.SavedSearches.Cache.bust_by(source_id: saved_search.source_id)
+      {:ok, view, _html} = live(conn, ~p"/sources/#{source.id}/search")
+
+      assert view
+             |> element(".subhead a", "saved")
+             |> render_click()
+
+      view
+      |> TestUtils.wait_for_render("#logflare-modal")
+
+      view
+      |> TestUtils.wait_for_render("#logflare-modal #saved-searches-list")
+
+      assert view
+             |> has_element?("#logflare-modal #saved-searches-list", saved_search.querystring)
+    end
+
     test "load page", %{conn: conn, source: source} do
       {:ok, view, html} = live(conn, Routes.live_path(conn, SearchLV, source.id))
       %{executor_pid: search_executor_pid} = get_view_assigns(view)

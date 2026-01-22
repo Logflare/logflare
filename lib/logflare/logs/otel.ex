@@ -11,21 +11,14 @@ defmodule Logflare.Logs.Otel do
   @doc """
   Converts a Resource struct into a map
 
-  Keys with dot notation are converted into nested maps.
-
   ### Examples
 
       iex> handle_resource(%Resource{attributes: [%KeyValue{key: "service.name", value: "foo"}]})
-      %{"service" => %{"name" => "foo"}}
+      %{"service.name" => "foo"}
   """
   @spec handle_resource(Resource.t()) :: map()
   def handle_resource(%{attributes: attributes}) do
-    Enum.reduce(attributes, %{}, fn attribute, acc ->
-      {k, v} = extract_key_value(attribute)
-      k = String.split(k, ".") |> Enum.reverse()
-      map = Enum.reduce(k, v, fn key, acc -> %{key => acc} end)
-      DeepMerge.deep_merge(map, acc)
-    end)
+    Map.new(attributes, &extract_key_value/1)
   end
 
   def handle_resource(resource) when is_map(resource), do: %{}
@@ -99,16 +92,4 @@ defmodule Logflare.Logs.Otel do
   def handle_attributes(attributes) do
     Map.new(attributes, &extract_key_value/1)
   end
-
-  @doc """
-  Transforms a nanoseconds from unix timestamp into an iso8601 string
-  """
-  @spec nano_to_iso8601(integer()) :: String.t()
-  def nano_to_iso8601(time_nano) do
-    time_nano
-    |> DateTime.from_unix!(:nanosecond)
-    |> DateTime.to_iso8601()
-  end
-
-  # TODO: Maybe move helpers here
 end

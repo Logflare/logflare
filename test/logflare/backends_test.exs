@@ -21,6 +21,7 @@ defmodule Logflare.BackendsTest do
   alias Logflare.Sources.Source
   alias Logflare.Sources.Source.BigQuery.Pipeline
   alias Logflare.SystemMetrics.AllLogsLogged
+  alias Logflare.TestSupport.FakeConsolidatedAdaptor
   alias Logflare.User
 
   setup do
@@ -62,6 +63,83 @@ defmodule Logflare.BackendsTest do
     test "returns false for s3 backend" do
       backend = %Backend{type: :s3}
       refute Adaptor.consolidated_ingest?(backend)
+    end
+  end
+
+  describe "consolidated pipeline hooks" do
+    setup do
+      insert(:plan, name: "Free")
+      user = insert(:user)
+
+      [user: user]
+    end
+
+    test "create_backend/1 starts consolidated pipeline when adaptor supports it", %{user: user} do
+      stub(Adaptor, :get_adaptor, fn _backend -> FakeConsolidatedAdaptor end)
+      stub(Adaptor, :consolidated_ingest?, fn _backend -> true end)
+
+      attrs = %{
+        type: :webhook,
+        user_id: user.id,
+        name: "Test Consolidated",
+        config: %{url: "https://example.com"}
+      }
+
+      assert {:ok, backend} = Backends.create_backend(attrs)
+      assert Backends.ConsolidatedSup.pipeline_running?(backend)
+
+      Backends.ConsolidatedSup.stop_pipeline(backend)
+    end
+
+    test "create_backend/1 does not start pipeline for non-consolidated backend", %{user: user} do
+      attrs = %{
+        type: :webhook,
+        user_id: user.id,
+        name: "Test Webhook",
+        config: %{url: "https://example.com"}
+      }
+
+      assert {:ok, backend} = Backends.create_backend(attrs)
+
+      refute Backends.ConsolidatedSup.pipeline_running?(backend)
+    end
+
+    test "delete_backend/1 stops consolidated pipeline", %{user: user} do
+      stub(Adaptor, :get_adaptor, fn _backend -> FakeConsolidatedAdaptor end)
+      stub(Adaptor, :consolidated_ingest?, fn _backend -> true end)
+
+      attrs = %{
+        type: :webhook,
+        user_id: user.id,
+        name: "Test Consolidated",
+        config: %{url: "https://example.com"}
+      }
+
+      assert {:ok, backend} = Backends.create_backend(attrs)
+      assert Backends.ConsolidatedSup.pipeline_running?(backend)
+
+      assert {:ok, _} = Backends.delete_backend(backend)
+      refute Backends.ConsolidatedSup.pipeline_running?(backend.id)
+    end
+
+    test "update_backend/2 keeps consolidated pipeline running", %{user: user} do
+      stub(Adaptor, :get_adaptor, fn _backend -> FakeConsolidatedAdaptor end)
+      stub(Adaptor, :consolidated_ingest?, fn _backend -> true end)
+
+      attrs = %{
+        type: :webhook,
+        user_id: user.id,
+        name: "Test Consolidated",
+        config: %{url: "https://example.com"}
+      }
+
+      assert {:ok, backend} = Backends.create_backend(attrs)
+      assert Backends.ConsolidatedSup.pipeline_running?(backend)
+
+      assert {:ok, updated} = Backends.update_backend(backend, %{name: "Updated Name"})
+      assert Backends.ConsolidatedSup.pipeline_running?(updated)
+
+      Backends.ConsolidatedSup.stop_pipeline(updated)
     end
   end
 
@@ -502,6 +580,70 @@ defmodule Logflare.BackendsTest do
         assert SourceSup.rule_child_started?(rule)
       end)
     end
+
+    test "SourceSup filters out consolidated backends", %{source: source, user: user} do
+      consolidated_backend =
+        insert(:backend,
+          type: :webhook,
+          config: %{url: "https://consolidated.example.com"},
+          user: user,
+          sources: [source]
+        )
+
+      non_consolidated_backend =
+        insert(:backend,
+          type: :webhook,
+          config: %{url: "https://non-consolidated.example.com"},
+          user: user,
+          sources: [source]
+        )
+
+      Mimic.stub(Logflare.Backends.Adaptor, :consolidated_ingest?, fn
+        %{id: id} when id == consolidated_backend.id -> true
+        _ -> false
+      end)
+
+      Backends.clear_list_backends_cache(source.id)
+
+      start_supervised!({SourceSup, source})
+      :timer.sleep(500)
+
+      via = Backends.via_source(source, SourceSup)
+
+      children =
+        Supervisor.which_children(via)
+        |> Enum.filter(fn
+          {{_mod, _source_id, bid}, _pid, _type, _sup} when is_integer(bid) -> true
+          _ -> false
+        end)
+
+      child_backend_ids = Enum.map(children, fn {{_mod, _sid, bid}, _, _, _} -> bid end)
+
+      assert non_consolidated_backend.id in child_backend_ids
+      refute consolidated_backend.id in child_backend_ids
+    end
+
+    test "start_backend_child skips consolidated backends", %{source: source, user: user} do
+      backend =
+        insert(:backend,
+          type: :webhook,
+          config: %{url: "https://example.com"},
+          user: user
+        )
+
+      Mimic.stub(Logflare.Backends.Adaptor, :consolidated_ingest?, fn
+        %{id: id} when id == backend.id -> true
+        _ -> false
+      end)
+
+      backend = Backends.get_backend(backend.id)
+      assert backend.consolidated_ingest? == true
+
+      start_supervised!({SourceSup, source})
+      :timer.sleep(500)
+
+      assert :noop = SourceSup.start_backend_child(source, backend)
+    end
   end
 
   describe "ingestion" do
@@ -701,6 +843,85 @@ defmodule Logflare.BackendsTest do
       Backends.IngestEventQueue.add_to_table(consolidated_key, events)
 
       assert [] = Backends.list_recent_logs_local(source, backend)
+    end
+
+    test "dispatch_to_backends routes consolidated backend to {:consolidated, backend_id} key", %{
+      user: user
+    } do
+      source = insert(:source, user: user)
+
+      backend =
+        insert(:backend, type: :webhook, config: %{url: "https://example.com"}, user: user)
+
+      Mimic.stub(Logflare.Backends.Adaptor, :consolidated_ingest?, fn
+        %{id: id} when id == backend.id -> true
+        _ -> false
+      end)
+
+      backend = Backends.get_backend(backend.id)
+      assert backend.consolidated_ingest? == true
+
+      IngestEventQueue.upsert_tid({:consolidated, backend.id, nil})
+
+      events = [build(:log_event, source: source, message: "consolidated test")]
+      assert {:ok, 1} = Backends.ingest_logs(events, source, backend)
+
+      {:ok, queued_events} = IngestEventQueue.fetch_events({:consolidated, backend.id}, 10)
+      assert length(queued_events) == 1
+      assert hd(queued_events).body["event_message"] == "consolidated test"
+    end
+
+    test "dispatch_to_backends routes non-consolidated backend to {source_id, backend_id} key", %{
+      user: user
+    } do
+      source = insert(:source, user: user)
+
+      backend =
+        insert(:backend, type: :webhook, config: %{url: "https://example.com"}, user: user)
+
+      backend = Backends.get_backend(backend.id)
+      assert backend.consolidated_ingest? == false
+
+      IngestEventQueue.upsert_tid({source.id, backend.id, nil})
+
+      events = [build(:log_event, source: source, message: "standard test")]
+      assert {:ok, 1} = Backends.ingest_logs(events, source, backend)
+
+      {:ok, queued_events} = IngestEventQueue.fetch_events({source.id, backend.id}, 10)
+      assert length(queued_events) == 1
+      assert hd(queued_events).body["event_message"] == "standard test"
+    end
+
+    test "dispatch_to_backends with nil backend routes consolidated to {:consolidated, backend_id}",
+         %{user: user} do
+      source = insert(:source, user: user)
+
+      backend =
+        insert(:backend,
+          type: :webhook,
+          config: %{url: "https://example.com"},
+          user: user,
+          sources: [source]
+        )
+
+      Mimic.stub(Logflare.Backends.Adaptor, :consolidated_ingest?, fn
+        %{id: id} when id == backend.id -> true
+        _ -> false
+      end)
+
+      Backends.clear_list_backends_cache(source.id)
+
+      IngestEventQueue.upsert_tid({:consolidated, backend.id, nil})
+      IngestEventQueue.upsert_tid({source.id, nil, nil})
+
+      events = [build(:log_event, source: source, message: "multi dispatch test")]
+      assert {:ok, 1} = Backends.ingest_logs(events, source)
+
+      {:ok, consolidated_events} = IngestEventQueue.fetch_events({:consolidated, backend.id}, 10)
+      assert length(consolidated_events) == 1
+
+      {:ok, system_events} = IngestEventQueue.fetch_events({source.id, nil}, 10)
+      assert length(system_events) == 1
     end
 
     test "route to backend", %{user: user} do

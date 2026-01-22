@@ -14,11 +14,27 @@ defmodule Logflare.Backends.DynamicPipeline do
   - `:resolve_interval` - interval that the resolve_count will be checked.
   """
   use Supervisor
+
   alias __MODULE__.Coordinator
 
   require Logger
 
+  @type state :: %{
+          name: term(),
+          pipeline: module(),
+          pipeline_args: keyword(),
+          max_pipelines: pos_integer(),
+          min_pipelines: non_neg_integer(),
+          initial_count: non_neg_integer(),
+          resolve_count: (map() -> non_neg_integer()),
+          resolve_interval: pos_integer(),
+          last_count_increase: NaiveDateTime.t() | nil,
+          last_count_decrease: NaiveDateTime.t() | nil
+        }
+
   @resolve_interval if Application.compile_env(:logflare, :env) == :test, do: 500, else: 5_000
+
+  @spec start_link(args :: keyword()) :: Supervisor.on_start()
   def start_link(args) do
     name = Keyword.get(args, :name)
     Supervisor.start_link(__MODULE__, args, name: name)
@@ -57,6 +73,8 @@ defmodule Logflare.Backends.DynamicPipeline do
   @doc """
   Resolves desired number of pipelines from state
   """
+  @spec resolve_pipeline_count(state :: state(), current :: non_neg_integer()) ::
+          {:incr | :decr | :noop, non_neg_integer(), state()}
   def resolve_pipeline_count(state, current) do
     args =
       Map.take(state, [:last_count_increase, :last_count_decrease, :min_pipelines, :max_pipelines])
@@ -186,12 +204,14 @@ defmodule Logflare.Backends.DynamicPipeline do
     end
   end
 
+  @spec child_spec(state :: state(), ref :: reference()) :: Supervisor.child_spec()
   defp child_spec(%{pipeline: pipeline, name: name, pipeline_args: pipeline_args}, ref) do
     sharded_name = sup_name_to_pipeline_name(name, ref)
     new_args = pipeline_args ++ [name: sharded_name]
     %{id: sharded_name, start: {pipeline, :start_link, [new_args]}}
   end
 
+  @spec ack(via :: term(), successful :: list(), failed :: list()) :: :ok
   def ack(_via, _successful, _failed) do
     :ok
   end
@@ -261,8 +281,10 @@ defmodule Logflare.Backends.DynamicPipeline do
     Coordinates the starting up and shutting down of pipelines.
     """
     use GenServer
+
     alias Logflare.Backends.DynamicPipeline
 
+    @spec start_link(args :: DynamicPipeline.state()) :: GenServer.on_start()
     def start_link(args) do
       GenServer.start_link(__MODULE__, args)
     end
@@ -296,16 +318,8 @@ defmodule Logflare.Backends.DynamicPipeline do
 
       :telemetry.execute(
         [:logflare, :backends, :dynamic_pipeline],
-        %{
-          pipeline_count: pipeline_count
-        },
-        %{
-          source_id: state.pipeline_args[:source].id,
-          source_token: state.pipeline_args[:source].token,
-          backend_id: state.pipeline_args[:backend].id,
-          backend_token: state.pipeline_args[:backend].token,
-          backend_type: state.pipeline_args[:backend].type
-        }
+        %{pipeline_count: pipeline_count},
+        build_telemetry_metadata(state)
       )
 
       state =
@@ -338,12 +352,19 @@ defmodule Logflare.Backends.DynamicPipeline do
       {:noreply, state}
     end
 
+    @spec loop(state :: DynamicPipeline.state()) :: reference()
     defp loop(args) do
       # add small randomizer to spread out resolve checks
       randomizer = :rand.uniform(ceil(args.resolve_interval / 5))
       Process.send_after(self(), :check, args.resolve_interval + randomizer)
     end
 
+    @spec do_telemetry(
+            actions :: list(),
+            action :: :increment | :decrement,
+            state :: DynamicPipeline.state(),
+            from_pipeline_count :: non_neg_integer()
+          ) :: :ok
     defp do_telemetry(actions, action, state, from_pipeline_count) do
       error_count =
         Enum.count(actions, fn
@@ -358,14 +379,36 @@ defmodule Logflare.Backends.DynamicPipeline do
           success_count: length(actions) - error_count,
           from_pipeline_count: from_pipeline_count
         },
-        %{
-          source_id: state.pipeline_args[:source].id,
-          source_token: state.pipeline_args[:source].token,
-          backend_id: state.pipeline_args[:backend].id,
-          backend_token: state.pipeline_args[:backend].token,
-          backend_type: state.pipeline_args[:backend].type
-        }
+        build_telemetry_metadata(state)
       )
+    end
+
+    @spec build_telemetry_metadata(state :: DynamicPipeline.state()) :: %{
+            backend_id: pos_integer(),
+            backend_token: atom(),
+            backend_type: atom(),
+            source_id: pos_integer() | nil,
+            source_token: atom() | nil,
+            consolidated: boolean() | nil
+          }
+    defp build_telemetry_metadata(state) do
+      source = state.pipeline_args[:source]
+      backend = state.pipeline_args[:backend]
+
+      base = %{
+        backend_id: backend.id,
+        backend_token: backend.token,
+        backend_type: backend.type
+      }
+
+      if source do
+        Map.merge(base, %{
+          source_id: source.id,
+          source_token: source.token
+        })
+      else
+        Map.put(base, :consolidated, true)
+      end
     end
   end
 end

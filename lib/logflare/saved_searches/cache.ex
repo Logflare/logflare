@@ -1,6 +1,8 @@
 defmodule Logflare.SavedSearches.Cache do
   @moduledoc false
 
+  @behaviour Logflare.ContextCache
+
   alias Logflare.SavedSearches
   alias Logflare.Utils
 
@@ -26,25 +28,28 @@ defmodule Logflare.SavedSearches.Cache do
     }
   end
 
-  def list_saved_searches_by_user(user_id), do: apply_repo_fun(__ENV__.function, [user_id])
+  def list_saved_searches_by_source(source_id), do: apply_repo_fun(__ENV__.function, [source_id])
 
+  @impl Logflare.ContextCache
   def bust_by(kw) do
-    kw
-    |> Enum.map(fn
-      {:source_id, source_id} ->
-        case Logflare.Sources.get(source_id) do
-          nil -> nil
-          source -> {:list_saved_searches_by_user, [source.user_id]}
-        end
+    entries =
+      kw
+      |> Enum.map(fn
+        {:source_id, source_id} -> {:list_saved_searches_by_source, [source_id]}
+      end)
+
+    Cachex.execute(__MODULE__, fn cache ->
+      Enum.reduce(entries, 0, fn key, acc ->
+        acc + delete_and_count(cache, key)
+      end)
     end)
-    |> Enum.reject(&is_nil/1)
-    |> Enum.reduce(0, fn key, acc ->
-      case Cachex.take(__MODULE__, key) do
-        {:ok, nil} -> acc
-        {:ok, _value} -> acc + 1
-      end
-    end)
-    |> then(&{:ok, &1})
+  end
+
+  defp delete_and_count(cache, key) do
+    case Cachex.take(cache, key) do
+      {:ok, nil} -> 0
+      {:ok, _value} -> 1
+    end
   end
 
   defp apply_repo_fun(arg1, arg2) do

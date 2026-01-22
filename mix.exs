@@ -158,7 +158,7 @@ defmodule Logflare.Mixfile do
       # Pagination
       {:scrivener_ecto, "~> 2.2"},
       {:scrivener_list, "~> 2.0"},
-      {:scrivener_html, github: "Logflare/scrivener_html"},
+      {:numerator, "~> 0.2.0"},
 
       # GCP
       {:google_api_cloud_resource_manager, "~> 0.34.0"},

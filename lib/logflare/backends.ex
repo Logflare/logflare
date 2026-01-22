@@ -10,6 +10,7 @@ defmodule Logflare.Backends do
   alias Logflare.Backends.Adaptor
   alias Logflare.Backends.Backend
   alias Logflare.Backends.BackendRegistry
+  alias Logflare.Backends.ConsolidatedSup
   alias Logflare.Backends.IngestEventQueue
   alias Logflare.Backends.SourceRegistry
   alias Logflare.Backends.SourcesSup
@@ -171,6 +172,8 @@ defmodule Logflare.Backends do
 
       if updated.default_ingest?, do: sync_backend_across_cluster(updated.id)
 
+      maybe_start_consolidated_pipeline(updated)
+
       {:ok, typecast_config_string_map_to_atom_map(updated)}
     end
   end
@@ -249,6 +252,8 @@ defmodule Logflare.Backends do
           end
 
         Enum.each(updated.sources, &restart_source_sup(&1))
+
+        maybe_restart_consolidated_pipeline(updated)
 
         {:ok, typecast_config_string_map_to_atom_map(updated)}
 
@@ -441,13 +446,19 @@ defmodule Logflare.Backends do
   """
   @spec delete_backend(Backend.t()) :: {:ok, Backend.t()}
   def delete_backend(%Backend{} = backend) do
-    backend
-    |> Changeset.change()
-    |> Changeset.foreign_key_constraint(:sources,
-      name: "sources_backends_backend_id_fkey",
-      message: "There are still sources connected to this backend"
-    )
-    |> Repo.delete()
+    result =
+      backend
+      |> Changeset.change()
+      |> Changeset.foreign_key_constraint(:sources,
+        name: "sources_backends_backend_id_fkey",
+        message: "There are still sources connected to this backend"
+      )
+      |> Repo.delete()
+
+    with {:ok, deleted} <- result do
+      maybe_stop_consolidated_pipeline(deleted)
+      {:ok, deleted}
+    end
   end
 
   @doc """
@@ -602,12 +613,35 @@ defmodule Logflare.Backends do
   end
 
   # send to a specific backend
+  defp dispatch_to_backends(source, %Backend{consolidated_ingest?: true} = backend, log_events) do
+    telemetry_metadata = %{backend_type: backend.type}
+
+    :telemetry.span([:logflare, :backends, :ingest, :dispatch], telemetry_metadata, fn ->
+      log_events = maybe_pre_ingest(source, backend, log_events)
+      IngestEventQueue.add_to_table({:consolidated, backend.id}, log_events)
+
+      :telemetry.execute(
+        [:logflare, :backends, :ingest, :count],
+        %{count: length(log_events)},
+        %{backend_type: backend.type}
+      )
+
+      {:ok, telemetry_metadata}
+    end)
+  end
+
   defp dispatch_to_backends(source, %Backend{} = backend, log_events) do
     telemetry_metadata = %{backend_type: backend.type}
 
     :telemetry.span([:logflare, :backends, :ingest, :dispatch], telemetry_metadata, fn ->
       log_events = maybe_pre_ingest(source, backend, log_events)
-      IngestEventQueue.add_to_table({source.id, backend.id}, log_events)
+
+      queue_key =
+        if backend.consolidated_ingest?,
+          do: {:consolidated, backend.id},
+          else: {source.id, backend.id}
+
+      IngestEventQueue.add_to_table(queue_key, log_events)
 
       :telemetry.execute(
         [:logflare, :backends, :ingest, :count],
@@ -623,11 +657,16 @@ defmodule Logflare.Backends do
     backends = __MODULE__.Cache.list_backends(source_id: source.id)
 
     for backend <- [nil | backends] do
-      {backend_id, backend_type} =
-        if backend do
-          {backend.id, backend.type}
-        else
-          {nil, SingleTenant.backend_type()}
+      {queue_key, backend_type} =
+        case backend do
+          nil ->
+            {{source.id, nil}, SingleTenant.backend_type()}
+
+          %Backend{consolidated_ingest?: true} ->
+            {{:consolidated, backend.id}, backend.type}
+
+          %Backend{} ->
+            {{source.id, backend.id}, backend.type}
         end
 
       telemetry_metadata = %{backend_type: backend_type}
@@ -636,7 +675,7 @@ defmodule Logflare.Backends do
         log_events =
           if backend, do: maybe_pre_ingest(source, backend, log_events), else: log_events
 
-        IngestEventQueue.add_to_table({source.id, backend_id}, log_events)
+        IngestEventQueue.add_to_table(queue_key, log_events)
 
         :telemetry.execute(
           [:logflare, :backends, :ingest, :dispatch],
@@ -783,6 +822,55 @@ defmodule Logflare.Backends do
          :ok <- start_source_sup(source) do
       :ok
     end
+  end
+
+  @doc """
+  Starts a consolidated pipeline for a backend if it supports consolidated ingestion.
+  """
+  @spec maybe_start_consolidated_pipeline(Backend.t()) :: :ok
+  def maybe_start_consolidated_pipeline(%Backend{} = backend) do
+    if Adaptor.consolidated_ingest?(backend) do
+      case ConsolidatedSup.start_pipeline(backend) do
+        {:ok, _pid} ->
+          Logger.info("Started consolidated pipeline", backend_id: backend.id)
+
+        {:error, {:already_started, _pid}} ->
+          :ok
+
+        {:error, reason} ->
+          Logger.warning("Failed to start consolidated pipeline: #{inspect(reason)}",
+            backend_id: backend.id
+          )
+      end
+    end
+
+    :ok
+  end
+
+  @doc """
+  Restarts a consolidated pipeline for a backend if it supports consolidated ingestion.
+  """
+  @spec maybe_restart_consolidated_pipeline(Backend.t()) :: :ok
+  def maybe_restart_consolidated_pipeline(%Backend{} = backend) do
+    if Adaptor.consolidated_ingest?(backend) do
+      ConsolidatedSup.stop_pipeline(backend)
+      maybe_start_consolidated_pipeline(backend)
+    end
+
+    :ok
+  end
+
+  @doc """
+  Stops a consolidated pipeline for a backend if it supports consolidated ingestion.
+  """
+  @spec maybe_stop_consolidated_pipeline(Backend.t()) :: :ok
+  def maybe_stop_consolidated_pipeline(%Backend{} = backend) do
+    with true <- Adaptor.consolidated_ingest?(backend),
+         :ok <- ConsolidatedSup.stop_pipeline(backend) do
+      Logger.info("Stopped consolidated pipeline", backend_id: backend.id)
+    end
+
+    :ok
   end
 
   @doc """

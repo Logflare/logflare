@@ -17,7 +17,7 @@ defmodule Logflare.SavedSearches do
   @doc """
   Retrives a SavedSearch by id
   """
-  @spec get(number()) :: SavedSearch.t()
+  @spec get(number()) :: SavedSearch.t() | nil
   def get(id) do
     Repo.get(SavedSearch, id)
   end
@@ -111,14 +111,12 @@ defmodule Logflare.SavedSearches do
     |> Repo.all()
   end
 
-  @spec list_saved_searches_by_user(number()) :: [SavedSearch.t()]
-  def list_saved_searches_by_user(user_id) do
+  @spec list_saved_searches_by_source(number()) :: [SavedSearch.t()]
+  def list_saved_searches_by_source(source_id) do
     SavedSearch
     |> where([s], s.saved_by_user == true)
-    |> join(:inner, [s], src in Source, on: s.source_id == src.id)
-    |> where([s, src], src.user_id == ^user_id)
-    |> order_by([s, src], asc: src.name, asc: s.inserted_at)
-    |> preload([s, src], source: src)
+    |> where([s], s.source_id == ^source_id)
+    |> order_by([s], asc: fragment("lower(?)", s.querystring))
     |> Repo.all()
   end
 end
