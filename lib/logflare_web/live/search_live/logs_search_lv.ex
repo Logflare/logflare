@@ -487,7 +487,7 @@ defmodule LogflareWeb.Source.SearchLV do
 
     %Billing.Plan{limit_saved_search_limit: limit} = Billing.get_plan_by_user(user)
 
-    if SavedSearches.list_saved_searches_by_source(source.id) |> Enum.count() < limit do
+    if SavedSearches.Cache.list_saved_searches_by_source(source.id) |> length() < limit do
       case SavedSearches.save_by_user(qs, lql_rules, source, tailing?) do
         {:ok, _saved_search} ->
           socket =
