@@ -81,8 +81,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
 
   @doc false
   @spec encode_row(LogEvent.t()) :: iodata()
-  def encode_row(%LogEvent{body: body, origin_source_id: origin_source_id}) do
-    source_id_str = Atom.to_string(origin_source_id)
+  def encode_row(%LogEvent{body: body, origin_source_uuid: origin_source_uuid}) do
+    source_id_str = Atom.to_string(origin_source_uuid)
 
     [
       encode_as_uuid(body["id"]),
@@ -96,7 +96,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
   @spec encode_batch([LogEvent.t()]) :: iodata()
   def encode_batch([%LogEvent{} | _] = rows) do
     rows
-    |> Enum.sort_by(fn %LogEvent{origin_source_id: sid, body: body} ->
+    |> Enum.sort_by(fn %LogEvent{origin_source_uuid: sid, body: body} ->
       {sid, body["timestamp"]}
     end)
     |> Enum.map(&encode_row/1)

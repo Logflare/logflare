@@ -152,14 +152,14 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.IngesterTest do
       assert IO.iodata_length(encoded) >= 16 + 16 + 1 + 10 + 8
     end
 
-    test "encodes origin_source_id as source_id UUID" do
+    test "encodes origin_source_uuid as source_id UUID" do
       source = build(:source)
       log_event = build(:log_event, source: source, message: "test")
 
       encoded = Ingester.encode_row(log_event)
       binary = IO.iodata_to_binary(encoded)
 
-      source_id_str = Atom.to_string(log_event.origin_source_id)
+      source_id_str = Atom.to_string(log_event.origin_source_uuid)
       expected_source_id_bytes = Ingester.encode_as_uuid(source_id_str)
 
       # source_id UUID is the second 16 bytes (after id UUID)
