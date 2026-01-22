@@ -21,7 +21,6 @@ defmodule Logflare.BackendsTest do
   alias Logflare.Sources.Source
   alias Logflare.Sources.Source.BigQuery.Pipeline
   alias Logflare.SystemMetrics.AllLogsLogged
-  alias Logflare.TestSupport.FakeConsolidatedAdaptor
   alias Logflare.User
 
   setup do
