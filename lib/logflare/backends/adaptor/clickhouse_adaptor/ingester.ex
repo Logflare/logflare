@@ -95,11 +95,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
   @doc false
   @spec encode_batch([LogEvent.t()]) :: iodata()
   def encode_batch([%LogEvent{} | _] = rows) do
-    rows
-    |> Enum.sort_by(fn %LogEvent{origin_source_uuid: sid, body: body} ->
-      {sid, body["timestamp"]}
-    end)
-    |> Enum.map(&encode_row/1)
+    Enum.map(rows, &encode_row/1)
   end
 
   @doc false
