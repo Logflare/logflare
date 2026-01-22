@@ -322,6 +322,244 @@ defmodule Logflare.Backends.IngestEventQueueTest do
     end
   end
 
+  describe "`add_to_table/3` distribution with queues_key" do
+    setup do
+      user = insert(:user)
+      source = insert(:source, user: user)
+      backend = insert(:backend, user: user)
+      [source: source, backend: backend]
+    end
+
+    test "distributes events to active queues, skipping startup queue", %{
+      source: source,
+      backend: backend
+    } do
+      startup_key = {source.id, backend.id, nil}
+      pid1 = :erlang.list_to_pid(~c"<0.100.1>")
+      pid2 = :erlang.list_to_pid(~c"<0.100.2>")
+      active_key1 = {source.id, backend.id, pid1}
+      active_key2 = {source.id, backend.id, pid2}
+
+      IngestEventQueue.upsert_tid(startup_key)
+      IngestEventQueue.upsert_tid(active_key1)
+      IngestEventQueue.upsert_tid(active_key2)
+
+      events = build_list(200, :log_event)
+      :ok = IngestEventQueue.add_to_table({source.id, backend.id}, events, chunk_size: 50)
+
+      startup_size = IngestEventQueue.get_table_size(startup_key)
+      active1_size = IngestEventQueue.get_table_size(active_key1)
+      active2_size = IngestEventQueue.get_table_size(active_key2)
+
+      assert startup_size == 0
+      assert active1_size + active2_size == 200
+      assert active1_size > 0
+      assert active2_size > 0
+    end
+
+    test "falls back to startup queue when no active queues exist", %{
+      source: source,
+      backend: backend
+    } do
+      startup_key = {source.id, backend.id, nil}
+      IngestEventQueue.upsert_tid(startup_key)
+
+      events = build_list(5, :log_event)
+      :ok = IngestEventQueue.add_to_table({source.id, backend.id}, events)
+
+      assert IngestEventQueue.get_table_size(startup_key) == 5
+    end
+
+    test "skips queues at max capacity when `check_queue_size` is true", %{
+      source: source,
+      backend: backend
+    } do
+      pid1 = :erlang.list_to_pid(~c"<0.100.1>")
+      pid2 = :erlang.list_to_pid(~c"<0.100.2>")
+      full_queue = {source.id, backend.id, pid1}
+      available_queue = {source.id, backend.id, pid2}
+
+      IngestEventQueue.upsert_tid(full_queue)
+      IngestEventQueue.upsert_tid(available_queue)
+
+      max_size = IngestEventQueue.max_queue_size()
+      full_batch = build_list(max_size, :log_event)
+      :ok = IngestEventQueue.add_to_table(full_queue, full_batch)
+
+      assert IngestEventQueue.get_table_size(full_queue) == max_size
+
+      new_events = build_list(10, :log_event)
+
+      :ok =
+        IngestEventQueue.add_to_table({source.id, backend.id}, new_events, check_queue_size: true)
+
+      assert IngestEventQueue.get_table_size(full_queue) == max_size
+      assert IngestEventQueue.get_table_size(available_queue) == 10
+    end
+
+    test "distributes to all queues when `check_queue_size` is false", %{
+      source: source,
+      backend: backend
+    } do
+      pid1 = :erlang.list_to_pid(~c"<0.100.1>")
+      pid2 = :erlang.list_to_pid(~c"<0.100.2>")
+      queue1 = {source.id, backend.id, pid1}
+      queue2 = {source.id, backend.id, pid2}
+
+      IngestEventQueue.upsert_tid(queue1)
+      IngestEventQueue.upsert_tid(queue2)
+
+      events = build_list(200, :log_event)
+
+      :ok =
+        IngestEventQueue.add_to_table({source.id, backend.id}, events,
+          check_queue_size: false,
+          chunk_size: 50
+        )
+
+      size1 = IngestEventQueue.get_table_size(queue1)
+      size2 = IngestEventQueue.get_table_size(queue2)
+
+      assert size1 + size2 == 200
+      assert size1 > 0
+      assert size2 > 0
+    end
+
+    test "uses `no_get_tid: true` by default for round-robin with tids", %{
+      source: source,
+      backend: backend
+    } do
+      pid1 = :erlang.list_to_pid(~c"<0.100.1>")
+      pid2 = :erlang.list_to_pid(~c"<0.100.2>")
+      queue1 = {source.id, backend.id, pid1}
+      queue2 = {source.id, backend.id, pid2}
+
+      IngestEventQueue.upsert_tid(queue1)
+      IngestEventQueue.upsert_tid(queue2)
+
+      events = build_list(10, :log_event)
+      :ok = IngestEventQueue.add_to_table({source.id, backend.id}, events)
+
+      size1 = IngestEventQueue.get_table_size(queue1)
+      size2 = IngestEventQueue.get_table_size(queue2)
+
+      assert size1 + size2 == 10
+    end
+
+    test "uses `no_get_tid: false` path for round-robin without tids", %{
+      source: source,
+      backend: backend
+    } do
+      pid1 = :erlang.list_to_pid(~c"<0.100.1>")
+      pid2 = :erlang.list_to_pid(~c"<0.100.2>")
+      queue1 = {source.id, backend.id, pid1}
+      queue2 = {source.id, backend.id, pid2}
+
+      IngestEventQueue.upsert_tid(queue1)
+      IngestEventQueue.upsert_tid(queue2)
+
+      events = build_list(10, :log_event)
+      :ok = IngestEventQueue.add_to_table({source.id, backend.id}, events, no_get_tid: false)
+
+      size1 = IngestEventQueue.get_table_size(queue1)
+      size2 = IngestEventQueue.get_table_size(queue2)
+
+      assert size1 + size2 == 10
+    end
+  end
+
+  describe "`add_to_table/3` distribution with consolidated queues_key" do
+    setup do
+      user = insert(:user)
+      backend = insert(:backend, user: user)
+      [backend: backend]
+    end
+
+    test "distributes events to active consolidated queues, skipping startup queue", %{
+      backend: backend
+    } do
+      startup_key = {:consolidated, backend.id, nil}
+      pid1 = :erlang.list_to_pid(~c"<0.100.1>")
+      pid2 = :erlang.list_to_pid(~c"<0.100.2>")
+      active_key1 = {:consolidated, backend.id, pid1}
+      active_key2 = {:consolidated, backend.id, pid2}
+
+      IngestEventQueue.upsert_tid(startup_key)
+      IngestEventQueue.upsert_tid(active_key1)
+      IngestEventQueue.upsert_tid(active_key2)
+
+      events = build_list(200, :log_event)
+      :ok = IngestEventQueue.add_to_table({:consolidated, backend.id}, events, chunk_size: 50)
+
+      startup_size = IngestEventQueue.get_table_size(startup_key)
+      active1_size = IngestEventQueue.get_table_size(active_key1)
+      active2_size = IngestEventQueue.get_table_size(active_key2)
+
+      assert startup_size == 0
+      assert active1_size + active2_size == 200
+      assert active1_size > 0
+      assert active2_size > 0
+    end
+
+    test "falls back to startup queue when no active consolidated queues exist", %{
+      backend: backend
+    } do
+      startup_key = {:consolidated, backend.id, nil}
+      IngestEventQueue.upsert_tid(startup_key)
+
+      events = build_list(5, :log_event)
+      :ok = IngestEventQueue.add_to_table({:consolidated, backend.id}, events)
+
+      assert IngestEventQueue.get_table_size(startup_key) == 5
+    end
+
+    test "skips consolidated queues at max capacity when `check_queue_size` is true", %{
+      backend: backend
+    } do
+      pid1 = :erlang.list_to_pid(~c"<0.100.1>")
+      pid2 = :erlang.list_to_pid(~c"<0.100.2>")
+      full_queue = {:consolidated, backend.id, pid1}
+      available_queue = {:consolidated, backend.id, pid2}
+
+      IngestEventQueue.upsert_tid(full_queue)
+      IngestEventQueue.upsert_tid(available_queue)
+
+      max_size = IngestEventQueue.max_queue_size()
+      full_batch = build_list(max_size, :log_event)
+      :ok = IngestEventQueue.add_to_table(full_queue, full_batch)
+
+      assert IngestEventQueue.get_table_size(full_queue) == max_size
+
+      new_events = build_list(10, :log_event)
+
+      :ok =
+        IngestEventQueue.add_to_table({:consolidated, backend.id}, new_events,
+          check_queue_size: true
+        )
+
+      assert IngestEventQueue.get_table_size(full_queue) == max_size
+      assert IngestEventQueue.get_table_size(available_queue) == 10
+    end
+
+    test "uses `no_get_tid: false` path for consolidated queues", %{backend: backend} do
+      pid1 = :erlang.list_to_pid(~c"<0.100.1>")
+      pid2 = :erlang.list_to_pid(~c"<0.100.2>")
+      queue1 = {:consolidated, backend.id, pid1}
+      queue2 = {:consolidated, backend.id, pid2}
+
+      IngestEventQueue.upsert_tid(queue1)
+      IngestEventQueue.upsert_tid(queue2)
+
+      events = build_list(10, :log_event)
+      :ok = IngestEventQueue.add_to_table({:consolidated, backend.id}, events, no_get_tid: false)
+
+      size1 = IngestEventQueue.get_table_size(queue1)
+      size2 = IngestEventQueue.get_table_size(queue2)
+
+      assert size1 + size2 == 10
+    end
+  end
+
   describe "pop_pending/2" do
     setup do
       user = insert(:user)
