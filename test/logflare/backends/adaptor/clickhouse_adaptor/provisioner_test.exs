@@ -153,15 +153,15 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ProvisionerTest do
 
       column_names = Enum.map(columns, & &1["name"])
       assert "id" in column_names
-      assert "source_id" in column_names
+      assert "source_uuid" in column_names
       assert "body" in column_names
       assert "timestamp" in column_names
 
       id_column = Enum.find(columns, &(&1["name"] == "id"))
       assert %{"type" => "UUID"} = id_column
 
-      source_id_column = Enum.find(columns, &(&1["name"] == "source_id"))
-      assert %{"type" => "UUID"} = source_id_column
+      source_uuid_column = Enum.find(columns, &(&1["name"] == "source_uuid"))
+      assert %{"type" => "UUID"} = source_uuid_column
 
       timestamp_column = Enum.find(columns, &(&1["name"] == "timestamp"))
       assert %{"type" => "DateTime64(6)"} = timestamp_column

@@ -125,7 +125,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       query_result =
         ClickHouseAdaptor.execute_ch_query(
           backend,
-          "SELECT id, source_id, body, timestamp FROM #{table_name} ORDER BY timestamp"
+          "SELECT id, source_uuid, body, timestamp FROM #{table_name} ORDER BY timestamp"
         )
 
       assert {:ok, rows} = query_result
@@ -136,21 +136,21 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       assert [
                %{
                  "id" => "550e8400-e29b-41d4-a716-446655440000",
-                 "source_id" => source_id1,
+                 "source_uuid" => source_uuid1,
                  "body" => %{"event_message" => "Test message 1"},
                  "timestamp" => _
                },
                %{
                  "id" => "9bc07845-9859-4163-bfe5-a74c1a1443a2",
-                 "source_id" => source_id2,
+                 "source_uuid" => source_uuid2,
                  "body" => %{"event_message" => "Test message 2"},
                  "timestamp" => _
                }
              ] = row_payloads
 
-      expected_source_id = Atom.to_string(source.token)
-      assert source_id1 == expected_source_id
-      assert source_id2 == expected_source_id
+      expected_source_uuid = Atom.to_string(source.token)
+      assert source_uuid1 == expected_source_uuid
+      assert source_uuid2 == expected_source_uuid
     end
 
     test "handles empty event list", %{backend: backend} do
