@@ -28,7 +28,6 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   alias Logflare.LogEvent
 
   @min_pipelines 1
-  @max_pipelines 2
   @resolve_interval 10_000
   @scaling_threshold 5_000
 
@@ -275,7 +274,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
         pipeline: Pipeline,
         pipeline_args: [backend: backend],
         min_pipelines: @min_pipelines,
-        max_pipelines: @max_pipelines,
+        max_pipelines: System.schedulers_online(),
         initial_count: @min_pipelines,
         resolve_interval: @resolve_interval,
         resolve_count: fn state ->
