@@ -223,6 +223,29 @@ defmodule Logflare.Sources.Source.BigQuery.Pipeline do
       end
       |> Map.put("timestamp", bq_timestamp)
       |> Map.put("event_message", body["event_message"])
+      |> case do
+        %{"start_time" => start_time, "end_time" => end_time} = data
+        when is_map_key(data, "resource") and is_map_key(data, "scope") ->
+          # round to microseconds
+          %{
+            data
+            | "start_time" => DateTime.from_unix!(start_time, :nanosecond),
+              "end_time" => DateTime.from_unix!(end_time, :nanosecond)
+          }
+
+        %{"start_time" => start_time} = data
+        when is_map_key(data, "resource") and is_map_key(data, "scope") ->
+          # round to microseconds
+          %{data | "start_time" => DateTime.from_unix!(start_time, :nanosecond)}
+
+        %{"end_time" => end_time} = data
+        when is_map_key(data, "resource") and is_map_key(data, "scope") ->
+          # round to microseconds
+          %{data | "end_time" => DateTime.from_unix!(end_time, :nanosecond)}
+
+        data ->
+          data
+      end
 
     %Model.TableDataInsertAllRequestRows{
       insertId: id,
