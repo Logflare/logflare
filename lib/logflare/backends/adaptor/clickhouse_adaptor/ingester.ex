@@ -13,6 +13,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
   @max_retries 3
   @initial_delay 500
   @max_delay 4_000
+  @pool_timeout 8_000
+  @receive_timeout 15_000
 
   @doc """
   Inserts a list of `LogEvent` structs into ClickHouse.
@@ -65,7 +67,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
     ]
 
     adapter =
-      {Tesla.Adapter.Finch, name: @finch_pool, pool_timeout: 4_000, receive_timeout: 8_000}
+      {Tesla.Adapter.Finch,
+       name: @finch_pool, pool_timeout: @pool_timeout, receive_timeout: @receive_timeout}
 
     Tesla.client(middleware, adapter)
   end
@@ -78,9 +81,12 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
 
   @doc false
   @spec encode_row(LogEvent.t()) :: iodata()
-  def encode_row(%LogEvent{body: body}) do
+  def encode_row(%LogEvent{body: body, origin_source_uuid: origin_source_uuid}) do
+    source_uuid_str = Atom.to_string(origin_source_uuid)
+
     [
       encode_as_uuid(body["id"]),
+      encode_as_uuid(source_uuid_str),
       encode_as_string(Jason.encode_to_iodata!(body)),
       encode_as_datetime64(DateTime.from_unix!(body["timestamp"], :microsecond))
     ]
@@ -167,12 +173,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
 
     query = "INSERT INTO #{database}.#{table} FORMAT RowBinary"
 
-    params =
-      URI.encode_query(%{
-        "query" => query,
-        "async_insert" => "1",
-        "wait_for_async_insert" => "1"
-      })
+    params = URI.encode_query(%{"query" => query})
 
     "#{scheme}://#{host}:#{port}/?#{params}"
   end

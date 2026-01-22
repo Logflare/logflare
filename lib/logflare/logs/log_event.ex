@@ -21,7 +21,7 @@ defmodule Logflare.LogEvent do
     field :drop, :boolean, default: false
     field :is_from_stale_query, :boolean
     field :ingested_at, :utc_datetime_usec
-    field :origin_source_id, Ecto.UUID.Atom
+    field :origin_source_uuid, Ecto.UUID.Atom
     field :via_rule, :map
     field :retries, :integer, default: 0
 
@@ -73,7 +73,7 @@ defmodule Logflare.LogEvent do
       Map.merge(changeset.changes, %{
         pipeline_error: pipeline_error,
         source_id: source.id,
-        origin_source_id: source.token,
+        origin_source_uuid: source.token,
         valid: changeset.valid?,
         ingested_at: NaiveDateTime.utc_now(),
         id: changeset.changes.body["id"]

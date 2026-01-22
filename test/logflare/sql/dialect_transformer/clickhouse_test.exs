@@ -17,9 +17,10 @@ defmodule Logflare.Sql.DialectTransformer.ClickHouseTest do
   end
 
   describe "transform_source_name/2" do
-    test "delegates to ClickHouseAdaptor.clickhouse_ingest_table_name/1" do
-      user = build(:user)
-      source = build(:source, name: "test_source", user: user)
+    test "uses backend token for table name" do
+      user = insert(:user)
+      source = insert(:source, name: "test_source", user: user)
+      backend = insert(:backend, type: :clickhouse, user: user, sources: [source])
 
       data = %{
         sources: [source],
@@ -27,46 +28,63 @@ defmodule Logflare.Sql.DialectTransformer.ClickHouseTest do
       }
 
       result = ClickHouse.transform_source_name("test_source", data)
-      expected = ClickHouseAdaptor.clickhouse_ingest_table_name(source)
+      expected = ClickHouseAdaptor.clickhouse_ingest_table_name(backend)
 
       assert result == expected
     end
 
     test "finds correct source by name from multiple sources" do
-      user = build(:user)
-      source1 = build(:source, name: "source_one", user: user)
-      source2 = build(:source, name: "source_two", user: user)
+      user = insert(:user)
+      source1 = insert(:source, name: "source_one", user: user)
+      source2 = insert(:source, name: "source_two", user: user)
+      backend = insert(:backend, type: :clickhouse, user: user, sources: [source1, source2])
 
       data = %{
         sources: [source1, source2],
         dialect: "clickhouse"
       }
 
+      # Both sources use the same backend, so they share the same table
       result = ClickHouse.transform_source_name("source_two", data)
-      expected = ClickHouseAdaptor.clickhouse_ingest_table_name(source2)
+      expected = ClickHouseAdaptor.clickhouse_ingest_table_name(backend)
 
       assert result == expected
     end
 
-    test "handles source with special characters in token" do
-      user = build(:user)
-      source = build(:source, name: "special_source", user: user)
+    test "raises error when source has no ClickHouse backend" do
+      user = insert(:user)
+      source = insert(:source, name: "no_backend_source", user: user)
 
       data = %{
         sources: [source],
         dialect: "clickhouse"
       }
 
-      result = ClickHouse.transform_source_name("special_source", data)
-      expected = ClickHouseAdaptor.clickhouse_ingest_table_name(source)
+      assert_raise RuntimeError, ~r/No ClickHouse backend found for source/, fn ->
+        ClickHouse.transform_source_name("no_backend_source", data)
+      end
+    end
 
-      assert result == expected
+    test "raises error when source has multiple ClickHouse backends" do
+      user = insert(:user)
+      source = insert(:source, name: "multi_backend_source", user: user)
+      insert(:backend, type: :clickhouse, user: user, sources: [source])
+      insert(:backend, type: :clickhouse, user: user, sources: [source])
+
+      data = %{
+        sources: [source],
+        dialect: "clickhouse"
+      }
+
+      assert_raise RuntimeError, ~r/Multiple ClickHouse backends found for source/, fn ->
+        ClickHouse.transform_source_name("multi_backend_source", data)
+      end
     end
   end
 
   describe "build_transformation_data/2" do
     test "passes through base data unchanged" do
-      user = build(:user)
+      user = insert(:user)
 
       base_data = %{
         sources: [],

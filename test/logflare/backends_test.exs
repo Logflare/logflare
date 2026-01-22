@@ -21,7 +21,6 @@ defmodule Logflare.BackendsTest do
   alias Logflare.Sources.Source
   alias Logflare.Sources.Source.BigQuery.Pipeline
   alias Logflare.SystemMetrics.AllLogsLogged
-  alias Logflare.TestSupport.FakeConsolidatedAdaptor
   alias Logflare.User
 
   setup do
@@ -74,15 +73,18 @@ defmodule Logflare.BackendsTest do
       [user: user]
     end
 
-    test "create_backend/1 starts consolidated pipeline when adaptor supports it", %{user: user} do
-      stub(Adaptor, :get_adaptor, fn _backend -> FakeConsolidatedAdaptor end)
-      stub(Adaptor, :consolidated_ingest?, fn _backend -> true end)
-
+    test "create_backend/1 starts consolidated pipeline for clickhouse backend", %{user: user} do
       attrs = %{
-        type: :webhook,
+        type: :clickhouse,
         user_id: user.id,
-        name: "Test Consolidated",
-        config: %{url: "https://example.com"}
+        name: "Test ClickHouse",
+        config: %{
+          url: "http://localhost",
+          port: 8123,
+          database: "test_db",
+          username: "user",
+          password: "pass"
+        }
       }
 
       assert {:ok, backend} = Backends.create_backend(attrs)
@@ -105,14 +107,17 @@ defmodule Logflare.BackendsTest do
     end
 
     test "delete_backend/1 stops consolidated pipeline", %{user: user} do
-      stub(Adaptor, :get_adaptor, fn _backend -> FakeConsolidatedAdaptor end)
-      stub(Adaptor, :consolidated_ingest?, fn _backend -> true end)
-
       attrs = %{
-        type: :webhook,
+        type: :clickhouse,
         user_id: user.id,
-        name: "Test Consolidated",
-        config: %{url: "https://example.com"}
+        name: "Test ClickHouse",
+        config: %{
+          url: "http://localhost",
+          port: 8123,
+          database: "test_db",
+          username: "user",
+          password: "pass"
+        }
       }
 
       assert {:ok, backend} = Backends.create_backend(attrs)
@@ -123,14 +128,17 @@ defmodule Logflare.BackendsTest do
     end
 
     test "update_backend/2 keeps consolidated pipeline running", %{user: user} do
-      stub(Adaptor, :get_adaptor, fn _backend -> FakeConsolidatedAdaptor end)
-      stub(Adaptor, :consolidated_ingest?, fn _backend -> true end)
-
       attrs = %{
-        type: :webhook,
+        type: :clickhouse,
         user_id: user.id,
-        name: "Test Consolidated",
-        config: %{url: "https://example.com"}
+        name: "Test ClickHouse",
+        config: %{
+          url: "http://localhost",
+          port: 8123,
+          database: "test_db",
+          username: "user",
+          password: "pass"
+        }
       }
 
       assert {:ok, backend} = Backends.create_backend(attrs)
