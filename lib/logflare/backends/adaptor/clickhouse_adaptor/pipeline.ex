@@ -23,7 +23,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
   @batcher_concurrency 2
   @batch_size 50_000
   @batch_timeout 4_500
-  @max_retries 1
+  @max_retries 0
 
   @doc false
   @spec max_retries() :: pos_integer()
