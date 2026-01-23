@@ -12,7 +12,6 @@ defmodule Logflare.BackendsTest do
   alias Logflare.Backends.IngestEventQueue
   alias Logflare.Backends.SourceSup
   alias Logflare.Backends.SourceSupWorker
-  alias Logflare.Logs.SourceRouting
   alias Logflare.Lql
   alias Logflare.PubSubRates
   alias Logflare.Repo
@@ -20,6 +19,7 @@ defmodule Logflare.BackendsTest do
   alias Logflare.Sources
   alias Logflare.Sources.Source
   alias Logflare.Sources.Source.BigQuery.Pipeline
+  alias Logflare.Sources.SourceRouter
   alias Logflare.SystemMetrics.AllLogsLogged
   alias Logflare.User
 
@@ -1333,10 +1333,10 @@ defmodule Logflare.BackendsTest do
       Benchee.run(
         %{
           "with rules" => fn ->
-            SourceRouting.route_to_sinks_and_ingest(batch1, source1)
+            SourceRouter.route_to_sinks_and_ingest(batch1, source1)
           end,
           "100 rules" => fn ->
-            SourceRouting.route_to_sinks_and_ingest(batch2, source2)
+            SourceRouter.route_to_sinks_and_ingest(batch2, source2)
           end
         },
         time: 3,
