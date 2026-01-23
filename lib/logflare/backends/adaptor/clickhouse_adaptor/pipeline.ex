@@ -26,7 +26,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
   @max_retries 0
 
   @doc false
-  @spec max_retries() :: pos_integer()
+  @spec max_retries() :: non_neg_integer()
   def max_retries, do: @max_retries
 
   @doc false
