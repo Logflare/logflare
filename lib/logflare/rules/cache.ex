@@ -64,6 +64,27 @@ defmodule Logflare.Rules.Cache do
     end
   end
 
+  def get_lql_rule(id), do: apply_repo_fun(__ENV__.function, [id])
+
+  def get_lql_rules(ids) do
+    Cachex.execute!(__MODULE__, fn cache ->
+      for id <- Enum.uniq(ids) do
+        Cachex.fetch(cache, {:get_lql_rule, [id]}, fn _key ->
+          # Use a `:cached` tuple here otherwise when an fn returns nil Cachex will miss
+          # the cache because it thinks ETS returned nil
+          {:commit, {:cached, Rules.get_lql_rule(id)}}
+        end)
+        |> case do
+          {:commit, {:cached, value}} ->
+            value
+
+          {:ok, {:cached, value}} ->
+            value
+        end
+      end
+    end)
+  end
+
   def list_by_source_id(id), do: apply_repo_fun(__ENV__.function, [id])
   def list_by_backend_id(id), do: apply_repo_fun(__ENV__.function, [id])
 

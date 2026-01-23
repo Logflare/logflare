@@ -6,6 +6,7 @@ defmodule Logflare.Sources.Source.ChannelTopics do
 
   alias Logflare.LogEvent, as: LE
   alias Logflare.Sources
+  alias Logflare.Rules
 
   require Logger
 
@@ -26,9 +27,15 @@ defmodule Logflare.Sources.Source.ChannelTopics do
   def broadcast_new(%LE{source_id: source_id, body: body} = le) do
     source = Sources.Cache.get_by_id(source_id)
 
+    lql_rule =
+      case le do
+        %{via_rule_id: nil} -> nil
+        %{via_rule_id: rule_id} -> Rules.Cache.get_lql_rule(rule_id)
+      end
+
     maybe_broadcast("source:#{source.token}", "source:#{source.token}:new", %{
       body: body,
-      via_rule: le.via_rule && Map.take(le.via_rule, [:regex]),
+      via_lql_rule: lql_rule,
       origin_source_uuid: le.origin_source_uuid
     })
   end

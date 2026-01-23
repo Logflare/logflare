@@ -5,6 +5,7 @@ alias Logflare.Rules
 alias Logflare.Rules.Rule
 alias Logflare.Users
 alias Logflare.Lql.Rules.FilterRule
+alias Logflare.Lql.Parser
 
 import Logflare.Factory
 
@@ -58,21 +59,12 @@ one_matching = fn rules_num ->
     for i <- 1..rules_num do
       backend = insert(:backend, user: user)
 
+      lql_string = "metadata.rule_id:rule-#{i} severity_number:>8"
+      {:ok, filters} = Parser.parse(lql_string)
+
       %Rule{
-        lql_filters: [
-          %FilterRule{
-            path: "metadata.rule_id",
-            operator: :=,
-            value: "rule-#{i}",
-            modifiers: %{}
-          },
-          %FilterRule{
-            path: "severity_number",
-            operator: :>,
-            value: 8,
-            modifiers: %{}
-          }
-        ],
+        lql_string: lql_string,
+        lql_filters: filters,
         backend_id: backend.id
       }
     end
@@ -87,15 +79,12 @@ few_matching = fn rules_num ->
     for i <- 1..rules_num do
       backend = insert(:backend, user: user)
 
+      lql_string = "severity_number:>#{i}"
+      {:ok, filters} = Parser.parse(lql_string)
+
       %Rule{
-        lql_filters: [
-          %FilterRule{
-            path: "severity_number",
-            operator: :>,
-            value: i,
-            modifiers: %{}
-          }
-        ],
+        lql_string: lql_string,
+        lql_filters: filters,
         backend_id: backend.id
       }
     end
@@ -110,21 +99,12 @@ all_matching = fn rules_num ->
     for i <- 1..rules_num do
       backend = insert(:backend, user: user)
 
+      lql_string = "m.type:otel_log severity_number:>8"
+      {:ok, filters} = Parser.parse(lql_string)
+
       %Rule{
-        lql_filters: [
-          %FilterRule{
-            path: "metadata.type",
-            operator: :=,
-            value: "otel_log",
-            modifiers: %{}
-          },
-          %FilterRule{
-            path: "severity_number",
-            operator: :>,
-            value: 8,
-            modifiers: %{}
-          }
-        ],
+        lql_string: lql_string,
+        lql_filters: filters,
         backend_id: backend.id
       }
     end
