@@ -1,6 +1,5 @@
 defmodule LogflareWeb.TeamUserController do
   use LogflareWeb, :controller
-  use Phoenix.HTML
 
   plug LogflareWeb.Plugs.AuthMustBeOwner when action in [:delete]
 

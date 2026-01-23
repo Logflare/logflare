@@ -1,32 +1,21 @@
 defmodule Logflare.Backends.ConsolidatedSupWorkerTest do
   use Logflare.DataCase, async: false
 
-  alias Logflare.Backends
-  alias Logflare.Backends.Adaptor
   alias Logflare.Backends.ConsolidatedSup
   alias Logflare.Backends.ConsolidatedSupWorker
-  alias Logflare.TestSupport.FakeConsolidatedAdaptor
 
   describe "ConsolidatedSupWorker" do
     setup do
       insert(:plan, name: "Free")
-      user = insert(:user)
 
-      backend =
-        insert(:backend,
-          type: :webhook,
-          user: user,
-          config: %{url: "http://example.com"}
-        )
-
-      stub(Adaptor, :get_adaptor, fn _backend -> FakeConsolidatedAdaptor end)
-      stub(Adaptor, :consolidated_ingest?, fn _backend -> true end)
-
-      ConsolidatedSup.stop_pipeline(backend)
+      {_source, backend, cleanup_fn} = setup_clickhouse_test()
 
       on_exit(fn ->
         ConsolidatedSup.stop_pipeline(backend.id)
+        cleanup_fn.()
       end)
+
+      ConsolidatedSup.stop_pipeline(backend)
 
       [backend: backend]
     end
@@ -61,15 +50,18 @@ defmodule Logflare.Backends.ConsolidatedSupWorkerTest do
       insert(:plan, name: "Free")
       user = insert(:user)
 
-      stub(Adaptor, :get_adaptor, fn _backend -> FakeConsolidatedAdaptor end)
-      stub(Adaptor, :consolidated_ingest?, fn _backend -> true end)
-
       {:ok, backend} =
-        Backends.create_backend(%{
-          type: :webhook,
+        Logflare.Backends.create_backend(%{
+          type: :clickhouse,
           user_id: user.id,
           name: "Orphan Test Backend",
-          config: %{url: "http://example.com"}
+          config: %{
+            url: "http://localhost",
+            port: 8123,
+            database: "test_db",
+            username: "user",
+            password: "pass"
+          }
         })
 
       on_exit(fn ->
@@ -82,7 +74,7 @@ defmodule Logflare.Backends.ConsolidatedSupWorkerTest do
     test "stops orphaned pipeline when backend is deleted", %{backend: backend} do
       assert ConsolidatedSup.pipeline_running?(backend)
 
-      assert {:ok, _} = Backends.delete_backend(backend)
+      assert {:ok, _} = Logflare.Backends.delete_backend(backend)
 
       refute ConsolidatedSup.pipeline_running?(backend.id)
     end

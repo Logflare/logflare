@@ -18,7 +18,6 @@ defmodule Logflare.Backends do
   alias Logflare.ContextCache
   alias Logflare.Cluster
   alias Logflare.LogEvent
-  alias Logflare.Logs.SourceRouting
   alias Logflare.PubSubRates
   alias Logflare.Repo
   alias Logflare.Rules.Rule
@@ -26,6 +25,7 @@ defmodule Logflare.Backends do
   alias Logflare.Sources
   alias Logflare.Sources.Counters
   alias Logflare.Sources.Source
+  alias Logflare.Sources.SourceRouter
   alias Logflare.SystemMetrics
   alias Logflare.Teams
   alias Logflare.TeamUsers.TeamUser
@@ -89,6 +89,13 @@ defmodule Logflare.Backends do
       # filter by `default_ingest?` flag
       {:default_ingest?, true}, q ->
         where(q, [b], b.default_ingest? == true)
+
+      {:has_sources_or_rules, true}, q ->
+        q
+        |> join(:left, [b], sb in "sources_backends", on: sb.backend_id == b.id)
+        |> join(:left, [b], r in Rule, on: r.backend_id == b.id)
+        |> where([b, sb, r], not is_nil(sb.backend_id) or not is_nil(r.backend_id))
+        |> distinct([b], b.id)
 
       _, q ->
         q
@@ -587,7 +594,7 @@ defmodule Logflare.Backends do
   defp maybe_mark_le_dropped_by_lql(%LogEvent{} = le, %Source{drop_lql_filters: []}), do: le
 
   defp maybe_mark_le_dropped_by_lql(%LogEvent{} = le, %Source{drop_lql_filters: filters}) do
-    if SourceRouting.route_with_lql_rules?(le, %Rule{lql_filters: filters}) do
+    if SourceRouter.Sequential.route_with_lql_rules?(le, %Rule{lql_filters: filters}) do
       %{le | drop: true}
     else
       le
@@ -609,7 +616,7 @@ defmodule Logflare.Backends do
         :ok
     end
 
-    SourceRouting.route_to_sinks_and_ingest(log_events, source)
+    SourceRouter.route_to_sinks_and_ingest(log_events, source)
   end
 
   # send to a specific backend

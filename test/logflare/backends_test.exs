@@ -12,7 +12,6 @@ defmodule Logflare.BackendsTest do
   alias Logflare.Backends.IngestEventQueue
   alias Logflare.Backends.SourceSup
   alias Logflare.Backends.SourceSupWorker
-  alias Logflare.Logs.SourceRouting
   alias Logflare.Lql
   alias Logflare.PubSubRates
   alias Logflare.Repo
@@ -20,8 +19,8 @@ defmodule Logflare.BackendsTest do
   alias Logflare.Sources
   alias Logflare.Sources.Source
   alias Logflare.Sources.Source.BigQuery.Pipeline
+  alias Logflare.Sources.SourceRouter
   alias Logflare.SystemMetrics.AllLogsLogged
-  alias Logflare.TestSupport.FakeConsolidatedAdaptor
   alias Logflare.User
 
   setup do
@@ -74,15 +73,18 @@ defmodule Logflare.BackendsTest do
       [user: user]
     end
 
-    test "create_backend/1 starts consolidated pipeline when adaptor supports it", %{user: user} do
-      stub(Adaptor, :get_adaptor, fn _backend -> FakeConsolidatedAdaptor end)
-      stub(Adaptor, :consolidated_ingest?, fn _backend -> true end)
-
+    test "create_backend/1 starts consolidated pipeline for clickhouse backend", %{user: user} do
       attrs = %{
-        type: :webhook,
+        type: :clickhouse,
         user_id: user.id,
-        name: "Test Consolidated",
-        config: %{url: "https://example.com"}
+        name: "Test ClickHouse",
+        config: %{
+          url: "http://localhost",
+          port: 8123,
+          database: "test_db",
+          username: "user",
+          password: "pass"
+        }
       }
 
       assert {:ok, backend} = Backends.create_backend(attrs)
@@ -105,14 +107,17 @@ defmodule Logflare.BackendsTest do
     end
 
     test "delete_backend/1 stops consolidated pipeline", %{user: user} do
-      stub(Adaptor, :get_adaptor, fn _backend -> FakeConsolidatedAdaptor end)
-      stub(Adaptor, :consolidated_ingest?, fn _backend -> true end)
-
       attrs = %{
-        type: :webhook,
+        type: :clickhouse,
         user_id: user.id,
-        name: "Test Consolidated",
-        config: %{url: "https://example.com"}
+        name: "Test ClickHouse",
+        config: %{
+          url: "http://localhost",
+          port: 8123,
+          database: "test_db",
+          username: "user",
+          password: "pass"
+        }
       }
 
       assert {:ok, backend} = Backends.create_backend(attrs)
@@ -123,14 +128,17 @@ defmodule Logflare.BackendsTest do
     end
 
     test "update_backend/2 keeps consolidated pipeline running", %{user: user} do
-      stub(Adaptor, :get_adaptor, fn _backend -> FakeConsolidatedAdaptor end)
-      stub(Adaptor, :consolidated_ingest?, fn _backend -> true end)
-
       attrs = %{
-        type: :webhook,
+        type: :clickhouse,
         user_id: user.id,
-        name: "Test Consolidated",
-        config: %{url: "https://example.com"}
+        name: "Test ClickHouse",
+        config: %{
+          url: "http://localhost",
+          port: 8123,
+          database: "test_db",
+          username: "user",
+          password: "pass"
+        }
       }
 
       assert {:ok, backend} = Backends.create_backend(attrs)
@@ -261,6 +269,84 @@ defmodule Logflare.BackendsTest do
 
       assert [%{alert_queries: [_]}] =
                Backends.list_backends(user_id: user.id) |> Backends.preload_alerts()
+    end
+
+    test "list_backends/1 with `has_sources_or_rules` filter includes backends with sources", %{
+      source: source,
+      user: user
+    } do
+      backend_with_source =
+        insert(:backend,
+          user: user,
+          type: :webhook,
+          config: %{url: "http://with-source.com"},
+          sources: [source]
+        )
+
+      backend_without_source =
+        insert(:backend,
+          user: user,
+          type: :webhook,
+          config: %{url: "http://without-source.com"}
+        )
+
+      results = Backends.list_backends(has_sources_or_rules: true, user_id: user.id)
+      result_ids = Enum.map(results, & &1.id)
+
+      assert backend_with_source.id in result_ids
+      refute backend_without_source.id in result_ids
+    end
+
+    test "list_backends/1 with `has_sources_or_rules` filter includes backends with drain rules",
+         %{
+           source: source,
+           user: user
+         } do
+      backend_with_rule =
+        insert(:backend,
+          user: user,
+          type: :webhook,
+          config: %{url: "http://with-rule.com"}
+        )
+
+      backend_without_anything =
+        insert(:backend,
+          user: user,
+          type: :webhook,
+          config: %{url: "http://without-anything.com"}
+        )
+
+      insert(:rule, source: source, backend: backend_with_rule, lql_string: "testing")
+
+      results = Backends.list_backends(has_sources_or_rules: true, user_id: user.id)
+      result_ids = Enum.map(results, & &1.id)
+
+      assert backend_with_rule.id in result_ids
+      refute backend_without_anything.id in result_ids
+    end
+
+    test "list_backends/1 with `has_sources_or_rules` filter includes backends with both sources and rules",
+         %{
+           source: source,
+           user: user
+         } do
+      other_source = insert(:source, user: user)
+
+      backend_with_both =
+        insert(:backend,
+          user: user,
+          type: :webhook,
+          config: %{url: "http://with-both.com"},
+          sources: [source]
+        )
+
+      insert(:rule, source: other_source, backend: backend_with_both, lql_string: "testing")
+
+      results = Backends.list_backends(has_sources_or_rules: true, user_id: user.id)
+      result_ids = Enum.map(results, & &1.id)
+
+      assert backend_with_both.id in result_ids
+      assert Enum.count(result_ids, &(&1 == backend_with_both.id)) == 1
     end
 
     test "list_backends/1 by user access", %{user: user} do
@@ -1247,10 +1333,10 @@ defmodule Logflare.BackendsTest do
       Benchee.run(
         %{
           "with rules" => fn ->
-            SourceRouting.route_to_sinks_and_ingest(batch1, source1)
+            SourceRouter.route_to_sinks_and_ingest(batch1, source1)
           end,
           "100 rules" => fn ->
-            SourceRouting.route_to_sinks_and_ingest(batch2, source2)
+            SourceRouter.route_to_sinks_and_ingest(batch2, source2)
           end
         },
         time: 3,

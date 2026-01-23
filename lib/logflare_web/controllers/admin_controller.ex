@@ -5,8 +5,6 @@ defmodule LogflareWeb.AdminController do
 
   alias Logflare.Admin
   alias Logflare.Repo
-  alias Logflare.Sources
-  alias Logflare.Sources.Source
   alias Logflare.User
   alias Logflare.Users
   alias LogflareWeb.AuthController
@@ -17,17 +15,6 @@ defmodule LogflareWeb.AdminController do
   @accounts_sort_options [
     :inserted_at,
     :updated_at
-  ]
-  @sources_sort_options [
-    :fields,
-    :latest,
-    :rejected,
-    :rate,
-    :avg,
-    :max,
-    :buffer,
-    :inserts,
-    :recent
   ]
   defp env_node_shutdown_code, do: Application.get_env(:logflare, :node_shutdown_code)
 
@@ -144,11 +131,6 @@ defmodule LogflareWeb.AdminController do
     |> json(%{"message" => "Error, valid shutdown code required!"})
   end
 
-  def sources(conn, params) do
-    sorted_sources = sorted_sources(params)
-    render(conn, "sources.html", sources: sorted_sources, sort_options: @sources_sort_options)
-  end
-
   defp paginate_accounts(%{"page" => page, "sort_by" => ""}) do
     query_accounts()
     |> Repo.all()
@@ -185,39 +167,6 @@ defmodule LogflareWeb.AdminController do
     |> Repo.paginate(%{page_size: @page_size, page: 1})
   end
 
-  defp sorted_sources(%{"page" => page, "sort_by" => sort_by} = _params) do
-    query()
-    |> Repo.all()
-    |> Stream.map(&Sources.refresh_source_metrics/1)
-    |> Stream.map(&Sources.put_schema_field_count/1)
-    |> Enum.sort_by(&Map.fetch(&1.metrics, sort_option_to_atom(sort_by)), &>=/2)
-    |> Repo.paginate(%{page_size: @page_size, page: page})
-  end
-
-  defp sorted_sources(%{"sort_by" => sort_by} = _params) do
-    query()
-    |> Repo.all()
-    |> Stream.map(&Sources.refresh_source_metrics/1)
-    |> Stream.map(&Sources.put_schema_field_count/1)
-    |> Enum.sort_by(&Map.fetch(&1.metrics, sort_option_to_atom(sort_by)), &>=/2)
-    |> Repo.paginate(%{page_size: @page_size, page: 1})
-  end
-
-  defp sorted_sources(_params) do
-    query()
-    |> Repo.all()
-    |> Stream.map(&Sources.refresh_source_metrics/1)
-    |> Stream.map(&Sources.put_schema_field_count/1)
-    |> Enum.into([])
-    |> Repo.paginate(%{page_size: @page_size, page: 1})
-  end
-
-  defp query do
-    from s in Source,
-      order_by: [desc: s.inserted_at],
-      select: s
-  end
-
   defp query_accounts do
     from u in User,
       order_by: [desc: :inserted_at],
@@ -246,7 +195,6 @@ defmodule LogflareWeb.AdminController do
   end
 
   defp sort_option_to_atom(option) when is_binary(option) do
-    options = @accounts_sort_options ++ @sources_sort_options
-    Enum.find(options, &(Atom.to_string(&1) == option))
+    Enum.find(@accounts_sort_options, &(Atom.to_string(&1) == option))
   end
 end

@@ -94,7 +94,7 @@ defmodule LogflareWeb.SourceController do
 
     message = [
       "This source is seeing more than 5 events per second. ",
-      Phoenix.HTML.Link.link("Search",
+      PhoenixHTMLHelpers.Link.link("Search",
         to: "#{search_path}"
       ),
       " to see the latest events. Use the explore link to view in Google Data Studio."
@@ -118,7 +118,7 @@ defmodule LogflareWeb.SourceController do
   def explore(%{assigns: %{plan: %{name: "Free"}, source: source}} = conn, _params) do
     message = [
       "Please ",
-      Phoenix.HTML.Link.link("upgrade to explore",
+      PhoenixHTMLHelpers.Link.link("upgrade to explore",
         to: ~p"/billing/edit"
       ),
       " in Google Data Studio."
@@ -147,7 +147,7 @@ defmodule LogflareWeb.SourceController do
         _params
       ) do
     message = [
-      Phoenix.HTML.Link.link("Sign in with Google",
+      PhoenixHTMLHelpers.Link.link("Sign in with Google",
         to: "#{Routes.oauth_path(conn, :request, "google")}"
       ),
       " to explore in Data Studio."
@@ -169,7 +169,7 @@ defmodule LogflareWeb.SourceController do
 
   def explore(%{assigns: %{user: _user, source: source}} = conn, _params) do
     message = [
-      Phoenix.HTML.Link.link("Sign in with Google",
+      PhoenixHTMLHelpers.Link.link("Sign in with Google",
         to: "#{Routes.oauth_path(conn, :request, "google")}"
       ),
       " to explore in Data Studio."
@@ -341,7 +341,7 @@ defmodule LogflareWeb.SourceController do
       {:error, :upgrade} ->
         message = [
           "Please ",
-          Phoenix.HTML.Link.link("upgrade",
+          PhoenixHTMLHelpers.Link.link("upgrade",
             to: ~p"/billing/edit"
           ),
           " first!"
@@ -396,7 +396,7 @@ defmodule LogflareWeb.SourceController do
     else
       message = [
         "Failed! Recent events are less than 24 hours old. ",
-        Phoenix.HTML.Link.link("Force delete",
+        PhoenixHTMLHelpers.Link.link("Force delete",
           to: "#{Routes.source_path(conn, :del_source_and_redirect, source.id)}",
           method: :delete
         ),
@@ -466,7 +466,7 @@ defmodule LogflareWeb.SourceController do
 
     for le <- log_events, le do
       le
-      |> Map.take([:body, :via_rule, :origin_source_id])
+      |> Map.take([:body, :via_rule, :origin_source_uuid])
       |> case do
         %{body: %{"metadata" => %{"level" => level}}}
         when level in ~W(debug info warning error alert critical notice emergency) ->

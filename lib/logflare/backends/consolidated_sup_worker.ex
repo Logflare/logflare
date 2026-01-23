@@ -52,7 +52,7 @@ defmodule Logflare.Backends.ConsolidatedSupWorker do
   end
 
   defp list_expected_backend_ids do
-    Backends.list_backends([])
+    Backends.list_backends(has_sources_or_rules: true)
     |> Enum.filter(&Adaptor.consolidated_ingest?/1)
     |> Enum.map(& &1.id)
     |> MapSet.new()

@@ -334,7 +334,6 @@ defmodule LogflareWeb.Router do
     pipe_through([:browser, :require_auth, :check_admin])
 
     get("/dashboard", AdminController, :dashboard)
-    get("/sources", AdminController, :sources)
     get("/accounts", AdminController, :accounts)
     live("/cluster", Admin.ClusterLive, :index)
     live("/partner", Admin.PartnerLive, :index)

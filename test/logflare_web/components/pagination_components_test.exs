@@ -18,7 +18,7 @@ defmodule LogflareWeb.PaginationComponentsTest do
       html =
         render_component(&PaginationComponents.pagination_links/1, %{
           page: page,
-          path: "/admin/sources"
+          path: "/admin/accounts"
         })
 
       assert html =~ "<nav>"
@@ -38,7 +38,7 @@ defmodule LogflareWeb.PaginationComponentsTest do
       html =
         render_component(&PaginationComponents.pagination_links/1, %{
           page: page,
-          path: "/admin/sources"
+          path: "/admin/accounts"
         })
 
       assert html =~ ~s(<li class="page-item active">)
@@ -57,7 +57,7 @@ defmodule LogflareWeb.PaginationComponentsTest do
       html =
         render_component(&PaginationComponents.pagination_links/1, %{
           page: page,
-          path: "/admin/sources",
+          path: "/admin/accounts",
           params: [sort_by: "recent"]
         })
 
@@ -76,11 +76,11 @@ defmodule LogflareWeb.PaginationComponentsTest do
       html =
         render_component(&PaginationComponents.pagination_links/1, %{
           page: page,
-          path: "/admin/sources"
+          path: "/admin/accounts"
         })
 
       # First page link should not have ?page=1
-      assert html =~ ~s(href="/admin/sources")
+      assert html =~ ~s(href="/admin/accounts")
     end
 
     test "includes page param for non-first pages" do
@@ -95,7 +95,7 @@ defmodule LogflareWeb.PaginationComponentsTest do
       html =
         render_component(&PaginationComponents.pagination_links/1, %{
           page: page,
-          path: "/admin/sources"
+          path: "/admin/accounts"
         })
 
       # Second page link should have ?page=2
@@ -114,7 +114,7 @@ defmodule LogflareWeb.PaginationComponentsTest do
       html =
         render_component(&PaginationComponents.pagination_links/1, %{
           page: page,
-          path: "/admin/sources",
+          path: "/admin/accounts",
           distance: 2,
           first: false,
           last: false
@@ -136,11 +136,11 @@ defmodule LogflareWeb.PaginationComponentsTest do
       html =
         render_component(&PaginationComponents.pagination_links/1, %{
           page: page,
-          path: "/admin/sources"
+          path: "/admin/accounts"
         })
 
-      assert html =~ ~s(href="/admin/sources?page=4" rel="prev")
-      assert html =~ ~s(href="/admin/sources?page=6" rel="next")
+      assert html =~ ~s(href="/admin/accounts?page=4" rel="prev")
+      assert html =~ ~s(href="/admin/accounts?page=6" rel="next")
       assert html =~ ~s(rel="canonical")
     end
   end

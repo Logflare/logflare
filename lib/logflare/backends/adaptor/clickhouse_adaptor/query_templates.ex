@@ -73,12 +73,13 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryTemplates do
       """
       CREATE TABLE IF NOT EXISTS #{db_table_string} (
         `id` UUID,
+        `source_uuid` UUID,
         `body` String,
         `timestamp` DateTime64(6)
       )
       ENGINE = #{engine}
       PARTITION BY toYYYYMMDD(timestamp)
-      ORDER BY (timestamp)
+      ORDER BY (source_uuid, timestamp)
       """,
       if is_pos_integer(ttl_days) do
         """

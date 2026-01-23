@@ -29,7 +29,6 @@ defmodule LogflareWeb.AdminControllerTest do
 
       assert conn.halted == false
       assert html_response(conn, 200) =~ "~/admin"
-      assert html_response(conn, 200) =~ "source"
     end
 
     test "become functionality lets an admin turn into a google user", %{conn: conn, admin: admin} do

@@ -84,6 +84,8 @@ defmodule Logflare.Mixfile do
     [
       # Phoenix stuff
       {:phoenix, "~> 1.7.14"},
+      {:phoenix_html, "~> 4.0"},
+      {:phoenix_html_helpers, "~> 1.0"},
       {:phoenix_live_view, "~> 1.0.0"},
       {:phoenix_view, "~> 2.0"},
       {:phoenix_pubsub, "~> 2.1"},
@@ -102,7 +104,7 @@ defmodule Logflare.Mixfile do
 
       # Oauth2 provider
       {:phoenix_oauth2_provider,
-       github: "Logflare/phoenix_oauth2_provider", ref: "36e757920e54bffa0f603bf985aff91bb8b28f2d"},
+       github: "Logflare/phoenix_oauth2_provider", ref: "9ab5f7b2905286d9e4a1f731ac22009553e3a048"},
       {:ex_oauth2_provider, github: "aristamd/ex_oauth2_provider", override: true},
 
       # Ecto and DB
@@ -192,7 +194,7 @@ defmodule Logflare.Mixfile do
       {:rustler, "~> 0.36.2", override: true},
 
       # Frontend
-      {:phoenix_live_react, "~> 0.4"},
+      {:phoenix_live_react, "~> 0.6"},
       {:sql_fmt, "~> 0.4.0"},
 
       # Dev
@@ -200,7 +202,7 @@ defmodule Logflare.Mixfile do
 
       # Billing
       {:stripity_stripe, "~> 2.9.0"},
-      {:money, "~> 1.7"},
+      {:money, "~> 1.14"},
 
       # Utils
       {:recase, "~> 0.7.0"},

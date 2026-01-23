@@ -27,7 +27,7 @@ defmodule Logflare.Backends.UserMonitoring do
         otlp_endpoint: "",
         export_period: export_period,
         max_concurrency: System.schedulers_online(),
-        max_batch_size: 500,
+        max_batch_size: 1000,
         spawn_opt: [fullsweep_after: 10_000]
       ]
 

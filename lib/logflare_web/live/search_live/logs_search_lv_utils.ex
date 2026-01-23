@@ -2,7 +2,7 @@ defmodule LogflareWeb.SearchLV.Utils do
   @moduledoc """
   Various utility functions for logs search LiveViews.
   """
-  use Phoenix.HTML
+  use LogflareWeb, :html
 
   require Logger
 
