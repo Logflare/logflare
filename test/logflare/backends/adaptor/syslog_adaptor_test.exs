@@ -332,7 +332,6 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptorTest do
   describe "pipeline retries" do
     setup do
       events = [
-        [:broadway, :batch_processor, :start],
         [:broadway, :batch_processor, :stop]
       ]
 
