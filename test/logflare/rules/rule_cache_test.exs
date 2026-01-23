@@ -112,11 +112,15 @@ defmodule Logflare.Rules.CacheTest do
 
     test "rule id key busting", %{rule_ids: [rid1, rid2]} do
       assert _r1 = @subject.get_rule(rid1)
-      assert %{misses: 1, writes: 1} = Cachex.stats!(@subject)
-
-      assert {:ok, 1} = @subject.bust_by(id: rid1)
-      assert _r1 = @subject.get_rule(rid1)
+      assert _r1 = @subject.get_lql_rule(rid1)
       assert %{misses: 2, writes: 2} = Cachex.stats!(@subject)
+
+      assert {:ok, 2} = @subject.bust_by(id: rid1)
+      assert _r1 = @subject.get_rule(rid1)
+      assert %{misses: 3, writes: 3} = Cachex.stats!(@subject)
+
+      assert _r1 = @subject.get_lql_rule(rid1)
+      assert %{misses: 4, writes: 4} = Cachex.stats!(@subject)
 
       # Bust missing key
       assert {:ok, 0} = @subject.bust_by(id: rid2)

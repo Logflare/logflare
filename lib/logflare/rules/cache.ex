@@ -45,23 +45,10 @@ defmodule Logflare.Rules.Cache do
 
   def get_rules(ids) do
     Cachex.execute!(__MODULE__, fn cache ->
-      for id <- ids, do: get_rule_via_cache(cache, id)
+      for id <- ids do
+        ContextCache.fetch(cache, {:get_rule, [id]}, fn -> Rules.get_rule(id) end)
+      end
     end)
-  end
-
-  defp get_rule_via_cache(cache, id) do
-    Cachex.fetch(cache, {:get_rule, [id]}, fn _key ->
-      # Use a `:cached` tuple here otherwise when an fn returns nil Cachex will miss
-      # the cache because it thinks ETS returned nil
-      {:commit, {:cached, Rules.get_rule(id)}}
-    end)
-    |> case do
-      {:commit, {:cached, value}} ->
-        value
-
-      {:ok, {:cached, value}} ->
-        value
-    end
   end
 
   def get_lql_rule(id), do: apply_repo_fun(__ENV__.function, [id])
@@ -69,18 +56,7 @@ defmodule Logflare.Rules.Cache do
   def get_lql_rules(ids) do
     Cachex.execute!(__MODULE__, fn cache ->
       for id <- Enum.uniq(ids) do
-        Cachex.fetch(cache, {:get_lql_rule, [id]}, fn _key ->
-          # Use a `:cached` tuple here otherwise when an fn returns nil Cachex will miss
-          # the cache because it thinks ETS returned nil
-          {:commit, {:cached, Rules.get_lql_rule(id)}}
-        end)
-        |> case do
-          {:commit, {:cached, value}} ->
-            value
-
-          {:ok, {:cached, value}} ->
-            value
-        end
+        ContextCache.fetch(cache, {:get_lql_rule, [id]}, fn -> Rules.get_lql_rule(id) end)
       end
     end)
   end
@@ -96,7 +72,7 @@ defmodule Logflare.Rules.Cache do
       kw
       |> Enum.flat_map(fn
         {:id, id} ->
-          [{:get_rule, [id]}]
+          [{:get_rule, [id]}, {:get_lql_rule, [id]}]
 
         {:source_id, source_id} ->
           [{:list_by_source_id, [source_id]}, {:rules_tree_by_source_id, [source_id]}]
