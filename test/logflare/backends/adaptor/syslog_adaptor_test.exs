@@ -328,4 +328,94 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptorTest do
     |> Logflare.Backends.Adaptor.SyslogAdaptor.cast_config()
     |> Logflare.Backends.Adaptor.SyslogAdaptor.validate_config()
   end
+
+  describe "pipeline retries" do
+    setup do
+      events = [
+        [:broadway, :batch_processor, :start],
+        [:broadway, :batch_processor, :stop]
+      ]
+
+      telemetry_ref = :telemetry_test.attach_event_handlers(self(), events)
+      on_exit(fn -> :telemetry.detach(telemetry_ref) end)
+      {:ok, telemetry_ref: telemetry_ref}
+    end
+
+    @tag :capture_log
+    test "requeues retriable events on connection failure", %{telemetry_ref: telemetry_ref} do
+      {:ok, listen_socket} = :gen_tcp.listen(0, active: false, mode: :binary)
+      {:ok, {_address, port}} = :inet.sockname(listen_socket)
+      :ok = :gen_tcp.close(listen_socket)
+
+      {source, _backend} = start_syslog(%{host: "localhost", port: port})
+
+      Logflare.Backends.ingest_logs(
+        [build(:log_event, message: "hello retries")],
+        source
+      )
+
+      assert_receive {[:broadway, :batch_processor, :stop], ^telemetry_ref, _measurements, meta},
+                     to_timeout(second: 10)
+
+      assert meta.successful_messages == []
+      assert [%Broadway.Message{data: %Logflare.LogEvent{retries: 0}}] = meta.failed_messages
+
+      {:ok, listen_socket} = :gen_tcp.listen(port, active: false, mode: :binary)
+
+      accept_and_close_socket =
+        Task.async(fn ->
+          {:ok, socket} = :gen_tcp.accept(listen_socket)
+          sock_recv_syslog(socket)
+        end)
+
+      assert {:ok, log} = Task.await(accept_and_close_socket)
+      assert log =~ "hello retries"
+
+      assert_receive {[:broadway, :batch_processor, :stop], ^telemetry_ref, _measurements, meta},
+                     to_timeout(second: 10)
+
+      assert meta.failed_messages == []
+      assert [%Broadway.Message{data: %Logflare.LogEvent{retries: 1}}] = meta.successful_messages
+    end
+
+    @tag :capture_log
+    test "drops events with exhausted retries", %{telemetry_ref: telemetry_ref} do
+      {:ok, listen_socket} = :gen_tcp.listen(0, active: false, mode: :binary)
+      {:ok, {_address, port}} = :inet.sockname(listen_socket)
+      :ok = :gen_tcp.close(listen_socket)
+
+      {source, backend} = start_syslog(%{host: "localhost", port: port})
+
+      Logflare.Backends.ingest_logs(
+        [build(:log_event, message: "hello rejects")],
+        source
+      )
+
+      assert_receive {[:broadway, :batch_processor, :stop], ^telemetry_ref, _measurements, meta},
+                     to_timeout(second: 10)
+
+      assert meta.successful_messages == []
+      assert [%Broadway.Message{data: %Logflare.LogEvent{retries: 0}}] = meta.failed_messages
+
+      assert_receive {[:broadway, :batch_processor, :stop], ^telemetry_ref, _measurements, meta},
+                     to_timeout(second: 10)
+
+      assert meta.successful_messages == []
+      assert [%Broadway.Message{data: %Logflare.LogEvent{retries: 1}}] = meta.failed_messages
+
+      refute_receive {[:broadway, :batch_processor, :stop], ^telemetry_ref, _measurements, _meta},
+                     to_timeout(second: 10)
+
+      assert {:ok, []} =
+               Logflare.Backends.IngestEventQueue.fetch_events({source.id, backend.id}, 1)
+    end
+  end
+
+  defp sock_recv_syslog(socket, octets_acc \\ 0) do
+    case :gen_tcp.recv(socket, 1) do
+      {:ok, <<?\s>>} -> :gen_tcp.recv(socket, octets_acc)
+      {:ok, <<n>>} -> sock_recv_syslog(socket, octets_acc * 10 + n - ?0)
+      {:error, _reason} = error -> error
+    end
+  end
 end

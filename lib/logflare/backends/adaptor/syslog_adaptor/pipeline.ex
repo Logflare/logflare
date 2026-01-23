@@ -6,7 +6,13 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.Pipeline do
 
   alias Broadway.Message
   alias Logflare.Backends
+  alias Logflare.Backends.IngestEventQueue
+  alias Logflare.Sources
   alias Logflare.Backends.Adaptor.SyslogAdaptor.{Pool, Syslog}
+
+  require Logger
+
+  @max_retries 1
 
   def start_link(opts) do
     backend = Keyword.fetch!(opts, :backend)
@@ -55,10 +61,61 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptor.Pipeline do
     end
   end
 
+  @impl Broadway
+  def handle_failed(messages, context) do
+    %{source_id: source_id, backend_id: backend_id} = context
+
+    {retriable, exhausted} =
+      partition_retriable_events(messages, _retriable = [], _exhausted = [])
+
+    source = Sources.Cache.get_by_id(source_id)
+    if retriable != [], do: requeue_retriable_events(retriable, source, backend_id)
+    if exhausted != [], do: drop_exhausted_events(exhausted, source, backend_id)
+
+    messages
+  end
+
   defp fail_batch(messages, reason) do
     Enum.map(messages, fn message ->
       Broadway.Message.failed(message, reason)
     end)
+  end
+
+  defp partition_retriable_events([message | messages], retriable, exhausted) do
+    %Broadway.Message{data: %Logflare.LogEvent{retries: retries} = event} = message
+    retries = retries || 0
+
+    if retries < @max_retries do
+      event = %{event | retries: retries + 1}
+      partition_retriable_events(messages, [event | retriable], exhausted)
+    else
+      partition_retriable_events(messages, retriable, [event | exhausted])
+    end
+  end
+
+  defp partition_retriable_events([], retriable, exhausted) do
+    {:lists.reverse(retriable), :lists.reverse(exhausted)}
+  end
+
+  defp requeue_retriable_events(events, source, backend_id) do
+    Logger.info(
+      "Requeuing #{length(events)} Syslog events for retry",
+      source_token: source.token,
+      backend_id: backend_id
+    )
+
+    IngestEventQueue.delete_batch({source.id, backend_id}, events)
+    IngestEventQueue.add_to_table({source.id, backend_id}, events)
+  end
+
+  defp drop_exhausted_events(events, source, backend_id) do
+    Logger.warning(
+      "Dropping #{length(events)} Syslog events after #{@max_retries} retries",
+      source_token: source.token,
+      backend_id: backend_id
+    )
+
+    IngestEventQueue.delete_batch({source.id, backend_id}, events)
   end
 
   @impl Broadway
