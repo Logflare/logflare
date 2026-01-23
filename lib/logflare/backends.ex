@@ -90,6 +90,13 @@ defmodule Logflare.Backends do
       {:default_ingest?, true}, q ->
         where(q, [b], b.default_ingest? == true)
 
+      {:has_sources_or_rules, true}, q ->
+        q
+        |> join(:left, [b], sb in "sources_backends", on: sb.backend_id == b.id)
+        |> join(:left, [b], r in Rule, on: r.backend_id == b.id)
+        |> where([b, sb, r], not is_nil(sb.backend_id) or not is_nil(r.backend_id))
+        |> distinct([b], b.id)
+
       _, q ->
         q
     end)

@@ -271,6 +271,84 @@ defmodule Logflare.BackendsTest do
                Backends.list_backends(user_id: user.id) |> Backends.preload_alerts()
     end
 
+    test "list_backends/1 with `has_sources_or_rules` filter includes backends with sources", %{
+      source: source,
+      user: user
+    } do
+      backend_with_source =
+        insert(:backend,
+          user: user,
+          type: :webhook,
+          config: %{url: "http://with-source.com"},
+          sources: [source]
+        )
+
+      backend_without_source =
+        insert(:backend,
+          user: user,
+          type: :webhook,
+          config: %{url: "http://without-source.com"}
+        )
+
+      results = Backends.list_backends(has_sources_or_rules: true, user_id: user.id)
+      result_ids = Enum.map(results, & &1.id)
+
+      assert backend_with_source.id in result_ids
+      refute backend_without_source.id in result_ids
+    end
+
+    test "list_backends/1 with `has_sources_or_rules` filter includes backends with drain rules",
+         %{
+           source: source,
+           user: user
+         } do
+      backend_with_rule =
+        insert(:backend,
+          user: user,
+          type: :webhook,
+          config: %{url: "http://with-rule.com"}
+        )
+
+      backend_without_anything =
+        insert(:backend,
+          user: user,
+          type: :webhook,
+          config: %{url: "http://without-anything.com"}
+        )
+
+      insert(:rule, source: source, backend: backend_with_rule, lql_string: "testing")
+
+      results = Backends.list_backends(has_sources_or_rules: true, user_id: user.id)
+      result_ids = Enum.map(results, & &1.id)
+
+      assert backend_with_rule.id in result_ids
+      refute backend_without_anything.id in result_ids
+    end
+
+    test "list_backends/1 with `has_sources_or_rules` filter includes backends with both sources and rules",
+         %{
+           source: source,
+           user: user
+         } do
+      other_source = insert(:source, user: user)
+
+      backend_with_both =
+        insert(:backend,
+          user: user,
+          type: :webhook,
+          config: %{url: "http://with-both.com"},
+          sources: [source]
+        )
+
+      insert(:rule, source: other_source, backend: backend_with_both, lql_string: "testing")
+
+      results = Backends.list_backends(has_sources_or_rules: true, user_id: user.id)
+      result_ids = Enum.map(results, & &1.id)
+
+      assert backend_with_both.id in result_ids
+      assert Enum.count(result_ids, &(&1 == backend_with_both.id)) == 1
+    end
+
     test "list_backends/1 by user access", %{user: user} do
       team_user = insert(:team_user, email: user.email)
 
