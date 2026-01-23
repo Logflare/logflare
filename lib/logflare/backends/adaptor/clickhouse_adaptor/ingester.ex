@@ -184,7 +184,12 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
   end
 
   @spec maybe_add_async_insert(map(), boolean()) :: map()
-  defp maybe_add_async_insert(params, true), do: Map.put(params, "async_insert", "1")
+  defp maybe_add_async_insert(params, true) do
+    params
+    |> Map.put("async_insert", "1")
+    |> Map.put("wait_for_async_insert", "1")
+  end
+
   defp maybe_add_async_insert(params, _), do: params
 
   defp default_port("https"), do: 8443

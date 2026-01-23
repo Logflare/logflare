@@ -9,6 +9,7 @@ defmodule LogflareWeb.Live.DisplayHelpersTest do
   describe "sanitize_backend_config/1" do
     property "preserves only allowed keys and masks everything else" do
       config = %{
+        async_insert: true,
         batch_timeout: 5000,
         database: "logflare_production",
         hostname: "db.example.com",
@@ -28,6 +29,7 @@ defmodule LogflareWeb.Live.DisplayHelpersTest do
 
         assert DisplayHelpers.sanitize_backend_config(config) == %{
                  key => "**********",
+                 async_insert: true,
                  batch_timeout: 5000,
                  database: "logflare_production",
                  hostname: "db.example.com",

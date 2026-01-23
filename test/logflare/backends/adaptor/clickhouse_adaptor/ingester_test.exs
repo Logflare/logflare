@@ -258,7 +258,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.IngesterTest do
       assert :ok = Ingester.insert(backend, table_name, [log_event])
     end
 
-    test "uses async inserts when async_insert config is true", %{
+    test "uses async inserts with wait flag when async_insert config is true", %{
       backend: backend,
       table_name: table_name,
       source: source
@@ -278,6 +278,9 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.IngesterTest do
 
         assert url =~ "async_insert=1",
                "Expected URL to contain async_insert=1 parameter, got: #{url}"
+
+        assert url =~ "wait_for_async_insert=1",
+               "Expected URL to contain wait_for_async_insert=1 parameter, got: #{url}"
 
         {:ok, %Finch.Response{status: 200, body: ""}}
       end)
