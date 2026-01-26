@@ -148,8 +148,9 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.IngesterTest do
 
       encoded = Ingester.encode_row(log_event)
       assert is_list(encoded)
-      # UUID (16) + source_id UUID (16) + varint length (1+) + body (JSON) + timestamp (8)
-      assert IO.iodata_length(encoded) >= 16 + 16 + 1 + 10 + 8
+
+      # UUID (16) + source_uuid UUID (16) + varint length (1+) + body (JSON) + ingested_at (8) + timestamp (8)
+      assert IO.iodata_length(encoded) >= 16 + 16 + 1 + 10 + 8 + 8
     end
 
     test "encodes origin_source_uuid as source_id UUID" do
