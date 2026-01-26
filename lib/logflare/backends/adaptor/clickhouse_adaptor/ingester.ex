@@ -87,6 +87,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
         ingested_at: ingested_at
       }) do
     source_uuid_str = Atom.to_string(origin_source_uuid)
+    ingested_at = ingested_at || NaiveDateTime.utc_now()
 
     [
       encode_as_uuid(body["id"]),
