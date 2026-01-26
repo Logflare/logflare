@@ -1,4 +1,5 @@
-import { test, expect, Page } from '@playwright/test';
+import { test, expect } from '@playwright/test';
+import { searchLogs } from '../lib/utils';
 import supabase from '../lib/supabase';
 
 test.beforeAll(async ({ request }) => {
@@ -70,9 +71,4 @@ test('receives logs from Cron', async ({ page }) => {
   await expect(page.getByRole('table')).toContainText('LOG: cron job 1 starting: SELECT auth.email()');
 });
 
-export async function searchLogs(page: Page, searchText: string): Promise<void> {
-  const searchInput = page.locator('input[placeholder="Search events"]');
 
-  await searchInput.fill(searchText);
-  await searchInput.press('Enter');
-}

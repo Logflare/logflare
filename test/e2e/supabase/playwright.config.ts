@@ -45,6 +45,7 @@ export default defineConfig({
         ...devices['Desktop Chrome'], launchOptions: {
           executablePath: process.env.CHROMIUM_PATH,
         },
+        permissions: ['clipboard-read', 'clipboard-write'],
       },
     },
 
