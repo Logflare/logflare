@@ -11,7 +11,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryTemplates do
   @doc """
   Default naming prefix for ingest tables.
   """
-  def default_table_name_prefix, do: "ingest"
+  def default_table_name_prefix, do: "consolidated_ingest"
 
   @doc """
   Generates a ClickHouse query statement to check that the user GRANTs include the needed permissions.
