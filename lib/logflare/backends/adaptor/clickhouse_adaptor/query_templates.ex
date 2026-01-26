@@ -75,7 +75,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryTemplates do
         `id` UUID,
         `source_uuid` UUID,
         `body` String,
-        `created_at` DateTime64(6),
+        `ingested_at` DateTime64(6),
         `timestamp` DateTime64(6)
       )
       ENGINE = #{engine}
