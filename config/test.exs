@@ -1,15 +1,15 @@
 import Config
 
-# We don't run a server during test. If one is required,
-# you can enable the server option below.
-config :logflare, LogflareWeb.Endpoint,
-  http: [port: 4001],
-  server: false
-
 config :logflare,
   env: :test,
   cache_stats: true,
+  sql_sandbox: true,
   encryption_key_default: "Q+IS7ogkzRxsj+zAIB1u6jNFquxkFzSrBZXItN27K/Q="
+
+config :logflare, LogflareWeb.Endpoint,
+  url: [host: "localhost", scheme: "http", port: 4001],
+  http: [port: 4001],
+  server: false
 
 config :logflare, Logflare.Cluster.Utils, min_cluster_size: 1
 
@@ -57,4 +57,4 @@ config :logger,
 
 config :tesla, Logflare.Backends.Adaptor.WebhookAdaptor.Client, adapter: Tesla.Mock
 
-config :phoenix_test, :endpoint, LogflareWeb.Endpoint
+config :phoenix_test, otp_app: :logflare, endpoint: LogflareWeb.Endpoint

@@ -33,6 +33,7 @@ defmodule Logflare.Mixfile do
         lint: :test,
         "lint.diff": :test,
         "test.only": :test,
+        "test.e2e": :test,
         "test.format": :test,
         "test.compile": :test,
         "test.security": :test,
@@ -153,6 +154,7 @@ defmodule Logflare.Mixfile do
       # Test
       {:mix_test_watch, "~> 1.0", only: [:dev, :test], runtime: false},
       {:phoenix_test, "~> 0.9.1", only: :test, runtime: false},
+      {:phoenix_test_playwright, "~> 0.9.1", only: :test, runtime: false},
       {:mimic, "~> 2.0", only: [:dev, :test]},
       {:stream_data, "~> 1.2.0", only: [:dev, :test]},
 
@@ -268,6 +270,7 @@ defmodule Logflare.Mixfile do
       "test.typings": ["cmd mkdir -p dialyzer", "dialyzer"],
       "test.coverage": ["coveralls"],
       "test.coverage.ci": ["coveralls.github"],
+      "test.e2e": ["ecto.create --quiet", "ecto.migrate --quiet", "test --only feature"],
       lint: ["credo"],
       "lint.diff": ["credo diff main"],
       "lint.all": ["credo --strict"],

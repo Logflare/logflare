@@ -72,7 +72,15 @@ Mimic.stub(Goth)
 Mimic.stub(Finch)
 
 ExUnit.configure(
-  exclude: [not_implemented: true, integration: true, failing: true, benchmark: true]
+  exclude: [
+    not_implemented: true,
+    feature: true,
+    integration: true,
+    failing: true,
+    benchmark: true
+  ]
 )
 
 Ecto.Adapters.SQL.Sandbox.mode(Logflare.Repo, :manual)
+
+Application.put_env(:phoenix_test, :base_url, LogflareWeb.Endpoint.url())
