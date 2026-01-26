@@ -81,13 +81,18 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
 
   @doc false
   @spec encode_row(LogEvent.t()) :: iodata()
-  def encode_row(%LogEvent{body: body, origin_source_uuid: origin_source_uuid}) do
+  def encode_row(%LogEvent{
+        body: body,
+        origin_source_uuid: origin_source_uuid,
+        ingested_at: ingested_at
+      }) do
     source_uuid_str = Atom.to_string(origin_source_uuid)
 
     [
       encode_as_uuid(body["id"]),
       encode_as_uuid(source_uuid_str),
       encode_as_string(Jason.encode_to_iodata!(body)),
+      encode_as_datetime64(DateTime.from_naive!(ingested_at, "Etc/UTC")),
       encode_as_datetime64(DateTime.from_unix!(body["timestamp"], :microsecond))
     ]
   end

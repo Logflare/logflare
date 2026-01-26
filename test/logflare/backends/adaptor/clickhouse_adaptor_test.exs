@@ -30,13 +30,13 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
     test "`clickhouse_ingest_table_name/1` generates a unique log ingest table name based on the backend token",
          %{backend: backend, stringified_backend_token: stringified_backend_token} do
       assert ClickHouseAdaptor.clickhouse_ingest_table_name(backend) ==
-               "ingest_#{stringified_backend_token}"
+               "consolidated_ingest_#{stringified_backend_token}"
     end
 
     test "`clickhouse_ingest_table_name/1` will raise an exception if the table name is equal to or exceeds 200 chars",
          %{backend: backend} do
       assert_raise RuntimeError,
-                   ~r/^The dynamically generated ClickHouse resource name starting with `ingest_/,
+                   ~r/^The dynamically generated ClickHouse resource name starting with `consolidated_ingest_/,
                    fn ->
                      backend
                      |> modify_backend_with_long_token()
