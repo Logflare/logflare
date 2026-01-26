@@ -75,11 +75,12 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryTemplates do
         `id` UUID,
         `source_uuid` UUID,
         `body` String,
+        `created_at` DateTime64(6),
         `timestamp` DateTime64(6)
       )
       ENGINE = #{engine}
       PARTITION BY toYYYYMMDD(timestamp)
-      ORDER BY (source_uuid, timestamp)
+      ORDER BY (toStartOfMinute(timestamp), source_uuid, timestamp)
       """,
       if is_pos_integer(ttl_days) do
         """
