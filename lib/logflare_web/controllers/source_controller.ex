@@ -10,6 +10,7 @@ defmodule LogflareWeb.SourceController do
   alias Logflare.Logs.SearchUtils
   alias Logflare.Lql
   alias Logflare.Repo
+  alias Logflare.Rules
   alias Logflare.Sources.Source
   alias Logflare.Sources.Source.SlackHookServer
   alias Logflare.Sources.Source.WebhookNotificationServer
@@ -462,21 +463,42 @@ defmodule LogflareWeb.SourceController do
   end
 
   defp get_and_encode_logs(%Source{} = source) do
-    log_events = Backends.list_recent_logs(source)
+    source
+    |> Backends.list_recent_logs()
+    |> Enum.map_reduce(%{}, fn le, cache ->
+      {lql_rule, cache} = load_lql_rule(le, cache)
 
-    for le <- log_events, le do
-      le
-      |> Map.take([:body, :via_rule, :origin_source_uuid])
-      |> case do
-        %{body: %{"metadata" => %{"level" => level}}}
-        when level in ~W(debug info warning error alert critical notice emergency) ->
-          body = Map.put(le.body, "level", level)
-          %{le | body: body}
+      encoded_le =
+        le
+        |> Map.take([:body, :origin_source_uuid])
+        |> Map.put(:via_lql_rule, lql_rule)
+        |> case do
+          %{body: %{"metadata" => %{"level" => level}}} = le
+          when level in ~W(debug info warning error alert critical notice emergency) ->
+            body = Map.put(le.body, "level", level)
+            %{le | body: body}
 
-        le ->
-          le
-      end
-    end
+          le ->
+            le
+        end
+
+      {encoded_le, cache}
+    end)
+    |> elem(0)
+  end
+
+  defp load_lql_rule(%{via_rule_id: nil}, cache) do
+    {nil, cache}
+  end
+
+  defp load_lql_rule(%{via_rule_id: rule_id}, cache)
+       when is_map_key(cache, rule_id) do
+    {cache[rule_id], cache}
+  end
+
+  defp load_lql_rule(%{via_rule_id: rule_id}, cache) do
+    lql_rule = Rules.Cache.get_lql_rule(rule_id)
+    {lql_rule, Map.put(cache, rule_id, lql_rule)}
   end
 
   defp put_flash_and_redirect_to_dashboard(conn, flash_level, flash_message) do

@@ -75,7 +75,15 @@ defmodule Logflare.Backends.SourceSup do
   Must be a backend rule.
   """
   @spec rule_child_started?(Rule.t()) :: boolean()
-  def rule_child_started?(%Rule{backend_id: backend_id, source_id: source_id}) do
+  def rule_child_started?(%Rule{backend_id: backend_id, source_id: source_id})
+      when backend_id != nil,
+      do: backend_child_started?(backend_id, source_id)
+
+  @doc """
+  Checks if a given backend associated with source is started.
+  """
+  @spec backend_child_started?(non_neg_integer(), non_neg_integer()) :: boolean()
+  def backend_child_started?(backend_id, source_id) do
     via = Backends.via_source(source_id, AdaptorSupervisor, backend_id)
 
     if GenServer.whereis(via) do
@@ -86,15 +94,24 @@ defmodule Logflare.Backends.SourceSup do
   end
 
   @doc """
-  Starts a given backend child spec for the backend associated with a rule.
+  Wrapper calling `start_backend_child_by_id/2` with backend and source ids
+  associated with given rule
+  """
+  @spec start_rule_child(Rule.t()) :: Supervisor.on_start_child() | :noop
+  def start_rule_child(%Rule{} = rule),
+    do: start_backend_child_by_id(rule.backend_id, rule.source_id)
+
+  @doc """
+  Starts a backend child spec for the given backend id and source id.
   This backend will not be registered for ingest dispatching.
 
   This allows for zero-downtime ingestion, as we don't restart the SourceSup supervision tree.
   """
-  @spec start_rule_child(Rule.t()) :: Supervisor.on_start_child() | :noop
-  def start_rule_child(%Rule{backend_id: backend_id} = rule) do
+  @spec start_backend_child_by_id(non_neg_integer(), non_neg_integer()) ::
+          Supervisor.on_start_child() | :noop
+  def start_backend_child_by_id(backend_id, source_id) do
     backend = Backends.Cache.get_backend(backend_id) |> Map.put(:register_for_ingest, false)
-    source = Sources.Cache.get_by_id(rule.source_id)
+    source = Sources.Cache.get_by_id(source_id)
     start_backend_child(source, backend)
   end
 
