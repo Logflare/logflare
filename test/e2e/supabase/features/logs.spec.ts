@@ -27,7 +27,7 @@ test.beforeAll(async ({ request }) => {
     query: "select cron.schedule('test_cron', '5 seconds', $$SELECT auth.email()$$);"
   }});
 
-  await new Promise(r => setTimeout(r, 10000))
+  await new Promise(r => setTimeout(r, 12000))
 });
 
 test('receives logs from API Gateway', async ({ page }) => {
