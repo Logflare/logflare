@@ -146,43 +146,62 @@ defmodule LogflareWeb.Api.QueryControllerTest do
 
   describe "backend_id parameter" do
     test "?sql= with backend_id uses backend's language", %{conn: conn, user: user} do
-      backend = insert(:backend, user: user, type: :clickhouse)
+      source =
+        insert(:source, user: user)
 
-      expect(ClickHouseAdaptor, :execute_query, fn _backend, query, _opts ->
-        assert {~S|SELECT now() AS "my_time"|, _, _, %{language: :ch_sql}} = query
+      {source, backend, cleanup_fn} =
+        Logflare.DataCase.setup_clickhouse_test(user: user, source: source)
 
-        {:ok, [%{"my_time" => "123"}]}
+      on_exit(cleanup_fn)
+
+      start_supervised!({ClickHouseAdaptor, backend})
+      assert {:ok, _} = ClickHouseAdaptor.provision_ingest_table(backend)
+
+      message = "query_controller_clickhouse_sql"
+      log_event = build(:log_event, source: source, message: message)
+      assert :ok = ClickHouseAdaptor.insert_log_events(backend, [log_event])
+
+      query = ~s(select body from "#{source.name}")
+
+      TestUtils.retry_assert(fn ->
+        response =
+          conn
+          |> add_access_token(user, ~w(private))
+          |> get(~p"/api/query?#{[sql: query, backend_id: backend.id]}")
+          |> json_response(200)
+
+        assert %{"result" => results} = response
+        assert Enum.any?(results, fn %{"body" => body} -> body =~ message end)
       end)
-
-      query = ~S|select now() as "my_time"|
-
-      response =
-        conn
-        |> add_access_token(user, ~w(private))
-        |> get(~p"/api/query?#{[sql: query, backend_id: backend.id]}")
-        |> json_response(200)
-
-      assert %{"result" => [%{"my_time" => "123"}]} = response
     end
 
     test "?ch_sql= with backend_id", %{conn: conn, user: user} do
-      backend = insert(:backend, user: user, type: :clickhouse)
+      source = insert(:source, user: user)
 
-      expect(ClickHouseAdaptor, :execute_query, fn _backend, query, _opts ->
-        assert {~S|SELECT now() AS "my_time"|, _, _, %{language: :ch_sql}} = query
+      {source, backend, cleanup_fn} =
+        Logflare.DataCase.setup_clickhouse_test(user: user, source: source)
 
-        {:ok, [%{"my_time" => "123"}]}
+      on_exit(cleanup_fn)
+
+      start_supervised!({ClickHouseAdaptor, backend})
+      assert {:ok, _} = ClickHouseAdaptor.provision_ingest_table(backend)
+
+      message = "query_controller_clickhouse_ch_sql"
+      log_event = build(:log_event, source: source, message: message)
+      assert :ok = ClickHouseAdaptor.insert_log_events(backend, [log_event])
+
+      query = ~s(select body from "#{source.name}")
+
+      TestUtils.retry_assert(fn ->
+        response =
+          conn
+          |> add_access_token(user, ~w(private))
+          |> get(~p"/api/query?#{[ch_sql: query, backend_id: backend.id]}")
+          |> json_response(200)
+
+        assert %{"result" => results} = response
+        assert Enum.any?(results, fn %{"body" => body} -> body =~ message end)
       end)
-
-      query = ~S|select now() as "my_time"|
-
-      response =
-        conn
-        |> add_access_token(user, ~w(private))
-        |> get(~p"/api/query?#{[ch_sql: query, backend_id: backend.id]}")
-        |> json_response(200)
-
-      assert %{"result" => [%{"my_time" => "123"}]} = response
     end
 
     test "invalid backend_id returns error", %{conn: conn, user: user} do
