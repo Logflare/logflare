@@ -138,11 +138,8 @@ metrics_10k =
 
 Benchee.run(
   %{
-    "exporter_callback - no flow`" => fn {metrics, config} ->
-      UserMonitoring.exporter_callback({:metrics, metrics}, config, flow: false)
-    end,
-    "exporter_callback - flow" => fn {metrics, config} ->
-      UserMonitoring.exporter_callback({:metrics, metrics}, config, flow: true)
+    "exporter_callback" => fn {metrics, config} ->
+      UserMonitoring.exporter_callback({:metrics, metrics}, config)
     end
   },
   inputs: %{
