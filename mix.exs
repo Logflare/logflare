@@ -12,6 +12,7 @@ defmodule Logflare.Mixfile do
       deps: deps(),
       dialyzer: dialyzer(),
       test_coverage: [tool: ExCoveralls],
+      test_ignore_filters: [~r|test/profiling|, "test/bq_logs_search_seed.exs"],
       releases: [
         logflare: [
           version: version(),
