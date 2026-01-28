@@ -102,6 +102,31 @@ defmodule LogflareWeb.QueryLiveTest do
                value: "select current_datetime() order-by invalid"
              }) =~ "parser error"
     end
+
+    test "shows backend adaptor error", %{conn: conn, user: user} do
+      source = insert(:source, user: user)
+
+      {source, backend, cleanup_fn} =
+        Logflare.DataCase.setup_clickhouse_test(user: user, source: source)
+
+      on_exit(cleanup_fn)
+
+      start_supervised!({ClickHouseAdaptor, backend})
+
+      {:ok, view, _html} = live(conn, "/query?backend_id=#{backend.id}")
+
+      view
+      |> render_hook("parse-query", %{
+        value: ~s(select non_existent from "#{source.name}")
+      })
+
+      html =
+        view
+        |> element("form#query-form")
+        |> render_submit(%{backend: %{backend_id: backend.id}})
+
+      assert html =~ "Error executing ClickHouse query"
+    end
   end
 
   describe "team context switching" do
