@@ -34,7 +34,7 @@ defmodule LogflareWeb.Plugs.AuthMustBeTeamAdmin do
       :error,
       [
         "You're not the account owner or an admin. Please contact ",
-        Phoenix.HTML.Link.link(user.name || user.email, to: "mailto:#{user.email}"),
+        PhoenixHTMLHelpers.Link.link(user.name || user.email, to: "mailto:#{user.email}"),
         " for support."
       ]
     )
