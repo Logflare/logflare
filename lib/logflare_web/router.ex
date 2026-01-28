@@ -444,6 +444,10 @@ defmodule LogflareWeb.Router do
       param: "token",
       only: [:index, :show]
     )
+
+    get "/key-values", Api.KeyValueController, :index
+    post "/key-values", Api.KeyValueController, :create
+    delete "/key-values", Api.KeyValueController, :delete
   end
 
   scope "/api", LogflareWeb do
@@ -458,10 +462,6 @@ defmodule LogflareWeb.Router do
       param: "token",
       only: [:index, :show, :create, :update, :delete]
     )
-
-    get "/key-values", Api.KeyValueController, :index
-    post "/key-values", Api.KeyValueController, :create
-    delete "/key-values", Api.KeyValueController, :delete
   end
 
   scope "/api/partner", LogflareWeb do
