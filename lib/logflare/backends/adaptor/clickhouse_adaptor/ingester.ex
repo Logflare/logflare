@@ -10,11 +10,11 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
   alias Logflare.LogEvent
 
   @finch_pool Logflare.FinchClickHouseIngest
-  @max_retries 3
+  @max_retries 1
   @initial_delay 500
   @max_delay 4_000
   @pool_timeout 8_000
-  @receive_timeout 15_000
+  @receive_timeout 30_000
 
   @doc """
   Inserts a list of `LogEvent` structs into ClickHouse.

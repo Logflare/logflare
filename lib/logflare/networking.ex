@@ -97,7 +97,7 @@ defmodule Logflare.Networking do
        pools: %{
          default: [
            protocols: [:http1],
-           size: max(base * 125, 150),
+           size: min(max(base * 10, 50), 100),
            count: http1_count,
            conn_max_idle_time: 9_000,
            start_pool_metrics?: true
