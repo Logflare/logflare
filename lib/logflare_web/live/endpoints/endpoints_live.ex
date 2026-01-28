@@ -365,8 +365,9 @@ defmodule LogflareWeb.EndpointsLive do
     {:noreply, socket}
   end
 
-  defp format_query_error(error) when is_binary(error), do: error
-  defp format_query_error(error), do: inspect(error)
+  defp format_query_error(error) do
+    if is_binary(error), do: error, else: inspect(error)
+  end
 
   def handle_info({:query_string_updated, query_string}, socket) do
     endpoint_language = get_current_endpoint_language(socket)
