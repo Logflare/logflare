@@ -9,3 +9,10 @@
   </.inputs_for>
   {submit("Test query", class: "btn btn-secondary")}
 </.form>
+<div :if={@query_error_message} class="tw-mt-2">
+  <.alert variant="danger">
+    <strong>Query error!</strong>
+    <br />
+    <span>{@query_error_message}</span>
+  </.alert>
+</div>

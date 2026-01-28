@@ -47,6 +47,7 @@ defmodule LogflareWeb.EndpointsLive do
       |> refresh_endpoints()
       |> assign(:query_result_rows, nil)
       |> assign(:total_bytes_processed, nil)
+      |> assign(:query_error_message, nil)
       |> assign(:show_endpoint, nil)
       |> assign(:endpoint_changeset, Endpoints.change_query(%Endpoints.Query{}))
       |> assign(:selected_backend_id, nil)
@@ -121,6 +122,7 @@ defmodule LogflareWeb.EndpointsLive do
             socket
             |> assign(:query_result_rows, nil)
             |> assign(:total_bytes_processed, nil)
+            |> assign(:query_error_message, nil)
           else
             socket
           end
@@ -131,6 +133,7 @@ defmodule LogflareWeb.EndpointsLive do
           |> refresh_endpoints()
           |> assign(:endpoint_changeset, nil)
           |> assign(:query_result_rows, nil)
+          |> assign(:query_error_message, nil)
 
         %{assigns: %{live_action: :new}} = socket ->
           params =
@@ -157,6 +160,7 @@ defmodule LogflareWeb.EndpointsLive do
           # reset test results
           |> assign(:query_result_rows, nil)
           |> assign(:redact_pii, false)
+          |> assign(:query_error_message, nil)
       end)
 
     {:noreply, socket}
@@ -238,27 +242,21 @@ defmodule LogflareWeb.EndpointsLive do
            redact_pii: redact_pii,
            backend_id: backend_id
          ) do
-      {:ok, %{rows: rows, total_bytes_processed: total_bytes_processed}} ->
-        {:noreply,
-         socket
-         |> put_flash(:info, "Ran query successfully")
-         |> assign(:prev_params, query_params)
-         |> assign(:query_result_rows, rows)
-         |> assign(:total_bytes_processed, total_bytes_processed)}
+      {:ok, %{rows: rows} = result} ->
+        total_bytes_or_nil = Map.get(result, :total_bytes_processed)
 
-      {:ok, %{rows: rows}} ->
-        # non-BQ results
         {:noreply,
          socket
          |> put_flash(:info, "Ran query successfully")
          |> assign(:prev_params, query_params)
          |> assign(:query_result_rows, rows)
-         |> assign(:total_bytes_processed, nil)}
+         |> assign(:total_bytes_processed, total_bytes_or_nil)
+         |> assign(:query_error_message, nil)}
 
       {:error, err} ->
         {:noreply,
          socket
-         |> put_flash(:error, "Error occured when running query: #{inspect(err)}")}
+         |> assign(:query_error_message, format_query_error(err))}
     end
   end
 
@@ -367,6 +365,10 @@ defmodule LogflareWeb.EndpointsLive do
     {:noreply, socket}
   end
 
+  defp format_query_error(error) do
+    if is_binary(error), do: error, else: inspect(error)
+  end
+
   def handle_info({:query_string_updated, query_string}, socket) do
     endpoint_language = get_current_endpoint_language(socket)
 
@@ -470,11 +472,6 @@ defmodule LogflareWeb.EndpointsLive do
     do: """
     select timestamp, event_message from YourApp.SourceName
     """
-
-  defp format_query_language(:bq_sql), do: "BigQuery SQL"
-  defp format_query_language(:ch_sql), do: "ClickHouse SQL"
-  defp format_query_language(:pg_sql), do: "Postgres SQL"
-  defp format_query_language(language), do: language |> to_string() |> String.upcase()
 
   defp maybe_redact_query(query, redact_pii) when is_binary(query) do
     if redact_pii do
