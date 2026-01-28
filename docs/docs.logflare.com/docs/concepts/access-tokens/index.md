@@ -14,7 +14,8 @@ Access tokens can be scoped to specific functionality.
 
 1. `ingest` - allows ingestion of events into sources.
 2. `query` - allows querying of Logflare Endpoints.
-3. `management` - allows management of resources and programmatic access to Logflare functionality.
+3. `private` - allows management of team resources 
+4. `private:admin` allows management of team resources and team users.
 
 `ingest` and `query` scopes can be scoped to specific sources and endpoints. It is recommended to use the least privileged token for the given task, especially for public ingestion.
 
@@ -30,21 +31,21 @@ Then, enter a description for the token for reference. Click on **Create** once 
 
 ![Enter a description](./create-description.png)
 
-You will be shown the access token ony **once**. Do copy the token to a safe location.
+You will be shown the access token only **once**. Do copy the token to a safe location.
  
 ![Example token](./create-success.png)
 
-To revoke access tokens, clikc on the **Revoke** button. This would immediately reject all incoming API requests.
+To revoke access tokens, click on the **Revoke** button. This would immediately reject all incoming API requests.
 
 ![Revoke token](./revoke.png)
 
 ## Authentication
 
-There are 3 supported methods to attach an accees token with an API request:
+There are 3 supported methods to attach an access token with an API request:
 
 1. Using the `Authorization` header, with the format `Authorization: Bearer your-access-token-here`
 2. Using the `X-API-KEY` header, with the format `X-API-KEY: your-access-token-here`
-3. Using the `api_key` query parameter, wuth the format `?api_key=your-access-token-here`
+3. Using the `api_key` query parameter, with the format `?api_key=your-access-token-here`
 
 ## Client-side is Public
 
