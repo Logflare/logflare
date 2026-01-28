@@ -483,6 +483,10 @@ defmodule LogflareWeb.Router do
       param: "token",
       only: [:index, :show]
     )
+
+    get "/key-values", Api.KeyValueController, :index
+    post "/key-values", Api.KeyValueController, :create
+    delete "/key-values", Api.KeyValueController, :delete
   end
 
   scope "/api", LogflareWeb do
@@ -501,10 +505,6 @@ defmodule LogflareWeb.Router do
 
       post("/:token/test", Api.BackendController, :test_connection)
     end
-
-    get "/key-values", Api.KeyValueController, :index
-    post "/key-values", Api.KeyValueController, :create
-    delete "/key-values", Api.KeyValueController, :delete
   end
 
   scope "/api/partner", LogflareWeb do
