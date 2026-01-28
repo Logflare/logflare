@@ -6,7 +6,7 @@ defmodule LogflareWeb.Api.QueryController do
   alias Logflare.Backends
   alias Logflare.Backends.Backend
   alias Logflare.Endpoints
-  alias Logflare.Endpoints.Query
+  alias Logflare.Endpoints.EndpointQuery
   alias Logflare.Sql
   alias Logflare.User
   alias LogflareWeb.OpenApi.BadRequest
@@ -137,7 +137,9 @@ defmodule LogflareWeb.Api.QueryController do
   end
 
   @spec resolve_language(atom(), Backend.t() | nil) :: atom()
-  defp resolve_language(:infer, backend), do: Query.map_backend_to_language(backend, false)
+  defp resolve_language(:infer, backend),
+    do: EndpointQuery.map_backend_to_language(backend, false)
+
   defp resolve_language(language, _backend), do: language
 
   @spec fetch_backend(User.t(), map()) :: {:ok, Backend.t() | nil} | {:error, String.t()}

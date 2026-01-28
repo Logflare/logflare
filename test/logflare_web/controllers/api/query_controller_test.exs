@@ -2,6 +2,7 @@ defmodule LogflareWeb.Api.QueryControllerTest do
   use LogflareWeb.ConnCase
 
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor
+  alias Logflare.Backends.Adaptor.QueryResult
   alias Logflare.Backends.Adaptor.PostgresAdaptor
 
   setup do
@@ -160,62 +161,51 @@ defmodule LogflareWeb.Api.QueryControllerTest do
 
   describe "backend_id parameter" do
     test "?sql= with backend_id uses backend's language", %{conn: conn, user: user} do
-      source =
-        insert(:source, user: user)
+      backend = insert(:backend, user: user, type: :clickhouse)
+      query = ~S|select now() as "my_time"|
 
-      {source, backend, cleanup_fn} =
-        Logflare.DataCase.setup_clickhouse_test(user: user, source: source)
+      backend_id = backend.id
 
-      on_exit(cleanup_fn)
-
-      start_supervised!({ClickHouseAdaptor, backend})
-      assert {:ok, _} = ClickHouseAdaptor.provision_ingest_table(backend)
-
-      message = "query_controller_clickhouse_sql"
-      log_event = build(:log_event, source: source, message: message)
-      assert :ok = ClickHouseAdaptor.insert_log_events(backend, [log_event])
-
-      query = ~s(select body from "#{source.name}")
-
-      TestUtils.retry_assert(fn ->
-        response =
-          conn
-          |> add_access_token(user, ~w(private))
-          |> get(~p"/api/query?#{[sql: query, backend_id: backend.id]}")
-          |> json_response(200)
-
-        assert %{"result" => results} = response
-        assert Enum.any?(results, fn %{"body" => body} -> body =~ message end)
+      expect(ClickHouseAdaptor, :execute_query, fn %{id: ^backend_id},
+                                                   {query_string, _declared_params, _input_params,
+                                                    endpoint_query},
+                                                   _opts ->
+        assert String.downcase(query_string) =~ "select now()"
+        assert endpoint_query.language == :ch_sql
+        {:ok, QueryResult.new([%{"my_time" => "2026-06-22 00:00:00"}])}
       end)
+
+      response =
+        conn
+        |> add_access_token(user, ~w(private))
+        |> get(~p"/api/query?#{[sql: query, backend_id: backend.id]}")
+        |> json_response(200)
+
+      assert %{"result" => [%{"my_time" => "2026-06-22 00:00:00"}]} = response
     end
 
     test "?ch_sql= with backend_id", %{conn: conn, user: user} do
-      source = insert(:source, user: user)
+      backend = insert(:backend, user: user, type: :clickhouse)
+      query = ~S|select now() as "my_time"|
 
-      {source, backend, cleanup_fn} =
-        Logflare.DataCase.setup_clickhouse_test(user: user, source: source)
+      backend_id = backend.id
 
-      on_exit(cleanup_fn)
-
-      start_supervised!({ClickHouseAdaptor, backend})
-      assert {:ok, _} = ClickHouseAdaptor.provision_ingest_table(backend)
-
-      message = "query_controller_clickhouse_ch_sql"
-      log_event = build(:log_event, source: source, message: message)
-      assert :ok = ClickHouseAdaptor.insert_log_events(backend, [log_event])
-
-      query = ~s(select body from "#{source.name}")
-
-      TestUtils.retry_assert(fn ->
-        response =
-          conn
-          |> add_access_token(user, ~w(private))
-          |> get(~p"/api/query?#{[ch_sql: query, backend_id: backend.id]}")
-          |> json_response(200)
-
-        assert %{"result" => results} = response
-        assert Enum.any?(results, fn %{"body" => body} -> body =~ message end)
+      expect(ClickHouseAdaptor, :execute_query, fn %{id: ^backend_id},
+                                                   {query_string, _declared_params, _input_params,
+                                                    endpoint_query},
+                                                   _opts ->
+        assert String.downcase(query_string) =~ "select now()"
+        assert endpoint_query.language == :ch_sql
+        {:ok, QueryResult.new([%{"my_time" => "2026-06-22 00:00:00"}])}
       end)
+
+      response =
+        conn
+        |> add_access_token(user, ~w(private))
+        |> get(~p"/api/query?#{[ch_sql: query, backend_id: backend.id]}")
+        |> json_response(200)
+
+      assert %{"result" => [%{"my_time" => "2026-06-22 00:00:00"}]} = response
     end
 
     test "invalid backend_id returns error", %{conn: conn, user: user} do

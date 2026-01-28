@@ -3,6 +3,7 @@ defmodule LogflareWeb.QueryLiveTest do
   use LogflareWeb.ConnCase
 
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor
+  alias Logflare.Backends.Adaptor.QueryResult
 
   setup %{conn: conn} do
     insert(:plan)
@@ -117,6 +118,28 @@ defmodule LogflareWeb.QueryLiveTest do
              |> render_hook("parse-query", %{
                value: "select current_datetime() order-by invalid"
              }) =~ "parser error"
+    end
+
+    test "shows backend adaptor error", %{conn: conn, user: user} do
+      source = insert(:source, user: user)
+
+      {source, backend} = Logflare.DataCase.setup_clickhouse_test(user: user, source: source)
+
+      start_supervised!({ClickHouseAdaptor, backend})
+
+      {:ok, view, _html} = live_with_redirect(conn, "/query?backend_id=#{backend.id}")
+
+      view
+      |> render_hook("parse-query", %{
+        value: ~s(select non_existent from "#{source.name}")
+      })
+
+      html =
+        view
+        |> element("form#query-form")
+        |> render_submit(%{backend: %{backend_id: backend.id}})
+
+      assert html =~ LogflareWeb.QueryErrorHelpers.generic_query_error_message()
     end
   end
 
@@ -295,10 +318,11 @@ defmodule LogflareWeb.QueryLiveTest do
 
       html = submit_query_form(view, conn)
 
-      assert html =~ "can&#39;t find source nonexistent_source",
+      assert html =~ "Can&#39;t find source nonexistent_source",
              "Expected error 'can't find source nonexistent_source' after running query. Got: #{String.slice(html, 0, 2000)}"
     end
   end
+
   describe "postgres backend" do
     TestUtils.setup_single_tenant(backend_type: :postgres)
 
@@ -326,7 +350,7 @@ defmodule LogflareWeb.QueryLiveTest do
       ch_backend = insert(:backend, user: user, type: :clickhouse)
       webhook = insert(:backend, user: user, type: :webhook)
 
-      {:ok, view, _html} = live(conn, "/query")
+      {:ok, view, _html} = live_with_redirect(conn, "/query")
 
       html = render(view)
 
@@ -342,10 +366,10 @@ defmodule LogflareWeb.QueryLiveTest do
       backend = insert(:backend, user: user, type: :clickhouse)
 
       expect(ClickHouseAdaptor, :execute_query, fn _backend, _query, _opts ->
-        {:ok, [%{"ts" => "ch-data"}]}
+        {:ok, QueryResult.new([%{"ts" => "ch-data"}])}
       end)
 
-      {:ok, view, _html} = live(conn, "/query")
+      {:ok, view, _html} = live_with_redirect(conn, "/query")
 
       view
       |> element("form#query-form")
@@ -367,7 +391,7 @@ defmodule LogflareWeb.QueryLiveTest do
     test "backend selectd by URL param", %{conn: conn, user: user} do
       backend = insert(:backend, user: user, type: :clickhouse)
 
-      {:ok, view, _html} = live(conn, "/query?backend_id=#{backend.id}")
+      {:ok, view, _html} = live_with_redirect(conn, "/query?backend_id=#{backend.id}")
       html = render(view)
 
       assert html =~ ~s(selected="selected" value="#{backend.id}")
@@ -380,7 +404,7 @@ defmodule LogflareWeb.QueryLiveTest do
     } do
       backend = insert(:backend, user: user, type: :clickhouse)
 
-      {:ok, view, _html} = live(conn, "/query?backend_id=#{backend.id}")
+      {:ok, view, _html} = live_with_redirect(conn, "/query?backend_id=#{backend.id}")
       html = render(view)
 
       assert html =~ "Query Language: <span id=\"query-language\">ClickHouse SQL</span>"
@@ -392,7 +416,7 @@ defmodule LogflareWeb.QueryLiveTest do
         {:ok, TestUtils.gen_bq_response([%{"ts" => "bq-data"}])}
       end)
 
-      {:ok, view, _html} = live(conn, "/query")
+      {:ok, view, _html} = live_with_redirect(conn, "/query")
 
       view |> render_hook("parse-query", %{value: "SELECT current_timestamp() as ts"})
 

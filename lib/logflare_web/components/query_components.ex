@@ -23,11 +23,9 @@ defmodule LogflareWeb.QueryComponents do
 
   def backend_select(assigns) do
     assigns =
-      assign_new(assigns, :options, fn ->
-        [{"Default (BigQuery)", nil}] ++
-          Enum.map(assigns.backends, fn backend ->
-            {"#{backend.name} (#{backend.type})", backend.id}
-          end)
+      assign_new(assigns, :options, fn %{backends: backends} ->
+        backend_options = Enum.map(backends, &{"#{&1.name} (#{&1.type})", &1.id})
+        [{"Default (BigQuery)", nil}] ++ backend_options
       end)
 
     ~H"""

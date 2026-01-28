@@ -7,12 +7,13 @@ defmodule LogflareWeb.QueryLive do
   alias Logflare.Alerting
   alias Logflare.Backends
   alias Logflare.Endpoints
+  alias Logflare.Endpoints.EndpointQuery
   alias Logflare.Repo
   alias Logflare.Teams.TeamContext
   alias LogflareWeb.AuthLive
   alias LogflareWeb.QueryComponents
   alias LogflareWeb.QueryErrorHelpers
-  alias LogflareWeb.Utils
+  alias Phoenix.HTML.Form
 
   def render(assigns) do
     ~H"""
@@ -86,6 +87,14 @@ defmodule LogflareWeb.QueryLive do
           {submit("Run query", class: "btn btn-secondary")}
         </div>
       </.form>
+
+      <div :if={@run_error_message}>
+        <.alert variant="warning">
+          <strong>Query error!</strong>
+          <br />
+          <span>{@run_error_message |> :string.titlecase()}</span>
+        </.alert>
+      </div>
 
       <div :if={@parse_error_message}>
         <.alert variant="warning">
@@ -168,15 +177,20 @@ defmodule LogflareWeb.QueryLive do
       |> assign(:query_result_rows, nil)
       |> assign(:total_bytes_processed, nil)
       |> assign(:parse_error_message, nil)
+      |> assign(:run_error_message, nil)
       |> assign(:query_string, nil)
       |> assign(:endpoints, endpoints)
       |> assign(:alerts, alerts)
       |> assign_backends()
+      |> assign_form(%{})
 
     {:ok, socket}
   end
 
   def handle_params(params, _uri, socket) do
+    prev_query_string = socket.assigns.query_string
+    prev_backend_id = backend_id_from_form(socket)
+
     q =
       case params["q"] do
         v when v in ["", nil] ->
@@ -203,7 +217,10 @@ defmodule LogflareWeb.QueryLive do
         socket.assigns.query_string ||
         "SELECT id, timestamp, metadata, event_message \nFROM YourSource \nWHERE timestamp > '#{DateTime.utc_now() |> DateTime.to_iso8601()}'"
 
-    if query_string != nil do
+    next_backend_id = backend_id_from_form(socket)
+
+    if query_string != nil and
+         (query_string != prev_query_string or next_backend_id != prev_backend_id) do
       send(self(), :parse_query)
     end
 
@@ -231,9 +248,18 @@ defmodule LogflareWeb.QueryLive do
     assign(socket, :form, form)
   end
 
+  defp backend_id_from_form(socket) do
+    socket.assigns
+    |> Map.get(:form)
+    |> case do
+      nil -> nil
+      form -> Form.input_value(form, :backend_id)
+    end
+  end
+
   @spec get_selected_backend(Phoenix.LiveView.Socket.t()) :: Backends.Backend.t() | nil
   defp get_selected_backend(socket) do
-    backend_id = Phoenix.HTML.Form.input_value(socket.assigns.form, :backend_id)
+    backend_id = Form.input_value(socket.assigns.form, :backend_id)
 
     case parse_backend_id(backend_id) do
       id when is_integer(id) ->
@@ -314,7 +340,7 @@ defmodule LogflareWeb.QueryLive do
 
   defp run_query(socket, user, query_string) do
     backend = get_selected_backend(socket)
-    language = Logflare.Endpoints.EndpointQuery.map_backend_to_language(backend, false)
+    language = EndpointQuery.map_backend_to_language(backend, false)
 
     case Endpoints.run_query_string(user, {language, query_string},
            params: %{},
@@ -328,19 +354,19 @@ defmodule LogflareWeb.QueryLive do
         |> put_flash(:info, "Ran query successfully")
         |> assign(:query_result_rows, rows)
         |> assign(:total_bytes_processed, total_bytes_processed)
-
-      {:ok, %{rows: rows}} ->
-        socket
-        |> put_flash(:info, "Ran query successfully")
-        |> assign(:query_result_rows, rows)
-        |> assign(:total_bytes_processed, nil)
+        |> assign(:parse_error_message, nil)
+        |> assign(:run_error_message, nil)
 
       {:error, err} ->
         message = if is_binary(err), do: err, else: QueryErrorHelpers.query_error_message(err)
 
         socket
-        |> put_flash(:error, "Error occurred running query: #{message}")
+        |> assign(:run_error_message, message)
     end
+  end
+
+  defp format_query_error(error) do
+    if is_binary(error), do: error, else: inspect(error)
   end
 
   defp build_params(%{assigns: assigns} = _socket, params) do
@@ -370,7 +396,7 @@ defmodule LogflareWeb.QueryLive do
 
   defp parse_query(socket) do
     backend = get_selected_backend(socket)
-    language = Logflare.Endpoints.EndpointQuery.map_backend_to_language(backend, false)
+    language = EndpointQuery.map_backend_to_language(backend, false)
 
     case Endpoints.parse_query_string(
            language,
@@ -379,10 +405,14 @@ defmodule LogflareWeb.QueryLive do
            socket.assigns.alerts
          ) do
       {:ok, _} ->
-        assign(socket, :parse_error_message, nil)
+        socket
+        |> assign(:parse_error_message, nil)
+        |> assign(:run_error_message, nil)
 
       {:error, err} ->
-        assign(socket, :parse_error_message, err)
+        socket
+        |> assign(:parse_error_message, format_query_error(err))
+        |> assign(:run_error_message, nil)
     end
   end
 end
