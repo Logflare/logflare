@@ -371,8 +371,9 @@ defmodule LogflareWeb.QueryLive do
     end
   end
 
-  defp format_query_error(error) when is_binary(error), do: error
-  defp format_query_error(error), do: inspect(error)
+  defp format_query_error(error) do
+    if is_binary(error), do: error, else: inspect(error)
+  end
 
   defp build_params(%{assigns: assigns} = _socket, params) do
     %{
