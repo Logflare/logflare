@@ -26,7 +26,37 @@ test('copies correct log id and status to clipboard', async ({ page, browserName
 
   const idSelection = page.getByTestId('log-selection-id');
   await expectClipboardViaPaste(page, browserName, idSelection, 'Copy id');
+
+  await page.waitForTimeout(500);
+
+  const expandButton = page.getByRole('button', { name: 'Expand' });
+
+  expect(await isVisibleOnScreen(expandButton)).toBe(false);
+
+  await expandButton.scrollIntoViewIfNeeded();
+
+  await page.waitForTimeout(200);
+
+  expect(await isVisibleOnScreen(expandButton)).toBe(true);
 });
+
+async function isVisibleOnScreen(locator: Locator): Promise<boolean> {
+  await expect(locator).toBeAttached();
+
+  return await locator.evaluate(el => {
+    const rect = el.getBoundingClientRect();
+    return (
+      rect.width > 0 &&
+      rect.height > 0 &&
+      rect.top >= 0 &&
+      rect.top < window.innerHeight &&
+      rect.bottom > 0 &&
+      rect.left >= 0 &&
+      rect.left < window.innerWidth &&
+      rect.right > 0
+    );
+  });
+}
 
 async function expectClipboardViaPaste(page: Page, browserName: string, selection: Locator, menuItemName: string): Promise<void> {
   const expectedText = (await selection.innerText()).split('\n').map(line => line.trim()).filter(Boolean).at(-1);
