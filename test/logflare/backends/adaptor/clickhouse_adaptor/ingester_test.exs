@@ -1,6 +1,7 @@
 defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.IngesterTest do
   use Logflare.DataCase, async: false
 
+  import Bitwise
   import Mimic
 
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor
@@ -67,6 +68,13 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.IngesterTest do
   end
 
   describe "encode_as_string/1" do
+    test "encodes binary string with varint length prefix" do
+      encoded = Ingester.encode_as_string("hello")
+
+      assert is_list(encoded)
+      assert IO.iodata_to_binary(encoded) == <<5, "hello">>
+    end
+
     test "encodes simple iodata with varint length prefix" do
       encoded = Ingester.encode_as_string(["hello"])
 
@@ -235,5 +243,139 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.IngesterTest do
 
       assert :ok = Ingester.insert(backend_with_async, table_name, [log_event])
     end
+
+    test "encodes row with correct field order",
+         %{
+           backend: backend,
+           table_name: table_name,
+           source: source
+         } do
+      log_event =
+        build(:log_event,
+          id: "550e8400-e29b-41d4-a716-446655440000",
+          source: source,
+          message: "Test encoding"
+        )
+
+      Finch
+      |> expect(:request, fn request, _pool, _opts ->
+        body = request.body |> IO.iodata_to_binary() |> :zlib.gunzip()
+
+        # id (16), source_uuid (16), source_name (varint+string), body (varint+string), ingested_at (8), timestamp (8)
+        <<id_bytes::binary-size(16), source_uuid_bytes::binary-size(16), rest::binary>> = body
+
+        assert id_bytes == Ingester.encode_as_uuid("550e8400-e29b-41d4-a716-446655440000")
+
+        expected_source_uuid = Atom.to_string(source.token)
+        assert source_uuid_bytes == Ingester.encode_as_uuid(expected_source_uuid)
+
+        {source_name, rest} = parse_varint_string(rest)
+        assert source_name == source.name
+
+        {body_json, rest} = parse_varint_string(rest)
+        body_decoded = Jason.decode!(body_json)
+        assert body_decoded["event_message"] == "Test encoding"
+        assert body_decoded["id"] == "550e8400-e29b-41d4-a716-446655440000"
+
+        # ingested_at (8), timestamp (8)
+        <<_ingested_at::binary-size(8), _timestamp::binary-size(8)>> = rest
+
+        {:ok, %Finch.Response{status: 200, body: ""}}
+      end)
+
+      assert :ok = Ingester.insert(backend, table_name, [log_event])
+    end
+
+    test "encodes multiple rows correctly with `source_name` from cache", %{
+      backend: backend,
+      table_name: table_name,
+      source: source
+    } do
+      log_events = [
+        build(:log_event,
+          id: "550e8400-e29b-41d4-a716-446655440001",
+          source: source,
+          message: "First message"
+        ),
+        build(:log_event,
+          id: "550e8400-e29b-41d4-a716-446655440002",
+          source: source,
+          message: "Second message"
+        )
+      ]
+
+      Finch
+      |> expect(:request, fn request, _pool, _opts ->
+        body = request.body |> IO.iodata_to_binary() |> :zlib.gunzip()
+
+        {row1, rest} = parse_row(body)
+        assert row1.source_name == source.name
+        assert row1.body["event_message"] == "First message"
+
+        {row2, _rest} = parse_row(rest)
+        assert row2.source_name == source.name
+        assert row2.body["event_message"] == "Second message"
+
+        {:ok, %Finch.Response{status: 200, body: ""}}
+      end)
+
+      assert :ok = Ingester.insert(backend, table_name, log_events)
+    end
+
+    test "encodes empty `source_name` when source not in cache", %{
+      backend: backend,
+      table_name: table_name
+    } do
+      uncached_source = build(:source)
+
+      log_event =
+        build(:log_event,
+          id: "550e8400-e29b-41d4-a716-446655440003",
+          source: uncached_source,
+          message: "Uncached source test"
+        )
+
+      Finch
+      |> expect(:request, fn request, _pool, _opts ->
+        body = request.body |> IO.iodata_to_binary() |> :zlib.gunzip()
+
+        # skip id (16) + source_uuid (16)
+        <<_::binary-size(32), rest::binary>> = body
+
+        {source_name, _rest} = parse_varint_string(rest)
+        assert source_name == ""
+
+        {:ok, %Finch.Response{status: 200, body: ""}}
+      end)
+
+      assert :ok = Ingester.insert(backend, table_name, [log_event])
+    end
+  end
+
+  defp parse_varint_string(<<byte, rest::binary>>) when byte < 128 do
+    <<string::binary-size(byte), rest::binary>> = rest
+    {string, rest}
+  end
+
+  defp parse_varint_string(<<byte1, byte2, rest::binary>>) do
+    length = (byte1 &&& 0x7F) ||| byte2 <<< 7
+    <<string::binary-size(length), rest::binary>> = rest
+    {string, rest}
+  end
+
+  defp parse_row(binary) do
+    # id (16), source_uuid (16), source_name (varint), body (varint), ingested_at (8), timestamp (8)
+    <<_id::binary-size(16), _source_uuid::binary-size(16), rest::binary>> = binary
+
+    {source_name, rest} = parse_varint_string(rest)
+    {body_json, rest} = parse_varint_string(rest)
+    <<_ingested_at::binary-size(8), _timestamp::binary-size(8), rest::binary>> = rest
+
+    row = %{
+      source_name: source_name,
+      body: Jason.decode!(body_json)
+    }
+
+    {row, rest}
   end
 end
