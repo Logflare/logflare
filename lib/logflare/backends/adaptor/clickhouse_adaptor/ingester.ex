@@ -84,6 +84,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
   def encode_row(%LogEvent{
         body: body,
         origin_source_uuid: origin_source_uuid,
+        origin_source_name: origin_source_name,
         ingested_at: ingested_at
       }) do
     source_uuid_str = Atom.to_string(origin_source_uuid)
@@ -92,6 +93,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
     [
       encode_as_uuid(body["id"]),
       encode_as_uuid(source_uuid_str),
+      encode_as_string(origin_source_name || ""),
       encode_as_string(Jason.encode_to_iodata!(body)),
       encode_as_datetime64(DateTime.from_naive!(ingested_at, "Etc/UTC")),
       encode_as_datetime64(DateTime.from_unix!(body["timestamp"], :microsecond))
@@ -122,7 +124,11 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
   end
 
   @doc false
-  @spec encode_as_string(iodata()) :: iodata()
+  @spec encode_as_string(String.t() | iodata()) :: iodata()
+  def encode_as_string(value) when is_binary(value) do
+    [encode_as_varint(byte_size(value)), value]
+  end
+
   def encode_as_string(value) when is_list(value) do
     length = IO.iodata_length(value)
     [encode_as_varint(length), value]
