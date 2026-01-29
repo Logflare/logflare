@@ -327,6 +327,43 @@ defmodule Logflare.Logs.SearchOperationsTest do
     end
   end
 
+  describe "get_min_max_filter_timestamps/2" do
+    setup do
+      ts = ~N[2026-01-29 05:13:48.748909]
+
+      ts_filters = [
+        %FilterRule{
+          path: "timestamp",
+          operator: :=,
+          value: ts,
+          values: nil,
+          modifiers: %{}
+        }
+      ]
+
+      [ts: ts, ts_filters: ts_filters]
+    end
+
+    test "handles exact timestamp filter", %{ts: ts, ts_filters: filters} do
+      %{min: min_ts, max: max_ts, message: nil} =
+        Logflare.Logs.SearchOperations.Helpers.get_min_max_filter_timestamps(filters, :minute)
+
+      assert min_ts == Timex.shift(ts, minutes: -1)
+      assert max_ts == Timex.shift(ts, minutes: 1)
+    end
+
+    test "returns unbounded interval message for open timestamp", %{
+      ts_filters: ts_filters
+    } do
+      filters = [%{hd(ts_filters) | operator: :>}]
+
+      %{message: message} =
+        Logflare.Logs.SearchOperations.Helpers.get_min_max_filter_timestamps(filters, :hour)
+
+      assert message =~ "number of chart ticks is limited"
+    end
+  end
+
   describe "backend adaptor integration" do
     setup do
       insert(:plan)

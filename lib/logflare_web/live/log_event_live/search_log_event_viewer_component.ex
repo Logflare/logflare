@@ -20,7 +20,6 @@ defmodule LogflareWeb.Search.LogEventViewerComponent do
     socket =
       assign(socket, :log_event, log_event_result)
       |> assign_defaults(assigns)
-      |> assign(:lql, assigns.params["lql"])
 
     {:ok, socket}
   end
@@ -113,6 +112,7 @@ defmodule LogflareWeb.Search.LogEventViewerComponent do
       message: body["event_message"],
       id: le.id,
       lql: assigns.lql,
+      is_tailing: assigns.tailing?,
       timestamp: timestamp,
       local_timezone: tz,
       local_timestamp: local_timestamp
@@ -129,7 +129,9 @@ defmodule LogflareWeb.Search.LogEventViewerComponent do
     team_user = socket.assigns[:team_user] || assigns[:team_user]
     source = socket.assigns[:source] || assigns[:source]
     timestamp = socket.assigns[:timestamp] || assigns[:timestamp]
-    lql = socket.assigns[:lql] || assigns[:lql] || ""
+    lql = socket.assigns[:lql] || assigns[:lql] || assigns.params["lql"] || ""
+
+    tailing? = assigns.params["tailing?"] == "true"
 
     socket
     |> assign(:user, user)
@@ -137,6 +139,7 @@ defmodule LogflareWeb.Search.LogEventViewerComponent do
     |> assign(:source, source)
     |> assign(:timestamp, timestamp)
     |> assign(:lql, lql)
+    |> assign(:tailing?, tailing?)
     |> assign(:error, nil)
   end
 
