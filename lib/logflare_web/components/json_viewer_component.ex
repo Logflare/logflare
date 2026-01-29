@@ -29,7 +29,7 @@ defmodule LogflareWeb.JSONViewerComponent do
           map
       end
 
-    assigns = Map.put(assigns, :data, data)
+    assigns = assign(assigns, :data, data)
 
     ~H"""
     <div id={@id} class={["tw-font-mono tw-text-sm", @class]} {@rest}>
@@ -44,8 +44,8 @@ defmodule LogflareWeb.JSONViewerComponent do
 
     assigns =
       assigns
-      |> Map.put(:full_path, full_path)
-      |> Map.put(:path_id, path_id)
+      |> assign(full_path: full_path, path_id: path_id)
+      |> assign_new(:action, fn -> [] end)
 
     ~H"""
     <div class="tw-my-0.5">
@@ -62,14 +62,16 @@ defmodule LogflareWeb.JSONViewerComponent do
 
   defp tree_node(%{value: value, path: _path} = assigns) when is_map(value) do
     assigns
-    |> Map.put(:kind, "Object")
+    |> assign(kind: "Object")
     |> tree_node()
   end
 
   defp tree_node(%{value: value, path: _path} = assigns) when is_list(value) do
     assigns
-    |> Map.put(:kind, "Array")
-    |> Map.put(:value, Enum.with_index(value, fn v, index -> {to_string(index), v} end))
+    |> assign(
+      kind: ["Array", " (", to_string(length(value)), ")"],
+      value: Enum.with_index(value, fn v, index -> {to_string(index), v} end)
+    )
     |> tree_node()
   end
 
@@ -87,7 +89,9 @@ defmodule LogflareWeb.JSONViewerComponent do
   end
 
   defp tree_node_value(%{value: "http" <> _url} = assigns) do
-    assigns = Map.put_new(assigns, :class, "tw-text-json-tree-string")
+    assigns =
+      assigns
+      |> assign(class: "tw-text-json-tree-string")
 
     ~H"""
     <span class={@class}>"</span><.link href={@value} target="_blank" class={@class}>{@value}</.link><span class={@class}>"</span>
@@ -146,9 +150,7 @@ defmodule LogflareWeb.JSONViewerComponent do
     """
   end
 
-  defp tree_node_value(%{value: value, path: path} = assigns) when is_map(value) do
-    assigns = Map.put(assigns, :path, path)
-
+  defp tree_node_value(%{value: value, path: _path} = assigns) when is_map(value) do
     ~H"""
     <.tree_node :for={{k, v} <- @value} value={v} key={k} path={@path} id={@id} action={@action} />
     """
