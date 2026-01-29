@@ -8,6 +8,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
 
   alias Logflare.Backends.Backend
   alias Logflare.LogEvent
+  alias Logflare.Sources.Cache, as: SourcesCache
 
   @finch_pool Logflare.FinchClickHouseIngest
   @max_retries 1
@@ -35,7 +36,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
       when is_list(connection_opts) and is_non_empty_binary(table) do
     client = build_client(connection_opts)
     url = build_request_url(connection_opts, table)
-    request_body = log_events |> encode_batch() |> :zlib.gzip()
+    source_names = build_source_names_lookup(log_events)
+    request_body = log_events |> encode_batch(source_names) |> :zlib.gzip()
 
     case Tesla.post(client, url, request_body) do
       {:ok, %Tesla.Env{status: 200}} ->
@@ -79,29 +81,47 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
   defp retriable?({:ok, _env}), do: false
   defp retriable?({:error, _reason}), do: true
 
-  @doc false
-  @spec encode_row(LogEvent.t()) :: iodata()
-  def encode_row(%LogEvent{
-        body: body,
-        origin_source_uuid: origin_source_uuid,
-        ingested_at: ingested_at
-      }) do
+  @spec encode_row(LogEvent.t(), source_names :: %{atom() => String.t()}) :: iodata()
+  defp encode_row(
+         %LogEvent{
+           body: body,
+           origin_source_uuid: origin_source_uuid,
+           ingested_at: ingested_at
+         },
+         source_names
+       ) do
     source_uuid_str = Atom.to_string(origin_source_uuid)
+    source_name = Map.get(source_names, origin_source_uuid, "")
     ingested_at = ingested_at || NaiveDateTime.utc_now()
 
     [
       encode_as_uuid(body["id"]),
       encode_as_uuid(source_uuid_str),
+      encode_as_string(source_name),
       encode_as_string(Jason.encode_to_iodata!(body)),
       encode_as_datetime64(DateTime.from_naive!(ingested_at, "Etc/UTC")),
       encode_as_datetime64(DateTime.from_unix!(body["timestamp"], :microsecond))
     ]
   end
 
-  @doc false
-  @spec encode_batch([LogEvent.t()]) :: iodata()
-  def encode_batch([%LogEvent{} | _] = rows) do
-    Enum.map(rows, &encode_row/1)
+  @spec encode_batch([LogEvent.t()], source_names :: %{atom() => String.t()}) :: iodata()
+  defp encode_batch([%LogEvent{} | _] = rows, source_names) do
+    Enum.map(rows, &encode_row(&1, source_names))
+  end
+
+  @spec build_source_names_lookup([LogEvent.t()]) :: %{atom() => String.t()}
+  defp build_source_names_lookup(log_events) do
+    log_events
+    |> Enum.uniq_by(& &1.origin_source_uuid)
+    |> Map.new(fn %{origin_source_uuid: uuid} ->
+      source_name =
+        case SourcesCache.get_by(token: uuid) do
+          %{name: name} -> name
+          _ -> ""
+        end
+
+      {uuid, source_name}
+    end)
   end
 
   @doc false
@@ -122,7 +142,11 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
   end
 
   @doc false
-  @spec encode_as_string(iodata()) :: iodata()
+  @spec encode_as_string(iodata() | String.t()) :: iodata()
+  def encode_as_string(value) when is_binary(value) do
+    [encode_as_varint(byte_size(value)), value]
+  end
+
   def encode_as_string(value) when is_list(value) do
     length = IO.iodata_length(value)
     [encode_as_varint(length), value]

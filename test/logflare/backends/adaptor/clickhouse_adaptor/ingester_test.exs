@@ -142,60 +142,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.IngesterTest do
     end
   end
 
-  describe "encode_row/1" do
-    test "encodes a LogEvent as iodata" do
-      log_event = build(:log_event, message: "test message")
-
-      encoded = Ingester.encode_row(log_event)
-      assert is_list(encoded)
-
-      # UUID (16) + source_uuid UUID (16) + varint length (1+) + body (JSON) + ingested_at (8) + timestamp (8)
-      assert IO.iodata_length(encoded) >= 16 + 16 + 1 + 10 + 8 + 8
-    end
-
-    test "encodes origin_source_uuid as source_id UUID" do
-      source = build(:source)
-      log_event = build(:log_event, source: source, message: "test")
-
-      encoded = Ingester.encode_row(log_event)
-      binary = IO.iodata_to_binary(encoded)
-
-      source_id_str = Atom.to_string(log_event.origin_source_uuid)
-      expected_source_id_bytes = Ingester.encode_as_uuid(source_id_str)
-
-      # source_id UUID is the second 16 bytes (after id UUID)
-      <<_id::binary-size(16), source_id_bytes::binary-size(16), _rest::binary>> = binary
-      assert source_id_bytes == expected_source_id_bytes
-    end
-  end
-
-  describe "encode_batch/1" do
-    test "encodes multiple LogEvents as iodata" do
-      log_events = [
-        build(:log_event, message: "first"),
-        build(:log_event, message: "second")
-      ]
-
-      batch = Ingester.encode_batch(log_events)
-      assert is_list(batch)
-
-      encoded_row1 = Ingester.encode_row(Enum.at(log_events, 0))
-      encoded_row2 = Ingester.encode_row(Enum.at(log_events, 1))
-
-      assert IO.iodata_length(batch) ==
-               IO.iodata_length(encoded_row1) + IO.iodata_length(encoded_row2)
-    end
-
-    test "handles single LogEvent as iodata" do
-      log_events = [build(:log_event, message: "only")]
-
-      batch = Ingester.encode_batch(log_events)
-      single = Ingester.encode_row(Enum.at(log_events, 0))
-      assert batch == [single]
-    end
-  end
-
-  describe "insert/4 with LogEvent structs and Backend" do
+  describe "insert/3 with LogEvent structs and Backend" do
     setup do
       insert(:plan, name: "Free")
       {source, backend, cleanup_fn} = setup_clickhouse_test()
