@@ -76,10 +76,16 @@
       <ul class="list-group list-group-horizontal" id="metadata-viewer-tabs">
         <div class="tab-content">
           <div class="tab-pane active" id="metadata-viewer" role="tabpanel" style="font-size: 14px;">
-            <pre class="blurred"><code><%= String.replace(@fmt_body, ~r/[\{\}]/, "") %></code></pre>
+            <JSONViewerComponent.json_viewer data={@fmt_body |> JSON.decode!()} id={"log-event-tree-#{@id}"}>
+              <:action :let={node}>
+                <.link title="Append to query" patch={append_to_query(@lql, node, @source)}>
+                  <i class="fas fa-search tw-mr-1 tw-w-2"></i>
+                </.link>
+              </:action>
+            </JSONViewerComponent.json_viewer>
           </div>
           <div class="tab-pane" id="metadata-raw" role="tabpanel">
-            <pre id="metadata-raw-json" class="pre-metadata" phx-hook="MetadataJsonViewer"><code id="metadata-raw-json-code"><%= @fmt_body %></code></pre>
+            <pre id="metadata-raw-json" class="pre-metadata"><code id="metadata-raw-json-code"><%= @fmt_body %></code></pre>
           </div>
         </div>
       </ul>
