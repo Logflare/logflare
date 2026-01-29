@@ -28,11 +28,11 @@ defmodule LogflareWeb.JSONViewerComponent do
           map
       end
 
-    assigns = Map.put(assigns, :data, data)
+    assigns = assign(assigns, :data, data)
 
     ~H"""
     <div class={["tw-font-mono tw-text-sm", @class]} {@rest}>
-      <.tree_node :for={{k, v} <- @data} key={k} value={v} path={[]} />
+      <.tree_node :for={{k, v} <- @data} key={k} value={v} path={[]} action={@action} />
     </div>
     """
   end
@@ -43,8 +43,8 @@ defmodule LogflareWeb.JSONViewerComponent do
 
     assigns =
       assigns
-      |> Map.put(:full_path, full_path)
-      |> Map.put(:path_id, path_id)
+      |> assign(full_path: full_path, path_id: path_id)
+      |> assign_new(:action, fn -> [] end)
 
     ~H"""
     <div class="tw-my-0.5">
@@ -53,7 +53,7 @@ defmodule LogflareWeb.JSONViewerComponent do
       <span class="tw-text-json-tree-label">{@kind}</span>
 
       <div class="tw-pl-4" id={@path_id}>
-        <.tree_node_value value={@value} path={@full_path} />
+        <.tree_node_value value={@value} key={@key} path={@full_path} action={@action} />
       </div>
     </div>
     """
@@ -61,85 +61,98 @@ defmodule LogflareWeb.JSONViewerComponent do
 
   defp tree_node(%{value: value, path: _path} = assigns) when is_map(value) do
     assigns
-    |> Map.put(:kind, "Object")
+    |> assign(kind: "Object")
     |> tree_node()
   end
 
   defp tree_node(%{value: value, path: _path} = assigns) when is_list(value) do
     assigns
-    |> Map.put(:kind, "Array")
-    |> Map.put(:value, Enum.with_index(value, fn v, index -> {to_string(index), v} end))
+    |> assign(
+      kind: ["Array", " (", to_string(length(value)), ")"],
+      value: Enum.with_index(value, fn v, index -> {to_string(index), v} end)
+    )
     |> tree_node()
   end
 
   defp tree_node(%{path: path, key: key} = assigns) do
-    full_path = path ++ [key]
-    path_id = full_path |> Enum.map(&to_string/1) |> Enum.join("--")
-    assigns = Map.put(assigns, :path_id, path_id)
+    path_id =
+      (path ++ [key])
+      |> Enum.join("--")
+
+    assigns = assigns |> assign(path_id: path_id)
 
     ~H"""
     <div class="tw-my-0.5 tw-overflow-hidden" id={@path_id}>
       <span class="tw-text-json-tree-key">{@key}:</span>
-      <.tree_node_value value={@value} path={[]} />
+      <.tree_node_value key={@key} value={@value} path={@path} action={@action} />
     </div>
     """
   end
 
   defp tree_node_value(%{value: "http" <> _url} = assigns) do
-    assigns = Map.put_new(assigns, :class, "tw-text-json-tree-string")
+    assigns =
+      assigns
+      |> assign(class: "tw-text-json-tree-string")
 
     ~H"""
     <span class={@class}>"</span><.link href={@value} target="_blank" class={@class}>{@value}</.link><span class={@class}>"</span>
     """
   end
 
-  defp tree_node_value(%{value: value, class: _class} = assigns) when is_binary(value) do
+  defp tree_node_value(%{formatted_value: _, class: _class} = assigns) do
     ~H"""
-    <span class={@class}>{@value}</span>
+    <span class={@class}>
+      {@formatted_value}
+      {render_slot(@action, assigns)}
+    </span>
     """
   end
 
-  defp tree_node_value(%{value: value, path: _path}) when is_nil(value),
-    do:
-      tree_node_value(%{
-        value: "null",
-        class: "tw-text-json-tree-null"
-      })
+  defp tree_node_value(%{value: value, path: _path} = assigns) when is_nil(value) do
+    assigns
+    |> assign(
+      formatted_value: "null",
+      class: "tw-text-json-tree-null"
+    )
+    |> tree_node_value()
+  end
 
-  defp tree_node_value(%{value: value, path: _path}) when is_number(value),
-    do:
-      tree_node_value(%{
-        value: to_string(value),
-        class: "tw-text-json-tree-number"
-      })
+  defp tree_node_value(%{value: value, path: _path} = assigns) when is_number(value) do
+    assigns
+    |> assign(
+      formatted_value: to_string(value),
+      class: "tw-text-json-tree-number"
+    )
+    |> tree_node_value
+  end
 
-  defp tree_node_value(%{value: value, path: _path}) when is_boolean(value),
-    do:
-      tree_node_value(%{
-        value: to_string(value),
-        class: "tw-text-json-tree-boolean"
-      })
+  defp tree_node_value(%{value: value, path: _path} = assigns) when is_boolean(value) do
+    assigns
+    |> assign(
+      formatted_value: to_string(value),
+      class: "tw-text-json-tree-boolean"
+    )
+    |> tree_node_value()
+  end
 
-  defp tree_node_value(%{value: value, path: _path}) when is_binary(value),
-    do:
-      tree_node_value(%{
-        value: ~s("#{value}"),
-        class: "tw-text-json-tree-string"
-      })
+  defp tree_node_value(%{value: value, path: _path} = assigns) when is_binary(value) do
+    assigns
+    |> assign(
+      formatted_value: ~s("#{value}"),
+      class: "tw-text-json-tree-string"
+    )
+    |> tree_node_value()
+  end
 
-  defp tree_node_value(%{value: value, path: path} = assigns) when is_list(value) do
-    assigns = Map.put(assigns, :path, path)
-
+  defp tree_node_value(%{value: value, path: _path} = assigns) when is_list(value) do
     ~H"""
-    <.tree_node :for={{k, v} <- @value} value={v} key={k} path={@path} />
+    <.tree_node :for={{k, v} <- @value} value={v} key={k} path={@path} action={@action} />
     """
   end
 
-  defp tree_node_value(%{value: value, path: path} = assigns) when is_map(value) do
-    assigns = Map.put(assigns, :path, path)
-
+  defp tree_node_value(%{value: value, path: _path} = assigns) when is_map(value) do
     ~H"""
-    <.tree_node :for={{k, v} <- @value} value={v} key={k} path={@path} />
+    <.tree_node :for={{k, v} <- @value} value={v} key={k} path={@path} action={@action} />
     """
   end
 

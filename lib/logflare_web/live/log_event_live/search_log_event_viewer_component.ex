@@ -124,7 +124,7 @@ defmodule LogflareWeb.Search.LogEventViewerComponent do
     team_user = socket.assigns[:team_user] || assigns[:team_user]
     source = socket.assigns[:source] || assigns[:source]
     timestamp = socket.assigns[:timestamp] || assigns[:timestamp]
-    lql = socket.assigns[:lql] || assigns[:lql] || ""
+    lql = socket.assigns[:lql] || assigns[:lql] || assigns.params["lql"] || ""
 
     socket
     |> assign(:user, user)
