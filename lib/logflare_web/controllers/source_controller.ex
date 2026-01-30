@@ -10,7 +10,6 @@ defmodule LogflareWeb.SourceController do
   alias Logflare.Logs.SearchUtils
   alias Logflare.Lql
   alias Logflare.Repo
-  alias Logflare.Rules
   alias Logflare.Sources.Source
   alias Logflare.Sources.Source.SlackHookServer
   alias Logflare.Sources.Source.WebhookNotificationServer
