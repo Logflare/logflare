@@ -79,12 +79,6 @@ defmodule Logflare.Rules do
   @spec get_rule(non_neg_integer()) :: Rule.t() | nil
   def get_rule(id), do: Repo.get(Rule, id)
 
-  @doc "Retrieves LQL representation of a rule"
-  @spec get_rule(non_neg_integer()) :: String.t() | nil
-  def get_lql_rule(id) do
-    Repo.one(from(r in Rule, where: r.id == ^id, select: r.lql_string))
-  end
-
   def fetch_rule_by(kw) do
     {user_id, kw} = Keyword.pop(kw, :user_id)
 

@@ -463,42 +463,9 @@ defmodule LogflareWeb.SourceController do
   end
 
   defp get_and_encode_logs(%Source{} = source) do
-    source
-    |> Backends.list_recent_logs()
-    |> Enum.map_reduce(%{}, fn le, cache ->
-      {lql_rule, cache} = load_lql_rule(le, cache)
-
-      encoded_le =
-        le
-        |> Map.take([:body, :origin_source_uuid])
-        |> Map.put(:via_lql_rule, lql_rule)
-        |> case do
-          %{body: %{"metadata" => %{"level" => level}}} = le
-          when level in ~W(debug info warning error alert critical notice emergency) ->
-            body = Map.put(le.body, "level", level)
-            %{le | body: body}
-
-          le ->
-            le
-        end
-
-      {encoded_le, cache}
-    end)
-    |> elem(0)
-  end
-
-  defp load_lql_rule(%{via_rule_id: nil}, cache) do
-    {nil, cache}
-  end
-
-  defp load_lql_rule(%{via_rule_id: rule_id}, cache)
-       when is_map_key(cache, rule_id) do
-    {cache[rule_id], cache}
-  end
-
-  defp load_lql_rule(%{via_rule_id: rule_id}, cache) do
-    lql_rule = Rules.Cache.get_lql_rule(rule_id)
-    {lql_rule, Map.put(cache, rule_id, lql_rule)}
+    for le <- Backends.list_recent_logs(source) do
+      Map.take(le, [:body, :via_rule_id, :origin_source_uuid])
+    end
   end
 
   defp put_flash_and_redirect_to_dashboard(conn, flash_level, flash_message) do

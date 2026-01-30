@@ -51,16 +51,6 @@ defmodule Logflare.Rules.Cache do
     end)
   end
 
-  def get_lql_rule(id), do: apply_repo_fun(__ENV__.function, [id])
-
-  def get_lql_rules(ids) do
-    Cachex.execute!(__MODULE__, fn cache ->
-      for id <- Enum.uniq(ids) do
-        ContextCache.fetch(cache, {:get_lql_rule, [id]}, fn -> Rules.get_lql_rule(id) end)
-      end
-    end)
-  end
-
   def list_by_source_id(id), do: apply_repo_fun(__ENV__.function, [id])
   def list_by_backend_id(id), do: apply_repo_fun(__ENV__.function, [id])
 
