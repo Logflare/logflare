@@ -1,29 +1,28 @@
-import React from "react"
-import { ResponsiveBarCanvas } from "@nivo/bar"
+import React from "react";
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  Tooltip,
+  ResponsiveContainer,
+  CartesianGrid,
+} from "recharts";
 
-const brandLightBlack = "#1d1d1d"
-const brandGreen = "#5eeb8f"
+const brandLightBlack = "#1d1d1d";
+const brandGreen = "#5eeb8f";
 
-const theme = {
-  grid: {
-    line: {
-      stroke: brandLightBlack,
-      strokeWidth: 2,
-      strokeDasharray: "4 4",
-    },
-  },
-  axis: { ticks: { text: { fill: brandGreen } } },
-}
-
-const renderDefaultTooltip = ({ value, color, indexValue }) => {
+const DefaultTooltipContent = ({ active, payload, label }) => {
+  if (!active || !payload || !payload.length) return null;
+  const total = payload.reduce((sum, entry) => sum + (entry.value || 0), 0);
   return (
     <div style={{ backgroundColor: brandLightBlack }}>
-      <strong style={{ color }}>Timestamp: {indexValue}</strong>
+      <strong style={{ color: brandGreen }}>Timestamp: {label}</strong>
       <br />
-      <strong style={{ color }}>Value: {value}</strong>
+      <strong style={{ color: brandGreen }}>Value: {total}</strong>
     </div>
-  )
-}
+  );
+};
 
 const Chart = ({ data, keys }) => {
   return (
@@ -32,25 +31,36 @@ const Chart = ({ data, keys }) => {
         height: 200,
       }}
     >
-      <ResponsiveBarCanvas
-        data={data}
-        margin={{ top: 30, right: 30, bottom: 30, left: 30 }}
-        padding={0.3}
-        enableGridY={true}
-        keys={keys}
-        indexBy={"timestamp"}
-        tooltip={renderDefaultTooltip}
-        axisTop={null}
-        axisRight={null}
-        axisBottom={null}
-        enableLabel={false}
-        motionStiffness={90}
-        motionDamping={15}
-        theme={theme}
-        colors={(_) => brandGreen}
-      />
+      <ResponsiveContainer width="100%" height={200}>
+        <BarChart
+          data={data}
+          margin={{ top: 30, right: 30, bottom: 30, left: 30 }}
+        >
+          <CartesianGrid
+            strokeDasharray="4 4"
+            stroke={brandLightBlack}
+            strokeWidth={2}
+            vertical={false}
+          />
+          <XAxis dataKey="timestamp" hide={true} />
+          <YAxis tick={{ fill: brandGreen }} />
+          <Tooltip
+            content={<DefaultTooltipContent />}
+            cursor={{ fill: "rgba(255,255,255,0.05)" }}
+          />
+          {keys.map((key) => (
+            <Bar
+              key={key}
+              dataKey={key}
+              stackId="stack"
+              fill={brandGreen}
+              isAnimationActive={true}
+            />
+          ))}
+        </BarChart>
+      </ResponsiveContainer>
     </div>
-  )
-}
+  );
+};
 
-export default Chart
+export default Chart;

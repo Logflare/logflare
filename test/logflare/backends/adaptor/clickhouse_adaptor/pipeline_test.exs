@@ -149,16 +149,20 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
       {:ok, query_result} =
         ClickHouseAdaptor.execute_ch_query(
           backend,
-          "SELECT body FROM #{table_name} ORDER BY timestamp DESC"
+          "SELECT body, ingested_at, timestamp FROM #{table_name} ORDER BY timestamp DESC"
         )
 
       assert length(query_result) == 2
 
-      query_result = Enum.map(query_result, &Jason.decode!(&1["body"]))
-
       [first_row, second_row] = query_result
-      assert first_row["event_message"] == "Another message"
-      assert second_row["event_message"] == "Some message"
+
+      assert Jason.decode!(first_row["body"])["event_message"] == "Another message"
+      assert Jason.decode!(second_row["body"])["event_message"] == "Some message"
+
+      assert first_row["ingested_at"] != nil
+      assert first_row["timestamp"] != nil
+      assert second_row["ingested_at"] != nil
+      assert second_row["timestamp"] != nil
     end
 
     test "inserts events from multiple sources into single table", %{

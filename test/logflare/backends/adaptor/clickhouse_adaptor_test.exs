@@ -30,13 +30,13 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
     test "`clickhouse_ingest_table_name/1` generates a unique log ingest table name based on the backend token",
          %{backend: backend, stringified_backend_token: stringified_backend_token} do
       assert ClickHouseAdaptor.clickhouse_ingest_table_name(backend) ==
-               "ingest_#{stringified_backend_token}"
+               "consolidated_ingest_#{stringified_backend_token}"
     end
 
     test "`clickhouse_ingest_table_name/1` will raise an exception if the table name is equal to or exceeds 200 chars",
          %{backend: backend} do
       assert_raise RuntimeError,
-                   ~r/^The dynamically generated ClickHouse resource name starting with `ingest_/,
+                   ~r/^The dynamically generated ClickHouse resource name starting with `consolidated_ingest_/,
                    fn ->
                      backend
                      |> modify_backend_with_long_token()
@@ -164,11 +164,12 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       query_result =
         ClickHouseAdaptor.execute_ch_query(
           backend,
-          "SELECT id FROM #{table_name} WHERE id = '660e8400-e29b-41d4-a716-446655440001'"
+          "SELECT id, source_name FROM #{table_name} WHERE id = '660e8400-e29b-41d4-a716-446655440001'"
         )
 
-      assert {:ok, rows} = query_result
-      assert length(rows) == 1
+      assert {:ok, [row]} = query_result
+      assert row["id"] == "660e8400-e29b-41d4-a716-446655440001"
+      assert row["source_name"] == source.name
     end
 
     test "can insert and retrieve log events", %{source: source, backend: backend} do
@@ -197,7 +198,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       query_result =
         ClickHouseAdaptor.execute_ch_query(
           backend,
-          "SELECT id, source_uuid, body, timestamp FROM #{table_name} ORDER BY timestamp"
+          "SELECT id, source_uuid, source_name, body, ingested_at, timestamp FROM #{table_name} ORDER BY timestamp"
         )
 
       assert {:ok, rows} = query_result
@@ -209,13 +210,17 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
                %{
                  "id" => "550e8400-e29b-41d4-a716-446655440000",
                  "source_uuid" => source_uuid1,
+                 "source_name" => source_name1,
                  "body" => %{"event_message" => "Test message 1"},
+                 "ingested_at" => _,
                  "timestamp" => _
                },
                %{
                  "id" => "9bc07845-9859-4163-bfe5-a74c1a1443a2",
                  "source_uuid" => source_uuid2,
+                 "source_name" => source_name2,
                  "body" => %{"event_message" => "Test message 2"},
+                 "ingested_at" => _,
                  "timestamp" => _
                }
              ] = row_payloads
@@ -223,6 +228,9 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       expected_source_uuid = Atom.to_string(source.token)
       assert source_uuid1 == expected_source_uuid
       assert source_uuid2 == expected_source_uuid
+
+      assert source_name1 == source.name
+      assert source_name2 == source.name
     end
 
     test "handles empty event list", %{backend: backend} do

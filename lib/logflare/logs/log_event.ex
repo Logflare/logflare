@@ -22,6 +22,7 @@ defmodule Logflare.LogEvent do
     field :is_from_stale_query, :boolean
     field :ingested_at, :utc_datetime_usec
     field :origin_source_uuid, Ecto.UUID.Atom
+    field :origin_source_name, :string
     field :via_rule_id, :id
     field :retries, :integer, default: 0
 
@@ -74,6 +75,7 @@ defmodule Logflare.LogEvent do
         pipeline_error: pipeline_error,
         source_id: source.id,
         origin_source_uuid: source.token,
+        origin_source_name: source.name,
         valid: changeset.valid?,
         ingested_at: NaiveDateTime.utc_now(),
         id: changeset.changes.body["id"]

@@ -12,6 +12,7 @@ defmodule Logflare.Mixfile do
       deps: deps(),
       dialyzer: dialyzer(),
       test_coverage: [tool: ExCoveralls],
+      test_ignore_filters: [~r|test/profiling|, "test/bq_logs_search_seed.exs"],
       releases: [
         logflare: [
           version: version(),
@@ -33,6 +34,7 @@ defmodule Logflare.Mixfile do
         lint: :test,
         "lint.diff": :test,
         "test.only": :test,
+        "test.e2e": :test,
         "test.format": :test,
         "test.compile": :test,
         "test.security": :test,
@@ -125,7 +127,6 @@ defmodule Logflare.Mixfile do
       {:map_keys, "~> 0.1.0"},
       {:observer_cli, "~> 1.5"},
       {:cloak_ecto, github: "logflare/cloak_ecto"},
-      {:flow, "~> 1.0"},
 
       # Parsing
       {:bertex, ">= 0.0.0"},
@@ -153,6 +154,7 @@ defmodule Logflare.Mixfile do
       # Test
       {:mix_test_watch, "~> 1.0", only: [:dev, :test], runtime: false},
       {:phoenix_test, "~> 0.9.1", only: :test, runtime: false},
+      {:phoenix_test_playwright, "~> 0.9.1", only: :test, runtime: false},
       {:mimic, "~> 2.0", only: [:dev, :test]},
       {:stream_data, "~> 1.2.0", only: [:dev, :test]},
 
@@ -268,6 +270,7 @@ defmodule Logflare.Mixfile do
       "test.typings": ["cmd mkdir -p dialyzer", "dialyzer"],
       "test.coverage": ["coveralls"],
       "test.coverage.ci": ["coveralls.github"],
+      "test.e2e": ["ecto.create --quiet", "ecto.migrate --quiet", "test --only feature"],
       lint: ["credo"],
       "lint.diff": ["credo diff main"],
       "lint.all": ["credo --strict"],

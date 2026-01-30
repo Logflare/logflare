@@ -183,7 +183,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
     table_name = "#{QueryTemplates.default_table_name_prefix()}_#{token_str}"
 
     if String.length(table_name) >= 200 do
-      raise "The dynamically generated ClickHouse resource name starting with `ingest_` " <>
+      raise "The dynamically generated ClickHouse resource name starting with `consolidated_ingest_` " <>
               "must be less than 200 characters. Got: #{String.length(table_name)}"
     end
 

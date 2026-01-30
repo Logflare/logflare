@@ -67,6 +67,13 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.IngesterTest do
   end
 
   describe "encode_as_string/1" do
+    test "encodes binary string with varint length prefix" do
+      encoded = Ingester.encode_as_string("hello")
+
+      assert is_list(encoded)
+      assert IO.iodata_to_binary(encoded) == <<5, "hello">>
+    end
+
     test "encodes simple iodata with varint length prefix" do
       encoded = Ingester.encode_as_string(["hello"])
 
@@ -148,23 +155,41 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.IngesterTest do
 
       encoded = Ingester.encode_row(log_event)
       assert is_list(encoded)
-      # UUID (16) + source_id UUID (16) + varint length (1+) + body (JSON) + timestamp (8)
-      assert IO.iodata_length(encoded) >= 16 + 16 + 1 + 10 + 8
+
+      # id (16) + source_uuid (16) + source_name (varint+str) + body (varint+json) + ingested_at (8) + timestamp (8)
+      assert IO.iodata_length(encoded) >= 16 + 16 + 1 + 1 + 10 + 8 + 8
     end
 
-    test "encodes origin_source_uuid as source_id UUID" do
+    test "encodes origin_source_uuid as source_uuid" do
       source = build(:source)
       log_event = build(:log_event, source: source, message: "test")
 
       encoded = Ingester.encode_row(log_event)
       binary = IO.iodata_to_binary(encoded)
 
-      source_id_str = Atom.to_string(log_event.origin_source_uuid)
-      expected_source_id_bytes = Ingester.encode_as_uuid(source_id_str)
+      source_uuid_str = Atom.to_string(log_event.origin_source_uuid)
+      expected_source_uuid_bytes = Ingester.encode_as_uuid(source_uuid_str)
 
-      # source_id UUID is the second 16 bytes (after id UUID)
-      <<_id::binary-size(16), source_id_bytes::binary-size(16), _rest::binary>> = binary
-      assert source_id_bytes == expected_source_id_bytes
+      # source_uuid is the second 16 bytes (after id)
+      <<_id::binary-size(16), source_uuid_bytes::binary-size(16), _rest::binary>> = binary
+      assert source_uuid_bytes == expected_source_uuid_bytes
+    end
+
+    test "encodes origin_source_name after source_uuid" do
+      source = build(:source)
+      log_event = build(:log_event, source: source, message: "test")
+
+      encoded = Ingester.encode_row(log_event)
+      binary = IO.iodata_to_binary(encoded)
+
+      # skip id (16) + source_uuid (16)
+      <<_::binary-size(32), rest::binary>> = binary
+
+      source_name = log_event.origin_source_name
+      source_name_len = byte_size(source_name)
+
+      <<^source_name_len, encoded_name::binary-size(source_name_len), _rest::binary>> = rest
+      assert encoded_name == source_name
     end
   end
 
