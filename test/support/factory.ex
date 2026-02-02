@@ -383,6 +383,26 @@ defmodule Logflare.Factory do
     }
   end
 
+  def fetch_query_factory(attrs \\ %{}) do
+    user = Map.get(attrs, :user, build(:user))
+    backend = Map.get(attrs, :backend, build(:backend, type: :bigquery, user: user))
+    source = Map.get(attrs, :source, build(:source, user: user))
+
+    %Logflare.FetchQueries.FetchQuery{
+      name: "some fetch query #{TestUtils.random_string()}",
+      description: "test fetch query",
+      cron: "*/5 * * * *",
+      query: "select current_date() as date",
+      source_mapping: %{},
+      language: :bq_sql,
+      enabled: true,
+      user: user,
+      backend: backend,
+      source: source
+    }
+    |> merge_attributes(attrs)
+  end
+
   def saved_search_factory(attrs \\ %{}) do
     source = build(:source, user: build(:user))
     %{bigquery_schema: schema} = build(:source_schema)

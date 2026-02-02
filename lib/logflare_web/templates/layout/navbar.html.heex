@@ -34,6 +34,9 @@
           </li>
         <% end %>
         <li class="nav-item">
+          <.team_link href={~p"/fetch"} team={assigns[:team]} class="nav-link">Fetch Jobs</.team_link>
+        </li>
+        <li class="nav-item">
           <.team_link href="https://docs.logflare.app" team={assigns[:team]} class="nav-link">Docs</.team_link>
         </li>
         <%= if Map.get(@conn.assigns, :team_user) do %>

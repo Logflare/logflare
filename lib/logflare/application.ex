@@ -118,7 +118,9 @@ defmodule Logflare.Application do
          child_spec: {Logflare.Scheduler, name: Logflare.Scheduler.scheduler_name()}},
         # active users tracking for UserMetricsPoller
         {Logflare.ActiveUserTracker,
-         [name: Logflare.ActiveUserTracker, pubsub_server: Logflare.PubSub]}
+         [name: Logflare.ActiveUserTracker, pubsub_server: Logflare.PubSub]},
+
+        {Oban, Application.fetch_env!(:logflare, Oban)}
       ]
   end
 
@@ -187,5 +189,11 @@ defmodule Logflare.Application do
         SingleTenant.update_supabase_source_schemas()
       end
     end
+
+    Logger.info("Running fetch query scheduler on startup")
+
+    %{}
+    |> Logflare.FetchQueries.FetchQuerySchedulerWorker.new()
+    |> Oban.insert()
   end
 end

@@ -730,6 +730,42 @@ defmodule Logflare.BackendsTest do
 
       assert :noop = SourceSup.start_backend_child(source, backend)
     end
+
+    test "starts default backend pipeline when disable_system_default_backend? is false" do
+      user = insert(:user)
+      source = insert(:source, user_id: user.id, disable_system_default_backend?: false)
+
+      start_supervised!({SourceSup, source})
+
+      via = Backends.via_source(source, SourceSup)
+      children = Supervisor.which_children(via)
+
+      default_backend_exists? =
+        Enum.any?(children, fn
+          {{_mod, _source_id, nil}, _pid, _type, _modules} -> true
+          _ -> false
+        end)
+
+      assert default_backend_exists?, "Default backend pipeline should be started"
+    end
+
+    test "does not start default backend pipeline when disable_system_default_backend? is true" do
+      user = insert(:user)
+      source = insert(:source, user_id: user.id, disable_system_default_backend?: true)
+
+      start_supervised!({SourceSup, source})
+
+      via = Backends.via_source(source, SourceSup)
+      children = Supervisor.which_children(via)
+
+      default_backend_exists? =
+        Enum.any?(children, fn
+          {{_mod, _source_id, nil}, _pid, _type, _modules} -> true
+          _ -> false
+        end)
+
+      refute default_backend_exists?, "Default backend pipeline should NOT be started"
+    end
   end
 
   describe "ingestion" do
@@ -1595,6 +1631,56 @@ defmodule Logflare.BackendsTest do
 
       refute log =~ "Dropping"
       refute log =~ "timestamps outside"
+    end
+  end
+
+  describe "dispatch_to_backends with disable_system_default_backend? flag" do
+    setup do
+      insert(:plan, name: "Free")
+      user = insert(:user)
+      {:ok, user: user}
+    end
+
+    test "includes system default backend when flag is false", %{user: user} do
+      source = insert(:source, user: user, disable_system_default_backend?: false)
+      backend = insert(:backend, type: :webhook, config: %{url: "https://example.com"}, user: user, sources: [source])
+
+      Backends.clear_list_backends_cache(source.id)
+
+      # Setup queue tables
+      IngestEventQueue.upsert_tid({source.id, nil, nil})
+      IngestEventQueue.upsert_tid({source.id, backend.id, nil})
+
+      events = [build(:log_event, source: source, body: %{"message" => "test"})]
+      assert {:ok, 1} = Backends.ingest_logs(events, source)
+
+      # Both queues should have events
+      {:ok, system_events} = IngestEventQueue.fetch_events({source.id, nil}, 10)
+      assert length(system_events) == 1
+
+      {:ok, backend_events} = IngestEventQueue.fetch_events({source.id, backend.id}, 10)
+      assert length(backend_events) == 1
+    end
+
+    test "excludes system default backend when flag is true", %{user: user} do
+      source = insert(:source, user: user, disable_system_default_backend?: true)
+      backend = insert(:backend, type: :webhook, config: %{url: "https://example.com"}, user: user, sources: [source])
+
+      Backends.clear_list_backends_cache(source.id)
+
+      # Setup queue tables
+      IngestEventQueue.upsert_tid({source.id, nil, nil})
+      IngestEventQueue.upsert_tid({source.id, backend.id, nil})
+
+      events = [build(:log_event, source: source, body: %{"message" => "test"})]
+      assert {:ok, 1} = Backends.ingest_logs(events, source)
+
+      # Only custom backend queue should have events, system default should be empty
+      {:ok, system_events} = IngestEventQueue.fetch_events({source.id, nil}, 10)
+      assert length(system_events) == 0, "System default backend should be skipped"
+
+      {:ok, backend_events} = IngestEventQueue.fetch_events({source.id, backend.id}, 10)
+      assert length(backend_events) == 1
     end
   end
 end

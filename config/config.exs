@@ -192,4 +192,17 @@ config :mime, :types, %{
 # use legacy artifacts for users on older CPUs or virtualized environments without advanced CPU features
 config :explorer, use_legacy_artifacts: true
 
+# config/config.exs
+config :logflare, Oban,
+  engine: Oban.Engines.Basic,
+  queues: [default: 10, fetch: 5],
+  repo: Logflare.Repo,
+  plugins: [
+    {Oban.Plugins.Pruner, max_age: 86_400},
+    {Oban.Plugins.Cron,
+     crontab: [
+       {"* * * * *", Logflare.FetchQueries.FetchQuerySchedulerWorker}
+     ]}
+  ]
+
 import_config "#{Mix.env()}.exs"

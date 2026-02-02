@@ -1,0 +1,178 @@
+<%= if assigns[:fetch_query] do %>
+  <div class="card">
+    <div class="card-body">
+      <div class="row mb-3">
+        <div class="col-md-8">
+          <h5 class="card-title"><%= @fetch_query.name %></h5>
+          <p class="text-muted"><%= @fetch_query.description %></p>
+        </div>
+        <div class="col-md-4 text-end">
+          {live_patch("Edit",
+            to: ~p"/fetch/#{@fetch_query.id}/edit",
+            class: "btn btn-outline-primary"
+          )}
+          {live_patch("Back",
+            to: ~p"/fetch",
+            class: "btn btn-outline-secondary"
+          )}
+        </div>
+      </div>
+
+      <div class="row">
+        <div class="col-md-6">
+          <h6>Configuration</h6>
+          <dl class="row">
+            <dt class="col-sm-3">Backend:</dt>
+            <dd class="col-sm-9">
+              <%= if @fetch_query.backend do %>
+                <a href={~p"/sources/#{@fetch_query.backend.id}"} class="text-decoration-none">
+                  <%= @fetch_query.backend.name %>
+                </a>
+              <% else %>
+                <span class="text-muted">Default</span>
+              <% end %>
+            </dd>
+
+            <dt class="col-sm-3">Source:</dt>
+            <dd class="col-sm-9">
+              <%= if @fetch_query.source do %>
+                <a href={~p"/sources/#{@fetch_query.source.id}"} class="text-decoration-none">
+                  <%= @fetch_query.source.name %>
+                </a>
+              <% else %>
+                <span class="text-muted">Unknown</span>
+              <% end %>
+            </dd>
+
+            <dt class="col-sm-3">Language:</dt>
+            <dd class="col-sm-9"><code><%= @fetch_query.language %></code></dd>
+
+            <dt class="col-sm-3">Cron:</dt>
+            <dd class="col-sm-9"><code><%= @fetch_query.cron %></code></dd>
+
+            <dt class="col-sm-3">Status:</dt>
+            <dd class="col-sm-9">
+              <%= if @fetch_query.enabled do %>
+                <span class="badge bg-success">Enabled</span>
+              <% else %>
+                <span class="badge bg-secondary">Disabled</span>
+              <% end %>
+            </dd>
+          </dl>
+        </div>
+
+        <div class="col-md-6">
+          <h6>Query</h6>
+          <pre class="bg-dark text-muted p-3 rounded" style="color: #a0a0a0;"><code><%= @fetch_query.query %></code></pre>
+        </div>
+      </div>
+
+      <hr />
+
+      <div class="mt-4">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+          <h6>Execution History</h6>
+          <button phx-click="trigger-now" class="btn btn-sm btn-primary">
+            Trigger Now
+          </button>
+        </div>
+
+        <%= if Enum.empty?(@future_jobs) and Enum.empty?(@past_jobs) do %>
+          <div class="alert alert-info">
+            No execution history yet. Click "Trigger Now" to run this fetch query immediately.
+          </div>
+        <% else %>
+          <%= if not Enum.empty?(@future_jobs) do %>
+            <div class="mb-4">
+              <h6 class="text-muted mb-3">
+                <i class="fas fa-hourglass-half"></i> Upcoming Jobs (<%= Enum.count(@future_jobs) %>)
+              </h6>
+              <div class="table-responsive">
+                <table class="table table-sm table-hover border">
+                  <thead class="table-light">
+                    <tr>
+                      <th class="fw-semibold">Status</th>
+                      <th class="fw-semibold">Scheduled For</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <%= for job <- @future_jobs do %>
+                      <tr>
+                        <td>
+                          <span class={"badge bg-#{job_state_badge_class(job.state)}"}>
+                            <%= format_job_state(job.state) %>
+                          </span>
+                        </td>
+                        <td class="text-muted small"><%= format_datetime(job.scheduled_at) %></td>
+                      </tr>
+                    <% end %>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          <% end %>
+
+          <%= if not Enum.empty?(@past_jobs) do %>
+            <div>
+              <h6 class="text-muted mb-3">
+                <i class="fas fa-history"></i> Past Executions (<%= Enum.count(@past_jobs) %>)
+              </h6>
+              <div class="table-responsive">
+                <table class="table table-sm table-hover border">
+                  <thead class="table-light">
+                    <tr>
+                      <th class="fw-semibold">Status</th>
+                      <th class="fw-semibold">Completed</th>
+                      <th class="fw-semibold">Duration</th>
+                      <th class="fw-semibold">Error</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <%= for {job, idx} <- Enum.with_index(@past_jobs) do %>
+                      <% error_id = "error-#{job.id}-#{idx}" %>
+                      <tr>
+                        <td>
+                          <span class={"badge bg-#{job_state_badge_class(job.state)}"}>
+                            <%= format_job_state(job.state) %>
+                          </span>
+                        </td>
+                        <td class="text-muted small"><%= format_datetime(job.completed_at) %></td>
+                        <td class="text-muted small"><%= calculate_duration(job.attempted_at, job.completed_at) %></td>
+                        <td>
+                          <%= if has_error?(format_job_errors(job.errors)) do %>
+                            <button
+                              class="btn btn-sm btn-outline-danger py-0 px-2"
+                              phx-click="toggle-error"
+                              phx-value-error-id={error_id}
+                            >
+                              <i class="fas fa-exclamation-circle"></i>
+                              <%= if Map.get(assigns[:errors_visible] || %{}, error_id, false), do: "Hide", else: "Show" %>
+                            </button>
+                          <% else %>
+                            <span class="text-muted small">—</span>
+                          <% end %>
+                        </td>
+                      </tr>
+                      <%= if has_error?(format_job_errors(job.errors)) and Map.get(assigns[:errors_visible] || %{}, error_id, false) do %>
+                        <tr>
+                          <td colspan="4" class="p-0 border-0">
+                            <div class="p-2">
+                              <strong class="d-block mb-2">Error Details:</strong>
+                              <pre style="margin: 0; font-size: 0.85rem; max-height: 300px; max-width: 800px; overflow-y: auto; background-color: transparent; border: 1px solid #dee2e6; padding: 0.75rem;"><code><%= format_job_errors(job.errors) %></code></pre>
+                            </div>
+                          </td>
+                        </tr>
+                      <% end %>
+                    <% end %>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          <% end %>
+        <% end %>
+      </div>
+    </div>
+  </div>
+<% else %>
+  <div class="alert alert-danger">Fetch query not found</div>
+<% end %>
