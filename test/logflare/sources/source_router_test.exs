@@ -1,5 +1,4 @@
 defmodule Logflare.Sources.SourceRouterTest do
-  alias Logflare.LogEvent
   use Logflare.DataCase
 
   alias Logflare.Sources.SourceRouter

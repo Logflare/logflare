@@ -10,11 +10,11 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
   alias Logflare.LogEvent
 
   @finch_pool Logflare.FinchClickHouseIngest
-  @max_retries 3
+  @max_retries 1
   @initial_delay 500
   @max_delay 4_000
   @pool_timeout 8_000
-  @receive_timeout 15_000
+  @receive_timeout 30_000
 
   @doc """
   Inserts a list of `LogEvent` structs into ClickHouse.
@@ -81,13 +81,21 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
 
   @doc false
   @spec encode_row(LogEvent.t()) :: iodata()
-  def encode_row(%LogEvent{body: body, origin_source_uuid: origin_source_uuid}) do
+  def encode_row(%LogEvent{
+        body: body,
+        origin_source_uuid: origin_source_uuid,
+        origin_source_name: origin_source_name,
+        ingested_at: ingested_at
+      }) do
     source_uuid_str = Atom.to_string(origin_source_uuid)
+    ingested_at = ingested_at || NaiveDateTime.utc_now()
 
     [
       encode_as_uuid(body["id"]),
       encode_as_uuid(source_uuid_str),
+      encode_as_string(origin_source_name || ""),
       encode_as_string(Jason.encode_to_iodata!(body)),
+      encode_as_datetime64(DateTime.from_naive!(ingested_at, "Etc/UTC")),
       encode_as_datetime64(DateTime.from_unix!(body["timestamp"], :microsecond))
     ]
   end
@@ -116,7 +124,11 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
   end
 
   @doc false
-  @spec encode_as_string(iodata()) :: iodata()
+  @spec encode_as_string(String.t() | iodata()) :: iodata()
+  def encode_as_string(value) when is_binary(value) do
+    [encode_as_varint(byte_size(value)), value]
+  end
+
   def encode_as_string(value) when is_list(value) do
     length = IO.iodata_length(value)
     [encode_as_varint(length), value]
@@ -138,22 +150,23 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
     do: <<1::1, n::7, encode_as_varint(n >>> 7)::binary>>
 
   @spec build_connection_opts(Backend.t()) :: {:ok, Keyword.t()} | {:error, String.t()}
-  defp build_connection_opts(%Backend{
-         config: %{
-           url: url,
-           port: port,
-           database: database,
-           username: username,
-           password: password
-         }
-       }) do
+  defp build_connection_opts(%Backend{config: config}) do
+    %{
+      url: url,
+      port: port,
+      database: database,
+      username: username,
+      password: password
+    } = config
+
     {:ok,
      [
        url: url,
        port: port,
        database: database,
        username: username,
-       password: password
+       password: password,
+       async_insert: Map.get(config, :async_insert, false)
      ]}
   end
 
@@ -165,6 +178,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
   defp build_request_url(connection_opts, table) do
     base_url = Keyword.get(connection_opts, :url)
     database = Keyword.get(connection_opts, :database)
+    async_insert = Keyword.get(connection_opts, :async_insert, false)
 
     uri = URI.parse(base_url)
     scheme = uri.scheme || "http"
@@ -173,10 +187,22 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
 
     query = "INSERT INTO #{database}.#{table} FORMAT RowBinary"
 
-    params = URI.encode_query(%{"query" => query})
+    params =
+      %{"query" => query}
+      |> maybe_add_async_insert(async_insert)
+      |> URI.encode_query()
 
     "#{scheme}://#{host}:#{port}/?#{params}"
   end
+
+  @spec maybe_add_async_insert(map(), boolean()) :: map()
+  defp maybe_add_async_insert(params, true) do
+    params
+    |> Map.put("async_insert", "1")
+    |> Map.put("wait_for_async_insert", "1")
+  end
+
+  defp maybe_add_async_insert(params, _), do: params
 
   defp default_port("https"), do: 8443
   defp default_port(_), do: 8123

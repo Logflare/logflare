@@ -30,13 +30,13 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
     test "`clickhouse_ingest_table_name/1` generates a unique log ingest table name based on the backend token",
          %{backend: backend, stringified_backend_token: stringified_backend_token} do
       assert ClickHouseAdaptor.clickhouse_ingest_table_name(backend) ==
-               "ingest_#{stringified_backend_token}"
+               "consolidated_ingest_#{stringified_backend_token}"
     end
 
     test "`clickhouse_ingest_table_name/1` will raise an exception if the table name is equal to or exceeds 200 chars",
          %{backend: backend} do
       assert_raise RuntimeError,
-                   ~r/^The dynamically generated ClickHouse resource name starting with `ingest_/,
+                   ~r/^The dynamically generated ClickHouse resource name starting with `consolidated_ingest_/,
                    fn ->
                      backend
                      |> modify_backend_with_long_token()
@@ -86,6 +86,49 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
     end
   end
 
+  describe "cast_config/1" do
+    test "casts async_insert as boolean" do
+      params = %{
+        "url" => "http://localhost",
+        "database" => "test",
+        "port" => 8123,
+        "async_insert" => true
+      }
+
+      changeset = ClickHouseAdaptor.cast_config(params)
+
+      assert changeset.valid?
+      assert Ecto.Changeset.get_field(changeset, :async_insert) == true
+    end
+
+    test "defaults async_insert to false when not provided" do
+      params = %{
+        "url" => "http://localhost",
+        "database" => "test",
+        "port" => 8123
+      }
+
+      changeset = ClickHouseAdaptor.cast_config(params)
+
+      assert changeset.valid?
+      assert Ecto.Changeset.get_field(changeset, :async_insert) == false
+    end
+
+    test "casts string async_insert value" do
+      params = %{
+        "url" => "http://localhost",
+        "database" => "test",
+        "port" => 8123,
+        "async_insert" => "true"
+      }
+
+      changeset = ClickHouseAdaptor.cast_config(params)
+
+      assert changeset.valid?
+      assert Ecto.Changeset.get_field(changeset, :async_insert) == true
+    end
+  end
+
   describe "log event insertion and retrieval" do
     setup do
       insert(:plan, name: "Free")
@@ -97,6 +140,36 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       assert {:ok, _} = ClickHouseAdaptor.provision_ingest_table(backend)
 
       [source: source, backend: backend]
+    end
+
+    test "can insert log events with async_insert enabled", %{source: source, backend: backend} do
+      backend_with_async = %{backend | config: Map.put(backend.config, :async_insert, true)}
+
+      log_events = [
+        build(:log_event,
+          id: "660e8400-e29b-41d4-a716-446655440001",
+          source: source,
+          message: "Async test message",
+          metadata: %{"level" => "info"}
+        )
+      ]
+
+      result = ClickHouseAdaptor.insert_log_events(backend_with_async, log_events)
+      assert :ok = result
+
+      Process.sleep(500)
+
+      table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(backend)
+
+      query_result =
+        ClickHouseAdaptor.execute_ch_query(
+          backend,
+          "SELECT id, source_name FROM #{table_name} WHERE id = '660e8400-e29b-41d4-a716-446655440001'"
+        )
+
+      assert {:ok, [row]} = query_result
+      assert row["id"] == "660e8400-e29b-41d4-a716-446655440001"
+      assert row["source_name"] == source.name
     end
 
     test "can insert and retrieve log events", %{source: source, backend: backend} do
@@ -125,7 +198,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       query_result =
         ClickHouseAdaptor.execute_ch_query(
           backend,
-          "SELECT id, source_uuid, body, timestamp FROM #{table_name} ORDER BY timestamp"
+          "SELECT id, source_uuid, source_name, body, ingested_at, timestamp FROM #{table_name} ORDER BY timestamp"
         )
 
       assert {:ok, rows} = query_result
@@ -137,13 +210,17 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
                %{
                  "id" => "550e8400-e29b-41d4-a716-446655440000",
                  "source_uuid" => source_uuid1,
+                 "source_name" => source_name1,
                  "body" => %{"event_message" => "Test message 1"},
+                 "ingested_at" => _,
                  "timestamp" => _
                },
                %{
                  "id" => "9bc07845-9859-4163-bfe5-a74c1a1443a2",
                  "source_uuid" => source_uuid2,
+                 "source_name" => source_name2,
                  "body" => %{"event_message" => "Test message 2"},
+                 "ingested_at" => _,
                  "timestamp" => _
                }
              ] = row_payloads
@@ -151,6 +228,9 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       expected_source_uuid = Atom.to_string(source.token)
       assert source_uuid1 == expected_source_uuid
       assert source_uuid2 == expected_source_uuid
+
+      assert source_name1 == source.name
+      assert source_name2 == source.name
     end
 
     test "handles empty event list", %{backend: backend} do
