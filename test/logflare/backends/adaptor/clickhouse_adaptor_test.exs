@@ -5,6 +5,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
   import Logflare.Utils.Guards
 
   alias Logflare.Backends
+  alias Logflare.Backends.Adaptor
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryConnectionSup
@@ -86,47 +87,113 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
     end
   end
 
-  describe "cast_config/1" do
+  describe "cast_and_validate_config" do
     test "casts async_insert as boolean" do
-      params = %{
-        "url" => "http://localhost",
-        "database" => "test",
-        "port" => 8123,
-        "async_insert" => true
-      }
-
-      changeset = ClickHouseAdaptor.cast_config(params)
+      changeset = cast_and_validate_config(async_insert: true)
 
       assert changeset.valid?
       assert Ecto.Changeset.get_field(changeset, :async_insert) == true
     end
 
     test "defaults async_insert to false when not provided" do
-      params = %{
-        "url" => "http://localhost",
-        "database" => "test",
-        "port" => 8123
-      }
-
-      changeset = ClickHouseAdaptor.cast_config(params)
+      changeset = cast_and_validate_config()
 
       assert changeset.valid?
       assert Ecto.Changeset.get_field(changeset, :async_insert) == false
     end
 
     test "casts string async_insert value" do
-      params = %{
-        "url" => "http://localhost",
-        "database" => "test",
-        "port" => 8123,
-        "async_insert" => "true"
-      }
-
-      changeset = ClickHouseAdaptor.cast_config(params)
+      changeset = cast_and_validate_config(async_insert: "true")
 
       assert changeset.valid?
       assert Ecto.Changeset.get_field(changeset, :async_insert) == true
     end
+
+    test "casts read_only_url when provided" do
+      changeset =
+        cast_and_validate_config(read_only_url: "https://read-only.clickhouse.cloud:8443")
+
+      assert changeset.valid?
+
+      assert Ecto.Changeset.get_field(changeset, :read_only_url) ==
+               "https://read-only.clickhouse.cloud:8443"
+    end
+
+    test "read_only_url defaults to nil when not provided" do
+      changeset = cast_and_validate_config()
+
+      assert changeset.valid?
+      assert Ecto.Changeset.get_field(changeset, :read_only_url) == nil
+    end
+
+    test "rejects invalid read_only_url format" do
+      changeset = cast_and_validate_config(read_only_url: "invalid-url")
+
+      refute changeset.valid?
+      assert {:read_only_url, _} = hd(changeset.errors)
+    end
+
+    test "accepts valid http read_only_url" do
+      changeset = cast_and_validate_config(read_only_url: "http://read-cluster.local:8123")
+
+      assert changeset.valid?
+    end
+
+    test "accepts valid https read_only_url" do
+      changeset =
+        cast_and_validate_config(read_only_url: "https://read-cluster.clickhouse.cloud:8443")
+
+      assert changeset.valid?
+    end
+  end
+
+  defp cast_and_validate_config(attrs \\ []) do
+    default_attrs = %{
+      url: "http://localhost",
+      database: "test",
+      port: 8123
+    }
+
+    Adaptor.cast_and_validate_config(ClickHouseAdaptor, Map.merge(default_attrs, Map.new(attrs)))
+  end
+
+  describe "read_only_url fallback behavior" do
+    test "uses primary url when read_only_url is nil" do
+      config = %{
+        url: "http://primary.clickhouse.local",
+        read_only_url: nil,
+        port: 8123
+      }
+
+      assert resolve_read_url(config) == "http://primary.clickhouse.local"
+    end
+
+    test "uses primary url when read_only_url is empty string" do
+      config = %{
+        url: "http://primary.clickhouse.local",
+        read_only_url: "",
+        port: 8123
+      }
+
+      assert resolve_read_url(config) == "http://primary.clickhouse.local"
+    end
+
+    test "uses read_only_url when configured" do
+      config = %{
+        url: "http://primary.clickhouse.local",
+        read_only_url: "http://readonly.clickhouse.local",
+        port: 8123
+      }
+
+      assert resolve_read_url(config) == "http://readonly.clickhouse.local"
+    end
+  end
+
+  defp resolve_read_url(config) do
+    import Logflare.Utils.Guards
+
+    read_only_url = Map.get(config, :read_only_url)
+    if is_non_empty_binary(read_only_url), do: read_only_url, else: Map.get(config, :url)
   end
 
   describe "log event insertion and retrieval" do
