@@ -58,6 +58,12 @@ test('receives logs from Storage', async ({ page }) => {
   await expect(page.getByRole('table')).toContainText('/bucket/avatars');
 });
 
+test('receives logs from Realtime', async ({ page }) => {
+  await page.goto('/project/default/logs/realtime-logs');
+  await searchLogs(page, 'Starting');
+  await expect(page.getByRole('table')).toContainText('Starting Realtime');
+});
+
 test('receives logs from Edge Functions', async ({ page }) => {
   await page.goto('/project/default/logs/edge-functions-logs');
 
