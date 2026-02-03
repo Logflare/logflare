@@ -117,7 +117,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
        database: :string,
        port: :integer,
        pool_size: :integer,
-       async_insert: :boolean
+       async_insert: :boolean,
+       read_only_url: :string
      }}
     |> Changeset.cast(params, [
       :url,
@@ -126,7 +127,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
       :database,
       :port,
       :pool_size,
-      :async_insert
+      :async_insert,
+      :read_only_url
     ])
     |> Logflare.Utils.default_field_value(:async_insert, false)
   end
@@ -139,6 +141,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
     changeset
     |> validate_required([:url, :database, :port])
     |> Changeset.validate_format(:url, ~r/https?\:\/\/.+/)
+    |> validate_read_only_url()
     |> validate_user_pass()
   end
 
@@ -348,6 +351,14 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
       |> Changeset.add_error(:password, msg)
     else
       changeset
+    end
+  end
+
+  @spec validate_read_only_url(Changeset.t()) :: Changeset.t()
+  defp validate_read_only_url(changeset) do
+    case Changeset.get_field(changeset, :read_only_url) do
+      nil -> changeset
+      _url -> Changeset.validate_format(changeset, :read_only_url, ~r/https?\:\/\/.+/)
     end
   end
 
