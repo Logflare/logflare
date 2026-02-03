@@ -252,16 +252,18 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager do
         |> div(2)
         |> max(default_pool_size)
 
-      url = Map.get(config, :url)
+      read_only_url = Map.get(config, :read_only_url)
+      url = if is_non_empty_binary(read_only_url), do: read_only_url, else: Map.get(config, :url)
 
-      with {:ok, {scheme, hostname}} <- extract_scheme_and_hostname(url) do
+      with {:ok, {scheme, hostname, url_port}} <- extract_url_components(url) do
         pool_via = connection_pool_via(backend)
+        port = get_read_port(config, url_port)
 
         ch_opts = [
           name: pool_via,
           scheme: scheme,
           hostname: hostname,
-          port: get_port_config(backend, config),
+          port: port,
           database: config.database,
           username: config.username,
           password: config.password,
@@ -275,12 +277,12 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager do
     end
   end
 
-  @spec extract_scheme_and_hostname(String.t()) ::
-          {:ok, {String.t(), String.t()}} | {:error, String.t()}
-  defp extract_scheme_and_hostname(url) when is_binary(url) and byte_size(url) > 0 do
+  @spec extract_url_components(String.t()) ::
+          {:ok, {String.t(), String.t(), non_neg_integer() | nil}} | {:error, String.t()}
+  defp extract_url_components(url) when is_non_empty_binary(url) do
     case URI.new(url) do
-      {:ok, %URI{scheme: scheme, host: hostname}} when scheme in ~w(http https) ->
-        {:ok, {scheme, hostname}}
+      {:ok, %URI{scheme: scheme, host: hostname, port: port}} when scheme in ~w(http https) ->
+        {:ok, {scheme, hostname, port}}
 
       {:ok, %URI{}} ->
         {:error, "Unable to extract scheme and hostname from URL."}
@@ -290,13 +292,14 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager do
     end
   end
 
-  defp extract_scheme_and_hostname(_url), do: {:error, "Unexpected URL value provided."}
+  defp extract_url_components(_url), do: {:error, "Unexpected URL value provided."}
 
-  @spec get_port_config(Backend.t(), map()) :: non_neg_integer()
-  defp get_port_config(_backend, %{port: port}) when is_pos_integer(port), do: port
+  @spec get_read_port(map(), non_neg_integer() | nil) :: non_neg_integer()
+  defp get_read_port(config, url_port), do: url_port || get_config_port(config)
 
-  defp get_port_config(_backend, %{port: port}) when is_non_empty_binary(port),
-    do: String.to_integer(port)
+  @spec get_config_port(map()) :: non_neg_integer()
+  defp get_config_port(%{port: port}) when is_pos_integer(port), do: port
+  defp get_config_port(%{port: port}) when is_non_empty_binary(port), do: String.to_integer(port)
 
   @spec connection_manager_via(Backend.t()) :: tuple()
   defp connection_manager_via(%Backend{} = backend) do
