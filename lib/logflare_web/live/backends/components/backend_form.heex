@@ -231,6 +231,13 @@
             {label(f_config, :async_insert, "Async Inserts")}
             {checkbox(f_config, :async_insert, id: "async_insert")}
           </div>
+          <div class="form-group">
+            {label(f_config, :read_only_url, "Read-Only URL (Optional)")}
+            {text_input(f_config, :read_only_url, class: "form-control")}
+            <small class="form-text text-muted">
+              Separate endpoint for read queries, for example: <code>https://read-warehouse.clickhouse.cloud:8443</code>
+            </small>
+          </div>
         <% "incidentio" -> %>
           <div class="form-group">
             {label(f_config, :api_token, "API Token")}

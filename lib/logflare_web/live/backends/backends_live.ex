@@ -337,6 +337,7 @@ defmodule LogflareWeb.BackendsLive do
     default_ingest_sources =
       if backend && backend.default_ingest? do
         Sources.list_sources(backend_id: backend.id)
+        |> Enum.sort_by(& &1.name)
       else
         []
       end
@@ -348,6 +349,7 @@ defmodule LogflareWeb.BackendsLive do
       |> Enum.reject(fn source ->
         Enum.any?(default_ingest_sources, &(&1.id == source.id))
       end)
+      |> Enum.sort_by(& &1.name)
 
     socket
     |> assign(:backend, backend)
