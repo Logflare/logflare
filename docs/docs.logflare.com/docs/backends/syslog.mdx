@@ -4,7 +4,7 @@ sidebar_position: 12
 
 # Syslog
 
-The Syslog backend is **ingest-only**, and exports logs to a remote Syslog receiver using TCP or TLS. It adheres to [RFC 5424](https://www.rfc-editor.org/rfc/rfc5424) and uses [octet-counting framing](https://www.rfc-editor.org/rfc/rfc6587#section-3.4.1).
+The Syslog backend is **ingest-only**, and exports logs to a remote Syslog receiver using TCP or TLS. It adheres to [RFC 5424](https://datatracker.ietf.org/doc/html/rfc5424) and uses [octet-counting framing](https://datatracker.ietf.org/doc/html/rfc6587#section-3.4.1).
 
 ## Behavior and Configuration
 
@@ -18,7 +18,7 @@ The following values are required when creating a Syslog backend:
 The following values are optional:
 
 - `tls`: (`boolean`) If true, connects via SSL/TLS. Defaults to false (TCP).
-- `structured_data`: (`string`) Static [RFC 5424 Structured Data](https://www.google.com/search?q=https://datatracker.ietf.org/doc/html/rfc5424%23section-6.3) to include in every log frame (e.g., `[exampleSDID@32473 iut="3" eventSource="Application"]`).
+- `structured_data`: (`string`) Static [RFC 5424 Structured Data](https://datatracker.ietf.org/doc/html/rfc5424#section-6.3) to include in every log frame (e.g., `[exampleSDID@32473 iut="3" eventSource="Application"]`).
 - `cipher_key`: (`string`) A base64-encoded 32-byte key. If provided, the log body is encrypted using AES-256-GCM.
 - `ca_cert`: (`string`) PEM encoded CA certificate for verifying the server. If not provided, the backend falls back to the system's default CA certificate bundle.
 - `client_cert`: (`string`) PEM encoded client certificate for mTLS.
