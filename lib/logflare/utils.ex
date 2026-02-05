@@ -287,7 +287,7 @@ defmodule Logflare.Utils do
       fn
         {[key | _], value}
         when is_binary(value) and
-               key in ["authorization", "x-api-key", "Authorization", "X-API-Key"] ->
+               key in ["authorization", "lf-api-key", "x-api-key", "Authorization", "LF-API-Key", "X-API-Key"] ->
           "REDACTED"
 
         self ->
