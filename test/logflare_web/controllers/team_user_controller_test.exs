@@ -85,7 +85,7 @@ defmodule LogflareWeb.TeamUserControllerTest do
       |> login_user(owner)
       |> delete(~p"/profile/#{member_team_user.id}")
 
-    assert redirected_to(conn, 302) == "/account/edit"
+    assert redirected_to(conn, 302) == "/account/edit?t=#{team.id}#team-members"
     assert Phoenix.Flash.get(conn.assigns.flash, :info) == "Member profile deleted!"
     refute Logflare.TeamUsers.get_team_user(member_team_user.id)
   end
@@ -100,7 +100,7 @@ defmodule LogflareWeb.TeamUserControllerTest do
 
   test "owner cannot delete team member from another team", %{conn: conn} do
     owner_a = insert(:user)
-    _team_a = insert(:team, user: owner_a)
+    team_a = insert(:team, user: owner_a)
 
     owner_b = insert(:user)
     team_b = insert(:team, user: owner_b)
@@ -111,7 +111,7 @@ defmodule LogflareWeb.TeamUserControllerTest do
       |> login_user(owner_a)
       |> delete(~p"/profile/#{victim_team_user.id}")
 
-    assert redirected_to(conn, 302) == "/account/edit"
+    assert redirected_to(conn, 302) == "/account/edit?t=#{team_a.id}#team-members"
 
     assert Phoenix.Flash.get(conn.assigns.flash, :error) ==
              "Not authorized to delete this team member"
@@ -140,5 +140,133 @@ defmodule LogflareWeb.TeamUserControllerTest do
            end)
 
     assert Logflare.TeamUsers.get_team_user!(member2_team_user.id)
+  end
+
+  describe "team member management as team admin" do
+    test "can grant and revoke admin role", %{conn: conn} do
+      owner = insert(:user)
+      team = insert(:team, user: owner)
+      admin_user = insert(:user)
+
+      admin_team_user =
+        insert(:team_user, team: team, email: admin_user.email, team_role: %{role: :admin})
+
+      admin_team_user = Logflare.TeamUsers.preload_defaults(admin_team_user)
+      regular_team_user = insert(:team_user, team: team)
+
+      assert regular_team_user.team_role.role == :user
+
+      session =
+        conn
+        |> login_user(admin_team_user)
+        |> visit(~p"/profile/edit?t=#{team.id}")
+
+      session
+      |> within("#team-admin-id-#{regular_team_user.id}", fn session ->
+        session
+        |> check("admin")
+        |> submit()
+        |> assert_path("/profile/edit", query_params: %{t: team.id})
+        |> unwrap(fn conn ->
+          assert Phoenix.Flash.get(conn.assigns.flash, :info) ==
+                   "#{regular_team_user.email} role updated."
+
+          conn
+        end)
+
+        regular_team_user = Logflare.TeamUsers.get_team_user_and_preload(regular_team_user.id)
+        assert regular_team_user.team_role.role == :admin
+
+        session
+      end)
+
+      session
+      |> within("#team-admin-id-#{admin_team_user.id}", fn session ->
+        session
+        |> uncheck("admin")
+        |> submit()
+        |> assert_path("/profile/edit", query_params: %{t: team.id})
+        |> unwrap(fn conn ->
+          assert Phoenix.Flash.get(conn.assigns.flash, :info) ==
+                   "#{admin_team_user.email} role updated."
+
+          conn
+        end)
+
+        admin_team_user = Logflare.TeamUsers.get_team_user_and_preload(admin_team_user.id)
+        refute admin_team_user.team_role.role == :admin
+
+        session
+      end)
+    end
+
+    test "can delete another team member", %{conn: conn} do
+      owner = insert(:user)
+      team = insert(:team, user: owner)
+      admin_user = insert(:user)
+
+      admin_team_user =
+        insert(:team_user, team: team, email: admin_user.email, team_role: %{role: :admin})
+
+      admin_team_user = Logflare.TeamUsers.preload_defaults(admin_team_user)
+      regular_team_user = insert(:team_user, team: team)
+
+      expect(
+        GoogleApi.CloudResourceManager.V1.Api.Projects,
+        :cloudresourcemanager_projects_set_iam_policy,
+        fn _, _project_number, [body: _body] -> {:ok, ""} end
+      )
+
+      session =
+        conn
+        |> login_user(admin_user, admin_team_user)
+        |> visit(~p"/profile/edit?t=#{team.id}")
+        |> click_link("a[href='#{~p"/profile/#{regular_team_user.id}?t=#{team.id}"}']", "Delete")
+        |> assert_path("/profile/edit", query_params: %{t: team.id})
+
+      session
+      |> unwrap(fn conn ->
+        assert Phoenix.Flash.get(conn.assigns.flash, :info) ==
+                 "Member profile deleted!"
+
+        conn
+      end)
+
+      refute Logflare.TeamUsers.get_team_user(regular_team_user.id)
+    end
+  end
+
+  describe "team member management without admin role" do
+    test "cannot update another team member's role", %{conn: conn} do
+      owner = insert(:user)
+      team = insert(:team, user: owner)
+      member1_user = insert(:user)
+      member1_team_user = insert(:team_user, team: team, email: member1_user.email)
+      member2_team_user = insert(:team_user, team: team)
+
+      conn =
+        conn
+        |> login_user(member1_user, member1_team_user)
+
+      conn
+      |> visit(~p"/profile/edit?t=#{team.id}")
+      |> refute_has("form#team-admin-id-#{member2_team_user.id}")
+
+      conn =
+        conn
+        |> patch(~p"/profile/#{member2_team_user.id}/role", %{
+          "team_role" => %{"is_admin" => "true"}
+        })
+
+      assert redirected_to(conn, 302) == ~p"/dashboard"
+
+      assert Enum.any?(Phoenix.Flash.get(conn.assigns.flash, :error), fn
+               text when is_binary(text) -> text =~ "You're not the account owner or an admin"
+               _ -> false
+             end)
+
+      member2_team_user = Logflare.TeamUsers.get_team_user_and_preload(member2_team_user.id)
+      assert member2_team_user.team_role.role == :user
+    end
   end
 end
