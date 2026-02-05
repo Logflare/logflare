@@ -14,7 +14,7 @@ defmodule Logflare.Backends.UserMonitoring do
     export_period =
       case Application.get_env(:logflare, :env) do
         :test -> 100
-        _ -> :timer.minutes(4) + :random.uniform(60_000)
+        _ -> :timer.minutes(4) + :rand.uniform(60_000)
       end
 
     otel_exporter_opts =
