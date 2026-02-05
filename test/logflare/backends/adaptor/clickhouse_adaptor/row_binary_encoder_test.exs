@@ -180,7 +180,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.RowBinaryEncoderTest do
     end
 
     test "encodes max value" do
-      assert RowBinaryEncoder.uint16(65535) == <<255, 255>>
+      assert RowBinaryEncoder.uint16(65_535) == <<255, 255>>
     end
 
     test "uses little-endian byte order" do
@@ -200,7 +200,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.RowBinaryEncoderTest do
 
     test "uses little-endian byte order" do
       assert RowBinaryEncoder.uint32(256) == <<0, 1, 0, 0>>
-      assert RowBinaryEncoder.uint32(65536) == <<0, 0, 1, 0>>
+      assert RowBinaryEncoder.uint32(65_536) == <<0, 0, 1, 0>>
     end
   end
 
@@ -446,12 +446,12 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.RowBinaryEncoderTest do
     test "encodes positive values" do
       assert RowBinaryEncoder.enum16(1) == <<1, 0>>
       assert RowBinaryEncoder.enum16(256) == <<0, 1>>
-      assert RowBinaryEncoder.enum16(32767) == <<255, 127>>
+      assert RowBinaryEncoder.enum16(32_767) == <<255, 127>>
     end
 
     test "encodes negative values" do
       assert RowBinaryEncoder.enum16(-1) == <<255, 255>>
-      assert RowBinaryEncoder.enum16(-32768) == <<0, 128>>
+      assert RowBinaryEncoder.enum16(-32_768) == <<0, 128>>
     end
 
     test "encodes zero" do

@@ -32,7 +32,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.RowBinaryEncoder do
 
   defguardp is_uint8_range(n) when is_integer(n) and n >= 0 and n <= 255
   defguardp is_int8_range(n) when is_integer(n) and n >= -128 and n <= 127
-  defguardp is_int16_range(n) when is_integer(n) and n >= -32768 and n <= 32767
+  defguardp is_int16_range(n) when is_integer(n) and n >= -32_768 and n <= 32_767
 
   # =============================================================================
   # Varint Encoding
