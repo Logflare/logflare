@@ -11,8 +11,6 @@ defmodule Logflare.Rules.Cache do
   @behaviour ContextCache
 
   def child_spec(_) do
-    stats = Application.get_env(:logflare, :cache_stats, false)
-
     %{
       id: __MODULE__,
       start: {
@@ -26,7 +24,7 @@ defmodule Logflare.Rules.Cache do
             ],
             hooks:
               [
-                if(stats, do: Utils.cache_stats()),
+                Utils.cache_stats(),
                 Utils.cache_limit(100_000)
               ]
               |> Enum.filter(& &1),
