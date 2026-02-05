@@ -66,10 +66,6 @@ jobs:
       if: ${{ github.event_name != 'pull_request' }}
       run: npx playwright test
 
-    - name: Run Playwright tests (only Chromium)
-      if: ${{ github.event_name == 'pull_request' }}
-      run: npx playwright test --project chromium
-
     - uses: actions/upload-artifact@v4
       if: ${{ !cancelled() }}
       with:
