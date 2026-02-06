@@ -3,9 +3,9 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
   Simplified ingestion-only functionality for ClickHouse.
   """
 
-  import Bitwise
   import Logflare.Utils.Guards
 
+  alias Logflare.Backends.Adaptor.ClickHouseAdaptor.RowBinaryEncoder
   alias Logflare.Backends.Backend
   alias Logflare.LogEvent
 
@@ -91,12 +91,12 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
     ingested_at = ingested_at || NaiveDateTime.utc_now()
 
     [
-      encode_as_uuid(body["id"]),
-      encode_as_uuid(source_uuid_str),
-      encode_as_string(origin_source_name || ""),
-      encode_as_string(Jason.encode_to_iodata!(body)),
-      encode_as_datetime64(DateTime.from_naive!(ingested_at, "Etc/UTC")),
-      encode_as_datetime64(DateTime.from_unix!(body["timestamp"], :microsecond))
+      RowBinaryEncoder.uuid(body["id"]),
+      RowBinaryEncoder.uuid(source_uuid_str),
+      RowBinaryEncoder.string(origin_source_name || ""),
+      RowBinaryEncoder.string(Jason.encode_to_iodata!(body)),
+      RowBinaryEncoder.datetime64(DateTime.from_naive!(ingested_at, "Etc/UTC"), 6),
+      RowBinaryEncoder.datetime64(DateTime.from_unix!(body["timestamp"], :microsecond), 6)
     ]
   end
 
@@ -105,49 +105,6 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
   def encode_batch([%LogEvent{} | _] = rows) do
     Enum.map(rows, &encode_row/1)
   end
-
-  @doc false
-  @spec encode_as_uuid(Ecto.UUID.t() | String.t()) :: binary()
-  def encode_as_uuid(uuid_string) when is_non_empty_binary(uuid_string) do
-    uuid_raw =
-      uuid_string
-      |> String.replace("-", "")
-      |> Base.decode16!(case: :mixed)
-
-    case uuid_raw do
-      <<u1::64, u2::64>> ->
-        <<u1::64-little, u2::64-little>>
-
-      _other ->
-        raise "invalid uuid when trying to encode for ClickHouse: #{inspect(uuid_string)}"
-    end
-  end
-
-  @doc false
-  @spec encode_as_string(String.t() | iodata()) :: iodata()
-  def encode_as_string(value) when is_binary(value) do
-    [encode_as_varint(byte_size(value)), value]
-  end
-
-  def encode_as_string(value) when is_list(value) do
-    length = IO.iodata_length(value)
-    [encode_as_varint(length), value]
-  end
-
-  @doc false
-  @spec encode_as_datetime64(DateTime.t()) :: binary()
-  def encode_as_datetime64(%DateTime{microsecond: {microsecond, _precision}} = value) do
-    timestamp_seconds = DateTime.to_unix(value, :second)
-    timestamp_scaled = timestamp_seconds * 1_000_000 + microsecond
-    <<timestamp_scaled::little-signed-64>>
-  end
-
-  @doc false
-  @spec encode_as_varint(non_neg_integer()) :: binary()
-  def encode_as_varint(n) when is_non_negative_integer(n) and n < 128, do: <<n>>
-
-  def encode_as_varint(n) when is_non_negative_integer(n),
-    do: <<1::1, n::7, encode_as_varint(n >>> 7)::binary>>
 
   @spec build_connection_opts(Backend.t()) :: {:ok, Keyword.t()} | {:error, String.t()}
   defp build_connection_opts(%Backend{config: config}) do
