@@ -1,22 +1,33 @@
-name: Elixir Migration Check
+name: E2E Tests (with Playwright)
 
 on:
   workflow_dispatch:
+  schedule:
+    - cron: '0 0 * * SUN'
   pull_request:
-    branches: [main]
+    branches: ["**"]
     paths:
-      - "priv/repo/migrations/**"
+      - "lib/**"
+      - "config/**"
+      - "*.exs"
+      - "*.lock"
+      - "native/**"
+      - "priv/**"
+      - "test/**"
+      # Run suite when this file is changed
+      - ".github/workflows/e2e-tests.yml"
 
 permissions:
   contents: read
 
 jobs:
-  build:
-    name: Build and test
+  check:
+    name: Checks
     runs-on: ubuntu-latest
+
     services:
       postgres:
-        image: bitnamilegacy/postgresql:13.15.0
+        image: bitnamilegacy/postgresql:15
         ports:
           - 5432:5432
         env:
@@ -51,32 +62,48 @@ jobs:
           --shm-size="256m"
           --tmpfs /var/lib/clickhouse:rw,size=1G
           --tmpfs /var/log/clickhouse-server:rw,size=100M
+
     env:
       MIX_ENV: test
       SHELL: /bin/bash
+      E2E: true
+
     steps:
       - uses: actions/checkout@v3
-      - name: Set up Elixir
+
+      - name: Install Elixir
         uses: erlef/setup-beam@v1
         with:
           version-file: .tool-versions
           version-type: strict
+
       - name: Install Rust
         uses: dtolnay/rust-toolchain@v1
         with:
           toolchain: stable
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: npm
+          cache-dependency-path: assets/package-lock.json
+
+      - run: npm ci --prefix assets
+      - run: npx --prefix assets playwright install --with-deps
+
       - name: Restore dependencies cache
         uses: actions/cache@v3
         with:
           path: |
             deps
-          key: ${{ runner.os }}-mix-${{ hashFiles('**/mix.lock') }}
-          restore-keys: ${{ runner.os }}-mix-
+            _build
+            dialyzer
+          key: ${{ runner.os }}-mix-${{  hashFiles('**/mix.lock', '**/Cargo.lock' ) }}
+          restore-keys: ${{ runner.os }}-mix--dialyzer
+
       - name: Install dependencies
-        run: mix deps.get
-      - name: Migrate
-        run: mix ecto.setup
-      - name: Rollback
-        run: mix ecto.rollback
-      - name: Test
-        run: make test.only
+        run: mix do deps.get, deps.compile
+
+      - name: Run Tests
+        run: mix test.e2e
