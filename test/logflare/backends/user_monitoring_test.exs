@@ -160,6 +160,9 @@ defmodule Logflare.Backends.UserMonitoringTest do
                    &1
                  )
                )
+        for event <- events do
+          assert event.body["value"] > 0
+        end
       end)
     end
 
