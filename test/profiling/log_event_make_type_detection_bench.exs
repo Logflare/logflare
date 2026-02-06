@@ -153,7 +153,7 @@ defmodule PayloadGenerator do
           "processes" => 9148,
           "processes_used" => 9138,
           "system" => 1863,
-          "total" => 11012
+          "total" => 11_012
         },
         "observer_metrics" => %{
           "atom_count" => 119_531,
@@ -168,7 +168,7 @@ defmodule PayloadGenerator do
           "otp_release" => "27",
           "port_count" => 2307,
           "port_limit" => 1_048_576,
-          "process_count" => 82914,
+          "process_count" => 82_914,
           "process_limit" => 8_388_608,
           "run_queue" => 0,
           "schedulers" => 32,
@@ -231,7 +231,7 @@ defmodule PayloadGenerator do
         "_net_host_name" => "auth.supabase.io",
         "_net_protocol_version" => "1.1",
         "_net_sock_peer_addr" => random_ip(),
-        "_net_sock_peer_port" => 36196,
+        "_net_sock_peer_port" => 36_196,
         "_user_agent_original" => "stripped"
       },
       "end_time" => "2025-12-22T20:04:25.511409Z",
@@ -263,7 +263,7 @@ defmodule PayloadGenerator do
         "_http_route" => "/functions/v1/*path",
         "_http_status_code" => 404,
         "_network_peer_address" => random_ip(),
-        "_network_peer_port" => 57785,
+        "_network_peer_port" => 57_785,
         "_network_protocol_version" => "1.1",
         "_server_address" => "supabase-api-gateway",
         "_url_path" => "/functions/v1/stripe-worker",
@@ -300,7 +300,7 @@ defmodule PayloadGenerator do
         "_http_response_status_code" => 202,
         "_http_route" => "/api/broadcast",
         "_network_peer_address" => "::ffff:99.14.9.22",
-        "_network_peer_port" => 36686,
+        "_network_peer_port" => 36_686,
         "_network_protocol_version" => "1.1",
         "_phoenix_action" => "broadcast",
         "_phoenix_plug" => "Elixir.RealtimeWeb.BroadcastController",
@@ -415,7 +415,7 @@ Benchee.run(
 )
 
 # ============================================================================
-# Baseline results (2026-02-06, Apple M4, 10 cores, 32 GB, OTP 27, Elixir 1.19)
+# Baseline results before log type detection (2026-02-06, Apple M4, 10 cores, 32 GB, OTP 27, Elixir 1.19)
 # ============================================================================
 #
 # Input                       ips        average    memory
