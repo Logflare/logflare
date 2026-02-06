@@ -28,7 +28,6 @@ defmodule Logflare.Sources.Source.ChannelTopics do
 
     maybe_broadcast("source:#{source.token}", "source:#{source.token}:new", %{
       body: body,
-      via_rule: le.via_rule && Map.take(le.via_rule, [:regex]),
       origin_source_uuid: le.origin_source_uuid
     })
   end

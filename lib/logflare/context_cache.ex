@@ -45,17 +45,7 @@ defmodule Logflare.ContextCache do
     cache = cache_name(context)
     cache_key = {fun, args}
 
-    case Cachex.fetch(cache, cache_key, fn {fun, args} ->
-           # Use a `:cached` tuple here otherwise when an fn returns nil Cachex will miss
-           # the cache because it thinks ETS returned nil
-           {:commit, {:cached, apply(context, fun, args)}}
-         end) do
-      {:commit, {:cached, value}} ->
-        value
-
-      {:ok, {:cached, value}} ->
-        value
-    end
+    fetch(cache, cache_key, fn -> apply(context, fun, args) end)
   end
 
   @doc """
@@ -133,6 +123,25 @@ defmodule Logflare.ContextCache do
   @spec cache_name(atom()) :: atom()
   def cache_name(context) do
     Module.concat(context, Cache)
+  end
+
+  @doc """
+  Low level API for fetching from cache. Allows wrapping calls with
+  `Cachex.execute/2` and accessing arbitrary key or calling any getter function.
+  """
+  @spec fetch(Cachex.t(), {atom(), list()}, fun()) :: term()
+  def fetch(cache, cache_key, getter_fn) do
+    case Cachex.fetch(cache, cache_key, fn _cache_key ->
+           # Use a `:cached` tuple here otherwise when an fn returns nil Cachex will miss
+           # the cache because it thinks ETS returned nil
+           {:commit, {:cached, getter_fn.()}}
+         end) do
+      {:commit, {:cached, value}} ->
+        value
+
+      {:ok, {:cached, value}} ->
+        value
+    end
   end
 
   defp delete_matching_entries(entries, context_cache, pkey) do
