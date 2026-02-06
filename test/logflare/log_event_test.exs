@@ -34,6 +34,12 @@ defmodule Logflare.LogEventTest do
   end
 
   describe "make/2 transformations" do
+    test "calculates values bytes", %{source: source} do
+      assert %LogEvent{
+               values_bytes: values_bytes
+             } = LogEvent.make(%{"test-field" => 123}, %{source: source}, new_mapper: true)
+      assert values_bytes > 0
+    end
     test "dashes to underscores", %{source: source} do
       assert %LogEvent{
                body: %{

@@ -25,6 +25,7 @@ defmodule Logflare.LogEvent do
     field :origin_source_name, :string
     field :via_rule, :map
     field :retries, :integer, default: 0
+    field :values_bytes, :integer, default: 0
 
     field :source_id, :integer, default: nil
 
@@ -55,10 +56,17 @@ defmodule Logflare.LogEvent do
   Used to make log event from user-provided parameters, for ingestion.
   """
   @spec make(%{optional(String.t()) => term}, %{source: Source.t()}) :: LE.t()
-  def make(params, %{source: source}, _opts \\ []) do
+  def make(params, %{source: source}, opts \\ []) do
+
+    mapped = if Keyword.get(opts, :new_mapper, false) do
+      __MODULE__.Mapper.caster(params)
+    else
+      mapper(params)
+    end
+
     changeset =
       %__MODULE__{}
-      |> cast(mapper(params), [:body, :valid])
+      |> cast(mapped, [:body, :valid, :values_bytes])
       |> validate_required([:body])
 
     pipeline_error =
@@ -278,7 +286,7 @@ defmodule Logflare.LogEvent do
     end
   end
 
-  defp id(params) do
+  def id(params) do
     params["id"] || params[:id] || Ecto.UUID.generate()
   end
 
