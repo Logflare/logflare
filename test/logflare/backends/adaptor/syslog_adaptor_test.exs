@@ -64,6 +64,96 @@ defmodule Logflare.Backends.Adaptor.SyslogAdaptorTest do
              )
   end
 
+  test "truncates long header values" do
+    {source, _backend} = start_syslog(%{host: "localhost", port: 6514})
+
+    long_app_name = String.duplicate("a", 100)
+    long_host = String.duplicate("h", 300)
+    long_procid = String.duplicate("p", 200)
+
+    assert [
+             %{
+               "tags" => %{
+                 "appname" => app_name,
+                 "hostname" => hostname
+               },
+               "fields" => %{
+                 "procid" => procid
+               }
+             }
+           ] =
+             ingest_syslog(
+               [
+                 build(:log_event,
+                   message: "long headers",
+                   metadata: %{
+                     "app_name" => long_app_name,
+                     "host" => long_host,
+                     "procid" => long_procid
+                   }
+                 )
+               ],
+               source
+             )
+
+    assert String.length(app_name) == 48
+    assert String.length(hostname) == 255
+    assert String.length(procid) == 128
+  end
+
+  test "sanitizes header values" do
+    {source, _backend} = start_syslog(%{host: "localhost", port: 6514})
+
+    assert [
+             %{
+               "tags" => %{
+                 "appname" => "My_App_Name",
+                 "hostname" => "My_Host_Name_____"
+               }
+             }
+           ] =
+             ingest_syslog(
+               [
+                 build(:log_event,
+                   message: "dirty headers",
+                   metadata: %{"app_name" => "My App Name", "host" => "My Host Name 🚀"}
+                 )
+               ],
+               source
+             )
+  end
+
+  test "sanitizes dangerous header values" do
+    {source, _backend} = start_syslog(%{host: "localhost", port: 6514})
+
+    headers = %{
+      "app_name" => "App\nName\rInjection",
+      "host" => "Safe-Host.Name@127.0.0.1",
+      "procid" => "Proc\tID\0With\x1BControl"
+    }
+
+    assert [
+             %{
+               "tags" => %{
+                 "appname" => "App_Name_Injection",
+                 "hostname" => "Safe-Host.Name@127.0.0.1"
+               },
+               "fields" => %{
+                 "procid" => "Proc_ID_With_Control"
+               }
+             }
+           ] =
+             ingest_syslog(
+               [
+                 build(:log_event,
+                   message: "dangerous headers",
+                   metadata: headers
+                 )
+               ],
+               source
+             )
+  end
+
   test "extracts level from input" do
     {source, _backend} = start_syslog(%{host: "localhost", port: 6514})
 
