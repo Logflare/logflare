@@ -4,11 +4,12 @@ defmodule Logflare.LogEvent do
   import Ecto.Changeset
   import LogflareWeb.Utils, only: [stringify_changeset_errors: 1]
 
-  alias Logflare.Logs.Ingest.MetadataCleaner
-  alias Logflare.Sources.Source
   alias __MODULE__, as: LE
-  alias Logflare.Logs.Validators.BigQuerySchemaChange
+  alias __MODULE__.TypeDetection
+  alias Logflare.Logs.Ingest.MetadataCleaner
   alias Logflare.Logs.IngestTransformers
+  alias Logflare.Logs.Validators.BigQuerySchemaChange
+  alias Logflare.Sources.Source
 
   require Logger
 
@@ -25,6 +26,7 @@ defmodule Logflare.LogEvent do
     field :origin_source_name, :string
     field :via_rule, :map
     field :retries, :integer, default: 0
+    field :log_type, Ecto.Enum, values: [:log, :metric, :trace], default: :log
 
     field :source_id, :integer, default: nil
 
@@ -78,7 +80,8 @@ defmodule Logflare.LogEvent do
         origin_source_name: source.name,
         valid: changeset.valid?,
         ingested_at: NaiveDateTime.utc_now(),
-        id: changeset.changes.body["id"]
+        id: changeset.changes.body["id"],
+        log_type: TypeDetection.detect(params)
       })
 
     Logflare.LogEvent
