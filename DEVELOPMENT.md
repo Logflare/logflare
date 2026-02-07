@@ -47,11 +47,11 @@ make start.pink
 ### Setup for External Contributors
 
 ```bash
-# install dependencies
-make setup
-
 # start local databases
 docker-compose up -d db clickhouse
+
+# install dependencies
+make setup
 
 # start in single tenant postgres backend
 make start.st.pg
