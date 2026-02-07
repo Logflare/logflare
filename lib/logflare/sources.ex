@@ -243,6 +243,10 @@ defmodule Logflare.Sources do
       )
     end
 
+    if source.disable_system_default_backend? != updated.disable_system_default_backend? do
+      Backends.restart_source_sup(updated)
+    end
+
     {:ok, updated}
   end
 

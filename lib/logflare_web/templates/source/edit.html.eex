@@ -367,6 +367,21 @@
 
       <%= submit "Save", class: "btn btn-primary form-button" %>
     <% end %>
+
+    <%= section_header("Disable System Default Backend") %>
+    <p>When enabled, logs will only be sent to explicitly attached backends and will skip the system default backend (BigQuery/Postgres). Routing rules will still work regardless of this setting.</p>
+    <%= form_for @changeset, Routes.source_path(@conn, :update, @source),fn f -> %>
+      <div class="form-group">
+        <%= label f, :disable_system_default_backend? do %>
+          Disable system default backend
+        <% end %>
+        <%= checkbox f, :disable_system_default_backend?, checked: @source.disable_system_default_backend?, value: @source.disable_system_default_backend?  %>
+        <%= error_tag f, :disable_system_default_backend? %>
+      </div>
+
+      <%= submit "Save", class: "btn btn-primary form-button" %>
+    <% end %>
+
     <%= if LogflareWeb.Utils.flag("multibackend", @user) do %>
       <%= live_render(@conn, LogflareWeb.SourceBackendsLive, session: %{"source_id"=> @source.id})%>
     <% end %>

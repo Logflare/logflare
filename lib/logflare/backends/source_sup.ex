@@ -49,8 +49,16 @@ defmodule Logflare.Backends.SourceSup do
 
     default_backend = Backends.get_default_backend(user)
 
+    default_backends =
+      if source.disable_system_default_backend? do
+        []
+      else
+        [default_backend]
+      end
+
     specs =
-      [default_backend | ingest_backends]
+      default_backends
+      |> Enum.concat(ingest_backends)
       |> Enum.concat(rules_backends)
       |> Enum.map(&Backend.child_spec(source, &1))
       |> Enum.uniq()

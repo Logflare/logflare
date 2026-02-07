@@ -232,6 +232,17 @@ defmodule LogflareWeb.Router do
     end
   end
 
+  scope "/fetch", LogflareWeb do
+    pipe_through([:browser, :require_auth])
+
+    live_session :fetch_queries, on_mount: @common_on_mount_hooks ++ @dashboard_hooks do
+      live "/", FetchQueriesLive, :index
+      live "/new", FetchQueriesLive, :new
+      live "/:id", FetchQueriesLive, :show
+      live "/:id/edit", FetchQueriesLive, :edit
+    end
+  end
+
   scope "/sources", LogflareWeb do
     pipe_through([:browser])
 

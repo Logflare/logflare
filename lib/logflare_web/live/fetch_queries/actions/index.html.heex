@@ -1,0 +1,64 @@
+<div class="container-fluid mt-4">
+  <div class="row mb-4">
+    <div class="col-md-6">
+      <h1>Fetch Jobs</h1>
+      <p class="text-muted">Periodically fetch data from external sources and ingest into Logflare</p>
+    </div>
+    <div class="col-md-6 text-end">
+      {live_patch("New Fetch Job",
+        to: ~p"/fetch/new",
+        class: "btn btn-primary"
+      )}
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-body">
+      <%= if Enum.empty?(@fetch_queries) do %>
+        <div class="alert alert-info" role="alert">
+          <p>No fetch queries yet. {live_patch("Create one", to: ~p"/fetch/new")} to get started.</p>
+        </div>
+      <% else %>
+        <div class="table-responsive">
+          <table class="table table-hover border">
+            <thead class="table-light">
+              <tr>
+                <th class="fw-semibold">Name</th>
+                <th class="fw-semibold">Backend</th>
+                <th class="fw-semibold">Cron</th>
+                <th class="fw-semibold">Status</th>
+                <th class="fw-semibold">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              <%= for fq <- @fetch_queries do %>
+                <tr>
+                  <td><strong style="color: #e9ecef;"><%= fq.name %></strong></td>
+                  <td :if={fq.backend}><span class="text-muted"><%= fq.backend.name %></span></td>
+                  <td><code class="bg-dark px-2 py-1 rounded" style="color: #90ee90;"><%= fq.cron %></code></td>
+                  <td>
+                    <%= if fq.enabled do %>
+                      <span class="badge bg-success text-dark fw-semibold">Enabled</span>
+                    <% else %>
+                      <span class="badge bg-secondary">Disabled</span>
+                    <% end %>
+                  </td>
+                  <td>
+                    {live_patch("View",
+                      to: ~p"/fetch/#{fq.id}",
+                      class: "btn btn-sm btn-primary"
+                    )}
+                    {live_patch("Edit",
+                      to: ~p"/fetch/#{fq.id}/edit",
+                      class: "btn btn-sm btn-outline-secondary"
+                    )}
+                  </td>
+                </tr>
+              <% end %>
+            </tbody>
+          </table>
+        </div>
+      <% end %>
+    </div>
+  </div>
+</div>
