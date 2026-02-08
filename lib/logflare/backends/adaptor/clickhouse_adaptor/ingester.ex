@@ -8,6 +8,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.RowBinaryEncoder
   alias Logflare.Backends.Backend
   alias Logflare.LogEvent
+  alias Logflare.LogEvent.TypeDetection
 
   @finch_pool Logflare.FinchClickHouseIngest
   @max_retries 1
@@ -16,26 +17,38 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
   @pool_timeout 8_000
   @receive_timeout 30_000
 
+  @log_columns ~w(id source_uuid source_name project timestamp body log_attributes)
+  @metric_columns ~w(id source_uuid source_name project time_unix start_time_unix metric_type attributes)
+  @trace_columns ~w(id source_uuid source_name project timestamp span_attributes)
+
   @doc """
   Inserts a list of `LogEvent` structs into ClickHouse.
 
-  Not intended for direct use. Use `Logflare.Backends.Adaptor.ClickHouseAdaptor.insert_log_events/2` instead.
-  """
-  @spec insert(Backend.t() | Keyword.t(), table :: String.t(), log_events :: [LogEvent.t()]) ::
-          :ok | {:error, String.t()}
-  def insert(_backend_or_conn_opts, _table, []), do: :ok
+  This function expects that all LogEvents share the same `log_type`.
 
-  def insert(%Backend{} = backend, table, log_events) when is_list(log_events) do
+  Not intended for direct use. Use `Logflare.Backends.Adaptor.ClickHouseAdaptor.insert_log_events/3` instead.
+  """
+  @spec insert(
+          Backend.t() | Keyword.t(),
+          table :: String.t(),
+          log_events :: [LogEvent.t()],
+          TypeDetection.log_type()
+        ) ::
+          :ok | {:error, String.t()}
+  def insert(_backend_or_conn_opts, _table, [], _log_type), do: :ok
+
+  def insert(%Backend{} = backend, table, log_events, log_type)
+      when is_list(log_events) and is_log_type(log_type) do
     with {:ok, connection_opts} <- build_connection_opts(backend) do
-      insert(connection_opts, table, log_events)
+      insert(connection_opts, table, log_events, log_type)
     end
   end
 
-  def insert(connection_opts, table, [%LogEvent{} | _] = log_events)
-      when is_list(connection_opts) and is_non_empty_binary(table) do
+  def insert(connection_opts, table, [%LogEvent{log_type: log_type} | _] = log_events, log_type)
+      when is_list(connection_opts) and is_non_empty_binary(table) and is_log_type(log_type) do
     client = build_client(connection_opts)
-    url = build_request_url(connection_opts, table)
-    request_body = log_events |> encode_batch() |> :zlib.gzip()
+    url = build_request_url(connection_opts, table, log_type)
+    request_body = log_events |> encode_batch(log_type) |> :zlib.gzip()
 
     case Tesla.post(client, url, request_body) do
       {:ok, %Tesla.Env{status: 200}} ->
@@ -80,30 +93,91 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
   defp retriable?({:error, _reason}), do: true
 
   @doc false
-  @spec encode_row(LogEvent.t()) :: iodata()
-  def encode_row(%LogEvent{
-        body: body,
-        origin_source_uuid: origin_source_uuid,
-        origin_source_name: origin_source_name,
-        ingested_at: ingested_at
-      }) do
-    source_uuid_str = Atom.to_string(origin_source_uuid)
-    ingested_at = ingested_at || NaiveDateTime.utc_now()
+  @spec encode_row(LogEvent.t(), TypeDetection.log_type()) :: iodata()
+  def encode_row(%LogEvent{} = event, :log), do: encode_log_row(event)
+  def encode_row(%LogEvent{} = event, :metric), do: encode_metric_row(event)
+  def encode_row(%LogEvent{} = event, :trace), do: encode_trace_row(event)
 
-    [
-      RowBinaryEncoder.uuid(body["id"]),
-      RowBinaryEncoder.uuid(source_uuid_str),
-      RowBinaryEncoder.string(origin_source_name || ""),
-      RowBinaryEncoder.string(Jason.encode_to_iodata!(body)),
-      RowBinaryEncoder.datetime64(DateTime.from_naive!(ingested_at, "Etc/UTC"), 6),
-      RowBinaryEncoder.datetime64(DateTime.from_unix!(body["timestamp"], :microsecond), 6)
-    ]
+  @doc false
+  @spec encode_batch([LogEvent.t()], TypeDetection.log_type()) :: iodata()
+  def encode_batch([%LogEvent{} | _] = rows, log_type) when is_log_type(log_type) do
+    Enum.map(rows, &encode_row(&1, log_type))
   end
 
   @doc false
-  @spec encode_batch([LogEvent.t()]) :: iodata()
-  def encode_batch([%LogEvent{} | _] = rows) do
-    Enum.map(rows, &encode_row/1)
+  @spec columns_for_type(TypeDetection.log_type()) :: [String.t()]
+  def columns_for_type(:log), do: @log_columns
+  def columns_for_type(:metric), do: @metric_columns
+  def columns_for_type(:trace), do: @trace_columns
+
+  @spec encode_log_row(LogEvent.t()) :: iodata()
+  defp encode_log_row(%LogEvent{
+         id: id,
+         body: body,
+         origin_source_uuid: origin_source_uuid,
+         origin_source_name: origin_source_name
+       }) do
+    source_uuid_str = Atom.to_string(origin_source_uuid)
+    timestamp = body_timestamp_to_datetime(body["timestamp"])
+
+    [
+      RowBinaryEncoder.uuid(id),
+      RowBinaryEncoder.string(source_uuid_str),
+      RowBinaryEncoder.string(origin_source_name || ""),
+      RowBinaryEncoder.string(""),
+      RowBinaryEncoder.datetime64(timestamp, 9),
+      RowBinaryEncoder.string(body["event_message"] || ""),
+      RowBinaryEncoder.json(body)
+    ]
+  end
+
+  @spec encode_metric_row(LogEvent.t()) :: iodata()
+  defp encode_metric_row(%LogEvent{
+         id: id,
+         body: body,
+         origin_source_uuid: origin_source_uuid,
+         origin_source_name: origin_source_name
+       }) do
+    source_uuid_str = Atom.to_string(origin_source_uuid)
+    timestamp = body_timestamp_to_datetime(body["timestamp"])
+
+    [
+      RowBinaryEncoder.uuid(id),
+      RowBinaryEncoder.string(source_uuid_str),
+      RowBinaryEncoder.string(origin_source_name || ""),
+      RowBinaryEncoder.string(""),
+      RowBinaryEncoder.datetime64(timestamp, 9),
+      RowBinaryEncoder.datetime64(timestamp, 9),
+      RowBinaryEncoder.enum8(1),
+      RowBinaryEncoder.json(body)
+    ]
+  end
+
+  @spec encode_trace_row(LogEvent.t()) :: iodata()
+  defp encode_trace_row(%LogEvent{
+         id: id,
+         body: body,
+         origin_source_uuid: origin_source_uuid,
+         origin_source_name: origin_source_name
+       }) do
+    source_uuid_str = Atom.to_string(origin_source_uuid)
+    timestamp = body_timestamp_to_datetime(body["timestamp"])
+
+    [
+      RowBinaryEncoder.uuid(id),
+      RowBinaryEncoder.string(source_uuid_str),
+      RowBinaryEncoder.string(origin_source_name || ""),
+      RowBinaryEncoder.string(""),
+      RowBinaryEncoder.datetime64(timestamp, 9),
+      RowBinaryEncoder.json(body)
+    ]
+  end
+
+  @spec body_timestamp_to_datetime(integer() | nil) :: DateTime.t()
+  defp body_timestamp_to_datetime(nil), do: DateTime.utc_now()
+
+  defp body_timestamp_to_datetime(timestamp_us) when is_integer(timestamp_us) do
+    DateTime.from_unix!(timestamp_us, :microsecond)
   end
 
   @spec build_connection_opts(Backend.t()) :: {:ok, Keyword.t()} | {:error, String.t()}
@@ -131,8 +205,12 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
     {:error, "Unable to build connection options"}
   end
 
-  @spec build_request_url(connection_opts :: Keyword.t(), table :: String.t()) :: String.t()
-  defp build_request_url(connection_opts, table) do
+  @spec build_request_url(
+          connection_opts :: Keyword.t(),
+          table :: String.t(),
+          TypeDetection.log_type()
+        ) :: String.t()
+  defp build_request_url(connection_opts, table, log_type) do
     base_url = Keyword.get(connection_opts, :url)
     database = Keyword.get(connection_opts, :database)
     async_insert = Keyword.get(connection_opts, :async_insert, false)
@@ -142,10 +220,15 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
     host = uri.host
     port = Keyword.get(connection_opts, :port, default_port(scheme))
 
-    query = "INSERT INTO #{database}.#{table} FORMAT RowBinary"
+    columns = columns_for_type(log_type) |> Enum.join(", ")
+    query = "INSERT INTO #{database}.#{table} (#{columns}) FORMAT RowBinary"
 
     params =
-      %{"query" => query}
+      %{
+        "query" => query,
+        "low_cardinality_allow_in_native_format" => "0",
+        "input_format_binary_read_json_as_string" => "1"
+      }
       |> maybe_add_async_insert(async_insert)
       |> URI.encode_query()
 

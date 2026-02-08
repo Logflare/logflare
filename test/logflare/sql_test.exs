@@ -535,7 +535,7 @@ defmodule Logflare.SqlTest do
       on_exit(cleanup_fn)
 
       {:ok, _pid} = ClickHouseAdaptor.start_link(backend)
-      assert {:ok, _} = ClickHouseAdaptor.provision_ingest_table(backend)
+      assert :ok = ClickHouseAdaptor.provision_ingest_tables(backend)
 
       log_events = [
         build(:log_event,
@@ -550,12 +550,14 @@ defmodule Logflare.SqlTest do
         )
       ]
 
-      assert :ok = ClickHouseAdaptor.insert_log_events(backend, log_events)
+      assert :ok = ClickHouseAdaptor.insert_log_events(backend, log_events, :log)
 
       Process.sleep(200)
 
+      table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(backend, :log)
+
       cte_query =
-        "with src as (select body from #{source.name}) select body from src"
+        "with src as (select body from #{table_name}) select body from src"
 
       consumer_query = "select body from src"
 
@@ -564,10 +566,10 @@ defmodule Logflare.SqlTest do
       assert length(results) == 2
 
       # cannot access the source table directly
-      consumer_query_accessing_source = "select body from #{source.name}"
+      consumer_query_accessing_table = "select body from #{table_name}"
 
       assert {:error, err} =
-               Sql.transform(:ch_sql, {cte_query, consumer_query_accessing_source}, user)
+               Sql.transform(:ch_sql, {cte_query, consumer_query_accessing_table}, user)
 
       assert String.downcase(err) =~ "table not found in cte"
 
