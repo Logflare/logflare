@@ -557,16 +557,16 @@ defmodule Logflare.SqlTest do
       table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(backend, :log)
 
       cte_query =
-        "with src as (select body from #{table_name}) select body from src"
+        "with src as (select event_message from #{table_name}) select event_message from src"
 
-      consumer_query = "select body from src"
+      consumer_query = "select event_message from src"
 
       assert {:ok, transformed} = Sql.transform(:ch_sql, {cte_query, consumer_query}, user)
       assert {:ok, results} = ClickHouseAdaptor.execute_query(backend, transformed, [])
       assert length(results) == 2
 
       # cannot access the source table directly
-      consumer_query_accessing_table = "select body from #{table_name}"
+      consumer_query_accessing_table = "select event_message from #{table_name}"
 
       assert {:error, err} =
                Sql.transform(:ch_sql, {cte_query, consumer_query_accessing_table}, user)
@@ -574,7 +574,7 @@ defmodule Logflare.SqlTest do
       assert String.downcase(err) =~ "table not found in cte"
 
       # cannot access another known source that exists but is not in the CTE
-      consumer_query_accessing_other_source = "select body from #{other_source.name}"
+      consumer_query_accessing_other_source = "select event_message from #{other_source.name}"
 
       assert {:error, err} =
                Sql.transform(:ch_sql, {cte_query, consumer_query_accessing_other_source}, user)
