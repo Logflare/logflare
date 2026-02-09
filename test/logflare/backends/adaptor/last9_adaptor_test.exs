@@ -75,7 +75,7 @@ defmodule Logflare.Backends.Adaptor.Last9AdaptorTest do
         %ExportLogsServiceResponse{partial_success: nil}
         |> Protobuf.encode()
 
-      mock_adapter(2, fn env ->
+      mock_adapter(fn env ->
         assert env.method == :post
         assert env.url == "https://otlp.last9.io/v1/logs"
         assert Tesla.get_header(env, "authorization") == "Basic dGVzdHVzZXI6dGVzdHBhc3N3b3Jk"
@@ -88,7 +88,6 @@ defmodule Logflare.Backends.Adaptor.Last9AdaptorTest do
          }}
       end)
 
-      assert :ok = @subject.test_connection({ctx.source, ctx.backend})
       assert :ok = @subject.test_connection(ctx.backend)
     end
 

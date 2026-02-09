@@ -66,7 +66,7 @@ defmodule Logflare.Backends.Adaptor.AxiomAdaptorTest do
     setup :backend_data
 
     test "succceeds on 200 response", ctx do
-      mock_adapter(2, fn env ->
+      mock_adapter(fn env ->
         assert env.method == :post
         assert env.url == "https://api.axiom.co/v1/datasets/#{@valid_config.dataset_name}/ingest"
         assert Tesla.get_header(env, "authorization") == "Bearer #{@valid_config.api_token}"
@@ -80,7 +80,6 @@ defmodule Logflare.Backends.Adaptor.AxiomAdaptorTest do
       end)
 
       assert :ok = @subject.test_connection(ctx.backend)
-      assert :ok = @subject.test_connection({ctx.source, ctx.backend})
     end
 
     test "returns error on failure", ctx do

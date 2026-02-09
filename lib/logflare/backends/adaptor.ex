@@ -185,7 +185,7 @@ defmodule Logflare.Backends.Adaptor do
   @doc """
   Optional callback to test the underlying connection for an adaptor. May not be applicable for some adaptors.
   """
-  @callback test_connection({Source.t(), Backend.t()} | Backend.t()) :: :ok | {:error, term()}
+  @callback test_connection(Backend.t()) :: :ok | {:error, term()}
 
   @doc """
   Optional callback to transform a stored backend config before usage.
