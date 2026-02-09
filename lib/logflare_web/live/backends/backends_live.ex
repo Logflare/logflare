@@ -2,6 +2,7 @@ defmodule LogflareWeb.BackendsLive do
   @moduledoc false
   use LogflareWeb, :live_view
 
+  import LogflareWeb.Backends.Components
   import LogflareWeb.Utils, only: [stringify_changeset_errors: 1]
 
   alias Logflare.Backends
@@ -28,6 +29,7 @@ defmodule LogflareWeb.BackendsLive do
       |> assign(:backend, nil)
       |> assign(:backend_changeset, nil)
       |> assign(:sources, Sources.list_sources_by_user(user.id))
+      |> assign(:connection_status, nil)
       |> assign(:show_rule_form?, false)
       |> assign(:show_alert_form?, false)
       |> assign(:alert_options, [])
@@ -136,6 +138,21 @@ defmodule LogflareWeb.BackendsLive do
 
   def handle_event("change_form_type", %{"backend" => %{"type" => type}}, socket) do
     {:noreply, assign(socket, form_type: type)}
+  end
+
+  def handle_event("test_connection", _params, socket) do
+    backend = socket.assigns.backend
+
+    case Backends.test_connection(backend) do
+      :ok ->
+        {:noreply, assign(socket, connection_status: :ok)}
+
+      {:error, reason} ->
+        socket
+        |> assign(connection_status: :error)
+        |> put_flash(:error, "Connection test failed:\n#{reason}")
+        |> then(&{:noreply, &1})
+    end
   end
 
   def handle_event("toggle_default_ingest_form", _params, socket) do
@@ -326,6 +343,7 @@ defmodule LogflareWeb.BackendsLive do
   defp refresh_backend(socket, nil) do
     socket
     |> assign(:backend, nil)
+    |> assign(:connection_status, nil)
     |> assign(:form_type, nil)
   end
 
@@ -352,6 +370,7 @@ defmodule LogflareWeb.BackendsLive do
 
     socket
     |> assign(:backend, backend)
+    |> assign(:connection_status, nil)
     |> assign(:form_type, Atom.to_string(backend.type))
     |> assign(:default_ingest_sources, default_ingest_sources)
     |> assign(:available_sources, available_sources)
