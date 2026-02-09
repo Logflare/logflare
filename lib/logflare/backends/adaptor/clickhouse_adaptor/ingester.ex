@@ -17,9 +17,9 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
   @pool_timeout 8_000
   @receive_timeout 30_000
 
-  @log_columns ~w(id source_uuid source_name project timestamp body log_attributes)
-  @metric_columns ~w(id source_uuid source_name project time_unix start_time_unix metric_type attributes)
-  @trace_columns ~w(id source_uuid source_name project timestamp span_attributes)
+  @log_columns ~w(id source_uuid source_name project event_message log_attributes timestamp)
+  @metric_columns ~w(id source_uuid source_name project event_message time_unix start_time_unix metric_type attributes timestamp)
+  @trace_columns ~w(id source_uuid source_name project event_message span_attributes timestamp)
 
   @doc """
   Inserts a list of `LogEvent` structs into ClickHouse.
@@ -121,13 +121,20 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
     timestamp = body_timestamp_to_datetime(body["timestamp"])
 
     [
+      # id
       RowBinaryEncoder.uuid(id),
+      # source_uuid
       RowBinaryEncoder.string(source_uuid_str),
+      # source_name
       RowBinaryEncoder.string(origin_source_name || ""),
+      # project
       RowBinaryEncoder.string(""),
-      RowBinaryEncoder.datetime64(timestamp, 9),
+      # event_message
       RowBinaryEncoder.string(body["event_message"] || ""),
-      RowBinaryEncoder.json(body)
+      # log_attributes
+      RowBinaryEncoder.json(body),
+      # timestamp
+      RowBinaryEncoder.datetime64(timestamp, 9)
     ]
   end
 
@@ -142,14 +149,26 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
     timestamp = body_timestamp_to_datetime(body["timestamp"])
 
     [
+      # id
       RowBinaryEncoder.uuid(id),
+      # source_uuid
       RowBinaryEncoder.string(source_uuid_str),
+      # source_name
       RowBinaryEncoder.string(origin_source_name || ""),
+      # project
       RowBinaryEncoder.string(""),
+      # event_message
+      RowBinaryEncoder.string(body["event_message"] || ""),
+      # time_unix
       RowBinaryEncoder.datetime64(timestamp, 9),
+      # start_time_unix
       RowBinaryEncoder.datetime64(timestamp, 9),
+      # metric_type
       RowBinaryEncoder.enum8(1),
-      RowBinaryEncoder.json(body)
+      # attributes
+      RowBinaryEncoder.json(body),
+      # timestamp
+      RowBinaryEncoder.datetime64(timestamp, 9)
     ]
   end
 
@@ -164,12 +183,20 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
     timestamp = body_timestamp_to_datetime(body["timestamp"])
 
     [
+      # id
       RowBinaryEncoder.uuid(id),
+      # source_uuid
       RowBinaryEncoder.string(source_uuid_str),
+      # source_name
       RowBinaryEncoder.string(origin_source_name || ""),
+      # project
       RowBinaryEncoder.string(""),
-      RowBinaryEncoder.datetime64(timestamp, 9),
-      RowBinaryEncoder.json(body)
+      # event_message
+      RowBinaryEncoder.string(body["event_message"] || ""),
+      # span_attributes
+      RowBinaryEncoder.json(body),
+      # timestamp
+      RowBinaryEncoder.datetime64(timestamp, 9)
     ]
   end
 

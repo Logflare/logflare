@@ -69,15 +69,13 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryTemplates do
         `source_uuid` LowCardinality(String) CODEC(ZSTD(1)),
         `source_name` LowCardinality(String) CODEC(ZSTD(1)),
         `project` LowCardinality(String) CODEC(ZSTD(1)),
-        `timestamp` DateTime64(9) CODEC(Delta(8), ZSTD(1)),
-        `timestamp_time` DateTime DEFAULT toDateTime(timestamp),
         `trace_id` String CODEC(ZSTD(1)),
         `span_id` String CODEC(ZSTD(1)),
         `trace_flags` UInt8,
         `severity_text` LowCardinality(String) CODEC(ZSTD(1)),
         `severity_number` UInt8,
         `service_name` LowCardinality(String) CODEC(ZSTD(1)),
-        `body` String CODEC(ZSTD(1)),
+        `event_message` String CODEC(ZSTD(1)),
         `scope_name` String CODEC(ZSTD(1)),
         `scope_version` LowCardinality(String) CODEC(ZSTD(1)),
         `scope_schema_url` LowCardinality(String) CODEC(ZSTD(1)),
@@ -85,8 +83,10 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryTemplates do
         `resource_attributes` JSON(max_dynamic_paths=0, max_dynamic_types=1) CODEC(ZSTD(1)),
         `scope_attributes` JSON(max_dynamic_paths=0, max_dynamic_types=1) CODEC(ZSTD(1)),
         `log_attributes` JSON(max_dynamic_paths=0, max_dynamic_types=1) CODEC(ZSTD(1)),
+        `timestamp` DateTime64(9) CODEC(Delta(8), ZSTD(1)),
+        `timestamp_time` DateTime DEFAULT toDateTime(timestamp),
         INDEX idx_trace_id trace_id TYPE bloom_filter(0.001) GRANULARITY 1,
-        INDEX idx_body body TYPE tokenbf_v1(32768, 3, 0) GRANULARITY 8
+        INDEX idx_event_message event_message TYPE tokenbf_v1(32768, 3, 0) GRANULARITY 8
       )
       ENGINE = #{engine}
       PARTITION BY toDate(timestamp)
@@ -122,6 +122,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryTemplates do
         `metric_unit` LowCardinality(String) CODEC(ZSTD(1)),
         `metric_type` Enum8('gauge' = 1, 'sum' = 2, 'histogram' = 3, 'exponential_histogram' = 4, 'summary' = 5),
         `service_name` LowCardinality(String) CODEC(ZSTD(1)),
+        `event_message` String CODEC(ZSTD(1)),
         `scope_name` String CODEC(ZSTD(1)),
         `scope_version` LowCardinality(String) CODEC(ZSTD(1)),
         `scope_schema_url` LowCardinality(String) CODEC(ZSTD(1)),
@@ -151,11 +152,12 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryTemplates do
         `exemplars.time_unix` Array(DateTime64(9)) CODEC(ZSTD(1)),
         `exemplars.value` Array(Float64) CODEC(ZSTD(1)),
         `exemplars.span_id` Array(String) CODEC(ZSTD(1)),
-        `exemplars.trace_id` Array(String) CODEC(ZSTD(1))
+        `exemplars.trace_id` Array(String) CODEC(ZSTD(1)),
+        `timestamp` DateTime64(9) CODEC(Delta(8), ZSTD(1))
       )
       ENGINE = #{engine}
-      PARTITION BY toDate(time_unix)
-      ORDER BY (source_uuid, service_name, metric_name, project, toDateTime(time_unix))
+      PARTITION BY toDate(timestamp)
+      ORDER BY (source_uuid, service_name, metric_name, project, toDateTime(timestamp), timestamp)
       """,
       if is_pos_integer(ttl_days) do
         "TTL toDateTime(time_unix) + INTERVAL #{ttl_days} DAY\n"
@@ -188,6 +190,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryTemplates do
         `span_name` LowCardinality(String) CODEC(ZSTD(1)),
         `span_kind` LowCardinality(String) CODEC(ZSTD(1)),
         `service_name` LowCardinality(String) CODEC(ZSTD(1)),
+        `event_message` String CODEC(ZSTD(1)),
         `duration` UInt64 CODEC(ZSTD(1)),
         `status_code` LowCardinality(String) CODEC(ZSTD(1)),
         `status_message` String CODEC(ZSTD(1)),
@@ -207,7 +210,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryTemplates do
       )
       ENGINE = #{engine}
       PARTITION BY toDate(timestamp)
-      ORDER BY (source_uuid, service_name, span_name, project, toDateTime(timestamp))
+      ORDER BY (source_uuid, service_name, span_name, project, toDateTime(timestamp), timestamp)
       """,
       if is_pos_integer(ttl_days) do
         "TTL toDateTime(timestamp) + INTERVAL #{ttl_days} DAY\n"

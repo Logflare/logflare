@@ -162,12 +162,12 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ProvisionerTest do
       assert "id" in column_names
       assert "source_uuid" in column_names
       assert "source_name" in column_names
-      assert "timestamp" in column_names
-      assert "body" in column_names
+      assert "event_message" in column_names
       assert "log_attributes" in column_names
       assert "trace_id" in column_names
       assert "severity_text" in column_names
       assert "service_name" in column_names
+      assert "timestamp" in column_names
 
       id_col = Enum.find(columns, &(&1["name"] == "id"))
       assert %{"type" => "UUID"} = id_col
@@ -192,6 +192,9 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ProvisionerTest do
       column_names = Enum.map(columns, & &1["name"])
 
       assert "id" in column_names
+      assert "source_uuid" in column_names
+      assert "source_name" in column_names
+      assert "event_message" in column_names
       assert "time_unix" in column_names
       assert "start_time_unix" in column_names
       assert "metric_name" in column_names
@@ -199,9 +202,13 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ProvisionerTest do
       assert "attributes" in column_names
       assert "value" in column_names
       assert "bucket_counts" in column_names
+      assert "timestamp" in column_names
 
       time_unix_col = Enum.find(columns, &(&1["name"] == "time_unix"))
       assert %{"type" => "DateTime64(9)"} = time_unix_col
+
+      timestamp_col = Enum.find(columns, &(&1["name"] == "timestamp"))
+      assert %{"type" => "DateTime64(9)"} = timestamp_col
     end
 
     test "creates traces table with correct OTEL schema", %{backend: backend} do
@@ -217,13 +224,16 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.ProvisionerTest do
       column_names = Enum.map(columns, & &1["name"])
 
       assert "id" in column_names
-      assert "timestamp" in column_names
+      assert "source_uuid" in column_names
+      assert "source_name" in column_names
+      assert "event_message" in column_names
       assert "trace_id" in column_names
       assert "span_id" in column_names
       assert "span_name" in column_names
       assert "span_kind" in column_names
       assert "duration" in column_names
       assert "span_attributes" in column_names
+      assert "timestamp" in column_names
 
       timestamp_col = Enum.find(columns, &(&1["name"] == "timestamp"))
       assert %{"type" => "DateTime64(9)"} = timestamp_col

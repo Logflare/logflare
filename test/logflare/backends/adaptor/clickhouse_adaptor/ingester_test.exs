@@ -148,7 +148,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.IngesterTest do
       columns = Ingester.columns_for_type(:log)
       assert "id" in columns
       assert "source_uuid" in columns
-      assert "body" in columns
+      assert "source_name" in columns
+      assert "event_message" in columns
       assert "log_attributes" in columns
       assert "timestamp" in columns
     end
@@ -156,17 +157,24 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.IngesterTest do
     test "returns metric columns" do
       columns = Ingester.columns_for_type(:metric)
       assert "id" in columns
+      assert "source_uuid" in columns
+      assert "source_name" in columns
+      assert "event_message" in columns
       assert "time_unix" in columns
       assert "start_time_unix" in columns
       assert "metric_type" in columns
       assert "attributes" in columns
+      assert "timestamp" in columns
     end
 
     test "returns trace columns" do
       columns = Ingester.columns_for_type(:trace)
       assert "id" in columns
-      assert "timestamp" in columns
+      assert "source_uuid" in columns
+      assert "source_name" in columns
+      assert "event_message" in columns
       assert "span_attributes" in columns
+      assert "timestamp" in columns
     end
   end
 

@@ -191,15 +191,15 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
       {:ok, query_result} =
         ClickHouseAdaptor.execute_ch_query(
           backend,
-          "SELECT body, timestamp FROM #{table_name} ORDER BY timestamp DESC"
+          "SELECT event_message, timestamp FROM #{table_name} ORDER BY timestamp DESC"
         )
 
       assert length(query_result) == 2
 
       [first_row, second_row] = query_result
 
-      assert first_row["body"] == "Another message"
-      assert second_row["body"] == "Some message"
+      assert first_row["event_message"] == "Another message"
+      assert second_row["event_message"] == "Some message"
 
       assert first_row["timestamp"] != nil
       assert second_row["timestamp"] != nil
