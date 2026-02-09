@@ -141,18 +141,27 @@ defmodule LogflareWeb.BackendsLive do
   end
 
   def handle_event("test_connection", _params, socket) do
-    backend = socket.assigns.backend
+    status = socket.assigns.connection_status
 
-    case Backends.test_connection(backend) do
-      :ok ->
-        {:noreply, assign(socket, connection_status: :ok)}
-
-      {:error, reason} ->
+    socket =
+      if status && status.loading do
         socket
-        |> assign(connection_status: :error)
-        |> put_flash(:error, "Connection test failed:\n#{reason}")
-        |> then(&{:noreply, &1})
-    end
+      else
+        backend = socket.assigns.backend
+
+        assign_async(
+          socket,
+          :connection_status,
+          fn ->
+            with :ok <- Backends.test_connection(backend) do
+              {:ok, %{connection_status: :ok}}
+            end
+          end,
+          reset: true
+        )
+      end
+
+    {:noreply, socket}
   end
 
   def handle_event("toggle_default_ingest_form", _params, socket) do
