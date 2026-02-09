@@ -31,6 +31,19 @@ defmodule Logflare.KeyValues.Cache do
     }
   end
 
+  @spec count(integer()) :: non_neg_integer()
+  def count(user_id) do
+    cache_key = {:count, user_id}
+
+    Cachex.fetch(__MODULE__, cache_key, fn _key ->
+      {:commit, {:cached, KeyValues.count_key_values(user_id)}}
+    end)
+    |> case do
+      {:commit, {:cached, v}} -> v
+      {:ok, {:cached, v}} -> v
+    end
+  end
+
   @spec lookup(integer(), String.t()) :: String.t() | nil
   def lookup(user_id, key) do
     cache_key = {:lookup, [user_id, key]}
@@ -59,7 +72,8 @@ defmodule Logflare.KeyValues.Cache do
     user_id = Keyword.get(kw, :user_id)
     key = Keyword.get(kw, :key)
 
-    if user_id && key, do: [{:lookup, [user_id, key]}], else: []
+    entries = if user_id, do: [{:count, user_id}], else: []
+    if user_id && key, do: [{:lookup, [user_id, key]} | entries], else: entries
   end
 
   defp delete_and_count(cache, key) do

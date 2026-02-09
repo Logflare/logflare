@@ -203,6 +203,7 @@ defmodule LogflareWeb.Router do
       live("/backends/:id", BackendsLive, :show)
       live("/backends/:id/edit", BackendsLive, :edit)
       live("/query", QueryLive, :index)
+      live("/key-values", KeyValuesLive, :index)
 
       scope "/integrations" do
         live("/vercel/edit", VercelLogDrainsLive, :edit)

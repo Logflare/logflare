@@ -8,6 +8,20 @@ defmodule Logflare.KeyValues do
 
   @list_limit 500
 
+  @spec list_key_values_paginated(keyword()) :: Scrivener.Page.t()
+  def list_key_values_paginated(kw) do
+    user_id = Keyword.fetch!(kw, :user_id)
+    page = Keyword.get(kw, :page, 1)
+    page_size = Keyword.get(kw, :page_size, @list_limit)
+
+    KeyValue
+    |> where(user_id: ^user_id)
+    |> maybe_filter_by(:key, Keyword.get(kw, :key))
+    |> maybe_filter_by(:value, Keyword.get(kw, :value))
+    |> order_by(asc: :key)
+    |> Repo.paginate(%{page: page, page_size: page_size})
+  end
+
   @spec list_key_values(keyword()) :: [KeyValue.t()]
   def list_key_values(kw) do
     user_id = Keyword.fetch!(kw, :user_id)

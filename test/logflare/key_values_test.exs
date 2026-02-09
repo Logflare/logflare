@@ -85,6 +85,35 @@ defmodule Logflare.KeyValuesTest do
     assert [%{key: "k3"}] = KeyValues.list_key_values(user_id: user.id)
   end
 
+  describe "list_key_values_paginated/1" do
+    test "returns paginated results", %{user: user} do
+      for i <- 1..3, do: insert(:key_value, user: user, key: "k#{i}", value: "v#{i}")
+
+      page = KeyValues.list_key_values_paginated(user_id: user.id, page_size: 2, page: 1)
+      assert length(page.entries) == 2
+      assert page.total_entries == 3
+      assert page.total_pages == 2
+    end
+
+    test "filters by key", %{user: user} do
+      insert(:key_value, user: user, key: "match", value: "v1")
+      insert(:key_value, user: user, key: "other", value: "v2")
+
+      page = KeyValues.list_key_values_paginated(user_id: user.id, key: "match")
+      assert length(page.entries) == 1
+      assert hd(page.entries).key == "match"
+    end
+
+    test "filters by value", %{user: user} do
+      insert(:key_value, user: user, key: "k1", value: "target")
+      insert(:key_value, user: user, key: "k2", value: "other")
+
+      page = KeyValues.list_key_values_paginated(user_id: user.id, value: "target")
+      assert length(page.entries) == 1
+      assert hd(page.entries).value == "target"
+    end
+  end
+
   test "bulk_delete_by_values/2", %{user: user} do
     insert(:key_value, user: user, key: "k1", value: "shared")
     insert(:key_value, user: user, key: "k2", value: "shared")

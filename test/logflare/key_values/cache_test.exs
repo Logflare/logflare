@@ -37,4 +37,28 @@ defmodule Logflare.KeyValues.CacheTest do
   test "bust_by/1 returns 0 when key not cached", %{user: user} do
     assert {:ok, 0} = KeyValues.Cache.bust_by(user_id: user.id, key: "nonexistent")
   end
+
+  describe "count/1" do
+    test "caches the count for a user", %{user: user} do
+      insert(:key_value, user: user, key: "k1", value: "v1")
+      insert(:key_value, user: user, key: "k2", value: "v2")
+
+      assert KeyValues.Cache.count(user.id) == 2
+      # Second call hits cache
+      assert KeyValues.Cache.count(user.id) == 2
+    end
+
+    test "bust_by/1 clears cached count", %{user: user} do
+      insert(:key_value, user: user, key: "k1", value: "v1")
+
+      # populate cache
+      assert 1 = KeyValues.Cache.count(user.id)
+
+      # bust clears it
+      KeyValues.Cache.bust_by(user_id: user.id, key: "k1")
+
+      cache_key = {:count, user.id}
+      assert is_nil(Cachex.get!(KeyValues.Cache, cache_key))
+    end
+  end
 end

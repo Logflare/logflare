@@ -1,0 +1,85 @@
+<.subheader>
+  <:path>
+    ~/accounts/<.subheader_path_link live_patch to={~p"/key-values"} team={@team}>key values</.subheader_path_link>
+  </:path>
+</.subheader>
+
+<section class="content container mx-auto tw-flex tw-flex-col w-full tw-gap-4">
+  <div>
+    <p>Total: {@total_count}</p>
+  </div>
+
+  <div>
+    <button class="btn btn-primary" phx-click="toggle-create-form">
+      Create key-value pair
+    </button>
+  </div>
+
+  <div :if={@show_create_form} class="jumbotron jumbotron-fluid tw-p-4">
+    <h5>New Key-Value Pair</h5>
+    <.form id="create-form" for={%{}} phx-submit="create">
+      <div class="form-group">
+        <label>Key</label>
+        <input name="key" class="form-control" placeholder="Enter key" required />
+      </div>
+      <div class="form-group">
+        <label>Value</label>
+        <input name="value" class="form-control" placeholder="Enter value" required />
+      </div>
+      <button type="submit" class="btn btn-primary">Save</button>
+      <button type="button" class="btn btn-secondary" phx-click="toggle-create-form">Cancel</button>
+    </.form>
+  </div>
+
+  <div class="jumbotron jumbotron-fluid tw-p-4">
+    <h5>Search</h5>
+    <.form id="search-form" for={%{}} phx-submit="search">
+      <div class="tw-flex tw-gap-2 tw-items-end">
+        <div class="form-group tw-mb-0 tw-flex-1">
+          <label>Key</label>
+          <input name="key" class="form-control" placeholder="Exact match" value={@filter_key} />
+        </div>
+        <div class="form-group tw-mb-0 tw-flex-1">
+          <label>Value</label>
+          <input name="value" class="form-control" placeholder="Exact match" value={@filter_value} />
+        </div>
+        <div class="tw-flex tw-gap-2">
+          <button type="submit" class="btn btn-primary">Search</button>
+          <button type="button" class="btn btn-secondary" phx-click="clear-search">Clear</button>
+        </div>
+      </div>
+    </.form>
+  </div>
+
+  <div :if={!@searched?} class="tw-text-gray-400">
+    Enter filter values above to search.
+  </div>
+
+  <div :if={@searched? && @page.entries == []}>
+    <p class="tw-text-gray-400">No results found.</p>
+  </div>
+
+  <div :if={@searched? && @page.entries != []}>
+    <table class="table-dark table-auto w-full">
+      <thead>
+        <tr>
+          <th class="p-2">Key</th>
+          <th class="p-2">Value</th>
+          <th class="p-2">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr :for={kv <- @page.entries}>
+          <td class="p-2 tw-text-sm">{kv.key}</td>
+          <td class="p-2 tw-text-sm">{kv.value}</td>
+          <td class="p-2">
+            <button class="btn text-danger btn-sm" data-confirm="Are you sure? This cannot be undone." phx-click="delete" phx-value-id={kv.id}>
+              <i class="fa fa-trash" aria-hidden="true"></i> Delete
+            </button>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+    <LogflareWeb.PaginationComponents.pagination_links :if={@page.total_pages > 1} page={@page} path={~p"/key-values"} params={Enum.reject([key: @filter_key, value: @filter_value], fn {_k, v} -> v == "" end)} patch={true} />
+  </div>
+</section>
