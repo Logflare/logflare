@@ -118,7 +118,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
          origin_source_name: origin_source_name
        }) do
     source_uuid_str = Atom.to_string(origin_source_uuid)
-    timestamp = body_timestamp_to_datetime(body["timestamp"])
+    timestamp_us = body_timestamp_us(body["timestamp"])
 
     [
       # id
@@ -134,7 +134,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
       # log_attributes
       RowBinaryEncoder.json(body),
       # timestamp
-      RowBinaryEncoder.datetime64(timestamp, 9)
+      RowBinaryEncoder.datetime64_from_unix(timestamp_us, :microsecond, 9)
     ]
   end
 
@@ -146,7 +146,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
          origin_source_name: origin_source_name
        }) do
     source_uuid_str = Atom.to_string(origin_source_uuid)
-    timestamp = body_timestamp_to_datetime(body["timestamp"])
+    timestamp_us = body_timestamp_us(body["timestamp"])
 
     [
       # id
@@ -160,15 +160,15 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
       # event_message
       RowBinaryEncoder.string(body["event_message"] || ""),
       # time_unix
-      RowBinaryEncoder.datetime64(timestamp, 9),
+      RowBinaryEncoder.datetime64_from_unix(timestamp_us, :microsecond, 9),
       # start_time_unix
-      RowBinaryEncoder.datetime64(timestamp, 9),
+      RowBinaryEncoder.datetime64_from_unix(timestamp_us, :microsecond, 9),
       # metric_type
       RowBinaryEncoder.enum8(1),
       # attributes
       RowBinaryEncoder.json(body),
       # timestamp
-      RowBinaryEncoder.datetime64(timestamp, 9)
+      RowBinaryEncoder.datetime64_from_unix(timestamp_us, :microsecond, 9)
     ]
   end
 
@@ -180,7 +180,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
          origin_source_name: origin_source_name
        }) do
     source_uuid_str = Atom.to_string(origin_source_uuid)
-    timestamp = body_timestamp_to_datetime(body["timestamp"])
+    timestamp_us = body_timestamp_us(body["timestamp"])
 
     [
       # id
@@ -196,16 +196,16 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
       # span_attributes
       RowBinaryEncoder.json(body),
       # timestamp
-      RowBinaryEncoder.datetime64(timestamp, 9)
+      RowBinaryEncoder.datetime64_from_unix(timestamp_us, :microsecond, 9)
     ]
   end
 
-  @spec body_timestamp_to_datetime(integer() | nil) :: DateTime.t()
-  defp body_timestamp_to_datetime(nil), do: DateTime.utc_now()
-
-  defp body_timestamp_to_datetime(timestamp_us) when is_integer(timestamp_us) do
-    DateTime.from_unix!(timestamp_us, :microsecond)
+  @spec body_timestamp_us(integer() | nil) :: integer()
+  defp body_timestamp_us(nil) do
+    DateTime.to_unix(DateTime.utc_now(), :microsecond)
   end
+
+  defp body_timestamp_us(timestamp_us) when is_pos_integer(timestamp_us), do: timestamp_us
 
   @spec build_connection_opts(Backend.t()) :: {:ok, Keyword.t()} | {:error, String.t()}
   defp build_connection_opts(%Backend{config: config}) do

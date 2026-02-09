@@ -271,7 +271,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       query_result =
         ClickHouseAdaptor.execute_ch_query(
           backend,
-          "SELECT id, source_uuid, source_name, body, timestamp FROM #{table_name} ORDER BY timestamp"
+          "SELECT id, source_uuid, source_name, event_message, log_attributes, timestamp FROM #{table_name} ORDER BY timestamp"
         )
 
       assert {:ok, rows} = query_result
@@ -282,14 +282,16 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
                  "id" => "550e8400-e29b-41d4-a716-446655440000",
                  "source_uuid" => source_uuid1,
                  "source_name" => source_name1,
-                 "body" => "Test message 1",
+                 "event_message" => "Test message 1",
+                 "log_attributes" => log_attributes1,
                  "timestamp" => _
                },
                %{
                  "id" => "9bc07845-9859-4163-bfe5-a74c1a1443a2",
                  "source_uuid" => source_uuid2,
                  "source_name" => source_name2,
-                 "body" => "Test message 2",
+                 "event_message" => "Test message 2",
+                 "log_attributes" => log_attributes2,
                  "timestamp" => _
                }
              ] = rows
@@ -300,6 +302,16 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
 
       assert source_name1 == source.name
       assert source_name2 == source.name
+
+      assert %{
+               "event_message" => "Test message 1",
+               "metadata" => %{"level" => "info", "user_id" => 123}
+             } = log_attributes1
+
+      assert %{
+               "event_message" => "Test message 2",
+               "metadata" => %{"level" => "error", "user_id" => 456}
+             } = log_attributes2
     end
 
     test "handles empty event list", %{backend: backend} do

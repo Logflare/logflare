@@ -674,6 +674,74 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.RowBinaryEncoderTest do
     end
   end
 
+  describe "datetime64_from_unix/3" do
+    test "encodes microseconds to nanosecond precision (9)" do
+      timestamp_us = DateTime.to_unix(~U[2024-01-01 12:30:45.123456Z], :microsecond)
+      encoded = RowBinaryEncoder.datetime64_from_unix(timestamp_us, :microsecond, 9)
+
+      assert byte_size(encoded) == 8
+      <<scaled::little-signed-64>> = encoded
+      assert scaled == timestamp_us * 1_000
+    end
+
+    test "encodes microseconds to microsecond precision (6) as identity" do
+      timestamp_us = DateTime.to_unix(~U[2024-01-01 12:30:45.123456Z], :microsecond)
+      encoded = RowBinaryEncoder.datetime64_from_unix(timestamp_us, :microsecond, 6)
+
+      <<scaled::little-signed-64>> = encoded
+      assert scaled == timestamp_us
+    end
+
+    test "encodes microseconds to millisecond precision (3)" do
+      timestamp_us = DateTime.to_unix(~U[2024-01-01 12:30:45.123456Z], :microsecond)
+      encoded = RowBinaryEncoder.datetime64_from_unix(timestamp_us, :microsecond, 3)
+
+      <<scaled::little-signed-64>> = encoded
+      assert scaled == div(timestamp_us, 1_000)
+    end
+
+    test "encodes microseconds to second precision (0)" do
+      timestamp_us = DateTime.to_unix(~U[2024-01-01 12:30:45.123456Z], :microsecond)
+      encoded = RowBinaryEncoder.datetime64_from_unix(timestamp_us, :microsecond, 0)
+
+      <<scaled::little-signed-64>> = encoded
+      assert scaled == div(timestamp_us, 1_000_000)
+    end
+
+    test "encodes seconds to nanosecond precision (9)" do
+      timestamp_s = DateTime.to_unix(~U[2024-01-01 12:30:45Z], :second)
+      encoded = RowBinaryEncoder.datetime64_from_unix(timestamp_s, :second, 9)
+
+      <<scaled::little-signed-64>> = encoded
+      assert scaled == timestamp_s * 1_000_000_000
+    end
+
+    test "encodes milliseconds to microsecond precision (6)" do
+      timestamp_ms = DateTime.to_unix(~U[2024-01-01 12:30:45.123Z], :millisecond)
+      encoded = RowBinaryEncoder.datetime64_from_unix(timestamp_ms, :millisecond, 6)
+
+      <<scaled::little-signed-64>> = encoded
+      assert scaled == timestamp_ms * 1_000
+    end
+
+    test "produces same result as datetime64/2 for equivalent input" do
+      datetime = ~U[2024-01-01 12:30:45.123456Z]
+      timestamp_us = DateTime.to_unix(datetime, :microsecond)
+
+      from_struct = RowBinaryEncoder.datetime64(datetime, 9)
+      from_unix = RowBinaryEncoder.datetime64_from_unix(timestamp_us, :microsecond, 9)
+
+      assert from_struct == from_unix
+    end
+
+    test "encodes epoch as zero" do
+      encoded = RowBinaryEncoder.datetime64_from_unix(0, :microsecond, 9)
+
+      <<scaled::little-signed-64>> = encoded
+      assert scaled == 0
+    end
+  end
+
   describe "json/1" do
     test "encodes map as JSON string" do
       value = %{"key" => "value"}
