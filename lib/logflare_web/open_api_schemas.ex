@@ -140,6 +140,16 @@ defmodule LogflareWeb.OpenApiSchemas do
     use LogflareWeb.OpenApi, properties: @properties, required: [:name]
   end
 
+  defmodule KeyValueApiSchema do
+    @properties %{
+      id: %Schema{type: :integer},
+      key: %Schema{type: :string},
+      value: %Schema{type: :string}
+    }
+
+    use LogflareWeb.OpenApi, properties: @properties, required: [:key, :value]
+  end
+
   defmodule BackendApiSchema do
     @properties %{
       name: %Schema{type: :string},
