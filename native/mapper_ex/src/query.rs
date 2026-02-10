@@ -1,3 +1,4 @@
+use rustler::types::ListIterator;
 use rustler::{Encoder, Env, Term};
 
 use crate::path::PathSegment;
@@ -39,17 +40,13 @@ pub fn evaluate<'a>(env: Env<'a>, term: Term<'a>, segments: &[PathSegment]) -> T
 
             results.encode(env)
         }
-        PathSegment::Index(idx) => {
-            let items: Vec<Term<'a>> = match term.decode::<Vec<Term<'a>>>() {
-                Ok(list) => list,
-                Err(_) => return atoms::nil().encode(env),
-            };
-
-            match items.get(*idx) {
-                Some(item) => evaluate(env, *item, &segments[1..]),
+        PathSegment::Index(idx) => match term.decode::<ListIterator>() {
+            Ok(mut iter) => match iter.nth(*idx) {
+                Some(item) => evaluate(env, item, &segments[1..]),
                 None => atoms::nil().encode(env),
-            }
-        }
+            },
+            Err(_) => atoms::nil().encode(env),
+        },
     }
 }
 
