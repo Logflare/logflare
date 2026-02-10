@@ -237,22 +237,21 @@ fn apply_json_operations<'a>(
 /// Build a sparse map from pick entries.
 fn build_pick_map<'a>(env: Env<'a>, body: Term<'a>, field: &CompiledField) -> Term<'a> {
     let nil = atoms::nil().encode(env);
-    let mut result = Term::map_new(env);
-    let mut found_any = false;
+    let mut keys: Vec<Term<'a>> = Vec::with_capacity(field.pick.len());
+    let mut values: Vec<Term<'a>> = Vec::with_capacity(field.pick.len());
 
     for entry in &field.pick {
         let value = query::evaluate_first(env, body, &entry.paths, false);
         if value != nil {
-            let key = entry.key.encode(env);
-            result = result.map_put(key, value).unwrap_or(result);
-            found_any = true;
+            keys.push(entry.key.encode(env));
+            values.push(value);
         }
     }
 
-    if found_any {
-        result
-    } else {
+    if keys.is_empty() {
         nil
+    } else {
+        Term::map_from_term_arrays(env, &keys, &values).unwrap_or_else(|_| Term::map_new(env))
     }
 }
 
@@ -263,20 +262,29 @@ fn apply_exclude_keys<'a>(env: Env<'a>, map: Term<'a>, exclude: &[String]) -> Te
         None => return map,
     };
 
-    let mut result = Term::map_new(env);
+    let mut keys: Vec<Term<'a>> = Vec::new();
+    let mut values: Vec<Term<'a>> = Vec::new();
+
     for (k, v) in iter {
         if let Ok(key_str) = k.decode::<String>() {
             if exclude.contains(&key_str) {
                 continue;
             }
         }
-        result = result.map_put(k, v).unwrap_or(result);
+        keys.push(k);
+        values.push(v);
     }
-    result
+
+    Term::map_from_term_arrays(env, &keys, &values).unwrap_or_else(|_| Term::map_new(env))
 }
 
 /// Elevate children of specified keys into the parent map.
 /// Existing top-level keys win over elevated children.
+///
+/// Uses map_from_term_arrays for the elevated children base, then map_put
+/// for top-level overrides. Cannot use a single map_from_term_arrays call
+/// because duplicate keys (between elevated children and top-level) would
+/// cause enif_make_map_from_arrays to fail.
 fn apply_elevate_keys<'a>(env: Env<'a>, map: Term<'a>, elevate: &[String]) -> Term<'a> {
     let iter = match MapIterator::new(map) {
         Some(it) => it,
@@ -284,8 +292,9 @@ fn apply_elevate_keys<'a>(env: Env<'a>, map: Term<'a>, elevate: &[String]) -> Te
     };
 
     // Collect top-level entries, separating elevated vs non-elevated
-    let mut top_level = Vec::new();
-    let mut elevated_children = Vec::new();
+    let mut top_entries: Vec<(Term<'a>, Term<'a>)> = Vec::new();
+    let mut elevated_keys: Vec<Term<'a>> = Vec::new();
+    let mut elevated_values: Vec<Term<'a>> = Vec::new();
 
     for (k, v) in iter {
         if let Ok(key_str) = k.decode::<String>() {
@@ -293,24 +302,26 @@ fn apply_elevate_keys<'a>(env: Env<'a>, map: Term<'a>, elevate: &[String]) -> Te
                 // This key should be elevated: merge its children into parent
                 if let Some(child_iter) = MapIterator::new(v) {
                     for (ck, cv) in child_iter {
-                        elevated_children.push((ck, cv));
+                        elevated_keys.push(ck);
+                        elevated_values.push(cv);
                     }
                 }
                 continue; // Don't include the elevated key itself
             }
         }
-        top_level.push((k, v));
+        top_entries.push((k, v));
     }
 
-    // Build result: elevated children first, then top-level (top-level wins)
-    let mut result = Term::map_new(env);
+    // Build base map from elevated children in a single allocation
+    let mut result = if elevated_keys.is_empty() {
+        Term::map_new(env)
+    } else {
+        Term::map_from_term_arrays(env, &elevated_keys, &elevated_values)
+            .unwrap_or_else(|_| Term::map_new(env))
+    };
 
-    for (k, v) in elevated_children {
-        result = result.map_put(k, v).unwrap_or(result);
-    }
-
-    // Top-level keys overwrite elevated children
-    for (k, v) in top_level {
+    // Top-level keys overwrite elevated children via map_put
+    for (k, v) in top_entries {
         result = result.map_put(k, v).unwrap_or(result);
     }
 
