@@ -27,24 +27,24 @@ pub fn map_single<'a>(env: Env<'a>, body: Term<'a>, mapping: &CompiledMapping) -
         let is_enum8 = matches!(&field.field_type, FieldType::Enum8 { .. });
 
         let value = if is_enum8 {
-            resolve_value_raw(env, body, field, &values)
+            resolve_value_raw(env, body, field, &values, nil)
         } else {
-            resolve_value(env, body, field, &values)
+            resolve_value(env, body, field, &values, nil)
         };
 
         // Apply transform if configured
         let value = match &field.transform {
-            Some(transform) => coerce::apply_transform(env, value, transform),
+            Some(transform) => coerce::apply_transform(env, value, transform, nil),
             None => value,
         };
 
         // Apply value_map if configured (e.g., severity_text -> severity_number)
         let value = if !field.value_map.is_empty() {
-            let mapped = coerce::apply_value_map(env, value, &field.value_map);
+            let mapped = coerce::apply_value_map(env, value, &field.value_map, nil);
             if mapped != nil {
                 mapped
             } else {
-                coerce::encode_default(env, &field.default)
+                coerce::encode_default(env, &field.default, nil)
             }
         } else {
             value
@@ -59,7 +59,7 @@ pub fn map_single<'a>(env: Env<'a>, body: Term<'a>, mapping: &CompiledMapping) -
 
         // For Json fields, apply exclude/elevate/pick
         let value = if field.field_type == FieldType::Json {
-            apply_json_operations(env, body, field, value)
+            apply_json_operations(env, body, field, value, nil)
         } else {
             value
         };
@@ -68,7 +68,7 @@ pub fn map_single<'a>(env: Env<'a>, body: Term<'a>, mapping: &CompiledMapping) -
         let value = if field.field_type == FieldType::Json {
             value
         } else {
-            coerce::coerce(env, value, &field.field_type)
+            coerce::coerce(env, value, &field.field_type, nil)
         };
 
         keys.push(field.name.encode(env));
@@ -86,13 +86,12 @@ fn resolve_value_raw<'a>(
     body: Term<'a>,
     field: &CompiledField,
     output_values: &[Term<'a>],
+    nil: Term<'a>,
 ) -> Term<'a> {
-    let nil = atoms::nil().encode(env);
-
     match &field.path_source {
         PathSource::Root => body,
-        PathSource::Single(segments) => query::evaluate(env, body, segments),
-        PathSource::Coalesce(paths) => query::evaluate_first(env, body, paths, false),
+        PathSource::Single(segments) => query::evaluate(env, body, segments, nil),
+        PathSource::Coalesce(paths) => query::evaluate_first(env, body, paths, false, nil),
         PathSource::FromOutput(idx) => {
             let v = output_values[*idx];
             if v != nil {
@@ -111,21 +110,21 @@ fn resolve_value<'a>(
     body: Term<'a>,
     field: &CompiledField,
     output_values: &[Term<'a>],
+    nil: Term<'a>,
 ) -> Term<'a> {
-    let nil = atoms::nil().encode(env);
     let skip_empty = field.field_type == FieldType::String;
 
     match &field.path_source {
         PathSource::Root => body,
         PathSource::Single(segments) => {
-            let v = query::evaluate(env, body, segments);
+            let v = query::evaluate(env, body, segments, nil);
             if v == nil {
-                coerce::encode_default(env, &field.default)
+                coerce::encode_default(env, &field.default, nil)
             } else if skip_empty {
                 // Check binary length without allocating a String
                 if let Ok(b) = v.decode::<Binary>() {
                     if b.is_empty() {
-                        coerce::encode_default(env, &field.default)
+                        coerce::encode_default(env, &field.default, nil)
                     } else {
                         v
                     }
@@ -137,9 +136,9 @@ fn resolve_value<'a>(
             }
         }
         PathSource::Coalesce(paths) => {
-            let result = query::evaluate_first(env, body, paths, skip_empty);
+            let result = query::evaluate_first(env, body, paths, skip_empty, nil);
             if result == nil {
-                coerce::encode_default(env, &field.default)
+                coerce::encode_default(env, &field.default, nil)
             } else {
                 result
             }
@@ -149,7 +148,7 @@ fn resolve_value<'a>(
             if v != nil {
                 v
             } else {
-                coerce::encode_default(env, &field.default)
+                coerce::encode_default(env, &field.default, nil)
             }
         }
         PathSource::FromOutputName(_) => unreachable!("FromOutputName should be resolved"),
@@ -166,7 +165,7 @@ fn resolve_enum8<'a>(
 ) -> Term<'a> {
     let enum8_data = match &field.enum8_data {
         Some(data) => data,
-        None => return coerce::encode_default(env, &field.default),
+        None => return coerce::encode_default(env, &field.default, nil),
     };
 
     // Step 1: If resolved value is a string, look up in enum_values (case-insensitive)
@@ -184,12 +183,12 @@ fn resolve_enum8<'a>(
     }
 
     // Step 2: Try inference rules
-    if let Some(result_val) = evaluate_infer_rules(env, body, enum8_data) {
+    if let Some(result_val) = evaluate_infer_rules(env, body, enum8_data, nil) {
         return (result_val as i64).encode(env);
     }
 
     // Step 3: Default
-    coerce::encode_default(env, &field.default)
+    coerce::encode_default(env, &field.default, nil)
 }
 
 /// Apply JSON-specific operations: pick, exclude_keys, elevate_keys.
@@ -198,12 +197,11 @@ fn apply_json_operations<'a>(
     body: Term<'a>,
     field: &CompiledField,
     value: Term<'a>,
+    nil: Term<'a>,
 ) -> Term<'a> {
-    let nil = atoms::nil().encode(env);
-
     // Pick-first: if pick is defined, try to build a sparse map
     let value = if !field.pick.is_empty() {
-        let pick_result = build_pick_map(env, body, field);
+        let pick_result = build_pick_map(env, body, field, nil);
         if pick_result != nil {
             pick_result
         } else {
@@ -236,13 +234,17 @@ fn apply_json_operations<'a>(
 }
 
 /// Build a sparse map from pick entries.
-fn build_pick_map<'a>(env: Env<'a>, body: Term<'a>, field: &CompiledField) -> Term<'a> {
-    let nil = atoms::nil().encode(env);
+fn build_pick_map<'a>(
+    env: Env<'a>,
+    body: Term<'a>,
+    field: &CompiledField,
+    nil: Term<'a>,
+) -> Term<'a> {
     let mut keys: Vec<Term<'a>> = Vec::with_capacity(field.pick.len());
     let mut values: Vec<Term<'a>> = Vec::with_capacity(field.pick.len());
 
     for entry in &field.pick {
-        let value = query::evaluate_first(env, body, &entry.paths, false);
+        let value = query::evaluate_first(env, body, &entry.paths, false, nil);
         if value != nil {
             keys.push(entry.key.encode(env));
             values.push(value);
@@ -334,9 +336,8 @@ pub fn evaluate_infer_rules<'a>(
     env: Env<'a>,
     body: Term<'a>,
     enum8_data: &Enum8Data,
+    nil: Term<'a>,
 ) -> Option<i8> {
-    let nil = atoms::nil().encode(env);
-
     for rule in &enum8_data.infer_rules {
         let any_match = if rule.any.is_empty() {
             true
@@ -372,7 +373,7 @@ fn evaluate_condition<'a>(
     cond: &crate::mapping::InferCondition,
     nil: Term<'a>,
 ) -> bool {
-    let value = query::evaluate(env, body, &cond.path);
+    let value = query::evaluate(env, body, &cond.path, nil);
 
     match &cond.predicate {
         Predicate::Exists => value != nil,

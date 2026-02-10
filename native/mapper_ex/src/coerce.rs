@@ -5,18 +5,13 @@ use rustler::{Encoder, Env, Term};
 
 use crate::mapping::{DefaultValue, FieldTransform, FieldType};
 
-mod atoms {
-    rustler::atoms! {
-        nil,
-        true_ = "true",
-        false_ = "false",
-    }
-}
-
 /// Coerce a BEAM term to the target field type.
-pub fn coerce<'a>(env: Env<'a>, value: Term<'a>, field_type: &FieldType) -> Term<'a> {
-    let nil = atoms::nil().encode(env);
-
+pub fn coerce<'a>(
+    env: Env<'a>,
+    value: Term<'a>,
+    field_type: &FieldType,
+    nil: Term<'a>,
+) -> Term<'a> {
     if value == nil {
         // For numeric types, nil coerces to their zero value.
         // DateTime64 is intentionally excluded — nil flows through so the
@@ -47,8 +42,12 @@ pub fn coerce<'a>(env: Env<'a>, value: Term<'a>, field_type: &FieldType) -> Term
 }
 
 /// Apply a transform to a resolved string value.
-pub fn apply_transform<'a>(env: Env<'a>, value: Term<'a>, transform: &FieldTransform) -> Term<'a> {
-    let nil = atoms::nil().encode(env);
+pub fn apply_transform<'a>(
+    env: Env<'a>,
+    value: Term<'a>,
+    transform: &FieldTransform,
+    nil: Term<'a>,
+) -> Term<'a> {
     if value == nil {
         return nil;
     }
@@ -64,9 +63,9 @@ pub fn apply_transform<'a>(env: Env<'a>, value: Term<'a>, transform: &FieldTrans
 }
 
 /// Encode a default value to a BEAM term.
-pub fn encode_default<'a>(env: Env<'a>, default: &DefaultValue) -> Term<'a> {
+pub fn encode_default<'a>(env: Env<'a>, default: &DefaultValue, nil: Term<'a>) -> Term<'a> {
     match default {
-        DefaultValue::Nil => atoms::nil().encode(env),
+        DefaultValue::Nil => nil,
         DefaultValue::Str(s) => s.encode(env),
         DefaultValue::Int(i) => i.encode(env),
         DefaultValue::Uint(u) => u.encode(env),
@@ -78,8 +77,12 @@ pub fn encode_default<'a>(env: Env<'a>, default: &DefaultValue) -> Term<'a> {
 }
 
 /// Look up a string value in a value_map, returning the mapped integer.
-pub fn apply_value_map<'a>(env: Env<'a>, value: Term<'a>, map: &HashMap<String, i64>) -> Term<'a> {
-    let nil = atoms::nil().encode(env);
+pub fn apply_value_map<'a>(
+    env: Env<'a>,
+    value: Term<'a>,
+    map: &HashMap<String, i64>,
+    nil: Term<'a>,
+) -> Term<'a> {
     if value == nil || map.is_empty() {
         return nil;
     }
