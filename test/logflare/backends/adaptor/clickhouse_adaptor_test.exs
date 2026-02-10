@@ -5,6 +5,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
   import Logflare.Utils.Guards
 
   alias Logflare.Backends
+  alias Logflare.Backends.Adaptor
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.ConnectionManager
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryConnectionSup
@@ -27,21 +28,27 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       [source: source, backend: backend, stringified_backend_token: stringified_backend_token]
     end
 
-    test "`clickhouse_ingest_table_name/1` generates a unique log ingest table name based on the backend token",
-         %{backend: backend, stringified_backend_token: stringified_backend_token} do
-      assert ClickHouseAdaptor.clickhouse_ingest_table_name(backend) ==
-               "consolidated_ingest_#{stringified_backend_token}"
-    end
-
-    test "`clickhouse_ingest_table_name/1` will raise an exception if the table name is equal to or exceeds 200 chars",
+    test "raises when table name is equal to or exceeds 200 chars",
          %{backend: backend} do
       assert_raise RuntimeError,
-                   ~r/^The dynamically generated ClickHouse resource name starting with `consolidated_ingest_/,
+                   ~r/must be less than 200 characters/,
                    fn ->
                      backend
                      |> modify_backend_with_long_token()
-                     |> ClickHouseAdaptor.clickhouse_ingest_table_name()
+                     |> ClickHouseAdaptor.clickhouse_ingest_table_name(:log)
                    end
+    end
+
+    test "generates otel-prefixed table names per log type",
+         %{backend: backend, stringified_backend_token: stringified_backend_token} do
+      assert ClickHouseAdaptor.clickhouse_ingest_table_name(backend, :log) ==
+               "otel_logs_#{stringified_backend_token}"
+
+      assert ClickHouseAdaptor.clickhouse_ingest_table_name(backend, :metric) ==
+               "otel_metrics_#{stringified_backend_token}"
+
+      assert ClickHouseAdaptor.clickhouse_ingest_table_name(backend, :trace) ==
+               "otel_traces_#{stringified_backend_token}"
     end
   end
 
@@ -86,47 +93,113 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
     end
   end
 
-  describe "cast_config/1" do
+  describe "cast_and_validate_config" do
     test "casts async_insert as boolean" do
-      params = %{
-        "url" => "http://localhost",
-        "database" => "test",
-        "port" => 8123,
-        "async_insert" => true
-      }
-
-      changeset = ClickHouseAdaptor.cast_config(params)
+      changeset = cast_and_validate_config(async_insert: true)
 
       assert changeset.valid?
       assert Ecto.Changeset.get_field(changeset, :async_insert) == true
     end
 
     test "defaults async_insert to false when not provided" do
-      params = %{
-        "url" => "http://localhost",
-        "database" => "test",
-        "port" => 8123
-      }
-
-      changeset = ClickHouseAdaptor.cast_config(params)
+      changeset = cast_and_validate_config()
 
       assert changeset.valid?
       assert Ecto.Changeset.get_field(changeset, :async_insert) == false
     end
 
     test "casts string async_insert value" do
-      params = %{
-        "url" => "http://localhost",
-        "database" => "test",
-        "port" => 8123,
-        "async_insert" => "true"
-      }
-
-      changeset = ClickHouseAdaptor.cast_config(params)
+      changeset = cast_and_validate_config(async_insert: "true")
 
       assert changeset.valid?
       assert Ecto.Changeset.get_field(changeset, :async_insert) == true
     end
+
+    test "casts read_only_url when provided" do
+      changeset =
+        cast_and_validate_config(read_only_url: "https://read-only.clickhouse.cloud:8443")
+
+      assert changeset.valid?
+
+      assert Ecto.Changeset.get_field(changeset, :read_only_url) ==
+               "https://read-only.clickhouse.cloud:8443"
+    end
+
+    test "read_only_url defaults to nil when not provided" do
+      changeset = cast_and_validate_config()
+
+      assert changeset.valid?
+      assert Ecto.Changeset.get_field(changeset, :read_only_url) == nil
+    end
+
+    test "rejects invalid read_only_url format" do
+      changeset = cast_and_validate_config(read_only_url: "invalid-url")
+
+      refute changeset.valid?
+      assert {:read_only_url, _} = hd(changeset.errors)
+    end
+
+    test "accepts valid http read_only_url" do
+      changeset = cast_and_validate_config(read_only_url: "http://read-cluster.local:8123")
+
+      assert changeset.valid?
+    end
+
+    test "accepts valid https read_only_url" do
+      changeset =
+        cast_and_validate_config(read_only_url: "https://read-cluster.clickhouse.cloud:8443")
+
+      assert changeset.valid?
+    end
+  end
+
+  defp cast_and_validate_config(attrs \\ []) do
+    default_attrs = %{
+      url: "http://localhost",
+      database: "test",
+      port: 8123
+    }
+
+    Adaptor.cast_and_validate_config(ClickHouseAdaptor, Map.merge(default_attrs, Map.new(attrs)))
+  end
+
+  describe "read_only_url fallback behavior" do
+    test "uses primary url when read_only_url is nil" do
+      config = %{
+        url: "http://primary.clickhouse.local",
+        read_only_url: nil,
+        port: 8123
+      }
+
+      assert resolve_read_url(config) == "http://primary.clickhouse.local"
+    end
+
+    test "uses primary url when read_only_url is empty string" do
+      config = %{
+        url: "http://primary.clickhouse.local",
+        read_only_url: "",
+        port: 8123
+      }
+
+      assert resolve_read_url(config) == "http://primary.clickhouse.local"
+    end
+
+    test "uses read_only_url when configured" do
+      config = %{
+        url: "http://primary.clickhouse.local",
+        read_only_url: "http://readonly.clickhouse.local",
+        port: 8123
+      }
+
+      assert resolve_read_url(config) == "http://readonly.clickhouse.local"
+    end
+  end
+
+  defp resolve_read_url(config) do
+    import Logflare.Utils.Guards
+
+    read_only_url = Map.get(config, :read_only_url)
+    if is_non_empty_binary(read_only_url), do: read_only_url, else: Map.get(config, :url)
   end
 
   describe "log event insertion and retrieval" do
@@ -137,7 +210,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       on_exit(cleanup_fn)
 
       start_supervised!({ClickHouseAdaptor, backend})
-      assert {:ok, _} = ClickHouseAdaptor.provision_ingest_table(backend)
+      assert :ok = ClickHouseAdaptor.provision_ingest_tables(backend)
 
       [source: source, backend: backend]
     end
@@ -154,12 +227,12 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
         )
       ]
 
-      result = ClickHouseAdaptor.insert_log_events(backend_with_async, log_events)
+      result = ClickHouseAdaptor.insert_log_events(backend_with_async, log_events, :log)
       assert :ok = result
 
       Process.sleep(500)
 
-      table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(backend)
+      table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(backend, :log)
 
       query_result =
         ClickHouseAdaptor.execute_ch_query(
@@ -188,42 +261,40 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
         )
       ]
 
-      result = ClickHouseAdaptor.insert_log_events(backend, log_events)
+      result = ClickHouseAdaptor.insert_log_events(backend, log_events, :log)
       assert :ok = result
 
       Process.sleep(100)
 
-      table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(backend)
+      table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(backend, :log)
 
       query_result =
         ClickHouseAdaptor.execute_ch_query(
           backend,
-          "SELECT id, source_uuid, source_name, body, ingested_at, timestamp FROM #{table_name} ORDER BY timestamp"
+          "SELECT id, source_uuid, source_name, event_message, log_attributes, timestamp FROM #{table_name} ORDER BY timestamp"
         )
 
       assert {:ok, rows} = query_result
       assert length(rows) == 2
-
-      row_payloads = Enum.map(rows, fn row -> Map.update!(row, "body", &Jason.decode!/1) end)
 
       assert [
                %{
                  "id" => "550e8400-e29b-41d4-a716-446655440000",
                  "source_uuid" => source_uuid1,
                  "source_name" => source_name1,
-                 "body" => %{"event_message" => "Test message 1"},
-                 "ingested_at" => _,
+                 "event_message" => "Test message 1",
+                 "log_attributes" => log_attributes1,
                  "timestamp" => _
                },
                %{
                  "id" => "9bc07845-9859-4163-bfe5-a74c1a1443a2",
                  "source_uuid" => source_uuid2,
                  "source_name" => source_name2,
-                 "body" => %{"event_message" => "Test message 2"},
-                 "ingested_at" => _,
+                 "event_message" => "Test message 2",
+                 "log_attributes" => log_attributes2,
                  "timestamp" => _
                }
-             ] = row_payloads
+             ] = rows
 
       expected_source_uuid = Atom.to_string(source.token)
       assert source_uuid1 == expected_source_uuid
@@ -231,11 +302,46 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
 
       assert source_name1 == source.name
       assert source_name2 == source.name
+
+      assert %{
+               "event_message" => "Test message 1",
+               "metadata" => %{"level" => "info", "user_id" => 123}
+             } = log_attributes1
+
+      assert %{
+               "event_message" => "Test message 2",
+               "metadata" => %{"level" => "error", "user_id" => 456}
+             } = log_attributes2
     end
 
     test "handles empty event list", %{backend: backend} do
-      result = ClickHouseAdaptor.insert_log_events(backend, [])
+      result = ClickHouseAdaptor.insert_log_events(backend, [], :log)
       assert :ok = result
+    end
+
+    test "insert_log_events/3 inserts into type-specific table", %{
+      source: source,
+      backend: backend
+    } do
+      for log_type <- [:log, :metric, :trace] do
+        log_event =
+          build(:log_event, source: source, message: "Typed insert test")
+          |> Map.put(:log_type, log_type)
+
+        :ok = ClickHouseAdaptor.insert_log_events(backend, [log_event], log_type)
+
+        Process.sleep(100)
+
+        table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(backend, log_type)
+
+        {:ok, query_result} =
+          ClickHouseAdaptor.execute_ch_query(
+            backend,
+            "SELECT count(*) as count FROM #{table_name}"
+          )
+
+        assert [%{"count" => 1}] = query_result
+      end
     end
   end
 

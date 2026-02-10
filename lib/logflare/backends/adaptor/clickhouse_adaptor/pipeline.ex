@@ -3,9 +3,14 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
   Broadway pipeline for the ClickHouse adaptor.
 
   This pipeline is responsible for taking log events from the
-  consolidated queue and inserting them into the backend's ingest table.
-  Events from multiple sources are processed together in a single pipeline.
+  consolidated queue and inserting them into the backend's type-specific
+  ingest tables (otel_logs, otel_metrics, otel_traces).
+
+  Events are partitioned by `log_type` using batch keys, and multiple
+  sources are processed together in a single pipeline.
   """
+
+  import Logflare.Utils.Guards
 
   require Logger
   require OpenTelemetry.Tracer
@@ -22,7 +27,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
   @processor_concurrency 4
   @batcher_concurrency 2
   @batch_size 50_000
-  @batch_timeout 4_500
+  @batch_timeout 4_000
   @max_retries 0
 
   @doc false
@@ -77,8 +82,15 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
 
   @spec handle_message(processor_name :: atom(), message :: Message.t(), context :: map()) ::
           Message.t()
-  def handle_message(_processor_name, message, _context) do
-    Message.put_batcher(message, :ch)
+  def handle_message(
+        _processor_name,
+        %Message{data: %LogEvent{log_type: log_type}} = message,
+        _context
+      )
+      when is_log_type(log_type) do
+    message
+    |> Message.put_batcher(:ch)
+    |> Message.put_batch_key(log_type)
   end
 
   @spec handle_batch(
@@ -87,11 +99,12 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
           batch_info :: Broadway.BatchInfo.t(),
           context :: map()
         ) :: [Message.t()]
-  def handle_batch(:ch, messages, batch_info, %{backend_id: backend_id}) do
+  def handle_batch(:ch, messages, %{batch_key: log_type} = batch_info, %{backend_id: backend_id})
+      when is_log_type(log_type) do
     :telemetry.execute(
       [:logflare, :backends, :pipeline, :handle_batch],
       %{batch_size: batch_info.size, batch_trigger: batch_info.trigger},
-      %{backend_type: :clickhouse, backend_id: backend_id}
+      %{backend_type: :clickhouse, backend_id: backend_id, log_type: log_type}
     )
 
     result =
@@ -99,13 +112,14 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
         attributes: %{
           backend_id: backend_id,
           ingest_batch_size: batch_info.size,
-          ingest_batch_trigger: batch_info.trigger
+          ingest_batch_trigger: batch_info.trigger,
+          log_type: log_type
         }
       } do
         backend = Backends.Cache.get_backend(backend_id)
         events = Enum.map(messages, & &1.data)
 
-        ClickHouseAdaptor.insert_log_events(backend, events)
+        ClickHouseAdaptor.insert_log_events(backend, events, log_type)
       end
 
     case result do

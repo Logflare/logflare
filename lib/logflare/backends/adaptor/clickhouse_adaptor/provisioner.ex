@@ -40,7 +40,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Provisioner do
   @impl GenServer
   def handle_continue(:test_connection, %Backend{} = backend) do
     with :ok <- ClickHouseAdaptor.test_connection(backend) do
-      {:noreply, backend, {:continue, :provision_table}}
+      {:noreply, backend, {:continue, :provision_tables}}
     else
       {:error, reason} = error ->
         Logger.error("ClickHouse test connection failed",
@@ -52,10 +52,11 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Provisioner do
     end
   end
 
-  def handle_continue(:provision_table, %Backend{} = backend) do
-    with {:ok, _} <- ClickHouseAdaptor.provision_ingest_table(backend) do
-      {:noreply, backend, {:continue, :close_process}}
-    else
+  def handle_continue(:provision_tables, %Backend{} = backend) do
+    case ClickHouseAdaptor.provision_ingest_tables(backend) do
+      :ok ->
+        {:noreply, backend, {:continue, :close_process}}
+
       {:error, reason} = error ->
         Logger.error("ClickHouse provisioning failed",
           backend_id: backend.id,

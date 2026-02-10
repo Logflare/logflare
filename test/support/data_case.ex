@@ -14,6 +14,8 @@ defmodule Logflare.DataCase do
 
   use ExUnit.CaseTemplate
 
+  alias Logflare.Backends.Adaptor.ClickHouseAdaptor
+
   using do
     quote do
       alias Logflare.Repo
@@ -146,8 +148,6 @@ defmodule Logflare.DataCase do
   Builds ClickHouse connection options for testing.
   """
   def build_clickhouse_connection_opts(source, backend, type) when type in [:ingest, :query] do
-    alias Logflare.Backends.Adaptor.ClickHouseAdaptor
-
     base_opts = [
       scheme: "http",
       hostname: "localhost",
@@ -176,21 +176,26 @@ defmodule Logflare.DataCase do
 
   @doc """
   Cleanup ClickHouse tables for a given `Backend`.
+
+  Drops all type-specific tables (`_logs`, `_metrics`, `_traces`).
   """
   def cleanup_clickhouse_tables(backend) do
-    table_name = Logflare.Backends.Adaptor.ClickHouseAdaptor.clickhouse_ingest_table_name(backend)
+    tables =
+      Enum.map([:log, :metric, :trace], fn type ->
+        ClickHouseAdaptor.clickhouse_ingest_table_name(backend, type)
+      end)
 
-    try do
-      Logflare.Backends.Adaptor.ClickHouseAdaptor.execute_ch_query(
-        backend,
-        "DROP TABLE IF EXISTS #{table_name}"
-      )
-    rescue
-      # Ignore cleanup errors
-      _ -> :ok
-    catch
-      # Process may not be running during cleanup :shrug:
-      :exit, _ -> :ok
+    for table_name <- tables do
+      try do
+        ClickHouseAdaptor.execute_ch_query(
+          backend,
+          "DROP TABLE IF EXISTS #{table_name}"
+        )
+      rescue
+        _ -> :ok
+      catch
+        :exit, _ -> :ok
+      end
     end
   end
 end

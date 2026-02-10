@@ -535,7 +535,7 @@ defmodule Logflare.SqlTest do
       on_exit(cleanup_fn)
 
       {:ok, _pid} = ClickHouseAdaptor.start_link(backend)
-      assert {:ok, _} = ClickHouseAdaptor.provision_ingest_table(backend)
+      assert :ok = ClickHouseAdaptor.provision_ingest_tables(backend)
 
       log_events = [
         build(:log_event,
@@ -550,29 +550,31 @@ defmodule Logflare.SqlTest do
         )
       ]
 
-      assert :ok = ClickHouseAdaptor.insert_log_events(backend, log_events)
+      assert :ok = ClickHouseAdaptor.insert_log_events(backend, log_events, :log)
 
       Process.sleep(200)
 
-      cte_query =
-        "with src as (select body from #{source.name}) select body from src"
+      table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(backend, :log)
 
-      consumer_query = "select body from src"
+      cte_query =
+        "with src as (select event_message from #{table_name}) select event_message from src"
+
+      consumer_query = "select event_message from src"
 
       assert {:ok, transformed} = Sql.transform(:ch_sql, {cte_query, consumer_query}, user)
       assert {:ok, results} = ClickHouseAdaptor.execute_query(backend, transformed, [])
       assert length(results) == 2
 
       # cannot access the source table directly
-      consumer_query_accessing_source = "select body from #{source.name}"
+      consumer_query_accessing_table = "select event_message from #{table_name}"
 
       assert {:error, err} =
-               Sql.transform(:ch_sql, {cte_query, consumer_query_accessing_source}, user)
+               Sql.transform(:ch_sql, {cte_query, consumer_query_accessing_table}, user)
 
       assert String.downcase(err) =~ "table not found in cte"
 
       # cannot access another known source that exists but is not in the CTE
-      consumer_query_accessing_other_source = "select body from #{other_source.name}"
+      consumer_query_accessing_other_source = "select event_message from #{other_source.name}"
 
       assert {:error, err} =
                Sql.transform(:ch_sql, {cte_query, consumer_query_accessing_other_source}, user)

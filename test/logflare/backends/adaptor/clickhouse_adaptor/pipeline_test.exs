@@ -53,7 +53,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
   end
 
   describe "handle_message/3" do
-    test "routes all messages to :ch batcher", %{context: context} do
+    test "routes all messages to :ch batcher with `log_type` as batch_key", %{context: context} do
       log_event = build(:log_event)
 
       message = %Message{
@@ -63,8 +63,47 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
 
       result = Pipeline.handle_message(:default, message, context)
 
-      assert %Message{batcher: :ch} = result
+      assert %Message{batcher: :ch, batch_key: :log} = result
       assert result.data == log_event
+    end
+
+    test "sets batch_key to `:metric` for metric events", %{context: context} do
+      log_event = build(:log_event) |> Map.put(:log_type, :metric)
+
+      message = %Message{
+        data: log_event,
+        acknowledger: {Pipeline, :ack_id, :ack_data}
+      }
+
+      result = Pipeline.handle_message(:default, message, context)
+
+      assert %Message{batcher: :ch, batch_key: :metric} = result
+    end
+
+    test "sets batch_key to `:trace` for trace events", %{context: context} do
+      log_event = build(:log_event) |> Map.put(:log_type, :trace)
+
+      message = %Message{
+        data: log_event,
+        acknowledger: {Pipeline, :ack_id, :ack_data}
+      }
+
+      result = Pipeline.handle_message(:default, message, context)
+
+      assert %Message{batcher: :ch, batch_key: :trace} = result
+    end
+
+    test "crashes when log_type is nil", %{context: context} do
+      log_event = build(:log_event) |> Map.put(:log_type, nil)
+
+      message = %Message{
+        data: log_event,
+        acknowledger: {Pipeline, :ack_id, :ack_data}
+      }
+
+      assert_raise FunctionClauseError, fn ->
+        Pipeline.handle_message(:default, message, context)
+      end
     end
   end
 
@@ -82,13 +121,14 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
         %Message{data: log_event2, acknowledger: {Pipeline, :ack_id, context}}
       ]
 
-      result = Pipeline.handle_batch(:ch, messages, %{size: 2, trigger: :flush}, context)
+      batch_info = %Broadway.BatchInfo{batcher: :ch, batch_key: :log, size: 2, trigger: :flush}
+      result = Pipeline.handle_batch(:ch, messages, batch_info, context)
 
       assert result == messages
 
       Process.sleep(200)
 
-      table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(backend)
+      table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(backend, :log)
 
       {:ok, query_result} =
         ClickHouseAdaptor.execute_ch_query(
@@ -101,7 +141,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
     end
 
     test "handles empty messages list", %{context: context} do
-      result = Pipeline.handle_batch(:ch, [], %{size: 0, trigger: :flush}, context)
+      batch_info = %Broadway.BatchInfo{batcher: :ch, batch_key: :log, size: 0, trigger: :flush}
+      result = Pipeline.handle_batch(:ch, [], batch_info, context)
       assert result == []
     end
 
@@ -139,29 +180,28 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
         %Message{data: log_event2, acknowledger: {Pipeline, :ack_id, context}}
       ]
 
-      result = Pipeline.handle_batch(:ch, messages, %{size: 2, trigger: :flush}, context)
+      batch_info = %Broadway.BatchInfo{batcher: :ch, batch_key: :log, size: 2, trigger: :flush}
+      result = Pipeline.handle_batch(:ch, messages, batch_info, context)
       assert result == messages
 
       Process.sleep(200)
 
-      table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(backend)
+      table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(backend, :log)
 
       {:ok, query_result} =
         ClickHouseAdaptor.execute_ch_query(
           backend,
-          "SELECT body, ingested_at, timestamp FROM #{table_name} ORDER BY timestamp DESC"
+          "SELECT event_message, timestamp FROM #{table_name} ORDER BY timestamp DESC"
         )
 
       assert length(query_result) == 2
 
       [first_row, second_row] = query_result
 
-      assert Jason.decode!(first_row["body"])["event_message"] == "Another message"
-      assert Jason.decode!(second_row["body"])["event_message"] == "Some message"
+      assert first_row["event_message"] == "Another message"
+      assert second_row["event_message"] == "Some message"
 
-      assert first_row["ingested_at"] != nil
       assert first_row["timestamp"] != nil
-      assert second_row["ingested_at"] != nil
       assert second_row["timestamp"] != nil
     end
 
@@ -183,13 +223,14 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
         %Message{data: event3, acknowledger: {Pipeline, :ack_id, context}}
       ]
 
-      result = Pipeline.handle_batch(:ch, messages, %{size: 3, trigger: :flush}, context)
+      batch_info = %Broadway.BatchInfo{batcher: :ch, batch_key: :log, size: 3, trigger: :flush}
+      result = Pipeline.handle_batch(:ch, messages, batch_info, context)
 
       assert result == messages
 
       Process.sleep(200)
 
-      table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(backend)
+      table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(backend, :log)
 
       {:ok, query_result} =
         ClickHouseAdaptor.execute_ch_query(
@@ -198,6 +239,66 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
         )
 
       assert [%{"count" => 3}] = query_result
+    end
+
+    test "routes metric events to metrics table", %{
+      context: context,
+      source: source,
+      backend: backend
+    } do
+      event =
+        build(:log_event, source: source, message: "Metric event") |> Map.put(:log_type, :metric)
+
+      messages = [
+        %Message{data: event, acknowledger: {Pipeline, :ack_id, context}}
+      ]
+
+      batch_info = %Broadway.BatchInfo{batcher: :ch, batch_key: :metric, size: 1, trigger: :flush}
+      result = Pipeline.handle_batch(:ch, messages, batch_info, context)
+
+      assert result == messages
+
+      Process.sleep(200)
+
+      table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(backend, :metric)
+
+      {:ok, query_result} =
+        ClickHouseAdaptor.execute_ch_query(
+          backend,
+          "SELECT count(*) as count FROM #{table_name}"
+        )
+
+      assert [%{"count" => 1}] = query_result
+    end
+
+    test "routes trace events to traces table", %{
+      context: context,
+      source: source,
+      backend: backend
+    } do
+      event =
+        build(:log_event, source: source, message: "Trace event") |> Map.put(:log_type, :trace)
+
+      messages = [
+        %Message{data: event, acknowledger: {Pipeline, :ack_id, context}}
+      ]
+
+      batch_info = %Broadway.BatchInfo{batcher: :ch, batch_key: :trace, size: 1, trigger: :flush}
+      result = Pipeline.handle_batch(:ch, messages, batch_info, context)
+
+      assert result == messages
+
+      Process.sleep(200)
+
+      table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(backend, :trace)
+
+      {:ok, query_result} =
+        ClickHouseAdaptor.execute_ch_query(
+          backend,
+          "SELECT count(*) as count FROM #{table_name}"
+        )
+
+      assert [%{"count" => 1}] = query_result
     end
   end
 
@@ -402,11 +503,12 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.PipelineTest do
         }
       ]
 
-      Mimic.expect(ClickHouseAdaptor, :insert_log_events, fn _backend, _events ->
+      Mimic.expect(ClickHouseAdaptor, :insert_log_events, fn _backend, _events, _log_type ->
         {:error, "Connection timeout"}
       end)
 
-      result = Pipeline.handle_batch(:ch, messages, %{size: 1, trigger: :flush}, context)
+      batch_info = %Broadway.BatchInfo{batcher: :ch, batch_key: :log, size: 1, trigger: :flush}
+      result = Pipeline.handle_batch(:ch, messages, batch_info, context)
 
       assert [%Message{status: {:failed, "Connection timeout"}}] = result
     end

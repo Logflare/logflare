@@ -8,218 +8,177 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.IngesterTest do
 
   setup :verify_on_exit!
 
-  describe "encode_as_varint/1" do
-    test "encodes zero" do
-      assert Ingester.encode_as_varint(0) == <<0>>
-    end
-
-    test "encodes values less than 128" do
-      assert Ingester.encode_as_varint(1) == <<1>>
-      assert Ingester.encode_as_varint(127) == <<127>>
-    end
-
-    test "encodes 128 (requires 2 bytes)" do
-      assert Ingester.encode_as_varint(128) == <<0x80, 0x01>>
-    end
-
-    test "encodes 300" do
-      assert Ingester.encode_as_varint(300) == <<0xAC, 0x02>>
-    end
-
-    test "encodes larger numbers" do
-      assert Ingester.encode_as_varint(16_384) == <<0x80, 0x80, 0x01>>
-    end
-  end
-
-  describe "encode_as_uuid/1" do
-    test "encodes UUID string to 16 bytes" do
-      uuid = "550e8400-e29b-41d4-a716-446655440000"
-      encoded = Ingester.encode_as_uuid(uuid)
-
-      assert byte_size(encoded) == 16
-
-      assert encoded ==
-               <<0xD4, 0x41, 0x9B, 0xE2, 0x00, 0x84, 0x0E, 0x55, 0x00, 0x00, 0x44, 0x55, 0x66,
-                 0x44, 0x16, 0xA7>>
-    end
-
-    test "raises an exception for invalid UUIDs" do
-      assert_raise RuntimeError,
-                   "invalid uuid when trying to encode for ClickHouse: \"6E6F6F626172\"",
-                   fn ->
-                     Ingester.encode_as_uuid("6E6F6F626172")
-                   end
-    end
-
-    test "handles uppercase UUIDs" do
-      uuid = "550E8400-E29B-41D4-A716-446655440000"
-      encoded = Ingester.encode_as_uuid(uuid)
-
-      assert byte_size(encoded) == 16
-    end
-
-    test "handles UUIDs without dashes" do
-      uuid = "550e8400e29b41d4a716446655440000"
-      encoded = Ingester.encode_as_uuid(uuid)
-
-      assert byte_size(encoded) == 16
-    end
-  end
-
-  describe "encode_as_string/1" do
-    test "encodes binary string with varint length prefix" do
-      encoded = Ingester.encode_as_string("hello")
-
-      assert is_list(encoded)
-      assert IO.iodata_to_binary(encoded) == <<5, "hello">>
-    end
-
-    test "encodes simple iodata with varint length prefix" do
-      encoded = Ingester.encode_as_string(["hello"])
-
-      assert is_list(encoded)
-      assert IO.iodata_to_binary(encoded) == <<5, "hello">>
-    end
-
-    test "encodes longer iodata" do
-      long_string = String.duplicate("a", 200)
-      encoded = Ingester.encode_as_string([long_string])
-
-      assert is_list(encoded)
-      binary = IO.iodata_to_binary(encoded)
-      <<length_bytes::binary-size(2), content::binary>> = binary
-      assert length_bytes == <<0xC8, 0x01>>
-      assert content == long_string
-    end
-
-    test "encodes iodata containing UTF-8 characters correctly" do
-      # "café" is 5 bytes in UTF-8 (é is 2 bytes)
-      encoded = Ingester.encode_as_string(["café"])
-
-      assert is_list(encoded)
-      assert IO.iodata_to_binary(encoded) == <<5, "café">>
-    end
-
-    test "encodes iodata containing emoji without issues" do
-      encoded = Ingester.encode_as_string(["🚀"])
-
-      assert is_list(encoded)
-      assert IO.iodata_to_binary(encoded) == <<4, "🚀">>
-    end
-
-    test "encodes complex iodata without intermediate binary allocation" do
-      iodata = ["hello", " ", "world"]
-      encoded = Ingester.encode_as_string(iodata)
-
-      assert is_list(encoded)
-      assert IO.iodata_length(encoded) == 1 + 11
-      # When converted to binary, should be: varint(11) + "hello world"
-      assert IO.iodata_to_binary(encoded) == <<11, "hello world">>
-    end
-  end
-
-  describe "encode_as_datetime64/1" do
-    test "encodes DateTime to microseconds since epoch" do
-      datetime = ~U[2024-01-01 12:30:45.123456Z]
-      encoded = Ingester.encode_as_datetime64(datetime)
-
-      assert byte_size(encoded) == 8
-
-      <<timestamp_int::little-signed-64>> = encoded
-      expected = DateTime.to_unix(datetime, :microsecond)
-      assert timestamp_int == expected
-    end
-
-    test "encodes epoch correctly" do
-      epoch = ~U[1970-01-01 00:00:00.000000Z]
-      encoded = Ingester.encode_as_datetime64(epoch)
-
-      <<timestamp_int::little-signed-64>> = encoded
-      assert timestamp_int == 0
-    end
-
-    test "handles microsecond precision" do
-      datetime = ~U[2024-01-01 00:00:00.123456Z]
-      encoded = Ingester.encode_as_datetime64(datetime)
-
-      <<timestamp_int::little-signed-64>> = encoded
-      expected_seconds = DateTime.to_unix(datetime, :second)
-      expected = expected_seconds * 1_000_000 + 123_456
-      assert timestamp_int == expected
-    end
-  end
-
-  describe "encode_row/1" do
-    test "encodes a LogEvent as iodata" do
+  describe "encode_row/2 for logs" do
+    test "encodes as iodata" do
       log_event = build(:log_event, message: "test message")
 
-      encoded = Ingester.encode_row(log_event)
+      encoded = Ingester.encode_row(log_event, :log)
       assert is_list(encoded)
-
-      # id (16) + source_uuid (16) + source_name (varint+str) + body (varint+json) + ingested_at (8) + timestamp (8)
-      assert IO.iodata_length(encoded) >= 16 + 16 + 1 + 1 + 10 + 8 + 8
+      assert IO.iodata_length(encoded) > 0
     end
 
-    test "encodes origin_source_uuid as source_uuid" do
+    test "encodes source_uuid as string (not UUID binary)" do
       source = build(:source)
       log_event = build(:log_event, source: source, message: "test")
 
-      encoded = Ingester.encode_row(log_event)
+      encoded = Ingester.encode_row(log_event, :log)
       binary = IO.iodata_to_binary(encoded)
 
       source_uuid_str = Atom.to_string(log_event.origin_source_uuid)
-      expected_source_uuid_bytes = Ingester.encode_as_uuid(source_uuid_str)
 
-      # source_uuid is the second 16 bytes (after id)
-      <<_id::binary-size(16), source_uuid_bytes::binary-size(16), _rest::binary>> = binary
-      assert source_uuid_bytes == expected_source_uuid_bytes
+      # id is first 16 bytes (UUID binary), then source_uuid as varint-prefixed string
+      <<_id::binary-size(16), rest::binary>> = binary
+
+      source_uuid_len = byte_size(source_uuid_str)
+      <<^source_uuid_len, encoded_uuid::binary-size(source_uuid_len), _rest::binary>> = rest
+      assert encoded_uuid == source_uuid_str
     end
 
-    test "encodes origin_source_name after source_uuid" do
-      source = build(:source)
-      log_event = build(:log_event, source: source, message: "test")
+    test "includes event_message as body column" do
+      log_event = build(:log_event, message: "hello world")
 
-      encoded = Ingester.encode_row(log_event)
+      encoded = Ingester.encode_row(log_event, :log)
       binary = IO.iodata_to_binary(encoded)
 
-      # skip id (16) + source_uuid (16)
-      <<_::binary-size(32), rest::binary>> = binary
+      assert binary =~ "hello world"
+    end
 
-      source_name = log_event.origin_source_name
-      source_name_len = byte_size(source_name)
+    test "includes full body as log_attributes JSON" do
+      log_event = build(:log_event, message: "test msg")
 
-      <<^source_name_len, encoded_name::binary-size(source_name_len), _rest::binary>> = rest
-      assert encoded_name == source_name
+      encoded = Ingester.encode_row(log_event, :log)
+      binary = IO.iodata_to_binary(encoded)
+
+      assert binary =~ "event_message"
+      assert binary =~ "test msg"
     end
   end
 
-  describe "encode_batch/1" do
-    test "encodes multiple LogEvents as iodata" do
+  describe "encode_row/2 for metrics" do
+    test "encodes as iodata" do
+      log_event = build(:log_event, message: "test metric") |> Map.put(:log_type, :metric)
+
+      encoded = Ingester.encode_row(log_event, :metric)
+      assert is_list(encoded)
+      assert IO.iodata_length(encoded) > 0
+    end
+
+    test "includes full body as attributes JSON" do
+      log_event = build(:log_event, message: "metric data") |> Map.put(:log_type, :metric)
+
+      encoded = Ingester.encode_row(log_event, :metric)
+      binary = IO.iodata_to_binary(encoded)
+
+      assert binary =~ "event_message"
+    end
+  end
+
+  describe "encode_row/2 for traces" do
+    test "encodes as iodata" do
+      log_event = build(:log_event, message: "test trace") |> Map.put(:log_type, :trace)
+
+      encoded = Ingester.encode_row(log_event, :trace)
+      assert is_list(encoded)
+      assert IO.iodata_length(encoded) > 0
+    end
+
+    test "includes full body as span_attributes JSON" do
+      log_event = build(:log_event, message: "trace data") |> Map.put(:log_type, :trace)
+
+      encoded = Ingester.encode_row(log_event, :trace)
+      binary = IO.iodata_to_binary(encoded)
+
+      assert binary =~ "event_message"
+    end
+  end
+
+  describe "encode_batch/2 for logs" do
+    test "encodes multiple LogEvents" do
       log_events = [
         build(:log_event, message: "first"),
         build(:log_event, message: "second")
       ]
 
-      batch = Ingester.encode_batch(log_events)
+      batch = Ingester.encode_batch(log_events, :log)
       assert is_list(batch)
 
-      encoded_row1 = Ingester.encode_row(Enum.at(log_events, 0))
-      encoded_row2 = Ingester.encode_row(Enum.at(log_events, 1))
+      encoded_row1 = Ingester.encode_row(Enum.at(log_events, 0), :log)
+      encoded_row2 = Ingester.encode_row(Enum.at(log_events, 1), :log)
 
       assert IO.iodata_length(batch) ==
                IO.iodata_length(encoded_row1) + IO.iodata_length(encoded_row2)
     end
 
-    test "handles single LogEvent as iodata" do
+    test "handles single LogEvent" do
       log_events = [build(:log_event, message: "only")]
 
-      batch = Ingester.encode_batch(log_events)
-      single = Ingester.encode_row(Enum.at(log_events, 0))
+      batch = Ingester.encode_batch(log_events, :log)
+      single = Ingester.encode_row(Enum.at(log_events, 0), :log)
       assert batch == [single]
     end
   end
 
-  describe "insert/4 with LogEvent structs and Backend" do
+  describe "encode_batch/2 for metrics" do
+    test "encodes multiple LogEvents" do
+      log_events = [
+        build(:log_event, message: "m1") |> Map.put(:log_type, :metric),
+        build(:log_event, message: "m2") |> Map.put(:log_type, :metric)
+      ]
+
+      batch = Ingester.encode_batch(log_events, :metric)
+      assert is_list(batch)
+      assert length(batch) == 2
+    end
+  end
+
+  describe "encode_batch/2 for traces" do
+    test "encodes single LogEvent" do
+      log_events = [
+        build(:log_event, message: "t1") |> Map.put(:log_type, :trace)
+      ]
+
+      batch = Ingester.encode_batch(log_events, :trace)
+      assert is_list(batch)
+      assert length(batch) == 1
+    end
+  end
+
+  describe "columns_for_type/1" do
+    test "returns log columns" do
+      columns = Ingester.columns_for_type(:log)
+      assert "id" in columns
+      assert "source_uuid" in columns
+      assert "source_name" in columns
+      assert "event_message" in columns
+      assert "log_attributes" in columns
+      assert "timestamp" in columns
+    end
+
+    test "returns metric columns" do
+      columns = Ingester.columns_for_type(:metric)
+      assert "id" in columns
+      assert "source_uuid" in columns
+      assert "source_name" in columns
+      assert "event_message" in columns
+      assert "time_unix" in columns
+      assert "start_time_unix" in columns
+      assert "metric_type" in columns
+      assert "attributes" in columns
+      assert "timestamp" in columns
+    end
+
+    test "returns trace columns" do
+      columns = Ingester.columns_for_type(:trace)
+      assert "id" in columns
+      assert "source_uuid" in columns
+      assert "source_name" in columns
+      assert "event_message" in columns
+      assert "span_attributes" in columns
+      assert "timestamp" in columns
+    end
+  end
+
+  describe "insert/4" do
     setup do
       insert(:plan, name: "Free")
       {source, backend, cleanup_fn} = setup_clickhouse_test()
@@ -227,7 +186,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.IngesterTest do
 
       {:ok, _supervisor_pid} = ClickHouseAdaptor.start_link(backend)
 
-      table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(backend)
+      table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(backend, :log)
 
       Process.sleep(200)
 
@@ -254,7 +213,33 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.IngesterTest do
         {:ok, %Finch.Response{status: 200, body: ""}}
       end)
 
-      assert :ok = Ingester.insert(backend, table_name, [log_event])
+      assert :ok = Ingester.insert(backend, table_name, [log_event], :log)
+    end
+
+    test "includes column list in INSERT query", %{
+      backend: backend,
+      table_name: table_name,
+      source: source
+    } do
+      log_event = build(:log_event, source: source, message: "Test")
+
+      Finch
+      |> expect(:request, fn request, _pool, _opts ->
+        url =
+          to_string(request.scheme) <>
+            "://" <>
+            request.host <> ":" <> to_string(request.port) <> request.path <> "?" <> request.query
+
+        assert url =~ "id",
+               "Expected URL to contain column list, got: #{url}"
+
+        assert url =~ "source_uuid",
+               "Expected URL to contain source_uuid column, got: #{url}"
+
+        {:ok, %Finch.Response{status: 200, body: ""}}
+      end)
+
+      assert :ok = Ingester.insert(backend, table_name, [log_event], :log)
     end
 
     test "uses synchronous inserts (no async parameters in URL)", %{
@@ -280,7 +265,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.IngesterTest do
         {:ok, %Finch.Response{status: 200, body: ""}}
       end)
 
-      assert :ok = Ingester.insert(backend, table_name, [log_event])
+      assert :ok = Ingester.insert(backend, table_name, [log_event], :log)
     end
 
     test "uses async inserts with wait flag when async_insert config is true", %{
@@ -310,7 +295,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.IngesterTest do
         {:ok, %Finch.Response{status: 200, body: ""}}
       end)
 
-      assert :ok = Ingester.insert(backend_with_async, table_name, [log_event])
+      assert :ok = Ingester.insert(backend_with_async, table_name, [log_event], :log)
     end
   end
 end

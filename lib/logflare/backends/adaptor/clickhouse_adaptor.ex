@@ -26,6 +26,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   alias Logflare.Backends.Ecto.SqlUtils
   alias Logflare.Backends.IngestEventQueue
   alias Logflare.LogEvent
+  alias Logflare.LogEvent.TypeDetection
 
   @min_pipelines 1
   @resolve_interval 10_000
@@ -117,7 +118,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
        database: :string,
        port: :integer,
        pool_size: :integer,
-       async_insert: :boolean
+       async_insert: :boolean,
+       read_only_url: :string
      }}
     |> Changeset.cast(params, [
       :url,
@@ -126,7 +128,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
       :database,
       :port,
       :pool_size,
-      :async_insert
+      :async_insert,
+      :read_only_url
     ])
     |> Logflare.Utils.default_field_value(:async_insert, false)
   end
@@ -139,6 +142,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
     changeset
     |> validate_required([:url, :database, :port])
     |> Changeset.validate_format(:url, ~r/https?\:\/\/.+/)
+    |> validate_read_only_url()
     |> validate_user_pass()
   end
 
@@ -173,17 +177,29 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   end
 
   @doc """
-  Produces a unique ingest table name for ClickHouse based on a provided `Backend` struct.
+  Produces a type-specific ingest table name for ClickHouse.
 
-  This table holds events from ALL sources using this backend.
+  - `:log`    -> `otel_logs_<token>`
+  - `:metric` -> `otel_metrics_<token>`
+  - `:trace`  -> `otel_traces_<token>`
   """
-  @spec clickhouse_ingest_table_name(Backend.t()) :: String.t()
-  def clickhouse_ingest_table_name(%Backend{token: token}) do
+  @spec clickhouse_ingest_table_name(Backend.t(), TypeDetection.log_type()) :: String.t()
+  def clickhouse_ingest_table_name(%Backend{} = backend, :log),
+    do: build_otel_table_name(backend, "otel_logs")
+
+  def clickhouse_ingest_table_name(%Backend{} = backend, :metric),
+    do: build_otel_table_name(backend, "otel_metrics")
+
+  def clickhouse_ingest_table_name(%Backend{} = backend, :trace),
+    do: build_otel_table_name(backend, "otel_traces")
+
+  @spec build_otel_table_name(Backend.t(), String.t()) :: String.t()
+  defp build_otel_table_name(%Backend{token: token}, prefix) do
     token_str = String.replace(token, "-", "_")
-    table_name = "#{QueryTemplates.default_table_name_prefix()}_#{token_str}"
+    table_name = "#{prefix}_#{token_str}"
 
     if String.length(table_name) >= 200 do
-      raise "The dynamically generated ClickHouse resource name starting with `consolidated_ingest_` " <>
+      raise "The dynamically generated ClickHouse resource name starting with `#{prefix}_` " <>
               "must be less than 200 characters. Got: #{String.length(table_name)}"
     end
 
@@ -235,17 +251,19 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   end
 
   @doc """
-  Inserts a list of `LogEvent` structs into the backend's ingest table.
+  Inserts a list of `LogEvent` structs into a type-specific ingest table.
   """
-  @spec insert_log_events(Backend.t(), [LogEvent.t()]) :: :ok | {:error, String.t()}
-  def insert_log_events(%Backend{}, []), do: :ok
+  @spec insert_log_events(Backend.t(), [LogEvent.t()], TypeDetection.log_type()) ::
+          :ok | {:error, String.t()}
+  def insert_log_events(%Backend{}, [], _log_type), do: :ok
 
-  def insert_log_events(%Backend{} = backend, [%LogEvent{} | _] = events) do
+  def insert_log_events(%Backend{} = backend, [%LogEvent{} | _] = events, log_type)
+      when is_log_type(log_type) do
     Logger.metadata(backend_id: backend.id)
 
-    table_name = clickhouse_ingest_table_name(backend)
+    table_name = clickhouse_ingest_table_name(backend, log_type)
 
-    case Ingester.insert(backend, table_name, events) do
+    case Ingester.insert(backend, table_name, events, log_type) do
       :ok ->
         :ok
 
@@ -257,13 +275,21 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   end
 
   @doc """
-  Provisions a new ingest table for the backend, if it does not already exist.
+  Provisions all type-specific ingest tables for the backend, if they do not already exist.
+
+  Creates one table per log type: `_logs`, `_metrics`, and `_traces`.
   """
-  @spec provision_ingest_table(Backend.t()) :: {:ok, [map()]} | {:error, Exception.t()}
-  def provision_ingest_table(%Backend{} = backend) do
-    table_name = clickhouse_ingest_table_name(backend)
-    statement = QueryTemplates.create_ingest_table_statement(table_name)
-    execute_ch_query(backend, statement)
+  @spec provision_ingest_tables(Backend.t()) :: :ok | {:error, Exception.t()}
+  def provision_ingest_tables(%Backend{} = backend) do
+    Enum.reduce_while([:log, :metric, :trace], :ok, fn log_type, :ok ->
+      table_name = clickhouse_ingest_table_name(backend, log_type)
+      statement = QueryTemplates.create_table_statement(table_name, log_type, [])
+
+      case execute_ch_query(backend, statement) do
+        {:ok, _} -> {:cont, :ok}
+        {:error, _} = error -> {:halt, error}
+      end
+    end)
   end
 
   @doc false
@@ -348,6 +374,14 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
       |> Changeset.add_error(:password, msg)
     else
       changeset
+    end
+  end
+
+  @spec validate_read_only_url(Changeset.t()) :: Changeset.t()
+  defp validate_read_only_url(changeset) do
+    case Changeset.get_field(changeset, :read_only_url) do
+      nil -> changeset
+      _url -> Changeset.validate_format(changeset, :read_only_url, ~r/https?\:\/\/.+/)
     end
   end
 
