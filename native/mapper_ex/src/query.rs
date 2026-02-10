@@ -1,5 +1,5 @@
 use rustler::types::ListIterator;
-use rustler::{Encoder, Env, Term};
+use rustler::{Binary, Encoder, Env, Term};
 
 use crate::path::PathSegment;
 
@@ -66,8 +66,9 @@ pub fn evaluate_first<'a>(
             continue;
         }
         if skip_empty_strings {
-            if let Ok(s) = result.decode::<String>() {
-                if s.is_empty() {
+            // Check binary length without allocating a String
+            if let Ok(b) = result.decode::<Binary>() {
+                if b.is_empty() {
                     continue;
                 }
             }

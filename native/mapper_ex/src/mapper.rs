@@ -1,5 +1,5 @@
 use rustler::types::map::MapIterator;
-use rustler::{Encoder, Env, Term};
+use rustler::{Binary, Encoder, Env, Term};
 
 use crate::coerce;
 use crate::mapping::{
@@ -122,8 +122,9 @@ fn resolve_value<'a>(
             if v == nil {
                 coerce::encode_default(env, &field.default)
             } else if skip_empty {
-                if let Ok(s) = v.decode::<String>() {
-                    if s.is_empty() {
+                // Check binary length without allocating a String
+                if let Ok(b) = v.decode::<Binary>() {
+                    if b.is_empty() {
                         coerce::encode_default(env, &field.default)
                     } else {
                         v
