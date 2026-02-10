@@ -1161,6 +1161,17 @@ defmodule Logflare.MapperTest do
       assert {:error, reason} = Mapper.compile(config)
       assert reason =~ "unknown field type"
     end
+
+    test "returns {:error, reason} on duplicate field names" do
+      config =
+        MappingConfig.new([
+          Field.string("name", path: "$.first_name"),
+          Field.string("name", path: "$.last_name")
+        ])
+
+      assert {:error, reason} = Mapper.compile(config)
+      assert reason =~ "duplicate field name: 'name'"
+    end
   end
 
   describe "error handling" do

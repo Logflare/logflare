@@ -15,8 +15,11 @@ mod atoms {
 
 /// Execute the mapping on a single document, returning the mapped output map.
 pub fn map_single<'a>(env: Env<'a>, body: Term<'a>, mapping: &CompiledMapping) -> Term<'a> {
-    let mut output = Term::map_new(env);
     let nil = atoms::nil().encode(env);
+    let field_count = mapping.fields.len();
+
+    let mut keys: Vec<Term<'a>> = Vec::with_capacity(field_count);
+    let mut values: Vec<Term<'a>> = Vec::with_capacity(field_count);
 
     for field in &mapping.fields {
         // For Enum8 fields, use a special resolution flow:
@@ -24,9 +27,9 @@ pub fn map_single<'a>(env: Env<'a>, body: Term<'a>, mapping: &CompiledMapping) -
         let is_enum8 = matches!(&field.field_type, FieldType::Enum8 { .. });
 
         let value = if is_enum8 {
-            resolve_value_raw(env, body, field, output)
+            resolve_value_raw(env, body, field, &keys, &values)
         } else {
-            resolve_value(env, body, field, output)
+            resolve_value(env, body, field, &keys, &values)
         };
 
         // Apply transform if configured
@@ -68,11 +71,18 @@ pub fn map_single<'a>(env: Env<'a>, body: Term<'a>, mapping: &CompiledMapping) -
             coerce::coerce(env, value, &field.field_type)
         };
 
-        let name_key = field.name.encode(env);
-        output = output.map_put(name_key, value).unwrap_or(output);
+        keys.push(field.name.encode(env));
+        values.push(value);
     }
 
-    output
+    // Build the output map in a single allocation via enif_make_map_from_arrays.
+    // Duplicate field names are rejected at compile time so this should not fail.
+    Term::map_from_term_arrays(env, &keys, &values).unwrap_or_else(|_| Term::map_new(env))
+}
+
+/// Look up a previously resolved field value by encoded key from the output vectors.
+fn lookup_output<'a>(key: Term<'a>, keys: &[Term<'a>], values: &[Term<'a>]) -> Option<Term<'a>> {
+    keys.iter().position(|k| *k == key).map(|i| values[i])
 }
 
 /// Resolve the source value without applying defaults (for enum8 fields).
@@ -80,7 +90,8 @@ fn resolve_value_raw<'a>(
     env: Env<'a>,
     body: Term<'a>,
     field: &CompiledField,
-    output: Term<'a>,
+    output_keys: &[Term<'a>],
+    output_values: &[Term<'a>],
 ) -> Term<'a> {
     let nil = atoms::nil().encode(env);
 
@@ -90,8 +101,8 @@ fn resolve_value_raw<'a>(
         PathSource::Coalesce(paths) => query::evaluate_first(env, body, paths, false),
         PathSource::FromOutput(field_name) => {
             let key = field_name.encode(env);
-            match output.map_get(key) {
-                Ok(v) if v != nil => v,
+            match lookup_output(key, output_keys, output_values) {
+                Some(v) if v != nil => v,
                 _ => nil,
             }
         }
@@ -103,7 +114,8 @@ fn resolve_value<'a>(
     env: Env<'a>,
     body: Term<'a>,
     field: &CompiledField,
-    output: Term<'a>,
+    output_keys: &[Term<'a>],
+    output_values: &[Term<'a>],
 ) -> Term<'a> {
     let nil = atoms::nil().encode(env);
     let skip_empty = field.field_type == FieldType::String;
@@ -138,8 +150,8 @@ fn resolve_value<'a>(
         }
         PathSource::FromOutput(field_name) => {
             let key = field_name.encode(env);
-            match output.map_get(key) {
-                Ok(v) if v != nil => v,
+            match lookup_output(key, output_keys, output_values) {
+                Some(v) if v != nil => v,
                 _ => coerce::encode_default(env, &field.default),
             }
         }

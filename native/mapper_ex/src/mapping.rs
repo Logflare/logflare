@@ -138,8 +138,17 @@ fn decode_fields<'a>(env: Env<'a>, config: Term<'a>) -> Result<Vec<CompiledField
         .map_err(|_| "fields must be a list".to_string())?;
 
     let mut compiled_fields = Vec::with_capacity(field_list.len());
+    let mut seen_names = Vec::with_capacity(field_list.len());
+
     for field_term in field_list {
-        compiled_fields.push(decode_field(env, field_term)?);
+        let field = decode_field(env, field_term)?;
+
+        if seen_names.contains(&field.name) {
+            return Err(format!("duplicate field name: '{}'", field.name));
+        }
+        seen_names.push(field.name.clone());
+
+        compiled_fields.push(field);
     }
     Ok(compiled_fields)
 }
