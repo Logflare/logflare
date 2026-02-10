@@ -62,7 +62,7 @@ defmodule Logflare.Rules.Cache do
       kw
       |> Enum.flat_map(fn
         {:id, id} ->
-          [{:get_rule, [id]}, {:get_lql_rule, [id]}]
+          [{:get_rule, [id]}]
 
         {:source_id, source_id} ->
           [{:list_by_source_id, [source_id]}, {:rules_tree_by_source_id, [source_id]}]
