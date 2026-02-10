@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use rustler::types::map::MapIterator;
 use rustler::{Encoder, Env, Term};
 
@@ -17,7 +19,7 @@ pub struct CompiledField {
     pub field_type: FieldType,
     pub default: DefaultValue,
     pub transform: Option<FieldTransform>,
-    pub value_map: Vec<(String, i64)>,
+    pub value_map: HashMap<String, i64>,
     pub exclude_keys: Vec<String>,
     pub elevate_keys: Vec<String>,
     pub pick: Vec<PickEntry>,
@@ -118,7 +120,7 @@ pub enum PredicateValue {
 /// Enum8-specific compiled data stored alongside CompiledField.
 #[derive(Debug)]
 pub struct Enum8Data {
-    pub value_map: Vec<(String, i8)>,
+    pub value_map: HashMap<String, i8>,
     pub infer_rules: Vec<InferRule>,
 }
 
@@ -323,10 +325,10 @@ fn decode_transform<'a>(env: Env<'a>, field: Term<'a>) -> Result<Option<FieldTra
     }
 }
 
-fn decode_value_map<'a>(env: Env<'a>, field: Term<'a>) -> Result<Vec<(String, i64)>, String> {
+fn decode_value_map<'a>(env: Env<'a>, field: Term<'a>) -> Result<HashMap<String, i64>, String> {
     let term = match get_term_key(env, field, "value_map") {
         Some(t) if t.is_map() => t,
-        _ => return Ok(vec![]),
+        _ => return Ok(HashMap::new()),
     };
 
     decode_string_int_map(env, term)
@@ -388,15 +390,15 @@ pub fn decode_enum8_data<'a>(env: Env<'a>, field: Term<'a>) -> Result<Enum8Data,
     })
 }
 
-fn decode_enum_values<'a>(_env: Env<'a>, field: Term<'a>) -> Result<Vec<(String, i8)>, String> {
+fn decode_enum_values<'a>(_env: Env<'a>, field: Term<'a>) -> Result<HashMap<String, i8>, String> {
     let term = match get_term_key(_env, field, "enum_values") {
         Some(t) if t.is_map() => t,
-        _ => return Ok(vec![]),
+        _ => return Ok(HashMap::new()),
     };
 
     let iter = MapIterator::new(term).ok_or_else(|| "enum_values must be a map".to_string())?;
 
-    let mut result = Vec::new();
+    let mut result = HashMap::new();
     for (k, v) in iter {
         let key = k
             .decode::<String>()
@@ -405,7 +407,7 @@ fn decode_enum_values<'a>(_env: Env<'a>, field: Term<'a>) -> Result<Vec<(String,
             .decode::<i64>()
             .map_err(|_| "enum_values values must be integers".to_string())?;
         // Pre-normalize to lowercase for case-insensitive lookups at map time
-        result.push((key.to_lowercase(), val as i8));
+        result.insert(key.to_lowercase(), val as i8);
     }
     Ok(result)
 }
@@ -568,10 +570,13 @@ fn decode_predicate_value(term: Term) -> Result<PredicateValue, String> {
     Err("comparison value must be string, integer, float, or boolean".to_string())
 }
 
-fn decode_string_int_map<'a>(_env: Env<'a>, term: Term<'a>) -> Result<Vec<(String, i64)>, String> {
+fn decode_string_int_map<'a>(
+    _env: Env<'a>,
+    term: Term<'a>,
+) -> Result<HashMap<String, i64>, String> {
     let iter = MapIterator::new(term).ok_or_else(|| "value_map must be a map".to_string())?;
 
-    let mut result = Vec::new();
+    let mut result = HashMap::new();
     for (k, v) in iter {
         let key = k
             .decode::<String>()
@@ -580,7 +585,7 @@ fn decode_string_int_map<'a>(_env: Env<'a>, term: Term<'a>) -> Result<Vec<(Strin
             .decode::<i64>()
             .map_err(|_| "value_map values must be integers".to_string())?;
         // Pre-normalize to lowercase for case-insensitive lookups at map time
-        result.push((key.to_lowercase(), val));
+        result.insert(key.to_lowercase(), val);
     }
     Ok(result)
 }

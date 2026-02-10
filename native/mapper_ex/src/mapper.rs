@@ -174,12 +174,9 @@ fn resolve_enum8<'a>(
     // Step 1: If resolved value is a string, look up in enum_values (case-insensitive)
     if resolved_value != nil {
         if let Ok(s) = resolved_value.decode::<String>() {
-            let s_lower = s.to_lowercase();
-            for (key, val) in &enum8_data.value_map {
-                // Keys are pre-lowercased at compile time
-                if *key == s_lower {
-                    return (*val as i64).encode(env);
-                }
+            // Keys are pre-lowercased at compile time
+            if let Some(val) = enum8_data.value_map.get(&s.to_lowercase()) {
+                return (*val as i64).encode(env);
             }
         }
         // If it's already an integer, pass through
@@ -350,10 +347,8 @@ pub fn evaluate_infer_rules<'a>(
 
         if any_match && all_match {
             // Both result and value_map keys are pre-lowercased at compile time
-            for (key, val) in &enum8_data.value_map {
-                if *key == rule.result {
-                    return Some(*val);
-                }
+            if let Some(val) = enum8_data.value_map.get(&rule.result) {
+                return Some(*val);
             }
         }
     }

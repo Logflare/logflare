@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use chrono::DateTime as ChronoDateTime;
 use rustler::{Encoder, Env, Term};
 
@@ -76,19 +78,16 @@ pub fn encode_default<'a>(env: Env<'a>, default: &DefaultValue) -> Term<'a> {
 }
 
 /// Look up a string value in a value_map, returning the mapped integer.
-pub fn apply_value_map<'a>(env: Env<'a>, value: Term<'a>, map: &[(String, i64)]) -> Term<'a> {
+pub fn apply_value_map<'a>(env: Env<'a>, value: Term<'a>, map: &HashMap<String, i64>) -> Term<'a> {
     let nil = atoms::nil().encode(env);
     if value == nil || map.is_empty() {
         return nil;
     }
 
     if let Ok(s) = value.decode::<String>() {
-        let s_lower = s.to_lowercase();
-        for (key, val) in map {
-            // Keys are pre-lowercased at compile time
-            if *key == s_lower {
-                return val.encode(env);
-            }
+        // Keys are pre-lowercased at compile time
+        if let Some(val) = map.get(&s.to_lowercase()) {
+            return val.encode(env);
         }
     }
 
