@@ -155,13 +155,15 @@ defmodule LogflareWeb.Api.QueryControllerTest do
       on_exit(cleanup_fn)
 
       start_supervised!({ClickHouseAdaptor, backend})
-      assert {:ok, _} = ClickHouseAdaptor.provision_ingest_table(backend)
+      assert :ok = ClickHouseAdaptor.provision_ingest_tables(backend)
 
       message = "query_controller_clickhouse_sql"
       log_event = build(:log_event, source: source, message: message)
-      assert :ok = ClickHouseAdaptor.insert_log_events(backend, [log_event])
+      assert :ok = ClickHouseAdaptor.insert_log_events(backend, [log_event], :log)
 
-      query = ~s(select body from "#{source.name}")
+      table = ClickHouseAdaptor.clickhouse_ingest_table_name(backend, :log)
+      source_uuid = Atom.to_string(source.token)
+      query = ~s(select event_message from #{table} where source_uuid = '#{source_uuid}')
 
       TestUtils.retry_assert(fn ->
         response =
@@ -171,7 +173,10 @@ defmodule LogflareWeb.Api.QueryControllerTest do
           |> json_response(200)
 
         assert %{"result" => results} = response
-        assert Enum.any?(results, fn %{"body" => body} -> body =~ message end)
+
+        assert Enum.any?(results, fn %{"event_message" => event_message} ->
+                 event_message == message
+               end)
       end)
     end
 
@@ -184,13 +189,15 @@ defmodule LogflareWeb.Api.QueryControllerTest do
       on_exit(cleanup_fn)
 
       start_supervised!({ClickHouseAdaptor, backend})
-      assert {:ok, _} = ClickHouseAdaptor.provision_ingest_table(backend)
+      assert :ok = ClickHouseAdaptor.provision_ingest_tables(backend)
 
       message = "query_controller_clickhouse_ch_sql"
       log_event = build(:log_event, source: source, message: message)
-      assert :ok = ClickHouseAdaptor.insert_log_events(backend, [log_event])
+      assert :ok = ClickHouseAdaptor.insert_log_events(backend, [log_event], :log)
 
-      query = ~s(select body from "#{source.name}")
+      table = ClickHouseAdaptor.clickhouse_ingest_table_name(backend, :log)
+      source_uuid = Atom.to_string(source.token)
+      query = ~s(select event_message from #{table} where source_uuid = '#{source_uuid}')
 
       TestUtils.retry_assert(fn ->
         response =
@@ -200,7 +207,10 @@ defmodule LogflareWeb.Api.QueryControllerTest do
           |> json_response(200)
 
         assert %{"result" => results} = response
-        assert Enum.any?(results, fn %{"body" => body} -> body =~ message end)
+
+        assert Enum.any?(results, fn %{"event_message" => event_message} ->
+                 event_message == message
+               end)
       end)
     end
 
