@@ -176,7 +176,8 @@ fn resolve_enum8<'a>(
         if let Ok(s) = resolved_value.decode::<String>() {
             let s_lower = s.to_lowercase();
             for (key, val) in &enum8_data.value_map {
-                if key.to_lowercase() == s_lower {
+                // Keys are pre-lowercased at compile time
+                if *key == s_lower {
                     return (*val as i64).encode(env);
                 }
             }
@@ -348,10 +349,9 @@ pub fn evaluate_infer_rules<'a>(
         };
 
         if any_match && all_match {
-            // Look up result in value_map
-            let result_lower = rule.result.to_lowercase();
+            // Both result and value_map keys are pre-lowercased at compile time
             for (key, val) in &enum8_data.value_map {
-                if key.to_lowercase() == result_lower {
+                if *key == rule.result {
                     return Some(*val);
                 }
             }

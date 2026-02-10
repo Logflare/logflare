@@ -404,7 +404,8 @@ fn decode_enum_values<'a>(_env: Env<'a>, field: Term<'a>) -> Result<Vec<(String,
         let val = v
             .decode::<i64>()
             .map_err(|_| "enum_values values must be integers".to_string())?;
-        result.push((key, val as i8));
+        // Pre-normalize to lowercase for case-insensitive lookups at map time
+        result.push((key.to_lowercase(), val as i8));
     }
     Ok(result)
 }
@@ -440,7 +441,12 @@ fn decode_infer_rule<'a>(env: Env<'a>, rule: Term<'a>) -> Result<InferRule, Stri
         None => vec![],
     };
 
-    Ok(InferRule { any, all, result })
+    // Pre-normalize to lowercase for case-insensitive lookup against enum_values
+    Ok(InferRule {
+        any,
+        all,
+        result: result.to_lowercase(),
+    })
 }
 
 fn decode_conditions<'a>(env: Env<'a>, term: Term<'a>) -> Result<Vec<InferCondition>, String> {
@@ -573,7 +579,8 @@ fn decode_string_int_map<'a>(_env: Env<'a>, term: Term<'a>) -> Result<Vec<(Strin
         let val = v
             .decode::<i64>()
             .map_err(|_| "value_map values must be integers".to_string())?;
-        result.push((key, val));
+        // Pre-normalize to lowercase for case-insensitive lookups at map time
+        result.push((key.to_lowercase(), val));
     }
     Ok(result)
 }

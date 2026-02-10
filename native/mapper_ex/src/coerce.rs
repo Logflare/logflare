@@ -83,9 +83,10 @@ pub fn apply_value_map<'a>(env: Env<'a>, value: Term<'a>, map: &[(String, i64)])
     }
 
     if let Ok(s) = value.decode::<String>() {
-        let s_upper = s.to_uppercase();
+        let s_lower = s.to_lowercase();
         for (key, val) in map {
-            if key.to_uppercase() == s_upper {
+            // Keys are pre-lowercased at compile time
+            if *key == s_lower {
                 return val.encode(env);
             }
         }
