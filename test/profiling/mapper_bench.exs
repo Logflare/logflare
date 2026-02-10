@@ -28,7 +28,7 @@ payload = %{
     "request" => %{
       "cf" => %{
         "asOrganization" => "Amazon Technologies Inc.",
-        "asn" => 16509,
+        "asn" => 16_509,
         "botManagement" => %{
           "corporateProxy" => false,
           "ja3Hash" => "8a64967e35f306b9a5f5cfe592dd153e",
@@ -151,7 +151,7 @@ payload = %{
   "request" => %{
     "cf" => %{
       "asOrganization" => "Amazon Technologies Inc.",
-      "asn" => 16509,
+      "asn" => 16_509,
       "botManagement" => %{
         "corporateProxy" => false,
         "ja3Hash" => "8a64967e35f306b9a5f5cfe592dd153e",
@@ -463,6 +463,7 @@ compiled = Mapper.compile!(logs_mapping)
 nif_result = Mapper.map(payload, compiled)
 manual_result = manual_map.(payload)
 
+# credo:disable-for-lines:3
 IO.puts("\n--- NIF output keys: #{inspect(Map.keys(nif_result) |> Enum.sort())}")
 IO.puts("--- Manual output keys: #{inspect(Map.keys(manual_result) |> Enum.sort())}")
 IO.puts("")
