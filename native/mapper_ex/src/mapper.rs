@@ -27,9 +27,9 @@ pub fn map_single<'a>(env: Env<'a>, body: Term<'a>, mapping: &CompiledMapping) -
         let is_enum8 = matches!(&field.field_type, FieldType::Enum8 { .. });
 
         let value = if is_enum8 {
-            resolve_value_raw(env, body, field, &keys, &values)
+            resolve_value_raw(env, body, field, &values)
         } else {
-            resolve_value(env, body, field, &keys, &values)
+            resolve_value(env, body, field, &values)
         };
 
         // Apply transform if configured
@@ -80,17 +80,11 @@ pub fn map_single<'a>(env: Env<'a>, body: Term<'a>, mapping: &CompiledMapping) -
     Term::map_from_term_arrays(env, &keys, &values).unwrap_or_else(|_| Term::map_new(env))
 }
 
-/// Look up a previously resolved field value by encoded key from the output vectors.
-fn lookup_output<'a>(key: Term<'a>, keys: &[Term<'a>], values: &[Term<'a>]) -> Option<Term<'a>> {
-    keys.iter().position(|k| *k == key).map(|i| values[i])
-}
-
 /// Resolve the source value without applying defaults (for enum8 fields).
 fn resolve_value_raw<'a>(
     env: Env<'a>,
     body: Term<'a>,
     field: &CompiledField,
-    output_keys: &[Term<'a>],
     output_values: &[Term<'a>],
 ) -> Term<'a> {
     let nil = atoms::nil().encode(env);
@@ -99,13 +93,15 @@ fn resolve_value_raw<'a>(
         PathSource::Root => body,
         PathSource::Single(segments) => query::evaluate(env, body, segments),
         PathSource::Coalesce(paths) => query::evaluate_first(env, body, paths, false),
-        PathSource::FromOutput(field_name) => {
-            let key = field_name.encode(env);
-            match lookup_output(key, output_keys, output_values) {
-                Some(v) if v != nil => v,
-                _ => nil,
+        PathSource::FromOutput(idx) => {
+            let v = output_values[*idx];
+            if v != nil {
+                v
+            } else {
+                nil
             }
         }
+        PathSource::FromOutputName(_) => unreachable!("FromOutputName should be resolved"),
     }
 }
 
@@ -114,7 +110,6 @@ fn resolve_value<'a>(
     env: Env<'a>,
     body: Term<'a>,
     field: &CompiledField,
-    output_keys: &[Term<'a>],
     output_values: &[Term<'a>],
 ) -> Term<'a> {
     let nil = atoms::nil().encode(env);
@@ -148,13 +143,15 @@ fn resolve_value<'a>(
                 result
             }
         }
-        PathSource::FromOutput(field_name) => {
-            let key = field_name.encode(env);
-            match lookup_output(key, output_keys, output_values) {
-                Some(v) if v != nil => v,
-                _ => coerce::encode_default(env, &field.default),
+        PathSource::FromOutput(idx) => {
+            let v = output_values[*idx];
+            if v != nil {
+                v
+            } else {
+                coerce::encode_default(env, &field.default)
             }
         }
+        PathSource::FromOutputName(_) => unreachable!("FromOutputName should be resolved"),
     }
 }
 

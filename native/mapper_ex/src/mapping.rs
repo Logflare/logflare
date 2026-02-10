@@ -31,7 +31,10 @@ pub enum PathSource {
     Root,
     Single(Vec<PathSegment>),
     Coalesce(Vec<Vec<PathSegment>>),
-    FromOutput(String),
+    /// Index into the output values vector (resolved at compile time from field name).
+    FromOutput(usize),
+    /// Temporary: unresolved field name, converted to FromOutput(usize) during compilation.
+    FromOutputName(String),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -140,16 +143,25 @@ fn decode_fields<'a>(env: Env<'a>, config: Term<'a>) -> Result<Vec<CompiledField
         .map_err(|_| "fields must be a list".to_string())?;
 
     let mut compiled_fields = Vec::with_capacity(field_list.len());
-    let mut seen_names = Vec::with_capacity(field_list.len());
+    let mut name_to_index: HashMap<String, usize> = HashMap::with_capacity(field_list.len());
 
     for field_term in field_list {
-        let field = decode_field(env, field_term)?;
+        let mut field = decode_field(env, field_term)?;
 
-        if seen_names.contains(&field.name) {
+        if name_to_index.contains_key(&field.name) {
             return Err(format!("duplicate field name: '{}'", field.name));
         }
-        seen_names.push(field.name.clone());
 
+        // Resolve from_output field name to index
+        if let PathSource::FromOutputName(ref name) = field.path_source {
+            let idx = name_to_index.get(name).ok_or_else(|| {
+                format!("from_output '{}' references unknown or later field", name)
+            })?;
+            field.path_source = PathSource::FromOutput(*idx);
+        }
+
+        let idx = compiled_fields.len();
+        name_to_index.insert(field.name.clone(), idx);
         compiled_fields.push(field);
     }
     Ok(compiled_fields)
@@ -280,9 +292,9 @@ fn decode_default<'a>(
 }
 
 fn decode_path_source<'a>(env: Env<'a>, field: Term<'a>) -> Result<PathSource, String> {
-    // Check from_output first
+    // Check from_output first (resolved to index in decode_fields)
     if let Some(from) = get_string_key(env, field, "from_output")? {
-        return Ok(PathSource::FromOutput(from));
+        return Ok(PathSource::FromOutputName(from));
     }
 
     // Check "paths" (coalesce)
