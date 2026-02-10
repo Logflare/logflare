@@ -12,6 +12,8 @@ defmodule Logflare.Mapper.MappingConfig.InferCondition do
 
   import Ecto.Changeset
 
+  @derive Jason.Encoder
+
   @primary_key false
   typed_embedded_schema do
     field(:path, :string)

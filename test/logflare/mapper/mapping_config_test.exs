@@ -154,6 +154,132 @@ defmodule Logflare.Mapper.MappingConfigTest do
     end
   end
 
+  describe "to_json/1 and from_json/1" do
+    test "round-trip preserves a basic config" do
+      config =
+        MappingConfig.new([
+          Field.string("trace_id", paths: ["$.trace_id", "$.traceId"], default: ""),
+          Field.string("severity_text", path: "$.level", transform: "upcase"),
+          Field.uint8("severity_number",
+            from_output: "severity_text",
+            value_map: %{"INFO" => 9, "ERROR" => 17},
+            default: 0
+          ),
+          Field.datetime64("timestamp", path: "$.timestamp"),
+          Field.json("attributes",
+            path: "$",
+            exclude_keys: ["id", "timestamp"],
+            elevate_keys: ["metadata"]
+          )
+        ])
+
+      assert {:ok, json} = MappingConfig.to_json(config)
+      assert {:ok, restored} = MappingConfig.from_json(json)
+
+      assert length(restored.fields) == length(config.fields)
+
+      Enum.zip(config.fields, restored.fields)
+      |> Enum.each(fn {orig, rest} ->
+        assert orig.name == rest.name
+        assert orig.type == rest.type
+        assert orig.path == rest.path
+        assert orig.paths == rest.paths
+        assert orig.default == rest.default
+        assert orig.transform == rest.transform
+        assert orig.from_output == rest.from_output
+        assert orig.value_map == rest.value_map
+        assert orig.exclude_keys == rest.exclude_keys
+        assert orig.elevate_keys == rest.elevate_keys
+        assert orig.precision == rest.precision
+      end)
+    end
+
+    test "round-trip preserves pick entries" do
+      config =
+        MappingConfig.new([
+          Field.json("resource_attributes",
+            paths: ["$.resource"],
+            pick: [
+              {"region", ["$.metadata.region", "$.region"]},
+              {"cluster", ["$.metadata.cluster"]}
+            ]
+          )
+        ])
+
+      assert {:ok, json} = MappingConfig.to_json(config)
+      assert {:ok, restored} = MappingConfig.from_json(json)
+
+      [field] = restored.fields
+      assert length(field.pick) == 2
+
+      [region, cluster] = field.pick
+      assert %PickEntry{key: "region", paths: ["$.metadata.region", "$.region"]} = region
+      assert %PickEntry{key: "cluster", paths: ["$.metadata.cluster"]} = cluster
+    end
+
+    test "round-trip preserves infer rules" do
+      config =
+        MappingConfig.new([
+          Field.enum8("metric_type",
+            paths: ["$.metric_type"],
+            values: %{"gauge" => 1, "sum" => 2, "histogram" => 3},
+            infer: [
+              %InferRule{
+                result: "histogram",
+                any: [
+                  %InferCondition{path: "$.bucket_counts", predicate: "not_empty"}
+                ],
+                all: [
+                  %InferCondition{
+                    path: "$.kind",
+                    predicate: "equals",
+                    comparison_value: "cumulative"
+                  }
+                ]
+              }
+            ],
+            default: 1
+          )
+        ])
+
+      assert {:ok, json} = MappingConfig.to_json(config)
+      assert {:ok, restored} = MappingConfig.from_json(json)
+
+      [field] = restored.fields
+      assert field.enum_values == %{"gauge" => 1, "sum" => 2, "histogram" => 3}
+      assert [rule] = field.infer
+      assert rule.result == "histogram"
+      assert [any_cond] = rule.any
+      assert any_cond.path == "$.bucket_counts"
+      assert any_cond.predicate == "not_empty"
+      assert [all_cond] = rule.all
+      assert all_cond.path == "$.kind"
+      assert all_cond.predicate == "equals"
+      assert all_cond.comparison_value == "cumulative"
+    end
+
+    test "from_json/1 with invalid JSON returns decode error" do
+      assert {:error, %Jason.DecodeError{}} = MappingConfig.from_json("not valid json")
+    end
+
+    test "from_json/1 with invalid field type returns changeset error" do
+      json =
+        Jason.encode!(%{
+          "fields" => [
+            %{"name" => "bad_field", "type" => "invalid_type"}
+          ]
+        })
+
+      assert {:error, %Ecto.Changeset{}} = MappingConfig.from_json(json)
+    end
+
+    test "from_json/1 with missing required field returns changeset error" do
+      json = Jason.encode!(%{"fields" => [%{"type" => "string"}]})
+
+      assert {:error, %Ecto.Changeset{}} = MappingConfig.from_json(json)
+    end
+  end
+
   describe "MappingConfig.to_nif_map/1" do
     test "serializes basic config" do
       config =

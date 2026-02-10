@@ -35,6 +35,8 @@ defmodule Logflare.Mapper.MappingConfig do
   alias __MODULE__.InferRule
   alias __MODULE__.PickEntry
 
+  @derive Jason.Encoder
+
   @primary_key false
   typed_embedded_schema do
     embeds_many(:fields, FieldConfig)
@@ -50,6 +52,18 @@ defmodule Logflare.Mapper.MappingConfig do
   @spec new([FieldConfig.t()]) :: t()
   def new(fields) when is_list(fields) do
     %__MODULE__{fields: fields}
+  end
+
+  @spec to_json(t()) :: {:ok, String.t()} | {:error, Jason.EncodeError.t()}
+  def to_json(%__MODULE__{} = config), do: Jason.encode(config)
+
+  @spec from_json(String.t()) :: {:ok, t()} | {:error, Ecto.Changeset.t() | Jason.DecodeError.t()}
+  def from_json(json) when is_binary(json) do
+    with {:ok, map} <- Jason.decode(json) do
+      %__MODULE__{}
+      |> changeset(map)
+      |> Ecto.Changeset.apply_action(:insert)
+    end
   end
 
   @spec to_nif_map(t()) :: map()

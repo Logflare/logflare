@@ -458,24 +458,143 @@ manual_map = fn doc ->
   }
 end
 
+# Hybrid config: NIF handles everything except log_attributes JSON ops
+hybrid_mapping =
+  MappingConfig.new([
+    Field.string("project",
+      paths: ["$.project", "$.project_ref", "$.project_id"],
+      default: ""
+    ),
+    Field.string("trace_id",
+      paths: ["$.trace_id", "$.traceId", "$.otel_trace_id"],
+      default: ""
+    ),
+    Field.string("span_id",
+      paths: ["$.span_id", "$.spanId", "$.otel_span_id"],
+      default: ""
+    ),
+    Field.uint8("trace_flags",
+      paths: ["$.trace_flags", "$.traceFlags"],
+      default: 0
+    ),
+    Field.string("severity_text",
+      paths: ["$.severity_text", "$.severityText", "$.metadata.level", "$.level"],
+      default: "INFO",
+      transform: "upcase"
+    ),
+    Field.uint8("severity_number",
+      from_output: "severity_text",
+      value_map: %{
+        "TRACE" => 1,
+        "DEBUG" => 5,
+        "INFO" => 9,
+        "WARN" => 13,
+        "WARNING" => 13,
+        "ERROR" => 17,
+        "FATAL" => 21,
+        "CRITICAL" => 21,
+        "EMERGENCY" => 21
+      },
+      default: 0
+    ),
+    Field.string("service_name",
+      paths: [
+        "$.resource.service.name",
+        "$.service_name",
+        "$.resource.name",
+        "$.metadata.context.application"
+      ],
+      default: ""
+    ),
+    Field.string("event_message",
+      paths: ["$.event_message", "$.message", "$.body", "$.msg"],
+      default: ""
+    ),
+    Field.string("scope_name",
+      paths: [
+        "$.scope.name",
+        "$.metadata.context.module",
+        "$.metadata.context.application",
+        "$.instrumentation_library.name"
+      ],
+      default: ""
+    ),
+    Field.string("scope_version",
+      paths: [
+        "$.scope.version",
+        "$.instrumentation_library.version"
+      ],
+      default: ""
+    ),
+    Field.string("scope_schema_url",
+      paths: ["$.scope.schema_url"],
+      default: ""
+    ),
+    Field.string("resource_schema_url",
+      paths: ["$.resource.schema_url"],
+      default: ""
+    ),
+    Field.json("resource_attributes",
+      paths: ["$.resource"],
+      pick: [
+        {"region", ["$.metadata.region", "$.region"]},
+        {"cluster", ["$.metadata.cluster", "$.cluster"]},
+        {"service.name", ["$.resource.service.name", "$.service_name"]},
+        {"application", ["$.metadata.context.application"]},
+        {"node", ["$.metadata.context.vm.node"]},
+        {"project", ["$.project", "$.project_ref", "$.project_id"]}
+      ],
+      default: %{}
+    ),
+    Field.json("scope_attributes",
+      paths: ["$.scope.attributes", "$.scope"],
+      default: %{}
+    ),
+    Field.datetime64("timestamp", path: "$.timestamp", precision: 9)
+  ])
+
 compiled = Mapper.compile!(logs_mapping)
+compiled_hybrid = Mapper.compile!(hybrid_mapping)
+
+# Elixir-side log_attributes: drop 3 keys, elevate metadata
+build_log_attributes = fn doc ->
+  doc
+  |> Map.drop(["id", "event_message", "timestamp"])
+  |> then(fn m ->
+    case Map.pop(m, "metadata") do
+      {nil, m} -> m
+      {metadata, m} when is_map(metadata) -> Map.merge(metadata, m)
+      {_, m} -> m
+    end
+  end)
+end
 
 nif_result = Mapper.map(payload, compiled)
 manual_result = manual_map.(payload)
 
-# credo:disable-for-lines:3
+hybrid_result =
+  payload
+  |> Mapper.map(compiled_hybrid)
+  |> Map.put("log_attributes", build_log_attributes.(payload))
+
+# credo:disable-for-lines:4
 IO.puts("\n--- NIF output keys: #{inspect(Map.keys(nif_result) |> Enum.sort())}")
 IO.puts("--- Manual output keys: #{inspect(Map.keys(manual_result) |> Enum.sort())}")
+IO.puts("--- Hybrid output keys: #{inspect(Map.keys(hybrid_result) |> Enum.sort())}")
 IO.puts("")
 
 Benchee.run(
   %{
     "NIF mapper (pre-compiled)" => fn -> Mapper.map(payload, compiled) end,
-    "NIF mapper (compile + map)" => fn -> Mapper.run(payload, logs_mapping) end,
+    "NIF hybrid (NIF + Elixir log_attrs)" => fn ->
+      payload
+      |> Mapper.map(compiled_hybrid)
+      |> Map.put("log_attributes", build_log_attributes.(payload))
+    end,
     "Manual Elixir map" => fn -> manual_map.(payload) end
   },
-  time: 4,
-  warmup: 1,
+  time: 5,
+  warmup: 2,
   memory_time: 3,
   reduction_time: 3
 )

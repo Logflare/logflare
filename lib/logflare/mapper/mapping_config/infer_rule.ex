@@ -16,6 +16,8 @@ defmodule Logflare.Mapper.MappingConfig.InferRule do
 
   alias Logflare.Mapper.MappingConfig.InferCondition
 
+  @derive Jason.Encoder
+
   @primary_key false
   typed_embedded_schema do
     field(:result, :string)

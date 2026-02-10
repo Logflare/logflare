@@ -93,6 +93,8 @@ defmodule Logflare.Mapper.MappingConfig.FieldConfig do
           default: term()
         ]
 
+  @derive Jason.Encoder
+
   @primary_key false
   typed_embedded_schema do
     field(:name, :string)
@@ -114,20 +116,24 @@ defmodule Logflare.Mapper.MappingConfig.FieldConfig do
   @spec changeset(t() | Ecto.Changeset.t(), map()) :: Ecto.Changeset.t()
   def changeset(struct_or_changeset, attrs) do
     struct_or_changeset
-    |> cast(attrs, [
-      :name,
-      :type,
-      :path,
-      :paths,
-      :default,
-      :precision,
-      :transform,
-      :from_output,
-      :value_map,
-      :enum_values,
-      :exclude_keys,
-      :elevate_keys
-    ])
+    |> cast(
+      attrs,
+      [
+        :name,
+        :type,
+        :path,
+        :paths,
+        :default,
+        :precision,
+        :transform,
+        :from_output,
+        :value_map,
+        :enum_values,
+        :exclude_keys,
+        :elevate_keys
+      ],
+      empty_values: []
+    )
     |> validate_required([:name, :type])
     |> validate_inclusion(:type, @valid_types)
     |> validate_inclusion(:transform, @valid_transforms)

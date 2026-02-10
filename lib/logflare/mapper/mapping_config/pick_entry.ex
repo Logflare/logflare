@@ -10,6 +10,8 @@ defmodule Logflare.Mapper.MappingConfig.PickEntry do
 
   import Ecto.Changeset
 
+  @derive Jason.Encoder
+
   @primary_key false
   typed_embedded_schema do
     field(:key, :string)
