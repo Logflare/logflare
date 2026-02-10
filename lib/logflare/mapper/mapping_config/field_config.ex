@@ -1,0 +1,247 @@
+defmodule Logflare.Mapper.MappingConfig.FieldConfig do
+  @moduledoc """
+  Defines a single field in a `Logflare.Mapper.MappingConfig`.
+
+  Use the constructor functions (`string/2`, `json/2`, `enum8/2`, etc.) to build
+  field configs. Each constructor accepts the field name and a keyword list of options.
+
+  ## Common Options (all types)
+
+    * `:path` — single JSONPath source (e.g. `"$.trace_id"`)
+    * `:paths` — coalesce paths; first non-nil value wins (e.g. `["$.trace_id", "$.traceId"]`).
+      For string fields, empty strings are also skipped during coalesce.
+    * `:from_output` — read from an already-resolved field in the output map instead of the
+      input document (e.g. `from_output: "severity_text"`). Fields are resolved in order, so
+      the source field must be defined earlier in the config.
+    * `:default` — fallback value when no path resolves
+    * `:value_map` — `%{String.t() => integer()}` lookup applied to the resolved value.
+      Useful for derived fields (e.g. mapping `"ERROR"` to `17` for severity numbers).
+
+  ## Type-Specific Options
+
+  ### `string/2`
+
+    * `:transform` — `"upcase"` or `"downcase"`, applied after resolution
+
+  ### `datetime64/2`
+
+    * `:precision` — target precision 0-9 (default `9` for nanoseconds). Integer inputs are
+      auto-detected by digit count: 1-10 digits = seconds, 11-13 = ms, 14-16 = us, 17+ = ns.
+      ISO8601/RFC3339 strings are parsed via chrono.
+
+  ### `enum8/2`
+
+    * `:values` — `%{String.t() => integer()}` mapping enum labels to their integer values
+      (e.g. `%{"gauge" => 1, "sum" => 2, "histogram" => 3}`). Lookup is case-insensitive.
+    * `:infer` — list of `InferRule` structs for structural inference when no explicit value
+      is found at the configured paths. Rules are evaluated in order; first match wins.
+
+  ### `json/2`
+
+    * `:exclude_keys` — top-level keys to remove from the output map
+    * `:elevate_keys` — keys whose children are merged into the parent map (the key itself
+      is removed). Existing top-level keys win over elevated children.
+    * `:pick` — list of `{key, paths}` tuples for sparse map assembly. Each entry tries its
+      coalesce paths; resolved entries are included in the output, unresolved are omitted.
+      If pick produces a non-empty map, it becomes the field value. If empty, falls back
+      to `:path`/`:paths`.
+
+  ## Inference Rules (`InferRule` / `InferCondition`)
+
+  Used by `enum8/2` to infer a value from structural cues when explicit path lookup finds
+  no match. Each rule has `:any` (OR) and `:all` (AND) condition lists plus a `:result`
+  string that is looked up in the `:values` map.
+
+  A rule matches when `(any is empty OR at least one any-condition matches) AND
+  (all is empty OR every all-condition matches)`.
+
+  ### Supported Predicates
+
+  | Predicate        | Description                                  | Extra fields             |
+  |------------------|----------------------------------------------|--------------------------|
+  | `"exists"`       | Value is non-nil                             |                          |
+  | `"not_exists"`   | Value is nil/missing                         |                          |
+  | `"not_zero"`     | Numeric value != 0                           |                          |
+  | `"is_zero"`      | Numeric value == 0                           |                          |
+  | `"greater_than"` | Numeric value > threshold                    | `comparison_value`       |
+  | `"less_than"`    | Numeric value < threshold                    | `comparison_value`       |
+  | `"not_empty"`    | Non-empty string or list                     |                          |
+  | `"is_empty"`     | Empty string or list                         |                          |
+  | `"equals"`       | Exact value match                            | `comparison_value`       |
+  | `"not_equals"`   | Value doesn't match                          | `comparison_value`       |
+  | `"in"`           | Value is one of a set                        | `comparison_values`      |
+  | `"is_string"`    | Value is a binary/string                     |                          |
+  | `"is_number"`    | Value is integer or float                    |                          |
+  | `"is_list"`      | Value is a list                              |                          |
+  | `"is_map"`       | Value is a map                               |                          |
+  """
+
+  use TypedEctoSchema
+
+  import Ecto.Changeset
+
+  alias Logflare.Mapper.MappingConfig.InferRule
+  alias Logflare.Mapper.MappingConfig.PickEntry
+
+  @valid_types ~w(string uint8 uint32 uint64 int32 float64 bool enum8 datetime64 json)
+  @valid_transforms ~w(upcase downcase)
+
+  @type common_opts :: [
+          path: String.t(),
+          paths: [String.t()],
+          from_output: String.t(),
+          default: term()
+        ]
+
+  @derive Jason.Encoder
+
+  @primary_key false
+  typed_embedded_schema do
+    field(:name, :string)
+    field(:type, :string)
+    field(:path, :string)
+    field(:paths, {:array, :string})
+    field(:default, :string)
+    field(:precision, :integer)
+    field(:transform, :string)
+    field(:from_output, :string)
+    field(:value_map, :map)
+    field(:enum_values, :map)
+    field(:exclude_keys, {:array, :string})
+    field(:elevate_keys, {:array, :string})
+    embeds_many(:pick, PickEntry)
+    embeds_many(:infer, InferRule)
+  end
+
+  @spec changeset(t() | Ecto.Changeset.t(), map()) :: Ecto.Changeset.t()
+  def changeset(struct_or_changeset, attrs) do
+    struct_or_changeset
+    |> cast(
+      attrs,
+      [
+        :name,
+        :type,
+        :path,
+        :paths,
+        :default,
+        :precision,
+        :transform,
+        :from_output,
+        :value_map,
+        :enum_values,
+        :exclude_keys,
+        :elevate_keys
+      ],
+      empty_values: []
+    )
+    |> validate_required([:name, :type])
+    |> validate_inclusion(:type, @valid_types)
+    |> validate_inclusion(:transform, @valid_transforms)
+    |> cast_embed(:pick, with: &PickEntry.changeset/2)
+    |> cast_embed(:infer, with: &InferRule.changeset/2)
+  end
+
+  @spec string(String.t(), keyword()) :: t()
+  def string(name, opts \\ []) do
+    build(name, "string", opts, [:transform])
+  end
+
+  @spec uint8(String.t(), keyword()) :: t()
+  def uint8(name, opts \\ []) do
+    build(name, "uint8", opts)
+  end
+
+  @spec uint32(String.t(), keyword()) :: t()
+  def uint32(name, opts \\ []) do
+    build(name, "uint32", opts)
+  end
+
+  @spec uint64(String.t(), keyword()) :: t()
+  def uint64(name, opts \\ []) do
+    build(name, "uint64", opts)
+  end
+
+  @spec int32(String.t(), keyword()) :: t()
+  def int32(name, opts \\ []) do
+    build(name, "int32", opts)
+  end
+
+  @spec float64(String.t(), keyword()) :: t()
+  def float64(name, opts \\ []) do
+    build(name, "float64", opts)
+  end
+
+  @spec bool(String.t(), keyword()) :: t()
+  def bool(name, opts \\ []) do
+    build(name, "bool", opts)
+  end
+
+  @spec enum8(String.t(), keyword()) :: t()
+  def enum8(name, opts \\ []) do
+    base = build(name, "enum8", opts)
+
+    base
+    |> maybe_put(:enum_values, opts[:values])
+    |> maybe_put_infer(opts[:infer])
+  end
+
+  @spec datetime64(String.t(), keyword()) :: t()
+  def datetime64(name, opts \\ []) do
+    base = build(name, "datetime64", opts)
+    %{base | precision: opts[:precision] || 9}
+  end
+
+  @spec json(String.t(), keyword()) :: t()
+  def json(name, opts \\ []) do
+    base = build(name, "json", opts, [:exclude_keys, :elevate_keys])
+
+    base
+    |> maybe_put_pick(opts[:pick])
+  end
+
+  defp build(name, type, opts, extra_keys \\ []) do
+    base = %__MODULE__{
+      name: name,
+      type: type,
+      path: opts[:path],
+      paths: opts[:paths],
+      from_output: opts[:from_output],
+      default: encode_default(opts[:default]),
+      value_map: opts[:value_map]
+    }
+
+    Enum.reduce(extra_keys, base, fn key, acc ->
+      maybe_put(acc, key, opts[key])
+    end)
+  end
+
+  defp encode_default(nil), do: nil
+  defp encode_default(val) when is_binary(val), do: val
+  defp encode_default(val) when is_integer(val), do: Integer.to_string(val)
+  defp encode_default(val) when is_float(val), do: Float.to_string(val)
+  defp encode_default(true), do: "true"
+  defp encode_default(false), do: "false"
+  defp encode_default(val) when is_map(val), do: "{}"
+  defp encode_default(val) when is_list(val), do: "[]"
+
+  defp maybe_put(struct, _key, nil), do: struct
+  defp maybe_put(struct, key, value), do: Map.put(struct, key, value)
+
+  defp maybe_put_pick(struct, nil), do: struct
+
+  defp maybe_put_pick(struct, entries) when is_list(entries) do
+    pick =
+      Enum.map(entries, fn
+        {key, paths} -> %PickEntry{key: key, paths: paths}
+        %PickEntry{} = entry -> entry
+      end)
+
+    %{struct | pick: pick}
+  end
+
+  defp maybe_put_infer(struct, nil), do: struct
+
+  defp maybe_put_infer(struct, rules) when is_list(rules) do
+    %{struct | infer: rules}
+  end
+end
