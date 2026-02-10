@@ -50,21 +50,6 @@ fn map<'a>(
     mapper::map_single(env, body, &compiled.mapping)
 }
 
-/// Maps a batch of documents using a pre-compiled mapping.
-///
-/// Returns a list of mapped Elixir maps.
-#[rustler::nif(schedule = "DirtyCpu")]
-fn map_batch<'a>(
-    env: Env<'a>,
-    bodies: Vec<Term<'a>>,
-    compiled: ResourceArc<CompiledMappingResource>,
-) -> Vec<Term<'a>> {
-    bodies
-        .into_iter()
-        .map(|body| mapper::map_single(env, body, &compiled.mapping))
-        .collect()
-}
-
 fn on_load(env: Env, _info: Term) -> bool {
     env.register::<CompiledMappingResource>().is_ok()
 }

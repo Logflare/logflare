@@ -1093,39 +1093,6 @@ defmodule Logflare.MapperTest do
     end
   end
 
-  # ── Batch ─────────────────────────────────────────────────────────────
-
-  describe "batch" do
-    test "map_batch returns correct number of results" do
-      config =
-        MappingConfig.new([
-          Field.string("name", path: "$.name")
-        ])
-
-      compiled = Mapper.compile!(config)
-      docs = [%{"name" => "Alice"}, %{"name" => "Bob"}, %{"name" => "Charlie"}]
-      results = Mapper.map_batch(docs, compiled)
-
-      assert length(results) == 3
-    end
-
-    test "map_batch output matches per-event map output" do
-      config =
-        MappingConfig.new([
-          Field.string("name", path: "$.name"),
-          Field.uint8("age", path: "$.age", default: 0)
-        ])
-
-      compiled = Mapper.compile!(config)
-      docs = [%{"name" => "Alice", "age" => 30}, %{"name" => "Bob"}]
-
-      batch_results = Mapper.map_batch(docs, compiled)
-      single_results = Enum.map(docs, &Mapper.map(&1, compiled))
-
-      assert batch_results == single_results
-    end
-  end
-
   # ── Error handling ────────────────────────────────────────────────────
 
   describe "run/2" do

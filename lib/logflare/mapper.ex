@@ -40,10 +40,4 @@ defmodule Logflare.Mapper do
   def map(document, compiled_mapping) when is_map(document) do
     Native.map(document, compiled_mapping)
   end
-
-  @doc "Maps a list of documents in a single NIF call (DirtyCpu scheduler)."
-  @spec map_batch([map()], reference()) :: [map()]
-  def map_batch(documents, compiled_mapping) when is_list(documents) do
-    Native.map_batch(documents, compiled_mapping)
-  end
 end

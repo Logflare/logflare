@@ -8,7 +8,4 @@ defmodule Logflare.Mapper.Native do
 
   @spec map(map(), reference()) :: map()
   def map(_body, _compiled_mapping), do: :erlang.nif_error(:nif_not_loaded)
-
-  @spec map_batch([map()], reference()) :: [map()]
-  def map_batch(_bodies, _compiled_mapping), do: :erlang.nif_error(:nif_not_loaded)
 end
