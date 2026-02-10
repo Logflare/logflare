@@ -1,6 +1,7 @@
 defmodule LogflareWeb.UserController do
   use LogflareWeb, :controller
-  use Phoenix.HTML
+
+  use PhoenixHTMLHelpers
 
   plug LogflareWeb.Plugs.AuthMustBeOwner
 
@@ -34,7 +35,7 @@ defmodule LogflareWeb.UserController do
       }) do
     message = [
       "Please ",
-      Phoenix.HTML.Link.link("upgrade to a paid plan",
+      PhoenixHTMLHelpers.Link.link("upgrade to a paid plan",
         to: ~p"/billing/edit"
       ),
       " to setup your own BigQuery backend."

@@ -64,26 +64,35 @@ defmodule Logflare.PubSubRates.Cache do
   Merges a node map into the local cache.
   """
   @typep node_buffers :: %{atom() => non_neg_integer()}
-  @spec cache_buffers(non_neg_integer(), non_neg_integer(), node_buffers()) :: {:ok, true}
-  def cache_buffers(source_id, backend_id, buffers) when is_integer(source_id) do
+  @spec cache_buffers(non_neg_integer() | :consolidated, non_neg_integer() | nil, node_buffers()) ::
+          {:ok, true}
+  def cache_buffers(:consolidated, backend_id, buffers) when is_integer(backend_id),
+    do: do_cache_buffers({:consolidated, backend_id}, buffers)
+
+  def cache_buffers(source_id, backend_id, buffers) when is_integer(source_id),
+    do: do_cache_buffers({source_id, backend_id}, buffers)
+
+  defp do_cache_buffers(key, buffers) do
+    cache_key = Tuple.insert_at(key, 2, "buffers")
+
     resolved =
-      case get_buffers(source_id, backend_id) do
+      case Cachex.get(__MODULE__, cache_key) do
         {:ok, val} when val != nil -> Map.merge(val, buffers)
         _ -> buffers
       end
 
-    Cachex.put(__MODULE__, {source_id, backend_id, "buffers"}, resolved)
+    Cachex.put(__MODULE__, cache_key, resolved)
   end
 
   @doc """
   Returns a node mapping of buffer lengths across the cluster.
   """
-  @spec get_buffers(non_neg_integer(), non_neg_integer() | nil) :: map()
+  @spec get_buffers(non_neg_integer() | :consolidated, non_neg_integer() | nil) :: map()
   def get_buffers(source_id, backend_id) do
     Cachex.get(__MODULE__, {source_id, backend_id, "buffers"})
   end
 
-  @spec get_local_buffer(non_neg_integer(), non_neg_integer() | nil) :: map()
+  @spec get_local_buffer(non_neg_integer() | :consolidated, non_neg_integer() | nil) :: map()
   def get_local_buffer(source_id, backend_id) do
     Cachex.get(__MODULE__, {source_id, backend_id, "buffers"})
     |> case do

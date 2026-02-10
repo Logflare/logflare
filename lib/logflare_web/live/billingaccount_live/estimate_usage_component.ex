@@ -3,7 +3,7 @@ defmodule LogflareWeb.BillingAccountLive.EstimateUsageComponent do
   Liveview component to show a table with an estimate of usage and cost for a given user.
   """
   use LogflareWeb, :live_component
-  use Phoenix.HTML
+
   require Logger
 
   alias Logflare.Billing.BillingCounts

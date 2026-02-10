@@ -14,7 +14,7 @@ defmodule Logflare.Backends.UserMonitoring do
     export_period =
       case Application.get_env(:logflare, :env) do
         :test -> 100
-        _ -> 60_000 * 2
+        _ -> :timer.minutes(4) + :rand.uniform(60_000)
       end
 
     otel_exporter_opts =
@@ -27,7 +27,7 @@ defmodule Logflare.Backends.UserMonitoring do
         otlp_endpoint: "",
         export_period: export_period,
         max_concurrency: System.schedulers_online(),
-        max_batch_size: 500,
+        max_batch_size: 1000,
         spawn_opt: [fullsweep_after: 10_000]
       ]
 
@@ -77,27 +77,11 @@ defmodule Logflare.Backends.UserMonitoring do
     end
   end
 
-  # @doc false
-  def exporter_callback({:metrics, metrics}, config, opts \\ []) do
-    if Keyword.get(opts, :flow, false) do
-      metrics
-      |> Stream.flat_map(fn metric ->
-        OtelMetric.handle_metric(metric, config.resource, %{})
-      end)
-      |> Flow.from_enumerable(max_demand: 500, stages: System.schedulers_online())
-      |> Flow.map(fn event ->
-        {get_in(event, ["attributes", "user_id"]), event}
-      end)
-      |> Flow.reject(fn {user_id, _} -> is_nil(user_id) end)
-      |> Flow.group_by_key()
-      |> Flow.stream()
-      |> Stream.each(&ingest_grouped_metrics/1)
-      |> Stream.run()
-    else
-      metrics
-      |> Enum.reduce(%{}, &metric_reducer(&1, &2, config.resource))
-      |> ingest_grouped_metrics()
-    end
+  @doc false
+  def exporter_callback({:metrics, metrics}, config) do
+    metrics
+    |> Enum.reduce(%{}, &metric_reducer(&1, &2, config.resource))
+    |> ingest_grouped_metrics()
 
     :ok
   end

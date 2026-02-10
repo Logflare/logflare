@@ -7,6 +7,7 @@ defmodule Logflare.Rules do
   alias Logflare.Repo
   alias Logflare.Rules.Rule
   alias Logflare.Sources.Source
+  alias Logflare.Sources.SourceRouter.RulesTree
   alias Logflare.SourceSchemas
   alias Logflare.Backends.Backend
   alias Logflare.Backends.SourceSup
@@ -28,6 +29,11 @@ defmodule Logflare.Rules do
   def list_by_backend_id(backend_id) do
     from(r in Rule, where: r.backend_id == ^backend_id)
     |> Repo.all()
+  end
+
+  def rules_tree_by_source_id(id) do
+    rules = list_by_source_id(id)
+    RulesTree.build(rules)
   end
 
   @doc """

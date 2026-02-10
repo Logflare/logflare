@@ -225,6 +225,30 @@ defmodule Logflare.Utils do
   def iso_timestamp(_timestamp), do: nil
 
   @doc """
+  Converts an input into a Unix timestamp in microseconds.
+
+  ## Examples
+    iex> to_microseconds(1609459200000000)
+    1609459200000000
+    iex> to_microseconds(1609459200000)
+    1609459200000000
+    iex> to_microseconds(1609459200)
+    1609459200000000
+    iex> to_microseconds(1609459200000000000)
+    1609459200000000
+  """
+  def to_microseconds(raw) when is_integer(raw) do
+    case Integer.digits(raw) |> Enum.count() do
+      19 -> Kernel.round(raw / 1_000)
+      16 -> raw
+      13 -> raw * 1_000
+      10 -> raw * 1_000_000
+      7 -> raw * 1_000_000_000
+      _ -> raw
+    end
+  end
+
+  @doc """
   Determines the IP version of an address.
 
   iex> ip_version("127.0.0.1")

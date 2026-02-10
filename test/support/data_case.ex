@@ -14,6 +14,8 @@ defmodule Logflare.DataCase do
 
   use ExUnit.CaseTemplate
 
+  alias Logflare.Backends.Adaptor.ClickHouseAdaptor
+
   using do
     quote do
       alias Logflare.Repo
@@ -52,15 +54,28 @@ defmodule Logflare.DataCase do
   end
 
   setup tags do
+    setup_sandbox(tags)
+    setup_mocking(tags)
+
+    :ok
+  end
+
+  @doc """
+  Sets up the sandbox based on the test tags.
+  """
+  def setup_sandbox(tags) do
     pid = Ecto.Adapters.SQL.Sandbox.start_owner!(Logflare.Repo, shared: not tags[:async])
     on_exit(fn -> Ecto.Adapters.SQL.Sandbox.stop_owner(pid) end)
+  end
 
-    unless tags[:async] do
+  @doc """
+  Sets up mocking configuration based on the test tags.
+  """
+  def setup_mocking(tags) do
+    if !tags[:async] do
       # for global Mimic mocks
       Mimic.set_mimic_global(tags)
     end
-
-    :ok
   end
 
   @doc """
@@ -124,7 +139,7 @@ defmodule Logflare.DataCase do
         sources: [source]
       )
 
-    cleanup_fn = fn -> cleanup_clickhouse_tables({source, backend}) end
+    cleanup_fn = fn -> cleanup_clickhouse_tables(backend) end
 
     {source, backend, cleanup_fn}
   end
@@ -133,8 +148,6 @@ defmodule Logflare.DataCase do
   Builds ClickHouse connection options for testing.
   """
   def build_clickhouse_connection_opts(source, backend, type) when type in [:ingest, :query] do
-    alias Logflare.Backends.Adaptor.ClickHouseAdaptor
-
     base_opts = [
       scheme: "http",
       hostname: "localhost",
@@ -162,24 +175,25 @@ defmodule Logflare.DataCase do
   end
 
   @doc """
-  Cleanup ClickHouse tables for a given `Source` and `Backend`.
-  """
-  def cleanup_clickhouse_tables({source, backend}) do
-    table_names = [
-      Logflare.Backends.Adaptor.ClickHouseAdaptor.clickhouse_ingest_table_name(source)
-    ]
+  Cleanup ClickHouse tables for a given `Backend`.
 
-    for table_name <- table_names do
+  Drops all type-specific tables (`_logs`, `_metrics`, `_traces`).
+  """
+  def cleanup_clickhouse_tables(backend) do
+    tables =
+      Enum.map([:log, :metric, :trace], fn type ->
+        ClickHouseAdaptor.clickhouse_ingest_table_name(backend, type)
+      end)
+
+    for table_name <- tables do
       try do
-        Logflare.Backends.Adaptor.ClickHouseAdaptor.execute_ch_query(
+        ClickHouseAdaptor.execute_ch_query(
           backend,
           "DROP TABLE IF EXISTS #{table_name}"
         )
       rescue
-        # Ignore cleanup errors
         _ -> :ok
       catch
-        # Process may not be running during cleanup :shrug:
         :exit, _ -> :ok
       end
     end

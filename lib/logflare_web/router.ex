@@ -16,6 +16,12 @@ defmodule LogflareWeb.Router do
   alias Opentelemetry.Proto.Collector.Metrics.V1.ExportMetricsServiceRequest
   alias Opentelemetry.Proto.Collector.Logs.V1.ExportLogsServiceRequest
 
+  @common_on_mount_hooks if Application.compile_env(:logflare, :sql_sandbox),
+                           do: [LogflareWeb.Hooks.AllowTestSandbox],
+                           else: []
+
+  @dashboard_hooks [LogflareWeb.AuthLive]
+
   # TODO: move plug calls in SourceController and RuleController into here
 
   pipeline :browser do
@@ -189,7 +195,7 @@ defmodule LogflareWeb.Router do
   scope "/", LogflareWeb do
     pipe_through([:browser, :require_auth])
 
-    live_session :dashboard, on_mount: LogflareWeb.AuthLive do
+    live_session :dashboard, on_mount: @common_on_mount_hooks ++ @dashboard_hooks do
       live("/dashboard", DashboardLive, :index)
       live("/access-tokens", AccessTokensLive, :index)
       live("/backends", BackendsLive, :index)
@@ -207,7 +213,7 @@ defmodule LogflareWeb.Router do
   scope "/endpoints", LogflareWeb do
     pipe_through([:browser, :require_auth])
 
-    live_session :endpoints, on_mount: LogflareWeb.AuthLive do
+    live_session :endpoints, on_mount: @common_on_mount_hooks ++ @dashboard_hooks do
       live("/", EndpointsLive, :index)
       live("/new", EndpointsLive, :new)
       live("/:id", EndpointsLive, :show)
@@ -218,7 +224,7 @@ defmodule LogflareWeb.Router do
   scope "/alerts", LogflareWeb do
     pipe_through([:browser, :require_auth])
 
-    live_session :alerts, on_mount: LogflareWeb.AuthLive do
+    live_session :alerts, on_mount: @common_on_mount_hooks ++ @dashboard_hooks do
       live "/", AlertsLive, :index
       live "/new", AlertsLive, :new
       live "/:id", AlertsLive, :show
@@ -259,7 +265,7 @@ defmodule LogflareWeb.Router do
 
     resources "/", SourceController, except: [:index, :new, :create, :delete] do
       live_session(:rules,
-        on_mount: LogflareWeb.AuthLive,
+        on_mount: @common_on_mount_hooks ++ @dashboard_hooks,
         root_layout: {LogflareWeb.LayoutView, :root}
       ) do
         live("/rules", Sources.RulesLive)
@@ -334,7 +340,6 @@ defmodule LogflareWeb.Router do
     pipe_through([:browser, :require_auth, :check_admin])
 
     get("/dashboard", AdminController, :dashboard)
-    get("/sources", AdminController, :sources)
     get("/accounts", AdminController, :accounts)
     live("/cluster", Admin.ClusterLive, :index)
     live("/partner", Admin.PartnerLive, :index)
@@ -535,7 +540,7 @@ defmodule LogflareWeb.Router do
     end
   end
 
-  if Mix.env() == :dev do
+  if Application.compile_env(:logflare, :dev_routes) do
     scope "/dev" do
       pipe_through([:browser])
 

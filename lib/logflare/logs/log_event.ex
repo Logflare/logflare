@@ -4,11 +4,12 @@ defmodule Logflare.LogEvent do
   import Ecto.Changeset
   import LogflareWeb.Utils, only: [stringify_changeset_errors: 1]
 
-  alias Logflare.Logs.Ingest.MetadataCleaner
-  alias Logflare.Sources.Source
   alias __MODULE__, as: LE
-  alias Logflare.Logs.Validators.BigQuerySchemaChange
+  alias __MODULE__.TypeDetection
+  alias Logflare.Logs.Ingest.MetadataCleaner
   alias Logflare.Logs.IngestTransformers
+  alias Logflare.Logs.Validators.BigQuerySchemaChange
+  alias Logflare.Sources.Source
 
   require Logger
 
@@ -21,9 +22,11 @@ defmodule Logflare.LogEvent do
     field :drop, :boolean, default: false
     field :is_from_stale_query, :boolean
     field :ingested_at, :utc_datetime_usec
-    field :origin_source_id, Ecto.UUID.Atom
+    field :origin_source_uuid, Ecto.UUID.Atom
+    field :origin_source_name, :string
     field :via_rule, :map
     field :retries, :integer, default: 0
+    field :log_type, Ecto.Enum, values: [:log, :metric, :trace], default: :log
 
     field :source_id, :integer, default: nil
 
@@ -73,10 +76,12 @@ defmodule Logflare.LogEvent do
       Map.merge(changeset.changes, %{
         pipeline_error: pipeline_error,
         source_id: source.id,
-        origin_source_id: source.token,
+        origin_source_uuid: source.token,
+        origin_source_name: source.name,
         valid: changeset.valid?,
         ingested_at: NaiveDateTime.utc_now(),
-        id: changeset.changes.body["id"]
+        id: changeset.changes.body["id"],
+        log_type: TypeDetection.detect(params)
       })
 
     Logflare.LogEvent
@@ -294,14 +299,7 @@ defmodule Logflare.LogEvent do
   end
 
   defp determine_timestamp(%{"timestamp" => x}) when is_integer(x) do
-    case Integer.digits(x) |> Enum.count() do
-      19 -> Kernel.round(x / 1_000)
-      16 -> x
-      13 -> x * 1_000
-      10 -> x * 1_000_000
-      7 -> x * 1_000_000_000
-      _ -> x
-    end
+    Logflare.Utils.to_microseconds(x)
   end
 
   defp determine_timestamp(%{"timestamp" => x}) when is_float(x) do

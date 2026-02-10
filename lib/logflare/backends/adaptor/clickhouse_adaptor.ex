@@ -1,12 +1,14 @@
 defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   @moduledoc """
   ClickHouse backend adaptor that relies on the `:ch` library.
+
+  This adaptor uses consolidated ingestion where all sources share a single
+  pipeline and table per backend.
   """
 
   @behaviour Logflare.Backends.Adaptor
 
   use Supervisor
-  use TypedStruct
 
   import Logflare.Utils.Guards
 
@@ -19,23 +21,16 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   alias __MODULE__.QueryTemplates
   alias Ecto.Changeset
   alias Logflare.Backends
-  alias Logflare.Backends.DynamicPipeline
   alias Logflare.Backends.Backend
+  alias Logflare.Backends.DynamicPipeline
   alias Logflare.Backends.Ecto.SqlUtils
   alias Logflare.Backends.IngestEventQueue
-  alias Logflare.Backends.SourceRegistry
   alias Logflare.LogEvent
-  alias Logflare.Sources.Source
-  alias Logflare.Sources
+  alias Logflare.LogEvent.TypeDetection
 
-  typedstruct do
-    field(:source, Source.t())
-    field(:backend, Backend.t())
-    field(:ingest_connection, tuple())
-  end
-
-  @type source_backend_tuple :: {Source.t(), Backend.t()}
-  @type via_tuple :: {:via, Registry, {module(), {pos_integer(), {module(), pos_integer()}}}}
+  @min_pipelines 1
+  @resolve_interval 10_000
+  @scaling_threshold 5_000
 
   defdelegate connection_pool_via(arg), to: ConnectionManager
 
@@ -47,22 +42,14 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
     }
   end
 
-  @doc false
   @impl Logflare.Backends.Adaptor
-  @spec start_link(source_backend_tuple()) :: Supervisor.on_start()
-  def start_link({%Source{}, %Backend{}} = args) do
-    Supervisor.start_link(__MODULE__, args, name: adaptor_via(args))
-  end
+  def consolidated_ingest?, do: true
 
   @doc false
-  @spec which_children(source_backend_tuple()) :: [
-          {term() | :undefined, Supervisor.child() | :restarting, :worker | :supervisor,
-           [module()] | :dynamic}
-        ]
-  def which_children({%Source{}, %Backend{}} = args) do
-    args
-    |> adaptor_via()
-    |> Supervisor.which_children()
+  @impl Logflare.Backends.Adaptor
+  @spec start_link(Backend.t()) :: Supervisor.on_start()
+  def start_link(%Backend{} = backend) do
+    Supervisor.start_link(__MODULE__, backend, name: Backends.via_backend(backend, __MODULE__))
   end
 
   @impl Logflare.Backends.Adaptor
@@ -130,7 +117,9 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
        password: :string,
        database: :string,
        port: :integer,
-       pool_size: :integer
+       pool_size: :integer,
+       async_insert: :boolean,
+       read_only_url: :string
      }}
     |> Changeset.cast(params, [
       :url,
@@ -138,8 +127,11 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
       :password,
       :database,
       :port,
-      :pool_size
+      :pool_size,
+      :async_insert,
+      :read_only_url
     ])
+    |> Logflare.Utils.default_field_value(:async_insert, false)
   end
 
   @doc false
@@ -150,6 +142,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
     changeset
     |> validate_required([:url, :database, :port])
     |> Changeset.validate_format(:url, ~r/https?\:\/\/.+/)
+    |> validate_read_only_url()
     |> validate_user_pass()
   end
 
@@ -157,35 +150,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   Simple GRANT check to indicate if the configured user has the ClickHouse permissions it needs for the configured database.
   """
   @impl Logflare.Backends.Adaptor
-  @spec test_connection({Source.t(), Backend.t()} | Backend.t()) ::
-          :ok | {:error, :permissions_missing} | {:error, term()}
-  def test_connection({%Source{} = source, %Backend{} = backend}) do
-    sql_statement = QueryTemplates.grant_check_statement()
-
-    case execute_ch_query(backend, sql_statement) do
-      {:ok, [%{"result" => 1}]} ->
-        :ok
-
-      {:ok, [%{"result" => 0}]} ->
-        Logger.warning(
-          "ClickHouse GRANT check failed. Required: `CREATE TABLE`, `ALTER TABLE`, `INSERT`, `SELECT`, `DROP TABLE`, `CREATE VIEW`, `DROP VIEW`",
-          source_token: source.token,
-          backend_id: backend.id
-        )
-
-        {:error, :permissions_missing}
-
-      {:error, _} = error_result ->
-        Logger.warning(
-          "ClickHouse GRANT check failed. Unexpected error #{inspect(error_result)}",
-          source_token: source.token,
-          backend_id: backend.id
-        )
-
-        error_result
-    end
-  end
-
+  @spec test_connection(Backend.t()) :: :ok | {:error, :permissions_missing} | {:error, term()}
   def test_connection(%Backend{} = backend) do
     sql_statement = QueryTemplates.grant_check_statement()
 
@@ -212,58 +177,33 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   end
 
   @doc """
-  Generates a via tuple based on a `Source` and `Backend` pair for this adaptor instance.
+  Produces a type-specific ingest table name for ClickHouse.
 
-  See `Backends.via_source/3` for more details.
+  - `:log`    -> `otel_logs_<token>`
+  - `:metric` -> `otel_metrics_<token>`
+  - `:trace`  -> `otel_traces_<token>`
   """
-  @spec adaptor_via(source_backend_tuple()) :: via_tuple()
-  def adaptor_via({%Source{} = source, %Backend{} = backend}) do
-    Backends.via_source(source, __MODULE__, backend)
-  end
+  @spec clickhouse_ingest_table_name(Backend.t(), TypeDetection.log_type()) :: String.t()
+  def clickhouse_ingest_table_name(%Backend{} = backend, :log),
+    do: build_otel_table_name(backend, "otel_logs")
 
-  @doc """
-  Generates a unique Broadway pipeline via tuple based on a `Source` and `Backend` pair.
+  def clickhouse_ingest_table_name(%Backend{} = backend, :metric),
+    do: build_otel_table_name(backend, "otel_metrics")
 
-  See `Backends.via_source/3` for more details.
-  """
-  @spec pipeline_via(source_backend_tuple()) :: via_tuple()
-  def pipeline_via({%Source{} = source, %Backend{} = backend}) do
-    Backends.via_source(source, Pipeline, backend)
-  end
+  def clickhouse_ingest_table_name(%Backend{} = backend, :trace),
+    do: build_otel_table_name(backend, "otel_traces")
 
-  @doc """
-  Returns the pid for the Broadway pipeline related to a specific `Source` and `Backend` pair.
+  @spec build_otel_table_name(Backend.t(), String.t()) :: String.t()
+  defp build_otel_table_name(%Backend{token: token}, prefix) do
+    token_str = String.replace(token, "-", "_")
+    table_name = "#{prefix}_#{token_str}"
 
-  If the process is not located in the registry or does not exist, this will return `nil`.
-  """
-  @spec pipeline_pid(source_backend_tuple()) :: pid() | nil
-  def pipeline_pid({%Source{}, %Backend{}} = args) do
-    case find_pipeline_pid(args) do
-      {:ok, pid} -> pid
-      _ -> nil
+    if String.length(table_name) >= 200 do
+      raise "The dynamically generated ClickHouse resource name starting with `#{prefix}_` " <>
+              "must be less than 200 characters. Got: #{String.length(table_name)}"
     end
-  end
 
-  @doc """
-  Determines if a particular Broadway pipeline process is alive based on a `Source` and `Backend` pair.
-  """
-  @spec pipeline_alive?(source_backend_tuple()) :: boolean()
-  def pipeline_alive?({%Source{}, %Backend{}} = args) do
-    case pipeline_pid(args) do
-      nil -> false
-      pid -> Process.alive?(pid)
-    end
-  end
-
-  @doc """
-  Produces a unique ingest table name for ClickHouse based on a provided `Source` struct.
-  """
-  @spec clickhouse_ingest_table_name(Source.t()) :: String.t()
-  def clickhouse_ingest_table_name(%Source{} = source) do
-    source
-    |> clickhouse_source_token()
-    |> then(&"#{QueryTemplates.default_table_name_prefix()}_#{&1}")
-    |> check_clickhouse_resource_name_length(source)
+    table_name
   end
 
   @doc """
@@ -311,31 +251,19 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   end
 
   @doc """
-  Inserts a single `LogEvent` struct into the given source backend table.
-
-  See `insert_log_events/2` for additional details.
+  Inserts a list of `LogEvent` structs into a type-specific ingest table.
   """
-  @spec insert_log_event(source_backend_tuple(), LogEvent.t()) :: :ok | {:error, String.t()}
-  def insert_log_event({%Source{} = source, %Backend{} = backend}, %LogEvent{} = le),
-    do: insert_log_events({source, backend}, [le])
+  @spec insert_log_events(Backend.t(), [LogEvent.t()], TypeDetection.log_type()) ::
+          :ok | {:error, String.t()}
+  def insert_log_events(%Backend{}, [], _log_type), do: :ok
 
-  @doc """
-  Inserts a list of `LogEvent` structs into a given source backend table.
-  """
-  @spec insert_log_events(source_backend_tuple(), [LogEvent.t()]) :: :ok | {:error, String.t()}
-  def insert_log_events({%Source{}, %Backend{}}, []), do: :ok
+  def insert_log_events(%Backend{} = backend, [%LogEvent{} | _] = events, log_type)
+      when is_log_type(log_type) do
+    Logger.metadata(backend_id: backend.id)
 
-  def insert_log_events({%Source{} = source, %Backend{} = backend}, [%LogEvent{} | _] = events) do
-    Logger.metadata(
-      source_token: source.token,
-      backend_id: backend.id,
-      user_id: source.user_id,
-      system_source: source.system_source
-    )
+    table_name = clickhouse_ingest_table_name(backend, log_type)
 
-    table_name = clickhouse_ingest_table_name(source)
-
-    case Ingester.insert(backend, table_name, events) do
+    case Ingester.insert(backend, table_name, events, log_type) do
       :ok ->
         :ok
 
@@ -347,54 +275,41 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   end
 
   @doc """
-  Attempts to provision a new ingest table for a particular source, if it does not already exist.
-  """
-  @spec provision_ingest_table(source_backend_tuple()) ::
-          {:ok, Ch.Result.t()} | {:error, Exception.t()}
-  def provision_ingest_table({%Source{} = source, %Backend{} = backend}) do
-    with table_name <- clickhouse_ingest_table_name(source),
-         statement <-
-           QueryTemplates.create_ingest_table_statement(table_name,
-             ttl_days: source.retention_days
-           ) do
-      execute_ch_query(backend, statement)
-    end
-  end
+  Provisions all type-specific ingest tables for the backend, if they do not already exist.
 
-  @doc """
-  Handles all provisioning tasks for a given `Source` and `Backend` pair.
+  Creates one table per log type: `_logs`, `_metrics`, and `_traces`.
   """
-  @spec provision_all(source_backend_tuple()) :: :ok | {:error, term()}
-  def provision_all({%Source{}, %Backend{}} = args) do
-    with {:ok, _} <- provision_ingest_table(args) do
-      :ok
-    end
+  @spec provision_ingest_tables(Backend.t()) :: :ok | {:error, Exception.t()}
+  def provision_ingest_tables(%Backend{} = backend) do
+    Enum.reduce_while([:log, :metric, :trace], :ok, fn log_type, :ok ->
+      table_name = clickhouse_ingest_table_name(backend, log_type)
+      statement = QueryTemplates.create_table_statement(table_name, log_type, [])
+
+      case execute_ch_query(backend, statement) do
+        {:ok, _} -> {:cont, :ok}
+        {:error, _} = error -> {:halt, error}
+      end
+    end)
   end
 
   @doc false
   @impl Supervisor
-  def init({%Source{} = source, %Backend{} = backend} = args) do
+  def init(%Backend{} = backend) do
     children = [
-      Provisioner.child_spec(args),
+      Provisioner.child_spec(backend),
       {
         DynamicPipeline,
-        # soft limit before a new pipeline is created
-        name: Backends.via_source(source, Pipeline, backend.id),
+        name: Backends.via_backend(backend, Pipeline),
         pipeline: Pipeline,
-        pipeline_args: [
-          source: source,
-          backend: backend
-        ],
-        min_pipelines: 0,
+        pipeline_args: [backend: backend],
+        min_pipelines: @min_pipelines,
         max_pipelines: System.schedulers_online(),
-        initial_count: 1,
-        resolve_interval: 2_500,
+        initial_count: @min_pipelines,
+        resolve_interval: @resolve_interval,
         resolve_count: fn state ->
-          source = Sources.refresh_source_metrics_for_ingest(source)
+          lens = IngestEventQueue.list_pending_counts({:consolidated, backend.id})
 
-          lens = IngestEventQueue.list_pending_counts({source.id, backend.id})
-
-          Backends.handle_resolve_count(state, lens, source.metrics.avg)
+          resolve_pipeline_count(state, lens)
         end
       }
     ]
@@ -402,41 +317,47 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
     Supervisor.init(children, strategy: :one_for_one)
   end
 
-  @spec find_pipeline_pid(source_backend_tuple()) :: {:ok, pid()} | {:error, term()}
-  defp find_pipeline_pid({%Source{}, %Backend{}} = args) do
-    args
-    |> pipeline_via()
-    |> find_pid_in_source_registry()
-  end
+  # produce fewer, larger batches for ClickHouse efficiency
+  @spec resolve_pipeline_count(map(), [{term(), non_neg_integer()}]) :: non_neg_integer()
+  defp resolve_pipeline_count(state, lens) do
+    startup_size =
+      Enum.find_value(lens, 0, fn
+        {{:consolidated, _bid, nil}, val} -> val
+        _ -> false
+      end)
 
-  @spec find_pid_in_source_registry(via_tuple()) :: {:ok, pid()} | {:error, term()}
-  defp find_pid_in_source_registry({:via, Registry, {SourceRegistry, key}}) do
-    case Registry.lookup(SourceRegistry, key) do
-      [{pid, _meta}] ->
-        {:ok, pid}
+    lens_no_startup =
+      Enum.filter(lens, fn
+        {{:consolidated, _bid, nil}, _val} -> false
+        _ -> true
+      end)
 
-      _ ->
-        {:error, :not_found}
-    end
-  end
+    lens_no_startup_values = Enum.map(lens_no_startup, fn {_, v} -> v end)
+    len = Enum.map(lens, fn {_, v} -> v end) |> Enum.sum()
 
-  @spec clickhouse_source_token(Source.t()) :: String.t()
-  defp clickhouse_source_token(%Source{token: token}) do
-    token
-    |> Atom.to_string()
-    |> String.replace("-", "_")
-  end
+    last_decr = state.last_count_decrease || NaiveDateTime.utc_now()
+    sec_since_last_decr = NaiveDateTime.diff(NaiveDateTime.utc_now(), last_decr)
 
-  @spec check_clickhouse_resource_name_length(name :: String.t(), source :: Source.t()) ::
-          String.t()
-  defp check_clickhouse_resource_name_length(name, %Source{} = source)
-       when is_non_empty_binary(name) do
-    if String.length(name) >= 200 do
-      resource_prefix = String.slice(name, 0, 40) <> "..."
+    # Higher threshold (5,000) to allow more buffering before scaling
+    any_above_threshold? = Enum.any?(lens_no_startup_values, &(&1 >= @scaling_threshold))
 
-      raise "The dynamically generated ClickHouse resource name starting with `#{resource_prefix}` exceeds the maximum limit. Source ID: #{source.id}"
-    else
-      name
+    cond do
+      # Scale up if startup queue has events (pipeline not yet ready)
+      startup_size > 0 ->
+        state.pipeline_count + 1
+
+      # Scale up if any queue exceeds threshold
+      any_above_threshold? and len > 0 ->
+        state.pipeline_count + 1
+
+      # Faster decrease when queues are low
+      Enum.all?(lens_no_startup_values, &(&1 < div(@scaling_threshold, 10))) and
+        len < @scaling_threshold and state.pipeline_count > 1 and
+          (sec_since_last_decr > 30 or state.last_count_decrease == nil) ->
+        state.pipeline_count - 1
+
+      true ->
+        state.pipeline_count
     end
   end
 
@@ -456,6 +377,14 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
     end
   end
 
+  @spec validate_read_only_url(Changeset.t()) :: Changeset.t()
+  defp validate_read_only_url(changeset) do
+    case Changeset.get_field(changeset, :read_only_url) do
+      nil -> changeset
+      _url -> Changeset.validate_format(changeset, :read_only_url, ~r/https?\:\/\/.+/)
+    end
+  end
+
   @spec convert_ch_result_to_rows(Ch.Result.t()) :: [map()]
   defp convert_ch_result_to_rows(%Ch.Result{} = result) do
     case {result.columns, result.rows} do
@@ -463,15 +392,12 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
         []
 
       {nil, rows} when is_list(rows) ->
-        # No column names, return rows as-is
         convert_uuids(rows)
 
       {_columns, nil} ->
-        # No rows
         []
 
       {columns, rows} when is_list(columns) and is_list(rows) ->
-        # Convert rows to maps using column names
         for row <- rows do
           columns
           |> Enum.zip(row)
@@ -480,7 +406,6 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
         |> convert_uuids()
 
       {columns, rows} ->
-        # Handle other formats - Ch.Result.rows can be iodata
         Logger.warning(
           "Unexpected ClickHouse result format: columns=#{inspect(columns)}, rows=#{inspect(rows)}"
         )
@@ -517,7 +442,6 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
        when is_non_empty_binary(sql_statement) and is_list(allowed_params) do
     allowed_set = MapSet.new(allowed_params)
 
-    # Convert `@param` syntax to ClickHouse `{param:String}` syntax
     Regex.replace(~r/@(\w+)/, sql_statement, fn match, param ->
       if MapSet.member?(allowed_set, param) do
         "{#{param}:String}"
@@ -559,7 +483,6 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
 
   @spec maybe_start_query_connection_manager(pid() | nil, pos_integer()) :: :ok | {:error, term()}
   defp maybe_start_query_connection_manager(nil, backend_id) when is_integer(backend_id) do
-    # Fetch fresh backend from cache
     backend = Backends.Cache.get_backend(backend_id)
 
     with child_spec <- ConnectionManager.child_spec(backend),
@@ -572,7 +495,6 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
       :ok
     else
       {:error, {:already_started, _pid}} ->
-        # Race condition / another process started it
         :ok
 
       {:error, reason} = error ->

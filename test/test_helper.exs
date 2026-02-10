@@ -31,6 +31,7 @@ Mimic.copy(Logflare.Admin)
 Mimic.copy(Logflare.Alerting.AlertsScheduler)
 Mimic.copy(Logflare.Auth)
 Mimic.copy(Logflare.Backends)
+Mimic.copy(Logflare.Backends.Adaptor)
 Mimic.copy(Logflare.Backends.Adaptor.BigQueryAdaptor)
 Mimic.copy(Logflare.Backends.Adaptor.BigQueryAdaptor.GoogleApiClient)
 Mimic.copy(Logflare.Cluster.Utils)
@@ -71,7 +72,15 @@ Mimic.stub(Goth)
 Mimic.stub(Finch)
 
 ExUnit.configure(
-  exclude: [not_implemented: true, integration: true, failing: true, benchmark: true]
+  exclude: [
+    not_implemented: true,
+    feature: true,
+    integration: true,
+    failing: true,
+    benchmark: true
+  ]
 )
 
 Ecto.Adapters.SQL.Sandbox.mode(Logflare.Repo, :manual)
+
+Application.put_env(:phoenix_test, :base_url, LogflareWeb.Endpoint.url())

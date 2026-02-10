@@ -94,9 +94,15 @@ dev-*
 .cursorrules
 .claude
 .treq
+
 # Rust binary artifacts
 /target/
 
 # Added by Treq
 .jj/
 .treq/
+
+# nix related functionality
+.envrc
+flake.nix
+flake.lock

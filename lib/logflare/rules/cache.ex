@@ -39,16 +39,47 @@ defmodule Logflare.Rules.Cache do
   def list_rules(%Source{id: source_id}), do: list_by_source_id(source_id)
   def list_rules(%Backend{id: backend_id}), do: list_by_backend_id(backend_id)
 
+  def get_rule(id), do: apply_repo_fun(__ENV__.function, [id])
+
+  def get_rules(ids) do
+    Cachex.execute!(__MODULE__, fn cache ->
+      for id <- ids, do: get_rule_via_cache(cache, id)
+    end)
+  end
+
+  defp get_rule_via_cache(cache, id) do
+    Cachex.fetch(cache, {:get_rule, [id]}, fn _key ->
+      # Use a `:cached` tuple here otherwise when an fn returns nil Cachex will miss
+      # the cache because it thinks ETS returned nil
+      {:commit, {:cached, Rules.get_rule(id)}}
+    end)
+    |> case do
+      {:commit, {:cached, value}} ->
+        value
+
+      {:ok, {:cached, value}} ->
+        value
+    end
+  end
+
   def list_by_source_id(id), do: apply_repo_fun(__ENV__.function, [id])
   def list_by_backend_id(id), do: apply_repo_fun(__ENV__.function, [id])
+
+  def rules_tree_by_source_id(id), do: apply_repo_fun(__ENV__.function, [id])
 
   @impl ContextCache
   def bust_by(kw) do
     entries =
       kw
-      |> Enum.map(fn
-        {:source_id, source_id} -> {:list_by_source_id, [source_id]}
-        {:backend_id, backend_id} -> {:list_by_backend_id, [backend_id]}
+      |> Enum.flat_map(fn
+        {:id, id} ->
+          [{:get_rule, [id]}]
+
+        {:source_id, source_id} ->
+          [{:list_by_source_id, [source_id]}, {:rules_tree_by_source_id, [source_id]}]
+
+        {:backend_id, backend_id} ->
+          [{:list_by_backend_id, [backend_id]}]
       end)
 
     Cachex.execute(Rules.Cache, fn worker ->

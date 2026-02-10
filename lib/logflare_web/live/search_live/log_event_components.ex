@@ -8,101 +8,78 @@ defmodule LogflareWeb.SearchLive.LogEventComponents do
   import LogflareWeb.ModalLiveHelpers
 
   alias Logflare.DateTimeUtils
-  alias Logflare.Lql
   alias Logflare.Sources.Source
+  alias Logflare.Lql
   alias Phoenix.LiveView.JS
 
   @log_levels ~W(debug info warning error alert critical notice emergency)
   @default_empty_event_message "(empty event message)"
 
-  attr :search_op_log_events, :any, required: false, default: nil
-  attr :last_query_completed_at, :any, required: false
-  attr :loading, :boolean, default: false
+  attr :search_op_log_events, :map, default: nil
+  attr :last_query_completed_at, :any, default: nil
+  attr :loading, :boolean, required: true
   attr :search_timezone, :string, required: true
-  attr :source, :map, required: true
-  attr :tailing?, :boolean, default: false
+  attr :tailing?, :boolean, required: true
   attr :querystring, :string, required: true
-  attr :lql_rules, :list, required: true
   attr :empty_event_message_placeholder, :string, default: @default_empty_event_message
+  attr :search_op, Logflare.Logs.SearchOperation
 
-  def logs_list(assigns) do
+  def results_list(assigns) do
+    assigns = assign(assigns, :select_fields, build_select_fields(assigns.search_op))
+
     ~H"""
-    <div id="source-logs-search-list" data-last-query-completed-at={@last_query_completed_at} phx-hook="SourceLogsSearchList" class="mt-4">
-      <%= if @loading do %>
-        <div id="logs-list-loading" class="blurred list-unstyled console-text-list"></div>
-      <% else %>
-        <ul :if={@search_op_log_events} id="logs-list" class="list-unstyled console-text-list">
-          <.log_event :for={log <- @search_op_log_events.rows} timezone={@search_timezone} log_event={log}>
-            {log.body["event_message"]}
-            <:actions>
-              <.logs_list_actions log={log} recommended_query={lql_with_recommended_fields(@lql_rules, log, @source)} source={@source} tailing?={@tailing?} search_timezone={@search_timezone} querystring={@querystring} />
-            </:actions>
-          </.log_event>
-        </ul>
-      <% end %>
+    <div :if={@search_op_log_events} id="source-logs-search-list" data-last-query-completed-at={@last_query_completed_at} phx-hook="SourceLogsSearchList" class="mt-4">
+      <ul id="logs-list" class={["list-unstyled console-text-list", if(@loading, do: "blurred", else: nil)]}>
+        <.log_event :for={log <- @search_op_log_events.rows} timezone={@search_timezone} log_event={log} select_fields={build_select_fields(@search_op)}>
+          {log.body["event_message"]}
+          <:actions phx-no-format>
+          <div class={if(Enum.any?(@select_fields), do: "tw-ml-[13rem] tw-pb-1.5", else: "tw-inline")}>
+          <.modal_link
+                   component={LogflareWeb.Search.LogEventViewerComponent}
+                   class="tw-text-[0.65rem]"
+                   modal_id={:log_event_viewer}
+                   title="Log Event"
+                   phx-value-log-event-id={log.id}
+                   phx-value-log-event-timestamp={log.body["timestamp"]}
+                   phx-value-lql={@querystring}
+                 >
+                   <span>view</span>
+                 </.modal_link>
+                 <.modal_link
+                   component={LogflareWeb.SearchLive.EventContextComponent}
+                   click={JS.push("soft_pause")}
+                   close={if(@tailing?, do: JS.push("soft_play", target: "#source-logs-search-control") |> JS.push("close"), else: nil)}
+                   class="tw-text-[0.65rem]"
+                   modal_id={:log_event_context_viewer}
+                   title="View Event Context"
+                   phx-value-log-event-id={log.id}
+                   phx-value-source-id={@search_op.source.id}
+                   phx-value-log-event-timestamp={log.body["timestamp"]}
+                   phx-value-timezone={@search_timezone}
+                   phx-value-querystring={@querystring}
+                 >
+                   <span>context</span>
+                 </.modal_link>
+
+                 <.link
+                   class="tw-text-[0.65rem] group-hover:tw-visible tw-invisible"
+                   phx-click={
+                     JS.dispatch("logflare:copy-to-clipboard",
+                       detail: %{
+                         text: formatted_for_clipboard(log, @search_op)
+                       }
+                     )
+                   }
+                   data-toggle="tooltip"
+                   data-placement="top"
+                   title="Copy to clipboard"
+                 >copy</.link>
+                <.log_event_permalink log_event_id={log.id} timestamp={log.body["timestamp"]} source={@search_op.source} lql={lql_with_recommended_fields(@search_op.lql_rules, log, @search_op.source)} class="tw-text-[0.65rem] group-hover:tw-visible tw-invisible" />
+                </div>
+               </:actions>
+        </.log_event>
+      </ul>
     </div>
-    """
-  end
-
-  attr :log, :any, required: true
-  attr :recommended_query, :any, required: true
-  attr :tailing?, :boolean, default: false
-  attr :source, :any, required: true
-  attr :search_timezone, :string, required: true
-  attr :querystring, :string, required: true
-  attr :empty_event_message_placeholder, :string, default: @default_empty_event_message
-
-  def logs_list_actions(assigns) do
-    ~H"""
-    <%= live_modal_show_link(
-        component: LogflareWeb.Search.LogEventViewerComponent,
-        class: "tw-text-[0.65rem]",
-        modal_id: :log_event_viewer,
-        title: "Log Event",
-        phx_value_log_event_id: @log.id,
-        phx_value_log_event_timestamp: @log.body["timestamp"],
-        phx_value_lql: @recommended_query
-      ) do %>
-      <span>view</span>
-    <% end %>
-    <%= live_modal_show_link(
-        component: LogflareWeb.SearchLive.EventContextComponent,
-        click: JS.push("soft_pause"),
-        close:
-          if(@tailing?,
-            do:
-              JS.push("soft_play", target: "#source-logs-search-control")
-              |> JS.push("close"),
-            else: nil
-          ),
-        class: "tw-text-[0.65rem]",
-        modal_id: :log_event_context_viewer,
-        title: "View Event Context",
-        phx_value_log_event_id: @log.id,
-        phx_value_source_id: @source.id,
-        phx_value_log_event_timestamp: @log.body["timestamp"],
-        phx_value_timezone: @search_timezone,
-        phx_value_querystring: @querystring
-      ) do %>
-      <span>context</span>
-    <% end %>
-
-    <.link
-      class="tw-text-[0.65rem] group-hover:tw-visible tw-invisible"
-      phx-click={
-        JS.dispatch("logflare:copy-to-clipboard",
-          detail: %{
-            text: "#{formatted_timestamp(@log, @search_timezone)}    #{@log.body["event_message"] || @empty_event_message_placeholder}"
-          }
-        )
-      }
-      data-toggle="tooltip"
-      data-placement="top"
-      title="Copy to clipboard"
-    >
-      copy
-    </.link>
-    <.log_event_permalink log_event_id={@log.id} timestamp={@log.body["timestamp"]} source={@source} lql={@recommended_query} class="tw-text-[0.65rem] group-hover:tw-visible tw-invisible" />
     """
   end
 
@@ -136,10 +113,29 @@ defmodule LogflareWeb.SearchLive.LogEventComponents do
   defp strip_meta("metadata." <> k), do: k
   defp strip_meta(k), do: k
 
+  def formatted_for_clipboard(log, search_op) do
+    select_fields =
+      search_op
+      |> build_select_fields()
+      |> Enum.map(fn %{display: display, key: key} ->
+        value = get_field_value(log.body, key)
+        separator = if String.length(value) > 64, do: "\n", else: " "
+        [display, ":", separator, value, "\n"]
+      end)
+      |> Enum.join("\n")
+
+    """
+    #{LogflareWeb.SearchLive.LogEventComponents.formatted_timestamp(log, search_op.search_timezone)}    #{log.body["event_message"]}
+
+    #{select_fields}
+    """
+  end
+
   attr :log_event, Logflare.LogEvent, required: true
   attr :id, :string, required: false
   attr :timezone, :string, required: true
   attr :empty_event_message_placeholder, :string, default: @default_empty_event_message
+  attr :select_fields, :list, default: []
   attr :rest, :global, default: %{class: "tw-group"}
   slot :inner_block
   slot :actions
@@ -166,6 +162,7 @@ defmodule LogflareWeb.SearchLive.LogEventComponents do
       </.metadata>
       <%= if @message do %>
         {render_slot(@inner_block) || @message}
+        <.selected_fields :if={@select_fields != []} log_event={@log_event} select_fields={@select_fields} />
       <% else %>
         <span class="tw-italic tw-text-gray-500">{@empty_event_message_placeholder}</span>
       <% end %>
@@ -193,5 +190,61 @@ defmodule LogflareWeb.SearchLive.LogEventComponents do
       |> DateTimeUtils.humanize_timezone_offset()
 
     format_timestamp(log_event.body["timestamp"], timezone) <> tz_part
+  end
+
+  attr :log_event, Logflare.LogEvent, required: true
+  attr :select_fields, :list, required: true
+
+  def selected_fields(assigns) do
+    ~H"""
+    <div id={["log-", @log_event.id, "-selected-fields"]}>
+      <%= for field <- @select_fields do %>
+        <div class="tw-text-neutral-200 tw-flex tw-leading-6">
+          <div class="tw-w-[13rem] tw-text-right ">
+            <span class="tw-whitespace-nowrap tw-w-fit tw-px-1 tw-py-0.5 tw-bg-neutral-600 tw-text-white tw-mr-2">{truncate_display(field.display)}</span>
+          </div>
+          <span class="tw-text-white">{get_field_value(@log_event.body, field.key)}</span>
+        </div>
+      <% end %>
+    </div>
+    """
+  end
+
+  defp get_field_value(body, field_key) when is_binary(field_key) do
+    Map.get(body, field_key)
+    |> format_field_value()
+  end
+
+  defp format_field_value(nil), do: "null"
+  defp format_field_value(value) when is_binary(value), do: value
+  defp format_field_value(value) when is_number(value), do: to_string(value)
+  defp format_field_value(value) when is_boolean(value), do: to_string(value)
+  defp format_field_value(value) when is_list(value), do: Jason.encode!(value)
+  defp format_field_value(value) when is_map(value), do: Jason.encode!(value)
+  defp format_field_value(value), do: inspect(value)
+
+  defp build_select_fields(%{lql_rules: lql_rules}) do
+    lql_rules
+    |> Lql.Rules.get_select_rules()
+    |> Enum.map(fn
+      %{path: path, alias: nil} ->
+        key = String.replace(path, ".", "_")
+        display = path |> String.split(".") |> List.last()
+        %{display: display, key: key}
+
+      %{path: _path, alias: alias} ->
+        %{display: alias, key: alias}
+    end)
+    |> Enum.reject(fn field -> is_nil(field.display) end)
+  end
+
+  defp build_select_fields(_), do: []
+
+  defp truncate_display(display) when is_binary(display) do
+    if String.length(display) > 23 do
+      (String.slice(display, 0, 23) <> "&hellip;") |> raw()
+    else
+      display
+    end
   end
 end

@@ -1,0 +1,109 @@
+name: E2E Tests (with Playwright)
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 0 * * SUN'
+  pull_request:
+    branches: ["**"]
+    paths:
+      - "lib/**"
+      - "config/**"
+      - "*.exs"
+      - "*.lock"
+      - "native/**"
+      - "priv/**"
+      - "test/**"
+      # Run suite when this file is changed
+      - ".github/workflows/e2e-tests.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Checks
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: bitnamilegacy/postgresql:15
+        ports:
+          - 5432:5432
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: logflare_test
+          POSTGRESQL_WAL_LEVEL: logical
+        # Set health checks to wait until postgres has started
+        options: >-
+          --health-cmd "pg_isready -d logflare_test -U postgres -p 5432"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+      clickhouse:
+        image: clickhouse/clickhouse-server:25.10
+        ports:
+          - 8123:8123
+          - 9000:9000
+        env:
+          CLICKHOUSE_DB: logflare_test
+          CLICKHOUSE_USER: logflare
+          CLICKHOUSE_PASSWORD: logflare
+          CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
+        options: >-
+          --health-cmd "wget --no-verbose --tries=1 --spider http://localhost:8123/ping || exit 1"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+          --memory="1500m"
+          --memory-reservation="512m"
+          --cpus="1.0"
+          --shm-size="256m"
+          --tmpfs /var/lib/clickhouse:rw,size=1G
+          --tmpfs /var/log/clickhouse-server:rw,size=100M
+
+    env:
+      MIX_ENV: test
+      SHELL: /bin/bash
+      E2E: true
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Install Elixir
+        uses: erlef/setup-beam@v1
+        with:
+          version-file: .tool-versions
+          version-type: strict
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@v1
+        with:
+          toolchain: stable
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: npm
+          cache-dependency-path: assets/package-lock.json
+
+      - run: npm ci --prefix assets
+      - run: npx --prefix assets playwright install --with-deps
+
+      - name: Restore dependencies cache
+        uses: actions/cache@v3
+        with:
+          path: |
+            deps
+            _build
+            dialyzer
+          key: ${{ runner.os }}-mix-${{  hashFiles('**/mix.lock', '**/Cargo.lock' ) }}
+          restore-keys: ${{ runner.os }}-mix--dialyzer
+
+      - name: Install dependencies
+        run: mix do deps.get, deps.compile
+
+      - name: Run Tests
+        run: mix test.e2e

@@ -19,18 +19,22 @@ defmodule Logflare.Logs.OtelMetric do
 
   def handle_batch(resource_metrics, _source) when is_list(resource_metrics) do
     resource_metrics
-    |> Enum.map(&handle_resource_metrics/1)
-    |> List.flatten()
+    |> Enum.flat_map(&handle_resource_metrics(&1))
   end
 
-  def handle_resource_metrics(%_resource_metrics{resource: resource, scope_metrics: scope_metrics}) do
+  def handle_resource_metrics(%_resource_metrics{
+        resource: resource,
+        scope_metrics: scope_metrics
+      }) do
     resource = Otel.handle_resource(resource)
-    Enum.map(scope_metrics, &handle_scope_metric(&1, resource))
-  end
 
-  def handle_scope_metric(%_scope_metrics{scope: scope, metrics: metrics}, resource) do
-    scope = Otel.handle_scope(scope)
-    Enum.map(metrics, &handle_metric(&1, resource, scope))
+    Enum.flat_map(scope_metrics, fn scope_metric ->
+      scope = Otel.handle_scope(scope_metric.scope)
+
+      Enum.flat_map(scope_metric.metrics, fn metric ->
+        handle_metric(metric, resource, scope)
+      end)
+    end)
   end
 
   def handle_metric(%_metric{name: name, unit: unit, data: data}, resource, scope) do
@@ -47,71 +51,114 @@ defmodule Logflare.Logs.OtelMetric do
   end
 
   defp handle_metric_data({:gauge, %{data_points: data_points}}, base) do
-    base = Map.merge(base, %{"metric_type" => "gauge"})
+    event_message = base["event_message"]
+    unit = base["unit"]
+    metadata = base["metadata"]
+    scope = base["scope"]
+    resource = base["resource"]
+    project = base["project"]
 
-    Enum.map(data_points, fn data_point ->
+    for data_point <- data_points do
       %{value: {_, value}} = data_point
 
-      Map.merge(base, %{
+      %{
+        "event_message" => event_message,
+        "unit" => unit,
+        "metadata" => metadata,
+        "scope" => scope,
+        "resource" => resource,
+        "project" => project,
+        "metric_type" => "gauge",
         "value" => value,
-        "start_time" => Otel.nano_to_iso8601(data_point.start_time_unix_nano),
+        "start_time" => data_point.start_time_unix_nano,
         "attributes" => Otel.handle_attributes(data_point.attributes),
-        "timestamp" => Otel.nano_to_iso8601(data_point.time_unix_nano)
-      })
-    end)
+        "timestamp" => data_point.time_unix_nano
+      }
+    end
   end
 
   defp handle_metric_data({:sum, sum}, base) do
-    base =
-      Map.merge(base, %{
-        "metric_type" => "sum",
-        "aggregation_temporality" => aggregation_temporality(sum.aggregation_temporality),
-        "is_monotonic" => sum.is_monotonic
-      })
+    event_message = base["event_message"]
+    unit = base["unit"]
+    metadata = base["metadata"]
+    scope = base["scope"]
+    resource = base["resource"]
+    project = base["project"]
+    temporality = aggregation_temporality(sum.aggregation_temporality)
+    is_monotonic = sum.is_monotonic
 
-    Enum.map(sum.data_points, fn data_point ->
+    for data_point <- sum.data_points do
       %{value: {_, value}} = data_point
 
-      Map.merge(base, %{
+      %{
+        "event_message" => event_message,
+        "unit" => unit,
+        "metadata" => metadata,
+        "scope" => scope,
+        "resource" => resource,
+        "project" => project,
+        "metric_type" => "sum",
+        "aggregation_temporality" => temporality,
+        "is_monotonic" => is_monotonic,
         "value" => value,
-        "start_time" => Otel.nano_to_iso8601(data_point.start_time_unix_nano),
+        "start_time" => data_point.start_time_unix_nano,
         "attributes" => Otel.handle_attributes(data_point.attributes),
-        "timestamp" => Otel.nano_to_iso8601(data_point.time_unix_nano)
-      })
-    end)
+        "timestamp" => data_point.time_unix_nano
+      }
+    end
   end
 
   defp handle_metric_data({:histogram, histogram}, base) do
-    base =
-      Map.merge(base, %{
-        "metric_type" => "histogram",
-        "aggregation_temporality" => aggregation_temporality(histogram.aggregation_temporality)
-      })
+    event_message = base["event_message"]
+    unit = base["unit"]
+    metadata = base["metadata"]
+    scope = base["scope"]
+    resource = base["resource"]
+    project = base["project"]
+    temporality = aggregation_temporality(histogram.aggregation_temporality)
 
-    Enum.map(histogram.data_points, fn data_point ->
-      Map.merge(base, %{
+    for data_point <- histogram.data_points do
+      %{
+        "event_message" => event_message,
+        "unit" => unit,
+        "metadata" => metadata,
+        "scope" => scope,
+        "resource" => resource,
+        "project" => project,
+        "metric_type" => "histogram",
+        "aggregation_temporality" => temporality,
         "count" => data_point.count,
         "sum" => data_point.sum,
         "min" => data_point.min,
         "max" => data_point.max,
         "bucket_counts" => data_point.bucket_counts,
         "explicit_bounds" => data_point.explicit_bounds,
-        "start_time" => Otel.nano_to_iso8601(data_point.start_time_unix_nano),
+        "start_time" => data_point.start_time_unix_nano,
         "attributes" => Otel.handle_attributes(data_point.attributes),
-        "timestamp" => Otel.nano_to_iso8601(data_point.time_unix_nano)
-      })
-    end)
+        "timestamp" => data_point.time_unix_nano
+      }
+    end
   end
 
   defp handle_metric_data({:exponential_histogram, histogram}, base) do
-    base =
-      Map.merge(base, %{
-        "metric_type" => "exponential_histogram",
-        "aggregation_temporality" => aggregation_temporality(histogram.aggregation_temporality)
-      })
+    event_message = base["event_message"]
+    unit = base["unit"]
+    metadata = base["metadata"]
+    scope = base["scope"]
+    resource = base["resource"]
+    project = base["project"]
+    temporality = aggregation_temporality(histogram.aggregation_temporality)
 
-    Enum.map(histogram.data_points, fn data_point ->
-      Map.merge(base, %{
+    for data_point <- histogram.data_points do
+      %{
+        "event_message" => event_message,
+        "unit" => unit,
+        "metadata" => metadata,
+        "scope" => scope,
+        "resource" => resource,
+        "project" => project,
+        "metric_type" => "exponential_histogram",
+        "aggregation_temporality" => temporality,
         "count" => data_point.count,
         "sum" => data_point.sum,
         "scale" => data_point.scale,
@@ -121,11 +168,11 @@ defmodule Logflare.Logs.OtelMetric do
         "negative" => exponential_histogram_buckets(data_point.negative),
         "min" => data_point.min,
         "max" => data_point.max,
-        "start_time" => Otel.nano_to_iso8601(data_point.start_time_unix_nano),
+        "start_time" => data_point.start_time_unix_nano,
         "attributes" => Otel.handle_attributes(data_point.attributes),
-        "timestamp" => Otel.nano_to_iso8601(data_point.time_unix_nano)
-      })
-    end)
+        "timestamp" => data_point.time_unix_nano
+      }
+    end
   end
 
   defp handle_metric_data({type, _}, _) do

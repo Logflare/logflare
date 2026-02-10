@@ -10,21 +10,9 @@ defmodule Logflare.Mixfile do
       start_permanent: Mix.env() == :prod,
       aliases: aliases(),
       deps: deps(),
-      preferred_cli_env: [
-        lint: :test,
-        "lint.diff": :test,
-        "test.only": :test,
-        "test.format": :test,
-        "test.compile": :test,
-        "test.security": :test,
-        "test.typings": :test,
-        coveralls: :test,
-        "coveralls.detail": :test,
-        "coveralls.post": :test,
-        "coveralls.html": :test
-      ],
       dialyzer: dialyzer(),
       test_coverage: [tool: ExCoveralls],
+      test_ignore_filters: [~r|test/profiling|, "test/bq_logs_search_seed.exs"],
       releases: [
         logflare: [
           version: version(),
@@ -36,6 +24,25 @@ defmodule Logflare.Mixfile do
             opentelemetry: :temporary
           ]
         ]
+      ]
+    ]
+  end
+
+  def cli do
+    [
+      preferred_envs: [
+        lint: :test,
+        "lint.diff": :test,
+        "test.only": :test,
+        "test.e2e": :test,
+        "test.format": :test,
+        "test.compile": :test,
+        "test.security": :test,
+        "test.typings": :test,
+        coveralls: :test,
+        "coveralls.detail": :test,
+        "coveralls.post": :test,
+        "coveralls.html": :test
       ]
     ]
   end
@@ -79,6 +86,8 @@ defmodule Logflare.Mixfile do
     [
       # Phoenix stuff
       {:phoenix, "~> 1.7.14"},
+      {:phoenix_html, "~> 4.0"},
+      {:phoenix_html_helpers, "~> 1.0"},
       {:phoenix_live_view, "~> 1.0.0"},
       {:phoenix_view, "~> 2.0"},
       {:phoenix_pubsub, "~> 2.1"},
@@ -97,7 +106,7 @@ defmodule Logflare.Mixfile do
 
       # Oauth2 provider
       {:phoenix_oauth2_provider,
-       github: "Logflare/phoenix_oauth2_provider", ref: "36e757920e54bffa0f603bf985aff91bb8b28f2d"},
+       github: "Logflare/phoenix_oauth2_provider", ref: "9ab5f7b2905286d9e4a1f731ac22009553e3a048"},
       {:ex_oauth2_provider, github: "aristamd/ex_oauth2_provider", override: true},
 
       # Ecto and DB
@@ -118,7 +127,6 @@ defmodule Logflare.Mixfile do
       {:map_keys, "~> 0.1.0"},
       {:observer_cli, "~> 1.5"},
       {:cloak_ecto, github: "logflare/cloak_ecto"},
-      {:flow, "~> 1.0"},
 
       # Parsing
       {:bertex, ">= 0.0.0"},
@@ -146,13 +154,14 @@ defmodule Logflare.Mixfile do
       # Test
       {:mix_test_watch, "~> 1.0", only: [:dev, :test], runtime: false},
       {:phoenix_test, "~> 0.9.1", only: :test, runtime: false},
+      {:phoenix_test_playwright, "~> 0.9.1", only: :test, runtime: false},
       {:mimic, "~> 2.0", only: [:dev, :test]},
       {:stream_data, "~> 1.2.0", only: [:dev, :test]},
 
       # Pagination
       {:scrivener_ecto, "~> 2.2"},
       {:scrivener_list, "~> 2.0"},
-      {:scrivener_html, github: "Logflare/scrivener_html"},
+      {:numerator, "~> 0.2.0"},
 
       # GCP
       {:google_api_cloud_resource_manager, "~> 0.34.0"},
@@ -186,7 +195,7 @@ defmodule Logflare.Mixfile do
       {:rustler, "~> 0.36.2", override: true},
 
       # Frontend
-      {:phoenix_live_react, "~> 0.4"},
+      {:phoenix_live_react, "~> 0.6"},
       {:sql_fmt, "~> 0.4.0"},
 
       # Dev
@@ -194,7 +203,7 @@ defmodule Logflare.Mixfile do
 
       # Billing
       {:stripity_stripe, "~> 2.9.0"},
-      {:money, "~> 1.7"},
+      {:money, "~> 1.14"},
 
       # Utils
       {:recase, "~> 0.7.0"},
@@ -217,7 +226,7 @@ defmodule Logflare.Mixfile do
       {:ymlr, "~> 2.0"},
       {:grpc, "~> 0.9.0"},
       # otel_metric_exporter requires an update https://github.com/electric-sql/elixir-otel-metric-exporter/pull/13
-      {:protobuf, "~> 0.14.1", override: true},
+      {:protobuf, "~> 0.15.0", override: true},
       {:gun, "~> 2.0", override: true},
       {:cowlib, ">=2.12.0", override: true},
       {:phoenix_live_dashboard, "~> 0.8"},
@@ -261,6 +270,7 @@ defmodule Logflare.Mixfile do
       "test.typings": ["cmd mkdir -p dialyzer", "dialyzer"],
       "test.coverage": ["coveralls"],
       "test.coverage.ci": ["coveralls.github"],
+      "test.e2e": ["ecto.create --quiet", "ecto.migrate --quiet", "test --only feature"],
       lint: ["credo"],
       "lint.diff": ["credo diff main"],
       "lint.all": ["credo --strict"],

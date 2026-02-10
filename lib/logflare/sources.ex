@@ -15,7 +15,6 @@ defmodule Logflare.Sources do
   alias Logflare.Logs.RejectedLogEvents
   alias Logflare.PubSubRates
   alias Logflare.Repo
-  alias Logflare.SavedSearch
   alias Logflare.SingleTenant
   alias Logflare.SourceSchemas
   alias Logflare.Sources
@@ -392,17 +391,6 @@ defmodule Logflare.Sources do
     |> Repo.preload([:rules])
   end
 
-  @spec preload_saved_searches(Source.t() | [Source.t()], Keyword.t()) :: Source.t()
-  def preload_saved_searches(source, opts \\ []) do
-    import Ecto.Query
-
-    Repo.preload(
-      source,
-      [saved_searches: from(s in SavedSearch, where: s.saved_by_user)],
-      opts
-    )
-  end
-
   def preload_source_schema(source) do
     Repo.preload(source, :source_schema)
   end
@@ -498,7 +486,6 @@ defmodule Logflare.Sources do
   @spec get_source_for_lv_param(binary | integer) :: Logflare.Sources.Source.t()
   def get_source_for_lv_param(source_id) when is_binary(source_id) or is_integer(source_id) do
     get_by_and_preload(id: source_id)
-    |> preload_saved_searches()
     |> put_bq_table_id()
     |> put_bq_dataset_id()
   end
@@ -654,7 +641,6 @@ defmodule Logflare.Sources do
     all_backends
     |> Enum.reduce(0, fn backend, acc ->
       case Backends.IngestEventQueue.total_pending({source_id, backend.id}) do
-        {:error, :not_initialized} -> acc
         count -> acc + count
       end
     end)

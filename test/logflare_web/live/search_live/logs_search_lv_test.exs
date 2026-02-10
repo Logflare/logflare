@@ -416,6 +416,40 @@ defmodule LogflareWeb.Source.SearchLVTest do
       assert html =~ formatted_sql
     end
 
+    test "subheader - saved searches", %{conn: conn, source: source} do
+      {:ok, view, _html} = live(conn, ~p"/sources/#{source.id}/search")
+      %{executor_pid: search_executor_pid} = get_view_assigns(view)
+      Ecto.Adapters.SQL.Sandbox.allow(Logflare.Repo, self(), search_executor_pid)
+
+      assert view
+             |> element(".subhead a", "saved")
+             |> render_click()
+
+      view
+      |> TestUtils.wait_for_render("#logflare-modal")
+
+      assert view
+             |> has_element?("#logflare-modal #saved-searches-empty")
+
+      saved_search = insert(:saved_search, %{source: source})
+
+      _ = Logflare.SavedSearches.Cache.bust_by(source_id: saved_search.source_id)
+      {:ok, view, _html} = live(conn, ~p"/sources/#{source.id}/search")
+
+      assert view
+             |> element(".subhead a", "saved")
+             |> render_click()
+
+      view
+      |> TestUtils.wait_for_render("#logflare-modal")
+
+      view
+      |> TestUtils.wait_for_render("#logflare-modal #saved-searches-list")
+
+      assert view
+             |> has_element?("#logflare-modal #saved-searches-list", saved_search.querystring)
+    end
+
     test "load page", %{conn: conn, source: source} do
       {:ok, view, html} = live(conn, Routes.live_path(conn, SearchLV, source.id))
       %{executor_pid: search_executor_pid} = get_view_assigns(view)
@@ -712,6 +746,34 @@ defmodule LogflareWeb.Source.SearchLVTest do
 
       assert link =~ ~r/phx-value-log-event-timestamp="\d+/
       assert link =~ ~r/phx-value-lql="\w+/
+    end
+
+    test "log event selected fields", %{conn: conn, source: source} do
+      stub(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, fn _conn, _proj_id, _opts ->
+        {:ok,
+         TestUtils.gen_bq_response(%{
+           "event_message" => "some event message",
+           "testing" => "modal123",
+           "user_id" => "user-abc-123",
+           "id" => "some-uuid"
+         })}
+      end)
+
+      {:ok, view, _html} =
+        live(conn, ~p"/sources/#{source.id}/search?#{%{querystring: "s:user.id"}}")
+
+      %{executor_pid: search_executor_pid} = get_view_assigns(view)
+      Ecto.Adapters.SQL.Sandbox.allow(Logflare.Repo, self(), search_executor_pid)
+
+      view
+      |> TestUtils.wait_for_render("#logs-list")
+
+      assert view |> element("#logs-list-container") |> render() =~
+               "some event message"
+
+      html = view |> element("#logs-list-container #log-some-uuid-selected-fields") |> render()
+      assert html =~ "id"
+      assert html =~ "user-abc-123"
     end
 
     test "log event modal", %{conn: conn, user: user} do

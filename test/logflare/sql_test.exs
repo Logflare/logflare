@@ -439,7 +439,9 @@ defmodule Logflare.SqlTest do
 
     test "parser can handle sandboxed CTEs with union all" do
       user = insert(:user)
-      insert(:source, user: user, name: "my_ch_table")
+      source = insert(:source, user: user, name: "my_ch_table")
+      backend = insert(:backend, type: :clickhouse, user: user, sources: [source])
+      _backend = backend
 
       # valid CTE queries with UNION ALL
       input = """
@@ -477,7 +479,9 @@ defmodule Logflare.SqlTest do
 
     test "sandboxed queries work with simple CTEs" do
       user = insert(:user)
-      _source = insert(:source, user: user, name: "my_ch_table")
+      source = insert(:source, user: user, name: "my_ch_table")
+      backend = insert(:backend, type: :clickhouse, user: user, sources: [source])
+      _backend = backend
 
       cte_query = "with src as (select a from my_ch_table) select a from src"
       consumer_query = "select a from src where a > 5"
@@ -489,7 +493,9 @@ defmodule Logflare.SqlTest do
 
     test "sandboxed queries with order by" do
       user = insert(:user)
-      _source = insert(:source, user: user, name: "my_ch_table")
+      source = insert(:source, user: user, name: "my_ch_table")
+      backend = insert(:backend, type: :clickhouse, user: user, sources: [source])
+      _backend = backend
 
       cte_query = "with src as (select a from my_ch_table) select a from src"
       consumer_query = "select a from src order by a desc"
@@ -501,7 +507,9 @@ defmodule Logflare.SqlTest do
 
     test "sandboxed queries with union all" do
       user = insert(:user)
-      _source = insert(:source, user: user, name: "my_ch_table")
+      source = insert(:source, user: user, name: "my_ch_table")
+      backend = insert(:backend, type: :clickhouse, user: user, sources: [source])
+      _backend = backend
 
       cte_query = """
       with cte1 as (select a from my_ch_table),
@@ -526,8 +534,8 @@ defmodule Logflare.SqlTest do
       {source, backend, cleanup_fn} = setup_clickhouse_test(source: source, user: user)
       on_exit(cleanup_fn)
 
-      {:ok, _pid} = ClickHouseAdaptor.start_link({source, backend})
-      assert {:ok, _} = ClickHouseAdaptor.provision_ingest_table({source, backend})
+      {:ok, _pid} = ClickHouseAdaptor.start_link(backend)
+      assert :ok = ClickHouseAdaptor.provision_ingest_tables(backend)
 
       log_events = [
         build(:log_event,
@@ -542,29 +550,31 @@ defmodule Logflare.SqlTest do
         )
       ]
 
-      assert :ok = ClickHouseAdaptor.insert_log_events({source, backend}, log_events)
+      assert :ok = ClickHouseAdaptor.insert_log_events(backend, log_events, :log)
 
       Process.sleep(200)
 
-      cte_query =
-        "with src as (select body from #{source.name}) select body from src"
+      table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(backend, :log)
 
-      consumer_query = "select body from src"
+      cte_query =
+        "with src as (select event_message from #{table_name}) select event_message from src"
+
+      consumer_query = "select event_message from src"
 
       assert {:ok, transformed} = Sql.transform(:ch_sql, {cte_query, consumer_query}, user)
       assert {:ok, results} = ClickHouseAdaptor.execute_query(backend, transformed, [])
       assert length(results) == 2
 
       # cannot access the source table directly
-      consumer_query_accessing_source = "select body from #{source.name}"
+      consumer_query_accessing_table = "select event_message from #{table_name}"
 
       assert {:error, err} =
-               Sql.transform(:ch_sql, {cte_query, consumer_query_accessing_source}, user)
+               Sql.transform(:ch_sql, {cte_query, consumer_query_accessing_table}, user)
 
       assert String.downcase(err) =~ "table not found in cte"
 
       # cannot access another known source that exists but is not in the CTE
-      consumer_query_accessing_other_source = "select body from #{other_source.name}"
+      consumer_query_accessing_other_source = "select event_message from #{other_source.name}"
 
       assert {:error, err} =
                Sql.transform(:ch_sql, {cte_query, consumer_query_accessing_other_source}, user)
@@ -574,7 +584,9 @@ defmodule Logflare.SqlTest do
 
     test "sandboxed queries reject table references not in CTE" do
       user = insert(:user)
-      _source = insert(:source, user: user, name: "my_ch_table")
+      source = insert(:source, user: user, name: "my_ch_table")
+      backend = insert(:backend, type: :clickhouse, user: user, sources: [source])
+      _backend = backend
 
       cte_query = "with src as (select a from my_ch_table) select a from src"
       consumer_query = "select a from my_ch_table"
@@ -585,7 +597,9 @@ defmodule Logflare.SqlTest do
 
     test "sandboxed queries reject wildcards" do
       user = insert(:user)
-      _source = insert(:source, user: user, name: "my_ch_table")
+      source = insert(:source, user: user, name: "my_ch_table")
+      backend = insert(:backend, type: :clickhouse, user: user, sources: [source])
+      _backend = backend
 
       cte_query = "with src as (select a from my_ch_table) select a from src"
       consumer_query = "select * from src"
@@ -596,7 +610,9 @@ defmodule Logflare.SqlTest do
 
     test "sandboxed queries reject DML operations" do
       user = insert(:user)
-      _source = insert(:source, user: user, name: "my_ch_table")
+      source = insert(:source, user: user, name: "my_ch_table")
+      backend = insert(:backend, type: :clickhouse, user: user, sources: [source])
+      _backend = backend
 
       cte_query = "with src as (select a from my_ch_table) select a from src"
       consumer_query = "delete from src where a = 1"
@@ -607,7 +623,9 @@ defmodule Logflare.SqlTest do
 
     test "rejects restricted functions" do
       user = insert(:user)
-      _source = insert(:source, user: user, name: "my_ch_table")
+      source = insert(:source, user: user, name: "my_ch_table")
+      backend = insert(:backend, type: :clickhouse, user: user, sources: [source])
+      _backend = backend
 
       restricted_functions = [
         {"file", "select col1 from file('/etc/passwd', 'CSV')"},
@@ -626,7 +644,9 @@ defmodule Logflare.SqlTest do
 
     test "rejects restricted functions in sandboxed queries" do
       user = insert(:user)
-      _source = insert(:source, user: user, name: "my_ch_table")
+      source = insert(:source, user: user, name: "my_ch_table")
+      backend = insert(:backend, type: :clickhouse, user: user, sources: [source])
+      _backend = backend
 
       cte_query = "with src as (select a from my_ch_table) select a from src"
 

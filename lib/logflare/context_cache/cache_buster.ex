@@ -181,6 +181,14 @@ defmodule Logflare.ContextCache.CacheBuster do
   end
 
   defp handle_record(%NewRecord{
+         relation: {_schema, "saved_searches"},
+         record: %{"source_id" => source_id}
+       })
+       when is_binary(source_id) do
+    {SavedSearches, [source_id: String.to_integer(source_id)]}
+  end
+
+  defp handle_record(%NewRecord{
          relation: {_schema, "source_schemas"},
          record: %{"id" => _id}
        }) do
@@ -329,9 +337,27 @@ defmodule Logflare.ContextCache.CacheBuster do
     :noop
   end
 
-  defp handle_rule_record(record) do
-    for {k, v} <- Map.take(record, ["source_id", "backend_id"]), is_binary(v) do
-      {String.to_existing_atom(k), String.to_integer(v)}
-    end
+  def handle_rule_record(%{
+        "id" => <<id::binary>>,
+        "source_id" => <<sid::binary>>,
+        "backend_id" => <<bid::binary>>
+      }) do
+    [
+      id: String.to_integer(id),
+      source_id: String.to_integer(sid),
+      backend_id: String.to_integer(bid)
+    ]
+  end
+
+  def handle_rule_record(%{"id" => <<id::binary>>, "backend_id" => <<bid::binary>>}) do
+    [id: String.to_integer(id), backend_id: String.to_integer(bid)]
+  end
+
+  def handle_rule_record(%{"id" => <<id::binary>>, "source_id" => <<sid::binary>>}) do
+    [id: String.to_integer(id), source_id: String.to_integer(sid)]
+  end
+
+  def handle_rule_record(%{"id" => <<id::binary>>}) do
+    [id: String.to_integer(id)]
   end
 end
