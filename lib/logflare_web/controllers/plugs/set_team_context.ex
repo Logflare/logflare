@@ -16,7 +16,10 @@ defmodule LogflareWeb.Plugs.SetTeamContext do
         assign(conn, :user, nil)
 
       email ->
-        team_id = Map.get(conn.params, "t", nil)
+        team_id =
+          Map.get(conn.params, "t") ||
+            get_session(conn, :last_switched_team_id)
+
         set_team_context(conn, team_id, email)
     end
   end
