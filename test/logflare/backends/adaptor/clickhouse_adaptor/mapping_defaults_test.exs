@@ -20,7 +20,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaultsTest do
 
     test "raises for unknown log type" do
       assert_raise FunctionClauseError, fn ->
-        MappingDefaults.for_type(:unknown)
+        apply(MappingDefaults, :for_type, [:unknown])
       end
     end
   end
