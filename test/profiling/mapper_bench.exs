@@ -274,8 +274,7 @@ payload = %{
   "timestamp" => 1_768_497_240_000_000
 }
 
-# Mapping config aligned with the OTEL logs table DDL and recommended
-# coalesce paths from claude_research/clickhouse_data_mapping_plan.md
+# Mapping config aligned with the OTEL logs table DDL
 logs_mapping =
   MappingConfig.new([
     Field.string("project",
