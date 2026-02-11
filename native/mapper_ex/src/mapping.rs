@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::collections::HashSet;
 
 use rustler::types::map::MapIterator;
 use rustler::{Encoder, Env, Term};
@@ -19,6 +20,7 @@ pub struct CompiledField {
     pub field_type: FieldType,
     pub default: DefaultValue,
     pub transform: Option<FieldTransform>,
+    pub allowed_values: HashSet<String>,
     pub value_map: HashMap<String, i64>,
     pub exclude_keys: Vec<String>,
     pub elevate_keys: Vec<String>,
@@ -178,6 +180,7 @@ fn decode_field<'a>(env: Env<'a>, field: Term<'a>) -> Result<CompiledField, Stri
     let default = decode_default(env, field, &field_type)?;
     let path_source = decode_path_source(env, field)?;
     let transform = decode_transform(env, field)?;
+    let allowed_values = decode_allowed_values(env, field);
     let value_map = decode_value_map(env, field)?;
     let exclude_keys = decode_string_list(env, field, "exclude_keys");
     let elevate_keys = decode_string_list(env, field, "elevate_keys");
@@ -195,6 +198,7 @@ fn decode_field<'a>(env: Env<'a>, field: Term<'a>) -> Result<CompiledField, Stri
         field_type,
         default,
         transform,
+        allowed_values,
         value_map,
         exclude_keys,
         elevate_keys,
@@ -334,6 +338,17 @@ fn decode_transform<'a>(env: Env<'a>, field: Term<'a>) -> Result<Option<FieldTra
             "downcase" => Ok(Some(FieldTransform::Downcase)),
             other => Err(format!("unknown transform: {}", other)),
         },
+    }
+}
+
+fn decode_allowed_values<'a>(env: Env<'a>, map: Term<'a>) -> HashSet<String> {
+    match get_term_key(env, map, "allowed_values") {
+        Some(t) => t
+            .decode::<Vec<String>>()
+            .unwrap_or_default()
+            .into_iter()
+            .collect(),
+        None => HashSet::new(),
     }
 }
 

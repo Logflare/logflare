@@ -1093,6 +1093,129 @@ defmodule Logflare.MapperTest do
     end
   end
 
+  # ── Allowed values ──────────────────────────────────────────────────
+
+  describe "allowed_values" do
+    test "value in set passes through" do
+      result =
+        compile_and_map(
+          [
+            Field.string("level",
+              path: "$.level",
+              default: "INFO",
+              allowed_values: ~w(INFO ERROR WARN)
+            )
+          ],
+          %{"level" => "ERROR"}
+        )
+
+      assert result["level"] == "ERROR"
+    end
+
+    test "value not in set falls back to default" do
+      result =
+        compile_and_map(
+          [
+            Field.string("level",
+              path: "$.level",
+              default: "INFO",
+              allowed_values: ~w(INFO ERROR WARN)
+            )
+          ],
+          %{"level" => "some random stack trace string"}
+        )
+
+      assert result["level"] == "INFO"
+    end
+
+    test "missing path (nil) uses default without checking allowed_values" do
+      result =
+        compile_and_map(
+          [
+            Field.string("level",
+              path: "$.level",
+              default: "INFO",
+              allowed_values: ~w(INFO ERROR WARN)
+            )
+          ],
+          %{}
+        )
+
+      assert result["level"] == "INFO"
+    end
+
+    test "empty allowed_values means no filtering" do
+      result =
+        compile_and_map(
+          [Field.string("level", path: "$.level", default: "INFO")],
+          %{"level" => "any_random_value"}
+        )
+
+      assert result["level"] == "any_random_value"
+    end
+
+    test "interaction with value_map + from_output: invalid falls back to default then maps correctly" do
+      result =
+        compile_and_map(
+          [
+            Field.string("severity_text",
+              path: "$.level",
+              default: "INFO",
+              transform: "upcase",
+              allowed_values: ~w(INFO ERROR WARN)
+            ),
+            Field.uint8("severity_number",
+              from_output: "severity_text",
+              value_map: %{"INFO" => 9, "ERROR" => 17, "WARN" => 13},
+              default: 0
+            )
+          ],
+          %{"level" => "java.lang.NullPointerException\n  at com.foo.Bar"}
+        )
+
+      # Invalid severity_text falls back to default "INFO"
+      assert result["severity_text"] == "INFO"
+      # severity_number correctly maps the default
+      assert result["severity_number"] == 9
+    end
+
+    test "transform runs before allowed_values check" do
+      result =
+        compile_and_map(
+          [
+            Field.string("level",
+              path: "$.level",
+              default: "INFO",
+              transform: "upcase",
+              allowed_values: ~w(INFO ERROR WARN)
+            )
+          ],
+          # lowercase input + upcase transform = "INFO" which is in allowed_values
+          %{"level" => "info"}
+        )
+
+      assert result["level"] == "INFO"
+    end
+
+    test "non-string value bypasses the check and goes to coercion" do
+      result =
+        compile_and_map(
+          [
+            Field.string("val",
+              path: "$.val",
+              default: "fallback",
+              allowed_values: ~w(hello world)
+            )
+          ],
+          # Integer input: NIF can't decode as string, so bypasses allowed_values check
+          %{"val" => 42}
+        )
+
+      # Integer bypasses string check, then gets coerced to string "42"
+      assert result["val"] == "42"
+    end
+  end
+
   # ── Error handling ────────────────────────────────────────────────────
 
   describe "run/2" do

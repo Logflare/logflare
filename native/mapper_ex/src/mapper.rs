@@ -38,6 +38,21 @@ pub fn map_single<'a>(env: Env<'a>, body: Term<'a>, mapping: &CompiledMapping) -
             None => value,
         };
 
+        // Check allowed_values whitelist
+        let value = if !field.allowed_values.is_empty() && value != nil {
+            if let Ok(s) = value.decode::<String>() {
+                if field.allowed_values.contains(&s) {
+                    value
+                } else {
+                    coerce::encode_default(env, &field.default, nil)
+                }
+            } else {
+                value // non-string values bypass the check
+            }
+        } else {
+            value
+        };
+
         // Apply value_map if configured (e.g., severity_text -> severity_number)
         let value = if !field.value_map.is_empty() {
             let mapped = coerce::apply_value_map(env, value, &field.value_map, nil);

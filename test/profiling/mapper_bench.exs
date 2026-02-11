@@ -296,7 +296,9 @@ logs_mapping =
     Field.string("severity_text",
       paths: ["$.severity_text", "$.severityText", "$.metadata.level", "$.level"],
       default: "INFO",
-      transform: "upcase"
+      transform: "upcase",
+      allowed_values:
+        ~w(TRACE DEBUG INFO NOTICE WARN WARNING ERROR FATAL CRITICAL EMERGENCY ALERT LOG PANIC)
     ),
     Field.uint8("severity_number",
       from_output: "severity_text",
@@ -479,7 +481,9 @@ hybrid_mapping =
     Field.string("severity_text",
       paths: ["$.severity_text", "$.severityText", "$.metadata.level", "$.level"],
       default: "INFO",
-      transform: "upcase"
+      transform: "upcase",
+      allowed_values:
+        ~w(TRACE DEBUG INFO NOTICE WARN WARNING ERROR FATAL CRITICAL EMERGENCY ALERT LOG PANIC)
     ),
     Field.uint8("severity_number",
       from_output: "severity_text",
