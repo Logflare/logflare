@@ -22,6 +22,9 @@ defmodule Logflare.Mapper.MappingConfig.FieldConfig do
   ### `string/2`
 
     * `:transform` — `"upcase"` or `"downcase"`, applied after resolution
+    * `:allowed_values` — list of permitted string values. After transform is applied,
+      if the value is not in this list it is replaced with the field's default. Useful for
+      `LowCardinality(String)` columns where arbitrary strings would pollute the index.
 
   ### `datetime64/2`
 
@@ -104,6 +107,7 @@ defmodule Logflare.Mapper.MappingConfig.FieldConfig do
     field(:default, :string)
     field(:precision, :integer)
     field(:transform, :string)
+    field(:allowed_values, {:array, :string})
     field(:from_output, :string)
     field(:value_map, :map)
     field(:enum_values, :map)
@@ -126,6 +130,7 @@ defmodule Logflare.Mapper.MappingConfig.FieldConfig do
         :default,
         :precision,
         :transform,
+        :allowed_values,
         :from_output,
         :value_map,
         :enum_values,
@@ -143,7 +148,7 @@ defmodule Logflare.Mapper.MappingConfig.FieldConfig do
 
   @spec string(String.t(), keyword()) :: t()
   def string(name, opts \\ []) do
-    build(name, "string", opts, [:transform])
+    build(name, "string", opts, [:transform, :allowed_values])
   end
 
   @spec uint8(String.t(), keyword()) :: t()

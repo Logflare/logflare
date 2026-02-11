@@ -13,7 +13,8 @@ defmodule Logflare.Mapper.MappingConfig do
 
       config = MappingConfig.new([
         Field.string("trace_id", paths: ["$.trace_id", "$.traceId"], default: ""),
-        Field.string("severity_text", paths: ["$.level"], transform: "upcase"),
+        Field.string("severity_text", paths: ["$.level"], transform: "upcase",
+          default: "INFO", allowed_values: ~w(INFO WARN ERROR)),
         Field.uint8("severity_number", from_output: "severity_text",
           value_map: %{"INFO" => 9, "ERROR" => 17}, default: 0),
         Field.datetime64("timestamp", path: "$.timestamp"),
@@ -81,6 +82,7 @@ defmodule Logflare.Mapper.MappingConfig do
     |> maybe_add("default", encode_nif_default(f))
     |> maybe_add("precision", f.precision)
     |> maybe_add("transform", f.transform)
+    |> maybe_add("allowed_values", f.allowed_values)
     |> maybe_add("from_output", f.from_output)
     |> maybe_add("value_map", f.value_map)
     |> maybe_add("enum_values", f.enum_values)

@@ -13,9 +13,9 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaults do
   alias Logflare.Mapper.MappingConfig.InferCondition
   alias Logflare.Mapper.MappingConfig.InferRule
 
-  @log_config_id "00000000-0000-0000-0000-000000000001"
-  @metric_config_id "00000000-0000-0000-0000-000000000002"
-  @trace_config_id "00000000-0000-0000-0000-000000000003"
+  @log_config_id "00000000-0000-0000-0001-000000000002"
+  @metric_config_id "00000000-0000-0000-0002-000000000001"
+  @trace_config_id "00000000-0000-0000-0003-000000000001"
 
   @spec config_id(TypeDetection.log_type()) :: String.t()
   def config_id(:log), do: @log_config_id
@@ -62,7 +62,9 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaults do
           "$.metadata.parsed.error_severity"
         ],
         default: "INFO",
-        transform: "upcase"
+        transform: "upcase",
+        allowed_values:
+          ~w(TRACE DEBUG INFO NOTICE WARN WARNING ERROR FATAL CRITICAL EMERGENCY ALERT LOG PANIC)
       ),
       Field.uint8("severity_number_alt",
         paths: ["$.severity_number", "$.severityNumber"],
@@ -74,6 +76,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaults do
           "TRACE" => 1,
           "DEBUG" => 5,
           "INFO" => 9,
+          "NOTICE" => 11,
           "WARN" => 13,
           "WARNING" => 13,
           "ERROR" => 17,
@@ -81,6 +84,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaults do
           "FATAL" => 21,
           "CRITICAL" => 21,
           "EMERGENCY" => 21,
+          "ALERT" => 21,
           "PANIC" => 21
         },
         default: 0
