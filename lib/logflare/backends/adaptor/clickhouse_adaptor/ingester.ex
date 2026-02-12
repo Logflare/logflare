@@ -15,7 +15,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
   @initial_delay 500
   @max_delay 4_000
   @pool_timeout 8_000
-  @receive_timeout 30_000
+  @receive_timeout 40_000
 
   @log_columns ~w(id source_uuid source_name project trace_id span_id trace_flags
     severity_text severity_number service_name event_message scope_name scope_version
