@@ -7,20 +7,20 @@ defmodule Logflare.SystemMetrics.Schedulers do
   defp formatter(scheduler_utilization) do
     Enum.map(scheduler_utilization, fn x ->
       case x do
-        {type, scheduler_name, utilization, utilization_percentage} ->
+        {type, scheduler_name, utilization, _utilization_percentage} ->
           %{
             name: Integer.to_string(scheduler_name),
             type: rename_type(type),
             utilization: Kernel.floor(utilization * 100),
-            utilization_percentage: utilization_percentage
+            utilization_percentage: utilization * 100
           }
 
-        {_total, utilization, utilization_percentage} ->
+        {_total, utilization, _utilization_percentage} ->
           %{
             name: "total",
             type: "total",
             utilization: Kernel.floor(utilization * 100),
-            utilization_percentage: utilization_percentage
+            utilization_percentage: utilization * 100
           }
       end
     end)

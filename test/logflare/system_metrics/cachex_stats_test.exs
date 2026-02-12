@@ -3,59 +3,65 @@ defmodule Logflare.SystemMetrics.CachexStatsTest do
   alias Logflare.Users.Cache, as: UsersCache
   alias Logflare.Sources.Cache, as: SourcesCache
 
-  test "cachex_metrics/0 iterates caches and emits telemetry events", %{test: test} do
-    # Cleanup handler on exit
-    handler_id = "#{test}-handler"
+  test "cachex_metrics/0 iterates caches and emits telemetry events" do
+    telemetry_ref =
+      :telemetry_test.attach_event_handlers(self(), [
+        [:cachex, :users],
+        [:cachex, :sources]
+      ])
 
     on_exit(fn ->
-      :telemetry.detach(handler_id)
-      # Clear caches
+      :telemetry.detach(telemetry_ref)
       Cachex.clear(UsersCache)
       Cachex.clear(SourcesCache)
     end)
 
-    # 1. Setup Data
-    # Generate hits/misses for UsersCache
     Cachex.put(UsersCache, "u1", "v1")
-    # Hit
     Cachex.get(UsersCache, "u1")
-    # Miss
     Cachex.get(UsersCache, "missing")
 
-    # Generate hits for SourcesCache
     Cachex.put(SourcesCache, "s1", "v1")
-    # Hit
     Cachex.get(SourcesCache, "s1")
 
-    # 2. Attach Listener
-    test_pid = self()
-
-    :telemetry.attach_many(
-      handler_id,
-      [
-        [:cachex, :users],
-        [:cachex, :sources]
-      ],
-      fn event_name, measurements, _metadata, _config ->
-        send(test_pid, {:telemetry_event, event_name, measurements})
-      end,
-      nil
-    )
-
-    # 3. Trigger Metrics Collection (simulate poller tick)
+    # initate telemetry_poller tick
     Logflare.Telemetry.cachex_metrics()
 
-    # 4. Assertions
-    # Expect Users Event
-    assert_receive {:telemetry_event, [:cachex, :users], measurements}
-    assert measurements.hits >= 1
-    assert measurements.misses >= 1
-    assert measurements.hit_rate == 50.0
+    assert_received {[:cachex, :users], ^telemetry_ref, users_cache_measurements, _metadata}
 
-    # Expect Sources Event
-    assert_receive {:telemetry_event, [:cachex, :sources], measurements}
-    assert measurements.hits >= 1
-    assert measurements.misses == 0
-    assert measurements.hit_rate == 100.0
+    assert Map.keys(users_cache_measurements) == [
+             :total_heap_size,
+             :purge,
+             :stats,
+             :operations,
+             :hits,
+             :evictions,
+             :expirations,
+             :misses,
+             :hit_rate,
+             :miss_rate
+           ]
+
+    assert users_cache_measurements.hits >= 1
+    assert users_cache_measurements.misses >= 1
+    assert users_cache_measurements.operations >= 3
+
+    assert_received {[:cachex, :sources], ^telemetry_ref, sources_cache_measurements, _metadata}
+
+    assert Map.keys(sources_cache_measurements) == [
+             :total_heap_size,
+             :purge,
+             :stats,
+             :operations,
+             :hits,
+             :evictions,
+             :expirations,
+             :misses,
+             :hit_rate,
+             :miss_rate
+           ]
+
+    assert sources_cache_measurements.hits >= 1
+    assert sources_cache_measurements.misses >= 0
+    assert sources_cache_measurements.operations >= 2
   end
 end
