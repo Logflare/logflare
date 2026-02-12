@@ -13,6 +13,19 @@ mod atoms {
     }
 }
 
+/// Check if a field type is an array type.
+fn is_array_type(field_type: &FieldType) -> bool {
+    matches!(
+        field_type,
+        FieldType::ArrayString
+            | FieldType::ArrayUInt64
+            | FieldType::ArrayFloat64
+            | FieldType::ArrayDateTime64 { .. }
+            | FieldType::ArrayJson
+            | FieldType::ArrayMap
+    )
+}
+
 /// Execute the mapping on a single document, returning the mapped output map.
 pub fn map_single<'a>(env: Env<'a>, body: Term<'a>, mapping: &CompiledMapping) -> Term<'a> {
     let nil = atoms::nil().encode(env);
@@ -22,6 +35,8 @@ pub fn map_single<'a>(env: Env<'a>, body: Term<'a>, mapping: &CompiledMapping) -
     let mut values: Vec<Term<'a>> = Vec::with_capacity(field_count);
 
     for field in &mapping.fields {
+        let is_array = is_array_type(&field.field_type);
+
         // For Enum8 fields, use a special resolution flow:
         // resolve raw value (no default), then enum8 handler does lookup + inference + default
         let is_enum8 = matches!(&field.field_type, FieldType::Enum8 { .. });
@@ -31,6 +46,14 @@ pub fn map_single<'a>(env: Env<'a>, body: Term<'a>, mapping: &CompiledMapping) -
         } else {
             resolve_value(env, body, field, &values, nil)
         };
+
+        // Array types skip transform, allowed_values, value_map, enum8, and json operations
+        if is_array {
+            let value = coerce::coerce_array(env, value, &field.field_type, field.filter_nil, nil);
+            keys.push(field.name.encode(env));
+            values.push(value);
+            continue;
+        }
 
         // Apply transform if configured
         let value = match &field.transform {

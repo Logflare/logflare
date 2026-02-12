@@ -6,7 +6,19 @@ defmodule Logflare.Mapper.MappingConfig do
   extract and coerce a single output field from an input document. Build configs
   using the `FieldConfig` constructor functions, then compile via `Mapper.compile!/1`.
 
-  ## Example
+  Supports 10 scalar types (`string`, `uint8`, `uint32`, `uint64`, `int32`,
+  `float64`, `bool`, `enum8`, `datetime64`, `json`) and 6 array types
+  (`array_string`, `array_uint64`, `array_float64`, `array_datetime64`,
+  `array_json`, `array_map`). See `FieldConfig` for full documentation.
+
+  Every field reads from the **original input document** — operations like
+  `exclude_keys` and `elevate_keys` only transform that field's own output value.
+  The only cross-field mechanism is `from_output:`, which reads a previously
+  resolved field's value.
+
+  ## Examples
+
+  Log mapping with scalar types:
 
       alias Logflare.Mapper.MappingConfig
       alias Logflare.Mapper.MappingConfig.FieldConfig, as: Field
@@ -20,6 +32,17 @@ defmodule Logflare.Mapper.MappingConfig do
         Field.datetime64("timestamp", path: "$.timestamp"),
         Field.json("attributes", path: "$",
           exclude_keys: ["id", "timestamp"], elevate_keys: ["metadata"])
+      ])
+
+  Histogram metric mapping with array types:
+
+      config = MappingConfig.new([
+        Field.datetime64("timestamp", path: "$.timestamp"),
+        Field.string("metric_name", path: "$.name", default: ""),
+        Field.array_float64("explicit_bounds", path: "$.explicit_bounds"),
+        Field.array_uint64("bucket_counts", path: "$.bucket_counts"),
+        Field.array_string("exemplar_trace_ids",
+          path: "$.exemplars[*].trace_id", filter_nil: true)
       ])
 
       compiled = Logflare.Mapper.compile!(config)
@@ -88,11 +111,17 @@ defmodule Logflare.Mapper.MappingConfig do
     |> maybe_add("enum_values", f.enum_values)
     |> maybe_add("exclude_keys", f.exclude_keys)
     |> maybe_add("elevate_keys", f.elevate_keys)
+    |> maybe_add_filter_nil(f.filter_nil)
     |> maybe_add_pick(f.pick)
     |> maybe_add_infer(f.infer)
   end
 
   @spec encode_nif_default(FieldConfig.t()) :: term()
+  @array_types ~w(array_string array_uint64 array_float64 array_datetime64 array_json array_map)
+
+  defp encode_nif_default(%FieldConfig{default: nil, type: type}) when type in @array_types,
+    do: []
+
   defp encode_nif_default(%FieldConfig{default: nil}), do: nil
 
   defp encode_nif_default(%FieldConfig{default: val, type: type})
@@ -121,6 +150,10 @@ defmodule Logflare.Mapper.MappingConfig do
   defp maybe_add(map, _key, nil), do: map
   defp maybe_add(map, _key, []), do: map
   defp maybe_add(map, key, value), do: Map.put(map, key, value)
+
+  @spec maybe_add_filter_nil(map(), boolean()) :: map()
+  defp maybe_add_filter_nil(map, false), do: map
+  defp maybe_add_filter_nil(map, true), do: Map.put(map, "filter_nil", true)
 
   @spec maybe_add_pick(map(), [PickEntry.t()]) :: map()
   defp maybe_add_pick(map, []), do: map

@@ -459,142 +459,133 @@ manual_map = fn doc ->
   }
 end
 
-# Hybrid config: NIF handles everything except log_attributes JSON ops
-hybrid_mapping =
-  MappingConfig.new([
-    Field.string("project",
-      paths: ["$.project", "$.project_ref", "$.project_id"],
-      default: ""
-    ),
-    Field.string("trace_id",
-      paths: ["$.trace_id", "$.traceId", "$.otel_trace_id"],
-      default: ""
-    ),
-    Field.string("span_id",
-      paths: ["$.span_id", "$.spanId", "$.otel_span_id"],
-      default: ""
-    ),
-    Field.uint8("trace_flags",
-      paths: ["$.trace_flags", "$.traceFlags"],
-      default: 0
-    ),
-    Field.string("severity_text",
-      paths: ["$.severity_text", "$.severityText", "$.metadata.level", "$.level"],
-      default: "INFO",
-      transform: "upcase",
-      allowed_values:
-        ~w(TRACE DEBUG INFO NOTICE WARN WARNING ERROR FATAL CRITICAL EMERGENCY ALERT LOG PANIC)
-    ),
-    Field.uint8("severity_number",
-      from_output: "severity_text",
-      value_map: %{
-        "TRACE" => 1,
-        "DEBUG" => 5,
-        "INFO" => 9,
-        "WARN" => 13,
-        "WARNING" => 13,
-        "ERROR" => 17,
-        "FATAL" => 21,
-        "CRITICAL" => 21,
-        "EMERGENCY" => 21
-      },
-      default: 0
-    ),
-    Field.string("service_name",
-      paths: [
-        "$.resource.service.name",
-        "$.service_name",
-        "$.resource.name",
-        "$.metadata.context.application"
-      ],
-      default: ""
-    ),
-    Field.string("event_message",
-      paths: ["$.event_message", "$.message", "$.body", "$.msg"],
-      default: ""
-    ),
-    Field.string("scope_name",
-      paths: [
-        "$.scope.name",
-        "$.metadata.context.module",
-        "$.metadata.context.application",
-        "$.instrumentation_library.name"
-      ],
-      default: ""
-    ),
-    Field.string("scope_version",
-      paths: [
-        "$.scope.version",
-        "$.instrumentation_library.version"
-      ],
-      default: ""
-    ),
-    Field.string("scope_schema_url",
-      paths: ["$.scope.schema_url"],
-      default: ""
-    ),
-    Field.string("resource_schema_url",
-      paths: ["$.resource.schema_url"],
-      default: ""
-    ),
-    Field.json("resource_attributes",
-      paths: ["$.resource"],
-      pick: [
-        {"region", ["$.metadata.region", "$.region"]},
-        {"cluster", ["$.metadata.cluster", "$.cluster"]},
-        {"service.name", ["$.resource.service.name", "$.service_name"]},
-        {"application", ["$.metadata.context.application"]},
-        {"node", ["$.metadata.context.vm.node"]},
-        {"project", ["$.project", "$.project_ref", "$.project_id"]}
-      ],
-      default: %{}
-    ),
-    Field.json("scope_attributes",
-      paths: ["$.scope.attributes", "$.scope"],
-      default: %{}
-    ),
-    Field.datetime64("timestamp", path: "$.timestamp", precision: 9)
-  ])
-
 compiled = Mapper.compile!(logs_mapping)
-compiled_hybrid = Mapper.compile!(hybrid_mapping)
-
-# Elixir-side log_attributes: drop 3 keys, elevate metadata
-build_log_attributes = fn doc ->
-  doc
-  |> Map.drop(["id", "event_message", "timestamp"])
-  |> then(fn m ->
-    case Map.pop(m, "metadata") do
-      {nil, m} -> m
-      {metadata, m} when is_map(metadata) -> Map.merge(metadata, m)
-      {_, m} -> m
-    end
-  end)
-end
 
 nif_result = Mapper.map(payload, compiled)
 manual_result = manual_map.(payload)
 
-hybrid_result =
-  payload
-  |> Mapper.map(compiled_hybrid)
-  |> Map.put("log_attributes", build_log_attributes.(payload))
+# credo:disable-for-lines:3
+IO.puts("\n--- Log scenario ---")
+IO.puts("NIF output keys: #{inspect(Map.keys(nif_result) |> Enum.sort())}")
+IO.puts("Manual output keys: #{inspect(Map.keys(manual_result) |> Enum.sort())}")
+
+# ── Array extraction scenario ─────────────────────────────────────────
+#
+# Simulates an OTEL histogram metric data point with parallel arrays,
+# exemplars (list of objects → wildcard extraction), and nested attributes.
+
+metric_payload = %{
+  "name" => "http.server.request.duration",
+  "timestamp" => 1_769_018_088_144_506,
+  "start_time" => 1_769_018_080_000_000,
+  "count" => 142,
+  "sum" => 8472.5,
+  "min" => 0.3,
+  "max" => 892.1,
+  "explicit_bounds" => [0.0, 5.0, 10.0, 25.0, 50.0, 75.0, 100.0, 250.0, 500.0, 750.0, 1000.0],
+  "bucket_counts" => [0, 12, 28, 45, 30, 15, 8, 3, 1, 0, 0, 0],
+  "exemplars" => [
+    %{
+      "trace_id" => "abc123def456",
+      "span_id" => "span001",
+      "value" => 12.5,
+      "timestamp" => 1_769_018_085_000_000,
+      "attributes" => %{"http.method" => "GET", "http.status_code" => 200}
+    },
+    %{
+      "trace_id" => "fed654cba321",
+      "span_id" => "span002",
+      "value" => 892.1,
+      "timestamp" => 1_769_018_087_500_000,
+      "attributes" => %{"http.method" => "POST", "http.status_code" => 500}
+    },
+    %{
+      "trace_id" => "111222333444",
+      "span_id" => "span003",
+      "value" => 3.2,
+      "timestamp" => 1_769_018_088_100_000,
+      "attributes" => %{"http.method" => "GET", "http.status_code" => 200}
+    }
+  ],
+  "resource" => %{
+    "service" => %{"name" => "api-gateway"},
+    "region" => "us-east-1"
+  },
+  "scope" => %{"name" => "otel-elixir", "version" => "1.4.0"},
+  "attributes" => %{
+    "http.method" => "GET",
+    "http.route" => "/api/v1/users",
+    "http.scheme" => "https"
+  },
+  "aggregation_temporality" => "cumulative"
+}
+
+metric_mapping =
+  MappingConfig.new([
+    Field.string("metric_name", path: "$.name", default: ""),
+    Field.datetime64("timestamp", path: "$.timestamp", precision: 9),
+    Field.datetime64("start_time", path: "$.start_time", precision: 9),
+    Field.uint64("count", path: "$.count", default: 0),
+    Field.float64("sum", path: "$.sum", default: 0.0),
+    Field.float64("min", path: "$.min", default: 0.0),
+    Field.float64("max", path: "$.max", default: 0.0),
+    Field.array_float64("explicit_bounds", path: "$.explicit_bounds"),
+    Field.array_uint64("bucket_counts", path: "$.bucket_counts"),
+    Field.array_string("exemplar_trace_ids", path: "$.exemplars[*].trace_id"),
+    Field.array_string("exemplar_span_ids", path: "$.exemplars[*].span_id"),
+    Field.array_float64("exemplar_values", path: "$.exemplars[*].value"),
+    Field.array_datetime64("exemplar_timestamps",
+      path: "$.exemplars[*].timestamp",
+      precision: 9
+    ),
+    Field.array_map("exemplar_attributes", path: "$.exemplars[*].attributes"),
+    Field.json("resource_attributes", path: "$.resource"),
+    Field.json("scope_attributes", path: "$.scope"),
+    Field.json("metric_attributes", path: "$.attributes")
+  ])
+
+compiled_metric = Mapper.compile!(metric_mapping)
+
+# Manual Elixir equivalent of the metric mapping
+manual_metric_map = fn doc ->
+  exemplars = doc["exemplars"] || []
+
+  %{
+    "metric_name" => doc["name"] || "",
+    "timestamp" => doc["timestamp"],
+    "start_time" => doc["start_time"],
+    "count" => doc["count"] || 0,
+    "sum" => (doc["sum"] || 0) / 1,
+    "min" => (doc["min"] || 0) / 1,
+    "max" => (doc["max"] || 0) / 1,
+    "explicit_bounds" => doc["explicit_bounds"] || [],
+    "bucket_counts" => doc["bucket_counts"] || [],
+    "exemplar_trace_ids" => Enum.map(exemplars, &to_string(&1["trace_id"] || "")),
+    "exemplar_span_ids" => Enum.map(exemplars, &to_string(&1["span_id"] || "")),
+    "exemplar_values" => Enum.map(exemplars, &((&1["value"] || 0.0) / 1)),
+    "exemplar_timestamps" => Enum.map(exemplars, & &1["timestamp"]),
+    "exemplar_attributes" => Enum.map(exemplars, &(&1["attributes"] || %{})),
+    "resource_attributes" => doc["resource"] || %{},
+    "scope_attributes" => doc["scope"] || %{},
+    "metric_attributes" => doc["attributes"] || %{}
+  }
+end
+
+nif_metric_result = Mapper.map(metric_payload, compiled_metric)
+manual_metric_result = manual_metric_map.(metric_payload)
 
 # credo:disable-for-lines:4
-IO.puts("\n--- NIF output keys: #{inspect(Map.keys(nif_result) |> Enum.sort())}")
-IO.puts("--- Manual output keys: #{inspect(Map.keys(manual_result) |> Enum.sort())}")
-IO.puts("--- Hybrid output keys: #{inspect(Map.keys(hybrid_result) |> Enum.sort())}")
+IO.puts("\n--- Metric (array) scenario ---")
+IO.puts("NIF output keys: #{inspect(Map.keys(nif_metric_result) |> Enum.sort())}")
+IO.puts("Manual output keys: #{inspect(Map.keys(manual_metric_result) |> Enum.sort())}")
 IO.puts("")
 
 Benchee.run(
   %{
-    "NIF mapper (pre-compiled)" => fn -> Mapper.map(payload, compiled) end,
-    "NIF hybrid (NIF + Elixir log_attrs)" => fn ->
-      payload
-      |> Mapper.map(compiled_hybrid)
-      |> Map.put("log_attributes", build_log_attributes.(payload))
-    end,
-    "Manual Elixir map" => fn -> manual_map.(payload) end
+    "[log] NIF (pre-compiled)" => fn -> Mapper.map(payload, compiled) end,
+    "[log] Manual Elixir" => fn -> manual_map.(payload) end,
+    "[metric] NIF (pre-compiled)" => fn -> Mapper.map(metric_payload, compiled_metric) end,
+    "[metric] Manual Elixir" => fn -> manual_metric_map.(metric_payload) end
   },
   time: 5,
   warmup: 2,
