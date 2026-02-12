@@ -20,10 +20,10 @@ pub struct CompiledField {
     pub field_type: FieldType,
     pub default: DefaultValue,
     pub transform: Option<FieldTransform>,
-    pub allowed_values: HashSet<String>,
+    pub allowed_values: HashSet<Vec<u8>>,
     pub value_map: HashMap<String, i64>,
-    pub exclude_keys: Vec<String>,
-    pub elevate_keys: Vec<String>,
+    pub exclude_keys: Vec<Vec<u8>>,
+    pub elevate_keys: Vec<Vec<u8>>,
     pub pick: Vec<PickEntry>,
     pub enum8_data: Option<Enum8Data>,
     pub filter_nil: bool,
@@ -191,8 +191,8 @@ fn decode_field<'a>(env: Env<'a>, field: Term<'a>) -> Result<CompiledField, Stri
     let transform = decode_transform(env, field)?;
     let allowed_values = decode_allowed_values(env, field);
     let value_map = decode_value_map(env, field)?;
-    let exclude_keys = decode_string_list(env, field, "exclude_keys");
-    let elevate_keys = decode_string_list(env, field, "elevate_keys");
+    let exclude_keys = decode_string_list_bytes(env, field, "exclude_keys");
+    let elevate_keys = decode_string_list_bytes(env, field, "elevate_keys");
     let pick = decode_pick(env, field)?;
 
     let enum8_data = if matches!(field_type, FieldType::Enum8 { .. }) {
@@ -368,12 +368,13 @@ fn decode_transform<'a>(env: Env<'a>, field: Term<'a>) -> Result<Option<FieldTra
     }
 }
 
-fn decode_allowed_values<'a>(env: Env<'a>, map: Term<'a>) -> HashSet<String> {
+fn decode_allowed_values<'a>(env: Env<'a>, map: Term<'a>) -> HashSet<Vec<u8>> {
     match get_term_key(env, map, "allowed_values") {
         Some(t) => t
             .decode::<Vec<String>>()
             .unwrap_or_default()
             .into_iter()
+            .map(|s| s.into_bytes())
             .collect(),
         None => HashSet::new(),
     }
@@ -426,9 +427,14 @@ fn decode_pick<'a>(env: Env<'a>, field: Term<'a>) -> Result<Vec<PickEntry>, Stri
     Ok(entries)
 }
 
-fn decode_string_list<'a>(env: Env<'a>, map: Term<'a>, key: &str) -> Vec<String> {
+fn decode_string_list_bytes<'a>(env: Env<'a>, map: Term<'a>, key: &str) -> Vec<Vec<u8>> {
     match get_term_key(env, map, key) {
-        Some(t) => t.decode::<Vec<String>>().unwrap_or_default(),
+        Some(t) => t
+            .decode::<Vec<String>>()
+            .unwrap_or_default()
+            .into_iter()
+            .map(|s| s.into_bytes())
+            .collect(),
         None => vec![],
     }
 }

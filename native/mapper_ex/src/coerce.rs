@@ -1,9 +1,33 @@
 use std::collections::HashMap;
 
 use chrono::DateTime as ChronoDateTime;
-use rustler::{Encoder, Env, Term};
+use rustler::types::list::ListIterator;
+use rustler::{Binary, Encoder, Env, Term};
 
 use crate::mapping::{DefaultValue, FieldTransform, FieldType};
+
+/// Case-insensitive lookup using stack-allocated buffer for ASCII values.
+/// Falls back to heap allocation for values > 128 bytes or non-ASCII.
+pub fn case_insensitive_get<'b, V>(map: &'b HashMap<String, V>, term: Term<'_>) -> Option<&'b V> {
+    let b = term.decode::<Binary>().ok()?;
+    let bytes = b.as_slice();
+
+    // Fast path: stack-allocated ASCII lowercase for typical field values
+    if bytes.len() <= 128 && bytes.is_ascii() {
+        let mut buf = [0u8; 128];
+        let len = bytes.len();
+        for (i, byte) in bytes.iter().enumerate() {
+            buf[i] = byte.to_ascii_lowercase();
+        }
+        // Safety: we confirmed all bytes are ASCII, so lowercase is valid UTF-8
+        let lowered = std::str::from_utf8(&buf[..len]).ok()?;
+        map.get(lowered)
+    } else {
+        // Fallback for non-ASCII or very long strings
+        let s = std::str::from_utf8(bytes).ok()?;
+        map.get(&s.to_lowercase())
+    }
+}
 
 /// Coerce a BEAM term to the target field type.
 pub fn coerce<'a>(
@@ -94,11 +118,9 @@ pub fn apply_value_map<'a>(
         return nil;
     }
 
-    if let Ok(s) = value.decode::<String>() {
-        // Keys are pre-lowercased at compile time
-        if let Some(val) = map.get(&s.to_lowercase()) {
-            return val.encode(env);
-        }
+    // Keys are pre-lowercased at compile time
+    if let Some(val) = case_insensitive_get(map, value) {
+        return val.encode(env);
     }
 
     nil
@@ -122,16 +144,16 @@ pub fn coerce_array<'a>(
         return Vec::<Term>::new().encode(env);
     }
 
-    let elements: Vec<Term> = match value.decode() {
-        Ok(list) => list,
+    let iter = match value.decode::<ListIterator>() {
+        Ok(iter) => iter,
         Err(_) => return Vec::<Term>::new().encode(env),
     };
 
     let inner_type = array_inner_type(field_type);
-    let mut result: Vec<Term<'a>> = Vec::with_capacity(elements.len());
+    let mut result: Vec<Term<'a>> = Vec::new();
 
-    for elem in &elements {
-        if *elem == nil {
+    for elem in iter {
+        if elem == nil {
             if filter_nil {
                 continue;
             }
@@ -144,20 +166,20 @@ pub fn coerce_array<'a>(
             FieldType::ArrayMap => {
                 // ArrayMap: only include elements that are maps, skip non-maps
                 if elem.is_map() {
-                    result.push(*elem);
+                    result.push(elem);
                 }
                 // Non-map elements are always filtered out
             }
             FieldType::ArrayJson => {
                 // ArrayJson: pass-through, no per-element coercion
-                result.push(*elem);
+                result.push(elem);
             }
             _ => {
                 // Use scalar coercion for the inner type
                 if let Some(ref inner) = inner_type {
-                    result.push(coerce(env, *elem, inner, nil));
+                    result.push(coerce(env, elem, inner, nil));
                 } else {
-                    result.push(*elem);
+                    result.push(elem);
                 }
             }
         }

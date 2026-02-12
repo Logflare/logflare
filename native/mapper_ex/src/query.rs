@@ -5,8 +5,8 @@ use crate::path::PathSegment;
 
 /// Evaluates a path against an Elixir term (map/list).
 ///
-/// Traverses the term using BEAM-native map_get for key lookups,
-/// list iteration for wildcards, and list indexing for index access.
+/// Uses iterative traversal for key-only and index segments (the common case),
+/// falling back to a separate function for wildcard fan-out.
 /// Returns the matched value or the `nil` atom for missing paths.
 pub fn evaluate<'a>(
     env: Env<'a>,
@@ -18,35 +18,54 @@ pub fn evaluate<'a>(
         return term;
     }
 
-    match &segments[0] {
-        PathSegment::Key(key) => {
-            let key_term = key.encode(env);
-            match term.map_get(key_term) {
-                Ok(value) => evaluate(env, value, &segments[1..], nil),
-                Err(_) => nil,
+    let mut current = term;
+    let mut i = 0;
+
+    while i < segments.len() {
+        match &segments[i] {
+            PathSegment::Key(key) => {
+                let key_term = key.encode(env);
+                match current.map_get(key_term) {
+                    Ok(value) => current = value,
+                    Err(_) => return nil,
+                }
+                i += 1;
             }
-        }
-        PathSegment::Wildcard => {
-            let items: Vec<Term<'a>> = match term.decode::<Vec<Term<'a>>>() {
-                Ok(list) => list,
+            PathSegment::Wildcard => {
+                // Fall back to wildcard fan-out for the remaining segments
+                return evaluate_wildcard(env, current, &segments[i..], nil);
+            }
+            PathSegment::Index(idx) => match current.decode::<ListIterator>() {
+                Ok(mut iter) => match iter.nth(*idx) {
+                    Some(item) => {
+                        current = item;
+                        i += 1;
+                    }
+                    None => return nil,
+                },
                 Err(_) => return nil,
-            };
-
-            let results: Vec<Term<'a>> = items
-                .into_iter()
-                .map(|item| evaluate(env, item, &segments[1..], nil))
-                .collect();
-
-            results.encode(env)
-        }
-        PathSegment::Index(idx) => match term.decode::<ListIterator>() {
-            Ok(mut iter) => match iter.nth(*idx) {
-                Some(item) => evaluate(env, item, &segments[1..], nil),
-                None => nil,
             },
-            Err(_) => nil,
-        },
+        }
     }
+
+    current
+}
+
+/// Handle wildcard fan-out: segments[0] is Wildcard.
+fn evaluate_wildcard<'a>(
+    env: Env<'a>,
+    term: Term<'a>,
+    segments: &[PathSegment],
+    nil: Term<'a>,
+) -> Term<'a> {
+    let iter = match term.decode::<ListIterator>() {
+        Ok(iter) => iter,
+        Err(_) => return nil,
+    };
+    let results: Vec<Term<'a>> = iter
+        .map(|item| evaluate(env, item, &segments[1..], nil))
+        .collect();
+    results.encode(env)
 }
 
 /// Evaluates multiple paths against a document, returning the first
