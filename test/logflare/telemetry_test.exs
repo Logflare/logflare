@@ -62,29 +62,25 @@ defmodule Logflare.TelemetryTest do
   end
 
   describe "cachex_metrics/0" do
-    test "retrieves and emits stats for all caches with all metrics" do
-      # Test for one of the caches
+    test "retrieves and emits stats for caches with all metrics" do
+      # test for one of the caches
       event = [:cachex, :sources]
-      TestUtils.attach_forwarder(event)
+      ref = :telemetry_test.attach_event_handlers(self(), [event])
       Telemetry.cachex_metrics()
+      assert_receive {^event, ^ref, measurements, _metadata}
 
-      assert_receive {:telemetry_event, ^event, metrics, _meta}
-
-      assert match?(
-               %{
-                 purge: _,
-                 stats: _,
-                 evictions: _,
-                 expirations: _,
-                 operations: _,
-                 hits: _,
-                 misses: _,
-                 hit_rate: _,
-                 miss_rate: _,
-                 total_heap_size: _
-               },
-               metrics
-             )
+      assert Map.keys(measurements) == [
+               :total_heap_size,
+               :purge,
+               :stats,
+               :operations,
+               :hits,
+               :evictions,
+               :expirations,
+               :misses,
+               :hit_rate,
+               :miss_rate
+             ]
     end
   end
 end
