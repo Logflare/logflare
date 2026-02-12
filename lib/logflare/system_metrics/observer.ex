@@ -2,27 +2,17 @@ defmodule Logflare.SystemMetrics.Observer do
   @moduledoc false
 
   def dispatch_stats do
-    observer_metrics = get_metrics()
-    mem_metrics = get_memory()
+    metrics = get_metrics()
+    memory = get_memory()
 
-    observer_metadata = %{
-      otp_release: :erlang.system_info(:otp_release),
-      version: :erlang.system_info(:version)
-    }
-
-    :telemetry.execute(
-      [:logflare, :system, :observer, :metrics],
-      observer_metrics,
-      observer_metadata
-    )
-
-    :telemetry.execute([:logflare, :system, :observer, :memory], mem_metrics)
+    :telemetry.execute([:logflare, :system, :observer, :metrics], metrics)
+    :telemetry.execute([:logflare, :system, :observer, :memory], memory)
   end
 
   defp get_memory do
     %{memory: persistent_term_memory} = :persistent_term.info()
-    memory = [{:persistent_term, persistent_term_memory} | :erlang.memory()]
-    Map.new(memory, fn {k, v} -> {k, div(v, 1024 * 1024)} end)
+    memories = [{:persistent_term, persistent_term_memory} | :erlang.memory()]
+    Map.new(memories)
   end
 
   defp get_metrics do
@@ -39,7 +29,8 @@ defmodule Logflare.SystemMetrics.Observer do
       logical_processors_available: :erlang.system_info(:logical_processors_available),
       schedulers: :erlang.system_info(:schedulers),
       schedulers_online: :erlang.system_info(:schedulers_online),
-      schedulers_available: :erlang.system_info(:schedulers_online),
+      otp_release: :erlang.system_info(:otp_release),
+      version: :erlang.system_info(:version),
       atom_limit: :erlang.system_info(:atom_limit),
       atom_count: :erlang.system_info(:atom_count),
       process_limit: :erlang.system_info(:process_limit),
