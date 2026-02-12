@@ -118,6 +118,7 @@ defmodule Logflare.Telemetry do
       last_value("logflare.system.observer.memory.ets", unit: :megabyte),
       last_value("logflare.system.observer.memory.atom", unit: :megabyte),
       last_value("logflare.system.observer.memory.code", unit: :megabyte),
+      last_value("logflare.system.observer.memory.persistent_term", unit: :megabyte),
       last_value("logflare.system.scheduler.utilization", tags: [:name, :type])
     ]
 
