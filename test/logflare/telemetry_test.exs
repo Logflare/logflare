@@ -87,22 +87,20 @@ defmodule Logflare.TelemetryTest do
              :logical_processors,
              :logical_processors_available,
              :logical_processors_online,
+             :otp_release,
              :port_count,
              :port_limit,
              :process_count,
              :process_limit,
              :run_queue,
              :schedulers,
-             :schedulers_available,
              :schedulers_online,
              :total_active_tasks,
-             :uptime
+             :uptime,
+             :version
            ]
 
-    assert metrics_metadata == %{
-             version: :erlang.system_info(:version),
-             otp_release: :erlang.system_info(:otp_release)
-           }
+    assert metrics_metadata == %{}
 
     assert memory_measurements |> Map.keys() |> Enum.sort() == [
              :atom,

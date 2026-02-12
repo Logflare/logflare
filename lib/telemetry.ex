@@ -98,28 +98,6 @@ defmodule Logflare.Telemetry do
       distribution("logflare.repo.query.idle_time", unit: {:native, :millisecond})
     ]
 
-    %{
-      uptime: uptime,
-      run_queue: :erlang.statistics(:total_run_queue_lengths_all),
-      io_input: input,
-      io_output: output,
-      logical_processors: :erlang.system_info(:logical_processors),
-      logical_processors_online: :erlang.system_info(:logical_processors_online),
-      logical_processors_available: :erlang.system_info(:logical_processors_available),
-      schedulers: :erlang.system_info(:schedulers),
-      schedulers_online: :erlang.system_info(:schedulers_online),
-      schedulers_available: :erlang.system_info(:schedulers_online),
-      atom_limit: :erlang.system_info(:atom_limit),
-      atom_count: :erlang.system_info(:atom_count),
-      process_limit: :erlang.system_info(:process_limit),
-      process_count: :erlang.system_info(:process_count),
-      port_limit: :erlang.system_info(:port_limit),
-      port_count: :erlang.system_info(:port_count),
-      ets_limit: :erlang.system_info(:ets_limit),
-      ets_count: :erlang.system_info(:ets_count),
-      total_active_tasks: :erlang.statistics(:total_active_tasks)
-    }
-
     vm_metrics = [
       last_value("vm.memory.total", unit: {:byte, :kilobyte}),
       last_value("vm.total_run_queue_lengths.total"),
@@ -134,6 +112,8 @@ defmodule Logflare.Telemetry do
       last_value("logflare.system.observer.metrics.logical_processors_available"),
       last_value("logflare.system.observer.metrics.schedulers"),
       last_value("logflare.system.observer.metrics.schedulers_online"),
+      last_value("logflare.system.observer.metrics.otp_release"),
+      last_value("logflare.system.observer.metrics.version"),
       last_value("logflare.system.observer.metrics.atom_limit"),
       last_value("logflare.system.observer.metrics.atom_count"),
       last_value("logflare.system.observer.metrics.process_limit"),
