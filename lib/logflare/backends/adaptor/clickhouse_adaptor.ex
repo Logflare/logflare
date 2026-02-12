@@ -269,7 +269,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
         :ok
 
       {:error, reason} ->
-        Logger.warning("ClickHouse insert errors.", error_string: inspect(reason))
+        Logger.error("ClickHouse insert errors.", error_string: inspect(reason))
 
         {:error, reason}
     end
