@@ -2,39 +2,41 @@ defmodule Logflare.SystemMetrics.Schedulers do
   @moduledoc false
 
   def async_dispatch_stats(duration \\ to_timeout(second: 1)) do
-    Logflare.Utils.Tasks.start_child(fn ->
-      :erlang.system_flag(:scheduler_wall_time, true)
-      prev_sample = :scheduler.get_sample_all()
-      Process.sleep(duration)
-      next_sample = :scheduler.get_sample_all()
-      :erlang.system_flag(:scheduler_wall_time, false)
+    Logflare.Utils.Tasks.start_child(fn -> collect_dispatch_stats(duration) end)
+  end
 
-      utilization = :scheduler.utilization(prev_sample, next_sample)
+  defp collect_dispatch_stats(duration \\ to_timeout(second: 1)) do
+    :erlang.system_flag(:scheduler_wall_time, true)
+    prev_sample = :scheduler.get_sample_all()
+    Process.sleep(duration)
+    next_sample = :scheduler.get_sample_all()
+    :erlang.system_flag(:scheduler_wall_time, false)
 
-      Enum.each(utilization, fn x ->
-        case x do
-          {type, id, util, _pct} ->
-            :telemetry.execute(
-              [:logflare, :system, :scheduler, :utilization],
-              %{utilization: Kernel.floor(util * 100)},
-              %{name: Integer.to_string(id), type: rename_type(type)}
-            )
+    utilization = :scheduler.utilization(prev_sample, next_sample)
 
-          {:total, util, _pct} ->
-            :telemetry.execute(
-              [:logflare, :system, :scheduler, :utilization],
-              %{utilization: Kernel.floor(util * 100)},
-              %{name: "total", type: "total"}
-            )
+    Enum.each(utilization, fn x ->
+      case x do
+        {type, id, util, _pct} ->
+          :telemetry.execute(
+            [:logflare, :system, :scheduler, :utilization],
+            %{utilization: Kernel.floor(util * 100)},
+            %{name: Integer.to_string(id), type: rename_type(type)}
+          )
 
-          {:weighted, util, _pct} ->
-            :telemetry.execute(
-              [:logflare, :system, :scheduler, :utilization],
-              %{utilization: Kernel.floor(util * 100)},
-              %{name: "weighted", type: "weighted"}
-            )
-        end
-      end)
+        {:total, util, _pct} ->
+          :telemetry.execute(
+            [:logflare, :system, :scheduler, :utilization],
+            %{utilization: Kernel.floor(util * 100)},
+            %{name: "total", type: "total"}
+          )
+
+        {:weighted, util, _pct} ->
+          :telemetry.execute(
+            [:logflare, :system, :scheduler, :utilization],
+            %{utilization: Kernel.floor(util * 100)},
+            %{name: "weighted", type: "weighted"}
+          )
+      end
     end)
   end
 
