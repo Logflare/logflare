@@ -45,6 +45,9 @@ defmodule LogflareGrpc.Interceptors.VerifyApiResourceAccess do
       %{"authorization" => "Bearer " <> token} ->
         {:ok, token}
 
+      %{"lf-api-key" => token} ->
+        {:ok, token}
+
       %{"x-api-key" => token} ->
         {:ok, token}
 
@@ -59,6 +62,9 @@ defmodule LogflareGrpc.Interceptors.VerifyApiResourceAccess do
 
   defp fetch_source_id(stream) do
     case GRPC.Stream.get_headers(stream) do
+      %{"lf-source" => source_uuid} ->
+        {:ok, source_uuid}
+
       %{"x-collection" => source_uuid} ->
         {:ok, source_uuid}
 

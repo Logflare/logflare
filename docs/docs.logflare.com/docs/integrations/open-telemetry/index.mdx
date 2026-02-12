@@ -37,8 +37,8 @@ Supported ingestion formats:
     {otlp_compression, gzip},
     {otlp_endpoint, "https://otel.logflare.app:443"},
     {otlp_headers, [
-      {"x-source", "my-source-id"},
-      {"x-api-key", "my-access-token"}
+      {"lf-source", "my-source-id"},
+      {"lf-api-key", "my-access-token"}
     ]}
   ]}
 ].
@@ -58,8 +58,8 @@ config :opentelemetry_exporter,
   otlp_compression: :gzip,
   otlp_endpoint: "https://otel.logflare.app:443",
   otlp_headers: [
-    {"x-source", "my-source-uuid"},
-    {"x-api-key", "my-access-token"}
+    {"lf-source", "my-source-uuid"},
+    {"lf-api-key", "my-access-token"}
   ]
 ```
 
@@ -77,8 +77,12 @@ docker compose -f docker-compose.yml -f docker-compose.latest.yml up -d db logfl
 docker compose -f docker-compose.yml -f docker-compose.pg.yml -f docker-compose.latest.yml up -d db logflare
 ```
 
-1. Create a new source to populate the `x-source` header with the source UUID.
-2. Use the api-key found in `.docker.env` and set it to `x-api-key` header
+:::warning Header prefix update
+`x-source` and `x-api-key` are deprecated and will be removed in the next major version. Use `lf-source` and `lf-api-key` instead.
+:::
+
+1. Create a new source to populate the `lf-source` header with the source UUID.
+2. Use the api-key found in `.docker.env` and set it to `lf-api-key` header
 3. Set the otlp endpoint to `http://localhost:50051`
 4. Start your OpenTelemetry instrumented app.
 
