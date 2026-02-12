@@ -103,7 +103,22 @@ defmodule Logflare.Telemetry do
       last_value("vm.total_run_queue_lengths.total"),
       last_value("vm.total_run_queue_lengths.cpu"),
       last_value("vm.total_run_queue_lengths.io"),
-      last_value("logflare.system.observer.metrics.total_active_tasks")
+      last_value("logflare.system.observer.metrics.total_active_tasks"),
+      last_value("logflare.system.observer.metrics.uptime"),
+      last_value("logflare.system.observer.metrics.run_queue"),
+      last_value("logflare.system.observer.metrics.io_input"),
+      last_value("logflare.system.observer.metrics.io_output"),
+      last_value("logflare.system.observer.metrics.process_count"),
+      last_value("logflare.system.observer.metrics.port_count"),
+      last_value("logflare.system.observer.metrics.ets_count"),
+      last_value("logflare.system.observer.metrics.atom_count"),
+      last_value("logflare.system.observer.memory.total", unit: :megabyte),
+      last_value("logflare.system.observer.memory.processes", unit: :megabyte),
+      last_value("logflare.system.observer.memory.binary", unit: :megabyte),
+      last_value("logflare.system.observer.memory.ets", unit: :megabyte),
+      last_value("logflare.system.observer.memory.atom", unit: :megabyte),
+      last_value("logflare.system.observer.memory.code", unit: :megabyte),
+      last_value("logflare.system.scheduler.utilization", tags: [:name, :type])
     ]
 
     broadway_metrics = [

@@ -1,31 +1,44 @@
 defmodule Logflare.SystemMetrics.Schedulers do
   @moduledoc false
-  def scheduler_utilization(sample_a, sample_b) do
-    formatter(:scheduler.utilization(sample_a, sample_b))
-  end
 
-  defp formatter(scheduler_utilization) do
-    Enum.map(scheduler_utilization, fn x ->
-      case x do
-        {type, scheduler_name, utilization, utilization_percentage} ->
-          %{
-            name: Integer.to_string(scheduler_name),
-            type: rename_type(type),
-            utilization: Kernel.floor(utilization * 100),
-            utilization_percentage: utilization_percentage
-          }
+  def async_dispatch_stats(duration \\ to_timeout(second: 1)) do
+    Logflare.Utils.Tasks.start_child(fn ->
+      :erlang.system_flag(:scheduler_wall_time, true)
+      prev_sample = :scheduler.get_sample_all()
+      Process.sleep(duration)
+      next_sample = :scheduler.get_sample_all()
+      :erlang.system_flag(:scheduler_wall_time, false)
 
-        {_total, utilization, utilization_percentage} ->
-          %{
-            name: "total",
-            type: "total",
-            utilization: Kernel.floor(utilization * 100),
-            utilization_percentage: utilization_percentage
-          }
-      end
+      utilization = :scheduler.utilization(prev_sample, next_sample)
+
+      utilization
+      |> Enum.map(fn x ->
+        case x do
+          {type, id, util, _pct} ->
+            %{
+              utilization: Kernel.floor(util * 100),
+              name: Integer.to_string(id),
+              type: rename_type(type)
+            }
+
+          {:total, util, _pct} ->
+            %{utilization: Kernel.floor(util * 100), name: "total", type: "total"}
+
+          {:weighted, util, _pct} ->
+            %{utilization: Kernel.floor(util * 100), name: "weighted", type: "weighted"}
+        end
+      end)
+      |> Enum.each(fn metric ->
+        :telemetry.execute(
+          [:logflare, :system, :scheduler, :utilization],
+          %{utilization: metric.utilization},
+          %{name: metric.name, type: metric.type}
+        )
+      end)
     end)
   end
 
   defp rename_type(:cpu), do: "dirty"
+  defp rename_type(:io), do: "dirty (io)"
   defp rename_type(:normal), do: "normal"
 end

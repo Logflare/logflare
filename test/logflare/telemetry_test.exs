@@ -60,4 +60,40 @@ defmodule Logflare.TelemetryTest do
       refute_receive {:telemetry_event, ^event, _, _}
     end
   end
+
+  test "observer metrics" do
+    ref =
+      :telemetry_test.attach_event_handlers(self(), [
+        [:logflare, :system, :observer, :metrics],
+        [:logflare, :system, :observer, :memory]
+      ])
+
+    on_exit(fn -> :telemetry.detach(ref) end)
+    Logflare.SystemMetrics.Observer.dispatch_stats()
+
+    assert_receive {[:logflare, :system, :observer, :metrics], ^ref, metrics_measurements,
+                    metrics_metadata}
+
+    assert_receive {[:logflare, :system, :observer, :memory], ^ref, memory_measurements,
+                    memory_metadata}
+
+    assert metrics_measurements == nil
+    assert metrics_metadata == nil
+    assert memory_measurements == nil
+    assert memory_metadata == nil
+  end
+
+  test "scheduler metrics" do
+    event = [:logflare, :system, :scheduler, :utilization]
+    ref = :telemetry_test.attach_event_handlers(self(), [event])
+    on_exit(fn -> :telemetry.detach(ref) end)
+
+    sample_duration = to_timeout(millisecond: 10)
+    Logflare.SystemMetrics.Schedulers.async_dispatch_stats(sample_duration)
+
+    # Wait for the task to finish (10ms + overhead)
+    assert_receive {^event, ^ref, measurements, metadata}
+    assert measurements == nil
+    assert metadata == nil
+  end
 end

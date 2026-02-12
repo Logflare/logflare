@@ -1,29 +1,24 @@
 defmodule Logflare.SystemMetrics.Observer do
   @moduledoc false
-  require Logger
 
   def dispatch_stats do
     observer_metrics = get_metrics()
     mem_metrics = get_memory()
-
-    Logger.info("Observer metrics!",
-      observer_metrics: observer_metrics,
-      observer_memory: mem_metrics
-    )
 
     :telemetry.execute([:logflare, :system, :observer, :metrics], observer_metrics)
     :telemetry.execute([:logflare, :system, :observer, :memory], mem_metrics)
   end
 
   defp get_memory do
-    :erlang.memory() |> Enum.map(fn {k, v} -> {k, div(v, 1024 * 1024)} end) |> Enum.into(%{})
+    Map.new(:erlang.memory(), fn {k, v} -> {k, div(v, 1024 * 1024)} end)
   end
 
   defp get_metrics do
     {{:input, input}, {:output, output}} = :erlang.statistics(:io)
+    {uptime, _} = :erlang.statistics(:wall_clock)
 
-    [
-      uptime: :erlang.statistics(:wall_clock) |> elem(0),
+    %{
+      uptime: uptime,
       run_queue: :erlang.statistics(:total_run_queue_lengths_all),
       io_input: input,
       io_output: output,
@@ -44,7 +39,6 @@ defmodule Logflare.SystemMetrics.Observer do
       ets_limit: :erlang.system_info(:ets_limit),
       ets_count: :erlang.system_info(:ets_count),
       total_active_tasks: :erlang.statistics(:total_active_tasks)
-    ]
-    |> Map.new()
+    }
   end
 end
