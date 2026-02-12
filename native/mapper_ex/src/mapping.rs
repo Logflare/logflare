@@ -20,12 +20,13 @@ pub struct CompiledField {
     pub field_type: FieldType,
     pub default: DefaultValue,
     pub transform: Option<FieldTransform>,
-    pub allowed_values: HashSet<String>,
+    pub allowed_values: HashSet<Vec<u8>>,
     pub value_map: HashMap<String, i64>,
-    pub exclude_keys: Vec<String>,
-    pub elevate_keys: Vec<String>,
+    pub exclude_keys: Vec<Vec<u8>>,
+    pub elevate_keys: Vec<Vec<u8>>,
     pub pick: Vec<PickEntry>,
     pub enum8_data: Option<Enum8Data>,
+    pub filter_nil: bool,
 }
 
 #[derive(Debug)]
@@ -55,6 +56,14 @@ pub enum FieldType {
         precision: u8,
     },
     Json,
+    ArrayString,
+    ArrayUInt64,
+    ArrayFloat64,
+    ArrayDateTime64 {
+        precision: u8,
+    },
+    ArrayJson,
+    ArrayMap,
 }
 
 #[derive(Debug, Clone)]
@@ -182,8 +191,8 @@ fn decode_field<'a>(env: Env<'a>, field: Term<'a>) -> Result<CompiledField, Stri
     let transform = decode_transform(env, field)?;
     let allowed_values = decode_allowed_values(env, field);
     let value_map = decode_value_map(env, field)?;
-    let exclude_keys = decode_string_list(env, field, "exclude_keys");
-    let elevate_keys = decode_string_list(env, field, "elevate_keys");
+    let exclude_keys = decode_string_list_bytes(env, field, "exclude_keys");
+    let elevate_keys = decode_string_list_bytes(env, field, "elevate_keys");
     let pick = decode_pick(env, field)?;
 
     let enum8_data = if matches!(field_type, FieldType::Enum8 { .. }) {
@@ -191,6 +200,8 @@ fn decode_field<'a>(env: Env<'a>, field: Term<'a>) -> Result<CompiledField, Stri
     } else {
         None
     };
+
+    let filter_nil = decode_filter_nil(env, field);
 
     Ok(CompiledField {
         name,
@@ -204,6 +215,7 @@ fn decode_field<'a>(env: Env<'a>, field: Term<'a>) -> Result<CompiledField, Stri
         elevate_keys,
         pick,
         enum8_data,
+        filter_nil,
     })
 }
 
@@ -222,6 +234,15 @@ fn parse_field_type<'a>(env: Env<'a>, field: Term<'a>, s: &str) -> Result<FieldT
             Ok(FieldType::DateTime64 { precision })
         }
         "json" => Ok(FieldType::Json),
+        "array_string" => Ok(FieldType::ArrayString),
+        "array_uint64" => Ok(FieldType::ArrayUInt64),
+        "array_float64" => Ok(FieldType::ArrayFloat64),
+        "array_datetime64" => {
+            let precision = get_int_key(env, field, "precision").unwrap_or(9) as u8;
+            Ok(FieldType::ArrayDateTime64 { precision })
+        }
+        "array_json" => Ok(FieldType::ArrayJson),
+        "array_map" => Ok(FieldType::ArrayMap),
         other => Err(format!("unknown field type: {}", other)),
     }
 }
@@ -236,6 +257,12 @@ fn decode_default<'a>(
         None => {
             return Ok(match field_type {
                 FieldType::Json => DefaultValue::EmptyMap,
+                FieldType::ArrayString
+                | FieldType::ArrayUInt64
+                | FieldType::ArrayFloat64
+                | FieldType::ArrayDateTime64 { .. }
+                | FieldType::ArrayJson
+                | FieldType::ArrayMap => DefaultValue::EmptyList,
                 _ => DefaultValue::Nil,
             });
         }
@@ -341,12 +368,13 @@ fn decode_transform<'a>(env: Env<'a>, field: Term<'a>) -> Result<Option<FieldTra
     }
 }
 
-fn decode_allowed_values<'a>(env: Env<'a>, map: Term<'a>) -> HashSet<String> {
+fn decode_allowed_values<'a>(env: Env<'a>, map: Term<'a>) -> HashSet<Vec<u8>> {
     match get_term_key(env, map, "allowed_values") {
         Some(t) => t
             .decode::<Vec<String>>()
             .unwrap_or_default()
             .into_iter()
+            .map(|s| s.into_bytes())
             .collect(),
         None => HashSet::new(),
     }
@@ -399,10 +427,22 @@ fn decode_pick<'a>(env: Env<'a>, field: Term<'a>) -> Result<Vec<PickEntry>, Stri
     Ok(entries)
 }
 
-fn decode_string_list<'a>(env: Env<'a>, map: Term<'a>, key: &str) -> Vec<String> {
+fn decode_string_list_bytes<'a>(env: Env<'a>, map: Term<'a>, key: &str) -> Vec<Vec<u8>> {
     match get_term_key(env, map, key) {
-        Some(t) => t.decode::<Vec<String>>().unwrap_or_default(),
+        Some(t) => t
+            .decode::<Vec<String>>()
+            .unwrap_or_default()
+            .into_iter()
+            .map(|s| s.into_bytes())
+            .collect(),
         None => vec![],
+    }
+}
+
+fn decode_filter_nil<'a>(env: Env<'a>, field: Term<'a>) -> bool {
+    match get_term_key(env, field, "filter_nil") {
+        Some(t) => t.decode::<bool>().unwrap_or(false),
+        None => false,
     }
 }
 

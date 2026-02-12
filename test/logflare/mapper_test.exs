@@ -1197,7 +1197,7 @@ defmodule Logflare.MapperTest do
       assert result["level"] == "INFO"
     end
 
-    test "non-string value bypasses the check and goes to coercion" do
+    test "non-string value falls back to default" do
       result =
         compile_and_map(
           [
@@ -1207,12 +1207,11 @@ defmodule Logflare.MapperTest do
               allowed_values: ~w(hello world)
             )
           ],
-          # Integer input: NIF can't decode as string, so bypasses allowed_values check
+          # Integer input is not in allowed_values, so falls back to default
           %{"val" => 42}
         )
 
-      # Integer bypasses string check, then gets coerced to string "42"
-      assert result["val"] == "42"
+      assert result["val"] == "fallback"
     end
   end
 
@@ -1285,6 +1284,435 @@ defmodule Logflare.MapperTest do
 
         Mapper.compile!(config)
       end
+    end
+  end
+
+  # ── Array types ───────────────────────────────────────────────────────
+
+  describe "array_string" do
+    test "extracts list of strings" do
+      result =
+        compile_and_map(
+          [Field.array_string("tags", path: "$.tags")],
+          %{"tags" => ["web", "production", "us-east"]}
+        )
+
+      assert result["tags"] == ["web", "production", "us-east"]
+    end
+
+    test "coerces non-string elements to strings" do
+      result =
+        compile_and_map(
+          [Field.array_string("vals", path: "$.vals")],
+          %{"vals" => [42, 3.14, true, "hello"]}
+        )
+
+      assert result["vals"] == ["42", "3.14", "true", "hello"]
+    end
+
+    test "nil elements coerced to empty string by default" do
+      result =
+        compile_and_map(
+          [Field.array_string("tags", path: "$.tags")],
+          %{"tags" => ["a", nil, "b"]}
+        )
+
+      assert result["tags"] == ["a", "", "b"]
+    end
+
+    test "nil elements filtered with filter_nil: true" do
+      result =
+        compile_and_map(
+          [Field.array_string("tags", path: "$.tags", filter_nil: true)],
+          %{"tags" => ["a", nil, "b"]}
+        )
+
+      assert result["tags"] == ["a", "b"]
+    end
+
+    test "missing path returns empty list" do
+      result =
+        compile_and_map(
+          [Field.array_string("tags", path: "$.tags")],
+          %{}
+        )
+
+      assert result["tags"] == []
+    end
+
+    test "non-list value returns empty list" do
+      result =
+        compile_and_map(
+          [Field.array_string("tags", path: "$.tags")],
+          %{"tags" => "not_a_list"}
+        )
+
+      assert result["tags"] == []
+    end
+
+    test "wildcard extracts field from each object in a list" do
+      result =
+        compile_and_map(
+          [Field.array_string("names", path: "$.people[*].name")],
+          %{
+            "people" => [
+              %{"name" => "Bob", "age" => 50},
+              %{"name" => "Fred", "age" => 64}
+            ]
+          }
+        )
+
+      assert result["names"] == ["Bob", "Fred"]
+    end
+
+    test "wildcard with nested path" do
+      result =
+        compile_and_map(
+          [Field.array_string("cities", path: "$.users[*].address.city")],
+          %{
+            "users" => [
+              %{"address" => %{"city" => "NYC"}},
+              %{"address" => %{"city" => "LA"}},
+              %{"address" => %{"city" => "Chicago"}}
+            ]
+          }
+        )
+
+      assert result["cities"] == ["NYC", "LA", "Chicago"]
+    end
+
+    test "wildcard coerces non-string values to strings" do
+      result =
+        compile_and_map(
+          [Field.array_string("ids", path: "$.items[*].id")],
+          %{
+            "items" => [
+              %{"id" => 101},
+              %{"id" => 202},
+              %{"id" => 303}
+            ]
+          }
+        )
+
+      assert result["ids"] == ["101", "202", "303"]
+    end
+  end
+
+  describe "array_uint64" do
+    test "extracts list of unsigned integers" do
+      result =
+        compile_and_map(
+          [Field.array_uint64("counts", path: "$.counts")],
+          %{"counts" => [0, 5, 10, 100]}
+        )
+
+      assert result["counts"] == [0, 5, 10, 100]
+    end
+
+    test "negative values clamped to 0" do
+      result =
+        compile_and_map(
+          [Field.array_uint64("vals", path: "$.vals")],
+          %{"vals" => [-5, 10, -1]}
+        )
+
+      assert result["vals"] == [0, 10, 0]
+    end
+
+    test "nil elements coerced to 0 by default" do
+      result =
+        compile_and_map(
+          [Field.array_uint64("counts", path: "$.counts")],
+          %{"counts" => [1, nil, 3]}
+        )
+
+      assert result["counts"] == [1, 0, 3]
+    end
+
+    test "nil elements filtered with filter_nil: true" do
+      result =
+        compile_and_map(
+          [Field.array_uint64("counts", path: "$.counts", filter_nil: true)],
+          %{"counts" => [1, nil, 3]}
+        )
+
+      assert result["counts"] == [1, 3]
+    end
+
+    test "float values truncated to integers" do
+      result =
+        compile_and_map(
+          [Field.array_uint64("vals", path: "$.vals")],
+          %{"vals" => [1.9, 2.1, 3.5]}
+        )
+
+      assert result["vals"] == [1, 2, 3]
+    end
+
+    test "wildcard extracts numeric field from each object" do
+      result =
+        compile_and_map(
+          [Field.array_uint64("ages", path: "$.people[*].age")],
+          %{
+            "people" => [
+              %{"name" => "Bob", "age" => 50},
+              %{"name" => "Fred", "age" => 64}
+            ]
+          }
+        )
+
+      assert result["ages"] == [50, 64]
+    end
+  end
+
+  describe "array_float64" do
+    test "extracts list of floats" do
+      result =
+        compile_and_map(
+          [Field.array_float64("bounds", path: "$.bounds")],
+          %{"bounds" => [0.0, 5.0, 10.0, 25.0, 50.0]}
+        )
+
+      assert result["bounds"] == [0.0, 5.0, 10.0, 25.0, 50.0]
+    end
+
+    test "integers coerced to floats" do
+      result =
+        compile_and_map(
+          [Field.array_float64("vals", path: "$.vals")],
+          %{"vals" => [1, 2, 3]}
+        )
+
+      assert result["vals"] == [1.0, 2.0, 3.0]
+    end
+
+    test "string numbers parsed" do
+      result =
+        compile_and_map(
+          [Field.array_float64("vals", path: "$.vals")],
+          %{"vals" => ["3.14", "2.72"]}
+        )
+
+      assert_in_delta Enum.at(result["vals"], 0), 3.14, 0.001
+      assert_in_delta Enum.at(result["vals"], 1), 2.72, 0.001
+    end
+
+    test "nil elements coerced to 0.0 by default" do
+      result =
+        compile_and_map(
+          [Field.array_float64("bounds", path: "$.bounds")],
+          %{"bounds" => [1.0, nil, 3.0]}
+        )
+
+      assert result["bounds"] == [1.0, 0.0, 3.0]
+    end
+
+    test "nil elements filtered with filter_nil: true" do
+      result =
+        compile_and_map(
+          [Field.array_float64("bounds", path: "$.bounds", filter_nil: true)],
+          %{"bounds" => [1.0, nil, 3.0]}
+        )
+
+      assert result["bounds"] == [1.0, 3.0]
+    end
+
+    test "wildcard extracts float field from each object" do
+      result =
+        compile_and_map(
+          [Field.array_float64("scores", path: "$.results[*].score")],
+          %{
+            "results" => [
+              %{"label" => "a", "score" => 0.95},
+              %{"label" => "b", "score" => 0.82},
+              %{"label" => "c", "score" => 0.71}
+            ]
+          }
+        )
+
+      assert result["scores"] == [0.95, 0.82, 0.71]
+    end
+  end
+
+  describe "array_datetime64" do
+    test "scales integer timestamps to target precision" do
+      result =
+        compile_and_map(
+          [Field.array_datetime64("timestamps", path: "$.ts", precision: 9)],
+          %{"ts" => [1_769_018_088, 1_769_018_088_144]}
+        )
+
+      # seconds -> nanoseconds, milliseconds -> nanoseconds
+      assert Enum.at(result["timestamps"], 0) == 1_769_018_088_000_000_000
+      assert Enum.at(result["timestamps"], 1) == 1_769_018_088_144_000_000
+    end
+
+    test "nil elements coerced to 0 (epoch) by default" do
+      result =
+        compile_and_map(
+          [Field.array_datetime64("ts", path: "$.ts", precision: 9)],
+          %{"ts" => [1_769_018_088, nil]}
+        )
+
+      assert Enum.at(result["ts"], 0) == 1_769_018_088_000_000_000
+      assert Enum.at(result["ts"], 1) == 0
+    end
+
+    test "nil elements filtered with filter_nil: true" do
+      result =
+        compile_and_map(
+          [Field.array_datetime64("ts", path: "$.ts", precision: 9, filter_nil: true)],
+          %{"ts" => [1_769_018_088, nil]}
+        )
+
+      assert result["ts"] == [1_769_018_088_000_000_000]
+    end
+
+    test "ISO8601 strings parsed in array" do
+      result =
+        compile_and_map(
+          [Field.array_datetime64("ts", path: "$.ts", precision: 9)],
+          %{"ts" => ["2026-01-21T17:54:48.144506Z"]}
+        )
+
+      assert is_integer(Enum.at(result["ts"], 0))
+      assert Enum.at(result["ts"], 0) > 0
+    end
+  end
+
+  describe "array_json" do
+    test "pass-through of mixed-type list elements" do
+      result =
+        compile_and_map(
+          [Field.array_json("events", path: "$.events")],
+          %{"events" => [%{"name" => "click"}, %{"name" => "view"}, "plain_string", 42]}
+        )
+
+      assert result["events"] == [%{"name" => "click"}, %{"name" => "view"}, "plain_string", 42]
+    end
+
+    test "nil elements coerced to empty map by default" do
+      result =
+        compile_and_map(
+          [Field.array_json("items", path: "$.items")],
+          %{"items" => [%{"a" => 1}, nil, %{"b" => 2}]}
+        )
+
+      assert result["items"] == [%{"a" => 1}, %{}, %{"b" => 2}]
+    end
+
+    test "nil elements filtered with filter_nil: true" do
+      result =
+        compile_and_map(
+          [Field.array_json("items", path: "$.items", filter_nil: true)],
+          %{"items" => [%{"a" => 1}, nil, %{"b" => 2}]}
+        )
+
+      assert result["items"] == [%{"a" => 1}, %{"b" => 2}]
+    end
+
+    test "missing path returns empty list" do
+      result =
+        compile_and_map(
+          [Field.array_json("events", path: "$.events")],
+          %{}
+        )
+
+      assert result["events"] == []
+    end
+  end
+
+  describe "array_map" do
+    test "extracts list of maps" do
+      result =
+        compile_and_map(
+          [Field.array_map("links", path: "$.links")],
+          %{"links" => [%{"url" => "http://a"}, %{"url" => "http://b"}]}
+        )
+
+      assert result["links"] == [%{"url" => "http://a"}, %{"url" => "http://b"}]
+    end
+
+    test "non-map elements always filtered out" do
+      result =
+        compile_and_map(
+          [Field.array_map("links", path: "$.links")],
+          %{"links" => [%{"url" => "http://a"}, "invalid", 42, %{"url" => "http://b"}]}
+        )
+
+      assert result["links"] == [%{"url" => "http://a"}, %{"url" => "http://b"}]
+    end
+
+    test "nil elements coerced to empty map by default" do
+      result =
+        compile_and_map(
+          [Field.array_map("links", path: "$.links")],
+          %{"links" => [%{"url" => "http://a"}, nil]}
+        )
+
+      assert result["links"] == [%{"url" => "http://a"}, %{}]
+    end
+
+    test "nil elements filtered with filter_nil: true" do
+      result =
+        compile_and_map(
+          [Field.array_map("links", path: "$.links", filter_nil: true)],
+          %{"links" => [%{"url" => "http://a"}, nil]}
+        )
+
+      assert result["links"] == [%{"url" => "http://a"}]
+    end
+
+    test "missing path returns empty list" do
+      result =
+        compile_and_map(
+          [Field.array_map("links", path: "$.links")],
+          %{}
+        )
+
+      assert result["links"] == []
+    end
+
+    test "wildcard extracts sub-maps from each object" do
+      result =
+        compile_and_map(
+          [Field.array_map("attrs", path: "$.events[*].attributes")],
+          %{
+            "events" => [
+              %{"name" => "click", "attributes" => %{"button" => "submit"}},
+              %{"name" => "view", "attributes" => %{"page" => "/home"}}
+            ]
+          }
+        )
+
+      assert result["attrs"] == [
+               %{"button" => "submit"},
+               %{"page" => "/home"}
+             ]
+    end
+  end
+
+  describe "array type coalesce paths" do
+    test "first non-nil list wins" do
+      result =
+        compile_and_map(
+          [Field.array_float64("bounds", paths: ["$.explicit_bounds", "$.bounds"])],
+          %{"bounds" => [1.0, 2.0, 3.0]}
+        )
+
+      assert result["bounds"] == [1.0, 2.0, 3.0]
+    end
+  end
+
+  describe "array type empty list" do
+    test "empty list passes through" do
+      result =
+        compile_and_map(
+          [Field.array_uint64("counts", path: "$.counts")],
+          %{"counts" => []}
+        )
+
+      assert result["counts"] == []
     end
   end
 

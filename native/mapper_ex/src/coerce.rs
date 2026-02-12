@@ -1,9 +1,33 @@
 use std::collections::HashMap;
 
 use chrono::DateTime as ChronoDateTime;
-use rustler::{Encoder, Env, Term};
+use rustler::types::list::ListIterator;
+use rustler::{Binary, Encoder, Env, Term};
 
 use crate::mapping::{DefaultValue, FieldTransform, FieldType};
+
+/// Case-insensitive lookup using stack-allocated buffer for ASCII values.
+/// Falls back to heap allocation for values > 128 bytes or non-ASCII.
+pub fn case_insensitive_get<'b, V>(map: &'b HashMap<String, V>, term: Term<'_>) -> Option<&'b V> {
+    let b = term.decode::<Binary>().ok()?;
+    let bytes = b.as_slice();
+
+    // Fast path: stack-allocated ASCII lowercase for typical field values
+    if bytes.len() <= 128 && bytes.is_ascii() {
+        let mut buf = [0u8; 128];
+        let len = bytes.len();
+        for (i, byte) in bytes.iter().enumerate() {
+            buf[i] = byte.to_ascii_lowercase();
+        }
+        // Safety: we confirmed all bytes are ASCII, so lowercase is valid UTF-8
+        let lowered = std::str::from_utf8(&buf[..len]).ok()?;
+        map.get(lowered)
+    } else {
+        // Fallback for non-ASCII or very long strings
+        let s = std::str::from_utf8(bytes).ok()?;
+        map.get(&s.to_lowercase())
+    }
+}
 
 /// Coerce a BEAM term to the target field type.
 pub fn coerce<'a>(
@@ -38,6 +62,13 @@ pub fn coerce<'a>(
         FieldType::Enum8 { .. } => coerce_enum8(env, value),
         FieldType::DateTime64 { precision } => coerce_datetime64(env, value, *precision),
         FieldType::Json => value, // pass-through
+        // Array types are handled by coerce_array, not coerce
+        FieldType::ArrayString
+        | FieldType::ArrayUInt64
+        | FieldType::ArrayFloat64
+        | FieldType::ArrayDateTime64 { .. }
+        | FieldType::ArrayJson
+        | FieldType::ArrayMap => Vec::<Term>::new().encode(env),
     }
 }
 
@@ -87,14 +118,100 @@ pub fn apply_value_map<'a>(
         return nil;
     }
 
-    if let Ok(s) = value.decode::<String>() {
-        // Keys are pre-lowercased at compile time
-        if let Some(val) = map.get(&s.to_lowercase()) {
-            return val.encode(env);
-        }
+    // Keys are pre-lowercased at compile time
+    if let Some(val) = case_insensitive_get(map, value) {
+        return val.encode(env);
     }
 
     nil
+}
+
+/// Coerce a BEAM term to an array of the target element type.
+///
+/// If the value is not a list, returns an empty list.
+/// Each element is coerced according to the array's inner type.
+/// nil elements are either filtered (filter_nil=true) or coerced to the
+/// inner type's zero value (filter_nil=false).
+pub fn coerce_array<'a>(
+    env: Env<'a>,
+    value: Term<'a>,
+    field_type: &FieldType,
+    filter_nil: bool,
+    nil: Term<'a>,
+) -> Term<'a> {
+    // If value is nil or not a list, return empty list
+    if value == nil {
+        return Vec::<Term>::new().encode(env);
+    }
+
+    let iter = match value.decode::<ListIterator>() {
+        Ok(iter) => iter,
+        Err(_) => return Vec::<Term>::new().encode(env),
+    };
+
+    let inner_type = array_inner_type(field_type);
+    let mut result: Vec<Term<'a>> = Vec::new();
+
+    for elem in iter {
+        if elem == nil {
+            if filter_nil {
+                continue;
+            }
+            // Coerce nil to inner type zero value
+            result.push(array_nil_value(env, field_type));
+            continue;
+        }
+
+        match field_type {
+            FieldType::ArrayMap => {
+                // ArrayMap: only include elements that are maps, skip non-maps
+                if elem.is_map() {
+                    result.push(elem);
+                }
+                // Non-map elements are always filtered out
+            }
+            FieldType::ArrayJson => {
+                // ArrayJson: pass-through, no per-element coercion
+                result.push(elem);
+            }
+            _ => {
+                // Use scalar coercion for the inner type
+                if let Some(ref inner) = inner_type {
+                    result.push(coerce(env, elem, inner, nil));
+                } else {
+                    result.push(elem);
+                }
+            }
+        }
+    }
+
+    result.encode(env)
+}
+
+/// Map array field types to their corresponding scalar inner type for coercion.
+fn array_inner_type(field_type: &FieldType) -> Option<FieldType> {
+    match field_type {
+        FieldType::ArrayString => Some(FieldType::String),
+        FieldType::ArrayUInt64 => Some(FieldType::UInt64),
+        FieldType::ArrayFloat64 => Some(FieldType::Float64),
+        FieldType::ArrayDateTime64 { precision } => Some(FieldType::DateTime64 {
+            precision: *precision,
+        }),
+        _ => None,
+    }
+}
+
+/// Return the zero/nil coercion value for an array element based on the array type.
+fn array_nil_value<'a>(env: Env<'a>, field_type: &FieldType) -> Term<'a> {
+    match field_type {
+        FieldType::ArrayString => "".encode(env),
+        FieldType::ArrayUInt64 => 0u64.encode(env),
+        FieldType::ArrayFloat64 => 0.0f64.encode(env),
+        FieldType::ArrayDateTime64 { .. } => 0i64.encode(env),
+        FieldType::ArrayJson => Term::map_new(env),
+        FieldType::ArrayMap => Term::map_new(env),
+        _ => 0u64.encode(env),
+    }
 }
 
 // ── Private coercion functions ─────────────────────────────────────────────

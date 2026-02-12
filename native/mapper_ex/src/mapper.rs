@@ -1,3 +1,4 @@
+use rustler::types::list::ListIterator;
 use rustler::types::map::MapIterator;
 use rustler::{Binary, Encoder, Env, Term};
 
@@ -13,6 +14,19 @@ mod atoms {
     }
 }
 
+/// Check if a field type is an array type.
+fn is_array_type(field_type: &FieldType) -> bool {
+    matches!(
+        field_type,
+        FieldType::ArrayString
+            | FieldType::ArrayUInt64
+            | FieldType::ArrayFloat64
+            | FieldType::ArrayDateTime64 { .. }
+            | FieldType::ArrayJson
+            | FieldType::ArrayMap
+    )
+}
+
 /// Execute the mapping on a single document, returning the mapped output map.
 pub fn map_single<'a>(env: Env<'a>, body: Term<'a>, mapping: &CompiledMapping) -> Term<'a> {
     let nil = atoms::nil().encode(env);
@@ -22,6 +36,8 @@ pub fn map_single<'a>(env: Env<'a>, body: Term<'a>, mapping: &CompiledMapping) -
     let mut values: Vec<Term<'a>> = Vec::with_capacity(field_count);
 
     for field in &mapping.fields {
+        let is_array = is_array_type(&field.field_type);
+
         // For Enum8 fields, use a special resolution flow:
         // resolve raw value (no default), then enum8 handler does lookup + inference + default
         let is_enum8 = matches!(&field.field_type, FieldType::Enum8 { .. });
@@ -32,6 +48,14 @@ pub fn map_single<'a>(env: Env<'a>, body: Term<'a>, mapping: &CompiledMapping) -
             resolve_value(env, body, field, &values, nil)
         };
 
+        // Array types skip transform, allowed_values, value_map, enum8, and json operations
+        if is_array {
+            let value = coerce::coerce_array(env, value, &field.field_type, field.filter_nil, nil);
+            keys.push(field.name.encode(env));
+            values.push(value);
+            continue;
+        }
+
         // Apply transform if configured
         let value = match &field.transform {
             Some(transform) => coerce::apply_transform(env, value, transform, nil),
@@ -40,14 +64,15 @@ pub fn map_single<'a>(env: Env<'a>, body: Term<'a>, mapping: &CompiledMapping) -
 
         // Check allowed_values whitelist
         let value = if !field.allowed_values.is_empty() && value != nil {
-            if let Ok(s) = value.decode::<String>() {
-                if field.allowed_values.contains(&s) {
+            if let Ok(b) = value.decode::<Binary>() {
+                if field.allowed_values.contains(b.as_slice()) {
                     value
                 } else {
                     coerce::encode_default(env, &field.default, nil)
                 }
             } else {
-                value // non-string values bypass the check
+                // Non-string values are not in the allowed list, fall back to default
+                coerce::encode_default(env, &field.default, nil)
             }
         } else {
             value
@@ -185,11 +210,9 @@ fn resolve_enum8<'a>(
 
     // Step 1: If resolved value is a string, look up in enum_values (case-insensitive)
     if resolved_value != nil {
-        if let Ok(s) = resolved_value.decode::<String>() {
-            // Keys are pre-lowercased at compile time
-            if let Some(val) = enum8_data.value_map.get(&s.to_lowercase()) {
-                return (*val as i64).encode(env);
-            }
+        // Keys are pre-lowercased at compile time
+        if let Some(val) = coerce::case_insensitive_get(&enum8_data.value_map, resolved_value) {
+            return (*val as i64).encode(env);
         }
         // If it's already an integer, pass through
         if resolved_value.decode::<i64>().is_ok() {
@@ -274,18 +297,18 @@ fn build_pick_map<'a>(
 }
 
 /// Remove specified keys from a map.
-fn apply_exclude_keys<'a>(env: Env<'a>, map: Term<'a>, exclude: &[String]) -> Term<'a> {
+fn apply_exclude_keys<'a>(env: Env<'a>, map: Term<'a>, exclude: &[Vec<u8>]) -> Term<'a> {
     let iter = match MapIterator::new(map) {
         Some(it) => it,
         None => return map,
     };
 
-    let mut keys: Vec<Term<'a>> = Vec::new();
-    let mut values: Vec<Term<'a>> = Vec::new();
+    let mut keys: Vec<Term<'a>> = Vec::with_capacity(32);
+    let mut values: Vec<Term<'a>> = Vec::with_capacity(32);
 
     for (k, v) in iter {
-        if let Ok(key_str) = k.decode::<String>() {
-            if exclude.contains(&key_str) {
+        if let Ok(b) = k.decode::<Binary>() {
+            if exclude.iter().any(|ek| ek.as_slice() == b.as_slice()) {
                 continue;
             }
         }
@@ -303,20 +326,20 @@ fn apply_exclude_keys<'a>(env: Env<'a>, map: Term<'a>, exclude: &[String]) -> Te
 /// for top-level overrides. Cannot use a single map_from_term_arrays call
 /// because duplicate keys (between elevated children and top-level) would
 /// cause enif_make_map_from_arrays to fail.
-fn apply_elevate_keys<'a>(env: Env<'a>, map: Term<'a>, elevate: &[String]) -> Term<'a> {
+fn apply_elevate_keys<'a>(env: Env<'a>, map: Term<'a>, elevate: &[Vec<u8>]) -> Term<'a> {
     let iter = match MapIterator::new(map) {
         Some(it) => it,
         None => return map,
     };
 
     // Collect top-level entries, separating elevated vs non-elevated
-    let mut top_entries: Vec<(Term<'a>, Term<'a>)> = Vec::new();
-    let mut elevated_keys: Vec<Term<'a>> = Vec::new();
-    let mut elevated_values: Vec<Term<'a>> = Vec::new();
+    let mut top_entries: Vec<(Term<'a>, Term<'a>)> = Vec::with_capacity(32);
+    let mut elevated_keys: Vec<Term<'a>> = Vec::with_capacity(16);
+    let mut elevated_values: Vec<Term<'a>> = Vec::with_capacity(16);
 
     for (k, v) in iter {
-        if let Ok(key_str) = k.decode::<String>() {
-            if elevate.contains(&key_str) {
+        if let Ok(b) = k.decode::<Binary>() {
+            if elevate.iter().any(|ek| ek.as_slice() == b.as_slice()) {
                 // This key should be elevated: merge its children into parent
                 if let Some(child_iter) = MapIterator::new(v) {
                     for (ck, cv) in child_iter {
@@ -445,10 +468,10 @@ fn evaluate_condition<'a>(
             if value == nil {
                 return false;
             }
-            if let Ok(s) = value.decode::<String>() {
-                !s.is_empty()
-            } else if let Ok(list) = value.decode::<Vec<Term>>() {
-                !list.is_empty()
+            if let Ok(b) = value.decode::<Binary>() {
+                !b.is_empty()
+            } else if let Ok(mut iter) = value.decode::<ListIterator>() {
+                iter.next().is_some()
             } else {
                 false
             }
@@ -457,10 +480,10 @@ fn evaluate_condition<'a>(
             if value == nil {
                 return false;
             }
-            if let Ok(s) = value.decode::<String>() {
-                s.is_empty()
-            } else if let Ok(list) = value.decode::<Vec<Term>>() {
-                list.is_empty()
+            if let Ok(b) = value.decode::<Binary>() {
+                b.is_empty()
+            } else if let Ok(mut iter) = value.decode::<ListIterator>() {
+                iter.next().is_none()
             } else {
                 false
             }
@@ -496,8 +519,8 @@ fn evaluate_condition<'a>(
 fn matches_predicate_value(term: Term, expected: &PredicateValue) -> bool {
     match expected {
         PredicateValue::Str(s) => {
-            if let Ok(ts) = term.decode::<String>() {
-                ts == *s
+            if let Ok(b) = term.decode::<Binary>() {
+                b.as_slice() == s.as_bytes()
             } else {
                 false
             }

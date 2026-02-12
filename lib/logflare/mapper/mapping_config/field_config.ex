@@ -2,8 +2,9 @@ defmodule Logflare.Mapper.MappingConfig.FieldConfig do
   @moduledoc """
   Defines a single field in a `Logflare.Mapper.MappingConfig`.
 
-  Use the constructor functions (`string/2`, `json/2`, `enum8/2`, etc.) to build
-  field configs. Each constructor accepts the field name and a keyword list of options.
+  Use the constructor functions (`string/2`, `json/2`, `enum8/2`, `array_string/2`,
+  etc.) to build field configs. Each constructor accepts the field name and a keyword
+  list of options.
 
   ## Common Options (all types)
 
@@ -49,6 +50,51 @@ defmodule Logflare.Mapper.MappingConfig.FieldConfig do
       If pick produces a non-empty map, it becomes the field value. If empty, falls back
       to `:path`/`:paths`.
 
+  ## Array Types
+
+  Six array constructors extract and coerce lists of values. All default to `[]`
+  when the path resolves to nil or a non-list value.
+
+  Wildcard paths work naturally with array types — `$.items[*].name` resolves to
+  a flat list of the `name` field from each element, which the array type then
+  coerces per-element.
+
+  ### Common array option
+
+    * `:filter_nil` — when `true`, nil elements are removed from the list before
+      coercion. When `false` (default), nil elements are coerced to the inner
+      type's zero value (`""`, `0`, `0.0`, `0` epoch, or `%{}`). Keeping the
+      default preserves array length, which is important for OTEL parallel arrays
+      (e.g. events, links, exemplars) that must stay aligned.
+
+  ### `array_string/2`
+
+  Extracts a list of strings. Non-string elements are coerced to strings.
+  Covers both `Array(String)` and `Array(LowCardinality(String))` ClickHouse types.
+
+  ### `array_uint64/2`
+
+  Extracts a list of unsigned 64-bit integers. Negative values are clamped to 0,
+  floats are truncated.
+
+  ### `array_float64/2`
+
+  Extracts a list of 64-bit floats. Integers and parseable strings are coerced.
+
+  ### `array_datetime64/2`
+
+    * `:precision` — target precision 0-9 (default `9` for nanoseconds). Each
+      element is auto-detected and scaled, same as scalar `datetime64/2`.
+
+  ### `array_json/2`
+
+  Pass-through list — elements are not coerced. Nil elements default to `%{}`.
+
+  ### `array_map/2`
+
+  Extracts a list of maps. Non-map elements are always filtered out (regardless
+  of `filter_nil`), protecting against ClickHouse insert failures at high throughput.
+
   ## Inference Rules (`InferRule` / `InferCondition`)
 
   Used by `enum8/2` to infer a value from structural cues when explicit path lookup finds
@@ -86,7 +132,7 @@ defmodule Logflare.Mapper.MappingConfig.FieldConfig do
   alias Logflare.Mapper.MappingConfig.InferRule
   alias Logflare.Mapper.MappingConfig.PickEntry
 
-  @valid_types ~w(string uint8 uint32 uint64 int32 float64 bool enum8 datetime64 json)
+  @valid_types ~w(string uint8 uint32 uint64 int32 float64 bool enum8 datetime64 json array_string array_uint64 array_float64 array_datetime64 array_json array_map)
   @valid_transforms ~w(upcase downcase)
 
   @type common_opts :: [
@@ -113,6 +159,7 @@ defmodule Logflare.Mapper.MappingConfig.FieldConfig do
     field(:enum_values, :map)
     field(:exclude_keys, {:array, :string})
     field(:elevate_keys, {:array, :string})
+    field(:filter_nil, :boolean, default: false)
     embeds_many(:pick, PickEntry)
     embeds_many(:infer, InferRule)
   end
@@ -135,7 +182,8 @@ defmodule Logflare.Mapper.MappingConfig.FieldConfig do
         :value_map,
         :enum_values,
         :exclude_keys,
-        :elevate_keys
+        :elevate_keys,
+        :filter_nil
       ],
       empty_values: []
     )
@@ -202,6 +250,37 @@ defmodule Logflare.Mapper.MappingConfig.FieldConfig do
 
     base
     |> maybe_put_pick(opts[:pick])
+  end
+
+  @spec array_string(String.t(), keyword()) :: t()
+  def array_string(name, opts \\ []) do
+    build(name, "array_string", opts, [:filter_nil])
+  end
+
+  @spec array_uint64(String.t(), keyword()) :: t()
+  def array_uint64(name, opts \\ []) do
+    build(name, "array_uint64", opts, [:filter_nil])
+  end
+
+  @spec array_float64(String.t(), keyword()) :: t()
+  def array_float64(name, opts \\ []) do
+    build(name, "array_float64", opts, [:filter_nil])
+  end
+
+  @spec array_datetime64(String.t(), keyword()) :: t()
+  def array_datetime64(name, opts \\ []) do
+    base = build(name, "array_datetime64", opts, [:filter_nil])
+    %{base | precision: opts[:precision] || 9}
+  end
+
+  @spec array_json(String.t(), keyword()) :: t()
+  def array_json(name, opts \\ []) do
+    build(name, "array_json", opts, [:filter_nil])
+  end
+
+  @spec array_map(String.t(), keyword()) :: t()
+  def array_map(name, opts \\ []) do
+    build(name, "array_map", opts, [:filter_nil])
   end
 
   defp build(name, type, opts, extra_keys \\ []) do
