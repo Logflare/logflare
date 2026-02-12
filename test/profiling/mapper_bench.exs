@@ -376,98 +376,13 @@ logs_mapping =
     Field.datetime64("timestamp", path: "$.timestamp", precision: 9)
   ])
 
-# Manual mapping function matching the same coalesce logic
-manual_map = fn doc ->
-  severity_text =
-    (doc["severity_text"] || doc["severityText"] ||
-       get_in(doc, ["metadata", "level"]) || doc["level"] || "INFO")
-    |> String.upcase()
-
-  severity_value_map = %{
-    "TRACE" => 1,
-    "DEBUG" => 5,
-    "INFO" => 9,
-    "WARN" => 13,
-    "WARNING" => 13,
-    "ERROR" => 17,
-    "FATAL" => 21,
-    "CRITICAL" => 21,
-    "EMERGENCY" => 21
-  }
-
-  pick_results =
-    [
-      {"region", [get_in(doc, ["metadata", "region"]), doc["region"]]},
-      {"cluster", [get_in(doc, ["metadata", "cluster"]), doc["cluster"]]},
-      {"service.name", [get_in(doc, ["resource", "service", "name"]), doc["service_name"]]},
-      {"application", [get_in(doc, ["metadata", "context", "application"])]},
-      {"node", [get_in(doc, ["metadata", "context", "vm", "node"])]},
-      {"project", [doc["project"], doc["project_ref"], doc["project_id"]]}
-    ]
-    |> Enum.reduce(%{}, fn {key, vals}, acc ->
-      case Enum.find(vals, &(&1 != nil)) do
-        nil -> acc
-        val -> Map.put(acc, key, val)
-      end
-    end)
-
-  resource_attributes =
-    if map_size(pick_results) > 0,
-      do: pick_results,
-      else: doc["resource"] || %{}
-
-  log_attributes =
-    doc
-    |> Map.drop(["id", "event_message", "timestamp"])
-    |> then(fn m ->
-      case Map.pop(m, "metadata") do
-        {nil, m} -> m
-        {metadata, m} -> Map.merge(metadata, m)
-      end
-    end)
-
-  %{
-    "project" => doc["project"] || doc["project_ref"] || doc["project_id"] || "",
-    "trace_id" => doc["trace_id"] || doc["traceId"] || doc["otel_trace_id"] || "",
-    "span_id" => doc["span_id"] || doc["spanId"] || doc["otel_span_id"] || "",
-    "trace_flags" => doc["trace_flags"] || doc["traceFlags"] || 0,
-    "severity_text" => severity_text,
-    "severity_number" => Map.get(severity_value_map, severity_text, 0),
-    "service_name" =>
-      get_in(doc, ["resource", "service", "name"]) ||
-        doc["service_name"] ||
-        get_in(doc, ["resource", "name"]) ||
-        get_in(doc, ["metadata", "context", "application"]) ||
-        "",
-    "event_message" => doc["event_message"] || doc["message"] || doc["body"] || doc["msg"] || "",
-    "scope_name" =>
-      get_in(doc, ["scope", "name"]) ||
-        get_in(doc, ["metadata", "context", "module"]) ||
-        get_in(doc, ["metadata", "context", "application"]) ||
-        get_in(doc, ["instrumentation_library", "name"]) ||
-        "",
-    "scope_version" =>
-      get_in(doc, ["scope", "version"]) ||
-        get_in(doc, ["instrumentation_library", "version"]) ||
-        "",
-    "scope_schema_url" => get_in(doc, ["scope", "schema_url"]) || "",
-    "resource_schema_url" => get_in(doc, ["resource", "schema_url"]) || "",
-    "resource_attributes" => resource_attributes,
-    "scope_attributes" => get_in(doc, ["scope", "attributes"]) || doc["scope"] || %{},
-    "log_attributes" => log_attributes,
-    "timestamp" => doc["timestamp"]
-  }
-end
-
 compiled = Mapper.compile!(logs_mapping)
-
 nif_result = Mapper.map(payload, compiled)
-manual_result = manual_map.(payload)
 
 # credo:disable-for-lines:3
 IO.puts("\n--- Log scenario ---")
-IO.puts("NIF output keys: #{inspect(Map.keys(nif_result) |> Enum.sort())}")
-IO.puts("Manual output keys: #{inspect(Map.keys(manual_result) |> Enum.sort())}")
+IO.puts("Output Keys: #{inspect(Map.keys(nif_result) |> Enum.sort())}")
+IO.puts("")
 
 # ── Array extraction scenario ─────────────────────────────────────────
 #
@@ -545,47 +460,19 @@ metric_mapping =
   ])
 
 compiled_metric = Mapper.compile!(metric_mapping)
-
-# Manual Elixir equivalent of the metric mapping
-manual_metric_map = fn doc ->
-  exemplars = doc["exemplars"] || []
-
-  %{
-    "metric_name" => doc["name"] || "",
-    "timestamp" => doc["timestamp"],
-    "start_time" => doc["start_time"],
-    "count" => doc["count"] || 0,
-    "sum" => (doc["sum"] || 0) / 1,
-    "min" => (doc["min"] || 0) / 1,
-    "max" => (doc["max"] || 0) / 1,
-    "explicit_bounds" => doc["explicit_bounds"] || [],
-    "bucket_counts" => doc["bucket_counts"] || [],
-    "exemplar_trace_ids" => Enum.map(exemplars, &to_string(&1["trace_id"] || "")),
-    "exemplar_span_ids" => Enum.map(exemplars, &to_string(&1["span_id"] || "")),
-    "exemplar_values" => Enum.map(exemplars, &((&1["value"] || 0.0) / 1)),
-    "exemplar_timestamps" => Enum.map(exemplars, & &1["timestamp"]),
-    "exemplar_attributes" => Enum.map(exemplars, &(&1["attributes"] || %{})),
-    "resource_attributes" => doc["resource"] || %{},
-    "scope_attributes" => doc["scope"] || %{},
-    "metric_attributes" => doc["attributes"] || %{}
-  }
-end
-
 nif_metric_result = Mapper.map(metric_payload, compiled_metric)
-manual_metric_result = manual_metric_map.(metric_payload)
 
-# credo:disable-for-lines:4
+# credo:disable-for-lines:3
 IO.puts("\n--- Metric (array) scenario ---")
-IO.puts("NIF output keys: #{inspect(Map.keys(nif_metric_result) |> Enum.sort())}")
-IO.puts("Manual output keys: #{inspect(Map.keys(manual_metric_result) |> Enum.sort())}")
+IO.puts("Output Keys: #{inspect(Map.keys(nif_metric_result) |> Enum.sort())}")
 IO.puts("")
 
 Benchee.run(
   %{
-    "[log] NIF (pre-compiled)" => fn -> Mapper.map(payload, compiled) end,
-    "[log] Manual Elixir" => fn -> manual_map.(payload) end,
-    "[metric] NIF (pre-compiled)" => fn -> Mapper.map(metric_payload, compiled_metric) end,
-    "[metric] Manual Elixir" => fn -> manual_metric_map.(metric_payload) end
+    "[log] NIF (pre-compiled mappings)" => fn -> Mapper.map(payload, compiled) end,
+    "[metric] NIF (pre-compiled mappings)" => fn ->
+      Mapper.map(metric_payload, compiled_metric)
+    end
   },
   time: 5,
   warmup: 2,
