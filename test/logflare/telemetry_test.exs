@@ -66,6 +66,7 @@ defmodule Logflare.TelemetryTest do
       # test for one of the caches
       event = [:cachex, :sources]
       ref = :telemetry_test.attach_event_handlers(self(), [event])
+      on_exit(fn -> :telemetry.detach(ref) end)
 
       # simulates telemetry_poller tick
       Telemetry.cachex_metrics()
