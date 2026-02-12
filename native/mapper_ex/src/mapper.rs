@@ -71,7 +71,8 @@ pub fn map_single<'a>(env: Env<'a>, body: Term<'a>, mapping: &CompiledMapping) -
                     coerce::encode_default(env, &field.default, nil)
                 }
             } else {
-                value // non-string values bypass the check
+                // Non-string values are not in the allowed list, fall back to default
+                coerce::encode_default(env, &field.default, nil)
             }
         } else {
             value

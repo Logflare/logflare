@@ -1197,7 +1197,7 @@ defmodule Logflare.MapperTest do
       assert result["level"] == "INFO"
     end
 
-    test "non-string value bypasses the check and goes to coercion" do
+    test "non-string value falls back to default" do
       result =
         compile_and_map(
           [
@@ -1207,12 +1207,11 @@ defmodule Logflare.MapperTest do
               allowed_values: ~w(hello world)
             )
           ],
-          # Integer input: NIF can't decode as string, so bypasses allowed_values check
+          # Integer input is not in allowed_values, so falls back to default
           %{"val" => 42}
         )
 
-      # Integer bypasses string check, then gets coerced to string "42"
-      assert result["val"] == "42"
+      assert result["val"] == "fallback"
     end
   end
 
