@@ -158,6 +158,99 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaultsTest do
       assert result["zero_count"] == 0
       assert result["flags"] == 0
     end
+
+    test "resolves histogram bucket_counts and explicit_bounds", %{metric: compiled} do
+      payload = %{
+        "bucket_counts" => [1, 5, 10, 3, 0],
+        "explicit_bounds" => [0.0, 5.0, 10.0, 25.0]
+      }
+
+      result = Mapper.map(payload, compiled)
+
+      assert result["bucket_counts"] == [1, 5, 10, 3, 0]
+      assert result["explicit_bounds"] == [0.0, 5.0, 10.0, 25.0]
+    end
+
+    test "resolves exponential histogram bucket counts from nested paths", %{metric: compiled} do
+      payload = %{
+        "exponential_histogram" => %{
+          "positive" => %{"bucket_counts" => [2, 4, 8]},
+          "negative" => %{"bucket_counts" => [1, 3, 5]}
+        }
+      }
+
+      result = Mapper.map(payload, compiled)
+
+      assert result["positive_bucket_counts"] == [2, 4, 8]
+      assert result["negative_bucket_counts"] == [1, 3, 5]
+    end
+
+    test "resolves summary quantile fields", %{metric: compiled} do
+      payload = %{
+        "summary" => %{
+          "quantile_values" => [1.5, 2.5, 9.9],
+          "quantiles" => [0.5, 0.9, 0.99]
+        }
+      }
+
+      result = Mapper.map(payload, compiled)
+
+      assert result["quantile_values"] == [1.5, 2.5, 9.9]
+      assert result["quantiles"] == [0.5, 0.9, 0.99]
+    end
+
+    test "decomposes exemplars into parallel arrays", %{metric: compiled} do
+      payload = %{
+        "exemplars" => [
+          %{
+            "filtered_attributes" => %{"key" => "val1"},
+            "time_unix_nano" => 1_700_000_000_000_000_000,
+            "value" => 42.5,
+            "span_id" => "span-1",
+            "trace_id" => "trace-1"
+          },
+          %{
+            "filtered_attributes" => %{"key" => "val2"},
+            "time_unix_nano" => 1_700_000_001_000_000_000,
+            "value" => 99.0,
+            "span_id" => "span-2",
+            "trace_id" => "trace-2"
+          }
+        ]
+      }
+
+      result = Mapper.map(payload, compiled)
+
+      assert result["exemplars.filtered_attributes"] == [
+               %{"key" => "val1"},
+               %{"key" => "val2"}
+             ]
+
+      assert result["exemplars.time_unix"] == [
+               1_700_000_000_000_000_000,
+               1_700_000_001_000_000_000
+             ]
+
+      assert result["exemplars.value"] == [42.5, 99.0]
+      assert result["exemplars.span_id"] == ["span-1", "span-2"]
+      assert result["exemplars.trace_id"] == ["trace-1", "trace-2"]
+    end
+
+    test "defaults array fields to empty lists when missing", %{metric: compiled} do
+      result = Mapper.map(%{}, compiled)
+
+      assert result["bucket_counts"] == []
+      assert result["explicit_bounds"] == []
+      assert result["positive_bucket_counts"] == []
+      assert result["negative_bucket_counts"] == []
+      assert result["quantile_values"] == []
+      assert result["quantiles"] == []
+      assert result["exemplars.filtered_attributes"] == []
+      assert result["exemplars.time_unix"] == []
+      assert result["exemplars.value"] == []
+      assert result["exemplars.span_id"] == []
+      assert result["exemplars.trace_id"] == []
+    end
   end
 
   describe "traces mapping" do
@@ -234,6 +327,79 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaultsTest do
       assert span_attrs["trace_id"] == "t1"
       assert span_attrs["http.method"] == "GET"
       assert span_attrs["request_id"] == "req-1"
+    end
+
+    test "decomposes span events into parallel arrays", %{trace: compiled} do
+      payload = %{
+        "events" => [
+          %{
+            "time_unix_nano" => 1_700_000_000_000_000_000,
+            "name" => "exception",
+            "attributes" => %{"exception.message" => "not found"}
+          },
+          %{
+            "time_unix_nano" => 1_700_000_001_000_000_000,
+            "name" => "log",
+            "attributes" => %{"log.message" => "retrying"}
+          }
+        ]
+      }
+
+      result = Mapper.map(payload, compiled)
+
+      assert result["events.timestamp"] == [
+               1_700_000_000_000_000_000,
+               1_700_000_001_000_000_000
+             ]
+
+      assert result["events.name"] == ["exception", "log"]
+
+      assert result["events.attributes"] == [
+               %{"exception.message" => "not found"},
+               %{"log.message" => "retrying"}
+             ]
+    end
+
+    test "decomposes span links into parallel arrays", %{trace: compiled} do
+      payload = %{
+        "links" => [
+          %{
+            "trace_id" => "linked-trace-1",
+            "span_id" => "linked-span-1",
+            "trace_state" => "state1",
+            "attributes" => %{"link.type" => "parent"}
+          },
+          %{
+            "trace_id" => "linked-trace-2",
+            "span_id" => "linked-span-2",
+            "trace_state" => "state2",
+            "attributes" => %{"link.type" => "child"}
+          }
+        ]
+      }
+
+      result = Mapper.map(payload, compiled)
+
+      assert result["links.trace_id"] == ["linked-trace-1", "linked-trace-2"]
+      assert result["links.span_id"] == ["linked-span-1", "linked-span-2"]
+      assert result["links.trace_state"] == ["state1", "state2"]
+
+      assert result["links.attributes"] == [
+               %{"link.type" => "parent"},
+               %{"link.type" => "child"}
+             ]
+    end
+
+    test "defaults trace array fields to empty lists when missing", %{trace: compiled} do
+      result = Mapper.map(%{}, compiled)
+
+      assert result["events.timestamp"] == []
+      assert result["events.name"] == []
+      assert result["events.attributes"] == []
+      assert result["links.trace_id"] == []
+      assert result["links.span_id"] == []
+      assert result["links.trace_state"] == []
+      assert result["links.attributes"] == []
     end
   end
 end

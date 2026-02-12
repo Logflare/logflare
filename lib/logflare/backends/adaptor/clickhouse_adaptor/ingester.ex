@@ -26,11 +26,17 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
     metric_name metric_description metric_unit metric_type service_name event_message
     scope_name scope_version scope_schema_url resource_schema_url resource_attributes
     scope_attributes attributes aggregation_temporality is_monotonic flags value count
-    sum min max scale zero_count positive_offset negative_offset mapping_config_id timestamp)
+    sum min max scale zero_count positive_offset negative_offset
+    bucket_counts explicit_bounds positive_bucket_counts negative_bucket_counts
+    quantile_values quantiles exemplars.filtered_attributes exemplars.time_unix
+    exemplars.value exemplars.span_id exemplars.trace_id
+    mapping_config_id timestamp)
 
   @trace_columns ~w(id source_uuid source_name project trace_id span_id
     parent_span_id trace_state span_name span_kind service_name event_message duration
     status_code status_message scope_name scope_version resource_attributes span_attributes
+    events.timestamp events.name events.attributes
+    links.trace_id links.span_id links.trace_state links.attributes
     mapping_config_id timestamp)
 
   @doc """
@@ -196,6 +202,17 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
       RowBinaryEncoder.uint64(body["zero_count"] || 0),
       RowBinaryEncoder.int32(body["positive_offset"] || 0),
       RowBinaryEncoder.int32(body["negative_offset"] || 0),
+      RowBinaryEncoder.array_uint64(body["bucket_counts"] || []),
+      RowBinaryEncoder.array_float64(body["explicit_bounds"] || []),
+      RowBinaryEncoder.array_uint64(body["positive_bucket_counts"] || []),
+      RowBinaryEncoder.array_uint64(body["negative_bucket_counts"] || []),
+      RowBinaryEncoder.array_float64(body["quantile_values"] || []),
+      RowBinaryEncoder.array_float64(body["quantiles"] || []),
+      RowBinaryEncoder.array_json(body["exemplars.filtered_attributes"] || []),
+      RowBinaryEncoder.array(body["exemplars.time_unix"] || [], &RowBinaryEncoder.int64/1),
+      RowBinaryEncoder.array_float64(body["exemplars.value"] || []),
+      RowBinaryEncoder.array_string(body["exemplars.span_id"] || []),
+      RowBinaryEncoder.array_string(body["exemplars.trace_id"] || []),
       RowBinaryEncoder.uuid(body["mapping_config_id"]),
       RowBinaryEncoder.int64(body["timestamp"])
     ]
@@ -230,6 +247,13 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
       RowBinaryEncoder.string(body["scope_version"] || ""),
       RowBinaryEncoder.json(body["resource_attributes"] || %{}),
       RowBinaryEncoder.json(body["span_attributes"] || %{}),
+      RowBinaryEncoder.array(body["events.timestamp"] || [], &RowBinaryEncoder.int64/1),
+      RowBinaryEncoder.array_string(body["events.name"] || []),
+      RowBinaryEncoder.array_json(body["events.attributes"] || []),
+      RowBinaryEncoder.array_string(body["links.trace_id"] || []),
+      RowBinaryEncoder.array_string(body["links.span_id"] || []),
+      RowBinaryEncoder.array_string(body["links.trace_state"] || []),
+      RowBinaryEncoder.array_json(body["links.attributes"] || []),
       RowBinaryEncoder.uuid(body["mapping_config_id"]),
       RowBinaryEncoder.int64(body["timestamp"])
     ]

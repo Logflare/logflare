@@ -14,8 +14,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaults do
   alias Logflare.Mapper.MappingConfig.InferRule
 
   @log_config_id "00000000-0000-0000-0001-000000000002"
-  @metric_config_id "00000000-0000-0000-0002-000000000001"
-  @trace_config_id "00000000-0000-0000-0003-000000000001"
+  @metric_config_id "00000000-0000-0000-0002-000000000002"
+  @trace_config_id "00000000-0000-0000-0003-000000000002"
 
   @spec config_id(TypeDetection.log_type()) :: String.t()
   def config_id(:log), do: @log_config_id
@@ -367,6 +367,48 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaults do
         ],
         default: 0
       ),
+      Field.array_uint64("bucket_counts",
+        path: "$.bucket_counts"
+      ),
+      Field.array_float64("explicit_bounds",
+        path: "$.explicit_bounds"
+      ),
+      Field.array_uint64("positive_bucket_counts",
+        paths: [
+          "$.positive_bucket_counts",
+          "$.positive.bucket_counts",
+          "$.exponential_histogram.positive.bucket_counts"
+        ]
+      ),
+      Field.array_uint64("negative_bucket_counts",
+        paths: [
+          "$.negative_bucket_counts",
+          "$.negative.bucket_counts",
+          "$.exponential_histogram.negative.bucket_counts"
+        ]
+      ),
+      Field.array_float64("quantile_values",
+        paths: ["$.quantile_values", "$.summary.quantile_values"]
+      ),
+      Field.array_float64("quantiles",
+        paths: ["$.quantiles", "$.summary.quantiles"]
+      ),
+      Field.array_json("exemplars.filtered_attributes",
+        path: "$.exemplars[*].filtered_attributes"
+      ),
+      Field.array_datetime64("exemplars.time_unix",
+        path: "$.exemplars[*].time_unix_nano",
+        precision: 9
+      ),
+      Field.array_float64("exemplars.value",
+        paths: ["$.exemplars[*].value", "$.exemplars[*].as_double"]
+      ),
+      Field.array_string("exemplars.span_id",
+        path: "$.exemplars[*].span_id"
+      ),
+      Field.array_string("exemplars.trace_id",
+        path: "$.exemplars[*].trace_id"
+      ),
       Field.datetime64("time_unix",
         paths: ["$.time_unix_nano", "$.timeUnixNano", "$.time_unix", "$.timestamp"],
         precision: 9
@@ -506,6 +548,28 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingDefaults do
         path: "$",
         exclude_keys: ["id", "event_message", "timestamp"],
         elevate_keys: ["metadata"]
+      ),
+      Field.array_datetime64("events.timestamp",
+        path: "$.events[*].time_unix_nano",
+        precision: 9
+      ),
+      Field.array_string("events.name",
+        path: "$.events[*].name"
+      ),
+      Field.array_json("events.attributes",
+        path: "$.events[*].attributes"
+      ),
+      Field.array_string("links.trace_id",
+        path: "$.links[*].trace_id"
+      ),
+      Field.array_string("links.span_id",
+        path: "$.links[*].span_id"
+      ),
+      Field.array_string("links.trace_state",
+        path: "$.links[*].trace_state"
+      ),
+      Field.array_json("links.attributes",
+        path: "$.links[*].attributes"
       ),
       Field.datetime64("timestamp", path: "$.timestamp", precision: 9)
     ])
