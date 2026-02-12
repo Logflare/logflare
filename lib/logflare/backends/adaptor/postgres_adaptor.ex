@@ -105,20 +105,23 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptor do
 
   def execute_query(%Backend{} = backend, {query_string, params}, _opts)
       when is_non_empty_binary(query_string) and is_list(params) do
-    {:ok, result} =
-      SharedRepo.with_repo(backend, fn ->
-        SharedRepo.query(query_string, params)
-      end)
+    case SharedRepo.with_repo(backend, fn ->
+           SharedRepo.query(query_string, params)
+         end) do
+      {:ok, result} ->
+        rows =
+          for row <- result.rows do
+            result.columns
+            |> Enum.zip(row)
+            |> Map.new()
+            |> nested_map_update()
+          end
 
-    rows =
-      for row <- result.rows do
-        result.columns
-        |> Enum.zip(row)
-        |> Map.new()
-        |> nested_map_update()
-      end
+        {:ok, rows}
 
-    {:ok, rows}
+      {:error, reason} ->
+        {:error, reason}
+    end
   end
 
   def execute_query(%Backend{} = backend, {query_string, declared_params, input_params}, opts)

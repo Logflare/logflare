@@ -148,6 +148,11 @@ defmodule Logflare.Backends.Adaptor.PostgresAdaptorTest do
 
       assert {:ok, [%NaiveDateTime{}]} = PostgresAdaptor.execute_query(backend, query, [])
     end
+
+    test "execute_query/3 returns error tuple on invalid query", %{backend: backend} do
+      assert {:error, %Postgrex.Error{}} =
+               PostgresAdaptor.execute_query(backend, "select id from nonexistent_source", [])
+    end
   end
 
   describe "separate config fields" do
