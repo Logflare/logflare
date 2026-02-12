@@ -46,6 +46,20 @@
       </small>
     </div>
 
+    <div :if={@determined_language == :bq_sql} class="form-group">
+      {label(f, :bigquery_reservations, "BigQuery Reservations (optional)")}
+      {textarea(f, :bigquery_reservations,
+        class: "form-control",
+        rows: 4,
+        placeholder: "projects/123/locations/us/reservations/my-reservation-1\nprojects/123/locations/us/reservations/my-reservation-2",
+        "phx-update": "ignore"
+      )}
+      {error_tag(f, :bigquery_reservations)}
+      <small class="form-text text-muted">
+        Specify BigQuery reservation paths (one per line). When this endpoint is queried, one reservation will be randomly selected. Empty lines are ignored.
+      </small>
+    </div>
+
     <.header_with_anchor text="Query" />
     <section class="tw-flex tw-flex-col">
       <div class="form-group">
