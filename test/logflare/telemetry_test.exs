@@ -77,10 +77,46 @@ defmodule Logflare.TelemetryTest do
     assert_receive {[:logflare, :system, :observer, :memory], ^ref, memory_measurements,
                     memory_metadata}
 
-    assert metrics_measurements == nil
-    assert metrics_metadata == nil
-    assert memory_measurements == nil
-    assert memory_metadata == nil
+    assert Map.keys(metrics_measurements) == [
+             :port_count,
+             :port_limit,
+             :process_count,
+             :process_limit,
+             :run_queue,
+             :schedulers_online,
+             :total_active_tasks,
+             :version,
+             :otp_release,
+             :schedulers,
+             :uptime,
+             :logical_processors,
+             :logical_processors_online,
+             :logical_processors_available,
+             :atom_limit,
+             :atom_count,
+             :ets_limit,
+             :ets_count,
+             :schedulers_available,
+             :io_output,
+             :io_input
+           ]
+
+    assert metrics_metadata == %{}
+
+    assert Map.keys(memory_measurements) == [
+             :atom,
+             :atom_used,
+             :binary,
+             :code,
+             :ets,
+             :processes,
+             :processes_used,
+             :system,
+             :total,
+             :persistent_term
+           ]
+
+    assert memory_metadata == %{}
   end
 
   test "scheduler metrics" do
@@ -91,9 +127,27 @@ defmodule Logflare.TelemetryTest do
     sample_duration = to_timeout(millisecond: 10)
     Logflare.SystemMetrics.Schedulers.async_dispatch_stats(sample_duration)
 
-    # Wait for the task to finish (10ms + overhead)
-    assert_receive {^event, ^ref, measurements, metadata}
-    assert measurements == nil
-    assert metadata == nil
+    assert_receive {^event, ^ref, %{utilization: _}, %{name: "total", type: "total"}}
+    assert_receive {^event, ^ref, %{utilization: _}, %{name: "weighted", type: "weighted"}}
+
+    for id <- 1..:erlang.system_info(:schedulers) do
+      id = Integer.to_string(id)
+      assert_receive {^event, ^ref, %{utilization: _}, %{name: ^id, type: "normal"}}
+    end
+
+    dirty_cpu_offset = :erlang.system_info(:schedulers)
+
+    for id <-
+          (dirty_cpu_offset + 1)..(dirty_cpu_offset + :erlang.system_info(:dirty_cpu_schedulers)) do
+      id = Integer.to_string(id)
+      assert_receive {^event, ^ref, %{utilization: _}, %{name: ^id, type: "dirty"}}
+    end
+
+    dirty_io_offset = dirty_cpu_offset + :erlang.system_info(:dirty_cpu_schedulers)
+
+    for id <- (dirty_io_offset + 1)..(dirty_io_offset + :erlang.system_info(:dirty_io_schedulers)) do
+      id = Integer.to_string(id)
+      assert_receive {^event, ^ref, %{utilization: _}, %{name: ^id, type: "dirty (io)"}}
+    end
   end
 end

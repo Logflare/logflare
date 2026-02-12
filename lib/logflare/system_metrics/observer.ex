@@ -11,7 +11,7 @@ defmodule Logflare.SystemMetrics.Observer do
 
   defp get_memory do
     %{memory: persistent_term_memory} = :persistent_term.info()
-    memory = [persistent_term: persistent_term_memory | :erlang.memory()]
+    memory = [{:persistent_term, persistent_term_memory} | :erlang.memory()]
     Map.new(memory, fn {k, v} -> {k, div(v, 1024 * 1024)} end)
   end
 
