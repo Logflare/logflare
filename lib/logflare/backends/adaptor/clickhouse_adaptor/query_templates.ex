@@ -199,17 +199,18 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryTemplates do
         `scope_version` String CODEC(ZSTD(1)),
         `resource_attributes` JSON(max_dynamic_paths=0, max_dynamic_types=1) CODEC(ZSTD(1)),
         `span_attributes` JSON(max_dynamic_paths=0, max_dynamic_types=1) CODEC(ZSTD(1)),
-        `events.timestamp` Array(DateTime64(9)) CODEC(ZSTD(1)),
-        `events.name` Array(LowCardinality(String)) CODEC(ZSTD(1)),
-        `events.attributes` Array(JSON(max_dynamic_paths=0, max_dynamic_types=1)) CODEC(ZSTD(1)),
-        `links.trace_id` Array(String) CODEC(ZSTD(1)),
-        `links.span_id` Array(String) CODEC(ZSTD(1)),
-        `links.trace_state` Array(String) CODEC(ZSTD(1)),
-        `links.attributes` Array(JSON(max_dynamic_paths=0, max_dynamic_types=1)) CODEC(ZSTD(1)),
+        `events.Timestamp` Array(DateTime64(9)) CODEC(ZSTD(1)),
+        `events.Name` Array(LowCardinality(String)) CODEC(ZSTD(1)),
+        `events.Attributes` Array(Map(LowCardinality(String), String)) CODEC(ZSTD(1)),
+        `links.TraceId` Array(String) CODEC(ZSTD(1)),
+        `links.SpanId` Array(String) CODEC(ZSTD(1)),
+        `links.TraceState` Array(String) CODEC(ZSTD(1)),
+        `links.Attributes` Array(Map(LowCardinality(String), String)) CODEC(ZSTD(1)),
         `mapping_config_id` UUID,
         `timestamp` DateTime64(9) CODEC(Delta(8), ZSTD(1)),
         INDEX idx_trace_id trace_id TYPE bloom_filter(0.001) GRANULARITY 1,
-        INDEX idx_duration duration TYPE minmax GRANULARITY 1
+        INDEX idx_duration duration TYPE minmax GRANULARITY 1,
+        INDEX idx_lower_span_name lower(span_name) TYPE tokenbf_v1(32768, 3, 0) GRANULARITY 8
       )
       ENGINE = #{engine}
       PARTITION BY toDate(timestamp)
