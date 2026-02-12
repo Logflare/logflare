@@ -11,29 +11,29 @@ defmodule Logflare.SystemMetrics.Schedulers do
 
       utilization = :scheduler.utilization(prev_sample, next_sample)
 
-      utilization
-      |> Enum.map(fn x ->
+      Enum.each(utilization, fn x ->
         case x do
           {type, id, util, _pct} ->
-            %{
-              utilization: Kernel.floor(util * 100),
-              name: Integer.to_string(id),
-              type: rename_type(type)
-            }
+            :telemetry.execute(
+              [:logflare, :system, :scheduler, :utilization],
+              %{utilization: Kernel.floor(util * 100)},
+              %{name: Integer.to_string(id), type: rename_type(type)}
+            )
 
           {:total, util, _pct} ->
-            %{utilization: Kernel.floor(util * 100), name: "total", type: "total"}
+            :telemetry.execute(
+              [:logflare, :system, :scheduler, :utilization],
+              %{utilization: Kernel.floor(util * 100)},
+              %{name: "total", type: "total"}
+            )
 
           {:weighted, util, _pct} ->
-            %{utilization: Kernel.floor(util * 100), name: "weighted", type: "weighted"}
+            :telemetry.execute(
+              [:logflare, :system, :scheduler, :utilization],
+              %{utilization: Kernel.floor(util * 100)},
+              %{name: "weighted", type: "weighted"}
+            )
         end
-      end)
-      |> Enum.each(fn metric ->
-        :telemetry.execute(
-          [:logflare, :system, :scheduler, :utilization],
-          %{utilization: metric.utilization},
-          %{name: metric.name, type: metric.type}
-        )
       end)
     end)
   end

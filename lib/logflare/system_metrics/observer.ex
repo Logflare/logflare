@@ -5,7 +5,17 @@ defmodule Logflare.SystemMetrics.Observer do
     observer_metrics = get_metrics()
     mem_metrics = get_memory()
 
-    :telemetry.execute([:logflare, :system, :observer, :metrics], observer_metrics)
+    observer_metadata = %{
+      otp_release: :erlang.system_info(:otp_release),
+      version: :erlang.system_info(:version)
+    }
+
+    :telemetry.execute(
+      [:logflare, :system, :observer, :metrics],
+      observer_metrics,
+      observer_metadata
+    )
+
     :telemetry.execute([:logflare, :system, :observer, :memory], mem_metrics)
   end
 
@@ -30,8 +40,6 @@ defmodule Logflare.SystemMetrics.Observer do
       schedulers: :erlang.system_info(:schedulers),
       schedulers_online: :erlang.system_info(:schedulers_online),
       schedulers_available: :erlang.system_info(:schedulers_online),
-      otp_release: :erlang.system_info(:otp_release),
-      version: :erlang.system_info(:version),
       atom_limit: :erlang.system_info(:atom_limit),
       atom_count: :erlang.system_info(:atom_count),
       process_limit: :erlang.system_info(:process_limit),

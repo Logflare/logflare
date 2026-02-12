@@ -77,43 +77,44 @@ defmodule Logflare.TelemetryTest do
     assert_receive {[:logflare, :system, :observer, :memory], ^ref, memory_measurements,
                     memory_metadata}
 
-    assert Map.keys(metrics_measurements) == [
+    assert metrics_measurements |> Map.keys() |> Enum.sort() == [
+             :atom_count,
+             :atom_limit,
+             :ets_count,
+             :ets_limit,
+             :io_input,
+             :io_output,
+             :logical_processors,
+             :logical_processors_available,
+             :logical_processors_online,
              :port_count,
              :port_limit,
              :process_count,
              :process_limit,
              :run_queue,
+             :schedulers,
+             :schedulers_available,
              :schedulers_online,
              :total_active_tasks,
-             :version,
-             :otp_release,
-             :schedulers,
-             :uptime,
-             :logical_processors,
-             :logical_processors_online,
-             :logical_processors_available,
-             :atom_limit,
-             :atom_count,
-             :ets_limit,
-             :ets_count,
-             :schedulers_available,
-             :io_output,
-             :io_input
+             :uptime
            ]
 
-    assert metrics_metadata == %{}
+    assert metrics_metadata == %{
+             version: :erlang.system_info(:version),
+             otp_release: :erlang.system_info(:otp_release)
+           }
 
-    assert Map.keys(memory_measurements) == [
+    assert memory_measurements |> Map.keys() |> Enum.sort() == [
              :atom,
              :atom_used,
              :binary,
              :code,
              :ets,
+             :persistent_term,
              :processes,
              :processes_used,
              :system,
-             :total,
-             :persistent_term
+             :total
            ]
 
     assert memory_metadata == %{}
