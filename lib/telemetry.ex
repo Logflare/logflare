@@ -6,15 +6,18 @@ defmodule Logflare.Telemetry do
 
   def start_link(arg), do: Supervisor.start_link(__MODULE__, arg, name: __MODULE__)
 
+  context_caches =
+    Logflare.ContextCache.Supervisor.list_caches()
+    |> Enum.map(fn cache ->
+      ["Logflare", context, "Cache"] = Module.split(cache)
+      {cache, context |> Macro.underscore() |> String.to_atom()}
+    end)
+
   @caches [
-    {Logflare.Logs.LogEvents.Cache, :log_events},
-    {Logflare.Logs.RejectedLogEvents, :rejected_log_events},
-    {Logflare.Sources.Cache, :sources},
-    {Logflare.SourceSchemas.Cache, :source_schemas},
-    {Logflare.PubSubRates.Cache, :pub_sub_rates},
-    {Logflare.Billing.Cache, :billing},
-    {Logflare.Users.Cache, :users}
-  ]
+            {Logflare.Logs.LogEvents.Cache, :log_events},
+            {Logflare.Logs.RejectedLogEvents, :rejected_log_events},
+            {Logflare.PubSubRates.Cache, :pub_sub_rates}
+          ] ++ context_caches
 
   @process_metrics %{
     memory: %{
@@ -76,6 +79,10 @@ defmodule Logflare.Telemetry do
             last_value("cachex.#{metric}.evictions"),
             last_value("cachex.#{metric}.expirations"),
             last_value("cachex.#{metric}.operations"),
+            last_value("cachex.#{metric}.hits"),
+            last_value("cachex.#{metric}.misses"),
+            last_value("cachex.#{metric}.hit_rate"),
+            last_value("cachex.#{metric}.miss_rate"),
             last_value("cachex.#{metric}.total_heap_size", unit: {:byte, :megabyte})
           ]
         end)
@@ -245,6 +252,10 @@ defmodule Logflare.Telemetry do
         evictions: Map.get(stats, :evictions),
         expirations: Map.get(stats, :expirations),
         operations: Map.get(stats, :operations),
+        hits: Map.get(stats, :hits),
+        misses: Map.get(stats, :misses),
+        hit_rate: Map.get(stats, :hit_rate),
+        miss_rate: Map.get(stats, :miss_rate),
         total_heap_size: total_heap_size
       }
 
