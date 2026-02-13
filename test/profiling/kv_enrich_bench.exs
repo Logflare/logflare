@@ -42,7 +42,7 @@ Benchee.run(
     end,
     "1 rule jsonpath accessor (pre-parsed)" => fn ->
       LogEvent.make(simple_event, %{source: source_1_rule_jsonpath})
-    end,
+    end
   },
   time: 4,
   warmup: 1,
