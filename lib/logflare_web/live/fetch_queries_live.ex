@@ -19,6 +19,11 @@ defmodule LogflareWeb.FetchQueriesLive do
   @impl Phoenix.LiveView
   def mount(_params, _session, socket) do
     user = socket.assigns.user
+
+    unless LogflareWeb.Utils.flag("fetch_jobs", user) do
+      raise LogflareWeb.ErrorsLive.InvalidResourceError
+    end
+
     backends = Backends.list_backends_by_user_access(user)
     sources = Sources.list_sources_by_user(user)
 

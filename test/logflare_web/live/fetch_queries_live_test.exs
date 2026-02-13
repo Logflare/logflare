@@ -41,6 +41,19 @@ defmodule LogflareWeb.FetchQueriesLiveTest do
     %{fetch_query: fetch_query, backend: backend, source: source}
   end
 
+  describe "feature flag" do
+    test "raises 404 when fetch_jobs flag is disabled", %{conn: conn} do
+      stub(LogflareWeb.Utils, :flag, fn
+        "fetch_jobs", _user -> false
+        feature, u -> Mimic.call_original(LogflareWeb.Utils, :flag, [feature, u])
+      end)
+
+      assert_raise LogflareWeb.ErrorsLive.InvalidResourceError, fn ->
+        live(conn, ~p"/fetch")
+      end
+    end
+  end
+
   describe "unauthorized" do
     test "redirects when accessing fetch query that doesn't belong to user", %{conn: conn} do
       user = insert(:user)
