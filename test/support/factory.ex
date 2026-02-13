@@ -388,7 +388,7 @@ defmodule Logflare.Factory do
     %KeyValue{
       user: build(:user),
       key: TestUtils.random_string(),
-      value: TestUtils.random_string()
+      value: %{"value" => TestUtils.random_string()}
     }
   end
 

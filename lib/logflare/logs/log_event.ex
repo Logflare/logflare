@@ -219,8 +219,8 @@ defmodule Logflare.LogEvent do
   defp kv_enrich(%LE{} = le, %Source{transform_key_values_parsed: parsed, user_id: user_id})
        when is_list(parsed) do
     new_body =
-      Enum.reduce(parsed, le.body, fn %{from_path: from_path, to_path: to_path}, acc ->
-        apply_kv_instruction(acc, from_path, to_path, user_id)
+      Enum.reduce(parsed, le.body, fn instruction, acc ->
+        apply_kv_instruction(acc, instruction, user_id)
       end)
 
     {:ok, Map.put(le, :body, new_body)}
@@ -231,9 +231,16 @@ defmodule Logflare.LogEvent do
     kv_enrich(le, Source.parse_key_values_config(source))
   end
 
-  defp apply_kv_instruction(body, from_path, to_path, user_id) do
+  defp apply_kv_instruction(
+         body,
+         %{from_path: from_path, to_path: to_path} = instruction,
+         user_id
+       ) do
+    accessor_path = Map.get(instruction, :accessor_path)
+
     with raw when not is_nil(raw) <- get_in(body, from_path),
-         value when value != nil <- KeyValues.Cache.lookup(user_id, to_string(raw)) do
+         value when not is_nil(value) <-
+           KeyValues.Cache.lookup(user_id, to_string(raw), accessor_path) do
       put_in(body, Enum.map(to_path, &Access.key(&1, %{})), value)
     else
       _ -> body

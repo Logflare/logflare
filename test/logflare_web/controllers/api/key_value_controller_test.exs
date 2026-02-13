@@ -10,10 +10,10 @@ defmodule LogflareWeb.Api.KeyValueControllerTest do
 
   describe "index" do
     test "lists user's KV pairs with 500 limit", %{conn: conn, user: user} do
-      insert(:key_value, user: user, key: "k1", value: "v1")
+      insert(:key_value, user: user, key: "k1", value: %{"org" => "abc"})
       insert(:key_value)
 
-      assert [%{"key" => "k1"}] =
+      assert [%{"key" => "k1", "value" => %{"org" => "abc"}}] =
                conn
                |> add_access_token(user, "private")
                |> get(~p"/api/key-values")
@@ -21,28 +21,14 @@ defmodule LogflareWeb.Api.KeyValueControllerTest do
     end
 
     test "filters by key", %{conn: conn, user: user} do
-      insert(:key_value, user: user, key: "k1", value: "v1")
-      insert(:key_value, user: user, key: "k2", value: "v2")
+      insert(:key_value, user: user, key: "k1", value: %{"v" => "1"})
+      insert(:key_value, user: user, key: "k2", value: %{"v" => "2"})
 
       assert [%{"key" => "k1"}] =
                conn
                |> add_access_token(user, "private")
                |> get(~p"/api/key-values?key=k1")
                |> json_response(200)
-    end
-
-    test "filters by value", %{conn: conn, user: user} do
-      insert(:key_value, user: user, key: "k1", value: "shared")
-      insert(:key_value, user: user, key: "k2", value: "shared")
-      insert(:key_value, user: user, key: "k3", value: "other")
-
-      result =
-        conn
-        |> add_access_token(user, "private")
-        |> get(~p"/api/key-values?value=shared")
-        |> json_response(200)
-
-      assert length(result) == 2
     end
   end
 
@@ -57,7 +43,10 @@ defmodule LogflareWeb.Api.KeyValueControllerTest do
                |> put_req_header("content-type", "application/json")
                |> post(
                  ~p"/api/key-values",
-                 Jason.encode!([%{key: "a", value: "1"}, %{key: "b", value: "2"}])
+                 Jason.encode!([
+                   %{key: "a", value: %{org: "1"}},
+                   %{key: "b", value: %{org: "2"}}
+                 ])
                )
                |> json_response(201)
     end
@@ -69,16 +58,16 @@ defmodule LogflareWeb.Api.KeyValueControllerTest do
       conn
       |> add_access_token(user, "private")
       |> put_req_header("content-type", "application/json")
-      |> post(~p"/api/key-values", Jason.encode!([%{key: "a", value: "original"}]))
+      |> post(~p"/api/key-values", Jason.encode!([%{key: "a", value: %{n: "original"}}]))
       |> json_response(201)
 
       conn
       |> add_access_token(user, "private")
       |> put_req_header("content-type", "application/json")
-      |> post(~p"/api/key-values", Jason.encode!([%{key: "a", value: "updated"}]))
+      |> post(~p"/api/key-values", Jason.encode!([%{key: "a", value: %{n: "updated"}}]))
       |> json_response(201)
 
-      assert [%{"key" => "a", "value" => "updated"}] =
+      assert [%{"key" => "a", "value" => %{"n" => "updated"}}] =
                conn
                |> add_access_token(user, "private")
                |> get(~p"/api/key-values")
@@ -91,16 +80,16 @@ defmodule LogflareWeb.Api.KeyValueControllerTest do
       conn
       |> add_access_token(user, "private")
       |> put_req_header("content-type", "application/json")
-      |> post(~p"/api/key-values", Jason.encode!([%{key: "over", value: "limit"}]))
+      |> post(~p"/api/key-values", Jason.encode!([%{key: "over", value: %{v: "limit"}}]))
       |> response(400)
     end
   end
 
   describe "delete" do
     test "deletes by keys", %{conn: conn, user: user} do
-      insert(:key_value, user: user, key: "k1", value: "v1")
-      insert(:key_value, user: user, key: "k2", value: "v2")
-      insert(:key_value, user: user, key: "k3", value: "v3")
+      insert(:key_value, user: user, key: "k1", value: %{"v" => "1"})
+      insert(:key_value, user: user, key: "k2", value: %{"v" => "2"})
+      insert(:key_value, user: user, key: "k3", value: %{"v" => "3"})
 
       assert %{"deleted_count" => 2} =
                conn
@@ -115,15 +104,18 @@ defmodule LogflareWeb.Api.KeyValueControllerTest do
                |> json_response(200)
     end
 
-    test "deletes by values", %{conn: conn, user: user} do
-      insert(:key_value, user: user, key: "k1", value: "shared")
-      insert(:key_value, user: user, key: "k2", value: "shared")
-      insert(:key_value, user: user, key: "k3", value: "other")
+    test "deletes by accessor path into values", %{conn: conn, user: user} do
+      insert(:key_value, user: user, key: "k1", value: %{"org" => "shared"})
+      insert(:key_value, user: user, key: "k2", value: %{"org" => "shared"})
+      insert(:key_value, user: user, key: "k3", value: %{"org" => "other"})
 
       assert %{"deleted_count" => 2} =
                conn
                |> add_access_token(user, "private")
-               |> delete(~p"/api/key-values", %{values: ["shared"]})
+               |> delete(~p"/api/key-values", %{
+                 values: ["shared"],
+                 accessor: "org"
+               })
                |> json_response(200)
 
       assert [%{"key" => "k3"}] =

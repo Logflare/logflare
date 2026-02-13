@@ -15,15 +15,14 @@ defmodule LogflareWeb.Api.KeyValueController do
   operation(:index,
     summary: "List key-value pairs",
     parameters: [
-      key: [in: :query, description: "Filter by key (exact match)", type: :string],
-      value: [in: :query, description: "Filter by value (exact match)", type: :string]
+      key: [in: :query, description: "Filter by key (exact match)", type: :string]
     ],
     responses: %{200 => List.response(KeyValueApiSchema)}
   )
 
   def index(%{assigns: %{user: user}} = conn, params) do
     key_values =
-      KeyValues.list_key_values(user_id: user.id, key: params["key"], value: params["value"])
+      KeyValues.list_key_values(user_id: user.id, key: params["key"])
 
     json(conn, key_values)
   end
@@ -57,14 +56,18 @@ defmodule LogflareWeb.Api.KeyValueController do
   end
 
   operation(:delete,
-    summary: "Bulk delete key-value pairs by keys or values",
+    summary: "Bulk delete key-value pairs by keys or by accessor path into values",
     request_body:
       {"Bulk delete", "application/json",
        %OpenApiSpex.Schema{
          type: :object,
          properties: %{
            keys: %OpenApiSpex.Schema{type: :array, items: %OpenApiSpex.Schema{type: :string}},
-           values: %OpenApiSpex.Schema{type: :array, items: %OpenApiSpex.Schema{type: :string}}
+           values: %OpenApiSpex.Schema{type: :array, items: %OpenApiSpex.Schema{type: :string}},
+           accessor: %OpenApiSpex.Schema{
+             type: :string,
+             description: "Dot-path or JSONPath into the JSONB value (required with values)"
+           }
          }
        }},
     responses: %{
@@ -84,8 +87,10 @@ defmodule LogflareWeb.Api.KeyValueController do
           {count, _} = KeyValues.bulk_delete_by_keys(user.id, keys)
           count
 
-        values = params["values"] ->
-          {count, _} = KeyValues.bulk_delete_by_values(user.id, values)
+        params["values"] && params["accessor"] ->
+          {count, _} =
+            KeyValues.bulk_delete_by_values(user.id, params["accessor"], params["values"])
+
           count
 
         true ->

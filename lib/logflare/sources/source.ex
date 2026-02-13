@@ -359,15 +359,28 @@ defmodule Logflare.Sources.Source do
       |> Enum.flat_map(fn instruction ->
         instruction = String.trim(instruction)
 
-        case String.split(instruction, ":", parts: 2) do
-          [key_path, enrich_path] ->
-            key_path = String.replace_prefix(key_path, "m.", "metadata.")
-            enrich_path = String.replace_prefix(enrich_path, "m.", "metadata.")
+        case String.split(instruction, ":", parts: 3) do
+          [lookup_key, dest_key, accessor_path] ->
+            lookup_key = String.replace_prefix(lookup_key, "m.", "metadata.")
+            dest_key = String.replace_prefix(dest_key, "m.", "metadata.")
 
             [
               %{
-                from_path: String.split(key_path, "."),
-                to_path: String.split(enrich_path, ".")
+                from_path: String.split(lookup_key, "."),
+                to_path: String.split(dest_key, "."),
+                accessor_path: String.trim(accessor_path)
+              }
+            ]
+
+          [lookup_key, dest_key] ->
+            lookup_key = String.replace_prefix(lookup_key, "m.", "metadata.")
+            dest_key = String.replace_prefix(dest_key, "m.", "metadata.")
+
+            [
+              %{
+                from_path: String.split(lookup_key, "."),
+                to_path: String.split(dest_key, "."),
+                accessor_path: nil
               }
             ]
 

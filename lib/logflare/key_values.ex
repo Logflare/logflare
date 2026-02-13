@@ -8,30 +8,24 @@ defmodule Logflare.KeyValues do
 
   @list_limit 500
 
-  @spec list_key_values_paginated(keyword()) :: Scrivener.Page.t()
-  def list_key_values_paginated(kw) do
+  @spec list_key_values_query(keyword()) :: Ecto.Query.t()
+  def list_key_values_query(kw) do
     user_id = Keyword.fetch!(kw, :user_id)
-    page = Keyword.get(kw, :page, 1)
-    page_size = Keyword.get(kw, :page_size, @list_limit)
 
     KeyValue
     |> where(user_id: ^user_id)
     |> maybe_filter_by(:key, Keyword.get(kw, :key))
-    |> maybe_filter_by(:value, Keyword.get(kw, :value))
     |> order_by(asc: :key)
-    |> Repo.paginate(%{page: page, page_size: page_size})
   end
 
   @spec list_key_values(keyword()) :: [KeyValue.t()]
   def list_key_values(kw) do
     user_id = Keyword.fetch!(kw, :user_id)
     key_filter = Keyword.get(kw, :key)
-    value_filter = Keyword.get(kw, :value)
 
     KeyValue
     |> where(user_id: ^user_id)
     |> maybe_filter_by(:key, key_filter)
-    |> maybe_filter_by(:value, value_filter)
     |> order_by(asc: :key)
     |> limit(@list_limit)
     |> Repo.all()
@@ -39,7 +33,6 @@ defmodule Logflare.KeyValues do
 
   defp maybe_filter_by(query, _field, nil), do: query
   defp maybe_filter_by(query, :key, key), do: where(query, key: ^key)
-  defp maybe_filter_by(query, :value, value), do: where(query, value: ^value)
 
   @spec get_key_value(integer()) :: KeyValue.t() | nil
   def get_key_value(id), do: Repo.get(KeyValue, id)
@@ -79,13 +72,37 @@ defmodule Logflare.KeyValues do
     |> Repo.aggregate(:count)
   end
 
-  @spec lookup(integer(), String.t()) :: String.t() | nil
+  @spec lookup(integer(), String.t()) :: map() | nil
   def lookup(user_id, key) do
     KeyValue
     |> where(user_id: ^user_id, key: ^key)
     |> select([kv], kv.value)
     |> Repo.one()
   end
+
+  @spec lookup(integer(), String.t(), String.t() | nil) :: term() | nil
+  def lookup(user_id, key, nil), do: lookup(user_id, key)
+
+  def lookup(user_id, key, accessor_path) do
+    case lookup(user_id, key) do
+      nil -> nil
+      value -> extract_value(value, accessor_path)
+    end
+  end
+
+  @spec extract_value(map(), String.t()) :: term() | nil
+  def extract_value(value, "$" <> _ = jsonpath) when is_map(value) do
+    case Warpath.query(value, jsonpath) do
+      {:ok, result} -> result
+      {:error, _} -> nil
+    end
+  end
+
+  def extract_value(value, dot_path) when is_map(value) do
+    get_in(value, String.split(dot_path, "."))
+  end
+
+  def extract_value(_value, _accessor_path), do: nil
 
   @spec bulk_upsert_key_values(integer(), [map()]) :: {non_neg_integer(), nil | [KeyValue.t()]}
   def bulk_upsert_key_values(user_id, entries) do
@@ -112,11 +129,24 @@ defmodule Logflare.KeyValues do
     |> Repo.delete_all()
   end
 
-  @spec bulk_delete_by_values(integer(), [String.t()]) :: {non_neg_integer(), nil}
-  def bulk_delete_by_values(user_id, values) when is_list(values) do
+  @spec bulk_delete_by_values(integer(), String.t(), [String.t()]) :: {non_neg_integer(), nil}
+  def bulk_delete_by_values(user_id, accessor_path, values) when is_list(values) do
+    jsonb_keys = build_jsonb_accessor_keys(accessor_path)
+
     KeyValue
     |> where(user_id: ^user_id)
-    |> where([kv], kv.value in ^values)
+    |> where([kv], fragment("?#>>? = ANY(?)", kv.value, ^jsonb_keys, ^values))
     |> Repo.delete_all()
+  end
+
+  defp build_jsonb_accessor_keys(accessor_path) do
+    if String.starts_with?(accessor_path, "$") do
+      accessor_path
+      |> String.trim_leading("$.")
+      |> String.split(".")
+      |> Enum.map(&String.trim/1)
+    else
+      String.split(accessor_path, ".")
+    end
   end
 end

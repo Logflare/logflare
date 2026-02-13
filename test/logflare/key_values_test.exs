@@ -10,18 +10,21 @@ defmodule Logflare.KeyValuesTest do
   end
 
   test "CRUD operations", %{user: user} do
+    value = %{"org_id" => "abc", "name" => "Acme"}
+
     # create
-    assert {:ok, kv} = KeyValues.create_key_value(%{user_id: user.id, key: "k1", value: "v1"})
+    assert {:ok, kv} = KeyValues.create_key_value(%{user_id: user.id, key: "k1", value: value})
     assert kv.key == "k1"
-    assert kv.value == "v1"
+    assert kv.value == value
 
     # read
     assert {:ok, ^kv} = KeyValues.fetch_key_value_by(id: kv.id, user_id: user.id)
     assert {:error, :not_found} = KeyValues.fetch_key_value_by(id: 0, user_id: user.id)
 
     # update
-    assert {:ok, updated} = KeyValues.update_key_value(kv, %{value: "v2"})
-    assert updated.value == "v2"
+    new_value = %{"org_id" => "xyz", "name" => "Updated"}
+    assert {:ok, updated} = KeyValues.update_key_value(kv, %{value: new_value})
+    assert updated.value == new_value
 
     # list
     assert [_] = KeyValues.list_key_values(user_id: user.id)
@@ -31,27 +34,37 @@ defmodule Logflare.KeyValuesTest do
     assert {:error, :not_found} = KeyValues.fetch_key_value_by(id: kv.id, user_id: user.id)
   end
 
-  test "unique constraint on user_id + key", %{user: user} do
-    assert {:ok, _} = KeyValues.create_key_value(%{user_id: user.id, key: "dup", value: "v1"})
+  test "rejects empty map value", %{user: user} do
+    assert {:error, changeset} =
+             KeyValues.create_key_value(%{user_id: user.id, key: "k", value: %{}})
 
-    assert {:error, %Ecto.Changeset{}} =
-             KeyValues.create_key_value(%{user_id: user.id, key: "dup", value: "v2"})
+    assert %{value: ["must not be empty"]} = errors_on(changeset)
   end
 
-  test "lookup/2 returns value or nil", %{user: user} do
-    insert(:key_value, user: user, key: "proj1", value: "org_abc")
+  test "unique constraint on user_id + key", %{user: user} do
+    assert {:ok, _} =
+             KeyValues.create_key_value(%{user_id: user.id, key: "dup", value: %{"v" => "1"}})
 
-    assert "org_abc" = KeyValues.lookup(user.id, "proj1")
+    assert {:error, %Ecto.Changeset{}} =
+             KeyValues.create_key_value(%{user_id: user.id, key: "dup", value: %{"v" => "2"}})
+  end
+
+  test "lookup/2 returns map or nil", %{user: user} do
+    value = %{"org_id" => "org_abc", "name" => "Acme"}
+    insert(:key_value, user: user, key: "proj1", value: value)
+
+    assert ^value = KeyValues.lookup(user.id, "proj1")
     assert nil == KeyValues.lookup(user.id, "nonexistent")
   end
 
   test "bulk_upsert_key_values/2 inserts and upserts", %{user: user} do
-    entries = [%{key: "a", value: "1"}, %{key: "b", value: "2"}]
+    entries = [%{key: "a", value: %{"n" => "1"}}, %{key: "b", value: %{"n" => "2"}}]
     assert {2, _} = KeyValues.bulk_upsert_key_values(user.id, entries)
 
     # upsert overwrites
-    assert {1, _} = KeyValues.bulk_upsert_key_values(user.id, [%{key: "a", value: "updated"}])
-    assert "updated" = KeyValues.lookup(user.id, "a")
+    updated = %{"n" => "updated"}
+    assert {1, _} = KeyValues.bulk_upsert_key_values(user.id, [%{key: "a", value: updated}])
+    assert ^updated = KeyValues.lookup(user.id, "a")
   end
 
   test "count_key_values/1", %{user: user} do
@@ -61,65 +74,70 @@ defmodule Logflare.KeyValuesTest do
   end
 
   test "list_key_values/1 filters by key", %{user: user} do
-    insert(:key_value, user: user, key: "k1", value: "v1")
-    insert(:key_value, user: user, key: "k2", value: "v2")
+    insert(:key_value, user: user, key: "k1", value: %{"v" => "1"})
+    insert(:key_value, user: user, key: "k2", value: %{"v" => "2"})
 
     assert [%{key: "k1"}] = KeyValues.list_key_values(user_id: user.id, key: "k1")
   end
 
-  test "list_key_values/1 filters by value", %{user: user} do
-    insert(:key_value, user: user, key: "k1", value: "shared")
-    insert(:key_value, user: user, key: "k2", value: "shared")
-    insert(:key_value, user: user, key: "k3", value: "other")
-
-    result = KeyValues.list_key_values(user_id: user.id, value: "shared")
-    assert length(result) == 2
-  end
-
   test "bulk_delete_by_keys/2", %{user: user} do
-    insert(:key_value, user: user, key: "k1", value: "v1")
-    insert(:key_value, user: user, key: "k2", value: "v2")
-    insert(:key_value, user: user, key: "k3", value: "v3")
+    insert(:key_value, user: user, key: "k1", value: %{"v" => "1"})
+    insert(:key_value, user: user, key: "k2", value: %{"v" => "2"})
+    insert(:key_value, user: user, key: "k3", value: %{"v" => "3"})
 
     assert {2, _} = KeyValues.bulk_delete_by_keys(user.id, ["k1", "k2"])
     assert [%{key: "k3"}] = KeyValues.list_key_values(user_id: user.id)
   end
 
-  describe "list_key_values_paginated/1" do
-    test "returns paginated results", %{user: user} do
-      for i <- 1..3, do: insert(:key_value, user: user, key: "k#{i}", value: "v#{i}")
+  describe "list_key_values_query/1" do
+    test "returns a query scoped to user", %{user: user} do
+      for i <- 1..3, do: insert(:key_value, user: user, key: "k#{i}")
 
-      page = KeyValues.list_key_values_paginated(user_id: user.id, page_size: 2, page: 1)
-      assert length(page.entries) == 2
-      assert page.total_entries == 3
-      assert page.total_pages == 2
+      results =
+        KeyValues.list_key_values_query(user_id: user.id)
+        |> Logflare.Repo.all()
+
+      assert length(results) == 3
     end
 
     test "filters by key", %{user: user} do
-      insert(:key_value, user: user, key: "match", value: "v1")
-      insert(:key_value, user: user, key: "other", value: "v2")
+      insert(:key_value, user: user, key: "match")
+      insert(:key_value, user: user, key: "other")
 
-      page = KeyValues.list_key_values_paginated(user_id: user.id, key: "match")
-      assert length(page.entries) == 1
-      assert hd(page.entries).key == "match"
-    end
+      results =
+        KeyValues.list_key_values_query(user_id: user.id, key: "match")
+        |> Logflare.Repo.all()
 
-    test "filters by value", %{user: user} do
-      insert(:key_value, user: user, key: "k1", value: "target")
-      insert(:key_value, user: user, key: "k2", value: "other")
-
-      page = KeyValues.list_key_values_paginated(user_id: user.id, value: "target")
-      assert length(page.entries) == 1
-      assert hd(page.entries).value == "target"
+      assert length(results) == 1
+      assert hd(results).key == "match"
     end
   end
 
-  test "bulk_delete_by_values/2", %{user: user} do
-    insert(:key_value, user: user, key: "k1", value: "shared")
-    insert(:key_value, user: user, key: "k2", value: "shared")
-    insert(:key_value, user: user, key: "k3", value: "other")
+  describe "bulk_delete_by_values/3" do
+    test "deletes by accessor path (dot syntax)", %{user: user} do
+      insert(:key_value, user: user, key: "k1", value: %{"org" => "shared"})
+      insert(:key_value, user: user, key: "k2", value: %{"org" => "shared"})
+      insert(:key_value, user: user, key: "k3", value: %{"org" => "other"})
 
-    assert {2, _} = KeyValues.bulk_delete_by_values(user.id, ["shared"])
-    assert [%{key: "k3"}] = KeyValues.list_key_values(user_id: user.id)
+      assert {2, _} = KeyValues.bulk_delete_by_values(user.id, "org", ["shared"])
+      assert [%{key: "k3"}] = KeyValues.list_key_values(user_id: user.id)
+    end
+
+    test "deletes by accessor path (nested dot syntax)", %{user: user} do
+      insert(:key_value, user: user, key: "k1", value: %{"org" => %{"id" => "abc"}})
+      insert(:key_value, user: user, key: "k2", value: %{"org" => %{"id" => "abc"}})
+      insert(:key_value, user: user, key: "k3", value: %{"org" => %{"id" => "xyz"}})
+
+      assert {2, _} = KeyValues.bulk_delete_by_values(user.id, "org.id", ["abc"])
+      assert [%{key: "k3"}] = KeyValues.list_key_values(user_id: user.id)
+    end
+
+    test "deletes by accessor path (jsonpath)", %{user: user} do
+      insert(:key_value, user: user, key: "k1", value: %{"org" => %{"id" => "abc"}})
+      insert(:key_value, user: user, key: "k2", value: %{"org" => %{"id" => "xyz"}})
+
+      assert {1, _} = KeyValues.bulk_delete_by_values(user.id, "$.org.id", ["abc"])
+      assert [%{key: "k2"}] = KeyValues.list_key_values(user_id: user.id)
+    end
   end
 end

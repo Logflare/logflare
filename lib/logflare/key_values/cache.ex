@@ -44,12 +44,17 @@ defmodule Logflare.KeyValues.Cache do
     end
   end
 
-  @spec lookup(integer(), String.t()) :: String.t() | nil
+  @spec lookup(integer(), String.t()) :: map() | nil
   def lookup(user_id, key) do
-    cache_key = {:lookup, [user_id, key]}
+    lookup(user_id, key, nil)
+  end
+
+  @spec lookup(integer(), String.t(), String.t() | nil) :: term() | nil
+  def lookup(user_id, key, accessor_path) do
+    cache_key = {:lookup, [user_id, key, accessor_path]}
 
     Cachex.fetch(__MODULE__, cache_key, fn _key ->
-      {:commit, {:cached, KeyValues.lookup(user_id, key)}}
+      {:commit, {:cached, KeyValues.lookup(user_id, key, accessor_path)}}
     end)
     |> case do
       {:commit, {:cached, v}} -> v
@@ -73,7 +78,22 @@ defmodule Logflare.KeyValues.Cache do
     key = Keyword.get(kw, :key)
 
     entries = if user_id, do: [{:count, user_id}], else: []
-    if user_id && key, do: [{:lookup, [user_id, key]} | entries], else: entries
+
+    if user_id && key do
+      lookup_keys = find_lookup_keys(user_id, key)
+      lookup_keys ++ entries
+    else
+      entries
+    end
+  end
+
+  defp find_lookup_keys(user_id, key) do
+    {:ok, keys} = Cachex.keys(__MODULE__)
+
+    Enum.filter(keys, fn
+      {:lookup, [^user_id, ^key | _]} -> true
+      _ -> false
+    end)
   end
 
   defp delete_and_count(cache, key) do

@@ -144,7 +144,7 @@ defmodule LogflareWeb.OpenApiSchemas do
     @properties %{
       id: %Schema{type: :integer},
       key: %Schema{type: :string},
-      value: %Schema{type: :string}
+      value: %Schema{type: :object}
     }
 
     use LogflareWeb.OpenApi, properties: @properties, required: [:key, :value]

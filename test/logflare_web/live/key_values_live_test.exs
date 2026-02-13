@@ -21,65 +21,50 @@ defmodule LogflareWeb.KeyValuesLiveTest do
     end
 
     test "renders initial page with count and search prompt", %{conn: conn, user: user} do
-      insert(:key_value, user: user, key: "k1", value: "v1")
+      insert(:key_value, user: user, key: "k1", value: %{"org" => "abc"})
 
       {:ok, _view, html} = live(conn, ~p"/key-values")
 
       assert html =~ "key values"
       assert html =~ "Total: 1"
-      assert html =~ "Enter filter values"
+      assert html =~ "Enter a key filter"
     end
 
-    test "search requires at least one filter", %{conn: conn} do
+    test "search requires key filter", %{conn: conn} do
       {:ok, view, _html} = live(conn, ~p"/key-values")
 
       html =
         view
-        |> form("#search-form", %{"key" => "", "value" => ""})
+        |> form("#search-form", %{"key" => ""})
         |> render_submit()
 
-      assert html =~ "At least one filter"
+      assert html =~ "Key filter is required"
     end
 
     test "search by key returns exact matches", %{conn: conn, user: user} do
-      insert(:key_value, user: user, key: "target", value: "v1")
-      insert(:key_value, user: user, key: "other", value: "v2")
+      insert(:key_value, user: user, key: "target", value: %{"v" => "1"})
+      insert(:key_value, user: user, key: "other", value: %{"v" => "2"})
 
       {:ok, view, _html} = live(conn, ~p"/key-values")
 
       view
-      |> form("#search-form", %{"key" => "target", "value" => ""})
+      |> form("#search-form", %{"key" => "target"})
       |> render_submit()
 
       html = render(view)
       assert html =~ "target"
-      assert html =~ "v1"
       refute html =~ ">other<"
     end
 
-    test "search by value returns exact matches", %{conn: conn, user: user} do
-      insert(:key_value, user: user, key: "k1", value: "target_val")
-      insert(:key_value, user: user, key: "k2", value: "other_val")
-
-      {:ok, view, _html} = live(conn, ~p"/key-values")
-
-      view
-      |> form("#search-form", %{"key" => "", "value" => "target_val"})
-      |> render_submit()
-
-      html = render(view)
-      assert html =~ "target_val"
-      refute html =~ "other_val"
-    end
-
-    test "can create a key-value pair", %{conn: conn} do
-      {:ok, view, _html} = live(conn, ~p"/key-values")
+    test "can create a key-value pair with JSON value", %{conn: conn} do
+      {:ok, view, html} = live(conn, ~p"/key-values")
+      assert html =~ "Total: 0"
 
       view |> element("button", "Create key-value pair") |> render_click()
 
       html =
         view
-        |> form("#create-form", %{"key" => "new_key", "value" => "new_val"})
+        |> form("#create-form", %{"key" => "new_key", "value" => ~s({"org": "abc"})})
         |> render_submit()
 
       assert html =~ "created"
@@ -87,7 +72,7 @@ defmodule LogflareWeb.KeyValuesLiveTest do
     end
 
     test "create shows error on duplicate key", %{conn: conn, user: user} do
-      insert(:key_value, user: user, key: "dup_key", value: "v1")
+      insert(:key_value, user: user, key: "dup_key", value: %{"v" => "1"})
 
       {:ok, view, _html} = live(conn, ~p"/key-values")
 
@@ -95,14 +80,13 @@ defmodule LogflareWeb.KeyValuesLiveTest do
 
       html =
         view
-        |> form("#create-form", %{"key" => "dup_key", "value" => "v2"})
+        |> form("#create-form", %{"key" => "dup_key", "value" => ~s({"v": "2"})})
         |> render_submit()
 
       assert html =~ "has already been taken"
     end
 
     test "create respects plan limits", %{conn: conn} do
-      # Update plan to have limit of 0
       plan = Logflare.Repo.one(Logflare.Billing.Plan)
 
       Logflare.Billing.Plan.changeset(plan, %{limit_key_values: 0})
@@ -114,28 +98,27 @@ defmodule LogflareWeb.KeyValuesLiveTest do
 
       html =
         view
-        |> form("#create-form", %{"key" => "new_key", "value" => "new_val"})
+        |> form("#create-form", %{"key" => "new_key", "value" => ~s({"v": "1"})})
         |> render_submit()
 
       assert html =~ "limit"
     end
 
     test "can delete a key-value pair", %{conn: conn, user: user} do
-      insert(:key_value, user: user, key: "del_key", value: "del_val")
-      insert(:key_value, user: user, key: "keep_key", value: "del_val")
+      insert(:key_value, user: user, key: "del_key", value: %{"v" => "1"})
+      insert(:key_value, user: user, key: "keep_key", value: %{"v" => "2"})
 
-      {:ok, view, _html} = live(conn, ~p"/key-values")
+      {:ok, view, html} = live(conn, ~p"/key-values")
+      assert html =~ "Total: 2"
 
-      # Search by value to see both results
+      # Search by key to see del_key
       view
-      |> form("#search-form", %{"key" => "", "value" => "del_val"})
+      |> form("#search-form", %{"key" => "del_key"})
       |> render_submit()
 
       html = render(view)
-      assert html =~ "del_key"
-      assert html =~ "keep_key"
+      assert html =~ ">del_key<"
 
-      # Find and delete del_key
       kv = KeyValues.list_key_values(user_id: user.id, key: "del_key") |> hd()
 
       view
@@ -143,40 +126,17 @@ defmodule LogflareWeb.KeyValuesLiveTest do
       |> render_click()
 
       html = render(view)
-      refute html =~ "del_key"
-      assert html =~ "keep_key"
-    end
-
-    test "delete refreshes search results", %{conn: conn, user: user} do
-      kv = insert(:key_value, user: user, key: "to_delete", value: "shared_val")
-      insert(:key_value, user: user, key: "keep", value: "shared_val")
-
-      {:ok, view, _html} = live(conn, ~p"/key-values")
-
-      view
-      |> form("#search-form", %{"key" => "", "value" => "shared_val"})
-      |> render_submit()
-
-      html = render(view)
-      assert html =~ "to_delete"
-      assert html =~ "keep"
-
-      view
-      |> element("button[phx-click='delete'][phx-value-id='#{kv.id}']")
-      |> render_click()
-
-      html = render(view)
-      refute html =~ "to_delete"
-      assert html =~ "keep"
+      assert html =~ "No results found"
+      assert html =~ "Total: 1"
     end
 
     test "clear search resets to initial state", %{conn: conn, user: user} do
-      insert(:key_value, user: user, key: "k1", value: "v1")
+      insert(:key_value, user: user, key: "k1", value: %{"v" => "1"})
 
       {:ok, view, _html} = live(conn, ~p"/key-values")
 
       view
-      |> form("#search-form", %{"key" => "k1", "value" => ""})
+      |> form("#search-form", %{"key" => "k1"})
       |> render_submit()
 
       html = render(view)
@@ -184,34 +144,7 @@ defmodule LogflareWeb.KeyValuesLiveTest do
 
       view |> element("button", "Clear") |> render_click()
 
-      assert render(view) =~ "Enter filter values"
-    end
-
-    test "count updates after create and delete", %{conn: conn, user: user} do
-      {:ok, view, html} = live(conn, ~p"/key-values")
-      assert html =~ "Total: 0"
-
-      # Create
-      view |> element("button", "Create key-value pair") |> render_click()
-
-      view
-      |> form("#create-form", %{"key" => "new_key", "value" => "new_val"})
-      |> render_submit()
-
-      assert render(view) =~ "Total: 1"
-
-      # Search to show it, then delete
-      view
-      |> form("#search-form", %{"key" => "new_key", "value" => ""})
-      |> render_submit()
-
-      kv = KeyValues.list_key_values(user_id: user.id) |> hd()
-
-      view
-      |> element("button[phx-click='delete'][phx-value-id='#{kv.id}']")
-      |> render_click()
-
-      assert render(view) =~ "Total: 0"
+      assert render(view) =~ "Enter a key filter"
     end
   end
 end

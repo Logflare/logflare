@@ -1,5 +1,4 @@
 alias Logflare.LogEvent
-alias Logflare.KeyValues
 alias Logflare.Sources.Source
 
 import Logflare.Factory
@@ -10,55 +9,40 @@ source = insert(:source, user: user)
 
 # Insert KV pairs for lookup
 for i <- 1..100 do
-  insert(:key_value, user: user, key: "key_#{i}", value: "value_#{i}")
+  insert(:key_value,
+    user: user,
+    key: "key_#{i}",
+    value: %{"org_id" => "org_#{i}", "name" => "Name #{i}", "nested" => %{"id" => i}}
+  )
 end
 
 # Source with no kv enrichment
 source_no_kv = %{source | transform_key_values: nil, transform_key_values_parsed: nil}
 
-# Source with 1 rule, pre-parsed
-source_1_rule =
-  %{source | transform_key_values: "project:org_id"}
+# Source with 1 rule (dot accessor), pre-parsed
+source_1_rule_dot =
+  %{source | transform_key_values: "project:org_id:org_id"}
   |> Source.parse_key_values_config()
 
-# Source with 5 rules, pre-parsed
-source_5_rules =
-  %{
-    source
-    | transform_key_values: Enum.map_join(1..5, "\n", fn i -> "field_#{i}:enriched_#{i}" end)
-  }
+# Source with 1 rule (jsonpath accessor), pre-parsed
+source_1_rule_jsonpath =
+  %{source | transform_key_values: "project:nested_id:$.nested.id"}
   |> Source.parse_key_values_config()
-
-# Source with 1 rule, NOT pre-parsed (fallback path)
-source_1_rule_unparsed = %{
-  source
-  | transform_key_values: "project:org_id",
-    transform_key_values_parsed: nil
-}
 
 # Event params
 simple_event = %{"project" => "key_1", "event_message" => "test"}
-
-multi_event =
-  Map.merge(
-    %{"event_message" => "test"},
-    Map.new(1..5, fn i -> {"field_#{i}", "key_#{i}"} end)
-  )
 
 Benchee.run(
   %{
     "no kv enrichment (nil config)" => fn ->
       LogEvent.make(simple_event, %{source: source_no_kv})
     end,
-    "1 rule (pre-parsed)" => fn ->
-      LogEvent.make(simple_event, %{source: source_1_rule})
+    "1 rule dot accessor (pre-parsed)" => fn ->
+      LogEvent.make(simple_event, %{source: source_1_rule_dot})
     end,
-    "1 rule (unparsed fallback)" => fn ->
-      LogEvent.make(simple_event, %{source: source_1_rule_unparsed})
+    "1 rule jsonpath accessor (pre-parsed)" => fn ->
+      LogEvent.make(simple_event, %{source: source_1_rule_jsonpath})
     end,
-    "5 rules (pre-parsed)" => fn ->
-      LogEvent.make(multi_event, %{source: source_5_rules})
-    end
   },
   time: 4,
   warmup: 1,
