@@ -2,6 +2,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
   use Logflare.DataCase, async: false
 
   import Ecto.Query
+  import Logflare.ClickHouseMappedEvents
   import Logflare.Utils.Guards
 
   alias Logflare.Backends
@@ -218,16 +219,11 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
     test "can insert log events with async_insert enabled", %{source: source, backend: backend} do
       backend_with_async = %{backend | config: Map.put(backend.config, :async_insert, true)}
 
-      log_events = [
-        build(:log_event,
-          id: "660e8400-e29b-41d4-a716-446655440001",
-          source: source,
-          message: "Async test message",
-          metadata: %{"level" => "info"}
-        )
-      ]
+      log_event =
+        build_mapped_log_event(source: source, message: "Async test message")
+        |> Map.put(:id, "660e8400-e29b-41d4-a716-446655440001")
 
-      result = ClickHouseAdaptor.insert_log_events(backend_with_async, log_events, :log)
+      result = ClickHouseAdaptor.insert_log_events(backend_with_async, [log_event], :log)
       assert :ok = result
 
       Process.sleep(500)
@@ -247,18 +243,18 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
 
     test "can insert and retrieve log events", %{source: source, backend: backend} do
       log_events = [
-        build(:log_event,
-          id: "550e8400-e29b-41d4-a716-446655440000",
+        build_mapped_log_event(
           source: source,
           message: "Test message 1",
-          metadata: %{"level" => "info", "user_id" => 123}
-        ),
-        build(:log_event,
-          id: "9bc07845-9859-4163-bfe5-a74c1a1443a2",
+          body: %{"metadata" => %{"level" => "info", "user_id" => 123}}
+        )
+        |> Map.put(:id, "550e8400-e29b-41d4-a716-446655440000"),
+        build_mapped_log_event(
           source: source,
           message: "Test message 2",
-          metadata: %{"level" => "error", "user_id" => 456}
+          body: %{"metadata" => %{"level" => "error", "user_id" => 456}}
         )
+        |> Map.put(:id, "9bc07845-9859-4163-bfe5-a74c1a1443a2")
       ]
 
       result = ClickHouseAdaptor.insert_log_events(backend, log_events, :log)
@@ -303,15 +299,14 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       assert source_name1 == source.name
       assert source_name2 == source.name
 
-      assert %{
-               "event_message" => "Test message 1",
-               "metadata" => %{"level" => "info", "user_id" => 123}
-             } = log_attributes1
+      # mapper elevates metadata keys and excludes event_message from log_attributes
+      assert log_attributes1["level"] == "info"
+      assert log_attributes1["user_id"] == 123
+      refute Map.has_key?(log_attributes1, "event_message")
 
-      assert %{
-               "event_message" => "Test message 2",
-               "metadata" => %{"level" => "error", "user_id" => 456}
-             } = log_attributes2
+      assert log_attributes2["level"] == "error"
+      assert log_attributes2["user_id"] == 456
+      refute Map.has_key?(log_attributes2, "event_message")
     end
 
     test "handles empty event list", %{backend: backend} do
@@ -325,8 +320,11 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
     } do
       for log_type <- [:log, :metric, :trace] do
         log_event =
-          build(:log_event, source: source, message: "Typed insert test")
-          |> Map.put(:log_type, log_type)
+          case log_type do
+            :log -> build_mapped_log_event(source: source, message: "Typed insert test")
+            :metric -> build_mapped_metric_event(source: source, message: "Typed insert test")
+            :trace -> build_mapped_trace_event(source: source, message: "Typed insert test")
+          end
 
         :ok = ClickHouseAdaptor.insert_log_events(backend, [log_event], log_type)
 

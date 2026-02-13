@@ -1,0 +1,12 @@
+[package]
+name = "mapper_ex"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "mapper_ex"
+crate-type = ["cdylib"]
+
+[dependencies]
+rustler = "0.36.2"
+chrono = { version = "0.4", default-features = false, features = ["std"] }
