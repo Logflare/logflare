@@ -15,7 +15,6 @@ defmodule Logflare.FetchQueries.FetchQueryWorker do
   alias Logflare.Backends
   alias Logflare.FetchQueries
   alias Logflare.FetchQueries.Executor
-  alias Logflare.LogEvent
 
   require Logger
 

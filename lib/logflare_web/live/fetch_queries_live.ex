@@ -158,7 +158,7 @@ defmodule LogflareWeb.FetchQueriesLive do
     end
   end
 
-  defp update_fetch_query(socket, user, params) do
+  defp update_fetch_query(socket, _user, params) do
     fetch_query = socket.assigns.fetch_query
 
     case FetchQueries.update_fetch_query(fetch_query, params) do

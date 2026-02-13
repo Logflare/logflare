@@ -7,14 +7,12 @@
           <p class="text-muted">{@fetch_query.description}</p>
         </div>
         <div class="col-md-4 text-end">
-          {live_patch("Edit",
-            to: ~p"/fetch/#{@fetch_query.id}/edit",
-            class: "btn btn-outline-primary"
-          )}
-          {live_patch("Back",
-            to: ~p"/fetch",
-            class: "btn btn-outline-secondary"
-          )}
+          <.link patch={~p"/fetch/#{@fetch_query.id}/edit"} class="btn btn-outline-primary">
+            Edit
+          </.link>
+          <.link patch={~p"/fetch"} class="btn btn-outline-secondary">
+            Back
+          </.link>
         </div>
       </div>
 

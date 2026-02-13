@@ -5,10 +5,9 @@
       <p class="text-muted">Periodically fetch data from external sources and ingest into Logflare</p>
     </div>
     <div class="col-md-6 text-end">
-      {live_patch("New Fetch Job",
-        to: ~p"/fetch/new",
-        class: "btn btn-primary"
-      )}
+      <.link patch={~p"/fetch/new"} class="btn btn-primary">
+        New Fetch Job
+      </.link>
     </div>
   </div>
 
@@ -16,7 +15,7 @@
     <div class="card-body">
       <%= if Enum.empty?(@fetch_queries) do %>
         <div class="alert alert-info" role="alert">
-          <p>No fetch queries yet. {live_patch("Create one", to: ~p"/fetch/new")} to get started.</p>
+          <p>No fetch queries yet. <.link patch={~p"/fetch/new"}>Create one</.link> to get started.</p>
         </div>
       <% else %>
         <div class="table-responsive">
@@ -44,14 +43,12 @@
                     <% end %>
                   </td>
                   <td>
-                    {live_patch("View",
-                      to: ~p"/fetch/#{fq.id}",
-                      class: "btn btn-sm btn-primary"
-                    )}
-                    {live_patch("Edit",
-                      to: ~p"/fetch/#{fq.id}/edit",
-                      class: "btn btn-sm btn-outline-secondary"
-                    )}
+                    <.link patch={~p"/fetch/#{fq.id}"} class="btn btn-sm btn-primary">
+                      View
+                    </.link>
+                    <.link patch={~p"/fetch/#{fq.id}/edit"} class="btn btn-sm btn-outline-secondary">
+                      Edit
+                    </.link>
                   </td>
                 </tr>
               <% end %>

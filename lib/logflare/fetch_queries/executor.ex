@@ -19,7 +19,7 @@ defmodule Logflare.FetchQueries.Executor do
            %{
              rows: [map()],
              total_bytes_processed: integer(),
-             query_string: string(),
+             query_string: String.t(),
              total_rows: integer()
            }}
           | {:error, term()}
