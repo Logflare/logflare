@@ -1,0 +1,95 @@
+<.form :let={f} for={@changeset} as={:fetch_query} id="fetch_query" phx-submit="save" class="card">
+  <div class="card-body">
+    <h5 class="card-title">
+      {if @live_action == :new, do: "New", else: "Edit"} Fetch Job
+    </h5>
+
+    <div class="mb-3">
+      {label(f, :name, "Name")}
+      {text_input(f, :name, placeholder: "e.g., Daily Data Fetch", class: "form-control")}
+      {error_tag(f, :name)}
+    </div>
+
+    <div class="mb-3">
+      {label(f, :description, "Description")}
+      {textarea(f, :description, placeholder: "Optional description", class: "form-control")}
+      {error_tag(f, :description)}
+    </div>
+
+    <div class="row">
+      <div class="col-md-6">
+        <div class="mb-3">
+          {label(f, :backend_id, "Backend")}
+          {select(f, :backend_id, Enum.map(@backends, &{&1.name, &1.id}), prompt: "-Use system default-", class: "form-select")}
+          {error_tag(f, :backend_id)}
+        </div>
+      </div>
+
+      <div class="col-md-6">
+        <div class="mb-3">
+          {label(f, :source_id, "Destination Source")}
+          {select(f, :source_id, Enum.map(@sources, &{&1.name, &1.id}), prompt: "-Select a source-", class: "form-select")}
+          {error_tag(f, :source_id)}
+        </div>
+      </div>
+    </div>
+
+    <div class="row">
+      <div class="col-md-6">
+        <div class="mb-3">
+          {label(f, :language, "Query Language")}
+          {select(f, :language, [{"BigQuery SQL", "bq_sql"}, {"PostgreSQL", "pg_sql"}, {"LQL", "lql"}, {"JSONPath", "jsonpath"}], class: "form-select")}
+        </div>
+      </div>
+
+      <div class="col-md-6">
+        <div class="mb-3">
+          {label(f, :cron, "Cron Schedule")}
+          {text_input(f, :cron, placeholder: "e.g., */5 * * * *", class: "form-control")}
+          {error_tag(f, :cron)}
+        </div>
+      </div>
+    </div>
+
+    <div class="mb-3">
+      {label(f, :query, "Query")}
+      {textarea(f, :query,
+        rows: 8,
+        placeholder: get_query_placeholder(@changeset),
+        class: "form-control"
+      )}
+      {error_tag(f, :query)}
+    </div>
+
+    <div class="mb-3 form-check">
+      {checkbox(f, :enabled)}
+      {label(f, :enabled, "Enabled")}
+    </div>
+
+    <div class="d-flex gap-2">
+      {submit(
+        if(@live_action == :new, do: "Create", else: "Update") <> " Fetch Job",
+        class: "btn btn-primary"
+      )}
+      <% cancel_to =
+        case(@live_action) do
+          :new -> ~p"/fetch"
+          :edit -> ~p"/fetch/#{@changeset.data.id}"
+          _ -> ~p"/fetch"
+        end %>
+      {link("Cancel",
+        to: cancel_to,
+        class: "btn btn-secondary"
+      )}
+      <%= if @live_action == :edit do %>
+        {link("Delete",
+          to: "#",
+          phx_click: "delete",
+          phx_value_id: @changeset.data.id,
+          data: [confirm: "Are you sure?"],
+          class: "btn btn-danger ms-auto"
+        )}
+      <% end %>
+    </div>
+  </div>
+</.form>

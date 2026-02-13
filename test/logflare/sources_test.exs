@@ -25,6 +25,17 @@ defmodule Logflare.SourcesTest do
 
       assert changes == %{labels: "test=some_label"}
     end
+
+    test "update_by_user_changeset: empty string should not override existing labels" do
+      insert(:plan)
+      source = insert(:source, user: insert(:user), labels: "status=m.level")
+
+      changeset = Source.update_by_user_changeset(source, %{labels: ""})
+
+      assert changeset.valid?
+      # Empty string should not create a change when labels already has a value
+      refute Map.has_key?(changeset.changes, :labels)
+    end
   end
 
   describe "create_source/2" do

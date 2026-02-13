@@ -64,6 +64,7 @@ Mimic.copy(Logflare.Users)
 Mimic.copy(Logflare.Users.Cache)
 Mimic.copy(Logflare.Utils)
 Mimic.copy(LogflareWeb.Plugs.RateLimiter)
+Mimic.copy(LogflareWeb.Utils)
 {:ok, _} = Application.ensure_all_started(:ex_machina)
 {:ok, _} = Application.ensure_all_started(:mimic)
 

@@ -30,7 +30,8 @@ defmodule Logflare.Sources.Source do
              :transform_copy_fields,
              :transform_key_values,
              :bigquery_clustering_fields,
-             :default_ingest_backend_enabled?
+             :default_ingest_backend_enabled?,
+             :disable_system_default_backend?
            ]}
 
   defp env_dataset_id_append,
@@ -148,6 +149,10 @@ defmodule Logflare.Sources.Source do
       source: :default_ingest_backend_enabled,
       default: false
 
+    field :disable_system_default_backend?, :boolean,
+      source: :disable_system_default_backend,
+      default: false
+
     # Causes a shitstorm
     # field :bigquery_schema, Ecto.Term
 
@@ -202,6 +207,7 @@ defmodule Logflare.Sources.Source do
       :transform_key_values,
       :disable_tailing,
       :default_ingest_backend_enabled?,
+      :disable_system_default_backend?,
       :bq_storage_write_api,
       :labels,
       :system_source,
@@ -235,6 +241,7 @@ defmodule Logflare.Sources.Source do
       :transform_key_values,
       :disable_tailing,
       :default_ingest_backend_enabled?,
+      :disable_system_default_backend?,
       :bq_storage_write_api,
       :labels
     ])
@@ -297,7 +304,8 @@ defmodule Logflare.Sources.Source do
     |> Enum.reduce(changeset, fn {k, v}, cs -> add_error(cs, k, v) end)
     |> then(fn
       changeset when normalized == [] ->
-        changeset
+        # Remove the change if normalized is empty (user provided empty string)
+        delete_change(changeset, :labels)
 
       changeset ->
         changeset

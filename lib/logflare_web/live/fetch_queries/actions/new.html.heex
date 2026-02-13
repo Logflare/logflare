@@ -1,0 +1,13 @@
+<div class="container-fluid mt-4">
+  <div class="row mb-4">
+    <div class="col-md-12">
+      <h1>New Fetch Job</h1>
+    </div>
+  </div>
+
+  <%= if assigns[:form] do %>
+    <div class="fetch_query_form">
+      <.fetch_query_form changeset={@form} backends={@backends} sources={@sources} live_action={@live_action} />
+    </div>
+  <% end %>
+</div>
