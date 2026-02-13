@@ -17,6 +17,7 @@ defmodule Logflare.Billing.Plan do
     field :limit_team_users_limit, :integer, default: 2
     field :limit_source_fields_limit, :integer, default: 500
     field :limit_source_ttl, :integer, default: :timer.hours(72)
+    field :limit_key_values, :integer, default: 0
     field :type, :string, default: "standard"
 
     timestamps()
@@ -42,6 +43,7 @@ defmodule Logflare.Billing.Plan do
       :limit_team_users_limit,
       :limit_source_fields_limit,
       :limit_source_ttl,
+      :limit_key_values,
       :type
     ])
     |> validate_required([
@@ -56,6 +58,7 @@ defmodule Logflare.Billing.Plan do
       :limit_team_users_limit,
       :limit_source_fields_limit,
       :limit_source_ttl,
+      :limit_key_values,
       :type
     ])
   end
