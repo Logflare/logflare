@@ -165,6 +165,15 @@ defmodule LogflareWeb.OpenApiSchemas do
     use LogflareWeb.OpenApi, properties: @properties, required: [:name]
   end
 
+  defmodule BackendConnectionTest do
+    @properties %{
+      connected?: %Schema{type: :boolean},
+      reason: %Schema{type: :string}
+    }
+
+    use LogflareWeb.OpenApi, properties: @properties, required: [:connected?]
+  end
+
   defmodule User do
     @properties %{
       email: %Schema{type: :string},
