@@ -6,7 +6,7 @@ defmodule Logflare.LogEventTest do
   alias Logflare.LogEvent
   alias Logflare.Sources.Source
 
-  @subject Logflare.LogEvent
+  @subject LogEvent
 
   setup do
     user = insert(:user)
@@ -119,6 +119,155 @@ defmodule Logflare.LogEventTest do
 
       assert %LogEvent{body: body} = LogEvent.make(%{"food" => 123}, %{source: source})
       assert Map.drop(body, ["id", "timestamp"]) == %{"food" => 123}
+    end
+  end
+
+  describe "kv_enrich" do
+    setup %{source: source, user: user} do
+      insert(:key_value,
+        user: user,
+        key: "123abc",
+        value: %{"org_id" => "456def", "name" => "Acme"}
+      )
+
+      insert(:key_value,
+        user: user,
+        key: "xyz789",
+        value: %{"result" => "enriched_val", "extra" => "data"}
+      )
+
+      insert(:key_value,
+        user: user,
+        key: "42",
+        value: %{"result" => "found_it"}
+      )
+
+      insert(:key_value,
+        user: user,
+        key: "nested_proj",
+        value: %{"org" => %{"id" => 123, "name" => "Acme"}, "role" => "admin"}
+      )
+
+      [source: source, user: user]
+    end
+
+    test "nil config is a no-op", %{source: source} do
+      assert %LogEvent{body: body} =
+               LogEvent.make(%{"project" => "abc"}, %{
+                 source: %{source | transform_key_values: nil, transform_key_values_parsed: nil}
+               })
+
+      assert body["project"] == "abc"
+      refute Map.has_key?(body, "enriched")
+    end
+
+    test "2-part pattern sets entire map at destination (pre-parsed)", %{source: source} do
+      source =
+        %{source | transform_key_values: "project:enriched"}
+        |> Source.parse_key_values_config()
+
+      assert %LogEvent{body: body} =
+               LogEvent.make(%{"project" => "123abc"}, %{source: source})
+
+      assert body["enriched"] == %{"org_id" => "456def", "name" => "Acme"}
+    end
+
+    test "2-part pattern works with unparsed fallback", %{source: source} do
+      source = %{source | transform_key_values: "project:enriched"}
+
+      assert %LogEvent{body: body} =
+               LogEvent.make(%{"project" => "123abc"}, %{source: source})
+
+      assert body["enriched"] == %{"org_id" => "456def", "name" => "Acme"}
+    end
+
+    test "3-part pattern with dot syntax accessor", %{source: source} do
+      source =
+        %{source | transform_key_values: "project:org_id:org_id"}
+        |> Source.parse_key_values_config()
+
+      assert %LogEvent{body: body} =
+               LogEvent.make(%{"project" => "123abc"}, %{source: source})
+
+      assert body["org_id"] == "456def"
+    end
+
+    test "3-part pattern with nested dot syntax accessor", %{source: source} do
+      source =
+        %{source | transform_key_values: "project:m.org_id:org.id"}
+        |> Source.parse_key_values_config()
+
+      assert %LogEvent{body: body} =
+               LogEvent.make(%{"project" => "nested_proj"}, %{source: source})
+
+      assert body["metadata"]["org_id"] == 123
+    end
+
+    test "3-part pattern with jsonpath accessor", %{source: source} do
+      source =
+        %{source | transform_key_values: "project:m.org_name:$.org.name"}
+        |> Source.parse_key_values_config()
+
+      assert %LogEvent{body: body} =
+               LogEvent.make(%{"project" => "nested_proj"}, %{source: source})
+
+      assert body["metadata"]["org_name"] == "Acme"
+    end
+
+    test "accessor path on missing nested key returns nil (no enrichment)", %{source: source} do
+      source =
+        %{source | transform_key_values: "project:result:nonexistent.path"}
+        |> Source.parse_key_values_config()
+
+      assert %LogEvent{body: body} =
+               LogEvent.make(%{"project" => "123abc"}, %{source: source})
+
+      refute Map.has_key?(body, "result")
+    end
+
+    test "multiple rules with mixed accessor paths", %{source: source} do
+      source =
+        %{source | transform_key_values: "project:org_id:org_id\ncode:extra:extra"}
+        |> Source.parse_key_values_config()
+
+      assert %LogEvent{body: body} =
+               LogEvent.make(%{"project" => "123abc", "code" => "xyz789"}, %{source: source})
+
+      assert body["org_id"] == "456def"
+      assert body["extra"] == "data"
+    end
+
+    test "no match leaves event unchanged", %{source: source} do
+      source =
+        %{source | transform_key_values: "project:org_id:org_id"}
+        |> Source.parse_key_values_config()
+
+      assert %LogEvent{body: body} =
+               LogEvent.make(%{"project" => "no_match"}, %{source: source})
+
+      refute Map.has_key?(body, "org_id")
+    end
+
+    test "nested source paths with m. shorthand", %{source: source} do
+      source =
+        %{source | transform_key_values: "m.project_id:m.org_id:org_id"}
+        |> Source.parse_key_values_config()
+
+      assert %LogEvent{body: body} =
+               LogEvent.make(%{"metadata" => %{"project_id" => "123abc"}}, %{source: source})
+
+      assert body["metadata"]["org_id"] == "456def"
+    end
+
+    test "non-string field values are stringified for key lookup", %{source: source} do
+      source =
+        %{source | transform_key_values: "count:result:result"}
+        |> Source.parse_key_values_config()
+
+      assert %LogEvent{body: body} =
+               LogEvent.make(%{"count" => 42}, %{source: source})
+
+      assert body["result"] == "found_it"
     end
   end
 

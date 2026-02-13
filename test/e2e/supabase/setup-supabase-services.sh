@@ -36,7 +36,7 @@ log "Cloning Supabase repository..."
 if [ -d "$SUPABASE_DIR" ]; then
   warn "Directory '$SUPABASE_DIR' exists. Removing..."
   cd "$SUPABASE_DIR/$SPARSE_PATH"
-  docker compose down -v
+  compose down -v
   cd ../..
   sudo rm -rf "$SUPABASE_DIR"
 fi
@@ -64,9 +64,7 @@ fi
 cp .env.example .env
 endgroup
 
-log "Build logflare image..."
-compose build analytics
-endgroup
+[ ! "$GITHUB_ACTIONS" = "true" ] && log "Build logflare image..." && compose build analytics
 
 log "Pulling docker images..."
 compose pull

@@ -109,6 +109,8 @@ At ingestion, the pipeline will perform the following in sequence:
 
 3. If set, fields will be copied in sequence. See [field copying](#copy-fields) for more details.
 
+4. If set, key-value enrichment will be applied. See [key-value enrichment](#key-value-enrichment) for more details.
+
 ### Key Transformation
 
 When logging object, your object keys will be transformed automatically to comply with the respective backend in use. For example, BigQuery column requirements require that names only contain letters (a-z, A-Z), numbers (0-9), or underscores (\_), and it must start with a letter or underscore. This will be automatically handled for you when ingesting data.
@@ -151,6 +153,72 @@ _top_level:my_copied_field
 
 :::note
 Destination field names must match the BigQuery colummn name specification, or the event risks being rejected.
+:::
+
+### Key-Value Enrichment
+
+:::info Pro Plan / Self-Hosted
+Key-value enrichment is only available on Pro plans and for self-hosted deployments.
+:::
+
+A source can be configured to enrich events using key-value lookups at ingestion time. Key-value pairs are stored per account and shared across all sources. Each entry has a `key` (string) and a `value` (JSON object). When a rule is configured, the source field's value is used to look up a key in the key-value store, and the stored JSON value (or a sub-value extracted via an accessor path) is set on the destination field.
+
+The configuration pattern is `lookup_field:destination_field` or `lookup_field:destination_field:accessor_path`, one rule per line. Dot syntax is supported for nested paths, and `m.` can be used as shorthand for `metadata.`.
+
+The **accessor path** is optional and extracts a nested value from the stored JSON:
+- **Dot syntax**: `org.id` navigates into `{"org": {"id": 123}}` and returns `123`
+- **JSONPath**: `$.org.id` uses JSONPath syntax for the same navigation
+
+If no accessor path is provided, the entire stored JSON value is set at the destination.
+
+#### Example: Full value (no accessor path)
+
+Configuration:
+
+```text
+project:enriched
+```
+
+Key-value entry:
+
+```json
+key:   "123abc"
+value: {"org_id": "456def", "name": "Acme"}
+```
+
+Incoming event:
+
+```json
+{ "project": "123abc" }
+```
+
+Enriched event:
+
+```json
+{ "project": "123abc", "enriched": {"org_id": "456def", "name": "Acme"} }
+```
+
+#### Example: With accessor path
+
+Configuration:
+
+```text
+project:org_id:org_id
+project:m.org_name:name
+```
+
+Using the same key-value entry above, the incoming event `{ "project": "123abc" }` becomes:
+
+```json
+{ "project": "123abc", "org_id": "456def", "metadata": {"org_name": "Acme"} }
+```
+
+If no matching key is found, the event is left unchanged. Non-string field values (numbers, booleans, etc.) are stringified before lookup.
+
+Key-value pairs can be managed via the [Management API](https://logflare.app/swaggerui).
+
+:::note
+Key-value enrichment runs after field copying, so copied fields can be used as lookup sources.
 :::
 
 ## Adaptive Schema
