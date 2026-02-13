@@ -1,6 +1,6 @@
 defmodule Logflare.FetchQueries.FetchQueryWorker do
   @moduledoc """
-  Oban worker for executing fetch queries and ingesting data into sources.
+  Oban worker for executing fetch queries and ingesting data.
   """
 
   use Oban.Worker,
