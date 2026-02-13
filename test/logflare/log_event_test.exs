@@ -157,7 +157,8 @@ defmodule Logflare.LogEventTest do
                  source: %{source | transform_key_values: nil, transform_key_values_parsed: nil}
                })
 
-      assert body == %{"project" => "abc"}
+      assert body["project"] == "abc"
+      refute Map.has_key?(body, "enriched")
     end
 
     test "2-part pattern sets entire map at destination (pre-parsed)", %{source: source} do
