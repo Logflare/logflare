@@ -5,7 +5,7 @@ defmodule Logflare.SystemMetrics.Schedulers do
     Logflare.Utils.Tasks.start_child(fn -> collect_dispatch_stats(duration) end)
   end
 
-  defp collect_dispatch_stats(duration \\ to_timeout(second: 1)) do
+  def collect_dispatch_stats(duration \\ to_timeout(second: 1)) do
     :erlang.system_flag(:scheduler_wall_time, true)
     prev_sample = :scheduler.get_sample_all()
     Process.sleep(duration)
