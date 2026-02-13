@@ -60,4 +60,93 @@ defmodule Logflare.TelemetryTest do
       refute_receive {:telemetry_event, ^event, _, _}
     end
   end
+
+  test "observer metrics" do
+    ref =
+      :telemetry_test.attach_event_handlers(self(), [
+        [:logflare, :system, :observer, :metrics],
+        [:logflare, :system, :observer, :memory]
+      ])
+
+    on_exit(fn -> :telemetry.detach(ref) end)
+    Logflare.SystemMetrics.Observer.dispatch_stats()
+
+    assert_receive {[:logflare, :system, :observer, :metrics], ^ref, metrics_measurements,
+                    metrics_metadata}
+
+    assert_receive {[:logflare, :system, :observer, :memory], ^ref, memory_measurements,
+                    memory_metadata}
+
+    assert metrics_measurements |> Map.keys() |> Enum.sort() == [
+             :atom_count,
+             :atom_limit,
+             :ets_count,
+             :ets_limit,
+             :io_input,
+             :io_output,
+             :logical_processors,
+             :logical_processors_available,
+             :logical_processors_online,
+             :otp_release,
+             :port_count,
+             :port_limit,
+             :process_count,
+             :process_limit,
+             :run_queue,
+             :schedulers,
+             :schedulers_online,
+             :total_active_tasks,
+             :uptime,
+             :version
+           ]
+
+    assert metrics_metadata == %{}
+
+    assert memory_measurements |> Map.keys() |> Enum.sort() == [
+             :atom,
+             :atom_used,
+             :binary,
+             :code,
+             :ets,
+             :persistent_term,
+             :processes,
+             :processes_used,
+             :system,
+             :total
+           ]
+
+    assert memory_metadata == %{}
+  end
+
+  test "scheduler metrics" do
+    event = [:logflare, :system, :scheduler, :utilization]
+    ref = :telemetry_test.attach_event_handlers(self(), [event])
+    on_exit(fn -> :telemetry.detach(ref) end)
+
+    sample_duration = to_timeout(millisecond: 10)
+    Logflare.SystemMetrics.Schedulers.async_dispatch_stats(sample_duration)
+
+    assert_receive {^event, ^ref, %{utilization: _}, %{name: "total", type: "total"}}
+    assert_receive {^event, ^ref, %{utilization: _}, %{name: "weighted", type: "weighted"}}
+
+    for id <- 1..:erlang.system_info(:schedulers) do
+      id = Integer.to_string(id)
+      assert_receive {^event, ^ref, %{utilization: _}, %{name: ^id, type: "normal"}}
+    end
+
+    dirty_cpu_offset = :erlang.system_info(:schedulers)
+
+    for id <-
+          (dirty_cpu_offset + 1)..(dirty_cpu_offset + :erlang.system_info(:dirty_cpu_schedulers)) do
+      id = Integer.to_string(id)
+      assert_receive {^event, ^ref, %{utilization: _}, %{name: ^id, type: "dirty"}}
+    end
+
+    dirty_io_offset = dirty_cpu_offset + :erlang.system_info(:dirty_cpu_schedulers)
+
+    for id <- (dirty_io_offset + 1)..(dirty_io_offset + :erlang.system_info(:dirty_io_schedulers)) do
+      id = Integer.to_string(id)
+      assert_receive {^event, ^ref, %{utilization: _}, %{name: ^id, type: "dirty (io)"}}
+    end
+  end
 end
