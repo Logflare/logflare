@@ -18,9 +18,12 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
   alias Broadway.Message
   alias Logflare.Backends
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor
+  alias Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingConfigStore
   alias Logflare.Backends.BufferProducer
   alias Logflare.Backends.IngestEventQueue
   alias Logflare.LogEvent
+  alias Logflare.LogEvent.TypeDetection
+  alias Logflare.Mapper
   alias Logflare.Utils
 
   @producer_concurrency 1
@@ -117,9 +120,22 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
         }
       } do
         backend = Backends.Cache.get_backend(backend_id)
-        events = Enum.map(messages, & &1.data)
 
-        ClickHouseAdaptor.insert_log_events(backend, events, log_type)
+        with {:ok, compiled, config_id} <- MappingConfigStore.get_compiled(log_type) do
+          events =
+            Enum.map(messages, fn %{data: %LogEvent{} = event} ->
+              mapped_body =
+                event.body
+                |> Mapper.map(compiled)
+                |> Map.put("mapping_config_id", config_id)
+                |> maybe_compute_duration(log_type)
+                |> resolve_severity_number(log_type)
+
+              %{event | body: mapped_body}
+            end)
+
+          ClickHouseAdaptor.insert_log_events(backend, events, log_type)
+        end
       end
 
     case result do
@@ -186,4 +202,26 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Pipeline do
     IngestEventQueue.delete_batch({:consolidated, backend_id}, events)
     IngestEventQueue.add_to_table({:consolidated, backend_id}, events)
   end
+
+  @spec maybe_compute_duration(map(), TypeDetection.log_type()) :: map()
+  defp maybe_compute_duration(
+         %{"start_time" => start_time, "end_time" => end_time, "duration" => 0} = body,
+         :trace
+       )
+       when is_integer(start_time) and is_integer(end_time) and end_time > start_time do
+    %{body | "duration" => end_time - start_time}
+  end
+
+  defp maybe_compute_duration(body, _log_type), do: body
+
+  @spec resolve_severity_number(map(), TypeDetection.log_type()) :: map()
+  defp resolve_severity_number(
+         %{"severity_number_alt" => alt} = body,
+         :log
+       )
+       when is_integer(alt) and alt > 0 do
+    %{body | "severity_number" => alt}
+  end
+
+  defp resolve_severity_number(body, _log_type), do: body
 end

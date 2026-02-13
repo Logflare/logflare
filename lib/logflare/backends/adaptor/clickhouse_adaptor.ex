@@ -21,6 +21,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   alias __MODULE__.QueryTemplates
   alias Ecto.Changeset
   alias Logflare.Backends
+  alias Logflare.Ecto.ClickHouse, as: EctoClickHouse
   alias Logflare.Backends.Backend
   alias Logflare.Backends.DynamicPipeline
   alias Logflare.Backends.Ecto.SqlUtils
@@ -54,7 +55,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
 
   @impl Logflare.Backends.Adaptor
   def ecto_to_sql(%Ecto.Query{} = query, opts) do
-    case Logflare.Ecto.ClickHouse.to_sql(query, opts) do
+    case EctoClickHouse.to_sql(query, opts) do
       {:ok, {ch_sql, ch_params}} ->
         ch_params = Enum.map(ch_params, &SqlUtils.normalize_datetime_param/1)
         {:ok, {ch_sql, ch_params}}
@@ -268,7 +269,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
         :ok
 
       {:error, reason} ->
-        Logger.warning("ClickHouse insert errors.", error_string: inspect(reason))
+        Logger.error("ClickHouse insert errors.", error_string: inspect(reason))
 
         {:error, reason}
     end

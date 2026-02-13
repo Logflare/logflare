@@ -8,7 +8,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryTemplates do
   alias Logflare.LogEvent.TypeDetection
 
   @default_table_engine Application.compile_env(:logflare, :clickhouse_backend_adaptor)[:engine]
-  @default_ttl_days 365
+  @default_ttl_days 90
 
   @doc """
   Generates a ClickHouse query statement to check that the user GRANTs include the needed permissions.
@@ -68,7 +68,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryTemplates do
         `id` UUID,
         `source_uuid` LowCardinality(String) CODEC(ZSTD(1)),
         `source_name` LowCardinality(String) CODEC(ZSTD(1)),
-        `project` LowCardinality(String) CODEC(ZSTD(1)),
+        `project` String CODEC(ZSTD(1)),
         `trace_id` String CODEC(ZSTD(1)),
         `span_id` String CODEC(ZSTD(1)),
         `trace_flags` UInt8,
@@ -83,14 +83,14 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryTemplates do
         `resource_attributes` JSON(max_dynamic_paths=0, max_dynamic_types=1) CODEC(ZSTD(1)),
         `scope_attributes` JSON(max_dynamic_paths=0, max_dynamic_types=1) CODEC(ZSTD(1)),
         `log_attributes` JSON(max_dynamic_paths=0, max_dynamic_types=1) CODEC(ZSTD(1)),
+        `mapping_config_id` UUID,
         `timestamp` DateTime64(9) CODEC(Delta(8), ZSTD(1)),
         `timestamp_time` DateTime DEFAULT toDateTime(timestamp),
-        INDEX idx_trace_id trace_id TYPE bloom_filter(0.001) GRANULARITY 1,
-        INDEX idx_event_message event_message TYPE tokenbf_v1(32768, 3, 0) GRANULARITY 8
+        INDEX idx_trace_id trace_id TYPE bloom_filter(0.001) GRANULARITY 1
       )
       ENGINE = #{engine}
       PARTITION BY toDate(timestamp)
-      ORDER BY (source_uuid, service_name, project, toDateTime(timestamp), timestamp)
+      ORDER BY (source_name, project, toDate(timestamp))
       """,
       if is_pos_integer(ttl_days) do
         "TTL toDateTime(timestamp) + INTERVAL #{ttl_days} DAY\n"
@@ -114,9 +114,9 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryTemplates do
         `id` UUID,
         `source_uuid` LowCardinality(String) CODEC(ZSTD(1)),
         `source_name` LowCardinality(String) CODEC(ZSTD(1)),
-        `project` LowCardinality(String) CODEC(ZSTD(1)),
-        `time_unix` DateTime64(9) CODEC(Delta(8), ZSTD(1)),
-        `start_time_unix` DateTime64(9) CODEC(Delta(8), ZSTD(1)),
+        `project` String CODEC(ZSTD(1)),
+        `time_unix` Nullable(DateTime64(9)) CODEC(Delta(8), ZSTD(1)),
+        `start_time_unix` Nullable(DateTime64(9)) CODEC(Delta(8), ZSTD(1)),
         `metric_name` LowCardinality(String) CODEC(ZSTD(1)),
         `metric_description` String CODEC(ZSTD(1)),
         `metric_unit` LowCardinality(String) CODEC(ZSTD(1)),
@@ -153,14 +153,15 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryTemplates do
         `exemplars.value` Array(Float64) CODEC(ZSTD(1)),
         `exemplars.span_id` Array(String) CODEC(ZSTD(1)),
         `exemplars.trace_id` Array(String) CODEC(ZSTD(1)),
+        `mapping_config_id` UUID,
         `timestamp` DateTime64(9) CODEC(Delta(8), ZSTD(1))
       )
       ENGINE = #{engine}
       PARTITION BY toDate(timestamp)
-      ORDER BY (source_uuid, service_name, metric_name, project, toDateTime(timestamp), timestamp)
+      ORDER BY (source_name, metric_name, project, toDate(timestamp))
       """,
       if is_pos_integer(ttl_days) do
-        "TTL toDateTime(time_unix) + INTERVAL #{ttl_days} DAY\n"
+        "TTL toDateTime(timestamp) + INTERVAL #{ttl_days} DAY\n"
       end,
       "SETTINGS index_granularity = 8192, ttl_only_drop_parts = 1"
     ])
@@ -181,8 +182,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryTemplates do
         `id` UUID,
         `source_uuid` LowCardinality(String) CODEC(ZSTD(1)),
         `source_name` LowCardinality(String) CODEC(ZSTD(1)),
-        `project` LowCardinality(String) CODEC(ZSTD(1)),
-        `timestamp` DateTime64(9) CODEC(Delta(8), ZSTD(1)),
+        `project` String CODEC(ZSTD(1)),
         `trace_id` String CODEC(ZSTD(1)),
         `span_id` String CODEC(ZSTD(1)),
         `parent_span_id` String CODEC(ZSTD(1)),
@@ -205,12 +205,14 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryTemplates do
         `links.span_id` Array(String) CODEC(ZSTD(1)),
         `links.trace_state` Array(String) CODEC(ZSTD(1)),
         `links.attributes` Array(JSON(max_dynamic_paths=0, max_dynamic_types=1)) CODEC(ZSTD(1)),
+        `mapping_config_id` UUID,
+        `timestamp` DateTime64(9) CODEC(Delta(8), ZSTD(1)),
         INDEX idx_trace_id trace_id TYPE bloom_filter(0.001) GRANULARITY 1,
         INDEX idx_duration duration TYPE minmax GRANULARITY 1
       )
       ENGINE = #{engine}
       PARTITION BY toDate(timestamp)
-      ORDER BY (source_uuid, service_name, span_name, project, toDateTime(timestamp), timestamp)
+      ORDER BY (source_name, span_name, project, toDate(timestamp))
       """,
       if is_pos_integer(ttl_days) do
         "TTL toDateTime(timestamp) + INTERVAL #{ttl_days} DAY\n"

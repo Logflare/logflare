@@ -1,32 +1,42 @@
 defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.IngesterTest do
   use Logflare.DataCase, async: false
 
+  import Logflare.ClickHouseMappedEvents
   import Mimic
 
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester
+  alias Logflare.Backends.Adaptor.ClickHouseAdaptor.MappingConfigStore
+
+  setup_all do
+    case MappingConfigStore.start_link([]) do
+      {:ok, _pid} -> :ok
+      {:error, {:already_started, _pid}} -> :ok
+    end
+
+    :ok
+  end
 
   setup :verify_on_exit!
 
   describe "encode_row/2 for logs" do
     test "encodes as iodata" do
-      log_event = build(:log_event, message: "test message")
+      event = build_mapped_log_event(message: "test message")
 
-      encoded = Ingester.encode_row(log_event, :log)
+      encoded = Ingester.encode_row(event, :log)
       assert is_list(encoded)
       assert IO.iodata_length(encoded) > 0
     end
 
     test "encodes source_uuid as string (not UUID binary)" do
       source = build(:source)
-      log_event = build(:log_event, source: source, message: "test")
+      event = build_mapped_log_event(source: source, message: "test")
 
-      encoded = Ingester.encode_row(log_event, :log)
+      encoded = Ingester.encode_row(event, :log)
       binary = IO.iodata_to_binary(encoded)
 
-      source_uuid_str = Atom.to_string(log_event.origin_source_uuid)
+      source_uuid_str = Atom.to_string(event.origin_source_uuid)
 
-      # id is first 16 bytes (UUID binary), then source_uuid as varint-prefixed string
       <<_id::binary-size(16), rest::binary>> = binary
 
       source_uuid_len = byte_size(source_uuid_str)
@@ -34,98 +44,149 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.IngesterTest do
       assert encoded_uuid == source_uuid_str
     end
 
-    test "includes event_message as body column" do
-      log_event = build(:log_event, message: "hello world")
+    test "includes event_message in encoded output" do
+      event = build_mapped_log_event(message: "hello world")
 
-      encoded = Ingester.encode_row(log_event, :log)
+      encoded = Ingester.encode_row(event, :log)
       binary = IO.iodata_to_binary(encoded)
 
       assert binary =~ "hello world"
     end
 
-    test "includes full body as log_attributes JSON" do
-      log_event = build(:log_event, message: "test msg")
+    test "includes mapped scalar fields from realistic input" do
+      event =
+        build_mapped_log_event(
+          message: "test msg",
+          body: %{
+            "trace_id" => "trace-123",
+            "metadata" => %{"level" => "error"},
+            "project" => "my-project"
+          }
+        )
 
-      encoded = Ingester.encode_row(log_event, :log)
+      encoded = Ingester.encode_row(event, :log)
       binary = IO.iodata_to_binary(encoded)
 
-      assert binary =~ "event_message"
-      assert binary =~ "test msg"
+      assert binary =~ "trace-123"
+      assert binary =~ "ERROR"
+      assert binary =~ "my-project"
+    end
+
+    test "encodes log_attributes from mapped input" do
+      event =
+        build_mapped_log_event(
+          message: "test msg",
+          body: %{"custom_field" => "custom_value"}
+        )
+
+      encoded = Ingester.encode_row(event, :log)
+      binary = IO.iodata_to_binary(encoded)
+
+      assert binary =~ "custom_field"
+      assert binary =~ "custom_value"
     end
   end
 
   describe "encode_row/2 for metrics" do
     test "encodes as iodata" do
-      log_event = build(:log_event, message: "test metric") |> Map.put(:log_type, :metric)
+      event = build_mapped_metric_event()
 
-      encoded = Ingester.encode_row(log_event, :metric)
+      encoded = Ingester.encode_row(event, :metric)
       assert is_list(encoded)
       assert IO.iodata_length(encoded) > 0
     end
 
-    test "includes full body as attributes JSON" do
-      log_event = build(:log_event, message: "metric data") |> Map.put(:log_type, :metric)
+    test "includes metric fields in encoded output" do
+      event =
+        build_mapped_metric_event(body: %{"metric_name" => "http_requests"})
 
-      encoded = Ingester.encode_row(log_event, :metric)
+      encoded = Ingester.encode_row(event, :metric)
       binary = IO.iodata_to_binary(encoded)
 
-      assert binary =~ "event_message"
+      assert binary =~ "http_requests"
+    end
+
+    test "includes attributes as JSON" do
+      event = build_mapped_metric_event(body: %{"host" => "web-1"})
+
+      encoded = Ingester.encode_row(event, :metric)
+      binary = IO.iodata_to_binary(encoded)
+
+      assert binary =~ "host"
     end
   end
 
   describe "encode_row/2 for traces" do
     test "encodes as iodata" do
-      log_event = build(:log_event, message: "test trace") |> Map.put(:log_type, :trace)
+      event = build_mapped_trace_event()
 
-      encoded = Ingester.encode_row(log_event, :trace)
+      encoded = Ingester.encode_row(event, :trace)
       assert is_list(encoded)
       assert IO.iodata_length(encoded) > 0
     end
 
-    test "includes full body as span_attributes JSON" do
-      log_event = build(:log_event, message: "trace data") |> Map.put(:log_type, :trace)
+    test "includes trace fields in encoded output" do
+      event =
+        build_mapped_trace_event(
+          body: %{
+            "trace_id" => "t-abc",
+            "span_id" => "s-def",
+            "span_name" => "GET /users"
+          }
+        )
 
-      encoded = Ingester.encode_row(log_event, :trace)
+      encoded = Ingester.encode_row(event, :trace)
       binary = IO.iodata_to_binary(encoded)
 
-      assert binary =~ "event_message"
+      assert binary =~ "t-abc"
+      assert binary =~ "s-def"
+      assert binary =~ "GET /users"
+    end
+
+    test "includes span_attributes as JSON" do
+      event = build_mapped_trace_event(body: %{"http.status_code" => "200"})
+
+      encoded = Ingester.encode_row(event, :trace)
+      binary = IO.iodata_to_binary(encoded)
+
+      assert binary =~ "http.status_code"
     end
   end
 
   describe "encode_batch/2 for logs" do
     test "encodes multiple LogEvents" do
-      log_events = [
-        build(:log_event, message: "first"),
-        build(:log_event, message: "second")
+      events = [
+        build_mapped_log_event(message: "first"),
+        build_mapped_log_event(message: "second")
       ]
 
-      batch = Ingester.encode_batch(log_events, :log)
+      batch = Ingester.encode_batch(events, :log)
       assert is_list(batch)
 
-      encoded_row1 = Ingester.encode_row(Enum.at(log_events, 0), :log)
-      encoded_row2 = Ingester.encode_row(Enum.at(log_events, 1), :log)
+      encoded_row1 = Ingester.encode_row(Enum.at(events, 0), :log)
+      encoded_row2 = Ingester.encode_row(Enum.at(events, 1), :log)
 
       assert IO.iodata_length(batch) ==
                IO.iodata_length(encoded_row1) + IO.iodata_length(encoded_row2)
     end
 
     test "handles single LogEvent" do
-      log_events = [build(:log_event, message: "only")]
+      events = [build_mapped_log_event(message: "only")]
 
-      batch = Ingester.encode_batch(log_events, :log)
-      single = Ingester.encode_row(Enum.at(log_events, 0), :log)
+      batch = Ingester.encode_batch(events, :log)
+      single = Ingester.encode_row(Enum.at(events, 0), :log)
       assert batch == [single]
     end
   end
 
   describe "encode_batch/2 for metrics" do
     test "encodes multiple LogEvents" do
-      log_events = [
-        build(:log_event, message: "m1") |> Map.put(:log_type, :metric),
-        build(:log_event, message: "m2") |> Map.put(:log_type, :metric)
+      events = [
+        build_mapped_metric_event(message: "m1"),
+        build_mapped_metric_event(message: "m2")
       ]
 
-      batch = Ingester.encode_batch(log_events, :metric)
+      batch = Ingester.encode_batch(events, :metric)
       assert is_list(batch)
       assert length(batch) == 2
     end
@@ -133,11 +194,9 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.IngesterTest do
 
   describe "encode_batch/2 for traces" do
     test "encodes single LogEvent" do
-      log_events = [
-        build(:log_event, message: "t1") |> Map.put(:log_type, :trace)
-      ]
+      events = [build_mapped_trace_event(message: "t1")]
 
-      batch = Ingester.encode_batch(log_events, :trace)
+      batch = Ingester.encode_batch(events, :trace)
       assert is_list(batch)
       assert length(batch) == 1
     end
@@ -149,7 +208,20 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.IngesterTest do
       assert "id" in columns
       assert "source_uuid" in columns
       assert "source_name" in columns
+      assert "project" in columns
+      assert "trace_id" in columns
+      assert "span_id" in columns
+      assert "trace_flags" in columns
+      assert "severity_text" in columns
+      assert "severity_number" in columns
+      assert "service_name" in columns
       assert "event_message" in columns
+      assert "scope_name" in columns
+      assert "scope_version" in columns
+      assert "scope_schema_url" in columns
+      assert "resource_schema_url" in columns
+      assert "resource_attributes" in columns
+      assert "scope_attributes" in columns
       assert "log_attributes" in columns
       assert "timestamp" in columns
     end
@@ -159,11 +231,32 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.IngesterTest do
       assert "id" in columns
       assert "source_uuid" in columns
       assert "source_name" in columns
-      assert "event_message" in columns
+      assert "project" in columns
       assert "time_unix" in columns
       assert "start_time_unix" in columns
+      assert "metric_name" in columns
+      assert "metric_description" in columns
+      assert "metric_unit" in columns
       assert "metric_type" in columns
+      assert "service_name" in columns
+      assert "event_message" in columns
+      assert "scope_name" in columns
+      assert "scope_version" in columns
+      assert "resource_attributes" in columns
+      assert "scope_attributes" in columns
       assert "attributes" in columns
+      assert "aggregation_temporality" in columns
+      assert "is_monotonic" in columns
+      assert "flags" in columns
+      assert "value" in columns
+      assert "count" in columns
+      assert "sum" in columns
+      assert "min" in columns
+      assert "max" in columns
+      assert "scale" in columns
+      assert "zero_count" in columns
+      assert "positive_offset" in columns
+      assert "negative_offset" in columns
       assert "timestamp" in columns
     end
 
@@ -172,9 +265,23 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.IngesterTest do
       assert "id" in columns
       assert "source_uuid" in columns
       assert "source_name" in columns
-      assert "event_message" in columns
-      assert "span_attributes" in columns
+      assert "project" in columns
       assert "timestamp" in columns
+      assert "trace_id" in columns
+      assert "span_id" in columns
+      assert "parent_span_id" in columns
+      assert "trace_state" in columns
+      assert "span_name" in columns
+      assert "span_kind" in columns
+      assert "service_name" in columns
+      assert "event_message" in columns
+      assert "duration" in columns
+      assert "status_code" in columns
+      assert "status_message" in columns
+      assert "scope_name" in columns
+      assert "scope_version" in columns
+      assert "resource_attributes" in columns
+      assert "span_attributes" in columns
     end
   end
 
@@ -198,7 +305,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.IngesterTest do
       table_name: table_name,
       source: source
     } do
-      log_event = build(:log_event, source: source, message: "Test compression default")
+      log_event = build_mapped_log_event(source: source, message: "Test compression default")
 
       Finch
       |> expect(:request, fn request, _pool, _opts ->
@@ -221,7 +328,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.IngesterTest do
       table_name: table_name,
       source: source
     } do
-      log_event = build(:log_event, source: source, message: "Test")
+      log_event = build_mapped_log_event(source: source, message: "Test")
 
       Finch
       |> expect(:request, fn request, _pool, _opts ->
@@ -247,7 +354,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.IngesterTest do
       table_name: table_name,
       source: source
     } do
-      log_event = build(:log_event, source: source, message: "Test")
+      log_event = build_mapped_log_event(source: source, message: "Test")
 
       Finch
       |> expect(:request, fn request, _pool, _opts ->
@@ -274,7 +381,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.IngesterTest do
       source: source
     } do
       backend_with_async = %{backend | config: Map.put(backend.config, :async_insert, true)}
-      log_event = build(:log_event, source: source, message: "Test async")
+      log_event = build_mapped_log_event(source: source, message: "Test async")
 
       Finch
       |> expect(:request, fn request, _pool, _opts ->
