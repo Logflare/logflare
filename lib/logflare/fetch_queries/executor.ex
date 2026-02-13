@@ -14,7 +14,15 @@ defmodule Logflare.FetchQueries.Executor do
   Executes a fetch query against its backend.
   Returns {:ok, [event_maps]} or {:error, reason}
   """
-  @spec execute(FetchQuery.t()) :: {:ok, %{rows: [map()], total_bytes_processed: integer(), query_string: string(), total_rows: integer()}} | {:error, term()}
+  @spec execute(FetchQuery.t()) ::
+          {:ok,
+           %{
+             rows: [map()],
+             total_bytes_processed: integer(),
+             query_string: string(),
+             total_rows: integer()
+           }}
+          | {:error, term()}
   def execute(%FetchQuery{backend: nil, user: user} = fetch_query) when user != nil do
     # Use system default backend if no backend is configured
     default_backend = Backends.get_default_backend(user)
@@ -28,7 +36,13 @@ defmodule Logflare.FetchQueries.Executor do
   def execute(%FetchQuery{backend: %{type: :webhook}} = fetch_query) do
     with {:ok, raw_data} <- execute_http(fetch_query),
          events <- apply_jsonpath_if_needed(raw_data, fetch_query) do
-      {:ok, %{rows: events, total_bytes_processed: 0, query_string: fetch_query.query, total_rows: length(events)}}
+      {:ok,
+       %{
+         rows: events,
+         total_bytes_processed: 0,
+         query_string: fetch_query.query,
+         total_rows: length(events)
+       }}
     end
   end
 

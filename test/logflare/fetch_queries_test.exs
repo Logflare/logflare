@@ -251,11 +251,12 @@ defmodule Logflare.FetchQueriesTest do
       fetch_query = insert(:fetch_query, user: user)
 
       # Test that the job is built with correct args using string keys
-      job_changeset = %{
-        "fetch_query_id" => fetch_query.id,
-        "scheduled_at" => DateTime.utc_now() |> DateTime.to_iso8601()
-      }
-      |> Logflare.FetchQueries.FetchQueryWorker.new(schedule_in: 0)
+      job_changeset =
+        %{
+          "fetch_query_id" => fetch_query.id,
+          "scheduled_at" => DateTime.utc_now() |> DateTime.to_iso8601()
+        }
+        |> Logflare.FetchQueries.FetchQueryWorker.new(schedule_in: 0)
 
       assert job_changeset.valid?
       # Check that fetch_query_id is in the args

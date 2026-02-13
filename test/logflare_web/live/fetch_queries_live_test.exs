@@ -334,7 +334,9 @@ defmodule LogflareWeb.FetchQueriesLiveTest do
 
   describe "team context" do
     setup %{user: user, team: team} do
-      team_user = insert(:team_user, team: team, provider_uid: "provider_#{System.unique_integer()}")
+      team_user =
+        insert(:team_user, team: team, provider_uid: "provider_#{System.unique_integer()}")
+
       backend = insert(:backend, user: user)
       source = insert(:source, user: user)
 
@@ -406,7 +408,13 @@ defmodule LogflareWeb.FetchQueriesLiveTest do
     end
 
     test "accepts optional query for webhook backend", %{conn: conn, user: user} do
-      backend = insert(:backend, user: user, type: :webhook, config: %{url: "https://example.com/webhook"})
+      backend =
+        insert(:backend,
+          user: user,
+          type: :webhook,
+          config: %{url: "https://example.com/webhook"}
+        )
+
       source = insert(:source, user: user)
 
       {:ok, view, _html} = live(conn, ~p"/fetch/new")

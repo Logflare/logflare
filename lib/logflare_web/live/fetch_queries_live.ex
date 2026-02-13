@@ -53,6 +53,7 @@ defmodule LogflareWeb.FetchQueriesLive do
     case socket.assigns.live_action do
       :new ->
         create_fetch_query(socket, user, params)
+
       :edit ->
         update_fetch_query(socket, user, params)
     end
@@ -81,7 +82,8 @@ defmodule LogflareWeb.FetchQueriesLive do
 
   def handle_event("validate", %{"fetch_query" => params}, socket) do
     changeset =
-      FetchQuery.changeset(%FetchQuery{},
+      FetchQuery.changeset(
+        %FetchQuery{},
         Map.put(params, "user_id", socket.assigns.user.id)
       )
 

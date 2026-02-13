@@ -33,9 +33,9 @@
             <tbody>
               <%= for fq <- @fetch_queries do %>
                 <tr>
-                  <td><strong style="color: #e9ecef;"><%= fq.name %></strong></td>
-                  <td :if={fq.backend}><span class="text-muted"><%= fq.backend.name %></span></td>
-                  <td><code class="bg-dark px-2 py-1 rounded" style="color: #90ee90;"><%= fq.cron %></code></td>
+                  <td><strong style="color: #e9ecef;">{fq.name}</strong></td>
+                  <td :if={fq.backend}><span class="text-muted">{fq.backend.name}</span></td>
+                  <td><code class="bg-dark px-2 py-1 rounded" style="color: #90ee90;">{fq.cron}</code></td>
                   <td>
                     <%= if fq.enabled do %>
                       <span class="badge bg-success text-dark fw-semibold">Enabled</span>

@@ -43,7 +43,8 @@ defmodule Logflare.FetchQueries do
   Returns the fetch query if the user owns it or is a team member, otherwise returns nil.
   """
   @spec get_fetch_query_by_user_access(User.t(), integer() | String.t()) :: FetchQuery.t() | nil
-  def get_fetch_query_by_user_access(user_or_team_user, id) when is_integer(id) or is_binary(id) do
+  def get_fetch_query_by_user_access(user_or_team_user, id)
+      when is_integer(id) or is_binary(id) do
     FetchQuery
     |> Teams.filter_by_user_access(user_or_team_user)
     |> where([fq], fq.id == ^id)
@@ -204,11 +205,12 @@ defmodule Logflare.FetchQueries do
             default_backend = Backends.get_default_backend(user)
 
             # Determine which key type to use based on attrs structure
-            key = if Map.has_key?(attrs, "backend_id") or Enum.all?(Map.keys(attrs), &is_binary/1) do
-              "backend_id"
-            else
-              :backend_id
-            end
+            key =
+              if Map.has_key?(attrs, "backend_id") or Enum.all?(Map.keys(attrs), &is_binary/1) do
+                "backend_id"
+              else
+                :backend_id
+              end
 
             Map.put(attrs, key, default_backend.id)
         end

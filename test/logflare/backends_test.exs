@@ -1643,7 +1643,14 @@ defmodule Logflare.BackendsTest do
 
     test "includes system default backend when flag is false", %{user: user} do
       source = insert(:source, user: user, disable_system_default_backend?: false)
-      backend = insert(:backend, type: :webhook, config: %{url: "https://example.com"}, user: user, sources: [source])
+
+      backend =
+        insert(:backend,
+          type: :webhook,
+          config: %{url: "https://example.com"},
+          user: user,
+          sources: [source]
+        )
 
       Backends.clear_list_backends_cache(source.id)
 
@@ -1664,7 +1671,14 @@ defmodule Logflare.BackendsTest do
 
     test "excludes system default backend when flag is true", %{user: user} do
       source = insert(:source, user: user, disable_system_default_backend?: true)
-      backend = insert(:backend, type: :webhook, config: %{url: "https://example.com"}, user: user, sources: [source])
+
+      backend =
+        insert(:backend,
+          type: :webhook,
+          config: %{url: "https://example.com"},
+          user: user,
+          sources: [source]
+        )
 
       Backends.clear_list_backends_cache(source.id)
 

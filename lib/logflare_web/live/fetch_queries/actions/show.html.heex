@@ -3,8 +3,8 @@
     <div class="card-body">
       <div class="row mb-3">
         <div class="col-md-8">
-          <h5 class="card-title"><%= @fetch_query.name %></h5>
-          <p class="text-muted"><%= @fetch_query.description %></p>
+          <h5 class="card-title">{@fetch_query.name}</h5>
+          <p class="text-muted">{@fetch_query.description}</p>
         </div>
         <div class="col-md-4 text-end">
           {live_patch("Edit",
@@ -26,7 +26,7 @@
             <dd class="col-sm-9">
               <%= if @fetch_query.backend do %>
                 <a href={~p"/sources/#{@fetch_query.backend.id}"} class="text-decoration-none">
-                  <%= @fetch_query.backend.name %>
+                  {@fetch_query.backend.name}
                 </a>
               <% else %>
                 <span class="text-muted">Default</span>
@@ -37,7 +37,7 @@
             <dd class="col-sm-9">
               <%= if @fetch_query.source do %>
                 <a href={~p"/sources/#{@fetch_query.source.id}"} class="text-decoration-none">
-                  <%= @fetch_query.source.name %>
+                  {@fetch_query.source.name}
                 </a>
               <% else %>
                 <span class="text-muted">Unknown</span>
@@ -45,10 +45,10 @@
             </dd>
 
             <dt class="col-sm-3">Language:</dt>
-            <dd class="col-sm-9"><code><%= @fetch_query.language %></code></dd>
+            <dd class="col-sm-9"><code>{@fetch_query.language}</code></dd>
 
             <dt class="col-sm-3">Cron:</dt>
-            <dd class="col-sm-9"><code><%= @fetch_query.cron %></code></dd>
+            <dd class="col-sm-9"><code>{@fetch_query.cron}</code></dd>
 
             <dt class="col-sm-3">Status:</dt>
             <dd class="col-sm-9">
@@ -85,7 +85,7 @@
           <%= if not Enum.empty?(@future_jobs) do %>
             <div class="mb-4">
               <h6 class="text-muted mb-3">
-                <i class="fas fa-hourglass-half"></i> Upcoming Jobs (<%= Enum.count(@future_jobs) %>)
+                <i class="fas fa-hourglass-half"></i> Upcoming Jobs ({Enum.count(@future_jobs)})
               </h6>
               <div class="table-responsive">
                 <table class="table table-sm table-hover border">
@@ -100,10 +100,10 @@
                       <tr>
                         <td>
                           <span class={"badge bg-#{job_state_badge_class(job.state)}"}>
-                            <%= format_job_state(job.state) %>
+                            {format_job_state(job.state)}
                           </span>
                         </td>
-                        <td class="text-muted small"><%= format_datetime(job.scheduled_at) %></td>
+                        <td class="text-muted small">{format_datetime(job.scheduled_at)}</td>
                       </tr>
                     <% end %>
                   </tbody>
@@ -115,7 +115,7 @@
           <%= if not Enum.empty?(@past_jobs) do %>
             <div>
               <h6 class="text-muted mb-3">
-                <i class="fas fa-history"></i> Past Executions (<%= Enum.count(@past_jobs) %>)
+                <i class="fas fa-history"></i> Past Executions ({Enum.count(@past_jobs)})
               </h6>
               <div class="table-responsive">
                 <table class="table table-sm table-hover border">
@@ -133,20 +133,16 @@
                       <tr>
                         <td>
                           <span class={"badge bg-#{job_state_badge_class(job.state)}"}>
-                            <%= format_job_state(job.state) %>
+                            {format_job_state(job.state)}
                           </span>
                         </td>
-                        <td class="text-muted small"><%= format_datetime(job.completed_at) %></td>
-                        <td class="text-muted small"><%= calculate_duration(job.attempted_at, job.completed_at) %></td>
+                        <td class="text-muted small">{format_datetime(job.completed_at)}</td>
+                        <td class="text-muted small">{calculate_duration(job.attempted_at, job.completed_at)}</td>
                         <td>
                           <%= if has_error?(format_job_errors(job.errors)) do %>
-                            <button
-                              class="btn btn-sm btn-outline-danger py-0 px-2"
-                              phx-click="toggle-error"
-                              phx-value-error-id={error_id}
-                            >
+                            <button class="btn btn-sm btn-outline-danger py-0 px-2" phx-click="toggle-error" phx-value-error-id={error_id}>
                               <i class="fas fa-exclamation-circle"></i>
-                              <%= if Map.get(assigns[:errors_visible] || %{}, error_id, false), do: "Hide", else: "Show" %>
+                              {if Map.get(assigns[:errors_visible] || %{}, error_id, false), do: "Hide", else: "Show"}
                             </button>
                           <% else %>
                             <span class="text-muted small">—</span>

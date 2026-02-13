@@ -254,7 +254,6 @@ defmodule Logflare.Mixfile do
       {:otel_metric_exporter,
        git: "https://github.com/supabase/elixir-otel-metric-exporter", ref: "f21149a"},
       {:live_monaco_editor, "~> 0.2"},
-
       {:oban, "~> 2.19"}
     ]
   end

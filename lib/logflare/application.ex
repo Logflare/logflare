@@ -119,7 +119,6 @@ defmodule Logflare.Application do
         # active users tracking for UserMetricsPoller
         {Logflare.ActiveUserTracker,
          [name: Logflare.ActiveUserTracker, pubsub_server: Logflare.PubSub]},
-
         {Oban, Application.fetch_env!(:logflare, Oban)}
       ]
   end

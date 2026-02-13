@@ -1,7 +1,7 @@
 <.form :let={f} for={@changeset} as={:fetch_query} id="fetch_query" phx-submit="save" class="card">
   <div class="card-body">
     <h5 class="card-title">
-      <%= if @live_action == :new, do: "New", else: "Edit" %> Fetch Job
+      {if @live_action == :new, do: "New", else: "Edit"} Fetch Job
     </h5>
 
     <div class="mb-3">
@@ -20,10 +20,7 @@
       <div class="col-md-6">
         <div class="mb-3">
           {label(f, :backend_id, "Backend")}
-          {select(f, :backend_id,
-            Enum.map(@backends, &{&1.name, &1.id}),
-            [prompt: "-Use system default-", class: "form-select"]
-          )}
+          {select(f, :backend_id, Enum.map(@backends, &{&1.name, &1.id}), prompt: "-Use system default-", class: "form-select")}
           {error_tag(f, :backend_id)}
         </div>
       </div>
@@ -31,10 +28,7 @@
       <div class="col-md-6">
         <div class="mb-3">
           {label(f, :source_id, "Destination Source")}
-          {select(f, :source_id,
-            Enum.map(@sources, &{&1.name, &1.id}),
-            [prompt: "-Select a source-", class: "form-select"]
-          )}
+          {select(f, :source_id, Enum.map(@sources, &{&1.name, &1.id}), prompt: "-Select a source-", class: "form-select")}
           {error_tag(f, :source_id)}
         </div>
       </div>
@@ -44,10 +38,7 @@
       <div class="col-md-6">
         <div class="mb-3">
           {label(f, :language, "Query Language")}
-          {select(f, :language,
-            [{"BigQuery SQL", "bq_sql"}, {"PostgreSQL", "pg_sql"}, {"LQL", "lql"}, {"JSONPath", "jsonpath"}],
-            [class: "form-select"]
-          )}
+          {select(f, :language, [{"BigQuery SQL", "bq_sql"}, {"PostgreSQL", "pg_sql"}, {"LQL", "lql"}, {"JSONPath", "jsonpath"}], class: "form-select")}
         </div>
       </div>
 
@@ -80,13 +71,12 @@
         if(@live_action == :new, do: "Create", else: "Update") <> " Fetch Job",
         class: "btn btn-primary"
       )}
-      <%
-        cancel_to = case(@live_action) do
+      <% cancel_to =
+        case(@live_action) do
           :new -> ~p"/fetch"
           :edit -> ~p"/fetch/#{@changeset.data.id}"
           _ -> ~p"/fetch"
-        end
-      %>
+        end %>
       {link("Cancel",
         to: cancel_to,
         class: "btn btn-secondary"
