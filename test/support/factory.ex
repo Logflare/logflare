@@ -403,7 +403,7 @@ defmodule Logflare.Factory do
     }
     |> merge_attributes(attrs)
   end
-  
+
   def key_value_factory do
     %KeyValue{
       user: build(:user),
