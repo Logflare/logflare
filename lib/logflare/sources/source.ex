@@ -28,6 +28,7 @@ defmodule Logflare.Sources.Source do
              :backends,
              :retention_days,
              :transform_copy_fields,
+             :transform_key_values,
              :bigquery_clustering_fields,
              :default_ingest_backend_enabled?,
              :disable_system_default_backend?
@@ -137,6 +138,8 @@ defmodule Logflare.Sources.Source do
     field :suggested_keys, :string, default: ""
     field :retention_days, :integer, virtual: true
     field :transform_copy_fields, :string
+    field :transform_key_values, :string
+    field :transform_key_values_parsed, {:array, :map}, virtual: true
     field :bigquery_clustering_fields, :string
     field :system_source, :boolean, default: false
     field :system_source_type, Ecto.Enum, values: @system_source_types
@@ -201,6 +204,7 @@ defmodule Logflare.Sources.Source do
       :suggested_keys,
       :retention_days,
       :transform_copy_fields,
+      :transform_key_values,
       :disable_tailing,
       :default_ingest_backend_enabled?,
       :disable_system_default_backend?,
@@ -234,6 +238,7 @@ defmodule Logflare.Sources.Source do
       :suggested_keys,
       :retention_days,
       :transform_copy_fields,
+      :transform_key_values,
       :disable_tailing,
       :default_ingest_backend_enabled?,
       :disable_system_default_backend?,
@@ -348,6 +353,51 @@ defmodule Logflare.Sources.Source do
     source_token
     |> Atom.to_string()
     |> String.replace("-", "_")
+  end
+
+  @spec parse_key_values_config(%__MODULE__{}) :: %__MODULE__{}
+  def parse_key_values_config(%__MODULE__{transform_key_values: nil} = source) do
+    %{source | transform_key_values_parsed: nil}
+  end
+
+  def parse_key_values_config(%__MODULE__{transform_key_values: config} = source) do
+    parsed =
+      config
+      |> String.split(~r/\n/, trim: true)
+      |> Enum.flat_map(fn instruction ->
+        instruction = String.trim(instruction)
+
+        case String.split(instruction, ":", parts: 3) do
+          [lookup_key, dest_key, accessor_path] ->
+            lookup_key = String.replace_prefix(lookup_key, "m.", "metadata.")
+            dest_key = String.replace_prefix(dest_key, "m.", "metadata.")
+
+            [
+              %{
+                from_path: String.split(lookup_key, "."),
+                to_path: String.split(dest_key, "."),
+                accessor_path: String.trim(accessor_path)
+              }
+            ]
+
+          [lookup_key, dest_key] ->
+            lookup_key = String.replace_prefix(lookup_key, "m.", "metadata.")
+            dest_key = String.replace_prefix(dest_key, "m.", "metadata.")
+
+            [
+              %{
+                from_path: String.split(lookup_key, "."),
+                to_path: String.split(dest_key, "."),
+                accessor_path: nil
+              }
+            ]
+
+          _ ->
+            []
+        end
+      end)
+
+    %{source | transform_key_values_parsed: parsed}
   end
 
   def system_source_types, do: @system_source_types

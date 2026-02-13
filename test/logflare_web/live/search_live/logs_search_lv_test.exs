@@ -192,7 +192,9 @@ defmodule LogflareWeb.Source.SearchLVTest do
              |> element(".subhead form#results-actions button[phx-value-search_timezone]")
              |> render_click()
 
-      assert view |> element("#logs-list-container") |> render() =~ "+00:00"
+      TestUtils.retry_assert(fn ->
+        assert view |> element("#logs-list-container") |> render() =~ "+00:00"
+      end)
     end
 
     test "subheader - checkbox is checked when loaded timzone matches user preference", %{
@@ -494,6 +496,125 @@ defmodule LogflareWeb.Source.SearchLVTest do
       assert querystring =~ "c:count(*) c:group_by(t::minute)"
     end
 
+    test "empty results message", %{conn: conn, source: source} do
+      pid = self()
+
+      stub(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, fn _conn, _proj_id, opts ->
+        query = opts[:body].query
+
+        if query =~ ~r/COUNT\(|COUNTIF\(/i do
+          send(pid, {:agg_query, query})
+          {:ok, TestUtils.gen_bq_response([])}
+        else
+          send(pid, {:event_query, query})
+          {:ok, TestUtils.gen_bq_response([])}
+        end
+      end)
+
+      {:ok, view, _html} = live(conn, Routes.live_path(conn, SearchLV, source.id))
+      %{executor_pid: search_executor_pid} = get_view_assigns(view)
+      Ecto.Adapters.SQL.Sandbox.allow(Logflare.Repo, self(), search_executor_pid)
+
+      view
+      |> TestUtils.wait_for_render("#source-logs-search-list")
+
+      assert_receive {:event_query, _query}
+      assert_receive {:agg_query, _query}
+
+      TestUtils.retry_assert(fn ->
+        html = view |> element("#logs-list-container") |> render()
+
+        assert html =~ "No events matching your query"
+        refute html =~ "Extend search"
+      end)
+    end
+
+    test "extend search button shows when aggregate results have hits", %{
+      conn: conn,
+      source: source
+    } do
+      pid = self()
+
+      zero_dt = ~U[2026-01-30 06:46:41Z]
+      hits_dt = ~U[2026-01-30 06:47:41Z]
+
+      zero_ts_exp = TestUtils.gen_bq_timestamp(zero_dt)
+      hits_ts_exp = TestUtils.gen_bq_timestamp(hits_dt)
+
+      expected_zero_ts =
+        zero_dt
+        |> DateTime.truncate(:second)
+        |> DateTime.to_iso8601()
+        |> String.trim_trailing("Z")
+
+      expected_hits_ts =
+        hits_dt
+        |> DateTime.truncate(:second)
+        |> DateTime.to_iso8601()
+        |> String.trim_trailing("Z")
+
+      stub(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, fn _conn, _proj_id, opts ->
+        query = opts[:body].query
+
+        if query =~ ~r/COUNT\(|COUNTIF\(/i do
+          send(pid, {:agg_query, query})
+          aggregate_schema = Logflare.TestUtils.build_bq_schema(%{"value" => "INTEGER"})
+
+          rows =
+            [
+              %{"timestamp" => zero_ts_exp, "value" => 0},
+              %{"timestamp" => hits_ts_exp, "value" => 5}
+            ]
+
+          {:ok, TestUtils.gen_bq_response(rows, aggregate_schema)}
+        else
+          send(pid, {:event_query, query})
+          {:ok, TestUtils.gen_bq_response([])}
+        end
+      end)
+
+      {:ok, view, _html} = live(conn, Routes.live_path(conn, SearchLV, source.id))
+      %{executor_pid: search_executor_pid} = get_view_assigns(view)
+      Ecto.Adapters.SQL.Sandbox.allow(Logflare.Repo, self(), search_executor_pid)
+
+      view
+      |> TestUtils.wait_for_render("#source-logs-search-list")
+
+      assert_receive {:event_query, _query}
+      assert_receive {:agg_query, _query}
+
+      TestUtils.retry_assert(fn ->
+        html = view |> element("#logs-list-container") |> render()
+
+        assert html =~ "No events matching your query"
+
+        {:ok, document} = Floki.parse_document(html)
+
+        extend_search_links =
+          document
+          |> Floki.find("a")
+          |> Enum.filter(fn link -> Floki.text(link) =~ "Extend search" end)
+
+        assert [_link] = extend_search_links
+        [link] = extend_search_links
+
+        assert Floki.text(document) =~ "t:>=#{expected_hits_ts}"
+        refute Floki.text(document) =~ "t:>=#{expected_zero_ts}"
+
+        href =
+          link
+          |> Floki.attribute("href")
+          |> hd()
+
+        uri = URI.parse(href)
+        assert uri.path == "/sources/#{source.id}/search"
+
+        query_params = URI.decode_query(uri.query)
+        assert query_params["tailing?"] == "false"
+        assert query_params["querystring"] =~ "t:>=#{expected_hits_ts}"
+      end)
+    end
+
     test "page title includes source name", %{conn: conn, source: source} do
       {:ok, _view, html} = live(conn, Routes.live_path(conn, SearchLV, source.id))
       assert html =~ "<title>#{source.name} | Logflare"
@@ -506,7 +627,7 @@ defmodule LogflareWeb.Source.SearchLVTest do
       Ecto.Adapters.SQL.Sandbox.allow(Logflare.Repo, self(), search_executor_pid)
 
       view
-      |> TestUtils.wait_for_render("#logs-list-container")
+      |> TestUtils.wait_for_render("#logs-list-container li")
 
       html = view |> element("#logs-list-container") |> render()
       assert html =~ "some event message"

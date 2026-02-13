@@ -61,26 +61,21 @@ defmodule Logflare.Backends.IngestEventQueue do
   Retrieves a private tid of a given source-backend combination or consolidated queue.
   """
   @spec get_tid(table_key() | consolidated_table_key()) :: :ets.tid() | nil
-  def get_tid({:consolidated, bid, pid}) when is_integer(bid) do
-    :ets.match(@ets_table_mapper, {{:consolidated, bid}, pid, :"$1"}, 1)
-    |> then(fn
+  def get_tid({:consolidated, bid, pid}) when is_integer(bid),
+    do: do_get_tid({:consolidated, bid}, pid)
+
+  def get_tid({sid, bid, pid}) when is_integer(sid),
+    do: do_get_tid({sid, bid}, pid)
+
+  defp do_get_tid(key, pid) do
+    :ets.match(@ets_table_mapper, {key, pid, :"$1"}, 1)
+    |> case do
       {[[tid]], _cont} ->
-        if :ets.info(tid) != :undefined, do: tid
+        if :ets.info(tid, :name) != :undefined, do: tid
 
       _ ->
         nil
-    end)
-  end
-
-  def get_tid({sid, bid, pid}) do
-    :ets.match(@ets_table_mapper, {{sid, bid}, pid, :"$1"}, 1)
-    |> then(fn
-      {[[tid]], _cont} ->
-        if :ets.info(tid) != :undefined, do: tid
-
-      _ ->
-        nil
-    end)
+    end
   end
 
   @doc """
@@ -752,7 +747,7 @@ defmodule Logflare.Backends.IngestEventQueue do
 
   defp next_and_cleanup({to_check, cont}) do
     for {{sid, bid}, pid, tid} <- to_check do
-      if :ets.info(tid) == :undefined do
+      if :ets.info(tid, :name) == :undefined do
         :ets.delete_object(@ets_table_mapper, {{sid, bid}, pid, tid})
       end
     end

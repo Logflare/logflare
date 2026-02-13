@@ -60,7 +60,7 @@ jobs:
           --health-timeout 5s
           --health-retries 10
       clickhouse:
-        image: clickhouse/clickhouse-server:25.6
+        image: clickhouse/clickhouse-server:25.12
         ports:
           - 8123:8123
           - 9000:9000

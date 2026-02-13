@@ -118,8 +118,14 @@ defmodule Logflare.TestUtils do
     :crypto.strong_rand_bytes(length) |> Base.url_encode64() |> binary_part(0, length)
   end
 
+  @spec gen_bq_timestamp() :: String.t()
   def gen_bq_timestamp do
-    micro = DateTime.utc_now() |> DateTime.to_unix(:microsecond)
+    gen_bq_timestamp(DateTime.utc_now())
+  end
+
+  @spec gen_bq_timestamp(DateTime.t()) :: String.t()
+  def gen_bq_timestamp(%DateTime{} = datetime) do
+    micro = datetime |> DateTime.to_unix(:microsecond)
     exp_first_part = micro / 1_000_000_000_000_000
     Float.to_string(exp_first_part) <> "E9"
   end
@@ -153,13 +159,13 @@ defmodule Logflare.TestUtils do
   Generates a mock BigQuery response.
   This is a successful bq response retrieved manually
   """
-  def gen_bq_response(result \\ %{})
+  def gen_bq_response(result \\ %{}, schema \\ nil)
 
-  def gen_bq_response(result) when is_map(result) do
-    gen_bq_response([result])
+  def gen_bq_response(result, schema) when is_map(result) do
+    gen_bq_response([result], schema)
   end
 
-  def gen_bq_response(results) when is_list(results) do
+  def gen_bq_response(results, schema) when is_list(results) do
     results =
       Enum.map(results, fn result ->
         result
@@ -171,10 +177,15 @@ defmodule Logflare.TestUtils do
       end)
 
     schema =
-      if length(results) > 0 do
-        SchemaBuilder.build_table_schema(results |> hd(), SchemaBuilder.initial_table_schema())
-      else
-        SchemaBuilder.initial_table_schema()
+      cond do
+        schema ->
+          schema
+
+        length(results) > 0 ->
+          SchemaBuilder.build_table_schema(results |> hd(), SchemaBuilder.initial_table_schema())
+
+        true ->
+          SchemaBuilder.initial_table_schema()
       end
 
     rows =
