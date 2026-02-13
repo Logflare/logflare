@@ -25,7 +25,7 @@ defmodule Logflare.LogEvent do
     field :ingested_at, :utc_datetime_usec
     field :origin_source_uuid, Ecto.UUID.Atom
     field :origin_source_name, :string
-    field :via_rule, :map
+    field :via_rule_id, :id
     field :retries, :integer, default: 0
     field :log_type, Ecto.Enum, values: [:log, :metric, :trace], default: :log
 

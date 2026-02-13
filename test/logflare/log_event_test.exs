@@ -25,7 +25,7 @@ defmodule Logflare.LogEventTest do
              source_id: source_id,
              valid: true,
              pipeline_error: nil,
-             via_rule: nil
+             via_rule_id: nil
            } = LogEvent.make(@vallog_event_ids, %{source: source})
 
     assert id == body["id"]
@@ -280,7 +280,7 @@ defmodule Logflare.LogEventTest do
              is_from_stale_query: nil,
              valid: true,
              pipeline_error: nil,
-             via_rule: nil
+             via_rule_id: nil
            } = LogEvent.make(%{"metadata" => "some string"}, %{source: source})
 
     assert id == body["id"]
