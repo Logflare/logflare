@@ -43,6 +43,7 @@ defmodule LogflareWeb.SearchLive.LogEventComponents do
                    phx-value-log-event-id={log.id}
                    phx-value-log-event-timestamp={log.body["timestamp"]}
                    phx-value-lql={@querystring}
+                   phx-value-tailing?={@tailing?}
                  >
                    <span>view</span>
                  </.modal_link>
