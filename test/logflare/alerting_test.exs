@@ -124,6 +124,27 @@ defmodule Logflare.AlertingTest do
       assert alert_query.token
     end
 
+    test "max_limit defaults to 1000, can be set explicitly, validates range, and can be updated", %{user: user} do
+      # default
+      {:ok, alert_query} = Alerting.create_alert_query(user, @valid_attrs)
+      assert alert_query.max_limit == 1_000
+
+      # explicit value
+      {:ok, alert_query} = Alerting.create_alert_query(user, Map.put(@valid_attrs, :max_limit, 5_000))
+      assert alert_query.max_limit == 5_000
+
+      # validation
+      {:error, changeset} = Alerting.create_alert_query(user, Map.put(@valid_attrs, :max_limit, 0))
+      assert "must be greater than 0" in errors_on(changeset).max_limit
+
+      {:error, changeset} = Alerting.create_alert_query(user, Map.put(@valid_attrs, :max_limit, 10_001))
+      assert "must be less than 10001" in errors_on(changeset).max_limit
+
+      # update
+      {:ok, updated} = Alerting.update_alert_query(alert_query, %{max_limit: 2_000})
+      assert updated.max_limit == 2_000
+    end
+
     test "bug: create_alert_query/1 with very long query", %{user: user} do
       assert {:ok, %AlertQuery{}} =
                Alerting.create_alert_query(user, %{
@@ -254,6 +275,52 @@ defmodule Logflare.AlertingTest do
 
       assert {:ok, %{rows: [%{"testing" => "123"}]}} =
                Alerting.execute_alert_query(alert_query)
+    end
+
+    test "execute_alert_query paginates through multiple pages", %{user: user} do
+      alert_query =
+        insert(:alert, user: user, max_limit: 5_000)
+        |> Logflare.Repo.preload([:user])
+
+      page1_response = TestUtils.gen_bq_response([%{"testing" => "page1"}])
+      page1_response = %{page1_response | pageToken: "next_page_token"}
+
+      page2_response =
+        %GoogleApi.BigQuery.V2.Model.GetQueryResultsResponse{
+          rows: page1_response.rows,
+          schema: page1_response.schema,
+          totalRows: "2",
+          pageToken: nil
+        }
+
+      expect(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, 1, fn _conn, _proj_id, _opts ->
+        {:ok, page1_response}
+      end)
+
+      expect(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_get_query_results, 1, fn _conn,
+                                                                                      _proj_id,
+                                                                                      _job_id,
+                                                                                      _opts ->
+        {:ok, page2_response}
+      end)
+
+      assert {:ok, %{rows: rows}} = Alerting.execute_alert_query(alert_query)
+      assert length(rows) == 2
+    end
+
+    test "execute_alert_query respects max_limit", %{user: user} do
+      alert_query =
+        insert(:alert, user: user, max_limit: 1)
+        |> Logflare.Repo.preload([:user])
+
+      response = TestUtils.gen_bq_response([%{"a" => "1"}, %{"a" => "2"}])
+
+      expect(GoogleApi.BigQuery.V2.Api.Jobs, :bigquery_jobs_query, 1, fn _conn, _proj_id, _opts ->
+        {:ok, response}
+      end)
+
+      assert {:ok, %{rows: rows}} = Alerting.execute_alert_query(alert_query)
+      assert length(rows) == 1
     end
 
     test "run_alert_query/1 runs the entire alert", %{user: user} do

@@ -2,12 +2,14 @@ defmodule Logflare.BqRepo do
   @moduledoc false
   alias GoogleApi.BigQuery.V2.Api
   alias GoogleApi.BigQuery.V2.Model.QueryRequest
-  alias Logflare.Google.BigQuery.GenUtils
-  alias Logflare.Google.BigQuery.SchemaUtils
   alias Logflare.Billing
   alias Logflare.Billing.Plan
+  alias Logflare.Google.BigQuery.GenUtils
+  alias Logflare.Google.BigQuery.SchemaUtils
   alias Logflare.User
+
   import Logflare.TypeCasts
+
   require Logger
 
   @query_request_timeout 25_000
@@ -88,6 +90,23 @@ defmodule Logflare.BqRepo do
 
       {:ok, response}
     end
+  end
+
+  @spec get_query_results(User.t(), String.t(), String.t(), String.t(), Keyword.t()) ::
+          {:ok, map()} | {:error, any()}
+  def get_query_results(%User{} = user, project_id, job_id, page_token, opts \\ []) do
+    optional_params =
+      [
+        pageToken: page_token,
+        location: Keyword.get(opts, :location),
+        maxResults: Keyword.get(opts, :maxResults),
+        timeoutMs: Keyword.get(opts, :timeoutMs, @query_request_timeout)
+      ]
+      |> Enum.reject(fn {_k, v} -> is_nil(v) end)
+
+    GenUtils.get_conn({:query, user})
+    |> Api.Jobs.bigquery_jobs_get_query_results(project_id, job_id, optional_params)
+    |> GenUtils.maybe_parse_google_api_result()
   end
 
   defp warn_if_cost_above_limit(
