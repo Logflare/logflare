@@ -15,11 +15,29 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
   @initial_delay 500
   @max_delay 4_000
   @pool_timeout 8_000
-  @receive_timeout 30_000
+  @receive_timeout 40_000
 
-  @log_columns ~w(id source_uuid source_name project event_message log_attributes timestamp)
-  @metric_columns ~w(id source_uuid source_name project event_message time_unix start_time_unix metric_type attributes timestamp)
-  @trace_columns ~w(id source_uuid source_name project event_message span_attributes timestamp)
+  @log_columns ~w(id source_uuid source_name project trace_id span_id trace_flags
+    severity_text severity_number service_name event_message scope_name scope_version
+    scope_schema_url resource_schema_url resource_attributes scope_attributes
+    log_attributes mapping_config_id timestamp)
+
+  @metric_columns ~w(id source_uuid source_name project time_unix start_time_unix
+    metric_name metric_description metric_unit metric_type service_name event_message
+    scope_name scope_version scope_schema_url resource_schema_url resource_attributes
+    scope_attributes attributes aggregation_temporality is_monotonic flags value count
+    sum min max scale zero_count positive_offset negative_offset
+    bucket_counts explicit_bounds positive_bucket_counts negative_bucket_counts
+    quantile_values quantiles exemplars.filtered_attributes exemplars.time_unix
+    exemplars.value exemplars.span_id exemplars.trace_id
+    mapping_config_id timestamp)
+
+  @trace_columns ~w(id source_uuid source_name project trace_id span_id
+    parent_span_id trace_state span_name span_kind service_name event_message duration
+    status_code status_message scope_name scope_version resource_attributes span_attributes
+    events.timestamp events.name events.attributes
+    links.trace_id links.span_id links.trace_state links.attributes
+    mapping_config_id timestamp)
 
   @doc """
   Inserts a list of `LogEvent` structs into ClickHouse.
@@ -118,23 +136,28 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
          origin_source_name: origin_source_name
        }) do
     source_uuid_str = Atom.to_string(origin_source_uuid)
-    timestamp_us = body_timestamp_us(body["timestamp"])
 
     [
-      # id
       RowBinaryEncoder.uuid(id),
-      # source_uuid
       RowBinaryEncoder.string(source_uuid_str),
-      # source_name
       RowBinaryEncoder.string(origin_source_name || ""),
-      # project
-      RowBinaryEncoder.string(""),
-      # event_message
+      RowBinaryEncoder.string(body["project"] || ""),
+      RowBinaryEncoder.string(body["trace_id"] || ""),
+      RowBinaryEncoder.string(body["span_id"] || ""),
+      RowBinaryEncoder.uint8(body["trace_flags"] || 0),
+      RowBinaryEncoder.string(body["severity_text"] || ""),
+      RowBinaryEncoder.uint8(body["severity_number"] || 0),
+      RowBinaryEncoder.string(body["service_name"] || ""),
       RowBinaryEncoder.string(body["event_message"] || ""),
-      # log_attributes
-      RowBinaryEncoder.json(body),
-      # timestamp
-      RowBinaryEncoder.datetime64_from_unix(timestamp_us, :microsecond, 9)
+      RowBinaryEncoder.string(body["scope_name"] || ""),
+      RowBinaryEncoder.string(body["scope_version"] || ""),
+      RowBinaryEncoder.string(body["scope_schema_url"] || ""),
+      RowBinaryEncoder.string(body["resource_schema_url"] || ""),
+      RowBinaryEncoder.json(body["resource_attributes"] || %{}),
+      RowBinaryEncoder.json(body["scope_attributes"] || %{}),
+      RowBinaryEncoder.json(body["log_attributes"] || %{}),
+      RowBinaryEncoder.uuid(body["mapping_config_id"]),
+      RowBinaryEncoder.int64(body["timestamp"])
     ]
   end
 
@@ -146,29 +169,52 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
          origin_source_name: origin_source_name
        }) do
     source_uuid_str = Atom.to_string(origin_source_uuid)
-    timestamp_us = body_timestamp_us(body["timestamp"])
 
     [
-      # id
       RowBinaryEncoder.uuid(id),
-      # source_uuid
       RowBinaryEncoder.string(source_uuid_str),
-      # source_name
       RowBinaryEncoder.string(origin_source_name || ""),
-      # project
-      RowBinaryEncoder.string(""),
-      # event_message
+      RowBinaryEncoder.string(body["project"] || ""),
+      RowBinaryEncoder.nullable(body["time_unix"], &RowBinaryEncoder.int64/1),
+      RowBinaryEncoder.nullable(body["start_time_unix"], &RowBinaryEncoder.int64/1),
+      RowBinaryEncoder.string(body["metric_name"] || ""),
+      RowBinaryEncoder.string(body["metric_description"] || ""),
+      RowBinaryEncoder.string(body["metric_unit"] || ""),
+      RowBinaryEncoder.enum8(body["metric_type"] || 1),
+      RowBinaryEncoder.string(body["service_name"] || ""),
       RowBinaryEncoder.string(body["event_message"] || ""),
-      # time_unix
-      RowBinaryEncoder.datetime64_from_unix(timestamp_us, :microsecond, 9),
-      # start_time_unix
-      RowBinaryEncoder.datetime64_from_unix(timestamp_us, :microsecond, 9),
-      # metric_type
-      RowBinaryEncoder.enum8(1),
-      # attributes
-      RowBinaryEncoder.json(body),
-      # timestamp
-      RowBinaryEncoder.datetime64_from_unix(timestamp_us, :microsecond, 9)
+      RowBinaryEncoder.string(body["scope_name"] || ""),
+      RowBinaryEncoder.string(body["scope_version"] || ""),
+      RowBinaryEncoder.string(body["scope_schema_url"] || ""),
+      RowBinaryEncoder.string(body["resource_schema_url"] || ""),
+      RowBinaryEncoder.json(body["resource_attributes"] || %{}),
+      RowBinaryEncoder.json(body["scope_attributes"] || %{}),
+      RowBinaryEncoder.json(body["attributes"] || %{}),
+      RowBinaryEncoder.string(body["aggregation_temporality"] || ""),
+      RowBinaryEncoder.bool(body["is_monotonic"] || false),
+      RowBinaryEncoder.uint32(body["flags"] || 0),
+      RowBinaryEncoder.float64(body["value"] || 0),
+      RowBinaryEncoder.uint64(body["count"] || 0),
+      RowBinaryEncoder.float64(body["sum"] || 0),
+      RowBinaryEncoder.float64(body["min"] || 0),
+      RowBinaryEncoder.float64(body["max"] || 0),
+      RowBinaryEncoder.int32(body["scale"] || 0),
+      RowBinaryEncoder.uint64(body["zero_count"] || 0),
+      RowBinaryEncoder.int32(body["positive_offset"] || 0),
+      RowBinaryEncoder.int32(body["negative_offset"] || 0),
+      RowBinaryEncoder.array_uint64(body["bucket_counts"] || []),
+      RowBinaryEncoder.array_float64(body["explicit_bounds"] || []),
+      RowBinaryEncoder.array_uint64(body["positive_bucket_counts"] || []),
+      RowBinaryEncoder.array_uint64(body["negative_bucket_counts"] || []),
+      RowBinaryEncoder.array_float64(body["quantile_values"] || []),
+      RowBinaryEncoder.array_float64(body["quantiles"] || []),
+      RowBinaryEncoder.array_json(body["exemplars.filtered_attributes"] || []),
+      RowBinaryEncoder.array(body["exemplars.time_unix"] || [], &RowBinaryEncoder.int64/1),
+      RowBinaryEncoder.array_float64(body["exemplars.value"] || []),
+      RowBinaryEncoder.array_string(body["exemplars.span_id"] || []),
+      RowBinaryEncoder.array_string(body["exemplars.trace_id"] || []),
+      RowBinaryEncoder.uuid(body["mapping_config_id"]),
+      RowBinaryEncoder.int64(body["timestamp"])
     ]
   end
 
@@ -180,32 +226,38 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
          origin_source_name: origin_source_name
        }) do
     source_uuid_str = Atom.to_string(origin_source_uuid)
-    timestamp_us = body_timestamp_us(body["timestamp"])
 
     [
-      # id
       RowBinaryEncoder.uuid(id),
-      # source_uuid
       RowBinaryEncoder.string(source_uuid_str),
-      # source_name
       RowBinaryEncoder.string(origin_source_name || ""),
-      # project
-      RowBinaryEncoder.string(""),
-      # event_message
+      RowBinaryEncoder.string(body["project"] || ""),
+      RowBinaryEncoder.string(body["trace_id"] || ""),
+      RowBinaryEncoder.string(body["span_id"] || ""),
+      RowBinaryEncoder.string(body["parent_span_id"] || ""),
+      RowBinaryEncoder.string(body["trace_state"] || ""),
+      RowBinaryEncoder.string(body["span_name"] || ""),
+      RowBinaryEncoder.string(body["span_kind"] || ""),
+      RowBinaryEncoder.string(body["service_name"] || ""),
       RowBinaryEncoder.string(body["event_message"] || ""),
-      # span_attributes
-      RowBinaryEncoder.json(body),
-      # timestamp
-      RowBinaryEncoder.datetime64_from_unix(timestamp_us, :microsecond, 9)
+      RowBinaryEncoder.uint64(body["duration"] || 0),
+      RowBinaryEncoder.string(body["status_code"] || ""),
+      RowBinaryEncoder.string(body["status_message"] || ""),
+      RowBinaryEncoder.string(body["scope_name"] || ""),
+      RowBinaryEncoder.string(body["scope_version"] || ""),
+      RowBinaryEncoder.json(body["resource_attributes"] || %{}),
+      RowBinaryEncoder.json(body["span_attributes"] || %{}),
+      RowBinaryEncoder.array(body["events.timestamp"] || [], &RowBinaryEncoder.int64/1),
+      RowBinaryEncoder.array_string(body["events.name"] || []),
+      RowBinaryEncoder.array_json(body["events.attributes"] || []),
+      RowBinaryEncoder.array_string(body["links.trace_id"] || []),
+      RowBinaryEncoder.array_string(body["links.span_id"] || []),
+      RowBinaryEncoder.array_string(body["links.trace_state"] || []),
+      RowBinaryEncoder.array_json(body["links.attributes"] || []),
+      RowBinaryEncoder.uuid(body["mapping_config_id"]),
+      RowBinaryEncoder.int64(body["timestamp"])
     ]
   end
-
-  @spec body_timestamp_us(integer() | nil) :: integer()
-  defp body_timestamp_us(nil) do
-    DateTime.to_unix(DateTime.utc_now(), :microsecond)
-  end
-
-  defp body_timestamp_us(timestamp_us) when is_pos_integer(timestamp_us), do: timestamp_us
 
   @spec build_connection_opts(Backend.t()) :: {:ok, Keyword.t()} | {:error, String.t()}
   defp build_connection_opts(%Backend{config: config}) do

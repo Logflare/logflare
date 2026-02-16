@@ -37,8 +37,13 @@ defmodule Logflare.Sources.Cache do
   # For ingest
   def get_by_and_preload_rules(kv) do
     case get_by(kv) do
-      nil -> nil
-      %Source{} = source -> preload_rules(source)
+      nil ->
+        nil
+
+      %Source{} = source ->
+        source
+        |> preload_rules()
+        |> Source.parse_key_values_config()
     end
   end
 

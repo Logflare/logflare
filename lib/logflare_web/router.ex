@@ -203,6 +203,7 @@ defmodule LogflareWeb.Router do
       live("/backends/:id", BackendsLive, :show)
       live("/backends/:id/edit", BackendsLive, :edit)
       live("/query", QueryLive, :index)
+      live("/key-values", KeyValuesLive, :index)
 
       scope "/integrations" do
         live("/vercel/edit", VercelLogDrainsLive, :edit)
@@ -438,6 +439,10 @@ defmodule LogflareWeb.Router do
       param: "token",
       only: [:index, :show, :create, :update, :delete]
     )
+
+    get "/key-values", Api.KeyValueController, :index
+    post "/key-values", Api.KeyValueController, :create
+    delete "/key-values", Api.KeyValueController, :delete
   end
 
   scope "/api/partner", LogflareWeb do

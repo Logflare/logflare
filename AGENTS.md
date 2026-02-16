@@ -6,31 +6,33 @@ Logflare is a real-time log aggregation platform built with Elixir/Phoenix. The 
 
 - **`Logflare.Logs`** - Central log processing, validation, and routing
 - **`Logflare.Sources`** - Log source management and schema handling
-- **`Logflare.Backends`** - Pluggable backend adapters (BigQuery, ClickHouse, PostgreSQL, etc.)
+- **`Logflare.Backends`** - Pluggable backend adapters (BigQuery, ClickHouse, PostgreSQL, and others — see `lib/logflare/backends/adaptor/` for full list)
 - **`Logflare.Endpoints`** - Parameterized SQL endpoints for analytics
 - **`Logflare.Users`** - User management and authentication
 - **`Logflare.Teams`** - Multi-tenant team support
 - **`Logflare.Billing`** - Subscription and usage tracking with Stripe
 - **`Logflare.Alerting`** - Log-based alerting system
+- **`Logflare.Mapper`** - Data mapping/transformation system with Rust NIF backend
+- **`Logflare.Rules`** - Rule engine for log routing
+- **`Logflare.SourceSchemas`** - Source schema management
+- **`Logflare.Partners`** - Partner integrations (Vercel, etc.)
 
 ## Important File Locations
 
-- **Main Application**: `lib/logflare.ex`, `lib/logflare/application.ex`
-- **Web Layer**: `lib/logflare_web/` (controllers, live views, channels)
-- **Core Contexts**: `lib/logflare/` (domain logic organized by context)
-- **Backend Adapters**: `lib/logflare/backends/adaptor/`
+- **Backend Adapters**: `lib/logflare/backends/adaptor/` (note: "adaptor" spelling)
 - **SQL Parsing**: `lib/logflare/sql.ex`, `lib/logflare/sql/`
 - **LQL Parsing**: `lib/logflare/lql.ex`, `lib/logflare/lql/`
-- **Database**: `priv/repo/migrations/`, `priv/repo/seeds.exs`
-- **Configuration**: `config/` directory
-- **Tests**: `test/` directory
+- **Mapper**: `lib/logflare/mapper/`, `native/mapper_ex/`
 - **Test Support**: `test/support/factory.ex` (data factories), `test/test_helper.exs` (Mimic setup)
 - **Public-Facing Documentation**: `docs/docs.logflare.com/docs` directory
-- **Utilities**: `lib/logflare/utils/` and `lib/logflare/utils.ex`
 
 ## SQL Parsing
 
 SQL parsing is handled via a Rust NIF in `native/sqlparser_ex`, using the [`sqlparser`](https://crates.io/crates/sqlparser) crate. The Elixir interface is in `lib/logflare/sql/parser.ex` with higher-level functions in `lib/logflare/sql.ex`. Check `native/sqlparser_ex/Cargo.toml` for the crate version before making assumptions.
+
+## Configuration-Based Data Mapping
+
+Config-based data mapping/transformation (currently for ClickHouse backends only) is handled via a Rust NIF in `native/mapper_ex/`. The Elixir interface is in `lib/logflare/mapper/native.ex` with higher-level functions in `lib/logflare/mapper/`.
 
 ## Development Commands
 
@@ -143,10 +145,7 @@ build(:backend)                  # Build without inserting
 
 ### Ecto Patterns
 
-**Custom Ecto types** in `lib/logflare/ecto/`:
-- `Ecto.Atom` - stores atoms as strings
-- `Ecto.Term` - serializes arbitrary Elixir terms
-- `Ecto.Regex` - stores compiled regexes
+Custom Ecto types are defined in `lib/logflare/ecto/` — review existing types before creating new ones.
 
 **Typed schemas**: This project uses `typed_ecto_schema` for type-safe embedded schemas:
 ```elixir
@@ -159,4 +158,6 @@ end
 
 **Single-tenant mode**: Check `Logflare.SingleTenant.single_tenant?()` - behavior differs between multi-tenant (SaaS) and single-tenant deployments.
 
-**Log processing**: Broadway pipelines handle log ingestion. `Logflare.Backends.DynamicPipeline` scales pipelines dynamically based on load.
+**Log processing**: Broadway pipelines handle log ingestion. `Logflare.Backends.DynamicPipeline` scales pipelines dynamically based on load. Incoming events are classified as `:log`, `:metric`, or `:trace` by `Logflare.Logs.LogEvent.TypeDetection`, which determines routing and table selection in backend adaptors. OpenTelemetry protobuf payloads are converted into `LogEvent` structs via modules in `lib/logflare/logs/`.
+
+**ClickHouse consolidated pipeline**: The ClickHouse adaptor uses a single Broadway pipeline per backend. Messages are partitioned by `log_type` via `put_batch_key`, routing to type-specific OTEL tables (`otel_logs_*`, `otel_metrics_*`, `otel_traces_*`). See `lib/logflare/backends/adaptor/clickhouse_adaptor/` for internals.

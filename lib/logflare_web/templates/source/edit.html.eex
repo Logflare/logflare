@@ -266,6 +266,21 @@
     </div>
     <%= submit "Update field copying rules", class: "btn btn-primary form-button" %>
   <% end %>
+
+  <%= section_header("Key-Value Enrichment") %>
+  <p>
+    Enrich events using key-value lookups at ingestion. For each rule, the source field's value is looked up in your account's key-value store. The stored JSON value (or a sub-value extracted via an accessor path) is set on the destination field. Runs after field copying.
+  </p>
+  <%= form_for @changeset, Routes.source_path(@conn, :update, @source), fn e -> %>
+    <div class="form-group">
+      <%= textarea e, :transform_key_values, placeholder: "project:enriched\nproject:m.org_name:org.name\nproject:m.region:$.geo.region", class: "form-control form-control-margin tw-h-[120px]" %>
+      <%= error_tag e, :transform_key_values %>
+      <small class="form-text text-muted">
+        One rule per line. Pattern: <code>lookup_field:destination_field</code> or <code>lookup_field:destination_field:accessor_path</code>. Use <code>m.</code> as shorthand for <code>metadata.</code>. The accessor path extracts a nested value from the stored JSON — use dot syntax (<code>org.id</code>) or JSONPath (<code>$.org.id</code>). Without an accessor path, the entire stored value is set at the destination.
+      </small>
+    </div>
+    <%= submit "Update key-value enrichment rules", class: "btn btn-primary form-button" %>
+  <% end %>
   <hr/>
 
   <%= section_header("Backend TTL") %>
