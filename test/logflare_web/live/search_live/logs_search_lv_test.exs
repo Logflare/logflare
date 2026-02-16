@@ -583,36 +583,31 @@ defmodule LogflareWeb.Source.SearchLVTest do
       assert_receive {:event_query, _query}
       assert_receive {:agg_query, _query}
 
-      TestUtils.retry_assert(fn ->
-        html = view |> element("#logs-list-container") |> render()
+      html = view |> element("#logs-list-container") |> render()
 
-        assert html =~ "No events matching your query"
+      assert html =~ "No events matching your query"
 
-        {:ok, document} = Floki.parse_document(html)
+      {:ok, document} = Floki.parse_document(html)
 
-        extend_search_links =
-          document
-          |> Floki.find("a")
-          |> Enum.filter(fn link -> Floki.text(link) =~ "Extend search" end)
+      assert [link] =
+               document
+               |> Floki.find("a")
+               |> Enum.filter(fn link -> Floki.text(link) =~ "Extend search" end)
 
-        assert [_link] = extend_search_links
-        [link] = extend_search_links
+      assert Floki.text(document) =~ "t:>=#{expected_hits_ts}"
+      refute Floki.text(document) =~ "t:>=#{expected_zero_ts}"
 
-        assert Floki.text(document) =~ "t:>=#{expected_hits_ts}"
-        refute Floki.text(document) =~ "t:>=#{expected_zero_ts}"
+      href =
+        link
+        |> Floki.attribute("href")
+        |> hd()
 
-        href =
-          link
-          |> Floki.attribute("href")
-          |> hd()
+      uri = URI.parse(href)
+      assert uri.path == "/sources/#{source.id}/search"
 
-        uri = URI.parse(href)
-        assert uri.path == "/sources/#{source.id}/search"
-
-        query_params = URI.decode_query(uri.query)
-        assert query_params["tailing?"] == "false"
-        assert query_params["querystring"] =~ "t:>=#{expected_hits_ts}"
-      end)
+      query_params = URI.decode_query(uri.query)
+      assert query_params["tailing?"] == "false"
+      assert query_params["querystring"] =~ "t:>=#{expected_hits_ts}"
     end
 
     test "page title includes source name", %{conn: conn, source: source} do
