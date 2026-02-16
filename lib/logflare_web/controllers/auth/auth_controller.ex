@@ -19,7 +19,6 @@ defmodule LogflareWeb.AuthController do
     conn
     |> configure_session(drop: true)
     |> put_resp_cookie("_logflare_last_provider", "", max_age: 0)
-    |> put_resp_cookie("_logflare_last_team", "", max_age: 0)
     |> put_resp_cookie("_logflare_team_user_id", "", max_age: 0)
     |> put_resp_cookie("_logflare_user_id", "", max_age: 0)
     |> redirect(to: Routes.auth_path(conn, :login))

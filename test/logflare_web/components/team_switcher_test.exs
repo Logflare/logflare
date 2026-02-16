@@ -45,7 +45,9 @@ defmodule LogflareWeb.TeamSwitcherTest do
 
       conn
       |> visit("/account/edit?key=test")
-      |> assert_has(~s|#team-switcher a[href="/account/edit?key=test&t=#{team2.id}"]|)
+      |> assert_has(
+        ~s|#team-switcher a[href="/teams/switch?team_id=#{team2.id}&redirect_to=%2Faccount%2Fedit%3Fkey%3Dtest"]|
+      )
     end
   end
 end

@@ -220,10 +220,10 @@ defmodule LogflareWeb.CoreComponents do
       </a>
       <div :if={@has_multiple_teams} class="dropdown-menu dropdown-menu-right" aria-labelledby="teamDropdown">
         <%= for team <- @teams do %>
-          <.team_link team={team} href={@current_path} class={["dropdown-item tw-flex tw-items-center tw-gap-2", @selected_class.(team.id)]}>
+          <a href={~p"/teams/switch?#{[team_id: team.id, redirect_to: @current_path]}"} class={["dropdown-item tw-flex tw-items-center tw-gap-2", @selected_class.(team.id)]}>
             <span>{team.name}</span>
             <span :if={TeamContext.home_team?(team, @team_context)} class="tw-text-sm tw-self-end">home team</span>
-          </.team_link>
+          </a>
         <% end %>
       </div>
     </li>
