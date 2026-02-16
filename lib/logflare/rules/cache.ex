@@ -45,23 +45,10 @@ defmodule Logflare.Rules.Cache do
 
   def get_rules(ids) do
     Cachex.execute!(__MODULE__, fn cache ->
-      for id <- ids, do: get_rule_via_cache(cache, id)
+      for id <- ids do
+        ContextCache.fetch(cache, {:get_rule, [id]}, fn -> Rules.get_rule(id) end)
+      end
     end)
-  end
-
-  defp get_rule_via_cache(cache, id) do
-    Cachex.fetch(cache, {:get_rule, [id]}, fn _key ->
-      # Use a `:cached` tuple here otherwise when an fn returns nil Cachex will miss
-      # the cache because it thinks ETS returned nil
-      {:commit, {:cached, Rules.get_rule(id)}}
-    end)
-    |> case do
-      {:commit, {:cached, value}} ->
-        value
-
-      {:ok, {:cached, value}} ->
-        value
-    end
   end
 
   def list_by_source_id(id), do: apply_repo_fun(__ENV__.function, [id])
