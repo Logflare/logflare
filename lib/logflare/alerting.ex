@@ -6,7 +6,7 @@ defmodule Logflare.Alerting do
   import Ecto.Query, warn: false
 
   alias Logflare.Alerting.AlertQuery
-  alias Logflare.Alerting.AlertsScheduler
+  alias Logflare.Alerting.AlertWorker
   alias Logflare.Backends
   alias Logflare.Backends.Adaptor
   alias Logflare.Backends.Adaptor.BigQueryAdaptor
@@ -19,13 +19,9 @@ defmodule Logflare.Alerting do
   alias Logflare.Teams
   alias Logflare.TeamUsers.TeamUser
   alias Logflare.User
-  alias Logflare.Utils
 
   require Logger
   require OpenTelemetry.Tracer
-
-  def to_job_name(%AlertQuery{id: id}), do: to_job_name(id)
-  def to_job_name(id) when is_integer(id), do: String.to_atom(Integer.to_string(id))
 
   @doc """
   Returns the list of alert_queries.
@@ -44,6 +40,15 @@ defmodule Logflare.Alerting do
   def list_alert_queries_by_user_id(user_id) do
     from(q in AlertQuery, where: q.user_id == ^user_id)
     |> Repo.all()
+  end
+
+  @doc """
+  Lists all alert queries across all users.
+  Used by the scheduler worker to enqueue jobs.
+  """
+  @spec list_all_alert_queries() :: [AlertQuery.t()]
+  def list_all_alert_queries do
+    Repo.all(AlertQuery)
   end
 
   @doc """
@@ -158,13 +163,9 @@ defmodule Logflare.Alerting do
       {:error, %Ecto.Changeset{}}
 
   """
+  @spec delete_alert_query(AlertQuery.t()) :: {:ok, AlertQuery.t()} | {:error, Ecto.Changeset.t()}
   def delete_alert_query(%AlertQuery{} = alert_query) do
-    with {:ok, _} <- Repo.delete(alert_query),
-         {:ok, _job} <- delete_alert_job(alert_query) do
-      {:ok, alert_query}
-    else
-      {:error, :not_found} -> {:ok, alert_query}
-    end
+    Repo.delete(alert_query)
   end
 
   @doc """
@@ -179,94 +180,6 @@ defmodule Logflare.Alerting do
   @spec change_alert_query(AlertQuery.t()) :: Ecto.Changeset.t()
   def change_alert_query(%AlertQuery{} = alert_query, attrs \\ %{}) do
     AlertQuery.changeset(alert_query, attrs)
-  end
-
-  @doc """
-  Retrieves a Job based on AlertQuery.
-  Job shares the same id as AlertQuery, resulting in a 1-1 relationship.
-  """
-  @spec get_alert_job(AlertQuery.t()) :: Quantum.Job.t()
-  def get_alert_job(%AlertQuery{id: id}), do: get_alert_job(id)
-
-  def get_alert_job(id) do
-    on_scheduler_node(fn ->
-      AlertsScheduler.find_job(to_job_name(id))
-    end)
-  end
-
-  @doc """
-  Updates or creates a new Quantum.Job based on a given AlertQuery.
-  """
-  @spec upsert_alert_job(AlertQuery.t()) :: {:ok, Quantum.Job.t()}
-  def upsert_alert_job(%AlertQuery{} = alert_query) do
-    job = create_alert_job_struct(alert_query)
-    :ok = on_scheduler_node(fn -> AlertsScheduler.add_job(job) end)
-    {:ok, job}
-  end
-
-  @doc """
-  Creates an alert job struct (but does not insert it into the scheduler.)
-  """
-  @spec create_alert_job_struct(AlertQuery.t()) :: Quantum.Job.t()
-  def create_alert_job_struct(%AlertQuery{id: alert_query_id} = alert_query)
-      when not is_nil(alert_query_id) do
-    AlertsScheduler.new_job(run_strategy: Quantum.RunStrategy.Local)
-    |> Quantum.Job.set_task({__MODULE__, :run_alert, [alert_query_id, :scheduled]})
-    |> Quantum.Job.set_schedule(Crontab.CronExpression.Parser.parse!(alert_query.cron))
-    |> Quantum.Job.set_name(to_job_name(alert_query))
-  end
-
-  @doc """
-  Initializes and ensures that all alert jobs are created.
-  TODO: batching instead of loading whole table.
-  """
-  def init_alert_jobs do
-    AlertQuery
-    |> Repo.all()
-    |> Enum.map(fn alert_query ->
-      create_alert_job_struct(alert_query)
-    end)
-  end
-
-  def sync_alert_jobs do
-    on_scheduler_node(fn ->
-      Utils.Tasks.start_child(&do_sync_alert_jobs/0)
-    end)
-  end
-
-  defp do_sync_alert_jobs do
-    wanted_jobs = init_alert_jobs()
-    wanted_jobs_set = MapSet.new(wanted_jobs, & &1.name)
-    current_jobs = AlertsScheduler.jobs()
-
-    # Delete jobs that are no longer wanted
-    Enum.each(current_jobs, fn {name, _job} ->
-      if not MapSet.member?(wanted_jobs_set, name) do
-        AlertsScheduler.delete_job(name)
-      end
-    end)
-
-    # Upsert all wanted jobs
-    Enum.each(wanted_jobs, &AlertsScheduler.add_job/1)
-  end
-
-  @doc """
-  Syncs a specific alert job by alert_id.
-  Upserts the job if it doesn't exist, otherwise deletes the existing job.
-  """
-  @spec sync_alert_job(integer) :: :ok | {:error, :not_found}
-  def sync_alert_job(alert_id) when is_integer(alert_id) do
-    on_scheduler_node(fn -> do_sync_alert_job(alert_id) end)
-  end
-
-  defp do_sync_alert_job(alert_id) do
-    if alert_query = get_alert_query_by(id: alert_id) do
-      job = create_alert_job_struct(alert_query)
-      :ok = AlertsScheduler.add_job(job)
-    else
-      AlertsScheduler.delete_job(to_job_name(alert_id))
-      {:error, :not_found}
-    end
   end
 
   @doc """
@@ -374,54 +287,42 @@ defmodule Logflare.Alerting do
   end
 
   @doc """
-  Deletes an AlertQuery's job from the scheduler
-  noop if already deleted.
-  ### Examples
-
-  ```elixir
-  iex> delete_alert_job(%AlertQuery{})
-  :ok
-  iex> delete_alert_job(alert_query.id)
-  :ok
-  ```
+  Inserts an immediate AlertWorker job for manual triggering.
   """
-  @spec delete_alert_job(AlertQuery.t() | number()) ::
-          {:ok, Quantum.Job.t()} | {:error, :not_found}
-  def delete_alert_job(%AlertQuery{id: id}), do: delete_alert_job(id)
-
-  def delete_alert_job(alert_id) when is_integer(alert_id) do
-    on_scheduler_node(fn ->
-      case AlertsScheduler.find_job(to_job_name(alert_id)) do
-        %_{} = job ->
-          AlertsScheduler.delete_job(job.name)
-          {:ok, job}
-
-        nil ->
-          {:error, :not_found}
-      end
-    end)
+  @spec trigger_alert_now(AlertQuery.t()) :: {:ok, Oban.Job.t()} | {:error, Oban.Job.changeset()}
+  def trigger_alert_now(%AlertQuery{id: alert_query_id}) do
+    %{alert_query_id: alert_query_id, scheduled_at: DateTime.to_iso8601(DateTime.utc_now())}
+    |> AlertWorker.new()
+    |> Oban.insert()
   end
 
   @doc """
-  List alert jobs on the scheduler
+  Lists recent execution history for an alert query from Oban jobs.
   """
-  def list_alert_jobs do
-    on_scheduler_node(fn ->
-      AlertsScheduler.jobs()
-    end)
+  @spec list_execution_history(integer()) :: [Oban.Job.t()]
+  def list_execution_history(alert_query_id) do
+    from(j in Oban.Job,
+      where: j.worker == "Logflare.Alerting.AlertWorker",
+      where: fragment("?->>'alert_query_id' = ?", j.args, ^to_string(alert_query_id)),
+      order_by: [desc: j.scheduled_at],
+      limit: 50
+    )
+    |> Repo.all()
   end
 
-  @spec on_scheduler_node((-> func_ret)) :: func_ret when func_ret: term
-  defp on_scheduler_node(func) do
-    case GenServer.whereis(scheduler_name()) do
-      pid when is_pid(pid) ->
-        pid
-        |> node()
-        |> Cluster.Utils.rpc_call(func)
+  @doc """
+  Partitions jobs into future (upcoming) and past (completed/failed) lists.
+  """
+  @spec partition_jobs_by_time([Oban.Job.t()]) :: %{future: [Oban.Job.t()], past: [Oban.Job.t()]}
+  def partition_jobs_by_time(jobs) do
+    future_states = ~w(available scheduled executing)
 
-      {_name, node} ->
-        Cluster.Utils.rpc_call(node, func)
-    end
+    {future, past} =
+      Enum.split_with(jobs, fn job ->
+        to_string(job.state) in future_states
+      end)
+
+    %{future: future, past: past}
   end
 
   @doc """
@@ -493,13 +394,4 @@ defmodule Logflare.Alerting do
 
   # helper to get the google project id via env.
   defp env_project_id, do: Application.get_env(:logflare, Logflare.Google)[:project_id]
-
-  @doc """
-  Returns the alerts scheduler :via name used for syn registry.
-  """
-  def scheduler_name do
-    ts = System.os_time(:nanosecond)
-    # add nanosecond resolution for timestamp comparison
-    {:via, :syn, {:alerting, Logflare.Alerting.AlertsScheduler, %{timestamp: ts}}}
-  end
 end

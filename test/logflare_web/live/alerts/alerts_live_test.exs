@@ -18,7 +18,6 @@ defmodule LogflareWeb.AlertsLiveTest do
     user = insert(:user)
     team = insert(:team, user: user)
     conn = login_user(conn, user)
-    start_supervised!(Logflare.Alerting.Supervisor)
     [user: user, team: team, conn: conn]
   end
 
@@ -43,13 +42,6 @@ defmodule LogflareWeb.AlertsLiveTest do
 
   describe "Index" do
     setup [:create_alert_query]
-
-    setup do
-      Logflare.Alerting.AlertsScheduler
-      |> stub(:add_job, fn _ -> :ok end)
-
-      :ok
-    end
 
     test "mounts successfully with user_id from session", %{conn: conn, user: user} do
       # This reproduces a bug where list_sources_by_user/1 expects an integer

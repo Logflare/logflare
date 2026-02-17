@@ -31,6 +31,7 @@
   <div>
     <button class="btn btn-secondary" phx-click="run-query">Run query</button>
     <button class="btn btn-secondary" phx-click="manual-trigger">Manual trigger</button>
+    <button class="btn btn-outline-primary" phx-click="trigger-now">Trigger now (Oban)</button>
   </div>
 
   <div>
@@ -98,4 +99,48 @@
   </div>
 
   <.run_query_result {assigns} />
+
+  <div :if={@future_jobs != [] or @past_jobs != []}>
+    <h3>Execution History</h3>
+
+    <div :if={@future_jobs != []} class="tw-mb-4">
+      <h5>Upcoming Jobs</h5>
+      <table class="table table-sm">
+        <thead>
+          <tr>
+            <th>Scheduled At</th>
+            <th>State</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr :for={job <- @future_jobs}>
+            <td>{Calendar.strftime(job.scheduled_at, "%Y-%m-%d %H:%M:%S UTC")}</td>
+            <td><span class={"badge badge-#{job_state_badge_class(job.state)}"}>{job.state}</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div :if={@past_jobs != []}>
+      <h5>Past Executions</h5>
+      <table class="table table-sm">
+        <thead>
+          <tr>
+            <th>Scheduled At</th>
+            <th>Completed At</th>
+            <th>State</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr :for={job <- @past_jobs}>
+            <td>{Calendar.strftime(job.scheduled_at, "%Y-%m-%d %H:%M:%S UTC")}</td>
+            <td>
+              {if job.completed_at, do: Calendar.strftime(job.completed_at, "%Y-%m-%d %H:%M:%S UTC"), else: "-"}
+            </td>
+            <td><span class={"badge badge-#{job_state_badge_class(job.state)}"}>{job.state}</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
 </section>
