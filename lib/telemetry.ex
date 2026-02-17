@@ -113,7 +113,6 @@ defmodule Logflare.Telemetry do
       last_value("logflare.system.observer.metrics.schedulers"),
       last_value("logflare.system.observer.metrics.schedulers_online"),
       last_value("logflare.system.observer.metrics.otp_release"),
-      last_value("logflare.system.observer.metrics.version"),
       last_value("logflare.system.observer.metrics.atom_limit"),
       last_value("logflare.system.observer.metrics.atom_count"),
       last_value("logflare.system.observer.metrics.process_limit"),
@@ -214,11 +213,6 @@ defmodule Logflare.Telemetry do
       sum("logflare.backends.ingest.dispatch.count",
         tags: [:backend_type],
         description: "Ingest counts by backend type"
-      ),
-      distribution("logflare.backends.ingest.dispatch.stop.duration",
-        tags: [:backend_type],
-        unit: {:native, :millisecond},
-        description: "Ingest dispatch latency by backend type"
       ),
       distribution("logflare.backends.ingest.dispatch.stop.duration",
         tags: [:backend_type],
