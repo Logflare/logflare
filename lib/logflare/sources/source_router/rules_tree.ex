@@ -95,7 +95,7 @@ defmodule Logflare.Sources.SourceRouter.RulesTree do
         le_value >= lvalue and le_value <= rvalue
 
       :list_includes ->
-        expected in le_value
+        expected in List.wrap(le_value)
 
       :list_includes_regexp ->
         stringify(le_value) =~ ~r/#{expected}/u

@@ -2,6 +2,8 @@ defmodule Logflare.Sources.SourceRouterTest do
   use Logflare.DataCase
 
   alias Logflare.Sources.SourceRouter
+  alias Logflare.LogEvent
+  alias Logflare.Lql.Parser
   alias Logflare.Lql.Rules.FilterRule
   alias Logflare.Rules.Rule
 
@@ -46,6 +48,26 @@ defmodule Logflare.Sources.SourceRouterTest do
 
         {le, source} = build_data.(["2", "6", "0"], nil)
         assert unquote(router).matching_rules(le, source) == []
+      end
+
+      test "list_includes operator on non-list", %{user: user} do
+        build_data = fn rule_value, event_value ->
+          lql_string = "user_agent:@>#{rule_value}"
+          {:ok, filters} = Parser.parse(lql_string)
+          rule = %Rule{lql_string: lql_string, lql_filters: filters}
+
+          source = insert(:source, user: user, rules: [rule])
+
+          le = LogEvent.make(%{"user_agent" => event_value}, %{source: source})
+
+          {le, source}
+        end
+
+        {le, source} = build_data.("Chrome", "HomeAssistant/2026.2.2 aiohttp/3.13.3 Python/3.13")
+        assert unquote(router).matching_rules(le, source) == []
+
+        {le, source} = build_data.("Chrome", "Chrome")
+        assert unquote(router).matching_rules(le, source) == source.rules
       end
 
       test "list_includes_regexp operator", %{user: user} do
