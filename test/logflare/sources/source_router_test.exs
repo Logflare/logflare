@@ -98,6 +98,12 @@ defmodule Logflare.Sources.SourceRouterTest do
         {le, source} = build_data.(["a", "b", "abc123"], "23")
         assert unquote(router).matching_rules(le, source) == source.rules
 
+        {le, source} = build_data.(["a", "b", "abc123"], "a\",")
+        assert unquote(router).matching_rules(le, source) == []
+
+        {le, source} = build_data.("a, b, abc123", "b,")
+        assert unquote(router).matching_rules(le, source) == source.rules
+
         {le, source} = build_data.([], "23")
         assert unquote(router).matching_rules(le, source) == []
       end

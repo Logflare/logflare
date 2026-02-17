@@ -98,7 +98,11 @@ defmodule Logflare.Sources.SourceRouter.RulesTree do
         expected in List.wrap(le_value)
 
       :list_includes_regexp ->
-        stringify(le_value) =~ ~r/#{expected}/u
+        expected_regex = ~r/#{expected}/u
+
+        le_value
+        |> List.wrap()
+        |> Enum.any?(&(stringify(&1) =~ expected_regex))
 
       :string_contains ->
         String.contains?(stringify(le_value), stringify(expected))
