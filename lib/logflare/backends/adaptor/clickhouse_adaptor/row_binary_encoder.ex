@@ -301,8 +301,28 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.RowBinaryEncoder do
 
   @spec json(term()) :: iodata()
   def json(value) do
-    string(Jason.encode_to_iodata!(value))
+    string(Jason.encode_to_iodata!(sanitize_for_json(value)))
   end
+
+  @spec sanitize_for_json(term()) :: Jason.Encoder.t()
+  defp sanitize_for_json(value) when is_map(value) do
+    Map.new(value, fn {k, v} -> {k, sanitize_for_json(v)} end)
+  end
+
+  defp sanitize_for_json(value) when is_list(value) do
+    Enum.map(value, &sanitize_for_json/1)
+  end
+
+  defp sanitize_for_json(value) when is_tuple(value) do
+    value |> Tuple.to_list() |> Enum.map(&sanitize_for_json/1)
+  end
+
+  defp sanitize_for_json(value)
+       when is_port(value) or is_pid(value) or is_reference(value) or is_function(value) do
+    inspect(value)
+  end
+
+  defp sanitize_for_json(value), do: value
 
   # =============================================================================
   # Nullable (1-byte null flag + value if not null)
