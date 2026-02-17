@@ -1,6 +1,6 @@
 defmodule LogflareWeb.Source.SearchLVTest do
   @moduledoc false
-  use LogflareWeb.ConnCase, async: false
+  use LogflareWeb.ConnCase, async: true
 
   import Phoenix.LiveViewTest
 
