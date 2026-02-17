@@ -26,7 +26,8 @@ defmodule Logflare.SystemMetrics.Observer do
       io_output: output,
       logical_processors: to_integer(:erlang.system_info(:logical_processors)),
       logical_processors_online: to_integer(:erlang.system_info(:logical_processors_online)),
-      logical_processors_available: to_integer(:erlang.system_info(:logical_processors_available)),
+      logical_processors_available:
+        to_integer(:erlang.system_info(:logical_processors_available)),
       schedulers: :erlang.system_info(:schedulers),
       schedulers_online: :erlang.system_info(:schedulers_online),
       otp_release: :erlang.system_info(:otp_release) |> List.to_integer(),
