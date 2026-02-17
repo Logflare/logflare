@@ -38,11 +38,11 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.QueryTemplates do
   end
 
   @doc """
-  Dispatches to the correct type-specific DDL function based on `log_type`.
+  Dispatches to the correct type-specific DDL function based on `event_type`.
   """
   @spec create_table_statement(
           table :: String.t(),
-          log_type :: TypeDetection.log_type(),
+          event_type :: TypeDetection.event_type(),
           opts :: Keyword.t()
         ) :: String.t()
   def create_table_statement(table, :log, opts),

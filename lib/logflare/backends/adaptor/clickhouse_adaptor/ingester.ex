@@ -42,7 +42,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
   @doc """
   Inserts a list of `LogEvent` structs into ClickHouse.
 
-  This function expects that all LogEvents share the same `log_type`.
+  This function expects that all LogEvents share the same `event_type`.
 
   Not intended for direct use. Use `Logflare.Backends.Adaptor.ClickHouseAdaptor.insert_log_events/3` instead.
   """
@@ -50,23 +50,28 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
           Backend.t() | Keyword.t(),
           table :: String.t(),
           log_events :: [LogEvent.t()],
-          TypeDetection.log_type()
+          TypeDetection.event_type()
         ) ::
           :ok | {:error, String.t()}
-  def insert(_backend_or_conn_opts, _table, [], _log_type), do: :ok
+  def insert(_backend_or_conn_opts, _table, [], _event_type), do: :ok
 
-  def insert(%Backend{} = backend, table, log_events, log_type)
-      when is_list(log_events) and is_log_type(log_type) do
+  def insert(%Backend{} = backend, table, log_events, event_type)
+      when is_list(log_events) and is_event_type(event_type) do
     with {:ok, connection_opts} <- build_connection_opts(backend) do
-      insert(connection_opts, table, log_events, log_type)
+      insert(connection_opts, table, log_events, event_type)
     end
   end
 
-  def insert(connection_opts, table, [%LogEvent{log_type: log_type} | _] = log_events, log_type)
-      when is_list(connection_opts) and is_non_empty_binary(table) and is_log_type(log_type) do
+  def insert(
+        connection_opts,
+        table,
+        [%LogEvent{event_type: event_type} | _] = log_events,
+        event_type
+      )
+      when is_list(connection_opts) and is_non_empty_binary(table) and is_event_type(event_type) do
     client = build_client(connection_opts)
-    url = build_request_url(connection_opts, table, log_type)
-    request_body = log_events |> encode_batch(log_type) |> :zlib.gzip()
+    url = build_request_url(connection_opts, table, event_type)
+    request_body = log_events |> encode_batch(event_type) |> :zlib.gzip()
 
     case Tesla.post(client, url, request_body) do
       {:ok, %Tesla.Env{status: 200}} ->
@@ -111,19 +116,19 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
   defp retriable?({:error, _reason}), do: true
 
   @doc false
-  @spec encode_row(LogEvent.t(), TypeDetection.log_type()) :: iodata()
+  @spec encode_row(LogEvent.t(), TypeDetection.event_type()) :: iodata()
   def encode_row(%LogEvent{} = event, :log), do: encode_log_row(event)
   def encode_row(%LogEvent{} = event, :metric), do: encode_metric_row(event)
   def encode_row(%LogEvent{} = event, :trace), do: encode_trace_row(event)
 
   @doc false
-  @spec encode_batch([LogEvent.t()], TypeDetection.log_type()) :: iodata()
-  def encode_batch([%LogEvent{} | _] = rows, log_type) when is_log_type(log_type) do
-    Enum.map(rows, &encode_row(&1, log_type))
+  @spec encode_batch([LogEvent.t()], TypeDetection.event_type()) :: iodata()
+  def encode_batch([%LogEvent{} | _] = rows, event_type) when is_event_type(event_type) do
+    Enum.map(rows, &encode_row(&1, event_type))
   end
 
   @doc false
-  @spec columns_for_type(TypeDetection.log_type()) :: [String.t()]
+  @spec columns_for_type(TypeDetection.event_type()) :: [String.t()]
   def columns_for_type(:log), do: @log_columns
   def columns_for_type(:metric), do: @metric_columns
   def columns_for_type(:trace), do: @trace_columns
@@ -287,9 +292,9 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
   @spec build_request_url(
           connection_opts :: Keyword.t(),
           table :: String.t(),
-          TypeDetection.log_type()
+          TypeDetection.event_type()
         ) :: String.t()
-  defp build_request_url(connection_opts, table, log_type) do
+  defp build_request_url(connection_opts, table, event_type) do
     base_url = Keyword.get(connection_opts, :url)
     database = Keyword.get(connection_opts, :database)
     async_insert = Keyword.get(connection_opts, :async_insert, false)
@@ -299,7 +304,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
     host = uri.host
     port = Keyword.get(connection_opts, :port, default_port(scheme))
 
-    columns = columns_for_type(log_type) |> Enum.join(", ")
+    columns = columns_for_type(event_type) |> Enum.join(", ")
     query = "INSERT INTO #{database}.#{table} (#{columns}) FORMAT RowBinary"
 
     params =
