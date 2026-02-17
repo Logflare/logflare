@@ -48,6 +48,8 @@ defmodule LogflareWeb.AlertsLive do
       |> assign(:query_result_rows, nil)
       |> assign(:total_bytes_processed, nil)
       |> assign(:alert, nil)
+      |> assign(:future_jobs, [])
+      |> assign(:past_jobs, [])
       # to be lazy loaded
       |> assign(:backend_options, [])
       |> assign(:changeset, Alerting.change_alert_query(%AlertQuery{}))
@@ -82,8 +84,13 @@ defmodule LogflareWeb.AlertsLive do
            alert when is_struct(alert) <- Alerting.get_alert_query_by_user_access(user, id),
            alert <- Alerting.preload_alert_query(alert),
            alert <- Repo.preload(alert, user: :team) do
+        jobs = Alerting.list_execution_history(alert.id)
+        %{future: future, past: past} = Alerting.partition_jobs_by_time(jobs)
+
         socket
         |> assign(:alert, alert)
+        |> assign(:future_jobs, future)
+        |> assign(:past_jobs, past)
         |> assign(:changeset, Alerting.change_alert_query(alert))
         |> AuthLive.assign_context_by_resource(alert, user.email)
       else
@@ -311,6 +318,22 @@ defmodule LogflareWeb.AlertsLive do
     {:noreply, socket}
   end
 
+  def handle_event(
+        "trigger-now",
+        _params,
+        %{assigns: %{alert: %_{} = alert}} = socket
+      ) do
+    case Alerting.trigger_alert_now(alert) do
+      {:ok, _job} ->
+        Process.send_after(self(), :refresh_execution_history, 1_000)
+
+        {:noreply, put_flash(socket, :info, "Alert job has been enqueued.")}
+
+      {:error, _} ->
+        {:noreply, put_flash(socket, :error, "Failed to enqueue alert job.")}
+    end
+  end
+
   def handle_event("toggle-add-backend", _params, socket) do
     socket =
       if socket.assigns.show_add_backend_form do
@@ -322,6 +345,18 @@ defmodule LogflareWeb.AlertsLive do
       end
 
     {:noreply, assign(socket, :show_add_backend_form, !socket.assigns.show_add_backend_form)}
+  end
+
+  def handle_info(:refresh_execution_history, %{assigns: %{alert: alert}} = socket)
+      when not is_nil(alert) do
+    jobs = Alerting.list_execution_history(alert.id)
+    %{future: future, past: past} = Alerting.partition_jobs_by_time(jobs)
+
+    {:noreply, socket |> assign(:future_jobs, future) |> assign(:past_jobs, past)}
+  end
+
+  def handle_info(:refresh_execution_history, socket) do
+    {:noreply, socket}
   end
 
   defp refresh(%{assigns: assigns} = socket) do
@@ -340,14 +375,22 @@ defmodule LogflareWeb.AlertsLive do
     )
   end
 
+  defp job_state_badge_class(state) do
+    case to_string(state) do
+      "completed" -> "success"
+      "executing" -> "info"
+      "scheduled" -> "secondary"
+      "available" -> "primary"
+      "discarded" -> "danger"
+      "cancelled" -> "warning"
+      _ -> "secondary"
+    end
+  end
+
   defp upsert_alert(alert, user, params) do
-    with {:ok, alert} <-
-           (case alert do
-              nil -> Alerting.create_alert_query(user, params)
-              %_{} -> Alerting.update_alert_query(alert, params)
-            end),
-         {:ok, _} <- Alerting.upsert_alert_job(alert) do
-      {:ok, alert}
+    case alert do
+      nil -> Alerting.create_alert_query(user, params)
+      %_{} -> Alerting.update_alert_query(alert, params)
     end
   end
 end

@@ -234,7 +234,7 @@ defmodule Logflare.Mixfile do
       {:plug_cowboy, "~> 2.0"},
 
       # alerts feature
-      {:quantum, github: "Logflare/quantum-core", ref: "5882e82"},
+      {:oban, "~> 2.19"},
       {:crontab, "~> 1.2"},
 
       # benchmarking

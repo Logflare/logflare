@@ -28,7 +28,6 @@ Mimic.copy(Stripe.SubscriptionItem.Usage)
 Mimic.copy(Tesla.Adapter.Finch)
 
 Mimic.copy(Logflare.Admin)
-Mimic.copy(Logflare.Alerting.AlertsScheduler)
 Mimic.copy(Logflare.Auth)
 Mimic.copy(Logflare.Backends)
 Mimic.copy(Logflare.Backends.Adaptor)
