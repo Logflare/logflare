@@ -13,8 +13,6 @@ defmodule Logflare.SystemMetricsSup do
   @impl true
   def init(_init_arg) do
     children = [
-      # This calls :erlang.process_info which may not be good to call for all proces frequently
-      # SystemMetrics.Procs.Poller,
       SystemMetrics.AllLogsLogged,
       SystemMetrics.AllLogsLogged.Poller,
       SystemMetrics.Cachex.Poller,
@@ -24,20 +22,12 @@ defmodule Logflare.SystemMetricsSup do
         measurements: [
           {Observer, :dispatch_stats, []},
           {Cluster, :dispatch_stats, []},
-          {SystemMetrics.Schedulers, :async_dispatch_stats, []}
+          {SystemMetrics.Schedulers, :async_dispatch_stats, []},
+          {Logflare.SystemMetrics.Cluster, :finch, []}
         ],
         period: :timer.seconds(30),
         init_delay: :timer.seconds(30),
         name: Logflare.TelemetryPoller.Perodic
-      },
-      {
-        :telemetry_poller,
-        measurements: [
-          {Logflare.SystemMetrics.Cluster, :finch, []}
-        ],
-        period: :timer.seconds(5),
-        init_delay: :timer.seconds(5),
-        name: Logflare.TelemetryPoller.FastPerodic
       }
     ]
 
