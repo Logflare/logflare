@@ -166,6 +166,26 @@ defmodule LogflareWeb.BackendsLive do
     {:noreply, socket}
   end
 
+  def handle_event("add_all_default_ingest", _params, socket) do
+    backend = socket.assigns.backend
+    available_sources = socket.assigns.available_sources
+
+    socket =
+      case Backends.add_all_default_ingest_sources(backend, available_sources) do
+        {:ok, _backend} ->
+          socket
+          |> refresh_backend(backend.id)
+          |> assign(:show_default_ingest_form?, false)
+          |> put_flash(:info, "Successfully added all available sources as default ingest")
+
+        {:error, changeset} ->
+          message = stringify_changeset_errors(changeset)
+          put_flash(socket, :error, "Error attempting to add all sources:\n#{message}")
+      end
+
+    {:noreply, socket}
+  end
+
   def handle_event("remove_default_ingest", %{"source_id" => source_id}, socket) do
     backend = socket.assigns.backend
     source = Sources.get(source_id)

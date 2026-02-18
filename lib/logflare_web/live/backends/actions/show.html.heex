@@ -42,6 +42,9 @@
         Add a Source
       <% end %>
     </.button>
+    <.button :if={@backend.default_ingest? and not @show_default_ingest_form?} phx-click="add_all_default_ingest" variant="secondary" data-confirm={"Add all #{length(@available_sources)} sources as default ingest?"}>
+      Add All Sources
+    </.button>
   </div>
 
   <.form :let={f} :if={@show_default_ingest_form?} id="default_ingest" for={%{}} as={:default_ingest} action="#" phx-submit="save_default_ingest">
