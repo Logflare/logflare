@@ -184,7 +184,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   - `:metric` -> `otel_metrics_<token>`
   - `:trace`  -> `otel_traces_<token>`
   """
-  @spec clickhouse_ingest_table_name(Backend.t(), TypeDetection.log_type()) :: String.t()
+  @spec clickhouse_ingest_table_name(Backend.t(), TypeDetection.event_type()) :: String.t()
   def clickhouse_ingest_table_name(%Backend{} = backend, :log),
     do: build_otel_table_name(backend, "otel_logs")
 
@@ -254,17 +254,17 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   @doc """
   Inserts a list of `LogEvent` structs into a type-specific ingest table.
   """
-  @spec insert_log_events(Backend.t(), [LogEvent.t()], TypeDetection.log_type()) ::
+  @spec insert_log_events(Backend.t(), [LogEvent.t()], TypeDetection.event_type()) ::
           :ok | {:error, String.t()}
-  def insert_log_events(%Backend{}, [], _log_type), do: :ok
+  def insert_log_events(%Backend{}, [], _event_type), do: :ok
 
-  def insert_log_events(%Backend{} = backend, [%LogEvent{} | _] = events, log_type)
-      when is_log_type(log_type) do
+  def insert_log_events(%Backend{} = backend, [%LogEvent{} | _] = events, event_type)
+      when is_event_type(event_type) do
     Logger.metadata(backend_id: backend.id)
 
-    table_name = clickhouse_ingest_table_name(backend, log_type)
+    table_name = clickhouse_ingest_table_name(backend, event_type)
 
-    case Ingester.insert(backend, table_name, events, log_type) do
+    case Ingester.insert(backend, table_name, events, event_type) do
       :ok ->
         :ok
 
@@ -282,9 +282,9 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   """
   @spec provision_ingest_tables(Backend.t()) :: :ok | {:error, Exception.t()}
   def provision_ingest_tables(%Backend{} = backend) do
-    Enum.reduce_while([:log, :metric, :trace], :ok, fn log_type, :ok ->
-      table_name = clickhouse_ingest_table_name(backend, log_type)
-      statement = QueryTemplates.create_table_statement(table_name, log_type, [])
+    Enum.reduce_while([:log, :metric, :trace], :ok, fn event_type, :ok ->
+      table_name = clickhouse_ingest_table_name(backend, event_type)
+      statement = QueryTemplates.create_table_statement(table_name, event_type, [])
 
       case execute_ch_query(backend, statement) do
         {:ok, _} -> {:cont, :ok}

@@ -57,7 +57,7 @@ defmodule Logflare.Utils.Guards do
   defguard is_list_or_map(value) when is_list(value) or is_map(value)
 
   @doc """
-  Guard that indicates if the value is a valid log type.
+  Guard that indicates if the value is a valid event type.
   """
-  defguard is_log_type(value) when is_atom_value(value) and value in [:log, :metric, :trace]
+  defguard is_event_type(value) when is_atom_value(value) and value in [:log, :metric, :trace]
 end

@@ -27,7 +27,7 @@ defmodule Logflare.LogEvent do
     field :origin_source_name, :string
     field :via_rule, :map
     field :retries, :integer, default: 0
-    field :log_type, Ecto.Enum, values: [:log, :metric, :trace], default: :log
+    field :event_type, Ecto.Enum, values: [:log, :metric, :trace], default: :log
 
     field :source_id, :integer, default: nil
 
@@ -82,7 +82,7 @@ defmodule Logflare.LogEvent do
         valid: changeset.valid?,
         ingested_at: NaiveDateTime.utc_now(),
         id: changeset.changes.body["id"],
-        log_type: TypeDetection.detect(params)
+        event_type: TypeDetection.detect(params)
       })
 
     Logflare.LogEvent

@@ -67,7 +67,7 @@ defmodule Logflare.ClickHouseMappedEvents do
 
     event =
       build(:log_event, source: source, message: message)
-      |> Map.put(:log_type, :metric)
+      |> Map.put(:event_type, :metric)
 
     input_body =
       %{
@@ -106,7 +106,7 @@ defmodule Logflare.ClickHouseMappedEvents do
 
     event =
       build(:log_event, source: source, message: message)
-      |> Map.put(:log_type, :trace)
+      |> Map.put(:event_type, :trace)
 
     input_body =
       %{

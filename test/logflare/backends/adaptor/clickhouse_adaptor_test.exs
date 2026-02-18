@@ -318,19 +318,19 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptorTest do
       source: source,
       backend: backend
     } do
-      for log_type <- [:log, :metric, :trace] do
+      for event_type <- [:log, :metric, :trace] do
         log_event =
-          case log_type do
+          case event_type do
             :log -> build_mapped_log_event(source: source, message: "Typed insert test")
             :metric -> build_mapped_metric_event(source: source, message: "Typed insert test")
             :trace -> build_mapped_trace_event(source: source, message: "Typed insert test")
           end
 
-        :ok = ClickHouseAdaptor.insert_log_events(backend, [log_event], log_type)
+        :ok = ClickHouseAdaptor.insert_log_events(backend, [log_event], event_type)
 
         Process.sleep(100)
 
-        table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(backend, log_type)
+        table_name = ClickHouseAdaptor.clickhouse_ingest_table_name(backend, event_type)
 
         {:ok, query_result} =
           ClickHouseAdaptor.execute_ch_query(
