@@ -151,15 +151,15 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
   defp encode_log_row(%LogEvent{
          id: id,
          body: body,
-         origin_source_uuid: origin_source_uuid,
-         origin_source_name: origin_source_name
+         source_uuid: source_uuid,
+         source_name: source_name
        }) do
-    source_uuid_str = Atom.to_string(origin_source_uuid)
+    source_uuid_str = Atom.to_string(source_uuid)
 
     [
       RowBinaryEncoder.uuid(id),
       RowBinaryEncoder.string(source_uuid_str),
-      RowBinaryEncoder.string(origin_source_name || ""),
+      RowBinaryEncoder.string(source_name || ""),
       RowBinaryEncoder.string(body["project"] || ""),
       RowBinaryEncoder.string(body["trace_id"] || ""),
       RowBinaryEncoder.string(body["span_id"] || ""),
@@ -184,15 +184,15 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
   defp encode_metric_row(%LogEvent{
          id: id,
          body: body,
-         origin_source_uuid: origin_source_uuid,
-         origin_source_name: origin_source_name
+         source_uuid: source_uuid,
+         source_name: source_name
        }) do
-    source_uuid_str = Atom.to_string(origin_source_uuid)
+    source_uuid_str = Atom.to_string(source_uuid)
 
     [
       RowBinaryEncoder.uuid(id),
       RowBinaryEncoder.string(source_uuid_str),
-      RowBinaryEncoder.string(origin_source_name || ""),
+      RowBinaryEncoder.string(source_name || ""),
       RowBinaryEncoder.string(body["project"] || ""),
       RowBinaryEncoder.nullable(body["time_unix"], &RowBinaryEncoder.int64/1),
       RowBinaryEncoder.nullable(body["start_time_unix"], &RowBinaryEncoder.int64/1),
@@ -241,15 +241,15 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
   defp encode_trace_row(%LogEvent{
          id: id,
          body: body,
-         origin_source_uuid: origin_source_uuid,
-         origin_source_name: origin_source_name
+         source_uuid: source_uuid,
+         source_name: source_name
        }) do
-    source_uuid_str = Atom.to_string(origin_source_uuid)
+    source_uuid_str = Atom.to_string(source_uuid)
 
     [
       RowBinaryEncoder.uuid(id),
       RowBinaryEncoder.string(source_uuid_str),
-      RowBinaryEncoder.string(origin_source_name || ""),
+      RowBinaryEncoder.string(source_name || ""),
       RowBinaryEncoder.string(body["project"] || ""),
       RowBinaryEncoder.string(body["trace_id"] || ""),
       RowBinaryEncoder.string(body["span_id"] || ""),
