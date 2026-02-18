@@ -5,6 +5,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
 
   import Logflare.Utils.Guards
 
+  require Logger
+
   alias Logflare.Backends.Adaptor.ClickHouseAdaptor.RowBinaryEncoder
   alias Logflare.Backends.Backend
   alias Logflare.LogEvent
@@ -73,6 +75,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
     url = build_request_url(connection_opts, table, event_type)
     request_body = log_events |> encode_batch(event_type) |> :zlib.gzip()
 
+    start_time = System.monotonic_time(:millisecond)
+
     case Tesla.post(client, url, request_body) do
       {:ok, %Tesla.Env{status: 200}} ->
         :ok
@@ -81,6 +85,15 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
         {:error, "HTTP #{status}: #{response_body}"}
 
       {:error, reason} ->
+        elapsed_ms = System.monotonic_time(:millisecond) - start_time
+
+        Logger.error("ClickHouse insert failed",
+          error_string: inspect(reason),
+          elapsed_ms: elapsed_ms,
+          batch_size: length(log_events),
+          event_type: event_type
+        )
+
         {:error, reason}
     end
   end
