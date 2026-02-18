@@ -409,7 +409,7 @@ defmodule Logflare.Sources.Source do
 
       iex> source = %Source{bigquery_clustering_fields: "id,timestamp", suggested_keys: "m.user_id!,status"}
       iex> recommended_query_fields(source)
-      ["id", "timestamp", "m.user_id", "status"]
+      ["id", "timestamp", "m.user_id!", "status"]
 
 
       iex> source = %Source{bigquery_clustering_fields: nil, suggested_keys: ""}
@@ -425,8 +425,22 @@ defmodule Logflare.Sources.Source do
     suggested_keys =
       (source.suggested_keys || "")
       |> String.split(",", trim: true)
-      |> Enum.map(fn key -> key |> String.trim() |> String.trim_trailing("!") end)
+      |> Enum.map(&String.trim/1)
 
     clustering_fields ++ suggested_keys
+  end
+
+  @spec required_query_field?(String.t()) :: boolean()
+  def required_query_field?(field) when is_binary(field) do
+    field
+    |> String.trim()
+    |> String.ends_with?("!")
+  end
+
+  @spec query_field_name(String.t()) :: String.t()
+  def query_field_name(field) when is_binary(field) do
+    field
+    |> String.trim()
+    |> String.trim_trailing("!")
   end
 end
