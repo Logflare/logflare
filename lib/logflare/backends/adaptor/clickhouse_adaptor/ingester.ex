@@ -15,7 +15,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
   @initial_delay 500
   @max_delay 4_000
   @pool_timeout 8_000
-  @receive_timeout 40_000
+  @receive_timeout 20_000
 
   @log_columns ~w(id source_uuid source_name project trace_id span_id trace_flags
     severity_text severity_number service_name event_message scope_name scope_version
@@ -113,7 +113,8 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.Ingester do
   defp retriable?({:ok, %Tesla.Env{status: status}}) when status >= 500, do: true
   defp retriable?({:ok, %Tesla.Env{status: 429}}), do: true
   defp retriable?({:ok, _env}), do: false
-  defp retriable?({:error, _reason}), do: true
+  defp retriable?({:error, reason}) when reason in [:econnrefused, :econnreset, :closed], do: true
+  defp retriable?({:error, _reason}), do: false
 
   @doc false
   @spec encode_row(LogEvent.t(), TypeDetection.event_type()) :: iodata()
