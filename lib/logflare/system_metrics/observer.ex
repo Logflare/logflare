@@ -24,13 +24,13 @@ defmodule Logflare.SystemMetrics.Observer do
       run_queue: :erlang.statistics(:total_run_queue_lengths_all),
       io_input: input,
       io_output: output,
-      logical_processors: :erlang.system_info(:logical_processors),
-      logical_processors_online: :erlang.system_info(:logical_processors_online),
-      logical_processors_available: :erlang.system_info(:logical_processors_available),
+      logical_processors: to_integer(:erlang.system_info(:logical_processors)),
+      logical_processors_online: to_integer(:erlang.system_info(:logical_processors_online)),
+      logical_processors_available:
+        to_integer(:erlang.system_info(:logical_processors_available)),
       schedulers: :erlang.system_info(:schedulers),
       schedulers_online: :erlang.system_info(:schedulers_online),
-      otp_release: :erlang.system_info(:otp_release),
-      version: :erlang.system_info(:version),
+      otp_release: :erlang.system_info(:otp_release) |> List.to_integer(),
       atom_limit: :erlang.system_info(:atom_limit),
       atom_count: :erlang.system_info(:atom_count),
       process_limit: :erlang.system_info(:process_limit),
@@ -42,4 +42,7 @@ defmodule Logflare.SystemMetrics.Observer do
       total_active_tasks: :erlang.statistics(:total_active_tasks)
     }
   end
+
+  defp to_integer(val) when is_integer(val), do: val
+  defp to_integer(_), do: 0
 end
