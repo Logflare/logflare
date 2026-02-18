@@ -73,6 +73,11 @@
       </.button>
     </li>
   </ul>
+  <div :if={length(@default_ingest_sources || []) > 1}>
+    <.button phx-click="remove_all_default_ingest" variant="danger" data-confirm={"Remove all #{length(@default_ingest_sources)} sources from default ingest?"}>
+      Remove All Sources
+    </.button>
+  </div>
 </section>
 
 <section class="mx-auto container pt-3 tw-flex tw-flex-col tw-gap-4">

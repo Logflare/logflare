@@ -220,8 +220,7 @@ defmodule Logflare.Backends do
   @doc """
   Adds all given sources as default ingest for a backend in bulk.
   """
-  @spec add_all_default_ingest_sources(Backend.t(), [Source.t()]) ::
-          {:ok, Backend.t()} | {:error, Changeset.t()}
+  @spec add_all_default_ingest_sources(Backend.t(), [Source.t()]) :: {:ok, Backend.t()}
   def add_all_default_ingest_sources(
         %Backend{default_ingest?: true} = backend,
         [%Source{} | _] = sources
@@ -238,6 +237,30 @@ defmodule Logflare.Backends do
     maybe_restart_consolidated_pipeline(backend)
 
     {:ok, Repo.reload!(backend) |> preload_sources()}
+  end
+
+  @doc """
+  Removes all sources from a default ingest backend and disables the flag.
+  """
+  @spec remove_all_default_ingest_sources(Backend.t()) :: {:ok, Backend.t()}
+  def remove_all_default_ingest_sources(%Backend{default_ingest?: true} = backend) do
+    backend = Repo.reload!(backend) |> Repo.preload(:sources)
+
+    for source <- backend.sources do
+      source = Sources.preload_backends(source)
+      filtered_backends = Enum.reject(source.backends, &(&1.id == backend.id))
+      update_source_backends(source, filtered_backends)
+    end
+
+    {:ok, updated} =
+      backend
+      |> Changeset.change(default_ingest?: false)
+      |> Repo.update()
+
+    sync_backend_across_cluster(updated.id)
+    maybe_restart_consolidated_pipeline(updated)
+
+    {:ok, preload_sources(updated)}
   end
 
   @doc """
