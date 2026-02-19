@@ -26,7 +26,8 @@ defmodule Logflare.Backends.Backend do
     s3: Adaptor.S3Adaptor,
     axiom: Adaptor.AxiomAdaptor,
     otlp: Adaptor.OtlpAdaptor,
-    last9: Adaptor.Last9Adaptor
+    last9: Adaptor.Last9Adaptor,
+    syslog: Adaptor.SyslogAdaptor
   }
 
   typed_schema "backends" do

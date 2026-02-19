@@ -399,8 +399,49 @@ $(addprefix ssl.,${envs}): ssl.%:
 	@openssl req -x509 -newkey rsa:2048 -keyout .$*.cert.key -out .$*.cert.pem -days 3650 \
 		-nodes -subj "/C=US/ST=DE/O=Supabase/OU=Logflare/CN=$(CERT_DOMAIN)"
 
+TELEGRAF_KEYS_DIR := priv/telegraf
+TELEGRAF_KEYS_SENTINEL := $(TELEGRAF_KEYS_DIR)/client.crt
+
+ssl.telegraf: $(TELEGRAF_KEYS_SENTINEL)
+	@echo "Telegraf SSL keys are up to date."
+
+$(TELEGRAF_KEYS_SENTINEL):
+	@echo "Generating test keys in $(TELEGRAF_KEYS_DIR)..."
+	@mkdir -p $(TELEGRAF_KEYS_DIR)
+
+	# CA
+	@openssl genrsa -out $(TELEGRAF_KEYS_DIR)/ca.key 2048
+	@openssl req -new -x509 -days 3650 -key $(TELEGRAF_KEYS_DIR)/ca.key \
+		-subj "/CN=Test CA" \
+		-out $(TELEGRAF_KEYS_DIR)/ca.crt
+
+	# Server (Telegraf)
+	@echo "subjectAltName=DNS:localhost,IP:127.0.0.1,DNS:telegraf" > $(TELEGRAF_KEYS_DIR)/server.ext
+	
+	@openssl genrsa -out $(TELEGRAF_KEYS_DIR)/server.key 2048
+	@openssl req -new -key $(TELEGRAF_KEYS_DIR)/server.key \
+		-subj "/CN=localhost" \
+		-out $(TELEGRAF_KEYS_DIR)/server.csr
+	
+	@openssl x509 -req -days 3650 -in $(TELEGRAF_KEYS_DIR)/server.csr \
+		-CA $(TELEGRAF_KEYS_DIR)/ca.crt -CAkey $(TELEGRAF_KEYS_DIR)/ca.key -set_serial 01 \
+		-out $(TELEGRAF_KEYS_DIR)/server.crt \
+		-extfile $(TELEGRAF_KEYS_DIR)/server.ext
+
+	# Client (Logflare)
+	@openssl genrsa -out $(TELEGRAF_KEYS_DIR)/client.key 2048
+	@openssl req -new -key $(TELEGRAF_KEYS_DIR)/client.key \
+		-subj "/CN=client" \
+		-out $(TELEGRAF_KEYS_DIR)/client.csr
+	@openssl x509 -req -days 3650 -in $(TELEGRAF_KEYS_DIR)/client.csr \
+		-CA $(TELEGRAF_KEYS_DIR)/ca.crt -CAkey $(TELEGRAF_KEYS_DIR)/ca.key -set_serial 02 \
+		-out $(TELEGRAF_KEYS_DIR)/client.crt
+
+	@# Cleanup temp files and ensure read permissions
+	@rm $(TELEGRAF_KEYS_DIR)/*.csr $(TELEGRAF_KEYS_DIR)/server.ext $(TELEGRAF_KEYS_DIR)/ca.key
+	@chmod 644 $(TELEGRAF_KEYS_DIR)/*
 
 docker.multi-step:
 	docker-compose build base runner
 
-.PHONY: $(addprefix ssl.,${envs}) docker.build.multistep
+.PHONY: $(addprefix ssl.,${envs}) ssl.telegraf docker.build.multistep
