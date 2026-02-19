@@ -113,8 +113,17 @@ defmodule LogflareWeb.Plugs.VerifyApiAccess do
 
     api_key =
       conn
-      |> Plug.Conn.get_req_header("x-api-key")
-      |> List.first(Utils.Map.get(conn.params, :api_key))
+      |> Plug.Conn.get_req_header("lf-api-key")
+      |> List.first()
+      |> case do
+        nil ->
+          conn
+          |> Plug.Conn.get_req_header("x-api-key")
+          |> List.first(Utils.Map.get(conn.params, :api_key))
+
+        api_key ->
+          api_key
+      end
 
     cond do
       bearer != nil -> {:ok, bearer}

@@ -374,7 +374,7 @@ The supported spec is [v1.0.2](https://github.com/cloudevents/spec/blob/v1.0.2/c
 ```
 POST https://api.logflare.app/api/logs/cloud-event?source=f6cccd3a-c42e-40f7-9b01-95d3699d3113
 Content-Type: application/json
-X-API-KEY: XXXXX
+LF-API-KEY: XXXXX
 CE-specversion: 1.0
 CE-id: 01HPPC9X0HPKB8E1RSPA5YFZB2
 CE-source: flyd
@@ -407,6 +407,10 @@ The corresponding event will be processed and ingested, where ellipsis represent
 }
 ```
 
+:::warning Header prefix update
+`X-API-KEY` remains available for backward compatibility but is deprecated and will be removed in the next major version. Prefer sending access tokens with the `LF-API-KEY` header.
+:::
+
 ## Cloudflare Logpush
 
 Logflare supports ingestion of logs from Cloudflare through the [**Logpush API**](https://developers.cloudflare.com/logs/about/). This allows you to send logs directly from Cloudflare to Logflare for processing and storage.
@@ -414,12 +418,16 @@ Logflare supports ingestion of logs from Cloudflare through the [**Logpush API**
 To ingest logs from Cloudflare, use the following configuration for the [HTTP Destination](https://developers.cloudflare.com/logs/get-started/enable-destinations/http/):
 
 ```text
-https://api.logflare.app/api/logs/cloudflare?source=f6cccd3a-c42e-40f7-9b01-95d3699d3113&header_X_API_KEY=xxxxxxx
+https://api.logflare.app/api/logs/cloudflare?source=f6cccd3a-c42e-40f7-9b01-95d3699d3113&header_lf-api-key=xxxxxxx
 ```
 
 Replace the source UUID and the api key value with your own source UUID and [access token](/concepts/access-tokens/). We recommend using a source-scoped ingest access token for better security.
 
 The configuration is identical for both Logpush and Edge Log Delivery.
+
+:::warning Cloudflare header deprecation
+`header_X_API_KEY` is still accepted for Cloudflare destinations but will be removed in the next major version. Update configurations to use `header_lf-api-key`.
+:::
 
 ## Ingestion Validation
 

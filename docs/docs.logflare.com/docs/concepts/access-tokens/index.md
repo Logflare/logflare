@@ -40,11 +40,16 @@ To revoke access tokens, clikc on the **Revoke** button. This would immediately 
 
 ## Authentication
 
-There are 3 supported methods to attach an accees token with an API request:
+There are 4 supported methods to attach an access token with an API request:
 
 1. Using the `Authorization` header, with the format `Authorization: Bearer your-access-token-here`
-2. Using the `X-API-KEY` header, with the format `X-API-KEY: your-access-token-here`
-3. Using the `api_key` query parameter, wuth the format `?api_key=your-access-token-here`
+2. Using the `LF-API-KEY` header, with the format `LF-API-KEY: your-access-token-here`
+3. Using the `X-API-KEY` header, with the format `X-API-KEY: your-access-token-here`
+4. Using the `api_key` query parameter, with the format `?api_key=your-access-token-here`
+
+:::warning Header prefix update
+`X-API-KEY` is supported for backward compatibility only and will be removed in the next major version. Prefer the `LF-API-KEY` header for new integrations.
+:::
 
 ## Client-side is Public
 
