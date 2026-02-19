@@ -54,10 +54,12 @@ async function expectClipboardViaPaste(page: Page, browserName: string, selectio
 
   const expectedClipboard = menuItemName === 'Copy timestamp' ? parseToMicroseconds(expectedText) : expectedText;
 
+  await selection.hover();
+  await selection.click({ trial: true });
   await selection.click();
 
-  const menuItem = page.getByRole('menuitem', { name: menuItemName })
-  await menuItem.waitFor({ state: 'visible' });
+  const menuItem = page.getByRole('menuitem', { name: menuItemName });
+  await expect(menuItem).toBeVisible();
   await menuItem.click();
 
   switch(browserName) {
