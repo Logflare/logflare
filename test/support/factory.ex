@@ -233,6 +233,7 @@ defmodule Logflare.Factory do
     user = Map.get(attrs, :user, build(:user))
     backend = Map.get(attrs, :backend)
     language = Map.get(attrs, :language, :bq_sql)
+    bigquery_reservations = Map.get(attrs, :bigquery_reservations)
 
     %Query{
       user: user,
@@ -241,9 +242,10 @@ defmodule Logflare.Factory do
       query: "select current_date() as date",
       language: language,
       backend: backend,
-      name: TestUtils.random_string()
+      name: TestUtils.random_string(),
+      bigquery_reservations: bigquery_reservations
     }
-    |> merge_attributes(Map.drop(attrs, [:backend, :language, :user]))
+    |> merge_attributes(Map.drop(attrs, [:backend, :language, :user, :bigquery_reservations]))
   end
 
   def child_endpoint_factory do
