@@ -1,8 +1,55 @@
 defmodule LogflareWeb.QueryComponents do
   use Phoenix.Component
 
+  import Phoenix.HTML.Form
+  import LogflareWeb.ErrorHelpers
+
+  alias Logflare.Backends.Backend
   alias LogflareWeb.Utils
   alias Phoenix.LiveView.JS
+
+  attr :backends, :list, required: true
+  attr :form, :any, required: true
+  attr :field, :atom, default: :backend_id
+  attr :show_language, :boolean, default: true
+  attr :label, :string, default: nil
+
+  slot :help
+
+  def backend_select(assigns) do
+    assigns =
+      assign_new(assigns, :options, fn ->
+        [{"Default (BigQuery)", nil}] ++
+          Enum.map(assigns.backends, fn backend ->
+            {"#{backend.name} (#{backend.type})", backend.id}
+          end)
+      end)
+
+    ~H"""
+    <div class="form-group">
+      <label :if={@label}>{@label}</label>
+      <small :if={render_slot(@help)} class="form-text text-muted">{render_slot(@help)}</small>
+      <select id={@form[@field].id} name={@form[@field].name} class="form-control">
+        {options_for_select(@options, @form[@field].value)}
+      </select>
+      {error_tag(@form, @field)}
+      <div :if={@show_language} class="tw-mt-2">
+        <strong>Query Language: <span id="query-language">{format_query_language(@form[@field].value, @backends)}</span></strong>
+      </div>
+    </div>
+    """
+  end
+
+  defp format_query_language(nil, _backends), do: "BigQuery SQL"
+
+  defp format_query_language(backend_id, backends) do
+    backend = Enum.find(backends, &(to_string(&1.id) == to_string(backend_id)))
+    format_backend_language(backend)
+  end
+
+  defp format_backend_language(%Backend{type: :clickhouse}), do: "ClickHouse SQL"
+  defp format_backend_language(%Backend{type: :postgres}), do: "Postgres SQL"
+  defp format_backend_language(_), do: "BigQuery SQL"
 
   attr :bytes, :integer, default: nil
 
