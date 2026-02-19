@@ -35,7 +35,7 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.IngesterTest do
       encoded = Ingester.encode_row(event, :log)
       binary = IO.iodata_to_binary(encoded)
 
-      source_uuid_str = Atom.to_string(event.origin_source_uuid)
+      source_uuid_str = Atom.to_string(event.source_uuid)
 
       <<_id::binary-size(16), rest::binary>> = binary
 
