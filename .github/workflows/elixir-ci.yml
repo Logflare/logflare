@@ -15,6 +15,7 @@ on:
       - "native/**"
       - "priv/**"
       - "test/**"
+      - "!test/e2e/supabase/**"
       # Run suite when this file is changed
       - ".github/workflows/elixir-ci.yml"
 
