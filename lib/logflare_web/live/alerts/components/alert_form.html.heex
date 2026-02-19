@@ -36,6 +36,21 @@
         <.live_component module={LogflareWeb.MonacoEditorComponent} id="alert_query_editor" field={f[:query]} endpoints={@endpoints} alerts={@alerts} sources={@sources} />
       </div>
 
+      <.header_with_anchor text="Max Row Limit" />
+      <div class="form-group">
+        <p>
+          Maximum number of rows to return across all pages. Defaults to 1,000.
+        </p>
+        {label(f, :max_limit, "Max Row Limit")}
+        {number_input(f, :max_limit,
+          min: 1,
+          max: 10000,
+          placeholder: "1000",
+          class: "form-control"
+        )}
+        {error_tag(f, :max_limit)}
+      </div>
+
       <.header_with_anchor text="Query Schedule" />
       <div class="form-group">
         <p>

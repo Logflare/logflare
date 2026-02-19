@@ -14,7 +14,6 @@ defmodule Logflare.Alerting do
   alias Logflare.Backends.Adaptor.WebhookAdaptor
   alias Logflare.Cluster
   alias Logflare.Endpoints
-  alias Logflare.Google.BigQuery.GenUtils
   alias Logflare.Repo
   alias Logflare.Teams
   alias Logflare.TeamUsers.TeamUser
@@ -465,7 +464,7 @@ defmodule Logflare.Alerting do
              },
              {transformed_query, []},
              parameterMode: "NAMED",
-             maxResults: 1000,
+             maxResults: alert_query.max_limit || 1000,
              location: alert_query.user.bigquery_dataset_location,
              use_query_cache: use_query_cache,
              labels: %{

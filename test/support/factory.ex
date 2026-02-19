@@ -380,7 +380,8 @@ defmodule Logflare.Factory do
       slack_hook_url: "some slack_hook_url",
       source_mapping: %{},
       webhook_notification_url: "some webhook_notification_url",
-      language: :bq_sql
+      language: :bq_sql,
+      max_limit: 1_000
     }
   end
 

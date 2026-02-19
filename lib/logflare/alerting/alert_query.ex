@@ -16,7 +16,8 @@ defmodule Logflare.Alerting.AlertQuery do
              :language,
              :query,
              :webhook_notification_url,
-             :slack_hook_url
+             :slack_hook_url,
+             :max_limit
            ]}
   typed_schema "alert_queries" do
     field :name, :string
@@ -28,6 +29,7 @@ defmodule Logflare.Alerting.AlertQuery do
     field :token, Ecto.UUID, autogenerate: true
     field :slack_hook_url, :string
     field :webhook_notification_url, :string
+    field :max_limit, :integer, default: 1_000
 
     belongs_to :user, Logflare.User
 
@@ -48,9 +50,11 @@ defmodule Logflare.Alerting.AlertQuery do
       :query,
       :cron,
       :slack_hook_url,
-      :webhook_notification_url
+      :webhook_notification_url,
+      :max_limit
     ])
     |> validate_required([:name, :query, :cron, :language])
+    |> validate_number(:max_limit, greater_than: 0, less_than: 10_001)
     |> validate_change(:cron, fn :cron, cron ->
       with {:ok, expr} <- Crontab.CronExpression.Parser.parse(cron),
            [first, second] <- Crontab.Scheduler.get_next_run_dates(expr) |> Enum.take(2),
