@@ -152,7 +152,7 @@ defmodule Logflare.Backends.ConsolidatedSupTest do
 
       assert length(all_events) == total_events
 
-      source_ids = all_events |> Enum.map(& &1.origin_source_uuid) |> Enum.uniq()
+      source_ids = all_events |> Enum.map(& &1.source_uuid) |> Enum.uniq()
       assert length(source_ids) == 10
 
       IngestEventQueue.add_to_table({:consolidated, backend.id}, all_events)
@@ -164,7 +164,7 @@ defmodule Logflare.Backends.ConsolidatedSupTest do
       end)
     end
 
-    test "events from different sources have distinct origin_source_uuids", %{
+    test "events from different sources have distinct source_uuids", %{
       sources: sources
     } do
       events =
@@ -174,13 +174,13 @@ defmodule Logflare.Backends.ConsolidatedSupTest do
 
       origin_ids_by_source =
         events
-        |> Enum.group_by(& &1.origin_source_uuid)
+        |> Enum.group_by(& &1.source_uuid)
         |> Map.keys()
 
       assert length(origin_ids_by_source) == 10
 
       Enum.each(sources, fn source ->
-        matching_events = Enum.filter(events, &(&1.origin_source_uuid == source.token))
+        matching_events = Enum.filter(events, &(&1.source_uuid == source.token))
         assert length(matching_events) == 20
       end)
     end

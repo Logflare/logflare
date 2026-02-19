@@ -96,9 +96,13 @@ defmodule Logflare.TelemetryTest do
              :schedulers,
              :schedulers_online,
              :total_active_tasks,
-             :uptime,
-             :version
+             :uptime
            ]
+
+    # All measurement values must be numeric (integers or floats)
+    for {key, value} <- metrics_measurements do
+      assert is_number(value), "expected #{key} to be numeric, got: #{inspect(value)}"
+    end
 
     assert metrics_metadata == %{}
 
@@ -114,6 +118,10 @@ defmodule Logflare.TelemetryTest do
              :system,
              :total
            ]
+
+    for {key, value} <- memory_measurements do
+      assert is_number(value), "expected #{key} to be numeric, got: #{inspect(value)}"
+    end
 
     assert memory_metadata == %{}
   end

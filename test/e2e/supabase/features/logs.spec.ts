@@ -39,9 +39,9 @@ test('receives logs from API Gateway', async ({ page }) => {
 
 test('receives logs from PostgREST', async ({ page }) => {
   await page.goto('/project/default/logs/postgrest-logs');
-  await searchLogs(page, '12 Relations');
+  await searchLogs(page, 'Config reloaded');
 
-  await expect(page.getByRole('table')).toContainText('Schema cache loaded 12 Relations');
+  await expect(page.getByRole('table')).toContainText('Config reloaded');
 });
 
 test('receives logs from Auth', async ({ page }) => {
