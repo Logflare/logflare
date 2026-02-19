@@ -33,6 +33,11 @@
             <.team_link href={Routes.alerts_path(@conn, :index)} team={assigns[:team]} class="nav-link">Alerts</.team_link>
           </li>
         <% end %>
+        <%= if LogflareWeb.Utils.flag("fetch_jobs", assigns[:user]) do %>
+          <li class="nav-item">
+            <.team_link href={~p"/fetch"} team={assigns[:team]} class="nav-link">Fetch Jobs</.team_link>
+          </li>
+        <% end %>
         <li class="nav-item">
           <.team_link href="https://docs.logflare.app" team={assigns[:team]} class="nav-link">Docs</.team_link>
         </li>

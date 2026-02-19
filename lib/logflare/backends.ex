@@ -709,7 +709,14 @@ defmodule Logflare.Backends do
   defp dispatch_to_backends(source, nil, log_events) do
     backends = __MODULE__.Cache.list_backends(source_id: source.id)
 
-    for backend <- [nil | backends] do
+    backends_with_default =
+      if source.disable_system_default_backend? do
+        backends
+      else
+        [nil | backends]
+      end
+
+    for backend <- backends_with_default do
       {queue_key, backend_type} =
         case backend do
           nil ->

@@ -132,6 +132,12 @@ defmodule LogflareWeb.DashboardLive.DashboardSourceComponents do
       <.metric>
         ttl: {@source.retention_days} {if(@source.retention_days == 1, do: "day", else: "days")}
       </.metric>
+
+      <.metric :if={@source.disable_system_default_backend?}>
+        <.tooltip id={metric_id(@source, "system-backend-disabled")} placement="top" class="my-badge my-badge-warning" title="System default backend is disabled for this source">
+          <i class="fas fa-ban"></i> system backend disabled
+        </.tooltip>
+      </.metric>
     </div>
     """
   end
