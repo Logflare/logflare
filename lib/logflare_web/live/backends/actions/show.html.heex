@@ -26,6 +26,10 @@
       </li>
     </ul>
   </div>
+  <div>
+    <.button variant="primary" phx-click="test_connection">Test connection</.button>
+    <.status_indicator :if={@connection_status} status={@connection_status} />
+  </div>
 </section>
 
 <section :if={@flag_multibackend == true and Logflare.Backends.Adaptor.supports_default_ingest?(@backend)} class="mx-auto container pt-3 tw-flex tw-flex-col tw-gap-4">

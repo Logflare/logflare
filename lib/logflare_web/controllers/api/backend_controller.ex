@@ -1,4 +1,5 @@
 defmodule LogflareWeb.Api.BackendController do
+  alias LogflareWeb.OpenApiSchemas.BackendConnectionTest
   use LogflareWeb, :controller
   use OpenApiSpex.ControllerSpecs
 
@@ -99,6 +100,29 @@ defmodule LogflareWeb.Api.BackendController do
       conn
       |> Plug.Conn.send_resp(204, [])
       |> Plug.Conn.halt()
+    end
+  end
+
+  operation(:test_connection,
+    summary: "Test backend connection",
+    parameters: [token: [in: :path, description: "Backend Token", type: :string]],
+    responses: %{
+      200 => BackendConnectionTest.response(),
+      404 => NotFound.response()
+    }
+  )
+
+  def test_connection(%{assigns: %{user: user}} = conn, %{"token" => token}) do
+    with {:ok, backend} <- Backends.fetch_backend_by(token: token, user_id: user.id) do
+      case Backends.test_connection(backend) do
+        :ok ->
+          conn
+          |> json(%{connected?: true})
+
+        {:error, reason} ->
+          conn
+          |> json(%{connected?: false, reason: reason})
+      end
     end
   end
 end

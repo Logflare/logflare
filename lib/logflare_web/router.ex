@@ -441,10 +441,14 @@ defmodule LogflareWeb.Router do
       only: [:index, :show, :create, :update, :delete]
     )
 
-    resources("/backends", Api.BackendController,
-      param: "token",
-      only: [:index, :show, :create, :update, :delete]
-    )
+    scope "/backends" do
+      resources("/", Api.BackendController,
+        param: "token",
+        only: [:index, :show, :create, :update, :delete]
+      )
+
+      post("/:token/test", Api.BackendController, :test_connection)
+    end
 
     get "/key-values", Api.KeyValueController, :index
     post "/key-values", Api.KeyValueController, :create
