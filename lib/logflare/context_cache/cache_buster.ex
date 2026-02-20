@@ -83,7 +83,7 @@ defmodule Logflare.ContextCache.CacheBuster do
          record: %{"id" => id}
        })
        when is_binary(id) do
-    {Sources, String.to_integer(id)}
+    {:refresh, {Sources, String.to_integer(id)}}
   end
 
   defp handle_record(%UpdatedRecord{
@@ -91,7 +91,7 @@ defmodule Logflare.ContextCache.CacheBuster do
          record: record,
          old_record: old_record
        }) do
-    {Rules, handle_rule_record(record) ++ handle_rule_record(old_record)}
+    {:refresh, {Rules, handle_rule_record(record) ++ handle_rule_record(old_record)}}
   end
 
   defp handle_record(%UpdatedRecord{
@@ -99,7 +99,7 @@ defmodule Logflare.ContextCache.CacheBuster do
          record: %{"id" => id}
        })
        when is_binary(id) do
-    {Users, String.to_integer(id)}
+    {:refresh, {Users, String.to_integer(id)}}
   end
 
   defp handle_record(%UpdatedRecord{
@@ -107,7 +107,7 @@ defmodule Logflare.ContextCache.CacheBuster do
          record: %{"id" => id}
        })
        when is_binary(id) do
-    {Billing, String.to_integer(id)}
+    {:refresh, {Billing, String.to_integer(id)}}
   end
 
   defp handle_record(%UpdatedRecord{
@@ -115,7 +115,7 @@ defmodule Logflare.ContextCache.CacheBuster do
          record: %{"id" => id}
        })
        when is_binary(id) do
-    {Billing, String.to_integer(id)}
+    {:refresh, {Billing, String.to_integer(id)}}
   end
 
   defp handle_record(%UpdatedRecord{
@@ -123,7 +123,7 @@ defmodule Logflare.ContextCache.CacheBuster do
          record: %{"id" => id}
        })
        when is_binary(id) do
-    {SourceSchemas, String.to_integer(id)}
+    {:refresh, {SourceSchemas, String.to_integer(id)}}
   end
 
   defp handle_record(%UpdatedRecord{
@@ -131,7 +131,7 @@ defmodule Logflare.ContextCache.CacheBuster do
          record: %{"id" => id}
        })
        when is_binary(id) do
-    {Backends, String.to_integer(id)}
+    {:refresh, {Backends, String.to_integer(id)}}
   end
 
   defp handle_record(%UpdatedRecord{
@@ -139,7 +139,7 @@ defmodule Logflare.ContextCache.CacheBuster do
          record: %{"id" => id}
        })
        when is_binary(id) do
-    {TeamUsers, String.to_integer(id)}
+    {:refresh, {TeamUsers, String.to_integer(id)}}
   end
 
   defp handle_record(%UpdatedRecord{
@@ -147,7 +147,7 @@ defmodule Logflare.ContextCache.CacheBuster do
          record: %{"id" => id}
        })
        when is_binary(id) do
-    {Auth, String.to_integer(id)}
+    {:refresh, {Auth, String.to_integer(id)}}
   end
 
   defp handle_record(%UpdatedRecord{
@@ -155,14 +155,14 @@ defmodule Logflare.ContextCache.CacheBuster do
          record: %{"id" => id}
        })
        when is_binary(id) do
-    {Endpoints, String.to_integer(id)}
+    {:refresh, {Endpoints, String.to_integer(id)}}
   end
 
   defp handle_record(%UpdatedRecord{
          relation: {_schema, "saved_searches"},
          record: %{"source_id" => source_id}
        }) do
-    {SavedSearches, [source_id: String.to_integer(source_id)]}
+    {:refresh, {SavedSearches, [source_id: String.to_integer(source_id)]}}
   end
 
   defp handle_record(%NewRecord{
@@ -170,7 +170,7 @@ defmodule Logflare.ContextCache.CacheBuster do
          record: %{"id" => _id}
        }) do
     # When new records are created they were previously cached as `nil` so we need to bust the :not_found keys
-    {Billing, :not_found}
+    {:refresh, {Billing, :not_found}}
   end
 
   defp handle_record(%NewRecord{
@@ -178,7 +178,7 @@ defmodule Logflare.ContextCache.CacheBuster do
          record: %{"id" => _id}
        }) do
     # When new records are created they were previously cached as `nil` so we need to bust the :not_found keys
-    {Endpoints, :not_found}
+    {:refresh, {Endpoints, :not_found}}
   end
 
   defp handle_record(%NewRecord{
@@ -186,7 +186,7 @@ defmodule Logflare.ContextCache.CacheBuster do
          record: %{"source_id" => source_id}
        })
        when is_binary(source_id) do
-    {SavedSearches, [source_id: String.to_integer(source_id)]}
+    {:refresh, {SavedSearches, [source_id: String.to_integer(source_id)]}}
   end
 
   defp handle_record(%NewRecord{
@@ -194,7 +194,7 @@ defmodule Logflare.ContextCache.CacheBuster do
          record: %{"id" => _id}
        }) do
     # When new records are created they were previously cached as `nil` so we need to bust the :not_found keys
-    {SourceSchemas, :not_found}
+    {:refresh, {SourceSchemas, :not_found}}
   end
 
   defp handle_record(%NewRecord{
@@ -203,15 +203,15 @@ defmodule Logflare.ContextCache.CacheBuster do
        })
        when is_binary(user_id) do
     # When new records are created they were previously cached as `nil` so we need to bust the :not_found keys
-    {Sources, :not_found}
-    # {Users, String.to_integer(user_id)}
+    {:refresh, {Sources, :not_found}}
+    # {:bust, {Users, String.to_integer(user_id)}}
   end
 
   defp handle_record(%NewRecord{
          relation: {_schema, "rules"},
          record: record
        }) do
-    {Rules, handle_rule_record(record)}
+    {:refresh, {Rules, handle_rule_record(record)}}
   end
 
   defp handle_record(%NewRecord{
@@ -219,7 +219,7 @@ defmodule Logflare.ContextCache.CacheBuster do
          record: %{"id" => _id}
        }) do
     # When new records are created they were previously cached as `nil` so we need to bust the :not_found keys
-    {Users, :not_found}
+    {:refresh, {Users, :not_found}}
   end
 
   defp handle_record(%NewRecord{
@@ -227,7 +227,7 @@ defmodule Logflare.ContextCache.CacheBuster do
          record: %{"id" => _id}
        }) do
     # When new records are created they were previously cached as `nil` so we need to bust the :not_found keys
-    {Backends, :not_found}
+    {:refresh, {Backends, :not_found}}
   end
 
   defp handle_record(%NewRecord{
@@ -235,7 +235,7 @@ defmodule Logflare.ContextCache.CacheBuster do
          record: %{"id" => _id}
        }) do
     # When new records are created they were previously cached as `nil` so we need to bust the :not_found keys
-    {TeamUsers, :not_found}
+    {:refresh, {TeamUsers, :not_found}}
   end
 
   defp handle_record(%NewRecord{
@@ -243,14 +243,14 @@ defmodule Logflare.ContextCache.CacheBuster do
          record: %{"id" => _id}
        }) do
     # When new records are created they were previously cached as `nil` so we need to bust the :not_found keys
-    {Auth, :not_found}
+    {:refresh, {Auth, :not_found}}
   end
 
   defp handle_record(%NewRecord{
          relation: {_schema, "saved_searches"},
          record: %{"source_id" => source_id}
        }) do
-    {SavedSearches, [source_id: String.to_integer(source_id)]}
+    {:refresh, {SavedSearches, [source_id: String.to_integer(source_id)]}}
   end
 
   defp handle_record(%DeletedRecord{
@@ -258,7 +258,7 @@ defmodule Logflare.ContextCache.CacheBuster do
          old_record: %{"id" => id}
        })
        when is_binary(id) do
-    {Billing, String.to_integer(id)}
+    {:bust, {Billing, String.to_integer(id)}}
   end
 
   defp handle_record(%DeletedRecord{
@@ -266,7 +266,7 @@ defmodule Logflare.ContextCache.CacheBuster do
          old_record: %{"id" => id}
        })
        when is_binary(id) do
-    {Sources, String.to_integer(id)}
+    {:bust, {Sources, String.to_integer(id)}}
   end
 
   defp handle_record(%DeletedRecord{
@@ -274,7 +274,7 @@ defmodule Logflare.ContextCache.CacheBuster do
          old_record: %{"id" => id}
        })
        when is_binary(id) do
-    {Endpoints, String.to_integer(id)}
+    {:bust, {Endpoints, String.to_integer(id)}}
   end
 
   defp handle_record(%DeletedRecord{
@@ -282,7 +282,7 @@ defmodule Logflare.ContextCache.CacheBuster do
          old_record: %{"id" => id}
        })
        when is_binary(id) do
-    {SourceSchemas, String.to_integer(id)}
+    {:bust, {SourceSchemas, String.to_integer(id)}}
   end
 
   defp handle_record(%DeletedRecord{
@@ -290,7 +290,7 @@ defmodule Logflare.ContextCache.CacheBuster do
          old_record: %{"id" => id}
        })
        when is_binary(id) do
-    {Users, String.to_integer(id)}
+    {:bust, {Users, String.to_integer(id)}}
   end
 
   defp handle_record(%DeletedRecord{
@@ -298,7 +298,7 @@ defmodule Logflare.ContextCache.CacheBuster do
          old_record: %{"id" => id}
        })
        when is_binary(id) do
-    {Backends, String.to_integer(id)}
+    {:bust, {Backends, String.to_integer(id)}}
   end
 
   defp handle_record(%DeletedRecord{
@@ -306,7 +306,7 @@ defmodule Logflare.ContextCache.CacheBuster do
          old_record: record
        }) do
     # Must do `alter table rules replica identity full` to get full records on deletes otherwise all fields are null
-    {Rules, handle_rule_record(record)}
+    {:bust, {Rules, handle_rule_record(record)}}
   end
 
   defp handle_record(%DeletedRecord{
@@ -315,7 +315,7 @@ defmodule Logflare.ContextCache.CacheBuster do
        })
        when is_binary(id) do
     # Must do `alter table rules replica identity full` to get full records on deletes otherwise all fields are null
-    {TeamUsers, String.to_integer(id)}
+    {:bust, {TeamUsers, String.to_integer(id)}}
   end
 
   defp handle_record(%DeletedRecord{
@@ -324,14 +324,14 @@ defmodule Logflare.ContextCache.CacheBuster do
        })
        when is_binary(id) do
     # Must do `alter table rules replica identity full` to get full records on deletes otherwise all fields are null
-    {Auth, String.to_integer(id)}
+    {:bust, {Auth, String.to_integer(id)}}
   end
 
   defp handle_record(%DeletedRecord{
          relation: {_schema, "saved_searches"},
          old_record: %{"source_id" => source_id}
        }) do
-    {SavedSearches, [source_id: String.to_integer(source_id)]}
+    {:bust, {SavedSearches, [source_id: String.to_integer(source_id)]}}
   end
 
   defp handle_record(%UpdatedRecord{
