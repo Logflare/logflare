@@ -36,12 +36,6 @@ defmodule LogflareWeb.AlertsLive do
     """
   end
 
-  defp render_access_tokens_link(assigns) do
-    ~H"""
-    <.subheader_link team={@team} to={~p"/access-tokens"} text="access tokens" fa_icon="key" />
-    """
-  end
-
   def mount(%{}, _session, socket) do
     %{assigns: %{user: user}} = socket
 
@@ -204,12 +198,12 @@ defmodule LogflareWeb.AlertsLive do
 
   def handle_event(
         "run-query",
-        params,
+        _params,
         %{assigns: %{alert: %_{} = alert}} = socket
       ) do
     test_alert = %{alert | query: socket.assigns.query_string || alert.query}
 
-    with {:ok, %{rows: [_ | _] = rows} = result} <-
+    with {:ok, %{rows: [_ | _]} = result} <-
            Alerting.execute_alert_query(test_alert, use_query_cache: false) do
       {:noreply,
        socket
