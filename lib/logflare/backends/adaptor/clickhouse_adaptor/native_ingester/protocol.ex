@@ -356,6 +356,13 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor.NativeIngester.Protocol do
   def decode_float64(<<value::little-float-64, rest::binary>>), do: {value, rest}
 
   # ---------------------------------------------------------------------------
+  # Enum8 — signed Int8 (alias)
+  # ---------------------------------------------------------------------------
+
+  @spec encode_enum8(integer()) :: binary()
+  def encode_enum8(value) when is_integer(value), do: <<value::little-signed-8>>
+
+  # ---------------------------------------------------------------------------
   # UUID — 16 bytes, each 8-byte half in little-endian
   # ---------------------------------------------------------------------------
 
