@@ -452,7 +452,9 @@ defmodule Logflare.Backends.Adaptor.ClickHouseAdaptor do
   end
 
   defp convert_uuid_values(rows, uuid_indices) when map_size(uuid_indices) == 0, do: rows
-  defp convert_uuid_values(rows, uuid_indices), do: Enum.map(rows, &convert_row_uuids(&1, uuid_indices))
+
+  defp convert_uuid_values(rows, uuid_indices),
+    do: Enum.map(rows, &convert_row_uuids(&1, uuid_indices))
 
   defp convert_row_uuids(row, uuid_indices) do
     row
