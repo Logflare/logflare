@@ -290,7 +290,13 @@ defmodule Logflare.AlertingTest do
         {:ok, %Tesla.Env{}}
       end)
 
-      assert {:ok, [%{"testing" => "123"}]} = Alerting.run_alert(alert_query)
+      assert {:ok,
+              %{
+                total_rows: 1,
+                total_bytes_processed: _,
+                fired: true,
+                rows: [%{"testing" => "123"}]
+              }} = Alerting.run_alert(alert_query)
     end
 
     test "run_alert_query/1 does not send notifications if no results", %{user: user} do
@@ -307,7 +313,13 @@ defmodule Logflare.AlertingTest do
       Logflare.Backends.Adaptor.SlackAdaptor.Client
       |> reject(:send, 2)
 
-      assert {:error, :no_results} = Alerting.run_alert(alert_query)
+      assert {:ok,
+              %{
+                total_rows: 0,
+                total_bytes_processed: _,
+                fired: false,
+                rows: []
+              }} = Alerting.run_alert(alert_query)
     end
   end
 
@@ -334,7 +346,13 @@ defmodule Logflare.AlertingTest do
         {:ok, TestUtils.gen_bq_response([%{"testing" => "123"}])}
       end)
 
-      assert {:ok, [%{"testing" => "123"}]} = Alerting.run_alert(alert.id, :scheduled)
+      assert {:ok,
+              %{
+                total_rows: 1,
+                total_bytes_processed: _,
+                fired: true,
+                rows: [%{"testing" => "123"}]
+              }} = Alerting.run_alert(alert.id, :scheduled)
     end
 
     test "run_alert/1 no-ops if alert is missing", %{user: user} do
