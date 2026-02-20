@@ -19,7 +19,7 @@ defmodule Logflare.Alerting.AlertWorker do
   @impl Oban.Worker
   @spec perform(Oban.Job.t()) :: :ok | {:error, any()}
   def perform(%Oban.Job{id: job_id, args: %{"alert_query_id" => alert_query_id}}) do
-    case Alerting.run_alert(alert_query_id, :scheduled) |> dbg() do
+    case Alerting.run_alert(alert_query_id, :scheduled) do
       {:ok, result} ->
         meta = %{"result" => result}
         store_meta(job_id, meta)
