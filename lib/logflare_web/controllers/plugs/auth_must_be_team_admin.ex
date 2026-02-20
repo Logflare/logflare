@@ -1,6 +1,6 @@
 defmodule LogflareWeb.Plugs.AuthMustBeTeamAdmin do
   @moduledoc """
-  Verifies the current user is an account owner OR an admin team member.
+  Verifies the current user is an account owner or team member with `admin` role.
 
   WARNING: This plug does NOT verify ownership of specific resources.
   Controllers must separately verify that any resource IDs in params
@@ -12,15 +12,11 @@ defmodule LogflareWeb.Plugs.AuthMustBeTeamAdmin do
   import Plug.Conn
   import Phoenix.Controller
 
-  alias Logflare.TeamUsers.TeamUser
   alias Logflare.Teams.TeamContext
-  @spec call(Plug.Conn.t(), any()) :: Plug.Conn.t()
-  def call(%{assigns: %{team_context: team_context} = assigns} = conn, _params) do
-    team_context =
-      team_context
-      |> maybe_set_team_user(Map.get(assigns, :team_user))
 
-    if admin_or_owner?(team_context) do
+  @spec call(Plug.Conn.t(), any()) :: Plug.Conn.t()
+  def call(%{assigns: %{team_context: %TeamContext{} = team_context}} = conn, _params) do
+    if TeamContext.team_admin?(team_context) do
       conn
     else
       reject(conn, team_context)
@@ -34,18 +30,11 @@ defmodule LogflareWeb.Plugs.AuthMustBeTeamAdmin do
       :error,
       [
         "You're not the account owner or an admin. Please contact ",
-        Phoenix.HTML.Link.link(user.name || user.email, to: "mailto:#{user.email}"),
+        PhoenixHTMLHelpers.Link.link(user.name || user.email, to: "mailto:#{user.email}"),
         " for support."
       ]
     )
     |> redirect(to: ~p"/dashboard")
     |> halt()
   end
-
-  defp admin_or_owner?(%TeamContext{} = team_context), do: TeamContext.team_admin?(team_context)
-
-  defp maybe_set_team_user(%TeamContext{} = team_context, %TeamUser{} = team_user),
-    do: %TeamContext{team_context | team_user: team_user}
-
-  defp maybe_set_team_user(team_context, _team_user), do: team_context
 end
