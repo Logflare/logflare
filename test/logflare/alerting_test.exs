@@ -446,7 +446,7 @@ defmodule Logflare.AlertingTest do
 
       assert length(Alerting.list_future_jobs(alert.id)) == 3
 
-      assert {:ok, %{enabled: false} = updated} =
+      assert {:ok, %{enabled: false}} =
                Alerting.update_alert_query(alert, %{enabled: false})
 
       assert Alerting.list_future_jobs(alert.id) == []
@@ -460,7 +460,7 @@ defmodule Logflare.AlertingTest do
       alert = insert(:alert, user: user, cron: "0 0 * * *", enabled: false)
       assert Alerting.list_future_jobs(alert.id) == []
 
-      {:ok, %{enabled: true} = updated} = Alerting.update_alert_query(alert, %{enabled: true})
+      {:ok, %{enabled: true}} = Alerting.update_alert_query(alert, %{enabled: true})
       future_jobs = Alerting.list_future_jobs(alert.id)
       assert length(future_jobs) == 5
       now = DateTime.utc_now()

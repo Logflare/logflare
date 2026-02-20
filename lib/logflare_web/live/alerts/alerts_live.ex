@@ -198,10 +198,11 @@ defmodule LogflareWeb.AlertsLive do
 
   def handle_event(
         "run-query",
-        _params,
+        params,
         %{assigns: %{alert: %_{} = alert}} = socket
       ) do
-    test_alert = %{alert | query: socket.assigns.query_string || alert.query}
+    query = get_in(params, ["query"]) || socket.assigns.query_string || alert.query
+    test_alert = %{alert | query: query}
 
     with {:ok, %{rows: [_ | _]} = result} <-
            Alerting.execute_alert_query(test_alert, use_query_cache: false) do
@@ -211,11 +212,11 @@ defmodule LogflareWeb.AlertsLive do
        |> assign(:total_bytes_processed, result.total_bytes_processed)
        |> put_flash(:info, "Query executed successfully. Alert will fire.")}
     else
-      {:error, %{rows: []}} ->
+      {:ok, %{rows: []} = result} ->
         {:noreply,
          socket
          |> assign(:query_result_rows, [])
-         |> assign(:total_bytes_processed, nil)
+         |> assign(:total_bytes_processed, result.total_bytes_processed)
          |> put_flash(:info, "No results from query. Alert will not fire.")}
 
       {:error, err} ->

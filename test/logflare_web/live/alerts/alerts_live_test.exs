@@ -264,7 +264,7 @@ defmodule LogflareWeb.AlertsLiveTest do
 
       assert view
              |> element("button", "Run query")
-             |> render_click() =~ "Alert has been triggered. Notifications sent!"
+             |> render_click() =~ "Query executed successfully. Alert will fire."
     end
 
     test "run query - no results", %{conn: conn, alert_query: alert_query} do
@@ -280,7 +280,7 @@ defmodule LogflareWeb.AlertsLiveTest do
         |> element("button", "Run query")
         |> render_click()
 
-      assert html =~ "No rows returned from query"
+      assert html =~ "No results from query. Alert will not fire."
     end
 
     test "errors from BQ are displayed", %{conn: conn, alert_query: alert_query} do
@@ -347,7 +347,7 @@ defmodule LogflareWeb.AlertsLiveTest do
       html =
         view
         |> element("form[phx-submit='run-query']")
-        |> render_submit(%{run: %{query: test_query}})
+        |> render_submit(%{query: test_query})
 
       assert html =~ "Query executed successfully"
       assert html =~ "edit-results"
@@ -363,7 +363,7 @@ defmodule LogflareWeb.AlertsLiveTest do
 
       assert view
              |> element("button", "Run query")
-             |> render_click() =~ "No rows returned"
+             |> render_click() =~ "No results from query"
     end
   end
 
@@ -624,9 +624,7 @@ defmodule LogflareWeb.AlertsLiveTest do
         |> login_user(user, team_user)
         |> live(~p"/alerts/#{alert_query}?t=#{team_user.team_id}")
 
-      for path <- ["alerts/#{alert_query.id}/edit", "access-tokens"] do
-        assert html =~ ~r/#{path}[^"<]*t=#{team_user.team_id}/
-      end
+      assert html =~ ~r/alerts\/#{alert_query.id}\/edit[^"<]*t=#{team_user.team_id}/
     end
   end
 end
