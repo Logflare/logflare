@@ -110,8 +110,12 @@ defmodule LogflareWeb.Router do
     plug(LogflareWeb.Plugs.BufferLimiter)
   end
 
-  pipeline :require_mgmt_api_auth do
+  pipeline :require_private_api_auth do
     plug(LogflareWeb.Plugs.VerifyApiAccess, scopes: ~w(private))
+  end
+
+  pipeline :require_admin_api_auth do
+    plug(LogflareWeb.Plugs.VerifyApiAccess, scopes: ~w(private:admin))
   end
 
   pipeline :require_auth do
@@ -403,9 +407,9 @@ defmodule LogflareWeb.Router do
     get("/", HealthCheckController, :check)
   end
 
-  # Account management API.
+  # Account resource API
   scope "/api", LogflareWeb do
-    pipe_through([:api, :require_mgmt_api_auth])
+    pipe_through([:api, :require_private_api_auth])
 
     get("/account", UserController, :api_show)
     get("/query", Api.QueryController, :query)
@@ -438,17 +442,26 @@ defmodule LogflareWeb.Router do
 
     resources("/teams", Api.TeamController,
       param: "token",
-      only: [:index, :show, :create, :update, :delete]
+      only: [:index, :show]
+    )
+
+    get "/key-values", Api.KeyValueController, :index
+    post "/key-values", Api.KeyValueController, :create
+    delete "/key-values", Api.KeyValueController, :delete
+  end
+
+  scope "/api", LogflareWeb do
+    pipe_through([:api, :require_admin_api_auth])
+
+    resources("/teams", Api.TeamController,
+      param: "token",
+      only: [:create, :update, :delete]
     )
 
     resources("/backends", Api.BackendController,
       param: "token",
       only: [:index, :show, :create, :update, :delete]
     )
-
-    get "/key-values", Api.KeyValueController, :index
-    post "/key-values", Api.KeyValueController, :create
-    delete "/key-values", Api.KeyValueController, :delete
   end
 
   scope "/api/partner", LogflareWeb do

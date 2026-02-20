@@ -160,4 +160,22 @@ defmodule Logflare.Teams.TeamContextTest do
       assert {:error, :not_authorized} = TeamContext.resolve(forbidden_team.id, user.email)
     end
   end
+
+  describe "team_owner?/1" do
+    test "returns true for user accessing their own home team", %{user: user, team: team} do
+      {:ok, context} = TeamContext.resolve(team.id, user.email)
+
+      assert context.team_user == nil
+      assert TeamContext.team_owner?(context) == true
+    end
+
+    test "returns false for user accessing a team they are a member of", %{user: user} do
+      invited_team = insert(:team)
+      insert(:team_user, email: user.email, team: invited_team)
+      {:ok, context} = TeamContext.resolve(invited_team.id, user.email)
+
+      assert context.team_user != nil
+      assert TeamContext.team_owner?(context) == false
+    end
+  end
 end

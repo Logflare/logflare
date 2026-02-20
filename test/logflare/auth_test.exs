@@ -89,6 +89,16 @@ defmodule Logflare.AuthTest do
     assert :ok = Auth.check_scopes(key, ~w(ingest:source:3))
   end
 
+  test "check_scopes/2 private:admin scope ", %{user: user} do
+    {:ok, key} = Auth.create_access_token(user, %{scopes: "private:admin"})
+    assert :ok = Auth.check_scopes(key, ~w(query))
+    assert :ok = Auth.check_scopes(key, ~w(ingest))
+    assert :ok = Auth.check_scopes(key, ~w(ingest:endpoint:3))
+    assert :ok = Auth.check_scopes(key, ~w(ingest:source:3))
+    assert :ok = Auth.check_scopes(key, ~w(private))
+    assert :ok = Auth.check_scopes(key, ~w(private:admin))
+  end
+
   test "check_scopes/2 default empty scopes", %{user: user} do
     # empty scopes means ingest into any source, the legacy behaviour
     {:ok, key} = Auth.create_access_token(user, %{scopes: ""})
@@ -146,5 +156,33 @@ defmodule Logflare.AuthTest do
   defp access_token_fixture(user_or_team_or_partner) do
     {:ok, key} = Auth.create_access_token(user_or_team_or_partner)
     key
+  end
+
+  describe "can_create_admin_token?/1" do
+    test "with private:admin token scope", %{user: user} do
+      {:ok, token} = Auth.create_access_token(user, %{scopes: "private:admin"})
+      assert Auth.can_create_admin_token?(token) == true
+    end
+
+    test "with private token scope", %{user: user} do
+      {:ok, token} = Auth.create_access_token(user, %{scopes: "private"})
+      assert Auth.can_create_admin_token?(token) == false
+    end
+
+    test "with no token scope", %{user: user} do
+      {:ok, token} = Auth.create_access_token(user, %{scopes: nil})
+      assert Auth.can_create_admin_token?(token) == false
+    end
+
+    test "with owner TeamContext", %{user: user, team: team} do
+      {:ok, team_context} = Logflare.Teams.TeamContext.resolve(team.id, user.email)
+      assert Auth.can_create_admin_token?(team_context) == true
+    end
+
+    test "with invited team user TeamContext", %{team: team} do
+      team_user = insert(:team_user, team: team)
+      {:ok, team_context} = Logflare.Teams.TeamContext.resolve(team.id, team_user.email)
+      assert Auth.can_create_admin_token?(team_context) == false
+    end
   end
 end
