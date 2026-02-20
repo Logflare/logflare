@@ -43,7 +43,7 @@ defmodule Logflare.Teams.TeamContextTest do
       assert context.user.id == user.id
       assert context.team.id == team.id
       assert context.team_user.id == team_user.id
-      assert context.team_user.team_role.role == :user
+      assert context.team_user.role == :user
     end
 
     test "resolve with forbidden team_id", %{other_team: other_team, team_user: team_user} do

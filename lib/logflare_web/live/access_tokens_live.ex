@@ -182,7 +182,6 @@ defmodule LogflareWeb.AccessTokensLive do
     %{assigns: %{user: user}} = socket
     sources = Sources.list_sources_by_user(user)
     endpoints = Endpoints.list_endpoints_by(user_id: user.id)
-    team_context = struct(TeamContext, socket.assigns)
 
     socket =
       socket
@@ -193,7 +192,6 @@ defmodule LogflareWeb.AccessTokensLive do
       |> assign(scopes_ingest_sources: %{})
       |> assign(scopes_query_endpoints: %{})
       |> assign(create_token_form: @default_create_form)
-      |> assign(:team_context, team_context)
       |> do_refresh()
 
     {:ok, socket}

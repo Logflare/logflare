@@ -231,22 +231,37 @@ defmodule LogflareWeb.TeamUserControllerTest do
   end
 
   describe "team member management as team admin" do
-    test "can grant and revoke admin role", %{conn: conn} do
+    setup do
       owner = insert(:user)
       team = insert(:team, user: owner)
       admin_user = insert(:user)
 
       admin_team_user =
-        insert(:team_user, team: team, email: admin_user.email, team_role: %{role: :admin})
+        insert(:team_user, team: team, email: admin_user.email, role: :admin)
 
       admin_team_user = Logflare.TeamUsers.preload_defaults(admin_team_user)
       regular_team_user = insert(:team_user, team: team)
 
-      assert regular_team_user.team_role.role == :user
+      [
+        admin_team_user: admin_team_user,
+        admin_user: admin_user,
+        regular_team_user: regular_team_user,
+        team: team
+      ]
+    end
+
+    test "can grant and revoke admin role", %{
+      admin_team_user: admin_team_user,
+      admin_user: admin_user,
+      conn: conn,
+      regular_team_user: regular_team_user,
+      team: team
+    } do
+      assert regular_team_user.role == :user
 
       session =
         conn
-        |> login_user(admin_team_user)
+        |> login_user(admin_user, admin_team_user)
         |> visit(~p"/profile/edit?t=#{team.id}")
 
       session
@@ -263,7 +278,7 @@ defmodule LogflareWeb.TeamUserControllerTest do
         end)
 
         regular_team_user = Logflare.TeamUsers.get_team_user_and_preload(regular_team_user.id)
-        assert regular_team_user.team_role.role == :admin
+        assert regular_team_user.role == :admin
 
         session
       end)
@@ -282,23 +297,19 @@ defmodule LogflareWeb.TeamUserControllerTest do
         end)
 
         admin_team_user = Logflare.TeamUsers.get_team_user_and_preload(admin_team_user.id)
-        refute admin_team_user.team_role.role == :admin
+        assert admin_team_user.role == :user
 
         session
       end)
     end
 
-    test "can delete another team member", %{conn: conn} do
-      owner = insert(:user)
-      team = insert(:team, user: owner)
-      admin_user = insert(:user)
-
-      admin_team_user =
-        insert(:team_user, team: team, email: admin_user.email, team_role: %{role: :admin})
-
-      admin_team_user = Logflare.TeamUsers.preload_defaults(admin_team_user)
-      regular_team_user = insert(:team_user, team: team)
-
+    test "can delete another team member", %{
+      admin_team_user: admin_team_user,
+      admin_user: admin_user,
+      conn: conn,
+      regular_team_user: regular_team_user,
+      team: team
+    } do
       expect(
         GoogleApi.CloudResourceManager.V1.Api.Projects,
         :cloudresourcemanager_projects_set_iam_policy,
@@ -354,7 +365,7 @@ defmodule LogflareWeb.TeamUserControllerTest do
              end)
 
       member2_team_user = Logflare.TeamUsers.get_team_user_and_preload(member2_team_user.id)
-      assert member2_team_user.team_role.role == :user
+      assert member2_team_user.role == :user
     end
   end
 end

@@ -194,7 +194,7 @@ defmodule LogflareWeb.DashboardLiveTest do
       other_team: other_team
     } do
       admin_team_member =
-        insert(:team_user, team: another_member.team, team_role: %{role: :admin})
+        insert(:team_user, team: another_member.team, role: :admin)
 
       {:ok, view, _html} = live(conn, ~p"/dashboard?t=#{other_team.id}")
 

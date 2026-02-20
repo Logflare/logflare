@@ -243,7 +243,7 @@ defmodule LogflareWeb.AccessTokensLiveTest do
   describe "team_user with admin role" do
     setup %{conn: conn} do
       team = insert(:team)
-      team_user = insert(:team_user, team: team, team_role: %{role: :admin})
+      team_user = insert(:team_user, team: team, role: :admin)
       conn = conn |> login_user(team.user, team_user)
 
       {:ok, team: team, team_user: team_user, conn: conn}
@@ -266,7 +266,7 @@ defmodule LogflareWeb.AccessTokensLiveTest do
   describe "team_user with user role" do
     setup %{conn: conn} do
       team = insert(:team)
-      team_user = insert(:team_user, team: team, team_role: %{role: :user})
+      team_user = insert(:team_user, team: team, role: :user)
       conn = conn |> login_user(team.user, team_user)
 
       {:ok, team: team, team_user: team_user, conn: conn}
